@@ -17,11 +17,11 @@ class ProjectService
             $where = ['1=1'];
 
             if ($search !== '') {
-                $s       = App\QuotedValue('%' . $search . '%', App\DATATYPE_STRING, 'DB');
+                $s       = App\QuotedValue('%' . $search . '%', App\DataType::STRING, 'DB');
                 $where[] = "(p.project_code ILIKE {$s} OR p.project_name ILIKE {$s})";
             }
             if ($programCode !== '') {
-                $where[] = 'p.program_code = ' . App\QuotedValue($programCode, App\DATATYPE_STRING, 'DB');
+                $where[] = 'p.program_code = ' . App\QuotedValue($programCode, App\DataType::STRING, 'DB');
             }
             $whereSql = implode(' AND ', $where);
 
@@ -62,7 +62,7 @@ class ProjectService
             $sql = "SELECT p.*, pg.program_name, pg.\"group\"
                     FROM {$this->table} p
                     LEFT JOIN {$this->tableProgram} pg ON pg.program_code = p.program_code
-                    WHERE p.project_code = " . App\QuotedValue($code, App\DATATYPE_STRING, 'DB');
+                    WHERE p.project_code = " . App\QuotedValue($code, App\DataType::STRING, 'DB');
 
             $data = App\ExecuteRow($sql, 'DB');
 
@@ -88,7 +88,7 @@ class ProjectService
             }
 
             $exists = (int) App\ExecuteScalar(
-                "SELECT COUNT(*) FROM {$this->table} WHERE project_code = " . App\QuotedValue($code, App\DATATYPE_STRING, 'DB'),
+                "SELECT COUNT(*) FROM {$this->table} WHERE project_code = " . App\QuotedValue($code, App\DataType::STRING, 'DB'),
                 'DB'
             );
             if ($exists > 0) {
@@ -96,7 +96,7 @@ class ProjectService
             }
 
             $programExists = (int) App\ExecuteScalar(
-                "SELECT COUNT(*) FROM {$this->tableProgram} WHERE program_code = " . App\QuotedValue($program, App\DATATYPE_STRING, 'DB'),
+                "SELECT COUNT(*) FROM {$this->tableProgram} WHERE program_code = " . App\QuotedValue($program, App\DataType::STRING, 'DB'),
                 'DB'
             );
             if ($programExists === 0) {
@@ -109,7 +109,7 @@ class ProjectService
             $values  = [];
             foreach ($fields as $key => $value) {
                 $columns[] = App\QuotedName($key, 'DB');
-                $values[]  = App\QuotedValue($value, App\DATATYPE_STRING, 'DB');
+                $values[]  = App\QuotedValue($value, App\DataType::STRING, 'DB');
             }
 
             $sql = "INSERT INTO {$this->table} (" . implode(', ', $columns) . ')
@@ -140,7 +140,7 @@ class ProjectService
 
             if (!empty($fields['program_code'])) {
                 $programExists = (int) App\ExecuteScalar(
-                    "SELECT COUNT(*) FROM {$this->tableProgram} WHERE program_code = " . App\QuotedValue($fields['program_code'], App\DATATYPE_STRING, 'DB'),
+                    "SELECT COUNT(*) FROM {$this->tableProgram} WHERE program_code = " . App\QuotedValue($fields['program_code'], App\DataType::STRING, 'DB'),
                     'DB'
                 );
                 if ($programExists === 0) {
@@ -150,12 +150,12 @@ class ProjectService
 
             $setParts = [];
             foreach ($fields as $key => $value) {
-                $setParts[] = App\QuotedName($key, 'DB') . ' = ' . App\QuotedValue($value, App\DATATYPE_STRING, 'DB');
+                $setParts[] = App\QuotedName($key, 'DB') . ' = ' . App\QuotedValue($value, App\DataType::STRING, 'DB');
             }
 
             $sql = "UPDATE {$this->table}
                     SET " . implode(', ', $setParts) . '
-                    WHERE project_code = ' . App\QuotedValue($code, App\DATATYPE_STRING, 'DB');
+                    WHERE project_code = ' . App\QuotedValue($code, App\DataType::STRING, 'DB');
 
             App\Execute($sql, 'DB');
 
@@ -173,7 +173,7 @@ class ProjectService
                 return $check;
             }
 
-            $sql = "DELETE FROM {$this->table} WHERE project_code = " . App\QuotedValue($code, App\DATATYPE_STRING, 'DB');
+            $sql = "DELETE FROM {$this->table} WHERE project_code = " . App\QuotedValue($code, App\DataType::STRING, 'DB');
             App\Execute($sql, 'DB');
 
             return ['success' => true, 'message' => "Project '{$code}' deleted successfully."];

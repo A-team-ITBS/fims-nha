@@ -22,7 +22,7 @@ class BudgetReqService
 
         if ($programCode !== '') {
             $exists = (int) App\ExecuteScalar(
-                "SELECT COUNT(*) FROM {$this->tableProgram} WHERE program_code = " . App\QuotedValue($programCode, App\DATATYPE_STRING, 'DB'),
+                "SELECT COUNT(*) FROM {$this->tableProgram} WHERE program_code = " . App\QuotedValue($programCode, App\DataType::STRING, 'DB'),
                 'DB'
             );
             if ($exists === 0) {
@@ -32,7 +32,7 @@ class BudgetReqService
 
         if ($projectCode !== '') {
             $exists = (int) App\ExecuteScalar(
-                "SELECT COUNT(*) FROM {$this->tableProject} WHERE project_code = " . App\QuotedValue($projectCode, App\DATATYPE_STRING, 'DB'),
+                "SELECT COUNT(*) FROM {$this->tableProject} WHERE project_code = " . App\QuotedValue($projectCode, App\DataType::STRING, 'DB'),
                 'DB'
             );
             if ($exists === 0) {
@@ -153,17 +153,17 @@ class BudgetReqService
 
             $columns = ['fiscal_yr', 'amount', 'expense_class_id'];
             $values  = [
-                App\QuotedValue($fiscalYr, App\DATATYPE_NUMBER, 'DB'),
-                App\QuotedValue($amount, App\DATATYPE_NUMBER, 'DB'),
-                App\QuotedValue($expenseClassId, App\DATATYPE_NUMBER, 'DB'),
+                App\QuotedValue($fiscalYr, App\DataType::NUMBER, 'DB'),
+                App\QuotedValue($amount, App\DataType::NUMBER, 'DB'),
+                App\QuotedValue($expenseClassId, App\DataType::NUMBER, 'DB'),
             ];
 
             if ($programCode !== '') {
                 $columns[] = 'program_code';
-                $values[]  = App\QuotedValue($programCode, App\DATATYPE_STRING, 'DB');
+                $values[]  = App\QuotedValue($programCode, App\DataType::STRING, 'DB');
             } else {
                 $columns[] = 'project_code';
-                $values[]  = App\QuotedValue($projectCode, App\DATATYPE_STRING, 'DB');
+                $values[]  = App\QuotedValue($projectCode, App\DataType::STRING, 'DB');
             }
 
             $sql = "INSERT INTO {$this->table} (" . implode(', ', $columns) . ')
@@ -204,23 +204,23 @@ class BudgetReqService
             $setParts = [];
 
             if ($fiscalYr !== null && $fiscalYr !== '') {
-                $setParts[] = 'fiscal_yr = ' . App\QuotedValue($fiscalYr, App\DATATYPE_NUMBER, 'DB');
+                $setParts[] = 'fiscal_yr = ' . App\QuotedValue($fiscalYr, App\DataType::NUMBER, 'DB');
             }
             if ($amount !== null && $amount !== '' && is_numeric($amount)) {
-                $setParts[] = 'amount = ' . App\QuotedValue($amount, App\DATATYPE_NUMBER, 'DB');
+                $setParts[] = 'amount = ' . App\QuotedValue($amount, App\DataType::NUMBER, 'DB');
             }
             if ($expenseClassId !== '') {
-                $setParts[] = 'expense_class_id = ' . App\QuotedValue($expenseClassId, App\DATATYPE_NUMBER, 'DB');
+                $setParts[] = 'expense_class_id = ' . App\QuotedValue($expenseClassId, App\DataType::NUMBER, 'DB');
             }
 
             // program_code / project_code are togglable as a pair — whichever
             // side was provided in the body wins, and the other side is cleared
             // so the chk_budget_req_program_xor_project constraint stays satisfied.
             if ($programCode !== '') {
-                $setParts[] = 'program_code = ' . App\QuotedValue($programCode, App\DATATYPE_STRING, 'DB');
+                $setParts[] = 'program_code = ' . App\QuotedValue($programCode, App\DataType::STRING, 'DB');
                 $setParts[] = 'project_code = NULL';
             } elseif ($projectCode !== '') {
-                $setParts[] = 'project_code = ' . App\QuotedValue($projectCode, App\DATATYPE_STRING, 'DB');
+                $setParts[] = 'project_code = ' . App\QuotedValue($projectCode, App\DataType::STRING, 'DB');
                 $setParts[] = 'program_code = NULL';
             }
 

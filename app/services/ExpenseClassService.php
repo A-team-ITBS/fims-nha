@@ -13,7 +13,7 @@ class ExpenseClassService
         try {
             $where = 'deleted_at IS NULL';
             if ($search !== '') {
-                $s      = App\QuotedValue('%' . $search . '%', App\DATATYPE_STRING, 'DB');
+                $s      = App\QuotedValue('%' . $search . '%', App\DataType::STRING, 'DB');
                 $where .= " AND (expense_class_code ILIKE {$s} OR expense_class_name ILIKE {$s})";
             }
 
@@ -76,7 +76,7 @@ class ExpenseClassService
             }
 
             $sql = 'INSERT INTO ' . $this->table . ' (expense_class_code, expense_class_name)
-                    VALUES (' . App\QuotedValue($code, App\DATATYPE_STRING, 'DB') . ', ' . App\QuotedValue($name, App\DATATYPE_STRING, 'DB') . ')
+                    VALUES (' . App\QuotedValue($code, App\DataType::STRING, 'DB') . ', ' . App\QuotedValue($name, App\DataType::STRING, 'DB') . ')
                     RETURNING expense_class_id';
 
             $row = App\ExecuteRow($sql, 'DB');
@@ -104,10 +104,10 @@ class ExpenseClassService
 
             $setParts = ['updated_at = CURRENT_TIMESTAMP'];
             if ($code !== '') {
-                $setParts[] = 'expense_class_code = ' . App\QuotedValue($code, App\DATATYPE_STRING, 'DB');
+                $setParts[] = 'expense_class_code = ' . App\QuotedValue($code, App\DataType::STRING, 'DB');
             }
             if ($name !== '') {
-                $setParts[] = 'expense_class_name = ' . App\QuotedValue($name, App\DATATYPE_STRING, 'DB');
+                $setParts[] = 'expense_class_name = ' . App\QuotedValue($name, App\DataType::STRING, 'DB');
             }
 
             $sql = "UPDATE {$this->table}

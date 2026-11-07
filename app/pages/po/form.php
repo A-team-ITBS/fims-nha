@@ -13,7 +13,7 @@ namespace PHPMaker2024\FIMS;
 // Fonts and nha-fims.css are loaded by the including page.
 if (!isset($_pof_api)) {
     // API.BASE_URL is the site root; the REST routes live under /api (added unless the env value already ends in it).
-    $_pof_api = rtrim((string) Config('API.BASE_URL'), '/');
+    $_pof_api = rtrim((string) Config('API.FIMS_URL'), '/');
     $_pof_api = preg_match('~/api$~', $_pof_api) ? $_pof_api : $_pof_api . '/api';
 }
 ?>

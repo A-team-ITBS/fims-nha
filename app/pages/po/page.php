@@ -5,8 +5,8 @@ namespace PHPMaker2024\FIMS;
 // Purchase Order list. Data comes from the REST API (app/routes/purchase-order.php), no direct DB queries.
 // Ported from GLOBAL/includes/inc.po-page.php, trimmed to what exists in the `fims` schema
 // (no PR / allocation / workflow engine / payment workflow).
-// API.BASE_URL is the site root; the REST routes live under /api (added unless the env value already ends in it).
-$_pol_api  = rtrim((string) Config('API.BASE_URL'), '/');
+// API.FIMS_URL is the site root; the REST routes live under /api (added unless the env value already ends in it).
+$_pol_api  = rtrim((string) Config('API.FIMS_URL'), '/');
 $_pol_api  = preg_match('~/api$~', $_pol_api) ? $_pol_api : $_pol_api . '/api';
 // The add/edit form is a modal (app/pages/po/form.php, included below) — it needs no page of its own.
 // The detail view is still a separate PHPMaker custom page; PHPMaker derives its route from the file name:

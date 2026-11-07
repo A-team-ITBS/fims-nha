@@ -5,8 +5,8 @@ namespace PHPMaker2024\FIMS;
 // Purchase Order detail view (?id=<po_id>). Ported from GLOBAL/includes/inc.po-readone.php,
 // trimmed to the `fims` schema: no PR / allocation block, workflow engine, delivery receipts,
 // payment workflow or DV panel. Status moves through POST /purchase-order/{id}/status.
-// API.BASE_URL is the site root; the REST routes live under /api (added unless the env value already ends in it).
-$_pod_api  = rtrim((string) Config('API.BASE_URL'), '/');
+// API.FIMS_URL is the site root; the REST routes live under /api (added unless the env value already ends in it).
+$_pod_api  = rtrim((string) Config('API.FIMS_URL'), '/');
 $_pod_api  = preg_match('~/api$~', $_pod_api) ? $_pod_api : $_pod_api . '/api';
 $_pod_id   = (int) ($_GET['id'] ?? 0);
 // The list page route. Editing is a modal on that page, so "Edit" links to <list>?edit=<po_id>.

@@ -44,7 +44,7 @@ class FiscalYearService
     public function fetchByYear(int|string $fiscalYr): array
     {
         try {
-            $sql  = "SELECT * FROM {$this->table} WHERE fiscal_yr = " . App\QuotedValue($fiscalYr, App\DATATYPE_NUMBER, 'DB');
+            $sql  = "SELECT * FROM {$this->table} WHERE fiscal_yr = " . App\QuotedValue($fiscalYr, App\DataType::NUMBER, 'DB');
             $data = App\ExecuteRow($sql, 'DB');
 
             if (!$data) {
@@ -67,14 +67,14 @@ class FiscalYearService
             }
 
             $exists = (int) App\ExecuteScalar(
-                "SELECT COUNT(*) FROM {$this->table} WHERE fiscal_yr = " . App\QuotedValue($fiscalYr, App\DATATYPE_NUMBER, 'DB'),
+                "SELECT COUNT(*) FROM {$this->table} WHERE fiscal_yr = " . App\QuotedValue($fiscalYr, App\DataType::NUMBER, 'DB'),
                 'DB'
             );
             if ($exists > 0) {
                 return ['success' => false, 'message' => "Fiscal year '{$fiscalYr}' already exists."];
             }
 
-            $sql = "INSERT INTO {$this->table} (fiscal_yr) VALUES (" . App\QuotedValue($fiscalYr, App\DATATYPE_NUMBER, 'DB') . ')';
+            $sql = "INSERT INTO {$this->table} (fiscal_yr) VALUES (" . App\QuotedValue($fiscalYr, App\DataType::NUMBER, 'DB') . ')';
             App\Execute($sql, 'DB');
 
             return ['success' => true, 'message' => "Fiscal year '{$fiscalYr}' created successfully."];
@@ -92,14 +92,14 @@ class FiscalYearService
             }
 
             $inUse = (int) App\ExecuteScalar(
-                "SELECT COUNT(*) FROM fims.budget_req WHERE fiscal_yr = " . App\QuotedValue($fiscalYr, App\DATATYPE_NUMBER, 'DB'),
+                "SELECT COUNT(*) FROM fims.budget_req WHERE fiscal_yr = " . App\QuotedValue($fiscalYr, App\DataType::NUMBER, 'DB'),
                 'DB'
             );
             if ($inUse > 0) {
                 return ['success' => false, 'message' => "Cannot delete '{$fiscalYr}' — {$inUse} budget request(s) still reference this fiscal year."];
             }
 
-            $sql = "DELETE FROM {$this->table} WHERE fiscal_yr = " . App\QuotedValue($fiscalYr, App\DATATYPE_NUMBER, 'DB');
+            $sql = "DELETE FROM {$this->table} WHERE fiscal_yr = " . App\QuotedValue($fiscalYr, App\DataType::NUMBER, 'DB');
             App\Execute($sql, 'DB');
 
             return ['success' => true, 'message' => "Fiscal year '{$fiscalYr}' deleted successfully."];
