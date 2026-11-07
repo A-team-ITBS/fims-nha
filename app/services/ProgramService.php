@@ -16,8 +16,8 @@ class ProgramService
         try {
             $where = '1=1';
             if ($search !== '') {
-                $s     = App\QuotedValue('%' . $search . '%', DataType::STRING, 'DB');
-                $where = "(program_code ILIKE {$s} OR program_name ILIKE {$s})";
+                $s     = App\QuotedValue('%' . $search . '%', App\DataType::STRING, 'DB');
+                $where = "(program_code ILIKE {$s} OR program_name ILIKE {$s} OR \"group\" ILIKE {$s})";
             }
 
             if ($page === null) {
@@ -147,14 +147,22 @@ class ProgramService
             }
 
             $inUse = (int) App\ExecuteScalar(
+<<<<<<< HEAD
                 "SELECT COUNT(*) FROM fims.project WHERE program_code = " . App\QuotedValue($code, DataType::STRING, 'DB'),
+=======
+                "SELECT COUNT(*) FROM fims.project WHERE program_code = " . App\QuotedValue($code, App\DataType::STRING, 'DB'),
+>>>>>>> 295ede4785575aca7cfa57e987ba2d4b30eb7aa3
                 'DB'
             );
             if ($inUse > 0) {
                 return ['success' => false, 'message' => "Cannot delete '{$code}' — {$inUse} project(s) still reference this program."];
             }
 
+<<<<<<< HEAD
             $sql = "DELETE FROM {$this->table} WHERE program_code = " . App\QuotedValue($code, DataType::STRING, 'DB');
+=======
+            $sql = "DELETE FROM {$this->table} WHERE program_code = " . App\QuotedValue($code, App\DataType::STRING, 'DB');
+>>>>>>> 295ede4785575aca7cfa57e987ba2d4b30eb7aa3
             App\Execute($sql, 'DB');
 
             return ['success' => true, 'message' => "Program '{$code}' deleted successfully."];

@@ -18,11 +18,11 @@ class ProjectService
             $where = ['1=1'];
 
             if ($search !== '') {
-                $s       = App\QuotedValue('%' . $search . '%', DataType::STRING, 'DB');
+                $s       = App\QuotedValue('%' . $search . '%', App\DataType::STRING, 'DB');
                 $where[] = "(p.project_code ILIKE {$s} OR p.project_name ILIKE {$s})";
             }
             if ($programCode !== '') {
-                $where[] = 'p.program_code = ' . App\QuotedValue($programCode, DataType::STRING, 'DB');
+                $where[] = 'p.program_code = ' . App\QuotedValue($programCode, App\DataType::STRING, 'DB');
             }
             $whereSql = implode(' AND ', $where);
 
