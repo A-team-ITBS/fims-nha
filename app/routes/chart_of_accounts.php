@@ -23,18 +23,33 @@ $app->get('/chart_of_accounts/all', function ($request, $response, $args) use ($
     }
 })->add($jwtMiddleware);
 
+// Regions lookup (for Region filter/dropdown)
+$app->get('/chart-of-accounts/regions', function ($request, $response, $args) use ($ChartOfAccountsService) {
+    try {
+        $result = $ChartOfAccountsService->fetchRegions();
+
+        return $response->withJson($result);
+    } catch (\Exception $e) {
+        return $response->withJson(['success' => false, 'message' => $e->getMessage()], 400);
+    }
+})->add($jwtMiddleware);
+
 // Fetch all (with pagination)
 $app->get('/chart-of-accounts/list', function ($request, $response, $args) use ($ChartOfAccountsService) {
     try {
         $params = $request->getQueryParams();
         $page   = isset($params['page']) ? (int) $params['page'] : 1;
         $limit  = isset($params['limit']) ? (int) $params['limit'] : 10;
+        $scope  = $ChartOfAccountsService->getUserScope((int) $request->getAttribute('user_id'));
+        $regionCode = $scope['region_code'] ?? ($params['region_code'] ?? '');
 
         $result = $ChartOfAccountsService->fetchAlls(
             $page,
             $limit,
             $params['search'] ?? '',
             $params['account_type'] ?? '',
+            $regionCode,
+            $params['project_code'] ?? '',
             $params['status'] ?? ''
         );
 
@@ -48,6 +63,11 @@ $app->get('/chart-of-accounts/list', function ($request, $response, $args) use (
 $app->get('/chart-of-accounts/read/{id}', function ($request, $response, $args) use ($ChartOfAccountsService) {
     try {
         $result = $ChartOfAccountsService->fetchById($args['id']);
+        $scope  = $ChartOfAccountsService->getUserScope((int) $request->getAttribute('user_id'));
+
+        if ($result['success'] && $scope['region_code'] && ($result['data']['region_code'] ?? null) !== $scope['region_code']) {
+            return $response->withJson(['success' => false, 'message' => "Account '{$args['id']}' not found."], 404);
+        }
 
         return $response->withJson($result);
     } catch (\Exception $e) {
@@ -58,7 +78,12 @@ $app->get('/chart-of-accounts/read/{id}', function ($request, $response, $args) 
 // Add
 $app->post('/chart-of-accounts/add', function ($request, $response, $args) use ($ChartOfAccountsService) {
     try {
-        $body   = $request->getParsedBody();
+        $body  = $request->getParsedBody();
+        $scope = $ChartOfAccountsService->getUserScope((int) $request->getAttribute('user_id'));
+        if ($scope['region_code']) {
+            $body['region_code'] = $scope['region_code'];
+        }
+
         $result = $ChartOfAccountsService->create($body);
 
         return $response->withJson($result, $result['success'] ? 201 : 400);
@@ -70,7 +95,20 @@ $app->post('/chart-of-accounts/add', function ($request, $response, $args) use (
 // Update
 $app->put('/chart-of-accounts/update/{id}', function ($request, $response, $args) use ($ChartOfAccountsService) {
     try {
-        $body   = $request->getParsedBody();
+        $scope = $ChartOfAccountsService->getUserScope((int) $request->getAttribute('user_id'));
+
+        if ($scope['region_code']) {
+            $existing = $ChartOfAccountsService->fetchById($args['id']);
+            if (!$existing['success'] || ($existing['data']['region_code'] ?? null) !== $scope['region_code']) {
+                return $response->withJson(['success' => false, 'message' => "Account '{$args['id']}' not found."], 404);
+            }
+        }
+
+        $body = $request->getParsedBody();
+        if ($scope['region_code']) {
+            $body['region_code'] = $scope['region_code'];
+        }
+
         $result = $ChartOfAccountsService->update($args['id'], $body);
 
         return $response->withJson($result, $result['success'] ? 200 : 400);
@@ -82,6 +120,15 @@ $app->put('/chart-of-accounts/update/{id}', function ($request, $response, $args
 // Toggle status (Active <-> Inactive)
 $app->patch('/chart-of-accounts/{id}/toggle-status', function ($request, $response, $args) use ($ChartOfAccountsService) {
     try {
+        $scope = $ChartOfAccountsService->getUserScope((int) $request->getAttribute('user_id'));
+
+        if ($scope['region_code']) {
+            $existing = $ChartOfAccountsService->fetchById($args['id']);
+            if (!$existing['success'] || ($existing['data']['region_code'] ?? null) !== $scope['region_code']) {
+                return $response->withJson(['success' => false, 'message' => "Account '{$args['id']}' not found."], 404);
+            }
+        }
+
         $result = $ChartOfAccountsService->toggleStatus($args['id']);
 
         return $response->withJson($result, $result['success'] ? 200 : 400);
@@ -93,6 +140,15 @@ $app->patch('/chart-of-accounts/{id}/toggle-status', function ($request, $respon
 // Delete
 $app->delete('/chart-of-accounts/delete/{id}', function ($request, $response, $args) use ($ChartOfAccountsService) {
     try {
+        $scope = $ChartOfAccountsService->getUserScope((int) $request->getAttribute('user_id'));
+
+        if ($scope['region_code']) {
+            $existing = $ChartOfAccountsService->fetchById($args['id']);
+            if (!$existing['success'] || ($existing['data']['region_code'] ?? null) !== $scope['region_code']) {
+                return $response->withJson(['success' => false, 'message' => "Account '{$args['id']}' not found."], 404);
+            }
+        }
+
         $result = $ChartOfAccountsService->delete($args['id']);
 
         return $response->withJson($result, $result['success'] ? 200 : 400);
