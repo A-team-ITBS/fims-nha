@@ -54,6 +54,7 @@ include(dirname(__DIR__, 1) . "/app/services/ExpenseClassService.php");
 // Include Route Files
 include(dirname(__DIR__, 1) . "/app/routes/notifications.php");
 include(dirname(__DIR__, 1) . "/app/routes/service.php");
+include(dirname(__DIR__, 1) . "/app/routes/user-access.php");
 include(dirname(__DIR__, 1) . "/app/routes/program.php");
 include(dirname(__DIR__, 1) . "/app/routes/project.php");
 include(dirname(__DIR__, 1) . "/app/routes/budget_req.php");

@@ -4,7 +4,14 @@
     "description": "fims",
     "license": "SEE LICENSE IN LICENSE.md",
     "private": true,
-    "dependencies": {},
+    "scripts": {
+        "install-system": "node install_system.js"
+    },
+    "dependencies": {
+        "chalk": "^4.1.2",
+        "fs-extra": "^11.2.0",
+        "inquirer": "^8.2.6"
+    },
     "engines": {
         "node": ">=18"
     }

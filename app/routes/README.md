@@ -8,6 +8,7 @@ This directory contains organized API route definitions for the __BASE__ applica
 routes/
 ├── notifications.php    # Notification management routes
 ├── service.php         # General service routes
+├── user-access.php     # UserAccess page routes (create user, save permissions)
 └── README.md          # This documentation
 ```
 
@@ -23,6 +24,10 @@ routes/
 
 ### service.php
 - `GET /Service` - Generate OpenAPI documentation
+
+### user-access.php
+- `POST /user-access/users` - Create a user (backs the Add User modal on `app/pages/user-access.php`)
+- `POST /user-access/permissions` - Save a user level's module permission bitmask (backs the Permission Matrix on `app/pages/user-access.php`)
 
 ## Template Usage
 
