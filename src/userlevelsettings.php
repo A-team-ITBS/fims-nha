@@ -115,7 +115,9 @@ $USER_LEVEL_PRIVS = [["{FIMS}audit_logs","-2","0"],
     ["{FIMS}program-page.php","-2","0"],
     ["{FIMS}program-page.php","0","0"],
     ["{FIMS}budget-req-page.php","-2","0"],
-    ["{FIMS}budget-req-page.php","0","0"]];
+    ["{FIMS}budget-req-page.php","0","0"],
+    ["{FIMS}sub-program-page.php","-2","0"],
+    ["{FIMS}sub-program-page.php","0","0"]];
 
 /**
  * Tables
@@ -172,6 +174,7 @@ $USER_LEVEL_TABLES = [["audit_logs","audit_logs","Audit Logs",false,"{FIMS}",""]
     ["document_header_assets","document_header_assets","document header assets",true,"{FIMS}","DocumentHeaderAssetsList"],
     ["document_header_slots","document_header_slots","document header slots",true,"{FIMS}","DocumentHeaderSlotsList"],
     ["jwt_sessions","jwt_sessions","jwt sessions",true,"{FIMS}","JwtSessionsList"],
-    ["project-page.php","project_page","Projects",true,"{FIMS}","ProjectPage"],
-    ["program-page.php","program_page","Programs",true,"{FIMS}","ProgramPage"],
-    ["budget-req-page.php","budget_req_page","Budget Request",true,"{FIMS}","BudgetReqPage"]];
+    ["project-page.php","project_page","Project List",true,"{FIMS}","ProjectPage"],
+    ["program-page.php","program_page","Program Setup",true,"{FIMS}","ProgramPage"],
+    ["budget-req-page.php","budget_req_page","Budget Request",true,"{FIMS}","BudgetReqPage"],
+    ["sub-program-page.php","sub_program_page","Sub Program Setup",true,"{FIMS}","SubProgramPage"]];

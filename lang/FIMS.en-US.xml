@@ -3,13 +3,16 @@
     <phrase id="bodytitle" value="UAC - User Access Control System" />
     <phrase id="footertext" value="&amp;copy;2024 ITBS Corporation. All rights reserved." />
     <menu id="79">
-      <phrase id="menutext" value="Projects" />
+      <phrase id="menutext" value="Project List" />
     </menu>
     <menu id="80">
-      <phrase id="menutext" value="Programs" />
+      <phrase id="menutext" value="Program Setup" />
     </menu>
     <menu id="81">
       <phrase id="menutext" value="Budget Request" />
+    </menu>
+    <menu id="82">
+      <phrase id="menutext" value="Sub Program Setup" />
     </menu>
     <menu id="75">
       <phrase id="menutext" value="document asset types" />
@@ -1388,13 +1391,16 @@
       </field>
     </table>
     <table id="project_page">
-      <phrase id="tblcaption" value="Projects" />
+      <phrase id="tblcaption" value="Project List" />
     </table>
     <table id="program_page">
-      <phrase id="tblcaption" value="Programs" />
+      <phrase id="tblcaption" value="Program Setup" />
     </table>
     <table id="budget_req_page">
       <phrase id="tblcaption" value="Budget Request" />
+    </table>
+    <table id="sub_program_page">
+      <phrase id="tblcaption" value="Sub Program Setup" />
     </table>
   </project>
 </ew-language>

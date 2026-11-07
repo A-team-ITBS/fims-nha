@@ -141,6 +141,7 @@
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
     ],
     null,
     [
@@ -847,6 +848,11 @@
                     'POST',
                     'OPTIONS',
                 ],
+                [
+                    'GET',
+                    'POST',
+                    'OPTIONS',
+                ],
             ],
             'pattern' => [
                 '/AggregatedAuditLogsList[/{aggregated_id}]',
@@ -955,6 +961,7 @@
                 '/PsgcDelete[/{code_10:.*}]',
                 '/PsgcMap[/{params:.*}]',
                 '/SignatoryManagement[/{params:.*}]',
+                '/SubProgramPage[/{params:.*}]',
                 '/SystemsList[/{system_id}]',
                 '/SystemsAdd[/{system_id}]',
                 '/SystemsView[/{system_id}]',
@@ -1098,6 +1105,7 @@
                 'PHPMaker2024\\FIMS\\PsgcController:delete',
                 'PHPMaker2024\\FIMS\\PsgcMapController:custom',
                 'PHPMaker2024\\FIMS\\SignatoryManagementController:custom',
+                'PHPMaker2024\\FIMS\\SubProgramPageController:custom',
                 'PHPMaker2024\\FIMS\\SystemsController:list',
                 'PHPMaker2024\\FIMS\\SystemsController:add',
                 'PHPMaker2024\\FIMS\\SystemsController:view',
@@ -1556,6 +1564,9 @@
                 [
                     'PHPMaker2024\\FIMS\\PermissionMiddleware',
                 ],
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
             ],
             'name' => [
                 'list.aggregated_audit_logs',
@@ -1664,6 +1675,7 @@
                 'delete.psgc',
                 'custom.PSGCMap',
                 'custom.SignatoryManagement',
+                'custom.sub_program_page',
                 'list.systems',
                 'add.systems',
                 'view.systems',
@@ -1701,6 +1713,7 @@
                 'custom.WorkflowManager',
             ],
             'options' => [
+                [],
                 [],
                 [],
                 [],
@@ -1987,6 +2000,7 @@
         $o[138],
         $o[139],
         $o[140],
+        $o[141],
     ],
     []
 );

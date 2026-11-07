@@ -97,11 +97,6 @@
                     <label class="prg-label">Program Name <span class="req">*</span></label>
                     <input type="text" class="prg-input" id="prg-program-name" required maxlength="255" placeholder="e.g. Housing Finance Program">
                 </div>
-
-                <div class="prg-group">
-                    <label class="prg-label">Group</label>
-                    <input type="text" class="prg-input" id="prg-group" maxlength="100" placeholder="e.g. Core Shelter Programs">
-                </div>
             </div>
             <div id="prg-footer">
                 <button type="button" class="prg-btn prg-btn-ghost" id="prg-cancel">Cancel</button>

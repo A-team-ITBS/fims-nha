@@ -44,7 +44,7 @@ class PersonalData
     public $RenderingView = false;
 
     // CSS class/style
-    public $CurrentPageName = "BudgetReqPageController";
+    public $CurrentPageName = "SubProgramPageController";
 
     // Page headings
     public $Heading = "";

@@ -26,7 +26,7 @@ class ProjectService
             }
             $whereSql = implode(' AND ', $where);
 
-            $joinSql = "SELECT p.*, pg.program_name, pg.\"group\"
+            $joinSql = "SELECT p.*, pg.program_name
                         FROM {$this->table} p
                         LEFT JOIN {$this->tableProgram} pg ON pg.program_code = p.program_code
                         WHERE {$whereSql}";
@@ -60,7 +60,7 @@ class ProjectService
     public function fetchByCode(string $code): array
     {
         try {
-            $sql = "SELECT p.*, pg.program_name, pg.\"group\"
+            $sql = "SELECT p.*, pg.program_name
                     FROM {$this->table} p
                     LEFT JOIN {$this->tableProgram} pg ON pg.program_code = p.program_code
                     WHERE p.project_code = " . App\QuotedValue($code, DataType::STRING, 'DB');

@@ -57,7 +57,7 @@ $_prg_api = Config('API.FIMS_URL');
                     <svg class="nha-filter-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
                     </svg>
-                    <input type="text" id="prg-filter-search" class="nha-filter-input" placeholder="Search program code, name, group…">
+                    <input type="text" id="prg-filter-search" class="nha-filter-input" placeholder="Search program code, name…">
                     <button class="nha-filter-clear-btn" id="prg-search-clear" hidden type="button">×</button>
                 </div>
             </div>
@@ -72,13 +72,12 @@ $_prg_api = Config('API.FIMS_URL');
                     <tr>
                         <th>#</th>
                         <th>Program Code</th>
-                        <th>Group</th>
                         <th>Program Name</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody id="prg-tbody">
-                    <tr><td colspan="5"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
+                    <tr><td colspan="4"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
                 </tbody>
             </table>
         </div>
@@ -165,14 +164,13 @@ async function prg_load() {
 function prg_renderTable(rows) {
     const tbody = $prg('prg-tbody');
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="5"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No programs found.</span></div></td></tr>';
+        tbody.innerHTML = '<tr><td colspan="4"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No programs found.</span></div></td></tr>';
         return;
     }
     const offset = (prg_page - 1) * PRG_PAGE_SIZE;
     tbody.innerHTML = rows.map((r, i) => `<tr>
         <td class="nha-td-seq">${offset + i + 1}</td>
         <td><code class="nha-code">${prg_esc(r.program_code)}</code></td>
-        <td>${prg_esc(r.group || '—')}</td>
         <td><div style="font-weight:600;">${prg_esc(r.program_name)}</div></td>
         <td>
             <button class="nha-btn-act edit" onclick="prg_edit('${prg_escAttr(r.program_code)}')" title="Edit">
@@ -220,7 +218,6 @@ function prg_openModal(mode, row = null) {
     $prg('prg-code-hint').textContent = mode === 'edit'
         ? 'Program codes cannot be changed after creation.'
         : 'Unique identifier. Cannot be changed after creation.';
-    $prg('prg-group').value = row?.group || '';
     $prg('prg-program-name').value = row?.program_name || '';
     $prg('prg-overlay').classList.add('open');
 }
@@ -261,7 +258,6 @@ async function prg_save(ev) {
     const code = $prg('prg-program-code').value.trim();
     const payload = {
         program_code : code,
-        group        : $prg('prg-group').value.trim(),
         program_name : $prg('prg-program-name').value.trim(),
     };
 

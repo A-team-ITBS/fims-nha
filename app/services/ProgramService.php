@@ -9,7 +9,7 @@ class ProgramService
 {
     private string $table = 'fims.program';
 
-    private array $allowedFields = ['program_code', 'group', 'program_name'];
+    private array $allowedFields = ['program_code', 'program_name'];
 
     public function fetchAlls(?int $page = null, int $limit = 10, string $search = ''): array
     {
@@ -17,7 +17,7 @@ class ProgramService
             $where = '1=1';
             if ($search !== '') {
                 $s     = App\QuotedValue('%' . $search . '%', DataType::STRING, 'DB');
-                $where = "(program_code ILIKE {$s} OR program_name ILIKE {$s} OR \"group\" ILIKE {$s})";
+                $where = "(program_code ILIKE {$s} OR program_name ILIKE {$s})";
             }
 
             if ($page === null) {
@@ -115,7 +115,7 @@ class ProgramService
             }
 
             // program_code is the primary key — not editable here.
-            $fields = array_intersect_key($body, array_flip(['group', 'program_name']));
+            $fields = array_intersect_key($body, array_flip(['program_name']));
 
             if (empty($fields)) {
                 return ['success' => false, 'message' => 'No valid fields provided for update.'];
