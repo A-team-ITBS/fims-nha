@@ -47,9 +47,11 @@ $accessMiddleware = function (Request $request, RequestHandler $handler): Respon
 // include(dirname(__DIR__, 1) . "/app/services/YourService.php");
 include(dirname(__DIR__, 1) . "/app/services/ProgramService.php");
 include(dirname(__DIR__, 1) . "/app/services/ProjectService.php");
+include(dirname(__DIR__, 1) . "/app/services/BudgetLineItemService.php");
 include(dirname(__DIR__, 1) . "/app/services/BudgetReqService.php");
 include(dirname(__DIR__, 1) . "/app/services/FiscalYearService.php");
 include(dirname(__DIR__, 1) . "/app/services/ExpenseClassService.php");
+include(dirname(__DIR__, 1) . "/app/services/ChartOfAccountsService.php");
 
 // Include Route Files
 include(dirname(__DIR__, 1) . "/app/routes/notifications.php");
@@ -58,5 +60,17 @@ include(dirname(__DIR__, 1) . "/app/routes/user-access.php");
 include(dirname(__DIR__, 1) . "/app/routes/program.php");
 include(dirname(__DIR__, 1) . "/app/routes/project.php");
 include(dirname(__DIR__, 1) . "/app/routes/budget_req.php");
+include(dirname(__DIR__, 1) . "/app/routes/budget_line_item.php");
 include(dirname(__DIR__, 1) . "/app/routes/fiscal_year.php");
 include(dirname(__DIR__, 1) . "/app/routes/expense_class.php");
+include(dirname(__DIR__, 1) . "/app/routes/chart_of_accounts.php");
+
+// $appBase = dirname(__DIR__, 1) . '/app/';
+
+// foreach (glob($appBase . 'services/[!_]*.php') ?: [] as $f) {
+//     require_once $f;
+// }
+
+// foreach (glob($appBase . 'routes/[!_]*.php') ?: [] as $f) {
+//     require_once $f;
+// }

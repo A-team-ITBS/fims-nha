@@ -3,6 +3,7 @@
 namespace PHPMaker2024\FIMS\Service;
 
 use PHPMaker2024\FIMS as App;
+use PHPMaker2024\FIMS\DataType;
 
 class ProgramService
 {
@@ -15,7 +16,7 @@ class ProgramService
         try {
             $where = '1=1';
             if ($search !== '') {
-                $s     = App\QuotedValue('%' . $search . '%', App\DATATYPE_STRING, 'DB');
+                $s     = App\QuotedValue('%' . $search . '%', DataType::STRING, 'DB');
                 $where = "(program_code ILIKE {$s} OR program_name ILIKE {$s} OR \"group\" ILIKE {$s})";
             }
 
@@ -54,7 +55,7 @@ class ProgramService
     public function fetchByCode(string $code): array
     {
         try {
-            $sql  = "SELECT * FROM {$this->table} WHERE program_code = " . App\QuotedValue($code, App\DATATYPE_STRING, 'DB');
+            $sql  = "SELECT * FROM {$this->table} WHERE program_code = " . App\QuotedValue($code, DataType::STRING, 'DB');
             $data = App\ExecuteRow($sql, 'DB');
 
             if (!$data) {
@@ -78,7 +79,7 @@ class ProgramService
             }
 
             $exists = (int) App\ExecuteScalar(
-                "SELECT COUNT(*) FROM {$this->table} WHERE program_code = " . App\QuotedValue($code, App\DATATYPE_STRING, 'DB'),
+                "SELECT COUNT(*) FROM {$this->table} WHERE program_code = " . App\QuotedValue($code, DataType::STRING, 'DB'),
                 'DB'
             );
             if ($exists > 0) {
@@ -91,7 +92,7 @@ class ProgramService
             $values  = [];
             foreach ($fields as $key => $value) {
                 $columns[] = App\QuotedName($key, 'DB');
-                $values[]  = App\QuotedValue($value, App\DATATYPE_STRING, 'DB');
+                $values[]  = App\QuotedValue($value, DataType::STRING, 'DB');
             }
 
             $sql = "INSERT INTO {$this->table} (" . implode(', ', $columns) . ')
@@ -122,12 +123,12 @@ class ProgramService
 
             $setParts = [];
             foreach ($fields as $key => $value) {
-                $setParts[] = App\QuotedName($key, 'DB') . ' = ' . App\QuotedValue($value, App\DATATYPE_STRING, 'DB');
+                $setParts[] = App\QuotedName($key, 'DB') . ' = ' . App\QuotedValue($value, DataType::STRING, 'DB');
             }
 
             $sql = "UPDATE {$this->table}
                     SET " . implode(', ', $setParts) . '
-                    WHERE program_code = ' . App\QuotedValue($code, App\DATATYPE_STRING, 'DB');
+                    WHERE program_code = ' . App\QuotedValue($code, DataType::STRING, 'DB');
 
             App\Execute($sql, 'DB');
 
@@ -146,14 +147,14 @@ class ProgramService
             }
 
             $inUse = (int) App\ExecuteScalar(
-                "SELECT COUNT(*) FROM fims.project WHERE program_code = " . App\QuotedValue($code, App\DATATYPE_STRING, 'DB'),
+                "SELECT COUNT(*) FROM fims.project WHERE program_code = " . App\QuotedValue($code, DataType::STRING, 'DB'),
                 'DB'
             );
             if ($inUse > 0) {
                 return ['success' => false, 'message' => "Cannot delete '{$code}' — {$inUse} project(s) still reference this program."];
             }
 
-            $sql = "DELETE FROM {$this->table} WHERE program_code = " . App\QuotedValue($code, App\DATATYPE_STRING, 'DB');
+            $sql = "DELETE FROM {$this->table} WHERE program_code = " . App\QuotedValue($code, DataType::STRING, 'DB');
             App\Execute($sql, 'DB');
 
             return ['success' => true, 'message' => "Program '{$code}' deleted successfully."];

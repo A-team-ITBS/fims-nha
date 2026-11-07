@@ -56,6 +56,25 @@ $app->post('/budget_req/add', function ($request, $response, $args) use ($Budget
     }
 })->add($jwtMiddleware);
 
+// Create a PS/MOOE header + its line items together —
+// body: { fiscal_yr, expense_class_id, line_items: [{ account_id, requested_amount, particulars }, ...] }
+$app->post('/budget_req/add-with-items', function ($request, $response, $args) use ($BudgetReqService) {
+    try {
+        $body      = $request->getParsedBody();
+        $lineItems = $body['line_items'] ?? [];
+
+        if (!is_array($lineItems) || empty($lineItems)) {
+            return $response->withJson(['success' => false, 'message' => 'line_items is required and must be a non-empty array.'], 400);
+        }
+
+        $result = $BudgetReqService->createWithLineItems($body, $lineItems);
+
+        return $response->withJson($result, $result['success'] ? 201 : 400);
+    } catch (\Exception $e) {
+        return $response->withJson(['success' => false, 'message' => $e->getMessage()], 400);
+    }
+})->add($jwtMiddleware);
+
 // Update
 $app->put('/budget_req/update/{id}', function ($request, $response, $args) use ($BudgetReqService) {
     try {

@@ -1,5 +1,0 @@
-CREATE SCHEMA IF NOT EXISTS fims;
-
-CREATE TABLE IF NOT EXISTS fims.fiscal_year (
-    fiscal_yr SMALLINT PRIMARY KEY
-);
