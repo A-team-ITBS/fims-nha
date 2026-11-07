@@ -213,7 +213,7 @@ $CONFIG = [
     "JAVASCRIPT_FILES" => ["_shared/js/custom.js","_shared/js/mqtt-notification.js"],
 
     // External StyleSheets
-    "STYLESHEET_FILES" => ["_shared/css/custom.css"],
+    "STYLESHEET_FILES" => ["_shared/css/custom.css","_shared/css/nha-fims.css"],
 
     // Authentication configuration for Google/Facebook/Saml
     "AUTH_CONFIG" => [

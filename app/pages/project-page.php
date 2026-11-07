@@ -7,7 +7,7 @@ $_proj_api = Config('API.FIMS_URL');
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/css/nha-fims.css') ?>" />
+<link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
 
 <div id="proj-root" class="nha-root">
 
@@ -94,9 +94,9 @@ $_proj_api = Config('API.FIMS_URL');
         </div>
     </div>
 
-</div><!-- /#proj-root -->
-
 <?php include __DIR__ . '/form/project-form.php'; ?>
+
+</div><!-- /#proj-root -->
 
 <script>
 /* ══════════════════════════════════════════════════════════════
@@ -243,6 +243,7 @@ function proj_goTo(page) { proj_page = page; proj_load(); }
 
 /* ── Modal ─────────────────────────────────────────────────── */
 function proj_openModal(mode, row = null) {
+    proj_hideErr();
     $proj('proj-mode').value = mode;
     $proj('proj-modal-title').textContent = mode === 'edit' ? 'Edit Project' : 'Add Project';
     $proj('proj-project-code').value = row?.project_code || '';
@@ -255,6 +256,16 @@ function proj_openModal(mode, row = null) {
 function proj_closeModal() {
     $proj('proj-overlay').classList.remove('open');
     $proj('proj-form').reset();
+    proj_hideErr();
+}
+
+function proj_showErr(msg) {
+    const el = $proj('proj-err');
+    el.textContent = msg;
+    el.style.display = 'block';
+}
+function proj_hideErr() {
+    $proj('proj-err').style.display = 'none';
 }
 
 async function proj_edit(code) {
@@ -273,6 +284,7 @@ async function proj_edit(code) {
 
 async function proj_save(ev) {
     ev.preventDefault();
+    proj_hideErr();
     const mode = $proj('proj-mode').value;
     const code = $proj('proj-project-code').value.trim();
     const payload = {
@@ -298,7 +310,7 @@ async function proj_save(ev) {
         proj_closeModal();
         proj_load();
     } catch (e) {
-        proj_toast(e.message, 'error');
+        proj_showErr(e.message);
     } finally {
         window.PagePreloader?.hide();
     }

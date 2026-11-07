@@ -7,7 +7,7 @@ $_bgr_api = Config('API.FIMS_URL');
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/css/nha-fims.css') ?>" />
+<link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
 <style>
 @media (min-width: 901px) {
     .nha-root .bgr-summary-2col { grid-template-columns: repeat(2, 1fr); }
@@ -90,12 +90,13 @@ $_bgr_api = Config('API.FIMS_URL');
                         <th>Fiscal Year</th>
                         <th>Allocated To</th>
                         <th>Program / Project</th>
+                        <th>Expense Class</th>
                         <th>Amount</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody id="bgr-tbody">
-                    <tr><td colspan="6"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
+                    <tr><td colspan="7"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
                 </tbody>
             </table>
         </div>
@@ -105,18 +106,20 @@ $_bgr_api = Config('API.FIMS_URL');
         </div>
     </div>
 
-</div><!-- /#bgr-root -->
-
 <?php include __DIR__ . '/form/budget-req-form.php'; ?>
+
+</div><!-- /#bgr-root -->
 
 <script>
 /* ══════════════════════════════════════════════════════════════
    BUDGET REQUIREMENTS LIST   prefix: bgr_
 ═══════════════════════════════════════════════════════════════ */
 
-const BGR_API         = '<?php echo $_bgr_api; ?>' + '/budget_req';
-const BGR_PROGRAM_API = '<?php echo $_bgr_api; ?>' + '/program/all';
-const BGR_PROJECT_API = '<?php echo $_bgr_api; ?>' + '/project/all';
+const BGR_API              = '<?php echo $_bgr_api; ?>' + '/budget_req';
+const BGR_PROGRAM_API      = '<?php echo $_bgr_api; ?>' + '/program/all';
+const BGR_PROJECT_API      = '<?php echo $_bgr_api; ?>' + '/project/all';
+const BGR_FISCAL_YEAR_API  = '<?php echo $_bgr_api; ?>' + '/fiscal_year';
+const BGR_EXPENSE_CLASS_API = '<?php echo $_bgr_api; ?>' + '/expense_class/all';
 
 let bgr_page = 1;
 const BGR_PAGE_SIZE = 15;
@@ -124,7 +127,7 @@ const BGR_PAGE_SIZE = 15;
 const $bgr = id => document.getElementById(id);
 
 async function bgr_bootstrapLoad() {
-    await Promise.all([bgr_load(), bgr_loadPrograms(), bgr_loadProjects()]);
+    await Promise.all([bgr_load(), bgr_loadPrograms(), bgr_loadProjects(), bgr_loadFiscalYears(), bgr_loadExpenseClasses()]);
     bgr_bindEvents();
 }
 if (document.readyState === 'loading') {
@@ -159,25 +162,51 @@ async function bgr_loadProjects() {
     }
 }
 
+async function bgr_loadFiscalYears() {
+    try {
+        const res  = await fetch(`${BGR_FISCAL_YEAR_API}/all`, { credentials: 'same-origin' });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message || 'Failed to load fiscal years.');
+
+        $bgr('bgr-fiscal-yr').insertAdjacentHTML('beforeend', (json.data ?? []).map(fy =>
+            `<option value="${bgr_escAttr(fy.fiscal_yr)}">${bgr_esc(fy.fiscal_yr)}</option>`
+        ).join(''));
+    } catch (e) {
+        bgr_toast(e.message, 'error');
+    }
+}
+
+async function bgr_loadExpenseClasses() {
+    try {
+        const res  = await fetch(BGR_EXPENSE_CLASS_API, { credentials: 'same-origin' });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message || 'Failed to load expense classes.');
+        $bgr('bgr-expense-class-id').insertAdjacentHTML('beforeend', (json.data ?? []).map(ec =>
+            `<option value="${bgr_escAttr(ec.expense_class_id)}">${bgr_esc(ec.expense_class_code)} — ${bgr_esc(ec.expense_class_name)}</option>`
+        ).join(''));
+    } catch (e) {
+        bgr_toast(e.message, 'error');
+    }
+}
+
 function bgr_bindEvents() {
     $bgr('bgr-refresh')?.addEventListener('click', () => { bgr_page = 1; bgr_load(); });
     $bgr('bgr-add')?.addEventListener('click', () => bgr_openModal('add'));
     $bgr('bgr-modal-close')?.addEventListener('click', bgr_closeModal);
     $bgr('bgr-cancel')?.addEventListener('click', bgr_closeModal);
     $bgr('bgr-form')?.addEventListener('submit', bgr_save);
-    $bgr('bgr-type')?.addEventListener('change', bgr_toggleTypeFields);
+
+    // Picking one clears the other — an amount belongs to a program OR a project, not both.
+    $bgr('bgr-program-code')?.addEventListener('change', () => {
+        if ($bgr('bgr-program-code').value) $bgr('bgr-project-code').value = '';
+    });
+    $bgr('bgr-project-code')?.addEventListener('change', () => {
+        if ($bgr('bgr-project-code').value) $bgr('bgr-program-code').value = '';
+    });
 
     ['bgr-filter-fiscal-yr', 'bgr-filter-type'].forEach(id => {
         $bgr(id)?.addEventListener('change', () => { bgr_page = 1; bgr_load(); });
     });
-}
-
-function bgr_toggleTypeFields() {
-    const isProgram = $bgr('bgr-type').value === 'PROGRAM';
-    $bgr('bgr-program-wrap').hidden = !isProgram;
-    $bgr('bgr-project-wrap').hidden = isProgram;
-    $bgr('bgr-program-code').required = isProgram;
-    $bgr('bgr-project-code').required = !isProgram;
 }
 
 /* ── Load ──────────────────────────────────────────────────── */
@@ -211,7 +240,7 @@ async function bgr_load() {
 function bgr_renderTable(rows) {
     const tbody = $bgr('bgr-tbody');
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="6"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No budget requests found.</span></div></td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No budget requests found.</span></div></td></tr>';
         return;
     }
     const offset = (bgr_page - 1) * BGR_PAGE_SIZE;
@@ -227,13 +256,17 @@ function bgr_renderTable(rows) {
             <div style="font-weight:500;">${bgr_esc(code || '—')}</div>
             ${name ? `<div class="nha-td-sub" style="margin-top:2px;">${bgr_esc(name)}</div>` : ''}
         </td>
+        <td>
+            <div style="font-weight:500;">${bgr_esc(r.expense_class_code || '—')}</div>
+            ${r.expense_class_name ? `<div class="nha-td-sub" style="margin-top:2px;">${bgr_esc(r.expense_class_name)}</div>` : ''}
+        </td>
         <td class="text-end"><div style="font-weight:600;">${bgr_fmtMoney(r.amount)}</div></td>
         <td>
-            <button class="nha-btn-act edit" onclick="bgr_edit(${r.id})" title="Edit">
+            <button class="nha-btn-act edit" onclick="bgr_edit(${r.budget_reference_number})" title="Edit">
                 <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
                 Edit
             </button>
-            <button class="nha-btn-act danger" onclick="bgr_delete(${r.id})" title="Delete">
+            <button class="nha-btn-act danger" onclick="bgr_delete(${r.budget_reference_number})" title="Delete">
                 <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                 Delete
             </button>
@@ -267,17 +300,15 @@ function bgr_goTo(page) { bgr_page = page; bgr_load(); }
 
 /* ── Modal ─────────────────────────────────────────────────── */
 function bgr_openModal(mode, row = null) {
+    bgr_hideErr();
     $bgr('bgr-mode').value = mode;
-    $bgr('bgr-id').value = row?.id || '';
+    $bgr('bgr-id').value = row?.budget_reference_number || '';
     $bgr('bgr-modal-title').textContent = mode === 'edit' ? 'Edit Budget Request' : 'Add Budget Request';
     $bgr('bgr-fiscal-yr').value = row?.fiscal_yr || '';
     $bgr('bgr-amount').value = row?.amount || '';
-
-    const isProgram = row ? !!row.program_code : true;
-    $bgr('bgr-type').value = isProgram ? 'PROGRAM' : 'PROJECT';
     $bgr('bgr-program-code').value = row?.program_code || '';
     $bgr('bgr-project-code').value = row?.project_code || '';
-    bgr_toggleTypeFields();
+    $bgr('bgr-expense-class-id').value = row?.expense_class_id || '';
 
     $bgr('bgr-overlay').classList.add('open');
 }
@@ -285,6 +316,16 @@ function bgr_openModal(mode, row = null) {
 function bgr_closeModal() {
     $bgr('bgr-overlay').classList.remove('open');
     $bgr('bgr-form').reset();
+    bgr_hideErr();
+}
+
+function bgr_showErr(msg) {
+    const el = $bgr('bgr-err');
+    el.textContent = msg;
+    el.style.display = 'block';
+}
+function bgr_hideErr() {
+    $bgr('bgr-err').style.display = 'none';
 }
 
 async function bgr_edit(id) {
@@ -303,19 +344,22 @@ async function bgr_edit(id) {
 
 async function bgr_save(ev) {
     ev.preventDefault();
+    bgr_hideErr();
     const mode = $bgr('bgr-mode').value;
     const id   = $bgr('bgr-id').value;
-    const isProgram = $bgr('bgr-type').value === 'PROGRAM';
+    const programCode = $bgr('bgr-program-code').value;
+    const projectCode = $bgr('bgr-project-code').value;
+
+    if (!programCode && !projectCode) { bgr_showErr('Select a program or a project.'); return; }
+    if (programCode && projectCode) { bgr_showErr('Select a program or a project, not both.'); return; }
 
     const payload = {
-        fiscal_yr    : $bgr('bgr-fiscal-yr').value,
-        amount       : $bgr('bgr-amount').value,
-        program_code : isProgram ? $bgr('bgr-program-code').value : '',
-        project_code : isProgram ? '' : $bgr('bgr-project-code').value,
+        fiscal_yr           : $bgr('bgr-fiscal-yr').value,
+        amount              : $bgr('bgr-amount').value,
+        program_code        : programCode,
+        project_code        : projectCode,
+        expense_class_id    : $bgr('bgr-expense-class-id').value,
     };
-
-    if (isProgram && !payload.program_code) { bgr_toast('Please select a program.', 'error'); return; }
-    if (!isProgram && !payload.project_code) { bgr_toast('Please select a project.', 'error'); return; }
 
     window.PagePreloader?.show();
     try {
@@ -334,7 +378,7 @@ async function bgr_save(ev) {
         bgr_closeModal();
         bgr_load();
     } catch (e) {
-        bgr_toast(e.message, 'error');
+        bgr_showErr(e.message);
     } finally {
         window.PagePreloader?.hide();
     }

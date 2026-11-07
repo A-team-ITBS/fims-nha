@@ -6,11 +6,12 @@ use PHPMaker2024\FIMS as App;
 
 class BudgetReqService
 {
-    private string $table        = 'fims.budget_req';
-    private string $tableProgram = 'fims.program';
-    private string $tableProject = 'fims.project';
+    private string $table              = 'fims.budget_req';
+    private string $tableProgram       = 'fims.program';
+    private string $tableProject       = 'fims.project';
+    private string $tableExpenseClass  = 'fims.expense_class';
 
-    private function validateBody(array $body): ?array
+    private function validateBody(array $body, bool $requireExpenseClass): ?array
     {
         $programCode = trim((string) ($body['program_code'] ?? ''));
         $projectCode = trim((string) ($body['project_code'] ?? ''));
@@ -39,6 +40,21 @@ class BudgetReqService
             }
         }
 
+        $expenseClassId = trim((string) ($body['expense_class_id'] ?? ''));
+        if ($expenseClassId === '') {
+            if ($requireExpenseClass) {
+                return ['success' => false, 'message' => 'expense_class_id is required.'];
+            }
+        } else {
+            $exists = (int) App\ExecuteScalar(
+                "SELECT COUNT(*) FROM {$this->tableExpenseClass} WHERE expense_class_id = " . (int) $expenseClassId . ' AND deleted_at IS NULL',
+                'DB'
+            );
+            if ($exists === 0) {
+                return ['success' => false, 'message' => "Expense class #{$expenseClassId} does not exist."];
+            }
+        }
+
         return null;
     }
 
@@ -57,14 +73,15 @@ class BudgetReqService
             }
             $whereSql = implode(' AND ', $where);
 
-            $joinSql = "SELECT br.*, pg.program_name, pj.project_name, pj.program_code AS project_program_code
+            $joinSql = "SELECT br.*, pg.program_name, pj.project_name, ec.expense_class_code, ec.expense_class_name
                         FROM {$this->table} br
                         LEFT JOIN {$this->tableProgram} pg ON pg.program_code = br.program_code
                         LEFT JOIN {$this->tableProject} pj ON pj.project_code = br.project_code
+                        LEFT JOIN {$this->tableExpenseClass} ec ON ec.expense_class_id = br.expense_class_id
                         WHERE {$whereSql}";
 
             if ($page === null) {
-                $data = App\ExecuteRows($joinSql . ' ORDER BY br.fiscal_yr DESC, br.id DESC', 'DB');
+                $data = App\ExecuteRows($joinSql . ' ORDER BY br.fiscal_yr DESC, br.budget_reference_number DESC', 'DB');
 
                 return ['success' => true, 'data' => $data ?: []];
             }
@@ -72,7 +89,7 @@ class BudgetReqService
             $offset = ($page - 1) * $limit;
 
             $total = (int) App\ExecuteScalar("SELECT COUNT(*) FROM {$this->table} br WHERE {$whereSql}", 'DB');
-            $data  = App\ExecuteRows($joinSql . " ORDER BY br.fiscal_yr DESC, br.id DESC LIMIT {$limit} OFFSET {$offset}", 'DB');
+            $data  = App\ExecuteRows($joinSql . " ORDER BY br.fiscal_yr DESC, br.budget_reference_number DESC LIMIT {$limit} OFFSET {$offset}", 'DB');
 
             $totalAmount = (float) App\ExecuteScalar("SELECT COALESCE(SUM(br.amount), 0) FROM {$this->table} br WHERE {$whereSql}", 'DB');
 
@@ -92,15 +109,16 @@ class BudgetReqService
         }
     }
 
-    public function fetchById(int|string $id): array
+    public function fetchById(int|string $budgetReferenceNumber): array
     {
         try {
-            $id  = (int) $id;
-            $sql = "SELECT br.*, pg.program_name, pj.project_name
+            $id  = (int) $budgetReferenceNumber;
+            $sql = "SELECT br.*, pg.program_name, pj.project_name, ec.expense_class_code, ec.expense_class_name
                     FROM {$this->table} br
                     LEFT JOIN {$this->tableProgram} pg ON pg.program_code = br.program_code
                     LEFT JOIN {$this->tableProject} pj ON pj.project_code = br.project_code
-                    WHERE br.id = {$id}";
+                    LEFT JOIN {$this->tableExpenseClass} ec ON ec.expense_class_id = br.expense_class_id
+                    WHERE br.budget_reference_number = {$id}";
 
             $data = App\ExecuteRow($sql, 'DB');
 
@@ -124,18 +142,20 @@ class BudgetReqService
                 return ['success' => false, 'message' => 'fiscal_yr and a numeric amount are required.'];
             }
 
-            $err = $this->validateBody($body);
+            $err = $this->validateBody($body, true);
             if ($err) {
                 return $err;
             }
 
-            $programCode = trim((string) ($body['program_code'] ?? ''));
-            $projectCode = trim((string) ($body['project_code'] ?? ''));
+            $programCode    = trim((string) ($body['program_code'] ?? ''));
+            $projectCode    = trim((string) ($body['project_code'] ?? ''));
+            $expenseClassId = trim((string) ($body['expense_class_id'] ?? ''));
 
-            $columns = ['fiscal_yr', 'amount'];
+            $columns = ['fiscal_yr', 'amount', 'expense_class_id'];
             $values  = [
                 App\QuotedValue($fiscalYr, App\DATATYPE_NUMBER, 'DB'),
                 App\QuotedValue($amount, App\DATATYPE_NUMBER, 'DB'),
+                App\QuotedValue($expenseClassId, App\DATATYPE_NUMBER, 'DB'),
             ];
 
             if ($programCode !== '') {
@@ -148,37 +168,38 @@ class BudgetReqService
 
             $sql = "INSERT INTO {$this->table} (" . implode(', ', $columns) . ')
                     VALUES (' . implode(', ', $values) . ')
-                    RETURNING id';
+                    RETURNING budget_reference_number';
 
             $row = App\ExecuteRow($sql, 'DB');
 
             return [
-                'success' => true,
-                'message' => 'Budget request created successfully.',
-                'id'      => $row['id'] ?? null,
+                'success'                 => true,
+                'message'                 => 'Budget request created successfully.',
+                'budget_reference_number' => $row['budget_reference_number'] ?? null,
             ];
         } catch (\Exception $e) {
             return ['success' => false, 'message' => $e->getMessage()];
         }
     }
 
-    public function update(int|string $id, array $body): array
+    public function update(int|string $budgetReferenceNumber, array $body): array
     {
         try {
-            $check = $this->fetchById($id);
+            $check = $this->fetchById($budgetReferenceNumber);
             if (!$check['success']) {
                 return $check;
             }
 
-            $err = $this->validateBody($body);
+            $err = $this->validateBody($body, false);
             if ($err) {
                 return $err;
             }
 
-            $fiscalYr    = $body['fiscal_yr'] ?? null;
-            $amount      = $body['amount'] ?? null;
-            $programCode = trim((string) ($body['program_code'] ?? ''));
-            $projectCode = trim((string) ($body['project_code'] ?? ''));
+            $fiscalYr       = $body['fiscal_yr'] ?? null;
+            $amount         = $body['amount'] ?? null;
+            $programCode    = trim((string) ($body['program_code'] ?? ''));
+            $projectCode    = trim((string) ($body['project_code'] ?? ''));
+            $expenseClassId = trim((string) ($body['expense_class_id'] ?? ''));
 
             $setParts = [];
 
@@ -187,6 +208,9 @@ class BudgetReqService
             }
             if ($amount !== null && $amount !== '' && is_numeric($amount)) {
                 $setParts[] = 'amount = ' . App\QuotedValue($amount, App\DATATYPE_NUMBER, 'DB');
+            }
+            if ($expenseClassId !== '') {
+                $setParts[] = 'expense_class_id = ' . App\QuotedValue($expenseClassId, App\DATATYPE_NUMBER, 'DB');
             }
 
             // program_code / project_code are togglable as a pair — whichever
@@ -206,7 +230,7 @@ class BudgetReqService
 
             $sql = "UPDATE {$this->table}
                     SET " . implode(', ', $setParts) . '
-                    WHERE id = ' . (int) $id;
+                    WHERE budget_reference_number = ' . (int) $budgetReferenceNumber;
 
             App\Execute($sql, 'DB');
 
@@ -216,18 +240,18 @@ class BudgetReqService
         }
     }
 
-    public function delete(int|string $id): array
+    public function delete(int|string $budgetReferenceNumber): array
     {
         try {
-            $check = $this->fetchById($id);
+            $check = $this->fetchById($budgetReferenceNumber);
             if (!$check['success']) {
                 return $check;
             }
 
-            $sql = "DELETE FROM {$this->table} WHERE id = " . (int) $id;
+            $sql = "DELETE FROM {$this->table} WHERE budget_reference_number = " . (int) $budgetReferenceNumber;
             App\Execute($sql, 'DB');
 
-            return ['success' => true, 'message' => "Budget request #{$id} deleted successfully."];
+            return ['success' => true, 'message' => "Budget request #{$budgetReferenceNumber} deleted successfully."];
         } catch (\Exception $e) {
             return ['success' => false, 'message' => $e->getMessage()];
         }
