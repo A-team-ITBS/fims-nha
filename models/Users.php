@@ -760,10 +760,6 @@ class Users extends DbTable
             $detailUrl = Container("user_level_assignments")->getListUrl() . "?" . Config("TABLE_SHOW_MASTER") . "=" . $this->TableVar;
             $detailUrl .= "&" . GetForeignKeyUrl("fk_user_id", $this->user_id->CurrentValue);
         }
-        if ($this->getCurrentDetailTable() == "aggregated_audit_logs") {
-            $detailUrl = Container("aggregated_audit_logs")->getListUrl() . "?" . Config("TABLE_SHOW_MASTER") . "=" . $this->TableVar;
-            $detailUrl .= "&" . GetForeignKeyUrl("fk_user_id", $this->user_id->CurrentValue);
-        }
         if ($detailUrl == "") {
             $detailUrl = "UsersList";
         }

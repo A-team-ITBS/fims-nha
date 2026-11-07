@@ -765,45 +765,6 @@ class UsersView extends Users
             $item->Visible = false;
         }
 
-        // "detail_aggregated_audit_logs"
-        $item = &$option->add("detail_aggregated_audit_logs");
-        $body = $Language->phrase("ViewPageDetailLink") . $Language->tablePhrase("aggregated_audit_logs", "TblCaption");
-        $body = "<a class=\"btn btn-default ew-row-link ew-detail\" data-action=\"list\" href=\"" . HtmlEncode(GetUrl("AggregatedAuditLogsList?" . Config("TABLE_SHOW_MASTER") . "=users&" . GetForeignKeyUrl("fk_user_id", $this->user_id->CurrentValue) . "")) . "\">" . $body . "</a>";
-        $links = "";
-        $detailPageObj = Container("AggregatedAuditLogsGrid");
-        if ($detailPageObj->DetailView && $Security->canView() && $Security->allowView(CurrentProjectID() . 'users')) {
-            $links .= "<li><a class=\"dropdown-item ew-row-link ew-detail-view\" data-action=\"view\" data-caption=\"" . HtmlTitle($Language->phrase("MasterDetailViewLink")) . "\" href=\"" . HtmlEncode(GetUrl($this->getViewUrl(Config("TABLE_SHOW_DETAIL") . "=aggregated_audit_logs"))) . "\">" . $Language->phrase("MasterDetailViewLink", null) . "</a></li>";
-            if ($detailViewTblVar != "") {
-                $detailViewTblVar .= ",";
-            }
-            $detailViewTblVar .= "aggregated_audit_logs";
-        }
-        if ($detailPageObj->DetailEdit && $Security->canEdit() && $Security->allowEdit(CurrentProjectID() . 'users')) {
-            $links .= "<li><a class=\"dropdown-item ew-row-link ew-detail-edit\" data-action=\"edit\" data-caption=\"" . HtmlTitle($Language->phrase("MasterDetailEditLink")) . "\" href=\"" . HtmlEncode(GetUrl($this->getEditUrl(Config("TABLE_SHOW_DETAIL") . "=aggregated_audit_logs"))) . "\">" . $Language->phrase("MasterDetailEditLink", null) . "</a></li>";
-            if ($detailEditTblVar != "") {
-                $detailEditTblVar .= ",";
-            }
-            $detailEditTblVar .= "aggregated_audit_logs";
-        }
-        if ($links != "") {
-            $body .= "<button type=\"button\" class=\"dropdown-toggle btn btn-default ew-detail\" data-bs-toggle=\"dropdown\"></button>";
-            $body .= "<ul class=\"dropdown-menu\">" . $links . "</ul>";
-        } else {
-            $body = preg_replace('/\b\s+dropdown-toggle\b/', "", $body);
-        }
-        $body = "<div class=\"btn-group btn-group-sm ew-btn-group\">" . $body . "</div>";
-        $item->Body = $body;
-        $item->Visible = $Security->allowList(CurrentProjectID() . 'aggregated_audit_logs');
-        if ($item->Visible) {
-            if ($detailTableLink != "") {
-                $detailTableLink .= ",";
-            }
-            $detailTableLink .= "aggregated_audit_logs";
-        }
-        if ($this->ShowMultipleDetails) {
-            $item->Visible = false;
-        }
-
         // Multiple details
         if ($this->ShowMultipleDetails) {
             $body = "<div class=\"btn-group btn-group-sm ew-btn-group\">";
@@ -1318,20 +1279,6 @@ class UsersView extends Users
                     $detailPageObj->user_id->setSessionValue($detailPageObj->user_id->CurrentValue);
                     $detailPageObj->system_id->setSessionValue(""); // Clear session key
                     $detailPageObj->user_level_id->setSessionValue(""); // Clear session key
-                }
-            }
-            if (in_array("aggregated_audit_logs", $detailTblVar)) {
-                $detailPageObj = Container("AggregatedAuditLogsGrid");
-                if ($detailPageObj->DetailView) {
-                    $detailPageObj->EventCancelled = $this->EventCancelled;
-                    $detailPageObj->CurrentMode = "view";
-
-                    // Save current master table to detail table
-                    $detailPageObj->setCurrentMasterTable($this->TableVar);
-                    $detailPageObj->setStartRecordNumber(1);
-                    $detailPageObj->user->IsDetailKey = true;
-                    $detailPageObj->user->CurrentValue = $this->user_id->CurrentValue;
-                    $detailPageObj->user->setSessionValue($detailPageObj->user->CurrentValue);
                 }
             }
         }

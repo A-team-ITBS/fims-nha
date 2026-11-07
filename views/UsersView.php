@@ -272,14 +272,6 @@ loadjs.ready("head", function () {
 <?php } ?>
 <?php include_once "UserLevelAssignmentsGrid.php" ?>
 <?php } ?>
-<?php
-    if (in_array("aggregated_audit_logs", explode(",", $Page->getCurrentDetailTable())) && $aggregated_audit_logs->DetailView) {
-?>
-<?php if ($Page->getCurrentDetailTable() != "") { ?>
-<h4 class="ew-detail-caption"><?= $Language->tablePhrase("aggregated_audit_logs", "TblCaption") ?></h4>
-<?php } ?>
-<?php include_once "AggregatedAuditLogsGrid.php" ?>
-<?php } ?>
 </form>
 </main>
 <?php

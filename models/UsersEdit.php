@@ -1666,11 +1666,6 @@ class UsersEdit extends Users
             $detailPage->run();
             $validateForm = $validateForm && $detailPage->validateGridForm();
         }
-        $detailPage = Container("AggregatedAuditLogsGrid");
-        if (in_array("aggregated_audit_logs", $detailTblVar) && $detailPage->DetailEdit) {
-            $detailPage->run();
-            $validateForm = $validateForm && $detailPage->validateGridForm();
-        }
 
         // Return validate result
         $validateForm = $validateForm && !$this->hasInvalidFields();
@@ -1784,12 +1779,6 @@ class UsersEdit extends Users
             $detailPage = Container("UserLevelAssignmentsGrid");
             if (in_array("user_level_assignments", $detailTblVar) && $detailPage->DetailEdit && $editRow) {
                 $Security->loadCurrentUserLevel($this->ProjectID . "user_level_assignments"); // Load user level of detail table
-                $editRow = $detailPage->gridUpdate();
-                $Security->loadCurrentUserLevel($this->ProjectID . $this->TableName); // Restore user level of master table
-            }
-            $detailPage = Container("AggregatedAuditLogsGrid");
-            if (in_array("aggregated_audit_logs", $detailTblVar) && $detailPage->DetailEdit && $editRow) {
-                $Security->loadCurrentUserLevel($this->ProjectID . "aggregated_audit_logs"); // Load user level of detail table
                 $editRow = $detailPage->gridUpdate();
                 $Security->loadCurrentUserLevel($this->ProjectID . $this->TableName); // Restore user level of master table
             }
@@ -2088,21 +2077,6 @@ class UsersEdit extends Users
                     $detailPageObj->user_id->setSessionValue($detailPageObj->user_id->CurrentValue);
                     $detailPageObj->system_id->setSessionValue(""); // Clear session key
                     $detailPageObj->user_level_id->setSessionValue(""); // Clear session key
-                }
-            }
-            if (in_array("aggregated_audit_logs", $detailTblVar)) {
-                $detailPageObj = Container("AggregatedAuditLogsGrid");
-                if ($detailPageObj->DetailEdit) {
-                    $detailPageObj->EventCancelled = $this->EventCancelled;
-                    $detailPageObj->CurrentMode = "edit";
-                    $detailPageObj->CurrentAction = "gridedit";
-
-                    // Save current master table to detail table
-                    $detailPageObj->setCurrentMasterTable($this->TableVar);
-                    $detailPageObj->setStartRecordNumber(1);
-                    $detailPageObj->user->IsDetailKey = true;
-                    $detailPageObj->user->CurrentValue = $this->user_id->CurrentValue;
-                    $detailPageObj->user->setSessionValue($detailPageObj->user->CurrentValue);
                 }
             }
         }
