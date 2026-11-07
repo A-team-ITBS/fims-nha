@@ -2,9 +2,25 @@
 
 namespace PHPMaker2024\FIMS;
 
+use PHPMaker2024\FIMS\Service\GlobalService;
 use PHPMaker2024\FIMS\Service\ProgramService;
 
 $ProgramService = new ProgramService();
+
+
+$app->get('/program/next-code', function ($request, $response, $args) {
+    try {
+        $code = GlobalService::generateProgramCode((int) $request->getAttribute('user_id'));
+
+        return $response->withJson(['success' => true, 'data' => ['program_code' => $code]]);
+    } catch (\InvalidArgumentException $e) {
+        return $response->withJson(['success' => false, 'message' => $e->getMessage()], 400);
+    } catch (\Throwable $e) {
+        LogError('GET /program/next-code ' . $e->getMessage());
+
+        return $response->withJson(['success' => false, 'message' => 'Could not generate a program code.'], 500);
+    }
+})->add($jwtMiddleware);
 
 // Fetch all — no pagination (for dropdowns)
 $app->get('/program/all', function ($request, $response, $args) use ($ProgramService) {
@@ -48,7 +64,7 @@ $app->get('/program/read/{code}', function ($request, $response, $args) use ($Pr
 $app->post('/program/add', function ($request, $response, $args) use ($ProgramService) {
     try {
         $body   = $request->getParsedBody();
-        $result = $ProgramService->create($body);
+        $result = $ProgramService->create($body ?: [], (int) $request->getAttribute('user_id'));
 
         return $response->withJson($result, $result['success'] ? 201 : 400);
     } catch (\Exception $e) {

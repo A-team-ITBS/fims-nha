@@ -48,6 +48,9 @@ $accessMiddleware = function (Request $request, RequestHandler $handler): Respon
 // up automatically, no manual include() needed here.
 $appBase = dirname(__DIR__, 1) . '/app/';
 
+// Shared helpers (app/lib is not auto-discovered): GlobalService::generateProgramCode(), …
+require_once $appBase . 'lib/GlobalService.php';
+
 foreach (glob($appBase . 'services/[!_]*.php') ?: [] as $f) {
     require_once $f;
 }

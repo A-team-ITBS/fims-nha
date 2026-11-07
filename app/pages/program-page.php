@@ -217,8 +217,10 @@ function prg_openModal(mode, row = null) {
     $prg('prg-program-code').disabled = mode === 'edit';
     $prg('prg-code-hint').textContent = mode === 'edit'
         ? 'Program codes cannot be changed after creation.'
-        : 'Unique identifier. Cannot be changed after creation.';
+        : 'Preview — year-RC code-sequence. The final code is assigned when you save.';
     $prg('prg-program-name').value = row?.program_name || '';
+    $prg('prg-save').disabled = false;
+    if (mode === 'add') prg_loadCodePreview();     // defined in form/program-form.php
     $prg('prg-overlay').classList.add('open');
 }
 
@@ -268,13 +270,14 @@ async function prg_save(ev) {
         const res    = await fetch(url, {
             method,
             credentials: 'same-origin',
-            headers: { 'Content-Type': 'application/json' },
+            headers: prg_authHeaders({ 'Content-Type': 'application/json' }),   // JWT → server knows whose RC code to use
             body: JSON.stringify(payload),
         });
         const json = await res.json();
         if (!json.success) throw new Error(json.message || 'Failed to save program.');
 
-        prg_toast(`Program ${mode === 'edit' ? 'updated' : 'created'} successfully.`, 'success');
+        // On add, the server's message names the code it actually assigned ("Program 2026-…-102 created successfully.").
+        prg_toast(mode === 'edit' ? 'Program updated successfully.' : (json.message || 'Program created successfully.'), 'success');
         prg_closeModal();
         prg_load();
     } catch (e) {

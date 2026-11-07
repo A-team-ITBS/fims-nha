@@ -10,7 +10,14 @@
  *
  * Self-contained styling (scoped under #prg-card) so this modal renders
  * correctly even if the page's own stylesheet fails to load.
+ *
+ * It also carries its own API base (PRG_FORM_API) for the code preview, so it does not rely on
+ * PRG_API from program-page.php. (Not named PRG_API on purpose: both scripts share one page, and a
+ * second `const PRG_API` would be a redeclaration error.)
  */
+// Included from program-page.php, which has already set $_prg_api; the fallback keeps this partial usable alone.
+// (This file has no namespace of its own, hence the fully-qualified Config().)
+$_prgf_api = $_prg_api ?? \PHPMaker2024\FIMS\Config('API.FIMS_URL');
 ?>
 
 <!-- ══════════════════════════════════════════════════════════
@@ -53,6 +60,9 @@
     .prg-input:focus { outline:none;border-color:var(--afims-heading-fill, #000E3E);box-shadow:0 0 0 3px rgba(15,32,69,.08); }
     .prg-input:disabled { background:var(--afims-surface-subtle, #F4F7FA);color:var(--afims-text-disabled, #A9AAB8);cursor:not-allowed; }
     .prg-hint { font-size:11px;color:var(--afims-text-disabled, #A9AAB8);margin:0; }
+    .prg-code { font-family:'IBM Plex Mono',monospace;font-weight:600;letter-spacing:.02em; }
+    .prg-input[readonly] { background:var(--afims-surface-subtle, #F4F7FA);color:var(--afims-primary-text, #0035A9);cursor:default; }
+    .prg-input[readonly]:focus { border-color:var(--afims-border, #E4ECF2);box-shadow:none; }
 
     #prg-footer { display:flex;align-items:center;justify-content:flex-end;gap:8px;
         padding:14px 22px;background:var(--afims-surface-subtle, #F4F7FA);border-top:1px solid var(--afims-border, #E4ECF2);flex-shrink:0; }
@@ -89,8 +99,9 @@
 
                 <div class="prg-group">
                     <label class="prg-label">Program Code <span class="req">*</span></label>
-                    <input type="text" class="prg-input" id="prg-program-code" required maxlength="20" placeholder="e.g. HOU-001">
-                    <p class="prg-hint" id="prg-code-hint">Unique identifier. Cannot be changed after creation.</p>
+                    <!-- Add: read-only preview from GET /program/next-code (year-RC code-NNN); edit: locked. -->
+                    <input type="text" class="prg-input prg-code" id="prg-program-code" maxlength="64" readonly placeholder="Generating code…">
+                    <p class="prg-hint" id="prg-code-hint">Auto-generated. Cannot be changed after creation.</p>
                 </div>
 
                 <div class="prg-group">
@@ -105,3 +116,34 @@
         </form>
     </div>
 </div>
+
+<script>
+const PRG_FORM_API = '<?php echo $_prgf_api; ?>' + '/program';
+
+function prg_authHeaders(extra = {}) {
+    const t = window.ew && window.ew.API_JWT_TOKEN;
+    return t ? { ...extra, 'X-Authorization': 'Bearer ' + t } : extra;
+}
+
+async function prg_loadCodePreview() {
+    const input = document.getElementById('prg-program-code');
+    const save  = document.getElementById('prg-save');
+    input.value = '';
+    input.placeholder = 'Generating code…';
+    save.disabled = true;
+    try {
+        const res  = await fetch(`${PRG_FORM_API}/next-code`, { credentials: 'same-origin', headers: prg_authHeaders() });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message || 'Could not generate a program code.');
+        if (document.getElementById('prg-mode').value !== 'add') return;   // modal was reopened for edit meanwhile
+        input.value = json.data.program_code;
+
+        console.log('Next program code preview: ' + json.data);
+
+        save.disabled = false;
+    } catch (e) {
+        input.placeholder = 'Code unavailable';
+        prg_showErr(e.message);
+    }
+}
+</script>

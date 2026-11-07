@@ -17,8 +17,52 @@ use PHPMaker2024\FIMS as App;
  * - Keep functions generic and stateless; do not put business rules here.
  * - Code shared across modules (all FIMS apps) belongs in `_shared/`, not here.
  *
- * No functions yet. Add them as the need arises.
+ * Functions:
+ * - generateProgramCode()  next program code "YYYY-<rc_code>-NNN" (see below).
+ *   NOTE: this one reads the database, which the rules above would normally keep in
+ *   the feature's own service (ProgramService). It lives here by request, so it can
+ *   be called from any service or route: GlobalService::generateProgramCode().
  */
 class GlobalService
 {
+    /**
+     * Builds the next program code: "<year>-<rc_code>-<NNN>", e.g. 2026-35-074-0000001-000-101.
+     *
+     *  - year    : the current year, or $year when given.
+     *  - rc_code : uac.users.rc_code of the logged-in user ($userId, else the current user).
+     *  - NNN     : last 3 digits of the highest existing fims.program.program_code that ends in
+     *              "-NNN", plus one, zero-padded to 3 digits. Codes that don't end in "-NNN"
+     *              (e.g. "SAMPLE-1") are ignored, and an empty table starts at 001.
+     *
+     * The number is a suggestion read at call time — nothing is reserved. Two callers asking at
+     * the same moment get the same value; program_code's primary key makes the second insert fail.
+     *
+     * @throws \InvalidArgumentException when no user is logged in, the user has no rc_code, or
+     *                                   the 3-digit sequence is exhausted (999).
+     */
+    public static function generateProgramCode(?int $userId = null, ?int $year = null): string
+    {
+        $userId = $userId ?: (int) App\CurrentUserID();
+        if ($userId <= 0) {
+            throw new \InvalidArgumentException('No logged-in user — cannot build the RC part of the program code.');
+        }
+
+        $rcCode = trim((string) App\ExecuteScalar(
+            'SELECT rc_code FROM uac.users WHERE user_id = ' . $userId,
+            'DB'
+        ));
+        if ($rcCode === '') {
+            throw new \InvalidArgumentException('Your user account has no RC code (users.rc_code). Ask an administrator to set it.');
+        }
+
+        $last = (int) App\ExecuteScalar(
+            "SELECT COALESCE(MAX(CAST(SUBSTRING(program_code FROM '-([0-9]{3})$') AS INTEGER)), 0) FROM fims.program",
+            'DB'
+        );
+        if ($last >= 999) {
+            throw new \InvalidArgumentException('The 3-digit program sequence is exhausted (999).');
+        }
+
+        return sprintf('%d-%s-%03d', $year ?: (int) date('Y'), $rcCode, $last + 1);
+    }
 }
