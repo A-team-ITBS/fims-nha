@@ -79,9 +79,10 @@ with an `/api` prefix, e.g. `POST /user-access/users` below is actually `POST /a
 - `DELETE /purchase-order/delete/{id}` - DRAFT or CANCELLED only; items cascade
 
 ### chart_of_accounts.php (`ChartOfAccountsService`, table `fims.chart_of_accounts`)
-- `GET /chart-of-accounts/all` - All accounts, no pagination (dropdown / parent-account picker). Optional: `search`, `account_type`, `status`
+- `GET /chart-of-accounts/all` - All accounts, no pagination (dropdown / parent-account picker). Optional: `search`, `account_type`, `region_code`, `project_code`, `status`
+- `GET /chart-of-accounts/regions` - `fims.region` lookup list (Region filter/dropdown)
 - `GET /chart-of-accounts/list` - Paginated (`page`, `limit` + same filters as `/all`)
-- `GET /chart-of-accounts/read/{id}` - One account (by `account_id`), joined with parent account code/title
+- `GET /chart-of-accounts/read/{id}` - One account (by `account_id`), joined with region/project/parent names
 - `POST /chart-of-accounts/add` - Create (`account_code` + `account_title` required, `account_code` unique); `account_id` is server-generated (`ACC00001`, …)
 - `PUT /chart-of-accounts/update/{id}` - Update
 - `PATCH /chart-of-accounts/{id}/toggle-status` - Flip `status` between `Active` / `Inactive`
