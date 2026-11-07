@@ -44,7 +44,7 @@ class PersonalData
     public $RenderingView = false;
 
     // CSS class/style
-    public $CurrentPageName = "JwtSessionsDelete";
+    public $CurrentPageName = "BudgetReqPageController";
 
     // Page headings
     public $Heading = "";

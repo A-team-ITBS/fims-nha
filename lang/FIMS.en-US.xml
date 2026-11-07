@@ -2,6 +2,15 @@
   <project>
     <phrase id="bodytitle" value="UAC - User Access Control System" />
     <phrase id="footertext" value="&amp;copy;2024 ITBS Corporation. All rights reserved." />
+    <menu id="79">
+      <phrase id="menutext" value="Projects" />
+    </menu>
+    <menu id="80">
+      <phrase id="menutext" value="Programs" />
+    </menu>
+    <menu id="81">
+      <phrase id="menutext" value="Budget Request" />
+    </menu>
     <menu id="75">
       <phrase id="menutext" value="document asset types" />
     </menu>
@@ -1377,6 +1386,15 @@
       <field id="revoke_reason">
         <phrase id="fldcaption" value="revoke reason" />
       </field>
+    </table>
+    <table id="project_page">
+      <phrase id="tblcaption" value="Projects" />
+    </table>
+    <table id="program_page">
+      <phrase id="tblcaption" value="Programs" />
+    </table>
+    <table id="budget_req_page">
+      <phrase id="tblcaption" value="Budget Request" />
     </table>
   </project>
 </ew-language>

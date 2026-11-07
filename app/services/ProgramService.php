@@ -1,0 +1,164 @@
+<?php
+
+namespace PHPMaker2024\FIMS\Service;
+
+use PHPMaker2024\FIMS as App;
+
+class ProgramService
+{
+    private string $table = 'fims.program';
+
+    private array $allowedFields = ['program_code', 'group', 'program_name'];
+
+    public function fetchAlls(?int $page = null, int $limit = 10, string $search = ''): array
+    {
+        try {
+            $where = '1=1';
+            if ($search !== '') {
+                $s     = App\QuotedValue('%' . $search . '%', App\DATATYPE_STRING, 'DB');
+                $where = "(program_code ILIKE {$s} OR program_name ILIKE {$s} OR \"group\" ILIKE {$s})";
+            }
+
+            if ($page === null) {
+                $sql  = "SELECT * FROM {$this->table} WHERE {$where} ORDER BY program_code ASC";
+                $data = App\ExecuteRows($sql, 'DB');
+
+                return ['success' => true, 'data' => $data ?: []];
+            }
+
+            $offset = ($page - 1) * $limit;
+
+            $total = (int) App\ExecuteScalar("SELECT COUNT(*) FROM {$this->table} WHERE {$where}", 'DB');
+
+            $sql  = "SELECT * FROM {$this->table}
+                     WHERE {$where}
+                     ORDER BY program_code ASC
+                     LIMIT {$limit} OFFSET {$offset}";
+            $data = App\ExecuteRows($sql, 'DB');
+
+            return [
+                'success'    => true,
+                'data'       => $data ?: [],
+                'pagination' => [
+                    'total'        => $total,
+                    'per_page'     => $limit,
+                    'current_page' => $page,
+                    'last_page'    => (int) ceil($total / $limit),
+                ],
+            ];
+        } catch (\Exception $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    public function fetchByCode(string $code): array
+    {
+        try {
+            $sql  = "SELECT * FROM {$this->table} WHERE program_code = " . App\QuotedValue($code, App\DATATYPE_STRING, 'DB');
+            $data = App\ExecuteRow($sql, 'DB');
+
+            if (!$data) {
+                return ['success' => false, 'message' => "Program '{$code}' not found."];
+            }
+
+            return ['success' => true, 'data' => $data];
+        } catch (\Exception $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    public function create(array $body): array
+    {
+        try {
+            $code = trim((string) ($body['program_code'] ?? ''));
+            $name = trim((string) ($body['program_name'] ?? ''));
+
+            if ($code === '' || $name === '') {
+                return ['success' => false, 'message' => 'program_code and program_name are required.'];
+            }
+
+            $exists = (int) App\ExecuteScalar(
+                "SELECT COUNT(*) FROM {$this->table} WHERE program_code = " . App\QuotedValue($code, App\DATATYPE_STRING, 'DB'),
+                'DB'
+            );
+            if ($exists > 0) {
+                return ['success' => false, 'message' => "Program code '{$code}' already exists."];
+            }
+
+            $fields = array_intersect_key($body, array_flip($this->allowedFields));
+
+            $columns = [];
+            $values  = [];
+            foreach ($fields as $key => $value) {
+                $columns[] = App\QuotedName($key, 'DB');
+                $values[]  = App\QuotedValue($value, App\DATATYPE_STRING, 'DB');
+            }
+
+            $sql = "INSERT INTO {$this->table} (" . implode(', ', $columns) . ')
+                    VALUES (' . implode(', ', $values) . ')';
+
+            App\Execute($sql, 'DB');
+
+            return ['success' => true, 'message' => 'Program created successfully.'];
+        } catch (\Exception $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    public function update(string $code, array $body): array
+    {
+        try {
+            $check = $this->fetchByCode($code);
+            if (!$check['success']) {
+                return $check;
+            }
+
+            // program_code is the primary key — not editable here.
+            $fields = array_intersect_key($body, array_flip(['group', 'program_name']));
+
+            if (empty($fields)) {
+                return ['success' => false, 'message' => 'No valid fields provided for update.'];
+            }
+
+            $setParts = [];
+            foreach ($fields as $key => $value) {
+                $setParts[] = App\QuotedName($key, 'DB') . ' = ' . App\QuotedValue($value, App\DATATYPE_STRING, 'DB');
+            }
+
+            $sql = "UPDATE {$this->table}
+                    SET " . implode(', ', $setParts) . '
+                    WHERE program_code = ' . App\QuotedValue($code, App\DATATYPE_STRING, 'DB');
+
+            App\Execute($sql, 'DB');
+
+            return ['success' => true, 'message' => 'Program updated successfully.'];
+        } catch (\Exception $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    public function delete(string $code): array
+    {
+        try {
+            $check = $this->fetchByCode($code);
+            if (!$check['success']) {
+                return $check;
+            }
+
+            $inUse = (int) App\ExecuteScalar(
+                "SELECT COUNT(*) FROM fims.project WHERE program_code = " . App\QuotedValue($code, App\DATATYPE_STRING, 'DB'),
+                'DB'
+            );
+            if ($inUse > 0) {
+                return ['success' => false, 'message' => "Cannot delete '{$code}' — {$inUse} project(s) still reference this program."];
+            }
+
+            $sql = "DELETE FROM {$this->table} WHERE program_code = " . App\QuotedValue($code, App\DATATYPE_STRING, 'DB');
+            App\Execute($sql, 'DB');
+
+            return ['success' => true, 'message' => "Program '{$code}' deleted successfully."];
+        } catch (\Exception $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+}

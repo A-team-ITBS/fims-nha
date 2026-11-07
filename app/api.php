@@ -45,7 +45,13 @@ $accessMiddleware = function (Request $request, RequestHandler $handler): Respon
 
 // Include Service Classes (if any)
 // include(dirname(__DIR__, 1) . "/app/services/YourService.php");
+include(dirname(__DIR__, 1) . "/app/services/ProgramService.php");
+include(dirname(__DIR__, 1) . "/app/services/ProjectService.php");
+include(dirname(__DIR__, 1) . "/app/services/BudgetReqService.php");
 
 // Include Route Files
 include(dirname(__DIR__, 1) . "/app/routes/notifications.php");
 include(dirname(__DIR__, 1) . "/app/routes/service.php");
+include(dirname(__DIR__, 1) . "/app/routes/program.php");
+include(dirname(__DIR__, 1) . "/app/routes/project.php");
+include(dirname(__DIR__, 1) . "/app/routes/budget_req.php");

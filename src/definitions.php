@@ -113,6 +113,9 @@ return [
     "document_header_assets" => \DI\create(DocumentHeaderAssets::class),
     "document_header_slots" => \DI\create(DocumentHeaderSlots::class),
     "jwt_sessions" => \DI\create(JwtSessions::class),
+    "project_page" => \DI\create(ProjectPage::class),
+    "program_page" => \DI\create(ProgramPage::class),
+    "budget_req_page" => \DI\create(BudgetReqPage::class),
 
     // User table
     "usertable" => \DI\get("users"),

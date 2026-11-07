@@ -49,6 +49,7 @@
         "filp/whoops": "^2.14.5",
         "spatie/color": "^1.5.3",
         "nikic/php-parser": "^4.13.0",
+        "symfony/polyfill-php83": "^1.27.0",
         "symfony/polyfill-php84": "^1.30.0",
         "hkvstore/dompdf": "~2.0.0",
         "guzzlehttp/guzzle": "^7.9.2",
@@ -75,7 +76,7 @@
     },
     "config": {
         "platform": {
-            "php": "8.3.6"
+            "php": "8.2.18"
         },
         "allow-plugins": true
     },
