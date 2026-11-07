@@ -61,6 +61,67 @@ $departmentManagementUrl = GetUrl("DepartmentManagement");
 $positionManagementUrl = GetUrl("PositionManagement");
 $userLevelsUrl = GetUrl("UserLevelsList");
 $systemsUrl = GetUrl("SystemsList");
+
+// ── Recent Activity (audit_logs) — filterable, read-only ──
+// audit_logs is an immutable system table (STRICT - DO NOT MODIFY), so this is
+// view/filter only. "user" and "table" are quoted - reserved/ambiguous in Postgres.
+$auditUserFilter = trim(Get("audit_user") ?? '');
+$auditTableFilter = trim(Get("audit_table") ?? '');
+$auditActionFilter = trim(Get("audit_action") ?? '');
+$auditDateFrom = trim(Get("audit_date_from") ?? '');
+$auditDateTo = trim(Get("audit_date_to") ?? '');
+
+$auditConditions = [];
+if ($auditUserFilter !== '') {
+    $auditConditions[] = '"user" = ' . QuotedValue($auditUserFilter, DataType::STRING);
+}
+if ($auditTableFilter !== '') {
+    $auditConditions[] = '"table" = ' . QuotedValue($auditTableFilter, DataType::STRING);
+}
+if ($auditActionFilter !== '') {
+    $auditConditions[] = 'action = ' . QuotedValue($auditActionFilter, DataType::STRING);
+}
+if ($auditDateFrom !== '') {
+    $auditConditions[] = 'date_time >= ' . QuotedValue($auditDateFrom . ' 00:00:00', DataType::STRING);
+}
+if ($auditDateTo !== '') {
+    $auditConditions[] = 'date_time <= ' . QuotedValue($auditDateTo . ' 23:59:59', DataType::STRING);
+}
+$auditWhereClause = empty($auditConditions) ? '' : ' WHERE ' . implode(' AND ', $auditConditions);
+
+$auditLogUsers = ExecuteRowsAssociative('SELECT DISTINCT "user" FROM audit_logs WHERE "user" IS NOT NULL ORDER BY "user"', "DB");
+$auditLogTables = ExecuteRowsAssociative('SELECT DISTINCT "table" FROM audit_logs WHERE "table" IS NOT NULL ORDER BY "table"', "DB");
+$auditLogActions = ExecuteRowsAssociative('SELECT DISTINCT action FROM audit_logs WHERE action IS NOT NULL ORDER BY action', "DB");
+
+$auditFilteredCount = ExecuteScalar("SELECT COUNT(*) FROM audit_logs" . $auditWhereClause, "DB");
+$auditLogRows = ExecuteRowsAssociative("
+    SELECT id, date_time, script, \"user\", action, \"table\", field, key_value, old_value, new_value
+    FROM audit_logs" . $auditWhereClause . "
+    ORDER BY date_time DESC
+    LIMIT 50
+", "DB");
+
+$auditTodayCount = ExecuteScalar("SELECT COUNT(*) FROM audit_logs WHERE date_time::date = CURRENT_DATE", "DB");
+$auditDistinctUsers = ExecuteScalar('SELECT COUNT(DISTINCT "user") FROM audit_logs', "DB");
+
+function getAuditActionBadgeClass($action)
+{
+    switch ($action) {
+        case 'Add':
+            return 'success';
+        case 'Edit':
+        case 'Update':
+            return 'info';
+        case 'Delete':
+            return 'danger';
+        case 'Login':
+            return 'primary';
+        case 'Logout':
+            return 'secondary';
+        default:
+            return 'warning';
+    }
+}
 ?>
 
 <!-- Main content -->
@@ -72,10 +133,8 @@ $systemsUrl = GetUrl("SystemsList");
                 <span class="info-box-icon bg-info elevation-1"><i class="fas fa-users"></i></span>
                 <div class="info-box-content">
                     <span class="info-box-text">Total Users</span>
-                    <span class="info-box-number">
-                        <?php echo $totalUsers; ?>
-                        <small><?php echo $activeUsers; ?> active</small>
-                    </span>
+                    <span class="info-box-number"><?php echo $totalUsers; ?></span>
+                    <small class="text-muted"><?php echo $activeUsers; ?> active</small>
                 </div>
             </div>
         </div>
@@ -84,10 +143,8 @@ $systemsUrl = GetUrl("SystemsList");
                 <span class="info-box-icon bg-warning elevation-1"><i class="fas fa-building"></i></span>
                 <div class="info-box-content">
                     <span class="info-box-text">Departments</span>
-                    <span class="info-box-number">
-                        <?php echo $totalDepartments; ?>
-                        <small><?php echo $budgetUnitDepartments; ?> budget units</small>
-                    </span>
+                    <span class="info-box-number"><?php echo $totalDepartments; ?></span>
+                    <small class="text-muted"><?php echo $budgetUnitDepartments; ?> budget unit<?php echo $budgetUnitDepartments == 1 ? '' : 's'; ?></small>
                 </div>
             </div>
         </div>
@@ -96,10 +153,8 @@ $systemsUrl = GetUrl("SystemsList");
                 <span class="info-box-icon bg-success elevation-1"><i class="fas fa-id-badge"></i></span>
                 <div class="info-box-content">
                     <span class="info-box-text">Positions</span>
-                    <span class="info-box-number">
-                        <?php echo $totalPositions; ?>
-                        <small><?php echo $totalPositionCategories; ?> categories</small>
-                    </span>
+                    <span class="info-box-number"><?php echo $totalPositions; ?></span>
+                    <small class="text-muted"><?php echo $totalPositionCategories; ?> categor<?php echo $totalPositionCategories == 1 ? 'y' : 'ies'; ?></small>
                 </div>
             </div>
         </div>
@@ -108,10 +163,8 @@ $systemsUrl = GetUrl("SystemsList");
                 <span class="info-box-icon bg-danger elevation-1"><i class="fas fa-user-shield"></i></span>
                 <div class="info-box-content">
                     <span class="info-box-text">User Levels (Roles)</span>
-                    <span class="info-box-number">
-                        <?php echo $totalUserLevels; ?>
-                        <small><?php echo $unassignedUsers; ?> users unassigned</small>
-                    </span>
+                    <span class="info-box-number"><?php echo $totalUserLevels; ?></span>
+                    <small class="text-muted"><?php echo $unassignedUsers; ?> user<?php echo $unassignedUsers == 1 ? '' : 's'; ?> unassigned</small>
                 </div>
             </div>
         </div>
@@ -233,6 +286,104 @@ $systemsUrl = GetUrl("SystemsList");
                         </div>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Activity (Audit Log) -->
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title"><i class="fas fa-history mr-1"></i> Recent Activity</h3>
+        </div>
+        <div class="card-body">
+            <p class="text-muted small mb-3">
+                Showing <?php echo count($auditLogRows); ?> of <?php echo $auditFilteredCount; ?> matching log entries (most recent first, limit 50).
+                <?php echo $auditTodayCount; ?> action<?php echo $auditTodayCount == 1 ? '' : 's'; ?> today across
+                <?php echo $auditDistinctUsers; ?> user<?php echo $auditDistinctUsers == 1 ? '' : 's'; ?> total.
+            </p>
+            <form method="get" class="form-row align-items-end mb-3">
+                <div class="form-group col-md-2">
+                    <label class="small mb-1">User</label>
+                    <select name="audit_user" class="form-control form-control-sm">
+                        <option value="">All</option>
+                        <?php foreach ($auditLogUsers as $row): ?>
+                        <option value="<?php echo HtmlEncode($row['user']); ?>" <?php echo $auditUserFilter === $row['user'] ? 'selected' : ''; ?>>
+                            <?php echo HtmlEncode($row['user']); ?>
+                        </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="form-group col-md-2">
+                    <label class="small mb-1">Table</label>
+                    <select name="audit_table" class="form-control form-control-sm">
+                        <option value="">All</option>
+                        <?php foreach ($auditLogTables as $row): ?>
+                        <option value="<?php echo HtmlEncode($row['table']); ?>" <?php echo $auditTableFilter === $row['table'] ? 'selected' : ''; ?>>
+                            <?php echo HtmlEncode($row['table']); ?>
+                        </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="form-group col-md-2">
+                    <label class="small mb-1">Action</label>
+                    <select name="audit_action" class="form-control form-control-sm">
+                        <option value="">All</option>
+                        <?php foreach ($auditLogActions as $row): ?>
+                        <option value="<?php echo HtmlEncode($row['action']); ?>" <?php echo $auditActionFilter === $row['action'] ? 'selected' : ''; ?>>
+                            <?php echo HtmlEncode($row['action']); ?>
+                        </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="form-group col-md-2">
+                    <label class="small mb-1">From</label>
+                    <input type="date" name="audit_date_from" class="form-control form-control-sm" value="<?php echo HtmlEncode($auditDateFrom); ?>">
+                </div>
+                <div class="form-group col-md-2">
+                    <label class="small mb-1">To</label>
+                    <input type="date" name="audit_date_to" class="form-control form-control-sm" value="<?php echo HtmlEncode($auditDateTo); ?>">
+                </div>
+                <div class="form-group col-md-2">
+                    <button type="submit" class="btn btn-primary btn-sm">
+                        <i class="fas fa-filter mr-1"></i> Filter
+                    </button>
+                    <?php if ($auditUserFilter || $auditTableFilter || $auditActionFilter || $auditDateFrom || $auditDateTo): ?>
+                    <a href="?" class="btn btn-outline-secondary btn-sm">Clear</a>
+                    <?php endif; ?>
+                </div>
+            </form>
+            <div class="table-responsive">
+                <table class="table table-sm table-hover text-nowrap">
+                    <thead>
+                        <tr>
+                            <th>Date/Time</th>
+                            <th>User</th>
+                            <th>Action</th>
+                            <th>Table</th>
+                            <th>Field</th>
+                            <th>Key</th>
+                            <th>Old Value</th>
+                            <th>New Value</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($auditLogRows as $log): ?>
+                        <tr>
+                            <td><?php echo HtmlEncode($log['date_time']); ?></td>
+                            <td><?php echo HtmlEncode($log['user'] ?: '—'); ?></td>
+                            <td><span class="badge badge-<?php echo getAuditActionBadgeClass($log['action']); ?>"><?php echo HtmlEncode($log['action'] ?: '—'); ?></span></td>
+                            <td><?php echo HtmlEncode($log['table'] ?: '—'); ?></td>
+                            <td><?php echo HtmlEncode($log['field'] ?: '—'); ?></td>
+                            <td class="text-truncate" style="max-width:120px;" title="<?php echo HtmlEncode($log['key_value'] ?? ''); ?>"><?php echo HtmlEncode($log['key_value'] ?: '—'); ?></td>
+                            <td class="text-truncate" style="max-width:160px;" title="<?php echo HtmlEncode($log['old_value'] ?? ''); ?>"><?php echo HtmlEncode($log['old_value'] ?: '—'); ?></td>
+                            <td class="text-truncate" style="max-width:160px;" title="<?php echo HtmlEncode($log['new_value'] ?? ''); ?>"><?php echo HtmlEncode($log['new_value'] ?: '—'); ?></td>
+                        </tr>
+                        <?php endforeach; ?>
+                        <?php if (empty($auditLogRows)): ?>
+                        <tr><td colspan="8" class="text-muted text-center">No matching log entries.</td></tr>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>
