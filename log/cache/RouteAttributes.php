@@ -78,8 +78,10 @@
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone ($p['PHPMaker2024\\FIMS\\Attributes\\Get'] ?? \Symfony\Component\VarExporter\Internal\Registry::p('PHPMaker2024\\FIMS\\Attributes\\Get')),
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Get'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
@@ -539,9 +541,19 @@
                 ],
                 [
                     'GET',
+                    'POST',
+                    'OPTIONS',
                 ],
                 [
                     'GET',
+                ],
+                [
+                    'GET',
+                ],
+                [
+                    'GET',
+                    'POST',
+                    'OPTIONS',
                 ],
                 [
                     'GET',
@@ -880,6 +892,7 @@
                 '/AuditLogsDelete[/{id}]',
                 '/BudgetReqPage[/{params:.*}]',
                 '/BullMqManager[/{params:.*}]',
+                '/ChartOfAccountsPage[/{params:.*}]',
                 '/DepartmentManagement[/{params:.*}]',
                 '/DepartmentsList[/{department_id}]',
                 '/DepartmentsAdd[/{department_id}]',
@@ -960,6 +973,7 @@
                 '/PsgcEdit[/{code_10:.*}]',
                 '/PsgcDelete[/{code_10:.*}]',
                 '/PsgcMap[/{params:.*}]',
+                '/ResponsibilityCenterPage[/{params:.*}]',
                 '/SignatoryManagement[/{params:.*}]',
                 '/SubProgramPage[/{params:.*}]',
                 '/SystemsList[/{system_id}]',
@@ -1024,6 +1038,7 @@
                 'PHPMaker2024\\FIMS\\AuditLogsController:delete',
                 'PHPMaker2024\\FIMS\\BudgetReqPageController:custom',
                 'PHPMaker2024\\FIMS\\BullMqManagerController:custom',
+                'PHPMaker2024\\FIMS\\ChartOfAccountsPageController:custom',
                 'PHPMaker2024\\FIMS\\DepartmentManagementController:custom',
                 'PHPMaker2024\\FIMS\\DepartmentsController:list',
                 'PHPMaker2024\\FIMS\\DepartmentsController:add',
@@ -1104,6 +1119,7 @@
                 'PHPMaker2024\\FIMS\\PsgcController:edit',
                 'PHPMaker2024\\FIMS\\PsgcController:delete',
                 'PHPMaker2024\\FIMS\\PsgcMapController:custom',
+                'PHPMaker2024\\FIMS\\ResponsibilityCenterPageController:custom',
                 'PHPMaker2024\\FIMS\\SignatoryManagementController:custom',
                 'PHPMaker2024\\FIMS\\SubProgramPageController:custom',
                 'PHPMaker2024\\FIMS\\SystemsController:list',
@@ -1143,6 +1159,9 @@
                 'PHPMaker2024\\FIMS\\WorkflowManagerController:custom',
             ],
             'middleware' => [
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
                 [
                     'PHPMaker2024\\FIMS\\PermissionMiddleware',
                 ],
@@ -1567,6 +1586,9 @@
                 [
                     'PHPMaker2024\\FIMS\\PermissionMiddleware',
                 ],
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
             ],
             'name' => [
                 'list.aggregated_audit_logs',
@@ -1594,6 +1616,7 @@
                 'delete.audit_logs',
                 'custom.budget_req_page',
                 'custom.BullMQManager',
+                'custom.chart_of_accounts_page',
                 'custom.DepartmentManagement',
                 'list.departments',
                 'add.departments',
@@ -1674,6 +1697,7 @@
                 'edit.psgc',
                 'delete.psgc',
                 'custom.PSGCMap',
+                'custom.responsibility_center_page',
                 'custom.SignatoryManagement',
                 'custom.sub_program_page',
                 'list.systems',
@@ -1713,6 +1737,8 @@
                 'custom.WorkflowManager',
             ],
             'options' => [
+                [],
+                [],
                 [],
                 [],
                 [],
@@ -2001,6 +2027,8 @@
         $o[139],
         $o[140],
         $o[141],
+        $o[142],
+        $o[143],
     ],
     []
 );

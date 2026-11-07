@@ -14,6 +14,12 @@
     <menu id="82">
       <phrase id="menutext" value="Sub Program Setup" />
     </menu>
+    <menu id="83">
+      <phrase id="menutext" value="Chart of Accounts" />
+    </menu>
+    <menu id="84">
+      <phrase id="menutext" value="Responsibilty Center" />
+    </menu>
     <menu id="75">
       <phrase id="menutext" value="document asset types" />
     </menu>
@@ -1401,6 +1407,12 @@
     </table>
     <table id="sub_program_page">
       <phrase id="tblcaption" value="Sub Program Setup" />
+    </table>
+    <table id="chart_of_accounts_page">
+      <phrase id="tblcaption" value="Chart of Accounts" />
+    </table>
+    <table id="responsibility_center_page">
+      <phrase id="tblcaption" value="Responsibilty Center" />
     </table>
   </project>
 </ew-language>
