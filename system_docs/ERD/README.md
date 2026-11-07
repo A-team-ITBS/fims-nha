@@ -346,3 +346,35 @@ npm run sql-reset         # maintenance only — resets sequences, keeps data
 The installer prompts for your PostgreSQL connection details (host, port, username, password,
 database name). On Windows, if `psql` isn't on `PATH` it offers the PostgreSQL installs it can
 find, or lets you type a path to `psql.exe`.
+
+---
+
+## `fims` Schema — Vendors and Purchase Orders
+
+Files: `_assets/sql/01 - fims/01 - table/07 - fims_vendor_types.sql`, `08 - fims_vendors.sql`,
+`09 - fims_purchase_orders.sql`. API: `app/routes/vendor.php`, `app/routes/purchase-order.php`
+(see `app/routes/README.md`). Pages: `app/pages/po/{page,form,readone}.php`.
+
+```mermaid
+erDiagram
+    vendor_types ||--o{ vendors : "vendor_type"
+    vendors ||--o{ purchase_orders : "vendor_id"
+    fiscal_year ||--o{ purchase_orders : "fiscal_yr"
+    program ||--o{ purchase_orders : "program_code (optional)"
+    project ||--o{ purchase_orders : "project_code (optional)"
+    purchase_orders ||--|{ purchase_order_items : "po_id (cascade)"
+    chart_of_accounts ||--o{ purchase_order_items : "account_code (optional)"
+```
+
+| Table | Purpose / notes |
+|---|---|
+| `fims.vendor_types` | Valid vendor categories (SUPPLIER, CONTRACTOR, CONSULTANT, SERVICE_PROVIDER, EMPLOYEE — seeded). `vendor_type` is UNIQUE so `vendors` can FK to it. |
+| `fims.vendors` | Ported from `shared.vendors` (same 15 columns) plus `updated_at`. `vendor_code` is UNIQUE; `vendor_type` is a real FK. |
+| `fims.purchase_orders` | One PO. `po_number` UNIQUE (`PO-YYYY-MM-NNNN`). Vendor name / address / TIN are a snapshot copied from `fims.vendors` on save. `status`: DRAFT → SUBMITTED → APPROVED / REJECTED; DRAFT / SUBMITTED / REJECTED can be CANCELLED. `total_amount` is recomputed from the items by the service. |
+| `fims.purchase_order_items` | Line items. `total_cost` is a generated column (`ROUND(quantity_ordered * unit_cost, 2)`); `(po_id, line_number)` is UNIQUE. |
+
+**Deliberately not ported from `fmd.purchase_orders`:** parent purchase request, budget allocation,
+fund source, fiscal period, the workflow engine / payment workflow, and delivery receipts — none of
+those tables exist in `fims`. Status changes are driven by `PurchaseOrderService::changeStatus()`.
+The other `shared.vendors`-related accounting tables (`vendor_tax_classification`,
+`vendor_payment_history`, `vendor_return_notices`) were not ported either.

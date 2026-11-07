@@ -50,6 +50,8 @@ include(dirname(__DIR__, 1) . "/app/services/ProjectService.php");
 include(dirname(__DIR__, 1) . "/app/services/BudgetReqService.php");
 include(dirname(__DIR__, 1) . "/app/services/FiscalYearService.php");
 include(dirname(__DIR__, 1) . "/app/services/ExpenseClassService.php");
+include(dirname(__DIR__, 1) . "/app/services/VendorService.php");
+include(dirname(__DIR__, 1) . "/app/services/PurchaseOrderService.php");
 
 // Include Route Files
 include(dirname(__DIR__, 1) . "/app/routes/notifications.php");
@@ -60,3 +62,5 @@ include(dirname(__DIR__, 1) . "/app/routes/project.php");
 include(dirname(__DIR__, 1) . "/app/routes/budget_req.php");
 include(dirname(__DIR__, 1) . "/app/routes/fiscal_year.php");
 include(dirname(__DIR__, 1) . "/app/routes/expense_class.php");
+include(dirname(__DIR__, 1) . "/app/routes/vendor.php");
+include(dirname(__DIR__, 1) . "/app/routes/purchase-order.php");
