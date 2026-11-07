@@ -7,7 +7,7 @@ $_prg_api = Config('API.FIMS_URL');
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/css/nha-fims.css') ?>" />
+<link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
 
 <div id="prg-root" class="nha-root">
 
@@ -88,9 +88,9 @@ $_prg_api = Config('API.FIMS_URL');
         </div>
     </div>
 
-</div><!-- /#prg-root -->
-
 <?php include __DIR__ . '/form/program-form.php'; ?>
+
+</div><!-- /#prg-root -->
 
 <script>
 /* ══════════════════════════════════════════════════════════════
@@ -212,10 +212,14 @@ function prg_goTo(page) { prg_page = page; prg_load(); }
 
 /* ── Modal ─────────────────────────────────────────────────── */
 function prg_openModal(mode, row = null) {
+    prg_hideErr();
     $prg('prg-mode').value = mode;
     $prg('prg-modal-title').textContent = mode === 'edit' ? 'Edit Program' : 'Add Program';
     $prg('prg-program-code').value = row?.program_code || '';
     $prg('prg-program-code').disabled = mode === 'edit';
+    $prg('prg-code-hint').textContent = mode === 'edit'
+        ? 'Program codes cannot be changed after creation.'
+        : 'Unique identifier. Cannot be changed after creation.';
     $prg('prg-group').value = row?.group || '';
     $prg('prg-program-name').value = row?.program_name || '';
     $prg('prg-overlay').classList.add('open');
@@ -224,6 +228,16 @@ function prg_openModal(mode, row = null) {
 function prg_closeModal() {
     $prg('prg-overlay').classList.remove('open');
     $prg('prg-form').reset();
+    prg_hideErr();
+}
+
+function prg_showErr(msg) {
+    const el = $prg('prg-err');
+    el.textContent = msg;
+    el.style.display = 'block';
+}
+function prg_hideErr() {
+    $prg('prg-err').style.display = 'none';
 }
 
 async function prg_edit(code) {
@@ -242,6 +256,7 @@ async function prg_edit(code) {
 
 async function prg_save(ev) {
     ev.preventDefault();
+    prg_hideErr();
     const mode = $prg('prg-mode').value;
     const code = $prg('prg-program-code').value.trim();
     const payload = {
@@ -267,7 +282,7 @@ async function prg_save(ev) {
         prg_closeModal();
         prg_load();
     } catch (e) {
-        prg_toast(e.message, 'error');
+        prg_showErr(e.message);
     } finally {
         window.PagePreloader?.hide();
     }
