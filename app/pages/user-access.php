@@ -73,11 +73,17 @@ foreach ($assignmentRows as $row) {
 
 // ── User levels (roles/modules) for the assignment dropdown ──
 $userLevels = ExecuteRowsAssociative("
-    SELECT ul.user_level_id, ul.name, ul.system_id, COALESCE(s.system_name, 'N/A') AS system_name
+    SELECT ul.user_level_id, ul.name, ul.description, ul.system_id, COALESCE(s.system_name, 'N/A') AS system_name
     FROM user_levels ul
     LEFT JOIN systems s ON ul.system_id = s.system_id
     ORDER BY s.system_name, ul.name
 ", "DB");
+
+$userLevelsById = [];
+foreach ($userLevels as $level) {
+    $userLevelsById[$level['user_level_id']] = $level;
+}
+$userLevelsByIdJson = json_encode($userLevelsById);
 
 // ── Permission matrix per user level ──
 // Bitmask per PHPMaker's Allow enum (src/Allow.php):
@@ -117,6 +123,25 @@ foreach ($permissionRows as $row) {
     $permissionsByLevel[$row['user_level_id']][] = $decoded;
 }
 
+// ── Caption / visibility overrides; see _assets/sql/00 - uac/02 - alter_table/04 - permission_module_captions.sql ──
+// Hiding a module only removes it from this list - the underlying
+// uac.user_level_permissions rows are left untouched, and it can be restored.
+$captionOverrides = [];
+$hiddenModules = [];
+try {
+    $overrideRows = ExecuteRowsAssociative("SELECT table_name, caption, is_hidden FROM permission_module_captions", "DB");
+    foreach ($overrideRows as $row) {
+        $captionOverrides[$row['table_name']] = $row['caption'];
+        if (ConvertToBool($row['is_hidden'])) {
+            $hiddenModules[$row['table_name']] = true;
+        }
+    }
+} catch (\Exception $e) {
+    // Table not created yet (migration not run) - fall back to registry captions only.
+    $captionOverrides = [];
+    $hiddenModules = [];
+}
+
 // ── Full module registry, sourced from PHPMaker's own table/page list ──
 // ($USER_LEVEL_TABLES is loaded globally by src/config.php via src/userlevelsettings.php)
 $registryTables = $GLOBALS["USER_LEVEL_TABLES"] ?? [];
@@ -125,7 +150,8 @@ foreach ($registryTables as $table) {
     $allModules[] = [
         'table_name' => $table[0],          // plain name, e.g. "users", "UserAccess.php"
         'full_key' => $table[4] . $table[0], // PHPMaker's native stored key, e.g. "{FIMS}users"
-        'caption' => $table[2],
+        'caption' => $captionOverrides[$table[0]] ?? $table[2],
+        'is_hidden' => isset($hiddenModules[$table[0]]),
     ];
 }
 usort($allModules, function ($a, $b) {
@@ -148,6 +174,7 @@ $usersByIdJson = json_encode($usersById);
 $canAddUser = AllowAdd("users");
 $canEditUser = AllowEdit("users");
 $canAddUserLevel = AllowAdd("user_levels");
+$canEditUserLevel = AllowEdit("user_levels");
 $canManageAssignments = AllowAdd("user_level_assignments") && AllowDelete("user_level_assignments");
 $canManagePermissions = AllowAdd("user_level_permissions") || AllowEdit("user_level_permissions");
 
@@ -305,14 +332,23 @@ $deleteAssignmentBaseUrl = GetUrl("UserLevelAssignmentsDelete");
                     <input type="hidden" id="assignSystemId">
                     <div class="form-group">
                         <label>User Level (Role)</label>
-                        <select class="form-control" id="assignLevelSelect">
-                            <option value="">Select role...</option>
-                            <?php foreach ($userLevels as $level): ?>
-                            <option value="<?php echo $level['user_level_id']; ?>" data-system-id="<?php echo $level['system_id']; ?>">
-                                <?php echo HtmlEncode($level['name'] . ' (' . $level['system_name'] . ')'); ?>
-                            </option>
-                            <?php endforeach; ?>
-                        </select>
+                        <div class="input-group">
+                            <select class="form-control" id="assignLevelSelect">
+                                <option value="">Select role...</option>
+                                <?php foreach ($userLevels as $level): ?>
+                                <option value="<?php echo $level['user_level_id']; ?>" data-system-id="<?php echo $level['system_id']; ?>">
+                                    <?php echo HtmlEncode($level['name'] . ' (' . $level['system_name'] . ')'); ?>
+                                </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <?php if ($canEditUserLevel): ?>
+                            <div class="input-group-append">
+                                <button type="button" class="btn btn-outline-secondary" id="editUserLevelBtn" disabled title="Edit this user level">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                            </div>
+                            <?php endif; ?>
+                        </div>
                     </div>
                     <button type="button" class="btn btn-primary" id="assignAccessBtn" disabled>
                         <i class="fas fa-plus mr-1"></i> Assign Access
@@ -346,11 +382,18 @@ $deleteAssignmentBaseUrl = GetUrl("UserLevelAssignmentsDelete");
                         </div>
                         <?php if ($canManagePermissions): ?>
                         <div class="col-md-7 text-right">
+                            <div class="custom-control custom-checkbox d-inline-block mr-2 align-middle">
+                                <input type="checkbox" class="custom-control-input" id="showHiddenModulesCheck">
+                                <label class="custom-control-label" for="showHiddenModulesCheck">Show hidden modules</label>
+                            </div>
                             <button type="button" class="btn btn-outline-success btn-sm" id="checkAllPermissionsBtn" disabled>
                                 <i class="fas fa-check-square mr-1"></i> Check All
                             </button>
                             <button type="button" class="btn btn-outline-secondary btn-sm" id="uncheckAllPermissionsBtn" disabled>
                                 <i class="far fa-square mr-1"></i> Uncheck All
+                            </button>
+                            <button type="button" class="btn btn-outline-danger btn-sm" id="deleteSelectedModulesBtn" disabled>
+                                <i class="fas fa-trash mr-1"></i> Delete Selected (<span id="deleteSelectedCount">0</span>)
                             </button>
                         </div>
                         <?php endif; ?>
@@ -359,6 +402,9 @@ $deleteAssignmentBaseUrl = GetUrl("UserLevelAssignmentsDelete");
                         <table class="table table-sm table-striped text-nowrap" id="permissionMatrixTable">
                             <thead>
                                 <tr>
+                                    <?php if ($canManagePermissions): ?>
+                                    <th><input type="checkbox" id="selectAllForDeleteCheck" title="Select all for deletion"></th>
+                                    <?php endif; ?>
                                     <th><input type="checkbox" id="permSelectAll"></th>
                                     <th>&nbsp;</th>
                                     <th class="text-center"><input type="checkbox" class="perm-col-toggle" data-perm="list"><br>List</th>
@@ -372,7 +418,7 @@ $deleteAssignmentBaseUrl = GetUrl("UserLevelAssignmentsDelete");
                                 </tr>
                             </thead>
                             <tbody id="permissionMatrixBody">
-                                <tr><td colspan="10" class="text-muted">Select a user level to view / edit its permissions.</td></tr>
+                                <tr><td colspan="11" class="text-muted">Loading modules...</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -672,14 +718,126 @@ $deleteAssignmentBaseUrl = GetUrl("UserLevelAssignmentsDelete");
 </div>
 <?php endif; ?>
 
+<?php if ($canEditUserLevel): ?>
+<!-- Edit User Level modal (self-contained, no Bootstrap JS dependency) -->
+<div id="editUserLevelOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1050; overflow-y:auto;">
+    <div style="max-width:500px; margin:8% auto; background:#fff; border-radius:4px; overflow:hidden;">
+        <div class="card mb-0">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h3 class="card-title mb-0">Edit User Level</h3>
+                <button type="button" class="btn btn-tool" id="closeEditUserLevelModalBtn"><i class="fas fa-times"></i></button>
+            </div>
+            <form id="editUserLevelForm">
+                <input type="hidden" id="editUserLevelId">
+                <div class="card-body">
+                    <div id="editUserLevelError" class="alert alert-danger" style="display:none;"></div>
+                    <div class="form-group">
+                        <label>Name *</label>
+                        <input type="text" class="form-control" id="editUserLevelName" required maxlength="50">
+                    </div>
+                    <div class="form-group">
+                        <label>Description</label>
+                        <textarea class="form-control" id="editUserLevelDescription" rows="2"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>System</label>
+                        <select class="form-control" id="editUserLevelSystem">
+                            <option value="">(No System)</option>
+                            <?php foreach ($systems as $system): ?>
+                            <option value="<?php echo $system['system_id']; ?>"><?php echo HtmlEncode($system['system_name']); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <small class="form-text text-muted">The system/module this role belongs to</small>
+                    </div>
+                </div>
+                <div class="card-footer text-right">
+                    <button type="button" class="btn btn-default" id="cancelEditUserLevelBtn">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="submitEditUserLevelBtn">
+                        <i class="fas fa-save mr-1"></i> Save User Level
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
+
+<?php if ($canManagePermissions): ?>
+<!-- Rename Module modal (self-contained, no Bootstrap JS dependency) -->
+<div id="renameModuleOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1050; overflow-y:auto;">
+    <div style="max-width:450px; margin:10% auto; background:#fff; border-radius:4px; overflow:hidden;">
+        <div class="card mb-0">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h3 class="card-title mb-0">Rename Module</h3>
+                <button type="button" class="btn btn-tool" id="closeRenameModuleModalBtn"><i class="fas fa-times"></i></button>
+            </div>
+            <form id="renameModuleForm">
+                <input type="hidden" id="renameModuleTableName">
+                <div class="card-body">
+                    <div id="renameModuleError" class="alert alert-danger" style="display:none;"></div>
+                    <div class="form-group">
+                        <label>Display Caption *</label>
+                        <input type="text" class="form-control" id="renameModuleCaption" required maxlength="150">
+                        <small class="form-text text-muted">Only changes how this row is labeled here — not the underlying page/table.</small>
+                    </div>
+                </div>
+                <div class="card-footer text-right">
+                    <button type="button" class="btn btn-default" id="cancelRenameModuleBtn">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="submitRenameModuleBtn">
+                        <i class="fas fa-save mr-1"></i> Save Caption
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Confirm Removal modal (self-contained, no Bootstrap JS dependency) -->
+<div id="removeModuleOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1050; overflow-y:auto;">
+    <div style="max-width:450px; margin:10% auto; background:#fff; border-radius:4px; overflow:hidden;">
+        <div class="card mb-0">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h3 class="card-title mb-0"><i class="fas fa-exclamation-triangle text-warning mr-1"></i> Remove <span id="removeModuleCount">Module</span></h3>
+                <button type="button" class="btn btn-tool" id="closeRemoveModuleModalBtn"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="card-body">
+                <p>You are about to remove the following module(s) from the Permissions Management list:</p>
+                <ul class="list-group mb-3" id="removeModuleList" style="max-height:220px; overflow-y:auto;"></ul>
+                <p class="text-muted small mb-0">
+                    <i class="fas fa-info-circle mr-1"></i>
+                    This only hides the row(s) here — existing permission settings are kept and nothing is deleted.
+                    You can bring them back anytime with "Show hidden modules".
+                </p>
+            </div>
+            <div class="card-footer text-right">
+                <button type="button" class="btn btn-default" id="cancelRemoveModuleBtn">Cancel</button>
+                <button type="button" class="btn btn-danger" id="confirmRemoveModuleBtn">
+                    <i class="fas fa-trash mr-1"></i> Remove
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
+
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     const assignmentsByUser = <?php echo $assignmentsByUserJson ?: '{}'; ?>;
     const permissionsByLevel = <?php echo $permissionsByLevelJson ?: '{}'; ?>;
     const allModules = <?php echo $allModulesJson ?: '[]'; ?>;
     const usersById = <?php echo $usersByIdJson ?: '{}'; ?>;
+    const userLevelsById = <?php echo $userLevelsByIdJson ?: '{}'; ?>;
     const deleteAssignmentBaseUrl = <?php echo json_encode($deleteAssignmentBaseUrl); ?>;
     const canManagePermissions = <?php echo $canManagePermissions ? 'true' : 'false'; ?>;
+
+    function escapeHtml(str) {
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
 
     // ── User search / filter ──
     const searchInput = document.getElementById('userSearchInput');
@@ -699,6 +857,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const assignSystemId = document.getElementById('assignSystemId');
     const assignLevelSelect = document.getElementById('assignLevelSelect');
     const assignAccessBtn = document.getElementById('assignAccessBtn');
+    const editUserLevelBtn = document.getElementById('editUserLevelBtn');
     const permissionMatrixBody = document.getElementById('permissionMatrixBody');
     const savePermissionsBtn = document.getElementById('savePermissionsBtn');
 
@@ -708,6 +867,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const checkAllPermissionsBtn = document.getElementById('checkAllPermissionsBtn');
     const uncheckAllPermissionsBtn = document.getElementById('uncheckAllPermissionsBtn');
     const syncPermissionModulesBtn = document.getElementById('syncPermissionModulesBtn');
+    const showHiddenModulesCheck = document.getElementById('showHiddenModulesCheck');
 
     function rowCheckboxes(tr) {
         return PERM_KEYS.map(function (key) { return tr.querySelector('.perm-' + key); });
@@ -746,28 +906,59 @@ document.addEventListener('DOMContentLoaded', function () {
         if (checkAllPermissionsBtn) checkAllPermissionsBtn.disabled = !levelId;
         if (uncheckAllPermissionsBtn) uncheckAllPermissionsBtn.disabled = !levelId;
 
-        if (!levelId || allModules.length === 0) {
-            permissionMatrixBody.innerHTML = '<tr><td colspan="10" class="text-muted">Select a user level to view / edit its permissions.</td></tr>';
+        if (allModules.length === 0) {
+            permissionMatrixBody.innerHTML = '<tr><td colspan="11" class="text-muted">No modules to show.</td></tr>';
             return;
         }
 
+        // The module list itself (rename / remove / restore) is always manageable -
+        // only the per-level permission checkboxes need an actual level selected.
         const existing = {};
-        (permissionsByLevel[levelId] || []).forEach(function (r) { existing[r.table_name] = r; });
+        if (levelId) {
+            (permissionsByLevel[levelId] || []).forEach(function (r) { existing[r.table_name] = r; });
+        }
+        const canEditCells = canManagePermissions && !!levelId;
 
         const checkbox = function (perm, checked) {
             return '<input type="checkbox" class="perm-cell perm-' + perm + '" ' + (checked ? 'checked' : '') +
-                (canManagePermissions ? '' : ' disabled') + '>';
+                (canEditCells ? '' : ' disabled') + '>';
         };
 
-        permissionMatrixBody.innerHTML = allModules.map(function (module) {
+        const showHidden = showHiddenModulesCheck && showHiddenModulesCheck.checked;
+        const visibleModules = allModules.filter(function (m) { return showHidden || !m.is_hidden; });
+
+        if (visibleModules.length === 0) {
+            permissionMatrixBody.innerHTML = '<tr><td colspan="11" class="text-muted">No modules to show.</td></tr>';
+            return;
+        }
+
+        permissionMatrixBody.innerHTML = visibleModules.map(function (module) {
             const r = existing[module.table_name] || {};
             const cells = PERM_KEYS.map(function (key) {
                 return '<td class="text-center">' + checkbox(key, !!r[key]) + '</td>';
             }).join('');
-            return '<tr data-table="' + module.table_name + '" data-full-key="' + module.full_key + '">' +
-                '<td><input type="checkbox" class="perm-row-toggle"' + (canManagePermissions ? '' : ' disabled') + '></td>' +
-                '<td>' + module.caption + '</td>' + cells + '</tr>';
+            let actions = '';
+            let deleteSelectCell = '';
+            if (canManagePermissions) {
+                actions += ' <button type="button" class="btn btn-link btn-sm p-0 ml-1 edit-module-caption-btn" data-table="' +
+                    escapeHtml(module.table_name) + '" data-caption="' + escapeHtml(module.caption) + '" title="Rename">' +
+                    '<i class="fas fa-pencil-alt"></i></button>';
+                if (module.is_hidden) {
+                    actions += ' <button type="button" class="btn btn-link btn-sm p-0 ml-1 text-success restore-module-btn" data-table="' +
+                        escapeHtml(module.table_name) + '" title="Restore to the list">' +
+                        '<i class="fas fa-undo"></i></button>';
+                }
+                deleteSelectCell = '<td><input type="checkbox" class="module-delete-select" data-table="' +
+                    escapeHtml(module.table_name) + '" data-caption="' + escapeHtml(module.caption) + '"></td>';
+            }
+            const rowClass = module.is_hidden ? ' class="text-muted"' : '';
+            return '<tr' + rowClass + ' data-table="' + escapeHtml(module.table_name) + '" data-full-key="' + escapeHtml(module.full_key) + '">' +
+                deleteSelectCell +
+                '<td><input type="checkbox" class="perm-row-toggle"' + (canEditCells ? '' : ' disabled') + '></td>' +
+                '<td>' + escapeHtml(module.caption) + (module.is_hidden ? ' <span class="badge badge-secondary">Hidden</span>' : '') + actions + '</td>' + cells + '</tr>';
         }).join('');
+
+        updateDeleteSelectedState();
 
         syncAllToggles();
     }
@@ -783,8 +974,152 @@ document.addEventListener('DOMContentLoaded', function () {
                 rowCheckboxes(tr).forEach(function (b) { b.checked = e.target.checked; });
                 syncColumnCheckboxes();
                 syncMasterCheckbox();
+            } else if (e.target.classList.contains('module-delete-select')) {
+                updateDeleteSelectedState();
             }
         });
+
+        permissionMatrixBody.addEventListener('click', function (e) {
+            const editBtn = e.target.closest('.edit-module-caption-btn');
+            if (editBtn) {
+                openRenameModuleModal(editBtn.dataset.table, editBtn.dataset.caption);
+                return;
+            }
+            const restoreBtn = e.target.closest('.restore-module-btn');
+            if (restoreBtn) {
+                const module = allModules.find(function (m) { return m.table_name === restoreBtn.dataset.table; });
+                setModuleVisibility(restoreBtn.dataset.table, module ? module.caption : restoreBtn.dataset.table, false);
+            }
+        });
+    }
+
+    // ── Bulk delete selection ──
+    const selectAllForDeleteCheck = document.getElementById('selectAllForDeleteCheck');
+    const deleteSelectedModulesBtn = document.getElementById('deleteSelectedModulesBtn');
+    const deleteSelectedCount = document.getElementById('deleteSelectedCount');
+
+    function getSelectedModulesForDelete() {
+        return Array.from(permissionMatrixBody.querySelectorAll('.module-delete-select:checked')).map(function (cb) {
+            return { table_name: cb.dataset.table, caption: cb.dataset.caption };
+        });
+    }
+
+    function updateDeleteSelectedState() {
+        const boxes = Array.from(permissionMatrixBody.querySelectorAll('.module-delete-select'));
+        const checkedCount = boxes.filter(function (b) { return b.checked; }).length;
+        if (deleteSelectedCount) deleteSelectedCount.textContent = checkedCount;
+        if (deleteSelectedModulesBtn) deleteSelectedModulesBtn.disabled = checkedCount === 0;
+        if (selectAllForDeleteCheck) {
+            selectAllForDeleteCheck.checked = boxes.length > 0 && checkedCount === boxes.length;
+        }
+    }
+
+    if (selectAllForDeleteCheck) {
+        selectAllForDeleteCheck.addEventListener('change', function () {
+            permissionMatrixBody.querySelectorAll('.module-delete-select').forEach(function (cb) {
+                cb.checked = selectAllForDeleteCheck.checked;
+            });
+            updateDeleteSelectedState();
+        });
+    }
+
+    if (deleteSelectedModulesBtn) {
+        deleteSelectedModulesBtn.addEventListener('click', function () {
+            const selected = getSelectedModulesForDelete();
+            if (selected.length === 0) return;
+            openRemoveModuleModal(selected);
+        });
+    }
+
+    if (showHiddenModulesCheck) {
+        showHiddenModulesCheck.addEventListener('change', function () {
+            renderPermissionMatrix(assignLevelSelect ? assignLevelSelect.value : '');
+        });
+    }
+
+    function setModuleVisibility(tableName, caption, isHidden) {
+        return fetch('/api/user-access/module-visibility', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Authorization': 'Bearer ' + ew.API_JWT_TOKEN
+            },
+            body: JSON.stringify({ table_name: tableName, caption: caption, is_hidden: isHidden })
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (result) {
+                if (result.success) {
+                    ew.showToast(isHidden ? 'Module removed from the list' : 'Module restored');
+                    location.reload();
+                } else {
+                    ew.alert(result.message || 'Error updating module visibility');
+                }
+            })
+            .catch(function () {
+                ew.alert('Error connecting to the server. Please try again.');
+            });
+    }
+
+    // ── Confirm Removal modal ──
+    const removeModuleOverlay = document.getElementById('removeModuleOverlay');
+    let pendingRemoveModules = [];
+
+    function openRemoveModuleModal(modules) {
+        if (!removeModuleOverlay) return;
+        pendingRemoveModules = modules;
+
+        document.getElementById('removeModuleCount').textContent =
+            modules.length === 1 ? 'Module' : modules.length + ' Modules';
+
+        document.getElementById('removeModuleList').innerHTML = modules.map(function (m) {
+            return '<li class="list-group-item py-1">' +
+                '<strong>' + escapeHtml(m.caption) + '</strong>' +
+                '<div class="text-muted small">' + escapeHtml(m.table_name) + '</div></li>';
+        }).join('');
+
+        removeModuleOverlay.style.display = 'block';
+    }
+
+    function closeRemoveModuleModal() {
+        pendingRemoveModules = [];
+        if (removeModuleOverlay) removeModuleOverlay.style.display = 'none';
+    }
+
+    const closeRemoveModuleModalBtn = document.getElementById('closeRemoveModuleModalBtn');
+    const cancelRemoveModuleBtn = document.getElementById('cancelRemoveModuleBtn');
+    const confirmRemoveModuleBtn = document.getElementById('confirmRemoveModuleBtn');
+    if (closeRemoveModuleModalBtn) closeRemoveModuleModalBtn.addEventListener('click', closeRemoveModuleModal);
+    if (cancelRemoveModuleBtn) cancelRemoveModuleBtn.addEventListener('click', closeRemoveModuleModal);
+    if (confirmRemoveModuleBtn) {
+        confirmRemoveModuleBtn.addEventListener('click', function () {
+            if (pendingRemoveModules.length === 0) return;
+            confirmRemoveModuleBtn.disabled = true;
+            removeModules(pendingRemoveModules)
+                .finally(function () { confirmRemoveModuleBtn.disabled = false; });
+        });
+    }
+
+    function removeModules(modules) {
+        return fetch('/api/user-access/modules/remove', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Authorization': 'Bearer ' + ew.API_JWT_TOKEN
+            },
+            body: JSON.stringify({ modules: modules })
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (result) {
+                if (result.success) {
+                    ew.showToast(result.message || 'Module(s) removed');
+                    location.reload();
+                } else {
+                    ew.alert(result.message || 'Error removing module(s)');
+                }
+            })
+            .catch(function () {
+                ew.alert('Error connecting to the server. Please try again.');
+            });
     }
 
     document.querySelectorAll('.perm-col-toggle').forEach(function (colToggle) {
@@ -917,6 +1252,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (assignLevelSelect) assignLevelSelect.value = '';
         if (assignSystemId) assignSystemId.value = '';
         if (assignAccessBtn) assignAccessBtn.disabled = true;
+        if (editUserLevelBtn) editUserLevelBtn.disabled = true;
         renderPermissionMatrix('');
 
         const panel = document.getElementById('accessPanel');
@@ -933,6 +1269,7 @@ document.addEventListener('DOMContentLoaded', function () {
         assignLevelSelect.addEventListener('change', function () {
             const selectedOption = this.options[this.selectedIndex];
             assignAccessBtn.disabled = !this.value;
+            if (editUserLevelBtn) editUserLevelBtn.disabled = !this.value;
             if (assignSystemId) assignSystemId.value = this.value ? selectedOption.dataset.systemId : '';
             renderPermissionMatrix(this.value);
         });
@@ -1137,6 +1474,87 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
+    // ── Edit User Level modal ──
+    const editUserLevelOverlay = document.getElementById('editUserLevelOverlay');
+    const editUserLevelForm = document.getElementById('editUserLevelForm');
+    const editUserLevelError = document.getElementById('editUserLevelError');
+
+    function openEditUserLevelModal(levelId) {
+        if (!editUserLevelOverlay) return;
+        const level = userLevelsById[levelId];
+        if (!level) return;
+
+        editUserLevelForm.reset();
+        editUserLevelError.style.display = 'none';
+        document.getElementById('editUserLevelId').value = levelId;
+        document.getElementById('editUserLevelName').value = level.name || '';
+        document.getElementById('editUserLevelDescription').value = level.description || '';
+        document.getElementById('editUserLevelSystem').value = level.system_id || '';
+
+        editUserLevelOverlay.style.display = 'block';
+    }
+
+    function closeEditUserLevelModal() {
+        if (editUserLevelOverlay) editUserLevelOverlay.style.display = 'none';
+    }
+
+    if (editUserLevelBtn) {
+        editUserLevelBtn.addEventListener('click', function () {
+            if (assignLevelSelect && assignLevelSelect.value) {
+                openEditUserLevelModal(assignLevelSelect.value);
+            }
+        });
+    }
+
+    const closeEditUserLevelModalBtn = document.getElementById('closeEditUserLevelModalBtn');
+    const cancelEditUserLevelBtn = document.getElementById('cancelEditUserLevelBtn');
+    if (closeEditUserLevelModalBtn) closeEditUserLevelModalBtn.addEventListener('click', closeEditUserLevelModal);
+    if (cancelEditUserLevelBtn) cancelEditUserLevelBtn.addEventListener('click', closeEditUserLevelModal);
+
+    if (editUserLevelForm) {
+        editUserLevelForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+            editUserLevelError.style.display = 'none';
+
+            const levelId = document.getElementById('editUserLevelId').value;
+            const payload = {
+                name: document.getElementById('editUserLevelName').value.trim(),
+                description: document.getElementById('editUserLevelDescription').value.trim() || null,
+                system_id: document.getElementById('editUserLevelSystem').value || null
+            };
+
+            const submitBtn = document.getElementById('submitEditUserLevelBtn');
+            submitBtn.disabled = true;
+
+            fetch('/api/user-access/user-levels/' + levelId, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Authorization': 'Bearer ' + ew.API_JWT_TOKEN
+                },
+                body: JSON.stringify(payload)
+            })
+                .then(function (r) { return r.json(); })
+                .then(function (result) {
+                    if (result.success) {
+                        ew.showToast('User level updated successfully');
+                        closeEditUserLevelModal();
+                        location.reload();
+                    } else {
+                        editUserLevelError.textContent = result.message || 'Error updating user level';
+                        editUserLevelError.style.display = 'block';
+                    }
+                })
+                .catch(function () {
+                    editUserLevelError.textContent = 'Error connecting to the server. Please try again.';
+                    editUserLevelError.style.display = 'block';
+                })
+                .finally(function () {
+                    submitBtn.disabled = false;
+                });
+        });
+    }
+
     // ── Edit User modal ──
     const editUserOverlay = document.getElementById('editUserOverlay');
     const editUserForm = document.getElementById('editUserForm');
@@ -1250,5 +1668,74 @@ document.addEventListener('DOMContentLoaded', function () {
                 });
         });
     }
+
+    // ── Rename Module modal ──
+    const renameModuleOverlay = document.getElementById('renameModuleOverlay');
+    const renameModuleForm = document.getElementById('renameModuleForm');
+    const renameModuleError = document.getElementById('renameModuleError');
+
+    function openRenameModuleModal(tableName, currentCaption) {
+        if (!renameModuleOverlay) return;
+        renameModuleForm.reset();
+        renameModuleError.style.display = 'none';
+        document.getElementById('renameModuleTableName').value = tableName;
+        document.getElementById('renameModuleCaption').value = currentCaption || '';
+        renameModuleOverlay.style.display = 'block';
+    }
+
+    function closeRenameModuleModal() {
+        if (renameModuleOverlay) renameModuleOverlay.style.display = 'none';
+    }
+
+    const closeRenameModuleModalBtn = document.getElementById('closeRenameModuleModalBtn');
+    const cancelRenameModuleBtn = document.getElementById('cancelRenameModuleBtn');
+    if (closeRenameModuleModalBtn) closeRenameModuleModalBtn.addEventListener('click', closeRenameModuleModal);
+    if (cancelRenameModuleBtn) cancelRenameModuleBtn.addEventListener('click', closeRenameModuleModal);
+
+    if (renameModuleForm) {
+        renameModuleForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+            renameModuleError.style.display = 'none';
+
+            const payload = {
+                table_name: document.getElementById('renameModuleTableName').value,
+                caption: document.getElementById('renameModuleCaption').value.trim()
+            };
+
+            const submitBtn = document.getElementById('submitRenameModuleBtn');
+            submitBtn.disabled = true;
+
+            fetch('/api/user-access/module-caption', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Authorization': 'Bearer ' + ew.API_JWT_TOKEN
+                },
+                body: JSON.stringify(payload)
+            })
+                .then(function (r) { return r.json(); })
+                .then(function (result) {
+                    if (result.success) {
+                        ew.showToast('Module renamed successfully');
+                        closeRenameModuleModal();
+                        location.reload();
+                    } else {
+                        renameModuleError.textContent = result.message || 'Error renaming module';
+                        renameModuleError.style.display = 'block';
+                    }
+                })
+                .catch(function () {
+                    renameModuleError.textContent = 'Error connecting to the server. Please try again.';
+                    renameModuleError.style.display = 'block';
+                })
+                .finally(function () {
+                    submitBtn.disabled = false;
+                });
+        });
+    }
+
+    // Show the full module list (with rename/remove actions) immediately, even
+    // before a user level is selected - only the per-level checkboxes need a level.
+    renderPermissionMatrix('');
 });
 </script>

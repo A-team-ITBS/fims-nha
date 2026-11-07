@@ -36,11 +36,48 @@ $app->post("/user-access/sync-modules", function ($request, $response) {
     return $response->withHeader('Content-Type', 'application/json')->write($result);
 });
 
+// Rename a module/page row's display caption in the Permissions Management matrix
+// (stored in permission_module_captions; does not touch PHPMaker's generated registry)
+$app->post("/user-access/module-caption", function ($request, $response) {
+    $data = $request->getParsedBody();
+    $service = new Service\UserAccessService();
+    $result = $service->renameModuleCaption($data);
+    return $response->withHeader('Content-Type', 'application/json')->write($result);
+});
+
+// Remove (hide) or restore a module/page row in the Permissions Management matrix.
+// Removing only excludes it from the list - underlying permission rows are untouched
+// and it can be restored via "Show hidden modules".
+$app->post("/user-access/module-visibility", function ($request, $response) {
+    $data = $request->getParsedBody();
+    $service = new Service\UserAccessService();
+    $result = $service->setModuleHidden($data);
+    return $response->withHeader('Content-Type', 'application/json')->write($result);
+});
+
+// Bulk-remove (hide) multiple module/page rows at once from the Permissions Management
+// list (multi-select "Delete Selected"). Non-destructive and reversible, like
+// /user-access/module-visibility, but handles the whole selection in one request.
+$app->post("/user-access/modules/remove", function ($request, $response) {
+    $data = $request->getParsedBody();
+    $service = new Service\UserAccessService();
+    $result = $service->removeModules($data);
+    return $response->withHeader('Content-Type', 'application/json')->write($result);
+});
+
 // Create a user level (role) directly from the UserAccess page (no redirect to UserLevelsAdd)
 $app->post("/user-access/user-levels", function ($request, $response) {
     $data = $request->getParsedBody();
     $service = new Service\UserAccessService();
     $result = $service->createUserLevel($data);
+    return $response->withHeader('Content-Type', 'application/json')->write($result);
+});
+
+// Update a user level (role) directly from the UserAccess page (no redirect to UserLevelsEdit)
+$app->put("/user-access/user-levels/{id}", function ($request, $response, $args) {
+    $data = $request->getParsedBody();
+    $service = new Service\UserAccessService();
+    $result = $service->updateUserLevel($args['id'], $data);
     return $response->withHeader('Content-Type', 'application/json')->write($result);
 });
 

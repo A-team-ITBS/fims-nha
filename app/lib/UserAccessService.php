@@ -365,6 +365,172 @@ class UserAccessService
         }
     }
 
+    public function renameModuleCaption($data)
+    {
+        try {
+            if (!App\AllowAdd("user_level_permissions") && !App\AllowEdit("user_level_permissions")) {
+                throw new \InvalidArgumentException("You do not have permission to manage permissions");
+            }
+
+            $tableName = trim($data['table_name'] ?? '');
+            $caption = trim($data['caption'] ?? '');
+
+            if ($tableName === '') {
+                throw new \InvalidArgumentException("A module is required");
+            }
+            if ($caption === '') {
+                throw new \InvalidArgumentException("Caption is required");
+            }
+            if (strlen($caption) > 150) {
+                throw new \InvalidArgumentException("Caption must be 150 characters or fewer");
+            }
+
+            App\Execute("BEGIN", "DB");
+            try {
+                $this->ensureModuleCaptionsTable();
+
+                $sql = "INSERT INTO permission_module_captions (table_name, caption) VALUES (" .
+                    App\QuotedValue($tableName, App\DataType::STRING, "DB") . ", " .
+                    App\QuotedValue($caption, App\DataType::STRING, "DB") . ")" .
+                    " ON CONFLICT (table_name) DO UPDATE SET caption = EXCLUDED.caption, updated_at = CURRENT_TIMESTAMP";
+                App\Execute($sql, "DB");
+
+                App\Execute("COMMIT", "DB");
+            } catch (\Exception $e) {
+                App\Execute("ROLLBACK", "DB");
+                throw $e;
+            }
+
+            return json_encode(['success' => true, 'message' => 'Module caption updated successfully']);
+        } catch (\InvalidArgumentException $e) {
+            return json_encode(['success' => false, 'message' => $e->getMessage()]);
+        } catch (\Exception $e) {
+            App\LogError("Error in UserAccessService::renameModuleCaption: " . $e->getMessage());
+            return json_encode(['success' => false, 'message' => 'Internal server error']);
+        }
+    }
+
+    // Defensive: create/upgrade the table if the migration (_assets/sql/00 - uac/02 - alter_table/
+    // 04 - permission_module_captions.sql) hasn't been run yet. Must be called inside a transaction.
+    private function ensureModuleCaptionsTable()
+    {
+        App\Execute(
+            "CREATE TABLE IF NOT EXISTS permission_module_captions (
+                table_name varchar(100) NOT NULL PRIMARY KEY,
+                caption varchar(150) NOT NULL,
+                is_hidden boolean NOT NULL DEFAULT FALSE,
+                updated_at timestamptz(6) NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )",
+            "DB"
+        );
+        App\Execute("ALTER TABLE permission_module_captions ADD COLUMN IF NOT EXISTS is_hidden boolean NOT NULL DEFAULT FALSE", "DB");
+    }
+
+    public function setModuleHidden($data)
+    {
+        try {
+            if (!App\AllowAdd("user_level_permissions") && !App\AllowEdit("user_level_permissions")) {
+                throw new \InvalidArgumentException("You do not have permission to manage permissions");
+            }
+
+            $tableName = trim($data['table_name'] ?? '');
+            $caption = trim($data['caption'] ?? '');
+            $isHidden = App\ConvertToBool($data['is_hidden'] ?? false);
+
+            if ($tableName === '') {
+                throw new \InvalidArgumentException("A module is required");
+            }
+            if ($caption === '') {
+                throw new \InvalidArgumentException("Caption is required");
+            }
+
+            App\Execute("BEGIN", "DB");
+            try {
+                $this->ensureModuleCaptionsTable();
+
+                $sql = "INSERT INTO permission_module_captions (table_name, caption, is_hidden) VALUES (" .
+                    App\QuotedValue($tableName, App\DataType::STRING, "DB") . ", " .
+                    App\QuotedValue($caption, App\DataType::STRING, "DB") . ", " .
+                    App\QuotedValue($isHidden, App\DataType::BOOLEAN, "DB") . ")" .
+                    " ON CONFLICT (table_name) DO UPDATE SET is_hidden = EXCLUDED.is_hidden, updated_at = CURRENT_TIMESTAMP";
+                App\Execute($sql, "DB");
+
+                App\Execute("COMMIT", "DB");
+            } catch (\Exception $e) {
+                App\Execute("ROLLBACK", "DB");
+                throw $e;
+            }
+
+            return json_encode([
+                'success' => true,
+                'message' => $isHidden ? 'Module removed from the list' : 'Module restored',
+            ]);
+        } catch (\InvalidArgumentException $e) {
+            return json_encode(['success' => false, 'message' => $e->getMessage()]);
+        } catch (\Exception $e) {
+            App\LogError("Error in UserAccessService::setModuleHidden: " . $e->getMessage());
+            return json_encode(['success' => false, 'message' => 'Internal server error']);
+        }
+    }
+
+    // Bulk-hide multiple module/page rows from the Permissions Management list in one
+    // request (multi-select "Delete Selected"). Non-destructive, same as setModuleHidden -
+    // underlying uac.user_level_permissions rows are untouched and this is reversible.
+    public function removeModules($data)
+    {
+        try {
+            if (!App\AllowAdd("user_level_permissions") && !App\AllowEdit("user_level_permissions")) {
+                throw new \InvalidArgumentException("You do not have permission to manage permissions");
+            }
+
+            $modules = $data['modules'] ?? [];
+            if (!is_array($modules) || empty($modules)) {
+                throw new \InvalidArgumentException("No modules were selected");
+            }
+
+            $removed = 0;
+            App\Execute("BEGIN", "DB");
+            try {
+                $this->ensureModuleCaptionsTable();
+
+                foreach ($modules as $module) {
+                    $tableName = trim($module['table_name'] ?? '');
+                    $caption = trim($module['caption'] ?? '');
+                    if ($tableName === '' || $caption === '') {
+                        continue;
+                    }
+
+                    $sql = "INSERT INTO permission_module_captions (table_name, caption, is_hidden) VALUES (" .
+                        App\QuotedValue($tableName, App\DataType::STRING, "DB") . ", " .
+                        App\QuotedValue($caption, App\DataType::STRING, "DB") . ", " .
+                        App\QuotedValue(true, App\DataType::BOOLEAN, "DB") . ")" .
+                        " ON CONFLICT (table_name) DO UPDATE SET is_hidden = EXCLUDED.is_hidden, updated_at = CURRENT_TIMESTAMP";
+                    App\Execute($sql, "DB");
+                    $removed++;
+                }
+
+                App\Execute("COMMIT", "DB");
+            } catch (\Exception $e) {
+                App\Execute("ROLLBACK", "DB");
+                throw $e;
+            }
+
+            if ($removed === 0) {
+                throw new \InvalidArgumentException("No valid modules were selected");
+            }
+
+            return json_encode([
+                'success' => true,
+                'message' => $removed === 1 ? '1 module removed from the list' : "{$removed} modules removed from the list",
+            ]);
+        } catch (\InvalidArgumentException $e) {
+            return json_encode(['success' => false, 'message' => $e->getMessage()]);
+        } catch (\Exception $e) {
+            App\LogError("Error in UserAccessService::removeModules: " . $e->getMessage());
+            return json_encode(['success' => false, 'message' => 'Internal server error']);
+        }
+    }
+
     public function createUserLevel($data)
     {
         try {
@@ -443,6 +609,78 @@ class UserAccessService
             return json_encode(['success' => false, 'message' => $e->getMessage()]);
         } catch (\Exception $e) {
             App\LogError("Error in UserAccessService::createUserLevel: " . $e->getMessage());
+            return json_encode(['success' => false, 'message' => 'Internal server error']);
+        }
+    }
+
+    public function updateUserLevel($userLevelId, $data)
+    {
+        try {
+            if (!App\AllowEdit("user_levels")) {
+                throw new \InvalidArgumentException("You do not have permission to edit user levels");
+            }
+            if (empty($userLevelId) || !is_numeric($userLevelId)) {
+                throw new \InvalidArgumentException("A valid user level is required");
+            }
+
+            $exists = App\ExecuteScalar(
+                "SELECT COUNT(*) FROM user_levels WHERE user_level_id = " . App\QuotedValue($userLevelId, App\DataType::NUMBER, "DB"),
+                "DB"
+            );
+            if (!$exists) {
+                throw new \InvalidArgumentException("User level not found");
+            }
+
+            $name = trim($data['name'] ?? '');
+            $description = trim($data['description'] ?? '') ?: null;
+            $systemId = empty($data['system_id']) ? null : $data['system_id'];
+
+            if ($name === '') {
+                throw new \InvalidArgumentException("Name is required");
+            }
+            if (strlen($name) > 50) {
+                throw new \InvalidArgumentException("Name must be 50 characters or fewer");
+            }
+
+            $duplicate = App\ExecuteScalar(
+                "SELECT COUNT(*) FROM user_levels WHERE LOWER(name) = LOWER(" .
+                App\QuotedValue($name, App\DataType::STRING, "DB") . ") AND user_level_id <> " .
+                App\QuotedValue($userLevelId, App\DataType::NUMBER, "DB"),
+                "DB"
+            );
+            if ($duplicate > 0) {
+                throw new \InvalidArgumentException("A user level with this name already exists");
+            }
+
+            if ($systemId !== null) {
+                $systemExists = App\ExecuteScalar(
+                    "SELECT COUNT(*) FROM systems WHERE system_id = " . App\QuotedValue($systemId, App\DataType::NUMBER, "DB"),
+                    "DB"
+                );
+                if (!$systemExists) {
+                    throw new \InvalidArgumentException("Selected system was not found");
+                }
+            }
+
+            App\Execute("BEGIN", "DB");
+            try {
+                $sql = "UPDATE user_levels SET " .
+                    "name = " . App\QuotedValue($name, App\DataType::STRING, "DB") . ", " .
+                    "description = " . ($description !== null ? App\QuotedValue($description, App\DataType::STRING, "DB") : "NULL") . ", " .
+                    "system_id = " . ($systemId !== null ? App\QuotedValue($systemId, App\DataType::NUMBER, "DB") : "NULL") .
+                    " WHERE user_level_id = " . App\QuotedValue($userLevelId, App\DataType::NUMBER, "DB");
+                App\Execute($sql, "DB");
+                App\Execute("COMMIT", "DB");
+            } catch (\Exception $e) {
+                App\Execute("ROLLBACK", "DB");
+                throw $e;
+            }
+
+            return json_encode(['success' => true, 'message' => 'User level updated successfully']);
+        } catch (\InvalidArgumentException $e) {
+            return json_encode(['success' => false, 'message' => $e->getMessage()]);
+        } catch (\Exception $e) {
+            App\LogError("Error in UserAccessService::updateUserLevel: " . $e->getMessage());
             return json_encode(['success' => false, 'message' => 'Internal server error']);
         }
     }
