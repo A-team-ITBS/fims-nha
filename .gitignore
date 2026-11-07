@@ -162,18 +162,10 @@ nha-fims.itbsstudio.com
 .github/scripts/deploy-dev.sh
 .github/scripts/deploy-production.sh
 logs.php
-nginx.conf
+
+
 .sql_run_history.json
-FMD/composer.lock
-FMD/composer.lock
-UAC/composer.lock
-FMD/composer.lock
-FMD/composer.lock
-UAC/composer.lock
-composer.json
-composer.lock
-FMD/package-lock.json
-package-lock.json
+
 
 # FMD local history
 FMD/history/
