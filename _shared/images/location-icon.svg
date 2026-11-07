@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <linearGradient id="waterGradient2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#003876;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0056b3;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background Circle -->
+  <circle cx="50" cy="50" r="45" fill="white" stroke="#003876" stroke-width="2"/>
+  
+  <!-- Water Station Building -->
+  <rect x="35" y="40" width="30" height="35" fill="url(#waterGradient2)">
+    <animate attributeName="height" 
+             values="35;37;35" 
+             dur="3s" 
+             repeatCount="indefinite"/>
+  </rect>
+  
+  <!-- Location Pin Combined with Water Drop -->
+  <path d="M50 20 Q60 30 60 40 L50 55 L40 40 Q40 30 50 20" 
+        fill="#c41e3a" stroke="none">
+    <animate attributeName="d" 
+             values="M50 20 Q60 30 60 40 L50 55 L40 40 Q40 30 50 20;
+                     M50 22 Q62 32 62 42 L50 57 L38 42 Q38 32 50 22;
+                     M50 20 Q60 30 60 40 L50 55 L40 40 Q40 30 50 20"
+             dur="3s" 
+             repeatCount="indefinite"/>
+  </path>
+  
+  <!-- Water Waves -->
+  <path d="M38 65 Q44 60 50 65 Q56 70 62 65" 
+        fill="none" stroke="white" stroke-width="2">
+    <animate attributeName="d" 
+             values="M38 65 Q44 60 50 65 Q56 70 62 65;
+                     M38 67 Q44 62 50 67 Q56 72 62 67;
+                     M38 65 Q44 60 50 65 Q56 70 62 65"
+             dur="3s" 
+             repeatCount="indefinite"/>
+  </path>
+</svg>

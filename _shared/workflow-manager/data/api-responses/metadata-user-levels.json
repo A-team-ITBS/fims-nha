@@ -1,0 +1,88 @@
+{
+  "success": true,
+  "message": "User levels retrieved successfully",
+  "data": [
+    {
+      "id": "ul-001",
+      "name": "Staff",
+      "description": "Basic staff members with limited permissions",
+      "permissions": [
+        "workflow.view",
+        "workflow.update.assigned",
+        "document.upload"
+      ],
+      "priority": 1
+    },
+    {
+      "id": "ul-002",
+      "name": "Supervisor",
+      "description": "Supervisory staff with approval permissions",
+      "permissions": [
+        "workflow.view",
+        "workflow.update.assigned",
+        "workflow.approve",
+        "document.upload",
+        "document.approve"
+      ],
+      "priority": 2
+    },
+    {
+      "id": "ul-003",
+      "name": "Manager",
+      "description": "Management level with full workflow control",
+      "permissions": [
+        "workflow.view",
+        "workflow.update.all",
+        "workflow.approve",
+        "workflow.create",
+        "workflow.delete",
+        "document.upload",
+        "document.approve",
+        "user.manage"
+      ],
+      "priority": 3
+    },
+    {
+      "id": "ul-004",
+      "name": "Director",
+      "description": "Director level with system-wide access",
+      "permissions": [
+        "workflow.view",
+        "workflow.update.all",
+        "workflow.approve",
+        "workflow.create",
+        "workflow.delete",
+        "document.upload",
+        "document.approve",
+        "user.manage",
+        "system.admin"
+      ],
+      "priority": 4
+    },
+    {
+      "id": "ul-005",
+      "name": "Mayor",
+      "description": "Mayor with executive approval authority",
+      "permissions": [
+        "workflow.view",
+        "workflow.approve.final",
+        "document.approve.final",
+        "system.admin"
+      ],
+      "priority": 5
+    },
+    {
+      "id": "ul-006",
+      "name": "Treasurer",
+      "description": "Treasurer with financial workflow authority",
+      "permissions": [
+        "workflow.view",
+        "workflow.update.financial",
+        "workflow.approve.financial",
+        "document.upload",
+        "document.approve.financial"
+      ],
+      "priority": 3
+    }
+  ]
+}

@@ -1,0 +1,100 @@
+/* BullMQ Manager Styles */
+.queue-card {
+    transition: transform 0.2s, box-shadow 0.2s;
+    border-left: 4px solid #007bff;
+}
+
+.queue-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.queue-card.paused {
+    border-left-color: #dc3545;
+    opacity: 0.8;
+}
+
+.stats-badge {
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.job-item {
+    border-left: 3px solid #28a745;
+    margin-bottom: 0.5rem;
+    transition: all 0.2s;
+}
+
+.job-item.waiting { border-left-color: #ffc107; }
+.job-item.active { border-left-color: #007bff; }
+.job-item.completed { border-left-color: #28a745; }
+.job-item.failed { border-left-color: #dc3545; }
+.job-item.delayed { border-left-color: #6c757d; }
+
+.job-item:hover {
+    background-color: #f8f9fa;
+    transform: translateX(2px);
+}
+
+.job-data {
+    font-family: 'Courier New', monospace;
+    font-size: 0.8rem;
+    max-height: 100px;
+    overflow-y: auto;
+}
+
+.status-indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 0.5rem;
+}
+
+.status-connected { background-color: #28a745; }
+.status-disconnected { background-color: #dc3545; }
+
+.refresh-animation {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.sidebar-mini .main-sidebar {
+    width: 0;
+}
+
+.sidebar-mini .content-wrapper {
+    margin-left: 0;
+}
+
+.action-button {
+    font-size: 0.8rem;
+    padding: 0.25rem 0.5rem;
+    margin: 0.1rem;
+}
+
+/* Iframe-friendly adjustments */
+body {
+    margin: 0;
+    padding: 0;
+    background-color: #f8fafc;
+}
+
+.main-content {
+    margin-top: 0;
+    padding: 0;
+}
+
+.container-fluid {
+    max-width: none;
+}
+
+/* Remove unnecessary margin/padding */
+#bullmq-manager {
+    height: 100vh;
+    overflow: hidden;
+} 

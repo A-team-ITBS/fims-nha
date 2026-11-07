@@ -1,0 +1,3553 @@
+{
+  "workflows": [
+    {
+      "id": "wf-001",
+      "name": "Business Permit Application",
+      "category": "Licensing",
+      "description": "Complete workflow for business permit application and approval process",
+      "icon": "fa-building",
+      "status": "active",
+      "createdDate": "2025-01-15",
+      "updatedDate": "2025-03-20",
+      "inputs": [
+        {
+          "id": "input-001",
+          "name": "application_id",
+          "label": "Application ID",
+          "type": "number",
+          "required": true,
+          "description": "Unique identifier for the business permit application"
+        },
+        {
+          "id": "input-002",
+          "name": "applicant_name",
+          "label": "Applicant Name",
+          "type": "text",
+          "required": true,
+          "description": "Name of the business permit applicant"
+        },
+        {
+          "id": "input-003",
+          "name": "business_type",
+          "label": "Business Type",
+          "type": "text",
+          "required": true,
+          "description": "Type of business (e.g., Retail, Restaurant, Service)"
+        }
+      ],
+      "steps": [
+        {
+          "id": "step-001",
+          "name": "Initial Application",
+          "order": 1,
+          "daysLimit": 3,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "Staff",
+            "department": "Business Permits",
+            "users": ["user-001", "user-002"]
+          },
+          "mapping": {
+            "schema": "licensing",
+            "table": "business_permits",
+            "field": "application_status",
+            "value": "submitted"
+          },
+          "outputs": [
+            {
+              "id": "output-001-001",
+              "name": "submission_date",
+              "label": "Submission Date",
+              "type": "datetime",
+              "source": "licensing.business_permits.submitted_date",
+              "description": "Date when application was submitted"
+            },
+            {
+              "id": "output-001-002",
+              "name": "reference_number",
+              "label": "Reference Number",
+              "type": "text",
+              "source": "licensing.business_permits.reference_no",
+              "description": "Generated reference number for tracking"
+            },
+            {
+              "id": "output-001-003",
+              "name": "completeness_status",
+              "label": "Completeness Status",
+              "type": "text",
+              "source": "licensing.business_permits.document_completeness",
+              "description": "Status of document completeness check"
+            }
+          ],
+          "statuses": [
+            {
+              "id": "status-001",
+              "name": "Submitted",
+              "isDefault": true,
+              "nextSteps": ["step-002"],
+              "color": "primary"
+            },
+            {
+              "id": "status-002",
+              "name": "Incomplete Documents",
+              "isDefault": false,
+              "nextSteps": ["step-001"],
+              "color": "warning"
+            }
+          ]
+        },
+        {
+          "id": "step-002",
+          "name": "Document Review",
+          "order": 2,
+          "daysLimit": 5,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "Supervisor",
+            "department": "Business Permits",
+            "users": ["user-003"]
+          },
+          "mapping": {
+            "schema": "licensing",
+            "table": "business_permits",
+            "field": "application_status",
+            "value": "under_review"
+          },
+          "outputs": [
+            {
+              "id": "output-002-001",
+              "name": "review_date",
+              "label": "Review Date",
+              "type": "datetime",
+              "source": "licensing.business_permits.review_date",
+              "description": "Date when review was completed"
+            },
+            {
+              "id": "output-002-002",
+              "name": "reviewer_notes",
+              "label": "Reviewer Notes",
+              "type": "text",
+              "source": "licensing.business_permits.reviewer_comments",
+              "description": "Notes from the document reviewer"
+            },
+            {
+              "id": "output-002-003",
+              "name": "missing_documents",
+              "label": "Missing Documents",
+              "type": "array",
+              "source": "licensing.business_permits.missing_docs",
+              "description": "List of missing or incomplete documents"
+            }
+          ],
+          "statuses": [
+            {
+              "id": "status-003",
+              "name": "Under Review",
+              "isDefault": true,
+              "nextSteps": ["step-003"],
+              "color": "info"
+            },
+            {
+              "id": "status-004",
+              "name": "Requires Revision",
+              "isDefault": false,
+              "nextSteps": ["step-001"],
+              "color": "warning"
+            }
+          ]
+        },
+        {
+          "id": "step-003",
+          "name": "Final Approval",
+          "order": 3,
+          "daysLimit": 2,
+          "autoAdvance": true,
+          "assignedTo": {
+            "userLevel": "Manager",
+            "department": "Business Permits",
+            "users": ["user-004"]
+          },
+          "mapping": {
+            "schema": "licensing",
+            "table": "business_permits",
+            "field": "application_status",
+            "value": "approved"
+          },
+          "statuses": [
+            {
+              "id": "status-005",
+              "name": "Approved",
+              "isDefault": true,
+              "nextSteps": [],
+              "color": "success"
+            },
+            {
+              "id": "status-006",
+              "name": "Rejected",
+              "isDefault": false,
+              "nextSteps": [],
+              "color": "danger"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "wf-002",
+      "name": "Document Management Approval",
+      "category": "Document Management",
+      "description": "Workflow for document approval and archiving process",
+      "icon": "fa-file-alt",
+      "status": "active",
+      "createdDate": "2025-02-10",
+      "updatedDate": "2025-03-15",
+      "inputs": [
+        {
+          "id": "input-002-001",
+          "name": "document_id",
+          "label": "Document ID",
+          "type": "number",
+          "required": true,
+          "description": "Unique identifier for the document"
+        },
+        {
+          "id": "input-002-002",
+          "name": "document_title",
+          "label": "Document Title",
+          "type": "text",
+          "required": true,
+          "description": "Title of the document"
+        },
+        {
+          "id": "input-002-003",
+          "name": "uploader_id",
+          "label": "Uploader ID",
+          "type": "number",
+          "required": true,
+          "description": "User ID of the document uploader"
+        },
+        {
+          "id": "input-002-004",
+          "name": "document_type",
+          "label": "Document Type",
+          "type": "text",
+          "required": false,
+          "description": "Type/category of the document"
+        }
+      ],
+      "steps": [
+        {
+          "id": "step-004",
+          "name": "Document Submission",
+          "order": 1,
+          "daysLimit": 1,
+          "autoAdvance": true,
+          "assignedTo": {
+            "userLevel": "All Users",
+            "department": "All",
+            "users": []
+          },
+          "mapping": {
+            "schema": "document_mgmt",
+            "table": "documents",
+            "field": "doc_status",
+            "value": "pending"
+          },
+          "outputs": [
+            {
+              "id": "output-004-001",
+              "name": "submission_timestamp",
+              "label": "Submission Timestamp",
+              "type": "datetime",
+              "source": "document_mgmt.documents.created_at",
+              "description": "When the document was submitted"
+            },
+            {
+              "id": "output-004-002",
+              "name": "file_path",
+              "label": "File Path",
+              "type": "text",
+              "source": "document_mgmt.documents.file_path",
+              "description": "Storage location of the document"
+            },
+            {
+              "id": "output-004-003",
+              "name": "file_size",
+              "label": "File Size",
+              "type": "number",
+              "source": "document_mgmt.documents.file_size_bytes",
+              "description": "Size of the document in bytes"
+            }
+          ],
+          "statuses": [
+            {
+              "id": "status-007",
+              "name": "Pending Review",
+              "isDefault": true,
+              "nextSteps": ["step-005"],
+              "color": "secondary"
+            }
+          ]
+        },
+        {
+          "id": "step-005",
+          "name": "Department Review",
+          "order": 2,
+          "daysLimit": 7,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "Department Head",
+            "department": "Various",
+            "users": []
+          },
+          "mapping": {
+            "schema": "document_mgmt",
+            "table": "documents",
+            "field": "doc_status",
+            "value": "reviewed"
+          },
+          "outputs": [
+            {
+              "id": "output-005-001",
+              "name": "approval_status",
+              "label": "Approval Status",
+              "type": "text",
+              "source": "document_mgmt.documents.approval_status",
+              "description": "Final approval decision"
+            },
+            {
+              "id": "output-005-002",
+              "name": "approver_id",
+              "label": "Approver ID",
+              "type": "number",
+              "source": "document_mgmt.documents.approved_by",
+              "description": "ID of the user who approved"
+            },
+            {
+              "id": "output-005-003",
+              "name": "approval_date",
+              "label": "Approval Date",
+              "type": "datetime",
+              "source": "document_mgmt.documents.approved_at",
+              "description": "Date and time of approval"
+            },
+            {
+              "id": "output-005-004",
+              "name": "revision_notes",
+              "label": "Revision Notes",
+              "type": "text",
+              "source": "document_mgmt.documents.revision_comments",
+              "description": "Comments for revision if needed"
+            }
+          ],
+          "statuses": [
+            {
+              "id": "status-008",
+              "name": "Approved",
+              "isDefault": false,
+              "nextSteps": [],
+              "color": "success"
+            },
+            {
+              "id": "status-009",
+              "name": "Needs Revision",
+              "isDefault": false,
+              "nextSteps": ["step-004"],
+              "color": "warning"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "wf-003",
+      "name": "Legislative Process (LOMS)",
+      "category": "Legislative",
+      "description": "Sangguniang Panlalawigan legislative operations management workflow",
+      "icon": "fa-gavel",
+      "status": "draft",
+      "createdDate": "2025-03-01",
+      "updatedDate": "2025-03-25",
+      "steps": [
+        {
+          "id": "step-006",
+          "name": "Proposal Submission",
+          "order": 1,
+          "daysLimit": 5,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "Board Member",
+            "department": "Sangguniang Panlalawigan",
+            "users": []
+          },
+          "mapping": {
+            "schema": "loms",
+            "table": "ordinances",
+            "field": "status",
+            "value": "proposed"
+          },
+          "statuses": [
+            {
+              "id": "status-010",
+              "name": "Proposed",
+              "isDefault": true,
+              "nextSteps": ["step-007"],
+              "color": "primary"
+            }
+          ]
+        },
+        {
+          "id": "step-007",
+          "name": "Committee Review",
+          "order": 2,
+          "daysLimit": 14,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "Committee Chair",
+            "department": "Various Committees",
+            "users": []
+          },
+          "mapping": {
+            "schema": "loms",
+            "table": "ordinances",
+            "field": "status",
+            "value": "in_committee"
+          },
+          "statuses": [
+            {
+              "id": "status-011",
+              "name": "In Committee",
+              "isDefault": true,
+              "nextSteps": ["step-008"],
+              "color": "info"
+            },
+            {
+              "id": "status-012",
+              "name": "Returned to Author",
+              "isDefault": false,
+              "nextSteps": ["step-006"],
+              "color": "warning"
+            }
+          ]
+        },
+        {
+          "id": "step-008",
+          "name": "Plenary Session",
+          "order": 3,
+          "daysLimit": 7,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "Board Member",
+            "department": "Sangguniang Panlalawigan",
+            "users": []
+          },
+          "mapping": {
+            "schema": "loms",
+            "table": "ordinances",
+            "field": "status",
+            "value": "for_voting"
+          },
+          "statuses": [
+            {
+              "id": "status-013",
+              "name": "Passed",
+              "isDefault": false,
+              "nextSteps": [],
+              "color": "success"
+            },
+            {
+              "id": "status-014",
+              "name": "Failed",
+              "isDefault": false,
+              "nextSteps": [],
+              "color": "danger"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "wf-004",
+      "name": "Supplier Payment Disbursement (AFIMS)",
+      "category": "Financial Management",
+      "description": "Complete workflow for supplier payment processing through AFIMS",
+      "icon": "fa-money-check-alt",
+      "status": "active",
+      "createdDate": "2025-04-01",
+      "updatedDate": "2025-04-01",
+      "inputs": [
+        {
+          "id": "input-004-001",
+          "name": "supplier_id",
+          "label": "Supplier ID",
+          "type": "number",
+          "required": true,
+          "description": "Unique identifier for the supplier"
+        },
+        {
+          "id": "input-004-002",
+          "name": "invoice_number",
+          "label": "Invoice Number",
+          "type": "text",
+          "required": true,
+          "description": "Supplier invoice number"
+        },
+        {
+          "id": "input-004-003",
+          "name": "invoice_amount",
+          "label": "Invoice Amount",
+          "type": "number",
+          "required": true,
+          "description": "Total amount of the invoice"
+        },
+        {
+          "id": "input-004-004",
+          "name": "department_id",
+          "label": "Department ID",
+          "type": "number",
+          "required": true,
+          "description": "Requesting department ID"
+        },
+        {
+          "id": "input-004-005",
+          "name": "fund_source",
+          "label": "Fund Source",
+          "type": "text",
+          "required": true,
+          "description": "Source of funds (e.g., General Fund, Special Fund)"
+        }
+      ],
+      "steps": [
+        {
+          "id": "step-101",
+          "name": "Document Receiving",
+          "order": 1,
+          "daysLimit": 2,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "Receiving Clerk",
+            "department": "Accounting Office",
+            "users": ["user-101", "user-102"]
+          },
+          "mapping": {
+            "schema": "receiving",
+            "table": "receiving_documents",
+            "field": "status_id",
+            "value": "1"
+          },
+          "outputs": [
+            {
+              "id": "output-101-001",
+              "name": "receiving_date",
+              "label": "Receiving Date",
+              "type": "datetime",
+              "source": "receiving.receiving_documents.received_at",
+              "description": "Date and time when document was received"
+            },
+            {
+              "id": "output-101-002",
+              "name": "control_number",
+              "label": "Control Number",
+              "type": "text",
+              "source": "receiving.receiving_documents.control_no",
+              "description": "Generated control number for tracking"
+            },
+            {
+              "id": "output-101-003",
+              "name": "received_by",
+              "label": "Received By",
+              "type": "number",
+              "source": "receiving.receiving_documents.received_by_user_id",
+              "description": "User ID who received the document"
+            },
+            {
+              "id": "output-101-004",
+              "name": "document_count",
+              "label": "Document Count",
+              "type": "number",
+              "source": "receiving.receiving_documents.total_documents",
+              "description": "Total number of supporting documents"
+            }
+          ],
+          "statuses": [
+            {
+              "id": "status-101",
+              "name": "Complete",
+              "isDefault": true,
+              "nextSteps": ["step-102"],
+              "color": "primary"
+            },
+            {
+              "id": "status-102",
+              "name": "Incomplete",
+              "isDefault": false,
+              "nextSteps": ["step-101"],
+              "color": "warning"
+            }
+          ]
+        },
+        {
+          "id": "step-102",
+          "name": "Document Indexing",
+          "order": 2,
+          "daysLimit": 1,
+          "autoAdvance": true,
+          "assignedTo": {
+            "userLevel": "Receiving Clerk",
+            "department": "Accounting Office",
+            "users": ["user-101", "user-102"]
+          },
+          "mapping": {
+            "schema": "receiving",
+            "table": "receiving_documents",
+            "field": "status_id",
+            "value": "2"
+          },
+          "statuses": [
+            {
+              "id": "status-103",
+              "name": "Indexed",
+              "isDefault": true,
+              "nextSteps": ["step-103"],
+              "color": "info"
+            }
+          ]
+        },
+        {
+          "id": "step-103",
+          "name": "Tax Computation",
+          "order": 3,
+          "daysLimit": 3,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "Accounting Staff",
+            "department": "Processing",
+            "users": ["user-103", "user-104"]
+          },
+          "mapping": {
+            "schema": "processing",
+            "table": "processing_disbursement_vouchers",
+            "field": "status_id",
+            "value": "1"
+          },
+          "outputs": [
+            {
+              "id": "output-103-001",
+              "name": "gross_amount",
+              "label": "Gross Amount",
+              "type": "number",
+              "source": "processing.processing_disbursement_vouchers.gross_amount",
+              "description": "Total gross amount before deductions"
+            },
+            {
+              "id": "output-103-002",
+              "name": "ewt_amount",
+              "label": "EWT Amount",
+              "type": "number",
+              "source": "processing.processing_disbursement_vouchers.ewt_amount",
+              "description": "Expanded Withholding Tax amount"
+            },
+            {
+              "id": "output-103-003",
+              "name": "vat_amount",
+              "label": "VAT Amount",
+              "type": "number",
+              "source": "processing.processing_disbursement_vouchers.vat_amount",
+              "description": "Value Added Tax amount"
+            },
+            {
+              "id": "output-103-004",
+              "name": "net_amount",
+              "label": "Net Amount",
+              "type": "number",
+              "source": "processing.processing_disbursement_vouchers.net_amount",
+              "description": "Net amount after all deductions"
+            },
+            {
+              "id": "output-103-005",
+              "name": "computed_by",
+              "label": "Computed By",
+              "type": "number",
+              "source": "processing.processing_disbursement_vouchers.computed_by_user_id",
+              "description": "User ID who computed the taxes"
+            }
+          ],
+          "statuses": [
+            {
+              "id": "status-104",
+              "name": "Computed",
+              "isDefault": true,
+              "nextSteps": ["step-104"],
+              "color": "primary"
+            },
+            {
+              "id": "status-105",
+              "name": "Error",
+              "isDefault": false,
+              "nextSteps": ["step-103"],
+              "color": "danger"
+            }
+          ]
+        },
+        {
+          "id": "step-104",
+          "name": "Create DV",
+          "order": 4,
+          "daysLimit": 2,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "Accounting Staff",
+            "department": "Processing",
+            "users": ["user-103", "user-104"]
+          },
+          "mapping": {
+            "schema": "processing",
+            "table": "processing_disbursement_vouchers",
+            "field": "status_id",
+            "value": "2"
+          },
+          "statuses": [
+            {
+              "id": "status-106",
+              "name": "DV Created",
+              "isDefault": true,
+              "nextSteps": ["step-105"],
+              "color": "info"
+            }
+          ]
+        },
+        {
+          "id": "step-105",
+          "name": "Budget Verification",
+          "order": 5,
+          "daysLimit": 3,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "Budget Officer",
+            "department": "Budget Office",
+            "users": ["user-106", "user-107"]
+          },
+          "mapping": {
+            "schema": "budget",
+            "table": "budget_obligation_requests",
+            "field": "status_id",
+            "value": "1"
+          },
+          "statuses": [
+            {
+              "id": "status-107",
+              "name": "Budget Available",
+              "isDefault": true,
+              "nextSteps": ["step-106"],
+              "color": "success"
+            },
+            {
+              "id": "status-108",
+              "name": "Insufficient",
+              "isDefault": false,
+              "nextSteps": ["step-103"],
+              "color": "danger"
+            }
+          ]
+        },
+        {
+          "id": "step-106",
+          "name": "OBR Encoding",
+          "order": 6,
+          "daysLimit": 1,
+          "autoAdvance": true,
+          "assignedTo": {
+            "userLevel": "Budget Officer",
+            "department": "Budget Office",
+            "users": ["user-106", "user-107"]
+          },
+          "mapping": {
+            "schema": "budget",
+            "table": "budget_obligation_requests",
+            "field": "status_id",
+            "value": "2"
+          },
+          "statuses": [
+            {
+              "id": "status-109",
+              "name": "OBR Encoded",
+              "isDefault": true,
+              "nextSteps": ["step-107"],
+              "color": "primary"
+            }
+          ]
+        },
+        {
+          "id": "step-107",
+          "name": "Department Head Review",
+          "order": 7,
+          "daysLimit": 5,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "Department Head",
+            "department": "Treasury Office",
+            "users": ["user-108"]
+          },
+          "mapping": {
+            "schema": "approval",
+            "table": "approval_records",
+            "field": "approval_status_id",
+            "value": "1"
+          },
+          "statuses": [
+            {
+              "id": "status-110",
+              "name": "Approved",
+              "isDefault": true,
+              "nextSteps": ["step-108"],
+              "color": "success"
+            },
+            {
+              "id": "status-111",
+              "name": "Rejected",
+              "isDefault": false,
+              "nextSteps": ["step-103"],
+              "color": "danger"
+            }
+          ]
+        },
+        {
+          "id": "step-108",
+          "name": "Check Preparation",
+          "order": 8,
+          "daysLimit": 3,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "Treasury Staff",
+            "department": "Treasury Office",
+            "users": ["user-109", "user-110"]
+          },
+          "mapping": {
+            "schema": "treasury",
+            "table": "treasury_checks",
+            "field": "check_status_id",
+            "value": "1"
+          },
+          "statuses": [
+            {
+              "id": "status-112",
+              "name": "Check Prepared",
+              "isDefault": true,
+              "nextSteps": ["step-109"],
+              "color": "primary"
+            }
+          ]
+        },
+        {
+          "id": "step-109",
+          "name": "Land Bank Encoding",
+          "order": 9,
+          "daysLimit": 1,
+          "autoAdvance": true,
+          "assignedTo": {
+            "userLevel": "Admin Staff",
+            "department": "Admin Office",
+            "users": ["user-111"]
+          },
+          "mapping": {
+            "schema": "admin",
+            "table": "admin_landbank_encodings",
+            "field": "is_successful",
+            "value": "true"
+          },
+          "statuses": [
+            {
+              "id": "status-113",
+              "name": "Encoded",
+              "isDefault": true,
+              "nextSteps": ["step-110"],
+              "color": "info"
+            }
+          ]
+        },
+        {
+          "id": "step-110",
+          "name": "Check Printing",
+          "order": 10,
+          "daysLimit": 1,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "Admin Staff",
+            "department": "Admin Office",
+            "users": ["user-111"]
+          },
+          "mapping": {
+            "schema": "treasury",
+            "table": "treasury_checks",
+            "field": "check_status_id",
+            "value": "2"
+          },
+          "statuses": [
+            {
+              "id": "status-114",
+              "name": "Printed",
+              "isDefault": true,
+              "nextSteps": ["step-111"],
+              "color": "primary"
+            }
+          ]
+        },
+        {
+          "id": "step-111",
+          "name": "Signature Authorization",
+          "order": 11,
+          "daysLimit": 2,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "Provincial Treasurer",
+            "department": "Treasury Office",
+            "users": ["user-108"]
+          },
+          "mapping": {
+            "schema": "admin",
+            "table": "admin_signature_logs",
+            "field": "signature_status_id",
+            "value": "2"
+          },
+          "statuses": [
+            {
+              "id": "status-115",
+              "name": "Signed",
+              "isDefault": true,
+              "nextSteps": ["step-112"],
+              "color": "success"
+            },
+            {
+              "id": "status-116",
+              "name": "Withheld",
+              "isDefault": false,
+              "nextSteps": ["step-108"],
+              "color": "warning"
+            }
+          ]
+        },
+        {
+          "id": "step-112",
+          "name": "Check Ready",
+          "order": 12,
+          "daysLimit": 1,
+          "autoAdvance": true,
+          "assignedTo": {
+            "userLevel": "Treasury Staff",
+            "department": "Treasury Office",
+            "users": ["user-109", "user-110"]
+          },
+          "mapping": {
+            "schema": "treasury",
+            "table": "treasury_checks",
+            "field": "check_status_id",
+            "value": "3"
+          },
+          "statuses": [
+            {
+              "id": "status-117",
+              "name": "Ready for Pickup",
+              "isDefault": true,
+              "nextSteps": ["step-113"],
+              "color": "info"
+            }
+          ]
+        },
+        {
+          "id": "step-113",
+          "name": "Check Release",
+          "order": 13,
+          "daysLimit": 60,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "Treasury Staff",
+            "department": "Treasury Office",
+            "users": ["user-109", "user-110"]
+          },
+          "mapping": {
+            "schema": "treasury",
+            "table": "treasury_check_claims",
+            "field": "claim_date",
+            "value": "CURRENT_TIMESTAMP"
+          },
+          "statuses": [
+            {
+              "id": "status-118",
+              "name": "Claimed",
+              "isDefault": true,
+              "nextSteps": ["step-114"],
+              "color": "success"
+            },
+            {
+              "id": "status-119",
+              "name": "Unclaimed",
+              "isDefault": false,
+              "nextSteps": ["step-116"],
+              "color": "warning"
+            }
+          ]
+        },
+        {
+          "id": "step-114",
+          "name": "Remittance Recording",
+          "order": 14,
+          "daysLimit": 5,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "Accounting Staff",
+            "department": "Remittance",
+            "users": ["user-112", "user-113"]
+          },
+          "mapping": {
+            "schema": "remittance",
+            "table": "remittance_bookkeeping_entries",
+            "field": "entry_date",
+            "value": "CURRENT_TIMESTAMP"
+          },
+          "statuses": [
+            {
+              "id": "status-120",
+              "name": "Recorded",
+              "isDefault": true,
+              "nextSteps": ["step-115"],
+              "color": "primary"
+            }
+          ]
+        },
+        {
+          "id": "step-115",
+          "name": "Remittance Journal",
+          "order": 15,
+          "daysLimit": 7,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "Accounting Staff",
+            "department": "Remittance",
+            "users": ["user-112", "user-113"]
+          },
+          "mapping": {
+            "schema": "remittance",
+            "table": "remittance_journals",
+            "field": "status_id",
+            "value": "2"
+          },
+          "statuses": [
+            {
+              "id": "status-121",
+              "name": "Complete",
+              "isDefault": true,
+              "nextSteps": ["step-117"],
+              "color": "success"
+            },
+            {
+              "id": "status-122",
+              "name": "Incomplete",
+              "isDefault": false,
+              "nextSteps": ["step-115"],
+              "color": "warning"
+            }
+          ]
+        },
+        {
+          "id": "step-116",
+          "name": "Collections Processing",
+          "order": 16,
+          "daysLimit": 3,
+          "autoAdvance": true,
+          "assignedTo": {
+            "userLevel": "Treasury Staff",
+            "department": "Treasury Office",
+            "users": ["user-109", "user-110"]
+          },
+          "mapping": {
+            "schema": "treasury",
+            "table": "treasury_collections",
+            "field": "collection_date",
+            "value": "CURRENT_TIMESTAMP"
+          },
+          "statuses": [
+            {
+              "id": "status-123",
+              "name": "Collection Recorded",
+              "isDefault": true,
+              "nextSteps": ["step-117"],
+              "color": "info"
+            }
+          ]
+        },
+        {
+          "id": "step-117",
+          "name": "Journal Posting",
+          "order": 17,
+          "daysLimit": 5,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "Bookkeeper",
+            "department": "Bookkeeping",
+            "users": ["user-114", "user-115"]
+          },
+          "mapping": {
+            "schema": "bookkeeping",
+            "table": "bookkeeping_trial_balance",
+            "field": "generated_date",
+            "value": "CURRENT_TIMESTAMP"
+          },
+          "statuses": [
+            {
+              "id": "status-124",
+              "name": "Posted",
+              "isDefault": true,
+              "nextSteps": ["step-118"],
+              "color": "primary"
+            },
+            {
+              "id": "status-125",
+              "name": "Error",
+              "isDefault": false,
+              "nextSteps": ["step-117"],
+              "color": "danger"
+            }
+          ]
+        },
+        {
+          "id": "step-118",
+          "name": "Trial Balance",
+          "order": 18,
+          "daysLimit": 3,
+          "autoAdvance": true,
+          "assignedTo": {
+            "userLevel": "Bookkeeper",
+            "department": "Bookkeeping",
+            "users": ["user-114", "user-115"]
+          },
+          "mapping": {
+            "schema": "bookkeeping",
+            "table": "bookkeeping_trial_balance",
+            "field": "debit_balance",
+            "value": "credit_balance"
+          },
+          "statuses": [
+            {
+              "id": "status-126",
+              "name": "Balanced",
+              "isDefault": true,
+              "nextSteps": ["step-119"],
+              "color": "info"
+            }
+          ]
+        },
+        {
+          "id": "step-119",
+          "name": "Financial Statements",
+          "order": 19,
+          "daysLimit": 7,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "Senior Bookkeeper",
+            "department": "Bookkeeping",
+            "users": ["user-116"]
+          },
+          "mapping": {
+            "schema": "bookkeeping",
+            "table": "bookkeeping_financial_statements",
+            "field": "date_prepared",
+            "value": "CURRENT_TIMESTAMP"
+          },
+          "statuses": [
+            {
+              "id": "status-127",
+              "name": "Prepared",
+              "isDefault": true,
+              "nextSteps": ["step-120"],
+              "color": "success"
+            }
+          ]
+        },
+        {
+          "id": "step-120",
+          "name": "COA Submission",
+          "order": 20,
+          "daysLimit": 5,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "Provincial Accountant",
+            "department": "Accounting Office",
+            "users": ["user-117"]
+          },
+          "mapping": {
+            "schema": "bookkeeping",
+            "table": "bookkeeping_coa_submissions",
+            "field": "submission_date",
+            "value": "CURRENT_TIMESTAMP"
+          },
+          "statuses": [
+            {
+              "id": "status-128",
+              "name": "Submitted",
+              "isDefault": true,
+              "nextSteps": [],
+              "color": "success"
+            },
+            {
+              "id": "status-129",
+              "name": "Returned",
+              "isDefault": false,
+              "nextSteps": ["step-119"],
+              "color": "warning"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "wf-005",
+      "name": "New Business Permit Application - Caloocan City",
+      "category": "Business Permit and Licensing",
+      "description": "Complete workflow for new business permit application in Caloocan City BPLS",
+      "icon": "fa-store",
+      "status": "active",
+      "createdDate": "2025-04-01",
+      "updatedDate": "2025-04-01",
+      "steps": [
+        {
+          "id": "step-201",
+          "name": "DTI/SEC/CDA Registration",
+          "order": 1,
+          "daysLimit": 7,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "Business Owner",
+            "department": "External - DTI/SEC/CDA",
+            "users": []
+          },
+          "mapping": {
+            "schema": "bpls",
+            "table": "business_applications",
+            "field": "registration_status",
+            "value": "registered"
+          },
+          "statuses": [
+            {
+              "id": "status-201",
+              "name": "Registered",
+              "isDefault": true,
+              "nextSteps": ["step-202"],
+              "color": "success"
+            }
+          ]
+        },
+        {
+          "id": "step-202",
+          "name": "Barangay Clearance Application",
+          "order": 2,
+          "daysLimit": 3,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "Barangay Staff",
+            "department": "Barangay Hall",
+            "users": []
+          },
+          "mapping": {
+            "schema": "bpls",
+            "table": "barangay_clearances",
+            "field": "clearance_status",
+            "value": "pending"
+          },
+          "statuses": [
+            {
+              "id": "status-202",
+              "name": "Approved",
+              "isDefault": true,
+              "nextSteps": ["step-203"],
+              "color": "success"
+            },
+            {
+              "id": "status-203",
+              "name": "For Clarification",
+              "isDefault": false,
+              "nextSteps": ["step-202"],
+              "color": "warning"
+            }
+          ]
+        },
+        {
+          "id": "step-203",
+          "name": "Zoning/Locational Clearance",
+          "order": 3,
+          "daysLimit": 5,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "Zoning Officer",
+            "department": "City Zoning Office",
+            "users": ["user-201", "user-202"]
+          },
+          "mapping": {
+            "schema": "bpls",
+            "table": "zoning_clearances",
+            "field": "clearance_status",
+            "value": "pending"
+          },
+          "statuses": [
+            {
+              "id": "status-204",
+              "name": "Approved",
+              "isDefault": true,
+              "nextSteps": ["step-204"],
+              "color": "success"
+            },
+            {
+              "id": "status-205",
+              "name": "Requires Inspection",
+              "isDefault": false,
+              "nextSteps": ["step-203"],
+              "color": "info"
+            },
+            {
+              "id": "status-206",
+              "name": "Denied",
+              "isDefault": false,
+              "nextSteps": [],
+              "color": "danger"
+            }
+          ]
+        },
+        {
+          "id": "step-204",
+          "name": "Fire Safety Inspection",
+          "order": 4,
+          "daysLimit": 7,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "Fire Inspector",
+            "department": "Bureau of Fire Protection",
+            "users": ["user-203"]
+          },
+          "mapping": {
+            "schema": "bpls",
+            "table": "fire_safety_permits",
+            "field": "inspection_status",
+            "value": "scheduled"
+          },
+          "statuses": [
+            {
+              "id": "status-207",
+              "name": "Passed Inspection",
+              "isDefault": true,
+              "nextSteps": ["step-205"],
+              "color": "success"
+            },
+            {
+              "id": "status-208",
+              "name": "Failed - Needs Compliance",
+              "isDefault": false,
+              "nextSteps": ["step-204"],
+              "color": "warning"
+            }
+          ]
+        },
+        {
+          "id": "step-205",
+          "name": "Sanitary Permit Application",
+          "order": 5,
+          "daysLimit": 5,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "Health Inspector",
+            "department": "City Health Office",
+            "users": ["user-204", "user-205"]
+          },
+          "mapping": {
+            "schema": "bpls",
+            "table": "sanitary_permits",
+            "field": "permit_status",
+            "value": "pending"
+          },
+          "statuses": [
+            {
+              "id": "status-209",
+              "name": "Approved",
+              "isDefault": true,
+              "nextSteps": ["step-206"],
+              "color": "success"
+            },
+            {
+              "id": "status-210",
+              "name": "Needs Health Certificate",
+              "isDefault": false,
+              "nextSteps": ["step-205"],
+              "color": "warning"
+            }
+          ]
+        },
+        {
+          "id": "step-206",
+          "name": "Building Permit Verification",
+          "order": 6,
+          "daysLimit": 3,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "Building Inspector",
+            "department": "Office of Building Official",
+            "users": ["user-206"]
+          },
+          "mapping": {
+            "schema": "bpls",
+            "table": "building_permits",
+            "field": "verification_status",
+            "value": "verified"
+          },
+          "statuses": [
+            {
+              "id": "status-211",
+              "name": "Verified",
+              "isDefault": true,
+              "nextSteps": ["step-207"],
+              "color": "success"
+            },
+            {
+              "id": "status-212",
+              "name": "Not Required",
+              "isDefault": false,
+              "nextSteps": ["step-207"],
+              "color": "info"
+            }
+          ]
+        },
+        {
+          "id": "step-207",
+          "name": "BPLO Application Submission",
+          "order": 7,
+          "daysLimit": 1,
+          "autoAdvance": true,
+          "assignedTo": {
+            "userLevel": "BPLO Receiving Staff",
+            "department": "BPLO - Receiving",
+            "users": ["user-207", "user-208"]
+          },
+          "mapping": {
+            "schema": "bpls",
+            "table": "business_applications",
+            "field": "application_status",
+            "value": "received"
+          },
+          "statuses": [
+            {
+              "id": "status-213",
+              "name": "Complete",
+              "isDefault": true,
+              "nextSteps": ["step-208"],
+              "color": "primary"
+            },
+            {
+              "id": "status-214",
+              "name": "Incomplete Documents",
+              "isDefault": false,
+              "nextSteps": ["step-207"],
+              "color": "warning"
+            }
+          ]
+        },
+        {
+          "id": "step-208",
+          "name": "Document Evaluation",
+          "order": 8,
+          "daysLimit": 3,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "BPLO Evaluator",
+            "department": "BPLO - Evaluation",
+            "users": ["user-209", "user-210"]
+          },
+          "mapping": {
+            "schema": "bpls",
+            "table": "business_applications",
+            "field": "evaluation_status",
+            "value": "evaluated"
+          },
+          "statuses": [
+            {
+              "id": "status-215",
+              "name": "Approved",
+              "isDefault": true,
+              "nextSteps": ["step-209"],
+              "color": "success"
+            },
+            {
+              "id": "status-216",
+              "name": "For Verification",
+              "isDefault": false,
+              "nextSteps": ["step-208"],
+              "color": "info"
+            },
+            {
+              "id": "status-217",
+              "name": "Disapproved",
+              "isDefault": false,
+              "nextSteps": [],
+              "color": "danger"
+            }
+          ]
+        },
+        {
+          "id": "step-209",
+          "name": "Business Tax Assessment",
+          "order": 9,
+          "daysLimit": 2,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "Tax Assessor",
+            "department": "City Treasurer's Office",
+            "users": ["user-211", "user-212"]
+          },
+          "mapping": {
+            "schema": "bpls",
+            "table": "business_tax_assessments",
+            "field": "assessment_status",
+            "value": "assessed"
+          },
+          "statuses": [
+            {
+              "id": "status-218",
+              "name": "Assessed",
+              "isDefault": true,
+              "nextSteps": ["step-210"],
+              "color": "primary"
+            }
+          ]
+        },
+        {
+          "id": "step-210",
+          "name": "BPLO Validation",
+          "order": 10,
+          "daysLimit": 1,
+          "autoAdvance": true,
+          "assignedTo": {
+            "userLevel": "BPLO Validator",
+            "department": "BPLO - Validation",
+            "users": ["user-213"]
+          },
+          "mapping": {
+            "schema": "bpls",
+            "table": "business_applications",
+            "field": "validation_status",
+            "value": "validated"
+          },
+          "statuses": [
+            {
+              "id": "status-219",
+              "name": "Validated",
+              "isDefault": true,
+              "nextSteps": ["step-211"],
+              "color": "info"
+            }
+          ]
+        },
+        {
+          "id": "step-211",
+          "name": "Payment Processing",
+          "order": 11,
+          "daysLimit": 1,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "Cashier",
+            "department": "City Treasurer's Office",
+            "users": ["user-214", "user-215"]
+          },
+          "mapping": {
+            "schema": "bpls",
+            "table": "business_payments",
+            "field": "payment_status",
+            "value": "paid"
+          },
+          "statuses": [
+            {
+              "id": "status-220",
+              "name": "Payment Received",
+              "isDefault": true,
+              "nextSteps": ["step-212"],
+              "color": "success"
+            }
+          ]
+        },
+        {
+          "id": "step-212",
+          "name": "Community Tax Certificate",
+          "order": 12,
+          "daysLimit": 1,
+          "autoAdvance": true,
+          "assignedTo": {
+            "userLevel": "Cedula Officer",
+            "department": "City Treasurer's Office",
+            "users": ["user-216"]
+          },
+          "mapping": {
+            "schema": "bpls",
+            "table": "community_tax_certificates",
+            "field": "issuance_status",
+            "value": "issued"
+          },
+          "statuses": [
+            {
+              "id": "status-221",
+              "name": "Issued",
+              "isDefault": true,
+              "nextSteps": ["step-213"],
+              "color": "primary"
+            }
+          ]
+        },
+        {
+          "id": "step-213",
+          "name": "Permit Printing",
+          "order": 13,
+          "daysLimit": 1,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "BPLO Releasing Staff",
+            "department": "BPLO - Releasing",
+            "users": ["user-217"]
+          },
+          "mapping": {
+            "schema": "bpls",
+            "table": "business_permits",
+            "field": "printing_status",
+            "value": "printed"
+          },
+          "statuses": [
+            {
+              "id": "status-222",
+              "name": "Printed",
+              "isDefault": true,
+              "nextSteps": ["step-214"],
+              "color": "info"
+            }
+          ]
+        },
+        {
+          "id": "step-214",
+          "name": "BPLO Head Approval",
+          "order": 14,
+          "daysLimit": 2,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "BPLO Head",
+            "department": "BPLO",
+            "users": ["user-218"]
+          },
+          "mapping": {
+            "schema": "bpls",
+            "table": "business_permits",
+            "field": "approval_status",
+            "value": "approved"
+          },
+          "statuses": [
+            {
+              "id": "status-223",
+              "name": "Approved",
+              "isDefault": true,
+              "nextSteps": ["step-215"],
+              "color": "success"
+            },
+            {
+              "id": "status-224",
+              "name": "For Review",
+              "isDefault": false,
+              "nextSteps": ["step-208"],
+              "color": "warning"
+            }
+          ]
+        },
+        {
+          "id": "step-215",
+          "name": "Mayor's Signature",
+          "order": 15,
+          "daysLimit": 3,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "City Mayor",
+            "department": "Office of the City Mayor",
+            "users": ["user-219"]
+          },
+          "mapping": {
+            "schema": "bpls",
+            "table": "business_permits",
+            "field": "mayor_approval",
+            "value": "signed"
+          },
+          "statuses": [
+            {
+              "id": "status-225",
+              "name": "Signed",
+              "isDefault": true,
+              "nextSteps": ["step-216"],
+              "color": "success"
+            }
+          ]
+        },
+        {
+          "id": "step-216",
+          "name": "Permit Release",
+          "order": 16,
+          "daysLimit": 1,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "BPLO Releasing Staff",
+            "department": "BPLO - Releasing",
+            "users": ["user-217"]
+          },
+          "mapping": {
+            "schema": "bpls",
+            "table": "business_permits",
+            "field": "release_status",
+            "value": "released"
+          },
+          "statuses": [
+            {
+              "id": "status-226",
+              "name": "Released to Owner",
+              "isDefault": true,
+              "nextSteps": [],
+              "color": "success"
+            },
+            {
+              "id": "status-227",
+              "name": "Ready for Pickup",
+              "isDefault": false,
+              "nextSteps": ["step-216"],
+              "color": "info"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "wf-006",
+      "name": "Business Permit Renewal - Caloocan City",
+      "category": "Business Permit and Licensing",
+      "description": "Complete workflow for business permit renewal in Caloocan City BPLS (Annual Renewal Process)",
+      "icon": "fa-sync-alt",
+      "status": "active",
+      "createdDate": "2025-04-01",
+      "updatedDate": "2025-04-01",
+      "steps": [
+        {
+          "id": "step-301",
+          "name": "Barangay Clearance Renewal",
+          "order": 1,
+          "daysLimit": 2,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "Barangay Staff",
+            "department": "Barangay Hall",
+            "users": []
+          },
+          "mapping": {
+            "schema": "bpls",
+            "table": "barangay_clearances",
+            "field": "renewal_status",
+            "value": "renewed"
+          },
+          "statuses": [
+            {
+              "id": "status-301",
+              "name": "Renewed",
+              "isDefault": true,
+              "nextSteps": ["step-302"],
+              "color": "success"
+            },
+            {
+              "id": "status-302",
+              "name": "Pending Payment",
+              "isDefault": false,
+              "nextSteps": ["step-301"],
+              "color": "warning"
+            }
+          ]
+        },
+        {
+          "id": "step-302",
+          "name": "Fire Safety Certificate Check",
+          "order": 2,
+          "daysLimit": 3,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "Fire Inspector",
+            "department": "Bureau of Fire Protection",
+            "users": ["user-303"]
+          },
+          "mapping": {
+            "schema": "bpls",
+            "table": "fire_safety_permits",
+            "field": "validity_status",
+            "value": "valid"
+          },
+          "statuses": [
+            {
+              "id": "status-303",
+              "name": "Valid/Renewed",
+              "isDefault": true,
+              "nextSteps": ["step-303"],
+              "color": "success"
+            },
+            {
+              "id": "status-304",
+              "name": "Requires Re-inspection",
+              "isDefault": false,
+              "nextSteps": ["step-302"],
+              "color": "warning"
+            }
+          ]
+        },
+        {
+          "id": "step-303",
+          "name": "Sanitary Permit Check",
+          "order": 3,
+          "daysLimit": 3,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "Health Inspector",
+            "department": "City Health Office",
+            "users": ["user-304", "user-305"]
+          },
+          "mapping": {
+            "schema": "bpls",
+            "table": "sanitary_permits",
+            "field": "validity_status",
+            "value": "valid"
+          },
+          "statuses": [
+            {
+              "id": "status-305",
+              "name": "Valid/Renewed",
+              "isDefault": true,
+              "nextSteps": ["step-304"],
+              "color": "success"
+            },
+            {
+              "id": "status-306",
+              "name": "Not Applicable",
+              "isDefault": false,
+              "nextSteps": ["step-304"],
+              "color": "info"
+            },
+            {
+              "id": "status-307",
+              "name": "Expired - Needs Renewal",
+              "isDefault": false,
+              "nextSteps": ["step-303"],
+              "color": "warning"
+            }
+          ]
+        },
+        {
+          "id": "step-304",
+          "name": "BPLO Renewal Application",
+          "order": 4,
+          "daysLimit": 1,
+          "autoAdvance": true,
+          "assignedTo": {
+            "userLevel": "BPLO Receiving Staff",
+            "department": "BPLO - Receiving",
+            "users": ["user-307", "user-308"]
+          },
+          "mapping": {
+            "schema": "bpls",
+            "table": "business_renewals",
+            "field": "application_status",
+            "value": "received"
+          },
+          "statuses": [
+            {
+              "id": "status-308",
+              "name": "Complete",
+              "isDefault": true,
+              "nextSteps": ["step-305"],
+              "color": "primary"
+            },
+            {
+              "id": "status-309",
+              "name": "Incomplete Documents",
+              "isDefault": false,
+              "nextSteps": ["step-304"],
+              "color": "warning"
+            }
+          ]
+        },
+        {
+          "id": "step-305",
+          "name": "Previous Year Records Check",
+          "order": 5,
+          "daysLimit": 1,
+          "autoAdvance": true,
+          "assignedTo": {
+            "userLevel": "BPLO Records Officer",
+            "department": "BPLO - Records",
+            "users": ["user-309"]
+          },
+          "mapping": {
+            "schema": "bpls",
+            "table": "business_renewals",
+            "field": "records_verification",
+            "value": "verified"
+          },
+          "statuses": [
+            {
+              "id": "status-310",
+              "name": "Verified",
+              "isDefault": true,
+              "nextSteps": ["step-306"],
+              "color": "info"
+            }
+          ]
+        },
+        {
+          "id": "step-306",
+          "name": "Gross Sales Declaration Review",
+          "order": 6,
+          "daysLimit": 2,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "BPLO Evaluator",
+            "department": "BPLO - Evaluation",
+            "users": ["user-310", "user-311"]
+          },
+          "mapping": {
+            "schema": "bpls",
+            "table": "gross_sales_declarations",
+            "field": "review_status",
+            "value": "reviewed"
+          },
+          "statuses": [
+            {
+              "id": "status-311",
+              "name": "Approved",
+              "isDefault": true,
+              "nextSteps": ["step-307"],
+              "color": "success"
+            },
+            {
+              "id": "status-312",
+              "name": "Requires ITR/AFS",
+              "isDefault": false,
+              "nextSteps": ["step-306"],
+              "color": "warning"
+            },
+            {
+              "id": "status-313",
+              "name": "For Clarification",
+              "isDefault": false,
+              "nextSteps": ["step-306"],
+              "color": "info"
+            }
+          ]
+        },
+        {
+          "id": "step-307",
+          "name": "Deficiency Check",
+          "order": 7,
+          "daysLimit": 2,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "BPLO Compliance Officer",
+            "department": "BPLO - Compliance",
+            "users": ["user-312"]
+          },
+          "mapping": {
+            "schema": "bpls",
+            "table": "business_renewals",
+            "field": "deficiency_status",
+            "value": "checked"
+          },
+          "statuses": [
+            {
+              "id": "status-314",
+              "name": "No Deficiency",
+              "isDefault": true,
+              "nextSteps": ["step-308"],
+              "color": "success"
+            },
+            {
+              "id": "status-315",
+              "name": "With Deficiency - Allowed",
+              "isDefault": false,
+              "nextSteps": ["step-308"],
+              "color": "warning"
+            },
+            {
+              "id": "status-316",
+              "name": "Major Deficiency",
+              "isDefault": false,
+              "nextSteps": ["step-302"],
+              "color": "danger"
+            }
+          ]
+        },
+        {
+          "id": "step-308",
+          "name": "Business Tax Assessment",
+          "order": 8,
+          "daysLimit": 2,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "Tax Assessor",
+            "department": "City Treasurer's Office",
+            "users": ["user-313", "user-314"]
+          },
+          "mapping": {
+            "schema": "bpls",
+            "table": "business_tax_assessments",
+            "field": "assessment_status",
+            "value": "assessed"
+          },
+          "statuses": [
+            {
+              "id": "status-317",
+              "name": "Assessed - Regular",
+              "isDefault": true,
+              "nextSteps": ["step-309"],
+              "color": "primary"
+            },
+            {
+              "id": "status-318",
+              "name": "Assessed - With Discount",
+              "isDefault": false,
+              "nextSteps": ["step-309"],
+              "color": "success"
+            },
+            {
+              "id": "status-319",
+              "name": "Assessed - With Penalty",
+              "isDefault": false,
+              "nextSteps": ["step-309"],
+              "color": "warning"
+            }
+          ]
+        },
+        {
+          "id": "step-309",
+          "name": "BPLO Final Validation",
+          "order": 9,
+          "daysLimit": 1,
+          "autoAdvance": true,
+          "assignedTo": {
+            "userLevel": "BPLO Validator",
+            "department": "BPLO - Validation",
+            "users": ["user-315"]
+          },
+          "mapping": {
+            "schema": "bpls",
+            "table": "business_renewals",
+            "field": "validation_status",
+            "value": "validated"
+          },
+          "statuses": [
+            {
+              "id": "status-320",
+              "name": "Validated",
+              "isDefault": true,
+              "nextSteps": ["step-310"],
+              "color": "info"
+            }
+          ]
+        },
+        {
+          "id": "step-310",
+          "name": "Payment Processing",
+          "order": 10,
+          "daysLimit": 1,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "Cashier",
+            "department": "City Treasurer's Office",
+            "users": ["user-316", "user-317"]
+          },
+          "mapping": {
+            "schema": "bpls",
+            "table": "business_payments",
+            "field": "payment_status",
+            "value": "paid"
+          },
+          "statuses": [
+            {
+              "id": "status-321",
+              "name": "Payment Received - Full",
+              "isDefault": true,
+              "nextSteps": ["step-311"],
+              "color": "success"
+            },
+            {
+              "id": "status-322",
+              "name": "Payment with Discount",
+              "isDefault": false,
+              "nextSteps": ["step-311"],
+              "color": "success"
+            },
+            {
+              "id": "status-323",
+              "name": "Payment with Penalty",
+              "isDefault": false,
+              "nextSteps": ["step-311"],
+              "color": "warning"
+            }
+          ]
+        },
+        {
+          "id": "step-311",
+          "name": "Community Tax Certificate",
+          "order": 11,
+          "daysLimit": 1,
+          "autoAdvance": true,
+          "assignedTo": {
+            "userLevel": "Cedula Officer",
+            "department": "City Treasurer's Office",
+            "users": ["user-318"]
+          },
+          "mapping": {
+            "schema": "bpls",
+            "table": "community_tax_certificates",
+            "field": "issuance_status",
+            "value": "issued"
+          },
+          "statuses": [
+            {
+              "id": "status-324",
+              "name": "Issued",
+              "isDefault": true,
+              "nextSteps": ["step-312"],
+              "color": "primary"
+            }
+          ]
+        },
+        {
+          "id": "step-312",
+          "name": "Permit Printing",
+          "order": 12,
+          "daysLimit": 1,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "BPLO Releasing Staff",
+            "department": "BPLO - Releasing",
+            "users": ["user-319"]
+          },
+          "mapping": {
+            "schema": "bpls",
+            "table": "business_permits",
+            "field": "printing_status",
+            "value": "printed"
+          },
+          "statuses": [
+            {
+              "id": "status-325",
+              "name": "Printed",
+              "isDefault": true,
+              "nextSteps": ["step-313"],
+              "color": "info"
+            }
+          ]
+        },
+        {
+          "id": "step-313",
+          "name": "BPLO Head Approval",
+          "order": 13,
+          "daysLimit": 1,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "BPLO Head",
+            "department": "BPLO",
+            "users": ["user-320"]
+          },
+          "mapping": {
+            "schema": "bpls",
+            "table": "business_permits",
+            "field": "approval_status",
+            "value": "approved"
+          },
+          "statuses": [
+            {
+              "id": "status-326",
+              "name": "Approved",
+              "isDefault": true,
+              "nextSteps": ["step-314"],
+              "color": "success"
+            }
+          ]
+        },
+        {
+          "id": "step-314",
+          "name": "Mayor's Signature",
+          "order": 14,
+          "daysLimit": 2,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "City Mayor",
+            "department": "Office of the City Mayor",
+            "users": ["user-321"]
+          },
+          "mapping": {
+            "schema": "bpls",
+            "table": "business_permits",
+            "field": "mayor_approval",
+            "value": "signed"
+          },
+          "statuses": [
+            {
+              "id": "status-327",
+              "name": "Signed",
+              "isDefault": true,
+              "nextSteps": ["step-315"],
+              "color": "success"
+            }
+          ]
+        },
+        {
+          "id": "step-315",
+          "name": "Permit Release",
+          "order": 15,
+          "daysLimit": 1,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "BPLO Releasing Staff",
+            "department": "BPLO - Releasing",
+            "users": ["user-319"]
+          },
+          "mapping": {
+            "schema": "bpls",
+            "table": "business_permits",
+            "field": "release_status",
+            "value": "released"
+          },
+          "statuses": [
+            {
+              "id": "status-328",
+              "name": "Released to Owner",
+              "isDefault": true,
+              "nextSteps": ["step-316"],
+              "color": "success"
+            },
+            {
+              "id": "status-329",
+              "name": "Ready for Pickup",
+              "isDefault": false,
+              "nextSteps": ["step-315"],
+              "color": "info"
+            }
+          ]
+        },
+        {
+          "id": "step-316",
+          "name": "Post-Issuance Compliance",
+          "order": 16,
+          "daysLimit": 30,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "BPLO Compliance Officer",
+            "department": "BPLO - Compliance",
+            "users": ["user-312"]
+          },
+          "mapping": {
+            "schema": "bpls",
+            "table": "business_renewals",
+            "field": "compliance_status",
+            "value": "compliant"
+          },
+          "statuses": [
+            {
+              "id": "status-330",
+              "name": "Compliant - No Deficiency",
+              "isDefault": true,
+              "nextSteps": [],
+              "color": "success"
+            },
+            {
+              "id": "status-331",
+              "name": "With Pending Compliance",
+              "isDefault": false,
+              "nextSteps": ["step-316"],
+              "color": "warning"
+            },
+            {
+              "id": "status-332",
+              "name": "Non-Compliant",
+              "isDefault": false,
+              "nextSteps": [],
+              "color": "danger"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "wf-007",
+      "name": "Provincial Ordinance Enactment - Sangguniang Panlalawigan Pampanga",
+      "category": "Legislative Operations",
+      "description": "Complete workflow for enacting provincial ordinances through the Sangguniang Panlalawigan of Pampanga",
+      "icon": "fa-gavel",
+      "status": "active",
+      "createdDate": "2025-04-01",
+      "updatedDate": "2025-04-01",
+      "steps": [
+        {
+          "id": "step-401",
+          "name": "Filing of Ordinance",
+          "order": 1,
+          "daysLimit": 1,
+          "autoAdvance": true,
+          "assignedTo": {
+            "userLevel": "Board Member",
+            "department": "Sangguniang Panlalawigan",
+            "users": []
+          },
+          "mapping": {
+            "schema": "loms",
+            "table": "ordinances",
+            "field": "filing_status",
+            "value": "filed"
+          },
+          "statuses": [
+            {
+              "id": "status-401",
+              "name": "Filed - For First Reading",
+              "isDefault": true,
+              "nextSteps": ["step-402"],
+              "color": "primary"
+            }
+          ]
+        },
+        {
+          "id": "step-402",
+          "name": "First Reading",
+          "order": 2,
+          "daysLimit": 1,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "Session Secretary",
+            "department": "SP Secretariat",
+            "users": ["user-401"]
+          },
+          "mapping": {
+            "schema": "loms",
+            "table": "ordinances",
+            "field": "reading_status",
+            "value": "first_reading"
+          },
+          "statuses": [
+            {
+              "id": "status-402",
+              "name": "Read - Referred to Committee",
+              "isDefault": true,
+              "nextSteps": ["step-403"],
+              "color": "info"
+            },
+            {
+              "id": "status-403",
+              "name": "Withdrawn by Author",
+              "isDefault": false,
+              "nextSteps": [],
+              "color": "warning"
+            }
+          ]
+        },
+        {
+          "id": "step-403",
+          "name": "Committee Assignment",
+          "order": 3,
+          "daysLimit": 1,
+          "autoAdvance": true,
+          "assignedTo": {
+            "userLevel": "Presiding Officer",
+            "department": "Office of Vice Governor",
+            "users": ["user-402"]
+          },
+          "mapping": {
+            "schema": "loms",
+            "table": "committee_referrals",
+            "field": "assignment_status",
+            "value": "assigned"
+          },
+          "statuses": [
+            {
+              "id": "status-404",
+              "name": "Assigned to Committee",
+              "isDefault": true,
+              "nextSteps": ["step-404"],
+              "color": "primary"
+            }
+          ]
+        },
+        {
+          "id": "step-404",
+          "name": "Committee Hearing Schedule",
+          "order": 4,
+          "daysLimit": 7,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "Committee Chairman",
+            "department": "SP Committee",
+            "users": []
+          },
+          "mapping": {
+            "schema": "loms",
+            "table": "committee_hearings",
+            "field": "hearing_status",
+            "value": "scheduled"
+          },
+          "statuses": [
+            {
+              "id": "status-405",
+              "name": "Hearing Scheduled",
+              "isDefault": true,
+              "nextSteps": ["step-405"],
+              "color": "info"
+            },
+            {
+              "id": "status-406",
+              "name": "No Hearing Required",
+              "isDefault": false,
+              "nextSteps": ["step-406"],
+              "color": "success"
+            }
+          ]
+        },
+        {
+          "id": "step-405",
+          "name": "Committee Hearing Conduct",
+          "order": 5,
+          "daysLimit": 14,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "Committee Chairman",
+            "department": "SP Committee",
+            "users": []
+          },
+          "mapping": {
+            "schema": "loms",
+            "table": "committee_hearings",
+            "field": "hearing_status",
+            "value": "conducted"
+          },
+          "statuses": [
+            {
+              "id": "status-407",
+              "name": "Hearing Completed",
+              "isDefault": true,
+              "nextSteps": ["step-406"],
+              "color": "success"
+            },
+            {
+              "id": "status-408",
+              "name": "Deferred - Next Hearing",
+              "isDefault": false,
+              "nextSteps": ["step-405"],
+              "color": "warning"
+            },
+            {
+              "id": "status-409",
+              "name": "Returned to Author",
+              "isDefault": false,
+              "nextSteps": ["step-401"],
+              "color": "danger"
+            }
+          ]
+        },
+        {
+          "id": "step-406",
+          "name": "Committee Report Preparation",
+          "order": 6,
+          "daysLimit": 7,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "Committee Chairman",
+            "department": "SP Committee",
+            "users": []
+          },
+          "mapping": {
+            "schema": "loms",
+            "table": "committee_reports",
+            "field": "report_status",
+            "value": "prepared"
+          },
+          "statuses": [
+            {
+              "id": "status-410",
+              "name": "Favorable Report",
+              "isDefault": true,
+              "nextSteps": ["step-407"],
+              "color": "success"
+            },
+            {
+              "id": "status-411",
+              "name": "Favorable with Amendment",
+              "isDefault": false,
+              "nextSteps": ["step-407"],
+              "color": "info"
+            },
+            {
+              "id": "status-412",
+              "name": "Unfavorable Report",
+              "isDefault": false,
+              "nextSteps": [],
+              "color": "danger"
+            }
+          ]
+        },
+        {
+          "id": "step-407",
+          "name": "Second Reading Scheduling",
+          "order": 7,
+          "daysLimit": 7,
+          "autoAdvance": true,
+          "assignedTo": {
+            "userLevel": "Session Secretary",
+            "department": "SP Secretariat",
+            "users": ["user-401"]
+          },
+          "mapping": {
+            "schema": "loms",
+            "table": "ordinances",
+            "field": "reading_status",
+            "value": "scheduled_second"
+          },
+          "statuses": [
+            {
+              "id": "status-413",
+              "name": "Scheduled for Second Reading",
+              "isDefault": true,
+              "nextSteps": ["step-408"],
+              "color": "primary"
+            }
+          ]
+        },
+        {
+          "id": "step-408",
+          "name": "Second Reading Deliberation",
+          "order": 8,
+          "daysLimit": 1,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "Presiding Officer",
+            "department": "Office of Vice Governor",
+            "users": ["user-402"]
+          },
+          "mapping": {
+            "schema": "loms",
+            "table": "ordinances",
+            "field": "reading_status",
+            "value": "second_reading"
+          },
+          "statuses": [
+            {
+              "id": "status-414",
+              "name": "Approved on Second Reading",
+              "isDefault": true,
+              "nextSteps": ["step-409"],
+              "color": "success"
+            },
+            {
+              "id": "status-415",
+              "name": "Amended on Second Reading",
+              "isDefault": false,
+              "nextSteps": ["step-409"],
+              "color": "info"
+            },
+            {
+              "id": "status-416",
+              "name": "Deferred",
+              "isDefault": false,
+              "nextSteps": ["step-408"],
+              "color": "warning"
+            },
+            {
+              "id": "status-417",
+              "name": "Rejected",
+              "isDefault": false,
+              "nextSteps": [],
+              "color": "danger"
+            }
+          ]
+        },
+        {
+          "id": "step-409",
+          "name": "Third Reading Scheduling",
+          "order": 9,
+          "daysLimit": 7,
+          "autoAdvance": true,
+          "assignedTo": {
+            "userLevel": "Session Secretary",
+            "department": "SP Secretariat",
+            "users": ["user-401"]
+          },
+          "mapping": {
+            "schema": "loms",
+            "table": "ordinances",
+            "field": "reading_status",
+            "value": "scheduled_third"
+          },
+          "statuses": [
+            {
+              "id": "status-418",
+              "name": "Scheduled for Third Reading",
+              "isDefault": true,
+              "nextSteps": ["step-410"],
+              "color": "primary"
+            }
+          ]
+        },
+        {
+          "id": "step-410",
+          "name": "Third Reading Voting",
+          "order": 10,
+          "daysLimit": 1,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "Presiding Officer",
+            "department": "Office of Vice Governor",
+            "users": ["user-402"]
+          },
+          "mapping": {
+            "schema": "loms",
+            "table": "ordinances",
+            "field": "voting_status",
+            "value": "voted"
+          },
+          "statuses": [
+            {
+              "id": "status-419",
+              "name": "Passed",
+              "isDefault": true,
+              "nextSteps": ["step-411"],
+              "color": "success"
+            },
+            {
+              "id": "status-420",
+              "name": "Failed",
+              "isDefault": false,
+              "nextSteps": [],
+              "color": "danger"
+            }
+          ]
+        },
+        {
+          "id": "step-411",
+          "name": "Journal Approval",
+          "order": 11,
+          "daysLimit": 7,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "Presiding Officer",
+            "department": "Office of Vice Governor",
+            "users": ["user-402"]
+          },
+          "mapping": {
+            "schema": "loms",
+            "table": "session_journals",
+            "field": "approval_status",
+            "value": "approved"
+          },
+          "statuses": [
+            {
+              "id": "status-421",
+              "name": "Journal Approved",
+              "isDefault": true,
+              "nextSteps": ["step-412"],
+              "color": "info"
+            }
+          ]
+        },
+        {
+          "id": "step-412",
+          "name": "Transmittal to Governor",
+          "order": 12,
+          "daysLimit": 3,
+          "autoAdvance": true,
+          "assignedTo": {
+            "userLevel": "Session Secretary",
+            "department": "SP Secretariat",
+            "users": ["user-401"]
+          },
+          "mapping": {
+            "schema": "loms",
+            "table": "ordinances",
+            "field": "transmittal_status",
+            "value": "transmitted"
+          },
+          "statuses": [
+            {
+              "id": "status-422",
+              "name": "Transmitted to Governor",
+              "isDefault": true,
+              "nextSteps": ["step-413"],
+              "color": "primary"
+            }
+          ]
+        },
+        {
+          "id": "step-413",
+          "name": "Governor's Action",
+          "order": 13,
+          "daysLimit": 10,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "Provincial Governor",
+            "department": "Office of the Provincial Governor",
+            "users": ["user-403"]
+          },
+          "mapping": {
+            "schema": "loms",
+            "table": "ordinances",
+            "field": "governor_action",
+            "value": "acted"
+          },
+          "statuses": [
+            {
+              "id": "status-423",
+              "name": "Approved by Governor",
+              "isDefault": true,
+              "nextSteps": ["step-414"],
+              "color": "success"
+            },
+            {
+              "id": "status-424",
+              "name": "Vetoed by Governor",
+              "isDefault": false,
+              "nextSteps": ["step-417"],
+              "color": "warning"
+            },
+            {
+              "id": "status-425",
+              "name": "Lapsed into Law",
+              "isDefault": false,
+              "nextSteps": ["step-414"],
+              "color": "info"
+            }
+          ]
+        },
+        {
+          "id": "step-414",
+          "name": "DILG Review",
+          "order": 14,
+          "daysLimit": 30,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "DILG Provincial Director",
+            "department": "DILG Pampanga",
+            "users": []
+          },
+          "mapping": {
+            "schema": "loms",
+            "table": "dilg_reviews",
+            "field": "review_status",
+            "value": "reviewed"
+          },
+          "statuses": [
+            {
+              "id": "status-426",
+              "name": "Compliant - No Action",
+              "isDefault": true,
+              "nextSteps": ["step-415"],
+              "color": "success"
+            },
+            {
+              "id": "status-427",
+              "name": "Invalidated",
+              "isDefault": false,
+              "nextSteps": [],
+              "color": "danger"
+            }
+          ]
+        },
+        {
+          "id": "step-415",
+          "name": "Publication",
+          "order": 15,
+          "daysLimit": 7,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "Information Officer",
+            "department": "Provincial Information Office",
+            "users": ["user-404"]
+          },
+          "mapping": {
+            "schema": "loms",
+            "table": "ordinances",
+            "field": "publication_status",
+            "value": "published"
+          },
+          "statuses": [
+            {
+              "id": "status-428",
+              "name": "Published",
+              "isDefault": true,
+              "nextSteps": ["step-416"],
+              "color": "primary"
+            }
+          ]
+        },
+        {
+          "id": "step-416",
+          "name": "Effectivity",
+          "order": 16,
+          "daysLimit": 15,
+          "autoAdvance": true,
+          "assignedTo": {
+            "userLevel": "System",
+            "department": "SP Secretariat",
+            "users": []
+          },
+          "mapping": {
+            "schema": "loms",
+            "table": "ordinances",
+            "field": "effectivity_status",
+            "value": "effective"
+          },
+          "statuses": [
+            {
+              "id": "status-429",
+              "name": "Now Effective",
+              "isDefault": true,
+              "nextSteps": [],
+              "color": "success"
+            }
+          ]
+        },
+        {
+          "id": "step-417",
+          "name": "Veto Override Process",
+          "order": 17,
+          "daysLimit": 10,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "Presiding Officer",
+            "department": "Office of Vice Governor",
+            "users": ["user-402"]
+          },
+          "mapping": {
+            "schema": "loms",
+            "table": "veto_overrides",
+            "field": "override_status",
+            "value": "voted"
+          },
+          "statuses": [
+            {
+              "id": "status-430",
+              "name": "Veto Overridden",
+              "isDefault": false,
+              "nextSteps": ["step-414"],
+              "color": "success"
+            },
+            {
+              "id": "status-431",
+              "name": "Veto Sustained",
+              "isDefault": false,
+              "nextSteps": [],
+              "color": "danger"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "wf-009",
+      "name": "Appropriation Ordinance Enactment - Sangguniang Panlalawigan Pampanga",
+      "category": "Legislative Operations",
+      "description": "Complete workflow for enacting appropriation ordinances (budget ordinances) through the Sangguniang Panlalawigan of Pampanga",
+      "icon": "fa-money-bill-wave",
+      "status": "active",
+      "createdDate": "2025-04-01",
+      "updatedDate": "2025-04-01",
+      "steps": [
+        {
+          "id": "step-601",
+          "name": "Budget Proposal Submission",
+          "order": 1,
+          "daysLimit": 3,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "Provincial Budget Officer",
+            "department": "Provincial Budget Office",
+            "users": ["user-601"]
+          },
+          "mapping": {
+            "schema": "loms",
+            "table": "appropriation_ordinances",
+            "field": "submission_status",
+            "value": "submitted"
+          },
+          "statuses": [
+            {
+              "id": "status-601",
+              "name": "Submitted by Governor",
+              "isDefault": true,
+              "nextSteps": ["step-602"],
+              "color": "primary"
+            }
+          ]
+        },
+        {
+          "id": "step-602",
+          "name": "Initial Budget Review",
+          "order": 2,
+          "daysLimit": 5,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "SP Budget Staff",
+            "department": "SP Secretariat - Budget",
+            "users": ["user-602"]
+          },
+          "mapping": {
+            "schema": "loms",
+            "table": "appropriation_ordinances",
+            "field": "initial_review_status",
+            "value": "reviewed"
+          },
+          "statuses": [
+            {
+              "id": "status-602",
+              "name": "Complete Documentation",
+              "isDefault": true,
+              "nextSteps": ["step-603"],
+              "color": "success"
+            },
+            {
+              "id": "status-603",
+              "name": "Incomplete",
+              "isDefault": false,
+              "nextSteps": ["step-601"],
+              "color": "warning"
+            }
+          ]
+        },
+        {
+          "id": "step-603",
+          "name": "Filing as Ordinance",
+          "order": 3,
+          "daysLimit": 1,
+          "autoAdvance": true,
+          "assignedTo": {
+            "userLevel": "Session Secretary",
+            "department": "SP Secretariat",
+            "users": ["user-603"]
+          },
+          "mapping": {
+            "schema": "loms",
+            "table": "appropriation_ordinances",
+            "field": "filing_status",
+            "value": "filed"
+          },
+          "statuses": [
+            {
+              "id": "status-604",
+              "name": "Filed - For First Reading",
+              "isDefault": true,
+              "nextSteps": ["step-604"],
+              "color": "primary"
+            }
+          ]
+        },
+        {
+          "id": "step-604",
+          "name": "First Reading",
+          "order": 4,
+          "daysLimit": 1,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "Presiding Officer",
+            "department": "Office of Vice Governor",
+            "users": ["user-604"]
+          },
+          "mapping": {
+            "schema": "loms",
+            "table": "appropriation_ordinances",
+            "field": "reading_status",
+            "value": "first_reading"
+          },
+          "statuses": [
+            {
+              "id": "status-605",
+              "name": "Read - Referred to Committee",
+              "isDefault": true,
+              "nextSteps": ["step-605"],
+              "color": "info"
+            }
+          ]
+        },
+        {
+          "id": "step-605",
+          "name": "Committee on Appropriations",
+          "order": 5,
+          "daysLimit": 1,
+          "autoAdvance": true,
+          "assignedTo": {
+            "userLevel": "Presiding Officer",
+            "department": "Office of Vice Governor",
+            "users": ["user-604"]
+          },
+          "mapping": {
+            "schema": "loms",
+            "table": "committee_referrals",
+            "field": "assignment_status",
+            "value": "assigned"
+          },
+          "statuses": [
+            {
+              "id": "status-606",
+              "name": "Assigned to Appropriations Committee",
+              "isDefault": true,
+              "nextSteps": ["step-606"],
+              "color": "primary"
+            }
+          ]
+        },
+        {
+          "id": "step-606",
+          "name": "Budget Hearings Schedule",
+          "order": 6,
+          "daysLimit": 7,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "Committee on Appropriations Chairman",
+            "department": "SP Committee on Appropriations",
+            "users": ["user-605"]
+          },
+          "mapping": {
+            "schema": "loms",
+            "table": "budget_hearings",
+            "field": "schedule_status",
+            "value": "scheduled"
+          },
+          "statuses": [
+            {
+              "id": "status-607",
+              "name": "Hearings Scheduled",
+              "isDefault": true,
+              "nextSteps": ["step-607"],
+              "color": "info"
+            }
+          ]
+        },
+        {
+          "id": "step-607",
+          "name": "Departmental Budget Hearings",
+          "order": 7,
+          "daysLimit": 21,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "Committee on Appropriations Chairman",
+            "department": "SP Committee on Appropriations",
+            "users": ["user-605"]
+          },
+          "mapping": {
+            "schema": "loms",
+            "table": "budget_hearings",
+            "field": "hearing_status",
+            "value": "conducted"
+          },
+          "statuses": [
+            {
+              "id": "status-608",
+              "name": "All Hearings Completed",
+              "isDefault": true,
+              "nextSteps": ["step-608"],
+              "color": "success"
+            },
+            {
+              "id": "status-609",
+              "name": "Additional Hearing Required",
+              "isDefault": false,
+              "nextSteps": ["step-607"],
+              "color": "warning"
+            }
+          ]
+        },
+        {
+          "id": "step-608",
+          "name": "Budget Analysis and Adjustments",
+          "order": 8,
+          "daysLimit": 10,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "Committee on Appropriations Chairman",
+            "department": "SP Committee on Appropriations",
+            "users": ["user-605"]
+          },
+          "mapping": {
+            "schema": "loms",
+            "table": "appropriation_ordinances",
+            "field": "adjustment_status",
+            "value": "adjusted"
+          },
+          "statuses": [
+            {
+              "id": "status-610",
+              "name": "Budget Finalized - No Changes",
+              "isDefault": false,
+              "nextSteps": ["step-609"],
+              "color": "success"
+            },
+            {
+              "id": "status-611",
+              "name": "Budget Adjusted",
+              "isDefault": true,
+              "nextSteps": ["step-609"],
+              "color": "info"
+            }
+          ]
+        },
+        {
+          "id": "step-609",
+          "name": "Committee Report Preparation",
+          "order": 9,
+          "daysLimit": 5,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "Committee on Appropriations Chairman",
+            "department": "SP Committee on Appropriations",
+            "users": ["user-605"]
+          },
+          "mapping": {
+            "schema": "loms",
+            "table": "committee_reports",
+            "field": "report_status",
+            "value": "prepared"
+          },
+          "statuses": [
+            {
+              "id": "status-612",
+              "name": "Committee Report - Favorable",
+              "isDefault": true,
+              "nextSteps": ["step-610"],
+              "color": "success"
+            }
+          ]
+        },
+        {
+          "id": "step-610",
+          "name": "Second Reading Scheduling",
+          "order": 10,
+          "daysLimit": 7,
+          "autoAdvance": true,
+          "assignedTo": {
+            "userLevel": "Session Secretary",
+            "department": "SP Secretariat",
+            "users": ["user-603"]
+          },
+          "mapping": {
+            "schema": "loms",
+            "table": "appropriation_ordinances",
+            "field": "reading_status",
+            "value": "scheduled_second"
+          },
+          "statuses": [
+            {
+              "id": "status-613",
+              "name": "Scheduled for Second Reading",
+              "isDefault": true,
+              "nextSteps": ["step-611"],
+              "color": "primary"
+            }
+          ]
+        },
+        {
+          "id": "step-611",
+          "name": "Second Reading Deliberation",
+          "order": 11,
+          "daysLimit": 1,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "Presiding Officer",
+            "department": "Office of Vice Governor",
+            "users": ["user-604"]
+          },
+          "mapping": {
+            "schema": "loms",
+            "table": "appropriation_ordinances",
+            "field": "reading_status",
+            "value": "second_reading"
+          },
+          "statuses": [
+            {
+              "id": "status-614",
+              "name": "Approved on Second Reading",
+              "isDefault": true,
+              "nextSteps": ["step-612"],
+              "color": "success"
+            },
+            {
+              "id": "status-615",
+              "name": "With Amendments",
+              "isDefault": false,
+              "nextSteps": ["step-612"],
+              "color": "info"
+            },
+            {
+              "id": "status-616",
+              "name": "Deferred",
+              "isDefault": false,
+              "nextSteps": ["step-611"],
+              "color": "warning"
+            }
+          ]
+        },
+        {
+          "id": "step-612",
+          "name": "Third Reading Scheduling",
+          "order": 12,
+          "daysLimit": 7,
+          "autoAdvance": true,
+          "assignedTo": {
+            "userLevel": "Session Secretary",
+            "department": "SP Secretariat",
+            "users": ["user-603"]
+          },
+          "mapping": {
+            "schema": "loms",
+            "table": "appropriation_ordinances",
+            "field": "reading_status",
+            "value": "scheduled_third"
+          },
+          "statuses": [
+            {
+              "id": "status-617",
+              "name": "Scheduled for Third Reading",
+              "isDefault": true,
+              "nextSteps": ["step-613"],
+              "color": "primary"
+            }
+          ]
+        },
+        {
+          "id": "step-613",
+          "name": "Third Reading - Final Vote",
+          "order": 13,
+          "daysLimit": 1,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "Presiding Officer",
+            "department": "Office of Vice Governor",
+            "users": ["user-604"]
+          },
+          "mapping": {
+            "schema": "loms",
+            "table": "appropriation_ordinances",
+            "field": "voting_status",
+            "value": "voted"
+          },
+          "statuses": [
+            {
+              "id": "status-618",
+              "name": "Passed",
+              "isDefault": true,
+              "nextSteps": ["step-614"],
+              "color": "success"
+            },
+            {
+              "id": "status-619",
+              "name": "Failed",
+              "isDefault": false,
+              "nextSteps": [],
+              "color": "danger"
+            }
+          ]
+        },
+        {
+          "id": "step-614",
+          "name": "Journal Approval",
+          "order": 14,
+          "daysLimit": 7,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "Presiding Officer",
+            "department": "Office of Vice Governor",
+            "users": ["user-604"]
+          },
+          "mapping": {
+            "schema": "loms",
+            "table": "session_journals",
+            "field": "approval_status",
+            "value": "approved"
+          },
+          "statuses": [
+            {
+              "id": "status-620",
+              "name": "Journal Approved",
+              "isDefault": true,
+              "nextSteps": ["step-615"],
+              "color": "info"
+            }
+          ]
+        },
+        {
+          "id": "step-615",
+          "name": "Transmittal to Governor",
+          "order": 15,
+          "daysLimit": 3,
+          "autoAdvance": true,
+          "assignedTo": {
+            "userLevel": "Session Secretary",
+            "department": "SP Secretariat",
+            "users": ["user-603"]
+          },
+          "mapping": {
+            "schema": "loms",
+            "table": "appropriation_ordinances",
+            "field": "transmittal_status",
+            "value": "transmitted"
+          },
+          "statuses": [
+            {
+              "id": "status-621",
+              "name": "Transmitted to Governor",
+              "isDefault": true,
+              "nextSteps": ["step-616"],
+              "color": "primary"
+            }
+          ]
+        },
+        {
+          "id": "step-616",
+          "name": "Governor's Action",
+          "order": 16,
+          "daysLimit": 10,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "Provincial Governor",
+            "department": "Office of the Provincial Governor",
+            "users": ["user-606"]
+          },
+          "mapping": {
+            "schema": "loms",
+            "table": "appropriation_ordinances",
+            "field": "governor_action",
+            "value": "acted"
+          },
+          "statuses": [
+            {
+              "id": "status-622",
+              "name": "Approved by Governor",
+              "isDefault": true,
+              "nextSteps": ["step-617"],
+              "color": "success"
+            },
+            {
+              "id": "status-623",
+              "name": "Line-Item Veto",
+              "isDefault": false,
+              "nextSteps": ["step-617"],
+              "color": "warning"
+            },
+            {
+              "id": "status-624",
+              "name": "Vetoed Entirely",
+              "isDefault": false,
+              "nextSteps": ["step-620"],
+              "color": "danger"
+            }
+          ]
+        },
+        {
+          "id": "step-617",
+          "name": "DILG Review",
+          "order": 17,
+          "daysLimit": 30,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "DILG Provincial Director",
+            "department": "DILG Pampanga",
+            "users": []
+          },
+          "mapping": {
+            "schema": "loms",
+            "table": "dilg_reviews",
+            "field": "review_status",
+            "value": "reviewed"
+          },
+          "statuses": [
+            {
+              "id": "status-625",
+              "name": "Compliant",
+              "isDefault": true,
+              "nextSteps": ["step-618"],
+              "color": "success"
+            },
+            {
+              "id": "status-626",
+              "name": "With Findings",
+              "isDefault": false,
+              "nextSteps": ["step-618"],
+              "color": "warning"
+            }
+          ]
+        },
+        {
+          "id": "step-618",
+          "name": "Publication",
+          "order": 18,
+          "daysLimit": 7,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "Information Officer",
+            "department": "Provincial Information Office",
+            "users": ["user-607"]
+          },
+          "mapping": {
+            "schema": "loms",
+            "table": "appropriation_ordinances",
+            "field": "publication_status",
+            "value": "published"
+          },
+          "statuses": [
+            {
+              "id": "status-627",
+              "name": "Published",
+              "isDefault": true,
+              "nextSteps": ["step-619"],
+              "color": "primary"
+            }
+          ]
+        },
+        {
+          "id": "step-619",
+          "name": "Budget Effectivity",
+          "order": 19,
+          "daysLimit": 15,
+          "autoAdvance": true,
+          "assignedTo": {
+            "userLevel": "Provincial Budget Officer",
+            "department": "Provincial Budget Office",
+            "users": ["user-601"]
+          },
+          "mapping": {
+            "schema": "loms",
+            "table": "appropriation_ordinances",
+            "field": "effectivity_status",
+            "value": "effective"
+          },
+          "statuses": [
+            {
+              "id": "status-628",
+              "name": "Now Effective - Budget Active",
+              "isDefault": true,
+              "nextSteps": [],
+              "color": "success"
+            }
+          ]
+        },
+        {
+          "id": "step-620",
+          "name": "Veto Override Process",
+          "order": 20,
+          "daysLimit": 10,
+          "autoAdvance": false,
+          "assignedTo": {
+            "userLevel": "Presiding Officer",
+            "department": "Office of Vice Governor",
+            "users": ["user-604"]
+          },
+          "mapping": {
+            "schema": "loms",
+            "table": "veto_overrides",
+            "field": "override_status",
+            "value": "voted"
+          },
+          "statuses": [
+            {
+              "id": "status-629",
+              "name": "Veto Overridden",
+              "isDefault": false,
+              "nextSteps": ["step-617"],
+              "color": "success"
+            },
+            {
+              "id": "status-630",
+              "name": "Veto Sustained",
+              "isDefault": false,
+              "nextSteps": [],
+              "color": "danger"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "users": [
+    {"id": "user-001", "name": "Juan Dela Cruz", "role": "Staff"},
+    {"id": "user-002", "name": "Maria Santos", "role": "Staff"},
+    {"id": "user-003", "name": "Pedro Reyes", "role": "Supervisor"},
+    {"id": "user-004", "name": "Ana Garcia", "role": "Manager"},
+    {"id": "user-101", "name": "Carlos Mendoza", "role": "Receiving Clerk"},
+    {"id": "user-102", "name": "Isabel Ramos", "role": "Receiving Clerk"}
+  ],
+  "departments": [
+    "Business Permits",
+    "Document Management",
+    "Sangguniang Panlalawigan",
+    "Finance",
+    "Human Resources",
+    "Accounting Office",
+    "Budget Office",
+    "Treasury Office"
+  ],
+  "userLevels": [
+    "All Users",
+    "Staff",
+    "Supervisor",
+    "Manager",
+    "Department Head",
+    "Board Member",
+    "Committee Chair",
+    "Receiving Clerk",
+    "Accountant",
+    "Budget Officer",
+    "Treasurer"
+  ],
+  "schemas": [
+    {
+      "name": "licensing",
+      "tables": [
+        {
+          "name": "business_permits",
+          "fields": ["application_status", "approval_date", "permit_type"]
+        }
+      ]
+    },
+    {
+      "name": "document_mgmt",
+      "tables": [
+        {
+          "name": "documents",
+          "fields": ["doc_status", "doc_type", "approval_date"]
+        }
+      ]
+    },
+    {
+      "name": "loms",
+      "tables": [
+        {
+          "name": "ordinances",
+          "fields": ["status", "ordinance_type", "voting_date"]
+        },
+        {
+          "name": "resolutions",
+          "fields": ["status", "resolution_type", "approval_date"]
+        }
+      ]
+    },
+    {
+      "name": "receiving",
+      "tables": [
+        {
+          "name": "receiving_documents",
+          "fields": ["status_id", "document_type", "received_date"]
+        }
+      ]
+    },
+    {
+      "name": "accounting",
+      "tables": [
+        {
+          "name": "vouchers",
+          "fields": ["status_id", "voucher_type", "amount"]
+        }
+      ]
+    }
+  ]
+}

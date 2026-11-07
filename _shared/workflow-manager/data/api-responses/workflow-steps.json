@@ -1,0 +1,202 @@
+{
+  "success": true,
+  "message": "Workflow steps retrieved successfully",
+  "data": {
+    "workflowId": "wf-001",
+    "workflowName": "Business Permit Application",
+    "steps": [
+      {
+        "id": "step-001",
+        "name": "Initial Application",
+        "order": 1,
+        "daysLimit": 3,
+        "autoAdvance": false,
+        "assignedTo": {
+          "userLevel": "Staff",
+          "department": "Business Permits",
+          "users": ["user-001", "user-002"]
+        },
+        "mapping": {
+          "schema": "licensing",
+          "table": "business_permits",
+          "field": "application_status",
+          "value": "submitted"
+        },
+        "outputs": [
+          {
+            "id": "output-001-001",
+            "variable": "submission_date",
+            "title": "Submission Date",
+            "value": "${db.submitted_date}",
+            "source": "db_field"
+          },
+          {
+            "id": "output-001-002",
+            "variable": "reference_number",
+            "title": "Reference Number",
+            "value": "${db.reference_no}",
+            "source": "db_field"
+          },
+          {
+            "id": "output-001-003",
+            "variable": "completeness_status",
+            "title": "Completeness Status",
+            "value": "${db.document_completeness}",
+            "source": "db_field"
+          },
+          {
+            "id": "output-001-004",
+            "variable": "submitted_by_name",
+            "title": "Submitted By",
+            "value": "${user.name}",
+            "source": "custom"
+          }
+        ],
+        "statuses": [
+          {
+            "id": "status-001",
+            "name": "Submitted",
+            "isDefault": true,
+            "nextSteps": ["step-002"],
+            "color": "primary"
+          },
+          {
+            "id": "status-002",
+            "name": "Incomplete Documents",
+            "isDefault": false,
+            "nextSteps": ["step-001"],
+            "color": "warning"
+          }
+        ]
+      },
+      {
+        "id": "step-002",
+        "name": "Document Review",
+        "order": 2,
+        "daysLimit": 5,
+        "autoAdvance": false,
+        "assignedTo": {
+          "userLevel": "Supervisor",
+          "department": "Business Permits",
+          "users": ["user-003"]
+        },
+        "mapping": {
+          "schema": "licensing",
+          "table": "business_permits",
+          "field": "application_status",
+          "value": "under_review"
+        },
+        "outputs": [
+          {
+            "id": "output-002-001",
+            "variable": "review_date",
+            "title": "Review Date",
+            "value": "${db.review_date}",
+            "source": "db_field"
+          },
+          {
+            "id": "output-002-002",
+            "variable": "reviewer_notes",
+            "title": "Reviewer Notes",
+            "value": "${db.reviewer_comments}",
+            "source": "db_field"
+          },
+          {
+            "id": "output-002-003",
+            "variable": "missing_documents",
+            "title": "Missing Documents",
+            "value": "${db.missing_docs}",
+            "source": "db_field"
+          },
+          {
+            "id": "output-002-004",
+            "variable": "reviewer_name",
+            "title": "Reviewed By",
+            "value": "${user.name}",
+            "source": "custom"
+          }
+        ],
+        "statuses": [
+          {
+            "id": "status-003",
+            "name": "Under Review",
+            "isDefault": true,
+            "nextSteps": ["step-003"],
+            "color": "info"
+          },
+          {
+            "id": "status-004",
+            "name": "Requires Revision",
+            "isDefault": false,
+            "nextSteps": ["step-001"],
+            "color": "warning"
+          }
+        ]
+      },
+      {
+        "id": "step-003",
+        "name": "Final Approval",
+        "order": 3,
+        "daysLimit": 2,
+        "autoAdvance": true,
+        "assignedTo": {
+          "userLevel": "Manager",
+          "department": "Business Permits",
+          "users": ["user-004"]
+        },
+        "mapping": {
+          "schema": "licensing",
+          "table": "business_permits",
+          "field": "application_status",
+          "value": "approved"
+        },
+        "outputs": [
+          {
+            "id": "output-003-001",
+            "variable": "approval_date",
+            "title": "Approval Date",
+            "value": "${db.approval_date}",
+            "source": "db_field"
+          },
+          {
+            "id": "output-003-002",
+            "variable": "permit_number",
+            "title": "Permit Number",
+            "value": "${db.permit_number}",
+            "source": "db_field"
+          },
+          {
+            "id": "output-003-003",
+            "variable": "approved_by_name",
+            "title": "Approved By",
+            "value": "${user.name}",
+            "source": "custom"
+          },
+          {
+            "id": "output-003-004",
+            "variable": "final_status",
+            "title": "Final Status",
+            "value": "Approved",
+            "source": "custom"
+          }
+        ],
+        "statuses": [
+          {
+            "id": "status-005",
+            "name": "Approved",
+            "isDefault": true,
+            "nextSteps": [],
+            "color": "success"
+          },
+          {
+            "id": "status-006",
+            "name": "Rejected",
+            "isDefault": false,
+            "nextSteps": [],
+            "color": "danger"
+          }
+        ]
+      }
+    ]
+  }
+}

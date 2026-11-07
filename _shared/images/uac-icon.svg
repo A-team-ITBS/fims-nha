@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <linearGradient id="waterGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#003876;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0056b3;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background Circle -->
+  <circle cx="50" cy="50" r="45" fill="white" stroke="#003876" stroke-width="2"/>
+  
+  <!-- Animated Lock Body -->
+  <rect x="35" y="45" width="30" height="25" rx="4" fill="url(#waterGradient)">
+    <animate attributeName="height" 
+             values="25;27;25" 
+             dur="2s" 
+             repeatCount="indefinite"/>
+  </rect>
+  
+  <!-- Animated Lock Shackle (Water Drop Shape) -->
+  <path d="M50 20 Q60 30 60 40 L60 45 L40 45 L40 40 Q40 30 50 20" 
+        fill="#c41e3a" stroke="none">
+    <animate attributeName="d" 
+             values="M50 20 Q60 30 60 40 L60 45 L40 45 L40 40 Q40 30 50 20;
+                     M50 22 Q62 32 62 40 L62 45 L38 45 L38 40 Q38 32 50 22;
+                     M50 20 Q60 30 60 40 L60 45 L40 45 L40 40 Q40 30 50 20"
+             dur="2s" 
+             repeatCount="indefinite"/>
+  </path>
+  
+  <!-- Keyhole -->
+  <circle cx="50" cy="55" r="3" fill="white">
+    <animate attributeName="r" 
+             values="3;3.5;3" 
+             dur="2s" 
+             repeatCount="indefinite"/>
+  </circle>
+</svg>

@@ -1,0 +1,1046 @@
+/* Workflow Manager Styles - Enhanced */
+
+/* General Layout */
+
+
+/* Workflow Cards */
+.workflow-card {
+    transition: all 0.3s ease;
+    border: 1px solid rgba(0,0,0,.125);
+}
+
+.workflow-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 0.5rem 1rem rgba(0,0,0,0.15) !important;
+    border-color: rgba(13, 110, 253, 0.3);
+}
+
+.workflow-card-wrapper {
+    transition: all 0.3s ease;
+}
+
+/* Icon Preview */
+.icon-preview {
+    width: 48px;
+    height: 48px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.5rem;
+    font-size: 1.5rem;
+}
+
+/* Step Items */
+.step-item, .status-item {
+    transition: all 0.2s ease;
+}
+
+.step-item:hover, .status-item:hover {
+    background-color: var(--afims-surface-subtle);
+}
+
+.step-accordion-item {
+    margin-bottom: 0.5rem;
+    border: 1px solid rgba(0,0,0,.125);
+    border-radius: 0.375rem;
+}
+
+.step-accordion-item .accordion-button {
+    padding: 1rem;
+}
+
+.step-accordion-item .accordion-button:not(.collapsed) {
+    background-color: var(--afims-surface-subtle);
+    color: var(--afims-primary-text);
+}
+
+/* Drag Handle */
+.drag-handle {
+    cursor: move;
+    opacity: 0.5;
+    transition: opacity 0.2s ease;
+}
+
+.drag-handle:hover {
+    opacity: 1;
+}
+
+/* Sortable */
+.sortable-ghost {
+    opacity: 0.4;
+    background: var(--afims-border);
+    border: 2px dashed var(--afims-primary);
+}
+
+.sortable-chosen {
+    background: var(--afims-surface-subtle);
+}
+
+.sortable-drag {
+    opacity: 0.8;
+    box-shadow: 0 0.5rem 1rem rgba(0,0,0,0.3);
+}
+
+/* Mermaid Container */
+.mermaid-container {
+    overflow: auto;
+    background: var(--afims-surface);
+    border: 1px solid var(--afims-border);
+    border-radius: 0.5rem;
+    padding: 1rem;
+    width: 100%;
+    height: 100%;
+}
+
+.mermaid-container svg {
+    max-width: 100%;
+    height: auto;
+    transition: transform 0.2s ease;
+}
+
+.mermaid-container pre.mermaid {
+    background: transparent;
+    border: none;
+    margin: 0;
+    padding: 0;
+}
+
+#mermaid-wrapper {
+    position: relative;
+    overflow: auto;
+    width: 100%;
+}
+
+/* Visual Container */
+#workflow-visual-container {
+    width: 100%;
+    min-height: 500px;
+    position: relative;
+}
+
+#visual-mermaid-container {
+    width: 100%;
+    min-height: 500px;
+    display: block;
+    position: relative;
+}
+
+/* Visual Pane */
+#visual-pane {
+    min-height: 500px;
+    position: relative;
+}
+
+/* Zoom Controls */
+.zoom-controls {
+    position: sticky;
+    top: 10px;
+    z-index: 10;
+    margin-bottom: 1rem;
+}
+
+/* Icon Picker Grid */
+.icon-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+    gap: 0.5rem;
+    max-height: 400px;
+    overflow-y: auto;
+    padding: 0.5rem;
+}
+
+.icon-option {
+    padding: 1rem;
+    text-align: center;
+    cursor: pointer;
+    border: 2px solid var(--afims-border);
+    border-radius: 0.5rem;
+    transition: all 0.2s ease;
+    background: var(--afims-surface);
+}
+
+.icon-option:hover {
+    background-color: var(--afims-primary-soft);
+    border-color: var(--afims-primary);
+    transform: scale(1.05);
+}
+
+.icon-option.selected {
+    background-color: var(--afims-primary);
+    color: white;
+    border-color: var(--afims-primary);
+}
+
+.icon-option i {
+    display: block;
+    margin: 0 auto;
+}
+
+/* Offcanvas Customization */
+.offcanvas-end {
+    box-shadow: -0.5rem 0 1rem rgba(0,0,0,0.15);
+}
+
+.offcanvas-header {
+    background: var(--afims-surface);
+    color: var(--afims-text);
+    border-bottom: 1px solid var(--afims-border);
+}
+
+.offcanvas-header .btn-close {
+    filter: none;
+}
+
+/* Tab Navigation */
+.nav-tabs {
+    border-bottom: 2px solid var(--afims-border);
+}
+
+.nav-tabs .nav-link {
+    color: var(--afims-text-muted);
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 0.75rem 1.25rem;
+    margin-bottom: -2px;
+}
+
+.nav-tabs .nav-link:hover {
+    border-color: transparent transparent var(--afims-primary);
+    color: var(--afims-primary-text);
+}
+
+.nav-tabs .nav-link.active {
+    color: var(--afims-primary-text);
+    background-color: transparent;
+    border-color: transparent transparent var(--afims-primary);
+    font-weight: 600;
+}
+
+/* Modal Customization */
+.modal-header {
+    background: var(--afims-surface);
+    color: var(--afims-text);
+}
+
+.modal-header .btn-close {
+    filter: none;
+}
+
+/* Form Controls */
+.form-label.fw-bold {
+    font-size: 0.875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--afims-text-muted);
+}
+
+.form-control:focus,
+.form-select:focus {
+    border-color: var(--afims-primary);
+    box-shadow: 0 0 0 0.25rem color-mix(in srgb, var(--afims-primary) 25%, transparent);
+}
+
+/* Badges */
+.badge {
+    padding: 0.375rem 0.75rem;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+}
+
+/* Cards */
+.card {
+    border-radius: 0.5rem;
+    border: 1px solid rgba(0,0,0,.125);
+}
+
+.card-header {
+    background-color: var(--afims-surface-subtle);
+    border-bottom: 1px solid rgba(0,0,0,.125);
+    font-weight: 600;
+}
+
+/* Alerts */
+.alert {
+    border-radius: 0.5rem;
+    border-left: 4px solid;
+}
+
+.alert-info {
+    border-left-color: var(--afims-primary);
+}
+
+.alert-warning {
+    border-left-color: var(--afims-warning);
+}
+
+.alert-success {
+    border-left-color: var(--afims-success);
+}
+
+.alert-danger {
+    border-left-color: var(--afims-danger);
+}
+
+/* Buttons */
+.btn {
+    border-radius: 0.375rem;
+    padding: 0.5rem 1rem;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.btn:hover {
+    transform: none;
+}
+
+.btn-primary {
+    background: var(--afims-primary);
+    border-color: var(--afims-primary);
+}
+
+.btn-primary:hover {
+    background: var(--afims-primary-hover);
+    border-color: var(--afims-primary-hover);
+}
+
+/* List Group */
+.list-group-item {
+    border-radius: 0.375rem;
+    margin-bottom: 0.5rem;
+    border: 1px solid rgba(0,0,0,.125);
+}
+
+/* Accordion Customization */
+.accordion-button::after {
+    margin-left: auto;
+}
+
+.accordion-button:focus {
+    box-shadow: none;
+    border-color: rgba(0,0,0,.125);
+}
+
+/* Loading States */
+.spinner-border {
+    width: 3rem;
+    height: 3rem;
+}
+
+/* Toast Notifications */
+.toast {
+    border-radius: 0.5rem;
+    box-shadow: 0 0.5rem 1rem rgba(0,0,0,0.15);
+}
+
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+    .offcanvas-end {
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+    
+    .workflow-card {
+        margin-bottom: 1rem;
+    }
+    
+    .icon-grid {
+        grid-template-columns: repeat(auto-fill, minmax(50px, 1fr));
+    }
+    
+    .mermaid-container {
+        min-height: 300px;
+        max-height: 500px;
+    }
+    
+    h2 {
+        font-size: 1.5rem;
+    }
+    
+    .zoom-controls .btn {
+        font-size: 0.75rem;
+        padding: 0.25rem 0.5rem;
+    }
+}
+
+@media (max-width: 576px) {
+    .btn-group .btn {
+        font-size: 0.875rem;
+        padding: 0.375rem 0.75rem;
+    }
+    
+    .icon-preview {
+        width: 40px;
+        height: 40px;
+        font-size: 1.25rem;
+    }
+}
+
+/* Print Styles */
+@media print {
+    .offcanvas,
+    .modal,
+    .btn,
+    .zoom-controls {
+        display: none !important;
+    }
+    
+    .workflow-card {
+        page-break-inside: avoid;
+    }
+    
+    .mermaid-container {
+        max-height: none;
+        overflow: visible;
+    }
+}
+
+/* Utility Classes */
+.text-gradient {
+    color: var(--afims-primary-text);
+}
+
+.shadow-custom {
+    box-shadow: 0 0.5rem 1rem color-mix(in srgb, var(--afims-primary) 15%, transparent) !important;
+}
+
+/* Scrollbar Customization */
+.icon-grid::-webkit-scrollbar,
+.mermaid-container::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+.icon-grid::-webkit-scrollbar-track,
+.mermaid-container::-webkit-scrollbar-track {
+    background: var(--afims-surface-subtle);
+    border-radius: 4px;
+}
+
+.icon-grid::-webkit-scrollbar-thumb,
+.mermaid-container::-webkit-scrollbar-thumb {
+    background: var(--afims-text-disabled);
+    border-radius: 4px;
+}
+
+.icon-grid::-webkit-scrollbar-thumb:hover,
+.mermaid-container::-webkit-scrollbar-thumb:hover {
+    background: var(--afims-text-muted);
+}
+
+/* Animation */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.workflow-card-wrapper {
+}
+
+/* Status Badge Colors (for consistency) */
+.bg-gradient {
+    background-image: none !important;
+}
+
+/* User Search Items */
+.user-search-item {
+    transition: all 0.2s ease;
+}
+
+.user-search-item:hover {
+    background-color: var(--afims-surface-subtle);
+}
+
+.user-search-item:last-child {
+    border-bottom: none !important;
+}
+
+/* Offcanvas Footer */
+.offcanvas-footer {
+    position: sticky;
+    bottom: 0;
+    z-index: 10;
+}
+
+/* Department Badges */
+#department-badges-container .form-check {
+    margin-bottom: 0.5rem;
+}
+
+#department-badges-container .badge {
+    font-size: 0.875rem;
+    padding: 0.5rem 0.75rem;
+}
+
+/* Assignment Preview */
+#assignment-preview .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+/* Selected Users */
+#selected-users-container .badge {
+    font-size: 0.875rem;
+    padding: 0.5rem 0.75rem;
+}
+
+#selected-users-container .badge i {
+    font-size: 0.75rem;
+    opacity: 0.7;
+    transition: opacity 0.2s ease;
+}
+
+#selected-users-container .badge i:hover {
+    opacity: 1;
+}
+
+/* Status Form Cards */
+#status-form-container .card {
+    border-left: 3px solid transparent;
+    transition: all 0.2s ease;
+}
+
+#status-form-container .card:has(input[type="radio"]:checked) {
+    border-left-color: var(--afims-primary);
+    background-color: var(--afims-surface-subtle);
+}
+
+/* Next Steps Selection */
+#next-steps-selection {
+    animation: slideDown 0.3s ease;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        max-height: 0;
+    }
+    to {
+        opacity: 1;
+        max-height: 200px;
+    }
+}
+
+/* Assignment Modal */
+#assignmentModal .form-check {
+    transition: all 0.2s ease;
+}
+
+#assignmentModal .form-check:hover {
+    background-color: var(--afims-surface-subtle);
+}
+
+#assignmentModal .form-check-input:checked + .form-check-label {
+    font-weight: 600;
+}
+
+/* Modal z-index fixes */
+.modal {
+    z-index: 1050;
+}
+
+.modal-backdrop {
+    z-index: 1040;
+}
+
+/* Ensure step modal can show over workflow offcanvas */
+#stepModal {
+    z-index: 1060;
+}
+
+#stepModal + .modal-backdrop {
+    z-index: 1055;
+}
+
+/* Assignment modal over step modal */
+#assignmentModal {
+    z-index: 1070;
+}
+
+#assignmentModal + .modal-backdrop {
+    z-index: 1065;
+}
+
+/* Status modal */
+#statusModal {
+    z-index: 1080;
+}
+
+#statusModal + .modal-backdrop {
+    z-index: 1075;
+}
+
+/* Icon picker modal */
+#iconPickerModal {
+    z-index: 1090;
+}
+
+#iconPickerModal + .modal-backdrop {
+    z-index: 1085;
+}
+
+/* Mobile Adjustments */
+@media (max-width: 768px) {
+    #assignmentModal .modal-dialog {
+        margin: 0.5rem;
+    }
+    
+    #assignmentModal .col-md-6 {
+        width: 100%;
+    }
+}
+
+/* ============================================
+   ENHANCED FEATURES - Webhook & DB Mapping
+   ============================================ */
+
+/* Tooltip Icons */
+.fa-info-circle[data-bs-toggle="tooltip"] {
+    cursor: help;
+    opacity: 0.7;
+    transition: opacity 0.2s ease;
+}
+
+.fa-info-circle[data-bs-toggle="tooltip"]:hover {
+    opacity: 1;
+}
+
+/* Advanced Configuration Tab */
+.card-header.bg-primary.bg-gradient {
+    background: var(--afims-primary) !important;
+}
+
+.card-header.bg-gradient small {
+    opacity: 0.9;
+}
+
+/* Webhook Status Indicators */
+.alert-success .fas,
+.alert-danger .fas,
+.alert-warning .fas {
+    font-size: 1.1em;
+}
+
+.alert .fa-spinner {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* Custom Headers Display */
+.list-group-item strong {
+    color: var(--afims-text-muted);
+    font-weight: 600;
+}
+
+/* Code Preview */
+pre code {
+    font-size: 0.875rem;
+    line-height: 1.5;
+    display: block;
+    overflow-x: auto;
+}
+
+pre.bg-dark {
+    border-radius: 0.375rem;
+}
+
+/* DB Mapping Enhanced */
+.db-field-row {
+    background: var(--afims-surface-subtle);
+    padding: 1rem;
+    border-radius: 0.375rem;
+    margin-bottom: 0.75rem;
+    border: 1px solid var(--afims-border);
+    transition: all 0.2s ease;
+}
+
+.db-field-row:hover {
+    border-color: var(--afims-text-disabled);
+    background: var(--afims-surface-subtle);
+}
+
+/* Form Switches */
+.form-check-input {
+    cursor: pointer;
+}
+
+.form-check-input:checked {
+    background-color: var(--afims-primary);
+    border-color: var(--afims-primary);
+}
+
+/* Variable Picker */
+#variable-list-container .list-group-item {
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+#variable-list-container .list-group-item:hover {
+    background-color: var(--afims-primary-soft);
+    border-color: var(--afims-primary);
+}
+
+#variable-list-container code {
+    color: #d63384;
+    background-color: var(--afims-surface-subtle);
+    padding: 0.2rem 0.4rem;
+    border-radius: 0.25rem;
+    font-size: 0.9em;
+}
+
+/* Help Modal Content */
+.webhook-help-content h5,
+.db-mapping-help-content h5 {
+    color: var(--afims-text-muted);
+    font-weight: 600;
+}
+
+.webhook-help-content h6,
+.db-mapping-help-content h6 {
+    color: var(--afims-text-muted);
+    font-weight: 600;
+    margin-top: 1rem;
+}
+
+.webhook-help-content ul,
+.db-mapping-help-content ul {
+    list-style-type: none;
+    padding-left: 0;
+}
+
+.webhook-help-content li {
+    padding-left: 1.5rem;
+    position: relative;
+    margin-bottom: 0.5rem;
+}
+
+/* Input Group Buttons */
+.input-group .btn-outline-secondary {
+    border-color: var(--afims-border);
+}
+
+.input-group .btn-outline-secondary:hover {
+    background-color: var(--afims-text-muted);
+    border-color: var(--afims-text-muted);
+    color: white;
+}
+
+/* Form Text */
+.form-text code {
+    font-size: 0.9em;
+    background-color: var(--afims-surface-subtle);
+    padding: 0.1rem 0.3rem;
+    border-radius: 0.25rem;
+}
+
+/* Tab Content Animation */
+.tab-pane {
+    min-height: 0;
+    height: auto;
+}
+
+/* Prevent tab content flexing */
+.tab-content {
+    min-height: 0;
+    height: auto;
+}
+
+/* Ensure proper container sizing */
+#workflowEditorTabContent {
+    min-height: 0;
+    height: auto;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--afims-surface-subtle);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--afims-text-disabled);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--afims-text-muted);
+}
+
+/* SweetAlert Modal Improvements */
+.swal-wide {
+    width: 500px !important;
+    max-width: 90vw;
+}
+
+.swal-wide .swal2-html-container {
+    margin: 1.5rem 0;
+    padding: 0 1rem;
+}
+
+.swal-wide .form-label {
+    font-weight: 600;
+    color: var(--afims-text-muted);
+    margin-bottom: 0.5rem;
+}
+
+.swal-wide .form-control {
+    border-radius: 0.375rem;
+    border: 1px solid var(--afims-border);
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+}
+
+.swal-wide .form-control:focus {
+    border-color: var(--afims-primary);
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+
+.swal-wide .input-group .btn {
+    border-color: var(--afims-border);
+}
+
+.swal-wide .input-group .btn:hover {
+    background-color: var(--afims-surface-subtle);
+    border-color: var(--afims-text-disabled);
+}
+
+.swal-wide .form-text {
+    font-size: 0.8rem;
+    color: var(--afims-text-muted);
+    margin-top: 0.25rem;
+}
+
+.swal-wide .btn {
+    font-weight: 500;
+    padding: 0.5rem 1rem;
+    border-radius: 0.375rem;
+}
+
+.swal-wide .btn-primary {
+    background-color: var(--afims-primary);
+    border-color: var(--afims-primary);
+}
+
+.swal-wide .btn-primary:hover {
+    background-color: var(--afims-primary-hover);
+    border-color: var(--afims-primary-hover);
+}
+
+.swal-wide .btn-secondary {
+    background-color: var(--afims-text-muted);
+    border-color: var(--afims-text-muted);
+}
+
+.swal-wide .btn-secondary:hover {
+    background-color: var(--afims-text-muted);
+    border-color: var(--afims-text-muted);
+}
+
+.swal-wide .btn-danger {
+    background-color: var(--afims-danger);
+    border-color: var(--afims-danger);
+}
+
+.swal-wide .btn-danger:hover {
+    background-color: var(--afims-danger-text);
+    border-color: var(--afims-danger-text);
+}
+
+/* Variable Picker Modal */
+.variable-picker-container {
+    max-height: 500px;
+    overflow-y: auto;
+    text-align: left;
+}
+
+.variable-picker-modal .variable-category {
+    border-bottom: 1px solid var(--afims-border);
+    padding-bottom: 1rem;
+}
+
+.variable-picker-modal .variable-category:last-child {
+    border-bottom: none;
+}
+
+.variable-picker-modal .list-group-item {
+    border: none;
+    border-bottom: 1px solid var(--afims-surface-subtle);
+    padding: 0.75rem 1rem;
+    transition: all 0.2s ease;
+}
+
+.variable-picker-modal .list-group-item:hover {
+    background-color: var(--afims-surface-subtle);
+    border-left: 3px solid var(--afims-primary);
+    padding-left: 1.5rem;
+}
+
+.variable-picker-modal .list-group-item code {
+    background-color: transparent;
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+.variable-picker-modal .list-group-item small {
+    display: block;
+    margin-top: 0.25rem;
+}
+
+/* Help Modal */
+.help-modal .db-mapping-help {
+    max-height: 600px;
+    overflow-y: auto;
+}
+
+.help-modal .db-mapping-help h5 {
+    border-bottom: 2px solid var(--afims-primary);
+    padding-bottom: 0.5rem;
+}
+
+.help-modal .db-mapping-help h6 {
+    font-weight: 600;
+    margin-top: 1rem;
+}
+
+.help-modal .db-mapping-help code {
+    background-color: var(--afims-surface-subtle);
+    padding: 0.2rem 0.4rem;
+    border-radius: 0.25rem;
+    color: #d63384;
+    font-size: 0.875rem;
+}
+
+.help-modal .db-mapping-help ol,
+.help-modal .db-mapping-help ul {
+    padding-left: 1.5rem;
+}
+
+.help-modal .db-mapping-help ol li,
+.help-modal .db-mapping-help ul li {
+    margin-bottom: 0.5rem;
+}
+
+/* Database Mapping Card */
+.db-field-row {
+    margin-bottom: 0.75rem;
+    padding: 0.75rem;
+    border: 1px solid var(--afims-border);
+    border-radius: 0.375rem;
+    background-color: var(--afims-surface);
+    transition: all 0.2s ease;
+}
+
+.db-field-row:hover {
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    border-color: var(--afims-border);
+}
+
+.db-field-row .form-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--afims-text-muted);
+    margin-bottom: 0.25rem;
+}
+
+.db-field-row .form-select-sm,
+.db-field-row .form-control-sm {
+    font-size: 0.875rem;
+}
+
+/* Primary Header for Cards */
+.bg-primary {
+    background-color: var(--afims-primary) !important;
+}
+
+/* List Group Items */
+.list-group-item {
+    border: 1px solid rgba(0, 0, 0, 0.125);
+    margin-bottom: 0.5rem;
+    border-radius: 0.375rem !important;
+}
+
+.list-group-item:last-child {
+    margin-bottom: 0;
+}
+
+/* Form Switch Improvements */
+.form-switch .form-check-input {
+    width: 2.5rem;
+    height: 1.25rem;
+    cursor: pointer;
+}
+
+.form-switch .form-check-input:checked {
+    background-color: var(--afims-primary);
+    border-color: var(--afims-primary);
+}
+
+/* Code Elements in Forms */
+.form-text code {
+    background-color: var(--afims-surface-subtle);
+    padding: 0.2rem 0.4rem;
+    border-radius: 0.25rem;
+    color: #d63384;
+    font-size: 0.85rem;
+}
+
+/* Alert Improvements */
+.alert-light {
+    background-color: var(--afims-surface-subtle);
+    border-color: var(--afims-border);
+}
+
+.alert-info {
+    background-color: var(--afims-primary-soft);
+    border-color: var(--afims-primary-soft);
+    color: var(--afims-heading);
+}
+
+/* Responsive for small screens */
+@media (max-width: 768px) {
+    .offcanvas-end {
+        width: 95% !important;
+        max-width: 95% !important;
+    }
+    
+    .db-field-row .row > div {
+        margin-bottom: 0.75rem;
+    }
+    
+    .swal-wide {
+        width: 95vw !important;
+        margin: 1rem;
+    }
+    
+    .swal-wide .swal2-html-container {
+        padding: 0 0.5rem;
+    }
+    
+    .variable-picker-container {
+        max-height: 400px;
+    }
+    
+    .help-modal .db-mapping-help {
+        max-height: 400px;
+    }
+}

@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <linearGradient id="waterGradient3" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#003876;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0056b3;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background Circle -->
+  <circle cx="50" cy="50" r="45" fill="white" stroke="#003876" stroke-width="2"/>
+  
+  <!-- Animated Box -->
+  <path d="M30 45 L50 35 L70 45 L50 55 Z" fill="url(#waterGradient3)">
+    <animate attributeName="d" 
+             values="M30 45 L50 35 L70 45 L50 55 Z;
+                     M30 47 L50 37 L70 47 L50 57 Z;
+                     M30 45 L50 35 L70 45 L50 55 Z"
+             dur="2s" 
+             repeatCount="indefinite"/>
+  </path>
+  
+  <!-- Water Drop -->
+  <path d="M50 45 Q55 50 55 55 L45 55 Q45 50 50 45" 
+        fill="#c41e3a">
+    <animate attributeName="d" 
+             values="M50 45 Q55 50 55 55 L45 55 Q45 50 50 45;
+                     M50 47 Q57 52 57 57 L43 57 Q43 52 50 47;
+                     M50 45 Q55 50 55 55 L45 55 Q45 50 50 45"
+             dur="2s" 
+             repeatCount="indefinite"/>
+  </path>
+  
+  <!-- Side Lines -->
+  <line x1="30" y1="45" x2="30" y2="60" stroke="#003876" stroke-width="2">
+    <animate attributeName="y2" 
+             values="60;62;60" 
+             dur="2s" 
+             repeatCount="indefinite"/>
+  </line>
+  <line x1="70" y1="45" x2="70" y2="60" stroke="#003876" stroke-width="2">
+    <animate attributeName="y2" 
+             values="60;62;60" 
+             dur="2s" 
+             repeatCount="indefinite"/>
+  </line>
+</svg>

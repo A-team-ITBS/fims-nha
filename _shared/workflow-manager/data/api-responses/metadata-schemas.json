@@ -1,0 +1,197 @@
+{
+  "success": true,
+  "message": "Database schemas retrieved successfully",
+  "data": [
+    {
+      "name": "licensing",
+      "description": "Schema for licensing and permit management",
+      "tables": [
+        {
+          "name": "business_permits",
+          "description": "Business permit applications and approvals",
+          "fields": [
+            {
+              "name": "application_status",
+              "type": "varchar",
+              "description": "Current status of the application"
+            },
+            {
+              "name": "approval_date",
+              "type": "datetime",
+              "description": "Date when application was approved"
+            },
+            {
+              "name": "permit_type",
+              "type": "varchar",
+              "description": "Type of business permit"
+            },
+            {
+              "name": "submitted_date",
+              "type": "datetime",
+              "description": "Date when application was submitted"
+            },
+            {
+              "name": "reference_no",
+              "type": "varchar",
+              "description": "Generated reference number"
+            },
+            {
+              "name": "document_completeness",
+              "type": "varchar",
+              "description": "Status of document completeness"
+            },
+            {
+              "name": "review_date",
+              "type": "datetime",
+              "description": "Date when review was completed"
+            },
+            {
+              "name": "reviewer_comments",
+              "type": "text",
+              "description": "Comments from reviewer"
+            },
+            {
+              "name": "missing_docs",
+              "type": "json",
+              "description": "List of missing documents"
+            },
+            {
+              "name": "permit_number",
+              "type": "varchar",
+              "description": "Generated permit number"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "document_mgmt",
+      "description": "Schema for document management system",
+      "tables": [
+        {
+          "name": "documents",
+          "description": "Document records and metadata",
+          "fields": [
+            {
+              "name": "doc_status",
+              "type": "varchar",
+              "description": "Current status of the document"
+            },
+            {
+              "name": "doc_type",
+              "type": "varchar",
+              "description": "Type of document"
+            },
+            {
+              "name": "approval_date",
+              "type": "datetime",
+              "description": "Date when document was approved"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "loms",
+      "description": "Schema for legislative management system",
+      "tables": [
+        {
+          "name": "ordinances",
+          "description": "Municipal ordinances",
+          "fields": [
+            {
+              "name": "status",
+              "type": "varchar",
+              "description": "Current status of the ordinance"
+            },
+            {
+              "name": "ordinance_type",
+              "type": "varchar",
+              "description": "Type of ordinance"
+            },
+            {
+              "name": "voting_date",
+              "type": "datetime",
+              "description": "Date when ordinance was voted on"
+            }
+          ]
+        },
+        {
+          "name": "resolutions",
+          "description": "Municipal resolutions",
+          "fields": [
+            {
+              "name": "status",
+              "type": "varchar",
+              "description": "Current status of the resolution"
+            },
+            {
+              "name": "resolution_type",
+              "type": "varchar",
+              "description": "Type of resolution"
+            },
+            {
+              "name": "approval_date",
+              "type": "datetime",
+              "description": "Date when resolution was approved"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "receiving",
+      "description": "Schema for document receiving system",
+      "tables": [
+        {
+          "name": "receiving_documents",
+          "description": "Received documents tracking",
+          "fields": [
+            {
+              "name": "status_id",
+              "type": "int",
+              "description": "Status identifier"
+            },
+            {
+              "name": "document_type",
+              "type": "varchar",
+              "description": "Type of received document"
+            },
+            {
+              "name": "received_date",
+              "type": "datetime",
+              "description": "Date when document was received"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "accounting",
+      "description": "Schema for accounting and financial management",
+      "tables": [
+        {
+          "name": "vouchers",
+          "description": "Financial vouchers and payments",
+          "fields": [
+            {
+              "name": "status_id",
+              "type": "int",
+              "description": "Status identifier"
+            },
+            {
+              "name": "voucher_type",
+              "type": "varchar",
+              "description": "Type of voucher"
+            },
+            {
+              "name": "amount",
+              "type": "decimal",
+              "description": "Voucher amount"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

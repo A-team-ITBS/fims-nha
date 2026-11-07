@@ -10,7 +10,7 @@ installed on Windows — Docker provides them.
 |------------|-------------------|--------------|----------------------------------|
 | `nginx`    | `nginx:alpine`    | `8080`       | Web server (entry point)         |
 | `php`      | built from `Dockerfile` | (internal) | PHP 8.2-FPM running the modules |
-| `postgres` | `postgres:16-alpine` | `5432`    | Main database (`govflow360_nha`) |
+| `postgres` | `postgres:16-alpine` | `5432`    | Main database (`fims`) |
 | `redis`    | `redis:7-alpine`  | `6379`       | Cache / queues                   |
 | `minio`    | `minio/minio`     | `9010` / `9011` | S3-compatible object storage  |
 
@@ -25,7 +25,7 @@ Volumes persist data between restarts:
 ## Quick Start
 
 ```bash
-# From project root: D:\projects\fims\nha
+# From project root: D:\projects\fims
 docker-compose up -d --build
 ```
 
@@ -38,15 +38,6 @@ fast (a few seconds).
 | URL                                | What                               |
 |------------------------------------|------------------------------------|
 | http://localhost:8080/             | Main dashboard                     |
-| http://localhost:8080/UAC/         | UAC (User Access Control)          |
-| http://localhost:8080/FMD/         | FMD                                |
-| http://localhost:8080/TREASURY/    | Treasury                           |
-| http://localhost:8080/ACCOUNTING/  | Accounting (merged DCD / BAPD / GAD) |
-| http://localhost:8080/ACCOUNTING-BAPD/ | Accounting - BAPD              |
-| http://localhost:8080/ACCOUNTING-DCD/  | Accounting - DCD               |
-| http://localhost:8080/ACCOUNTING-GAD/  | Accounting - GAD               |
-| http://localhost:8080/ACCOUNTING-PCDS/ | Accounting - PCDS              |
-| http://localhost:8080/REGIONAL/    | Regional module                    |
 | http://localhost:9011/             | MinIO web console (S3 admin UI)    |
 
 MinIO console login: `s3phatneglo-archive` / `0yq5h3to9`
@@ -62,13 +53,13 @@ docker-compose exec php bash -c "cd /var/www/html && node install_system.js --sq
 
 ### Option 2 - Load consolidated SQL manually
 ```bash
-docker-compose exec -T postgres psql -U postgres -d govflow360_nha \
+docker-compose exec -T postgres psql -U postgres -d fims \
   < "_assets/sql-consolidated/by-phase/01 - tables.sql"
 ```
 
 ### Option 3 - Restore from an existing dump
 ```bash
-docker-compose exec -T postgres psql -U postgres -d govflow360_nha < your_dump.sql
+docker-compose exec -T postgres psql -U postgres -d fims < your_dump.sql
 ```
 
 ## Common commands

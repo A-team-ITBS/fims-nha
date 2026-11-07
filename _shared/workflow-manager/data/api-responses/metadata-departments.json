@@ -1,0 +1,78 @@
+{
+  "success": true,
+  "message": "Departments retrieved successfully",
+  "data": [
+    {
+      "id": "dept-001",
+      "name": "Business Permits",
+      "description": "Department handling business permit applications and approvals",
+      "code": "BP",
+      "head": "Business Permits Officer",
+      "workflows": ["wf-001"],
+      "status": "active"
+    },
+    {
+      "id": "dept-002",
+      "name": "Document Management",
+      "description": "Department responsible for document processing and archiving",
+      "code": "DM",
+      "head": "Document Management Officer",
+      "workflows": ["wf-002", "wf-005"],
+      "status": "active"
+    },
+    {
+      "id": "dept-003",
+      "name": "Legislative Affairs",
+      "description": "Department managing ordinances and resolutions",
+      "code": "LA",
+      "head": "Legislative Affairs Officer",
+      "workflows": ["wf-003", "wf-004"],
+      "status": "active"
+    },
+    {
+      "id": "dept-004",
+      "name": "Accounting",
+      "description": "Department handling financial transactions and vouchers",
+      "code": "ACC",
+      "head": "Accounting Officer",
+      "workflows": ["wf-006"],
+      "status": "active"
+    },
+    {
+      "id": "dept-005",
+      "name": "Budget Office",
+      "description": "Department managing budget planning and approval",
+      "code": "BUD",
+      "head": "Budget Officer",
+      "workflows": ["wf-007"],
+      "status": "active"
+    },
+    {
+      "id": "dept-006",
+      "name": "Emergency Management",
+      "description": "Department handling emergency response and crisis management",
+      "code": "EM",
+      "head": "Emergency Management Officer",
+      "workflows": ["wf-009"],
+      "status": "active"
+    },
+    {
+      "id": "dept-007",
+      "name": "Mayor's Office",
+      "description": "Executive office with final approval authority",
+      "code": "MO",
+      "head": "Mayor",
+      "workflows": [],
+      "status": "active"
+    },
+    {
+      "id": "dept-008",
+      "name": "Treasurer's Office",
+      "description": "Office handling treasury and financial management",
+      "code": "TO",
+      "head": "Treasurer",
+      "workflows": ["wf-006"],
+      "status": "active"
+    }
+  ]
+}

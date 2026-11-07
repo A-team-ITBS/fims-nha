@@ -1,0 +1,2658 @@
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500&family=IBM+Plex+Sans:wght@400;700&display=swap');
+
+/* AFIMS-PALETTE:START */
+/* =====================================================================
+    AFIMS GLOBAL COLOR PALETTE
+    Single source of truth for colors across all FIMS modules.
+
+    Rules:
+    - Custom pages and shared CSS use these variables, never raw hex.
+    - Change a brand color here and every module follows.
+    - Shades are derived from the brand colors with color-mix(), so they
+      update automatically when a brand color changes.
+
+    Kept at the top of custom.css (right after the font @import).
+    The apply-color-tokens tool skips everything between the
+    AFIMS-PALETTE:START and AFIMS-PALETTE:END markers.
+    ===================================================================== */
+
+:root {
+  /* ---------------------------------------------------------------
+     1. Brand palette (from the AFIMS design system)
+     --------------------------------------------------------------- */
+  --afims-blue:       #0035A9;
+  --afims-green:      #11A752;
+  --afims-dark-blue:  #000E3E;
+  --afims-yellow:     #FCD20F;
+  --afims-white:      #E4ECF2;
+  --afims-black:      #1A1B21;
+  --afims-neutral:    #62657E;
+
+  /* Not in the design palette yet - provisional until the designer confirms */
+  --afims-red:        #DC3545;
+  --afims-pure-white: #FFFFFF;
+
+  /* ---------------------------------------------------------------
+     2. Shades (derived - do not hard-code)
+     --------------------------------------------------------------- */
+  --afims-blue-dark:        color-mix(in srgb, var(--afims-blue) 80%, black);
+  --afims-blue-soft:        color-mix(in srgb, var(--afims-blue) 10%, white);
+
+  --afims-green-dark:       color-mix(in srgb, var(--afims-green) 70%, black);
+  --afims-green-soft:       color-mix(in srgb, var(--afims-green) 15%, white);
+
+  --afims-dark-blue-deep:   color-mix(in srgb, var(--afims-dark-blue) 75%, black);
+  --afims-dark-blue-light:  color-mix(in srgb, var(--afims-dark-blue) 80%, white);
+
+  --afims-yellow-dark:      color-mix(in srgb, var(--afims-yellow) 50%, black);
+  --afims-yellow-soft:      color-mix(in srgb, var(--afims-yellow) 15%, white);
+
+  --afims-red-dark:         color-mix(in srgb, var(--afims-red) 65%, black);
+  --afims-red-soft:         color-mix(in srgb, var(--afims-red) 15%, white);
+
+  --afims-neutral-light:    color-mix(in srgb, var(--afims-neutral) 55%, white);
+  --afims-white-subtle:     color-mix(in srgb, var(--afims-white) 40%, white);
+
+  /* ---------------------------------------------------------------
+     3. Semantic roles - what CSS should normally use
+     --------------------------------------------------------------- */
+  --afims-primary:          var(--afims-blue);
+  --afims-primary-hover:    var(--afims-blue-dark);
+  --afims-primary-soft:     var(--afims-blue-soft);
+  --afims-primary-text:     var(--afims-primary);  /* blue used as TEXT (links, soft buttons); lighter in dark mode */
+  --afims-primary-strong-text: var(--afims-primary-hover); /* dark blue used as TEXT; light blue in dark mode */
+
+  --afims-success:          var(--afims-green);
+  --afims-success-hover:    var(--afims-green-dark);
+  --afims-success-soft:     var(--afims-green-soft);
+  --afims-success-soft-hover: color-mix(in srgb, var(--afims-green) 25%, white);
+
+  --afims-warning:          var(--afims-yellow);
+  --afims-warning-text:     var(--afims-yellow-dark);
+  --afims-warning-soft:     var(--afims-yellow-soft);
+
+  --afims-danger:           var(--afims-red);
+  --afims-danger-text:      var(--afims-red-dark);
+  --afims-danger-soft:      var(--afims-red-soft);
+
+  --afims-heading:          var(--afims-dark-blue);
+  --afims-heading-fill:     var(--afims-dark-blue); /* navy used as a FILL / border (white text on it); stays dark in dark mode */
+  --afims-text:             var(--afims-black);
+  --afims-text-muted:       var(--afims-neutral);
+  --afims-text-disabled:    var(--afims-neutral-light);
+  --afims-text-on-dark:     var(--afims-pure-white);
+  --afims-text-on-dark-muted: color-mix(in srgb, var(--afims-white) 80%, var(--afims-neutral));
+
+  --afims-surface:          var(--afims-pure-white);  /* cards, modals, inputs */
+  --afims-surface-subtle:   var(--afims-white-subtle); /* page bg, zebra rows, panels */
+  --afims-border:           var(--afims-white);
+  --afims-border-strong:    var(--afims-neutral-light);
+  --afims-divider-on-dark:  color-mix(in srgb, var(--afims-neutral) 50%, black);
+
+  /* ---------------------------------------------------------------
+     4. Bootstrap mapping - utilities like .text-primary / .bg-success
+        follow the palette. (*-rgb values must be literal triplets.)
+     --------------------------------------------------------------- */
+  --bs-primary:      var(--afims-blue);
+  --bs-primary-rgb:  0, 53, 169;
+  --bs-success:      var(--afims-green);
+  --bs-success-rgb:  17, 167, 82;
+  --bs-warning:      var(--afims-yellow);
+  --bs-warning-rgb:  252, 210, 15;
+  --bs-danger:       var(--afims-red);
+  --bs-danger-rgb:   220, 53, 69;
+  --bs-dark:         var(--afims-black);
+  --bs-dark-rgb:     26, 27, 33;
+  --bs-secondary:    var(--afims-neutral);
+  --bs-secondary-rgb: 98, 101, 126;
+  --bs-link-color:   var(--afims-blue);
+  --bs-link-color-rgb: 0, 53, 169;
+  --bs-link-hover-color: var(--afims-blue-dark);
+
+  /* ---------------------------------------------------------------
+     5. Chart palette (data series only - not for UI)
+        The brand colors fail as chart series (blue/dark blue too dark
+        to tell apart, yellow too light), so charts use this validated
+        order. Assign in this order, never cycled; a 7th+ series folds
+        into "Other" (--afims-chart-other).
+        Validated (dataviz validate_palette.js): light + dark pass all
+        hard checks. Slots 3-5 are < 3:1 on white, so charts using them
+        must show visible labels/values (legend with counts).
+     --------------------------------------------------------------- */
+  --afims-chart-1: #2A78D6;
+  --afims-chart-2: #EB6834;
+  --afims-chart-3: #1BAF7A;
+  --afims-chart-4: #EDA100;
+  --afims-chart-5: #E87BA4;
+  --afims-chart-6: #4A3AA7;
+  --afims-chart-other: #C3C5D1;
+  --afims-chart-grid: #EDF0F4;
+  --afims-chart-axis: #62657E;
+}
+
+[data-bs-theme="dark"] {
+  --afims-chart-1: #3987E5;
+  --afims-chart-2: #D95926;
+  --afims-chart-3: #199E70;
+  --afims-chart-4: #C98500;
+  --afims-chart-5: #D55181;
+  --afims-chart-6: #9085E9;
+  --afims-chart-other: #5B5E6E;
+  --afims-chart-grid: #2A2C33;
+  --afims-chart-axis: #A3A6B8;
+}
+
+/* ---------------------------------------------------------------
+   6. Dark mode - role colors (2026-10-05)
+      Only for modules listed in AFIMS_DARK_MODULES (_shared/js/custom.js
+      adds html.afims-dark), so the rollout goes one module at a time.
+      Brand colors stay the same; only the ROLES change. Surfaces are the
+      brand dark blue lifted towards the brand neutral. Checked for WCAG
+      contrast: text / muted / primary-text / status texts >= 4.5:1 on
+      surface and page, white on primary / danger buttons >= 4.5:1.
+   --------------------------------------------------------------- */
+@media screen {
+  html.afims-dark[data-bs-theme="dark"] {
+    color-scheme: dark;
+  
+    --afims-surface:          #151C33;  /* cards, modals, inputs */
+    --afims-surface-subtle:   #0D1326;  /* page bg, zebra rows, panels */
+    --afims-border:           #2E3757;
+    --afims-border-strong:    #4A5373;
+    --afims-divider-on-dark:  #2E3757;
+  
+    --afims-heading:          #F4F7FA;
+    --afims-text:             #E4ECF2;  /* brand white */
+    --afims-text-muted:       #AAAFBE;
+    --afims-text-disabled:    #83879B;
+  
+    --afims-primary:          #3861BC;  /* button fill: white text 5.8:1 */
+    --afims-primary-hover:    #2E59B8;
+    --afims-primary-soft:     #0F2456;
+    --afims-primary-text:     #94AADB;  /* blue text: 7.2:1 on surface */
+    --afims-primary-strong-text: #B4C4E8; /* 9.6:1 on surface */
+    --afims-heading-fill:     #22305E;  /* navy fill: white text 12.7:1 */
+  
+    --afims-success-hover:    #6BC894;  /* used as green text */
+    --afims-success-soft:     #143B3A;
+    --afims-success-soft-hover: #1A4C47;
+    --afims-warning-text:     #FCD20F;
+    --afims-warning-soft:     #3A392D;
+    --afims-danger-text:      #E9828C;
+    --afims-danger-soft:      #3D2137;
+  
+    /* Bootstrap 5.3 / AdminLTE dark variables -> AFIMS roles */
+    --bs-body-bg:             #0D1326;
+    --bs-body-bg-rgb:         13, 19, 38;
+    --bs-body-color:          #E4ECF2;
+    --bs-body-color-rgb:      228, 236, 242;
+    --bs-emphasis-color:      #F4F7FA;
+    --bs-heading-color:       #F4F7FA;
+    --bs-secondary-color:     #AAAFBE;
+    --bs-tertiary-color:      #83879B;
+    --bs-secondary-bg:        #151C33;
+    --bs-tertiary-bg:         #121931;
+    --bs-border-color:        #2E3757;
+    --bs-border-color-translucent: rgba(228, 236, 242, 0.12);
+    --bs-link-color:          #94AADB;
+    --bs-link-color-rgb:      148, 170, 219;
+    --bs-link-hover-color:    #B4C4E8;
+    --bs-primary:             #3861BC;
+    --bs-primary-rgb:         56, 97, 188;
+    --bs-primary-text-emphasis: #94AADB;
+    --bs-primary-bg-subtle:   #0F2456;
+    --bs-primary-border-subtle: #2E3F78;
+    --bs-dark:                #E4ECF2;
+    --bs-dark-rgb:            228, 236, 242;
+  }
+}
+/* AFIMS-PALETTE:END */
+
+/* ===============================
+    BOOTSTRAP / ADMINLTE -> AFIMS PALETTE
+    AdminLTE ships hard-coded !important colors (e.g. .bg-primary { #0D6EFD }),
+    so the --bs-* mapping above is not enough. These rules point the
+    PHPMaker/Bootstrap color classes at the palette.
+    info has no palette color; it uses a lighter dark blue so it stays
+    distinct from primary.
+    =============================== */
+
+.bg-primary {
+  background-color: var(--afims-primary) !important;
+}
+.bg-primary,
+.bg-primary > a {
+  color: var(--afims-pure-white) !important;
+}
+.btn-primary {
+  --bs-btn-color: var(--afims-pure-white);
+  --bs-btn-bg: var(--afims-primary);
+  --bs-btn-border-color: var(--afims-primary);
+  --bs-btn-hover-color: var(--afims-pure-white);
+  --bs-btn-hover-bg: var(--afims-primary-hover);
+  --bs-btn-hover-border-color: var(--afims-primary-hover);
+  --bs-btn-active-color: var(--afims-pure-white);
+  --bs-btn-active-bg: var(--afims-primary-hover);
+  --bs-btn-active-border-color: var(--afims-primary-hover);
+  --bs-btn-disabled-color: var(--afims-pure-white);
+  --bs-btn-disabled-bg: var(--afims-primary);
+  --bs-btn-disabled-border-color: var(--afims-primary);
+}
+.btn-outline-primary {
+  --bs-btn-color: var(--afims-primary-text);
+  --bs-btn-border-color: var(--afims-primary);
+  --bs-btn-hover-color: var(--afims-pure-white);
+  --bs-btn-hover-bg: var(--afims-primary);
+  --bs-btn-hover-border-color: var(--afims-primary);
+  --bs-btn-active-color: var(--afims-pure-white);
+  --bs-btn-active-bg: var(--afims-primary);
+  --bs-btn-active-border-color: var(--afims-primary);
+  --bs-btn-disabled-color: var(--afims-primary-text);
+  --bs-btn-disabled-border-color: var(--afims-primary);
+}
+
+.bg-success {
+  background-color: var(--afims-success) !important;
+}
+.bg-success,
+.bg-success > a {
+  color: var(--afims-pure-white) !important;
+}
+.btn-success {
+  --bs-btn-color: var(--afims-pure-white);
+  --bs-btn-bg: var(--afims-success);
+  --bs-btn-border-color: var(--afims-success);
+  --bs-btn-hover-color: var(--afims-pure-white);
+  --bs-btn-hover-bg: var(--afims-success-hover);
+  --bs-btn-hover-border-color: var(--afims-success-hover);
+  --bs-btn-active-color: var(--afims-pure-white);
+  --bs-btn-active-bg: var(--afims-success-hover);
+  --bs-btn-active-border-color: var(--afims-success-hover);
+  --bs-btn-disabled-color: var(--afims-pure-white);
+  --bs-btn-disabled-bg: var(--afims-success);
+  --bs-btn-disabled-border-color: var(--afims-success);
+}
+.btn-outline-success {
+  --bs-btn-color: var(--afims-success);
+  --bs-btn-border-color: var(--afims-success);
+  --bs-btn-hover-color: var(--afims-pure-white);
+  --bs-btn-hover-bg: var(--afims-success);
+  --bs-btn-hover-border-color: var(--afims-success);
+  --bs-btn-active-color: var(--afims-pure-white);
+  --bs-btn-active-bg: var(--afims-success);
+  --bs-btn-active-border-color: var(--afims-success);
+  --bs-btn-disabled-color: var(--afims-success);
+  --bs-btn-disabled-border-color: var(--afims-success);
+}
+
+.bg-warning {
+  background-color: var(--afims-warning) !important;
+}
+.bg-warning,
+.bg-warning > a {
+  color: var(--afims-text) !important;
+}
+.btn-warning {
+  --bs-btn-color: var(--afims-text);
+  --bs-btn-bg: var(--afims-warning);
+  --bs-btn-border-color: var(--afims-warning);
+  --bs-btn-hover-color: var(--afims-text);
+  --bs-btn-hover-bg: var(--afims-warning-text);
+  --bs-btn-hover-border-color: var(--afims-warning-text);
+  --bs-btn-active-color: var(--afims-text);
+  --bs-btn-active-bg: var(--afims-warning-text);
+  --bs-btn-active-border-color: var(--afims-warning-text);
+  --bs-btn-disabled-color: var(--afims-text);
+  --bs-btn-disabled-bg: var(--afims-warning);
+  --bs-btn-disabled-border-color: var(--afims-warning);
+}
+.btn-outline-warning {
+  --bs-btn-color: var(--afims-warning-text);
+  --bs-btn-border-color: var(--afims-warning);
+  --bs-btn-hover-color: var(--afims-text);
+  --bs-btn-hover-bg: var(--afims-warning);
+  --bs-btn-hover-border-color: var(--afims-warning);
+  --bs-btn-active-color: var(--afims-text);
+  --bs-btn-active-bg: var(--afims-warning);
+  --bs-btn-active-border-color: var(--afims-warning);
+  --bs-btn-disabled-color: var(--afims-warning);
+  --bs-btn-disabled-border-color: var(--afims-warning);
+}
+
+.bg-danger {
+  background-color: var(--afims-danger) !important;
+}
+.bg-danger,
+.bg-danger > a {
+  color: var(--afims-pure-white) !important;
+}
+.btn-danger {
+  --bs-btn-color: var(--afims-pure-white);
+  --bs-btn-bg: var(--afims-danger);
+  --bs-btn-border-color: var(--afims-danger);
+  --bs-btn-hover-color: var(--afims-pure-white);
+  --bs-btn-hover-bg: var(--afims-danger-text);
+  --bs-btn-hover-border-color: var(--afims-danger-text);
+  --bs-btn-active-color: var(--afims-pure-white);
+  --bs-btn-active-bg: var(--afims-danger-text);
+  --bs-btn-active-border-color: var(--afims-danger-text);
+  --bs-btn-disabled-color: var(--afims-pure-white);
+  --bs-btn-disabled-bg: var(--afims-danger);
+  --bs-btn-disabled-border-color: var(--afims-danger);
+}
+.btn-outline-danger {
+  --bs-btn-color: var(--afims-danger);
+  --bs-btn-border-color: var(--afims-danger);
+  --bs-btn-hover-color: var(--afims-pure-white);
+  --bs-btn-hover-bg: var(--afims-danger);
+  --bs-btn-hover-border-color: var(--afims-danger);
+  --bs-btn-active-color: var(--afims-pure-white);
+  --bs-btn-active-bg: var(--afims-danger);
+  --bs-btn-active-border-color: var(--afims-danger);
+  --bs-btn-disabled-color: var(--afims-danger);
+  --bs-btn-disabled-border-color: var(--afims-danger);
+}
+
+.bg-info {
+  background-color: var(--afims-dark-blue-light) !important;
+}
+.bg-info,
+.bg-info > a {
+  color: var(--afims-pure-white) !important;
+}
+.btn-info {
+  --bs-btn-color: var(--afims-pure-white);
+  --bs-btn-bg: var(--afims-dark-blue-light);
+  --bs-btn-border-color: var(--afims-dark-blue-light);
+  --bs-btn-hover-color: var(--afims-pure-white);
+  --bs-btn-hover-bg: var(--afims-heading);
+  --bs-btn-hover-border-color: var(--afims-heading);
+  --bs-btn-active-color: var(--afims-pure-white);
+  --bs-btn-active-bg: var(--afims-heading);
+  --bs-btn-active-border-color: var(--afims-heading);
+  --bs-btn-disabled-color: var(--afims-pure-white);
+  --bs-btn-disabled-bg: var(--afims-dark-blue-light);
+  --bs-btn-disabled-border-color: var(--afims-dark-blue-light);
+}
+.btn-outline-info {
+  --bs-btn-color: var(--afims-dark-blue-light);
+  --bs-btn-border-color: var(--afims-dark-blue-light);
+  --bs-btn-hover-color: var(--afims-pure-white);
+  --bs-btn-hover-bg: var(--afims-dark-blue-light);
+  --bs-btn-hover-border-color: var(--afims-dark-blue-light);
+  --bs-btn-active-color: var(--afims-pure-white);
+  --bs-btn-active-bg: var(--afims-dark-blue-light);
+  --bs-btn-active-border-color: var(--afims-dark-blue-light);
+  --bs-btn-disabled-color: var(--afims-dark-blue-light);
+  --bs-btn-disabled-border-color: var(--afims-dark-blue-light);
+}
+
+.bg-secondary {
+  background-color: var(--afims-neutral) !important;
+}
+.bg-secondary,
+.bg-secondary > a {
+  color: var(--afims-pure-white) !important;
+}
+.btn-secondary {
+  --bs-btn-color: var(--afims-pure-white);
+  --bs-btn-bg: var(--afims-neutral);
+  --bs-btn-border-color: var(--afims-neutral);
+  --bs-btn-hover-color: var(--afims-pure-white);
+  --bs-btn-hover-bg: var(--afims-text);
+  --bs-btn-hover-border-color: var(--afims-text);
+  --bs-btn-active-color: var(--afims-pure-white);
+  --bs-btn-active-bg: var(--afims-text);
+  --bs-btn-active-border-color: var(--afims-text);
+  --bs-btn-disabled-color: var(--afims-pure-white);
+  --bs-btn-disabled-bg: var(--afims-neutral);
+  --bs-btn-disabled-border-color: var(--afims-neutral);
+}
+.btn-outline-secondary {
+  --bs-btn-color: var(--afims-neutral);
+  --bs-btn-border-color: var(--afims-neutral);
+  --bs-btn-hover-color: var(--afims-pure-white);
+  --bs-btn-hover-bg: var(--afims-neutral);
+  --bs-btn-hover-border-color: var(--afims-neutral);
+  --bs-btn-active-color: var(--afims-pure-white);
+  --bs-btn-active-bg: var(--afims-neutral);
+  --bs-btn-active-border-color: var(--afims-neutral);
+  --bs-btn-disabled-color: var(--afims-neutral);
+  --bs-btn-disabled-border-color: var(--afims-neutral);
+}
+
+.bg-dark {
+  background-color: var(--afims-text) !important;
+}
+.bg-dark,
+.bg-dark > a {
+  color: var(--afims-pure-white) !important;
+}
+.btn-dark {
+  --bs-btn-color: var(--afims-pure-white);
+  --bs-btn-bg: var(--afims-text);
+  --bs-btn-border-color: var(--afims-text);
+  --bs-btn-hover-color: var(--afims-pure-white);
+  --bs-btn-hover-bg: var(--afims-black);
+  --bs-btn-hover-border-color: var(--afims-black);
+  --bs-btn-active-color: var(--afims-pure-white);
+  --bs-btn-active-bg: var(--afims-black);
+  --bs-btn-active-border-color: var(--afims-black);
+  --bs-btn-disabled-color: var(--afims-pure-white);
+  --bs-btn-disabled-bg: var(--afims-text);
+  --bs-btn-disabled-border-color: var(--afims-text);
+}
+.btn-outline-dark {
+  --bs-btn-color: var(--afims-text);
+  --bs-btn-border-color: var(--afims-text);
+  --bs-btn-hover-color: var(--afims-pure-white);
+  --bs-btn-hover-bg: var(--afims-text);
+  --bs-btn-hover-border-color: var(--afims-text);
+  --bs-btn-active-color: var(--afims-pure-white);
+  --bs-btn-active-bg: var(--afims-text);
+  --bs-btn-active-border-color: var(--afims-text);
+  --bs-btn-disabled-color: var(--afims-text);
+  --bs-btn-disabled-border-color: var(--afims-text);
+}
+
+/* Button groups -> separate rounded buttons with a small gap.
+   Bootstrap joins them (square inner corners, -1px overlap); any margin or
+   radius override (custom.js adds margin:1px !important to table buttons)
+   makes the joined edges look cut. :not(#afims-btn) lifts specificity above
+   those rules. Dropdown menus inside a group are left alone. */
+.btn-group {
+  gap: 4px;
+}
+
+/* Option pickers (radio/checkbox buttons, e.g. UAC user access: one button per user
+   level) wrap onto more rows instead of running past the card edge. Action button
+   groups in tables keep nowrap. */
+.btn-group:has(> .btn-check) {
+  flex-wrap: wrap;
+}
+.btn-group:has(> .btn-check) > .btn {
+  flex: 0 0 auto;
+}
+
+.btn-group > .btn:not(#afims-btn),
+.btn-group > .btn-group > .btn:not(#afims-btn) {
+  margin: 0 !important;
+  border-radius: var(--bs-btn-border-radius, 0.375rem) !important;
+}
+
+/* Top navbar (NAVBAR_CLASS uses navbar-blue) */
+.navbar-blue {
+  background-color: var(--afims-primary);
+  color: var(--afims-pure-white);
+}
+
+
+/* ===============================
+    GLOBAL EW GRID TABLE STYLING
+    Matches the Recent Applications design
+    =============================== */
+
+/* Card container with frosted glass effect */
+.ew-grid.card,
+.card.ew-card {
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  overflow: hidden;
+  border: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  display: flex;
+  padding: 20px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+/* Card body */
+.ew-grid .card-body {
+  padding: 0;
+  width: 100%;
+}
+
+/* Table base */
+.ew-grid .ew-table,
+table.ew-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  margin-bottom: 0;
+  width: 100%;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+/* THEAD styling - Dark blue background */
+.ew-grid .ew-table thead,
+.ew-grid .ew-table thead tr {
+  background-color: var(--afims-heading);
+}
+
+.ew-grid .ew-table thead th,
+.ew-grid .ew-table-header-cell {
+  background-color: var(--afims-heading) !important;
+  color: var(--afims-pure-white) !important;
+  font-weight: 600;
+  text-transform: capitalize;
+  border: none;
+  padding: 14px 16px;
+  vertical-align: middle;
+  font-size: 14px;
+  letter-spacing: 0.3px;
+}
+
+/* Rounded corners on first and last header */
+.ew-grid .ew-table thead th:first-child,
+.ew-grid .ew-table thead th.rounded-top-left {
+  border-top-left-radius: 10px;
+}
+
+.ew-grid .ew-table thead th:last-child,
+.ew-grid .ew-table thead th.rounded-top-right {
+  border-top-right-radius: 10px;
+}
+
+/* Header text and buttons */
+.ew-grid .ew-table-header-caption,
+.ew-grid .ew-table-header-btn {
+  color: var(--afims-pure-white) !important;
+}
+
+.ew-grid .ew-table-header-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Sort icons */
+.ew-grid .ew-table-header-sort {
+  color: var(--afims-pure-white);
+  opacity: 0.7;
+}
+
+/* TBODY rows - White background default */
+.ew-grid .ew-table tbody tr {
+  background-color: var(--afims-surface);
+  transition: background-color 0.2s ease-in-out;
+  border: none;
+}
+
+/* Odd rows - Light green background like in the image */
+.ew-grid .ew-table tbody tr:nth-child(odd),
+.ew-grid .ew-table tbody tr.ew-table-alt-row {
+  background-color: var(--afims-success-soft) !important;
+}
+
+/* Even rows stay white */
+.ew-grid .ew-table tbody tr:nth-child(even) {
+  background-color: var(--afims-surface) !important;
+}
+
+/* Hover effect - slightly darker green */
+.ew-grid .ew-table tbody tr:hover {
+  background-color: var(--afims-success-soft-hover) !important;
+}
+
+/* Table cells */
+.ew-grid .ew-table td {
+  border: none !important;
+  padding: 14px 16px;
+  vertical-align: middle;
+  font-size: 14px;
+  color: var(--afims-heading);
+}
+
+/* Last row rounded corners */
+.ew-grid .ew-table tbody tr:last-child td:first-child {
+  border-bottom-left-radius: 10px;
+}
+
+.ew-grid .ew-table tbody tr:last-child td:last-child {
+  border-bottom-right-radius: 10px;
+}
+
+/* Remove any borders */
+.ew-grid .ew-table tbody tr.border-bottom-0 td {
+  border-bottom: none !important;
+}
+
+/* Action buttons (view/edit/copy/delete) */
+.ew-grid .ew-row-link,
+.ew-grid .btn.ew-row-link {
+  color: var(--afims-heading);
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: transparent;
+  border: none;
+  transition: all 0.2s;
+}
+
+.ew-grid .ew-row-link:hover,
+.ew-grid .btn.ew-row-link:hover {
+  background-color: rgba(51, 71, 97, 0.1);
+  color: var(--afims-heading);
+}
+
+/* Icons in action buttons */
+.ew-grid .ew-icon {
+  color: var(--afims-heading);
+  font-size: 14px;
+}
+
+/* Pager container styling */
+.ew-grid .card-footer,
+.ew-grid .ew-grid-lower-panel {
+  border-top: none;
+  padding: 16px 20px;
+  background-color: transparent;
+  border-bottom-left-radius: 10px;
+  border-bottom-right-radius: 10px;
+}
+
+/* Pager buttons */
+.ew-grid .ew-pager .btn {
+  border-radius: 6px;
+  background-color: var(--afims-heading);
+  color: var(--afims-pure-white);
+  border: none;
+}
+
+.ew-grid .ew-pager .btn:hover:not(.disabled) {
+  background-color: var(--afims-heading);
+}
+
+.ew-grid .ew-pager .btn.disabled {
+  background-color: var(--afims-border);
+  color: var(--afims-text-disabled);
+}
+
+/* Page size dropdown */
+.ew-grid select.form-select {
+  border-radius: 6px;
+  border-color: var(--afims-border);
+  padding: 6px 12px;
+}
+
+/* Status badges (like "Under Review") */
+.ew-grid td span[class*='badge'],
+.ew-grid .badge {
+  background-color: var(--afims-primary);
+  color: var(--afims-pure-white);
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* Middle panel container */
+.ew-grid .ew-grid-middle-panel {
+  padding: 0;
+  background: transparent;
+}
+
+/* Remove extra spacing */
+.ew-grid .card-body.ew-grid-middle-panel {
+  margin: 0;
+}
+
+/* Ensure table fills container */
+.ew-grid #gmp_fiscal_periods {
+  background: transparent;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+/* ===============================
+    SIDEBAR - AFIMS design
+    Figma: AFIMS / Aside Sidebar (node 1380:9764)
+    =============================== */
+
+:root {
+  --afims-sidebar-width: 300px;
+  --afims-sidebar-bg-top: var(--afims-dark-blue-deep);    /* blue/950 */
+  --afims-sidebar-bg-bottom: var(--afims-dark-blue); /* blue/900 */
+  --afims-sidebar-primary: var(--afims-primary);   /* primary */
+  --afims-sidebar-accent: var(--afims-warning);
+  --afims-sidebar-neutral: var(--afims-text-muted);   /* neutral */
+  --afims-sidebar-light: var(--afims-border);     /* light */
+  --afims-sidebar-text: var(--afims-pure-white);
+  --afims-sidebar-muted: var(--afims-text-on-dark-muted);
+  --afims-sidebar-divider: var(--afims-divider-on-dark);
+  --afims-sidebar-font: "Barlow Semi Condensed", "IBM Plex Sans", sans-serif;
+}
+
+/* Container - !important beats the inline background set by custom.js applyTheme() */
+.main-sidebar {
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, var(--afims-sidebar-bg-top) 0%, var(--afims-sidebar-bg-bottom) 100%) !important;
+  box-shadow: 2px 0 4px rgba(0, 0, 0, 0.1) !important;
+}
+
+/* Width: AdminLTE 3 hard-codes 250px, widen to the design's 300px */
+body:not(.sidebar-collapse) .main-sidebar,
+body:not(.sidebar-collapse) .main-sidebar::before,
+body.sidebar-mini.sidebar-collapse .main-sidebar:not(.sidebar-no-expand):hover {
+  width: var(--afims-sidebar-width);
+}
+
+body:not(.sidebar-mini).sidebar-collapse .main-sidebar,
+body:not(.sidebar-mini).sidebar-collapse .main-sidebar::before {
+  margin-left: calc(-1 * var(--afims-sidebar-width));
+}
+
+@media (min-width: 768px) {
+  /* specificity must beat AdminLTE's body:not(.sidebar-mini-md):not(.sidebar-mini-xs):not(.layout-top-nav) rule */
+  body:not(.sidebar-collapse):not(.sidebar-mini-md):not(.sidebar-mini-xs):not(.layout-top-nav) .wrapper .content-wrapper,
+  body:not(.sidebar-collapse):not(.sidebar-mini-md):not(.sidebar-mini-xs):not(.layout-top-nav) .wrapper .main-footer,
+  body:not(.sidebar-collapse):not(.sidebar-mini-md):not(.sidebar-mini-xs):not(.layout-top-nav) .wrapper .main-header,
+  body:not(.sidebar-collapse) #cookie-consent {
+    margin-left: var(--afims-sidebar-width);
+  }
+}
+
+@media (max-width: 767.98px) {
+  body:not(.sidebar-open) .main-sidebar,
+  body:not(.sidebar-open) .main-sidebar::before {
+    margin-left: calc(-1 * var(--afims-sidebar-width));
+  }
+}
+
+/* Header (logo) */
+.main-sidebar .brand-container {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.2);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.main-sidebar .brand-container .brand-link,
+.layout-fixed .main-sidebar .brand-container .brand-link {
+  width: auto;
+  padding: 0;
+  border-bottom: 0;
+}
+
+.main-sidebar .brand-container .brand-link .brand-image {
+  float: none;
+  height: 69px;
+  max-height: 69px;
+  width: auto;
+  margin: 0;
+}
+
+.main-sidebar .brand-container .pushmenu {
+  margin-left: auto;
+  color: var(--afims-sidebar-text);
+}
+
+/* Scroll area fills the space under the header (header is taller than AdminLTE's 57px) */
+.layout-fixed .wrapper .main-sidebar .sidebar,
+.main-sidebar .sidebar {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+  padding: 0;
+  overflow-y: auto;
+}
+
+/* User panel */
+.main-sidebar .user-panel {
+  display: flex;
+  align-items: center;
+  gap: 8.79px;
+  margin: 0 !important;
+  padding: 0 0 17px !important;
+  border-bottom: 1px solid var(--afims-sidebar-divider);
+}
+
+.main-sidebar .user-panel .image {
+  padding-left: 12.8px;
+}
+
+.main-sidebar .user-panel .image img {
+  width: 34px;
+  height: 34px;
+}
+
+.main-sidebar .user-panel .ew-user-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: "IBM Plex Sans", sans-serif;
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 18.72px;
+  color: var(--afims-pure-white);
+  background: linear-gradient(135deg, var(--afims-success) 0%, var(--afims-success-hover) 100%);
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.25));
+  user-select: none;
+}
+
+.main-sidebar .user-panel .info {
+  padding: 5px 5px 5px 10px;
+}
+
+.main-sidebar .user-panel .info a {
+  font-family: "IBM Plex Sans", sans-serif;
+  font-size: 16px;
+  line-height: 24px;
+  color: var(--afims-sidebar-muted);
+}
+
+/* Menu list */
+#ew-menu {
+  margin-top: 0 !important;
+}
+
+#ew-menu .nav-sidebar {
+  gap: 5px;
+  padding: 10px;
+}
+
+#ew-menu .nav-sidebar .nav-item {
+  margin-bottom: 0;
+}
+
+/* Menu item */
+#ew-menu .nav-sidebar .nav-link {
+  display: flex;
+  align-items: center;
+  width: auto;
+  min-height: 38.8px;
+  margin: 0;
+  padding: 5px 10px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--afims-sidebar-text);
+}
+
+#ew-menu .nav-sidebar .nav-link .nav-icon {
+  flex: 0 0 36px;
+  width: 36px;
+  min-width: 36px;
+  margin: 0;
+  padding-right: 12px;
+  font-size: 18px;
+  text-align: left;
+  color: var(--afims-sidebar-text);
+}
+
+#ew-menu .nav-sidebar .nav-link p,
+#ew-menu .nav-item p {
+  margin: 0;
+  font-family: var(--afims-sidebar-font);
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 16px;
+  color: var(--afims-sidebar-text);
+  white-space: normal;
+}
+
+#ew-menu .nav-sidebar .nav-link p > .right {
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--afims-sidebar-text);
+}
+
+#ew-menu .nav-sidebar .menu-open > .nav-link p > .right {
+  transform: translateY(-50%) rotate(-90deg);
+}
+
+#ew-menu .nav-sidebar .nav-link:hover:not(.active) {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 0 5px 5px 0;
+}
+
+/* Active top-level item (current page, or parent of the open submenu) */
+#ew-menu .nav-sidebar > .nav-item > .nav-link.active {
+  padding: 8px 16px 8px 19px;
+  background: var(--afims-sidebar-primary);
+  border-left: 3px solid var(--afims-sidebar-accent);
+  border-radius: 0 5px 5px 0;
+  color: var(--afims-sidebar-text);
+}
+
+/* Submenu */
+#ew-menu .nav-sidebar .nav-treeview {
+  padding: 5px 5px 5px 20px;
+}
+
+#ew-menu .nav-sidebar .nav-treeview .nav-link.active {
+  padding: 8px 16px;
+  background: var(--afims-sidebar-neutral);
+  border-left: 5px solid var(--afims-sidebar-light);
+  border-radius: 0 5px 5px 0;
+  color: var(--afims-sidebar-text);
+}
+
+#ew-menu .nav-sidebar .nav-treeview .nav-link.active .nav-icon {
+  display: none;
+}
+
+/* Section header (e.g. MONITORING) */
+#ew-menu .nav-sidebar .nav-header {
+  padding: 10px;
+  font-family: var(--afims-sidebar-font);
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 16px;
+  text-transform: uppercase;
+  color: var(--afims-sidebar-text);
+  background: transparent;
+}
+
+/* Collapsed mini sidebar: shrink the header so the logo fits the 4.6rem rail */
+body.sidebar-mini.sidebar-collapse .main-sidebar:not(:hover) .brand-container {
+  justify-content: center;
+  padding: 10px 5px;
+}
+
+body.sidebar-mini.sidebar-collapse .main-sidebar:not(:hover) .brand-container .brand-link .brand-image {
+  height: 40px;
+  max-height: 40px;
+}
+
+body.sidebar-mini.sidebar-collapse .main-sidebar:not(:hover) #ew-menu .nav-sidebar .nav-link p {
+  white-space: nowrap;
+}
+
+body.sidebar-mini.sidebar-collapse .main-sidebar:not(:hover) #ew-menu .nav-sidebar .nav-treeview .nav-link.active .nav-icon {
+  display: inline-block;
+}
+
+
+/* ===============================
+    CUSTOM PAGES - shadcn/ui style
+    Applies only to custom pages: custom.js adds body.afims-ui when the page
+    is not PHPMaker-generated (no ew.PAGE_ID). Colors come from the palette.
+    Extra specificity / !important is needed to beat the pages' own <style>
+    blocks and AdminLTE's !important color classes.
+    =============================== */
+
+body.afims-ui {
+  --ui-radius: 8px;
+  --ui-radius-lg: 12px;
+  --ui-ring: color-mix(in srgb, var(--afims-primary) 25%, transparent);
+  --ui-shadow-xs: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --ui-shadow-lg: 0 10px 30px -10px rgba(16, 24, 40, 0.25);
+  --ui-muted-bg: var(--afims-surface-subtle);
+}
+
+/* Page title */
+body.afims-ui .content-header h1 {
+  font-size: 1.875rem !important;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.2;
+  color: var(--afims-text);
+}
+
+/* ---------- Card ---------- */
+body.afims-ui .content-wrapper .card {
+  background: var(--afims-surface);
+  border: 1px solid var(--afims-border);
+  border-radius: var(--ui-radius-lg);
+  box-shadow: var(--ui-shadow-xs);
+  overflow: hidden;
+}
+
+/* White header instead of solid blue */
+body.afims-ui .content-wrapper .card > .card-header,
+body.afims-ui .content-wrapper .card > .card-header[class*="bg-"] {
+  background: var(--afims-surface) !important;
+  color: var(--afims-text) !important;
+  border-bottom: 1px solid var(--afims-border);
+  padding: 16px 20px;
+  min-height: 64px;
+}
+
+body.afims-ui .content-wrapper .card > .card-header .text-white,
+body.afims-ui .content-wrapper .card > .card-header.text-white {
+  color: var(--afims-text) !important;
+}
+
+body.afims-ui .content-wrapper .card > .card-header .text-white-50 {
+  color: var(--afims-text-muted) !important;
+}
+
+/* Title left, actions right. AdminLTE's clearfix ::after becomes a flex item
+   and steals the right-hand slot, pushing buttons to the middle. */
+body.afims-ui .content-wrapper .card > .card-header.d-flex::after,
+body.afims-ui .content-wrapper .card > .card-header:has(> .btn, > .btn-group, > .card-tools, > div > .btn)::after {
+  display: none;
+}
+
+body.afims-ui .content-wrapper .card > .card-header:has(> .btn, > .btn-group, > .card-tools, > div > .btn) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+/* AdminLTE floats .card-title left, which pulls subtitles up beside it */
+body.afims-ui .content-wrapper .card > .card-header .card-title {
+  float: none;
+}
+
+body.afims-ui .content-wrapper .card > .card-header small {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.8125rem;
+}
+
+body.afims-ui .content-wrapper .card > .card-header > .card-tools {
+  float: none;
+  margin: 0 0 0 auto;
+}
+
+body.afims-ui .content-wrapper .card-title,
+body.afims-ui .content-wrapper .card > .card-header h1,
+body.afims-ui .content-wrapper .card > .card-header h2,
+body.afims-ui .content-wrapper .card > .card-header h3,
+body.afims-ui .content-wrapper .card > .card-header h4,
+body.afims-ui .content-wrapper .card > .card-header h5 {
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--afims-text);
+  margin: 0;
+}
+
+body.afims-ui .content-wrapper .card-body {
+  padding: 20px;
+}
+
+body.afims-ui .content-wrapper .card-footer {
+  background: var(--afims-surface);
+  border-top: 1px solid var(--afims-border);
+  padding: 12px 20px;
+}
+
+/* ---------- Tabs (segmented control, like shadcn Tabs) ---------- */
+body.afims-ui .content-wrapper .nav-tabs,
+body.afims-ui .content-wrapper .card-header-tabs {
+  display: inline-flex;
+  gap: 2px;
+  margin: 0;
+  padding: 4px;
+  background: var(--ui-muted-bg);
+  border: 1px solid var(--afims-border);
+  border-radius: var(--ui-radius);
+}
+
+body.afims-ui .content-wrapper .nav-tabs .nav-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--afims-text-muted) !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 6px;
+  transition: color 0.15s, background-color 0.15s, box-shadow 0.15s;
+}
+
+body.afims-ui .content-wrapper .nav-tabs .nav-link:hover {
+  color: var(--afims-text) !important;
+}
+
+body.afims-ui .content-wrapper .nav-tabs .nav-link.active {
+  color: var(--afims-text) !important;
+  background: var(--afims-surface) !important;
+  box-shadow: var(--ui-shadow-xs), 0 0 0 1px var(--afims-border);
+}
+
+/* ---------- Buttons ---------- */
+body.afims-ui .content-wrapper .btn,
+body.afims-ui .modal .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 6px 16px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.25rem;
+  white-space: nowrap;
+  border-radius: var(--ui-radius);
+  box-shadow: var(--ui-shadow-xs);
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.15s;
+}
+
+body.afims-ui .content-wrapper .btn-sm,
+body.afims-ui .content-wrapper .btn-group-sm > .btn,
+body.afims-ui .modal .btn-sm,
+body.afims-ui .modal .btn-group-sm > .btn {
+  min-height: 32px;
+  padding: 4px 10px;
+  font-size: 0.8125rem;
+}
+
+body.afims-ui .content-wrapper .btn-lg,
+body.afims-ui .modal .btn-lg {
+  min-height: 40px;
+  padding: 8px 24px;
+}
+
+/* Font size: custom.js sets `button, .btn { font-size: calc(1em * scale) !important }`,
+   so a button inherits its parent's size (bigger in card headers). Fix it to the
+   design size, still honoring the Theme Settings button scale. The two :not(#id)
+   parts lift specificity above custom.js's button:not(#..):not(#..) selector. */
+body.afims-ui .btn:not(#afims-a):not(#afims-b) {
+  font-size: calc(0.875rem * var(--button-scale, 1)) !important;
+}
+
+body.afims-ui .btn-sm:not(#afims-a):not(#afims-b),
+body.afims-ui .btn-group-sm > .btn:not(#afims-a):not(#afims-b) {
+  font-size: calc(0.8125rem * var(--button-scale, 1)) !important;
+}
+
+body.afims-ui .btn-lg:not(#afims-a):not(#afims-b) {
+  font-size: calc(1rem * var(--button-scale, 1)) !important;
+}
+
+/* gap handles icon spacing */
+body.afims-ui .content-wrapper .btn > i.me-1,
+body.afims-ui .content-wrapper .btn > i.me-2,
+body.afims-ui .modal .btn > i.me-1,
+body.afims-ui .modal .btn > i.me-2 {
+  margin-right: 0 !important;
+}
+
+body.afims-ui .content-wrapper .btn:focus-visible,
+body.afims-ui .modal .btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--ui-ring);
+}
+
+/* Light / secondary / outline-secondary: soft blue tint so they read as buttons
+   on the white headers (fills with primary on hover) */
+body.afims-ui .content-wrapper .btn-light,
+body.afims-ui .content-wrapper .btn-outline-secondary,
+body.afims-ui .content-wrapper .btn-secondary,
+body.afims-ui .modal .btn-light,
+body.afims-ui .modal .btn-outline-secondary,
+body.afims-ui .modal .btn-secondary {
+  --bs-btn-color: var(--afims-primary-text);
+  --bs-btn-bg: var(--afims-primary-soft);
+  --bs-btn-border-color: color-mix(in srgb, var(--afims-primary) 25%, var(--afims-surface, #FFFFFF));
+  --bs-btn-hover-color: var(--afims-pure-white);
+  --bs-btn-hover-bg: var(--afims-primary);
+  --bs-btn-hover-border-color: var(--afims-primary);
+  --bs-btn-active-color: var(--afims-pure-white);
+  --bs-btn-active-bg: var(--afims-primary-hover);
+  --bs-btn-active-border-color: var(--afims-primary-hover);
+}
+
+/* Modal "Cancel" stays neutral next to the primary action */
+body.afims-ui .modal .modal-footer .btn-secondary,
+body.afims-ui .modal .modal-footer .btn-outline-secondary,
+body.afims-ui .modal .modal-footer .btn-light {
+  --bs-btn-color: var(--afims-text);
+  --bs-btn-bg: var(--afims-surface-subtle);
+  --bs-btn-border-color: var(--afims-border-strong);
+  --bs-btn-hover-color: var(--afims-text);
+  --bs-btn-hover-bg: var(--afims-border);
+  --bs-btn-hover-border-color: var(--afims-border-strong);
+}
+
+/* Button groups on custom pages use the shadcn radius (base rule is in the Bootstrap section) */
+body.afims-ui .btn-group > .btn:not(#afims-btn),
+body.afims-ui .btn-group > .btn-group > .btn:not(#afims-btn) {
+  border-radius: var(--ui-radius) !important;
+}
+
+body.afims-ui .content-wrapper .card-header .btn-group {
+  gap: 8px;
+}
+
+body.afims-ui .content-wrapper .btn-outline-primary,
+body.afims-ui .content-wrapper .btn-outline-danger,
+body.afims-ui .content-wrapper .btn-outline-success {
+  --bs-btn-bg: var(--afims-surface);
+}
+
+
+/* Close button: headers are white now, so drop the white variant */
+body.afims-ui .modal .btn-close-white,
+body.afims-ui .content-wrapper .btn-close-white {
+  filter: none;
+}
+
+/* ---------- Form controls ---------- */
+body.afims-ui .content-wrapper .form-control,
+body.afims-ui .content-wrapper .form-select,
+body.afims-ui .modal .form-control,
+body.afims-ui .modal .form-select {
+  min-height: 36px;
+  padding: 6px 12px;
+  font-size: 0.875rem;
+  color: var(--afims-text);
+  background-color: var(--afims-surface);
+  border: 1px solid var(--afims-border-strong);
+  border-radius: var(--ui-radius);
+  box-shadow: var(--ui-shadow-xs);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+body.afims-ui .content-wrapper .form-select,
+body.afims-ui .modal .form-select {
+  padding-right: 32px;
+}
+
+/* UAC.css makes every .form-control inline/auto-width (for generated forms);
+   custom pages use stacked full-width fields */
+body.afims-ui .content-wrapper .form-control:not(.form-control-color),
+body.afims-ui .content-wrapper .form-select,
+body.afims-ui .modal .form-control:not(.form-control-color),
+body.afims-ui .modal .form-select {
+  display: block;
+  width: 100%;
+  min-width: 0 !important;
+}
+
+body.afims-ui .content-wrapper .input-group > .form-control,
+body.afims-ui .content-wrapper .input-group > .form-select,
+body.afims-ui .modal .input-group > .form-control,
+body.afims-ui .modal .input-group > .form-select {
+  flex: 1 1 auto;
+  width: 1%;
+}
+
+/* Input group: input + addon/button stay on one row and read as one control.
+   nowrap + width:1% stops a w-100 input from pushing the button to the next
+   line; the corner rules undo the rounded radius above on the joined edges. */
+body.afims-ui .input-group {
+  flex-wrap: nowrap;
+}
+
+body.afims-ui .input-group > .form-control.w-100,
+body.afims-ui .input-group > .form-select.w-100 {
+  width: 1% !important;
+}
+
+body.afims-ui .input-group > :not(:last-child):not(.dropdown-menu):not(.invalid-feedback):not(.valid-feedback) {
+  border-top-right-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
+}
+
+body.afims-ui .input-group > :not(:first-child):not(.dropdown-menu):not(.invalid-feedback):not(.valid-feedback) {
+  margin-left: -1px;
+  border-top-left-radius: 0 !important;
+  border-bottom-left-radius: 0 !important;
+}
+
+body.afims-ui .input-group > .btn,
+body.afims-ui .input-group > .form-control,
+body.afims-ui .input-group > .form-select {
+  box-shadow: none;
+}
+
+body.afims-ui .input-group > .btn {
+  border-color: var(--afims-border-strong);
+}
+
+body.afims-ui .input-group > .input-group-text {
+  min-height: 36px;
+  padding: 6px 12px;
+  font-size: 0.875rem;
+  color: var(--afims-text-muted);
+  background: var(--afims-surface-subtle);
+  border: 1px solid var(--afims-border-strong);
+  border-radius: var(--ui-radius);
+}
+
+body.afims-ui .input-group-sm > .input-group-text {
+  min-height: 32px;
+  padding: 4px 10px;
+}
+
+body.afims-ui .content-wrapper .form-control + small,
+body.afims-ui .modal .form-control + small {
+  display: block;
+  margin-top: 4px;
+}
+
+body.afims-ui .content-wrapper .form-control-sm,
+body.afims-ui .content-wrapper .form-select-sm,
+body.afims-ui .modal .form-control-sm,
+body.afims-ui .modal .form-select-sm {
+  min-height: 32px;
+  padding-top: 4px;
+  padding-bottom: 4px;
+  font-size: 0.8125rem;
+}
+
+body.afims-ui .content-wrapper textarea.form-control,
+body.afims-ui .modal textarea.form-control {
+  min-height: 72px;
+}
+
+body.afims-ui .content-wrapper .form-control::placeholder,
+body.afims-ui .modal .form-control::placeholder {
+  color: var(--afims-text-disabled);
+}
+
+body.afims-ui .content-wrapper .form-control:focus,
+body.afims-ui .content-wrapper .form-select:focus,
+body.afims-ui .modal .form-control:focus,
+body.afims-ui .modal .form-select:focus {
+  border-color: var(--afims-primary);
+  box-shadow: 0 0 0 3px var(--ui-ring);
+  outline: none;
+}
+
+body.afims-ui .content-wrapper .form-label,
+body.afims-ui .modal .form-label {
+  margin-bottom: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--afims-text);
+}
+
+body.afims-ui .content-wrapper .form-text,
+body.afims-ui .modal .form-text {
+  font-size: 0.8125rem;
+  color: var(--afims-text-muted);
+}
+
+/* Switch / checkbox */
+body.afims-ui .content-wrapper .form-check-input,
+body.afims-ui .modal .form-check-input {
+  border-color: var(--afims-border-strong);
+}
+
+body.afims-ui .content-wrapper .form-check-input:checked,
+body.afims-ui .modal .form-check-input:checked {
+  background-color: var(--afims-primary);
+  border-color: var(--afims-primary);
+}
+
+body.afims-ui .content-wrapper .form-check-input:focus,
+body.afims-ui .modal .form-check-input:focus {
+  box-shadow: 0 0 0 3px var(--ui-ring);
+}
+
+/* ---------- Badge ---------- */
+body.afims-ui .content-wrapper .badge,
+body.afims-ui .modal .badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1rem;
+  letter-spacing: 0.01em;
+  border-radius: 6px;
+}
+
+/* ---------- List group (master lists) ---------- */
+body.afims-ui .content-wrapper .list-group {
+  border: 1px solid var(--afims-border);
+  border-radius: var(--ui-radius);
+}
+
+body.afims-ui .content-wrapper .list-group-item {
+  padding: 12px 16px;
+  border-color: var(--afims-border);
+  background: var(--afims-surface);
+  color: var(--afims-text);
+  transition: background-color 0.15s;
+}
+
+body.afims-ui .content-wrapper .list-group-item-action:hover,
+body.afims-ui .content-wrapper .list-group-item-action:focus {
+  background: var(--ui-muted-bg);
+}
+
+body.afims-ui .content-wrapper .list-group-item.active {
+  background: var(--afims-primary-soft);
+  border-color: var(--afims-border);
+  color: var(--afims-text);
+  box-shadow: inset 3px 0 0 var(--afims-primary);
+}
+
+/* ---------- Table ---------- */
+body.afims-ui .content-wrapper .table:not(.ew-table) {
+  --bs-table-bg: transparent;
+  --bs-table-hover-bg: var(--ui-muted-bg);
+  --bs-table-striped-bg: var(--ui-muted-bg);
+  color: var(--afims-text);
+  margin-bottom: 0;
+}
+
+body.afims-ui .content-wrapper .table:not(.ew-table) > thead th {
+  background: transparent !important;
+  color: var(--afims-text-muted) !important;
+  font-weight: 500;
+  border-bottom: 1px solid var(--afims-border);
+}
+
+body.afims-ui .content-wrapper .table:not(.ew-table) > :not(caption) > * > * {
+  border-color: var(--afims-border);
+}
+
+body.afims-ui .content-wrapper .table-responsive {
+  border: 1px solid var(--afims-border);
+  border-radius: var(--ui-radius);
+}
+
+/* ---------- Modal (shadcn Dialog) ---------- */
+body.afims-ui .modal-content {
+  border: 1px solid var(--afims-border);
+  border-radius: var(--ui-radius-lg);
+  box-shadow: var(--ui-shadow-lg);
+  overflow: hidden;
+}
+
+body.afims-ui .modal-header,
+body.afims-ui .modal-header[class*="bg-"] {
+  background: var(--afims-surface) !important;
+  color: var(--afims-text) !important;
+  border-bottom: 0;
+  padding: 20px 24px 8px;
+}
+
+/* Modal forms must fit the dialog. PHPMaker's generated <MODULE>.css gives every
+   input[type=text|password]:not([size]) `min-width: 250px` (meant for its own list/edit
+   forms), and inline `grid-template-columns: 1fr 1fr` tracks cannot shrink below that,
+   so two-column forms in 480-500px custom modals scrolled sideways (TREASURY Invoice
+   Inventory "Edit Series", Check Registry status). :not(#afims-a) outranks the five
+   :not()s of the generated rule. */
+body.afims-ui :is(.modal, [class*="modal"], [class*="backdrop"], [class*="overlay"]) input:is([type="text"], [type="password"]):not([size]):not(#afims-a) {
+  min-width: 0;
+}
+body.afims-ui :is(.modal, [class*="modal"], [class*="backdrop"], [class*="overlay"]) [style*="grid-template-columns"] > * {
+  min-width: 0;
+}
+
+body.afims-ui .modal-header .text-white,
+body.afims-ui .modal-header.text-white {
+  color: var(--afims-text) !important;
+}
+
+/* SweetAlert2 dialogs: palette buttons instead of the default purple */
+body.afims-ui .swal2-popup {
+  border-radius: var(--ui-radius-lg);
+}
+body.afims-ui .swal2-styled {
+  border-radius: var(--ui-radius) !important;
+  font-weight: 500 !important;
+  box-shadow: none !important;
+}
+body.afims-ui .swal2-styled.swal2-confirm {
+  background: var(--afims-primary) !important;
+}
+body.afims-ui .swal2-styled.swal2-deny {
+  background: var(--afims-danger) !important;
+}
+body.afims-ui .swal2-styled.swal2-cancel {
+  background: var(--afims-surface-subtle) !important;
+  border: 1px solid var(--afims-border-strong) !important;
+  color: var(--afims-text) !important;
+}
+body.afims-ui .swal2-styled:focus-visible {
+  box-shadow: 0 0 0 3px var(--ui-ring) !important;
+}
+
+/* Module CSS (e.g. BAPD accounting.css) inverts the close button for its old navy
+   header; headers are white now, so keep the dark X */
+body.afims-ui .modal-header .btn-close {
+  filter: none;
+}
+
+body.afims-ui .modal-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+body.afims-ui .modal-body {
+  padding: 12px 24px;
+}
+
+body.afims-ui .modal-footer {
+  gap: 8px;
+  padding: 12px 24px 20px;
+  border-top: 0;
+}
+
+body.afims-ui .modal-footer > * {
+  margin: 0;
+}
+
+/* ---------- Alert ---------- */
+body.afims-ui .content-wrapper .alert,
+body.afims-ui .modal .alert {
+  padding: 12px 16px;
+  font-size: 0.875rem;
+  border: 1px solid var(--afims-border);
+  border-radius: var(--ui-radius);
+  background: var(--afims-surface);
+  color: var(--afims-text);
+}
+
+body.afims-ui .alert-info {
+  border-color: color-mix(in srgb, var(--afims-primary) 30%, var(--afims-surface, #FFFFFF)) !important;
+  background: var(--afims-primary-soft) !important;
+}
+
+body.afims-ui .alert-success {
+  border-color: color-mix(in srgb, var(--afims-success) 35%, var(--afims-surface, #FFFFFF)) !important;
+  background: var(--afims-success-soft) !important;
+}
+
+body.afims-ui .alert-warning {
+  border-color: color-mix(in srgb, var(--afims-warning) 50%, var(--afims-surface, #FFFFFF)) !important;
+  background: var(--afims-warning-soft) !important;
+}
+
+body.afims-ui .alert-danger {
+  border-color: color-mix(in srgb, var(--afims-danger) 35%, var(--afims-surface, #FFFFFF)) !important;
+  background: var(--afims-danger-soft) !important;
+  color: var(--afims-danger-text) !important;
+}
+
+/* ---------- Muted text ---------- */
+body.afims-ui .content-wrapper .text-muted {
+  color: var(--afims-text-muted) !important;
+}
+
+
+/* ===============================
+    TABLE ROW ACTION BUTTONS - one design in every table
+    (custom pages AND PHPMaker-generated list pages)
+    Any button (or .btn link) inside a table cell becomes a shadcn-style
+    icon button: 32px, 8px radius, soft tint by intent, solid on hover.
+    Intent comes from the icon / class: delete -> red, approve/post -> green,
+    print/download -> neutral, everything else (view, edit, ...) -> blue.
+    The :is(#afims-ui, .content-wrapper) prefix carries ID weight so it also
+    beats module CSS scoped to #root ids and inline styles (with !important).
+    =============================== */
+body :is(#afims-ui, .content-wrapper) td :is(button, a.btn, a[class*="btn"]):not(:where([class*="dd-item"], [class*="menu-item"], [class*="drop-item"], [role="menuitem"], .dropdown-menu *, [class*="dd-menu"] *)):not(.btn-close):not([class*="clear"]):not(.dropdown-item):not(#afims-a):not(:is(.input-group, .form-check, [class*="search"]) *) {
+  --act: var(--afims-primary);
+  --act-soft: var(--afims-primary-soft);
+  --act-text: var(--afims-primary-text); /* --act is the hover fill; blue as text is lighter in dark mode */
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  min-width: 32px !important;
+  height: 32px !important;
+  min-height: 32px !important;
+  margin: 2px !important; /* 4px between neighbouring actions */
+  padding: 0 9px !important;
+  font-size: calc(0.8125rem * var(--button-scale, 1)) !important;
+  font-weight: 500 !important;
+  line-height: 1 !important;
+  white-space: nowrap !important;
+  color: var(--act-text) !important;
+  background: var(--act-soft) !important;
+  background-image: none !important;
+  border: 1px solid color-mix(in srgb, var(--act) 25%, var(--afims-surface, #FFFFFF)) !important;
+  border-radius: 8px !important;
+  box-shadow: none !important;
+  transform: none !important;
+  text-decoration: none !important;
+  vertical-align: middle;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+}
+
+/* Icon-only buttons are ~square from the padding (CSS cannot tell icon-only from icon+text) */
+body :is(#afims-ui, .content-wrapper) td :is(button, a.btn, a[class*="btn"]):not(:where([class*="dd-item"], [class*="menu-item"], [class*="drop-item"], [role="menuitem"], .dropdown-menu *, [class*="dd-menu"] *)):not(.btn-close):not(#afims-a) :is(i, svg) {
+  margin: 0 !important;
+  font-size: 0.875rem !important;
+  color: inherit !important;
+  stroke: currentColor;
+}
+
+/* Intents */
+body :is(#afims-ui, .content-wrapper) td :is(button, a.btn, a[class*="btn"]):not(:where([class*="dd-item"], [class*="menu-item"], [class*="drop-item"], [role="menuitem"], .dropdown-menu *, [class*="dd-menu"] *)):not(#afims-a):is(
+  .red, .danger, .btn-danger, .btn-outline-danger, [class*="delete"], [class*="remove"], [class*="reject"],
+  :has(:is(.bi-trash, .bi-trash3, .bi-trash-fill, .bi-trash3-fill, .fa-trash, .fa-trash-alt, .fa-trash-can, .bi-x-circle, .fa-times-circle, .fa-ban))
+) {
+  --act: var(--afims-danger-text) !important;
+  --act-soft: var(--afims-danger-soft) !important;
+  --act-text: var(--act) !important;
+}
+body :is(#afims-ui, .content-wrapper) td :is(button, a.btn, a[class*="btn"]):not(:where([class*="dd-item"], [class*="menu-item"], [class*="drop-item"], [role="menuitem"], .dropdown-menu *, [class*="dd-menu"] *)):not(#afims-a):is(
+  .green, .success, .btn-success, .btn-outline-success, .approve, .post, [class*="approve"], [class*="transfer"], [class*="insp"],
+  :has(:is(.bi-check, .bi-check-lg, .bi-check-circle, .bi-check2-circle, .fa-check, .fa-check-circle, .bi-signpost-split, .fa-truck-loading, .fa-dolly))
+) {
+  --act: var(--afims-success-hover) !important;
+  --act-soft: var(--afims-success-soft) !important;
+  --act-text: var(--act) !important;
+}
+body :is(#afims-ui, .content-wrapper) td :is(button, a.btn, a[class*="btn"]):not(:where([class*="dd-item"], [class*="menu-item"], [class*="drop-item"], [role="menuitem"], .dropdown-menu *, [class*="dd-menu"] *)):not(#afims-a):is(
+  .gray, .print, [class*="print"], .btn-secondary, .btn-outline-secondary, .btn-light,
+  :has(:is(.bi-printer, .bi-printer-fill, .fa-print, .bi-download, .fa-download, .bi-file-earmark-arrow-down))
+) {
+  --act: var(--afims-text-muted) !important;
+  --act-soft: var(--afims-surface-subtle) !important;
+  --act-text: var(--act) !important;
+}
+
+/* Hover: solid intent color */
+body :is(#afims-ui, .content-wrapper) td :is(button, a.btn, a[class*="btn"]):not(:where([class*="dd-item"], [class*="menu-item"], [class*="drop-item"], [role="menuitem"], .dropdown-menu *, [class*="dd-menu"] *)):not(.btn-close):not([class*="clear"]):not(.dropdown-item):not(#afims-a):not(:disabled):not(.disabled):not(:is(.input-group, .form-check, [class*="search"]) *):hover {
+  color: var(--afims-pure-white) !important;
+  background: var(--act) !important;
+  border-color: var(--act) !important;
+}
+body :is(#afims-ui, .content-wrapper) td :is(button, a.btn, a[class*="btn"]):not(:where([class*="dd-item"], [class*="menu-item"], [class*="drop-item"], [role="menuitem"], .dropdown-menu *, [class*="dd-menu"] *)):not(#afims-a):focus-visible {
+  outline: none !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--act) 25%, transparent) !important;
+}
+body :is(#afims-ui, .content-wrapper) td :is(button, a.btn, a[class*="btn"]):not(:where([class*="dd-item"], [class*="menu-item"], [class*="drop-item"], [role="menuitem"], .dropdown-menu *, [class*="dd-menu"] *)):not(#afims-a):is(:disabled, .disabled) {
+  opacity: 0.45 !important;
+  cursor: not-allowed !important;
+}
+
+
+/* ===============================
+    DATATABLES CONTROLS (v2 .dt-* and v1 .dataTables_*) on custom pages
+    "Show N entries", search box, info text and paging buttons: padded rows,
+    small muted labels, 32px rounded controls, current page in primary.
+    =============================== */
+body.afims-ui :is(#afims-ui, .content-wrapper) .dt-container > .dt-layout-row:not(.dt-layout-table),
+body.afims-ui :is(#afims-ui, .content-wrapper) .dataTables_wrapper > :is(.dataTables_length, .dataTables_filter, .dataTables_info, .dataTables_paginate) {
+  padding: 10px 16px !important;
+  margin: 0 !important;
+}
+body.afims-ui :is(#afims-ui, .content-wrapper) .dt-container > .dt-layout-row:not(.dt-layout-table) {
+  align-items: center;
+  gap: 8px;
+}
+body.afims-ui :is(#afims-ui, .content-wrapper) .dt-container > .dt-layout-row.dt-layout-table {
+  margin: 0 !important;
+}
+
+/* Labels + info text */
+body.afims-ui :is(#afims-ui, .content-wrapper) :is(.dt-length, .dt-search, .dt-info, .dataTables_length, .dataTables_filter, .dataTables_info),
+body.afims-ui :is(#afims-ui, .content-wrapper) :is(.dt-length, .dt-search, .dataTables_length, .dataTables_filter) label {
+  font-size: 0.8125rem !important;
+  font-weight: 500 !important;
+  color: var(--afims-text-muted) !important;
+}
+body.afims-ui :is(#afims-ui, .content-wrapper) :is(.dt-length, .dt-search, .dataTables_length, .dataTables_filter) label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 6px 0 0 !important;
+}
+body.afims-ui :is(#afims-ui, .content-wrapper) .dt-length {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Entries select + search input */
+body.afims-ui :is(#afims-ui, .content-wrapper) :is(.dt-length, .dataTables_length) select,
+body.afims-ui :is(#afims-ui, .content-wrapper) :is(.dt-search, .dataTables_filter) input {
+  height: 32px !important;
+  min-height: 32px !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  font-size: 0.8125rem !important;
+  font-weight: 400 !important;
+  color: var(--afims-text) !important;
+  background-color: var(--afims-surface) !important;
+  border: 1px solid var(--afims-border-strong) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.05) !important;
+}
+body.afims-ui :is(#afims-ui, .content-wrapper) :is(.dt-length, .dataTables_length) select {
+  width: auto !important;
+  padding: 2px 28px 2px 10px !important;
+}
+body.afims-ui :is(#afims-ui, .content-wrapper) :is(.dt-search, .dataTables_filter) input {
+  width: 220px !important;
+  max-width: 100%;
+  padding: 4px 10px !important;
+}
+body.afims-ui :is(#afims-ui, .content-wrapper) :is(.dt-length, .dataTables_length) select:focus,
+body.afims-ui :is(#afims-ui, .content-wrapper) :is(.dt-search, .dataTables_filter) input:focus {
+  outline: none !important;
+  border-color: var(--afims-primary) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--afims-primary) 25%, transparent) !important;
+}
+
+/* Paging buttons */
+body.afims-ui :is(#afims-ui, .content-wrapper) :is(.dt-paging .dt-paging-button, .dataTables_paginate .paginate_button) {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px !important;
+  height: 32px !important;
+  margin: 0 2px !important;
+  padding: 0 10px !important;
+  font-size: 0.8125rem !important;
+  font-weight: 500 !important;
+  color: var(--afims-text) !important;
+  background: var(--afims-surface) !important;
+  border: 1px solid var(--afims-border) !important;
+  border-radius: 8px !important;
+  box-shadow: none !important;
+}
+body.afims-ui :is(#afims-ui, .content-wrapper) :is(.dt-paging .dt-paging-button, .dataTables_paginate .paginate_button):not(.current):not(.disabled):hover {
+  background: var(--afims-surface-subtle) !important;
+  border-color: var(--afims-border-strong) !important;
+}
+body.afims-ui :is(#afims-ui, .content-wrapper) :is(.dt-paging .dt-paging-button.current, .dataTables_paginate .paginate_button.current) {
+  color: var(--afims-pure-white) !important;
+  background: var(--afims-primary) !important;
+  border-color: var(--afims-primary) !important;
+}
+body.afims-ui :is(#afims-ui, .content-wrapper) :is(.dt-paging .dt-paging-button.disabled, .dataTables_paginate .paginate_button.disabled) {
+  opacity: 0.45 !important;
+  cursor: default !important;
+}
+
+/* DataTables body: no sorted-column shading or stripe shadow, 14px text
+   (still follows the Theme Settings table scale), subtle row hover */
+body.afims-ui :is(#afims-ui, .content-wrapper) table.dataTable > tbody > tr > * {
+  box-shadow: none !important;
+  font-size: calc(0.875rem * var(--td-scale, 1)) !important;
+  border-color: var(--afims-border) !important;
+}
+body.afims-ui :is(#afims-ui, .content-wrapper) table.dataTable > tbody > tr {
+  background: var(--afims-surface) !important;
+}
+body.afims-ui :is(#afims-ui, .content-wrapper) table.dataTable > tbody > tr:hover > * {
+  background: var(--afims-surface-subtle) !important;
+}
+
+/* Inline-styled uppercase labels (e.g. style="...text-transform:uppercase...")
+   -> readable normal-case labels on every custom page */
+body.afims-ui :is(#afims-ui, .content-wrapper) :is(label, .label, [class*="lbl"])[style*="text-transform:uppercase"],
+body.afims-ui :is(#afims-ui, .content-wrapper) :is(label, .label, [class*="lbl"])[style*="text-transform: uppercase"] {
+  font-size: 0.8125rem !important;
+  font-weight: 500 !important;
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+  color: var(--afims-text) !important;
+}
+
+
+/* =====================================================================
+    DARK MODE (AFIMS palette) - modules in AFIMS_DARK_MODULES
+    html.afims-dark is set by _shared/js/custom.js; the role colors switch
+    in the palette block above. These rules cover what roles alone can't:
+    AdminLTE utilities with hard-coded light colors, the navbar, and the
+    navy accent (the brand dark blue disappears on a dark background).
+    =============================== */
+html.afims-dark[data-bs-theme="dark"] {
+  /* Navy used as an ACCENT (KPI cards, dots) needs to stay visible on dark
+     surfaces. The sidebar keeps the real brand dark blue (pinned below). */
+  --afims-dark-blue:        #5A6AA6;
+  --afims-sidebar-bg-top:   #000A2E;
+  --afims-sidebar-bg-bottom: #000E3E;
+}
+
+/* DataTables "Loading..." box (its CSS paints #333 text on a light box) */
+html.afims-dark[data-bs-theme="dark"] :is(.dataTables_processing, .dt-processing) {
+  background: var(--afims-surface) !important;
+  color: var(--afims-text) !important;
+  border-color: var(--afims-border) !important;
+}
+
+/* AdminLTE / Bootstrap light utilities (hard-coded with !important) */
+html.afims-dark[data-bs-theme="dark"] .bg-white,
+html.afims-dark[data-bs-theme="dark"] .bg-body {
+  background-color: var(--afims-surface) !important;
+}
+/* AdminLTE also forces dark text on these: .bg-white { color: #000 !important } */
+html.afims-dark[data-bs-theme="dark"] :is(.bg-white, .bg-light, .bg-body, .bg-body-tertiary),
+html.afims-dark[data-bs-theme="dark"] :is(.bg-white, .bg-light) > a {
+  color: var(--afims-text) !important;
+}
+html.afims-dark[data-bs-theme="dark"] .bg-light,
+html.afims-dark[data-bs-theme="dark"] .bg-body-tertiary,
+html.afims-dark[data-bs-theme="dark"] .bg-body-secondary {
+  background-color: var(--afims-surface-subtle) !important;
+}
+html.afims-dark[data-bs-theme="dark"] .text-dark,
+html.afims-dark[data-bs-theme="dark"] .text-black,
+html.afims-dark[data-bs-theme="dark"] .text-body {
+  color: var(--afims-text) !important;
+}
+html.afims-dark[data-bs-theme="dark"] .text-muted,
+html.afims-dark[data-bs-theme="dark"] .text-secondary,
+html.afims-dark[data-bs-theme="dark"] .text-black-50 {
+  color: var(--afims-text-muted) !important;
+}
+html.afims-dark[data-bs-theme="dark"] .text-primary {
+  color: var(--afims-primary-text) !important;
+}
+html.afims-dark[data-bs-theme="dark"] .border,
+html.afims-dark[data-bs-theme="dark"] .border-top,
+html.afims-dark[data-bs-theme="dark"] .border-end,
+html.afims-dark[data-bs-theme="dark"] .border-bottom,
+html.afims-dark[data-bs-theme="dark"] .border-start {
+  border-color: var(--afims-border) !important;
+}
+
+/* Page background and cards */
+html.afims-dark[data-bs-theme="dark"] body,
+html.afims-dark[data-bs-theme="dark"] .content-wrapper {
+  background-color: var(--afims-surface-subtle);
+  color: var(--afims-text);
+}
+html.afims-dark[data-bs-theme="dark"] .card,
+html.afims-dark[data-bs-theme="dark"] .modal-content,
+html.afims-dark[data-bs-theme="dark"] .dropdown-menu,
+html.afims-dark[data-bs-theme="dark"] .offcanvas,
+html.afims-dark[data-bs-theme="dark"] .list-group-item {
+  --bs-card-bg: var(--afims-surface);
+  --bs-modal-bg: var(--afims-surface);
+  --bs-dropdown-bg: var(--afims-surface);
+  --bs-offcanvas-bg: var(--afims-surface);
+  --bs-list-group-bg: var(--afims-surface);
+  border-color: var(--afims-border);
+}
+
+/* Inputs: one step lighter than the page so fields read as fields */
+html.afims-dark[data-bs-theme="dark"] :is(.form-control, .form-select, .input-group-text) {
+  background-color: var(--afims-surface-subtle);
+  border-color: var(--afims-border-strong);
+  color: var(--afims-text);
+}
+html.afims-dark[data-bs-theme="dark"] :is(.form-control, .form-select)::placeholder {
+  color: var(--afims-text-disabled);
+}
+html.afims-dark[data-bs-theme="dark"] :is(.form-control, .form-select):disabled,
+html.afims-dark[data-bs-theme="dark"] .form-control[readonly] {
+  background-color: var(--afims-surface);
+  color: var(--afims-text-muted);
+}
+
+/* Top navbar: dark surface with a divider instead of the blue bar */
+html.afims-dark[data-bs-theme="dark"] .main-header.navbar {
+  background-color: var(--afims-surface) !important;
+  border-bottom: 1px solid var(--afims-border) !important;
+}
+html.afims-dark[data-bs-theme="dark"] .main-header.navbar :is(.nav-link, .navbar-nav > .nav-item > .nav-link) {
+  color: var(--afims-text) !important;
+}
+
+/* Close buttons: Bootstrap's dark-mode X */
+html.afims-dark[data-bs-theme="dark"] .btn-close {
+  filter: invert(1) grayscale(100%) brightness(200%);
+}
+
+/* Tables */
+html.afims-dark[data-bs-theme="dark"] .table {
+  --bs-table-bg: transparent;
+  --bs-table-color: var(--afims-text);
+  --bs-table-border-color: var(--afims-border);
+  --bs-table-striped-bg: color-mix(in srgb, var(--afims-text) 4%, transparent);
+  --bs-table-hover-bg: color-mix(in srgb, var(--afims-text) 7%, transparent);
+}
+
+/* AdminLTE ships its own dark theme ([data-bs-theme=dark] .btn-primary { #3f6791 } ...)
+   that out-ranks the palette button rules - restate the palette for dark mode. */
+html.afims-dark[data-bs-theme="dark"] .btn-primary {
+  --bs-btn-color: var(--afims-pure-white);
+  --bs-btn-bg: var(--afims-primary);
+  --bs-btn-border-color: var(--afims-primary);
+  --bs-btn-hover-color: var(--afims-pure-white);
+  --bs-btn-hover-bg: var(--afims-primary-hover);
+  --bs-btn-hover-border-color: var(--afims-primary-hover);
+  --bs-btn-active-color: var(--afims-pure-white);
+  --bs-btn-active-bg: var(--afims-primary-hover);
+  --bs-btn-active-border-color: var(--afims-primary-hover);
+  --bs-btn-disabled-color: var(--afims-pure-white);
+  --bs-btn-disabled-bg: var(--afims-primary);
+  --bs-btn-disabled-border-color: var(--afims-primary);
+}
+html.afims-dark[data-bs-theme="dark"] .btn-outline-primary {
+  --bs-btn-color: var(--afims-primary-text);
+  --bs-btn-border-color: var(--afims-primary);
+  --bs-btn-hover-color: var(--afims-pure-white);
+  --bs-btn-hover-bg: var(--afims-primary);
+  --bs-btn-hover-border-color: var(--afims-primary);
+  --bs-btn-active-color: var(--afims-pure-white);
+  --bs-btn-active-bg: var(--afims-primary);
+  --bs-btn-active-border-color: var(--afims-primary);
+  --bs-btn-disabled-color: var(--afims-primary-text);
+  --bs-btn-disabled-border-color: var(--afims-primary);
+}
+html.afims-dark[data-bs-theme="dark"] .btn-success {
+  --bs-btn-color: var(--afims-pure-white);
+  --bs-btn-bg: var(--afims-success);
+  --bs-btn-border-color: var(--afims-success);
+  --bs-btn-hover-color: var(--afims-pure-white);
+  --bs-btn-hover-bg: color-mix(in srgb, var(--afims-success) 85%, black);
+  --bs-btn-hover-border-color: color-mix(in srgb, var(--afims-success) 85%, black);
+}
+html.afims-dark[data-bs-theme="dark"] .btn-outline-success {
+  --bs-btn-color: var(--afims-success-hover);
+  --bs-btn-border-color: var(--afims-success);
+  --bs-btn-hover-color: var(--afims-pure-white);
+  --bs-btn-hover-bg: var(--afims-success);
+  --bs-btn-hover-border-color: var(--afims-success);
+}
+html.afims-dark[data-bs-theme="dark"] .btn-danger {
+  --bs-btn-color: var(--afims-pure-white);
+  --bs-btn-bg: var(--afims-danger);
+  --bs-btn-border-color: var(--afims-danger);
+  --bs-btn-hover-color: var(--afims-pure-white);
+  --bs-btn-hover-bg: color-mix(in srgb, var(--afims-danger) 85%, black);
+  --bs-btn-hover-border-color: color-mix(in srgb, var(--afims-danger) 85%, black);
+}
+html.afims-dark[data-bs-theme="dark"] .btn-outline-danger {
+  --bs-btn-color: var(--afims-danger-text);
+  --bs-btn-border-color: var(--afims-danger);
+  --bs-btn-hover-color: var(--afims-pure-white);
+  --bs-btn-hover-bg: var(--afims-danger);
+  --bs-btn-hover-border-color: var(--afims-danger);
+}
+html.afims-dark[data-bs-theme="dark"] .btn-warning {
+  --bs-btn-color: var(--afims-black);
+  --bs-btn-bg: var(--afims-warning);
+  --bs-btn-border-color: var(--afims-warning);
+  --bs-btn-hover-color: var(--afims-black);
+  --bs-btn-hover-bg: color-mix(in srgb, var(--afims-warning) 85%, black);
+  --bs-btn-hover-border-color: color-mix(in srgb, var(--afims-warning) 85%, black);
+}
+html.afims-dark[data-bs-theme="dark"] :is(.btn-secondary, .btn-light, .btn-default, .btn-outline-secondary) {
+  --bs-btn-color: var(--afims-text);
+  --bs-btn-bg: var(--afims-surface);
+  --bs-btn-border-color: var(--afims-border-strong);
+  --bs-btn-hover-color: var(--afims-heading);
+  --bs-btn-hover-bg: color-mix(in srgb, var(--afims-text) 8%, var(--afims-surface));
+  --bs-btn-hover-border-color: var(--afims-border-strong);
+  --bs-btn-active-color: var(--afims-heading);
+  --bs-btn-active-bg: color-mix(in srgb, var(--afims-text) 12%, var(--afims-surface));
+}
+html.afims-dark[data-bs-theme="dark"] .btn-link {
+  --bs-btn-color: var(--afims-primary-text);
+  --bs-btn-hover-color: var(--bs-link-hover-color);
+}
+
+/* Pagination, card headers, tabs, dropdown items, badges */
+html.afims-dark[data-bs-theme="dark"] .pagination {
+  --bs-pagination-color: var(--afims-text);
+  --bs-pagination-bg: var(--afims-surface);
+  --bs-pagination-border-color: var(--afims-border);
+  --bs-pagination-hover-color: var(--afims-heading);
+  --bs-pagination-hover-bg: color-mix(in srgb, var(--afims-text) 8%, var(--afims-surface));
+  --bs-pagination-hover-border-color: var(--afims-border);
+  --bs-pagination-active-color: var(--afims-pure-white);
+  --bs-pagination-active-bg: var(--afims-primary);
+  --bs-pagination-active-border-color: var(--afims-primary);
+  --bs-pagination-disabled-color: var(--afims-text-disabled);
+  --bs-pagination-disabled-bg: var(--afims-surface);
+}
+html.afims-dark[data-bs-theme="dark"] .card-header {
+  background-color: var(--afims-surface);
+  border-bottom-color: var(--afims-border);
+  color: var(--afims-heading);
+}
+html.afims-dark[data-bs-theme="dark"] .nav-tabs {
+  --bs-nav-tabs-border-color: var(--afims-border);
+  --bs-nav-tabs-link-active-color: var(--afims-heading);
+  --bs-nav-tabs-link-active-bg: var(--afims-surface);
+  --bs-nav-tabs-link-active-border-color: var(--afims-border) var(--afims-border) var(--afims-surface);
+}
+html.afims-dark[data-bs-theme="dark"] .dropdown-menu {
+  --bs-dropdown-color: var(--afims-text);
+  --bs-dropdown-link-color: var(--afims-text);
+  --bs-dropdown-link-hover-color: var(--afims-heading);
+  --bs-dropdown-link-hover-bg: color-mix(in srgb, var(--afims-text) 8%, var(--afims-surface));
+  --bs-dropdown-link-active-color: var(--afims-pure-white);
+  --bs-dropdown-link-active-bg: var(--afims-primary);
+  --bs-dropdown-border-color: var(--afims-border);
+}
+
+/* fmd.css (FMD, GSD, BAPD, DCD, GAD, REGIONAL) and the module pages use their own
+   variables (--card, --surf, --bdr, --txt, --sec, --muted) with fixed light values.
+   Point them at the palette roles in dark mode. --navy / --blue / --gold stay. */
+html.afims-dark[data-bs-theme="dark"] :is(#bad-root, [id$="-root"], [class$="-root"], [class*="-root "]) {
+  --surf:  var(--afims-surface-subtle);
+  --card:  var(--afims-surface);
+  --bdr:   var(--afims-border);
+  --txt:   var(--afims-text);
+  --sec:   var(--afims-text-muted);
+  --muted: var(--afims-text-muted);
+  color: var(--afims-text);
+}
+
+/* FMD-DARK:START - generated by _assets/tools/gen-fmd-dark.js from _shared/css/fmd.css.
+   Do not edit by hand: re-run the tool after fmd.css changes. Dark mode only. */
+html.afims-dark[data-bs-theme="dark"] .bad-hdr {
+  background: linear-gradient(135deg,
+      var(--navy) 0%,
+      var(--blue) 65%,
+      var(--afims-primary-hover) 100%);
+}
+html.afims-dark[data-bs-theme="dark"] .bad-hdr-ico svg {
+  stroke: var(--afims-warning);
+}
+html.afims-dark[data-bs-theme="dark"] .bad-hdr-title {
+  color: var(--afims-pure-white);
+}
+html.afims-dark[data-bs-theme="dark"] .btn-hdr:hover {
+  color: var(--afims-pure-white);
+}
+html.afims-dark[data-bs-theme="dark"] .sec-hd-count {
+  background: var(--afims-danger);
+  color: var(--afims-pure-white);
+}
+html.afims-dark[data-bs-theme="dark"] .skel {
+  background: linear-gradient(90deg, var(--afims-border) 25%, var(--afims-surface-subtle) 50%, var(--afims-border) 75%);
+}
+html.afims-dark[data-bs-theme="dark"] .sc-blue::before {
+  background: var(--afims-primary);
+}
+html.afims-dark[data-bs-theme="dark"] .sc-purple::before {
+  background: var(--afims-primary);
+}
+html.afims-dark[data-bs-theme="dark"] .sc-teal::before {
+  background: var(--afims-success);
+}
+html.afims-dark[data-bs-theme="dark"] .ico-navy {
+  background: var(--afims-primary-soft);
+  color: var(--afims-heading);
+}
+html.afims-dark[data-bs-theme="dark"] .ico-blue {
+  background: var(--afims-primary-soft);
+  color: var(--afims-primary-text);
+}
+html.afims-dark[data-bs-theme="dark"] .ico-purple {
+  background: var(--afims-surface-subtle);
+  color: var(--afims-primary-text);
+}
+html.afims-dark[data-bs-theme="dark"] .ico-teal {
+  background: var(--afims-success-soft);
+  color: var(--afims-success);
+}
+html.afims-dark[data-bs-theme="dark"] .ico-gold {
+  background: var(--afims-warning-soft);
+  color: var(--afims-warning);
+}
+html.afims-dark[data-bs-theme="dark"] .prog-wrap {
+  background: var(--afims-border);
+}
+html.afims-dark[data-bs-theme="dark"] .bdg-gray {
+  background: var(--afims-surface-subtle);
+  color: var(--afims-text-muted);
+}
+html.afims-dark[data-bs-theme="dark"] .bdg-amber {
+  background: var(--afims-warning-soft);
+  color: var(--afims-warning-text);
+}
+html.afims-dark[data-bs-theme="dark"] .bdg-blue {
+  background: var(--afims-primary-soft);
+  color: var(--afims-primary-text);
+}
+html.afims-dark[data-bs-theme="dark"] .bdg-purple {
+  background: var(--afims-surface-subtle);
+  color: var(--afims-primary-text);
+}
+html.afims-dark[data-bs-theme="dark"] .bdg-green {
+  background: var(--afims-success-soft);
+  color: var(--afims-success-hover);
+}
+html.afims-dark[data-bs-theme="dark"] .bdg-teal {
+  background: var(--afims-success-soft);
+  color: var(--afims-success-hover);
+}
+html.afims-dark[data-bs-theme="dark"] .bdg-red {
+  background: var(--afims-danger-soft);
+  color: var(--afims-danger);
+}
+html.afims-dark[data-bs-theme="dark"] .wf-pill {
+  color: var(--afims-pure-white);
+}
+html.afims-dark[data-bs-theme="dark"] .wf-pill-primary {
+  background: var(--afims-primary);
+}
+html.afims-dark[data-bs-theme="dark"] .wf-pill-secondary {
+  background: var(--afims-text-muted);
+}
+html.afims-dark[data-bs-theme="dark"] .wf-pill-success {
+  background: var(--afims-success);
+}
+html.afims-dark[data-bs-theme="dark"] .wf-pill-danger {
+  background: var(--afims-danger);
+}
+html.afims-dark[data-bs-theme="dark"] .wf-pill-warning {
+  background: var(--afims-warning);
+}
+html.afims-dark[data-bs-theme="dark"] .wf-pill-info {
+  background: var(--afims-primary);
+}
+html.afims-dark[data-bs-theme="dark"] .wf-pill-dark {
+  background: var(--afims-surface);
+}
+html.afims-dark[data-bs-theme="dark"] .wf-pill-light {
+  background: var(--afims-border);
+  color: var(--afims-text-muted);
+}
+html.afims-dark[data-bs-theme="dark"] .wf-pill-gray {
+  background: var(--afims-text-muted);
+}
+html.afims-dark[data-bs-theme="dark"] .tbdg-cba {
+  background: var(--afims-primary);
+  color: var(--afims-pure-white);
+}
+html.afims-dark[data-bs-theme="dark"] .tbdg-rfa {
+  background: var(--afims-primary);
+  color: var(--afims-pure-white);
+}
+html.afims-dark[data-bs-theme="dark"] .tbdg-laa {
+  background: var(--afims-success);
+  color: var(--afims-pure-white);
+}
+html.afims-dark[data-bs-theme="dark"] .ch-pill {
+  background: var(--afims-primary-soft);
+  color: var(--afims-primary-text);
+}
+html.afims-dark[data-bs-theme="dark"] .notif-hdr-l svg {
+  stroke: var(--afims-warning);
+}
+html.afims-dark[data-bs-theme="dark"] .notif-hdr-title {
+  color: var(--afims-pure-white);
+}
+html.afims-dark[data-bs-theme="dark"] .notif-item {
+  border-bottom: 1px solid var(--afims-surface-subtle);
+}
+html.afims-dark[data-bs-theme="dark"] .notif-item:hover {
+  background: var(--afims-surface-subtle);
+}
+html.afims-dark[data-bs-theme="dark"] .nd-gray {
+  background: var(--afims-text-disabled);
+}
+html.afims-dark[data-bs-theme="dark"] .nd-amber {
+  background: var(--afims-warning);
+}
+html.afims-dark[data-bs-theme="dark"] .nd-blue {
+  background: var(--afims-primary);
+}
+html.afims-dark[data-bs-theme="dark"] .nd-green {
+  background: var(--afims-success);
+}
+html.afims-dark[data-bs-theme="dark"] .nd-purple {
+  background: var(--afims-primary);
+}
+html.afims-dark[data-bs-theme="dark"] .nd-teal {
+  background: var(--afims-success);
+}
+html.afims-dark[data-bs-theme="dark"] .nd-red {
+  background: var(--afims-danger);
+}
+html.afims-dark[data-bs-theme="dark"] .tbl-input:focus {
+  border-color: var(--afims-primary-soft);
+}
+html.afims-dark[data-bs-theme="dark"] .tbl-sel:focus {
+  border-color: var(--afims-primary-soft);
+}
+html.afims-dark[data-bs-theme="dark"] table.bad-tbl thead th {
+  background: var(--afims-surface-subtle);
+}
+html.afims-dark[data-bs-theme="dark"] table.bad-tbl tbody tr {
+  border-bottom: 1px solid var(--afims-surface-subtle);
+}
+html.afims-dark[data-bs-theme="dark"] table.bad-tbl tbody tr:hover {
+  background: var(--afims-surface-subtle);
+}
+html.afims-dark[data-bs-theme="dark"] .tbl-link {
+  color: var(--afims-primary-text);
+}
+html.afims-dark[data-bs-theme="dark"] .pag-btn:hover:not(:disabled) {
+  background: var(--afims-primary-soft);
+  color: var(--afims-primary-text);
+  border-color: var(--afims-primary-soft);
+}
+html.afims-dark[data-bs-theme="dark"] .pag-btn.active {
+  color: var(--afims-pure-white);
+}
+html.afims-dark[data-bs-theme="dark"] .bad-spinner {
+  border: 3px solid var(--afims-border);
+}
+html.afims-dark[data-bs-theme="dark"] .bad-error {
+  background: var(--afims-danger-soft);
+  border: 1px solid var(--afims-danger-soft);
+  color: var(--afims-danger);
+}
+html.afims-dark[data-bs-theme="dark"] .form-header {
+  border-bottom: 2px solid var(--afims-border);
+}
+html.afims-dark[data-bs-theme="dark"] .caf-number-card {
+  border: 2px solid var(--afims-primary-soft);
+  background: linear-gradient(to right, var(--afims-primary-soft), var(--afims-surface));
+}
+html.afims-dark[data-bs-theme="dark"] .caf-number-label {
+  color: var(--afims-text-muted);
+}
+html.afims-dark[data-bs-theme="dark"] .caf-number-value {
+  color: var(--afims-primary-text);
+}
+html.afims-dark[data-bs-theme="dark"] .caf-number-meta p {
+  color: var(--afims-text-muted);
+}
+html.afims-dark[data-bs-theme="dark"] .caf-number-meta span {
+  color: var(--afims-heading);
+}
+html.afims-dark[data-bs-theme="dark"] .form-section {
+  border: 1px solid var(--afims-border);
+  background: var(--afims-surface);
+}
+html.afims-dark[data-bs-theme="dark"] .section-header {
+  color: var(--afims-heading);
+  border-bottom: 2px solid var(--afims-primary);
+}
+html.afims-dark[data-bs-theme="dark"] .section-header-icon {
+  background: var(--afims-primary-soft);
+}
+html.afims-dark[data-bs-theme="dark"] .section-header-icon i {
+  color: var(--afims-primary-text);
+}
+html.afims-dark[data-bs-theme="dark"] .form-label {
+  color: var(--afims-text);
+}
+html.afims-dark[data-bs-theme="dark"] .form-label .required {
+  color: var(--afims-danger);
+}
+html.afims-dark[data-bs-theme="dark"] .form-label .badge-auto {
+  background: var(--afims-primary-soft);
+  color: var(--afims-primary-text);
+}
+html.afims-dark[data-bs-theme="dark"] .form-input,
+html.afims-dark[data-bs-theme="dark"] .form-select,
+html.afims-dark[data-bs-theme="dark"] .form-textarea {
+  border: 1px solid var(--afims-border);
+  background: var(--afims-surface);
+  color: var(--afims-heading);
+}
+html.afims-dark[data-bs-theme="dark"] .form-input:focus,
+html.afims-dark[data-bs-theme="dark"] .form-select:focus,
+html.afims-dark[data-bs-theme="dark"] .form-textarea:focus {
+  border-color: var(--afims-primary);
+}
+html.afims-dark[data-bs-theme="dark"] .form-input:hover,
+html.afims-dark[data-bs-theme="dark"] .form-select:hover,
+html.afims-dark[data-bs-theme="dark"] .form-textarea:hover {
+  border-color: var(--afims-text-disabled);
+}
+html.afims-dark[data-bs-theme="dark"] .form-input.readonly-styled {
+  background: var(--afims-surface-subtle);
+  color: var(--afims-text);
+}
+html.afims-dark[data-bs-theme="dark"] .form-input.error,
+html.afims-dark[data-bs-theme="dark"] .form-select.error {
+  border-color: var(--afims-danger);
+}
+html.afims-dark[data-bs-theme="dark"] .form-input.success,
+html.afims-dark[data-bs-theme="dark"] .form-select.success {
+  border-color: var(--afims-success);
+}
+html.afims-dark[data-bs-theme="dark"] .form-select:disabled {
+  background-color: var(--afims-surface);
+  color: var(--afims-text-disabled);
+}
+html.afims-dark[data-bs-theme="dark"] .input-prefix-wrap .prefix-symbol {
+  color: var(--afims-text-muted);
+}
+html.afims-dark[data-bs-theme="dark"] .input-prefix {
+  color: var(--afims-text-muted);
+}
+html.afims-dark[data-bs-theme="dark"] .input-hint {
+  color: var(--afims-text-muted);
+}
+html.afims-dark[data-bs-theme="dark"] .error-msg {
+  color: var(--afims-danger);
+}
+html.afims-dark[data-bs-theme="dark"] .form-group.has-error .form-input,
+html.afims-dark[data-bs-theme="dark"] .form-group.has-error .form-select {
+  border-color: var(--afims-danger);
+}
+html.afims-dark[data-bs-theme="dark"] .form-group.has-success .form-input,
+html.afims-dark[data-bs-theme="dark"] .form-group.has-success .form-select {
+  border-color: var(--afims-success);
+}
+html.afims-dark[data-bs-theme="dark"] .error-message {
+  color: var(--afims-danger);
+}
+html.afims-dark[data-bs-theme="dark"] .select-wrap::after {
+  border: 2px solid var(--afims-border);
+  border-top-color: var(--afims-primary);
+}
+html.afims-dark[data-bs-theme="dark"] .select-loading-wrapper::after {
+  border: 2px solid var(--afims-border);
+  border-top-color: var(--afims-primary);
+}
+html.afims-dark[data-bs-theme="dark"] .error-box {
+  border-left: 3px solid var(--afims-danger);
+  background: var(--afims-danger-soft);
+  color: var(--afims-danger-text);
+}
+html.afims-dark[data-bs-theme="dark"] .form-checkbox:checked {
+  background-color: var(--afims-primary);
+  border-color: var(--afims-primary);
+}
+html.afims-dark[data-bs-theme="dark"] .checkbox-label {
+  color: var(--afims-text);
+}
+html.afims-dark[data-bs-theme="dark"] .alert-warning {
+  border-left: 4px solid var(--afims-warning);
+  background: var(--afims-warning-soft);
+  color: var(--afims-warning-text);
+}
+html.afims-dark[data-bs-theme="dark"] .alert-info {
+  border-left: 4px solid var(--afims-primary);
+  background: var(--afims-primary-soft);
+  color: var(--afims-primary-text);
+}
+html.afims-dark[data-bs-theme="dark"] .warning-box {
+  border-left: 4px solid var(--afims-warning);
+  background: var(--afims-warning-soft);
+  color: var(--afims-warning-text);
+}
+html.afims-dark[data-bs-theme="dark"] .cob-status-badge.valid {
+  background: var(--afims-success-soft);
+  color: var(--afims-success-hover);
+}
+html.afims-dark[data-bs-theme="dark"] .cob-status-badge.invalid {
+  background: var(--afims-danger-soft);
+  color: var(--afims-danger-text);
+}
+html.afims-dark[data-bs-theme="dark"] .cob-status-badge.pending {
+  background: var(--afims-surface-subtle);
+  color: var(--afims-text-muted);
+}
+html.afims-dark[data-bs-theme="dark"] .info-card {
+  border: 1px solid var(--afims-primary-soft);
+  background: var(--afims-primary-soft);
+}
+html.afims-dark[data-bs-theme="dark"] .info-card-icon {
+  color: var(--afims-primary-text);
+}
+html.afims-dark[data-bs-theme="dark"] .info-card-title {
+  color: var(--afims-primary-text);
+}
+html.afims-dark[data-bs-theme="dark"] .info-list {
+  color: var(--afims-primary-text);
+}
+html.afims-dark[data-bs-theme="dark"] .form-actions {
+  border-top: 1px solid var(--afims-border);
+}
+html.afims-dark[data-bs-theme="dark"] .btn-secondary {
+  background: var(--afims-surface);
+  color: var(--afims-text);
+  border: 1px solid var(--afims-border);
+}
+html.afims-dark[data-bs-theme="dark"] .btn-secondary:hover {
+  background: var(--afims-surface);
+  border-color: var(--afims-text-disabled);
+}
+html.afims-dark[data-bs-theme="dark"] .btn-draft {
+  background: var(--afims-surface);
+  color: var(--afims-text);
+  border: 1px solid var(--afims-border);
+}
+html.afims-dark[data-bs-theme="dark"] .btn-draft:hover {
+  background: var(--afims-surface);
+}
+html.afims-dark[data-bs-theme="dark"] .btn-primary {
+  background: var(--afims-primary);
+  color: var(--afims-pure-white);
+  border: 1px solid var(--afims-primary);
+}
+html.afims-dark[data-bs-theme="dark"] .btn-primary:hover {
+  background: var(--afims-primary);
+  border-color: var(--afims-primary);
+}
+html.afims-dark[data-bs-theme="dark"] .cba-number-card {
+  border: 2px solid var(--afims-primary-soft);
+  background: linear-gradient(to right, var(--afims-primary-soft), var(--afims-surface));
+}
+html.afims-dark[data-bs-theme="dark"] .cba-number-label {
+  color: var(--afims-text-muted);
+}
+html.afims-dark[data-bs-theme="dark"] .cba-number-value {
+  color: var(--afims-primary-text);
+}
+html.afims-dark[data-bs-theme="dark"] .frow {
+  border-bottom: 1px solid var(--afims-surface-subtle);
+}
+html.afims-dark[data-bs-theme="dark"] .frow-trk {
+  background: var(--afims-border);
+}
+html.afims-dark[data-bs-theme="dark"] .amt-card-blue {
+  background: var(--afims-primary-soft);
+  border-color: var(--afims-primary-soft);
+}
+html.afims-dark[data-bs-theme="dark"] .amt-card-blue .amt-card-label {
+  color: var(--afims-primary-text);
+}
+html.afims-dark[data-bs-theme="dark"] .amt-card-blue .amt-card-val {
+  color: var(--afims-primary-text);
+}
+html.afims-dark[data-bs-theme="dark"] .amt-card-blue .amt-card-sub {
+  color: var(--afims-primary-text);
+}
+html.afims-dark[data-bs-theme="dark"] .amt-card-green {
+  background: var(--afims-success-soft);
+  border-color: var(--afims-success);
+}
+html.afims-dark[data-bs-theme="dark"] .amt-card-green .amt-card-label {
+  color: var(--afims-success);
+}
+html.afims-dark[data-bs-theme="dark"] .amt-card-green .amt-card-val {
+  color: var(--afims-success-hover);
+}
+html.afims-dark[data-bs-theme="dark"] .amt-card-green .amt-card-sub {
+  color: var(--afims-success);
+}
+html.afims-dark[data-bs-theme="dark"] .amt-card-purple {
+  background: var(--afims-surface-subtle);
+  border-color: var(--afims-primary-soft);
+}
+html.afims-dark[data-bs-theme="dark"] .amt-card-purple .amt-card-label {
+  color: var(--afims-primary-text);
+}
+html.afims-dark[data-bs-theme="dark"] .amt-card-purple .amt-card-val {
+  color: var(--afims-primary-text);
+}
+html.afims-dark[data-bs-theme="dark"] .amt-card-purple .amt-card-sub {
+  color: var(--afims-primary-text);
+}
+html.afims-dark[data-bs-theme="dark"] .cmp-bar-track {
+  background: var(--afims-border);
+}
+html.afims-dark[data-bs-theme="dark"] .amt-card-blue {
+  background: var(--afims-primary-soft);
+  border: 1px solid var(--afims-primary-soft);
+}
+html.afims-dark[data-bs-theme="dark"] .amt-card-blue .amt-card-label {
+  color: var(--afims-primary-text);
+}
+html.afims-dark[data-bs-theme="dark"] .amt-card-blue .amt-card-val {
+  color: var(--afims-primary-text);
+}
+html.afims-dark[data-bs-theme="dark"] .amt-card-blue .amt-card-sub {
+  color: var(--afims-primary-text);
+}
+html.afims-dark[data-bs-theme="dark"] .amt-card-green {
+  background: var(--afims-success-soft);
+  border: 1px solid var(--afims-success);
+}
+html.afims-dark[data-bs-theme="dark"] .amt-card-green .amt-card-label {
+  color: var(--afims-success);
+}
+html.afims-dark[data-bs-theme="dark"] .amt-card-green .amt-card-val {
+  color: var(--afims-success-hover);
+}
+html.afims-dark[data-bs-theme="dark"] .amt-card-green .amt-card-sub {
+  color: var(--afims-success);
+}
+html.afims-dark[data-bs-theme="dark"] .amt-card-purple {
+  background: var(--afims-surface-subtle);
+  border: 1px solid var(--afims-primary-soft);
+}
+html.afims-dark[data-bs-theme="dark"] .amt-card-purple .amt-card-label {
+  color: var(--afims-primary-text);
+}
+html.afims-dark[data-bs-theme="dark"] .amt-card-purple .amt-card-val {
+  color: var(--afims-primary-text);
+}
+html.afims-dark[data-bs-theme="dark"] .amt-card-purple .amt-card-sub {
+  color: var(--afims-primary-text);
+}
+html.afims-dark[data-bs-theme="dark"] .alloc-bar-track {
+  background: var(--afims-border);
+}
+html.afims-dark[data-bs-theme="dark"] .btn-tbl-view {
+  background: var(--afims-surface-subtle);
+}
+html.afims-dark[data-bs-theme="dark"] .btn-tbl-edit {
+  color: var(--afims-warning-text);
+  background: var(--afims-warning-soft);
+  border-color: var(--afims-warning);
+}
+html.afims-dark[data-bs-theme="dark"] .btn-tbl-edit:hover {
+  background: var(--afims-warning-soft);
+  border-color: var(--afims-warning);
+}
+html.afims-dark[data-bs-theme="dark"] .wf-draft {
+  background: var(--afims-surface-subtle);
+  color: var(--afims-text-muted);
+}
+html.afims-dark[data-bs-theme="dark"] .wf-pending {
+  background: var(--afims-warning-soft);
+  color: var(--afims-warning-text);
+}
+html.afims-dark[data-bs-theme="dark"] .wf-reviewed {
+  background: var(--afims-primary-soft);
+  color: var(--afims-primary-text);
+}
+html.afims-dark[data-bs-theme="dark"] .wf-approved {
+  background: var(--afims-success-soft);
+  color: var(--afims-success-hover);
+}
+html.afims-dark[data-bs-theme="dark"] .wf-rejected {
+  background: var(--afims-danger-soft);
+  color: var(--afims-danger);
+}
+html.afims-dark[data-bs-theme="dark"] .wf-cancelled {
+  background: var(--afims-surface-subtle);
+  color: var(--afims-text-disabled);
+}
+html.afims-dark[data-bs-theme="dark"] .util-low {
+  background: var(--afims-danger-soft);
+  color: var(--afims-danger);
+}
+html.afims-dark[data-bs-theme="dark"] .util-mid {
+  background: var(--afims-warning-soft);
+  color: var(--afims-warning-text);
+}
+html.afims-dark[data-bs-theme="dark"] .util-high {
+  background: var(--afims-success-soft);
+  color: var(--afims-success-hover);
+}
+html.afims-dark[data-bs-theme="dark"] .util-full {
+  background: var(--afims-primary-soft);
+  color: var(--afims-primary-text);
+}
+html.afims-dark[data-bs-theme="dark"] .fs-bar-wrap {
+  background: var(--afims-surface-subtle);
+}
+html.afims-dark[data-bs-theme="dark"] .btn-verify {
+  background: var(--afims-primary-soft);
+  color: var(--afims-primary-text);
+  border-color: var(--afims-primary-soft);
+}
+html.afims-dark[data-bs-theme="dark"] .btn-approve {
+  background: var(--afims-success-soft);
+  color: var(--afims-success-hover);
+  border-color: var(--afims-success-soft-hover);
+}
+html.afims-dark[data-bs-theme="dark"] .btn-reject {
+  background: var(--afims-danger-soft);
+  color: var(--afims-danger);
+  border-color: var(--afims-danger-soft);
+}
+html.afims-dark[data-bs-theme="dark"] .btn-view {
+  background: var(--afims-surface-subtle);
+  color: var(--afims-text-muted);
+  border-color: var(--afims-border);
+}
+html.afims-dark[data-bs-theme="dark"] .btn-primary,
+html.afims-dark[data-bs-theme="dark"] a.btn.btn-primary,
+html.afims-dark[data-bs-theme="dark"] button.btn.btn-primary,
+html.afims-dark[data-bs-theme="dark"] .btn.btn-primary.ew-btn {
+  background-color: var(--navy, var(--afims-surface)) !important;
+  color: var(--afims-pure-white) !important;
+}
+html.afims-dark[data-bs-theme="dark"] .btn-primary:hover,
+html.afims-dark[data-bs-theme="dark"] a.btn.btn-primary:hover,
+html.afims-dark[data-bs-theme="dark"] button.btn.btn-primary:hover,
+html.afims-dark[data-bs-theme="dark"] .btn.btn-primary.ew-btn:hover {
+  background-color: var(--afims-primary-hover) !important;
+  color: var(--afims-pure-white) !important;
+}
+html.afims-dark[data-bs-theme="dark"] .btn-primary:focus,
+html.afims-dark[data-bs-theme="dark"] a.btn.btn-primary:focus,
+html.afims-dark[data-bs-theme="dark"] .btn.btn-primary.ew-btn:focus {
+  background-color: var(--afims-primary-hover) !important;
+  color: var(--afims-pure-white) !important;
+}
+html.afims-dark[data-bs-theme="dark"] .btn-primary:active,
+html.afims-dark[data-bs-theme="dark"] a.btn.btn-primary:active,
+html.afims-dark[data-bs-theme="dark"] .btn.btn-primary.ew-btn:active,
+html.afims-dark[data-bs-theme="dark"] .btn.btn-primary.ew-btn.active,
+html.afims-dark[data-bs-theme="dark"] .show>.btn.btn-primary.ew-btn {
+  color: var(--afims-pure-white) !important;
+}
+html.afims-dark[data-bs-theme="dark"] .btn-primary:disabled,
+html.afims-dark[data-bs-theme="dark"] .btn-primary.disabled,
+html.afims-dark[data-bs-theme="dark"] .btn.btn-primary.ew-btn:disabled {
+  background-color: var(--navy, var(--afims-surface)) !important;
+  color: var(--afims-pure-white) !important;
+}
+html.afims-dark[data-bs-theme="dark"] .btn-danger {
+  background: var(--afims-danger);
+  color: var(--afims-pure-white);
+}
+html.afims-dark[data-bs-theme="dark"] .usr-info-row {
+  background: var(--afims-surface-subtle);
+}
+html.afims-dark[data-bs-theme="dark"] #usr-toast {
+  color: var(--afims-pure-white);
+}
+html.afims-dark[data-bs-theme="dark"] #usr-toast.success {
+  background: var(--afims-success-hover);
+}
+html.afims-dark[data-bs-theme="dark"] #usr-toast.error {
+  background: var(--afims-danger);
+}
+html.afims-dark[data-bs-theme="dark"] .main-sidebar .user-panel .ew-user-avatar {
+  color: var(--afims-pure-white);
+  background: linear-gradient(135deg, var(--afims-success), var(--afims-success-hover));
+}
+/* FMD-DARK:END */
+
+/* Yellow buttons: some pages force white text on the warning fill */
+html.afims-dark[data-bs-theme="dark"] .btn-warning,
+html.afims-dark[data-bs-theme="dark"] .btn-warning:hover {
+  color: var(--afims-black) !important;
+}

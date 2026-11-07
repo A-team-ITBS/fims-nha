@@ -1,0 +1,147 @@
+services:
+  # ---------------------------------------------------------
+  # PHP-FPM Application (runs the FIMS PHP modules)
+  # ---------------------------------------------------------
+  php:
+    build: .
+    container_name: fims-nha-php
+    volumes:
+      - .:/var/www/html
+      - ./temp_uploads:/var/www/html/temp_uploads
+      - ./_docker/php/php.ini:/usr/local/etc/php/conf.d/99-nha-fims.ini:ro
+      - ./_docker/php/www.conf:/usr/local/etc/php-fpm.d/zz-nha-fims.conf:ro
+      # Named volumes for vendor/ directories — Docker-native filesystem = fast.
+      # These shadow the Windows-mounted vendor folders (which are painfully slow).
+      - fims-vendor:/var/www/html/vendor
+    depends_on:
+      redis:
+        condition: service_started
+      minio:
+        condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - fims-network
+    # First-run bootstrap: install composer deps for every module that has a composer.json.
+    # We check for vendor/autoload.php (not just the dir) because named volumes mount
+    # as empty directories on first startup.
+    command:
+      - bash
+      - -c
+      - |
+        if [ -f /var/www/html/composer.json ] && [ ! -f /var/www/html/vendor/autoload.php ]; then
+          echo "[bootstrap] installing composer deps"
+          cd /var/www/html && composer install --no-interaction --no-progress --prefer-dist --optimize-autoloader || true
+          chown -R www-data:www-data /var/www/html/vendor 2>/dev/null || true
+        fi
+        chown -R www-data:www-data /var/www/html/temp_uploads 2>/dev/null || true
+        chmod -R 775 /var/www/html/temp_uploads 2>/dev/null || true
+        exec php-fpm
+
+  # ---------------------------------------------------------
+  # Nginx Web Server (serves the app on port 8090)
+  # ---------------------------------------------------------
+  nginx:
+    image: nginx:alpine
+    container_name: fims-nha-nginx
+    ports:
+      - "8090:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf
+      - .:/var/www/html
+      - ./temp_uploads:/var/www/html/temp_uploads
+    depends_on:
+      - php
+    networks:
+      - fims-network
+
+  # ---------------------------------------------------------
+  # PostgreSQL 16 - the active DB for this stack (db "fims", empty
+  # until SQL is loaded).
+  # ---------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: fims-nha-postgres
+    restart: unless-stopped
+    ports:
+      - "5433:5432"   # host 5432 is taken by native Windows Postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 123456
+      POSTGRES_DB: fims
+    volumes:
+      - fims-postgres-data:/var/lib/postgresql/data
+      - ./_assets/sql-consolidated:/sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d fims"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - fims-network
+
+  # ---------------------------------------------------------
+  # Redis 7 (cache / queues)
+  # ---------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: fims-nha-redis
+    restart: unless-stopped
+    ports:
+      - "6380:6379"
+    volumes:
+      - fims-redis-data:/data
+    networks:
+      - fims-network
+
+  # ---------------------------------------------------------
+  # MinIO (S3-compatible object storage for uploads)
+  # API   -> http://localhost:9020
+  # Console (web UI) -> http://localhost:9021
+  # ---------------------------------------------------------
+  minio:
+    image: minio/minio:latest
+    container_name: fims-nha-minio
+    restart: unless-stopped
+    ports:
+      - "9020:9000"   # S3 API
+      - "9021:9001"   # Web console
+    environment:
+      MINIO_ROOT_USER: s3phatneglo-archive
+      MINIO_ROOT_PASSWORD: 0yq5h3to9
+    volumes:
+      - fims-minio-data:/data
+    command: server /data --console-address ":9001"
+    networks:
+      - fims-network
+
+  # ---------------------------------------------------------
+  # Adminer (visual database browser)
+  # Open http://localhost:8091, pick "PostgreSQL",
+  # Server: postgres  User: postgres  Password: 123456  DB: fims
+  # ---------------------------------------------------------
+  adminer:
+    image: adminer:latest
+    container_name: fims-nha-adminer
+    restart: unless-stopped
+    ports:
+      - "8091:8080"
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+      ADMINER_DESIGN: dracula
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - fims-network
+
+volumes:
+  fims-postgres-data:
+  fims-redis-data:
+  fims-minio-data:
+  # Named volumes for module vendor/ directories — live in Docker's native
+  # filesystem (fast). Populated by composer install on first startup.
+  fims-vendor:
+
+networks:
+  fims-network:
+    driver: bridge

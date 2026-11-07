@@ -1,0 +1,183 @@
+{
+  "success": true,
+  "message": "Workflows retrieved successfully",
+  "data": [
+    {
+      "id": "wf-001",
+      "name": "Business Permit Application",
+      "category": "Licensing",
+      "description": "Complete workflow for business permit application and approval process",
+      "icon": "fa-building",
+      "status": "active",
+      "workspaceId": "ws-001",
+      "stepCount": 3,
+      "createdDate": "2025-01-15",
+      "updatedDate": "2025-03-20",
+      "advancedConfig": {
+        "startingInput": {
+          "enabled": true,
+          "fields": [
+            {
+              "id": "starting-input-001",
+              "variable": "application_id",
+              "title": "Application ID",
+              "type": "text"
+            },
+            {
+              "id": "starting-input-002",
+              "variable": "applicant_name",
+              "title": "Applicant Name",
+              "type": "text"
+            },
+            {
+              "id": "starting-input-003",
+              "variable": "business_type",
+              "title": "Business Type",
+              "type": "text"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "wf-002",
+      "name": "Document Review Process",
+      "category": "Document Management",
+      "description": "Workflow for reviewing and approving incoming documents",
+      "icon": "fa-file-alt",
+      "status": "active",
+      "workspaceId": "ws-002",
+      "stepCount": 4,
+      "createdDate": "2025-01-20",
+      "updatedDate": "2025-03-18",
+      "advancedConfig": {
+        "startingInput": {
+          "enabled": true,
+          "fields": [
+            {
+              "id": "starting-input-004",
+              "variable": "document_id",
+              "title": "Document ID",
+              "type": "text"
+            },
+            {
+              "id": "starting-input-005",
+              "variable": "document_type",
+              "title": "Document Type",
+              "type": "text"
+            },
+            {
+              "id": "starting-input-006",
+              "variable": "priority",
+              "title": "Priority",
+              "type": "text"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "wf-003",
+      "name": "Ordinance Creation",
+      "category": "Legislative",
+      "description": "Workflow for creating and approving municipal ordinances",
+      "icon": "fa-gavel",
+      "status": "active",
+      "workspaceId": "ws-003",
+      "stepCount": 5,
+      "createdDate": "2025-02-01",
+      "updatedDate": "2025-03-19"
+    },
+    {
+      "id": "wf-004",
+      "name": "Resolution Processing",
+      "category": "Legislative",
+      "description": "Workflow for processing municipal resolutions",
+      "icon": "fa-scroll",
+      "status": "active",
+      "workspaceId": "ws-003",
+      "stepCount": 4,
+      "createdDate": "2025-02-05",
+      "updatedDate": "2025-03-19"
+    },
+    {
+      "id": "wf-005",
+      "name": "Document Receiving",
+      "category": "Administrative",
+      "description": "Workflow for receiving and initial processing of documents",
+      "icon": "fa-inbox",
+      "status": "active",
+      "workspaceId": "ws-002",
+      "stepCount": 3,
+      "createdDate": "2025-02-10",
+      "updatedDate": "2025-03-17"
+    },
+    {
+      "id": "wf-006",
+      "name": "Voucher Processing",
+      "category": "Financial",
+      "description": "Workflow for processing financial vouchers and payments",
+      "icon": "fa-dollar-sign",
+      "status": "active",
+      "workspaceId": "ws-004",
+      "stepCount": 4,
+      "createdDate": "2025-02-15",
+      "updatedDate": "2025-03-17",
+      "advancedConfig": {
+        "startingInput": {
+          "enabled": true,
+          "fields": [
+            {
+              "id": "starting-input-007",
+              "variable": "voucher_number",
+              "title": "Voucher Number",
+              "type": "text"
+            },
+            {
+              "id": "starting-input-008",
+              "variable": "amount",
+              "title": "Amount",
+              "type": "number"
+            },
+            {
+              "id": "starting-input-009",
+              "variable": "vendor_name",
+              "title": "Vendor Name",
+              "type": "text"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "wf-007",
+      "name": "Budget Approval",
+      "category": "Financial",
+      "description": "Workflow for budget review and approval process",
+      "icon": "fa-chart-pie",
+      "status": "active",
+      "workspaceId": "ws-004",
+      "stepCount": 3,
+      "createdDate": "2025-02-20",
+      "updatedDate": "2025-03-16"
+    },
+    {
+      "id": "wf-009",
+      "name": "Emergency Response",
+      "category": "Administrative",
+      "description": "Workflow for emergency response and crisis management",
+      "icon": "fa-exclamation-triangle",
+      "status": "active",
+      "workspaceId": "ws-001",
+      "stepCount": 2,
+      "createdDate": "2025-03-01",
+      "updatedDate": "2025-03-20"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "limit": 10,
+    "total": 8,
+    "totalPages": 1
+  }
+}

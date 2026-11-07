@@ -1,0 +1,9 @@
+# Published branding assets are runtime state written by UAC's Header
+# Management page (DocumentHeaderService::syncBrandingFiles). The database
+# table uac.document_header_assets is the source of truth — these files are
+# a disk mirror so the Node DOCX generators need no database credentials.
+#
+# Keep the directory in git, ignore its contents.
+*
+!.gitignore
+!README.md

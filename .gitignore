@@ -1,0 +1,224 @@
+cd ..
+deploy.php
+
+deploy.sh
+
+
+
+# Ignore everything in __BASE__
+/__BASE__/*
+
+# Don't ignore these specific directories
+!/__BASE__/_source/
+!/__BASE__/app/
+!/__BASE__/src/
+
+# But ignore specific config files in src
+/__BASE__/src/config.development.php
+/__BASE__/src/config.production.php
+
+# Keep config.sample.php
+!/__BASE__/src/config.sample.php
+
+
+# Ignore all vendor directories in any subfolder
+**/vendor/
+**/src/config.production.php
+**/src/config.development.php
+/private
+**/temp_uploads
+**/log/*.log
+.cursor
+~*.docx
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Diagnostic reports (https://nodejs.org/api/report.html)
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage
+*.lcov
+
+# nyc test coverage
+.nyc_output
+
+# Grunt intermediate storage (https://gruntjs.com/creating-plugins#storing-task-files)
+.grunt
+
+# Bower dependency directory (https://bower.io/)
+bower_components
+
+# node-waf configuration
+.lock-wscript
+
+# Compiled binary addons (https://nodejs.org/api/addons.html)
+build/Release
+
+# Dependency directories
+node_modules/
+jspm_packages/
+
+# TypeScript v1 declaration files
+typings/
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Microbundle cache
+.rpt2_cache/
+.rts2_cache_cjs/
+.rts2_cache_es/
+.rts2_cache_umd/
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# dotenv environment variables file
+.env
+.env.test
+
+# parcel-bundler cache (https://parceljs.org/)
+.cache
+.parcel-cache
+
+# Next.js build output
+.next
+
+# Nuxt.js build / generate output
+.nuxt
+dist
+
+# Gatsby files
+.cache/
+# Comment in the public line in if your project uses Gatsby and *not* Next.js
+# https://nextjs.org/blog/next-9-1#public-directory-support
+# public
+
+# vuepress build output
+.vuepress/dist
+
+# Serverless directories
+.serverless/
+
+# FuseBox cache
+.fusebox/
+
+# DynamoDB Local files
+.dynamodb/
+
+# TernJS port file
+.tern-port
+
+# Stores VSCode versions used for testing VSCode extensions
+.vscode-test
+
+# yarn v2
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*
+
+# PHPMaker specific
+UAC/src/config.development.php
+
+# Environment (centralized config - never commit)
+.env
+
+# claude settings
+.claude/
+.agents/
+nha-fims-dev.itbsstudio.com
+
+#Angular specific
+__ANGULAR__
+__ANGULAR__/*
+nha-fims.itbsstudio.com
+.github/scripts/deploy-dev.sh
+.github/scripts/deploy-production.sh
+logs.php
+nginx.conf
+.sql_run_history.json
+FMD/composer.lock
+FMD/composer.lock
+UAC/composer.lock
+FMD/composer.lock
+FMD/composer.lock
+UAC/composer.lock
+composer.json
+composer.lock
+FMD/package-lock.json
+package-lock.json
+
+# FMD local history
+FMD/history/
+ACCOUNTING-GAD/composer.lock
+ACCOUNTING-PCDS/composer.lock
+
+# GSD composer files are tracked (override the generic composer rules above)
+!GSD/composer.json
+!GSD/composer.lock
+
+# ACCOUNTING (merged DCD/BAPD/GAD) — tracked so Docker's php bootstrap
+# (docker-compose.yml) finds composer.json and installs its vendor/
+!ACCOUNTING/composer.json
+!ACCOUNTING/composer.lock
+
+# GLOBAL — its own vendor, separate from UAC's borrowed one (currently just
+# phpoffice/phpspreadsheet, for PayrollManagementServices — see
+# GLOBAL/app/bootstrap.php). Tracked for the same reason as ACCOUNTING's above.
+!GLOBAL/composer.json
+!GLOBAL/composer.lock
+
+#table analysis
+_assets/table-analysis
+_assets/table-analysis/*
+# /_assets/sql/07 - CROSS-MODULE-DEMO
+package-lock.json
+
+# System Design / System Requirements docs (large binaries, tracked separately)
+_assets/System Design/
+_assets/System Requirements/
+
+# DCD sample/test data — local-only scratch SQL for manual testing, not
+# meant to be committed going forward. Files already tracked from before
+# this rule was added stay tracked (this only affects new/untracked files).
+ACCOUNTING-DCD/app/DCD SRS-and-sample data/
+SYSTEM
+FIMS-FMD
+qa-afims-nha
+ACCOUNTING-BAPD/files/PROCESS-FLOW/FMD-PROCESS-FLOW.md
+ACCOUNTING-BAPD/sql/APIS/
+ACCOUNTING/pcds_files/*
+
+_assets/sql/05 - schema_sample_data_structure/03 - ACCOUNTING/05 -sample_data/38 - cash_advances_liquidation_workflow_sample.sql
+_assets/sql/05 - schema_sample_data_structure/03 - ACCOUNTING/05 -sample_data/39 - dv_processing_disbursement_workflow_sample.sql
+_assets/sql/05 - schema_sample_data_structure/03 - ACCOUNTING/05 -sample_data/40 - ftla_regional_fund_release_bridge_sample.sql
+_assets/sql/05 - schema_sample_data_structure/03 - ACCOUNTING/05 -sample_data/41 - regional_ca_bimonthly_sample.sql
+merge-pages-into-fims-pmp.js
+replicate-fmd-treasury-to-fims.js

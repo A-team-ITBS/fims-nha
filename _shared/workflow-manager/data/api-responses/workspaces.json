@@ -1,0 +1,48 @@
+{
+  "success": true,
+  "message": "Workspaces retrieved successfully",
+  "data": [
+    {
+      "id": "ws-001",
+      "name": "Business Permits",
+      "description": "Workflow management for business permit applications",
+      "icon": "fa-building",
+      "status": "active",
+      "workflowCount": 3,
+      "lastUpdated": "2025-03-20T10:30:00Z"
+    },
+    {
+      "id": "ws-002", 
+      "name": "Document Management",
+      "description": "Document processing and approval workflows",
+      "icon": "fa-file-alt",
+      "status": "active",
+      "workflowCount": 2,
+      "lastUpdated": "2025-03-18T14:15:00Z"
+    },
+    {
+      "id": "ws-003",
+      "name": "Legislative Management",
+      "description": "Ordinances and resolutions workflow management",
+      "icon": "fa-gavel",
+      "status": "active", 
+      "workflowCount": 2,
+      "lastUpdated": "2025-03-19T09:45:00Z"
+    },
+    {
+      "id": "ws-004",
+      "name": "Financial Management",
+      "status": "active",
+      "description": "Financial workflows including vouchers and accounting",
+      "icon": "fa-dollar-sign",
+      "workflowCount": 1,
+      "lastUpdated": "2025-03-17T16:20:00Z"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "limit": 10,
+    "total": 4,
+    "totalPages": 1
+  }
+}

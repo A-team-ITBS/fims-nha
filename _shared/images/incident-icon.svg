@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <linearGradient id="waterGradient5" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#003876;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0056b3;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background Circle -->
+  <circle cx="50" cy="50" r="45" fill="white" stroke="#003876" stroke-width="2"/>
+  
+  <!-- Alert Triangle -->
+  <path d="M50 25 L75 65 L25 65 Z" fill="url(#waterGradient5)">
+    <animate attributeName="d" 
+             values="M50 25 L75 65 L25 65 Z;
+                     M50 27 L77 67 L23 67 Z;
+                     M50 25 L75 65 L25 65 Z"
+             dur="2s" 
+             repeatCount="indefinite"/>
+  </path>
+  
+  <!-- Water Drop -->
+  <path d="M50 35 Q55 40 55 45 L45 45 Q45 40 50 35" 
+        fill="#c41e3a">
+    <animate attributeName="d" 
+             values="M50 35 Q55 40 55 45 L45 45 Q45 40 50 35;
+                     M50 37 Q57 42 57 47 L43 47 Q43 42 50 37;
+                     M50 35 Q55 40 55 45 L45 45 Q45 40 50 35"
+             dur="2s" 
+             repeatCount="indefinite"/>
+  </path>
+  
+  <!-- Exclamation Mark -->
+  <rect x="48" y="50" width="4" height="8" fill="white"/>
+  <circle cx="50" cy="45" r="2" fill="white"/>
+</svg>

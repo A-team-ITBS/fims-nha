@@ -1,0 +1,11 @@
+{
+    "name": "fims",
+    "version": "24.16.2",
+    "description": "fims",
+    "license": "SEE LICENSE IN LICENSE.md",
+    "private": true,
+    "dependencies": {},
+    "engines": {
+        "node": ">=18"
+    }
+}

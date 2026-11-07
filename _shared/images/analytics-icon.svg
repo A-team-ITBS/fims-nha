@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <linearGradient id="waterGradient7" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#003876;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0056b3;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background Circle -->
+  <circle cx="50" cy="50" r="45" fill="white" stroke="#003876" stroke-width="2"/>
+  
+  <!-- Bar Chart Bars -->
+  <rect x="30" y="50" width="10" height="20" fill="url(#waterGradient7)">
+    <animate attributeName="height" 
+             values="20;25;20" 
+             dur="2s" 
+             repeatCount="indefinite"/>
+  </rect>
+  
+  <rect x="45" y="35" width="10" height="35" fill="url(#waterGradient7)">
+    <animate attributeName="height" 
+             values="35;40;35" 
+             dur="2s" 
+             repeatCount="indefinite"/>
+  </rect>
+  
+  <rect x="60" y="45" width="10" height="25" fill="url(#waterGradient7)">
+    <animate attributeName="height" 
+             values="25;30;25" 
+             dur="2s" 
+             repeatCount="indefinite"/>
+  </rect>
+  
+  <!-- Water Drop -->
+  <path d="M50 25 Q55 30 55 35 L45 35 Q45 30 50 25" 
+        fill="#c41e3a">
+    <animate attributeName="d" 
+             values="M50 25 Q55 30 55 35 L45 35 Q45 30 50 25;
+                     M50 27 Q57 32 57 37 L43 37 Q43 32 50 27;
+                     M50 25 Q55 30 55 35 L45 35 Q45 30 50 25"
+             dur="2s" 
+             repeatCount="indefinite"/>
+  </path>
+  
+  <!-- Line Graph -->
+  <path d="M30 40 Q45 35 60 45 Q75 55 70 35" 
+        fill="none" 
+        stroke="#c41e3a" 
+        stroke-width="2">
+    <animate attributeName="d" 
+             values="M30 40 Q45 35 60 45 Q75 55 70 35;
+                     M30 42 Q45 37 60 47 Q75 57 70 37;
+                     M30 40 Q45 35 60 45 Q75 55 70 35"
+             dur="3s" 
+             repeatCount="indefinite"/>
+  </path>
+</svg>

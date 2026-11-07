@@ -1,0 +1,197 @@
+{
+  "success": true,
+  "message": "Workflow details retrieved successfully",
+  "data": {
+    "id": "wf-001",
+    "name": "Business Permit Application",
+    "category": "Licensing",
+    "description": "Complete workflow for business permit application and approval process",
+    "icon": "fa-building",
+    "status": "active",
+    "workspaceId": "ws-001",
+    "createdDate": "2025-01-15",
+    "updatedDate": "2025-03-20",
+    "inputs": [
+      {
+        "id": "input-001",
+        "name": "application_id",
+        "label": "Application ID",
+        "type": "number",
+        "required": true,
+        "description": "Unique identifier for the business permit application"
+      },
+      {
+        "id": "input-002",
+        "name": "applicant_name",
+        "label": "Applicant Name",
+        "type": "text",
+        "required": true,
+        "description": "Name of the business permit applicant"
+      },
+      {
+        "id": "input-003",
+        "name": "business_type",
+        "label": "Business Type",
+        "type": "text",
+        "required": true,
+        "description": "Type of business (e.g., Retail, Restaurant, Service)"
+      }
+    ],
+    "steps": [
+      {
+        "id": "step-001",
+        "name": "Initial Application",
+        "order": 1,
+        "daysLimit": 3,
+        "autoAdvance": false,
+        "assignedTo": {
+          "userLevel": "Staff",
+          "department": "Business Permits",
+          "users": ["user-001", "user-002"]
+        },
+        "mapping": {
+          "schema": "licensing",
+          "table": "business_permits",
+          "field": "application_status",
+          "value": "submitted"
+        },
+        "outputs": [
+          {
+            "id": "output-001-001",
+            "name": "submission_date",
+            "label": "Submission Date",
+            "type": "datetime",
+            "source": "licensing.business_permits.submitted_date",
+            "description": "Date when application was submitted"
+          },
+          {
+            "id": "output-001-002",
+            "name": "reference_number",
+            "label": "Reference Number",
+            "type": "text",
+            "source": "licensing.business_permits.reference_no",
+            "description": "Generated reference number for tracking"
+          },
+          {
+            "id": "output-001-003",
+            "name": "completeness_status",
+            "label": "Completeness Status",
+            "type": "text",
+            "source": "licensing.business_permits.document_completeness",
+            "description": "Status of document completeness check"
+          }
+        ],
+        "statuses": [
+          {
+            "id": "status-001",
+            "name": "Submitted",
+            "isDefault": true,
+            "nextSteps": ["step-002"],
+            "color": "primary"
+          },
+          {
+            "id": "status-002",
+            "name": "Incomplete Documents",
+            "isDefault": false,
+            "nextSteps": ["step-001"],
+            "color": "warning"
+          }
+        ]
+      },
+      {
+        "id": "step-002",
+        "name": "Document Review",
+        "order": 2,
+        "daysLimit": 5,
+        "autoAdvance": false,
+        "assignedTo": {
+          "userLevel": "Supervisor",
+          "department": "Business Permits",
+          "users": ["user-003"]
+        },
+        "mapping": {
+          "schema": "licensing",
+          "table": "business_permits",
+          "field": "application_status",
+          "value": "under_review"
+        },
+        "outputs": [
+          {
+            "id": "output-002-001",
+            "name": "review_date",
+            "label": "Review Date",
+            "type": "datetime",
+            "source": "licensing.business_permits.review_date",
+            "description": "Date when review was completed"
+          },
+          {
+            "id": "output-002-002",
+            "name": "reviewer_notes",
+            "label": "Reviewer Notes",
+            "type": "text",
+            "source": "licensing.business_permits.reviewer_comments",
+            "description": "Notes from the document reviewer"
+          },
+          {
+            "id": "output-002-003",
+            "name": "missing_documents",
+            "label": "Missing Documents",
+            "type": "array",
+            "source": "licensing.business_permits.missing_docs",
+            "description": "List of missing or incomplete documents"
+          }
+        ],
+        "statuses": [
+          {
+            "id": "status-003",
+            "name": "Under Review",
+            "isDefault": true,
+            "nextSteps": ["step-003"],
+            "color": "info"
+          },
+          {
+            "id": "status-004",
+            "name": "Requires Revision",
+            "isDefault": false,
+            "nextSteps": ["step-001"],
+            "color": "warning"
+          }
+        ]
+      },
+      {
+        "id": "step-003",
+        "name": "Final Approval",
+        "order": 3,
+        "daysLimit": 2,
+        "autoAdvance": true,
+        "assignedTo": {
+          "userLevel": "Manager",
+          "department": "Business Permits",
+          "users": ["user-004"]
+        },
+        "mapping": {
+          "schema": "licensing",
+          "table": "business_permits",
+          "field": "application_status",
+          "value": "approved"
+        },
+        "statuses": [
+          {
+            "id": "status-005",
+            "name": "Approved",
+            "isDefault": true,
+            "nextSteps": [],
+            "color": "success"
+          },
+          {
+            "id": "status-006",
+            "name": "Rejected",
+            "isDefault": false,
+            "nextSteps": [],
+            "color": "danger"
+          }
+        ]
+      }
+    ]
+  }
+}
