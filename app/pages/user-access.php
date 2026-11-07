@@ -21,10 +21,16 @@ $users = ExecuteRowsAssociative("
         u.user_id,
         u.username,
         u.email,
+        u.employee_id,
         u.first_name,
+        u.middle_name,
         u.last_name,
+        u.suffix,
+        u.mobile_number,
         u.is_active,
         u.last_login,
+        u.department_id,
+        u.position_id,
         d.department_name,
         d.department_acronym,
         o.office_name,
@@ -39,6 +45,11 @@ $users = ExecuteRowsAssociative("
     GROUP BY u.user_id, d.department_id, o.office_id
     ORDER BY u.username
 ", "DB");
+
+$usersById = [];
+foreach ($users as $user) {
+    $usersById[$user['user_id']] = $user;
+}
 
 // ── Per-user assignment detail (for the access panel) ──
 $assignmentRows = ExecuteRowsAssociative("
@@ -68,46 +79,81 @@ $userLevels = ExecuteRowsAssociative("
     ORDER BY s.system_name, ul.name
 ", "DB");
 
-// ── Permission matrix per user level (bitmask: 1=View, 2=Add, 4=Edit, 8=Delete) ──
+// ── Permission matrix per user level ──
+// Bitmask per PHPMaker's Allow enum (src/Allow.php):
+// ADD=1, DELETE=2, EDIT=4, LIST=8, ADMIN=16, VIEW=32, SEARCH=64, IMPORT=128, LOOKUP=256, PUSH=512, EXPORT=1024
+const PERM_BITS = [
+    'list' => 8,
+    'view' => 32,
+    'add' => 1,
+    'edit' => 4,
+    'delete' => 2,
+    'search' => 64,
+    'export' => 1024,
+    'lookup' => 256,
+];
+
 $permissionRows = ExecuteRowsAssociative("
     SELECT user_level_id, table_name, permission
     FROM user_level_permissions
     ORDER BY user_level_id, table_name
 ", "DB");
 
+// PHPMaker prefixes the stored table_name with a project ID (e.g. "{FIMS}users") when it
+// seeds rows itself (see models/UserLevelsAdd.php), but some tooling may also write the
+// plain name. Normalize so lookups work regardless of which form is on a given row.
+function normalizeTableKey($tableName)
+{
+    return preg_replace('/^\{[^}]*\}/', '', $tableName);
+}
+
 $permissionsByLevel = [];
 foreach ($permissionRows as $row) {
     $permission = (int)$row['permission'];
-    $permissionsByLevel[$row['user_level_id']][] = [
-        'table_name' => $row['table_name'],
-        'view' => ($permission & 1) !== 0,
-        'add' => ($permission & 2) !== 0,
-        'edit' => ($permission & 4) !== 0,
-        'delete' => ($permission & 8) !== 0,
-    ];
+    $decoded = ['table_name' => normalizeTableKey($row['table_name'])];
+    foreach (PERM_BITS as $key => $bit) {
+        $decoded[$key] = ($permission & $bit) !== 0;
+    }
+    $permissionsByLevel[$row['user_level_id']][] = $decoded;
 }
 
-// ── Full module registry (every table_name ever assigned a permission) ──
-$allModules = ExecuteRowsAssociative("SELECT DISTINCT table_name FROM user_level_permissions ORDER BY table_name", "DB");
+// ── Full module registry, sourced from PHPMaker's own table/page list ──
+// ($USER_LEVEL_TABLES is loaded globally by src/config.php via src/userlevelsettings.php)
+$registryTables = $GLOBALS["USER_LEVEL_TABLES"] ?? [];
+$allModules = [];
+foreach ($registryTables as $table) {
+    $allModules[] = [
+        'table_name' => $table[0],          // plain name, e.g. "users", "UserAccess.php"
+        'full_key' => $table[4] . $table[0], // PHPMaker's native stored key, e.g. "{FIMS}users"
+        'caption' => $table[2],
+    ];
+}
+usort($allModules, function ($a, $b) {
+    return strcasecmp($a['caption'], $b['caption']);
+});
 
-// ── Departments (for the Add User form) ──
+// ── Departments / Positions (for the Add User form) ──
 $departments = ExecuteRowsAssociative("SELECT department_id, department_name FROM departments WHERE is_active = TRUE ORDER BY department_name", "DB");
+$positions = ExecuteRowsAssociative("SELECT position_id, position_title FROM positions WHERE is_active = TRUE ORDER BY position_title", "DB");
+
+// ── Systems (for the Create User Level form) ──
+$systems = ExecuteRowsAssociative("SELECT system_id, system_name FROM systems WHERE is_active = TRUE ORDER BY system_name", "DB");
 
 $assignmentsByUserJson = json_encode($assignmentsByUser);
 $permissionsByLevelJson = json_encode($permissionsByLevel);
-$allModulesJson = json_encode(array_column($allModules, 'table_name'));
+$allModulesJson = json_encode($allModules);
+$usersByIdJson = json_encode($usersById);
 
 // ── Permission checks ──
 $canAddUser = AllowAdd("users");
 $canEditUser = AllowEdit("users");
+$canAddUserLevel = AllowAdd("user_levels");
 $canManageAssignments = AllowAdd("user_level_assignments") && AllowDelete("user_level_assignments");
 $canManagePermissions = AllowAdd("user_level_permissions") || AllowEdit("user_level_permissions");
 
 // ── URLs ──
-$editUserBaseUrl = GetUrl("UsersEdit");
 $manageLevelsUrl = GetUrl("UserLevelsList");
 $manageSystemsUrl = GetUrl("SystemsList");
-$addAssignmentBaseUrl = GetUrl("UserLevelAssignmentsAdd");
 $deleteAssignmentBaseUrl = GetUrl("UserLevelAssignmentsDelete");
 ?>
 
@@ -210,9 +256,9 @@ $deleteAssignmentBaseUrl = GetUrl("UserLevelAssignmentsDelete");
                             <td><?php echo $user['last_login'] ? HtmlEncode($user['last_login']) : 'Never'; ?></td>
                             <td>
                                 <?php if ($canEditUser): ?>
-                                <a href="<?php echo $editUserBaseUrl . '/' . $user['user_id']; ?>" class="btn btn-default btn-sm" title="Edit User">
+                                <button type="button" class="btn btn-default btn-sm edit-user-btn" data-user-id="<?php echo $user['user_id']; ?>" title="Edit User">
                                     <i class="fas fa-edit"></i>
-                                </a>
+                                </button>
                                 <?php endif; ?>
                                 <?php if ($canManageAssignments): ?>
                                 <button type="button" class="btn btn-default btn-sm manage-access-btn"
@@ -234,10 +280,17 @@ $deleteAssignmentBaseUrl = GetUrl("UserLevelAssignmentsDelete");
     <?php if ($canManageAssignments): ?>
     <div class="row" id="accessPanel">
         <!-- Role Access Assignment -->
-        <div class="col-md-5">
+        <div class="col-md-4">
             <div class="card">
                 <div class="card-header">
                     <h3 class="card-title"><i class="fas fa-user-lock mr-1"></i> Role Access</h3>
+                    <?php if ($canAddUserLevel): ?>
+                    <div class="card-tools">
+                        <button type="button" class="btn btn-default btn-sm" id="openCreateUserLevelModalBtn">
+                            <i class="fas fa-plus mr-1"></i> Create User Level
+                        </button>
+                    </div>
+                    <?php endif; ?>
                 </div>
                 <div class="card-body">
                     <p>Selected user: <strong id="selectedUserLabel">— none —</strong></p>
@@ -248,49 +301,81 @@ $deleteAssignmentBaseUrl = GetUrl("UserLevelAssignmentsDelete");
                     </ul>
 
                     <h6>Assign New Access</h6>
-                    <form id="assignAccessForm" method="get" action="<?php echo $addAssignmentBaseUrl; ?>">
-                        <input type="hidden" name="user_id" id="assignUserId">
-                        <input type="hidden" name="system_id" id="assignSystemId">
-                        <div class="form-group">
-                            <label>User Level (Role)</label>
-                            <select class="form-control" id="assignLevelSelect" name="user_level_id">
-                                <option value="">Select role...</option>
-                                <?php foreach ($userLevels as $level): ?>
-                                <option value="<?php echo $level['user_level_id']; ?>" data-system-id="<?php echo $level['system_id']; ?>">
-                                    <?php echo HtmlEncode($level['name'] . ' (' . $level['system_name'] . ')'); ?>
-                                </option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                        <button type="submit" class="btn btn-primary" id="assignAccessBtn" disabled>
-                            <i class="fas fa-plus mr-1"></i> Assign Access
-                        </button>
-                    </form>
+                    <input type="hidden" id="assignUserId">
+                    <input type="hidden" id="assignSystemId">
+                    <div class="form-group">
+                        <label>User Level (Role)</label>
+                        <select class="form-control" id="assignLevelSelect">
+                            <option value="">Select role...</option>
+                            <?php foreach ($userLevels as $level): ?>
+                            <option value="<?php echo $level['user_level_id']; ?>" data-system-id="<?php echo $level['system_id']; ?>">
+                                <?php echo HtmlEncode($level['name'] . ' (' . $level['system_name'] . ')'); ?>
+                            </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <button type="button" class="btn btn-primary" id="assignAccessBtn" disabled>
+                        <i class="fas fa-plus mr-1"></i> Assign Access
+                    </button>
                 </div>
             </div>
         </div>
 
-        <!-- Permission matrix -->
-        <div class="col-md-7">
+        <!-- Permissions Management -->
+        <div class="col-md-8">
             <div class="card">
                 <div class="card-header">
-                    <h3 class="card-title"><i class="fas fa-table mr-1"></i> Permission Matrix</h3>
+                    <h3 class="card-title">Permissions Management</h3>
+                    <?php if ($canManagePermissions): ?>
+                    <div class="card-tools">
+                        <button type="button" class="btn btn-default btn-sm" id="syncPermissionModulesBtn" title="Pull in any PHPMaker tables/pages not yet listed here">
+                            <i class="fas fa-sync-alt mr-1"></i> Sync Permission Modules
+                        </button>
+                    </div>
+                    <?php endif; ?>
                 </div>
-                <div class="card-body table-responsive p-0">
-                    <table class="table table-sm table-striped text-nowrap">
-                        <thead>
-                            <tr>
-                                <th>Table / Module</th>
-                                <th class="text-center">View</th>
-                                <th class="text-center">Add</th>
-                                <th class="text-center">Edit</th>
-                                <th class="text-center">Delete</th>
-                            </tr>
-                        </thead>
-                        <tbody id="permissionMatrixBody">
-                            <tr><td colspan="5" class="text-muted">Select a user level to view / edit its permissions.</td></tr>
-                        </tbody>
-                    </table>
+                <div class="card-body">
+                    <p class="text-muted small mb-3">
+                        <i class="fas fa-lightbulb mr-1"></i>
+                        Tip: tick the box beside a page name to grant all its permissions at once, or a column header to toggle that permission for every page.
+                    </p>
+                    <div class="row mb-2 align-items-end">
+                        <div class="col-md-5">
+                            <strong>Table/Page</strong>
+                            <input type="text" id="permissionSearchInput" class="form-control mt-1" placeholder="Search tables...">
+                        </div>
+                        <?php if ($canManagePermissions): ?>
+                        <div class="col-md-7 text-right">
+                            <button type="button" class="btn btn-outline-success btn-sm" id="checkAllPermissionsBtn" disabled>
+                                <i class="fas fa-check-square mr-1"></i> Check All
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary btn-sm" id="uncheckAllPermissionsBtn" disabled>
+                                <i class="far fa-square mr-1"></i> Uncheck All
+                            </button>
+                        </div>
+                        <?php endif; ?>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-striped text-nowrap" id="permissionMatrixTable">
+                            <thead>
+                                <tr>
+                                    <th><input type="checkbox" id="permSelectAll"></th>
+                                    <th>&nbsp;</th>
+                                    <th class="text-center"><input type="checkbox" class="perm-col-toggle" data-perm="list"><br>List</th>
+                                    <th class="text-center"><input type="checkbox" class="perm-col-toggle" data-perm="view"><br>View</th>
+                                    <th class="text-center"><input type="checkbox" class="perm-col-toggle" data-perm="add"><br>Add</th>
+                                    <th class="text-center"><input type="checkbox" class="perm-col-toggle" data-perm="edit"><br>Edit</th>
+                                    <th class="text-center"><input type="checkbox" class="perm-col-toggle" data-perm="delete"><br>Delete</th>
+                                    <th class="text-center"><input type="checkbox" class="perm-col-toggle" data-perm="search"><br>Search</th>
+                                    <th class="text-center"><input type="checkbox" class="perm-col-toggle" data-perm="export"><br>Export</th>
+                                    <th class="text-center"><input type="checkbox" class="perm-col-toggle" data-perm="lookup"><br>Lookup</th>
+                                </tr>
+                            </thead>
+                            <tbody id="permissionMatrixBody">
+                                <tr><td colspan="10" class="text-muted">Select a user level to view / edit its permissions.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
                 <?php if ($canManagePermissions): ?>
                 <div class="card-footer text-right">
@@ -304,82 +389,281 @@ $deleteAssignmentBaseUrl = GetUrl("UserLevelAssignmentsDelete");
     </div>
     <?php endif; ?>
 
-    <!-- Quick links -->
-    <div class="card">
-        <div class="card-header">
-            <h3 class="card-title">Quick Links</h3>
-        </div>
-        <div class="card-body d-flex flex-wrap" style="gap: .5rem;">
-            <a href="<?php echo $manageLevelsUrl; ?>" class="btn btn-info">
-                <i class="fas fa-users-cog mr-2"></i> Manage User Levels
-            </a>
-            <a href="<?php echo $manageSystemsUrl; ?>" class="btn btn-warning">
-                <i class="fas fa-cogs mr-2"></i> Manage Systems
-            </a>
-        </div>
-    </div>
+   
 </div>
 
 <?php if ($canAddUser): ?>
 <!-- Add User modal (self-contained, no Bootstrap JS dependency) -->
-<div id="addUserOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1050;">
-    <div style="max-width:500px; margin:5% auto; background:#fff; border-radius:4px; overflow:hidden;">
+<div id="addUserOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1050; overflow-y:auto;">
+    <div style="max-width:750px; margin:3% auto; background:#fff; border-radius:4px; overflow:hidden;">
         <div class="card mb-0">
-            <div class="card-header">
-                <h3 class="card-title"><i class="fas fa-user-plus mr-1"></i> Add User</h3>
-                <div class="card-tools">
-                    <button type="button" class="btn btn-tool" id="closeAddUserModalBtn"><i class="fas fa-times"></i></button>
-                </div>
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h3 class="card-title mb-0">Add New User</h3>
+                <button type="button" class="btn btn-tool" id="closeAddUserModalBtn"><i class="fas fa-times"></i></button>
             </div>
             <form id="addUserForm">
                 <div class="card-body">
                     <div id="addUserError" class="alert alert-danger" style="display:none;"></div>
-                    <div class="form-group">
-                        <label>Username *</label>
-                        <input type="text" class="form-control" name="username" id="addUserUsername" required maxlength="50">
+
+                    <h6 class="text-primary font-weight-bold">Account</h6>
+                    <div class="form-row">
+                        <div class="form-group col-md-6">
+                            <label>Username *</label>
+                            <input type="text" class="form-control" name="username" id="addUserUsername" required maxlength="50" placeholder="e.g. jdelacruz">
+                        </div>
+                        <div class="form-group col-md-6">
+                            <label>Email *</label>
+                            <input type="email" class="form-control" name="email" id="addUserEmail" required maxlength="100" placeholder="e.g. jdelacruz@nha.gov.ph">
+                        </div>
                     </div>
                     <div class="form-group">
-                        <label>Email *</label>
-                        <input type="email" class="form-control" name="email" id="addUserEmail" required maxlength="100">
+                        <label>Employee ID</label>
+                        <input type="text" class="form-control" name="employee_id" id="addUserEmployeeId" maxlength="50" placeholder="e.g. 2021-00123">
+                    </div>
+                    <div class="form-group">
+                        <label>Password *</label>
+                        <div class="input-group">
+                            <input type="password" class="form-control" name="password" id="addUserPassword" required minlength="6" placeholder="Minimum 6 characters">
+                            <div class="input-group-append">
+                                <button type="button" class="btn btn-outline-secondary" id="toggleAddUserPassword" tabindex="-1">
+                                    <i class="fas fa-eye" id="toggleAddUserPasswordIcon"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <hr>
+                    <h6 class="text-primary font-weight-bold">Personal Information</h6>
+                    <div class="form-row">
+                        <div class="form-group col-md-4">
+                            <label>First Name</label>
+                            <input type="text" class="form-control" name="first_name" id="addUserFirstName" maxlength="50">
+                        </div>
+                        <div class="form-group col-md-4">
+                            <label>Middle Name</label>
+                            <input type="text" class="form-control" name="middle_name" id="addUserMiddleName" maxlength="50">
+                        </div>
+                        <div class="form-group col-md-4">
+                            <label>Last Name</label>
+                            <input type="text" class="form-control" name="last_name" id="addUserLastName" maxlength="50">
+                        </div>
                     </div>
                     <div class="form-row">
                         <div class="form-group col-md-6">
-                            <label>First Name *</label>
-                            <input type="text" class="form-control" name="first_name" id="addUserFirstName" required maxlength="50">
+                            <label>Suffix</label>
+                            <select class="form-control" name="suffix" id="addUserSuffix">
+                                <option value="">(None)</option>
+                                <option value="Jr.">Jr.</option>
+                                <option value="Sr.">Sr.</option>
+                                <option value="II">II</option>
+                                <option value="III">III</option>
+                                <option value="IV">IV</option>
+                                <option value="V">V</option>
+                            </select>
                         </div>
                         <div class="form-group col-md-6">
-                            <label>Last Name *</label>
-                            <input type="text" class="form-control" name="last_name" id="addUserLastName" required maxlength="50">
+                            <label>Mobile Number</label>
+                            <input type="text" class="form-control" name="mobile_number" id="addUserMobileNumber" maxlength="20" placeholder="e.g. 09XX-XXX-XXXX">
                         </div>
                     </div>
-                    <div class="form-group">
-                        <label>Department</label>
-                        <select class="form-control" name="department_id" id="addUserDepartment">
-                            <option value="">— none —</option>
-                            <?php foreach ($departments as $dept): ?>
-                            <option value="<?php echo $dept['department_id']; ?>"><?php echo HtmlEncode($dept['department_name']); ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
+
+                    <hr>
+                    <h6 class="text-primary font-weight-bold">Department &amp; Position</h6>
                     <div class="form-row">
                         <div class="form-group col-md-6">
-                            <label>Password *</label>
-                            <input type="password" class="form-control" name="password" id="addUserPassword" required minlength="8">
+                            <label>Department</label>
+                            <select class="form-control" name="department_id" id="addUserDepartment">
+                                <option value="">(No Department)</option>
+                                <?php foreach ($departments as $dept): ?>
+                                <option value="<?php echo $dept['department_id']; ?>"><?php echo HtmlEncode($dept['department_name']); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                            <small class="form-text text-muted">The user's primary department assignment</small>
                         </div>
                         <div class="form-group col-md-6">
-                            <label>Confirm Password *</label>
-                            <input type="password" class="form-control" id="addUserPasswordConfirm" required minlength="8">
+                            <label>Position</label>
+                            <select class="form-control" name="position_id" id="addUserPosition">
+                                <option value="">(No Position)</option>
+                                <?php foreach ($positions as $position): ?>
+                                <option value="<?php echo $position['position_id']; ?>"><?php echo HtmlEncode($position['position_title']); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                            <small class="form-text text-muted">The user's position / job title</small>
                         </div>
                     </div>
-                    <div class="form-check">
-                        <input type="checkbox" class="form-check-input" name="is_active" id="addUserIsActive" checked value="1">
-                        <label class="form-check-label" for="addUserIsActive">Active</label>
+
+                    <hr>
+                    <div class="custom-control custom-switch">
+                        <input type="checkbox" class="custom-control-input" name="is_active" id="addUserIsActive" checked>
+                        <label class="custom-control-label" for="addUserIsActive">Active (can log in)</label>
                     </div>
                 </div>
                 <div class="card-footer text-right">
                     <button type="button" class="btn btn-default" id="cancelAddUserBtn">Cancel</button>
                     <button type="submit" class="btn btn-primary" id="submitAddUserBtn">
-                        <i class="fas fa-save mr-1"></i> Create User
+                        <i class="fas fa-save mr-1"></i> Save User
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
+
+<?php if ($canEditUser): ?>
+<!-- Edit User modal (self-contained, no Bootstrap JS dependency) -->
+<div id="editUserOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1050; overflow-y:auto;">
+    <div style="max-width:750px; margin:3% auto; background:#fff; border-radius:4px; overflow:hidden;">
+        <div class="card mb-0">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h3 class="card-title mb-0">Edit User</h3>
+                <button type="button" class="btn btn-tool" id="closeEditUserModalBtn"><i class="fas fa-times"></i></button>
+            </div>
+            <form id="editUserForm">
+                <input type="hidden" id="editUserId">
+                <div class="card-body">
+                    <div id="editUserError" class="alert alert-danger" style="display:none;"></div>
+
+                    <h6 class="text-primary font-weight-bold">Account</h6>
+                    <div class="form-row">
+                        <div class="form-group col-md-6">
+                            <label>Username *</label>
+                            <input type="text" class="form-control" id="editUserUsername" required maxlength="50">
+                        </div>
+                        <div class="form-group col-md-6">
+                            <label>Email *</label>
+                            <input type="email" class="form-control" id="editUserEmail" required maxlength="100">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Employee ID</label>
+                        <input type="text" class="form-control" id="editUserEmployeeId" maxlength="50" placeholder="e.g. 2021-00123">
+                    </div>
+                    <div class="form-group">
+                        <label>New Password (leave blank to keep current)</label>
+                        <div class="input-group">
+                            <input type="password" class="form-control" id="editUserPassword" minlength="6" placeholder="Minimum 6 characters">
+                            <div class="input-group-append">
+                                <button type="button" class="btn btn-outline-secondary" id="toggleEditUserPassword" tabindex="-1">
+                                    <i class="fas fa-eye" id="toggleEditUserPasswordIcon"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <hr>
+                    <h6 class="text-primary font-weight-bold">Personal Information</h6>
+                    <div class="form-row">
+                        <div class="form-group col-md-4">
+                            <label>First Name</label>
+                            <input type="text" class="form-control" id="editUserFirstName" maxlength="50">
+                        </div>
+                        <div class="form-group col-md-4">
+                            <label>Middle Name</label>
+                            <input type="text" class="form-control" id="editUserMiddleName" maxlength="50">
+                        </div>
+                        <div class="form-group col-md-4">
+                            <label>Last Name</label>
+                            <input type="text" class="form-control" id="editUserLastName" maxlength="50">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group col-md-6">
+                            <label>Suffix</label>
+                            <select class="form-control" id="editUserSuffix">
+                                <option value="">(None)</option>
+                                <option value="Jr.">Jr.</option>
+                                <option value="Sr.">Sr.</option>
+                                <option value="II">II</option>
+                                <option value="III">III</option>
+                                <option value="IV">IV</option>
+                                <option value="V">V</option>
+                            </select>
+                        </div>
+                        <div class="form-group col-md-6">
+                            <label>Mobile Number</label>
+                            <input type="text" class="form-control" id="editUserMobileNumber" maxlength="20" placeholder="e.g. 09XX-XXX-XXXX">
+                        </div>
+                    </div>
+
+                    <hr>
+                    <h6 class="text-primary font-weight-bold">Department &amp; Position</h6>
+                    <div class="form-row">
+                        <div class="form-group col-md-6">
+                            <label>Department</label>
+                            <select class="form-control" id="editUserDepartment">
+                                <option value="">(No Department)</option>
+                                <?php foreach ($departments as $dept): ?>
+                                <option value="<?php echo $dept['department_id']; ?>"><?php echo HtmlEncode($dept['department_name']); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                            <small class="form-text text-muted">The user's primary department assignment</small>
+                        </div>
+                        <div class="form-group col-md-6">
+                            <label>Position</label>
+                            <select class="form-control" id="editUserPosition">
+                                <option value="">(No Position)</option>
+                                <?php foreach ($positions as $position): ?>
+                                <option value="<?php echo $position['position_id']; ?>"><?php echo HtmlEncode($position['position_title']); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                            <small class="form-text text-muted">The user's position / job title</small>
+                        </div>
+                    </div>
+
+                    <hr>
+                    <div class="custom-control custom-switch">
+                        <input type="checkbox" class="custom-control-input" id="editUserIsActive">
+                        <label class="custom-control-label" for="editUserIsActive">Active (can log in)</label>
+                    </div>
+                </div>
+                <div class="card-footer text-right">
+                    <button type="button" class="btn btn-default" id="cancelEditUserBtn">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="submitEditUserBtn">
+                        <i class="fas fa-save mr-1"></i> Save User
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
+
+<?php if ($canAddUserLevel): ?>
+<!-- Create User Level modal (self-contained, no Bootstrap JS dependency) -->
+<div id="createUserLevelOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1050; overflow-y:auto;">
+    <div style="max-width:500px; margin:8% auto; background:#fff; border-radius:4px; overflow:hidden;">
+        <div class="card mb-0">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h3 class="card-title mb-0">Create User Level</h3>
+                <button type="button" class="btn btn-tool" id="closeCreateUserLevelModalBtn"><i class="fas fa-times"></i></button>
+            </div>
+            <form id="createUserLevelForm">
+                <div class="card-body">
+                    <div id="createUserLevelError" class="alert alert-danger" style="display:none;"></div>
+                    <div class="form-group">
+                        <label>Name *</label>
+                        <input type="text" class="form-control" id="createUserLevelName" required maxlength="50" placeholder="e.g. Regional Encoder">
+                    </div>
+                    <div class="form-group">
+                        <label>Description</label>
+                        <textarea class="form-control" id="createUserLevelDescription" rows="2"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>System</label>
+                        <select class="form-control" id="createUserLevelSystem">
+                            <option value="">(No System)</option>
+                            <?php foreach ($systems as $system): ?>
+                            <option value="<?php echo $system['system_id']; ?>"><?php echo HtmlEncode($system['system_name']); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <small class="form-text text-muted">The system/module this role belongs to</small>
+                    </div>
+                </div>
+                <div class="card-footer text-right">
+                    <button type="button" class="btn btn-default" id="cancelCreateUserLevelBtn">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="submitCreateUserLevelBtn">
+                        <i class="fas fa-save mr-1"></i> Save User Level
                     </button>
                 </div>
             </form>
@@ -393,6 +677,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const assignmentsByUser = <?php echo $assignmentsByUserJson ?: '{}'; ?>;
     const permissionsByLevel = <?php echo $permissionsByLevelJson ?: '{}'; ?>;
     const allModules = <?php echo $allModulesJson ?: '[]'; ?>;
+    const usersById = <?php echo $usersByIdJson ?: '{}'; ?>;
     const deleteAssignmentBaseUrl = <?php echo json_encode($deleteAssignmentBaseUrl); ?>;
     const canManagePermissions = <?php echo $canManagePermissions ? 'true' : 'false'; ?>;
 
@@ -417,31 +702,160 @@ document.addEventListener('DOMContentLoaded', function () {
     const permissionMatrixBody = document.getElementById('permissionMatrixBody');
     const savePermissionsBtn = document.getElementById('savePermissionsBtn');
 
+    const PERM_KEYS = ['list', 'view', 'add', 'edit', 'delete', 'search', 'export', 'lookup'];
+    const permSelectAll = document.getElementById('permSelectAll');
+    const permissionSearchInput = document.getElementById('permissionSearchInput');
+    const checkAllPermissionsBtn = document.getElementById('checkAllPermissionsBtn');
+    const uncheckAllPermissionsBtn = document.getElementById('uncheckAllPermissionsBtn');
+    const syncPermissionModulesBtn = document.getElementById('syncPermissionModulesBtn');
+
+    function rowCheckboxes(tr) {
+        return PERM_KEYS.map(function (key) { return tr.querySelector('.perm-' + key); });
+    }
+
+    function syncRowCheckbox(tr) {
+        const boxes = rowCheckboxes(tr);
+        const rowToggle = tr.querySelector('.perm-row-toggle');
+        if (rowToggle) rowToggle.checked = boxes.every(function (b) { return b.checked; });
+    }
+
+    function syncColumnCheckboxes() {
+        PERM_KEYS.forEach(function (key) {
+            const colToggle = document.querySelector('.perm-col-toggle[data-perm="' + key + '"]');
+            if (!colToggle) return;
+            const boxes = Array.from(permissionMatrixBody.querySelectorAll('.perm-' + key));
+            colToggle.checked = boxes.length > 0 && boxes.every(function (b) { return b.checked; });
+        });
+    }
+
+    function syncMasterCheckbox() {
+        if (!permSelectAll) return;
+        const boxes = Array.from(permissionMatrixBody.querySelectorAll('input[type="checkbox"].perm-cell'));
+        permSelectAll.checked = boxes.length > 0 && boxes.every(function (b) { return b.checked; });
+    }
+
+    function syncAllToggles() {
+        document.querySelectorAll('#permissionMatrixBody tr[data-table]').forEach(syncRowCheckbox);
+        syncColumnCheckboxes();
+        syncMasterCheckbox();
+    }
+
     function renderPermissionMatrix(levelId) {
         if (!permissionMatrixBody) return;
         if (savePermissionsBtn) savePermissionsBtn.disabled = !levelId;
+        if (checkAllPermissionsBtn) checkAllPermissionsBtn.disabled = !levelId;
+        if (uncheckAllPermissionsBtn) uncheckAllPermissionsBtn.disabled = !levelId;
 
         if (!levelId || allModules.length === 0) {
-            permissionMatrixBody.innerHTML = '<tr><td colspan="5" class="text-muted">Select a user level to view / edit its permissions.</td></tr>';
+            permissionMatrixBody.innerHTML = '<tr><td colspan="10" class="text-muted">Select a user level to view / edit its permissions.</td></tr>';
             return;
         }
 
         const existing = {};
         (permissionsByLevel[levelId] || []).forEach(function (r) { existing[r.table_name] = r; });
 
-        const checkbox = function (module, perm, checked) {
-            return '<input type="checkbox" class="perm-' + perm + '" ' + (checked ? 'checked' : '') +
+        const checkbox = function (perm, checked) {
+            return '<input type="checkbox" class="perm-cell perm-' + perm + '" ' + (checked ? 'checked' : '') +
                 (canManagePermissions ? '' : ' disabled') + '>';
         };
 
         permissionMatrixBody.innerHTML = allModules.map(function (module) {
-            const r = existing[module] || { view: false, add: false, edit: false, delete: false };
-            return '<tr data-table="' + module + '"><td>' + module + '</td>' +
-                '<td class="text-center">' + checkbox(module, 'view', r.view) + '</td>' +
-                '<td class="text-center">' + checkbox(module, 'add', r.add) + '</td>' +
-                '<td class="text-center">' + checkbox(module, 'edit', r.edit) + '</td>' +
-                '<td class="text-center">' + checkbox(module, 'delete', r.delete) + '</td></tr>';
+            const r = existing[module.table_name] || {};
+            const cells = PERM_KEYS.map(function (key) {
+                return '<td class="text-center">' + checkbox(key, !!r[key]) + '</td>';
+            }).join('');
+            return '<tr data-table="' + module.table_name + '" data-full-key="' + module.full_key + '">' +
+                '<td><input type="checkbox" class="perm-row-toggle"' + (canManagePermissions ? '' : ' disabled') + '></td>' +
+                '<td>' + module.caption + '</td>' + cells + '</tr>';
         }).join('');
+
+        syncAllToggles();
+    }
+
+    if (permissionMatrixBody) {
+        permissionMatrixBody.addEventListener('change', function (e) {
+            if (e.target.classList.contains('perm-cell')) {
+                syncRowCheckbox(e.target.closest('tr'));
+                syncColumnCheckboxes();
+                syncMasterCheckbox();
+            } else if (e.target.classList.contains('perm-row-toggle')) {
+                const tr = e.target.closest('tr');
+                rowCheckboxes(tr).forEach(function (b) { b.checked = e.target.checked; });
+                syncColumnCheckboxes();
+                syncMasterCheckbox();
+            }
+        });
+    }
+
+    document.querySelectorAll('.perm-col-toggle').forEach(function (colToggle) {
+        colToggle.addEventListener('change', function () {
+            const key = this.dataset.perm;
+            document.querySelectorAll('#permissionMatrixBody .perm-' + key).forEach(function (b) {
+                b.checked = colToggle.checked;
+            });
+            document.querySelectorAll('#permissionMatrixBody tr[data-table]').forEach(syncRowCheckbox);
+            syncMasterCheckbox();
+        });
+    });
+
+    if (permSelectAll) {
+        permSelectAll.addEventListener('change', function () {
+            document.querySelectorAll('#permissionMatrixBody input[type="checkbox"]').forEach(function (b) {
+                b.checked = permSelectAll.checked;
+            });
+            syncColumnCheckboxes();
+        });
+    }
+
+    if (permissionSearchInput) {
+        permissionSearchInput.addEventListener('input', function () {
+            const term = this.value.toLowerCase();
+            document.querySelectorAll('#permissionMatrixBody tr[data-table]').forEach(function (row) {
+                row.style.display = row.textContent.toLowerCase().includes(term) ? '' : 'none';
+            });
+        });
+    }
+
+    function setAllPermissionCheckboxes(checked) {
+        document.querySelectorAll('#permissionMatrixBody input[type="checkbox"]').forEach(function (b) {
+            b.checked = checked;
+        });
+        syncAllToggles();
+    }
+
+    if (checkAllPermissionsBtn) {
+        checkAllPermissionsBtn.addEventListener('click', function () { setAllPermissionCheckboxes(true); });
+    }
+    if (uncheckAllPermissionsBtn) {
+        uncheckAllPermissionsBtn.addEventListener('click', function () { setAllPermissionCheckboxes(false); });
+    }
+
+    if (syncPermissionModulesBtn) {
+        syncPermissionModulesBtn.addEventListener('click', function () {
+            syncPermissionModulesBtn.disabled = true;
+            fetch('/api/user-access/sync-modules', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Authorization': 'Bearer ' + ew.API_JWT_TOKEN
+                }
+            })
+                .then(function (r) { return r.json(); })
+                .then(function (result) {
+                    if (result.success) {
+                        ew.showToast(result.message || 'Sync complete');
+                        if (result.inserted > 0) location.reload();
+                    } else {
+                        ew.alert(result.message || 'Error syncing permission modules');
+                    }
+                })
+                .catch(function () {
+                    ew.alert('Error connecting to the server. Please try again.');
+                })
+                .finally(function () {
+                    syncPermissionModulesBtn.disabled = false;
+                });
+        });
     }
 
     if (savePermissionsBtn) {
@@ -452,17 +866,13 @@ document.addEventListener('DOMContentLoaded', function () {
                 return;
             }
             const permissions = Array.from(permissionMatrixBody.querySelectorAll('tr[data-table]')).map(function (tr) {
-                return {
-                    table_name: tr.dataset.table,
-                    view: tr.querySelector('.perm-view').checked,
-                    add: tr.querySelector('.perm-add').checked,
-                    edit: tr.querySelector('.perm-edit').checked,
-                    delete: tr.querySelector('.perm-delete').checked
-                };
+                const entry = { table_name: tr.dataset.table, full_key: tr.dataset.fullKey };
+                PERM_KEYS.forEach(function (key) { entry[key] = tr.querySelector('.perm-' + key).checked; });
+                return entry;
             });
 
             savePermissionsBtn.disabled = true;
-            fetch('/user-access/permissions', {
+            fetch('/api/user-access/permissions', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -528,6 +938,49 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
+    if (assignAccessBtn) {
+        assignAccessBtn.addEventListener('click', function () {
+            const userId = assignUserId ? assignUserId.value : '';
+            const userLevelId = assignLevelSelect ? assignLevelSelect.value : '';
+            if (!userId) {
+                ew.alert('Select a user first.');
+                return;
+            }
+            if (!userLevelId) {
+                ew.alert('Select a user level first.');
+                return;
+            }
+
+            assignAccessBtn.disabled = true;
+            fetch('/api/user-access/assignments', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Authorization': 'Bearer ' + ew.API_JWT_TOKEN
+                },
+                body: JSON.stringify({
+                    user_id: userId,
+                    user_level_id: userLevelId,
+                    system_id: assignSystemId ? assignSystemId.value : null
+                })
+            })
+                .then(function (r) { return r.json(); })
+                .then(function (result) {
+                    if (result.success) {
+                        ew.showToast('Access assigned successfully');
+                        location.reload();
+                    } else {
+                        ew.alert(result.message || 'Error assigning access');
+                        assignAccessBtn.disabled = false;
+                    }
+                })
+                .catch(function () {
+                    ew.alert('Error connecting to the server. Please try again.');
+                    assignAccessBtn.disabled = false;
+                });
+        });
+    }
+
     // ── Add User modal ──
     const addUserOverlay = document.getElementById('addUserOverlay');
     const addUserForm = document.getElementById('addUserForm');
@@ -551,33 +1004,45 @@ document.addEventListener('DOMContentLoaded', function () {
     if (closeAddUserModalBtn) closeAddUserModalBtn.addEventListener('click', closeAddUserModal);
     if (cancelAddUserBtn) cancelAddUserBtn.addEventListener('click', closeAddUserModal);
 
+    const toggleAddUserPassword = document.getElementById('toggleAddUserPassword');
+    if (toggleAddUserPassword) {
+        toggleAddUserPassword.addEventListener('click', function () {
+            const field = document.getElementById('addUserPassword');
+            const icon = document.getElementById('toggleAddUserPasswordIcon');
+            if (field.type === 'password') {
+                field.type = 'text';
+                icon.classList.replace('fa-eye', 'fa-eye-slash');
+            } else {
+                field.type = 'password';
+                icon.classList.replace('fa-eye-slash', 'fa-eye');
+            }
+        });
+    }
+
     if (addUserForm) {
         addUserForm.addEventListener('submit', function (e) {
             e.preventDefault();
             addUserError.style.display = 'none';
 
-            const password = document.getElementById('addUserPassword').value;
-            const passwordConfirm = document.getElementById('addUserPasswordConfirm').value;
-            if (password !== passwordConfirm) {
-                addUserError.textContent = 'Passwords do not match.';
-                addUserError.style.display = 'block';
-                return;
-            }
-
             const payload = {
                 username: document.getElementById('addUserUsername').value.trim(),
                 email: document.getElementById('addUserEmail').value.trim(),
+                employee_id: document.getElementById('addUserEmployeeId').value.trim() || null,
+                password: document.getElementById('addUserPassword').value,
                 first_name: document.getElementById('addUserFirstName').value.trim(),
+                middle_name: document.getElementById('addUserMiddleName').value.trim() || null,
                 last_name: document.getElementById('addUserLastName').value.trim(),
+                suffix: document.getElementById('addUserSuffix').value || null,
+                mobile_number: document.getElementById('addUserMobileNumber').value.trim() || null,
                 department_id: document.getElementById('addUserDepartment').value || null,
-                password: password,
+                position_id: document.getElementById('addUserPosition').value || null,
                 is_active: document.getElementById('addUserIsActive').checked
             };
 
             const submitBtn = document.getElementById('submitAddUserBtn');
             submitBtn.disabled = true;
 
-            fetch('/user-access/users', {
+            fetch('/api/user-access/users', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -599,6 +1064,186 @@ document.addEventListener('DOMContentLoaded', function () {
                 .catch(function () {
                     addUserError.textContent = 'Error connecting to the server. Please try again.';
                     addUserError.style.display = 'block';
+                })
+                .finally(function () {
+                    submitBtn.disabled = false;
+                });
+        });
+    }
+
+    // ── Create User Level modal ──
+    const createUserLevelOverlay = document.getElementById('createUserLevelOverlay');
+    const createUserLevelForm = document.getElementById('createUserLevelForm');
+    const createUserLevelError = document.getElementById('createUserLevelError');
+    const openCreateUserLevelModalBtn = document.getElementById('openCreateUserLevelModalBtn');
+
+    function openCreateUserLevelModal() {
+        if (!createUserLevelOverlay) return;
+        createUserLevelForm.reset();
+        createUserLevelError.style.display = 'none';
+        createUserLevelOverlay.style.display = 'block';
+    }
+
+    function closeCreateUserLevelModal() {
+        if (createUserLevelOverlay) createUserLevelOverlay.style.display = 'none';
+    }
+
+    if (openCreateUserLevelModalBtn) openCreateUserLevelModalBtn.addEventListener('click', openCreateUserLevelModal);
+    const closeCreateUserLevelModalBtn = document.getElementById('closeCreateUserLevelModalBtn');
+    const cancelCreateUserLevelBtn = document.getElementById('cancelCreateUserLevelBtn');
+    if (closeCreateUserLevelModalBtn) closeCreateUserLevelModalBtn.addEventListener('click', closeCreateUserLevelModal);
+    if (cancelCreateUserLevelBtn) cancelCreateUserLevelBtn.addEventListener('click', closeCreateUserLevelModal);
+
+    if (createUserLevelForm) {
+        createUserLevelForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+            createUserLevelError.style.display = 'none';
+
+            const payload = {
+                name: document.getElementById('createUserLevelName').value.trim(),
+                description: document.getElementById('createUserLevelDescription').value.trim() || null,
+                system_id: document.getElementById('createUserLevelSystem').value || null
+            };
+
+            const submitBtn = document.getElementById('submitCreateUserLevelBtn');
+            submitBtn.disabled = true;
+
+            fetch('/api/user-access/user-levels', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Authorization': 'Bearer ' + ew.API_JWT_TOKEN
+                },
+                body: JSON.stringify(payload)
+            })
+                .then(function (r) { return r.json(); })
+                .then(function (result) {
+                    if (result.success) {
+                        ew.showToast('User level created successfully');
+                        closeCreateUserLevelModal();
+                        location.reload();
+                    } else {
+                        createUserLevelError.textContent = result.message || 'Error creating user level';
+                        createUserLevelError.style.display = 'block';
+                    }
+                })
+                .catch(function () {
+                    createUserLevelError.textContent = 'Error connecting to the server. Please try again.';
+                    createUserLevelError.style.display = 'block';
+                })
+                .finally(function () {
+                    submitBtn.disabled = false;
+                });
+        });
+    }
+
+    // ── Edit User modal ──
+    const editUserOverlay = document.getElementById('editUserOverlay');
+    const editUserForm = document.getElementById('editUserForm');
+    const editUserError = document.getElementById('editUserError');
+
+    function openEditUserModal(userId) {
+        if (!editUserOverlay) return;
+        const user = usersById[userId];
+        if (!user) return;
+
+        editUserForm.reset();
+        editUserError.style.display = 'none';
+        document.getElementById('editUserId').value = userId;
+        document.getElementById('editUserUsername').value = user.username || '';
+        document.getElementById('editUserEmail').value = user.email || '';
+        document.getElementById('editUserEmployeeId').value = user.employee_id || '';
+        document.getElementById('editUserFirstName').value = user.first_name || '';
+        document.getElementById('editUserMiddleName').value = user.middle_name || '';
+        document.getElementById('editUserLastName').value = user.last_name || '';
+        document.getElementById('editUserSuffix').value = user.suffix || '';
+        document.getElementById('editUserMobileNumber').value = user.mobile_number || '';
+        document.getElementById('editUserDepartment').value = user.department_id || '';
+        document.getElementById('editUserPosition').value = user.position_id || '';
+        document.getElementById('editUserIsActive').checked = !!user.is_active;
+
+        editUserOverlay.style.display = 'block';
+    }
+
+    function closeEditUserModal() {
+        if (editUserOverlay) editUserOverlay.style.display = 'none';
+    }
+
+    document.querySelectorAll('.edit-user-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            openEditUserModal(this.dataset.userId);
+        });
+    });
+
+    const closeEditUserModalBtn = document.getElementById('closeEditUserModalBtn');
+    const cancelEditUserBtn = document.getElementById('cancelEditUserBtn');
+    if (closeEditUserModalBtn) closeEditUserModalBtn.addEventListener('click', closeEditUserModal);
+    if (cancelEditUserBtn) cancelEditUserBtn.addEventListener('click', closeEditUserModal);
+
+    const toggleEditUserPassword = document.getElementById('toggleEditUserPassword');
+    if (toggleEditUserPassword) {
+        toggleEditUserPassword.addEventListener('click', function () {
+            const field = document.getElementById('editUserPassword');
+            const icon = document.getElementById('toggleEditUserPasswordIcon');
+            if (field.type === 'password') {
+                field.type = 'text';
+                icon.classList.replace('fa-eye', 'fa-eye-slash');
+            } else {
+                field.type = 'password';
+                icon.classList.replace('fa-eye-slash', 'fa-eye');
+            }
+        });
+    }
+
+    if (editUserForm) {
+        editUserForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+            editUserError.style.display = 'none';
+
+            const userId = document.getElementById('editUserId').value;
+            const payload = {
+                username: document.getElementById('editUserUsername').value.trim(),
+                email: document.getElementById('editUserEmail').value.trim(),
+                employee_id: document.getElementById('editUserEmployeeId').value.trim() || null,
+                first_name: document.getElementById('editUserFirstName').value.trim(),
+                middle_name: document.getElementById('editUserMiddleName').value.trim() || null,
+                last_name: document.getElementById('editUserLastName').value.trim(),
+                suffix: document.getElementById('editUserSuffix').value || null,
+                mobile_number: document.getElementById('editUserMobileNumber').value.trim() || null,
+                department_id: document.getElementById('editUserDepartment').value || null,
+                position_id: document.getElementById('editUserPosition').value || null,
+                is_active: document.getElementById('editUserIsActive').checked
+            };
+            const password = document.getElementById('editUserPassword').value;
+            if (password) {
+                payload.password = password;
+            }
+
+            const submitBtn = document.getElementById('submitEditUserBtn');
+            submitBtn.disabled = true;
+
+            fetch('/api/user-access/users/' + userId, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Authorization': 'Bearer ' + ew.API_JWT_TOKEN
+                },
+                body: JSON.stringify(payload)
+            })
+                .then(function (r) { return r.json(); })
+                .then(function (result) {
+                    if (result.success) {
+                        ew.showToast('User updated successfully');
+                        closeEditUserModal();
+                        location.reload();
+                    } else {
+                        editUserError.textContent = result.message || 'Error updating user';
+                        editUserError.style.display = 'block';
+                    }
+                })
+                .catch(function () {
+                    editUserError.textContent = 'Error connecting to the server. Please try again.';
+                    editUserError.style.display = 'block';
                 })
                 .finally(function () {
                     submitBtn.disabled = false;

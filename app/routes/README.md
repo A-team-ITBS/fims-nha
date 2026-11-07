@@ -6,13 +6,20 @@ This directory contains organized API route definitions for the __BASE__ applica
 
 ```
 routes/
-├── notifications.php    # Notification management routes
-├── service.php         # General service routes
-├── user-access.php     # UserAccess page routes (create user, save permissions)
-└── README.md          # This documentation
+├── notifications.php         # Notification management routes
+├── service.php               # General service routes
+├── user-access.php           # UserAccess page routes (create user, save permissions)
+├── department-management.php # Department Management page routes (create/update department)
+└── README.md                 # This documentation
 ```
 
 ## Route Organization
+
+**Note:** These routes are only registered when `app/api.php` is included via the `ApiActionEvent`
+(`src/userfn.php` → `Api_Action()`), which is dispatched from `api/index.php` — a *separate* front
+controller from the main `index.php` that renders pages. `api/index.php` sets its Slim base path to
+`/api`, so every route below is reached externally (and from `fetch()` calls in `app/pages/*.php`)
+with an `/api` prefix, e.g. `POST /user-access/users` below is actually `POST /api/user-access/users`.
 
 ### notifications.php
 - `GET /notifications/recent` - Get recent notifications
@@ -27,7 +34,15 @@ routes/
 
 ### user-access.php
 - `POST /user-access/users` - Create a user (backs the Add User modal on `app/pages/user-access.php`)
+- `PUT /user-access/users/{id}` - Update a user (backs the Edit User modal; no redirect to `UsersEdit`)
 - `POST /user-access/permissions` - Save a user level's module permission bitmask (backs the Permission Matrix on `app/pages/user-access.php`)
+- `POST /user-access/sync-modules` - Reconcile `uac.user_level_permissions` with PHPMaker's own table/page registry (`$USER_LEVEL_TABLES`), adding zero-permission rows for any module missing from a user level
+- `POST /user-access/user-levels` - Create a user level / role (backs the Create User Level modal; also seeds zero-permission rows for every known module, matching `UserLevelsAdd`'s own behavior)
+- `POST /user-access/assignments` - Assign a user level (role) to a user (backs the Assign Access button; no redirect to `UserLevelAssignmentsAdd`)
+
+### department-management.php
+- `POST /department-management/departments` - Create a department (backs the Add Department modal on `app/pages/department-management.php`; no redirect to `DepartmentsAdd`)
+- `PUT /department-management/departments/{id}` - Update a department (backs the Edit Department modal; no redirect to `DepartmentsEdit`; rejects parent choices that would create a hierarchy cycle)
 
 ## Template Usage
 
