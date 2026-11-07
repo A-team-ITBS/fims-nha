@@ -33,7 +33,8 @@ CREATE INDEX IF NOT EXISTS idx_users_position_id ON uac.users (position_id);
 
 -- ── employee_id ─────────────────────────────────────────────────────────────
 ALTER TABLE uac.users
-    ADD COLUMN IF NOT EXISTS employee_id varchar(50);
+    ADD COLUMN IF NOT EXISTS employee_id varchar(50)
+    ADD COLUMN IF NOT EXISTS rc_code varchar(50);
 
 COMMENT ON COLUMN uac.users.employee_id IS
     'HR / plantilla employee number (free text, optional).';

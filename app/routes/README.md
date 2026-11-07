@@ -62,7 +62,7 @@ with an `/api` prefix, e.g. `POST /user-access/users` below is actually `POST /a
 ### vendor.php (`VendorService`, table `fims.vendors` / `fims.vendor_types`)
 - `GET /vendors/types` - Active vendor types (dropdown)
 - `GET /vendors/all` - All vendors, no pagination (dropdown). Optional: `search`, `type`, `active=1` (hides non-ACTIVE)
-- `GET /vendors/list` - Paginated. Optional: `page`, `limit`, `search`, `type`, `active`
+- `GET /vendors/list` - Paginated; also returns `summary` {active, inactive} for every row matching the filters. Optional: `page`, `limit`, `search`, `type`, `active`, `status` (ACTIVE / INACTIVE / BLACKLISTED)
 - `GET /vendors/read/{id}` - One vendor
 - `POST /vendors/add` - Create (`vendor_code` and `vendor_name` required, `vendor_code` unique)
 - `PUT /vendors/update/{id}` - Update
