@@ -191,7 +191,6 @@ ACCOUNTING-PCDS/composer.lock
 _assets/table-analysis
 _assets/table-analysis/*
 # /_assets/sql/07 - CROSS-MODULE-DEMO
-package-lock.json
 
 # System Design / System Requirements docs (large binaries, tracked separately)
 _assets/System Design/
@@ -221,3 +220,7 @@ controllers/*
 models/*
 views/*
 src/*
+
+composer.json
+composer.lock
+

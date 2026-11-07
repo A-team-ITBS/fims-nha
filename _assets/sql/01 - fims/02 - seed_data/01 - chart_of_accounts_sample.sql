@@ -28,10 +28,14 @@
 --    artifacts (duplicate codes with garbage titles: "02-01-04 / 10" and
 --    "05-05-04 / Change").
 
+-- NOTE: "02 - sample_data/03 - fims_chart_of_accounts.sql" seeds the full COA
+-- (same account_codes, different account_ids). This sample set only loads into
+-- an EMPTY table so the two seeds never collide on account_code.
 INSERT INTO fims.chart_of_accounts (
     account_id, account_code, account_title, account_type,
     parent_account_id, posting_allowed, status, source_document
-) VALUES
+)
+SELECT * FROM (VALUES
     ('COA-00001', '01-01', 'Cash and Cash Equivalents', 'Asset', NULL, true, 'Active', 'Accounting COA (sample)'),
     ('COA-00002', '01-01-01', 'Cash on Hand', 'Asset', 'COA-00001', false, 'Active', NULL),
     ('COA-00003', '1-01-01-010', 'Cash-Collecting Officers', 'Asset', 'COA-00002', false, 'Active', NULL),
@@ -1298,4 +1302,5 @@ INSERT INTO fims.chart_of_accounts (
     ('COA-01264', '05-05-05', 'Discounts and Rebates', 'Expense', 'COA-01198', false, 'Active', NULL),
     ('COA-01265', '5-05-05-010', 'Other Discounts', 'Expense', 'COA-01264', false, 'Active', NULL),
     ('COA-01266', '5-05-05-020', 'Rebates', 'Expense', 'COA-01264', false, 'Active', NULL)
-ON CONFLICT (account_id) DO NOTHING;
+) AS v(account_id, account_code, account_title, account_type, parent_account_id, posting_allowed, status, source_document)
+WHERE NOT EXISTS (SELECT 1 FROM fims.chart_of_accounts);
