@@ -58,7 +58,7 @@
     },
     "autoload": {
         "psr-4": {
-            "PHPMaker2024\\UAC\\": [
+            "PHPMaker2024\\FIMS\\": [
                 "src/",
                 "models/",
                 "controllers/"
@@ -80,6 +80,6 @@
         "allow-plugins": true
     },
     "scripts": {
-        "routes": "PHPMaker2024\\UAC\\RouteAttributes::dispatch"
+        "routes": "PHPMaker2024\\FIMS\\RouteAttributes::dispatch"
     }
 }
