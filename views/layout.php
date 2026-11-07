@@ -323,7 +323,7 @@ if (isset($DebugTimer)) {
     </footer>
     <!-- Page Foot -->
     <?php 
-    include(dirname(__DIR__, 1) . "/_shared/foot.php");
+    include(dirname(__DIR__) . "/_shared/foot.php");
     ?>
 </div>
 <!-- ./wrapper -->
