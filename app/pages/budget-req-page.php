@@ -2,6 +2,17 @@
 namespace PHPMaker2024\FIMS;
 @session_start();
 $_bgr_api = Config('API.FIMS_URL');
+
+// User level 2 = Budget Officer: Add / Edit / Delete are hidden for this
+// level, and the per-row "Budget Processing" action is shown only to this level.
+// User level 8 = Budget Head: "Add Budget Request" is hidden, and only this
+// level sees the "Budget Preview" action (whose modal has Return / Approve
+// buttons on an Endorsed request).
+$userLevel = CurrentUserLevel();
+$_bgr_isBudgetOfficer = ((int) $userLevel === 2);
+$_bgr_isBudgetHead    = ((int) $userLevel === 8);
+$_bgr_canAdd    = !$_bgr_isBudgetOfficer && !$_bgr_isBudgetHead;
+$_bgr_canModify = !$_bgr_isBudgetOfficer;
 ?>
 
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -34,10 +45,12 @@ $_bgr_api = Config('API.FIMS_URL');
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                 Refresh
             </button>
+            <?php if ($_bgr_canAdd): ?>
             <button id="bgr-add" type="button" class="nha-btn-primary">
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
                 Add Budget Request
             </button>
+            <?php endif; ?>
         </div>
     </div>
 
@@ -117,6 +130,8 @@ $_bgr_api = Config('API.FIMS_URL');
 
 <?php include __DIR__ . '/readone/budget-req-readone.php'; ?>
 <?php include __DIR__ . '/form/budget-req-form.php'; ?>
+<?php include __DIR__ . '/form/budget-processing-form.php'; ?>
+<?php include __DIR__ . '/readone/budget-preview-readone.php'; ?>
 
 </div><!-- /#bgr-root -->
 
@@ -133,6 +148,13 @@ $_bgr_api = Config('API.FIMS_URL');
 
 let bgr_page = 1;
 const BGR_PAGE_SIZE = 15;
+// false for user level 2 (Budget Officer) — hides the row Edit / Delete actions.
+const BGR_CAN_MODIFY = <?= $_bgr_canModify ? 'true' : 'false' ?>;
+// true only for user level 2 (Budget Officer) — shows the row "Budget Processing" action.
+const BGR_CAN_BUDGET_PROCESSING = <?= $_bgr_isBudgetOfficer ? 'true' : 'false' ?>;
+// true only for user level 8 (Budget Head) — shows the row "Budget Preview" action,
+// and Return / Approve inside its modal.
+const BGR_IS_BUDGET_HEAD = <?= $_bgr_isBudgetHead ? 'true' : 'false' ?>;
 let bgr_flatRows = [];
 
 window.bgr_afterSave = () => bgr_load();
@@ -222,19 +244,35 @@ function bgr_actionButtons(flatRow, idx) {
             View
         </button>`
         : '';
-    const editBtn = (program && isDraft)
+    const editBtn = (BGR_CAN_MODIFY && program && isDraft)
         ? `<button class="nha-btn-act edit" onclick="bgr_editProgram(${idx})" title="Edit">
             <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
             Edit
         </button>`
         : '';
-    const deleteBtn = isDraft
+    const deleteBtn = (BGR_CAN_MODIFY && isDraft)
         ? `<button class="nha-btn-act danger" onclick="bgr_delete(${header.budget_reference_number}, ${header.fiscal_yr})" title="Delete">
             <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
             Delete
         </button>`
         : '';
-    return viewBtn + editBtn + deleteBtn;
+    // Hidden once the request has been Endorsed or Approved — it can't be processed again.
+    const budgetProcessingBtn = (BGR_CAN_BUDGET_PROCESSING && !['Endorsed', 'Approved'].includes(header.status_name))
+        ? `<button class="nha-btn-act" onclick="bgr_budgetProcessing(${idx})" title="Budget Processing">
+            <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
+            Budget Processing
+        </button>`
+        : '';
+    // Read-only counterpart of Budget Processing — every line item with its
+    // Type of Fund, Suggestion Amount and Component, nothing to fill in.
+    // Budget Head (level 8) only.
+    const budgetPreviewBtn = (BGR_IS_BUDGET_HEAD && program)
+        ? `<button class="nha-btn-act" onclick="bgr_budgetPreview(${idx})" title="Budget Preview">
+            <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+            Budget Preview
+        </button>`
+        : '';
+    return viewBtn + editBtn + deleteBtn + budgetProcessingBtn + budgetPreviewBtn;
 }
 
 function bgr_viewProgram(idx) {
@@ -246,6 +284,38 @@ function bgr_viewProgram(idx) {
         status_name: header.status_name,
         status_color: header.status_color,
         is_draft: header.status_name === 'Draft',
+    }, program);
+}
+
+/* "Budget Processing" row action (level 2 / Budget Officer only) — opens the
+   Budget Processing modal (form/budget-processing-form.php, bpr_*) for this
+   row's Program: its line items, each with Type of Fund + Component. */
+function bgr_budgetProcessing(idx) {
+    const { header, program } = bgr_flatRows[idx];
+    if (!program) {
+        bgr_toast('This budget request has no programs yet.', 'warning');
+        return;
+    }
+    bpr_openModal({
+        budget_reference_number: header.budget_reference_number,
+        fiscal_yr: header.fiscal_yr,
+        status_name: header.status_name,
+        status_color: header.status_color,
+    }, program);
+}
+
+/* "Budget Preview" row action — opens the read-only Budget Preview modal
+   (readone/budget-preview-readone.php, bpv_*) for this row's Program. */
+function bgr_budgetPreview(idx) {
+    const { header, program } = bgr_flatRows[idx];
+    if (!program) return;
+    bpv_openModal({
+        budget_reference_number: header.budget_reference_number,
+        fiscal_yr: header.fiscal_yr,
+        status_name: header.status_name,
+        status_color: header.status_color,
+        // Return / Approve: Budget Head only, and only once the request is Endorsed.
+        can_decide: BGR_IS_BUDGET_HEAD && header.status_name === 'Endorsed',
     }, program);
 }
 
