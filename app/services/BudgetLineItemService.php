@@ -6,16 +6,18 @@ use PHPMaker2024\FIMS as App;
 use PHPMaker2024\FIMS\DataType;
 
 /**
- * One line item = one chart-of-accounts allocation under a PS/MOOE budget
- * request header (fims.budget_req). Used both to add individual line items
- * to an existing header and to edit/delete one in isolation.
+ * One line item = one chart-of-accounts allocation under a Project "line
+ * item" (fims.budget_req_project), which itself belongs to a budget_req
+ * header. Used both to add individual line items and to edit/delete one
+ * in isolation.
  */
 class BudgetLineItemService
 {
-    private string $table              = 'fims.budget_line_items';
-    private string $tableBudgetReq     = 'fims.budget_req';
-    private string $tableChartOfAccounts = 'fims.chart_of_accounts';
-    private string $tableExpenseClass  = 'fims.expense_class';
+    private string $table                 = 'fims.budget_line_items';
+    private string $tableBudgetReq        = 'fims.budget_req';
+    private string $tableBudgetReqProject = 'fims.budget_req_project';
+    private string $tableChartOfAccounts  = 'fims.chart_of_accounts';
+    private string $tableProject          = 'fims.project';
 
     public function fetchAlls(?int $page = null, int $limit = 10, string $fiscalYr = ''): array
     {
@@ -26,12 +28,14 @@ class BudgetLineItemService
             }
             $whereSql = implode(' AND ', $where);
 
-            $joinSql = "SELECT li.*, br.fiscal_yr, br.expense_class_id, ec.expense_class_code, ec.expense_class_name,
+            $joinSql = "SELECT li.*, br.fiscal_yr,
+                               brp.project_code, pj.project_name,
                                coa.account_code, coa.account_title,
                                st.name AS status_name, st.color AS status_color
                         FROM {$this->table} li
                         JOIN {$this->tableBudgetReq} br ON br.budget_reference_number = li.budget_reference_number
-                        LEFT JOIN {$this->tableExpenseClass} ec ON ec.expense_class_id = br.expense_class_id
+                        LEFT JOIN {$this->tableBudgetReqProject} brp ON brp.budget_req_project_id = li.budget_req_project_id
+                        LEFT JOIN {$this->tableProject} pj ON pj.project_code = brp.project_code
                         LEFT JOIN {$this->tableChartOfAccounts} coa ON coa.account_id = li.account_id
                         LEFT JOIN fims.settings_status st ON st.id = br.status_id
                         WHERE {$whereSql}";
@@ -50,7 +54,7 @@ class BudgetLineItemService
             $total = (int) App\ExecuteScalar($countSql, 'DB');
             $data  = App\ExecuteRows($joinSql . " ORDER BY br.fiscal_yr DESC, li.budget_line_item_id DESC LIMIT {$limit} OFFSET {$offset}", 'DB');
 
-            $sumSql = "SELECT COALESCE(SUM(li.requested_amount), 0) FROM {$this->table} li
+            $sumSql = "SELECT COALESCE(SUM(li.proposed_amount), 0) FROM {$this->table} li
                        JOIN {$this->tableBudgetReq} br ON br.budget_reference_number = li.budget_reference_number
                        WHERE {$whereSql}";
             $totalAmount = (float) App\ExecuteScalar($sumSql, 'DB');
@@ -74,10 +78,14 @@ class BudgetLineItemService
     public function fetchById(int|string $id): array
     {
         try {
-            $sql = "SELECT li.*, br.fiscal_yr, br.expense_class_id, coa.account_code, coa.account_title,
+            $sql = "SELECT li.*, br.fiscal_yr,
+                           brp.project_code, pj.project_name,
+                           coa.account_code, coa.account_title,
                            st.name AS status_name, st.color AS status_color
                     FROM {$this->table} li
                     JOIN {$this->tableBudgetReq} br ON br.budget_reference_number = li.budget_reference_number
+                    LEFT JOIN {$this->tableBudgetReqProject} brp ON brp.budget_req_project_id = li.budget_req_project_id
+                    LEFT JOIN {$this->tableProject} pj ON pj.project_code = brp.project_code
                     LEFT JOIN {$this->tableChartOfAccounts} coa ON coa.account_id = li.account_id
                     LEFT JOIN fims.settings_status st ON st.id = br.status_id
                     WHERE li.budget_line_item_id = " . (int) $id;
@@ -95,18 +103,19 @@ class BudgetLineItemService
     }
 
     /**
-     * @param array $body budget_reference_number, account_id, requested_amount, particulars
+     * @param array $body budget_reference_number, budget_req_project_id, account_id, proposed_amount, particulars
      */
     public function create(array $body): array
     {
         try {
             $budgetReferenceNumber = trim((string) ($body['budget_reference_number'] ?? ''));
+            $budgetReqProjectId    = trim((string) ($body['budget_req_project_id'] ?? ''));
             $accountId             = trim((string) ($body['account_id'] ?? ''));
-            $amount                = $body['requested_amount'] ?? $body['amount'] ?? '';
+            $amount                = $body['proposed_amount'] ?? $body['amount'] ?? '';
             $particulars           = trim((string) ($body['particulars'] ?? ''));
 
-            if ($budgetReferenceNumber === '' || $accountId === '' || $amount === '' || !is_numeric($amount) || $particulars === '') {
-                return ['success' => false, 'message' => 'budget_reference_number, account_id, a numeric requested_amount, and particulars are required.'];
+            if ($budgetReferenceNumber === '' || $budgetReqProjectId === '' || $accountId === '' || $amount === '' || !is_numeric($amount) || $particulars === '') {
+                return ['success' => false, 'message' => 'budget_reference_number, budget_req_project_id, account_id, a numeric proposed_amount, and particulars are required.'];
             }
 
             $header = App\ExecuteRow(
@@ -117,16 +126,27 @@ class BudgetLineItemService
                 return ['success' => false, 'message' => "Budget request #{$budgetReferenceNumber} does not exist."];
             }
 
+            $project = App\ExecuteRow(
+                "SELECT budget_req_project_id FROM {$this->tableBudgetReqProject} WHERE budget_req_project_id = " . (int) $budgetReqProjectId,
+                'DB'
+            );
+            if (!$project) {
+                return ['success' => false, 'message' => "Project line item #{$budgetReqProjectId} does not exist."];
+            }
+
             $account = App\ExecuteRow(
-                "SELECT account_id FROM {$this->tableChartOfAccounts} WHERE account_id = " . App\QuotedValue($accountId, DataType::STRING, 'DB'),
+                "SELECT account_id FROM {$this->tableChartOfAccounts}
+                 WHERE account_id = " . App\QuotedValue($accountId, DataType::STRING, 'DB') . "
+                   AND status = 'Active' AND posting_allowed = TRUE",
                 'DB'
             );
             if (!$account) {
-                return ['success' => false, 'message' => "Chart of accounts entry '{$accountId}' does not exist."];
+                return ['success' => false, 'message' => "Chart of accounts entry '{$accountId}' does not exist or is not postable."];
             }
 
-            $sql = "INSERT INTO {$this->table} (budget_reference_number, account_id, requested_amount, particulars)
+            $sql = "INSERT INTO {$this->table} (budget_reference_number, budget_req_project_id, account_id, proposed_amount, particulars)
                     VALUES (" . (int) $budgetReferenceNumber . ', '
+                        . (int) $budgetReqProjectId . ', '
                         . App\QuotedValue($accountId, DataType::STRING, 'DB') . ', '
                         . App\QuotedValue($amount, DataType::NUMBER, 'DB') . ', '
                         . App\QuotedValue($particulars, DataType::STRING, 'DB') . ')
@@ -153,23 +173,25 @@ class BudgetLineItemService
             }
 
             $accountId   = trim((string) ($body['account_id'] ?? ''));
-            $amount      = $body['requested_amount'] ?? $body['amount'] ?? null;
+            $amount      = $body['proposed_amount'] ?? $body['amount'] ?? null;
             $particulars = trim((string) ($body['particulars'] ?? ''));
 
             $setParts = [];
 
             if ($accountId !== '') {
                 $account = App\ExecuteRow(
-                    "SELECT account_id FROM {$this->tableChartOfAccounts} WHERE account_id = " . App\QuotedValue($accountId, DataType::STRING, 'DB'),
+                    "SELECT account_id FROM {$this->tableChartOfAccounts}
+                     WHERE account_id = " . App\QuotedValue($accountId, DataType::STRING, 'DB') . "
+                       AND status = 'Active' AND posting_allowed = TRUE",
                     'DB'
                 );
                 if (!$account) {
-                    return ['success' => false, 'message' => "Chart of accounts entry '{$accountId}' does not exist."];
+                    return ['success' => false, 'message' => "Chart of accounts entry '{$accountId}' does not exist or is not postable."];
                 }
                 $setParts[] = 'account_id = ' . App\QuotedValue($accountId, DataType::STRING, 'DB');
             }
             if ($amount !== null && $amount !== '' && is_numeric($amount)) {
-                $setParts[] = 'requested_amount = ' . App\QuotedValue($amount, DataType::NUMBER, 'DB');
+                $setParts[] = 'proposed_amount = ' . App\QuotedValue($amount, DataType::NUMBER, 'DB');
             }
             if ($particulars !== '') {
                 $setParts[] = 'particulars = ' . App\QuotedValue($particulars, DataType::STRING, 'DB');

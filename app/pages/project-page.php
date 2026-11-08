@@ -103,16 +103,18 @@ $_proj_api = Config('API.FIMS_URL');
    PROJECTS LIST   prefix: proj_
 ═══════════════════════════════════════════════════════════════ */
 
-const PROJ_API         = '<?php echo $_proj_api; ?>' + '/project';
-const PROJ_PROGRAM_API = '<?php echo $_proj_api; ?>' + '/program/all';
+const PROJ_API             = '<?php echo $_proj_api; ?>' + '/project';
+const PROJ_PROGRAM_API     = '<?php echo $_proj_api; ?>' + '/program/all';
+const PROJ_SUB_PROGRAM_API = '<?php echo $_proj_api; ?>' + '/sub_program/all';
 
 let proj_page = 1;
 const PROJ_PAGE_SIZE = 15;
+let PROJ_SUB_PROGRAMS = [];
 
 const $proj = id => document.getElementById(id);
 
 async function proj_bootstrapLoad() {
-    await Promise.all([proj_load(), proj_loadPrograms()]);
+    await Promise.all([proj_load(), proj_loadPrograms(), proj_loadSubPrograms()]);
     proj_bindEvents();
 }
 if (document.readyState === 'loading') {
@@ -139,12 +141,37 @@ async function proj_loadPrograms() {
     }
 }
 
+async function proj_loadSubPrograms() {
+    try {
+        const res  = await fetch(PROJ_SUB_PROGRAM_API, { credentials: 'same-origin' });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message || 'Failed to load sub-programs.');
+        PROJ_SUB_PROGRAMS = json.data ?? [];
+    } catch (e) {
+        proj_toast(e.message, 'error');
+    }
+}
+
+// Program -> Sub-Program cascade, same pattern as pof_fillProjects()/
+// pof_onProgramChange() in app/pages/po/form.php.
+function proj_fillSubPrograms(programCode, keep = '') {
+    const list = programCode ? PROJ_SUB_PROGRAMS.filter(sp => sp.program_code === programCode) : [];
+    $proj('proj-sub-program-code').innerHTML = '<option value="">— None —</option>' + list.map(sp =>
+        `<option value="${proj_escAttr(sp.sub_program_code)}">${proj_esc(sp.sub_program_code)} — ${proj_esc(sp.sub_program_name)}</option>`
+    ).join('');
+    $proj('proj-sub-program-code').value = list.some(sp => sp.sub_program_code === keep) ? keep : '';
+}
+function proj_onProgramChange() {
+    proj_fillSubPrograms($proj('proj-program-code').value);
+}
+
 function proj_bindEvents() {
     $proj('proj-refresh')?.addEventListener('click', () => { proj_page = 1; proj_load(); });
     $proj('proj-add')?.addEventListener('click', () => proj_openModal('add'));
     $proj('proj-modal-close')?.addEventListener('click', proj_closeModal);
     $proj('proj-cancel')?.addEventListener('click', proj_closeModal);
     $proj('proj-form')?.addEventListener('submit', proj_save);
+    $proj('proj-program-code')?.addEventListener('change', proj_onProgramChange);
 
     $proj('proj-filter-program')?.addEventListener('change', () => { proj_page = 1; proj_load(); });
 
@@ -250,6 +277,7 @@ function proj_openModal(mode, row = null) {
     $proj('proj-project-code').disabled = mode === 'edit';
     $proj('proj-project-name').value = row?.project_name || '';
     $proj('proj-program-code').value = row?.program_code || '';
+    proj_fillSubPrograms(row?.program_code, row?.sub_program_code);
     $proj('proj-overlay').classList.add('open');
 }
 
@@ -288,9 +316,10 @@ async function proj_save(ev) {
     const mode = $proj('proj-mode').value;
     const code = $proj('proj-project-code').value.trim();
     const payload = {
-        project_code : code,
-        project_name : $proj('proj-project-name').value.trim(),
-        program_code : $proj('proj-program-code').value,
+        project_code     : code,
+        project_name     : $proj('proj-project-name').value.trim(),
+        program_code     : $proj('proj-program-code').value,
+        sub_program_code : $proj('proj-sub-program-code').value,
     };
 
     window.PagePreloader?.show();

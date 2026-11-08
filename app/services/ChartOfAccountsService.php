@@ -75,6 +75,29 @@ class ChartOfAccountsService
         }
     }
 
+    /**
+     * All active, postable chart-of-accounts entries — used by the Budget
+     * Request form's Account Code picker, which no longer restricts by
+     * expense-class-derived prefix.
+     */
+    public function fetchPostable(string $search = ''): array
+    {
+        try {
+            $where = "status = 'Active' AND posting_allowed = TRUE";
+            if ($search !== '') {
+                $s      = App\QuotedValue('%' . $search . '%', DataType::STRING, 'DB');
+                $where .= " AND (account_code ILIKE {$s} OR account_title ILIKE {$s})";
+            }
+
+            $sql  = "SELECT * FROM {$this->table} WHERE {$where} ORDER BY account_code ASC";
+            $data = App\ExecuteRows($sql, 'DB');
+
+            return ['success' => true, 'data' => $data ?: []];
+        } catch (\Exception $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
     public function fetchById(string $id): array
     {
         try {

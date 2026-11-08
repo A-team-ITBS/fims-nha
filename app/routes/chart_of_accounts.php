@@ -7,15 +7,20 @@ use PHPMaker2024\FIMS\Service\ChartOfAccountsService;
 $ChartOfAccountsService = new ChartOfAccountsService();
 
 // Fetch all — no pagination (for dropdowns); ?prefix=5-01 scopes to postable
-// accounts under that chart-of-accounts branch.
+// accounts under that chart-of-accounts branch (legacy); ?postable_only=1
+// returns all active+postable accounts regardless of branch — used by the
+// Budget Request form's Account Code picker.
 $app->get('/chart_of_accounts/all', function ($request, $response, $args) use ($ChartOfAccountsService) {
     try {
-        $params = $request->getQueryParams();
-        $prefix = $params['prefix'] ?? '';
+        $params       = $request->getQueryParams();
+        $prefix       = $params['prefix'] ?? '';
+        $postableOnly = ($params['postable_only'] ?? '') === '1';
 
         $result = $prefix !== ''
             ? $ChartOfAccountsService->fetchByPrefix($prefix)
-            : $ChartOfAccountsService->fetchAlls(null, 10, $params['search'] ?? '');
+            : ($postableOnly
+                ? $ChartOfAccountsService->fetchPostable($params['search'] ?? '')
+                : $ChartOfAccountsService->fetchAlls(null, 10, $params['search'] ?? ''));
 
         return $response->withJson($result);
     } catch (\Exception $e) {
