@@ -122,6 +122,21 @@
 
                 <div class="coa-row">
                     <div class="coa-group">
+                        <label class="coa-label">Region (RCA Code)</label>
+                        <select class="coa-select" id="coa-region-code">
+                            <option value="">— None (national/HO) —</option>
+                        </select>
+                    </div>
+                    <div class="coa-group">
+                        <label class="coa-label">Project</label>
+                        <select class="coa-select" id="coa-project-code">
+                            <option value="">— None —</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="coa-row">
+                    <div class="coa-group">
                         <label class="coa-label">Parent Account</label>
                         <select class="coa-select" id="coa-parent-account-id">
                             <option value="">— No parent (top-level) —</option>

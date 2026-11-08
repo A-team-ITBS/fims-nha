@@ -68,15 +68,25 @@ class ProgramService
         }
     }
 
-    public function create(array $body): array
+    /**
+     * Creates a program. The code is assigned HERE by GlobalService::generateProgramCode()
+     * (year-rc_code-NNN of the logged-in user) — any program_code in $body is ignored, so the
+     * form's preview can never be forged or go stale. The code that was actually saved is returned
+     * in data.program_code (it can differ from the preview if someone saved a program meanwhile).
+     */
+    public function create(array $body, ?int $userId = null): array
     {
         try {
-            $code = trim((string) ($body['program_code'] ?? ''));
             $name = trim((string) ($body['program_name'] ?? ''));
 
-            if ($code === '' || $name === '') {
-                return ['success' => false, 'message' => 'program_code and program_name are required.'];
+            if ($name === '') {
+                return ['success' => false, 'message' => 'program_name is required.'];
             }
+
+            // Throws InvalidArgumentException (readable message) when there is no user / no RC code.
+            $code = GlobalService::generateProgramCode($userId);
+            $body['program_code'] = $code;
+            $body['program_name'] = $name;
 
             $exists = (int) App\ExecuteScalar(
                 "SELECT COUNT(*) FROM {$this->table} WHERE program_code = " . App\QuotedValue($code, DataType::STRING, 'DB'),
@@ -100,7 +110,7 @@ class ProgramService
 
             App\Execute($sql, 'DB');
 
-            return ['success' => true, 'message' => 'Program created successfully.'];
+            return ['success' => true, 'message' => "Program {$code} created successfully.", 'data' => ['program_code' => $code]];
         } catch (\Exception $e) {
             return ['success' => false, 'message' => $e->getMessage()];
         }

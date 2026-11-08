@@ -191,7 +191,6 @@ ACCOUNTING-PCDS/composer.lock
 _assets/table-analysis
 _assets/table-analysis/*
 # /_assets/sql/07 - CROSS-MODULE-DEMO
-package-lock.json
 
 # System Design / System Requirements docs (large binaries, tracked separately)
 _assets/System Design/
@@ -214,3 +213,14 @@ _assets/sql/05 - schema_sample_data_structure/03 - ACCOUNTING/05 -sample_data/40
 _assets/sql/05 - schema_sample_data_structure/03 - ACCOUNTING/05 -sample_data/41 - regional_ca_bimonthly_sample.sql
 merge-pages-into-fims-pmp.js
 replicate-fmd-treasury-to-fims.js
+
+
+adminlte3/css/adminlte.css
+controllers/*
+models/*
+views/*
+src/*
+
+composer.json
+composer.lock
+

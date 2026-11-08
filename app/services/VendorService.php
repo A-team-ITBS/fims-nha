@@ -59,10 +59,13 @@ class VendorService
      * $page === null returns every match (dropdowns); otherwise paginates.
      * $activeOnly hides vendors whose status is not ACTIVE (a NULL status counts as active).
      */
-    public function fetchAlls(?int $page = null, int $limit = 10, string $search = '', string $type = '', bool $activeOnly = false): array
+    public function fetchAlls(?int $page = null, int $limit = 10, string $search = '', string $type = '', bool $activeOnly = false, string $status = ''): array
     {
         try {
             $where = ['1=1'];
+            if ($status !== '') {
+                $where[] = "COALESCE(v.status, 'ACTIVE') = " . $this->str(strtoupper($status));
+            }
             if ($search !== '') {
                 $s       = App\QuotedValue('%' . $search . '%', App\DataType::STRING, 'DB');
                 $where[] = "(v.vendor_code ILIKE {$s} OR v.vendor_name ILIKE {$s} OR v.tin ILIKE {$s})";
@@ -89,9 +92,18 @@ class VendorService
                 'DB'
             );
 
+            // Counts over every row matching the filters (not just this page) for the KPI cards.
+            $summary = App\ExecuteRow(
+                "SELECT COUNT(*) FILTER (WHERE COALESCE(v.status, 'ACTIVE') = 'ACTIVE')  AS active,
+                        COUNT(*) FILTER (WHERE COALESCE(v.status, 'ACTIVE') <> 'ACTIVE') AS inactive
+                 FROM {$this->table} v WHERE {$whereSql}",
+                'DB'
+            );
+
             return [
                 'success'    => true,
                 'data'       => $data ?: [],
+                'summary'    => $summary,
                 'pagination' => [
                     'total'        => $total,
                     'per_page'     => $limit,

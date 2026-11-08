@@ -34,7 +34,7 @@ $app->get('/vendors/all', function ($request, $response, $args) use ($VendorServ
     }
 })->add($accessMiddleware)->add($jwtMiddleware);
 
-// Fetch all (with pagination). Optional: page, limit, search, type, active
+// Fetch all (with pagination + summary). Optional: page, limit, search, type, active, status (ACTIVE|INACTIVE|…)
 $app->get('/vendors/list', function ($request, $response, $args) use ($VendorService) {
     try {
         $p      = $request->getQueryParams();
@@ -43,7 +43,8 @@ $app->get('/vendors/list', function ($request, $response, $args) use ($VendorSer
             isset($p['limit']) ? (int) $p['limit'] : 10,
             (string) ($p['search'] ?? ''),
             (string) ($p['type'] ?? ''),
-            !empty($p['active'])
+            !empty($p['active']),
+            (string) ($p['status'] ?? '')
         );
 
         return $response->withJson($result, $result['success'] ? 200 : 500);

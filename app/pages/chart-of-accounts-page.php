@@ -24,6 +24,14 @@ $_coa_api = Config('API.FIMS_URL');
             </div>
         </div>
         <div class="nha-hdr-r">
+            <button id="coa-expand-all" type="button" class="nha-btn-hdr" title="Expand all accounts">
+                <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 8V4h4M20 8V4h-4M4 16v4h4M20 16v4h-4"/></svg>
+                Expand All
+            </button>
+            <button id="coa-collapse-all" type="button" class="nha-btn-hdr" title="Collapse all accounts">
+                <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 4v4H5M15 4v4h4M9 20v-4H5M15 20v-4h4"/></svg>
+                Collapse All
+            </button>
             <button id="coa-refresh" type="button" class="nha-btn-hdr" title="Refresh">
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                 Refresh
@@ -81,6 +89,18 @@ $_coa_api = Config('API.FIMS_URL');
                 </select>
             </div>
             <div class="nha-filter-group">
+                <label class="nha-filter-label">Region (RCA Code)</label>
+                <select id="coa-filter-region" class="nha-filter-select">
+                    <option value="">All Regions</option>
+                </select>
+            </div>
+            <div class="nha-filter-group">
+                <label class="nha-filter-label">Project</label>
+                <select id="coa-filter-project" class="nha-filter-select">
+                    <option value="">All Projects</option>
+                </select>
+            </div>
+            <div class="nha-filter-group">
                 <label class="nha-filter-label">Status</label>
                 <select id="coa-filter-status" class="nha-filter-select">
                     <option value="">All Statuses</option>
@@ -109,8 +129,9 @@ $_coa_api = Config('API.FIMS_URL');
                     <tr>
                         <th>#</th>
                         <th>Account ID</th>
-                        <th>Account Code</th>
-                        <th>Account Title</th>
+                        <th>Account</th>
+                        <th>Region (RCA)</th>
+                        <th>Project</th>
                         <th>Account Type</th>
                         <th>Parent Account</th>
                         <th>Posting Allowed</th>
@@ -120,13 +141,12 @@ $_coa_api = Config('API.FIMS_URL');
                     </tr>
                 </thead>
                 <tbody id="coa-tbody">
-                    <tr><td colspan="9"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
+                    <tr><td colspan="11"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
                 </tbody>
             </table>
         </div>
         <div class="nha-pag-wrap">
-            <span class="nha-pag-info">Showing <strong><span id="coa-from">0</span>–<span id="coa-to">0</span></strong> of <strong><span id="coa-total">0</span></strong></span>
-            <div id="coa-pagination" class="nha-pag-btns"></div>
+            <span class="nha-pag-info">Showing <strong><span id="coa-total">0</span></strong> account(s), grouped by parent/child hierarchy</span>
         </div>
     </div>
 
@@ -139,21 +159,101 @@ $_coa_api = Config('API.FIMS_URL');
    CHART OF ACCOUNTS LIST   prefix: coa_
 ═══════════════════════════════════════════════════════════════ */
 
-const COA_API = '<?php echo $_coa_api; ?>' + '/chart-of-accounts';
+const COA_API         = '<?php echo $_coa_api; ?>' + '/chart-of-accounts';
+const COA_PROJECT_API = '<?php echo $_coa_api; ?>' + '/project/all';
 
-let coa_page = 1;
-const COA_PAGE_SIZE = 15;
+let coa_rows = [];
+let coa_collapsed = new Set();
+let coa_scope = { is_admin: true, region_code: null, region_name: null };
 
 const $coa = id => document.getElementById(id);
 
 async function coa_bootstrapLoad() {
-    await Promise.all([coa_load(), coa_loadParentOptions()]);
+    await Promise.all([coa_loadScope(), coa_loadRegions(), coa_loadProjects(), coa_loadParentOptions()]);
+    coa_applyScopeLock();
     coa_bindEvents();
+    await coa_load();
 }
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', coa_bootstrapLoad);
 } else {
     coa_bootstrapLoad();
+}
+
+async function coa_loadScope() {
+    try {
+        const res  = await fetch(`${COA_API}/my-scope`, { credentials: 'same-origin' });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message || 'Failed to load user scope.');
+        coa_scope = json.data;
+    } catch (e) {
+        coa_toast(e.message, 'error');
+    }
+}
+
+function coa_applyScopeLock() {
+    if (!coa_scope.region_code) return;
+
+    const label = coa_scope.region_name || coa_scope.region_code;
+
+    const filterSel = $coa('coa-filter-region');
+    if (filterSel) {
+        filterSel.value = coa_scope.region_code;
+        filterSel.disabled = true;
+        filterSel.title = `Locked to your assigned RCA: ${label}`;
+    }
+
+    const modalSel = $coa('coa-region-code');
+    if (modalSel) {
+        modalSel.value = coa_scope.region_code;
+        modalSel.disabled = true;
+        modalSel.title = `Locked to your assigned RCA: ${label}`;
+    }
+
+    const filtersEl = document.querySelector('.nha-filters');
+    if (filtersEl && !document.getElementById('coa-scope-note')) {
+        const note = document.createElement('div');
+        note.id = 'coa-scope-note';
+        note.style.cssText = 'font-size:12px;color:var(--afims-heading-fill, #000E3E);padding:8px 16px;background:rgba(15,32,69,.05);border-radius:8px;margin-bottom:10px;';
+        note.innerHTML = `🔒 You are scoped to <strong>${coa_esc(label)}</strong> — other regions are hidden.`;
+        filtersEl.insertAdjacentElement('beforebegin', note);
+    }
+}
+
+async function coa_loadRegions() {
+    try {
+        const res  = await fetch(`${COA_API}/regions`, { credentials: 'same-origin' });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message || 'Failed to load regions.');
+
+        const rows = json.data ?? [];
+        const options = rows.map(r =>
+            `<option value="${coa_escAttr(r.region_code)}">${coa_esc(r.region_name)}</option>`
+        ).join('');
+
+        $coa('coa-filter-region').insertAdjacentHTML('beforeend', options);
+        $coa('coa-region-code').insertAdjacentHTML('beforeend', options);
+    } catch (e) {
+        coa_toast(e.message, 'error');
+    }
+}
+
+async function coa_loadProjects() {
+    try {
+        const res  = await fetch(COA_PROJECT_API, { credentials: 'same-origin' });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message || 'Failed to load projects.');
+
+        const rows = json.data ?? [];
+        const options = rows.map(p =>
+            `<option value="${coa_escAttr(p.project_code)}">${coa_esc(p.project_code)} — ${coa_esc(p.project_name)}</option>`
+        ).join('');
+
+        $coa('coa-filter-project').insertAdjacentHTML('beforeend', options);
+        $coa('coa-project-code').insertAdjacentHTML('beforeend', options);
+    } catch (e) {
+        coa_toast(e.message, 'error');
+    }
 }
 
 let coa_allAccounts = [];
@@ -182,14 +282,18 @@ function coa_renderParentOptions(excludeId = null) {
 }
 
 function coa_bindEvents() {
-    $coa('coa-refresh')?.addEventListener('click', () => { coa_page = 1; coa_load(); });
+    $coa('coa-refresh')?.addEventListener('click', () => coa_load());
+    $coa('coa-expand-all')?.addEventListener('click', coa_expandAll);
+    $coa('coa-collapse-all')?.addEventListener('click', coa_collapseAll);
     $coa('coa-add')?.addEventListener('click', () => coa_openModal('add'));
     $coa('coa-modal-close')?.addEventListener('click', coa_closeModal);
     $coa('coa-cancel')?.addEventListener('click', coa_closeModal);
     $coa('coa-form')?.addEventListener('submit', coa_save);
 
-    $coa('coa-filter-type')?.addEventListener('change', () => { coa_page = 1; coa_load(); });
-    $coa('coa-filter-status')?.addEventListener('change', () => { coa_page = 1; coa_load(); });
+    $coa('coa-filter-type')?.addEventListener('change', () => coa_load());
+    $coa('coa-filter-region')?.addEventListener('change', () => coa_load());
+    $coa('coa-filter-project')?.addEventListener('change', () => coa_load());
+    $coa('coa-filter-status')?.addEventListener('change', () => coa_load());
 
     let searchTimer;
     const searchEl = $coa('coa-filter-search');
@@ -197,12 +301,12 @@ function coa_bindEvents() {
     searchEl?.addEventListener('input', () => {
         if (clearBtn) clearBtn.hidden = !searchEl.value;
         clearTimeout(searchTimer);
-        searchTimer = setTimeout(() => { coa_page = 1; coa_load(); }, 300);
+        searchTimer = setTimeout(() => coa_load(), 300);
     });
     clearBtn?.addEventListener('click', () => {
         if (searchEl) { searchEl.value = ''; searchEl.focus(); }
         clearBtn.hidden = true;
-        coa_page = 1; coa_load();
+        coa_load();
     });
 }
 
@@ -213,22 +317,23 @@ async function coa_load() {
         const params = new URLSearchParams({
             search       : $coa('coa-filter-search')?.value   || '',
             account_type : $coa('coa-filter-type')?.value     || '',
+            region_code  : $coa('coa-filter-region')?.value   || '',
+            project_code : $coa('coa-filter-project')?.value  || '',
             status       : $coa('coa-filter-status')?.value   || '',
-            page         : coa_page,
-            limit        : COA_PAGE_SIZE,
         });
-        const res  = await fetch(`${COA_API}/list?${params}`, { credentials: 'same-origin' });
+        const res  = await fetch(`${COA_API}/all?${params}`, { credentials: 'same-origin' });
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const json = await res.json();
         if (!json.success) throw new Error(json.message || 'Failed to load.');
 
-        const rows = json.data ?? [];
-        coa_renderTable(rows);
-        coa_renderPagination(json.pagination ?? {});
-        $coa('coa-kpi-total').textContent    = json.pagination?.total ?? rows.length;
-        $coa('coa-kpi-active').textContent   = rows.filter(r => r.status === 'Active').length;
-        $coa('coa-kpi-posting').textContent  = rows.filter(r => r.posting_allowed === true || r.posting_allowed === 't' || r.posting_allowed === true).length;
+        coa_rows = json.data ?? [];
+        coa_renderTable(coa_rows);
+        $coa('coa-total').textContent       = coa_rows.length;
+        $coa('coa-kpi-total').textContent   = coa_rows.length;
+        $coa('coa-kpi-active').textContent  = coa_rows.filter(r => r.status === 'Active').length;
+        $coa('coa-kpi-posting').textContent = coa_rows.filter(r => r.posting_allowed === true || r.posting_allowed === 't').length;
     } catch (e) {
+        coa_rows = [];
         coa_renderTable([]);
         coa_toast(e.message, 'error');
     } finally {
@@ -236,19 +341,88 @@ async function coa_load() {
     }
 }
 
+/* ── Tree ──────────────────────────────────────────────────── */
+function coa_buildTree(rows) {
+    const byId = new Map(rows.map(r => [r.account_id, { ...r, children: [] }]));
+    const roots = [];
+    byId.forEach(node => {
+        const parent = node.parent_account_id && byId.get(node.parent_account_id);
+        if (parent) {
+            parent.children.push(node);
+        } else {
+            roots.push(node);
+        }
+    });
+    const cmp = (a, b) => a.account_code.localeCompare(b.account_code, undefined, { numeric: true, sensitivity: 'base' });
+    const sortRec = list => { list.sort(cmp); list.forEach(n => sortRec(n.children)); };
+    sortRec(roots);
+    return roots;
+}
+
+function coa_flattenTree(nodes, depth, out) {
+    nodes.forEach(node => {
+        out.push({ ...node, _depth: depth, _hasChildren: node.children.length > 0 });
+        if (node.children.length && !coa_collapsed.has(node.account_id)) {
+            coa_flattenTree(node.children, depth + 1, out);
+        }
+    });
+    return out;
+}
+
+function coa_toggleNode(id) {
+    if (coa_collapsed.has(id)) {
+        coa_collapsed.delete(id);
+    } else {
+        coa_collapsed.add(id);
+    }
+    coa_renderTable(coa_rows);
+}
+
+function coa_expandAll() {
+    coa_collapsed.clear();
+    coa_renderTable(coa_rows);
+}
+
+function coa_collapseAll() {
+    coa_collapsed = new Set(coa_rows.map(r => r.parent_account_id).filter(Boolean));
+    coa_renderTable(coa_rows);
+}
+
 /* ── Table ─────────────────────────────────────────────────── */
 function coa_renderTable(rows) {
     const tbody = $coa('coa-tbody');
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="9"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No accounts found.</span></div></td></tr>';
+        tbody.innerHTML = '<tr><td colspan="11"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No accounts found.</span></div></td></tr>';
         return;
     }
-    const offset = (coa_page - 1) * COA_PAGE_SIZE;
-    tbody.innerHTML = rows.map((r, i) => `<tr>
-        <td class="nha-td-seq">${offset + i + 1}</td>
+    const tree = coa_buildTree(rows);
+    const flat = coa_flattenTree(tree, 0, []);
+
+    tbody.innerHTML = flat.map((r, i) => {
+        const indent = r._depth * 26;
+        const expanded = !coa_collapsed.has(r.account_id);
+        const toggle = r._hasChildren
+            ? `<button type="button" onclick="coa_toggleNode('${coa_escAttr(r.account_id)}')" title="${expanded ? 'Collapse' : 'Expand'}"
+                   style="width:22px;height:22px;flex-shrink:0;border:1px solid var(--afims-border, #E4ECF2);border-radius:6px;
+                          background:var(--afims-surface, #FFFFFF);cursor:pointer;color:var(--afims-heading-fill, #000E3E);
+                          font-size:12px;padding:0;display:inline-flex;align-items:center;justify-content:center;">
+                   <span style="display:inline-block;transform:rotate(${expanded ? 90 : 0}deg);transition:transform .15s;">›</span>
+               </button>`
+            : `<span style="width:22px;height:22px;flex-shrink:0;display:inline-block;"></span>`;
+        const rowBg = r._depth === 0 ? 'background:rgba(15,32,69,.035);' : '';
+
+        return `<tr style="${rowBg}">
+        <td class="nha-td-seq">${i + 1}</td>
         <td><code class="nha-code">${coa_esc(r.account_id)}</code></td>
-        <td><code class="nha-code">${coa_esc(r.account_code)}</code></td>
-        <td><div style="font-weight:600;">${coa_esc(r.account_title)}</div></td>
+        <td>
+            <div style="display:flex;align-items:center;gap:8px;padding-left:${indent}px;">
+                ${toggle}
+                ${coa_codeChip(r.account_code)}
+                <span style="font-weight:700;color:var(--afims-heading-fill, #000E3E);">${coa_esc(r.account_title)}</span>
+            </div>
+        </td>
+        <td>${r.region_name ? coa_esc(r.region_name) : '<span class="nha-td-sub">—</span>'}</td>
+        <td>${r.project_name ? coa_esc(r.project_name) : '<span class="nha-td-sub">—</span>'}</td>
         <td>${r.account_type ? coa_esc(r.account_type) : '<span class="nha-td-sub">—</span>'}</td>
         <td>${r.parent_account_code ? `<code class="nha-code">${coa_esc(r.parent_account_code)}</code>` : '<span class="nha-td-sub">—</span>'}</td>
         <td>${coa_boolBadge(r.posting_allowed)}</td>
@@ -268,7 +442,20 @@ function coa_renderTable(rows) {
                 Delete
             </button>
         </td>
-    </tr>`).join('');
+    </tr>`;
+    }).join('');
+}
+
+function coa_codeChip(code) {
+    const parts = String(code ?? '').split('-').filter(p => p !== '');
+    if (!parts.length) return '';
+    const segs = parts.map((p, i) => {
+        const bg     = i === 0 ? '#EEF1F7' : '#EAF1FE';
+        const fg     = i === 0 ? '#1A1B21' : '#2F5FD6';
+        const border = i > 0 ? 'border-left:1px solid rgba(15,32,69,.08);' : '';
+        return `<span style="background:${bg};color:${fg};padding:3px 8px;font-size:12px;font-weight:700;font-family:'IBM Plex Mono',monospace;${border}">${coa_esc(p)}</span>`;
+    }).join('');
+    return `<span style="display:inline-flex;border:1px solid var(--afims-border, #E4ECF2);border-radius:6px;overflow:hidden;flex-shrink:0;">${segs}</span>`;
 }
 
 function coa_pill(text, on) {
@@ -284,29 +471,6 @@ function coa_statusBadge(status) {
     return coa_pill(status === 'Active' ? 'Active' : 'Inactive', status === 'Active');
 }
 
-/* ── Pagination ────────────────────────────────────────────── */
-function coa_renderPagination(p) {
-    const { current_page = 1, last_page = 1, total = 0, per_page = COA_PAGE_SIZE } = p;
-    const from = total > 0 ? (current_page - 1) * per_page + 1 : 0;
-    const to   = total > 0 ? Math.min(current_page * per_page, total) : 0;
-    $coa('coa-from').textContent  = from;
-    $coa('coa-to').textContent    = to;
-    $coa('coa-total').textContent = total;
-
-    const container = $coa('coa-pagination');
-    if (last_page <= 1) { container.innerHTML = ''; return; }
-    const pages = [];
-    for (let i = Math.max(1, current_page - 2); i <= Math.min(last_page, current_page + 2); i++) {
-        pages.push(`<button class="nha-pag-btn${i === current_page ? ' active' : ''}" onclick="coa_goTo(${i})">${i}</button>`);
-    }
-    container.innerHTML =
-        `<button class="nha-pag-btn${current_page === 1 ? ' disabled' : ''}" onclick="coa_goTo(${current_page - 1})">‹</button>` +
-        pages.join('') +
-        `<button class="nha-pag-btn${current_page === last_page ? ' disabled' : ''}" onclick="coa_goTo(${current_page + 1})">›</button>`;
-}
-
-function coa_goTo(page) { coa_page = page; coa_load(); }
-
 /* ── Modal ─────────────────────────────────────────────────── */
 function coa_openModal(mode, row = null) {
     coa_hideErr();
@@ -317,6 +481,8 @@ function coa_openModal(mode, row = null) {
     $coa('coa-account-code').disabled = mode === 'edit';
     $coa('coa-account-title').value = row?.account_title || '';
     $coa('coa-account-type').value = row?.account_type || '';
+    $coa('coa-region-code').value = coa_scope.region_code || row?.region_code || '';
+    $coa('coa-project-code').value = row?.project_code || '';
     coa_renderParentOptions(row?.account_id || null);
     $coa('coa-parent-account-id').value = row?.parent_account_id || '';
     $coa('coa-posting-allowed').checked = !!(row && (row.posting_allowed === true || row.posting_allowed === 't'));
@@ -362,6 +528,8 @@ async function coa_save(ev) {
         account_code       : $coa('coa-account-code').value.trim(),
         account_title      : $coa('coa-account-title').value.trim(),
         account_type       : $coa('coa-account-type').value,
+        region_code        : $coa('coa-region-code').value,
+        project_code       : $coa('coa-project-code').value,
         parent_account_id  : $coa('coa-parent-account-id').value,
         posting_allowed    : $coa('coa-posting-allowed').checked,
         source_document    : $coa('coa-source-document').value.trim(),
