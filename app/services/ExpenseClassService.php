@@ -131,14 +131,6 @@ class ExpenseClassService
                 return $check;
             }
 
-            $inUse = (int) App\ExecuteScalar(
-                'SELECT COUNT(*) FROM fims.budget_req WHERE expense_class_id = ' . (int) $id,
-                'DB'
-            );
-            if ($inUse > 0) {
-                return ['success' => false, 'message' => "Cannot delete #{$id} — {$inUse} budget request(s) still reference this expense class."];
-            }
-
             // Soft delete, matching shared.coe_category_type's deleted_at column.
             $sql = "UPDATE {$this->table} SET deleted_at = CURRENT_TIMESTAMP WHERE expense_class_id = " . (int) $id;
             App\Execute($sql, 'DB');

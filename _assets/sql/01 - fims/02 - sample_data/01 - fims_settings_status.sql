@@ -12,6 +12,10 @@ WHERE NOT EXISTS (SELECT 1 FROM fims.settings_status WHERE name = 'Closed' AND s
 
 -- status_for = 'budget_req' (fims.budget_req's workflow status)
 INSERT INTO fims.settings_status (name, status_for, color)
+SELECT 'Draft', 'budget_req', '#6B7280'
+WHERE NOT EXISTS (SELECT 1 FROM fims.settings_status WHERE name = 'Draft' AND status_for = 'budget_req');
+
+INSERT INTO fims.settings_status (name, status_for, color)
 SELECT 'For Review', 'budget_req', '#2563EB'
 WHERE NOT EXISTS (SELECT 1 FROM fims.settings_status WHERE name = 'For Review' AND status_for = 'budget_req');
 

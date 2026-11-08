@@ -10,7 +10,7 @@ $ProjectService = new ProjectService();
 $app->get('/project/all', function ($request, $response, $args) use ($ProjectService) {
     try {
         $params = $request->getQueryParams();
-        $result = $ProjectService->fetchAlls(null, 10, $params['search'] ?? '', $params['program_code'] ?? '');
+        $result = $ProjectService->fetchAlls(null, 10, $params['search'] ?? '', $params['program_code'] ?? '', $params['sub_program_code'] ?? '');
 
         return $response->withJson($result);
     } catch (\Exception $e) {
@@ -25,7 +25,7 @@ $app->get('/project/list', function ($request, $response, $args) use ($ProjectSe
         $page   = isset($params['page']) ? (int) $params['page'] : 1;
         $limit  = isset($params['limit']) ? (int) $params['limit'] : 10;
 
-        $result = $ProjectService->fetchAlls($page, $limit, $params['search'] ?? '', $params['program_code'] ?? '');
+        $result = $ProjectService->fetchAlls($page, $limit, $params['search'] ?? '', $params['program_code'] ?? '', $params['sub_program_code'] ?? '');
 
         return $response->withJson($result);
     } catch (\Exception $e) {

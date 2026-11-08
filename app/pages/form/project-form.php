@@ -93,14 +93,22 @@
 
                 <div class="proj-row">
                     <div class="proj-group">
-                        <label class="proj-label">Project Code <span class="req">*</span></label>
-                        <input type="text" class="proj-input" id="proj-project-code" required maxlength="20" placeholder="e.g. PRJ-001">
+                        <label class="proj-label">Project Code</label>
+                        <input type="text" class="proj-input" id="proj-project-code" maxlength="20" placeholder="Leave blank to auto-generate (e.g. PRJ-0001)">
                         <p class="proj-hint" id="proj-code-hint">Cannot be changed after creation.</p>
                     </div>
                     <div class="proj-group">
                         <label class="proj-label">Program <span class="req">*</span></label>
                         <select class="proj-select" id="proj-program-code" required>
                             <option value="">— Select program —</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="proj-row">
+                    <div class="proj-group">
+                        <label class="proj-label">Sub-Program</label>
+                        <select class="proj-select" id="proj-sub-program-code">
+                            <option value="">— None —</option>
                         </select>
                     </div>
                 </div>

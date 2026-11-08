@@ -10,7 +10,7 @@ $BudgetReqService = new BudgetReqService();
 $app->get('/budget_req/all', function ($request, $response, $args) use ($BudgetReqService) {
     try {
         $params = $request->getQueryParams();
-        $result = $BudgetReqService->fetchAlls(null, 10, $params['fiscal_yr'] ?? '', $params['type'] ?? '');
+        $result = $BudgetReqService->fetchAlls(null, 10, $params['fiscal_yr'] ?? '', $params['program_code'] ?? '');
 
         return $response->withJson($result);
     } catch (\Exception $e) {
@@ -25,7 +25,7 @@ $app->get('/budget_req/list', function ($request, $response, $args) use ($Budget
         $page   = isset($params['page']) ? (int) $params['page'] : 1;
         $limit  = isset($params['limit']) ? (int) $params['limit'] : 10;
 
-        $result = $BudgetReqService->fetchAlls($page, $limit, $params['fiscal_yr'] ?? '', $params['type'] ?? '');
+        $result = $BudgetReqService->fetchAlls($page, $limit, $params['fiscal_yr'] ?? '', $params['program_code'] ?? '');
 
         return $response->withJson($result);
     } catch (\Exception $e) {
@@ -44,30 +44,21 @@ $app->get('/budget_req/read/{id}', function ($request, $response, $args) use ($B
     }
 })->add($jwtMiddleware);
 
-// Add
+// Add one Program (+ its project blocks + line items) to the budget
+// request for the given fiscal year — creates that request (status Draft)
+// if it doesn't exist yet, or appends to it if it does and is still Draft.
+// Rejected if that fiscal year's request has moved past Draft.
+// body: { fiscal_yr, program_code, sub_program_code, projects: [ { project_code, line_items: [{ account_id, particulars, proposed_amount }, ...] }, ... ] }
 $app->post('/budget_req/add', function ($request, $response, $args) use ($BudgetReqService) {
     try {
-        $body   = $request->getParsedBody();
-        $result = $BudgetReqService->create($body);
+        $body     = $request->getParsedBody();
+        $projects = $body['projects'] ?? [];
 
-        return $response->withJson($result, $result['success'] ? 201 : 400);
-    } catch (\Exception $e) {
-        return $response->withJson(['success' => false, 'message' => $e->getMessage()], 400);
-    }
-})->add($jwtMiddleware);
-
-// Create a PS/MOOE header + its line items together —
-// body: { fiscal_yr, expense_class_id, line_items: [{ account_id, requested_amount, particulars }, ...] }
-$app->post('/budget_req/add-with-items', function ($request, $response, $args) use ($BudgetReqService) {
-    try {
-        $body      = $request->getParsedBody();
-        $lineItems = $body['line_items'] ?? [];
-
-        if (!is_array($lineItems) || empty($lineItems)) {
-            return $response->withJson(['success' => false, 'message' => 'line_items is required and must be a non-empty array.'], 400);
+        if (!is_array($projects) || empty($projects)) {
+            return $response->withJson(['success' => false, 'message' => 'projects is required and must be a non-empty array.'], 400);
         }
 
-        $result = $BudgetReqService->createWithLineItems($body, $lineItems);
+        $result = $BudgetReqService->addProgram($body, $projects);
 
         return $response->withJson($result, $result['success'] ? 201 : 400);
     } catch (\Exception $e) {
@@ -75,11 +66,32 @@ $app->post('/budget_req/add-with-items', function ($request, $response, $args) u
     }
 })->add($jwtMiddleware);
 
-// Update
-$app->put('/budget_req/update/{id}', function ($request, $response, $args) use ($BudgetReqService) {
+// Update one Program's project blocks + line items (fully replaced).
+// Sibling programs under the same budget request are untouched. Rejected
+// once that request has moved past Draft.
+// body: { program_code, sub_program_code, projects: [...] }
+$app->put('/budget_req/program/update/{budget_req_program_id}', function ($request, $response, $args) use ($BudgetReqService) {
     try {
-        $body   = $request->getParsedBody();
-        $result = $BudgetReqService->update($args['id'], $body);
+        $body     = $request->getParsedBody();
+        $projects = $body['projects'] ?? [];
+
+        if (!is_array($projects) || empty($projects)) {
+            return $response->withJson(['success' => false, 'message' => 'projects is required and must be a non-empty array.'], 400);
+        }
+
+        $result = $BudgetReqService->updateProgram($args['budget_req_program_id'], $body, $projects);
+
+        return $response->withJson($result, $result['success'] ? 200 : 400);
+    } catch (\Exception $e) {
+        return $response->withJson(['success' => false, 'message' => $e->getMessage()], 400);
+    }
+})->add($jwtMiddleware);
+
+// Transition a Draft budget request to "For Review" — locks it from
+// further program additions/edits.
+$app->put('/budget_req/submit-for-review/{id}', function ($request, $response, $args) use ($BudgetReqService) {
+    try {
+        $result = $BudgetReqService->submitForReview($args['id']);
 
         return $response->withJson($result, $result['success'] ? 200 : 400);
     } catch (\Exception $e) {
