@@ -33,7 +33,7 @@
       <phrase id="menutext" value="aggregated audit logs" />
     </menu>
     <menu id="91">
-      <phrase id="menutext" value="Air Module" />
+      <phrase id="menutext" value="AIR Module" />
     </menu>
     <menu id="86">
       <phrase id="menutext" value="Budget Revision Form" />
@@ -1503,7 +1503,7 @@
       <phrase id="tblcaption" value="Memo Request" />
     </table>
     <table id="airmodule">
-      <phrase id="tblcaption" value="Air Module" />
+      <phrase id="tblcaption" value="AIR Module" />
     </table>
   </project>
 </ew-language>

@@ -1714,7 +1714,7 @@
             'name' => [
                 'list.aggregated_audit_logs',
                 'custom.AiAssistant',
-                'custom.AirModule',
+                'custom.AIRModule',
                 'list.api_logs',
                 'add.api_logs',
                 'view.api_logs',

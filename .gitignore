@@ -215,11 +215,6 @@ merge-pages-into-fims-pmp.js
 replicate-fmd-treasury-to-fims.js
 
 
-adminlte3/css/adminlte.css
-controllers/*
-models/*
-views/*
-src/*
 
 composer.json
 composer.lock

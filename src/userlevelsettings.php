@@ -134,8 +134,8 @@ $USER_LEVEL_PRIVS = [["{FIMS}audit_logs","-2","0"],
     ["{FIMS}budget-rev-review.php","0","0"],
     ["{FIMS}budget-allocation-form.php","-2","0"],
     ["{FIMS}budget-allocation-form.php","0","0"],
-    ["{FIMS}AirModule.php","-2","0"],
-    ["{FIMS}AirModule.php","0","0"]];
+    ["{FIMS}AIRModule.php","-2","0"],
+    ["{FIMS}AIRModule.php","0","0"]];
 
 /**
  * Tables
@@ -204,4 +204,4 @@ $USER_LEVEL_TABLES = [["audit_logs","audit_logs","Audit Logs",false,"{FIMS}",""]
     ["budget-rev-form.php","budget_rev_form","Budget Revision Form",true,"{FIMS}","BudgetRevForm"],
     ["budget-rev-review.php","budget_rev_review","Budget Revision Preview",true,"{FIMS}","BudgetRevReview"],
     ["budget-allocation-form.php","budget_allocation_form","Memo Request",true,"{FIMS}","BudgetAllocationForm"],
-    ["AirModule.php","AirModule","Air Module",true,"{FIMS}","AirModule"]];
+    ["AIRModule.php","AIRModule","AIR Module",true,"{FIMS}","AirModule"]];

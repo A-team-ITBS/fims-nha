@@ -18,7 +18,7 @@ $sideMenu->addMenuItem(89, "mi_chart_of_accounts_page", $Language->menuPhrase("8
 $sideMenu->addMenuItem(83, "mi_permission_module_captions", $Language->menuPhrase("83", "MenuText"), "PermissionModuleCaptionsList", -1, "", AllowListMenu('{FIMS}permission_module_captions'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(90, "mi_responsibility_center_page", $Language->menuPhrase("90", "MenuText"), "ResponsibilityCenterPage", -1, "", AllowListMenu('{FIMS}responsibility-center-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(84, "mi_aggregated_audit_logs", $Language->menuPhrase("84", "MenuText"), "AggregatedAuditLogsList", -1, "", AllowListMenu('{FIMS}aggregated_audit_logs'), false, false, "", "", false, true);
-$sideMenu->addMenuItem(91, "mi_AirModule", $Language->menuPhrase("91", "MenuText"), "AirModule", -1, "", AllowListMenu('{FIMS}AirModule.php'), false, false, "", "", false, true);
+$sideMenu->addMenuItem(91, "mi_AIRModule", $Language->menuPhrase("91", "MenuText"), "AirModule", -1, "", AllowListMenu('{FIMS}AIRModule.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(9, "mi_MainDashboard", $Language->menuPhrase("9", "MenuText"), "MainDashboard", -1, "", AllowListMenu('{FIMS}MainDashboard.php'), false, false, "fas fa-chart-line", "", false, true);
 $sideMenu->addMenuItem(3, "mi_systems", $Language->menuPhrase("3", "MenuText"), "SystemsList", -1, "", AllowListMenu('{FIMS}systems'), false, false, "fas fa-network-wired", "", false, true);
 $sideMenu->addMenuItem(69, "mi_DepartmentManagement", $Language->menuPhrase("69", "MenuText"), "DepartmentManagement", -1, "", AllowListMenu('{FIMS}DepartmentManagement.php'), false, false, "fas fa-building", "", false, true);
