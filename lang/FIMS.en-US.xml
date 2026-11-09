@@ -41,6 +41,9 @@
     <menu id="91">
       <phrase id="menutext" value="AIR Module" />
     </menu>
+    <menu id="207">
+      <phrase id="menutext" value="Voucher" />
+    </menu>
     <menu id="206">
       <phrase id="menutext" value="Administration" />
     </menu>
@@ -1516,6 +1519,9 @@
     </table>
     <table id="airmodule">
       <phrase id="tblcaption" value="AIR Module" />
+    </table>
+    <table id="voucher">
+      <phrase id="tblcaption" value="Voucher" />
     </table>
   </project>
 </ew-language>

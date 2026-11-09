@@ -21,6 +21,7 @@ $sideMenu->addMenuItem(148, "mci_Accounting_Records", $Language->menuPhrase("148
 $sideMenu->addMenuItem(89, "mi_chart_of_accounts_page", $Language->menuPhrase("89", "MenuText"), "ChartOfAccountsPage", 148, "", AllowListMenu('{FIMS}chart-of-accounts-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(90, "mi_responsibility_center_page", $Language->menuPhrase("90", "MenuText"), "ResponsibilityCenterPage", 148, "", AllowListMenu('{FIMS}responsibility-center-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(91, "mi_AIRModule", $Language->menuPhrase("91", "MenuText"), "AirModule", -1, "", AllowListMenu('{FIMS}AIRModule.php'), false, false, "fas fa-clipboard-check", "", false, true);
+$sideMenu->addMenuItem(207, "mi_Voucher", $Language->menuPhrase("207", "MenuText"), "Voucher", -1, "", AllowListMenu('{FIMS}Voucher.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(206, "mci_Administration", $Language->menuPhrase("206", "MenuText"), "", -1, "", true, false, true, "fas fa-user-cog", "", false, true);
 $sideMenu->addMenuItem(70, "mi_PositionManagement", $Language->menuPhrase("70", "MenuText"), "PositionManagement", 206, "", AllowListMenu('{FIMS}PositionManagement.php'), false, false, "fas fa-briefcase", "", false, true);
 $sideMenu->addMenuItem(13, "mi_UserAccess", $Language->menuPhrase("13", "MenuText"), "UserAccess", 206, "", AllowListMenu('{FIMS}UserAccess.php'), false, false, "fas fa-user-lock", "", false, true);

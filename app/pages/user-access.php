@@ -161,6 +161,7 @@ usort($allModules, function ($a, $b) {
 // ── Departments / Positions (for the Add User form) ──
 $departments = ExecuteRowsAssociative("SELECT department_id, department_name FROM departments WHERE is_active = TRUE ORDER BY department_name", "DB");
 $positions = ExecuteRowsAssociative("SELECT position_id, position_title FROM positions WHERE is_active = TRUE ORDER BY position_title", "DB");
+$rcCodes = ExecuteRowsAssociative("SELECT rc_id, rc_code, rc_name FROM fims.responsibility_code WHERE status = 'Active' ORDER BY rc_code", "DB");
 
 // ── Systems (for the Create User Level form) ──
 $systems = ExecuteRowsAssociative("SELECT system_id, system_name FROM systems WHERE is_active = TRUE ORDER BY system_name", "DB");
@@ -183,6 +184,8 @@ $manageLevelsUrl = GetUrl("UserLevelsList");
 $manageSystemsUrl = GetUrl("SystemsList");
 $deleteAssignmentBaseUrl = GetUrl("UserLevelAssignmentsDelete");
 ?>
+
+<link rel="stylesheet" href="/app/fims-css/fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css') ?>" />
 
 <!-- Main content -->
 <div class="container-fluid">
@@ -440,115 +443,145 @@ $deleteAssignmentBaseUrl = GetUrl("UserLevelAssignmentsDelete");
 
 <?php if ($canAddUser): ?>
 <!-- Add User modal (self-contained, no Bootstrap JS dependency) -->
-<div id="addUserOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1050; overflow-y:auto;">
-    <div style="max-width:750px; margin:3% auto; background:#fff; border-radius:4px; overflow:hidden;">
-        <div class="card mb-0">
+<div id="addUserOverlay">
+    <div class="add-user-modal-shell">
+        <div class="card mb-0 add-user-modal-card">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <h3 class="card-title mb-0">Add New User</h3>
                 <button type="button" class="btn btn-tool" id="closeAddUserModalBtn"><i class="fas fa-times"></i></button>
             </div>
-            <form id="addUserForm">
+            <form id="addUserForm" class="add-user-modal-form">
                 <div class="card-body">
+                    <div class="add-user-stepper">
+                        <div class="add-user-stepper-track">
+                            <div class="add-user-stepper-seg is-active" data-step-index="0"></div>
+                            <div class="add-user-stepper-seg" data-step-index="1"></div>
+                            <div class="add-user-stepper-seg" data-step-index="2"></div>
+                        </div>
+                        <div class="add-user-stepper-labels">
+                            <span class="is-active" data-step-index="0">Account</span>
+                            <span data-step-index="1">Personal Info</span>
+                            <span data-step-index="2">Assignment</span>
+                        </div>
+                    </div>
+
                     <div id="addUserError" class="alert alert-danger" style="display:none;"></div>
 
-                    <h6 class="text-primary font-weight-bold">Account</h6>
-                    <div class="form-row">
-                        <div class="form-group col-md-6">
-                            <label>Username *</label>
-                            <input type="text" class="form-control" name="username" id="addUserUsername" required maxlength="50" placeholder="e.g. jdelacruz">
+                    <div class="add-user-step" data-step="0">
+                        <div class="step-heading">Account</div>
+                        <div class="form-row">
+                            <div class="form-group col-md-6">
+                                <label>Username *</label>
+                                <input type="text" class="form-control" name="username" id="addUserUsername" required maxlength="50" placeholder="e.g. jdelacruz">
+                            </div>
+                            <div class="form-group col-md-6">
+                                <label>Email *</label>
+                                <input type="email" class="form-control" name="email" id="addUserEmail" required maxlength="100" placeholder="e.g. jdelacruz@nha.gov.ph">
+                            </div>
                         </div>
-                        <div class="form-group col-md-6">
-                            <label>Email *</label>
-                            <input type="email" class="form-control" name="email" id="addUserEmail" required maxlength="100" placeholder="e.g. jdelacruz@nha.gov.ph">
+                        <div class="form-row">
+                            <div class="form-group col-md-6">
+                                <label>Employee ID</label>
+                                <input type="text" class="form-control" name="employee_id" id="addUserEmployeeId" maxlength="50" placeholder="e.g. 2021-00123">
+                            </div>
                         </div>
-                    </div>
-                    <div class="form-group">
-                        <label>Employee ID</label>
-                        <input type="text" class="form-control" name="employee_id" id="addUserEmployeeId" maxlength="50" placeholder="e.g. 2021-00123">
-                    </div>
-                    <div class="form-group">
-                        <label>Password *</label>
-                        <div class="input-group">
-                            <input type="password" class="form-control" name="password" id="addUserPassword" required minlength="6" placeholder="Minimum 6 characters">
-                            <div class="input-group-append">
-                                <button type="button" class="btn btn-outline-secondary" id="toggleAddUserPassword" tabindex="-1">
-                                    <i class="fas fa-eye" id="toggleAddUserPasswordIcon"></i>
-                                </button>
+                        <div class="form-row">
+                            <div class="form-group col-md-6">
+                                <label>Password *</label>
+                                <div class="icon-input">
+                                    <input type="password" class="form-control has-suffix" name="password" id="addUserPassword" required minlength="6" placeholder="Minimum 6 characters">
+                                    <button type="button" class="icon-input-suffix-btn" id="toggleAddUserPassword" tabindex="-1">
+                                        <i class="fas fa-eye" id="toggleAddUserPasswordIcon"></i>
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
 
-                    <hr>
-                    <h6 class="text-primary font-weight-bold">Personal Information</h6>
-                    <div class="form-row">
-                        <div class="form-group col-md-4">
-                            <label>First Name</label>
-                            <input type="text" class="form-control" name="first_name" id="addUserFirstName" maxlength="50">
+                    <div class="add-user-step" data-step="1" style="display:none;">
+                        <div class="step-heading">Personal Information</div>
+                        <div class="form-row">
+                            <div class="form-group col-md-4">
+                                <label>First Name</label>
+                                <input type="text" class="form-control" name="first_name" id="addUserFirstName" maxlength="50">
+                            </div>
+                            <div class="form-group col-md-4">
+                                <label>Middle Name</label>
+                                <input type="text" class="form-control" name="middle_name" id="addUserMiddleName" maxlength="50">
+                            </div>
+                            <div class="form-group col-md-4">
+                                <label>Last Name</label>
+                                <input type="text" class="form-control" name="last_name" id="addUserLastName" maxlength="50">
+                            </div>
                         </div>
-                        <div class="form-group col-md-4">
-                            <label>Middle Name</label>
-                            <input type="text" class="form-control" name="middle_name" id="addUserMiddleName" maxlength="50">
-                        </div>
-                        <div class="form-group col-md-4">
-                            <label>Last Name</label>
-                            <input type="text" class="form-control" name="last_name" id="addUserLastName" maxlength="50">
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group col-md-6">
-                            <label>Suffix</label>
-                            <select class="form-control" name="suffix" id="addUserSuffix">
-                                <option value="">(None)</option>
-                                <option value="Jr.">Jr.</option>
-                                <option value="Sr.">Sr.</option>
-                                <option value="II">II</option>
-                                <option value="III">III</option>
-                                <option value="IV">IV</option>
-                                <option value="V">V</option>
-                            </select>
-                        </div>
-                        <div class="form-group col-md-6">
-                            <label>Mobile Number</label>
-                            <input type="text" class="form-control" name="mobile_number" id="addUserMobileNumber" maxlength="20" placeholder="e.g. 09XX-XXX-XXXX">
-                        </div>
-                    </div>
-
-                    <hr>
-                    <h6 class="text-primary font-weight-bold">Department &amp; Position</h6>
-                    <div class="form-row">
-                        <div class="form-group col-md-6">
-                            <label>Department</label>
-                            <select class="form-control" name="department_id" id="addUserDepartment">
-                                <option value="">(No Department)</option>
-                                <?php foreach ($departments as $dept): ?>
-                                <option value="<?php echo $dept['department_id']; ?>"><?php echo HtmlEncode($dept['department_name']); ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                            <small class="form-text text-muted">The user's primary department assignment</small>
-                        </div>
-                        <div class="form-group col-md-6">
-                            <label>Position</label>
-                            <select class="form-control" name="position_id" id="addUserPosition">
-                                <option value="">(No Position)</option>
-                                <?php foreach ($positions as $position): ?>
-                                <option value="<?php echo $position['position_id']; ?>"><?php echo HtmlEncode($position['position_title']); ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                            <small class="form-text text-muted">The user's position / job title</small>
+                        <div class="form-row">
+                            <div class="form-group col-md-6">
+                                <label>Suffix</label>
+                                <select class="form-control" name="suffix" id="addUserSuffix">
+                                    <option value="">(None)</option>
+                                    <option value="Jr.">Jr.</option>
+                                    <option value="Sr.">Sr.</option>
+                                    <option value="II">II</option>
+                                    <option value="III">III</option>
+                                    <option value="IV">IV</option>
+                                    <option value="V">V</option>
+                                </select>
+                            </div>
+                            <div class="form-group col-md-6">
+                                <label>Mobile Number</label>
+                                <input type="text" class="form-control" name="mobile_number" id="addUserMobileNumber" maxlength="20" placeholder="e.g. 09XX-XXX-XXXX">
+                            </div>
                         </div>
                     </div>
 
-                    <hr>
-                    <div class="custom-control custom-switch">
-                        <input type="checkbox" class="custom-control-input" name="is_active" id="addUserIsActive" checked>
-                        <label class="custom-control-label" for="addUserIsActive">Active (can log in)</label>
+                    <div class="add-user-step" data-step="2" style="display:none;">
+                        <div class="step-heading">RC Code &amp; Position</div>
+                        <div class="form-row">
+                            <div class="form-group col-md-6">
+                                <label>RC Code</label>
+                                <div class="searchable-select" data-searchable-select data-placeholder="(No RC Code)">
+                                    <input type="text" class="form-control" id="addUserRcCodeInput" placeholder="(No RC Code)" autocomplete="off">
+                                    <i class="fas fa-chevron-down searchable-select-caret"></i>
+                                    <input type="hidden" name="rc_id" id="addUserRcCode">
+                                    <div class="searchable-select-menu" style="display:none;">
+                                        <div class="searchable-select-option is-empty" data-value="" data-label="">No results found</div>
+                                        <div class="searchable-select-option" data-value="" data-label="(No RC Code)">(No RC Code)</div>
+                                        <?php foreach ($rcCodes as $rc): ?>
+                                        <div class="searchable-select-option" data-value="<?php echo HtmlEncode($rc['rc_id']); ?>" data-label="<?php echo HtmlEncode($rc['rc_code']); ?> — <?php echo HtmlEncode($rc['rc_name']); ?>"><?php echo HtmlEncode($rc['rc_code']); ?> — <?php echo HtmlEncode($rc['rc_name']); ?></div>
+                                        <?php endforeach; ?>
+                                    </div>
+                                </div>
+                                <small class="form-text text-muted">The user's responsibility center code</small>
+                            </div>
+                            <div class="form-group col-md-6">
+                                <label>Position</label>
+                                <div class="searchable-select" data-searchable-select data-placeholder="(No Position)">
+                                    <input type="text" class="form-control" id="addUserPositionInput" placeholder="(No Position)" autocomplete="off">
+                                    <i class="fas fa-chevron-down searchable-select-caret"></i>
+                                    <input type="hidden" name="position_id" id="addUserPosition">
+                                    <div class="searchable-select-menu" style="display:none;">
+                                        <div class="searchable-select-option is-empty" data-value="" data-label="">No results found</div>
+                                        <div class="searchable-select-option" data-value="" data-label="(No Position)">(No Position)</div>
+                                        <?php foreach ($positions as $position): ?>
+                                        <div class="searchable-select-option" data-value="<?php echo $position['position_id']; ?>" data-label="<?php echo HtmlEncode($position['position_title']); ?>"><?php echo HtmlEncode($position['position_title']); ?></div>
+                                        <?php endforeach; ?>
+                                    </div>
+                                </div>
+                                <small class="form-text text-muted">The user's position / job title</small>
+                            </div>
+                        </div>
+
+                        <div class="custom-control custom-switch mt-4">
+                            <input type="checkbox" class="custom-control-input" name="is_active" id="addUserIsActive" checked>
+                            <label class="custom-control-label" for="addUserIsActive">Active (can log in)</label>
+                        </div>
                     </div>
                 </div>
-                <div class="card-footer text-right">
-                    <button type="button" class="btn btn-default" id="cancelAddUserBtn">Cancel</button>
-                    <button type="submit" class="btn btn-primary" id="submitAddUserBtn">
-                        <i class="fas fa-save mr-1"></i> Save User
-                    </button>
+                <div class="card-footer d-flex justify-content-end align-items-center">
+                    <button type="button" class="btn btn-link text-muted" id="cancelAddUserBtn">Cancel</button>
+                    <button type="button" class="btn btn-light" id="addUserBackBtn" style="display:none;">Back</button>
+                    <button type="button" class="btn btn-primary" id="addUserNextBtn">Next</button>
+                    <button type="submit" class="btn btn-primary" id="submitAddUserBtn" style="display:none;">Save User</button>
                 </div>
             </form>
         </div>
@@ -829,6 +862,73 @@ document.addEventListener('DOMContentLoaded', function () {
     const userLevelsById = <?php echo $userLevelsByIdJson ?: '{}'; ?>;
     const deleteAssignmentBaseUrl = <?php echo json_encode($deleteAssignmentBaseUrl); ?>;
     const canManagePermissions = <?php echo $canManagePermissions ? 'true' : 'false'; ?>;
+
+    // ── Searchable select (combobox) ──
+    function initSearchableSelect(wrap) {
+        const input = wrap.querySelector('input[type="text"]');
+        const hidden = wrap.querySelector('input[type="hidden"]');
+        const menu = wrap.querySelector('.searchable-select-menu');
+        const noResults = menu.querySelector('.searchable-select-option.is-empty');
+        const options = Array.from(menu.querySelectorAll('.searchable-select-option:not(.is-empty)'));
+        const placeholder = wrap.getAttribute('data-placeholder') || '';
+
+        function labelFor(value) {
+            const opt = options.find(function (o) { return o.dataset.value === value; });
+            return opt ? opt.dataset.label : placeholder;
+        }
+
+        function filterOptions(query) {
+            const q = query.trim().toLowerCase();
+            let anyVisible = false;
+            options.forEach(function (o) {
+                const match = q === '' || o.dataset.label.toLowerCase().indexOf(q) !== -1;
+                o.style.display = match ? '' : 'none';
+                o.classList.toggle('is-selected', o.dataset.value === hidden.value);
+                if (match) anyVisible = true;
+            });
+            noResults.style.display = anyVisible ? 'none' : '';
+        }
+
+        function openMenu() {
+            menu.style.display = 'block';
+            filterOptions(input.value === labelFor(hidden.value) ? '' : input.value);
+            input.select();
+            wrap.scrollIntoView({ block: 'nearest' });
+        }
+
+        function closeMenu() {
+            menu.style.display = 'none';
+            input.value = labelFor(hidden.value);
+        }
+
+        input.addEventListener('focus', openMenu);
+        input.addEventListener('input', function () { filterOptions(input.value); menu.style.display = 'block'; });
+        input.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') input.blur();
+        });
+        input.addEventListener('blur', function () {
+            setTimeout(closeMenu, 150);
+        });
+
+        options.forEach(function (o) {
+            o.addEventListener('mousedown', function (e) {
+                e.preventDefault();
+                hidden.value = o.dataset.value;
+                hidden.dispatchEvent(new Event('change', { bubbles: true }));
+                input.value = o.dataset.label || placeholder;
+                menu.style.display = 'none';
+            });
+        });
+
+        wrap.resetSearchableSelect = function () {
+            hidden.value = '';
+            input.value = placeholder;
+        };
+
+        input.value = labelFor(hidden.value);
+    }
+
+    document.querySelectorAll('[data-searchable-select]').forEach(initSearchableSelect);
 
     function escapeHtml(str) {
         return String(str)
@@ -1324,11 +1424,73 @@ document.addEventListener('DOMContentLoaded', function () {
     const addUserError = document.getElementById('addUserError');
     const openAddUserModalBtn = document.getElementById('openAddUserModalBtn');
 
+    // ── Add User modal: step navigation ──
+    const addUserSteps = Array.from(addUserForm.querySelectorAll('.add-user-step'));
+    const addUserStepperSegs = Array.from(addUserForm.querySelectorAll('.add-user-stepper-seg'));
+    const addUserStepperLabels = Array.from(addUserForm.querySelectorAll('.add-user-stepper-labels span'));
+    const addUserBackBtn = document.getElementById('addUserBackBtn');
+    const addUserNextBtn = document.getElementById('addUserNextBtn');
+    const submitAddUserBtn = document.getElementById('submitAddUserBtn');
+    let addUserStepIndex = 0;
+
+    function validateAddUserStep(stepEl) {
+        const fields = Array.from(stepEl.querySelectorAll('input, select, textarea'));
+        for (const field of fields) {
+            if (!field.checkValidity()) {
+                field.reportValidity();
+                return false;
+            }
+        }
+        return true;
+    }
+
+    function showAddUserStep(index) {
+        addUserStepIndex = index;
+        addUserSteps.forEach(function (stepEl, i) {
+            stepEl.style.display = i === index ? '' : 'none';
+            stepEl.classList.toggle('is-visible', i === index);
+        });
+        addUserStepperSegs.forEach(function (seg, i) {
+            seg.classList.toggle('is-active', i === index);
+            seg.classList.toggle('is-done', i < index);
+        });
+        addUserStepperLabels.forEach(function (label, i) {
+            label.classList.toggle('is-active', i === index);
+            label.classList.toggle('is-done', i < index);
+        });
+        if (addUserBackBtn) addUserBackBtn.style.display = index === 0 ? 'none' : '';
+        const isLastStep = index === addUserSteps.length - 1;
+        if (addUserNextBtn) addUserNextBtn.style.display = isLastStep ? 'none' : '';
+        if (submitAddUserBtn) submitAddUserBtn.style.display = isLastStep ? '' : 'none';
+    }
+
+    if (addUserNextBtn) {
+        addUserNextBtn.addEventListener('click', function () {
+            if (!validateAddUserStep(addUserSteps[addUserStepIndex])) return;
+            showAddUserStep(addUserStepIndex + 1);
+        });
+    }
+    if (addUserBackBtn) {
+        addUserBackBtn.addEventListener('click', function () {
+            showAddUserStep(addUserStepIndex - 1);
+        });
+    }
+    addUserForm.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' && e.target.tagName === 'INPUT' && addUserStepIndex < addUserSteps.length - 1) {
+            e.preventDefault();
+            if (addUserNextBtn) addUserNextBtn.click();
+        }
+    });
+
     function openAddUserModal() {
         if (!addUserOverlay) return;
         addUserForm.reset();
+        addUserForm.querySelectorAll('[data-searchable-select]').forEach(function (wrap) {
+            if (wrap.resetSearchableSelect) wrap.resetSearchableSelect();
+        });
         addUserError.style.display = 'none';
-        addUserOverlay.style.display = 'block';
+        showAddUserStep(0);
+        addUserOverlay.style.display = 'flex';
     }
 
     function closeAddUserModal() {
@@ -1371,7 +1533,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 last_name: document.getElementById('addUserLastName').value.trim(),
                 suffix: document.getElementById('addUserSuffix').value || null,
                 mobile_number: document.getElementById('addUserMobileNumber').value.trim() || null,
-                department_id: document.getElementById('addUserDepartment').value || null,
+                rc_id: document.getElementById('addUserRcCode').value || null,
                 position_id: document.getElementById('addUserPosition').value || null,
                 is_active: document.getElementById('addUserIsActive').checked
             };
