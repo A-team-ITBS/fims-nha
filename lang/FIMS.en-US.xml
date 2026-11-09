@@ -20,17 +20,17 @@
     <menu id="82">
       <phrase id="menutext" value="Sub Program Setup" />
     </menu>
+    <menu id="89">
+      <phrase id="menutext" value="Chart of Accounts" />
+    </menu>
+    <menu id="90">
+      <phrase id="menutext" value="Responsibilty Center" />
+    </menu>
     <menu id="83">
       <phrase id="menutext" value="permission module captions" />
     </menu>
     <menu id="84">
       <phrase id="menutext" value="aggregated audit logs" />
-    </menu>
-    <menu id="86">
-      <phrase id="menutext" value="Budget Revision Form" />
-    </menu>
-    <menu id="87">
-      <phrase id="menutext" value="Budget Revision Preview" />
     </menu>
     <menu id="75">
       <phrase id="menutext" value="document asset types" />
@@ -1425,6 +1425,12 @@
     </table>
     <table id="sub_program_page">
       <phrase id="tblcaption" value="Sub Program Setup" />
+    </table>
+    <table id="chart_of_accounts_page">
+      <phrase id="tblcaption" value="Chart of Accounts" />
+    </table>
+    <table id="responsibility_center_page">
+      <phrase id="tblcaption" value="Responsibilty Center" />
     </table>
     <table id="permission_module_captions">
       <phrase id="tblcaption" value="permission module captions" />

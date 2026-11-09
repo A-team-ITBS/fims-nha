@@ -117,6 +117,8 @@ return [
     "program_page" => \DI\create(ProgramPage::class),
     "budget_req_page" => \DI\create(BudgetReqPage::class),
     "sub_program_page" => \DI\create(SubProgramPage::class),
+    "chart_of_accounts_page" => \DI\create(ChartOfAccountsPage::class),
+    "responsibility_center_page" => \DI\create(ResponsibilityCenterPage::class),
     "permission_module_captions" => \DI\create(PermissionModuleCaptions::class),
     "aggregated_audit_logs" => \DI\create(AggregatedAuditLogs::class),
     "budget_revision_page" => \DI\create(BudgetRevisionPage::class),

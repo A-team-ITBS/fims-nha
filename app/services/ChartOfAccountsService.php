@@ -13,49 +13,87 @@ class ChartOfAccountsService
 
     private array $allowedFields = [
         'account_code', 'account_title', 'account_type', 'parent_account_id',
-        'posting_allowed', 'status', 'source_document',
+        'posting_allowed', 'status', 'source_document', 'region_code', 'project_code',
     ];
+
+    /**
+     * Resolve the region (RCA code) a user is restricted to, for row-level
+     * scoping of Chart of Accounts. Superadmin (user_level_id = -1) is
+     * never scoped. A user with region_code = NULL is also unrestricted.
+     */
+    public function getUserScope(int $userId): array
+    {
+        try {
+            $row = App\ExecuteRow(
+                "SELECT u.user_level_id, u.region_code, rc.rc_name AS region_name
+                 FROM uac.users u
+                 LEFT JOIN {$this->tableRC} rc ON rc.rc_code = u.region_code
+                 WHERE u.user_id = " . App\QuotedValue($userId, App\DataType::NUMBER, 'DB'),
+                'DB'
+            );
+
+            $isAdmin = !$row || App\SameText((string) $row['user_level_id'], '-1');
+
+            return [
+                'is_admin'    => $isAdmin,
+                'region_code' => $isAdmin ? null : ($row['region_code'] ?? null),
+                'region_name' => $isAdmin ? null : ($row['region_name'] ?? null),
+            ];
+        } catch (\Exception $e) {
+            return ['is_admin' => true, 'region_code' => null, 'region_name' => null];
+        }
+    }
 
     public function fetchAlls(
         ?int $page = null,
         int $limit = 10,
         string $search = '',
         string $accountType = '',
+        string $regionCode = '',
+        string $projectCode = '',
         string $status = ''
     ): array {
         try {
-            $where = "status = 'Active'";
+            $where = ['1=1'];
             if ($search !== '') {
-                $s      = App\QuotedValue('%' . $search . '%', DataType::STRING, 'DB');
-                $where .= " AND (account_code ILIKE {$s} OR account_title ILIKE {$s})";
+                $s       = App\QuotedValue('%' . $search . '%', App\DataType::STRING, 'DB');
+                $where[] = "(c.account_id ILIKE {$s} OR c.account_code ILIKE {$s} OR c.account_title ILIKE {$s})";
             }
             if ($accountType !== '') {
                 $where[] = 'c.account_type = ' . App\QuotedValue($accountType, App\DataType::STRING, 'DB');
+            }
+            if ($regionCode !== '') {
+                $where[] = 'c.region_code = ' . App\QuotedValue($regionCode, App\DataType::STRING, 'DB');
+            }
+            if ($projectCode !== '') {
+                $where[] = 'c.project_code = ' . App\QuotedValue($projectCode, App\DataType::STRING, 'DB');
             }
             if ($status !== '') {
                 $where[] = 'c.status = ' . App\QuotedValue($status, App\DataType::STRING, 'DB');
             }
             $whereSql = implode(' AND ', $where);
 
-            $joinSql = "SELECT c.*,
+            $joinSql = "SELECT c.*, rc.rc_name AS region_name, pr.project_name,
                                p.account_code AS parent_account_code, p.account_title AS parent_account_title
                         FROM {$this->table} c
+                        LEFT JOIN {$this->tableRC} rc ON rc.rc_code = c.region_code
+                        LEFT JOIN {$this->tableProject} pr ON pr.project_code = c.project_code
                         LEFT JOIN {$this->table} p ON p.account_id = c.parent_account_id
                         WHERE {$whereSql}";
 
             if ($page === null) {
-                $sql  = "SELECT * FROM {$this->table} WHERE {$where} ORDER BY account_code ASC";
-                $data = App\ExecuteRows($sql, 'DB');
+                $data = App\ExecuteRows("{$joinSql} ORDER BY c.account_code ASC", 'DB');
 
                 return ['success' => true, 'data' => $data ?: []];
             }
 
+            $page   = max(1, $page);
+            $limit  = max(1, $limit);
             $offset = ($page - 1) * $limit;
 
-            $total = (int) App\ExecuteScalar("SELECT COUNT(*) FROM {$this->table} WHERE {$where}", 'DB');
-            $sql   = "SELECT * FROM {$this->table}
-                      WHERE {$where}
-                      ORDER BY account_code ASC
+            $total = (int) App\ExecuteScalar("SELECT COUNT(*) FROM {$this->table} c WHERE {$whereSql}", 'DB');
+            $sql   = "{$joinSql}
+                      ORDER BY c.account_code ASC
                       LIMIT {$limit} OFFSET {$offset}";
             $data  = App\ExecuteRows($sql, 'DB');
 
@@ -126,9 +164,11 @@ class ChartOfAccountsService
     public function fetchById(string $id): array
     {
         try {
-            $sql = "SELECT c.*,
+            $sql = "SELECT c.*, rc.rc_name AS region_name, pr.project_name,
                            p.account_code AS parent_account_code, p.account_title AS parent_account_title
                     FROM {$this->table} c
+                    LEFT JOIN {$this->tableRC} rc ON rc.rc_code = c.region_code
+                    LEFT JOIN {$this->tableProject} pr ON pr.project_code = c.project_code
                     LEFT JOIN {$this->table} p ON p.account_id = c.parent_account_id
                     WHERE c.account_id = " . App\QuotedValue($id, App\DataType::STRING, 'DB');
 
@@ -173,12 +213,34 @@ class ChartOfAccountsService
                 }
             }
 
+            $regionCode = trim((string) ($body['region_code'] ?? ''));
+            if ($regionCode !== '') {
+                $regionExists = (int) App\ExecuteScalar(
+                    "SELECT COUNT(*) FROM {$this->tableRC} WHERE rc_code = " . App\QuotedValue($regionCode, App\DataType::STRING, 'DB'),
+                    'DB'
+                );
+                if ($regionExists === 0) {
+                    return ['success' => false, 'message' => "RCA code '{$regionCode}' does not exist."];
+                }
+            }
+
+            $projectCode = trim((string) ($body['project_code'] ?? ''));
+            if ($projectCode !== '') {
+                $projectExists = (int) App\ExecuteScalar(
+                    "SELECT COUNT(*) FROM {$this->tableProject} WHERE project_code = " . App\QuotedValue($projectCode, App\DataType::STRING, 'DB'),
+                    'DB'
+                );
+                if ($projectExists === 0) {
+                    return ['success' => false, 'message' => "Project code '{$projectCode}' does not exist."];
+                }
+            }
+
             $accountId = $this->generateAccountId();
 
             $fields = array_intersect_key($body, array_flip($this->allowedFields));
             $fields['account_id'] = $accountId;
             // Normalize empty-string FKs/optional fields to NULL
-            foreach (['parent_account_id', 'source_document'] as $k) {
+            foreach (['parent_account_id', 'region_code', 'project_code', 'source_document'] as $k) {
                 if (array_key_exists($k, $fields) && trim((string) $fields[$k]) === '') {
                     $fields[$k] = null;
                 }
@@ -237,7 +299,27 @@ class ChartOfAccountsService
                 }
             }
 
-            foreach (['parent_account_id', 'source_document'] as $k) {
+            if (!empty($fields['region_code'])) {
+                $regionExists = (int) App\ExecuteScalar(
+                    "SELECT COUNT(*) FROM {$this->tableRC} WHERE rc_code = " . App\QuotedValue($fields['region_code'], App\DataType::STRING, 'DB'),
+                    'DB'
+                );
+                if ($regionExists === 0) {
+                    return ['success' => false, 'message' => "RCA code '{$fields['region_code']}' does not exist."];
+                }
+            }
+
+            if (!empty($fields['project_code'])) {
+                $projectExists = (int) App\ExecuteScalar(
+                    "SELECT COUNT(*) FROM {$this->tableProject} WHERE project_code = " . App\QuotedValue($fields['project_code'], App\DataType::STRING, 'DB'),
+                    'DB'
+                );
+                if ($projectExists === 0) {
+                    return ['success' => false, 'message' => "Project code '{$fields['project_code']}' does not exist."];
+                }
+            }
+
+            foreach (['parent_account_id', 'region_code', 'project_code', 'source_document'] as $k) {
                 if (array_key_exists($k, $fields) && trim((string) $fields[$k]) === '') {
                     $fields[$k] = null;
                 }
@@ -317,6 +399,23 @@ class ChartOfAccountsService
             App\Execute($sql, 'DB');
 
             return ['success' => true, 'message' => "Account '{$id}' deleted successfully."];
+        } catch (\Exception $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    public function fetchRegions(): array
+    {
+        try {
+            $data = App\ExecuteRows(
+                "SELECT rc_code AS region_code, rc_name AS region_name
+                 FROM {$this->tableRC}
+                 WHERE status = 'Active'
+                 ORDER BY rc_name ASC",
+                'DB'
+            );
+
+            return ['success' => true, 'data' => $data ?: []];
         } catch (\Exception $e) {
             return ['success' => false, 'message' => $e->getMessage()];
         }
