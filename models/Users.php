@@ -74,7 +74,6 @@ class Users extends DbTable
     public $position_id;
     public $employee_id;
     public $must_change_password;
-    public $region_code;
     public $rc_id;
 
     // Page ID
@@ -601,28 +600,6 @@ class Users extends DbTable
         $this->must_change_password->OptionCount = 2;
         $this->must_change_password->SearchOperators = ["=", "<>"];
         $this->Fields['must_change_password'] = &$this->must_change_password;
-
-        // region_code
-        $this->region_code = new DbField(
-            $this, // Table
-            'x_region_code', // Variable name
-            'region_code', // Name
-            '"region_code"', // Expression
-            '"region_code"', // Basic search expression
-            200, // Type
-            30, // Size
-            -1, // Date/Time format
-            false, // Is upload field
-            '"region_code"', // Virtual expression
-            false, // Is virtual
-            false, // Force selection
-            false, // Is Virtual search
-            'FORMATTED TEXT', // View Tag
-            'TEXT' // Edit Tag
-        );
-        $this->region_code->InputTextType = "text";
-        $this->region_code->SearchOperators = ["=", "<>", "IN", "NOT IN", "STARTS WITH", "NOT STARTS WITH", "LIKE", "NOT LIKE", "ENDS WITH", "NOT ENDS WITH", "IS EMPTY", "IS NOT EMPTY", "IS NULL", "IS NOT NULL"];
-        $this->Fields['region_code'] = &$this->region_code;
 
         // rc_id
         $this->rc_id = new DbField(
@@ -1324,7 +1301,6 @@ class Users extends DbTable
         $this->position_id->DbValue = $row['position_id'];
         $this->employee_id->DbValue = $row['employee_id'];
         $this->must_change_password->DbValue = (ConvertToBool($row['must_change_password']) ? "1" : "0");
-        $this->region_code->DbValue = $row['region_code'];
         $this->rc_id->DbValue = $row['rc_id'];
     }
 
@@ -1717,7 +1693,6 @@ class Users extends DbTable
         $this->position_id->setDbValue($row['position_id']);
         $this->employee_id->setDbValue($row['employee_id']);
         $this->must_change_password->setDbValue(ConvertToBool($row['must_change_password']) ? "1" : "0");
-        $this->region_code->setDbValue($row['region_code']);
         $this->rc_id->setDbValue($row['rc_id']);
     }
 
@@ -1788,8 +1763,6 @@ class Users extends DbTable
         // employee_id
 
         // must_change_password
-
-        // region_code
 
         // rc_id
 
@@ -1922,9 +1895,6 @@ class Users extends DbTable
             $this->must_change_password->ViewValue = $this->must_change_password->tagCaption(2) != "" ? $this->must_change_password->tagCaption(2) : "No";
         }
 
-        // region_code
-        $this->region_code->ViewValue = $this->region_code->CurrentValue;
-
         // rc_id
         $this->rc_id->ViewValue = $this->rc_id->CurrentValue;
 
@@ -2008,10 +1978,6 @@ class Users extends DbTable
         // must_change_password
         $this->must_change_password->HrefValue = "";
         $this->must_change_password->TooltipValue = "";
-
-        // region_code
-        $this->region_code->HrefValue = "";
-        $this->region_code->TooltipValue = "";
 
         // rc_id
         $this->rc_id->HrefValue = "";
@@ -2205,14 +2171,6 @@ class Users extends DbTable
         $this->must_change_password->EditValue = $this->must_change_password->options(false);
         $this->must_change_password->PlaceHolder = RemoveHtml($this->must_change_password->caption());
 
-        // region_code
-        $this->region_code->setupEditAttributes();
-        if (!$this->region_code->Raw) {
-            $this->region_code->CurrentValue = HtmlDecode($this->region_code->CurrentValue);
-        }
-        $this->region_code->EditValue = $this->region_code->CurrentValue;
-        $this->region_code->PlaceHolder = RemoveHtml($this->region_code->caption());
-
         // rc_id
         $this->rc_id->setupEditAttributes();
         if (!$this->rc_id->Raw) {
@@ -2268,7 +2226,6 @@ class Users extends DbTable
                     $doc->exportCaption($this->position_id);
                     $doc->exportCaption($this->employee_id);
                     $doc->exportCaption($this->must_change_password);
-                    $doc->exportCaption($this->region_code);
                     $doc->exportCaption($this->rc_id);
                 } else {
                     $doc->exportCaption($this->user_id);
@@ -2290,7 +2247,6 @@ class Users extends DbTable
                     $doc->exportCaption($this->position_id);
                     $doc->exportCaption($this->employee_id);
                     $doc->exportCaption($this->must_change_password);
-                    $doc->exportCaption($this->region_code);
                     $doc->exportCaption($this->rc_id);
                 }
                 $doc->endExportRow();
@@ -2337,7 +2293,6 @@ class Users extends DbTable
                         $doc->exportField($this->position_id);
                         $doc->exportField($this->employee_id);
                         $doc->exportField($this->must_change_password);
-                        $doc->exportField($this->region_code);
                         $doc->exportField($this->rc_id);
                     } else {
                         $doc->exportField($this->user_id);
@@ -2359,7 +2314,6 @@ class Users extends DbTable
                         $doc->exportField($this->position_id);
                         $doc->exportField($this->employee_id);
                         $doc->exportField($this->must_change_password);
-                        $doc->exportField($this->region_code);
                         $doc->exportField($this->rc_id);
                     }
                     $doc->endExportRow($rowCnt);

@@ -91,9 +91,6 @@ class User extends AbstractEntity
     #[Column(name: "must_change_password", type: "boolean")]
     private bool $mustChangePassword;
 
-    #[Column(name: "region_code", type: "string", nullable: true)]
-    private ?string $regionCode;
-
     #[Column(name: "rc_id", type: "string", nullable: true)]
     private ?string $rcId;
 
@@ -314,17 +311,6 @@ class User extends AbstractEntity
     public function setMustChangePassword(bool $value): static
     {
         $this->mustChangePassword = $value;
-        return $this;
-    }
-
-    public function getRegionCode(): ?string
-    {
-        return HtmlDecode($this->regionCode);
-    }
-
-    public function setRegionCode(?string $value): static
-    {
-        $this->regionCode = RemoveXss($value);
         return $this;
     }
 

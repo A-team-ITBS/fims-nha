@@ -370,9 +370,6 @@
         <phrase id="fldtagvalue2" value="0" />
         <phrase id="fldtagcaption2" value="No" />
       </field>
-      <field id="region_code">
-        <phrase id="fldcaption" value="region code" />
-      </field>
       <field id="rc_id">
         <phrase id="fldcaption" value="rc id" />
       </field>
