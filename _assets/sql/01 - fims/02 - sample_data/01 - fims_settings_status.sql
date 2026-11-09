@@ -30,3 +30,15 @@ WHERE NOT EXISTS (SELECT 1 FROM fims.settings_status WHERE name = 'Returned' AND
 INSERT INTO fims.settings_status (name, status_for, color)
 SELECT 'Cancelled', 'budget_req', '#DC3545'
 WHERE NOT EXISTS (SELECT 1 FROM fims.settings_status WHERE name = 'Cancelled' AND status_for = 'budget_req');
+
+-- Set by Budget Processing's "Endorse" action: the Budget Officer has filled in
+-- every line item's Type of Fund + Component and endorsed the request onward.
+INSERT INTO fims.settings_status (name, status_for, color)
+SELECT 'Endorsed', 'budget_req', '#0D9488'
+WHERE NOT EXISTS (SELECT 1 FROM fims.settings_status WHERE name = 'Endorsed' AND status_for = 'budget_req');
+
+-- Set by Budget Preview's "Approve" action: the Budget Head has approved an
+-- Endorsed request.
+INSERT INTO fims.settings_status (name, status_for, color)
+SELECT 'Approved', 'budget_req', '#16A34A'
+WHERE NOT EXISTS (SELECT 1 FROM fims.settings_status WHERE name = 'Approved' AND status_for = 'budget_req');

@@ -30,7 +30,8 @@ INSERT INTO uac.user_levels (user_level_id, name, description, system_id) VALUES
     (4, 'FMD Department Manager',    'Approves the budget request at department level before escalation to NHA Management', NULL),
     (5, 'FSG Group Manager',         'Authorized approver for budget requests within the FSG Group Manager threshold', NULL),
     (6, 'General Manager',           'Authorized approver for budget requests exceeding the FSG Group Manager threshold', NULL),
-    (7, 'NHA Board',                 'Authorized approver (Board) for budget requests exceeding the General Manager threshold', NULL)
+    (7, 'NHA Board',                 'Authorized approver (Board) for budget requests exceeding the General Manager threshold', NULL),
+    (8, 'Budget Head',               'Heads the budget function within the Fund Management Division (FMD)', NULL)
 ON CONFLICT (user_level_id) DO UPDATE SET
     name = EXCLUDED.name,
     description = EXCLUDED.description;
