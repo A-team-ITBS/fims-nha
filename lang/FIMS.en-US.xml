@@ -5,6 +5,9 @@
     <menu id="88">
       <phrase id="menutext" value="Memo Request" />
     </menu>
+    <menu id="91">
+      <phrase id="menutext" value="Air Module" />
+    </menu>
     <menu id="79">
       <phrase id="menutext" value="Project List" />
     </menu>
@@ -23,14 +26,20 @@
     <menu id="89">
       <phrase id="menutext" value="Chart of Accounts" />
     </menu>
-    <menu id="90">
-      <phrase id="menutext" value="Responsibilty Center" />
-    </menu>
     <menu id="83">
       <phrase id="menutext" value="permission module captions" />
     </menu>
+    <menu id="90">
+      <phrase id="menutext" value="Responsibilty Center" />
+    </menu>
     <menu id="84">
       <phrase id="menutext" value="aggregated audit logs" />
+    </menu>
+    <menu id="86">
+      <phrase id="menutext" value="Budget Revision Form" />
+    </menu>
+    <menu id="87">
+      <phrase id="menutext" value="Budget Revision Preview" />
     </menu>
     <menu id="75">
       <phrase id="menutext" value="document asset types" />
@@ -1492,6 +1501,9 @@
     </table>
     <table id="budget_allocation_form">
       <phrase id="tblcaption" value="Memo Request" />
+    </table>
+    <table id="airmodule">
+      <phrase id="tblcaption" value="Air Module" />
     </table>
   </project>
 </ew-language>

@@ -44,7 +44,7 @@ class PersonalData
     public $RenderingView = false;
 
     // CSS class/style
-    public $CurrentPageName = "BudgetAllocationFormController";
+    public $CurrentPageName = "AirModuleController";
 
     // Page headings
     public $Heading = "";
