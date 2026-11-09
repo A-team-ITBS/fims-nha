@@ -144,17 +144,6 @@ $users->TableClass = "table table-bordered table-hover table-sm ew-table ew-mast
 </td>
         </tr>
 <?php } ?>
-<?php if ($users->region_code->Visible) { // region_code ?>
-        <tr id="r_region_code"<?= $users->region_code->rowAttributes() ?>>
-            <td class="<?= $users->TableLeftColumnClass ?>"><?= $users->region_code->caption() ?></td>
-            <td<?= $users->region_code->cellAttributes() ?>>
-<span id="el_users_region_code">
-<span<?= $users->region_code->viewAttributes() ?>>
-<?= $users->region_code->getViewValue() ?></span>
-</span>
-</td>
-        </tr>
-<?php } ?>
 <?php if ($users->rc_id->Visible) { // rc_id ?>
         <tr id="r_rc_id"<?= $users->rc_id->rowAttributes() ?>>
             <td class="<?= $users->TableLeftColumnClass ?>"><?= $users->rc_id->caption() ?></td>
