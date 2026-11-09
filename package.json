@@ -4,17 +4,7 @@
     "description": "fims",
     "license": "SEE LICENSE IN LICENSE.md",
     "private": true,
-    "scripts": {
-        "install-system": "node install_system.js",
-        "sql": "node install_system.js --sql-only",
-        "sql-consolidated": "node install_system.js --sql-only --consolidated",
-        "sql-reset": "node install_system.js --reset-only"
-    },
-    "dependencies": {
-        "chalk": "^4.1.2",
-        "fs-extra": "^11.2.0",
-        "inquirer": "^8.2.6"
-    },
+    "dependencies": {},
     "engines": {
         "node": ">=18"
     }

@@ -18,6 +18,8 @@ class BudgetLineItemService
     private string $tableBudgetReqProject = 'fims.budget_req_project';
     private string $tableChartOfAccounts  = 'fims.chart_of_accounts';
     private string $tableProject          = 'fims.project';
+    private string $tableTypeOfFund       = 'fims.type_of_fund';
+    private string $tableComponentType    = 'fims.component_type';
 
     public function fetchAlls(?int $page = null, int $limit = 10, string $fiscalYr = ''): array
     {
@@ -210,6 +212,114 @@ class BudgetLineItemService
         } catch (\Exception $e) {
             return ['success' => false, 'message' => $e->getMessage()];
         }
+    }
+
+    /**
+     * Budget Processing: applies type_of_fund_id / component_id / suggestion_amount
+     * to line items of one budget request. Does NOT open its own transaction — the caller
+     * (BudgetReqService::endorse) wraps it together with its status change.
+     * Returns an error message, or null once every item has been applied.
+     *
+     * @param array $items [['budget_line_item_id' => .., 'type_of_fund_id' => .., 'component_id' => .., 'suggestion_amount' => ..], ...]
+     * @param bool  $requireAll when true, every item must carry a type of fund and a component (suggestion_amount stays optional)
+     */
+    public function applyProcessing(array $items, int $budgetReferenceNumber, bool $requireAll = false): ?string
+    {
+        if (empty($items)) {
+            return 'No line items provided.';
+        }
+
+        // Each distinct lookup id is verified once (and must not be soft-deleted).
+        $validFunds      = [];
+        $validComponents = [];
+
+        foreach ($items as $i => $item) {
+            $n  = $i + 1;
+            $id = (int) ($item['budget_line_item_id'] ?? 0);
+
+            if ($id <= 0) {
+                return "Item {$n}: budget_line_item_id is required.";
+            }
+
+            // Must be a line item of THIS budget request, not someone else's.
+            $exists = App\ExecuteRow(
+                "SELECT budget_line_item_id FROM {$this->table}
+                 WHERE budget_line_item_id = {$id} AND budget_reference_number = {$budgetReferenceNumber}",
+                'DB'
+            );
+            if (!$exists) {
+                return "Line item #{$id} does not belong to budget request #{$budgetReferenceNumber}.";
+            }
+
+            $fundId      = $item['type_of_fund_id'] ?? null;
+            $componentId = $item['component_id'] ?? null;
+
+            if ($fundId !== null && $fundId !== '') {
+                if (!is_numeric($fundId)) {
+                    return "Line item #{$id}: invalid type_of_fund_id.";
+                }
+                $fundId = (int) $fundId;
+                if (!isset($validFunds[$fundId])) {
+                    $validFunds[$fundId] = (bool) App\ExecuteRow(
+                        "SELECT type_of_fund_id FROM {$this->tableTypeOfFund} WHERE type_of_fund_id = {$fundId} AND deleted_at IS NULL",
+                        'DB'
+                    );
+                }
+                if (!$validFunds[$fundId]) {
+                    return "Line item #{$id}: type of fund #{$fundId} does not exist.";
+                }
+            } else {
+                $fundId = null;
+            }
+
+            if ($componentId !== null && $componentId !== '') {
+                if (!is_numeric($componentId)) {
+                    return "Line item #{$id}: invalid component_id.";
+                }
+                $componentId = (int) $componentId;
+                if (!isset($validComponents[$componentId])) {
+                    $validComponents[$componentId] = (bool) App\ExecuteRow(
+                        "SELECT component_type_id FROM {$this->tableComponentType} WHERE component_type_id = {$componentId} AND deleted_at IS NULL",
+                        'DB'
+                    );
+                }
+                if (!$validComponents[$componentId]) {
+                    return "Line item #{$id}: component #{$componentId} does not exist.";
+                }
+            } else {
+                $componentId = null;
+            }
+
+            // suggestion_amount is OPTIONAL: NUMERIC(18,2), 0 up to 9,999,999,999,999,999.99.
+            //   key absent        -> left unchanged
+            //   key present, blank -> 0 (the column is NOT NULL DEFAULT 0, so "no suggestion" = 0)
+            //   key present, number -> that number
+            $suggestion = $item['suggestion_amount'] ?? null;
+            if ($suggestion === null || $suggestion === '') {
+                $suggestion = array_key_exists('suggestion_amount', $item) ? '0' : null;
+            } elseif (!is_numeric($suggestion) || (float) $suggestion < 0 || (float) $suggestion >= 1e16) {
+                return "Line item #{$id}: suggestion_amount must be a number from 0 to 9,999,999,999,999,999.99.";
+            }
+
+            if ($requireAll && ($fundId === null || $componentId === null)) {
+                return 'Type of Fund and Component are required for every line item.';
+            }
+
+            $setParts = [
+                'type_of_fund_id = ' . ($fundId ?? 'NULL'),
+                'component_id = ' . ($componentId ?? 'NULL'),
+            ];
+            if ($suggestion !== null) {
+                $setParts[] = 'suggestion_amount = ' . App\QuotedValue($suggestion, DataType::NUMBER, 'DB');
+            }
+
+            App\Execute(
+                "UPDATE {$this->table} SET " . implode(', ', $setParts) . " WHERE budget_line_item_id = {$id}",
+                'DB'
+            );
+        }
+
+        return null;
     }
 
     public function delete(int|string $id): array

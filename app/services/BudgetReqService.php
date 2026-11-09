@@ -29,6 +29,8 @@ class BudgetReqService
     private string $tableBudgetReqProgram = 'fims.budget_req_program';
     private string $tableBudgetReqProject = 'fims.budget_req_project';
     private string $tableLineItems        = 'fims.budget_line_items';
+    private string $tableTypeOfFund       = 'fims.type_of_fund';
+    private string $tableComponentType    = 'fims.component_type';
     private string $tableProgram          = 'fims.program';
     private string $tableSubProgram       = 'fims.sub_program';
     private string $tableProject          = 'fims.project';
@@ -274,9 +276,12 @@ class BudgetReqService
         ) ?: [];
 
         $lineItemRows = App\ExecuteRows(
-            "SELECT li.*, coa.account_code, coa.account_title
+            "SELECT li.*, coa.account_code, coa.account_title,
+                    tof.name AS type_of_fund_name, ct.name AS component_name
              FROM {$this->tableLineItems} li
              LEFT JOIN {$this->tableChartOfAccounts} coa ON coa.account_id = li.account_id
+             LEFT JOIN {$this->tableTypeOfFund} tof ON tof.type_of_fund_id = li.type_of_fund_id
+             LEFT JOIN {$this->tableComponentType} ct ON ct.component_type_id = li.component_id
              WHERE li.budget_reference_number IN ({$idList})
              ORDER BY li.budget_req_project_id ASC, li.budget_line_item_id ASC",
             'DB'
@@ -571,6 +576,116 @@ class BudgetReqService
         App\Execute("UPDATE {$this->table} SET status_id = {$forReviewId} WHERE budget_reference_number = {$id}", 'DB');
 
         return ['success' => true, 'message' => 'Budget request submitted for review.'];
+    }
+
+    /**
+     * Budget Processing "Endorse": saves each line item's Type of Fund and
+     * Component (both required for every item) plus its optional Suggestion
+     * Amount (blank = 0), and moves the request to
+     * "Endorsed", all in one transaction — if any item is invalid, nothing is
+     * saved and the status is unchanged. Rejected for a Cancelled,
+     * already-Endorsed or Approved request. The status lives on the request header, so it
+     * applies to the whole request, not just the Program the items came from.
+     *
+     * @param array $items [['budget_line_item_id' => .., 'type_of_fund_id' => .., 'component_id' => .., 'suggestion_amount' => ..], ...]
+     */
+    public function endorse(int|string $budgetReferenceNumber, array $items): array
+    {
+        $id = (int) $budgetReferenceNumber;
+
+        $check = $this->fetchById($id);
+        if (!$check['success']) {
+            return $check;
+        }
+
+        $current = $check['data']['status_name'] ?? '';
+        if (in_array($current, ['Cancelled', 'Endorsed', 'Approved'], true)) {
+            return ['success' => false, 'message' => "Budget request #{$id} is already '{$current}' and cannot be endorsed."];
+        }
+
+        $endorsedId = $this->getStatusIdByName('Endorsed');
+        if ($endorsedId === null) {
+            return ['success' => false, 'message' => "'Endorsed' status is not configured."];
+        }
+
+        try {
+            App\Execute('BEGIN', 'DB');
+
+            $error = (new BudgetLineItemService())->applyProcessing($items, $id, true);
+            if ($error !== null) {
+                App\Execute('ROLLBACK', 'DB');
+
+                return ['success' => false, 'message' => $error];
+            }
+
+            App\Execute("UPDATE {$this->table} SET status_id = {$endorsedId} WHERE budget_reference_number = {$id}", 'DB');
+
+            App\Execute('COMMIT', 'DB');
+
+            return ['success' => true, 'message' => 'Budget request endorsed successfully.'];
+        } catch (\Exception $e) {
+            App\Execute('ROLLBACK', 'DB');
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Budget Processing "Return": moves the request to "Returned" without
+     * touching its line items. Rejected for a Cancelled, already-Returned or
+     * Approved request. Like endorse(), it applies to the whole request.
+     */
+    public function returnRequest(int|string $budgetReferenceNumber): array
+    {
+        $id = (int) $budgetReferenceNumber;
+
+        $check = $this->fetchById($id);
+        if (!$check['success']) {
+            return $check;
+        }
+
+        $current = $check['data']['status_name'] ?? '';
+        if (in_array($current, ['Cancelled', 'Returned', 'Approved'], true)) {
+            return ['success' => false, 'message' => "Budget request #{$id} is already '{$current}' and cannot be returned."];
+        }
+
+        $returnedId = $this->getStatusIdByName('Returned');
+        if ($returnedId === null) {
+            return ['success' => false, 'message' => "'Returned' status is not configured."];
+        }
+
+        App\Execute("UPDATE {$this->table} SET status_id = {$returnedId} WHERE budget_reference_number = {$id}", 'DB');
+
+        return ['success' => true, 'message' => 'Budget request returned.'];
+    }
+
+    /**
+     * Budget Preview "Approve": moves an Endorsed request to "Approved". Only
+     * an Endorsed request can be approved — it has to have been through Budget
+     * Processing first. Applies to the whole request.
+     */
+    public function approve(int|string $budgetReferenceNumber): array
+    {
+        $id = (int) $budgetReferenceNumber;
+
+        $check = $this->fetchById($id);
+        if (!$check['success']) {
+            return $check;
+        }
+
+        $current = $check['data']['status_name'] ?? '';
+        if ($current !== 'Endorsed') {
+            return ['success' => false, 'message' => "Only an Endorsed budget request can be approved (budget request #{$id} is '" . ($current ?: 'no status') . "')."];
+        }
+
+        $approvedId = $this->getStatusIdByName('Approved');
+        if ($approvedId === null) {
+            return ['success' => false, 'message' => "'Approved' status is not configured."];
+        }
+
+        App\Execute("UPDATE {$this->table} SET status_id = {$approvedId} WHERE budget_reference_number = {$id}", 'DB');
+
+        return ['success' => true, 'message' => 'Budget request approved successfully.'];
     }
 
     /** Deletes the header — fims.budget_req_program (and via it, fims.budget_req_project/fims.budget_line_items) cascades via ON DELETE CASCADE. */

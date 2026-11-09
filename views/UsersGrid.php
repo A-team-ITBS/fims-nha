@@ -34,14 +34,16 @@ loadjs.ready(["wrapper", "head"], function () {
             ["user_level_id", [fields.user_level_id.visible && fields.user_level_id.required ? ew.Validators.required(fields.user_level_id.caption) : null], fields.user_level_id.isInvalid],
             ["position_id", [fields.position_id.visible && fields.position_id.required ? ew.Validators.required(fields.position_id.caption) : null, ew.Validators.integer], fields.position_id.isInvalid],
             ["employee_id", [fields.employee_id.visible && fields.employee_id.required ? ew.Validators.required(fields.employee_id.caption) : null], fields.employee_id.isInvalid],
-            ["must_change_password", [fields.must_change_password.visible && fields.must_change_password.required ? ew.Validators.required(fields.must_change_password.caption) : null], fields.must_change_password.isInvalid]
+            ["must_change_password", [fields.must_change_password.visible && fields.must_change_password.required ? ew.Validators.required(fields.must_change_password.caption) : null], fields.must_change_password.isInvalid],
+            ["rc_code", [fields.rc_code.visible && fields.rc_code.required ? ew.Validators.required(fields.rc_code.caption) : null], fields.rc_code.isInvalid],
+            ["region_code", [fields.region_code.visible && fields.region_code.required ? ew.Validators.required(fields.region_code.caption) : null], fields.region_code.isInvalid]
         ])
 
         // Check empty row
         .setEmptyRow(
             function (rowIndex) {
                 let fobj = this.getForm(),
-                    fields = [["_username",false],["_email",false],["first_name",false],["last_name",false],["suffix",false],["department_id",false],["is_active",true],["user_level_id[]",false],["position_id",false],["employee_id",false],["must_change_password",true]];
+                    fields = [["_username",false],["_email",false],["first_name",false],["last_name",false],["suffix",false],["department_id",false],["is_active",true],["user_level_id[]",false],["position_id",false],["employee_id",false],["must_change_password",true],["rc_code",false],["region_code",false]];
                 if (fields.some(field => ew.valueChanged(fobj, rowIndex, ...field)))
                     return false;
                 return true;
@@ -129,6 +131,12 @@ $Grid->ListOptions->render("header", "left");
 <?php } ?>
 <?php if ($Grid->must_change_password->Visible) { // must_change_password ?>
         <th data-name="must_change_password" class="<?= $Grid->must_change_password->headerCellClass() ?>"><div id="elh_users_must_change_password" class="users_must_change_password"><?= $Grid->renderFieldHeader($Grid->must_change_password) ?></div></th>
+<?php } ?>
+<?php if ($Grid->rc_code->Visible) { // rc_code ?>
+        <th data-name="rc_code" class="<?= $Grid->rc_code->headerCellClass() ?>"><div id="elh_users_rc_code" class="users_rc_code"><?= $Grid->renderFieldHeader($Grid->rc_code) ?></div></th>
+<?php } ?>
+<?php if ($Grid->region_code->Visible) { // region_code ?>
+        <th data-name="region_code" class="<?= $Grid->region_code->headerCellClass() ?>"><div id="elh_users_region_code" class="users_region_code"><?= $Grid->renderFieldHeader($Grid->region_code) ?></div></th>
 <?php } ?>
 <?php
 // Render list options (header, right)
@@ -622,6 +630,60 @@ loadjs.ready("fusersgrid", function() {
 <?php if ($Grid->isConfirm()) { ?>
 <input type="hidden" data-table="users" data-field="x_must_change_password" data-hidden="1" name="fusersgrid$x<?= $Grid->RowIndex ?>_must_change_password" id="fusersgrid$x<?= $Grid->RowIndex ?>_must_change_password" value="<?= HtmlEncode($Grid->must_change_password->FormValue) ?>">
 <input type="hidden" data-table="users" data-field="x_must_change_password" data-hidden="1" data-old name="fusersgrid$o<?= $Grid->RowIndex ?>_must_change_password" id="fusersgrid$o<?= $Grid->RowIndex ?>_must_change_password" value="<?= HtmlEncode($Grid->must_change_password->OldValue) ?>">
+<?php } ?>
+<?php } ?>
+</td>
+    <?php } ?>
+    <?php if ($Grid->rc_code->Visible) { // rc_code ?>
+        <td data-name="rc_code"<?= $Grid->rc_code->cellAttributes() ?>>
+<?php if ($Grid->RowType == RowType::ADD) { // Add record ?>
+<span id="el<?= $Grid->RowIndex == '$rowindex$' ? '$rowindex$' : $Grid->RowCount ?>_users_rc_code" class="el_users_rc_code">
+<input type="<?= $Grid->rc_code->getInputTextType() ?>" name="x<?= $Grid->RowIndex ?>_rc_code" id="x<?= $Grid->RowIndex ?>_rc_code" data-table="users" data-field="x_rc_code" value="<?= $Grid->rc_code->EditValue ?>" size="30" maxlength="50" placeholder="<?= HtmlEncode($Grid->rc_code->getPlaceHolder()) ?>" data-format-pattern="<?= HtmlEncode($Grid->rc_code->formatPattern()) ?>"<?= $Grid->rc_code->editAttributes() ?>>
+<div class="invalid-feedback"><?= $Grid->rc_code->getErrorMessage() ?></div>
+</span>
+<input type="hidden" data-table="users" data-field="x_rc_code" data-hidden="1" data-old name="o<?= $Grid->RowIndex ?>_rc_code" id="o<?= $Grid->RowIndex ?>_rc_code" value="<?= HtmlEncode($Grid->rc_code->OldValue) ?>">
+<?php } ?>
+<?php if ($Grid->RowType == RowType::EDIT) { // Edit record ?>
+<span id="el<?= $Grid->RowIndex == '$rowindex$' ? '$rowindex$' : $Grid->RowCount ?>_users_rc_code" class="el_users_rc_code">
+<input type="<?= $Grid->rc_code->getInputTextType() ?>" name="x<?= $Grid->RowIndex ?>_rc_code" id="x<?= $Grid->RowIndex ?>_rc_code" data-table="users" data-field="x_rc_code" value="<?= $Grid->rc_code->EditValue ?>" size="30" maxlength="50" placeholder="<?= HtmlEncode($Grid->rc_code->getPlaceHolder()) ?>" data-format-pattern="<?= HtmlEncode($Grid->rc_code->formatPattern()) ?>"<?= $Grid->rc_code->editAttributes() ?>>
+<div class="invalid-feedback"><?= $Grid->rc_code->getErrorMessage() ?></div>
+</span>
+<?php } ?>
+<?php if ($Grid->RowType == RowType::VIEW) { // View record ?>
+<span id="el<?= $Grid->RowIndex == '$rowindex$' ? '$rowindex$' : $Grid->RowCount ?>_users_rc_code" class="el_users_rc_code">
+<span<?= $Grid->rc_code->viewAttributes() ?>>
+<?= $Grid->rc_code->getViewValue() ?></span>
+</span>
+<?php if ($Grid->isConfirm()) { ?>
+<input type="hidden" data-table="users" data-field="x_rc_code" data-hidden="1" name="fusersgrid$x<?= $Grid->RowIndex ?>_rc_code" id="fusersgrid$x<?= $Grid->RowIndex ?>_rc_code" value="<?= HtmlEncode($Grid->rc_code->FormValue) ?>">
+<input type="hidden" data-table="users" data-field="x_rc_code" data-hidden="1" data-old name="fusersgrid$o<?= $Grid->RowIndex ?>_rc_code" id="fusersgrid$o<?= $Grid->RowIndex ?>_rc_code" value="<?= HtmlEncode($Grid->rc_code->OldValue) ?>">
+<?php } ?>
+<?php } ?>
+</td>
+    <?php } ?>
+    <?php if ($Grid->region_code->Visible) { // region_code ?>
+        <td data-name="region_code"<?= $Grid->region_code->cellAttributes() ?>>
+<?php if ($Grid->RowType == RowType::ADD) { // Add record ?>
+<span id="el<?= $Grid->RowIndex == '$rowindex$' ? '$rowindex$' : $Grid->RowCount ?>_users_region_code" class="el_users_region_code">
+<input type="<?= $Grid->region_code->getInputTextType() ?>" name="x<?= $Grid->RowIndex ?>_region_code" id="x<?= $Grid->RowIndex ?>_region_code" data-table="users" data-field="x_region_code" value="<?= $Grid->region_code->EditValue ?>" size="30" maxlength="30" placeholder="<?= HtmlEncode($Grid->region_code->getPlaceHolder()) ?>" data-format-pattern="<?= HtmlEncode($Grid->region_code->formatPattern()) ?>"<?= $Grid->region_code->editAttributes() ?>>
+<div class="invalid-feedback"><?= $Grid->region_code->getErrorMessage() ?></div>
+</span>
+<input type="hidden" data-table="users" data-field="x_region_code" data-hidden="1" data-old name="o<?= $Grid->RowIndex ?>_region_code" id="o<?= $Grid->RowIndex ?>_region_code" value="<?= HtmlEncode($Grid->region_code->OldValue) ?>">
+<?php } ?>
+<?php if ($Grid->RowType == RowType::EDIT) { // Edit record ?>
+<span id="el<?= $Grid->RowIndex == '$rowindex$' ? '$rowindex$' : $Grid->RowCount ?>_users_region_code" class="el_users_region_code">
+<input type="<?= $Grid->region_code->getInputTextType() ?>" name="x<?= $Grid->RowIndex ?>_region_code" id="x<?= $Grid->RowIndex ?>_region_code" data-table="users" data-field="x_region_code" value="<?= $Grid->region_code->EditValue ?>" size="30" maxlength="30" placeholder="<?= HtmlEncode($Grid->region_code->getPlaceHolder()) ?>" data-format-pattern="<?= HtmlEncode($Grid->region_code->formatPattern()) ?>"<?= $Grid->region_code->editAttributes() ?>>
+<div class="invalid-feedback"><?= $Grid->region_code->getErrorMessage() ?></div>
+</span>
+<?php } ?>
+<?php if ($Grid->RowType == RowType::VIEW) { // View record ?>
+<span id="el<?= $Grid->RowIndex == '$rowindex$' ? '$rowindex$' : $Grid->RowCount ?>_users_region_code" class="el_users_region_code">
+<span<?= $Grid->region_code->viewAttributes() ?>>
+<?= $Grid->region_code->getViewValue() ?></span>
+</span>
+<?php if ($Grid->isConfirm()) { ?>
+<input type="hidden" data-table="users" data-field="x_region_code" data-hidden="1" name="fusersgrid$x<?= $Grid->RowIndex ?>_region_code" id="fusersgrid$x<?= $Grid->RowIndex ?>_region_code" value="<?= HtmlEncode($Grid->region_code->FormValue) ?>">
+<input type="hidden" data-table="users" data-field="x_region_code" data-hidden="1" data-old name="fusersgrid$o<?= $Grid->RowIndex ?>_region_code" id="fusersgrid$o<?= $Grid->RowIndex ?>_region_code" value="<?= HtmlEncode($Grid->region_code->OldValue) ?>">
 <?php } ?>
 <?php } ?>
 </td>

@@ -45,7 +45,9 @@ loadjs.ready(["wrapper", "head"], function () {
             ["_profile", [fields._profile.visible && fields._profile.required ? ew.Validators.required(fields._profile.caption) : null], fields._profile.isInvalid],
             ["position_id", [fields.position_id.visible && fields.position_id.required ? ew.Validators.required(fields.position_id.caption) : null, ew.Validators.integer], fields.position_id.isInvalid],
             ["employee_id", [fields.employee_id.visible && fields.employee_id.required ? ew.Validators.required(fields.employee_id.caption) : null], fields.employee_id.isInvalid],
-            ["must_change_password", [fields.must_change_password.visible && fields.must_change_password.required ? ew.Validators.required(fields.must_change_password.caption) : null], fields.must_change_password.isInvalid]
+            ["must_change_password", [fields.must_change_password.visible && fields.must_change_password.required ? ew.Validators.required(fields.must_change_password.caption) : null], fields.must_change_password.isInvalid],
+            ["rc_code", [fields.rc_code.visible && fields.rc_code.required ? ew.Validators.required(fields.rc_code.caption) : null], fields.rc_code.isInvalid],
+            ["region_code", [fields.region_code.visible && fields.region_code.required ? ew.Validators.required(fields.region_code.caption) : null], fields.region_code.isInvalid]
         ])
 
         // Form_CustomValidate
@@ -371,6 +373,30 @@ loadjs.ready("fusersedit", function() {
     <div class="invalid-feedback"><?= $Page->must_change_password->getErrorMessage() ?></div>
 </div>
 <?= $Page->must_change_password->getCustomMessage() ?>
+</span>
+</div></div>
+    </div>
+<?php } ?>
+<?php if ($Page->rc_code->Visible) { // rc_code ?>
+    <div id="r_rc_code"<?= $Page->rc_code->rowAttributes() ?>>
+        <label id="elh_users_rc_code" for="x_rc_code" class="<?= $Page->LeftColumnClass ?>"><?= $Page->rc_code->caption() ?><?= $Page->rc_code->Required ? $Language->phrase("FieldRequiredIndicator") : "" ?></label>
+        <div class="<?= $Page->RightColumnClass ?>"><div<?= $Page->rc_code->cellAttributes() ?>>
+<span id="el_users_rc_code">
+<input type="<?= $Page->rc_code->getInputTextType() ?>" name="x_rc_code" id="x_rc_code" data-table="users" data-field="x_rc_code" value="<?= $Page->rc_code->EditValue ?>" size="30" maxlength="50" placeholder="<?= HtmlEncode($Page->rc_code->getPlaceHolder()) ?>" data-format-pattern="<?= HtmlEncode($Page->rc_code->formatPattern()) ?>"<?= $Page->rc_code->editAttributes() ?> aria-describedby="x_rc_code_help">
+<?= $Page->rc_code->getCustomMessage() ?>
+<div class="invalid-feedback"><?= $Page->rc_code->getErrorMessage() ?></div>
+</span>
+</div></div>
+    </div>
+<?php } ?>
+<?php if ($Page->region_code->Visible) { // region_code ?>
+    <div id="r_region_code"<?= $Page->region_code->rowAttributes() ?>>
+        <label id="elh_users_region_code" for="x_region_code" class="<?= $Page->LeftColumnClass ?>"><?= $Page->region_code->caption() ?><?= $Page->region_code->Required ? $Language->phrase("FieldRequiredIndicator") : "" ?></label>
+        <div class="<?= $Page->RightColumnClass ?>"><div<?= $Page->region_code->cellAttributes() ?>>
+<span id="el_users_region_code">
+<input type="<?= $Page->region_code->getInputTextType() ?>" name="x_region_code" id="x_region_code" data-table="users" data-field="x_region_code" value="<?= $Page->region_code->EditValue ?>" size="30" maxlength="30" placeholder="<?= HtmlEncode($Page->region_code->getPlaceHolder()) ?>" data-format-pattern="<?= HtmlEncode($Page->region_code->formatPattern()) ?>"<?= $Page->region_code->editAttributes() ?> aria-describedby="x_region_code_help">
+<?= $Page->region_code->getCustomMessage() ?>
+<div class="invalid-feedback"><?= $Page->region_code->getErrorMessage() ?></div>
 </span>
 </div></div>
     </div>
