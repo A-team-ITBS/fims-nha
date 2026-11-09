@@ -28,7 +28,7 @@ class UserAccessService
             $lastName = trim($data['last_name'] ?? '') ?: null;
             $suffix = trim($data['suffix'] ?? '') ?: null;
             $mobileNumber = trim($data['mobile_number'] ?? '') ?: null;
-            $departmentId = empty($data['department_id']) ? null : $data['department_id'];
+            $rcId = trim($data['rc_id'] ?? '') ?: null;
             $positionId = empty($data['position_id']) ? null : $data['position_id'];
             $isActive = array_key_exists('is_active', $data) ? App\ConvertToBool($data['is_active']) : true;
 
@@ -51,13 +51,13 @@ class UserAccessService
                 throw new \InvalidArgumentException("Username or email already exists");
             }
 
-            if ($departmentId !== null) {
-                $departmentExists = App\ExecuteScalar(
-                    "SELECT COUNT(*) FROM departments WHERE department_id = " . App\QuotedValue($departmentId, App\DataType::NUMBER, "DB"),
+            if ($rcId !== null) {
+                $rcIdExists = App\ExecuteScalar(
+                    "SELECT COUNT(*) FROM fims.responsibility_code WHERE rc_id = " . App\QuotedValue($rcId, App\DataType::STRING, "DB"),
                     "DB"
                 );
-                if (!$departmentExists) {
-                    throw new \InvalidArgumentException("Selected department was not found");
+                if (!$rcIdExists) {
+                    throw new \InvalidArgumentException("Selected RC code was not found");
                 }
             }
 
@@ -85,7 +85,7 @@ class UserAccessService
                 $sql = "INSERT INTO users (
                         username, email, password_hash, employee_id,
                         first_name, middle_name, last_name, suffix, mobile_number,
-                        is_active, department_id, position_id, date_created
+                        is_active, rc_id, position_id, date_created
                     ) VALUES (" .
                     App\QuotedValue($username, App\DataType::STRING, "DB") . ", " .
                     App\QuotedValue($email, App\DataType::STRING, "DB") . ", " .
@@ -97,7 +97,7 @@ class UserAccessService
                     $nullableString($suffix) . ", " .
                     $nullableString($mobileNumber) . ", " .
                     App\QuotedValue($isActive, App\DataType::BOOLEAN, "DB") . ", " .
-                    $nullableNumber($departmentId) . ", " .
+                    $nullableString($rcId) . ", " .
                     $nullableNumber($positionId) .
                     ", CURRENT_TIMESTAMP)";
                 App\Execute($sql, "DB");
