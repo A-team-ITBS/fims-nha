@@ -143,7 +143,7 @@ class UserAccessService
             $lastName = trim($data['last_name'] ?? '') ?: null;
             $suffix = trim($data['suffix'] ?? '') ?: null;
             $mobileNumber = trim($data['mobile_number'] ?? '') ?: null;
-            $departmentId = empty($data['department_id']) ? null : $data['department_id'];
+            $rcId = trim($data['rc_id'] ?? '') ?: null;
             $positionId = empty($data['position_id']) ? null : $data['position_id'];
             $isActive = array_key_exists('is_active', $data) ? App\ConvertToBool($data['is_active']) : true;
 
@@ -167,13 +167,13 @@ class UserAccessService
                 throw new \InvalidArgumentException("Username or email already in use by another user");
             }
 
-            if ($departmentId !== null) {
-                $departmentExists = App\ExecuteScalar(
-                    "SELECT COUNT(*) FROM departments WHERE department_id = " . App\QuotedValue($departmentId, App\DataType::NUMBER, "DB"),
+            if ($rcId !== null) {
+                $rcIdExists = App\ExecuteScalar(
+                    "SELECT COUNT(*) FROM fims.responsibility_code WHERE rc_id = " . App\QuotedValue($rcId, App\DataType::STRING, "DB"),
                     "DB"
                 );
-                if (!$departmentExists) {
-                    throw new \InvalidArgumentException("Selected department was not found");
+                if (!$rcIdExists) {
+                    throw new \InvalidArgumentException("Selected RC code was not found");
                 }
             }
 
@@ -204,7 +204,7 @@ class UserAccessService
                 "suffix = " . $nullableString($suffix),
                 "mobile_number = " . $nullableString($mobileNumber),
                 "is_active = " . App\QuotedValue($isActive, App\DataType::BOOLEAN, "DB"),
-                "department_id = " . $nullableNumber($departmentId),
+                "rc_id = " . $nullableString($rcId),
                 "position_id = " . $nullableNumber($positionId),
             ];
             if ($password !== '') {
@@ -473,64 +473,6 @@ class UserAccessService
         }
     }
 
-    // Bulk-hide multiple module/page rows from the Permissions Management list in one
-    // request (multi-select "Delete Selected"). Non-destructive, same as setModuleHidden -
-    // underlying uac.user_level_permissions rows are untouched and this is reversible.
-    public function removeModules($data)
-    {
-        try {
-            if (!App\AllowAdd("user_level_permissions") && !App\AllowEdit("user_level_permissions")) {
-                throw new \InvalidArgumentException("You do not have permission to manage permissions");
-            }
-
-            $modules = $data['modules'] ?? [];
-            if (!is_array($modules) || empty($modules)) {
-                throw new \InvalidArgumentException("No modules were selected");
-            }
-
-            $removed = 0;
-            App\Execute("BEGIN", "DB");
-            try {
-                $this->ensureModuleCaptionsTable();
-
-                foreach ($modules as $module) {
-                    $tableName = trim($module['table_name'] ?? '');
-                    $caption = trim($module['caption'] ?? '');
-                    if ($tableName === '' || $caption === '') {
-                        continue;
-                    }
-
-                    $sql = "INSERT INTO permission_module_captions (table_name, caption, is_hidden) VALUES (" .
-                        App\QuotedValue($tableName, App\DataType::STRING, "DB") . ", " .
-                        App\QuotedValue($caption, App\DataType::STRING, "DB") . ", " .
-                        App\QuotedValue(true, App\DataType::BOOLEAN, "DB") . ")" .
-                        " ON CONFLICT (table_name) DO UPDATE SET is_hidden = EXCLUDED.is_hidden, updated_at = CURRENT_TIMESTAMP";
-                    App\Execute($sql, "DB");
-                    $removed++;
-                }
-
-                App\Execute("COMMIT", "DB");
-            } catch (\Exception $e) {
-                App\Execute("ROLLBACK", "DB");
-                throw $e;
-            }
-
-            if ($removed === 0) {
-                throw new \InvalidArgumentException("No valid modules were selected");
-            }
-
-            return json_encode([
-                'success' => true,
-                'message' => $removed === 1 ? '1 module removed from the list' : "{$removed} modules removed from the list",
-            ]);
-        } catch (\InvalidArgumentException $e) {
-            return json_encode(['success' => false, 'message' => $e->getMessage()]);
-        } catch (\Exception $e) {
-            App\LogError("Error in UserAccessService::removeModules: " . $e->getMessage());
-            return json_encode(['success' => false, 'message' => 'Internal server error']);
-        }
-    }
-
     public function createUserLevel($data)
     {
         try {
@@ -730,13 +672,30 @@ class UserAccessService
 
             $assignedBy = App\CurrentUserID() ?: null;
 
-            $sql = "INSERT INTO user_level_assignments (system_id, user_id, user_level_id, assigned_by, created_at) VALUES (" .
-                ($systemId !== null ? App\QuotedValue($systemId, App\DataType::NUMBER, "DB") : "NULL") . ", " .
-                App\QuotedValue($userId, App\DataType::NUMBER, "DB") . ", " .
-                App\QuotedValue($userLevelId, App\DataType::NUMBER, "DB") . ", " .
-                ($assignedBy !== null ? App\QuotedValue($assignedBy, App\DataType::NUMBER, "DB") : "NULL") .
-                ", CURRENT_TIMESTAMP)";
-            App\Execute($sql, "DB");
+            App\Execute("BEGIN", "DB");
+            try {
+                $sql = "INSERT INTO user_level_assignments (system_id, user_id, user_level_id, assigned_by, created_at) VALUES (" .
+                    ($systemId !== null ? App\QuotedValue($systemId, App\DataType::NUMBER, "DB") : "NULL") . ", " .
+                    App\QuotedValue($userId, App\DataType::NUMBER, "DB") . ", " .
+                    App\QuotedValue($userLevelId, App\DataType::NUMBER, "DB") . ", " .
+                    ($assignedBy !== null ? App\QuotedValue($assignedBy, App\DataType::NUMBER, "DB") : "NULL") .
+                    ", CURRENT_TIMESTAMP)";
+                App\Execute($sql, "DB");
+
+                // PHPMaker's core login/permission engine (AdvancedSecurity::setupUserLevelEx(),
+                // via Config("USER_LEVEL_FIELD_NAME") = "user_level_id") reads this single column
+                // on uac.users directly — it has no knowledge of user_level_assignments. Without
+                // this, a freshly-assigned user still gets "no permission" everywhere on login.
+                App\Execute(
+                    "UPDATE users SET user_level_id = " . App\QuotedValue($userLevelId, App\DataType::NUMBER, "DB") .
+                    " WHERE user_id = " . App\QuotedValue($userId, App\DataType::NUMBER, "DB"),
+                    "DB"
+                );
+                App\Execute("COMMIT", "DB");
+            } catch (\Exception $e) {
+                App\Execute("ROLLBACK", "DB");
+                throw $e;
+            }
 
             return json_encode(['success' => true, 'message' => 'Access assigned successfully']);
         } catch (\InvalidArgumentException $e) {
