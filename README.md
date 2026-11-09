@@ -146,7 +146,7 @@ docker exec fims-nha-php sh -lc "composer routes"
 
 ## Where to start (new contributor)
 
-1. `docker-compose up -d`, load the schema, log in as `superadmin` / `superadmin123`.
+1. `docker-compose up -d`, load the schema, log in as `superadmin` / `pass`.
 2. Read `_guidelines/page-creation-guidelines.md` and `_guidelines/api-route-service-guidelines.md`.
 3. Read **Developer Guide §4** to understand the two ways a feature gets built here (PHPMaker-
    generated CRUD vs. hand-built custom page), then trace one working feature end-to-end —
