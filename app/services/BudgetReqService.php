@@ -228,13 +228,14 @@ class BudgetReqService
         }
     }
 
-    private function fetchHeaderByFiscalYear(string $fiscalYr): ?array
+    private function fetchHeaderByFiscalYearAndRc(string $fiscalYr, string $rcId): ?array
     {
         return App\ExecuteRow(
-            "SELECT br.budget_reference_number, br.status_id, st.name AS status_name
+            "SELECT br.budget_reference_number, br.status_id, br.rc_id, st.name AS status_name
              FROM {$this->table} br
              LEFT JOIN fims.settings_status st ON st.id = br.status_id
-             WHERE br.fiscal_yr = " . App\QuotedValue($fiscalYr, DataType::NUMBER, 'DB'),
+             WHERE br.fiscal_yr = " . App\QuotedValue($fiscalYr, DataType::NUMBER, 'DB') . '
+               AND br.rc_id = ' . App\QuotedValue($rcId, DataType::STRING, 'DB'),
             'DB'
         ) ?: null;
     }
@@ -316,7 +317,7 @@ class BudgetReqService
         return $headerRows;
     }
 
-    public function fetchAlls(?int $page = null, int $limit = 10, string $fiscalYr = '', string $programCode = ''): array
+    public function fetchAlls(?int $page = null, int $limit = 10, string $fiscalYr = '', string $programCode = '', string $rcId = ''): array
     {
         try {
             $where = ['1=1'];
@@ -328,6 +329,16 @@ class BudgetReqService
                 $where[] = "EXISTS (SELECT 1 FROM {$this->tableBudgetReqProgram} brp
                                      WHERE brp.budget_reference_number = br.budget_reference_number
                                        AND brp.program_code = " . App\QuotedValue($programCode, DataType::STRING, 'DB') . ')';
+            }
+            if ($rcId !== '') {
+                // A parent RC also sees its descendants' rows (e.g. a Region 3 user
+                // sees Region 3's district offices too) — not a flat equality.
+                $rcIds = GlobalService::getRcIdsInScope($rcId) ?: [$rcId];
+                $quotedRcIds = implode(', ', array_map(
+                    fn ($id) => App\QuotedValue($id, DataType::STRING, 'DB'),
+                    $rcIds
+                ));
+                $where[] = "br.rc_id IN ({$quotedRcIds})";
             }
             $whereSql = implode(' AND ', $where);
 
@@ -426,16 +437,22 @@ class BudgetReqService
         $fiscalYr       = trim((string) ($header['fiscal_yr'] ?? ''));
         $programCode    = trim((string) ($header['program_code'] ?? ''));
         $subProgramCode = trim((string) ($header['sub_program_code'] ?? ''));
+        $rcId           = trim((string) ($header['rc_id'] ?? ''));
 
         $err = $this->validateHeaderAndProjects($fiscalYr, $programCode, $subProgramCode, $projects);
         if ($err) {
             return ['success' => false, 'message' => $err];
         }
+        if ($rcId === '') {
+            // Defense in depth — the route is expected to have already resolved this
+            // from the caller's own uac.users.rc_id (GlobalService::getUserRcId()).
+            return ['success' => false, 'message' => 'rc_id is required.'];
+        }
 
         try {
             App\Execute('BEGIN', 'DB');
 
-            $existingHeader   = $this->fetchHeaderByFiscalYear($fiscalYr);
+            $existingHeader   = $this->fetchHeaderByFiscalYearAndRc($fiscalYr, $rcId);
             $createdNewHeader = false;
 
             if ($existingHeader) {
@@ -449,9 +466,10 @@ class BudgetReqService
             } else {
                 $defaultStatusId = $this->getDefaultStatusId();
                 $headerRow = App\ExecuteRow(
-                    "INSERT INTO {$this->table} (fiscal_yr, status_id)
+                    "INSERT INTO {$this->table} (fiscal_yr, status_id, rc_id)
                      VALUES (" . App\QuotedValue($fiscalYr, DataType::NUMBER, 'DB') . ', '
-                        . ($defaultStatusId !== null ? $defaultStatusId : 'NULL') . ')
+                        . ($defaultStatusId !== null ? $defaultStatusId : 'NULL') . ', '
+                        . App\QuotedValue($rcId, DataType::STRING, 'DB') . ')
                      RETURNING budget_reference_number',
                     'DB'
                 );

@@ -3,6 +3,7 @@
 namespace PHPMaker2024\FIMS;
 
 use PHPMaker2024\FIMS\Service\BudgetReqService;
+use PHPMaker2024\FIMS\Service\GlobalService;
 
 $BudgetReqService = new BudgetReqService();
 
@@ -10,7 +11,9 @@ $BudgetReqService = new BudgetReqService();
 $app->get('/budget_req/all', function ($request, $response, $args) use ($BudgetReqService) {
     try {
         $params = $request->getQueryParams();
-        $result = $BudgetReqService->fetchAlls(null, 10, $params['fiscal_yr'] ?? '', $params['program_code'] ?? '');
+        $scope  = GlobalService::getUserRcScope((int) $request->getAttribute('user_id'));
+        $rcId   = $scope['rc_id'] ?? ($params['rc_id'] ?? '');
+        $result = $BudgetReqService->fetchAlls(null, 10, $params['fiscal_yr'] ?? '', $params['program_code'] ?? '', $rcId);
 
         return $response->withJson($result);
     } catch (\Exception $e) {
@@ -25,7 +28,10 @@ $app->get('/budget_req/list', function ($request, $response, $args) use ($Budget
         $page   = isset($params['page']) ? (int) $params['page'] : 1;
         $limit  = isset($params['limit']) ? (int) $params['limit'] : 10;
 
-        $result = $BudgetReqService->fetchAlls($page, $limit, $params['fiscal_yr'] ?? '', $params['program_code'] ?? '');
+        $scope  = GlobalService::getUserRcScope((int) $request->getAttribute('user_id'));
+        $rcId   = $scope['rc_id'] ?? ($params['rc_id'] ?? '');
+
+        $result = $BudgetReqService->fetchAlls($page, $limit, $params['fiscal_yr'] ?? '', $params['program_code'] ?? '', $rcId);
 
         return $response->withJson($result);
     } catch (\Exception $e) {
@@ -57,6 +63,17 @@ $app->post('/budget_req/add', function ($request, $response, $args) use ($Budget
         if (!is_array($projects) || empty($projects)) {
             return $response->withJson(['success' => false, 'message' => 'projects is required and must be a non-empty array.'], 400);
         }
+
+        // rc_id is auto-detected from the caller's own account — no manual RC
+        // picker. Every creating user, admin included, must have one set.
+        // getUserRcId() resolves the session-backed current user itself and
+        // throws if none is logged in (caught below, surfaced as a 400).
+        $rcId = GlobalService::getUserRcId();
+        if ($rcId === null) {
+            return $response->withJson(['success' => false, 'message' =>
+                'Your account has no RC assigned (uac.users.rc_id). Ask an administrator to set it.'], 400);
+        }
+        $body['rc_id'] = $rcId;
 
         $result = $BudgetReqService->addProgram($body, $projects);
 
