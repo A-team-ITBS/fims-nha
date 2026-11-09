@@ -22,6 +22,10 @@ use PHPMaker2024\FIMS as App;
  *   NOTE: this one reads the database, which the rules above would normally keep in
  *   the feature's own service (ProgramService). It lives here by request, so it can
  *   be called from any service or route: GlobalService::generateProgramCode().
+ * - getUserRcId() / getUserRcScope() / getRcIdsInScope()  RC (Responsibility Center)
+ *   helpers for fims.budget_req row-level scoping, keyed on uac.users.rc_id. Same
+ *   "reads the database, lives here by request" carve-out as generateProgramCode() —
+ *   shared by BudgetReqService and its route layer.
  */
 class GlobalService
 {
@@ -105,5 +109,79 @@ class GlobalService
     public static function formatSubProgramCode(string $prefix, int $number): string
     {
         return sprintf('%s-%03d', $prefix, $number);
+    }
+    
+    public static function getUserRcId(int $userId = 0): ?string
+    {
+        $userId = $userId ?: (int) App\CurrentUserID();
+        if ($userId <= 0) {
+            throw new \InvalidArgumentException('No logged-in user — cannot determine RC.');
+        }
+        $rcId = trim((string) App\ExecuteScalar(
+            'SELECT rc_id FROM uac.users WHERE user_id = ' . $userId,
+            'DB'
+        ));
+
+        return $rcId !== '' ? $rcId : null;
+    }
+
+    /**
+     * Resolves the RC a user is restricted to, for row-level scoping of
+     * fims.budget_req when LISTING (as opposed to getUserRcId(), used when
+     * creating). Superadmin (user_level_id = -1), a missing user row, or any
+     * DB error all mean is_admin = true, rc_id = null (unrestricted/sees-all).
+     * A non-admin user whose rc_id is NULL is also unrestricted — mirrors the
+     * region_code convention already used by ChartOfAccountsService::getUserScope().
+     *
+     * Falls back to App\CurrentUserID() when $userId is falsy, same as
+     * getUserRcId() — otherwise an unresolved user id here fails OPEN (reads
+     * as "no row found" => is_admin = true => sees every RC), which is the
+     * wrong direction for a security check to fail in.
+     */
+    public static function getUserRcScope(int $userId = 0): array
+    {
+        $userId = $userId ?: (int) App\CurrentUserID();
+
+        try {
+            $row = App\ExecuteRow(
+                "SELECT u.user_level_id, u.rc_id, rc.rc_name
+                 FROM uac.users u
+                 LEFT JOIN fims.responsibility_code rc ON rc.rc_id = u.rc_id
+                 WHERE u.user_id = " . App\QuotedValue($userId, App\DataType::NUMBER, 'DB'),
+                'DB'
+            );
+
+            $isAdmin = !$row || App\SameText((string) $row['user_level_id'], '-1');
+
+            return [
+                'is_admin' => $isAdmin,
+                'rc_id'    => $isAdmin ? null : ($row['rc_id'] ?? null),
+                'rc_name'  => $isAdmin ? null : ($row['rc_name'] ?? null),
+            ];
+        } catch (\Exception $e) {
+            return ['is_admin' => true, 'rc_id' => null, 'rc_name' => null];
+        }
+    }
+
+    /**
+     * Expands one RC id into itself plus every descendant's id (a parent RC
+     * sees its children's rows too — e.g. a Region 3 user also sees Region
+     * 3's district offices), via a recursive walk over
+     * fims.responsibility_code.parent_rc_id.
+     */
+    public static function getRcIdsInScope(string $rcId): array
+    {
+        $rows = App\ExecuteRows(
+            "WITH RECURSIVE rc_tree AS (
+                SELECT rc_id FROM fims.responsibility_code WHERE rc_id = " . App\QuotedValue($rcId, App\DataType::STRING, 'DB') . '
+                UNION ALL
+                SELECT child.rc_id FROM fims.responsibility_code child
+                JOIN rc_tree ON child.parent_rc_id = rc_tree.rc_id
+            )
+            SELECT rc_id FROM rc_tree',
+            'DB'
+        ) ?: [];
+
+        return array_map(fn ($r) => (string) $r['rc_id'], $rows);
     }
 }
