@@ -44,11 +44,7 @@ class PersonalData
     public $RenderingView = false;
 
     // CSS class/style
-<<<<<<< HEAD
-    public $CurrentPageName = "ResponsibilityCenterPageController";
-=======
     public $CurrentPageName = "BudgetAllocationFormController";
->>>>>>> b2e96bac53c44c6b3350834ce0314c0628b1beeb
 
     // Page headings
     public $Heading = "";

@@ -20,11 +20,17 @@
     <menu id="82">
       <phrase id="menutext" value="Sub Program Setup" />
     </menu>
-    <menu id="83">
+    <menu id="89">
       <phrase id="menutext" value="Chart of Accounts" />
     </menu>
-    <menu id="84">
+    <menu id="90">
       <phrase id="menutext" value="Responsibilty Center" />
+    </menu>
+    <menu id="83">
+      <phrase id="menutext" value="permission module captions" />
+    </menu>
+    <menu id="84">
+      <phrase id="menutext" value="aggregated audit logs" />
     </menu>
     <menu id="75">
       <phrase id="menutext" value="document asset types" />
@@ -1420,13 +1426,12 @@
     <table id="sub_program_page">
       <phrase id="tblcaption" value="Sub Program Setup" />
     </table>
-<<<<<<< HEAD
     <table id="chart_of_accounts_page">
       <phrase id="tblcaption" value="Chart of Accounts" />
     </table>
     <table id="responsibility_center_page">
       <phrase id="tblcaption" value="Responsibilty Center" />
-=======
+    </table>
     <table id="permission_module_captions">
       <phrase id="tblcaption" value="permission module captions" />
       <field id="table_name">
@@ -1487,7 +1492,6 @@
     </table>
     <table id="budget_allocation_form">
       <phrase id="tblcaption" value="Memo Request" />
->>>>>>> b2e96bac53c44c6b3350834ce0314c0628b1beeb
     </table>
   </project>
 </ew-language>
