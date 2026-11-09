@@ -2,9 +2,32 @@
 
 namespace PHPMaker2024\FIMS;
 
+use PHPMaker2024\FIMS\Service\GlobalService;
 use PHPMaker2024\FIMS\Service\SubProgramService;
 
 $SubProgramService = new SubProgramService();
+
+// Suggested sub-program code sequence for a program: ?program_code=...
+// -> { prefix: "001", next: 1, next_code: "001-001" }  (client counts up from `next` for extra line items)
+$app->get('/sub_program/next-code', function ($request, $response, $args) {
+    try {
+        $programCode = trim((string) ($request->getQueryParams()['program_code'] ?? ''));
+        if ($programCode === '') {
+            return $response->withJson(['success' => false, 'message' => 'program_code is required.'], 400);
+        }
+
+        $seq = GlobalService::nextSubProgramNumber($programCode);
+        $seq['next_code'] = GlobalService::formatSubProgramCode($seq['prefix'], $seq['next']);
+
+        return $response->withJson(['success' => true, 'data' => $seq]);
+    } catch (\InvalidArgumentException $e) {
+        return $response->withJson(['success' => false, 'message' => $e->getMessage()], 400);
+    } catch (\Throwable $e) {
+        LogError('GET /sub_program/next-code ' . $e->getMessage());
+
+        return $response->withJson(['success' => false, 'message' => 'Could not generate a sub-program code.'], 500);
+    }
+})->add($jwtMiddleware);
 
 // Fetch all — no pagination (for dropdowns)
 $app->get('/sub_program/all', function ($request, $response, $args) use ($SubProgramService) {
