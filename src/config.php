@@ -800,7 +800,7 @@ $CONFIG = [
     "LOOKUP_CACHE_PAGE_IDS" => ["list","grid"],
 
     // Page Title Style
-    "PAGE_TITLE_STYLE" => "Breadcrumbs",
+    "PAGE_TITLE_STYLE" => "None",
 
     // Responsive table
     "USE_RESPONSIVE_TABLE" => true,

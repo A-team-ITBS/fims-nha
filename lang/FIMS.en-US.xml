@@ -2,14 +2,14 @@
   <project>
     <phrase id="bodytitle" value="UAC - User Access Control System" />
     <phrase id="footertext" value="&amp;copy;2024 ITBS Corporation. All rights reserved." />
+    <menu id="9">
+      <phrase id="menutext" value="Dashboard" />
+    </menu>
+    <menu id="146">
+      <phrase id="menutext" value="Budget" />
+    </menu>
     <menu id="88">
       <phrase id="menutext" value="Memo Request" />
-    </menu>
-    <menu id="79">
-      <phrase id="menutext" value="Project List" />
-    </menu>
-    <menu id="80">
-      <phrase id="menutext" value="Program Setup" />
     </menu>
     <menu id="81">
       <phrase id="menutext" value="Budget Request" />
@@ -17,23 +17,56 @@
     <menu id="85">
       <phrase id="menutext" value="Budget Revision" />
     </menu>
+    <menu id="147">
+      <phrase id="menutext" value="Programs &amp; Projects " />
+    </menu>
+    <menu id="80">
+      <phrase id="menutext" value="Program" />
+    </menu>
     <menu id="82">
-      <phrase id="menutext" value="Sub Program Setup" />
+      <phrase id="menutext" value="Sub Program" />
+    </menu>
+    <menu id="79">
+      <phrase id="menutext" value="Projects" />
+    </menu>
+    <menu id="148">
+      <phrase id="menutext" value="Accounting Records" />
     </menu>
     <menu id="89">
       <phrase id="menutext" value="Chart of Accounts" />
     </menu>
-    <menu id="83">
-      <phrase id="menutext" value="permission module captions" />
-    </menu>
     <menu id="90">
       <phrase id="menutext" value="Responsibilty Center" />
+    </menu>
+    <menu id="91">
+      <phrase id="menutext" value="AIR Module" />
+    </menu>
+    <menu id="207">
+      <phrase id="menutext" value="Voucher" />
+    </menu>
+    <menu id="206">
+      <phrase id="menutext" value="Administration" />
+    </menu>
+    <menu id="70">
+      <phrase id="menutext" value="Position Management" />
+    </menu>
+    <menu id="13">
+      <phrase id="menutext" value="User Access Management" />
+    </menu>
+    <menu id="12">
+      <phrase id="menutext" value="User Level Management" />
+    </menu>
+    <menu id="69">
+      <phrase id="menutext" value="Department Management" />
+    </menu>
+    <menu id="3">
+      <phrase id="menutext" value="Systems" />
     </menu>
     <menu id="84">
       <phrase id="menutext" value="aggregated audit logs" />
     </menu>
-    <menu id="91">
-      <phrase id="menutext" value="AIR Module" />
+    <menu id="83">
+      <phrase id="menutext" value="permission module captions" />
     </menu>
     <menu id="86">
       <phrase id="menutext" value="Budget Revision Form" />
@@ -52,24 +85,6 @@
     </menu>
     <menu id="78">
       <phrase id="menutext" value="jwt sessions" />
-    </menu>
-    <menu id="9">
-      <phrase id="menutext" value="Dashboard" />
-    </menu>
-    <menu id="3">
-      <phrase id="menutext" value="Systems" />
-    </menu>
-    <menu id="69">
-      <phrase id="menutext" value="Department Management" />
-    </menu>
-    <menu id="70">
-      <phrase id="menutext" value="Position Management" />
-    </menu>
-    <menu id="13">
-      <phrase id="menutext" value="User Access Management" />
-    </menu>
-    <menu id="12">
-      <phrase id="menutext" value="User Level Management" />
     </menu>
     <menu id="59">
       <phrase id="menutext" value="ID Generator Management" />
@@ -1504,6 +1519,9 @@
     </table>
     <table id="airmodule">
       <phrase id="tblcaption" value="AIR Module" />
+    </table>
+    <table id="voucher">
+      <phrase id="tblcaption" value="Voucher" />
     </table>
   </project>
 </ew-language>
