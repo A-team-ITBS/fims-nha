@@ -263,24 +263,13 @@ loadjs.ready("head", function () {
 </td>
     </tr>
 <?php } ?>
-<?php if ($Page->rc_code->Visible) { // rc_code ?>
-    <tr id="r_rc_code"<?= $Page->rc_code->rowAttributes() ?>>
-        <td class="<?= $Page->TableLeftColumnClass ?>"><span id="elh_users_rc_code"><?= $Page->rc_code->caption() ?></span></td>
-        <td data-name="rc_code"<?= $Page->rc_code->cellAttributes() ?>>
-<span id="el_users_rc_code">
-<span<?= $Page->rc_code->viewAttributes() ?>>
-<?= $Page->rc_code->getViewValue() ?></span>
-</span>
-</td>
-    </tr>
-<?php } ?>
-<?php if ($Page->region_code->Visible) { // region_code ?>
-    <tr id="r_region_code"<?= $Page->region_code->rowAttributes() ?>>
-        <td class="<?= $Page->TableLeftColumnClass ?>"><span id="elh_users_region_code"><?= $Page->region_code->caption() ?></span></td>
-        <td data-name="region_code"<?= $Page->region_code->cellAttributes() ?>>
-<span id="el_users_region_code">
-<span<?= $Page->region_code->viewAttributes() ?>>
-<?= $Page->region_code->getViewValue() ?></span>
+<?php if ($Page->rc_id->Visible) { // rc_id ?>
+    <tr id="r_rc_id"<?= $Page->rc_id->rowAttributes() ?>>
+        <td class="<?= $Page->TableLeftColumnClass ?>"><span id="elh_users_rc_id"><?= $Page->rc_id->caption() ?></span></td>
+        <td data-name="rc_id"<?= $Page->rc_id->cellAttributes() ?>>
+<span id="el_users_rc_id">
+<span<?= $Page->rc_id->viewAttributes() ?>>
+<?= $Page->rc_id->getViewValue() ?></span>
 </span>
 </td>
     </tr>

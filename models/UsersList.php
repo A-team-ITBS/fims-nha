@@ -173,8 +173,7 @@ class UsersList extends Users
         $this->position_id->setVisibility();
         $this->employee_id->setVisibility();
         $this->must_change_password->setVisibility();
-        $this->rc_code->setVisibility();
-        $this->region_code->setVisibility();
+        $this->rc_id->setVisibility();
     }
 
     // Constructor
@@ -1129,8 +1128,7 @@ class UsersList extends Users
         $filterList = Concat($filterList, $this->position_id->AdvancedSearch->toJson(), ","); // Field position_id
         $filterList = Concat($filterList, $this->employee_id->AdvancedSearch->toJson(), ","); // Field employee_id
         $filterList = Concat($filterList, $this->must_change_password->AdvancedSearch->toJson(), ","); // Field must_change_password
-        $filterList = Concat($filterList, $this->rc_code->AdvancedSearch->toJson(), ","); // Field rc_code
-        $filterList = Concat($filterList, $this->region_code->AdvancedSearch->toJson(), ","); // Field region_code
+        $filterList = Concat($filterList, $this->rc_id->AdvancedSearch->toJson(), ","); // Field rc_id
         if ($this->BasicSearch->Keyword != "") {
             $wrk = "\"" . Config("TABLE_BASIC_SEARCH") . "\":\"" . JsEncode($this->BasicSearch->Keyword) . "\",\"" . Config("TABLE_BASIC_SEARCH_TYPE") . "\":\"" . JsEncode($this->BasicSearch->Type) . "\"";
             $filterList = Concat($filterList, $wrk, ",");
@@ -1330,21 +1328,13 @@ class UsersList extends Users
         $this->must_change_password->AdvancedSearch->SearchOperator2 = @$filter["w_must_change_password"];
         $this->must_change_password->AdvancedSearch->save();
 
-        // Field rc_code
-        $this->rc_code->AdvancedSearch->SearchValue = @$filter["x_rc_code"];
-        $this->rc_code->AdvancedSearch->SearchOperator = @$filter["z_rc_code"];
-        $this->rc_code->AdvancedSearch->SearchCondition = @$filter["v_rc_code"];
-        $this->rc_code->AdvancedSearch->SearchValue2 = @$filter["y_rc_code"];
-        $this->rc_code->AdvancedSearch->SearchOperator2 = @$filter["w_rc_code"];
-        $this->rc_code->AdvancedSearch->save();
-
-        // Field region_code
-        $this->region_code->AdvancedSearch->SearchValue = @$filter["x_region_code"];
-        $this->region_code->AdvancedSearch->SearchOperator = @$filter["z_region_code"];
-        $this->region_code->AdvancedSearch->SearchCondition = @$filter["v_region_code"];
-        $this->region_code->AdvancedSearch->SearchValue2 = @$filter["y_region_code"];
-        $this->region_code->AdvancedSearch->SearchOperator2 = @$filter["w_region_code"];
-        $this->region_code->AdvancedSearch->save();
+        // Field rc_id
+        $this->rc_id->AdvancedSearch->SearchValue = @$filter["x_rc_id"];
+        $this->rc_id->AdvancedSearch->SearchOperator = @$filter["z_rc_id"];
+        $this->rc_id->AdvancedSearch->SearchCondition = @$filter["v_rc_id"];
+        $this->rc_id->AdvancedSearch->SearchValue2 = @$filter["y_rc_id"];
+        $this->rc_id->AdvancedSearch->SearchOperator2 = @$filter["w_rc_id"];
+        $this->rc_id->AdvancedSearch->save();
         $this->BasicSearch->setKeyword(@$filter[Config("TABLE_BASIC_SEARCH")]);
         $this->BasicSearch->setType(@$filter[Config("TABLE_BASIC_SEARCH_TYPE")]);
     }
@@ -1395,8 +1385,7 @@ class UsersList extends Users
         $searchFlds[] = &$this->photo;
         $searchFlds[] = &$this->_profile;
         $searchFlds[] = &$this->employee_id;
-        $searchFlds[] = &$this->rc_code;
-        $searchFlds[] = &$this->region_code;
+        $searchFlds[] = &$this->rc_id;
         $searchKeyword = $default ? $this->BasicSearch->KeywordDefault : $this->BasicSearch->Keyword;
         $searchType = $default ? $this->BasicSearch->TypeDefault : $this->BasicSearch->Type;
 
@@ -1487,8 +1476,7 @@ class UsersList extends Users
             $this->updateSort($this->position_id); // position_id
             $this->updateSort($this->employee_id); // employee_id
             $this->updateSort($this->must_change_password); // must_change_password
-            $this->updateSort($this->rc_code); // rc_code
-            $this->updateSort($this->region_code); // region_code
+            $this->updateSort($this->rc_id); // rc_id
             $this->setStartRecordNumber(1); // Reset start position
         }
 
@@ -1541,8 +1529,7 @@ class UsersList extends Users
                 $this->position_id->setSort("");
                 $this->employee_id->setSort("");
                 $this->must_change_password->setSort("");
-                $this->rc_code->setSort("");
-                $this->region_code->setSort("");
+                $this->rc_id->setSort("");
             }
 
             // Reset start position
@@ -1903,8 +1890,7 @@ class UsersList extends Users
             $this->createColumnOption($option, "position_id");
             $this->createColumnOption($option, "employee_id");
             $this->createColumnOption($option, "must_change_password");
-            $this->createColumnOption($option, "rc_code");
-            $this->createColumnOption($option, "region_code");
+            $this->createColumnOption($option, "rc_id");
         }
         if (UserProfile::$FORCE_LOGOUT_USER) {
             $this->ListActions["forcelogoutuser"] = new ForceLogoutUserAction();
@@ -2385,8 +2371,7 @@ class UsersList extends Users
         $this->position_id->setDbValue($row['position_id']);
         $this->employee_id->setDbValue($row['employee_id']);
         $this->must_change_password->setDbValue((ConvertToBool($row['must_change_password']) ? "1" : "0"));
-        $this->rc_code->setDbValue($row['rc_code']);
-        $this->region_code->setDbValue($row['region_code']);
+        $this->rc_id->setDbValue($row['rc_id']);
     }
 
     // Return a row with default values
@@ -2413,8 +2398,7 @@ class UsersList extends Users
         $row['position_id'] = $this->position_id->DefaultValue;
         $row['employee_id'] = $this->employee_id->DefaultValue;
         $row['must_change_password'] = $this->must_change_password->DefaultValue;
-        $row['rc_code'] = $this->rc_code->DefaultValue;
-        $row['region_code'] = $this->region_code->DefaultValue;
+        $row['rc_id'] = $this->rc_id->DefaultValue;
         return $row;
     }
 
@@ -2495,9 +2479,7 @@ class UsersList extends Users
 
         // must_change_password
 
-        // rc_code
-
-        // region_code
+        // rc_id
 
         // View row
         if ($this->RowType == RowType::VIEW) {
@@ -2627,11 +2609,8 @@ class UsersList extends Users
                 $this->must_change_password->ViewValue = $this->must_change_password->tagCaption(2) != "" ? $this->must_change_password->tagCaption(2) : "No";
             }
 
-            // rc_code
-            $this->rc_code->ViewValue = $this->rc_code->CurrentValue;
-
-            // region_code
-            $this->region_code->ViewValue = $this->region_code->CurrentValue;
+            // rc_id
+            $this->rc_id->ViewValue = $this->rc_id->CurrentValue;
 
             // user_id
             $this->user_id->HrefValue = "";
@@ -2681,13 +2660,9 @@ class UsersList extends Users
             $this->must_change_password->HrefValue = "";
             $this->must_change_password->TooltipValue = "";
 
-            // rc_code
-            $this->rc_code->HrefValue = "";
-            $this->rc_code->TooltipValue = "";
-
-            // region_code
-            $this->region_code->HrefValue = "";
-            $this->region_code->TooltipValue = "";
+            // rc_id
+            $this->rc_id->HrefValue = "";
+            $this->rc_id->TooltipValue = "";
         }
 
         // Call Row Rendered event
