@@ -27,7 +27,7 @@ ALTER TABLE fims.budget_req
     DROP COLUMN IF EXISTS location;
 
 ALTER TABLE fims.budget_req
-    ADD COLUMN IF NOT EXISTS sub_program_code VARCHAR(20) REFERENCES fims.sub_program(sub_program_code);
+    ADD COLUMN IF NOT EXISTS sub_program_code VARCHAR(64) REFERENCES fims.sub_program(sub_program_code);
 
 COMMENT ON COLUMN fims.budget_req.sub_program_code IS
     'Optional sub-program under program_code. Must belong to program_code when set (enforced in BudgetReqService).';

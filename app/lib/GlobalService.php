@@ -74,19 +74,43 @@ class GlobalService
     }
 
     /**
-     * The RC (Responsibility Center) $userId belongs to, or null if unset.
-     * Unconditional — no superadmin bypass — since every creating user, admin
-     * included, must have their own rc_id to create a fims.budget_req (there
-     * is no manual RC picker; the backend auto-detects it from this column).
+     * Where sub-program codes for a program start: ['prefix' => '001', 'next' => 3].
      *
-     * Takes the caller's JWT-attribute user id, same as generateProgramCode()
-     * and getUserRcScope() — falls back to App\CurrentUserID() only when
-     * $userId is falsy, since routes here are JWT-authenticated and
-     * CurrentUserID()'s session-backed Security() singleton is never
-     * populated on its own.
+     *  - prefix : the last 3 digits of the program code (2026-35-074-0000000-000-001 -> "001").
+     *  - next   : highest existing fims.sub_program.sub_program_code of the form "<prefix>-NNN", plus one
+     *             (1 when there is none). sub_program_code is the table's primary key, so the lookup is
+     *             by prefix, not by program, to never suggest a code that is already taken.
      *
-     * @throws \InvalidArgumentException when no user is logged in.
+     * Codes are formatted "<prefix>-<NNN>" (001-001, 001-002, …) — see formatSubProgramCode(). A caller
+     * adding several line items takes `next` once and counts up itself. Nothing is reserved.
+     *
+     * @throws \InvalidArgumentException when the program code does not end in "-NNN" or the sequence is exhausted.
      */
+    public static function nextSubProgramNumber(string $programCode): array
+    {
+        if (!preg_match('/-([0-9]{3})$/', trim($programCode), $m)) {
+            throw new \InvalidArgumentException("Program code '{$programCode}' does not end in a 3-digit sequence.");
+        }
+        $prefix = $m[1];
+
+        $last = (int) App\ExecuteScalar(
+            "SELECT COALESCE(MAX(CAST(SUBSTRING(sub_program_code FROM '-([0-9]{3})$') AS INTEGER)), 0)
+             FROM fims.sub_program
+             WHERE sub_program_code ~ " . App\QuotedValue('^' . $prefix . '-[0-9]{3}$', App\DataType::STRING, 'DB'),
+            'DB'
+        );
+        if ($last >= 999) {
+            throw new \InvalidArgumentException("The 3-digit sub-program sequence for program {$prefix} is exhausted (999).");
+        }
+
+        return ['prefix' => $prefix, 'next' => $last + 1];
+    }
+
+    public static function formatSubProgramCode(string $prefix, int $number): string
+    {
+        return sprintf('%s-%03d', $prefix, $number);
+    }
+    
     public static function getUserRcId(int $userId = 0): ?string
     {
         $userId = $userId ?: (int) App\CurrentUserID();
