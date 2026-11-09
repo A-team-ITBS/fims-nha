@@ -85,6 +85,7 @@
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone ($p['PHPMaker2024\\FIMS\\Attributes\\Get'] ?? \Symfony\Component\VarExporter\Internal\Registry::p('PHPMaker2024\\FIMS\\Attributes\\Get')),
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Get'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
@@ -161,6 +162,11 @@
     [
         'PHPMaker2024\\FIMS\\Attributes\\Map' => [
             'methods' => [
+                [
+                    'GET',
+                    'POST',
+                    'OPTIONS',
+                ],
                 [
                     'GET',
                     'POST',
@@ -999,6 +1005,7 @@
                 '/DocumentTypeManager[/{params:.*}]',
                 '/EventPlayground[/{params:.*}]',
                 '/FileManager[/{params:.*}]',
+                '/IarModule[/{params:.*}]',
                 '/IdGenerator[/{params:.*}]',
                 '/JwtSessionsList[/{session_id}]',
                 '/JwtSessionsAdd[/{session_id}]',
@@ -1157,6 +1164,7 @@
                 'PHPMaker2024\\FIMS\\DocumentTypeManagerController:custom',
                 'PHPMaker2024\\FIMS\\EventPlaygroundController:custom',
                 'PHPMaker2024\\FIMS\\FileManagerController:custom',
+                'PHPMaker2024\\FIMS\\IarModuleController:custom',
                 'PHPMaker2024\\FIMS\\IdGeneratorController:custom',
                 'PHPMaker2024\\FIMS\\JwtSessionsController:list',
                 'PHPMaker2024\\FIMS\\JwtSessionsController:add',
@@ -1255,6 +1263,9 @@
                 'PHPMaker2024\\FIMS\\WorkflowManagerController:custom',
             ],
             'middleware' => [
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
                 [
                     'PHPMaker2024\\FIMS\\PermissionMiddleware',
                 ],
@@ -1783,6 +1794,7 @@
                 'custom.DocumentTypeManager',
                 'custom.EventPlayground',
                 'custom.FileManager',
+                'custom.IARModule',
                 'custom.IDGenerator',
                 'list.jwt_sessions',
                 'add.jwt_sessions',
@@ -1881,6 +1893,7 @@
                 'custom.WorkflowManager',
             ],
             'options' => [
+                [],
                 [],
                 [],
                 [],
@@ -2197,6 +2210,7 @@
         $o[153],
         $o[154],
         $o[155],
+        $o[156],
     ],
     []
 );
