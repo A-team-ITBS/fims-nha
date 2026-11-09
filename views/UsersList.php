@@ -196,11 +196,11 @@ $Page->ListOptions->render("header", "left");
 <?php if ($Page->must_change_password->Visible) { // must_change_password ?>
         <th data-name="must_change_password" class="<?= $Page->must_change_password->headerCellClass() ?>"><div id="elh_users_must_change_password" class="users_must_change_password"><?= $Page->renderFieldHeader($Page->must_change_password) ?></div></th>
 <?php } ?>
-<?php if ($Page->rc_code->Visible) { // rc_code ?>
-        <th data-name="rc_code" class="<?= $Page->rc_code->headerCellClass() ?>"><div id="elh_users_rc_code" class="users_rc_code"><?= $Page->renderFieldHeader($Page->rc_code) ?></div></th>
-<?php } ?>
 <?php if ($Page->region_code->Visible) { // region_code ?>
         <th data-name="region_code" class="<?= $Page->region_code->headerCellClass() ?>"><div id="elh_users_region_code" class="users_region_code"><?= $Page->renderFieldHeader($Page->region_code) ?></div></th>
+<?php } ?>
+<?php if ($Page->rc_id->Visible) { // rc_id ?>
+        <th data-name="rc_id" class="<?= $Page->rc_id->headerCellClass() ?>"><div id="elh_users_rc_id" class="users_rc_id"><?= $Page->renderFieldHeader($Page->rc_id) ?></div></th>
 <?php } ?>
 <?php
 // Render list options (header, right)
@@ -328,19 +328,19 @@ $Page->ListOptions->render("body", "left", $Page->RowCount);
 </span>
 </td>
     <?php } ?>
-    <?php if ($Page->rc_code->Visible) { // rc_code ?>
-        <td data-name="rc_code"<?= $Page->rc_code->cellAttributes() ?>>
-<span id="el<?= $Page->RowIndex == '$rowindex$' ? '$rowindex$' : $Page->RowCount ?>_users_rc_code" class="el_users_rc_code">
-<span<?= $Page->rc_code->viewAttributes() ?>>
-<?= $Page->rc_code->getViewValue() ?></span>
-</span>
-</td>
-    <?php } ?>
     <?php if ($Page->region_code->Visible) { // region_code ?>
         <td data-name="region_code"<?= $Page->region_code->cellAttributes() ?>>
 <span id="el<?= $Page->RowIndex == '$rowindex$' ? '$rowindex$' : $Page->RowCount ?>_users_region_code" class="el_users_region_code">
 <span<?= $Page->region_code->viewAttributes() ?>>
 <?= $Page->region_code->getViewValue() ?></span>
+</span>
+</td>
+    <?php } ?>
+    <?php if ($Page->rc_id->Visible) { // rc_id ?>
+        <td data-name="rc_id"<?= $Page->rc_id->cellAttributes() ?>>
+<span id="el<?= $Page->RowIndex == '$rowindex$' ? '$rowindex$' : $Page->RowCount ?>_users_rc_id" class="el_users_rc_id">
+<span<?= $Page->rc_id->viewAttributes() ?>>
+<?= $Page->rc_id->getViewValue() ?></span>
 </span>
 </td>
     <?php } ?>
