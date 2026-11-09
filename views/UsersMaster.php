@@ -144,17 +144,6 @@ $users->TableClass = "table table-bordered table-hover table-sm ew-table ew-mast
 </td>
         </tr>
 <?php } ?>
-<?php if ($users->rc_code->Visible) { // rc_code ?>
-        <tr id="r_rc_code"<?= $users->rc_code->rowAttributes() ?>>
-            <td class="<?= $users->TableLeftColumnClass ?>"><?= $users->rc_code->caption() ?></td>
-            <td<?= $users->rc_code->cellAttributes() ?>>
-<span id="el_users_rc_code">
-<span<?= $users->rc_code->viewAttributes() ?>>
-<?= $users->rc_code->getViewValue() ?></span>
-</span>
-</td>
-        </tr>
-<?php } ?>
 <?php if ($users->region_code->Visible) { // region_code ?>
         <tr id="r_region_code"<?= $users->region_code->rowAttributes() ?>>
             <td class="<?= $users->TableLeftColumnClass ?>"><?= $users->region_code->caption() ?></td>
@@ -162,6 +151,17 @@ $users->TableClass = "table table-bordered table-hover table-sm ew-table ew-mast
 <span id="el_users_region_code">
 <span<?= $users->region_code->viewAttributes() ?>>
 <?= $users->region_code->getViewValue() ?></span>
+</span>
+</td>
+        </tr>
+<?php } ?>
+<?php if ($users->rc_id->Visible) { // rc_id ?>
+        <tr id="r_rc_id"<?= $users->rc_id->rowAttributes() ?>>
+            <td class="<?= $users->TableLeftColumnClass ?>"><?= $users->rc_id->caption() ?></td>
+            <td<?= $users->rc_id->cellAttributes() ?>>
+<span id="el_users_rc_id">
+<span<?= $users->rc_id->viewAttributes() ?>>
+<?= $users->rc_id->getViewValue() ?></span>
 </span>
 </td>
         </tr>

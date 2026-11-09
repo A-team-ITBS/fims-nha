@@ -163,8 +163,8 @@ class UsersGrid extends Users
         $this->position_id->setVisibility();
         $this->employee_id->setVisibility();
         $this->must_change_password->setVisibility();
-        $this->rc_code->setVisibility();
         $this->region_code->setVisibility();
+        $this->rc_id->setVisibility();
     }
 
     // Constructor
@@ -1223,18 +1223,18 @@ class UsersGrid extends Users
             return false;
         }
         if (
-            $CurrentForm->hasValue("x_rc_code") &&
-            $CurrentForm->hasValue("o_rc_code") &&
-            $this->rc_code->CurrentValue != $this->rc_code->DefaultValue &&
-            !($this->rc_code->IsForeignKey && $this->getCurrentMasterTable() != "" && $this->rc_code->CurrentValue == $this->rc_code->getSessionValue())
-        ) {
-            return false;
-        }
-        if (
             $CurrentForm->hasValue("x_region_code") &&
             $CurrentForm->hasValue("o_region_code") &&
             $this->region_code->CurrentValue != $this->region_code->DefaultValue &&
             !($this->region_code->IsForeignKey && $this->getCurrentMasterTable() != "" && $this->region_code->CurrentValue == $this->region_code->getSessionValue())
+        ) {
+            return false;
+        }
+        if (
+            $CurrentForm->hasValue("x_rc_id") &&
+            $CurrentForm->hasValue("o_rc_id") &&
+            $this->rc_id->CurrentValue != $this->rc_id->DefaultValue &&
+            !($this->rc_id->IsForeignKey && $this->getCurrentMasterTable() != "" && $this->rc_id->CurrentValue == $this->rc_id->getSessionValue())
         ) {
             return false;
         }
@@ -1926,19 +1926,6 @@ class UsersGrid extends Users
             $this->must_change_password->setOldValue($CurrentForm->getValue("o_must_change_password"));
         }
 
-        // Check field name 'rc_code' first before field var 'x_rc_code'
-        $val = $CurrentForm->hasValue("rc_code") ? $CurrentForm->getValue("rc_code") : $CurrentForm->getValue("x_rc_code");
-        if (!$this->rc_code->IsDetailKey) {
-            if (IsApi() && $val === null) {
-                $this->rc_code->Visible = false; // Disable update for API request
-            } else {
-                $this->rc_code->setFormValue($val);
-            }
-        }
-        if ($CurrentForm->hasValue("o_rc_code")) {
-            $this->rc_code->setOldValue($CurrentForm->getValue("o_rc_code"));
-        }
-
         // Check field name 'region_code' first before field var 'x_region_code'
         $val = $CurrentForm->hasValue("region_code") ? $CurrentForm->getValue("region_code") : $CurrentForm->getValue("x_region_code");
         if (!$this->region_code->IsDetailKey) {
@@ -1950,6 +1937,19 @@ class UsersGrid extends Users
         }
         if ($CurrentForm->hasValue("o_region_code")) {
             $this->region_code->setOldValue($CurrentForm->getValue("o_region_code"));
+        }
+
+        // Check field name 'rc_id' first before field var 'x_rc_id'
+        $val = $CurrentForm->hasValue("rc_id") ? $CurrentForm->getValue("rc_id") : $CurrentForm->getValue("x_rc_id");
+        if (!$this->rc_id->IsDetailKey) {
+            if (IsApi() && $val === null) {
+                $this->rc_id->Visible = false; // Disable update for API request
+            } else {
+                $this->rc_id->setFormValue($val);
+            }
+        }
+        if ($CurrentForm->hasValue("o_rc_id")) {
+            $this->rc_id->setOldValue($CurrentForm->getValue("o_rc_id"));
         }
     }
 
@@ -1971,8 +1971,8 @@ class UsersGrid extends Users
         $this->position_id->CurrentValue = $this->position_id->FormValue;
         $this->employee_id->CurrentValue = $this->employee_id->FormValue;
         $this->must_change_password->CurrentValue = $this->must_change_password->FormValue;
-        $this->rc_code->CurrentValue = $this->rc_code->FormValue;
         $this->region_code->CurrentValue = $this->region_code->FormValue;
+        $this->rc_id->CurrentValue = $this->rc_id->FormValue;
     }
 
     /**
@@ -2090,8 +2090,8 @@ class UsersGrid extends Users
         $this->position_id->setDbValue($row['position_id']);
         $this->employee_id->setDbValue($row['employee_id']);
         $this->must_change_password->setDbValue((ConvertToBool($row['must_change_password']) ? "1" : "0"));
-        $this->rc_code->setDbValue($row['rc_code']);
         $this->region_code->setDbValue($row['region_code']);
+        $this->rc_id->setDbValue($row['rc_id']);
     }
 
     // Return a row with default values
@@ -2118,8 +2118,8 @@ class UsersGrid extends Users
         $row['position_id'] = $this->position_id->DefaultValue;
         $row['employee_id'] = $this->employee_id->DefaultValue;
         $row['must_change_password'] = $this->must_change_password->DefaultValue;
-        $row['rc_code'] = $this->rc_code->DefaultValue;
         $row['region_code'] = $this->region_code->DefaultValue;
+        $row['rc_id'] = $this->rc_id->DefaultValue;
         return $row;
     }
 
@@ -2198,9 +2198,9 @@ class UsersGrid extends Users
 
         // must_change_password
 
-        // rc_code
-
         // region_code
+
+        // rc_id
 
         // View row
         if ($this->RowType == RowType::VIEW) {
@@ -2330,11 +2330,11 @@ class UsersGrid extends Users
                 $this->must_change_password->ViewValue = $this->must_change_password->tagCaption(2) != "" ? $this->must_change_password->tagCaption(2) : "No";
             }
 
-            // rc_code
-            $this->rc_code->ViewValue = $this->rc_code->CurrentValue;
-
             // region_code
             $this->region_code->ViewValue = $this->region_code->CurrentValue;
+
+            // rc_id
+            $this->rc_id->ViewValue = $this->rc_id->CurrentValue;
 
             // user_id
             $this->user_id->HrefValue = "";
@@ -2384,13 +2384,13 @@ class UsersGrid extends Users
             $this->must_change_password->HrefValue = "";
             $this->must_change_password->TooltipValue = "";
 
-            // rc_code
-            $this->rc_code->HrefValue = "";
-            $this->rc_code->TooltipValue = "";
-
             // region_code
             $this->region_code->HrefValue = "";
             $this->region_code->TooltipValue = "";
+
+            // rc_id
+            $this->rc_id->HrefValue = "";
+            $this->rc_id->TooltipValue = "";
         } elseif ($this->RowType == RowType::ADD) {
             // user_id
 
@@ -2554,14 +2554,6 @@ class UsersGrid extends Users
             $this->must_change_password->EditValue = $this->must_change_password->options(false);
             $this->must_change_password->PlaceHolder = RemoveHtml($this->must_change_password->caption());
 
-            // rc_code
-            $this->rc_code->setupEditAttributes();
-            if (!$this->rc_code->Raw) {
-                $this->rc_code->CurrentValue = HtmlDecode($this->rc_code->CurrentValue);
-            }
-            $this->rc_code->EditValue = HtmlEncode($this->rc_code->CurrentValue);
-            $this->rc_code->PlaceHolder = RemoveHtml($this->rc_code->caption());
-
             // region_code
             $this->region_code->setupEditAttributes();
             if (!$this->region_code->Raw) {
@@ -2569,6 +2561,14 @@ class UsersGrid extends Users
             }
             $this->region_code->EditValue = HtmlEncode($this->region_code->CurrentValue);
             $this->region_code->PlaceHolder = RemoveHtml($this->region_code->caption());
+
+            // rc_id
+            $this->rc_id->setupEditAttributes();
+            if (!$this->rc_id->Raw) {
+                $this->rc_id->CurrentValue = HtmlDecode($this->rc_id->CurrentValue);
+            }
+            $this->rc_id->EditValue = HtmlEncode($this->rc_id->CurrentValue);
+            $this->rc_id->PlaceHolder = RemoveHtml($this->rc_id->caption());
 
             // Add refer script
 
@@ -2608,11 +2608,11 @@ class UsersGrid extends Users
             // must_change_password
             $this->must_change_password->HrefValue = "";
 
-            // rc_code
-            $this->rc_code->HrefValue = "";
-
             // region_code
             $this->region_code->HrefValue = "";
+
+            // rc_id
+            $this->rc_id->HrefValue = "";
         } elseif ($this->RowType == RowType::EDIT) {
             // user_id
             $this->user_id->setupEditAttributes();
@@ -2778,14 +2778,6 @@ class UsersGrid extends Users
             $this->must_change_password->EditValue = $this->must_change_password->options(false);
             $this->must_change_password->PlaceHolder = RemoveHtml($this->must_change_password->caption());
 
-            // rc_code
-            $this->rc_code->setupEditAttributes();
-            if (!$this->rc_code->Raw) {
-                $this->rc_code->CurrentValue = HtmlDecode($this->rc_code->CurrentValue);
-            }
-            $this->rc_code->EditValue = HtmlEncode($this->rc_code->CurrentValue);
-            $this->rc_code->PlaceHolder = RemoveHtml($this->rc_code->caption());
-
             // region_code
             $this->region_code->setupEditAttributes();
             if (!$this->region_code->Raw) {
@@ -2793,6 +2785,14 @@ class UsersGrid extends Users
             }
             $this->region_code->EditValue = HtmlEncode($this->region_code->CurrentValue);
             $this->region_code->PlaceHolder = RemoveHtml($this->region_code->caption());
+
+            // rc_id
+            $this->rc_id->setupEditAttributes();
+            if (!$this->rc_id->Raw) {
+                $this->rc_id->CurrentValue = HtmlDecode($this->rc_id->CurrentValue);
+            }
+            $this->rc_id->EditValue = HtmlEncode($this->rc_id->CurrentValue);
+            $this->rc_id->PlaceHolder = RemoveHtml($this->rc_id->caption());
 
             // Edit refer script
 
@@ -2832,11 +2832,11 @@ class UsersGrid extends Users
             // must_change_password
             $this->must_change_password->HrefValue = "";
 
-            // rc_code
-            $this->rc_code->HrefValue = "";
-
             // region_code
             $this->region_code->HrefValue = "";
+
+            // rc_id
+            $this->rc_id->HrefValue = "";
         }
         if ($this->RowType == RowType::ADD || $this->RowType == RowType::EDIT || $this->RowType == RowType::SEARCH) { // Add/Edit/Search row
             $this->setupFieldTitles();
@@ -2927,14 +2927,14 @@ class UsersGrid extends Users
                     $this->must_change_password->addErrorMessage(str_replace("%s", $this->must_change_password->caption(), $this->must_change_password->RequiredErrorMessage));
                 }
             }
-            if ($this->rc_code->Visible && $this->rc_code->Required) {
-                if (!$this->rc_code->IsDetailKey && EmptyValue($this->rc_code->FormValue)) {
-                    $this->rc_code->addErrorMessage(str_replace("%s", $this->rc_code->caption(), $this->rc_code->RequiredErrorMessage));
-                }
-            }
             if ($this->region_code->Visible && $this->region_code->Required) {
                 if (!$this->region_code->IsDetailKey && EmptyValue($this->region_code->FormValue)) {
                     $this->region_code->addErrorMessage(str_replace("%s", $this->region_code->caption(), $this->region_code->RequiredErrorMessage));
+                }
+            }
+            if ($this->rc_id->Visible && $this->rc_id->Required) {
+                if (!$this->rc_id->IsDetailKey && EmptyValue($this->rc_id->FormValue)) {
+                    $this->rc_id->addErrorMessage(str_replace("%s", $this->rc_id->caption(), $this->rc_id->RequiredErrorMessage));
                 }
             }
 
@@ -3174,11 +3174,11 @@ class UsersGrid extends Users
         }
         $this->must_change_password->setDbValueDef($rsnew, $tmpBool, $this->must_change_password->ReadOnly);
 
-        // rc_code
-        $this->rc_code->setDbValueDef($rsnew, $this->rc_code->CurrentValue, $this->rc_code->ReadOnly);
-
         // region_code
         $this->region_code->setDbValueDef($rsnew, $this->region_code->CurrentValue, $this->region_code->ReadOnly);
+
+        // rc_id
+        $this->rc_id->setDbValueDef($rsnew, $this->rc_id->CurrentValue, $this->rc_id->ReadOnly);
         return $rsnew;
     }
 
@@ -3221,11 +3221,11 @@ class UsersGrid extends Users
         if (isset($row['must_change_password'])) { // must_change_password
             $this->must_change_password->CurrentValue = $row['must_change_password'];
         }
-        if (isset($row['rc_code'])) { // rc_code
-            $this->rc_code->CurrentValue = $row['rc_code'];
-        }
         if (isset($row['region_code'])) { // region_code
             $this->region_code->CurrentValue = $row['region_code'];
+        }
+        if (isset($row['rc_id'])) { // rc_id
+            $this->rc_id->CurrentValue = $row['rc_id'];
         }
     }
 
@@ -3376,11 +3376,11 @@ class UsersGrid extends Users
         }
         $this->must_change_password->setDbValueDef($rsnew, $tmpBool, strval($this->must_change_password->CurrentValue) == "");
 
-        // rc_code
-        $this->rc_code->setDbValueDef($rsnew, $this->rc_code->CurrentValue, false);
-
         // region_code
         $this->region_code->setDbValueDef($rsnew, $this->region_code->CurrentValue, false);
+
+        // rc_id
+        $this->rc_id->setDbValueDef($rsnew, $this->rc_id->CurrentValue, false);
 
         // reports_to_user_id
         if (!$Security->isAdmin() && $Security->isLoggedIn()) { // Non system admin
@@ -3428,11 +3428,11 @@ class UsersGrid extends Users
         if (isset($row['must_change_password'])) { // must_change_password
             $this->must_change_password->setFormValue($row['must_change_password']);
         }
-        if (isset($row['rc_code'])) { // rc_code
-            $this->rc_code->setFormValue($row['rc_code']);
-        }
         if (isset($row['region_code'])) { // region_code
             $this->region_code->setFormValue($row['region_code']);
+        }
+        if (isset($row['rc_id'])) { // rc_id
+            $this->rc_id->setFormValue($row['rc_id']);
         }
         if (isset($row['reports_to_user_id'])) { // reports_to_user_id
             $this->reports_to_user_id->setFormValue($row['reports_to_user_id']);
