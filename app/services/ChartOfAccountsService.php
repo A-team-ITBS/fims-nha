@@ -19,15 +19,15 @@ class ChartOfAccountsService
     /**
      * Resolve the region (RCA code) a user is restricted to, for row-level
      * scoping of Chart of Accounts. Superadmin (user_level_id = -1) is
-     * never scoped. A user with region_code = NULL is also unrestricted.
+     * never scoped. A user with rc_id = NULL is also unrestricted.
      */
     public function getUserScope(int $userId): array
     {
         try {
             $row = App\ExecuteRow(
-                "SELECT u.user_level_id, u.region_code, rc.rc_name AS region_name
+                "SELECT u.user_level_id, rc.rc_code AS region_code, rc.rc_name AS region_name
                  FROM uac.users u
-                 LEFT JOIN {$this->tableRC} rc ON rc.rc_code = u.region_code
+                 LEFT JOIN {$this->tableRC} rc ON rc.rc_id = u.rc_id
                  WHERE u.user_id = " . App\QuotedValue($userId, App\DataType::NUMBER, 'DB'),
                 'DB'
             );
