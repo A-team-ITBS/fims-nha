@@ -5,9 +5,6 @@
     <menu id="88">
       <phrase id="menutext" value="Memo Request" />
     </menu>
-    <menu id="91">
-      <phrase id="menutext" value="Air Module" />
-    </menu>
     <menu id="79">
       <phrase id="menutext" value="Project List" />
     </menu>
@@ -34,6 +31,9 @@
     </menu>
     <menu id="84">
       <phrase id="menutext" value="aggregated audit logs" />
+    </menu>
+    <menu id="91">
+      <phrase id="menutext" value="Air Module" />
     </menu>
     <menu id="86">
       <phrase id="menutext" value="Budget Revision Form" />
