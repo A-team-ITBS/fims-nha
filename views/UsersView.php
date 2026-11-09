@@ -263,6 +263,28 @@ loadjs.ready("head", function () {
 </td>
     </tr>
 <?php } ?>
+<?php if ($Page->rc_code->Visible) { // rc_code ?>
+    <tr id="r_rc_code"<?= $Page->rc_code->rowAttributes() ?>>
+        <td class="<?= $Page->TableLeftColumnClass ?>"><span id="elh_users_rc_code"><?= $Page->rc_code->caption() ?></span></td>
+        <td data-name="rc_code"<?= $Page->rc_code->cellAttributes() ?>>
+<span id="el_users_rc_code">
+<span<?= $Page->rc_code->viewAttributes() ?>>
+<?= $Page->rc_code->getViewValue() ?></span>
+</span>
+</td>
+    </tr>
+<?php } ?>
+<?php if ($Page->region_code->Visible) { // region_code ?>
+    <tr id="r_region_code"<?= $Page->region_code->rowAttributes() ?>>
+        <td class="<?= $Page->TableLeftColumnClass ?>"><span id="elh_users_region_code"><?= $Page->region_code->caption() ?></span></td>
+        <td data-name="region_code"<?= $Page->region_code->cellAttributes() ?>>
+<span id="el_users_region_code">
+<span<?= $Page->region_code->viewAttributes() ?>>
+<?= $Page->region_code->getViewValue() ?></span>
+</span>
+</td>
+    </tr>
+<?php } ?>
 </table>
 <?php
     if (in_array("user_level_assignments", explode(",", $Page->getCurrentDetailTable())) && $user_level_assignments->DetailView) {

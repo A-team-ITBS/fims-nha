@@ -16,7 +16,8 @@ INSERT INTO uac.users (
     ('fmd_deptmanager',   'fmd.deptmanager@nha.gov.ph',   '$2y$10$OzcU5YBDp7QspsUHFIC9XehdBZnif3zglhRpWF3WEeFkful7223Qm', 'Ramon',   'Garcia',   '4', (SELECT department_id FROM uac.departments WHERE department_code = 'FMD'), true),
     ('fsg_groupmanager',  'fsg.groupmanager@nha.gov.ph',  '$2y$10$OzcU5YBDp7QspsUHFIC9XehdBZnif3zglhRpWF3WEeFkful7223Qm', 'Carmela', 'Villanueva','5', NULL, true),
     ('general_manager',   'general.manager@nha.gov.ph',   '$2y$10$OzcU5YBDp7QspsUHFIC9XehdBZnif3zglhRpWF3WEeFkful7223Qm', 'Roberto', 'Mendoza',  '6', NULL, true),
-    ('nha_board',         'nha.board@nha.gov.ph',         '$2y$10$OzcU5YBDp7QspsUHFIC9XehdBZnif3zglhRpWF3WEeFkful7223Qm', 'Board',   'Member',   '7', NULL, true)
+    ('nha_board',         'nha.board@nha.gov.ph',         '$2y$10$OzcU5YBDp7QspsUHFIC9XehdBZnif3zglhRpWF3WEeFkful7223Qm', 'Board',   'Member',   '7', NULL, true),
+    ('budget_head',       'budget.head@nha.gov.ph',       '$2y$10$OzcU5YBDp7QspsUHFIC9XehdBZnif3zglhRpWF3WEeFkful7223Qm', 'Lourdes', 'Bautista', '8', (SELECT department_id FROM uac.departments WHERE department_code = 'FMD'), true)
 ON CONFLICT (username) DO UPDATE SET
     password_hash = EXCLUDED.password_hash,
     user_level_id = EXCLUDED.user_level_id,

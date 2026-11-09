@@ -117,7 +117,23 @@ $USER_LEVEL_PRIVS = [["{FIMS}audit_logs","-2","0"],
     ["{FIMS}budget-req-page.php","-2","0"],
     ["{FIMS}budget-req-page.php","0","0"],
     ["{FIMS}sub-program-page.php","-2","0"],
-    ["{FIMS}sub-program-page.php","0","0"]];
+    ["{FIMS}sub-program-page.php","0","0"],
+    ["{FIMS}chart-of-accounts-page.php","-2","0"],
+    ["{FIMS}chart-of-accounts-page.php","0","0"],
+    ["{FIMS}responsibility-center-page.php","-2","0"],
+    ["{FIMS}responsibility-center-page.php","0","0"],
+    ["{FIMS}permission_module_captions","-2","0"],
+    ["{FIMS}permission_module_captions","0","0"],
+    ["{FIMS}aggregated_audit_logs","-2","0"],
+    ["{FIMS}aggregated_audit_logs","0","0"],
+    ["{FIMS}budget-revision-page.php","-2","0"],
+    ["{FIMS}budget-revision-page.php","0","0"],
+    ["{FIMS}budget-rev-form.php","-2","0"],
+    ["{FIMS}budget-rev-form.php","0","0"],
+    ["{FIMS}budget-rev-review.php","-2","0"],
+    ["{FIMS}budget-rev-review.php","0","0"],
+    ["{FIMS}budget-allocation-form.php","-2","0"],
+    ["{FIMS}budget-allocation-form.php","0","0"]];
 
 /**
  * Tables
@@ -177,4 +193,12 @@ $USER_LEVEL_TABLES = [["audit_logs","audit_logs","Audit Logs",false,"{FIMS}",""]
     ["project-page.php","project_page","Project List",true,"{FIMS}","ProjectPage"],
     ["program-page.php","program_page","Program Setup",true,"{FIMS}","ProgramPage"],
     ["budget-req-page.php","budget_req_page","Budget Request",true,"{FIMS}","BudgetReqPage"],
-    ["sub-program-page.php","sub_program_page","Sub Program Setup",true,"{FIMS}","SubProgramPage"]];
+    ["sub-program-page.php","sub_program_page","Sub Program Setup",true,"{FIMS}","SubProgramPage"],
+    ["chart-of-accounts-page.php","chart_of_accounts_page","Chart of Accounts",true,"{FIMS}","ChartOfAccountsPage"],
+    ["responsibility-center-page.php","responsibility_center_page","Responsibilty Center",true,"{FIMS}","ResponsibilityCenterPage"],
+    ["permission_module_captions","permission_module_captions","permission module captions",true,"{FIMS}","PermissionModuleCaptionsList"],
+    ["aggregated_audit_logs","aggregated_audit_logs","aggregated audit logs",true,"{FIMS}","AggregatedAuditLogsList"],
+    ["budget-revision-page.php","budget_revision_page","Budget Revision",true,"{FIMS}","BudgetRevisionPage"],
+    ["budget-rev-form.php","budget_rev_form","Budget Revision Form",true,"{FIMS}","BudgetRevForm"],
+    ["budget-rev-review.php","budget_rev_review","Budget Revision Preview",true,"{FIMS}","BudgetRevReview"],
+    ["budget-allocation-form.php","budget_allocation_form","Memo Request",true,"{FIMS}","BudgetAllocationForm"]];

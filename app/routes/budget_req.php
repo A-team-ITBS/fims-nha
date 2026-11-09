@@ -99,6 +99,42 @@ $app->put('/budget_req/submit-for-review/{id}', function ($request, $response, $
     }
 })->add($jwtMiddleware);
 
+// Budget Processing "Endorse" — saves each line item's type_of_fund_id /
+// component_id (both required) and moves the request to "Endorsed".
+$app->put('/budget_req/endorse/{id}', function ($request, $response, $args) use ($BudgetReqService) {
+    try {
+        $body   = $request->getParsedBody();
+        $items  = is_array($body['items'] ?? null) ? $body['items'] : [];
+        $result = $BudgetReqService->endorse($args['id'], $items);
+
+        return $response->withJson($result, $result['success'] ? 200 : 400);
+    } catch (\Exception $e) {
+        return $response->withJson(['success' => false, 'message' => $e->getMessage()], 400);
+    }
+})->add($jwtMiddleware);
+
+// Budget Preview "Approve" — moves an Endorsed request to "Approved".
+$app->put('/budget_req/approve/{id}', function ($request, $response, $args) use ($BudgetReqService) {
+    try {
+        $result = $BudgetReqService->approve($args['id']);
+
+        return $response->withJson($result, $result['success'] ? 200 : 400);
+    } catch (\Exception $e) {
+        return $response->withJson(['success' => false, 'message' => $e->getMessage()], 400);
+    }
+})->add($jwtMiddleware);
+
+// Budget Processing / Budget Preview "Return" — moves the request to "Returned".
+$app->put('/budget_req/return/{id}', function ($request, $response, $args) use ($BudgetReqService) {
+    try {
+        $result = $BudgetReqService->returnRequest($args['id']);
+
+        return $response->withJson($result, $result['success'] ? 200 : 400);
+    } catch (\Exception $e) {
+        return $response->withJson(['success' => false, 'message' => $e->getMessage()], 400);
+    }
+})->add($jwtMiddleware);
+
 // Delete
 $app->delete('/budget_req/delete/{id}', function ($request, $response, $args) use ($BudgetReqService) {
     try {
