@@ -46,7 +46,6 @@ loadjs.ready(["wrapper", "head"], function () {
             ["position_id", [fields.position_id.visible && fields.position_id.required ? ew.Validators.required(fields.position_id.caption) : null, ew.Validators.integer], fields.position_id.isInvalid],
             ["employee_id", [fields.employee_id.visible && fields.employee_id.required ? ew.Validators.required(fields.employee_id.caption) : null], fields.employee_id.isInvalid],
             ["must_change_password", [fields.must_change_password.visible && fields.must_change_password.required ? ew.Validators.required(fields.must_change_password.caption) : null], fields.must_change_password.isInvalid],
-            ["region_code", [fields.region_code.visible && fields.region_code.required ? ew.Validators.required(fields.region_code.caption) : null], fields.region_code.isInvalid],
             ["rc_id", [fields.rc_id.visible && fields.rc_id.required ? ew.Validators.required(fields.rc_id.caption) : null], fields.rc_id.isInvalid]
         ])
 
@@ -373,18 +372,6 @@ loadjs.ready("fusersedit", function() {
     <div class="invalid-feedback"><?= $Page->must_change_password->getErrorMessage() ?></div>
 </div>
 <?= $Page->must_change_password->getCustomMessage() ?>
-</span>
-</div></div>
-    </div>
-<?php } ?>
-<?php if ($Page->region_code->Visible) { // region_code ?>
-    <div id="r_region_code"<?= $Page->region_code->rowAttributes() ?>>
-        <label id="elh_users_region_code" for="x_region_code" class="<?= $Page->LeftColumnClass ?>"><?= $Page->region_code->caption() ?><?= $Page->region_code->Required ? $Language->phrase("FieldRequiredIndicator") : "" ?></label>
-        <div class="<?= $Page->RightColumnClass ?>"><div<?= $Page->region_code->cellAttributes() ?>>
-<span id="el_users_region_code">
-<input type="<?= $Page->region_code->getInputTextType() ?>" name="x_region_code" id="x_region_code" data-table="users" data-field="x_region_code" value="<?= $Page->region_code->EditValue ?>" size="30" maxlength="30" placeholder="<?= HtmlEncode($Page->region_code->getPlaceHolder()) ?>" data-format-pattern="<?= HtmlEncode($Page->region_code->formatPattern()) ?>"<?= $Page->region_code->editAttributes() ?> aria-describedby="x_region_code_help">
-<?= $Page->region_code->getCustomMessage() ?>
-<div class="invalid-feedback"><?= $Page->region_code->getErrorMessage() ?></div>
 </span>
 </div></div>
     </div>

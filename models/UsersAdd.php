@@ -149,7 +149,6 @@ class UsersAdd extends Users
         $this->position_id->setVisibility();
         $this->employee_id->setVisibility();
         $this->must_change_password->setVisibility();
-        $this->region_code->setVisibility();
         $this->rc_id->setVisibility();
     }
 
@@ -882,16 +881,6 @@ class UsersAdd extends Users
             }
         }
 
-        // Check field name 'region_code' first before field var 'x_region_code'
-        $val = $CurrentForm->hasValue("region_code") ? $CurrentForm->getValue("region_code") : $CurrentForm->getValue("x_region_code");
-        if (!$this->region_code->IsDetailKey) {
-            if (IsApi() && $val === null) {
-                $this->region_code->Visible = false; // Disable update for API request
-            } else {
-                $this->region_code->setFormValue($val);
-            }
-        }
-
         // Check field name 'rc_id' first before field var 'x_rc_id'
         $val = $CurrentForm->hasValue("rc_id") ? $CurrentForm->getValue("rc_id") : $CurrentForm->getValue("x_rc_id");
         if (!$this->rc_id->IsDetailKey) {
@@ -929,7 +918,6 @@ class UsersAdd extends Users
         $this->position_id->CurrentValue = $this->position_id->FormValue;
         $this->employee_id->CurrentValue = $this->employee_id->FormValue;
         $this->must_change_password->CurrentValue = $this->must_change_password->FormValue;
-        $this->region_code->CurrentValue = $this->region_code->FormValue;
         $this->rc_id->CurrentValue = $this->rc_id->FormValue;
     }
 
@@ -1001,7 +989,6 @@ class UsersAdd extends Users
         $this->position_id->setDbValue($row['position_id']);
         $this->employee_id->setDbValue($row['employee_id']);
         $this->must_change_password->setDbValue((ConvertToBool($row['must_change_password']) ? "1" : "0"));
-        $this->region_code->setDbValue($row['region_code']);
         $this->rc_id->setDbValue($row['rc_id']);
     }
 
@@ -1029,7 +1016,6 @@ class UsersAdd extends Users
         $row['position_id'] = $this->position_id->DefaultValue;
         $row['employee_id'] = $this->employee_id->DefaultValue;
         $row['must_change_password'] = $this->must_change_password->DefaultValue;
-        $row['region_code'] = $this->region_code->DefaultValue;
         $row['rc_id'] = $this->rc_id->DefaultValue;
         return $row;
     }
@@ -1124,9 +1110,6 @@ class UsersAdd extends Users
 
         // must_change_password
         $this->must_change_password->RowCssClass = "row";
-
-        // region_code
-        $this->region_code->RowCssClass = "row";
 
         // rc_id
         $this->rc_id->RowCssClass = "row";
@@ -1259,9 +1242,6 @@ class UsersAdd extends Users
                 $this->must_change_password->ViewValue = $this->must_change_password->tagCaption(2) != "" ? $this->must_change_password->tagCaption(2) : "No";
             }
 
-            // region_code
-            $this->region_code->ViewValue = $this->region_code->CurrentValue;
-
             // rc_id
             $this->rc_id->ViewValue = $this->rc_id->CurrentValue;
 
@@ -1313,9 +1293,6 @@ class UsersAdd extends Users
 
             // must_change_password
             $this->must_change_password->HrefValue = "";
-
-            // region_code
-            $this->region_code->HrefValue = "";
 
             // rc_id
             $this->rc_id->HrefValue = "";
@@ -1461,14 +1438,6 @@ class UsersAdd extends Users
             $this->must_change_password->EditValue = $this->must_change_password->options(false);
             $this->must_change_password->PlaceHolder = RemoveHtml($this->must_change_password->caption());
 
-            // region_code
-            $this->region_code->setupEditAttributes();
-            if (!$this->region_code->Raw) {
-                $this->region_code->CurrentValue = HtmlDecode($this->region_code->CurrentValue);
-            }
-            $this->region_code->EditValue = HtmlEncode($this->region_code->CurrentValue);
-            $this->region_code->PlaceHolder = RemoveHtml($this->region_code->caption());
-
             // rc_id
             $this->rc_id->setupEditAttributes();
             if (!$this->rc_id->Raw) {
@@ -1527,9 +1496,6 @@ class UsersAdd extends Users
 
             // must_change_password
             $this->must_change_password->HrefValue = "";
-
-            // region_code
-            $this->region_code->HrefValue = "";
 
             // rc_id
             $this->rc_id->HrefValue = "";
@@ -1647,11 +1613,6 @@ class UsersAdd extends Users
             if ($this->must_change_password->Visible && $this->must_change_password->Required) {
                 if ($this->must_change_password->FormValue == "") {
                     $this->must_change_password->addErrorMessage(str_replace("%s", $this->must_change_password->caption(), $this->must_change_password->RequiredErrorMessage));
-                }
-            }
-            if ($this->region_code->Visible && $this->region_code->Required) {
-                if (!$this->region_code->IsDetailKey && EmptyValue($this->region_code->FormValue)) {
-                    $this->region_code->addErrorMessage(str_replace("%s", $this->region_code->caption(), $this->region_code->RequiredErrorMessage));
                 }
             }
             if ($this->rc_id->Visible && $this->rc_id->Required) {
@@ -1903,9 +1864,6 @@ class UsersAdd extends Users
         }
         $this->must_change_password->setDbValueDef($rsnew, $tmpBool, strval($this->must_change_password->CurrentValue) == "");
 
-        // region_code
-        $this->region_code->setDbValueDef($rsnew, $this->region_code->CurrentValue, false);
-
         // rc_id
         $this->rc_id->setDbValueDef($rsnew, $this->rc_id->CurrentValue, false);
 
@@ -1971,9 +1929,6 @@ class UsersAdd extends Users
         }
         if (isset($row['must_change_password'])) { // must_change_password
             $this->must_change_password->setFormValue($row['must_change_password']);
-        }
-        if (isset($row['region_code'])) { // region_code
-            $this->region_code->setFormValue($row['region_code']);
         }
         if (isset($row['rc_id'])) { // rc_id
             $this->rc_id->setFormValue($row['rc_id']);
