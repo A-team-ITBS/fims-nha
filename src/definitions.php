@@ -126,6 +126,7 @@ return [
     "budget_rev_review" => \DI\create(BudgetRevReview::class),
     "budget_allocation_form" => \DI\create(BudgetAllocationForm::class),
     "AIRModule" => \DI\create(AirModule::class),
+    "Voucher" => \DI\create(Voucher::class),
 
     // User table
     "usertable" => \DI\get("users"),

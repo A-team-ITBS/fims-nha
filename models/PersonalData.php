@@ -44,7 +44,7 @@ class PersonalData
     public $RenderingView = false;
 
     // CSS class/style
-    public $CurrentPageName = "AirModuleController";
+    public $CurrentPageName = "VoucherController";
 
     // Page headings
     public $Heading = "";
