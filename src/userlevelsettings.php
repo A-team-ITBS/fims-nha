@@ -127,7 +127,9 @@ $USER_LEVEL_PRIVS = [["{FIMS}audit_logs","-2","0"],
     ["{FIMS}budget-rev-form.php","-2","0"],
     ["{FIMS}budget-rev-form.php","0","0"],
     ["{FIMS}budget-rev-review.php","-2","0"],
-    ["{FIMS}budget-rev-review.php","0","0"]];
+    ["{FIMS}budget-rev-review.php","0","0"],
+    ["{FIMS}budget-allocation-form.php","-2","0"],
+    ["{FIMS}budget-allocation-form.php","0","0"]];
 
 /**
  * Tables
@@ -192,4 +194,5 @@ $USER_LEVEL_TABLES = [["audit_logs","audit_logs","Audit Logs",false,"{FIMS}",""]
     ["aggregated_audit_logs","aggregated_audit_logs","aggregated audit logs",true,"{FIMS}","AggregatedAuditLogsList"],
     ["budget-revision-page.php","budget_revision_page","Budget Revision",true,"{FIMS}","BudgetRevisionPage"],
     ["budget-rev-form.php","budget_rev_form","Budget Revision Form",true,"{FIMS}","BudgetRevForm"],
-    ["budget-rev-review.php","budget_rev_review","Budget Revision Preview",true,"{FIMS}","BudgetRevReview"]];
+    ["budget-rev-review.php","budget_rev_review","Budget Revision Preview",true,"{FIMS}","BudgetRevReview"],
+    ["budget-allocation-form.php","budget_allocation_form","Memo Request",true,"{FIMS}","BudgetAllocationForm"]];

@@ -8,6 +8,7 @@ echo $topMenu->toScript();
 
 // Sidebar menu
 $sideMenu = new Menu("menu", true, false);
+$sideMenu->addMenuItem(88, "mi_budget_allocation_form", $Language->menuPhrase("88", "MenuText"), "BudgetAllocationForm", -1, "", AllowListMenu('{FIMS}budget-allocation-form.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(79, "mi_project_page", $Language->menuPhrase("79", "MenuText"), "ProjectPage", -1, "", AllowListMenu('{FIMS}project-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(80, "mi_program_page", $Language->menuPhrase("80", "MenuText"), "ProgramPage", -1, "", AllowListMenu('{FIMS}program-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(81, "mi_budget_req_page", $Language->menuPhrase("81", "MenuText"), "BudgetReqPage", -1, "", AllowListMenu('{FIMS}budget-req-page.php'), false, false, "", "", false, true);

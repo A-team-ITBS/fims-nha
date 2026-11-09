@@ -1,7 +1,10 @@
-<ew-language date="2026/11/8" id="en-US" author="e.World Technology Limited">
+<ew-language date="2026/11/9" id="en-US" author="e.World Technology Limited">
   <project>
     <phrase id="bodytitle" value="UAC - User Access Control System" />
     <phrase id="footertext" value="&amp;copy;2024 ITBS Corporation. All rights reserved." />
+    <menu id="88">
+      <phrase id="menutext" value="Memo Request" />
+    </menu>
     <menu id="79">
       <phrase id="menutext" value="Project List" />
     </menu>
@@ -1480,6 +1483,9 @@
     </table>
     <table id="budget_rev_review">
       <phrase id="tblcaption" value="Budget Revision Preview" />
+    </table>
+    <table id="budget_allocation_form">
+      <phrase id="tblcaption" value="Memo Request" />
     </table>
   </project>
 </ew-language>

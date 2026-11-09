@@ -82,6 +82,7 @@
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone ($p['PHPMaker2024\\FIMS\\Attributes\\Get'] ?? \Symfony\Component\VarExporter\Internal\Registry::p('PHPMaker2024\\FIMS\\Attributes\\Get')),
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Get'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
@@ -156,6 +157,11 @@
     [
         'PHPMaker2024\\FIMS\\Attributes\\Map' => [
             'methods' => [
+                [
+                    'GET',
+                    'POST',
+                    'OPTIONS',
+                ],
                 [
                     'GET',
                     'POST',
@@ -931,6 +937,7 @@
                 '/AuditLogsView[/{id}]',
                 '/AuditLogsEdit[/{id}]',
                 '/AuditLogsDelete[/{id}]',
+                '/BudgetAllocationForm[/{params:.*}]',
                 '/BudgetReqForm[/{params:.*}]',
                 '/BudgetReqPage[/{params:.*}]',
                 '/BudgetRevForm[/{params:.*}]',
@@ -1084,6 +1091,7 @@
                 'PHPMaker2024\\FIMS\\AuditLogsController:view',
                 'PHPMaker2024\\FIMS\\AuditLogsController:edit',
                 'PHPMaker2024\\FIMS\\AuditLogsController:delete',
+                'PHPMaker2024\\FIMS\\BudgetAllocationFormController:custom',
                 'PHPMaker2024\\FIMS\\BudgetReqFormController:custom',
                 'PHPMaker2024\\FIMS\\BudgetReqPageController:custom',
                 'PHPMaker2024\\FIMS\\BudgetRevFormController:custom',
@@ -1215,6 +1223,9 @@
                 'PHPMaker2024\\FIMS\\WorkflowManagerController:custom',
             ],
             'middleware' => [
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
                 [
                     'PHPMaker2024\\FIMS\\PermissionMiddleware',
                 ],
@@ -1690,6 +1701,7 @@
                 'view.audit_logs',
                 'edit.audit_logs',
                 'delete.audit_logs',
+                'custom.budget_allocation_form',
                 'custom.budget_req_form',
                 'custom.budget_req_page',
                 'custom.budget_rev_form',
@@ -1821,6 +1833,7 @@
                 'custom.WorkflowManager',
             ],
             'options' => [
+                [],
                 [],
                 [],
                 [],
@@ -2127,6 +2140,7 @@
         $o[148],
         $o[149],
         $o[150],
+        $o[151],
     ],
     []
 );
