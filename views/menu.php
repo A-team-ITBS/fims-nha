@@ -20,7 +20,7 @@ $sideMenu->addMenuItem(79, "mi_project_page", $Language->menuPhrase("79", "MenuT
 $sideMenu->addMenuItem(148, "mci_Accounting_Records", $Language->menuPhrase("148", "MenuText"), "", -1, "", true, false, true, "fas fa-book", "", false, true);
 $sideMenu->addMenuItem(89, "mi_chart_of_accounts_page", $Language->menuPhrase("89", "MenuText"), "ChartOfAccountsPage", 148, "", AllowListMenu('{FIMS}chart-of-accounts-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(90, "mi_responsibility_center_page", $Language->menuPhrase("90", "MenuText"), "ResponsibilityCenterPage", 148, "", AllowListMenu('{FIMS}responsibility-center-page.php'), false, false, "", "", false, true);
-$sideMenu->addMenuItem(91, "mi_AIRModule", $Language->menuPhrase("91", "MenuText"), "AirModule", -1, "", AllowListMenu('{FIMS}AIRModule.php'), false, false, "fas fa-clipboard-check", "", false, true);
+$sideMenu->addMenuItem(91, "mi_IARModule", $Language->menuPhrase("91", "MenuText"), "IarModule", -1, "", AllowListMenu('{FIMS}IARModule.php'), false, false, "fas fa-clipboard-check", "", false, true);
 $sideMenu->addMenuItem(258, "mci_Vouchers", $Language->menuPhrase("258", "MenuText"), "", -1, "", true, false, true, "fas fa-file-invoice-dollar", "", false, true);
 $sideMenu->addMenuItem(208, "mi_JournalEntryVoucher", $Language->menuPhrase("208", "MenuText"), "JournalEntryVoucher", 258, "", AllowListMenu('{FIMS}JournalEntryVoucher.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(207, "mi_Voucher", $Language->menuPhrase("207", "MenuText"), "Voucher", 258, "", AllowListMenu('{FIMS}Voucher.php'), false, false, "", "", false, true);

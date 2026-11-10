@@ -39,7 +39,7 @@
       <phrase id="menutext" value="Responsibilty Center" />
     </menu>
     <menu id="91">
-      <phrase id="menutext" value="AIR Module" />
+      <phrase id="menutext" value="IAR Module" />
     </menu>
     <menu id="258">
       <phrase id="menutext" value="Vouchers" />
@@ -1520,8 +1520,8 @@
     <table id="budget_allocation_form">
       <phrase id="tblcaption" value="Memo Request" />
     </table>
-    <table id="airmodule">
-      <phrase id="tblcaption" value="AIR Module" />
+    <table id="iarmodule">
+      <phrase id="tblcaption" value="IAR Module" />
     </table>
     <table id="voucher">
       <phrase id="tblcaption" value="Disbursement Voucher" />
