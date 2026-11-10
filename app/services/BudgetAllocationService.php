@@ -89,7 +89,8 @@ class BudgetAllocationService
     // Fetch all — no pagination (for /budget_allocation/all, e.g. the Parent picker)
     // Fetch with pagination (for /budget_allocation/list) when $page is provided
     //
-    // $filters: search, fiscal_year, status_id, allocation_type, exclude_id
+    // $filters: search, fiscal_year, status_id, allocation_type, exclude_id,
+    //           rc_id (optional — limits to that RC + its descendants, on requesting_rc_id)
     // -----------------------------------------------------------------------
     public function fetchAlls(?int $page = null, int $limit = 10, array $filters = []): array
     {
@@ -114,6 +115,16 @@ class BudgetAllocationService
             $type = trim((string) ($filters['allocation_type'] ?? ''));
             if ($type !== '') {
                 $where[] = 'UPPER(a.allocation_type) = UPPER(' . App\QuotedValue($type, DataType::STRING, 'DB') . ')';
+            }
+            $rcId = trim((string) ($filters['rc_id'] ?? ''));
+            if ($rcId !== '') {
+                // The user's RC plus every descendant RC (a Region also sees its district offices) — not a flat equality.
+                $rcIds       = GlobalService::getRcIdsInScope($rcId) ?: [$rcId];
+                $quotedRcIds = implode(', ', array_map(
+                    fn ($id) => App\QuotedValue($id, DataType::STRING, 'DB'),
+                    $rcIds
+                ));
+                $where[] = "a.requesting_rc_id IN ({$quotedRcIds})";
             }
             $whereSql = implode(' AND ', $where);
             $order    = 'ORDER BY a.created_at DESC, a.allocation_id DESC';
