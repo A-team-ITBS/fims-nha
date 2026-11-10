@@ -103,6 +103,29 @@ class OthersController extends ControllerBase
         if ($url === "" && !$Security->isLoggedIn()) {
             $url = "login";
         }
+
+        // Logged in but no accessible UAC page: send the user to the first
+        // system they are assigned to (same lookup as Login::pageLoad) instead
+        // of showing "Unauthorized".
+        if ($url === "" && $Security->isLoggedIn() && !empty($_SESSION[SESSION_USER_ID])) {
+            try {
+                $sql = "SELECT DISTINCT s.system_code, s.url
+                        FROM " . QuotedName("user_level_assignments", "DB") . " ula
+                        INNER JOIN " . QuotedName("user_levels", "DB") . " ul ON ula.user_level_id = ul.user_level_id
+                        INNER JOIN " . QuotedName("systems", "DB") . " s ON ul.system_id = s.system_id
+                        WHERE ula.user_id = ? AND s.is_active = TRUE
+                        ORDER BY s.system_code";
+                $systems = Conn("DB")->executeQuery($sql, [$_SESSION[SESSION_USER_ID]])->fetchAllAssociative();
+                if ($systems) {
+                    $first = $systems[0];
+                    $url = $first["system_code"] === "UAC"
+                        ? "MainDashboard"
+                        : ($first["url"] ?? "/" . $first["system_code"] . "/");
+                }
+            } catch (\Throwable $e) {
+                // Fall through to the unauthorized response below
+            }
+        }
         if ($url == "") {
             throw new HttpUnauthorizedException($request, DeniedMessage());
         }

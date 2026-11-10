@@ -427,7 +427,7 @@
     <Table TblName="budget-revision-page.php" TblType="REPORT" TblGen="1" TblGenList="reportcontroller=1,custom=1,custom|class=1" TblList="1" TblCaption="Budget Revision" TblSrchType="NONE" TblBasicSearch="1" TblExtendedBasicSearch="1" TblSecurity="0,&quot;Default&quot;,0" TblLoaded="1" TblReportType="custom" TblShowEmptyRows="0" TblUseGlobal="1" TblRecPerPage="20" TblRecPerPageList="10,20,50,ALL" TblGrpPerPage="3" TblGrpPerPageList="1,2,3,5,ALL" TblPagerStyle="2" TblUseButtonsForLinks="1" TblUseDropDownForAction="1" TblUseDropDownForListOptions="1" TblUseDropDownForExport="1" />
     <Table TblName="budget-rev-form.php" TblType="REPORT" TblGen="1" TblGenList="reportcontroller=1,custom=1,custom|class=1" TblList="1" TblCaption="Budget Revision Form" TblSrchType="NONE" TblBasicSearch="1" TblExtendedBasicSearch="1" TblSecurity="0,&quot;Default&quot;,0" TblLoaded="1" TblReportType="custom" TblShowEmptyRows="0" TblUseGlobal="1" TblRecPerPage="20" TblRecPerPageList="10,20,50,ALL" TblGrpPerPage="3" TblGrpPerPageList="1,2,3,5,ALL" TblPagerStyle="2" TblUseButtonsForLinks="1" TblUseDropDownForAction="1" TblUseDropDownForListOptions="1" TblUseDropDownForExport="1" />
     <Table TblName="budget-rev-review.php" TblType="REPORT" TblGen="1" TblGenList="reportcontroller=1,custom=1,custom|class=1" TblList="1" TblCaption="Budget Revision Preview" TblSrchType="NONE" TblBasicSearch="1" TblExtendedBasicSearch="1" TblSecurity="0,&quot;Default&quot;,0" TblLoaded="1" TblReportType="custom" TblShowEmptyRows="0" TblUseGlobal="1" TblRecPerPage="20" TblRecPerPageList="10,20,50,ALL" TblGrpPerPage="3" TblGrpPerPageList="1,2,3,5,ALL" TblPagerStyle="2" TblUseButtonsForLinks="1" TblUseDropDownForAction="1" TblUseDropDownForListOptions="1" TblUseDropDownForExport="1" />
-    <Table TblName="budget-allocation-form.php" TblType="REPORT" TblGen="1" TblGenList="reportcontroller=1,custom=1,custom|class=1" TblList="1" TblCaption="Memo Request" TblSrchType="NONE" TblBasicSearch="1" TblExtendedBasicSearch="1" TblSecurity="0,&quot;Default&quot;,0" TblLoaded="1" TblReportType="custom" TblShowEmptyRows="0" TblUseGlobal="1" TblRecPerPage="20" TblRecPerPageList="10,20,50,ALL" TblGrpPerPage="3" TblGrpPerPageList="1,2,3,5,ALL" TblPagerStyle="2" TblUseButtonsForLinks="1" TblUseDropDownForAction="1" TblUseDropDownForListOptions="1" TblUseDropDownForExport="1" />
+    <Table TblName="memo-req-page.php" TblType="REPORT" TblGen="1" TblGenList="reportcontroller=1,custom=1,custom|class=1" TblList="1" TblCaption="Memo Request" TblSrchType="NONE" TblBasicSearch="1" TblExtendedBasicSearch="1" TblSecurity="0,&quot;Default&quot;,0" TblLoaded="1" TblReportType="custom" TblShowEmptyRows="0" TblUseGlobal="1" TblRecPerPage="20" TblRecPerPageList="10,20,50,ALL" TblGrpPerPage="3" TblGrpPerPageList="1,2,3,5,ALL" TblPagerStyle="2" TblUseButtonsForLinks="1" TblUseDropDownForAction="1" TblUseDropDownForListOptions="1" TblUseDropDownForExport="1" />
     <Table TblName="IARModule.php" TblType="REPORT" TblGen="1" TblGenList="reportcontroller=1,custom=1,custom|class=1" TblList="1" TblCaption="IAR Module" TblSrchType="NONE" TblBasicSearch="1" TblExtendedBasicSearch="1" TblSecurity="0,&quot;Default&quot;,0" TblLoaded="1" TblReportType="custom" TblShowEmptyRows="0" TblUseGlobal="1" TblRecPerPage="20" TblRecPerPageList="10,20,50,ALL" TblGrpPerPage="3" TblGrpPerPageList="1,2,3,5,ALL" TblPagerStyle="2" TblUseButtonsForLinks="1" TblUseDropDownForAction="1" TblUseDropDownForListOptions="1" TblUseDropDownForExport="1" />
     <Table TblName="Voucher.php" TblType="REPORT" TblGen="1" TblGenList="reportcontroller=1,custom=1,custom|class=1" TblList="1" TblCaption="Disbursement Voucher" TblSrchType="NONE" TblBasicSearch="1" TblExtendedBasicSearch="1" TblSecurity="0,&quot;Default&quot;,0" TblLoaded="1" TblReportType="custom" TblShowEmptyRows="0" TblUseGlobal="1" TblRecPerPage="20" TblRecPerPageList="10,20,50,ALL" TblGrpPerPage="3" TblGrpPerPageList="1,2,3,5,ALL" TblPagerStyle="2" TblUseButtonsForLinks="1" TblUseDropDownForAction="1" TblUseDropDownForListOptions="1" TblUseDropDownForExport="1" />
     <Table TblName="JournalEntryVoucher.php" TblType="REPORT" TblGen="1" TblGenList="reportcontroller=1,custom=1,custom|class=1" TblList="1" TblCaption="Journal Entry Voucher" TblSrchType="NONE" TblBasicSearch="1" TblExtendedBasicSearch="1" TblSecurity="0,&quot;Default&quot;,0" TblLoaded="1" TblReportType="custom" TblShowEmptyRows="0" TblUseGlobal="1" TblRecPerPage="20" TblRecPerPageList="10,20,50,ALL" TblGrpPerPage="3" TblGrpPerPageList="1,2,3,5,ALL" TblPagerStyle="2" TblUseButtonsForLinks="1" TblUseDropDownForAction="1" TblUseDropDownForListOptions="1" TblUseDropDownForExport="1" />
@@ -602,7 +602,7 @@
         <ExtTable TblName="budget-rev-review.php">
           <Properties><![CDATA[[{"Id":"ExportList","Type":"Boolean","Value":"0"},{"Id":"ExportView","Type":"Boolean","Value":"1"},{"Id":"PageBreakRecordCount","Type":"Integer","Value":0},{"Id":"PageOrientation","Type":"String","Value":"portrait"},{"Id":"PageSize","Type":"String","Value":"a4"}]]]></Properties>
         </ExtTable>
-        <ExtTable TblName="budget-allocation-form.php">
+        <ExtTable TblName="memo-req-page.php">
           <Properties><![CDATA[[{"Id":"ExportList","Type":"Boolean","Value":"0"},{"Id":"ExportView","Type":"Boolean","Value":"1"},{"Id":"PageBreakRecordCount","Type":"Integer","Value":0},{"Id":"PageOrientation","Type":"String","Value":"portrait"},{"Id":"PageSize","Type":"String","Value":"a4"}]]]></Properties>
         </ExtTable>
         <ExtTable TblName="IARModule.php">
@@ -1006,7 +1006,7 @@
         <ExtTable TblName="budget-rev-review.php">
           <Properties><![CDATA[[]]]></Properties>
         </ExtTable>
-        <ExtTable TblName="budget-allocation-form.php">
+        <ExtTable TblName="memo-req-page.php">
           <Properties><![CDATA[[]]]></Properties>
         </ExtTable>
         <ExtTable TblName="IARModule.php">
@@ -1187,7 +1187,7 @@
         <ExtTable TblName="budget-rev-review.php">
           <Properties><![CDATA[[]]]></Properties>
         </ExtTable>
-        <ExtTable TblName="budget-allocation-form.php">
+        <ExtTable TblName="memo-req-page.php">
           <Properties><![CDATA[[]]]></Properties>
         </ExtTable>
         <ExtTable TblName="IARModule.php">
@@ -1591,7 +1591,7 @@
         <ExtTable TblName="budget-rev-review.php">
           <Properties><![CDATA[[]]]></Properties>
         </ExtTable>
-        <ExtTable TblName="budget-allocation-form.php">
+        <ExtTable TblName="memo-req-page.php">
           <Properties><![CDATA[[]]]></Properties>
         </ExtTable>
         <ExtTable TblName="IARModule.php">
@@ -1890,7 +1890,7 @@ function Page_Load()
 ]]></CustomScript>
   <CustomScript ScriptType="Template" ScriptCodeType="Table" ScriptName="Content" ScriptCtrlID="custom" ScriptL1Key="budget-rev-review.php"><![CDATA[<?php include(dirname(__DIR__, 1) . "/app/pages/form/budget-rev-review.php"); ?>
 ]]></CustomScript>
-  <CustomScript ScriptType="Template" ScriptCodeType="Table" ScriptName="Content" ScriptCtrlID="custom" ScriptL1Key="budget-allocation-form.php"><![CDATA[<?php include(dirname(__DIR__, 1) . "/app/pages/form/budget-allocation-form.php"); ?>
+  <CustomScript ScriptType="Template" ScriptCodeType="Table" ScriptName="Content" ScriptCtrlID="custom" ScriptL1Key="memo-req-page.php"><![CDATA[<?php include(dirname(__DIR__, 1) . "/app/pages/memo-req-page.php"); ?>
 ]]></CustomScript>
   <CustomScript ScriptType="Template" ScriptCodeType="Table" ScriptName="Content" ScriptCtrlID="custom" ScriptL1Key="IARModule.php"><![CDATA[<?php include(dirname(__DIR__, 1) . "/app/pages/iar-module.php"); ?>
 ]]></CustomScript>
@@ -1901,7 +1901,7 @@ function Page_Load()
   <CustomScript ScriptType="Template" ScriptCodeType="Table" ScriptName="Content" ScriptCtrlID="custom" ScriptL1Key="CheckDisbursements.php"><![CDATA[<?php include(dirname(__DIR__, 1) . "/app/pages/check-disbursement-voucher.php"); ?>]]></CustomScript>
   <Menu MenuID="9" MenuText="Dashboard" MenuParentID="-1" MenuGroup="0" MenuSource="" MenuExtUrl="" MenuAnonymous="0" MenuSecurity="" MenuUrl="MainDashboard.php" MenuType="" MenuCustomUrl="0" MenuLevel="0" MenuShow="1" MenuDisplayOrder="100" MenuIconClass="fas fa-chart-line" MenuNavbar="0" />
   <Menu MenuID="146" MenuText="Budget" MenuParentID="-1" MenuGroup="0" MenuSource="" MenuExtUrl="" MenuAnonymous="8" MenuSecurity="" MenuUrl="" MenuType="" MenuCustomUrl="1" MenuLevel="0" MenuShow="1" MenuDisplayOrder="200" MenuIconClass="fas fa-wallet" MenuNavbar="0" />
-  <Menu MenuID="88" MenuText="Memo Request" MenuParentID="146" MenuGroup="0" MenuSource="" MenuExtUrl="" MenuAnonymous="0" MenuSecurity="" MenuUrl="budget-allocation-form.php" MenuType="" MenuCustomUrl="0" MenuLevel="1" MenuShow="1" MenuDisplayOrder="100" MenuIconClass="" MenuNavbar="0" />
+  <Menu MenuID="88" MenuText="Memo Request" MenuParentID="146" MenuGroup="0" MenuSource="" MenuExtUrl="" MenuAnonymous="0" MenuSecurity="" MenuUrl="memo-req-page.php" MenuType="" MenuCustomUrl="0" MenuLevel="1" MenuShow="1" MenuDisplayOrder="100" MenuIconClass="" MenuNavbar="0" />
   <Menu MenuID="81" MenuText="Budget Request" MenuParentID="146" MenuGroup="0" MenuSource="" MenuExtUrl="" MenuAnonymous="0" MenuSecurity="" MenuUrl="budget-req-page.php" MenuType="" MenuCustomUrl="0" MenuLevel="1" MenuShow="1" MenuDisplayOrder="200" MenuIconClass="" MenuNavbar="0" />
   <Menu MenuID="85" MenuText="Budget Revision" MenuParentID="146" MenuGroup="0" MenuSource="" MenuExtUrl="" MenuAnonymous="0" MenuSecurity="" MenuUrl="budget-revision-page.php" MenuType="" MenuCustomUrl="0" MenuLevel="1" MenuShow="1" MenuDisplayOrder="300" MenuIconClass="" MenuNavbar="0" />
   <Menu MenuID="147" MenuText="Programs &amp; Projects " MenuParentID="-1" MenuGroup="0" MenuSource="" MenuExtUrl="" MenuAnonymous="8" MenuSecurity="" MenuUrl="" MenuType="" MenuCustomUrl="1" MenuLevel="0" MenuShow="1" MenuDisplayOrder="300" MenuIconClass="fas fa-sitemap" MenuNavbar="0" />
