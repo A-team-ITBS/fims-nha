@@ -1348,7 +1348,7 @@ document.addEventListener('DOMContentLoaded', function () {
             .then(function (r) { return r.json(); })
             .then(function (result) {
                 if (result.success) {
-                    ew.showToast(isHidden ? 'Module removed from the list' : 'Module restored');
+                    ew.showToast(isHidden ? 'Module removed from the list' : 'Module restored', 'success');
                     location.reload();
                 } else {
                     ew.alert(result.message || 'Error updating module visibility');
@@ -1413,7 +1413,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 .then(function (r) { return r.json(); })
                 .then(function (result) {
                     if (result.success) {
-                        ew.showToast(result.message || 'Sync complete');
+                        ew.showToast(result.message || 'Sync complete', 'success');
                         if (result.inserted > 0) location.reload();
                     } else {
                         ew.alert(result.message || 'Error syncing permission modules');
@@ -1454,7 +1454,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 .then(function (result) {
                     if (result.success) {
                         permissionsByLevel[levelId] = permissions;
-                        ew.showToast('Permissions saved successfully');
+                        ew.showToast('Permissions saved successfully', 'success');
                     } else {
                         ew.alert(result.message || 'Error saving permissions');
                     }
@@ -1548,7 +1548,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 .then(function (r) { return r.json(); })
                 .then(function (result) {
                     if (result.success) {
-                        ew.showToast('Access assigned successfully');
+                        ew.showToast('Access assigned successfully', 'success');
                         location.reload();
                     } else {
                         ew.alert(result.message || 'Error assigning access');
@@ -1696,7 +1696,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 .then(function (r) { return r.json(); })
                 .then(function (result) {
                     if (result.success) {
-                        ew.showToast('User created successfully');
+                        ew.showToast('User created successfully', 'success');
                         closeAddUserModal();
                         location.reload();
                     } else {
@@ -1762,7 +1762,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 .then(function (r) { return r.json(); })
                 .then(function (result) {
                     if (result.success) {
-                        ew.showToast('User level created successfully');
+                        ew.showToast('User level created successfully', 'success');
                         closeCreateUserLevelModal();
                         location.reload();
                     } else {
@@ -1835,7 +1835,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 .then(function (r) { return r.json(); })
                 .then(function (result) {
                     if (result.success) {
-                        ew.showToast('User level updated successfully');
+                        ew.showToast('User level updated successfully', 'success');
                         closeEditUserLevelModal();
                         location.reload();
                     } else {
@@ -2011,7 +2011,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 .then(function (r) { return r.json(); })
                 .then(function (result) {
                     if (result.success) {
-                        ew.showToast('User updated successfully');
+                        ew.showToast('User updated successfully', 'success');
                         closeEditUserModal();
                         location.reload();
                     } else {
@@ -2076,7 +2076,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 .then(function (r) { return r.json(); })
                 .then(function (result) {
                     if (result.success) {
-                        ew.showToast('Module renamed successfully');
+                        ew.showToast('Module renamed successfully', 'success');
                         closeRenameModuleModal();
                         location.reload();
                     } else {
