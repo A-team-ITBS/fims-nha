@@ -238,58 +238,73 @@ $deleteAssignmentBaseUrl = GetUrl("UserLevelAssignmentsDelete");
 	href="/app/fims-css/fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css') ?>" />
 
 <!-- Main content -->
-<div class="container-fluid">
+<div class="container-fluid app-uac-page">
+	<!-- Page header -->
+	<div class="app-page-header">
+		<div class="app-page-header-icon"><i class="fas fa-user-lock"></i></div>
+		<div>
+			<h1 class="app-page-title">User Access</h1>
+			<p class="app-page-subtitle">Review registered users, then assign a role and fine-tune what that role
+				can see and do.</p>
+		</div>
+	</div>
+
 	<!-- Info boxes -->
-	<div class="row">
+	<div class="row app-stat-row">
 		<div class="col-12 col-sm-6 col-md-3">
-			<div class="app-stat-card">
+			<div class="app-stat-card is-info">
 				<span class="app-stat-icon is-info"><i class="fas fa-users"></i></span>
 				<div class="app-stat-content">
 					<span
 						class="app-stat-number"><?php echo $totalUsers; ?></span>
 					<span class="app-stat-label">Total Users</span>
 				</div>
+				<i class="fas fa-users app-stat-ghost-icon"></i>
 			</div>
 		</div>
 		<div class="col-12 col-sm-6 col-md-3">
-			<div class="app-stat-card">
+			<div class="app-stat-card is-success">
 				<span class="app-stat-icon is-success"><i class="fas fa-user-check"></i></span>
 				<div class="app-stat-content">
 					<span
 						class="app-stat-number"><?php echo $activeUsers; ?></span>
 					<span class="app-stat-label">Active Users</span>
 				</div>
+				<i class="fas fa-user-check app-stat-ghost-icon"></i>
 			</div>
 		</div>
 		<div class="col-12 col-sm-6 col-md-3">
-			<div class="app-stat-card">
+			<div class="app-stat-card is-warning">
 				<span class="app-stat-icon is-warning"><i class="fas fa-user-shield"></i></span>
 				<div class="app-stat-content">
 					<span
 						class="app-stat-number"><?php echo $totalUserLevels; ?></span>
 					<span class="app-stat-label">User Levels (Roles)</span>
 				</div>
+				<i class="fas fa-user-shield app-stat-ghost-icon"></i>
 			</div>
 		</div>
 		<div class="col-12 col-sm-6 col-md-3">
-			<div class="app-stat-card">
+			<div class="app-stat-card is-danger">
 				<span class="app-stat-icon is-danger"><i class="fas fa-user-slash"></i></span>
 				<div class="app-stat-content">
 					<span
 						class="app-stat-number"><?php echo $unassignedUsers; ?></span>
 					<span class="app-stat-label">Unassigned Access</span>
 				</div>
+				<i class="fas fa-user-slash app-stat-ghost-icon"></i>
 			</div>
 		</div>
 	</div>
 
-	<!-- User list + Role Access, side by side -->
-	<div class="row mt-3">
-		<div
-			class="<?php echo $canManageAssignments ? 'col-md-8' : 'col-12'; ?>">
+	<!-- Users -->
+	<div class="row mt-4">
+		<div class="col-12">
 			<div class="card card-flat h-100">
 				<div class="card-header">
-					<h3 class="card-title"><i class="fas fa-users mr-1"></i> Users</h3>
+					<h3 class="card-title"><i class="fas fa-users mr-1"></i> Users
+						<span class="app-card-title-count"><?php echo count($users); ?></span>
+					</h3>
 					<div class="card-tools">
 						<?php if ($canAddUser): ?>
 						<button type="button" class="btn btn-primary btn-sm" id="openAddUserModalBtn">
@@ -299,9 +314,10 @@ $deleteAssignmentBaseUrl = GetUrl("UserLevelAssignmentsDelete");
 					</div>
 				</div>
 				<div class="card-body">
-					<div class="app-table-search mb-3">
+					<div class="app-table-search app-table-search--wide mb-3">
 						<i class="fas fa-search app-table-search-icon"></i>
-						<input type="text" id="userSearchInput" class="form-control" placeholder="Search users...">
+						<input type="text" id="userSearchInput" class="form-control"
+							placeholder="Search by name, username, department, office...">
 					</div>
 					<div id="usersList" class="app-user-list">
 						<?php foreach ($users as $user): ?>
@@ -328,7 +344,7 @@ $deleteAssignmentBaseUrl = GetUrl("UserLevelAssignmentsDelete");
 								<button type="button" class="btn app-table-action-btn edit-user-btn"
 									data-user-id="<?php echo $user['user_id']; ?>"
 									title="Edit User">
-									<i class="fas fa-edit"></i>
+									<i class="fas fa-edit"></i> <span class="app-table-action-btn-label">Edit</span>
 								</button>
 								<?php endif; ?>
 								<?php if ($canManageAssignments): ?>
@@ -336,7 +352,7 @@ $deleteAssignmentBaseUrl = GetUrl("UserLevelAssignmentsDelete");
 									data-user-id="<?php echo $user['user_id']; ?>"
 									data-username="<?php echo HtmlEncode($user['username']); ?>"
 									title="Manage Access">
-									<i class="fas fa-user-lock"></i>
+									<i class="fas fa-user-lock"></i> <span class="app-table-action-btn-label">Manage Access</span>
 								</button>
 								<?php endif; ?>
 							</div>
@@ -388,136 +404,168 @@ $deleteAssignmentBaseUrl = GetUrl("UserLevelAssignmentsDelete");
 			</div>
 		</div>
 
-		<?php if ($canManageAssignments): ?>
-		<!-- Role Access Assignment -->
-		<div class="col-md-4">
-			<div class="card card-flat h-100">
-				<div class="card-header">
-					<h3 class="card-title"><i class="fas fa-user-lock mr-1"></i> Role Access</h3>
-					<?php if ($canAddUserLevel): ?>
-					<div class="card-tools">
-						<button type="button" class="btn app-table-toolbar-btn" id="openCreateUserLevelModalBtn">
-							<i class="fas fa-plus mr-1"></i> Create User Level
-						</button>
-					</div>
-					<?php endif; ?>
-				</div>
-				<div class="card-body app-flat-form app-role-access-body">
-					<div class="app-role-access-selected">
-						<i class="fas fa-user"></i>
-						<span>Selected user: <strong id="selectedUserLabel">none</strong></span>
-					</div>
-
-					<div class="step-heading">Current Assignments</div>
-					<div class="app-role-access-list" id="currentAssignmentsList">
-						<p class="text-muted small mb-0">Select a user to view assignments.</p>
-					</div>
-
-					<div class="app-role-list-group">
-						<div class="step-heading mt-4">Assign New Access</div>
-						<div class="app-table-search app-role-list-search mb-2">
-							<i class="fas fa-search app-table-search-icon"></i>
-							<input type="text" id="roleSearchInput" class="form-control" placeholder="Search roles...">
-						</div>
-						<input type="hidden" id="assignUserId">
-						<input type="hidden" id="assignSystemId">
-						<select class="d-none" id="assignLevelSelect">
-							<option value="">Select role...</option>
-							<?php foreach ($userLevels as $level): ?>
-							<option
-								value="<?php echo $level['user_level_id']; ?>"
-								data-system-id="<?php echo $level['system_id']; ?>">
-								<?php echo HtmlEncode($level['name'] . ' (' . $level['system_name'] . ')'); ?>
-							</option>
-							<?php endforeach; ?>
-						</select>
-						<p class="text-muted small mb-2 app-role-list-empty" id="roleListEmptyMsg"
-							style="display:none;">No roles match your search.</p>
-						<div class="app-role-list" id="assignRoleList">
-							<?php foreach ($userLevels as $level): ?>
-							<button type="button" class="app-role-list-item"
-								data-level-id="<?php echo $level['user_level_id']; ?>">
-								<span class="app-role-list-item-icon"><i class="fas fa-user-shield"></i></span>
-								<span class="app-role-list-item-text">
-									<span
-										class="app-role-list-item-name"><?php echo HtmlEncode($level['name']); ?></span>
-									<span
-										class="app-role-list-item-system"><?php echo HtmlEncode($level['system_name']); ?></span>
-								</span>
-								<?php if ($canEditUserLevel): ?>
-								<span class="app-role-list-item-edit"
-									data-level-id="<?php echo $level['user_level_id']; ?>"
-									title="Edit this user level">
-									<i class="fas fa-edit"></i>
-								</span>
-								<?php endif; ?>
-								<span class="app-role-list-item-check"><i class="fas fa-check"></i></span>
-							</button>
-							<?php endforeach; ?>
-						</div>
-					</div>
-					<button type="button" class="btn btn-primary btn-block" id="assignAccessBtn" disabled>
-						<i class="fas fa-plus mr-1"></i> Assign Access
-					</button>
-				</div>
-			</div>
-		</div>
-		<?php endif; ?>
 	</div>
 
 	<?php if ($canManageAssignments): ?>
 	<div id="accessPanel">
-		<!-- Permissions Management -->
-		<div class="row mt-3">
+		<!-- Role Access + Permissions Management — combined into one card since
+		     they're directly connected: picking a role on the left (Role
+		     Access) is what drives which role's permissions the matrix on the
+		     right (Permissions Management) shows and edits. -->
+		<div class="row mt-4">
 			<div class="col-12">
 				<div class="card card-flat">
 					<div class="card-header">
-						<h3 class="card-title">Permissions Management</h3>
-						<?php if ($canManagePermissions): ?>
+						<h3 class="card-title"><i class="fas fa-user-lock mr-1"></i> Role Access &amp; Permissions</h3>
 						<div class="card-tools">
+							<?php if ($canAddUserLevel): ?>
+							<button type="button" class="btn app-table-toolbar-btn" id="openCreateUserLevelModalBtn">
+								<i class="fas fa-plus mr-1"></i> Create User Level
+							</button>
+							<?php endif; ?>
+							<?php if ($canManagePermissions): ?>
 							<button type="button" class="btn app-table-toolbar-btn" id="syncPermissionModulesBtn"
 								title="Pull in any PHPMaker tables/pages not yet listed here">
 								<i class="fas fa-sync-alt mr-1"></i> Sync Permission Modules
 							</button>
+							<?php endif; ?>
 						</div>
-						<?php endif; ?>
 					</div>
 					<div class="card-body">
-						<div id="permissionNoRoleNotice" class="alert alert-warning small mb-3">
-							<i class="fas fa-circle-info mr-1"></i>
-							<strong>Select a User Level (Role)</strong> in the "Assign New Access" dropdown (below)
-							first — the checkboxes below are disabled until you do, since they edit that role's
-							permissions.
+						<!-- Full-width context strip: stays visible across both columns
+						     (and while scrolling a long permission matrix) so it's always
+						     clear whose access is being edited right now. -->
+						<div class="app-role-access-selected">
+							<i class="fas fa-user"></i>
+							<span>Selected user: <strong id="selectedUserLabel">none</strong></span>
 						</div>
+						<div class="row app-role-permissions-row">
+							<!-- Role Access: pick the user + role whose permissions the
+							     matrix on the right edits. -->
+							<div class="col-md-4 app-role-access-col">
+								<div class="app-uac-step-heading">
+									<span class="app-uac-step-num">1</span>
+									<span>Pick a user &amp; role</span>
+								</div>
+								<div class="app-flat-form app-role-access-body">
+									<div class="step-heading">Current Assignments</div>
+									<div class="app-role-access-list" id="currentAssignmentsList">
+										<p class="text-muted small mb-0">Select a user to view assignments.</p>
+									</div>
 
-						<div class="app-table-permissions-toolbar">
-							<div class="app-table-permissions-toolbar-row">
-								<div class="app-table-search">
-									<i class="fas fa-search app-table-search-icon"></i>
-									<input type="text" id="permissionSearchInput" class="form-control"
-										placeholder="Search tables...">
-								</div>
-								<?php if ($canManagePermissions): ?>
-								<div class="app-table-permissions-toolbar-actions">
-									<label class="app-checkbox-label">
-										<input type="checkbox" class="app-checkbox" id="showHiddenModulesCheck">
-										Show hidden
-									</label>
-									<button type="button" class="btn app-table-toolbar-btn is-success"
-										id="checkAllPermissionsBtn" disabled>
-										Check All
+									<div class="app-role-list-group">
+										<div class="step-heading mt-4">Assign New Access</div>
+										<div class="app-table-search app-role-list-search mb-2">
+											<i class="fas fa-search app-table-search-icon"></i>
+											<input type="text" id="roleSearchInput" class="form-control"
+												placeholder="Search roles...">
+										</div>
+										<input type="hidden" id="assignUserId">
+										<input type="hidden" id="assignSystemId">
+										<select class="d-none" id="assignLevelSelect">
+											<option value="">Select role...</option>
+											<?php foreach ($userLevels as $level): ?>
+											<option
+												value="<?php echo $level['user_level_id']; ?>"
+												data-system-id="<?php echo $level['system_id']; ?>">
+												<?php echo HtmlEncode($level['name'] . ' (' . $level['system_name'] . ')'); ?>
+											</option>
+											<?php endforeach; ?>
+										</select>
+										<p class="text-muted small mb-2 app-role-list-empty" id="roleListEmptyMsg"
+											style="display:none;">No roles match your search.</p>
+										<div class="app-role-list" id="assignRoleList">
+											<?php foreach ($userLevels as $level): ?>
+											<button type="button" class="app-role-list-item"
+												data-level-id="<?php echo $level['user_level_id']; ?>">
+												<span class="app-role-list-item-icon"><i class="fas fa-user-shield"></i></span>
+												<span class="app-role-list-item-text">
+													<span
+														class="app-role-list-item-name"><?php echo HtmlEncode($level['name']); ?></span>
+													<span
+														class="app-role-list-item-system"><?php echo HtmlEncode($level['system_name']); ?></span>
+												</span>
+												<?php if ($canEditUserLevel): ?>
+												<span class="app-role-list-item-edit"
+													data-level-id="<?php echo $level['user_level_id']; ?>"
+													title="Edit this user level">
+													<i class="fas fa-edit"></i>
+												</span>
+												<?php endif; ?>
+												<span class="app-role-list-item-check"><i class="fas fa-check"></i></span>
+											</button>
+											<?php endforeach; ?>
+										</div>
+									</div>
+									<button type="button" class="btn btn-primary btn-block" id="assignAccessBtn" disabled>
+										<i class="fas fa-plus mr-1"></i> Assign Access
 									</button>
-									<button type="button" class="btn app-table-toolbar-btn"
-										id="uncheckAllPermissionsBtn" disabled>
-										Uncheck All
-									</button>
+
+									<!-- Fills the space left over once the role list stopped
+									     stretching to match the (taller) permissions column —
+									     surfaces context about the selected role that was
+									     previously only implicit in the matrix on the right. -->
+									<div class="app-role-details" id="roleDetailsPanel">
+										<div class="app-role-details-empty" id="roleDetailsEmpty">
+											<i class="fas fa-circle-info"></i>
+											Select a role above to see its details here.
+										</div>
+										<div class="app-role-details-content" id="roleDetailsContent" style="display:none;">
+											<div class="step-heading">Role Details</div>
+											<dl class="app-role-details-list">
+												<dt>System</dt>
+												<dd id="roleDetailsSystem">—</dd>
+												<dt>Description</dt>
+												<dd id="roleDetailsDescription">—</dd>
+												<dt>Users assigned</dt>
+												<dd id="roleDetailsUserCount">—</dd>
+											</dl>
+										</div>
+									</div>
 								</div>
-								<?php endif; ?>
 							</div>
-						</div>
 
-						<div class="app-table-permissions-wrap">
-							<table class="table app-table app-table-permissions" id="permissionMatrixTable">
+							<!-- Permissions Management: the matrix for whichever role is
+							     selected on the left. -->
+							<div class="col-md-8 app-permissions-col">
+								<div class="app-uac-step-heading">
+									<span class="app-uac-step-num">2</span>
+									<span>Edit what that role can do</span>
+								</div>
+								<div id="permissionNoRoleNotice" class="alert alert-warning small mb-3">
+									<i class="fas fa-circle-info mr-1"></i>
+									<strong>Select a User Level (Role)</strong> on the left first — the checkboxes
+									below are disabled until you do, since they edit that role's permissions.
+								</div>
+
+								<div class="app-table-permissions-toolbar">
+									<div class="app-table-permissions-toolbar-row">
+										<div class="app-table-search">
+											<i class="fas fa-search app-table-search-icon"></i>
+											<input type="text" id="permissionSearchInput" class="form-control"
+												placeholder="Search tables...">
+										</div>
+										<?php if ($canManagePermissions): ?>
+										<div class="app-table-permissions-toolbar-actions">
+											<label class="app-checkbox-label">
+												<input type="checkbox" class="app-checkbox" id="showHiddenModulesCheck">
+												Show hidden
+											</label>
+											<button type="button" class="btn app-table-toolbar-btn is-success"
+												id="checkAllPermissionsBtn" disabled>
+												Check All
+											</button>
+											<button type="button" class="btn app-table-toolbar-btn"
+												id="uncheckAllPermissionsBtn" disabled>
+												Uncheck All
+											</button>
+										</div>
+										<?php endif; ?>
+									</div>
+								</div>
+
+								<div class="app-table-permissions-wrap">
+									<table class="table app-table app-table-permissions" id="permissionMatrixTable">
 								<thead>
 									<tr>
 										<th class="text-center"><span class="app-table-th-check"><input type="checkbox"
@@ -572,6 +620,8 @@ $deleteAssignmentBaseUrl = GetUrl("UserLevelAssignmentsDelete");
 								</button>
 							</div>
 						</div>
+							</div><!-- /.app-permissions-col -->
+						</div><!-- /.row -->
 					</div>
 					<?php if ($canManagePermissions): ?>
 					<div class="card-footer text-right">
@@ -1733,7 +1783,7 @@ $deleteAssignmentBaseUrl = GetUrl("UserLevelAssignmentsDelete");
 							'<span><strong>' + a.system_name + '</strong>: ' + a.level_name + '</span>' +
 							'<a href="' + deleteAssignmentBaseUrl + '/' + a.assignment_id +
 							'" class="app-table-action-btn" title="Remove">' +
-							'<i class="fas fa-trash"></i></a></div>';
+							'<i class="fas fa-trash"></i> <span class="app-table-action-btn-label">Remove</span></a></div>';
 					}).join('') :
 					'<p class="text-muted small mb-0">No access assigned yet.</p>';
 			}
@@ -1766,6 +1816,44 @@ $deleteAssignmentBaseUrl = GetUrl("UserLevelAssignmentsDelete");
 			});
 		});
 
+		// ── Role Details panel (fills the space under "Assign Access" that
+		// opened up once the role list stopped stretching to match the taller
+		// permissions column) ──
+		const roleDetailsEmpty = document.getElementById('roleDetailsEmpty');
+		const roleDetailsContent = document.getElementById('roleDetailsContent');
+		const roleDetailsSystem = document.getElementById('roleDetailsSystem');
+		const roleDetailsDescription = document.getElementById('roleDetailsDescription');
+		const roleDetailsUserCount = document.getElementById('roleDetailsUserCount');
+
+		function countUsersForLevel(levelId) {
+			let count = 0;
+			Object.keys(assignmentsByUser).forEach(function(userId) {
+				const hasLevel = (assignmentsByUser[userId] || []).some(function(a) {
+					return String(a.user_level_id) === String(levelId);
+				});
+				if (hasLevel) count++;
+			});
+			return count;
+		}
+
+		function renderRoleDetails(levelId) {
+			if (!roleDetailsEmpty || !roleDetailsContent) return;
+			const level = levelId ? userLevelsById[levelId] : null;
+			if (!level) {
+				roleDetailsEmpty.style.display = '';
+				roleDetailsContent.style.display = 'none';
+				return;
+			}
+			roleDetailsEmpty.style.display = 'none';
+			roleDetailsContent.style.display = '';
+			if (roleDetailsSystem) roleDetailsSystem.textContent = level.system_name || 'N/A';
+			if (roleDetailsDescription) roleDetailsDescription.textContent = level.description || '—';
+			if (roleDetailsUserCount) {
+				const n = countUsersForLevel(levelId);
+				roleDetailsUserCount.textContent = n === 1 ? '1 user' : (n + ' users');
+			}
+		}
+
 		if (assignLevelSelect) {
 			assignLevelSelect.addEventListener('change', function() {
 				const selectedOption = this.options[this.selectedIndex];
@@ -1774,6 +1862,7 @@ $deleteAssignmentBaseUrl = GetUrl("UserLevelAssignmentsDelete");
 					'';
 				syncRoleListActive(this.value);
 				renderPermissionMatrix(this.value);
+				renderRoleDetails(this.value);
 			});
 		}
 
