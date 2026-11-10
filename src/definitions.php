@@ -92,7 +92,6 @@ return [
     "psgc" => \DI\create(Psgc::class),
     "PSGCMap" => \DI\create(PsgcMap::class),
     "FileManager" => \DI\create(FileManager::class),
-    "BullMQManager" => \DI\create(BullMqManager::class),
     "PageEditor" => \DI\create(PageEditor::class),
     "AiAssistant" => \DI\create(AiAssistant::class),
     "position_categories" => \DI\create(PositionCategories::class),
@@ -120,7 +119,6 @@ return [
     "chart_of_accounts_page" => \DI\create(ChartOfAccountsPage::class),
     "responsibility_center_page" => \DI\create(ResponsibilityCenterPage::class),
     "permission_module_captions" => \DI\create(PermissionModuleCaptions::class),
-    "aggregated_audit_logs" => \DI\create(AggregatedAuditLogs::class),
     "budget_revision_page" => \DI\create(BudgetRevisionPage::class),
     "budget_rev_form" => \DI\create(BudgetRevForm::class),
     "budget_rev_review" => \DI\create(BudgetRevReview::class),
@@ -128,6 +126,7 @@ return [
     "IARModule" => \DI\create(IarModule::class),
     "Voucher" => \DI\create(Voucher::class),
     "JournalEntryVoucher" => \DI\create(JournalEntryVoucher::class),
+    "ChangePass" => \DI\create(ChangePass::class),
 
     // User table
     "usertable" => \DI\get("users"),
