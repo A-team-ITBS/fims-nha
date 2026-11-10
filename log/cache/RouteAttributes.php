@@ -87,6 +87,9 @@
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone ($p['PHPMaker2024\\FIMS\\Attributes\\Get'] ?? \Symfony\Component\VarExporter\Internal\Registry::p('PHPMaker2024\\FIMS\\Attributes\\Get')),
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Get'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
@@ -165,6 +168,21 @@
     [
         'PHPMaker2024\\FIMS\\Attributes\\Map' => [
             'methods' => [
+                [
+                    'GET',
+                    'POST',
+                    'OPTIONS',
+                ],
+                [
+                    'GET',
+                    'POST',
+                    'OPTIONS',
+                ],
+                [
+                    'GET',
+                    'POST',
+                    'OPTIONS',
+                ],
                 [
                     'GET',
                     'POST',
@@ -992,7 +1010,10 @@
                 '/BudgetRevisionPage[/{params:.*}]',
                 '/BudgetRevReview[/{params:.*}]',
                 '/BullMqManager[/{params:.*}]',
+                '/ChangePass[/{params:.*}]',
+                '/ChangePassword2[/{params:.*}]',
                 '/ChartOfAccountsPage[/{params:.*}]',
+                '/CheckDisbursements[/{params:.*}]',
                 '/DepartmentManagement[/{params:.*}]',
                 '/DepartmentsList[/{department_id}]',
                 '/DepartmentsAdd[/{department_id}]',
@@ -1154,7 +1175,10 @@
                 'PHPMaker2024\\FIMS\\BudgetRevisionPageController:custom',
                 'PHPMaker2024\\FIMS\\BudgetRevReviewController:custom',
                 'PHPMaker2024\\FIMS\\BullMqManagerController:custom',
+                'PHPMaker2024\\FIMS\\ChangePassController:custom',
+                'PHPMaker2024\\FIMS\\ChangePassword2Controller:custom',
                 'PHPMaker2024\\FIMS\\ChartOfAccountsPageController:custom',
+                'PHPMaker2024\\FIMS\\CheckDisbursementsController:custom',
                 'PHPMaker2024\\FIMS\\DepartmentManagementController:custom',
                 'PHPMaker2024\\FIMS\\DepartmentsController:list',
                 'PHPMaker2024\\FIMS\\DepartmentsController:add',
@@ -1287,6 +1311,15 @@
                 'PHPMaker2024\\FIMS\\WorkflowManagerController:custom',
             ],
             'middleware' => [
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
                 [
                     'PHPMaker2024\\FIMS\\PermissionMiddleware',
                 ],
@@ -1796,7 +1829,10 @@
                 'custom.budget_revision_page',
                 'custom.budget_rev_review',
                 'custom.BullMQManager',
+                'custom.ChangePass',
+                'custom.ChangePassword2',
                 'custom.chart_of_accounts_page',
+                'custom.CheckDisbursements',
                 'custom.DepartmentManagement',
                 'list.departments',
                 'add.departments',
@@ -1929,6 +1965,9 @@
                 'custom.WorkflowManager',
             ],
             'options' => [
+                [],
+                [],
+                [],
                 [],
                 [],
                 [],
@@ -2253,6 +2292,9 @@
         $o[157],
         $o[158],
         $o[159],
+        $o[160],
+        $o[161],
+        $o[162],
     ],
     []
 );

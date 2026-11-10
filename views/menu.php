@@ -20,13 +20,16 @@ $sideMenu->addMenuItem(79, "mi_project_page", $Language->menuPhrase("79", "MenuT
 $sideMenu->addMenuItem(148, "mci_Accounting_Records", $Language->menuPhrase("148", "MenuText"), "", -1, "", true, false, true, "fas fa-book", "", false, true);
 $sideMenu->addMenuItem(89, "mi_chart_of_accounts_page", $Language->menuPhrase("89", "MenuText"), "ChartOfAccountsPage", 148, "", AllowListMenu('{FIMS}chart-of-accounts-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(90, "mi_responsibility_center_page", $Language->menuPhrase("90", "MenuText"), "ResponsibilityCenterPage", 148, "", AllowListMenu('{FIMS}responsibility-center-page.php'), false, false, "", "", false, true);
-$sideMenu->addMenuItem(91, "mi_AIRModule", $Language->menuPhrase("91", "MenuText"), "AirModule", -1, "", AllowListMenu('{FIMS}AIRModule.php'), false, false, "fas fa-clipboard-check", "", false, true);
+$sideMenu->addMenuItem(91, "mi_IARModule", $Language->menuPhrase("91", "MenuText"), "IarModule", -1, "", AllowListMenu('{FIMS}IARModule.php'), false, false, "fas fa-clipboard-check", "", false, true);
 $sideMenu->addMenuItem(258, "mci_Vouchers", $Language->menuPhrase("258", "MenuText"), "", -1, "", true, false, true, "fas fa-file-invoice-dollar", "", false, true);
 $sideMenu->addMenuItem(208, "mi_JournalEntryVoucher", $Language->menuPhrase("208", "MenuText"), "JournalEntryVoucher", 258, "", AllowListMenu('{FIMS}JournalEntryVoucher.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(207, "mi_Voucher", $Language->menuPhrase("207", "MenuText"), "Voucher", 258, "", AllowListMenu('{FIMS}Voucher.php'), false, false, "", "", false, true);
+$sideMenu->addMenuItem(260, "mi_CheckDisbursements", $Language->menuPhrase("260", "MenuText"), "CheckDisbursements", 258, "", AllowListMenu('{FIMS}CheckDisbursements.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(206, "mci_Administration", $Language->menuPhrase("206", "MenuText"), "", -1, "", true, false, true, "fas fa-user-cog", "", false, true);
 $sideMenu->addMenuItem(70, "mi_PositionManagement", $Language->menuPhrase("70", "MenuText"), "PositionManagement", 206, "", AllowListMenu('{FIMS}PositionManagement.php'), false, false, "fas fa-briefcase", "", false, true);
 $sideMenu->addMenuItem(13, "mi_UserAccess", $Language->menuPhrase("13", "MenuText"), "UserAccess", 206, "", AllowListMenu('{FIMS}UserAccess.php'), false, false, "fas fa-user-lock", "", false, true);
 $sideMenu->addMenuItem(12, "mi_UserManagement", $Language->menuPhrase("12", "MenuText"), "UserManagement", 206, "", AllowListMenu('{FIMS}UserManagement.php'), false, false, "fas fa-user-shield", "", false, true);
 $sideMenu->addMenuItem(69, "mi_DepartmentManagement", $Language->menuPhrase("69", "MenuText"), "DepartmentManagement", 206, "", AllowListMenu('{FIMS}DepartmentManagement.php'), false, false, "fas fa-building", "", false, true);
+$sideMenu->addMenuItem(259, "mi_ChangePass", $Language->menuPhrase("259", "MenuText"), "ChangePass", 206, "", AllowListMenu('{FIMS}ChangePass.php'), false, false, "", "", false, true);
+$sideMenu->addMenuItem(4, "mi_user_level_assignments", $Language->menuPhrase("4", "MenuText"), "UserLevelAssignmentsList?cmd=resetall", -1, "", AllowListMenu('{FIMS}user_level_assignments'), false, false, "fas fa-user-tag", "", false, true);
 echo $sideMenu->toScript();

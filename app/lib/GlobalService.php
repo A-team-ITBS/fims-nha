@@ -39,47 +39,31 @@ use PHPMaker2024\FIMS as App;
 class GlobalService
 {
     /**
-     * Builds the next program code: "<year>-<rc_code>-<NNN>", e.g. 2026-35-074-0000001-000-101.
+     * Builds the next program code: a plain 3-digit sequence, starting at "100", then "101", "102", …
      *
-     *  - year    : the current year, or $year when given.
-     *  - rc_code : fims.responsibility_code.rc_code for the logged-in user's uac.users.rc_id
-     *              ($userId, else the current user).
-     *  - NNN     : last 3 digits of the highest existing fims.program.program_code that ends in
-     *              "-NNN", plus one, zero-padded to 3 digits. Codes that don't end in "-NNN"
-     *              (e.g. "SAMPLE-1") are ignored, and an empty table starts at 001.
+     * It is the highest existing fims.program.program_code that is exactly 3 digits, plus one. Codes in
+     * any other shape (e.g. "PROG-001", or older "2026-35-074-…-001" codes) are ignored, and the
+     * sequence never starts below 100.
+     *
+     * $userId and $year are no longer used (the code has no RC or year part); the parameters stay only
+     * so existing callers (ProgramService::create, GET /program/next-code) keep working.
      *
      * The number is a suggestion read at call time — nothing is reserved. Two callers asking at
      * the same moment get the same value; program_code's primary key makes the second insert fail.
      *
-     * @throws \InvalidArgumentException when no user is logged in, the user has no rc_id, or
-     *                                   the 3-digit sequence is exhausted (999).
+     * @throws \InvalidArgumentException when the 3-digit sequence is exhausted (999).
      */
     public static function generateProgramCode(?int $userId = null, ?int $year = null): string
     {
-        $userId = $userId ?: (int) App\CurrentUserID();
-        if ($userId <= 0) {
-            throw new \InvalidArgumentException('No logged-in user — cannot build the RC part of the program code.');
-        }
-
-        $rcCode = trim((string) App\ExecuteScalar(
-            'SELECT rc.rc_code FROM uac.users u ' .
-            'JOIN fims.responsibility_code rc ON rc.rc_id = u.rc_id ' .
-            'WHERE u.user_id = ' . $userId,
+        $last = max(99, (int) App\ExecuteScalar(
+            "SELECT COALESCE(MAX(CAST(program_code AS INTEGER)), 0) FROM fims.program WHERE program_code ~ '^[0-9]{3}$'",
             'DB'
         ));
-        if ($rcCode === '') {
-            throw new \InvalidArgumentException('Your user account has no RC code (users.rc_id). Ask an administrator to set it.');
-        }
-
-        $last = (int) App\ExecuteScalar(
-            "SELECT COALESCE(MAX(CAST(SUBSTRING(program_code FROM '-([0-9]{3})$') AS INTEGER)), 0) FROM fims.program",
-            'DB'
-        );
         if ($last >= 999) {
             throw new \InvalidArgumentException('The 3-digit program sequence is exhausted (999).');
         }
 
-        return sprintf('%d-%s-%03d', $year ?: (int) date('Y'), $rcCode, $last + 1);
+        return sprintf('%03d', $last + 1);
     }
 
     /**
@@ -183,32 +167,34 @@ class GlobalService
     }
 
     /**
-     * The RC (Responsibility Center) $userId belongs to, or null if unset.
-     * Unconditional — no superadmin bypass — since every creating user, admin
-     * included, must have their own rc_id to create a fims.budget_req (there
-     * is no manual RC picker; the backend auto-detects it from this column).
+     * Where sub-program codes for a program start: ['prefix' => '100', 'next' => 3].
      *
-     *  - prefix : the last 3 digits of the program code (2026-35-074-0000000-000-001 -> "001").
+     *  - prefix : the selected program code itself (program "100" -> sub-programs "100-001", "100-002", …).
      *  - next   : highest existing fims.sub_program.sub_program_code of the form "<prefix>-NNN", plus one
-     *             (1 when there is none). sub_program_code is the table's primary key, so the lookup is
-     *             by prefix, not by program, to never suggest a code that is already taken.
+     *             (1 when there is none, so every program starts again at 001). sub_program_code is the
+     *             table's primary key and is built from the program code, so looking up by prefix also
+     *             keeps one program's numbers from colliding with another's.
      *
-     * Codes are formatted "<prefix>-<NNN>" (001-001, 001-002, …) — see formatSubProgramCode(). A caller
-     * adding several line items takes `next` once and counts up itself. Nothing is reserved.
+     * Codes are formatted "<prefix>-<NNN>" — see formatSubProgramCode(). A caller adding several line
+     * items takes `next` once and counts up itself. Nothing is reserved.
      *
-     * @throws \InvalidArgumentException when the program code does not end in "-NNN" or the sequence is exhausted.
+     * @throws \InvalidArgumentException when the program code is empty, too long to leave room for "-NNN"
+     *                                   in the 20-character sub_program_code, or the sequence is exhausted.
      */
     public static function nextSubProgramNumber(string $programCode): array
     {
-        if (!preg_match('/-([0-9]{3})$/', trim($programCode), $m)) {
-            throw new \InvalidArgumentException("Program code '{$programCode}' does not end in a 3-digit sequence.");
+        $prefix = trim($programCode);
+        if ($prefix === '') {
+            throw new \InvalidArgumentException('program_code is required.');
         }
-        $prefix = $m[1];
+        if (strlen($prefix) > 16) {
+            throw new \InvalidArgumentException("Program code '{$prefix}' is too long to build a sub-program code from (max 16 characters).");
+        }
 
         $last = (int) App\ExecuteScalar(
             "SELECT COALESCE(MAX(CAST(SUBSTRING(sub_program_code FROM '-([0-9]{3})$') AS INTEGER)), 0)
              FROM fims.sub_program
-             WHERE sub_program_code ~ " . App\QuotedValue('^' . $prefix . '-[0-9]{3}$', App\DataType::STRING, 'DB'),
+             WHERE sub_program_code ~ " . App\QuotedValue('^' . preg_quote($prefix, '/') . '-[0-9]{3}$', App\DataType::STRING, 'DB'),
             'DB'
         );
         if ($last >= 999) {
@@ -223,6 +209,7 @@ class GlobalService
         return sprintf('%s-%03d', $prefix, $number);
     }
     
+    /** The RC (Responsibility Center) id of $userId (uac.users.rc_id), or null if unset. No superadmin bypass. */
     public static function getUserRcId(int $userId = 0): ?string
     {
         $userId = $userId ?: (int) App\CurrentUserID();
