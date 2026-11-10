@@ -30,27 +30,7 @@ class OthersController extends ControllerBase
     #[Map(["GET","POST","OPTIONS"], "/login[/{provider}]", [PermissionMiddleware::class], "login")]
     public function login(Request $request, Response $response, array $args): Response
     {
-        global $Error, $Security;
-        // "/" (app/pages/login.php) is the maintained, custom-branded sign-in
-        // page — nginx routes it there directly, bypassing this controller.
-        // Anyone who navigates to /login by hand (or an old link/bookmark)
-        // would otherwise see this generated, unstyled page instead, so send
-        // plain GETs back to "/". POST stays untouched (the custom page's own
-        // JS submits credentials here), as do provider callback GETs
-        // (/login/google etc.), which aren't a user-facing sign-in screen —
-        // and as does the custom page's own internal fetch('/login') (marked
-        // via X-Requested-With), which only exists to harvest a fresh CSRF
-        // token pair from this very page before submitting; redirecting that
-        // fetch to "/" instead silently broke every sign-in attempt, since it
-        // got back a page with no CSRF fields to harvest.
-        if (
-            $request->getMethod() === "GET" &&
-            empty($args["provider"]) &&
-            !$Security->isLoggedIn() &&
-            $request->getHeaderLine("X-Requested-With") !== "XMLHttpRequest"
-        ) {
-            return $response->withHeader("Location", "/")->withStatus(302);
-        }
+        global $Error;
         $Error = $this->container->get("app.flash")->getFirstMessage("error");
         return $this->runPage($request, $response, $args, "Login");
     }
@@ -66,6 +46,23 @@ class OthersController extends ControllerBase
     #[Map(["GET","POST","OPTIONS"], "/changepassword", [PermissionMiddleware::class], "changepassword")]
     public function changepassword(Request $request, Response $response, array $args): Response
     {
+        // app/pages/change-pass.php is the maintained, custom-branded change
+        // password screen (reached by a logged-in user via the app's own
+        // "Change Password" menu link, which points here). Real browser GETs
+        // would otherwise render this generated, unstyled page — send them
+        // to the branded one instead. POST stays untouched (that custom
+        // page's own JS submits the actual change here), as does this route's
+        // own internal fetch('/changepassword') (marked via X-Requested-With)
+        // from both custom pages (change-pass.php, and login.php's embedded
+        // forced-reset panel), which only exists to harvest a fresh CSRF pair
+        // before submitting — redirecting that fetch here instead would
+        // silently break every password change, same as it did for /login.
+        if (
+            $request->getMethod() === "GET" &&
+            $request->getHeaderLine("X-Requested-With") !== "XMLHttpRequest"
+        ) {
+            return $response->withHeader("Location", "/app/pages/change-pass.php")->withStatus(302);
+        }
         return $this->runPage($request, $response, $args, "ChangePassword");
     }
 

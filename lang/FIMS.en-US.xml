@@ -50,6 +50,9 @@
     <menu id="207">
       <phrase id="menutext" value="Disbursement Voucher" />
     </menu>
+    <menu id="260">
+      <phrase id="menutext" value="Check Disbursements" />
+    </menu>
     <menu id="206">
       <phrase id="menutext" value="Administration" />
     </menu>
@@ -1534,6 +1537,9 @@
     </table>
     <table id="changepass">
       <phrase id="tblcaption" value="Change Password" />
+    </table>
+    <table id="checkdisbursements">
+      <phrase id="tblcaption" value="Check Disbursements" />
     </table>
   </project>
 </ew-language>

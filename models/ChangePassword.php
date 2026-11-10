@@ -386,12 +386,7 @@ class ChangePassword extends Users
             if ($this->getSuccessMessage() == "") {
                 $this->setSuccessMessage($Language->phrase("PasswordChanged")); // Set up success message
             }
-            // Capture this before clearing SESSION_STATUS below — it's the only
-            // way to tell "came from the forced password-reset email link" apart
-            // from "a logged-in user voluntarily changed their password from the
-            // app's own user menu" (canChangePassword is exposed for both).
-            $wasPasswordReset = IsPasswordReset();
-            if ($wasPasswordReset) {
+            if (IsPasswordReset()) {
                 $_SESSION[SESSION_STATUS] = "";
                 $_SESSION[SESSION_USER_PROFILE_USER_NAME] = "";
             }
