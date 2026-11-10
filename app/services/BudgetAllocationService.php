@@ -35,9 +35,41 @@ class BudgetAllocationService
     /** settings_status.status_for value that scopes this table's statuses. */
     private const STATUS_FOR = 'budget_allocation';
 
+    /**
+     * The statuses of the review step, by NAME (their ids differ per install, so they are looked up — see
+     * getStatusIdByName()). A request is "For Preview" once its requester submits it; the Financial Management
+     * Department then moves it step by step to Approved, or to Returned (process(), REVIEW_STEPS). Seeded by
+     * sample_data/06 and 07 and seed_data/04.
+     */
+    private const STATUS_FOR_PREVIEW            = 'For Preview';
+    private const STATUS_FOR_DIVISION_MANAGER   = 'For Division Manager';
+    private const STATUS_FOR_DEPARTMENT_MANAGER = 'For Department Manager';
+    private const STATUS_APPROVED               = 'Approved';
+    private const STATUS_RETURNED               = 'Returned';
+
+    /**
+     * The review chain inside FMD, one step per status: who acts on a request in that status (the NAME of a
+     * uac.user_levels row — its id differs per install) and the status an approval moves it to. A Return at any step
+     * gives 'Returned'. Only the last step's approval ('Approved') gives the request its allocation number.
+     *
+     *   For Preview -> FMD Section Chief -> For Division Manager -> FMD Division Manager
+     *               -> For Department Manager -> FMD Department Manager -> Approved
+     */
+    private const REVIEW_STEPS = [
+        self::STATUS_FOR_PREVIEW            => ['actor' => 'FMD Section Chief',      'next' => self::STATUS_FOR_DIVISION_MANAGER],
+        self::STATUS_FOR_DIVISION_MANAGER   => ['actor' => 'FMD Division Manager',   'next' => self::STATUS_FOR_DEPARTMENT_MANAGER],
+        self::STATUS_FOR_DEPARTMENT_MANAGER => ['actor' => 'FMD Department Manager', 'next' => self::STATUS_APPROVED],
+    ];
+
+    /**
+     * The clock an allocation number is stamped with. The number carries the year, quarter and month of the day it
+     * is given, and the agency works in Philippine time — the server itself runs on UTC, which would date a number
+     * wrongly for the first eight hours of a month.
+     */
+    private const ALLOCATION_NUMBER_TIMEZONE = 'Asia/Manila';
+
     /** VARCHAR columns → max length. */
     private const STRING_FIELDS = [
-        'memo_ref_no'       => 50,
         'allocation_type'   => 20,
         'allocation_number' => 100,
         'document_type'     => 20,
@@ -75,11 +107,19 @@ class BudgetAllocationService
 
     private const AMOUNT_FIELDS = ['pr_amount', 'po_amount'];
 
+    /**
+     * A Program / Sub-Program / Project that does not exist yet can be TYPED instead of picked: the body then carries
+     * its name (and no code) and it is created here, together with the memo request — see resolveTypedEntities().
+     * body key => level. The three name columns are VARCHAR(255).
+     */
+    private const TYPED_NAME_FIELDS = ['program' => 'program_name', 'sub_program' => 'sub_program_name', 'project' => 'project_name'];
+    private const TYPED_NAME_MAX    = 255;
+
     /** Largest amount accepted (NUMERIC(18,2) holds more; this keeps float math exact to the centavo). */
     private const MAX_AMOUNT = 9999999999999.99;
 
     /** Every column except line_transaction (jsonb, can be large) — used by list / all. */
-    private const LIST_COLUMNS = 'a.allocation_id, a.memo_ref_no, a.request_referrence_no, a.allocation_type, a.allocation_number, a.fiscal_year,
+    private const LIST_COLUMNS = 'a.allocation_id, a.request_referrence_no, a.allocation_type, a.allocation_number, a.fiscal_year,
         a.requesting_rc_id, a.requesting_district_id, a.program_code, a.sub_program_code, a.project_code,
         a.vendor_id, a.parent_id, a.document_type, a.description, a.pr_number, a.pr_amount, a.po_number, a.po_amount,
         a.workflow_route, a.category_id, a.is_bidding, a.multiple_node_id, a.status_id, a.user_id,
@@ -89,7 +129,8 @@ class BudgetAllocationService
     // Fetch all — no pagination (for /budget_allocation/all, e.g. the Parent picker)
     // Fetch with pagination (for /budget_allocation/list) when $page is provided
     //
-    // $filters: search, fiscal_year, status_id, allocation_type, exclude_id
+    // $filters: search, fiscal_year, status_id, status (a status NAME), allocation_type, exclude_id,
+    //           rc_id (the requesting office — see below)
     // -----------------------------------------------------------------------
     public function fetchAlls(?int $page = null, int $limit = 10, array $filters = []): array
     {
@@ -99,7 +140,7 @@ class BudgetAllocationService
             $search = trim((string) ($filters['search'] ?? ''));
             if ($search !== '') {
                 $s       = App\QuotedValue('%' . $search . '%', DataType::STRING, 'DB');
-                $where[] = "(a.memo_ref_no ILIKE {$s} OR a.allocation_number ILIKE {$s} OR a.pr_number ILIKE {$s}
+                $where[] = "(a.request_referrence_no ILIKE {$s} OR a.allocation_number ILIKE {$s} OR a.pr_number ILIKE {$s}
                              OR a.po_number ILIKE {$s} OR a.description ILIKE {$s} OR v.vendor_name ILIKE {$s})";
             }
             if (($fy = $this->intFilter($filters, 'fiscal_year')) !== null) {
@@ -108,8 +149,29 @@ class BudgetAllocationService
             if (($statusId = $this->intFilter($filters, 'status_id')) !== null) {
                 $where[] = "a.status_id = {$statusId}";
             }
+            // status: a status NAME (settings_status.name of a memo-request status, e.g. "Approved") for callers that
+            // cannot know the id — it differs per install, which is also why Draft is looked up by name. A name that
+            // matches no status matches no row: it never falls back to "everything".
+            $statusName = trim((string) ($filters['status'] ?? ''));
+            if ($statusName !== '') {
+                $where[] = "a.status_id IN (SELECT s.id FROM {$this->tableStatus} s WHERE s.status_for = "
+                    . App\QuotedValue(self::STATUS_FOR, DataType::STRING, 'DB')
+                    . ' AND LOWER(s.name) = LOWER(' . App\QuotedValue($statusName, DataType::STRING, 'DB') . '))';
+            }
             if (($excludeId = $this->intFilter($filters, 'exclude_id')) !== null) {
                 $where[] = "a.allocation_id <> {$excludeId}";
+            }
+            // rc_id: only the requests of this office (requesting_rc_id) AND of the offices under it — a parent office also
+            // sees its child offices' requests (a Region 3 user sees Region 3's district offices too), exactly as
+            // BudgetReqService::fetchAlls does. '' = every office. The routes fill this from the LOGGED-IN user, never
+            // from what the client sent (see budget_allocation.php).
+            $rcId = trim((string) ($filters['rc_id'] ?? ''));
+            if ($rcId !== '') {
+                $rcIds = GlobalService::getRcIdsInScope($rcId) ?: [$rcId];
+                $where[] = 'a.requesting_rc_id IN (' . implode(', ', array_map(
+                    fn ($id) => App\QuotedValue($id, DataType::STRING, 'DB'),
+                    $rcIds
+                )) . ')';
             }
             $type = trim((string) ($filters['allocation_type'] ?? ''));
             if ($type !== '') {
@@ -196,25 +258,50 @@ class BudgetAllocationService
 
     // -----------------------------------------------------------------------
     // Create — /budget_allocation/add
+    //
+    // Program / Sub-Program / Project: send the code of an existing one (program_code, ...) OR the name of a new one
+    // (program_name, ...). A new one is created — found by name first, so typing an existing name never duplicates it —
+    // in the SAME transaction as the memo request: if anything fails, nothing at all is saved.
     // -----------------------------------------------------------------------
     public function create(array $body, ?int $userId = null): array
     {
+        $inTransaction = false;
         try {
             [$clean, $err] = $this->normalize($body);
             if ($err) {
                 return $this->fail($err);
             }
-            foreach (['memo_ref_no', 'fiscal_year'] as $required) {
-                if (($clean[$required] ?? null) === null) {
-                    return $this->fail("{$required} is required.");
-                }
+            [$names, $err] = $this->typedNames($body);
+            if ($err) {
+                return $this->fail($err);
+            }
+            if (($clean['fiscal_year'] ?? null) === null) {
+                return $this->fail('fiscal_year is required.');
             }
             // The requesting office is the creator's own Responsibility Center: uac.users.rc_id, looked up from
             // the verified user — whatever the body says about it is ignored. A user without an RC leaves it NULL.
             if ($userId !== null && $userId !== 0 && ($rcId = $this->requestingRcOf($userId)) !== null) {
                 $clean[self::REQUESTING_RC_FIELD] = $rcId;
             }
+
+            // Typed (new) Program / Sub-Program / Project are created first, inside the transaction that also saves the row.
+            $created = [];
+            if ($names) {
+                App\Execute('BEGIN', 'DB');
+                $inTransaction = true;
+                [$created, $err] = $this->resolveTypedEntities($clean, $names, null, $userId);
+                if ($err) {
+                    App\Execute('ROLLBACK', 'DB');
+
+                    return $this->fail($err);
+                }
+            }
+
             if ($err = $this->validateReferences($clean)) {
+                if ($inTransaction) {
+                    App\Execute('ROLLBACK', 'DB');
+                }
+
                 return $this->fail($err);
             }
 
@@ -238,14 +325,26 @@ class BudgetAllocationService
                 "INSERT INTO {$this->table} (" . implode(', ', $columns) . ') VALUES (' . implode(', ', $values) . ') RETURNING allocation_id, ' . self::GENERATED_REFERENCE_FIELD,
                 'DB'
             );
+            if ($inTransaction) {
+                App\Execute('COMMIT', 'DB');
+                $inTransaction = false;
+            }
 
-            return [
+            $result = [
                 'success'       => true,
                 'message'       => 'Memo request created successfully.',
                 'allocation_id' => isset($row['allocation_id']) ? (int) $row['allocation_id'] : null,
                 self::GENERATED_REFERENCE_FIELD => $row[self::GENERATED_REFERENCE_FIELD] ?? null,
             ];
+            if ($created) {
+                $result['created'] = $created;   // the codes of the Program / Sub-Program / Project this call created
+            }
+
+            return $result;
         } catch (\Exception $e) {
+            if ($inTransaction) {
+                App\Execute('ROLLBACK', 'DB');
+            }
             App\LogError('BudgetAllocationService::create ' . $e->getMessage());
 
             return $this->fail('Failed to create memo request.');
@@ -257,6 +356,7 @@ class BudgetAllocationService
     // -----------------------------------------------------------------------
     public function update(int|string $id, array $body): array
     {
+        $inTransaction = false;
         try {
             $id    = (int) $id;
             $check = $this->fetchById($id);
@@ -268,15 +368,35 @@ class BudgetAllocationService
             if ($err) {
                 return $this->fail($err);
             }
-            if (!$clean) {
+            [$names, $err] = $this->typedNames($body);
+            if ($err) {
+                return $this->fail($err);
+            }
+            if (!$clean && !$names) {
                 return $this->fail('No valid fields provided for update.');
             }
-            foreach (['memo_ref_no', 'fiscal_year'] as $required) {
-                if (array_key_exists($required, $clean) && $clean[$required] === null) {
-                    return $this->fail("{$required} cannot be empty.");
+            if (array_key_exists('fiscal_year', $clean) && $clean['fiscal_year'] === null) {
+                return $this->fail('fiscal_year cannot be empty.');
+            }
+
+            // Typed (new) Program / Sub-Program / Project: created first, inside the transaction that also saves the change.
+            $created = [];
+            if ($names) {
+                App\Execute('BEGIN', 'DB');
+                $inTransaction = true;
+                [$created, $err] = $this->resolveTypedEntities($clean, $names, $check['data'], null);
+                if ($err) {
+                    App\Execute('ROLLBACK', 'DB');
+
+                    return $this->fail($err);
                 }
             }
+
             if ($err = $this->validateReferences($clean, $check['data'], $id)) {
+                if ($inTransaction) {
+                    App\Execute('ROLLBACK', 'DB');
+                }
+
                 return $this->fail($err);
             }
 
@@ -287,9 +407,21 @@ class BudgetAllocationService
             $set[] = 'updated_at = CURRENT_TIMESTAMP';
 
             App\Execute("UPDATE {$this->table} SET " . implode(', ', $set) . " WHERE allocation_id = {$id} AND deleted_at IS NULL", 'DB');
+            if ($inTransaction) {
+                App\Execute('COMMIT', 'DB');
+                $inTransaction = false;
+            }
 
-            return ['success' => true, 'message' => 'Memo request updated successfully.'];
+            $result = ['success' => true, 'message' => 'Memo request updated successfully.'];
+            if ($created) {
+                $result['created'] = $created;
+            }
+
+            return $result;
         } catch (\Exception $e) {
+            if ($inTransaction) {
+                App\Execute('ROLLBACK', 'DB');
+            }
             App\LogError('BudgetAllocationService::update ' . $e->getMessage());
 
             return $this->fail('Failed to update memo request.');
@@ -382,6 +514,260 @@ class BudgetAllocationService
         return ['success' => false, 'message' => $message];
     }
 
+    // -----------------------------------------------------------------------
+    // Review — /budget_allocation/process/{id}
+    //
+    // The Financial Management Department (FMD) reviews a request that its office submitted for preview, in three steps
+    // (REVIEW_STEPS): For Preview (FMD Section Chief) -> For Division Manager (FMD Division Manager) ->
+    // For Department Manager (FMD Department Manager) -> Approved. At each step:
+    //   approve -> the next status of the chain; the LAST approval gives 'Approved' and the ALLOCATION NUMBER (below);
+    //   return  -> status 'Returned', no number (the request goes back to the requesting office).
+    // Only an FMD user may do this (the central review RC, GlobalService::isCentralReviewRc — read with getUserRcId, which
+    // fails closed), only to a request that is in one of the three review statuses, and only when the user holds the
+    // user level of that step. The status change and the number are written in ONE transaction, and the UPDATE itself
+    // re-checks the status, so two reviewers acting at once cannot both succeed.
+    //
+    // Returns { success, message, status_name, allocation_number }; a refusal for the caller's office or user level also
+    // carries `forbidden: true` (the route answers 403 for it).
+    // -----------------------------------------------------------------------
+    public function process(int|string $id, string $decision, ?int $userId = null): array
+    {
+        $inTransaction = false;
+        try {
+            $decision = strtolower(trim($decision));
+            if (!in_array($decision, ['approve', 'return'], true)) {
+                return $this->fail("decision must be 'approve' or 'return'.");
+            }
+            if (!$this->isReviewer($userId)) {
+                return $this->fail('Only the Financial Management Department can process memo requests.') + ['forbidden' => true];
+            }
+
+            $id    = (int) $id;
+            $found = $this->fetchById($id);
+            if (!$found['success']) {
+                return $found;
+            }
+            $row = $found['data'];
+
+            // Which step of the chain is it at, and is this user the one who acts on that step?
+            $step = $this->reviewStepOf($row);
+            if ($step === null) {
+                return $this->fail('Only a memo request that is under review (' . implode(', ', array_keys(self::REVIEW_STEPS))
+                    . ') can be approved or returned — this one is '
+                    . (($row['status_name'] ?? '') !== '' ? $row['status_name'] : 'without a status') . '.');
+            }
+            if (!$this->hasUserLevel($userId, $step['actor'])) {
+                return $this->fail("This memo request is {$step['status']}: only the {$step['actor']} can approve or return it at this step.")
+                    + ['forbidden' => true];
+            }
+
+            // The status the decision gives. Missing = the seed was not run: say so, change nothing.
+            $currentId  = (int) ($row['status_id'] ?? 0);
+            $targetName = $decision === 'approve' ? $step['next'] : self::STATUS_RETURNED;
+            $targetId   = $this->getStatusIdByName($targetName);
+            if ($targetId === null) {
+                return $this->fail("The status \"{$targetName}\" is not set up in the database yet, so nothing was changed. "
+                    . 'Ask an administrator to run the SQL installer (node install_system.js --sql-only).');
+            }
+            $isFinal = $targetName === self::STATUS_APPROVED;
+
+            App\Execute('BEGIN', 'DB');
+            $inTransaction = true;
+
+            $set    = ["status_id = {$targetId}", 'updated_at = CURRENT_TIMESTAMP'];
+            $number = trim((string) ($row['allocation_number'] ?? ''));
+            if ($isFinal && $number === '') {
+                // (one that already has a number keeps it — approving never renumbers)
+                $number = $this->nextAllocationNumber((string) ($row['allocation_type'] ?? ''), $row['document_type'] ?? null);
+                $set[]  = 'allocation_number = ' . App\QuotedValue($number, DataType::STRING, 'DB');
+            }
+            $done = App\ExecuteRow(
+                "UPDATE {$this->table} SET " . implode(', ', $set)
+                . " WHERE allocation_id = {$id} AND deleted_at IS NULL AND status_id = {$currentId} RETURNING allocation_id",
+                'DB'
+            );
+            if (!$done) {   // somebody else got there first (or deleted it) between the check above and now
+                App\Execute('ROLLBACK', 'DB');
+                $inTransaction = false;
+
+                return $this->fail('This memo request was changed by someone else in the meantime. Reload the list and try again.');
+            }
+            App\Execute('COMMIT', 'DB');
+            $inTransaction = false;
+
+            if ($decision === 'return') {
+                $message = 'Memo request returned to the requesting office.';
+            } elseif ($isFinal) {
+                $message = 'Memo request approved.' . ($number !== '' ? " Allocation number: {$number}." : '');
+            } else {
+                $message = "Memo request endorsed: it is now {$targetName} (" . self::REVIEW_STEPS[$targetName]['actor'] . ').';
+            }
+
+            return [
+                'success'           => true,
+                'message'           => $message,
+                'status_name'       => $targetName,
+                'allocation_number' => $number !== '' ? $number : null,
+            ];
+        } catch (\Exception $e) {
+            if ($inTransaction) {
+                try {
+                    App\Execute('ROLLBACK', 'DB');
+                } catch (\Throwable $ignored) {
+                }
+            }
+            App\LogError('BudgetAllocationService::process ' . $e->getMessage());
+
+            return $this->fail('Failed to process the memo request.');
+        }
+    }
+
+    /**
+     * Where a request stands in the review chain, for the "Process" modal (GET /budget_allocation/read/{id} adds it as
+     * data.review): in_review, the status it is in, who acts on it (actor, a user level name), the status an approval
+     * gives (next_status), whether that is the final approval (is_final) and whether THIS user may decide it now
+     * (can_decide: an FMD user holding the step's user level). process() enforces the same rules again.
+     */
+    public function reviewInfo(array $row, ?int $userId): array
+    {
+        $step = $this->reviewStepOf($row);
+        if ($step === null) {
+            return ['in_review' => false, 'can_decide' => false];
+        }
+
+        return [
+            'in_review'   => true,
+            'status'      => $step['status'],
+            'actor'       => $step['actor'],
+            'next_status' => $step['next'],
+            'is_final'    => $step['next'] === self::STATUS_APPROVED,
+            'can_decide'  => $this->isReviewer($userId) && $this->hasUserLevel($userId, $step['actor']),
+        ];
+    }
+
+    /** The REVIEW_STEPS entry (+ 'status') of the status this row is in, or null when it is not under review. */
+    private function reviewStepOf(array $row): ?array
+    {
+        $name = strtolower(trim((string) ($row['status_name'] ?? '')));
+        foreach (self::REVIEW_STEPS as $status => $step) {
+            if ($name === strtolower($status)) {
+                return $step + ['status' => $status];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Does this user hold the user level called $levelName? uac.users.user_level_id is a VARCHAR that may list several
+     * ids ("3,10"); each is looked up in uac.user_levels and compared by NAME, ignoring case. A missing user, no level,
+     * or a lookup failure is "no" — never "yes".
+     */
+    private function hasUserLevel(?int $userId, string $levelName): bool
+    {
+        try {
+            $userId = (int) $userId;
+            if ($userId <= 0) {
+                return false;
+            }
+            $raw = (string) App\ExecuteScalar("SELECT user_level_id FROM {$this->tableUser} WHERE user_id = {$userId}", 'DB');
+            $ids = [];
+            foreach (explode(',', $raw) as $part) {
+                if (preg_match('/^-?\d+$/', $part = trim($part))) {
+                    $ids[] = (int) $part;
+                }
+            }
+            if (!$ids) {
+                return false;
+            }
+
+            return (int) App\ExecuteScalar(
+                'SELECT COUNT(*) FROM uac.user_levels WHERE user_level_id IN (' . implode(', ', $ids) . ')'
+                . ' AND LOWER(TRIM(name)) = LOWER(' . App\QuotedValue(trim($levelName), DataType::STRING, 'DB') . ')',
+                'DB'
+            ) > 0;
+        } catch (\Throwable $e) {
+            App\LogError('BudgetAllocationService::hasUserLevel ' . $e->getMessage());
+
+            return false;
+        }
+    }
+
+    /** Is this user of the central review RC (FMD)? A missing user, no RC, or a lookup failure is "no" — never "yes". */
+    private function isReviewer(?int $userId): bool
+    {
+        try {
+            $userId = (int) $userId;
+
+            return $userId > 0 && GlobalService::isCentralReviewRc(GlobalService::getUserRcId($userId));
+        } catch (\Throwable $e) {
+            App\LogError('BudgetAllocationService::isReviewer ' . $e->getMessage());
+
+            return false;
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Allocation number templates — the ones the Memo Request form shows (buildAllocationNumber() in
+    // form/budget-allocation-form.php), by allocation type and document type. With y = year, yy = its last two digits,
+    // q = quarter (1-4), m = month within the quarter (1-3) of the day the number is given:
+    //
+    //   CBA   CBA <y>-<q><m>-86-<series>          e.g.  CBA 2026-42-86-01
+    //   RFA   <yy><q><m>-<code>-<series>          e.g.  2642-87-01     code 57 for document type COE, 87 for CO
+    //   LAA   LAA <y>-<q><m>-<series>             e.g.  LAA 2026-42-01
+    //   other <TYPE> <y>-<q><m>-<series>
+    //
+    // <series> is two digits at least (01, 02, … 99, 100). It counts within one PREFIX (everything before the series),
+    // so it starts again at 01 each month for each type — and never repeats within a prefix. Numbers of deleted
+    // requests count too, so a number is never given twice.
+    // -----------------------------------------------------------------------
+    public static function allocationNumberPrefix(string $type, ?string $documentType, \DateTimeInterface $at): string
+    {
+        $type = strtoupper(trim($type));
+        $type = $type === '' ? 'CBA' : $type;
+        $y    = $at->format('Y');
+        $yy   = substr($y, -2);
+        $mo   = (int) $at->format('n');
+        $q    = (int) ceil($mo / 3);
+        $qm   = $q . ($mo - ($q - 1) * 3);
+
+        return match ($type) {
+            'CBA'   => "CBA {$y}-{$qm}-86-",
+            'RFA'   => "{$yy}{$qm}-" . (strtoupper(trim((string) $documentType)) === 'COE' ? '57' : '87') . '-',
+            'LAA'   => "LAA {$y}-{$qm}-",
+            default => "{$type} {$y}-{$qm}-",
+        };
+    }
+
+    public static function formatAllocationNumber(string $prefix, int $series): string
+    {
+        return $prefix . str_pad((string) $series, 2, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * The next free allocation number for this type / document type, today (Philippine time). Call it INSIDE the
+     * transaction that stores the number: it takes a transaction-level advisory lock first, so two approvals running
+     * at once are numbered one after the other and cannot read the same "last series" — the lock is released by the
+     * COMMIT / ROLLBACK of that transaction.
+     */
+    private function nextAllocationNumber(string $type, ?string $documentType): string
+    {
+        App\ExecuteScalar("SELECT pg_advisory_xact_lock(hashtext('fims.budget_allocation.allocation_number'))", 'DB');
+
+        $prefix = self::allocationNumberPrefix($type, $documentType, new \DateTimeImmutable('now', new \DateTimeZone(self::ALLOCATION_NUMBER_TIMEZONE)));
+        $len    = mb_strlen($prefix);
+        $from   = $len + 1;
+        $last   = (int) App\ExecuteScalar(
+            "SELECT COALESCE(MAX(CASE WHEN SUBSTRING(allocation_number FROM {$from}) ~ '^[0-9]{1,6}\$'
+                                      THEN CAST(SUBSTRING(allocation_number FROM {$from}) AS INTEGER) END), 0)
+             FROM {$this->table}
+             WHERE LEFT(allocation_number, {$len}) = " . App\QuotedValue($prefix, DataType::STRING, 'DB'),
+            'DB'
+        );
+
+        return self::formatAllocationNumber($prefix, $last + 1);
+    }
+
     /**
      * Looked up by name each time rather than hardcoding its id — the id a seed
      * row lands on depends on insert order (same approach as BudgetReqService).
@@ -411,7 +797,7 @@ class BudgetAllocationService
                        pg.program_name,
                        sp.sub_program_name,
                        pj.project_name,
-                       pa.memo_ref_no AS parent_memo_ref_no
+                       pa.request_referrence_no AS parent_request_referrence_no
                 FROM {$this->table} a
                 LEFT JOIN {$this->tableStatus} st     ON st.id = a.status_id
                 LEFT JOIN {$this->tableVendor} v      ON v.vendor_id = a.vendor_id
@@ -436,6 +822,194 @@ class BudgetAllocationService
         $v = $filters[$key] ?? null;
 
         return ($v !== null && $v !== '' && is_numeric($v)) ? (int) $v : null;
+    }
+
+    /**
+     * The names of Programs / Sub-Programs / Projects that were TYPED instead of picked: body program_name /
+     * sub_program_name / project_name. Trimmed, inner whitespace collapsed; blank ones are dropped.
+     *
+     * @return array{0: array<string,string>, 1: ?string} [level => name (program | sub_program | project), error]
+     */
+    private function typedNames(array $body): array
+    {
+        $names = [];
+        foreach (self::TYPED_NAME_FIELDS as $level => $key) {
+            if (!array_key_exists($key, $body)) {
+                continue;
+            }
+            $v = $body[$key];
+            if ($v !== null && !is_scalar($v)) {
+                return [[], "{$key} must be a plain value."];
+            }
+            $v = trim((string) preg_replace('/\s+/u', ' ', (string) ($v ?? '')));
+            if ($v === '') {
+                continue;
+            }
+            if (mb_strlen($v) > self::TYPED_NAME_MAX) {
+                return [[], "{$key} must be " . self::TYPED_NAME_MAX . ' characters or fewer.'];
+            }
+            $names[$level] = $v;
+        }
+
+        return [$names, null];
+    }
+
+    /**
+     * Turns the typed names into codes, creating what does not exist yet — in the order Program, Sub-Program, Project,
+     * because each belongs to the one before it. A level whose code was PICKED (present in $clean) is left alone: the
+     * picked code wins over any name. Writes the resulting codes into $clean. Must run inside the caller's open
+     * transaction (the caller rolls back on an error, so nothing created here survives a failed save).
+     *
+     * On update ($current = the stored row) a Program / Sub-Program that differs from the stored one clears the
+     * levels below it unless the body supplies them: the old Sub-Program / Project cannot belong to it.
+     *
+     * @param array<string,mixed>  $clean   normalized body (modified)
+     * @param array<string,string> $names   from typedNames()
+     * @return array{0: array<string,string>, 1: ?string} [codes created (program_code / sub_program_code / project_code), error]
+     */
+    private function resolveTypedEntities(array &$clean, array $names, ?array $current, ?int $userId): array
+    {
+        $created = [];
+        // These read $clean BY REFERENCE: each level below must see the codes the levels above it have just resolved
+        // (an arrow function would have copied $clean at this point, and never seen them).
+        $effective = function (string $f) use (&$clean, $current) {
+            return array_key_exists($f, $clean) ? $clean[$f] : ($current[$f] ?? null);
+        };
+        $hasCode = function (string $f) use (&$clean) {
+            return ($clean[$f] ?? null) !== null;
+        };
+
+        if (isset($names['program']) && !$hasCode('program_code')) {
+            [$code, $isNew, $err] = $this->findOrCreateProgram($names['program'], $userId);
+            if ($err) {
+                return [$created, $err];
+            }
+            $clean['program_code'] = $code;
+            if ($isNew) {
+                $created['program_code'] = $code;
+            }
+            if ($current !== null && ($current['program_code'] ?? null) !== $code) {
+                foreach (['sub_program_code', 'project_code'] as $below) {
+                    if (!array_key_exists($below, $clean)) {
+                        $clean[$below] = null;
+                    }
+                }
+            }
+        }
+
+        if (isset($names['sub_program']) && !$hasCode('sub_program_code')) {
+            $program = $effective('program_code');
+            if ($program === null) {
+                return [$created, 'A new sub-program needs a program: pick or type the program first.'];
+            }
+            [$code, $isNew, $err] = $this->findOrCreateSubProgram($names['sub_program'], (string) $program);
+            if ($err) {
+                return [$created, $err];
+            }
+            $clean['sub_program_code'] = $code;
+            if ($isNew) {
+                $created['sub_program_code'] = $code;
+            }
+            if ($current !== null && ($current['sub_program_code'] ?? null) !== $code && !array_key_exists('project_code', $clean)) {
+                $clean['project_code'] = null;
+            }
+        }
+
+        if (isset($names['project']) && !$hasCode('project_code')) {
+            $program = $effective('program_code');
+            if ($program === null) {
+                return [$created, 'A new project needs a program: pick or type the program first.'];
+            }
+            $sub      = $effective('sub_program_code');
+            $fiscalYr = $effective('fiscal_year');
+            [$code, $isNew, $err] = $this->findOrCreateProject($names['project'], (string) $program, $sub === null ? null : (string) $sub, $fiscalYr === null ? null : (int) $fiscalYr);
+            if ($err) {
+                return [$created, $err];
+            }
+            $clean['project_code'] = $code;
+            if ($isNew) {
+                $created['project_code'] = $code;
+            }
+        }
+
+        return [$created, null];
+    }
+
+    /** @return array{0: ?string, 1: bool, 2: ?string} [program_code, created?, error] — an existing program with that name (any case) is reused */
+    private function findOrCreateProgram(string $name, ?int $userId): array
+    {
+        $row = App\ExecuteRow(
+            "SELECT program_code FROM {$this->tableProgram} WHERE LOWER(program_name) = LOWER(" . App\QuotedValue($name, DataType::STRING, 'DB') . ') ORDER BY program_code LIMIT 1',
+            'DB'
+        );
+        if ($row) {
+            return [(string) $row['program_code'], false, null];
+        }
+
+        $result = (new ProgramService())->create(['program_name' => $name], $userId);
+        if (!($result['success'] ?? false)) {
+            return [null, false, "Could not create the program \"{$name}\": " . ($result['message'] ?? 'unknown error')];
+        }
+
+        return [(string) $result['data']['program_code'], true, null];
+    }
+
+    /** @return array{0: ?string, 1: bool, 2: ?string} [sub_program_code, created?, error] — reused when this program already has one with that name */
+    private function findOrCreateSubProgram(string $name, string $programCode): array
+    {
+        $row = App\ExecuteRow(
+            "SELECT sub_program_code FROM {$this->tableSubProgram} WHERE program_code = " . App\QuotedValue($programCode, DataType::STRING, 'DB')
+            . ' AND LOWER(sub_program_name) = LOWER(' . App\QuotedValue($name, DataType::STRING, 'DB') . ') ORDER BY sub_program_code LIMIT 1',
+            'DB'
+        );
+        if ($row) {
+            return [(string) $row['sub_program_code'], false, null];
+        }
+
+        try {
+            $next = GlobalService::nextSubProgramNumber($programCode);
+            $code = GlobalService::formatSubProgramCode($next['prefix'], $next['next']);
+        } catch (\InvalidArgumentException $e) {
+            return [null, false, "Could not create the sub-program \"{$name}\": " . $e->getMessage()];
+        }
+
+        $result = (new SubProgramService())->create(['sub_program_code' => $code, 'sub_program_name' => $name, 'program_code' => $programCode]);
+        if (!($result['success'] ?? false)) {
+            return [null, false, "Could not create the sub-program \"{$name}\": " . ($result['message'] ?? 'unknown error')];
+        }
+
+        return [$code, true, null];
+    }
+
+    /**
+     * @return array{0: ?string, 1: bool, 2: ?string} [project_code, created?, error] — reused when the same program AND
+     *         sub-program (or, with no sub-program, a project that has none) already has one with that name
+     */
+    private function findOrCreateProject(string $name, string $programCode, ?string $subProgramCode, ?int $fiscalYr): array
+    {
+        $subCondition = $subProgramCode === null
+            ? 'sub_program_code IS NULL'
+            : 'sub_program_code = ' . App\QuotedValue($subProgramCode, DataType::STRING, 'DB');
+        $row = App\ExecuteRow(
+            "SELECT project_code FROM {$this->tableProject} WHERE program_code = " . App\QuotedValue($programCode, DataType::STRING, 'DB')
+            . " AND {$subCondition} AND LOWER(project_name) = LOWER(" . App\QuotedValue($name, DataType::STRING, 'DB') . ') ORDER BY project_code LIMIT 1',
+            'DB'
+        );
+        if ($row) {
+            return [(string) $row['project_code'], false, null];
+        }
+
+        $result = (new ProjectService())->create([
+            'project_name'     => $name,
+            'program_code'     => $programCode,
+            'sub_program_code' => $subProgramCode ?? '',
+            'fiscal_yr'        => $fiscalYr,
+        ]);
+        if (!($result['success'] ?? false)) {
+            return [null, false, "Could not create the project \"{$name}\": " . ($result['message'] ?? 'unknown error')];
+        }
+
+        return [(string) $result['project_code'], true, null];
     }
 
     /**

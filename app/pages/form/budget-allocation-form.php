@@ -57,6 +57,81 @@ $cbaAsModal = !empty($cbaAsModal);
 
 <?php if ($cbaAsModal): ?>
 <style>
+	/* SAFETY NET — the essential overlay / modal rules of _shared/css/nha-fims.css, repeated here on purpose.
+	   What makes this form a modal (hidden until opened, fixed over the page, centred) used to live ONLY in that
+	   shared stylesheet. On a computer where it is blocked, 404s (the app in a sub-folder) or is an older copy
+	   cached by the browser, the whole form was drawn INLINE in the page — about 2,500px of it — and never became
+	   a modal. These rules are deliberately LOWER in specificity than the shared ones (no .nha-root prefix), so
+	   whenever the shared stylesheet is present it still wins and nothing looks different. */
+	.nha-overlay {
+		display: none;
+		position: fixed;
+		inset: 0;
+		z-index: 9050;
+		box-sizing: border-box;
+		padding: 16px;
+		align-items: center;
+		justify-content: center;
+		background: rgba(15, 32, 69, .55);
+	}
+
+	.nha-overlay.open {
+		display: flex;
+	}
+
+	.nha-modal {
+		display: flex;
+		flex-direction: column;
+		width: 100%;
+		max-width: 680px;
+		max-height: 90vh;
+		overflow: hidden;
+		background: var(--afims-surface, #FFFFFF);
+		border-radius: 14px;
+		box-shadow: 0 24px 64px rgba(0, 0, 0, .22);
+	}
+
+	.nha-modal-xl {
+		max-width: 1100px;
+	}
+
+	.nha-modal-hdr {
+		display: flex;
+		flex-shrink: 0;
+		align-items: center;
+		justify-content: space-between;
+		padding: 16px 20px;
+		background: var(--afims-heading-fill, #000E3E);
+	}
+
+	.nha-modal-title {
+		margin: 0;
+		font-size: 14px;
+		font-weight: 700;
+		color: var(--afims-pure-white, #FFFFFF);
+	}
+
+	.nha-modal-close {
+		width: 28px;
+		height: 28px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font-size: 18px;
+		line-height: 1;
+		color: var(--afims-pure-white, #FFFFFF);
+		cursor: pointer;
+		background: rgba(255, 255, 255, .15);
+		border: 1px solid rgba(255, 255, 255, .25);
+		border-radius: 6px;
+	}
+
+	.nha-modal-body {
+		flex: 1;
+		padding: 20px;
+		overflow-y: auto;
+	}
+
 	/* Modal mode - the form lives inside .nha-modal-body. The base layer below was written
 	   for a full page, so drop its page-level width/padding. */
 	.nha-root .cba-modal { position: relative; }
@@ -273,6 +348,19 @@ $cbaAsModal = !empty($cbaAsModal);
 			font-size: 11.5px;
 			line-height: 1.5;
 			color: var(--afims-text-muted, #62657E);
+		}
+
+		/* Program / Sub-Program / Project: text typed instead of picked is a NEW one, created when the form is saved */
+		.cba-form-container .input-hint.pc-hint-new {
+			color: var(--afims-primary, #0035A9);
+			font-weight: 600;
+		}
+
+		.cba-form-container .pc-dropdown .pc-new {
+			padding: 10px 14px;
+			font-size: 13px;
+			color: var(--afims-primary, #0035A9);
+			background: var(--afims-surface-subtle, #F4F7FA);
 		}
 
 		/* Hidden until JS adds .visible — the text is static markup, so without
@@ -660,6 +748,133 @@ $cbaAsModal = !empty($cbaAsModal);
 		}
 	</style>
 
+	<style>
+		/* The "Submit Request" decision pop-up (cbaAskDecision). It is appended to <body> — outside .cba-form-container
+		   and outside the memo list's modal, so the modal re-loading its form can't wipe it — and therefore carries its
+		   own, unscoped styles. z-index sits above the memo modal's overlay (9050). */
+		.cbadec-overlay {
+			position: fixed;
+			inset: 0;
+			z-index: 9200;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			padding: 16px;
+			box-sizing: border-box;
+			background: rgba(15, 32, 69, .45);
+			font-family: 'IBM Plex Sans', sans-serif;
+		}
+
+		.cbadec-box {
+			width: 100%;
+			max-width: 440px;
+			max-height: 100%;
+			overflow-y: auto;
+			background: var(--afims-surface, #FFFFFF);
+			color: var(--afims-text, #1A1B21);
+			border-radius: 12px;
+			box-shadow: 0 18px 48px rgba(0, 0, 0, .28);
+		}
+
+		.cbadec-hdr {
+			padding: 16px 20px;
+			border-bottom: 1px solid var(--afims-border, #E4ECF2);
+		}
+
+		.cbadec-title {
+			margin: 0;
+			font-size: 16px;
+			font-weight: 600;
+			color: var(--afims-heading, #000E3E);
+		}
+
+		.cbadec-body {
+			padding: 16px 20px 6px;
+		}
+
+		.cbadec-text {
+			margin: 0 0 12px;
+			font-size: 13px;
+			line-height: 1.5;
+		}
+
+		.cbadec-current {
+			margin: 0 0 12px;
+			font-size: 12px;
+			color: var(--afims-text-secondary, #475569);
+		}
+
+		.cbadec-opt {
+			display: block;
+			width: 100%;
+			margin: 0 0 10px;
+			padding: 12px 14px;
+			text-align: left;
+			font-family: inherit;
+			color: inherit;
+			cursor: pointer;
+			background: var(--afims-surface, #FFFFFF);
+			border: 1px solid var(--afims-border, #E4ECF2);
+			border-radius: 10px;
+			transition: border-color .15s, box-shadow .15s, background .15s;
+		}
+
+		.cbadec-opt:hover,
+		.cbadec-opt:focus-visible {
+			outline: none;
+			border-color: var(--afims-heading-fill, #000E3E);
+			box-shadow: 0 0 0 3px color-mix(in srgb, var(--afims-heading-fill, #000E3E) 12%, transparent);
+		}
+
+		.cbadec-opt-primary {
+			border-color: var(--afims-heading-fill, #000E3E);
+			background: color-mix(in srgb, var(--afims-heading-fill, #000E3E) 6%, var(--afims-surface, #FFFFFF));
+		}
+
+		.cbadec-opt-title {
+			display: block;
+			font-size: 14px;
+			font-weight: 600;
+			color: var(--afims-heading, #000E3E);
+		}
+
+		.cbadec-opt-desc {
+			display: block;
+			margin-top: 3px;
+			font-size: 12px;
+			line-height: 1.45;
+			color: var(--afims-text-secondary, #475569);
+		}
+
+		.cbadec-opt-desc strong {
+			white-space: nowrap; /* a status name ("For Preview") never breaks across two lines */
+		}
+
+		.cbadec-ftr {
+			display: flex;
+			justify-content: flex-end;
+			padding: 10px 20px 16px;
+		}
+
+		.cbadec-cancel {
+			padding: 7px 16px;
+			font-family: inherit;
+			font-size: 13px;
+			font-weight: 600;
+			color: var(--afims-text, #1A1B21);
+			cursor: pointer;
+			background: var(--afims-surface, #FFFFFF);
+			border: 1px solid var(--afims-border, #E4ECF2);
+			border-radius: 8px;
+		}
+
+		.cbadec-cancel:hover,
+		.cbadec-cancel:focus-visible {
+			outline: none;
+			background: var(--afims-surface-subtle, #F4F7FA);
+		}
+	</style>
+
 	<!-- Form Header: the CBA number / date card. Hidden while creating — numbering is not in use yet, so
 	     nothing is shown or saved for it (see buildPayload). Still shown when editing a saved record. -->
 	<div class="form-header"<?php echo $allocationId ? '' : ' style="display:none;"'; ?>>
@@ -698,6 +913,7 @@ $cbaAsModal = !empty($cbaAsModal);
 						<input type="hidden" id="program_code" name="program_code" value="">
 					</div>
 					<div class="error-box" id="program_error">Failed to load programs. Please refresh the page.</div>
+					<p class="input-hint" id="program_hint">Pick an existing program, or type a new name to create one.</p>
 				</div>
 
 				<!-- Sub-Program → GET /sub_program/all?program_code=… (searchable combobox, needs a Program) -->
@@ -887,7 +1103,7 @@ $cbaAsModal = !empty($cbaAsModal);
 						<!-- Search input (visible) -->
 						<div style="position:relative;">
 							<input type="text" id="cba_search" class="form-input"
-								placeholder="Search by CBA number, program or fund…" autocomplete="off"
+								placeholder="Search approved CBAs by request ref no. or program…" autocomplete="off"
 								style="padding-right:36px;" disabled />
 							<!-- Spinner / chevron icon -->
 							<span id="cba_combo_icon" style="
@@ -1548,6 +1764,8 @@ $cbaAsModal = !empty($cbaAsModal);
 	// created_at of the allocation being edited (set by populateEditForm). Stays
 	// null in add mode — nothing is saved yet, so the RFA print date is today's.
 	var CBA_CREATED_AT = null;
+	// The status name of the allocation being edited (set by populateEditForm), shown in the Submit pop-up. '' in add mode.
+	var CBA_CURRENT_STATUS = '';
 
 	// ── Requesting office = a Responsibility Center, not a field on the form ───────
 	// Add mode: the logged-in user's own RC (CBA_CONFIG.requestingRc, resolved in PHP from uac.users.rc_id ->
@@ -1738,7 +1956,7 @@ $cbaAsModal = !empty($cbaAsModal);
 				if (!cba) return;
 
 				// 1. Select the CBA combobox
-				var cbaLabel = cba.allocation_number || ('#' + cba.allocation_id);
+				var cbaLabel = cbaLabelOf(cba);
 				cbaSelect(cba.allocation_id, cbaLabel);
 
 				// 2. Fiscal year
@@ -1891,6 +2109,7 @@ $cbaAsModal = !empty($cbaAsModal);
 		};
 
 		CBA_CREATED_AT = a.created_at || null;
+		CBA_CURRENT_STATUS = a.status_name || '';
 		// the record's own requesting office (its creator's RC, joined by the API), not the editing user's
 		CBA_REQ_RC = {
 			rc_id: a.requesting_rc_id || '',
@@ -2157,21 +2376,28 @@ $cbaAsModal = !empty($cbaAsModal);
 	// (projects.sub_program_code is optional), so its projects are listed directly.
 	// The value of each level is its CODE — these tables have no integer id. It lives
 	// in the hidden input and is sent as program_code / sub_program_code / project_code.
+	//
+	// A level can also be NEW: text typed into its box that was not picked from the list. Nothing is created while
+	// typing; buildPayload() sends the typed text as program_name / sub_program_name / project_name and the server
+	// (BudgetAllocationService::resolveTypedEntities) creates what does not exist yet — reusing an existing one
+	// with the same name — in the same transaction as the memo request. Under a NEW level there is nothing to
+	// pick, so the levels below it become type-only (pcNewOnly).
 	var PCHAIN = {
 		prog: {
 			search: 'prog_search', dd: 'prog_dropdown', hidden: 'program_code', wrapper: 'program_wrapper',
-			error: 'program_error', hint: null, noun: 'program', parent: null, child: 'subprog',
-			codeKey: 'program_code', nameKey: 'program_name', data: [], seq: 0
+			error: 'program_error', hint: 'program_hint', noun: 'program', parent: null, child: 'subprog',
+			codeKey: 'program_code', nameKey: 'program_name', data: [], seq: 0,
+			hintBase: 'Pick an existing program, or type a new name to create one.'
 		},
 		subprog: {
 			search: 'subprog_search', dd: 'subprog_dropdown', hidden: 'sub_program_code', wrapper: 'sub_program_wrapper',
 			error: 'sub_program_error', hint: 'sub_program_hint', noun: 'sub-program', parent: 'prog', child: 'proj',
-			codeKey: 'sub_program_code', nameKey: 'sub_program_name', data: [], seq: 0
+			codeKey: 'sub_program_code', nameKey: 'sub_program_name', data: [], seq: 0, hintBase: ''
 		},
 		proj: {
 			search: 'proj_search', dd: 'proj_dropdown', hidden: 'project_code', wrapper: 'project_wrapper',
 			error: 'project_error', hint: 'project_hint', noun: 'project', parent: 'subprog', child: null,
-			codeKey: 'project_code', nameKey: 'project_name', data: [], seq: 0
+			codeKey: 'project_code', nameKey: 'project_name', data: [], seq: 0, hintBase: ''
 		},
 	};
 
@@ -2198,16 +2424,33 @@ $cbaAsModal = !empty($cbaAsModal);
 		if (box) box.classList.remove('visible');
 	}
 
-	function pcSetHint(key, text) {
-		if (PCHAIN[key].hint) pcEl(key, 'hint').textContent = text;
+	// The text typed into a level's box when it was NOT picked from the list — i.e. a NEW program / sub-program /
+	// project to create on save ('' when an existing one is picked, or the box is empty).
+	function pcTyped(key) {
+		if (pcValue(key)) return '';
+		return (pcEl(key, 'search').value || '').replace(/\s+/g, ' ').trim();
+	}
+
+	// Sets a level's hint. A normal hint is remembered (hintBase); a "new" one (isNew) is shown on top of it, in colour,
+	// and pcRefreshStates() puts the remembered one back as soon as the level stops being new.
+	function pcSetHint(key, text, isNew) {
+		var c = PCHAIN[key];
+		if (!c.hint) return;
+		var el = pcEl(key, 'hint');
+		if (!isNew) c.hintBase = text;
+		el.textContent = text;
+		el.classList.toggle('pc-hint-new', !!isNew);
 	}
 
 	function pcRender(key, rows) {
 		var c = PCHAIN[key];
 		var dd = pcEl(key, 'dd');
 		if (!rows.length) {
-			dd.innerHTML =
-				'<div style="padding:10px 14px;color:var(--afims-text-disabled, #A9AAB8);font-size:13px;">No results found</div>';
+			var q = (pcEl(key, 'search').value || '').replace(/\s+/g, ' ').trim();
+			dd.innerHTML = q ?
+				'<div class="pc-new">No match \u2014 \u201c' + pcEsc(q) + '\u201d will be created as a new ' + c.noun + ' when you save.</div>' :
+				'<div style="padding:10px 14px;color:var(--afims-text-disabled, #A9AAB8);font-size:13px;">No ' + c.noun +
+				's yet \u2014 type a name to create one.</div>';
 			dd.style.display = 'block';
 			return;
 		}
@@ -2238,6 +2481,7 @@ $cbaAsModal = !empty($cbaAsModal);
 		pcEl(key, 'dd').style.display = 'none';
 		pcClearBelow(key);
 		cobChainChanged(); // the COB lists follow the chain
+		pcRefreshStates();
 		return c.child ? pcLoad(c.child) : Promise.resolve();
 	}
 
@@ -2275,6 +2519,46 @@ $cbaAsModal = !empty($cbaAsModal);
 		}
 	}
 
+	// Open a level for typing only: its parent is NEW (typed, not picked), so there is nothing to pick from yet.
+	function pcNewOnly(key) {
+		var c = PCHAIN[key];
+		c.seq++; // a list still loading for this level is discarded
+		c.data = [];
+		var search = pcEl(key, 'search');
+		search.disabled = false;
+		search.placeholder = 'Type a new ' + c.noun + (key === 'proj' ? '' : ' (optional)') + '\u2026';
+		setLoading(c.wrapper, false);
+		pcHideError(key);
+	}
+
+	// Re-derives what the typed text means after any edit or pick. A level whose box holds text that was not picked is NEW;
+	// under a NEW level the levels below are type-only. Hints show which levels are new and revert when one stops being.
+	function pcRefreshStates() {
+		var progNew = !!pcTyped('prog');
+		var subNew = !!pcTyped('subprog');
+
+		if (progNew) {
+			// a new program has no sub-programs or projects yet — a project may even sit directly under it
+			pcNewOnly('subprog');
+			pcNewOnly('proj');
+			pcSetHint('subprog', 'This is a new program, so its sub-programs are new too \u2014 type one, or leave it blank.');
+			pcSetHint('proj', 'Type a new project, or leave it blank.');
+		} else if (subNew) {
+			pcNewOnly('proj');
+			pcSetHint('proj', 'Type a new project, or leave it blank.');
+		}
+
+		['prog', 'subprog', 'proj'].forEach(function(k) {
+			var typed = pcTyped(k);
+			var c = PCHAIN[k];
+			if (typed) {
+				pcSetHint(k, 'New ' + c.noun + ' \u201c' + typed + '\u201d \u2014 it will be created when you save.', true);
+			} else if (c.hint) {
+				pcSetHint(k, c.hintBase);
+			}
+		});
+	}
+
 	// Load a child level's options from its parent's current value.
 	async function pcLoad(key) {
 		var c = PCHAIN[key];
@@ -2301,13 +2585,15 @@ $cbaAsModal = !empty($cbaAsModal);
 			loaded = true;
 			var n = c.data.length;
 			if (!n) {
-				search.placeholder = 'No ' + c.noun + 's';
+				// nothing to pick: it can only be typed — a new one, created when you save
+				search.disabled = false;
+				search.placeholder = 'No ' + c.noun + 's yet \u2014 type to add one';
 				pcSetHint(key, key === 'subprog' ?
-					'This program has no sub-programs \u2014 its projects are listed directly.' :
-					'No projects under this ' + (subCode ? 'sub-program' : 'program') + '.');
+					'This program has no sub-programs yet \u2014 type one to add it, or leave it blank (its projects are listed directly).' :
+					'No projects under this ' + (subCode ? 'sub-program' : 'program') + ' yet \u2014 type one to add it.');
 			} else {
 				search.disabled = false;
-				search.placeholder = 'Search ' + c.noun + '\u2026';
+				search.placeholder = 'Search or type a new ' + c.noun + '\u2026';
 				pcSetHint(key, n + ' ' + c.noun + '(s) under this ' + (key === 'subprog' ? 'program' : (subCode ? 'sub-program' : 'program')) + '.');
 			}
 		} catch (err) {
@@ -2342,8 +2628,11 @@ $cbaAsModal = !empty($cbaAsModal);
 			if (pcValue(key)) {
 				pcClear(key);
 				pcClearBelow(key);
+			} else if (!pcTyped(key)) {
+				pcClearBelow(key); // the box was emptied: the levels below lock again
 			}
 			pcRender(key, matches(this.value.trim()));
+			pcRefreshStates(); // text that was typed (not picked) is a NEW one
 		});
 		search.addEventListener('focus', function() {
 			if (!pcValue(key)) pcRender(key, matches(this.value.trim()));
@@ -2371,7 +2660,7 @@ $cbaAsModal = !empty($cbaAsModal);
 
 			c.data = json.data;
 			search.disabled = false;
-			search.placeholder = 'Search program\u2026';
+			search.placeholder = 'Search or type a new program\u2026';
 		} catch (err) {
 			console.error('[loadPrograms]', err);
 			pcShowError('prog');
@@ -2411,6 +2700,7 @@ $cbaAsModal = !empty($cbaAsModal);
 	function cbaClearProgramChain() {
 		pcClear('prog', true);
 		pcClearBelow('prog');
+		pcRefreshStates();
 	}
 
 	// Drop every loaded list and invalidate in-flight requests (modal reopen).
@@ -3614,11 +3904,20 @@ $cbaAsModal = !empty($cbaAsModal);
 		return str.replace(new RegExp('(' + esc + ')', 'gi'), '<mark>$1</mark>');
 	}
 
+	// Only CBAs with this status are offered as a parent (a status NAME of the memo-request statuses; the API
+	// resolves it, so no install-specific id is needed here). A name that matches no status offers nothing.
+	var CBA_PARENT_STATUS = 'Approved';
+
+	// What a CBA is called in the list: its allocation number, else the request reference the database gave it
+	// (RR-001, …) — every row has one, while a new CBA carries no allocation number — then program and fiscal year.
+	function cbaLabelOf(c) {
+		return (c.allocation_number || c.request_referrence_no || ('#' + c.allocation_id)) +
+			(c.program_name ? ' — ' + c.program_name : '') +
+			(c.fiscal_year ? ' · FY' + c.fiscal_year : '');
+	}
+
 	function cbaBuildItem(c, query) {
-		var label = c.allocation_number +
-			(c.prog_name ? ' — ' + c.prog_name : '') +
-			(c.fs_code ? ' [' + c.fs_code + ']' : '') +
-			(c.fp_period_name ? ' · FY' + c.fp_period_name : '');
+		var label = cbaLabelOf(c);
 		var li = document.createElement('li');
 		li.setAttribute('role', 'option');
 		li.dataset.id = c.allocation_id;
@@ -3636,10 +3935,10 @@ $cbaAsModal = !empty($cbaAsModal);
 		var q = (query || '').toLowerCase().trim();
 		var filtered = q ?
 			CBA_DATA.filter(function(c) {
-				return (c.allocation_number || '').toLowerCase().includes(q) ||
-					(c.prog_name || '').toLowerCase().includes(q) ||
-					(c.fs_code || '').toLowerCase().includes(q) ||
-					(c.fs_name || '').toLowerCase().includes(q);
+				return [c.request_referrence_no, c.allocation_number, c.program_name, c.sub_program_name, c.project_name, c.description]
+					.some(function(s) {
+						return (s || '').toLowerCase().includes(q);
+					});
 			}) :
 			CBA_DATA;
 
@@ -3649,7 +3948,7 @@ $cbaAsModal = !empty($cbaAsModal);
 		if (filtered.length === 0) {
 			var li = document.createElement('li');
 			li.className = 'cba-no-results';
-			li.textContent = q ? 'No CBA matches "' + q + '"' : 'No approved CBA found.';
+			li.textContent = q ? 'No approved CBA matches "' + q + '"' : 'No approved CBA found.';
 			ul.appendChild(li);
 		} else {
 			filtered.forEach(function(c) {
@@ -3726,13 +4025,13 @@ $cbaAsModal = !empty($cbaAsModal);
 		cbaShowSpinner(true);
 
 		try {
-			var json = await cba_apiFetch(`${API_BASE}/budget_allocation/all?allocation_type=CBA`);
+			var json = await cba_apiFetch(`${API_BASE}/budget_allocation/all?allocation_type=CBA&status=${encodeURIComponent(CBA_PARENT_STATUS)}`);
 			if (!json.success || !Array.isArray(json.data)) throw new Error(json.message || 'Bad response');
 
 			CBA_DATA = json.data;
 			CBA_LOADED = true;
 			search.disabled = false;
-			search.placeholder = 'Search by CBA number, program or fund…';
+			search.placeholder = 'Search approved CBAs by request ref no. or program…';
 			search.focus();
 			cbaOpenDropdown();
 		} catch (err) {
@@ -4133,11 +4432,11 @@ $cbaAsModal = !empty($cbaAsModal);
 	}
 
 	// ── Build payload ─────────────────────────────────────────────────────────────
-	// statusOverride: pass a status string to set it explicitly (create/draft
-	// flows), or the sentinel '__NO_CHANGE__' in edit mode to omit `status` from
-	// the payload entirely so an in-progress workflow status is never clobbered
-	// by a plain field edit (see postToApi, which strips the sentinel).
-	function buildPayload(statusOverride) {
+	// statusId: the id of the memo-request status to give the record (see cbaStatusIdFor), sent as `status_id` — the only
+	// field the API reads for it. Leave it out and create gives the new request 'Draft' while update leaves the status
+	// alone. (The `status: 'DRAFT' / 'FOR_REVIEW'` text this used to send was never read by the API, so submitting
+	// never actually changed a status.)
+	function buildPayload(statusId) {
 		var g = function(id) {
 			return document.getElementById(id);
 		};
@@ -4145,27 +4444,30 @@ $cbaAsModal = !empty($cbaAsModal);
 			return g(id) ? g(id).value : '';
 		};
 
-		return {
+		var payload = {
 			allocation_type: v('allocation_type'),
 			cba_id: v('cba_id'),
-			// The API refuses to create a memo request without a memo_ref_no (BudgetAllocationService::create) and this
-			// form has no field for one, so a NEW request takes its generated number (#allocation_number, e.g.
-			// "CBA 2026-111-86-01") as its reference. An edit (PATCH) leaves the saved reference alone.
-			memo_ref_no: CBA_EDIT_MODE ? undefined : v('allocation_number'),
-			// allocation_number is deliberately NOT sent: numbering is not saved to the database yet. The
-			// number is still generated into #allocation_number for display / print preview, and on edit
-			// the record keeps whatever number it already has (PATCH only changes the fields sent).
+			// There is no memo_ref_no any more (the column was dropped, alter_table/20): a request is identified by the
+			// request_referrence_no (RR-001, ...) that the DATABASE generates when the row is created — nothing to send.
+			// The generated allocation number (#allocation_number, e.g. "CBA 2026-111-86-01") is deliberately NOT sent
+			// either, and not copied into any other column: numbering is not saved to the database yet. It is still
+			// generated into #allocation_number for display / print preview, and on edit the record keeps whatever
+			// number it already has (PATCH only changes the fields sent).
 			fiscal_year: v('fiscal_year'),
 			document_type: v('document_type'),
 			program_code: v('program_code'),
 			sub_program_code: v('sub_program_code'),
 			project_code: v('project_code'),
+			// Typed instead of picked = a NEW program / sub-program / project: the server creates it (or reuses an
+			// existing one of the same name) together with this record. '' when the level was picked or left empty.
+			program_name: pcTyped('prog'),
+			sub_program_name: pcTyped('subprog'),
+			project_name: pcTyped('proj'),
 			requested_amount: v('requested_amount_raw'),
 			allocated_amount: v('allocated_amount_raw'),
 			// Itemized Budget Allocation Amount lines (fmd.budget_allocations.line_transaction, jsonb).
 			line_transaction: JSON.stringify(collectBaaLines()),
 			documents_complete: '1',
-			status: statusOverride != null ? statusOverride : 'DRAFT',
 			created_by: v('created_by'),
 			multiple_node_id: v('multiple_node_id'),
 			funding_status: 'PENDING',
@@ -4178,6 +4480,8 @@ $cbaAsModal = !empty($cbaAsModal);
 			...pcrPayloadFields(), // pr_number + pr_amount, or po_number + po_amount (RFA / LAA)
 			file_data: getSupportingDocs(),
 		};
+		if (statusId != null) payload.status_id = statusId;
+		return payload;
 	}
 
 	// ── POST to API ───────────────────────────────────────────────────────────────
@@ -4191,6 +4495,9 @@ $cbaAsModal = !empty($cbaAsModal);
 			'program_code',
 			'sub_program_code',
 			'project_code',
+			'program_name',
+			'sub_program_name',
+			'project_name',
 			'category_id',
 			'vendor_id',
 			'multiple_node_id',
@@ -4220,7 +4527,6 @@ $cbaAsModal = !empty($cbaAsModal);
 			// create-only fields the update endpoint doesn't accept / shouldn't
 			// be allowed to silently change on an existing record
 			delete payload.created_by;
-			if (payload.status === '__NO_CHANGE__') delete payload.status;
 			mainJson = await cba_apiFetchPatch(`${API_BASE}/budget_allocation/update/${CBA_CONFIG.allocationId}`,
 				payload);
 		} else {
@@ -4260,7 +4566,8 @@ $cbaAsModal = !empty($cbaAsModal);
 		btn.disabled = true;
 		btn.innerHTML = '<span>Saving&hellip;</span>';
 		try {
-			var json = await postToApi(buildPayload('DRAFT'));
+			// no status_id: create gives every new request the 'Draft' status
+			var json = await postToApi(buildPayload());
 			if (!json.success) throw new Error(json.message || 'Failed to save draft.');
 			alert('Draft saved successfully.');
 			cbaAfterSave(); // modal mode: close + refresh the list; page mode: stay on the form
@@ -4308,6 +4615,124 @@ $cbaAsModal = !empty($cbaAsModal);
 		if (numLabel) numLabel.textContent = label.short + ' Number';
 	}
 
+	// ── Submit decision pop-up ────────────────────────────────────────────────────
+	// What "Submit Request" can turn a request into. `status` is the NAME of a memo-request status
+	// (fims.settings_status, status_for = 'budget_allocation'); its id comes from the API (cbaStatusIdFor), so no
+	// install-specific id lives here. 'Draft' ships with the schema, 'For Preview' with
+	// sample_data/06 - fims_settings_status_budget_allocation.sql.
+	var CBA_DECISIONS = {
+		preview: {
+			status: 'For Preview',
+			done: 'submitted for preview',
+			busy: 'Submitting'
+		},
+		draft: {
+			status: 'Draft',
+			done: 'saved as a draft',
+			busy: 'Saving'
+		},
+	};
+
+	// Resolves with the id of the memo-request status called `name`. Throws — before anything is saved — when the
+	// statuses cannot be read or that one is not set up. Read on every use, so a status added while the page was open
+	// is found.
+	async function cbaStatusIdFor(name) {
+		var json = await cba_apiFetch(`${API_BASE}/budget_allocation/statuses`);
+		if (!json.success || !Array.isArray(json.data)) {
+			throw new Error(json.message || 'Could not load the request statuses.');
+		}
+		var hit = json.data.find(function(s) {
+			return String(s.name || '').trim().toLowerCase() === name.toLowerCase();
+		});
+		if (!hit) {
+			throw new Error('The status "' + name + '" is not set up in the database yet, so nothing was saved. ' +
+				'Ask an administrator to run the SQL installer (node install_system.js --sql-only).');
+		}
+		return parseInt(hit.id, 10);
+	}
+
+	// Asks what should happen to the request: resolves with 'preview' or 'draft', or null when it is cancelled (the
+	// Cancel button, Escape, or a click outside the box). Built here and appended to <body> rather than written into the
+	// page: it has to sit above the memo list's modal and survive that modal re-loading its form.
+	function cbaAskDecision(typeLabel) {
+		return new Promise(function(resolve) {
+			if (document.getElementById('cba-decision-overlay')) { // already asking
+				resolve(null);
+				return;
+			}
+			var opener = document.activeElement;
+			var overlay = document.createElement('div');
+			overlay.id = 'cba-decision-overlay';
+			overlay.className = 'cbadec-overlay';
+			overlay.innerHTML =
+				'<div class="cbadec-box" role="dialog" aria-modal="true" aria-labelledby="cbadec-title" aria-describedby="cbadec-text">' +
+				'<div class="cbadec-hdr"><h3 class="cbadec-title" id="cbadec-title"></h3></div>' +
+				'<div class="cbadec-body">' +
+				'<p class="cbadec-text" id="cbadec-text"></p>' +
+				'<p class="cbadec-current" id="cbadec-current" hidden></p>' +
+				'<button type="button" class="cbadec-opt cbadec-opt-primary" data-decision="preview">' +
+				'<span class="cbadec-opt-title">Submit for Preview</span>' +
+				'<span class="cbadec-opt-desc">Sends the request on to be previewed. Its status becomes <strong></strong>.</span>' +
+				'</button>' +
+				'<button type="button" class="cbadec-opt" data-decision="draft">' +
+				'<span class="cbadec-opt-title">Save as Draft</span>' +
+				'<span class="cbadec-opt-desc">Keeps the request as a draft you can still change. Its status becomes <strong></strong>.</span>' +
+				'</button>' +
+				'</div>' +
+				'<div class="cbadec-ftr"><button type="button" class="cbadec-cancel" data-decision="">Cancel</button></div>' +
+				'</div>';
+
+			// the words that vary are set as text, from CBA_DECISIONS, so they have a single source
+			overlay.querySelector('#cbadec-title').textContent = CBA_EDIT_MODE ? 'Save changes' : 'Submit this request?';
+			overlay.querySelector('#cbadec-text').textContent = CBA_EDIT_MODE ?
+				('Your changes to this ' + typeLabel.full + ' will be saved. What should its status be?') :
+				('What should happen to this ' + typeLabel.full + '?');
+			overlay.querySelector('[data-decision="preview"] strong').textContent = CBA_DECISIONS.preview.status;
+			overlay.querySelector('[data-decision="draft"] strong').textContent = CBA_DECISIONS.draft.status;
+			if (CBA_EDIT_MODE && CBA_CURRENT_STATUS) {
+				var cur = overlay.querySelector('#cbadec-current');
+				cur.textContent = 'Current status: ' + CBA_CURRENT_STATUS;
+				cur.hidden = false;
+			}
+
+			function finish(decision) {
+				document.removeEventListener('keydown', onKey, true);
+				overlay.remove();
+				if (opener && typeof opener.focus === 'function') opener.focus();
+				resolve(decision);
+			}
+
+			function onKey(e) {
+				if (e.key === 'Escape') {
+					e.preventDefault();
+					e.stopPropagation();
+					finish(null);
+				} else if (e.key === 'Tab') { // keep the focus inside the box
+					var btns = overlay.querySelectorAll('button');
+					var first = btns[0],
+						last = btns[btns.length - 1];
+					if (!overlay.contains(document.activeElement) || (e.shiftKey && document.activeElement === first)) {
+						e.preventDefault();
+						(e.shiftKey ? last : first).focus();
+					} else if (!e.shiftKey && document.activeElement === last) {
+						e.preventDefault();
+						first.focus();
+					}
+				}
+			}
+			overlay.addEventListener('mousedown', function(e) {
+				if (e.target === overlay) finish(null);
+			});
+			overlay.addEventListener('click', function(e) {
+				var b = e.target.closest('button[data-decision]');
+				if (b) finish(b.dataset.decision || null);
+			});
+			document.addEventListener('keydown', onKey, true);
+			document.body.appendChild(overlay);
+			overlay.querySelector('[data-decision="preview"]').focus();
+		});
+	}
+
 	// ── Submit ────────────────────────────────────────────────────────────────────
 	async function cbaOnSubmit(e) {
 		e.preventDefault();
@@ -4345,29 +4770,24 @@ $cbaAsModal = !empty($cbaAsModal);
 			if (!confirm('Warning: Allocated amount exceeds requested amount. Continue?')) return;
 		}
 		var typeLabel = getTypeLabel();
-		var confirmMsg = CBA_EDIT_MODE ?
-			('Are you sure you want to save these changes to this ' + typeLabel.full + '?') :
-			('Are you sure you want to submit this ' + typeLabel.full + '?');
-		if (!confirm(confirmMsg)) return;
+
+		// Replaces the old "Are you sure?" confirm(): ask what should become of the request — submitted for preview, or
+		// kept as a draft — and give it that status. Cancelled -> nothing is sent.
+		var choice = await cbaAskDecision(typeLabel);
+		if (!choice) return;
+		var decision = CBA_DECISIONS[choice];
 
 		var submitBtn = this.querySelector('button[type="submit"]');
 		submitBtn.disabled = true;
-		submitBtn.innerHTML = CBA_EDIT_MODE ? '<span>Saving&hellip;</span>' :
-			'<span>Submitting&hellip;</span>';
+		submitBtn.innerHTML = '<span>' + decision.busy + '&hellip;</span>';
 
 		try {
-			// In edit mode, don't force status back to FOR_REVIEW — pass null so
-			// buildPayload's statusOverride is unused and the existing status on
-			// the server is left alone (the update endpoint only touches fields
-			// explicitly included in the allowed-fields list; status changes go
-			// through the workflow action routes, not this form).
-			var json = CBA_EDIT_MODE ?
-				await postToApi(buildPayload('__NO_CHANGE__')) :
-				await postToApi(buildPayload('FOR_REVIEW'));
+			// The id of the chosen status, looked up first: when it cannot be found this throws and NOTHING has been saved.
+			var statusId = await cbaStatusIdFor(decision.status);
+			var json = await postToApi(buildPayload(statusId));
 			if (!json.success) throw new Error(json.message || (CBA_EDIT_MODE ? 'Update failed.' :
 				'Submission failed.'));
-			alert(CBA_EDIT_MODE ? (typeLabel.full + ' updated successfully!') : (typeLabel.full +
-				' submitted successfully!'));
+			alert(typeLabel.full + ' ' + (CBA_EDIT_MODE ? 'updated and ' : '') + decision.done + '.');
 			if (cbaAfterSave()) return; // modal mode: closed + list refreshed, nothing to redirect to
 			var docType = document.getElementById('document_type').value;
 			window.location.href = docType === 'COE' ? '/FMD/CoeBudgetAllocationDashboard' :
@@ -4434,11 +4854,11 @@ $cbaAsModal = !empty($cbaAsModal);
 				category_name: g('category_id') ? (g('category_id').dataset
 					.label || '') : '',
 				program_code: v('program_code'),
-				program_name: g('program_code') ? (g('program_code').dataset.label || '') : '',
+				program_name: (g('program_code') && g('program_code').dataset.label) || pcTyped('prog'),
 				sub_program_code: v('sub_program_code'),
-				sub_program_name: g('sub_program_code') ? (g('sub_program_code').dataset.label || '') : '',
+				sub_program_name: (g('sub_program_code') && g('sub_program_code').dataset.label) || pcTyped('subprog'),
 				project_code: v('project_code'),
-				project_name: g('project_code') ? (g('project_code').dataset.label || '') : '',
+				project_name: (g('project_code') && g('project_code').dataset.label) || pcTyped('proj'),
 				project_description: v('project_description'),
 				requested_amount: v('requested_amount_raw'),
 				allocated_amount: v('allocated_amount_raw'),
