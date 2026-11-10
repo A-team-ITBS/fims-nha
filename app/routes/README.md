@@ -14,6 +14,7 @@ routes/
 ├── vendor.php          # Vendor + vendor type routes
 ├── purchase-order.php  # Purchase order CRUD + status routes
 ├── voucher.php         # Disbursement Voucher CRUD + status + RFA lookup routes
+├── notifications.php   # Notification hub API (uac.notifications) for the bell
 ├── chart_of_accounts.php # Chart of Accounts CRUD + status routes
 ├── responsibility_center.php # Responsibility Center CRUD + status routes
 ├── budget_allocation.php     # Memo Request (budget allocation) CRUD + lookups
@@ -189,3 +190,15 @@ To add new route files:
 - Add `->add($jwtMiddleware)` for authentication
 - Add `->add($accessMiddleware)` for permission checks
 - Chain middleware as needed: `->add($accessMiddleware)->add($jwtMiddleware)` 
+
+### notifications.php (`NotificationService`, tables `uac.notifications` / `uac.notification_reads`)
+Implements `_shared/NOTIFICATION-IMPLEMENTATION-PLAN.md`. The caller is always the JWT user (`X-Authorization`).
+- `GET /notifications/recent?limit=` - `{data:[{id,type,target,subject,body,link,from_system,created_at,time_ago,read_by_user}], unread_count}`; default 10, clamp 1-200, unread first
+- `GET /notifications/count` - `{unread_count}`
+- `POST /notifications/mark-read` `{id}` - only rows in the caller's audience; idempotent
+- `POST /notifications/mark-all-read` - `{updated}`
+- `POST /notifications/send` - superadmin only; `{type, target, subject, body?, link?, from_system?, event_key?}`
+- Audience `type` is one of `all | system | user | userlevel | office | usergroup`. Application code sends with
+  `NotificationService::toUser() / toUserLevel() / toOffice() / toUserGroup() / toSystem() / toAll()` (never throws; returns the id or null).
+- Wired so far: Purchase Order approved / rejected / cancelled -> notifies the creator.
+
