@@ -2744,13 +2744,11 @@ class UserLevelAssignmentsGrid extends UserLevelAssignments
             $userId = Get("fk_user_id");
             // Perform any necessary validation on $userId here
 
-            // Redirect to custom UserAccess page (this standalone project has
-            // no "/UAC/" route prefix - that's leftover from the original
-            // multi-system template; the real route is just "/UserAccess").
-            header("Location: /UserAccess/" . $userId);
+            // Redirect to custom UAC page
+            header("Location: /UAC/UserAccess/" . $userId);
             exit();
         } else {
-            header("Location: /UserAccess");
+            header("Location: /UAC/UserAccess");
             exit();
         }
     }

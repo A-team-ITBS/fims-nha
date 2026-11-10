@@ -14,6 +14,9 @@
     <menu id="81">
       <phrase id="menutext" value="Budget Request" />
     </menu>
+    <menu id="261">
+      <phrase id="menutext" value="Budget Propose" />
+    </menu>
     <menu id="85">
       <phrase id="menutext" value="Budget Revision" />
     </menu>
@@ -1523,7 +1526,7 @@
     <table id="budget_rev_review">
       <phrase id="tblcaption" value="Budget Revision Preview" />
     </table>
-    <table id="budget_allocation_form">
+    <table id="memo_req_page">
       <phrase id="tblcaption" value="Memo Request" />
     </table>
     <table id="iarmodule">
@@ -1540,6 +1543,9 @@
     </table>
     <table id="checkdisbursements">
       <phrase id="tblcaption" value="Check Disbursements" />
+    </table>
+    <table id="budget_prop_page">
+      <phrase id="tblcaption" value="Budget Propose" />
     </table>
   </project>
 </ew-language>

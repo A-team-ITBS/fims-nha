@@ -10,8 +10,9 @@ echo $topMenu->toScript();
 $sideMenu = new Menu("menu", true, false);
 $sideMenu->addMenuItem(9, "mi_MainDashboard", $Language->menuPhrase("9", "MenuText"), "MainDashboard", -1, "", AllowListMenu('{FIMS}MainDashboard.php'), false, false, "fas fa-chart-line", "", false, true);
 $sideMenu->addMenuItem(146, "mci_Budget", $Language->menuPhrase("146", "MenuText"), "", -1, "", true, false, true, "fas fa-wallet", "", false, true);
-$sideMenu->addMenuItem(88, "mi_budget_allocation_form", $Language->menuPhrase("88", "MenuText"), "BudgetAllocationForm", 146, "", AllowListMenu('{FIMS}budget-allocation-form.php'), false, false, "", "", false, true);
+$sideMenu->addMenuItem(88, "mi_memo_req_page", $Language->menuPhrase("88", "MenuText"), "MemoReqPage", 146, "", AllowListMenu('{FIMS}memo-req-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(81, "mi_budget_req_page", $Language->menuPhrase("81", "MenuText"), "BudgetReqPage", 146, "", AllowListMenu('{FIMS}budget-req-page.php'), false, false, "", "", false, true);
+$sideMenu->addMenuItem(261, "mi_budget_prop_page", $Language->menuPhrase("261", "MenuText"), "BudgetPropPage", 146, "", AllowListMenu('{FIMS}budget-prop-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(85, "mi_budget_revision_page", $Language->menuPhrase("85", "MenuText"), "BudgetRevisionPage", 146, "", AllowListMenu('{FIMS}budget-revision-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(147, "mci_Programs_&_Projects_", $Language->menuPhrase("147", "MenuText"), "", -1, "", true, false, true, "fas fa-sitemap", "", false, true);
 $sideMenu->addMenuItem(80, "mi_program_page", $Language->menuPhrase("80", "MenuText"), "ProgramPage", 147, "", AllowListMenu('{FIMS}program-page.php'), false, false, "", "", false, true);
@@ -30,6 +31,5 @@ $sideMenu->addMenuItem(70, "mi_PositionManagement", $Language->menuPhrase("70", 
 $sideMenu->addMenuItem(13, "mi_UserAccess", $Language->menuPhrase("13", "MenuText"), "UserAccess", 206, "", AllowListMenu('{FIMS}UserAccess.php'), false, false, "fas fa-user-lock", "", false, true);
 $sideMenu->addMenuItem(12, "mi_UserManagement", $Language->menuPhrase("12", "MenuText"), "UserManagement", 206, "", AllowListMenu('{FIMS}UserManagement.php'), false, false, "fas fa-user-shield", "", false, true);
 $sideMenu->addMenuItem(69, "mi_DepartmentManagement", $Language->menuPhrase("69", "MenuText"), "DepartmentManagement", 206, "", AllowListMenu('{FIMS}DepartmentManagement.php'), false, false, "fas fa-building", "", false, true);
-$sideMenu->addMenuItem(259, "mi_ChangePass", $Language->menuPhrase("259", "MenuText"), "ChangePass", 206, "", false, false, false, "", "", false, true);
-$sideMenu->addMenuItem(4, "mi_user_level_assignments", $Language->menuPhrase("4", "MenuText"), "UserLevelAssignmentsList?cmd=resetall", -1, "", AllowListMenu('{FIMS}user_level_assignments'), false, false, "fas fa-user-tag", "", false, true);
+$sideMenu->addMenuItem(259, "mi_ChangePass", $Language->menuPhrase("259", "MenuText"), "ChangePass", 206, "", AllowListMenu('{FIMS}ChangePass.php'), false, false, "", "", false, true);
 echo $sideMenu->toScript();

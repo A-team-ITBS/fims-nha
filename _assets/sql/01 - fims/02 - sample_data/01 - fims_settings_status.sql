@@ -42,3 +42,11 @@ WHERE NOT EXISTS (SELECT 1 FROM fims.settings_status WHERE name = 'Endorsed' AND
 INSERT INTO fims.settings_status (name, status_for, color)
 SELECT 'Approved', 'budget_req', '#16A34A'
 WHERE NOT EXISTS (SELECT 1 FROM fims.settings_status WHERE name = 'Approved' AND status_for = 'budget_req');
+
+-- status_for = 'budget_allocation' (fims.budget_allocation — Memo Request page).
+-- Only the starting status is seeded; BudgetAllocationService gives every new
+-- memo request 'Draft' and looks it up by name, so add the rest of the workflow
+-- statuses (and their actors) here once the approval flow is defined.
+INSERT INTO fims.settings_status (name, status_for, color)
+SELECT 'Draft', 'budget_allocation', '#6B7280'
+WHERE NOT EXISTS (SELECT 1 FROM fims.settings_status WHERE name = 'Draft' AND status_for = 'budget_allocation');

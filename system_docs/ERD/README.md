@@ -1,12 +1,15 @@
 # Entity-Relationship Diagrams — FIMS NHA
 
 > **Status:** rewritten 2026-11-09 against the actual schema in `_assets/sql/` and a verified
-> dry-run install. The previous version of this file described a 9-schema, 371-file predecessor
-> architecture (`shared`, `accounting`, `treasury`, `regional`, `district`, `integration`, an
-> `ACCOUNTING-BAPD/sql/` tree, `npm run …` wrappers) that predates this repo's 2026-11-06 rebuild —
-> none of that exists here. See `system_docs/developerguide/DEVELOPER-GUIDE.md` §11 for the full
-> list of docs still carrying that old architecture, and `_assets/sql/README.md` for the SQL
-> folder / installer mechanics (not duplicated here).
+> dry-run install; §2.3 (Disbursement Vouchers & Journal Entries) added 2026-11-10 once that module
+> grew Deductions, multi-row ATC, and Subsidiary Ledger support; §2.4 (Inspection and Acceptance
+> Report — IAR) added 2026-11-10. The previous version of this file
+> described a 9-schema, 371-file predecessor architecture (`shared`, `accounting`, `treasury`,
+> `regional`, `district`, `integration`, an `ACCOUNTING-BAPD/sql/` tree, `npm run …` wrappers) that
+> predates this repo's 2026-11-06 rebuild — none of that exists here. See
+> `system_docs/developerguide/DEVELOPER-GUIDE.md` §11 for the full list of docs still carrying that
+> old architecture, and `_assets/sql/README.md` for the SQL folder / installer mechanics (not
+> duplicated here).
 
 ## Scope
 
@@ -14,10 +17,10 @@ Only **two schemas have tables in them today**: `uac` and `fims`. `schema.sql` a
 and `workflow`, but nothing is ever created inside them — leftovers from the predecessor project's
 schema plan (see `_assets/sql/README.md` → Database Schemas).
 
-| Schema | Tables (verified dry-run install) | Covered below |
+| Schema | Tables (verified live, 2026-11-10) | Covered below |
 |---|---|---|
 | `uac` | 30 | §1 |
-| `fims` | 20 | §2 |
+| `fims` | 31 (29 verified live + `iar_module` / `po_delivery_receipt` from §2.4, not yet install-verified) | §2 |
 | `fmd` | 0 (schema exists, empty) | — |
 | `workflow` | 0 (schema exists, empty) | — |
 
@@ -151,15 +154,17 @@ erDiagram
 | `settings_status` | Shared status lookup, scoped per entity via `status_for` (e.g. `'fiscal_year'`, `'budget_req'`). `actors` (JSONB) names who may act on a record in that status |
 | `fiscal_year` | One row per fiscal year; PK is the year itself (`SMALLINT`) |
 | `program` / `sub_program` / `project` | Budget hierarchy. A project optionally narrows to a `sub_program_code`; a sub-program always belongs to one `program_code` |
-| `budget_req` | **One header row per fiscal year** (`UNIQUE(fiscal_yr)`, enforced in `03 - alter_table/04`). Despite the name, it no longer carries an amount, program, or expense class directly — see gap note in §3 |
+| `budget_req` | **One header row per fiscal year** (`UNIQUE(fiscal_yr)`, enforced in `03 - alter_table/04`). Despite the name, it no longer carries an amount, program, or expense class directly — see gap note in §3. Carries `remarks` (nullable `TEXT`, `03 - alter_table/13`): the reason entered when the request was last Returned |
 | `budget_req_program` | One Program (optionally + Sub-Program) line added to a `budget_req` header |
 | `budget_req_project` | One Project line, nested under a `budget_req_program` row (and, redundantly, under the `budget_req` header directly — see denormalization note below) |
-| `budget_line_items` | One chart-of-accounts allocation under a `budget_req_project` row. Carries `proposed_amount`, `suggestion_amount`, and the execution-tracking amounts `adjustment` / `obligation` / `disbursement` / `account_payable` (all `NOT NULL DEFAULT 0`). `component_id` / `type_of_fund_id` are present but **have no FK** — see §3 |
+| `budget_line_items` | One chart-of-accounts allocation under a `budget_req_project` row. Carries `proposed_amount`, `suggested_amount`, and the execution-tracking amounts `adjustment` / `obligation` / `disbursement` / `account_payable` (all `NOT NULL DEFAULT 0`). `component_id` / `type_of_fund_id` are present but **have no FK** — see §3. `program_source_code` (VARCHAR(64), nullable) is the line's "program source", chosen in Budget Processing: a `fims.program.program_code`, **with** an FK (`03 - alter_table/17`). `program_uses` (VARCHAR(64), nullable) is its "program use", chosen next to it: a `fims.sub_program.sub_program_code`, **with** an FK (`03 - alter_table/18`) |
 | `budget_revision` | Moves an amount from one `budget_req` to another (or just revises one in place when `to_budget_req_id IS NULL`). **`from_budget_req_id`/`to_budget_req_id`/`status_id`/`user_id` are plain integers with no FK constraint at all**, despite the names — not drawn above |
 | `chart_of_accounts` | COA tree (`parent_account_id` self-FK). Optionally scoped to a responsibility center (`region_code -> responsibility_code.rc_code`) and/or a `project_code` |
 | `responsibility_code` | RCA (Responsibility Center/Accounting) tree (`parent_rc_id` self-FK). `is_budget_holding_rc` flags units that can hold a budget. `rc_id` is the PK and is `VARCHAR(10)` — see the `uac.departments`/`uac.offices` type-mismatch gap in §3 |
 | `type_of_fund` / `component_type` | Small lookup tables (fund source; CO / Other-CO / COE) seeded with a handful of rows. Referenced by `budget_line_items.type_of_fund_id` / `.component_id` **by convention only — no FK exists yet** |
-| `budget_allocation` | Memo/PR/PO allocation tracking per fiscal year + requesting department/district, with a `parent_id` self-FK for derived allocations. Built via `CREATE TABLE fims.budget_allocation(); ALTER TABLE ... ADD COLUMN` (see the file for why). Most of its columns (`requesting_department_id`, `requesting_district_id`, `program_id`, `sub_program_id`, `project_id`, `category_id`, `user_id`) are **deliberately left unconstrained** — see the comment in `03 - alter_table/08 - budget_allocation_add_fk.sql` for the reasoning per column |
+| `budget_allocation` | Memo/PR/PO allocation tracking per fiscal year + requesting RC (the creator's `uac.users.rc_id`) / district, with a `parent_id` self-FK for derived allocations. Built via `CREATE TABLE fims.budget_allocation(); ALTER TABLE ... ADD COLUMN` (see the file for why). `request_referrence_no` (VARCHAR(50) — the spelling is the column's real name) is **generated by the database**: its default is `fims.next_request_referrence_no()`, which takes the next value of a sequence and formats it `RR-001`, `RR-002`, … (it grows past 999, never truncates); unique, never reused (a failed insert leaves a gap). Added, with the existing rows numbered oldest-first, by `03 - alter_table/19`. Most of its columns (`requesting_rc_id` — VARCHAR(50), renamed from `requesting_department_id` in `03 - alter_table/14` — `requesting_district_id`, `program_id`, `sub_program_id`, `project_id`, `category_id`, `user_id`) are **deliberately left unconstrained** — see the comment in `03 - alter_table/08 - budget_allocation_add_fk.sql` for the reasoning per column |
+| `ip_filemeta` | One uploaded file (or typed link / reference) of a Supporting Document: `document_name VARCHAR(225)`, `link TEXT` (the object-storage key, or the link), `created_by`, a unique `node_id` UUID (default `gen_random_uuid()`), `created_at` / `updated_at`, soft-delete `deleted_at`. Written by `FileUploadServices` (`01 - table/17`) |
+| `file_attachments` | Groups files: one `multiple_node_id` UUID per upload batch, one row per file with that file's `ip_filemeta.node_id` as `file_node_id` (+ its own `node_id`, `created_by`, timestamps, `deleted_at`). The owning record stores the `multiple_node_id` (`budget_allocation.multiple_node_id`). No FKs, by convention (`01 - table/18`) |
 
 **Denormalization, twice:** `budget_line_items` carries both `budget_req_project_id` (the real
 parent) and `budget_reference_number` (the grandparent header), and `budget_req_project` carries
@@ -192,9 +197,104 @@ erDiagram
 | `purchase_order_items` | Line items. `total_cost` is generated (`ROUND(quantity_ordered * unit_cost, 2)`); `(po_id, line_number)` is UNIQUE. `account_code` FKs to `chart_of_accounts.account_code` — the **only** FK in this schema that targets an alternate key instead of the primary key |
 
 **Deliberately not ported** from the predecessor project's `fmd.purchase_orders`: parent purchase
-request, budget allocation, fund source, fiscal period, workflow engine/payment workflow, and
-delivery receipts — none of those tables exist in `fims`. Status changes are driven entirely by
+request, budget allocation, fund source, fiscal period, workflow engine/payment workflow — none of
+those tables exist in `fims`. (Delivery receipts do now exist, but as the separate, PO-number-keyed
+IAR module in §2.4 — **not** linked to `purchase_orders`.) Status changes are driven entirely by
 `PurchaseOrderService::changeStatus()`, not a workflow engine.
+
+### 2.3 Disbursement Vouchers & Journal Entries
+
+API: `app/routes/voucher.php` (see `app/routes/README.md`). Pages: `app/pages/voucher/{page,form,readone}.php`.
+Service: `DisbursementVoucherService`. One generic voucher shape backs every claimant/payment type
+(vendor payment, payroll, reimbursement, …) — the paper General Form No. 1 is itself one layout;
+what differs is only what gets written into Particulars/Amount.
+
+```mermaid
+erDiagram
+    fiscal_year ||--o{ disbursement_vouchers : "fiscal_yr"
+    vendors ||--o{ disbursement_vouchers : "vendor_id (optional)"
+    disbursement_vouchers ||--o| journal_entry_vouchers : "dv_id (1:1, cascade)"
+    journal_entry_vouchers ||--|{ journal_entry_voucher_lines : "jev_id (cascade)"
+    chart_of_accounts ||--o{ journal_entry_voucher_lines : "account_code"
+    sl_masters ||--o{ journal_entry_voucher_lines : "sl_code (optional)"
+    sl_details ||--o{ journal_entry_voucher_lines : "sl_detail_id (optional)"
+    sl_masters ||--|{ sl_details : "sl_code (cascade)"
+    chart_of_accounts ||--o{ sl_masters : "account_code (optional)"
+    disbursement_vouchers ||--|{ disbursement_voucher_deductions : "dv_id (cascade)"
+    deduction_types ||--o{ disbursement_voucher_deductions : "deduction_type_id"
+    chart_of_accounts ||--o{ deduction_types : "account_code (optional)"
+    disbursement_vouchers ||--|{ disbursement_voucher_atc_lines : "dv_id (cascade)"
+    atc_codes ||--o{ disbursement_voucher_atc_lines : "atc_code"
+    chart_of_accounts ||--o{ atc_codes : "account_code (optional)"
+    responsibility_code ||--o{ disbursement_voucher_atc_lines : "chargeability (optional)"
+```
+
+| Table | Purpose / notes |
+|---|---|
+| `disbursement_vouchers` | One DV header. Pipeline: `DRAFT → FOR_FMD_REVIEW → FOR_ACCOUNTING → FOR_TREASURY → RELEASED` (Originating → FMD checks the obligation → Accounting processes → Treasury releases), or `REJECTED` (notes required) / `CANCELLED` from any non-terminal stage — see `DisbursementVoucherService::TRANSITIONS`/`authorizeTransition()`. `account_code` is **required**, must be `posting_allowed` — validated in PHP, not a DB FK (the Journal Entry's auto-filled Dr line, see `readone.php`'s `vje_syncAutoLines`, would otherwise be blank). `net_amount` is a **service-computed snapshot** (`gross_amount - total deductions - total withholding tax`), not a generated column — it started as one (`gross - vat - wtax`) but those columns were dropped once deductions/withholding became repeating tables (`03 - alter_table/17`). `budget_amount`/`obligation_amount`/`payments_prior_amount`/`balance_amount` are likewise snapshots, stamped at save time from the selected RFA and recomputed on every `create()`/`update()`/`saveJournalEntry()` call — see the denormalization note below |
+| `journal_entry_vouchers` | The accounting entry Accounting prepares during `FOR_ACCOUNTING` (`jev_no` auto-numbered `JEV-{YY}-{MM}-{NNNN}`). **One per DV** (`dv_id` is `UNIQUE`) — this project doesn't model a separate obligation-setup JEV and payment JEV, just one combined entry. `total_debit`/`total_credit` are a snapshot of the lines, must be equal and >0 before `FOR_ACCOUNTING → FOR_TREASURY` is allowed (`changeStatus()`) |
+| `journal_entry_voucher_lines` | Debit/credit lines (`UNIQUE(jev_id, line_number)`; exactly one of debit/credit nonzero — validated in PHP, not a CHECK constraint, same convention as `purchase_order_items`). `account_code` is a required FK to `chart_of_accounts` (`posting_allowed` enforced in PHP). `sl_code`/`sl_detail_id` are optional Subsidiary Ledger breakdown columns — not every line needs one |
+| `sl_masters` / `sl_details` | Subsidiary Ledger registry, added for the Accounting Entries grid's SL Code/SL Detail columns — this project had **no SL infrastructure at all** before. An `sl_masters` row optionally ties to one `chart_of_accounts` control account (e.g. one Accounts Payable row per major vendor); `sl_details` further splits a master (e.g. by PO/contract) |
+| `deduction_types` | Lookup of non-tax deductions a DV's gross can be reduced by (e.g. contractor retention — currently the only seeded row). `account_code` (optional) is the GL account the Accounting Entries grid auto-credits when this type is used — see the auto-fill note below |
+| `disbursement_voucher_deductions` | Deduction line items, entered by **Originating** at DV creation/edit (`app/pages/voucher/form.php`), not by Accounting. `deduction_amount` is either `gross_amount * rate / 100` or typed directly when `rate IS NULL` — enforced in PHP |
+| `atc_codes` | BIR Alphanumeric Tax Codes (withholding tax classifications). `account_code` (optional) is the liability account (e.g. Due to BIR) the Accounting Entries grid auto-credits |
+| `disbursement_voucher_atc_lines` | Withholding tax lines, entered by **Accounting** alongside the Journal Entry (`saveJournalEntry()` saves both together) — replaces an earlier single `disbursement_vouchers.atc_code` column, since one DV can withhold under more than one ATC at once. `withholding_tax` (`tax_base * rate / 100`) is server-computed, never trusted from the client. `chargeability` optionally FKs to `responsibility_code` |
+
+**Journal Entry auto-fill:** the Accounting Entries grid (`readone.php`'s `vje_syncAutoLines()`) generates a Dr line for the DV's own `account_code` (full `gross_amount`), a Cr line per Deduction/ATC row whose type/code has an `account_code` mapped, and a Cr Accounts Payable line for whatever's left — live-synced as Accounting adds/edits ATC rows, until the Journal Entry is saved once (saved lines are then respected as-is, even if more ATC rows are added later). This is why `deduction_types.account_code` / `atc_codes.account_code` exist — they're what makes the auto-fill possible, not just descriptive metadata.
+
+**Snapshots, not live joins:** `budget_amount`/`obligation_amount`/`payments_prior_amount`/`balance_amount`/`net_amount` on `disbursement_vouchers` all reflect the state *as of that voucher's own last save* — same convention as `fims.purchase_orders`' snapshot vendor fields. Several DVs can draw against the same RFA over time (progress payments — see `payments_prior_amount` = sum of `net_amount` from every other active voucher on that RFA, computed at save time); an **earlier** voucher's own stored figures don't retroactively update when a **later** one is saved, matching how a signed paper DV isn't edited after the fact.
+
+**Not enforced by a DB constraint** (validated in `DisbursementVoucherService`, not the schema): `disbursement_vouchers.rfa_allocation_id` (→ `fims.budget_allocation` — that table has no CRUD backend of its own yet) and `disbursement_vouchers.requesting_department_id`.
+
+### 2.4 Inspection and Acceptance Report (IAR)
+
+API: `app/routes/po_dr.php` (`/po-dr/*`). Service: `PoDrService`. Page: `app/pages/iar-module.php` +
+`app/pages/form/dr-module-form.php` (PHPMaker page `IarModule`). SQL: `01 - table/25 - fims_po_delivery_receipt.sql`
+(creates both tables; `iar_module` first, since the lines reference it).
+
+One PO number has **one IAR** (header) and **many delivery receipt lines**; several lines sharing a
+`dr_number` form one delivery receipt.
+
+```mermaid
+erDiagram
+    iar_module ||--|{ po_delivery_receipt : "po_number (FK, cascade)"
+    iar_module {
+        int iar_id PK
+        varchar iar_number UK "auto: IAR-YYYY-0001"
+        varchar po_number UK "free text"
+        varchar si_number "Sales Invoice # (optional)"
+        date si_date "Sales Invoice date (optional)"
+    }
+    po_delivery_receipt {
+        int dr_line_id PK
+        varchar po_number FK
+        varchar iar_number "copied from iar_module"
+        varchar dr_number "Delivery Receipt no."
+        date delivery_date
+        varchar account_code "P&E account, only when amount >= 50,000"
+        text description
+        int quantity
+        varchar unit
+        numeric unit_price
+        numeric amount "quantity x unit_price"
+        varchar model_no "optional"
+        varchar serial_no UK "optional, unique when given"
+        varchar property_no "optional"
+        varchar par_no "optional"
+    }
+```
+
+| Table | Purpose / notes |
+|---|---|
+| `iar_module` | The IAR header, one row per PO number. `iar_number` is **generated by the service** (`PoDrService::nextIarNumber()` — `IAR-<year>-0001`, `0002`, …, restarting each year) when a PO is first saved and never changes afterwards, even if the PO number is renamed. `po_number` and `iar_number` are both `UNIQUE`. Holds the Sales Invoice # / date, which are entered once per PO (not per line) |
+| `po_delivery_receipt` | One delivered item per row. `po_number` is a real **FK → `iar_module.po_number`** with `ON DELETE CASCADE` (removing a PO's IAR row deletes its receipt lines) and `ON UPDATE CASCADE` (renaming the PO number renames it on the lines). `iar_number` is a **copy** of the header's number carried by every line (denormalized; no FK of its own — the header update never changes it). `amount` is server-computed (`quantity × unit_price`). `account_code` is the **Property & Equipment account code only** (e.g. `1-06-05-020`); it is required when `amount >= 50,000` and cleared below that — see the gap note in §3. `serial_no` is `UNIQUE` (NULLs don't clash) |
+
+**Pro-forma JEV (not stored).** The "Pro-forma" action builds a journal entry per delivery receipt on the
+fly (`PoDrService::proforma()`), nothing is persisted: Dr `5-02-03-990` for the lines with no
+`account_code`; Dr each used `account_code` (one row per code, summed); Cr `2-01-01-010` (Accounts
+Payable) for the delivery receipt total. Account titles are looked up in `fims.chart_of_accounts`; the
+Subsidiary Ledger columns are not populated. The Create JEV button is a placeholder — it does not write to
+`journal_entry_vouchers` yet.
 
 ---
 
@@ -206,8 +306,16 @@ delivery receipts — none of those tables exist in `fims`. Status changes are d
 | `uac.departments.rc_id` | `fims.responsibility_code.rc_id` | **No — can't be**: type mismatch | `departments.rc_id` is `int4`; `responsibility_code.rc_id` is `VARCHAR(10)`. The column exists ("Responsibility Center Code for financial tracking") but cannot physically FK to the table it's named after. Same issue on `uac.offices.rc_id` |
 | `fims.expense_class` | *(nothing)* | — | Seeded with `CO`/`PS`/`MOOE`/`EO` but **no longer referenced by any FK** — `budget_req.expense_class_id` (its only consumer) was dropped in `03 - alter_table/02 - budget_req_remove_expense_class_flow.sql`. `purchase_orders.expense_class` is a separate, differently-valued free-text column, not a link to this table. Orphaned lookup table; confirm nothing reads it before dropping |
 | `fims.budget_line_items.component_id` / `.type_of_fund_id` | `fims.component_type` / `fims.type_of_fund` | No | Named and seeded to match, but no FK constraint exists yet (see table comment in `03 - alter_table/06`) |
+| `fims.budget_line_items.program_source_code` | `fims.program.program_code` | Yes | Optional; the "Program Sources" searchable picker of the Budget Processing modal lists the programs (`GET /program/all`). Added by `03 - alter_table/17` |
+| `fims.budget_line_items.program_uses` | `fims.sub_program.sub_program_code` | Yes | Optional; the "Program Uses" searchable picker of the Budget Processing modal lists the sub-programs (`GET /sub_program/all`). Independent of `program_source_code` (no cascade). Added by `03 - alter_table/18` |
 | `fims.budget_revision.from_budget_req_id` / `.to_budget_req_id` | `fims.budget_req.budget_reference_number` | No | Plain integers despite the name; nothing stops a dangling value |
 | `fims.budget_allocation.{program,sub_program,project}_id` | `fims.{program,sub_program,project}` | No — can't be | Those tables are keyed by `*_code VARCHAR`, not an integer id; `budget_allocation` stores integers. Intentionally unconstrained per `03 - alter_table/08` |
+| `fims.disbursement_vouchers.rfa_allocation_id` | `fims.budget_allocation.allocation_id` | No | `fims.budget_allocation` has no CRUD backend of its own yet (see §2.1); `DisbursementVoucherService::fetchRfaOptions()`/`fetchRfaDetail()` are a read-only lookup over it, no FK |
+| `fims.disbursement_vouchers.requesting_department_id` | `uac.departments.department_id` | No | Snapshotted from the selected RFA at save time, same unconstrained convention as the RFA link itself |
+| `fims.disbursement_vouchers.account_code` | `fims.chart_of_accounts.account_code` | No | Required and `posting_allowed`-checked in `DisbursementVoucherService::prepare()`, not a DB FK — mirrors `purchase_order_items.account_code`'s "FK targets an alternate key" exception in §2.2, except here there's no FK at all, only the PHP check |
+| `fims.iar_module.po_number` | `fims.purchase_orders.po_number` | No | Free text typed by the user — the IAR module was built before any PO exists, so there is no FK (an FK attempt was deliberately reverted). The format of the number is not checked against `PO-YYYY-MM-NNNN` |
+| `fims.po_delivery_receipt.iar_number` | `fims.iar_module.iar_number` | No | Copied onto every line by `PoDrService`; the real link between the tables is `po_number` (enforced FK, §2.4) |
+| `fims.po_delivery_receipt.account_code` | `fims.chart_of_accounts.account_code` | No | Validated in PHP against a fixed list of 10 Property & Equipment accounts (`PoDrService::ACCOUNTS`, mirrored in `dr-module-form.php`), not a DB FK; the pro-forma looks the titles up in `chart_of_accounts` |
 
 None of the above are bugs to silently "fix" by adding a constraint — several are deliberate
 (per the cited comments). Treat this table as a map of where the schema's actual guarantees stop,
