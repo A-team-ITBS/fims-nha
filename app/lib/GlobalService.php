@@ -35,6 +35,16 @@ use PHPMaker2024\FIMS as App;
  *   so this must be called inside BudgetReqService's open transaction before
  *   every new header INSERT. Same "lives here by request" carve-out as the
  *   other generate*Code() functions.
+ * - uploadFileToStorage()  validates and uploads ONE file to object storage
+ *   (DO Spaces / MinIO, via the $s3client global _shared/storage.php wires
+ *   into every app/ page/route) and returns its object key. Deliberately
+ *   ignorant of WHY a caller is uploading something (no "project"/
+ *   "attachment" concept here) — a feature-specific service (e.g.
+ *   BudgetReqService::uploadSupportingDocFiles()) decides the key prefix,
+ *   loops over its own files, and persists whatever metadata it needs
+ *   against the returned key. Lives here by request, as the one shared
+ *   upload primitive every future feature should call instead of each
+ *   reimplementing its own S3Client validation/putObject logic.
  */
 class GlobalService
 {
@@ -282,5 +292,49 @@ class GlobalService
         ) ?: [];
 
         return array_map(fn ($r) => (string) $r['rc_id'], $rows);
+    }
+
+    /**
+     * Validates and uploads one file to object storage, returning its
+     * resulting object key (caller stores that key — NOT the file itself —
+     * against whatever record it belongs to).
+     *
+     * @param array $allowedExtensions lowercase, no leading dot
+     * @throws \InvalidArgumentException on a disallowed extension or an oversized file
+     *                                    (caller's own try/catch turns this into a 4xx)
+     * @throws \Aws\Exception\AwsException on an actual storage failure (network/credentials/etc.)
+     */
+    public static function uploadFileToStorage(
+        \Psr\Http\Message\UploadedFileInterface $file,
+        string $keyPrefix,
+        array $allowedExtensions = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'jpg', 'jpeg', 'png', 'gif'],
+        int $maxBytes = 20 * 1024 * 1024
+    ): string {
+        global $s3client;
+
+        if ($file->getError() !== UPLOAD_ERR_OK) {
+            throw new \InvalidArgumentException('Upload failed (error code ' . $file->getError() . ').');
+        }
+        if ($file->getSize() > $maxBytes) {
+            throw new \InvalidArgumentException('File "' . $file->getClientFilename() . '" exceeds the ' . round($maxBytes / 1024 / 1024) . ' MB limit.');
+        }
+
+        $clientName = $file->getClientFilename();
+        $ext        = strtolower(pathinfo($clientName, PATHINFO_EXTENSION));
+        if (!in_array($ext, $allowedExtensions, true)) {
+            throw new \InvalidArgumentException('File type not allowed: .' . $ext);
+        }
+
+        $safeName  = bin2hex(random_bytes(8)) . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $clientName);
+        $objectKey = rtrim($keyPrefix, '/') . '/' . $safeName;
+
+        $s3client->putObject([
+            'Bucket'      => \env('DO_SPACES_BUCKET', ''),
+            'Key'         => $objectKey,
+            'Body'        => $file->getStream()->getContents(),
+            'ContentType' => $file->getClientMediaType() ?: 'application/octet-stream',
+        ]);
+
+        return $objectKey;
     }
 }

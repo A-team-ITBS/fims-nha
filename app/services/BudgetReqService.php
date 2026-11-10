@@ -803,13 +803,14 @@ class BudgetReqService
      */
     public function uploadSupportingDocFiles(array $projects, array $uploadedFiles, string $budgetReferenceNumber): array
     {
-        global $s3client;
-
         foreach ($projects as &$project) {
             $docs = $project['supporting_documents'] ?? [];
             if (!is_array($docs) || empty($docs)) {
                 continue;
             }
+
+            $projectCode = trim((string) ($project['project_code'] ?? ''));
+            $keyPrefix   = self::ATTACHMENT_KEY_PREFIX . $budgetReferenceNumber . ($projectCode !== '' ? '/' . $projectCode : '');
 
             foreach ($docs as &$doc) {
                 if (!isset($doc['file_index'])) {
@@ -823,30 +824,14 @@ class BudgetReqService
                     continue;
                 }
 
-                if ($file->getSize() > self::ATTACHMENT_MAX_BYTES) {
-                    throw new \Exception('File "' . $file->getClientFilename() . '" exceeds the 20 MB limit.');
-                }
-
-                $clientName = $file->getClientFilename();
-                $ext        = strtolower(pathinfo($clientName, PATHINFO_EXTENSION));
-                if (!in_array($ext, self::ATTACHMENT_ALLOWED_EXT, true)) {
-                    throw new \Exception('File type not allowed: .' . $ext);
-                }
-
-                $projectCode = trim((string) ($project['project_code'] ?? ''));
-                $safeName    = bin2hex(random_bytes(8)) . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $clientName);
-                $objectKey   = self::ATTACHMENT_KEY_PREFIX . $budgetReferenceNumber . '/' . ($projectCode !== '' ? $projectCode . '/' : '') . $safeName;
-
-                $s3client->putObject([
-                    'Bucket'      => \env('DO_SPACES_BUCKET', ''),
-                    'Key'         => $objectKey,
-                    'Body'        => $file->getStream()->getContents(),
-                    'ContentType' => $file->getClientMediaType() ?: 'application/octet-stream',
-                ]);
-
-                $doc['storage_key'] = $objectKey;
+                $doc['storage_key'] = GlobalService::uploadFileToStorage(
+                    $file,
+                    $keyPrefix,
+                    self::ATTACHMENT_ALLOWED_EXT,
+                    self::ATTACHMENT_MAX_BYTES
+                );
                 if (empty($doc['document_name'])) {
-                    $doc['document_name'] = pathinfo($clientName, PATHINFO_FILENAME);
+                    $doc['document_name'] = pathinfo($file->getClientFilename(), PATHINFO_FILENAME);
                 }
             }
             unset($doc);
