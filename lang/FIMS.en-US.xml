@@ -14,6 +14,9 @@
     <menu id="81">
       <phrase id="menutext" value="Budget Request" />
     </menu>
+    <menu id="208">
+      <phrase id="menutext" value="Budget Proposal" />
+    </menu>
     <menu id="85">
       <phrase id="menutext" value="Budget Revision" />
     </menu>
@@ -39,19 +42,10 @@
       <phrase id="menutext" value="Responsibilty Center" />
     </menu>
     <menu id="91">
-      <phrase id="menutext" value="IAR Module" />
-    </menu>
-    <menu id="258">
-      <phrase id="menutext" value="Vouchers" />
-    </menu>
-    <menu id="208">
-      <phrase id="menutext" value="Journal Entry Voucher" />
+      <phrase id="menutext" value="AIR Module" />
     </menu>
     <menu id="207">
-      <phrase id="menutext" value="Disbursement Voucher" />
-    </menu>
-    <menu id="260">
-      <phrase id="menutext" value="Check Disbursements" />
+      <phrase id="menutext" value="Voucher" />
     </menu>
     <menu id="206">
       <phrase id="menutext" value="Administration" />
@@ -67,9 +61,6 @@
     </menu>
     <menu id="69">
       <phrase id="menutext" value="Department Management" />
-    </menu>
-    <menu id="259">
-      <phrase id="menutext" value="Change Password" />
     </menu>
     <menu id="3">
       <phrase id="menutext" value="Systems" />
@@ -1523,23 +1514,17 @@
     <table id="budget_rev_review">
       <phrase id="tblcaption" value="Budget Revision Preview" />
     </table>
-    <table id="budget_allocation_form">
+    <table id="memo_req_page">
       <phrase id="tblcaption" value="Memo Request" />
     </table>
-    <table id="iarmodule">
-      <phrase id="tblcaption" value="IAR Module" />
+    <table id="airmodule">
+      <phrase id="tblcaption" value="AIR Module" />
     </table>
     <table id="voucher">
-      <phrase id="tblcaption" value="Disbursement Voucher" />
+      <phrase id="tblcaption" value="Voucher" />
     </table>
-    <table id="journalentryvoucher">
-      <phrase id="tblcaption" value="Journal Entry Voucher" />
-    </table>
-    <table id="changepass">
-      <phrase id="tblcaption" value="Change Password" />
-    </table>
-    <table id="checkdisbursements">
-      <phrase id="tblcaption" value="Check Disbursements" />
+    <table id="budget_prop_page">
+      <phrase id="tblcaption" value="Budget Proposal" />
     </table>
   </project>
 </ew-language>

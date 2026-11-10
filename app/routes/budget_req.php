@@ -35,8 +35,8 @@ $app->get('/budget_req/all', function ($request, $response, $args) use ($BudgetR
     try {
         $params = $request->getQueryParams();
         $scope  = GlobalService::getUserRcScope((int) $request->getAttribute('user_id'));
-        $rcId   = $scope['rc_id'] ?? ($params['rc_id'] ?? '');
-        $result = $BudgetReqService->fetchAlls(null, 10, $params['fiscal_yr'] ?? '', $params['program_code'] ?? '', $rcId);
+        $rcId   = GlobalService::resolveBudgetReqRcFilter($scope, $params);
+        $result = $BudgetReqService->fetchAlls(null, 10, $params['fiscal_yr'] ?? '', $params['program_code'] ?? '', $rcId, $params['rc_code_from'] ?? '');
 
         return $response->withJson($result);
     } catch (\Exception $e) {
@@ -68,9 +68,9 @@ $app->get('/budget_req/list', function ($request, $response, $args) use ($Budget
         $limit  = isset($params['limit']) ? (int) $params['limit'] : 10;
 
         $scope  = GlobalService::getUserRcScope((int) $request->getAttribute('user_id'));
-        $rcId   = $scope['rc_id'] ?? ($params['rc_id'] ?? '');
+        $rcId   = GlobalService::resolveBudgetReqRcFilter($scope, $params);
 
-        $result = $BudgetReqService->fetchAlls($page, $limit, $params['fiscal_yr'] ?? '', $params['program_code'] ?? '', $rcId);
+        $result = $BudgetReqService->fetchAlls($page, $limit, $params['fiscal_yr'] ?? '', $params['program_code'] ?? '', $rcId, $params['rc_code_from'] ?? '');
 
         return $response->withJson($result);
     } catch (\Exception $e) {
@@ -183,10 +183,12 @@ $app->put('/budget_req/approve/{id}', function ($request, $response, $args) use 
     }
 })->add($jwtMiddleware);
 
-// Budget Processing / Budget Preview "Return" — moves the request to "Returned".
+// Budget Processing / Budget Preview "Return" — moves the request to "Returned" and saves
+// the (required) reason in budget_req.remarks.   body: { remarks }
 $app->put('/budget_req/return/{id}', function ($request, $response, $args) use ($BudgetReqService) {
     try {
-        $result = $BudgetReqService->returnRequest($args['id']);
+        $body   = $request->getParsedBody();
+        $result = $BudgetReqService->returnRequest($args['id'], is_array($body) ? ($body['remarks'] ?? null) : null);
 
         return $response->withJson($result, $result['success'] ? 200 : 400);
     } catch (\Exception $e) {
