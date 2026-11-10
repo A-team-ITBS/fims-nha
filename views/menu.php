@@ -31,5 +31,4 @@ $sideMenu->addMenuItem(13, "mi_UserAccess", $Language->menuPhrase("13", "MenuTex
 $sideMenu->addMenuItem(12, "mi_UserManagement", $Language->menuPhrase("12", "MenuText"), "UserManagement", 206, "", AllowListMenu('{FIMS}UserManagement.php'), false, false, "fas fa-user-shield", "", false, true);
 $sideMenu->addMenuItem(69, "mi_DepartmentManagement", $Language->menuPhrase("69", "MenuText"), "DepartmentManagement", 206, "", AllowListMenu('{FIMS}DepartmentManagement.php'), false, false, "fas fa-building", "", false, true);
 $sideMenu->addMenuItem(259, "mi_ChangePass", $Language->menuPhrase("259", "MenuText"), "ChangePass", 206, "", AllowListMenu('{FIMS}ChangePass.php'), false, false, "", "", false, true);
-$sideMenu->addMenuItem(4, "mi_user_level_assignments", $Language->menuPhrase("4", "MenuText"), "UserLevelAssignmentsList?cmd=resetall", -1, "", AllowListMenu('{FIMS}user_level_assignments'), false, false, "fas fa-user-tag", "", false, true);
 echo $sideMenu->toScript();

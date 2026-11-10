@@ -390,15 +390,7 @@ class ChangePassword extends Users
                 $_SESSION[SESSION_STATUS] = "";
                 $_SESSION[SESSION_USER_PROFILE_USER_NAME] = "";
             }
-            if ($wasPasswordReset) {
-                // Forced reset flow only ever starts from the embedded Change
-                // Password panel on "/" (the branded sign-in page) — send the
-                // user back there with its (already-wired-up but previously
-                // unused) success flash, not the logged-in-only "index" page.
-                $this->terminate("/?pwd=changed");
-            } else {
-                $this->terminate("index"); // Logged-in user changed their own password — stay in the app
-            }
+            $this->terminate("index"); // Return to default page
             return;
         }
 
