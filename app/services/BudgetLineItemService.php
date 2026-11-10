@@ -121,11 +121,11 @@ class BudgetLineItemService
             }
 
             $header = App\ExecuteRow(
-                "SELECT budget_reference_number FROM {$this->tableBudgetReq} WHERE budget_reference_number = " . (int) $budgetReferenceNumber,
+                "SELECT budget_reference_number FROM {$this->tableBudgetReq} WHERE budget_reference_number = " . App\QuotedValue($budgetReferenceNumber, DataType::STRING, 'DB'),
                 'DB'
             );
             if (!$header) {
-                return ['success' => false, 'message' => "Budget request #{$budgetReferenceNumber} does not exist."];
+                return ['success' => false, 'message' => "Budget request {$budgetReferenceNumber} does not exist."];
             }
 
             $project = App\ExecuteRow(
@@ -147,7 +147,7 @@ class BudgetLineItemService
             }
 
             $sql = "INSERT INTO {$this->table} (budget_reference_number, budget_req_project_id, account_id, proposed_amount, particulars)
-                    VALUES (" . (int) $budgetReferenceNumber . ', '
+                    VALUES (" . App\QuotedValue($budgetReferenceNumber, DataType::STRING, 'DB') . ', '
                         . (int) $budgetReqProjectId . ', '
                         . App\QuotedValue($accountId, DataType::STRING, 'DB') . ', '
                         . App\QuotedValue($amount, DataType::NUMBER, 'DB') . ', '
@@ -223,7 +223,7 @@ class BudgetLineItemService
      * @param array $items [['budget_line_item_id' => .., 'type_of_fund_id' => .., 'component_id' => .., 'suggestion_amount' => ..], ...]
      * @param bool  $requireAll when true, every item must carry a type of fund and a component (suggestion_amount stays optional)
      */
-    public function applyProcessing(array $items, int $budgetReferenceNumber, bool $requireAll = false): ?string
+    public function applyProcessing(array $items, string $budgetReferenceNumber, bool $requireAll = false): ?string
     {
         if (empty($items)) {
             return 'No line items provided.';
@@ -244,11 +244,11 @@ class BudgetLineItemService
             // Must be a line item of THIS budget request, not someone else's.
             $exists = App\ExecuteRow(
                 "SELECT budget_line_item_id FROM {$this->table}
-                 WHERE budget_line_item_id = {$id} AND budget_reference_number = {$budgetReferenceNumber}",
+                 WHERE budget_line_item_id = {$id} AND budget_reference_number = " . App\QuotedValue($budgetReferenceNumber, DataType::STRING, 'DB'),
                 'DB'
             );
             if (!$exists) {
-                return "Line item #{$id} does not belong to budget request #{$budgetReferenceNumber}.";
+                return "Line item #{$id} does not belong to budget request {$budgetReferenceNumber}.";
             }
 
             $fundId      = $item['type_of_fund_id'] ?? null;

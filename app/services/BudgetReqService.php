@@ -204,7 +204,7 @@ class BudgetReqService
      * new Program) and updateProgram() (a Program's children fully
      * replaced). Must run inside the caller's open transaction.
      */
-    private function insertProjectsAndLineItems(int $budgetReferenceNumber, int $budgetReqProgramId, string $programCode, string $subProgramCode, array $projects): void
+    private function insertProjectsAndLineItems(string $budgetReferenceNumber, int $budgetReqProgramId, string $programCode, string $subProgramCode, array $projects): void
     {
         $lineItemService = new BudgetLineItemService();
 
@@ -214,7 +214,7 @@ class BudgetReqService
 
             $projectRow = App\ExecuteRow(
                 "INSERT INTO {$this->tableBudgetReqProject} (budget_reference_number, budget_req_program_id, project_code, location)
-                 VALUES ({$budgetReferenceNumber}, {$budgetReqProgramId}, " . App\QuotedValue($projectCode, DataType::STRING, 'DB') . ', '
+                 VALUES (" . App\QuotedValue($budgetReferenceNumber, DataType::STRING, 'DB') . ", {$budgetReqProgramId}, " . App\QuotedValue($projectCode, DataType::STRING, 'DB') . ', '
                     . ($location !== '' ? App\QuotedValue($location, DataType::STRING, 'DB') : 'NULL') . ')
                  RETURNING budget_req_project_id',
                 'DB'
@@ -256,8 +256,8 @@ class BudgetReqService
             return [];
         }
 
-        $ids = array_map(fn ($row) => (int) $row['budget_reference_number'], $headerRows);
-        $idList = implode(', ', $ids);
+        $ids    = array_map(fn ($row) => (string) $row['budget_reference_number'], $headerRows);
+        $idList = implode(', ', array_map(fn ($id) => App\QuotedValue($id, DataType::STRING, 'DB'), $ids));
 
         $programRows = App\ExecuteRows(
             "SELECT brp.*, pg.program_name, sp.sub_program_name
@@ -291,10 +291,10 @@ class BudgetReqService
         ) ?: [];
 
         foreach ($headerRows as &$header) {
-            $brn = (int) $header['budget_reference_number'];
+            $brn = (string) $header['budget_reference_number'];
 
             $programs = [];
-            foreach (array_filter($programRows, fn ($p) => (int) $p['budget_reference_number'] === $brn) as $programRow) {
+            foreach (array_filter($programRows, fn ($p) => (string) $p['budget_reference_number'] === $brn) as $programRow) {
                 $brpId = (int) $programRow['budget_req_program_id'];
 
                 $projects = [];
@@ -436,19 +436,19 @@ class BudgetReqService
         }
     }
 
-    public function fetchById(int|string $budgetReferenceNumber): array
+    public function fetchById(string $budgetReferenceNumber): array
     {
         try {
-            $id  = (int) $budgetReferenceNumber;
+            $id  = $budgetReferenceNumber;
             $sql = "SELECT br.*, st.name AS status_name, st.color AS status_color
                     FROM {$this->table} br
                     LEFT JOIN fims.settings_status st ON st.id = br.status_id
-                    WHERE br.budget_reference_number = {$id}";
+                    WHERE br.budget_reference_number = " . App\QuotedValue($id, DataType::STRING, 'DB');
 
             $data = App\ExecuteRow($sql, 'DB');
 
             if (!$data) {
-                return ['success' => false, 'message' => "Budget request #{$id} not found."];
+                return ['success' => false, 'message' => "Budget request {$id} not found."];
             }
 
             [$data] = $this->attachProgramsToHeaders([$data]);
@@ -497,24 +497,31 @@ class BudgetReqService
                     return ['success' => false, 'message' =>
                         "The budget request for fiscal year {$fiscalYr} is already '{$existingHeader['status_name']}' and can no longer accept new programs."];
                 }
-                $budgetReferenceNumber = (int) $existingHeader['budget_reference_number'];
+                $budgetReferenceNumber = (string) $existingHeader['budget_reference_number'];
             } else {
                 $defaultStatusId = $this->getDefaultStatusId();
+                // Must be generated inside this same open transaction, immediately
+                // before the INSERT that uses it — see GlobalService::
+                // generateBudgetReferenceNumber()'s own "suggestion, nothing
+                // reserved" caveat (the PRIMARY KEY is what actually stops two
+                // concurrent callers from both succeeding with the same value).
+                $budgetReferenceNumber = GlobalService::generateBudgetReferenceNumber();
                 $headerRow = App\ExecuteRow(
-                    "INSERT INTO {$this->table} (fiscal_yr, status_id, rc_id)
-                     VALUES (" . App\QuotedValue($fiscalYr, DataType::NUMBER, 'DB') . ', '
+                    "INSERT INTO {$this->table} (budget_reference_number, fiscal_yr, status_id, rc_id)
+                     VALUES (" . App\QuotedValue($budgetReferenceNumber, DataType::STRING, 'DB') . ', '
+                        . App\QuotedValue($fiscalYr, DataType::NUMBER, 'DB') . ', '
                         . ($defaultStatusId !== null ? $defaultStatusId : 'NULL') . ', '
                         . App\QuotedValue($rcId, DataType::STRING, 'DB') . ')
                      RETURNING budget_reference_number',
                     'DB'
                 );
-                $budgetReferenceNumber = (int) $headerRow['budget_reference_number'];
+                $budgetReferenceNumber = (string) $headerRow['budget_reference_number'];
                 $createdNewHeader = true;
             }
 
             $programRow = App\ExecuteRow(
                 "INSERT INTO {$this->tableBudgetReqProgram} (budget_reference_number, program_code, sub_program_code)
-                 VALUES ({$budgetReferenceNumber}, "
+                 VALUES (" . App\QuotedValue($budgetReferenceNumber, DataType::STRING, 'DB') . ', '
                     . App\QuotedValue($programCode, DataType::STRING, 'DB') . ', '
                     . ($subProgramCode === '' ? 'NULL' : App\QuotedValue($subProgramCode, DataType::STRING, 'DB')) . ')
                  RETURNING budget_req_program_id',
@@ -593,7 +600,7 @@ class BudgetReqService
             // same header are untouched.
             App\Execute("DELETE FROM {$this->tableBudgetReqProject} WHERE budget_req_program_id = {$id}", 'DB');
 
-            $this->insertProjectsAndLineItems((int) $programRow['budget_reference_number'], $id, $programCode, $subProgramCode, $projects);
+            $this->insertProjectsAndLineItems((string) $programRow['budget_reference_number'], $id, $programCode, $subProgramCode, $projects);
 
             App\Execute('COMMIT', 'DB');
 
@@ -606,16 +613,16 @@ class BudgetReqService
     }
 
     /** Transitions a Draft budget request to "For Review". Locks it from further Program additions/edits. */
-    public function submitForReview(int|string $budgetReferenceNumber): array
+    public function submitForReview(string $budgetReferenceNumber): array
     {
-        $id = (int) $budgetReferenceNumber;
+        $id = $budgetReferenceNumber;
 
         $check = $this->fetchById($id);
         if (!$check['success']) {
             return $check;
         }
         if (($check['data']['status_name'] ?? '') !== 'Draft') {
-            return ['success' => false, 'message' => "Budget request #{$id} is not in Draft status."];
+            return ['success' => false, 'message' => "Budget request {$id} is not in Draft status."];
         }
         if (empty($check['data']['programs'])) {
             return ['success' => false, 'message' => 'Add at least one program before submitting for review.'];
@@ -626,7 +633,7 @@ class BudgetReqService
             return ['success' => false, 'message' => "'For Review' status is not configured."];
         }
 
-        App\Execute("UPDATE {$this->table} SET status_id = {$forReviewId} WHERE budget_reference_number = {$id}", 'DB');
+        App\Execute("UPDATE {$this->table} SET status_id = {$forReviewId} WHERE budget_reference_number = " . App\QuotedValue($id, DataType::STRING, 'DB'), 'DB');
 
         return ['success' => true, 'message' => 'Budget request submitted for review.'];
     }
@@ -642,9 +649,9 @@ class BudgetReqService
      *
      * @param array $items [['budget_line_item_id' => .., 'type_of_fund_id' => .., 'component_id' => .., 'suggestion_amount' => ..], ...]
      */
-    public function endorse(int|string $budgetReferenceNumber, array $items): array
+    public function endorse(string $budgetReferenceNumber, array $items): array
     {
-        $id = (int) $budgetReferenceNumber;
+        $id = $budgetReferenceNumber;
 
         $check = $this->fetchById($id);
         if (!$check['success']) {
@@ -653,7 +660,7 @@ class BudgetReqService
 
         $current = $check['data']['status_name'] ?? '';
         if (in_array($current, ['Cancelled', 'Endorsed', 'Approved'], true)) {
-            return ['success' => false, 'message' => "Budget request #{$id} is already '{$current}' and cannot be endorsed."];
+            return ['success' => false, 'message' => "Budget request {$id} is already '{$current}' and cannot be endorsed."];
         }
 
         $endorsedId = $this->getStatusIdByName('Endorsed');
@@ -671,7 +678,7 @@ class BudgetReqService
                 return ['success' => false, 'message' => $error];
             }
 
-            App\Execute("UPDATE {$this->table} SET status_id = {$endorsedId} WHERE budget_reference_number = {$id}", 'DB');
+            App\Execute("UPDATE {$this->table} SET status_id = {$endorsedId} WHERE budget_reference_number = " . App\QuotedValue($id, DataType::STRING, 'DB'), 'DB');
 
             App\Execute('COMMIT', 'DB');
 
@@ -688,9 +695,9 @@ class BudgetReqService
      * touching its line items. Rejected for a Cancelled, already-Returned or
      * Approved request. Like endorse(), it applies to the whole request.
      */
-    public function returnRequest(int|string $budgetReferenceNumber): array
+    public function returnRequest(string $budgetReferenceNumber): array
     {
-        $id = (int) $budgetReferenceNumber;
+        $id = $budgetReferenceNumber;
 
         $check = $this->fetchById($id);
         if (!$check['success']) {
@@ -699,7 +706,7 @@ class BudgetReqService
 
         $current = $check['data']['status_name'] ?? '';
         if (in_array($current, ['Cancelled', 'Returned', 'Approved'], true)) {
-            return ['success' => false, 'message' => "Budget request #{$id} is already '{$current}' and cannot be returned."];
+            return ['success' => false, 'message' => "Budget request {$id} is already '{$current}' and cannot be returned."];
         }
 
         $returnedId = $this->getStatusIdByName('Returned');
@@ -707,7 +714,7 @@ class BudgetReqService
             return ['success' => false, 'message' => "'Returned' status is not configured."];
         }
 
-        App\Execute("UPDATE {$this->table} SET status_id = {$returnedId} WHERE budget_reference_number = {$id}", 'DB');
+        App\Execute("UPDATE {$this->table} SET status_id = {$returnedId} WHERE budget_reference_number = " . App\QuotedValue($id, DataType::STRING, 'DB'), 'DB');
 
         return ['success' => true, 'message' => 'Budget request returned.'];
     }
@@ -717,9 +724,9 @@ class BudgetReqService
      * an Endorsed request can be approved — it has to have been through Budget
      * Processing first. Applies to the whole request.
      */
-    public function approve(int|string $budgetReferenceNumber): array
+    public function approve(string $budgetReferenceNumber): array
     {
-        $id = (int) $budgetReferenceNumber;
+        $id = $budgetReferenceNumber;
 
         $check = $this->fetchById($id);
         if (!$check['success']) {
@@ -728,7 +735,7 @@ class BudgetReqService
 
         $current = $check['data']['status_name'] ?? '';
         if ($current !== 'Endorsed') {
-            return ['success' => false, 'message' => "Only an Endorsed budget request can be approved (budget request #{$id} is '" . ($current ?: 'no status') . "')."];
+            return ['success' => false, 'message' => "Only an Endorsed budget request can be approved (budget request {$id} is '" . ($current ?: 'no status') . "')."];
         }
 
         $approvedId = $this->getStatusIdByName('Approved');
@@ -736,13 +743,13 @@ class BudgetReqService
             return ['success' => false, 'message' => "'Approved' status is not configured."];
         }
 
-        App\Execute("UPDATE {$this->table} SET status_id = {$approvedId} WHERE budget_reference_number = {$id}", 'DB');
+        App\Execute("UPDATE {$this->table} SET status_id = {$approvedId} WHERE budget_reference_number = " . App\QuotedValue($id, DataType::STRING, 'DB'), 'DB');
 
         return ['success' => true, 'message' => 'Budget request approved successfully.'];
     }
 
     /** Deletes the header — fims.budget_req_program (and via it, fims.budget_req_project/fims.budget_line_items) cascades via ON DELETE CASCADE. */
-    public function delete(int|string $budgetReferenceNumber): array
+    public function delete(string $budgetReferenceNumber): array
     {
         try {
             $check = $this->fetchById($budgetReferenceNumber);
@@ -753,10 +760,10 @@ class BudgetReqService
                 return ['success' => false, 'message' => 'Only Draft budget requests can be deleted.'];
             }
 
-            $sql = "DELETE FROM {$this->table} WHERE budget_reference_number = " . (int) $budgetReferenceNumber;
+            $sql = "DELETE FROM {$this->table} WHERE budget_reference_number = " . App\QuotedValue($budgetReferenceNumber, DataType::STRING, 'DB');
             App\Execute($sql, 'DB');
 
-            return ['success' => true, 'message' => "Budget request #{$budgetReferenceNumber} deleted successfully."];
+            return ['success' => true, 'message' => "Budget request {$budgetReferenceNumber} deleted successfully."];
         } catch (\Exception $e) {
             return ['success' => false, 'message' => $e->getMessage()];
         }
