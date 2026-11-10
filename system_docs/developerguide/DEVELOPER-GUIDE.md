@@ -1,7 +1,7 @@
 # FIMS NHA — Developer Guide
 
 > Status: this guide documents the **actual code in this repository** as of **2026-11-09** (branch
-> `documents`). It is deliberately narrower than `README.md` at the repo root — see
+> `documents`; the Inspection and Acceptance Report module — §8.4 / §7.5 — added 2026-11-10). It is deliberately narrower than `README.md` at the repo root — see
 > [A note on other documentation in this repo](#a-note-on-other-documentation-in-this-repo) for why
 > the two disagree, and don't be misled by the older doc's module list.
 
@@ -139,7 +139,7 @@ regenerated from the `.pmp` project file.
 ### Pattern B — hand-built custom single-page feature (everything else)
 
 This is how almost every business page in this repo works (`BudgetReqPage`, `ChartOfAccountsPage`,
-`VendorsPage`, the `po/` Purchase Order trio, `AirModule`, `MainDashboard`, `UserAccess`,
+`VendorsPage`, the `po/` Purchase Order trio, `IarModule`, `MainDashboard`, `UserAccess`,
 `DepartmentManagement`, …). There is no generated Add/Edit/List split — one controller/model/view
 triplet renders one page, and that page does its own CRUD via `fetch()` calls against a Slim API
 route. Recipe, with a real example (`BudgetReqPage`):
@@ -309,12 +309,19 @@ schema, not the class-not-found error from §7.1. Treat as dead code — delete 
 real `fims` table if the generic-CRUD idea is still wanted. Don't copy its namespace into new
 service/route files — use `PHPMaker2024\FIMS`.
 
-### 7.5 `air-module.php` and `memo-req-page.php` are registered but empty
-Both `app/pages/air-module.php` and `app/pages/memo-req-page.php` are **zero-byte files** (confirmed
-via direct size check). Both are fully wired at the framework level (registered in
-`src/definitions.php`, `AirModule` has a menu entry in `views/menu.php`), so they render a blank
-page rather than erroring. Pure scaffolding — don't assume either feature is implemented just
-because it appears in the menu.
+### 7.5 `memo-req-page.php` is registered but empty (and `AirModule` leftovers)
+`app/pages/memo-req-page.php` is a **zero-byte file** (confirmed via direct size check). It is fully
+wired at the framework level (registered in `src/definitions.php`, menu entry in `views/menu.php`), so
+it renders a blank page rather than erroring. Pure scaffolding — don't assume the feature is
+implemented just because it appears in the menu.
+
+`app/pages/air-module.php` (the other former empty stub) is gone: the module was built out as the
+**Inspection and Acceptance Report (IAR)** module — see §8.4 — in `app/pages/iar-module.php`, served
+by the PHPMaker page **`IarModule`** (`controllers/IarModuleController.php`, `models/IarModule.php`,
+`views/IarModule.php`, menu item `mi_IARModule`). The original `AirModule` controller/model/view
+(`*AirModule*`) are still in the tree from the earlier scaffold; `views/AirModule.php` was repointed at
+`iar-module.php`, but nothing in the menu uses them any more — safe to remove once the `.pmp` project
+no longer generates them.
 
 > If you're fixing any of the above: §7.1 and §7.2 are independent, low-risk, verified fixes. §7.4
 > is a safe delete (confirmed zero callers). §7.3 needs a decision on whether the page is active
@@ -393,6 +400,42 @@ The furthest-along business workflow in the repo — a Budget Request → Revisi
 |---|---|---|---|
 | Purchase Order | `app/pages/po/page.php` (list) + `po/form.php` (add/edit modal, included by `page.php` — not its own route) + `po/readone.php` (detail, separate PHPMaker page `PurchaseOrderReadone`) + `PurchaseOrderService.php` + `app/routes/purchase-order.php` | `fims.purchase_orders`, `purchase_order_items` | Header comments say this was **ported from a `GLOBAL/` predecessor module and trimmed** to fit the `fims` schema (no PR linkage, no allocation/workflow engine, no payment workflow). Status machine `DRAFT → SUBMITTED → APPROVED/REJECTED → CANCELLED`; generates `PO-YYYY-MM-NNNN` numbers. Fully documented in `app/routes/README.md` |
 | Vendors | `app/pages/vendors-page.php` + `form/vendor-form.php` + `VendorService.php` + `app/routes/vendor.php` | `fims.vendors`, `vendor_types` | Standard CRUD shape. Fully documented in `app/routes/README.md` |
+| Inspection and Acceptance Report (IAR) | `app/pages/iar-module.php` (list) + `form/dr-module-form.php` (add/edit modal **and** the read-only "Actual Delivery" view modal, both included by the list page) + `PoDrService.php` + `app/routes/po_dr.php`; PHPMaker page `IarModule` | `fims.iar_module`, `fims.po_delivery_receipt` (`01 - table/25`) | Records what was delivered against a PO: **1 PO number → 1 IAR → many delivery receipt (DR) lines**. PO and DR numbers are free text (no FK to `purchase_orders` — there are no POs yet). Pattern B with a PHPMaker page shell. See the notes below the table |
+
+**IAR module notes** (`PoDrService.php` header comment is the quick reference):
+
+- **Addressing.** A PO is addressed by its `po_number` passed as `?po_number=…` (numbers may contain `/`
+  or `-`), not by an id. Routes (all `->add($jwtMiddleware)`): `GET /po-dr/list`, `GET /po-dr/read`,
+  `GET /po-dr/proforma`, `POST /po-dr/add`, `PUT /po-dr/update`, `DELETE /po-dr/delete`.
+- **Header vs. lines.** `iar_module` holds `po_number`, the auto-generated `iar_number`
+  (`IAR-YYYY-0001`, per-year counter) and the Sales Invoice # / date — entered **once per PO**, not per
+  line. `po_delivery_receipt` holds one row per delivered item and carries the PO's `iar_number`.
+  `po_number` is the enforced FK (`ON DELETE/UPDATE CASCADE`): deleting a PO's IAR row removes its lines.
+- **Save payload.** `{po_number, si_number?, si_date?, lines:[{dr_line_id?, dr_number, delivery_date,
+  account_code?, description, quantity, unit, unit_price, model_no?, serial_no?, property_no?, par_no?}]}`.
+  Adding with an existing PO number appends lines to that PO (keeps its IAR number). On update, lines
+  with a `dr_line_id` are updated, lines without are inserted, existing lines missing from the payload
+  are deleted; the PO number may be renamed. Serial numbers are unique across all lines (swaps are
+  handled by parking serials on temporary values inside the transaction).
+- **Business rules (server-enforced in `PoDrService::clean()`).** Quantity is a whole number > 0;
+  `amount = quantity × unit_price` is always recomputed server-side (the form's Amount field is
+  read-only); a **Property & Equipment Category** (`account_code`, one of 10 fixed accounts) is required
+  when the line **amount is 50,000 or more** and is discarded below that. The category list lives in two
+  places that must be kept in sync: `PoDrService::ACCOUNTS` and `AMP_ACCOUNTS` in `dr-module-form.php`.
+  Only the account **code** is stored; the form shows "code - name".
+- **List page** columns: `# | PO Number | IAR Number | Sales Invoice # | PO Date | Requesting Office/Dept |
+  Total Amount | Actions`. **PO Date and Requesting Office/Dept are front-end placeholders** (they render
+  "—" — no service/data behind them yet). Actions: **View** (every item of the PO with its DR number),
+  **Pro-forma**, Edit, Delete.
+- **Pro-forma JEV** (`GET /po-dr/proforma`): one tab per delivery receipt, laid out like the accounting
+  grid (Accounts and Explanation / SL Code / Subsidiary Ledger Dr-Cr / GL Acct Code / General Ledger
+  Dr-Cr) with a Total Debit / Total Credit / Difference bar. Computed on the fly, **nothing is stored**:
+  Dr `5-02-03-990` for lines with no category, Dr each used category account (summed per code), Cr
+  `2-01-01-010` for the DR total; titles come from `fims.chart_of_accounts`. SL columns are empty and
+  the **Create JEV** button is a placeholder (no JEV is written yet).
+- **Install.** `01 - table/25 - fims_po_delivery_receipt.sql` creates both tables. If an earlier local
+  version exists, drop `po_delivery_receipt` then `iar_module` first (the script is `IF NOT EXISTS`).
+  Not browser- or DB-tested as of this writing (2026-11-10).
 
 ### 8.5 Platform utilities (not page-backed)
 | Feature | Files | Purpose |

@@ -99,7 +99,7 @@ $_prgf_api = $_prg_api ?? \PHPMaker2024\FIMS\Config('API.FIMS_URL');
 
                 <div class="prg-group">
                     <label class="prg-label">Program Code <span class="req">*</span></label>
-                    <!-- Add: read-only preview from GET /program/next-code (year-RC code-NNN); edit: locked. -->
+                    <!-- Add: read-only preview from GET /program/next-code (3-digit NNN, starting at 100); edit: locked. -->
                     <input type="text" class="prg-input prg-code" id="prg-program-code" maxlength="64" readonly placeholder="Generating code…">
                     <p class="prg-hint" id="prg-code-hint">Auto-generated. Cannot be changed after creation.</p>
                 </div>
@@ -137,8 +137,6 @@ async function prg_loadCodePreview() {
         if (!json.success) throw new Error(json.message || 'Could not generate a program code.');
         if (document.getElementById('prg-mode').value !== 'add') return;   // modal was reopened for edit meanwhile
         input.value = json.data.program_code;
-
-        console.log('Next program code preview: ' + json.data);
 
         save.disabled = false;
     } catch (e) {

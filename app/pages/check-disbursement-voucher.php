@@ -678,6 +678,29 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
 .cp-status-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0; }
 .cp-status-tab { cursor: pointer; opacity: .55; border: none; }
 .cp-status-tab.active { opacity: 1; }
+
+/* Dark-blue theme: this module's KPI cards reuse the shared .fims-card-*
+   classes (which are red/green/amber/violet elsewhere in the app), but here
+   they're just visual groupings, not meaningful status colors — so override
+   their accent to the brand blue-shade family for consistency with the rest
+   of this module (scoped to #cpModule only; other pages keep the rainbow). */
+#cpModule .fims-card-blue,
+#cpModule .fims-card-green,
+#cpModule .fims-card-amber,
+#cpModule .fims-card-red,
+#cpModule .fims-card-gray,
+#cpModule .fims-card-indigo,
+#cpModule .fims-card-violet { --fims-card-color: #000E3E; }
+
+/* Buttons: same single dark blue, scoped to this module only (the shared
+   .fims-btn-primary/-outline classes stay the lighter brand blue everywhere
+   else in the app). .fims-btn-danger is left red on purpose — it marks a
+   destructive action (Cancel Check), and that warning color is functional,
+   not decorative. */
+#cpModule .fims-btn-primary { background:#000E3E; color:#fff; }
+#cpModule .fims-btn-primary:hover { background:#000a2e; color:#fff; }
+#cpModule .fims-btn-outline { color:#000E3E; border-color:#000E3E; }
+#cpModule .fims-btn-outline:hover { background:#000E3E; color:#fff; }
 </style>
 
 <script>

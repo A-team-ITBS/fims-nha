@@ -1,5 +1,7 @@
 <?php
+
 namespace PHPMaker2024\FIMS;
+
 @session_start();
 $_mrq_api = Config('API.FIMS_URL');
 
@@ -17,13 +19,13 @@ $_mrq_isFmd = false;
 try {
     $_mrq_rc = ExecuteRow(
         'SELECT rc.rc_id, rc.rc_code, rc.rc_name FROM uac.users u '
-        . 'JOIN fims.responsibility_code rc ON rc.rc_id = u.rc_id WHERE u.user_id = ' . (int) $userid,
+        .'JOIN fims.responsibility_code rc ON rc.rc_id = u.rc_id WHERE u.user_id = '.(int) $userid,
         'DB'
     ) ?: null;
     $_mrq_isFmd = $_mrq_rc !== null && trim((string) ($_mrq_rc['rc_code'] ?? '')) === $_mrq_fmdRcCode;
 } catch (\Throwable $e) {
     $_mrq_isFmd = false;   // can't tell who this is -> the ordinary view, never an error page
-    LogError('memo-req-page: could not look up the current user\'s RC — ' . $e->getMessage());
+    LogError('memo-req-page: could not look up the current user\'s RC — '.$e->getMessage());
 }
 ?>
 
@@ -33,7 +35,7 @@ try {
 <?php /* GetUrl() without a leading slash adds the app's base path (the app may live in a sub-folder / virtual directory), and the
           cache-buster is read from the file next to this page, not from DOCUMENT_ROOT (which is not the app folder on every server) —
           so a changed stylesheet is never served from a browser's stale cache. */ ?>
-<link rel="stylesheet" href="<?= GetUrl('_shared/css/nha-fims.css') ?>?v=<?= @filemtime(dirname(__DIR__, 2) . '/_shared/css/nha-fims.css') ?>" />
+<link rel="stylesheet" href="<?php echo GetUrl('_shared/css/nha-fims.css'); ?>?v=<?php echo @filemtime(dirname(__DIR__, 2).'/_shared/css/nha-fims.css'); ?>" />
 <style>
 /* ── Actions dropdown menu ──────────────────────────────────── */
 /* The same menu as the Budget Requirements list (budget-req-page.php), which keeps its copy inline too. */
@@ -176,11 +178,11 @@ try {
 // standalone page behind the "Memo Request Form" menu item. In modal mode it exposes
 // window.cbaModal and calls window.mrq_load() after a successful save, to refresh this list.
 $cbaAsModal = true;
-include __DIR__ . '/form/budget-allocation-form.php';
+include __DIR__.'/form/budget-allocation-form.php';
 
 // FMD's "Process" modal (the request's details, Approve / Return). Only FMD gets the action, so only FMD gets its markup.
 if ($_mrq_isFmd) {
-    include __DIR__ . '/readone/memo-process-readone.php';
+    include __DIR__.'/readone/memo-process-readone.php';
 }
 ?>
 

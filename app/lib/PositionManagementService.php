@@ -44,7 +44,7 @@ class PositionManagementService
                 $sql = "INSERT INTO position_categories (category_name, description, is_active) VALUES (" .
                     App\QuotedValue($name, App\DataType::STRING, "DB") . ", " .
                     ($description !== null ? App\QuotedValue($description, App\DataType::STRING, "DB") : "NULL") . ", " .
-                    App\QuotedValue($isActive, App\DataType::BOOLEAN, "DB") .
+                    App\QuotedValue($isActive ? "1" : "0", App\DataType::BOOLEAN, "DB") .
                     ")";
                 App\Execute($sql, "DB");
                 App\Execute("COMMIT", "DB");
@@ -107,7 +107,7 @@ class PositionManagementService
                 $sql = "UPDATE position_categories SET " .
                     "category_name = " . App\QuotedValue($name, App\DataType::STRING, "DB") . ", " .
                     "description = " . ($description !== null ? App\QuotedValue($description, App\DataType::STRING, "DB") : "NULL") . ", " .
-                    "is_active = " . App\QuotedValue($isActive, App\DataType::BOOLEAN, "DB") .
+                    "is_active = " . App\QuotedValue($isActive ? "1" : "0", App\DataType::BOOLEAN, "DB") .
                     " WHERE position_category_id = " . App\QuotedValue($categoryId, App\DataType::NUMBER, "DB");
                 App\Execute($sql, "DB");
                 App\Execute("COMMIT", "DB");
