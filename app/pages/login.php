@@ -2,6 +2,13 @@
 session_start();
 require_once(__DIR__ . "/../../_shared/auth.php");
 
+// This page's own JS reads a fresh CSRF token pair from a live fetch() of
+// /login before every sign-in attempt — a stale cached copy of THIS page
+// (old HTML/JS) would keep retrying that flow the old way indefinitely, no
+// matter how many times the actual login/CSRF logic gets fixed server-side.
+header('Cache-Control: no-store, no-cache, must-revalidate');
+header('Pragma: no-cache');
+
 if (isAnyUserLoggedIn()) {
     $homeUrl = $_SESSION['nha_home_url'] ?? '/MainDashboard';
     header('Location: ' . $homeUrl);
