@@ -128,6 +128,7 @@ return [
     "JournalEntryVoucher" => \DI\create(JournalEntryVoucher::class),
     "ChangePass" => \DI\create(ChangePass::class),
     "CheckDisbursements" => \DI\create(CheckDisbursements::class),
+    "budget_prop_page" => \DI\create(BudgetPropPage::class),
 
     // User table
     "usertable" => \DI\get("users"),
