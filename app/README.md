@@ -112,8 +112,10 @@ this lighter form when the page is fully self-contained.
   project template, declared under a `PHPMaker2024\FMD` namespace that doesn't match the rest of
   this repo (`PHPMaker2024\FIMS`) and pointed at a `shared.programs` table/schema that doesn't
   exist. Don't copy their namespace into new files.
-- **`app/pages/air-module.php` and `app/pages/memo-req-page.php` are empty stubs** (zero-byte
-  files, wired into the menu but not implemented yet).
+- **`app/pages/memo-req-page.php` is an empty stub** (zero-byte file, wired into the menu but not
+  implemented yet). The former `air-module.php` stub is now the Inspection and Acceptance Report
+  module — `app/pages/iar-module.php` + `app/services/PoDrService.php` + `app/routes/po_dr.php`
+  (see `system_docs/developerguide/DEVELOPER-GUIDE.md` §8.4).
 - Two pages (`cob-page.php`, `budget-revision-page.php`) link a stylesheet path
   (`/css/nha-fims.css`) that doesn't exist — the real path is `_shared/css/nha-fims.css`.
 
