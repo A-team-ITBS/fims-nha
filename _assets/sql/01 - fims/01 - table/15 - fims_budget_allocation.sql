@@ -1,12 +1,15 @@
 -- ============================================================================
 -- Budget allocations — one row per allocation (memo / PR / PO tracking) made
--- against a fiscal year for a requesting department/district.
+-- against a fiscal year for a requesting RC (the creator's responsibility center) / district.
 --
 -- Soft-delete: rows are never removed, deleted_at is stamped instead.
 -- Foreign keys live in "03 - alter_table/08 - budget_allocation_add_fk.sql".
--- program_id / sub_program_id / project_id are plain INTEGER columns (no FK):
--- fims.program, fims.sub_program and fims.project are keyed by *_code VARCHAR,
--- not by an integer id.
+-- Program / Sub-Program / Project are referenced by code (program_code,
+-- sub_program_code, project_code), like fims.budget_req and
+-- fims.purchase_orders — fims.program, fims.sub_program and fims.project have
+-- no integer id. Databases created before this change still have the old
+-- program_id / sub_program_id / project_id INTEGER columns; those are dropped by
+-- "03 - alter_table/09 - budget_allocation_drop_program_project_int_ids.sql".
 -- ============================================================================
 
 -- =============================================
@@ -19,11 +22,11 @@ ADD COLUMN IF NOT EXISTS memo_ref_no VARCHAR(50),
 ADD COLUMN IF NOT EXISTS allocation_type VARCHAR(20),
 ADD COLUMN IF NOT EXISTS allocation_number VARCHAR(100),
 ADD COLUMN IF NOT EXISTS fiscal_year INTEGER,
-ADD COLUMN IF NOT EXISTS requesting_department_id INTEGER,
+ADD COLUMN IF NOT EXISTS requesting_rc_id VARCHAR(50),
 ADD COLUMN IF NOT EXISTS requesting_district_id INTEGER,
-ADD COLUMN IF NOT EXISTS program_id INTEGER,
-ADD COLUMN IF NOT EXISTS sub_program_id INTEGER,
-ADD COLUMN IF NOT EXISTS project_id INTEGER,
+ADD COLUMN IF NOT EXISTS program_code VARCHAR(64),
+ADD COLUMN IF NOT EXISTS sub_program_code VARCHAR(64),
+ADD COLUMN IF NOT EXISTS project_code VARCHAR(64),
 ADD COLUMN IF NOT EXISTS vendor_id INTEGER,
 ADD COLUMN IF NOT EXISTS parent_id INTEGER,
 ADD COLUMN IF NOT EXISTS document_type VARCHAR(20),
@@ -43,15 +46,15 @@ ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP;
 
-COMMENT ON TABLE  fims.budget_allocation IS 'Budget allocations (memo / PR / PO tracking) per fiscal year and requesting department/district';
+COMMENT ON TABLE  fims.budget_allocation IS 'Budget allocations (memo / PR / PO tracking) per fiscal year, requesting RC and district';
 COMMENT ON COLUMN fims.budget_allocation.parent_id IS 'Self-reference: the allocation this row derives from (fims.budget_allocation.allocation_id)';
 COMMENT ON COLUMN fims.budget_allocation.deleted_at IS 'Soft delete: NULL = active, timestamp = deleted';
 
 -- budget_allocation indexes
 CREATE INDEX IF NOT EXISTS idx_budget_allocation_fiscal_year            ON fims.budget_allocation (fiscal_year);
-CREATE INDEX IF NOT EXISTS idx_budget_allocation_requesting_department  ON fims.budget_allocation (requesting_department_id);
-CREATE INDEX IF NOT EXISTS idx_budget_allocation_program_id             ON fims.budget_allocation (program_id);
-CREATE INDEX IF NOT EXISTS idx_budget_allocation_project_id             ON fims.budget_allocation (project_id);
+CREATE INDEX IF NOT EXISTS idx_budget_allocation_requesting_rc          ON fims.budget_allocation (requesting_rc_id);
+CREATE INDEX IF NOT EXISTS idx_budget_allocation_program_code           ON fims.budget_allocation (program_code);
+CREATE INDEX IF NOT EXISTS idx_budget_allocation_project_code           ON fims.budget_allocation (project_code);
 CREATE INDEX IF NOT EXISTS idx_budget_allocation_vendor_id              ON fims.budget_allocation (vendor_id);
 CREATE INDEX IF NOT EXISTS idx_budget_allocation_parent_id              ON fims.budget_allocation (parent_id);
 CREATE INDEX IF NOT EXISTS idx_budget_allocation_status_id              ON fims.budget_allocation (status_id);

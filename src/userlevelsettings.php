@@ -132,14 +132,14 @@ $USER_LEVEL_PRIVS = [["{FIMS}audit_logs","-2","0"],
     ["{FIMS}budget-rev-form.php","0","0"],
     ["{FIMS}budget-rev-review.php","-2","0"],
     ["{FIMS}budget-rev-review.php","0","0"],
-    ["{FIMS}budget-allocation-form.php","-2","0"],
-    ["{FIMS}budget-allocation-form.php","0","0"],
-    ["{FIMS}IARModule.php","-2","0"],
-    ["{FIMS}IARModule.php","0","0"],
+    ["{FIMS}memo-req-page.php","-2","0"],
+    ["{FIMS}memo-req-page.php","0","0"],
+    ["{FIMS}AIRModule.php","-2","0"],
+    ["{FIMS}AIRModule.php","0","0"],
     ["{FIMS}Voucher.php","-2","0"],
     ["{FIMS}Voucher.php","0","0"],
-    ["{FIMS}JournalEntryVoucher.php","-2","0"],
-    ["{FIMS}JournalEntryVoucher.php","0","0"]];
+    ["{FIMS}budget-prop-page.php","-2","0"],
+    ["{FIMS}budget-prop-page.php","0","0"]];
 
 /**
  * Tables
@@ -207,7 +207,7 @@ $USER_LEVEL_TABLES = [["audit_logs","audit_logs","Audit Logs",false,"{FIMS}",""]
     ["budget-revision-page.php","budget_revision_page","Budget Revision",true,"{FIMS}","BudgetRevisionPage"],
     ["budget-rev-form.php","budget_rev_form","Budget Revision Form",true,"{FIMS}","BudgetRevForm"],
     ["budget-rev-review.php","budget_rev_review","Budget Revision Preview",true,"{FIMS}","BudgetRevReview"],
-    ["budget-allocation-form.php","budget_allocation_form","Memo Request",true,"{FIMS}","BudgetAllocationForm"],
-    ["IARModule.php","IARModule","IAR Module",true,"{FIMS}","IarModule"],
-    ["Voucher.php","Voucher","Disbursement Voucher",true,"{FIMS}","Voucher"],
-    ["JournalEntryVoucher.php","JournalEntryVoucher","Journal Entry Voucher",true,"{FIMS}","JournalEntryVoucher"]];
+    ["memo-req-page.php","memo_req_page","Memo Request",true,"{FIMS}","MemoReqPage"],
+    ["AIRModule.php","AIRModule","AIR Module",true,"{FIMS}","AirModule"],
+    ["Voucher.php","Voucher","Voucher",true,"{FIMS}","Voucher"],
+    ["budget-prop-page.php","budget_prop_page","Budget Proposal",true,"{FIMS}","BudgetPropPage"]];

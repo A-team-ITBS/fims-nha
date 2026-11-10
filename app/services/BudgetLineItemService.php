@@ -20,6 +20,9 @@ class BudgetLineItemService
     private string $tableProject          = 'fims.project';
     private string $tableTypeOfFund       = 'fims.type_of_fund';
     private string $tableComponentType    = 'fims.component_type';
+    private string $tableBudgetReqProgram = 'fims.budget_req_program';
+    private string $tableProgram          = 'fims.program';
+    private string $tableStatus           = 'fims.settings_status';
 
     public function fetchAlls(?int $page = null, int $limit = 10, string $fiscalYr = ''): array
     {
@@ -74,6 +77,107 @@ class BudgetLineItemService
             ];
         } catch (\Exception $e) {
             return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    private function str(mixed $v): string
+    {
+        return App\QuotedValue(trim((string) $v), DataType::STRING, 'DB');
+    }
+
+    /**
+     * Line items of APPROVED budget requests — the Memo Request form's COB list, ordered by Account Code. Every row
+     * carries its Type of Fund and Account Code. Each optional filter narrows the list to what is attached to that Program /
+     * Sub-Program / Project (and, with $typeOfFundId, to line items of that Type of Fund): a line item hangs off
+     * budget_line_items -> budget_req_project (project_code) -> budget_req_program (program_code, sub_program_code).
+     * Only a budget_req whose status is 'Approved' (fims.settings_status, status_for = 'budget_req') qualifies.
+     * Line items of an older request that never got its program block (budget_req_program_id IS NULL) have no
+     * program to match, so they appear only while no program / sub-program is chosen.
+     */
+    public function fetchApproved(string $programCode = '', string $subProgramCode = '', string $projectCode = '', string $fiscalYr = '', string $typeOfFundId = ''): array
+    {
+        try {
+            $where = $this->approvedConditions($programCode, $subProgramCode, $projectCode, $fiscalYr, $typeOfFundId);
+
+            $sql = "SELECT li.budget_line_item_id, li.budget_reference_number, br.fiscal_yr,
+                           brpr.program_code, brpr.sub_program_code, brp.project_code, pj.project_name,
+                           li.type_of_fund_id, tf.name AS type_of_fund,
+                           li.account_id, coa.account_code, coa.account_title,
+                           li.proposed_amount, li.particulars, st.name AS status_name
+                    FROM {$this->table} li
+                    JOIN {$this->tableBudgetReq} br ON br.budget_reference_number = li.budget_reference_number
+                    JOIN {$this->tableStatus} st ON st.id = br.status_id
+                    LEFT JOIN {$this->tableBudgetReqProject} brp ON brp.budget_req_project_id = li.budget_req_project_id
+                    LEFT JOIN {$this->tableBudgetReqProgram} brpr ON brpr.budget_req_program_id = brp.budget_req_program_id
+                    LEFT JOIN {$this->tableProject} pj ON pj.project_code = brp.project_code
+                    LEFT JOIN {$this->tableTypeOfFund} tf ON tf.type_of_fund_id = li.type_of_fund_id
+                    LEFT JOIN {$this->tableChartOfAccounts} coa ON coa.account_id = li.account_id
+                    WHERE " . implode(' AND ', $where) . '
+                    ORDER BY coa.account_code ASC NULLS LAST, li.budget_line_item_id ASC';
+
+            return ['success' => true, 'data' => App\ExecuteRows($sql, 'DB') ?: []];
+        } catch (\Exception $e) {
+            App\LogError('BudgetLineItemService::fetchApproved ' . $e->getMessage());
+
+            return ['success' => false, 'message' => 'Failed to load line items.'];
+        }
+    }
+
+    /**
+     * WHERE conditions of "an approved line item", narrowed by whichever of the filters are given. Shared by the COB
+     * list and by the list of available types of fund, so the two always agree.
+     *
+     * @return string[]
+     */
+    private function approvedConditions(string $programCode, string $subProgramCode, string $projectCode, string $fiscalYr, string $typeOfFundId = ''): array
+    {
+        $where = ["st.status_for = 'budget_req'", "LOWER(st.name) = 'approved'"];
+        if (trim($programCode) !== '') {
+            $where[] = 'brpr.program_code = ' . $this->str($programCode);
+        }
+        if (trim($subProgramCode) !== '') {
+            $where[] = 'brpr.sub_program_code = ' . $this->str($subProgramCode);
+        }
+        if (trim($projectCode) !== '') {
+            $where[] = 'brp.project_code = ' . $this->str($projectCode);
+        }
+        if (trim($fiscalYr) !== '') {
+            $where[] = 'br.fiscal_yr = ' . (int) $fiscalYr;
+        }
+        if (trim($typeOfFundId) !== '') {
+            $where[] = 'li.type_of_fund_id = ' . (int) $typeOfFundId;
+        }
+
+        return $where;
+    }
+
+    /**
+     * The types of fund that exist on approved line items — the options of the Memo Request form's Type of Fund
+     * dropdown. Narrowed by the same Program / Sub-Program / Project / fiscal year filters as the COB list, but not by
+     * type of fund itself (it is what is being chosen). A type of fund no approved line item uses is not offered, and
+     * neither are line items with no type of fund.
+     */
+    public function fetchApprovedTypesOfFund(string $programCode = '', string $subProgramCode = '', string $projectCode = '', string $fiscalYr = ''): array
+    {
+        try {
+            $where = $this->approvedConditions($programCode, $subProgramCode, $projectCode, $fiscalYr);
+            $where[] = 'tf.deleted_at IS NULL';
+
+            $sql = "SELECT DISTINCT tf.type_of_fund_id, tf.name
+                    FROM {$this->table} li
+                    JOIN {$this->tableBudgetReq} br ON br.budget_reference_number = li.budget_reference_number
+                    JOIN {$this->tableStatus} st ON st.id = br.status_id
+                    JOIN {$this->tableTypeOfFund} tf ON tf.type_of_fund_id = li.type_of_fund_id
+                    LEFT JOIN {$this->tableBudgetReqProject} brp ON brp.budget_req_project_id = li.budget_req_project_id
+                    LEFT JOIN {$this->tableBudgetReqProgram} brpr ON brpr.budget_req_program_id = brp.budget_req_program_id
+                    WHERE " . implode(' AND ', $where) . '
+                    ORDER BY tf.name ASC, tf.type_of_fund_id ASC';
+
+            return ['success' => true, 'data' => App\ExecuteRows($sql, 'DB') ?: []];
+        } catch (\Exception $e) {
+            App\LogError('BudgetLineItemService::fetchApprovedTypesOfFund ' . $e->getMessage());
+
+            return ['success' => false, 'message' => 'Failed to load types of fund.'];
         }
     }
 
@@ -215,13 +319,18 @@ class BudgetLineItemService
     }
 
     /**
-     * Budget Processing: applies type_of_fund_id / component_id / suggestion_amount
+     * Budget Processing: applies type_of_fund_id / component_id / suggested_amount / program_source_code
      * to line items of one budget request. Does NOT open its own transaction — the caller
      * (BudgetReqService::endorse) wraps it together with its status change.
      * Returns an error message, or null once every item has been applied.
      *
-     * @param array $items [['budget_line_item_id' => .., 'type_of_fund_id' => .., 'component_id' => .., 'suggestion_amount' => ..], ...]
-     * @param bool  $requireAll when true, every item must carry a type of fund and a component (suggestion_amount stays optional)
+     * program_source_code is OPTIONAL and is a fims.program.program_code (a program source IS a program):
+     *   key absent         -> left unchanged
+     *   key present, blank -> cleared (NULL)
+     *   key present, code  -> must be an existing program
+     *
+     * @param array $items [['budget_line_item_id' => .., 'type_of_fund_id' => .., 'component_id' => .., 'suggested_amount' => .., 'program_source_code' => ..], ...]
+     * @param bool  $requireAll when true, every item must carry a type of fund and a component (suggested_amount and program_source_code stay optional)
      */
     public function applyProcessing(array $items, string $budgetReferenceNumber, bool $requireAll = false): ?string
     {
@@ -232,6 +341,7 @@ class BudgetLineItemService
         // Each distinct lookup id is verified once (and must not be soft-deleted).
         $validFunds      = [];
         $validComponents = [];
+        $validSources    = [];
 
         foreach ($items as $i => $item) {
             $n  = $i + 1;
@@ -290,15 +400,36 @@ class BudgetLineItemService
                 $componentId = null;
             }
 
-            // suggestion_amount is OPTIONAL: NUMERIC(18,2), 0 up to 9,999,999,999,999,999.99.
+            // program_source_code is OPTIONAL (see the method comment): only written when the key is present.
+            $hasSource  = array_key_exists('program_source_code', $item);
+            $sourceCode = $hasSource && is_scalar($item['program_source_code']) ? trim((string) $item['program_source_code']) : '';
+            if ($hasSource && $item['program_source_code'] !== null && !is_scalar($item['program_source_code'])) {
+                return "Line item #{$id}: invalid program_source_code.";
+            }
+            if ($sourceCode !== '') {
+                if (mb_strlen($sourceCode) > 64) {
+                    return "Line item #{$id}: program_source_code must be 64 characters or fewer.";
+                }
+                if (!isset($validSources[$sourceCode])) {
+                    $validSources[$sourceCode] = (bool) App\ExecuteRow(
+                        "SELECT program_code FROM {$this->tableProgram} WHERE program_code = " . App\QuotedValue($sourceCode, DataType::STRING, 'DB'),
+                        'DB'
+                    );
+                }
+                if (!$validSources[$sourceCode]) {
+                    return "Line item #{$id}: program source '{$sourceCode}' does not exist.";
+                }
+            }
+
+            // suggested_amount is OPTIONAL: NUMERIC(18,2), 0 up to 9,999,999,999,999,999.99.
             //   key absent        -> left unchanged
-            //   key present, blank -> 0 (the column is NOT NULL DEFAULT 0, so "no suggestion" = 0)
+            //   key present, blank -> 0 (the column is NOT NULL DEFAULT 0, so "no suggested amount" = 0)
             //   key present, number -> that number
-            $suggestion = $item['suggestion_amount'] ?? null;
-            if ($suggestion === null || $suggestion === '') {
-                $suggestion = array_key_exists('suggestion_amount', $item) ? '0' : null;
-            } elseif (!is_numeric($suggestion) || (float) $suggestion < 0 || (float) $suggestion >= 1e16) {
-                return "Line item #{$id}: suggestion_amount must be a number from 0 to 9,999,999,999,999,999.99.";
+            $suggested = $item['suggested_amount'] ?? null;
+            if ($suggested === null || $suggested === '') {
+                $suggested = array_key_exists('suggested_amount', $item) ? '0' : null;
+            } elseif (!is_numeric($suggested) || (float) $suggested < 0 || (float) $suggested >= 1e16) {
+                return "Line item #{$id}: suggested_amount must be a number from 0 to 9,999,999,999,999,999.99.";
             }
 
             if ($requireAll && ($fundId === null || $componentId === null)) {
@@ -309,8 +440,11 @@ class BudgetLineItemService
                 'type_of_fund_id = ' . ($fundId ?? 'NULL'),
                 'component_id = ' . ($componentId ?? 'NULL'),
             ];
-            if ($suggestion !== null) {
-                $setParts[] = 'suggestion_amount = ' . App\QuotedValue($suggestion, DataType::NUMBER, 'DB');
+            if ($suggested !== null) {
+                $setParts[] = 'suggested_amount = ' . App\QuotedValue($suggested, DataType::NUMBER, 'DB');
+            }
+            if ($hasSource) {
+                $setParts[] = 'program_source_code = ' . ($sourceCode !== '' ? App\QuotedValue($sourceCode, DataType::STRING, 'DB') : 'NULL');
             }
 
             App\Execute(

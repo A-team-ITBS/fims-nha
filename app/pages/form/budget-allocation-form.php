@@ -1,6 +1,9 @@
 <?php
 
-namespace PHPMaker2024\FMD;
+// Must stay: a file included from views/BudgetAllocationForm.php does NOT inherit that
+// file's namespace, so without this line Config(), CurrentUserID() and GetUrl() below
+// resolve in the global namespace and fatal with "Call to undefined function Config()".
+namespace PHPMaker2024\FIMS;
 
 // Initialize variables
 $allocationId = isset($_GET['id']) ? (int) $_GET['id'] : null;
@@ -8,77 +11,658 @@ $page_title = $allocationId ? 'Edit Budget Allocation Form' : 'Certificate of Bu
 $current_date = date('Y-m-d');
 $user_id = CurrentUserID();
 
+// The requesting office of a memo request is the logged-in user's own Responsibility Center: uac.users.rc_id
+// first (that column only), then the RC itself in fims.responsibility_code (its name and office type are
+// what the RFA / LAA print preview shows). The API stores the same rc_id on the record, from the verified
+// user (BudgetAllocationService::create), so the form never sends it.
+$requestingRc = ['rc_id' => '', 'rc_code' => '', 'rc_name' => '', 'office_type' => ''];
+try {
+    $userRcId = trim((string) ExecuteScalar('SELECT rc_id FROM uac.users WHERE user_id = ' . (int) $user_id, 'DB'));
+    if ($userRcId !== '') {
+        $rcRow = ExecuteRow(
+            'SELECT rc_id, rc_code, rc_name, office_type FROM fims.responsibility_code WHERE rc_id = ' . QuotedValue($userRcId, DataType::STRING, 'DB'),
+            'DB'
+        );
+        if ($rcRow) {
+            $requestingRc = [
+                'rc_id'       => (string) $rcRow['rc_id'],
+                'rc_code'     => (string) ($rcRow['rc_code'] ?? ''),
+                'rc_name'     => (string) ($rcRow['rc_name'] ?? ''),
+                'office_type' => (string) ($rcRow['office_type'] ?? ''),
+            ];
+        }
+    }
+} catch (\Throwable $e) {
+    // can't tell which RC this user belongs to: the print preview just has no requesting office, never an error page
+}
+
 // Generate CBA Number (placeholder — regenerated client-side unless editing)
 $cba_number = 'CBA#'.date('Y-m-d').'-'.str_pad(rand(1, 999), 3, '0', STR_PAD_LEFT);
 
-$apiBase = Config('API.FMD_URL');
+// FIMS's own API (/api → app/routes/budget_allocation.php). API.FMD_URL is the separate
+// FMD application's API and is not a FIMS config key.
+$apiBase = Config('API.FIMS_URL');
+
+// Rendering mode. The including page sets $cbaAsModal = true before include() (see
+// app/pages/memo-req-page.php) to get the form inside an overlay modal that it opens with
+// window.cbaModal.open(). Left unset, the form renders as a normal page, which is what
+// views/BudgetAllocationForm.php (the "Memo Request Form" menu item) relies on.
+$cbaAsModal = !empty($cbaAsModal);
 
 ?>
 
-<!-- <link rel="stylesheet" href="/fmd/css/fmd.css?v=<?php echo @filemtime($_SERVER['DOCUMENT_ROOT'].'/fmd/css/fmd.css'); ?>"
-/> -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
 
+<?php if ($cbaAsModal): ?>
+<style>
+	/* Modal mode - the form lives inside .nha-modal-body. The base layer below was written
+	   for a full page, so drop its page-level width/padding. */
+	.nha-root .cba-modal { position: relative; }
+	.nha-root .cba-modal .nha-modal-body { padding: 18px 22px; }
+	.nha-root .cba-modal .cba-form-container { max-width: none; margin: 0; padding: 0; }
+</style>
+
+<!-- The wrapper makes the .nha-overlay / .nha-modal rules apply wherever this form is included
+     (they are scoped to .nha-root); padding/background are neutralised so it takes no space. -->
+<div class="nha-root" style="padding:0;background:none;">
+<div id="cba-overlay" class="nha-overlay">
+	<div class="nha-modal nha-modal-xl cba-modal">
+		<div class="nha-modal-hdr">
+			<h3 class="nha-modal-title" id="cba-modal-title">New Memo Request</h3>
+			<button type="button" class="nha-modal-close" id="cba-modal-close" onclick="cbaCancel()" aria-label="Close">&times;</button>
+		</div>
+		<div class="nha-modal-body" id="cba-modal-body">
+<?php endif; ?>
 <div class="cba-form-container">
 
 	<style>
-		/* ── Full-page loading overlay ────────────────────────────────────────── */
-		#cba_loading_overlay {
-			position: fixed;
-			inset: 0;
-			z-index: 99999;
-			background: color-mix(in srgb, var(--afims-surface, #FFFFFF) 92%, transparent);
-			display: flex;
-			flex-direction: column;
-			align-items: center;
-			justify-content: center;
-			gap: 20px;
-			backdrop-filter: blur(3px);
-			transition: opacity .3s ease;
+		/* ══════════════════════════════════════════════════════════════════════════
+		   BASE LAYER — layout, fields, buttons, cards
+		   This form was written for the FMD app's stylesheet, which FIMS does not
+		   load, so none of these classes (.form-row, .form-section, .form-input,
+		   .error-box …) had any rules. Everything is scoped under .cba-form-container
+		   so it cannot leak into the rest of the app, and uses the shared --afims-*
+		   tokens so it follows the light / dark theme like the other FIMS pages.
+		   The widget-specific rules (combobox list, budget lines, document rows,
+		   Print button) live in the <style> blocks further down.
+		══════════════════════════════════════════════════════════════════════════ */
+		.cba-form-container {
+			font-family: 'IBM Plex Sans', sans-serif;
+			/* The app forces input / select / textarea / button text to
+			   calc(1em * var(--input-scale)) !important, i.e. "whatever the parent
+			   is, times the user's scale". So the size of every control in this form
+			   is set HERE, once — a font-size on the controls themselves is ignored. */
+			font-size: 14px;
+			max-width: 1040px;
+			margin: 0 auto;
+			padding: 4px 0 40px;
+			color: var(--afims-text, #1A1B21);
 		}
 
-		#cba_loading_overlay.cba-fade-out {
-			opacity: 0;
+		.cba-form-container *,
+		.cba-form-container *::before,
+		.cba-form-container *::after {
+			box-sizing: border-box;
+		}
+
+		/* ── Number card ─────────────────────────────────────────────────────── */
+		.cba-form-container .form-header {
+			margin-bottom: 18px;
+		}
+
+		.cba-form-container .cba-number-card {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			flex-wrap: wrap;
+			gap: 16px;
+			padding: 16px 22px;
+			background: var(--afims-surface, #FFFFFF);
+			border: 1px solid var(--afims-border, #E4ECF2);
+			border-left: 4px solid var(--afims-primary, #0035A9);
+			border-radius: 12px;
+			box-shadow: 0 1px 2px rgba(15, 32, 69, .05);
+		}
+
+		.cba-form-container .cba-number-label {
+			margin: 0 0 4px;
+			font-size: 10.5px;
+			font-weight: 700;
+			letter-spacing: .08em;
+			text-transform: uppercase;
+			color: var(--afims-text-muted, #62657E);
+		}
+
+		.cba-form-container .cba-number-value {
+			margin: 0;
+			font-family: 'IBM Plex Mono', monospace;
+			font-size: 22px;
+			font-weight: 600;
+			letter-spacing: -.01em;
+			color: var(--afims-heading, #000E3E);
+		}
+
+		/* ── Section cards ───────────────────────────────────────────────────── */
+		.cba-form-container .form-section {
+			margin-bottom: 18px;
+			padding: 22px 24px 24px;
+			background: var(--afims-surface, #FFFFFF);
+			border: 1px solid var(--afims-border, #E4ECF2);
+			border-radius: 12px;
+			box-shadow: 0 1px 2px rgba(15, 32, 69, .05);
+		}
+
+		.cba-form-container .section-header {
+			display: flex;
+			align-items: center;
+			gap: 10px;
+			margin: 0 0 18px;
+			padding-bottom: 12px;
+			border-bottom: 1px solid var(--afims-border, #E4ECF2);
+			font-family: inherit;
+			font-size: 15px;
+			font-weight: 700;
+			line-height: 1.3;
+			color: var(--afims-heading, #000E3E);
+		}
+
+		.cba-form-container .section-header::before {
+			content: '';
+			flex-shrink: 0;
+			width: 4px;
+			height: 16px;
+			border-radius: 2px;
+			background: var(--afims-primary, #0035A9);
+		}
+
+		/* ── Grid ────────────────────────────────────────────────────────────── */
+		.cba-form-container .form-row {
+			display: grid;
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+			gap: 18px 20px;
+			align-items: start;
+			margin-bottom: 18px;
+		}
+
+		.cba-form-container .form-row.full-width {
+			grid-template-columns: minmax(0, 1fr);
+		}
+
+		/* three comboboxes side by side; auto-fit drops to two / one column as the room shrinks */
+		.cba-form-container .form-row.cols-3 {
+			grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+		}
+
+		/* vendor row: Vendor Name | Vendor Code | Vendor Type, then Address (and the hint) on rows of their own */
+		.cba-form-container .form-row.cols-vendor {
+			grid-template-columns: repeat(3, minmax(0, 1fr));
+		}
+
+		@media (max-width: 960px) {
+			.cba-form-container .form-row.cols-vendor {
+				grid-template-columns: repeat(2, minmax(0, 1fr));
+			}
+		}
+
+		@media (max-width: 760px) {
+			.cba-form-container .form-row.cols-vendor {
+				grid-template-columns: minmax(0, 1fr);
+			}
+		}
+
+		/* a field that takes the whole row of a multi-column .form-row (the vendor's Address) */
+		.cba-form-container .form-row > .form-group-wide {
+			grid-column: 1 / -1;
+		}
+
+		/* option list of the Program / Sub-Program / Project comboboxes (JS toggles display) */
+		.cba-form-container .pc-dropdown {
+			display: none;
+			position: absolute;
+			top: 100%;
+			left: 0;
+			right: 0;
+			z-index: 9999;
+			max-height: 220px;
+			overflow-y: auto;
+			background: var(--afims-surface, #FFFFFF);
+			border: 1px solid var(--afims-border, #E4ECF2);
+			border-top: none;
+			border-radius: 0 0 6px 6px;
+			box-shadow: 0 4px 12px rgba(0, 0, 0, .1);
+		}
+
+		.cba-form-container .form-section > .form-row:last-child {
+			margin-bottom: 0;
+		}
+
+		.cba-form-container .form-group {
+			display: flex;
+			flex-direction: column;
+			gap: 6px;
+			min-width: 0;
+			position: relative;
+		}
+
+		/* ── Labels, hints, errors ───────────────────────────────────────────── */
+		/* custom.css sets `body.afims-ui .content-wrapper .form-label` (14px / 500 / its own
+		   colour); match its specificity so the label hierarchy below actually applies. */
+		body.afims-ui .content-wrapper .cba-form-container .form-label {
+			display: block;
+			margin: 0;
+			font-size: 12px;
+			font-weight: 600;
+			letter-spacing: .04em;
+			text-transform: uppercase;
+			color: var(--afims-text, #1A1B21);
+		}
+
+		body.afims-ui .content-wrapper .cba-form-container .has-error > .form-label {
+			color: var(--afims-danger, #DC3545);
+		}
+
+		.cba-form-container .required {
+			margin-left: 2px;
+			color: var(--afims-danger, #DC3545);
+		}
+
+		.cba-form-container .input-hint {
+			margin: 0;
+			font-size: 11.5px;
+			line-height: 1.5;
+			color: var(--afims-text-muted, #62657E);
+		}
+
+		/* Hidden until JS adds .visible — the text is static markup, so without
+		   this rule every "Failed to load…" message showed on a healthy page. */
+		.cba-form-container .error-box {
+			display: none;
+			margin: 0;
+			padding: 8px 12px;
+			font-size: 12px;
+			line-height: 1.5;
+			color: var(--afims-danger, #DC3545);
+			background: var(--afims-danger-soft, #FAE1E3);
+			border: 1px solid color-mix(in srgb, var(--afims-danger, #DC3545) 25%, transparent);
+			border-radius: 8px;
+		}
+
+		.cba-form-container .error-box.visible {
+			display: block;
+		}
+
+		.cba-form-container .form-section > .error-box.visible {
+			margin-bottom: 12px;
+		}
+
+		/* ── Fields ──────────────────────────────────────────────────────────── */
+		.cba-form-container .form-input,
+		.cba-form-container .form-select,
+		.cba-form-container .form-textarea {
+			display: block;
+			width: 100%;
+			min-height: 40px;
+			padding: 9px 12px;
+			font-family: 'IBM Plex Sans', sans-serif;
+			font-weight: 400;
+			line-height: 1.4;
+			color: var(--afims-text, #1A1B21);
+			background-color: var(--afims-surface, #FFFFFF);
+			border: 1px solid var(--afims-border, #E4ECF2);
+			border-radius: 8px;
+			outline: none;
+			transition: border-color .15s, box-shadow .15s, background-color .15s;
+		}
+
+		.cba-form-container .form-select {
+			appearance: none;
+			-webkit-appearance: none;
+			padding-right: 34px;
+			cursor: pointer;
+			background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%237a7d92' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+			background-repeat: no-repeat;
+			background-position: right 12px center;
+			background-size: 14px;
+		}
+
+		.cba-form-container .form-textarea {
+			min-height: 104px;
+			line-height: 1.55;
+			resize: vertical;
+		}
+
+		.cba-form-container .form-input::placeholder,
+		.cba-form-container .form-textarea::placeholder {
+			color: var(--afims-text-disabled, #A9AAB8);
+		}
+
+		.cba-form-container .form-input:hover:not(:disabled):not(:focus),
+		.cba-form-container .form-select:hover:not(:disabled):not(:focus),
+		.cba-form-container .form-textarea:hover:not(:disabled):not(:focus) {
+			border-color: color-mix(in srgb, var(--afims-heading-fill, #000E3E) 35%, var(--afims-border, #E4ECF2));
+		}
+
+		.cba-form-container .form-input:focus,
+		.cba-form-container .form-select:focus,
+		.cba-form-container .form-textarea:focus {
+			border-color: var(--afims-heading-fill, #000E3E);
+			box-shadow: 0 0 0 3px color-mix(in srgb, var(--afims-heading-fill, #000E3E) 12%, transparent);
+		}
+
+		.cba-form-container .form-input:disabled,
+		.cba-form-container .form-select:disabled,
+		.cba-form-container .form-textarea:disabled {
+			color: var(--afims-text-disabled, #A9AAB8);
+			background-color: var(--afims-surface-subtle, #F4F7FA);
+			cursor: not-allowed;
+		}
+
+		/* read-only fields (the vendor's address): shown, filled in by script, not typed */
+		.cba-form-container .form-input[readonly],
+		.cba-form-container .form-textarea[readonly] {
+			background-color: var(--afims-surface-subtle, #F4F7FA);
+			cursor: default;
+		}
+
+		.cba-form-container .form-textarea.vendor-address {
+			min-height: 64px;
+			resize: none;
+		}
+
+		/* validation state — classes toggled by validateField() */
+		.cba-form-container .form-input.error,
+		.cba-form-container .form-select.error,
+		.cba-form-container .form-textarea.error {
+			border-color: var(--afims-danger, #DC3545);
+			box-shadow: 0 0 0 3px color-mix(in srgb, var(--afims-danger, #DC3545) 12%, transparent);
+		}
+
+		.cba-form-container .form-input.success,
+		.cba-form-container .form-select.success,
+		.cba-form-container .form-textarea.success {
+			border-color: color-mix(in srgb, var(--afims-success, #11A752) 60%, var(--afims-border, #E4ECF2));
+		}
+
+		/* custom.css restyles every .form-select under .content-wrapper with higher
+		   specificity (36px tall, stronger border, blue focus ring), which left the
+		   selects shorter than the text inputs beside them. This block matches that
+		   specificity so selects and inputs look identical. The compact .baa-cf-sel
+		   filter selects keep their own styling. */
+		body.afims-ui .content-wrapper .cba-form-container .form-select:not(.baa-cf-sel) {
+			min-height: 40px;
+			padding: 9px 34px 9px 12px;
+			border-color: var(--afims-border, #E4ECF2);
+			border-radius: 8px;
+			box-shadow: none;
+		}
+
+		/* the dark theme resets the select background, which removes the chevron */
+		html.afims-dark[data-bs-theme="dark"] .cba-form-container .form-select:not(.baa-cf-sel) {
+			background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23b5b8cc' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+			background-repeat: no-repeat;
+			background-position: right 12px center;
+			background-size: 14px;
+		}
+
+		body.afims-ui .content-wrapper .cba-form-container .form-select:not(.baa-cf-sel):hover:not(:disabled):not(:focus) {
+			border-color: color-mix(in srgb, var(--afims-heading-fill, #000E3E) 35%, var(--afims-border, #E4ECF2));
+		}
+
+		body.afims-ui .content-wrapper .cba-form-container .form-select:not(.baa-cf-sel):focus {
+			border-color: var(--afims-heading-fill, #000E3E);
+			box-shadow: 0 0 0 3px color-mix(in srgb, var(--afims-heading-fill, #000E3E) 12%, transparent);
+		}
+
+		body.afims-ui .content-wrapper .cba-form-container .form-select:not(.baa-cf-sel):disabled {
+			color: var(--afims-text-disabled, #A9AAB8);
+			background-color: var(--afims-surface-subtle, #F4F7FA);
+		}
+
+		body.afims-ui .content-wrapper .cba-form-container .form-select.error:not(.baa-cf-sel) {
+			border-color: var(--afims-danger, #DC3545);
+			box-shadow: 0 0 0 3px color-mix(in srgb, var(--afims-danger, #DC3545) 12%, transparent);
+		}
+
+		body.afims-ui .content-wrapper .cba-form-container .form-select.success:not(.baa-cf-sel) {
+			border-color: color-mix(in srgb, var(--afims-success, #11A752) 60%, var(--afims-border, #E4ECF2));
+		}
+
+		/* peso prefix inside amount inputs (budget lines) */
+		.cba-form-container .form-group.has-prefix .input-prefix {
+			position: absolute;
+			left: 13px;
+			bottom: 0;
+			z-index: 1;
+			display: flex;
+			align-items: center;
+			height: 40px;
+			font-size: 13px;
+			font-weight: 600;
+			color: var(--afims-text-muted, #62657E);
 			pointer-events: none;
 		}
 
-		.cba-spinner {
-			width: 48px;
-			height: 48px;
-			border: 4px solid var(--afims-border, #E4ECF2);
+		.cba-form-container .form-group.has-prefix .form-input {
+			padding-left: 30px;
+		}
+
+		.cba-form-container .amt-input {
+			font-weight: 500;
+			font-variant-numeric: tabular-nums;
+			text-align: right;
+		}
+
+		/* async-loaded lookups: spinner while .is-loading (toggled by setLoading()) */
+		.cba-form-container .select-loading-wrapper {
+			position: relative;
+		}
+
+		.cba-form-container .select-loading-wrapper.is-loading::after {
+			content: '';
+			position: absolute;
+			top: 50%;
+			right: 34px;
+			z-index: 2;
+			width: 15px;
+			height: 15px;
+			margin-top: -7.5px;
+			border: 2px solid var(--afims-border, #E4ECF2);
 			border-top-color: var(--afims-heading-fill, #000E3E);
 			border-radius: 50%;
 			animation: cba-spin .75s linear infinite;
+			pointer-events: none;
 		}
 
+		.cba-form-container .select-loading-wrapper:not(:has(select)).is-loading::after {
+			right: 12px;
+		}
+
+		/* checkbox rows ("Is this for bidding?") */
+		.cba-form-container input[type="checkbox"] {
+			accent-color: var(--afims-heading-fill, #000E3E);
+		}
+
+		body.afims-ui .content-wrapper .cba-form-container .form-label:has(> input[type="checkbox"]) {
+			font-size: 14px;
+			font-weight: 600;
+			letter-spacing: 0;
+			text-transform: none;
+		}
+
+		.cba-form-container .form-group:has(#is_bidding) {
+			padding: 12px 14px;
+			background: var(--afims-surface-subtle, #F4F7FA);
+			border: 1px solid var(--afims-border, #E4ECF2);
+			border-radius: 10px;
+		}
+
+		/* ── Budget allocation lines: each line becomes a tinted card ────────── */
+		.cba-form-container .baa-line {
+			margin-bottom: 14px;
+			padding: 16px 48px 16px 16px;
+			background: var(--afims-surface-subtle, #F4F7FA);
+			border: 1px solid var(--afims-border, #E4ECF2);
+			border-radius: 10px;
+		}
+
+		.cba-form-container .baa-remove-line {
+			top: 12px;
+			right: 12px;
+		}
+
+		/* ── Buttons ─────────────────────────────────────────────────────────── */
+		/* Size / padding / radius come from custom.css (`body.afims-ui .content-wrapper .btn`:
+		   36px tall) so these buttons match every other FIMS button; only the font and
+		   the 1px border are set here. */
+		.cba-form-container .btn {
+			font-family: 'IBM Plex Sans', sans-serif;
+			font-weight: 600;
+			cursor: pointer;
+			border: 1px solid transparent;
+		}
+
+		.cba-form-container .btn:disabled {
+			opacity: .55;
+			cursor: not-allowed;
+		}
+
+		.cba-form-container .btn-icon {
+			flex-shrink: 0;
+			width: 16px;
+			height: 16px;
+		}
+
+		.cba-form-container .btn-primary {
+			color: var(--afims-pure-white, #FFFFFF);
+			background: var(--afims-heading-fill, #000E3E);
+			border-color: var(--afims-heading-fill, #000E3E);
+		}
+
+		.cba-form-container .btn-primary:hover:not(:disabled) {
+			opacity: .9;
+		}
+
+		.cba-form-container .btn-secondary {
+			color: var(--afims-text, #1A1B21);
+			background: var(--afims-surface, #FFFFFF);
+			border-color: var(--afims-border, #E4ECF2);
+		}
+
+		.cba-form-container .btn-secondary:hover:not(:disabled) {
+			background: var(--afims-surface-subtle, #F4F7FA);
+		}
+
+		.cba-form-container .btn-draft {
+			color: var(--afims-heading, #000E3E);
+			background: var(--afims-surface, #FFFFFF);
+			border-color: color-mix(in srgb, var(--afims-heading-fill, #000E3E) 35%, var(--afims-border, #E4ECF2));
+		}
+
+		.cba-form-container .btn-draft:hover:not(:disabled) {
+			background: var(--afims-surface-subtle, #F4F7FA);
+		}
+
+		.cba-form-container .form-actions {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			flex-wrap: wrap;
+			gap: 12px;
+			margin-bottom: 18px;
+			padding: 16px 20px;
+			background: var(--afims-surface, #FFFFFF);
+			border: 1px solid var(--afims-border, #E4ECF2);
+			border-radius: 12px;
+			box-shadow: 0 1px 2px rgba(15, 32, 69, .05);
+		}
+
+		.cba-form-container .btn-group {
+			display: flex;
+			flex-wrap: wrap;
+			align-items: center;
+			gap: 10px;
+		}
+
+		/* custom.css forces a 6px radius on .btn-group children with !important, which
+		   made Save / Print / Submit differ from Cancel. Use the app's own radius. */
+		.cba-form-container .btn-group > .btn:not(#afims-btn) {
+			border-radius: var(--ui-radius, 8px) !important;
+		}
+
+		/* ── Reminders card ──────────────────────────────────────────────────── */
+		.cba-form-container .info-card {
+			padding: 18px 22px;
+			background: color-mix(in srgb, var(--afims-primary, #0035A9) 6%, var(--afims-surface, #FFFFFF));
+			border: 1px solid color-mix(in srgb, var(--afims-primary, #0035A9) 18%, var(--afims-border, #E4ECF2));
+			border-radius: 12px;
+		}
+
+		.cba-form-container .info-card-header {
+			display: flex;
+			align-items: flex-start;
+			gap: 14px;
+		}
+
+		.cba-form-container .info-card-icon {
+			flex-shrink: 0;
+			width: 22px;
+			height: 22px;
+			margin-top: 1px;
+			color: var(--afims-primary, #0035A9);
+		}
+
+		.cba-form-container .info-card-title {
+			margin: 0 0 6px;
+			font-size: 13px;
+			font-weight: 700;
+			color: var(--afims-heading, #000E3E);
+		}
+
+		.cba-form-container .info-list {
+			margin: 0;
+			padding-left: 18px;
+			font-size: 12.5px;
+			line-height: 1.75;
+			color: var(--afims-text-muted, #62657E);
+		}
+
+		/* ── Narrow screens ──────────────────────────────────────────────────── */
+		@media (max-width: 760px) {
+			.cba-form-container .form-row {
+				grid-template-columns: minmax(0, 1fr);
+			}
+
+			.cba-form-container .form-section {
+				padding: 18px 16px 20px;
+			}
+
+			.cba-form-container .baa-line {
+				padding-right: 44px;
+			}
+
+			.cba-form-container .form-actions,
+			.cba-form-container .btn-group {
+				flex-direction: column;
+				align-items: stretch;
+			}
+		}
+	</style>
+
+	<style>
+		/* Spin animation of the small per-field lookup spinners (.select-loading-wrapper.is-loading above).
+		   The full-page "loading" is the app's shared PagePreloader (app/preloader.php), not drawn here. */
 		@keyframes cba-spin {
 			to {
 				transform: rotate(360deg);
 			}
 		}
-
-		.cba-loading-text {
-			font-size: 14px;
-			font-weight: 600;
-			color: var(--afims-heading, #000E3E);
-			letter-spacing: .3px;
-		}
-
-		.cba-loading-sub {
-			font-size: 12px;
-			color: var(--afims-text-muted, #62657E);
-			margin-top: -12px;
-		}
 	</style>
 
-	<!-- ── Full-page loading overlay (hidden once all dropdowns resolve) ──────── -->
-	<div id="cba_loading_overlay">
-		<div class="cba-spinner"></div>
-		<p class="cba-loading-text">Loading form data&hellip;</p>
-		<p class="cba-loading-sub">Fetching fiscal years, fund sources, programs &amp; more</p>
-	</div>
-
-	<!-- Form Header -->
-	<div class="form-header">
+	<!-- Form Header: the CBA number / date card. Hidden while creating — numbering is not in use yet, so
+	     nothing is shown or saved for it (see buildPayload). Still shown when editing a saved record. -->
+	<div class="form-header"<?php echo $allocationId ? '' : ' style="display:none;"'; ?>>
 		<div class="cba-number-card">
 			<div>
 				<p class="cba-number-label" id="cba_number_label">CBA Number</p>
@@ -99,54 +683,51 @@ $apiBase = Config('API.FMD_URL');
 
 		<!-- ── Program and Project ────────────────────────────────────── -->
 		<div class="form-section" id="program_project_section">
-			<h2 class="section-header" id="program_project_section_title">Program and Project Details</h2>
+			<h2 class="section-header" id="program_project_section_title">Program, Sub-Program and Project Details</h2>
 
-			<div class="form-row" id="program_project_row">
+			<div class="form-row cols-3" id="program_project_row">
 				<!-- Program → GET /program/all (searchable combobox) -->
 				<div class="form-group">
-					<label for="prog_search" class="form-label">
-						Program
-					</label>
+					<label for="prog_search" class="form-label">Program</label>
 					<div class="select-loading-wrapper is-loading" id="program_wrapper" style="overflow:visible;">
 						<div style="position:relative;overflow:visible;">
 							<input type="text" id="prog_search" class="form-input" placeholder="Search program&hellip;"
 								autocomplete="off" disabled>
-							<div id="prog_dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:9999;
-                                       background:var(--afims-surface, #FFFFFF);border:1px solid var(--afims-border, #E4ECF2);border-top:none;
-                                       border-radius:0 0 6px 6px;max-height:220px;overflow-y:auto;
-                                       box-shadow:0 4px 12px rgba(0,0,0,.1);">
-							</div>
+							<div id="prog_dropdown" class="pc-dropdown"></div>
 						</div>
-						<input type="hidden" id="program_id" name="program_id" value="">
+						<input type="hidden" id="program_code" name="program_code" value="">
 					</div>
 					<div class="error-box" id="program_error">Failed to load programs. Please refresh the page.</div>
-					<div id="prog_info"
-						style="display:none;margin-top:8px;padding:10px 12px;
-                        background:var(--afims-surface-subtle, #F4F7FA);border:1px solid var(--afims-primary-soft, #E6EBF6);border-radius:6px;font-size:12px;line-height:1.6;">
-						<div style="display:grid;grid-template-columns:auto 1fr;gap:2px 10px;">
-							<span style="color:var(--afims-text-muted, #62657E);font-weight:500;">Code</span>
-							<span id="progi_code" style="color:var(--afims-heading, #000E3E);font-weight:600;"></span>
-						</div>
-					</div>
 				</div>
 
-				<!-- Project → GET /projects/all, filtered client-side by program_id (searchable combobox) -->
+				<!-- Sub-Program → GET /sub_program/all?program_code=… (searchable combobox, needs a Program) -->
+				<div class="form-group">
+					<label for="subprog_search" class="form-label">Sub-Program</label>
+					<div class="select-loading-wrapper" id="sub_program_wrapper" style="overflow:visible;">
+						<div style="position:relative;overflow:visible;">
+							<input type="text" id="subprog_search" class="form-input" placeholder="Select a program first"
+								autocomplete="off" disabled>
+							<div id="subprog_dropdown" class="pc-dropdown"></div>
+						</div>
+						<input type="hidden" id="sub_program_code" name="sub_program_code" value="">
+					</div>
+					<div class="error-box" id="sub_program_error">Failed to load sub-programs. Please select the program again.</div>
+					<p class="input-hint" id="sub_program_hint">Select a program first.</p>
+				</div>
+
+				<!-- Project → GET /project/all?program_code=…&sub_program_code=… (searchable combobox, needs a Sub-Program) -->
 				<div class="form-group">
 					<label for="proj_search" class="form-label">Project</label>
-					<div class="select-loading-wrapper is-loading" id="project_wrapper" style="overflow:visible;">
+					<div class="select-loading-wrapper" id="project_wrapper" style="overflow:visible;">
 						<div style="position:relative;overflow:visible;">
-							<input type="text" id="proj_search" class="form-input" placeholder="Search project&hellip;"
+							<input type="text" id="proj_search" class="form-input" placeholder="Select a sub-program first"
 								autocomplete="off" disabled>
-							<div id="proj_dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:9999;
-                                       background:var(--afims-surface, #FFFFFF);border:1px solid var(--afims-border, #E4ECF2);border-top:none;
-                                       border-radius:0 0 6px 6px;max-height:220px;overflow-y:auto;
-                                       box-shadow:0 4px 12px rgba(0,0,0,.1);">
-							</div>
+							<div id="proj_dropdown" class="pc-dropdown"></div>
 						</div>
-						<input type="hidden" id="project_id" name="project_id" value="">
+						<input type="hidden" id="project_code" name="project_code" value="">
 					</div>
-					<div class="error-box" id="project_error">Failed to load projects. Please refresh the page.</div>
-					<p class="input-hint" id="project_hint">Search for a project.</p>
+					<div class="error-box" id="project_error">Failed to load projects. Please select the sub-program again.</div>
+					<p class="input-hint" id="project_hint">Select a sub-program first.</p>
 				</div>
 			</div>
 
@@ -157,6 +738,60 @@ $apiBase = Config('API.FMD_URL');
 						placeholder="Enter the purpose or description of this budget allocation..."></textarea>
 					<p class="input-hint">Provide details about the purpose and scope of this budget allocation</p>
 				</div>
+			</div>
+		</div>
+
+		<!-- ── Vendor ─────────────────────────────────────────────────── -->
+		<div class="form-section" id="vendor_section">
+			<h2 class="section-header">Vendor Details</h2>
+
+			<div class="form-row cols-vendor" id="vendor_row">
+				<!-- Vendor Name → GET /vendors/all?active=1 (searchable combobox; saved as vendor_id).
+				     A name that is not in the list makes Vendor Code, Vendor Type and Address pop up so a new vendor
+				     can be added. -->
+				<div class="form-group">
+					<label for="vendor_search" class="form-label">Vendor Name</label>
+					<div class="select-loading-wrapper is-loading" id="vendor_wrapper" style="overflow:visible;">
+						<div style="position:relative;overflow:visible;">
+							<input type="text" id="vendor_search" class="form-input" placeholder="Search vendor&hellip;"
+								maxlength="500" autocomplete="off" disabled>
+							<div id="vendor_dropdown" class="pc-dropdown"></div>
+						</div>
+						<input type="hidden" id="vendor_id" name="vendor_id" value="">
+					</div>
+					<div class="error-box" id="vendor_error">Failed to load vendors. Please refresh the page.</div>
+				</div>
+
+				<!-- Vendor Code: read-only for a picked vendor, required + editable for a new one -->
+				<div class="form-group" id="vendor_code_group" style="display:none;">
+					<label for="vendor_code" class="form-label">Vendor Code <span class="required" id="vendor_code_required"
+							style="display:none;">*</span></label>
+					<input type="text" id="vendor_code" class="form-input" maxlength="50" autocomplete="off" readonly
+						tabindex="-1">
+				</div>
+
+				<!-- Vendor Type → GET /vendors/types. A dropdown (optional) for a new vendor; a read-only box showing
+				     the type of a picked vendor. -->
+				<div class="form-group" id="vendor_type_group" style="display:none;">
+					<label for="vendor_type" class="form-label">Vendor Type</label>
+					<select id="vendor_type" class="form-select">
+						<option value="">Select vendor type</option>
+					</select>
+					<input type="text" id="vendor_type_view" class="form-input" autocomplete="off" readonly tabindex="-1"
+						style="display:none;">
+					<div class="error-box" id="vendor_type_error">Failed to load vendor types. You can still add the vendor
+						without one.</div>
+				</div>
+
+				<!-- Address: read-only for a picked vendor (from its record), editable for a new one -->
+				<div class="form-group form-group-wide" id="vendor_address_group" style="display:none;">
+					<label for="vendor_address" class="form-label">Address</label>
+					<textarea id="vendor_address" class="form-textarea vendor-address" rows="2" readonly
+						tabindex="-1"></textarea>
+				</div>
+
+				<p class="input-hint form-group-wide" id="vendor_new_hint" style="display:none;">Not in the vendor list &mdash;
+					enter its code, type and address and it will be added as a new vendor when you save.</p>
 			</div>
 		</div>
 
@@ -180,7 +815,7 @@ $apiBase = Config('API.FMD_URL');
 				</div>
 
 				<!-- Fiscal Year → GET /fiscal_year/all -->
-				<!-- Value = fiscal_period_id (PK), Display = "FY {fiscal_year}" -->
+				<!-- Value = fiscal_yr (the PK of fims.fiscal_year, saved as budget_allocation.fiscal_year); shown as the year -->
 				<div class="form-group">
 					<label for="fiscal_year" class="form-label">
 						Fiscal Year <span class="required">*</span>
@@ -196,21 +831,16 @@ $apiBase = Config('API.FMD_URL');
 			</div>
 
 			<div class="form-row">
-				<!-- Category → GET /fmd/api/budget-allocation-category-type/all (searchable combobox) -->
+				<!-- Category → GET /budget_category/all (searchable combobox) -->
 				<div class="form-group">
 					<label for="cat_search" class="form-label">Category</label>
 					<div class="select-loading-wrapper is-loading" id="category_wrapper" style="overflow:visible;">
 						<div style="position:relative;overflow:visible;">
 							<input type="text" id="cat_search" class="form-input" placeholder="Search category&hellip;"
 								autocomplete="off" disabled>
-							<div id="cat_dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:9999;
-                                       background:var(--afims-surface, #FFFFFF);border:1px solid var(--afims-border, #E4ECF2);border-top:none;
-                                       border-radius:0 0 6px 6px;max-height:220px;overflow-y:auto;
-                                       box-shadow:0 4px 12px rgba(0,0,0,.1);">
-							</div>
+							<div id="cat_dropdown" class="pc-dropdown"></div>
 						</div>
-						<input type="hidden" id="budget_allocation_category_id" name="budget_allocation_category_id"
-							value="">
+						<input type="hidden" id="category_id" name="category_id" value="">
 					</div>
 					<div class="error-box" id="category_error">Failed to load categories. Please refresh the page.</div>
 				</div>
@@ -228,18 +858,6 @@ $apiBase = Config('API.FMD_URL');
 						<option value="COE">COE &mdash; Corporate Operating Expenditure</option>
 					</select>
 					<p class="input-hint">Budget document classification. Required for CBA allocations.</p>
-				</div>
-				<!-- Category Type → GET /coe-category-type/all -->
-				<div class="form-group">
-					<label for="category_type_id" class="form-label">Expense Type</label>
-					<div class="select-loading-wrapper is-loading" id="category_type_wrapper">
-						<select id="category_type_id" name="category_type_id" class="form-select" disabled>
-							<option value="">Loading category types&hellip;</option>
-						</select>
-					</div>
-					<div class="error-box" id="category_type_error">Failed to load category types. Please refresh the
-						page.</div>
-					<p class="input-hint" id="category_type_hint">Budget line classification (CO / PS / MOOE / EO)</p>
 				</div>
 			</div>
 
@@ -430,23 +1048,14 @@ $apiBase = Config('API.FMD_URL');
 		<div class="form-section">
 			<h2 class="section-header">Budget Allocation Amount</h2>
 			<p class="input-hint" style="margin-top:-4px;margin-bottom:12px;">
-				Add one line per Type of Fund / Budget Version you're drawing this allocation from.
+				Choose the Type of Fund, then the COB (its account code) this allocation is drawn from. Only approved budget
+				requests are listed, and both lists follow the Program, Sub-Program and Project chosen above.
 			</p>
 
-			<div class="error-box" id="fund_source_error">Failed to load fund sources. Please refresh the page.</div>
-			<div class="error-box" id="budget_version_error">Failed to load budget versions. Please refresh the page.
-			</div>
+			<div class="error-box" id="type_of_fund_error">Failed to load types of fund. Please refresh the page.</div>
+			<div class="error-box" id="cob_error">Failed to load COBs. Please refresh the page.</div>
 
 			<div id="baa_lines_container"></div>
-
-			<div class="form-row" style="margin-top:20px;">
-				<button type="button" id="baa_add_line_btn" class="btn-add-line" onclick="addBudgetAllocationLine()">
-					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-						<path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
-					</svg>
-					Add Budget Allocation
-				</button>
-			</div>
 
 			<div id="baa_totals" class="baa-totals">
 				<div class="baa-totals-row">
@@ -459,13 +1068,8 @@ $apiBase = Config('API.FMD_URL');
 				</div>
 			</div>
 
-			<!-- Legacy single-value mirrors — kept in sync with line 0 (FK columns
-                 budget_version_id/cob_id/fund_source_id can only reference one row)
-                 and with the summed totals (requested_amount/allocated_amount).
-                 The full itemized breakdown is submitted separately as
-                 `line_transaction` (jsonb) — see collectBaaLines() / buildPayload(). -->
-			<input type="hidden" id="fund_source_id" name="fund_source_id" value="">
-			<input type="hidden" id="budget_version_id" name="budget_version_id" value="">
+			<!-- Summed totals of the lines (requested_amount / allocated_amount). The itemized lines, each with its COB,
+			     are submitted separately as `line_transaction` (jsonb) — see collectBaaLines() / buildPayload(). -->
 			<input type="hidden" id="requested_amount_raw" name="requested_amount" value="">
 			<input type="hidden" id="allocated_amount_raw" name="allocated_amount" value="">
 
@@ -528,194 +1132,6 @@ $apiBase = Config('API.FMD_URL');
 					font-weight: 600;
 				}
 
-				/* ── Budget Version list filters (COE) ─────────────────────────────
-				   Same look as the "Filter the COB list" row of budget-version-form.php
-				   (.bv-cf-*), here as .baa-cf-* inside each Budget Allocation Amount line. */
-				.baa-bv-filters {
-					grid-column: 1 / -1;
-					margin-bottom: -10px;   /* .form-row's 24px row gap is more than this panel needs */
-					/* a panel of its own, so a line's filters read as belonging to that line's fields */
-					padding: 10px 12px 12px;
-					background: var(--afims-surface-subtle, #F4F7FA);
-					border: 1px solid var(--afims-border, #E4ECF2);
-					border-radius: 8px;
-				}
-				.baa-bv-filters .baa-cf-head {
-					display: flex;
-					align-items: center;
-					justify-content: space-between;
-					min-height: 18px;
-					margin-bottom: 8px;
-				}
-				.baa-bv-filters .baa-cf-title {
-					font-size: 12px;
-					font-weight: 600;
-					color: var(--afims-text-muted, #62657E);
-				}
-				.baa-bv-filters .baa-cf-clear {
-					display: none;
-					background: none;
-					border: none;
-					padding: 0;
-					font-size: 12px;
-					font-weight: 600;
-					color: var(--afims-primary-text, #0035A9);
-					cursor: pointer;
-				}
-				.baa-bv-filters .baa-cf-clear:hover { text-decoration: underline; }
-				.baa-bv-filters .baa-cf-grid {
-					display: grid;
-					grid-template-columns: 1.5fr 1fr 1fr;
-					gap: 10px 12px;
-				}
-				@media (max-width: 720px) {
-					.baa-bv-filters .baa-cf-grid { grid-template-columns: 1fr; }
-				}
-				.baa-bv-filters .baa-cf-field {
-					display: flex;
-					flex-direction: column;
-					gap: 4px;
-					min-width: 0;
-				}
-				.baa-bv-filters .baa-cf-label {
-					margin: 0;
-					font-size: 11px !important;
-					font-weight: 600 !important;
-					text-transform: none !important;
-					letter-spacing: 0 !important;
-					color: var(--afims-text-muted, #62657E) !important;
-				}
-
-				/* Filter controls: the two selects and the searchable chart-of-account input */
-				.baa-bv-filters .baa-cf-ctl,
-				.baa-bv-filters select.baa-cf-sel {
-					box-sizing: border-box;
-					width: 100%;
-					height: 36px !important;
-					min-height: 0 !important;
-					padding: 4px 30px 4px 12px !important;
-					font-size: 13px !important;
-					color: var(--afims-text, #1A1B21);
-					background-color: var(--afims-surface, #FFFFFF);
-					border: 1px solid var(--afims-border-strong, #A9AAB8) !important;
-					border-radius: 8px !important;
-					text-overflow: ellipsis;
-				}
-				.baa-bv-filters .baa-cf-ctl:focus,
-				.baa-bv-filters select.baa-cf-sel:focus {
-					outline: none;
-					border-color: var(--afims-primary, #0035A9) !important;
-					box-shadow: 0 0 0 3px var(--ui-ring, rgba(0, 53, 169, .15));
-				}
-				/* A filter that is narrowing the list: primary outline + soft tint. */
-				.baa-bv-filters .baa-cf-ctl.is-set,
-				.baa-bv-filters select.baa-cf-sel.is-set {
-					border-color: var(--afims-primary, #0035A9) !important;
-					background-color: var(--afims-primary-soft, #E6EBF6);
-					font-weight: 600;
-				}
-				.baa-bv-filters .baa-cf-ctl:disabled,
-				.baa-bv-filters select.baa-cf-sel:disabled { cursor: not-allowed; opacity: .6; }
-
-				/* Searchable chart-of-account combobox */
-				.baa-bv-filters .baa-cf-combo { position: relative; }
-				.baa-bv-filters .baa-cf-combo .baa-cf-ctl { padding-right: 54px !important; }
-				.baa-bv-filters .baa-cf-chev {
-					position: absolute;
-					right: 10px;
-					top: 50%;
-					width: 14px;
-					height: 14px;
-					transform: translateY(-50%);
-					color: var(--afims-text-muted, #62657E);
-					pointer-events: none;
-				}
-				.baa-bv-filters .baa-cf-x {
-					display: none;
-					position: absolute;
-					right: 28px;
-					top: 50%;
-					width: 20px;
-					height: 20px;
-					padding: 0;
-					transform: translateY(-50%);
-					align-items: center;
-					justify-content: center;
-					border: none;
-					border-radius: 50%;
-					background: transparent;
-					color: var(--afims-text-muted, #62657E);
-					cursor: pointer;
-				}
-				.baa-bv-filters .baa-cf-x:hover {
-					background: var(--afims-border, #E4ECF2);
-					color: var(--afims-text, #1A1B21);
-				}
-				.baa-bv-filters .baa-cf-x svg { width: 12px; height: 12px; }
-				.baa-bv-filters .baa-cf-dd {
-					display: none;
-					position: absolute;
-					top: calc(100% + 4px);
-					left: 0;
-					right: 0;
-					z-index: 210;
-					max-height: 240px;
-					overflow-y: auto;
-					padding: 4px;
-					background: var(--afims-surface, #FFFFFF);
-					border: 1px solid var(--afims-border, #E4ECF2);
-					border-radius: 8px;
-					box-shadow: 0 8px 24px rgba(16, 24, 40, .12);
-				}
-				.baa-bv-filters .baa-cf-opt {
-					display: flex;
-					align-items: baseline;
-					justify-content: space-between;
-					gap: 12px;
-					padding: 8px 10px;
-					border-radius: 6px;
-					cursor: pointer;
-				}
-				.baa-bv-filters .baa-cf-opt:hover { background: var(--afims-surface-subtle, #F4F7FA); }
-				.baa-bv-filters .baa-cf-opt.is-sel { background: var(--afims-primary-soft, #E6EBF6); }
-				.baa-bv-filters .baa-cf-opt-t {
-					min-width: 0;
-					font-size: 13px;
-					font-weight: 600;
-					color: var(--afims-heading, #000E3E);
-				}
-				.baa-bv-filters .baa-cf-opt-c {
-					white-space: nowrap;
-					font-size: 11px;
-					font-variant-numeric: tabular-nums;
-					color: var(--afims-text-muted, #62657E);
-				}
-				.baa-bv-filters .baa-cf-empty {
-					padding: 10px 12px;
-					font-size: 13px;
-					color: var(--afims-text-disabled, #A9AAB8);
-				}
-
-				.btn-add-line {
-					display: inline-flex;
-					align-items: center;
-					gap: 6px;
-					padding: 8px 14px;
-					background: var(--afims-surface, #FFFFFF);
-					color: var(--afims-heading, #000E3E);
-					border: 1px dashed var(--afims-text-disabled, #A9AAB8);
-					border-radius: 6px;
-					font-size: 13px;
-					font-weight: 600;
-					cursor: pointer;
-					transition: background .15s, border-color .15s;
-				}
-
-				.btn-add-line:hover {
-					background: var(--afims-surface-subtle, #F4F7FA);
-					border-color: var(--afims-heading-fill, #000E3E);
-				}
-
 				.baa-totals {
 					margin-top: 16px;
 					padding: 12px 16px;
@@ -745,47 +1161,37 @@ $apiBase = Config('API.FMD_URL');
 			</style>
 		</div>
 
-		<!-- ── Requesting Office ──────────────────────────────────────── -->
-		<div class="form-section">
-			<h2 class="section-header">Requesting Office Information</h2>
+		<!-- ── Purchase Request / Purchase Order ───────────────────── -->
+		<div class="form-section" id="pcr_section">
+			<h2 class="section-header" id="pcr_title">Purchase Request</h2>
 
-			<div class="form-row">
+			<!-- CBA (and CFA / no type chosen yet) → Purchase Request; RFA / LAA → Purchase Order. Both pairs stay in
+			     the form, but only the one that is showing is saved: pr_number + pr_amount, or po_number + po_amount. -->
+			<div class="form-row" id="pr_row" style="margin-bottom:0;">
 				<div class="form-group">
-					<label for="dept_search" class="form-label">
-						Requesting Department
-					</label>
-					<div class="select-loading-wrapper is-loading" id="department_wrapper" style="overflow:visible;">
-						<div style="position:relative;overflow:visible;">
-							<input type="text" id="dept_search" class="form-input"
-								placeholder="Search department&hellip;" autocomplete="off" disabled>
-							<div id="dept_dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:9999;
-                                       background:var(--afims-surface, #FFFFFF);border:1px solid var(--afims-border, #E4ECF2);border-top:none;
-                                       border-radius:0 0 6px 6px;max-height:220px;overflow-y:auto;
-                                       box-shadow:0 4px 12px rgba(0,0,0,.1);">
-							</div>
-						</div>
-						<input type="hidden" id="requesting_department_id" name="requesting_department_id" value="">
-					</div>
-					<div class="error-box" id="department_error">Failed to load departments. Please refresh the page.
-					</div>
+					<label for="pr_number" class="form-label">Purchase Request Number</label>
+					<input type="text" id="pr_number" class="form-input" maxlength="50" autocomplete="off"
+						placeholder="Enter the purchase request number">
 				</div>
+				<div class="form-group has-prefix">
+					<label for="pr_amount" class="form-label">Purchase Request Amount</label>
+					<span class="input-prefix">&#8369;</span>
+					<input type="text" id="pr_amount" class="form-input amt-input" placeholder="0.00" autocomplete="off">
+					<input type="hidden" id="pr_amount_raw" value="">
+				</div>
+			</div>
 
+			<div class="form-row" id="po_row" style="display:none;margin-bottom:0;">
 				<div class="form-group">
-					<label for="rc_search" class="form-label">Region / District Office</label>
-					<div class="select-loading-wrapper is-loading" id="rc_wrapper" style="overflow:visible;">
-						<div style="position:relative;overflow:visible;">
-							<input type="text" id="rc_search" class="form-input"
-								placeholder="Search region / district office&hellip;" autocomplete="off" disabled>
-							<div id="rc_dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:9999;
-                                       background:var(--afims-surface, #FFFFFF);border:1px solid var(--afims-border, #E4ECF2);border-top:none;
-                                       border-radius:0 0 6px 6px;max-height:220px;overflow-y:auto;
-                                       box-shadow:0 4px 12px rgba(0,0,0,.1);">
-							</div>
-						</div>
-						<input type="hidden" id="requesting_region_id" name="requesting_region_id" value="">
-					</div>
-					<div class="error-box" id="rc_error">Failed to load responsibility centers. Please refresh the page.
-					</div>
+					<label for="po_number" class="form-label">Purchase Order Number</label>
+					<input type="text" id="po_number" class="form-input" maxlength="50" autocomplete="off"
+						placeholder="Enter the purchase order number">
+				</div>
+				<div class="form-group has-prefix">
+					<label for="po_amount" class="form-label">Purchase Order Amount</label>
+					<span class="input-prefix">&#8369;</span>
+					<input type="text" id="po_amount" class="form-input amt-input" placeholder="0.00" autocomplete="off">
+					<input type="hidden" id="po_amount_raw" value="">
 				</div>
 			</div>
 		</div>
@@ -1050,14 +1456,13 @@ $apiBase = Config('API.FMD_URL');
 			value="<?php echo htmlspecialchars($cba_number); ?>">
 		<input type="hidden" id="created_by" name="created_by"
 			value="<?php echo (int) $user_id; ?>">
-		<input type="hidden" id="cob_id" name="cob_id" value="">
 		<input type="hidden" id="multiple_node_id" name="multiple_node_id" value="">
 		<input type="hidden" id="allocation_id" name="allocation_id"
 			value="<?php echo $allocationId ? (int) $allocationId : ''; ?>">
 
 		<!-- Form Actions -->
 		<div class="form-actions">
-			<button type="button" class="btn btn-secondary" onclick="window.history.back()">
+			<button type="button" class="btn btn-secondary" onclick="cbaCancel()">
 				<svg class="btn-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
 					stroke="currentColor">
 					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -1090,7 +1495,7 @@ $apiBase = Config('API.FMD_URL');
 						stroke="currentColor">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
 					</svg>
-					<span id="submit_btn_label">Submit CBA</span>
+					<span id="submit_btn_label">Submit Request</span>
 				</button>
 			</div>
 		</div>
@@ -1117,6 +1522,12 @@ $apiBase = Config('API.FMD_URL');
 		</div>
 	</div>
 </div>
+<?php if ($cbaAsModal): ?>
+		</div><!-- /.nha-modal-body -->
+	</div><!-- /.nha-modal -->
+</div><!-- /#cba-overlay -->
+</div><!-- /.nha-root (modal wrapper) -->
+<?php endif; ?>
 
 <script
 	src="<?php echo GetUrl('/_shared/FMD/budget-allocation-print/js/print-preview.js'); ?>?v=<?php echo time(); ?>">
@@ -1128,11 +1539,30 @@ $apiBase = Config('API.FMD_URL');
 	// ── Edit mode ────────────────────────────────────────────────────────────────
 	const CBA_CONFIG = {
 		allocationId: <?php echo $allocationId ? json_encode($allocationId) : 'null'; ?> ,
+		// the logged-in user's own RC (see the PHP header): { rc_id, rc_code, rc_name, office_type }
+		requestingRc: <?php echo json_encode($requestingRc, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE); ?> ,
 	};
 	const CBA_EDIT_MODE = !!CBA_CONFIG.allocationId;
+	// true when the including page rendered this form inside the overlay modal (see the PHP header)
+	const CBA_AS_MODAL = <?php echo $cbaAsModal ? 'true' : 'false'; ?>;
 	// created_at of the allocation being edited (set by populateEditForm). Stays
 	// null in add mode — nothing is saved yet, so the RFA print date is today's.
 	var CBA_CREATED_AT = null;
+
+	// ── Requesting office = a Responsibility Center, not a field on the form ───────
+	// Add mode: the logged-in user's own RC (CBA_CONFIG.requestingRc, resolved in PHP from uac.users.rc_id ->
+	// fims.responsibility_code). Edit mode: the RC saved on the record (populateEditForm). The API sets
+	// budget_allocation.requesting_rc_id itself on create, so this is only used for the RFA / LAA print preview.
+	var CBA_REQ_RC = Object.assign({ rc_id: '', rc_code: '', rc_name: '', office_type: '' }, CBA_CONFIG.requestingRc || {});
+
+	// fims.responsibility_code.office_type -> the department_type the RFA template switch uses:
+	// Regional / District offices print the REGIONAL OFFICE form, every central RC (Agency / Group / Department) the STAFF form (MAIN).
+	function cbaRcDeptType(officeType) {
+		var t = String(officeType || '');
+		if (t === 'Regional') return 'REGIONAL';
+		if (t === 'District') return 'DISTRICT';
+		return t ? 'MAIN' : '';
+	}
 
 	/* ── API fetch helper (GET) ─────────────────────────────────────────────── */
 	async function cba_apiFetch(url) {
@@ -1190,7 +1620,6 @@ $apiBase = Config('API.FMD_URL');
 	}
 
 	// ── Shared state ─────────────────────────────────────────────────────────────
-	let ALL_PROJECTS = [];
 	const CURRENT_YEAR = <?php echo (int) date('Y'); ?> ;
 
 	// ── Per-type series counters (populated by refreshAllocationCount) ────────────
@@ -1201,30 +1630,41 @@ $apiBase = Config('API.FMD_URL');
 	};
 
 	// ── Boot ─────────────────────────────────────────────────────────────────────
-	document.addEventListener('DOMContentLoaded', function() {
+	// The whole page set-up. Page mode runs it once at load; modal mode runs it on every open
+	// (see the Boot block at the end of this script).
+	// The app's shared preloader (app/preloader.php) — cbaBoot() shows it while the lookups load.
+	function cbaHideLoader() {
+		window.PagePreloader?.hide();
+	}
+
+	function cbaBoot() {
+		// Listeners on the <form> element itself. They are attached here, not at script load,
+		// because in modal mode the form's markup is rebuilt on every open and that discards
+		// whatever was attached to the previous element.
+		var cbaFormEl = document.getElementById('cba_form');
+		cbaFormEl.addEventListener('submit', cbaOnSubmit);
+		cbaFormEl.addEventListener('keydown', cbaBlockEnter);
+
+		pcInit(); // Program → Sub-Program → Project comboboxes
+
 		generateCBANumber();
 		addBudgetAllocationLine(); // render the first Budget Allocation Amount row
 
 		document.getElementById('allocation_type').addEventListener('change', generateCBANumber);
 		document.getElementById('allocation_type').addEventListener('change', toggleCbaIdRow);
 		document.getElementById('allocation_type').addEventListener('change', updateSubmitLabel);
+		document.getElementById('allocation_type').addEventListener('change', pcrApplyMode); // PR ↔ PO fields
+		wireAmtInput(document.getElementById('pr_amount'));
+		wireAmtInput(document.getElementById('po_amount'));
 		document.getElementById('allocation_type').addEventListener('change',
 			applyBudgetVersionVisibilityForDocType);
-		document.getElementById('allocation_type').addEventListener('change', baaResyncBvSource);
 		document.getElementById('document_type').addEventListener('change', applyAllocationTypeOptionsForDocType);
 		document.getElementById('document_type').addEventListener('change', generateCBANumber); // RFA code depends on document type
-		document.getElementById('document_type').addEventListener('change', toggleDepartmentByDocType);
-		document.getElementById('document_type').addEventListener('change', applyDeptWhitelistForDocType);
-		document.getElementById('document_type').addEventListener('change', applyCategoryTypeForDocType);
-		document.getElementById('document_type').addEventListener('change', applyFundSourceForDocType);
+		document.getElementById('document_type').addEventListener('change', dropInfrastructureCategoryForCoe);
 		document.getElementById('document_type').addEventListener('change',
 			applyProgramProjectVisibilityForDocType);
 		document.getElementById('document_type').addEventListener('change',
 			applyBudgetVersionVisibilityForDocType);
-		document.getElementById('document_type').addEventListener('change', function() {
-			baaRefreshBvLabels();
-		});
-		document.getElementById('document_type').addEventListener('change', baaResyncBvSource);
 
 		// ── Pre-populate from URL params (?type=RFA|LAA&parent_cba_id=N) ──
 		// Skipped entirely in edit mode — editing an existing record should never
@@ -1243,57 +1683,41 @@ $apiBase = Config('API.FMD_URL');
 		// Used by the "Create" button on allocation-variance.php (CO) and
 		// coe-allocation-variance.php (COE) so the form opens with the correct
 		// document type already selected instead of defaulting to blank.
-		// IMPORTANT: this must happen BEFORE the one-and-only toggleDepartmentByDocType()
-		// call below — calling it twice (once before the doc type is known, once after)
-		// fires two concurrent /department/all requests that race each other, and
-		// whichever resolves last wins, sometimes leaving the CO/COE-aware (MAIN-inclusive)
-		// result clobbered by the earlier mode-less one.
 		const _presetDocType = CBA_EDIT_MODE ? '' : (_urlParams.get('document_type') || '').toUpperCase();
 		if (_presetDocType === 'CO' || _presetDocType === 'COE') {
 			document.getElementById('document_type').value = _presetDocType;
 			generateCBANumber(); // RFA code depends on document type (COE → 57)
-			baaRefreshBvLabels(); // .value set programmatically — no 'change' event fires
 			applyBudgetVersionVisibilityForDocType();
 		}
 
 		// document_type is final here (URL preset applied) — hide CFA if it is CO.
 		applyAllocationTypeOptionsForDocType();
+		pcrApplyMode(); // so is the allocation type (a preset RFA / LAA shows the Purchase Order fields)
 
-		// Single authoritative Region/District (+ Requesting Department) load —
-		// document_type is already set above if it was preset via URL, so this
-		// fires exactly one /department/all request with the correct filters.
-		var _rcLoadPromise = toggleDepartmentByDocType();
 		applyProgramProjectVisibilityForDocType();
 		if (_presetDocType === 'CO' || _presetDocType === 'COE') {
-			applyCategoryTypeForDocType();
-			applyFundSourceForDocType();
+			dropInfrastructureCategoryForCoe();
 		}
 
-		// Run all dropdown loaders; after they settle, apply CBA autofill if requested
-		// NOTE: Budget Versions are no longer loaded here — each row only loads
-		// its own list once that row's Source of Fund is selected (see
-		// onBaaFundSourceChange / baaLoadBudgetVersionsByFundSource).
+		// Run all dropdown loaders; after they settle, apply CBA autofill if requested.
+		// The app's shared preloader covers the screen meanwhile (cbaHideLoader() takes it down).
+		// NOTE: the COB lists are not loaded here — each line loads its own, from the Program / Sub-Program /
+		// Project chosen above (see cobLoad).
+		window.PagePreloader?.show();
 		var _dropdownLoaders = Promise.allSettled([
 			loadFiscalYears(),
-			loadFundSources(),
 			loadPrograms(),
-			loadAllProjects(),
-			_rcLoadPromise,
-			loadDepartments(),
 			refreshAllocationCount(),
 			loadCategories(),
-			loadCategoryTypes(),
+			loadVendors(),
+			loadVendorTypes(),
+			loadTypesOfFund(),
 		]);
 
-		// Hide loading overlay once all dropdowns have settled
+		// Take the preloader down once all dropdowns have settled. In edit mode the saved record is still to be
+		// filled in (loadExistingAllocation, below), so it stays up until that has finished too.
 		_dropdownLoaders.then(function() {
-			var overlay = document.getElementById('cba_loading_overlay');
-			if (overlay) {
-				overlay.classList.add('cba-fade-out');
-				setTimeout(function() {
-					overlay.style.display = 'none';
-				}, 320);
-			}
+			if (!CBA_EDIT_MODE) cbaHideLoader();
 		});
 
 		if ((_presetType === 'RFA' || _presetType === 'LAA') && _presetCbaId) {
@@ -1319,23 +1743,29 @@ $apiBase = Config('API.FMD_URL');
 
 				// 2. Fiscal year
 				if (cba.fiscal_year) {
-					document.getElementById('fiscal_year').value = cba.fiscal_year;
+					cbaSetFiscalYear(cba.fiscal_year);
 					generateCBANumber();
 				}
 
-				// 3. Budget Allocation Amount lines + Budget Version — one row per
-				//    line_transaction entry, carried over from the parent CBA's
-				//    own itemized breakdown (same shape as the _hasLineTransaction
-				//    branch in populateEditForm() below), so an RFA/LAA generated
-				//    from a multi-line CBA starts with the same multiple Source of
-				//    Fund / Budget Version rows instead of collapsing to one.
-				//    Falls back to the parent's flat fund_source_id/
-				//    budget_version_id/requested_amount/allocated_amount (row 0
-				//    only) for legacy single-line CBAs with no line_transaction.
-				var cbaLines = Array.isArray(cba.line_transaction) && cba.line_transaction.length > 0 ?
-					cba.line_transaction : [{
-						fund_source_id: cba.fund_source_id,
-						budget_version_id: cba.budget_version_id,
+				// 3. Budget Allocation Amount lines — one row per line_transaction entry of the parent CBA (the
+				//    same shape populateEditForm() reads), so an RFA/LAA generated from a multi-line CBA starts with
+				//    the same COB lines instead of collapsing to one. A legacy single-line CBA with no
+				//    line_transaction falls back to its flat requested / allocated amounts (row 0).
+				// The parent list (/budget_allocation/all) leaves line_transaction out (it can be large), so the
+				// parent's full record is read for its lines.
+				var parentLines = Array.isArray(cba.line_transaction) ? cba.line_transaction : [];
+				if (!parentLines.length) {
+					try {
+						var parentJson = await cba_apiFetch(`${API_BASE}/budget_allocation/read/${cba.allocation_id}`);
+						if (parentJson.success && parentJson.data && Array.isArray(parentJson.data.line_transaction)) {
+							parentLines = parentJson.data.line_transaction;
+						}
+					} catch (err) {
+						console.error('[cba autofill] Failed to read the parent record:', err);
+					}
+				}
+				var cbaLines = parentLines.length > 0 ?
+					parentLines : [{
 						requested_amount: cba.requested_amount,
 						allocated_amount: cba.allocated_amount,
 					}];
@@ -1347,125 +1777,30 @@ $apiBase = Config('API.FMD_URL');
 					var cIdx = BAA_ROWS[cli];
 					if (cIdx === undefined) continue;
 
-					var cFsPromise = Promise.resolve();
-					var cFsSelect = document.getElementById('fund_source_id_' + cIdx);
-					if (cFsSelect && cLine.fund_source_id) {
-						cFsSelect.value = cLine.fund_source_id;
-						cFsPromise = onBaaFundSourceChange(cIdx);
-					}
-
 					baaSetAmount(cIdx, 'requested', cLine.requested_amount);
 					baaSetAmount(cIdx, 'allocated', cLine.allocated_amount);
-
-					if (cLine.budget_version_id) {
-						try {
-							await cFsPromise;
-						} catch (e) {
-							/* ignore */
-						}
-						var cBvData = BAA_BV_DATA[cIdx] || [];
-						var cBv = cBvData.find(function(b) {
-							return String(b.budget_version_id) === String(cLine
-								.budget_version_id);
-						});
-						if (cBv) {
-							// #document_type isn't written until step 4 below, so pass
-							// cba.document_type explicitly — the RFA/LAA being generated
-							// inherits it, and every row must show the right field
-							// (Fund ID vs. Program Source) immediately, not just once
-							// step 4 catches up.
-							baaBvSelect(
-								cIdx,
-								cBv.budget_version_id,
-								cBv.cob_id,
-								baaBvDisplayName(cBv, cba.document_type),
-								cBv.version_number || cBv.vnum || '',
-								cBv.version_name || cBv.vname || '',
-								cBv.status
-							);
-						}
-					}
+					// the COB the parent drew from (shown from the details saved with the line when it is no longer listed)
+					await cobRestoreLine(cIdx, cLine);
 				}
 				recomputeBaaTotals();
 
-				// 4. Document type — set it first, then await the RC reload it triggers
-				//    (toggleDepartmentByDocType calls loadResponsibilityCenters async,
-				//     so we must await that reload before setting requesting_region_id)
+				// 4. Document type
 				if (cba.document_type) {
 					var docTypeEl = document.getElementById('document_type');
 					docTypeEl.value = cba.document_type;
 					generateCBANumber(); // RFA code depends on document type (COE → 57)
-					// Replicate toggleDepartmentByDocType logic but await the RC load
-					var deptGroup = document.getElementById('requesting_department_id').closest(
-						'.form-group');
-					var rcMode = (cba.document_type === 'CO') ? 'DISTRICT' : undefined;
-					if (cba.document_type === 'CO') {
-						deptGroup.style.display = 'none';
-						deptClearSelection();
-					} else {
-						deptGroup.style.display = '';
-					}
-					await loadResponsibilityCenters(rcMode);
 					// document_type was set programmatically (no 'change' event fired),
 					// so re-apply the CO auto-select/lock behavior manually.
 					applyAllocationTypeOptionsForDocType();
-					applyDeptWhitelistForDocType();
-					applyCategoryTypeForDocType();
-					applyFundSourceForDocType();
+					dropInfrastructureCategoryForCoe();
 					applyBudgetVersionVisibilityForDocType();
-					baaRefreshBvLabels();
-				}
-
-				// 4b. Category Type — only override if not already locked to CO
-				// NOTE: /budget_allocation/all nests this as category_type{category_type_id,...}
-				// (reshapeFetchAllsRow() overwrites the flat FK column), not a flat category_type_id.
-				var cbaCategoryTypeId = cba.category_type && cba.category_type.category_type_id !=
-					null ?
-					cba.category_type.category_type_id : null;
-				if (cbaCategoryTypeId != null && document.getElementById('document_type').value !==
-					'CO') {
-					document.getElementById('category_type_id').value = cbaCategoryTypeId;
-				}
-
-				// 5/6. Requesting department / region — use the parent CBA's own
-				//      nested requesting_department/requesting_region objects
-				//      directly (fetchAlls() now resolves these via a plain JOIN
-				//      to uac.departments, same as fetchById()) instead of
-				//      looking the id up in DEPT_ALL_DATA/RC_ALL_DATA. Those two
-				//      lists are filtered down to a fixed whitelist for the
-				//      combobox's own search results (cbaIsWhitelistedDept()),
-				//      so a parent CBA whose department/region falls outside
-				//      that whitelist would otherwise silently fail to
-				//      auto-select here even though it's a valid saved value.
-				if (cba.requesting_department_id && cba.requesting_department) {
-					deptSelect(cba.requesting_department_id, deptLabelFor(cba.requesting_department));
-				}
-				if (cba.requesting_region_id && cba.requesting_region) {
-					rcSelect(cba.requesting_region_id, rcLabelFor(cba.requesting_region));
 				}
 
 				// 7. Amounts — already populated per-row in step 3 above (from
 				//    line_transaction, or the flat fallback).
 
-				// 8. Program (searchable combobox — find in loaded PROG_ALL_DATA)
-				if (cba.program_id && Array.isArray(PROG_ALL_DATA) && PROG_ALL_DATA.length) {
-					var prog = PROG_ALL_DATA.find(function(p) {
-						return parseInt(p.program_id, 10) === parseInt(cba.program_id, 10);
-					});
-					if (prog) {
-						progSelect(prog.program_id, prog.program_name, prog.program_code || '');
-					}
-				}
-
-				// 9. Project (independent of program — find in ALL_PROJECTS)
-				if (cba.project_id && Array.isArray(ALL_PROJECTS) && ALL_PROJECTS.length) {
-					var proj = ALL_PROJECTS.find(function(p) {
-						return parseInt(p.project_id, 10) === parseInt(cba.project_id, 10);
-					});
-					if (proj) {
-						projSelect(proj.project_id, proj.project_name, proj.project_code || '');
-					}
-				}
+				// 8/9. Program → Sub-Program → Project, selected by code
+				await cbaSelectProgramChain(cba.program_code, cba.sub_program_code, cba.project_code);
 
 				// 10. Purpose / description
 				if (cba.project_description) {
@@ -1481,21 +1816,11 @@ $apiBase = Config('API.FMD_URL');
 				var isBiddingEl = document.getElementById('is_bidding');
 				if (isBiddingEl) isBiddingEl.checked = !!cba.is_bidding;
 
-				// 12. Category (searchable combobox — find in loaded CAT_ALL_DATA)
-				// NOTE: /budget_allocation/all nests this as category{category_id,...}
-				// (reshapeFetchAllsRow() overwrites the flat FK column), not a flat category.
-				var cbaCategoryId = cba.category && cba.category.category_id != null ? cba.category
-					.category_id : null;
-				if (cbaCategoryId != null && Array.isArray(CAT_ALL_DATA) && CAT_ALL_DATA.length) {
-					var cat = CAT_ALL_DATA.find(function(c) {
-						return parseInt(c.budget_allocation_category_id, 10) === parseInt(
-							cbaCategoryId, 10);
-					});
-					if (cat) {
-						catSelect(cat.budget_allocation_category_id, cat
-							.budget_allocation_category_name);
-					}
-				}
+				// 12. Category (by id, from the loaded /budget_category/all list)
+				catSelectById(cba.category_id);
+
+				// 12b. Vendor (by id; the address comes with it)
+				await vendSelectById(cba.vendor_id);
 
 				// 13. Supporting Documents — carry over files already attached to the parent CBA
 				if (cba.multiple_node_id) {
@@ -1542,12 +1867,11 @@ $apiBase = Config('API.FMD_URL');
 			// Default supporting document rows (create mode only)
 			addSupportingDocRow('Memo Proposal');
 		}
-	});
+	}
 
 	// ── Edit mode: load + populate an existing allocation ─────────────────────────
 	// GET /budget_allocation/read/{id} → same nested response shape used
-	// throughout this file (program{}, project{}, requesting_department{},
-	// requesting_region{}, category_type{}, file_attachments[]).
+	// throughout this file (program{}, project{}, category_type{}, file_attachments[]).
 	async function loadExistingAllocation(id) {
 		try {
 			var json = await cba_apiFetch(`${API_BASE}/budget_allocation/read/${id}`);
@@ -1557,13 +1881,7 @@ $apiBase = Config('API.FMD_URL');
 			console.error('[loadExistingAllocation]', err);
 			alert('Failed to load allocation #' + id + ': ' + err.message);
 		} finally {
-			var overlay = document.getElementById('cba_loading_overlay');
-			if (overlay) {
-				overlay.classList.add('cba-fade-out');
-				setTimeout(function() {
-					overlay.style.display = 'none';
-				}, 320);
-			}
+			cbaHideLoader();
 		}
 	}
 
@@ -1573,12 +1891,20 @@ $apiBase = Config('API.FMD_URL');
 		};
 
 		CBA_CREATED_AT = a.created_at || null;
+		// the record's own requesting office (its creator's RC, joined by the API), not the editing user's
+		CBA_REQ_RC = {
+			rc_id: a.requesting_rc_id || '',
+			rc_code: a.requesting_rc_code || '',
+			rc_name: a.requesting_rc_name || '',
+			office_type: a.requesting_rc_office_type || '',
+		};
 
 		// 1. Allocation type — set first since it drives visibility of several
 		//    other fields (CBA parent row, category, doc type).
 		g('allocation_type').value = a.allocation_type || 'CBA';
 		toggleCbaIdRow();
 		updateSubmitLabel();
+		pcrApplyMode();
 
 		// 2. Allocation number — locked to the value loaded from the server
 		//    (generateCBANumber() is a no-op in edit mode). If the existing
@@ -1589,16 +1915,7 @@ $apiBase = Config('API.FMD_URL');
 		//    straight from this hidden field).
 		var allocNumber = a.allocation_number || buildAllocationNumber(a.allocation_type || 'CBA', a.document_type);
 		g('allocation_number').value = allocNumber;
-		var fsTextForDisplay = '';
-		if (a.fund_source_id && Array.isArray(FUND_SOURCE_DATA) && FUND_SOURCE_DATA.length) {
-			var fsRec = FUND_SOURCE_DATA.find(function(fs) {
-				return String(fs.fund_source_id) === String(a.fund_source_id);
-			});
-			fsTextForDisplay = fsRec ? (fsRec.source_name + ' (' + fsRec.source_code + ')') : '';
-		}
-		g('cba_number_display').textContent = fsTextForDisplay ?
-			(allocNumber + ' / ' + fsTextForDisplay) :
-			allocNumber;
+		g('cba_number_display').textContent = allocNumber;
 
 		// 3. cba_id (parent, for RFA/LAA)
 		if (a.allocation_type === 'RFA' || a.allocation_type === 'LAA') {
@@ -1623,193 +1940,55 @@ $apiBase = Config('API.FMD_URL');
 		}
 
 		// 4. Fiscal year
-		if (a.fiscal_year) g('fiscal_year').value = a.fiscal_year;
+		if (a.fiscal_year) cbaSetFiscalYear(a.fiscal_year);
 
-		// 5. Fund source (row 0) → triggers that row's Budget Version list load.
-		//    Skipped when a.line_transaction carries the full multi-row breakdown
-		//    (step 9/10 below handles every row, including row 0, in that case).
-		var _bvLoadPromise = Promise.resolve();
-		var _hasLineTransaction = Array.isArray(a.line_transaction) && a.line_transaction.length > 0;
-		if (!_hasLineTransaction && a.fund_source_id) {
-			var fsSelect0 = g('fund_source_id_0');
-			if (fsSelect0) {
-				fsSelect0.value = a.fund_source_id;
-				var fsOpt0 = fsSelect0.options[fsSelect0.selectedIndex];
-				var fsSourceName0 = (fsOpt0 && fsOpt0.value) ? (fsOpt0.dataset.sourceName || '') : '';
-				var mirror0 = g('fund_source_id');
-				if (mirror0) {
-					mirror0.value = fsSelect0.value;
-					mirror0.dataset.label = (fsOpt0 && fsOpt0.value) ? fsOpt0.textContent : '';
-				}
-				_bvLoadPromise = baaLoadBudgetVersionsByFundSource(0, fsSourceName0);
-			}
-		}
-
-		// 6. Document type — set first, then await the RC reload it triggers
+		// 6. Document type
 		if (a.document_type) {
 			var docTypeEl = g('document_type');
 			docTypeEl.value = a.document_type;
-			var deptGroup = g('requesting_department_id').closest('.form-group');
-			var rcMode = (a.document_type === 'CO') ? 'DISTRICT' : undefined;
-			if (a.document_type === 'CO') {
-				deptGroup.style.display = 'none';
-				deptClearSelection();
-			} else {
-				deptGroup.style.display = '';
-			}
-			await loadResponsibilityCenters(rcMode);
 			applyAllocationTypeOptionsForDocType();
-			applyDeptWhitelistForDocType();
-			applyCategoryTypeForDocType();
-			applyFundSourceForDocType();
+			dropInfrastructureCategoryForCoe();
 			applyBudgetVersionVisibilityForDocType();
-			baaRefreshBvLabels();
 		}
 
-		// 7. Category Type — only override if not already locked to CO
-		// NOTE: fetchById() nests this as category_type{category_type_id,...}
-		// (reshapeFetchAllsRow() overwrites the flat FK column), not a flat category_type_id.
-		var aCategoryTypeId = a.category_type && a.category_type.category_type_id != null ?
-			a.category_type.category_type_id : null;
-		if (aCategoryTypeId != null && g('document_type').value !== 'CO') {
-			g('category_type_id').value = aCategoryTypeId;
-		}
+		// 9. Program → Sub-Program → Project, selected by code — first, so every line's COB list is loaded once, for
+		//    this chain
+		await cbaSelectProgramChain(a.program_code, a.sub_program_code, a.project_code);
 
-		// 8. Requesting department / region — use the API's own nested
-		//    requesting_department/requesting_region objects directly
-		//    (budget_allocationServices.php::fetchById() already resolves
-		//    these via a plain JOIN to uac.departments) instead of looking the
-		//    id up in DEPT_ALL_DATA/RC_ALL_DATA. Those two lists are filtered
-		//    down to a fixed whitelist for the combobox's own search results
-		//    (cbaIsWhitelistedDept()), so an existing record whose department/
-		//    region falls outside that whitelist would otherwise silently fail
-		//    to auto-select here even though it's a perfectly valid saved value.
-		if (a.requesting_department_id && a.requesting_department) {
-			deptSelect(a.requesting_department_id, deptLabelFor(a.requesting_department));
-		}
-		if (a.requesting_region_id && a.requesting_region) {
-			rcSelect(a.requesting_region_id, rcLabelFor(a.requesting_region));
-		}
-
-		// 9/10. Budget Allocation Amount lines + Budget Version (CBA, and RFA/LAA
-		// carried over from their parent CBA — see the "Generate RFA/LAA" preset
-		// autofill flow in the boot handler above)
-		if (_hasLineTransaction) {
-			// Multi-row record — repopulate one Budget Allocation Amount row per
-			// line_transaction entry (row 0 already exists from boot).
-			while (BAA_ROWS.length < a.line_transaction.length) addBudgetAllocationLine();
-			for (var li = 0; li < a.line_transaction.length; li++) {
-				var line = a.line_transaction[li];
+		// 10. Budget Allocation Amount lines — one per saved line_transaction entry (row 0 already exists from boot),
+		//     each with the COB it drew from
+		var savedLines = Array.isArray(a.line_transaction) ? a.line_transaction : [];
+		if (savedLines.length) {
+			while (BAA_ROWS.length < savedLines.length) addBudgetAllocationLine();
+			for (var li = 0; li < savedLines.length; li++) {
+				var line = savedLines[li];
 				var idx = BAA_ROWS[li];
 				if (idx === undefined) continue;
 
-				var lineBvPromise = Promise.resolve();
-				var lineFsSelect = g('fund_source_id_' + idx);
-				if (lineFsSelect && line.fund_source_id) {
-					lineFsSelect.value = line.fund_source_id;
-					var lineFsOpt = lineFsSelect.options[lineFsSelect.selectedIndex];
-					var lineFsName = (lineFsOpt && lineFsOpt.value) ? (lineFsOpt.dataset.sourceName || '') : '';
-					if (idx === 0) {
-						var lineMirror = g('fund_source_id');
-						if (lineMirror) {
-							lineMirror.value = lineFsSelect.value;
-							lineMirror.dataset.label = (lineFsOpt && lineFsOpt.value) ? lineFsOpt.textContent : '';
-						}
-					}
-					lineBvPromise = baaLoadBudgetVersionsByFundSource(idx, lineFsName);
-				}
-
 				baaSetAmount(idx, 'requested', line.requested_amount);
 				baaSetAmount(idx, 'allocated', line.allocated_amount);
-
-				if (line.budget_version_id) {
-					try {
-						await lineBvPromise;
-					} catch (e) {
-						/* ignore */
-					}
-					var lineBvData = BAA_BV_DATA[idx] || [];
-					var lineBv = lineBvData.find(function(b) {
-						return String(b.budget_version_id) === String(line.budget_version_id);
-					});
-					if (lineBv) {
-						baaBvSelect(
-							idx, lineBv.budget_version_id, lineBv.cob_id,
-							baaBvDisplayName(lineBv),
-							lineBv.version_number || lineBv.vnum || '',
-							lineBv.version_name || lineBv.vname || '',
-							lineBv.status
-						);
-					}
-				}
+				await cobRestoreLine(idx, line);
 			}
 		} else {
-			// Single flat record (no line_transaction yet) — populate row 0 only.
-			if (a.budget_version_id) {
-				try {
-					await _bvLoadPromise;
-				} catch (e) {
-					/* ignore */
-				}
-				var bv = (BAA_BV_DATA[0] || []).find(function(b) {
-					return String(b.budget_version_id) === String(a.budget_version_id);
-				});
-				if (bv) {
-					baaBvSelect(
-						0,
-						bv.budget_version_id,
-						bv.cob_id,
-						baaBvDisplayName(bv),
-						bv.version_number || bv.vnum || '',
-						bv.version_name || bv.vname || '',
-						bv.status
-					);
-				}
-			}
+			// no itemized lines saved — the flat totals go into row 0
 			baaSetAmount(0, 'requested', a.requested_amount);
 			baaSetAmount(0, 'allocated', a.allocated_amount);
 		}
 		recomputeBaaTotals();
-
-		// 11. Program
-		if (a.program_id && Array.isArray(PROG_ALL_DATA) && PROG_ALL_DATA.length) {
-			var prog = PROG_ALL_DATA.find(function(p) {
-				return parseInt(p.program_id, 10) === parseInt(a.program_id, 10);
-			});
-			if (prog) progSelect(prog.program_id, prog.program_name, prog.program_code || '');
-		}
-
-		// 12. Project
-		if (a.project_id && Array.isArray(ALL_PROJECTS) && ALL_PROJECTS.length) {
-			var proj = ALL_PROJECTS.find(function(p) {
-				return parseInt(p.project_id, 10) === parseInt(a.project_id, 10);
-			});
-			if (proj) projSelect(proj.project_id, proj.project_name, proj.project_code || '');
-		}
 
 		// 13. Purpose / description / remarks
 		if (a.project_description) g('project_description').value = a.project_description;
 		if (a.remarks) g('remarks').value = a.remarks;
 		if (g('is_bidding')) g('is_bidding').checked = !!a.is_bidding;
 
-		// 14. Category (budget_allocation_category) — API may return either a
-		//     flat `category` id or a nested `category: {category_id, ...}` /
-		//     `budget_allocation_category: {...}` object depending on endpoint
-		//     version; handle both shapes defensively.
-		var categoryId = null;
-		if (a.category && typeof a.category === 'object') {
-			categoryId = a.category.category_id ?? a.category.budget_allocation_category_id ?? null;
-		} else if (a.category != null) {
-			categoryId = a.category;
-		} else if (a.budget_allocation_category && typeof a.budget_allocation_category === 'object') {
-			categoryId = a.budget_allocation_category.budget_allocation_category_id ?? null;
-		}
-		if (categoryId != null && Array.isArray(CAT_ALL_DATA) && CAT_ALL_DATA.length) {
-			var cat = CAT_ALL_DATA.find(function(c) {
-				return parseInt(c.budget_allocation_category_id, 10) === parseInt(categoryId, 10);
-			});
-			if (cat) catSelect(cat.budget_allocation_category_id, cat.budget_allocation_category_name);
-		}
+		// 14. Category (by id, from the loaded /budget_category/all list)
+		catSelectById(a.category_id);
+
+		// 14b. Vendor (by id; the address comes with it)
+		await vendSelectById(a.vendor_id);
+
+		// 14c. Purchase Request / Purchase Order (number + amount)
+		pcrPopulate(a);
 
 		// 17. Existing supporting documents — replace the blank default row
 		var list = g('supporting_docs_list');
@@ -1830,9 +2009,6 @@ $apiBase = Config('API.FMD_URL');
 			g('multiple_node_id').value = a.multiple_node_id;
 		}
 
-		// 18. Misc hidden fields carried through on update
-		g('cob_id').value = a.cob_id || '';
-
 		// 19. Apply COE visibility rules last, now that program/project/amount
 		//     autofill above has already run.
 		applyProgramProjectVisibilityForDocType();
@@ -1851,19 +2027,20 @@ $apiBase = Config('API.FMD_URL');
 	async function loadFiscalYears() {
 		var select = document.getElementById('fiscal_year');
 		try {
-			var json = await cba_apiFetch(`${API_BASE}/fiscal_year/all?period_type=ANNUAL`);
+			// fims.fiscal_year is just { fiscal_yr, status_id }, newest year first. The year is both the
+			// value (it is the FK saved in budget_allocation.fiscal_year) and the label, like every other
+			// FIMS fiscal-year dropdown. The current year is preselected when it exists.
+			var json = await cba_apiFetch(`${API_BASE}/fiscal_year/all`);
 			if (!json.success || !Array.isArray(json.data)) throw new Error(json.message ||
 				'Unexpected response format');
 
 			select.innerHTML = '<option value="">Select fiscal year</option>';
-			var sorted = json.data.slice().sort((a, b) => parseInt(a.fiscal_period_id, 10) - parseInt(b
-				.fiscal_period_id, 10));
-			sorted.forEach(function(row) {
+			json.data.forEach(function(row) {
 				var opt = document.createElement('option');
-				opt.value = row.fiscal_period_id;
-				opt.textContent = row.period_name;
-				opt.dataset.fiscalYear = row.fiscal_year;
-				if (parseInt(row.fiscal_year, 10) === CURRENT_YEAR) opt.selected = true;
+				opt.value = row.fiscal_yr;
+				opt.textContent = row.fiscal_yr;
+				opt.dataset.fiscalYear = row.fiscal_yr; // read by the print payload (fiscal_year_label)
+				if (parseInt(row.fiscal_yr, 10) === CURRENT_YEAR) opt.selected = true;
 				select.appendChild(opt);
 			});
 			select.disabled = false;
@@ -1876,156 +2053,50 @@ $apiBase = Config('API.FMD_URL');
 		}
 	}
 
-	// ── 2. Fund Sources ───────────────────────────────────────────────────────────
-	async function loadFundSources() {
-		try {
-			var json = await cba_apiFetch(`${API_BASE}/fund_source/all`);
-			if (!json.success || !Array.isArray(json.data)) throw new Error(json.message ||
-				'Unexpected response format');
-
-			FUND_SOURCE_DATA = json.data;
-			BAA_ROWS.forEach(function(idx) {
-				populateFundSourceSelect(document.getElementById('fund_source_id_' + idx));
-			});
-			generateCBANumber();
-			// Apply COE auto-select/lock in case document_type is already set
-			// (e.g. preset before this loader resolved).
-			applyFundSourceForDocType();
-		} catch (err) {
-			console.error('[loadFundSources]', err);
-			BAA_ROWS.forEach(function(idx) {
-				var select = document.getElementById('fund_source_id_' + idx);
-				if (select) select.innerHTML = '<option value="">Could not load</option>';
-			});
-			showError('fund_source_error');
-		}
-	}
-
-	// ── NEW: Category Type  →  GET /coe-category-type/all ─────────────────────────
-	var CAT_TYPE_ALL_DATA = [];
-
-	async function loadCategoryTypes() {
-		var select = document.getElementById('category_type_id');
-		try {
-			var json = await cba_apiFetch(`${API_BASE}/coe-category-type/all`);
-			if (!json.success || !Array.isArray(json.data)) throw new Error(json.message ||
-				'Unexpected response format');
-
-			CAT_TYPE_ALL_DATA = json.data;
-			renderCategoryTypeOptions();
-			select.disabled = false;
-
-			// Apply CO auto-select/lock (or COE exclusion) in case document_type
-			// is already set (e.g. preset from URL params before this loader resolved).
-			applyCategoryTypeForDocType();
-		} catch (err) {
-			console.error('[loadCategoryTypes]', err);
-			select.innerHTML = '<option value="">Could not load</option>';
-			showError('category_type_error');
-		} finally {
-			setLoading('category_type_wrapper', false);
-		}
-	}
-
-	// Rebuilds the <option> list, optionally excluding a category_code (e.g. 'CO' for COE docs).
-	function renderCategoryTypeOptions(excludeCode) {
-		var select = document.getElementById('category_type_id');
-		var currentValue = select.value;
-
-		var rows = CAT_TYPE_ALL_DATA;
-		if (excludeCode) {
-			rows = rows.filter(function(ct) {
-				return (ct.category_code || '').toUpperCase() !== excludeCode.toUpperCase();
-			});
-		}
-
-		select.innerHTML = '<option value="">Select Expense Type</option>';
-		rows.forEach(function(ct) {
+	// Set the dropdown from a saved record. If that year is no longer in the list it is added, so the
+	// form still shows it and saving does not silently blank the field.
+	function cbaSetFiscalYear(year) {
+		var select = document.getElementById('fiscal_year');
+		var v = String(year);
+		if (!Array.prototype.some.call(select.options, function(o) {
+				return o.value === v;
+			})) {
 			var opt = document.createElement('option');
-			opt.value = ct.category_type_id;
-			opt.textContent = ct.category_name + ' (' + ct.category_code + ')';
-			opt.dataset.categoryCode = ct.category_code;
+			opt.value = v;
+			opt.textContent = v;
+			opt.dataset.fiscalYear = v;
 			select.appendChild(opt);
-		});
-
-		// Re-select the previous value if it still exists in the filtered list;
-		// otherwise clear it (e.g. "CO" was selected but doc type became COE).
-		var stillExists = rows.some(function(ct) {
-			return String(ct.category_type_id) === String(currentValue);
-		});
-		select.value = stillExists ? currentValue : '';
+		}
+		select.value = v;
 	}
 
-	// ── Auto-select + lock Category Type to "CO" when Document Type = CO ──────────
-	// Also hides the "CO — Capital Outlay" option entirely when Document Type = COE.
-	function applyCategoryTypeForDocType() {
+	// ── Drop a stale "Infrastructure" Category pick when Document Type = COE ──────
+	// COE has no "Infrastructure" Category, so a pick made under another document
+	// type is cleared (the dropdown list itself is filtered by catVisibleData()).
+	// Runs on every Document Type change and after programmatic changes to it.
+	function dropInfrastructureCategoryForCoe() {
 		var docType = document.getElementById('document_type').value;
-		var select = document.getElementById('category_type_id');
-		var hint = document.getElementById('category_type_hint');
-		if (!select) return;
-
-		// COE has no "Infrastructure" Category — drop a stale pick made under
-		// another document type (the dropdown list itself is filtered by
-		// catVisibleData()).
 		if (docType === 'COE' && isInfrastructureCategorySelected()) {
-			var catHidden = document.getElementById('budget_allocation_category_id');
+			var catHidden = document.getElementById('category_id');
 			catHidden.value = '';
 			catHidden.dataset.label = '';
 			var catSearch = document.getElementById('cat_search');
 			if (catSearch) catSearch.value = '';
 		}
-
-		if (docType === 'CO') {
-			renderCategoryTypeOptions(); // show all options, including CO
-			var coType = CAT_TYPE_ALL_DATA.find(function(ct) {
-				return (ct.category_code || '').toUpperCase() === 'CO';
-			});
-			if (coType) {
-				select.value = coType.category_type_id;
-			}
-			select.disabled = true;
-			if (hint) hint.textContent = 'Locked to Capital Outlay for CO document type.';
-		} else if (docType === 'COE') {
-			renderCategoryTypeOptions('CO'); // hide the CO option for COE docs
-			var wrapper = document.getElementById('category_type_wrapper');
-			if (!wrapper || !wrapper.classList.contains('is-loading')) {
-				select.disabled = false;
-			}
-			if (hint) hint.textContent = 'Budget line classification (PS / MOOE / EO)';
-		} else {
-			renderCategoryTypeOptions(); // no document type selected — show all
-			var wrapper2 = document.getElementById('category_type_wrapper');
-			if (!wrapper2 || !wrapper2.classList.contains('is-loading')) {
-				select.disabled = false;
-			}
-			if (hint) hint.textContent = 'Budget line classification (CO / PS / MOOE / EO)';
-		}
 	}
 
-	// ── Auto-select + lock Source of Fund to "Corporate Receipts" for COE docs ────
-	// COE no longer forces/locks the source of fund to "Corporate Receipts" — the
-	// user is free to pick any fund source regardless of document type. This just
-	// makes sure every Budget Allocation Amount row's select is unlocked once
-	// fund sources have finished loading.
-	function applyFundSourceForDocType() {
-		if (!FUND_SOURCE_DATA.length) return;
-		document.querySelectorAll('.baa-fund-source').forEach(function(select) {
-			select.disabled = false;
-		});
-	}
-
-	// True when the selected Category (budget_allocation_category) is
+	// True when the selected Category (fims.budget_category) is
 	// "Infrastructure" — looked up by id in CAT_ALL_DATA rather than trusting
 	// the hidden field's dataset.label, since catClearSelection() only clears
 	// .value (not dataset.label) while the user is typing a new search query.
 	function isInfrastructureCategorySelected() {
-		var hidden = document.getElementById('budget_allocation_category_id');
+		var hidden = document.getElementById('category_id');
 		var id = hidden ? hidden.value : '';
 		if (!id) return false;
 		var cat = (CAT_ALL_DATA || []).find(function(c) {
-			return String(c.budget_allocation_category_id) === String(id);
+			return String(c.budget_category_id) === String(id);
 		});
-		return !!cat && (cat.budget_allocation_category_name || '').trim().toLowerCase() === 'infrastructure';
+		return !!cat && catIsInfrastructure(cat);
 	}
 
 	// ── Hide Program/Project (not Purpose/Description) + Cash Requirements for
@@ -2034,7 +2105,7 @@ $apiBase = Config('API.FMD_URL');
 	// COE allocations never carry a program/project, but they still need the
 	// Purpose / Description ("particulars") field — only the Program/Project
 	// row is hidden, the section itself (and its Purpose/Description row) stays
-	// visible. Neither program_id/project_id nor allocated_amount carry a
+	// visible. Neither the program/sub-program/project codes nor allocated_amount carry a
 	// `required` attribute, so hiding them just clears out any stale values so
 	// they aren't sent.
 	function applyProgramProjectVisibilityForDocType() {
@@ -2047,15 +2118,10 @@ $apiBase = Config('API.FMD_URL');
 			if (progProjRow) progProjRow.style.display = 'none';
 			if (sectionTitle) sectionTitle.textContent = 'Purpose Details';
 
-			if (typeof progClearSelection === 'function') progClearSelection();
-			if (typeof projClearSelection === 'function') projClearSelection();
-			var progSearch = document.getElementById('prog_search');
-			if (progSearch) progSearch.value = '';
-			var projSearch = document.getElementById('proj_search');
-			if (projSearch) projSearch.value = '';
+			cbaClearProgramChain();
 		} else {
 			if (progProjRow) progProjRow.style.display = '';
-			if (sectionTitle) sectionTitle.textContent = 'Program and Project Details';
+			if (sectionTitle) sectionTitle.textContent = 'Program, Sub-Program and Project Details';
 		}
 
 		// Cash Requirements is hidden for COE only, on every row — Requested
@@ -2081,163 +2147,295 @@ $apiBase = Config('API.FMD_URL');
 		}
 	}
 
-	// ── 3. Programs (searchable combobox) ─────────────────────────────────────────
-	var PROG_ALL_DATA = [];
-	var PROG_DEBOUNCE = null;
-	var PROG_LAST_QUERY = null;
+	// ── 3. Program → Sub-Program → Project (cascading searchable comboboxes) ──────
+	// Each level lists only what belongs to the level above it:
+	//   Program      GET /program/all
+	//   Sub-Program  GET /sub_program/all?program_code=<program>
+	//   Project      GET /project/all?program_code=<program>&sub_program_code=<sub-program>
+	// Choosing, editing or clearing a level clears every level below it and loads the
+	// next one. A program with no sub-programs would otherwise be a dead end
+	// (projects.sub_program_code is optional), so its projects are listed directly.
+	// The value of each level is its CODE — these tables have no integer id. It lives
+	// in the hidden input and is sent as program_code / sub_program_code / project_code.
+	var PCHAIN = {
+		prog: {
+			search: 'prog_search', dd: 'prog_dropdown', hidden: 'program_code', wrapper: 'program_wrapper',
+			error: 'program_error', hint: null, noun: 'program', parent: null, child: 'subprog',
+			codeKey: 'program_code', nameKey: 'program_name', data: [], seq: 0
+		},
+		subprog: {
+			search: 'subprog_search', dd: 'subprog_dropdown', hidden: 'sub_program_code', wrapper: 'sub_program_wrapper',
+			error: 'sub_program_error', hint: 'sub_program_hint', noun: 'sub-program', parent: 'prog', child: 'proj',
+			codeKey: 'sub_program_code', nameKey: 'sub_program_name', data: [], seq: 0
+		},
+		proj: {
+			search: 'proj_search', dd: 'proj_dropdown', hidden: 'project_code', wrapper: 'project_wrapper',
+			error: 'project_error', hint: 'project_hint', noun: 'project', parent: 'subprog', child: null,
+			codeKey: 'project_code', nameKey: 'project_name', data: [], seq: 0
+		},
+	};
 
-	async function loadPrograms() {
-		var searchEl = document.getElementById('prog_search');
-		var wrapper = document.getElementById('program_wrapper');
-		try {
-			var json = await cba_apiFetch(`${API_BASE}/program/all`);
-			if (!json.success || !Array.isArray(json.data)) throw new Error(json.message ||
-				'Unexpected response format');
-
-			PROG_ALL_DATA = json.data;
-			searchEl.disabled = false;
-			searchEl.placeholder = 'Search program…';
-			progSetupSearch();
-		} catch (err) {
-			console.error('[loadPrograms]', err);
-			showError('program_error');
-		} finally {
-			if (wrapper) wrapper.classList.remove('is-loading');
-		}
+	function pcEl(key, part) {
+		return document.getElementById(PCHAIN[key][part]);
 	}
 
-	function progRenderDropdown(data) {
-		var dd = document.getElementById('prog_dropdown');
-		if (!data.length) {
+	function pcValue(key) {
+		var hidden = pcEl(key, 'hidden');
+		return hidden ? hidden.value : '';
+	}
+
+	function pcEsc(s) {
+		return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+			.replace(/"/g, '&quot;');
+	}
+
+	function pcShowError(key) {
+		showError(PCHAIN[key].error);
+	}
+
+	function pcHideError(key) {
+		var box = document.getElementById(PCHAIN[key].error);
+		if (box) box.classList.remove('visible');
+	}
+
+	function pcSetHint(key, text) {
+		if (PCHAIN[key].hint) pcEl(key, 'hint').textContent = text;
+	}
+
+	function pcRender(key, rows) {
+		var c = PCHAIN[key];
+		var dd = pcEl(key, 'dd');
+		if (!rows.length) {
 			dd.innerHTML =
 				'<div style="padding:10px 14px;color:var(--afims-text-disabled, #A9AAB8);font-size:13px;">No results found</div>';
 			dd.style.display = 'block';
 			return;
 		}
-		dd.innerHTML = data.map(function(prog) {
-			var catStr = prog.program_category != null ? String(prog.program_category) : '';
-			return '<div class="bv-item"' +
-				' data-id="' + prog.program_id + '"' +
-				' data-code="' + (prog.program_code || '').replace(/"/g, '&quot;') + '"' +
-				' data-name="' + (prog.program_name || '').replace(/"/g, '&quot;') + '"' +
-				' data-cat="' + catStr.replace(/"/g, '&quot;') + '"' +
-				'>' +
-				'<div class="bv-item-name">' + (prog.program_name || '') + '</div>' +
-				'<div class="bv-item-sub">' + (prog.program_code || '') + '</div>' +
+		dd.innerHTML = rows.map(function(r) {
+			return '<div class="bv-item" data-code="' + pcEsc(r[c.codeKey]) + '" data-name="' + pcEsc(r[c.nameKey]) + '">' +
+				'<div class="bv-item-name">' + pcEsc(r[c.nameKey]) + '</div>' +
+				'<div class="bv-item-sub">' + pcEsc(r[c.codeKey]) + '</div>' +
 				'</div>';
 		}).join('');
 		dd.style.display = 'block';
-
 		dd.querySelectorAll('.bv-item').forEach(function(item) {
 			item.addEventListener('mousedown', function(e) {
 				e.preventDefault();
-				progSelect(parseInt(this.dataset.id, 10), this.dataset.name, this.dataset.code);
+				pcSelect(key, this.dataset.code, this.dataset.name);
 			});
 		});
 	}
 
-	function progSelect(id, name, code) {
-		var hidden = document.getElementById('program_id');
-		hidden.value = id;
+	// Pick a level's value, then clear the levels below it and load the next one. The returned
+	// promise resolves once that next level has its options, so edit mode can await it and
+	// select the following level straight away.
+	function pcSelect(key, code, name) {
+		var c = PCHAIN[key];
+		var hidden = pcEl(key, 'hidden');
+		hidden.value = code;
 		hidden.dataset.label = name + ' (' + code + ')';
-
-		document.getElementById('prog_search').value = name + ' (' + code + ')';
-		document.getElementById('prog_dropdown').style.display = 'none';
-		document.getElementById('progi_code').textContent = code || '—';
-		document.getElementById('prog_info').style.display = 'block';
+		pcEl(key, 'search').value = hidden.dataset.label;
+		pcEl(key, 'dd').style.display = 'none';
+		pcClearBelow(key);
+		cobChainChanged(); // the COB lists follow the chain
+		return c.child ? pcLoad(c.child) : Promise.resolve();
 	}
 
-	function progClearSelection() {
-		var hidden = document.getElementById('program_id');
+	// Forget one level's value (and optionally the text in its box).
+	function pcClear(key, clearText) {
+		var hidden = pcEl(key, 'hidden');
+		if (!hidden) return;
 		hidden.value = '';
 		hidden.dataset.label = '';
-		document.getElementById('prog_info').style.display = 'none';
+		if (clearText) pcEl(key, 'search').value = '';
+		cobChainChanged();
 	}
 
-	function progSetupSearch() {
-		var searchEl = document.getElementById('prog_search');
-		var dd = document.getElementById('prog_dropdown');
+	// Lock a level until the one above it has a value.
+	function pcDisable(key) {
+		var c = PCHAIN[key];
+		var parentNoun = PCHAIN[c.parent].noun;
+		var search = pcEl(key, 'search');
+		search.disabled = true;
+		search.placeholder = 'Select a ' + parentNoun + ' first';
+		pcSetHint(key, 'Select a ' + parentNoun + ' first.');
+		pcEl(key, 'dd').style.display = 'none';
+		pcHideError(key);
+		setLoading(c.wrapper, false);
+	}
 
-		searchEl.addEventListener('input', function() {
-			var q = this.value.trim();
-			progClearSelection();
-			clearTimeout(PROG_DEBOUNCE);
-			PROG_LAST_QUERY = q;
+	// Clear and lock every level below `key`. The seq bump makes any request still in flight for
+	// those levels discard its answer instead of filling a list the user has already moved past.
+	function pcClearBelow(key) {
+		for (var k = PCHAIN[key].child; k; k = PCHAIN[k].child) {
+			PCHAIN[k].seq++;
+			PCHAIN[k].data = [];
+			pcClear(k, true);
+			pcDisable(k);
+		}
+	}
 
-			if (!q) {
-				progRenderDropdown(PROG_ALL_DATA);
-				cba_apiFetch(API_BASE + '/program/all')
-					.then(function(json) {
-						if (json.success && Array.isArray(json.data)) {
-							PROG_ALL_DATA = json.data;
-							if (!document.getElementById('prog_search').value.trim()) {
-								progRenderDropdown(PROG_ALL_DATA);
-							}
-						}
-					})
-					.catch(function(err) {
-						console.error('[prog empty reload]', err);
-					});
-				return;
+	// Load a child level's options from its parent's current value.
+	async function pcLoad(key) {
+		var c = PCHAIN[key];
+		var search = pcEl(key, 'search');
+		var progCode = pcValue('prog');
+		var subCode = pcValue('subprog');
+		var url = key === 'subprog' ?
+			API_BASE + '/sub_program/all?program_code=' + encodeURIComponent(progCode) :
+			API_BASE + '/project/all?program_code=' + encodeURIComponent(progCode) +
+			(subCode ? '&sub_program_code=' + encodeURIComponent(subCode) : '');
+
+		var seq = ++c.seq;
+		var loaded = false;
+		pcHideError(key);
+		setLoading(c.wrapper, true);
+		search.disabled = true;
+		search.placeholder = 'Loading\u2026';
+		try {
+			var json = await cba_apiFetch(url);
+			if (seq !== c.seq) return; // a level above changed while this was loading
+			if (!json.success || !Array.isArray(json.data)) throw new Error(json.message || 'Unexpected response format');
+
+			c.data = json.data;
+			loaded = true;
+			var n = c.data.length;
+			if (!n) {
+				search.placeholder = 'No ' + c.noun + 's';
+				pcSetHint(key, key === 'subprog' ?
+					'This program has no sub-programs \u2014 its projects are listed directly.' :
+					'No projects under this ' + (subCode ? 'sub-program' : 'program') + '.');
+			} else {
+				search.disabled = false;
+				search.placeholder = 'Search ' + c.noun + '\u2026';
+				pcSetHint(key, n + ' ' + c.noun + '(s) under this ' + (key === 'subprog' ? 'program' : (subCode ? 'sub-program' : 'program')) + '.');
 			}
+		} catch (err) {
+			if (seq !== c.seq) return;
+			console.error('[pcLoad ' + key + ']', err);
+			c.data = [];
+			search.placeholder = 'Could not load';
+			pcShowError(key);
+		} finally {
+			if (seq === c.seq) setLoading(c.wrapper, false);
+		}
+		// no sub-programs under the chosen program: skip straight to its projects
+		if (loaded && key === 'subprog' && !c.data.length && seq === c.seq) return pcLoad('proj');
+	}
 
-			dd.innerHTML = '<div class="prog-searching">Searching&hellip;</div>';
-			dd.style.display = 'block';
+	// Typing in a box filters that level's already-loaded options (client-side).
+	function pcWire(key) {
+		var c = PCHAIN[key];
+		var search = pcEl(key, 'search');
+		var dd = pcEl(key, 'dd');
 
-			PROG_DEBOUNCE = setTimeout(async function() {
-				var capturedQuery = q;
-				try {
-					var json = await cba_apiFetch(API_BASE + '/program/all?program_name=' +
-						encodeURIComponent(capturedQuery));
-					if (PROG_LAST_QUERY !== capturedQuery) return;
-					if (json.success && Array.isArray(json.data)) {
-						PROG_ALL_DATA = json.data;
-						progRenderDropdown(json.data);
-					}
-				} catch (err) {
-					console.error('[prog search]', err);
-					if (PROG_LAST_QUERY !== capturedQuery) return;
-					dd.innerHTML =
-						'<div style="padding:10px 14px;color:var(--afims-danger, #DC3545);font-size:13px;">Search failed. Try again.</div>';
-					dd.style.display = 'block';
-				}
-			}, 250);
-		});
+		function matches(q) {
+			q = q.toLowerCase();
+			return c.data.filter(function(r) {
+				return !q || String(r[c.nameKey] || '').toLowerCase().includes(q) ||
+					String(r[c.codeKey] || '').toLowerCase().includes(q);
+			}).slice(0, 50);
+		}
 
-		searchEl.addEventListener('focus', function() {
-			if (PROG_ALL_DATA.length && !document.getElementById('program_id').value) {
-				progRenderDropdown(PROG_ALL_DATA);
+		search.addEventListener('input', function() {
+			// editing the text withdraws the earlier pick — it and everything below it are cleared
+			if (pcValue(key)) {
+				pcClear(key);
+				pcClearBelow(key);
 			}
-			cba_apiFetch(API_BASE + '/program/all')
-				.then(function(json) {
-					if (json.success && Array.isArray(json.data)) {
-						PROG_ALL_DATA = json.data;
-						if (!document.getElementById('program_id').value && !searchEl.value.trim()) {
-							progRenderDropdown(PROG_ALL_DATA);
-						}
-					}
-				})
-				.catch(function(err) {
-					console.error('[prog focus refresh]', err);
-				});
+			pcRender(key, matches(this.value.trim()));
 		});
-
-		searchEl.addEventListener('blur', function() {
+		search.addEventListener('focus', function() {
+			if (!pcValue(key)) pcRender(key, matches(this.value.trim()));
+		});
+		search.addEventListener('blur', function() {
 			setTimeout(function() {
 				dd.style.display = 'none';
 			}, 150);
 		});
 	}
 
-	// ── NEW: Category (searchable combobox) ───────────────────────────────────────
+	// Boot: wire the three boxes and lock the two child levels until a parent is chosen.
+	function pcInit() {
+		['prog', 'subprog', 'proj'].forEach(pcWire);
+		pcDisable('subprog');
+		pcDisable('proj');
+	}
+
+	async function loadPrograms() {
+		var c = PCHAIN.prog;
+		var search = pcEl('prog', 'search');
+		try {
+			var json = await cba_apiFetch(API_BASE + '/program/all');
+			if (!json.success || !Array.isArray(json.data)) throw new Error(json.message || 'Unexpected response format');
+
+			c.data = json.data;
+			search.disabled = false;
+			search.placeholder = 'Search program\u2026';
+		} catch (err) {
+			console.error('[loadPrograms]', err);
+			pcShowError('prog');
+		} finally {
+			setLoading(c.wrapper, false);
+		}
+	}
+
+	// Select program → sub-program → project from their codes (edit mode, and "generate RFA/LAA
+	// from a parent CBA"). Each level is only selectable once the one above has loaded its options.
+	async function cbaSelectProgramChain(progCode, subCode, projCode) {
+		// The levels are filled in by code here, not chosen by the user: the COBs already picked belong to this
+		// chain, so the COB reloads it triggers must not clear them.
+		COB_KEEP_SELECTION++;
+		try {
+			var prog = progCode && PCHAIN.prog.data.find(function(r) {
+				return r.program_code === progCode;
+			});
+			if (!prog) return;
+			await pcSelect('prog', prog.program_code, prog.program_name);
+
+			var sub = subCode && PCHAIN.subprog.data.find(function(r) {
+				return r.sub_program_code === subCode;
+			});
+			if (sub) await pcSelect('subprog', sub.sub_program_code, sub.sub_program_name);
+
+			var proj = projCode && PCHAIN.proj.data.find(function(r) {
+				return r.project_code === projCode;
+			});
+			if (proj) await pcSelect('proj', proj.project_code, proj.project_name);
+		} finally {
+			COB_KEEP_SELECTION--;
+		}
+	}
+
+	// Empty all three (used when the document type hides this row).
+	function cbaClearProgramChain() {
+		pcClear('prog', true);
+		pcClearBelow('prog');
+	}
+
+	// Drop every loaded list and invalidate in-flight requests (modal reopen).
+	function pcResetState() {
+		['prog', 'subprog', 'proj'].forEach(function(k) {
+			PCHAIN[k].data = [];
+			PCHAIN[k].seq++;
+		});
+	}
+
+	// ── Category (searchable combobox) ───────────────────────────────────────────
+	// GET /budget_category/all  →  [{ budget_category_id, name, … }]. The picked id lives in the
+	// hidden #category_id and is saved as budget_allocation.category_id.
 	var CAT_ALL_DATA = [];
 	var CAT_DEBOUNCE = null;
+
+	function catIsInfrastructure(c) {
+		return String(c.name || '').trim().toLowerCase() === 'infrastructure';
+	}
 
 	async function loadCategories() {
 		var searchEl = document.getElementById('cat_search');
 		var wrapper = document.getElementById('category_wrapper');
 		try {
-			var json = await cba_apiFetch(API_BASE + '/budget-allocation-category-type/all');
+			var json = await cba_apiFetch(API_BASE + '/budget_category/all');
 			if (!json.success || !Array.isArray(json.data)) throw new Error(json.message ||
 				'Unexpected response format');
 
@@ -2260,7 +2458,7 @@ $apiBase = Config('API.FMD_URL');
 	function catVisibleData() {
 		if (document.getElementById('document_type').value !== 'COE') return CAT_ALL_DATA;
 		return CAT_ALL_DATA.filter(function(c) {
-			return (c.budget_allocation_category_name || '').trim().toLowerCase() !== 'infrastructure';
+			return !catIsInfrastructure(c);
 		});
 	}
 
@@ -2273,11 +2471,8 @@ $apiBase = Config('API.FMD_URL');
 			return;
 		}
 		dd.innerHTML = data.map(function(cat) {
-			return '<div class="bv-item"' +
-				' data-id="' + cat.budget_allocation_category_id + '"' +
-				' data-name="' + (cat.budget_allocation_category_name || '').replace(/"/g, '&quot;') + '"' +
-				'>' +
-				'<div class="bv-item-name">' + (cat.budget_allocation_category_name || '') + '</div>' +
+			return '<div class="bv-item" data-id="' + pcEsc(cat.budget_category_id) + '" data-name="' + pcEsc(cat.name) + '">' +
+				'<div class="bv-item-name">' + pcEsc(cat.name) + '</div>' +
 				'</div>';
 		}).join('');
 		dd.style.display = 'block';
@@ -2291,7 +2486,7 @@ $apiBase = Config('API.FMD_URL');
 	}
 
 	function catSelect(id, name) {
-		var hidden = document.getElementById('budget_allocation_category_id');
+		var hidden = document.getElementById('category_id');
 		hidden.value = id;
 		hidden.dataset.label = name;
 
@@ -2301,8 +2496,18 @@ $apiBase = Config('API.FMD_URL');
 		applyProgramProjectVisibilityForDocType();
 	}
 
+	// Select a saved category by id (edit mode, "generate from a parent CBA"). Skipped when the id is
+	// not in the list (e.g. the category was deleted since), in which case the field stays empty.
+	function catSelectById(id) {
+		if (id == null || id === '') return;
+		var cat = CAT_ALL_DATA.find(function(c) {
+			return String(c.budget_category_id) === String(id);
+		});
+		if (cat) catSelect(cat.budget_category_id, cat.name);
+	}
+
 	function catClearSelection() {
-		document.getElementById('budget_allocation_category_id').value = '';
+		document.getElementById('category_id').value = '';
 		applyProgramProjectVisibilityForDocType();
 	}
 
@@ -2322,14 +2527,14 @@ $apiBase = Config('API.FMD_URL');
 
 			CAT_DEBOUNCE = setTimeout(function() {
 				var filtered = catVisibleData().filter(function(c) {
-					return (c.budget_allocation_category_name || '').toLowerCase().includes(q);
+					return String(c.name || '').toLowerCase().includes(q);
 				});
 				catRenderDropdown(filtered);
 			}, 150);
 		});
 
 		searchEl.addEventListener('focus', function() {
-			if (!document.getElementById('budget_allocation_category_id').value) {
+			if (!document.getElementById('category_id').value) {
 				catRenderDropdown(catVisibleData());
 			}
 		});
@@ -2341,218 +2546,434 @@ $apiBase = Config('API.FMD_URL');
 		});
 	}
 
-	// ── 4. Projects (searchable combobox, filtered by program) ────────────────────
-	var PROJ_CURRENT_DATA = [];
+	// ── Vendor (searchable combobox; a vendor that does not exist can be added) ───
+	// GET /vendors/all?active=1  →  [{ vendor_id, vendor_code, vendor_name, vendor_type, address, … }]. The picked
+	// id lives in the hidden #vendor_id and is saved as budget_allocation.vendor_id.
+	//
+	// VEND_MODE:
+	//   'none'      nothing typed or picked — only Vendor Name shows.
+	//   'existing'  a vendor from the list is picked — its code, type and address show, read-only.
+	//   'new'       the typed name is not an existing vendor — Vendor Code, Vendor Type and Address pop up,
+	//               editable. The vendor is created on save (POST /vendors/add, see vendEnsure) and the
+	//               allocation then gets its new id.
+	var VEND_ALL_DATA = [];
+	var VEND_TYPES = [];           // GET /vendors/types → [{ vendor_type_id, vendor_type, description }]
+	var VEND_TYPES_FAILED = false;
+	var VEND_DEBOUNCE = null;
+	var VEND_SEQ = 0;          // invalidates an in-flight edit-mode lookup (modal reopen)
+	var VEND_LIST_MAX = 50;    // rows rendered at once; typing narrows the rest
+	var VEND_MODE = 'none';
 
-	async function loadAllProjects() {
-		var wrapper = document.getElementById('project_wrapper');
-		var searchEl = document.getElementById('proj_search');
-		var hint = document.getElementById('project_hint');
+	function vendEl(id) {
+		return document.getElementById(id);
+	}
+
+	// 'SERVICE_PROVIDER' → 'Service Provider'
+	function vendTypeLabel(code) {
+		return String(code == null ? '' : code).toLowerCase().split('_').filter(Boolean).map(function(w) {
+			return w.charAt(0).toUpperCase() + w.slice(1);
+		}).join(' ');
+	}
+
+	async function loadVendors() {
+		var searchEl = vendEl('vendor_search');
+		var wrapper = vendEl('vendor_wrapper');
 		try {
-			var json = await cba_apiFetch(`${API_BASE}/projects/all`);
+			var json = await cba_apiFetch(API_BASE + '/vendors/all?active=1');
 			if (!json.success || !Array.isArray(json.data)) throw new Error(json.message ||
 				'Unexpected response format');
 
-			ALL_PROJECTS = json.data;
+			VEND_ALL_DATA = json.data;
 			searchEl.disabled = false;
-			searchEl.placeholder = 'Search project…';
-			if (hint) hint.textContent = ALL_PROJECTS.length + ' project(s) available.';
-			projSetupSearch(ALL_PROJECTS);
+			searchEl.placeholder = 'Search or enter a vendor…';
+			vendSetupSearch();
 		} catch (err) {
-			console.error('[loadAllProjects]', err);
-			showError('project_error');
+			console.error('[loadVendors]', err);
+			showError('vendor_error');
 		} finally {
 			if (wrapper) wrapper.classList.remove('is-loading');
 		}
 	}
 
-	function projRenderDropdown(filtered) {
-		var dd = document.getElementById('proj_dropdown');
-		if (!filtered.length) {
+	// Vendor types for the "new vendor" dropdown. The type is optional, so a failed load only shows a note.
+	async function loadVendorTypes() {
+		var sel = vendEl('vendor_type');
+		try {
+			var json = await cba_apiFetch(API_BASE + '/vendors/types');
+			if (!json.success || !Array.isArray(json.data)) throw new Error(json.message ||
+				'Unexpected response format');
+
+			VEND_TYPES = json.data;
+			VEND_TYPES_FAILED = false;
+			var keep = sel.value;
+			sel.innerHTML = '<option value="">Select vendor type</option>' + VEND_TYPES.map(function(t) {
+				return '<option value="' + pcEsc(t.vendor_type) + '" title="' + pcEsc(t.description) + '">' +
+					pcEsc(vendTypeLabel(t.vendor_type)) + '</option>';
+			}).join('');
+			sel.value = keep;
+		} catch (err) {
+			console.error('[loadVendorTypes]', err);
+			VEND_TYPES_FAILED = true;
+		}
+		vendSyncTypeError();
+	}
+
+	// The "could not load vendor types" note only matters while a new vendor is being entered.
+	function vendSyncTypeError() {
+		vendEl('vendor_type_error').classList.toggle('visible', VEND_MODE === 'new' && VEND_TYPES_FAILED);
+	}
+
+	// Show / hide / lock the Vendor Code, Vendor Type and Address fields for the given mode.
+	function vendSetMode(mode) {
+		VEND_MODE = mode;
+		var show = mode !== 'none';
+		var editable = mode === 'new';
+		var code = vendEl('vendor_code');
+		var addr = vendEl('vendor_address');
+		var typeSel = vendEl('vendor_type');
+		var typeView = vendEl('vendor_type_view');
+
+		vendEl('vendor_code_group').style.display = show ? '' : 'none';
+		vendEl('vendor_type_group').style.display = show ? '' : 'none';
+		vendEl('vendor_address_group').style.display = show ? '' : 'none';
+		[code, addr, typeSel, typeView].forEach(function(el) {
+			el.classList.remove('error', 'success');
+			var group = el.closest('.form-group');
+			if (group) group.classList.remove('has-error');
+		});
+		[code, addr].forEach(function(el) {
+			el.readOnly = !editable;
+			el.tabIndex = editable ? 0 : -1;
+		});
+		code.required = editable; // so the form's required-field check covers it only while it is shown
+		code.placeholder = editable ? 'Enter the vendor code' : '';
+		addr.placeholder = editable ? 'Enter the vendor address' : '';
+		typeSel.style.display = editable ? '' : 'none';      // dropdown for a new vendor …
+		typeView.style.display = editable ? 'none' : '';      // … read-only text for a picked one
+		vendEl('vendor_code_required').style.display = editable ? '' : 'none';
+		vendEl('vendor_new_hint').style.display = editable ? '' : 'none';
+		vendSyncTypeError();
+
+		if (mode === 'none') {
+			code.value = '';
+			addr.value = '';
+			typeSel.value = '';
+			typeView.value = '';
+		}
+	}
+
+	function vendFilter(q) {
+		if (!q) return VEND_ALL_DATA;
+		return VEND_ALL_DATA.filter(function(v) {
+			return String(v.vendor_name || '').toLowerCase().includes(q) ||
+				String(v.vendor_code || '').toLowerCase().includes(q) ||
+				String(v.tin || '').toLowerCase().includes(q);
+		});
+	}
+
+	// A vendor whose name equals the typed text (case-insensitive) — so typing a name in full counts as
+	// picking it, and the same vendor is never added twice.
+	function vendFindExact(name) {
+		var n = String(name || '').trim().toLowerCase();
+		if (!n) return null;
+		return VEND_ALL_DATA.find(function(v) {
+			return String(v.vendor_name || '').trim().toLowerCase() === n;
+		}) || null;
+	}
+
+	function vendRenderDropdown(rows) {
+		var dd = vendEl('vendor_dropdown');
+		if (!rows.length) {
 			dd.innerHTML =
-				'<div style="padding:10px 14px;color:var(--afims-text-disabled, #A9AAB8);font-size:13px;">No results found</div>';
+				'<div style="padding:10px 14px;color:var(--afims-text-muted, #62657E);font-size:13px;">No matching vendor &mdash; it will be added as a new vendor</div>';
 			dd.style.display = 'block';
 			return;
 		}
-		dd.innerHTML = filtered.map(function(proj) {
-			return '<div class="bv-item"' +
-				' data-id="' + proj.project_id + '"' +
-				' data-code="' + (proj.project_code || '').replace(/"/g, '&quot;') + '"' +
-				' data-name="' + (proj.project_name || '').replace(/"/g, '&quot;') + '"' +
-				'>' +
-				'<div class="bv-item-name">' + (proj.project_name || '') + '</div>' +
-				'<div class="bv-item-sub">' + (proj.project_code || '') + '</div>' +
+		var shown = rows.slice(0, VEND_LIST_MAX);
+		dd.innerHTML = shown.map(function(v) {
+			var sub = [v.vendor_code, vendTypeLabel(v.vendor_type)].filter(Boolean).join(' \u00b7 ');
+			return '<div class="bv-item" data-id="' + pcEsc(v.vendor_id) + '">' +
+				'<div class="bv-item-name">' + pcEsc(v.vendor_name) + '</div>' +
+				(sub ? '<div class="bv-item-sub">' + pcEsc(sub) + '</div>' : '') +
 				'</div>';
-		}).join('');
+		}).join('') + (rows.length > shown.length ?
+			'<div style="padding:8px 14px;color:var(--afims-text-muted, #62657E);font-size:11px;">Showing the first ' +
+			shown.length + ' of ' + rows.length + ' \u2014 type to narrow the list</div>' : '');
 		dd.style.display = 'block';
 
 		dd.querySelectorAll('.bv-item').forEach(function(item) {
 			item.addEventListener('mousedown', function(e) {
 				e.preventDefault();
-				projSelect(parseInt(this.dataset.id, 10), this.dataset.name, this.dataset.code);
+				var v = VEND_ALL_DATA.find(function(x) {
+					return String(x.vendor_id) === item.dataset.id;
+				});
+				if (v) vendSelectRecord(v);
 			});
 		});
 	}
 
-	function projSelect(id, name, code) {
-		var hidden = document.getElementById('project_id');
+	function vendSelect(id, name, address, code, type) {
+		var hidden = vendEl('vendor_id');
 		hidden.value = id;
-		hidden.dataset.label = name + ' (' + code + ')';
+		hidden.dataset.label = name || '';
 
-		document.getElementById('proj_search').value = name + ' (' + code + ')';
-		document.getElementById('proj_dropdown').style.display = 'none';
-		document.getElementById('project_hint').textContent = 'Selected: ' + name;
+		vendEl('vendor_search').value = name || '';
+		vendEl('vendor_dropdown').style.display = 'none';
+		vendEl('vendor_code').value = code == null ? '' : String(code);
+		vendEl('vendor_address').value = address == null ? '' : String(address);
+		vendEl('vendor_type_view').value = vendTypeLabel(type);
+		vendSetMode('existing');
 	}
 
-	function projClearSelection() {
-		var hidden = document.getElementById('project_id');
-		hidden.value = '';
-		hidden.dataset.label = '';
+	function vendSelectRecord(v) {
+		vendSelect(v.vendor_id, v.vendor_name, v.address, v.vendor_code, v.vendor_type);
 	}
 
-	function projSetupSearch(data) {
-		PROJ_CURRENT_DATA = data;
-		var searchEl = document.getElementById('proj_search');
-		var dd = document.getElementById('proj_dropdown');
+	// Select a saved vendor by id (edit mode, "generate from a parent CBA"). A vendor that is no longer
+	// offered in the list (it has since been made inactive) is fetched on its own so the saved record
+	// still shows it; if that fails too, the field simply stays empty.
+	async function vendSelectById(id) {
+		if (id == null || id === '') return;
+		var v = VEND_ALL_DATA.find(function(x) {
+			return String(x.vendor_id) === String(id);
+		});
+		if (!v) {
+			var seq = ++VEND_SEQ;
+			try {
+				var json = await cba_apiFetch(API_BASE + '/vendors/read/' + encodeURIComponent(id));
+				if (seq !== VEND_SEQ || !json.success || !json.data) return;
+				v = json.data;
+			} catch (err) {
+				console.warn('[vendSelectById]', err);
+				return;
+			}
+		}
+		vendSelectRecord(v);
+	}
 
-		var newSearch = searchEl.cloneNode(true);
-		searchEl.parentNode.replaceChild(newSearch, searchEl);
-		searchEl = newSearch;
+	// The text in Vendor Name was edited: any picked vendor is withdrawn (and the code / type / address that
+	// came with it). What was typed for a NEW vendor is kept, so correcting its name does not wipe the code.
+	function vendOnType(text) {
+		vendEl('vendor_id').value = '';
+		if (VEND_MODE === 'existing') vendSetMode('none');
+		if (!String(text).trim()) vendSetMode('none');
+	}
+
+	// Settle what is typed in Vendor Name when the user is done with it (blur, or at save time): an exact
+	// match of an existing vendor selects it, any other non-empty text is a new vendor.
+	function vendResolveTyped() {
+		var name = vendEl('vendor_search').value.trim();
+		if (!name || VEND_MODE === 'existing') return;
+		var exact = vendFindExact(name);
+		if (exact) {
+			vendSelectRecord(exact);
+			return;
+		}
+		if (VEND_MODE !== 'new') vendSetMode('new');
+	}
+
+	// Called by postToApi before the allocation is saved. For a new vendor: create it, then switch to
+	// "existing" with its new id — so a retry after a later failure re-uses it instead of adding it twice.
+	// Throws (the caller shows the message) when the vendor cannot be created.
+	async function vendEnsure() {
+		vendResolveTyped();
+		if (VEND_MODE !== 'new') return;
+
+		var name = vendEl('vendor_search').value.trim();
+		var codeEl = vendEl('vendor_code');
+		var code = codeEl.value.trim();
+		var type = vendEl('vendor_type').value;
+		var address = vendEl('vendor_address').value.trim();
+
+		if (!code) {
+			validateField(codeEl);
+			codeEl.focus();
+			throw new Error('Enter a vendor code for the new vendor "' + name +
+				'", or pick an existing vendor from the list.');
+		}
+
+		var body = {
+			vendor_code: code,
+			vendor_name: name
+		};
+		if (type) body.vendor_type = type;
+		if (address) body.address = address;
+
+		var json;
+		try {
+			json = await cba_apiFetchPost(API_BASE + '/vendors/add', body);
+		} catch (err) {
+			codeEl.classList.add('error'); // the usual cause: the code is already taken
+			throw new Error('Could not add the vendor: ' + err.message);
+		}
+		if (!json.success || !json.data || !json.data.vendor_id) {
+			throw new Error('Could not add the vendor: ' + (json.message || 'unexpected response'));
+		}
+
+		VEND_ALL_DATA.push({
+			vendor_id: json.data.vendor_id,
+			vendor_code: code,
+			vendor_name: name,
+			vendor_type: type || null,
+			address: address || null,
+			status: 'ACTIVE'
+		});
+		vendSelect(json.data.vendor_id, name, address, code, type);
+	}
+
+	function vendSetupSearch() {
+		var searchEl = vendEl('vendor_search');
+		var dd = vendEl('vendor_dropdown');
 
 		searchEl.addEventListener('input', function() {
 			var q = this.value.trim().toLowerCase();
-			projClearSelection();
+			vendOnType(this.value);
+			clearTimeout(VEND_DEBOUNCE);
+
 			if (!q) {
-				dd.style.display = 'none';
+				vendRenderDropdown(vendFilter(''));
 				return;
 			}
-			var filtered = PROJ_CURRENT_DATA.filter(function(proj) {
-				return (proj.project_name || '').toLowerCase().includes(q) ||
-					(proj.project_code || '').toLowerCase().includes(q);
-			}).slice(0, 50);
-			projRenderDropdown(filtered);
+
+			VEND_DEBOUNCE = setTimeout(function() {
+				if (VEND_MODE === 'existing') return;
+				var rows = vendFilter(q);
+				vendRenderDropdown(rows);
+				if (!rows.length && VEND_MODE !== 'new') vendSetMode('new'); // nothing like it exists
+			}, 150);
 		});
 
 		searchEl.addEventListener('focus', function() {
-			projRenderDropdown(PROJ_CURRENT_DATA.slice(0, 50));
+			if (!vendEl('vendor_id').value && !this.value.trim()) {
+				vendRenderDropdown(vendFilter(''));
+			}
 		});
 
 		searchEl.addEventListener('blur', function() {
+			clearTimeout(VEND_DEBOUNCE); // a pending search must not reopen the list after the user has left
 			setTimeout(function() {
 				dd.style.display = 'none';
 			}, 150);
+			vendResolveTyped();
 		});
 	}
 
-	// ── 5. Budget Allocation Amount lines (multiple Source of Fund / Budget
-	// Version / Requested Amount / Cash Requirements rows) ─────────────────────
-	// Each line is independent; row 0's fund source / budget version mirror into
-	// the legacy singular hidden fields (fund_source_id / budget_version_id /
-	// cob_id — FK columns can only hold one value), and every row's amounts are
-	// summed into requested_amount_raw / allocated_amount_raw. The full itemized
-	// breakdown is sent separately as `line_transaction` (jsonb) — see
-	// collectBaaLines() / buildPayload().
-	var FUND_SOURCE_DATA = []; // cached fund source list — shared across all rows
-	var BAA_ROWS = []; // ordered array of live row idx values
+	// ── Purchase Request / Purchase Order ────────────────────────────────────────
+	// Allocation type RFA / LAA → Purchase Order Number + Amount (po_number, po_amount). Anything else (CBA, CFA,
+	// or no type chosen yet — the same default getTypeLabel() uses) → Purchase Request Number + Amount
+	// (pr_number, pr_amount). Both pairs stay in the form, so switching the type back restores what was typed,
+	// but only the pair that is showing is saved.
+	function pcrMode() {
+		var t = document.getElementById('allocation_type').value;
+		return (t === 'RFA' || t === 'LAA') ? 'po' : 'pr';
+	}
+
+	function pcrApplyMode() {
+		var m = pcrMode();
+		document.getElementById('pr_row').style.display = m === 'pr' ? '' : 'none';
+		document.getElementById('po_row').style.display = m === 'po' ? '' : 'none';
+		document.getElementById('pcr_title').textContent = m === 'po' ? 'Purchase Order' : 'Purchase Request';
+	}
+
+	// Request fields for the pair that is showing. A blank value is sent as '' (the service stores NULL), so
+	// emptying a field on an existing record clears it.
+	function pcrPayloadFields() {
+		var m = pcrMode();
+		var out = {};
+		out[m + '_number'] = document.getElementById(m + '_number').value.trim();
+		out[m + '_amount'] = document.getElementById(m + '_amount_raw').value;
+		return out;
+	}
+
+	// Edit mode: fill both pairs from the saved record (only the one for the allocation type is visible).
+	function pcrPopulate(a) {
+		document.getElementById('pr_number').value = a.pr_number || '';
+		document.getElementById('po_number').value = a.po_number || '';
+		['pr', 'po'].forEach(function(k) {
+			var n = parseFloat(a[k + '_amount']) || 0;
+			document.getElementById(k + '_amount').value = n > 0 ? baaFormatAmt(n) : '';
+			document.getElementById(k + '_amount_raw').value = n > 0 ? n.toFixed(2) : '';
+		});
+	}
+
+	// ── 5. Budget Allocation Amount lines (COB + Requested Amount + Cash Requirements) ──────────────────────
+	// One line = a Type of Fund, a COB and the amounts drawn from it. A COB is an approved budget line item, listed
+	// by its Account Code (its Type of Fund is the select beside it):
+	//   GET /budget_line_item/approved[?program_code=&sub_program_code=&project_code=&type_of_fund_id=]
+	// The line's Type of Fund select offers only the types of fund that exist on approved line items (for the chain
+	// chosen above) and filters its COB list to the same type of fund; picking a COB sets it too.
+	// returns the line items of budget requests whose status is Approved, narrowed to whatever is attached to the
+	// Program / Sub-Program / Project chosen above (none chosen → every approved line item). Every line loads its own
+	// list and reloads whenever that chain changes (see cobChainChanged). The itemized lines are sent as
+	// `line_transaction` (jsonb) — see collectBaaLines() / buildPayload(); their totals feed
+	// requested_amount_raw / allocated_amount_raw.
+	var BAA_ROWS = []; // ordered array of live line idx values
 	var BAA_ROW_SEQ = -1;
-	var BAA_BV_DATA = {}; // idx -> budget version array for that row's fund source
-	var BAA_BV_WIRED = {}; // idx -> bool (search listeners wired once per row)
-	var BAA_BV_REQ_TOKEN = {}; // idx -> token, guards stale async responses when a row's fund source changes quickly
-	// The Budget Version ("Fund ID" / "Budget Version (COB)") list is restricted to
-	// COBs under these components (shared.component_type ids), sent as repeated
-	// &component_id=… params on /budget_version_v2/all:
-	//   Document Type CO  + Allocation Type RFA / LAA → components 1 and 2
-	//   Document Type COE (any Allocation Type)       → component 3 only
-	// Every other combination is not component-filtered.
-	var BAA_CO_RFA_LAA_COMPONENT_IDS = [1, 2];
-	var BAA_COE_COMPONENT_IDS = [3];
-	var BAA_BV_GATE = {}; // idx -> "1,2" / "3" / "" — the component filter the row's list was last loaded with
+	var COB_DATA = {}; // idx -> approved line items last loaded for that line
+	var COB_SIG = {}; // idx -> the program|sub-program|project that list was loaded for
+	var COB_SEQ = {}; // idx -> token of the newest request, so an answer that was overtaken is dropped
+	var COB_LOAD = {}; // idx -> promise of that line's newest load
+	var COB_SEL = {}; // idx -> the picked line item (kept even when it is not in the current list)
+	var COB_WIRED = {}; // idx -> search listeners attached
+	var COB_EPOCH = 0; // bumped when the modal form is reset, so requests from the old DOM are dropped
+	var COB_KEEP_SELECTION = 0; // >0 while a saved record's own chain is being filled in: a reload must not clear its picks
+	var COB_SYNC_QUEUED = false;
+	var COB_TOKEN_SEQ = 0;
+	var COB_LIST_MAX = 50; // rows rendered at once; typing narrows the rest
+	var TOF_DATA = []; // the types of fund on approved line items, for the chain chosen — shared by every line's select
+	var TOF_LOADED = false;
+	var TOF_SIG = null; // the Program / Sub-Program / Project that TOF_DATA was loaded for
+	var TOF_TOKEN = ''; // token of the newest request, so an answer that was overtaken is dropped
 
-	function baaComponentIdsForBv() {
-		var type = document.getElementById('allocation_type').value;
-		var docType = document.getElementById('document_type').value;
-		if (docType === 'CO' && (type === 'RFA' || type === 'LAA')) return BAA_CO_RFA_LAA_COMPONENT_IDS;
-		if (docType === 'COE') return BAA_COE_COMPONENT_IDS;
-		return [];
+	function cobEl(part, idx) {
+		return document.getElementById(part + '_' + idx);
 	}
 
-	// Document Type / Allocation Type decide which component filter a row's list
-	// gets, but the list is only fetched when the fund source is picked — so when
-	// either changes afterwards, re-load every row (with a fund source already
-	// chosen) whose filter just changed. Re-loading clears that row's selection,
-	// which no longer belongs to the new list.
-	function baaResyncBvSource() {
-		var key = baaComponentIdsForBv().join(',');
-		BAA_ROWS.forEach(function(idx) {
-			var fsSel = document.getElementById('fund_source_id_' + idx);
-			if (!fsSel || !fsSel.value) return;
-			if (BAA_BV_GATE[idx] === key) return;
-			onBaaFundSourceChange(idx);
-		});
+	// The Program / Sub-Program / Project chosen above.
+	function cobChainSignature() {
+		return [pcValue('prog'), pcValue('subprog'), pcValue('proj')].join('|');
+	}
+
+	// What a line's COB list depends on: the chain above plus the line's own Type of Fund.
+	function cobSignature(idx) {
+		var tof = cobEl('type_of_fund_id', idx);
+		return cobChainSignature() + '|' + (tof ? tof.value : '');
+	}
+
+	// The account code — what the search box shows once a COB is picked (the Type of Fund is the select beside it).
+	function cobLabel(r) {
+		return r.account_code || ('Line item #' + r.budget_line_item_id);
+	}
+
+	function cobAmount(v) {
+		return (v == null || v === '') ? '—' : '₱' + baaFormatAmt(parseFloat(v) || 0);
 	}
 
 	function baaRowTemplate(idx) {
 		return '' +
 			'<div class="baa-line form-row" data-idx="' + idx + '">' +
-			// COE only — narrows this line's Budget Version list (see baaFiltersPopulate)
-			'<div class="baa-bv-filters" id="baa_cf_wrap_' + idx + '" style="display:none;">' +
-			'<div class="baa-cf-head">' +
-			'<span class="baa-cf-title">Filter the Budget Version list</span>' +
-			'<button type="button" class="baa-cf-clear" id="baa_cf_clear_' + idx + '">Clear filters</button>' +
-			'</div>' +
-			'<div class="baa-cf-grid">' +
-			'<div class="baa-cf-field">' +
-			'<label class="baa-cf-label" for="baa_cf_account_search_' + idx + '">Chart of Account</label>' +
-			'<div class="baa-cf-combo">' +
-			'<input type="text" id="baa_cf_account_search_' + idx + '" class="baa-cf-ctl" ' +
-			'placeholder="Select a source of fund first&hellip;" autocomplete="off" disabled>' +
-			'<button type="button" class="baa-cf-x" id="baa_cf_account_x_' + idx + '" ' +
-			'aria-label="Clear chart of account filter" tabindex="-1"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg></button>' +
-			'<svg class="baa-cf-chev" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>' +
-			'<div id="baa_cf_account_dd_' + idx + '" class="baa-cf-dd"></div>' +
-			'</div>' +
-			'<input type="hidden" id="baa_cf_account_' + idx + '" value="">' +
-			'</div>' +
-			'<div class="baa-cf-field">' +
-			'<label class="baa-cf-label" for="baa_cf_dept_' + idx + '">Requesting Department</label>' +
-			'<select id="baa_cf_dept_' + idx + '" class="form-select baa-cf-sel" disabled>' +
-			'<option value="">All Requesting Departments</option>' +
-			'</select>' +
-			'</div>' +
-			'<div class="baa-cf-field">' +
-			'<label class="baa-cf-label" for="baa_cf_dist_' + idx + '">Requesting District</label>' +
-			'<select id="baa_cf_dist_' + idx + '" class="form-select baa-cf-sel" disabled>' +
-			'<option value="">All Requesting Districts</option>' +
-			'</select>' +
-			'</div>' +
-			'</div>' +
-			'</div>' +
-			'<div class="form-group">' +
-			'<label for="fund_source_id_' + idx +
-			'" class="form-label">Type of Fund <span class="required">*</span></label>' +
-			'<select id="fund_source_id_' + idx + '" class="form-select baa-fund-source" data-idx="' + idx +
-			'" required disabled>' +
-			'<option value="">Loading fund sources&hellip;</option>' +
+			'<div class="form-group baa-tof-group">' +
+			'<label for="type_of_fund_id_' + idx + '" class="form-label">Type of Fund</label>' +
+			'<select id="type_of_fund_id_' + idx + '" class="form-select baa-type-of-fund" data-idx="' + idx + '" disabled>' +
+			'<option value="">Loading types of fund&hellip;</option>' +
 			'</select>' +
 			'</div>' +
 			'<div class="form-group baa-bv-group">' +
 			'<label for="bv_search_' + idx + '" class="form-label">' +
-			'<span id="bv_field_label_' + idx + '">' + baaBvFieldLabelText() + '</span>' +
+			'<span id="bv_field_label_' + idx + '">COB</span>' +
 			' <span class="required baa-bv-required" id="bv_required_mark_' + idx + '" style="display:none;">*</span>' +
 			'</label>' +
 			'<div style="position:relative;">' +
 			'<input type="text" id="bv_search_' + idx + '" class="form-input baa-bv-search" data-idx="' + idx + '" ' +
-			'placeholder="Select a source of fund first&hellip;" autocomplete="off" disabled>' +
+			'placeholder="Loading COBs&hellip;" autocomplete="off" disabled>' +
 			'<div id="bv_dropdown_' + idx + '" class="baa-bv-dropdown" ' +
 			'style="display:none;position:absolute;top:100%;left:0;right:0;z-index:200;' +
 			'background:var(--afims-surface, #FFFFFF);border:1px solid var(--afims-border, #E4ECF2);border-top:none;' +
 			'border-radius:0 0 6px 6px;max-height:220px;overflow-y:auto;' +
 			'box-shadow:0 4px 12px rgba(0,0,0,.1);"></div>' +
 			'</div>' +
-			'<input type="hidden" id="budget_version_id_' + idx + '" value="">' +
-			'<input type="hidden" id="line_cob_id_' + idx + '" value="">' +
-			'<p class="input-hint" id="budget_version_hint_' + idx +
-			'">Select a source of fund to filter available budget versions.</p>' +
+			'<input type="hidden" id="budget_line_item_id_' + idx + '" value="">' +
+			'<p class="input-hint" id="cob_hint_' + idx + '"></p>' +
 			'</div>' +
 			'<div class="form-group has-prefix baa-req-group">' +
 			'<label for="requested_amount_' + idx +
@@ -2575,22 +2996,13 @@ $apiBase = Config('API.FMD_URL');
 			'" title="Remove this budget allocation">&times;</button>' +
 			'<div class="baa-bv-info" id="bv_info_' + idx + '" style="display:none;">' +
 			'<div class="baa-bv-info-grid">' +
-			'<span class="baa-bv-info-label" id="bvi_progsrc_label_' + idx + '">' + baaBvLabelText() + '</span>' +
-			'<span id="bvi_program_source_' + idx + '" class="baa-bv-info-value strong"></span>' +
-			'<span class="baa-bv-info-label">Version</span>' +
-			'<span id="bvi_version_' + idx + '" class="baa-bv-info-value"></span>' +
-			'<span class="baa-bv-info-label" id="bvi_req_dept_label_' + idx +
-			'" style="display:none;">Requesting Department</span>' +
-			'<span id="bvi_req_dept_' + idx + '" class="baa-bv-info-value" style="display:none;"></span>' +
-			'<span class="baa-bv-info-label" id="bvi_req_region_label_' + idx +
-			'" style="display:none;">Requesting Region</span>' +
-			'<span id="bvi_req_region_' + idx + '" class="baa-bv-info-value" style="display:none;"></span>' +
-			'<span class="baa-bv-info-label">Status</span>' +
-			'<span id="bvi_status_' + idx + '" class="baa-bv-info-value"></span>' +
-			'<span class="baa-bv-info-label">Fund Balance</span>' +
-			'<span id="bvi_fund_balance_' + idx + '" class="baa-bv-info-value strong"></span>' +
+			'<span class="baa-bv-info-label">Account Code</span>' +
+			'<span id="bvi_account_' + idx + '" class="baa-bv-info-value"></span>' +
+			'<span class="baa-bv-info-label">Fiscal Year</span>' +
+			'<span id="bvi_fy_' + idx + '" class="baa-bv-info-value"></span>' +
+			'<span class="baa-bv-info-label">Proposed Amount</span>' +
+			'<span id="bvi_amount_' + idx + '" class="baa-bv-info-value strong"></span>' +
 			'</div>' +
-			'<div class="error-box" id="bv_balance_warning_' + idx + '"></div>' +
 			'</div>' +
 			'</div>';
 	}
@@ -2605,13 +3017,13 @@ $apiBase = Config('API.FMD_URL');
 		var rowEl = holder.firstElementChild;
 		container.appendChild(rowEl);
 
-		populateFundSourceSelect(document.getElementById('fund_source_id_' + idx));
-		document.getElementById('fund_source_id_' + idx).addEventListener('change', function() {
-			onBaaFundSourceChange(idx);
+		var tofSel = cobEl('type_of_fund_id', idx);
+		if (TOF_LOADED) cobPopulateTypeSelect(tofSel);
+		tofSel.addEventListener('change', function() {
+			cobLoad(idx); // the COB list follows the Type of Fund; a pick of another type is cleared
 		});
 		wireAmtInput(document.getElementById('requested_amount_' + idx));
 		wireAmtInput(document.getElementById('allocated_amount_' + idx));
-		baaFiltersWire(idx);
 		rowEl.querySelector('.baa-remove-line').addEventListener('click', function() {
 			removeBudgetAllocationLine(idx);
 		});
@@ -2625,6 +3037,7 @@ $apiBase = Config('API.FMD_URL');
 		applyBudgetVersionVisibilityForDocType();
 		updateBaaRemoveButtons();
 		recomputeBaaTotals();
+		cobLoad(idx);
 		return idx;
 	}
 
@@ -2635,10 +3048,12 @@ $apiBase = Config('API.FMD_URL');
 		BAA_ROWS = BAA_ROWS.filter(function(i) {
 			return i !== idx;
 		});
-		delete BAA_BV_DATA[idx];
-		delete BAA_BV_WIRED[idx];
-		delete BAA_BV_REQ_TOKEN[idx];
-		delete BAA_BV_GATE[idx];
+		delete COB_DATA[idx];
+		delete COB_SIG[idx];
+		delete COB_SEQ[idx];
+		delete COB_LOAD[idx];
+		delete COB_SEL[idx];
+		delete COB_WIRED[idx];
 		updateBaaRemoveButtons();
 		recomputeBaaTotals();
 	}
@@ -2650,202 +3065,340 @@ $apiBase = Config('API.FMD_URL');
 		});
 	}
 
-	function populateFundSourceSelect(select) {
-		if (!select) return;
-		var currentValue = select.value;
-		select.innerHTML = '<option value="">Select fund source</option>';
-		FUND_SOURCE_DATA.forEach(function(fs) {
-			var opt = document.createElement('option');
-			opt.value = fs.fund_source_id;
-			opt.textContent = fs.source_name + ' (' + fs.source_code + ')';
-			// Store the raw source_name separately — this is the value sent to
-			// /budget_version_v2/all?fund_source=<source_name>, NOT the
-			// "name (code)" display text.
-			opt.dataset.sourceName = fs.source_name || '';
-			opt.dataset.sourceCode = fs.source_code || '';
-			select.appendChild(opt);
+	// ── COB  →  GET /budget_line_item/approved ───────────────────────────────────
+	// Filtered by the Program / Sub-Program / Project above: every level that has a value narrows the list.
+	function cobQuery(idx) {
+		var parts = [];
+		[
+			['program_code', 'prog'],
+			['sub_program_code', 'subprog'],
+			['project_code', 'proj']
+		].forEach(function(p) {
+			var value = pcValue(p[1]);
+			if (value) parts.push(p[0] + '=' + encodeURIComponent(value));
 		});
-		if (currentValue) select.value = currentValue;
-		select.disabled = false;
+		var tof = cobEl('type_of_fund_id', idx);
+		if (tof && tof.value) parts.push('type_of_fund_id=' + encodeURIComponent(tof.value));
+		return parts.length ? '?' + parts.join('&') : '';
 	}
 
-	function onBaaFundSourceChange(idx) {
-		var select = document.getElementById('fund_source_id_' + idx);
-		var opt = select.options[select.selectedIndex];
-		var sourceName = (opt && opt.value) ? (opt.dataset.sourceName || '') : '';
-
-		if (idx === 0) {
-			var mirror = document.getElementById('fund_source_id');
-			mirror.value = select.value;
-			mirror.dataset.label = (opt && opt.value) ? opt.textContent : '';
-			generateCBANumber();
-		}
-
-		return baaLoadBudgetVersionsByFundSource(idx, sourceName);
+	function cobUpdateHint(idx) {
+		var hint = cobEl('cob_hint', idx);
+		if (!hint) return;
+		var n = (COB_DATA[idx] || []).length;
+		var scope = pcValue('proj') ? ' for this project' : pcValue('subprog') ? ' for this sub-program' :
+			pcValue('prog') ? ' for this program' : '';
+		var tof = cobEl('type_of_fund_id', idx);
+		var tofName = (tof && tof.value && tof.selectedIndex >= 0) ? tof.options[tof.selectedIndex].textContent : '';
+		var narrowed = scope + (tofName ? ' with type of fund ' + tofName : '');
+		hint.textContent = n ?
+			n + ' approved COB(s) available' + narrowed + '.' + (narrowed ? '' :
+				' Choose a type of fund, program, sub-program or project to narrow the list.') :
+			'No approved COBs found' + narrowed + '.';
 	}
 
-	// ── Budget Version  →  GET /budget_version_v2/all?fund_source=<source_name> ──
-	// Gated behind Source of Fund per row: a row's search stays disabled until
-	// its own fund source is selected, and every change re-fetches filtered to it.
-	function baaBvSetDisabledState(idx, message) {
-		var searchEl = document.getElementById('bv_search_' + idx);
-		var hint = document.getElementById('budget_version_hint_' + idx);
-		var dd = document.getElementById('bv_dropdown_' + idx);
-		BAA_BV_DATA[idx] = [];
-		delete BAA_BV_HINT[idx];
-		baaFiltersReset(idx, true);
-		baaBvClearSelection(idx);
-		if (searchEl) {
-			searchEl.value = '';
-			searchEl.disabled = true;
-			searchEl.placeholder = message;
-		}
-		if (hint) hint.textContent = message;
-		if (dd) dd.style.display = 'none';
+	// Loads (or reloads) one line's list for the chain that is chosen right now. Resolves when that list is
+	// in place; never rejects. A line that already has the list for this chain does nothing.
+	function cobLoad(idx, keepPick) {
+		var searchEl = cobEl('bv_search', idx);
+		if (!searchEl) return Promise.resolve(); // the line was removed
+		var sig = cobSignature(idx);
+		if (COB_SIG[idx] === sig && COB_LOAD[idx]) return COB_LOAD[idx];
+
+		COB_SIG[idx] = sig;
+		var token = COB_EPOCH + ':' + (++COB_TOKEN_SEQ);
+		COB_SEQ[idx] = token;
+		var keep = keepPick === true || COB_KEEP_SELECTION > 0;
+
+		searchEl.disabled = true;
+		searchEl.placeholder = 'Loading COBs…';
+		var hint = cobEl('cob_hint', idx);
+		if (hint) hint.textContent = 'Loading approved COBs…';
+		var url = API_BASE + '/budget_line_item/approved' + cobQuery(idx);
+
+		COB_LOAD[idx] = (async function() {
+			try {
+				var json = await cba_apiFetch(url);
+				if (COB_SEQ[idx] !== token) return; // overtaken by a newer load (or the line / form was reset)
+				if (!json.success || !Array.isArray(json.data)) throw new Error(json.message ||
+					'Unexpected response format');
+
+				COB_DATA[idx] = json.data;
+				var el = cobEl('bv_search', idx);
+				if (!el) return;
+
+				// A pick that this chain no longer offers goes — unless a saved record is being filled in,
+				// whose COBs belong to its own chain.
+				var sel = COB_SEL[idx];
+				if (sel && !keep && !json.data.some(function(r) {
+						return String(r.budget_line_item_id) === String(sel.budget_line_item_id);
+					})) {
+					cobClearSelection(idx);
+					el.value = '';
+				}
+				el.disabled = false;
+				el.placeholder = 'Search account code or title…';
+				cobUpdateHint(idx);
+				cobSetupSearch(idx);
+			} catch (err) {
+				if (COB_SEQ[idx] !== token) return;
+				console.error('[cobLoad]', err);
+				COB_DATA[idx] = [];
+				var failed = cobEl('bv_search', idx);
+				if (failed) failed.placeholder = 'Could not load';
+				var failedHint = cobEl('cob_hint', idx);
+				if (failedHint) failedHint.textContent = '';
+				showError('cob_error');
+			}
+		})();
+		return COB_LOAD[idx];
 	}
 
-	async function baaLoadBudgetVersionsByFundSource(idx, sourceName) {
-		var searchEl = document.getElementById('bv_search_' + idx);
-		var hint = document.getElementById('budget_version_hint_' + idx);
-		if (!searchEl) return; // row was removed before this resolved
+	// Called whenever a level of the Program / Sub-Program / Project chain changes. Several levels can change
+	// in one go (choosing a program clears the two below it), so the reload is done once, after they have: first the
+	// types of fund on offer, then every line's COB list (a line whose type of fund went is re-filtered).
+	function cobChainChanged() {
+		if (COB_SYNC_QUEUED) return;
+		COB_SYNC_QUEUED = true;
+		Promise.resolve().then(async function() {
+			COB_SYNC_QUEUED = false;
+			var keep = COB_KEEP_SELECTION > 0; // read now: the flag is gone by the time the requests come back
+			await loadTypesOfFund();
+			BAA_ROWS.forEach(function(idx) {
+				cobLoad(idx, keep);
+			});
+		});
+	}
 
-		if (!sourceName) {
-			baaBvSetDisabledState(idx, 'Select a source of fund first…');
+	function cobMatches(idx, q) {
+		return (COB_DATA[idx] || []).filter(function(r) {
+			return !q || String(r.account_code || '').toLowerCase().includes(q) ||
+				String(r.account_title || '').toLowerCase().includes(q) ||
+				String(r.particulars || '').toLowerCase().includes(q);
+		});
+	}
+
+	function cobRenderDropdown(idx, rows) {
+		var dd = cobEl('bv_dropdown', idx);
+		if (!dd) return;
+		if (!rows.length) {
+			dd.innerHTML =
+				'<div style="padding:10px 14px;color:var(--afims-text-disabled, #A9AAB8);font-size:13px;">No results found</div>';
+			dd.style.display = 'block';
 			return;
 		}
+		var shown = rows.slice(0, COB_LIST_MAX);
+		dd.innerHTML = shown.map(function(r) {
+			return '<div class="bv-item" data-id="' + pcEsc(r.budget_line_item_id) + '">' +
+				'<div class="bv-item-name">' + pcEsc(r.account_code || 'No account code') + '</div>' +
+				(r.account_title ? '<div class="bv-item-sub">' + pcEsc(r.account_title) + '</div>' : '') +
+				'<div class="bv-item-sub">FY ' + pcEsc(r.fiscal_yr) + ' · Proposed ' + pcEsc(cobAmount(r.proposed_amount)) +
+				(r.project_name ? ' · ' + pcEsc(r.project_name) : '') + '</div>' +
+				'</div>';
+		}).join('') + (rows.length > shown.length ?
+			'<div style="padding:8px 14px;color:var(--afims-text-muted, #62657E);font-size:11px;">Showing the first ' +
+			shown.length + ' of ' + rows.length + ' — type to narrow the list</div>' : '');
+		dd.style.display = 'block';
 
-		BAA_BV_REQ_TOKEN[idx] = (BAA_BV_REQ_TOKEN[idx] || 0) + 1;
-		var myToken = BAA_BV_REQ_TOKEN[idx];
-		searchEl.disabled = true;
-		searchEl.value = '';
-		searchEl.placeholder = 'Loading budget versions…';
-		baaFiltersReset(idx, true);
-		baaBvClearSelection(idx);
+		dd.querySelectorAll('.bv-item').forEach(function(item) {
+			item.addEventListener('mousedown', function(e) {
+				e.preventDefault();
+				var rec = (COB_DATA[idx] || []).find(function(r) {
+					return String(r.budget_line_item_id) === item.dataset.id;
+				});
+				if (rec) cobSelect(idx, rec);
+			});
+		});
+	}
 
+	function cobSelect(idx, rec) {
+		var idEl = cobEl('budget_line_item_id', idx);
+		var searchEl = cobEl('bv_search', idx);
+		if (!idEl || !searchEl) return;
+		COB_SEL[idx] = rec;
+		idEl.value = rec.budget_line_item_id;
+		searchEl.value = cobLabel(rec);
+		var dd = cobEl('bv_dropdown', idx);
+		if (dd) dd.style.display = 'none';
+		baaBvClearError(idx);
+		cobSetType(idx, rec.type_of_fund_id, rec.type_of_fund); // the line's Type of Fund follows its COB
+
+		cobEl('bvi_account', idx).textContent = [rec.account_code, rec.account_title].filter(Boolean).join(' — ') || '—';
+		cobEl('bvi_fy', idx).textContent = rec.fiscal_yr || '—';
+		cobEl('bvi_amount', idx).textContent = cobAmount(rec.proposed_amount);
+		cobEl('bv_info', idx).style.display = 'block';
+	}
+
+	// Forget a line's pick (and optionally the text in its box).
+	function cobClearSelection(idx, clearText) {
+		delete COB_SEL[idx];
+		var idEl = cobEl('budget_line_item_id', idx);
+		if (idEl) idEl.value = '';
+		var info = cobEl('bv_info', idx);
+		if (info) info.style.display = 'none';
+		if (clearText) {
+			var searchEl = cobEl('bv_search', idx);
+			if (searchEl) searchEl.value = '';
+		}
+	}
+
+	// ── Type of Fund  →  GET /budget_line_item/approved/type_of_fund ──────────────────
+	// The select offers the types of fund that exist on APPROVED budget line items — within the Program / Sub-Program /
+	// Project chosen above — not every type of fund there is. It is optional: it narrows a line's COB list to line items
+	// of the same type of fund (type_of_fund_id goes to /budget_line_item/approved), and picking a COB sets it.
+	function tofQuery() {
+		var parts = [];
+		[
+			['program_code', 'prog'],
+			['sub_program_code', 'subprog'],
+			['project_code', 'proj']
+		].forEach(function(p) {
+			var value = pcValue(p[1]);
+			if (value) parts.push(p[0] + '=' + encodeURIComponent(value));
+		});
+		return parts.length ? '?' + parts.join('&') : '';
+	}
+
+	// Loads (or reloads) the types of fund available for the chain that is chosen right now, into every line's select.
+	// A line whose type of fund is not available there any more goes back to "All types of fund" (and so gets its COB
+	// list re-filtered) — unless a saved record's own chain is being filled in, whose types of fund are kept.
+	async function loadTypesOfFund() {
+		var sig = cobChainSignature();
+		if (TOF_LOADED && TOF_SIG === sig) return;
+		TOF_SIG = sig;
+		var token = COB_EPOCH + ':t' + (++COB_TOKEN_SEQ);
+		TOF_TOKEN = token;
+		var keep = COB_KEEP_SELECTION > 0;
 		try {
-			// CO + RFA / LAA → &component_id=1&component_id=2; COE → &component_id=3.
-			// The API matches them against each version's parent COB
-			// (bv.cob_id → corporate_operating_budget.component_id).
-			// baaResyncBvSource() re-loads the row if Document Type / Allocation
-			// Type change afterwards.
-			var componentIds = baaComponentIdsForBv();
-			BAA_BV_GATE[idx] = componentIds.join(',');
-			var componentQs = componentIds.map(function(id) {
-				return '&component_id=' + id;
-			}).join('');
-			var json = await cba_apiFetch(
-				`${API_BASE}/budget_version_v2/all?fund_source=${encodeURIComponent(sourceName)}&current_year=true${componentQs}`
-			);
-			if (myToken !== BAA_BV_REQ_TOKEN[idx]) return; // superseded by a newer fund source change on this row
+			var json = await cba_apiFetch(API_BASE + '/budget_line_item/approved/type_of_fund' + tofQuery());
+			if (TOF_TOKEN !== token) return; // overtaken by a newer load (or the form was reset)
 			if (!json.success || !Array.isArray(json.data)) throw new Error(json.message ||
 				'Unexpected response format');
 
-			BAA_BV_DATA[idx] = json.data;
-			searchEl = document.getElementById('bv_search_' + idx); // row may have re-rendered while awaiting
-			if (!searchEl) return;
-			searchEl.disabled = false;
-			searchEl.placeholder = 'Search version name or ' + baaBvLabelText().toLowerCase() + '…';
-			var scopeNote = componentIds.length ? ' (component ' + componentIds.join(', ') + ')' : '';
-			BAA_BV_HINT[idx] = { source: sourceName, scope: scopeNote };
-			baaFiltersPopulate(idx); // COE: the filter options come from this list
-			baaBvUpdateHint(idx); // "n version(s) available for …" (or "n of m … match the filters")
-			baaBvSetupSearch(idx);
-		} catch (err) {
-			if (myToken !== BAA_BV_REQ_TOKEN[idx]) return;
-			console.error('[baaLoadBudgetVersionsByFundSource]', err);
-			if (searchEl) searchEl.placeholder = 'Could not load';
-			showError('budget_version_error');
-		}
-	}
-
-	// Budget Version display name — for document_type = CO this shows the
-	// linked Fund ID's name (bv.fund_tracking.name, from fmd.fund_tracking, via
-	// cob.fund_id) instead of the Program Source, since CO allocations are
-	// organized by Fund ID rather than by program. For document_type = COE it
-	// shows the Account Code name (bv.chart_of_account.account_title — the COA
-	// entry the parent COB is coded to), falling back to the Program Source when
-	// the COB has no account code. $docTypeOverride lets callers
-	// that already know the target document_type (but haven't written it into
-	// the #document_type select yet — e.g. the "Generate RFA/LAA from parent
-	// CBA" autofill, which sets the Budget Version before the Document Type
-	// field) resolve the correct name without waiting on the DOM.
-	function baaBvDisplayName(bv, docTypeOverride) {
-		var docType = docTypeOverride || (document.getElementById('document_type') || {}).value;
-		if (docType === 'CO') return (bv.fund_tracking && bv.fund_tracking.name) || '';
-		if (docType === 'COE' && bv.chart_of_account) {
-			var coaName = bv.chart_of_account.account_title || bv.chart_of_account.account_code || '';
-			if (coaName) return coaName;
-		}
-		return bv.program_source ? (bv.program_source.program_name || '') : '';
-	}
-
-	// Requesting Department / Region names of a budget version's parent COB —
-	// /budget_version_v2/all nests the COB under cob_details[0] and resolves its
-	// requesting_department / requesting_district FKs (uac.departments) into
-	// *_info objects. Empty strings when the COB doesn't have one set.
-	function baaBvRequesting(bv) {
-		var cob = (bv && Array.isArray(bv.cob_details)) ? bv.cob_details[0] : null;
-		var dept = cob && cob.requesting_department_info;
-		var region = cob && cob.requesting_district_info;
-		return {
-			department: (dept && dept.department_name) || '',
-			region: (region && region.department_name) || ''
-		};
-	}
-
-	// Row field label (above the search/select input itself) — "Fund ID" for CO,
-	// "Budget Version (COB)" otherwise.
-	function baaBvFieldLabelText(docTypeOverride) {
-		var docType = docTypeOverride || (document.getElementById('document_type') || {}).value;
-		return docType === 'CO' ? 'Fund ID' : 'Budget Version (COB)';
-	}
-
-	// Info-box sub-label (Program Source vs. Fund ID vs. Account Code) — shown
-	// right above the selected Budget Version's resolved name in each row's info box.
-	function baaBvLabelText(docTypeOverride) {
-		var docType = docTypeOverride || (document.getElementById('document_type') || {}).value;
-		if (docType === 'CO') return 'Fund ID';
-		if (docType === 'COE') return 'Account Code';
-		return 'Program Source';
-	}
-
-	// Re-labels every row's field label + info box (Program Source vs. Fund ID)
-	// and, for a row that already has a selection, re-renders its displayed
-	// value/search text using the field that matches the (possibly just-
-	// changed) document_type. Wired to #document_type's 'change' event — also
-	// called manually wherever document_type.value is set programmatically (no
-	// 'change' event fires for that).
-	function baaRefreshBvLabels(docTypeOverride) {
-		var label = baaBvLabelText(docTypeOverride);
-		var fieldLabel = baaBvFieldLabelText(docTypeOverride);
-		BAA_ROWS.forEach(function(idx) {
-			var fieldLabelEl = document.getElementById('bv_field_label_' + idx);
-			if (fieldLabelEl) fieldLabelEl.textContent = fieldLabel;
-
-			var labelEl = document.getElementById('bvi_progsrc_label_' + idx);
-			if (labelEl) labelEl.textContent = label;
-
-			var bvIdEl = document.getElementById('budget_version_id_' + idx);
-			var infoEl = document.getElementById('bvi_program_source_' + idx);
-			var searchEl = document.getElementById('bv_search_' + idx);
-			if (!bvIdEl || !bvIdEl.value || !infoEl) return;
-
-			var bv = (BAA_BV_DATA[idx] || []).find(function(b) {
-				return String(b.budget_version_id) === String(bvIdEl.value);
+			TOF_DATA = json.data;
+			TOF_LOADED = true;
+			BAA_ROWS.forEach(function(idx) {
+				cobPopulateTypeSelect(cobEl('type_of_fund_id', idx), !keep);
 			});
-			if (!bv) return;
+		} catch (err) {
+			if (TOF_TOKEN !== token) return;
+			console.error('[loadTypesOfFund]', err);
+			TOF_LOADED = false; // the next chain change tries again
+			BAA_ROWS.forEach(function(idx) {
+				var sel = cobEl('type_of_fund_id', idx);
+				if (sel && !sel.value) sel.innerHTML = '<option value="">Could not load</option>';
+			});
+			showError('type_of_fund_error');
+		}
+	}
 
-			var name = baaBvDisplayName(bv, docTypeOverride);
-			infoEl.textContent = name || '—';
-			if (searchEl) searchEl.value = '[V' + bv.version_number + '] ' + name;
+	// Fill a line's select from TOF_DATA. The value it already has (a saved line's type of fund) is kept, even when
+	// that type is not on offer — unless dropMissing says it must go.
+	function cobPopulateTypeSelect(select, dropMissing) {
+		if (!select) return;
+		var cur = select.value;
+		var curText = (cur && select.selectedIndex >= 0) ? select.options[select.selectedIndex].textContent : '';
+		select.innerHTML = '<option value="">' + (TOF_DATA.length ? 'All types of fund' : 'No type of fund available') + '</option>';
+		TOF_DATA.forEach(function(t) {
+			var opt = document.createElement('option');
+			opt.value = t.type_of_fund_id;
+			opt.textContent = t.name;
+			select.appendChild(opt);
+		});
+		if (cur) {
+			var offered = [].some.call(select.options, function(o) {
+				return o.value === cur;
+			});
+			if (offered || !dropMissing) {
+				if (!offered && curText) {
+					var kept = document.createElement('option');
+					kept.value = cur;
+					kept.textContent = curText;
+					select.appendChild(kept);
+				}
+				select.value = cur;
+			}
+		}
+		select.disabled = false;
+	}
+
+	// Set a line's Type of Fund from code (edit mode, "generate from a parent CBA", picking a COB) — not the user
+	// changing it, so the COB already picked stays. A type that is not in the list is added from the name saved with
+	// the line, so the record still shows it.
+	function cobSetType(idx, id, name) {
+		var sel = cobEl('type_of_fund_id', idx);
+		if (!sel || id == null || id === '') return;
+		var v = String(id);
+		if (sel.value === v) return;
+		if (![].some.call(sel.options, function(o) {
+				return o.value === v;
+			})) {
+			if (!name) return;
+			var opt = document.createElement('option');
+			opt.value = v;
+			opt.textContent = name;
+			sel.appendChild(opt);
+		}
+		sel.value = v;
+		cobLoad(idx, true); // the list follows the Type of Fund
+	}
+
+	// A saved line (edit mode, parent CBA): its Type of Fund, then its COB.
+	async function cobRestoreLine(idx, line) {
+		cobSetType(idx, line.type_of_fund_id, line.type_of_fund);
+		await cobSelectById(idx, line.budget_line_item_id, line);
+	}
+
+	// Select a saved line's COB by id (edit mode, "generate from a parent CBA"). It is taken from the line's list
+	// when it is there; otherwise from the details saved with the line (snapshot), so a COB that has since left
+	// the approved list — or belongs to another chain — still shows on the record that used it.
+	async function cobSelectById(idx, id, snapshot) {
+		if (id == null || id === '' || !cobEl('bv_search', idx)) return;
+		await cobLoad(idx);
+		var rec = (COB_DATA[idx] || []).find(function(r) {
+			return String(r.budget_line_item_id) === String(id);
+		});
+		if (!rec && snapshot) {
+			rec = {
+				budget_line_item_id: id,
+				type_of_fund_id: snapshot.type_of_fund_id,
+				type_of_fund: snapshot.type_of_fund || '',
+				account_code: snapshot.account_code || '',
+				account_title: snapshot.account_title || '',
+				fiscal_yr: snapshot.fiscal_yr || '',
+				proposed_amount: snapshot.proposed_amount
+			};
+		}
+		if (rec) cobSelect(idx, rec);
+	}
+
+	// Wired once per line, when its first list arrives.
+	function cobSetupSearch(idx) {
+		var searchEl = cobEl('bv_search', idx);
+		var dd = cobEl('bv_dropdown', idx);
+		if (!searchEl || !dd || COB_WIRED[idx]) return;
+		COB_WIRED[idx] = true;
+
+		searchEl.addEventListener('input', function() {
+			cobClearSelection(idx); // typing withdraws the pick
+			cobRenderDropdown(idx, cobMatches(idx, this.value.trim().toLowerCase()));
+		});
+		searchEl.addEventListener('focus', function() {
+			if (!cobEl('budget_line_item_id', idx).value) {
+				cobRenderDropdown(idx, cobMatches(idx, this.value.trim().toLowerCase()));
+			}
+		});
+		searchEl.addEventListener('blur', function() {
+			setTimeout(function() {
+				dd.style.display = 'none';
+			}, 150);
 		});
 	}
 
-	// ── Budget Version (COB) required for RFA / LAA ────────────────────────────
-	// RFA and LAA must always be tied to a Budget Version, on every Budget
-	// Allocation Amount line. Enforced on submit by validateBudgetVersionsRequired()
-	// — this only drives the "*" marker, which is also what keeps the CBA + CO
-	// case (field hidden, nothing to require) in sync.
+	// ── COB required for RFA / LAA ─────────────────────────────────────────────
+	// RFA and LAA must always be tied to a COB, on every Budget Allocation Amount line. Enforced on submit by
+	// validateBudgetVersionsRequired() — isBudgetVersionRequired() also drives the "*" marker. For CBA / CFA the
+	// COB field is shown but optional.
 	function isBudgetVersionRequired() {
 		var type = document.getElementById('allocation_type').value;
 		return type === 'RFA' || type === 'LAA';
@@ -2860,20 +3413,19 @@ $apiBase = Config('API.FMD_URL');
 		searchEl.classList.remove('error');
 	}
 
-	// Submit-time check: every line must have a Budget Version when the
-	// allocation type is RFA / LAA. Checks the hidden budget_version_id_{idx}
-	// (the actual selection), not the search box text, so half-typed text that
-	// was never picked from the dropdown doesn't pass. Returns true when valid.
+	// Submit-time check: every line must have a COB when the allocation type is RFA / LAA. Checks the hidden
+	// budget_line_item_id_{idx} (the actual pick), not the search box text, so half-typed text that was never
+	// picked from the dropdown doesn't pass. Returns true when valid.
 	function validateBudgetVersionsRequired() {
 		if (!isBudgetVersionRequired()) return true;
 
 		var firstInvalid = null;
 		BAA_ROWS.forEach(function(idx) {
-			var bvIdEl = document.getElementById('budget_version_id_' + idx);
+			var idEl = document.getElementById('budget_line_item_id_' + idx);
 			var searchEl = document.getElementById('bv_search_' + idx);
-			if (!bvIdEl || !searchEl) return;
+			if (!idEl || !searchEl) return;
 
-			var missing = bvIdEl.value.trim() === '';
+			var missing = idEl.value.trim() === '';
 			var group = searchEl.closest('.form-group');
 			if (group) group.classList.toggle('has-error', missing);
 			searchEl.classList.toggle('error', missing);
@@ -2924,486 +3476,20 @@ $apiBase = Config('API.FMD_URL');
 		}
 	}
 
-	// ── Hide Budget Version (COB) for CBA + CO ─────────────────────────────────
-	// A CBA allocation with document_type = CO isn't linked to a Budget Version/
-	// COB yet — that link is made later, downstream of the CBA. RFA/LAA still
-	// need it (they can carry over a Budget Version from their parent CBA — see
-	// toggleCbaIdRow), so this only hides it for allocation_type = CBA.
+	// ── COB field: always shown ─────────────────────────────────────────────────
+	// The COB field is shown for every document type / allocation type (it used to be hidden for CBA + CO).
+	// It is only *required* (the "*" marker + submit check) for RFA / LAA — see isBudgetVersionRequired().
 	function applyBudgetVersionVisibilityForDocType() {
-		var type = document.getElementById('allocation_type').value;
-		var docType = document.getElementById('document_type').value;
-		var hide = (type === 'CBA' && docType === 'CO');
 		var bvRequired = isBudgetVersionRequired();
 
 		document.querySelectorAll('.baa-line').forEach(function(rowEl) {
 			var bvGroup = rowEl.querySelector('.baa-bv-group');
-			if (bvGroup) bvGroup.style.display = hide ? 'none' : '';
-			// COE: the Budget Version list can be narrowed by chart of account / requesting department / district
-			var cfWrap = rowEl.querySelector('.baa-bv-filters');
-			if (cfWrap) {
-				var showCf = docType === 'COE' && !hide;
-				cfWrap.style.display = showCf ? '' : 'none';
-				if (!showCf) {
-					baaFiltersReset(rowEl.dataset.idx, false);
-					baaBvUpdateHint(rowEl.dataset.idx);
-				}
-			}
+			if (bvGroup) bvGroup.style.display = '';
 
 			var mark = rowEl.querySelector('.baa-bv-required');
 			if (mark) mark.style.display = bvRequired ? '' : 'none';
 			// Switching away from RFA/LAA — drop any stale "missing" error.
 			if (!bvRequired) baaBvClearError(rowEl.dataset.idx);
-		});
-
-		if (hide) {
-			BAA_ROWS.forEach(function(idx) {
-				baaBvClearSelection(idx);
-			});
-		}
-
-		// A CBA + CO allocation is limited to a single Budget Allocation Amount
-		// line (no Budget Version to differentiate additional lines by), so hide
-		// the "Add Budget Allocation" button too.
-		var addLineBtn = document.getElementById('baa_add_line_btn');
-		var addLineRow = addLineBtn ? addLineBtn.closest('.form-row') : null;
-		if (addLineRow) addLineRow.style.display = hide ? 'none' : '';
-	}
-
-	// ── Budget Version list filters (COE) ───────────────────────────────────────
-	// Same idea as the "Filter the COB list" row of budget-version-form.php:
-	// Chart of Account (searchable), Requesting Department, Requesting District.
-	// There is no Component filter — a COE allocation is always component 3
-	// (BAA_COE_COMPONENT_IDS), which the list request already applies.
-	// Each line has its own strip, because each line has its own Type of Fund and
-	// therefore its own list: the options are built from that line's loaded
-	// versions (BAA_BV_DATA[idx]), so a choice can never leave the list empty.
-	// The filters only narrow the search dropdown — they never change a version
-	// that is already selected. Shown for document_type = COE only (see
-	// applyBudgetVersionVisibilityForDocType).
-	var BAA_BV_HINT = {}; // idx -> { source, scope } for the "n version(s) available…" hint
-	var BAA_CF_ACCOUNTS = {}; // idx -> [{ value, code, title, label }] chart-of-account options
-
-	function baaCfEl(idx, name) {
-		return document.getElementById('baa_cf_' + name + '_' + idx);
-	}
-
-	// The parent COB of a budget version (/budget_version_v2/all nests it under cob_details[0]).
-	function baaBvCob(bv) {
-		return (bv && Array.isArray(bv.cob_details) ? bv.cob_details[0] : null) || {};
-	}
-
-	function baaCfValues(idx) {
-		var acct = baaCfEl(idx, 'account');
-		var dept = baaCfEl(idx, 'dept');
-		var dist = baaCfEl(idx, 'dist');
-		return {
-			account: acct ? acct.value : '',
-			dept: dept ? dept.value : '',
-			dist: dist ? dist.value : ''
-		};
-	}
-
-	// The line's versions that pass the three filters (all of them when none is set).
-	function baaBvFiltered(idx) {
-		var f = baaCfValues(idx);
-		return (BAA_BV_DATA[idx] || []).filter(function(bv) {
-			var cob = baaBvCob(bv);
-			if (f.account && String((bv.chart_of_account || {}).account_id || '') !== f.account) return false;
-			if (f.dept && String((cob.requesting_department_info || {}).department_id || '') !== f.dept) return false;
-			if (f.dist && String((cob.requesting_district_info || {}).department_id || '') !== f.dist) return false;
-			return true;
-		});
-	}
-
-	// "5 version(s) available for …" — or "2 of 5 version(s) match the filters for …".
-	function baaBvUpdateHint(idx) {
-		var hint = document.getElementById('budget_version_hint_' + idx);
-		var ctx = BAA_BV_HINT[idx];
-		if (!hint || !ctx) return;
-		var total = (BAA_BV_DATA[idx] || []).length;
-		var shown = baaBvFiltered(idx).length;
-		var where = ' for "' + ctx.source + '"' + ctx.scope;
-		hint.textContent = !total ? 'No budget versions found' + where + '.' :
-			shown === total ? total + ' version(s) available' + where + '.' :
-			shown + ' of ' + total + ' version(s) match the filters' + where + '.';
-	}
-
-	// Highlight the filters that are narrowing the list; show the ✕ / "Clear filters" only then.
-	function baaCfSyncUi(idx) {
-		var f = baaCfValues(idx);
-		if (!baaCfEl(idx, 'account')) return;
-		baaCfEl(idx, 'account_search').classList.toggle('is-set', f.account !== '');
-		baaCfEl(idx, 'dept').classList.toggle('is-set', f.dept !== '');
-		baaCfEl(idx, 'dist').classList.toggle('is-set', f.dist !== '');
-		baaCfEl(idx, 'account_x').style.display = f.account !== '' ? 'flex' : 'none';
-		baaCfEl(idx, 'clear').style.display = (f.account || f.dept || f.dist) ? 'inline' : 'none';
-	}
-
-	function baaCfChanged(idx) {
-		baaCfSyncUi(idx);
-		baaBvUpdateHint(idx);
-	}
-
-	// Clears the three filters. disable = true also greys them out and empties the
-	// option lists (the line has no versions loaded — no source of fund yet, or a
-	// reload is under way).
-	function baaFiltersReset(idx, disable) {
-		if (!baaCfEl(idx, 'account')) return;
-		baaCfEl(idx, 'account').value = '';
-		baaCfEl(idx, 'account_search').value = '';
-		baaCfEl(idx, 'dept').value = '';
-		baaCfEl(idx, 'dist').value = '';
-		if (disable) {
-			BAA_CF_ACCOUNTS[idx] = [];
-			var inp = baaCfEl(idx, 'account_search');
-			inp.disabled = true;
-			inp.placeholder = 'Select a source of fund first…';
-			['dept', 'dist'].forEach(function(n) {
-				var sel = baaCfEl(idx, n);
-				while (sel.options.length > 1) sel.remove(1); // keep the "All …" option
-				sel.disabled = true;
-			});
-			baaCfEl(idx, 'account_dd').style.display = 'none';
-		}
-		baaCfSyncUi(idx);
-	}
-
-	function baaCfFillSelect(idx, name, entries) {
-		var sel = baaCfEl(idx, name);
-		while (sel.options.length > 1) sel.remove(1);
-		entries.sort(function(a, b) {
-			return a.label.localeCompare(b.label, undefined, { numeric: true });
-		}).forEach(function(e) {
-			var opt = document.createElement('option');
-			opt.value = e.value;
-			opt.textContent = e.label;
-			sel.appendChild(opt);
-		});
-		sel.disabled = !entries.length; // nothing to choose from
-	}
-
-	// Builds the three option lists from the line's loaded versions.
-	function baaFiltersPopulate(idx) {
-		if (!baaCfEl(idx, 'account')) return;
-		var accounts = {},
-			depts = {},
-			dists = {};
-		(BAA_BV_DATA[idx] || []).forEach(function(bv) {
-			var a = bv.chart_of_account;
-			if (a && a.account_id && !accounts[a.account_id]) {
-				accounts[a.account_id] = {
-					value: String(a.account_id),
-					code: a.account_code || '',
-					title: a.account_title || '',
-					label: [a.account_code, a.account_title].filter(Boolean).join(' - ') || ('#' + a.account_id)
-				};
-			}
-			var cob = baaBvCob(bv);
-			var d = cob.requesting_department_info;
-			if (d && d.department_id && !depts[d.department_id]) {
-				depts[d.department_id] = { value: String(d.department_id), label: d.department_name || ('#' + d.department_id) };
-			}
-			var t = cob.requesting_district_info;
-			if (t && t.department_id && !dists[t.department_id]) {
-				dists[t.department_id] = { value: String(t.department_id), label: t.department_name || ('#' + t.department_id) };
-			}
-		});
-
-		BAA_CF_ACCOUNTS[idx] = Object.keys(accounts).map(function(k) {
-			return accounts[k];
-		}).sort(function(a, b) {
-			return a.label.localeCompare(b.label, undefined, { numeric: true });
-		});
-		var inp = baaCfEl(idx, 'account_search');
-		inp.disabled = !BAA_CF_ACCOUNTS[idx].length;
-		inp.placeholder = BAA_CF_ACCOUNTS[idx].length ? 'All chart of accounts' : 'No chart of accounts in this list';
-		baaCfFillSelect(idx, 'dept', Object.keys(depts).map(function(k) {
-			return depts[k];
-		}));
-		baaCfFillSelect(idx, 'dist', Object.keys(dists).map(function(k) {
-			return dists[k];
-		}));
-		baaCfSyncUi(idx);
-	}
-
-	// Chart of Account — searchable dropdown (text input + option list + the chosen
-	// account_id kept in a hidden input), as in budget-version-form.php.
-	function baaCfRenderAccounts(idx, query) {
-		var dd = baaCfEl(idx, 'account_dd');
-		var q = (query || '').trim().toLowerCase();
-		var sel = baaCfEl(idx, 'account').value;
-
-		var list = (BAA_CF_ACCOUNTS[idx] || []).filter(function(o) {
-			return !q || o.label.toLowerCase().includes(q);
-		});
-		var html = '';
-		if (!q) {
-			html += '<div class="baa-cf-opt' + (sel === '' ? ' is-sel' : '') + '" data-v="">' +
-				'<span class="baa-cf-opt-t">All Chart of Accounts</span></div>';
-		}
-		html += list.map(function(o) {
-			return '<div class="baa-cf-opt' + (o.value === sel ? ' is-sel' : '') + '" data-v="' + escSdoc(o.value) + '">' +
-				'<span class="baa-cf-opt-t">' + escSdoc(o.title || o.label) + '</span>' +
-				(o.code ? '<span class="baa-cf-opt-c">' + escSdoc(o.code) + '</span>' : '') +
-				'</div>';
-		}).join('');
-		if (!list.length) html += '<div class="baa-cf-empty">No matching accounts</div>';
-
-		dd.innerHTML = html;
-		dd.style.display = 'block';
-	}
-
-	// Wired once per line, when the line is created.
-	function baaFiltersWire(idx) {
-		var inp = baaCfEl(idx, 'account_search');
-		var hid = baaCfEl(idx, 'account');
-		var dd = baaCfEl(idx, 'account_dd');
-		if (!inp || !hid || !dd) return;
-
-		function pick(value) {
-			var o = (BAA_CF_ACCOUNTS[idx] || []).find(function(x) {
-				return x.value === value;
-			});
-			hid.value = o ? o.value : '';
-			inp.value = o ? o.label : '';
-			dd.style.display = 'none';
-			baaCfChanged(idx);
-		}
-
-		// With an account chosen, focus lists every account (text selected for easy
-		// replacing); otherwise the list follows whatever has been typed.
-		inp.addEventListener('focus', function() {
-			this.select();
-			baaCfRenderAccounts(idx, hid.value ? '' : this.value);
-		});
-		inp.addEventListener('input', function() {
-			if (hid.value) {
-				hid.value = '';
-				baaCfChanged(idx);
-			}
-			baaCfRenderAccounts(idx, this.value);
-		});
-		inp.addEventListener('blur', function() {
-			setTimeout(function() {
-				dd.style.display = 'none';
-				if (!hid.value) inp.value = ''; // unfinished typing doesn't stay behind
-			}, 150);
-		});
-		dd.addEventListener('mousedown', function(e) {
-			var opt = e.target.closest('.baa-cf-opt');
-			if (!opt) return;
-			e.preventDefault();
-			pick(opt.dataset.v);
-		});
-		baaCfEl(idx, 'account_x').addEventListener('mousedown', function(e) {
-			e.preventDefault();
-			pick('');
-		});
-		['dept', 'dist'].forEach(function(n) {
-			baaCfEl(idx, n).addEventListener('change', function() {
-				baaCfChanged(idx);
-			});
-		});
-		baaCfEl(idx, 'clear').addEventListener('click', function() {
-			baaFiltersReset(idx, false);
-			baaBvUpdateHint(idx);
-		});
-	}
-
-	function baaBvRenderDropdown(idx, filtered) {
-		var dd = document.getElementById('bv_dropdown_' + idx);
-		if (!dd) return;
-		if (!filtered.length) {
-			dd.innerHTML =
-				'<div style="padding:10px 14px;color:var(--afims-text-disabled, #A9AAB8);font-size:13px;">No results found</div>';
-			dd.style.display = 'block';
-			return;
-		}
-		dd.innerHTML = filtered.map(function(bv) {
-			var displayName = baaBvDisplayName(bv);
-			var fundBalance = parseFloat(bv.fund_balance) || 0;
-			var req = baaBvRequesting(bv);
-			return '<div class="bv-item"' +
-				' data-id="' + bv.budget_version_id + '"' +
-				' data-cob-id="' + (bv.cob_id || '') + '"' +
-				' data-display-name="' + displayName.replace(/"/g, '&quot;') + '"' +
-				' data-vnum="' + bv.version_number + '"' +
-				' data-vname="' + (bv.version_name || '').replace(/"/g, '&quot;') + '"' +
-				' data-status="' + (bv.status || '') + '"' +
-				'>' +
-				'<div class="bv-item-name">[V' + bv.version_number + '] ' + displayName + '</div>' +
-				'<div class="bv-item-sub">' + (bv.version_name || '') + '</div>' +
-				(req.department ? '<div class="bv-item-sub">Requesting Department: ' + escSdoc(req.department) +
-					'</div>' : '') +
-				(req.region ? '<div class="bv-item-sub">Requesting Region: ' + escSdoc(req.region) + '</div>' :
-					'') +
-				'<div class="bv-item-balance">Fund Balance: &#8369;' + baaFormatAmt(fundBalance) + '</div>' +
-				'</div>';
-		}).join('');
-		dd.style.display = 'block';
-
-		dd.querySelectorAll('.bv-item').forEach(function(item) {
-			item.addEventListener('mousedown', function(e) {
-				e.preventDefault();
-				baaBvSelect(
-					idx,
-					parseInt(this.dataset.id, 10),
-					this.dataset.cobId,
-					this.dataset.displayName,
-					this.dataset.vnum,
-					this.dataset.vname,
-					this.dataset.status
-				);
-			});
-		});
-	}
-
-	function baaBvSelect(idx, id, cobId, displayName, vnum, vname, status) {
-		var bvIdEl = document.getElementById('budget_version_id_' + idx);
-		var cobEl = document.getElementById('line_cob_id_' + idx);
-		var searchEl = document.getElementById('bv_search_' + idx);
-		var dd = document.getElementById('bv_dropdown_' + idx);
-		if (bvIdEl) bvIdEl.value = id;
-		if (cobEl) cobEl.value = cobId || '';
-		if (searchEl) searchEl.value = '[V' + vnum + '] ' + displayName;
-		if (dd) dd.style.display = 'none';
-		baaBvClearError(idx);
-
-		// Every row shows its own Program Source (or, for document_type = CO,
-		// Fund ID — see baaBvDisplayName()) / Version / Status / Fund Balance
-		// info box right below it.
-		var infoProg = document.getElementById('bvi_program_source_' + idx);
-		var infoVer = document.getElementById('bvi_version_' + idx);
-		var infoStat = document.getElementById('bvi_status_' + idx);
-		var infoBal = document.getElementById('bvi_fund_balance_' + idx);
-		var info = document.getElementById('bv_info_' + idx);
-		if (infoProg) infoProg.textContent = displayName || '—';
-		if (infoVer) infoVer.textContent = 'V' + vnum + ' — ' + vname;
-		if (infoStat) infoStat.textContent = (status || '').toUpperCase();
-
-		var bv = (BAA_BV_DATA[idx] || []).find(function(b) {
-			return String(b.budget_version_id) === String(id);
-		});
-		var fundBalance = bv ? (parseFloat(bv.fund_balance) || 0) : 0;
-		if (infoBal) infoBal.textContent = '₱' + baaFormatAmt(fundBalance);
-
-		// Requesting Department / Region from the parent COB — rows are hidden
-		// when the COB has none set.
-		var req = baaBvRequesting(bv);
-		[
-			['req_dept', req.department],
-			['req_region', req.region]
-		].forEach(function(pair) {
-			var lbl = document.getElementById('bvi_' + pair[0] + '_label_' + idx);
-			var val = document.getElementById('bvi_' + pair[0] + '_' + idx);
-			if (val) val.textContent = pair[1];
-			var show = pair[1] ? '' : 'none';
-			if (lbl) lbl.style.display = show;
-			if (val) val.style.display = show;
-		});
-
-		if (info) info.style.display = 'block';
-
-		// Row 0 mirrors into the legacy singular fields — FK columns can only
-		// reference one budget_version_id / cob_id.
-		if (idx === 0) {
-			var mirrorBv = document.getElementById('budget_version_id');
-			var mirrorCob = document.getElementById('cob_id');
-			if (mirrorBv) mirrorBv.value = id;
-			if (mirrorCob) mirrorCob.value = cobId || '';
-		}
-
-		// Requested Amount may already have a value (edit mode / carryover) —
-		// check it against this Budget Version's fund_balance right away.
-		baaCheckFundBalance(idx);
-	}
-
-	function baaBvClearSelection(idx) {
-		var bvIdEl = document.getElementById('budget_version_id_' + idx);
-		var cobEl = document.getElementById('line_cob_id_' + idx);
-		if (bvIdEl) bvIdEl.value = '';
-		if (cobEl) cobEl.value = '';
-		var info = document.getElementById('bv_info_' + idx);
-		if (info) info.style.display = 'none';
-		var warnEl = document.getElementById('bv_balance_warning_' + idx);
-		if (warnEl) warnEl.classList.remove('visible');
-		if (idx === 0) {
-			var mirrorBv = document.getElementById('budget_version_id');
-			var mirrorCob = document.getElementById('cob_id');
-			if (mirrorBv) mirrorBv.value = '';
-			if (mirrorCob) mirrorCob.value = '';
-		}
-	}
-
-	// Compares this row's Requested Amount against its selected Budget
-	// Version's fund_balance, showing an "Insufficient Balance" warning when
-	// the requested amount exceeds what's available.
-	function baaCheckFundBalance(idx) {
-		var warnEl = document.getElementById('bv_balance_warning_' + idx);
-		if (!warnEl) return;
-
-		var bvIdEl = document.getElementById('budget_version_id_' + idx);
-		if (!bvIdEl || !bvIdEl.value) {
-			warnEl.classList.remove('visible');
-			return;
-		}
-
-		var bv = (BAA_BV_DATA[idx] || []).find(function(b) {
-			return String(b.budget_version_id) === String(bvIdEl.value);
-		});
-		if (!bv) {
-			warnEl.classList.remove('visible');
-			return;
-		}
-
-		var fundBalance = parseFloat(bv.fund_balance) || 0;
-		var reqRawEl = document.getElementById('requested_amount_' + idx + '_raw');
-		var requestedAmount = reqRawEl ? (parseFloat(reqRawEl.value) || 0) : 0;
-
-		if (requestedAmount > 0 && requestedAmount > fundBalance) {
-			warnEl.textContent = 'Insufficient Balance — the requested amount (₱' + baaFormatAmt(requestedAmount) +
-				') exceeds this Budget Version’s available fund balance (₱' + baaFormatAmt(fundBalance) + ').';
-			warnEl.classList.add('visible');
-		} else {
-			warnEl.classList.remove('visible');
-		}
-	}
-
-	// Wired once per row (BAA_BV_WIRED guards against duplicate listeners, since
-	// baaLoadBudgetVersionsByFundSource can run many times for the same row).
-	function baaBvSetupSearch(idx) {
-		var searchEl = document.getElementById('bv_search_' + idx);
-		var dd = document.getElementById('bv_dropdown_' + idx);
-		if (!searchEl || !dd) return;
-		if (BAA_BV_WIRED[idx]) return;
-		BAA_BV_WIRED[idx] = true;
-
-		searchEl.addEventListener('input', function() {
-			var q = this.value.trim().toLowerCase();
-			baaBvClearSelection(idx);
-			if (!q) {
-				dd.style.display = 'none';
-				return;
-			}
-			var data = baaBvFiltered(idx);
-			var filtered = data.filter(function(bv) {
-				var displayName = baaBvDisplayName(bv);
-				var coaCode = bv.chart_of_account ? (bv.chart_of_account.account_code || '') : '';
-				return (bv.version_name || '').toLowerCase().includes(q) ||
-					displayName.toLowerCase().includes(q) ||
-					coaCode.toLowerCase().includes(q);
-			}).slice(0, 50);
-			baaBvRenderDropdown(idx, filtered);
-		});
-
-		searchEl.addEventListener('focus', function() {
-			baaBvRenderDropdown(idx, baaBvFiltered(idx).slice(0, 50));
-		});
-
-		searchEl.addEventListener('blur', function() {
-			setTimeout(function() {
-				dd.style.display = 'none';
-			}, 150);
 		});
 	}
 
@@ -3428,12 +3514,10 @@ $apiBase = Config('API.FMD_URL');
 
 	function wireAmtInput(input) {
 		if (!input) return;
-		var isRequestedAmount = input.classList.contains('baa-requested-amount');
 		input.addEventListener('blur', function() {
 			var raw = baaParseAmt(this.value);
 			this.value = raw > 0 ? baaFormatAmt(raw) : '';
 			baaSyncRaw(this);
-			if (isRequestedAmount) baaCheckFundBalance(this.dataset.idx);
 		});
 		input.addEventListener('keydown', function(e) {
 			var allowed = ['Backspace', 'Delete', 'Tab', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home',
@@ -3447,7 +3531,6 @@ $apiBase = Config('API.FMD_URL');
 		input.addEventListener('input', function() {
 			baaSyncRaw(this);
 			recomputeBaaTotals();
-			if (isRequestedAmount) baaCheckFundBalance(this.dataset.idx);
 		});
 	}
 
@@ -3463,7 +3546,6 @@ $apiBase = Config('API.FMD_URL');
 			display.value = '';
 			if (raw) raw.value = '';
 		}
-		if (kind === 'requested') baaCheckFundBalance(idx);
 	}
 
 	// Sums every row's Requested/Cash amounts, updates the totals footer, mirrors
@@ -3491,406 +3573,28 @@ $apiBase = Config('API.FMD_URL');
 		if (allocMirror) allocMirror.value = totalAlloc > 0 ? totalAlloc.toFixed(2) : '';
 	}
 
-	// Collects every row into the itemized array sent as `line_transaction`.
+	// Collects every row into the itemized array sent as `line_transaction`. A line keeps the Type of Fund and
+	// Account Code of its COB next to the id, so the record still reads correctly if that line item changes later.
 	function collectBaaLines() {
 		return BAA_ROWS.map(function(idx) {
-			var fsSelect = document.getElementById('fund_source_id_' + idx);
-			var opt = fsSelect ? fsSelect.options[fsSelect.selectedIndex] : null;
+			var sel = COB_SEL[idx] || null;
+			var tofEl = cobEl('type_of_fund_id', idx);
+			var tofId = tofEl ? tofEl.value : '';
+			var tofName = (tofId && tofEl.selectedIndex >= 0) ? tofEl.options[tofEl.selectedIndex].textContent : '';
 			return {
-				fund_source_id: fsSelect ? fsSelect.value : '',
-				fund_source_name: (opt && opt.value) ? opt.textContent : '',
-				budget_version_id: (document.getElementById('budget_version_id_' + idx) || {}).value || '',
-				cob_id: (document.getElementById('line_cob_id_' + idx) || {}).value || '',
+				budget_line_item_id: sel ? String(sel.budget_line_item_id) : '',
+				type_of_fund_id: tofId || (sel && sel.type_of_fund_id != null ? String(sel.type_of_fund_id) : ''),
+				type_of_fund: tofName || (sel ? (sel.type_of_fund || '') : ''),
+				account_code: sel ? (sel.account_code || '') : '',
+				account_title: sel ? (sel.account_title || '') : '',
+				fiscal_yr: sel && sel.fiscal_yr != null ? String(sel.fiscal_yr) : '',
+				proposed_amount: sel && sel.proposed_amount != null ? String(sel.proposed_amount) : '',
 				requested_amount: (document.getElementById('requested_amount_' + idx + '_raw') || {}).value || '',
 				allocated_amount: (document.getElementById('allocated_amount_' + idx + '_raw') || {}).value || '',
 			};
 		}).filter(function(line) {
 			// Drop a fully-empty trailing row (e.g. one added then left untouched).
-			return line.fund_source_id || line.requested_amount;
-		});
-	}
-
-	// ── 6. Departments ────────────────────────────────────────────────────────────
-	// Both the "Requesting Department" dropdown (MAIN only) and the "Region /
-	// District Office" dropdown (REGIONAL + DISTRICT, plus MAIN when the
-	// document type is CO) are scoped down to this fixed whitelist: HTTRD and
-	// GSD among MAIN offices, NCR East/West/North/South Sector and Region I
-	// through XIII Office among REGIONAL ones — matched by department_code
-	// rather than department_id so it survives reseeding. "GSD" matches both the
-	// department literally named "GSD" (department_code GSD, seeded alongside
-	// HTTRD) and the older, separate "General Services Department" record that
-	// also uses the GSD code — both are shown so either legacy or current data
-	// referencing GSD resolves correctly.
-	// Regional Offices are matched under both seeds: the legacy REGIONAL-OPS-* codes
-	// and the current NHA-RO<n> codes (NHA-RO1 … NHA-RO17: Regions 1-13 + the four
-	// NCR sectors).
-	function cbaIsWhitelistedDept(dept) {
-		var code = dept.department_code || '';
-		if (code.indexOf('REGIONAL-OPS-') === 0) return true; // legacy seed: NCR sectors + Region I-XIII
-		if (/^NHA-RO\d+$/.test(code)) return true; // current seed: Regional Offices
-		if (dept.department_type === 'MAIN' && (dept.department_name === 'GSD' || dept.department_name ===
-				'General Services Department' || dept.department_name === 'HTTRD')) return true;
-		return false;
-	}
-
-	// The whitelisted offices PLUS every office connected beneath them through
-	// parent_department_id — e.g. a Regional Office and all of its District
-	// Offices (NHA-DO* rows whose parent is that NHA-RO*), at any depth. The
-	// District Offices carry no whitelisted code of their own, so without this
-	// they were always dropped. `rows` is the full REGIONAL/DISTRICT(/MAIN) fetch,
-	// so the children are already in it.
-	function cbaWithWhitelistedChildren(rows) {
-		var keep = {};
-		rows.forEach(function(d) {
-			if (cbaIsWhitelistedDept(d)) keep[d.department_id] = true;
-		});
-
-		var grew = true;
-		while (grew) { // repeat until no new child is found, so grandchildren are reached too
-			grew = false;
-			rows.forEach(function(d) {
-				if (!keep[d.department_id] && d.parent_department_id != null && keep[d.parent_department_id]) {
-					keep[d.department_id] = true;
-					grew = true;
-				}
-			});
-		}
-		return rows.filter(function(d) {
-			return keep[d.department_id];
-		});
-	}
-
-	var DEPT_ALL_RAW = []; // unfiltered MAIN offices, as fetched from the API
-	var DEPT_ALL_DATA = []; // DEPT_ALL_RAW, narrowed by applyDeptWhitelistForDocType()
-	var DEPT_WIRED = false;
-
-	async function loadDepartments() {
-		var searchEl = document.getElementById('dept_search');
-		try {
-			var json = await cba_apiFetch(`${API_BASE}/department/all?department_type=MAIN`);
-			if (!json.success || !Array.isArray(json.data)) throw new Error(json.message ||
-				'Unexpected response format');
-
-			DEPT_ALL_RAW = json.data;
-			applyDeptWhitelistForDocType();
-			searchEl.disabled = false;
-			searchEl.placeholder = 'Search department\u2026';
-			deptSetupSearch();
-		} catch (err) {
-			console.error('[loadDepartments]', err);
-			showError('department_error');
-		} finally {
-			setLoading('department_wrapper', false);
-		}
-	}
-
-	// \u2500\u2500 Requesting Department whitelist \u2014 Document Type = COE isn't scoped to
-	// the fixed GSD/HTTRD whitelist (cbaIsWhitelistedDept): a COE allocation can
-	// be requested by any MAIN office, so this shows every MAIN office fetched
-	// above unfiltered. Document Type = CO hides this field entirely (see
-	// toggleDepartmentByDocType); every other document type (including none
-	// selected yet) keeps the existing GSD/HTTRD-only whitelist. Wired to
-	// #document_type's 'change' event, and called manually wherever
-	// document_type.value is set programmatically (no 'change' event fires for
-	// that) \u2014 same pattern as applyCategoryTypeForDocType()/applyFundSourceForDocType().
-	function applyDeptWhitelistForDocType() {
-		var docType = document.getElementById('document_type').value;
-		var rows = (docType === 'COE') ? DEPT_ALL_RAW : DEPT_ALL_RAW.filter(cbaIsWhitelistedDept);
-
-		DEPT_ALL_DATA = rows.slice().sort(function(a, b) {
-			if (a.hierarchy_level !== b.hierarchy_level) return a.hierarchy_level - b.hierarchy_level;
-			return (a.department_name || '').localeCompare(b.department_name || '');
-		});
-
-		// Clear the current selection if it no longer exists in the (narrower)
-		// filtered list \u2014 e.g. document type switched away from COE and the
-		// previously-picked department fell outside the whitelist.
-		var currentValue = document.getElementById('requesting_department_id').value;
-		var stillExists = DEPT_ALL_DATA.some(function(d) {
-			return String(d.department_id) === String(currentValue);
-		});
-		if (currentValue && !stillExists) deptClearSelection();
-
-		// Refresh the dropdown in place if it's currently open.
-		var dd = document.getElementById('dept_dropdown');
-		if (dd && dd.style.display !== 'none') deptRenderDropdown(DEPT_ALL_DATA);
-	}
-
-	function deptLabelFor(dept) {
-		return dept.department_code ?
-			dept.department_name + ' (' + dept.department_code + ')' :
-			(dept.department_name || '');
-	}
-
-	function deptRenderDropdown(data) {
-		var dd = document.getElementById('dept_dropdown');
-		if (!data.length) {
-			dd.innerHTML =
-				'<div style="padding:10px 14px;color:var(--afims-text-disabled, #A9AAB8);font-size:13px;">No results found</div>';
-			dd.style.display = 'block';
-			return;
-		}
-		dd.innerHTML = data.map(function(dept) {
-			var indent = dept.hierarchy_level > 1 ? '\u2514 ' : '';
-			return '<div class="bv-item"' +
-				' data-id="' + dept.department_id + '"' +
-				' data-label="' + deptLabelFor(dept).replace(/"/g, '&quot;') + '"' +
-				'>' +
-				'<div class="bv-item-name">' + indent + (dept.department_name || '') + '</div>' +
-				'<div class="bv-item-sub">' + (dept.department_code || '') + '</div>' +
-				'</div>';
-		}).join('');
-		dd.style.display = 'block';
-
-		dd.querySelectorAll('.bv-item').forEach(function(item) {
-			item.addEventListener('mousedown', function(e) {
-				e.preventDefault();
-				deptSelect(parseInt(this.dataset.id, 10), this.dataset.label);
-			});
-		});
-	}
-
-	function deptSelect(id, label) {
-		var hidden = document.getElementById('requesting_department_id');
-		hidden.value = id;
-		hidden.dataset.label = label || '';
-
-		document.getElementById('dept_search').value = label || '';
-		document.getElementById('dept_dropdown').style.display = 'none';
-	}
-
-	function deptClearSelection() {
-		var hidden = document.getElementById('requesting_department_id');
-		if (hidden) {
-			hidden.value = '';
-			hidden.dataset.label = '';
-		}
-		var searchEl = document.getElementById('dept_search');
-		if (searchEl) searchEl.value = '';
-	}
-
-	function deptSetupSearch() {
-		var searchEl = document.getElementById('dept_search');
-		var dd = document.getElementById('dept_dropdown');
-		if (DEPT_WIRED) return;
-		DEPT_WIRED = true;
-
-		searchEl.addEventListener('input', function() {
-			var q = this.value.trim().toLowerCase();
-			var hidden = document.getElementById('requesting_department_id');
-			hidden.value = '';
-			hidden.dataset.label = '';
-
-			if (!q) {
-				deptRenderDropdown(DEPT_ALL_DATA);
-				return;
-			}
-			var filtered = DEPT_ALL_DATA.filter(function(dept) {
-				return (dept.department_name || '').toLowerCase().includes(q) ||
-					(dept.department_code || '').toLowerCase().includes(q);
-			});
-			deptRenderDropdown(filtered);
-		});
-
-		searchEl.addEventListener('focus', function() {
-			deptRenderDropdown(DEPT_ALL_DATA);
-		});
-
-		searchEl.addEventListener('blur', function() {
-			setTimeout(function() {
-				dd.style.display = 'none';
-			}, 150);
-		});
-	}
-
-	// ── 7. Responsibility Centers (searchable combobox) ───────────────────────────
-	var RC_ALL_DATA = [];
-	var RC_WIRED = false;
-
-	async function loadResponsibilityCenters(mode) {
-		var searchEl = document.getElementById('rc_search');
-		var url = `${API_BASE}/department/all?department_type=REGIONAL&department_type=DISTRICT`;
-		if (mode === 'DISTRICT') {
-			// Document Type = CO — also include MAIN offices in the Region / District Office list
-			url += '&department_type=MAIN';
-		}
-
-		searchEl.disabled = true;
-		rcClearSelection();
-		document.getElementById('rc_dropdown').style.display = 'none';
-		setLoading('rc_wrapper', true);
-
-		try {
-			var json = await cba_apiFetch(url);
-			if (!json.success || !Array.isArray(json.data)) throw new Error(json.message ||
-				'Unexpected response format');
-
-			// Document Type = COE isn't scoped to the whitelist
-			// (cbaIsWhitelistedDept) — it shows every REGIONAL/DISTRICT office
-			// fetched above (mode is never 'DISTRICT' for COE, so MAIN offices
-			// are already excluded from `url` above). Every other document type
-			// keeps the whitelist, now extended with the offices connected under
-			// each whitelisted one via parent_department_id.
-			var docType = document.getElementById('document_type').value;
-			var rows = (docType === 'COE') ? json.data : cbaWithWhitelistedChildren(json.data);
-
-			RC_ALL_DATA = cbaTreeOrder(rows);
-			searchEl.disabled = false;
-			searchEl.placeholder = 'Search region / district office…';
-			rcSetupSearch();
-		} catch (err) {
-			console.error('[loadResponsibilityCenters]', err);
-			showError('rc_error');
-		} finally {
-			setLoading('rc_wrapper', false);
-		}
-	}
-
-	// Region / District Office label: the office name only — no "(department_code)".
-	function rcLabelFor(dept) {
-		return dept.department_name || '';
-	}
-
-	// Orders offices as a tree: each parent immediately followed by its children
-	// (via parent_department_id), siblings sorted by name — numerically, so
-	// "Region 2" comes before "Region 10". An office whose parent isn't in `rows`
-	// (e.g. a Regional Office, whose parent "Regional Operations" is never listed)
-	// is a top-level entry. Anything left unreached (a parent cycle in the data) is
-	// appended flat rather than dropped.
-	function cbaTreeOrder(rows) {
-		var ids = {},
-			byParent = {},
-			seen = {},
-			out = [];
-		rows.forEach(function(d) {
-			ids[d.department_id] = true;
-		});
-		rows.forEach(function(d) {
-			var key = (d.parent_department_id != null && ids[d.parent_department_id]) ? d.parent_department_id :
-				'root';
-			(byParent[key] = byParent[key] || []).push(d);
-		});
-		var byName = function(a, b) {
-			return (a.department_name || '').localeCompare(b.department_name || '', undefined, {
-				numeric: true
-			});
-		};
-		(function walk(key) {
-			(byParent[key] || []).sort(byName).forEach(function(d) {
-				if (seen[d.department_id]) return;
-				seen[d.department_id] = true;
-				out.push(d);
-				walk(d.department_id);
-			});
-		})('root');
-		rows.forEach(function(d) {
-			if (!seen[d.department_id]) out.push(d);
-		});
-		return out;
-	}
-
-	function rcRenderDropdown(data) {
-		var dd = document.getElementById('rc_dropdown');
-		if (!data.length) {
-			dd.innerHTML =
-				'<div style="padding:10px 14px;color:var(--afims-text-disabled, #A9AAB8);font-size:13px;">No results found</div>';
-			dd.style.display = 'block';
-			return;
-		}
-
-		// Indent an office under its parent only when that parent is in the list
-		// being shown — so a search that matches just a District Office doesn't
-		// leave it dangling indented with no parent above it.
-		var shown = {},
-			parentOf = {};
-		data.forEach(function(d) {
-			shown[d.department_id] = true;
-			parentOf[d.department_id] = d.parent_department_id;
-		});
-		var depthOf = function(d) {
-			var depth = 0,
-				p = d.parent_department_id;
-			while (p != null && shown[p] && depth < 10) {
-				depth++;
-				p = parentOf[p];
-			}
-			return depth;
-		};
-
-		dd.innerHTML = data.map(function(dept) {
-			var depth = depthOf(dept);
-			return '<div class="bv-item"' +
-				' data-id="' + dept.department_id + '"' +
-				' data-label="' + rcLabelFor(dept).replace(/"/g, '&quot;') + '"' +
-				(depth ? ' style="padding-left:' + (14 + depth * 22) + 'px;"' : '') +
-				'>' +
-				'<div class="bv-item-name">' + (depth ?
-					'<span style="color:var(--afims-text-disabled, #A9AAB8);font-weight:400;">&#9492;</span> ' : ''
-				) + (dept.department_name || '') + '</div>' +
-				'<div class="bv-item-sub">' + (dept.department_type || '') + (dept.department_code ? ' &middot; ' +
-					dept.department_code : '') + '</div>' +
-				'</div>';
-		}).join('');
-		dd.style.display = 'block';
-
-		dd.querySelectorAll('.bv-item').forEach(function(item) {
-			item.addEventListener('mousedown', function(e) {
-				e.preventDefault();
-				rcSelect(parseInt(this.dataset.id, 10), this.dataset.label);
-			});
-		});
-	}
-
-	function rcSelect(id, label) {
-		var hidden = document.getElementById('requesting_region_id');
-		hidden.value = id;
-		hidden.dataset.label = label || '';
-
-		document.getElementById('rc_search').value = label || '';
-		document.getElementById('rc_dropdown').style.display = 'none';
-	}
-
-	function rcClearSelection() {
-		var hidden = document.getElementById('requesting_region_id');
-		if (hidden) {
-			hidden.value = '';
-			hidden.dataset.label = '';
-		}
-		var searchEl = document.getElementById('rc_search');
-		if (searchEl) searchEl.value = '';
-	}
-
-	function rcSetupSearch() {
-		var searchEl = document.getElementById('rc_search');
-		var dd = document.getElementById('rc_dropdown');
-		if (RC_WIRED) return;
-		RC_WIRED = true;
-
-		searchEl.addEventListener('input', function() {
-			var q = this.value.trim().toLowerCase();
-			var hidden = document.getElementById('requesting_region_id');
-			hidden.value = '';
-			hidden.dataset.label = '';
-
-			if (!q) {
-				rcRenderDropdown(RC_ALL_DATA);
-				return;
-			}
-			var filtered = RC_ALL_DATA.filter(function(dept) {
-				return (dept.department_name || '').toLowerCase().includes(q) ||
-					(dept.department_code || '').toLowerCase().includes(q);
-			});
-			rcRenderDropdown(filtered);
-		});
-
-		searchEl.addEventListener('focus', function() {
-			rcRenderDropdown(RC_ALL_DATA);
-		});
-
-		searchEl.addEventListener('blur', function() {
-			setTimeout(function() {
-				dd.style.display = 'none';
-			}, 150);
+			return line.budget_line_item_id || line.type_of_fund_id || line.requested_amount;
 		});
 	}
 
@@ -4094,24 +3798,6 @@ $apiBase = Config('API.FMD_URL');
 		applyBudgetVersionVisibilityForDocType();
 	}
 
-	// ── Toggle Department by Document Type ───────────────────────────────────────
-	// Region / District Office fetch includes MAIN offices only for CO; COE (and
-	// every other doc type) fetches REGIONAL + DISTRICT only. Only CO hides/clears
-	// the separate Requesting Department field.
-	function toggleDepartmentByDocType() {
-		var docType = document.getElementById('document_type').value;
-		var deptGroup = document.getElementById('requesting_department_id').closest('.form-group');
-		var rcMode = (docType === 'CO') ? 'DISTRICT' : undefined;
-
-		if (docType === 'CO') {
-			deptGroup.style.display = 'none';
-			deptClearSelection();
-		} else {
-			deptGroup.style.display = '';
-		}
-		return loadResponsibilityCenters(rcMode);
-	}
-
 	// ── Allocation count  →  GET /budget_allocation/counts ───────────────────────
 	async function refreshAllocationCount() {
 		try {
@@ -4128,7 +3814,7 @@ $apiBase = Config('API.FMD_URL');
 		}
 	}
 
-	setInterval(refreshAllocationCount, 2 * 60 * 1000);
+	// (the 2-minute refresh of this is started by cbaStartTimers() - see the Boot block at the end)
 
 	// ── Allocation Number generator ───────────────────────────────────────────────
 	// Shared by create mode (generateCBANumber) and edit mode (populateEditForm,
@@ -4162,13 +3848,10 @@ $apiBase = Config('API.FMD_URL');
 		if (CBA_EDIT_MODE) return;
 
 		var type = document.getElementById('allocation_type').value || 'CBA';
-		var fsEl = document.getElementById('fund_source_id');
-		var fsText = fsEl ? (fsEl.dataset.label || '') : '';
-
 		var num = buildAllocationNumber(type, document.getElementById('document_type').value);
 
 		document.getElementById('allocation_number').value = num;
-		document.getElementById('cba_number_display').textContent = fsText ? (num + ' / ' + fsText) : num;
+		document.getElementById('cba_number_display').textContent = num;
 	}
 
 	// ── Validation ────────────────────────────────────────────────────────────────
@@ -4465,17 +4148,18 @@ $apiBase = Config('API.FMD_URL');
 		return {
 			allocation_type: v('allocation_type'),
 			cba_id: v('cba_id'),
-			allocation_number: v('allocation_number'),
+			// The API refuses to create a memo request without a memo_ref_no (BudgetAllocationService::create) and this
+			// form has no field for one, so a NEW request takes its generated number (#allocation_number, e.g.
+			// "CBA 2026-111-86-01") as its reference. An edit (PATCH) leaves the saved reference alone.
+			memo_ref_no: CBA_EDIT_MODE ? undefined : v('allocation_number'),
+			// allocation_number is deliberately NOT sent: numbering is not saved to the database yet. The
+			// number is still generated into #allocation_number for display / print preview, and on edit
+			// the record keeps whatever number it already has (PATCH only changes the fields sent).
 			fiscal_year: v('fiscal_year'),
-			budget_version_id: v('budget_version_id'),
-			cob_id: v('cob_id'),
 			document_type: v('document_type'),
-			category_type_id: v('category_type_id'),
-			requesting_department_id: v('requesting_department_id'),
-			requesting_region_id: v('requesting_region_id'),
-			program_id: v('program_id'),
-			project_id: v('project_id'),
-			fund_source_id: v('fund_source_id'),
+			program_code: v('program_code'),
+			sub_program_code: v('sub_program_code'),
+			project_code: v('project_code'),
 			requested_amount: v('requested_amount_raw'),
 			allocated_amount: v('allocated_amount_raw'),
 			// Itemized Budget Allocation Amount lines (fmd.budget_allocations.line_transaction, jsonb).
@@ -4489,21 +4173,26 @@ $apiBase = Config('API.FMD_URL');
 			project_description: v('project_description'),
 			remarks: v('remarks'),
 			is_bidding: g('is_bidding') ? (g('is_bidding').checked ? '1' : '0') : '0',
-			category: v('budget_allocation_category_id'),
+			category_id: v('category_id'),
+			vendor_id: v('vendor_id'),
+			...pcrPayloadFields(), // pr_number + pr_amount, or po_number + po_amount (RFA / LAA)
 			file_data: getSupportingDocs(),
 		};
 	}
 
 	// ── POST to API ───────────────────────────────────────────────────────────────
 	async function postToApi(payload) {
+		// A vendor typed in that does not exist yet is created first, so the allocation can point at it.
+		// Throws before anything is saved when that fails (callers show the message).
+		await vendEnsure();
+		payload.vendor_id = vendEl('vendor_id').value;
+
 		var nullableFKFields = [
-			'budget_version_id',
-			'cob_id',
-			'requesting_region_id',
-			'requesting_department_id',
-			'project_id',
-			'category',
-			'category_type_id',
+			'program_code',
+			'sub_program_code',
+			'project_code',
+			'category_id',
+			'vendor_id',
 			'multiple_node_id',
 		];
 		nullableFKFields.forEach(function(key) {
@@ -4574,6 +4263,7 @@ $apiBase = Config('API.FMD_URL');
 			var json = await postToApi(buildPayload('DRAFT'));
 			if (!json.success) throw new Error(json.message || 'Failed to save draft.');
 			alert('Draft saved successfully.');
+			cbaAfterSave(); // modal mode: close + refresh the list; page mode: stay on the form
 		} catch (err) {
 			console.error('[saveDraft]', err);
 			alert('Error saving draft: ' + err.message);
@@ -4601,10 +4291,16 @@ $apiBase = Config('API.FMD_URL');
 		};
 	}
 
+	// Text of the main button: "Submit Request" when creating (whatever the allocation type), "Update <type>" when
+	// editing a saved record.
+	function submitButtonLabel() {
+		return CBA_EDIT_MODE ? ('Update ' + getTypeLabel().short) : 'Submit Request';
+	}
+
 	function updateSubmitLabel() {
 		var label = getTypeLabel();
 		var span = document.getElementById('submit_btn_label');
-		if (span) span.textContent = CBA_EDIT_MODE ? ('Update ' + label.short) : ('Submit ' + label.short);
+		if (span) span.textContent = submitButtonLabel();
 
 		// "CBA Number" header card label — follows the selected allocation type
 		// (CBA / RFA / LAA) instead of always reading "CBA Number".
@@ -4613,7 +4309,7 @@ $apiBase = Config('API.FMD_URL');
 	}
 
 	// ── Submit ────────────────────────────────────────────────────────────────────
-	document.getElementById('cba_form').addEventListener('submit', async function(e) {
+	async function cbaOnSubmit(e) {
 		e.preventDefault();
 
 		var valid = true;
@@ -4630,7 +4326,7 @@ $apiBase = Config('API.FMD_URL');
 
 		// Budget Version is required on every line for RFA / LAA.
 		if (!validateBudgetVersionsRequired()) {
-			alert('Budget Version is required for ' + getTypeLabel().short +
+			alert('COB is required for ' + getTypeLabel().short +
 				'. Please select one for every Budget Allocation line.');
 			return;
 		}
@@ -4672,6 +4368,7 @@ $apiBase = Config('API.FMD_URL');
 				'Submission failed.'));
 			alert(CBA_EDIT_MODE ? (typeLabel.full + ' updated successfully!') : (typeLabel.full +
 				' submitted successfully!'));
+			if (cbaAfterSave()) return; // modal mode: closed + list refreshed, nothing to redirect to
 			var docType = document.getElementById('document_type').value;
 			window.location.href = docType === 'COE' ? '/FMD/CoeBudgetAllocationDashboard' :
 				'/FMD/BudgetAllocationDashboard';
@@ -4679,17 +4376,17 @@ $apiBase = Config('API.FMD_URL');
 			console.error('[submitCBA]', err);
 			alert((CBA_EDIT_MODE ? 'Update error: ' : 'Submission error: ') + err.message);
 			submitBtn.disabled = false;
-			var restoredLabel = CBA_EDIT_MODE ? ('Update ' + typeLabel.short) : ('Submit ' + typeLabel.short);
+			var restoredLabel = submitButtonLabel();
 			submitBtn.innerHTML =
 				'<svg class="btn-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg> <span id="submit_btn_label">' +
 				restoredLabel + '</span>';
 		}
-	});
+	}
 
 	// ── Block Enter outside textarea ──────────────────────────────────────────────
-	document.getElementById('cba_form').addEventListener('keydown', function(e) {
+	function cbaBlockEnter(e) {
 		if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') e.preventDefault();
-	});
+	}
 
 	// ── Print Preview ─────────────────────────────────────────────────────────────
 	// Routes to the correct endpoint based on allocation_type:
@@ -4708,12 +4405,6 @@ $apiBase = Config('API.FMD_URL');
 			};
 			var v = function(id) {
 				return g(id) ? g(id).value : '';
-			};
-			var gt = function(id) {
-				var el = g(id);
-				return (el && el.options && el.selectedIndex >= 0) ?
-					el.options[el.selectedIndex].text :
-					(el ? el.value : '');
 			};
 
 			var allocType = v('allocation_type') || 'CBA';
@@ -4737,37 +4428,21 @@ $apiBase = Config('API.FMD_URL');
 					return s && s.selectedIndex >= 0 ? (s.options[s.selectedIndex].dataset.fiscalYear ||
 						'') : '';
 				})(),
-				fund_source_id: v('fund_source_id'),
-				fund_source_name: g('fund_source_id') ? (g('fund_source_id').dataset.label || '') : '',
 				document_type: v('document_type'),
-				category_type_id: v('category_type_id'),
-				category_type_name: gt('category_type_id'),
 				// Budget Allocation Category (e.g. "Goods and Services") — printed
 				// below "Sources of Fund" on CO documents (see gen_cba_docx.js).
-				category_name: g('budget_allocation_category_id') ? (g('budget_allocation_category_id').dataset
+				category_name: g('category_id') ? (g('category_id').dataset
 					.label || '') : '',
-				program_id: v('program_id'),
-				program_name: g('program_id') ? (g('program_id').dataset.label || '') : '',
-				project_id: v('project_id'),
-				project_name: g('project_id') ? (g('project_id').dataset.label || '') : '',
+				program_code: v('program_code'),
+				program_name: g('program_code') ? (g('program_code').dataset.label || '') : '',
+				sub_program_code: v('sub_program_code'),
+				sub_program_name: g('sub_program_code') ? (g('sub_program_code').dataset.label || '') : '',
+				project_code: v('project_code'),
+				project_name: g('project_code') ? (g('project_code').dataset.label || '') : '',
 				project_description: v('project_description'),
 				requested_amount: v('requested_amount_raw'),
 				allocated_amount: v('allocated_amount_raw'),
-				requesting_department_id: v('requesting_department_id'),
-				requesting_region_id: v('requesting_region_id'),
 				remarks: v('remarks'),
-				budget_version_id: v('budget_version_id'),
-				// "Program of COB" — row 0's selected Budget Version's Program
-				// Source name (or, for document_type = CO, its Fund ID's name —
-				// see baaBvDisplayName()), shown in that row's
-				// #bvi_program_source_0 info box once a Budget Version is
-				// picked. gen_cba_docx.js prints this in parens right after the
-				// Source of Fund name on CO documents.
-				program_of_cob: (function() {
-					var el = g('bvi_program_source_0');
-					var text = el ? el.textContent : '';
-					return (text && text !== '—') ? text : '';
-				})(),
 				// Controls the CO certificate's validity-clause wording — see
 				// gen_cba_docx.js: checked = "for bidding purposes", unchecked =
 				// "for whatever legal purpose it may serve".
@@ -4790,31 +4465,12 @@ $apiBase = Config('API.FMD_URL');
 				payload.rfa_no = v('allocation_number');
 				payload.amount = v('requested_amount_raw');
 				payload.particulars = v('project_description');
-				// "To be filled-out by" is deliberately not set here: gen_rfa_docx.js /
-				// print-preview.js derive it from requesting_department_type below
-				// (MAIN -> FMD, REGIONAL -> Regional Offices).
-				// Payee = the requesting department / region label
-				payload.payee_name = (g('requesting_department_id') ? (g('requesting_department_id').dataset.label ||
-						'') : '') ||
-					(g('requesting_region_id') ? (g('requesting_region_id').dataset.label || '') : '') ||
-					'';
-				// Picks the RFA template: a MAIN office prints the STAFF form
-				// ("(STAFF)", filled out by FMD), anything else the REGIONAL OFFICE
-				// form. Same department-then-region precedence as the payee above; for
-				// document_type = CO the department field is hidden, so a MAIN
-				// office like GSD arrives via the Region / District Office list
-				// (RC_ALL_DATA) instead of DEPT_ALL_RAW.
-				payload.requesting_department_type = (function() {
-					var findType = function(rows, id) {
-						var row = (rows || []).find(function(d) {
-							return String(d.department_id) === String(id);
-						});
-						return row ? (row.department_type || '') : '';
-					};
-					return (v('requesting_department_id') ? findType(DEPT_ALL_RAW, v(
-							'requesting_department_id')) : '') ||
-						(v('requesting_region_id') ? findType(RC_ALL_DATA, v('requesting_region_id')) : '');
-				})();
+				// Payee = the requesting office: the Responsibility Center of the user who created the memo request
+				// (CBA_REQ_RC: uac.users.rc_id -> fims.responsibility_code).
+				payload.payee_name = CBA_REQ_RC.rc_name || '';
+				// Picks the RFA template: a MAIN (central) office prints the STAFF form ("(STAFF)", filled out by
+				// FMD), a Regional / District office the REGIONAL OFFICE form — from the RC's office_type.
+				payload.requesting_department_type = cbaRcDeptType(CBA_REQ_RC.office_type);
 				// RFA type line = "<CATEGORY> – Php 30 Million and below (<OFFICE>)", using
 				// the selected Budget Allocation Category's name. print-preview.js and
 				// gen_rfa_docx.js both use payload.rfa_type ahead of their default
@@ -4823,7 +4479,7 @@ $apiBase = Config('API.FMD_URL');
 				(function() {
 					var cat = String(payload.category_name || '').trim();
 					if (!cat) return;
-					var isStaff = String(payload.requesting_department_type || '').toUpperCase() === 'MAIN';
+					var isStaff = payload.requesting_department_type === 'MAIN';
 					payload.rfa_type = cat.toUpperCase() + ' – Php 30 Million and below (' +
 						(isStaff ? 'STAFF' : 'REGIONAL OFFICE') + ')';
 				})();
@@ -4838,19 +4494,11 @@ $apiBase = Config('API.FMD_URL');
 				payload.signatory_position_3 = v('signatory_position_3') || '';
 				payload.signatory_name_4 = v('signatory_name_4') || '';
 				payload.signatory_position_4 = v('signatory_position_4') || '';
-				// Row 0's selected Budget Version — same lookup baaBvSelect() already
-				// uses (BAA_BV_DATA[idx], loaded from /budget_version_v2/all for that
-				// row's Source of Fund). Now that endpoint also resolves each version's
-				// SARO reference (bv.cob_id -> corporate_operating_budget.fund_id ->
-				// fmd.fund_tracking.reference_number/date — see
-				// BudgetVersionV2Services::fetchAlls()), so both the fund balance and
-				// SARO No./Date print from real data instead of being left blank.
-				var rfaBv = (BAA_BV_DATA[0] || []).find(function(b) {
-					return String(b.budget_version_id) === String(v('budget_version_id'));
-				});
-				var rfaBvFundBalance = rfaBv ? (parseFloat(rfaBv.fund_balance) || 0) : 0;
-				var rfaSaroRef = (rfaBv && rfaBv.fund_tracking) ? (rfaBv.fund_tracking.reference_number || '') : '';
-				var rfaSaroDate = (rfaBv && rfaBv.fund_tracking) ? (rfaBv.fund_tracking.date || '') : '';
+				// A COB is an approved budget line item: it has no fund balance or SARO reference of its own, so those
+				// print blank (total funds available falls back to the amounts below).
+				var rfaBvFundBalance = 0;
+				var rfaSaroRef = '';
+				var rfaSaroDate = '';
 
 				// Financial reference fields — use raw amounts where applicable
 				payload.total_estimated_cost = v('requested_amount_raw') || '0';
@@ -4895,20 +4543,12 @@ $apiBase = Config('API.FMD_URL');
 				// override if there is a dedicated field on this form.
 				if (v('laa_subject')) payload.subject = v('laa_subject');
 
-				// office_name = the requesting department/region — same label RFA
-				// uses for its payee. COE LAA (gen_coe_laa_docx.js) reads "To
-				// transfer obligation made to <office> to cover the payment for
-				// the <description>"; CO LAA (gen_laa_docx.js) prints it as the
-				// addressee and in the "<office> to cover the <description>"
-				// transfer text (not in the title, which is just the LAA number). The
-				// generated DOCX derives it server-side, but the on-screen preview
-				// never calls the server, so pass it here. The COE addressee
-				// ("ENGR. ... / Regional Manager" + "Dear Engr. ...,") is resolved
-				// by BAP_openPrintPreview() / the print-docx/laa route, not set here.
-				payload.office_name = (g('requesting_department_id') ? (g('requesting_department_id').dataset.label ||
-						'') : '') ||
-					(g('requesting_region_id') ? (g('requesting_region_id').dataset.label || '') : '') ||
-					'';
+				// office_name = the requesting office (the creator's Responsibility Center name) — the same label
+				// RFA uses for its payee. COE LAA (gen_coe_laa_docx.js) reads "To transfer obligation made to
+				// <office> to cover the payment for the <description>"; CO LAA (gen_laa_docx.js) prints it as the
+				// addressee and in the "<office> to cover the <description>" transfer text. The generated DOCX
+				// derives it server-side, but the on-screen preview never calls the server, so pass it here.
+				payload.office_name = CBA_REQ_RC.rc_name || '';
 			}
 
 			// ── Show the HTML preview dialog — "Download DOCX" / "View / Print PDF"
@@ -4948,5 +4588,92 @@ $apiBase = Config('API.FMD_URL');
 			btn.innerHTML =
 				'<svg class="btn-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg> Print Preview';
 		}
+	}
+
+	// ==============================================================================
+	// BOOT + MODAL CONTROLLER
+	//
+	// Page mode  (views/BudgetAllocationForm.php): boots once, exactly as it always did.
+	// Modal mode (memo-req-page.php sets $cbaAsModal): nothing runs at page load. The
+	//   lookups, the 2-minute counter refresh and the loading overlay all start when the user
+	//   opens the modal, and every open starts from the untouched markup, so a form that was
+	//   cancelled or saved never leaks into the next one.
+	// This block must stay LAST: boot reads variables declared throughout the script above.
+	// ==============================================================================
+	var CBA_COUNT_TIMER = null;
+	var CBA_PRISTINE_HTML = null; // the form markup exactly as the server rendered it
+
+	function cbaStartTimers() {
+		if (!CBA_COUNT_TIMER) CBA_COUNT_TIMER = setInterval(refreshAllocationCount, 2 * 60 * 1000);
+	}
+
+	function cbaStopTimers() {
+		clearInterval(CBA_COUNT_TIMER);
+		CBA_COUNT_TIMER = null;
+	}
+
+	// Everything the form remembers between loads. Besides the data caches this includes
+	// "wire once" flags and a cached <option> node that belong to one specific copy of the DOM:
+	// left over from a previous open they would point at removed elements, so the combobox
+	// search boxes would never get their listeners again on the second open.
+	function cbaResetState() {
+		CBA_CREATED_AT = null;
+		CBA_REQ_RC = Object.assign({ rc_id: '', rc_code: '', rc_name: '', office_type: '' }, CBA_CONFIG.requestingRc || {});   // back to the user's own RC
+		pcResetState();
+		clearTimeout(CAT_DEBOUNCE); CAT_DEBOUNCE = null;
+		CAT_ALL_DATA = [];
+		clearTimeout(VEND_DEBOUNCE); VEND_DEBOUNCE = null; VEND_SEQ++;
+		VEND_ALL_DATA = [];
+		VEND_TYPES = []; VEND_TYPES_FAILED = false;
+		VEND_MODE = 'none';
+		BAA_ROWS = []; BAA_ROW_SEQ = -1;
+		COB_EPOCH++; COB_DATA = {}; COB_SIG = {}; COB_SEQ = {}; COB_LOAD = {}; COB_SEL = {}; COB_WIRED = {};
+		COB_SYNC_QUEUED = false; COB_KEEP_SELECTION = 0;
+		TOF_DATA = []; TOF_LOADED = false; TOF_SIG = null; TOF_TOKEN = '';
+		ALLOC_CFA_OPTION = null;
+		CBA_DATA = []; CBA_LOADED = false; CBA_ACTIVE_IDX = -1;
+		_sdocCount = 0;
+	}
+
+	// After a successful save. Modal mode: close and refresh the host page's list (returns true).
+	// Page mode: does nothing and returns false, so the caller keeps its own behaviour.
+	function cbaAfterSave() {
+		if (!CBA_AS_MODAL) return false;
+		window.cbaModal.close();
+		if (typeof window.mrq_load === 'function') window.mrq_load();
+		return true;
+	}
+
+	// The Cancel button and the modal's close button.
+	function cbaCancel() {
+		if (CBA_AS_MODAL) window.cbaModal.close();
+		else window.history.back();
+	}
+
+	if (CBA_AS_MODAL) {
+		window.cbaModal = {
+			open: function() {
+				var container = document.querySelector('.cba-form-container');
+				if (CBA_PRISTINE_HTML === null) CBA_PRISTINE_HTML = container.innerHTML; // first open: still untouched
+				else container.innerHTML = CBA_PRISTINE_HTML;                            // later opens: start over
+				cbaResetState();
+				document.getElementById('cba-overlay').classList.add('open');
+				document.getElementById('cba-modal-body').scrollTop = 0;
+				cbaBoot();
+				cbaStartTimers();
+			},
+			close: function() {
+				document.getElementById('cba-overlay').classList.remove('open');
+				cbaStopTimers();
+			},
+		};
+	} else if (document.readyState === 'loading') {
+		document.addEventListener('DOMContentLoaded', function() {
+			cbaBoot();
+			cbaStartTimers();
+		});
+	} else {
+		cbaBoot();
+		cbaStartTimers();
 	}
 </script>
