@@ -336,5 +336,73 @@ class GlobalService
         ]);
 
         return $objectKey;
+    } 
+    /*     * The one Responsibility Center that REVIEWS every other RC's budget request:
+     * FMD, the Financial Management Department. It is a central department with no
+     * child RCs, so the usual "my RC + its descendants" scoping would leave its list
+     * empty. Its users get the list of all the Regional / District requests — see
+     * resolveBudgetReqRcFilter() and GET /fmd/budget_req/list.
+     *
+     * FMD is identified by its rc_code — the organisation's own code for it — and NOT by its
+     * rc_id. The id is a surrogate key whose format differs between datasets ("013" in the sample
+     * data, "RC-013" in others), and comparing it with a literal silently stopped recognising FMD:
+     * its users got the plain list, no central results, and a 403 from the FMD route.
+     */
+    public const CENTRAL_REVIEW_RC_CODE = '35-074-0000000-032';
+
+    /**
+     * The Regional and District offices — the requesters the central review RC reviews: every RC whose
+     * rc_code sorts at or after this value (the central departments, FMD included, sort before it).
+     * Used as the `rc_code_from` filter of BudgetReqService::fetchAlls(), e.g. by GET /fmd/budget_req/list.
+     */
+    public const CENTRAL_REVIEW_RC_CODE_FROM = '35-074-0000001-000';
+
+    /**
+     * Is this RC (by rc_id) the central review RC, i.e. is its rc_code CENTRAL_REVIEW_RC_CODE?
+     * Looked up once per rc_id per request. null / '' / an unknown id is false, and so is a failed lookup
+     * (logged, not cached): when we can't tell, we don't grant the central view.
+     */
+    public static function isCentralReviewRc(?string $rcId): bool
+    {
+        if ($rcId === null || trim($rcId) === '') {
+            return false;
+        }
+
+        static $known = [];
+        if (!array_key_exists($rcId, $known)) {
+            try {
+                $code = App\ExecuteScalar(
+                    'SELECT rc_code FROM fims.responsibility_code WHERE rc_id = ' . App\QuotedValue($rcId, App\DataType::STRING, 'DB'),
+                    'DB'
+                );
+                $known[$rcId] = trim((string) $code) === self::CENTRAL_REVIEW_RC_CODE;
+            } catch (\Throwable $e) {
+                App\LogError('GlobalService::isCentralReviewRc could not look up rc_id ' . $rcId . ' — ' . $e->getMessage());
+
+                return false;
+            }
+        }
+
+        return $known[$rcId];
+    }
+
+    /**
+     * The rc_id to filter a fims.budget_req LIST by ('' = every RC).
+     *
+     *  - a user with an RC is limited to it (and its descendants) — a client-supplied rc_id is ignored;
+     *  - a superadmin / user without an RC may narrow by the rc_id query parameter;
+     *  - the central review RC (isCentralReviewRc) sees every RC, but only when the request says
+     *    central=1 (the FMD list). The parameter alone grants nothing: the caller's own RC is
+     *    checked here, server-side, so any other user who sends it stays scoped.
+     */
+    public static function resolveBudgetReqRcFilter(array $scope, array $params): string
+    {
+        $scopeRcId = $scope['rc_id'] ?? null;
+
+        if (self::isCentralReviewRc($scopeRcId) && (string) ($params['central'] ?? '') === '1') {
+            return '';
+        }
+
+        return (string) ($scopeRcId ?? ($params['rc_id'] ?? ''));
     }
 }
