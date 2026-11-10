@@ -432,6 +432,7 @@
     <Table TblName="Voucher.php" TblType="REPORT" TblGen="1" TblGenList="reportcontroller=1,custom=1,custom|class=1" TblList="1" TblCaption="Disbursement Voucher" TblSrchType="NONE" TblBasicSearch="1" TblExtendedBasicSearch="1" TblSecurity="0,&quot;Default&quot;,0" TblLoaded="1" TblReportType="custom" TblShowEmptyRows="0" TblUseGlobal="1" TblRecPerPage="20" TblRecPerPageList="10,20,50,ALL" TblGrpPerPage="3" TblGrpPerPageList="1,2,3,5,ALL" TblPagerStyle="2" TblUseButtonsForLinks="1" TblUseDropDownForAction="1" TblUseDropDownForListOptions="1" TblUseDropDownForExport="1" />
     <Table TblName="JournalEntryVoucher.php" TblType="REPORT" TblGen="1" TblGenList="reportcontroller=1,custom=1,custom|class=1" TblList="1" TblCaption="Journal Entry Voucher" TblSrchType="NONE" TblBasicSearch="1" TblExtendedBasicSearch="1" TblSecurity="0,&quot;Default&quot;,0" TblLoaded="1" TblReportType="custom" TblShowEmptyRows="0" TblUseGlobal="1" TblRecPerPage="20" TblRecPerPageList="10,20,50,ALL" TblGrpPerPage="3" TblGrpPerPageList="1,2,3,5,ALL" TblPagerStyle="2" TblUseButtonsForLinks="1" TblUseDropDownForAction="1" TblUseDropDownForListOptions="1" TblUseDropDownForExport="1" />
     <Table TblName="ChangePass.php" TblType="REPORT" TblGen="1" TblGenList="reportcontroller=1,custom=1,custom|class=1" TblList="1" TblCaption="Change Password" TblSrchType="NONE" TblBasicSearch="1" TblExtendedBasicSearch="1" TblSecurity="0,&quot;Default&quot;,0" TblLoaded="1" TblReportType="custom" TblShowEmptyRows="0" TblUseGlobal="1" TblRecPerPage="20" TblRecPerPageList="10,20,50,ALL" TblGrpPerPage="3" TblGrpPerPageList="1,2,3,5,ALL" TblPagerStyle="2" TblUseButtonsForLinks="1" TblUseDropDownForAction="1" TblUseDropDownForListOptions="1" TblUseDropDownForExport="1" />
+    <Table TblName="CheckDisbursements.php" TblType="REPORT" TblGen="1" TblGenList="reportcontroller=1,custom=1,custom|class=1" TblList="1" TblCaption="Check Disbursements" TblSrchType="NONE" TblBasicSearch="1" TblExtendedBasicSearch="1" TblSecurity="0,&quot;Default&quot;,0" TblLoaded="1" TblReportType="custom" TblShowEmptyRows="0" TblUseGlobal="1" TblRecPerPage="20" TblRecPerPageList="10,20,50,ALL" TblGrpPerPage="3" TblGrpPerPageList="1,2,3,5,ALL" TblPagerStyle="2" TblUseButtonsForLinks="1" TblUseDropDownForAction="1" TblUseDropDownForListOptions="1" TblUseDropDownForExport="1" />
   </Database>
   <Extension Name="@phpmaker/dompdf" Template="@phpmaker/dompdf" XmlFile="dompdf.xml" Enabled="1">
     <ExtProject>
@@ -614,6 +615,9 @@
           <Properties><![CDATA[[{"Id":"ExportList","Type":"Boolean","Value":"0"},{"Id":"ExportView","Type":"Boolean","Value":"1"},{"Id":"PageBreakRecordCount","Type":"Integer","Value":0},{"Id":"PageOrientation","Type":"String","Value":"portrait"},{"Id":"PageSize","Type":"String","Value":"a4"}]]]></Properties>
         </ExtTable>
         <ExtTable TblName="ChangePass.php">
+          <Properties><![CDATA[[{"Id":"ExportList","Type":"Boolean","Value":"0"},{"Id":"ExportView","Type":"Boolean","Value":"1"},{"Id":"PageBreakRecordCount","Type":"Integer","Value":0},{"Id":"PageOrientation","Type":"String","Value":"portrait"},{"Id":"PageSize","Type":"String","Value":"a4"}]]]></Properties>
+        </ExtTable>
+        <ExtTable TblName="CheckDisbursements.php">
           <Properties><![CDATA[[{"Id":"ExportList","Type":"Boolean","Value":"0"},{"Id":"ExportView","Type":"Boolean","Value":"1"},{"Id":"PageBreakRecordCount","Type":"Integer","Value":0},{"Id":"PageOrientation","Type":"String","Value":"portrait"},{"Id":"PageSize","Type":"String","Value":"a4"}]]]></Properties>
         </ExtTable>
         <Properties><![CDATA[[]]]></Properties>
@@ -1017,6 +1021,9 @@
         <ExtTable TblName="ChangePass.php">
           <Properties><![CDATA[[]]]></Properties>
         </ExtTable>
+        <ExtTable TblName="CheckDisbursements.php">
+          <Properties><![CDATA[[]]]></Properties>
+        </ExtTable>
         <Properties><![CDATA[[]]]></Properties>
       </ExtDatabase>
       <Properties><![CDATA[[{"Id":"InputGroup","Type":"Boolean","Value":"1"},{"Id":"Options","Type":"String","Value":""}]]]></Properties>
@@ -1193,6 +1200,9 @@
           <Properties><![CDATA[[]]]></Properties>
         </ExtTable>
         <ExtTable TblName="ChangePass.php">
+          <Properties><![CDATA[[]]]></Properties>
+        </ExtTable>
+        <ExtTable TblName="CheckDisbursements.php">
           <Properties><![CDATA[[]]]></Properties>
         </ExtTable>
         <Properties><![CDATA[[]]]></Properties>
@@ -1596,6 +1606,9 @@
         <ExtTable TblName="ChangePass.php">
           <Properties><![CDATA[[]]]></Properties>
         </ExtTable>
+        <ExtTable TblName="CheckDisbursements.php">
+          <Properties><![CDATA[[]]]></Properties>
+        </ExtTable>
         <Properties><![CDATA[[]]]></Properties>
       </ExtDatabase>
       <Properties><![CDATA[[{"Id":"Config","Type":"String","Value":""}]]]></Properties>
@@ -1885,6 +1898,7 @@ function Page_Load()
 ]]></CustomScript>
   <CustomScript ScriptType="Template" ScriptCodeType="Table" ScriptName="Content" ScriptCtrlID="custom" ScriptL1Key="JournalEntryVoucher.php"><![CDATA[<?php include(dirname(__DIR__, 1) . "/app/pages/journal-entry-voucher.php"); ?>]]></CustomScript>
   <CustomScript ScriptType="Template" ScriptCodeType="Table" ScriptName="Content" ScriptCtrlID="custom" ScriptL1Key="ChangePass.php"><![CDATA[<?php include(dirname(__DIR__, 1) . "/app/pages/change-pass.php"); ?>]]></CustomScript>
+  <CustomScript ScriptType="Template" ScriptCodeType="Table" ScriptName="Content" ScriptCtrlID="custom" ScriptL1Key="CheckDisbursements.php"><![CDATA[<?php include(dirname(__DIR__, 1) . "/app/pages/check-disbursement-voucher.php"); ?>]]></CustomScript>
   <Menu MenuID="9" MenuText="Dashboard" MenuParentID="-1" MenuGroup="0" MenuSource="" MenuExtUrl="" MenuAnonymous="0" MenuSecurity="" MenuUrl="MainDashboard.php" MenuType="" MenuCustomUrl="0" MenuLevel="0" MenuShow="1" MenuDisplayOrder="100" MenuIconClass="fas fa-chart-line" MenuNavbar="0" />
   <Menu MenuID="146" MenuText="Budget" MenuParentID="-1" MenuGroup="0" MenuSource="" MenuExtUrl="" MenuAnonymous="8" MenuSecurity="" MenuUrl="" MenuType="" MenuCustomUrl="1" MenuLevel="0" MenuShow="1" MenuDisplayOrder="200" MenuIconClass="fas fa-wallet" MenuNavbar="0" />
   <Menu MenuID="88" MenuText="Memo Request" MenuParentID="146" MenuGroup="0" MenuSource="" MenuExtUrl="" MenuAnonymous="0" MenuSecurity="" MenuUrl="budget-allocation-form.php" MenuType="" MenuCustomUrl="0" MenuLevel="1" MenuShow="1" MenuDisplayOrder="100" MenuIconClass="" MenuNavbar="0" />
@@ -1901,6 +1915,7 @@ function Page_Load()
   <Menu MenuID="258" MenuText="Vouchers" MenuParentID="-1" MenuGroup="0" MenuSource="" MenuExtUrl="" MenuAnonymous="8" MenuSecurity="" MenuUrl="" MenuType="" MenuCustomUrl="1" MenuLevel="0" MenuShow="1" MenuDisplayOrder="600" MenuIconClass="fas fa-file-invoice-dollar" MenuNavbar="0" />
   <Menu MenuID="208" MenuText="Journal Entry Voucher" MenuParentID="258" MenuGroup="0" MenuSource="" MenuExtUrl="" MenuAnonymous="0" MenuSecurity="" MenuUrl="JournalEntryVoucher.php" MenuType="" MenuCustomUrl="0" MenuLevel="1" MenuShow="1" MenuDisplayOrder="100" MenuIconClass="" MenuNavbar="0" />
   <Menu MenuID="207" MenuText="Disbursement Voucher" MenuParentID="258" MenuGroup="0" MenuSource="" MenuExtUrl="" MenuAnonymous="0" MenuSecurity="" MenuUrl="Voucher.php" MenuType="" MenuCustomUrl="0" MenuLevel="1" MenuShow="1" MenuDisplayOrder="200" MenuIconClass="" MenuNavbar="0" />
+  <Menu MenuID="260" MenuText="Check Disbursements" MenuParentID="258" MenuGroup="0" MenuSource="" MenuExtUrl="" MenuAnonymous="0" MenuSecurity="" MenuUrl="CheckDisbursements.php" MenuType="" MenuCustomUrl="0" MenuLevel="1" MenuShow="1" MenuDisplayOrder="300" MenuIconClass="" MenuNavbar="0" />
   <Menu MenuID="206" MenuText="Administration" MenuParentID="-1" MenuGroup="0" MenuSource="" MenuExtUrl="" MenuAnonymous="8" MenuSecurity="" MenuUrl="" MenuType="" MenuCustomUrl="1" MenuLevel="0" MenuShow="1" MenuDisplayOrder="700" MenuIconClass="fas fa-user-cog" MenuNavbar="0" />
   <Menu MenuID="70" MenuText="Position Management" MenuParentID="206" MenuGroup="0" MenuSource="" MenuExtUrl="" MenuAnonymous="0" MenuSecurity="" MenuUrl="PositionManagement.php" MenuType="" MenuCustomUrl="0" MenuLevel="1" MenuShow="1" MenuDisplayOrder="100" MenuIconClass="fas fa-briefcase" MenuNavbar="0" />
   <Menu MenuID="13" MenuText="User Access Management" MenuParentID="206" MenuGroup="0" MenuSource="" MenuExtUrl="" MenuAnonymous="0" MenuSecurity="" MenuUrl="UserAccess.php" MenuType="" MenuCustomUrl="0" MenuLevel="1" MenuShow="1" MenuDisplayOrder="200" MenuIconClass="fas fa-user-lock" MenuNavbar="0" />
@@ -1939,7 +1954,7 @@ function Page_Load()
   <Menu MenuID="29" MenuText="Positions" MenuParentID="-1" MenuGroup="0" MenuSource="" MenuExtUrl="" MenuAnonymous="0" MenuSecurity="" MenuUrl="positions" MenuType="" MenuCustomUrl="0" MenuLevel="0" MenuShow="0" MenuDisplayOrder="3700" MenuIconClass="fas fa-briefcase" MenuNavbar="0" />
   <Menu MenuID="28" MenuText="Positions Categories" MenuParentID="-1" MenuGroup="0" MenuSource="" MenuExtUrl="" MenuAnonymous="0" MenuSecurity="" MenuUrl="position_categories" MenuType="" MenuCustomUrl="0" MenuLevel="0" MenuShow="0" MenuDisplayOrder="3800" MenuIconClass="fas fa-user-tie" MenuNavbar="0" />
   <Menu MenuID="30" MenuText="plantilla items" MenuParentID="-1" MenuGroup="0" MenuSource="" MenuExtUrl="" MenuAnonymous="0" MenuSecurity="" MenuUrl="plantilla_items" MenuType="" MenuCustomUrl="0" MenuLevel="0" MenuShow="0" MenuDisplayOrder="3900" MenuIconClass="fa-solid fa-id-badge" MenuNavbar="0" />
-  <Menu MenuID="4" MenuText="User Level Assignments" MenuParentID="-1" MenuGroup="0" MenuSource="" MenuExtUrl="" MenuAnonymous="0" MenuSecurity="" MenuUrl="user_level_assignments" MenuType="" MenuCustomUrl="0" MenuLevel="0" MenuShow="1" MenuDisplayOrder="4000" MenuIconClass="fas fa-user-tag" MenuNavbar="0" />
+  <Menu MenuID="4" MenuText="User Level Assignments" MenuParentID="-1" MenuGroup="0" MenuSource="" MenuExtUrl="" MenuAnonymous="0" MenuSecurity="" MenuUrl="user_level_assignments" MenuType="" MenuCustomUrl="0" MenuLevel="0" MenuShow="0" MenuDisplayOrder="4000" MenuIconClass="fas fa-user-tag" MenuNavbar="0" />
   <Menu MenuID="5" MenuText="user level permissions" MenuParentID="-1" MenuGroup="0" MenuSource="" MenuExtUrl="" MenuAnonymous="0" MenuSecurity="" MenuUrl="user_level_permissions" MenuType="" MenuCustomUrl="0" MenuLevel="0" MenuShow="0" MenuDisplayOrder="4100" MenuIconClass="" MenuNavbar="0" />
   <Menu MenuID="63" MenuText="Event Playground" MenuParentID="-1" MenuGroup="0" MenuSource="" MenuExtUrl="" MenuAnonymous="0" MenuSecurity="" MenuUrl="EventPlayground.php" MenuType="" MenuCustomUrl="0" MenuLevel="0" MenuShow="0" MenuDisplayOrder="4200" MenuIconClass="fas fa-flask" MenuNavbar="0" />
   <Menu MenuID="7" MenuText="Users" MenuParentID="-1" MenuGroup="0" MenuSource="" MenuExtUrl="" MenuAnonymous="0" MenuSecurity="" MenuUrl="users" MenuType="" MenuCustomUrl="0" MenuLevel="0" MenuShow="0" MenuDisplayOrder="4300" MenuIconClass="fas fa-users" MenuNavbar="0" />
