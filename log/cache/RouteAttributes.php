@@ -157,6 +157,8 @@
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
     ],
     null,
     [
@@ -943,6 +945,16 @@
                     'POST',
                     'OPTIONS',
                 ],
+                [
+                    'GET',
+                    'POST',
+                    'OPTIONS',
+                ],
+                [
+                    'GET',
+                    'POST',
+                    'OPTIONS',
+                ],
             ],
             'pattern' => [
                 '/AggregatedAuditLogsList',
@@ -1044,6 +1056,7 @@
                 '/PlantillaItemsView[/{plantilla_item_id}]',
                 '/PlantillaItemsEdit[/{plantilla_item_id}]',
                 '/PlantillaItemsDelete[/{plantilla_item_id}]',
+                '/PoPage[/{params:.*}]',
                 '/PositionCategoriesList[/{position_category_id}]',
                 '/PositionCategoriesAdd[/{position_category_id}]',
                 '/PositionCategoriesView[/{position_category_id}]',
@@ -1063,6 +1076,7 @@
                 '/PsgcEdit[/{code_10:.*}]',
                 '/PsgcDelete[/{code_10:.*}]',
                 '/PsgcMap[/{params:.*}]',
+                '/PurchaseOrder[/{params:.*}]',
                 '/ResponsibilityCenterPage[/{params:.*}]',
                 '/SignatoryManagement[/{params:.*}]',
                 '/SubProgramPage[/{params:.*}]',
@@ -1203,6 +1217,7 @@
                 'PHPMaker2024\\FIMS\\PlantillaItemsController:view',
                 'PHPMaker2024\\FIMS\\PlantillaItemsController:edit',
                 'PHPMaker2024\\FIMS\\PlantillaItemsController:delete',
+                'PHPMaker2024\\FIMS\\PoPageController:custom',
                 'PHPMaker2024\\FIMS\\PositionCategoriesController:list',
                 'PHPMaker2024\\FIMS\\PositionCategoriesController:add',
                 'PHPMaker2024\\FIMS\\PositionCategoriesController:view',
@@ -1222,6 +1237,7 @@
                 'PHPMaker2024\\FIMS\\PsgcController:edit',
                 'PHPMaker2024\\FIMS\\PsgcController:delete',
                 'PHPMaker2024\\FIMS\\PsgcMapController:custom',
+                'PHPMaker2024\\FIMS\\PurchaseOrderController:custom',
                 'PHPMaker2024\\FIMS\\ResponsibilityCenterPageController:custom',
                 'PHPMaker2024\\FIMS\\SignatoryManagementController:custom',
                 'PHPMaker2024\\FIMS\\SubProgramPageController:custom',
@@ -1732,6 +1748,12 @@
                 [
                     'PHPMaker2024\\FIMS\\PermissionMiddleware',
                 ],
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
             ],
             'name' => [
                 'list.aggregated_audit_logs',
@@ -1833,6 +1855,7 @@
                 'view.plantilla_items',
                 'edit.plantilla_items',
                 'delete.plantilla_items',
+                'custom.po_page',
                 'list.position_categories',
                 'add.position_categories',
                 'view.position_categories',
@@ -1852,6 +1875,7 @@
                 'edit.psgc',
                 'delete.psgc',
                 'custom.PSGCMap',
+                'custom.PurchaseOrder',
                 'custom.responsibility_center_page',
                 'custom.SignatoryManagement',
                 'custom.sub_program_page',
@@ -1893,6 +1917,8 @@
                 'custom.WorkflowManager',
             ],
             'options' => [
+                [],
+                [],
                 [],
                 [],
                 [],
@@ -2211,6 +2237,8 @@
         $o[154],
         $o[155],
         $o[156],
+        $o[157],
+        $o[158],
     ],
     []
 );

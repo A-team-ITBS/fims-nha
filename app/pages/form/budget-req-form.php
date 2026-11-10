@@ -940,7 +940,7 @@ async function bgr_openModal(mode, data = null) {
         bgr_fillSubPrograms(data.program_code, data.sub_program_code);
 
         const ctx = $bgr('bgr-program-context');
-        ctx.textContent = `Editing a program under Budget Request #${data.budget_reference_number} (FY ${data.fiscal_yr}).`;
+        ctx.textContent = `Editing a program under Budget Request ${data.budget_reference_number} (FY ${data.fiscal_yr}).`;
         ctx.style.display = '';
 
         bgr_cleanupAccountMenus($bgr('bgr-blocks-wrap'));
