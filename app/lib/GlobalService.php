@@ -29,6 +29,12 @@ use PHPMaker2024\FIMS as App;
  *   helpers for fims.budget_req row-level scoping, keyed on uac.users.rc_id. Same
  *   "reads the database, lives here by request" carve-out as generateProgramCode() —
  *   shared by BudgetReqService and its route layer.
+ * - generateBudgetReferenceNumber()  next budget request id "BP-NNN" (see below).
+ *   fims.budget_req.budget_reference_number is this string itself now (no more
+ *   SERIAL auto-increment — see "15 - budget_req_reference_number_to_string.sql"),
+ *   so this must be called inside BudgetReqService's open transaction before
+ *   every new header INSERT. Same "lives here by request" carve-out as the
+ *   other generate*Code() functions.
  */
 class GlobalService
 {
@@ -147,6 +153,33 @@ class GlobalService
         }
 
         return str_pad($digits, $width, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * Builds the next budget request id: "BP-NNN", e.g. "BP-007". NNN is the
+     * highest existing fims.budget_req.budget_reference_number matching
+     * "^BP-[0-9]+$", plus one, zero-padded to 3 digits — widens rather than
+     * truncating once the count outgrows 999 (e.g. "BP-1000"), same
+     * philosophy as generateProjectCode()'s series segment, since this
+     * counter runs for the life of the whole app, not scoped to one
+     * program/fiscal year.
+     *
+     * Must be called inside the caller's own open transaction, immediately
+     * before the fims.budget_req INSERT that uses its result — same
+     * "suggestion read at call time, nothing reserved" caveat as every other
+     * generate*Code() function here (the column's PRIMARY KEY is what
+     * actually prevents two concurrent callers from both succeeding with
+     * the same value).
+     */
+    public static function generateBudgetReferenceNumber(): string
+    {
+        $next = (int) App\ExecuteScalar(
+            "SELECT COALESCE(MAX(CAST(SUBSTRING(budget_reference_number FROM 4) AS INTEGER)), 0) + 1
+             FROM fims.budget_req WHERE budget_reference_number ~ '^BP-[0-9]+$'",
+            'DB'
+        );
+
+        return 'BP-' . str_pad((string) $next, 3, '0', STR_PAD_LEFT);
     }
 
     /**
