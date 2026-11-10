@@ -141,7 +141,9 @@ $USER_LEVEL_PRIVS = [["{FIMS}audit_logs","-2","0"],
     ["{FIMS}JournalEntryVoucher.php","-2","0"],
     ["{FIMS}JournalEntryVoucher.php","0","0"],
     ["{FIMS}ChangePass.php","-2","0"],
-    ["{FIMS}ChangePass.php","0","0"]];
+    ["{FIMS}ChangePass.php","0","0"],
+    ["{FIMS}CheckDisbursements.php","-2","0"],
+    ["{FIMS}CheckDisbursements.php","0","0"]];
 
 /**
  * Tables
@@ -213,4 +215,5 @@ $USER_LEVEL_TABLES = [["audit_logs","audit_logs","Audit Logs",false,"{FIMS}",""]
     ["IARModule.php","IARModule","IAR Module",true,"{FIMS}","IarModule"],
     ["Voucher.php","Voucher","Disbursement Voucher",true,"{FIMS}","Voucher"],
     ["JournalEntryVoucher.php","JournalEntryVoucher","Journal Entry Voucher",true,"{FIMS}","JournalEntryVoucher"],
-    ["ChangePass.php","ChangePass","Change Password",true,"{FIMS}","ChangePass"]];
+    ["ChangePass.php","ChangePass","Change Password",true,"{FIMS}","ChangePass"],
+    ["CheckDisbursements.php","CheckDisbursements","Check Disbursements",true,"{FIMS}","CheckDisbursements"]];

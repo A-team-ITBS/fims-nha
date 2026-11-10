@@ -127,6 +127,7 @@ return [
     "Voucher" => \DI\create(Voucher::class),
     "JournalEntryVoucher" => \DI\create(JournalEntryVoucher::class),
     "ChangePass" => \DI\create(ChangePass::class),
+    "CheckDisbursements" => \DI\create(CheckDisbursements::class),
 
     // User table
     "usertable" => \DI\get("users"),

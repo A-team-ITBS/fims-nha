@@ -3686,18 +3686,9 @@ function SendEmail($fromEmail, $toEmail, $ccEmail, $bccEmail, $subject, $mailCon
         }
     }
     $res = $mail->send() ?: $mail->ErrorInfo;
-    if ($res !== true) { // Error
-        // Always log send failures (not just under DEBUG) — ResetPassword.php
-        // and friends intentionally show the user a generic success message
-        // regardless of real delivery outcome (anti-enumeration), so without
-        // this the actual SMTP error (auth failure, wrong port, connection
-        // refused, etc.) was never recorded anywhere, making "email never
-        // arrives" impossible to diagnose. See log/log.log.
-        LogError("SendEmail failed: " . $res);
-        if (Config("DEBUG")) {
-            SetDebugMessage($res, $mail->SMTPDebug);
-            Log($res);
-        }
+    if ($res !== true && Config("DEBUG")) { // Error
+        SetDebugMessage($res, $mail->SMTPDebug);
+        Log($res);
     }
     return $res; // True on success, error info on error
 }
