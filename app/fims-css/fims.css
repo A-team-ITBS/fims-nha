@@ -28,18 +28,133 @@
     --app-radius-lg: 0.75rem;
 }
 
+/* The page's content wrapper had no top padding of its own, so the dark
+   banner header sat flush against the app's top bar right above it — add
+   breathing room between the two instead of letting them touch edge to
+   edge. */
+.app-uac-page {
+    padding-top: 1.25rem;
+}
+
+/* ── Page header ──
+   A dark banner instead of bare text on the page's gray background — matches
+   the dark-blue accent used for icons/buttons throughout this page instead
+   of floating disconnected from the white cards below it. */
+.app-page-header {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    overflow: hidden;
+    background: linear-gradient(135deg, var(--app-accent) 0%, #001a5e 100%);
+    border-radius: var(--app-radius-lg);
+    padding: 1.5rem 1.75rem;
+    margin-bottom: 1.5rem;
+}
+/* Soft decorative circles, same device used on this app's other banner
+   headers (fims-page-header) — keeps this page visually in-family with the
+   rest of the system instead of introducing a one-off pattern. */
+.app-page-header::before,
+.app-page-header::after {
+    content: "";
+    position: absolute;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.05);
+    pointer-events: none;
+}
+.app-page-header::before {
+    width: 180px;
+    height: 180px;
+    top: -90px;
+    right: 80px;
+}
+.app-page-header::after {
+    width: 120px;
+    height: 120px;
+    bottom: -70px;
+    right: -20px;
+    background: rgba(255, 255, 255, 0.06);
+}
+.app-page-header-icon {
+    position: relative;
+    z-index: 1;
+    flex: 0 0 auto;
+    width: 3rem;
+    height: 3rem;
+    border-radius: var(--app-radius, 0.5rem);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+    background: rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    color: #fff;
+}
+.app-page-title {
+    position: relative;
+    z-index: 1;
+    font-size: 1.6rem;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    color: #fff;
+    margin: 0 0 0.25rem;
+}
+.app-page-subtitle {
+    position: relative;
+    z-index: 1;
+    font-size: 0.9rem;
+    color: rgba(255, 255, 255, 0.75);
+    margin: 0;
+    max-width: 640px;
+}
+
 /* ── Stat cards (dashboard KPI row) ── */
+.app-stat-row {
+    margin-bottom: 0.25rem;
+}
 .app-stat-card {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 0.9rem;
+    overflow: hidden;
     background: #fff;
     border: 1px solid var(--app-border);
+    border-left: 3px solid transparent;
     border-radius: var(--app-radius-lg);
-    padding: 1rem 1.1rem;
+    padding: 1.1rem 1.2rem;
     margin-bottom: 1rem;
+    transition: box-shadow 0.15s ease, border-top-color 0.15s ease, border-right-color 0.15s ease, border-bottom-color 0.15s ease, transform 0.15s ease;
+}
+.app-stat-card:hover {
+    /* Only the 3 non-accented sides, not border-color shorthand — that would
+       also overwrite border-left-color below and dim the accent on hover. */
+    border-top-color: #dde3ea;
+    border-right-color: #dde3ea;
+    border-bottom-color: #dde3ea;
+    box-shadow: 0 6px 16px rgba(16, 24, 40, 0.08);
+    transform: translateY(-1px);
+}
+.app-stat-card.is-info { border-left-color: var(--app-info-soft-fg); }
+.app-stat-card.is-success { border-left-color: var(--app-success-soft-fg); }
+.app-stat-card.is-warning { border-left-color: var(--app-warning-soft-fg); }
+.app-stat-card.is-danger { border-left-color: var(--app-danger-soft-fg); }
+/* Large, faint watermark icon in the corner — the same icon as the stat's
+   own badge, just oversized and barely-there, so each card reads as a
+   distinct "tile" instead of four identical white boxes differing only by
+   a small icon + number. */
+.app-stat-ghost-icon {
+    position: absolute;
+    right: -0.4rem;
+    bottom: -0.6rem;
+    font-size: 3.4rem;
+    opacity: 0.05;
+    color: var(--app-text);
+    pointer-events: none;
 }
 .app-stat-icon {
+    position: relative;
+    z-index: 1;
     flex: 0 0 auto;
     width: 2.75rem;
     height: 2.75rem;
@@ -54,13 +169,16 @@
 .app-stat-icon.is-warning { background: var(--app-warning-soft-bg); color: var(--app-warning-soft-fg); }
 .app-stat-icon.is-danger { background: var(--app-danger-soft-bg); color: var(--app-danger-soft-fg); }
 .app-stat-content {
+    position: relative;
+    z-index: 1;
     display: flex;
     flex-direction: column;
     line-height: 1.3;
 }
 .app-stat-number {
-    font-size: 1.4rem;
-    font-weight: 700;
+    font-size: 1.6rem;
+    font-weight: 800;
+    letter-spacing: -0.01em;
     color: var(--app-text);
 }
 .app-stat-label {
@@ -69,6 +187,9 @@
 }
 
 /* ── Role Access panel ── */
+/* Full-width context strip at the top of the merged card — stays visible
+   above both columns (and while scrolling a long permission matrix) so it's
+   always clear whose access is currently being edited. */
 .app-role-access-selected {
     display: flex;
     align-items: center;
@@ -76,12 +197,40 @@
     background: var(--app-info-soft-bg, #e6ebf6);
     color: var(--app-info-soft-fg, #0035a9);
     border-radius: var(--app-radius, 0.5rem);
-    padding: 0.55rem 0.8rem;
+    padding: 0.65rem 0.9rem;
     font-size: 0.85rem;
-    margin-bottom: 1.1rem;
+    margin-bottom: 1.5rem;
 }
 .app-role-access-selected i {
     font-size: 0.8rem;
+}
+
+/* Numbered step labels above each column — makes the left-drives-right
+   relationship between picking a role and editing its permissions explicit
+   instead of implying it only through layout. */
+.app-uac-step-heading {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--app-text-muted);
+    margin-bottom: 1rem;
+}
+.app-uac-step-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 1.4rem;
+    height: 1.4rem;
+    border-radius: 50%;
+    background: var(--app-accent);
+    color: #fff;
+    font-size: 0.72rem;
+    letter-spacing: 0;
 }
 .app-role-access-list {
     margin-bottom: 1.1rem;
@@ -91,12 +240,16 @@
     align-items: center;
     justify-content: space-between;
     gap: 0.5rem;
-    padding: 0.55rem 0.1rem;
+    padding: 0.55rem 0.5rem;
     border-bottom: 1px solid var(--app-border, #eef0f2);
+    border-radius: 0.35rem;
     font-size: 0.85rem;
 }
 .app-role-access-list-item:last-child {
     border-bottom: none;
+}
+.app-role-access-list-item:nth-child(even) {
+    background: var(--app-surface-sunken, #f9fafb);
 }
 .app-role-access-list-item .app-table-action-btn {
     color: var(--app-danger-soft-fg, #c0382b);
@@ -106,27 +259,99 @@
     background: #f9d9d6;
 }
 
-/* Role Access card: flex column so the role list (the item most likely to
-   have room to grow) can stretch into whatever vertical space is left next
-   to the taller Users list, instead of the card just ending in dead space. */
+/* Role Access column (left side of the merged "Role Access & Permissions"
+   card). This used to stretch the role list to fill the full height of the
+   (much taller) permissions column next to it, which pushed "Assign Access"
+   far down the page — moved to a fixed-height scrollable list instead, so
+   the button sits right under the content regardless of how tall the
+   permissions matrix on the right gets. */
 .app-role-access-body {
     display: flex;
     flex-direction: column;
-    height: 100%;
 }
+.app-role-access-col {
+    border-right: 1px solid var(--app-border, #eef0f2);
+    padding-right: 1.5rem;
+}
+.app-permissions-col {
+    padding-left: 1.5rem;
+}
+@media (max-width: 767.98px) {
+    .app-role-access-col {
+        border-right: none;
+        border-bottom: 1px solid var(--app-border, #eef0f2);
+        padding-right: 0.75rem;
+        padding-bottom: 1.25rem;
+        margin-bottom: 1.25rem;
+    }
+    .app-permissions-col {
+        padding-left: 0.75rem;
+    }
+}
+
+/* "Assign Access" sits at the bottom of the left column, right above the
+   card-footer's "Save Permissions" button below it — without its own margin
+   the two full-width, same-colored buttons end up touching and read as one
+   connected control instead of two separate actions. */
+#assignAccessBtn {
+    margin-bottom: 1rem;
+}
+
+/* Role Details — fills the space under "Assign Access" that opened up once
+   the role list stopped force-stretching to match the taller permissions
+   column (see .app-role-access-body above). */
+.app-role-details {
+    margin-top: 0.5rem;
+    border: 1px dashed var(--app-border, #eef0f2);
+    border-radius: var(--app-radius, 0.5rem);
+    padding: 1rem;
+    background: var(--app-surface-sunken, #f9fafb);
+}
+.app-role-details-empty {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--app-text-muted);
+    font-size: 0.82rem;
+}
+.app-role-details-list {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    column-gap: 0.75rem;
+    row-gap: 0.4rem;
+    margin: 0;
+}
+.app-role-details-list dt {
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--app-text-muted);
+    white-space: nowrap;
+    padding-top: 0.1rem;
+}
+.app-role-details-list dd {
+    font-size: 0.85rem;
+    color: var(--app-text);
+    margin: 0;
+}
+.app-uac-page .card-footer {
+    padding-top: 1.1rem;
+    padding-bottom: 1.1rem;
+    border-top: 1px solid var(--app-border, #eef0f2);
+}
+
 .app-role-list-search {
     max-width: none;
 }
 .app-role-list-group {
     display: flex;
     flex-direction: column;
-    flex: 1 1 auto;
-    min-height: 0;
+    flex: 0 0 auto;
 }
 .app-role-list {
-    flex: 1 1 auto;
-    min-height: 16rem;
-    max-height: 34rem;
+    flex: 0 1 auto;
+    max-height: 20rem;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
@@ -170,6 +395,15 @@
 .app-role-list-item:hover {
     border-color: var(--app-border, #eef0f2);
     box-shadow: 0 1px 4px rgba(16, 24, 40, 0.06);
+}
+.app-role-list-item:nth-child(even) {
+    background: var(--app-surface-sunken, #f9fafb);
+}
+.app-role-list-item.is-active {
+    /* Overrides the zebra tint above — the selected state (accent icon +
+       inset border, below) should read clearly against plain white, not
+       blend into the stripe. */
+    background: #fff;
 }
 .app-role-list-item-icon {
     flex: 0 0 auto;
@@ -320,9 +554,9 @@
         "user   status  actions"
         "meta   meta    meta";
     align-items: center;
-    column-gap: 0.75rem;
-    row-gap: 0.55rem;
-    padding: 0.85rem 0.9rem;
+    column-gap: 0.9rem;
+    row-gap: 0.6rem;
+    padding: 0.95rem 1.05rem;
     border: 1px solid var(--app-border, #eef0f2);
     border-radius: var(--app-radius, 0.5rem);
     background: #fff;
@@ -332,11 +566,14 @@
     border-color: #dde3ea;
     box-shadow: 0 2px 8px rgba(16, 24, 40, 0.06);
 }
+.app-user-row:nth-child(even) {
+    background: var(--app-surface-sunken, #f9fafb);
+}
 .app-user-col-user {
     grid-area: user;
     display: flex;
     align-items: center;
-    gap: 0.65rem;
+    gap: 0.7rem;
     min-width: 0;
 }
 .app-user-col-status {
@@ -345,7 +582,7 @@
 .app-user-col-actions {
     grid-area: actions;
     display: flex;
-    gap: 0.15rem;
+    gap: 0.3rem;
     justify-content: flex-end;
 }
 .app-user-col-meta {
@@ -355,9 +592,31 @@
     align-items: center;
     row-gap: 0.35rem;
     column-gap: 1.1rem;
-    padding-top: 0.55rem;
-    padding-left: calc(2rem + 0.65rem);
+    padding-top: 0.6rem;
+    padding-left: calc(2.25rem + 0.7rem);
     border-top: 1px solid var(--app-border, #eef0f2);
+}
+
+/* Below ~700px the user cell's name + status badge + two labeled action
+   buttons no longer fit on one line without squeezing — drop to a second
+   row (status+actions together) instead of letting it overflow/wrap badly. */
+@media (max-width: 699.98px) {
+    .app-user-row {
+        grid-template-columns: 1fr auto;
+        grid-template-areas:
+            "user    user"
+            "status  actions"
+            "meta    meta";
+    }
+    .app-user-col-status {
+        align-self: center;
+    }
+    .app-user-col-actions {
+        justify-content: flex-end;
+    }
+    .app-user-col-meta {
+        padding-left: 0;
+    }
 }
 .app-user-meta-field {
     font-size: 0.8rem;
@@ -390,15 +649,15 @@
 
 .app-table-avatar {
     flex: 0 0 auto;
-    width: 2rem;
-    height: 2rem;
+    width: 2.25rem;
+    height: 2.25rem;
     border-radius: 50%;
     background: #e6ebf6;
     color: var(--app-accent);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 0.8rem;
+    font-size: 0.85rem;
     font-weight: 700;
 }
 .app-table-user-cell-text {
@@ -408,6 +667,7 @@
     min-width: 0;
 }
 .app-table-user-cell-name {
+    font-size: 0.92rem;
     font-weight: 600;
     color: #1a1d21;
     white-space: nowrap;
@@ -462,12 +722,18 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    gap: 0.35rem;
     background: #f1f3f5;
     border: none;
     color: #868e96;
     border-radius: 0.4rem;
-    padding: 0.35rem 0.55rem;
+    padding: 0.35rem 0.6rem;
     text-decoration: none;
+    white-space: nowrap;
+}
+.app-table-action-btn-label {
+    font-size: 0.78rem;
+    font-weight: 600;
 }
 .app-table-action-btn:hover {
     text-decoration: none;
@@ -488,18 +754,21 @@
     color: var(--app-accent, var(--app-accent));
 }
 .app-table-action-btn.manage-access-btn {
-    background: #f1e9fd;
-    color: #7c3aed;
+    background: var(--app-danger-soft-bg, #fdeceb);
+    color: var(--app-danger-soft-fg, #c0382b);
 }
 .app-table-action-btn.manage-access-btn:hover {
-    background: #e5d6fb;
-    color: #6225d6;
+    background: #f9d9d6;
+    color: #a52e23;
 }
 
 /* Flat search input (table toolbar) */
 .app-table-search {
     position: relative;
     max-width: 350px;
+}
+.app-table-search--wide {
+    max-width: 420px;
 }
 .app-table-search .form-control {
     padding-left: 2.25rem !important;
@@ -554,6 +823,44 @@
     background: var(--app-accent);
     border-color: var(--app-accent);
     color: #fff;
+}
+
+/* This page's card headers can carry more than one toolbar button (e.g.
+   "Create User Level" + "Sync Permission Modules") — space them apart
+   instead of letting them touch, and give the header itself a bit more
+   breathing room/visual weight than the Bootstrap default. */
+.app-uac-page .card-header {
+    padding: 0.9rem 1.1rem;
+    align-items: center;
+}
+.app-uac-page .card-title {
+    font-size: 1rem;
+    font-weight: 700;
+}
+.app-uac-page .card-tools {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.app-uac-page .card-body {
+    padding: 1.1rem;
+}
+/* Live count next to a card title (e.g. "Users 42") — lets an admin confirm
+   the list size at a glance instead of having to scroll/count rows. */
+.app-card-title-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.4rem;
+    height: 1.4rem;
+    padding: 0 0.4rem;
+    margin-left: 0.3rem;
+    border-radius: 999px;
+    background: var(--app-info-soft-bg, #e6ebf6);
+    color: var(--app-info-soft-fg, #0035a9);
+    font-size: 0.72rem;
+    font-weight: 700;
+    vertical-align: middle;
 }
 
 /* ── Permissions Management: toolbar ── */
@@ -759,42 +1066,26 @@
     outline: 2px solid var(--app-accent);
     outline-offset: 2px;
 }
-/* Checkbox + label side by side in the header (was stacked via <br>, which
-   wasted vertical space and visually disconnected the label from its box).
-   The checkbox itself stays centered in the th — same spot a bare checkbox
-   in the matching tbody <td> centers to — by keeping it the only element
-   in normal flow and floating the label out via position:absolute, so the
-   two checkbox columns (header + every body row) line up vertically. */
+/* Checkbox + label stacked in the header. These columns are fixed-width and
+   packed edge-to-edge (table-layout:fixed, no slack between them), so an
+   earlier side-by-side layout that floated the label out via
+   position:absolute (assuming empty space to the right) ended up overlapping
+   the NEXT column's checkbox instead. Stacking avoids that regardless of
+   column width. */
 .app-table-th-check {
-    position: relative;
-    display: inline-block;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.2rem;
     vertical-align: middle;
 }
 .app-table-th-check span {
-    position: absolute;
-    top: 50%;
-    left: 100%;
-    transform: translateY(-50%);
-    margin-left: 0.35rem;
     font-size: 0.68rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.03em;
     color: #6c757d;
     white-space: nowrap;
-}
-/* The "All" checkbox sits directly against the left-aligned "Page" column
-   with no horizontal gap to float a label into (unlike the 8 permission
-   columns, which have empty space on both sides) — so its label stays
-   stacked below instead of colliding with "Page". */
-.app-table-th-check .app-table-th-sublabel {
-    position: static;
-    display: block;
-    top: auto;
-    left: auto;
-    transform: none;
-    margin-left: 0;
-    margin-top: 0.2rem;
     text-align: center;
 }
 .app-table-th-sublabel {
@@ -803,6 +1094,9 @@
     text-transform: uppercase;
     letter-spacing: 0.03em;
     color: #adb5bd;
+}
+.app-table-permissions tbody tr:nth-child(even):not(.text-muted) {
+    background: var(--app-surface-sunken, #f9fafb);
 }
 .app-table-permissions tbody tr.text-muted {
     background: #fbfbfc;
@@ -1780,7 +2074,7 @@ body {
   gap: 14px;
   margin-bottom: 22px;
   padding: 22px 28px;
-  background: var(--fims-header-blue, #1d4ed8);
+  background: #000E3E;
   border: none;
   border-radius: var(--fims-radius);
   box-shadow: var(--fims-shadow-sm);
@@ -5289,9 +5583,9 @@ tr.dv-selected td{background:var(--fims-primary-light)!important;}
 /* Clock */
 .td-clock-card{
   position:relative;overflow:hidden;
-  background:var(--afims-primary, #0035A9);
+  background:#000E3E;
   border-radius:16px;padding:20px var(--td-pad);color:var(--afims-pure-white, #FFFFFF);
-  box-shadow:0 4px 20px color-mix(in srgb, var(--afims-primary, #0035A9) 30%, transparent);
+  box-shadow:0 4px 20px color-mix(in srgb, #000E3E 30%, transparent);
   display:flex;align-items:center;gap:0;
 }
 .td-clock-card::before{
