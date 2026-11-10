@@ -53,7 +53,9 @@
     #bgrv-overlay.open { display:flex; }
     #bgrv-card { background:var(--afims-surface, #FFFFFF);border-radius:16px;width:100%;max-width:820px;
         max-height:92vh;display:flex;flex-direction:column;overflow:hidden;
-        box-shadow:0 32px 80px rgba(0,0,0,.28);font-family:'IBM Plex Sans',sans-serif; }
+        box-shadow:0 32px 80px rgba(0,0,0,.28);font-family:'IBM Plex Sans',sans-serif;
+        transition:max-width .2s ease; }
+    #bgrv-card.bgrv-wide { max-width:1040px; }
 
     #bgrv-header { display:flex;align-items:center;justify-content:space-between;
         padding:14px 18px;background:var(--afims-heading-fill, #000E3E);flex-shrink:0; }
@@ -133,6 +135,17 @@
     .bgrv-cob-program { font-weight:700;font-size:13px;background:var(--afims-surface-subtle, #F4F7FA); }
     .bgrv-cob-subprogram { padding-left:28px;font-weight:600;background:color-mix(in srgb, var(--afims-surface-subtle, #F4F7FA) 50%, transparent); }
     .bgrv-cob-project { padding-left:52px;color:var(--afims-text-muted, #62657E); }
+
+    /* COB mode only — larger text to match the wider modal (.bgrv-wide, see #bgrv-card above). */
+    #bgrv-card.bgrv-wide .bgrv-hdr-title { font-size:17px; }
+    #bgrv-card.bgrv-wide .bgrv-header-total-label { font-size:11px; }
+    #bgrv-card.bgrv-wide .bgrv-header-total-val { font-size:23px; }
+    #bgrv-card.bgrv-wide .bgrv-sec-hd,
+    #bgrv-card.bgrv-wide .bgrv-sec-hd-total { font-size:13px; }
+    #bgrv-card.bgrv-wide .bgrv-cob-row { padding:8px 14px;font-size:14px; }
+    #bgrv-card.bgrv-wide .bgrv-cob-program { font-size:15px; }
+    #bgrv-card.bgrv-wide .bgrv-cob-subprogram { padding-left:32px; }
+    #bgrv-card.bgrv-wide .bgrv-cob-project { padding-left:58px; }
     .bgrv-cob-empty { font-style:italic; }
 </style>
 
@@ -204,6 +217,7 @@ function bgrv_setSummary(cards) {
 /* ── Mode 1: one Program's Sub-Programs -> Projects, with this request's
    own amounts annotated in ──────────────────────────────────────────── */
 async function bgrv_openModal(requestContext, program) {
+    $bgrv('bgrv-card').classList.remove('bgrv-wide'); // COB mode only — see bgrv_openCobModal
     $bgrv('bgrv-hdr-tag').textContent = 'Program';
     $bgrv('bgrv-modal-title').textContent = `${program.program_code} — ${program.program_name}`;
     $bgrv('bgrv-sec-hd-label').textContent = 'Sub-Programs';
@@ -266,6 +280,7 @@ async function bgrv_openModal(requestContext, program) {
 // same as the list page), never a Program/Project that happens to exist in
 // master data but was never added to any request.
 async function bgrv_openCobModal(fiscalYr = '') {
+    $bgrv('bgrv-card').classList.add('bgrv-wide');
     $bgrv('bgrv-hdr-tag').textContent = 'Corporate Operating Budget (COB)';
     $bgrv('bgrv-modal-title').textContent = fiscalYr ? `All Programs — FY ${bgr_esc(fiscalYr)}` : 'All Programs — All Years';
     $bgrv('bgrv-sec-hd-label').textContent = 'Programs';

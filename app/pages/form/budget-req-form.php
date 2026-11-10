@@ -119,6 +119,10 @@ $_bgr_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
     .bgr-block-project-code-wrap { flex:0 0 260px;min-width:0; }
     .bgr-block-project-code-display { font-family:'IBM Plex Mono',monospace;background:var(--afims-surface, #FFFFFF);
         border-style:dashed;color:var(--afims-text-muted, #62657E);cursor:default; }
+    /* Sum of every project block's own Total row (.bgr-block-li-total-amt) —
+       see bgr_updateGrandTotal(), kept live on every amount/row/project change. */
+    #bgr-grand-total-display { font-family:'IBM Plex Mono',monospace;font-weight:700;text-align:right;
+        background:var(--afims-surface-subtle, #F4F7FA);color:var(--afims-heading-fill, #000E3E);cursor:default; }
     .bgr-block-location-wrap { flex:0 0 240px;min-width:0; }
     .bgr-block-toggle { flex-shrink:0;border:1px solid var(--afims-border, #E4ECF2);
         background:var(--afims-surface, #FFFFFF);color:var(--afims-heading-fill, #000E3E);
@@ -152,13 +156,14 @@ $_bgr_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
         border-radius:10px;overflow:hidden;background:var(--afims-surface, #FFFFFF); }
     .bgr-block-li-tbl td { background:var(--afims-surface, #FFFFFF); }
     .bgr-block-li-wrap { overflow-x:auto;flex:1;min-width:0; }
-    .bgr-block-li-tbl { width:100%;border-collapse:collapse;min-width:860px;table-layout:fixed; }
+    .bgr-block-li-tbl { width:100%;border-collapse:collapse;table-layout:fixed; }
     .bgr-block-li-tbl th { height:34px;box-sizing:border-box;font-size:11px;font-weight:700;color:var(--afims-text-muted, #62657E);
         text-transform:uppercase;letter-spacing:.04em;text-align:left;padding:0 6px;
         white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
         background:var(--afims-surface-subtle, #F4F7FA);border-bottom:2px solid var(--afims-border, #E4ECF2); }
-    .bgr-block-li-tbl td { height:44px;box-sizing:border-box;padding:6px;border-bottom:1px solid var(--afims-border, #E4ECF2);vertical-align:middle; }
-    .bgr-li-input, .bgr-li-select { width:100%;padding:7px 9px;border:1px solid var(--afims-border, #E4ECF2);
+    .bgr-block-li-tbl td { height:44px;box-sizing:border-box;padding:6px;border-bottom:1px solid var(--afims-border, #E4ECF2);vertical-align:middle;
+        max-width:0;overflow:hidden; } /* max-width:0 + table-layout:fixed forces the cell (and its input) to the column's declared %, instead of growing to fit the input's own browser-default intrinsic width */
+    .bgr-li-input, .bgr-li-select { width:100%;min-width:0;padding:7px 9px;border:1px solid var(--afims-border, #E4ECF2);
         border-radius:6px;font-size:12px;font-family:'IBM Plex Sans',sans-serif;
         background:var(--afims-surface, #FFFFFF);color:var(--afims-text, #1A1B21);box-sizing:border-box; }
     .bgr-li-input:focus, .bgr-li-select:focus { outline:none;border-color:var(--afims-heading-fill, #000E3E); }
@@ -173,6 +178,15 @@ $_bgr_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
        worth a per-row ResizeObserver for. */
     textarea.bgr-li-particulars { resize:vertical;min-height:30px;max-height:200px;line-height:1.3;font-family:inherit; }
     .bgr-li-amt { text-align:right;font-family:'IBM Plex Mono',monospace; }
+
+    .bgr-block-li-total-row td { height:38px;box-sizing:border-box;padding:6px 6px 6px 9px;border-bottom:none;
+        background:var(--afims-surface-subtle, #F4F7FA);font-size:12px;font-weight:700;color:var(--afims-text, #1A1B21); }
+    .bgr-block-li-total-amt { text-align:right;font-family:'IBM Plex Mono',monospace; }
+    /* Lines up with .bgr-block-li-total-row in the split remove-button
+       column — that row has no remove button of its own (it's computed),
+       but without a matching placeholder here the column's flex-stretch
+       (.bgr-block-li-outer) just leaves bare empty space over it instead. */
+    .bgr-li-remove-foot { height:38px;box-sizing:border-box;background:var(--afims-surface-subtle, #F4F7FA); }
 
     .bgr-block-li-remove-col { flex-shrink:0;width:42px;display:flex;flex-direction:column;
         border-left:1px solid var(--afims-border, #E4ECF2);background:var(--afims-surface, #FFFFFF); }
@@ -300,6 +314,10 @@ $_bgr_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
                         <select class="bgr-select" id="bgr-sub-program-code">
                             <option value="">— None —</option>
                         </select>
+                    </div>
+                    <div class="bgr-group">
+                        <label class="bgr-label">Grand Total</label>
+                        <input type="text" class="bgr-input" id="bgr-grand-total-display" readonly value="0.00">
                     </div>
                 </div>
                 <p class="bgr-hint" id="bgr-program-context" style="display:none;"></p>
@@ -502,15 +520,20 @@ function bgr_addProjectBlock(prefillBlock = null) {
                 <div class="bgr-block-li-wrap">
                     <table class="bgr-block-li-tbl">
                         <thead><tr>
-                            <th style="width:400px;">Account Code - Account Name</th>
-                            <th>Particulars</th>
-                            <th style="width:170px;">Proposed Amount</th>
+                            <th style="width:36%;">Account Code - Account Name</th>
+                            <th style="width:44%;">Particulars</th>
+                            <th style="width:19%;">Proposed Amount</th>
                         </tr></thead>
                         <tbody class="bgr-block-li-tbody"></tbody>
+                        <tfoot><tr class="bgr-block-li-total-row">
+                            <td colspan="2">Total</td>
+                            <td class="bgr-block-li-total-amt">0.00</td>
+                        </tr></tfoot>
                     </table>
                 </div>
                 <div class="bgr-block-li-remove-col">
                     <div class="bgr-li-remove-head"></div>
+                    <div class="bgr-li-remove-foot"></div>
                 </div>
             </div>
             <button type="button" class="bgr-block-add-li bgr-btn-ghost">+ Add Line Item</button>
@@ -748,6 +771,7 @@ function bgr_removeProjectBlock(block) {
     // Frees up the series slot this block may have reserved (see
     // bgr_setProjectCode) for whichever other "new project" blocks remain.
     bgr_refreshAllProjectCodeFields();
+    bgr_updateGrandTotal();
 }
 
 // Collapses a block down to just its header (project name field), hiding the
@@ -1014,9 +1038,11 @@ function bgr_addLineItemRow(blockEl, prefill = {}) {
     removeCell.dataset.seq = seq;
     removeCell.innerHTML = '<button type="button" class="bgr-li-remove" title="Remove">&times;</button>';
     removeCell.querySelector('.bgr-li-remove').addEventListener('click', () => bgr_removeLineItemRow(blockEl, seq));
-    blockEl.querySelector('.bgr-block-li-remove-col').appendChild(removeCell);
+    const removeCol = blockEl.querySelector('.bgr-block-li-remove-col');
+    removeCol.insertBefore(removeCell, removeCol.querySelector('.bgr-li-remove-foot'));
 
     bgr_syncRemoveColGap(blockEl);
+    bgr_updateLineItemTotal(blockEl);
 }
 
 function bgr_removeLineItemRow(blockEl, seq) {
@@ -1027,6 +1053,7 @@ function bgr_removeLineItemRow(blockEl, seq) {
     if (row) bgr_cleanupAccountMenus(row);
     row?.remove();
     bgr_syncRemoveColGap(blockEl);
+    bgr_updateLineItemTotal(blockEl);
 }
 
 // .bgr-block-li-wrap's horizontal scrollbar (when the table needs it) reserves
@@ -1180,6 +1207,7 @@ function bgr_cleanupAccountMenus(containerEl) {
 async function bgr_openModal(mode, data = null) {
     bgr_hideErr();
     BGR_PROJECT_CODE_CACHE = null; // fresh session — don't carry over a prior open's series cache
+    $bgr('bgr-grand-total-display').value = '0.00'; // recomputed as project blocks are (re)built below
 
     // Lazy-loaded here rather than at page load — the Account Code picker
     // (built inside bgr_addProjectBlock below) needs BGR_COA_OPTIONS already
@@ -1355,6 +1383,34 @@ function bgr_fmtAmount(input) {
     input.value = parts.length > 1 ? parts[0] + '.' + parts.slice(1).join('') : parts[0];
     const diff = input.value.length - prev;
     try { input.setSelectionRange(pos + diff, pos + diff); } catch (_) {}
+
+    const block = input.closest('.bgr-block');
+    if (block) bgr_updateLineItemTotal(block);
+}
+
+// Sum of every line item's Proposed Amount in this block, shown in the
+// table's own Total row — recomputed on every amount edit and whenever a
+// row is added/removed (see bgr_addLineItemRow/bgr_removeLineItemRow).
+function bgr_updateLineItemTotal(blockEl) {
+    const cell = blockEl.querySelector('.bgr-block-li-total-amt');
+    if (!cell) return;
+    const total = Array.from(blockEl.querySelectorAll('.bgr-li-amt'))
+        .reduce((sum, input) => sum + (parseFloat(bgr_unformatAmount(input.value)) || 0), 0);
+    cell.textContent = bgr_fmtAmountInitial(total) || '0.00';
+    bgr_updateGrandTotal();
+}
+
+// Sum of every project block's own Total row — recomputed whenever any of
+// them changes (bgr_updateLineItemTotal) and whenever a whole project block
+// is added/removed (a brand-new block always adds at least one line item,
+// which already triggers bgr_updateLineItemTotal; removing one doesn't, so
+// bgr_removeProjectBlock calls this directly).
+function bgr_updateGrandTotal() {
+    const display = $bgr('bgr-grand-total-display');
+    if (!display) return;
+    const total = Array.from(document.querySelectorAll('#bgr-blocks-wrap .bgr-block-li-total-amt'))
+        .reduce((sum, cell) => sum + (parseFloat(bgr_unformatAmount(cell.textContent)) || 0), 0);
+    display.value = bgr_fmtAmountInitial(total) || '0.00';
 }
 function bgr_fmtAmountInitial(v) {
     return (v || v === 0) && v !== '' ? Number(v).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',') : '';
