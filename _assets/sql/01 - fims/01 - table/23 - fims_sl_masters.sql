@@ -15,14 +15,15 @@ CREATE TABLE IF NOT EXISTS fims.sl_masters (
 COMMENT ON TABLE  fims.sl_masters IS 'Subsidiary Ledger registry — breaks a chart-of-accounts control account down into named sub-ledgers (e.g. one per major vendor)';
 COMMENT ON COLUMN fims.sl_masters.account_code IS 'The GL control account this SL breaks down; nullable since not every SL master is tied to one specific account';
 
-INSERT INTO fims.sl_masters (sl_code, sl_name, account_code) VALUES
-    ('SL-AP-DVDEMO01',  'Accounts Payable — Jackson Auto Services', '2-01-01-010'),
-    ('SL-AP-GENERAL',   'Accounts Payable — Vendors (General)',      '2-01-01-010'),
-    ('SL-CASH-MDS01',   'Cash in Bank — MDS Checking Account',       '1-01-02-020'),
-    ('SL-DUEBIR-WTAX',  'Due to BIR — Withholding Tax',              '2-02-01-010'),
-    ('SL-RETENTION-01', 'Guaranty/Retention Payable — Contractors',  '2-04-01-040')
+-- account_code is linked later in "03 - alter_table/20 - sl_masters_set_account_code.sql": this
+-- file runs before fims.chart_of_accounts is seeded, so setting it here would violate the FK.
+INSERT INTO fims.sl_masters (sl_code, sl_name) VALUES
+    ('SL-AP-DVDEMO01',   'Accounts Payable — Jackson Auto Services'),
+    ('SL-AP-GENERAL',    'Accounts Payable — Vendors (General)'),
+    ('SL-CASH-MDS01',    'Cash in Bank — MDS Checking Account'),
+    ('SL-DUEBIR-WTAX',   'Due to BIR — Withholding Tax'),
+    ('SL-RETENTION-01',  'Guaranty/Retention Payable — Contractors')
 ON CONFLICT (sl_code) DO UPDATE SET
-    sl_name      = EXCLUDED.sl_name,
-    account_code = EXCLUDED.account_code;
+    sl_name = EXCLUDED.sl_name;
 
 CREATE INDEX IF NOT EXISTS idx_sl_masters_account_code ON fims.sl_masters (account_code);
