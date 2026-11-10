@@ -13,6 +13,7 @@ routes/
 ├── position-management.php   # Position Management page routes (create/update category, position)
 ├── vendor.php          # Vendor + vendor type routes
 ├── purchase-order.php  # Purchase order CRUD + status routes
+├── voucher.php         # Disbursement Voucher CRUD + status + RFA lookup routes
 ├── chart_of_accounts.php # Chart of Accounts CRUD + status routes
 ├── responsibility_center.php # Responsibility Center CRUD + status routes
 └── README.md                 # This documentation
@@ -76,6 +77,20 @@ with an `/api` prefix, e.g. `POST /user-access/users` below is actually `POST /a
 - `PUT /purchase-order/update/{id}` - Replace fields + items; DRAFT / REJECTED only
 - `POST /purchase-order/{id}/status` - `{status, notes?}`: SUBMITTED / APPROVED / REJECTED (notes required) / CANCELLED
 - `DELETE /purchase-order/delete/{id}` - DRAFT or CANCELLED only; items cascade
+
+### voucher.php (`DisbursementVoucherService`, table `fims.disbursement_vouchers`)
+One generic voucher shape for any claimant/payment type (vendor payment, payroll, reimbursement, etc.) — `claimant_name`/`claimant_address`/`employee_no_tin` are either snapshotted from a selected `vendor_id`, or typed free text.
+- `GET /voucher/all` - All DVs, no pagination. Optional filters: `status`, `fiscal_yr`, `expense_class` (MOOE/PS/CAPITAL_OUTLAY/OTHER — classification tag only, same set `fims.purchase_orders.expense_class` uses), `search`
+- `GET /voucher/list` - Paginated (`page`, `limit` + same filters); also returns `summary` (totals / counts for every row matching the filters)
+- `GET /voucher/fiscal-years` - Fiscal years for dropdowns
+- `GET /voucher/dv-number?dv_date=YYYY-MM-DD` - Next free `{YY}-{MM}-{NNNN}` DV number
+- `GET /voucher/rfa/all` - RFA picker options: `fims.budget_allocation` rows where `allocation_type = 'RFA'` (that table has no CRUD backend of its own — this is a read-only lookup added for the DV form). One RFA backs only one DV at a time — an RFA already referenced by another non-cancelled/rejected voucher is left out of the list entirely. Optional: `fiscal_yr`, `search`, `exclude_dv_id` (editing — keeps showing the RFA this voucher itself already uses)
+- `GET /voucher/rfa/read/{allocation_id}` - One RFA + its `budget_amount` ceiling. `400` if another voucher already uses this RFA. Optional: `exclude_dv_id` when editing an existing DV so it doesn't block on itself
+- `GET /voucher/read/{id}` - One DV with `allowed_transitions`
+- `POST /voucher/add` - Create (`claimant_name` or `vendor_id`, `particulars`, `gross_amount` required; `vat_rate`/`wtax_rate` optional, default 0); `status` DRAFT (default) or FOR_FMD_REVIEW
+- `PUT /voucher/update/{id}` - Replace fields; DRAFT / REJECTED only
+- `POST /voucher/{id}/status` - `{status, notes?}` — moves the voucher along the four-office pipeline: `DRAFT -> FOR_FMD_REVIEW -> FOR_ACCOUNTING -> FOR_TREASURY -> RELEASED` (Originating -> FMD checks the obligation -> Accounting processes -> Treasury releases payment), or `REJECTED` (notes required) / `CANCELLED` from any non-terminal stage. `403` if the caller's `uac.users.rc_id` (Responsibility Center) doesn't match the office that owns the target stage (sysadmin bypasses) — see `DisbursementVoucherService::authorizeTransition()`
+- `DELETE /voucher/delete/{id}` - DRAFT or CANCELLED only
 
 ### chart_of_accounts.php (`ChartOfAccountsService`, table `fims.chart_of_accounts`)
 - `GET /chart-of-accounts/all` - All accounts, no pagination (dropdown / parent-account picker). Optional: `search`, `account_type`, `region_code`, `project_code`, `status`
