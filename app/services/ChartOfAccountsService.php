@@ -141,12 +141,16 @@ class ChartOfAccountsService
     /**
      * All active, postable chart-of-accounts entries — used by the Budget
      * Request form's Account Code picker, which no longer restricts by
-     * expense-class-derived prefix.
+     * expense-class-derived prefix. $forBudgetProposalOnly further narrows
+     * that to accounts flagged for_budget_proposal = TRUE.
      */
-    public function fetchPostable(string $search = ''): array
+    public function fetchPostable(string $search = '', bool $forBudgetProposalOnly = false): array
     {
         try {
             $where = "status = 'Active' AND posting_allowed = TRUE";
+            if ($forBudgetProposalOnly) {
+                $where .= ' AND for_budget_proposal = TRUE';
+            }
             if ($search !== '') {
                 $s      = App\QuotedValue('%' . $search . '%', DataType::STRING, 'DB');
                 $where .= " AND (account_code ILIKE {$s} OR account_title ILIKE {$s})";

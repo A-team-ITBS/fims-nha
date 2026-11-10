@@ -210,10 +210,12 @@ class BudgetReqService
 
         foreach ($projects as $project) {
             $projectCode = $this->resolveProjectCode($project, $programCode, $subProgramCode);
+            $location    = trim((string) ($project['location'] ?? ''));
 
             $projectRow = App\ExecuteRow(
-                "INSERT INTO {$this->tableBudgetReqProject} (budget_reference_number, budget_req_program_id, project_code)
-                 VALUES ({$budgetReferenceNumber}, {$budgetReqProgramId}, " . App\QuotedValue($projectCode, DataType::STRING, 'DB') . ')
+                "INSERT INTO {$this->tableBudgetReqProject} (budget_reference_number, budget_req_program_id, project_code, location)
+                 VALUES ({$budgetReferenceNumber}, {$budgetReqProgramId}, " . App\QuotedValue($projectCode, DataType::STRING, 'DB') . ', '
+                    . ($location !== '' ? App\QuotedValue($location, DataType::STRING, 'DB') : 'NULL') . ')
                  RETURNING budget_req_project_id',
                 'DB'
             );
@@ -268,7 +270,7 @@ class BudgetReqService
         ) ?: [];
 
         $projectRows = App\ExecuteRows(
-            "SELECT brp2.budget_req_project_id, brp2.budget_req_program_id, brp2.budget_reference_number, brp2.project_code, pj.project_name
+            "SELECT brp2.budget_req_project_id, brp2.budget_req_program_id, brp2.budget_reference_number, brp2.project_code, brp2.location, pj.project_name
              FROM {$this->tableBudgetReqProject} brp2
              LEFT JOIN {$this->tableProject} pj ON pj.project_code = brp2.project_code
              WHERE brp2.budget_reference_number IN ({$idList})
@@ -396,6 +398,39 @@ class BudgetReqService
                     'last_page'    => (int) ceil($total / $limit),
                 ],
             ];
+        } catch (\Exception $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * SUM(proposed_amount) across every budget line item, every fiscal year,
+     * every program/status — an unconditional grand total, not scoped by any
+     * of fetchAlls()'s filters. $rcId applies the same RC-scoping convention
+     * as fetchAlls() (empty = unrestricted/admin; otherwise that RC plus its
+     * descendants), since callers here are the same RC-scoped list callers.
+     */
+    public function fetchGrandTotalAmount(string $rcId = ''): array
+    {
+        try {
+            $whereSql = '1=1';
+            if ($rcId !== '') {
+                $rcIds = GlobalService::getRcIdsInScope($rcId) ?: [$rcId];
+                $quotedRcIds = implode(', ', array_map(
+                    fn ($id) => App\QuotedValue($id, DataType::STRING, 'DB'),
+                    $rcIds
+                ));
+                $whereSql = "br.rc_id IN ({$quotedRcIds})";
+            }
+
+            $totalAmount = (float) App\ExecuteScalar(
+                "SELECT COALESCE(SUM(li.proposed_amount), 0) FROM {$this->tableLineItems} li
+                 JOIN {$this->table} br ON br.budget_reference_number = li.budget_reference_number
+                 WHERE {$whereSql}",
+                'DB'
+            );
+
+            return ['success' => true, 'data' => ['total_amount' => $totalAmount]];
         } catch (\Exception $e) {
             return ['success' => false, 'message' => $e->getMessage()];
         }

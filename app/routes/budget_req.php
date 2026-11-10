@@ -21,6 +21,22 @@ $app->get('/budget_req/all', function ($request, $response, $args) use ($BudgetR
     }
 })->add($jwtMiddleware);
 
+// Grand total — SUM(proposed_amount) across every fiscal year/program/status,
+// not just whatever the list's current filters narrow it down to. Used by
+// the "View as COB" overview. Same RC-scoping as /budget_req/all.
+$app->get('/budget_req/grand-total', function ($request, $response, $args) use ($BudgetReqService) {
+    try {
+        $params = $request->getQueryParams();
+        $scope  = GlobalService::getUserRcScope((int) $request->getAttribute('user_id'));
+        $rcId   = $scope['rc_id'] ?? ($params['rc_id'] ?? '');
+        $result = $BudgetReqService->fetchGrandTotalAmount($rcId);
+
+        return $response->withJson($result);
+    } catch (\Exception $e) {
+        return $response->withJson(['success' => false, 'message' => $e->getMessage()], 400);
+    }
+})->add($jwtMiddleware);
+
 // Fetch all (with pagination)
 $app->get('/budget_req/list', function ($request, $response, $args) use ($BudgetReqService) {
     try {
