@@ -18,11 +18,17 @@
  *    since the full tree isn't part of the already-fetched list data; only
  *    the amounts come from program.projects[].
  *
- *  - bgrv_openCobModal() — "View COB" button in the list page's filter bar.
- *    No row/request context, no summary cards, no accordion — a flat,
- *    always-visible indented outline (Program / Sub-Program / Project),
- *    built by its own renderer (bgrv_cobRowsHtml), not the panel/card one
- *    bgrv_openModal uses below.
+ *  - bgrv_openCobModal(fiscalYr) — "View COB" button in the list page's
+ *    filter bar, passed that same filter's current value ('' = every
+ *    fiscal year). No row/request context, no summary cards, no accordion —
+ *    a flat, always-visible indented outline (Program / Sub-Program /
+ *    Project), built by its own renderer (bgrv_cobRowsHtml), not the
+ *    panel/card one bgrv_openModal uses below. Sourced from the actual
+ *    budget requests for that year (BGR_API + '/all?fiscal_yr=...'), not
+ *    raw Program/Sub-Program/Project master data — so it only ever shows
+ *    what's really been budgeted, flattened across every header the fetch
+ *    returns (more than one for "All Years", or when the caller's RC scope
+ *    spans several descendant rc_ids).
  *
  * Exclusive-accordion behavior (bgrv_openModal only) is scoped to each
  * panel's own immediate list (see bgrv_togglePanel).
@@ -253,9 +259,15 @@ async function bgrv_openModal(requestContext, program) {
 
 /* ── Mode 2: every Program/Sub-Program/Project as a flat indented outline
    — no request context, no amounts, nothing to click ─────────────────── */
-async function bgrv_openCobModal() {
+// fiscalYr: '' = every fiscal year (the page filter's "All Years" option).
+// Scoped through the actual budget requests (/budget_req/all), not raw
+// Program/Sub-Program/Project master data — so this only ever shows what's
+// really been budgeted for that year (under the caller's own RC scope,
+// same as the list page), never a Program/Project that happens to exist in
+// master data but was never added to any request.
+async function bgrv_openCobModal(fiscalYr = '') {
     $bgrv('bgrv-hdr-tag').textContent = 'Corporate Operating Budget (COB)';
-    $bgrv('bgrv-modal-title').textContent = 'All Programs';
+    $bgrv('bgrv-modal-title').textContent = fiscalYr ? `All Programs — FY ${bgr_esc(fiscalYr)}` : 'All Programs — All Years';
     $bgrv('bgrv-sec-hd-label').textContent = 'Programs';
     $bgrv('bgrv-sec-hd-total').textContent = '';
     $bgrv('bgrv-header-total-val').textContent = '—';
@@ -268,57 +280,64 @@ async function bgrv_openCobModal() {
 
     window.PagePreloader?.show();
     try {
-        const [progRes, subRes, projRes] = await Promise.all([
-            fetch(BGR_PROGRAM_API, { credentials: 'same-origin' }),
-            fetch(BGR_SUB_PROGRAM_API, { credentials: 'same-origin' }),
-            fetch(`${BGR_PROJECT_BASE_API}/all`, { credentials: 'same-origin' }),
-        ]);
-        const progJson = await progRes.json();
-        const subJson  = await subRes.json();
-        const projJson = await projRes.json();
-        if (!progJson.success) throw new Error(progJson.message || 'Failed to load programs.');
-        if (!subJson.success) throw new Error(subJson.message || 'Failed to load sub-programs.');
-        if (!projJson.success) throw new Error(projJson.message || 'Failed to load projects.');
+        const params = fiscalYr ? `?fiscal_yr=${encodeURIComponent(fiscalYr)}` : '';
+        const res  = await fetch(`${BGR_API}/all${params}`, { credentials: 'same-origin' });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message || 'Failed to load budget requests.');
 
-        // Fetched separately (not Promise.all'd with the three above, and not
-        // allowed to throw) — the rest of this view is independently useful
-        // even if just the grand total fails to load.
-        try {
-            const totalRes  = await fetch(`${BGR_API}/grand-total`, { credentials: 'same-origin' });
-            const totalJson = await totalRes.json();
-            if (totalJson.success) $bgrv('bgrv-header-total-val').textContent = bgr_fmtMoney(totalJson.data.total_amount);
-        } catch (e) {
-            // leave the header total showing its '—' placeholder
-        }
+        const headers = json.data ?? [];
 
-        const programs    = progJson.data ?? [];
-        const subPrograms = subJson.data ?? [];
-        const projects    = projJson.data ?? [];
+        // Flattened across every header this fetch returned — more than one
+        // when "All Years" is picked, or when the caller's RC scope spans
+        // several descendant rc_ids for the same year. A Program (or
+        // Sub-Program) added more than once collapses to a single row; its
+        // Projects and the grand total still count every occurrence.
+        const programMap   = new Map(); // program_code -> { program_code, program_name }
+        const subByProgram = new Map(); // program_code -> Map(sub_program_code -> { sub_program_code, sub_program_name })
+        const projByProgram = new Map(); // program_code -> [{ project_code, project_name, sub_program_code }, ...]
+        let grandTotal   = 0;
+        let projectCount = 0;
 
-        // Both grouped by program_code up front — one pass each, instead of
-        // re-filtering the full sub-program/project lists per Program below.
-        const subByProgram = new Map();
-        subPrograms.forEach(sp => {
-            if (!subByProgram.has(sp.program_code)) subByProgram.set(sp.program_code, []);
-            subByProgram.get(sp.program_code).push(sp);
+        headers.forEach(h => {
+            (h.programs || []).forEach(prog => {
+                if (!programMap.has(prog.program_code)) {
+                    programMap.set(prog.program_code, { program_code: prog.program_code, program_name: prog.program_name });
+                    subByProgram.set(prog.program_code, new Map());
+                    projByProgram.set(prog.program_code, []);
+                }
+                if (prog.sub_program_code) {
+                    subByProgram.get(prog.program_code).set(prog.sub_program_code, {
+                        sub_program_code: prog.sub_program_code,
+                        sub_program_name: prog.sub_program_name,
+                    });
+                }
+                (prog.projects || []).forEach(p => {
+                    projByProgram.get(prog.program_code).push({
+                        project_code: p.project_code,
+                        project_name: p.project_name,
+                        sub_program_code: prog.sub_program_code,
+                    });
+                    projectCount++;
+                    (p.line_items || []).forEach(li => { grandTotal += Number(li.proposed_amount) || 0; });
+                });
+            });
         });
-        const projByProgram = new Map();
-        projects.forEach(p => {
-            if (!projByProgram.has(p.program_code)) projByProgram.set(p.program_code, []);
-            projByProgram.get(p.program_code).push(p);
-        });
+
+        const programs = Array.from(programMap.values());
+        const subProgramCount = Array.from(subByProgram.values()).reduce((sum, m) => sum + m.size, 0);
 
         const rowsHtml = programs.map(prog => {
-            const progSubPrograms = subByProgram.get(prog.program_code) || [];
+            const progSubPrograms = Array.from(subByProgram.get(prog.program_code).values());
             const progProjects    = projByProgram.get(prog.program_code) || [];
             return `<div class="bgrv-cob-row bgrv-cob-program">${bgr_esc(prog.program_code)} — ${bgr_esc(prog.program_name)}</div>`
                 + bgrv_cobRowsHtml(progSubPrograms, progProjects);
         }).join('');
 
+        $bgrv('bgrv-header-total-val').textContent = bgr_fmtMoney(grandTotal);
         $bgrv('bgrv-panels').innerHTML = rowsHtml ? `<div class="bgrv-cob-list">${rowsHtml}</div>` : '';
         $bgrv('bgrv-empty').style.display = programs.length ? 'none' : '';
         $bgrv('bgrv-sec-hd-total').textContent =
-            `${programs.length} program(s) · ${subPrograms.length} sub-program(s) · ${projects.length} project(s)`;
+            `${programs.length} program(s) · ${subProgramCount} sub-program(s) · ${projectCount} project(s)`;
     } catch (e) {
         $bgrv('bgrv-panels').innerHTML = '';
         $bgrv('bgrv-empty').style.display = '';

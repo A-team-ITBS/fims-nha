@@ -35,6 +35,12 @@ class BudgetReqService
     private string $tableSubProgram       = 'fims.sub_program';
     private string $tableProject          = 'fims.project';
     private string $tableChartOfAccounts  = 'fims.chart_of_accounts';
+    private string $tableAttachment       = 'fims.budget_req_project_attachment';
+
+    // Supporting-document uploads (see uploadSupportingDocFiles()/persistAttachments())
+    private const ATTACHMENT_MAX_BYTES   = 20 * 1024 * 1024; // 20 MB
+    private const ATTACHMENT_ALLOWED_EXT = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'jpg', 'jpeg', 'png', 'gif'];
+    private const ATTACHMENT_KEY_PREFIX  = 'budget-req-attachments/';
 
     /**
      * Looked up by name each time rather than hardcoding its id — the id a seed
@@ -227,6 +233,8 @@ class BudgetReqService
                     'budget_req_project_id'   => $budgetReqProjectId,
                 ]));
             }
+
+            $this->persistAttachments($budgetReferenceNumber, $budgetReqProgramId, $projectCode, $project['supporting_documents'] ?? []);
         }
     }
 
@@ -764,6 +772,196 @@ class BudgetReqService
             App\Execute($sql, 'DB');
 
             return ['success' => true, 'message' => "Budget request {$budgetReferenceNumber} deleted successfully."];
+        } catch (\Exception $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /* ── Per-project supporting-document attachments ─────────────────────
+       Uploaded to object storage (DO Spaces, via the $s3client/GetSignedUrl()
+       globals _shared/storage.php already wires into every app/ page/route)
+       or pasted as an external link. Keyed off (budget_req_program_id,
+       project_code) rather than budget_req_project_id — updateProgram()
+       above deletes and reinserts every project row under a program on each
+       save, so an attachment FK'd to that surrogate would be cascaded away
+       on the very next unrelated edit. budget_req_program_id (the program
+       row itself) and project_code (a real, stable entity) both survive
+       that churn. */
+
+    /**
+     * Resolves every project's supporting_documents[*].file_index against a
+     * single flat $uploadedFiles list ("doc_file_0", "doc_file_1", ... — one
+     * running index across the WHOLE request, not per project), uploading
+     * each new file to object storage and replacing file_index with the
+     * resulting storage_key in place. Entries already carrying a link or an
+     * existing attachment_id pass through untouched. Returns the (possibly
+     * mutated) $projects array, or throws on a validation/upload failure —
+     * the caller must not proceed to create/update on a thrown error.
+     *
+     * @param array $projects      the request body's own "projects" array
+     * @param array $uploadedFiles $request->getUploadedFiles()
+     */
+    public function uploadSupportingDocFiles(array $projects, array $uploadedFiles, string $budgetReferenceNumber): array
+    {
+        global $s3client;
+
+        foreach ($projects as &$project) {
+            $docs = $project['supporting_documents'] ?? [];
+            if (!is_array($docs) || empty($docs)) {
+                continue;
+            }
+
+            foreach ($docs as &$doc) {
+                if (!isset($doc['file_index'])) {
+                    continue;
+                }
+
+                $fileKey = 'doc_file_' . $doc['file_index'];
+                unset($doc['file_index']);
+                $file = $uploadedFiles[$fileKey] ?? null;
+                if (!$file || $file->getError() !== UPLOAD_ERR_OK) {
+                    continue;
+                }
+
+                if ($file->getSize() > self::ATTACHMENT_MAX_BYTES) {
+                    throw new \Exception('File "' . $file->getClientFilename() . '" exceeds the 20 MB limit.');
+                }
+
+                $clientName = $file->getClientFilename();
+                $ext        = strtolower(pathinfo($clientName, PATHINFO_EXTENSION));
+                if (!in_array($ext, self::ATTACHMENT_ALLOWED_EXT, true)) {
+                    throw new \Exception('File type not allowed: .' . $ext);
+                }
+
+                $projectCode = trim((string) ($project['project_code'] ?? ''));
+                $safeName    = bin2hex(random_bytes(8)) . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $clientName);
+                $objectKey   = self::ATTACHMENT_KEY_PREFIX . $budgetReferenceNumber . '/' . ($projectCode !== '' ? $projectCode . '/' : '') . $safeName;
+
+                $s3client->putObject([
+                    'Bucket'      => \env('DO_SPACES_BUCKET', ''),
+                    'Key'         => $objectKey,
+                    'Body'        => $file->getStream()->getContents(),
+                    'ContentType' => $file->getClientMediaType() ?: 'application/octet-stream',
+                ]);
+
+                $doc['storage_key'] = $objectKey;
+                if (empty($doc['document_name'])) {
+                    $doc['document_name'] = pathinfo($clientName, PATHINFO_FILENAME);
+                }
+            }
+            unset($doc);
+
+            $project['supporting_documents'] = $docs;
+        }
+        unset($project);
+
+        return $projects;
+    }
+
+    /**
+     * Inserts one row per already-resolved doc (storage_key from an upload,
+     * or an external_link pasted by the user). Must run inside the caller's
+     * open transaction — called from insertProjectsAndLineItems() right
+     * after a project's own row is inserted, where $budgetReqProgramId and
+     * the resolved $projectCode are both already known.
+     *
+     * @param array $docs [{document_name, storage_key?, link?}, ...]
+     */
+    private function persistAttachments(string $budgetReferenceNumber, int $budgetReqProgramId, string $projectCode, array $docs): void
+    {
+        if (empty($docs)) {
+            return;
+        }
+
+        $userId = (int) App\CurrentUserID();
+
+        foreach ($docs as $doc) {
+            // Already-saved attachments carried along unchanged from an edit
+            // prefill (identified by attachment_id) need no new INSERT.
+            if (!empty($doc['attachment_id'])) {
+                continue;
+            }
+
+            $storageKey = trim((string) ($doc['storage_key'] ?? ''));
+            $link       = trim((string) ($doc['link'] ?? ''));
+            $name       = trim((string) ($doc['document_name'] ?? ''));
+            if ($storageKey === '' && $link === '') {
+                continue;
+            }
+            if ($name === '') {
+                $name = $storageKey !== '' ? pathinfo($storageKey, PATHINFO_FILENAME) : $link;
+            }
+
+            App\Execute(
+                "INSERT INTO {$this->tableAttachment} (budget_reference_number, budget_req_program_id, project_code, document_name, storage_key, external_link, uploaded_by)
+                 VALUES (" . App\QuotedValue($budgetReferenceNumber, DataType::STRING, 'DB') . ', '
+                    . $budgetReqProgramId . ', '
+                    . App\QuotedValue($projectCode, DataType::STRING, 'DB') . ', '
+                    . App\QuotedValue($name, DataType::STRING, 'DB') . ', '
+                    . ($storageKey !== '' ? App\QuotedValue($storageKey, DataType::STRING, 'DB') : 'NULL') . ', '
+                    . ($link !== '' ? App\QuotedValue($link, DataType::STRING, 'DB') : 'NULL') . ', '
+                    . $userId . ')',
+                'DB'
+            );
+        }
+    }
+
+    /** Lists a project's attachments, each with a presigned view_url for an upload (or the raw external_link). */
+    public function fetchAttachmentsForProject(int $budgetReqProgramId, string $projectCode): array
+    {
+        try {
+            $rows = App\ExecuteRows(
+                "SELECT attachment_id, document_name, storage_key, external_link, uploaded_at
+                 FROM {$this->tableAttachment}
+                 WHERE budget_req_program_id = {$budgetReqProgramId}
+                   AND project_code = " . App\QuotedValue($projectCode, DataType::STRING, 'DB') . '
+                 ORDER BY uploaded_at ASC',
+                'DB'
+            ) ?: [];
+
+            foreach ($rows as &$row) {
+                $row['view_url'] = $row['storage_key'] ? \GetSignedUrl($row['storage_key']) : $row['external_link'];
+            }
+            unset($row);
+
+            return ['success' => true, 'data' => $rows];
+        } catch (\Exception $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /** Deletes one attachment — rejected unless its parent request is still Draft. */
+    public function deleteAttachment(int $attachmentId): array
+    {
+        global $s3client;
+
+        try {
+            $row = App\ExecuteRow(
+                "SELECT a.storage_key, st.name AS status_name
+                 FROM {$this->tableAttachment} a
+                 JOIN {$this->table} br ON br.budget_reference_number = a.budget_reference_number
+                 LEFT JOIN fims.settings_status st ON st.id = br.status_id
+                 WHERE a.attachment_id = {$attachmentId}",
+                'DB'
+            );
+            if (!$row) {
+                return ['success' => false, 'message' => "Attachment #{$attachmentId} not found."];
+            }
+            if (($row['status_name'] ?? '') !== 'Draft') {
+                return ['success' => false, 'message' => 'Only a Draft budget request\'s attachments can be removed.'];
+            }
+
+            App\Execute("DELETE FROM {$this->tableAttachment} WHERE attachment_id = {$attachmentId}", 'DB');
+
+            if (!empty($row['storage_key'])) {
+                try {
+                    $s3client->deleteObject(['Bucket' => \env('DO_SPACES_BUCKET', ''), 'Key' => $row['storage_key']]);
+                } catch (\Throwable $e) {
+                    // Best-effort — the DB row is already gone; a stray S3 object isn't worth failing the request over.
+                }
+            }
+
+            return ['success' => true, 'message' => 'Attachment deleted successfully.'];
         } catch (\Exception $e) {
             return ['success' => false, 'message' => $e->getMessage()];
         }

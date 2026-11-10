@@ -185,6 +185,31 @@ $_bgr_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
     .bgr-li-remove:hover { background:var(--afims-danger-soft, #FAE1E3); }
     .bgr-block-add-li { margin-top:12px; }
 
+    /* ── Per-project Supporting Documents ──────────────────────────────── */
+    .bgr-block-docs { margin-top:4px;padding-top:14px;border-top:1px solid var(--afims-border, #E4ECF2); }
+    .bgr-block-docs-title { font-size:11px;font-weight:700;color:var(--afims-text, #1A1B21);
+        text-transform:uppercase;letter-spacing:.05em;margin:0 0 4px; }
+    .bgr-block-docs-hint { font-size:11px;color:var(--afims-text-disabled, #A9AAB8);margin:0 0 10px; }
+    .bgr-block-doc-tbl { width:100%;border-collapse:collapse;margin-bottom:10px; }
+    .bgr-block-doc-tbl th { height:30px;box-sizing:border-box;font-size:10px;font-weight:700;color:var(--afims-text-muted, #62657E);
+        text-transform:uppercase;letter-spacing:.04em;text-align:left;padding:0 6px;
+        background:var(--afims-surface-subtle, #F4F7FA);border-bottom:2px solid var(--afims-border, #E4ECF2); }
+    .bgr-block-doc-tbl td { padding:6px;border-bottom:1px solid var(--afims-border, #E4ECF2);vertical-align:middle; }
+    .bgr-doc-panel { display:flex;align-items:center;gap:6px;min-width:0; }
+    .bgr-doc-upload-btn { display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;
+        color:var(--afims-text, #1A1B21);background:var(--afims-surface-subtle, #F4F7FA);
+        border:1px solid var(--afims-border, #E4ECF2);border-radius:6px;padding:6px 10px;
+        cursor:pointer;white-space:nowrap;flex-shrink:0; }
+    .bgr-doc-upload-btn:hover { background:var(--afims-surface, #FFFFFF); }
+    .bgr-doc-uploaded-name { font-size:11px;color:var(--afims-text-muted, #62657E);flex:1;min-width:0;
+        overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+    .bgr-doc-open { font-size:11.5px;color:var(--afims-heading-fill, #000E3E);text-decoration:none;
+        white-space:nowrap;flex-shrink:0;font-weight:600; }
+    .bgr-doc-remove { border:none;background:transparent;color:var(--afims-danger, #DC3545);
+        font-size:16px;line-height:1;cursor:pointer;width:24px;height:24px;border-radius:6px;flex-shrink:0; }
+    .bgr-doc-remove:hover { background:var(--afims-danger-soft, #FAE1E3); }
+    .bgr-doc-row-error { font-size:11px;color:var(--afims-danger, #DC3545);margin-top:4px; }
+
     #bgr-footer { display:flex;align-items:center;justify-content:flex-end;gap:8px;
         padding:14px 22px;background:var(--afims-surface-subtle, #F4F7FA);border-top:1px solid var(--afims-border, #E4ECF2);flex-shrink:0; }
     #bgr-footer .bgr-btn { height:36px;padding:0 20px;border-radius:8px;border:1px solid var(--afims-border, #E4ECF2);
@@ -304,6 +329,7 @@ const BGR_PROJECT_BASE_API      = '<?php echo $_bgr_api; ?>' + '/project';
 const BGR_FISCAL_YEAR_API       = '<?php echo $_bgr_api; ?>' + '/fiscal_year';
 const BGR_SUB_PROGRAM_API       = '<?php echo $_bgr_api; ?>' + '/sub_program/all';
 const BGR_CHART_OF_ACCOUNTS_API = '<?php echo $_bgr_api; ?>' + '/chart_of_accounts/all';
+const BGR_ATTACHMENT_API        = '<?php echo $_bgr_api; ?>' + '/budget_req_project_attachment';
 
 // Cached option lists — Program/Sub-Program are prefetched in full and
 // filtered client-side (same cascade style as pof_fillProjects() in
@@ -488,6 +514,23 @@ function bgr_addProjectBlock(prefillBlock = null) {
                 </div>
             </div>
             <button type="button" class="bgr-block-add-li bgr-btn-ghost">+ Add Line Item</button>
+
+            <div class="bgr-block-docs">
+                <p class="bgr-block-docs-title">Supporting Documents</p>
+                <p class="bgr-block-docs-hint">Upload a file (≤20 MB — PDF, Word, Excel, or image) or paste a link per document.</p>
+                <table class="bgr-block-doc-tbl" style="display:none;">
+                    <thead><tr>
+                        <th style="width:35%;">Document Name</th>
+                        <th>Attachment</th>
+                        <th style="width:26px;"></th>
+                    </tr></thead>
+                    <tbody class="bgr-block-doc-tbody"></tbody>
+                </table>
+                <div class="bgr-block-doc-actions">
+                    <button type="button" class="bgr-block-doc-add-upload bgr-btn-ghost">+ Upload File</button>
+                    <button type="button" class="bgr-block-doc-add-link bgr-btn-ghost">+ Paste Link</button>
+                </div>
+            </div>
         </div>
     `;
     $bgr('bgr-blocks-wrap').appendChild(block);
@@ -517,7 +560,185 @@ function bgr_addProjectBlock(prefillBlock = null) {
     const items = (prefillBlock && prefillBlock.line_items && prefillBlock.line_items.length) ? prefillBlock.line_items : [{}];
     items.forEach(li => bgr_addLineItemRow(block, li));
 
+    bgr_wireDocSection(block, prefillBlock);
+
     return block;
+}
+
+/* ── Supporting Documents — per project block, staged client-side until the
+   whole request is saved (see bgr_save()'s FormData path), except an
+   already-saved attachment's own delete, which is immediate (a real,
+   independent server action, not part of the "nothing persists until Save"
+   staging the rest of this form uses). ──────────────────────────────────── */
+const BGR_DOC_MAX_BYTES = 20 * 1024 * 1024; // 20 MB — keep in sync with BudgetReqService::ATTACHMENT_MAX_BYTES
+const BGR_DOC_ALLOWED_EXT = new Set(['pdf', 'doc', 'docx', 'xls', 'xlsx', 'jpg', 'jpeg', 'png', 'gif']);
+let bgr_docRowSeq = 0;
+
+function bgr_wireDocSection(block, prefillBlock) {
+    block.querySelector('.bgr-block-doc-add-upload').addEventListener('click', () => bgr_addDocRow(block, { mode: 'upload' }));
+    block.querySelector('.bgr-block-doc-add-link').addEventListener('click', () => bgr_addDocRow(block, { mode: 'link' }));
+
+    // Existing attachments only exist for a project already saved under an
+    // existing program (edit mode) — a brand-new block/program has none yet.
+    const budgetReqProgramId = $bgr('bgr-id').value;
+    const projectCode = prefillBlock && prefillBlock.project_code;
+    if (!budgetReqProgramId || !projectCode) return;
+
+    const params = new URLSearchParams({ budget_req_program_id: budgetReqProgramId, project_code: projectCode });
+    fetch(`${BGR_ATTACHMENT_API}/list?${params}`, { credentials: 'same-origin' })
+        .then(res => res.json())
+        .then(json => {
+            if (!json.success) return;
+            (json.data || []).forEach(a => bgr_addDocRow(block, {
+                mode: a.storage_key ? 'upload' : 'link',
+                name: a.document_name,
+                attachmentId: a.attachment_id,
+                viewUrl: a.view_url,
+                link: a.external_link || '',
+            }));
+        })
+        .catch(() => {});
+}
+
+function bgr_syncDocTableVisibility(block) {
+    const tbl = block.querySelector('.bgr-block-doc-tbl');
+    tbl.style.display = tbl.querySelector('.bgr-block-doc-tbody tr') ? '' : 'none';
+}
+
+function bgr_docUploadPanelHtml(fileId, label, filename, viewUrl) {
+    return `<div class="bgr-doc-panel">
+        <input type="file" id="${fileId}" accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.gif" style="display:none;">
+        <button type="button" class="bgr-doc-upload-btn">${bgr_esc(label)}</button>
+        <span class="bgr-doc-uploaded-name">${bgr_esc(filename || '')}</span>
+        ${viewUrl ? `<a href="${bgr_escAttr(viewUrl)}" target="_blank" rel="noopener" class="bgr-doc-open">Open ↗</a>` : ''}
+    </div>`;
+}
+
+function bgr_docLinkPanelHtml(value, viewUrl) {
+    return `<div class="bgr-doc-panel">
+        <input type="text" class="bgr-input bgr-doc-link" value="${bgr_escAttr(value || '')}" placeholder="https://drive.google.com/…" style="font-size:12px;padding:6px 9px;">
+        ${viewUrl ? `<a href="${bgr_escAttr(viewUrl)}" target="_blank" rel="noopener" class="bgr-doc-open">Open ↗</a>` : ''}
+    </div>`;
+}
+
+// opts: { mode: 'upload'|'link', name?, attachmentId?, viewUrl?, link? }
+function bgr_addDocRow(block, opts) {
+    const tbody = block.querySelector('.bgr-block-doc-tbody');
+    const rowId = 'bgr-doc-row-' + (++bgr_docRowSeq);
+    const fileId = rowId + '-file';
+    const tr = document.createElement('tr');
+    tr.id = rowId;
+    tr.dataset.mode = opts.mode;
+    if (opts.attachmentId) tr.dataset.attachmentId = opts.attachmentId;
+
+    const contentHtml = opts.mode === 'link'
+        ? bgr_docLinkPanelHtml(opts.link, opts.viewUrl)
+        : bgr_docUploadPanelHtml(fileId, opts.attachmentId ? opts.name : 'Choose File', opts.attachmentId ? opts.name : '', opts.viewUrl);
+
+    tr.innerHTML = `
+        <td><input type="text" class="bgr-input bgr-doc-name" value="${bgr_escAttr(opts.name || '')}" placeholder="Document name" style="font-size:12.5px;padding:6px 9px;"></td>
+        <td>${contentHtml}</td>
+        <td><button type="button" class="bgr-doc-remove" title="Remove document">&times;</button></td>`;
+    tbody.appendChild(tr);
+    bgr_syncDocTableVisibility(block);
+
+    if (opts.mode === 'upload' && !opts.attachmentId) {
+        const fileInput = tr.querySelector(`#${fileId}`);
+        const uploadBtn = tr.querySelector('.bgr-doc-upload-btn');
+        uploadBtn.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', () => bgr_handleDocFileSelect(fileInput, tr));
+    } else if (opts.mode === 'link') {
+        tr.querySelector('.bgr-doc-link').addEventListener('input', (ev) => bgr_onDocLinkInput(ev.target));
+    }
+
+    tr.querySelector('.bgr-doc-remove').addEventListener('click', () => bgr_removeDocRow(tr, block));
+
+    return tr;
+}
+
+function bgr_handleDocFileSelect(input, row) {
+    const file = input.files[0];
+    if (!file) return;
+
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (!BGR_DOC_ALLOWED_EXT.has(ext)) {
+        bgr_toast(`File type not allowed. Accepted: ${[...BGR_DOC_ALLOWED_EXT].join(', ')}`, 'error');
+        input.value = '';
+        return;
+    }
+    if (file.size > BGR_DOC_MAX_BYTES) {
+        bgr_toast(`File too large — max is ${BGR_DOC_MAX_BYTES / 1024 / 1024} MB.`, 'error');
+        input.value = '';
+        return;
+    }
+
+    row._fileObj = file;
+    const nameInput = row.querySelector('.bgr-doc-name');
+    if (nameInput && !nameInput.value.trim()) nameInput.value = file.name.replace(/\.[^.]+$/, '');
+    row.querySelector('.bgr-doc-uploaded-name').textContent = file.name;
+    row.querySelector('.bgr-doc-upload-btn').textContent = 'Re-select';
+}
+
+function bgr_onDocLinkInput(input) {
+    const row = input.closest('tr');
+    const panel = input.closest('.bgr-doc-panel');
+    let anchor = panel.querySelector('a.bgr-doc-open');
+    const link = input.value.trim();
+    if (link) {
+        if (!anchor) {
+            anchor = document.createElement('a');
+            anchor.className = 'bgr-doc-open';
+            anchor.target = '_blank';
+            anchor.rel = 'noopener';
+            anchor.textContent = 'Open ↗';
+            panel.appendChild(anchor);
+        }
+        anchor.href = link;
+    } else if (anchor) {
+        anchor.remove();
+    }
+}
+
+async function bgr_removeDocRow(row, block) {
+    const attachmentId = row.dataset.attachmentId;
+    if (attachmentId) {
+        if (!confirm('Delete this document now? This cannot be undone.')) return;
+        try {
+            const res = await fetch(`${BGR_ATTACHMENT_API}/delete/${attachmentId}`, {
+                method: 'DELETE',
+                credentials: 'same-origin',
+            });
+            const json = await res.json();
+            if (!json.success) throw new Error(json.message || 'Failed to delete document.');
+            bgr_toast('Document deleted successfully.', 'success');
+        } catch (e) {
+            bgr_toast(e.message, 'error');
+            return;
+        }
+    }
+    row.remove();
+    bgr_syncDocTableVisibility(block);
+}
+
+// Builds this block's supporting_documents entries, pushing any staged File
+// objects onto the shared, request-wide fileList (one flat doc_file_N index
+// across every project block — see bgr_save()).
+function bgr_getProjectDocPayload(block, fileList) {
+    const docs = [];
+    for (const row of block.querySelectorAll('.bgr-block-doc-tbody tr')) {
+        const name = row.querySelector('.bgr-doc-name')?.value.trim() || '';
+        const attachmentId = row.dataset.attachmentId;
+        if (attachmentId) {
+            docs.push({ attachment_id: Number(attachmentId), document_name: name });
+        } else if (row.dataset.mode === 'upload' && row._fileObj) {
+            docs.push({ file_index: fileList.length, document_name: name });
+            fileList.push(row._fileObj);
+        } else if (row.dataset.mode === 'link') {
+            const link = row.querySelector('.bgr-doc-link')?.value.trim() || '';
+            if (link) docs.push({ link, document_name: name });
+        }
+    }
+    return docs;
 }
 
 function bgr_removeProjectBlock(block) {
@@ -1040,6 +1261,7 @@ async function bgr_save(ev) {
     if (!programCode) { bgr_showErr('Select a program.'); return; }
 
     const projects = [];
+    const docFiles = []; // one flat list across every project block — see bgr_getProjectDocPayload()
     const blocks = document.querySelectorAll('#bgr-blocks-wrap .bgr-block');
     for (let pi = 0; pi < blocks.length; pi++) {
         const block = blocks[pi];
@@ -1066,22 +1288,30 @@ async function bgr_save(ev) {
             lineItems.push({ account_id: accountId, particulars, proposed_amount: amount });
         }
 
-        projects.push({ project_code: projectCode, project_name: projectName, location, line_items: lineItems });
+        const supportingDocuments = bgr_getProjectDocPayload(block, docFiles);
+
+        projects.push({ project_code: projectCode, project_name: projectName, location, line_items: lineItems, supporting_documents: supportingDocuments });
     }
     if (!projects.length) { bgr_showErr('Add at least one project.'); return; }
 
     const body = { fiscal_yr: fiscalYr, program_code: programCode, sub_program_code: subProgramCode, projects };
+    // PHP only populates $_FILES/multipart bodies on POST — editing a program
+    // normally PUTs, but switches to POST when there's a new file to carry.
     const url    = mode === 'edit-program' ? `${BGR_API}/program/update/${id}` : `${BGR_API}/add`;
-    const method = mode === 'edit-program' ? 'PUT' : 'POST';
+    const method = (mode === 'edit-program' && !docFiles.length) ? 'PUT' : 'POST';
 
     window.PagePreloader?.show();
     try {
-        const res  = await fetch(url, {
-            method,
-            credentials: 'same-origin',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-        });
+        let fetchOpts;
+        if (docFiles.length) {
+            const fd = new FormData();
+            fd.append('data', JSON.stringify(body));
+            docFiles.forEach((f, i) => fd.append('doc_file_' + i, f));
+            fetchOpts = { method, credentials: 'same-origin', body: fd };
+        } else {
+            fetchOpts = { method, credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
+        }
+        const res  = await fetch(url, fetchOpts);
         const json = await res.json();
         if (!json.success) throw new Error(json.message || 'Failed to save.');
 
