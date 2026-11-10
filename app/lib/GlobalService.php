@@ -22,6 +22,9 @@ use PHPMaker2024\FIMS as App;
  *   NOTE: this one reads the database, which the rules above would normally keep in
  *   the feature's own service (ProgramService). It lives here by request, so it can
  *   be called from any service or route: GlobalService::generateProgramCode().
+ * - generateProjectCode()  next project code "YYYY-<rc_id>-<prog3>-<subprog4>-<series4>"
+ *   (see below). Same "reads the database, lives here by request" carve-out as
+ *   generateProgramCode() — could otherwise live in ProjectService.
  * - getUserRcId() / getUserRcScope() / getRcIdsInScope()  RC (Responsibility Center)
  *   helpers for fims.budget_req row-level scoping, keyed on uac.users.rc_id. Same
  *   "reads the database, lives here by request" carve-out as generateProgramCode() —
@@ -74,7 +77,83 @@ class GlobalService
     }
 
     /**
-     * Where sub-program codes for a program start: ['prefix' => '001', 'next' => 3].
+     * Builds the next project code:
+     * "<year>-<rc_id>-<prog3>-<subprog4>-<series4>", e.g. 2026-RC-000-001-0001-0001.
+     *
+     *  - year     : the current year, or $year when given.
+     *  - rc_id    : the logged-in user's uac.users.rc_id ($userId, else the current
+     *               user) taken as-is — e.g. "RC-000" — via getUserRcId(), not a
+     *               digit extraction like the other two segments.
+     *  - prog3    : last 3 digits of the trailing numeric run in $programCode
+     *               (the Program this project belongs to) — e.g. "PROG-001" -> "001".
+     *  - subprog4 : last 4 digits of the trailing numeric run in $subProgramCode
+     *               (the Sub-Program this project belongs to).
+     *  - series4  : 4-digit sequence — the Nth project under that exact
+     *               "<year>-<rc_id>-<prog3>-<subprog4>-" combination, not a
+     *               table-wide counter (mirrors generateProgramCode()'s
+     *               "number is a suggestion, nothing reserved" caveat).
+     *
+     * Neither $programCode nor $subProgramCode is required to end in exactly
+     * 3/4 digits today (see trailingDigits()) — a shorter trailing run is
+     * zero-padded, a longer one truncated to its rightmost digits, and a
+     * code with no trailing digits at all degrades to all zeros for that
+     * segment. This builds a suggestion, not a validation gate.
+     *
+     * @throws \InvalidArgumentException when no user is logged in, the user has no
+     *                                    rc_id, or the 4-digit series is exhausted (9999).
+     */
+    public static function generateProjectCode(string $programCode, string $subProgramCode, ?int $userId = null, ?int $year = null): string
+    {
+        $userId = $userId ?: (int) App\CurrentUserID();
+        $rcId   = self::getUserRcId($userId);
+        if ($rcId === null) {
+            throw new \InvalidArgumentException('Your user account has no RC id (users.rc_id). Ask an administrator to set it.');
+        }
+
+        $prefix = sprintf(
+            '%d-%s-%s-%s-',
+            $year ?: (int) date('Y'),
+            $rcId,
+            self::trailingDigits($programCode, 3),
+            self::trailingDigits($subProgramCode, 4)
+        );
+
+        $last = (int) App\ExecuteScalar(
+            "SELECT COALESCE(MAX(CAST(SUBSTRING(project_code FROM '-([0-9]{4})$') AS INTEGER)), 0) " .
+            'FROM fims.project WHERE project_code LIKE ' . App\QuotedValue($prefix . '%', App\DataType::STRING, 'DB'),
+            'DB'
+        );
+        if ($last >= 9999) {
+            throw new \InvalidArgumentException('The 4-digit project sequence is exhausted (9999) for this program/sub-program this year.');
+        }
+
+        return $prefix . sprintf('%04d', $last + 1);
+    }
+
+    /**
+     * The trailing contiguous run of digits in $code, right-aligned to exactly
+     * $width characters: zero-padded on the left when shorter, truncated to
+     * the rightmost $width digits when longer, or $width zeros when $code has
+     * no trailing digits at all.
+     */
+    private static function trailingDigits(string $code, int $width): string
+    {
+        if (!preg_match('/([0-9]+)$/', $code, $m)) {
+            return str_repeat('0', $width);
+        }
+        $digits = $m[1];
+        if (strlen($digits) > $width) {
+            $digits = substr($digits, -$width);
+        }
+
+        return str_pad($digits, $width, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * The RC (Responsibility Center) $userId belongs to, or null if unset.
+     * Unconditional — no superadmin bypass — since every creating user, admin
+     * included, must have their own rc_id to create a fims.budget_req (there
+     * is no manual RC picker; the backend auto-detects it from this column).
      *
      *  - prefix : the last 3 digits of the program code (2026-35-074-0000000-000-001 -> "001").
      *  - next   : highest existing fims.sub_program.sub_program_code of the form "<prefix>-NNN", plus one

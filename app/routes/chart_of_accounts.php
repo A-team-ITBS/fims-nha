@@ -9,16 +9,23 @@ $ChartOfAccountsService = new ChartOfAccountsService();
 // Fetch all — no pagination (for dropdowns); ?prefix=5-01 scopes to postable
 // accounts under that chart-of-accounts branch (legacy); ?postable_only=1
 // returns all active+postable accounts regardless of branch — used by the
-// Budget Request form's Account Code picker.
+// Budget Request form's Account Code picker. ?for_budget_proposal=1 (only
+// meaningful alongside postable_only=1) further narrows that to accounts
+// flagged for_budget_proposal = TRUE.
 $app->get('/chart_of_accounts/all', function ($request, $response, $args) use ($ChartOfAccountsService) {
     try {
-        $params       = $request->getQueryParams();
-        $prefix       = $params['prefix'] ?? '';
-        $postableOnly = ($params['postable_only'] ?? '') === '1';
+        $params                = $request->getQueryParams();
+        $prefix                = $params['prefix'] ?? '';
+        $postableOnly          = ($params['postable_only'] ?? '') === '1';
+        $forBudgetProposalOnly = ($params['for_budget_proposal'] ?? '') === '1';
 
-        $result = $prefix !== ''
-            ? $ChartOfAccountsService->fetchByPrefix($prefix)
-            : $ChartOfAccountsService->fetchAlls(null, 10, $params['search'] ?? '', '', '', '', 'Active');
+        if ($prefix !== '') {
+            $result = $ChartOfAccountsService->fetchByPrefix($prefix);
+        } elseif ($postableOnly) {
+            $result = $ChartOfAccountsService->fetchPostable($params['search'] ?? '', $forBudgetProposalOnly);
+        } else {
+            $result = $ChartOfAccountsService->fetchAlls(null, 10, $params['search'] ?? '', '', '', '', 'Active');
+        }
 
         return $response->withJson($result);
     } catch (\Exception $e) {

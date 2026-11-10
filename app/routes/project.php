@@ -2,9 +2,34 @@
 
 namespace PHPMaker2024\FIMS;
 
+use PHPMaker2024\FIMS\Service\GlobalService;
 use PHPMaker2024\FIMS\Service\ProjectService;
 
 $ProjectService = new ProjectService();
+
+// Preview the next auto-generated project code (GlobalService::generateProjectCode)
+// for a given Program/Sub-Program — used by the Budget Request form's Project
+// picker when the typed name doesn't match an existing project.
+$app->get('/project/next-code', function ($request, $response, $args) {
+    try {
+        $params         = $request->getQueryParams();
+        $programCode    = $params['program_code'] ?? '';
+        $subProgramCode = $params['sub_program_code'] ?? '';
+        if ($programCode === '') {
+            return $response->withJson(['success' => false, 'message' => 'program_code is required.'], 400);
+        }
+
+        $code = GlobalService::generateProjectCode($programCode, $subProgramCode, (int) $request->getAttribute('user_id'));
+
+        return $response->withJson(['success' => true, 'data' => ['project_code' => $code]]);
+    } catch (\InvalidArgumentException $e) {
+        return $response->withJson(['success' => false, 'message' => $e->getMessage()], 400);
+    } catch (\Throwable $e) {
+        LogError('GET /project/next-code ' . $e->getMessage());
+
+        return $response->withJson(['success' => false, 'message' => 'Could not generate a project code.'], 500);
+    }
+})->add($jwtMiddleware);
 
 // Fetch all — no pagination (for dropdowns)
 $app->get('/project/all', function ($request, $response, $args) use ($ProjectService) {

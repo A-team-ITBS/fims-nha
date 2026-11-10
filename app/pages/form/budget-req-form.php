@@ -49,7 +49,7 @@ $_bgr_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
     #bgr-overlay { display:none;position:fixed;inset:0;z-index:9100;
         background:rgba(15,32,69,.6);align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(3px); }
     #bgr-overlay.open { display:flex; }
-    #bgr-card { background:var(--afims-surface, #FFFFFF);border-radius:16px;width:100%;max-width:1040px;
+    #bgr-card { background:var(--afims-surface, #FFFFFF);border-radius:16px;width:100%;max-width:1440px;
         max-height:92vh;display:flex;flex-direction:column;overflow:hidden;
         box-shadow:0 32px 80px rgba(0,0,0,.28);font-family:'IBM Plex Sans',sans-serif;
         animation:bgrIn .2s ease; }
@@ -61,13 +61,13 @@ $_bgr_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
     #bgr-header-info svg { width:18px;height:18px;stroke:var(--afims-text-disabled, #A9AAB8);stroke-width:1.8;flex-shrink:0; }
     .bgr-hdr-tag { font-size:10px;color:var(--afims-text-disabled, #A9AAB8);margin:0 0 2px;letter-spacing:.06em;text-transform:uppercase; }
     .bgr-hdr-title { font-size:14px;font-weight:700;color:var(--afims-pure-white, #FFFFFF);margin:0; }
-    #bgr-close { border:none;background:color-mix(in srgb, var(--afims-surface, #FFFFFF) 12%, transparent);cursor:pointer;
+    #bgr-modal-close { border:none;background:color-mix(in srgb, var(--afims-surface, #FFFFFF) 12%, transparent);cursor:pointer;
         width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;
         color:var(--afims-text-disabled, #A9AAB8);font-size:18px;line-height:1;transition:background .15s; }
-    #bgr-close:hover { background:color-mix(in srgb, var(--afims-surface, #FFFFFF) 22%, transparent);color:var(--afims-pure-white, #FFFFFF); }
+    #bgr-modal-close:hover { background:color-mix(in srgb, var(--afims-surface, #FFFFFF) 22%, transparent);color:var(--afims-pure-white, #FFFFFF); }
 
     #bgr-err { display:none;margin:18px 22px -4px;background:var(--afims-danger-soft, #FAE1E3);
-        border:1px solid var(--afims-danger-soft, #FAE1E3);border-radius:8px;padding:10px 14px;
+        border:1px solid color-mix(in srgb, var(--afims-danger, #DC3545) 35%, transparent);border-radius:8px;padding:10px 14px;
         font-size:12px;color:var(--afims-danger, #DC3545); }
 
     /* #bgr-body/#bgr-footer live inside this <form>, not directly inside
@@ -101,22 +101,32 @@ $_bgr_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
     .bgr-amt-wrap .bgr-input { border:none;border-radius:0;text-align:right;font-family:'IBM Plex Mono',monospace; }
     .bgr-amt-wrap .bgr-input:focus { box-shadow:none; }
 
-    .bgr-sec-hd { font-size:11px;font-weight:700;color:var(--afims-text, #1A1B21);
-        text-transform:uppercase;letter-spacing:.05em;margin:4px 0 10px; }
+    .bgr-sec-hd { font-size:12px;font-weight:700;color:var(--afims-heading-fill, #000E3E);
+        text-transform:uppercase;letter-spacing:.05em;margin:4px 0 10px;padding-bottom:7px;
+        border-bottom:2px solid var(--afims-border, #E4ECF2); }
 
     /* ── Project blocks ───────────────────────────────────────────────── */
     #bgr-blocks-wrap { display:flex;flex-direction:column;gap:16px;margin-bottom:12px; }
-    .bgr-block { border:2px solid color-mix(in srgb, var(--afims-heading-fill, #000E3E) 35%, transparent);
-        border-radius:10px;padding:14px;box-shadow:0 1px 4px rgba(0,0,0,.06); }
-    .bgr-block-hd { display:flex;align-items:flex-start;gap:10px; }
+    .bgr-block { border:1px solid color-mix(in srgb, var(--afims-border, #E4ECF2) 55%, var(--afims-text-disabled, #A9AAB8));
+        border-radius:10px;padding:14px;background:var(--afims-surface-subtle, #F4F7FA);
+        box-shadow:0 1px 3px rgba(15,32,69,.08);transition:box-shadow .15s,border-color .15s; }
+    .bgr-block:hover { border-color:color-mix(in srgb, var(--afims-heading-fill, #000E3E) 30%, var(--afims-border, #E4ECF2));
+        box-shadow:0 2px 10px rgba(15,32,69,.12); }
+    .bgr-block-hd { display:flex;align-items:flex-start;gap:10px;padding-bottom:14px;margin-bottom:14px;
+        border-bottom:1px solid color-mix(in srgb, var(--afims-border, #E4ECF2) 55%, var(--afims-text-disabled, #A9AAB8)); }
+    .bgr-block.bgr-collapsed .bgr-block-hd { padding-bottom:0;margin-bottom:0;border-bottom:none; }
     .bgr-block-project-wrap { flex:1;min-width:0; }
+    .bgr-block-project-code-wrap { flex:0 0 260px;min-width:0; }
+    .bgr-block-project-code-display { font-family:'IBM Plex Mono',monospace;background:var(--afims-surface, #FFFFFF);
+        border-style:dashed;color:var(--afims-text-muted, #62657E);cursor:default; }
+    .bgr-block-location-wrap { flex:0 0 240px;min-width:0; }
     .bgr-block-toggle { flex-shrink:0;border:1px solid var(--afims-border, #E4ECF2);
-        background:var(--afims-surface-subtle, #F4F7FA);color:var(--afims-heading-fill, #000E3E);
+        background:var(--afims-surface, #FFFFFF);color:var(--afims-heading-fill, #000E3E);
         cursor:pointer;width:42px;height:42px;border-radius:8px;display:flex;align-items:center;justify-content:center;
         margin-top:20px;transition:transform .15s,background .15s; }
-    .bgr-block-toggle:hover { background:var(--afims-border, #E4ECF2); }
+    .bgr-block-toggle:hover { background:var(--afims-surface-subtle, #F4F7FA); }
     .bgr-block.bgr-collapsed .bgr-block-toggle { transform:rotate(-90deg); }
-    .bgr-block-body { display:flex;flex-direction:column;gap:12px;margin-top:12px; }
+    .bgr-block-body { display:flex;flex-direction:column;gap:12px; }
     .bgr-block.bgr-collapsed .bgr-block-body { display:none; }
     .bgr-block-remove { flex-shrink:0;border:1px solid var(--afims-danger-soft, #FAE1E3);
         background:var(--afims-danger-soft, #FAE1E3);color:var(--afims-danger, #DC3545);
@@ -137,11 +147,13 @@ $_bgr_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
        .bgr-block-li-remove-col has no equivalent for, and that was the
        real cause of the two columns drifting out of alignment last time —
        not the row heights themselves. */
-    .bgr-block-li-outer { display:flex;align-items:stretch;border:1px solid var(--afims-border, #E4ECF2);
-        border-radius:10px;overflow:hidden; }
+    .bgr-block-li-outer { display:flex;align-items:stretch;
+        border:1px solid color-mix(in srgb, var(--afims-border, #E4ECF2) 55%, var(--afims-text-disabled, #A9AAB8));
+        border-radius:10px;overflow:hidden;background:var(--afims-surface, #FFFFFF); }
+    .bgr-block-li-tbl td { background:var(--afims-surface, #FFFFFF); }
     .bgr-block-li-wrap { overflow-x:auto;flex:1;min-width:0; }
     .bgr-block-li-tbl { width:100%;border-collapse:collapse;min-width:860px;table-layout:fixed; }
-    .bgr-block-li-tbl th { height:34px;box-sizing:border-box;font-size:10px;font-weight:700;color:var(--afims-text-disabled, #A9AAB8);
+    .bgr-block-li-tbl th { height:34px;box-sizing:border-box;font-size:11px;font-weight:700;color:var(--afims-text-muted, #62657E);
         text-transform:uppercase;letter-spacing:.04em;text-align:left;padding:0 6px;
         white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
         background:var(--afims-surface-subtle, #F4F7FA);border-bottom:2px solid var(--afims-border, #E4ECF2); }
@@ -152,6 +164,14 @@ $_bgr_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
     .bgr-li-input:focus, .bgr-li-select:focus { outline:none;border-color:var(--afims-heading-fill, #000E3E); }
     .bgr-li-input:disabled { background:var(--afims-surface-subtle, #F4F7FA);color:var(--afims-text-disabled, #A9AAB8);
         text-overflow:ellipsis; }
+    /* Starts at the same compact height as the other row inputs; drag the
+       handle to grow it for longer text. Table row height isn't forced to
+       keep up (td has no max-height), so it just grows with it normally —
+       except the separate .bgr-li-remove-cell sibling (a plain div, not a
+       real table row, used for the split remove-button column) stays fixed
+       at 44px and won't follow a resized row. Minor known mismatch, not
+       worth a per-row ResizeObserver for. */
+    textarea.bgr-li-particulars { resize:vertical;min-height:30px;max-height:200px;line-height:1.3;font-family:inherit; }
     .bgr-li-amt { text-align:right;font-family:'IBM Plex Mono',monospace; }
 
     .bgr-block-li-remove-col { flex-shrink:0;width:42px;display:flex;flex-direction:column;
@@ -163,8 +183,7 @@ $_bgr_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
     .bgr-li-remove { border:none;background:transparent;color:var(--afims-danger, #DC3545);
         font-size:18px;line-height:1;cursor:pointer;width:26px;height:26px;border-radius:6px; }
     .bgr-li-remove:hover { background:var(--afims-danger-soft, #FAE1E3); }
-    .bgr-block-add-li { margin-top:12px;
-        border:2px solid color-mix(in srgb, var(--afims-heading-fill, #000E3E) 35%, transparent) !important; }
+    .bgr-block-add-li { margin-top:12px; }
 
     #bgr-footer { display:flex;align-items:center;justify-content:flex-end;gap:8px;
         padding:14px 22px;background:var(--afims-surface-subtle, #F4F7FA);border-top:1px solid var(--afims-border, #E4ECF2);flex-shrink:0; }
@@ -181,15 +200,34 @@ $_bgr_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
         font-family:'IBM Plex Sans',sans-serif;cursor:pointer; }
     .bgr-btn-ghost:hover { background:var(--afims-surface-subtle, #F4F7FA); }
 
-    /* ── Project typeahead (twitter typeahead.js) ─────────────────────── */
+    /* ── Project typeahead (twitter typeahead.js) ──────────────────────── */
     /* The library wraps the input in a plain inline-block span by default —
        force it to behave like every other full-width field in this form. */
     .bgr-block-project-wrap .twitter-typeahead { display:block !important;width:100%; }
     .tt-menu { width:100%;background:var(--afims-surface, #FFFFFF);border:1px solid var(--afims-border, #E4ECF2);
-        border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.14);margin-top:4px;overflow:hidden;z-index:10000; }
-    .tt-suggestion { padding:8px 12px;font-size:13px;color:var(--afims-text, #1A1B21);cursor:pointer; }
-    .tt-suggestion:hover, .tt-suggestion.tt-cursor { background:var(--afims-surface-subtle, #F4F7FA); }
+        border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.14);margin-top:4px;z-index:10000;
+        max-height:260px;overflow-y:auto;overflow-x:hidden; }
+    .tt-suggestion { padding:8px 12px;font-size:13px;color:var(--afims-text, #1A1B21);cursor:pointer;transition:background .1s,color .1s; }
+    .tt-suggestion:hover, .tt-suggestion.tt-cursor { background:var(--afims-heading-fill, #000E3E);color:var(--afims-pure-white, #FFFFFF); }
     .tt-not-found { padding:8px 12px;font-size:12px;color:var(--afims-text-disabled, #A9AAB8);font-style:italic; }
+
+    /* ── Account Code picker (plain custom dropdown, not typeahead.js) ───
+       The Account Code field sits inside .bgr-block-li-wrap (overflow-x:auto,
+       which per spec forces its overflow-y to clip too) and .bgr-block-li-outer
+       (overflow:hidden, for rounded corners) — both would clip a normal
+       position:absolute dropdown no matter its z-index. A third-party
+       library fighting that clipping by forcing position:fixed caused a
+       real race (it kept re-applying its own absolute-positioned top/left
+       after ours), so this field uses no library at all: bgr_initAccountPicker
+       builds and positions this dropdown itself, with nothing else able to
+       stomp on it. */
+    .bgr-acct-menu { display:none;position:fixed;background:var(--afims-surface, #FFFFFF);
+        border:1px solid var(--afims-border, #E4ECF2);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.14);
+        z-index:10000;max-height:260px;overflow-y:auto;overflow-x:hidden; }
+    .bgr-acct-menu.open { display:block; }
+    .bgr-acct-option { padding:8px 12px;font-size:13px;color:var(--afims-text, #1A1B21);cursor:pointer;transition:background .1s,color .1s; }
+    .bgr-acct-option:hover, .bgr-acct-option.active { background:var(--afims-heading-fill, #000E3E);color:var(--afims-pure-white, #FFFFFF); }
+    .bgr-acct-empty { padding:8px 12px;font-size:12px;color:var(--afims-text-disabled, #A9AAB8);font-style:italic; }
 
     @media (max-width: 520px) { .bgr-row { grid-template-columns:1fr; } }
 </style>
@@ -280,8 +318,11 @@ let bgr_blockSeq = 0;
 
 const $bgr = id => document.getElementById(id);
 
+// bgr_loadChartOfAccounts is NOT included here — it's only needed once the
+// modal actually opens (bgr_openModal awaits it there), so it's not fetched
+// at all on page load unless the user opens the form.
 async function bgr_formBootstrap() {
-    await Promise.all([bgr_loadPrograms(), bgr_loadSubPrograms(), bgr_loadFiscalYears(), bgr_loadChartOfAccounts()]);
+    await Promise.all([bgr_loadPrograms(), bgr_loadSubPrograms(), bgr_loadFiscalYears()]);
     bgr_bindFormEvents();
 }
 if (document.readyState === 'loading') {
@@ -296,6 +337,7 @@ function bgr_bindFormEvents() {
     $bgr('bgr-form')?.addEventListener('submit', bgr_save);
 
     $bgr('bgr-program-code')?.addEventListener('change', bgr_onProgramChange);
+    $bgr('bgr-sub-program-code')?.addEventListener('change', bgr_refreshAllProjectCodeFields);
     $bgr('bgr-add-project-block')?.addEventListener('click', () => bgr_addProjectBlock());
 
     // A window resize can change whether a block's line-items table needs a
@@ -348,6 +390,10 @@ function bgr_fillSubPrograms(programCode, keep = '') {
 }
 function bgr_onProgramChange() {
     bgr_fillSubPrograms($bgr('bgr-program-code').value);
+    // bgr_fillSubPrograms sets #bgr-sub-program-code's value programmatically
+    // (rebuilt <option> list), which doesn't fire that select's own 'change'
+    // listener — so this has to be called explicitly here too.
+    bgr_refreshAllProjectCodeFields();
 }
 
 async function bgr_loadFiscalYears() {
@@ -356,21 +402,34 @@ async function bgr_loadFiscalYears() {
         const json = await res.json();
         if (!json.success) throw new Error(json.message || 'Failed to load fiscal years.');
 
-        const optsHtml = (json.data ?? []).map(fy =>
+        const years = json.data ?? [];
+        const optsHtml = years.map(fy =>
             `<option value="${bgr_escAttr(fy.fiscal_yr)}">${bgr_esc(fy.fiscal_yr)}</option>`
         ).join('');
         $bgr('bgr-fiscal-yr').insertAdjacentHTML('beforeend', optsHtml);
-        $bgr('bgr-filter-fiscal-yr')?.insertAdjacentHTML('beforeend', optsHtml);
+
+        // The filter already has the current year as a static, pre-selected
+        // option (see budget-req-page.php) -- skip it here so the dropdown
+        // doesn't end up with two identical entries.
+        const currentYear = String(new Date().getFullYear());
+        const filterOptsHtml = years
+            .filter(fy => String(fy.fiscal_yr) !== currentYear)
+            .map(fy => `<option value="${bgr_escAttr(fy.fiscal_yr)}">${bgr_esc(fy.fiscal_yr)}</option>`)
+            .join('');
+        $bgr('bgr-filter-fiscal-yr')?.insertAdjacentHTML('beforeend', filterOptsHtml);
     } catch (e) {
         bgr_toast(e.message, 'error');
     }
 }
 
-// All active, postable chart-of-accounts entries — no more expense-class-driven
-// prefix filtering; every account is selectable regardless of PS/MOOE/CO branch.
+// All active, postable, for-budget-proposal chart-of-accounts entries — no
+// more expense-class-driven prefix filtering; every such account is
+// selectable regardless of PS/MOOE/CO branch. Called when the modal opens
+// (bgr_openModal), not at page load — this form's own fields are the only
+// thing that needs it.
 async function bgr_loadChartOfAccounts() {
     try {
-        const res  = await fetch(`${BGR_CHART_OF_ACCOUNTS_API}?postable_only=1`, { credentials: 'same-origin' });
+        const res  = await fetch(`${BGR_CHART_OF_ACCOUNTS_API}?postable_only=1&for_budget_proposal=1`, { credentials: 'same-origin' });
         const json = await res.json();
         if (!json.success) throw new Error(json.message || 'Failed to load chart of accounts.');
         BGR_COA_OPTIONS = json.data ?? [];
@@ -380,13 +439,8 @@ async function bgr_loadChartOfAccounts() {
     }
 }
 
-function bgr_coaOptionsHtml(selected) {
-    const sel = selected != null ? String(selected) : '';
-    const opts = ['<option value="">— Select —</option>'];
-    BGR_COA_OPTIONS.forEach(a => {
-        opts.push(`<option value="${bgr_escHtmlAttr(a.account_id)}" ${String(a.account_id) === sel ? 'selected' : ''}>${bgr_esc(a.account_code)} — ${bgr_esc(a.account_title)}</option>`);
-    });
-    return opts.join('');
+function bgr_accountLabel(a) {
+    return `${a.account_code} — ${a.account_title}`;
 }
 
 /* ── Project blocks — one per "Project line item" (fims.budget_req_project),
@@ -406,6 +460,14 @@ function bgr_addProjectBlock(prefillBlock = null) {
                 <input type="text" class="bgr-input bgr-block-project-name" placeholder="Type to search or add a new project…" autocomplete="off">
                 <input type="hidden" class="bgr-block-project-code" value="">
             </div>
+            <div class="bgr-block-project-code-wrap">
+                <label class="bgr-label">Project Code</label>
+                <input type="text" class="bgr-input bgr-block-project-code-display" readonly placeholder="Select a program first">
+            </div>
+            <div class="bgr-block-location-wrap">
+                <label class="bgr-label">Location</label>
+                <input type="text" class="bgr-input bgr-block-location" placeholder="e.g. Brgy. San Jose, Quezon City" maxlength="255">
+            </div>
             <button type="button" class="bgr-block-remove" title="Remove project">&times;</button>
         </div>
         <div class="bgr-block-body">
@@ -413,8 +475,7 @@ function bgr_addProjectBlock(prefillBlock = null) {
                 <div class="bgr-block-li-wrap">
                     <table class="bgr-block-li-tbl">
                         <thead><tr>
-                            <th style="width:150px;">Account Code</th>
-                            <th style="width:300px;">Account Name</th>
+                            <th style="width:400px;">Account Code - Account Name</th>
                             <th>Particulars</th>
                             <th style="width:170px;">Proposed Amount</th>
                         </tr></thead>
@@ -436,6 +497,16 @@ function bgr_addProjectBlock(prefillBlock = null) {
         const label = `${prefillBlock.project_code} — ${prefillBlock.project_name || ''}`;
         $nameInput.val(label).data('bgr-matched-text', label);
         bgr_setProjectCode($nameInput, prefillBlock.project_code);
+    } else {
+        // A brand-new block with nothing picked yet already WOULD create a
+        // new project if saved as-is — preview its code immediately, rather
+        // than waiting for the user to type something first (the code never
+        // depends on the typed name anyway, only on the header's Program/
+        // Sub-Program).
+        bgr_updateProjectCodeField($nameInput);
+    }
+    if (prefillBlock && prefillBlock.location) {
+        block.querySelector('.bgr-block-location').value = prefillBlock.location;
     }
 
     block.querySelector('.bgr-block-remove').addEventListener('click', () => bgr_removeProjectBlock(block));
@@ -450,6 +521,7 @@ function bgr_addProjectBlock(prefillBlock = null) {
 
 function bgr_removeProjectBlock(block) {
     if ($bgr('bgr-blocks-wrap').children.length <= 1) { bgr_toast('At least one project is required.', 'error'); return; }
+    bgr_cleanupAccountMenus(block);
     block.remove();
 }
 
@@ -463,8 +535,9 @@ function bgr_toggleProjectBlock(block) {
 
 // Type-directly-to-search project picker (twitter typeahead.js, already
 // bundled as jquery/typeahead.jquery.min.js — no extra library needed). The
-// visible input IS the search box from the first keystroke, no separate
-// dropdown-open step; matches are searched live (filtered by the header's
+// visible input IS the search box; minLength:0 means focusing/clicking the
+// field opens the dropdown immediately (listing all matching projects),
+// and typing still filters that same list live (filtered by the header's
 // Program/Sub-Program). Picking a suggestion fills the paired hidden
 // .bgr-block-project-code field with its real project_code. Typing a name
 // with no match leaves that hidden field empty — bgr_save() then sends the
@@ -472,11 +545,101 @@ function bgr_toggleProjectBlock(block) {
 // when the whole request is saved (never the moment the user types).
 function bgr_setProjectCode($input, code) {
     $input.closest('.bgr-block-project-wrap').find('.bgr-block-project-code').val(code);
+    bgr_updateProjectCodeField($input);
+}
+
+// Seeded from the first real /project/next-code lookup under the current
+// Program/Sub-Program, then handed out locally (prefix + nextSeries++) to
+// every subsequent "new project" block — the database would otherwise keep
+// reporting the exact same "next available" series to each of them, since
+// none of them are actually saved yet. Reset (see bgr_refreshAllProjectCodeFields
+// and bgr_openModal) whenever Program/Sub-Program changes, or the modal
+// reopens, since that invalidates the whole prefix.
+let BGR_PROJECT_CODE_CACHE = null; // { prefix: string, nextSeries: number } | null
+
+// Fills the read-only "Project Code" field alongside Project: either the
+// matched existing project's real code, or a preview of what
+// GlobalService::generateProjectCode() would assign if this block ends up
+// creating a new one (no existing project resolved) — pure UI; the real
+// code (possibly different, if another project was created in the
+// meantime) is resolved by the backend only when the whole request is
+// actually saved. Shown as soon as the block has no resolved project,
+// whether or not anything's been typed yet — the preview depends only on
+// the header's Program/Sub-Program, never on the typed name. Fetched once
+// per "new project" state per Program/Sub-Program, not on every keystroke —
+// see bgr_refreshAllProjectCodeFields() for what clears that so a header
+// change re-fetches.
+function bgr_updateProjectCodeField($input) {
+    // .bgr-block-project-code-display is a sibling of .bgr-block-project-wrap
+    // (its own column), not a descendant of it — scope the lookup to the
+    // whole block, not just the Project field's own wrap.
+    const block   = $input.closest('.bgr-block');
+    const wrap    = $input.closest('.bgr-block-project-wrap');
+    const display = block.find('.bgr-block-project-code-display');
+    const code    = wrap.find('.bgr-block-project-code').val();
+
+    // Matched an existing project — it already has its own code, nothing to preview.
+    if (code) {
+        display.val(code).removeData('bgr-fetched');
+        return;
+    }
+
+    const programCode = $bgr('bgr-program-code').value;
+    if (!programCode) {
+        display.val('').attr('placeholder', 'Select a program first').removeData('bgr-fetched');
+        return; // not marked "fetched" — tries again once a Program is picked
+    }
+    if (display.data('bgr-fetched')) return;
+    display.data('bgr-fetched', true);
+
+    // Already seeded by an earlier "new project" block this session — hand
+    // out the next series locally instead of re-querying, which would just
+    // return the same number the DB still shows (nothing's saved yet).
+    if (BGR_PROJECT_CODE_CACHE) {
+        BGR_PROJECT_CODE_CACHE.nextSeries += 1;
+        display.val(BGR_PROJECT_CODE_CACHE.prefix + String(BGR_PROJECT_CODE_CACHE.nextSeries).padStart(4, '0'));
+        return;
+    }
+
+    display.val('').attr('placeholder', 'Generating…');
+    const params = new URLSearchParams({
+        program_code: programCode,
+        sub_program_code: $bgr('bgr-sub-program-code').value,
+    });
+    fetch(`${BGR_PROJECT_BASE_API}/next-code?${params}`, { credentials: 'same-origin' })
+        .then(res => res.json())
+        .then(json => {
+            if (!json.success) throw new Error(json.message || 'Could not generate a project code.');
+            const fullCode = json.data.project_code;
+            const m = fullCode.match(/^(.*-)(\d{4})$/);
+            if (m) {
+                BGR_PROJECT_CODE_CACHE = { prefix: m[1], nextSeries: parseInt(m[2], 10) };
+            }
+            display.val(fullCode);
+        })
+        .catch(() => display.attr('placeholder', 'Code unavailable'));
+}
+
+// Re-previews every project block's code — needed because the preview
+// depends on the header's Program/Sub-Program, which can change AFTER a
+// block was created (including the very first block: 'add' mode resets
+// Program to blank before creating it) without that block's own Project
+// field ever being touched again. Clears the "already fetched" guard and
+// the shared series cache first — a new Program/Sub-Program means a new
+// prefix, so the old cached one (and its running count) no longer applies.
+function bgr_refreshAllProjectCodeFields() {
+    BGR_PROJECT_CODE_CACHE = null;
+    document.querySelectorAll('#bgr-blocks-wrap .bgr-block-project-code-display').forEach(el => {
+        $(el).removeData('bgr-fetched');
+    });
+    document.querySelectorAll('#bgr-blocks-wrap .bgr-block-project-name').forEach(el => {
+        bgr_updateProjectCodeField($(el));
+    });
 }
 
 function bgr_initProjectTypeahead($input) {
     $input.typeahead(
-        { hint: false, highlight: true, minLength: 1 },
+        { hint: false, highlight: true, minLength: 0 },
         {
             name: 'bgr-projects',
             display: 'label',
@@ -535,7 +698,19 @@ function bgr_initProjectTypeahead($input) {
 // lands somewhere outside it — a different field in the same block, another
 // block entirely, or outside the modal. Registered once, globally (not
 // per-block), since it has to see every focus change in the document.
+// This only catches KEYBOARD-driven focus changes (e.g. Tab) — clicking on
+// a plain, non-focusable part of the page (empty space, a label, the
+// backdrop) doesn't move focus anywhere, so 'focusin' never fires there.
+// The 'mousedown' listener below (which fires on literally any click)
+// handles that case.
 document.addEventListener('focusin', (ev) => {
+    document.querySelectorAll('#bgr-blocks-wrap .bgr-block-project-name').forEach((el) => {
+        if (!el.closest('.bgr-block-project-wrap').contains(ev.target)) {
+            $(el).typeahead('close');
+        }
+    });
+});
+document.addEventListener('mousedown', (ev) => {
     document.querySelectorAll('#bgr-blocks-wrap .bgr-block-project-name').forEach((el) => {
         if (!el.closest('.bgr-block-project-wrap').contains(ev.target)) {
             $(el).typeahead('close');
@@ -550,12 +725,24 @@ function bgr_addLineItemRow(blockEl, prefill = {}) {
     const tr = document.createElement('tr');
     tr.dataset.seq = seq;
     tr.innerHTML = `
-        <td><select class="bgr-li-select bgr-li-account" onchange="bgr_liAccountChange(this)">${bgr_coaOptionsHtml(prefill.account_id)}</select></td>
-        <td><input type="text" class="bgr-li-input bgr-li-account-name" value="${bgr_escHtmlAttr(prefill.account_title)}" title="${bgr_escHtmlAttr(prefill.account_title)}" disabled></td>
-        <td><input type="text" class="bgr-li-input bgr-li-particulars" value="${bgr_escHtmlAttr(prefill.particulars)}" placeholder="Particulars" maxlength="2000"></td>
+        <td>
+            <div class="bgr-li-account-wrap">
+                <input type="text" class="bgr-li-input bgr-li-account-code" placeholder="Type to search…" autocomplete="off">
+                <input type="hidden" class="bgr-li-account-id" value="${bgr_escHtmlAttr(prefill.account_id)}">
+            </div>
+        </td>
+        <td><textarea class="bgr-li-input bgr-li-particulars" placeholder="Particulars" maxlength="2000" rows="1">${bgr_esc(prefill.particulars)}</textarea></td>
         <td><input type="text" inputmode="decimal" class="bgr-li-input bgr-li-amt" value="${bgr_fmtAmountInitial(prefill.proposed_amount ?? prefill.amount)}" placeholder="0.00" oninput="bgr_fmtAmount(this)"></td>
     `;
     blockEl.querySelector('.bgr-block-li-tbody').appendChild(tr);
+
+    const $acctInput = $(tr.querySelector('.bgr-li-account-code'));
+    bgr_initAccountPicker($acctInput);
+    if (prefill.account_id != null && prefill.account_id !== '') {
+        const opt = BGR_COA_OPTIONS.find(a => String(a.account_id) === String(prefill.account_id));
+        const label = opt ? bgr_accountLabel(opt) : '';
+        if (label) $acctInput.val(label).data('bgr-matched-text', label);
+    }
 
     // Remove button lives in the separate .bgr-block-li-remove-col sibling,
     // kept in row-sync with the table via matching dataset.seq and matching
@@ -574,7 +761,9 @@ function bgr_removeLineItemRow(blockEl, seq) {
     const tbody = blockEl.querySelector('.bgr-block-li-tbody');
     if (tbody.rows.length <= 1) { bgr_toast('At least one line item is required.', 'error'); return; }
     blockEl.querySelector(`.bgr-li-remove-cell[data-seq="${seq}"]`)?.remove();
-    tbody.querySelector(`tr[data-seq="${seq}"]`)?.remove();
+    const row = tbody.querySelector(`tr[data-seq="${seq}"]`);
+    if (row) bgr_cleanupAccountMenus(row);
+    row?.remove();
     bgr_syncRemoveColGap(blockEl);
 }
 
@@ -592,18 +781,150 @@ function bgr_syncRemoveColGap(blockEl) {
     col.style.paddingBottom = scrollbarHeight > 0 ? scrollbarHeight + 'px' : '0';
 }
 
-function bgr_liAccountChange(sel) {
-    const tr   = sel.closest('tr');
-    const opt  = BGR_COA_OPTIONS.find(a => String(a.account_id) === sel.value);
-    const name = opt ? opt.account_title : '';
-    const nameInput = tr.querySelector('.bgr-li-account-name');
-    nameInput.value = name;
-    nameInput.title = name;
+// Type-directly-to-search chart-of-accounts picker — a small custom
+// dropdown, NOT typeahead.js (unlike the Project picker above). This field
+// sits inside .bgr-block-li-wrap (overflow-x:auto, which per spec forces
+// its overflow-y to clip too) and .bgr-block-li-outer (overflow:hidden, for
+// rounded corners) — both clip a normal position:absolute dropdown no
+// matter its z-index. Forcing typeahead.js's own menu to position:fixed to
+// escape that caused a real race (the library kept re-applying its own
+// absolute-positioned top/left after ours, sometimes winning and hiding the
+// menu off-screen). A dropdown built and positioned entirely by us — one
+// <div class="bgr-acct-menu"> per row, appended to <body> so no ancestor
+// can clip it — has nothing else fighting it.
+//
+// BGR_COA_OPTIONS is already fully loaded client-side (bgr_loadChartOfAccounts),
+// so matching is done locally with no extra request. Selecting an option
+// resolves the hidden .bgr-li-account-id field (the input itself already
+// shows "code — name"); clearing/typing away from a matched label clears
+// the id, so bgr_save() can reject an unresolved row.
+function bgr_setAccountId($input, id) {
+    $input.closest('tr')[0].querySelector('.bgr-li-account-id').value = id || '';
+}
+
+// menu element -> its input element, so the single global focusin/scroll
+// listeners below (registered once, not per-row) know which menu goes with
+// which field, and bgr_removeLineItemRow can clean up its own entry.
+const BGR_ACCT_MENUS = new Map();
+
+function bgr_initAccountPicker($input) {
+    const input = $input.get(0);
+    const menu  = document.createElement('div');
+    menu.className = 'bgr-acct-menu';
+    document.body.appendChild(menu);
+    BGR_ACCT_MENUS.set(menu, input);
+    $input.data('bgr-acct-menu', menu);
+
+    function renderOptions(query) {
+        const q = query.trim().toLowerCase();
+        const matches = BGR_COA_OPTIONS
+            .filter(a => !q || a.account_code.toLowerCase().includes(q) || a.account_title.toLowerCase().includes(q))
+            .slice(0, 50);
+        menu.innerHTML = matches.length
+            ? matches.map(a => `<div class="bgr-acct-option" data-account-id="${bgr_escHtmlAttr(a.account_id)}">${bgr_esc(bgr_accountLabel(a))}</div>`).join('')
+            : '<div class="bgr-acct-empty">No matching account.</div>';
+    }
+
+    function openMenu() {
+        BGR_ACCT_MENUS.forEach((_, m) => { if (m !== menu) m.classList.remove('open'); });
+        renderOptions(input.value);
+        const rect = input.getBoundingClientRect();
+        menu.style.top   = (rect.bottom + 4) + 'px';
+        menu.style.left  = rect.left + 'px';
+        menu.style.width = rect.width + 'px';
+        menu.classList.add('open');
+    }
+
+    $input.on('focus', openMenu);
+    $input.on('input', () => {
+        if ($input.data('bgr-syncing')) return;
+        if ($input.val() !== $input.data('bgr-matched-text')) {
+            bgr_setAccountId($input, '');
+        }
+        openMenu();
+    });
+
+    // mousedown, not click: a plain click would first let the browser blur
+    // the input (nothing else in the menu is focusable), which the global
+    // focusin listener above treats as "focus left the field" and closes
+    // the menu — hiding the option out from under the click before it ever
+    // fires. preventDefault() here stops that blur, so focus never leaves
+    // the input and the selection below always registers.
+    menu.addEventListener('mousedown', (ev) => {
+        const optionEl = ev.target.closest('.bgr-acct-option');
+        if (!optionEl) return;
+        ev.preventDefault();
+
+        const opt = BGR_COA_OPTIONS.find(a => String(a.account_id) === optionEl.dataset.accountId);
+        if (!opt) return;
+
+        const label = bgr_accountLabel(opt);
+        $input.data('bgr-syncing', true);
+        $input.val(label).data('bgr-matched-text', label);
+        bgr_setAccountId($input, opt.account_id);
+        setTimeout(() => $input.removeData('bgr-syncing'), 0);
+        menu.classList.remove('open');
+    });
+}
+
+// Registered once, globally (not per-row): closes an open account menu the
+// moment focus genuinely lands somewhere outside it (a different field,
+// another row, or outside the modal), and when something OTHER than the
+// menu itself scrolls — the menu is position:fixed, so it would otherwise
+// drift away from the input it belongs to as soon as the (horizontally-
+// scrollable) table or the modal body scrolls. Scrolling the menu's own
+// suggestion list (ev.target is the menu) must NOT close it — that's just
+// the user scrolling through the options, which is the whole point of it
+// being scrollable.
+document.addEventListener('focusin', (ev) => {
+    BGR_ACCT_MENUS.forEach((inputEl, menuEl) => {
+        if (inputEl !== ev.target && !menuEl.contains(ev.target)) {
+            menuEl.classList.remove('open');
+        }
+    });
+});
+// Same reasoning as the project picker's 'mousedown' listener above: a
+// click on a plain, non-focusable part of the page doesn't move focus
+// anywhere, so 'focusin' alone misses it.
+document.addEventListener('mousedown', (ev) => {
+    BGR_ACCT_MENUS.forEach((inputEl, menuEl) => {
+        if (inputEl !== ev.target && !menuEl.contains(ev.target)) {
+            menuEl.classList.remove('open');
+        }
+    });
+});
+document.addEventListener('scroll', (ev) => {
+    BGR_ACCT_MENUS.forEach((_, menuEl) => {
+        if (menuEl.contains(ev.target)) return;
+        menuEl.classList.remove('open');
+    });
+}, true);
+
+// Each account picker's dropdown lives on <body>, detached from its row —
+// removing the row alone would otherwise leak that element. Call this with
+// whatever's about to be removed/cleared (a single row, a whole project
+// block, or the entire #bgr-blocks-wrap) before it's actually removed.
+function bgr_cleanupAccountMenus(containerEl) {
+    containerEl.querySelectorAll('.bgr-li-account-code').forEach((el) => {
+        const menu = $(el).data('bgr-acct-menu');
+        if (menu) {
+            BGR_ACCT_MENUS.delete(menu);
+            menu.remove();
+        }
+    });
 }
 
 /* ── Modal ─────────────────────────────────────────────────── */
-function bgr_openModal(mode, data = null) {
+async function bgr_openModal(mode, data = null) {
     bgr_hideErr();
+    BGR_PROJECT_CODE_CACHE = null; // fresh session — don't carry over a prior open's series cache
+
+    // Lazy-loaded here rather than at page load — the Account Code picker
+    // (built inside bgr_addProjectBlock below) needs BGR_COA_OPTIONS already
+    // populated, so this must finish before any project block is built.
+    window.PagePreloader?.show();
+    await bgr_loadChartOfAccounts();
+    window.PagePreloader?.hide();
 
     $bgr('bgr-mode').value = mode;
     $bgr('bgr-fiscal-yr').disabled = false;
@@ -622,6 +943,7 @@ function bgr_openModal(mode, data = null) {
         ctx.textContent = `Editing a program under Budget Request #${data.budget_reference_number} (FY ${data.fiscal_yr}).`;
         ctx.style.display = '';
 
+        bgr_cleanupAccountMenus($bgr('bgr-blocks-wrap'));
         $bgr('bgr-blocks-wrap').innerHTML = '';
         (data.projects && data.projects.length ? data.projects : [{}]).forEach(p => bgr_addProjectBlock(p));
     } else {
@@ -638,6 +960,7 @@ function bgr_openModal(mode, data = null) {
 
         $bgr('bgr-program-context').style.display = 'none';
 
+        bgr_cleanupAccountMenus($bgr('bgr-blocks-wrap'));
         $bgr('bgr-blocks-wrap').innerHTML = '';
         bgr_addProjectBlock();
     }
@@ -647,6 +970,7 @@ function bgr_openModal(mode, data = null) {
 
 function bgr_closeModal() {
     $bgr('bgr-overlay').classList.remove('open');
+    bgr_cleanupAccountMenus($bgr('bgr-blocks-wrap'));
     $bgr('bgr-blocks-wrap').innerHTML = '';
     $bgr('bgr-form').reset();
     $bgr('bgr-fiscal-yr').disabled = false;
@@ -683,6 +1007,7 @@ async function bgr_save(ev) {
         // backend resolves/creates it atomically when the request is saved.
         const projectCode = block.querySelector('.bgr-block-project-code').value;
         const projectName = block.querySelector('.bgr-block-project-name').value.trim();
+        const location    = block.querySelector('.bgr-block-location').value.trim();
         if (!projectCode && !projectName) { bgr_showErr(`Project ${pi + 1}: select or enter a project.`); return; }
 
         const rows = Array.from(block.querySelectorAll('.bgr-block-li-tbody tr'));
@@ -691,7 +1016,7 @@ async function bgr_save(ev) {
         const lineItems = [];
         for (let li = 0; li < rows.length; li++) {
             const tr          = rows[li];
-            const accountId   = tr.querySelector('.bgr-li-account').value;
+            const accountId   = tr.querySelector('.bgr-li-account-id').value;
             const particulars = tr.querySelector('.bgr-li-particulars').value.trim();
             const amount      = bgr_unformatAmount(tr.querySelector('.bgr-li-amt').value);
             if (!accountId) { bgr_showErr(`Project ${pi + 1}, line item ${li + 1}: select a chart of accounts entry.`); return; }
@@ -700,7 +1025,7 @@ async function bgr_save(ev) {
             lineItems.push({ account_id: accountId, particulars, proposed_amount: amount });
         }
 
-        projects.push({ project_code: projectCode, project_name: projectName, line_items: lineItems });
+        projects.push({ project_code: projectCode, project_name: projectName, location, line_items: lineItems });
     }
     if (!projects.length) { bgr_showErr('Add at least one project.'); return; }
 

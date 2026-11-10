@@ -1,7 +1,7 @@
 -- Region 3 Finance user.
 -- uac.users.rc_id (see "03 - alter_table/09 -
 -- users_replace_rc_code_with_rc_id.sql") is set to Region 3's RC id
--- ('RC-027') so this account can create/list its own fims.budget_req rows
+-- ('R03') so this account can create/list its own fims.budget_req rows
 -- (GlobalService::getUserRcId() / getUserRcScope()) and generate budget
 -- program codes (GlobalService::generateProgramCode(), which derives the RC
 -- code by joining rc_id to fims.responsibility_code -- uac.users.rc_code no
@@ -38,7 +38,7 @@ INSERT INTO uac.users (
     'Finance',
     '9',
     NULL,
-    'RC-027',
+    'R03',
     true
 )
 ON CONFLICT (username) DO UPDATE SET

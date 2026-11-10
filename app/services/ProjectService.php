@@ -13,17 +13,6 @@ class ProjectService
 
     private array $allowedFields = ['project_code', 'project_name', 'program_code', 'sub_program_code'];
 
-    private function generateProjectCode(): string
-    {
-        $next = (int) App\ExecuteScalar(
-            "SELECT COALESCE(MAX(CAST(SUBSTRING(project_code FROM 5) AS INTEGER)), 0) + 1
-             FROM {$this->table} WHERE project_code ~ '^PRJ-[0-9]+$'",
-            'DB'
-        );
-
-        return 'PRJ-' . str_pad((string) $next, 4, '0', STR_PAD_LEFT);
-    }
-
     public function fetchAlls(?int $page = null, int $limit = 10, string $search = '', string $programCode = '', string $subProgramCode = ''): array
     {
         try {
@@ -128,7 +117,7 @@ class ProjectService
             }
 
             if ($code === '') {
-                $code = $this->generateProjectCode();
+                $code = GlobalService::generateProjectCode($program, $subProgram);
             } else {
                 $exists = (int) App\ExecuteScalar(
                     "SELECT COUNT(*) FROM {$this->table} WHERE project_code = " . App\QuotedValue($code, DataType::STRING, 'DB'),
