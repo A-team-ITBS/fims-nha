@@ -44,7 +44,7 @@ class PersonalData
     public $RenderingView = false;
 
     // CSS class/style
-    public $CurrentPageName = "VoucherController";
+    public $CurrentPageName = "ChangePassController";
 
     // Page headings
     public $Heading = "";
