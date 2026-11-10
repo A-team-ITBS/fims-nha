@@ -78,7 +78,7 @@ $app->get('/budget_allocation/all', function ($request, $response, $args) use ($
 })->add($accessMiddleware)->add($jwtMiddleware);
 
 // Fetch all (with pagination + summary). Optional: page, limit + the filters above
-$app->get('/budget_allocation/list', function ($request, $response, $args) use ($BudgetAllocationService) {
+$app->get('/budget_allocation/list', function ($request, $response, $args) use ($BudgetAllocationService, $budgetAllocationFilters) {
     try {
         $params = $request->getQueryParams();
         $page = isset($params['page']) ? (int) $params['page'] : 1;
