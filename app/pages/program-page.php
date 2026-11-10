@@ -217,7 +217,7 @@ function prg_openModal(mode, row = null) {
     $prg('prg-program-code').disabled = mode === 'edit';
     $prg('prg-code-hint').textContent = mode === 'edit'
         ? 'Program codes cannot be changed after creation.'
-        : 'Preview — the next 3-digit code. The final code is assigned when you save.';
+        : 'Suggested next 3-digit code. You can change it; it must be unused.';
     $prg('prg-program-name').value = row?.program_name || '';
     $prg('prg-save').disabled = false;
     if (mode === 'add') prg_loadCodePreview();     // defined in form/program-form.php
