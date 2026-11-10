@@ -2,12 +2,65 @@
 namespace PHPMaker2024\FIMS;
 @session_start();
 $_mrq_api = Config('API.FIMS_URL');
+
+// Who is looking: the logged-in user's office. uac.users gives the rc_id (that column only) and is joined to
+// fims.responsibility_code for the RC itself — the same lookup as budget-req-page.php. The Financial Management
+// Department (FMD: rc_code 35-074-0000000-032, rc_id 013 in this data) REVIEWS every office's memo requests, so for its
+// users the list is the central one (every office, ?central=1), Edit and Delete are hidden, and each row gets a "Process"
+// action (details + Approve / Return, readone/memo-process-readone.php). Everyone else sees their own office's requests —
+// the API decides that from the logged-in user, not from anything sent here — and keeps Edit and Delete.
+// FMD is recognised by its rc_code, NOT its rc_id (the id's format differs between datasets: "013" vs "RC-013"). Mirrors
+// GlobalService::CENTRAL_REVIEW_RC_CODE, which the API checks again server-side (process() refuses anyone else).
+$userid = CurrentUserID();
+$_mrq_fmdRcCode = '35-074-0000000-032';
+$_mrq_isFmd = false;
+try {
+    $_mrq_rc = ExecuteRow(
+        'SELECT rc.rc_id, rc.rc_code, rc.rc_name FROM uac.users u '
+        . 'JOIN fims.responsibility_code rc ON rc.rc_id = u.rc_id WHERE u.user_id = ' . (int) $userid,
+        'DB'
+    ) ?: null;
+    $_mrq_isFmd = $_mrq_rc !== null && trim((string) ($_mrq_rc['rc_code'] ?? '')) === $_mrq_fmdRcCode;
+} catch (\Throwable $e) {
+    $_mrq_isFmd = false;   // can't tell who this is -> the ordinary view, never an error page
+    LogError('memo-req-page: could not look up the current user\'s RC — ' . $e->getMessage());
+}
 ?>
 
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
+<?php /* GetUrl() without a leading slash adds the app's base path (the app may live in a sub-folder / virtual directory), and the
+          cache-buster is read from the file next to this page, not from DOCUMENT_ROOT (which is not the app folder on every server) —
+          so a changed stylesheet is never served from a browser's stale cache. */ ?>
+<link rel="stylesheet" href="<?= GetUrl('_shared/css/nha-fims.css') ?>?v=<?= @filemtime(dirname(__DIR__, 2) . '/_shared/css/nha-fims.css') ?>" />
+<style>
+/* ── Actions dropdown menu ──────────────────────────────────── */
+/* The same menu as the Budget Requirements list (budget-req-page.php), which keeps its copy inline too. */
+.nha-tools-menu { position:relative;display:inline-block; }
+.nha-menu-trigger { display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border-radius:6px;
+    font-size:11px;font-weight:600;cursor:pointer;border:1px solid var(--afims-border, #E4ECF2);
+    background:var(--afims-surface, #FFFFFF);color:var(--afims-text, #1A1B21);white-space:nowrap;
+    font-family:'IBM Plex Sans',sans-serif;transition:all .15s; }
+.nha-menu-trigger:hover { background:var(--afims-surface-subtle, #F4F7FA);border-color:var(--afims-text-disabled, #A9AAB8); }
+.nha-menu-trigger svg { width:12px;height:12px;flex-shrink:0; }
+.nha-tools-dropdown { display:none;position:fixed;min-width:170px;background:var(--afims-surface, #FFFFFF);
+    border:1px solid var(--afims-border, #E4ECF2);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.12);
+    z-index:9999;padding:4px 0; }
+.nha-tools-dropdown.open { display:block; }
+.nha-menu-item { display:flex;align-items:center;gap:8px;padding:8px 12px;font-size:12px;font-weight:500;
+    color:var(--afims-text, #1A1B21);text-decoration:none;white-space:nowrap;cursor:pointer;
+    border:none;background:none;width:100%;text-align:left;transition:background .1s;
+    font-family:'IBM Plex Sans',sans-serif; }
+.nha-menu-item:hover { background:var(--afims-surface-subtle, #F4F7FA);color:var(--afims-heading-fill, #000E3E); }
+.nha-menu-item.danger:hover { background:#fdecec;color:#c0392b; }
+.nha-menu-item svg { width:13px;height:13px;flex-shrink:0;opacity:.7; }
+/* An item tinted with a status colour (settings_status.color), passed in per item as --nha-item-color. */
+.nha-menu-item.has-color { color:var(--nha-item-color); }
+.nha-menu-item.has-color svg { opacity:1; }
+.nha-menu-item.has-color:hover { background:color-mix(in srgb, var(--nha-item-color) 12%, #fff);color:var(--nha-item-color); }
+.nha-menu-divider { border-top:1px solid var(--afims-border, #E4ECF2);margin:3px 0; }
+</style>
 
 <div id="mrq-root" class="nha-root">
 
@@ -81,7 +134,7 @@ $_mrq_api = Config('API.FIMS_URL');
                     <svg class="nha-filter-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
                     </svg>
-                    <input type="text" id="mrq-filter-search" class="nha-filter-input" placeholder="Search memo ref, allocation no., PR / PO no., vendor…">
+                    <input type="text" id="mrq-filter-search" class="nha-filter-input" placeholder="Search request ref, allocation no., PR / PO no., vendor…">
                     <button class="nha-filter-clear-btn" id="mrq-search-clear" hidden type="button">×</button>
                 </div>
             </div>
@@ -95,7 +148,7 @@ $_mrq_api = Config('API.FIMS_URL');
                 <thead>
                     <tr>
                         <th>#</th>
-                        <th>Memo Ref No</th>
+                        <th>Request Reference Number</th>
                         <th>FY</th>
                         <th>Requesting Office</th>
                         <th>Program / Project</th>
@@ -124,6 +177,11 @@ $_mrq_api = Config('API.FIMS_URL');
 // window.cbaModal and calls window.mrq_load() after a successful save, to refresh this list.
 $cbaAsModal = true;
 include __DIR__ . '/form/budget-allocation-form.php';
+
+// FMD's "Process" modal (the request's details, Approve / Return). Only FMD gets the action, so only FMD gets its markup.
+if ($_mrq_isFmd) {
+    include __DIR__ . '/readone/memo-process-readone.php';
+}
 ?>
 
 </div><!-- /#mrq-root -->
@@ -136,10 +194,21 @@ include __DIR__ . '/form/budget-allocation-form.php';
 
    Create  → the CBA form modal (app/pages/form/budget-allocation-form.php, window.cbaModal)
    Edit    → the same form as a full page: BudgetAllocationForm?id=N
+   Preview → (Actions menu, Draft requests only) PATCH status_id = the 'For Preview' status
+   Process → (Actions menu, FMD only — instead of Edit / Delete) the details modal with Endorse / Approve / Return:
+             readone/memo-process-readone.php (mpr_*), PATCH /budget_allocation/process/{id}. The review is a chain:
+             For Preview (FMD Section Chief) -> For Division Manager (FMD Division Manager) -> For Department Manager
+             (FMD Department Manager) -> Approved; Return at any step. The buttons show only for the user level whose
+             step it is.
+
+   The reference shown for every row ("Request Reference Number") is budget_allocation.request_referrence_no — RR-001,
+   RR-002, … generated by the database when the row is created. The search box matches it too.
 ═══════════════════════════════════════════════════════════════ */
 
 const MRQ_BASE = '<?php echo $_mrq_api; ?>';
 const MRQ_API  = MRQ_BASE + '/budget_allocation';
+// true for the Financial Management Department (see the PHP at the top): the central list, no Edit / Delete, a Process action.
+const MRQ_IS_FMD = <?php echo $_mrq_isFmd ? 'true' : 'false'; ?>;
 
 let mrq_page = 1;
 let mrq_rows = [];
@@ -152,7 +221,24 @@ const MRQ_LOOKUP_SOURCES = {
     statuses    : `${MRQ_API}/statuses`,
 };
 
+// The two statuses the "Preview" action moves a request between (names of memo-request statuses in
+// fims.settings_status; their ids are looked up, never hardcoded). 'For Preview' is seeded by
+// sample_data/06 - fims_settings_status_budget_allocation.sql, the same status the form's "Submit for Preview" gives.
+const MRQ_STATUS_DRAFT   = 'Draft';
+const MRQ_STATUS_PREVIEW = 'For Preview';
+
 const $mrq = id => document.getElementById(id);
+
+// Status names are compared ignoring case and surrounding spaces.
+function mrq_sameStatus(a, b) { return String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase(); }
+// Only a request that is still a Draft can be sent on for preview.
+function mrq_isDraft(r)       { return mrq_sameStatus(r.status_name, MRQ_STATUS_DRAFT); }
+// A status's colour (settings_status.color, from the statuses loaded at start-up), or '' when it has none, is not loaded,
+// or is not a plain hex colour — nothing else may be put into a style attribute.
+function mrq_statusColor(name) {
+    const c = (MRQ_LOOKUPS.statuses.find(s => mrq_sameStatus(s.name, name)) || {}).color || '';
+    return /^#[0-9a-fA-F]{3,8}$/.test(c) ? c : '';
+}
 
 async function mrq_bootstrapLoad() {
     window.PagePreloader?.show();
@@ -202,9 +288,15 @@ function mrq_optionsHtml(placeholder, rows, valueOf, labelOf) {
         rows.map(r => `<option value="${mrq_esc(valueOf(r))}">${mrq_esc(labelOf(r))}</option>`).join('');
 }
 
+// Rebuilds both filter dropdowns from MRQ_LOOKUPS and keeps what is selected — it is also called when a lookup is re-read
+// after start-up (see mrq_statusId), which must not reset the filters the user has set.
 function mrq_fillFilters() {
+    const fy = $mrq('mrq-filter-fy').value;
+    const st = $mrq('mrq-filter-status').value;
     $mrq('mrq-filter-fy').innerHTML     = mrq_optionsHtml('All Years',  MRQ_LOOKUPS.fiscalYears, f => f.fiscal_yr, f => f.fiscal_yr);
     $mrq('mrq-filter-status').innerHTML = mrq_optionsHtml('All Status', MRQ_LOOKUPS.statuses,    s => s.id,        s => s.name);
+    $mrq('mrq-filter-fy').value     = fy;
+    $mrq('mrq-filter-status').value = st;
 }
 
 /* ── Events ────────────────────────────────────────────────── */
@@ -242,6 +334,9 @@ async function mrq_load() {
             page        : mrq_page,
             limit       : MRQ_PAGE_SIZE,
         });
+        // FMD reviews every office's requests: ask for the central list. The API only grants it to a user of the FMD
+        // office (the parameter alone grants nothing), and gives everybody else just their own office's requests.
+        if (MRQ_IS_FMD) params.set('central', '1');
         const json = await mrq_request(`${MRQ_API}/list?${params}`);
 
         mrq_rows = json.data ?? [];
@@ -272,6 +367,11 @@ function mrq_statusBadge(name, color) {
     return `<span class="nha-bdg" style="color:${safe};background:color-mix(in srgb, ${safe} 14%, #fff);">${mrq_esc(name)}</span>`;
 }
 
+// The reference a row is known by: the database-generated request reference (RR-001, …) — the only one there is
+// (memo_ref_no was dropped, alter_table/20).
+function mrq_refOf(r)       { return r.request_referrence_no || ''; }
+function mrq_parentRefOf(r) { return r.parent_request_referrence_no || ''; }
+
 function mrq_docCell(number, amount) {
     if (!number && (amount === null || amount === undefined || amount === '')) return '—';
     return `<div>${number ? `<code class="nha-code">${mrq_esc(number)}</code>` : '—'}</div>` +
@@ -291,14 +391,14 @@ function mrq_renderTable(rows) {
         return `<tr>
         <td class="nha-td-seq">${offset + i + 1}</td>
         <td>
-            <code class="nha-code">${mrq_esc(r.memo_ref_no)}</code>
+            <code class="nha-code">${mrq_esc(mrq_refOf(r))}</code>
             ${r.allocation_number ? `<div class="nha-td-sub" style="margin-top:2px;">${mrq_esc(r.allocation_number)}</div>` : ''}
             <div style="margin-top:3px;display:flex;gap:4px;flex-wrap:wrap;">
                 ${r.allocation_type ? `<span class="nha-bdg nha-bdg-blue">${mrq_esc(r.allocation_type)}</span>` : ''}
                 ${r.document_type   ? `<span class="nha-bdg nha-bdg-gray">${mrq_esc(r.document_type)}</span>` : ''}
                 ${mrq_truthy(r.is_bidding) ? '<span class="nha-bdg nha-bdg-purple">Bidding</span>' : ''}
             </div>
-            ${r.parent_memo_ref_no ? `<div class="nha-td-sub" style="margin-top:3px;">↳ ${mrq_esc(r.parent_memo_ref_no)}</div>` : ''}
+            ${mrq_parentRefOf(r) ? `<div class="nha-td-sub" style="margin-top:3px;">↳ ${mrq_esc(mrq_parentRefOf(r))}</div>` : ''}
         </td>
         <td>${mrq_esc(r.fiscal_year)}</td>
         <td>
@@ -314,19 +414,77 @@ function mrq_renderTable(rows) {
         <td>${mrq_docCell(r.pr_number, r.pr_amount)}</td>
         <td>${mrq_docCell(r.po_number, r.po_amount)}</td>
         <td>${mrq_statusBadge(r.status_name, r.status_color)}</td>
-        <td>
-            <button class="nha-btn-act edit" onclick="mrq_edit(${id})" title="Edit">
-                <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
-                Edit
-            </button>
-            <button class="nha-btn-act danger" onclick="mrq_delete(${id})" title="Delete">
-                <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-                Delete
-            </button>
-        </td>
+        <td>${mrq_actionMenu(id, mrq_isDraft(r))}</td>
     </tr>`;
     }).join('');
 }
+
+/* ── Actions dropdown ──────────────────────────────────────── */
+// One "Actions" button per row that opens a small menu — the same idea as the Budget Requirements list: "Preview" first
+// (only while the request is still a Draft: it moves it on to For Preview), a divider, Edit, a divider, then Delete —
+// or, for FMD, Preview (while Draft), a divider, then Process in place of Edit and Delete.
+// The menu is positioned with fixed coordinates, so the table's own scrolling never clips it.
+function mrq_actionMenu(id, isDraft) {
+    // Preview is tinted with the colour of the status it gives (For Preview's settings_status.color); Edit and Delete
+    // keep the plain look. With no usable colour it is a plain item too.
+    const color = isDraft ? mrq_statusColor(MRQ_STATUS_PREVIEW) : '';
+    const previewItem = !isDraft ? '' : `<button type="button" class="nha-menu-item${color ? ' has-color' : ''}"${color ? ` style="--nha-item-color:${color};"` : ''} data-action="preview" title="Submit for preview: its status becomes ${MRQ_STATUS_PREVIEW}" onclick="mrq_closeMenus();mrq_preview(${id});">
+                <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                Preview
+            </button>
+            <div class="nha-menu-divider"></div>`;
+
+    // FMD REVIEWS requests instead of editing them: Edit and Delete are hidden for it and each row gets "Process" (a modal
+    // with the request's details and Approve / Return — readone/memo-process-readone.php). Everybody else keeps Edit and Delete.
+    const processItem = `<button type="button" class="nha-menu-item" data-action="process" title="Review this request: approve it or return it" onclick="mrq_closeMenus();mpr_open(${id});">
+                <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
+                Process
+            </button>`;
+    const editAndDelete = `<button type="button" class="nha-menu-item" data-action="edit" onclick="mrq_closeMenus();mrq_edit(${id});">
+                <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                Edit
+            </button>
+            <div class="nha-menu-divider"></div>
+            <button type="button" class="nha-menu-item danger" data-action="delete" onclick="mrq_closeMenus();mrq_delete(${id});">
+                <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                Delete
+            </button>`;
+    return `<div class="nha-tools-menu">
+        <button type="button" class="nha-menu-trigger" aria-haspopup="true" aria-expanded="false" onclick="mrq_toggleMenu(this)">
+            <svg fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+            Actions
+        </button>
+        <div class="nha-tools-dropdown">
+            ${previewItem}
+            ${MRQ_IS_FMD ? processItem : editAndDelete}
+        </div>
+    </div>`;
+}
+
+// Opens this row's menu (closing any other one); a second click on the same button closes it again.
+function mrq_toggleMenu(btn) {
+    const drop   = btn.closest('.nha-tools-menu').querySelector('.nha-tools-dropdown');
+    const isOpen = drop.classList.contains('open');
+    mrq_closeMenus();
+    if (isOpen) return;
+
+    const rect = btn.getBoundingClientRect();
+    drop.style.top   = (rect.bottom + 4) + 'px';
+    drop.style.right = (window.innerWidth - rect.right) + 'px';
+    drop.classList.add('open');
+    btn.setAttribute('aria-expanded', 'true');
+}
+
+function mrq_closeMenus() {
+    document.querySelectorAll('.nha-tools-dropdown.open').forEach(d => d.classList.remove('open'));
+    document.querySelectorAll('.nha-menu-trigger[aria-expanded="true"]').forEach(b => b.setAttribute('aria-expanded', 'false'));
+}
+
+document.addEventListener('click', e => {
+    if (!e.target.closest('.nha-tools-menu')) mrq_closeMenus();
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') mrq_closeMenus(); });
+document.addEventListener('scroll', mrq_closeMenus, true);
 
 function mrq_truthy(v) { return v === true || v === 1 || v === '1' || v === 't' || v === 'true'; }
 
@@ -368,10 +526,58 @@ function mrq_edit(id) {
     window.location.href = 'BudgetAllocationForm?id=' + encodeURIComponent(id);
 }
 
+/* ── Preview: Draft -> For Preview ─────────────────────────── */
+// The id of the memo-request status called `name`. It is looked up in the statuses loaded at start-up; when it is not
+// there they are read again once (it may have been added since the page opened). Throws when it still isn't set up.
+async function mrq_statusId(name) {
+    const find = () => MRQ_LOOKUPS.statuses.find(s => mrq_sameStatus(s.name, name));
+    let hit = find();
+    if (!hit) {
+        const json = await mrq_request(MRQ_LOOKUP_SOURCES.statuses);
+        MRQ_LOOKUPS.statuses = json.data ?? [];
+        mrq_fillFilters();   // the Status filter now offers it too (what is selected stays selected)
+        hit = find();
+    }
+    if (!hit) {
+        throw new Error(`The status "${name}" is not set up in the database yet, so nothing was changed. ` +
+            'Ask an administrator to run the SQL installer (node install_system.js --sql-only).');
+    }
+    return Number(hit.id);
+}
+
+// "Preview" in a Draft row's Actions menu: after a confirmation, sets the request's status to For Preview — the same
+// status the memo form's "Submit for Preview" gives — and refreshes the list.
+async function mrq_preview(id) {
+    const row = mrq_rows.find(r => Number(r.allocation_id) === Number(id));
+    if (!row || !mrq_isDraft(row)) {
+        mrq_toast(`Only a ${MRQ_STATUS_DRAFT} request can be submitted for preview.`, 'warning');
+        return;
+    }
+    const ref = mrq_refOf(row) ? `"${mrq_refOf(row)}"` : `#${id}`;
+    if (!confirm(`Submit memo request ${ref} for preview? Its status will change from ${MRQ_STATUS_DRAFT} to ${MRQ_STATUS_PREVIEW}.`)) return;
+
+    window.PagePreloader?.show();
+    try {
+        // looked up first: when the status is missing this throws and nothing has been changed
+        const statusId = await mrq_statusId(MRQ_STATUS_PREVIEW);
+        await mrq_request(`${MRQ_API}/update/${encodeURIComponent(id)}`, {
+            method : 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body   : JSON.stringify({ status_id: statusId }),
+        });
+        mrq_toast(`Memo request ${ref} submitted for preview.`, 'success');
+        mrq_load();
+    } catch (e) {
+        mrq_toast(e.message, 'error');
+    } finally {
+        window.PagePreloader?.hide();
+    }
+}
+
 /* ── Delete (soft) ─────────────────────────────────────────── */
 async function mrq_delete(id) {
     const row = mrq_rows.find(r => Number(r.allocation_id) === Number(id));
-    const ref = row?.memo_ref_no ? `"${row.memo_ref_no}"` : `#${id}`;
+    const ref = row && mrq_refOf(row) ? `"${mrq_refOf(row)}"` : `#${id}`;
     if (!confirm(`Delete memo request ${ref}? It will no longer appear in the list.`)) return;
 
     window.PagePreloader?.show();
