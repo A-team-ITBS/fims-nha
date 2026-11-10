@@ -489,6 +489,18 @@ class Login extends Users
             $this->userLoginError($this->Username->CurrentValue, $this->Password->CurrentValue);
         }
 
+        // Failed sign-in from the form on "/": go back there instead of rendering /login
+        if (!$validPwd && empty($provider) && !$this->IsModal && !IsApi() && IsPost() && Post($this->Username->FieldVar) !== null) {
+            $msg = $this->getFailureMessage();
+            if (EmptyValue($msg)) {
+                $msg = $Language->phrase("InvalidUidPwd");
+            }
+            $this->clearMessages(); // Avoid showing the same message twice
+            $_SESSION['flash_failure'] = $msg;
+            $this->terminate('/');
+            return;
+        }
+
         // Set up error message
         if (EmptyValue($this->Username->ErrorMessage)) {
             $this->Username->ErrorMessage = $Language->phrase("EnterUserName");
