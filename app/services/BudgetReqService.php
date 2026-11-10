@@ -182,7 +182,7 @@ class BudgetReqService
      * Must run inside the caller's open transaction, since a new project row
      * may be inserted as part of it.
      */
-    private function resolveProjectCode(array $project, string $programCode, string $subProgramCode): string
+    private function resolveProjectCode(array $project, string $programCode, string $subProgramCode, string $fiscalYr): string
     {
         $projectCode = trim((string) ($project['project_code'] ?? ''));
         if ($projectCode !== '') {
@@ -190,7 +190,7 @@ class BudgetReqService
         }
 
         $projectName = trim((string) ($project['project_name'] ?? ''));
-        $result = (new ProjectService())->findOrCreateByName($projectName, $programCode, $subProgramCode);
+        $result = (new ProjectService())->findOrCreateByName($projectName, $programCode, $subProgramCode, (int) $fiscalYr);
         if (!$result['success']) {
             throw new \Exception($result['message'] ?? "Failed to resolve project '{$projectName}'.");
         }
@@ -204,12 +204,12 @@ class BudgetReqService
      * new Program) and updateProgram() (a Program's children fully
      * replaced). Must run inside the caller's open transaction.
      */
-    private function insertProjectsAndLineItems(string $budgetReferenceNumber, int $budgetReqProgramId, string $programCode, string $subProgramCode, array $projects): void
+    private function insertProjectsAndLineItems(string $budgetReferenceNumber, int $budgetReqProgramId, string $programCode, string $subProgramCode, array $projects, string $fiscalYr): void
     {
         $lineItemService = new BudgetLineItemService();
 
         foreach ($projects as $project) {
-            $projectCode = $this->resolveProjectCode($project, $programCode, $subProgramCode);
+            $projectCode = $this->resolveProjectCode($project, $programCode, $subProgramCode, $fiscalYr);
             $location    = trim((string) ($project['location'] ?? ''));
 
             $projectRow = App\ExecuteRow(
@@ -529,7 +529,7 @@ class BudgetReqService
             );
             $budgetReqProgramId = (int) $programRow['budget_req_program_id'];
 
-            $this->insertProjectsAndLineItems($budgetReferenceNumber, $budgetReqProgramId, $programCode, $subProgramCode, $projects);
+            $this->insertProjectsAndLineItems($budgetReferenceNumber, $budgetReqProgramId, $programCode, $subProgramCode, $projects, $fiscalYr);
 
             App\Execute('COMMIT', 'DB');
 
@@ -560,7 +560,7 @@ class BudgetReqService
         $id = (int) $budgetReqProgramId;
 
         $programRow = App\ExecuteRow(
-            "SELECT brp.budget_req_program_id, brp.budget_reference_number, st.name AS status_name
+            "SELECT brp.budget_req_program_id, brp.budget_reference_number, br.fiscal_yr, st.name AS status_name
              FROM {$this->tableBudgetReqProgram} brp
              JOIN {$this->table} br ON br.budget_reference_number = brp.budget_reference_number
              LEFT JOIN fims.settings_status st ON st.id = br.status_id
@@ -600,7 +600,7 @@ class BudgetReqService
             // same header are untouched.
             App\Execute("DELETE FROM {$this->tableBudgetReqProject} WHERE budget_req_program_id = {$id}", 'DB');
 
-            $this->insertProjectsAndLineItems((string) $programRow['budget_reference_number'], $id, $programCode, $subProgramCode, $projects);
+            $this->insertProjectsAndLineItems((string) $programRow['budget_reference_number'], $id, $programCode, $subProgramCode, $projects, (string) $programRow['fiscal_yr']);
 
             App\Execute('COMMIT', 'DB');
 

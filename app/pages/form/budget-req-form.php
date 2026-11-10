@@ -338,6 +338,7 @@ function bgr_bindFormEvents() {
 
     $bgr('bgr-program-code')?.addEventListener('change', bgr_onProgramChange);
     $bgr('bgr-sub-program-code')?.addEventListener('change', bgr_refreshAllProjectCodeFields);
+    $bgr('bgr-fiscal-yr')?.addEventListener('change', bgr_refreshAllProjectCodeFields);
     $bgr('bgr-add-project-block')?.addEventListener('click', () => bgr_addProjectBlock());
 
     // A window resize can change whether a block's line-items table needs a
@@ -523,6 +524,9 @@ function bgr_removeProjectBlock(block) {
     if ($bgr('bgr-blocks-wrap').children.length <= 1) { bgr_toast('At least one project is required.', 'error'); return; }
     bgr_cleanupAccountMenus(block);
     block.remove();
+    // Frees up the series slot this block may have reserved (see
+    // bgr_setProjectCode) for whichever other "new project" blocks remain.
+    bgr_refreshAllProjectCodeFields();
 }
 
 // Collapses a block down to just its header (project name field), hiding the
@@ -544,8 +548,22 @@ function bgr_toggleProjectBlock(block) {
 // typed text as project_name so the backend resolves/creates it atomically
 // when the whole request is saved (never the moment the user types).
 function bgr_setProjectCode($input, code) {
-    $input.closest('.bgr-block-project-wrap').find('.bgr-block-project-code').val(code);
-    bgr_updateProjectCodeField($input);
+    const hidden      = $input.closest('.bgr-block-project-wrap').find('.bgr-block-project-code');
+    const wasResolved = !!hidden.val();
+    hidden.val(code);
+
+    // Only an "existing project" <-> "new project" transition changes which
+    // series slot this block reserves from the shared BGR_PROJECT_CODE_CACHE
+    // (see bgr_updateProjectCodeField) -- that's when every other "new
+    // project" block's preview needs refreshing too, so none of them keep
+    // holding a now-stale series number. Plain typing within an
+    // already-unresolved block (code staying '' keystroke to keystroke)
+    // only needs this one field re-checked.
+    if (wasResolved !== !!code) {
+        bgr_refreshAllProjectCodeFields();
+    } else {
+        bgr_updateProjectCodeField($input);
+    }
 }
 
 // Seeded from the first real /project/next-code lookup under the current
@@ -605,6 +623,7 @@ function bgr_updateProjectCodeField($input) {
     const params = new URLSearchParams({
         program_code: programCode,
         sub_program_code: $bgr('bgr-sub-program-code').value,
+        fiscal_yr: $bgr('bgr-fiscal-yr').value,
     });
     fetch(`${BGR_PROJECT_BASE_API}/next-code?${params}`, { credentials: 'same-origin' })
         .then(res => res.json())
@@ -637,6 +656,19 @@ function bgr_refreshAllProjectCodeFields() {
     });
 }
 
+// Every project_code already picked by another block in this same request —
+// a project can only appear once per budget request, so these are excluded
+// from $input's own suggestions and re-checked on select as a safety net
+// against a stale/in-flight async result that was built before the latest
+// pick.
+function bgr_usedProjectCodes($input) {
+    const ownBlock = $input.closest('.bgr-block')[0];
+
+    return Array.from(document.querySelectorAll('#bgr-blocks-wrap .bgr-block-project-code'))
+        .filter(el => el.closest('.bgr-block') !== ownBlock && el.value)
+        .map(el => el.value);
+}
+
 function bgr_initProjectTypeahead($input) {
     $input.typeahead(
         { hint: false, highlight: true, minLength: 0 },
@@ -655,10 +687,13 @@ function bgr_initProjectTypeahead($input) {
                         });
                         const res  = await fetch(`${BGR_PROJECT_BASE_API}/all?${params}`, { credentials: 'same-origin' });
                         const json = await res.json();
-                        asyncResults((json.data ?? []).map(p => ({
-                            project_code: p.project_code,
-                            label: `${p.project_code} — ${p.project_name}`,
-                        })));
+                        const used = bgr_usedProjectCodes($input);
+                        asyncResults((json.data ?? [])
+                            .filter(p => !used.includes(p.project_code))
+                            .map(p => ({
+                                project_code: p.project_code,
+                                label: `${p.project_code} — ${p.project_name}`,
+                            })));
                     } catch (e) {
                         asyncResults([]);
                     }
@@ -677,6 +712,12 @@ function bgr_initProjectTypeahead($input) {
     // so the library's own value-set on selection doesn't immediately
     // re-trigger this and clear the code it just set.
     $input.on('typeahead:select', (ev, item) => {
+        if (bgr_usedProjectCodes($input).includes(item.project_code)) {
+            bgr_toast('That project is already added to this budget request.', 'error');
+            $input.typeahead('val', '');
+            bgr_setProjectCode($input, '');
+            return;
+        }
         $input.data('bgr-syncing', true);
         $input.data('bgr-matched-text', item.label);
         bgr_setProjectCode($input, item.project_code);
