@@ -471,7 +471,7 @@ $CONFIG = [
     "SEARCH_FILTER_OPTION" => "Client",
 
     // Email
-    "SENDER_EMAIL" => "phatneglo@yahoo.com", // Sender email address
+    "SENDER_EMAIL" => "NHA FIMS <phatneglo@yahoo.com>", // Sender email address (SendEmail() parses "Name <email>" into display name + address)
     "RECIPIENT_EMAIL" => "", // Recipient email address
     "MAX_EMAIL_RECIPIENT" => 3,
     "MAX_EMAIL_SENT_COUNT" => 3,
