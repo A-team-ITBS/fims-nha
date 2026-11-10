@@ -86,6 +86,7 @@
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone ($p['PHPMaker2024\\FIMS\\Attributes\\Get'] ?? \Symfony\Component\VarExporter\Internal\Registry::p('PHPMaker2024\\FIMS\\Attributes\\Get')),
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Get'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
@@ -164,6 +165,11 @@
     [
         'PHPMaker2024\\FIMS\\Attributes\\Map' => [
             'methods' => [
+                [
+                    'GET',
+                    'POST',
+                    'OPTIONS',
+                ],
                 [
                     'GET',
                     'POST',
@@ -1019,6 +1025,7 @@
                 '/FileManager[/{params:.*}]',
                 '/IarModule[/{params:.*}]',
                 '/IdGenerator[/{params:.*}]',
+                '/JournalEntryVoucher[/{params:.*}]',
                 '/JwtSessionsList[/{session_id}]',
                 '/JwtSessionsAdd[/{session_id}]',
                 '/JwtSessionsView[/{session_id}]',
@@ -1180,6 +1187,7 @@
                 'PHPMaker2024\\FIMS\\FileManagerController:custom',
                 'PHPMaker2024\\FIMS\\IarModuleController:custom',
                 'PHPMaker2024\\FIMS\\IdGeneratorController:custom',
+                'PHPMaker2024\\FIMS\\JournalEntryVoucherController:custom',
                 'PHPMaker2024\\FIMS\\JwtSessionsController:list',
                 'PHPMaker2024\\FIMS\\JwtSessionsController:add',
                 'PHPMaker2024\\FIMS\\JwtSessionsController:view',
@@ -1279,6 +1287,9 @@
                 'PHPMaker2024\\FIMS\\WorkflowManagerController:custom',
             ],
             'middleware' => [
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
                 [
                     'PHPMaker2024\\FIMS\\PermissionMiddleware',
                 ],
@@ -1818,6 +1829,7 @@
                 'custom.FileManager',
                 'custom.IARModule',
                 'custom.IDGenerator',
+                'custom.JournalEntryVoucher',
                 'list.jwt_sessions',
                 'add.jwt_sessions',
                 'view.jwt_sessions',
@@ -1917,6 +1929,7 @@
                 'custom.WorkflowManager',
             ],
             'options' => [
+                [],
                 [],
                 [],
                 [],
@@ -2239,6 +2252,7 @@
         $o[156],
         $o[157],
         $o[158],
+        $o[159],
     ],
     []
 );

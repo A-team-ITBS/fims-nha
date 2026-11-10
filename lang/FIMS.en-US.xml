@@ -41,6 +41,12 @@
     <menu id="91">
       <phrase id="menutext" value="AIR Module" />
     </menu>
+    <menu id="258">
+      <phrase id="menutext" value="Vouchers" />
+    </menu>
+    <menu id="208">
+      <phrase id="menutext" value="Journal Entry Voucher" />
+    </menu>
     <menu id="207">
       <phrase id="menutext" value="Disbursement Voucher" />
     </menu>
@@ -1519,6 +1525,9 @@
     </table>
     <table id="voucher">
       <phrase id="tblcaption" value="Disbursement Voucher" />
+    </table>
+    <table id="journalentryvoucher">
+      <phrase id="tblcaption" value="Journal Entry Voucher" />
     </table>
   </project>
 </ew-language>

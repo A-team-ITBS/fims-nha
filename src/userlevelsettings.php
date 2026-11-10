@@ -137,7 +137,9 @@ $USER_LEVEL_PRIVS = [["{FIMS}audit_logs","-2","0"],
     ["{FIMS}AIRModule.php","-2","0"],
     ["{FIMS}AIRModule.php","0","0"],
     ["{FIMS}Voucher.php","-2","0"],
-    ["{FIMS}Voucher.php","0","0"]];
+    ["{FIMS}Voucher.php","0","0"],
+    ["{FIMS}JournalEntryVoucher.php","-2","0"],
+    ["{FIMS}JournalEntryVoucher.php","0","0"]];
 
 /**
  * Tables
@@ -207,4 +209,5 @@ $USER_LEVEL_TABLES = [["audit_logs","audit_logs","Audit Logs",false,"{FIMS}",""]
     ["budget-rev-review.php","budget_rev_review","Budget Revision Preview",true,"{FIMS}","BudgetRevReview"],
     ["budget-allocation-form.php","budget_allocation_form","Memo Request",true,"{FIMS}","BudgetAllocationForm"],
     ["AIRModule.php","AIRModule","AIR Module",true,"{FIMS}","AirModule"],
-    ["Voucher.php","Voucher","Disbursement Voucher",true,"{FIMS}","Voucher"]];
+    ["Voucher.php","Voucher","Disbursement Voucher",true,"{FIMS}","Voucher"],
+    ["JournalEntryVoucher.php","JournalEntryVoucher","Journal Entry Voucher",true,"{FIMS}","JournalEntryVoucher"]];
