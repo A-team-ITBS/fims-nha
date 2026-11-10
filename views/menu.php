@@ -10,7 +10,7 @@ echo $topMenu->toScript();
 $sideMenu = new Menu("menu", true, false);
 $sideMenu->addMenuItem(9, "mi_MainDashboard", $Language->menuPhrase("9", "MenuText"), "MainDashboard", -1, "", AllowListMenu('{FIMS}MainDashboard.php'), false, false, "fas fa-chart-line", "", false, true);
 $sideMenu->addMenuItem(146, "mci_Budget", $Language->menuPhrase("146", "MenuText"), "", -1, "", true, false, true, "fas fa-wallet", "", false, true);
-$sideMenu->addMenuItem(88, "mi_budget_allocation_form", $Language->menuPhrase("88", "MenuText"), "BudgetAllocationForm", 146, "", AllowListMenu('{FIMS}budget-allocation-form.php'), false, false, "", "", false, true);
+$sideMenu->addMenuItem(88, "mi_memo_req_page", $Language->menuPhrase("88", "MenuText"), "MemoReqPage", 146, "", AllowListMenu('{FIMS}memo-req-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(81, "mi_budget_req_page", $Language->menuPhrase("81", "MenuText"), "BudgetReqPage", 146, "", AllowListMenu('{FIMS}budget-req-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(85, "mi_budget_revision_page", $Language->menuPhrase("85", "MenuText"), "BudgetRevisionPage", 146, "", AllowListMenu('{FIMS}budget-revision-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(147, "mci_Programs_&_Projects_", $Language->menuPhrase("147", "MenuText"), "", -1, "", true, false, true, "fas fa-sitemap", "", false, true);

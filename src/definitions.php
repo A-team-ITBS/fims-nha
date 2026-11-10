@@ -122,7 +122,7 @@ return [
     "budget_revision_page" => \DI\create(BudgetRevisionPage::class),
     "budget_rev_form" => \DI\create(BudgetRevForm::class),
     "budget_rev_review" => \DI\create(BudgetRevReview::class),
-    "budget_allocation_form" => \DI\create(BudgetAllocationForm::class),
+    "memo_req_page" => \DI\create(MemoReqPage::class),
     "IARModule" => \DI\create(IarModule::class),
     "Voucher" => \DI\create(Voucher::class),
     "JournalEntryVoucher" => \DI\create(JournalEntryVoucher::class),
