@@ -90,6 +90,10 @@
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone ($p['PHPMaker2024\\FIMS\\Attributes\\Get'] ?? \Symfony\Component\VarExporter\Internal\Registry::p('PHPMaker2024\\FIMS\\Attributes\\Get')),
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Get'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
@@ -168,6 +172,26 @@
     [
         'PHPMaker2024\\FIMS\\Attributes\\Map' => [
             'methods' => [
+                [
+                    'GET',
+                    'POST',
+                    'OPTIONS',
+                ],
+                [
+                    'GET',
+                    'POST',
+                    'OPTIONS',
+                ],
+                [
+                    'GET',
+                    'POST',
+                    'OPTIONS',
+                ],
+                [
+                    'GET',
+                    'POST',
+                    'OPTIONS',
+                ],
                 [
                     'GET',
                     'POST',
@@ -1005,6 +1029,8 @@
                 '/AuditLogsEdit[/{id}]',
                 '/AuditLogsDelete[/{id}]',
                 '/BudgetAllocationForm[/{params:.*}]',
+                '/BudgetPropPage[/{params:.*}]',
+                '/BudgetReqForm[/{params:.*}]',
                 '/BudgetReqPage[/{params:.*}]',
                 '/BudgetRevForm[/{params:.*}]',
                 '/BudgetRevisionPage[/{params:.*}]',
@@ -1014,6 +1040,7 @@
                 '/ChangePassword2[/{params:.*}]',
                 '/ChartOfAccountsPage[/{params:.*}]',
                 '/CheckDisbursements[/{params:.*}]',
+                '/CobPage[/{params:.*}]',
                 '/DepartmentManagement[/{params:.*}]',
                 '/DepartmentsList[/{department_id}]',
                 '/DepartmentsAdd[/{department_id}]',
@@ -1053,6 +1080,7 @@
                 '/JwtSessionsEdit[/{session_id}]',
                 '/JwtSessionsDelete[/{session_id}]',
                 '/MainDashboard[/{params:.*}]',
+                '/MemoReqPage[/{params:.*}]',
                 '/MemoRequest[/{params:.*}]',
                 '/MemoRequestForm[/{params:.*}]',
                 '/NotificationsList[/{id:.*}]',
@@ -1170,6 +1198,8 @@
                 'PHPMaker2024\\FIMS\\AuditLogsController:edit',
                 'PHPMaker2024\\FIMS\\AuditLogsController:delete',
                 'PHPMaker2024\\FIMS\\BudgetAllocationFormController:custom',
+                'PHPMaker2024\\FIMS\\BudgetPropPageController:custom',
+                'PHPMaker2024\\FIMS\\BudgetReqFormController:custom',
                 'PHPMaker2024\\FIMS\\BudgetReqPageController:custom',
                 'PHPMaker2024\\FIMS\\BudgetRevFormController:custom',
                 'PHPMaker2024\\FIMS\\BudgetRevisionPageController:custom',
@@ -1179,6 +1209,7 @@
                 'PHPMaker2024\\FIMS\\ChangePassword2Controller:custom',
                 'PHPMaker2024\\FIMS\\ChartOfAccountsPageController:custom',
                 'PHPMaker2024\\FIMS\\CheckDisbursementsController:custom',
+                'PHPMaker2024\\FIMS\\CobPageController:custom',
                 'PHPMaker2024\\FIMS\\DepartmentManagementController:custom',
                 'PHPMaker2024\\FIMS\\DepartmentsController:list',
                 'PHPMaker2024\\FIMS\\DepartmentsController:add',
@@ -1218,6 +1249,7 @@
                 'PHPMaker2024\\FIMS\\JwtSessionsController:edit',
                 'PHPMaker2024\\FIMS\\JwtSessionsController:delete',
                 'PHPMaker2024\\FIMS\\MainDashboardController:custom',
+                'PHPMaker2024\\FIMS\\MemoReqPageController:custom',
                 'PHPMaker2024\\FIMS\\MemoRequestController:custom',
                 'PHPMaker2024\\FIMS\\MemoRequestFormController:custom',
                 'PHPMaker2024\\FIMS\\NotificationsController:list',
@@ -1311,6 +1343,18 @@
                 'PHPMaker2024\\FIMS\\WorkflowManagerController:custom',
             ],
             'middleware' => [
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
                 [
                     'PHPMaker2024\\FIMS\\PermissionMiddleware',
                 ],
@@ -1824,6 +1868,8 @@
                 'edit.audit_logs',
                 'delete.audit_logs',
                 'custom.budget_allocation_form',
+                'custom.budget_prop_page',
+                'custom.budget_req_form',
                 'custom.budget_req_page',
                 'custom.budget_rev_form',
                 'custom.budget_revision_page',
@@ -1833,6 +1879,7 @@
                 'custom.ChangePassword2',
                 'custom.chart_of_accounts_page',
                 'custom.CheckDisbursements',
+                'custom.cob_page',
                 'custom.DepartmentManagement',
                 'list.departments',
                 'add.departments',
@@ -1872,6 +1919,7 @@
                 'edit.jwt_sessions',
                 'delete.jwt_sessions',
                 'custom.MainDashboard',
+                'custom.memo_req_page',
                 'custom.MemoRequest',
                 'custom.MemoRequestForm',
                 'list.notifications',
@@ -1965,6 +2013,10 @@
                 'custom.WorkflowManager',
             ],
             'options' => [
+                [],
+                [],
+                [],
+                [],
                 [],
                 [],
                 [],
@@ -2295,6 +2347,10 @@
         $o[160],
         $o[161],
         $o[162],
+        $o[163],
+        $o[164],
+        $o[165],
+        $o[166],
     ],
     []
 );
