@@ -3,19 +3,22 @@
  * budget-preview-readone.php
  *
  * Read-only "Budget Preview" modal for a budget request — the read-only counterpart of the Budget Processing
- * modal (form/budget-processing-form.php) and laid out the same way. Header: "Submission Ref. No. <ref>" with the
+ * modal (form/budget-processing-form.php): the same columns, but laid out per Project (the Processing modal has
+ * since moved to Program cards with a meta line, Subtotals and a Grand Total; this one has not). Header: "Submission Ref. No. <ref>" with the
  * request's status badge. Then, for every Project of the request, one block:
  *   - an info card: Originating Unit / Region (the requesting office), Program, Sub-Program, Project
  *     (each with its code as a chip), and
  *   - that Project's line items as a table, as plain text (nothing to fill in):
- *       Type of Fund · Program Sources · Component · Account Code · Description (the account name, the line's
- *       particulars under it) · Amount (proposed) · Suggested Amount,
+ *       Type of Fund · Program Sources · Program Uses · Component · Account Code · Description (the account name,
+ *       the line's particulars under it) · Amount (proposed) · Suggested Amount,
  *     with a Total row under both amount columns.
  * A Program that has no Projects yet gets its card and a "No projects yet." note.
  *
- * Program Sources are programs (budget_line_items.program_source_code = a fims.program.program_code). The preview
- * looks the names up once from GET /program/all (cached) to show "Name" with the code under it. If that lookup
- * fails the preview still opens and shows the bare codes: a read-only view is not worth blocking on it.
+ * Program Sources are programs (budget_line_items.program_source_code = a fims.program.program_code) and Program Uses
+ * are sub-programs (budget_line_items.program_uses = a fims.sub_program.sub_program_code). The preview looks the
+ * names up once from GET /program/all and GET /sub_program/all (each cached) to show "Name" with the code under
+ * it. If a lookup fails the preview still opens and shows the bare codes of that column (the other column is
+ * not affected): a read-only view is not worth blocking on it.
  *
  * Trigger: bpv_openModal(requestContext, programs) — called from the list pages' "Budget Preview" row action:
  *   requestContext = { budget_reference_number, fiscal_yr, status_name, status_color, rc_id, rc_code, rc_name, can_decide }
@@ -23,8 +26,8 @@
  *   programs       = ONE program or an ARRAY of them, each
  *                    { program_code, program_name, sub_program_code, sub_program_name, projects[] }
  *                    (each project has project_code, project_name, line_items[] carrying type_of_fund_name,
- *                    component_name and program_source_code, straight from the list data)
- * Takes already-fetched request data — only the program names are looked up.
+ *                    component_name, program_source_code and program_uses, straight from the list data)
+ * Takes already-fetched request data — only the program / sub-program names are looked up.
  *
  * Footer (Return / Approve and the REMARKS box are hidden unless requestContext.can_decide is true — the list
  * page sets it for the Budget Head on an Endorsed request; without them the footer is just Close):
@@ -148,14 +151,16 @@ $_bpv_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
    BUDGET PREVIEW MODAL   prefix: bpv_
    Depends on bgr_esc / bgr_escHtmlAttr / bgr_fmtMoney / bgr_statusBadge /
    bgr_toast from form/budget-req-form.php, included on the same page.
-   Takes already-fetched request data; only the program names (for the
-   Program Sources column) are looked up, once. Return / Approve call the API.
+   Takes already-fetched request data; only the program / sub-program names (for the
+   Program Sources / Program Uses columns) are looked up, once. Return / Approve call the API.
 ═══════════════════════════════════════════════════════════════ */
 
 const BPV_BUDGET_REQ_API = '<?php echo $_bpv_api; ?>' + '/budget_req';
-const BPV_PROGRAM_API    = '<?php echo $_bpv_api; ?>' + '/program/all';   // names of the program sources
+const BPV_PROGRAM_API    = '<?php echo $_bpv_api; ?>' + '/program/all';       // names of the program sources
+const BPV_SUBPROGRAM_API = '<?php echo $_bpv_api; ?>' + '/sub_program/all';   // names of the program uses
 
-let BPV_SOURCES = null;   // [{ program_code, program_name }] — null until loaded (a failed load is NOT cached)
+let BPV_SOURCES = null;   // [{ program_code, program_name }]            — null until loaded (a failed load is NOT cached)
+let BPV_USES = null;      // [{ sub_program_code, sub_program_name }]    — same
 let bpv_ctx = null;       // requestContext of the modal that is currently open
 
 const $bpv = id => document.getElementById(id);
@@ -169,30 +174,41 @@ document.addEventListener('DOMContentLoaded', () => {
     $bpv('bpv-remarks')?.addEventListener('input', e => e.target.classList.remove('is-invalid'));
 });
 
-// The program list that turns a program_source_code into a name. Never throws: on any failure the preview just
-// shows the bare codes this time and tries again the next time it opens.
-async function bpv_loadSources() {
-    if (BPV_SOURCES) return BPV_SOURCES;
+// One name list. Never throws: null on any failure.
+async function bpv_fetchList(url) {
     try {
-        const res  = await fetch(BPV_PROGRAM_API, { credentials: 'same-origin' });
+        const res  = await fetch(url, { credentials: 'same-origin' });
         const json = res.ok ? await res.json() : null;
-        if (json && json.success) { BPV_SOURCES = json.data ?? []; return BPV_SOURCES; }
+        if (json && json.success) return json.data ?? [];
     } catch (e) { /* fall through */ }
-    return [];
+    return null;
+}
+
+// The lists that turn a program_source_code / program_uses into a name. Each is fetched once and cached. Never
+// throws: a list that fails just shows the bare codes this time (the other list is unaffected) and is tried
+// again the next time the preview opens.
+async function bpv_loadLookups() {
+    const [sources, uses] = await Promise.all([
+        BPV_SOURCES ?? bpv_fetchList(BPV_PROGRAM_API),
+        BPV_USES    ?? bpv_fetchList(BPV_SUBPROGRAM_API),
+    ]);
+    if (sources) BPV_SOURCES = sources;
+    if (uses)    BPV_USES    = uses;
+    return { sources: sources ?? [], uses: uses ?? [] };
 }
 
 // `programs` is one program or an array of them (see the header comment).
 async function bpv_openModal(requestContext, programs) {
     window.PagePreloader?.show();
-    let sources;
+    let lookups;
     try {
-        sources = await bpv_loadSources();
+        lookups = await bpv_loadLookups();
     } finally {
         window.PagePreloader?.hide();
     }
 
     bpv_ctx = requestContext;
-    bpv_render(requestContext, programs, sources);
+    bpv_render(requestContext, programs, lookups);
 
     // Return / Approve (and the remarks they need) only appear when the list page says this user may decide;
     // otherwise the footer is just Close.
@@ -263,24 +279,26 @@ function bpv_closeModal() {
 }
 
 /* ── Table ───────────────────────────────────────────────────── */
-// A line item that hasn't been through Budget Processing has no Type of Fund / Component / Program Source yet.
+// A line item that hasn't been through Budget Processing has no Type of Fund / Component / Program Source / Program Use yet.
 function bpv_value(text) {
     return text ? bgr_esc(text) : '<span class="nha-td-sub">—</span>';
 }
 
-// Program Sources: the program's name with its code under it; the bare code if the program can't be found.
-function bpv_sourceHtml(code, sources) {
+// Program Sources (programs) / Program Uses (sub-programs): the item's name with its code under it; the bare code
+// if it can't be found in the list; a dash when none was chosen.
+function bpv_codeCellHtml(code, items, codeKey, nameKey) {
     if (code === null || code === undefined || code === '') return '<span class="nha-td-sub">—</span>';
-    const p = sources.find(x => String(x.program_code) === String(code));
+    const p = items.find(x => String(x[codeKey]) === String(code));
     return p
-        ? `<div>${bgr_esc(p.program_name)}</div><div class="bpv-desc-sub">${bgr_esc(p.program_code)}</div>`
+        ? `<div>${bgr_esc(p[nameKey])}</div><div class="bpv-desc-sub">${bgr_esc(p[codeKey])}</div>`
         : `<div>${bgr_esc(code)}</div>`;
 }
 
-// Column order matches Budget Processing: Type of Fund · Program Sources · Component · Account Code · Description · Amount · Suggested Amount
+// Column order matches Budget Processing: Type of Fund · Program Sources · Program Uses · Component · Account Code · Description · Amount · Suggested Amount
 const BPV_THEAD = `<thead><tr>
     <th>Type of Fund</th>
     <th>Program Sources</th>
+    <th>Program Uses</th>
     <th>Component</th>
     <th>Account Code</th>
     <th>Description</th>
@@ -288,10 +306,11 @@ const BPV_THEAD = `<thead><tr>
     <th class="text-right">Suggested Amount</th>
 </tr></thead>`;
 
-function bpv_rowHtml(li, sources) {
+function bpv_rowHtml(li, lk) {
     return `<tr>
         <td>${bpv_value(li.type_of_fund_name)}</td>
-        <td>${bpv_sourceHtml(li.program_source_code, sources)}</td>
+        <td>${bpv_codeCellHtml(li.program_source_code, lk.sources, 'program_code', 'program_name')}</td>
+        <td>${bpv_codeCellHtml(li.program_uses, lk.uses, 'sub_program_code', 'sub_program_name')}</td>
         <td>${bpv_value(li.component_name)}</td>
         <td class="bpv-nowrap bpv-mono">${bgr_esc(li.account_code)}</td>
         <td><div>${bgr_esc(li.account_title)}</div>${li.particulars ? `<div class="bpv-desc-sub">${bgr_esc(li.particulars)}</div>` : ''}</td>
@@ -300,17 +319,17 @@ function bpv_rowHtml(li, sources) {
     </tr>`;
 }
 
-function bpv_tableHtml(project, sources) {
+function bpv_tableHtml(project, lk) {
     const lineItems = project.line_items ?? [];
     const sum = key => lineItems.reduce((s, li) => s + (Number(li[key]) || 0), 0);
     const rowsHtml = lineItems.length
-        ? lineItems.map(li => bpv_rowHtml(li, sources)).join('')
-        : '<tr><td colspan="7"><div class="bpv-empty">No line items have been added under this project.</div></td></tr>';
+        ? lineItems.map(li => bpv_rowHtml(li, lk)).join('')
+        : '<tr><td colspan="8"><div class="bpv-empty">No line items have been added under this project.</div></td></tr>';
 
     return `<div class="bpv-tbl-wrap">
         <div class="nha-tbl-scroll">
             <table class="nha-tbl bpv-tbl">${BPV_THEAD}<tbody>${rowsHtml}</tbody>
-                <tfoot><tr><td colspan="5" class="text-right">Total</td><td class="text-right bpv-total-p">${bgr_fmtMoney(sum('proposed_amount'))}</td><td class="text-right bpv-total-s">${bgr_fmtMoney(sum('suggested_amount'))}</td></tr></tfoot>
+                <tfoot><tr><td colspan="6" class="text-right">Total</td><td class="text-right bpv-total-p">${bgr_fmtMoney(sum('proposed_amount'))}</td><td class="text-right bpv-total-s">${bgr_fmtMoney(sum('suggested_amount'))}</td></tr></tfoot>
             </table>
         </div>
     </div>`;
@@ -341,15 +360,15 @@ function bpv_cardHtml(ctx, program, project) {
 }
 
 // One block = the info card + (the Project's table | "No projects yet." when the Program has no Project)
-function bpv_blockHtml(ctx, program, project, sources) {
+function bpv_blockHtml(ctx, program, project, lk) {
     return `<section class="bpv-block">
         ${bpv_cardHtml(ctx, program, project)}
-        ${project ? bpv_tableHtml(project, sources) : '<div class="bpv-noproj">No projects yet.</div>'}
+        ${project ? bpv_tableHtml(project, lk) : '<div class="bpv-noproj">No projects yet.</div>'}
     </section>`;
 }
 
 // `programArg`: one program or an array of them
-function bpv_render(requestContext, programArg, sources) {
+function bpv_render(requestContext, programArg, lookups) {
     const programs = Array.isArray(programArg) ? programArg : (programArg ? [programArg] : []);
 
     $bpv('bpv-ref').textContent = requestContext.budget_reference_number ?? '';
@@ -358,8 +377,8 @@ function bpv_render(requestContext, programArg, sources) {
     const blocks = [];
     programs.forEach(program => {
         const projects = program.projects ?? [];
-        if (!projects.length) blocks.push(bpv_blockHtml(requestContext, program, null, sources));
-        else projects.forEach(project => blocks.push(bpv_blockHtml(requestContext, program, project, sources)));
+        if (!projects.length) blocks.push(bpv_blockHtml(requestContext, program, null, lookups));
+        else projects.forEach(project => blocks.push(bpv_blockHtml(requestContext, program, project, lookups)));
     });
     $bpv('bpv-blocks').innerHTML = blocks.length ? blocks.join('') : '<div class="bpv-noproj">No programs yet.</div>';
 }

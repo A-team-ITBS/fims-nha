@@ -22,6 +22,7 @@ class BudgetLineItemService
     private string $tableComponentType    = 'fims.component_type';
     private string $tableBudgetReqProgram = 'fims.budget_req_program';
     private string $tableProgram          = 'fims.program';
+    private string $tableSubProgram       = 'fims.sub_program';
     private string $tableStatus           = 'fims.settings_status';
 
     public function fetchAlls(?int $page = null, int $limit = 10, string $fiscalYr = ''): array
@@ -319,18 +320,20 @@ class BudgetLineItemService
     }
 
     /**
-     * Budget Processing: applies type_of_fund_id / component_id / suggested_amount / program_source_code
-     * to line items of one budget request. Does NOT open its own transaction — the caller
+     * Budget Processing: applies type_of_fund_id / component_id / suggested_amount / program_source_code /
+     * program_uses to line items of one budget request. Does NOT open its own transaction — the caller
      * (BudgetReqService::endorse) wraps it together with its status change.
      * Returns an error message, or null once every item has been applied.
      *
-     * program_source_code is OPTIONAL and is a fims.program.program_code (a program source IS a program):
+     * program_source_code and program_uses are OPTIONAL codes, handled the same way (see optionalCode()):
+     *   program_source_code is a fims.program.program_code         (a program source IS a program)
+     *   program_uses        is a fims.sub_program.sub_program_code (a program use IS a sub-program)
      *   key absent         -> left unchanged
      *   key present, blank -> cleared (NULL)
-     *   key present, code  -> must be an existing program
+     *   key present, code  -> must be an existing program / sub-program
      *
-     * @param array $items [['budget_line_item_id' => .., 'type_of_fund_id' => .., 'component_id' => .., 'suggested_amount' => .., 'program_source_code' => ..], ...]
-     * @param bool  $requireAll when true, every item must carry a type of fund and a component (suggested_amount and program_source_code stay optional)
+     * @param array $items [['budget_line_item_id' => .., 'type_of_fund_id' => .., 'component_id' => .., 'suggested_amount' => .., 'program_source_code' => .., 'program_uses' => ..], ...]
+     * @param bool  $requireAll when true, every item must carry a type of fund and a component (suggested_amount, program_source_code and program_uses stay optional)
      */
     public function applyProcessing(array $items, string $budgetReferenceNumber, bool $requireAll = false): ?string
     {
@@ -342,6 +345,7 @@ class BudgetLineItemService
         $validFunds      = [];
         $validComponents = [];
         $validSources    = [];
+        $validUses       = [];
 
         foreach ($items as $i => $item) {
             $n  = $i + 1;
@@ -400,25 +404,18 @@ class BudgetLineItemService
                 $componentId = null;
             }
 
-            // program_source_code is OPTIONAL (see the method comment): only written when the key is present.
-            $hasSource  = array_key_exists('program_source_code', $item);
-            $sourceCode = $hasSource && is_scalar($item['program_source_code']) ? trim((string) $item['program_source_code']) : '';
-            if ($hasSource && $item['program_source_code'] !== null && !is_scalar($item['program_source_code'])) {
-                return "Line item #{$id}: invalid program_source_code.";
+            // program_source_code / program_uses are OPTIONAL (see the method comment): each is only written when its key is present.
+            [$hasSource, $sourceCode, $error] = $this->optionalCode(
+                $item, 'program_source_code', 'program source', $this->tableProgram, 'program_code', $id, $validSources
+            );
+            if ($error !== null) {
+                return $error;
             }
-            if ($sourceCode !== '') {
-                if (mb_strlen($sourceCode) > 64) {
-                    return "Line item #{$id}: program_source_code must be 64 characters or fewer.";
-                }
-                if (!isset($validSources[$sourceCode])) {
-                    $validSources[$sourceCode] = (bool) App\ExecuteRow(
-                        "SELECT program_code FROM {$this->tableProgram} WHERE program_code = " . App\QuotedValue($sourceCode, DataType::STRING, 'DB'),
-                        'DB'
-                    );
-                }
-                if (!$validSources[$sourceCode]) {
-                    return "Line item #{$id}: program source '{$sourceCode}' does not exist.";
-                }
+            [$hasUses, $usesCode, $error] = $this->optionalCode(
+                $item, 'program_uses', 'program use', $this->tableSubProgram, 'sub_program_code', $id, $validUses
+            );
+            if ($error !== null) {
+                return $error;
             }
 
             // suggested_amount is OPTIONAL: NUMERIC(18,2), 0 up to 9,999,999,999,999,999.99.
@@ -446,6 +443,9 @@ class BudgetLineItemService
             if ($hasSource) {
                 $setParts[] = 'program_source_code = ' . ($sourceCode !== '' ? App\QuotedValue($sourceCode, DataType::STRING, 'DB') : 'NULL');
             }
+            if ($hasUses) {
+                $setParts[] = 'program_uses = ' . ($usesCode !== '' ? App\QuotedValue($usesCode, DataType::STRING, 'DB') : 'NULL');
+            }
 
             App\Execute(
                 "UPDATE {$this->table} SET " . implode(', ', $setParts) . " WHERE budget_line_item_id = {$id}",
@@ -454,6 +454,47 @@ class BudgetLineItemService
         }
 
         return null;
+    }
+
+    /**
+     * One OPTIONAL code column of a Budget Processing item (program_source_code, program_uses): a VARCHAR(64)
+     * that must be the primary key of a row of $table when it is given.
+     *   key absent         -> not written
+     *   key present, blank -> written as NULL (cleared)
+     *   key present, code  -> trimmed, at most 64 characters, and it must exist in $table.$column
+     * $valid caches the lookups, so each distinct code is checked once per request.
+     *
+     * @param array<string,bool> $valid
+     * @return array{0: bool, 1: string, 2: ?string} [written?, trimmed code ('' = clear), error message or null]
+     */
+    private function optionalCode(array $item, string $key, string $what, string $table, string $column, int $id, array &$valid): array
+    {
+        if (!array_key_exists($key, $item)) {
+            return [false, '', null];
+        }
+        $value = $item[$key];
+        if ($value !== null && !is_scalar($value)) {
+            return [true, '', "Line item #{$id}: invalid {$key}."];
+        }
+
+        $code = $value === null ? '' : trim((string) $value);
+        if ($code === '') {
+            return [true, '', null];
+        }
+        if (mb_strlen($code) > 64) {
+            return [true, $code, "Line item #{$id}: {$key} must be 64 characters or fewer."];
+        }
+        if (!isset($valid[$code])) {
+            $valid[$code] = (bool) App\ExecuteRow(
+                "SELECT {$column} FROM {$table} WHERE {$column} = " . App\QuotedValue($code, DataType::STRING, 'DB'),
+                'DB'
+            );
+        }
+        if (!$valid[$code]) {
+            return [true, $code, "Line item #{$id}: {$what} '{$code}' does not exist."];
+        }
+
+        return [true, $code, null];
     }
 
     public function delete(int|string $id): array

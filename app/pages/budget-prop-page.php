@@ -162,7 +162,8 @@ $_bgr_canModify = !$_bgr_isBudgetOfficer;
    Fetches the FMD's list from GET /fmd/budget_req/list — see the header comment of this file — and shows
    one row per budget request: Submission Ref No. (budget_reference_number, the fiscal year under it),
    Region / Originating Unit (the requesting office and the Region it belongs to), Submitted Date
-   (budget_req.submitted_at — when it was last submitted for review; "—" until then), Amount (the sum of the
+   (budget_req.submitted_at — the date of the request's latest save / submission: stamped when it is created, when a
+   Program is added or edited, and when it is submitted for review; "—" only for requests older than the column), Amount (the sum of the
    request's line items' proposed amounts, li_total) and Status. The row actions act on that whole request.
 ═══════════════════════════════════════════════════════════════ */
 
@@ -337,9 +338,10 @@ document.addEventListener('click', e => {
 document.addEventListener('scroll', bgr_closeMenus, true);
 
 /* "Budget Processing" row action (level 2 / Budget Officer only) — opens the
-   Budget Processing modal (form/budget-processing-form.php, bpr_*): one block per
-   Project (info card + line-item table), each line item with Type of Fund, Program
-   Source, Component and Amount. The row is a whole request, so the modal gets ALL of its Programs. */
+   Budget Processing modal (form/budget-processing-form.php, bpr_*): one card per Program,
+   a section per Project in it with its line-item table (Type of Fund, Program Sources,
+   Program Uses, Component, account, Amount, Suggested Amount), a Subtotal per Project and a
+   Grand Total. The row is a whole request, so the modal gets ALL of its Programs. */
 function bgr_budgetProcessing(idx) {
     const { header } = bgr_flatRows[idx];
     const programs = header.programs ?? [];
@@ -352,15 +354,16 @@ function bgr_budgetProcessing(idx) {
         fiscal_yr: header.fiscal_yr,
         status_name: header.status_name,
         status_color: header.status_color,
-        // the requesting office, for the modal's "Originating Unit / Region"
+        // the requesting office and when it was submitted, for the modal's "Originating Unit" / "Date Submitted"
         rc_id: header.rc_id,
         rc_code: header.rc_code,
         rc_name: header.rc_name,
+        submitted_at: header.submitted_at,
     }, programs);
 }
 
 /* "Budget Preview" row action (level 8 / Budget Head only) — opens the read-only Budget Preview modal
-   (readone/budget-preview-readone.php, bpv_*), laid out like the Budget Processing one: one block per
+   (readone/budget-preview-readone.php, bpv_*): the same columns as the Budget Processing one, one block per
    Project (info card + line-item table). The row is a whole request, so the modal gets ALL of its Programs. */
 function bgr_budgetPreview(idx) {
     const { header } = bgr_flatRows[idx];

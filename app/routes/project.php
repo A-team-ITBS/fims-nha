@@ -15,11 +15,12 @@ $app->get('/project/next-code', function ($request, $response, $args) {
         $params         = $request->getQueryParams();
         $programCode    = $params['program_code'] ?? '';
         $subProgramCode = $params['sub_program_code'] ?? '';
+        $fiscalYr       = isset($params['fiscal_yr']) && $params['fiscal_yr'] !== '' ? (int) $params['fiscal_yr'] : null;
         if ($programCode === '') {
             return $response->withJson(['success' => false, 'message' => 'program_code is required.'], 400);
         }
 
-        $code = GlobalService::generateProjectCode($programCode, $subProgramCode, (int) $request->getAttribute('user_id'));
+        $code = GlobalService::generateProjectCode($programCode, $subProgramCode, (int) $request->getAttribute('user_id'), $fiscalYr);
 
         return $response->withJson(['success' => true, 'data' => ['project_code' => $code]]);
     } catch (\InvalidArgumentException $e) {
