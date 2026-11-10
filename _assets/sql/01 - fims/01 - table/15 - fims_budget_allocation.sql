@@ -18,7 +18,6 @@
 CREATE TABLE IF NOT EXISTS fims.budget_allocation();
 ALTER TABLE fims.budget_allocation
 ADD COLUMN IF NOT EXISTS allocation_id SERIAL PRIMARY KEY,
-ADD COLUMN IF NOT EXISTS memo_ref_no VARCHAR(50),
 ADD COLUMN IF NOT EXISTS request_referrence_no VARCHAR(50),
 ADD COLUMN IF NOT EXISTS allocation_type VARCHAR(20),
 ADD COLUMN IF NOT EXISTS allocation_number VARCHAR(100),
@@ -60,7 +59,6 @@ CREATE INDEX IF NOT EXISTS idx_budget_allocation_project_code           ON fims.
 CREATE INDEX IF NOT EXISTS idx_budget_allocation_vendor_id              ON fims.budget_allocation (vendor_id);
 CREATE INDEX IF NOT EXISTS idx_budget_allocation_parent_id              ON fims.budget_allocation (parent_id);
 CREATE INDEX IF NOT EXISTS idx_budget_allocation_status_id              ON fims.budget_allocation (status_id);
-CREATE INDEX IF NOT EXISTS idx_budget_allocation_memo_ref_no            ON fims.budget_allocation (memo_ref_no);
 CREATE INDEX IF NOT EXISTS idx_budget_allocation_allocation_number      ON fims.budget_allocation (allocation_number);
 CREATE INDEX IF NOT EXISTS idx_budget_allocation_multiple_node_id       ON fims.budget_allocation (multiple_node_id);
 CREATE INDEX IF NOT EXISTS idx_budget_allocation_deleted_at             ON fims.budget_allocation (deleted_at);
