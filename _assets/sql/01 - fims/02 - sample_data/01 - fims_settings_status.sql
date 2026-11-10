@@ -50,3 +50,36 @@ WHERE NOT EXISTS (SELECT 1 FROM fims.settings_status WHERE name = 'Approved' AND
 INSERT INTO fims.settings_status (name, status_for, color)
 SELECT 'Draft', 'budget_allocation', '#6B7280'
 WHERE NOT EXISTS (SELECT 1 FROM fims.settings_status WHERE name = 'Draft' AND status_for = 'budget_allocation');
+
+-- status_for = 'disbursement_voucher' (fims.disbursement_vouchers' four-office pipeline — see
+-- DisbursementVoucherService::TRANSITIONS/STAGE_HOLDER_RC). Names kept as the same
+-- ALL_CAPS_UNDERSCORE strings the service/routes/frontend already compare against (DisbursementVoucherService,
+-- app/pages/voucher/form.php, app/pages/voucher/readone.php) — only the storage moved to this shared
+-- lookup table, via "03 - alter_table/18 - disbursement_vouchers_status_to_settings_status.sql".
+INSERT INTO fims.settings_status (name, status_for, color)
+SELECT 'DRAFT', 'disbursement_voucher', '#6B7280'
+WHERE NOT EXISTS (SELECT 1 FROM fims.settings_status WHERE name = 'DRAFT' AND status_for = 'disbursement_voucher');
+
+INSERT INTO fims.settings_status (name, status_for, color)
+SELECT 'FOR_FMD_REVIEW', 'disbursement_voucher', '#D97706'
+WHERE NOT EXISTS (SELECT 1 FROM fims.settings_status WHERE name = 'FOR_FMD_REVIEW' AND status_for = 'disbursement_voucher');
+
+INSERT INTO fims.settings_status (name, status_for, color)
+SELECT 'FOR_ACCOUNTING', 'disbursement_voucher', '#2563EB'
+WHERE NOT EXISTS (SELECT 1 FROM fims.settings_status WHERE name = 'FOR_ACCOUNTING' AND status_for = 'disbursement_voucher');
+
+INSERT INTO fims.settings_status (name, status_for, color)
+SELECT 'FOR_TREASURY', 'disbursement_voucher', '#0D9488'
+WHERE NOT EXISTS (SELECT 1 FROM fims.settings_status WHERE name = 'FOR_TREASURY' AND status_for = 'disbursement_voucher');
+
+INSERT INTO fims.settings_status (name, status_for, color)
+SELECT 'RELEASED', 'disbursement_voucher', '#16A34A'
+WHERE NOT EXISTS (SELECT 1 FROM fims.settings_status WHERE name = 'RELEASED' AND status_for = 'disbursement_voucher');
+
+INSERT INTO fims.settings_status (name, status_for, color)
+SELECT 'REJECTED', 'disbursement_voucher', '#DC3545'
+WHERE NOT EXISTS (SELECT 1 FROM fims.settings_status WHERE name = 'REJECTED' AND status_for = 'disbursement_voucher');
+
+INSERT INTO fims.settings_status (name, status_for, color)
+SELECT 'CANCELLED', 'disbursement_voucher', '#F97316'
+WHERE NOT EXISTS (SELECT 1 FROM fims.settings_status WHERE name = 'CANCELLED' AND status_for = 'disbursement_voucher');

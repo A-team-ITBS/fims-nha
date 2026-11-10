@@ -1812,3 +1812,21 @@
 .nha-ss-opt-code { font-family: "IBM Plex Mono", monospace; font-weight: 600; white-space: nowrap; color: var(--afims-primary-text, #0035A9); }
 .nha-ss-opt-label { color: var(--afims-text-muted, #62657E); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nha-ss-empty { padding: 10px; font-size: 12px; color: var(--afims-text-muted, #62657E); }
+
+/* ATC/Accounting Entries UI bits shared between app/pages/voucher/readone.php (#vr-root, Accounting
+   stage) and app/pages/voucher/form.php (#vf-root, Originating's optional pre-fill) — generic here
+   (not ID-scoped) so both pages' markup can use the same classes. readone.php additionally defines
+   #vr-root-scoped copies of a few of these (harmless duplication, same result, higher specificity). */
+.vje-remove { background: none; border: none; cursor: pointer; color: var(--afims-danger, #DC3545); padding: 4px 6px; border-radius: 5px; font-size: 16px; line-height: 1; }
+.vje-remove:hover { background: var(--afims-danger-soft, #FAE1E3); }
+.vje-section-hdr { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.vje-badge { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; padding: 3px 9px; border-radius: 999px;
+    background: var(--afims-success-soft, #DBF2E5); color: var(--afims-success-hover, #0C7539); }
+.vje-amt-badge { font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 8px; background: var(--afims-surface-subtle, #F4F7FA); color: var(--afims-text, #1e293b); }
+.vje-tax-box { padding: 12px 16px; border-radius: 10px; border: 1px solid var(--afims-warning-soft, #FDF0D5); background: var(--afims-warning-soft, #FEF9EC); }
+.vje-tax-box dl { display: grid; grid-template-columns: 1fr auto; gap: 6px 0; margin: 0; }
+.vje-tax-box dt { font-size: 12.5px; color: var(--afims-warning-text, #8A6400); }
+.vje-tax-box dd { margin: 0; text-align: right; font-family: "IBM Plex Mono", monospace; font-size: 12.5px; color: var(--afims-warning-text, #8A6400); }
+.vje-tax-box dl.vje-tax-total dt, .vje-tax-box dl.vje-tax-total dd { font-weight: 700; font-size: 13.5px; }
+.vje-auto-tag { display: inline-block; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
+    padding: 1px 6px; border-radius: 999px; background: var(--afims-primary-soft, #E6EBF6); color: var(--afims-primary-text, #0035A9); margin-left: 4px; }

@@ -213,7 +213,7 @@ function vr_render(dv) {
             <dl class="vr-dl vr-dl3" style="margin-bottom:12px;">
                 <div><dt>Dept. / Project</dt><dd>${vr_esc(dv.dept_project) || '—'}</dd></div>
                 <div><dt>Fund Source</dt><dd>${vr_esc(dv.fund_source) || '—'}</dd></div>
-                <div><dt>Account Code</dt><dd>${vr_esc(dv.account_code) || '—'}</dd></div>
+                <div><dt>Account Code</dt><dd>${vr_accountCodeDisplay(dv)}</dd></div>
             </dl>
             <table class="vr-ledger">
                 <tr><td class="vr-l-label">Budget</td><td class="vr-l-val">${vr_peso(dv.budget_amount)}</td></tr>
@@ -709,6 +709,18 @@ function vr_statusClass(s) {
 }
 function vr_peso(v) {
     return '₱ ' + Number(v || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+/* Shows the account title alongside the code — same Chart of Accounts lookup the searchable-select
+   pickers (nhaSearchableSelect, form.php / vje_addLine) show as their option labels — and flags it
+   if this DV's own account isn't posting_allowed (shouldn't happen for a voucher saved since that
+   check was added, but can for older/legacy data). */
+function vr_accountCodeDisplay(dv) {
+    if (!dv.account_code) return '—';
+    const code = vr_esc(dv.account_code);
+    if (dv.account_posting_allowed === false) {
+        return `${code} <span class="nha-bdg nha-bdg-red" title="Not postable or no longer exists in the Chart of Accounts">⚠ invalid</span>`;
+    }
+    return dv.account_title ? `${code} — ${vr_esc(dv.account_title)}` : code;
 }
 function vr_fmtDate(s) {
     if (!s) return '—';
