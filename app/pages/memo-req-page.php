@@ -153,8 +153,8 @@ try {
                         <th>Requesting Office</th>
                         <th>Program / Project</th>
                         <th>Vendor</th>
-                        <th>PR</th>
-                        <th>PO</th>
+                        <th>Amount</th>
+                        <th>Submitted Date</th>
                         <th>Status</th>
                         <th>Actions</th>
                     </tr>
@@ -372,11 +372,15 @@ function mrq_statusBadge(name, color) {
 function mrq_refOf(r)       { return r.request_referrence_no || ''; }
 function mrq_parentRefOf(r) { return r.parent_request_referrence_no || ''; }
 
-function mrq_docCell(number, amount) {
-    if (!number && (amount === null || amount === undefined || amount === '')) return '—';
-    return `<div>${number ? `<code class="nha-code">${mrq_esc(number)}</code>` : '—'}</div>` +
-           (amount !== null && amount !== undefined && amount !== ''
-               ? `<div class="nha-td-sub" style="margin-top:2px;">${mrq_money(amount)}</div>` : '');
+// A Postgres timestamp ("2026-11-10 08:30:00.123456+08") as "Nov 10, 2026" with the time underneath; '—' when empty or
+// not a date. Made ISO enough for every browser first (T separator, milliseconds only, "+08" -> "+08:00").
+function mrq_dateCell(value) {
+    if (!value) return '—';
+    const iso = String(value).trim().replace(' ', 'T').replace(/(\.\d{3})\d+/, '$1').replace(/([+-]\d{2})$/, '$1:00');
+    const d   = new Date(iso);
+    if (isNaN(d)) return mrq_esc(value);
+    return `<div style="white-space:nowrap;">${d.toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' })}</div>` +
+           `<div class="nha-td-sub" style="margin-top:2px;">${d.toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' })}</div>`;
 }
 
 function mrq_renderTable(rows) {
@@ -411,8 +415,8 @@ function mrq_renderTable(rows) {
             ${r.project_name ? `<div class="nha-td-sub" style="margin-top:2px;">${mrq_esc(r.project_name)}</div>` : ''}
         </td>
         <td>${mrq_esc(r.vendor_name || '—')}</td>
-        <td>${mrq_docCell(r.pr_number, r.pr_amount)}</td>
-        <td>${mrq_docCell(r.po_number, r.po_amount)}</td>
+        <td style="white-space:nowrap;">${mrq_money(r.requested_total)}</td>
+        <td>${mrq_dateCell(r.created_at)}</td>
         <td>${mrq_statusBadge(r.status_name, r.status_color)}</td>
         <td>${mrq_actionMenu(id, mrq_isDraft(r))}</td>
     </tr>`;

@@ -19,7 +19,10 @@
  *   Approve  the same call at the last step: status -> "Approved", and the request is given its ALLOCATION NUMBER, by
  *            allocation type and document type (CBA / RFA / LAA; RFA 57 for COE, 87 for CO), in the same step. The
  *            number is not shown before that: it is only generated then.
- *   Return   { decision: "return" } at any step: status -> "Returned", no number — it goes back to the requesting office.
+ *   Return   { decision: "return" } at any step, ONE step back: the Department Manager's goes to "Returned to Division
+ *            Manager" and the Division Manager's to "Returned to Section Chief" — those statuses are steps of the chain
+ *            too, so that user sees Endorse / Return again; the Section Chief's goes to "Returned", back to the
+ *            requesting office. No number.
  * Both ask for a confirmation first. After either the modal closes, a message says what happened (with the number, for an
  * approval) and the list reloads.
  *
@@ -174,7 +177,10 @@ function mpr_setButtons(canDecide) {
     ret.hidden = app.hidden = !canDecide;
     app.textContent = (!canDecide || rv.is_final) ? 'Approve' : 'Endorse';
     app.title = canDecide && rv.next_status ? `Its status becomes ${rv.next_status}` : '';
-    [[app, (canDecide && rv.next_status) || MPR_APPROVED], [ret, MPR_RETURNED]].forEach(([btn, status]) => {
+    // "Return to FMD Section Chief" when it goes one step back, plain "Return" when it goes to the requesting office
+    ret.textContent = canDecide && rv.return_actor ? `Return to ${rv.return_actor}` : 'Return';
+    ret.title = canDecide && rv.return_status ? `Its status becomes ${rv.return_status}` : '';
+    [[app, (canDecide && rv.next_status) || MPR_APPROVED], [ret, (canDecide && rv.return_status) || MPR_RETURNED]].forEach(([btn, status]) => {
         const c = mrq_statusColor(status);
         if (c) btn.style.setProperty('--mpr-c', c); else btn.style.removeProperty('--mpr-c');
     });
@@ -187,7 +193,7 @@ async function mpr_decide(action) {
     const ref = mrq_refOf(mpr_row) ? `"${mrq_refOf(mpr_row)}"` : `#${mpr_row.allocation_id}`;
     const rv  = mpr_review();
     const ask = !approve
-        ? `Return memo request ${ref} to the requesting office? Its status will change to ${MPR_RETURNED}.`
+        ? `Return memo request ${ref} to ${rv.return_actor || 'the requesting office'}? Its status will change to ${rv.return_status || MPR_RETURNED}.`
         : (rv.is_final || !rv.next_status)
             ? `Approve memo request ${ref}? It will be given its allocation number and its status will change to ${MPR_APPROVED}.`
             : `Endorse memo request ${ref}? Its status will change to ${rv.next_status}.`;
@@ -284,7 +290,8 @@ function mpr_render(r) {
     // who the request is waiting for at this step, and where an approval sends it
     const step = !rv.in_review ? '' : mpr_row_('Review Step',
         `${mrq_esc(rv.actor || '')}${canDecide ? ' <span class="mpr-muted">(you)</span>' : ''}` +
-        `<div class="mpr-sub">${canDecide ? '' : 'Waiting for this user level to act. '}Next status: ${mrq_esc(rv.next_status || '')}</div>`);
+        `<div class="mpr-sub">${canDecide ? '' : 'Waiting for this user level to act. '}${rv.is_returned ? 'It was returned to this step. ' : ''}` +
+        `Endorse: ${mrq_esc(rv.next_status || '')} · Return: ${mrq_esc(rv.return_status || '')}</div>`);
     const types  = [r.allocation_type ? `<span class="nha-bdg nha-bdg-blue">${mrq_esc(r.allocation_type)}</span>` : '',
                     r.document_type   ? `<span class="nha-bdg nha-bdg-gray">${mrq_esc(r.document_type)}</span>` : '']
                     .filter(Boolean).join(' ');

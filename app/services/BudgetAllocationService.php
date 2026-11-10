@@ -46,19 +46,39 @@ class BudgetAllocationService
     private const STATUS_FOR_DEPARTMENT_MANAGER = 'For Department Manager';
     private const STATUS_APPROVED               = 'Approved';
     private const STATUS_RETURNED               = 'Returned';
+    private const STATUS_RETURNED_TO_SECTION_CHIEF   = 'Returned to Section Chief';
+    private const STATUS_RETURNED_TO_DIVISION_MANAGER = 'Returned to Division Manager';
 
     /**
      * The review chain inside FMD, one step per status: who acts on a request in that status (the NAME of a
-     * uac.user_levels row — its id differs per install) and the status an approval moves it to. A Return at any step
-     * gives 'Returned'. Only the last step's approval ('Approved') gives the request its allocation number.
+     * uac.user_levels row — its id differs per install), the status an approval ('next') moves it to and the status a
+     * Return ('return') moves it to. Only the last approval ('Approved') gives the request its allocation number.
      *
      *   For Preview -> FMD Section Chief -> For Division Manager -> FMD Division Manager
      *               -> For Department Manager -> FMD Department Manager -> Approved
+     *
+     * A Return goes back ONE step, to the user who endorsed it, who then sees it in their own status and can endorse
+     * it again or return it further; only the Section Chief's Return reaches the requesting office ('Returned'):
+     *   Department Manager returns -> 'Returned to Division Manager' (acted on by the Division Manager)
+     *   Division Manager returns   -> 'Returned to Section Chief'    (acted on by the Section Chief)
+     *   Section Chief returns      -> 'Returned'                     (back to the requesting office)
      */
     private const REVIEW_STEPS = [
-        self::STATUS_FOR_PREVIEW            => ['actor' => 'FMD Section Chief',      'next' => self::STATUS_FOR_DIVISION_MANAGER],
-        self::STATUS_FOR_DIVISION_MANAGER   => ['actor' => 'FMD Division Manager',   'next' => self::STATUS_FOR_DEPARTMENT_MANAGER],
-        self::STATUS_FOR_DEPARTMENT_MANAGER => ['actor' => 'FMD Department Manager', 'next' => self::STATUS_APPROVED],
+        self::STATUS_FOR_PREVIEW => [
+            'actor' => 'FMD Section Chief',      'next' => self::STATUS_FOR_DIVISION_MANAGER,   'return' => self::STATUS_RETURNED,
+        ],
+        self::STATUS_FOR_DIVISION_MANAGER => [
+            'actor' => 'FMD Division Manager',   'next' => self::STATUS_FOR_DEPARTMENT_MANAGER, 'return' => self::STATUS_RETURNED_TO_SECTION_CHIEF,
+        ],
+        self::STATUS_FOR_DEPARTMENT_MANAGER => [
+            'actor' => 'FMD Department Manager', 'next' => self::STATUS_APPROVED,               'return' => self::STATUS_RETURNED_TO_DIVISION_MANAGER,
+        ],
+        self::STATUS_RETURNED_TO_SECTION_CHIEF => [
+            'actor' => 'FMD Section Chief',      'next' => self::STATUS_FOR_DIVISION_MANAGER,   'return' => self::STATUS_RETURNED,
+        ],
+        self::STATUS_RETURNED_TO_DIVISION_MANAGER => [
+            'actor' => 'FMD Division Manager',   'next' => self::STATUS_FOR_DEPARTMENT_MANAGER, 'return' => self::STATUS_RETURNED_TO_SECTION_CHIEF,
+        ],
     ];
 
     /**
@@ -521,7 +541,9 @@ class BudgetAllocationService
     // (REVIEW_STEPS): For Preview (FMD Section Chief) -> For Division Manager (FMD Division Manager) ->
     // For Department Manager (FMD Department Manager) -> Approved. At each step:
     //   approve -> the next status of the chain; the LAST approval gives 'Approved' and the ALLOCATION NUMBER (below);
-    //   return  -> status 'Returned', no number (the request goes back to the requesting office).
+    //   return  -> ONE step back, to the user who endorsed it (status 'Returned to Division Manager' / 'Returned to
+    //              Section Chief', which that user acts on); the Section Chief's return gives 'Returned' (back to the
+    //              requesting office). No number either way.
     // Only an FMD user may do this (the central review RC, GlobalService::isCentralReviewRc — read with getUserRcId, which
     // fails closed), only to a request that is in one of the three review statuses, and only when the user holds the
     // user level of that step. The status change and the number are written in ONE transaction, and the UPDATE itself
@@ -563,7 +585,7 @@ class BudgetAllocationService
 
             // The status the decision gives. Missing = the seed was not run: say so, change nothing.
             $currentId  = (int) ($row['status_id'] ?? 0);
-            $targetName = $decision === 'approve' ? $step['next'] : self::STATUS_RETURNED;
+            $targetName = $decision === 'approve' ? $step['next'] : $step['return'];
             $targetId   = $this->getStatusIdByName($targetName);
             if ($targetId === null) {
                 return $this->fail("The status \"{$targetName}\" is not set up in the database yet, so nothing was changed. "
@@ -596,7 +618,9 @@ class BudgetAllocationService
             $inTransaction = false;
 
             if ($decision === 'return') {
-                $message = 'Memo request returned to the requesting office.';
+                $message = isset(self::REVIEW_STEPS[$targetName])
+                    ? "Memo request returned to the " . self::REVIEW_STEPS[$targetName]['actor'] . " (now {$targetName})."
+                    : 'Memo request returned to the requesting office.';
             } elseif ($isFinal) {
                 $message = 'Memo request approved.' . ($number !== '' ? " Allocation number: {$number}." : '');
             } else {
@@ -641,6 +665,10 @@ class BudgetAllocationService
             'actor'       => $step['actor'],
             'next_status' => $step['next'],
             'is_final'    => $step['next'] === self::STATUS_APPROVED,
+            // where a Return sends it, and whom (the actor of that step; null = back to the requesting office)
+            'return_status' => $step['return'],
+            'return_actor'  => self::REVIEW_STEPS[$step['return']]['actor'] ?? null,
+            'is_returned'   => in_array($step['status'], [self::STATUS_RETURNED_TO_SECTION_CHIEF, self::STATUS_RETURNED_TO_DIVISION_MANAGER], true),
             'can_decide'  => $this->isReviewer($userId) && $this->hasUserLevel($userId, $step['actor']),
         ];
     }
@@ -783,6 +811,30 @@ class BudgetAllocationService
         return isset($row['id']) ? (int) $row['id'] : null;
     }
 
+    /**
+     * SQL for the sum of "requested_amount" over the lines of line_transaction (jsonb; an array of lines, or a single
+     * line object). A line whose requested_amount is missing, blank or not a number counts as 0, so one bad line can
+     * never fail the whole list. Commas in a text amount ("1,500,000.00") are ignored. Constant SQL, no user input.
+     */
+    private function requestedTotalSql(): string
+    {
+        return "COALESCE((
+                    SELECT SUM(CASE
+                                 WHEN jsonb_typeof(ln.value->'requested_amount') = 'number' THEN (ln.value->>'requested_amount')::numeric
+                                 WHEN jsonb_typeof(ln.value->'requested_amount') = 'string'
+                                      AND REPLACE(ln.value->>'requested_amount', ',', '') ~ '^-?[0-9]+([.][0-9]+)?$'
+                                   THEN REPLACE(ln.value->>'requested_amount', ',', '')::numeric
+                                 ELSE 0
+                               END)
+                    FROM jsonb_array_elements(CASE jsonb_typeof(a.line_transaction)
+                                                WHEN 'array'  THEN a.line_transaction
+                                                WHEN 'object' THEN jsonb_build_array(a.line_transaction)
+                                                ELSE '[]'::jsonb
+                                              END) AS ln(value)
+                    WHERE jsonb_typeof(ln.value) = 'object'
+                ), 0)";
+    }
+
     /** SELECT + every join the list / read views need; callers append WHERE / ORDER BY. */
     private function baseSelect(string $columns): string
     {
@@ -797,7 +849,8 @@ class BudgetAllocationService
                        pg.program_name,
                        sp.sub_program_name,
                        pj.project_name,
-                       pa.request_referrence_no AS parent_request_referrence_no
+                       pa.request_referrence_no AS parent_request_referrence_no,
+                       {$this->requestedTotalSql()} AS requested_total
                 FROM {$this->table} a
                 LEFT JOIN {$this->tableStatus} st     ON st.id = a.status_id
                 LEFT JOIN {$this->tableVendor} v      ON v.vendor_id = a.vendor_id
