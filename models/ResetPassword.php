@@ -375,7 +375,14 @@ class ResetPassword extends Users
                     if (SameText($action, "resetpassword")) { // Reset password
                         $_SESSION[SESSION_USER_PROFILE_USER_NAME] = $userName; // Save login user name
                         $_SESSION[SESSION_STATUS] = "passwordreset";
-                        $this->terminate("changepassword");
+                        // "/" (app/pages/login.php) is the maintained, branded entry
+                        // point — it reads this same SESSION_STATUS flag (via
+                        // IsPasswordReset()'s own session key) to show its embedded
+                        // Change Password panel instead of the generated, unstyled
+                        // ChangePassword view. GetUrl() passes "/"-prefixed targets
+                        // through unchanged (no route-name lookup), so this is a
+                        // literal redirect, not a "changepassword" page route.
+                        $this->terminate("/");
                         return;
                     } else {
                         $emailSent = false;
