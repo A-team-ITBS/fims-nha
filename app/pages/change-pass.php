@@ -23,6 +23,16 @@ $homeUrl = $_SESSION['nha_home_url'] ?? '/MainDashboard';
 $currentUsername = getLoggedInUsername();
 
 $pwdChanged = isset($_GET['pwd']) && $_GET['pwd'] === 'changed';
+
+// Set by models/ChangePassword.php right after a failed credential/validation
+// check, instead of letting it fall through and render the framework's own
+// default views/ChangePassword.php template as the POST response.
+$changeError = $_GET['err'] ?? '';
+$changeErrorMessage = match ($changeError) {
+    'oldpwd' => 'Could not update your password. Please check your current password and try again.',
+    'newpwd' => 'Could not update your password. Please choose a different new password.',
+    default => '',
+};
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -90,9 +100,9 @@ $pwdChanged = isset($_GET['pwd']) && $_GET['pwd'] === 'changed';
                     </p>
                 </div>
 
-                <div class="flash-error" id="flash-error" style="display:none;">
+                <div class="flash-error" id="flash-error" style="<?= $changeErrorMessage ? 'display:flex;' : 'display:none;' ?>">
                     <i class="fas fa-exclamation-circle"></i>
-                    <span id="flash-error-msg"></span>
+                    <span id="flash-error-msg"><?= htmlspecialchars($changeErrorMessage) ?></span>
                 </div>
 
                 <div class="flash-success" id="flash-success" style="<?= $pwdChanged ? 'display:flex;' : 'display:none;' ?>">
@@ -197,8 +207,20 @@ $pwdChanged = isset($_GET['pwd']) && $_GET['pwd'] === 'changed';
     }
     confirmPasswordInput.addEventListener('input', clearConfirmError);
 
+    let changePassSubmitting = false;
     changePassForm.addEventListener('submit', function (e) {
         e.preventDefault();
+
+        // Guards against a second "submit" event (Enter key in a password
+        // field right after clicking Save, or a double-click before the
+        // button's disabled state paints) re-entering with the SAME old
+        // password value. Without this, two requests can race: the first
+        // actually changes the password, but if the second (now stale
+        // old-password) request's "invalid old password" redirect responds
+        // first, the browser lands on that error page even though the save
+        // already went through.
+        if (changePassSubmitting) return;
+        changePassSubmitting = true;
 
         flashOk.style.display = 'none';
         flashErr.style.display = 'none';
@@ -209,11 +231,13 @@ $pwdChanged = isset($_GET['pwd']) && $_GET['pwd'] === 'changed';
 
         if (!oldPassword || !newPassword || !confirmPassword) {
             markConfirmError('Please fill in all three fields.');
+            changePassSubmitting = false;
             return;
         }
         if (newPassword !== confirmPassword) {
             markConfirmError('Passwords do not match.');
             confirmPasswordInput.focus();
+            changePassSubmitting = false;
             return;
         }
 
@@ -221,66 +245,38 @@ $pwdChanged = isset($_GET['pwd']) && $_GET['pwd'] === 'changed';
         btn.disabled = true;
         btn.innerHTML = '<span>Saving…</span><i class="fas fa-spinner fa-spin"></i>';
 
-        function resetButton() {
-            btn.disabled = false;
-            btn.innerHTML = '<span>Save New Password</span><i class="fas fa-arrow-right"></i>';
-        }
-
         // /changepassword guards every POST with a per-session Slim-Csrf pair
         // that's re-generated on each request — a fetch()+FormData POST built
         // from scratch has no way to obtain a valid one, so fetch the page
-        // once first to harvest a fresh pair. The actual submit is ALSO done
-        // via fetch (not a real form.submit()/navigation): on a wrong current
-        // password the server just re-renders its own unstyled page in place
-        // (no redirect), and a real navigation would silently dump the user
-        // there with no visible connection to this page. Reading the fetch
-        // response lets us tell success (redirected to /?pwd=changed) apart
-        // from failure (re-rendered in place) and react accordingly without
-        // ever leaving this branded page on failure.
+        // once first to harvest a fresh pair, graft it onto this form, then do
+        // a REAL submit (full navigation), same pattern as login.php. (This
+        // used to fetch()+parse the re-rendered failure HTML for an error
+        // message client-side, but that's fragile against markup/CSS changes
+        // in the framework's own template; models/ChangePassword.php now
+        // redirects back to this page with the reason on failure instead, same
+        // as the /login fix.)
         fetch('/changepassword', { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
             .then(r => r.text())
             .then(html => {
                 const doc = new DOMParser().parseFromString(html, 'text/html');
-
-                const fd = new FormData();
-                doc.querySelectorAll('input[type="hidden"][name*="csrf"], input[type="hidden"][name="modal"]').forEach(src => {
-                    fd.append(src.name, src.value);
-                });
-                fd.append('opwd', oldPassword);
-                fd.append('npwd', newPassword);
-                fd.append('cpwd', confirmPassword);
-
-                return fetch('/changepassword', {
-                    method: 'POST',
-                    body: fd,
-                    credentials: 'same-origin'
-                });
-            })
-            .then(r => {
-                // On success the server redirects to the dashboard ("index");
-                // on failure it just re-renders /changepassword in place with
-                // no redirect — so "did we end up somewhere other than
-                // /changepassword" is what actually distinguishes the two,
-                // not any specific success URL.
-                if (r.url && r.url.indexOf('/changepassword') === -1) {
-                    window.location.href = r.url;
-                    return;
+                const csrfInputs = doc.querySelectorAll('input[name*="csrf"]');
+                if (csrfInputs.length >= 2) {
+                    [csrfInputs[0], csrfInputs[1]].forEach(src => {
+                        const h = document.createElement('input');
+                        h.type = 'hidden';
+                        h.name = src.name;
+                        h.value = src.value;
+                        changePassForm.appendChild(h);
+                    });
                 }
-                return r.text().then(html => {
-                    const doc = new DOMParser().parseFromString(html, 'text/html');
-                    const errorEl = doc.querySelector('.ew-error, .alert-danger');
-                    const message = errorEl
-                        ? errorEl.textContent.trim()
-                        : 'Could not update your password. Please check your current password and try again.';
-                    flashErrMsg.textContent = message;
-                    flashErr.style.display = 'flex';
-                    resetButton();
-                });
+                changePassForm.submit();
             })
             .catch(() => {
                 flashErrMsg.textContent = 'Could not reach the server. Please try again.';
                 flashErr.style.display = 'flex';
-                resetButton();
+                btn.disabled = false;
+                btn.innerHTML = '<span>Save New Password</span><i class="fas fa-arrow-right"></i>';
+                changePassSubmitting = false;
             });
     });
 </script>

@@ -3,6 +3,7 @@
 namespace PHPMaker2024\FIMS;
 
 use PHPMaker2024\FIMS\Service\BudgetAllocationService;
+use PHPMaker2024\FIMS\Service\GlobalService;
 
 $BudgetAllocationService = new BudgetAllocationService();
 
@@ -66,7 +67,18 @@ $app->get('/budget_allocation/list', function ($request, $response, $args) use (
         $page   = isset($params['page']) ? (int) $params['page'] : 1;
         $limit  = isset($params['limit']) ? (int) $params['limit'] : 10;
 
-        $result = $BudgetAllocationService->fetchAlls($page, $limit, $budgetAllocationFilters($params));
+        // Scope the list to the logged-in user's RC, same rule as /budget_req/list:
+        //  - a Regional user sees its own memo requests plus its district offices';
+        //  - a District user sees only its own;
+        //  - FMD (the central review RC) sees every RC — central=1 is forced here because the page
+        //    doesn't send it, and resolveBudgetReqRcFilter() still verifies the user's RC server-side,
+        //    so it grants nothing to anyone else;
+        //  - a superadmin / user without an RC is unrestricted.
+        $scope   = GlobalService::getUserRcScope((int) $request->getAttribute('user_id'));
+        $filters = $budgetAllocationFilters($params);
+        $filters['rc_id'] = GlobalService::resolveBudgetReqRcFilter($scope, $params + ['central' => '1']);
+
+        $result = $BudgetAllocationService->fetchAlls($page, $limit, $filters);
 
         return $response->withJson($result, $result['success'] ? 200 : 500);
     } catch (\Exception $e) {

@@ -18,6 +18,12 @@ if (isAnyUserLoggedIn()) {
 // Success flash after a completed password change (from /changepassword → back).
 $pwdChanged = isset($_GET['pwd']) && $_GET['pwd'] === 'changed';
 
+// Set by models/Login.php right after a failed credential check, instead of
+// letting a POST to /login (which isn't rewritten to this page by nginx.conf,
+// unlike "/") fall through and render the framework's own default
+// views/Login.php template.
+$loginFailed = isset($_GET['login']) && $_GET['login'] === 'failed';
+
 // Set by ResetPassword.php right before it redirects here, after the user
 // clicks the password-reset link emailed to them — same flag the framework's
 // own IsPasswordReset() checks. Shows the embedded Change Password panel
@@ -91,10 +97,10 @@ $showChangePassword = (($_SESSION['FIMS_Status'] ?? '') === 'passwordreset');
                     </p>
                 </div>
 
-                <?php if (isset($_SESSION['flash_failure'])): ?>
+                <?php if (isset($_SESSION['flash_failure']) || $loginFailed): ?>
                 <div class="flash-error" id="flash-failure">
                     <i class="fas fa-exclamation-circle"></i>
-                    <?= htmlspecialchars($_SESSION['flash_failure']) ?>
+                    <?= htmlspecialchars($_SESSION['flash_failure'] ?? 'Incorrect username or password.') ?>
                 </div>
                 <?php unset($_SESSION['flash_failure']); endif; ?>
 

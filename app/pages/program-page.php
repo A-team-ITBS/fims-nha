@@ -276,7 +276,7 @@ async function prg_save(ev) {
         const json = await res.json();
         if (!json.success) throw new Error(json.message || 'Failed to save program.');
 
-        // On add, the server's message names the code it actually assigned ("Program 2026-…-102 created successfully.").
+        // On add, the server's message names the code it actually assigned ("Program 102 created successfully.").
         prg_toast(mode === 'edit' ? 'Program updated successfully.' : (json.message || 'Program created successfully.'), 'success');
         prg_closeModal();
         prg_load();

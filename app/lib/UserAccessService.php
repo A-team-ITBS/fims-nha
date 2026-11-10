@@ -96,7 +96,7 @@ class UserAccessService
                     $nullableString($lastName) . ", " .
                     $nullableString($suffix) . ", " .
                     $nullableString($mobileNumber) . ", " .
-                    App\QuotedValue($isActive, App\DataType::BOOLEAN, "DB") . ", " .
+                    App\QuotedValue($isActive ? "1" : "0", App\DataType::BOOLEAN, "DB") . ", " .
                     $nullableString($rcId) . ", " .
                     $nullableNumber($positionId) .
                     ", CURRENT_TIMESTAMP)";
@@ -203,7 +203,7 @@ class UserAccessService
                 "last_name = " . $nullableString($lastName),
                 "suffix = " . $nullableString($suffix),
                 "mobile_number = " . $nullableString($mobileNumber),
-                "is_active = " . App\QuotedValue($isActive, App\DataType::BOOLEAN, "DB"),
+                "is_active = " . App\QuotedValue($isActive ? "1" : "0", App\DataType::BOOLEAN, "DB"),
                 "rc_id = " . $nullableString($rcId),
                 "position_id = " . $nullableNumber($positionId),
             ];
@@ -451,7 +451,7 @@ class UserAccessService
                 $sql = "INSERT INTO permission_module_captions (table_name, caption, is_hidden) VALUES (" .
                     App\QuotedValue($tableName, App\DataType::STRING, "DB") . ", " .
                     App\QuotedValue($caption, App\DataType::STRING, "DB") . ", " .
-                    App\QuotedValue($isHidden, App\DataType::BOOLEAN, "DB") . ")" .
+                    App\QuotedValue($isHidden ? "1" : "0", App\DataType::BOOLEAN, "DB") . ")" .
                     " ON CONFLICT (table_name) DO UPDATE SET is_hidden = EXCLUDED.is_hidden, updated_at = CURRENT_TIMESTAMP";
                 App\Execute($sql, "DB");
 
