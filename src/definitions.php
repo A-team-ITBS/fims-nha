@@ -127,6 +127,7 @@ return [
     "budget_allocation_form" => \DI\create(BudgetAllocationForm::class),
     "AIRModule" => \DI\create(AirModule::class),
     "Voucher" => \DI\create(Voucher::class),
+    "JournalEntryVoucher" => \DI\create(JournalEntryVoucher::class),
 
     // User table
     "usertable" => \DI\get("users"),
