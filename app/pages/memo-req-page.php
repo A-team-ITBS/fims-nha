@@ -8,6 +8,27 @@ $_mrq_api = Config('API.FIMS_URL');
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
+<style>
+/* ── Actions dropdown menu (same pattern as budget-req-page.php) ──────── */
+.nha-tools-menu { position:relative;display:inline-block; }
+.nha-menu-trigger { display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border-radius:6px;
+    font-size:11px;font-weight:600;cursor:pointer;border:1px solid var(--afims-border, #E4ECF2);
+    background:var(--afims-surface, #FFFFFF);color:var(--afims-text, #1A1B21);white-space:nowrap;
+    font-family:'IBM Plex Sans',sans-serif;transition:all .15s; }
+.nha-menu-trigger:hover { background:var(--afims-surface-subtle, #F4F7FA);border-color:var(--afims-text-disabled, #A9AAB8); }
+.nha-menu-trigger svg { width:12px;height:12px;flex-shrink:0; }
+.nha-tools-dropdown { display:none;position:fixed;min-width:170px;background:var(--afims-surface, #FFFFFF);
+    border:1px solid var(--afims-border, #E4ECF2);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.12);
+    z-index:9999;padding:4px 0; }
+.nha-tools-dropdown.open { display:block; }
+.nha-menu-item { display:flex;align-items:center;gap:8px;padding:8px 12px;font-size:12px;font-weight:500;
+    color:var(--afims-text, #1A1B21);text-decoration:none;white-space:nowrap;cursor:pointer;
+    border:none;background:none;width:100%;text-align:left;transition:background .1s; }
+.nha-menu-item:hover { background:var(--afims-surface-subtle, #F4F7FA);color:var(--afims-heading-fill, #000E3E); }
+.nha-menu-item.danger:hover { background:#fdecec;color:#c0392b; }
+.nha-menu-item svg { width:13px;height:13px;flex-shrink:0;opacity:.7; }
+.nha-menu-divider { border-top:1px solid var(--afims-border, #E4ECF2);margin:3px 0; }
+</style>
 
 <div id="mrq-root" class="nha-root">
 
@@ -314,19 +335,54 @@ function mrq_renderTable(rows) {
         <td>${mrq_docCell(r.pr_number, r.pr_amount)}</td>
         <td>${mrq_docCell(r.po_number, r.po_amount)}</td>
         <td>${mrq_statusBadge(r.status_name, r.status_color)}</td>
-        <td>
-            <button class="nha-btn-act edit" onclick="mrq_edit(${id})" title="Edit">
-                <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
-                Edit
-            </button>
-            <button class="nha-btn-act danger" onclick="mrq_delete(${id})" title="Delete">
-                <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-                Delete
-            </button>
-        </td>
+        <td>${mrq_actionButtons(id)}</td>
     </tr>`;
     }).join('');
 }
+
+// Actions dropdown — same kebab-menu pattern as budget-req-page.php's bgr_actionButtons().
+function mrq_actionButtons(id) {
+    return `<div class="nha-tools-menu">
+        <button type="button" class="nha-menu-trigger" onclick="mrq_toggleMenu(this)">
+            <svg fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+            Actions
+        </button>
+        <div class="nha-tools-dropdown">
+            <a class="nha-menu-item" href="javascript:void(0);" onclick="mrq_edit(${id});mrq_closeMenus();">
+                <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                Edit
+            </a>
+            <div class="nha-menu-divider"></div>
+            <a class="nha-menu-item danger" href="javascript:void(0);" onclick="mrq_closeMenus();mrq_delete(${id});">
+                <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                Delete
+            </a>
+        </div>
+    </div>`;
+}
+
+// Open/close — same positioning pattern as budget-req-page.php's bgr_toggleMenu/bgr_closeMenus
+// (fixed coords so the table's own overflow never clips the dropdown).
+function mrq_toggleMenu(btn) {
+    const drop = btn.closest('.nha-tools-menu').querySelector('.nha-tools-dropdown');
+    const isOpen = drop.classList.contains('open');
+    mrq_closeMenus();
+    if (isOpen) return;
+
+    const rect = btn.getBoundingClientRect();
+    drop.style.top = (rect.bottom + 4) + 'px';
+    drop.style.right = (window.innerWidth - rect.right) + 'px';
+    drop.classList.add('open');
+}
+
+function mrq_closeMenus() {
+    document.querySelectorAll('.nha-tools-dropdown.open').forEach(d => d.classList.remove('open'));
+}
+
+document.addEventListener('click', e => {
+    if (!e.target.closest('.nha-tools-menu')) mrq_closeMenus();
+});
+document.addEventListener('scroll', mrq_closeMenus, true);
 
 function mrq_truthy(v) { return v === true || v === 1 || v === '1' || v === 't' || v === 'true'; }
 
