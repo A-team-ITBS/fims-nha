@@ -402,7 +402,7 @@ class ChangePassword extends Users
                 // unused) success flash, not the logged-in-only "index" page.
                 $this->terminate("/?pwd=changed");
             } else {
-                $this->terminate("index"); // Logged-in user changed their own password — stay in the app
+                $this->terminate("index"); // Logged-in user changed their own password — back to the dashboard
             }
             return;
         }
