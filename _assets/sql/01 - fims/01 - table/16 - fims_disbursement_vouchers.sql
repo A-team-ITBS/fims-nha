@@ -6,12 +6,12 @@
 -- voucher type.
 --
 -- The "Accounting Entries" box on the paper form is a single ledger row per
--- voucher (Budget / Obligation / Balance), not a repeating line-item table
--- like a PO's items — so those columns live directly on this header,
--- snapshotted at save time. There's no "payments prior to this voucher"
--- figure to track: one RFA backs only one DV at a time (see
--- DisbursementVoucherService::fetchRfaOptions), so balance is always just
--- obligation_amount - net_amount.
+-- voucher (Budget / Obligation / Balance / Payments / This Request / Total
+-- Payments), not a repeating line-item table like a PO's items — so those
+-- columns live directly on this header, snapshotted at save time. Several
+-- DVs can be drawn against the same RFA/obligation over time (progress
+-- payments) — see payments_prior_amount, added in
+-- "03 - alter_table/16 - disbursement_vouchers_add_payments_prior.sql".
 --
 -- rfa_allocation_id is a soft reference to fims.budget_allocation (the table
 -- that stands in for "RFA" — see allocation_type='RFA' rows there; that
@@ -52,9 +52,12 @@ ADD COLUMN IF NOT EXISTS claimant_name VARCHAR(255),
 ADD COLUMN IF NOT EXISTS claimant_address TEXT,
 ADD COLUMN IF NOT EXISTS employee_no_tin VARCHAR(100),
 
--- Particulars / amount. VAT/W-Tax are optional withholdings that apply to
--- some vouchers (e.g. a vendor payment) and not others (e.g. payroll, where
--- they stay 0 and net_amount = gross_amount).
+-- Particulars / amount. vat_rate/vat_amount/wtax_rate/wtax_amount below are created here then
+-- DROPPED again in "03 - alter_table/17 - disbursement_vouchers_drop_tax_fields_add_sl.sql" (kept
+-- here only because net_amount's generated expression a few lines down still needs them to exist
+-- at this point in a fresh install) — deductions/withholding tax now live in their own repeating
+-- tables: fims.disbursement_voucher_deductions (non-tax, e.g. retention) and
+-- fims.disbursement_voucher_atc_lines (BIR withholding, now multi-row). See that alter file.
 ADD COLUMN IF NOT EXISTS particulars TEXT,
 ADD COLUMN IF NOT EXISTS gross_amount NUMERIC(18,2) NOT NULL DEFAULT 0,
 ADD COLUMN IF NOT EXISTS vat_rate NUMERIC(5,2) NOT NULL DEFAULT 0,
@@ -93,18 +96,19 @@ ADD COLUMN IF NOT EXISTS updated_by INTEGER,
 ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
 
--- net_amount is always gross minus the withheld amounts — added separately
--- since a generated column can't be declared alongside a plain ALTER batch
--- referencing columns created in the same statement.
+-- net_amount started out generated (gross minus the now-dropped vat/wtax columns) — added
+-- separately since a generated column can't be declared alongside a plain ALTER batch referencing
+-- columns created in the same statement. "03 - alter_table/17 - ...-add_sl.sql" later drops the
+-- expression, turning it into a plain service-computed snapshot column (see that file).
 ALTER TABLE fims.disbursement_vouchers
 ADD COLUMN IF NOT EXISTS net_amount NUMERIC(18,2)
     GENERATED ALWAYS AS (gross_amount - COALESCE(vat_amount, 0) - COALESCE(wtax_amount, 0)) STORED;
 
 COMMENT ON TABLE  fims.disbursement_vouchers IS 'Disbursement Vouchers (General Form No. 1) — one generic voucher shape for any claimant/payment type';
 COMMENT ON COLUMN fims.disbursement_vouchers.rfa_allocation_id IS 'Soft reference to fims.budget_allocation.allocation_id where allocation_type = ''RFA''; no FK — that feature has no backend yet';
-COMMENT ON COLUMN fims.disbursement_vouchers.net_amount IS 'gross_amount - vat_amount - wtax_amount; vat/wtax default to 0 when not applicable (e.g. payroll), so net_amount = gross_amount';
+COMMENT ON COLUMN fims.disbursement_vouchers.net_amount IS 'gross_amount - vat_amount - wtax_amount at this point in the install sequence; see "03 - alter_table/17 - disbursement_vouchers_drop_tax_fields_add_sl.sql" for its final, service-computed form';
 COMMENT ON COLUMN fims.disbursement_vouchers.budget_amount IS 'Snapshot of the selected RFA''s funding ceiling at save time';
-COMMENT ON COLUMN fims.disbursement_vouchers.balance_amount IS 'obligation_amount - net_amount; no payments-prior component since one RFA backs only one DV';
+COMMENT ON COLUMN fims.disbursement_vouchers.balance_amount IS 'obligation_amount - (payments_prior_amount + net_amount); see "03 - alter_table/16 - disbursement_vouchers_add_payments_prior.sql"';
 
 -- disbursement_vouchers indexes
 CREATE INDEX IF NOT EXISTS idx_disbursement_vouchers_dv_date      ON fims.disbursement_vouchers (dv_date);

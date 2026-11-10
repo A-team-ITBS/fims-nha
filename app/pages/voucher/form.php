@@ -49,6 +49,11 @@ if (!isset($_vf_api)) {
 #vf-root .vf-ledger td.vf-l-val { text-align: right; font-family: "IBM Plex Mono", monospace; font-weight: 600; }
 #vf-root .vf-ledger tr.vf-l-total td { border-top: 2px solid var(--afims-border, #E4ECF2); border-bottom: none; font-weight: 700; }
 
+#vf-root .vf-ded-row { border: 1px solid var(--afims-border, #E4ECF2); border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; position: relative; }
+#vf-root .vf-ded-remove { position: absolute; top: 8px; right: 10px; background: none; border: none; cursor: pointer; color: var(--afims-danger, #DC3545); font-size: 16px; line-height: 1; padding: 4px 6px; border-radius: 5px; }
+#vf-root .vf-ded-remove:hover { background: var(--afims-danger-soft, #FAE1E3); }
+#vf-root .vf-ded-row select { width: 100%; }
+
 #vf-root .vf-errors { display: none; margin-bottom: 14px; padding: 12px 16px; background: var(--afims-danger-soft, #FAE1E3);
     border: 1px solid var(--afims-danger-soft, #FAE1E3); border-left: 4px solid var(--afims-danger, #DC3545); border-radius: 10px; }
 #vf-root .vf-errors.visible { display: block; }
@@ -153,30 +158,25 @@ if (!isset($_vf_api)) {
                         <textarea id="vf-particulars" rows="3" placeholder="To payment for…"></textarea>
                         <span class="vf-err" id="err-particulars">Particulars is required.</span>
                     </div>
-                    <div class="vf-grid3" style="margin-top:12px;">
-                        <div class="nha-fg">
-                            <label>Amount <span class="nha-req">*</span></label>
-                            <input type="number" id="vf-gross" min="0" step="0.01" placeholder="0.00">
-                            <span class="vf-err" id="err-gross">Amount must be greater than zero.</span>
-                        </div>
-                        <div class="nha-fg">
-                            <label>VAT Rate (%) / Amount <span class="vf-hint" style="display:inline;">(optional)</span></label>
-                            <div style="display:flex;gap:6px;">
-                                <input type="number" id="vf-vat-rate" min="0" step="0.01" placeholder="0" style="width:70px;">
-                                <input type="number" id="vf-vat-amount" min="0" step="0.01" placeholder="0.00">
-                            </div>
-                        </div>
-                        <div class="nha-fg">
-                            <label>W-Tax Rate (%) / Amount <span class="vf-hint" style="display:inline;">(optional)</span></label>
-                            <div style="display:flex;gap:6px;">
-                                <input type="number" id="vf-wtax-rate" min="0" step="0.01" placeholder="0" style="width:70px;">
-                                <input type="number" id="vf-wtax-amount" min="0" step="0.01" placeholder="0.00">
-                            </div>
-                        </div>
+                    <div class="nha-fg" style="margin-top:12px;max-width:260px;">
+                        <label>Amount <span class="nha-req">*</span></label>
+                        <input type="number" id="vf-gross" min="0" step="0.01" placeholder="0.00">
+                        <span class="vf-err" id="err-gross">Amount must be greater than zero.</span>
                     </div>
                     <div class="vf-number" style="margin-top:12px;margin-bottom:0;">
                         <div><small>Net Amount</small><strong id="vf-net">₱ 0.00</strong></div>
                     </div>
+                </div>
+
+                <!-- 3b — Deductions (optional, e.g. contractor retention — withholding tax is separate,
+                     added later by Accounting alongside the Journal Entry) -->
+                <div class="vf-card">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                        <p class="vf-card-title" style="margin:0;">Deductions</p>
+                        <span class="vf-hint" style="display:inline;">Optional — add only what applies to this DV</span>
+                    </div>
+                    <div id="vf-ded-container"></div>
+                    <button type="button" class="nha-btn nha-btn-ghost" onclick="vf_addDeductionLine()">+ Add Deduction</button>
                 </div>
 
                 <!-- 4 — Accounting entries -->
@@ -192,8 +192,9 @@ if (!isset($_vf_api)) {
                             <input type="text" id="vf-fund-source" placeholder="e.g. Corporate Receipts">
                         </div>
                         <div class="nha-fg">
-                            <label>Account Code</label>
-                            <input type="text" id="vf-account-code" placeholder="Chart of Accounts code">
+                            <label>Account Code <span class="nha-req">*</span></label>
+                            <input type="text" id="vf-account-code" placeholder="Search Chart of Accounts…">
+                            <span class="vf-err" id="err-account-code">Account Code is required.</span>
                         </div>
                     </div>
                     <table class="vf-ledger" style="margin-top:10px;">
@@ -205,7 +206,9 @@ if (!isset($_vf_api)) {
                             <td class="vf-l-label">Obligation</td>
                             <td><input type="number" id="vf-obligation" min="0" step="0.01" placeholder="0.00"></td>
                         </tr>
-                        <tr class="vf-l-total"><td class="vf-l-label">This Request</td><td class="vf-l-val" id="vf-this-request">₱ 0.00</td></tr>
+                        <tr><td class="vf-l-label">Payments<span id="vf-payments-hint" style="font-weight:400;"></span></td><td class="vf-l-val" id="vf-payments">₱ 0.00</td></tr>
+                        <tr><td class="vf-l-label">This Request</td><td class="vf-l-val" id="vf-this-request">₱ 0.00</td></tr>
+                        <tr class="vf-l-total"><td class="vf-l-label">Total Payments</td><td class="vf-l-val" id="vf-total-payments">₱ 0.00</td></tr>
                         <tr><td class="vf-l-label">Balance</td><td class="vf-l-val" id="vf-balance">₱ 0.00</td></tr>
                     </table>
                     <div class="nha-fg" style="margin-top:12px;">
@@ -240,7 +243,12 @@ let vf_saving  = false;
 let vf_vendors = {};         // vendor_id -> row, for the summary card
 let vf_rfas    = {};         // allocation_id -> row
 let vf_refReady = null;      // promise: fiscal years, loaded once on first open
+let vf_dedTypesReady = null;  // promise: deduction types, loaded once on first open
+let vf_coaReady = null;       // promise: postable chart-of-accounts codes, loaded once on first open
 let vf_bound   = false;
+let vf_paymentsPrior = 0;    // sum of net_amount other active vouchers already drew against the selected RFA
+let vf_dedTypes = [];         // deduction type options (fims.deduction_types)
+let vf_dedSeq   = 0;          // row-id counter for the Deductions grid
 
 function vf_authFetch(url, opts = {}) {
     const headers = { ...(opts.headers || {}) };
@@ -269,7 +277,9 @@ async function vf_open(id = 0) {
     window.PagePreloader?.show();
     try {
         vf_refReady ??= vf_loadFiscalYears();
-        await Promise.all([vf_refReady, vf_loadVendors(), vf_loadRfaOptions()]);
+        vf_dedTypesReady ??= vf_loadDeductionTypes();
+        vf_coaReady ??= vf_loadCoaOptions();
+        await Promise.all([vf_refReady, vf_dedTypesReady, vf_coaReady, vf_loadVendors(), vf_loadRfaOptions()]);
 
         if (vf_id) {
             await vf_loadExisting();
@@ -311,10 +321,9 @@ function vf_reset() {
     $vf('vf-claimant-tin').value = '';
     $vf('vf-particulars').value = '';
     $vf('vf-gross').value = '';
-    $vf('vf-vat-rate').value = '';
-    $vf('vf-wtax-rate').value = '';
-    $vf('vf-vat-amount').value = '';
-    $vf('vf-wtax-amount').value = '';
+
+    $vf('vf-ded-container').innerHTML = '';
+    vf_dedSeq = 0;
 
     $vf('vf-dept-project').value = '';
     $vf('vf-fund-source').value = '';
@@ -322,6 +331,8 @@ function vf_reset() {
     $vf('vf-budget').value = '';
     $vf('vf-obligation').value = '';
     $vf('vf-remarks').value = '';
+    vf_paymentsPrior = 0;
+    $vf('vf-payments-hint').textContent = '';
 
     $vf('vf-dv-number').textContent = '—';
     $vf('vf-status').textContent    = 'DRAFT';
@@ -332,7 +343,7 @@ function vf_bindEvents() {
     $vf('vf-dv-date').addEventListener('change', () => { if (!vf_id) vf_refreshDvNumber(); });
     $vf('vf-rfa').addEventListener('change', vf_onRfaChange);
     $vf('vf-vendor').addEventListener('change', vf_onVendorChange);
-    ['vf-gross', 'vf-vat-rate', 'vf-wtax-rate', 'vf-vat-amount', 'vf-wtax-amount'].forEach(id => $vf(id).addEventListener('input', () => vf_recalc(true)));
+    $vf('vf-gross').addEventListener('input', () => vf_recalc());
     $vf('vf-obligation').addEventListener('input', () => vf_recalc());
 }
 
@@ -347,6 +358,27 @@ async function vf_loadFiscalYears() {
         sel.innerHTML = '<option value="">Could not load</option>';
         vf_refReady = null;
         throw new Error('Failed to load fiscal years: ' + e.message);
+    }
+}
+
+async function vf_loadDeductionTypes() {
+    try {
+        const json = await vf_getJson('/voucher/deduction-types');
+        vf_dedTypes = json.data ?? [];
+    } catch (e) {
+        vf_dedTypesReady = null;
+        throw new Error('Failed to load deduction types: ' + e.message);
+    }
+}
+
+async function vf_loadCoaOptions() {
+    try {
+        const json = await vf_getJson('/chart-of-accounts/all?status=Active');
+        const postable = (json.data ?? []).filter(a => a.posting_allowed);
+        nhaSearchableSelect($vf('vf-account-code'), postable.map(a => ({ value: a.account_code, label: a.account_title })));
+    } catch (e) {
+        vf_coaReady = null;
+        throw new Error('Failed to load chart of accounts: ' + e.message);
     }
 }
 
@@ -367,14 +399,15 @@ async function vf_loadVendors() {
 async function vf_loadRfaOptions() {
     const sel = $vf('vf-rfa');
     try {
-        // exclude_dv_id: an RFA already used by THIS voucher (editing) still shows as available to it;
-        // the server leaves out any RFA used by a different, still-active voucher entirely.
+        // exclude_dv_id: this voucher's own prior draw (editing) is left out of paid_amount, so
+        // it doesn't double-count against itself. Several DVs can share one RFA (progress
+        // payments) — remaining_balance in the label is just a heads-up, not a hard limit.
         const qs   = vf_id ? `?exclude_dv_id=${vf_id}` : '';
         const json = await vf_getJson(`/voucher/rfa/all${qs}`);
         vf_rfas = {};
         (json.data ?? []).forEach(r => { vf_rfas[r.allocation_id] = r; });
         sel.innerHTML = '<option value="">— None / manual entry —</option>' + (json.data ?? []).map(r =>
-            `<option value="${vf_esc(r.allocation_id)}">${vf_esc(r.allocation_number)} — ${vf_esc(r.department_name || 'Unassigned Dept.')} (FY ${vf_esc(r.fiscal_year)})</option>`).join('');
+            `<option value="${vf_esc(r.allocation_id)}">${vf_esc(r.allocation_number)} — ${vf_esc(r.department_name || 'Unassigned Dept.')} (FY ${vf_esc(r.fiscal_year)}) · ${vf_peso(r.remaining_balance)} left of ${vf_peso(r.budget_amount)}</option>`).join('');
     } catch (e) {
         sel.innerHTML = '<option value="">Could not load RFAs</option>';
         throw new Error('Failed to load RFAs: ' + e.message);
@@ -399,7 +432,7 @@ function vf_onVendorChange() {
 /* ── RFA autofill ──────────────────────────────────────────── */
 async function vf_onRfaChange() {
     const id = $vf('vf-rfa').value;
-    if (!id) { vf_recalc(); return; }
+    if (!id) { vf_paymentsPrior = 0; $vf('vf-payments-hint').textContent = ''; vf_recalc(); return; }
 
     window.PagePreloader?.show();
     try {
@@ -410,6 +443,8 @@ async function vf_onRfaChange() {
         $vf('vf-dept-project').value = rfa.department_name || '';
         $vf('vf-budget').value       = rfa.budget_amount || '';
         $vf('vf-obligation').value   = rfa.budget_amount || '';
+        vf_paymentsPrior = parseFloat(rfa.paid_amount) || 0;
+        $vf('vf-payments-hint').textContent = vf_paymentsPrior > 0 ? ' (prior draws on this RFA)' : '';
 
         if (rfa.po_number) $vf('vf-po-number').value = rfa.po_number;
 
@@ -439,31 +474,105 @@ async function vf_refreshDvNumber() {
     } catch (e) { /* the server assigns a number on save if this stays "—" */ }
 }
 
-/* ── Live computation ──────────────────────────────────────── */
-function vf_recalc(autoCalc = false) {
+/* ── Deductions (optional — e.g. contractor retention) ───────── */
+function vf_addDeductionLine(d = null) {
+    const idx = ++vf_dedSeq;
+    const div = document.createElement('div');
+    div.className = 'vf-ded-row';
+    div.id = `vf-ded-row-${idx}`;
+    div.innerHTML = `
+        <button type="button" class="vf-ded-remove" title="Remove" onclick="vf_removeDeductionLine(${idx})">&times;</button>
+        <select class="vf-ded-type">
+            <option value="">— Select type —</option>
+            ${vf_dedTypes.map(t => `<option value="${vf_esc(t.deduction_type_id)}">${vf_esc(t.name)}</option>`).join('')}
+        </select>
+        <span class="vf-hint vf-ded-desc" style="display:block;"></span>
+        <div class="vf-grid3" style="margin-top:8px;">
+            <div class="nha-fg"><label>Rate (%)</label><input type="number" class="vf-ded-rate" min="0" step="0.01" placeholder="e.g. 10"></div>
+            <div class="nha-fg"><label>Gross Amount (₱)</label><input type="text" class="vf-ded-gross" readonly></div>
+            <div class="nha-fg"><label>Deduction Amount (₱)</label><input type="number" class="vf-ded-amount" min="0" step="0.01" placeholder="Auto-computed"></div>
+        </div>`;
+    $vf('vf-ded-container').appendChild(div);
+
+    const typeSel  = div.querySelector('.vf-ded-type');
+    const descSpan = div.querySelector('.vf-ded-desc');
+    typeSel.addEventListener('change', () => {
+        const t = vf_dedTypes.find(t => String(t.deduction_type_id) === typeSel.value);
+        descSpan.textContent = t?.description || '';
+    });
+    div.querySelector('.vf-ded-rate').addEventListener('input', () => vf_recalcDeductionLine(idx));
+
+    if (d) {
+        typeSel.value = d.deduction_type_id ?? '';
+        typeSel.dispatchEvent(new Event('change'));
+        div.querySelector('.vf-ded-rate').value = d.rate ?? '';
+        div.querySelector('.vf-ded-amount').value = Number(d.deduction_amount || 0).toFixed(2);
+    }
+    vf_recalcDeductionLine(idx);
+}
+
+function vf_removeDeductionLine(idx) {
+    $vf(`vf-ded-row-${idx}`)?.remove();
+    vf_recalc();
+}
+
+/* A deduction's gross_amount always mirrors the DV's own Amount (not separately editable — see
+   the "Gross Amount" field's readonly styling); its deduction_amount is rate% of that unless the
+   user types an amount directly (no rate given = flat peso deduction). */
+function vf_recalcDeductionLine(idx) {
+    const row = $vf(`vf-ded-row-${idx}`);
+    if (!row) return;
     const gross = parseFloat($vf('vf-gross').value) || 0;
-    const vatRate  = parseFloat($vf('vf-vat-rate').value) || 0;
-    const wtaxRate = parseFloat($vf('vf-wtax-rate').value) || 0;
+    row.querySelector('.vf-ded-gross').value = vf_peso(gross);
+    const rate = parseFloat(row.querySelector('.vf-ded-rate').value);
+    if (!isNaN(rate) && rate > 0) {
+        row.querySelector('.vf-ded-amount').value = (gross * rate / 100).toFixed(2);
+    }
+    vf_recalc();
+}
 
-    // Only live user input (autoCalc) recomputes VAT/W-Tax from the rate; loading an existing
-    // voucher or an RFA just redraws totals from whatever is already in the fields, so a
-    // manually-typed/saved amount is never silently overwritten.
-    const active = document.activeElement && document.activeElement.id;
-    if (autoCalc && active !== 'vf-vat-amount' && vatRate > 0)  $vf('vf-vat-amount').value  = gross > 0 ? (gross * vatRate / 100).toFixed(2) : '';
-    if (autoCalc && active !== 'vf-wtax-amount' && wtaxRate > 0) $vf('vf-wtax-amount').value = gross > 0 ? (gross * wtaxRate / 100).toFixed(2) : '';
-    if (!autoCalc && gross > 0 && vatRate > 0 && $vf('vf-vat-amount').value === '')   $vf('vf-vat-amount').value  = (gross * vatRate / 100).toFixed(2);
-    if (!autoCalc && gross > 0 && wtaxRate > 0 && $vf('vf-wtax-amount').value === '') $vf('vf-wtax-amount').value = (gross * wtaxRate / 100).toFixed(2);
+function vf_totalDeductions() {
+    let total = 0;
+    $vf('vf-ded-container').querySelectorAll('.vf-ded-row').forEach(row => {
+        total += parseFloat(row.querySelector('.vf-ded-amount').value) || 0;
+    });
+    return total;
+}
 
-    const vatAmt  = parseFloat($vf('vf-vat-amount').value) || 0;
-    const wtaxAmt = parseFloat($vf('vf-wtax-amount').value) || 0;
-    const netAmount = Math.max(0, gross - vatAmt - wtaxAmt);
+function vf_collectDeductions() {
+    const out = [];
+    $vf('vf-ded-container').querySelectorAll('.vf-ded-row').forEach(row => {
+        const typeId = row.querySelector('.vf-ded-type').value;
+        const amount = parseFloat(row.querySelector('.vf-ded-amount').value) || 0;
+        if (!typeId && amount <= 0) return; // blank trailing row
+        out.push({
+            deduction_type_id: typeId || null,
+            rate             : row.querySelector('.vf-ded-rate').value === '' ? null : parseFloat(row.querySelector('.vf-ded-rate').value),
+            gross_amount     : parseFloat($vf('vf-gross').value) || 0,
+            deduction_amount : amount,
+        });
+    });
+    return out;
+}
+
+/* ── Live computation ──────────────────────────────────────── */
+function vf_recalc() {
+    const gross = parseFloat($vf('vf-gross').value) || 0;
+    $vf('vf-ded-container').querySelectorAll('.vf-ded-row').forEach(row => {
+        row.querySelector('.vf-ded-gross').value = vf_peso(gross);
+    });
+
+    const netAmount = Math.max(0, gross - vf_totalDeductions());
     $vf('vf-net').textContent = vf_peso(netAmount);
 
-    const obligation = parseFloat($vf('vf-obligation').value) || 0;
-    const balance = obligation - netAmount;
+    const obligation    = parseFloat($vf('vf-obligation').value) || 0;
+    const totalPayments = vf_paymentsPrior + netAmount;
+    const balance       = obligation - totalPayments;
 
-    $vf('vf-this-request').textContent = vf_peso(netAmount);
-    $vf('vf-balance').textContent      = vf_peso(balance);
+    $vf('vf-payments').textContent       = vf_peso(vf_paymentsPrior);
+    $vf('vf-this-request').textContent   = vf_peso(netAmount);
+    $vf('vf-total-payments').textContent = vf_peso(totalPayments);
+    $vf('vf-balance').textContent        = vf_peso(balance);
 }
 
 /* ── Edit mode ─────────────────────────────────────────────── */
@@ -496,10 +605,10 @@ async function vf_loadExisting() {
     $vf('vf-claimant-tin').value     = dv.employee_no_tin || '';
     $vf('vf-particulars').value      = dv.particulars || '';
     $vf('vf-gross').value            = dv.gross_amount || '';
-    $vf('vf-vat-rate').value         = dv.vat_rate || '';
-    $vf('vf-vat-amount').value       = dv.vat_amount || '';
-    $vf('vf-wtax-rate').value        = dv.wtax_rate || '';
-    $vf('vf-wtax-amount').value      = dv.wtax_amount || '';
+
+    $vf('vf-ded-container').innerHTML = '';
+    vf_dedSeq = 0;
+    (dv.deductions ?? []).forEach(d => vf_addDeductionLine(d));
 
     $vf('vf-dept-project').value = dv.dept_project || '';
     $vf('vf-fund-source').value  = dv.fund_source || '';
@@ -507,6 +616,11 @@ async function vf_loadExisting() {
     $vf('vf-budget').value       = dv.budget_amount || '';
     $vf('vf-obligation').value   = dv.obligation_amount || '';
     $vf('vf-remarks').value      = dv.remarks || '';
+
+    // As last saved — same snapshot-not-live convention as budget_amount/obligation_amount above;
+    // re-picking the RFA dropdown (vf_onRfaChange) refreshes it live if needed.
+    vf_paymentsPrior = parseFloat(dv.payments_prior_amount) || 0;
+    $vf('vf-payments-hint').textContent = vf_paymentsPrior > 0 ? ' (prior draws on this RFA)' : '';
 }
 
 /* ── Validation ────────────────────────────────────────────── */
@@ -525,6 +639,7 @@ function vf_validate() {
     check(!!$vf('vf-claimant').value.trim(), 'claimant', 'Claimant Name is required.');
     check(!!$vf('vf-particulars').value.trim(), 'particulars', 'Particulars is required.');
     check((parseFloat($vf('vf-gross').value) || 0) > 0, 'gross', 'Amount must be greater than zero.');
+    check(!!$vf('vf-account-code').value.trim(), 'account-code', 'Account Code is required.');
 
     return errors;
 }
@@ -565,10 +680,7 @@ async function vf_save(status) {
         po_number          : $vf('vf-po-number').value.trim(),
         particulars        : $vf('vf-particulars').value.trim(),
         gross_amount       : parseFloat($vf('vf-gross').value) || 0,
-        vat_rate           : parseFloat($vf('vf-vat-rate').value) || 0,
-        vat_amount         : parseFloat($vf('vf-vat-amount').value) || 0,
-        wtax_rate          : parseFloat($vf('vf-wtax-rate').value) || 0,
-        wtax_amount        : parseFloat($vf('vf-wtax-amount').value) || 0,
+        deductions         : vf_collectDeductions(),
         status,
     };
 

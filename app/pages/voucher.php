@@ -9,12 +9,18 @@ namespace PHPMaker2024\FIMS;
 // API.FIMS_URL is the site root; the REST routes live under /api (added unless the env value already ends in it).
 $_vl_api = rtrim((string) Config('API.FIMS_URL'), '/');
 $_vl_api = preg_match('~/api$~', $_vl_api) ? $_vl_api : $_vl_api . '/api';
+// ?dv=<dv_id> opens that DV's view modal on load — the Journal Entry Voucher register page links
+// here this way instead of duplicating the DV detail view. Deliberately not named "view": that's a
+// reserved PHPMaker query param (Config("VIEW") === "view", used to pick a view-template override)
+// and colliding with it makes the framework try to render a template literally named "<dv_id>.php".
+$_vl_view = (int) ($_GET['dv'] ?? 0);
 ?>
 
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
+<script src="/_shared/js/searchable-select.js?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/js/searchable-select.js') ?>"></script>
 
 <div id="vl-root" class="nha-root">
 
@@ -108,7 +114,7 @@ $_vl_api = preg_match('~/api$~', $_vl_api) ? $_vl_api : $_vl_api . '/api';
                         <th>Payee</th>
                         <th>Expense Class</th>
                         <th class="text-end">Gross Amount</th>
-                        <th class="text-end">Withholding Tax</th>
+                        <th class="text-end">Deductions/WHT</th>
                         <th class="text-end">Net Amount</th>
                         <th>Processing Status</th>
                         <th class="no-print">Actions</th>
@@ -139,6 +145,7 @@ include __DIR__ . '/voucher/readone.php';  // view / print modal — defines vr_
 
 const VL_BASE = <?= json_encode($_vl_api) ?>;
 const VL_API  = VL_BASE + '/voucher';
+const VL_VIEW = <?= (int) $_vl_view ?>; // dv_id to open in the view modal on load (0 = none)
 
 const VL_PAGE_SIZE = 15;
 let vl_page = 1;
@@ -158,6 +165,7 @@ async function vl_boot() {
     await vl_loadFiscalYears();
     vl_bindEvents();
     vl_load();
+    if (VL_VIEW > 0) vr_open(VL_VIEW);
 }
 
 /* The form modal calls this after a successful save: confirm, then refresh the list. */
@@ -237,7 +245,9 @@ function vl_renderTable(rows) {
     tbody.innerHTML = rows.map((r) => {
         const canEdit     = ['DRAFT', 'REJECTED'].includes(r.status);
         const canDelete   = ['DRAFT', 'CANCELLED'].includes(r.status);
-        const withholding = Number(r.vat_amount || 0) + Number(r.wtax_amount || 0);
+        // Combined deductions + withholding tax (both now separate repeating tables, not DV columns)
+        // — gross minus net captures their total without a per-row join.
+        const withholding = Math.max(0, Number(r.gross_amount || 0) - Number(r.net_amount || 0));
         return `<tr>
         <td class="nha-mono"><a href="javascript:void(0)" class="nha-tbl-link" onclick="vr_open(${r.dv_id})">${vl_esc(r.dv_no) || '—'}</a></td>
         <td class="nha-td-date">${vl_fmtDate(r.dv_date)}</td>
@@ -297,11 +307,11 @@ async function vl_delete(id, dvNo) {
 
 function vl_exportCsv() {
     if (!vl_rows.length) { vl_toast('Nothing to export.', 'warning'); return; }
-    const head = ['DV Number', 'Date', 'Payee', 'Expense Class', 'Gross Amount', 'Withholding Tax', 'Net Amount', 'Processing Status'];
+    const head = ['DV Number', 'Date', 'Payee', 'Expense Class', 'Gross Amount', 'Deductions/WHT', 'Net Amount', 'Processing Status'];
     const cell = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
     const lines = [head.map(cell).join(',')].concat(vl_rows.map(r => [
         r.dv_no, r.dv_date, r.claimant_name, r.expense_class,
-        r.gross_amount, Number(r.vat_amount || 0) + Number(r.wtax_amount || 0), r.net_amount,
+        r.gross_amount, Math.max(0, Number(r.gross_amount || 0) - Number(r.net_amount || 0)), r.net_amount,
         r.status,
     ].map(cell).join(',')));
     const url = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }));
