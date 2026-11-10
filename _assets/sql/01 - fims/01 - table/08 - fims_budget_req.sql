@@ -5,7 +5,7 @@
 --   MOOE (Maintenance & Other Op. Exp.)    the actual allocations live in fims.budget_line_items,
 --                                          one row per chart-of-accounts entry, FK'd to this header
 CREATE TABLE IF NOT EXISTS fims.budget_req (
-    budget_reference_number SERIAL PRIMARY KEY,
+    budget_reference_number VARCHAR(20) PRIMARY KEY, -- "BP-NNN", GlobalService::generateBudgetReferenceNumber()
     fiscal_yr SMALLINT NOT NULL REFERENCES fims.fiscal_year(fiscal_yr),
     expense_class_id INTEGER NOT NULL REFERENCES fims.expense_class(expense_class_id),
     program_code VARCHAR(20) REFERENCES fims.program(program_code),

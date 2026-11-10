@@ -1,5 +1,7 @@
 <?php
+
 namespace PHPMaker2024\FIMS;
+
 @session_start();
 $_bgr_api = Config('API.FIMS_URL');
 
@@ -8,22 +10,65 @@ $_bgr_api = Config('API.FIMS_URL');
 // User level 8 = Budget Head: "Add Budget Request" is hidden, and only this
 // level sees the "Budget Preview" action (whose modal has Return / Approve
 // buttons on an Endorsed request).
+$userid = CurrentUserID();
 $userLevel = CurrentUserLevel();
+
+// The user's Responsibility Center: the current user id -> uac.users (only its rc_id is used) ->
+// joined to fims.responsibility_code for that RC. The Financial Management Department (rc_code
+// 35-074-0000000-032, "FMD") reviews every Regional / District office's request, so its users get a
+// different list: one row per request (Submission Ref No., Region / Originating Unit, Date Submitted,
+// Amount, Status) over every office. Everyone else keeps the flat one-row-per-Program list.
+// FMD is recognised by its rc_code, NOT its rc_id (the id's format differs between datasets: "013" vs
+// "RC-013"). Mirrors GlobalService::CENTRAL_REVIEW_RC_CODE, which the API checks again server-side.
+$_bgr_fmdRcCode = '35-074-0000000-032';
+$_bgr_fmdRcCodeFrom = '35-074-0000001-000';   // the Regional / District offices: rc_code from here to the end
+$_bgr_userRc = null;
+try {
+    $_bgr_userRc = ExecuteRow(
+        'SELECT rc.rc_id, rc.rc_code, rc.rc_name FROM uac.users u '
+        .'JOIN fims.responsibility_code rc ON rc.rc_id = u.rc_id WHERE u.user_id = '.(int) $userid,
+        'DB'
+    ) ?: null;
+} catch (\Throwable $e) {
+    $_bgr_userRc = null;   // can't tell who this is -> the flat list, never an error page
+    LogError('budget-req-page: could not look up the current user\'s RC — '.$e->getMessage());
+}
+$_bgr_isFmd = $_bgr_userRc !== null && trim((string) ($_bgr_userRc['rc_code'] ?? '')) === $_bgr_fmdRcCode;
 $_bgr_isBudgetOfficer = ((int) $userLevel === 2);
-$_bgr_isBudgetHead    = ((int) $userLevel === 8);
-$_bgr_canAdd    = !$_bgr_isBudgetOfficer && !$_bgr_isBudgetHead;
+$_bgr_isBudgetHead = ((int) $userLevel === 8);
+$_bgr_canAdd = !$_bgr_isBudgetOfficer && !$_bgr_isBudgetHead && !$_bgr_isFmd;
 $_bgr_canModify = !$_bgr_isBudgetOfficer;
 ?>
 
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
+<link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?php echo @filemtime($_SERVER['DOCUMENT_ROOT'].'/_shared/css/nha-fims.css'); ?>" />
 <style>
 @media (min-width: 901px) {
     .nha-root .bgr-summary-2col { grid-template-columns: repeat(2, 1fr); }
 }
 .nha-root #bgr-submit-review:disabled { opacity:.45;cursor:not-allowed; }
+
+/* ── Actions dropdown menu ──────────────────────────────────── */
+.nha-tools-menu { position:relative;display:inline-block; }
+.nha-menu-trigger { display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border-radius:6px;
+    font-size:11px;font-weight:600;cursor:pointer;border:1px solid var(--afims-border, #E4ECF2);
+    background:var(--afims-surface, #FFFFFF);color:var(--afims-text, #1A1B21);white-space:nowrap;
+    font-family:'IBM Plex Sans',sans-serif;transition:all .15s; }
+.nha-menu-trigger:hover { background:var(--afims-surface-subtle, #F4F7FA);border-color:var(--afims-text-disabled, #A9AAB8); }
+.nha-menu-trigger svg { width:12px;height:12px;flex-shrink:0; }
+.nha-tools-dropdown { display:none;position:fixed;min-width:170px;background:var(--afims-surface, #FFFFFF);
+    border:1px solid var(--afims-border, #E4ECF2);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.12);
+    z-index:9999;padding:4px 0; }
+.nha-tools-dropdown.open { display:block; }
+.nha-menu-item { display:flex;align-items:center;gap:8px;padding:8px 12px;font-size:12px;font-weight:500;
+    color:var(--afims-text, #1A1B21);text-decoration:none;white-space:nowrap;cursor:pointer;
+    border:none;background:none;width:100%;text-align:left;transition:background .1s; }
+.nha-menu-item:hover { background:var(--afims-surface-subtle, #F4F7FA);color:var(--afims-heading-fill, #000E3E); }
+.nha-menu-item.danger:hover { background:#fdecec;color:#c0392b; }
+.nha-menu-item svg { width:13px;height:13px;flex-shrink:0;opacity:.7; }
+.nha-menu-divider { border-top:1px solid var(--afims-border, #E4ECF2);margin:3px 0; }
 </style>
 
 <div id="bgr-root" class="nha-root">
@@ -45,12 +90,12 @@ $_bgr_canModify = !$_bgr_isBudgetOfficer;
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                 Refresh
             </button>
-            <?php if ($_bgr_canAdd): ?>
-            <button id="bgr-add" type="button" class="nha-btn-primary">
+            <?php if ($_bgr_canAdd) { ?>
+            <button id="bgr-add" type="button" class="nha-btn-hdr" style="background:var(--afims-success, #11A752);" title="Add a budget request">
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
                 Add Budget Request
             </button>
-            <?php endif; ?>
+            <?php } ?>
         </div>
     </div>
 
@@ -83,6 +128,7 @@ $_bgr_canModify = !$_bgr_isBudgetOfficer;
                 <label class="nha-filter-label">Fiscal Year</label>
                 <select id="bgr-filter-fiscal-yr" class="nha-filter-select">
                     <option value="">All Years</option>
+                    <option value="<?php echo date('Y'); ?>" selected><?php echo date('Y'); ?></option>
                 </select>
             </div>
             <div class="nha-filter-group">
@@ -91,18 +137,41 @@ $_bgr_canModify = !$_bgr_isBudgetOfficer;
                     <option value="">All</option>
                 </select>
             </div>
+            <?php if (!$_bgr_isFmd) { /* each Regional / District office submits its own request; the central reviewers don't */ ?>
             <div class="nha-filter-group-actions">
-                <button type="button" id="bgr-submit-review" class="nha-btn-primary" disabled title="Filter by a single Draft fiscal year to submit its request">
+                <button type="button" id="bgr-view-cob" class="nha-btn nha-btn-outline" onclick="bgrv_openCobModal($bgr('bgr-filter-fiscal-yr').value)" title="Browse every Program, Sub-Program and Project">
+                    <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.477 0 8.268 2.943 9.542 7-1.274 4.057-5.065 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                    View as COB
+                </button>
+                <button type="button" id="bgr-submit-review" class="nha-btn nha-btn-success" disabled title="Filter by a single Draft fiscal year to submit its request">
                     <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
                     Submit for Review
                 </button>
             </div>
+            <?php } ?>
         </div>
     </div>
 
     <!-- ── TABLE ──────────────────────────────────────────── -->
     <div class="nha-table-wrap">
         <div class="nha-tbl-scroll">
+            <?php if ($_bgr_isFmd) { /* FMD: one row per request, over every Regional / District office */ ?>
+            <table class="nha-tbl">
+                <thead id="bgr-thead">
+                    <tr>
+                        <th>Submission Ref No.</th>
+                        <th>Region / Originating Unit</th>
+                        <th>Date Submitted</th>
+                        <th class="text-end">Amount</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="bgr-tbody">
+                    <tr><td colspan="6"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
+                </tbody>
+            </table>
+            <?php } else { ?>
             <table class="nha-tbl">
                 <thead id="bgr-thead">
                     <tr>
@@ -121,6 +190,7 @@ $_bgr_canModify = !$_bgr_isBudgetOfficer;
                     <tr><td colspan="9"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
                 </tbody>
             </table>
+            <?php } ?>
         </div>
         <div class="nha-pag-wrap">
             <span class="nha-pag-info">Showing <strong><span id="bgr-from">0</span>–<span id="bgr-to">0</span></strong> of <strong><span id="bgr-total">0</span></strong></span>
@@ -128,10 +198,10 @@ $_bgr_canModify = !$_bgr_isBudgetOfficer;
         </div>
     </div>
 
-<?php include __DIR__ . '/readone/budget-req-readone.php'; ?>
-<?php include __DIR__ . '/form/budget-req-form.php'; ?>
-<?php include __DIR__ . '/form/budget-processing-form.php'; ?>
-<?php include __DIR__ . '/readone/budget-preview-readone.php'; ?>
+<?php include __DIR__.'/readone/budget-req-readone.php'; ?>
+<?php include __DIR__.'/form/budget-req-form.php'; ?>
+<?php include __DIR__.'/form/budget-processing-form.php'; ?>
+<?php include __DIR__.'/readone/budget-preview-readone.php'; ?>
 
 </div><!-- /#bgr-root -->
 <?php /* TEMP-PRINT-TEST — remove this whole block (down to /TEMP-PRINT-TEST) */ include __DIR__ . '/readone/print-preview-readone.php'; ?>
@@ -304,13 +374,17 @@ function tmpPrintOpen() {
 let bgr_page = 1;
 const BGR_PAGE_SIZE = 15;
 // false for user level 2 (Budget Officer) — hides the row Edit / Delete actions.
-const BGR_CAN_MODIFY = <?= $_bgr_canModify ? 'true' : 'false' ?>;
+const BGR_CAN_MODIFY = <?php echo $_bgr_canModify ? 'true' : 'false'; ?>;
 // true only for user level 2 (Budget Officer) — shows the row "Budget Processing" action.
-const BGR_CAN_BUDGET_PROCESSING = <?= $_bgr_isBudgetOfficer ? 'true' : 'false' ?>;
+const BGR_CAN_BUDGET_PROCESSING = <?php echo $_bgr_isBudgetOfficer ? 'true' : 'false'; ?>;
 // true only for user level 8 (Budget Head) — shows the row "Budget Preview" action,
 // and Return / Approve inside its modal.
-const BGR_IS_BUDGET_HEAD = <?= $_bgr_isBudgetHead ? 'true' : 'false' ?>;
+const BGR_IS_BUDGET_HEAD = <?php echo $_bgr_isBudgetHead ? 'true' : 'false'; ?>;
 let bgr_flatRows = [];
+// true for the Financial Management Department (FMD): the list is one row per request over every
+// Regional / District office (see the PHP at the top of this file and the FMD list section below).
+const BGR_FMD = <?php echo $_bgr_isFmd ? 'true' : 'false'; ?>;
+const BGR_FMD_RC_FROM = <?php echo json_encode($_bgr_fmdRcCodeFrom); ?>;
 
 window.bgr_afterSave = () => bgr_load();
 
@@ -331,6 +405,7 @@ function bgr_bindListEvents() {
     ['bgr-filter-fiscal-yr', 'bgr-filter-program'].forEach(id => {
         $bgr(id)?.addEventListener('change', () => { bgr_page = 1; bgr_load(); });
     });
+
 }
 
 /* ── Load ──────────────────────────────────────────────────── */
@@ -340,9 +415,16 @@ async function bgr_load() {
         const params = new URLSearchParams({
             fiscal_yr   : $bgr('bgr-filter-fiscal-yr')?.value || '',
             program_code: $bgr('bgr-filter-program')?.value || '',
-            page        : bgr_page,
-            limit       : BGR_PAGE_SIZE,
         });
+        if (BGR_FMD) {
+            // Every Regional / District office's request, not just the user's own. central=1 only widens
+            // the list for the central review RC — the API checks that itself — and rc_code_from keeps it
+            // to those offices.
+            params.set('central', '1');
+            params.set('rc_code_from', BGR_FMD_RC_FROM);
+        }
+        params.set('page', bgr_page);
+        params.set('limit', BGR_PAGE_SIZE);
 
         const res  = await fetch(`${BGR_API}/list?${params}`, { credentials: 'same-origin' });
         if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -360,6 +442,62 @@ async function bgr_load() {
     } finally {
         window.PagePreloader?.hide();
     }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Financial Management Department (FMD) list
+   One row per budget request — i.e. per requesting office (budget_req.rc_id) and fiscal year — over
+   every Regional / District office:
+     Submission Ref No.        budget_reference_number (the fiscal year sits under it)
+     Region / Originating Unit the requesting office, and the Region it belongs to (its parent RC)
+     Date Submitted            budget_req.submitted_at — the date of the request's latest save / submission (stamped on
+                               create, on adding / editing a Program, and on submit for review; "—" only for older requests)
+     Amount                    the sum of the request's line items' proposed amounts (li_total)
+     Status                    the request's status
+   The row actions (Delete / Budget Processing / Budget Preview) act on that whole request. They use the
+   same bgr_flatRows as the flat list. The Program-level View / Edit are not offered here (see
+   bgr_actionButtons()).
+══════════════════════════════════════════════════════════════ */
+
+// Postgres timestamps arrive as "2026-11-10 08:30:00.123456+08": make that ISO enough for every browser's
+// Date(), then show it as "Nov 10, 2026". '' when there is no date.
+function bgr_fmtDate(value) {
+    if (!value) return '';
+    const iso = String(value).trim().replace(' ', 'T').replace(/(\.\d{3})\d+/, '$1').replace(/([+-]\d{2})$/, '$1:00');
+    const d = new Date(iso);
+    return isNaN(d) ? String(value) : d.toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+/* ── FMD table — one row per request ──────────────────────────────── */
+function bgr_renderFmdTable(headers) {
+    const tbody = $bgr('bgr-tbody');
+    // `program` only tells the row actions whether the request has any Programs yet; the Budget Processing /
+    // Budget Preview modals are both handed the request's real Programs (header.programs).
+    bgr_flatRows = headers.map(header => ({ header, program: (header.programs ?? [])[0] ?? null }));
+
+    if (!bgr_flatRows.length) {
+        tbody.innerHTML = '<tr><td colspan="6"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No budget requests found.</span></div></td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = bgr_flatRows.map((flatRow, idx) => {
+        const h = flatRow.header;
+        const submitted = bgr_fmtDate(h.submitted_at);
+        return `<tr>
+            <td>
+                <code class="nha-code">${bgr_esc(h.budget_reference_number)}</code>
+                <div class="nha-td-sub">FY ${bgr_esc(h.fiscal_yr)}</div>
+            </td>
+            <td>
+                <div class="nha-td-bold">${bgr_esc(h.rc_name || h.rc_id || '—')}${h.rc_code ? ` <code class="nha-code">${bgr_esc(h.rc_code)}</code>` : ''}</div>
+                ${h.rc_parent_name ? `<div class="nha-td-sub">${bgr_esc(h.rc_parent_name)}</div>` : ''}
+            </td>
+            <td>${submitted ? `<span class="nha-td-date">${bgr_esc(submitted)}</span>` : '<span class="nha-td-sub">—</span>'}</td>
+            <td class="text-end"><div style="font-weight:600;">${bgr_fmtMoney(h.li_total)}</div></td>
+            <td>${bgr_statusBadge(h.status_name, h.status_color)}</td>
+            <td>${bgr_actionButtons(flatRow, idx)}</td>
+        </tr>`;
+    }).join('');
 }
 
 /* ── Flatten: one table row per Program, falling back to one placeholder
@@ -393,42 +531,79 @@ function bgr_actionButtons(flatRow, idx) {
     const { header, program } = flatRow;
     const isDraft = header.status_name === 'Draft';
 
-    const viewBtn = program
-        ? `<button class="nha-btn-act" onclick="bgr_viewProgram(${idx})" title="View">
-            <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.477 0 8.268 2.943 9.542 7-1.274 4.057-5.065 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+    // View and Edit work on ONE Program. In the FMD list a row is a whole request (possibly several
+    // Programs), so neither is offered there; the flat list keeps both.
+    const viewItem = (program && !BGR_FMD)
+        ? `<a class="nha-menu-item" href="javascript:void(0);" onclick="bgr_viewProgram(${idx});bgr_closeMenus();">
+            <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.477 0 8.268 2.943 9.542 7-1.274 4.057-5.065 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
             View
-        </button>`
+        </a>`
         : '';
-    const editBtn = (BGR_CAN_MODIFY && program && isDraft)
-        ? `<button class="nha-btn-act edit" onclick="bgr_editProgram(${idx})" title="Edit">
-            <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+    const editItem = (BGR_CAN_MODIFY && program && isDraft && !BGR_FMD)
+        ? `<a class="nha-menu-item" href="javascript:void(0);" onclick="bgr_editProgram(${idx});bgr_closeMenus();">
+            <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
             Edit
-        </button>`
-        : '';
-    const deleteBtn = (BGR_CAN_MODIFY && isDraft)
-        ? `<button class="nha-btn-act danger" onclick="bgr_delete(${header.budget_reference_number}, ${header.fiscal_yr})" title="Delete">
-            <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-            Delete
-        </button>`
+        </a>`
         : '';
     // Hidden once the request has been Endorsed or Approved — it can't be processed again.
-    const budgetProcessingBtn = (BGR_CAN_BUDGET_PROCESSING && !['Endorsed', 'Approved'].includes(header.status_name))
-        ? `<button class="nha-btn-act" onclick="bgr_budgetProcessing(${idx})" title="Budget Processing">
-            <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
+    const budgetProcessingItem = (BGR_CAN_BUDGET_PROCESSING && !['Endorsed', 'Approved'].includes(header.status_name))
+        ? `<a class="nha-menu-item" href="javascript:void(0);" onclick="bgr_budgetProcessing(${idx});bgr_closeMenus();">
+            <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
             Budget Processing
-        </button>`
+        </a>`
         : '';
     // Read-only counterpart of Budget Processing — every line item with its
-    // Type of Fund, Suggestion Amount and Component, nothing to fill in.
+    // Type of Fund, Suggested Amount and Component, nothing to fill in.
     // Budget Head (level 8) only.
-    const budgetPreviewBtn = (BGR_IS_BUDGET_HEAD && program)
-        ? `<button class="nha-btn-act" onclick="bgr_budgetPreview(${idx})" title="Budget Preview">
-            <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+    const budgetPreviewItem = (BGR_IS_BUDGET_HEAD && program)
+        ? `<a class="nha-menu-item" href="javascript:void(0);" onclick="bgr_budgetPreview(${idx});bgr_closeMenus();">
+            <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
             Budget Preview
-        </button>`
+        </a>`
         : '';
-    return viewBtn + editBtn + deleteBtn + budgetProcessingBtn + budgetPreviewBtn;
+    const deleteItem = (BGR_CAN_MODIFY && isDraft)
+        ? `<a class="nha-menu-item danger" href="javascript:void(0);" onclick="bgr_closeMenus();bgr_delete('${header.budget_reference_number}', ${header.fiscal_yr});">
+            <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+            Delete
+        </a>`
+        : '';
+
+    const items = [viewItem, editItem, budgetProcessingItem, budgetPreviewItem].filter(Boolean).join('');
+    const deleteSection = deleteItem ? `<div class="nha-menu-divider"></div>${deleteItem}` : '';
+
+    if (!items && !deleteSection) return '';
+
+    return `<div class="nha-tools-menu">
+        <button type="button" class="nha-menu-trigger" onclick="bgr_toggleMenu(this)">
+            <svg fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+            Actions
+        </button>
+        <div class="nha-tools-dropdown">${items}${deleteSection}</div>
+    </div>`;
 }
+
+/* ── Actions dropdown — open/close (closes others, positions via fixed
+   coords so the table's own overflow never clips it) ─────────────── */
+function bgr_toggleMenu(btn) {
+    const drop = btn.closest('.nha-tools-menu').querySelector('.nha-tools-dropdown');
+    const isOpen = drop.classList.contains('open');
+    bgr_closeMenus();
+    if (isOpen) return;
+
+    const rect = btn.getBoundingClientRect();
+    drop.style.top = (rect.bottom + 4) + 'px';
+    drop.style.right = (window.innerWidth - rect.right) + 'px';
+    drop.classList.add('open');
+}
+
+function bgr_closeMenus() {
+    document.querySelectorAll('.nha-tools-dropdown.open').forEach(d => d.classList.remove('open'));
+}
+
+document.addEventListener('click', e => {
+    if (!e.target.closest('.nha-tools-menu')) bgr_closeMenus();
+});
+document.addEventListener('scroll', bgr_closeMenus, true);
 
 function bgr_viewProgram(idx) {
     const { header, program } = bgr_flatRows[idx];
@@ -443,11 +618,15 @@ function bgr_viewProgram(idx) {
 }
 
 /* "Budget Processing" row action (level 2 / Budget Officer only) — opens the
-   Budget Processing modal (form/budget-processing-form.php, bpr_*) for this
-   row's Program: its line items, each with Type of Fund + Component. */
+   Budget Processing modal (form/budget-processing-form.php, bpr_*): one card per Program,
+   a section per Project in it with its line-item table (Type of Fund, Program Sources,
+   Program Uses, Component, account, Amount, Suggested Amount), a Subtotal per Project and a
+   Grand Total. In the FMD list the row is a whole request, so the modal
+   gets ALL of that request's Programs; in the flat list the row is one Program. */
 function bgr_budgetProcessing(idx) {
     const { header, program } = bgr_flatRows[idx];
-    if (!program) {
+    const programs = BGR_FMD ? (header.programs ?? []) : (program ? [program] : []);
+    if (!programs.length) {
         bgr_toast('This budget request has no programs yet.', 'warning');
         return;
     }
@@ -456,22 +635,34 @@ function bgr_budgetProcessing(idx) {
         fiscal_yr: header.fiscal_yr,
         status_name: header.status_name,
         status_color: header.status_color,
-    }, program);
+        // the requesting office and when it was submitted, for the modal's "Originating Unit" / "Date Submitted"
+        rc_id: header.rc_id,
+        rc_code: header.rc_code,
+        rc_name: header.rc_name,
+        submitted_at: header.submitted_at,
+    }, programs);
 }
 
-/* "Budget Preview" row action — opens the read-only Budget Preview modal
-   (readone/budget-preview-readone.php, bpv_*) for this row's Program. */
+/* "Budget Preview" row action (level 8 / Budget Head only) — opens the read-only Budget Preview modal
+   (readone/budget-preview-readone.php, bpv_*): the same columns as the Budget Processing one, one block per
+   Project (info card + line-item table). In the FMD list the row is a whole request, so the modal gets
+   ALL of that request's Programs; in the flat list the row is one Program. */
 function bgr_budgetPreview(idx) {
     const { header, program } = bgr_flatRows[idx];
-    if (!program) return;
+    const programs = BGR_FMD ? (header.programs ?? []) : (program ? [program] : []);
+    if (!programs.length) return;
     bpv_openModal({
         budget_reference_number: header.budget_reference_number,
         fiscal_yr: header.fiscal_yr,
         status_name: header.status_name,
         status_color: header.status_color,
-        // Return / Approve: Budget Head only, and only once the request is Endorsed.
+        // the requesting office, for the modal's "Originating Unit / Region"
+        rc_id: header.rc_id,
+        rc_code: header.rc_code,
+        rc_name: header.rc_name,
+        // Return / Approve (+ the remarks box): Budget Head only, and only once the request is Endorsed.
         can_decide: BGR_IS_BUDGET_HEAD && header.status_name === 'Endorsed',
-    }, program);
+    }, programs);
 }
 
 function bgr_editProgram(idx) {
@@ -486,6 +677,8 @@ function bgr_editProgram(idx) {
 
 /* ── Table — one row per Program ──────────────────────────────────── */
 function bgr_renderTable(headers) {
+    if (BGR_FMD) { bgr_renderFmdTable(headers); return; }   // FMD: one row per request (see above)
+
     const tbody = $bgr('bgr-tbody');
     bgr_flatRows = bgr_flattenRows(headers);
 
@@ -561,9 +754,21 @@ function bgr_renderPagination(p) {
 
 function bgr_goTo(page) { bgr_page = page; bgr_load(); }
 
-async function bgr_submitForReview(id) {
-    if (!confirm('Submit this budget request for review? No more programs can be added or edited once submitted.')) return;
+function bgr_submitForReview(id) {
+    Swal.fire({
+        title: 'Submit for Review',
+        text: `Submit budget reference number ${id} for review? No more programs can be added or edited once submitted.`,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Yes, proceed',
+        cancelButtonText: 'Cancel',
+        confirmButtonColor: '#0f2045',
+    }).then(result => {
+        if (result.isConfirmed) bgr_doSubmitForReview(id);
+    });
+}
 
+async function bgr_doSubmitForReview(id) {
     window.PagePreloader?.show();
     try {
         const res  = await fetch(`${BGR_API}/submit-for-review/${id}`, { method: 'PUT', credentials: 'same-origin' });

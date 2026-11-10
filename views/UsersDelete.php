@@ -86,11 +86,8 @@ $Page->showMessage();
 <?php if ($Page->must_change_password->Visible) { // must_change_password ?>
         <th class="<?= $Page->must_change_password->headerCellClass() ?>"><span id="elh_users_must_change_password" class="users_must_change_password"><?= $Page->must_change_password->caption() ?></span></th>
 <?php } ?>
-<?php if ($Page->rc_code->Visible) { // rc_code ?>
-        <th class="<?= $Page->rc_code->headerCellClass() ?>"><span id="elh_users_rc_code" class="users_rc_code"><?= $Page->rc_code->caption() ?></span></th>
-<?php } ?>
-<?php if ($Page->region_code->Visible) { // region_code ?>
-        <th class="<?= $Page->region_code->headerCellClass() ?>"><span id="elh_users_region_code" class="users_region_code"><?= $Page->region_code->caption() ?></span></th>
+<?php if ($Page->rc_id->Visible) { // rc_id ?>
+        <th class="<?= $Page->rc_id->headerCellClass() ?>"><span id="elh_users_rc_id" class="users_rc_id"><?= $Page->rc_id->caption() ?></span></th>
 <?php } ?>
     </tr>
     </thead>
@@ -211,19 +208,11 @@ while ($Page->fetch()) {
 </span>
 </td>
 <?php } ?>
-<?php if ($Page->rc_code->Visible) { // rc_code ?>
-        <td<?= $Page->rc_code->cellAttributes() ?>>
+<?php if ($Page->rc_id->Visible) { // rc_id ?>
+        <td<?= $Page->rc_id->cellAttributes() ?>>
 <span id="">
-<span<?= $Page->rc_code->viewAttributes() ?>>
-<?= $Page->rc_code->getViewValue() ?></span>
-</span>
-</td>
-<?php } ?>
-<?php if ($Page->region_code->Visible) { // region_code ?>
-        <td<?= $Page->region_code->cellAttributes() ?>>
-<span id="">
-<span<?= $Page->region_code->viewAttributes() ?>>
-<?= $Page->region_code->getViewValue() ?></span>
+<span<?= $Page->rc_id->viewAttributes() ?>>
+<?= $Page->rc_id->getViewValue() ?></span>
 </span>
 </td>
 <?php } ?>

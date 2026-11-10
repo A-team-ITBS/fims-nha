@@ -167,8 +167,7 @@ class UsersView extends Users
         $this->position_id->setVisibility();
         $this->employee_id->setVisibility();
         $this->must_change_password->setVisibility();
-        $this->rc_code->setVisibility();
-        $this->region_code->setVisibility();
+        $this->rc_id->setVisibility();
     }
 
     // Constructor
@@ -873,8 +872,7 @@ class UsersView extends Users
         $this->position_id->setDbValue($row['position_id']);
         $this->employee_id->setDbValue($row['employee_id']);
         $this->must_change_password->setDbValue((ConvertToBool($row['must_change_password']) ? "1" : "0"));
-        $this->rc_code->setDbValue($row['rc_code']);
-        $this->region_code->setDbValue($row['region_code']);
+        $this->rc_id->setDbValue($row['rc_id']);
     }
 
     // Return a row with default values
@@ -901,8 +899,7 @@ class UsersView extends Users
         $row['position_id'] = $this->position_id->DefaultValue;
         $row['employee_id'] = $this->employee_id->DefaultValue;
         $row['must_change_password'] = $this->must_change_password->DefaultValue;
-        $row['rc_code'] = $this->rc_code->DefaultValue;
-        $row['region_code'] = $this->region_code->DefaultValue;
+        $row['rc_id'] = $this->rc_id->DefaultValue;
         return $row;
     }
 
@@ -964,9 +961,7 @@ class UsersView extends Users
 
         // must_change_password
 
-        // rc_code
-
-        // region_code
+        // rc_id
 
         // View row
         if ($this->RowType == RowType::VIEW) {
@@ -1096,11 +1091,8 @@ class UsersView extends Users
                 $this->must_change_password->ViewValue = $this->must_change_password->tagCaption(2) != "" ? $this->must_change_password->tagCaption(2) : "No";
             }
 
-            // rc_code
-            $this->rc_code->ViewValue = $this->rc_code->CurrentValue;
-
-            // region_code
-            $this->region_code->ViewValue = $this->region_code->CurrentValue;
+            // rc_id
+            $this->rc_id->ViewValue = $this->rc_id->CurrentValue;
 
             // user_id
             $this->user_id->HrefValue = "";
@@ -1179,13 +1171,9 @@ class UsersView extends Users
             $this->must_change_password->HrefValue = "";
             $this->must_change_password->TooltipValue = "";
 
-            // rc_code
-            $this->rc_code->HrefValue = "";
-            $this->rc_code->TooltipValue = "";
-
-            // region_code
-            $this->region_code->HrefValue = "";
-            $this->region_code->TooltipValue = "";
+            // rc_id
+            $this->rc_id->HrefValue = "";
+            $this->rc_id->TooltipValue = "";
         }
 
         // Call Row Rendered event

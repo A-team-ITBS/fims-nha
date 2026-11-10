@@ -13,17 +13,6 @@ class ProjectService
 
     private array $allowedFields = ['project_code', 'project_name', 'program_code', 'sub_program_code'];
 
-    private function generateProjectCode(): string
-    {
-        $next = (int) App\ExecuteScalar(
-            "SELECT COALESCE(MAX(CAST(SUBSTRING(project_code FROM 5) AS INTEGER)), 0) + 1
-             FROM {$this->table} WHERE project_code ~ '^PRJ-[0-9]+$'",
-            'DB'
-        );
-
-        return 'PRJ-' . str_pad((string) $next, 4, '0', STR_PAD_LEFT);
-    }
-
     public function fetchAlls(?int $page = null, int $limit = 10, string $search = '', string $programCode = '', string $subProgramCode = ''): array
     {
         try {
@@ -101,6 +90,7 @@ class ProjectService
             $name        = trim((string) ($body['project_name'] ?? ''));
             $program     = trim((string) ($body['program_code'] ?? ''));
             $subProgram  = trim((string) ($body['sub_program_code'] ?? ''));
+            $fiscalYr    = isset($body['fiscal_yr']) && $body['fiscal_yr'] !== '' ? (int) $body['fiscal_yr'] : null;
 
             if ($name === '' || $program === '') {
                 return ['success' => false, 'message' => 'project_name and program_code are required.'];
@@ -128,7 +118,7 @@ class ProjectService
             }
 
             if ($code === '') {
-                $code = $this->generateProjectCode();
+                $code = GlobalService::generateProjectCode($program, $subProgram, null, $fiscalYr);
             } else {
                 $exists = (int) App\ExecuteScalar(
                     "SELECT COUNT(*) FROM {$this->table} WHERE project_code = " . App\QuotedValue($code, DataType::STRING, 'DB'),
@@ -171,7 +161,7 @@ class ProjectService
      * project can be created inline as part of saving the whole request
      * instead of a separate manual "add project" step.
      */
-    public function findOrCreateByName(string $name, string $programCode, string $subProgramCode = ''): array
+    public function findOrCreateByName(string $name, string $programCode, string $subProgramCode = '', ?int $fiscalYr = null): array
     {
         $name = trim($name);
         if ($name === '') {
@@ -192,6 +182,7 @@ class ProjectService
             'project_name'     => $name,
             'program_code'     => $programCode,
             'sub_program_code' => $subProgramCode,
+            'fiscal_yr'        => $fiscalYr,
         ]);
         if (!$result['success']) {
             return $result;

@@ -33,6 +33,47 @@ $app->get('/budget_line_item/list', function ($request, $response, $args) use ($
     }
 })->add($jwtMiddleware);
 
+// Line items of APPROVED budget requests — the Memo Request form's COB list (Type of Fund + Account Code).
+// Optional: program_code, sub_program_code, project_code, fiscal_yr, type_of_fund_id — each narrows the list to what is attached to it.
+$app->get('/budget_line_item/approved', function ($request, $response, $args) use ($BudgetLineItemService) {
+    try {
+        $params = $request->getQueryParams();
+        $result = $BudgetLineItemService->fetchApproved(
+            (string) ($params['program_code'] ?? ''),
+            (string) ($params['sub_program_code'] ?? ''),
+            (string) ($params['project_code'] ?? ''),
+            (string) ($params['fiscal_yr'] ?? ''),
+            (string) ($params['type_of_fund_id'] ?? '')
+        );
+
+        return $response->withJson($result, $result['success'] ? 200 : 500);
+    } catch (\Exception $e) {
+        LogError('GET /budget_line_item/approved ' . $e->getMessage());
+
+        return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
+    }
+})->add($accessMiddleware)->add($jwtMiddleware);
+
+// Types of fund that exist on APPROVED line items — the Memo Request form's Type of Fund dropdown. Optional:
+// program_code, sub_program_code, project_code, fiscal_yr — the same filters as /budget_line_item/approved (but no type_of_fund_id).
+$app->get('/budget_line_item/approved/type_of_fund', function ($request, $response, $args) use ($BudgetLineItemService) {
+    try {
+        $params = $request->getQueryParams();
+        $result = $BudgetLineItemService->fetchApprovedTypesOfFund(
+            (string) ($params['program_code'] ?? ''),
+            (string) ($params['sub_program_code'] ?? ''),
+            (string) ($params['project_code'] ?? ''),
+            (string) ($params['fiscal_yr'] ?? '')
+        );
+
+        return $response->withJson($result, $result['success'] ? 200 : 500);
+    } catch (\Exception $e) {
+        LogError('GET /budget_line_item/approved/type_of_fund ' . $e->getMessage());
+
+        return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
+    }
+})->add($accessMiddleware)->add($jwtMiddleware);
+
 // Read one
 $app->get('/budget_line_item/read/{id}', function ($request, $response, $args) use ($BudgetLineItemService) {
     try {

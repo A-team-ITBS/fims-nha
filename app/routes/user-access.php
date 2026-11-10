@@ -55,16 +55,6 @@ $app->post("/user-access/module-visibility", function ($request, $response) {
     return $response->withHeader('Content-Type', 'application/json')->write($result);
 });
 
-// Bulk-remove (hide) multiple module/page rows at once from the Permissions Management
-// list (multi-select "Delete Selected"). Non-destructive and reversible, like
-// /user-access/module-visibility, but handles the whole selection in one request.
-$app->post("/user-access/modules/remove", function ($request, $response) {
-    $data = $request->getParsedBody();
-    $service = new Service\UserAccessService();
-    $result = $service->removeModules($data);
-    return $response->withHeader('Content-Type', 'application/json')->write($result);
-});
-
 // Create a user level (role) directly from the UserAccess page (no redirect to UserLevelsAdd)
 $app->post("/user-access/user-levels", function ($request, $response) {
     $data = $request->getParsedBody();

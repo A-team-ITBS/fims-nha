@@ -34,7 +34,7 @@ END $$;
 CREATE INDEX IF NOT EXISTS idx_chart_of_accounts_region_code ON fims.chart_of_accounts (region_code);
 
 ALTER TABLE fims.chart_of_accounts
-    ADD COLUMN IF NOT EXISTS project_code VARCHAR(20);
+    ADD COLUMN IF NOT EXISTS project_code VARCHAR(30);
 
 COMMENT ON COLUMN fims.chart_of_accounts.project_code IS
     'Optional project scope for this account, referencing fims.project. NULL = not project-specific.';
