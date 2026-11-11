@@ -217,7 +217,7 @@ function prg_openModal(mode, row = null) {
     $prg('prg-program-code').disabled = mode === 'edit';
     $prg('prg-code-hint').textContent = mode === 'edit'
         ? 'Program codes cannot be changed after creation.'
-        : 'Preview — the next 3-digit code. The final code is assigned when you save.';
+        : 'Suggested next 3-digit code. You can change it; it must be unused.';
     $prg('prg-program-name').value = row?.program_name || '';
     $prg('prg-save').disabled = false;
     if (mode === 'add') prg_loadCodePreview();     // defined in form/program-form.php
@@ -276,7 +276,7 @@ async function prg_save(ev) {
         const json = await res.json();
         if (!json.success) throw new Error(json.message || 'Failed to save program.');
 
-        // On add, the server's message names the code it actually assigned ("Program 2026-…-102 created successfully.").
+        // On add, the server's message names the code it actually assigned ("Program 102 created successfully.").
         prg_toast(mode === 'edit' ? 'Program updated successfully.' : (json.message || 'Program created successfully.'), 'success');
         prg_closeModal();
         prg_load();

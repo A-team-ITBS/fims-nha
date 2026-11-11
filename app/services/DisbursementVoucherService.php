@@ -62,7 +62,6 @@ class DisbursementVoucherService
     private string $table         = 'fims.disbursement_vouchers';
     private string $tableVendor   = 'fims.vendors';
     private string $tableRfa      = 'fims.budget_allocation';
-    private string $tableDept     = 'uac.departments';
     private string $tableUsers    = 'uac.users';
     private string $tableFiscal   = 'fims.fiscal_year';
     private string $tableCoa      = 'fims.chart_of_accounts';
@@ -73,8 +72,10 @@ class DisbursementVoucherService
     private string $tableDeductionTypes  = 'fims.deduction_types';
     private string $tableDvDeductions    = 'fims.disbursement_voucher_deductions';
     private string $tableDvAtcLines      = 'fims.disbursement_voucher_atc_lines';
+    private string $tableSettingsStatus  = 'fims.settings_status';
     private string $tableSlMasters       = 'fims.sl_masters';
     private string $tableSlDetails       = 'fims.sl_details';
+    private string $tableBudgetCategory  = 'fims.budget_category';
 
     // Classification tag only (reporting/filtering) — same set fims.purchase_orders.expense_class
     // uses; it never changes which fields the voucher form shows.
@@ -109,6 +110,34 @@ class DisbursementVoucherService
         '012' => 'Accounting Department',
         '014' => 'Treasury Department',
     ];
+
+    // fims.settings_status.status_for for this voucher's pipeline status — see
+    // "03 - alter_table/21 - disbursement_vouchers_status_to_settings_status.sql" and its seed rows
+    // in "02 - sample_data/01 - fims_settings_status.sql". Same lookup-table convention
+    // BudgetReqService uses for fims.budget_req.status_id; the ALL_CAPS_UNDERSCORE names above
+    // (EDITABLE/DELETABLE/SAVE_STATUSES/TRANSITIONS/STAGE_HOLDER_RC) are unchanged — only where a
+    // voucher's current status is stored moved off a free-text column onto this shared table.
+    private const STATUS_FOR = 'disbursement_voucher';
+
+    /**
+     * Looked up by name each time rather than hardcoding its id — the id a seed row lands on
+     * depends on insert order, which isn't guaranteed to be stable across environments or
+     * re-seeds. Same convention as BudgetReqService::getStatusIdByName().
+     */
+    private function getStatusIdByName(string $name): ?int
+    {
+        $row = App\ExecuteRow(
+            "SELECT id FROM {$this->tableSettingsStatus} WHERE status_for = " . $this->str(self::STATUS_FOR) . ' AND name = ' . $this->str($name),
+            'DB'
+        );
+
+        return isset($row['id']) ? (int) $row['id'] : null;
+    }
+
+    private function getDefaultStatusId(): ?int
+    {
+        return $this->getStatusIdByName('DRAFT');
+    }
 
     // ── small SQL helpers (same shape as PurchaseOrderService) ──
 
@@ -180,26 +209,27 @@ class DisbursementVoucherService
         }
         $fields['expense_class'] = $expenseClass;
 
-        // RFA (optional) — soft reference into fims.budget_allocation (allocation_type = 'RFA')
+        // RFA — soft reference into fims.budget_allocation (allocation_type = 'RFA'); required, same
+        // as the paper General Form No. 1 always citing the allotment it's drawn against.
         $rfa   = null;
         $rfaId = $body['rfa_allocation_id'] ?? '';
-        if ($rfaId !== '' && $rfaId !== null) {
-            if (!ctype_digit((string) $rfaId)) {
-                $errors[] = 'rfa_allocation_id must be numeric.';
-            } else {
-                $rfa = App\ExecuteRow(
-                    "SELECT allocation_id, allocation_number, requesting_department_id
-                     FROM {$this->tableRfa} WHERE allocation_id = " . (int) $rfaId . " AND allocation_type = 'RFA'",
-                    'DB'
-                );
-                if (!$rfa) {
-                    $errors[] = "RFA #{$rfaId} does not exist.";
-                }
+        if ($rfaId === '' || $rfaId === null) {
+            $errors[] = 'RFA (rfa_allocation_id) is required.';
+        } elseif (!ctype_digit((string) $rfaId)) {
+            $errors[] = 'rfa_allocation_id must be numeric.';
+        } else {
+            $rfa = App\ExecuteRow(
+                "SELECT allocation_id, allocation_number, requesting_rc_id
+                 FROM {$this->tableRfa} WHERE allocation_id = " . (int) $rfaId . " AND allocation_type = 'RFA'",
+                'DB'
+            );
+            if (!$rfa) {
+                $errors[] = "RFA #{$rfaId} does not exist.";
             }
         }
         $fields['rfa_allocation_id']         = $rfa ? (int) $rfa['allocation_id'] : null;
         $fields['rfa_allocation_number']     = $rfa['allocation_number'] ?? '';
-        $fields['requesting_department_id']  = $rfa['requesting_department_id'] ?? null;
+        $fields['requesting_department_id']  = null; // fims.budget_allocation now keys its requesting office by requesting_rc_id (a Responsibility Center), which doesn't fit this INTEGER column — see "14 - budget_allocation_requesting_department_id_to_requesting_rc_id.sql"
 
         $fields['dept_project'] = trim((string) ($body['dept_project'] ?? ''));
         $fields['fund_source']  = trim((string) ($body['fund_source'] ?? ''));
@@ -287,12 +317,24 @@ class DisbursementVoucherService
         $fields['po_number'] = trim((string) ($body['po_number'] ?? ''));
         $fields['po_amount'] = is_numeric($body['po_amount'] ?? null) ? (float) $body['po_amount'] : null;
 
-        // Status the user is saving as
+        // ATC Code and Accounting Entries (both optional) — normally Accounting's job during
+        // FOR_ACCOUNTING via saveJournalEntry(), but Originating can pre-fill either here too; full
+        // validation happens in persistJournalEntry(), not here (same "parse now, validate at the
+        // point of use" split as `deductions` above).
+        $fields['atc_lines'] = is_array($body['atc_lines'] ?? null) ? $body['atc_lines'] : [];
+        $fields['lines']     = is_array($body['lines'] ?? null) ? $body['lines'] : [];
+
+        // Status the user is saving as — stored as fims.settings_status.id (status_for =
+        // 'disbursement_voucher'), looked up by name; see getStatusIdByName()'s doc comment.
         $status = strtoupper(trim((string) ($body['status'] ?? 'DRAFT')));
         if (!in_array($status, self::SAVE_STATUSES, true)) {
             $errors[] = 'status must be DRAFT or FOR_FMD_REVIEW when saving; use the status action to move it through FMD/Accounting/Treasury, reject, or cancel.';
         }
-        $fields['status'] = $status;
+        $fields['status']    = $status;
+        $fields['status_id'] = $this->getStatusIdByName($status);
+        if ($fields['status_id'] === null && !$errors) {
+            $errors[] = "Status '{$status}' is not configured in fims.settings_status for disbursement vouchers.";
+        }
 
         return [$errors, $fields];
     }
@@ -451,7 +493,9 @@ class DisbursementVoucherService
 
         return (float) (App\ExecuteScalar(
             "SELECT COALESCE(SUM(net_amount), 0) FROM {$this->table}
-             WHERE rfa_allocation_id = {$rfaId} AND status NOT IN ('CANCELLED', 'REJECTED'){$exclude}",
+             WHERE rfa_allocation_id = {$rfaId}
+               AND status_id NOT IN (SELECT id FROM {$this->tableSettingsStatus}
+                                      WHERE status_for = " . $this->str(self::STATUS_FOR) . " AND name IN ('CANCELLED', 'REJECTED')){$exclude}",
             'DB'
         ) ?? 0);
     }
@@ -500,12 +544,14 @@ class DisbursementVoucherService
 
             $rows = App\ExecuteRows(
                 "SELECT a.allocation_id, a.allocation_number, a.memo_ref_no, a.fiscal_year,
-                        a.requesting_department_id, d.department_name,
+                        a.requesting_rc_id, rc.rc_name AS department_name,
                         a.vendor_id, v.vendor_name, v.address AS vendor_address, v.tin AS vendor_tin,
-                        a.po_number, a.po_amount, a.line_transaction
+                        a.po_number, a.po_amount, a.line_transaction,
+                        a.category_id, bc.name AS category_name
                  FROM {$this->tableRfa} a
-                 LEFT JOIN {$this->tableDept}   d ON d.department_id = a.requesting_department_id
-                 LEFT JOIN {$this->tableVendor} v ON v.vendor_id = a.vendor_id
+                 LEFT JOIN {$this->tableRc}             rc ON rc.rc_id = a.requesting_rc_id
+                 LEFT JOIN {$this->tableVendor}         v  ON v.vendor_id = a.vendor_id
+                 LEFT JOIN {$this->tableBudgetCategory} bc ON bc.budget_category_id = a.category_id
                  WHERE {$whereSql}
                  ORDER BY a.allocation_id DESC",
                 'DB'
@@ -528,12 +574,14 @@ class DisbursementVoucherService
             $id  = (int) $allocationId;
             $rfa = App\ExecuteRow(
                 "SELECT a.allocation_id, a.allocation_number, a.memo_ref_no, a.fiscal_year,
-                        a.requesting_department_id, d.department_name,
+                        a.requesting_rc_id, rc.rc_name AS department_name,
                         a.vendor_id, v.vendor_name, v.address AS vendor_address, v.tin AS vendor_tin,
-                        a.po_number, a.po_amount, a.line_transaction
+                        a.po_number, a.po_amount, a.line_transaction,
+                        a.category_id, bc.name AS category_name
                  FROM {$this->tableRfa} a
-                 LEFT JOIN {$this->tableDept}   d ON d.department_id = a.requesting_department_id
-                 LEFT JOIN {$this->tableVendor} v ON v.vendor_id = a.vendor_id
+                 LEFT JOIN {$this->tableRc}             rc ON rc.rc_id = a.requesting_rc_id
+                 LEFT JOIN {$this->tableVendor}         v  ON v.vendor_id = a.vendor_id
+                 LEFT JOIN {$this->tableBudgetCategory} bc ON bc.budget_category_id = a.category_id
                  WHERE a.allocation_id = {$id} AND a.allocation_type = 'RFA'",
                 'DB'
             );
@@ -554,9 +602,11 @@ class DisbursementVoucherService
     public function fetchAlls(?int $page = null, int $limit = 10, array $filters = []): array
     {
         try {
+            $from = "{$this->table} dv LEFT JOIN {$this->tableSettingsStatus} st ON st.id = dv.status_id";
+
             $where = ['1=1'];
             if (!empty($filters['status'])) {
-                $where[] = 'dv.status = ' . $this->str(strtoupper($filters['status']));
+                $where[] = 'st.name = ' . $this->str(strtoupper($filters['status']));
             }
             if (!empty($filters['fiscal_yr'])) {
                 $where[] = 'dv.fiscal_yr = ' . (int) $filters['fiscal_yr'];
@@ -570,7 +620,7 @@ class DisbursementVoucherService
             }
             $whereSql = implode(' AND ', $where);
 
-            $select = "SELECT dv.* FROM {$this->table} dv WHERE {$whereSql} ORDER BY dv.created_at DESC, dv.dv_id DESC";
+            $select = "SELECT dv.*, st.name AS status, st.color AS status_color FROM {$from} WHERE {$whereSql} ORDER BY dv.created_at DESC, dv.dv_id DESC";
 
             if ($page === null) {
                 return ['success' => true, 'data' => App\ExecuteRows($select, 'DB') ?: []];
@@ -578,14 +628,14 @@ class DisbursementVoucherService
 
             $limit  = max(1, $limit);
             $offset = (max(1, $page) - 1) * $limit;
-            $total  = (int) App\ExecuteScalar("SELECT COUNT(*) FROM {$this->table} dv WHERE {$whereSql}", 'DB');
+            $total  = (int) App\ExecuteScalar("SELECT COUNT(*) FROM {$from} WHERE {$whereSql}", 'DB');
 
             $summary = App\ExecuteRow(
                 "SELECT COALESCE(SUM(dv.net_amount), 0) AS total_amount,
-                        COUNT(*) FILTER (WHERE dv.status = 'RELEASED')                              AS approved,
-                        COUNT(*) FILTER (WHERE dv.status IN ('FOR_FMD_REVIEW','FOR_ACCOUNTING','FOR_TREASURY')) AS pending,
-                        COUNT(*) FILTER (WHERE dv.status IN ('REJECTED','CANCELLED'))                AS rejected
-                 FROM {$this->table} dv WHERE {$whereSql}",
+                        COUNT(*) FILTER (WHERE st.name = 'RELEASED')                              AS approved,
+                        COUNT(*) FILTER (WHERE st.name IN ('FOR_FMD_REVIEW','FOR_ACCOUNTING','FOR_TREASURY')) AS pending,
+                        COUNT(*) FILTER (WHERE st.name IN ('REJECTED','CANCELLED'))                AS rejected
+                 FROM {$from} WHERE {$whereSql}",
                 'DB'
             );
 
@@ -624,7 +674,12 @@ class DisbursementVoucherService
     {
         try {
             $dvId = (int) $id;
-            $row  = App\ExecuteRow("SELECT * FROM {$this->table} WHERE dv_id = {$dvId}", 'DB');
+            $row  = App\ExecuteRow(
+                "SELECT dv.*, st.name AS status, st.color AS status_color
+                 FROM {$this->table} dv LEFT JOIN {$this->tableSettingsStatus} st ON st.id = dv.status_id
+                 WHERE dv.dv_id = {$dvId}",
+                'DB'
+            );
             if (!$row) {
                 return ['success' => false, 'message' => "Disbursement Voucher #{$dvId} not found.", 'httpCode' => 404];
             }
@@ -634,6 +689,23 @@ class DisbursementVoucherService
             $row['jev']                = $this->fetchJev($dvId);
             $row['deductions']         = $this->fetchDeductions($dvId);
             $row['atc_lines']          = $this->fetchAtcLines($dvId);
+
+            // account_title/account_posting_allowed let the view show the account's name (same
+            // Chart of Accounts lookup the searchable-select pickers use elsewhere) and flag it if
+            // it's somehow not posting_allowed (e.g. a legacy voucher saved before that check
+            // existed, or the account was reclassified after the fact) — null/false if account_code
+            // is blank or no longer exists in the chart of accounts.
+            if ($row['account_code']) {
+                $account = App\ExecuteRow(
+                    'SELECT account_title, posting_allowed FROM ' . $this->tableCoa . ' WHERE account_code = ' . $this->str($row['account_code']),
+                    'DB'
+                );
+                $row['account_title']           = $account['account_title'] ?? null;
+                $row['account_posting_allowed'] = $account ? (bool) $account['posting_allowed'] : false;
+            } else {
+                $row['account_title']           = null;
+                $row['account_posting_allowed'] = null;
+            }
 
             return ['success' => true, 'data' => $row];
         } catch (\Exception $e) {
@@ -719,9 +791,10 @@ class DisbursementVoucherService
             $whereSql = implode(' AND ', $where);
 
             $select = "SELECT j.jev_id, j.jev_no, j.jev_date, j.fiscal_yr, j.total_debit, j.total_credit, j.created_at,
-                              dv.dv_id, dv.dv_no, dv.claimant_name, dv.status AS dv_status
+                              dv.dv_id, dv.dv_no, dv.claimant_name, st.name AS dv_status
                        FROM {$this->tableJev} j
                        JOIN {$this->table} dv ON dv.dv_id = j.dv_id
+                       LEFT JOIN {$this->tableSettingsStatus} st ON st.id = dv.status_id
                        WHERE {$whereSql}
                        ORDER BY j.created_at DESC, j.jev_id DESC";
 
@@ -837,168 +910,210 @@ class DisbursementVoucherService
     /**
      * Accounting prepares (or edits) the Journal Entry Voucher — and its ATC withholding
      * classification lines — for a DV while it's at the FOR_ACCOUNTING stage; a prerequisite
-     * changeStatus() checks before allowing FOR_ACCOUNTING -> FOR_TREASURY (see there). Full
-     * replace of both lines/atc_lines, same upsert shape as PurchaseOrderService's items.
-     * Recomputes the DV's net_amount/balance_amount since withholding tax changed.
+     * changeStatus() checks before allowing FOR_ACCOUNTING -> FOR_TREASURY (see there). Owns its
+     * own transaction (persistJournalEntry() doesn't) since this is a standalone call, not nested
+     * inside create()/update()'s.
      */
     public function saveJournalEntry(int|string $dvId, array $atcLines, array $lines, int $userId): array
     {
         try {
-            $dvId = (int) $dvId;
-            $dv   = App\ExecuteRow(
-                "SELECT dv_id, status, fiscal_yr, gross_amount, obligation_amount, payments_prior_amount
-                 FROM {$this->table} WHERE dv_id = {$dvId}",
+            $dvId   = (int) $dvId;
+            $status = App\ExecuteScalar(
+                "SELECT st.name FROM {$this->table} dv LEFT JOIN {$this->tableSettingsStatus} st ON st.id = dv.status_id WHERE dv.dv_id = {$dvId}",
                 'DB'
             );
-            if (!$dv) {
+            if ($status === false || $status === null) {
                 return ['success' => false, 'message' => "Disbursement Voucher #{$dvId} not found.", 'httpCode' => 404];
             }
-            if ($dv['status'] !== 'FOR_ACCOUNTING') {
-                return ['success' => false, 'message' => "A Journal Entry can only be prepared while the voucher is at the Accounting stage (current status: {$dv['status']})."];
+            if ($status !== 'FOR_ACCOUNTING') {
+                return ['success' => false, 'message' => "A Journal Entry can only be prepared while the voucher is at the Accounting stage (current status: {$status})."];
             }
             if (!GlobalService::getUserRcScope()['is_admin'] && $this->currentUserRcId() !== self::STAGE_HOLDER_RC['FOR_ACCOUNTING']) {
                 return ['success' => false, 'message' => 'Only Accounting Department staff can prepare this Journal Entry.', 'httpCode' => 403];
             }
 
-            $errors = [];
-
-            [$atcErrors, $cleanAtc, $totalWithholding] = $this->prepareAtcLines($atcLines);
-            $errors = array_merge($errors, $atcErrors);
-
-            $clean = [];
-            $totalDebit = 0.0;
-            $totalCredit = 0.0;
-            foreach (array_values($lines) as $i => $line) {
-                $n           = $i + 1;
-                $accountCode = trim((string) ($line['account_code'] ?? ''));
-                $debit       = is_numeric($line['debit'] ?? null) ? (float) $line['debit'] : 0.0;
-                $credit      = is_numeric($line['credit'] ?? null) ? (float) $line['credit'] : 0.0;
-                $slCode      = trim((string) ($line['sl_code'] ?? ''));
-                $slDetailId  = $line['sl_detail_id'] ?? '';
-                if ($accountCode === '' && $debit <= 0 && $credit <= 0) {
-                    continue; // a fully blank trailing row
-                }
-                if ($accountCode === '') {
-                    $errors[] = "Line {$n}: account code is required.";
-                } else {
-                    $account = App\ExecuteRow(
-                        "SELECT posting_allowed FROM {$this->tableCoa} WHERE account_code = " . $this->str($accountCode),
-                        'DB'
-                    );
-                    if (!$account) {
-                        $errors[] = "Line {$n}: account code '{$accountCode}' does not exist in the chart of accounts.";
-                    } elseif (!$account['posting_allowed']) {
-                        $errors[] = "Line {$n}: account code '{$accountCode}' is not postable (it's a summary/header account).";
-                    }
-                }
-                if (($debit > 0) === ($credit > 0)) {
-                    $errors[] = "Line {$n}: enter either a debit or a credit amount, not both or neither.";
-                }
-                if ($slCode !== '' && (int) App\ExecuteScalar('SELECT COUNT(*) FROM ' . $this->tableSlMasters . ' WHERE sl_code = ' . $this->str($slCode) . ' AND is_active = TRUE', 'DB') === 0) {
-                    $errors[] = "Line {$n}: SL code '{$slCode}' does not exist or is inactive.";
-                }
-                if (ctype_digit((string) $slDetailId) && (int) $slDetailId > 0) {
-                    $detail = App\ExecuteRow('SELECT sl_code FROM ' . $this->tableSlDetails . ' WHERE sl_detail_id = ' . (int) $slDetailId, 'DB');
-                    if (!$detail) {
-                        $errors[] = "Line {$n}: SL detail #{$slDetailId} does not exist.";
-                    } elseif ($slCode !== '' && $detail['sl_code'] !== $slCode) {
-                        $errors[] = "Line {$n}: SL detail #{$slDetailId} does not belong to SL code '{$slCode}'.";
-                    }
-                    $slDetailId = (int) $slDetailId;
-                } else {
-                    $slDetailId = null;
-                }
-                $totalDebit  += $debit;
-                $totalCredit += $credit;
-                $clean[] = [
-                    'account_code' => $accountCode, 'debit' => $debit, 'credit' => $credit,
-                    'description'  => trim((string) ($line['description'] ?? '')),
-                    'sl_code'      => $slCode !== '' ? $slCode : null,
-                    'sl_detail_id' => $slDetailId,
-                ];
-            }
-            if (count($clean) < 2) {
-                $errors[] = 'A Journal Entry needs at least two lines (one debit, one credit).';
-            }
-            $totalDebit  = round($totalDebit, 2);
-            $totalCredit = round($totalCredit, 2);
-            if (!$errors && ($totalDebit <= 0 || $totalDebit !== $totalCredit)) {
-                $errors[] = "Total debits (" . number_format($totalDebit, 2) . ") must equal total credits (" . number_format($totalCredit, 2) . ') and be greater than zero.';
-            }
-            if ($errors) {
-                return ['success' => false, 'message' => 'Validation failed.', 'errors' => $errors];
-            }
-
-            $totalDeductions = (float) (App\ExecuteScalar("SELECT COALESCE(SUM(deduction_amount), 0) FROM {$this->tableDvDeductions} WHERE dv_id = {$dvId}", 'DB') ?? 0);
-            $netAmount       = round((float) $dv['gross_amount'] - $totalDeductions - $totalWithholding, 2);
-            $balance         = round((float) $dv['obligation_amount'] - ((float) $dv['payments_prior_amount'] + $netAmount), 2);
-
-            $uid = $userId > 0 ? (string) $userId : 'NULL';
             App\Execute('BEGIN', 'DB');
             try {
-                $existing = App\ExecuteRow("SELECT jev_id, jev_no FROM {$this->tableJev} WHERE dv_id = {$dvId}", 'DB');
-                if ($existing) {
-                    $jevId = (int) $existing['jev_id'];
-                    App\Execute(
-                        "UPDATE {$this->tableJev} SET
-                            total_debit = {$totalDebit}, total_credit = {$totalCredit},
-                            updated_by = {$uid}, updated_at = CURRENT_TIMESTAMP
-                         WHERE jev_id = {$jevId}",
-                        'DB'
-                    );
-                    App\Execute("DELETE FROM {$this->tableJevLines} WHERE jev_id = {$jevId}", 'DB');
-                } else {
-                    $jevNo = $this->nextJevNumber(date('Y-m-d'));
-                    $row = App\ExecuteRow(
-                        "INSERT INTO {$this->tableJev} (jev_no, dv_id, fiscal_yr, total_debit, total_credit, created_by)
-                         VALUES (" . $this->str($jevNo) . ", {$dvId}, " . (int) $dv['fiscal_yr'] . ", {$totalDebit}, {$totalCredit}, {$uid})
-                         RETURNING jev_id",
-                        'DB'
-                    );
-                    $jevId = (int) $row['jev_id'];
+                $result = $this->persistJournalEntry($dvId, $atcLines, $lines, $userId, true);
+                if (!$result['success']) {
+                    App\Execute('ROLLBACK', 'DB');
+
+                    return $result;
                 }
-
-                foreach ($clean as $idx => $line) {
-                    App\Execute(
-                        "INSERT INTO {$this->tableJevLines} (jev_id, line_number, account_code, debit, credit, description, sl_code, sl_detail_id)
-                         VALUES ({$jevId}, " . ($idx + 1) . ', ' . $this->str($line['account_code']) . ', '
-                        . (float) $line['debit'] . ', ' . (float) $line['credit'] . ', ' . $this->strOrNull($line['description']) . ', '
-                        . $this->strOrNull($line['sl_code']) . ', ' . $this->intOrNull($line['sl_detail_id']) . ')',
-                        'DB'
-                    );
-                }
-
-                App\Execute("DELETE FROM {$this->tableDvAtcLines} WHERE dv_id = {$dvId}", 'DB');
-                foreach ($cleanAtc as $idx => $atc) {
-                    App\Execute(
-                        "INSERT INTO {$this->tableDvAtcLines} (dv_id, line_number, atc_code, rate, tax_base, withholding_tax, chargeability)
-                         VALUES ({$dvId}, " . ($idx + 1) . ', ' . $this->str($atc['atc_code']) . ', '
-                        . (float) $atc['rate'] . ', ' . (float) $atc['tax_base'] . ', ' . (float) $atc['withholding_tax'] . ', '
-                        . $this->strOrNull($atc['chargeability']) . ')',
-                        'DB'
-                    );
-                }
-
-                App\Execute(
-                    "UPDATE {$this->table} SET
-                        net_amount = {$netAmount}, balance_amount = {$balance},
-                        updated_by = {$uid}, updated_at = CURRENT_TIMESTAMP
-                     WHERE dv_id = {$dvId}",
-                    'DB'
-                );
-
                 App\Execute('COMMIT', 'DB');
+
+                return $result;
             } catch (\Exception $e) {
                 App\Execute('ROLLBACK', 'DB');
                 throw $e;
             }
-
-            return ['success' => true, 'message' => 'Journal Entry saved.', 'data' => ['dv_id' => $dvId, 'net_amount' => $netAmount, 'balance_amount' => $balance]];
         } catch (\Exception $e) {
             App\LogError('DisbursementVoucherService::saveJournalEntry ' . $e->getMessage());
 
             return ['success' => false, 'message' => 'Failed to save the Journal Entry.'];
         }
+    }
+
+    /**
+     * Core validate+save for a DV's ATC withholding + Journal Entry lines. No status/RC check and
+     * no transaction management here — the caller owns both:
+     *   - saveJournalEntry() (Accounting, FOR_ACCOUNTING stage only) checks status+RC, then wraps
+     *     this in its own BEGIN/COMMIT.
+     *   - create()/update() (Originating, optional pre-fill at any editable stage — "ATC Code" and
+     *     "Accounting Entries" are optional sections on the DV form) call this from inside their
+     *     own already-open transaction, so a validation failure here rolls back the whole DV save.
+     *     $requireBalancedEntry is false there: 0 lines/0 ATC rows is a valid "not filled in yet"
+     *     state, not an error — Accounting still has to prepare a real one later regardless.
+     * Full replace of both atc_lines/lines, same upsert shape as PurchaseOrderService's items.
+     * Recomputes the DV's net_amount/balance_amount either way.
+     */
+    private function persistJournalEntry(int $dvId, array $atcLines, array $lines, int $userId, bool $requireBalancedEntry): array
+    {
+        $dv = App\ExecuteRow(
+            "SELECT dv_id, fiscal_yr, gross_amount, obligation_amount, payments_prior_amount
+             FROM {$this->table} WHERE dv_id = {$dvId}",
+            'DB'
+        );
+        if (!$dv) {
+            return ['success' => false, 'message' => "Disbursement Voucher #{$dvId} not found.", 'httpCode' => 404];
+        }
+
+        $errors = [];
+
+        [$atcErrors, $cleanAtc, $totalWithholding] = $this->prepareAtcLines($atcLines);
+        $errors = array_merge($errors, $atcErrors);
+
+        $clean = [];
+        $totalDebit = 0.0;
+        $totalCredit = 0.0;
+        foreach (array_values($lines) as $i => $line) {
+            $n           = $i + 1;
+            $accountCode = trim((string) ($line['account_code'] ?? ''));
+            $debit       = is_numeric($line['debit'] ?? null) ? (float) $line['debit'] : 0.0;
+            $credit      = is_numeric($line['credit'] ?? null) ? (float) $line['credit'] : 0.0;
+            $slCode      = trim((string) ($line['sl_code'] ?? ''));
+            $slDetailId  = $line['sl_detail_id'] ?? '';
+            if ($accountCode === '' && $debit <= 0 && $credit <= 0) {
+                continue; // a fully blank trailing row
+            }
+            if ($accountCode === '') {
+                $errors[] = "Line {$n}: account code is required.";
+            } else {
+                $account = App\ExecuteRow(
+                    "SELECT posting_allowed FROM {$this->tableCoa} WHERE account_code = " . $this->str($accountCode),
+                    'DB'
+                );
+                if (!$account) {
+                    $errors[] = "Line {$n}: account code '{$accountCode}' does not exist in the chart of accounts.";
+                } elseif (!$account['posting_allowed']) {
+                    $errors[] = "Line {$n}: account code '{$accountCode}' is not postable (it's a summary/header account).";
+                }
+            }
+            if (($debit > 0) === ($credit > 0)) {
+                $errors[] = "Line {$n}: enter either a debit or a credit amount, not both or neither.";
+            }
+            if ($slCode !== '' && (int) App\ExecuteScalar('SELECT COUNT(*) FROM ' . $this->tableSlMasters . ' WHERE sl_code = ' . $this->str($slCode) . ' AND is_active = TRUE', 'DB') === 0) {
+                $errors[] = "Line {$n}: SL code '{$slCode}' does not exist or is inactive.";
+            }
+            if (ctype_digit((string) $slDetailId) && (int) $slDetailId > 0) {
+                $detail = App\ExecuteRow('SELECT sl_code FROM ' . $this->tableSlDetails . ' WHERE sl_detail_id = ' . (int) $slDetailId, 'DB');
+                if (!$detail) {
+                    $errors[] = "Line {$n}: SL detail #{$slDetailId} does not exist.";
+                } elseif ($slCode !== '' && $detail['sl_code'] !== $slCode) {
+                    $errors[] = "Line {$n}: SL detail #{$slDetailId} does not belong to SL code '{$slCode}'.";
+                }
+                $slDetailId = (int) $slDetailId;
+            } else {
+                $slDetailId = null;
+            }
+            $totalDebit  += $debit;
+            $totalCredit += $credit;
+            $clean[] = [
+                'account_code' => $accountCode, 'debit' => $debit, 'credit' => $credit,
+                'description'  => trim((string) ($line['description'] ?? '')),
+                'sl_code'      => $slCode !== '' ? $slCode : null,
+                'sl_detail_id' => $slDetailId,
+            ];
+        }
+        // 0 lines is only an error when a complete entry is required (the dedicated Accounting
+        // save); as an optional pre-fill, "nothing entered yet" isn't a validation failure, just
+        // nothing to save. 1 line is always wrong either way — a JEV can't have only one side.
+        if (count($clean) === 1 || ($requireBalancedEntry && count($clean) === 0)) {
+            $errors[] = 'A Journal Entry needs at least two lines (one debit, one credit).';
+        }
+        $totalDebit  = round($totalDebit, 2);
+        $totalCredit = round($totalCredit, 2);
+        if (count($clean) >= 2 && !$errors && ($totalDebit <= 0 || $totalDebit !== $totalCredit)) {
+            $errors[] = "Total debits (" . number_format($totalDebit, 2) . ") must equal total credits (" . number_format($totalCredit, 2) . ') and be greater than zero.';
+        }
+        if ($errors) {
+            return ['success' => false, 'message' => 'Validation failed.', 'errors' => $errors];
+        }
+
+        $totalDeductions = (float) (App\ExecuteScalar("SELECT COALESCE(SUM(deduction_amount), 0) FROM {$this->tableDvDeductions} WHERE dv_id = {$dvId}", 'DB') ?? 0);
+        $netAmount       = round((float) $dv['gross_amount'] - $totalDeductions - $totalWithholding, 2);
+        $balance         = round((float) $dv['obligation_amount'] - ((float) $dv['payments_prior_amount'] + $netAmount), 2);
+
+        $uid = $userId > 0 ? (string) $userId : 'NULL';
+
+        if (count($clean) > 0) {
+            $existing = App\ExecuteRow("SELECT jev_id FROM {$this->tableJev} WHERE dv_id = {$dvId}", 'DB');
+            if ($existing) {
+                $jevId = (int) $existing['jev_id'];
+                App\Execute(
+                    "UPDATE {$this->tableJev} SET
+                        total_debit = {$totalDebit}, total_credit = {$totalCredit},
+                        updated_by = {$uid}, updated_at = CURRENT_TIMESTAMP
+                     WHERE jev_id = {$jevId}",
+                    'DB'
+                );
+                App\Execute("DELETE FROM {$this->tableJevLines} WHERE jev_id = {$jevId}", 'DB');
+            } else {
+                $jevNo = $this->nextJevNumber(date('Y-m-d'));
+                $row = App\ExecuteRow(
+                    "INSERT INTO {$this->tableJev} (jev_no, dv_id, fiscal_yr, total_debit, total_credit, created_by)
+                     VALUES (" . $this->str($jevNo) . ", {$dvId}, " . (int) $dv['fiscal_yr'] . ", {$totalDebit}, {$totalCredit}, {$uid})
+                     RETURNING jev_id",
+                    'DB'
+                );
+                $jevId = (int) $row['jev_id'];
+            }
+
+            foreach ($clean as $idx => $line) {
+                App\Execute(
+                    "INSERT INTO {$this->tableJevLines} (jev_id, line_number, account_code, debit, credit, description, sl_code, sl_detail_id)
+                     VALUES ({$jevId}, " . ($idx + 1) . ', ' . $this->str($line['account_code']) . ', '
+                    . (float) $line['debit'] . ', ' . (float) $line['credit'] . ', ' . $this->strOrNull($line['description']) . ', '
+                    . $this->strOrNull($line['sl_code']) . ', ' . $this->intOrNull($line['sl_detail_id']) . ')',
+                    'DB'
+                );
+            }
+        } else {
+            // Explicit "no lines" submission — clears a previously-saved JEV too (full-replace
+            // semantics, same as everything else on this form), cascades to its lines.
+            App\Execute("DELETE FROM {$this->tableJev} WHERE dv_id = {$dvId}", 'DB');
+        }
+
+        App\Execute("DELETE FROM {$this->tableDvAtcLines} WHERE dv_id = {$dvId}", 'DB');
+        foreach ($cleanAtc as $idx => $atc) {
+            App\Execute(
+                "INSERT INTO {$this->tableDvAtcLines} (dv_id, line_number, atc_code, rate, tax_base, withholding_tax, chargeability)
+                 VALUES ({$dvId}, " . ($idx + 1) . ', ' . $this->str($atc['atc_code']) . ', '
+                . (float) $atc['rate'] . ', ' . (float) $atc['tax_base'] . ', ' . (float) $atc['withholding_tax'] . ', '
+                . $this->strOrNull($atc['chargeability']) . ')',
+                'DB'
+            );
+        }
+
+        App\Execute(
+            "UPDATE {$this->table} SET
+                net_amount = {$netAmount}, balance_amount = {$balance},
+                updated_by = {$uid}, updated_at = CURRENT_TIMESTAMP
+             WHERE dv_id = {$dvId}",
+            'DB'
+        );
+
+        return ['success' => true, 'message' => 'Journal Entry saved.', 'data' => ['dv_id' => $dvId, 'net_amount' => $netAmount, 'balance_amount' => $balance]];
     }
 
     /** Next free "{YY}-{MM}-{NNNN}" for the month of $dvDate (uses MAX, so deletes can't cause a clash). */
@@ -1058,7 +1173,7 @@ class DisbursementVoucherService
             try {
                 $row = App\ExecuteRow(
                     "INSERT INTO {$this->table}
-                        (dv_no, dv_date, fiscal_yr, expense_class, status,
+                        (dv_no, dv_date, fiscal_yr, expense_class, status_id,
                          rfa_allocation_id, rfa_allocation_number, requesting_department_id, dept_project, fund_source,
                          vendor_id, claimant_name, claimant_address, employee_no_tin,
                          particulars, gross_amount, net_amount,
@@ -1066,7 +1181,7 @@ class DisbursementVoucherService
                          account_code, budget_amount, obligation_amount, payments_prior_amount, balance_amount,
                          remarks, submitted_at, submitted_by, created_by)
                      VALUES ("
-                    . $this->str($dvNo) . ', ' . $this->str($f['dv_date']) . ', ' . $f['fiscal_yr'] . ', ' . $this->strOrNull($f['expense_class']) . ', ' . $this->str($f['status']) . ', '
+                    . $this->str($dvNo) . ', ' . $this->str($f['dv_date']) . ', ' . $f['fiscal_yr'] . ', ' . $this->strOrNull($f['expense_class']) . ', ' . (int) $f['status_id'] . ', '
                     . $this->intOrNull($f['rfa_allocation_id']) . ', ' . $this->strOrNull($f['rfa_allocation_number']) . ', '
                     . $this->intOrNull($f['requesting_department_id']) . ', ' . $this->strOrNull($f['dept_project']) . ', '
                     . $this->strOrNull($f['fund_source']) . ', '
@@ -1085,6 +1200,17 @@ class DisbursementVoucherService
                 );
 
                 $this->replaceDeductions((int) $row['dv_id'], $f['deductions']);
+
+                // Optional ATC Code / Accounting Entries pre-fill — see persistJournalEntry()'s
+                // doc comment. A validation failure here rolls back the DV creation too.
+                if ($f['atc_lines'] || $f['lines']) {
+                    $jevResult = $this->persistJournalEntry((int) $row['dv_id'], $f['atc_lines'], $f['lines'], $userId, false);
+                    if (!$jevResult['success']) {
+                        App\Execute('ROLLBACK', 'DB');
+
+                        return $jevResult;
+                    }
+                }
 
                 App\Execute('COMMIT', 'DB');
             } catch (\Exception $e) {
@@ -1110,7 +1236,12 @@ class DisbursementVoucherService
     {
         try {
             $dvId = (int) $id;
-            $cur  = App\ExecuteRow("SELECT dv_id, status FROM {$this->table} WHERE dv_id = {$dvId}", 'DB');
+            $cur  = App\ExecuteRow(
+                "SELECT dv.dv_id, st.name AS status FROM {$this->table} dv
+                 LEFT JOIN {$this->tableSettingsStatus} st ON st.id = dv.status_id
+                 WHERE dv.dv_id = {$dvId}",
+                'DB'
+            );
             if (!$cur) {
                 return ['success' => false, 'message' => "Disbursement Voucher #{$dvId} not found.", 'httpCode' => 404];
             }
@@ -1156,7 +1287,7 @@ class DisbursementVoucherService
                         payments_prior_amount = ' . (float) $paymentsPrior . ',
                         balance_amount = ' . (float) $balance . ',
                         remarks = ' . $this->strOrNull($f['remarks']) . ',
-                        status = ' . $this->str($f['status']) . ',
+                        status_id = ' . (int) $f['status_id'] . ',
                         submitted_at = ' . ($submitted ? 'CURRENT_TIMESTAMP' : 'NULL') . ',
                         submitted_by = ' . ($submitted ? $uid : 'NULL') . ',
                         rejected_at = NULL, rejected_by = NULL, rejection_reason = NULL,
@@ -1167,6 +1298,17 @@ class DisbursementVoucherService
                 );
 
                 $this->replaceDeductions($dvId, $f['deductions']);
+
+                // Optional ATC Code / Accounting Entries pre-fill — see persistJournalEntry()'s
+                // doc comment. A validation failure here rolls back the whole update too.
+                if ($f['atc_lines'] || $f['lines']) {
+                    $jevResult = $this->persistJournalEntry($dvId, $f['atc_lines'], $f['lines'], $userId, false);
+                    if (!$jevResult['success']) {
+                        App\Execute('ROLLBACK', 'DB');
+
+                        return $jevResult;
+                    }
+                }
 
                 App\Execute('COMMIT', 'DB');
             } catch (\Exception $e) {
@@ -1231,9 +1373,18 @@ class DisbursementVoucherService
         try {
             $dvId = (int) $id;
             $new  = strtoupper(trim($newStatus));
-            $cur  = App\ExecuteRow("SELECT dv_id, status, created_by FROM {$this->table} WHERE dv_id = {$dvId}", 'DB');
+            $cur  = App\ExecuteRow(
+                "SELECT dv.dv_id, dv.status_id, st.name AS status, dv.created_by FROM {$this->table} dv
+                 LEFT JOIN {$this->tableSettingsStatus} st ON st.id = dv.status_id
+                 WHERE dv.dv_id = {$dvId}",
+                'DB'
+            );
             if (!$cur) {
                 return ['success' => false, 'message' => "Disbursement Voucher #{$dvId} not found.", 'httpCode' => 404];
+            }
+            $newId = $this->getStatusIdByName($new);
+            if ($newId === null) {
+                return ['success' => false, 'message' => "Status '{$new}' is not configured in fims.settings_status for disbursement vouchers."];
             }
 
             $allowed = self::TRANSITIONS[$cur['status']] ?? [];
@@ -1256,7 +1407,7 @@ class DisbursementVoucherService
             }
 
             $uid = $userId > 0 ? (string) $userId : 'NULL';
-            $set = ['status = ' . $this->str($new), 'updated_at = CURRENT_TIMESTAMP', "updated_by = {$uid}"];
+            $set = ["status_id = {$newId}", 'updated_at = CURRENT_TIMESTAMP', "updated_by = {$uid}"];
             if ($new === 'FOR_FMD_REVIEW') {
                 $set[] = "submitted_at = CURRENT_TIMESTAMP, submitted_by = {$uid}";
                 $set[] = 'rejected_at = NULL, rejected_by = NULL, rejection_reason = NULL';
@@ -1272,11 +1423,11 @@ class DisbursementVoucherService
 
             // Guard on the status we read so two concurrent actions can't both win.
             App\Execute(
-                "UPDATE {$this->table} SET " . implode(', ', $set) . " WHERE dv_id = {$dvId} AND status = " . $this->str($cur['status']),
+                "UPDATE {$this->table} SET " . implode(', ', $set) . " WHERE dv_id = {$dvId} AND status_id = " . (int) $cur['status_id'],
                 'DB'
             );
-            $now = App\ExecuteScalar("SELECT status FROM {$this->table} WHERE dv_id = {$dvId}", 'DB');
-            if ($now !== $new) {
+            $now = App\ExecuteScalar("SELECT status_id FROM {$this->table} WHERE dv_id = {$dvId}", 'DB');
+            if ((int) $now !== $newId) {
                 return ['success' => false, 'message' => 'The disbursement voucher was changed by someone else. Please reload and try again.'];
             }
 
@@ -1292,7 +1443,12 @@ class DisbursementVoucherService
     {
         try {
             $dvId = (int) $id;
-            $cur  = App\ExecuteRow("SELECT dv_no, status FROM {$this->table} WHERE dv_id = {$dvId}", 'DB');
+            $cur  = App\ExecuteRow(
+                "SELECT dv.dv_no, st.name AS status FROM {$this->table} dv
+                 LEFT JOIN {$this->tableSettingsStatus} st ON st.id = dv.status_id
+                 WHERE dv.dv_id = {$dvId}",
+                'DB'
+            );
             if (!$cur) {
                 return ['success' => false, 'message' => "Disbursement Voucher #{$dvId} not found.", 'httpCode' => 404];
             }

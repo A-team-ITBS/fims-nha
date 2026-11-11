@@ -44,10 +44,11 @@ if (!isset($_vf_api)) {
 #vf-root .vf-vendor-card span { font-size: 13px; font-weight: 600; color: var(--afims-success-hover, #0C7539); }
 
 #vf-root .vf-ledger { border-collapse: collapse; width: 100%; font-size: 13px; }
-#vf-root .vf-ledger td { padding: 6px 4px; border-bottom: 1px solid var(--afims-surface-subtle, #F4F7FA); }
+#vf-root .vf-ledger td, #vf-root .vf-ledger th { padding: 6px 4px; border-bottom: 1px solid var(--afims-surface-subtle, #F4F7FA); }
 #vf-root .vf-ledger td.vf-l-label { color: var(--afims-text-muted, #62657E); font-weight: 600; width: 45%; }
 #vf-root .vf-ledger td.vf-l-val { text-align: right; font-family: "IBM Plex Mono", monospace; font-weight: 600; }
 #vf-root .vf-ledger tr.vf-l-total td { border-top: 2px solid var(--afims-border, #E4ECF2); border-bottom: none; font-weight: 700; }
+#vf-root .vf-ledger input, #vf-root .vf-ledger select { width: 100%; font-size: 12.5px; padding: 6px 8px; border: 1px solid var(--afims-border, #E4ECF2); border-radius: 6px; box-sizing: border-box; font-family: inherit; }
 
 #vf-root .vf-ded-row { border: 1px solid var(--afims-border, #E4ECF2); border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; position: relative; }
 #vf-root .vf-ded-remove { position: absolute; top: 8px; right: 10px; background: none; border: none; cursor: pointer; color: var(--afims-danger, #DC3545); font-size: 16px; line-height: 1; padding: 4px 6px; border-radius: 5px; }
@@ -86,7 +87,19 @@ if (!isset($_vf_api)) {
                     <ul id="vf-errors-ul"></ul>
                 </div>
 
-                <!-- 1 — Document identity -->
+                <!-- 1 — RFA first: picking one auto-fills Expense Class (2), the department/vendor
+                     claimant fields (3), and the Budget Reference ledger (4) further down -->
+                <div class="vf-card">
+                    <p class="vf-card-title">Request for Allotment (RFA)</p>
+                    <div class="nha-fg">
+                        <label>RFA <span class="nha-req">*</span></label>
+                        <select id="vf-rfa"><option value="">Select RFA</option></select>
+                        <span class="vf-hint">Picking an RFA fills in Expense Class (if its budget category maps to one), the department, vendor (if any), and the Budget Reference ledger below.</span>
+                        <span class="vf-err" id="err-rfa">RFA is required.</span>
+                    </div>
+                </div>
+
+                <!-- 2 — Document identity (DV Date drives the DV Number preview) -->
                 <div class="vf-card">
                     <p class="vf-card-title">Document Identity</p>
                     <div class="vf-grid3">
@@ -101,7 +114,7 @@ if (!isset($_vf_api)) {
                             <span class="vf-err" id="err-fiscal-yr">Fiscal year is required.</span>
                         </div>
                         <div class="nha-fg">
-                            <label>Expense Class <span class="vf-hint" style="display:inline;">(optional, for reporting)</span></label>
+                            <label>Expense Class <span class="vf-hint" style="display:inline;">(optional, for reporting — auto-filled from RFA when possible)</span></label>
                             <select id="vf-expense-class">
                                 <option value="">— None —</option>
                                 <option value="MOOE">MOOE</option>
@@ -113,17 +126,8 @@ if (!isset($_vf_api)) {
                     </div>
                 </div>
 
-                <!-- 2 — RFA -->
-                <div class="vf-card">
-                    <p class="vf-card-title">Request for Allotment (RFA)</p>
-                    <div class="nha-fg">
-                        <label>RFA</label>
-                        <select id="vf-rfa"><option value="">— None / manual entry —</option></select>
-                        <span class="vf-hint">Picking an RFA fills in the department, vendor (if any), and accounting-entries ledger below.</span>
-                    </div>
-                </div>
-
-                <!-- 3 — Claimant & particulars -->
+                <!-- 3 — Claimant & particulars — matches the paper General Form No. 1's layout:
+                     claimant name/address/TIN, then Particulars of Payment / Amount -->
                 <div class="vf-card">
                     <p class="vf-card-title">Claimant &amp; Particulars</p>
                     <div class="vf-grid2">
@@ -163,25 +167,12 @@ if (!isset($_vf_api)) {
                         <input type="number" id="vf-gross" min="0" step="0.01" placeholder="0.00">
                         <span class="vf-err" id="err-gross">Amount must be greater than zero.</span>
                     </div>
-                    <div class="vf-number" style="margin-top:12px;margin-bottom:0;">
-                        <div><small>Net Amount</small><strong id="vf-net">₱ 0.00</strong></div>
-                    </div>
                 </div>
 
-                <!-- 3b — Deductions (optional, e.g. contractor retention — withholding tax is separate,
-                     added later by Accounting alongside the Journal Entry) -->
+                <!-- 4 — Budget Reference — the paper form's Accounting Entries box (Box B); its
+                     Dept./Project/Fund Source/Budget/Obligation are filled in by the RFA (1) above -->
                 <div class="vf-card">
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-                        <p class="vf-card-title" style="margin:0;">Deductions</p>
-                        <span class="vf-hint" style="display:inline;">Optional — add only what applies to this DV</span>
-                    </div>
-                    <div id="vf-ded-container"></div>
-                    <button type="button" class="nha-btn nha-btn-ghost" onclick="vf_addDeductionLine()">+ Add Deduction</button>
-                </div>
-
-                <!-- 4 — Accounting entries -->
-                <div class="vf-card" style="margin-bottom:0;">
-                    <p class="vf-card-title">Accounting Entries</p>
+                    <p class="vf-card-title">Budget Reference</p>
                     <div class="vf-grid3">
                         <div class="nha-fg">
                             <label>Dept. / Project</label>
@@ -217,6 +208,84 @@ if (!isset($_vf_api)) {
                     </div>
                 </div>
 
+                <!-- 5 — Deductions ("Less:" on the paper form — non-tax amounts withheld from
+                     gross, e.g. contractor retention. Withholding tax is separate — see ATC (6) -->
+                <div class="vf-card">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                        <p class="vf-card-title" style="margin:0;">Deductions</p>
+                        <span class="vf-hint" style="display:inline;">Optional — add only what applies to this DV</span>
+                    </div>
+                    <div id="vf-ded-container"></div>
+                    <button type="button" class="nha-btn nha-btn-ghost" onclick="vf_addDeductionLine()">+ Add Deduction</button>
+                    <div class="vf-number" style="margin-top:12px;margin-bottom:0;">
+                        <div><small>Net Amount</small><strong id="vf-net">₱ 0.00</strong></div>
+                    </div>
+                </div>
+
+                <!-- 6 — ATC (optional) — normally Accounting's job during FOR_ACCOUNTING, but
+                     Originating can pre-fill it here if already known; Accounting can still
+                     review/replace it later. Same fields/behavior as readone.php's ATC card. -->
+                <div class="vf-card">
+                    <div class="vje-section-hdr">
+                        <p class="vf-card-title" style="margin:0;">ATC <span class="vf-hint" style="display:inline;font-weight:400;text-transform:none;">(optional)</span></p>
+                    </div>
+                    <p class="vf-hint" style="margin:0 0 8px;">Only add ATC rows if withholding tax applies and the classification is already known — Accounting can add or change this later regardless.</p>
+                    <div style="overflow-x:auto;">
+                        <table class="vf-ledger" style="min-width:760px;">
+                            <thead><tr>
+                                <th style="text-align:left;">ATC Code — Description</th>
+                                <th style="text-align:right;width:85px;">Rate (%)</th>
+                                <th style="text-align:right;width:130px;">Tax Base (₱)</th>
+                                <th style="text-align:right;width:130px;">Withholding Tax (₱)</th>
+                                <th style="text-align:left;width:170px;">Chargeability</th>
+                                <th style="width:30px;"></th>
+                            </tr></thead>
+                            <tbody id="vf-atc-tbody"></tbody>
+                            <tfoot><tr class="vf-l-total">
+                                <td colspan="3" style="text-align:right;">Total Withholding Tax</td>
+                                <td class="vf-l-val" id="vf-atc-total">₱ 0.00</td>
+                                <td colspan="2"></td>
+                            </tr></tfoot>
+                        </table>
+                    </div>
+                    <button type="button" class="nha-btn nha-btn-ghost" style="margin-top:8px;" onclick="vf_addAtcLine()">+ Add ATC Row</button>
+                </div>
+
+                <!-- 7 — Accounting Entries (optional) — same grid/behavior as readone.php's
+                     Accounting Entries card; Accounting reviews/edits before their own save. -->
+                <div class="vf-card" style="margin-bottom:0;">
+                    <div class="vje-section-hdr">
+                        <p class="vf-card-title" style="margin:0;">Accounting Entries <span class="vf-hint" style="display:inline;font-weight:400;text-transform:none;">(optional)</span></p>
+                    </div>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+                        <span class="vje-amt-badge">Required if filled in: DR = CR (balanced)</span>
+                    </div>
+                    <div style="overflow-x:auto;">
+                        <table class="vf-ledger" style="min-width:760px;">
+                            <thead><tr>
+                                <th style="width:26px;">#</th>
+                                <th style="text-align:left;">Account Code</th>
+                                <th style="text-align:left;">SL Code</th>
+                                <th style="text-align:left;">SL Detail</th>
+                                <th style="text-align:right;width:110px;">Debit (₱)</th>
+                                <th style="text-align:right;width:110px;">Credit (₱)</th>
+                                <th style="width:30px;"></th>
+                            </tr></thead>
+                            <tbody id="vf-jev-tbody"></tbody>
+                            <tfoot><tr class="vf-l-total">
+                                <td colspan="4" style="text-align:right;">Total</td>
+                                <td class="vf-l-val" id="vf-jev-total-debit">₱ 0.00</td>
+                                <td class="vf-l-val" id="vf-jev-total-credit">₱ 0.00</td>
+                                <td></td>
+                            </tr></tfoot>
+                        </table>
+                    </div>
+                    <button type="button" class="nha-btn nha-btn-ghost" style="margin-top:8px;" onclick="vf_addJevLine()">+ Add Line</button>
+                    <div style="margin-top:12px;">
+                        <span id="vf-jev-balance-msg" style="font-weight:600;font-size:13px;"></span>
+                    </div>
+                </div>
+
             </div><!-- /.nha-modal-body -->
 
             <div class="nha-modal-foot">
@@ -245,10 +314,19 @@ let vf_rfas    = {};         // allocation_id -> row
 let vf_refReady = null;      // promise: fiscal years, loaded once on first open
 let vf_dedTypesReady = null;  // promise: deduction types, loaded once on first open
 let vf_coaReady = null;       // promise: postable chart-of-accounts codes, loaded once on first open
+let vf_atcReady = null;       // promise: active ATC codes, loaded once on first open
+let vf_rcReady  = null;       // promise: responsibility centers (ATC Chargeability), loaded once on first open
+let vf_slReady  = null;       // promise: SL masters (Accounting Entries SL Code picker), loaded once on first open
 let vf_bound   = false;
 let vf_paymentsPrior = 0;    // sum of net_amount other active vouchers already drew against the selected RFA
 let vf_dedTypes = [];         // deduction type options (fims.deduction_types)
 let vf_dedSeq   = 0;          // row-id counter for the Deductions grid
+let vf_coaOptions = [];       // postable chart-of-accounts rows — reused by the Account Code field and the Accounting Entries grid
+let VF_ATC = [];              // active ATC codes — see ATC card (6)
+let VF_RC  = [];              // responsibility centers, for ATC "Chargeability"
+let VF_SL  = [];              // SL masters, for the Accounting Entries grid's SL Code picker
+let vf_atcSeq = 0;            // row-id counter for the ATC grid
+let vf_jevSeq = 0;            // row-id counter for the Accounting Entries grid
 
 function vf_authFetch(url, opts = {}) {
     const headers = { ...(opts.headers || {}) };
@@ -279,7 +357,10 @@ async function vf_open(id = 0) {
         vf_refReady ??= vf_loadFiscalYears();
         vf_dedTypesReady ??= vf_loadDeductionTypes();
         vf_coaReady ??= vf_loadCoaOptions();
-        await Promise.all([vf_refReady, vf_dedTypesReady, vf_coaReady, vf_loadVendors(), vf_loadRfaOptions()]);
+        vf_atcReady ??= vf_loadAtcCodes();
+        vf_rcReady  ??= vf_loadRcOptions();
+        vf_slReady  ??= vf_loadSlOptions();
+        await Promise.all([vf_refReady, vf_dedTypesReady, vf_coaReady, vf_atcReady, vf_rcReady, vf_slReady, vf_loadVendors(), vf_loadRfaOptions()]);
 
         if (vf_id) {
             await vf_loadExisting();
@@ -307,7 +388,7 @@ document.addEventListener('keydown', e => {
 
 function vf_reset() {
     vf_showErrors([]);
-    ['dv-date', 'fiscal-yr', 'claimant', 'particulars', 'gross'].forEach(vf_clearFieldError);
+    ['dv-date', 'fiscal-yr', 'rfa', 'claimant', 'particulars', 'gross'].forEach(vf_clearFieldError);
     $vf('vf-dv-date').value       = new Date().toISOString().slice(0, 10);
     $vf('vf-fiscal-yr').value     = '';
     $vf('vf-expense-class').value = '';
@@ -324,6 +405,14 @@ function vf_reset() {
 
     $vf('vf-ded-container').innerHTML = '';
     vf_dedSeq = 0;
+
+    $vf('vf-atc-tbody').innerHTML = '';
+    vf_atcSeq = 0;
+    vf_recalcAtc();
+
+    $vf('vf-jev-tbody').innerHTML = '';
+    vf_jevSeq = 0;
+    vf_recalcJev();
 
     $vf('vf-dept-project').value = '';
     $vf('vf-fund-source').value = '';
@@ -374,11 +463,41 @@ async function vf_loadDeductionTypes() {
 async function vf_loadCoaOptions() {
     try {
         const json = await vf_getJson('/chart-of-accounts/all?status=Active');
-        const postable = (json.data ?? []).filter(a => a.posting_allowed);
-        nhaSearchableSelect($vf('vf-account-code'), postable.map(a => ({ value: a.account_code, label: a.account_title })));
+        vf_coaOptions = (json.data ?? []).filter(a => a.posting_allowed);
+        nhaSearchableSelect($vf('vf-account-code'), vf_coaOptions.map(a => ({ value: a.account_code, label: a.account_title })));
     } catch (e) {
         vf_coaReady = null;
         throw new Error('Failed to load chart of accounts: ' + e.message);
+    }
+}
+
+async function vf_loadAtcCodes() {
+    try {
+        const json = await vf_getJson('/voucher/atc-codes');
+        VF_ATC = json.data ?? [];
+    } catch (e) {
+        vf_atcReady = null;
+        throw new Error('Failed to load ATC codes: ' + e.message);
+    }
+}
+
+async function vf_loadRcOptions() {
+    try {
+        const json = await vf_getJson('/responsibility-center/all');
+        VF_RC = json.data ?? [];
+    } catch (e) {
+        vf_rcReady = null;
+        throw new Error('Failed to load responsibility centers: ' + e.message);
+    }
+}
+
+async function vf_loadSlOptions() {
+    try {
+        const json = await vf_getJson('/voucher/sl-codes');
+        VF_SL = json.data ?? [];
+    } catch (e) {
+        vf_slReady = null;
+        throw new Error('Failed to load SL codes: ' + e.message);
     }
 }
 
@@ -406,7 +525,7 @@ async function vf_loadRfaOptions() {
         const json = await vf_getJson(`/voucher/rfa/all${qs}`);
         vf_rfas = {};
         (json.data ?? []).forEach(r => { vf_rfas[r.allocation_id] = r; });
-        sel.innerHTML = '<option value="">— None / manual entry —</option>' + (json.data ?? []).map(r =>
+        sel.innerHTML = '<option value="">Select RFA</option>' + (json.data ?? []).map(r =>
             `<option value="${vf_esc(r.allocation_id)}">${vf_esc(r.allocation_number)} — ${vf_esc(r.department_name || 'Unassigned Dept.')} (FY ${vf_esc(r.fiscal_year)}) · ${vf_peso(r.remaining_balance)} left of ${vf_peso(r.budget_amount)}</option>`).join('');
     } catch (e) {
         sel.innerHTML = '<option value="">Could not load RFAs</option>';
@@ -433,6 +552,7 @@ function vf_onVendorChange() {
 async function vf_onRfaChange() {
     const id = $vf('vf-rfa').value;
     if (!id) { vf_paymentsPrior = 0; $vf('vf-payments-hint').textContent = ''; vf_recalc(); return; }
+    vf_clearFieldError('rfa');
 
     window.PagePreloader?.show();
     try {
@@ -445,6 +565,14 @@ async function vf_onRfaChange() {
         $vf('vf-obligation').value   = rfa.budget_amount || '';
         vf_paymentsPrior = parseFloat(rfa.paid_amount) || 0;
         $vf('vf-payments-hint').textContent = vf_paymentsPrior > 0 ? ' (prior draws on this RFA)' : '';
+
+        // Best-effort mapping — the RFA's budget category (Infrastructure/Goods and
+        // Services/Consultancy) isn't the same vocabulary as Expense Class, so this is a sensible
+        // default only; never overwrites a value the user already picked themselves.
+        const expenseClassMap = { 'Infrastructure': 'CAPITAL_OUTLAY', 'Goods and Services': 'MOOE', 'Consultancy': 'MOOE' };
+        if (!$vf('vf-expense-class').value && expenseClassMap[rfa.category_name]) {
+            $vf('vf-expense-class').value = expenseClassMap[rfa.category_name];
+        }
 
         if (rfa.po_number) $vf('vf-po-number').value = rfa.po_number;
 
@@ -555,6 +683,155 @@ function vf_collectDeductions() {
     return out;
 }
 
+/* ── ATC (optional — see card 6's doc comment) — same fields/behavior as readone.php's vje_ ATC
+   grid, minus the auto-sync-into-Accounting-Entries wiring (that's Accounting's job once the DV
+   reaches FOR_ACCOUNTING; here it's just a plain add/remove grid, saved as-is). ───────────────── */
+function vf_addAtcLine(a = null) {
+    const idx = ++vf_atcSeq;
+    const tr = document.createElement('tr');
+    tr.id = `vf-atc-row-${idx}`;
+    tr.innerHTML = `
+        <td><select class="vf-atc-code">
+            <option value="">— Select ATC —</option>
+            ${VF_ATC.map(c => `<option value="${vf_esc(c.atc_code)}">${vf_esc(c.atc_code)} — ${vf_esc(c.description)}</option>`).join('')}
+        </select></td>
+        <td><input type="number" class="vf-atc-rate" min="0" max="100" step="0.01" placeholder="0.00"></td>
+        <td><input type="number" class="vf-atc-base" min="0" step="0.01" placeholder="0.00"></td>
+        <td class="vf-l-val vf-atc-wh">₱ 0.00</td>
+        <td><select class="vf-atc-rc">
+            <option value="">— None —</option>
+            ${VF_RC.map(r => `<option value="${vf_esc(r.rc_id)}">${vf_esc(r.rc_id)} — ${vf_esc(r.rc_name)}</option>`).join('')}
+        </select></td>
+        <td><button type="button" class="vf-ded-remove" title="Remove" onclick="vf_removeAtcLine(${idx})">&times;</button></td>`;
+    tr.querySelector('.vf-atc-code').value = a?.atc_code ?? '';
+    tr.querySelector('.vf-atc-rate').value = a?.rate ?? '';
+    tr.querySelector('.vf-atc-base').value = a ? (Number(a.tax_base) || 0).toFixed(2) : '';
+    tr.querySelector('.vf-atc-rc').value   = a?.chargeability ?? '';
+    tr.querySelectorAll('.vf-atc-code, .vf-atc-rate, .vf-atc-base').forEach(el => {
+        el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', () => vf_recalcAtcLine(idx));
+    });
+    $vf('vf-atc-tbody').appendChild(tr);
+    vf_recalcAtcLine(idx);
+}
+
+function vf_removeAtcLine(idx) {
+    $vf(`vf-atc-row-${idx}`)?.remove();
+    vf_recalcAtc();
+}
+
+function vf_recalcAtcLine(idx) {
+    const tr = $vf(`vf-atc-row-${idx}`);
+    if (!tr) return;
+    const rate = parseFloat(tr.querySelector('.vf-atc-rate').value) || 0;
+    const base = parseFloat(tr.querySelector('.vf-atc-base').value) || 0;
+    tr.querySelector('.vf-atc-wh').textContent = vf_peso(base * rate / 100);
+    vf_recalcAtc();
+}
+
+function vf_collectAtcLines() {
+    const lines = [];
+    $vf('vf-atc-tbody').querySelectorAll('tr').forEach(tr => {
+        const atc_code = tr.querySelector('.vf-atc-code').value;
+        const rate     = parseFloat(tr.querySelector('.vf-atc-rate').value) || 0;
+        const tax_base = parseFloat(tr.querySelector('.vf-atc-base').value) || 0;
+        if (!atc_code && tax_base <= 0) return; // blank trailing row
+        lines.push({ atc_code, rate, tax_base, chargeability: tr.querySelector('.vf-atc-rc').value || null });
+    });
+    return lines;
+}
+
+function vf_recalcAtc() {
+    const lines = vf_collectAtcLines();
+    const totalWh = lines.reduce((s, l) => s + (l.tax_base * l.rate / 100), 0);
+    $vf('vf-atc-total').textContent = vf_peso(totalWh);
+}
+
+/* ── Accounting Entries (optional — see card 7's doc comment) — same fields/behavior as
+   readone.php's vje_ Accounting Entries grid, minus auto-sync from Deduction/ATC rows (that only
+   kicks in once Accounting is preparing the real Journal Entry at FOR_ACCOUNTING). ─────────────── */
+function vf_addJevLine(d = null) {
+    const idx = ++vf_jevSeq;
+    const tr = document.createElement('tr');
+    tr.id = `vf-jev-row-${idx}`;
+    tr.innerHTML = `
+        <td class="vf-l-val">${idx}</td>
+        <td><input type="text" class="vf-jev-acct" placeholder="Search account code…"></td>
+        <td><input type="text" class="vf-jev-sl-code" placeholder="Search SL code…"></td>
+        <td><select class="vf-jev-sl-detail"><option value="">SL Detail…</option></select></td>
+        <td><input type="number" class="vf-jev-debit" min="0" step="0.01" placeholder="0.00"></td>
+        <td><input type="number" class="vf-jev-credit" min="0" step="0.01" placeholder="0.00"></td>
+        <td><button type="button" class="vf-ded-remove" title="Remove" onclick="vf_removeJevLine(${idx})">&times;</button></td>`;
+    tr.querySelector('.vf-jev-acct').value    = d?.account_code ?? '';
+    tr.querySelector('.vf-jev-sl-code').value = d?.sl_code ?? '';
+    tr.querySelector('.vf-jev-debit').value   = Number(d?.debit)  > 0 ? Number(d.debit).toFixed(2)  : '';
+    tr.querySelector('.vf-jev-credit').value  = Number(d?.credit) > 0 ? Number(d.credit).toFixed(2) : '';
+    tr.querySelector('.vf-jev-debit').addEventListener('input', vf_recalcJev);
+    tr.querySelector('.vf-jev-credit').addEventListener('input', vf_recalcJev);
+    tr.querySelector('.vf-jev-sl-code').addEventListener('change', () => vf_loadJevSlDetails(idx, d?.sl_detail_id ?? null));
+    $vf('vf-jev-tbody').appendChild(tr);
+    // Bound after the row is attached to the DOM — nhaSearchableSelect reads the input's live
+    // parentElement to anchor the dropdown, which is unreliable on a still-detached node.
+    nhaSearchableSelect(tr.querySelector('.vf-jev-acct'), vf_coaOptions.map(a => ({ value: a.account_code, label: a.account_title })));
+    nhaSearchableSelect(tr.querySelector('.vf-jev-sl-code'), VF_SL.map(s => ({ value: s.sl_code, label: s.sl_name })));
+    if (d?.sl_code) vf_loadJevSlDetails(idx, d?.sl_detail_id ?? null);
+    vf_recalcJev();
+}
+
+async function vf_loadJevSlDetails(idx, selectDetailId = null) {
+    const tr = $vf(`vf-jev-row-${idx}`);
+    if (!tr) return;
+    const slCode = tr.querySelector('.vf-jev-sl-code').value.trim();
+    const sel    = tr.querySelector('.vf-jev-sl-detail');
+    if (!slCode) { sel.innerHTML = '<option value="">SL Detail…</option>'; return; }
+    try {
+        const json = await vf_getJson(`/voucher/sl-codes/${encodeURIComponent(slCode)}/details`);
+        sel.innerHTML = '<option value="">— None —</option>' + (json.data ?? []).map(d =>
+            `<option value="${vf_esc(d.sl_detail_id)}">${vf_esc(d.detail_code)} — ${vf_esc(d.detail_name)}</option>`).join('');
+        if (selectDetailId) sel.value = String(selectDetailId);
+    } catch (e) {
+        sel.innerHTML = '<option value="">Could not load</option>';
+    }
+}
+
+function vf_removeJevLine(idx) {
+    $vf(`vf-jev-row-${idx}`)?.remove();
+    vf_recalcJev();
+}
+
+function vf_collectJevLines() {
+    const lines = [];
+    $vf('vf-jev-tbody').querySelectorAll('tr').forEach(tr => {
+        const account_code = tr.querySelector('.vf-jev-acct').value.trim();
+        const debit        = parseFloat(tr.querySelector('.vf-jev-debit').value)  || 0;
+        const credit       = parseFloat(tr.querySelector('.vf-jev-credit').value) || 0;
+        const sl_code      = tr.querySelector('.vf-jev-sl-code').value.trim();
+        const sl_detail_id = tr.querySelector('.vf-jev-sl-detail').value;
+        if (!account_code && debit <= 0 && credit <= 0) return; // blank trailing row
+        lines.push({
+            account_code, debit, credit,
+            sl_code      : sl_code || null,
+            sl_detail_id : sl_detail_id ? Number(sl_detail_id) : null,
+        });
+    });
+    return lines;
+}
+
+function vf_recalcJev() {
+    const lines = vf_collectJevLines();
+    const totalDebit  = lines.reduce((s, l) => s + l.debit, 0);
+    const totalCredit = lines.reduce((s, l) => s + l.credit, 0);
+    $vf('vf-jev-total-debit').textContent  = vf_peso(totalDebit);
+    $vf('vf-jev-total-credit').textContent = vf_peso(totalCredit);
+    const msg = $vf('vf-jev-balance-msg');
+    if (lines.length === 0) {
+        msg.textContent = '';
+    } else {
+        const balanced = lines.length >= 2 && totalDebit > 0 && Math.abs(totalDebit - totalCredit) < 0.005;
+        msg.textContent = balanced ? 'Balanced ✓' : 'Not balanced — debits must equal credits';
+        msg.style.color = balanced ? 'var(--afims-success, #16A34A)' : 'var(--afims-danger, #DC3545)';
+    }
+}
+
 /* ── Live computation ──────────────────────────────────────── */
 function vf_recalc() {
     const gross = parseFloat($vf('vf-gross').value) || 0;
@@ -610,6 +887,16 @@ async function vf_loadExisting() {
     vf_dedSeq = 0;
     (dv.deductions ?? []).forEach(d => vf_addDeductionLine(d));
 
+    $vf('vf-atc-tbody').innerHTML = '';
+    vf_atcSeq = 0;
+    (dv.atc_lines ?? []).forEach(a => vf_addAtcLine(a));
+    vf_recalcAtc();
+
+    $vf('vf-jev-tbody').innerHTML = '';
+    vf_jevSeq = 0;
+    (dv.jev?.lines ?? []).forEach(l => vf_addJevLine(l));
+    vf_recalcJev();
+
     $vf('vf-dept-project').value = dv.dept_project || '';
     $vf('vf-fund-source').value  = dv.fund_source || '';
     $vf('vf-account-code').value = dv.account_code || '';
@@ -636,6 +923,7 @@ function vf_validate() {
 
     check(!!$vf('vf-dv-date').value,   'dv-date',   'DV Date is required.');
     check(!!$vf('vf-fiscal-yr').value, 'fiscal-yr', 'Fiscal Year is required.');
+    check(!!$vf('vf-rfa').value,       'rfa',       'RFA is required.');
     check(!!$vf('vf-claimant').value.trim(), 'claimant', 'Claimant Name is required.');
     check(!!$vf('vf-particulars').value.trim(), 'particulars', 'Particulars is required.');
     check((parseFloat($vf('vf-gross').value) || 0) > 0, 'gross', 'Amount must be greater than zero.');
@@ -681,6 +969,8 @@ async function vf_save(status) {
         particulars        : $vf('vf-particulars').value.trim(),
         gross_amount       : parseFloat($vf('vf-gross').value) || 0,
         deductions         : vf_collectDeductions(),
+        atc_lines          : vf_collectAtcLines(),
+        lines              : vf_collectJevLines(),
         status,
     };
 

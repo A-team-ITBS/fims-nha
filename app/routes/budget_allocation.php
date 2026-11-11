@@ -9,16 +9,16 @@ $BudgetAllocationService = new BudgetAllocationService();
 
 /**
  * Query-string filters shared by /all and /list.
- * search, fiscal_year, status_id, status (a status name, e.g. Approved), allocation_type, exclude_id
+ * search, fiscal_year, status_id, status (a status name, e.g. Approved), allocation_type, exclude_id.
  */
 $budgetAllocationFilters = static function (array $p): array {
     return [
-        'search'          => (string) ($p['search'] ?? ''),
-        'fiscal_year'     => $p['fiscal_year'] ?? null,
-        'status_id'       => $p['status_id'] ?? null,
-        'status'          => (string) ($p['status'] ?? ''),
+        'search' => (string) ($p['search'] ?? ''),
+        'fiscal_year' => $p['fiscal_year'] ?? null,
+        'status_id' => $p['status_id'] ?? null,
+        'status' => (string) ($p['status'] ?? ''),
         'allocation_type' => (string) ($p['allocation_type'] ?? ''),
-        'exclude_id'      => $p['exclude_id'] ?? null,
+        'exclude_id' => $p['exclude_id'] ?? null,
     ];
 };
 
@@ -31,8 +31,8 @@ $budgetAllocationFilters = static function (array $p): array {
  *    nothing, the caller's own office is checked server-side.
  */
 $budgetAllocationScopedFilters = static function ($request, array $p) use ($budgetAllocationFilters): array {
-    $filters          = $budgetAllocationFilters($p);
-    $scope            = GlobalService::getUserRcScope((int) $request->getAttribute('user_id'));
+    $filters = $budgetAllocationFilters($p);
+    $scope = GlobalService::getUserRcScope((int) $request->getAttribute('user_id'));
     $filters['rc_id'] = GlobalService::resolveBudgetReqRcFilter($scope, $p);
 
     return $filters;
@@ -45,7 +45,7 @@ $app->get('/budget_allocation/departments', function ($request, $response, $args
 
         return $response->withJson($result, $result['success'] ? 200 : 500);
     } catch (\Exception $e) {
-        LogError('GET /budget_allocation/departments ' . $e->getMessage());
+        LogError('GET /budget_allocation/departments '.$e->getMessage());
 
         return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
     }
@@ -58,7 +58,7 @@ $app->get('/budget_allocation/statuses', function ($request, $response, $args) u
 
         return $response->withJson($result, $result['success'] ? 200 : 500);
     } catch (\Exception $e) {
-        LogError('GET /budget_allocation/statuses ' . $e->getMessage());
+        LogError('GET /budget_allocation/statuses '.$e->getMessage());
 
         return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
     }
@@ -71,24 +71,35 @@ $app->get('/budget_allocation/all', function ($request, $response, $args) use ($
 
         return $response->withJson($result, $result['success'] ? 200 : 500);
     } catch (\Exception $e) {
-        LogError('GET /budget_allocation/all ' . $e->getMessage());
+        LogError('GET /budget_allocation/all '.$e->getMessage());
 
         return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
     }
 })->add($accessMiddleware)->add($jwtMiddleware);
 
 // Fetch all (with pagination + summary). Optional: page, limit + the filters above
-$app->get('/budget_allocation/list', function ($request, $response, $args) use ($BudgetAllocationService, $budgetAllocationScopedFilters) {
+$app->get('/budget_allocation/list', function ($request, $response, $args) use ($BudgetAllocationService, $budgetAllocationFilters) {
     try {
         $params = $request->getQueryParams();
-        $page   = isset($params['page']) ? (int) $params['page'] : 1;
-        $limit  = isset($params['limit']) ? (int) $params['limit'] : 10;
+        $page = isset($params['page']) ? (int) $params['page'] : 1;
+        $limit = isset($params['limit']) ? (int) $params['limit'] : 10;
 
-        $result = $BudgetAllocationService->fetchAlls($page, $limit, $budgetAllocationScopedFilters($request, $params));
+        // Scope the list to the logged-in user's RC, same rule as /budget_req/list:
+        //  - a Regional user sees its own memo requests plus its district offices';
+        //  - a District user sees only its own;
+        //  - FMD (the central review RC) sees every RC — central=1 is forced here because the page
+        //    doesn't send it, and resolveBudgetReqRcFilter() still verifies the user's RC server-side,
+        //    so it grants nothing to anyone else;
+        //  - a superadmin / user without an RC is unrestricted.
+        $scope = GlobalService::getUserRcScope((int) $request->getAttribute('user_id'));
+        $filters = $budgetAllocationFilters($params);
+        $filters['rc_id'] = GlobalService::resolveBudgetReqRcFilter($scope, $params + ['central' => '1']);
+
+        $result = $BudgetAllocationService->fetchAlls($page, $limit, $filters);
 
         return $response->withJson($result, $result['success'] ? 200 : 500);
     } catch (\Exception $e) {
-        LogError('GET /budget_allocation/list ' . $e->getMessage());
+        LogError('GET /budget_allocation/list '.$e->getMessage());
 
         return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
     }
@@ -105,7 +116,7 @@ $app->get('/budget_allocation/read/{id}', function ($request, $response, $args) 
 
         return $response->withJson($result, $result['success'] ? 200 : 404);
     } catch (\Exception $e) {
-        LogError('GET /budget_allocation/read ' . $e->getMessage());
+        LogError('GET /budget_allocation/read '.$e->getMessage());
 
         return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
     }
@@ -122,7 +133,7 @@ $app->post('/budget_allocation/add', function ($request, $response, $args) use (
 
         return $response->withJson($result, $result['success'] ? 201 : 400);
     } catch (\Exception $e) {
-        LogError('POST /budget_allocation/add ' . $e->getMessage());
+        LogError('POST /budget_allocation/add '.$e->getMessage());
 
         return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
     }
@@ -135,7 +146,7 @@ $app->patch('/budget_allocation/update/{id}', function ($request, $response, $ar
 
         return $response->withJson($result, $result['success'] ? 200 : 400);
     } catch (\Exception $e) {
-        LogError('PATCH /budget_allocation/update ' . $e->getMessage());
+        LogError('PATCH /budget_allocation/update '.$e->getMessage());
 
         return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
     }
@@ -150,13 +161,13 @@ $app->patch('/budget_allocation/update/{id}', function ($request, $response, $ar
 // BudgetAllocationService::process().
 $app->patch('/budget_allocation/process/{id}', function ($request, $response, $args) use ($BudgetAllocationService) {
     try {
-        $body     = $request->getParsedBody();
+        $body = $request->getParsedBody();
         $decision = is_array($body) && is_scalar($body['decision'] ?? null) ? (string) $body['decision'] : '';
-        $result   = $BudgetAllocationService->process($args['id'], $decision, (int) $request->getAttribute('user_id'));
+        $result = $BudgetAllocationService->process($args['id'], $decision, (int) $request->getAttribute('user_id'));
 
         return $response->withJson($result, $result['success'] ? 200 : (!empty($result['forbidden']) ? 403 : 400));
     } catch (\Exception $e) {
-        LogError('PATCH /budget_allocation/process ' . $e->getMessage());
+        LogError('PATCH /budget_allocation/process '.$e->getMessage());
 
         return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
     }
@@ -168,7 +179,7 @@ $app->delete('/budget_allocation/delete/{id}', function ($request, $response, $a
 
         return $response->withJson($result, $result['success'] ? 200 : 400);
     } catch (\Exception $e) {
-        LogError('DELETE /budget_allocation/delete ' . $e->getMessage());
+        LogError('DELETE /budget_allocation/delete '.$e->getMessage());
 
         return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
     }

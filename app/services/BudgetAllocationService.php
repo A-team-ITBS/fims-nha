@@ -21,16 +21,16 @@ use PHPMaker2024\FIMS\DataType;
  */
 class BudgetAllocationService
 {
-    private string $table           = 'fims.budget_allocation';
+    private string $table = 'fims.budget_allocation';
     private string $tableFiscalYear = 'fims.fiscal_year';
-    private string $tableVendor     = 'fims.vendors';
-    private string $tableStatus     = 'fims.settings_status';
-    private string $tableProgram    = 'fims.program';
+    private string $tableVendor = 'fims.vendors';
+    private string $tableStatus = 'fims.settings_status';
+    private string $tableProgram = 'fims.program';
     private string $tableSubProgram = 'fims.sub_program';
-    private string $tableProject    = 'fims.project';
+    private string $tableProject = 'fims.project';
     private string $tableDepartment = 'uac.departments';
-    private string $tableUser       = 'uac.users';
-    private string $tableRc         = 'fims.responsibility_code';
+    private string $tableUser = 'uac.users';
+    private string $tableRc = 'fims.responsibility_code';
 
     /** settings_status.status_for value that scopes this table's statuses. */
     private const STATUS_FOR = 'budget_allocation';
@@ -41,24 +41,44 @@ class BudgetAllocationService
      * Department then moves it step by step to Approved, or to Returned (process(), REVIEW_STEPS). Seeded by
      * sample_data/06 and 07 and seed_data/04.
      */
-    private const STATUS_FOR_PREVIEW            = 'For Preview';
-    private const STATUS_FOR_DIVISION_MANAGER   = 'For Division Manager';
+    private const STATUS_FOR_PREVIEW = 'For Preview';
+    private const STATUS_FOR_DIVISION_MANAGER = 'For Division Manager';
     private const STATUS_FOR_DEPARTMENT_MANAGER = 'For Department Manager';
-    private const STATUS_APPROVED               = 'Approved';
-    private const STATUS_RETURNED               = 'Returned';
+    private const STATUS_APPROVED = 'Approved';
+    private const STATUS_RETURNED = 'Returned';
+    private const STATUS_RETURNED_TO_SECTION_CHIEF = 'Returned to Section Chief';
+    private const STATUS_RETURNED_TO_DIVISION_MANAGER = 'Returned to Division Manager';
 
     /**
      * The review chain inside FMD, one step per status: who acts on a request in that status (the NAME of a
-     * uac.user_levels row — its id differs per install) and the status an approval moves it to. A Return at any step
-     * gives 'Returned'. Only the last step's approval ('Approved') gives the request its allocation number.
+     * uac.user_levels row — its id differs per install), the status an approval ('next') moves it to and the status a
+     * Return ('return') moves it to. Only the last approval ('Approved') gives the request its allocation number.
      *
      *   For Preview -> FMD Section Chief -> For Division Manager -> FMD Division Manager
      *               -> For Department Manager -> FMD Department Manager -> Approved
+     *
+     * A Return goes back ONE step, to the user who endorsed it, who then sees it in their own status and can endorse
+     * it again or return it further; only the Section Chief's Return reaches the requesting office ('Returned'):
+     *   Department Manager returns -> 'Returned to Division Manager' (acted on by the Division Manager)
+     *   Division Manager returns   -> 'Returned to Section Chief'    (acted on by the Section Chief)
+     *   Section Chief returns      -> 'Returned'                     (back to the requesting office)
      */
     private const REVIEW_STEPS = [
-        self::STATUS_FOR_PREVIEW            => ['actor' => 'FMD Section Chief',      'next' => self::STATUS_FOR_DIVISION_MANAGER],
-        self::STATUS_FOR_DIVISION_MANAGER   => ['actor' => 'FMD Division Manager',   'next' => self::STATUS_FOR_DEPARTMENT_MANAGER],
-        self::STATUS_FOR_DEPARTMENT_MANAGER => ['actor' => 'FMD Department Manager', 'next' => self::STATUS_APPROVED],
+        self::STATUS_FOR_PREVIEW => [
+            'actor' => 'FMD Section Chief',      'next' => self::STATUS_FOR_DIVISION_MANAGER,   'return' => self::STATUS_RETURNED,
+        ],
+        self::STATUS_FOR_DIVISION_MANAGER => [
+            'actor' => 'FMD Division Manager',   'next' => self::STATUS_FOR_DEPARTMENT_MANAGER, 'return' => self::STATUS_RETURNED_TO_SECTION_CHIEF,
+        ],
+        self::STATUS_FOR_DEPARTMENT_MANAGER => [
+            'actor' => 'FMD Department Manager', 'next' => self::STATUS_APPROVED,               'return' => self::STATUS_RETURNED_TO_DIVISION_MANAGER,
+        ],
+        self::STATUS_RETURNED_TO_SECTION_CHIEF => [
+            'actor' => 'FMD Section Chief',      'next' => self::STATUS_FOR_DIVISION_MANAGER,   'return' => self::STATUS_RETURNED,
+        ],
+        self::STATUS_RETURNED_TO_DIVISION_MANAGER => [
+            'actor' => 'FMD Division Manager',   'next' => self::STATUS_FOR_DEPARTMENT_MANAGER, 'return' => self::STATUS_RETURNED_TO_SECTION_CHIEF,
+        ],
     ];
 
     /**
@@ -70,19 +90,19 @@ class BudgetAllocationService
 
     /** VARCHAR columns → max length. */
     private const STRING_FIELDS = [
-        'allocation_type'   => 20,
+        'allocation_type' => 20,
         'allocation_number' => 100,
-        'document_type'     => 20,
-        'pr_number'         => 50,
-        'po_number'         => 50,
-        'workflow_route'    => 20,
+        'document_type' => 20,
+        'pr_number' => 50,
+        'po_number' => 50,
+        'workflow_route' => 20,
         // program_code / sub_program_code are copies of fims.program.program_code / fims.sub_program.sub_program_code
         // (VARCHAR(64), generated "<year>-<rc_code>-<NNN>" codes run 27+ chars), so they share that width.
         // project_code is a copy of fims.project.project_code, VARCHAR(64) too once alter_table/15 is run
         // (generated "<year>-<rc_id>-<prog3>-<subprog4>-<series4>" codes are 22+ chars).
-        'program_code'      => 64,
-        'sub_program_code'  => 64,
-        'project_code'      => 64,
+        'program_code' => 64,
+        'sub_program_code' => 64,
+        'project_code' => 64,
     ];
 
     private const INT_FIELDS = [
@@ -113,7 +133,7 @@ class BudgetAllocationService
      * body key => level. The three name columns are VARCHAR(255).
      */
     private const TYPED_NAME_FIELDS = ['program' => 'program_name', 'sub_program' => 'sub_program_name', 'project' => 'project_name'];
-    private const TYPED_NAME_MAX    = 255;
+    private const TYPED_NAME_MAX = 255;
 
     /** Largest amount accepted (NUMERIC(18,2) holds more; this keeps float math exact to the centavo). */
     private const MAX_AMOUNT = 9999999999999.99;
@@ -139,7 +159,7 @@ class BudgetAllocationService
 
             $search = trim((string) ($filters['search'] ?? ''));
             if ($search !== '') {
-                $s       = App\QuotedValue('%' . $search . '%', DataType::STRING, 'DB');
+                $s = App\QuotedValue('%'.$search.'%', DataType::STRING, 'DB');
                 $where[] = "(a.request_referrence_no ILIKE {$s} OR a.allocation_number ILIKE {$s} OR a.pr_number ILIKE {$s}
                              OR a.po_number ILIKE {$s} OR a.description ILIKE {$s} OR v.vendor_name ILIKE {$s})";
             }
@@ -155,8 +175,8 @@ class BudgetAllocationService
             $statusName = trim((string) ($filters['status'] ?? ''));
             if ($statusName !== '') {
                 $where[] = "a.status_id IN (SELECT s.id FROM {$this->tableStatus} s WHERE s.status_for = "
-                    . App\QuotedValue(self::STATUS_FOR, DataType::STRING, 'DB')
-                    . ' AND LOWER(s.name) = LOWER(' . App\QuotedValue($statusName, DataType::STRING, 'DB') . '))';
+                    .App\QuotedValue(self::STATUS_FOR, DataType::STRING, 'DB')
+                    .' AND LOWER(s.name) = LOWER('.App\QuotedValue($statusName, DataType::STRING, 'DB').'))';
             }
             if (($excludeId = $this->intFilter($filters, 'exclude_id')) !== null) {
                 $where[] = "a.allocation_id <> {$excludeId}";
@@ -168,30 +188,40 @@ class BudgetAllocationService
             $rcId = trim((string) ($filters['rc_id'] ?? ''));
             if ($rcId !== '') {
                 $rcIds = GlobalService::getRcIdsInScope($rcId) ?: [$rcId];
-                $where[] = 'a.requesting_rc_id IN (' . implode(', ', array_map(
+                $where[] = 'a.requesting_rc_id IN ('.implode(', ', array_map(
                     fn ($id) => App\QuotedValue($id, DataType::STRING, 'DB'),
                     $rcIds
-                )) . ')';
+                )).')';
             }
             $type = trim((string) ($filters['allocation_type'] ?? ''));
             if ($type !== '') {
-                $where[] = 'UPPER(a.allocation_type) = UPPER(' . App\QuotedValue($type, DataType::STRING, 'DB') . ')';
+                $where[] = 'UPPER(a.allocation_type) = UPPER('.App\QuotedValue($type, DataType::STRING, 'DB').')';
+            }
+            $rcId = trim((string) ($filters['rc_id'] ?? ''));
+            if ($rcId !== '') {
+                // The user's RC plus every descendant RC (a Region also sees its district offices) — not a flat equality.
+                $rcIds = GlobalService::getRcIdsInScope($rcId) ?: [$rcId];
+                $quotedRcIds = implode(', ', array_map(
+                    fn ($id) => App\QuotedValue($id, DataType::STRING, 'DB'),
+                    $rcIds
+                ));
+                $where[] = "a.requesting_rc_id IN ({$quotedRcIds})";
             }
             $whereSql = implode(' AND ', $where);
-            $order    = 'ORDER BY a.created_at DESC, a.allocation_id DESC';
+            $order = 'ORDER BY a.created_at DESC, a.allocation_id DESC';
 
             if ($page === null) {
-                $data = App\ExecuteRows($this->baseSelect(self::LIST_COLUMNS) . " WHERE {$whereSql} {$order}", 'DB');
+                $data = App\ExecuteRows($this->baseSelect(self::LIST_COLUMNS)." WHERE {$whereSql} {$order}", 'DB');
 
                 return ['success' => true, 'data' => $data ?: []];
             }
 
-            $limit  = min(200, max(1, $limit));
-            $page   = max(1, $page);
+            $limit = min(200, max(1, $limit));
+            $page = max(1, $page);
             $offset = ($page - 1) * $limit;
 
             // Count + totals cover every row matching the filters (not just this page) for the KPI cards.
-            $core    = "{$this->table} a LEFT JOIN {$this->tableVendor} v ON v.vendor_id = a.vendor_id";
+            $core = "{$this->table} a LEFT JOIN {$this->tableVendor} v ON v.vendor_id = a.vendor_id";
             $summary = App\ExecuteRow(
                 "SELECT COUNT(*) AS total,
                         COALESCE(SUM(a.pr_amount), 0) AS total_pr_amount,
@@ -202,23 +232,23 @@ class BudgetAllocationService
             $total = (int) ($summary['total'] ?? 0);
 
             $data = App\ExecuteRows(
-                $this->baseSelect(self::LIST_COLUMNS) . " WHERE {$whereSql} {$order} LIMIT {$limit} OFFSET {$offset}",
+                $this->baseSelect(self::LIST_COLUMNS)." WHERE {$whereSql} {$order} LIMIT {$limit} OFFSET {$offset}",
                 'DB'
             );
 
             return [
-                'success'    => true,
-                'data'       => $data ?: [],
-                'summary'    => $summary,
+                'success' => true,
+                'data' => $data ?: [],
+                'summary' => $summary,
                 'pagination' => [
-                    'total'        => $total,
-                    'per_page'     => $limit,
+                    'total' => $total,
+                    'per_page' => $limit,
                     'current_page' => $page,
-                    'last_page'    => (int) ceil($total / $limit),
+                    'last_page' => (int) ceil($total / $limit),
                 ],
             ];
         } catch (\Exception $e) {
-            App\LogError('BudgetAllocationService::fetchAlls ' . $e->getMessage());
+            App\LogError('BudgetAllocationService::fetchAlls '.$e->getMessage());
 
             return $this->fail('Failed to load memo requests.');
         }
@@ -234,8 +264,8 @@ class BudgetAllocationService
     public function fetchById(int|string $id, bool $withFiles = false): array
     {
         try {
-            $id   = (int) $id; // safe cast — no QuotedValue needed for integers
-            $data = App\ExecuteRow($this->baseSelect('a.*') . " WHERE a.allocation_id = {$id} AND a.deleted_at IS NULL", 'DB');
+            $id = (int) $id; // safe cast — no QuotedValue needed for integers
+            $data = App\ExecuteRow($this->baseSelect('a.*')." WHERE a.allocation_id = {$id} AND a.deleted_at IS NULL", 'DB');
 
             if (!$data) {
                 return $this->fail("Memo request #{$id} not found.");
@@ -250,7 +280,7 @@ class BudgetAllocationService
 
             return ['success' => true, 'data' => $data];
         } catch (\Exception $e) {
-            App\LogError('BudgetAllocationService::fetchById ' . $e->getMessage());
+            App\LogError('BudgetAllocationService::fetchById '.$e->getMessage());
 
             return $this->fail('Failed to load memo request.');
         }
@@ -310,19 +340,19 @@ class BudgetAllocationService
             }
 
             $columns = [];
-            $values  = [];
+            $values = [];
             foreach ($clean as $field => $value) {
                 $columns[] = App\QuotedName($field, 'DB');
-                $values[]  = $this->literal($field, $value);
+                $values[] = $this->literal($field, $value);
             }
             if ($userId !== null && $userId !== 0) {
                 $columns[] = App\QuotedName('user_id', 'DB');
-                $values[]  = (string) $userId;
+                $values[] = (string) $userId;
             }
 
             // RETURNING also hands back the reference number the database generated for this row (RR-001, ...).
             $row = App\ExecuteRow(
-                "INSERT INTO {$this->table} (" . implode(', ', $columns) . ') VALUES (' . implode(', ', $values) . ') RETURNING allocation_id, ' . self::GENERATED_REFERENCE_FIELD,
+                "INSERT INTO {$this->table} (".implode(', ', $columns).') VALUES ('.implode(', ', $values).') RETURNING allocation_id, '.self::GENERATED_REFERENCE_FIELD,
                 'DB'
             );
             if ($inTransaction) {
@@ -331,8 +361,8 @@ class BudgetAllocationService
             }
 
             $result = [
-                'success'       => true,
-                'message'       => 'Memo request created successfully.',
+                'success' => true,
+                'message' => 'Memo request created successfully.',
                 'allocation_id' => isset($row['allocation_id']) ? (int) $row['allocation_id'] : null,
                 self::GENERATED_REFERENCE_FIELD => $row[self::GENERATED_REFERENCE_FIELD] ?? null,
             ];
@@ -345,7 +375,7 @@ class BudgetAllocationService
             if ($inTransaction) {
                 App\Execute('ROLLBACK', 'DB');
             }
-            App\LogError('BudgetAllocationService::create ' . $e->getMessage());
+            App\LogError('BudgetAllocationService::create '.$e->getMessage());
 
             return $this->fail('Failed to create memo request.');
         }
@@ -358,7 +388,7 @@ class BudgetAllocationService
     {
         $inTransaction = false;
         try {
-            $id    = (int) $id;
+            $id = (int) $id;
             $check = $this->fetchById($id);
             if (!$check['success']) {
                 return $check;
@@ -402,11 +432,11 @@ class BudgetAllocationService
 
             $set = [];
             foreach ($clean as $field => $value) {
-                $set[] = App\QuotedName($field, 'DB') . ' = ' . $this->literal($field, $value);
+                $set[] = App\QuotedName($field, 'DB').' = '.$this->literal($field, $value);
             }
             $set[] = 'updated_at = CURRENT_TIMESTAMP';
 
-            App\Execute("UPDATE {$this->table} SET " . implode(', ', $set) . " WHERE allocation_id = {$id} AND deleted_at IS NULL", 'DB');
+            App\Execute("UPDATE {$this->table} SET ".implode(', ', $set)." WHERE allocation_id = {$id} AND deleted_at IS NULL", 'DB');
             if ($inTransaction) {
                 App\Execute('COMMIT', 'DB');
                 $inTransaction = false;
@@ -422,7 +452,7 @@ class BudgetAllocationService
             if ($inTransaction) {
                 App\Execute('ROLLBACK', 'DB');
             }
-            App\LogError('BudgetAllocationService::update ' . $e->getMessage());
+            App\LogError('BudgetAllocationService::update '.$e->getMessage());
 
             return $this->fail('Failed to update memo request.');
         }
@@ -435,7 +465,7 @@ class BudgetAllocationService
     public function delete(int|string $id): array
     {
         try {
-            $id    = (int) $id;
+            $id = (int) $id;
             $check = $this->fetchById($id);
             if (!$check['success']) {
                 return $check;
@@ -456,7 +486,7 @@ class BudgetAllocationService
 
             return ['success' => true, 'message' => "Memo request #{$id} deleted successfully."];
         } catch (\Exception $e) {
-            App\LogError('BudgetAllocationService::delete ' . $e->getMessage());
+            App\LogError('BudgetAllocationService::delete '.$e->getMessage());
 
             return $this->fail('Failed to delete memo request.');
         }
@@ -480,7 +510,7 @@ class BudgetAllocationService
 
             return ['success' => true, 'data' => $data ?: []];
         } catch (\Exception $e) {
-            App\LogError('BudgetAllocationService::fetchDepartments ' . $e->getMessage());
+            App\LogError('BudgetAllocationService::fetchDepartments '.$e->getMessage());
 
             return $this->fail('Failed to load departments.');
         }
@@ -492,14 +522,14 @@ class BudgetAllocationService
         try {
             $data = App\ExecuteRows(
                 "SELECT id, name, color FROM {$this->tableStatus}
-                 WHERE status_for = " . App\QuotedValue(self::STATUS_FOR, DataType::STRING, 'DB') . '
+                 WHERE status_for = ".App\QuotedValue(self::STATUS_FOR, DataType::STRING, 'DB').'
                  ORDER BY id',
                 'DB'
             );
 
             return ['success' => true, 'data' => $data ?: []];
         } catch (\Exception $e) {
-            App\LogError('BudgetAllocationService::fetchStatuses ' . $e->getMessage());
+            App\LogError('BudgetAllocationService::fetchStatuses '.$e->getMessage());
 
             return $this->fail('Failed to load statuses.');
         }
@@ -521,7 +551,9 @@ class BudgetAllocationService
     // (REVIEW_STEPS): For Preview (FMD Section Chief) -> For Division Manager (FMD Division Manager) ->
     // For Department Manager (FMD Department Manager) -> Approved. At each step:
     //   approve -> the next status of the chain; the LAST approval gives 'Approved' and the ALLOCATION NUMBER (below);
-    //   return  -> status 'Returned', no number (the request goes back to the requesting office).
+    //   return  -> ONE step back, to the user who endorsed it (status 'Returned to Division Manager' / 'Returned to
+    //              Section Chief', which that user acts on); the Section Chief's return gives 'Returned' (back to the
+    //              requesting office). No number either way.
     // Only an FMD user may do this (the central review RC, GlobalService::isCentralReviewRc — read with getUserRcId, which
     // fails closed), only to a request that is in one of the three review statuses, and only when the user holds the
     // user level of that step. The status change and the number are written in ONE transaction, and the UPDATE itself
@@ -542,7 +574,7 @@ class BudgetAllocationService
                 return $this->fail('Only the Financial Management Department can process memo requests.') + ['forbidden' => true];
             }
 
-            $id    = (int) $id;
+            $id = (int) $id;
             $found = $this->fetchById($id);
             if (!$found['success']) {
                 return $found;
@@ -552,9 +584,9 @@ class BudgetAllocationService
             // Which step of the chain is it at, and is this user the one who acts on that step?
             $step = $this->reviewStepOf($row);
             if ($step === null) {
-                return $this->fail('Only a memo request that is under review (' . implode(', ', array_keys(self::REVIEW_STEPS))
-                    . ') can be approved or returned — this one is '
-                    . (($row['status_name'] ?? '') !== '' ? $row['status_name'] : 'without a status') . '.');
+                return $this->fail('Only a memo request that is under review ('.implode(', ', array_keys(self::REVIEW_STEPS))
+                    .') can be approved or returned — this one is '
+                    .(($row['status_name'] ?? '') !== '' ? $row['status_name'] : 'without a status').'.');
             }
             if (!$this->hasUserLevel($userId, $step['actor'])) {
                 return $this->fail("This memo request is {$step['status']}: only the {$step['actor']} can approve or return it at this step.")
@@ -562,28 +594,28 @@ class BudgetAllocationService
             }
 
             // The status the decision gives. Missing = the seed was not run: say so, change nothing.
-            $currentId  = (int) ($row['status_id'] ?? 0);
-            $targetName = $decision === 'approve' ? $step['next'] : self::STATUS_RETURNED;
-            $targetId   = $this->getStatusIdByName($targetName);
+            $currentId = (int) ($row['status_id'] ?? 0);
+            $targetName = $decision === 'approve' ? $step['next'] : $step['return'];
+            $targetId = $this->getStatusIdByName($targetName);
             if ($targetId === null) {
                 return $this->fail("The status \"{$targetName}\" is not set up in the database yet, so nothing was changed. "
-                    . 'Ask an administrator to run the SQL installer (node install_system.js --sql-only).');
+                    .'Ask an administrator to run the SQL installer (node install_system.js --sql-only).');
             }
             $isFinal = $targetName === self::STATUS_APPROVED;
 
             App\Execute('BEGIN', 'DB');
             $inTransaction = true;
 
-            $set    = ["status_id = {$targetId}", 'updated_at = CURRENT_TIMESTAMP'];
+            $set = ["status_id = {$targetId}", 'updated_at = CURRENT_TIMESTAMP'];
             $number = trim((string) ($row['allocation_number'] ?? ''));
             if ($isFinal && $number === '') {
                 // (one that already has a number keeps it — approving never renumbers)
                 $number = $this->nextAllocationNumber((string) ($row['allocation_type'] ?? ''), $row['document_type'] ?? null);
-                $set[]  = 'allocation_number = ' . App\QuotedValue($number, DataType::STRING, 'DB');
+                $set[] = 'allocation_number = '.App\QuotedValue($number, DataType::STRING, 'DB');
             }
             $done = App\ExecuteRow(
-                "UPDATE {$this->table} SET " . implode(', ', $set)
-                . " WHERE allocation_id = {$id} AND deleted_at IS NULL AND status_id = {$currentId} RETURNING allocation_id",
+                "UPDATE {$this->table} SET ".implode(', ', $set)
+                ." WHERE allocation_id = {$id} AND deleted_at IS NULL AND status_id = {$currentId} RETURNING allocation_id",
                 'DB'
             );
             if (!$done) {   // somebody else got there first (or deleted it) between the check above and now
@@ -596,17 +628,19 @@ class BudgetAllocationService
             $inTransaction = false;
 
             if ($decision === 'return') {
-                $message = 'Memo request returned to the requesting office.';
+                $message = isset(self::REVIEW_STEPS[$targetName])
+                    ? 'Memo request returned to the '.self::REVIEW_STEPS[$targetName]['actor']." (now {$targetName})."
+                    : 'Memo request returned to the requesting office.';
             } elseif ($isFinal) {
-                $message = 'Memo request approved.' . ($number !== '' ? " Allocation number: {$number}." : '');
+                $message = 'Memo request approved.'.($number !== '' ? " Allocation number: {$number}." : '');
             } else {
-                $message = "Memo request endorsed: it is now {$targetName} (" . self::REVIEW_STEPS[$targetName]['actor'] . ').';
+                $message = "Memo request endorsed: it is now {$targetName} (".self::REVIEW_STEPS[$targetName]['actor'].').';
             }
 
             return [
-                'success'           => true,
-                'message'           => $message,
-                'status_name'       => $targetName,
+                'success' => true,
+                'message' => $message,
+                'status_name' => $targetName,
                 'allocation_number' => $number !== '' ? $number : null,
             ];
         } catch (\Exception $e) {
@@ -616,7 +650,7 @@ class BudgetAllocationService
                 } catch (\Throwable $ignored) {
                 }
             }
-            App\LogError('BudgetAllocationService::process ' . $e->getMessage());
+            App\LogError('BudgetAllocationService::process '.$e->getMessage());
 
             return $this->fail('Failed to process the memo request.');
         }
@@ -636,12 +670,16 @@ class BudgetAllocationService
         }
 
         return [
-            'in_review'   => true,
-            'status'      => $step['status'],
-            'actor'       => $step['actor'],
+            'in_review' => true,
+            'status' => $step['status'],
+            'actor' => $step['actor'],
             'next_status' => $step['next'],
-            'is_final'    => $step['next'] === self::STATUS_APPROVED,
-            'can_decide'  => $this->isReviewer($userId) && $this->hasUserLevel($userId, $step['actor']),
+            'is_final' => $step['next'] === self::STATUS_APPROVED,
+            // where a Return sends it, and whom (the actor of that step; null = back to the requesting office)
+            'return_status' => $step['return'],
+            'return_actor' => self::REVIEW_STEPS[$step['return']]['actor'] ?? null,
+            'is_returned' => in_array($step['status'], [self::STATUS_RETURNED_TO_SECTION_CHIEF, self::STATUS_RETURNED_TO_DIVISION_MANAGER], true),
+            'can_decide' => $this->isReviewer($userId) && $this->hasUserLevel($userId, $step['actor']),
         ];
     }
 
@@ -682,12 +720,12 @@ class BudgetAllocationService
             }
 
             return (int) App\ExecuteScalar(
-                'SELECT COUNT(*) FROM uac.user_levels WHERE user_level_id IN (' . implode(', ', $ids) . ')'
-                . ' AND LOWER(TRIM(name)) = LOWER(' . App\QuotedValue(trim($levelName), DataType::STRING, 'DB') . ')',
+                'SELECT COUNT(*) FROM uac.user_levels WHERE user_level_id IN ('.implode(', ', $ids).')'
+                .' AND LOWER(TRIM(name)) = LOWER('.App\QuotedValue(trim($levelName), DataType::STRING, 'DB').')',
                 'DB'
             ) > 0;
         } catch (\Throwable $e) {
-            App\LogError('BudgetAllocationService::hasUserLevel ' . $e->getMessage());
+            App\LogError('BudgetAllocationService::hasUserLevel '.$e->getMessage());
 
             return false;
         }
@@ -701,7 +739,7 @@ class BudgetAllocationService
 
             return $userId > 0 && GlobalService::isCentralReviewRc(GlobalService::getUserRcId($userId));
         } catch (\Throwable $e) {
-            App\LogError('BudgetAllocationService::isReviewer ' . $e->getMessage());
+            App\LogError('BudgetAllocationService::isReviewer '.$e->getMessage());
 
             return false;
         }
@@ -725,23 +763,23 @@ class BudgetAllocationService
     {
         $type = strtoupper(trim($type));
         $type = $type === '' ? 'CBA' : $type;
-        $y    = $at->format('Y');
-        $yy   = substr($y, -2);
-        $mo   = (int) $at->format('n');
-        $q    = (int) ceil($mo / 3);
-        $qm   = $q . ($mo - ($q - 1) * 3);
+        $y = $at->format('Y');
+        $yy = substr($y, -2);
+        $mo = (int) $at->format('n');
+        $q = (int) ceil($mo / 3);
+        $qm = $q.($mo - ($q - 1) * 3);
 
         return match ($type) {
-            'CBA'   => "CBA {$y}-{$qm}-86-",
-            'RFA'   => "{$yy}{$qm}-" . (strtoupper(trim((string) $documentType)) === 'COE' ? '57' : '87') . '-',
-            'LAA'   => "LAA {$y}-{$qm}-",
+            'CBA' => "CBA {$y}-{$qm}-86-",
+            'RFA' => "{$yy}{$qm}-".(strtoupper(trim((string) $documentType)) === 'COE' ? '57' : '87').'-',
+            'LAA' => "LAA {$y}-{$qm}-",
             default => "{$type} {$y}-{$qm}-",
         };
     }
 
     public static function formatAllocationNumber(string $prefix, int $series): string
     {
-        return $prefix . str_pad((string) $series, 2, '0', STR_PAD_LEFT);
+        return $prefix.str_pad((string) $series, 2, '0', STR_PAD_LEFT);
     }
 
     /**
@@ -755,13 +793,13 @@ class BudgetAllocationService
         App\ExecuteScalar("SELECT pg_advisory_xact_lock(hashtext('fims.budget_allocation.allocation_number'))", 'DB');
 
         $prefix = self::allocationNumberPrefix($type, $documentType, new \DateTimeImmutable('now', new \DateTimeZone(self::ALLOCATION_NUMBER_TIMEZONE)));
-        $len    = mb_strlen($prefix);
-        $from   = $len + 1;
-        $last   = (int) App\ExecuteScalar(
+        $len = mb_strlen($prefix);
+        $from = $len + 1;
+        $last = (int) App\ExecuteScalar(
             "SELECT COALESCE(MAX(CASE WHEN SUBSTRING(allocation_number FROM {$from}) ~ '^[0-9]{1,6}\$'
                                       THEN CAST(SUBSTRING(allocation_number FROM {$from}) AS INTEGER) END), 0)
              FROM {$this->table}
-             WHERE LEFT(allocation_number, {$len}) = " . App\QuotedValue($prefix, DataType::STRING, 'DB'),
+             WHERE LEFT(allocation_number, {$len}) = ".App\QuotedValue($prefix, DataType::STRING, 'DB'),
             'DB'
         );
 
@@ -775,12 +813,36 @@ class BudgetAllocationService
     private function getStatusIdByName(string $name): ?int
     {
         $row = App\ExecuteRow(
-            "SELECT id FROM {$this->tableStatus} WHERE status_for = " . App\QuotedValue(self::STATUS_FOR, DataType::STRING, 'DB')
-            . ' AND name = ' . App\QuotedValue($name, DataType::STRING, 'DB'),
+            "SELECT id FROM {$this->tableStatus} WHERE status_for = ".App\QuotedValue(self::STATUS_FOR, DataType::STRING, 'DB')
+            .' AND name = '.App\QuotedValue($name, DataType::STRING, 'DB'),
             'DB'
         );
 
         return isset($row['id']) ? (int) $row['id'] : null;
+    }
+
+    /**
+     * SQL for the sum of "requested_amount" over the lines of line_transaction (jsonb; an array of lines, or a single
+     * line object). A line whose requested_amount is missing, blank or not a number counts as 0, so one bad line can
+     * never fail the whole list. Commas in a text amount ("1,500,000.00") are ignored. Constant SQL, no user input.
+     */
+    private function requestedTotalSql(): string
+    {
+        return "COALESCE((
+                    SELECT SUM(CASE
+                                 WHEN jsonb_typeof(ln.value->'requested_amount') = 'number' THEN (ln.value->>'requested_amount')::numeric
+                                 WHEN jsonb_typeof(ln.value->'requested_amount') = 'string'
+                                      AND REPLACE(ln.value->>'requested_amount', ',', '') ~ '^-?[0-9]+([.][0-9]+)?$'
+                                   THEN REPLACE(ln.value->>'requested_amount', ',', '')::numeric
+                                 ELSE 0
+                               END)
+                    FROM jsonb_array_elements(CASE jsonb_typeof(a.line_transaction)
+                                                WHEN 'array'  THEN a.line_transaction
+                                                WHEN 'object' THEN jsonb_build_array(a.line_transaction)
+                                                ELSE '[]'::jsonb
+                                              END) AS ln(value)
+                    WHERE jsonb_typeof(ln.value) = 'object'
+                ), 0)";
     }
 
     /** SELECT + every join the list / read views need; callers append WHERE / ORDER BY. */
@@ -797,7 +859,8 @@ class BudgetAllocationService
                        pg.program_name,
                        sp.sub_program_name,
                        pj.project_name,
-                       pa.request_referrence_no AS parent_request_referrence_no
+                       pa.request_referrence_no AS parent_request_referrence_no,
+                       {$this->requestedTotalSql()} AS requested_total
                 FROM {$this->table} a
                 LEFT JOIN {$this->tableStatus} st     ON st.id = a.status_id
                 LEFT JOIN {$this->tableVendor} v      ON v.vendor_id = a.vendor_id
@@ -846,7 +909,7 @@ class BudgetAllocationService
                 continue;
             }
             if (mb_strlen($v) > self::TYPED_NAME_MAX) {
-                return [[], "{$key} must be " . self::TYPED_NAME_MAX . ' characters or fewer.'];
+                return [[], "{$key} must be ".self::TYPED_NAME_MAX.' characters or fewer.'];
             }
             $names[$level] = $v;
         }
@@ -863,8 +926,9 @@ class BudgetAllocationService
      * On update ($current = the stored row) a Program / Sub-Program that differs from the stored one clears the
      * levels below it unless the body supplies them: the old Sub-Program / Project cannot belong to it.
      *
-     * @param array<string,mixed>  $clean   normalized body (modified)
-     * @param array<string,string> $names   from typedNames()
+     * @param array<string,mixed>  $clean normalized body (modified)
+     * @param array<string,string> $names from typedNames()
+     *
      * @return array{0: array<string,string>, 1: ?string} [codes created (program_code / sub_program_code / project_code), error]
      */
     private function resolveTypedEntities(array &$clean, array $names, ?array $current, ?int $userId): array
@@ -920,7 +984,7 @@ class BudgetAllocationService
             if ($program === null) {
                 return [$created, 'A new project needs a program: pick or type the program first.'];
             }
-            $sub      = $effective('sub_program_code');
+            $sub = $effective('sub_program_code');
             $fiscalYr = $effective('fiscal_year');
             [$code, $isNew, $err] = $this->findOrCreateProject($names['project'], (string) $program, $sub === null ? null : (string) $sub, $fiscalYr === null ? null : (int) $fiscalYr);
             if ($err) {
@@ -939,7 +1003,7 @@ class BudgetAllocationService
     private function findOrCreateProgram(string $name, ?int $userId): array
     {
         $row = App\ExecuteRow(
-            "SELECT program_code FROM {$this->tableProgram} WHERE LOWER(program_name) = LOWER(" . App\QuotedValue($name, DataType::STRING, 'DB') . ') ORDER BY program_code LIMIT 1',
+            "SELECT program_code FROM {$this->tableProgram} WHERE LOWER(program_name) = LOWER(".App\QuotedValue($name, DataType::STRING, 'DB').') ORDER BY program_code LIMIT 1',
             'DB'
         );
         if ($row) {
@@ -948,7 +1012,7 @@ class BudgetAllocationService
 
         $result = (new ProgramService())->create(['program_name' => $name], $userId);
         if (!($result['success'] ?? false)) {
-            return [null, false, "Could not create the program \"{$name}\": " . ($result['message'] ?? 'unknown error')];
+            return [null, false, "Could not create the program \"{$name}\": ".($result['message'] ?? 'unknown error')];
         }
 
         return [(string) $result['data']['program_code'], true, null];
@@ -958,8 +1022,8 @@ class BudgetAllocationService
     private function findOrCreateSubProgram(string $name, string $programCode): array
     {
         $row = App\ExecuteRow(
-            "SELECT sub_program_code FROM {$this->tableSubProgram} WHERE program_code = " . App\QuotedValue($programCode, DataType::STRING, 'DB')
-            . ' AND LOWER(sub_program_name) = LOWER(' . App\QuotedValue($name, DataType::STRING, 'DB') . ') ORDER BY sub_program_code LIMIT 1',
+            "SELECT sub_program_code FROM {$this->tableSubProgram} WHERE program_code = ".App\QuotedValue($programCode, DataType::STRING, 'DB')
+            .' AND LOWER(sub_program_name) = LOWER('.App\QuotedValue($name, DataType::STRING, 'DB').') ORDER BY sub_program_code LIMIT 1',
             'DB'
         );
         if ($row) {
@@ -970,12 +1034,12 @@ class BudgetAllocationService
             $next = GlobalService::nextSubProgramNumber($programCode);
             $code = GlobalService::formatSubProgramCode($next['prefix'], $next['next']);
         } catch (\InvalidArgumentException $e) {
-            return [null, false, "Could not create the sub-program \"{$name}\": " . $e->getMessage()];
+            return [null, false, "Could not create the sub-program \"{$name}\": ".$e->getMessage()];
         }
 
         $result = (new SubProgramService())->create(['sub_program_code' => $code, 'sub_program_name' => $name, 'program_code' => $programCode]);
         if (!($result['success'] ?? false)) {
-            return [null, false, "Could not create the sub-program \"{$name}\": " . ($result['message'] ?? 'unknown error')];
+            return [null, false, "Could not create the sub-program \"{$name}\": ".($result['message'] ?? 'unknown error')];
         }
 
         return [$code, true, null];
@@ -983,16 +1047,16 @@ class BudgetAllocationService
 
     /**
      * @return array{0: ?string, 1: bool, 2: ?string} [project_code, created?, error] — reused when the same program AND
-     *         sub-program (or, with no sub-program, a project that has none) already has one with that name
+     *                                                sub-program (or, with no sub-program, a project that has none) already has one with that name
      */
     private function findOrCreateProject(string $name, string $programCode, ?string $subProgramCode, ?int $fiscalYr): array
     {
         $subCondition = $subProgramCode === null
             ? 'sub_program_code IS NULL'
-            : 'sub_program_code = ' . App\QuotedValue($subProgramCode, DataType::STRING, 'DB');
+            : 'sub_program_code = '.App\QuotedValue($subProgramCode, DataType::STRING, 'DB');
         $row = App\ExecuteRow(
-            "SELECT project_code FROM {$this->tableProject} WHERE program_code = " . App\QuotedValue($programCode, DataType::STRING, 'DB')
-            . " AND {$subCondition} AND LOWER(project_name) = LOWER(" . App\QuotedValue($name, DataType::STRING, 'DB') . ') ORDER BY project_code LIMIT 1',
+            "SELECT project_code FROM {$this->tableProject} WHERE program_code = ".App\QuotedValue($programCode, DataType::STRING, 'DB')
+            ." AND {$subCondition} AND LOWER(project_name) = LOWER(".App\QuotedValue($name, DataType::STRING, 'DB').') ORDER BY project_code LIMIT 1',
             'DB'
         );
         if ($row) {
@@ -1000,13 +1064,13 @@ class BudgetAllocationService
         }
 
         $result = (new ProjectService())->create([
-            'project_name'     => $name,
-            'program_code'     => $programCode,
+            'project_name' => $name,
+            'program_code' => $programCode,
             'sub_program_code' => $subProgramCode ?? '',
-            'fiscal_yr'        => $fiscalYr,
+            'fiscal_yr' => $fiscalYr,
         ]);
         if (!($result['success'] ?? false)) {
-            return [null, false, "Could not create the project \"{$name}\": " . ($result['message'] ?? 'unknown error')];
+            return [null, false, "Could not create the project \"{$name}\": ".($result['message'] ?? 'unknown error')];
         }
 
         return [(string) $result['project_code'], true, null];
@@ -1041,7 +1105,7 @@ class BudgetAllocationService
             if ($body['description'] !== null && !is_scalar($body['description'])) {
                 return [[], 'description must be plain text.'];
             }
-            $v                    = trim((string) ($body['description'] ?? ''));
+            $v = trim((string) ($body['description'] ?? ''));
             $clean['description'] = $v === '' ? null : $v;
         }
 
@@ -1080,7 +1144,7 @@ class BudgetAllocationService
         }
 
         if (array_key_exists('is_bidding', $body)) {
-            $b                   = $body['is_bidding'];
+            $b = $body['is_bidding'];
             $clean['is_bidding'] = ($b === null || $b === '') ? null : filter_var($b, FILTER_VALIDATE_BOOLEAN);
         }
 
@@ -1136,10 +1200,10 @@ class BudgetAllocationService
             return $value ? 'TRUE' : 'FALSE';
         }
         if ($field === 'line_transaction') {
-            return App\QuotedValue(json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), DataType::STRING, 'DB') . '::jsonb';
+            return App\QuotedValue(json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), DataType::STRING, 'DB').'::jsonb';
         }
         if ($field === 'multiple_node_id') {
-            return App\QuotedValue((string) $value, DataType::STRING, 'DB') . '::uuid';
+            return App\QuotedValue((string) $value, DataType::STRING, 'DB').'::uuid';
         }
 
         throw new \LogicException("No SQL literal rule for field '{$field}'.");
@@ -1166,7 +1230,7 @@ class BudgetAllocationService
         $checks = [
             ['fiscal_year',               $this->tableFiscalYear, 'fiscal_yr',     '',                                                   'Fiscal year'],
             ['vendor_id',                 $this->tableVendor,     'vendor_id',     '',                                                   'Vendor'],
-            ['status_id',                 $this->tableStatus,     'id',            " AND status_for = '" . self::STATUS_FOR . "'",       'Status'],
+            ['status_id',                 $this->tableStatus,     'id',            " AND status_for = '".self::STATUS_FOR."'",       'Status'],
             [self::REQUESTING_RC_FIELD,   $this->tableRc,         'rc_id',         '',                                                   'Requesting RC'],
             ['requesting_district_id',    $this->tableDepartment, 'department_id', '',                                                   'Requesting district'],
             ['program_code',              $this->tableProgram,    'program_code',  '',                                                   'Program'],
@@ -1189,8 +1253,8 @@ class BudgetAllocationService
             }
             if ($id !== null) {
                 $cursor = $parentId;
-                for ($guard = 0; $cursor !== null && $guard < 50; $guard++) {
-                    $row    = App\ExecuteRow("SELECT parent_id FROM {$this->table} WHERE allocation_id = {$cursor}", 'DB');
+                for ($guard = 0; $cursor !== null && $guard < 50; ++$guard) {
+                    $row = App\ExecuteRow("SELECT parent_id FROM {$this->table} WHERE allocation_id = {$cursor}", 'DB');
                     $cursor = isset($row['parent_id']) ? (int) $row['parent_id'] : null;
                     if ($cursor === $id) {
                         return 'That parent would create a loop — it already descends from this memo request.';
@@ -1202,13 +1266,13 @@ class BudgetAllocationService
         // ── Program → Sub-Program → Project must belong together ─────────────
         if (array_intersect(['program_code', 'sub_program_code', 'project_code'], array_keys($clean))) {
             $effective = static fn (string $f) => array_key_exists($f, $clean) ? $clean[$f] : ($current[$f] ?? null);
-            $program   = $effective('program_code');
-            $sub       = $effective('sub_program_code');
-            $project   = $effective('project_code');
+            $program = $effective('program_code');
+            $sub = $effective('sub_program_code');
+            $project = $effective('project_code');
 
             if ($sub !== null) {
                 $row = App\ExecuteRow(
-                    "SELECT program_code FROM {$this->tableSubProgram} WHERE sub_program_code = " . App\QuotedValue($sub, DataType::STRING, 'DB'),
+                    "SELECT program_code FROM {$this->tableSubProgram} WHERE sub_program_code = ".App\QuotedValue($sub, DataType::STRING, 'DB'),
                     'DB'
                 );
                 if (!$row) {
@@ -1224,7 +1288,7 @@ class BudgetAllocationService
 
             if ($project !== null) {
                 $row = App\ExecuteRow(
-                    "SELECT program_code, sub_program_code FROM {$this->tableProject} WHERE project_code = " . App\QuotedValue($project, DataType::STRING, 'DB'),
+                    "SELECT program_code, sub_program_code FROM {$this->tableProject} WHERE project_code = ".App\QuotedValue($project, DataType::STRING, 'DB'),
                     'DB'
                 );
                 if (!$row) {
