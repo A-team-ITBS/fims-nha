@@ -95,6 +95,7 @@ if (!isset($_vf_api)) {
                         <label>RFA <span class="nha-req">*</span></label>
                         <select id="vf-rfa"><option value="">Select RFA</option></select>
                         <span class="vf-hint">Picking an RFA fills in Expense Class (if its budget category maps to one), the department, vendor (if any), and the Budget Reference ledger below.</span>
+                        <span class="vf-hint" id="vf-rfa-empty-hint" style="display:none;color:var(--afims-warning-text,#8A6400);">No RFAs are available yet — an RFA (Request for Allotment) must exist before a Disbursement Voucher can be created. Contact Budget/FMD to set one up.</span>
                         <span class="vf-err" id="err-rfa">RFA is required.</span>
                     </div>
                 </div>
@@ -360,16 +361,30 @@ async function vf_open(id = 0) {
         vf_atcReady ??= vf_loadAtcCodes();
         vf_rcReady  ??= vf_loadRcOptions();
         vf_slReady  ??= vf_loadSlOptions();
-        await Promise.all([vf_refReady, vf_dedTypesReady, vf_coaReady, vf_atcReady, vf_rcReady, vf_slReady, vf_loadVendors(), vf_loadRfaOptions()]);
+        // allSettled, not all: one reference-data fetch failing (e.g. deduction types) used to
+        // short-circuit the whole load — hiding whatever else also failed behind a single error
+        // message, and skipping vf_loadExisting()/vf_recalc() below entirely even though most of
+        // the form (including the RFA list) may have loaded fine. Collect every failure instead so
+        // the form still opens with whatever did load, and the user sees the full picture.
+        const results = await Promise.allSettled([
+            vf_refReady, vf_dedTypesReady, vf_coaReady, vf_atcReady, vf_rcReady, vf_slReady,
+            vf_loadVendors(), vf_loadRfaOptions(),
+        ]);
+        const loadErrors = results.filter(r => r.status === 'rejected').map(r => r.reason?.message || String(r.reason));
 
         if (vf_id) {
-            await vf_loadExisting();
+            try {
+                await vf_loadExisting();
+            } catch (e) {
+                loadErrors.push(e.message);
+            }
         } else {
             $vf('vf-fiscal-yr').value = [...$vf('vf-fiscal-yr').options].some(o => o.value === String(new Date().getFullYear()))
                 ? String(new Date().getFullYear()) : '';
             vf_refreshDvNumber();
         }
         vf_recalc();
+        if (loadErrors.length) vf_showErrors(loadErrors);
     } catch (e) {
         vf_showErrors([e.message]);
     } finally {
@@ -393,6 +408,7 @@ function vf_reset() {
     $vf('vf-fiscal-yr').value     = '';
     $vf('vf-expense-class').value = '';
     $vf('vf-rfa').value           = '';
+    $vf('vf-rfa-empty-hint').style.display = 'none';
 
     $vf('vf-vendor').value = '';
     $vf('vf-vendor-card').classList.remove('visible');
@@ -527,8 +543,10 @@ async function vf_loadRfaOptions() {
         (json.data ?? []).forEach(r => { vf_rfas[r.allocation_id] = r; });
         sel.innerHTML = '<option value="">Select RFA</option>' + (json.data ?? []).map(r =>
             `<option value="${vf_esc(r.allocation_id)}">${vf_esc(r.allocation_number)} — ${vf_esc(r.department_name || 'Unassigned Dept.')} (FY ${vf_esc(r.fiscal_year)}) · ${vf_peso(r.remaining_balance)} left of ${vf_peso(r.budget_amount)}</option>`).join('');
+        $vf('vf-rfa-empty-hint').style.display = (json.data ?? []).length ? 'none' : 'block';
     } catch (e) {
         sel.innerHTML = '<option value="">Could not load RFAs</option>';
+        $vf('vf-rfa-empty-hint').style.display = 'none';
         throw new Error('Failed to load RFAs: ' + e.message);
     }
 }
