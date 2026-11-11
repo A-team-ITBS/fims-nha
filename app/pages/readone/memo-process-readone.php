@@ -1,9 +1,13 @@
 <?php
 /**
- * "Process" modal of the Memo Request list (memo-req-page.php) — Financial Management Department (FMD) users only: the page
- * includes this file only for them, and the API refuses anyone else (PATCH /budget_allocation/process/{id} answers 403).
+ * The details modal of the Memo Request list (memo-req-page.php), in two modes — the page includes it for every user:
+ *   View     mpr_open(id, true)  — the "View" action of a row's Actions menu, for everybody: the details only, read-only,
+ *            never any Return / Endorse / Approve button (not even for an FMD user who could decide the request).
+ *   Process  mpr_open(id)        — the "Process" action, Financial Management Department (FMD) users only (the page only
+ *            offers it to them, and the API refuses anyone else: PATCH /budget_allocation/process/{id} answers 403): the
+ *            same details plus the decision buttons described below.
  *
- * Opened by mpr_open(id) from a row's Actions menu. It reads the request (GET /budget_allocation/read/{id}) and shows its
+ * It reads the request (GET /budget_allocation/read/{id}) and shows its
  * details read-only: the request itself, Program / Sub-Program / Project, vendor and PR / PO, the purpose, the budget
  * allocation lines and the supporting documents.
  *
@@ -88,11 +92,11 @@
 @media (max-width:640px) { .mpr-row { grid-template-columns:1fr;gap:2px; } }
 </style>
 
-<!-- ── MEMO REQUEST: PROCESS MODAL ───────────────────────── -->
+<!-- ── MEMO REQUEST: DETAILS MODAL (View / Process) ───────── -->
 <div id="mpr-overlay" class="mpr-overlay">
     <div class="mpr-modal" role="dialog" aria-modal="true" aria-labelledby="mpr-title">
         <div class="mpr-hdr">
-            <h3 class="mpr-title" id="mpr-title">Process Memo Request<span class="mpr-ref" id="mpr-ref"></span><span class="mpr-status" id="mpr-status"></span></h3>
+            <h3 class="mpr-title" id="mpr-title"><span id="mpr-title-text">Process Memo Request</span><span class="mpr-ref" id="mpr-ref"></span><span class="mpr-status" id="mpr-status"></span></h3>
             <button type="button" class="mpr-close" id="mpr-close" aria-label="Close">&times;</button>
         </div>
         <div class="mpr-body" id="mpr-body"></div>
@@ -121,13 +125,18 @@ let mpr_row    = null;    // the request shown: the full record from /budget_all
 let mpr_seq    = 0;       // bumped on every open / close, so a slow answer for a request that was closed meanwhile is dropped
 let mpr_busy   = false;   // an Approve / Return is in flight
 let mpr_opener = null;    // what had the focus before the modal opened
+let mpr_viewOnly = false; // opened by "View": the details only, no decision buttons
 
 /* ── Open / close ──────────────────────────────────────────── */
-async function mpr_open(id) {
+// viewOnly = true: the read-only "View" (the details, for any user); otherwise "Process" (the details + the decision buttons
+// for the FMD user whose step it is).
+async function mpr_open(id, viewOnly = false) {
     const seq = ++mpr_seq;
     mpr_row    = null;
     mpr_busy   = false;
+    mpr_viewOnly = viewOnly === true;
     mpr_opener = document.activeElement;
+    mpr_$('mpr-title-text').textContent = mpr_viewOnly ? 'Memo Request Details' : 'Process Memo Request';
     mpr_$('mpr-ref').textContent = '';
     mpr_$('mpr-status').innerHTML = '';
     mpr_$('mpr-body').innerHTML = '<div class="mpr-loading">Loading…</div>';
@@ -279,7 +288,8 @@ function mpr_docsHtml(files) {
 
 function mpr_render(r) {
     const rv        = r.review || {};
-    const canDecide = rv.can_decide === true;
+    const isActor   = rv.can_decide === true;               // this user holds the user level of the step the request is at
+    const canDecide = isActor && !mpr_viewOnly;             // ... and the modal was opened by "Process": the buttons
     mpr_$('mpr-ref').textContent  = mrq_refOf(r);
     mpr_$('mpr-status').innerHTML = mrq_statusBadge(r.status_name, r.status_color);
 
@@ -289,9 +299,10 @@ function mpr_render(r) {
         : (rv.in_review ? '<span class="mpr-muted">Not assigned yet — it is generated, from the allocation type and document type, on the final approval.</span>' : '');
     // who the request is waiting for at this step, and where an approval sends it
     const step = !rv.in_review ? '' : mpr_row_('Review Step',
-        `${mrq_esc(rv.actor || '')}${canDecide ? ' <span class="mpr-muted">(you)</span>' : ''}` +
-        `<div class="mpr-sub">${canDecide ? '' : 'Waiting for this user level to act. '}${rv.is_returned ? 'It was returned to this step. ' : ''}` +
-        `Endorse: ${mrq_esc(rv.next_status || '')} · Return: ${mrq_esc(rv.return_status || '')}</div>`);
+        `${mrq_esc(rv.actor || '')}${isActor ? ' <span class="mpr-muted">(you)</span>' : ''}` +
+        `<div class="mpr-sub">${isActor ? '' : 'Waiting for this user level to act. '}${rv.is_returned ? 'It was returned to this step. ' : ''}` +
+        // where an Endorse / Return would send it is for the one who decides — not shown in the read-only view
+        `${mpr_viewOnly ? '' : `Endorse: ${mrq_esc(rv.next_status || '')} · Return: ${mrq_esc(rv.return_status || '')}`}</div>`);
     const types  = [r.allocation_type ? `<span class="nha-bdg nha-bdg-blue">${mrq_esc(r.allocation_type)}</span>` : '',
                     r.document_type   ? `<span class="nha-bdg nha-bdg-gray">${mrq_esc(r.document_type)}</span>` : '']
                     .filter(Boolean).join(' ');

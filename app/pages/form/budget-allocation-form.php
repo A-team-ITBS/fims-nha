@@ -642,16 +642,6 @@ $cbaAsModal = !empty($cbaAsModal);
 			background: var(--afims-surface-subtle, #F4F7FA);
 		}
 
-		.cba-form-container .btn-draft {
-			color: var(--afims-heading, #000E3E);
-			background: var(--afims-surface, #FFFFFF);
-			border-color: color-mix(in srgb, var(--afims-heading-fill, #000E3E) 35%, var(--afims-border, #E4ECF2));
-		}
-
-		.cba-form-container .btn-draft:hover:not(:disabled) {
-			background: var(--afims-surface-subtle, #F4F7FA);
-		}
-
 		.cba-form-container .form-actions {
 			display: flex;
 			align-items: center;
@@ -1688,15 +1678,6 @@ $cbaAsModal = !empty($cbaAsModal);
 			</button>
 
 			<div class="btn-group">
-				<button type="button" class="btn btn-draft" onclick="saveDraft()">
-					<svg class="btn-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
-						stroke="currentColor">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-							d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
-					</svg>
-					Save as Draft
-				</button>
-
 				<button type="button" class="btn btn-print" onclick="printCBA()">
 					<svg class="btn-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
 						stroke="currentColor">
@@ -2077,10 +2058,6 @@ $cbaAsModal = !empty($cbaAsModal);
 			_dropdownLoaders.then(function() {
 				loadExistingAllocation(CBA_CONFIG.allocationId);
 			});
-			// "Save as Draft" only makes sense for a brand-new record — hide it
-			// in edit mode so an in-progress allocation can't be reset to DRAFT.
-			var draftBtn = document.querySelector('.btn-draft');
-			if (draftBtn) draftBtn.style.display = 'none';
 		} else {
 			// Default supporting document rows (create mode only)
 			addSupportingDocRow('Memo Proposal');
@@ -4558,27 +4535,6 @@ $cbaAsModal = !empty($cbaAsModal);
 		}
 
 		return mainJson;
-	}
-
-	// ── Draft ─────────────────────────────────────────────────────────────────────
-	async function saveDraft() {
-		var btn = document.querySelector('.btn-draft');
-		btn.disabled = true;
-		btn.innerHTML = '<span>Saving&hellip;</span>';
-		try {
-			// no status_id: create gives every new request the 'Draft' status
-			var json = await postToApi(buildPayload());
-			if (!json.success) throw new Error(json.message || 'Failed to save draft.');
-			alert('Draft saved successfully.');
-			cbaAfterSave(); // modal mode: close + refresh the list; page mode: stay on the form
-		} catch (err) {
-			console.error('[saveDraft]', err);
-			alert('Error saving draft: ' + err.message);
-		} finally {
-			btn.disabled = false;
-			btn.innerHTML =
-				'<svg class="btn-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg> Save as Draft';
-		}
 	}
 
 	// ── Submit label helpers ──────────────────────────────────────────────────────

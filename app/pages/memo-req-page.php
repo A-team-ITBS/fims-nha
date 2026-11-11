@@ -10,7 +10,7 @@ $_mrq_api = Config('API.FIMS_URL');
 // Department (FMD: rc_code 35-074-0000000-032, rc_id 013 in this data) REVIEWS every office's memo requests, so for its
 // users the list is the central one (every office, ?central=1), Edit and Delete are hidden, and each row gets a "Process"
 // action (details + Approve / Return, readone/memo-process-readone.php). Everyone else sees their own office's requests —
-// the API decides that from the logged-in user, not from anything sent here — and keeps Edit and Delete.
+// the API decides that from the logged-in user, not from anything sent here — and gets Edit and Delete on a Draft request only.
 // FMD is recognised by its rc_code, NOT its rc_id (the id's format differs between datasets: "013" vs "RC-013"). Mirrors
 // GlobalService::CENTRAL_REVIEW_RC_CODE, which the API checks again server-side (process() refuses anyone else).
 $userid = CurrentUserID();
@@ -180,10 +180,9 @@ try {
 $cbaAsModal = true;
 include __DIR__.'/form/budget-allocation-form.php';
 
-// FMD's "Process" modal (the request's details, Approve / Return). Only FMD gets the action, so only FMD gets its markup.
-if ($_mrq_isFmd) {
-    include __DIR__.'/readone/memo-process-readone.php';
-}
+// The request-details modal: opened read-only by every row's "View" action (everybody), and with the Endorse / Approve / Return
+// buttons by FMD's "Process" action (only FMD is offered it, and the API refuses anyone else).
+include __DIR__.'/readone/memo-process-readone.php';
 ?>
 
 </div><!-- /#mrq-root -->
@@ -196,6 +195,8 @@ if ($_mrq_isFmd) {
 
    Create  → the CBA form modal (app/pages/form/budget-allocation-form.php, window.cbaModal)
    Edit    → the same form as a full page: BudgetAllocationForm?id=N
+   View    → (Actions menu, every row, every user) the request's details, read-only: the same modal as Process, opened
+             without the decision buttons — mpr_open(id, true) in readone/memo-process-readone.php
    Preview → (Actions menu, Draft requests only) PATCH status_id = the 'For Preview' status
    Process → (Actions menu, FMD only — instead of Edit / Delete) the details modal with Endorse / Approve / Return:
              readone/memo-process-readone.php (mpr_*), PATCH /budget_allocation/process/{id}. The review is a chain:
@@ -426,22 +427,32 @@ function mrq_renderTable(rows) {
 }
 
 /* ── Actions dropdown ──────────────────────────────────────── */
-// One "Actions" button per row that opens a small menu — the same idea as the Budget Requirements list: "Preview" first
-// (only while the request is still a Draft: it moves it on to For Preview), a divider, Edit, a divider, then Delete —
-// or, for FMD, Preview (while Draft), a divider, then Process in place of Edit and Delete.
+// One "Actions" button per row that opens a small menu — the same idea as the Budget Requirements list. Sections, with a
+// divider between each one that is shown:
+//   View     — the request's details, read-only: on every row, for every user;
+//   Preview  — only while the request is still a Draft: it moves it on to For Preview;
+//   Edit and Delete — only while the request is a Draft (once it has left Draft it can no longer be changed or removed
+//              by the requesting office); FMD never gets them;
+//   Process  — FMD only (in place of Edit and Delete), on every row.
 // The menu is positioned with fixed coordinates, so the table's own scrolling never clips it.
 function mrq_actionMenu(id, isDraft) {
+    // View: the details modal without its decision buttons (see readone/memo-process-readone.php).
+    const viewItem = `<button type="button" class="nha-menu-item" data-action="view" title="See the details of this memo request" onclick="mrq_closeMenus();mpr_open(${id}, true);">
+                <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                View
+            </button>`;
+
     // Preview is tinted with the colour of the status it gives (For Preview's settings_status.color); Edit and Delete
     // keep the plain look. With no usable colour it is a plain item too.
     const color = isDraft ? mrq_statusColor(MRQ_STATUS_PREVIEW) : '';
     const previewItem = !isDraft ? '' : `<button type="button" class="nha-menu-item${color ? ' has-color' : ''}"${color ? ` style="--nha-item-color:${color};"` : ''} data-action="preview" title="Submit for preview: its status becomes ${MRQ_STATUS_PREVIEW}" onclick="mrq_closeMenus();mrq_preview(${id});">
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                 Preview
-            </button>
-            <div class="nha-menu-divider"></div>`;
+            </button>`;
 
     // FMD REVIEWS requests instead of editing them: Edit and Delete are hidden for it and each row gets "Process" (a modal
-    // with the request's details and Approve / Return — readone/memo-process-readone.php). Everybody else keeps Edit and Delete.
+    // with the request's details and Approve / Return — readone/memo-process-readone.php). Everybody else gets Edit and
+    // Delete, but only on a Draft row.
     const processItem = `<button type="button" class="nha-menu-item" data-action="process" title="Review this request: approve it or return it" onclick="mrq_closeMenus();mpr_open(${id});">
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
                 Process
@@ -455,14 +466,17 @@ function mrq_actionMenu(id, isDraft) {
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                 Delete
             </button>`;
+    // the sections that apply to this row, a divider between each — so a row never ends (or starts) with a stray divider
+    const sections = [viewItem, previewItem, MRQ_IS_FMD ? processItem : (isDraft ? editAndDelete : '')]
+        .filter(Boolean)
+        .join('<div class="nha-menu-divider"></div>');
     return `<div class="nha-tools-menu">
         <button type="button" class="nha-menu-trigger" aria-haspopup="true" aria-expanded="false" onclick="mrq_toggleMenu(this)">
             <svg fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
             Actions
         </button>
         <div class="nha-tools-dropdown">
-            ${previewItem}
-            ${MRQ_IS_FMD ? processItem : editAndDelete}
+            ${sections}
         </div>
     </div>`;
 }
