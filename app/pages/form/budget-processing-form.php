@@ -10,7 +10,7 @@
  *     and Suggested Amount columns. A Program that has no Projects yet shows "No projects yet.";
  *   - a note, the GRAND TOTAL bar (every Program), one REMARKS / COMPLIANCE NEEDED box, then Return / Endorse.
  * The line-item table, with the processing inputs per column:
- *       Type of Fund (fims.type_of_fund) · Program Sources · Program Uses · Component (fims.component_type) ·
+ *       Type of Fund (fims.type_of_fund) · Component (fims.component_type) ·
  *       Account Code · Account Description (the account name, the line's particulars under it) ·
  *       Amount (what the office asked for) · Suggested Amount (the input).
  * Account Description and Amount come from the office's proposal and are shown in read-only boxes (the Account
@@ -19,26 +19,19 @@
  * the Suggested ones follow the inputs as they are edited.
  *
  * Account Code — the Budget Officer (the only role that gets this modal) can re-code a line to another chart-of-accounts
- *                entry: the same searchable picker as Program Sources / Program Uses (bpr_pick*), over the postable,
+ *                entry: a searchable picker (bpr_pick*), over the postable,
  *                for-budget-proposal accounts of GET /chart_of_accounts/all (the list the Budget Request form uses).
  *                The box shows the account code, the list "code — title"; type to filter by either. It is never empty:
  *                clearing it (or typing something that is not picked) puts the previous account back. Saved on
  *                fims.budget_line_items.account_id (NOT NULL, FK to fims.chart_of_accounts) by Endorse, which sends
  *                account_id for every line; the server only writes the lines whose account actually changed.
  *
- * Program Sources and Program Uses are both SEARCHABLE pickers (one shared implementation, bpr_pick*), each over
- * its own table:
- *   Program Sources — a program source IS a program: the rows of fims.program (GET /program/all). Saved on
- *                     fims.budget_line_items.program_source_code (VARCHAR(64), FK to fims.program.program_code;
- *                     migration alter_table/17).
- *   Program Uses    — a program use IS a sub-program: the rows of fims.sub_program (GET /sub_program/all). Saved on
- *                     fims.budget_line_items.program_uses (VARCHAR(64), FK to fims.sub_program.sub_program_code;
- *                     migration alter_table/18).
- * Type to filter by name or code, pick from the list (items read "Name — code"; arrow keys + Enter work too);
- * typed text that is not picked is dropped when the box loses focus, and emptying the box clears the choice.
- * Both are optional and independent of each other (no cascade). The list is one shared element on <body>
- * (position:fixed), because the table's overflow would clip a normal dropdown — the same approach as the Account
- * Code picker of the Budget Request form.
+ * (There used to be Program Sources and Program Uses columns — fims.budget_line_items.program_source_code / program_uses.
+ * They were dropped, migration alter_table/22.)
+ *
+ * The picker: type to filter by code or title, pick from the list (arrow keys + Enter work too); typed text that is not
+ * picked is dropped when the box loses focus. The list is one shared element on <body> (position:fixed), because the
+ * table's overflow would clip a normal dropdown — the same approach as the Account Code picker of the Budget Request form.
  *
  * Amount is the line's proposed_amount, as the office requested it — read-only.
  * Suggested Amount is fims.budget_line_items.suggested_amount. It starts as a copy of the Amount (a previously
@@ -49,7 +42,7 @@
  *             the request's status to "Returned" and saves the remarks on fims.budget_req.remarks; the line
  *             items are left untouched.
  *   Endorse — PUT /budget_req/endorse/{id}: Type of Fund and Component are REQUIRED on every line item of
- *             EVERY Project (Program Source, Program Uses and Suggested Amount are optional); saves them, and the
+ *             EVERY Project (Suggested Amount is optional); saves them, and the
  *             Account Code, to fims.budget_line_items and
  *             sets the request's status to "Endorsed" (one transaction). If something required is missing the
  *             first such field is focused and its Project section is outlined in red. The remarks box is not used.
@@ -63,7 +56,7 @@
  *   programs       = ONE program or an ARRAY of them, each
  *                    { program_code, program_name, sub_program_code, sub_program_name, projects[] }
  *                    (each project has project_code, project_name, line_items[], straight from the list data)
- * The line items are NOT re-fetched; only the five option lists are (once, then cached).
+ * The line items are NOT re-fetched; only the three option lists are (once, then cached).
  *
  * Included directly into budget-req-page.php / budget-prop-page.php (inside #bgr-root, so the .nha-root-scoped
  * modal styles apply). Depends on bgr_esc, bgr_escHtmlAttr, bgr_fmtMoney, bgr_fmtAmount, bgr_fmtAmountInitial,
@@ -80,8 +73,6 @@ $_bpr_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
     color: color-mix(in srgb, var(--afims-primary, #0035A9) 40%, #FFFFFF);
 }
 
-/* eight columns do not fit the shared 1100px; the modal still never exceeds the screen */
-.nha-root #bpr-overlay .nha-modal { max-width: min(1360px, 100%); }
 /* the Account Code picker: the code in the mono face, as the read-only box it replaces showed it */
 .nha-root .bpr-tbl .bpr-pick-input[data-pick="account"] { font-family: var(--mono); font-size: 12px; }
 
@@ -111,7 +102,7 @@ $_bpr_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
 .nha-root .bpr-tbl-wrap { border: 1px solid var(--bdr); border-radius: 10px; overflow: hidden; }
 .nha-root .bpr-block.has-error .bpr-tbl-wrap { border-color: var(--red, #DC3545); box-shadow: 0 0 0 3px rgba(220, 53, 69, .12); }
 /* one fixed column grid (see BPR_COLGROUP) shared by every table: the columns line up from one Project to the next; a narrow screen scrolls */
-.nha-root .bpr-tbl { table-layout: fixed; width: 100%; min-width: 1060px; }
+.nha-root .bpr-tbl { table-layout: fixed; width: 100%; min-width: 880px; }
 .nha-root .bpr-tbl td { padding: 10px 8px; vertical-align: middle; }
 .nha-root .bpr-tbl thead th { padding-left: 8px; padding-right: 8px; }
 .nha-root .bpr-tbl select.bpr-field { width: 100%; text-overflow: ellipsis; }
@@ -193,7 +184,7 @@ $_bpr_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
     .nha-root .bpr-row { grid-template-columns: 1fr; gap: 2px; }
 }
 
-/* ── Program Sources / Program Uses picker list. NOT scoped under .nha-root: it is appended to <body> (see the script), above the
+/* ── Account Code picker list. NOT scoped under .nha-root: it is appended to <body> (see the script), above the
       modal overlay, so it only uses the global --afims-* tokens. ── */
 .bpr-pick-menu {
     display: none; position: fixed; z-index: 10000; max-height: 260px; overflow-x: hidden; overflow-y: auto; padding: 4px 0;
@@ -249,21 +240,17 @@ $_bpr_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
    Depends on bgr_esc / bgr_escHtmlAttr / bgr_fmtMoney / bgr_fmtAmount /
    bgr_fmtAmountInitial / bgr_unformatAmount / bgr_toast
    from form/budget-req-form.php, included on the same page. The line items
-   come from the already-fetched list data; only the Type of Fund / Program
-   Source / Program Uses / Component option lists are fetched (once, then cached).
+   come from the already-fetched list data; only the Type of Fund / Component /
+   Account Code option lists are fetched (once, then cached).
 ═══════════════════════════════════════════════════════════════ */
 
 const BPR_TYPE_OF_FUND_API  = '<?php echo $_bpr_api; ?>' + '/type_of_fund/all';
 const BPR_COMPONENT_API     = '<?php echo $_bpr_api; ?>' + '/component_type/all';
-const BPR_PROGRAM_API       = '<?php echo $_bpr_api; ?>' + '/program/all';       // the program sources: every program
-const BPR_SUBPROGRAM_API    = '<?php echo $_bpr_api; ?>' + '/sub_program/all';   // the program uses: every sub-program
-const BPR_ACCOUNT_API       = '<?php echo $_bpr_api; ?>' + '/chart_of_accounts/all?postable_only=1&for_budget_proposal=1';   // the Account Code picker: the same list as the Budget Request form
+const BPR_ACCOUNT_API      = '<?php echo $_bpr_api; ?>' + '/chart_of_accounts/all?postable_only=1&for_budget_proposal=1';   // the Account Code picker: the same list as the Budget Request form
 const BPR_BUDGET_REQ_API    = '<?php echo $_bpr_api; ?>' + '/budget_req';
 
 let BPR_FUNDS = null;       // [{ type_of_fund_id, name }]       — null until loaded
 let BPR_COMPONENTS = null;  // [{ component_type_id, name }]     — null until loaded
-let BPR_SOURCES = null;     // [{ program_code, program_name }]  — null until loaded
-let BPR_USES = null;        // [{ sub_program_code, sub_program_name, program_code, program_name }] — null until loaded
 let BPR_ACCOUNTS = null;    // [{ account_id, account_code, account_title }] — null until loaded
 
 let bpr_ctx = null;         // requestContext of the modal that is currently open
@@ -295,28 +282,22 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 async function bpr_loadOptions() {
-    if (BPR_FUNDS && BPR_COMPONENTS && BPR_SOURCES && BPR_USES && BPR_ACCOUNTS) return;
+    if (BPR_FUNDS && BPR_COMPONENTS && BPR_ACCOUNTS) return;
 
     const responses = await Promise.all([
         fetch(BPR_TYPE_OF_FUND_API, { credentials: 'same-origin' }),
         fetch(BPR_COMPONENT_API,    { credentials: 'same-origin' }),
-        fetch(BPR_PROGRAM_API,      { credentials: 'same-origin' }),
-        fetch(BPR_SUBPROGRAM_API,   { credentials: 'same-origin' }),
         fetch(BPR_ACCOUNT_API,      { credentials: 'same-origin' }),
     ]);
-    if (responses.some(r => !r.ok)) throw new Error('Failed to load the Type of Fund / Program Sources / Program Uses / Component / Account Code lists.');
+    if (responses.some(r => !r.ok)) throw new Error('Failed to load the Type of Fund / Component / Account Code lists.');
 
-    const [funds, components, programs, subPrograms, accounts] = await Promise.all(responses.map(r => r.json()));
+    const [funds, components, accounts] = await Promise.all(responses.map(r => r.json()));
     if (!funds.success)       throw new Error(funds.message || 'Failed to load types of fund.');
     if (!components.success)  throw new Error(components.message || 'Failed to load components.');
-    if (!programs.success)    throw new Error(programs.message || 'Failed to load the program sources.');
-    if (!subPrograms.success) throw new Error(subPrograms.message || 'Failed to load the program uses.');
     if (!accounts.success)    throw new Error(accounts.message || 'Failed to load the chart of accounts.');
 
     BPR_FUNDS      = funds.data ?? [];
     BPR_COMPONENTS = components.data ?? [];
-    BPR_SOURCES    = programs.data ?? [];
-    BPR_USES       = subPrograms.data ?? [];
     BPR_ACCOUNTS   = accounts.data ?? [];
 }
 
@@ -354,29 +335,26 @@ function bpr_optionsHtml(options, idKey, selectedId) {
     ).join('');
 }
 
-/* ── Program Sources / Program Uses / Account Code: a searchable picker ──────────────────────────────────
-   Program Sources are programs, Program Uses are sub-programs: the stored value is the program_code /
-   sub_program_code (a string), the label "Name — code". The Account Code stores the account_id and shows the
-   account_code in its box ("code — title" in the list), and is never empty (`required`). BPR_PICKERS says, per kind,
-   which list is searched and which hidden input holds the code. Each cell holds a visible search input
+/* ── Account Code: a searchable picker ──────────────────────────────────
+   The Account Code stores the account_id and shows the account_code in its box ("code — title" in the list), and is
+   never empty (`required`). BPR_PICKERS says, per kind, which list is searched and which hidden input holds the code
+   (there is only one kind now, `account`; the picker code stays generic). Each cell holds a visible search input
    (.bpr-pick-input, with data-pick = its kind and the text of the current choice in data-label) and a hidden input
-   (.bpr-source / .bpr-use / .bpr-account) with the code that Endorse sends.
-   ONE shared list (.bpr-pick-menu) serves every input of the three columns. It lives on <body> and is position:fixed because the
+   (.bpr-account) with the code that Endorse sends.
+   ONE shared list (.bpr-pick-menu) serves every input of the column. It lives on <body> and is position:fixed because the
    table's overflow would clip a normal dropdown, and it is positioned by hand under (or, when there is no room
    below, over) whichever input it is open for. Because it is one element — not one per row — re-rendering the
    table leaves nothing behind to clean up. Events are delegated from #bpr-blocks for the same reason. */
 const BPR_PICK_MAX = 50;       // most items listed at once; typing narrows the rest down
 let bpr_pickMenu = null;       // the shared list element (created on first use)
 let bpr_pickInput = null;      // the input the list is currently open for
-let bpr_pickMatches = [];      // the programs currently listed
+let bpr_pickMatches = [];      // the items currently listed
 let bpr_pickActive = -1;       // index of the highlighted item (-1 = none)
 
 // The pickers. `items` is a function because the lists are only loaded when the modal first opens.
 // `text` (optional) is what the box shows for an item — default "name — code"; `option` (optional) is what the list shows — default `text`.
 // `required`: the box can't be emptied (an empty / unpicked box puts the previous choice back).
 const BPR_PICKERS = {
-    source:  { title: 'Program Sources', items: () => BPR_SOURCES,  code: 'program_code',     name: 'program_name',     hiddenClass: 'bpr-source',  none: 'No matching program.' },
-    use:     { title: 'Program Uses',    items: () => BPR_USES,     code: 'sub_program_code', name: 'sub_program_name', hiddenClass: 'bpr-use',     none: 'No matching sub-program.' },
     account: { title: 'Account Code',    items: () => BPR_ACCOUNTS, code: 'account_id',       name: 'account_title',    hiddenClass: 'bpr-account', none: 'No matching account.',
                required: true,
                text:   a => a.account_code,
@@ -420,7 +398,7 @@ function bpr_pickIsOpen() {
     return !!bpr_pickMenu && bpr_pickMenu.classList.contains('open');
 }
 
-// Lists the items (programs or sub-programs, by the input's kind) matching `query` (name or code, any case).
+// Lists the items (by the input's kind) matching `query` (name or code, any case).
 function bpr_pickRender(query) {
     const cfg = bpr_pickCfg(bpr_pickInput);
     const q = query.trim().toLowerCase();
@@ -522,7 +500,7 @@ function bpr_pickClearInvalid(input) {
     if (block && !block.querySelector('.is-invalid')) block.classList.remove('has-error');
 }
 
-// The input lost focus. An EMPTY box means "none chosen" (a `required` picker puts its previous choice back instead).
+// The input lost focus. An EMPTY box means "none chosen" (a `required` picker, like Account Code, puts its previous choice back instead).
 // Text that is exactly an item's label counts as picking it. Any other typed text was never picked: it is dropped
 // and the previous choice is shown again.
 function bpr_pickCommit(input) {
@@ -586,11 +564,9 @@ function bpr_pickInit() {
 }
 
 /* ── Table ───────────────────────────────────────────────────── */
-// Column order: Type of Fund · Program Sources · Program Uses · Component · Account Code · Account Description · Amount · Suggested Amount
+// Column order: Type of Fund · Component · Account Code · Account Description · Amount · Suggested Amount
 const BPR_THEAD = `<thead><tr>
     <th>Type of Fund<span class="bpr-req">*</span></th>
-    <th>Program Sources</th>
-    <th>Program Uses</th>
     <th>Component<span class="bpr-req">*</span></th>
     <th>Account Code<span class="bpr-req">*</span></th>
     <th>Account Description</th>
@@ -598,7 +574,7 @@ const BPR_THEAD = `<thead><tr>
     <th class="text-right">Suggested Amount</th>
 </tr></thead>`;
 // Column widths (they add up to 100%), the same for every table. The amounts need room for 16 characters ("1,402,000,000.00").
-const BPR_COLGROUP = '<colgroup>' + [11, 11.5, 11.5, 11, 12, 16, 12.5, 14.5].map(w => `<col style="width:${w}%">`).join('') + '</colgroup>';
+const BPR_COLGROUP = '<colgroup>' + [16, 16, 14, 20, 16, 18].map(w => `<col style="width:${w}%">`).join('') + '</colgroup>';
 
 // The Suggested Amount is optional. It starts as a copy of the Amount (the proposed amount) — unless the line item
 // already has a saved suggested amount (above 0), which is kept. Either way it is an ordinary input: it can be
@@ -607,7 +583,7 @@ function bpr_initialSuggested(li) {
     return Number(li.suggested_amount || 0) > 0 ? li.suggested_amount : li.proposed_amount;
 }
 
-// A searchable-picker cell (Program Sources / Program Uses / Account Code): the visible search input + the hidden code that
+// A searchable-picker cell (Account Code): the visible search input + the hidden code that
 // Endorse sends. `fallback` is the text to show when the saved code is not in the picker's list any more.
 function bpr_pickCellHtml(kind, code, fallback) {
     const cfg   = BPR_PICKERS[kind];
@@ -623,8 +599,6 @@ function bpr_pickCellHtml(kind, code, fallback) {
 function bpr_rowHtml(li) {
     return `<tr data-li-id="${Number(li.budget_line_item_id)}">
         <td><select class="nha-filter-select bpr-field bpr-fund">${bpr_optionsHtml(BPR_FUNDS, 'type_of_fund_id', li.type_of_fund_id)}</select></td>
-        ${bpr_pickCellHtml('source', li.program_source_code)}
-        ${bpr_pickCellHtml('use', li.program_uses)}
         <td><select class="nha-filter-select bpr-field bpr-component">${bpr_optionsHtml(BPR_COMPONENTS, 'component_type_id', li.component_id)}</select></td>
         ${bpr_pickCellHtml('account', li.account_id, li.account_code)}
         <td><div class="bpr-ro"><span class="bpr-acct-title">${bgr_esc(li.account_title)}</span>${li.particulars ? `<span class="bpr-desc-sub">${bgr_esc(li.particulars)}</span>` : ''}</div></td>
@@ -660,12 +634,12 @@ function bpr_tableHtml(project) {
     const lineItems = project.line_items ?? [];
     const rowsHtml  = lineItems.length
         ? lineItems.map(bpr_rowHtml).join('')
-        : '<tr><td colspan="8"><div class="bpr-empty">No line items have been added under this project.</div></td></tr>';
+        : '<tr><td colspan="6"><div class="bpr-empty">No line items have been added under this project.</div></td></tr>';
 
     return `<div class="bpr-tbl-wrap">
         <div class="nha-tbl-scroll">
             <table class="nha-tbl bpr-tbl">${BPR_COLGROUP}${BPR_THEAD}<tbody>${rowsHtml}</tbody>
-                <tfoot><tr><td colspan="6" class="text-right">Subtotal – Project${project.project_code ? ' ' + bgr_esc(project.project_code) : ''}</td><td class="text-right bpr-sub-p">${bgr_fmtMoney(0)}</td><td class="text-right bpr-sub-s">${bgr_fmtMoney(0)}</td></tr></tfoot>
+                <tfoot><tr><td colspan="4" class="text-right">Subtotal – Project${project.project_code ? ' ' + bgr_esc(project.project_code) : ''}</td><td class="text-right bpr-sub-p">${bgr_fmtMoney(0)}</td><td class="text-right bpr-sub-s">${bgr_fmtMoney(0)}</td></tr></tfoot>
             </table>
         </div>
     </div>`;
@@ -771,14 +745,13 @@ function bpr_isValidAmount(value) {
     return v === '' || (!isNaN(Number(v)) && Number(v) >= 0);
 }
 
-// Endorse needs a Type of Fund AND a Component on every line item, in every block (Program Sources and Program Uses are optional).
+// Endorse needs a Type of Fund AND a Component on every line item, in every block.
 // The first offender is focused (which scrolls it into view) and every block with a problem is outlined in red.
 function bpr_validate() {
     let firstInvalid = null;
     const badBlocks = new Set();
 
     document.querySelectorAll('#bpr-blocks .bpr-field').forEach(field => {
-        // (Program Sources and Program Uses are optional and are not .bpr-field)
         const invalid = field.matches('.bpr-suggested') ? !bpr_isValidAmount(field.value)
                                                         : !field.value;   // Type of Fund, Component
         field.classList.toggle('is-invalid', invalid);
@@ -817,8 +790,6 @@ function bpr_collectItems() {
     return [...document.querySelectorAll('#bpr-blocks tr[data-li-id]')].map(tr => ({
         budget_line_item_id: Number(tr.dataset.liId),
         type_of_fund_id:     tr.querySelector('.bpr-fund').value || null,
-        program_source_code: tr.querySelector('.bpr-source').value || null,
-        program_uses:        tr.querySelector('.bpr-use').value || null,
         account_id:          tr.querySelector('.bpr-account').value,
         suggested_amount:   bgr_unformatAmount(tr.querySelector('.bpr-suggested').value).trim(),
         component_id:        tr.querySelector('.bpr-component').value || null,
@@ -829,7 +800,7 @@ function bpr_collectItems() {
 async function bpr_endorse() {
     bpr_hideErr();
     if (!bpr_validate()) return;
-    if (!confirm(`Endorse budget request ${bpr_ctx.budget_reference_number}? The Type of Fund, Program Source, Program Uses, Component, Account Code and Suggested Amount will be saved to its line items and its status will change to Endorsed.`)) return;
+    if (!confirm(`Endorse budget request ${bpr_ctx.budget_reference_number}? The Type of Fund, Component, Account Code and Suggested Amount will be saved to its line items and its status will change to Endorsed.`)) return;
 
     await bpr_send('endorse', { items: bpr_collectItems() }, 'Failed to endorse the budget request.');
 }

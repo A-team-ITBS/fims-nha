@@ -687,15 +687,15 @@ class BudgetReqService
     /**
      * Budget Processing "Endorse": saves each line item's Type of Fund and
      * Component (both required for every item) plus its optional Suggested
-     * Amount (blank = 0), Program Source, Program Uses and Account (the Budget
-     * Officer may re-code a line to another chart-of-accounts entry), and moves the request to
+     * Amount (blank = 0) and Account (the Budget Officer may re-code a line to
+     * another chart-of-accounts entry), and moves the request to
      * "Endorsed", all in one transaction — if any item is invalid, nothing is
      * saved and the status is unchanged. Rejected for a Cancelled,
      * already-Endorsed or Approved request. The status lives on the request header, so it
      * applies to the whole request, not just the Program the items came from.
      *
-     * @param array $items [['budget_line_item_id' => .., 'type_of_fund_id' => .., 'component_id' => .., 'suggested_amount' => .., 'program_source_code' => .., 'program_uses' => .., 'account_id' => ..], ...]
-     *                     (the last four are optional — see BudgetLineItemService::applyProcessing())
+     * @param array $items [['budget_line_item_id' => .., 'type_of_fund_id' => .., 'component_id' => .., 'suggested_amount' => .., 'account_id' => ..], ...]
+     *                     (the last two are optional — see BudgetLineItemService::applyProcessing())
      */
     public function endorse(string $budgetReferenceNumber, array $items): array
     {
