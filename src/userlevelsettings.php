@@ -145,7 +145,17 @@ $USER_LEVEL_PRIVS = [["{FIMS}audit_logs","-2","0"],
     ["{FIMS}CheckDisbursements.php","-2","0"],
     ["{FIMS}CheckDisbursements.php","0","0"],
     ["{FIMS}budget-prop-page.php","-2","0"],
-    ["{FIMS}budget-prop-page.php","0","0"]];
+    ["{FIMS}budget-prop-page.php","0","0"],
+    ["{FIMS}notification_reads","-2","0"],
+    ["{FIMS}notification_reads","0","0"],
+    ["{FIMS}saro-registry-page.php","-2","0"],
+    ["{FIMS}saro-registry-page.php","0","0"],
+    ["{FIMS}supplemental-funds-page.php","-2","0"],
+    ["{FIMS}supplemental-funds-page.php","0","0"],
+    ["{FIMS}trust-funds-page.php","-2","0"],
+    ["{FIMS}trust-funds-page.php","0","0"],
+    ["{FIMS}pricing-page.php","-2","0"],
+    ["{FIMS}pricing-page.php","0","0"]];
 
 /**
  * Tables
@@ -219,4 +229,9 @@ $USER_LEVEL_TABLES = [["audit_logs","audit_logs","Audit Logs",false,"{FIMS}",""]
     ["JournalEntryVoucher.php","JournalEntryVoucher","Journal Entry Voucher",true,"{FIMS}","JournalEntryVoucher"],
     ["ChangePass.php","ChangePass","Change Password",true,"{FIMS}","ChangePass"],
     ["CheckDisbursements.php","CheckDisbursements","Check Disbursements",true,"{FIMS}","CheckDisbursements"],
-    ["budget-prop-page.php","budget_prop_page","Budget Propose",true,"{FIMS}","BudgetPropPage"]];
+    ["budget-prop-page.php","budget_prop_page","Budget Propose",true,"{FIMS}","BudgetPropPage"],
+    ["notification_reads","notification_reads","notification reads",true,"{FIMS}","NotificationReadsList"],
+    ["saro-registry-page.php","saro_registry_page","SARO Registry",true,"{FIMS}","SaroRegistryPage"],
+    ["supplemental-funds-page.php","supplemental_funds_page","Supplemental Funds",true,"{FIMS}","SupplementalFundsPage"],
+    ["trust-funds-page.php","trust_funds_page","Trust Funds",true,"{FIMS}","TrustFundsPage"],
+    ["pricing-page.php","pricing_page","Pricing",true,"{FIMS}","PricingPage"]];
