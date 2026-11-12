@@ -319,10 +319,10 @@ class BudgetLineItemService
         }
 
         foreach ($totals as $lineItemId => $requested) {
+            $amount = App\QuotedValue($requested, DataType::NUMBER, 'DB');
             App\Execute(
-                "INSERT INTO {$this->tableEarmark} (budget_line_item_id, allocation_id, amount, status)
-                 VALUES ({$lineItemId}, {$allocationId}, "
-                 .App\QuotedValue($requested, DataType::NUMBER, 'DB')." , 'active')",
+                "INSERT INTO {$this->tableEarmark} (budget_line_item_id, allocation_id, amount, original_amount, status)
+                 VALUES ({$lineItemId}, {$allocationId}, {$amount}, {$amount}, 'active')",
                 'DB'
             );
         }
@@ -399,10 +399,10 @@ class BudgetLineItemService
                 );
             }
 
+            $amount = App\QuotedValue($requested, DataType::NUMBER, 'DB');
             App\Execute(
-                "INSERT INTO {$this->tableEarmark} (budget_line_item_id, allocation_id, amount, status, released_at)
-                 VALUES ({$lineItemId}, {$allocationId}, "
-                 .App\QuotedValue($requested, DataType::NUMBER, 'DB').", 'converted', CURRENT_TIMESTAMP)",
+                "INSERT INTO {$this->tableEarmark} (budget_line_item_id, allocation_id, amount, original_amount, status, released_at)
+                 VALUES ({$lineItemId}, {$allocationId}, {$amount}, {$amount}, 'converted', CURRENT_TIMESTAMP)",
                 'DB'
             );
 
@@ -411,6 +411,48 @@ class BudgetLineItemService
                  WHERE budget_line_item_id = {$lineItemId}",
                 'DB'
             );
+        }
+
+        return ['success' => true];
+    }
+
+    /**
+     * Read-only sanity check for an RFA / LAA being created or edited (NOT yet Approved — no locking, no
+     * writes): is each COB's Requested Amount within what the parent CBA currently still has actively
+     * earmarked there? Mirrors the grouping and the ceiling convertEarmarkForRfaApproval() enforces at
+     * Approval time, so a request that passes this can't later be rejected at Approval purely over an
+     * amount that was already wrong when it was submitted. Returns ['success' => true] (including when
+     * there is nothing to check) or ['success' => false, 'message' => ...].
+     */
+    public function validateRfaAmounts(int $parentAllocationId, mixed $lineTransaction): array
+    {
+        $lines = $this->parseLineTransaction($lineTransaction);
+        if (!$lines) {
+            return ['success' => true];
+        }
+
+        $totals = [];
+        foreach ($lines as $line) {
+            $id = $line['budget_line_item_id'];
+            $totals[$id] = ($totals[$id] ?? 0) + $line['requested_amount'];
+        }
+
+        foreach ($totals as $lineItemId => $requested) {
+            $earmark = App\ExecuteRow(
+                "SELECT amount FROM {$this->tableEarmark}
+                 WHERE allocation_id = {$parentAllocationId} AND budget_line_item_id = {$lineItemId} AND status = 'active'",
+                'DB'
+            );
+            if (!$earmark) {
+                return ['success' => false, 'message' =>
+                    "Parent CBA #{$parentAllocationId} has no active earmark for budget line item #{$lineItemId}."];
+            }
+            if ($requested > (float) $earmark['amount']) {
+                return ['success' => false, 'message' =>
+                    'Requested amount ('.number_format($requested, 2).
+                    ') exceeds the parent CBA\'s available balance ('.number_format((float) $earmark['amount'], 2).
+                    ") for budget line item #{$lineItemId}."];
+            }
         }
 
         return ['success' => true];
@@ -427,18 +469,25 @@ class BudgetLineItemService
     }
 
     /**
-     * Every earmark row against one budget line item, oldest first — the "why is this COB's available
-     * balance lower than suggested_amount" drill-down: each row is one Approved CBA/CFA that reserved an
-     * amount (status 'active'/'released'), or one Approved RFA/LAA that converted part of a CBA's
-     * reservation into a real obligation (status 'converted' — see
-     * BudgetLineItemService::convertEarmarkForRfaApproval()). Carries each row's own allocation's
-     * reference number, type and current status so the UI can show "RR-001 (CBA, Approved) — ₱20,000.00,
-     * active" per row without a second lookup.
+     * Every CBA/CFA earmark row against one budget line item, oldest first. Two callers:
+     *   - "Where this COB's balance is held" drill-down (baaToggleEarmarks()): pure CBA/CFA only (status
+     *     'active'/'released') — an RFA/LAA's own 'converted' row
+     *     (see BudgetLineItemService::convertEarmarkForRfaApproval()) is deliberately excluded here; what it
+     *     drew is already reflected in the parent's own (unchanged) original_amount vs. its now-smaller
+     *     amount. Displays original_amount — what the CBA/CFA was originally approved for against this
+     *     COB, not its current remaining balance, so the figure shown doesn't shrink as RFAs/LAAs draw
+     *     against it.
+     *   - An RFA/LAA's "CBA Available Balance" (baaRefreshCbaAmount()): looks up its own parent CBA's row
+     *     here by allocation_id + status = 'active' and uses its `amount` (NOT original_amount) — the real,
+     *     currently-remaining ceiling that lookup needs, unaffected by the CBA/CFA-only filter since a
+     *     parent is always a CBA.
+     * Carries each row's own allocation's reference number, type and current status so the UI can show
+     * "RR-001 (CBA, Approved) — ₱50,000.00, active" per row without a second lookup.
      */
     public function fetchEarmarks(int $budgetLineItemId): array
     {
         try {
-            $sql = "SELECT e.earmark_id, e.budget_line_item_id, e.allocation_id, e.amount,
+            $sql = "SELECT e.earmark_id, e.budget_line_item_id, e.allocation_id, e.amount, e.original_amount,
                            e.status AS earmark_status, e.created_at, e.released_at,
                            a.request_referrence_no, a.allocation_number, a.allocation_type,
                            st.name AS allocation_status_name, st.color AS allocation_status_color,
@@ -447,8 +496,9 @@ class BudgetLineItemService
                     JOIN {$this->tableBudgetAllocation} a ON a.allocation_id = e.allocation_id
                     LEFT JOIN {$this->tableStatus} st ON st.id = a.status_id
                     LEFT JOIN {$this->tableRc} rc ON rc.rc_id = a.requesting_rc_id
-                    WHERE e.budget_line_item_id = " . (int) $budgetLineItemId . '
-                    ORDER BY e.created_at ASC, e.earmark_id ASC';
+                    WHERE e.budget_line_item_id = " . (int) $budgetLineItemId . "
+                      AND UPPER(a.allocation_type) IN ('CBA', 'CFA')
+                    ORDER BY e.created_at ASC, e.earmark_id ASC";
 
             return ['success' => true, 'data' => App\ExecuteRows($sql, 'DB') ?: []];
         } catch (\Exception $e) {

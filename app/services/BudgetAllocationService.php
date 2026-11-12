@@ -1299,9 +1299,23 @@ class BudgetAllocationService
             }
         }
 
+        // ── RFA / LAA: Requested Amount per COB must not exceed what the parent CBA still has actively
+        // earmarked there — the same ceiling BudgetLineItemService::convertEarmarkForRfaApproval() enforces
+        // at Approval time, checked here too (create and update) so a request isn't accepted only to be
+        // rejected later purely over an amount that was already wrong when it was submitted.
+        $effective = static fn (string $f) => array_key_exists($f, $clean) ? $clean[$f] : ($current[$f] ?? null);
+        $effectiveType = strtoupper(trim((string) ($effective('allocation_type') ?? '')));
+        $effectiveParentId = $effective('parent_id');
+        $effectiveLineTransaction = $effective('line_transaction');
+        if (($effectiveType === 'RFA' || $effectiveType === 'LAA') && $effectiveParentId !== null && $effectiveLineTransaction !== null) {
+            $check = (new BudgetLineItemService())->validateRfaAmounts((int) $effectiveParentId, $effectiveLineTransaction);
+            if (!$check['success']) {
+                return $check['message'];
+            }
+        }
+
         // ── Program → Sub-Program → Project must belong together ─────────────
         if (array_intersect(['program_code', 'sub_program_code', 'project_code'], array_keys($clean))) {
-            $effective = static fn (string $f) => array_key_exists($f, $clean) ? $clean[$f] : ($current[$f] ?? null);
             $program = $effective('program_code');
             $sub = $effective('sub_program_code');
             $project = $effective('project_code');

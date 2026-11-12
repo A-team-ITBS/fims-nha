@@ -172,6 +172,12 @@ Plus the Budget Request pages' own `all` / `list` / `read` / `add` / `update` / 
 The `chart_of_accounts.php`, `responsibility_center.php`, `budget_allocation.php`, `budget_category.php` and (for `/budget_line_item/approved`) `budget_line_item.php` route files use `->add($accessMiddleware)->add($jwtMiddleware)`. `$accessMiddleware` is currently a
 pass-through stub, so these routes are authenticated but not permission-gated.
 
+### property_record.php (`PropertyRecordService`, table `fims.property_records` + the PIS API; page `app/pages/property-record-page.php`)
+All routes `->add($jwtMiddleware)`. PIS is called server-side only, with `PIS_API_TOKEN` from `.env` (Bearer).
+- `GET /property-record/list` - Every saved item (reads only `fims.property_records`), grouped into the register rows (same PO + category + sub category + item name combined, quantity / cost / depreciation computed), with the responsibility center, the IAR number and the numbers for the category cards
+- `GET /property-record/search?po_number=` - Search one PO in PIS: its items with status 1-4 (items whose TYPENO is not 1 are flagged `is_property: false`), what is already saved and the PO's one responsibility center. Only a PO that is in the IAR module; otherwise "…is not in the IAR module"
+- `POST /property-record/save` - `{po_number, inv_ids[]}` — saves the selected PAR items (PIS is asked again; a TYPENO other than 1, a wrong status or an already saved `inv_id` is refused)
+
 ## Template Usage
 
 When duplicating this template:
