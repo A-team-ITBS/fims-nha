@@ -101,6 +101,7 @@
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone ($p['PHPMaker2024\\FIMS\\Attributes\\Get'] ?? \Symfony\Component\VarExporter\Internal\Registry::p('PHPMaker2024\\FIMS\\Attributes\\Get')),
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Get'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
@@ -183,6 +184,11 @@
     [
         'PHPMaker2024\\FIMS\\Attributes\\Map' => [
             'methods' => [
+                [
+                    'GET',
+                    'POST',
+                    'OPTIONS',
+                ],
                 [
                     'GET',
                     'POST',
@@ -1095,6 +1101,7 @@
                 '/AuditLogsEdit[/{id}]',
                 '/AuditLogsDelete[/{id}]',
                 '/BankAccountManagementPage[/{params:.*}]',
+                '/BankManagementPage[/{params:.*}]',
                 '/BudgetAllocationForm[/{params:.*}]',
                 '/BudgetPropPage[/{params:.*}]',
                 '/BudgetReqForm[/{params:.*}]',
@@ -1275,6 +1282,7 @@
                 'PHPMaker2024\\FIMS\\AuditLogsController:edit',
                 'PHPMaker2024\\FIMS\\AuditLogsController:delete',
                 'PHPMaker2024\\FIMS\\BankAccountManagementPageController:custom',
+                'PHPMaker2024\\FIMS\\BankManagementPageController:custom',
                 'PHPMaker2024\\FIMS\\BudgetAllocationFormController:custom',
                 'PHPMaker2024\\FIMS\\BudgetPropPageController:custom',
                 'PHPMaker2024\\FIMS\\BudgetReqFormController:custom',
@@ -1431,6 +1439,9 @@
                 'PHPMaker2024\\FIMS\\WorkflowManagerController:custom',
             ],
             'middleware' => [
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
                 [
                     'PHPMaker2024\\FIMS\\PermissionMiddleware',
                 ],
@@ -1989,6 +2000,7 @@
                 'edit.audit_logs',
                 'delete.audit_logs',
                 'custom.bank_account_management_page',
+                'custom.bank_management_page',
                 'custom.budget_allocation_form',
                 'custom.budget_prop_page',
                 'custom.budget_req_form',
@@ -2145,6 +2157,7 @@
                 'custom.WorkflowManager',
             ],
             'options' => [
+                [],
                 [],
                 [],
                 [],
@@ -2505,6 +2518,7 @@
         $o[175],
         $o[176],
         $o[177],
+        $o[178],
     ],
     []
 );

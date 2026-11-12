@@ -135,7 +135,7 @@ return [
     "trust_funds_page" => \DI\create(TrustFundsPage::class),
     "pricing_page" => \DI\create(PricingPage::class),
     "cash_position_page" => \DI\create(CashPositionPage::class),
-    "bank_account_management_page" => \DI\create(BankAccountManagementPage::class),
+    "bank_management_page" => \DI\create(BankManagementPage::class),
 
     // User table
     "usertable" => \DI\get("users"),

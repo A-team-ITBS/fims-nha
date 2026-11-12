@@ -60,7 +60,7 @@
       <phrase id="menutext" value="Check Disbursements" />
     </menu>
     <menu id="332">
-      <phrase id="menutext" value="Bank Account Management" />
+      <phrase id="menutext" value="Bank Management Page" />
     </menu>
     <menu id="331">
       <phrase id="menutext" value="Cash Position" />
@@ -1604,8 +1604,8 @@
     <table id="cash_position_page">
       <phrase id="tblcaption" value="Cash Position" />
     </table>
-    <table id="bank_account_management_page">
-      <phrase id="tblcaption" value="Bank Account Management" />
+    <table id="bank_management_page">
+      <phrase id="tblcaption" value="Bank Management Page" />
     </table>
   </project>
 </ew-language>
