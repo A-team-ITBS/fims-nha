@@ -113,7 +113,7 @@ every `file_share*.share_id`/`user_id`, `id_sequences.config_id`) are unenforced
 | `chat_sessions` / `chat_history` | AI-assistant chat sessions and their messages, per user |
 | `file_shares` / `file_share_permissions` / `file_share_activity` / `shared_folder_access` | S3-backed file sharing: the share itself, per-user permission level, an audit trail, and a "favorites" list |
 | `id_format_configs` / `id_sequences` / `id_reset_strategies` | Configurable document-numbering formats (e.g. `PR-FY2025-0001`) and the running counters that back them |
-| `notifications` | PHPMaker-compatible system notifications. **Marked "STRICT – DO NOT MODIFY"** in its own `COMMENT ON TABLE` |
+| `notifications` / `notification_reads` | Notification hub (migration `06 - notifications_hub.sql`). `notifications` holds one row per message addressed by `type` (`all`/`system`/`user`/`userlevel`/`office`/`usergroup`) + `target`, with `sender_id` and a unique-when-set `event_key` for de-duping; `notification_reads` records which user has read which notification. Targets are unenforced links, like the other uac tables. See the developer guide §8.6. The table was originally marked "STRICT – DO NOT MODIFY" (PHPMaker-compatible) — the hub adds columns only |
 | `audit_logs` | PHPMaker-compatible immutable audit trail (one row per changed field). **Also marked STRICT – DO NOT MODIFY.** `uac.aggregated_audit_logs` is a view that rolls these up one-row-per-save for the dashboard |
 | `psgc` | Philippine Standard Geographic Code reference table (regions/provinces/cities) |
 
