@@ -482,7 +482,7 @@ The furthest-along business workflow in the repo — a Budget Request → Revisi
 ### 8.5 Platform utilities (not page-backed)
 | Feature | Files | Purpose |
 |---|---|---|
-| Notifications | `app/routes/notifications.php` + `app/lib/NotificationManager.php` | Recent/count/mark-read/mark-all-read/send/test — no dedicated page in `app/`, consumed by the shared notification bell UI elsewhere in the framework |
+| Notifications | `app/routes/notifications.php` + `app/services/NotificationService.php` | Notification hub on `uac.notifications` / `uac.notification_reads`: recent / count / mark-read / mark-all-read / send (super admin only). Raised from code with `NotificationService::toUser(...)` etc. — see **§8.6**. Consumed by the shared notification bell (`_shared/notification.php`). The old `app/lib/NotificationManager.php` is legacy and no longer used by the routes |
 | Swagger generation trigger | `app/routes/service.php` | `GET /Service` — generates OpenAPI docs via `ApiService` |
 | Generic CRUD template | `app/routes/crud.php` + `app/services/crudServices.php` | **Dead code — see §7.4** |
 
@@ -490,6 +490,57 @@ The furthest-along business workflow in the repo — a Budget Request → Revisi
 > `vendor`, `purchase-order`, `chart_of_accounts`, and `responsibility_center` routes is kept in
 > **`app/routes/README.md`** — read it before calling or extending any of those endpoints; it's more
 > current than this guide for exact HTTP verbs/paths.
+
+### 8.6 Notifications (bell + optional real-time push)
+
+**Storage** (`_assets/sql/00 - uac/02 - alter_table/06 - notifications_hub.sql`): `uac.notifications`
+(`id`, `type`, `target`, `subject`, `body`, `link`, `from_system`, `sender_id`, `event_key`, `created_at`)
+and `uac.notification_reads` (one row per user who has read a notification). A partial unique index on
+`event_key` makes a repeated event a no-op.
+
+**Audience** — a notification is addressed with `type` + `target`; there are no other types:
+
+| `type` | `target` | Who sees it |
+|---|---|---|
+| `all` | `all` | everyone |
+| `system` | `uac.systems.system_id` | users with a level assignment for that system |
+| `user` | `uac.users.user_id` | that user |
+| `userlevel` | `uac.user_levels.user_level_id` | users assigned that level |
+| `office` | `uac.offices.office_id` | active members of that office |
+| `usergroup` | supervisor's `user_id` | users who report to that supervisor |
+
+**Raise one from business code** (`app/services/NotificationService.php`) — static helpers that never
+throw (they return the new id, or `null` when de-duped or failed):
+
+```php
+NotificationService::toUser($userId, "Program {$code} created", "{$name} was added to Programs.",
+    '/ProgramPage', ['event_key' => "program-created:{$code}"]);
+// also: toAll, toSystem, toUserLevel, toOffice, toUserGroup
+```
+
+`link` must be a relative same-origin path (anything else is dropped). `event_key` is optional; use a
+stable key so retries don't notify twice. Example in use: `ProgramService::create()` notifies the creating
+user.
+
+**API** (`app/routes/notifications.php`, all behind `$jwtMiddleware`): `GET /notifications/recent`,
+`GET /notifications/count`, `POST /notifications/mark-read`, `POST /notifications/mark-all-read`,
+`POST /notifications/send` (super admin only). The browser sends `X-Authorization: Bearer ew.API_JWT_TOKEN`.
+`_shared/notification.php` builds its base URL from `Config('API.FIMS_URL')` and strips a trailing `/api`
+before appending `/api/notifications`, so it works whether or not the config value ends in `/api`.
+
+**Delivery:** the bell polls `/recent` every 30 s (and on tab focus) — polling is the guarantee. After an
+insert, `NotificationService` also publishes to EMQX (`POST {EMQX.API_URL}/api/v5/publish`, topic
+`app/notifications/{type}/{target}`) when `EMQX_API_URL` and `EMQX_API_KEY` are set; the browser client
+(`_shared/mqtt-notification.js`) then triggers an immediate refresh. With EMQX off or unconfigured,
+nothing breaks — notifications just arrive on the next poll. After a local action the page can refresh at
+once with `window.NotificationManager?.updateNotifications()` (done in `program-page.php`).
+
+**EMQX:** the `emqx` service in `docker-compose.yml` (`README-Docker.md` has setup and the API key steps).
+`EMQX_API_URL` must point at the REST port `18083`, not the MQTT port `1883`.
+
+**Known gaps:** `app/lib/NotificationManager.php` and its include in `app/global.php` are legacy and can be
+removed; `mqtt-notification.js` hard-codes `wss://localhost:8084/mqtt` and `/node_modules/mqtt/dist/mqtt.min.js`
+returns 404, so push is not active yet and the bell relies on polling; there is no retention job for old rows.
 
 ---
 
@@ -501,7 +552,7 @@ Cross-cutting code used by every page — coordinate before changing:
 |---|---|
 | Auth | `_shared/auth.php` |
 | Page permissions | `_shared/PagePermission.php` (+ `_shared/README-PagePermission.md`) |
-| Notifications | `_shared/notification.php` (+ `_shared/NOTIFICATION_README.md`) |
+| Notifications | `_shared/notification.php` (bell UI), `_shared/mqtt-notification.js` (optional MQTT push) — design in `_shared/NOTIFICATION-IMPLEMENTATION-PLAN.md`, usage in `_shared/NOTIFICATION_README.md`, summary in §8.6 |
 | Workflow engine | `_shared/workflow-manager/` |
 | File manager | `_shared/file-manager/` |
 | Document/editor | `_shared/document/` |
@@ -516,7 +567,7 @@ Cross-cutting code used by every page — coordinate before changing:
 
 ```bash
 docker-compose up -d
-# php-fpm + nginx (localhost:8090) + postgres (localhost:5433) + redis (6380) + minio (9020/9021) + adminer (8091)
+# php-fpm + nginx (localhost:8090) + postgres (localhost:5433) + redis (6380) + minio (9020/9021) + emqx (1883/8083/18083) + adminer (8091)
 ```
 
 First boot runs `composer install` automatically (named volume `fims-vendor`). Load the schema with
