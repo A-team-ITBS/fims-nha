@@ -2611,6 +2611,10 @@ $cbaAsModal = !empty($cbaAsModal);
 				search.placeholder = 'Search or type a new ' + c.noun + '\u2026';
 				pcSetHint(key, n + ' ' + c.noun + '(s) under this ' + (key === 'subprog' ? 'program' : (subCode ? 'sub-program' : 'program')) + '.');
 			}
+			// A successful load re-enables the box unconditionally above \u2014 re-assert the RFA / LAA Parent CBA
+			// lock (cbaApplyParentCbaLock()) in case this landed after it, so Project doesn't silently become
+			// editable again once this async load catches up.
+			if (key === 'proj') cbaApplyParentCbaLock();
 		} catch (err) {
 			if (seq !== c.seq) return;
 			console.error('[pcLoad ' + key + ']', err);
@@ -2794,6 +2798,8 @@ $cbaAsModal = !empty($cbaAsModal);
 		// Re-check whether the first line's COB should be locked until Project is picked (cobRequiresProjectFirst)
 		// — switching allocation type changes that regardless of whether Project itself just changed.
 		if (BAA_ROWS[0] !== undefined) cobLoad(BAA_ROWS[0]);
+
+		cbaApplyParentCbaLock();
 	}
 
 	function cbaClearVendor() {
@@ -2866,6 +2872,9 @@ $cbaAsModal = !empty($cbaAsModal);
 			searchEl.disabled = false;
 			searchEl.placeholder = 'Search category…';
 			catSetupSearch();
+			// A successful load re-enables the box unconditionally above — re-assert the RFA / LAA Parent CBA
+			// lock in case this landed after it (cbaApplyParentCbaLock()).
+			cbaApplyParentCbaLock();
 		} catch (err) {
 			console.error('[loadCategories]', err);
 			showError('category_error');
@@ -3509,6 +3518,9 @@ $cbaAsModal = !empty($cbaAsModal);
 				el.placeholder = 'Search account code or title…';
 				cobUpdateHint(idx);
 				cobSetupSearch(idx);
+				// A successful load re-enables the box unconditionally above — re-assert the RFA / LAA Parent
+				// CBA lock in case this landed after it (cbaApplyParentCbaLock()).
+				cbaApplyParentCbaLock();
 			} catch (err) {
 				if (COB_SEQ[idx] !== token) return;
 				console.error('[cobLoad]', err);
@@ -3727,6 +3739,38 @@ $cbaAsModal = !empty($cbaAsModal);
 		return type === 'RFA' || type === 'LAA';
 	}
 
+	// element id -> its own disabled state from just before cbaLockField() force-locked it, so unlocking
+	// hands control back to whatever would otherwise apply (its own loading/cascade state) instead of guessing it.
+	var CBA_PARENT_LOCK_PREV = {};
+
+	function cbaLockField(id, locked) {
+		var el = document.getElementById(id);
+		if (!el) return;
+		if (locked) {
+			if (!(id in CBA_PARENT_LOCK_PREV)) CBA_PARENT_LOCK_PREV[id] = el.disabled;
+			el.disabled = true;
+		} else if (id in CBA_PARENT_LOCK_PREV) {
+			el.disabled = CBA_PARENT_LOCK_PREV[id];
+			delete CBA_PARENT_LOCK_PREV[id];
+		}
+	}
+
+	// RFA / LAA with a Parent CBA picked must match that CBA's Category / Project / COB exactly — those are
+	// what its earmark (and CBA Available Balance) is actually keyed to, so a mismatched line could never be
+	// approved. Locks those fields read-only while a parent is selected; Requested Amount stays editable
+	// (partial draws are still allowed). Call after picking/clearing the Parent CBA, after an Allocation Type
+	// change, and after adding a new Budget Allocation Amount line.
+	function cbaApplyParentCbaLock() {
+		var parentId = (document.getElementById('cba_id') || {}).value;
+		var locked = isRfaOrLaa() && !!parentId;
+
+		cbaLockField('cat_search', locked);
+		cbaLockField('proj_search', locked);
+		BAA_ROWS.forEach(function(idx) {
+			cbaLockField('bv_search_' + idx, locked);
+		});
+	}
+
 	// Shows CBA Available Balance / hides Available Amount for RFA / LAA (and back for CBA / CFA), on every current line —
 	// call whenever Allocation Type changes, and once for a freshly added line.
 	function baaApplyCbaAmountVisibility(idx) {
@@ -3815,7 +3859,7 @@ $cbaAsModal = !empty($cbaAsModal);
 			return '<div class="baa-earmarks-row">' +
 				'<span><span class="baa-earmarks-ref">' + pcEsc(ref) + '</span>' + type +
 				'<span class="baa-earmarks-tag ' + pcEsc(row.earmark_status) + '">' + pcEsc(row.earmark_status) + '</span></span>' +
-				'<span class="baa-earmarks-amt">' + pcEsc(cobAmount(row.amount)) + '</span>' +
+				'<span class="baa-earmarks-amt">' + pcEsc(cobAmount(row.original_amount)) + '</span>' +
 				'</div>';
 		}).join('');
 	}
@@ -3920,12 +3964,16 @@ $cbaAsModal = !empty($cbaAsModal);
 	// ── Requested Amount must not exceed its ceiling ─────────────────────────────
 	// CBA / CFA: Available Amount (read-only, filled from the picked COB's earmark-adjusted balance).
 	// RFA / LAA: CBA Available Balance instead — the specific parent CBA's own remaining active earmark for
-	// that COB, not the COB's wider leftover balance (see baaRefreshCbaAmount()). With no ceiling value yet,
-	// there's nothing to enforce. Returns true when valid.
+	// that COB, not the COB's wider leftover balance (see baaRefreshCbaAmount()). "Nothing to enforce yet"
+	// means no COB picked for this line (or, for RFA / LAA, no Parent CBA picked either) — NOT a ceiling that
+	// has genuinely resolved to 0 (a COB fully drawn by its parent must still block any positive Requested
+	// Amount, not be read as "unknown, let it through").
 	function baaRequestedExceedsProposed(idx) {
+		if (!COB_SEL[idx]) return false; // no COB picked for this line yet
+		if (isRfaOrLaa() && !(document.getElementById('cba_id') || {}).value) return false; // no Parent CBA picked yet
+
 		var ceilEl = document.getElementById((isRfaOrLaa() ? 'cba_amount_' : 'proposed_amount_') + idx);
 		var ceiling = ceilEl ? baaParseAmt(ceilEl.value) : 0;
-		if (ceiling <= 0) return false;
 		var requested = baaParseAmt((document.getElementById('requested_amount_' + idx) || {}).value);
 		return requested > ceiling;
 	}
@@ -4237,6 +4285,7 @@ $cbaAsModal = !empty($cbaAsModal);
 		document.getElementById('cba_id_hint').textContent = 'Selected: ' + label;
 		cbaCloseDropdown();
 		baaRefreshAllCbaAmounts(); // a new parent CBA means a new ceiling for any line that already has a COB picked
+		cbaApplyParentCbaLock();
 	}
 
 	// Pulls the rest of the form in from a parent CBA record — Fiscal Year, Budget Allocation Amount lines
@@ -4375,6 +4424,7 @@ $cbaAsModal = !empty($cbaAsModal);
 		document.getElementById('cba_id').value = '';
 		document.getElementById('cba_search').classList.remove('cba-has-value');
 		baaRefreshAllCbaAmounts(); // no parent any more -> no CBA Available Balance ceiling until one is picked again
+		cbaApplyParentCbaLock();
 	}
 
 	function cbaKeyNav(e) {
@@ -5469,6 +5519,7 @@ $cbaAsModal = !empty($cbaAsModal);
 		// of a CBA's reservation) — a stale cache here would keep showing an outdated CBA Available Balance /
 		// "Where this COB's balance is held" drilldown for the same COB in a fresh request.
 		BAA_EARMARKS = {}; COB_EARMARKS_CACHE = {}; BAA_CBA_AMT_SEQ = {};
+		CBA_PARENT_LOCK_PREV = {}; // a fresh modal open starts from pristine (unlocked) markup
 		ALLOC_CFA_OPTION = null;
 		CBA_DATA = []; CBA_LOADED = false; CBA_ACTIVE_IDX = -1;
 		_sdocCount = 0;
