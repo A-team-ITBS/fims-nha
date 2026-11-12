@@ -54,7 +54,7 @@ if (!isset($_vf_api)) {
    readone.php's #vr-root rules. */
 #vf-root .vje-grp-edit-table tr.vje-grp-hdr td { padding-top: 12px; border-bottom: 1px solid var(--afims-border, #E4ECF2); background: var(--afims-surface-subtle, #F4F7FA); }
 #vf-root .vje-grp-edit-table tr.vje-grp-hdr:first-child td { padding-top: 6px; }
-#vf-root .vje-grp-edit-table tr.vje-grp-hdr input.vje-grp-acct { font-weight: 700; border: none; background: transparent; padding: 6px 2px; }
+#vf-root .vje-grp-edit-table tr.vje-grp-hdr input.vje-grp-acct { font-weight: 700; background: var(--afims-surface, #fff); }
 #vf-root .vje-grp-edit-table tr.vje-grp-hdr .vje-grp-debit,
 #vf-root .vje-grp-edit-table tr.vje-grp-hdr .vje-grp-credit { font-weight: 700; font-family: "IBM Plex Mono", monospace; text-align: right; }
 #vf-root .vje-grp-edit-table tr.vje-grp-line td:first-child { padding-left: 22px; }
@@ -604,7 +604,10 @@ async function vf_loadDeductionTypes() {
 
 async function vf_loadCoaOptions() {
     try {
-        const json = await vf_getJson('/chart-of-accounts/all?status=Active');
+        // postable_only (not the region-scoped /chart-of-accounts/all) — posting a voucher isn't
+        // restricted to the preparer's own region, so every active+postable GL account should be
+        // selectable here regardless of which region it belongs to.
+        const json = await vf_getJson('/chart_of_accounts/all?postable_only=1');
         vf_coaOptions = (json.data ?? []).filter(a => a.posting_allowed);
         nhaSearchableSelect($vf('vf-account-code'), vf_coaOptions.map(a => ({ value: a.account_code, label: a.account_title })));
     } catch (e) {

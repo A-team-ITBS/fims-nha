@@ -77,7 +77,7 @@ $_vr_rcId          = $_vr_isSysAdmin ? null : ($_vr_userRow['rc_id'] ?? null);
 
 #vr-root .vje-grp-edit-table tr.vje-grp-hdr td { padding-top: 12px; border-bottom: 1px solid var(--afims-border, #E4ECF2); background: var(--afims-surface-subtle, #F4F7FA); }
 #vr-root .vje-grp-edit-table tr.vje-grp-hdr:first-child td { padding-top: 6px; }
-#vr-root .vje-grp-edit-table tr.vje-grp-hdr input.vje-grp-acct { font-weight: 700; border: none; background: transparent; padding: 6px 2px; }
+#vr-root .vje-grp-edit-table tr.vje-grp-hdr input.vje-grp-acct { font-weight: 700; background: var(--afims-surface, #fff); }
 #vr-root .vje-grp-edit-table tr.vje-grp-hdr .vje-grp-debit,
 #vr-root .vje-grp-edit-table tr.vje-grp-hdr .vje-grp-credit { font-weight: 700; font-family: "IBM Plex Mono", monospace; text-align: right; }
 #vr-root .vje-grp-edit-table tr.vje-grp-line td:first-child { padding-left: 22px; }
@@ -154,7 +154,7 @@ async function vr_open(id) {
         // while vje_visible(dv), so fetch it here too whenever there's a JEV to show at all.
         if (!VJE_COA.length && (vr_dv.jev?.lines ?? []).length) {
             try {
-                const coaJson = await vr_authFetch(`${VR_API}/chart-of-accounts/all?status=Active`).then(r => r.json());
+                const coaJson = await vr_authFetch(`${VR_API}/chart_of_accounts/all?postable_only=1`).then(r => r.json());
                 VJE_COA = (coaJson.data ?? []).filter(a => a.posting_allowed);
             } catch (e) { /* grouped card falls back to showing the raw account_code */ }
         }
@@ -532,7 +532,10 @@ async function vje_init(dv) {
     vje_dv = dv;
     try {
         const [coaJson, atcJson, rcJson, slJson] = await Promise.all([
-            vje_getJson('/chart-of-accounts/all?status=Active'),
+            // postable_only (not the region-scoped /chart-of-accounts/all) — posting a voucher
+            // isn't restricted to the preparer's own region, so every active+postable GL account
+            // should be selectable here regardless of which region it belongs to.
+            vje_getJson('/chart_of_accounts/all?postable_only=1'),
             vje_getJson('/voucher/atc-codes'),
             vje_getJson('/responsibility-center/all'),
             vje_getJson('/voucher/sl-codes'),
