@@ -60,6 +60,28 @@ $_vr_rcId          = $_vr_isSysAdmin ? null : ($_vr_userRow['rc_id'] ?? null);
 #vr-root .vje-tax-box dl.vje-tax-total dt, #vr-root .vje-tax-box dl.vje-tax-total dd { font-weight: 700; font-size: 13.5px; }
 #vr-root .vje-auto-tag { display: inline-block; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
     padding: 1px 6px; border-radius: 999px; background: var(--afims-primary-soft, #E6EBF6); color: var(--afims-primary-text, #0035A9); margin-left: 4px; }
+#vr-root .vr-rfa-list { display: flex; flex-direction: column; gap: 10px; }
+#vr-root .vr-rfa-item { border: 1px solid var(--afims-border, #E4ECF2); border-radius: 10px; padding: 10px 12px; }
+#vr-root .vr-att-list { display: flex; flex-direction: column; gap: 6px; }
+#vr-root .vr-att-item { display: block; font-size: 13px; color: var(--afims-primary-text, #0035A9); text-decoration: none; }
+#vr-root .vr-att-item:hover { text-decoration: underline; }
+
+#vr-root .vje-grp-table { border-collapse: collapse; width: 100%; font-size: 13px; }
+#vr-root .vje-grp-table th { padding: 5px 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .03em; color: var(--afims-text-muted, #62657E); border-bottom: 1px solid var(--afims-border, #E4ECF2); }
+#vr-root .vje-grp-table td { padding: 5px 4px; border-bottom: 1px solid var(--afims-surface-subtle, #F4F7FA); }
+#vr-root .vje-grp-hdr td { font-weight: 700; padding-top: 10px; border-bottom: 1px solid var(--afims-border, #E4ECF2); }
+#vr-root .vje-grp-hdr:first-child td { padding-top: 5px; }
+#vr-root .vje-grp-sub td:first-child { padding-left: 20px; color: var(--afims-text, #1e293b); font-weight: 400; }
+#vr-root .vje-grp-amt { text-align: right; font-family: "IBM Plex Mono", monospace; white-space: nowrap; width: 120px; }
+#vr-root .vje-grp-code { text-align: center; font-family: "IBM Plex Mono", monospace; color: var(--afims-text-muted, #62657E); width: 60px; }
+
+#vr-root .vje-grp-edit-table tr.vje-grp-hdr td { padding-top: 12px; border-bottom: 1px solid var(--afims-border, #E4ECF2); background: var(--afims-surface-subtle, #F4F7FA); }
+#vr-root .vje-grp-edit-table tr.vje-grp-hdr:first-child td { padding-top: 6px; }
+#vr-root .vje-grp-edit-table tr.vje-grp-hdr input.vje-grp-acct { font-weight: 700; background: var(--afims-surface, #fff); }
+#vr-root .vje-grp-edit-table tr.vje-grp-hdr .vje-grp-debit,
+#vr-root .vje-grp-edit-table tr.vje-grp-hdr .vje-grp-credit { font-weight: 700; font-family: "IBM Plex Mono", monospace; text-align: right; }
+#vr-root .vje-grp-edit-table tr.vje-grp-line td:first-child { padding-left: 22px; }
+#vr-root .vje-grp-edit-table .vje-grp-add-btn { font-size: 11.5px; padding: 4px 10px; }
 
 @media print {
     body * { visibility: hidden; }
@@ -71,7 +93,7 @@ $_vr_rcId          = $_vr_isSysAdmin ? null : ($_vr_userRow['rc_id'] ?? null);
 
 <div id="vr-root" class="nha-root">
     <div id="vr-overlay" class="nha-overlay no-print">
-        <div class="nha-modal nha-modal-xl" role="dialog" aria-modal="true" aria-labelledby="vr-modal-title">
+        <div class="nha-modal nha-modal-full" role="dialog" aria-modal="true" aria-labelledby="vr-modal-title">
 
             <div class="nha-modal-hdr">
                 <h3 class="nha-modal-title" id="vr-modal-title">Disbursement Voucher</h3>
@@ -127,6 +149,15 @@ async function vr_open(id) {
         const json = await res.json();
         if (!json.success) throw new Error(json.message || 'Failed to load disbursement voucher.');
         vr_dv = json.data;
+        // vje_groupedEntriesCard() needs GL account titles even outside the Accounting stage (a
+        // RELEASED voucher's printout should still show its entries) — vje_init() only loads this
+        // while vje_visible(dv), so fetch it here too whenever there's a JEV to show at all.
+        if (!VJE_COA.length && (vr_dv.jev?.lines ?? []).length) {
+            try {
+                const coaJson = await vr_authFetch(`${VR_API}/chart_of_accounts/all?postable_only=1`).then(r => r.json());
+                VJE_COA = (coaJson.data ?? []).filter(a => a.posting_allowed);
+            } catch (e) { /* grouped card falls back to showing the raw account_code */ }
+        }
         vr_render(vr_dv);
     } catch (e) {
         $vr('vr-body').innerHTML = `<div class="nha-error" style="display:flex;"><span>${vr_esc(e.message)}</span></div>`;
@@ -202,10 +233,11 @@ function vr_render(dv) {
             <dl class="vr-dl vr-dl3">
                 <div><dt>DV No.</dt><dd class="nha-mono">${vr_esc(dv.dv_no)}</dd></div>
                 <div><dt>DV Date</dt><dd>${vr_fmtDate(dv.dv_date)}</dd></div>
-                <div><dt>Fiscal Year</dt><dd>${vr_esc(dv.fiscal_yr)}</dd></div>
-                <div><dt>Expense Class</dt><dd>${vr_esc(dv.expense_class) || '—'}</dd></div>
-                <div><dt>RFA No.</dt><dd>${vr_esc(dv.rfa_allocation_number) || '—'}</dd></div>
             </dl>
+        </div>
+        <div class="vr-card">
+            <p class="vr-card-title">Request for Allotment (RFA)</p>
+            ${vr_rfaSection(dv)}
         </div>
         ${claimantSection}
         <div class="vr-card">
@@ -218,15 +250,16 @@ function vr_render(dv) {
             <table class="vr-ledger">
                 <tr><td class="vr-l-label">Budget</td><td class="vr-l-val">${vr_peso(dv.budget_amount)}</td></tr>
                 <tr><td class="vr-l-label">Obligation</td><td class="vr-l-val">${vr_peso(dv.obligation_amount)}</td></tr>
-                <tr><td class="vr-l-label">Payments${(Number(dv.payments_prior_amount) || 0) > 0 ? ' <small>(prior draws on this RFA)</small>' : ''}</td><td class="vr-l-val">${vr_peso(dv.payments_prior_amount)}</td></tr>
+                <tr><td class="vr-l-label">Payments${(Number(dv.payments_prior_amount) || 0) > 0 ? ' <small>(prior draws on these RFAs)</small>' : ''}</td><td class="vr-l-val">${vr_peso(dv.payments_prior_amount)}</td></tr>
                 <tr><td class="vr-l-label">This Request</td><td class="vr-l-val">${vr_peso(dv.net_amount)}</td></tr>
                 <tr class="vr-l-total"><td class="vr-l-label">Total Payments</td><td class="vr-l-val">${vr_peso((Number(dv.payments_prior_amount) || 0) + (Number(dv.net_amount) || 0))}</td></tr>
                 <tr><td class="vr-l-label">Balance</td><td class="vr-l-val">${vr_peso(dv.balance_amount)}</td></tr>
             </table>
             ${dv.remarks ? `<p class="vr-particulars" style="margin-top:12px;"><strong>Remarks:</strong> ${vr_esc(dv.remarks)}</p>` : ''}
         </div>
+        ${vr_attachmentsSection(dv)}
         ${deductionSection}
-        ${vje_visible(dv) ? vje_section(dv) : ''}
+        ${vje_visible(dv) ? vje_section(dv) : vje_groupedEntriesCard(dv)}
         <div class="vr-card" style="margin-bottom:0;">
             <p class="vr-card-title">Workflow History</p>
             <dl class="vr-dl vr-dl3">
@@ -239,6 +272,39 @@ function vr_render(dv) {
 
     vr_renderActions(dv);
     if (vje_visible(dv)) vje_init(dv);
+}
+
+/* One or more RFAs this DV was drawn against (see app/pages/voucher/form.php's multi-select) —
+   dv.rfas is the full-detail array from DisbursementVoucherService::fetchById(), built from
+   fims.budget_allocation.dv_id (reverse lookup — see DisbursementVoucherService::linkRfas()). */
+function vr_rfaSection(dv) {
+    const rfas = dv.rfas ?? [];
+    if (!rfas.length) return `<p class="vr-particulars">—</p>`;
+    return `<div class="vr-rfa-list">${rfas.map(r => `
+        <div class="vr-rfa-item">
+            <strong class="nha-mono">${vr_esc(r.allocation_number)}</strong>
+            <dl class="vr-dl vr-dl3" style="margin-top:6px;">
+                <div><dt>Department</dt><dd>${vr_esc(r.department_name) || 'Unassigned'}</dd></div>
+                <div><dt>Fiscal Year</dt><dd>${vr_esc(r.fiscal_year)}</dd></div>
+                <div><dt>Vendor</dt><dd>${vr_esc(r.vendor_name) || '—'}</dd></div>
+                <div><dt>Remaining</dt><dd>${vr_peso(r.remaining_balance)} of ${vr_peso(r.budget_amount)}</dd></div>
+            </dl>
+        </div>`).join('')}</div>`;
+}
+
+/* Supporting Documents attached via the Attachments card on the form — dv.file_attachments comes
+   from FileUploadServices::attachmentsFor(). Nothing to show when the voucher has none. */
+function vr_attachmentsSection(dv) {
+    const files = dv.file_attachments ?? [];
+    if (!files.length) return '';
+    return `<div class="vr-card">
+        <p class="vr-card-title">Attachments</p>
+        <div class="vr-att-list">${files.map(f => {
+            const url = f.file_meta?.view_url || f.file_meta?.link || '';
+            const name = vr_esc(f.file_meta?.document_name || 'Supporting Document');
+            return url ? `<a class="vr-att-item" href="${url}" target="_blank" rel="noopener noreferrer">${name}</a>` : `<span class="vr-att-item">${name}</span>`;
+        }).join('')}</div>
+    </div>`;
 }
 
 // Mirrors DisbursementVoucherService::authorizeTransition() — hiding a button is cosmetic only,
@@ -281,6 +347,7 @@ let VJE_ATC = []; // active ATC codes, loaded once per modal open
 let VJE_RC  = []; // responsibility centers, for ATC "Chargeability", loaded once per modal open
 let VJE_SL  = []; // SL masters, for the Accounting Entries grid's SL Code picker, loaded once per modal open
 let vje_seq    = 0;
+let vje_groupSeq = 0; // GL account-group id counter for the Accounting Entries grid (see vje_addGroup())
 let vje_atcSeq = 0;
 let vje_dv     = null; // the open DV — ATC rows reference its net_amount (deductions already applied) as a Tax Base default
 let vje_autoMode = true; // true until a JEV has been saved at least once this visit — governs whether Accounting Entries auto-syncs from Deduction/ATC rows (see vje_syncAutoLines)
@@ -293,6 +360,78 @@ function vje_visible(dv) {
 
 function vje_section(dv) {
     return vje_atcCard(dv) + vje_entriesCard(dv);
+}
+
+/**
+ * Read-only "Accounting Entries" presentation shown whenever a JEV exists but Accounting isn't
+ * actively editing it (any stage past FOR_ACCOUNTING — see vje_visible()'s doc comment) — the
+ * editable grid (vje_entriesCard) disappears once the DV moves on, so without this the printed
+ * voucher would show no journal entry at all past that point. Grouped by GL account (UACS code):
+ * the group's own row carries the account's Debit/Credit TOTAL (summed from its own lines), and
+ * each line under it is its SL Code breakdown. The sub-line label is the line's own description
+ * (set when Accounting prepared the JEV — see vje_syncAutoLines()) falling back to its SL Detail /
+ * SL Code name, and the small number is the line's position in the JEV (jevl.line_number), not an
+ * SL code.
+ */
+function vje_groupedEntriesCard(dv) {
+    const lines = dv.jev?.lines ?? [];
+    if (!lines.length) return '';
+
+    const groups = [];
+    const byAccount = new Map();
+    lines.forEach(l => {
+        if (!byAccount.has(l.account_code)) {
+            const group = { account_code: l.account_code, account_title: l.account_title, lines: [], debit: 0, credit: 0 };
+            byAccount.set(l.account_code, group);
+            groups.push(group);
+        }
+        const g = byAccount.get(l.account_code);
+        g.lines.push(l);
+        g.debit  += Number(l.debit)  || 0;
+        g.credit += Number(l.credit) || 0;
+    });
+
+    const rows = groups.map(g => {
+        const subRows = g.lines.map(l => `<tr class="vje-grp-sub">
+                <td>${vr_esc(l.description || l.sl_detail_name || l.sl_name || '—')}</td>
+                <td class="vje-grp-code">${vr_esc(l.sl_code) || ''}</td>
+                <td class="vje-grp-amt">${Number(l.debit)  > 0 ? vr_peso(l.debit)  : ''}</td>
+                <td class="vje-grp-amt">${Number(l.credit) > 0 ? vr_peso(l.credit) : ''}</td>
+                <td class="vje-grp-code">${String(l.line_number).padStart(2, '0')}</td>
+            </tr>`).join('');
+        return `<tr class="vje-grp-hdr">
+                <td>${vr_esc(g.account_code)} — ${vr_esc(g.account_title || '—')}</td>
+                <td></td>
+                <td class="vje-grp-amt">${vr_peso(g.debit)}</td>
+                <td class="vje-grp-amt">${vr_peso(g.credit)}</td>
+                <td></td>
+            </tr>${subRows}`;
+    }).join('');
+
+    const totalDebit  = lines.reduce((s, l) => s + (Number(l.debit)  || 0), 0);
+    const totalCredit = lines.reduce((s, l) => s + (Number(l.credit) || 0), 0);
+
+    return `<div class="vr-card">
+        <p class="vr-card-title">Accounting Entries</p>
+        <div style="overflow-x:auto;">
+        <table class="vje-grp-table" style="min-width:600px;">
+            <thead><tr>
+                <th style="text-align:left;">Account Code / Description</th>
+                <th style="width:70px;">SL Code</th>
+                <th style="width:110px;">Debit (₱)</th>
+                <th style="width:110px;">Credit (₱)</th>
+                <th style="width:26px;">#</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+            <tfoot><tr class="vje-grp-hdr">
+                <td colspan="2" style="text-align:right;">Total</td>
+                <td class="vje-grp-amt">${vr_peso(totalDebit)}</td>
+                <td class="vje-grp-amt">${vr_peso(totalCredit)}</td>
+                <td></td>
+            </tr></tfoot>
+        </table>
+        </div>
+    </div>`;
 }
 
 function vje_atcCard(dv) {
@@ -347,33 +486,33 @@ function vje_entriesCard(dv) {
                 <p class="vr-card-title" style="margin:0;">Accounting Entries</p>
                 <span class="vje-badge">Accounting Entry</span>
             </div>
-            <p class="vr-hint" style="margin:0 0 8px;">Lines marked <span class="vje-auto-tag">auto</span> are filled from Deduction/ATC rows that have a UACS account code, and stay in sync with them until this Journal Entry is first saved.</p>
+            <p class="vr-hint" style="margin:0 0 8px;">Grouped by GL account (UACS code) — pick the account once per group (<span class="vje-auto-tag">auto</span> groups are filled from Deduction/ATC rows that have a UACS account code, and stay in sync with them until this Journal Entry is first saved), then add one SL Code line per amount under it.</p>
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
                 <span class="vje-amt-badge">Required: DR = CR (balanced)</span>
                 <span class="vje-amt-badge">Gross: <span id="vje-badge-gross">₱ 0.00</span></span>
                 <span class="vje-amt-badge">Net after Deductions: <span id="vje-badge-net-ded">₱ 0.00</span></span>
             </div>
             <div style="overflow-x:auto;">
-                <table class="vr-ledger" style="min-width:760px;">
+                <table class="vr-ledger vje-grp-edit-table" style="min-width:760px;">
                     <thead><tr>
-                        <th style="width:26px;">#</th>
-                        <th style="text-align:left;">Account Code *</th>
+                        <th style="text-align:left;">Account Code / Description</th>
                         <th style="text-align:left;">SL Code</th>
-                        <th style="text-align:left;">SL Detail</th>
-                        <th style="text-align:right;width:110px;">Debit (₱) *</th>
-                        <th style="text-align:right;width:110px;">Credit (₱) *</th>
+                        <th style="text-align:right;width:110px;">Debit (₱)</th>
+                        <th style="text-align:right;width:110px;">Credit (₱)</th>
+                        <th style="width:26px;">#</th>
                         <th style="width:30px;"></th>
                     </tr></thead>
                     <tbody id="vje-lines-tbody"></tbody>
                     <tfoot><tr class="vr-l-total">
-                        <td colspan="4" style="text-align:right;">Total</td>
+                        <td colspan="2" style="text-align:right;">Total</td>
                         <td class="vr-l-val" id="vje-total-debit">₱ 0.00</td>
                         <td class="vr-l-val" id="vje-total-credit">₱ 0.00</td>
+                        <td></td>
                         <td></td>
                     </tr></tfoot>
                 </table>
             </div>
-            <button type="button" class="nha-btn nha-btn-ghost" style="margin-top:8px;" onclick="vje_addLine()">+ Add Line</button>
+            <button type="button" class="nha-btn nha-btn-ghost" style="margin-top:8px;" onclick="vje_addNewGroup()">+ Add GL Account</button>
             <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;">
                 <span id="vje-balance-msg" style="font-weight:600;font-size:13px;"></span>
                 <button type="button" class="nha-btn nha-btn-primary" onclick="vje_save()">Save Journal Entry</button>
@@ -393,7 +532,10 @@ async function vje_init(dv) {
     vje_dv = dv;
     try {
         const [coaJson, atcJson, rcJson, slJson] = await Promise.all([
-            vje_getJson('/chart-of-accounts/all?status=Active'),
+            // postable_only (not the region-scoped /chart-of-accounts/all) — posting a voucher
+            // isn't restricted to the preparer's own region, so every active+postable GL account
+            // should be selectable here regardless of which region it belongs to.
+            vje_getJson('/chart_of_accounts/all?postable_only=1'),
             vje_getJson('/voucher/atc-codes'),
             vje_getJson('/responsibility-center/all'),
             vje_getJson('/voucher/sl-codes'),
@@ -412,12 +554,23 @@ async function vje_init(dv) {
     vje_recalcAtc();
 
     vje_seq = 0;
+    vje_groupSeq = 0;
     $vr('vje-lines-tbody').innerHTML = '';
     if (dv.jev && (dv.jev.lines ?? []).length) {
         // Already saved once — respect what Accounting committed; auto-sync stops here even if
-        // they add more ATC rows afterward (see vje_syncAutoLines's doc comment).
+        // they add more ATC rows afterward (see vje_syncAutoLines's doc comment). Lines were saved
+        // in GL-grouped order (see vje_collectLines()), so a run of consecutive same-account lines
+        // reopens as one group, same as it was entered.
         vje_autoMode = false;
-        dv.jev.lines.forEach(l => vje_addLine(l));
+        let lastAcct = null, gid = null;
+        dv.jev.lines.forEach(l => {
+            if (l.account_code !== lastAcct) {
+                gid = vje_addGroup(l.account_code);
+                lastAcct = l.account_code;
+            }
+            vje_addGroupLine(gid, l);
+        });
+        vje_renumber();
         vje_recalc();
     } else {
         vje_autoMode = true;
@@ -434,10 +587,7 @@ function vje_addAtcLine(a = null) {
     const tr = document.createElement('tr');
     tr.id = `vje-atc-row-${idx}`;
     tr.innerHTML = `
-        <td><select class="vje-atc-code">
-            <option value="">— Select ATC —</option>
-            ${VJE_ATC.map(c => `<option value="${vr_esc(c.atc_code)}">${vr_esc(c.atc_code)} — ${vr_esc(c.description)}</option>`).join('')}
-        </select></td>
+        <td><input type="text" class="vje-atc-code" placeholder="Search ATC code…"></td>
         <td><input type="number" class="vje-atc-rate" min="0" max="100" step="0.01" placeholder="0.00"></td>
         <td><input type="number" class="vje-atc-base" min="0" step="0.01" placeholder="0.00"></td>
         <td class="vr-l-val vje-atc-wh">₱ 0.00</td>
@@ -450,9 +600,12 @@ function vje_addAtcLine(a = null) {
     tr.querySelector('.vje-atc-rate').value = a?.rate ?? '';
     tr.querySelector('.vje-atc-base').value = a ? (Number(a.tax_base) || 0).toFixed(2) : (Number(vje_dv?.net_amount) || 0).toFixed(2);
     tr.querySelector('.vje-atc-rc').value   = a?.chargeability ?? '';
-    tr.querySelector('.vje-atc-code').addEventListener('change', () => vje_recalcAtcLine(idx));
+    tr.querySelector('.vje-atc-code').addEventListener('change', () => vje_onAtcCodeSelect(idx));
     tr.querySelectorAll('.vje-atc-rate, .vje-atc-base').forEach(el => el.addEventListener('input', () => vje_recalcAtcLine(idx)));
     $vr('vje-atc-tbody').appendChild(tr);
+    // Bound after the row is attached to the DOM — nhaSearchableSelect reads the input's live
+    // parentElement to anchor the dropdown, which is unreliable on a still-detached node.
+    nhaSearchableSelect(tr.querySelector('.vje-atc-code'), VJE_ATC.map(c => ({ value: c.atc_code, label: c.description })));
     vje_recalcAtcLine(idx);
 }
 
@@ -460,6 +613,32 @@ function vje_removeAtcLine(idx) {
     $vr(`vje-atc-row-${idx}`)?.remove();
     vje_recalcAtc();
     vje_syncAutoLines();
+}
+
+/**
+ * Picking an ATC code prefills the rest of its row — same convention as app/pages/voucher/form.php's
+ * vf_onAtcCodeSelect(): Rate(%) always follows the code's own BIR default (fims.atc_codes.tax_rate,
+ * overwriting whatever was there), Tax Base is already defaulted to this DV's net_amount at row
+ * creation (see vje_addAtcLine) and is left alone here, and Chargeability defaults — if not already
+ * set — to the first RFA this DV cites (fims.budget_allocation.requesting_rc_id), since that's who
+ * the withholding is normally charged against.
+ */
+function vje_onAtcCodeSelect(idx) {
+    const tr = $vr(`vje-atc-row-${idx}`);
+    if (!tr) return;
+    const code   = tr.querySelector('.vje-atc-code').value;
+    const atcDef = VJE_ATC.find(c => c.atc_code === code);
+    const rateEl = tr.querySelector('.vje-atc-rate');
+    const rcEl   = tr.querySelector('.vje-atc-rc');
+
+    if (atcDef && isFinite(Number(atcDef.tax_rate))) rateEl.value = Number(atcDef.tax_rate).toFixed(2);
+
+    if (!rcEl.value) {
+        const primaryRc = vje_dv?.rfas?.[0]?.requesting_rc_id;
+        if (primaryRc) rcEl.value = primaryRc;
+    }
+
+    vje_recalcAtcLine(idx);
 }
 
 function vje_recalcAtcLine(idx) {
@@ -507,11 +686,157 @@ function vje_recalcAtc() {
  * Only runs while vje_autoMode is true — see vje_init()'s doc comment. A no-op once Accounting has
  * saved this Journal Entry at least once this visit.
  */
+/* ── Accounting Entries grid: GL-grouped, "Select GL then its sub-lines" ──────────────────────
+   One header row per GL account (its own Account Code picker + add/remove-group controls),
+   followed by one row per amount under that account — Description, an optional nested SL Code
+   combo (SL Code -> SL Detail), Debit/Credit, and a running line number. Mirrors
+   app/pages/voucher/form.php's cascading GL -> SL Code convention (vf_populateSlCombo) but one
+   level up: GL -> its own lines. ── */
+
+function vje_groupHdr(gid) {
+    return $vr('vje-lines-tbody').querySelector(`tr.vje-grp-hdr[data-group-id="${gid}"]`);
+}
+function vje_groupAcct(gid) {
+    return vje_groupHdr(gid)?.querySelector('.vje-grp-acct').value.trim() || '';
+}
+function vje_groupLines(gid) {
+    return [...$vr('vje-lines-tbody').querySelectorAll(`tr.vje-grp-line[data-group-id="${gid}"]`)];
+}
+/** The existing group whose Account Code already matches, or a freshly created one. */
+function vje_findOrCreateGroup(acctCode) {
+    const hdr = [...$vr('vje-lines-tbody').querySelectorAll('tr.vje-grp-hdr')]
+        .find(h => h.querySelector('.vje-grp-acct').value.trim() === acctCode && acctCode !== '');
+    return hdr ? hdr.dataset.groupId : vje_addGroup(acctCode);
+}
+
+function vje_addGroup(acctCode = '') {
+    const gid = ++vje_groupSeq;
+    const hdr = document.createElement('tr');
+    hdr.className = 'vje-grp-hdr';
+    hdr.dataset.groupId = gid;
+    hdr.innerHTML = `
+        <td colspan="2"><input type="text" class="vje-grp-acct" placeholder="Search GL account code (UACS)…"></td>
+        <td class="vr-l-val vje-grp-debit"></td>
+        <td class="vr-l-val vje-grp-credit"></td>
+        <td style="text-align:right;"><button type="button" class="nha-btn nha-btn-ghost vje-grp-add-btn" title="Add an SL Code line under this account">+ Line</button></td>
+        <td><button type="button" class="vje-remove" title="Remove this account and its lines">&times;</button></td>`;
+    hdr.querySelector('.vje-grp-acct').value = acctCode;
+    $vr('vje-lines-tbody').appendChild(hdr);
+    // Bound after the row is attached to the DOM — nhaSearchableSelect reads the input's live
+    // parentElement to anchor the dropdown, which is unreliable on a still-detached node.
+    nhaSearchableSelect(hdr.querySelector('.vje-grp-acct'), VJE_COA.map(a => ({ value: a.account_code, label: a.account_title })));
+    hdr.querySelector('.vje-grp-acct').addEventListener('change', () => vje_onGroupAcctChange(gid));
+    hdr.querySelector('.vje-grp-add-btn').addEventListener('click', () => { vje_addGroupLine(gid); vje_renumber(); vje_recalc(); });
+    hdr.querySelector('.vje-remove').addEventListener('click', () => vje_removeGroup(gid));
+    vje_updateGroupHeaderTotals(gid);
+    return gid;
+}
+
+/** The group's own Debit/Credit total — summed from this group's SL Code lines (never
+    independently edited). */
+function vje_updateGroupHeaderTotals(gid) {
+    const hdr = vje_groupHdr(gid);
+    if (!hdr) return;
+    const lines = vje_groupLines(gid).map(tr => ({
+        debit: parseFloat(tr.querySelector('.vje-debit').value) || 0,
+        credit: parseFloat(tr.querySelector('.vje-credit').value) || 0,
+    }));
+    hdr.querySelector('.vje-grp-debit').textContent  = vr_peso(lines.reduce((s, l) => s + l.debit, 0));
+    hdr.querySelector('.vje-grp-credit').textContent = vr_peso(lines.reduce((s, l) => s + l.credit, 0));
+}
+
+function vje_addNewGroup() {
+    const gid = vje_addGroup('');
+    vje_addGroupLine(gid);
+    vje_renumber();
+}
+
+function vje_removeGroup(gid) {
+    vje_groupLines(gid).forEach(tr => tr.remove());
+    vje_groupHdr(gid)?.remove();
+    vje_renumber();
+    vje_recalc();
+}
+
+/** GL Account Code changed on a group header — rebuild every line's SL Code combo (nested
+    SL Code -> SL Detail options) under the newly-picked GL account, preserving a line's previous
+    pick only if it still belongs to this account. */
+function vje_onGroupAcctChange(gid) {
+    const acctCode = vje_groupAcct(gid);
+    vje_groupLines(gid).forEach(tr => {
+        const lineId = tr.dataset.lineId;
+        const [slCode, slDetailId] = vje_comboValue(tr);
+        vje_populateSlCombo(lineId, acctCode, slCode, slDetailId);
+    });
+    vje_updateGroupHeaderTotals(gid);
+    vje_recalc();
+}
+
+function vje_addGroupLine(gid, d = null) {
+    const hdr = vje_groupHdr(gid);
+    if (!hdr) return null;
+    const lineId = ++vje_seq;
+    const tr = document.createElement('tr');
+    tr.id = `vje-row-${lineId}`;
+    tr.className = 'vje-grp-line';
+    tr.dataset.groupId = gid;
+    tr.dataset.lineId  = lineId;
+    tr.innerHTML = `
+        <td><input type="text" class="vje-line-desc" placeholder="Description"></td>
+        <td><select class="vje-sl-combo"><option value="">— None —</option></select></td>
+        <td><input type="number" class="vje-debit" min="0" step="0.01" placeholder="0.00"></td>
+        <td><input type="number" class="vje-credit" min="0" step="0.01" placeholder="0.00"></td>
+        <td class="vr-l-val vje-line-no"></td>
+        <td><button type="button" class="vje-remove" title="Remove line" onclick="vje_removeGroupLine(${lineId})">&times;</button></td>`;
+    tr.querySelector('.vje-line-desc').value = d?.description ?? '';
+    tr.querySelector('.vje-debit').value  = Number(d?.debit)  > 0 ? Number(d.debit).toFixed(2)  : '';
+    tr.querySelector('.vje-credit').value = Number(d?.credit) > 0 ? Number(d.credit).toFixed(2) : '';
+    tr.querySelector('.vje-debit').addEventListener('input', vje_recalc);
+    tr.querySelector('.vje-credit').addEventListener('input', vje_recalc);
+    // Insert right after this group's last line (or right after its header if it has none yet) —
+    // keeps every line visually/physically under its own GL header.
+    const existing = vje_groupLines(gid);
+    (existing.length ? existing[existing.length - 1] : hdr).after(tr);
+    vje_populateSlCombo(lineId, vje_groupAcct(gid), d?.sl_code ?? null, d?.sl_detail_id ?? null);
+    vje_recalc();
+    return lineId;
+}
+
+function vje_removeGroupLine(lineId) {
+    const tr = $vr(`vje-row-${lineId}`);
+    const gid = tr?.dataset.groupId;
+    tr?.remove();
+    if (gid && vje_groupLines(gid).length === 0) vje_removeGroup(gid); // header with no lines left is dead weight
+    vje_renumber();
+    vje_recalc();
+}
+
+/** Running "01", "02", … across every line (not header) row, in on-screen order — same number the
+    read-only vje_groupedEntriesCard() prints once this JEV is saved. */
+function vje_renumber() {
+    let n = 0;
+    $vr('vje-lines-tbody').querySelectorAll('tr.vje-grp-line').forEach(tr => {
+        n += 1;
+        tr.querySelector('.vje-line-no').textContent = String(n).padStart(2, '0');
+        const descCell = tr.querySelector('.vje-line-desc').parentElement;
+        let tag = descCell.querySelector('.vje-auto-tag');
+        if (tr.dataset.autoSource) {
+            if (!tag) descCell.insertAdjacentHTML('beforeend', ' <span class="vje-auto-tag">auto</span>');
+        } else {
+            tag?.remove();
+        }
+    });
+}
+
 function vje_syncAutoLines() {
     if (!vje_autoMode) return;
     const gross = Number(vje_dv?.gross_amount) || 0;
 
-    vje_upsertAutoLine('dr', { account_code: vje_dv?.account_code || '', debit: gross, credit: 0 });
+    // description is what the grouped read-only "Accounting Entries" card (vje_groupedEntriesCard())
+    // prints under each GL account's header — persisted with the line on save, same as
+    // account_code/debit/credit, so the printed voucher keeps reading correctly after this editing
+    // session ends.
+    vje_upsertAutoLine('dr', { account_code: vje_dv?.account_code || '', debit: gross, credit: 0, description: vje_dv?.claimant_name || '' });
 
     const dedIds = new Set();
     let dedCreditTotal = 0;
@@ -519,7 +844,7 @@ function vje_syncAutoLines() {
         if (!d.account_code) return;
         dedIds.add(String(d.dv_deduction_id));
         dedCreditTotal += Number(d.deduction_amount) || 0;
-        vje_upsertAutoLine(`ded:${d.dv_deduction_id}`, { account_code: d.account_code, debit: 0, credit: Number(d.deduction_amount) || 0 });
+        vje_upsertAutoLine(`ded:${d.dv_deduction_id}`, { account_code: d.account_code, debit: 0, credit: Number(d.deduction_amount) || 0, description: d.name });
     });
     vje_pruneAutoLines('ded:', id => dedIds.has(id));
 
@@ -535,101 +860,129 @@ function vje_syncAutoLines() {
         const credit = Math.round(base * rate) / 100;
         atcIds.add(idx);
         atcCreditTotal += credit;
-        vje_upsertAutoLine(`atc:${idx}`, { account_code: atcDef.account_code, debit: 0, credit });
+        // Several ATC rows commonly share one GL (e.g. several withholding rates all post to "Due
+        // to BIR") — vje_upsertAutoLine finds-or-creates that GL's group, so they land as sibling
+        // lines under ONE header instead of one header each.
+        vje_upsertAutoLine(`atc:${idx}`, { account_code: atcDef.account_code, debit: 0, credit, description: `${rate}% ${atcDef.description}` });
     });
     vje_pruneAutoLines('atc:', id => atcIds.has(id));
 
     const apRemainder = Math.round((gross - dedCreditTotal - atcCreditTotal) * 100) / 100;
     if (apRemainder > 0.004) {
-        vje_upsertAutoLine('ap', { account_code: '2-01-01-010', debit: 0, credit: apRemainder });
+        vje_upsertAutoLine('ap', { account_code: '2-01-01-010', debit: 0, credit: apRemainder, description: 'Net Amount Payable' });
     } else {
-        $vr('vje-lines-tbody').querySelector('tr[data-auto-source="ap"]')?.remove();
+        const tr = $vr('vje-lines-tbody').querySelector('tr.vje-grp-line[data-auto-source="ap"]');
+        const gid = tr?.dataset.groupId;
+        tr?.remove();
+        if (gid && vje_groupLines(gid).length === 0) vje_removeGroup(gid);
     }
 
+    vje_renumber();
     vje_recalc();
 }
 
 function vje_upsertAutoLine(sourceKey, d) {
-    const tr = $vr('vje-lines-tbody').querySelector(`tr[data-auto-source="${sourceKey}"]`);
+    const tr = $vr('vje-lines-tbody').querySelector(`tr.vje-grp-line[data-auto-source="${sourceKey}"]`);
     if (!tr) {
-        vje_addLine(d, sourceKey);
+        const gid = vje_findOrCreateGroup(d.account_code || '');
+        const lineId = vje_addGroupLine(gid, d);
+        $vr(`vje-row-${lineId}`).dataset.autoSource = sourceKey;
         return;
     }
-    tr.querySelector('.vje-acct').value   = d.account_code || '';
+    // If the account this line should post to changed (e.g. a different ATC code's mapped
+    // account), move it to the right group rather than leaving it under the old one.
+    if ((d.account_code || '') !== vje_groupAcct(tr.dataset.groupId)) {
+        const oldGid = tr.dataset.groupId;
+        tr.remove();
+        if (vje_groupLines(oldGid).length === 0) vje_removeGroup(oldGid);
+        const gid = vje_findOrCreateGroup(d.account_code || '');
+        const lineId = vje_addGroupLine(gid, d);
+        $vr(`vje-row-${lineId}`).dataset.autoSource = sourceKey;
+        return;
+    }
+    tr.querySelector('.vje-line-desc').value = d.description || '';
     tr.querySelector('.vje-debit').value  = d.debit  > 0 ? d.debit.toFixed(2)  : '';
     tr.querySelector('.vje-credit').value = d.credit > 0 ? d.credit.toFixed(2) : '';
 }
 
-/** Removes auto-tracked rows whose source (a Deduction or live ATC row) no longer applies. */
+/** Removes auto-tracked lines whose source (a Deduction or live ATC row) no longer applies, and
+    any group left with no lines as a result. */
 function vje_pruneAutoLines(prefix, keepFn) {
-    $vr('vje-lines-tbody').querySelectorAll(`tr[data-auto-source^="${prefix}"]`).forEach(tr => {
-        if (!keepFn(tr.dataset.autoSource.slice(prefix.length))) tr.remove();
+    $vr('vje-lines-tbody').querySelectorAll(`tr.vje-grp-line[data-auto-source^="${prefix}"]`).forEach(tr => {
+        if (keepFn(tr.dataset.autoSource.slice(prefix.length))) return;
+        const gid = tr.dataset.groupId;
+        tr.remove();
+        if (vje_groupLines(gid).length === 0) vje_removeGroup(gid);
     });
 }
 
-function vje_addLine(d = null, autoSource = null) {
-    const idx = ++vje_seq;
-    const tr = document.createElement('tr');
-    tr.id = `vje-row-${idx}`;
-    if (autoSource) tr.dataset.autoSource = autoSource;
-    tr.innerHTML = `
-        <td class="vr-l-val">${idx}${autoSource ? ' <span class="vje-auto-tag">auto</span>' : ''}</td>
-        <td><input type="text" class="vje-acct" placeholder="Search account code…"></td>
-        <td><input type="text" class="vje-sl-code" placeholder="Search SL code…"></td>
-        <td><select class="vje-sl-detail"><option value="">SL Detail…</option></select></td>
-        <td><input type="number" class="vje-debit" min="0" step="0.01" placeholder="0.00"></td>
-        <td><input type="number" class="vje-credit" min="0" step="0.01" placeholder="0.00"></td>
-        <td><button type="button" class="vje-remove" title="Remove" onclick="vje_removeLine(${idx})">&times;</button></td>`;
-    tr.querySelector('.vje-acct').value   = d?.account_code ?? '';
-    tr.querySelector('.vje-sl-code').value = d?.sl_code ?? '';
-    tr.querySelector('.vje-debit').value  = Number(d?.debit)  > 0 ? Number(d.debit).toFixed(2)  : '';
-    tr.querySelector('.vje-credit').value = Number(d?.credit) > 0 ? Number(d.credit).toFixed(2) : '';
-    tr.querySelector('.vje-debit').addEventListener('input', vje_recalc);
-    tr.querySelector('.vje-credit').addEventListener('input', vje_recalc);
-    tr.querySelector('.vje-sl-code').addEventListener('change', () => vje_loadSlDetails(idx, d?.sl_detail_id ?? null));
-    $vr('vje-lines-tbody').appendChild(tr);
-    // Bound after the row is attached to the DOM — nhaSearchableSelect reads the input's live
-    // parentElement to anchor the dropdown, which is unreliable on a still-detached node.
-    nhaSearchableSelect(tr.querySelector('.vje-acct'), VJE_COA.map(a => ({ value: a.account_code, label: a.account_title })));
-    nhaSearchableSelect(tr.querySelector('.vje-sl-code'), VJE_SL.map(s => ({ value: s.sl_code, label: s.sl_name })));
-    if (d?.sl_code) vje_loadSlDetails(idx, d?.sl_detail_id ?? null);
-    vje_recalc();
+/** Reads a line's current SL Code combo pick, split back into [sl_code, sl_detail_id] (both null
+    if "— None —" is selected) — see vje_populateSlCombo()'s value encoding. */
+function vje_comboValue(tr) {
+    const raw = tr.querySelector('.vje-sl-combo')?.value || '';
+    if (!raw) return [null, null];
+    const [slCode, slDetailId] = raw.split('::');
+    return [slCode || null, slDetailId || null];
 }
 
-async function vje_loadSlDetails(idx, selectDetailId = null) {
-    const tr = $vr(`vje-row-${idx}`);
-    if (!tr) return;
-    const slCode = tr.querySelector('.vje-sl-code').value.trim();
-    const sel    = tr.querySelector('.vje-sl-detail');
-    if (!slCode) { sel.innerHTML = '<option value="">SL Detail…</option>'; return; }
-    try {
-        const json = await vje_getJson(`/voucher/sl-codes/${encodeURIComponent(slCode)}/details`);
-        sel.innerHTML = '<option value="">— None —</option>' + (json.data ?? []).map(d =>
-            `<option value="${vr_esc(d.sl_detail_id)}">${vr_esc(d.detail_code)} — ${vr_esc(d.detail_name)}</option>`).join('');
-        if (selectDetailId) sel.value = String(selectDetailId);
-    } catch (e) {
-        sel.innerHTML = '<option value="">Could not load</option>';
+/** SL Code is a sub-list of the chosen GL Account Code (fims.sl_masters.account_code); same
+    cascading convention as app/pages/voucher/form.php's vf_populateSlCombo() — each SL Code in turn
+    has its own SL Details, so rather than two separate pickers this builds ONE combo select per
+    line: an <optgroup> per matching SL Code, with its SL Details as the selectable leaf options (an
+    SL Code with no details is offered directly as a leaf option). Option values are
+    "slCode::slDetailId" so vje_comboValue() can recover both in one read. Re-selects
+    preSlCode/preDetailId if that combination still exists under $acctCode. */
+async function vje_populateSlCombo(lineId, acctCode, preSlCode = null, preDetailId = null) {
+    const tr  = $vr(`vje-row-${lineId}`);
+    const sel = tr?.querySelector('.vje-sl-combo');
+    if (!sel) return;
+    const matching = acctCode ? VJE_SL.filter(s => s.account_code === acctCode) : [];
+    sel.innerHTML = '<option value="">— None —</option>';
+    if (!matching.length) return;
+    const detailLists = await Promise.all(matching.map(s =>
+        vje_getJson(`/voucher/sl-codes/${encodeURIComponent(s.sl_code)}/details`).then(j => j.data ?? []).catch(() => [])));
+    matching.forEach((s, i) => {
+        const details = detailLists[i];
+        if (!details.length) {
+            const opt = document.createElement('option');
+            opt.value = `${s.sl_code}::`;
+            opt.textContent = `${s.sl_code} — ${s.sl_name}`;
+            sel.appendChild(opt);
+            return;
+        }
+        const og = document.createElement('optgroup');
+        og.label = `${s.sl_code} — ${s.sl_name}`;
+        details.forEach(d => {
+            const opt = document.createElement('option');
+            opt.value = `${s.sl_code}::${d.sl_detail_id}`;
+            opt.textContent = `${d.detail_code} — ${d.detail_name}`;
+            og.appendChild(opt);
+        });
+        sel.appendChild(og);
+    });
+    if (preSlCode) {
+        const want = `${preSlCode}::${preDetailId ?? ''}`;
+        if ([...sel.options].some(o => o.value === want)) sel.value = want;
     }
-}
-
-function vje_removeLine(idx) {
-    $vr(`vje-row-${idx}`)?.remove();
-    vje_recalc();
 }
 
 function vje_collectLines() {
     const lines = [];
-    $vr('vje-lines-tbody').querySelectorAll('tr').forEach(tr => {
-        const account_code = tr.querySelector('.vje-acct').value.trim();
-        const debit        = parseFloat(tr.querySelector('.vje-debit').value)  || 0;
-        const credit       = parseFloat(tr.querySelector('.vje-credit').value) || 0;
-        const sl_code       = tr.querySelector('.vje-sl-code').value.trim();
-        const sl_detail_id  = tr.querySelector('.vje-sl-detail').value;
-        if (!account_code && debit <= 0 && credit <= 0) return; // blank trailing row
-        lines.push({
-            account_code, debit, credit,
-            sl_code      : sl_code || null,
-            sl_detail_id : sl_detail_id ? Number(sl_detail_id) : null,
+    $vr('vje-lines-tbody').querySelectorAll('tr.vje-grp-hdr').forEach(hdr => {
+        const gid          = hdr.dataset.groupId;
+        const account_code = hdr.querySelector('.vje-grp-acct').value.trim();
+        vje_groupLines(gid).forEach(tr => {
+            const debit       = parseFloat(tr.querySelector('.vje-debit').value)  || 0;
+            const credit      = parseFloat(tr.querySelector('.vje-credit').value) || 0;
+            const description = tr.querySelector('.vje-line-desc').value.trim();
+            const [sl_code, sl_detail_id] = vje_comboValue(tr);
+            if (!account_code && debit <= 0 && credit <= 0 && !description) return; // blank trailing line
+            lines.push({
+                account_code, debit, credit,
+                sl_code      : sl_code,
+                sl_detail_id : sl_detail_id ? Number(sl_detail_id) : null,
+                description  : description || null,
+            });
         });
     });
     return lines;
@@ -641,6 +994,9 @@ function vje_recalc() {
     const totalCredit = lines.reduce((s, l) => s + l.credit, 0);
     $vr('vje-total-debit').textContent  = vr_peso(totalDebit);
     $vr('vje-total-credit').textContent = vr_peso(totalCredit);
+    // Every group's own Debit/Credit total is always its own lines' sum — recomputed here too (not
+    // just on account change) so typing a debit/credit updates it live.
+    $vr('vje-lines-tbody').querySelectorAll('tr.vje-grp-hdr').forEach(hdr => vje_updateGroupHeaderTotals(hdr.dataset.groupId));
     const balanced = lines.length >= 2 && totalDebit > 0 && Math.abs(totalDebit - totalCredit) < 0.005;
     const msg = $vr('vje-balance-msg');
     msg.textContent = balanced ? 'Balanced ✓' : 'Not balanced — debits must equal credits';

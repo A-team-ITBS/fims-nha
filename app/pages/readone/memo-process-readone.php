@@ -75,6 +75,10 @@
 .mpr-docs { margin:0;padding-left:18px;font-size:13px; }
 .mpr-docs a { color:#1D4ED8;text-decoration:none; }
 .mpr-docs a:hover { text-decoration:underline; }
+/* Purpose / Description is editable in Process mode (any FMD reviewer, not just the current step's actor),
+   read-only in View mode. Saved together with Endorse / Return / Approve — see mpr_decide(). */
+.mpr-desc-input { display:block;width:100%;min-height:70px;padding:8px 10px;font:13px/1.55 inherit;color:inherit;
+    background:var(--afims-surface, #FFFFFF);border:1px solid var(--afims-border, #E4ECF2);border-radius:8px;resize:vertical;box-sizing:border-box; }
 .mpr-err { margin:0 0 12px;padding:8px 10px;font-size:12.5px;border-radius:7px;background:#FAE1E3;color:#8F222D; }
 .mpr-err[hidden] { display:none; }
 .mpr-foot { display:flex;justify-content:flex-end;gap:10px;padding:12px 20px;background:var(--afims-surface, #FFFFFF);
@@ -201,17 +205,45 @@ async function mpr_decide(action) {
     const approve = action === 'approve';
     const ref = mrq_refOf(mpr_row) ? `"${mrq_refOf(mpr_row)}"` : `#${mpr_row.allocation_id}`;
     const rv  = mpr_review();
+    const isEndorse = approve && !rv.is_final && rv.next_status;
     const ask = !approve
         ? `Return memo request ${ref} to ${rv.return_actor || 'the requesting office'}? Its status will change to ${rv.return_status || MPR_RETURNED}.`
-        : (rv.is_final || !rv.next_status)
-            ? `Approve memo request ${ref}? It will be given its allocation number and its status will change to ${MPR_APPROVED}.`
-            : `Endorse memo request ${ref}? Its status will change to ${rv.next_status}.`;
-    if (!confirm(ask)) return;
+        : isEndorse
+            ? `Endorse memo request ${ref}? Its status will change to ${rv.next_status}.`
+            : `Approve memo request ${ref}? It will be given its allocation number and its status will change to ${MPR_APPROVED}.`;
+    // Same Swal.fire() confirm convention as budget-req-page.php (title/text/icon, confirmButtonColor by
+    // severity) — Swal is loaded globally by views/layout.php.
+    const confirmed = await Swal.fire({
+        title: !approve ? 'Return Memo Request' : isEndorse ? 'Endorse Memo Request' : 'Approve Memo Request',
+        text: ask,
+        icon: approve ? 'question' : 'warning',
+        showCancelButton: true,
+        confirmButtonText: !approve ? 'Yes, return' : isEndorse ? 'Yes, endorse' : 'Yes, approve',
+        cancelButtonText: 'Cancel',
+        confirmButtonColor: approve ? '#0f2045' : '#dc3545',
+    });
+    if (!confirmed.isConfirmed) return;
 
     const seq = mpr_seq;
     mpr_setBusy(true);
     mpr_showErr('');
     try {
+        // Purpose / Description may have been edited in place (any FMD reviewer may fix a missing/wrong
+        // description — see mpr_render()) — there's no separate Save button for it any more, so it's saved
+        // here, together with this one decision, instead. Only sent if it actually changed.
+        const descEl = mpr_$('mpr-desc-input');
+        if (descEl) {
+            const descValue = descEl.value.trim();
+            if (descValue !== (mpr_row.description || '')) {
+                await mrq_request(`${MRQ_API}/update/${encodeURIComponent(mpr_row.allocation_id)}`, {
+                    method : 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body   : JSON.stringify({ description: descValue }),
+                });
+                mpr_row.description = descValue;
+            }
+        }
+
         const json = await mrq_request(`${MRQ_API}/process/${encodeURIComponent(mpr_row.allocation_id)}`, {
             method : 'PATCH',
             headers: { 'Content-Type': 'application/json' },
@@ -328,7 +360,9 @@ function mpr_render(r) {
             mpr_row_('Vendor', mrq_esc(r.vendor_name || '')) +
             mpr_docRow('Purchase Request (PR)', r.pr_number, r.pr_amount) +
             mpr_docRow('Purchase Order (PO)', r.po_number, r.po_amount)),
-        mpr_card('Purpose / Description', r.description ? `<div class="mpr-desc">${mrq_esc(r.description)}</div>` : '<div class="mpr-empty">No description.</div>'),
+        mpr_card('Purpose / Description', mpr_viewOnly
+            ? (r.description ? `<div class="mpr-desc">${mrq_esc(r.description)}</div>` : '<div class="mpr-empty">No description.</div>')
+            : `<textarea id="mpr-desc-input" class="mpr-desc-input" rows="3" placeholder="No description.">${mrq_esc(r.description || '')}</textarea>`),
         mpr_card('Budget Allocation Lines', mpr_linesHtml(r.line_transaction)),
         mpr_card('Supporting Documents', mpr_docsHtml(r.file_attachments)),
     ].join('');

@@ -1,7 +1,7 @@
 # FIMS NHA — Docker Setup (Local Dev Stack)
 
 This repo ships a Docker Compose stack for local development: PHP-FPM, Nginx, PostgreSQL, Redis,
-MinIO, and Adminer all run as containers. You do not need PHP, PostgreSQL, Redis, or MinIO
+MinIO, EMQX, and Adminer all run as containers. You do not need PHP, PostgreSQL, Redis, MinIO, or an MQTT broker
 installed natively on Windows to run the app — Docker provides them.
 
 > This is a **flat, single-project** repo (`PHPMaker2024\FIMS`) — there's no per-module
@@ -17,6 +17,7 @@ installed natively on Windows to run the app — Docker provides them.
 | `postgres` | `fims-nha-postgres`   | `postgres:16-alpine`     | `5433` → 5432    | Database `fims` (empty until SQL is loaded) |
 | `redis`    | `fims-nha-redis`      | `redis:7-alpine`         | `6380` → 6379    | Cache / BullMQ queues |
 | `minio`    | `fims-nha-minio`      | `minio/minio`            | `9020` (API) / `9021` (console) | S3-compatible object storage |
+| `emqx`     | `fims-nha-emqx`       | `emqx/emqx` (latest)    | `1883` MQTT, `8083` WebSocket, `8084`/`8883` TLS, `18083` dashboard | MQTT broker for real-time notification push |
 | `adminer`  | `fims-nha-adminer`    | `adminer`                | `8091`           | Web-based DB browser |
 
 Host ports on the left are **not** the containers' internal ports — e.g. Postgres listens on 5432
@@ -24,7 +25,7 @@ inside its container, but is reached at `localhost:5433` from Windows (5432 is r
 natively-installed Postgres — see the gotcha below).
 
 Named volumes persist data between restarts: `fims-postgres-data`, `fims-redis-data`,
-`fims-minio-data`, `fims-vendor` (the last one holds `vendor/` on a Docker-native filesystem for
+`fims-minio-data`, `fims-emqx-data`, `fims-emqx-log`, `fims-vendor` (the last one holds `vendor/` on a Docker-native filesystem for
 speed — it shadows whatever `vendor/` exists on the Windows-mounted bind).
 
 ## ⚠️ Important: which Postgres does the app actually use?
@@ -88,10 +89,41 @@ docker-compose up -d --build
 | http://localhost:8090/ | Main app |
 | http://localhost:9021/ | MinIO web console |
 | http://localhost:8091/ | Adminer (DB browser) |
+| http://localhost:18083/ | EMQX dashboard (default login `admin` / `public`; you must change it on first login) |
 
 MinIO console login: `s3phatneglo-archive` / `0yq5h3to9`.
 Adminer: System `PostgreSQL`, Server `postgres`, User `postgres`, Password `123456`, DB `fims`
 (this reaches the dockerized Postgres on 5433, not whatever `.env`'s `DB_HOST` points the app at).
+
+## EMQX (MQTT broker for notifications)
+
+The notification bell (`_shared/notification.php`) polls `/api/notifications/recent` every 30 s, so it
+works with or without EMQX. EMQX only adds instant push on top of that.
+
+- **Start:** `docker-compose up -d emqx` (it is also started by `docker-compose up -d`).
+- **Ports:** `1883` MQTT, `8083` MQTT over WebSocket (`ws://localhost:8083/mqtt`, used by browsers),
+  `8084`/`8883` TLS, `18083` dashboard and REST API.
+- **API key and secret:** open http://localhost:18083, then **System → API Keys → New**. Put the values in
+  `.env`:
+
+  ```ini
+  EMQX_API_URL=http://emqx:18083        # from inside the php container (service name)
+  EMQX_API_KEY=<key from the dashboard>
+  EMQX_API_SECRET=<secret from the dashboard>
+  ```
+
+  `src/config.development.php` reads these as `Config('EMQX.API_URL' / 'API_KEY' / 'API_SECRET')`.
+  Use `http://localhost:18083` if the app runs outside Docker. The port is the dashboard/REST port
+  (`18083`), not the MQTT port `1883`.
+- **Data:** kept in the `fims-emqx-data` and `fims-emqx-log` volumes. `docker-compose down -v` wipes them.
+- **Version:** defaults to `latest` (6.3.2 Enterprise at the time of writing). To pin a release, change the `image:` line in `docker-compose.yml` to a specific tag, e.g. `emqx/emqx:6.3.2`.
+- **Auth:** the broker uses EMQX's built-in defaults (no external auth hook). Add authentication and ACLs in
+  the dashboard before exposing it beyond your machine.
+- **Port conflict:** if you already run another EMQX container (for example `emqx-emqx-1` from
+  `D:\tools\Docker-Dev-Setup\emqx`), stop it first (`docker stop emqx-emqx-1`) or the ports `1883`,
+  `8083` and `18083` will clash.
+- **Dockerfile:** unchanged. EMQX is its own image, so nothing needs to be installed in the PHP image;
+  the app talks to it over HTTP and WebSocket.
 
 ## Initializing the database
 
@@ -176,7 +208,7 @@ docker-compose up -d --build
 
 ## Troubleshooting
 
-**Port already in use (8090/8091/5433/6380/9020/9021)**
+**Port already in use (8090/8091/5433/6380/9020/9021/1883/8083/18083)**
 Something on Windows already listens on that port. Stop it, or change the host-side port mapping in
 `docker-compose.yml` (left side of each `"host:container"` pair).
 
@@ -203,7 +235,7 @@ docker-compose logs postgres
 ```
 Dockerfile              PHP 8.2-FPM image: pdo_pgsql, redis, imagick, gd, ldap, intl, + Node.js 20
                          (for DOCX generation scripts) and pdftk (PDF form-filling)
-docker-compose.yml       Full dev stack: php, nginx, postgres, redis, minio, adminer
+docker-compose.yml       Full dev stack: php, nginx, postgres, redis, minio, emqx, adminer
 nginx.conf               Nginx routing — serves app/pages/login.php at "/", proxies /api/ to the
                          Slim API, denies access to vendor/, composer.*, and .env
 _docker/php/php.ini      PHP config overrides (opcache.validate_timestamps=1, 2s revalidate)

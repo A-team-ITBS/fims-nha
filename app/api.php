@@ -155,7 +155,9 @@ $jwtMiddleware = function (Request $request, RequestHandler $handler): Response 
     $jwt = '';
 
     // If request has no bearer token but a logged-in session exists, trust session.
-    if (!$authHeader && $sessionUserId > 0) {
+    // NOTE: the superadmin's session user id is -1 (ADMIN_USER_LEVEL_ID), so test
+    // "logged in" as != 0, not > 0, or the superadmin is wrongly rejected.
+    if (!$authHeader && $sessionUserId !== 0) {
         $payload = [
             'username' => $sessionUsername,
             'userid' => $sessionUserId,
@@ -175,7 +177,7 @@ $jwtMiddleware = function (Request $request, RequestHandler $handler): Response 
     }
 
     // If the JWT/session payload is invalid, return a 401 Unauthorized response
-    if (!is_array($payload) || isset($payload['failureMessage']) || (empty($jwt) && $sessionUserId <= 0)) {
+    if (!is_array($payload) || isset($payload['failureMessage']) || (empty($jwt) && $sessionUserId === 0)) {
         apiRecordFailedAttempt($clientIp);
         $response = new \Nyholm\Psr7\Response();
         $response = $response->withHeader('Content-Type', 'application/json');
@@ -188,7 +190,7 @@ $jwtMiddleware = function (Request $request, RequestHandler $handler): Response 
     // A logged-in app/UAC session is allowed even when bearer token is missing.
     $jwtUserLevel = (int) ($payload['userlevel'] ?? AdvancedSecurity::ANONYMOUS_USER_LEVEL_ID);
     $jwtUserId = (int) ($payload['userid'] ?? 0);
-    if ($jwtUserLevel == AdvancedSecurity::ANONYMOUS_USER_LEVEL_ID && $sessionUserId <= 0 && $jwtUserId <= 0) {
+    if ($jwtUserLevel == AdvancedSecurity::ANONYMOUS_USER_LEVEL_ID && $sessionUserId === 0 && $jwtUserId <= 0) {
         apiRecordFailedAttempt($clientIp);
         $response = new \Nyholm\Psr7\Response();
         $response = $response->withHeader('Content-Type', 'application/json');

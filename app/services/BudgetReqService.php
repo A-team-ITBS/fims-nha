@@ -657,6 +657,65 @@ class BudgetReqService
         }
     }
 
+    /**
+     * Deletes one Program from a budget request — its project blocks and
+     * line items (and any attachments) cascade via ON DELETE CASCADE on
+     * budget_req_program_id. Rejected once the header has left Draft, same
+     * rule as updateProgram(). If this was the request's last remaining
+     * Program, the now-empty header is deleted too (same rule as delete()
+     * — Draft only, already guaranteed by the check above).
+     */
+    public function deleteProgram(int|string $budgetReqProgramId): array
+    {
+        $id = (int) $budgetReqProgramId;
+
+        $programRow = App\ExecuteRow(
+            "SELECT brp.budget_req_program_id, brp.budget_reference_number, st.name AS status_name
+             FROM {$this->tableBudgetReqProgram} brp
+             JOIN {$this->table} br ON br.budget_reference_number = brp.budget_reference_number
+             LEFT JOIN fims.settings_status st ON st.id = br.status_id
+             WHERE brp.budget_req_program_id = {$id}",
+            'DB'
+        );
+        if (!$programRow) {
+            return ['success' => false, 'message' => "Program #{$id} not found."];
+        }
+        if (($programRow['status_name'] ?? '') !== 'Draft') {
+            return ['success' => false, 'message' => "This budget request is '{$programRow['status_name']}' and its programs can no longer be deleted."];
+        }
+
+        $budgetReferenceNumber = (string) $programRow['budget_reference_number'];
+
+        try {
+            App\Execute('BEGIN', 'DB');
+
+            App\Execute("DELETE FROM {$this->tableBudgetReqProgram} WHERE budget_req_program_id = {$id}", 'DB');
+
+            $remaining = (int) App\ExecuteScalar(
+                "SELECT COUNT(*) FROM {$this->tableBudgetReqProgram} WHERE budget_reference_number = ".App\QuotedValue($budgetReferenceNumber, DataType::STRING, 'DB'),
+                'DB'
+            );
+
+            $headerDeleted = $remaining === 0;
+            if ($headerDeleted) {
+                App\Execute("DELETE FROM {$this->table} WHERE budget_reference_number = ".App\QuotedValue($budgetReferenceNumber, DataType::STRING, 'DB'), 'DB');
+            }
+
+            App\Execute('COMMIT', 'DB');
+
+            return [
+                'success' => true,
+                'message' => $headerDeleted
+                    ? 'Program deleted — that was the last program, so the budget request was removed as well.'
+                    : 'Program deleted successfully.',
+            ];
+        } catch (\Exception $e) {
+            App\Execute('ROLLBACK', 'DB');
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
     /** Transitions a Draft budget request to "For Review". Locks it from further Program additions/edits. */
     public function submitForReview(string $budgetReferenceNumber): array
     {
