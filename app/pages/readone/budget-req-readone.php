@@ -129,12 +129,17 @@
 
     /* ── COB mode (bgrv_openCobModal): flat indented outline, no cards ── */
     .bgrv-cob-list { border:1px solid var(--afims-border, #E4ECF2);border-radius:8px;overflow:hidden; }
-    .bgrv-cob-row { padding:5px 10px;font-size:12px;color:var(--afims-text, #1A1B21);
+    .bgrv-cob-row { display:flex;align-items:center;justify-content:space-between;gap:12px;
+        padding:5px 10px;font-size:12px;color:var(--afims-text, #1A1B21);
         border-bottom:1px solid var(--afims-border, #E4ECF2); }
     .bgrv-cob-list .bgrv-cob-row:last-child { border-bottom:none; }
     .bgrv-cob-program { font-weight:700;font-size:13px;background:var(--afims-surface-subtle, #F4F7FA); }
     .bgrv-cob-subprogram { padding-left:28px;font-weight:600;background:color-mix(in srgb, var(--afims-surface-subtle, #F4F7FA) 50%, transparent); }
     .bgrv-cob-project { padding-left:52px;color:var(--afims-text-muted, #62657E); }
+    .bgrv-cob-amt { font-family:'IBM Plex Mono',monospace;font-weight:700;color:var(--afims-text, #1A1B21);
+        white-space:nowrap;flex-shrink:0; }
+    .bgrv-cob-project .bgrv-cob-amt { font-weight:600;color:var(--afims-text-muted, #62657E); }
+    .bgrv-cob-empty .bgrv-cob-amt { display:none; }
 
     /* COB mode only — larger text to match the wider modal (.bgrv-wide, see #bgrv-card above). */
     #bgrv-card.bgrv-wide .bgrv-hdr-title { font-size:17px; }
@@ -146,6 +151,7 @@
     #bgrv-card.bgrv-wide .bgrv-cob-program { font-size:15px; }
     #bgrv-card.bgrv-wide .bgrv-cob-subprogram { padding-left:32px; }
     #bgrv-card.bgrv-wide .bgrv-cob-project { padding-left:58px; }
+    #bgrv-card.bgrv-wide .bgrv-cob-amt { font-size:14px; }
     .bgrv-cob-empty { font-style:italic; }
 </style>
 
@@ -309,7 +315,8 @@ async function bgrv_openCobModal(fiscalYr = '') {
         // Projects and the grand total still count every occurrence.
         const programMap   = new Map(); // program_code -> { program_code, program_name }
         const subByProgram = new Map(); // program_code -> Map(sub_program_code -> { sub_program_code, sub_program_name })
-        const projByProgram = new Map(); // program_code -> [{ project_code, project_name, sub_program_code }, ...]
+        const projByProgram = new Map(); // program_code -> [{ project_code, project_name, sub_program_code, amount }, ...]
+        const programTotals = new Map(); // program_code -> sum of its projects' amounts
         let grandTotal   = 0;
         let projectCount = 0;
 
@@ -319,6 +326,7 @@ async function bgrv_openCobModal(fiscalYr = '') {
                     programMap.set(prog.program_code, { program_code: prog.program_code, program_name: prog.program_name });
                     subByProgram.set(prog.program_code, new Map());
                     projByProgram.set(prog.program_code, []);
+                    programTotals.set(prog.program_code, 0);
                 }
                 if (prog.sub_program_code) {
                     subByProgram.get(prog.program_code).set(prog.sub_program_code, {
@@ -327,13 +335,16 @@ async function bgrv_openCobModal(fiscalYr = '') {
                     });
                 }
                 (prog.projects || []).forEach(p => {
+                    const amount = (p.line_items || []).reduce((sum, li) => sum + (Number(li.proposed_amount) || 0), 0);
                     projByProgram.get(prog.program_code).push({
                         project_code: p.project_code,
                         project_name: p.project_name,
                         sub_program_code: prog.sub_program_code,
+                        amount,
                     });
+                    programTotals.set(prog.program_code, programTotals.get(prog.program_code) + amount);
                     projectCount++;
-                    (p.line_items || []).forEach(li => { grandTotal += Number(li.proposed_amount) || 0; });
+                    grandTotal += amount;
                 });
             });
         });
@@ -344,7 +355,10 @@ async function bgrv_openCobModal(fiscalYr = '') {
         const rowsHtml = programs.map(prog => {
             const progSubPrograms = Array.from(subByProgram.get(prog.program_code).values());
             const progProjects    = projByProgram.get(prog.program_code) || [];
-            return `<div class="bgrv-cob-row bgrv-cob-program">${bgr_esc(prog.program_code)} — ${bgr_esc(prog.program_name)}</div>`
+            return `<div class="bgrv-cob-row bgrv-cob-program">
+                        <span>${bgr_esc(prog.program_code)} — ${bgr_esc(prog.program_name)}</span>
+                        <span class="bgrv-cob-amt">${bgr_fmtMoney(programTotals.get(prog.program_code) || 0)}</span>
+                    </div>`
                 + bgrv_cobRowsHtml(progSubPrograms, progProjects);
         }).join('');
 
@@ -472,10 +486,17 @@ function bgrv_cobRowsHtml(subPrograms, projects) {
     }
 
     return groups.map(g => {
+        const subTotal = g.projects.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
         const projRows = g.projects.length
-            ? g.projects.map(p => `<div class="bgrv-cob-row bgrv-cob-project">${bgr_esc(p.project_code)} — ${bgr_esc(p.project_name)}</div>`).join('')
+            ? g.projects.map(p => `<div class="bgrv-cob-row bgrv-cob-project">
+                    <span>${bgr_esc(p.project_code)} — ${bgr_esc(p.project_name)}</span>
+                    <span class="bgrv-cob-amt">${bgr_fmtMoney(p.amount || 0)}</span>
+                </div>`).join('')
             : '<div class="bgrv-cob-row bgrv-cob-project bgrv-cob-empty">No projects yet.</div>';
-        return `<div class="bgrv-cob-row bgrv-cob-subprogram">${g.label}</div>${projRows}`;
+        return `<div class="bgrv-cob-row bgrv-cob-subprogram">
+                    <span>${g.label}</span>
+                    <span class="bgrv-cob-amt">${bgr_fmtMoney(subTotal)}</span>
+                </div>${projRows}`;
     }).join('');
 }
 </script>

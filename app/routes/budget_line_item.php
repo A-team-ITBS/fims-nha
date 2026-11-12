@@ -74,6 +74,21 @@ $app->get('/budget_line_item/approved/type_of_fund', function ($request, $respon
     }
 })->add($accessMiddleware)->add($jwtMiddleware);
 
+// Earmarks against one line item — the "why is the available balance lower than suggested_amount"
+// drill-down: one row per Approved CBA/CFA reservation (active/released) or RFA/LAA conversion
+// (converted), each carrying its own allocation's reference number, type and status.
+$app->get('/budget_line_item/{id}/earmarks', function ($request, $response, $args) use ($BudgetLineItemService) {
+    try {
+        $result = $BudgetLineItemService->fetchEarmarks((int) $args['id']);
+
+        return $response->withJson($result, $result['success'] ? 200 : 500);
+    } catch (\Exception $e) {
+        LogError('GET /budget_line_item/{id}/earmarks ' . $e->getMessage());
+
+        return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
+    }
+})->add($accessMiddleware)->add($jwtMiddleware);
+
 // Read one
 $app->get('/budget_line_item/read/{id}', function ($request, $response, $args) use ($BudgetLineItemService) {
     try {

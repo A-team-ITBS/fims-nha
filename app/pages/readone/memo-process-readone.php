@@ -75,6 +75,12 @@
 .mpr-docs { margin:0;padding-left:18px;font-size:13px; }
 .mpr-docs a { color:#1D4ED8;text-decoration:none; }
 .mpr-docs a:hover { text-decoration:underline; }
+/* Purpose / Description is editable in Process mode (any FMD reviewer, not just the current step's actor —
+   see mpr_saveDescription()), read-only in View mode. */
+.mpr-desc-input { display:block;width:100%;min-height:70px;padding:8px 10px;font:13px/1.55 inherit;color:inherit;
+    background:var(--afims-surface, #FFFFFF);border:1px solid var(--afims-border, #E4ECF2);border-radius:8px;resize:vertical;box-sizing:border-box; }
+.mpr-desc-actions { display:flex;justify-content:flex-end;margin-top:8px; }
+.mpr-btn-sm { padding:5px 14px;font-size:12px; }
 .mpr-err { margin:0 0 12px;padding:8px 10px;font-size:12.5px;border-radius:7px;background:#FAE1E3;color:#8F222D; }
 .mpr-err[hidden] { display:none; }
 .mpr-foot { display:flex;justify-content:flex-end;gap:10px;padding:12px 20px;background:var(--afims-surface, #FFFFFF);
@@ -173,6 +179,8 @@ function mpr_showErr(msg) {
 function mpr_setBusy(busy) {
     mpr_busy = busy;
     ['mpr-return', 'mpr-approve', 'mpr-cancel', 'mpr-close'].forEach(id => { mpr_$(id).disabled = busy; });
+    const saveBtn = mpr_$('mpr-desc-save'); // only present in Process mode
+    if (saveBtn) saveBtn.disabled = busy;
 }
 
 // The step the request shown is at (data.review of the read), or {} when there is none.
@@ -201,12 +209,24 @@ async function mpr_decide(action) {
     const approve = action === 'approve';
     const ref = mrq_refOf(mpr_row) ? `"${mrq_refOf(mpr_row)}"` : `#${mpr_row.allocation_id}`;
     const rv  = mpr_review();
+    const isEndorse = approve && !rv.is_final && rv.next_status;
     const ask = !approve
         ? `Return memo request ${ref} to ${rv.return_actor || 'the requesting office'}? Its status will change to ${rv.return_status || MPR_RETURNED}.`
-        : (rv.is_final || !rv.next_status)
-            ? `Approve memo request ${ref}? It will be given its allocation number and its status will change to ${MPR_APPROVED}.`
-            : `Endorse memo request ${ref}? Its status will change to ${rv.next_status}.`;
-    if (!confirm(ask)) return;
+        : isEndorse
+            ? `Endorse memo request ${ref}? Its status will change to ${rv.next_status}.`
+            : `Approve memo request ${ref}? It will be given its allocation number and its status will change to ${MPR_APPROVED}.`;
+    // Same Swal.fire() confirm convention as budget-req-page.php (title/text/icon, confirmButtonColor by
+    // severity) — Swal is loaded globally by views/layout.php.
+    const confirmed = await Swal.fire({
+        title: !approve ? 'Return Memo Request' : isEndorse ? 'Endorse Memo Request' : 'Approve Memo Request',
+        text: ask,
+        icon: approve ? 'question' : 'warning',
+        showCancelButton: true,
+        confirmButtonText: !approve ? 'Yes, return' : isEndorse ? 'Yes, endorse' : 'Yes, approve',
+        cancelButtonText: 'Cancel',
+        confirmButtonColor: approve ? '#0f2045' : '#dc3545',
+    });
+    if (!confirmed.isConfirmed) return;
 
     const seq = mpr_seq;
     mpr_setBusy(true);
@@ -328,11 +348,51 @@ function mpr_render(r) {
             mpr_row_('Vendor', mrq_esc(r.vendor_name || '')) +
             mpr_docRow('Purchase Request (PR)', r.pr_number, r.pr_amount) +
             mpr_docRow('Purchase Order (PO)', r.po_number, r.po_amount)),
-        mpr_card('Purpose / Description', r.description ? `<div class="mpr-desc">${mrq_esc(r.description)}</div>` : '<div class="mpr-empty">No description.</div>'),
+        mpr_card('Purpose / Description', mpr_viewOnly
+            ? (r.description ? `<div class="mpr-desc">${mrq_esc(r.description)}</div>` : '<div class="mpr-empty">No description.</div>')
+            : `<textarea id="mpr-desc-input" class="mpr-desc-input" rows="3" placeholder="No description.">${mrq_esc(r.description || '')}</textarea>` +
+              `<div class="mpr-desc-actions"><button type="button" class="mpr-btn mpr-btn-ghost mpr-btn-sm" id="mpr-desc-save">Save</button></div>`),
         mpr_card('Budget Allocation Lines', mpr_linesHtml(r.line_transaction)),
         mpr_card('Supporting Documents', mpr_docsHtml(r.file_attachments)),
     ].join('');
     mpr_setButtons(canDecide);
+    // Process mode only (any FMD reviewer — the Process action itself is already FMD-only, not limited to
+    // whoever's turn it is to decide the current step): wire the Save button the markup above just created.
+    if (!mpr_viewOnly) mpr_$('mpr-desc-save')?.addEventListener('click', mpr_saveDescription);
+}
+
+/* ── Edit Purpose / Description (Process mode only) ───────────────────────── */
+// Any FMD reviewer may fix a missing/wrong description without Returning the whole request. Saved via the
+// same PATCH /budget_allocation/update/{id} the full edit form uses (only the fields sent change) — the
+// modal stays open afterwards so the user can still Approve / Return.
+async function mpr_saveDescription() {
+    if (!mpr_row || mpr_busy) return;
+    const textarea = mpr_$('mpr-desc-input');
+    const saveBtn  = mpr_$('mpr-desc-save');
+    if (!textarea || !saveBtn) return;
+    const value = textarea.value.trim();
+
+    const seq = mpr_seq;
+    mpr_setBusy(true);
+    saveBtn.textContent = 'Saving…';
+    mpr_showErr('');
+    try {
+        await mrq_request(`${MRQ_API}/update/${encodeURIComponent(mpr_row.allocation_id)}`, {
+            method : 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body   : JSON.stringify({ description: value }),
+        });
+        if (seq !== mpr_seq) return; // modal closed / reopened meanwhile
+        mpr_row.description = value; // keep the in-memory copy in sync in case Approve/Return re-reads it
+        mrq_toast('Purpose / Description updated.', 'success');
+    } catch (e) {
+        if (seq === mpr_seq) mpr_showErr(e.message);
+    } finally {
+        if (seq === mpr_seq) {
+            mpr_setBusy(false);
+            saveBtn.textContent = 'Save';
+        }
+    }
 }
 
 /* ── Wiring ────────────────────────────────────────────────── */

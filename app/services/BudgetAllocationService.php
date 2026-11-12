@@ -484,6 +484,10 @@ class BudgetAllocationService
                 'DB'
             );
 
+            // Frees whatever this request was holding against its COB(s) — a no-op if it was never Approved
+            // (nothing active to release).
+            (new BudgetLineItemService())->releaseForAllocation($id);
+
             return ['success' => true, 'message' => "Memo request #{$id} deleted successfully."];
         } catch (\Exception $e) {
             App\LogError('BudgetAllocationService::delete '.$e->getMessage());
@@ -624,6 +628,38 @@ class BudgetAllocationService
 
                 return $this->fail('This memo request was changed by someone else in the meantime. Reload the list and try again.');
             }
+
+            // The final approval moves money against each COB's own balance — ceiling is
+            // budget_line_items.suggested_amount, not proposed_amount. A CBA (or CFA) RESERVES it
+            // (earmarks: not yet a real obligation). An RFA/LAA instead CONVERTS its parent CBA's earmark
+            // into a real obligation (budget_line_items.obligation) — it requires a parent CBA (parent_id);
+            // approving one without it, or one that would draw more than its parent CBA still has actively
+            // earmarked for a COB, is refused. Either way, refusing here rolls back the status change too.
+            if ($isFinal) {
+                $allocationType = strtoupper(trim((string) ($row['allocation_type'] ?? '')));
+                $lineItemService = new BudgetLineItemService();
+
+                if ($allocationType === 'RFA' || $allocationType === 'LAA') {
+                    $parentId = (int) ($row['parent_id'] ?? 0);
+                    if ($parentId <= 0) {
+                        App\Execute('ROLLBACK', 'DB');
+                        $inTransaction = false;
+
+                        return $this->fail("A Parent CBA is required before this {$allocationType} can be approved.");
+                    }
+                    $earmark = $lineItemService->convertEarmarkForRfaApproval($id, $parentId, $row['line_transaction'] ?? null);
+                } else {
+                    $earmark = $lineItemService->createForApproval($id, $row['line_transaction'] ?? null);
+                }
+
+                if (!$earmark['success']) {
+                    App\Execute('ROLLBACK', 'DB');
+                    $inTransaction = false;
+
+                    return $this->fail($earmark['message']);
+                }
+            }
+
             App\Execute('COMMIT', 'DB');
             $inTransaction = false;
 
