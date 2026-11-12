@@ -44,8 +44,17 @@
     <menu id="90">
       <phrase id="menutext" value="Responsibilty Center" />
     </menu>
+    <menu id="391">
+      <phrase id="menutext" value="Vendors" />
+    </menu>
+    <menu id="390">
+      <phrase id="menutext" value="Inventory" />
+    </menu>
     <menu id="91">
       <phrase id="menutext" value="IAR Module" />
+    </menu>
+    <menu id="333">
+      <phrase id="menutext" value="Property Record" />
     </menu>
     <menu id="258">
       <phrase id="menutext" value="Vouchers" />
@@ -60,7 +69,7 @@
       <phrase id="menutext" value="Check Disbursements" />
     </menu>
     <menu id="332">
-      <phrase id="menutext" value="Bank Account Management" />
+      <phrase id="menutext" value="Bank Management Page" />
     </menu>
     <menu id="331">
       <phrase id="menutext" value="Cash Position" />
@@ -1604,8 +1613,14 @@
     <table id="cash_position_page">
       <phrase id="tblcaption" value="Cash Position" />
     </table>
-    <table id="bank_account_management_page">
-      <phrase id="tblcaption" value="Bank Account Management" />
+    <table id="bank_management_page">
+      <phrase id="tblcaption" value="Bank Management Page" />
+    </table>
+    <table id="property_record_page">
+      <phrase id="tblcaption" value="Property Record" />
+    </table>
+    <table id="vendors_page">
+      <phrase id="tblcaption" value="Vendors" />
     </table>
   </project>
 </ew-language>

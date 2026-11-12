@@ -15,5 +15,5 @@
 INSERT INTO uac.user_level_permissions (user_level_id, table_name, permission)
 SELECT lvl, pg, 1135
 FROM unnest(ARRAY[3, 5, 10, 11]) AS lvl
-CROSS JOIN unnest(ARRAY['MainDashboard.php', 'Voucher.php']) AS pg
+CROSS JOIN unnest(ARRAY['{FIMS}MainDashboard.php', '{FIMS}Voucher.php']) AS pg
 ON CONFLICT (user_level_id, table_name) DO UPDATE SET permission = EXCLUDED.permission;

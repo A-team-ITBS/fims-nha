@@ -62,6 +62,13 @@ try {
 .nha-menu-item.has-color svg { opacity:1; }
 .nha-menu-item.has-color:hover { background:color-mix(in srgb, var(--nha-item-color) 12%, #fff);color:var(--nha-item-color); }
 .nha-menu-divider { border-top:1px solid var(--afims-border, #E4ECF2);margin:3px 0; }
+
+/* ── KPI row: only 3 cards here, not the 4 .nha-summary assumes elsewhere — fill the row instead of leaving a
+   fourth column empty. */
+#mrq-root .nha-summary { grid-template-columns: repeat(3, 1fr); }
+@media (max-width: 900px) {
+    #mrq-root .nha-summary { grid-template-columns: repeat(2, 1fr); }
+}
 </style>
 
 <div id="mrq-root" class="nha-root">
@@ -85,9 +92,16 @@ try {
             </button>
             <button id="mrq-add" type="button" class="nha-btn-hdr" style="background:var(--afims-success, #11A752);" title="Create a memo request">
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
-                New Memo Request
+                <span id="mrq-add-label">New CBA Memo Request</span>
             </button>
         </div>
+    </div>
+
+    <!-- ── TABS (CBA / RFA / LAA — budget_allocation.allocation_type) ──── -->
+    <div class="nha-tabs no-print">
+        <button type="button" class="nha-tab active" data-type="CBA" onclick="mrq_switchTab('CBA')">CBA</button>
+        <button type="button" class="nha-tab" data-type="RFA" onclick="mrq_switchTab('RFA')">RFA</button>
+        <button type="button" class="nha-tab" data-type="LAA" onclick="mrq_switchTab('LAA')">LAA</button>
     </div>
 
     <!-- ── KPI CARDS (cover every row matching the filters, not just this page) ── -->
@@ -217,6 +231,22 @@ let mrq_page = 1;
 let mrq_rows = [];
 const MRQ_PAGE_SIZE = 15;
 
+// Which allocation_type the list (and KPI cards) are scoped to. budget_allocation holds all three kinds of memo
+// request in one table (see form/budget-allocation-form.php's "Allocation Type" select) — the tabs just filter the
+// same /budget_allocation/list by it. Starts from ?type= in the page URL so a link such as
+// memo-req-page?type=RFA opens straight onto that tab; kept in sync with the URL (replaceState, no new history
+// entries) so "New Memo Request" — which reads window.location.search itself, see budget-allocation-form.php's
+// cbaBoot() — pre-selects the matching Allocation Type without any extra wiring.
+const MRQ_TYPES = ['CBA', 'RFA', 'LAA'];
+let mrq_activeType = (() => {
+    const t = (new URLSearchParams(window.location.search).get('type') || '').toUpperCase();
+    return MRQ_TYPES.includes(t) ? t : 'CBA';
+})();
+
+// Set once the Fiscal Year filter has been defaulted to the current year (see mrq_fillFilters) — so a later
+// refill (e.g. mrq_statusId re-reading statuses) never overrides a year the user has since picked themselves.
+let mrq_fyDefaulted = false;
+
 // Loaded once at start-up; they fill the two filter dropdowns.
 const MRQ_LOOKUPS = { fiscalYears: [], statuses: [] };
 const MRQ_LOOKUP_SOURCES = {
@@ -251,7 +281,30 @@ async function mrq_bootstrapLoad() {
         window.PagePreloader?.hide();
     }
     mrq_bindEvents();
+    mrq_syncTabUrl();   // the tab the page opened on (default or ?type=) belongs in the URL from the start
     await mrq_load();
+}
+
+/* ── Tabs (CBA / RFA / LAA) ───────────────────────────────────── */
+// Keeps ?type= on the page URL equal to mrq_activeType, without adding a history entry — so Back/Forward
+// doesn't step through tabs, but a refresh (or a copied link) reopens the same one.
+function mrq_syncTabUrl() {
+    document.querySelectorAll('.nha-tabs .nha-tab').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.type === mrq_activeType);
+    });
+    const addLabel = $mrq('mrq-add-label');
+    if (addLabel) addLabel.textContent = `New ${mrq_activeType} Memo Request`;
+    const url = new URL(window.location.href);
+    url.searchParams.set('type', mrq_activeType);
+    window.history.replaceState(window.history.state, '', url);
+}
+
+function mrq_switchTab(type) {
+    if (!MRQ_TYPES.includes(type) || type === mrq_activeType) return;
+    mrq_activeType = type;
+    mrq_syncTabUrl();
+    mrq_page = 1;
+    mrq_load();
 }
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', mrq_bootstrapLoad);
@@ -300,6 +353,17 @@ function mrq_fillFilters() {
     $mrq('mrq-filter-status').innerHTML = mrq_optionsHtml('All Status', MRQ_LOOKUPS.statuses,    s => s.id,        s => s.name);
     $mrq('mrq-filter-fy').value     = fy;
     $mrq('mrq-filter-status').value = st;
+
+    // Default the Fiscal Year filter to the current year — once, the first time it's populated, and only if the
+    // user hasn't already picked a year (fy was still empty) and the current year is actually one of the options.
+    if (!mrq_fyDefaulted) {
+        mrq_fyDefaulted = true;
+        if (!fy) {
+            const currentYear = String(new Date().getFullYear());
+            const hasCurrentYear = MRQ_LOOKUPS.fiscalYears.some(f => String(f.fiscal_yr) === currentYear);
+            if (hasCurrentYear) $mrq('mrq-filter-fy').value = currentYear;
+        }
+    }
 }
 
 /* ── Events ────────────────────────────────────────────────── */
@@ -331,11 +395,12 @@ async function mrq_load() {
     window.PagePreloader?.show();
     try {
         const params = new URLSearchParams({
-            search      : $mrq('mrq-filter-search')?.value || '',
-            fiscal_year : $mrq('mrq-filter-fy')?.value     || '',
-            status_id   : $mrq('mrq-filter-status')?.value || '',
-            page        : mrq_page,
-            limit       : MRQ_PAGE_SIZE,
+            search          : $mrq('mrq-filter-search')?.value || '',
+            fiscal_year     : $mrq('mrq-filter-fy')?.value     || '',
+            status_id       : $mrq('mrq-filter-status')?.value || '',
+            allocation_type : mrq_activeType,
+            page            : mrq_page,
+            limit           : MRQ_PAGE_SIZE,
         });
         // FMD reviews every office's requests: ask for the central list. The API only grants it to a user of the FMD
         // office (the parameter alone grants nothing), and gives everybody else just their own office's requests.
@@ -622,27 +687,18 @@ function mrq_esc(text) {
     return d.innerHTML.replace(/"/g, '&quot;');
 }
 
+// SweetAlert2 toast — same convention as _shared/notification.php's Swal.fire({toast:true, ...}) calls.
+// Loaded globally by views/layout.php (js/sweetalert2.all.min.js), so Swal is always available here.
 function mrq_toast(msg, type = 'info') {
-    const colors = { success: '#16a34a', error: '#dc2626', warning: '#d97706', info: '#2563eb' };
-    let wrap = document.getElementById('nha-toast-wrap');
-    if (!wrap) {
-        wrap = document.createElement('div');
-        wrap.id = 'nha-toast-wrap';
-        wrap.style.cssText = 'position:fixed;top:20px;right:20px;z-index:99999;display:flex;flex-direction:column;gap:8px;pointer-events:none;';
-        document.body.appendChild(wrap);
-    }
-    const color = colors[type] || colors.info;
-    const t = document.createElement('div');
-    t.style.cssText = `display:flex;align-items:flex-start;gap:10px;padding:12px 14px;background:#fff;border-left:4px solid ${color};border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.14);font-size:13px;color:#1e293b;min-width:260px;max-width:340px;pointer-events:auto;`;
-    const span = document.createElement('span');
-    span.style.flex = '1';
-    span.textContent = msg;                 // textContent — messages may contain server text
-    const close = document.createElement('button');
-    close.innerHTML = '&times;';
-    close.style.cssText = 'border:none;background:none;cursor:pointer;color:#A9AAB8;font-size:18px;line-height:1;padding:0 2px;flex-shrink:0';
-    close.onclick = () => t.remove();
-    t.append(span, close);
-    wrap.appendChild(t);
-    setTimeout(() => t.remove(), 4000);
+    const icons = { success: 'success', error: 'error', warning: 'warning', info: 'info' };
+    Swal.fire({
+        icon: icons[type] || icons.info,
+        text: msg,                 // text, not html — messages may contain server text
+        toast: true,
+        position: 'top-end',
+        showConfirmButton: false,
+        timer: 4000,
+        timerProgressBar: true,
+    });
 }
 </script>

@@ -22,6 +22,9 @@ class BudgetLineItemService
     private string $tableComponentType    = 'fims.component_type';
     private string $tableBudgetReqProgram = 'fims.budget_req_program';
     private string $tableStatus           = 'fims.settings_status';
+    private string $tableEarmark          = 'fims.budget_line_item_earmark';
+    private string $tableBudgetAllocation = 'fims.budget_allocation';
+    private string $tableRc               = 'fims.responsibility_code';
 
     public function fetchAlls(?int $page = null, int $limit = 10, string $fiscalYr = ''): array
     {
@@ -102,7 +105,12 @@ class BudgetLineItemService
                            brpr.program_code, brpr.sub_program_code, brp.project_code, pj.project_name,
                            li.type_of_fund_id, tf.name AS type_of_fund,
                            li.account_id, coa.account_code, coa.account_title,
-                           li.proposed_amount, li.particulars, st.name AS status_name
+                           li.proposed_amount, li.suggested_amount, li.adjustment, li.obligation,
+                           (li.suggested_amount + li.adjustment - li.obligation - COALESCE((
+                               SELECT SUM(e.amount) FROM {$this->tableEarmark} e
+                               WHERE e.budget_line_item_id = li.budget_line_item_id AND e.status = 'active'
+                           ), 0)) AS available_amount,
+                           li.particulars, st.name AS status_name
                     FROM {$this->table} li
                     JOIN {$this->tableBudgetReq} br ON br.budget_reference_number = li.budget_reference_number
                     JOIN {$this->tableStatus} st ON st.id = br.status_id
@@ -177,6 +185,276 @@ class BudgetLineItemService
             App\LogError('BudgetLineItemService::fetchApprovedTypesOfFund ' . $e->getMessage());
 
             return ['success' => false, 'message' => 'Failed to load types of fund.'];
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Earmarks — fims.budget_line_item_earmark. One row per Approved budget_allocation (CBA / RFA / LAA /
+    // CFA) line reserving an amount against a line item's balance — ceiling is suggested_amount (what
+    // FMD actually approved for this line item during Budget Processing), NOT proposed_amount (what the
+    // requesting office originally asked for). Created by createForApproval() — called from
+    // BudgetAllocationService::process() the moment a request reaches Approved — and released by
+    // releaseForAllocation() — called from BudgetAllocationService::delete(). Every method here runs
+    // INSIDE the caller's own open transaction (BudgetAllocationService already wraps its status change
+    // in BEGIN/COMMIT); none of these open, commit or roll one back themselves. See the table's own SQL
+    // file for the full column/lifecycle comment: "_assets/sql/01 - fims/01 - table/26 -
+    // fims_budget_line_item_earmark.sql".
+    // -----------------------------------------------------------------------
+
+    /**
+     * Normalizes a decoded line_transaction value — an array of line objects, a single line object (an
+     * associative array, not a list), or null/empty — into a flat list of
+     * ['budget_line_item_id' => int, 'requested_amount' => float] pairs, one per entry that actually
+     * names a line item with a positive requested amount. Mirrors
+     * BudgetAllocationService::requestedTotalSql()'s tolerance for comma-formatted amount strings, so
+     * the two always agree on what a line "is worth".
+     */
+    public function parseLineTransaction(mixed $lineTransaction): array
+    {
+        if (is_string($lineTransaction)) {
+            $lineTransaction = json_decode($lineTransaction, true);
+        }
+        if (!is_array($lineTransaction) || $lineTransaction === []) {
+            return [];
+        }
+        // A single line comes back as an associative array (string keys), not a list.
+        $entries = array_is_list($lineTransaction) ? $lineTransaction : [$lineTransaction];
+
+        $parsed = [];
+        foreach ($entries as $entry) {
+            if (!is_array($entry)) {
+                continue;
+            }
+            $lineItemId = (int) ($entry['budget_line_item_id'] ?? 0);
+            if ($lineItemId <= 0) {
+                continue;
+            }
+            $amount = $this->parseAmount($entry['requested_amount'] ?? null);
+            if ($amount <= 0) {
+                continue;
+            }
+            $parsed[] = ['budget_line_item_id' => $lineItemId, 'requested_amount' => $amount];
+        }
+
+        return $parsed;
+    }
+
+    private function parseAmount(mixed $value): float
+    {
+        if (is_numeric($value)) {
+            return (float) $value;
+        }
+        if (is_string($value)) {
+            $clean = str_replace(',', '', trim($value));
+            if (preg_match('/^-?[0-9]+(\.[0-9]+)?$/', $clean)) {
+                return (float) $clean;
+            }
+        }
+
+        return 0.0;
+    }
+
+    /**
+     * The balance still available to earmark against one line item: suggested_amount + adjustment -
+     * obligation - SUM(active earmarks). Locks the row (SELECT ... FOR UPDATE) so two concurrent
+     * approvals against the same line item can't both pass the check before either commits — the
+     * caller must already be inside an open transaction. Returns null when the line item no longer
+     * exists.
+     */
+    public function lockAndGetAvailable(int $budgetLineItemId): ?float
+    {
+        $row = App\ExecuteRow(
+            "SELECT suggested_amount, adjustment, obligation FROM {$this->table}
+             WHERE budget_line_item_id = {$budgetLineItemId} FOR UPDATE",
+            'DB'
+        );
+        if (!$row) {
+            return null;
+        }
+
+        $earmarked = (float) App\ExecuteScalar(
+            "SELECT COALESCE(SUM(amount), 0) FROM {$this->tableEarmark}
+             WHERE budget_line_item_id = {$budgetLineItemId} AND status = 'active'",
+            'DB'
+        );
+
+        return (float) $row['suggested_amount'] + (float) $row['adjustment'] - (float) $row['obligation'] - $earmarked;
+    }
+
+    /**
+     * Validates every COB of a decoded (or still-JSON) line_transaction against its available balance
+     * (lines against the same COB are totalled together before checking, so neither looks small enough
+     * on its own) and, only if every one has enough room, inserts one 'active' earmark row PER DISTINCT
+     * COB (not one per raw line_transaction entry — two lines against the same COB become one combined
+     * row). That keeps exactly one active row per (allocation, COB) pair, which
+     * convertEarmarkForRfaApproval() below relies on to shrink cleanly as RFAs/LAAs draw it down.
+     * Returns ['success' => true] (including when there is nothing to reserve) or
+     * ['success' => false, 'message' => ...]; on failure nothing is inserted — the caller
+     * (mid-transaction) is expected to roll back.
+     */
+    public function createForApproval(int $allocationId, mixed $lineTransaction): array
+    {
+        $lines = $this->parseLineTransaction($lineTransaction);
+        if (!$lines) {
+            return ['success' => true];
+        }
+
+        $totals = [];
+        foreach ($lines as $line) {
+            $id = $line['budget_line_item_id'];
+            $totals[$id] = ($totals[$id] ?? 0) + $line['requested_amount'];
+        }
+
+        foreach ($totals as $lineItemId => $requested) {
+            $available = $this->lockAndGetAvailable($lineItemId);
+            if ($available === null) {
+                return ['success' => false, 'message' => "Budget line item #{$lineItemId} no longer exists."];
+            }
+            if ($requested > $available) {
+                return ['success' => false, 'message' =>
+                    'Requested amount ('.number_format($requested, 2).
+                    ') exceeds the remaining available balance ('.number_format($available, 2).
+                    ") for budget line item #{$lineItemId}."];
+            }
+        }
+
+        foreach ($totals as $lineItemId => $requested) {
+            App\Execute(
+                "INSERT INTO {$this->tableEarmark} (budget_line_item_id, allocation_id, amount, status)
+                 VALUES ({$lineItemId}, {$allocationId}, "
+                 .App\QuotedValue($requested, DataType::NUMBER, 'DB')." , 'active')",
+                'DB'
+            );
+        }
+
+        return ['success' => true];
+    }
+
+    /**
+     * Converts (part of) a parent CBA's earmark into a real obligation — called when an RFA/LAA
+     * referencing that CBA (its parent_id) reaches Approved. For each distinct COB in the RFA/LAA's own
+     * line_transaction (lines against the same COB totalled together first):
+     *   - the parent CBA's active earmark row for that COB is reduced by the drawn amount — fully drawn
+     *     -> flips to 'converted' (amount zeroed); partially drawn -> stays 'active' with the smaller
+     *     remaining amount, so a later RFA/LAA can still draw down what's left;
+     *   - a new 'converted' row is inserted, attributed to this RFA/LAA's OWN allocation_id, so what
+     *     each RFA/LAA actually converted stays traceable independently of what the CBA still has left;
+     *   - budget_line_items.obligation is increased by the same amount — the real deduction.
+     * Refuses (nothing written, caller should roll back) if the CBA has no active earmark for a COB at
+     * all, or if the drawn amount for any COB exceeds what's still actively earmarked there.
+     */
+    public function convertEarmarkForRfaApproval(int $allocationId, int $parentAllocationId, mixed $lineTransaction): array
+    {
+        $lines = $this->parseLineTransaction($lineTransaction);
+        if (!$lines) {
+            return ['success' => true];
+        }
+
+        $totals = [];
+        foreach ($lines as $line) {
+            $id = $line['budget_line_item_id'];
+            $totals[$id] = ($totals[$id] ?? 0) + $line['requested_amount'];
+        }
+
+        // Validate every COB first (locking its budget_line_items row and the parent's earmark row for it) —
+        // nothing is written until every COB in this request has enough still actively earmarked.
+        $earmarkRows = [];
+        foreach ($totals as $lineItemId => $requested) {
+            App\ExecuteRow("SELECT 1 FROM {$this->table} WHERE budget_line_item_id = {$lineItemId} FOR UPDATE", 'DB');
+
+            $earmark = App\ExecuteRow(
+                "SELECT earmark_id, amount FROM {$this->tableEarmark}
+                 WHERE allocation_id = {$parentAllocationId} AND budget_line_item_id = {$lineItemId} AND status = 'active'
+                 FOR UPDATE",
+                'DB'
+            );
+            if (!$earmark) {
+                return ['success' => false, 'message' =>
+                    "Parent CBA #{$parentAllocationId} has no active earmark for budget line item #{$lineItemId}."];
+            }
+            if ($requested > (float) $earmark['amount']) {
+                return ['success' => false, 'message' =>
+                    'Requested amount ('.number_format($requested, 2).
+                    ') exceeds what the parent CBA still has actively earmarked ('.number_format((float) $earmark['amount'], 2).
+                    ") for budget line item #{$lineItemId}."];
+            }
+            $earmarkRows[$lineItemId] = $earmark;
+        }
+
+        foreach ($totals as $lineItemId => $requested) {
+            $earmark = $earmarkRows[$lineItemId];
+            $remaining = round((float) $earmark['amount'] - $requested, 2);
+
+            if ($remaining <= 0) {
+                App\Execute(
+                    "UPDATE {$this->tableEarmark} SET amount = 0, status = 'converted', released_at = CURRENT_TIMESTAMP
+                     WHERE earmark_id = {$earmark['earmark_id']}",
+                    'DB'
+                );
+            } else {
+                App\Execute(
+                    "UPDATE {$this->tableEarmark} SET amount = ".App\QuotedValue($remaining, DataType::NUMBER, 'DB')."
+                     WHERE earmark_id = {$earmark['earmark_id']}",
+                    'DB'
+                );
+            }
+
+            App\Execute(
+                "INSERT INTO {$this->tableEarmark} (budget_line_item_id, allocation_id, amount, status, released_at)
+                 VALUES ({$lineItemId}, {$allocationId}, "
+                 .App\QuotedValue($requested, DataType::NUMBER, 'DB').", 'converted', CURRENT_TIMESTAMP)",
+                'DB'
+            );
+
+            App\Execute(
+                "UPDATE {$this->table} SET obligation = obligation + ".App\QuotedValue($requested, DataType::NUMBER, 'DB')."
+                 WHERE budget_line_item_id = {$lineItemId}",
+                'DB'
+            );
+        }
+
+        return ['success' => true];
+    }
+
+    /** Frees every still-active earmark an allocation is holding (e.g. it was deleted after being Approved). */
+    public function releaseForAllocation(int $allocationId): void
+    {
+        App\Execute(
+            "UPDATE {$this->tableEarmark} SET status = 'released', released_at = CURRENT_TIMESTAMP
+             WHERE allocation_id = {$allocationId} AND status = 'active'",
+            'DB'
+        );
+    }
+
+    /**
+     * Every earmark row against one budget line item, oldest first — the "why is this COB's available
+     * balance lower than suggested_amount" drill-down: each row is one Approved CBA/CFA that reserved an
+     * amount (status 'active'/'released'), or one Approved RFA/LAA that converted part of a CBA's
+     * reservation into a real obligation (status 'converted' — see
+     * BudgetLineItemService::convertEarmarkForRfaApproval()). Carries each row's own allocation's
+     * reference number, type and current status so the UI can show "RR-001 (CBA, Approved) — ₱20,000.00,
+     * active" per row without a second lookup.
+     */
+    public function fetchEarmarks(int $budgetLineItemId): array
+    {
+        try {
+            $sql = "SELECT e.earmark_id, e.budget_line_item_id, e.allocation_id, e.amount,
+                           e.status AS earmark_status, e.created_at, e.released_at,
+                           a.request_referrence_no, a.allocation_number, a.allocation_type,
+                           st.name AS allocation_status_name, st.color AS allocation_status_color,
+                           rc.rc_name AS requesting_rc_name
+                    FROM {$this->tableEarmark} e
+                    JOIN {$this->tableBudgetAllocation} a ON a.allocation_id = e.allocation_id
+                    LEFT JOIN {$this->tableStatus} st ON st.id = a.status_id
+                    LEFT JOIN {$this->tableRc} rc ON rc.rc_id = a.requesting_rc_id
+                    WHERE e.budget_line_item_id = " . (int) $budgetLineItemId . '
+                    ORDER BY e.created_at ASC, e.earmark_id ASC';
+
+            return ['success' => true, 'data' => App\ExecuteRows($sql, 'DB') ?: []];
+        } catch (\Exception $e) {
+            App\LogError('BudgetLineItemService::fetchEarmarks ' . $e->getMessage());
+
+            return ['success' => false, 'message' => 'Failed to load earmarks.'];
         }
     }
 

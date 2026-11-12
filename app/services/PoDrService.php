@@ -6,45 +6,37 @@ use PHPMaker2024\FIMS as App;
 use PHPMaker2024\FIMS\DataType;
 
 /**
- * DR (Delivery Receipt) Module — 1 PO number → many DR lines, in 1 table:
- *   fims.po_delivery_receipt  (see _assets/sql/01 - fims/01 - table/17 - fims_po_delivery_receipt.sql)
+ * IAR (Inspection and Acceptance Report) Module — ONE table
+ * (see _assets/sql/01 - fims/01 - table/25 - fims_inspection_acceptance_report.sql):
+ *   fims.inspection_acceptance_report   one row per PO: po_number, iar_number (typed by the user, unique), si_number, si_date and
+ *                                       line_transaction (JSONB) = the PO's delivery receipts (DR):
+ *   [ { dr_number, delivery_date, total_amount,
+ *       lines: [ { account_code, account_title, amount } ],
+ *       items?: [ { description, serial_no, amount, property_no, par_no } ] } ]   // items only when the total is >= 50,000
  *
- * A PO is addressed by its po_number (free text). Lines sharing a dr_number belong to the same delivery receipt.
- * Line: dr_number*, delivery_date*, description*, quantity* (whole), unit*, unit_price*, amount (= quantity x unit_price,
- * computed here), account_code (required from 50,000), serial_no (optional, unique when given), property_no / par_no (optional).
- *
- * 2 tables: fims.iar_module is the PO's IAR header (iar_number auto-generated, po_number, si_number, si_date);
- * every delivery receipt line carries that iar_number (fims.po_delivery_receipt.iar_number).
+ * The PO is picked from the Budget Allocation (the po_number of an RFA row — see poSource()). One save handles ONE DR. A DR is
+ * identified inside its PO by its dr_number (unique within the PO); a serial number is unique across all DRs.
+ * The DR total may not exceed the PO balance (PO amount - the totals of the PO's other DRs).
  *
  * Save payload:
- *   { po_number, si_number?, si_date?, lines: [ { dr_line_id?, dr_number, delivery_date, account_code?, description, quantity,
- *                                                  unit, unit_price, serial_no?, property_no?, par_no? } ] }
+ *   { po_number, iar_number, si_number?, si_date?,
+ *     dr: { dr_ref? (edit: the dr_number the DR had when it was loaded), dr_number, delivery_date,
+ *           entries: [ { account_code, amount } ],                           // account codes from fims.chart_of_accounts
+ *           items?: [ { description?, serial_no?, amount?, property_no?, par_no? } ] } }   // many items, one line each; kept only when the total is >= 50,000
+ *
+ * API shape of a delivery receipt (read / list):
+ *   { dr_number, delivery_date, total_amount, entries: [ { account_code, account_title, amount } ],
+ *     items: [ { description, serial_no, amount, property_no, par_no } ] }     // items is [] when none were added
  */
 class PoDrService
 {
-    private string $t = 'fims.po_delivery_receipt';   // delivery receipt lines
-    private string $h = 'fims.iar_module';            // IAR header: po_number, iar_number, si_number, si_date
+    private string $h = 'fims.inspection_acceptance_report';   // po_number, iar_number, si_number, si_date, line_transaction
 
-    /** Line amount (quantity x unit price) at or above which a Property & Equipment Category is required (below it the category is not used). */
-    private const CATEGORY_MIN_PRICE = 50000;
+    /** DR total at or above which the optional items (description, serial, amount, property no., PAR no. — one line each) apply. */
+    private const ITEM_MIN_AMOUNT = 50000;
 
-    /** Pro-forma JEV accounts: expense for uncategorised items, accounts payable for the DR total. */
-    private const EXPENSE_ACCOUNT = '5-02-03-990';
+    /** Pro-forma JEV: the DR total is credited to Accounts Payable. */
     private const PAYABLE_ACCOUNT = '2-01-01-010';
-
-    /** Allowed Property & Equipment accounts: account code => name. Only the code is stored; keep in sync with dr-module-form.php. */
-    private const ACCOUNTS = [
-        '1-06-05-020' => 'Office Equipment',
-        '1-06-05-030' => 'Information and Communication Technology Equipment',
-        '1-06-05-070' => 'Communication Equipment',
-        '1-06-05-080' => 'Construction and Heavy Equipment',
-        '1-06-05-110' => 'Medical Equipment',
-        '1-06-05-130' => 'Sports Equipment',
-        '1-06-05-990' => 'Other Machinery and Equipment',
-        '1-06-06-010' => 'Motor Vehicles',
-        '1-06-07-010' => 'Furniture & Fixtures',
-        '1-06-98-990' => 'Other Property, Plant and Equipment',
-    ];
 
     private function q($value): string
     {
@@ -63,11 +55,6 @@ class PoDrService
         return $value === null ? 'NULL' : $this->q($value);
     }
 
-    private function idOrNull($v): ?int
-    {
-        return $v !== null && $v !== '' ? (int) $v : null;
-    }
-
     private function validDate(string $d): bool
     {
         $dt = \DateTime::createFromFormat('Y-m-d', $d);
@@ -75,7 +62,66 @@ class PoDrService
         return $dt && $dt->format('Y-m-d') === $d;
     }
 
-    /** Validate + normalise. Returns [po_number, lines[], errorMessage]. */
+    /** Money text ("1,500.50") → number with 2 decimals, or null when it isn't a valid non-negative amount. */
+    private function money($v): ?string
+    {
+        $s = str_replace(',', '', trim((string) ($v ?? '')));
+        if ($s === '') {
+            return '0.00';
+        }
+        if (!is_numeric($s) || (float) $s < 0 || (float) $s >= 1e14) {
+            return null;
+        }
+
+        return number_format((float) $s, 2, '.', '');
+    }
+
+    /** SQL literal for a JSONB value. */
+    private function jsonSql(array $value): string
+    {
+        return $this->q(json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)) . '::jsonb';
+    }
+
+    /** The delivery receipts stored in line_transaction (a JSON string from the database, or an array). */
+    private function drsFrom($json): array
+    {
+        $a = is_string($json) ? json_decode($json, true) : $json;
+
+        return is_array($a) ? array_values(array_filter($a, 'is_array')) : [];
+    }
+
+    /** One stored delivery receipt → the API shape. */
+    private function shape(array $d): array
+    {
+        return [
+            'dr_number'     => (string) ($d['dr_number'] ?? ''),
+            'delivery_date' => $d['delivery_date'] ?? null,
+            'total_amount'  => $d['total_amount'] ?? '0.00',
+            'entries'       => array_values(array_filter($d['lines'] ?? [], 'is_array')),
+            'items'         => array_values(array_filter($d['items'] ?? [], 'is_array')),
+        ];
+    }
+
+    /** A cleaned DR → the element stored in line_transaction. */
+    private function stored(array $dr): array
+    {
+        $out = [
+            'dr_number'     => $dr['dr_number'],
+            'delivery_date' => $dr['delivery_date'],
+            'total_amount'  => $dr['total'],
+            'lines'         => $dr['entries'],
+        ];
+        if ($dr['items']) {
+            $out['items'] = $dr['items'];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Validate + normalise. Returns [po_number, dr[], errorMessage, header[]]:
+     *   dr = { ref, dr_number, delivery_date, total, entries[{account_code, account_title, amount}], items[] }
+     */
     private function clean(array $body): array
     {
         $po = trim((string) ($body['po_number'] ?? ''));
@@ -86,82 +132,15 @@ class PoDrService
             return [null, null, 'PO number must be 100 characters or fewer.'];
         }
 
-        $raw = $body['lines'] ?? [];
-        if (!is_array($raw) || count($raw) === 0) {
-            return [null, null, 'Add at least one delivery receipt line.'];
+        $iar = trim((string) ($body['iar_number'] ?? ''));
+        if ($iar === '') {
+            return [null, null, 'IAR number is required.'];
+        }
+        if (mb_strlen($iar) > 50) {
+            return [null, null, 'IAR number must be 50 characters or fewer.'];
         }
 
-        $lines   = [];
-        $serials = [];
-        foreach (array_values($raw) as $i => $ln) {
-            $n    = $i + 1;
-            $dr   = trim((string) ($ln['dr_number'] ?? ''));
-            $dd   = trim((string) ($ln['delivery_date'] ?? ''));
-            $desc = trim((string) ($ln['description'] ?? ''));
-            $unit = trim((string) ($ln['unit'] ?? ''));
-            $cat  = trim((string) ($ln['account_code'] ?? ''));
-            $model = $this->nullable($ln['model_no'] ?? null);
-            $ser  = $this->nullable($ln['serial_no'] ?? null);
-            $prop = $this->nullable($ln['property_no'] ?? null);
-            $par  = $this->nullable($ln['par_no'] ?? null);
-
-            if ($dr === '')   return [null, null, "Line {$n}: delivery receipt no. is required."];
-            if ($dd === '' || !$this->validDate($dd)) return [null, null, "Line {$n}: delivery date is required and must be a valid date."];
-            if ($desc === '') return [null, null, "Line {$n}: description is required."];
-            if ($unit === '') return [null, null, "Line {$n}: unit is required."];
-
-            if (mb_strlen($dr) > 100 || ($model !== null && mb_strlen($model) > 100) || ($ser !== null && mb_strlen($ser) > 100)
-                || ($prop !== null && mb_strlen($prop) > 100) || ($par !== null && mb_strlen($par) > 100)) {
-                return [null, null, "Line {$n}: DR no., model no., serial no., property no. and PAR no. must be 100 characters or fewer."];
-            }
-            if (mb_strlen($unit) > 50) return [null, null, "Line {$n}: unit must be 50 characters or fewer."];
-
-            $qtyRaw = str_replace(',', '', trim((string) ($ln['quantity'] ?? '')));
-            if ($qtyRaw === '' || !ctype_digit($qtyRaw) || (int) $qtyRaw <= 0 || (int) $qtyRaw > 1000000000) {
-                return [null, null, "Line {$n}: quantity is required and must be a whole number greater than 0."];
-            }
-            $priceRaw = str_replace(',', '', trim((string) ($ln['unit_price'] ?? '')));
-            if ($priceRaw === '' || !is_numeric($priceRaw) || (float) $priceRaw < 0 || (float) $priceRaw >= 1e11) {
-                return [null, null, "Line {$n}: unit price is required and must be a valid number."];
-            }
-            $quantity  = (string) (int) $qtyRaw;
-            $unitPrice = number_format((float) $priceRaw, 2, '.', '');
-            $amount    = number_format(round((float) $quantity * (float) $unitPrice, 2), 2, '.', '');
-
-            // Property & Equipment Category applies only when the line amount is CATEGORY_MIN_PRICE or more
-            if ((float) $amount >= self::CATEGORY_MIN_PRICE) {
-                if (!isset(self::ACCOUNTS[$cat])) {
-                    return [null, null, "Line {$n}: please choose a Property & Equipment Category (required when the amount is " . number_format(self::CATEGORY_MIN_PRICE) . ' or more).'];
-                }
-            } else {
-                $cat = '';
-            }
-
-            if ($ser !== null) {
-                if (isset($serials[mb_strtolower($ser)])) {
-                    return [null, null, "Serial no. '{$ser}' is entered more than once."];
-                }
-                $serials[mb_strtolower($ser)] = true;
-            }
-
-            $lines[] = [
-                'id'            => $this->idOrNull($ln['dr_line_id'] ?? null),
-                'dr_number'     => $dr,
-                'delivery_date' => $dd,
-                'account_code'  => $cat === '' ? null : $cat,
-                'description'   => $desc,
-                'quantity'      => $quantity,
-                'unit'          => $unit,
-                'unit_price'    => $unitPrice,
-                'amount'        => $amount,
-                'model_no'      => $model,
-                'serial_no'     => $ser,
-                'property_no'   => $prop,
-                'par_no'        => $par,
-            ];
-        }
-
-        // Sales Invoice # / date belong to the PO's IAR header (fims.iar_module), not to the lines.
+        // Sales Invoice # / date belong to the PO's IAR header
         $si  = $this->nullable($body['si_number'] ?? null);
         $sid = $this->nullable($body['si_date'] ?? null);
         if ($si !== null && mb_strlen($si) > 100) {
@@ -171,76 +150,352 @@ class PoDrService
             return [null, null, 'Sales invoice date must be a valid date.'];
         }
 
-        return [$po, $lines, null, ['si_number' => $si, 'si_date' => $sid]];
+        $d = $body['dr'] ?? null;
+        if (!is_array($d)) {
+            return [null, null, 'Delivery receipt details are required.'];
+        }
+        $dr = trim((string) ($d['dr_number'] ?? ''));
+        $dd = trim((string) ($d['delivery_date'] ?? ''));
+        if ($dr === '') {
+            return [null, null, 'Delivery receipt no. is required.'];
+        }
+        if (mb_strlen($dr) > 100) {
+            return [null, null, 'Delivery receipt no. must be 100 characters or fewer.'];
+        }
+        if ($dd === '' || !$this->validDate($dd)) {
+            return [null, null, 'Delivery date is required and must be a valid date.'];
+        }
+
+        // Account rows: an account code + an amount; the DR total is the sum of the amounts. There is no debit/credit to
+        // balance here — the only limit is the PO balance (checked in drError()).
+        $raw = $d['entries'] ?? [];
+        if (!is_array($raw) || count($raw) < 1) {
+            return [null, null, 'Add at least one account row.'];
+        }
+        $entries    = [];
+        $totalCents = 0;   // in cents, so the sum is exact
+        foreach (array_values($raw) as $i => $en) {
+            $n    = $i + 1;
+            $code = trim((string) ($en['account_code'] ?? ''));
+            $amt  = $this->money($en['amount'] ?? null);
+            if ($code === '') {
+                return [null, null, "Row {$n}: please choose an account code."];
+            }
+            if ($amt === null) {
+                return [null, null, "Row {$n}: amount must be a valid amount."];
+            }
+            if ((float) $amt <= 0) {
+                return [null, null, "Row {$n}: enter an amount greater than 0."];
+            }
+            $totalCents += (int) round((float) $amt * 100);
+            $entries[] = ['account_code' => $code, 'account_title' => '', 'amount' => $amt];
+        }
+        $total = number_format($totalCents / 100, 2, '.', '');
+
+        // every account code must exist in the chart of accounts; its title is stored with the row
+        $codes  = array_values(array_unique(array_column($entries, 'account_code')));
+        $in     = implode(',', array_map(fn($c) => $this->q($c), $codes));
+        $titles = [];
+        foreach (App\ExecuteRows("SELECT account_code, account_title FROM fims.chart_of_accounts WHERE account_code IN ({$in})", 'DB') ?: [] as $r) {
+            $titles[$r['account_code']] = (string) $r['account_title'];
+        }
+        foreach ($entries as &$en) {
+            if (!isset($titles[$en['account_code']])) {
+                return [null, null, "Account code '{$en['account_code']}' was not found in the chart of accounts."];
+            }
+            $en['account_title'] = $titles[$en['account_code']];
+        }
+        unset($en);
+
+        // The optional items only apply from ITEM_MIN_AMOUNT (below it there are none): one line per item, any number of lines.
+        // A line with nothing entered is skipped; every serial number must be different.
+        $items = [];
+        if ((float) $total >= self::ITEM_MIN_AMOUNT) {
+            $serials = [];
+            foreach (array_values(is_array($d['items'] ?? null) ? $d['items'] : []) as $i => $it) {
+                if (!is_array($it)) {
+                    continue;
+                }
+                $n   = $i + 1;
+                $row = [
+                    'description' => $this->nullable($it['description'] ?? null),
+                    'serial_no'   => $this->nullable($it['serial_no'] ?? null),
+                    'amount'      => null,
+                    'property_no' => $this->nullable($it['property_no'] ?? null),
+                    'par_no'      => $this->nullable($it['par_no'] ?? null),
+                ];
+                $amtRaw = trim((string) ($it['amount'] ?? ''));
+                if ($amtRaw !== '') {
+                    $amt = $this->money($amtRaw);
+                    if ($amt === null) {
+                        return [null, null, "Item {$n}: amount must be a valid amount."];
+                    }
+                    $row['amount'] = $amt;
+                }
+                foreach (['serial_no' => 'Serial no.', 'property_no' => 'Property no.', 'par_no' => 'PAR no.'] as $k => $label) {
+                    if ($row[$k] !== null && mb_strlen($row[$k]) > 100) {
+                        return [null, null, "Item {$n}: {$label} must be 100 characters or fewer."];
+                    }
+                }
+                $row = array_filter($row, fn($v) => $v !== null);   // only what was entered is stored
+                if (!$row) {
+                    continue;
+                }
+                if (isset($row['serial_no'])) {
+                    $key = mb_strtolower($row['serial_no']);
+                    if (isset($serials[$key])) {
+                        return [null, null, "Serial no. '{$row['serial_no']}' is entered more than once."];
+                    }
+                    $serials[$key] = true;
+                }
+                $items[] = $row;
+            }
+        }
+
+        return [$po, [
+            'ref'           => $this->nullable($d['dr_ref'] ?? null),
+            'dr_number'     => $dr,
+            'delivery_date' => $dd,
+            'total'         => $total,
+            'entries'       => $entries,
+            'items'         => $items,
+        ], null, ['iar_number' => $iar, 'si_number' => $si, 'si_date' => $sid]];
     }
 
-    /** Next IAR number for the current year: IAR-YYYY-0001, IAR-YYYY-0002, … */
-    private function nextIarNumber(): string
+    /** True when the IAR number already belongs to another PO's IAR ($exceptPo = that PO is not counted). */
+    private function iarTaken(string $iar, ?string $exceptPo = null): bool
     {
-        $prefix = 'IAR-' . date('Y') . '-';
-        $max    = (int) App\ExecuteScalar(
-            "SELECT COALESCE(MAX(CAST(SUBSTRING(iar_number FROM LENGTH({$this->q($prefix)}) + 1) AS INTEGER)), 0)
-             FROM {$this->h} WHERE iar_number LIKE " . $this->q($prefix . '%'),
-            'DB'
-        );
+        $sql = "SELECT COUNT(*) FROM {$this->h} WHERE iar_number = " . $this->q($iar);
+        if ($exceptPo !== null) {
+            $sql .= ' AND po_number <> ' . $this->q($exceptPo);
+        }
 
-        return $prefix . str_pad((string) ($max + 1), 4, '0', STR_PAD_LEFT);
+        return (int) App\ExecuteScalar($sql, 'DB') > 0;
     }
 
-    /** Error message when a serial already belongs to another line, else null. */
-    private function serialConflict(array $lines): ?string
+    /**
+     * Checks a DR against the PO's other DRs. $drs = the PO's stored DRs, $ref = the dr_number of the DR being edited (null on
+     * add) — it is left out of every check. $storedPo = the PO number the DRs are stored under. Returns an error message or null:
+     *   - the DR number is already used by another DR of this PO
+     *   - a serial number of an item belongs to a DR anywhere
+     *   - the DR total would exceed the PO balance (PO amount - the other DRs' totals); a PO that isn't an RFA PO has no limit
+     */
+    private function drError(string $storedPo, array $dr, array $drs, ?string $ref, ?array $info): ?string
     {
-        foreach ($lines as $ln) {
-            if ($ln['serial_no'] === null) {
+        $others = array_values(array_filter($drs, fn($d) => $ref === null || (string) ($d['dr_number'] ?? '') !== $ref));
+        foreach ($others as $d) {
+            if ((string) ($d['dr_number'] ?? '') === $dr['dr_number']) {
+                return "Delivery receipt '{$dr['dr_number']}' is already recorded for this PO.";
+            }
+        }
+
+        foreach ($dr['items'] as $it) {
+            $ser = $it['serial_no'] ?? null;
+            if ($ser === null) {
                 continue;
             }
-            $sql = "SELECT COUNT(*) FROM {$this->t} WHERE serial_no = " . $this->q($ln['serial_no']);
-            if ($ln['id'] !== null) {
-                $sql .= ' AND dr_line_id <> ' . (int) $ln['id'];
+            $sql = "SELECT COUNT(*) FROM {$this->h} i, jsonb_array_elements(i.line_transaction) AS d(value),
+                           jsonb_array_elements(COALESCE(d.value -> 'items', '[]'::jsonb)) AS it(value)
+                    WHERE it.value ->> 'serial_no' = " . $this->q($ser);
+            if ($ref !== null) {
+                $sql .= ' AND NOT (i.po_number = ' . $this->q($storedPo) . " AND d.value ->> 'dr_number' = " . $this->q($ref) . ')';
             }
             if ((int) App\ExecuteScalar($sql, 'DB') > 0) {
-                return "Serial no. '{$ln['serial_no']}' is already registered.";
+                return "Serial no. '{$ser}' is already registered.";
+            }
+        }
+
+        if ($info) {
+            $delivered    = array_sum(array_map(fn($d) => (float) ($d['total_amount'] ?? 0), $others));
+            $balanceCents = (int) round(((float) $info['po_amount'] - $delivered) * 100);
+            if ((int) round((float) $dr['total'] * 100) > $balanceCents) {
+                return 'The delivery receipt total (' . number_format((float) $dr['total'], 2) . ') exceeds the PO balance ('
+                    . number_format(max(0, $balanceCents) / 100, 2) . ' of ' . number_format((float) $info['po_amount'], 2) . ').';
             }
         }
 
         return null;
     }
 
-    private function linesFor(array $poNumbers): array
+    /**
+     * SQL for the sum of "requested_amount" over the lines of fims.budget_allocation.line_transaction (jsonb: an array of
+     * lines, or one line object). A blank / non-numeric amount counts as 0. Constant SQL, no user input.
+     */
+    private function requestedTotalSql(): string
     {
-        if (!$poNumbers) {
-            return [];
-        }
-        $in   = implode(',', array_map(fn($p) => $this->q($p), $poNumbers));
-        $rows = App\ExecuteRows(
-            "SELECT l.dr_line_id, l.po_number, l.iar_number, l.dr_number, TO_CHAR(l.delivery_date, 'YYYY-MM-DD') AS delivery_date,
-                    l.description, l.account_code, l.quantity, l.unit, l.unit_price, l.amount,
-                    i.si_number, TO_CHAR(i.si_date, 'YYYY-MM-DD') AS si_date,
-                    l.model_no, l.serial_no, l.property_no, l.par_no
-             FROM {$this->t} l JOIN {$this->h} i ON i.iar_number = l.iar_number
-             WHERE l.po_number IN ({$in}) ORDER BY l.dr_line_id",
-            'DB'
-        ) ?: [];
+        return "COALESCE((
+                    SELECT SUM(CASE
+                                 WHEN jsonb_typeof(ln.value->'requested_amount') = 'number' THEN (ln.value->>'requested_amount')::numeric
+                                 WHEN jsonb_typeof(ln.value->'requested_amount') = 'string'
+                                      AND REPLACE(ln.value->>'requested_amount', ',', '') ~ '^-?[0-9]+([.][0-9]+)?\$'
+                                   THEN REPLACE(ln.value->>'requested_amount', ',', '')::numeric
+                                 ELSE 0
+                               END)
+                    FROM jsonb_array_elements(CASE jsonb_typeof(a.line_transaction)
+                                                WHEN 'array'  THEN a.line_transaction
+                                                WHEN 'object' THEN jsonb_build_array(a.line_transaction)
+                                                ELSE '[]'::jsonb
+                                              END) AS ln(value)
+                    WHERE jsonb_typeof(ln.value) = 'object'
+                ), 0)";
+    }
 
+    /** The budget allocation's line_transaction → [ {account_code, account_title, amount (= requested_amount)} ] for pre-filling the form. */
+    private function allocationLines($raw): array
+    {
+        $a = is_string($raw) ? json_decode($raw, true) : $raw;
+        if (is_array($a) && $a && array_keys($a) !== range(0, count($a) - 1)) {
+            $a = [$a];                                   // a single line object
+        }
+        $out = [];
+        foreach (is_array($a) ? $a : [] as $ln) {
+            if (!is_array($ln)) {
+                continue;
+            }
+            $code = trim((string) ($ln['account_code'] ?? ''));
+            $amt  = str_replace(',', '', trim((string) ($ln['requested_amount'] ?? '')));
+            if ($code === '' || !is_numeric($amt) || (float) $amt <= 0) {
+                continue;
+            }
+            $out[] = ['account_code' => $code, 'account_title' => (string) ($ln['account_title'] ?? ''), 'amount' => number_format((float) $amt, 2, '.', '')];
+        }
+
+        return $out;
+    }
+
+    /**
+     * The POs the IAR can be recorded against: the PO numbers of the Budget Allocation's RFA rows (allocation_type = 'RFA').
+     * One row per PO number: { po_number, po_date, requesting_rc_id, requesting_office, vendor_id, vendor_name, po_amount, dr_total, lines }.
+     *   po_date          = the RFA's creation date (budget_allocation has no PO date column of its own)
+     *   requesting_office = fims.responsibility_code.rc_name of requesting_rc_id
+     *   po_amount        = sum of line_transaction[].requested_amount
+     *   dr_total         = total of the delivery receipts already recorded for the PO (PO balance = po_amount - dr_total)
+     *   lines            = the RFA's line_transaction as account_code / account_title / amount, to pre-fill the form
+     * $exact: PO numbers to look up; $search: ILIKE filter on the PO number; both empty = every PO.
+     * $onlyWithBalance: leave out the POs that have no balance left (po_amount - dr_total <= 0) — used by the PO picker.
+     */
+    private function poSource(?array $exact = null, string $search = '', int $limit = 0, bool $onlyWithBalance = false): array
+    {
+        $where = "UPPER(COALESCE(a.allocation_type, '')) = 'RFA' AND a.deleted_at IS NULL AND COALESCE(TRIM(a.po_number), '') <> ''";
+        if ($exact !== null) {
+            if (!$exact) {
+                return [];
+            }
+            $where .= ' AND a.po_number IN (' . implode(',', array_map(fn($p) => $this->q($p), $exact)) . ')';
+        }
+        if ($search !== '') {
+            $where .= ' AND a.po_number ILIKE ' . $this->q('%' . $search . '%');
+        }
+        $sql = "SELECT * FROM (
+                    SELECT DISTINCT ON (a.po_number)
+                           a.po_number, TO_CHAR(a.created_at, 'YYYY-MM-DD') AS po_date, a.created_at,
+                           a.requesting_rc_id, rc.rc_name AS requesting_office,
+                           a.vendor_id, v.vendor_name,
+                           " . $this->requestedTotalSql() . " AS po_amount,
+                           (SELECT COALESCE(SUM((d.value ->> 'total_amount')::numeric), 0)
+                              FROM {$this->h} i, jsonb_array_elements(i.line_transaction) AS d(value)
+                             WHERE i.po_number = a.po_number) AS dr_total,
+                           a.line_transaction AS allocation_lines
+                    FROM fims.budget_allocation a
+                    LEFT JOIN fims.responsibility_code rc ON rc.rc_id = a.requesting_rc_id
+                    LEFT JOIN fims.vendors v ON v.vendor_id = a.vendor_id
+                    WHERE {$where}
+                    ORDER BY a.po_number, a.created_at DESC, a.allocation_id DESC
+                ) po" . ($onlyWithBalance ? ' WHERE po.po_amount - po.dr_total > 0' : '') . " ORDER BY po.created_at DESC, po.po_number" . ($limit > 0 ? ' LIMIT ' . (int) $limit : '');
+        $rows = App\ExecuteRows($sql, 'DB') ?: [];
+        foreach ($rows as &$r) {
+            $r['lines'] = $this->allocationLines($r['allocation_lines']);
+            unset($r['created_at'], $r['allocation_lines']);
+        }
+        unset($r);
+
+        return $rows;
+    }
+
+    /** Search for the PO picker (RFA POs only; a PO with no balance left is not offered). */
+    public function searchPos(string $search = ''): array
+    {
+        try {
+            return ['success' => true, 'data' => $this->poSource(null, trim($search), 30, true)];
+        } catch (\Exception $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /** Search for the Account Code picker: the whole chart of accounts (postable, active), by code or title. */
+    public function searchAccounts(string $search = ''): array
+    {
+        try {
+            $where = "COALESCE(posting_allowed, TRUE) AND COALESCE(status, 'Active') ILIKE 'active'";
+            if (trim($search) !== '') {
+                $s      = $this->q('%' . trim($search) . '%');
+                $where .= " AND (account_code ILIKE {$s} OR account_title ILIKE {$s})";
+            }
+            $rows = App\ExecuteRows(
+                "SELECT DISTINCT ON (account_code) account_code, account_title FROM fims.chart_of_accounts WHERE {$where}
+                 ORDER BY account_code LIMIT 30",
+                'DB'
+            ) ?: [];
+
+            return ['success' => true, 'data' => $rows];
+        } catch (\Exception $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /** po_number => PO details, for the given PO numbers. */
+    private function poInfo(array $poNumbers): array
+    {
         $by = [];
-        foreach ($rows as $r) {
-            $by[$r['po_number']][] = $r;
+        foreach ($this->poSource(array_values(array_unique($poNumbers))) as $r) {
+            $by[$r['po_number']] = $r;
         }
 
         return $by;
     }
 
-    /** One entry per PO number: { po_number, lines: [ … ] } (paginated). */
+    /** The PO's details + what has been delivered so far: balance = PO amount - total of its delivery receipts. */
+    private function withPo(array $row, ?array $info, array $receipts): array
+    {
+        $drTotal = round(array_sum(array_map(fn($r) => (float) $r['total_amount'], $receipts)), 2);
+        $poAmt   = $info ? round((float) $info['po_amount'], 2) : null;
+
+        return $row + [
+            'po_date'           => $info['po_date'] ?? null,
+            'requesting_rc_id'  => $info['requesting_rc_id'] ?? null,
+            'requesting_office' => $info['requesting_office'] ?? null,
+            'vendor_id'         => $info['vendor_id'] ?? null,
+            'vendor_name'       => $info['vendor_name'] ?? null,
+            'po_amount'         => $poAmt,
+            'dr_total'          => $drTotal,
+            'balance'           => $poAmt === null ? null : round($poAmt - $drTotal, 2),
+        ];
+    }
+
+    /** IAR row → { po_number, iar_number, si_number, si_date, receipts[] } (receipts in the API shape). */
+    private function shapeRow(array $r): array
+    {
+        return [
+            'po_number'  => $r['po_number'],
+            'iar_number' => $r['iar_number'],
+            'si_number'  => $r['si_number'],
+            'si_date'    => $r['si_date'],
+            'receipts'   => array_map(fn($d) => $this->shape($d), $this->drsFrom($r['line_transaction'])),
+        ];
+    }
+
+    private const COLS = "i.po_number, i.iar_number, i.si_number, TO_CHAR(i.si_date, 'YYYY-MM-DD') AS si_date, i.line_transaction";
+
+    /** One entry per PO number: { po_number, iar_number, …, receipts: [ … ] } (paginated). */
     public function fetchAlls(int $page = 1, int $limit = 10, string $search = ''): array
     {
         try {
             $where = '1=1';
             if ($search !== '') {
+                // the delivery receipts live in line_transaction: matching its text covers DR no., account codes / titles,
+                // description, serial, property and PAR numbers
                 $s     = $this->q('%' . $search . '%');
-                $where = "(i.po_number ILIKE {$s} OR i.iar_number ILIKE {$s} OR i.si_number ILIKE {$s} OR EXISTS (
-                              SELECT 1 FROM {$this->t} l WHERE l.iar_number = i.iar_number
-                                AND (l.dr_number ILIKE {$s} OR l.description ILIKE {$s} OR l.account_code ILIKE {$s}
-                                     OR l.model_no ILIKE {$s} OR l.serial_no ILIKE {$s} OR l.property_no ILIKE {$s} OR l.par_no ILIKE {$s})))";
+                $where = "(i.po_number ILIKE {$s} OR i.iar_number ILIKE {$s} OR i.si_number ILIKE {$s} OR i.line_transaction::text ILIKE {$s})";
             }
 
             $limit  = max(1, $limit);
@@ -248,22 +503,16 @@ class PoDrService
             $offset = ($page - 1) * $limit;
             $total  = (int) App\ExecuteScalar("SELECT COUNT(*) FROM {$this->h} i WHERE {$where}", 'DB');
 
-            $pos = App\ExecuteRows(
-                "SELECT i.po_number, i.iar_number, i.si_number, TO_CHAR(i.si_date, 'YYYY-MM-DD') AS si_date
-                 FROM {$this->h} i WHERE {$where} ORDER BY i.iar_id DESC LIMIT {$limit} OFFSET {$offset}",
+            $rows = App\ExecuteRows(
+                'SELECT ' . self::COLS . " FROM {$this->h} i WHERE {$where} ORDER BY i.iar_id DESC LIMIT {$limit} OFFSET {$offset}",
                 'DB'
             ) ?: [];
 
-            $lines = $this->linesFor(array_column($pos, 'po_number'));
-            $data  = [];
-            foreach ($pos as $p) {
-                $data[] = [
-                    'po_number'  => $p['po_number'],
-                    'iar_number' => $p['iar_number'],
-                    'si_number'  => $p['si_number'],
-                    'si_date'    => $p['si_date'],
-                    'lines'      => $lines[$p['po_number']] ?? [],
-                ];
+            $info = $this->poInfo(array_column($rows, 'po_number'));
+            $data = [];
+            foreach ($rows as $r) {
+                $row    = $this->shapeRow($r);
+                $data[] = $this->withPo($row, $info[$row['po_number']] ?? null, $row['receipts']);
             }
 
             return [
@@ -284,137 +533,107 @@ class PoDrService
     public function fetchByPo(string $poNumber): array
     {
         try {
-            $hdr = App\ExecuteRows(
-                "SELECT iar_number, si_number, TO_CHAR(si_date, 'YYYY-MM-DD') AS si_date FROM {$this->h} WHERE po_number = " . $this->q($poNumber),
-                'DB'
-            );
-            if (!$hdr) {
+            $rows = App\ExecuteRows('SELECT ' . self::COLS . " FROM {$this->h} i WHERE i.po_number = " . $this->q($poNumber), 'DB');
+            if (!$rows) {
                 return ['success' => false, 'message' => "PO '{$poNumber}' not found."];
             }
-            $lines = $this->linesFor([$poNumber])[$poNumber] ?? [];
+            $row = $this->shapeRow($rows[0]);
 
-            return ['success' => true, 'data' => [
-                'po_number'  => $poNumber,
-                'iar_number' => $hdr[0]['iar_number'],
-                'si_number'  => $hdr[0]['si_number'],
-                'si_date'    => $hdr[0]['si_date'],
-                'lines'      => $lines,
-            ]];
+            return ['success' => true, 'data' => $this->withPo($row, $this->poInfo([$poNumber])[$poNumber] ?? null, $row['receipts'])];
         } catch (\Exception $e) {
             return ['success' => false, 'message' => $e->getMessage()];
         }
     }
 
     /**
-     * Pro-forma JEV of every delivery receipt of a PO (one entry per DR number):
-     *   Debit  5-02-03-990  lines that have no account code (expense)
-     *   Debit  <account code> lines that have one (one row per code, e.g. 1-06-05-030, 1-06-05-020)
-     *   Credit 2-01-01-010  the total amount of the delivery receipt (Accounts Payable)
-     * Account titles come from fims.chart_of_accounts (falls back to the built-in names).
+     * Pro-forma JEV of every delivery receipt of a PO (one entry per DR): each stored account row is a debit, and the
+     * DR total is credited to Accounts Payable (2-01-01-010). Titles are the ones stored with the rows.
      */
     public function proforma(string $poNumber): array
     {
         try {
-            $lines = $this->linesFor([$poNumber])[$poNumber] ?? [];
-            if (!$lines) {
-                return ['success' => false, 'message' => "PO '{$poNumber}' not found."];
+            $res = $this->fetchByPo($poNumber);
+            if (!$res['success'] || !$res['data']['receipts']) {
+                return ['success' => false, 'message' => "No delivery receipts found for PO '{$poNumber}'."];
             }
 
-            $codes = array_merge([self::EXPENSE_ACCOUNT, self::PAYABLE_ACCOUNT], array_keys(self::ACCOUNTS));
-            $in    = implode(',', array_map(fn($c) => $this->q($c), $codes));
-            $titles = [];
-            foreach (App\ExecuteRows("SELECT account_code, account_title FROM fims.chart_of_accounts WHERE account_code IN ({$in})", 'DB') ?: [] as $r) {
-                $titles[$r['account_code']] = $r['account_title'];
-            }
-            $titleOf = fn(string $code) => $titles[$code]
-                ?? self::ACCOUNTS[$code]
-                ?? ($code === self::EXPENSE_ACCOUNT ? 'Other Supplies and Materials Expenses' : 'Accounts Payable');
-
-            $byDr = [];
-            foreach ($lines as $ln) {
-                $byDr[$ln['dr_number']][] = $ln;
-            }
-
+            $payableTitle = (string) (App\ExecuteScalar('SELECT account_title FROM fims.chart_of_accounts WHERE account_code = ' . $this->q(self::PAYABLE_ACCOUNT) . ' LIMIT 1', 'DB') ?: 'Accounts Payable');
             $receipts = [];
-            foreach ($byDr as $dr => $drLines) {
-                // The GL amount of each account is the sum of its subsidiary-ledger items (the DR's item lines).
-                $noCode  = [];
-                $perCode = [];
-                $all     = [];
-                $total   = 0.0;
-                foreach ($drLines as $ln) {
-                    $amt  = (float) $ln['amount'];
-                    $item = ['description' => $ln['description'], 'amount' => round($amt, 2)];
-                    $total += $amt;
-                    $all[] = $item;
-                    if (($ln['account_code'] ?? '') === '' || $ln['account_code'] === null) {
-                        $noCode[] = $item;
-                    } else {
-                        $perCode[$ln['account_code']][] = $item;
-                    }
-                }
-                ksort($perCode);
-                $sum = fn(array $items) => round(array_sum(array_column($items, 'amount')), 2);
-
+            foreach ($res['data']['receipts'] as $dr) {
                 $rows = [];
-                if ($noCode) {
-                    $rows[] = ['account_title' => $titleOf(self::EXPENSE_ACCOUNT), 'account_code' => self::EXPENSE_ACCOUNT, 'debit' => $sum($noCode), 'credit' => 0, 'items' => $noCode];
+                foreach ($dr['entries'] as $en) {
+                    $rows[] = [
+                        'account_title' => $en['account_title'] ?? '',
+                        'account_code'  => $en['account_code'],
+                        'debit'         => round((float) $en['amount'], 2),
+                        'credit'        => 0,
+                    ];
                 }
-                foreach ($perCode as $code => $items) {
-                    $rows[] = ['account_title' => $titleOf($code), 'account_code' => $code, 'debit' => $sum($items), 'credit' => 0, 'items' => $items];
-                }
-                $rows[] = ['account_title' => $titleOf(self::PAYABLE_ACCOUNT), 'account_code' => self::PAYABLE_ACCOUNT, 'debit' => 0, 'credit' => round($total, 2), 'items' => $all];
-
-                $receipts[] = ['dr_number' => (string) $dr, 'rows' => $rows, 'total' => round($total, 2)];
+                $rows[] = [
+                    'account_title' => $payableTitle,
+                    'account_code'  => self::PAYABLE_ACCOUNT,
+                    'debit'         => 0,
+                    'credit'        => round((float) $dr['total_amount'], 2),
+                ];
+                $receipts[] = ['dr_number' => (string) $dr['dr_number'], 'rows' => $rows, 'total' => round((float) $dr['total_amount'], 2)];
             }
 
-            return ['success' => true, 'data' => ['po_number' => $poNumber, 'receipts' => $receipts]];
+            return ['success' => true, 'data' => ['po_number' => $poNumber, 'iar_number' => $res['data']['iar_number'], 'receipts' => $receipts]];
         } catch (\Exception $e) {
             return ['success' => false, 'message' => $e->getMessage()];
         }
     }
 
+    /** Adds ONE delivery receipt to the PO (creating the PO's IAR row when the PO has none yet). */
     public function create(array $body, ?int $userId = null): array
     {
         try {
-            [$po, $lines, $err, $hdr] = $this->clean($body);
+            [$po, $dr, $err, $hdr] = $this->clean($body) + [null, null, null, null];   // an error result has only 3 items
             if ($err) {
                 return ['success' => false, 'message' => $err];
             }
-            // Many DRs can share one PO number: adding to an existing PO number simply appends the new lines to it.
-            $existing = App\ExecuteRows("SELECT iar_number FROM {$this->h} WHERE po_number = " . $this->q($po), 'DB');
-            $existed  = !empty($existing);
-            foreach ($lines as &$ln) {            // everything is new on create
-                $ln['id'] = null;
+            // The PO must be picked from the Budget Allocation (an RFA's PO number), not typed freely.
+            $poInfo = $this->poInfo([$po])[$po] ?? null;
+            if (!$poInfo) {
+                return ['success' => false, 'message' => "PO '{$po}' was not found in the Budget Allocation (RFA). Please select a PO from the list."];
             }
-            unset($ln);
-            if ($msg = $this->serialConflict($lines)) {
-                return ['success' => false, 'message' => $msg];
-            }
+            $iar = $hdr['iar_number'];
+            $by  = $userId ? (int) $userId : 'NULL';
 
-            $by = $userId ? (int) $userId : 'NULL';
             App\Execute('BEGIN', 'DB');
             try {
-                if ($existed) {
-                    // the PO already has its IAR: keep the IAR number, only fill in the invoice details that were given
-                    $iar = $existing[0]['iar_number'];
-                    $set = [];
+                $cur = App\ExecuteRows("SELECT iar_number, line_transaction FROM {$this->h} WHERE po_number = " . $this->q($po) . ' FOR UPDATE', 'DB');
+                if ($cur && $cur[0]['iar_number'] !== $iar) {
+                    App\Execute('ROLLBACK', 'DB');
+
+                    return ['success' => false, 'message' => "PO '{$po}' already has IAR number '{$cur[0]['iar_number']}'. Use that IAR number, or edit the PO to change it."];
+                }
+                if (!$cur && $this->iarTaken($iar)) {
+                    App\Execute('ROLLBACK', 'DB');
+
+                    return ['success' => false, 'message' => "IAR number '{$iar}' is already used by another PO."];
+                }
+                $drs = $cur ? $this->drsFrom($cur[0]['line_transaction']) : [];
+                if ($msg = $this->drError($po, $dr, $drs, null, $poInfo)) {
+                    App\Execute('ROLLBACK', 'DB');
+
+                    return ['success' => false, 'message' => $msg];
+                }
+                $drs[] = $this->stored($dr);
+
+                if ($cur) {
+                    // the PO already has its IAR (same number, checked above): add the DR, fill in the invoice details that were given
+                    $set = ['line_transaction = ' . $this->jsonSql($drs)];
                     if ($hdr['si_number'] !== null) $set[] = 'si_number = ' . $this->q($hdr['si_number']);
                     if ($hdr['si_date'] !== null)   $set[] = 'si_date = ' . $this->q($hdr['si_date']);
-                    if ($set) {
-                        App\Execute("UPDATE {$this->h} SET " . implode(', ', $set) . ", updated_by = {$by}, updated_at = CURRENT_TIMESTAMP WHERE iar_number = " . $this->q($iar), 'DB');
-                    }
+                    App\Execute("UPDATE {$this->h} SET " . implode(', ', $set) . ", updated_by = {$by}, updated_at = CURRENT_TIMESTAMP WHERE po_number = " . $this->q($po), 'DB');
                 } else {
-                    $iar = $this->nextIarNumber();
                     App\Execute(
-                        "INSERT INTO {$this->h} (iar_number, po_number, si_number, si_date, created_by) VALUES ("
+                        "INSERT INTO {$this->h} (iar_number, po_number, si_number, si_date, line_transaction, created_by) VALUES ("
                             . $this->q($iar) . ', ' . $this->q($po) . ', ' . $this->sqlOrNull($hdr['si_number']) . ', '
-                            . $this->sqlOrNull($hdr['si_date']) . ", {$by})",
+                            . $this->sqlOrNull($hdr['si_date']) . ', ' . $this->jsonSql($drs) . ", {$by})",
                         'DB'
                     );
-                }
-                foreach ($lines as $ln) {
-                    $this->insertLine($po, $iar, $ln, $userId);   // every delivery receipt line carries the PO's IAR number
                 }
                 App\Execute('COMMIT', 'DB');
             } catch (\Throwable $e) {
@@ -422,15 +641,18 @@ class PoDrService
                 throw $e;
             }
 
-            return ['success' => true, 'message' => $existed ? "Delivery receipt lines added to existing PO {$po} ({$iar})." : "PO {$po} added successfully ({$iar})."];
+            return ['success' => true, 'message' => $cur ? "Delivery receipt {$dr['dr_number']} added to PO {$po} ({$iar})." : "PO {$po} added successfully ({$iar})."];
         } catch (\Exception $e) {
             return ['success' => false, 'message' => $e->getMessage()];
         }
     }
 
     /**
-     * Saves the whole PO (addressed by its current po_number). Lines carrying an id are updated, those without
-     * are inserted, existing ones missing from the payload are deleted. The PO number itself may be renamed.
+     * EDIT — deliberately limited. What can be changed: the IAR number, the Sales Invoice # / date, the DR number and delivery
+     * date of ONE delivery receipt (payload dr.dr_ref = the dr_number it had when loaded) and that DR's optional items (when
+     * its total is 50,000 or more; items can be added, changed and removed). What can NOT be changed here: the PO number, and the
+     * account rows / amounts / total of the DR (whatever is sent for them is ignored — the stored ones are kept), and no
+     * other DR can be added (that is the Add form). So the PO balance cannot be affected by an edit.
      */
     public function update(string $oldPo, array $body, ?int $userId = null): array
     {
@@ -440,106 +662,82 @@ class PoDrService
                 return $check;
             }
 
-            [$po, $lines, $err, $hdr] = $this->clean($body);
+            // the PO of an IAR cannot be changed
+            if (trim((string) ($body['po_number'] ?? '')) !== $oldPo) {
+                return ['success' => false, 'message' => 'The PO number cannot be changed. Add a new record for the other PO.'];
+            }
+
+            // the DR being edited (by the dr_number it had when loaded) — its stored account rows are kept as they are:
+            // they are put into the payload only so that the usual validation of the whole DR runs on the unchanged total
+            $ref    = trim((string) ($body['dr']['dr_ref'] ?? ''));
+            $stored = null;
+            foreach ($check['data']['receipts'] as $r) {
+                if ($ref !== '' && (string) $r['dr_number'] === $ref) {
+                    $stored = $r;
+                }
+            }
+            if ($stored === null) {
+                return ['success' => false, 'message' => 'Select the delivery receipt to edit.'];
+            }
+            $body['dr']['entries'] = array_map(fn($e) => ['account_code' => $e['account_code'], 'amount' => $e['amount']], $stored['entries']);
+
+            [$po, $dr, $err, $hdr] = $this->clean($body) + [null, null, null, null];   // an error result has only 3 items
             if ($err) {
                 return ['success' => false, 'message' => $err];
             }
-            $iar = $check['data']['iar_number'];
-            if ($po !== $oldPo && (int) App\ExecuteScalar("SELECT COUNT(*) FROM {$this->h} WHERE po_number = " . $this->q($po), 'DB') > 0) {
-                return ['success' => false, 'message' => "PO number '{$po}' already exists."];
+            $oldIar = $check['data']['iar_number'];
+            $iar    = $hdr['iar_number'];                       // the IAR number can be changed by the user
+            if ($iar !== $oldIar && $this->iarTaken($iar, $oldPo)) {
+                return ['success' => false, 'message' => "IAR number '{$iar}' is already used by another PO."];
             }
-
-            // ids that don't belong to this PO are treated as new lines
-            $owned = array_map('intval', array_column($check['data']['lines'], 'dr_line_id'));
-            foreach ($lines as &$ln) {
-                if ($ln['id'] !== null && !in_array($ln['id'], $owned, true)) {
-                    $ln['id'] = null;
-                }
-            }
-            unset($ln);
-
-            if ($msg = $this->serialConflict($lines)) {
-                return ['success' => false, 'message' => $msg];
-            }
-
-            $keep = [];
-            foreach ($lines as $ln) {
-                if ($ln['id'] !== null) {
-                    $keep[] = $ln['id'];
-                }
-            }
+            $by         = $userId ? (int) $userId : 'NULL';
 
             App\Execute('BEGIN', 'DB');
             try {
-                // 0) the IAR header: PO number + invoice details (the IAR number itself never changes)
-                $hby = $userId ? (int) $userId : 'NULL';
-                App\Execute("UPDATE {$this->h} SET po_number = " . $this->q($po) . ', si_number = ' . $this->sqlOrNull($hdr['si_number'])
-                    . ', si_date = ' . $this->sqlOrNull($hdr['si_date']) . ", updated_by = {$hby}, updated_at = CURRENT_TIMESTAMP WHERE iar_number = " . $this->q($iar), 'DB');
-
-                // 1) delete lines removed in the form
-                $del = "DELETE FROM {$this->t} WHERE iar_number = " . $this->q($iar);
-                if ($keep) {
-                    $del .= ' AND dr_line_id NOT IN (' . implode(',', $keep) . ')';
-                }
-                App\Execute($del, 'DB');
-
-                // 2) park kept lines on temporary serials so swapping serials can't trip the unique key
-                foreach ($keep as $id) {
-                    App\Execute("UPDATE {$this->t} SET serial_no = " . $this->q('__tmp_' . $id . '_' . uniqid()) . ' WHERE dr_line_id = ' . (int) $id, 'DB');
-                }
-
-                // 3) final values
-                $by = $userId ? (int) $userId : 'NULL';
-                foreach ($lines as $ln) {
-                    if ($ln['id'] !== null) {
-                        App\Execute("UPDATE {$this->t} SET
-                                po_number = " . $this->q($po) . ',
-                                dr_number = ' . $this->q($ln['dr_number']) . ',
-                                delivery_date = ' . $this->q($ln['delivery_date']) . ',
-                                account_code = ' . $this->sqlOrNull($ln['account_code']) . ',
-                                description = ' . $this->q($ln['description']) . ',
-                                quantity = ' . $ln['quantity'] . ',
-                                unit = ' . $this->q($ln['unit']) . ',
-                                unit_price = ' . $ln['unit_price'] . ',
-                                amount = ' . $ln['amount'] . ',
-                                model_no = ' . $this->sqlOrNull($ln['model_no']) . ',
-                                serial_no = ' . $this->sqlOrNull($ln['serial_no']) . ',
-                                property_no = ' . $this->sqlOrNull($ln['property_no']) . ',
-                                par_no = ' . $this->sqlOrNull($ln['par_no']) . ",
-                                updated_by = {$by}, updated_at = CURRENT_TIMESTAMP
-                            WHERE dr_line_id = " . (int) $ln['id'], 'DB');
-                    } else {
-                        $this->insertLine($po, $iar, $ln, $userId);
+                $cur = App\ExecuteRows("SELECT line_transaction FROM {$this->h} WHERE po_number = " . $this->q($oldPo) . ' FOR UPDATE', 'DB');
+                $drs = $cur ? $this->drsFrom($cur[0]['line_transaction']) : [];
+                $pos = null;
+                foreach ($drs as $i => $d) {
+                    if ($dr['ref'] !== null && (string) ($d['dr_number'] ?? '') === $dr['ref']) {
+                        $pos = $i;
                     }
                 }
+                if ($pos === null) {
+                    App\Execute('ROLLBACK', 'DB');
+
+                    return ['success' => false, 'message' => 'Select the delivery receipt to edit.'];
+                }
+                if ($msg = $this->drError($oldPo, $dr, $drs, $dr['ref'], null)) {     // DR number + serial checks; no balance check: the total is unchanged
+                    App\Execute('ROLLBACK', 'DB');
+
+                    return ['success' => false, 'message' => $msg];
+                }
+                // keep the stored DR as it is (its account rows, titles and total) and replace only what may be edited
+                $new                  = $drs[$pos];
+                $new['dr_number']     = $dr['dr_number'];
+                $new['delivery_date'] = $dr['delivery_date'];
+                unset($new['items']);
+                if ($dr['items']) {
+                    $new['items'] = $dr['items'];
+                }
+                $drs[$pos] = $new;
+
+                App\Execute("UPDATE {$this->h} SET iar_number = " . $this->q($iar) . ', po_number = ' . $this->q($oldPo) . ', si_number = ' . $this->sqlOrNull($hdr['si_number'])
+                    . ', si_date = ' . $this->sqlOrNull($hdr['si_date']) . ', line_transaction = ' . $this->jsonSql($drs)
+                    . ", updated_by = {$by}, updated_at = CURRENT_TIMESTAMP WHERE po_number = " . $this->q($oldPo), 'DB');
                 App\Execute('COMMIT', 'DB');
             } catch (\Throwable $e) {
                 App\Execute('ROLLBACK', 'DB');
                 throw $e;
             }
 
-            return ['success' => true, 'message' => "PO {$po} updated successfully."];
+            return ['success' => true, 'message' => "Delivery receipt {$dr['dr_number']} of PO {$po} updated successfully."];
         } catch (\Exception $e) {
             return ['success' => false, 'message' => $e->getMessage()];
         }
     }
 
-    private function insertLine(string $po, string $iar, array $ln, ?int $userId): void
-    {
-        $by = $userId ? (int) $userId : 'NULL';
-        App\Execute(
-            "INSERT INTO {$this->t} (po_number, iar_number, dr_number, delivery_date, account_code, description, quantity, unit, unit_price, amount,
-                                     model_no, serial_no, property_no, par_no, created_by)
-             VALUES (" . $this->q($po) . ', ' . $this->q($iar) . ', ' . $this->q($ln['dr_number']) . ', ' . $this->q($ln['delivery_date']) . ', '
-                . $this->sqlOrNull($ln['account_code']) . ', ' . $this->q($ln['description']) . ', ' . $ln['quantity'] . ', ' . $this->q($ln['unit']) . ', '
-                . $ln['unit_price'] . ', ' . $ln['amount'] . ', '
-                . $this->sqlOrNull($ln['model_no']) . ', ' . $this->sqlOrNull($ln['serial_no']) . ', ' . $this->sqlOrNull($ln['property_no']) . ', '
-                . $this->sqlOrNull($ln['par_no']) . ", {$by})",
-            'DB'
-        );
-    }
-
-    /** Deletes the PO number with all its delivery receipt lines. */
+    /** Deletes the PO's IAR with all its delivery receipts. */
     public function delete(string $poNumber): array
     {
         try {
@@ -547,8 +745,7 @@ class PoDrService
             if (!$check['success']) {
                 return $check;
             }
-            App\Execute("DELETE FROM {$this->t} WHERE iar_number = " . $this->q($check['data']['iar_number']), 'DB');
-            App\Execute("DELETE FROM {$this->h} WHERE iar_number = " . $this->q($check['data']['iar_number']), 'DB');
+            App\Execute("DELETE FROM {$this->h} WHERE po_number = " . $this->q($poNumber), 'DB');
 
             return ['success' => true, 'message' => "PO {$poNumber} deleted successfully."];
         } catch (\Exception $e) {

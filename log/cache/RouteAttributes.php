@@ -101,8 +101,11 @@
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone ($p['PHPMaker2024\\FIMS\\Attributes\\Get'] ?? \Symfony\Component\VarExporter\Internal\Registry::p('PHPMaker2024\\FIMS\\Attributes\\Get')),
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Get'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
@@ -690,9 +693,24 @@
                 ],
                 [
                     'GET',
+                    'POST',
+                    'OPTIONS',
                 ],
                 [
                     'GET',
+                ],
+                [
+                    'GET',
+                ],
+                [
+                    'GET',
+                    'POST',
+                    'OPTIONS',
+                ],
+                [
+                    'GET',
+                    'POST',
+                    'OPTIONS',
                 ],
                 [
                     'GET',
@@ -1095,6 +1113,7 @@
                 '/AuditLogsEdit[/{id}]',
                 '/AuditLogsDelete[/{id}]',
                 '/BankAccountManagementPage[/{params:.*}]',
+                '/BankManagementPage[/{params:.*}]',
                 '/BudgetAllocationForm[/{params:.*}]',
                 '/BudgetPropPage[/{params:.*}]',
                 '/BudgetReqForm[/{params:.*}]',
@@ -1200,6 +1219,7 @@
                 '/PricingPage[/{params:.*}]',
                 '/ProgramPage[/{params:.*}]',
                 '/ProjectPage[/{params:.*}]',
+                '/PropertyRecordPage[/{params:.*}]',
                 '/PsgcList[/{code_10:.*}]',
                 '/PsgcAdd[/{code_10:.*}]',
                 '/PsgcView[/{code_10:.*}]',
@@ -1246,6 +1266,7 @@
                 '/UsersEdit[/{user_id}]',
                 '/UsersDelete[/{user_id}]',
                 '/VDepartmentHierarchyList',
+                '/VendorsPage[/{params:.*}]',
                 '/Voucher[/{params:.*}]',
                 '/VUserAccessSummaryList',
                 '/WorkflowManager[/{params:.*}]',
@@ -1275,6 +1296,7 @@
                 'PHPMaker2024\\FIMS\\AuditLogsController:edit',
                 'PHPMaker2024\\FIMS\\AuditLogsController:delete',
                 'PHPMaker2024\\FIMS\\BankAccountManagementPageController:custom',
+                'PHPMaker2024\\FIMS\\BankManagementPageController:custom',
                 'PHPMaker2024\\FIMS\\BudgetAllocationFormController:custom',
                 'PHPMaker2024\\FIMS\\BudgetPropPageController:custom',
                 'PHPMaker2024\\FIMS\\BudgetReqFormController:custom',
@@ -1380,6 +1402,7 @@
                 'PHPMaker2024\\FIMS\\PricingPageController:custom',
                 'PHPMaker2024\\FIMS\\ProgramPageController:custom',
                 'PHPMaker2024\\FIMS\\ProjectPageController:custom',
+                'PHPMaker2024\\FIMS\\PropertyRecordPageController:custom',
                 'PHPMaker2024\\FIMS\\PsgcController:list',
                 'PHPMaker2024\\FIMS\\PsgcController:add',
                 'PHPMaker2024\\FIMS\\PsgcController:view',
@@ -1426,11 +1449,15 @@
                 'PHPMaker2024\\FIMS\\UsersController:edit',
                 'PHPMaker2024\\FIMS\\UsersController:delete',
                 'PHPMaker2024\\FIMS\\VDepartmentHierarchyController:list',
+                'PHPMaker2024\\FIMS\\VendorsPageController:custom',
                 'PHPMaker2024\\FIMS\\VoucherController:custom',
                 'PHPMaker2024\\FIMS\\VUserAccessSummaryController:list',
                 'PHPMaker2024\\FIMS\\WorkflowManagerController:custom',
             ],
             'middleware' => [
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
                 [
                     'PHPMaker2024\\FIMS\\PermissionMiddleware',
                 ],
@@ -1963,6 +1990,12 @@
                 [
                     'PHPMaker2024\\FIMS\\PermissionMiddleware',
                 ],
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
             ],
             'name' => [
                 'list.aggregated_audit_logs',
@@ -1989,6 +2022,7 @@
                 'edit.audit_logs',
                 'delete.audit_logs',
                 'custom.bank_account_management_page',
+                'custom.bank_management_page',
                 'custom.budget_allocation_form',
                 'custom.budget_prop_page',
                 'custom.budget_req_form',
@@ -2094,6 +2128,7 @@
                 'custom.pricing_page',
                 'custom.program_page',
                 'custom.project_page',
+                'custom.property_record_page',
                 'list.psgc',
                 'add.psgc',
                 'view.psgc',
@@ -2140,11 +2175,15 @@
                 'edit.users',
                 'delete.users',
                 'list.v_department_hierarchy',
+                'custom.vendors_page',
                 'custom.Voucher',
                 'list.v_user_access_summary',
                 'custom.WorkflowManager',
             ],
             'options' => [
+                [],
+                [],
+                [],
                 [],
                 [],
                 [],
@@ -2505,6 +2544,9 @@
         $o[175],
         $o[176],
         $o[177],
+        $o[178],
+        $o[179],
+        $o[180],
     ],
     []
 );
