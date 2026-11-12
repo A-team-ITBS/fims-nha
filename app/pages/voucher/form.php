@@ -336,8 +336,23 @@ function vf_authFetch(url, opts = {}) {
     return fetch(url, { credentials: 'same-origin', ...opts, headers });
 }
 
-async function vf_getJson(path) {
-    const res  = await vf_authFetch(VF_API + path);
+// The API JWT (window.ew.API_JWT_TOKEN, read by vf_authFetch) expires 10 minutes after login/page
+// load with no silent refresh — leaving this modal open past that turns every call below into a
+// 401. Give that one specific, actionable message instead of a raw "HTTP 401".
+const VF_SESSION_EXPIRED_MSG = 'Your session has expired. Please refresh the page and log in again.';
+function vf_isSessionExpiredMessage(msg) { return msg === VF_SESSION_EXPIRED_MSG; }
+
+// `url` must be the COMPLETE request URL, built by the caller as a template literal starting
+// `${VF_API}...` (not VF_API + '/a/literal/path' passed in separately) — on a sub-folder
+// deployment (_shared/subfolder-prefix.php), that shim rewrites root-relative string literals
+// it finds anywhere in the rendered HTML/JS, including a bare path literal passed as a plain
+// function argument; doing the concatenation here instead would get BOTH VF_API's own literal
+// and the path argument's literal prefixed independently, doubling the sub-folder in the final
+// URL. A template literal's static text right after `${VF_API}` isn't a quote-delimited literal
+// on its own, so the shim leaves it alone and only VF_API itself gets prefixed, exactly once.
+async function vf_getJson(url) {
+    const res = await vf_authFetch(url);
+    if (res.status === 401) throw new Error(VF_SESSION_EXPIRED_MSG);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const json = await res.json();
     if (!json.success) throw new Error(json.message || 'Request failed.');
@@ -384,7 +399,13 @@ async function vf_open(id = 0) {
             vf_refreshDvNumber();
         }
         vf_recalc();
-        if (loadErrors.length) vf_showErrors(loadErrors);
+        // One expired token fails every one of the reference-data calls above at once — show the
+        // single actionable message instead of eight copies of the same thing.
+        if (loadErrors.some(vf_isSessionExpiredMessage)) {
+            vf_showErrors([VF_SESSION_EXPIRED_MSG]);
+        } else if (loadErrors.length) {
+            vf_showErrors(loadErrors);
+        }
     } catch (e) {
         vf_showErrors([e.message]);
     } finally {
@@ -456,7 +477,7 @@ function vf_bindEvents() {
 async function vf_loadFiscalYears() {
     const sel = $vf('vf-fiscal-yr');
     try {
-        const json = await vf_getJson('/voucher/fiscal-years');
+        const json = await vf_getJson(`${VF_API}/voucher/fiscal-years`);
         sel.innerHTML = '<option value="">Select fiscal year</option>' + (json.data ?? []).map(r =>
             `<option value="${vf_esc(r.fiscal_yr)}">${vf_esc(r.fiscal_yr)}</option>`).join('');
     } catch (e) {
@@ -468,7 +489,7 @@ async function vf_loadFiscalYears() {
 
 async function vf_loadDeductionTypes() {
     try {
-        const json = await vf_getJson('/voucher/deduction-types');
+        const json = await vf_getJson(`${VF_API}/voucher/deduction-types`);
         vf_dedTypes = json.data ?? [];
     } catch (e) {
         vf_dedTypesReady = null;
@@ -478,7 +499,7 @@ async function vf_loadDeductionTypes() {
 
 async function vf_loadCoaOptions() {
     try {
-        const json = await vf_getJson('/chart-of-accounts/all?status=Active');
+        const json = await vf_getJson(`${VF_API}/chart-of-accounts/all?status=Active`);
         vf_coaOptions = (json.data ?? []).filter(a => a.posting_allowed);
         nhaSearchableSelect($vf('vf-account-code'), vf_coaOptions.map(a => ({ value: a.account_code, label: a.account_title })));
     } catch (e) {
@@ -489,7 +510,7 @@ async function vf_loadCoaOptions() {
 
 async function vf_loadAtcCodes() {
     try {
-        const json = await vf_getJson('/voucher/atc-codes');
+        const json = await vf_getJson(`${VF_API}/voucher/atc-codes`);
         VF_ATC = json.data ?? [];
     } catch (e) {
         vf_atcReady = null;
@@ -499,7 +520,7 @@ async function vf_loadAtcCodes() {
 
 async function vf_loadRcOptions() {
     try {
-        const json = await vf_getJson('/responsibility-center/all');
+        const json = await vf_getJson(`${VF_API}/responsibility-center/all`);
         VF_RC = json.data ?? [];
     } catch (e) {
         vf_rcReady = null;
@@ -509,7 +530,7 @@ async function vf_loadRcOptions() {
 
 async function vf_loadSlOptions() {
     try {
-        const json = await vf_getJson('/voucher/sl-codes');
+        const json = await vf_getJson(`${VF_API}/voucher/sl-codes`);
         VF_SL = json.data ?? [];
     } catch (e) {
         vf_slReady = null;
@@ -520,7 +541,7 @@ async function vf_loadSlOptions() {
 async function vf_loadVendors() {
     const sel = $vf('vf-vendor');
     try {
-        const json = await vf_getJson('/vendors/all?active=1');
+        const json = await vf_getJson(`${VF_API}/vendors/all?active=1`);
         vf_vendors = {};
         (json.data ?? []).forEach(v => { vf_vendors[v.vendor_id] = v; });
         sel.innerHTML = '<option value="">— None / type claimant manually —</option>' + (json.data ?? []).map(v =>
@@ -538,7 +559,7 @@ async function vf_loadRfaOptions() {
         // it doesn't double-count against itself. Several DVs can share one RFA (progress
         // payments) — remaining_balance in the label is just a heads-up, not a hard limit.
         const qs   = vf_id ? `?exclude_dv_id=${vf_id}` : '';
-        const json = await vf_getJson(`/voucher/rfa/all${qs}`);
+        const json = await vf_getJson(`${VF_API}/voucher/rfa/all${qs}`);
         vf_rfas = {};
         (json.data ?? []).forEach(r => { vf_rfas[r.allocation_id] = r; });
         sel.innerHTML = '<option value="">Select RFA</option>' + (json.data ?? []).map(r =>
@@ -575,7 +596,7 @@ async function vf_onRfaChange() {
     window.PagePreloader?.show();
     try {
         const qs   = vf_id ? `?exclude_dv_id=${vf_id}` : '';
-        const json = await vf_getJson(`/voucher/rfa/read/${id}${qs}`);
+        const json = await vf_getJson(`${VF_API}/voucher/rfa/read/${id}${qs}`);
         const rfa  = json.data;
 
         $vf('vf-dept-project').value = rfa.department_name || '';
@@ -604,7 +625,7 @@ async function vf_onRfaChange() {
             vf_onVendorChange();
         }
     } catch (e) {
-        vf_showErrors(['Could not load RFA: ' + e.message]);
+        vf_showErrors([vf_isSessionExpiredMessage(e.message) ? e.message : 'Could not load RFA: ' + e.message]);
     } finally {
         window.PagePreloader?.hide();
         vf_recalc();
@@ -615,7 +636,7 @@ async function vf_refreshDvNumber() {
     const d = $vf('vf-dv-date').value;
     if (!d) return;
     try {
-        const json = await vf_getJson('/voucher/dv-number?dv_date=' + encodeURIComponent(d));
+        const json = await vf_getJson(`${VF_API}/voucher/dv-number?dv_date=${encodeURIComponent(d)}`);
         $vf('vf-dv-number').textContent = json.data.dv_no;
     } catch (e) { /* the server assigns a number on save if this stays "—" */ }
 }
@@ -802,7 +823,7 @@ async function vf_loadJevSlDetails(idx, selectDetailId = null) {
     const sel    = tr.querySelector('.vf-jev-sl-detail');
     if (!slCode) { sel.innerHTML = '<option value="">SL Detail…</option>'; return; }
     try {
-        const json = await vf_getJson(`/voucher/sl-codes/${encodeURIComponent(slCode)}/details`);
+        const json = await vf_getJson(`${VF_API}/voucher/sl-codes/${encodeURIComponent(slCode)}/details`);
         sel.innerHTML = '<option value="">— None —</option>' + (json.data ?? []).map(d =>
             `<option value="${vf_esc(d.sl_detail_id)}">${vf_esc(d.detail_code)} — ${vf_esc(d.detail_name)}</option>`).join('');
         if (selectDetailId) sel.value = String(selectDetailId);
@@ -872,7 +893,7 @@ function vf_recalc() {
 
 /* ── Edit mode ─────────────────────────────────────────────── */
 async function vf_loadExisting() {
-    const json = await vf_getJson('/voucher/read/' + vf_id);
+    const json = await vf_getJson(`${VF_API}/voucher/read/${vf_id}`);
     const dv   = json.data;
     if (!VF_EDITABLE.includes(dv.status)) {
         vf_showErrors([`This disbursement voucher is ${dv.status} and can no longer be edited.`]);
@@ -1002,6 +1023,7 @@ async function vf_save(status) {
             headers : { 'Content-Type': 'application/json' },
             body    : JSON.stringify(body),
         });
+        if (res.status === 401) { vf_showErrors([VF_SESSION_EXPIRED_MSG]); return; }
         const json = await res.json();
         if (!json.success) {
             vf_showErrors(json.errors?.length ? json.errors : [json.message || 'Failed to save disbursement voucher.']);
