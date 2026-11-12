@@ -461,7 +461,7 @@ The furthest-along business workflow in the repo — a Budget Request → Revisi
 - **List page** columns: `# | IAR Number | PO Number | PO Date | Requesting Office/Dept | Vendor | Sales Invoice # |
   PO Amount | Total DR Amount | Balance | Actions`. **Balance = PO Amount − Total DR Amount** (red when
   over-delivered, green at 0; "—" for a legacy PO that no longer matches an RFA). Actions: **View** (every
-  DR with its account entries, amount and item details), **Pro-forma**, Edit, Delete.
+  DR with its account entries, amount and item details), **Pro-forma**, Edit (no Delete button — a PO's IAR can no longer be deleted from the page; `DELETE /po-dr/delete` still exists in the API).
 - **Pro-forma JEV** (`GET /po-dr/proforma`, returns `po_number`, `iar_number` and one entry per DR): one tab per delivery receipt. The header shows
   the **IAR Number**, the **Delivery Receipt No.** and the DR's **Total Amount**. The list has three columns — `Account Code - Account Name`,
   `Debit`, `Credit` — and is built from the DR's stored `lines`: each line is a **debit**, and the DR total is **credited to `2-01-01-010`**
