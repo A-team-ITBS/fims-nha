@@ -924,7 +924,8 @@ $cbaAsModal = !empty($cbaAsModal);
 			<h2 class="section-header">Allocation Type</h2>
 
 			<div class="form-row">
-				<div class="form-group">
+				<!-- form-group-wide while Parent CBA is hidden (CBA / CFA) — toggleCbaIdRow() -->
+				<div class="form-group" id="allocation_type_group">
 					<label for="allocation_type" class="form-label">
 						Allocation Type <span class="required">*</span>
 					</label>
@@ -937,8 +938,65 @@ $cbaAsModal = !empty($cbaAsModal);
 					</select>
 				</div>
 
+				<!-- ── Parent CBA searchable combobox — shares this row with Allocation Type, shown only for
+				     RFA / LAA (toggleCbaIdRow()) ─── -->
+				<div class="form-group" id="cba_id_row" style="display:none;">
+					<label class="form-label">
+						Parent CBA
+					</label>
+
+					<!-- Combobox wrapper -->
+					<div id="cba_combo" class="cba-combo" style="position:relative;">
+
+						<!-- Search input (visible) -->
+						<div style="position:relative;">
+							<input type="text" id="cba_search" class="form-input"
+								placeholder="Search approved CBAs by request ref no. or program…" autocomplete="off"
+								style="padding-right:36px;" disabled />
+							<!-- Spinner / chevron icon -->
+							<span id="cba_combo_icon" style="
+                                position:absolute;right:10px;top:50%;transform:translateY(-50%);
+                                pointer-events:none;color:var(--sec,#475569);
+                            ">
+								<!-- chevron-down -->
+								<svg id="cba_icon_chevron" width="16" height="16" fill="none" viewBox="0 0 24 24"
+									stroke="currentColor">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+										d="M19 9l-7 7-7-7" />
+								</svg>
+								<!-- spinner (hidden by default) -->
+								<svg id="cba_icon_spinner" width="16" height="16" viewBox="0 0 24 24" fill="none"
+									stroke="currentColor" style="display:none;animation:cbaSpin .7s linear infinite;">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+										d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83" />
+								</svg>
+							</span>
+						</div>
+
+						<!-- Dropdown list -->
+						<ul id="cba_dropdown" role="listbox" style="
+                            display:none;position:absolute;z-index:999;
+                            width:100%;max-height:240px;overflow-y:auto;
+                            background:var(--afims-surface, #FFFFFF);border:1px solid var(--bdr,#e2e8f0);
+                            border-radius:6px;margin-top:4px;padding:4px 0;
+                            box-shadow:0 4px 16px rgba(0,0,0,.10);
+                            list-style:none;
+                        "></ul>
+
+						<!-- Hidden real input submitted with the form -->
+						<input type="hidden" id="cba_id" name="cba_id" value="" />
+					</div>
+
+					<div class="error-box" id="cba_id_error">Failed to load CBA list. Please refresh the page.</div>
+					<p class="input-hint" id="cba_id_hint">
+						Optionally link this RFA / LAA to an existing approved CBA.
+					</p>
+				</div>
+			</div>
+
+			<div class="form-row">
 				<!-- Category → GET /budget_category/all (searchable combobox) -->
-				<div class="form-group">
+				<div class="form-group form-group-wide">
 					<label for="cat_search" class="form-label">Category <span class="required">*</span></label>
 					<div class="select-loading-wrapper is-loading" id="category_wrapper" style="overflow:visible;">
 						<div style="position:relative;overflow:visible;">
@@ -993,11 +1051,14 @@ $cbaAsModal = !empty($cbaAsModal);
 				     For CBA its first Budget Allocation Amount line (COB + Requested Amount) is moved in beside it —
 				     see baaRelocateFirstLine(). -->
 				<div class="form-group" id="project_group">
-					<label for="proj_search" class="form-label">Project</label>
+					<label for="proj_search" class="form-label">Project <span class="required">*</span></label>
 					<div class="select-loading-wrapper" id="project_wrapper" style="overflow:visible;">
 						<div style="position:relative;overflow:visible;">
+							<!-- required is toggled off in applyProgramProjectVisibilityForDocType() whenever this whole
+							     row is hidden (non-CBA + non-Infrastructure category) — a hidden field must never block
+							     submit. -->
 							<input type="text" id="proj_search" class="form-input" placeholder="Select a sub-program first"
-								autocomplete="off" disabled>
+								autocomplete="off" disabled required>
 							<div id="proj_dropdown" class="pc-dropdown"></div>
 						</div>
 						<input type="hidden" id="project_code" name="project_code" value="">
@@ -1195,9 +1256,8 @@ $cbaAsModal = !empty($cbaAsModal);
 			<h2 class="section-header">Vendor Details</h2>
 
 			<div class="form-row cols-vendor" id="vendor_row">
-				<!-- Vendor Name → GET /vendors/all?active=1 (searchable combobox; saved as vendor_id).
-				     A name that is not in the list makes Vendor Code, Vendor Type and Address pop up so a new vendor
-				     can be added. -->
+				<!-- Vendor Name → GET /vendors/all?active=1 (dropdown pick only — see vendSetupSearch()); saved as
+				     vendor_id. Picking one shows its Code / Type / Address, read-only, below. -->
 				<div class="form-group">
 					<label for="vendor_search" class="form-label">Vendor Name</label>
 					<div class="select-loading-wrapper is-loading" id="vendor_wrapper" style="overflow:visible;">
@@ -1211,36 +1271,53 @@ $cbaAsModal = !empty($cbaAsModal);
 					<div class="error-box" id="vendor_error">Failed to load vendors. Please refresh the page.</div>
 				</div>
 
-				<!-- Vendor Code: read-only for a picked vendor, required + editable for a new one -->
-				<div class="form-group" id="vendor_code_group" style="display:none;">
-					<label for="vendor_code" class="form-label">Vendor Code <span class="required" id="vendor_code_required"
-							style="display:none;">*</span></label>
-					<input type="text" id="vendor_code" class="form-input" maxlength="50" autocomplete="off" readonly
-						tabindex="-1">
+				<!-- Purchase Request / Purchase Order Number — CBA (and CFA / no type chosen yet) → Purchase
+				     Request; RFA / LAA → Purchase Order (see pcrApplyMode()). Only one of the two groups below
+				     shows at a time; their Amount counterparts (pr_amount / po_amount) stay in the DOM, hidden,
+				     so pcrPayloadFields() / pcrPopulate() keep working unchanged. -->
+				<div class="form-group" id="pr_number_group">
+					<label for="pr_number" class="form-label">Purchase Request Number <span class="input-hint" style="display:inline;">(Optional)</span></label>
+					<input type="text" id="pr_number" class="form-input" maxlength="50" autocomplete="off"
+						placeholder="Enter the purchase request number">
+				</div>
+				<div class="form-group" id="po_number_group" style="display:none;">
+					<label for="po_number" class="form-label">Purchase Order Number</label>
+					<input type="text" id="po_number" class="form-input" maxlength="50" autocomplete="off"
+						placeholder="Enter the purchase order number">
 				</div>
 
-				<!-- Vendor Type → GET /vendors/types. A dropdown (optional) for a new vendor; a read-only box showing
-				     the type of a picked vendor. -->
+				<!-- Vendor Code / Type / Address: read-only details of whichever vendor is picked above. -->
+				<div class="form-group" id="vendor_code_group" style="display:none;">
+					<label for="vendor_code" class="form-label">Vendor Code</label>
+					<input type="text" id="vendor_code" class="form-input" readonly tabindex="-1">
+				</div>
+
 				<div class="form-group" id="vendor_type_group" style="display:none;">
 					<label for="vendor_type" class="form-label">Vendor Type</label>
-					<select id="vendor_type" class="form-select">
-						<option value="">Select vendor type</option>
-					</select>
-					<input type="text" id="vendor_type_view" class="form-input" autocomplete="off" readonly tabindex="-1"
-						style="display:none;">
-					<div class="error-box" id="vendor_type_error">Failed to load vendor types. You can still add the vendor
-						without one.</div>
+					<input type="text" id="vendor_type_view" class="form-input" readonly tabindex="-1">
 				</div>
 
-				<!-- Address: read-only for a picked vendor (from its record), editable for a new one -->
 				<div class="form-group form-group-wide" id="vendor_address_group" style="display:none;">
 					<label for="vendor_address" class="form-label">Address</label>
 					<textarea id="vendor_address" class="form-textarea vendor-address" rows="2" readonly
 						tabindex="-1"></textarea>
 				</div>
 
-				<p class="input-hint form-group-wide" id="vendor_new_hint" style="display:none;">Not in the vendor list &mdash;
-					enter its code, type and address and it will be added as a new vendor when you save.</p>
+				<!-- Purchase Request / Order Amount removed from the UI — pr_amount / po_amount (+ their _raw
+				     hidden twins) stay in the DOM, hidden, so pcrPayloadFields() / pcrPopulate() keep working
+				     unchanged for existing records. -->
+				<div class="form-group has-prefix" style="display:none;">
+					<label for="pr_amount" class="form-label">Purchase Request Amount</label>
+					<span class="input-prefix">&#8369;</span>
+					<input type="text" id="pr_amount" class="form-input amt-input" placeholder="0.00" autocomplete="off">
+					<input type="hidden" id="pr_amount_raw" value="">
+				</div>
+				<div class="form-group has-prefix" style="display:none;">
+					<label for="po_amount" class="form-label">Purchase Order Amount</label>
+					<span class="input-prefix">&#8369;</span>
+					<input type="text" id="po_amount" class="form-input amt-input" placeholder="0.00" autocomplete="off">
+					<input type="hidden" id="po_amount_raw" value="">
+				</div>
 			</div>
 		</div>
 
@@ -1285,62 +1362,6 @@ $cbaAsModal = !empty($cbaAsModal);
 					</label>
 					<p class="input-hint">Check if this allocation is being certified for bidding purposes. Affects the
 						wording of the printed CO certificate.</p>
-				</div>
-			</div>
-
-			<!-- ── Parent CBA searchable combobox (shown only for RFA / LAA) ─── -->
-			<div class="form-row" id="cba_id_row" style="display:none;">
-				<div class="form-group" style="flex:1;">
-					<label class="form-label">
-						Parent CBA
-					</label>
-
-					<!-- Combobox wrapper -->
-					<div id="cba_combo" class="cba-combo" style="position:relative;">
-
-						<!-- Search input (visible) -->
-						<div style="position:relative;">
-							<input type="text" id="cba_search" class="form-input"
-								placeholder="Search approved CBAs by request ref no. or program…" autocomplete="off"
-								style="padding-right:36px;" disabled />
-							<!-- Spinner / chevron icon -->
-							<span id="cba_combo_icon" style="
-                                position:absolute;right:10px;top:50%;transform:translateY(-50%);
-                                pointer-events:none;color:var(--sec,#475569);
-                            ">
-								<!-- chevron-down -->
-								<svg id="cba_icon_chevron" width="16" height="16" fill="none" viewBox="0 0 24 24"
-									stroke="currentColor">
-									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-										d="M19 9l-7 7-7-7" />
-								</svg>
-								<!-- spinner (hidden by default) -->
-								<svg id="cba_icon_spinner" width="16" height="16" viewBox="0 0 24 24" fill="none"
-									stroke="currentColor" style="display:none;animation:cbaSpin .7s linear infinite;">
-									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-										d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83" />
-								</svg>
-							</span>
-						</div>
-
-						<!-- Dropdown list -->
-						<ul id="cba_dropdown" role="listbox" style="
-                            display:none;position:absolute;z-index:999;
-                            width:100%;max-height:240px;overflow-y:auto;
-                            background:var(--afims-surface, #FFFFFF);border:1px solid var(--bdr,#e2e8f0);
-                            border-radius:6px;margin-top:4px;padding:4px 0;
-                            box-shadow:0 4px 16px rgba(0,0,0,.10);
-                            list-style:none;
-                        "></ul>
-
-						<!-- Hidden real input submitted with the form -->
-						<input type="hidden" id="cba_id" name="cba_id" value="" />
-					</div>
-
-					<div class="error-box" id="cba_id_error">Failed to load CBA list. Please refresh the page.</div>
-					<p class="input-hint" id="cba_id_hint">
-						Optionally link this RFA / LAA to an existing approved CBA.
-					</p>
 				</div>
 			</div>
 
@@ -1464,43 +1485,6 @@ $cbaAsModal = !empty($cbaAsModal);
 			</style>
 		</div>
 
-
-		<!-- ── Purchase Request / Purchase Order ───────────────────── -->
-		<div class="form-section" id="pcr_section">
-			<h2 class="section-header" id="pcr_title">Purchase Request</h2>
-
-			<!-- CBA (and CFA / no type chosen yet) → Purchase Request; RFA / LAA → Purchase Order. Both pairs stay in
-			     the form, but only the one that is showing is saved: pr_number + pr_amount, or po_number + po_amount. -->
-			<div class="form-row" id="pr_row" style="margin-bottom:0;">
-				<div class="form-group form-group-wide">
-					<label for="pr_number" class="form-label">Purchase Request Number <span class="input-hint" style="display:inline;">(Optional)</span></label>
-					<input type="text" id="pr_number" class="form-input" maxlength="50" autocomplete="off"
-						placeholder="Enter the purchase request number">
-				</div>
-				<!-- Purchase Request Amount removed from the UI — pr_amount / pr_amount_raw stay in the DOM (just
-				     hidden) so pcrPayloadFields() / pcrPopulate() keep working unchanged for existing records. -->
-				<div class="form-group has-prefix" style="display:none;">
-					<label for="pr_amount" class="form-label">Purchase Request Amount</label>
-					<span class="input-prefix">&#8369;</span>
-					<input type="text" id="pr_amount" class="form-input amt-input" placeholder="0.00" autocomplete="off">
-					<input type="hidden" id="pr_amount_raw" value="">
-				</div>
-			</div>
-
-			<div class="form-row" id="po_row" style="display:none;margin-bottom:0;">
-				<div class="form-group">
-					<label for="po_number" class="form-label">Purchase Order Number</label>
-					<input type="text" id="po_number" class="form-input" maxlength="50" autocomplete="off"
-						placeholder="Enter the purchase order number">
-				</div>
-				<div class="form-group has-prefix">
-					<label for="po_amount" class="form-label">Purchase Order Amount</label>
-					<span class="input-prefix">&#8369;</span>
-					<input type="text" id="po_amount" class="form-input amt-input" placeholder="0.00" autocomplete="off">
-					<input type="hidden" id="po_amount_raw" value="">
-				</div>
-			</div>
-		</div>
 
 		<!-- ── Supporting Documents ───────────────────────────────────── -->
 		<div class="form-section">
@@ -1945,6 +1929,7 @@ $cbaAsModal = !empty($cbaAsModal);
 		cbaFormEl.addEventListener('keydown', cbaBlockEnter);
 
 		pcInit(); // Program → Sub-Program → Project comboboxes
+		toggleCbaIdRow(); // starting state for the Allocation Type / Parent CBA row — a preset or edit load below may call it again
 
 		generateCBANumber();
 		addBudgetAllocationLine(); // render the first Budget Allocation Amount row
@@ -2020,7 +2005,6 @@ $cbaAsModal = !empty($cbaAsModal);
 			refreshAllocationCount(),
 			loadCategories(),
 			loadVendors(),
-			loadVendorTypes(),
 		]);
 
 		// Take the preloader down once all dropdowns have settled. In edit mode the saved record is still to be
@@ -2046,116 +2030,8 @@ $cbaAsModal = !empty($cbaAsModal);
 				});
 				if (!cba) return;
 
-				// 1. Select the CBA combobox
-				var cbaLabel = cbaLabelOf(cba);
-				cbaSelect(cba.allocation_id, cbaLabel);
-
-				// 2. Fiscal year
-				if (cba.fiscal_year) {
-					cbaSetFiscalYear(cba.fiscal_year);
-					generateCBANumber();
-				}
-
-				// 3. Budget Allocation Amount lines — one row per line_transaction entry of the parent CBA (the
-				//    same shape populateEditForm() reads), so an RFA/LAA generated from a multi-line CBA starts with
-				//    the same COB lines instead of collapsing to one. A legacy single-line CBA with no
-				//    line_transaction falls back to its flat requested / allocated amounts (row 0).
-				// The parent list (/budget_allocation/all) leaves line_transaction out (it can be large), so the
-				// parent's full record is read for its lines.
-				var parentLines = Array.isArray(cba.line_transaction) ? cba.line_transaction : [];
-				if (!parentLines.length) {
-					try {
-						var parentJson = await cba_apiFetch(`${API_BASE}/budget_allocation/read/${cba.allocation_id}`);
-						if (parentJson.success && parentJson.data && Array.isArray(parentJson.data.line_transaction)) {
-							parentLines = parentJson.data.line_transaction;
-						}
-					} catch (err) {
-						console.error('[cba autofill] Failed to read the parent record:', err);
-					}
-				}
-				var cbaLines = parentLines.length > 0 ?
-					parentLines : [{
-						requested_amount: cba.requested_amount,
-						allocated_amount: cba.allocated_amount,
-					}];
-
-				while (BAA_ROWS.length < cbaLines.length) addBudgetAllocationLine();
-
-				for (var cli = 0; cli < cbaLines.length; cli++) {
-					var cLine = cbaLines[cli];
-					var cIdx = BAA_ROWS[cli];
-					if (cIdx === undefined) continue;
-
-					baaSetAmount(cIdx, 'requested', cLine.requested_amount);
-					baaSetAmount(cIdx, 'allocated', cLine.allocated_amount);
-					// the COB the parent drew from (shown from the details saved with the line when it is no longer listed)
-					await cobRestoreLine(cIdx, cLine);
-				}
-				recomputeBaaTotals();
-
-				// 4. Document type
-				if (cba.document_type) {
-					var docTypeEl = document.getElementById('document_type');
-					docTypeEl.value = cba.document_type;
-					generateCBANumber(); // RFA code depends on document type (COE → 57)
-					// document_type was set programmatically (no 'change' event fired),
-					// so re-apply the CO auto-select/lock behavior manually.
-					applyAllocationTypeOptionsForDocType();
-					dropInfrastructureCategoryForCoe();
-					applyBudgetVersionVisibilityForDocType();
-				}
-
-				// 7. Amounts — already populated per-row in step 3 above (from
-				//    line_transaction, or the flat fallback).
-
-				// 8/9. Program → Sub-Program → Project, selected by code
-				await cbaSelectProgramChain(cba.program_code, cba.sub_program_code, cba.project_code);
-
-				// 10. Purpose / description — the API's own field is "description" (see buildPayload()'s
-				// description: v('project_description') for why), not "project_description".
-				if (cba.description) {
-					document.getElementById('project_description').value = cba.description;
-				}
-
-				// 11. Remarks
-				if (cba.remarks) {
-					document.getElementById('remarks').value = cba.remarks;
-				}
-
-				// 11b. Is this for bidding?
-				var isBiddingEl = document.getElementById('is_bidding');
-				if (isBiddingEl) isBiddingEl.checked = !!cba.is_bidding;
-
-				// 12. Category (by id, from the loaded /budget_category/all list)
-				catSelectById(cba.category_id);
-
-				// 12b. Vendor (by id; the address comes with it)
-				await vendSelectById(cba.vendor_id);
-
-				// 13. Supporting Documents — carry over files already attached to the parent CBA
-				if (cba.multiple_node_id) {
-					try {
-						var cbaReadJson = await cba_apiFetch(
-							`${API_BASE}/budget_allocation/read/${cba.allocation_id}`);
-						var attachments = cbaReadJson.success ? (cbaReadJson.data?.file_attachments ||
-							[]) : [];
-						attachments
-							.filter(function(a) {
-								return !a.deleted_at && a.file_meta && !a.file_meta.deleted_at;
-							})
-							.forEach(function(a) {
-								addExistingSupportingDocRow(a.file_meta.document_name, a.file_meta.link,
-									a.file_meta.view_url, 'Carried over from parent CBA');
-							});
-					} catch (err) {
-						console.error('[cba autofill] Failed to load parent supporting documents:',
-							err);
-					}
-				}
-
-				// 14. Apply COE visibility rules last, now that program/project/amount
-				//     autofill above has already run.
-				applyProgramProjectVisibilityForDocType();
+				cbaSelect(cba.allocation_id, cbaLabelOf(cba));
+				await cbaAutofillFromParent(cba);
 			});
 		}
 		// ─────────────────────────────────────────────────────────────────
@@ -2185,7 +2061,7 @@ $cbaAsModal = !empty($cbaAsModal);
 			await populateEditForm(json.data);
 		} catch (err) {
 			console.error('[loadExistingAllocation]', err);
-			alert('Failed to load allocation #' + id + ': ' + err.message);
+			cbaNotify('Error', 'Failed to load allocation #' + id + ': ' + err.message, 'error');
 		} finally {
 			cbaHideLoader();
 		}
@@ -2399,10 +2275,11 @@ $cbaAsModal = !empty($cbaAsModal);
 	// is hidden. Neither the program/sub-program/project codes nor allocated_amount carry a `required` attribute,
 	// so hiding them just clears out any stale values so they aren't sent.
 	function applyProgramProjectVisibilityForDocType() {
-		var isCBA = document.getElementById('allocation_type').value === 'CBA';
 		var progProjRow = document.getElementById('program_project_row');
 		var sectionTitle = document.getElementById('program_project_section_title');
-		var hideProgProj = !isCBA && !isInfrastructureCategorySelected();
+		// CBA / RFA / LAA's Project is independent of Category entirely (cbaUsesIndependentProject()) — only
+		// CFA (and no type chosen yet) still depends on Category = Infrastructure to show it at all.
+		var hideProgProj = !cbaUsesIndependentProject() && !isInfrastructureCategorySelected();
 
 		if (hideProgProj) {
 			if (progProjRow) progProjRow.style.display = 'none';
@@ -2414,17 +2291,21 @@ $cbaAsModal = !empty($cbaAsModal);
 			if (sectionTitle) sectionTitle.textContent = 'Program, Sub-Program and Project Details';
 		}
 
+		// Project is required — but never while this whole row is hidden, or the [required] sweep in
+		// cbaOnSubmit would block submission over a field the user can't even see.
+		var projSearch = document.getElementById('proj_search');
+		if (projSearch) projSearch.required = !hideProgProj;
+
 		baaApplyCashRequirementsVisibility();
 	}
 
-	// Cash Requirements (allocated_amount) is hidden for COE documents (it has none) and for CBA allocations
-	// (not used there) — on every row, plus its Total Cash Requirements summary. Wired to both document_type's
-	// and allocation_type's 'change', and called wherever either is set programmatically. Clears out any stale
-	// allocated_amount value while hidden, so it isn't sent.
+	// Cash Requirements (allocated_amount) is hidden for COE documents (it has none) and for CBA / RFA / LAA
+	// allocations (not used there — see cbaUsesIndependentProject()) — on every row, plus its Total Cash
+	// Requirements summary. Wired to both document_type's and allocation_type's 'change', and called wherever
+	// either is set programmatically. Clears out any stale allocated_amount value while hidden, so it isn't sent.
 	function baaApplyCashRequirementsVisibility() {
 		var docType = document.getElementById('document_type').value;
-		var isCBA = document.getElementById('allocation_type').value === 'CBA';
-		var hideCash = isCBA || docType === 'COE';
+		var hideCash = cbaUsesIndependentProject() || docType === 'COE';
 
 		document.querySelectorAll('.baa-line').forEach(function(row) {
 			row.classList.toggle('baa-no-cash', hideCash);
@@ -2448,10 +2329,11 @@ $cbaAsModal = !empty($cbaAsModal);
 		baaApplyHeaderVisibility();
 	}
 
-	// Moves the first Budget Allocation Amount line (COB + Requested Amount) in next to Project — CBA only, and
-	// only while Program / Sub-Program / Project are actually showing (not a COE document, where that whole row
-	// is hidden). Moves it back down to its usual place in baa_lines_container otherwise. Only ever the first
-	// line: a 2nd / 3rd line added with "+" still appears as its own row below, same as before.
+	// Moves the first Budget Allocation Amount line (COB + Requested Amount) in next to Project — CBA / RFA /
+	// LAA only (cbaUsesIndependentProject()), and only while Program / Sub-Program / Project are actually
+	// showing (not a COE document, where that whole row is hidden). Moves it back down to its usual place in
+	// baa_lines_container otherwise. Only ever the first line: a 2nd / 3rd line added with "+" still appears as
+	// its own row below, same as before.
 	function baaRelocateFirstLine() {
 		var firstIdx = BAA_ROWS[0];
 		if (firstIdx === undefined) return;
@@ -2459,11 +2341,10 @@ $cbaAsModal = !empty($cbaAsModal);
 		if (!firstRow) return;
 
 		var progProjRow = document.getElementById('program_project_row');
-		var isCBA = document.getElementById('allocation_type').value === 'CBA';
 		var rowVisible = !!progProjRow && progProjRow.style.display !== 'none';
 		var container = document.getElementById('baa_lines_container');
 
-		if (isCBA && rowVisible) {
+		if (cbaUsesIndependentProject() && rowVisible) {
 			if (firstRow.parentNode !== progProjRow) progProjRow.appendChild(firstRow);
 		} else if (container && firstRow.parentNode !== container) {
 			container.insertBefore(firstRow, container.firstChild);
@@ -2471,12 +2352,12 @@ $cbaAsModal = !empty($cbaAsModal);
 	}
 
 	// The "Budget Allocation Amount" heading, its hint text and the totals box only earn their keep once there's
-	// something below them that needs introducing — for CBA, with just the one line (merged next to Project —
-	// see baaRelocateFirstLine()), there's nothing left to show. Reappears the moment a 2nd line exists (not
-	// offered by any button today, but an existing record being edited can still have more than one saved line).
+	// something below them that needs introducing — for CBA / RFA / LAA, with just the one line (merged next
+	// to Project — see baaRelocateFirstLine()), there's nothing left to show. Reappears the moment a 2nd line
+	// exists (not offered by any button today, but an existing record being edited can still have more than
+	// one saved line).
 	function baaApplyHeaderVisibility() {
-		var isCBA = document.getElementById('allocation_type').value === 'CBA';
-		var hide = isCBA && BAA_ROWS.length <= 1;
+		var hide = cbaUsesIndependentProject() && BAA_ROWS.length <= 1;
 
 		var header = document.getElementById('baa_header');
 		if (header) header.style.display = hide ? 'none' : '';
@@ -2846,35 +2727,48 @@ $cbaAsModal = !empty($cbaAsModal);
 	// document_type's, since a doc-type switch can re-lock Project via cbaClearProgramChain() above), and called
 	// directly wherever allocation_type is set programmatically (no 'change' event fires then): cbaBoot()'s
 	// preset and populateEditForm().
+	// CBA, RFA and LAA all use the simplified "pick a Project, then a COB" flow (independent of Program /
+	// Sub-Program) — see the usesIndependentProject checks below. Only CBA additionally drops Vendor / Is
+	// this for bidding? / Basic Information, since RFA and LAA still need those.
+	function cbaUsesIndependentProject() {
+		var type = document.getElementById('allocation_type').value;
+		return type === 'CBA' || type === 'RFA' || type === 'LAA';
+	}
+
 	function cbaApplyAllocationTypeVisibility() {
 		var isCBA = document.getElementById('allocation_type').value === 'CBA';
+		var usesIndependentProject = cbaUsesIndependentProject();
 
 		var vendorSection = document.getElementById('vendor_section');
 		if (vendorSection) vendorSection.style.display = isCBA ? 'none' : '';
 		if (isCBA) cbaClearVendor();
 
 		var biddingRow = document.getElementById('is_bidding_row');
-		if (biddingRow) biddingRow.style.display = isCBA ? 'none' : '';
-		if (isCBA) {
+		if (biddingRow) biddingRow.style.display = usesIndependentProject ? 'none' : '';
+		if (usesIndependentProject) {
 			var biddingEl = document.getElementById('is_bidding');
 			if (biddingEl) biddingEl.checked = false;
 		}
 
-		// Basic Information has nothing left in it for CBA (Fiscal Year / Document Type are hidden fields
-		// derived elsewhere, Is this for bidding? / Parent CBA don't apply) — hide the section itself rather
-		// than leave an empty card with just a heading.
+		// Basic Information has nothing left in it for CBA / RFA / LAA (Fiscal Year / Document Type are hidden
+		// fields derived elsewhere, Parent CBA now lives in the Allocation Type row instead, and Is this for
+		// bidding? is hidden here too) — hide the section itself rather than leave an empty card with just a
+		// heading.
 		var basicInfoSection = document.getElementById('basic_info_section');
-		if (basicInfoSection) basicInfoSection.style.display = isCBA ? 'none' : '';
+		if (basicInfoSection) basicInfoSection.style.display = usesIndependentProject ? 'none' : '';
 
 		var progGroup = document.getElementById('program_group');
 		var subGroup = document.getElementById('sub_program_group');
-		if (progGroup) progGroup.style.display = isCBA ? 'none' : '';
-		if (subGroup) subGroup.style.display = isCBA ? 'none' : '';
+		if (progGroup) progGroup.style.display = usesIndependentProject ? 'none' : '';
+		if (subGroup) subGroup.style.display = usesIndependentProject ? 'none' : '';
 
-		baaApplyCashRequirementsVisibility(); // Cash Requirements isn't used for CBA either
+		baaApplyCashRequirementsVisibility(); // Cash Requirements isn't used for CBA / RFA / LAA either
+		baaApplyCbaAmountVisibilityAll(); // CBA Available Balance (RFA / LAA) vs Available Amount (CBA / CFA)
+		baaRefreshAllCbaAmounts();
+		baaApplyEarmarksVisibilityAll(); // "Where this COB's balance is held" is a CBA / CFA concept only
 
 		var projSearch = pcEl('proj', 'search');
-		if (isCBA) {
+		if (usesIndependentProject) {
 			// Project stands on its own here — searchable across every project, not just those under a chosen
 			// Program / Sub-Program (there is no longer one to choose from). Only (re)load it while it is still
 			// locked from the normal cascade — once it holds a value (picked here, or already set in edit mode),
@@ -2888,7 +2782,7 @@ $cbaAsModal = !empty($cbaAsModal);
 				pcLoad('proj');
 			}
 		} else if (!pcValue('proj')) {
-			// Leaving CBA with no project picked: back to the normal locked cascade.
+			// Leaving CBA / RFA / LAA with no project picked: back to the normal locked cascade.
 			if (!pcValue('prog')) {
 				pcDisable('subprog');
 				pcDisable('proj');
@@ -2898,7 +2792,7 @@ $cbaAsModal = !empty($cbaAsModal);
 		}
 
 		// Re-check whether the first line's COB should be locked until Project is picked (cobRequiresProjectFirst)
-		// — entering/leaving CBA changes that regardless of whether Project itself just changed.
+		// — switching allocation type changes that regardless of whether Project itself just changed.
 		if (BAA_ROWS[0] !== undefined) cobLoad(BAA_ROWS[0]);
 	}
 
@@ -3080,14 +2974,9 @@ $cbaAsModal = !empty($cbaAsModal);
 	// id lives in the hidden #vendor_id and is saved as budget_allocation.vendor_id.
 	//
 	// VEND_MODE:
-	//   'none'      nothing typed or picked — only Vendor Name shows.
+	//   'none'      nothing picked — only Vendor Name shows.
 	//   'existing'  a vendor from the list is picked — its code, type and address show, read-only.
-	//   'new'       the typed name is not an existing vendor — Vendor Code, Vendor Type and Address pop up,
-	//               editable. The vendor is created on save (POST /vendors/add, see vendEnsure) and the
-	//               allocation then gets its new id.
 	var VEND_ALL_DATA = [];
-	var VEND_TYPES = [];           // GET /vendors/types → [{ vendor_type_id, vendor_type, description }]
-	var VEND_TYPES_FAILED = false;
 	var VEND_DEBOUNCE = null;
 	var VEND_SEQ = 0;          // invalidates an in-flight edit-mode lookup (modal reopen)
 	var VEND_LIST_MAX = 50;    // rows rendered at once; typing narrows the rest
@@ -3114,7 +3003,7 @@ $cbaAsModal = !empty($cbaAsModal);
 
 			VEND_ALL_DATA = json.data;
 			searchEl.disabled = false;
-			searchEl.placeholder = 'Search or enter a vendor…';
+			searchEl.placeholder = 'Search vendor…';
 			vendSetupSearch();
 		} catch (err) {
 			console.error('[loadVendors]', err);
@@ -3124,69 +3013,21 @@ $cbaAsModal = !empty($cbaAsModal);
 		}
 	}
 
-	// Vendor types for the "new vendor" dropdown. The type is optional, so a failed load only shows a note.
-	async function loadVendorTypes() {
-		var sel = vendEl('vendor_type');
-		try {
-			var json = await cba_apiFetch(API_BASE + '/vendors/types');
-			if (!json.success || !Array.isArray(json.data)) throw new Error(json.message ||
-				'Unexpected response format');
-
-			VEND_TYPES = json.data;
-			VEND_TYPES_FAILED = false;
-			var keep = sel.value;
-			sel.innerHTML = '<option value="">Select vendor type</option>' + VEND_TYPES.map(function(t) {
-				return '<option value="' + pcEsc(t.vendor_type) + '" title="' + pcEsc(t.description) + '">' +
-					pcEsc(vendTypeLabel(t.vendor_type)) + '</option>';
-			}).join('');
-			sel.value = keep;
-		} catch (err) {
-			console.error('[loadVendorTypes]', err);
-			VEND_TYPES_FAILED = true;
-		}
-		vendSyncTypeError();
-	}
-
-	// The "could not load vendor types" note only matters while a new vendor is being entered.
-	function vendSyncTypeError() {
-		vendEl('vendor_type_error').classList.toggle('visible', VEND_MODE === 'new' && VEND_TYPES_FAILED);
-	}
-
-	// Show / hide / lock the Vendor Code, Vendor Type and Address fields for the given mode.
+	// Shows / hides the read-only Vendor Code, Type and Address fields for whichever vendor (if any) is picked.
 	function vendSetMode(mode) {
 		VEND_MODE = mode;
-		var show = mode !== 'none';
-		var editable = mode === 'new';
+		var show = mode === 'existing';
 		var code = vendEl('vendor_code');
 		var addr = vendEl('vendor_address');
-		var typeSel = vendEl('vendor_type');
 		var typeView = vendEl('vendor_type_view');
 
 		vendEl('vendor_code_group').style.display = show ? '' : 'none';
 		vendEl('vendor_type_group').style.display = show ? '' : 'none';
 		vendEl('vendor_address_group').style.display = show ? '' : 'none';
-		[code, addr, typeSel, typeView].forEach(function(el) {
-			el.classList.remove('error', 'success');
-			var group = el.closest('.form-group');
-			if (group) group.classList.remove('has-error');
-		});
-		[code, addr].forEach(function(el) {
-			el.readOnly = !editable;
-			el.tabIndex = editable ? 0 : -1;
-		});
-		code.required = editable; // so the form's required-field check covers it only while it is shown
-		code.placeholder = editable ? 'Enter the vendor code' : '';
-		addr.placeholder = editable ? 'Enter the vendor address' : '';
-		typeSel.style.display = editable ? '' : 'none';      // dropdown for a new vendor …
-		typeView.style.display = editable ? 'none' : '';      // … read-only text for a picked one
-		vendEl('vendor_code_required').style.display = editable ? '' : 'none';
-		vendEl('vendor_new_hint').style.display = editable ? '' : 'none';
-		vendSyncTypeError();
 
-		if (mode === 'none') {
+		if (!show) {
 			code.value = '';
 			addr.value = '';
-			typeSel.value = '';
 			typeView.value = '';
 		}
 	}
@@ -3214,7 +3055,7 @@ $cbaAsModal = !empty($cbaAsModal);
 		var dd = vendEl('vendor_dropdown');
 		if (!rows.length) {
 			dd.innerHTML =
-				'<div style="padding:10px 14px;color:var(--afims-text-muted, #62657E);font-size:13px;">No matching vendor &mdash; it will be added as a new vendor</div>';
+				'<div style="padding:10px 14px;color:var(--afims-text-muted, #62657E);font-size:13px;">No matching vendor</div>';
 			dd.style.display = 'block';
 			return;
 		}
@@ -3280,74 +3121,27 @@ $cbaAsModal = !empty($cbaAsModal);
 		vendSelectRecord(v);
 	}
 
-	// The text in Vendor Name was edited: any picked vendor is withdrawn (and the code / type / address that
-	// came with it). What was typed for a NEW vendor is kept, so correcting its name does not wipe the code.
-	function vendOnType(text) {
+	// The text in Vendor Name was edited: any picked vendor (and the code / type / address that came with it)
+	// is withdrawn — Vendor Name is pick-only, so nothing is kept from what's typed until it matches a real one.
+	function vendOnType() {
 		vendEl('vendor_id').value = '';
-		if (VEND_MODE === 'existing') vendSetMode('none');
-		if (!String(text).trim()) vendSetMode('none');
+		vendSetMode('none');
 	}
 
 	// Settle what is typed in Vendor Name when the user is done with it (blur, or at save time): an exact
-	// match of an existing vendor selects it, any other non-empty text is a new vendor.
+	// match of an existing vendor (by name) selects it; anything else is left as unpicked typed text (no
+	// vendor_id), the same as picking no vendor at all.
 	function vendResolveTyped() {
 		var name = vendEl('vendor_search').value.trim();
 		if (!name || VEND_MODE === 'existing') return;
 		var exact = vendFindExact(name);
-		if (exact) {
-			vendSelectRecord(exact);
-			return;
-		}
-		if (VEND_MODE !== 'new') vendSetMode('new');
+		if (exact) vendSelectRecord(exact);
 	}
 
-	// Called by postToApi before the allocation is saved. For a new vendor: create it, then switch to
-	// "existing" with its new id — so a retry after a later failure re-uses it instead of adding it twice.
-	// Throws (the caller shows the message) when the vendor cannot be created.
-	async function vendEnsure() {
+	// Called by postToApi before the allocation is saved — settles a typed exact name match into a real pick
+	// (see vendResolveTyped()) so clicking straight to Save after typing a full vendor name still works.
+	function vendEnsure() {
 		vendResolveTyped();
-		if (VEND_MODE !== 'new') return;
-
-		var name = vendEl('vendor_search').value.trim();
-		var codeEl = vendEl('vendor_code');
-		var code = codeEl.value.trim();
-		var type = vendEl('vendor_type').value;
-		var address = vendEl('vendor_address').value.trim();
-
-		if (!code) {
-			validateField(codeEl);
-			codeEl.focus();
-			throw new Error('Enter a vendor code for the new vendor "' + name +
-				'", or pick an existing vendor from the list.');
-		}
-
-		var body = {
-			vendor_code: code,
-			vendor_name: name
-		};
-		if (type) body.vendor_type = type;
-		if (address) body.address = address;
-
-		var json;
-		try {
-			json = await cba_apiFetchPost(API_BASE + '/vendors/add', body);
-		} catch (err) {
-			codeEl.classList.add('error'); // the usual cause: the code is already taken
-			throw new Error('Could not add the vendor: ' + err.message);
-		}
-		if (!json.success || !json.data || !json.data.vendor_id) {
-			throw new Error('Could not add the vendor: ' + (json.message || 'unexpected response'));
-		}
-
-		VEND_ALL_DATA.push({
-			vendor_id: json.data.vendor_id,
-			vendor_code: code,
-			vendor_name: name,
-			vendor_type: type || null,
-			address: address || null,
-			status: 'ACTIVE'
-		});
-		vendSelect(json.data.vendor_id, name, address, code, type);
 	}
 
 	function vendSetupSearch() {
@@ -3356,7 +3150,7 @@ $cbaAsModal = !empty($cbaAsModal);
 
 		searchEl.addEventListener('input', function() {
 			var q = this.value.trim().toLowerCase();
-			vendOnType(this.value);
+			vendOnType();
 			clearTimeout(VEND_DEBOUNCE);
 
 			if (!q) {
@@ -3366,9 +3160,7 @@ $cbaAsModal = !empty($cbaAsModal);
 
 			VEND_DEBOUNCE = setTimeout(function() {
 				if (VEND_MODE === 'existing') return;
-				var rows = vendFilter(q);
-				vendRenderDropdown(rows);
-				if (!rows.length && VEND_MODE !== 'new') vendSetMode('new'); // nothing like it exists
+				vendRenderDropdown(vendFilter(q));
 			}, 150);
 		});
 
@@ -3388,10 +3180,11 @@ $cbaAsModal = !empty($cbaAsModal);
 	}
 
 	// ── Purchase Request / Purchase Order ────────────────────────────────────────
-	// Allocation type RFA / LAA → Purchase Order Number + Amount (po_number, po_amount). Anything else (CBA, CFA,
-	// or no type chosen yet — the same default getTypeLabel() uses) → Purchase Request Number + Amount
-	// (pr_number, pr_amount). Both pairs stay in the form, so switching the type back restores what was typed,
-	// but only the pair that is showing is saved.
+	// Its Number field lives in the Vendor Details row (vendor_row) — RFA / LAA → Purchase Order Number
+	// (po_number); anything else (CBA, CFA, or no type chosen yet — the same default getTypeLabel() uses) →
+	// Purchase Request Number (pr_number). Both stay in the form, so switching the type back restores what
+	// was typed, but only the one showing is saved. Amount (pr_amount / po_amount) is kept in the DOM, hidden
+	// — removed from the UI — see the markup comment above pr_amount.
 	function pcrMode() {
 		var t = document.getElementById('allocation_type').value;
 		return (t === 'RFA' || t === 'LAA') ? 'po' : 'pr';
@@ -3399,9 +3192,8 @@ $cbaAsModal = !empty($cbaAsModal);
 
 	function pcrApplyMode() {
 		var m = pcrMode();
-		document.getElementById('pr_row').style.display = m === 'pr' ? '' : 'none';
-		document.getElementById('po_row').style.display = m === 'po' ? '' : 'none';
-		document.getElementById('pcr_title').textContent = m === 'po' ? 'Purchase Order' : 'Purchase Request';
+		document.getElementById('pr_number_group').style.display = m === 'pr' ? '' : 'none';
+		document.getElementById('po_number_group').style.display = m === 'po' ? '' : 'none';
 	}
 
 	// Request fields for the pair that is showing. A blank value is sent as '' (the service stores NULL), so
@@ -3444,6 +3236,8 @@ $cbaAsModal = !empty($cbaAsModal);
 	var COB_SEL = {}; // idx -> the picked line item (kept even when it is not in the current list)
 	var COB_WIRED = {}; // idx -> search listeners attached
 	var BAA_EARMARKS = {}; // idx -> { budgetLineItemId, data } once GET /budget_line_item/{id}/earmarks has loaded
+	var COB_EARMARKS_CACHE = {}; // budget_line_item_id -> Promise<earmark[]>, for CBA Available Balance (RFA / LAA)
+	var BAA_CBA_AMT_SEQ = {}; // idx -> token of the newest CBA Available Balance resolution, so an answer that was overtaken is dropped
 	var COB_EPOCH = 0; // bumped when the modal form is reset, so requests from the old DOM are dropped
 	var COB_KEEP_SELECTION = 0; // >0 while a saved record's own chain is being filled in: a reload must not clear its picks
 	var COB_SYNC_QUEUED = false;
@@ -3495,11 +3289,21 @@ $cbaAsModal = !empty($cbaAsModal);
 			'<input type="hidden" id="budget_line_item_id_' + idx + '" value="">' +
 			'<p class="input-hint" id="cob_hint_' + idx + '"></p>' +
 			'</div>' +
-			'<div class="form-group has-prefix baa-proposed-group">' +
+			'<div class="form-group has-prefix baa-proposed-group" id="proposed_amount_group_' + idx + '">' +
 			'<label for="proposed_amount_' + idx + '" class="form-label">Available Amount</label>' +
 			'<span class="input-prefix">&#8369;</span>' +
 			'<input type="text" id="proposed_amount_' + idx +
 			'" class="form-input amt-input baa-proposed-amount" data-idx="' + idx +
+			'" placeholder="0.00" disabled readonly autocomplete="off">' +
+			'</div>' +
+			// RFA / LAA only (see baaApplyCbaAmountVisibility()) — the parent CBA's own requested amount for
+			// whichever COB is picked on this line, not the COB's general available_amount: an RFA/LAA draws
+			// against what its specific parent CBA set aside, not the COB's wider leftover balance.
+			'<div class="form-group has-prefix baa-cba-amount-group" id="cba_amount_group_' + idx + '" style="display:none;">' +
+			'<label for="cba_amount_' + idx + '" class="form-label">CBA Available Balance</label>' +
+			'<span class="input-prefix">&#8369;</span>' +
+			'<input type="text" id="cba_amount_' + idx +
+			'" class="form-input amt-input baa-cba-amount" data-idx="' + idx +
 			'" placeholder="0.00" disabled readonly autocomplete="off">' +
 			'</div>' +
 			'<div class="form-group has-prefix baa-req-group">' +
@@ -3572,6 +3376,7 @@ $cbaAsModal = !empty($cbaAsModal);
 
 		// Keep a newly-added row consistent with the current doc/allocation type.
 		baaApplyCashRequirementsVisibility();
+		baaApplyCbaAmountVisibility(idx);
 		applyBudgetVersionVisibilityForDocType();
 		updateBaaRemoveButtons();
 		recomputeBaaTotals();
@@ -3632,12 +3437,13 @@ $cbaAsModal = !empty($cbaAsModal);
 			'No approved COBs found' + scope + '.';
 	}
 
-	// CBA's merged first line (see baaRelocateFirstLine()) has no Program / Sub-Program of its own to narrow the
-	// COB list by — Project is the only thing that does, and it's what later fills Program / Sub-Program in too
-	// (cbaSyncProjectParents()). So for that one line, Project must be picked before COB is: picking a COB first
-	// would leave it possibly belonging to a different project than the one chosen afterwards.
+	// CBA / RFA / LAA's merged first line (see baaRelocateFirstLine()) has no Program / Sub-Program of its own
+	// to narrow the COB list by — Project is the only thing that does, and it's what later fills Program /
+	// Sub-Program in too (cbaSyncProjectParents()). So for that one line, Project must be picked before COB is:
+	// picking a COB first would leave it possibly belonging to a different project than the one chosen
+	// afterwards.
 	function cobRequiresProjectFirst(idx) {
-		return document.getElementById('allocation_type').value === 'CBA' && idx === BAA_ROWS[0];
+		return cbaUsesIndependentProject() && idx === BAA_ROWS[0];
 	}
 
 	// Loads (or reloads) one line's list for the chain that is chosen right now. Resolves when that list is
@@ -3789,15 +3595,17 @@ $cbaAsModal = !empty($cbaAsModal);
 		// BudgetLineItemService::fetchApproved()) is the real, earmark-aware ceiling — what's actually still
 		// free to request against this COB right now. Falls back to proposed_amount only if the API response
 		// doesn't carry it (shouldn't happen once the backend is deployed, but keeps this from breaking).
+		// Only the real ceiling for CBA / CFA — RFA / LAA use CBA Available Balance instead (see baaRefreshCbaAmount()).
 		var proposedEl = cobEl('proposed_amount', idx);
 		if (proposedEl) {
 			var availableAmt = rec.available_amount != null && rec.available_amount !== '' ? rec.available_amount : rec.proposed_amount;
 			proposedEl.value = (availableAmt != null && availableAmt !== '') ?
 				baaFormatAmt(parseFloat(availableAmt) || 0) : '';
 		}
-		baaValidateRequestedAmount(idx); // this COB's Available Amount may make an already-typed Requested Amount invalid (or valid again)
+		baaRefreshCbaAmount(idx); // RFA / LAA: the parent CBA's own requested amount for this COB
+		baaValidateRequestedAmount(idx); // this COB's ceiling may make an already-typed Requested Amount invalid (or valid again)
 
-		baaShowEarmarksToggle(idx, rec.budget_line_item_id);
+		baaApplyEarmarksVisibility(idx);
 
 		cobDeriveDocumentType(rec);
 	}
@@ -3831,6 +3639,8 @@ $cbaAsModal = !empty($cbaAsModal);
 		if (idEl) idEl.value = '';
 		var proposedEl = cobEl('proposed_amount', idx);
 		if (proposedEl) proposedEl.value = '';
+		var cbaAmtEl = cobEl('cba_amount', idx);
+		if (cbaAmtEl) cbaAmtEl.value = '';
 		baaValidateRequestedAmount(idx); // no COB any more -> no ceiling -> clears a stale error
 		baaHideEarmarksToggle(idx);
 		if (clearText) {
@@ -3870,6 +3680,22 @@ $cbaAsModal = !empty($cbaAsModal);
 		delete BAA_EARMARKS[idx];
 	}
 
+	// RFA / LAA draw against their parent CBA's own earmark (see CBA Available Balance, above) — "Where this COB's balance
+	// is held" is a CBA / CFA concept only (it explains a COB-wide Available Amount they don't show at all).
+	// Call instead of baaShowEarmarksToggle() directly so switching Allocation Type hides/restores it correctly.
+	function baaApplyEarmarksVisibility(idx) {
+		var rec = COB_SEL[idx];
+		if (isRfaOrLaa() || !rec) {
+			baaHideEarmarksToggle(idx);
+		} else {
+			baaShowEarmarksToggle(idx, rec.budget_line_item_id);
+		}
+	}
+
+	function baaApplyEarmarksVisibilityAll() {
+		BAA_ROWS.forEach(baaApplyEarmarksVisibility);
+	}
+
 	async function baaToggleEarmarks(idx) {
 		var panel = document.getElementById('baa_earmarks_' + idx);
 		var body = document.getElementById('baa_earmarks_body_' + idx);
@@ -3890,6 +3716,92 @@ $cbaAsModal = !empty($cbaAsModal);
 			console.error('[baaToggleEarmarks]', err);
 			body.innerHTML = '<div class="baa-earmarks-row">Could not load. Try again.</div>';
 		}
+	}
+
+	// ── CBA Available Balance (RFA / LAA only) ────────────────────────────────────────────────────
+	// For RFA / LAA, the Requested Amount ceiling isn't the COB's general Available Amount — it's the specific
+	// parent CBA's own remaining (active) earmark against that COB, which shrinks as earlier RFA/LAA draws
+	// convert part of it into an obligation. Available Amount stays the CBA / CFA ceiling.
+	function isRfaOrLaa() {
+		var type = (document.getElementById('allocation_type') || {}).value;
+		return type === 'RFA' || type === 'LAA';
+	}
+
+	// Shows CBA Available Balance / hides Available Amount for RFA / LAA (and back for CBA / CFA), on every current line —
+	// call whenever Allocation Type changes, and once for a freshly added line.
+	function baaApplyCbaAmountVisibility(idx) {
+		var showCba = isRfaOrLaa();
+		var proposedGroup = document.getElementById('proposed_amount_group_' + idx);
+		var cbaGroup = document.getElementById('cba_amount_group_' + idx);
+		if (proposedGroup) proposedGroup.style.display = showCba ? 'none' : '';
+		if (cbaGroup) cbaGroup.style.display = showCba ? '' : 'none';
+	}
+
+	function baaApplyCbaAmountVisibilityAll() {
+		BAA_ROWS.forEach(baaApplyCbaAmountVisibility);
+	}
+
+	// Every earmark held against one COB (fims.budget_line_item_earmark, via the same endpoint
+	// baaToggleEarmarks() uses for the "Where this COB's balance is held" drilldown) — cached per COB so
+	// switching between parent CBAs / lines on the same COB doesn't re-fetch it each time.
+	function cbaFetchCobEarmarks(budgetLineItemId) {
+		if (!budgetLineItemId) return Promise.resolve([]);
+		if (COB_EARMARKS_CACHE[budgetLineItemId]) return COB_EARMARKS_CACHE[budgetLineItemId];
+		var promise = cba_apiFetch(API_BASE + '/budget_line_item/' + encodeURIComponent(budgetLineItemId) + '/earmarks')
+			.then(function(json) {
+				return (json.success && Array.isArray(json.data)) ? json.data : [];
+			})
+			.catch(function(err) {
+				console.error('[cbaFetchCobEarmarks]', err);
+				return [];
+			});
+		COB_EARMARKS_CACHE[budgetLineItemId] = promise;
+		return promise;
+	}
+
+	// Resolves and displays this line's CBA Available Balance: the parent CBA's current ACTIVE earmark
+	// against whichever COB is currently picked here — not its original requested amount, which doesn't
+	// shrink as earlier RFA/LAA draws convert part of it into an obligation (see
+	// BudgetLineItemService::convertEarmarkForRfaApproval(), the same figure this mirrors). Async (the COB's
+	// earmarks may need a fetch) — guarded against a stale answer landing after a newer COB / parent CBA
+	// pick, the same way cobLoad() guards COB_SEQ.
+	function baaRefreshCbaAmount(idx) {
+		var cbaAmtEl = cobEl('cba_amount', idx);
+		if (!cbaAmtEl) return;
+
+		var token = (BAA_CBA_AMT_SEQ[idx] = (BAA_CBA_AMT_SEQ[idx] || 0) + 1);
+		var rec = COB_SEL[idx];
+		var parentId = (document.getElementById('cba_id') || {}).value;
+
+		if (!rec || !parentId) {
+			cbaAmtEl.value = '';
+			if (isRfaOrLaa()) baaValidateRequestedAmount(idx);
+			return;
+		}
+
+		cbaFetchCobEarmarks(rec.budget_line_item_id).then(function(rows) {
+			if (BAA_CBA_AMT_SEQ[idx] !== token) return; // overtaken by a newer COB / parent CBA pick
+			var row = rows.find(function(r) {
+				return String(r.allocation_id) === String(parentId) && r.earmark_status === 'active';
+			});
+			var amt = row ? (parseFloat(row.amount) || 0) : 0;
+			cbaAmtEl.value = baaFormatAmt(amt);
+			if (isRfaOrLaa()) {
+				// Requested Amount always follows the CBA Available Balance for a NEW RFA / LAA — still
+				// editable afterward (e.g. for a partial draw), just not left defaulted to something that's
+				// already known to exceed what's actually available. Skipped in edit mode: an existing saved
+				// record keeps its own historical Requested Amount instead of being overwritten by today's balance.
+				if (!CBA_EDIT_MODE) {
+					baaSetAmount(idx, 'requested', amt);
+					recomputeBaaTotals();
+				}
+				baaValidateRequestedAmount(idx);
+			}
+		});
+	}
+
+	function baaRefreshAllCbaAmounts() {
+		BAA_ROWS.forEach(baaRefreshCbaAmount);
 	}
 
 	function baaRenderEarmarks(body, rows) {
@@ -3960,13 +3872,11 @@ $cbaAsModal = !empty($cbaAsModal);
 		});
 	}
 
-	// ── COB required for RFA / LAA ─────────────────────────────────────────────
-	// RFA and LAA must always be tied to a COB, on every Budget Allocation Amount line. Enforced on submit by
-	// validateBudgetVersionsRequired() — isBudgetVersionRequired() also drives the "*" marker. For CBA / CFA the
-	// COB field is shown but optional.
+	// ── COB required ────────────────────────────────────────────────────────────
+	// Every Budget Allocation Amount line must be tied to a COB, regardless of allocation type. Enforced on
+	// submit by validateBudgetVersionsRequired() — isBudgetVersionRequired() also drives the "*" marker.
 	function isBudgetVersionRequired() {
-		var type = document.getElementById('allocation_type').value;
-		return type === 'RFA' || type === 'LAA';
+		return true;
 	}
 
 	// Clears the red error state set by validateBudgetVersionsRequired() on a row.
@@ -4007,20 +3917,21 @@ $cbaAsModal = !empty($cbaAsModal);
 		return true;
 	}
 
-	// ── Requested Amount must not exceed Available Amount ────────────────────────
-	// Available Amount (read-only, filled from the picked COB's earmark-adjusted balance) is the ceiling for
-	// that line's Requested Amount. With no COB picked yet, proposedEl is empty/0 and there's no ceiling to
-	// enforce. Returns true when valid.
+	// ── Requested Amount must not exceed its ceiling ─────────────────────────────
+	// CBA / CFA: Available Amount (read-only, filled from the picked COB's earmark-adjusted balance).
+	// RFA / LAA: CBA Available Balance instead — the specific parent CBA's own remaining active earmark for
+	// that COB, not the COB's wider leftover balance (see baaRefreshCbaAmount()). With no ceiling value yet,
+	// there's nothing to enforce. Returns true when valid.
 	function baaRequestedExceedsProposed(idx) {
-		var proposedEl = document.getElementById('proposed_amount_' + idx);
-		var proposed = proposedEl ? baaParseAmt(proposedEl.value) : 0;
-		if (proposed <= 0) return false;
+		var ceilEl = document.getElementById((isRfaOrLaa() ? 'cba_amount_' : 'proposed_amount_') + idx);
+		var ceiling = ceilEl ? baaParseAmt(ceilEl.value) : 0;
+		if (ceiling <= 0) return false;
 		var requested = baaParseAmt((document.getElementById('requested_amount_' + idx) || {}).value);
-		return requested > proposed;
+		return requested > ceiling;
 	}
 
 	// Applies (or clears) the red error state on one line's Requested Amount field. Called live as the user types
-	// or picks a COB (a new Proposed Amount can turn an already-typed Requested Amount invalid, or valid again).
+	// or picks a COB (a new ceiling can turn an already-typed Requested Amount invalid, or valid again).
 	function baaValidateRequestedAmount(idx) {
 		var reqEl = document.getElementById('requested_amount_' + idx);
 		if (!reqEl) return true;
@@ -4029,7 +3940,12 @@ $cbaAsModal = !empty($cbaAsModal);
 		if (group) group.classList.toggle('has-error', exceeds);
 		reqEl.classList.toggle('error', exceeds);
 		var errorEl = document.getElementById('requested_amount_' + idx + '_error');
-		if (errorEl) errorEl.classList.toggle('visible', exceeds);
+		if (errorEl) {
+			errorEl.textContent = isRfaOrLaa() ?
+				'Requested Amount must not exceed the CBA Available Balance.' :
+				'Requested Amount must not exceed the Available Amount.';
+			errorEl.classList.toggle('visible', exceeds);
+		}
 		return !exceeds;
 	}
 
@@ -4098,8 +4014,7 @@ $cbaAsModal = !empty($cbaAsModal);
 
 			var mark = rowEl.querySelector('.baa-bv-required');
 			if (mark) mark.style.display = bvRequired ? '' : 'none';
-			// Switching away from RFA/LAA — drop any stale "missing" error.
-			if (!bvRequired) baaBvClearError(rowEl.dataset.idx);
+			if (!bvRequired) baaBvClearError(rowEl.dataset.idx); // isBudgetVersionRequired() always true today; kept in case that changes again
 		});
 	}
 
@@ -4272,7 +4187,7 @@ $cbaAsModal = !empty($cbaAsModal);
 		li.innerHTML = cbaHighlight(label, query);
 		li.addEventListener('mousedown', function(e) {
 			e.preventDefault();
-			cbaSelect(c.allocation_id, label);
+			cbaMaybeAutofillFromParent(c.allocation_id, label);
 		});
 		return li;
 	}
@@ -4321,11 +4236,145 @@ $cbaAsModal = !empty($cbaAsModal);
 		document.getElementById('cba_search').classList.remove('cba-invalid');
 		document.getElementById('cba_id_hint').textContent = 'Selected: ' + label;
 		cbaCloseDropdown();
+		baaRefreshAllCbaAmounts(); // a new parent CBA means a new ceiling for any line that already has a COB picked
+	}
+
+	// Pulls the rest of the form in from a parent CBA record — Fiscal Year, Budget Allocation Amount lines
+	// (COB(s) + amounts), Document Type, Program/Sub-Program/Project, Purpose/Description, Remarks, Is this for
+	// bidding?, Category, Vendor and Supporting Documents. Used both by the boot-time ?parent_cba_id=N preset
+	// (a "Create RFA/LAA" button elsewhere in the app) and by picking a Parent CBA directly from the combobox
+	// here (see cbaMaybeAutofillFromParent()) — same effect either way: cbaSelect(cba.allocation_id, ...) must
+	// already have been called first. `cba` is a CBA_DATA entry (from /budget_allocation/all); its
+	// line_transaction and file_attachments are re-read from /budget_allocation/read/{id} since the list leaves
+	// them out (they can be large).
+	async function cbaAutofillFromParent(cba) {
+		// 2. Fiscal year
+		if (cba.fiscal_year) {
+			cbaSetFiscalYear(cba.fiscal_year);
+			generateCBANumber();
+		}
+
+		// 4. Document type
+		if (cba.document_type) {
+			var docTypeEl = document.getElementById('document_type');
+			docTypeEl.value = cba.document_type;
+			generateCBANumber(); // RFA code depends on document type (COE → 57)
+			// document_type was set programmatically (no 'change' event fired),
+			// so re-apply the CO auto-select/lock behavior manually.
+			applyAllocationTypeOptionsForDocType();
+			dropInfrastructureCategoryForCoe();
+			applyBudgetVersionVisibilityForDocType();
+		}
+
+		// 8/9. Program → Sub-Program → Project, selected by code — BEFORE the lines below: CBA / RFA / LAA
+		// lock each line's COB until Project has a value (cobRequiresProjectFirst()), so restoring a line's
+		// COB first would just have it cleared again the moment Project is set afterwards.
+		await cbaSelectProgramChain(cba.program_code, cba.sub_program_code, cba.project_code);
+
+		// 3. Budget Allocation Amount lines — one row per line_transaction entry of the parent CBA (the
+		//    same shape populateEditForm() reads), so an RFA/LAA generated from a multi-line CBA starts with
+		//    the same COB lines instead of collapsing to one. A legacy single-line CBA with no
+		//    line_transaction falls back to its flat requested / allocated amounts (row 0).
+		// The parent list (/budget_allocation/all) leaves line_transaction out (it can be large), so the
+		// parent's full record is read for its lines.
+		var parentLines = Array.isArray(cba.line_transaction) ? cba.line_transaction : [];
+		if (!parentLines.length) {
+			try {
+				var parentJson = await cba_apiFetch(`${API_BASE}/budget_allocation/read/${cba.allocation_id}`);
+				if (parentJson.success && parentJson.data && Array.isArray(parentJson.data.line_transaction)) {
+					parentLines = parentJson.data.line_transaction;
+				}
+			} catch (err) {
+				console.error('[cba autofill] Failed to read the parent record:', err);
+			}
+		}
+		var cbaLines = parentLines.length > 0 ?
+			parentLines : [{
+				requested_amount: cba.requested_amount,
+				allocated_amount: cba.allocated_amount,
+			}];
+
+		while (BAA_ROWS.length < cbaLines.length) addBudgetAllocationLine();
+
+		for (var cli = 0; cli < cbaLines.length; cli++) {
+			var cLine = cbaLines[cli];
+			var cIdx = BAA_ROWS[cli];
+			if (cIdx === undefined) continue;
+
+			baaSetAmount(cIdx, 'requested', cLine.requested_amount);
+			baaSetAmount(cIdx, 'allocated', cLine.allocated_amount);
+			// the COB the parent drew from (shown from the details saved with the line when it is no longer listed)
+			await cobRestoreLine(cIdx, cLine);
+		}
+		recomputeBaaTotals();
+
+		// 7. Amounts — already populated per-row in step 3 above (from
+		//    line_transaction, or the flat fallback).
+
+		// 10. Purpose / description — the API's own field is "description" (see buildPayload()'s
+		// description: v('project_description') for why), not "project_description".
+		if (cba.description) {
+			document.getElementById('project_description').value = cba.description;
+		}
+
+		// 11. Remarks
+		if (cba.remarks) {
+			document.getElementById('remarks').value = cba.remarks;
+		}
+
+		// 11b. Is this for bidding?
+		var isBiddingEl = document.getElementById('is_bidding');
+		if (isBiddingEl) isBiddingEl.checked = !!cba.is_bidding;
+
+		// 12. Category (by id, from the loaded /budget_category/all list)
+		catSelectById(cba.category_id);
+
+		// 12b. Vendor (by id; the address comes with it)
+		await vendSelectById(cba.vendor_id);
+
+		// 13. Supporting Documents — carry over files already attached to the parent CBA
+		if (cba.multiple_node_id) {
+			try {
+				var cbaReadJson = await cba_apiFetch(
+					`${API_BASE}/budget_allocation/read/${cba.allocation_id}`);
+				var attachments = cbaReadJson.success ? (cbaReadJson.data?.file_attachments ||
+					[]) : [];
+				attachments
+					.filter(function(a) {
+						return !a.deleted_at && a.file_meta && !a.file_meta.deleted_at;
+					})
+					.forEach(function(a) {
+						addExistingSupportingDocRow(a.file_meta.document_name, a.file_meta.link,
+							a.file_meta.view_url, 'Carried over from parent CBA');
+					});
+			} catch (err) {
+				console.error('[cba autofill] Failed to load parent supporting documents:',
+					err);
+			}
+		}
+
+		// 14. Apply COE visibility rules last, now that program/project/amount
+		//     autofill above has already run.
+		applyProgramProjectVisibilityForDocType();
+	}
+
+	// Interactive pick (click or Enter in the dropdown) — pulls in the parent's data too, same as the
+	// ?parent_cba_id=N boot preset, but only while creating a NEW record: editing an existing RFA/LAA must
+	// never have changing which CBA it's linked to silently overwrite fields the user already filled in /
+	// saved for THIS record.
+	async function cbaMaybeAutofillFromParent(id, label) {
+		cbaSelect(id, label);
+		if (CBA_EDIT_MODE) return;
+		var cba = CBA_DATA.find(function(c) {
+			return String(c.allocation_id) === String(id);
+		});
+		if (cba) await cbaAutofillFromParent(cba);
 	}
 
 	function cbaClearSelection() {
 		document.getElementById('cba_id').value = '';
 		document.getElementById('cba_search').classList.remove('cba-has-value');
+		baaRefreshAllCbaAmounts(); // no parent any more -> no CBA Available Balance ceiling until one is picked again
 	}
 
 	function cbaKeyNav(e) {
@@ -4343,7 +4392,7 @@ $cbaAsModal = !empty($cbaAsModal);
 			e.preventDefault();
 			if (CBA_ACTIVE_IDX >= 0 && items[CBA_ACTIVE_IDX]) {
 				var it = items[CBA_ACTIVE_IDX];
-				cbaSelect(it.dataset.id, it.dataset.label);
+				cbaMaybeAutofillFromParent(it.dataset.id, it.dataset.label);
 			}
 			return;
 		} else if (e.key === 'Escape') {
@@ -4417,9 +4466,13 @@ $cbaAsModal = !empty($cbaAsModal);
 		var row = document.getElementById('cba_id_row');
 		var search = document.getElementById('cba_search');
 		var hidden = document.getElementById('cba_id');
+		// Allocation Type shares its row with Parent CBA (RFA / LAA only) — take the full row itself
+		// whenever Parent CBA isn't shown, so the row never ends with an empty second column.
+		var allocTypeGroup = document.getElementById('allocation_type_group');
 
 		if (type === 'RFA' || type === 'LAA') {
 			row.style.display = '';
+			if (allocTypeGroup) allocTypeGroup.classList.remove('form-group-wide');
 			if (!search.dataset.wired) {
 				cbaWireEvents();
 				search.dataset.wired = '1';
@@ -4427,6 +4480,7 @@ $cbaAsModal = !empty($cbaAsModal);
 			if (!CBA_LOADED) loadParentCBAs();
 		} else {
 			row.style.display = 'none';
+			if (allocTypeGroup) allocTypeGroup.classList.add('form-group-wide');
 			cbaCloseDropdown();
 			search.value = '';
 			hidden.value = '';
@@ -4844,8 +4898,7 @@ $cbaAsModal = !empty($cbaAsModal);
 
 	// ── POST to API ───────────────────────────────────────────────────────────────
 	async function postToApi(payload) {
-		// A vendor typed in that does not exist yet is created first, so the allocation can point at it.
-		// Throws before anything is saved when that fails (callers show the message).
+		// Settles a typed-but-not-yet-picked exact vendor name match before reading vendor_id below.
 		await vendEnsure();
 		payload.vendor_id = vendEl('vendor_id').value;
 
@@ -4950,6 +5003,20 @@ $cbaAsModal = !empty($cbaAsModal);
 		// (CBA / RFA / LAA) instead of always reading "CBA Number".
 		var numLabel = document.getElementById('cba_number_label');
 		if (numLabel) numLabel.textContent = label.short + ' Number';
+	}
+
+	// Swal replacement for the browser's alert() (the plain "localhost says" dialog) — same
+	// title / text / icon / confirmButtonColor convention as the confirm()-replacing Swal.fire() calls
+	// elsewhere in the app (budget-req-page.php, memo-process-readone.php). Swal is loaded globally by
+	// views/layout.php. Returns the Swal.fire() promise so a caller that needs to wait for it to be
+	// dismissed (e.g. before redirecting) can await it; others can fire-and-forget.
+	function cbaNotify(title, text, icon) {
+		return Swal.fire({
+			title: title,
+			text: text,
+			icon: icon || 'info',
+			confirmButtonColor: '#0f2045',
+		});
 	}
 
 	// ── Submit decision pop-up ────────────────────────────────────────────────────
@@ -5082,20 +5149,21 @@ $cbaAsModal = !empty($cbaAsModal);
 			}
 		});
 		if (!valid) {
-			alert('Please fill in all required fields marked with *');
+			await cbaNotify('Missing Information', 'Please fill in all required fields marked with *', 'warning');
 			return;
 		}
 
 		// Budget Version is required on every line for RFA / LAA.
 		if (!validateBudgetVersionsRequired()) {
-			alert('COB is required for ' + getTypeLabel().short +
-				'. Please select one for every Budget Allocation line.');
+			await cbaNotify('COB Required', 'COB is required for ' + getTypeLabel().short +
+				'. Please select one for every Budget Allocation line.', 'warning');
 			return;
 		}
 
 		// Requested Amount must not exceed the picked COB's Available Amount, on every line.
 		if (!validateRequestedAmountsAgainstProposed()) {
-			alert('Requested Amount cannot exceed the Available Amount for one or more Budget Allocation lines.');
+			await cbaNotify('Amount Exceeded',
+				'Requested Amount cannot exceed the Available Amount for one or more Budget Allocation lines.', 'warning');
 			return;
 		}
 
@@ -5103,14 +5171,24 @@ $cbaAsModal = !empty($cbaAsModal);
 		// allocation being edited may already have its documents attached
 		// (or intentionally removed via workflow), so don't block updates.
 		if (!CBA_EDIT_MODE && getSupportingDocs().length === 0) {
-			alert('Please attach at least one supporting document before submitting.');
+			await cbaNotify('Supporting Document Required',
+				'Please attach at least one supporting document before submitting.', 'warning');
 			return;
 		}
 
 		var req = parseFloat(document.getElementById('requested_amount_raw').value) || 0;
 		var alloc = parseFloat(document.getElementById('allocated_amount_raw').value) || 0;
 		if (alloc > req && alloc > 0) {
-			if (!confirm('Warning: Allocated amount exceeds requested amount. Continue?')) return;
+			var allocWarning = await Swal.fire({
+				title: 'Allocated Amount Exceeds Requested',
+				text: 'Allocated amount exceeds requested amount. Continue?',
+				icon: 'warning',
+				showCancelButton: true,
+				confirmButtonText: 'Yes, continue',
+				cancelButtonText: 'Cancel',
+				confirmButtonColor: '#0f2045',
+			});
+			if (!allocWarning.isConfirmed) return;
 		}
 		var typeLabel = getTypeLabel();
 
@@ -5130,14 +5208,14 @@ $cbaAsModal = !empty($cbaAsModal);
 			var json = await postToApi(buildPayload(statusId));
 			if (!json.success) throw new Error(json.message || (CBA_EDIT_MODE ? 'Update failed.' :
 				'Submission failed.'));
-			alert(typeLabel.full + ' ' + (CBA_EDIT_MODE ? 'updated and ' : '') + decision.done + '.');
+			await cbaNotify('Success', typeLabel.full + ' ' + (CBA_EDIT_MODE ? 'updated and ' : '') + decision.done + '.', 'success');
 			if (cbaAfterSave()) return; // modal mode: closed + list refreshed, nothing to redirect to
 			var docType = document.getElementById('document_type').value;
 			window.location.href = docType === 'COE' ? '/FMD/CoeBudgetAllocationDashboard' :
 				'/FMD/BudgetAllocationDashboard';
 		} catch (err) {
 			console.error('[submitCBA]', err);
-			alert((CBA_EDIT_MODE ? 'Update error: ' : 'Submission error: ') + err.message);
+			cbaNotify('Error', (CBA_EDIT_MODE ? 'Update error: ' : 'Submission error: ') + err.message, 'error');
 			submitBtn.disabled = false;
 			var restoredLabel = submitButtonLabel();
 			submitBtn.innerHTML =
@@ -5341,7 +5419,7 @@ $cbaAsModal = !empty($cbaAsModal);
 
 		} catch (err) {
 			console.error('[printCBA]', err);
-			alert('Print error: ' + err.message);
+			cbaNotify('Error', 'Print error: ' + err.message, 'error');
 		} finally {
 			btn.disabled = false;
 			btn.innerHTML =
@@ -5383,11 +5461,14 @@ $cbaAsModal = !empty($cbaAsModal);
 		CAT_ALL_DATA = [];
 		clearTimeout(VEND_DEBOUNCE); VEND_DEBOUNCE = null; VEND_SEQ++;
 		VEND_ALL_DATA = [];
-		VEND_TYPES = []; VEND_TYPES_FAILED = false;
 		VEND_MODE = 'none';
 		BAA_ROWS = []; BAA_ROW_SEQ = -1;
 		COB_EPOCH++; COB_DATA = {}; COB_SIG = {}; COB_SEQ = {}; COB_LOAD = {}; COB_SEL = {}; COB_WIRED = {};
 		COB_SYNC_QUEUED = false; COB_KEEP_SELECTION = 0;
+		// Earmarks against a COB can change between modal opens (an RFA/LAA approved elsewhere converts part
+		// of a CBA's reservation) — a stale cache here would keep showing an outdated CBA Available Balance /
+		// "Where this COB's balance is held" drilldown for the same COB in a fresh request.
+		BAA_EARMARKS = {}; COB_EARMARKS_CACHE = {}; BAA_CBA_AMT_SEQ = {};
 		ALLOC_CFA_OPTION = null;
 		CBA_DATA = []; CBA_LOADED = false; CBA_ACTIVE_IDX = -1;
 		_sdocCount = 0;
