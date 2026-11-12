@@ -98,19 +98,19 @@ $_ampf_api = $_amp_api ?? \PHPMaker2024\FIMS\Config('API.FIMS_URL');
     .amp-ent-total-val { font-size:15px;font-weight:700;padding:0 12px;font-variant-numeric:tabular-nums; }
     @media (max-width:760px) { .amp-ent { grid-template-columns:minmax(0,1fr) 36px; } .amp-ent > .amp-combo, .amp-ent-head > span:first-child, .amp-ent-total > div:first-child { grid-column:1 / -1; } }
 
-    /* optional item rows: Description | Serial No. | Amount | Prop. No. | PAR # | remove — one line per item, every field its own cell
+    /* optional item rows: Description | Serial No. | Amount | Prop. No. | remove — one line per item, every field its own cell
        (a fixed left margin on each cell, so they are always apart) */
     .amp-itm { display:flex;align-items:flex-start;margin-bottom:12px; }
     .amp-itm > .c { min-width:0;margin-left:16px; }
     .amp-itm > .c:first-child { margin-left:0; }
     .amp-itm .c-desc { flex:3 1 0; }
     .amp-itm .c-serial { flex:1.4 1 0; }
-    .amp-itm .c-amt, .amp-itm .c-prop, .amp-itm .c-par { flex:1.2 1 0; }
+    .amp-itm .c-amt, .amp-itm .c-prop { flex:1.2 1 0; }
     .amp-itm .c-x { flex:0 0 28px;text-align:center;padding-top:8px; }
     .amp-itm textarea.amp-input { min-height:64px;resize:vertical; }
     .amp-itm-head { font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--afims-text, #1A1B21);margin-bottom:6px;align-items:flex-end; }
     @media (max-width:900px) { .amp-itm { flex-wrap:wrap; } .amp-itm .c-desc { flex:1 1 100%;margin-left:0;margin-bottom:10px; }
-        .amp-itm .c-serial, .amp-itm .c-amt, .amp-itm .c-prop, .amp-itm .c-par { flex:1 1 40%; } .amp-itm-head { display:none; } }
+        .amp-itm .c-serial, .amp-itm .c-amt, .amp-itm .c-prop { flex:1 1 40%; } .amp-itm-head { display:none; } }
 
     /* confirm modal (e.g. when the PO is changed) */
     #amp-confirm-overlay { display:none;position:fixed;inset:0;z-index:9300;box-sizing:border-box;padding:16px;
@@ -259,7 +259,7 @@ $_ampf_api = $_amp_api ?? \PHPMaker2024\FIMS\Config('API.FIMS_URL');
                     <h4 class="amp-section-header">Items <span class="opt">(optional — total is 50,000 or more)</span>
                         <span class="amp-hdr-right"><button type="button" class="amp-add-btn" id="amp-add-item">+ Add item</button></span>
                     </h4>
-                    <div class="amp-itm amp-itm-head"><span class="c c-desc">Description</span><span class="c c-serial">Serial No.</span><span class="c c-amt" style="text-align:right;">Amount</span><span class="c c-prop">Prop. No.</span><span class="c c-par">PAR #</span><span class="c c-x"></span></div>
+                    <div class="amp-itm amp-itm-head"><span class="c c-desc">Description</span><span class="c c-serial">Serial No.</span><span class="c c-amt" style="text-align:right;">Amount</span><span class="c c-prop">Prop. No.</span><span class="c c-x"></span></div>
                     <div id="amp-items"></div>
                 </div>
             </div>
@@ -285,13 +285,31 @@ $_ampf_api = $_amp_api ?? \PHPMaker2024\FIMS\Config('API.FIMS_URL');
 
 <!-- Read-only view of one DR (opened by clicking a DR number in the list) -->
 <style>
-    #amp-view-overlay { display:none;position:fixed;inset:0;z-index:9100;
-        background:rgba(15,32,69,.6);align-items:flex-start;justify-content:center;padding:16px;backdrop-filter:blur(3px);overflow-y:auto; }
+    /* the View / Pro-forma window: the same design as the Memo Request details (dark header, light body, white cards, Close in the footer) */
+    #amp-view-overlay { display:none;position:fixed;inset:0;z-index:9100;padding:16px;box-sizing:border-box;align-items:center;justify-content:center;
+        background:rgba(15,32,69,.55);font-family:'IBM Plex Sans',sans-serif; }
     #amp-view-overlay.open { display:flex; }
-    #amp-view-card { background:var(--afims-surface, #FFFFFF);border-radius:16px;width:100%;max-width:1500px;
-        max-height:calc(100vh - 32px);display:flex;flex-direction:column;overflow:hidden;
-        box-shadow:0 32px 80px rgba(0,0,0,.28);font-family:'IBM Plex Sans',sans-serif;animation:ampIn .2s ease; }
-    #amp-view-body { flex:1;overflow:auto;padding:24px 32px; }
+    #amp-view-card { display:flex;flex-direction:column;width:100%;max-width:1100px;max-height:100%;overflow:hidden;border-radius:14px;
+        background:var(--afims-surface-subtle, #F4F7FA);color:var(--afims-text, #1A1B21);box-shadow:0 24px 64px rgba(0,0,0,.35); }
+    #amp-view-card.amp-wide { max-width:1500px; }                   /* the Pro-forma JEV: room for the account, debit and credit columns */
+    .amp-vw-hdr { display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 20px;background:var(--afims-heading-fill, #000E3E);color:#fff; }
+    .amp-vw-title { margin:0;font-size:15px;font-weight:600;color:inherit; }
+    .amp-vw-ref { margin-left:8px;font-family:'IBM Plex Mono',monospace;font-weight:600;letter-spacing:.02em;color:#C7D4F5; }
+    .amp-vw-close { width:30px;height:30px;font-size:20px;line-height:1;color:#fff;cursor:pointer;border-radius:8px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25); }
+    .amp-vw-close:hover { background:rgba(255,255,255,.22); }
+    #amp-view-body { flex:1;overflow:auto;padding:18px 20px 6px; }
+    .amp-vw-card { margin-bottom:14px;padding:14px 18px;background:var(--afims-surface, #FFFFFF);border:1px solid var(--afims-border, #E4ECF2);border-radius:12px; }
+    .amp-vw-card-title { margin:0 0 10px;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--afims-text-secondary, #475569); }
+    .amp-vw-row { display:grid;grid-template-columns:190px minmax(0,1fr);gap:12px;align-items:baseline;padding:4px 0;font-size:13px; }
+    .amp-vw-k { font-weight:600;color:var(--afims-text-secondary, #475569); }
+    .amp-vw-v { overflow-wrap:anywhere; }
+    .amp-vw-code { display:inline-block;padding:2px 7px;font:600 11px/1.4 'IBM Plex Mono',monospace;color:#1D4ED8;background:var(--afims-surface, #FFFFFF);border:1px solid #E6EBF6;border-radius:4px; }
+    .amp-vw-num { font:700 13px/1.4 'IBM Plex Mono',monospace;letter-spacing:.02em; }
+    .amp-vw-tblwrap { overflow-x:auto;border:1px solid var(--afims-border, #E4ECF2);border-radius:10px; }
+    .amp-vw-foot { display:flex;justify-content:flex-end;gap:10px;padding:12px 20px;background:var(--afims-surface, #FFFFFF);border-top:1px solid var(--afims-border, #E4ECF2); }
+    .amp-vw-btn { padding:8px 18px;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;border-radius:8px;color:var(--afims-text, #1A1B21);background:var(--afims-surface, #FFFFFF);border:1px solid var(--afims-border, #E4ECF2); }
+    .amp-vw-btn:hover { background:var(--afims-surface-subtle, #F4F7FA); }
+    @media (max-width:640px) { .amp-vw-row { grid-template-columns:1fr;gap:2px; } }
     .amp-v-meta { display:flex;gap:32px;flex-wrap:wrap;margin-bottom:18px; }
     .amp-v-meta .k { font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--afims-text-disabled, #A9AAB8); }
     .amp-v-meta .v { font-size:14px;font-weight:700;color:var(--afims-text, #1A1B21); }
@@ -370,17 +388,14 @@ $_ampf_api = $_amp_api ?? \PHPMaker2024\FIMS\Config('API.FIMS_URL');
 </style>
 
 <div id="amp-view-overlay">
-    <div id="amp-view-card">
-        <div id="amp-header">
-            <div>
-                <p class="amp-hdr-tag">Inspection and Acceptance Report Module</p>
-                <p class="amp-hdr-title" id="amp-view-title">Actual Delivery</p>
-            </div>
-            <button type="button" id="amp-view-close" style="border:none;background:rgba(255,255,255,.12);cursor:pointer;width:30px;height:30px;border-radius:8px;color:#A9AAB8;font-size:18px;line-height:1;">&times;</button>
+    <div id="amp-view-card" role="dialog" aria-modal="true" aria-labelledby="amp-view-title">
+        <div class="amp-vw-hdr">
+            <h3 class="amp-vw-title"><span id="amp-view-title">Actual Delivery</span><span class="amp-vw-ref" id="amp-view-ref"></span></h3>
+            <button type="button" class="amp-vw-close" id="amp-view-close" aria-label="Close">&times;</button>
         </div>
         <div id="amp-view-body"></div>
-        <div id="amp-footer">
-            <button type="button" class="amp-btn amp-btn-ghost" id="amp-view-done">Close</button>
+        <div class="amp-vw-foot">
+            <button type="button" class="amp-vw-btn" id="amp-view-done">Close</button>
         </div>
     </div>
 </div>
@@ -641,7 +656,7 @@ function amp_setPoValue(po) {        // programmatic set (add → clear, edit �
 
 /* ── Delivery receipt: DR no. / date + account rows (account code, amount) ──
    One DR per save. The total of the amounts may not exceed the PO balance.
-   From AMP_ITEM_MIN_AMOUNT up, the optional item fields (description, serial, amount, property no., PAR no.) open. */
+   From AMP_ITEM_MIN_AMOUNT up, the optional item fields (description, serial, amount, property no.) open. */
 const AMP_ITEM_MIN_AMOUNT = 50000;   // keep in sync with PoDrService::ITEM_MIN_AMOUNT
 let amp_receipts = [];               // the PO's delivery receipts (edit mode), for the DR picker
 
@@ -810,7 +825,7 @@ document.getElementById('amp-add-entry')?.addEventListener('click', () => {
     const el = amp_addEntry();
     el.querySelector('.amp-f-acct').focus();
 });
-/* One optional item = one line: Description | Serial No. | Amount | Prop. No. | PAR # */
+/* One optional item = one line: Description | Serial No. | Amount | Prop. No. */
 function amp_addItem(it = {}) {
     const box = document.getElementById('amp-items');
     const el  = document.createElement('div');
@@ -821,7 +836,6 @@ function amp_addItem(it = {}) {
         <div class="c c-serial"><input type="text" class="amp-input amp-i-serial" maxlength="100" value="${amp_attrEsc(it.serial_no)}"></div>
         <div class="c c-amt"><input type="text" inputmode="decimal" class="amp-input amp-num amp-i-amount" placeholder="0.00" value="${a > 0 ? amp_attrEsc(amp_fmtMoney(a)) : ''}"></div>
         <div class="c c-prop"><input type="text" class="amp-input amp-i-prop" maxlength="100" value="${amp_attrEsc(it.property_no)}"></div>
-        <div class="c c-par"><input type="text" class="amp-input amp-i-par" maxlength="100" value="${amp_attrEsc(it.par_no)}"></div>
         <div class="c c-x"><button type="button" class="amp-link-danger amp-ent-remove" title="Remove item">&times;</button></div>`;
     const amt = el.querySelector('.amp-i-amount');
     amt.addEventListener('input', () => { amt.value = amp_liveFmt(amt.value, true); });
@@ -850,7 +864,6 @@ function amp_collectDr() {
             serial_no   : r.querySelector('.amp-i-serial').value.trim(),
             amount      : amp_unfmt(r.querySelector('.amp-i-amount').value),
             property_no : r.querySelector('.amp-i-prop').value.trim(),
-            par_no      : r.querySelector('.amp-i-par').value.trim(),
         }));
     }
     return dr;

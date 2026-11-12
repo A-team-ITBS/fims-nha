@@ -20,7 +20,7 @@ schema plan (see `_assets/sql/README.md` → Database Schemas).
 | Schema | Tables (verified live, 2026-11-10) | Covered below |
 |---|---|---|
 | `uac` | 30 | §1 |
-| `fims` | 30 (29 verified live + `inspection_acceptance_report` from §2.4, installed and exercised locally 2026-11-12) | §2 |
+| `fims` | 31 (29 verified live + `inspection_acceptance_report` from §2.4 and `property_records` from §2.5, installed and exercised locally) | §2 |
 | `fmd` | 0 (schema exists, empty) | — |
 | `workflow` | 0 (schema exists, empty) | — |
 
@@ -274,7 +274,7 @@ erDiagram
 { "dr_number": "DR-001", "delivery_date": "2026-11-12", "total_amount": "800000.00",
   "lines": [ { "account_code": "1-06-05-030", "account_title": "Information and Communications Technology Equipment", "amount": "600000.00" },
              { "account_code": "5-02-03-990", "account_title": "Other Supplies and Materials Expenses", "amount": "200000.00" } ],
-  "items": [ { "description": "...", "serial_no": "...", "amount": "600000.00", "property_no": "...", "par_no": "..." } ] }
+  "items": [ { "description": "...", "serial_no": "...", "amount": "600000.00", "property_no": "..." } ] }
 ```
 
 | Table | Purpose / notes |
@@ -285,6 +285,27 @@ erDiagram
 account rows as debits plus one credit of the DR total to `2-01-01-010` Accounts Payable (account titles are the ones stored with the rows) in the accounting
 grid (`PoDrService::proforma()`). The Subsidiary Ledger columns are not populated. The Create JEV button
 is a placeholder — it does not write to `journal_entry_vouchers` yet.
+
+### 2.5 Property Records
+
+API: `app/routes/property_record.php` (`/property-record/*`). Service: `PropertyRecordService`. Page: `app/pages/property-record-page.php` (PHPMaker page `PropertyRecordPage`). SQL: `01 - table/34 - fims_property_records.sql`.
+External source: the NHA Property Inventory System (PIS) API (`inventory_by_po`), searched by PO number — only a PO that already has an IAR can be searched, and only PAR items (PIS `TYPENO` 1) can be saved.
+
+```mermaid
+erDiagram
+    property_records {
+        int property_record_id PK
+        varchar po_number UK "the PIS PO number"
+        varchar rc_id FK "responsibility_code.rc_id, one per PO"
+        jsonb line_transaction "array: one PIS item per element"
+        int created_by
+        timestamp created_at
+    }
+    responsibility_code ||--o{ property_records : "rc_id"
+```
+
+`line_transaction` element (the PIS fields that are kept, under the PIS's own names): `inv_id, TYPENO, GL, accnt_desc, GLCODE_SUB, inv_glcode_sub, PROPNO, SNO, ITEMDESC, MODELNO, DATEACQD, COST, UNIT, SERV, RCCODE, dept_proj_desc, PO_NO, DEPTCD, District`.
+The PO date and the IAR number are not stored (they stay in the IAR module; the list joins the IAR by PO number). The register shown in the list (combined units, acquisition cost, depreciation) is computed when the page loads — nothing of it is stored.
 
 ---
 
@@ -301,6 +322,7 @@ is a placeholder — it does not write to `journal_entry_vouchers` yet.
 | `fims.disbursement_vouchers.rfa_allocation_id` | `fims.budget_allocation.allocation_id` | No | `fims.budget_allocation` has no CRUD backend of its own yet (see §2.1); `DisbursementVoucherService::fetchRfaOptions()`/`fetchRfaDetail()` are a read-only lookup over it, no FK |
 | `fims.disbursement_vouchers.requesting_department_id` | `uac.departments.department_id` | No | Snapshotted from the selected RFA at save time, same unconstrained convention as the RFA link itself |
 | `fims.disbursement_vouchers.account_code` | `fims.chart_of_accounts.account_code` | No | Required and `posting_allowed`-checked in `DisbursementVoucherService::prepare()`, not a DB FK — mirrors `purchase_order_items.account_code`'s "FK targets an alternate key" exception in §2.2, except here there's no FK at all, only the PHP check |
+| `fims.property_records.po_number` | `fims.inspection_acceptance_report.po_number` | No | Joined at read time (with or without the `PO-` prefix); a PO must have an IAR before it can be searched / saved. `line_transaction[].inv_id` is unique across all rows — checked in PHP (JSONB cannot carry a key) |
 | `fims.inspection_acceptance_report.po_number` | `fims.purchase_orders.po_number` | No | Picked from the Budget Allocation, not typed: `PoDrService` only accepts a `po_number` of a `fims.budget_allocation` row with `allocation_type = 'RFA'` (checked in PHP, see DEVELOPER-GUIDE §8.4). It does **not** reference `purchase_orders` — the PO module has no data yet — and there is no DB FK to `budget_allocation.po_number` either (it is not unique there) |
 | `fims.inspection_acceptance_report.line_transaction[].lines[].account_code` | `fims.chart_of_accounts.account_code` | No | Inside a JSONB array, so there can be no FK: `PoDrService::clean()` checks that each code exists in the chart of accounts and stores the account title next to it (a later title change in the chart does not rewrite it) |
 

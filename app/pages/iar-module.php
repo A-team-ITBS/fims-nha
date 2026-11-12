@@ -10,6 +10,23 @@ $_amp_api = $_brv_api;
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
 
+<style>
+/* ── Actions dropdown (the same menu as the Memo Requests list) ── */
+.iar-menu { position:relative;display:inline-block; }
+.iar-menu-trigger { display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;
+    border:1px solid var(--afims-border, #E4ECF2);background:var(--afims-surface, #FFFFFF);color:var(--afims-text, #1A1B21);white-space:nowrap;font-family:'IBM Plex Sans',sans-serif;transition:all .15s; }
+.iar-menu-trigger:hover { background:var(--afims-surface-subtle, #F4F7FA);border-color:var(--afims-text-disabled, #A9AAB8); }
+.iar-menu-trigger svg { width:12px;height:12px;flex-shrink:0; }
+.iar-menu-drop { display:none;position:fixed;min-width:170px;background:var(--afims-surface, #FFFFFF);border:1px solid var(--afims-border, #E4ECF2);border-radius:8px;
+    box-shadow:0 8px 24px rgba(0,0,0,.12);z-index:9999;padding:4px 0; }
+.iar-menu-drop.open { display:block; }
+.iar-menu-item { display:flex;align-items:center;gap:8px;padding:8px 12px;font-size:12px;font-weight:500;color:var(--afims-text, #1A1B21);white-space:nowrap;cursor:pointer;
+    border:none;background:none;width:100%;text-align:left;transition:background .1s;font-family:'IBM Plex Sans',sans-serif; }
+.iar-menu-item:hover { background:var(--afims-surface-subtle, #F4F7FA);color:var(--afims-heading-fill, #000E3E); }
+.iar-menu-item svg { width:13px;height:13px;flex-shrink:0;opacity:.7; }
+.iar-menu-divider { border-top:1px solid var(--afims-border, #E4ECF2);margin:3px 0; }
+</style>
+
 <div id="amp-root" class="nha-root">
 
     <!-- ── HEADER ─────────────────────────────────────────── -->
@@ -58,7 +75,7 @@ $_amp_api = $_brv_api;
                     <svg class="nha-filter-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
                     </svg>
-                    <input type="text" id="amp-filter-search" class="nha-filter-input" placeholder="Search PO no., IAR no., DR no., description, invoice, serial, property, PAR…">
+                    <input type="text" id="amp-filter-search" class="nha-filter-input" placeholder="Search PO no., IAR no., DR no., description, invoice, serial, property no.…">
                     <button class="nha-filter-clear-btn" id="amp-search-clear" hidden type="button">×</button>
                 </div>
             </div>
@@ -199,22 +216,52 @@ function amp_renderTable(rows) {
     }).join('');
     function actionsCell(r) {
         return `<td style="white-space:nowrap;vertical-align:top;">
-            <button class="nha-btn-act" onclick="amp_viewAll(${rows.indexOf(r)})" title="View all items of this PO">
-                <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
-                View
-            </button>
-            <button class="nha-btn-act" onclick="amp_proforma('${amp_escAttr(r.po_number)}')" title="Pro-forma JEV of each delivery receipt">
-                <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-                Pro-forma
-            </button>
-            <button class="nha-btn-act edit" onclick="amp_edit('${amp_escAttr(r.po_number)}')" title="Edit">
-                <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
-                Edit
-            </button>
+            <div class="iar-menu">
+                <button type="button" class="iar-menu-trigger" aria-haspopup="true" aria-expanded="false" onclick="amp_toggleMenu(this)">
+                    <svg fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+                    Actions
+                </button>
+                <div class="iar-menu-drop">
+                    <button type="button" class="iar-menu-item" onclick="amp_closeMenus();amp_viewAll(${rows.indexOf(r)})" title="View all items of this PO">
+                        <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                        View
+                    </button>
+                    <div class="iar-menu-divider"></div>
+                    <button type="button" class="iar-menu-item" onclick="amp_closeMenus();amp_proforma('${amp_escAttr(r.po_number)}')" title="Pro-forma JEV of each delivery receipt">
+                        <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                        Pro-forma
+                    </button>
+                    <div class="iar-menu-divider"></div>
+                    <button type="button" class="iar-menu-item" onclick="amp_closeMenus();amp_edit('${amp_escAttr(r.po_number)}')" title="Edit">
+                        <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                        Edit
+                    </button>
+                </div>
+            </div>
         </td>`;
     }
 }
 
+
+// Actions dropdown of a row (fixed position, so the table's scrolling never clips it)
+function amp_toggleMenu(btn) {
+    const drop = btn.closest('.iar-menu').querySelector('.iar-menu-drop');
+    const isOpen = drop.classList.contains('open');
+    amp_closeMenus();
+    if (isOpen) return;
+    const r = btn.getBoundingClientRect();
+    drop.style.top = (r.bottom + 4) + 'px';
+    drop.style.right = (window.innerWidth - r.right) + 'px';
+    drop.classList.add('open');
+    btn.setAttribute('aria-expanded', 'true');
+}
+function amp_closeMenus() {
+    document.querySelectorAll('.iar-menu-drop.open').forEach(d => d.classList.remove('open'));
+    document.querySelectorAll('.iar-menu-trigger[aria-expanded="true"]').forEach(b => b.setAttribute('aria-expanded', 'false'));
+}
+document.addEventListener('click', e => { if (!e.target.closest('.iar-menu')) amp_closeMenus(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') amp_closeMenus(); });
+document.addEventListener('scroll', amp_closeMenus, true);
 
 // Open every item of the PO, with its delivery receipt number (Actions → View)
 function amp_viewAll(i) {
@@ -224,13 +271,15 @@ function amp_viewAll(i) {
     const dash = v => v ? amp_esc(v) : '—';
     const lines = r.receipts || [];
     const total = lines.reduce((s, ln) => s + Number(ln.total_amount || 0), 0);
+    const vrow = (k, v) => `<div class="amp-vw-row"><div class="amp-vw-k">${k}</div><div class="amp-vw-v">${v}</div></div>`;
     $amp('amp-view-body').innerHTML = `
-        <div class="amp-v-meta">
-            <div><div class="k">IAR Number</div><div class="v">${dash(r.iar_number)}</div></div>
-            <div><div class="k">Vendor</div><div class="v">${dash(r.vendor_name)}</div></div>
-            <div><div class="k">Total Amount</div><div class="v">${money(total)}</div></div>
-            <div><div class="k">Delivery Receipts</div><div class="v">${lines.length}</div></div>
+        <div class="amp-vw-card"><h4 class="amp-vw-card-title">Inspection and Acceptance Report</h4>
+            ${vrow('IAR Number', r.iar_number ? '<span class="amp-vw-code">' + amp_esc(r.iar_number) + '</span>' : '—')}
+            ${vrow('Vendor', dash(r.vendor_name))}
+            ${vrow('Total Amount', '<span class="amp-vw-num">₱' + money(total) + '</span>')}
+            ${vrow('Delivery Receipts', lines.length)}
         </div>
+        <div class="amp-vw-card"><h4 class="amp-vw-card-title">Delivery Receipts</h4><div class="amp-vw-tblwrap">
         <table class="amp-v-table">
             <thead><tr><th style="width:40px;"></th><th>Delivery Date</th><th>Delivery Receipt</th><th style="text-align:right;">Total Amount</th></tr></thead>
             <tbody>${lines.map(ln => {
@@ -244,18 +293,19 @@ function amp_viewAll(i) {
                     <td style="text-align:right;white-space:nowrap;">${money(ln.total_amount)}</td>
                 </tr>${has ? `<tr class="amp-v-sub" style="display:none;"><td></td><td colspan="3">
                     <table class="amp-v-table amp-v-inner">
-                        <thead><tr><th>Description - Item</th><th>Serial No.</th><th>Prop. No.</th><th>PAR #</th><th style="text-align:right;">Amount</th></tr></thead>
+                        <thead><tr><th>Description - Item</th><th>Serial No.</th><th>Prop. No.</th><th style="text-align:right;">Amount</th></tr></thead>
                         <tbody>${items.map(it => `<tr>
                             <td style="white-space:pre-wrap;">${dash(it.description)}</td>
                             <td>${dash(it.serial_no)}</td>
                             <td>${dash(it.property_no)}</td>
-                            <td>${dash(it.par_no)}</td>
                             <td style="text-align:right;white-space:nowrap;">${it.amount ? money(it.amount) : '—'}</td></tr>`).join('')}</tbody>
                     </table></td></tr>` : ''}`;
             }).join('')}</tbody>
             <tfoot><tr><td colspan="3" style="text-align:right;">Total</td><td style="text-align:right;">${money(total)}</td></tr></tfoot>
-        </table>`;
+        </table></div></div>`;
+    $amp('amp-view-card').classList.remove('amp-wide');
     $amp('amp-view-title').textContent = 'Actual Delivery';
+    $amp('amp-view-ref').textContent = r.iar_number || '';
     $amp('amp-view-overlay').classList.add('open');
 }
 
@@ -281,7 +331,9 @@ async function amp_proforma(poNumber) {
         if (!json.success) throw new Error(json.message || 'Failed to load the pro-forma.');
         amp_pf = { po: json.data.po_number, iar: json.data.iar_number || '', receipts: json.data.receipts || [] };
         amp_renderProforma(0);
+        $amp('amp-view-card').classList.add('amp-wide');
         $amp('amp-view-title').textContent = 'Pro-forma JEV';
+        $amp('amp-view-ref').textContent = amp_pf.iar || '';
         $amp('amp-view-overlay').classList.add('open');
     } catch (e) {
         amp_toast(e.message, 'error');
@@ -326,12 +378,14 @@ function amp_renderProforma(active) {
             <div class="amp-jev-amt"><span></span><input type="text" inputmode="decimal" class="amp-input amp-pf-credit" placeholder="0.00" value="${Number(r.credit) > 0 ? amp_attrEsc(num(r.credit)) : ''}"></div>
         </div>`;
     const tab = (r, i) => `<button type="button" class="amp-tab${i === active ? ' active' : ''}" onclick="amp_renderProforma(${i})">${amp_esc(r.dr_number || '—')}</button>`;
+    const vrow = (k, v) => `<div class="amp-vw-row"><div class="amp-vw-k">${k}</div><div class="amp-vw-v">${v}</div></div>`;
     $amp('amp-view-body').innerHTML = `
-        <div class="amp-v-meta">
-            <div><div class="k">IAR Number</div><div class="v">${amp_esc(amp_pf.iar) || '—'}</div></div>
-            <div><div class="k">Delivery Receipt No.</div><div class="v">${amp_esc(rc.dr_number)}</div></div>
-            <div><div class="k">Total Amount</div><div class="v">₱${num(rc.total)}</div></div>
+        <div class="amp-vw-card"><h4 class="amp-vw-card-title">Delivery Receipt</h4>
+            ${vrow('IAR Number', amp_pf.iar ? '<span class="amp-vw-code">' + amp_esc(amp_pf.iar) + '</span>' : '—')}
+            ${vrow('Delivery Receipt No.', amp_esc(rc.dr_number))}
+            ${vrow('Total Amount', '<span class="amp-vw-num">₱' + num(rc.total) + '</span>')}
         </div>
+        <div class="amp-vw-card"><h4 class="amp-vw-card-title">Pro-forma JEV</h4>
         <div class="amp-tabs">${amp_pf.receipts.map(tab).join('')}</div>
         <div class="amp-pf-top"><button type="button" class="amp-add-btn" id="amp-pf-add">+ Add row</button></div>
         <div class="amp-jev">
@@ -352,7 +406,7 @@ function amp_renderProforma(active) {
         </div>
         <div class="amp-jev-actions">
             <button type="button" class="amp-jev-btn" id="amp-pf-submit" onclick="amp_submitJev(${active})">Submit</button>
-        </div>`;
+        </div></div>`;
 
     // wire the editable rows
     document.querySelectorAll('#amp-view-body .amp-pf-row').forEach(el => {
