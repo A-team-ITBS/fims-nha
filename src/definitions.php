@@ -137,6 +137,7 @@ return [
     "cash_position_page" => \DI\create(CashPositionPage::class),
     "bank_management_page" => \DI\create(BankManagementPage::class),
     "property_record_page" => \DI\create(PropertyRecordPage::class),
+    "vendors_page" => \DI\create(VendorsPage::class),
 
     // User table
     "usertable" => \DI\get("users"),

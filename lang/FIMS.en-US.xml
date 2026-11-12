@@ -44,6 +44,9 @@
     <menu id="90">
       <phrase id="menutext" value="Responsibilty Center" />
     </menu>
+    <menu id="391">
+      <phrase id="menutext" value="Vendors" />
+    </menu>
     <menu id="390">
       <phrase id="menutext" value="Inventory" />
     </menu>
@@ -1615,6 +1618,9 @@
     </table>
     <table id="property_record_page">
       <phrase id="tblcaption" value="Property Record" />
+    </table>
+    <table id="vendors_page">
+      <phrase id="tblcaption" value="Vendors" />
     </table>
   </project>
 </ew-language>

@@ -180,6 +180,7 @@
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
     ],
     null,
     [
@@ -1081,6 +1082,11 @@
                     'POST',
                     'OPTIONS',
                 ],
+                [
+                    'GET',
+                    'POST',
+                    'OPTIONS',
+                ],
             ],
             'pattern' => [
                 '/AggregatedAuditLogsList',
@@ -1260,6 +1266,7 @@
                 '/UsersEdit[/{user_id}]',
                 '/UsersDelete[/{user_id}]',
                 '/VDepartmentHierarchyList',
+                '/VendorsPage[/{params:.*}]',
                 '/Voucher[/{params:.*}]',
                 '/VUserAccessSummaryList',
                 '/WorkflowManager[/{params:.*}]',
@@ -1442,6 +1449,7 @@
                 'PHPMaker2024\\FIMS\\UsersController:edit',
                 'PHPMaker2024\\FIMS\\UsersController:delete',
                 'PHPMaker2024\\FIMS\\VDepartmentHierarchyController:list',
+                'PHPMaker2024\\FIMS\\VendorsPageController:custom',
                 'PHPMaker2024\\FIMS\\VoucherController:custom',
                 'PHPMaker2024\\FIMS\\VUserAccessSummaryController:list',
                 'PHPMaker2024\\FIMS\\WorkflowManagerController:custom',
@@ -1985,6 +1993,9 @@
                 [
                     'PHPMaker2024\\FIMS\\PermissionMiddleware',
                 ],
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
             ],
             'name' => [
                 'list.aggregated_audit_logs',
@@ -2164,11 +2175,13 @@
                 'edit.users',
                 'delete.users',
                 'list.v_department_hierarchy',
+                'custom.vendors_page',
                 'custom.Voucher',
                 'list.v_user_access_summary',
                 'custom.WorkflowManager',
             ],
             'options' => [
+                [],
                 [],
                 [],
                 [],
@@ -2533,6 +2546,7 @@
         $o[177],
         $o[178],
         $o[179],
+        $o[180],
     ],
     []
 );
