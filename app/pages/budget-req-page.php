@@ -406,11 +406,20 @@ function bgr_actionButtons(flatRow, idx) {
             Budget Preview
         </a>`
         : '';
+    // A flat-list row is one Program — its Delete removes just that Program
+    // (bgr_deleteProgram). An FMD row is the whole request, so Delete there
+    // still removes the whole request (bgr_delete), same as when the row
+    // has no Program yet.
     const deleteItem = (BGR_CAN_MODIFY && isDraft)
-        ? `<a class="nha-menu-item danger" href="javascript:void(0);" onclick="bgr_closeMenus();bgr_delete('${header.budget_reference_number}', ${header.fiscal_yr});">
-            <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-            Delete
-        </a>`
+        ? (program && !BGR_FMD
+            ? `<a class="nha-menu-item danger" href="javascript:void(0);" onclick="bgr_closeMenus();bgr_deleteProgram(${idx});">
+                <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                Delete
+            </a>`
+            : `<a class="nha-menu-item danger" href="javascript:void(0);" onclick="bgr_closeMenus();bgr_delete('${header.budget_reference_number}', ${header.fiscal_yr});">
+                <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                Delete
+            </a>`)
         : '';
 
     const items = [viewItem, editItem, budgetProcessingItem, budgetPreviewItem].filter(Boolean).join('');
@@ -629,9 +638,21 @@ async function bgr_doSubmitForReview(id) {
     }
 }
 
-async function bgr_delete(id, fiscalYr) {
-    if (!confirm(`Delete the entire budget request for fiscal year ${fiscalYr}? This removes ALL its programs and cannot be undone.`)) return;
+function bgr_delete(id, fiscalYr) {
+    Swal.fire({
+        title: 'Delete Budget Request',
+        text: `Delete the entire budget request for fiscal year ${fiscalYr}? This removes ALL its programs and cannot be undone.`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Yes, delete',
+        cancelButtonText: 'Cancel',
+        confirmButtonColor: '#dc3545',
+    }).then(result => {
+        if (result.isConfirmed) bgr_doDelete(id);
+    });
+}
 
+async function bgr_doDelete(id) {
     window.PagePreloader?.show();
     try {
         const res  = await fetch(`${BGR_API}/delete/${id}`, {
@@ -642,6 +663,45 @@ async function bgr_delete(id, fiscalYr) {
         if (!json.success) throw new Error(json.message || 'Failed to delete budget request.');
 
         bgr_toast('Budget request deleted successfully.', 'success');
+        bgr_load();
+    } catch (e) {
+        bgr_toast(e.message, 'error');
+    } finally {
+        window.PagePreloader?.hide();
+    }
+}
+
+// Flat-list row only — deletes just that one Program (its projects/line
+// items cascade). If it was the request's last Program, the backend
+// removes the now-empty header too.
+function bgr_deleteProgram(idx) {
+    const { program } = bgr_flatRows[idx];
+    if (!program) return;
+
+    Swal.fire({
+        title: 'Delete Program',
+        text: `Delete ${program.program_code} — ${program.program_name}? This removes its projects and line items and cannot be undone.`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Yes, delete',
+        cancelButtonText: 'Cancel',
+        confirmButtonColor: '#dc3545',
+    }).then(result => {
+        if (result.isConfirmed) bgr_doDeleteProgram(program.budget_req_program_id);
+    });
+}
+
+async function bgr_doDeleteProgram(budgetReqProgramId) {
+    window.PagePreloader?.show();
+    try {
+        const res  = await fetch(`${BGR_API}/program/delete/${budgetReqProgramId}`, {
+            method: 'DELETE',
+            credentials: 'same-origin',
+        });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message || 'Failed to delete program.');
+
+        bgr_toast(json.message || 'Program deleted successfully.', 'success');
         bgr_load();
     } catch (e) {
         bgr_toast(e.message, 'error');

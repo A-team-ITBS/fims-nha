@@ -406,9 +406,21 @@ function bgr_renderPagination(p) {
 
 function bgr_goTo(page) { bgr_page = page; bgr_load(); }
 
-async function bgr_delete(id, fiscalYr) {
-    if (!confirm(`Delete the entire budget request for fiscal year ${fiscalYr}? This removes ALL its programs and cannot be undone.`)) return;
+function bgr_delete(id, fiscalYr) {
+    Swal.fire({
+        title: 'Delete Budget Request',
+        text: `Delete the entire budget request for fiscal year ${fiscalYr}? This removes ALL its programs and cannot be undone.`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Yes, delete',
+        cancelButtonText: 'Cancel',
+        confirmButtonColor: '#dc3545',
+    }).then(result => {
+        if (result.isConfirmed) bgr_doDelete(id);
+    });
+}
 
+async function bgr_doDelete(id) {
     window.PagePreloader?.show();
     try {
         const res  = await fetch(`${BGR_API}/delete/${id}`, {

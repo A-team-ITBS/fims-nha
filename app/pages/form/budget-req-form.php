@@ -1427,26 +1427,20 @@ function bgr_statusBadge(name, color) {
     </span>`;
 }
 
+const BGR_TOAST_SWAL = Swal.mixin({
+    toast: true,
+    position: 'top-end',
+    showConfirmButton: false,
+    timer: 4000,
+    timerProgressBar: true,
+    didOpen: el => {
+        el.onmouseenter = Swal.stopTimer;
+        el.onmouseleave = Swal.resumeTimer;
+    },
+});
+
 function bgr_toast(msg, type = 'info') {
-    const colors = { success: '#16a34a', error: '#dc2626', warning: '#d97706', info: '#2563eb' };
-    const icons  = {
-        success: '<svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>',
-        error:   '<svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>',
-        warning: '<svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>',
-        info:    '<svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
-    };
-    let wrap = document.getElementById('nha-toast-wrap');
-    if (!wrap) {
-        wrap = document.createElement('div');
-        wrap.id = 'nha-toast-wrap';
-        wrap.style.cssText = 'position:fixed;top:20px;right:20px;z-index:99999;display:flex;flex-direction:column;gap:8px;pointer-events:none;';
-        document.body.appendChild(wrap);
-    }
-    const color = colors[type] || colors.info;
-    const t = document.createElement('div');
-    t.style.cssText = `display:flex;align-items:flex-start;gap:10px;padding:12px 14px;background:#fff;border-left:4px solid ${color};border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.14);font-size:13px;color:#1e293b;min-width:260px;max-width:340px;pointer-events:auto;`;
-    t.innerHTML = `<span style="color:${color};flex-shrink:0;margin-top:1px">${icons[type] || icons.info}</span><div style="flex:1"><span>${msg}</span></div><button onclick="this.parentElement.remove()" style="border:none;background:none;cursor:pointer;color:var(--afims-text-disabled, #A9AAB8);font-size:18px;line-height:1;padding:0 2px;flex-shrink:0">&times;</button>`;
-    wrap.appendChild(t);
-    setTimeout(() => t.remove(), 4000);
+    const icon = ['success', 'error', 'warning', 'info', 'question'].includes(type) ? type : 'info';
+    BGR_TOAST_SWAL.fire({ icon, title: msg });
 }
 </script>

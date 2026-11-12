@@ -287,6 +287,38 @@ $cbaAsModal = !empty($cbaAsModal);
 			}
 		}
 
+		/* Budget Allocation Amount line: COB | Requested Amount | Cash Requirements | Proposed Amount — COB gets
+		   the most room; Proposed Amount is read-only (filled from the picked COB), so it doesn't need as much */
+		.cba-form-container .form-row.cols-baa {
+			grid-template-columns: 2fr 1fr 1fr 1fr;
+		}
+
+		/* Cash Requirements hidden (CBA, or a COE document) — COB | Requested Amount | Proposed Amount left */
+		.cba-form-container .form-row.cols-baa.baa-no-cash {
+			grid-template-columns: 2fr 1fr 1fr;
+		}
+
+		@media (max-width: 760px) {
+			.cba-form-container .form-row.cols-baa,
+			.cba-form-container .form-row.cols-baa.baa-no-cash {
+				grid-template-columns: minmax(0, 1fr);
+			}
+		}
+
+		/* CBA: the first Budget Allocation Amount line (COB + Requested Amount + Proposed Amount) sits beside
+		   Project instead of below in its own section — see baaRelocateFirstLine(). Rather than staying one grid
+		   item next to Project, the wrapper itself disappears (display:contents) so its children become direct
+		   items of #program_project_row's own grid, same as Project — each getting its own auto-fit track.
+		   Needs a positioned ancestor for the (usually hidden, single-line) remove button, since .baa-line no
+		   longer is one. */
+		.cba-form-container #program_project_row {
+			position: relative;
+		}
+
+		.cba-form-container #program_project_row > .baa-line {
+			display: contents;
+		}
+
 		/* a field that takes the whole row of a multi-column .form-row (the vendor's Address) */
 		.cba-form-container .form-row > .form-group-wide {
 			grid-column: 1 / -1;
@@ -886,13 +918,49 @@ $cbaAsModal = !empty($cbaAsModal);
 
 	<form id="cba_form" method="POST">
 
+		<!-- ── Allocation Type (moved to the top: it decides how much of the rest of the form shows — see
+		     cbaApplyAllocationTypeVisibility()) ──────────────────────── -->
+		<div class="form-section">
+			<h2 class="section-header">Allocation Type</h2>
+
+			<div class="form-row">
+				<div class="form-group">
+					<label for="allocation_type" class="form-label">
+						Allocation Type <span class="required">*</span>
+					</label>
+					<select id="allocation_type" name="allocation_type" class="form-select" required>
+						<option value="">Select allocation type</option>
+						<option value="CBA">CBA - Certificate of Budget Allocation</option>
+						<option value="RFA">RFA - Request for Fund Allotment (&lt;&#8369;50M)</option>
+						<option value="LAA">LAA - Letter of Advice of Allotment (&ge;&#8369;50M)</option>
+						<option value="CFA">CFA - Certificate of Fund Availability</option>
+					</select>
+				</div>
+
+				<!-- Category → GET /budget_category/all (searchable combobox) -->
+				<div class="form-group">
+					<label for="cat_search" class="form-label">Category <span class="required">*</span></label>
+					<div class="select-loading-wrapper is-loading" id="category_wrapper" style="overflow:visible;">
+						<div style="position:relative;overflow:visible;">
+							<input type="text" id="cat_search" class="form-input" placeholder="Search category&hellip;"
+								autocomplete="off" disabled required>
+							<div id="cat_dropdown" class="pc-dropdown"></div>
+						</div>
+						<input type="hidden" id="category_id" name="category_id" value="">
+					</div>
+					<div class="error-box" id="category_error">Failed to load categories. Please refresh the page.</div>
+				</div>
+			</div>
+		</div>
+
 		<!-- ── Program and Project ────────────────────────────────────── -->
 		<div class="form-section" id="program_project_section">
 			<h2 class="section-header" id="program_project_section_title">Program, Sub-Program and Project Details</h2>
 
 			<div class="form-row cols-3" id="program_project_row">
-				<!-- Program → GET /program/all (searchable combobox) -->
-				<div class="form-group">
+				<!-- Program → GET /program/all (searchable combobox). Hidden for CBA — see
+				     cbaApplyAllocationTypeVisibility(): the chosen Project carries its own Program / Sub-Program. -->
+				<div class="form-group" id="program_group">
 					<label for="prog_search" class="form-label">Program</label>
 					<div class="select-loading-wrapper is-loading" id="program_wrapper" style="overflow:visible;">
 						<div style="position:relative;overflow:visible;">
@@ -906,8 +974,8 @@ $cbaAsModal = !empty($cbaAsModal);
 					<p class="input-hint" id="program_hint">Pick an existing program, or type a new name to create one.</p>
 				</div>
 
-				<!-- Sub-Program → GET /sub_program/all?program_code=… (searchable combobox, needs a Program) -->
-				<div class="form-group">
+				<!-- Sub-Program → GET /sub_program/all?program_code=… (searchable combobox, needs a Program). Hidden for CBA, same as Program above. -->
+				<div class="form-group" id="sub_program_group">
 					<label for="subprog_search" class="form-label">Sub-Program</label>
 					<div class="select-loading-wrapper" id="sub_program_wrapper" style="overflow:visible;">
 						<div style="position:relative;overflow:visible;">
@@ -921,8 +989,10 @@ $cbaAsModal = !empty($cbaAsModal);
 					<p class="input-hint" id="sub_program_hint">Select a program first.</p>
 				</div>
 
-				<!-- Project → GET /project/all?program_code=…&sub_program_code=… (searchable combobox, needs a Sub-Program) -->
-				<div class="form-group">
+				<!-- Project → GET /project/all?program_code=…&sub_program_code=… (searchable combobox, needs a Sub-Program).
+				     For CBA its first Budget Allocation Amount line (COB + Requested Amount) is moved in beside it —
+				     see baaRelocateFirstLine(). -->
+				<div class="form-group" id="project_group">
 					<label for="proj_search" class="form-label">Project</label>
 					<div class="select-loading-wrapper" id="project_wrapper" style="overflow:visible;">
 						<div style="position:relative;overflow:visible;">
@@ -945,6 +1015,179 @@ $cbaAsModal = !empty($cbaAsModal);
 					<p class="input-hint">Provide details about the purpose and scope of this budget allocation</p>
 				</div>
 			</div>
+			<!-- —— Budget Allocation Amount (same card as the Project details above) —————————— -->
+			<!-- Hidden for CBA while there's only the one (merged, next to Project) line — see
+			     baaApplyHeaderVisibility(): nothing left here needs its own heading. Reappears if an existing
+			     record being edited turns out to have more than one saved line. -->
+			<div id="baa_header">
+				<h2 class="section-header">Budget Allocation Amount</h2>
+				<p class="input-hint" style="margin-top:-4px;margin-bottom:12px;">
+					Choose the COB (its account code) this allocation is drawn from. Only approved budget requests are
+					listed, and the list follows the Program, Sub-Program and Project chosen above.
+				</p>
+
+				<div class="error-box" id="cob_error">Failed to load COBs. Please refresh the page.</div>
+			</div>
+
+			<div id="baa_lines_container"></div>
+
+			<div id="baa_totals" class="baa-totals">
+				<div class="baa-totals-row">
+					<span class="baa-totals-label">Total Requested Amount</span>
+					<span class="baa-totals-value" id="baa_total_requested">&#8369;0.00</span>
+				</div>
+				<div class="baa-totals-row" id="baa_total_allocated_row">
+					<span class="baa-totals-label">Total Cash Requirements</span>
+					<span class="baa-totals-value" id="baa_total_allocated">&#8369;0.00</span>
+				</div>
+			</div>
+
+			<!-- Summed totals of the lines (requested_amount / allocated_amount). The itemized lines, each with its COB,
+			     are submitted separately as `line_transaction` (jsonb) — see collectBaaLines() / buildPayload(). -->
+			<input type="hidden" id="requested_amount_raw" name="requested_amount" value="">
+			<input type="hidden" id="allocated_amount_raw" name="allocated_amount" value="">
+
+			<style>
+				.baa-line {
+					position: relative;
+					padding-right: 34px;
+					margin-bottom: 16px;
+				}
+
+				.baa-remove-line {
+					position: absolute;
+					top: 4px;
+					right: 0;
+					width: 24px;
+					height: 24px;
+					border: 1px solid var(--afims-border, #E4ECF2);
+					background: var(--afims-surface, #FFFFFF);
+					color: var(--afims-text-disabled, #A9AAB8);
+					border-radius: 6px;
+					font-size: 16px;
+					line-height: 1;
+					cursor: pointer;
+					transition: background .15s, color .15s, border-color .15s;
+				}
+
+				.baa-remove-line:hover {
+					background: var(--afims-danger-soft, #FAE1E3);
+					color: var(--afims-danger, #DC3545);
+					border-color: var(--afims-danger-soft, #FAE1E3);
+				}
+
+				.baa-proposed-amount {
+					color: var(--afims-text-muted, #62657E);
+				}
+
+				/* "Where this COB's balance is held" — a collapsed-by-default drill-down into
+				   fims.budget_line_item_earmark for the picked COB (see baaToggleEarmarks()). Spans the full
+				   row (same grid-column trick as the old .baa-bv-info), under the COB/Amount fields and
+				   above Purpose / Description. */
+				.baa-earmarks {
+					grid-column: 1 / -1;
+					margin-top: 4px;
+				}
+
+				.baa-earmarks-toggle {
+					display: inline-flex;
+					align-items: center;
+					gap: 6px;
+					padding: 4px 0;
+					border: none;
+					background: none;
+					cursor: pointer;
+					font-size: 12px;
+					font-weight: 600;
+					color: var(--afims-primary, #0035A9);
+				}
+
+				.baa-earmarks-toggle:hover {
+					text-decoration: underline;
+				}
+
+				.baa-earmarks-caret {
+					flex-shrink: 0;
+					transition: transform .15s;
+				}
+
+				.baa-earmarks.open .baa-earmarks-caret {
+					transform: rotate(90deg);
+				}
+
+				.baa-earmarks-body {
+					margin-top: 6px;
+					padding: 10px 12px;
+					background: var(--afims-surface-subtle, #F4F7FA);
+					border: 1px solid var(--afims-border, #E4ECF2);
+					border-radius: 8px;
+					font-size: 12px;
+				}
+
+				.baa-earmarks-row {
+					display: flex;
+					align-items: baseline;
+					justify-content: space-between;
+					gap: 10px;
+					padding: 4px 0;
+				}
+
+				.baa-earmarks-row + .baa-earmarks-row {
+					border-top: 1px solid var(--afims-border, #E4ECF2);
+				}
+
+				.baa-earmarks-ref {
+					font-weight: 600;
+					color: var(--afims-heading, #000E3E);
+				}
+
+				.baa-earmarks-amt {
+					font-family: 'IBM Plex Mono', monospace;
+					font-weight: 600;
+					white-space: nowrap;
+				}
+
+				.baa-earmarks-tag {
+					display: inline-block;
+					margin-left: 6px;
+					padding: 1px 6px;
+					border-radius: 4px;
+					font-size: 10px;
+					font-weight: 700;
+					text-transform: uppercase;
+				}
+
+				.baa-earmarks-tag.active { background: #FFF8DB; color: #92400E; }
+				.baa-earmarks-tag.converted { background: #DCFCE7; color: #166534; }
+				.baa-earmarks-tag.released { background: var(--afims-border, #E4ECF2); color: var(--afims-text-muted, #62657E); }
+
+				.baa-totals {
+					margin-top: 16px;
+					padding: 12px 16px;
+					background: var(--afims-surface-subtle, #F4F7FA);
+					border: 1px solid var(--afims-border, #E4ECF2);
+					border-radius: 8px;
+				}
+
+				.baa-totals-row {
+					display: flex;
+					justify-content: space-between;
+					align-items: center;
+					padding: 3px 0;
+					font-size: 13px;
+				}
+
+				.baa-totals-label {
+					color: var(--afims-text-muted, #62657E);
+					font-weight: 500;
+				}
+
+				.baa-totals-value {
+					color: var(--afims-heading, #000E3E);
+					font-weight: 700;
+					font-family: 'IBM Plex Mono', monospace;
+				}
+			</style>
 		</div>
 
 		<!-- ── Vendor ─────────────────────────────────────────────────── -->
@@ -1002,63 +1245,28 @@ $cbaAsModal = !empty($cbaAsModal);
 		</div>
 
 		<!-- ── Basic Information ──────────────────────────────────────── -->
-		<div class="form-section">
+		<!-- Hidden for CBA — see cbaApplyAllocationTypeVisibility(): Fiscal Year and Document Type are now hidden
+		     fields derived elsewhere, and Is this for bidding? / Parent CBA don't apply either, leaving nothing
+		     in this section to show. -->
+		<div class="form-section" id="basic_info_section">
 			<h2 class="section-header">Basic Information</h2>
 
-			<div class="form-row">
-				<!-- Allocation Type (static) -->
-				<div class="form-group">
-					<label for="allocation_type" class="form-label">
-						Allocation Type <span class="required">*</span>
-					</label>
-					<select id="allocation_type" name="allocation_type" class="form-select" required>
-						<option value="">Select allocation type</option>
-						<option value="CBA">CBA - Certificate of Budget Allocation</option>
-						<option value="RFA">RFA - Request for Fund Allotment (&lt;&#8369;50M)</option>
-						<option value="LAA">LAA - Letter of Advice of Allotment (&ge;&#8369;50M)</option>
-						<option value="CFA">CFA - Certificate of Fund Availability</option>
-					</select>
-				</div>
-
-				<!-- Fiscal Year → GET /fiscal_year/all -->
-				<!-- Value = fiscal_yr (the PK of fims.fiscal_year, saved as budget_allocation.fiscal_year); shown as the year -->
-				<div class="form-group">
-					<label for="fiscal_year" class="form-label">
-						Fiscal Year <span class="required">*</span>
-					</label>
-					<div class="select-loading-wrapper is-loading" id="fiscal_year_wrapper">
-						<select id="fiscal_year" name="fiscal_year" class="form-select" required disabled>
-							<option value="">Loading fiscal years&hellip;</option>
-						</select>
-					</div>
-					<div class="error-box" id="fiscal_year_error">Failed to load fiscal years. Please refresh the page.
-					</div>
-				</div>
-			</div>
-
-			<div class="form-row">
-				<!-- Category → GET /budget_category/all (searchable combobox) -->
-				<div class="form-group">
-					<label for="cat_search" class="form-label">Category</label>
-					<div class="select-loading-wrapper is-loading" id="category_wrapper" style="overflow:visible;">
-						<div style="position:relative;overflow:visible;">
-							<input type="text" id="cat_search" class="form-input" placeholder="Search category&hellip;"
-								autocomplete="off" disabled>
-							<div id="cat_dropdown" class="pc-dropdown"></div>
-						</div>
-						<input type="hidden" id="category_id" name="category_id" value="">
-					</div>
-					<div class="error-box" id="category_error">Failed to load categories. Please refresh the page.</div>
-				</div>
-			</div>
+			<!-- Fiscal Year is no longer a separate pick: an existing Project's code already starts with the
+			     year it was created under (e.g. "2026-R03-001-0001-0001"), so this is derived from the chosen
+			     Project instead of asking for it twice (see pcDeriveFiscalYearFromProject()). A typed/new
+			     Project (nothing picked yet) falls back to CURRENT_YEAR, same default the old dropdown used. -->
+			<input type="hidden" id="fiscal_year" name="fiscal_year" value="">
 
 			<!-- ── Document Type ──────────────────────────────────────────── -->
-			<div class="form-row" id="document_type_row">
+			<!-- No longer picked by hand — derived from the chosen COB's account code (1xxx = CO, 5xxx = COE) once
+			     it's picked below; see cobDeriveDocumentType(). Kept as a real <select> (just permanently hidden)
+			     so every existing document.getElementById('document_type').value read/write still works as-is. -->
+			<div class="form-row" id="document_type_row" style="display:none;">
 				<div class="form-group">
 					<label for="document_type" class="form-label">
-						Document Type <span class="required">*</span>
+						Document Type
 					</label>
-					<select id="document_type" name="document_type" class="form-select" required>
+					<select id="document_type" name="document_type" class="form-select">
 						<option value="">Select document type</option>
 						<option value="CO">CO &mdash; Capital Outlay</option>
 						<option value="COE">COE &mdash; Corporate Operating Expenditure</option>
@@ -1067,8 +1275,8 @@ $cbaAsModal = !empty($cbaAsModal);
 				</div>
 			</div>
 
-			<!-- ── Is this for bidding? ────────────────────────────────────── -->
-			<div class="form-row">
+			<!-- ── Is this for bidding? ────────────────────────────────────── (hidden for CBA — see cbaApplyAllocationTypeVisibility()) -->
+			<div class="form-row" id="is_bidding_row">
 				<div class="form-group">
 					<label class="form-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;">
 						<input type="checkbox" id="is_bidding" name="is_bidding"
@@ -1193,7 +1401,13 @@ $cbaAsModal = !empty($cbaAsModal);
 				}
 
 				.bv-item:hover {
-					background: var(--afims-surface-subtle, #F4F7FA);
+					background: var(--afims-heading-fill, #000E3E);
+				}
+
+				.bv-item:hover .bv-item-name,
+				.bv-item:hover .bv-item-sub,
+				.bv-item:hover .bv-item-balance {
+					color: var(--afims-pure-white, #FFFFFF);
 				}
 
 				.bv-item-name {
@@ -1250,122 +1464,6 @@ $cbaAsModal = !empty($cbaAsModal);
 			</style>
 		</div>
 
-		<!-- ── Budget Allocation Amount ───────────────────────────────── -->
-		<div class="form-section">
-			<h2 class="section-header">Budget Allocation Amount</h2>
-			<p class="input-hint" style="margin-top:-4px;margin-bottom:12px;">
-				Choose the Type of Fund, then the COB (its account code) this allocation is drawn from. Only approved budget
-				requests are listed, and both lists follow the Program, Sub-Program and Project chosen above.
-			</p>
-
-			<div class="error-box" id="type_of_fund_error">Failed to load types of fund. Please refresh the page.</div>
-			<div class="error-box" id="cob_error">Failed to load COBs. Please refresh the page.</div>
-
-			<div id="baa_lines_container"></div>
-
-			<div id="baa_totals" class="baa-totals">
-				<div class="baa-totals-row">
-					<span class="baa-totals-label">Total Requested Amount</span>
-					<span class="baa-totals-value" id="baa_total_requested">&#8369;0.00</span>
-				</div>
-				<div class="baa-totals-row">
-					<span class="baa-totals-label">Total Cash Requirements</span>
-					<span class="baa-totals-value" id="baa_total_allocated">&#8369;0.00</span>
-				</div>
-			</div>
-
-			<!-- Summed totals of the lines (requested_amount / allocated_amount). The itemized lines, each with its COB,
-			     are submitted separately as `line_transaction` (jsonb) — see collectBaaLines() / buildPayload(). -->
-			<input type="hidden" id="requested_amount_raw" name="requested_amount" value="">
-			<input type="hidden" id="allocated_amount_raw" name="allocated_amount" value="">
-
-			<style>
-				.baa-line {
-					position: relative;
-					padding-right: 34px;
-					margin-bottom: 16px;
-				}
-
-				.baa-remove-line {
-					position: absolute;
-					top: 4px;
-					right: 0;
-					width: 24px;
-					height: 24px;
-					border: 1px solid var(--afims-border, #E4ECF2);
-					background: var(--afims-surface, #FFFFFF);
-					color: var(--afims-text-disabled, #A9AAB8);
-					border-radius: 6px;
-					font-size: 16px;
-					line-height: 1;
-					cursor: pointer;
-					transition: background .15s, color .15s, border-color .15s;
-				}
-
-				.baa-remove-line:hover {
-					background: var(--afims-danger-soft, #FAE1E3);
-					color: var(--afims-danger, #DC3545);
-					border-color: var(--afims-danger-soft, #FAE1E3);
-				}
-
-				.baa-bv-info {
-					grid-column: 1 / -1;
-					margin-top: 8px;
-					padding: 10px 12px;
-					background: var(--afims-surface-subtle, #F4F7FA);
-					border: 1px solid var(--afims-primary-soft, #E6EBF6);
-					border-radius: 6px;
-					font-size: 12px;
-					line-height: 1.6;
-				}
-
-				.baa-bv-info-grid {
-					display: grid;
-					grid-template-columns: auto 1fr;
-					gap: 2px 10px;
-				}
-
-				.baa-bv-info-label {
-					color: var(--afims-text-muted, #62657E);
-					font-weight: 500;
-				}
-
-				.baa-bv-info-value {
-					color: var(--afims-heading, #000E3E);
-				}
-
-				.baa-bv-info-value.strong {
-					font-weight: 600;
-				}
-
-				.baa-totals {
-					margin-top: 16px;
-					padding: 12px 16px;
-					background: var(--afims-surface-subtle, #F4F7FA);
-					border: 1px solid var(--afims-border, #E4ECF2);
-					border-radius: 8px;
-				}
-
-				.baa-totals-row {
-					display: flex;
-					justify-content: space-between;
-					align-items: center;
-					padding: 3px 0;
-					font-size: 13px;
-				}
-
-				.baa-totals-label {
-					color: var(--afims-text-muted, #62657E);
-					font-weight: 500;
-				}
-
-				.baa-totals-value {
-					color: var(--afims-heading, #000E3E);
-					font-weight: 700;
-					font-family: 'IBM Plex Mono', monospace;
-				}
-			</style>
-		</div>
 
 		<!-- ── Purchase Request / Purchase Order ───────────────────── -->
 		<div class="form-section" id="pcr_section">
@@ -1374,12 +1472,14 @@ $cbaAsModal = !empty($cbaAsModal);
 			<!-- CBA (and CFA / no type chosen yet) → Purchase Request; RFA / LAA → Purchase Order. Both pairs stay in
 			     the form, but only the one that is showing is saved: pr_number + pr_amount, or po_number + po_amount. -->
 			<div class="form-row" id="pr_row" style="margin-bottom:0;">
-				<div class="form-group">
-					<label for="pr_number" class="form-label">Purchase Request Number</label>
+				<div class="form-group form-group-wide">
+					<label for="pr_number" class="form-label">Purchase Request Number <span class="input-hint" style="display:inline;">(Optional)</span></label>
 					<input type="text" id="pr_number" class="form-input" maxlength="50" autocomplete="off"
 						placeholder="Enter the purchase request number">
 				</div>
-				<div class="form-group has-prefix">
+				<!-- Purchase Request Amount removed from the UI — pr_amount / pr_amount_raw stay in the DOM (just
+				     hidden) so pcrPayloadFields() / pcrPopulate() keep working unchanged for existing records. -->
+				<div class="form-group has-prefix" style="display:none;">
 					<label for="pr_amount" class="form-label">Purchase Request Amount</label>
 					<span class="input-prefix">&#8369;</span>
 					<input type="text" id="pr_amount" class="form-input amt-input" placeholder="0.00" autocomplete="off">
@@ -1857,23 +1957,34 @@ $cbaAsModal = !empty($cbaAsModal);
 		wireAmtInput(document.getElementById('po_amount'));
 		document.getElementById('allocation_type').addEventListener('change',
 			applyBudgetVersionVisibilityForDocType);
+		document.getElementById('allocation_type').addEventListener('change', cbaApplyAllocationTypeVisibility);
 		document.getElementById('document_type').addEventListener('change', applyAllocationTypeOptionsForDocType);
 		document.getElementById('document_type').addEventListener('change', generateCBANumber); // RFA code depends on document type
 		document.getElementById('document_type').addEventListener('change', dropInfrastructureCategoryForCoe);
 		document.getElementById('document_type').addEventListener('change',
 			applyProgramProjectVisibilityForDocType);
+		// after applyProgramProjectVisibilityForDocType — a doc-type switch can re-lock Project via
+		// cbaClearProgramChain(); this re-opens it for CBA's independent Project search if still applicable.
+		document.getElementById('document_type').addEventListener('change', cbaApplyAllocationTypeVisibility);
 		document.getElementById('document_type').addEventListener('change',
 			applyBudgetVersionVisibilityForDocType);
 
-		// ── Pre-populate from URL params (?type=RFA|LAA&parent_cba_id=N) ──
-		// Skipped entirely in edit mode — editing an existing record should never
-		// trigger the "generate RFA/LAA from parent CBA" autofill flow.
+		// ── Pre-populate from URL params (?type=CBA|RFA|LAA&parent_cba_id=N) ──
+		// In modal mode this is the host page's own URL (e.g. memo-req-page?type=RFA) — memo-req-page.php keeps
+		// ?type= in sync with whichever of its CBA / RFA / LAA tabs is active, so "New Memo Request" opens this
+		// form with the matching Allocation Type already chosen. Skipped entirely in edit mode — editing an
+		// existing record should never trigger the "generate RFA/LAA from parent CBA" autofill flow.
 		const _urlParams = new URLSearchParams(window.location.search);
 		const _presetType = CBA_EDIT_MODE ? '' : (_urlParams.get('type') || '').toUpperCase();
 		const _presetCbaId = CBA_EDIT_MODE ? '' : (_urlParams.get('parent_cba_id') || '').trim();
 
-		if (_presetType === 'RFA' || _presetType === 'LAA') {
-			document.getElementById('allocation_type').value = _presetType;
+		if (_presetType === 'CBA' || _presetType === 'RFA' || _presetType === 'LAA') {
+			var allocTypeEl = document.getElementById('allocation_type');
+			allocTypeEl.value = _presetType;
+			// Locked: the tab it was opened from (memo-req-page.php's CBA / RFA / LAA tabs) already decided this —
+			// changing it here would disagree with where the user clicked "New ... Memo Request" from.
+			allocTypeEl.disabled = true;
+			allocTypeEl.title = 'Determined by the tab this was opened from.';
 			generateCBANumber();
 			toggleCbaIdRow();
 		}
@@ -1897,6 +2008,7 @@ $cbaAsModal = !empty($cbaAsModal);
 		if (_presetDocType === 'CO' || _presetDocType === 'COE') {
 			dropInfrastructureCategoryForCoe();
 		}
+		cbaApplyAllocationTypeVisibility(); // after the doc-type rules above, in case a preset type is CBA
 
 		// Run all dropdown loaders; after they settle, apply CBA autofill if requested.
 		// The app's shared preloader covers the screen meanwhile (cbaHideLoader() takes it down).
@@ -1904,13 +2016,11 @@ $cbaAsModal = !empty($cbaAsModal);
 		// Project chosen above (see cobLoad).
 		window.PagePreloader?.show();
 		var _dropdownLoaders = Promise.allSettled([
-			loadFiscalYears(),
 			loadPrograms(),
 			refreshAllocationCount(),
 			loadCategories(),
 			loadVendors(),
 			loadVendorTypes(),
-			loadTypesOfFund(),
 		]);
 
 		// Take the preloader down once all dropdowns have settled. In edit mode the saved record is still to be
@@ -2001,9 +2111,10 @@ $cbaAsModal = !empty($cbaAsModal);
 				// 8/9. Program → Sub-Program → Project, selected by code
 				await cbaSelectProgramChain(cba.program_code, cba.sub_program_code, cba.project_code);
 
-				// 10. Purpose / description
-				if (cba.project_description) {
-					document.getElementById('project_description').value = cba.project_description;
+				// 10. Purpose / description — the API's own field is "description" (see buildPayload()'s
+				// description: v('project_description') for why), not "project_description".
+				if (cba.description) {
+					document.getElementById('project_description').value = cba.description;
 				}
 
 				// 11. Remarks
@@ -2119,16 +2230,16 @@ $cbaAsModal = !empty($cbaAsModal);
 				cbaWireEvents();
 				g('cba_search').dataset.wired = '1';
 			}
-			if (a.cba_id) {
+			if (a.parent_id) {
 				try {
 					await loadParentCBAs();
 					cbaCloseDropdown();
 					var parent = CBA_DATA.find(function(c) {
-						return String(c.allocation_id) === String(a.cba_id);
+						return String(c.allocation_id) === String(a.parent_id);
 					});
-					var label = parent ? (parent.allocation_number || ('#' + a.cba_id)) :
-						(a.cba_id != null ? ('#' + a.cba_id) : '');
-					if (label) cbaSelect(a.cba_id, label);
+					var label = parent ? (parent.allocation_number || ('#' + a.parent_id)) :
+						(a.parent_id != null ? ('#' + a.parent_id) : '');
+					if (label) cbaSelect(a.parent_id, label);
 				} catch (err) {
 					console.error('[populateEditForm] parent CBA load failed:', err);
 				}
@@ -2151,6 +2262,10 @@ $cbaAsModal = !empty($cbaAsModal);
 		//    this chain
 		await cbaSelectProgramChain(a.program_code, a.sub_program_code, a.project_code);
 
+		// 9b. CBA hides Vendor / Is this for bidding? / Program / Sub-Program — applied now that the chain above
+		//     already holds Project's real value, so this won't trigger the "load every project" step too.
+		cbaApplyAllocationTypeVisibility();
+
 		// 10. Budget Allocation Amount lines — one per saved line_transaction entry (row 0 already exists from boot),
 		//     each with the COB it drew from
 		var savedLines = Array.isArray(a.line_transaction) ? a.line_transaction : [];
@@ -2172,8 +2287,9 @@ $cbaAsModal = !empty($cbaAsModal);
 		}
 		recomputeBaaTotals();
 
-		// 13. Purpose / description / remarks
-		if (a.project_description) g('project_description').value = a.project_description;
+		// 13. Purpose / description / remarks — the API's own field is "description" (see buildPayload()'s
+		// description: v('project_description') for why), not "project_description".
+		if (a.description) g('project_description').value = a.description;
 		if (a.remarks) g('remarks').value = a.remarks;
 		if (g('is_bidding')) g('is_bidding').checked = !!a.is_bidding;
 
@@ -2219,51 +2335,28 @@ $cbaAsModal = !empty($cbaAsModal);
 		document.getElementById(errorId).classList.add('visible');
 	}
 
-	// ── 1. Fiscal Years ───────────────────────────────────────────────────────────
-	async function loadFiscalYears() {
-		var select = document.getElementById('fiscal_year');
-		try {
-			// fims.fiscal_year is just { fiscal_yr, status_id }, newest year first. The year is both the
-			// value (it is the FK saved in budget_allocation.fiscal_year) and the label, like every other
-			// FIMS fiscal-year dropdown. The current year is preselected when it exists.
-			var json = await cba_apiFetch(`${API_BASE}/fiscal_year/all`);
-			if (!json.success || !Array.isArray(json.data)) throw new Error(json.message ||
-				'Unexpected response format');
+	// ── 1. Fiscal Year ────────────────────────────────────────────────────────────
+	// No longer picked from a dropdown — defaults to CURRENT_YEAR (same default the old
+	// dropdown preselected) until a Project is chosen, at which point
+	// pcDeriveFiscalYearFromProject() below takes over.
+	document.getElementById('fiscal_year').value = CURRENT_YEAR;
 
-			select.innerHTML = '<option value="">Select fiscal year</option>';
-			json.data.forEach(function(row) {
-				var opt = document.createElement('option');
-				opt.value = row.fiscal_yr;
-				opt.textContent = row.fiscal_yr;
-				opt.dataset.fiscalYear = row.fiscal_yr; // read by the print payload (fiscal_year_label)
-				if (parseInt(row.fiscal_yr, 10) === CURRENT_YEAR) opt.selected = true;
-				select.appendChild(opt);
-			});
-			select.disabled = false;
-		} catch (err) {
-			console.error('[loadFiscalYears]', err);
-			select.innerHTML = '<option value="">Could not load</option>';
-			showError('fiscal_year_error');
-		} finally {
-			setLoading('fiscal_year_wrapper', false);
-		}
+	// Sets the (hidden) fiscal_year field directly from a saved record — used when loading an
+	// existing allocation for edit, and when autofilling an RFA/LAA from its parent CBA. Runs
+	// before cbaSelectProgramChain() in both call sites, and is not overridden by it: that only
+	// derives a year from a Project the *user* picks (pcSelect), not one filled in by code.
+	function cbaSetFiscalYear(year) {
+		document.getElementById('fiscal_year').value = String(year);
 	}
 
-	// Set the dropdown from a saved record. If that year is no longer in the list it is added, so the
-	// form still shows it and saving does not silently blank the field.
-	function cbaSetFiscalYear(year) {
-		var select = document.getElementById('fiscal_year');
-		var v = String(year);
-		if (!Array.prototype.some.call(select.options, function(o) {
-				return o.value === v;
-			})) {
-			var opt = document.createElement('option');
-			opt.value = v;
-			opt.textContent = v;
-			opt.dataset.fiscalYear = v;
-			select.appendChild(opt);
-		}
-		select.value = v;
+	// Parses the leading "YYYY" an existing Project's code was generated with (see
+	// GlobalService::generateProjectCode) and uses it as this allocation's fiscal year — the
+	// Project already fixes the year, so there is nothing left for the user to pick. Only applies
+	// to a Project actually picked from the list (has a real code); a typed/new Project keeps
+	// whatever the field already holds (CURRENT_YEAR, unless a saved record set it otherwise).
+	function pcDeriveFiscalYearFromProject(code) {
+		var m = /^(\d{4})-/.exec(code || '');
+		if (m) document.getElementById('fiscal_year').value = m[1];
 	}
 
 	// ── Drop a stale "Infrastructure" Category pick when Document Type = COE ──────
@@ -2295,20 +2388,21 @@ $cbaAsModal = !empty($cbaAsModal);
 		return !!cat && catIsInfrastructure(cat);
 	}
 
-	// ── Hide Program/Project (not Purpose/Description) + Cash Requirements for
-	// COE docs; for CO docs, Program/Project only shows when Category =
-	// Infrastructure (hidden for every other category) ─────────────────────────
-	// COE allocations never carry a program/project, but they still need the
-	// Purpose / Description ("particulars") field — only the Program/Project
-	// row is hidden, the section itself (and its Purpose/Description row) stays
-	// visible. Neither the program/sub-program/project codes nor allocated_amount carry a
-	// `required` attribute, so hiding them just clears out any stale values so
-	// they aren't sent.
+	// ── Hide Program/Project (not Purpose/Description) for non-Infrastructure categories ──────────────────
+	// Program/Project only shows when Category = Infrastructure (hidden for every other category) — this used to
+	// also depend on Document Type (always hidden for COE), but Document Type is no longer picked up front: it's
+	// derived from the COB once it's chosen (cobDeriveDocumentType()), which for most allocations happens well
+	// after this point, so it can no longer gate anything shown this early. CBA is the one exception: its Project
+	// is independent of Category entirely (see cbaApplyAllocationTypeVisibility()), so it's never hidden here —
+	// only Program / Sub-Program are, and unconditionally so, regardless of Category.
+	// Purpose / Description ("particulars") field stays visible either way — only the Program/Project row itself
+	// is hidden. Neither the program/sub-program/project codes nor allocated_amount carry a `required` attribute,
+	// so hiding them just clears out any stale values so they aren't sent.
 	function applyProgramProjectVisibilityForDocType() {
-		var docType = document.getElementById('document_type').value;
+		var isCBA = document.getElementById('allocation_type').value === 'CBA';
 		var progProjRow = document.getElementById('program_project_row');
 		var sectionTitle = document.getElementById('program_project_section_title');
-		var hideProgProj = docType === 'COE' || (docType === 'CO' && !isInfrastructureCategorySelected());
+		var hideProgProj = !isCBA && !isInfrastructureCategorySelected();
 
 		if (hideProgProj) {
 			if (progProjRow) progProjRow.style.display = 'none';
@@ -2320,27 +2414,74 @@ $cbaAsModal = !empty($cbaAsModal);
 			if (sectionTitle) sectionTitle.textContent = 'Program, Sub-Program and Project Details';
 		}
 
-		// Cash Requirements is hidden for COE only, on every row — Requested
-		// Amount just flows into the next open grid cell (.form-row is auto-fit,
-		// so it naturally fills the gap; no explicit span needed). Clear out any
-		// stale allocated_amount value so it isn't sent.
-		if (docType === 'COE') {
-			document.querySelectorAll('.baa-line').forEach(function(row) {
-				var cashGroup = row.querySelector('.baa-cash-group');
-				if (cashGroup) cashGroup.style.display = 'none';
+		baaApplyCashRequirementsVisibility();
+	}
+
+	// Cash Requirements (allocated_amount) is hidden for COE documents (it has none) and for CBA allocations
+	// (not used there) — on every row, plus its Total Cash Requirements summary. Wired to both document_type's
+	// and allocation_type's 'change', and called wherever either is set programmatically. Clears out any stale
+	// allocated_amount value while hidden, so it isn't sent.
+	function baaApplyCashRequirementsVisibility() {
+		var docType = document.getElementById('document_type').value;
+		var isCBA = document.getElementById('allocation_type').value === 'CBA';
+		var hideCash = isCBA || docType === 'COE';
+
+		document.querySelectorAll('.baa-line').forEach(function(row) {
+			row.classList.toggle('baa-no-cash', hideCash);
+			var cashGroup = row.querySelector('.baa-cash-group');
+			if (!cashGroup) return;
+			cashGroup.style.display = hideCash ? 'none' : '';
+			if (hideCash) {
 				var allocDisplay = row.querySelector('.baa-allocated-amount');
 				if (allocDisplay) {
 					allocDisplay.value = '';
 					baaSyncRaw(allocDisplay);
 				}
-			});
-			recomputeBaaTotals();
-		} else {
-			document.querySelectorAll('.baa-line').forEach(function(row) {
-				var cashGroup = row.querySelector('.baa-cash-group');
-				if (cashGroup) cashGroup.style.display = '';
-			});
+			}
+		});
+
+		var totalsRow = document.getElementById('baa_total_allocated_row');
+		if (totalsRow) totalsRow.style.display = hideCash ? 'none' : '';
+
+		recomputeBaaTotals();
+		baaRelocateFirstLine();
+		baaApplyHeaderVisibility();
+	}
+
+	// Moves the first Budget Allocation Amount line (COB + Requested Amount) in next to Project — CBA only, and
+	// only while Program / Sub-Program / Project are actually showing (not a COE document, where that whole row
+	// is hidden). Moves it back down to its usual place in baa_lines_container otherwise. Only ever the first
+	// line: a 2nd / 3rd line added with "+" still appears as its own row below, same as before.
+	function baaRelocateFirstLine() {
+		var firstIdx = BAA_ROWS[0];
+		if (firstIdx === undefined) return;
+		var firstRow = document.querySelector('.baa-line[data-idx="' + firstIdx + '"]');
+		if (!firstRow) return;
+
+		var progProjRow = document.getElementById('program_project_row');
+		var isCBA = document.getElementById('allocation_type').value === 'CBA';
+		var rowVisible = !!progProjRow && progProjRow.style.display !== 'none';
+		var container = document.getElementById('baa_lines_container');
+
+		if (isCBA && rowVisible) {
+			if (firstRow.parentNode !== progProjRow) progProjRow.appendChild(firstRow);
+		} else if (container && firstRow.parentNode !== container) {
+			container.insertBefore(firstRow, container.firstChild);
 		}
+	}
+
+	// The "Budget Allocation Amount" heading, its hint text and the totals box only earn their keep once there's
+	// something below them that needs introducing — for CBA, with just the one line (merged next to Project —
+	// see baaRelocateFirstLine()), there's nothing left to show. Reappears the moment a 2nd line exists (not
+	// offered by any button today, but an existing record being edited can still have more than one saved line).
+	function baaApplyHeaderVisibility() {
+		var isCBA = document.getElementById('allocation_type').value === 'CBA';
+		var hide = isCBA && BAA_ROWS.length <= 1;
+
+		var header = document.getElementById('baa_header');
+		if (header) header.style.display = hide ? 'none' : '';
+		var totals = document.getElementById('baa_totals');
+		if (totals) totals.style.display = hide ? 'none' : '';
 	}
 
 	// ── 3. Program → Sub-Program → Project (cascading searchable comboboxes) ──────
@@ -2432,9 +2573,20 @@ $cbaAsModal = !empty($cbaAsModal);
 			return;
 		}
 		dd.innerHTML = rows.map(function(r) {
-			return '<div class="bv-item" data-code="' + pcEsc(r[c.codeKey]) + '" data-name="' + pcEsc(r[c.nameKey]) + '">' +
+			// A project's own row (from /project/all) carries its parent program_code / sub_program_code —
+			// kept on the item so cbaSyncProjectParents() can back-fill them when Program / Sub-Program are
+			// hidden (CBA; see cbaApplyAllocationTypeVisibility()) and shown here so the picker still reads
+			// clearly without them on screen.
+			var extra = key === 'proj' ?
+				' data-program-code="' + pcEsc(r.program_code) + '" data-program-name="' + pcEsc(r.program_name) + '"' +
+				' data-sub-program-code="' + pcEsc(r.sub_program_code) + '" data-sub-program-name="' + pcEsc(r.sub_program_name) + '"' : '';
+			var sub = key === 'proj' ?
+				pcEsc(r[c.codeKey]) + (r.program_name ? ' · ' + pcEsc(r.program_name) : '') +
+				(r.sub_program_name ? ' / ' + pcEsc(r.sub_program_name) : '') :
+				pcEsc(r[c.codeKey]);
+			return '<div class="bv-item" data-code="' + pcEsc(r[c.codeKey]) + '" data-name="' + pcEsc(r[c.nameKey]) + '"' + extra + '>' +
 				'<div class="bv-item-name">' + pcEsc(r[c.nameKey]) + '</div>' +
-				'<div class="bv-item-sub">' + pcEsc(r[c.codeKey]) + '</div>' +
+				'<div class="bv-item-sub">' + sub + '</div>' +
 				'</div>';
 		}).join('');
 		dd.style.display = 'block';
@@ -2442,6 +2594,10 @@ $cbaAsModal = !empty($cbaAsModal);
 			item.addEventListener('mousedown', function(e) {
 				e.preventDefault();
 				pcSelect(key, this.dataset.code, this.dataset.name);
+				if (key === 'proj') {
+					cbaSyncProjectParents(this.dataset.programCode, this.dataset.programName,
+						this.dataset.subProgramCode, this.dataset.subProgramName);
+				}
 			});
 		});
 	}
@@ -2457,6 +2613,7 @@ $cbaAsModal = !empty($cbaAsModal);
 		pcEl(key, 'search').value = hidden.dataset.label;
 		pcEl(key, 'dd').style.display = 'none';
 		pcClearBelow(key);
+		if (key === 'proj') pcDeriveFiscalYearFromProject(code);
 		cobChainChanged(); // the COB lists follow the chain
 		pcRefreshStates();
 		return c.child ? pcLoad(c.child) : Promise.resolve();
@@ -2678,6 +2835,111 @@ $cbaAsModal = !empty($cbaAsModal);
 		pcClear('prog', true);
 		pcClearBelow('prog');
 		pcRefreshStates();
+	}
+
+	// ── CBA: a simpler form ──────────────────────────────────────────────────
+	// A Certificate of Budget Allocation doesn't buy anything from a vendor and is never for bidding, and it is
+	// filed by Project rather than by picking a Program then a Sub-Program: the chosen Project's own
+	// program_code / sub_program_code (carried on every /project/all row — see cbaSyncProjectParents()) are used
+	// instead, so Program and Sub-Program stay hidden and the Project box is searchable on its own. RFA / LAA /
+	// CFA keep the full form — only CBA simplifies it this way. Wired to allocation_type's 'change' (and
+	// document_type's, since a doc-type switch can re-lock Project via cbaClearProgramChain() above), and called
+	// directly wherever allocation_type is set programmatically (no 'change' event fires then): cbaBoot()'s
+	// preset and populateEditForm().
+	function cbaApplyAllocationTypeVisibility() {
+		var isCBA = document.getElementById('allocation_type').value === 'CBA';
+
+		var vendorSection = document.getElementById('vendor_section');
+		if (vendorSection) vendorSection.style.display = isCBA ? 'none' : '';
+		if (isCBA) cbaClearVendor();
+
+		var biddingRow = document.getElementById('is_bidding_row');
+		if (biddingRow) biddingRow.style.display = isCBA ? 'none' : '';
+		if (isCBA) {
+			var biddingEl = document.getElementById('is_bidding');
+			if (biddingEl) biddingEl.checked = false;
+		}
+
+		// Basic Information has nothing left in it for CBA (Fiscal Year / Document Type are hidden fields
+		// derived elsewhere, Is this for bidding? / Parent CBA don't apply) — hide the section itself rather
+		// than leave an empty card with just a heading.
+		var basicInfoSection = document.getElementById('basic_info_section');
+		if (basicInfoSection) basicInfoSection.style.display = isCBA ? 'none' : '';
+
+		var progGroup = document.getElementById('program_group');
+		var subGroup = document.getElementById('sub_program_group');
+		if (progGroup) progGroup.style.display = isCBA ? 'none' : '';
+		if (subGroup) subGroup.style.display = isCBA ? 'none' : '';
+
+		baaApplyCashRequirementsVisibility(); // Cash Requirements isn't used for CBA either
+
+		var projSearch = pcEl('proj', 'search');
+		if (isCBA) {
+			// Project stands on its own here — searchable across every project, not just those under a chosen
+			// Program / Sub-Program (there is no longer one to choose from). Only (re)load it while it is still
+			// locked from the normal cascade — once it holds a value (picked here, or already set in edit mode),
+			// leave it alone.
+			if (projSearch && projSearch.disabled) {
+				pcHideError('proj');
+				setLoading(PCHAIN.proj.wrapper, false);
+				projSearch.disabled = false;
+				projSearch.placeholder = 'Search project…';
+				pcSetHint('proj', 'Search across every project.');
+				pcLoad('proj');
+			}
+		} else if (!pcValue('proj')) {
+			// Leaving CBA with no project picked: back to the normal locked cascade.
+			if (!pcValue('prog')) {
+				pcDisable('subprog');
+				pcDisable('proj');
+			} else if (!pcValue('subprog')) {
+				pcDisable('proj');
+			}
+		}
+
+		// Re-check whether the first line's COB should be locked until Project is picked (cobRequiresProjectFirst)
+		// — entering/leaving CBA changes that regardless of whether Project itself just changed.
+		if (BAA_ROWS[0] !== undefined) cobLoad(BAA_ROWS[0]);
+	}
+
+	function cbaClearVendor() {
+		var idEl = document.getElementById('vendor_id');
+		var searchEl = document.getElementById('vendor_search');
+		if (idEl) idEl.value = '';
+		if (searchEl) searchEl.value = '';
+		vendSetMode('none');
+	}
+
+	// A project picked while Program / Sub-Program are hidden (CBA) carries its own program_code /
+	// sub_program_code (every /project/all row is joined to its program and sub-program) — copy them into the
+	// two hidden fields so the payload still has them, and into the search boxes' text so they read correctly
+	// if the type is switched away from CBA afterwards.
+	function cbaSyncProjectParents(progCode, progName, subCode, subName) {
+		var progHidden = pcEl('prog', 'hidden');
+		var progSearch = pcEl('prog', 'search');
+		if (progHidden && progCode) {
+			progHidden.value = progCode;
+			progHidden.dataset.label = (progName || progCode) + ' (' + progCode + ')';
+			if (progSearch) {
+				progSearch.value = progHidden.dataset.label;
+				progSearch.disabled = false;
+			}
+		}
+
+		var subHidden = pcEl('subprog', 'hidden');
+		var subSearch = pcEl('subprog', 'search');
+		if (subHidden) {
+			if (subCode) {
+				subHidden.value = subCode;
+				subHidden.dataset.label = (subName || subCode) + ' (' + subCode + ')';
+				if (subSearch) subSearch.value = subHidden.dataset.label;
+			} else {
+				subHidden.value = '';
+				subHidden.dataset.label = '';
+				if (subSearch) subSearch.value = '';
+			}
+			if (subSearch && progCode) subSearch.disabled = false; // this project's program is known either way
+		}
 	}
 
 	// Drop every loaded list and invalidate in-flight requests (modal reopen).
@@ -3164,11 +3426,10 @@ $cbaAsModal = !empty($cbaAsModal);
 	}
 
 	// ── 5. Budget Allocation Amount lines (COB + Requested Amount + Cash Requirements) ──────────────────────
-	// One line = a Type of Fund, a COB and the amounts drawn from it. A COB is an approved budget line item, listed
-	// by its Account Code (its Type of Fund is the select beside it):
-	//   GET /budget_line_item/approved[?program_code=&sub_program_code=&project_code=&type_of_fund_id=]
-	// The line's Type of Fund select offers only the types of fund that exist on approved line items (for the chain
-	// chosen above) and filters its COB list to the same type of fund; picking a COB sets it too.
+	// One line = a COB and the amounts drawn from it. A COB is an approved budget line item, listed by its
+	// Account Code; its Type of Fund isn't chosen separately — picking a COB carries its type of fund along with
+	// it (see collectBaaLines()).
+	//   GET /budget_line_item/approved[?program_code=&sub_program_code=&project_code=]
 	// returns the line items of budget requests whose status is Approved, narrowed to whatever is attached to the
 	// Program / Sub-Program / Project chosen above (none chosen → every approved line item). Every line loads its own
 	// list and reloads whenever that chain changes (see cobChainChanged). The itemized lines are sent as
@@ -3182,15 +3443,12 @@ $cbaAsModal = !empty($cbaAsModal);
 	var COB_LOAD = {}; // idx -> promise of that line's newest load
 	var COB_SEL = {}; // idx -> the picked line item (kept even when it is not in the current list)
 	var COB_WIRED = {}; // idx -> search listeners attached
+	var BAA_EARMARKS = {}; // idx -> { budgetLineItemId, data } once GET /budget_line_item/{id}/earmarks has loaded
 	var COB_EPOCH = 0; // bumped when the modal form is reset, so requests from the old DOM are dropped
 	var COB_KEEP_SELECTION = 0; // >0 while a saved record's own chain is being filled in: a reload must not clear its picks
 	var COB_SYNC_QUEUED = false;
 	var COB_TOKEN_SEQ = 0;
 	var COB_LIST_MAX = 50; // rows rendered at once; typing narrows the rest
-	var TOF_DATA = []; // the types of fund on approved line items, for the chain chosen — shared by every line's select
-	var TOF_LOADED = false;
-	var TOF_SIG = null; // the Program / Sub-Program / Project that TOF_DATA was loaded for
-	var TOF_TOKEN = ''; // token of the newest request, so an answer that was overtaken is dropped
 
 	function cobEl(part, idx) {
 		return document.getElementById(part + '_' + idx);
@@ -3201,13 +3459,14 @@ $cbaAsModal = !empty($cbaAsModal);
 		return [pcValue('prog'), pcValue('subprog'), pcValue('proj')].join('|');
 	}
 
-	// What a line's COB list depends on: the chain above plus the line's own Type of Fund.
+	// What a line's COB list depends on: the Program / Sub-Program / Project chain above — every line shares the
+	// same list, there being nothing else left to narrow it by.
 	function cobSignature(idx) {
-		var tof = cobEl('type_of_fund_id', idx);
-		return cobChainSignature() + '|' + (tof ? tof.value : '');
+		return cobChainSignature();
 	}
 
-	// The account code — what the search box shows once a COB is picked (the Type of Fund is the select beside it).
+	// The account code — what the search box shows once a COB is picked; its Type of Fund travels with it (see
+	// collectBaaLines()) rather than being chosen separately.
 	function cobLabel(r) {
 		return r.account_code || ('Line item #' + r.budget_line_item_id);
 	}
@@ -3218,13 +3477,7 @@ $cbaAsModal = !empty($cbaAsModal);
 
 	function baaRowTemplate(idx) {
 		return '' +
-			'<div class="baa-line form-row" data-idx="' + idx + '">' +
-			'<div class="form-group baa-tof-group">' +
-			'<label for="type_of_fund_id_' + idx + '" class="form-label">Type of Fund</label>' +
-			'<select id="type_of_fund_id_' + idx + '" class="form-select baa-type-of-fund" data-idx="' + idx + '" disabled>' +
-			'<option value="">Loading types of fund&hellip;</option>' +
-			'</select>' +
-			'</div>' +
+			'<div class="baa-line form-row cols-baa" data-idx="' + idx + '">' +
 			'<div class="form-group baa-bv-group">' +
 			'<label for="bv_search_' + idx + '" class="form-label">' +
 			'<span id="bv_field_label_' + idx + '">COB</span>' +
@@ -3242,14 +3495,28 @@ $cbaAsModal = !empty($cbaAsModal);
 			'<input type="hidden" id="budget_line_item_id_' + idx + '" value="">' +
 			'<p class="input-hint" id="cob_hint_' + idx + '"></p>' +
 			'</div>' +
+			'<div class="form-group has-prefix baa-proposed-group">' +
+			'<label for="proposed_amount_' + idx + '" class="form-label">Available Amount</label>' +
+			'<span class="input-prefix">&#8369;</span>' +
+			'<input type="text" id="proposed_amount_' + idx +
+			'" class="form-input amt-input baa-proposed-amount" data-idx="' + idx +
+			'" placeholder="0.00" disabled readonly autocomplete="off">' +
+			'</div>' +
 			'<div class="form-group has-prefix baa-req-group">' +
 			'<label for="requested_amount_' + idx +
 			'" class="form-label">Requested Amount <span class="required">*</span></label>' +
+			// .input-prefix is bottom-anchored (position:absolute;bottom:0) against its nearest positioned
+			// ancestor — wrapping just the prefix + input here keeps that anchor at the input's own bottom edge,
+			// so the error message below (a sibling, outside this wrapper) doesn't pull it down when shown.
+			'<div style="position:relative;">' +
 			'<span class="input-prefix">&#8369;</span>' +
 			'<input type="text" id="requested_amount_' + idx +
 			'" class="form-input amt-input baa-requested-amount" data-idx="' + idx +
 			'" placeholder="0.00" required autocomplete="off">' +
 			'<input type="hidden" id="requested_amount_' + idx + '_raw" value="">' +
+			'</div>' +
+			'<p class="error-box" id="requested_amount_' + idx +
+			'_error">Requested Amount must not exceed the Available Amount.</p>' +
 			'</div>' +
 			'<div class="form-group has-prefix baa-cash-group">' +
 			'<label for="allocated_amount_' + idx + '" class="form-label">Cash Requirements</label>' +
@@ -3261,15 +3528,13 @@ $cbaAsModal = !empty($cbaAsModal);
 			'</div>' +
 			'<button type="button" class="baa-remove-line" data-idx="' + idx +
 			'" title="Remove this budget allocation">&times;</button>' +
-			'<div class="baa-bv-info" id="bv_info_' + idx + '" style="display:none;">' +
-			'<div class="baa-bv-info-grid">' +
-			'<span class="baa-bv-info-label">Account Code</span>' +
-			'<span id="bvi_account_' + idx + '" class="baa-bv-info-value"></span>' +
-			'<span class="baa-bv-info-label">Fiscal Year</span>' +
-			'<span id="bvi_fy_' + idx + '" class="baa-bv-info-value"></span>' +
-			'<span class="baa-bv-info-label">Proposed Amount</span>' +
-			'<span id="bvi_amount_' + idx + '" class="baa-bv-info-value strong"></span>' +
-			'</div>' +
+			'<div class="baa-earmarks" id="baa_earmarks_' + idx + '" style="display:none;">' +
+			'<button type="button" class="baa-earmarks-toggle" id="baa_earmarks_toggle_' + idx + '">' +
+			'<svg class="baa-earmarks-caret" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">' +
+			'<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>' +
+			'<span>Where this COB&rsquo;s balance is held</span>' +
+			'</button>' +
+			'<div class="baa-earmarks-body" id="baa_earmarks_body_' + idx + '" style="display:none;"></div>' +
 			'</div>' +
 			'</div>';
 	}
@@ -3284,23 +3549,29 @@ $cbaAsModal = !empty($cbaAsModal);
 		var rowEl = holder.firstElementChild;
 		container.appendChild(rowEl);
 
-		var tofSel = cobEl('type_of_fund_id', idx);
-		if (TOF_LOADED) cobPopulateTypeSelect(tofSel);
-		tofSel.addEventListener('change', function() {
-			cobLoad(idx); // the COB list follows the Type of Fund; a pick of another type is cleared
-		});
 		wireAmtInput(document.getElementById('requested_amount_' + idx));
 		wireAmtInput(document.getElementById('allocated_amount_' + idx));
+		var reqAmtEl = document.getElementById('requested_amount_' + idx);
+		if (reqAmtEl) {
+			reqAmtEl.addEventListener('input', function() {
+				baaValidateRequestedAmount(idx);
+			});
+			reqAmtEl.addEventListener('blur', function() {
+				baaValidateRequestedAmount(idx);
+			});
+		}
 		rowEl.querySelector('.baa-remove-line').addEventListener('click', function() {
 			removeBudgetAllocationLine(idx);
 		});
+		var earmarksToggle = document.getElementById('baa_earmarks_toggle_' + idx);
+		if (earmarksToggle) {
+			earmarksToggle.addEventListener('click', function() {
+				baaToggleEarmarks(idx);
+			});
+		}
 
 		// Keep a newly-added row consistent with the current doc/allocation type.
-		var docType = document.getElementById('document_type');
-		if (docType && docType.value === 'COE') {
-			var cashGroup = rowEl.querySelector('.baa-cash-group');
-			if (cashGroup) cashGroup.style.display = 'none';
-		}
+		baaApplyCashRequirementsVisibility();
 		applyBudgetVersionVisibilityForDocType();
 		updateBaaRemoveButtons();
 		recomputeBaaTotals();
@@ -3323,6 +3594,8 @@ $cbaAsModal = !empty($cbaAsModal);
 		delete COB_WIRED[idx];
 		updateBaaRemoveButtons();
 		recomputeBaaTotals();
+		baaRelocateFirstLine(); // the line removed may have been the one merged in beside Project
+		baaApplyHeaderVisibility();
 	}
 
 	function updateBaaRemoveButtons() {
@@ -3344,8 +3617,6 @@ $cbaAsModal = !empty($cbaAsModal);
 			var value = pcValue(p[1]);
 			if (value) parts.push(p[0] + '=' + encodeURIComponent(value));
 		});
-		var tof = cobEl('type_of_fund_id', idx);
-		if (tof && tof.value) parts.push('type_of_fund_id=' + encodeURIComponent(tof.value));
 		return parts.length ? '?' + parts.join('&') : '';
 	}
 
@@ -3355,13 +3626,18 @@ $cbaAsModal = !empty($cbaAsModal);
 		var n = (COB_DATA[idx] || []).length;
 		var scope = pcValue('proj') ? ' for this project' : pcValue('subprog') ? ' for this sub-program' :
 			pcValue('prog') ? ' for this program' : '';
-		var tof = cobEl('type_of_fund_id', idx);
-		var tofName = (tof && tof.value && tof.selectedIndex >= 0) ? tof.options[tof.selectedIndex].textContent : '';
-		var narrowed = scope + (tofName ? ' with type of fund ' + tofName : '');
 		hint.textContent = n ?
-			n + ' approved COB(s) available' + narrowed + '.' + (narrowed ? '' :
-				' Choose a type of fund, program, sub-program or project to narrow the list.') :
-			'No approved COBs found' + narrowed + '.';
+			n + ' approved COB(s) available' + scope + '.' + (scope ? '' :
+				' Choose a program, sub-program or project to narrow the list.') :
+			'No approved COBs found' + scope + '.';
+	}
+
+	// CBA's merged first line (see baaRelocateFirstLine()) has no Program / Sub-Program of its own to narrow the
+	// COB list by — Project is the only thing that does, and it's what later fills Program / Sub-Program in too
+	// (cbaSyncProjectParents()). So for that one line, Project must be picked before COB is: picking a COB first
+	// would leave it possibly belonging to a different project than the one chosen afterwards.
+	function cobRequiresProjectFirst(idx) {
+		return document.getElementById('allocation_type').value === 'CBA' && idx === BAA_ROWS[0];
 	}
 
 	// Loads (or reloads) one line's list for the chain that is chosen right now. Resolves when that list is
@@ -3369,6 +3645,26 @@ $cbaAsModal = !empty($cbaAsModal);
 	function cobLoad(idx, keepPick) {
 		var searchEl = cobEl('bv_search', idx);
 		if (!searchEl) return Promise.resolve(); // the line was removed
+
+		if (cobRequiresProjectFirst(idx) && !pcValue('proj')) {
+			// Invalidate any load already in flight (e.g. the unfiltered one from before CBA was chosen) so its
+			// success handler can't land afterwards and silently re-enable this box — see the COB_SEQ check
+			// inside the async function below.
+			COB_SEQ[idx] = COB_EPOCH + ':' + (++COB_TOKEN_SEQ);
+			COB_SIG[idx] = undefined;
+			COB_LOAD[idx] = undefined;
+
+			cobClearSelection(idx, true);
+			COB_DATA[idx] = [];
+			searchEl.disabled = true;
+			searchEl.placeholder = 'Select a project first';
+			var lockedDd = cobEl('bv_dropdown', idx);
+			if (lockedDd) lockedDd.style.display = 'none';
+			var lockedHint = cobEl('cob_hint', idx);
+			if (lockedHint) lockedHint.textContent = 'Select a project above first.';
+			return Promise.resolve();
+		}
+
 		var sig = cobSignature(idx);
 		if (COB_SIG[idx] === sig && COB_LOAD[idx]) return COB_LOAD[idx];
 
@@ -3422,15 +3718,14 @@ $cbaAsModal = !empty($cbaAsModal);
 	}
 
 	// Called whenever a level of the Program / Sub-Program / Project chain changes. Several levels can change
-	// in one go (choosing a program clears the two below it), so the reload is done once, after they have: first the
-	// types of fund on offer, then every line's COB list (a line whose type of fund went is re-filtered).
+	// in one go (choosing a program clears the two below it), so the reload is done once, after they have —
+	// every line's COB list.
 	function cobChainChanged() {
 		if (COB_SYNC_QUEUED) return;
 		COB_SYNC_QUEUED = true;
-		Promise.resolve().then(async function() {
+		Promise.resolve().then(function() {
 			COB_SYNC_QUEUED = false;
 			var keep = COB_KEEP_SELECTION > 0; // read now: the flag is gone by the time the requests come back
-			await loadTypesOfFund();
 			BAA_ROWS.forEach(function(idx) {
 				cobLoad(idx, keep);
 			});
@@ -3459,7 +3754,8 @@ $cbaAsModal = !empty($cbaAsModal);
 			return '<div class="bv-item" data-id="' + pcEsc(r.budget_line_item_id) + '">' +
 				'<div class="bv-item-name">' + pcEsc(r.account_code || 'No account code') + '</div>' +
 				(r.account_title ? '<div class="bv-item-sub">' + pcEsc(r.account_title) + '</div>' : '') +
-				'<div class="bv-item-sub">FY ' + pcEsc(r.fiscal_yr) + ' · Proposed ' + pcEsc(cobAmount(r.proposed_amount)) +
+				'<div class="bv-item-sub">FY ' + pcEsc(r.fiscal_yr) + ' · Available ' +
+			pcEsc(cobAmount(r.available_amount != null && r.available_amount !== '' ? r.available_amount : r.proposed_amount)) +
 				(r.project_name ? ' · ' + pcEsc(r.project_name) : '') + '</div>' +
 				'</div>';
 		}).join('') + (rows.length > shown.length ?
@@ -3488,12 +3784,44 @@ $cbaAsModal = !empty($cbaAsModal);
 		var dd = cobEl('bv_dropdown', idx);
 		if (dd) dd.style.display = 'none';
 		baaBvClearError(idx);
-		cobSetType(idx, rec.type_of_fund_id, rec.type_of_fund); // the line's Type of Fund follows its COB
 
-		cobEl('bvi_account', idx).textContent = [rec.account_code, rec.account_title].filter(Boolean).join(' — ') || '—';
-		cobEl('bvi_fy', idx).textContent = rec.fiscal_yr || '—';
-		cobEl('bvi_amount', idx).textContent = cobAmount(rec.proposed_amount);
-		cobEl('bv_info', idx).style.display = 'block';
+		// available_amount (suggested_amount + adjustment - obligation - active earmarks, from
+		// BudgetLineItemService::fetchApproved()) is the real, earmark-aware ceiling — what's actually still
+		// free to request against this COB right now. Falls back to proposed_amount only if the API response
+		// doesn't carry it (shouldn't happen once the backend is deployed, but keeps this from breaking).
+		var proposedEl = cobEl('proposed_amount', idx);
+		if (proposedEl) {
+			var availableAmt = rec.available_amount != null && rec.available_amount !== '' ? rec.available_amount : rec.proposed_amount;
+			proposedEl.value = (availableAmt != null && availableAmt !== '') ?
+				baaFormatAmt(parseFloat(availableAmt) || 0) : '';
+		}
+		baaValidateRequestedAmount(idx); // this COB's Available Amount may make an already-typed Requested Amount invalid (or valid again)
+
+		baaShowEarmarksToggle(idx, rec.budget_line_item_id);
+
+		cobDeriveDocumentType(rec);
+	}
+
+	// Document Type is no longer picked by hand (see document_type_row, permanently hidden) — it's derived from
+	// whichever COB is picked, by the first digit of its account code: 1xxx = CO (Capital Outlay), 5xxx = COE
+	// (Corporate Operating Expenditure). Skipped in edit mode (the loaded record's own document_type, set in
+	// populateEditForm(), is authoritative — a line's account code shouldn't second-guess it) and effectively
+	// moot in the "generate RFA/LAA from a parent CBA" autofill (it sets its own value right after restoring
+	// lines, overriding whatever this derives in the meantime).
+	function cobDeriveDocumentType(rec) {
+		if (CBA_EDIT_MODE) return;
+		var prefix = String(rec.account_code || '').trim().charAt(0);
+		var derived = prefix === '1' ? 'CO' : prefix === '5' ? 'COE' : '';
+		if (!derived) return;
+
+		var docTypeEl = document.getElementById('document_type');
+		if (!docTypeEl || docTypeEl.value === derived) return;
+		docTypeEl.value = derived;
+
+		generateCBANumber(); // RFA's middle code depends on document type (COE → 57)
+		dropInfrastructureCategoryForCoe();
+		applyProgramProjectVisibilityForDocType(); // Cash Requirements visibility still depends on document type
+		applyBudgetVersionVisibilityForDocType();
 	}
 
 	// Forget a line's pick (and optionally the text in its box).
@@ -3501,118 +3829,88 @@ $cbaAsModal = !empty($cbaAsModal);
 		delete COB_SEL[idx];
 		var idEl = cobEl('budget_line_item_id', idx);
 		if (idEl) idEl.value = '';
-		var info = cobEl('bv_info', idx);
-		if (info) info.style.display = 'none';
+		var proposedEl = cobEl('proposed_amount', idx);
+		if (proposedEl) proposedEl.value = '';
+		baaValidateRequestedAmount(idx); // no COB any more -> no ceiling -> clears a stale error
+		baaHideEarmarksToggle(idx);
 		if (clearText) {
 			var searchEl = cobEl('bv_search', idx);
 			if (searchEl) searchEl.value = '';
 		}
 	}
 
-	// ── Type of Fund  →  GET /budget_line_item/approved/type_of_fund ──────────────────
-	// The select offers the types of fund that exist on APPROVED budget line items — within the Program / Sub-Program /
-	// Project chosen above — not every type of fund there is. It is optional: it narrows a line's COB list to line items
-	// of the same type of fund (type_of_fund_id goes to /budget_line_item/approved), and picking a COB sets it.
-	function tofQuery() {
-		var parts = [];
-		[
-			['program_code', 'prog'],
-			['sub_program_code', 'subprog'],
-			['project_code', 'proj']
-		].forEach(function(p) {
-			var value = pcValue(p[1]);
-			if (value) parts.push(p[0] + '=' + encodeURIComponent(value));
-		});
-		return parts.length ? '?' + parts.join('&') : '';
+	// ── "Where this COB's balance is held" (fims.budget_line_item_earmark) ──────────────────────
+	// Collapsed by default under the picked COB — GET /budget_line_item/{id}/earmarks on first expand, listing
+	// every Approved CBA/CFA reservation (active/released) and RFA/LAA conversion (converted) against it, so a
+	// user can see WHY the Available Amount is lower than suggested_amount without leaving this form.
+
+	// Shown once a COB is picked (cobSelect()); a different COB drops any cached list so it reloads.
+	function baaShowEarmarksToggle(idx, budgetLineItemId) {
+		var panel = document.getElementById('baa_earmarks_' + idx);
+		if (!panel) return;
+		var cached = BAA_EARMARKS[idx];
+		if (!cached || String(cached.budgetLineItemId) !== String(budgetLineItemId)) {
+			BAA_EARMARKS[idx] = { budgetLineItemId: budgetLineItemId, data: null };
+			panel.classList.remove('open');
+			var body = document.getElementById('baa_earmarks_body_' + idx);
+			if (body) body.style.display = 'none';
+		}
+		panel.style.display = '';
 	}
 
-	// Loads (or reloads) the types of fund available for the chain that is chosen right now, into every line's select.
-	// A line whose type of fund is not available there any more goes back to "All types of fund" (and so gets its COB
-	// list re-filtered) — unless a saved record's own chain is being filled in, whose types of fund are kept.
-	async function loadTypesOfFund() {
-		var sig = cobChainSignature();
-		if (TOF_LOADED && TOF_SIG === sig) return;
-		TOF_SIG = sig;
-		var token = COB_EPOCH + ':t' + (++COB_TOKEN_SEQ);
-		TOF_TOKEN = token;
-		var keep = COB_KEEP_SELECTION > 0;
+	// Hidden when the line's COB is cleared — nothing to drill into any more.
+	function baaHideEarmarksToggle(idx) {
+		var panel = document.getElementById('baa_earmarks_' + idx);
+		if (panel) {
+			panel.style.display = 'none';
+			panel.classList.remove('open');
+		}
+		var body = document.getElementById('baa_earmarks_body_' + idx);
+		if (body) body.style.display = 'none';
+		delete BAA_EARMARKS[idx];
+	}
+
+	async function baaToggleEarmarks(idx) {
+		var panel = document.getElementById('baa_earmarks_' + idx);
+		var body = document.getElementById('baa_earmarks_body_' + idx);
+		var entry = BAA_EARMARKS[idx];
+		if (!panel || !body || !entry) return;
+
+		var open = panel.classList.toggle('open');
+		body.style.display = open ? '' : 'none';
+		if (!open || entry.data) return; // already loaded, or just collapsed — nothing more to do
+
+		body.innerHTML = '<div class="baa-earmarks-row">Loading…</div>';
 		try {
-			var json = await cba_apiFetch(API_BASE + '/budget_line_item/approved/type_of_fund' + tofQuery());
-			if (TOF_TOKEN !== token) return; // overtaken by a newer load (or the form was reset)
-			if (!json.success || !Array.isArray(json.data)) throw new Error(json.message ||
-				'Unexpected response format');
-
-			TOF_DATA = json.data;
-			TOF_LOADED = true;
-			BAA_ROWS.forEach(function(idx) {
-				cobPopulateTypeSelect(cobEl('type_of_fund_id', idx), !keep);
-			});
+			var json = await cba_apiFetch(API_BASE + '/budget_line_item/' + encodeURIComponent(entry.budgetLineItemId) + '/earmarks');
+			if (!json.success || !Array.isArray(json.data)) throw new Error(json.message || 'Unexpected response format');
+			entry.data = json.data;
+			baaRenderEarmarks(body, entry.data);
 		} catch (err) {
-			if (TOF_TOKEN !== token) return;
-			console.error('[loadTypesOfFund]', err);
-			TOF_LOADED = false; // the next chain change tries again
-			BAA_ROWS.forEach(function(idx) {
-				var sel = cobEl('type_of_fund_id', idx);
-				if (sel && !sel.value) sel.innerHTML = '<option value="">Could not load</option>';
-			});
-			showError('type_of_fund_error');
+			console.error('[baaToggleEarmarks]', err);
+			body.innerHTML = '<div class="baa-earmarks-row">Could not load. Try again.</div>';
 		}
 	}
 
-	// Fill a line's select from TOF_DATA. The value it already has (a saved line's type of fund) is kept, even when
-	// that type is not on offer — unless dropMissing says it must go.
-	function cobPopulateTypeSelect(select, dropMissing) {
-		if (!select) return;
-		var cur = select.value;
-		var curText = (cur && select.selectedIndex >= 0) ? select.options[select.selectedIndex].textContent : '';
-		select.innerHTML = '<option value="">' + (TOF_DATA.length ? 'All types of fund' : 'No type of fund available') + '</option>';
-		TOF_DATA.forEach(function(t) {
-			var opt = document.createElement('option');
-			opt.value = t.type_of_fund_id;
-			opt.textContent = t.name;
-			select.appendChild(opt);
-		});
-		if (cur) {
-			var offered = [].some.call(select.options, function(o) {
-				return o.value === cur;
-			});
-			if (offered || !dropMissing) {
-				if (!offered && curText) {
-					var kept = document.createElement('option');
-					kept.value = cur;
-					kept.textContent = curText;
-					select.appendChild(kept);
-				}
-				select.value = cur;
-			}
+	function baaRenderEarmarks(body, rows) {
+		if (!rows.length) {
+			body.innerHTML = '<div class="baa-earmarks-row">Nothing is currently held against this COB.</div>';
+			return;
 		}
-		select.disabled = false;
+		body.innerHTML = rows.map(function(row) {
+			var ref = row.request_referrence_no || ('#' + row.allocation_id);
+			var type = row.allocation_type ? ' (' + pcEsc(row.allocation_type) + ')' : '';
+			return '<div class="baa-earmarks-row">' +
+				'<span><span class="baa-earmarks-ref">' + pcEsc(ref) + '</span>' + type +
+				'<span class="baa-earmarks-tag ' + pcEsc(row.earmark_status) + '">' + pcEsc(row.earmark_status) + '</span></span>' +
+				'<span class="baa-earmarks-amt">' + pcEsc(cobAmount(row.amount)) + '</span>' +
+				'</div>';
+		}).join('');
 	}
 
-	// Set a line's Type of Fund from code (edit mode, "generate from a parent CBA", picking a COB) — not the user
-	// changing it, so the COB already picked stays. A type that is not in the list is added from the name saved with
-	// the line, so the record still shows it.
-	function cobSetType(idx, id, name) {
-		var sel = cobEl('type_of_fund_id', idx);
-		if (!sel || id == null || id === '') return;
-		var v = String(id);
-		if (sel.value === v) return;
-		if (![].some.call(sel.options, function(o) {
-				return o.value === v;
-			})) {
-			if (!name) return;
-			var opt = document.createElement('option');
-			opt.value = v;
-			opt.textContent = name;
-			sel.appendChild(opt);
-		}
-		sel.value = v;
-		cobLoad(idx, true); // the list follows the Type of Fund
-	}
-
-	// A saved line (edit mode, parent CBA): its Type of Fund, then its COB.
+	// A saved line (edit mode, parent CBA): its COB. The Type of Fund isn't chosen separately any more — it
+	// travels with whichever COB is picked (see collectBaaLines()).
 	async function cobRestoreLine(idx, line) {
-		cobSetType(idx, line.type_of_fund_id, line.type_of_fund);
 		await cobSelectById(idx, line.budget_line_item_id, line);
 	}
 
@@ -3709,6 +4007,51 @@ $cbaAsModal = !empty($cbaAsModal);
 		return true;
 	}
 
+	// ── Requested Amount must not exceed Available Amount ────────────────────────
+	// Available Amount (read-only, filled from the picked COB's earmark-adjusted balance) is the ceiling for
+	// that line's Requested Amount. With no COB picked yet, proposedEl is empty/0 and there's no ceiling to
+	// enforce. Returns true when valid.
+	function baaRequestedExceedsProposed(idx) {
+		var proposedEl = document.getElementById('proposed_amount_' + idx);
+		var proposed = proposedEl ? baaParseAmt(proposedEl.value) : 0;
+		if (proposed <= 0) return false;
+		var requested = baaParseAmt((document.getElementById('requested_amount_' + idx) || {}).value);
+		return requested > proposed;
+	}
+
+	// Applies (or clears) the red error state on one line's Requested Amount field. Called live as the user types
+	// or picks a COB (a new Proposed Amount can turn an already-typed Requested Amount invalid, or valid again).
+	function baaValidateRequestedAmount(idx) {
+		var reqEl = document.getElementById('requested_amount_' + idx);
+		if (!reqEl) return true;
+		var exceeds = baaRequestedExceedsProposed(idx);
+		var group = reqEl.closest('.form-group');
+		if (group) group.classList.toggle('has-error', exceeds);
+		reqEl.classList.toggle('error', exceeds);
+		var errorEl = document.getElementById('requested_amount_' + idx + '_error');
+		if (errorEl) errorEl.classList.toggle('visible', exceeds);
+		return !exceeds;
+	}
+
+	// Submit-time check across every line. Returns true when every line's Requested Amount is within its
+	// Proposed Amount (or has no Proposed Amount to be bound by).
+	function validateRequestedAmountsAgainstProposed() {
+		var firstInvalid = null;
+		BAA_ROWS.forEach(function(idx) {
+			var valid = baaValidateRequestedAmount(idx);
+			if (!valid && !firstInvalid) firstInvalid = document.getElementById('requested_amount_' + idx);
+		});
+
+		if (firstInvalid) {
+			firstInvalid.scrollIntoView({
+				behavior: 'smooth',
+				block: 'center'
+			});
+			return false;
+		}
+		return true;
+	}
+
 	// ── Hide CFA for document_type = CO ────────────────────────────────────────
 	// CFA (Certificate of Fund Availability) isn't offered for a CO document, so
 	// its <option> is taken out of Allocation Type while document_type = CO and put
@@ -3779,6 +4122,35 @@ $cbaAsModal = !empty($cbaAsModal);
 		if (hidden) hidden.value = raw > 0 ? raw.toFixed(2) : '';
 	}
 
+	// Adds thousands commas to an amount input as the user types, keeping the caret in the same place relative
+	// to the digits around it (not just at a fixed offset — inserting a digit near the start shouldn't jump the
+	// caret to the end once a new comma appears further along).
+	function baaLiveFormat(input) {
+		var raw = input.value;
+		var cursor = input.selectionStart;
+		var digitsBeforeCursor = raw.slice(0, cursor).replace(/[^0-9]/g, '').length;
+
+		var cleaned = raw.replace(/[^0-9.]/g, '');
+		var firstDot = cleaned.indexOf('.');
+		if (firstDot !== -1) {
+			cleaned = cleaned.slice(0, firstDot + 1) + cleaned.slice(firstDot + 1).replace(/\./g, '');
+		}
+		var hasDot = cleaned.indexOf('.') !== -1;
+		var parts = cleaned.split('.');
+		var intPart = parts[0].replace(/^0+(?=\d)/, '');
+		var decPart = parts[1] !== undefined ? parts[1].slice(0, 2) : '';
+
+		var formatted = (intPart ? Number(intPart).toLocaleString('en-PH') : '') + (hasDot ? '.' + decPart : '');
+		input.value = formatted;
+
+		var seen = 0,
+			pos = 0;
+		for (; pos < formatted.length && seen < digitsBeforeCursor; pos++) {
+			if (/[0-9]/.test(formatted[pos])) seen++;
+		}
+		input.setSelectionRange(pos, pos);
+	}
+
 	function wireAmtInput(input) {
 		if (!input) return;
 		input.addEventListener('blur', function() {
@@ -3796,6 +4168,7 @@ $cbaAsModal = !empty($cbaAsModal);
 			e.preventDefault();
 		});
 		input.addEventListener('input', function() {
+			baaLiveFormat(this);
 			baaSyncRaw(this);
 			recomputeBaaTotals();
 		});
@@ -3845,13 +4218,10 @@ $cbaAsModal = !empty($cbaAsModal);
 	function collectBaaLines() {
 		return BAA_ROWS.map(function(idx) {
 			var sel = COB_SEL[idx] || null;
-			var tofEl = cobEl('type_of_fund_id', idx);
-			var tofId = tofEl ? tofEl.value : '';
-			var tofName = (tofId && tofEl.selectedIndex >= 0) ? tofEl.options[tofEl.selectedIndex].textContent : '';
 			return {
 				budget_line_item_id: sel ? String(sel.budget_line_item_id) : '',
-				type_of_fund_id: tofId || (sel && sel.type_of_fund_id != null ? String(sel.type_of_fund_id) : ''),
-				type_of_fund: tofName || (sel ? (sel.type_of_fund || '') : ''),
+				type_of_fund_id: sel && sel.type_of_fund_id != null ? String(sel.type_of_fund_id) : '',
+				type_of_fund: sel ? (sel.type_of_fund || '') : '',
 				account_code: sel ? (sel.account_code || '') : '',
 				account_title: sel ? (sel.account_title || '') : '',
 				fiscal_yr: sel && sel.fiscal_yr != null ? String(sel.fiscal_yr) : '',
@@ -4047,12 +4417,9 @@ $cbaAsModal = !empty($cbaAsModal);
 		var row = document.getElementById('cba_id_row');
 		var search = document.getElementById('cba_search');
 		var hidden = document.getElementById('cba_id');
-		var docTypeRow = document.getElementById('document_type_row');
 
 		if (type === 'RFA' || type === 'LAA') {
 			row.style.display = '';
-			if (docTypeRow) docTypeRow.style.display = '';
-			document.getElementById('document_type').setAttribute('required', 'required');
 			if (!search.dataset.wired) {
 				cbaWireEvents();
 				search.dataset.wired = '1';
@@ -4060,8 +4427,6 @@ $cbaAsModal = !empty($cbaAsModal);
 			if (!CBA_LOADED) loadParentCBAs();
 		} else {
 			row.style.display = 'none';
-			if (docTypeRow) docTypeRow.style.display = '';
-			document.getElementById('document_type').setAttribute('required', 'required');
 			cbaCloseDropdown();
 			search.value = '';
 			hidden.value = '';
@@ -4146,9 +4511,17 @@ $cbaAsModal = !empty($cbaAsModal);
 		var group = field.closest('.form-group');
 		if (!group) return;
 		var isEmpty = field.value.trim() === '';
-		group.classList.toggle('has-error', isEmpty);
-		field.classList.toggle('error', isEmpty);
-		field.classList.toggle('success', !isEmpty);
+		var invalid = isEmpty;
+		// A Requested Amount that is filled in but exceeds its line's Proposed Amount is just as invalid as an
+		// empty one — otherwise this generic required-field check (wired to every [required] field, Requested
+		// Amount included) would clobber baaValidateRequestedAmount()'s own error state back to "success" on
+		// every blur / keystroke, since it only ever looked at emptiness.
+		if (!invalid && field.classList.contains('baa-requested-amount')) {
+			invalid = baaRequestedExceedsProposed(field.dataset.idx);
+		}
+		group.classList.toggle('has-error', invalid);
+		field.classList.toggle('error', invalid);
+		field.classList.toggle('success', !invalid);
 	}
 
 	// ── Supporting Documents ──────────────────────────────────────────────────────
@@ -4423,7 +4796,11 @@ $cbaAsModal = !empty($cbaAsModal);
 
 		var payload = {
 			allocation_type: v('allocation_type'),
-			cba_id: v('cba_id'),
+			// #cba_id is this form's own field id for the "Parent CBA" picker, but the column (and the API's
+			// BudgetAllocationService::normalize()/INT_FIELDS) is named parent_id — sent under that name here,
+			// and read back under that name in populateEditForm() below, so the link actually persists (it
+			// silently didn't before: the backend only ever recognized "parent_id", never "cba_id").
+			parent_id: v('cba_id'),
 			// There is no memo_ref_no any more (the column was dropped, alter_table/20): a request is identified by the
 			// request_referrence_no (RR-001, ...) that the DATABASE generates when the row is created — nothing to send.
 			// The generated allocation number (#allocation_number, e.g. "CBA 2026-111-86-01") is deliberately NOT sent
@@ -4449,7 +4826,11 @@ $cbaAsModal = !empty($cbaAsModal);
 			multiple_node_id: v('multiple_node_id'),
 			funding_status: 'PENDING',
 			notification_sent: '0',
-			project_description: v('project_description'),
+			// #project_description is this form's own field id for Purpose / Description, but the column (and
+			// the API's BudgetAllocationService::normalize()) is named description — sent under that name
+			// here (same fix as cba_id -> parent_id above: the API only ever recognized "description", never
+			// "project_description", so Purpose / Description silently never saved before this).
+			description: v('project_description'),
 			remarks: v('remarks'),
 			is_bidding: g('is_bidding') ? (g('is_bidding').checked ? '1' : '0') : '0',
 			category_id: v('category_id'),
@@ -4483,10 +4864,10 @@ $cbaAsModal = !empty($cbaAsModal);
 			if (payload[key] === '' || payload[key] == null) delete payload[key];
 		});
 
-		if (payload.cba_id === '' || payload.cba_id == null) {
-			payload.cba_id = null;
+		if (payload.parent_id === '' || payload.parent_id == null) {
+			payload.parent_id = null;
 		} else {
-			payload.cba_id = parseInt(payload.cba_id, 10);
+			payload.parent_id = parseInt(payload.parent_id, 10);
 		}
 
 		var fileDocs = Array.isArray(payload.file_data) ? payload.file_data.filter(function(d) {
@@ -4712,6 +5093,12 @@ $cbaAsModal = !empty($cbaAsModal);
 			return;
 		}
 
+		// Requested Amount must not exceed the picked COB's Available Amount, on every line.
+		if (!validateRequestedAmountsAgainstProposed()) {
+			alert('Requested Amount cannot exceed the Available Amount for one or more Budget Allocation lines.');
+			return;
+		}
+
 		// Supporting documents are required on create only — an existing
 		// allocation being edited may already have its documents attached
 		// (or intentionally removed via workflow), so don't block updates.
@@ -4799,11 +5186,7 @@ $cbaAsModal = !empty($cbaAsModal);
 				allocation_number: v('allocation_number'),
 				allocation_type: allocType,
 				fiscal_year: v('fiscal_year'),
-				fiscal_year_label: (function() {
-					var s = g('fiscal_year');
-					return s && s.selectedIndex >= 0 ? (s.options[s.selectedIndex].dataset.fiscalYear ||
-						'') : '';
-				})(),
+				fiscal_year_label: v('fiscal_year'), // the value IS the label — just the year
 				document_type: v('document_type'),
 				// Budget Allocation Category (e.g. "Goods and Services") — printed
 				// below "Sources of Fund" on CO documents (see gen_cba_docx.js).
@@ -5005,7 +5388,6 @@ $cbaAsModal = !empty($cbaAsModal);
 		BAA_ROWS = []; BAA_ROW_SEQ = -1;
 		COB_EPOCH++; COB_DATA = {}; COB_SIG = {}; COB_SEQ = {}; COB_LOAD = {}; COB_SEL = {}; COB_WIRED = {};
 		COB_SYNC_QUEUED = false; COB_KEEP_SELECTION = 0;
-		TOF_DATA = []; TOF_LOADED = false; TOF_SIG = null; TOF_TOKEN = '';
 		ALLOC_CFA_OPTION = null;
 		CBA_DATA = []; CBA_LOADED = false; CBA_ACTIVE_IDX = -1;
 		_sdocCount = 0;

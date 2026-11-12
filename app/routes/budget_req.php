@@ -207,6 +207,19 @@ $app->delete('/budget_req/delete/{id}', function ($request, $response, $args) us
     }
 })->add($jwtMiddleware);
 
+// Delete one Program from its budget request — if it was the last Program
+// left, the now-empty header is removed too. Rejected once the request has
+// left Draft (same rule as program update).
+$app->delete('/budget_req/program/delete/{budget_req_program_id}', function ($request, $response, $args) use ($BudgetReqService) {
+    try {
+        $result = $BudgetReqService->deleteProgram($args['budget_req_program_id']);
+
+        return $response->withJson($result, $result['success'] ? 200 : 400);
+    } catch (\Exception $e) {
+        return $response->withJson(['success' => false, 'message' => $e->getMessage()], 400);
+    }
+})->add($jwtMiddleware);
+
 // Lists one project's supporting documents (each with a presigned view_url
 // for an upload, or its raw external_link). Scoped by (budget_req_program_id,
 // project_code) — see fims_budget_req_project_attachment.sql for why.
