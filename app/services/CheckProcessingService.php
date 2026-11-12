@@ -8,15 +8,17 @@ namespace PHPMaker2024\FIMS\Service;
  * (check-preparation, check-registry, check-released-to-claimants,
  * check-released-regions, check-cancellation-replacements, check-inventory-raf).
  *
- * STUB IMPLEMENTATION: the `treasury` schema (checks, check_register,
- * check_releases, check_release_claimants, check_release_documents,
- * check_release_email_log, cash_position) does not exist in this project's
- * database yet, nor do the `accounting`/`shared`/`workflow`/`fmd` schemas
- * several of these features also join against in the source project. Every
+ * STUB IMPLEMENTATION: the tables this module needs now exist in the `fims`
+ * schema (_assets/sql/01 - fims/01 - table/26 through 33 — bank_accounts,
+ * check_booklets, checks, check_cancellations, check_claimant_releases,
+ * check_claimant_email_log, check_region_releases, check_region_email_log),
+ * but these methods haven't been rewritten to query them yet. The
+ * `accounting`/`shared`/`workflow`/`fmd` schemas several of these features
+ * also joined against in the source project are still out of scope. Every
  * method here returns a structurally-correct but empty response so the UI
  * renders and behaves correctly (tables show "no records", KPI cards show
- * zero) without erroring. Replace each method's body with real queries once
- * the schema is migrated.
+ * zero) without erroring. Replace each method's body with real queries
+ * against the tables above.
  */
 class CheckProcessingService
 {
