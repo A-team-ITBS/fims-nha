@@ -155,7 +155,11 @@ $USER_LEVEL_PRIVS = [["{FIMS}audit_logs","-2","0"],
     ["{FIMS}trust-funds-page.php","-2","0"],
     ["{FIMS}trust-funds-page.php","0","0"],
     ["{FIMS}pricing-page.php","-2","0"],
-    ["{FIMS}pricing-page.php","0","0"]];
+    ["{FIMS}pricing-page.php","0","0"],
+    ["{FIMS}cash-position-page.php","-2","0"],
+    ["{FIMS}cash-position-page.php","0","0"],
+    ["{FIMS}bank-account management-page.php","-2","0"],
+    ["{FIMS}bank-account management-page.php","0","0"]];
 
 /**
  * Tables
@@ -234,4 +238,6 @@ $USER_LEVEL_TABLES = [["audit_logs","audit_logs","Audit Logs",false,"{FIMS}",""]
     ["saro-registry-page.php","saro_registry_page","SARO Registry",true,"{FIMS}","SaroRegistryPage"],
     ["supplemental-funds-page.php","supplemental_funds_page","Supplemental Funds",true,"{FIMS}","SupplementalFundsPage"],
     ["trust-funds-page.php","trust_funds_page","Trust Funds",true,"{FIMS}","TrustFundsPage"],
-    ["pricing-page.php","pricing_page","Pricing",true,"{FIMS}","PricingPage"]];
+    ["pricing-page.php","pricing_page","Pricing",true,"{FIMS}","PricingPage"],
+    ["cash-position-page.php","cash_position_page","Cash Position",true,"{FIMS}","CashPositionPage"],
+    ["bank-account management-page.php","bank_account_management_page","Bank Account Management",true,"{FIMS}","BankAccountManagementPage"]];

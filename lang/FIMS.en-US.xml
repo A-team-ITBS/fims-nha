@@ -59,6 +59,12 @@
     <menu id="260">
       <phrase id="menutext" value="Check Disbursements" />
     </menu>
+    <menu id="332">
+      <phrase id="menutext" value="Bank Account Management" />
+    </menu>
+    <menu id="331">
+      <phrase id="menutext" value="Cash Position" />
+    </menu>
     <menu id="330">
       <phrase id="menutext" value="Fund Sourcing" />
     </menu>
@@ -1594,6 +1600,12 @@
     </table>
     <table id="pricing_page">
       <phrase id="tblcaption" value="Pricing" />
+    </table>
+    <table id="cash_position_page">
+      <phrase id="tblcaption" value="Cash Position" />
+    </table>
+    <table id="bank_account_management_page">
+      <phrase id="tblcaption" value="Bank Account Management" />
     </table>
   </project>
 </ew-language>

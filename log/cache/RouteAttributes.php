@@ -99,6 +99,8 @@
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone ($p['PHPMaker2024\\FIMS\\Attributes\\Get'] ?? \Symfony\Component\VarExporter\Internal\Registry::p('PHPMaker2024\\FIMS\\Attributes\\Get')),
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Get'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
@@ -181,6 +183,16 @@
     [
         'PHPMaker2024\\FIMS\\Attributes\\Map' => [
             'methods' => [
+                [
+                    'GET',
+                    'POST',
+                    'OPTIONS',
+                ],
+                [
+                    'GET',
+                    'POST',
+                    'OPTIONS',
+                ],
                 [
                     'GET',
                     'POST',
@@ -1082,6 +1094,7 @@
                 '/AuditLogsView[/{id}]',
                 '/AuditLogsEdit[/{id}]',
                 '/AuditLogsDelete[/{id}]',
+                '/BankAccountManagementPage[/{params:.*}]',
                 '/BudgetAllocationForm[/{params:.*}]',
                 '/BudgetPropPage[/{params:.*}]',
                 '/BudgetReqForm[/{params:.*}]',
@@ -1090,6 +1103,7 @@
                 '/BudgetRevisionPage[/{params:.*}]',
                 '/BudgetRevReview[/{params:.*}]',
                 '/BullMqManager[/{params:.*}]',
+                '/CashPositionPage[/{params:.*}]',
                 '/ChangePass[/{params:.*}]',
                 '/ChangePassword2[/{params:.*}]',
                 '/ChartOfAccountsPage[/{params:.*}]',
@@ -1260,6 +1274,7 @@
                 'PHPMaker2024\\FIMS\\AuditLogsController:view',
                 'PHPMaker2024\\FIMS\\AuditLogsController:edit',
                 'PHPMaker2024\\FIMS\\AuditLogsController:delete',
+                'PHPMaker2024\\FIMS\\BankAccountManagementPageController:custom',
                 'PHPMaker2024\\FIMS\\BudgetAllocationFormController:custom',
                 'PHPMaker2024\\FIMS\\BudgetPropPageController:custom',
                 'PHPMaker2024\\FIMS\\BudgetReqFormController:custom',
@@ -1268,6 +1283,7 @@
                 'PHPMaker2024\\FIMS\\BudgetRevisionPageController:custom',
                 'PHPMaker2024\\FIMS\\BudgetRevReviewController:custom',
                 'PHPMaker2024\\FIMS\\BullMqManagerController:custom',
+                'PHPMaker2024\\FIMS\\CashPositionPageController:custom',
                 'PHPMaker2024\\FIMS\\ChangePassController:custom',
                 'PHPMaker2024\\FIMS\\ChangePassword2Controller:custom',
                 'PHPMaker2024\\FIMS\\ChartOfAccountsPageController:custom',
@@ -1415,6 +1431,12 @@
                 'PHPMaker2024\\FIMS\\WorkflowManagerController:custom',
             ],
             'middleware' => [
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
                 [
                     'PHPMaker2024\\FIMS\\PermissionMiddleware',
                 ],
@@ -1966,6 +1988,7 @@
                 'view.audit_logs',
                 'edit.audit_logs',
                 'delete.audit_logs',
+                'custom.bank_account_management_page',
                 'custom.budget_allocation_form',
                 'custom.budget_prop_page',
                 'custom.budget_req_form',
@@ -1974,6 +1997,7 @@
                 'custom.budget_revision_page',
                 'custom.budget_rev_review',
                 'custom.BullMQManager',
+                'custom.cash_position_page',
                 'custom.ChangePass',
                 'custom.ChangePassword2',
                 'custom.chart_of_accounts_page',
@@ -2121,6 +2145,8 @@
                 'custom.WorkflowManager',
             ],
             'options' => [
+                [],
+                [],
                 [],
                 [],
                 [],
@@ -2477,6 +2503,8 @@
         $o[173],
         $o[174],
         $o[175],
+        $o[176],
+        $o[177],
     ],
     []
 );
