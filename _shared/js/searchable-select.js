@@ -46,10 +46,12 @@ function nhaSearchableSelect(input, options, onSelect) {
             : opts
         ).slice(0, 50);
 
+        // Title first (what you're scanning for), code at the end, right-aligned — matches how a
+        // printed Chart of Accounts reads (account title on the left, its code trailing on the right).
         box.innerHTML = matches.length
             ? matches.map(o => `<div class="nha-ss-opt" data-value="${esc(o.value)}">
-                   <span class="nha-ss-opt-code">${esc(o.value)}</span>
                    <span class="nha-ss-opt-label">${esc(o.label)}</span>
+                   <span class="nha-ss-opt-code">${esc(o.value)}</span>
                </div>`).join('')
             : '<div class="nha-ss-empty">No matches</div>';
         position();
