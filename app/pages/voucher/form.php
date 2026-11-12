@@ -336,8 +336,15 @@ function vf_authFetch(url, opts = {}) {
     return fetch(url, { credentials: 'same-origin', ...opts, headers });
 }
 
+// The API JWT (window.ew.API_JWT_TOKEN, read by vf_authFetch) expires 10 minutes after login/page
+// load with no silent refresh — leaving this modal open past that turns every call below into a
+// 401. Give that one specific, actionable message instead of a raw "HTTP 401".
+const VF_SESSION_EXPIRED_MSG = 'Your session has expired. Please refresh the page and log in again.';
+function vf_isSessionExpiredMessage(msg) { return msg === VF_SESSION_EXPIRED_MSG; }
+
 async function vf_getJson(path) {
-    const res  = await vf_authFetch(VF_API + path);
+    const res = await vf_authFetch(VF_API + path);
+    if (res.status === 401) throw new Error(VF_SESSION_EXPIRED_MSG);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const json = await res.json();
     if (!json.success) throw new Error(json.message || 'Request failed.');
@@ -384,7 +391,13 @@ async function vf_open(id = 0) {
             vf_refreshDvNumber();
         }
         vf_recalc();
-        if (loadErrors.length) vf_showErrors(loadErrors);
+        // One expired token fails every one of the reference-data calls above at once — show the
+        // single actionable message instead of eight copies of the same thing.
+        if (loadErrors.some(vf_isSessionExpiredMessage)) {
+            vf_showErrors([VF_SESSION_EXPIRED_MSG]);
+        } else if (loadErrors.length) {
+            vf_showErrors(loadErrors);
+        }
     } catch (e) {
         vf_showErrors([e.message]);
     } finally {
@@ -604,7 +617,7 @@ async function vf_onRfaChange() {
             vf_onVendorChange();
         }
     } catch (e) {
-        vf_showErrors(['Could not load RFA: ' + e.message]);
+        vf_showErrors([vf_isSessionExpiredMessage(e.message) ? e.message : 'Could not load RFA: ' + e.message]);
     } finally {
         window.PagePreloader?.hide();
         vf_recalc();
@@ -1002,6 +1015,7 @@ async function vf_save(status) {
             headers : { 'Content-Type': 'application/json' },
             body    : JSON.stringify(body),
         });
+        if (res.status === 401) { vf_showErrors([VF_SESSION_EXPIRED_MSG]); return; }
         const json = await res.json();
         if (!json.success) {
             vf_showErrors(json.errors?.length ? json.errors : [json.message || 'Failed to save disbursement voucher.']);
