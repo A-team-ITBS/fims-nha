@@ -21,15 +21,19 @@
  * project's own fims-treasury.css), verified against actual usage in its
  * source pages rather than guessed.
  *
- * STATUS: UI shell only. The `treasury` schema (checks, check_register,
- * check_releases, etc.) and the `accounting`/`shared`/`workflow`/`fmd`
- * schemas several source pages also join against don't exist in this
- * project's database yet. Every backend call here hits
- * app/routes/check-processing.php, which currently returns
- * empty-but-valid responses via app/services/CheckProcessingService.php
- * (see that file's header comment) — tables render correctly with "no
- * records" until that schema migration happens and the stub methods are
- * replaced with real queries.
+ * STATUS: UI shell + schema, backend still stubbed. The tables this module
+ * needs now exist in the `fims` schema (_assets/sql/01 - fims/01 - table/26
+ * through 33 — bank_accounts, check_booklets, checks, check_cancellations,
+ * check_claimant_releases, check_claimant_email_log, check_region_releases,
+ * check_region_email_log; FKs in "03 - alter_table/21 - ...-add_fk.sql"),
+ * but app/services/CheckProcessingService.php's methods haven't been
+ * rewritten to query them yet (see that file's header comment) — every
+ * backend call here still goes through app/routes/check-processing.php to
+ * those stub methods, which return empty-but-valid responses regardless of
+ * what's in the database. Tables render correctly with "no records" until
+ * each stub method is replaced with a real query against these tables. The
+ * `accounting`/`shared`/`workflow`/`fmd` schemas some source pages also
+ * joined against in the original TREASURY project are still out of scope.
  */
 
 namespace PHPMaker2024\FIMS;

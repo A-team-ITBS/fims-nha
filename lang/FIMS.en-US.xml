@@ -1,7 +1,10 @@
-<ew-language date="2026/11/10" id="en-US" author="e.World Technology Limited">
+<ew-language date="2026/11/12" id="en-US" author="e.World Technology Limited">
   <project>
     <phrase id="bodytitle" value="UAC - User Access Control System" />
     <phrase id="footertext" value="&amp;copy;2024 ITBS Corporation. All rights reserved." />
+    <menu id="262">
+      <phrase id="menutext" value="notification reads" />
+    </menu>
     <menu id="9">
       <phrase id="menutext" value="Dashboard" />
     </menu>
@@ -55,6 +58,21 @@
     </menu>
     <menu id="260">
       <phrase id="menutext" value="Check Disbursements" />
+    </menu>
+    <menu id="330">
+      <phrase id="menutext" value="Fund Sourcing" />
+    </menu>
+    <menu id="263">
+      <phrase id="menutext" value="SARO Registry" />
+    </menu>
+    <menu id="264">
+      <phrase id="menutext" value="Supplemental Funds" />
+    </menu>
+    <menu id="265">
+      <phrase id="menutext" value="Trust Funds" />
+    </menu>
+    <menu id="266">
+      <phrase id="menutext" value="Pricing" />
     </menu>
     <menu id="206">
       <phrase id="menutext" value="Administration" />
@@ -498,6 +516,12 @@
       </field>
       <field id="read_users">
         <phrase id="fldcaption" value="read users" />
+      </field>
+      <field id="sender_id">
+        <phrase id="fldcaption" value="sender id" />
+      </field>
+      <field id="event_key">
+        <phrase id="fldcaption" value="event key" />
       </field>
     </table>
     <table id="usermanagement">
@@ -1546,6 +1570,30 @@
     </table>
     <table id="budget_prop_page">
       <phrase id="tblcaption" value="Budget Propose" />
+    </table>
+    <table id="notification_reads">
+      <phrase id="tblcaption" value="notification reads" />
+      <field id="notification_id">
+        <phrase id="fldcaption" value="notification id" />
+      </field>
+      <field id="user_id">
+        <phrase id="fldcaption" value="user id" />
+      </field>
+      <field id="read_at">
+        <phrase id="fldcaption" value="read at" />
+      </field>
+    </table>
+    <table id="saro_registry_page">
+      <phrase id="tblcaption" value="SARO Registry" />
+    </table>
+    <table id="supplemental_funds_page">
+      <phrase id="tblcaption" value="Supplemental Funds" />
+    </table>
+    <table id="trust_funds_page">
+      <phrase id="tblcaption" value="Trust Funds" />
+    </table>
+    <table id="pricing_page">
+      <phrase id="tblcaption" value="Pricing" />
     </table>
   </project>
 </ew-language>
