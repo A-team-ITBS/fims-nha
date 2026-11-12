@@ -381,8 +381,13 @@ function vje_entriesCard(dv) {
         </div>`;
 }
 
-async function vje_getJson(path) {
-    const res  = await vr_authFetch(VR_API + path);
+// `url` must be the COMPLETE request URL, built by the caller as a template literal starting
+// `${VR_API}...` (not VR_API + '/a/literal/path' passed in separately) — see vf_getJson()'s doc
+// comment in app/pages/voucher/form.php for why: concatenating here would let the sub-folder
+// deployment shim (_shared/subfolder-prefix.php) independently prefix both VR_API's own literal
+// and a bare path-literal argument, doubling the sub-folder in the final URL.
+async function vje_getJson(url) {
+    const res  = await vr_authFetch(url);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const json = await res.json();
     if (!json.success) throw new Error(json.message || 'Request failed.');
@@ -393,10 +398,10 @@ async function vje_init(dv) {
     vje_dv = dv;
     try {
         const [coaJson, atcJson, rcJson, slJson] = await Promise.all([
-            vje_getJson('/chart-of-accounts/all?status=Active'),
-            vje_getJson('/voucher/atc-codes'),
-            vje_getJson('/responsibility-center/all'),
-            vje_getJson('/voucher/sl-codes'),
+            vje_getJson(`${VR_API}/chart-of-accounts/all?status=Active`),
+            vje_getJson(`${VR_API}/voucher/atc-codes`),
+            vje_getJson(`${VR_API}/responsibility-center/all`),
+            vje_getJson(`${VR_API}/voucher/sl-codes`),
         ]);
         VJE_COA = (coaJson.data ?? []).filter(a => a.posting_allowed);
         VJE_ATC = atcJson.data ?? [];
@@ -603,7 +608,7 @@ async function vje_loadSlDetails(idx, selectDetailId = null) {
     const sel    = tr.querySelector('.vje-sl-detail');
     if (!slCode) { sel.innerHTML = '<option value="">SL Detail…</option>'; return; }
     try {
-        const json = await vje_getJson(`/voucher/sl-codes/${encodeURIComponent(slCode)}/details`);
+        const json = await vje_getJson(`${VR_API}/voucher/sl-codes/${encodeURIComponent(slCode)}/details`);
         sel.innerHTML = '<option value="">— None —</option>' + (json.data ?? []).map(d =>
             `<option value="${vr_esc(d.sl_detail_id)}">${vr_esc(d.detail_code)} — ${vr_esc(d.detail_name)}</option>`).join('');
         if (selectDetailId) sel.value = String(selectDetailId);
