@@ -10,8 +10,8 @@
  *     (each with its code as a chip), and
  *   - that Project's line items as a table, as plain text (nothing to fill in):
  *       Type of Fund · Component · Account Code · Description (the account name,
- *       the line's particulars under it) · Amount (proposed) · Suggested Amount,
- *     with a Total row under both amount columns.
+ *       the line's particulars under it) · Amount (proposed) · Adjustment (budget_line_items.adjustment, signed: green
+ *       "+", red "−", a dash for none) · Suggested Amount, with a Total row under all three amount columns.
  * A Program that has no Projects yet gets its card and a "No projects yet." note.
  * (There used to be Program Sources / Program Uses columns — budget_line_items.program_source_code / program_uses
  * were dropped, migration alter_table/22.)
@@ -71,6 +71,8 @@ $_bpv_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
 .nha-root .bpv-tbl td.bpv-nowrap { white-space: nowrap; }
 .nha-root .bpv-tbl td.bpv-mono { font-family: var(--mono); font-size: 12px; }
 .nha-root .bpv-tbl td.bpv-amt { white-space: nowrap; font-weight: 700; font-variant-numeric: tabular-nums; }
+.nha-root .bpv-tbl .bpv-adj-up   { color: var(--green-txt, #16A34A); }
+.nha-root .bpv-tbl .bpv-adj-down { color: var(--red-txt, #DC2626); }
 .nha-root .bpv-desc-sub { margin-top: 2px; font-size: 11.5px; color: var(--subtle); }
 .nha-root .bpv-tbl tfoot td { padding: 11px 12px; font-weight: 700; background: var(--surf); border-top: 1px solid var(--bdr); }
 .nha-root .bpv-empty, .nha-root .bpv-noproj { padding: 18px 12px; text-align: center; font-size: 12.5px; color: var(--subtle); }
@@ -244,13 +246,24 @@ function bpv_value(text) {
     return text ? bgr_esc(text) : '<span class="nha-td-sub">—</span>';
 }
 
-// Column order matches Budget Processing: Type of Fund · Component · Account Code · Description · Amount · Suggested Amount
+// A line's adjustment (budget_line_items.adjustment — what approved budget revisions added to / deducted from the line):
+// "+ ₱ 50,000.00" in green, "− ₱ 50,000.00" in red, a dash when there is none. Plain text, never HTML from the data.
+function bpv_adjHtml(v) {
+    const n = Number(v) || 0;
+    if (!n) return '<span class="bpv-muted">—</span>';
+    const abs = Math.abs(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return `<span class="${n > 0 ? 'bpv-adj-up' : 'bpv-adj-down'}">${n > 0 ? '+' : '−'} ₱ ${abs}</span>`;
+}
+
+// Column order matches Budget Processing, with the line's Adjustment after its Amount:
+// Type of Fund · Component · Account Code · Description · Amount · Adjustment · Suggested Amount
 const BPV_THEAD = `<thead><tr>
     <th>Type of Fund</th>
     <th>Component</th>
     <th>Account Code</th>
     <th>Description</th>
     <th class="text-right">Amount</th>
+    <th class="text-right">Adjustment</th>
     <th class="text-right">Suggested Amount</th>
 </tr></thead>`;
 
@@ -261,6 +274,7 @@ function bpv_rowHtml(li) {
         <td class="bpv-nowrap bpv-mono">${bgr_esc(li.account_code)}</td>
         <td><div>${bgr_esc(li.account_title)}</div>${li.particulars ? `<div class="bpv-desc-sub">${bgr_esc(li.particulars)}</div>` : ''}</td>
         <td class="text-right bpv-amt">${bgr_fmtMoney(li.proposed_amount)}</td>
+        <td class="text-right bpv-amt bpv-adj">${bpv_adjHtml(li.adjustment)}</td>
         <td class="text-right bpv-amt">${bgr_fmtMoney(li.suggested_amount)}</td>
     </tr>`;
 }
@@ -270,12 +284,12 @@ function bpv_tableHtml(project) {
     const sum = key => lineItems.reduce((s, li) => s + (Number(li[key]) || 0), 0);
     const rowsHtml = lineItems.length
         ? lineItems.map(bpv_rowHtml).join('')
-        : '<tr><td colspan="6"><div class="bpv-empty">No line items have been added under this project.</div></td></tr>';
+        : '<tr><td colspan="7"><div class="bpv-empty">No line items have been added under this project.</div></td></tr>';
 
     return `<div class="bpv-tbl-wrap">
         <div class="nha-tbl-scroll">
             <table class="nha-tbl bpv-tbl">${BPV_THEAD}<tbody>${rowsHtml}</tbody>
-                <tfoot><tr><td colspan="4" class="text-right">Total</td><td class="text-right bpv-total-p">${bgr_fmtMoney(sum('proposed_amount'))}</td><td class="text-right bpv-total-s">${bgr_fmtMoney(sum('suggested_amount'))}</td></tr></tfoot>
+                <tfoot><tr><td colspan="4" class="text-right">Total</td><td class="text-right bpv-total-p">${bgr_fmtMoney(sum('proposed_amount'))}</td><td class="text-right bpv-total-a">${bpv_adjHtml(sum('adjustment'))}</td><td class="text-right bpv-total-s">${bgr_fmtMoney(sum('suggested_amount'))}</td></tr></tfoot>
             </table>
         </div>
     </div>`;

@@ -10,7 +10,7 @@ $BudgetRevisionService = new BudgetRevisionService();
 $app->get('/budget_revision/all', function ($request, $response, $args) use ($BudgetRevisionService) {
     try {
         $params = $request->getQueryParams();
-        $result = $BudgetRevisionService->fetchAlls(null, 10, $params['fiscal_yr'] ?? '', $params['budget_req_id'] ?? '');
+        $result = $BudgetRevisionService->fetchAlls(null, 10, $params['fiscal_yr'] ?? '', $params['budget_reference_number'] ?? '');
 
         return $response->withJson($result);
     } catch (\Exception $e) {
@@ -25,7 +25,7 @@ $app->get('/budget_revision/list', function ($request, $response, $args) use ($B
         $page   = isset($params['page']) ? (int) $params['page'] : 1;
         $limit  = isset($params['limit']) ? (int) $params['limit'] : 10;
 
-        $result = $BudgetRevisionService->fetchAlls($page, $limit, $params['fiscal_yr'] ?? '', $params['budget_req_id'] ?? '');
+        $result = $BudgetRevisionService->fetchAlls($page, $limit, $params['fiscal_yr'] ?? '', $params['budget_reference_number'] ?? '');
 
         return $response->withJson($result);
     } catch (\Exception $e) {

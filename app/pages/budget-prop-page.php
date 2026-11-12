@@ -13,8 +13,9 @@ namespace PHPMaker2024\FIMS;
  * always every Regional / District office — so this page sends no RC parameters and does no RC lookup of its own.
  * Anyone else who opens the page gets that route's 403 message and an empty list.
  *
- * Row actions act on the whole request (Budget Processing for user level 2, Budget Preview for level 8,
- * Delete of a Draft). They open the shared modals from form/budget-processing-form.php and
+ * Row actions act on the whole request: View (the request's details, read-only), Budget Processing (user level 2 until it is
+ * Endorsed), Budget Preview (level 8 until it is Approved) and Delete of a Draft. A Budget Head's row on an Approved request has
+ * no Actions button at all. They open the shared modals from form/budget-processing-form.php and
  * readone/budget-preview-readone.php (same layout; the Budget Head's Return reason is typed in the preview's own
  * remarks box), which rely on the helpers (and fill the Fiscal Year / Program filters) of
  * form/budget-req-form.php — included below for that, its Add modal is simply not used here.
@@ -277,6 +278,18 @@ function bgr_actionButtons(flatRow, idx) {
     const { header, program } = flatRow;
     const isDraft = header.status_name === 'Draft';
 
+    // Budget Head (level 8) on an Approved request: nothing left for them to do, so the row has no Actions button at all
+    // (an explicit earlier requirement). This is the ONE place that rule lives — drop `headIsDone` from viewItem below to
+    // let the Budget Head open the details of Approved requests as well.
+    const headIsDone = BGR_IS_BUDGET_HEAD && header.status_name === 'Approved';
+
+    // The request's details, read-only: every Program, Project and line item (Type of Fund, Component, account, Amount, Suggested
+    // Amount). Offered on every request — including the ones that can no longer be processed or decided — except as above.
+    const viewItem = headIsDone ? '' : `<a class="nha-menu-item" href="javascript:void(0);" onclick="bgr_viewRequest(${idx});bgr_closeMenus();">
+            <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.477 0 8.268 2.943 9.542 7-1.274 4.057-5.065 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+            View
+        </a>`;
+
     // Hidden once the request has been Endorsed or Approved — it can't be processed again.
     const budgetProcessingItem = (BGR_CAN_BUDGET_PROCESSING && !['Endorsed', 'Approved'].includes(header.status_name))
         ? `<a class="nha-menu-item" href="javascript:void(0);" onclick="bgr_budgetProcessing(${idx});bgr_closeMenus();">
@@ -286,8 +299,8 @@ function bgr_actionButtons(flatRow, idx) {
         : '';
     // Read-only counterpart of Budget Processing — every line item with its
     // Type of Fund, Suggested Amount and Component, nothing to fill in.
-    // Budget Head (level 8) only.
-    const budgetPreviewItem = (BGR_IS_BUDGET_HEAD && program)
+    // Budget Head (level 8) only. Hidden once the request is Approved: the Budget Head has nothing left to decide.
+    const budgetPreviewItem = (BGR_IS_BUDGET_HEAD && program && !headIsDone)
         ? `<a class="nha-menu-item" href="javascript:void(0);" onclick="bgr_budgetPreview(${idx});bgr_closeMenus();">
             <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
             Budget Preview
@@ -300,7 +313,7 @@ function bgr_actionButtons(flatRow, idx) {
         </a>`
         : '';
 
-    const items = [budgetProcessingItem, budgetPreviewItem].filter(Boolean).join('');
+    const items = [viewItem, budgetProcessingItem, budgetPreviewItem].filter(Boolean).join('');
     const deleteSection = deleteItem ? `<div class="nha-menu-divider"></div>${deleteItem}` : '';
 
     if (!items && !deleteSection) return '';
@@ -336,6 +349,25 @@ document.addEventListener('click', e => {
     if (!e.target.closest('.nha-tools-menu')) bgr_closeMenus();
 });
 document.addEventListener('scroll', bgr_closeMenus, true);
+
+/* "View" row action (every user) — opens the read-only Budget Preview modal (readone/budget-preview-readone.php, bpv_*) WITHOUT its
+   Return / Approve (can_decide is false whatever the user level or the request's status): the request's status, and for every Project
+   of every Program the originating unit, program, sub-program, project and its line items with their totals. The row is a whole
+   request, so the modal gets ALL of its Programs; a request with none yet says "No programs yet.". */
+function bgr_viewRequest(idx) {
+    const { header } = bgr_flatRows[idx];
+    bpv_openModal({
+        budget_reference_number: header.budget_reference_number,
+        fiscal_yr: header.fiscal_yr,
+        status_name: header.status_name,
+        status_color: header.status_color,
+        // the requesting office, for the modal's "Originating Unit / Region"
+        rc_id: header.rc_id,
+        rc_code: header.rc_code,
+        rc_name: header.rc_name,
+        can_decide: false,
+    }, header.programs ?? []);
+}
 
 /* "Budget Processing" row action (level 2 / Budget Officer only) — opens the
    Budget Processing modal (form/budget-processing-form.php, bpr_*): one card per Program,
