@@ -538,12 +538,12 @@ class DisbursementVoucherService
             }
             if (!empty($filters['search'])) {
                 $kw      = App\QuotedValue('%' . $filters['search'] . '%', App\DataType::STRING, 'DB');
-                $where[] = "(a.allocation_number ILIKE {$kw} OR a.memo_ref_no ILIKE {$kw})";
+                $where[] = "(a.allocation_number ILIKE {$kw} OR a.request_referrence_no ILIKE {$kw})";
             }
             $whereSql = implode(' AND ', $where);
 
             $rows = App\ExecuteRows(
-                "SELECT a.allocation_id, a.allocation_number, a.memo_ref_no, a.fiscal_year,
+                "SELECT a.allocation_id, a.allocation_number, a.request_referrence_no, a.fiscal_year,
                         a.requesting_rc_id, rc.rc_name AS department_name,
                         a.vendor_id, v.vendor_name, v.address AS vendor_address, v.tin AS vendor_tin,
                         a.po_number, a.po_amount, a.line_transaction,
@@ -573,7 +573,7 @@ class DisbursementVoucherService
         try {
             $id  = (int) $allocationId;
             $rfa = App\ExecuteRow(
-                "SELECT a.allocation_id, a.allocation_number, a.memo_ref_no, a.fiscal_year,
+                "SELECT a.allocation_id, a.allocation_number, a.request_referrence_no, a.fiscal_year,
                         a.requesting_rc_id, rc.rc_name AS department_name,
                         a.vendor_id, v.vendor_name, v.address AS vendor_address, v.tin AS vendor_tin,
                         a.po_number, a.po_amount, a.line_transaction,
