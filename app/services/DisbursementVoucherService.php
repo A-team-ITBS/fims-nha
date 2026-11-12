@@ -604,7 +604,11 @@ class DisbursementVoucherService
         if ($budgetAmount <= 0) {
             $lines = json_decode((string) ($rfa['line_transaction'] ?? '[]'), true) ?: [];
             foreach ($lines as $line) {
-                $budgetAmount += (float) ($line['allocated_amount'] ?? 0);
+                // RFA allocations carry their amount in requested_amount — allocated_amount
+                // ("Cash Requirements") is hidden/unused for this allocation_type (see
+                // budget-allocation-form.php's baaApplyCashRequirementsVisibility()), so summing
+                // allocated_amount here always landed on 0.
+                $budgetAmount += (float) ($line['requested_amount'] ?? $line['allocated_amount'] ?? 0);
             }
         }
         $rfa['budget_amount']      = round($budgetAmount, 2);
