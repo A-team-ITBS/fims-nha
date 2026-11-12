@@ -179,6 +179,7 @@
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
     ],
     null,
     [
@@ -1075,6 +1076,11 @@
                     'POST',
                     'OPTIONS',
                 ],
+                [
+                    'GET',
+                    'POST',
+                    'OPTIONS',
+                ],
             ],
             'pattern' => [
                 '/AggregatedAuditLogsList',
@@ -1207,6 +1213,7 @@
                 '/PricingPage[/{params:.*}]',
                 '/ProgramPage[/{params:.*}]',
                 '/ProjectPage[/{params:.*}]',
+                '/PropertyRecordPage[/{params:.*}]',
                 '/PsgcList[/{code_10:.*}]',
                 '/PsgcAdd[/{code_10:.*}]',
                 '/PsgcView[/{code_10:.*}]',
@@ -1388,6 +1395,7 @@
                 'PHPMaker2024\\FIMS\\PricingPageController:custom',
                 'PHPMaker2024\\FIMS\\ProgramPageController:custom',
                 'PHPMaker2024\\FIMS\\ProjectPageController:custom',
+                'PHPMaker2024\\FIMS\\PropertyRecordPageController:custom',
                 'PHPMaker2024\\FIMS\\PsgcController:list',
                 'PHPMaker2024\\FIMS\\PsgcController:add',
                 'PHPMaker2024\\FIMS\\PsgcController:view',
@@ -1974,6 +1982,9 @@
                 [
                     'PHPMaker2024\\FIMS\\PermissionMiddleware',
                 ],
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
             ],
             'name' => [
                 'list.aggregated_audit_logs',
@@ -2106,6 +2117,7 @@
                 'custom.pricing_page',
                 'custom.program_page',
                 'custom.project_page',
+                'custom.property_record_page',
                 'list.psgc',
                 'add.psgc',
                 'view.psgc',
@@ -2157,6 +2169,7 @@
                 'custom.WorkflowManager',
             ],
             'options' => [
+                [],
                 [],
                 [],
                 [],
@@ -2519,6 +2532,7 @@
         $o[176],
         $o[177],
         $o[178],
+        $o[179],
     ],
     []
 );

@@ -44,7 +44,7 @@ class PersonalData
     public $RenderingView = false;
 
     // CSS class/style
-    public $CurrentPageName = "BankManagementPageController";
+    public $CurrentPageName = "PropertyRecordPageController";
 
     // Page headings
     public $Heading = "";
