@@ -226,6 +226,10 @@ function amp_renderTable(rows) {
                         <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
                         View
                     </button>
+                    <button type="button" class="iar-menu-item" onclick="amp_closeMenus();amp_printIar(${rows.indexOf(r)})" title="Print the Inspection and Acceptance Report">
+                        <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+                        Print IAR
+                    </button>
                     <div class="iar-menu-divider"></div>
                     <button type="button" class="iar-menu-item" onclick="amp_closeMenus();amp_proforma('${amp_escAttr(r.po_number)}')" title="Pro-forma JEV of each delivery receipt">
                         <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
@@ -405,6 +409,7 @@ function amp_renderProforma(active) {
             <span class="amp-pf-msg" id="amp-pf-msg"></span>
         </div>
         <div class="amp-jev-actions">
+            <button type="button" class="nha-btn-act" style="margin-right:8px;" onclick="amp_printProformaJev(${active})" title="Print this pro-forma JEV (the rows as edited)">Print JEV</button>
             <button type="button" class="amp-jev-btn" id="amp-pf-submit" onclick="amp_submitJev(${active})">Submit</button>
         </div></div>`;
 
@@ -482,6 +487,21 @@ function amp_submitJev(active) {
     }
     if (err) { amp_toast(err.text, 'error'); return; }
     amp_toast('Submitting a JEV for ' + rc.dr_number + ' is not available yet.', 'info');
+}
+
+/* ── Print (the shared print preview, included at the end) ─── */
+
+// Print IAR → the IAR form from this PO's list row (IAR / SI numbers, its delivery receipts, and the PO details the list
+// already carries: vendor, PO date, PO amount, balance) — prp_iarPayload() builds the payload.
+function amp_printIar(i) {
+    const r = amp_rows[i];
+    if (r) prp_open(prp_iarPayload(r), { type: 'IAR' });
+}
+
+// Print JEV (pro-forma view) → the JEV form for the delivery receipt on screen, with the rows as edited (its draft).
+function amp_printProformaJev(active) {
+    const rc = amp_pf.receipts[active];
+    if (rc) prp_open(prp_jevFromProforma(amp_pf.po, rc), { type: 'JEV' });
 }
 
 /* Searchable account code dropdown of a pro-forma row (GET /po-dr/accounts?search=): only an account picked from the list is kept */
@@ -667,3 +687,7 @@ function amp_toast(msg, type = 'info') {
     setTimeout(() => t.remove(), 4000);
 }
 </script>
+<?php
+// Print IAR / Print JEV → the shared print preview (prp_open + prp_iarPayload / prp_jevFromProforma).
+include_once __DIR__ . '/readone/print-preview-readone.php';
+?>

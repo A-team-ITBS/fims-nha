@@ -2,6 +2,8 @@
 
 namespace PHPMaker2024\FIMS\Service;
 
+use PHPMaker2024\FIMS as App;
+
 /**
  * JEV (Journal Entry Voucher) print form — the model (every printed word) and
  * the HTML (preview + PDF). One form for every department: the NHA paper JEV,
@@ -11,8 +13,11 @@ namespace PHPMaker2024\FIMS\Service;
  * Excel export are copies of the same form). Department differences are
  * options: the office box (book name / "MAIN OFFICE" / a regional office), the
  * third signatory's label ("Certified Correct:" / "Approved by:") and the
- * responsibility center column. There is no JEV module in this repo yet, so it
- * prints from the payload.
+ * responsibility center column. It prints from the payload — the DV module's JEV
+ * (DisbursementVoucherService, journal-entry-voucher.php) and the DR module's
+ * pro-forma JEV build it through the preview's prp_jevFromDv() /
+ * prp_jevFromProforma(); a line sent without its account title gets it from
+ * fims.chart_of_accounts (accountTitles()).
  *
  * A4 landscape, Arial 7.5–8pt; the form's own title box, no letterhead.
  * Printed through PrintService::print('JEV', …); DOCX: scripts/gen_jev_docx.js.
@@ -49,10 +54,12 @@ class JevPrintService
         $money = static fn (float $v) => $v != 0 ? PrintService::money(abs($v)) : '';
         $total = static fn (float $v) => $v != 0 ? PrintService::money($v) : '-';
 
-        $rc   = $t('responsibility_center');
-        $rows = [];
-        $slD  = $slC = $glD = $glC = 0.0;
-        foreach (array_values(is_array($p['lines'] ?? null) ? $p['lines'] : []) as $i => $l) {
+        $rc     = $t('responsibility_center');
+        $rows   = [];
+        $slD    = $slC = $glD = $glC = 0.0;
+        $lines  = array_values(is_array($p['lines'] ?? null) ? $p['lines'] : []);
+        $titles = $this->accountTitles($lines);
+        foreach ($lines as $i => $l) {
             $d      = PrintService::amount($l['debit'] ?? $l['debit_amount'] ?? 0);
             $c      = PrintService::amount($l['credit'] ?? $l['credit_amount'] ?? 0);
             $slCode = PrintService::text($l['sl_code'] ?? '');
@@ -70,7 +77,8 @@ class JevPrintService
             }
             // the GL line: title, account code, GL amounts ("P" marks the first posting)
             $rows[] = ['kind' => 'gl', 'rc' => PrintService::text($l['responsibility_center'] ?? '') ?: $rc,
-                'text' => PrintService::text($l['account_title'] ?? ''), 'code' => PrintService::text($l['account_code'] ?? ''),
+                'text' => PrintService::text($l['account_title'] ?? '') ?: ($titles[PrintService::text($l['account_code'] ?? '')] ?? ''),
+                'code' => PrintService::text($l['account_code'] ?? ''),
                 'p' => $i === 0 ? 'P' : '', 'gl_d' => $money($d), 'gl_c' => $money($c)];
             if ($hasSl) {
                 $desc = trim((string) ($l['description'] ?? ''));
@@ -112,6 +120,40 @@ class JevPrintService
             'footer_text'  => '',
             'file_base'    => 'JEV-' . (preg_replace('/[^A-Za-z0-9\-]/', '_', preg_replace('/^JEV-/i', '', $number)) ?: 'DRAFT'),
         ];
+    }
+
+    /**
+     * Account titles from fims.chart_of_accounts for the lines sent without one
+     * (account code => title). One query per print; [] when the table can't be read
+     * — the title then just stays blank.
+     */
+    private function accountTitles(array $lines): array
+    {
+        $codes = [];
+        foreach ($lines as $l) {
+            $code = PrintService::text($l['account_code'] ?? '');
+            if ($code !== '' && PrintService::text($l['account_title'] ?? '') === '') {
+                $codes[$code] = App\QuotedValue($code, App\DataType::STRING, 'DB');
+            }
+        }
+        if (!$codes) {
+            return [];
+        }
+        try {
+            $titles = [];
+            foreach (App\ExecuteRows(
+                'SELECT account_code, account_title FROM fims.chart_of_accounts WHERE account_code IN (' . implode(',', $codes) . ')',
+                'DB'
+            ) ?: [] as $r) {
+                $titles[$r['account_code']] = $r['account_title'];
+            }
+
+            return $titles;
+        } catch (\Throwable $e) {
+            App\LogError('JevPrintService::accountTitles ' . $e->getMessage());
+
+            return [];
+        }
     }
 
     /**

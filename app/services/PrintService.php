@@ -62,7 +62,8 @@ class PrintService
         'JEV' => ['service' => JevPrintService::class, 'script' => 'gen_jev_docx.js', 'paper' => 'A4', 'orientation' => 'landscape', 'font' => 'Helvetica'],
         'FTLA' => ['service' => FtlaPrintService::class, 'script' => 'gen_ftla_docx.js', 'paper' => 'A4', 'font' => 'Helvetica'],
         'FTLAREQ' => ['service' => FtlaRequestPrintService::class, 'script' => 'gen_laareq_docx.js', 'paper' => 'letter', 'font' => 'Helvetica'],   // the LAA release request's memo layout
-        // PDF-only forms ('pdf_only'): an official PDF form filled by the service's own
+        'CFA' => ['service' => CfaPrintService::class, 'script' => 'gen_laareq_docx.js', 'paper' => 'A4', 'font' => 'Helvetica'],   // funding-request memo, the shared memo layout
+        'MEMO' => ['service' => MemoRequestPrintService::class, 'script' => 'gen_laareq_docx.js', 'paper' => 'A4', 'font' => 'Helvetica'],   // the originating unit's memo request (non-FMD), the shared memo layout        // PDF-only forms ('pdf_only'): an official PDF form filled by the service's own
         // pdf() — no HTML / DOCX layout and no letterhead (the form has its own).
         'DV'  => ['service' => DvPrintService::class, 'pdf_only' => true],
     ];
@@ -104,7 +105,6 @@ class PrintService
         if (!empty($cfg['pdf_only']) && $format !== 'pdf') {
             return ['success' => false, 'message' => 'The ' . $doc . ' prints as PDF only.', 'httpCode' => 400];
         }
-
         try {
             $model = $this->model($doc, $payload);
         } catch (\InvalidArgumentException $e) {
@@ -124,7 +124,8 @@ class PrintService
         }
 
         $bytes = $format === 'pdf'
-            ? self::renderPdf($this->html($doc, $model, 'print'), $cfg['paper'], $cfg['font'], $cfg['orientation'] ?? 'portrait')
+            ? self::renderPdf($this->html($doc, $model, 'print'), $cfg['paper'], $cfg['font'], $cfg['orientation'] ?? 'portrait',
+                $model['pdf_running_header'] ?? null)
             : self::renderDocx($cfg['script'], $model);
         if ($bytes === null) {
             return ['success' => false, 'message' => strtoupper($format) . ' generation failed.', 'httpCode' => 500];
@@ -183,8 +184,13 @@ class PrintService
     {
         $cfg = self::DOCS[strtoupper($doc)];
 
-        return (new $cfg['service']())->html($model, $media);
+        // Typed text can hold a long run with no spaces (a reference, a URL, test input): the form's
+        // textarea wraps it anywhere, but HTML / Dompdf only break at spaces, so it would run off the
+        // page. Every form may break such a word at the edge (Word already does in the DOCX).
+        return str_replace('</style>', self::WRAP_LONG_WORDS_CSS . '</style>', (new $cfg['service']())->html($model, $media));
     }
+
+    private const WRAP_LONG_WORDS_CSS = 'body,p,div,td,th,span{word-wrap:break-word;overflow-wrap:break-word;}';
 
     // ═════════════════════════════════════════════════════════════════════════
     // Shared helpers — used by every form (CbaPrintService, RfaPrintService, …)
@@ -450,7 +456,16 @@ class PrintService
         return ($media === 'print' ? '' : $ftrDiv) . '</div></body></html>';
     }
 
-    private static function renderPdf(string $html, string $paper = 'A4', string $font = 'Times-Roman', string $orientation = 'portrait'): ?string
+    /**
+     * $runningHeader (a model's pdf_running_header, optional): { lines: [text, …],
+     * from_page (default 2), right_pt (the right text edge, default 72pt in),
+     * page_first (default false), italic (default true) } — lines at the top right of
+     * each page from from_page on, followed by "Page X of Y" (the CFA memo's page-2
+     * header) — or led by it with page_first (the memo request's). Drawn after layout
+     * (Dompdf page_script) because the page count is only known then.
+     */
+    private static function renderPdf(string $html, string $paper = 'A4', string $font = 'Times-Roman', string $orientation = 'portrait',
+        ?array $runningHeader = null): ?string
     {
         try {
             $options = new \Dompdf\Options();
@@ -462,6 +477,28 @@ class PrintService
             $dompdf->loadHtml($html, 'UTF-8');
             $dompdf->setPaper($paper, $orientation);
             $dompdf->render();
+
+            if (is_array($runningHeader)) {   // "Page X of Y" prints even when there are no title lines
+                $fromPage = (int) ($runningHeader['from_page'] ?? 2);
+                $rightPt  = (float) ($runningHeader['right_pt'] ?? 72);
+                $lines    = array_values($runningHeader['lines'] ?? []);
+                $pageFirst = !empty($runningHeader['page_first']);
+                $style    = ($runningHeader['italic'] ?? true) ? 'italic' : 'normal';
+                $dompdf->getCanvas()->page_script(static function (int $page, int $pages, $canvas, $fontMetrics) use ($fromPage, $rightPt, $lines, $pageFirst, $style) {
+                    if ($page < $fromPage) {
+                        return;
+                    }
+                    $font = $fontMetrics->getFont('Helvetica', $style);
+                    $size = 9;
+                    $y    = 30;
+                    $no   = ['Page ' . $page . ' of ' . $pages];
+                    foreach ($pageFirst ? array_merge($no, $lines) : array_merge($lines, $no) as $text) {
+                        $width = $fontMetrics->getTextWidth($text, $font, $size);
+                        $canvas->text($canvas->get_width() - $rightPt - $width, $y, $text, $font, $size);
+                        $y += $size + 2;
+                    }
+                });
+            }
 
             return $dompdf->output();
         } catch (\Throwable $e) {

@@ -54,6 +54,8 @@ class LetterheadLayoutService
         'PR'  => ['footer' => false],
         'FTLA' => ['footer' => false],      // the letter to the bank
         'FTLAREQ' => ['footer' => false],   // the regional FTLA request memo
+        'CFA' => ['footer' => false],       // Certified Funds Available (funding-request memo)
+        'MEMO' => ['footer' => false],      // the originating unit's memo request (non-FMD)
     ];
 
     public static function isDocument(string $doc): bool

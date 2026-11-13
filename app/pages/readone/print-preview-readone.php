@@ -161,7 +161,8 @@ const PRP_TYPES = {
     JEV: { title: 'Journal Entry Voucher',                   print: '/print/jev', letterhead: false, wide: true },   // A4 landscape
     FTLA: { title: 'Fund Transfer Letter of Advice',         print: '/print/ftla', hdrPt: 510 },
     FTLAREQ: { title: 'FTLA Request',                        print: '/print/ftlareq', hdrPt: 468 },   // the LAA release request's memo layout
-    // pdfOnly: an official PDF form — the preview shows the PDF itself; no DOCX, no letterhead editor.
+    CFA: { title: 'Certified Funds Available',               print: '/print/cfa', hdrPt: 451.28 },   // funding-request memo (A4, shared memo layout)
+    MEMO: { title: 'Memo Request',                           print: '/print/memo', hdrPt: 451.28 },   // the originating unit's memo (non-FMD; A4, shared memo layout)    // pdfOnly: an official PDF form — the preview shows the PDF itself; no DOCX, no letterhead editor.
     DV:  { title: 'Disbursement Voucher',                    print: '/print/dv', pdfOnly: true },
 };
 let prp_type = 'CBA';
@@ -263,7 +264,7 @@ function prp_showError(message) {
 /**
  * Opens the preview with the caller's data and the DEFAULT letterhead.
  * opts.type — a PRP_TYPES key: 'CBA' (default), 'RFA', 'LAA', 'CAF', 'LAAREQ', 'PO', 'PR',
- * 'IAR', 'LV', 'JEV', 'FTLA', 'FTLAREQ' or 'DV'.
+ * 'IAR', 'LV', 'JEV', 'FTLA', 'FTLAREQ', 'CFA', 'MEMO' or 'DV'.
  */
 async function prp_open(payload, opts = {}) {
     prp_type = PRP_TYPES[String(opts.type || '').toUpperCase()] ? String(opts.type).toUpperCase() : 'CBA';
@@ -284,6 +285,105 @@ async function prp_open(payload, opts = {}) {
     dialog.classList.toggle('nha-modal-lg', !PRP_TYPES[prp_type].wide);
     $prp('prp-overlay').classList.add('open');
     await (pdfOnly ? prp_renderPdf() : Promise.all([letterhead ? prp_lhLoad() : null, prp_render()]));
+}
+
+/* ── Module record → print payload ─────────────────────────────────────────────
+ * One mapping per record type, shared by every page that prints it
+ * (field names: system_docs/modules/PRINT-FORMS.md). */
+
+/** A DV (GET /voucher/read/{id} — DisbursementVoucherService) → the DV form. */
+function prp_dvPayload(dv) {
+    const pct = r => (r != null && r !== '' ? ` ${Number(r)}%` : '');
+    return {
+        voucher_number: dv.dv_no || '',
+        payee_name: dv.claimant_name || '',
+        payee_address: dv.claimant_address || '',
+        payee_tin: dv.employee_no_tin || '',
+        particulars: dv.particulars || '',
+        gross_amount: dv.gross_amount,
+        // listed under the particulars: the deductions, then the withholding taxes (ATC lines)
+        deductions: [
+            ...(dv.deductions || []).map(d => ({ description: (d.name || 'Deduction') + pct(d.rate), amount: d.deduction_amount })),
+            ...(dv.atc_lines || []).map(a => ({ description: ('Withholding tax ' + (a.atc_code || '')).trim() + pct(a.rate), amount: a.withholding_tax })),
+        ],
+        accounting_entries: (dv.jev?.lines || []).map(l => ({ account_code: l.account_code, debit: l.debit, credit: l.credit })),
+    };
+}
+
+/** The JEV of a DV (dv.jev + its lines) → the JEV form. Account titles are filled in server-side. */
+function prp_jevFromDv(dv) {
+    const j = dv.jev || {};
+    return {
+        jev_number: j.jev_no || '',
+        jev_date: j.jev_date || '',
+        lines: (j.lines || []).map(l => ({
+            account_code: l.account_code, debit: l.debit, credit: l.credit, description: l.description || '',
+            sl_code: l.sl_code || '', sl_path: [l.sl_name, l.sl_detail_name].filter(Boolean).join(' › '),
+        })),
+        reference_no: dv.dv_no || '',
+        payee_name: dv.claimant_name || '',
+        particulars: j.particulars || dv.particulars || '',
+        rfa_number: dv.rfa_allocation_number || '',
+    };
+}
+
+/**
+ * A PO's IAR (a row of GET /po-dr/list — PoDrService: po_number, iar_number, si_number / si_date,
+ * receipts [{ dr_number, delivery_date, total_amount, entries [{ account_code, account_title, amount }],
+ * items [{ description, serial_no, amount, property_no }] }], and the PO's vendor_name, po_date,
+ * po_amount, dr_total) → the IAR form. Each item of a receipt is a line (property no. → stock no.,
+ * amount → unit price, quantity 1); a receipt without items (they only apply from ₱50,000) prints as
+ * one line — its account titles, its total. Date inspected = the latest delivery; partial delivery
+ * while the delivered total is below the PO amount. `po` (optional) overrides the PO details.
+ */
+function prp_iarPayload(rec, po = {}) {
+    const receipts = rec.receipts || [];
+    const dates = receipts.map(d => d.delivery_date).filter(Boolean).sort();
+    const delivered = Number(rec.dr_total) || receipts.reduce((s, d) => s + (Number(d.total_amount) || 0), 0);
+    const poTotal = Number(po.total_amount ?? po.po_amount ?? rec.po_amount) || 0;
+    const items = [];
+    receipts.forEach(d => {
+        const dr = d.dr_number ? `DR No. ${d.dr_number}` : '';
+        if ((d.items || []).length) {
+            d.items.forEach(it => items.push({
+                stock_no: it.property_no || '',
+                unit_cost: it.amount,
+                quantity: 1,
+                description: [it.description, it.serial_no ? `S/N ${it.serial_no}` : '', dr ? `(${dr})` : ''].filter(Boolean).join(' '),
+            }));
+        } else {
+            const titles = (d.entries || []).map(e => e.account_title || e.account_code).filter(Boolean).join(', ');
+            items.push({ stock_no: '', unit_cost: d.total_amount, quantity: 1,
+                description: [titles, dr ? `(${dr})` : ''].filter(Boolean).join(' ') || dr });
+        }
+    });
+    return {
+        iar_number: rec.iar_number || '',
+        po_number: rec.po_number || '',
+        po_date: po.po_date || rec.po_date || '',
+        supplier_name: po.vendor_name || rec.vendor_name || '',
+        si_number: rec.si_number || '',
+        si_date: rec.si_date || '',
+        requesting_department: rec.requesting_office || '',
+        items,
+        date_inspected: dates.length ? dates[dates.length - 1] : '',
+        delivery: poTotal > 0 && delivered + 0.005 < poTotal ? 'partial' : 'complete',
+    };
+}
+
+/**
+ * One delivery receipt of a PO's pro-forma JEV (GET /po-dr/proforma → data.receipts[i]) → the JEV form:
+ * the rows as edited on screen (receipt.draft.rows — { code, title, debit, credit }, iar-module.php) when
+ * there is a draft, else the stored rows ({ account_code, account_title, debit, credit }).
+ */
+function prp_jevFromProforma(poNumber, receipt) {
+    const rows = receipt.draft
+        ? receipt.draft.rows.map(r => ({ account_code: r.code, account_title: r.title, debit: r.debit, credit: r.credit }))
+        : (receipt.rows || []);
+    return {
+        lines: rows.map(r => ({ account_title: r.account_title, account_code: r.account_code, debit: r.debit, credit: r.credit })),
+        particulars: `Pro-forma JEV — Delivery Receipt No. ${receipt.dr_number} of PO No. ${poNumber}`,
+    };
 }
 
 let prp_pdfUrl = null;   // blob URL of the PDF shown for a pdfOnly form

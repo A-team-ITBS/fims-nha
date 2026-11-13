@@ -1,4 +1,4 @@
-# Print Forms — CBA, RFA, LAA, CAF, LAA release request, PO, PR, IAR, LV, JEV, FTLA, FTLA request and DV
+# Print Forms — CBA, RFA, LAA, CAF, CFA, Memo Request, LAA release request, PO, PR, IAR, LV, JEV, FTLA, FTLA request and DV
 
 Printed forms for every department, built **one form per document**: when the
 same document exists in several old department modules (FMD, REGIONAL, GSD,
@@ -56,7 +56,8 @@ app/services/LaaPrintService.php     LAA (CO / COE): model(), html()
 app/services/LaaRequestPrintService.php   LAA release request (regional memo): model(), html() — the shared memo layout
 app/services/FtlaPrintService.php    FTLA (letter to the bank): model(), html()
 app/services/FtlaRequestPrintService.php  FTLA request (regional memo): model(); html() = the LAA release request's
-app/services/PurchaseOrderPrintService.php PO: model() (from po_id and/or payload), html()
+app/services/CfaPrintService.php     CFA (funding-request memo FMD certifies): model(); html() = the LAA release request's
+app/services/MemoRequestPrintService.php  MEMO (originating unit's memo request, non-FMD): model(), bodyBlocks(); html() = the LAA release request'sapp/services/PurchaseOrderPrintService.php PO: model() (from po_id and/or payload), html()
 app/services/PurchaseRequestPrintService.php PR: model(), html()
 app/services/IarPrintService.php     IAR: model(), html()
 app/services/LvPrintService.php      LV: model(), html()
@@ -67,7 +68,7 @@ app/routes/print.php                 POST /api/print/{doc}, GET /api/print/resol
 app/routes/letterhead.php            GET / POST / DELETE /api/letterhead/{doc}
 app/pages/readone/print-preview-readone.php   preview modal + letterhead designer (prefix prp_)
 scripts/gen_{cba,rfa,laa,laareq,po,pr,iar,lv,jev,ftla}_docx.js   Word layouts (the CAF uses gen_cba_docx.js,
-                                     the FTLA request gen_laareq_docx.js)
+                                     the FTLA request, the CFA and the MEMO gen_laareq_docx.js)
 _shared/template/dv_form.pdf, dv_background.pdf, dv.pdf   DV fillable forms + background
 ```
 
@@ -135,6 +136,11 @@ kept out of rows: the LAA description stays beside the amount block up to
 particulars lines are plain blocks, the last one sharing a row with the amount
 unless it is longer than `RFA_AMOUNT_ROW_MAX` (300) characters. Normal-length
 text prints exactly as the template; the DOCX (Word splits rows) is unchanged.
+
+**Long words:** a run with no spaces (a reference, a URL, test input) breaks at
+the edge on every form, as the form's textarea wraps it — `PrintService::html()`
+adds `word-wrap / overflow-wrap: break-word` to each form's style (Word already
+breaks such words in the DOCX).
 
 ## CBA — Certificate of Budget Allocation
 
@@ -217,7 +223,7 @@ From the old REGIONAL `gen_cba_docx.js` / `BudgetAllocationPdfService::buildCbaH
    Management once that is set up in this repo) + the default footer text.
 
 Only the forms listed in `LetterheadLayoutService::DOCUMENTS` have a letterhead
-(CBA, RFA, LAA, CAF, LAA release request, PR, FTLA, FTLA request). The forms with their own printed
+(CBA, RFA, LAA, CAF, CFA, Memo Request, LAA release request, PR, FTLA, FTLA request). The forms with their own printed
 title block — **PO, IAR, LV, JEV** — print **no header and no footer**, and it
 can't be edited: `PrintService::model()` sets them empty whatever the payload or a
 saved default says, `/api/letterhead/{doc}` answers 404 for them, and the preview
@@ -516,7 +522,18 @@ had "Allotment(LAA)" and "WORDS(Php …)"), and a period after the amount.
 `date`, `rows` (FOR / THRU — `LaaRequestPrintService::memoRows()`), `subject`,
 `paragraphs` (justified, each a list of `{text, bold}` runs), `closing` (the
 last plain line), `signatory` {`name`, `title`, `office`}. The **FTLA request**
-(`FtlaRequestPrintService`) builds that model and prints through it.
+(`FtlaRequestPrintService`) builds that model and prints through it. Optional
+parts (the **CFA** uses them; the LAA / FTLA requests print byte-identical
+without them): `paper` 'A4', `letterhead_first_page_only`, a `{ list: [[label,
+value], …] }` paragraph, `certification` (lines of runs on the right),
+`signature_rows` [{ `label`, `signers`: [{ `name`, `title_lines` }] }], an empty
+`closing`, `brand_document`, and `pdf_running_header` (PrintService). The
+**Memo Request** (`MemoRequestPrintService`) adds: `{ block: 'item' }` paragraphs
+(hanging-indent "I." / "a." / "1." items, a right `aside` column, continuations),
+`{ block: 'table' }` paragraphs (bordered; header, group and total rows), a run's
+`underline`, a signature row's `center`, and the running header's `page_first` /
+`italic` — the others still print byte-identical (checked: LAAREQ, FTLAREQ, CFA
+HTML + DOCX XML unchanged).
 
 ## PO — Purchase Order
 
@@ -834,6 +851,116 @@ title, office).
 keys), `ftla_number` (file name only). DV numbers aren't printed (as the old
 memo). "Php" instead of "₱" — the memo font has no ₱ in the PDF.
 
+## CFA — Certified Funds Available
+
+The requesting office's **funding-request memorandum** that FMD certifies — not
+the CAF certificate (CafPrintService). Printed from the Memo Request form when
+`allocation_type` is CFA (offered for COE only). Built from a scanned CFA
+(December 2023, Gratuity Pay). Prints through the **shared memo layout** (see
+"Shared memo layout" under the LAA release request) with its optional parts.
+
+| | |
+|---|---|
+| Endpoint | `POST /api/print/cfa` (`format` = html / pdf / docx) |
+| Model / HTML | `CfaPrintService::model()` / `LaaRequestPrintService::html()` |
+| DOCX | `scripts/gen_laareq_docx.js` |
+| Preview | `prp_open(payload, { type: 'CFA' })` |
+| Paper | A4, 1in sides; Arial 11pt |
+| Letterhead | The NHA letterhead on **page 1 only** (saved default under `CFA`); no footer line |
+| Page 2 on | Running title (italic, top right) + "Page X of Y" — PDF: `pdf_running_header` (PrintService::renderPdf, Dompdf page_script); DOCX: the default header after a first-page header |
+| File name | `CFA-<cfa number>` (or `CFA`) |
+
+**Content:** date; MEMORANDUM; FOR / THRU / SUBJECT (upper case); a rule; the
+request — the body as typed (each line a paragraph, blank lines only separate),
+then the fixed indented list **Main Office :** / **Regional Offices :** (labels
+underlined, values entered), then the paragraphs after it (`body_after`, e.g. the
+cost and the closing); "Label : value" lines typed in the body also print as an
+indented list; "Certified Funds Available: **Php …**" and "RFA# … / <FUND SOURCE>" on the right;
+the requesting department manager and FMD's certifying officer side by side;
+"Recommending Approval:" (side by side) and "Approved:".
+
+**Fixed vs entered:** only the form's labels and wording are fixed (MEMORANDUM,
+FOR / THRU / SUBJECT, the "Main Office" / "Regional Offices" labels, "Certified
+Funds Available: Php", "RFA# …", "Recommending Approval:", "Approved:", "Page X of
+Y"). Every value — every name and title included — prints **only as entered, no
+defaults**: the FOR / THRU / SUBJECT rows and the Main Office / Regional Offices
+list always print (fixed labels), an empty value prints blank, a blank running
+title leaves page 2's header as just "Page X of Y".
+
+**Data:** `date` (blank → the print date), `for_name` / `for_title`,
+`thru_name` / `thru_title`, `subject`, `body` (text) or `paragraphs` [text],
+`main_office`, `regional_offices`, `body_after`, `amount`, `rfa_number`, `fund_source_name`, `requested_by_name` / `_title`,
+`certified_by_name` / `_title`, `recommending` [{ `name`, `title` }] (none → the
+section is left out), `approved_by_name` / `_title`, `running_title`,
+`cfa_number` (file name). A `\n` in a title starts a new line.
+
+From the Memo Request form: `body` = Purpose / Description, `amount` = the
+requested amount, `rfa_number` = the linked (parent) memo. The rest comes from
+the form's **Certified Funds Available** section (`#cfa_section`, shown
+only when `allocation_type` is CFA — `cfaApplyMode()`): FOR / THRU (name +
+title), Subject, Main Office / Regional Offices, the paragraphs after the list,
+the fund source, the page-2 header title, the requesting / certifying officers,
+Recommending Approval rows (`cfaAddRecommending()`) and Approved by —
+collected by `cfaPayloadFields()`. No defaults: an empty input prints blank.
+These inputs are **not saved** with the memo request yet (print-time only);
+reprinting a saved memo needs a column for them first.
+
+## MEMO — Memo Request (originating unit)
+
+The **originating unit's memorandum** to the General Manager asking for a budget,
+which FMD then certifies ("Certified Budget Allocation" + the CBA#). Printed from
+the Memo Request form by **every unit except FMD** — FMD users keep printing the
+CBA / RFA / LAA / CFA. Built from a scanned memo (January 2024, Amendment to
+Order No. 4, security services). Prints through the **shared memo layout** (see
+"Shared memo layout" under the LAA release request) with its optional parts.
+
+| | |
+|---|---|
+| Endpoint | `POST /api/print/memo` (`format` = html / pdf / docx) |
+| Model / HTML | `MemoRequestPrintService::model()` / `LaaRequestPrintService::html()` |
+| DOCX | `scripts/gen_laareq_docx.js` |
+| Preview | `prp_open(payload, { type: 'MEMO' })` |
+| Paper | A4, 1in sides; Arial 11pt (tables 10pt) |
+| Letterhead | The NHA letterhead on **page 1 only** (saved default under `MEMO`); no footer line |
+| Page 2 on | "Page X of Y" **first**, then the running title — upright, top right (`pdf_running_header.page_first`, `italic: false`) |
+| File name | `MEMO-<memo number>` (or `MEMO`) |
+
+**Content:** date; MEMORANDUM; FOR / THRU / SUBJECT (upper case); a rule; the
+request as typed (below); "Certified Budget Allocation: Php <amount underlined>"
+and "CBA#… / <fund>" on the right; the originating unit's head and FMD's
+certifying officer side by side; "Recommending Approval:" (side by side);
+"Approved by:" **centered**. Each signature label stays on the page of its names.
+
+**The body as typed** (`MemoRequestPrintService::bodyBlocks()`) — one line = one
+block, blank lines only separate:
+
+| Typed line | Prints as |
+|---|---|
+| `I. Backgrounder` | section heading, bold — numeral at the margin, text at 0.5in |
+| `a. The first-year …` | lettered item — letter at 0.5in, text at 0.75in (hanging) |
+| `    This amendment …` (leading spaces) | continues at the last item's text indent |
+| `1. Summary of Computation \| – Annex "A"` | numbered item; after ` \| ` a right column at 4.25in; a list prints tight |
+| `\| No. \| Areas \| … \|` (lines starting with `\|`) | a bordered table: first line = header (centered); a one-cell line spans the table; a line with fewer cells = total row (label spans the rest, right, bold). Whole numbers center, amounts right |
+| anything else | a justified paragraph |
+| `**text**` anywhere | bold |
+
+**Fixed vs entered:** only the form's labels and wording are fixed (MEMORANDUM,
+FOR / THRU / SUBJECT, "Certified Budget Allocation: Php", "CBA#",
+"Recommending Approval:", "Approved by:", "Page X of Y"). Every value prints
+**only as entered, no defaults**. With no amount the certification prints a blank
+line for FMD to fill in; the "CBA#… / <fund>" line prints only when entered.
+
+**Data:** `date` (blank → the print date), `for_name` / `for_title`,
+`thru_name` / `thru_title`, `subject`, `body`, `amount`, `cba_number`,
+`fund_source_name`, `requested_by_name` / `_title`, `certified_by_name` /
+`_title`, `recommending` [{ `name`, `title` }] (none → left out),
+`approved_by_name` / `_title`, `running_title`, `memo_number` (file name).
+A `\n` in a title starts a new line.
+
+**Not wired yet:** the Memo Request form (`form/budget-allocation-form.php`) does
+not offer this print yet — it is being changed on another branch. After that
+merge: non-FMD users print `MEMO`, FMD keeps the CBA / RFA / LAA / CFA.
+
 ## DV — Disbursement Voucher
 
 General Form No. 1 (revised November 3, 1992). **PDF only**: the official form
@@ -894,23 +1021,47 @@ officer, and For COA Use Only.
 - Node on the PHP host (Dockerfile installs it) and the `docx` npm package —
   listed in `package.json` / `package-lock.json`, so `npm install` brings it.
 
+## Module integration
+
+Where each form prints from (every page includes
+`app/pages/readone/print-preview-readone.php` with `include_once`). The
+record → payload mappings live **once**, in that partial, next to `prp_open()`:
+`prp_dvPayload(dv)`, `prp_jevFromDv(dv)`, `prp_iarPayload(rec, po)`,
+`prp_jevFromProforma(poNumber, receipt)` — a page that prints the same record
+calls the same helper.
+
+| Module page | Button | Form | Data |
+|---|---|---|---|
+| Memo Request — `form/budget-allocation-form.php` | Print Preview | CBA / RFA / LAA / CFA (by `allocation_type`) | the form on screen (`printCBA()`) |
+| Purchase Orders — `po/page.php` (row) and `po/readone.php` | Print | PO | `{ po_id }` — PurchaseOrderPrintService loads the PO |
+| Disbursement Vouchers — `voucher/readone.php` (`voucher.php`'s view modal) | Print / Print JEV (once Accounting saved the JEV) | DV / JEV | `GET /voucher/read/{id}` → `prp_dvPayload` / `prp_jevFromDv` |
+| Journal Entry Vouchers — `journal-entry-voucher.php` (row) | Print | JEV | the row's DV (`/voucher/read/{dv_id}`) → `prp_jevFromDv` |
+| IAR Module — `iar-module.php` (row; pro-forma view) | Print IAR; Print JEV | IAR; JEV | the row (IAR header + delivery lines) + its PO (`/purchase-order/all?search=`) → `prp_iarPayload`; the delivery receipt's pro-forma → `prp_jevFromProforma` |
+
+DV deductions print with the withholding taxes (ATC lines) under the
+particulars; JEV account titles are filled in server-side from
+`fims.chart_of_accounts` (`JevPrintService::accountTitles()`); the IAR's date
+inspected is the latest delivery, and it is a complete delivery when the
+delivered amount reaches the PO total.
+
 ## Next (not done)
 
-- Include the modal in the CBA entry form / allocation readone and call
-  `prp_open(...)` with the record's data.
-- Call `prp_open(..., { type: 'RFA' })` from the CBA form / readone with the
-  record's data (SARO no./date from the budget version's fund tracking, fund
-  balance as total funds available — what the old cba-form sent).
-- Call `prp_open(..., { type: 'CAF' })` from the CAF form / readone with the
-  record's data (the old caf-form sent caf_number, caf_amount, purpose, the
-  linked RFA number, fund source and the requesting office as payee).
-- Add a Print button to the PO readone (`app/pages/po/readone.php`):
-  include the preview and call `prp_open({ po_id }, { type: 'PO' })`.
-- Call `prp_open(..., { type: 'DV' })` from the DV module once it exists.
-- Call `prp_open(..., { type: 'IAR' })` from the inspection / PO delivery page
-  once it exists.
+- **Done — Memo Request:** the memo request form
+  (`app/pages/form/budget-allocation-form.php`, the modal of `memo-req-page.php`)
+  prints through this preview: **Print Preview** → `printCBA()` builds the payload
+  from the form and calls `prp_open(payload, { type })` — `allocation_type` CBA →
+  CBA (CO / COE), RFA → RFA, LAA → LAA, CFA → CFA; a Regional / District
+  requesting office prints the regional CBA. Still open there: the LAA's
+  FOR / THRU (no fields on the form yet — prints "Dear Sir/Madam"), the CO
+  "Sources of Fund" line (only when a budget line has a Type of Fund), and a Print
+  action on the list rows (the list's records keep their amounts in
+  `line_transaction`).
+- **Done — PO, DV, JEV, IAR:** see "Module integration" above. Not printed by
+  those modules yet: the DV's obligation / budget ledger (no DV form fields for
+  it), the IAR's inspector / signatories and inspection status (no data —
+  prints blank / complete-by-amount), the PO readone (no PHPMaker route serves
+  `po/readone.php`, so its Print isn't reachable until one does).
 - Call `prp_open(..., { type: 'LV' })` from the LV module once it exists.
-- Call `prp_open(..., { type: 'JEV' })` from the JEV module once it exists.
 - Call `prp_open(..., { type: 'FTLA' })` / `{ type: 'FTLAREQ' }` from the fund
   transfer pages once they exist.
 - Next: the Payroll / Check / Replenishment DV variants — see "Adding a form" above.

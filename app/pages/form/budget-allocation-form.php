@@ -934,7 +934,7 @@ $cbaAsModal = !empty($cbaAsModal);
 						<option value="CBA">CBA - Certificate of Budget Allocation</option>
 						<option value="RFA">RFA - Request for Fund Allotment (&lt;&#8369;50M)</option>
 						<option value="LAA">LAA - Letter of Advice of Allotment (&ge;&#8369;50M)</option>
-						<option value="CFA">CFA - Certificate of Fund Availability</option>
+						<option value="CFA">CFA - Certified Funds Available</option>
 					</select>
 				</div>
 
@@ -1486,6 +1486,99 @@ $cbaAsModal = !empty($cbaAsModal);
 		</div>
 
 
+		<!-- ── Certified Funds Available (allocation type CFA only) ──────────
+		     The CFA memo's per-document values (CfaPrintService) — read by Print Preview from this form,
+		     not saved. Its labels (FOR / THRU / SUBJECT, Main Office / Regional Offices, …) are fixed on the
+		     print; every value here prints only as entered. The body is Purpose / Description above. -->
+		<div class="form-section" id="cfa_section" style="display:none;">
+			<h2 class="section-header">Certified Funds Available</h2>
+			<div class="form-row">
+				<div class="form-group">
+					<label for="cfa_for_name" class="form-label">For</label>
+					<input type="text" id="cfa_for_name" class="form-input" autocomplete="off" placeholder="Name">
+				</div>
+				<div class="form-group">
+					<label for="cfa_for_title" class="form-label">For — Title</label>
+					<input type="text" id="cfa_for_title" class="form-input" autocomplete="off" placeholder="Title / position">
+				</div>
+			</div>
+			<div class="form-row">
+				<div class="form-group">
+					<label for="cfa_thru_name" class="form-label">Thru</label>
+					<input type="text" id="cfa_thru_name" class="form-input" autocomplete="off" placeholder="Name">
+				</div>
+				<div class="form-group">
+					<label for="cfa_thru_title" class="form-label">Thru — Title</label>
+					<input type="text" id="cfa_thru_title" class="form-input" autocomplete="off" placeholder="Title / position">
+				</div>
+			</div>
+			<div class="form-row full-width">
+				<div class="form-group">
+					<label for="cfa_subject" class="form-label">Subject</label>
+					<input type="text" id="cfa_subject" class="form-input" autocomplete="off" placeholder="Subject of the memorandum">
+				</div>
+			</div>
+			<div class="form-row">
+				<div class="form-group">
+					<label for="cfa_main_office" class="form-label">Main Office</label>
+					<input type="text" id="cfa_main_office" class="form-input" autocomplete="off" placeholder="Who prepares / processes / releases it at the Main Office">
+				</div>
+				<div class="form-group">
+					<label for="cfa_regional_offices" class="form-label">Regional Offices</label>
+					<input type="text" id="cfa_regional_offices" class="form-input" autocomplete="off" placeholder="… at the Regional Offices">
+				</div>
+			</div>
+			<div class="form-row full-width">
+				<div class="form-group">
+					<label for="cfa_body_after" class="form-label">Paragraphs after the Main Office / Regional Offices list</label>
+					<textarea id="cfa_body_after" class="form-textarea" placeholder="e.g. the estimated cost and the closing paragraph"></textarea>
+				</div>
+			</div>
+			<div class="form-row">
+				<div class="form-group">
+					<label for="cfa_fund_source" class="form-label">Fund Source (under "Certified Funds Available")</label>
+					<input type="text" id="cfa_fund_source" class="form-input" autocomplete="off" placeholder="e.g. Corp. Receipts">
+				</div>
+				<div class="form-group">
+					<label for="cfa_running_title" class="form-label">Page 2 Header Title</label>
+					<textarea id="cfa_running_title" class="form-input" rows="2" autocomplete="off" placeholder="Short title printed at the top of page 2 on (one line each)"></textarea>
+				</div>
+			</div>
+			<div class="form-row">
+				<div class="form-group">
+					<label for="cfa_requested_by_name" class="form-label">Requesting Officer</label>
+					<input type="text" id="cfa_requested_by_name" class="form-input" autocomplete="off" placeholder="Name">
+				</div>
+				<div class="form-group">
+					<label for="cfa_requested_by_title" class="form-label">Requesting Officer — Title</label>
+					<input type="text" id="cfa_requested_by_title" class="form-input" autocomplete="off" placeholder="Title / position">
+				</div>
+			</div>
+			<div class="form-row">
+				<div class="form-group">
+					<label for="cfa_certified_by_name" class="form-label">Certified by (FMD)</label>
+					<input type="text" id="cfa_certified_by_name" class="form-input" autocomplete="off" placeholder="Name">
+				</div>
+				<div class="form-group">
+					<label for="cfa_certified_by_title" class="form-label">Certified by — Title</label>
+					<input type="text" id="cfa_certified_by_title" class="form-input" autocomplete="off" placeholder="Title / position">
+				</div>
+			</div>
+			<label class="form-label">Recommending Approval</label>
+			<div id="cfa_recommending"></div>
+			<button type="button" class="btn btn-secondary" style="margin:4px 0 16px;" onclick="cfaAddRecommending()">+ Add Recommending Officer</button>
+			<div class="form-row" style="margin-bottom:0;">
+				<div class="form-group">
+					<label for="cfa_approved_by_name" class="form-label">Approved by</label>
+					<input type="text" id="cfa_approved_by_name" class="form-input" autocomplete="off" placeholder="Name">
+				</div>
+				<div class="form-group">
+					<label for="cfa_approved_by_title" class="form-label">Approved by — Title</label>
+					<input type="text" id="cfa_approved_by_title" class="form-input" autocomplete="off" placeholder="Title / position">
+				</div>
+			</div>
+		</div>
+
 		<!-- ── Supporting Documents ───────────────────────────────────── -->
 		<div class="form-section">
 			<h2 class="section-header">Supporting Documents</h2>
@@ -1810,9 +1903,12 @@ $cbaAsModal = !empty($cbaAsModal);
 </div><!-- /.nha-root (modal wrapper) -->
 <?php endif; ?>
 
-<script
-	src="<?php echo GetUrl('/_shared/FMD/budget-allocation-print/js/print-preview.js'); ?>?v=<?php echo time(); ?>">
-</script>
+<?php
+// Print Preview → the shared print forms (PrintService: CBA / RFA / LAA / CAF) in the preview modal
+// (prp_open(payload, { type })) — HTML preview, PDF, DOCX and the letterhead designer.
+// include_once: the page around this form may already include it.
+include_once __DIR__ . '/../readone/print-preview-readone.php';
+?>
 <script>
 	const API_BASE = '<?php echo $apiBase; ?>';
 	const CBA_TOKEN = window.ew?.API_JWT_TOKEN ?? '';
@@ -1941,6 +2037,7 @@ $cbaAsModal = !empty($cbaAsModal);
 		document.getElementById('allocation_type').addEventListener('change', toggleCbaIdRow);
 		document.getElementById('allocation_type').addEventListener('change', updateSubmitLabel);
 		document.getElementById('allocation_type').addEventListener('change', pcrApplyMode); // PR ↔ PO fields
+		document.getElementById('allocation_type').addEventListener('change', cfaApplyMode); // the CFA section
 		wireAmtInput(document.getElementById('pr_amount'));
 		wireAmtInput(document.getElementById('po_amount'));
 		document.getElementById('allocation_type').addEventListener('change',
@@ -1991,6 +2088,7 @@ $cbaAsModal = !empty($cbaAsModal);
 		// document_type is final here (URL preset applied) — hide CFA if it is CO.
 		applyAllocationTypeOptionsForDocType();
 		pcrApplyMode(); // so is the allocation type (a preset RFA / LAA shows the Purchase Order fields)
+		cfaApplyMode(); // … and the CFA section for a CFA
 
 		applyProgramProjectVisibilityForDocType();
 		if (_presetDocType === 'CO' || _presetDocType === 'COE') {
@@ -2091,6 +2189,7 @@ $cbaAsModal = !empty($cbaAsModal);
 		toggleCbaIdRow();
 		updateSubmitLabel();
 		pcrApplyMode();
+		cfaApplyMode();
 
 		// 2. Allocation number — locked to the value loaded from the server
 		//    (generateCBANumber() is a no-op in edit mode). If the existing
@@ -3208,6 +3307,47 @@ $cbaAsModal = !empty($cbaAsModal);
 		document.getElementById('po_number_group').style.display = m === 'po' ? '' : 'none';
 	}
 
+	// ── Certified Funds Available (CFA) section ───────────────────────────
+	// Shown only for allocation type CFA. Its values feed the CFA print (printCBA → CfaPrintService);
+	// they are not saved with the memo request.
+	function cfaApplyMode() {
+		document.getElementById('cfa_section').style.display =
+			document.getElementById('allocation_type').value === 'CFA' ? '' : 'none';
+	}
+
+	// One "Recommending Approval" officer row: name + title + remove.
+	function cfaAddRecommending() {
+		var row = document.createElement('div');
+		row.className = 'form-row cfa-rec-row';
+		row.innerHTML =
+			'<div class="form-group"><input type="text" class="form-input cfa-rec-name" autocomplete="off" placeholder="Name"></div>' +
+			'<div class="form-group" style="display:flex;gap:8px;align-items:center;">' +
+			'<input type="text" class="form-input cfa-rec-title" autocomplete="off" placeholder="Title / position">' +
+			'<button type="button" class="btn btn-secondary" title="Remove" onclick="this.closest(\'.cfa-rec-row\').remove()">&times;</button></div>';
+		document.getElementById('cfa_recommending').appendChild(row);
+		row.querySelector('.cfa-rec-name').focus();
+	}
+
+	// The CFA section's values for the print payload (CfaPrintService field names).
+	function cfaPayloadFields() {
+		var v = function(id) { var el = document.getElementById(id); return el ? el.value.trim() : ''; };
+		return {
+			for_name: v('cfa_for_name'), for_title: v('cfa_for_title'),
+			thru_name: v('cfa_thru_name'), thru_title: v('cfa_thru_title'),
+			subject: v('cfa_subject'),
+			main_office: v('cfa_main_office'), regional_offices: v('cfa_regional_offices'),
+			body_after: v('cfa_body_after'),
+			fund_source_name: v('cfa_fund_source'),
+			running_title: v('cfa_running_title'),
+			requested_by_name: v('cfa_requested_by_name'), requested_by_title: v('cfa_requested_by_title'),
+			certified_by_name: v('cfa_certified_by_name'), certified_by_title: v('cfa_certified_by_title'),
+			recommending: Array.prototype.map.call(document.querySelectorAll('#cfa_recommending .cfa-rec-row'), function(r) {
+				return { name: r.querySelector('.cfa-rec-name').value.trim(), title: r.querySelector('.cfa-rec-title').value.trim() };
+			}),
+			approved_by_name: v('cfa_approved_by_name'), approved_by_title: v('cfa_approved_by_title'),
+		};
+	}
+
 	// Request fields for the pair that is showing. A blank value is sent as '' (the service stores NULL), so
 	// emptying a field on an existing record clears it.
 	function pcrPayloadFields() {
@@ -4020,7 +4160,7 @@ $cbaAsModal = !empty($cbaAsModal);
 	}
 
 	// ── Hide CFA for document_type = CO ────────────────────────────────────────
-	// CFA (Certificate of Fund Availability) isn't offered for a CO document, so
+	// CFA (Certified Funds Available) isn't offered for a CO document, so
 	// its <option> is taken out of Allocation Type while document_type = CO and put
 	// back for anything else. It is removed rather than hidden: <option hidden> is
 	// ignored by some browsers. Wired to #document_type's 'change' event and called
@@ -5283,10 +5423,13 @@ $cbaAsModal = !empty($cbaAsModal);
 	}
 
 	// ── Print Preview ─────────────────────────────────────────────────────────────
-	// Routes to the correct endpoint based on allocation_type:
-	//   CBA → /budget_allocation/print-docx/cba
-	//   RFA → /budget_allocation/print-docx/rfa
-	//   LAA → /budget_allocation/print-docx/laa
+	// Builds the payload from the form and opens the shared print preview
+	// (app/pages/readone/print-preview-readone.php → POST /api/print/{doc}), picking
+	// the print form from allocation_type:
+	//   CBA → CBA (CO / COE from document_type)   RFA → RFA   LAA → LAA
+	//   CFA → CFA (Certified Funds Available — the funding-request memo FMD certifies)
+	// A Regional / District requesting office prints the regional CBA.
+	// Field names: system_docs/modules/PRINT-FORMS.md.
 	async function printCBA() {
 		var btn = document.querySelector('.btn-print');
 		if (!btn) return;
@@ -5303,14 +5446,21 @@ $cbaAsModal = !empty($cbaAsModal);
 
 			var allocType = v('allocation_type') || 'CBA';
 
-			// ── Route selector ────────────────────────────────────────────────────
-			var routeMap = {
-				CBA: 'cba',
-				RFA: 'rfa',
-				LAA: 'laa'
-			};
-			var docxRoute = routeMap[allocType] || 'cba';
-			var endpoint = `${API_BASE}/budget_allocation/print-docx/${docxRoute}`;
+			// ── Print form (PrintService DOCS key) ────────────────────────────────
+			var printType = {
+				CBA: 'CBA',
+				RFA: 'RFA',
+				LAA: 'LAA',
+				CFA: 'CFA'
+			}[allocType] || 'CBA';
+			// The requesting office (the creator's RC): a Regional / District office prints the regional CBA / CAF.
+			var isRegionalOffice = ['REGIONAL', 'DISTRICT'].indexOf(cbaRcDeptType(CBA_REQ_RC.office_type)) >= 0;
+			// "Sources of Fund" on the CO certificate: the Type of Fund of the first budget line that has one (each line's
+			// Type of Fund comes with its picked COB line item — collectBaaLines()).
+			var fundSourceName = (function() {
+				var line = collectBaaLines().find(function(l) { return l.type_of_fund; });
+				return line ? String(line.type_of_fund).trim() : '';
+			})();
 
 			// ── Base payload (fields common to all three types) ───────────────────
 			var payload = {
@@ -5333,13 +5483,29 @@ $cbaAsModal = !empty($cbaAsModal);
 				requested_amount: v('requested_amount_raw'),
 				allocated_amount: v('allocated_amount_raw'),
 				remarks: v('remarks'),
-				// Controls the CO certificate's validity-clause wording — see
-				// gen_cba_docx.js: checked = "for bidding purposes", unchecked =
-				// "for whatever legal purpose it may serve".
+				// Controls the CO certificate's validity-clause wording (CbaPrintService):
+				// checked = "for bidding purposes", unchecked = "for whatever legal purpose it may serve".
 				is_bidding: g('is_bidding') ? g('is_bidding').checked : false,
+				fund_source_name: fundSourceName,
 				// Edit mode: the record's created_at; add mode: null -> today's date.
 				date: CBA_CREATED_AT ? new Date(CBA_CREATED_AT).toLocaleDateString('en-US', { month: 'long', day: allocType === 'LAA' ? 'numeric' : '2-digit', year: 'numeric' }) : null,
 			};
+			if (isRegionalOffice) payload.issuing_office = 'REGIONAL';
+
+			// ── CFA → the CAF print form (Certificate as to Availability of Funds) ─
+			// ── CFA → the CFA funding-request memo (CfaPrintService) ──────────────
+			if (printType === 'CFA') {
+				payload.cfa_number = v('allocation_number');
+				// The memo's request: the Purpose / Description text as typed (each line a paragraph;
+				// "Label : value" lines print as an indented list).
+				payload.body = v('project_description');
+				// FMD's "Certified Funds Available: Php …" + "RFA# <linked RFA> / <fund source>".
+				payload.amount = v('requested_amount_raw');
+				payload.rfa_number = v('cba_id') && g('cba_search') ? g('cba_search').value.trim() : '';
+				// The CFA section: FOR / THRU / Subject, Main Office / Regional Offices, the paragraphs after
+				// that list, fund source, page-2 title and the signatories — printed only as entered.
+				Object.assign(payload, cfaPayloadFields());
+			}
 
 			// ── RFA-specific fields ───────────────────────────────────────────────
 			// gen_rfa_docx.js reads: rfa_no, payee_name, particulars, amount,
@@ -5362,7 +5528,7 @@ $cbaAsModal = !empty($cbaAsModal);
 				// FMD), a Regional / District office the REGIONAL OFFICE form — from the RC's office_type.
 				payload.requesting_department_type = cbaRcDeptType(CBA_REQ_RC.office_type);
 				// RFA type line = "<CATEGORY> – Php 30 Million and below (<OFFICE>)", using
-				// the selected Budget Allocation Category's name. print-preview.js and
+				// the selected Budget Allocation Category's name. RfaPrintService (preview / PDF) and
 				// gen_rfa_docx.js both use payload.rfa_type ahead of their default
 				// ("GOODS AND SERVICES – …"), so setting it here changes the preview and
 				// the DOCX together. No category selected -> left unset (default applies).
@@ -5434,41 +5600,15 @@ $cbaAsModal = !empty($cbaAsModal);
 				if (v('laa_subject')) payload.subject = v('laa_subject');
 
 				// office_name = the requesting office (the creator's Responsibility Center name) — the same label
-				// RFA uses for its payee. COE LAA (gen_coe_laa_docx.js) reads "To transfer obligation made to
-				// <office> to cover the payment for the <description>"; CO LAA (gen_laa_docx.js) prints it as the
-				// addressee and in the "<office> to cover the <description>" transfer text. The generated DOCX
-				// derives it server-side, but the on-screen preview never calls the server, so pass it here.
+				// RFA uses for its payee. The COE LAA reads "To transfer obligation made to <office> to cover the
+				// payment for the <description>"; the CO LAA prints it as the addressee and in the transfer text
+				// (LaaPrintService).
 				payload.office_name = CBA_REQ_RC.rc_name || '';
 			}
 
-			// ── Show the HTML preview dialog — "Download DOCX" / "View / Print PDF"
-			// are wired up inside BAP_openPrintPreview() (print-preview.js).
-
-			BAP_openPrintPreview({
-				payload: payload,
-				resolveSignatoryUrl: `${API_BASE}/budget_allocation/resolve-signatory`,
-				authToken: CBA_TOKEN,
-				onDownloadDocx: async function() {
-					var json = await cba_apiFetchPost(endpoint, payload);
-					if (!json.success) throw new Error(json.message || 'Server error');
-
-					// ── Decode base64 → Blob → trigger download ───────────────────
-					var binary = atob(json.data);
-					var bytes = new Uint8Array(binary.length);
-					for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-					var blob = new Blob([bytes], {
-						type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-					});
-					var url = URL.createObjectURL(blob);
-					var a = document.createElement('a');
-					a.href = url;
-					a.download = json.filename || (payload.allocation_number || allocType) + '.docx';
-					document.body.appendChild(a);
-					a.click();
-					document.body.removeChild(a);
-					URL.revokeObjectURL(url);
-				},
-			});
+			// ── The shared print preview: HTML preview, Download PDF / DOCX, letterhead.
+			// The signatory (FMD Department Manager) is filled in server-side when blank.
+			await prp_open(payload, { type: printType });
 
 		} catch (err) {
 			console.error('[printCBA]', err);
