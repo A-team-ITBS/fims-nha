@@ -401,12 +401,97 @@ class UserAccessService
                 throw $e;
             }
 
-            return json_encode(['success' => true, 'message' => 'Module caption updated successfully']);
+            // Best-effort: also relabel the live sidebar entry, if this module
+            // has one. Separate from the DB write above on purpose — a module
+            // with no sidebar item (most child/detail tables) should still get
+            // its Permissions-matrix caption renamed even though there's no
+            // menu entry to sync.
+            $menuSynced = $this->syncMenuCaption($tableName, $caption);
+
+            return json_encode([
+                'success' => true,
+                'message' => $menuSynced
+                    ? 'Module caption updated successfully'
+                    : 'Module caption updated successfully (no matching sidebar item — matrix label only)',
+            ]);
         } catch (\InvalidArgumentException $e) {
             return json_encode(['success' => false, 'message' => $e->getMessage()]);
         } catch (\Exception $e) {
             App\LogError("Error in UserAccessService::renameModuleCaption: " . $e->getMessage());
             return json_encode(['success' => false, 'message' => 'Internal server error']);
+        }
+    }
+
+    // Finds the sidebar menu id whose AllowListMenu('{FIMS}...') security key
+    // (in views/menu.php) matches this module's table_name, then patches that
+    // menu id's MenuText phrase directly in lang/FIMS.en-US.xml — the actual
+    // source views/menu.php reads via $Language->menuPhrase() to build the
+    // sidebar. Language::$UseCache is off in this project, so the change is
+    // picked up on the very next request with no cache to clear. Returns
+    // false (without throwing) if there's no matching sidebar item, or if the
+    // menu/language files can't be read/parsed — this sync is a bonus on top
+    // of the permission_module_captions rename, never a reason to fail it.
+    // Wrapped in its own try/catch so any failure here (malformed XML,
+    // unreadable files, a DOM exception) can never bubble up and make
+    // renameModuleCaption() report failure after its DB commit already
+    // succeeded — this sync is strictly a bonus on top of that rename.
+    private function syncMenuCaption($tableName, $caption)
+    {
+        try {
+            $menuFile = __DIR__ . '/../../views/menu.php';
+            if (!is_file($menuFile)) {
+                return false;
+            }
+            $source = file_get_contents($menuFile);
+            if ($source === false || !preg_match_all("/addMenuItem\\((\\d+),.*?AllowListMenu\\('([^']+)'\\)/", $source, $matches, PREG_SET_ORDER)) {
+                return false;
+            }
+            // menu.php's AllowListMenu() keys carry the registry's "{FIMS}" project
+            // prefix (table[4] . table[0] in $USER_LEVEL_TABLES), but the
+            // table_name this method receives is always the bare page/table name
+            // (allModules in user-access.php builds it from table[0] alone — see
+            // that file's $allModules loop) — strip any leading "{...}" before
+            // comparing, rather than hardcoding the "{FIMS}" prefix here.
+            $menuId = null;
+            foreach ($matches as $m) {
+                $bareKey = preg_replace('/^\{[^}]*\}/', '', $m[2]);
+                if ($bareKey === $tableName) {
+                    $menuId = (int) $m[1];
+                    break;
+                }
+            }
+            if ($menuId === null) {
+                return false;
+            }
+
+            $langFile = rtrim(App\Config("LANGUAGE_FOLDER"), '/\\') . '/FIMS.en-US.xml';
+            if (!is_file($langFile) || !is_writable($langFile)) {
+                return false;
+            }
+
+            $dom = new \DOMDocument();
+            $dom->preserveWhiteSpace = true;
+            $dom->formatOutput = false;
+            if (!@$dom->load($langFile)) {
+                return false;
+            }
+            $xpath = new \DOMXPath($dom);
+            $phraseNode = $xpath->query("/ew-language/project/menu[@id='{$menuId}']/phrase[@id='menutext']")->item(0);
+            if (!$phraseNode) {
+                return false;
+            }
+            $phraseNode->setAttribute('value', $caption);
+
+            // saveXML($dom->documentElement) rather than $dom->save($langFile) —
+            // the latter always prepends an XML prolog line that the original
+            // generated file doesn't have, which would turn every rename into
+            // a whole-file diff instead of a single changed attribute.
+            $xml = $dom->saveXML($dom->documentElement);
+
+            return $xml !== false && file_put_contents($langFile, $xml) !== false;
+        } catch (\Throwable $e) {
+            App\LogError("UserAccessService::syncMenuCaption (non-fatal) failed: " . $e->getMessage());
+            return false;
         }
     }
 

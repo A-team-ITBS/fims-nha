@@ -1,30 +1,82 @@
 <?php
+
 namespace PHPMaker2024\FIMS;
+
+/**
+ * budget-revision-page.php — "Budget Revision Requests": the requests to change a BUDGET LINE's amount (a chart-of-accounts line
+ * item of a budget request) and optionally move the difference to a second budget line. Originating offices file and edit
+ * them; the Financial Management Department (FMD) reviews them — approves or declines. Approving changes the lines'
+ * budget_line_items.adjustment: the From line goes down, the To line goes up.
+ *
+ * Who is looking decides what a row offers. There is no point-of-view switch: it follows the logged-in user's office.
+ */
 @session_start();
 $_brv_api = Config('API.FIMS_URL');
+
+// Who is looking: the logged-in user's office. uac.users gives the rc_id (that column only) and is joined to
+// fims.responsibility_code for the RC itself — the same lookup as budget-req-page.php and memo-req-page.php.
+//   FMD (the Financial Management Department: rc_code 35-074-0000000-032, rc_id 013 in this data) -> the FMD point of
+//       view: every row gets a "Review Request" action (details + Approve / Decline), or "View Details" once it has been
+//       decided. FMD does not edit the offices' requests.
+//   Anyone else -> the originating point of view: they file revision requests and get an Edit action on each row
+//       (switched off once the request is approved, because it has then been applied to its budget request).
+// FMD is recognised by its rc_code, NOT its rc_id (the id's format differs between datasets: "013" vs "RC-013"). Mirrors
+// GlobalService::CENTRAL_REVIEW_RC_CODE. A user whose office can't be found (no users row — e.g. the built-in
+// administrator —, no rc_id, or a failed lookup) gets the originating view, never an error page and never the review actions.
+$userid = CurrentUserID();
+$_brv_fmdRcCode = '35-074-0000000-032';
+$_brv_isFmd = false;
+try {
+    $_brv_rc = ExecuteRow(
+        'SELECT rc.rc_id, rc.rc_code, rc.rc_name FROM uac.users u '
+        .'JOIN fims.responsibility_code rc ON rc.rc_id = u.rc_id WHERE u.user_id = '.(int) $userid,
+        'DB'
+    ) ?: null;
+    $_brv_isFmd = $_brv_rc !== null && trim((string) ($_brv_rc['rc_code'] ?? '')) === $_brv_fmdRcCode;
+} catch (\Throwable $e) {
+    $_brv_isFmd = false;
+    LogError('budget-revision-page: could not look up the current user\'s RC — '.$e->getMessage());
+}
 ?>
 
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/css/nha-fims.css') ?>" />
+<?php /* GetUrl() without a leading slash adds the app's base path (the app may live in a sub-folder / virtual directory), and the
+          cache-buster is read from the file next to this page, not from DOCUMENT_ROOT — so a changed stylesheet is never served
+          from a browser's stale cache. */ ?>
+<link rel="stylesheet" href="<?php echo GetUrl('_shared/css/nha-fims.css'); ?>?v=<?php echo @filemtime(dirname(__DIR__, 2).'/_shared/css/nha-fims.css'); ?>" />
 <style>
 @media (min-width: 901px) {
     .nha-root .brv-summary-2col { grid-template-columns: repeat(2, 1fr); }
 }
-/* POV (point of view) dropdown in the page header */
-.nha-root .brv-pov { display: inline-flex; align-items: center; gap: 8px; margin: 0; }
-.nha-root .brv-pov-label {
-    font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
-    color: var(--sec, #62657E);
-}
-.nha-root .brv-pov .nha-filter-select { width: auto; min-width: 150px; font-weight: 600; }
-/* a row action that is switched off (e.g. Edit on an approved request) */
-.nha-root .nha-btn-act[disabled],
-.nha-root .nha-btn-act.edit[disabled]:hover {
-    background: var(--afims-surface, #FFFFFF); border-color: var(--bdr, #E4ECF2); color: var(--sec, #62657E);
-    opacity: .5; cursor: not-allowed;
-}
+
+/* ── Actions dropdown menu ──────────────────────────────────── */
+/* The same menu as the Budget Proposal / Budget Requirements lists, which keep their copy inline too. */
+.nha-tools-menu { position:relative;display:inline-block; }
+.nha-menu-trigger { display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border-radius:6px;
+    font-size:11px;font-weight:600;cursor:pointer;border:1px solid var(--afims-border, #E4ECF2);
+    background:var(--afims-surface, #FFFFFF);color:var(--afims-text, #1A1B21);white-space:nowrap;
+    font-family:'IBM Plex Sans',sans-serif;transition:all .15s; }
+.nha-menu-trigger:hover { background:var(--afims-surface-subtle, #F4F7FA);border-color:var(--afims-text-disabled, #A9AAB8); }
+.nha-menu-trigger svg { width:12px;height:12px;flex-shrink:0; }
+.nha-tools-dropdown { display:none;position:fixed;min-width:170px;background:var(--afims-surface, #FFFFFF);
+    border:1px solid var(--afims-border, #E4ECF2);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.12);
+    z-index:9999;padding:4px 0; }
+.nha-tools-dropdown.open { display:block; }
+.nha-menu-item { display:flex;align-items:center;gap:8px;padding:8px 12px;font-size:12px;font-weight:500;
+    color:var(--afims-text, #1A1B21);text-decoration:none;white-space:nowrap;cursor:pointer;
+    border:none;background:none;width:100%;text-align:left;transition:background .1s;
+    font-family:'IBM Plex Sans',sans-serif; }
+.nha-menu-item:hover { background:var(--afims-surface-subtle, #F4F7FA);color:var(--afims-heading-fill, #000E3E); }
+.nha-menu-item svg { width:13px;height:13px;flex-shrink:0;opacity:.7; }
+/* an action that is switched off (Edit on an approved request) */
+.nha-menu-item[disabled] { opacity:.5;cursor:not-allowed; }
+.nha-menu-item[disabled]:hover { background:none;color:var(--afims-text, #1A1B21); }
+
+/* ── Table cells ────────────────────────────────────────────── */
+.nha-root .brv-up   { color: var(--green-txt, #0C7539); }
+.nha-root .brv-down { color: var(--red-txt, #8F222D); }
 .nha-root .brv-reason {
     max-width: 260px;
     overflow: hidden;
@@ -45,28 +97,24 @@ $_brv_api = Config('API.FIMS_URL');
             </div>
             <div>
                 <div class="nha-hdr-title">Budget Revision Requests</div>
+                <p class="nha-hdr-sub" id="brv-hdr-sub"><?php echo $_brv_isFmd
+                    ? 'Review the revision requests filed by the offices — approve or decline them.'
+                    : 'File a revision request for a budget request and follow its status.'; ?></p>
             </div>
         </div>
         <div class="nha-hdr-r">
-            <label class="brv-pov" for="brv-pov">
-                <span class="brv-pov-label">POV</span>
-                <select id="brv-pov" class="nha-filter-select" title="Point of view — decides which row actions you get">
-                    <option value="ORIGINATING">Originating</option>
-                    <option value="FMD">FMD Officer</option>
-                </select>
-            </label>
             <button id="brv-refresh" type="button" class="nha-btn-hdr" title="Refresh">
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                 Refresh
             </button>
-            <button id="brv-add" type="button" class="nha-btn-primary">
+            <button id="brv-add" type="button" class="nha-btn-hdr" style="background:var(--afims-success, #11A752);" title="File a budget revision request">
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
                 Add Revision Request
             </button>
         </div>
     </div>
 
-    <!-- ── KPI CARDS ─────────────────────────────────────── -->
+    <!-- ── KPI CARDS (cover every request matching the filters, not just this page) ── -->
     <div class="nha-summary brv-summary-2col">
         <div class="nha-sc nha-sc-navy">
             <div class="nha-sc-top">
@@ -93,7 +141,9 @@ $_brv_api = Config('API.FIMS_URL');
         <div class="nha-filter-row">
             <div class="nha-filter-group">
                 <label class="nha-filter-label">Fiscal Year</label>
-                <input type="number" id="brv-filter-fiscal-yr" class="nha-filter-input" placeholder="All Years" min="2000" max="2100">
+                <select id="brv-filter-fiscal-yr" class="nha-filter-select">
+                    <option value="">All Years</option>
+                </select>
             </div>
             <div class="nha-filter-group">
                 <label class="nha-filter-label">Budget Request</label>
@@ -110,11 +160,11 @@ $_brv_api = Config('API.FIMS_URL');
             <table class="nha-tbl">
                 <thead>
                     <tr>
-                        <th>#</th>
-                        <th>Budget Request</th>
-                        <th>From</th>
-                        <th>To</th>
-                        <th>Change</th>
+                        <th>Request No.</th>
+                        <th>Budget Line</th>
+                        <th class="text-right">From</th>
+                        <th class="text-right">To</th>
+                        <th class="text-right">Change</th>
                         <th>Reason</th>
                         <th>Status</th>
                         <th>Requested</th>
@@ -141,9 +191,19 @@ $_brv_api = Config('API.FIMS_URL');
 <script>
 /* ══════════════════════════════════════════════════════════════
    BUDGET REVISION REQUESTS LIST   prefix: brv_
+   One row per revision request: Request No. (its id — the number the details modal is titled with, the fiscal year of
+   the budget line's request under it), the Budget Line being revised (its account, and where it sits; + the To line when
+   funds move to another one), From / To / Change amounts, Reason, Status, and when it was requested and by whom.
+   Row actions depend on who is looking (BRV_IS_FMD, set by the PHP at the top of this file):
+     FMD         -> Review Request (pending) / View Details (decided): the details modal with Approve / Decline
+     anyone else -> Edit (off once the request is approved)
+   Delete is not offered to either. The API does not enforce this split — it only decides what the page offers.
 ═══════════════════════════════════════════════════════════════ */
 
-const BRV_API = '<?php echo $_brv_api; ?>' + '/budget_revision';
+const BRV_BASE = '<?php echo $_brv_api; ?>';
+const BRV_API  = BRV_BASE + '/budget_revision';
+// true when the logged-in user belongs to the Financial Management Department (see the PHP at the top).
+const BRV_IS_FMD = <?php echo $_brv_isFmd ? 'true' : 'false'; ?>;
 
 let brv_page = 1;
 let brv_viewRow = null;   // the revision currently open in the details modal
@@ -156,41 +216,12 @@ const BRV_STATUS = {
     DECLINED: { label: 'Declined', cls: 'nha-bdg-red'   },
 };
 
-// POV (point of view) decides which row actions the viewer gets. It is a view switch only —
-// the API does not enforce it.
-//   Originating : files and edits revision requests -> Edit
-//   FMD Officer : reviews them                      -> More Action (details + approve / decline)
-// Delete is not offered in either.
-const BRV_POV = {
-    ORIGINATING: { label: 'Originating', actions: ['edit'] },
-    FMD        : { label: 'FMD Officer', actions: ['view'] },
-};
-const BRV_POV_KEY = 'brv.pov';
-let brv_pov  = brv_loadPov();
-let brv_rows = [];   // the rows last rendered, so changing POV can redraw without refetching
-
 const $brv = id => document.getElementById(id);
 
-// the choice is remembered in this browser; storage can be blocked, so always fall back to the default
-function brv_loadPov() {
-    try {
-        const saved = localStorage.getItem(BRV_POV_KEY);
-        if (saved && BRV_POV[saved]) return saved;
-    } catch (e) { /* storage unavailable */ }
-    return 'ORIGINATING';
-}
-function brv_setPov(value) {
-    if (!BRV_POV[value]) return;
-    brv_pov = value;
-    try { localStorage.setItem(BRV_POV_KEY, value); } catch (e) { /* storage unavailable */ }
-    brv_renderTable(brv_rows);
-}
-
 async function brv_bootstrapLoad() {
-    if ($brv('brv-pov')) $brv('brv-pov').value = brv_pov;
     // brvBudgetReqsReady comes from form/budget-rev-form.php, which fills the
     // form's Budget Request dropdown. Wait for it so Edit can preselect a value.
-    await Promise.all([brv_load(), brv_fillFilterOptions()]);
+    await Promise.all([brv_load(), brv_fillFilterOptions(), brv_fillYears()]);
     brv_bindEvents();
 }
 if (document.readyState === 'loading') {
@@ -215,6 +246,30 @@ async function brv_fillFilterOptions(items) {
     filter.value = keep;   // keep the current selection if it still exists
 }
 
+// The Fiscal Year filter lists the fiscal years from /fiscal_year/all (the same list the other pages use).
+// If it can't be read the filter still works as "All Years".
+async function brv_fillYears() {
+    const select = $brv('brv-filter-fiscal-yr');
+    try {
+        const res  = await fetch(`${BRV_BASE}/fiscal_year/all`, { credentials: 'same-origin', headers: brv_apiHeaders() });
+        const json = await res.json().catch(() => null);
+        if (!res.ok || !json || !json.success) throw new Error(json?.message || 'HTTP ' + res.status);
+
+        const keep = select.value;
+        select.querySelectorAll('option:not([value=""])').forEach(o => o.remove());
+        (json.data ?? []).forEach(({ fiscal_yr }) => {
+            if (fiscal_yr === null || fiscal_yr === undefined || fiscal_yr === '') return;
+            const opt = document.createElement('option');
+            opt.value = fiscal_yr;
+            opt.textContent = fiscal_yr;
+            select.appendChild(opt);
+        });
+        select.value = keep;
+    } catch (e) {
+        brv_toast('Could not load the fiscal years: ' + e.message, 'warning');
+    }
+}
+
 // Approving changes a budget request's amount, so refresh what the form and the filter
 // are showing (the labels carry the amount, and From Amount autofills from it).
 async function brv_refreshBudgetReqs() {
@@ -228,8 +283,6 @@ function brv_bindEvents() {
     $brv('brv-modal-close')?.addEventListener('click', brv_closeModal);
     $brv('brv-cancel')?.addEventListener('click', brv_closeModal);
     $brv('brv-form')?.addEventListener('submit', brv_save);
-
-    $brv('brv-pov')?.addEventListener('change', e => brv_setPov(e.target.value));
 
     $brv('brv-view-close')?.addEventListener('click', brv_closeView);
     $brv('brv-view-cancel')?.addEventListener('click', brv_closeView);
@@ -247,14 +300,14 @@ async function brv_load() {
     try {
         const params = new URLSearchParams({
             fiscal_yr     : $brv('brv-filter-fiscal-yr')?.value || '',
-            budget_req_id : $brv('brv-filter-req')?.value       || '',
+            budget_reference_number : $brv('brv-filter-req')?.value || '',
             page          : brv_page,
             limit         : BRV_PAGE_SIZE,
         });
         const res  = await fetch(`${BRV_API}/list?${params}`, { credentials: 'same-origin', headers: brv_apiHeaders() });
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        const json = await res.json();
-        if (!json.success) throw new Error(json.message || 'Failed to load.');
+        // Read the body even on an error status, so the server's own message is shown rather than a bare "HTTP 4xx".
+        const json = await res.json().catch(() => null);
+        if (!res.ok || !json || !json.success) throw new Error(json?.message || 'HTTP ' + res.status);
 
         brv_renderTable(json.data ?? []);
         brv_renderPagination(json.pagination ?? {});
@@ -262,62 +315,113 @@ async function brv_load() {
         $brv('brv-kpi-change').textContent = brv_fmtChange(json.total_change ?? 0);
     } catch (e) {
         brv_renderTable([]);
+        brv_renderPagination({});
+        $brv('brv-kpi-total').textContent  = 0;
+        $brv('brv-kpi-change').textContent = brv_fmtChange(0);
         brv_toast(e.message, 'error');
     } finally {
         window.PagePreloader?.hide();
     }
 }
 
-/* ── Table ─────────────────────────────────────────────────── */
+/* ── Table — one row per revision request ──────────────────── */
 function brv_renderTable(rows) {
-    brv_rows = rows;
     const tbody = $brv('brv-tbody');
     if (!rows.length) {
         tbody.innerHTML = '<tr><td colspan="9"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No budget revision requests found.</span></div></td></tr>';
         return;
     }
-    const offset = (brv_page - 1) * BRV_PAGE_SIZE;
-    tbody.innerHTML = rows.map((r, i) => {
-        const code   = r.project_code || r.program_code || '—';
-        const name   = r.project_name || r.program_name || '';
+    tbody.innerHTML = rows.map(r => {
         const diff   = Number(r.to_amount || 0) - Number(r.from_amount || 0);
-        const color  = diff > 0 ? '#16a34a' : (diff < 0 ? '#dc2626' : 'inherit');
+        const trend  = diff > 0 ? 'brv-up' : (diff < 0 ? 'brv-down' : '');
         const reason = r.reason ? brv_esc(r.reason) : '<span class="nha-td-sub">—</span>';
+        const date   = brv_fmtDate(r.created_at);
         return `<tr>
-        <td class="nha-td-seq">${offset + i + 1}</td>
         <td>
-            <div style="font-weight:500;">FY ${brv_esc(r.fiscal_yr ?? '—')} — ${brv_esc(code)}</div>
-            ${name ? `<div class="nha-td-sub" style="margin-top:2px;">${brv_esc(name)}</div>` : ''}
-            ${r.to_budget_req_id ? `<div class="nha-td-sub" style="margin-top:2px;" title="Funds move to this COB">→ To: FY ${brv_esc(r.to_fiscal_yr ?? '—')} — ${brv_esc(r.to_project_code || r.to_program_code || '—')}</div>` : ''}
+            <code class="nha-code">#${brv_esc(r.id)}</code>
+            <div class="nha-td-sub">FY ${brv_esc(r.fiscal_yr ?? '—')}</div>
+        </td>
+        <td>
+            <div class="nha-td-bold">${brv_esc(brv_lineTitle(r, ''))}</div>
+            <div class="nha-td-sub">${brv_esc(brv_linePlace(r, ''))}</div>
+            ${r.to_budget_line_item_id ? `<div class="nha-td-sub" title="Funds move to this budget line">→ To: ${brv_esc(brv_lineTitle(r, 'to_'))}${r.to_budget_reference_number ? ' (' + brv_esc(r.to_budget_reference_number) + ')' : ''}</div>` : ''}
         </td>
         <td class="text-end">${brv_fmtMoney(r.from_amount)}</td>
         <td class="text-end"><div style="font-weight:600;">${brv_fmtMoney(r.to_amount)}</div></td>
-        <td class="text-end" style="color:${color};font-weight:600;">${brv_fmtChange(diff)}</td>
+        <td class="text-end ${trend}" style="font-weight:600;">${brv_fmtChange(diff)}</td>
         <td><div class="brv-reason" title="${brv_esc(r.reason || '')}">${reason}</div></td>
         <td>${brv_statusBadge(r.status)}</td>
-        <td>${brv_esc(brv_fmtDate(r.created_at))}</td>
+        <td>
+            ${date ? `<span class="nha-td-date">${brv_esc(date)}</span>` : '<span class="nha-td-sub">—</span>'}
+            <div class="nha-td-sub">${brv_esc(brv_requestedBy(r))}</div>
+        </td>
         <td>${brv_rowActions(r)}</td>
     </tr>`;
     }).join('');
 }
 
-// The action buttons a row gets depend on the POV (see BRV_POV) and on its status:
+/* ── Row actions ───────────────────────────────────────────── */
+const BRV_ICON_VIEW  = '<svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>';
+const BRV_ICON_REVIEW = '<svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>';
+const BRV_ICON_EDIT  = '<svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>';
+
+// The menu a row gets depends on who is looking (BRV_IS_FMD) and, for the originating view, on the request's status:
 // an APPROVED request has already been applied to its budget request, so Edit is switched off.
 function brv_rowActions(r) {
-    const id     = Number(r.id);
-    const can    = BRV_POV[brv_pov].actions;
-    const locked = r.status === 'APPROVED';
-    return (can.includes('view') ? `
-            <button class="nha-btn-act view" onclick="brv_view(${id})" title="More action: view details, approve or decline">
-                <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
-                More Action
-            </button>` : '')
-        + (can.includes('edit') ? `
-            <button class="nha-btn-act edit" ${locked ? 'disabled' : `onclick="brv_edit(${id})"`} title="${locked ? "Approved requests can't be edited" : 'Edit'}">
-                <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
-                Edit
-            </button>` : '');
+    const id = Number(r.id);
+    let item;
+    if (BRV_IS_FMD) {
+        const pending = r.status === 'PENDING';
+        item = `<button type="button" class="nha-menu-item" onclick="brv_closeMenus();brv_view(${id});">
+            ${pending ? BRV_ICON_REVIEW : BRV_ICON_VIEW}
+            ${pending ? 'Review Request' : 'View Details'}
+        </button>`;
+    } else if (r.status === 'APPROVED') {
+        item = `<button type="button" class="nha-menu-item" disabled title="Approved requests can't be edited">
+            ${BRV_ICON_EDIT}
+            Edit
+        </button>`;
+    } else {
+        item = `<button type="button" class="nha-menu-item" onclick="brv_closeMenus();brv_edit(${id});">
+            ${BRV_ICON_EDIT}
+            Edit
+        </button>`;
+    }
+
+    return `<div class="nha-tools-menu">
+        <button type="button" class="nha-menu-trigger" onclick="brv_toggleMenu(this)">
+            <svg fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+            Actions
+        </button>
+        <div class="nha-tools-dropdown">${item}</div>
+    </div>`;
 }
+
+/* ── Actions dropdown — open/close (closes others, positions via fixed
+   coords so the table's own overflow never clips it; opens upwards when
+   there is no room below) ───────────────────────────────────────── */
+function brv_toggleMenu(btn) {
+    const drop = btn.closest('.nha-tools-menu').querySelector('.nha-tools-dropdown');
+    const isOpen = drop.classList.contains('open');
+    brv_closeMenus();
+    if (isOpen) return;
+
+    const rect = btn.getBoundingClientRect();
+    drop.classList.add('open');
+    const below = rect.bottom + 4;
+    const fits  = below + drop.offsetHeight <= window.innerHeight - 8;
+    drop.style.top   = (fits ? below : Math.max(8, rect.top - drop.offsetHeight - 4)) + 'px';
+    drop.style.right = (window.innerWidth - rect.right) + 'px';
+}
+
+function brv_closeMenus() {
+    document.querySelectorAll('.nha-tools-dropdown.open').forEach(d => d.classList.remove('open'));
+}
+
+document.addEventListener('click', e => {
+    if (!e.target.closest('.nha-tools-menu')) brv_closeMenus();
+});
+document.addEventListener('scroll', brv_closeMenus, true);
 
 /* ── Pagination ────────────────────────────────────────────── */
 function brv_renderPagination(p) {
@@ -347,11 +451,11 @@ function brv_openModal(mode, row = null) {
     $brv('brv-mode').value = mode;
     $brv('brv-id').value = row?.id || '';
     $brv('brv-modal-title').textContent = mode === 'edit' ? 'Edit Budget Revision Request' : 'Add Budget Revision Request';
-    // the From COB / To COB fields are searchable dropdowns owned by form/budget-rev-form.php
-    if (window.brvForm) window.brvForm.setBudgetReq(row?.from_budget_req_id ?? '', row?.to_budget_req_id ?? '');
+    // the From / To budget line fields are searchable dropdowns owned by form/budget-rev-form.php
+    if (window.brvForm) window.brvForm.setBudgetLine(row?.from_budget_line_item_id ?? '', row?.to_budget_line_item_id ?? '');
     else {
-        $brv('brv-budget-req-id').value = row?.from_budget_req_id || '';
-        $brv('brv-to-budget-req-id').value = row?.to_budget_req_id || '';
+        $brv('brv-line-id').value = row?.from_budget_line_item_id || '';
+        $brv('brv-to-line-id').value = row?.to_budget_line_item_id || '';
     }
     $brv('brv-from-amount').value = row?.from_amount ?? '';
     $brv('brv-to-amount').value = row?.to_amount ?? '';
@@ -390,16 +494,16 @@ async function brv_save(ev) {
     const id   = $brv('brv-id').value;
 
     const payload = {
-        from_budget_req_id : $brv('brv-budget-req-id').value,
-        to_budget_req_id   : $brv('brv-to-budget-req-id').value,   // '' = no To COB (cleared on edit)
-        from_amount        : $brv('brv-from-amount').value,
-        to_amount          : $brv('brv-to-amount').value,
-        reason             : $brv('brv-reason').value.trim(),
+        from_budget_line_item_id : $brv('brv-line-id').value,
+        to_budget_line_item_id   : $brv('brv-to-line-id').value,   // '' = no To line (cleared on edit)
+        from_amount              : $brv('brv-from-amount').value,
+        to_amount                : $brv('brv-to-amount').value,
+        reason                   : $brv('brv-reason').value.trim(),
     };
 
-    if (!payload.from_budget_req_id) { brv_toast('Please select a From COB.', 'error'); return; }
-    if (payload.to_budget_req_id && Number(payload.to_amount) >= Number(payload.from_amount)) {
-        brv_toast('To Amount must be lower than From Amount to move funds to the To COB.', 'error');
+    if (!payload.from_budget_line_item_id) { brv_toast('Please select a From budget line.', 'error'); return; }
+    if (payload.to_budget_line_item_id && Number(payload.to_amount) >= Number(payload.from_amount)) {
+        brv_toast('To Amount must be lower than From Amount to move funds to the To budget line.', 'error');
         return;
     }
 
@@ -443,39 +547,28 @@ async function brv_view(id) {
 }
 
 function brv_openView(r) {
-    const isProject = !!r.project_code;
-    const code = r.project_code || r.program_code || '—';
-    const name = r.project_name || r.program_name || '';
     const diff = Number(r.to_amount || 0) - Number(r.from_amount || 0);
 
     brv_viewRow = r;
     $brv('brv-view-id').value = r.id;
     $brv('brv-view-title').textContent = `Budget Revision Request #${r.id}`;
 
-    // the budget request being revised
-    const type = $brv('brv-view-type');
-    type.textContent = isProject ? 'Project' : 'Program';
-    type.className = 'nha-bdg ' + (isProject ? 'nha-bdg-teal' : 'nha-bdg-blue');
-    $brv('brv-view-title-req').textContent = name ? `${code} — ${name}` : code;
-    $brv('brv-view-req-sub').textContent = `FY ${r.fiscal_yr ?? '—'}`
-        + (isProject ? ` · Program: ${r.program_code}${r.program_name ? ' — ' + r.program_name : ''}` : '');
-    $brv('brv-view-req-amount').textContent = brv_fmtMoney(r.budget_req_amount);
+    // the budget line being revised: its request's status, its account, where it sits (request · office · fiscal year, program ›
+    // project, particulars) and its CURRENT amount (proposed + adjustment). One that no longer exists says so.
+    brv_paintStatus($brv('brv-view-type'), r.budget_req_status_name, r.budget_req_status_color);
+    $brv('brv-view-title-req').textContent = brv_lineTitle(r, '');
+    $brv('brv-view-req-sub').textContent = brv_lineSub(r, '');
+    $brv('brv-view-req-amount').textContent = brv_fmtMoney(r.line_amount);
 
-    // the To COB — a card when the revision has one, a one-line note when it doesn't
-    const hasTo = !!r.to_budget_req_id;
+    // the To line — a card when the revision has one, a one-line note when it doesn't
+    const hasTo = !!r.to_budget_line_item_id;
     $brv('brv-view-to-card').hidden = !hasTo;
     $brv('brv-view-to-none').hidden = hasTo;
     if (hasTo) {
-        const toIsProject = !!r.to_project_code;
-        const toCode = r.to_project_code || r.to_program_code || '—';
-        const toName = r.to_project_name || r.to_program_name || '';
-        const toType = $brv('brv-view-to-type');
-        toType.textContent = toIsProject ? 'Project' : 'Program';
-        toType.className = 'nha-bdg ' + (toIsProject ? 'nha-bdg-teal' : 'nha-bdg-blue');
-        $brv('brv-view-to-title-req').textContent = toName ? `${toCode} — ${toName}` : toCode;
-        $brv('brv-view-to-req-sub').textContent = `FY ${r.to_fiscal_yr ?? '—'}`
-            + (toIsProject ? ` · Program: ${r.to_program_code}${r.to_program_name ? ' — ' + r.to_program_name : ''}` : '');
-        $brv('brv-view-to-req-amount').textContent = brv_fmtMoney(r.to_budget_req_amount);
+        brv_paintStatus($brv('brv-view-to-type'), r.to_budget_req_status_name, r.to_budget_req_status_color);
+        $brv('brv-view-to-title-req').textContent = brv_lineTitle(r, 'to_');
+        $brv('brv-view-to-req-sub').textContent = brv_lineSub(r, 'to_');
+        $brv('brv-view-to-req-amount').textContent = brv_fmtMoney(r.to_line_amount);
     }
 
     // the revision
@@ -491,7 +584,7 @@ function brv_openView(r) {
     reason.classList.toggle('is-empty', !r.reason);
     $brv('brv-view-meta').textContent = `Requested by ${brv_requestedBy(r)} on ${brv_fmtDateTime(r.created_at)}`;
 
-    // status — Decline / Approve only while the request is still pending
+    // status — Decline / Approve only while the request is still pending, and only for FMD (the reviewers)
     const known   = BRV_STATUS[r.status];
     const s       = known || { label: r.status || 'Unknown', cls: 'nha-bdg-gray' };
     const pending = r.status === 'PENDING';
@@ -500,7 +593,7 @@ function brv_openView(r) {
     badge.className   = 'nha-bdg ' + s.cls;
     $brv('brv-view-status-note').textContent = pending ? 'Waiting for a decision'
         : known ? `${s.label} on ${brv_fmtDateTime(r.update_at)}` : 'Unrecognised status';
-    $brv('brv-view-actions').hidden = !pending;
+    $brv('brv-view-actions').hidden = !(pending && BRV_IS_FMD);
     brv_setReviewBusy(false);
 
     $brv('brv-view-overlay').classList.add('open');
@@ -510,17 +603,17 @@ function brv_closeView() {
     $brv('brv-view-overlay').classList.remove('open');
 }
 
-// What approving does to the two COBs. Only shown when the revision has a To COB: then it MOVES
-// funds — the From COB goes down to To Amount and the To COB goes up by the difference
-// (measured against the From COB's current amount, as the server does).
+// What approving does to the two budget lines. Only shown when the revision has a To line: then it MOVES
+// funds — the From line goes down to To Amount (its adjustment is deducted) and the To line goes up by the difference
+// (its adjustment is added), measured against the From line's current amount, as the server does.
 function brv_renderEffect(r) {
     const box = $brv('brv-view-effect');
-    if (!r.to_budget_req_id) { box.hidden = true; return; }
+    if (!r.to_budget_line_item_id) { box.hidden = true; return; }
 
-    const fromCode = r.project_code || r.program_code || 'the From COB';
-    const toCode   = r.to_project_code || r.to_program_code || 'the To COB';
-    const fromNow  = Number(r.budget_req_amount || 0);
-    const toNow    = Number(r.to_budget_req_amount || 0);
+    const fromCode = brv_lineName(r, '') || 'the From budget line';
+    const toCode   = brv_lineName(r, 'to_') || 'the To budget line';
+    const fromNow  = Number(r.line_amount || 0);
+    const toNow    = Number(r.to_line_amount || 0);
     const target   = Number(r.to_amount || 0);
     const moved    = Math.round((fromNow - target) * 100) / 100;
 
@@ -551,20 +644,20 @@ async function brv_review(status) {
     let question = `Are you sure you want to ${verb} budget revision request #${id}?`;
     if (status === 'APPROVED' && brv_viewRow) {
         const v       = brv_viewRow;
-        const current = Number(v.budget_req_amount || 0);
+        const current = Number(v.line_amount || 0);
         const target  = Number(v.to_amount || 0);
         const moved   = Math.round((current - target) * 100) / 100;
-        if (v.to_budget_req_id && moved > 0) {
-            // a transfer: the From COB gives up what the To COB receives
-            const toCurrent = Number(v.to_budget_req_amount || 0);
-            const fromCode  = v.project_code || v.program_code || 'The From COB';
-            const toCode    = v.to_project_code || v.to_program_code || 'The To COB';
-            question += `\n\n${fromCode} (From COB) will change from ${brv_fmtMoney(current)} to ${brv_fmtMoney(target)}, `
+        if (v.to_budget_line_item_id && moved > 0) {
+            // a transfer: the From line gives up what the To line receives
+            const toCurrent = Number(v.to_line_amount || 0);
+            const fromCode  = brv_lineName(v, '') || 'The From budget line';
+            const toCode    = brv_lineName(v, 'to_') || 'The To budget line';
+            question += `\n\n${fromCode} (From budget line) will change from ${brv_fmtMoney(current)} to ${brv_fmtMoney(target)}, `
                       + `and ${brv_fmtChange(-moved)} will be added to its adjustment.`
-                      + `\n${toCode} (To COB) will change from ${brv_fmtMoney(toCurrent)} to ${brv_fmtMoney(toCurrent + moved)}, `
+                      + `\n${toCode} (To budget line) will change from ${brv_fmtMoney(toCurrent)} to ${brv_fmtMoney(toCurrent + moved)}, `
                       + `and ${brv_fmtChange(moved)} will be added to its adjustment.`;
-        } else if (!v.to_budget_req_id) {
-            question += `\n\nThe budget request amount will change from ${brv_fmtMoney(current)} to ${brv_fmtMoney(target)}, `
+        } else if (!v.to_budget_line_item_id) {
+            question += `\n\nThe budget line amount will change from ${brv_fmtMoney(current)} to ${brv_fmtMoney(target)}, `
                       + `and ${brv_fmtChange(target - current)} will be added to its adjustment.`;
         }
     }
@@ -614,8 +707,13 @@ function brv_fmtChange(v) {
     if (n === 0) return brv_fmtMoney(0);
     return (n > 0 ? '+' : '−') + brv_fmtMoney(Math.abs(n));
 }
+// Postgres timestamps arrive as "2026-11-10 08:30:00.123456+08": make that ISO enough for every browser's
+// Date(), then show it as "Nov 10, 2026". '' when there is no date.
 function brv_fmtDate(ts) {
-    return ts ? String(ts).slice(0, 10) : '—';
+    if (!ts) return '';
+    const iso = String(ts).trim().replace(' ', 'T').replace(/(\.\d{3})\d+/, '$1').replace(/([+-]\d{2})$/, '$1:00');
+    const d = new Date(iso);
+    return isNaN(d) ? String(ts) : d.toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' });
 }
 function brv_fmtDateTime(ts) {
     return ts ? String(ts).slice(0, 16) : '—';
@@ -626,15 +724,69 @@ function brv_requestedBy(r) {
     if (r.requested_by_username) return r.requested_by_username;
     return Number(r.user_id) === -1 ? 'Administrator' : `User #${r.user_id}`;
 }
+// The budget line of a revision row: $pre is '' for the From line, 'to_' for the To line (the row has account_code…, to_account_code…).
+// "5-02-010 — Travelling Expenses"; a revision filed before budget lines were revised has none ('—'), a line that has since been
+// deleted shows its id.
+function brv_lineTitle(r, pre) {
+    const id = r[(pre ? 'to' : 'from') + '_budget_line_item_id'];
+    const code = r[pre + 'account_code'], title = r[pre + 'account_title'];
+    if (code) return code + (title ? ' — ' + title : '');
+    if (title) return title;
+    return id ? `Budget line #${id}` : '—';
+}
+// "5-02-010 (BP-001)": short enough for a sentence ('' when there is no line)
+function brv_lineName(r, pre) {
+    const id = r[(pre ? 'to' : 'from') + '_budget_line_item_id'];
+    if (!id) return '';
+    return (r[pre + 'account_code'] || `line #${id}`) + (r[pre + 'budget_reference_number'] ? ` (${r[pre + 'budget_reference_number']})` : '');
+}
+// "BP-001 · P-100 / PJ-1" — where the line sits, for the list
+function brv_linePlace(r, pre) {
+    const id = r[(pre ? 'to' : 'from') + '_budget_line_item_id'];
+    if (!id) return 'Filed before budget lines could be revised';
+    if (r[pre + 'fiscal_yr'] === null || r[pre + 'fiscal_yr'] === undefined) return 'This budget line no longer exists';
+    return [r[pre + 'budget_reference_number'], [r[pre + 'program_code'], r[pre + 'project_code']].filter(Boolean).join(' / ')].filter(Boolean).join(' · ');
+}
+// The details card's text, one line each: "BP-001 · Region III Office · FY 2026", "P-100 — Core Shelter › PJ-1 — Resettlement", the
+// particulars, and — when approved revisions have changed it — "Proposed ₱ … · adjusted ±₱ …".
+function brv_lineSub(r, pre) {
+    const id = r[(pre ? 'to' : 'from') + '_budget_line_item_id'];
+    if (!id) return 'Filed before budget lines could be revised — pick its budget line when editing it';
+    const fy = r[pre + 'fiscal_yr'];
+    if (fy === null || fy === undefined) return 'This budget line no longer exists';
+    const withName = (code, name) => (code ? code + (name ? ' — ' + name : '') : '');
+    const office = r[pre + 'rc_name'] || r[pre + 'rc_code'];
+    const adj = Number(r[pre + 'line_adjustment'] || 0);
+    return [
+        `${r[pre + 'budget_reference_number']}${office ? ' · ' + office : ''} · FY ${fy}`,
+        [withName(r[pre + 'program_code'], r[pre + 'program_name']), withName(r[pre + 'project_code'], r[pre + 'project_name'])].filter(Boolean).join(' › ') || 'No project yet',
+        r[pre + 'particulars'] || '',
+        adj !== 0 ? `Proposed ${brv_fmtMoney(r[pre + 'proposed_amount'])} · adjusted ${brv_fmtChange(adj)}` : '',
+    ].filter(Boolean).join('\n');
+}
+// A budget request's status pill in the status's own colour (settings_status.color); only a plain #RRGGBB colour is put into a
+// style, anything else (or no status) falls back to a grey pill.
+function brv_paintStatus(el, name, color) {
+    el.textContent = name || '—';
+    if (name && /^#[0-9A-Fa-f]{6}$/.test(color || '')) {
+        el.className = 'nha-bdg';
+        el.style.cssText = `color:${color};background:${color}1A;border:1px solid ${color}40;`;
+    } else {
+        el.className = 'nha-bdg nha-bdg-gray';
+        el.style.cssText = '';
+    }
+}
 function brv_statusBadge(code) {
     const s = BRV_STATUS[code] || { label: code || 'Unknown', cls: 'nha-bdg-gray' };
     return `<span class="nha-bdg ${s.cls}">${brv_esc(s.label)}</span>`;
 }
+// HTML-escapes text for markup AND for attribute values (the Reason's tooltip is one): innerHTML leaves quotes alone, so
+// they are escaped here — otherwise a reason containing a double quote could close the attribute and inject its own.
 function brv_esc(text) {
     if (text === null || text === undefined) return '';
     const d = document.createElement('div');
     d.textContent = text;
-    return d.innerHTML;
+    return d.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 function brv_toast(msg, type = 'info') {

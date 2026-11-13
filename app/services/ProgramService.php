@@ -69,10 +69,9 @@ class ProgramService
     }
 
     /**
-     * Creates a program. The code is assigned HERE by GlobalService::generateProgramCode()
-     * (year-rc_code-NNN of the logged-in user) — any program_code in $body is ignored, so the
-     * form's preview can never be forged or go stale. The code that was actually saved is returned
-     * in data.program_code (it can differ from the preview if someone saved a program meanwhile).
+     * Creates a program. A 3-digit program_code in $body is saved as typed (must be unused);
+     * when it is empty the next sequential code comes from GlobalService::generateProgramCode().
+     * The code actually saved is returned in data.program_code.
      */
     public function create(array $body, ?int $userId = null): array
     {
@@ -83,8 +82,16 @@ class ProgramService
                 return ['success' => false, 'message' => 'program_name is required.'];
             }
 
-            // Throws InvalidArgumentException (readable message) when there is no user / no RC code.
-            $code = GlobalService::generateProgramCode($userId);
+            // A code typed in the form is used as-is (3 digits, must be unused); empty -> next sequential code.
+            $manual = trim((string) ($body['program_code'] ?? ''));
+            if ($manual !== '') {
+                if (!preg_match('/^[0-9]{3}$/', $manual)) {
+                    return ['success' => false, 'message' => 'Program code must be exactly 3 digits (e.g. 200).'];
+                }
+                $code = $manual;
+            } else {
+                $code = GlobalService::generateProgramCode($userId);
+            }
             $body['program_code'] = $code;
             $body['program_name'] = $name;
 

@@ -5392,15 +5392,18 @@ tr.dv-selected td{background:var(--fims-primary-light)!important;}
 .td-wt-row     { display: grid; grid-template-columns: 1fr 320px;       gap: var(--td-gap); align-items: stretch; }
 .td-wt-right   { display: flex; flex-direction: column; gap: var(--td-gap); }
 .td-kpi-row    { display: grid; grid-template-columns: repeat(5,1fr);   gap: var(--td-gap); }
-.td-chart-row  { display: grid; grid-template-columns: 1fr 1fr;         gap: var(--td-gap); }
-.td-chart-row-3{ display: grid; grid-template-columns: 2fr 1fr 1fr;     gap: var(--td-gap); }
+.td-chart-row  { display: grid; grid-template-columns: repeat(2, minmax(0,1fr));         gap: var(--td-gap); }
+.td-chart-row-3{ display: grid; grid-template-columns: minmax(0,2fr) minmax(0,1fr) minmax(0,1fr);     gap: var(--td-gap); }
+/* grid items (and the chart canvases in them) take the column width instead of a fixed pixel width */
+.td-chart-row > .td-card, .td-chart-row-3 > .td-card { min-width: 0; }
+.td-chart-row canvas, .td-chart-row-3 canvas { max-width: 100%; }
 .td-bottom     { display: grid; grid-template-columns: repeat(3,1fr);   gap: var(--td-gap); }
 
 /* all rows have no padding of their own */
 .td-wt-row,.td-kpi-row,.td-chart-row,.td-chart-row-3,.td-bottom { padding: 0; margin: 0; }
 
 @media(max-width:1200px){ .td-kpi-row { grid-template-columns: repeat(3,1fr); } }
-@media(max-width:900px) { .td-kpi-row { grid-template-columns: repeat(2,1fr); } .td-chart-row-3 { grid-template-columns: 1fr 1fr; } .td-bottom { grid-template-columns: 1fr 1fr; } }
+@media(max-width:900px) { .td-kpi-row { grid-template-columns: repeat(2,1fr); } .td-chart-row-3 { grid-template-columns: repeat(2, minmax(0,1fr)); } .td-bottom { grid-template-columns: 1fr 1fr; } }
 @media(max-width:600px) { .td-wt-row,.td-chart-row,.td-chart-row-3,.td-bottom,.td-kpi-row { grid-template-columns: 1fr; } }
 
 /* ── KPI card ────────────────────────── */

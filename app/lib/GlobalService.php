@@ -189,7 +189,7 @@ class GlobalService
      * items takes `next` once and counts up itself. Nothing is reserved.
      *
      * @throws \InvalidArgumentException when the program code is empty, too long to leave room for "-NNN"
-     *                                   in the 20-character sub_program_code, or the sequence is exhausted.
+     *                                   in the 64-character sub_program_code, or the sequence is exhausted.
      */
     public static function nextSubProgramNumber(string $programCode): array
     {
@@ -197,8 +197,11 @@ class GlobalService
         if ($prefix === '') {
             throw new \InvalidArgumentException('program_code is required.');
         }
-        if (strlen($prefix) > 16) {
-            throw new \InvalidArgumentException("Program code '{$prefix}' is too long to build a sub-program code from (max 16 characters).");
+        // fims.sub_program.sub_program_code is VARCHAR(64): the prefix plus "-NNN" (4 characters) must fit. (The limit used
+        // to be 16, from when the column was 20 wide — which refused every program whose code is a long
+        // generated one, e.g. "2026-35-074-0000000-032-003".)
+        if (strlen($prefix) > 60) {
+            throw new \InvalidArgumentException("Program code '{$prefix}' is too long to build a sub-program code from (max 60 characters).");
         }
 
         $last = (int) App\ExecuteScalar(

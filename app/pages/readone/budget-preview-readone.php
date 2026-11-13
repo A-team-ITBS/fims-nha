@@ -9,32 +9,32 @@
  *   - an info card: Originating Unit / Region (the requesting office), Program, Sub-Program, Project
  *     (each with its code as a chip), and
  *   - that Project's line items as a table, as plain text (nothing to fill in):
- *       Type of Fund · Program Sources · Program Uses · Component · Account Code · Description (the account name,
- *       the line's particulars under it) · Amount (proposed) · Suggested Amount,
- *     with a Total row under both amount columns.
+ *       Type of Fund · Component · Account Code · Description (the account name,
+ *       the line's particulars under it) · Amount (proposed) · Adjustment (budget_line_items.adjustment, signed: green
+ *       "+", red "−", a dash for none) · Suggested Amount, with a Total row under all three amount columns.
  * A Program that has no Projects yet gets its card and a "No projects yet." note.
- *
- * Program Sources are programs (budget_line_items.program_source_code = a fims.program.program_code) and Program Uses
- * are sub-programs (budget_line_items.program_uses = a fims.sub_program.sub_program_code). The preview looks the
- * names up once from GET /program/all and GET /sub_program/all (each cached) to show "Name" with the code under
- * it. If a lookup fails the preview still opens and shows the bare codes of that column (the other column is
- * not affected): a read-only view is not worth blocking on it.
+ * (There used to be Program Sources / Program Uses columns — budget_line_items.program_source_code / program_uses
+ * were dropped, migration alter_table/22.)
  *
  * Trigger: bpv_openModal(requestContext, programs) — called from the list pages' "Budget Preview" row action:
- *   requestContext = { budget_reference_number, fiscal_yr, status_name, status_color, rc_id, rc_code, rc_name, can_decide }
- *                    (the rc_* fields are the requesting office, from the list row)
+ *   requestContext = { budget_reference_number, fiscal_yr, status_name, status_color, rc_id, rc_code, rc_name, can_decide, review }
+ *                    (the rc_* fields are the requesting office, review = the row's review-chain info; both from the list row)
  *   programs       = ONE program or an ARRAY of them, each
  *                    { program_code, program_name, sub_program_code, sub_program_name, projects[] }
- *                    (each project has project_code, project_name, line_items[] carrying type_of_fund_name,
- *                    component_name, program_source_code and program_uses, straight from the list data)
- * Takes already-fetched request data — only the program / sub-program names are looked up.
+ *                    (each project has project_code, project_name, line_items[] carrying type_of_fund_name and
+ *                    component_name, straight from the list data)
+ * Takes already-fetched request data; nothing is looked up.
  *
  * Footer (Return / Approve and the REMARKS box are hidden unless requestContext.can_decide is true — the list
- * page sets it for the Budget Head on an Endorsed request; without them the footer is just Close):
+ * page sets it for the Budget Head on an Endorsed request, from the row's review.can_decide; without them the footer is
+ * just Close). This is the LAST step of the review chain (BudgetReqService::REVIEW_STEPS): For Review -> Budget Officer ->
+ * Endorsed -> Budget Head (this modal) -> Approved.
  *   Return  — needs REMARKS (the box above the footer; required): PUT /budget_req/return/{id} { remarks }:
- *             status -> "Returned", remarks saved on fims.budget_req.remarks.
- *   Approve — PUT /budget_req/approve/{id}: status -> "Approved" (only an Endorsed request can be approved; the
- *             server enforces that too). The remarks box is not used.
+ *             ONE step back — status -> "Returned to Budget Officer" (the Officer sees it in Budget Processing again, with
+ *             these remarks, and can endorse it again or return it to the originating office); remarks saved on
+ *             fims.budget_req.remarks.
+ *   Approve — PUT /budget_req/approve/{id}: status -> "Approved" (only an Endorsed request can be approved, and only by the
+ *             Budget Head; the server enforces both). The remarks box is not used.
  * Status lives on the request header, so both apply to the whole request. After either one it calls
  * window.bgr_afterSave() so the list reloads.
  *
@@ -75,6 +75,8 @@ $_bpv_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
 .nha-root .bpv-tbl td.bpv-nowrap { white-space: nowrap; }
 .nha-root .bpv-tbl td.bpv-mono { font-family: var(--mono); font-size: 12px; }
 .nha-root .bpv-tbl td.bpv-amt { white-space: nowrap; font-weight: 700; font-variant-numeric: tabular-nums; }
+.nha-root .bpv-tbl .bpv-adj-up   { color: var(--green-txt, #16A34A); }
+.nha-root .bpv-tbl .bpv-adj-down { color: var(--red-txt, #DC2626); }
 .nha-root .bpv-desc-sub { margin-top: 2px; font-size: 11.5px; color: var(--subtle); }
 .nha-root .bpv-tbl tfoot td { padding: 11px 12px; font-weight: 700; background: var(--surf); border-top: 1px solid var(--bdr); }
 .nha-root .bpv-empty, .nha-root .bpv-noproj { padding: 18px 12px; text-align: center; font-size: 12.5px; color: var(--subtle); }
@@ -151,16 +153,11 @@ $_bpv_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
    BUDGET PREVIEW MODAL   prefix: bpv_
    Depends on bgr_esc / bgr_escHtmlAttr / bgr_fmtMoney / bgr_statusBadge /
    bgr_toast from form/budget-req-form.php, included on the same page.
-   Takes already-fetched request data; only the program / sub-program names (for the
-   Program Sources / Program Uses columns) are looked up, once. Return / Approve call the API.
+   Takes already-fetched request data; nothing is looked up. Return / Approve call the API.
 ═══════════════════════════════════════════════════════════════ */
 
 const BPV_BUDGET_REQ_API = '<?php echo $_bpv_api; ?>' + '/budget_req';
-const BPV_PROGRAM_API    = '<?php echo $_bpv_api; ?>' + '/program/all';       // names of the program sources
-const BPV_SUBPROGRAM_API = '<?php echo $_bpv_api; ?>' + '/sub_program/all';   // names of the program uses
 
-let BPV_SOURCES = null;   // [{ program_code, program_name }]            — null until loaded (a failed load is NOT cached)
-let BPV_USES = null;      // [{ sub_program_code, sub_program_name }]    — same
 let bpv_ctx = null;       // requestContext of the modal that is currently open
 
 const $bpv = id => document.getElementById(id);
@@ -174,41 +171,10 @@ document.addEventListener('DOMContentLoaded', () => {
     $bpv('bpv-remarks')?.addEventListener('input', e => e.target.classList.remove('is-invalid'));
 });
 
-// One name list. Never throws: null on any failure.
-async function bpv_fetchList(url) {
-    try {
-        const res  = await fetch(url, { credentials: 'same-origin' });
-        const json = res.ok ? await res.json() : null;
-        if (json && json.success) return json.data ?? [];
-    } catch (e) { /* fall through */ }
-    return null;
-}
-
-// The lists that turn a program_source_code / program_uses into a name. Each is fetched once and cached. Never
-// throws: a list that fails just shows the bare codes this time (the other list is unaffected) and is tried
-// again the next time the preview opens.
-async function bpv_loadLookups() {
-    const [sources, uses] = await Promise.all([
-        BPV_SOURCES ?? bpv_fetchList(BPV_PROGRAM_API),
-        BPV_USES    ?? bpv_fetchList(BPV_SUBPROGRAM_API),
-    ]);
-    if (sources) BPV_SOURCES = sources;
-    if (uses)    BPV_USES    = uses;
-    return { sources: sources ?? [], uses: uses ?? [] };
-}
-
 // `programs` is one program or an array of them (see the header comment).
 async function bpv_openModal(requestContext, programs) {
-    window.PagePreloader?.show();
-    let lookups;
-    try {
-        lookups = await bpv_loadLookups();
-    } finally {
-        window.PagePreloader?.hide();
-    }
-
     bpv_ctx = requestContext;
-    bpv_render(requestContext, programs, lookups);
+    bpv_render(requestContext, programs);
 
     // Return / Approve (and the remarks they need) only appear when the list page says this user may decide;
     // otherwise the footer is just Close.
@@ -245,13 +211,15 @@ async function bpv_decide(action) {
         // Returning needs a reason: the REMARKS box above the footer is required.
         const box = $bpv('bpv-remarks');
         const remarks = box.value.trim();
+        // One step back: the Budget Head's Return goes to the Budget Officer (review.return_actor), who can fix it and endorse it again.
+        const returnTo = bpv_ctx.review?.return_actor ? `the ${bpv_ctx.review.return_actor}` : 'the originating office';
         if (remarks === '') {
             box.classList.add('is-invalid');
             box.focus();
-            bpv_showErr('Remarks are required when returning a request — tell the requesting office what to fix.');
+            bpv_showErr(`Remarks are required when returning a request — tell ${returnTo} what to fix.`);
             return;
         }
-        if (!confirm(`Return budget request ${bpv_ctx.budget_reference_number} to the requesting office? Your remarks will be sent with it.`)) return;
+        if (!confirm(`Return budget request ${bpv_ctx.budget_reference_number} to ${returnTo}? Your remarks will be sent with it.`)) return;
         init.headers = { 'Content-Type': 'application/json' };
         init.body    = JSON.stringify({ remarks });
     }
@@ -279,57 +247,55 @@ function bpv_closeModal() {
 }
 
 /* ── Table ───────────────────────────────────────────────────── */
-// A line item that hasn't been through Budget Processing has no Type of Fund / Component / Program Source / Program Use yet.
+// A line item that hasn't been through Budget Processing has no Type of Fund / Component yet.
 function bpv_value(text) {
     return text ? bgr_esc(text) : '<span class="nha-td-sub">—</span>';
 }
 
-// Program Sources (programs) / Program Uses (sub-programs): the item's name with its code under it; the bare code
-// if it can't be found in the list; a dash when none was chosen.
-function bpv_codeCellHtml(code, items, codeKey, nameKey) {
-    if (code === null || code === undefined || code === '') return '<span class="nha-td-sub">—</span>';
-    const p = items.find(x => String(x[codeKey]) === String(code));
-    return p
-        ? `<div>${bgr_esc(p[nameKey])}</div><div class="bpv-desc-sub">${bgr_esc(p[codeKey])}</div>`
-        : `<div>${bgr_esc(code)}</div>`;
+// A line's adjustment (budget_line_items.adjustment — what approved budget revisions added to / deducted from the line):
+// "+ ₱ 50,000.00" in green, "− ₱ 50,000.00" in red, a dash when there is none. Plain text, never HTML from the data.
+function bpv_adjHtml(v) {
+    const n = Number(v) || 0;
+    if (!n) return '<span class="bpv-muted">—</span>';
+    const abs = Math.abs(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return `<span class="${n > 0 ? 'bpv-adj-up' : 'bpv-adj-down'}">${n > 0 ? '+' : '−'} ₱ ${abs}</span>`;
 }
 
-// Column order matches Budget Processing: Type of Fund · Program Sources · Program Uses · Component · Account Code · Description · Amount · Suggested Amount
+// Column order matches Budget Processing, with the line's Adjustment after its Amount:
+// Type of Fund · Component · Account Code · Description · Amount · Adjustment · Suggested Amount
 const BPV_THEAD = `<thead><tr>
     <th>Type of Fund</th>
-    <th>Program Sources</th>
-    <th>Program Uses</th>
     <th>Component</th>
     <th>Account Code</th>
     <th>Description</th>
     <th class="text-right">Amount</th>
+    <th class="text-right">Adjustment</th>
     <th class="text-right">Suggested Amount</th>
 </tr></thead>`;
 
-function bpv_rowHtml(li, lk) {
+function bpv_rowHtml(li) {
     return `<tr>
         <td>${bpv_value(li.type_of_fund_name)}</td>
-        <td>${bpv_codeCellHtml(li.program_source_code, lk.sources, 'program_code', 'program_name')}</td>
-        <td>${bpv_codeCellHtml(li.program_uses, lk.uses, 'sub_program_code', 'sub_program_name')}</td>
         <td>${bpv_value(li.component_name)}</td>
         <td class="bpv-nowrap bpv-mono">${bgr_esc(li.account_code)}</td>
         <td><div>${bgr_esc(li.account_title)}</div>${li.particulars ? `<div class="bpv-desc-sub">${bgr_esc(li.particulars)}</div>` : ''}</td>
         <td class="text-right bpv-amt">${bgr_fmtMoney(li.proposed_amount)}</td>
+        <td class="text-right bpv-amt bpv-adj">${bpv_adjHtml(li.adjustment)}</td>
         <td class="text-right bpv-amt">${bgr_fmtMoney(li.suggested_amount)}</td>
     </tr>`;
 }
 
-function bpv_tableHtml(project, lk) {
+function bpv_tableHtml(project) {
     const lineItems = project.line_items ?? [];
     const sum = key => lineItems.reduce((s, li) => s + (Number(li[key]) || 0), 0);
     const rowsHtml = lineItems.length
-        ? lineItems.map(li => bpv_rowHtml(li, lk)).join('')
-        : '<tr><td colspan="8"><div class="bpv-empty">No line items have been added under this project.</div></td></tr>';
+        ? lineItems.map(bpv_rowHtml).join('')
+        : '<tr><td colspan="7"><div class="bpv-empty">No line items have been added under this project.</div></td></tr>';
 
     return `<div class="bpv-tbl-wrap">
         <div class="nha-tbl-scroll">
             <table class="nha-tbl bpv-tbl">${BPV_THEAD}<tbody>${rowsHtml}</tbody>
-                <tfoot><tr><td colspan="6" class="text-right">Total</td><td class="text-right bpv-total-p">${bgr_fmtMoney(sum('proposed_amount'))}</td><td class="text-right bpv-total-s">${bgr_fmtMoney(sum('suggested_amount'))}</td></tr></tfoot>
+                <tfoot><tr><td colspan="4" class="text-right">Total</td><td class="text-right bpv-total-p">${bgr_fmtMoney(sum('proposed_amount'))}</td><td class="text-right bpv-total-a">${bpv_adjHtml(sum('adjustment'))}</td><td class="text-right bpv-total-s">${bgr_fmtMoney(sum('suggested_amount'))}</td></tr></tfoot>
             </table>
         </div>
     </div>`;
@@ -360,15 +326,15 @@ function bpv_cardHtml(ctx, program, project) {
 }
 
 // One block = the info card + (the Project's table | "No projects yet." when the Program has no Project)
-function bpv_blockHtml(ctx, program, project, lk) {
+function bpv_blockHtml(ctx, program, project) {
     return `<section class="bpv-block">
         ${bpv_cardHtml(ctx, program, project)}
-        ${project ? bpv_tableHtml(project, lk) : '<div class="bpv-noproj">No projects yet.</div>'}
+        ${project ? bpv_tableHtml(project) : '<div class="bpv-noproj">No projects yet.</div>'}
     </section>`;
 }
 
 // `programArg`: one program or an array of them
-function bpv_render(requestContext, programArg, lookups) {
+function bpv_render(requestContext, programArg) {
     const programs = Array.isArray(programArg) ? programArg : (programArg ? [programArg] : []);
 
     $bpv('bpv-ref').textContent = requestContext.budget_reference_number ?? '';
@@ -377,8 +343,8 @@ function bpv_render(requestContext, programArg, lookups) {
     const blocks = [];
     programs.forEach(program => {
         const projects = program.projects ?? [];
-        if (!projects.length) blocks.push(bpv_blockHtml(requestContext, program, null, lookups));
-        else projects.forEach(project => blocks.push(bpv_blockHtml(requestContext, program, project, lookups)));
+        if (!projects.length) blocks.push(bpv_blockHtml(requestContext, program, null));
+        else projects.forEach(project => blocks.push(bpv_blockHtml(requestContext, program, project)));
     });
     $bpv('bpv-blocks').innerHTML = blocks.length ? blocks.join('') : '<div class="bpv-noproj">No programs yet.</div>';
 }

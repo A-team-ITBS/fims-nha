@@ -20,7 +20,7 @@ schema plan (see `_assets/sql/README.md` → Database Schemas).
 | Schema | Tables (verified live, 2026-11-10) | Covered below |
 |---|---|---|
 | `uac` | 30 | §1 |
-| `fims` | 31 (29 verified live + `iar_module` / `po_delivery_receipt` from §2.4, not yet install-verified) | §2 |
+| `fims` | 31 (29 verified live + `inspection_acceptance_report` from §2.4 and `property_records` from §2.5, installed and exercised locally) | §2 |
 | `fmd` | 0 (schema exists, empty) | — |
 | `workflow` | 0 (schema exists, empty) | — |
 
@@ -113,7 +113,7 @@ every `file_share*.share_id`/`user_id`, `id_sequences.config_id`) are unenforced
 | `chat_sessions` / `chat_history` | AI-assistant chat sessions and their messages, per user |
 | `file_shares` / `file_share_permissions` / `file_share_activity` / `shared_folder_access` | S3-backed file sharing: the share itself, per-user permission level, an audit trail, and a "favorites" list |
 | `id_format_configs` / `id_sequences` / `id_reset_strategies` | Configurable document-numbering formats (e.g. `PR-FY2025-0001`) and the running counters that back them |
-| `notifications` | PHPMaker-compatible system notifications. **Marked "STRICT – DO NOT MODIFY"** in its own `COMMENT ON TABLE` |
+| `notifications` / `notification_reads` | Notification hub (migration `06 - notifications_hub.sql`). `notifications` holds one row per message addressed by `type` (`all`/`system`/`user`/`userlevel`/`office`/`usergroup`) + `target`, with `sender_id` and a unique-when-set `event_key` for de-duping; `notification_reads` records which user has read which notification. Targets are unenforced links, like the other uac tables. See the developer guide §8.6. The table was originally marked "STRICT – DO NOT MODIFY" (PHPMaker-compatible) — the hub adds columns only |
 | `audit_logs` | PHPMaker-compatible immutable audit trail (one row per changed field). **Also marked STRICT – DO NOT MODIFY.** `uac.aggregated_audit_logs` is a view that rolls these up one-row-per-save for the dashboard |
 | `psgc` | Philippine Standard Geographic Code reference table (regions/provinces/cities) |
 
@@ -152,14 +152,14 @@ erDiagram
 
 | Table | Purpose / notes |
 |---|---|
-| `settings_status` | Shared status lookup, scoped per entity via `status_for` (e.g. `'fiscal_year'`, `'budget_req'`). `actors` (JSONB) names who may act on a record in that status |
+| `settings_status` | Shared status lookup, scoped per entity via `status_for` (e.g. `'fiscal_year'`, `'budget_req'`). `next_actors` (JSONB; renamed from `actors`) names who acts next on a record that has reached that status |
 | `fiscal_year` | One row per fiscal year; PK is the year itself (`SMALLINT`) |
 | `program` / `sub_program` / `project` | Budget hierarchy. A project optionally narrows to a `sub_program_code`; a sub-program always belongs to one `program_code` |
 | `budget_req` | **One header row per fiscal year** (`UNIQUE(fiscal_yr)`, enforced in `03 - alter_table/04`). Despite the name, it no longer carries an amount, program, or expense class directly — see gap note in §3. Carries `remarks` (nullable `TEXT`, `03 - alter_table/13`): the reason entered when the request was last Returned |
 | `budget_req_program` | One Program (optionally + Sub-Program) line added to a `budget_req` header |
 | `budget_req_project` | One Project line, nested under a `budget_req_program` row (and, redundantly, under the `budget_req` header directly — see denormalization note below) |
-| `budget_line_items` | One chart-of-accounts allocation under a `budget_req_project` row. Carries `proposed_amount`, `suggested_amount`, and the execution-tracking amounts `adjustment` / `obligation` / `disbursement` / `account_payable` (all `NOT NULL DEFAULT 0`). `component_id` / `type_of_fund_id` are present but **have no FK** — see §3. `program_source_code` (VARCHAR(64), nullable) is the line's "program source", chosen in Budget Processing: a `fims.program.program_code`, **with** an FK (`03 - alter_table/17`). `program_uses` (VARCHAR(64), nullable) is its "program use", chosen next to it: a `fims.sub_program.sub_program_code`, **with** an FK (`03 - alter_table/18`) |
-| `budget_revision` | Moves an amount from one `budget_req` to another (or just revises one in place when `to_budget_req_id IS NULL`). **`from_budget_req_id`/`to_budget_req_id`/`status_id`/`user_id` are plain integers with no FK constraint at all**, despite the names — not drawn above |
+| `budget_line_items` | One chart-of-accounts allocation under a `budget_req_project` row. Carries `proposed_amount`, `suggested_amount`, and the execution-tracking amounts `adjustment` / `obligation` / `disbursement` / `account_payable` (all `NOT NULL DEFAULT 0`). `component_id` / `type_of_fund_id` are present but **have no FK** — see §3. The `program_source_code` / `program_uses` columns that `03 - alter_table/17` and `/18` added were dropped again by `03 - alter_table/22` |
+| `budget_revision` | Revises a **budget line** (`budget_line_items` row): changes the From line's amount, or moves the difference to a To line (`to_budget_line_item_id IS NULL` = a plain revision of one line). `from_budget_line_item_id` / `to_budget_line_item_id` hold a `budget_line_items.budget_line_item_id` (`03 - alter_table/23`); `status_id` / `user_id` are plain integers; **none of them has an FK** — not drawn above. The earlier `from_budget_req_id` / `to_budget_req_id` (a budget *request's* id, which no longer exists) are left in place, unused. A line's current amount is `proposed_amount + adjustment`; approving a revision only moves `budget_line_items.adjustment` — the From line goes down, the To line goes up — and never `proposed_amount` |
 | `chart_of_accounts` | COA tree (`parent_account_id` self-FK). Optionally scoped to a responsibility center (`region_code -> responsibility_code.rc_code`) and/or a `project_code` |
 | `responsibility_code` | RCA (Responsibility Center/Accounting) tree (`parent_rc_id` self-FK). `is_budget_holding_rc` flags units that can hold a budget. `rc_id` is the PK and is `VARCHAR(10)` — see the `uac.departments`/`uac.offices` type-mismatch gap in §3 |
 | `type_of_fund` / `component_type` | Small lookup tables (fund source; CO / Other-CO / COE) seeded with a handful of rows. Referenced by `budget_line_items.type_of_fund_id` / `.component_id` **by convention only — no FK exists yet** |
@@ -250,52 +250,62 @@ erDiagram
 ### 2.4 Inspection and Acceptance Report (IAR)
 
 API: `app/routes/po_dr.php` (`/po-dr/*`). Service: `PoDrService`. Page: `app/pages/iar-module.php` +
-`app/pages/form/dr-module-form.php` (PHPMaker page `IarModule`). SQL: `01 - table/25 - fims_po_delivery_receipt.sql`
-(creates both tables; `iar_module` first, since the lines reference it).
+`app/pages/form/dr-module-form.php` (PHPMaker page `IarModule`). SQL: `01 - table/25 - fims_inspection_acceptance_report.sql`.
 
-One PO number has **one IAR** (header) and **many delivery receipt lines**; several lines sharing a
-`dr_number` form one delivery receipt.
+**One table.** One PO number has **one IAR** row, and that row's `line_transaction` (JSONB array) holds the PO's
+**delivery receipts (DR)**; each DR holds its account rows (account code, account title, amount) and, from a total of
+50,000, the optional items (any number, one line each). The total of a DR may not exceed the PO balance.
 
 ```mermaid
 erDiagram
-    iar_module ||--|{ po_delivery_receipt : "po_number (FK, cascade)"
-    iar_module {
+    inspection_acceptance_report {
         int iar_id PK
-        varchar iar_number UK "auto: IAR-YYYY-0001"
-        varchar po_number UK "free text"
+        varchar iar_number UK "typed by the user"
+        varchar po_number UK "RFA PO from budget_allocation"
         varchar si_number "Sales Invoice # (optional)"
         date si_date "Sales Invoice date (optional)"
+        jsonb line_transaction "array of delivery receipts"
     }
-    po_delivery_receipt {
-        int dr_line_id PK
-        varchar po_number FK
-        varchar iar_number "copied from iar_module"
-        varchar dr_number "Delivery Receipt no."
-        date delivery_date
-        varchar account_code "P&E account, only when amount >= 50,000"
-        text description
-        int quantity
-        varchar unit
-        numeric unit_price
-        numeric amount "quantity x unit_price"
-        varchar model_no "optional"
-        varchar serial_no UK "optional, unique when given"
-        varchar property_no "optional"
-        varchar par_no "optional"
-    }
+```
+
+`line_transaction` element (one per delivery receipt):
+
+```json
+{ "dr_number": "DR-001", "delivery_date": "2026-11-12", "total_amount": "800000.00",
+  "lines": [ { "account_code": "1-06-05-030", "account_title": "Information and Communications Technology Equipment", "amount": "600000.00" },
+             { "account_code": "5-02-03-990", "account_title": "Other Supplies and Materials Expenses", "amount": "200000.00" } ],
+  "items": [ { "description": "...", "serial_no": "...", "amount": "600000.00", "property_no": "..." } ] }
 ```
 
 | Table | Purpose / notes |
 |---|---|
-| `iar_module` | The IAR header, one row per PO number. `iar_number` is **generated by the service** (`PoDrService::nextIarNumber()` — `IAR-<year>-0001`, `0002`, …, restarting each year) when a PO is first saved and never changes afterwards, even if the PO number is renamed. `po_number` and `iar_number` are both `UNIQUE`. Holds the Sales Invoice # / date, which are entered once per PO (not per line) |
-| `po_delivery_receipt` | One delivered item per row. `po_number` is a real **FK → `iar_module.po_number`** with `ON DELETE CASCADE` (removing a PO's IAR row deletes its receipt lines) and `ON UPDATE CASCADE` (renaming the PO number renames it on the lines). `iar_number` is a **copy** of the header's number carried by every line (denormalized; no FK of its own — the header update never changes it). `amount` is server-computed (`quantity × unit_price`). `account_code` is the **Property & Equipment account code only** (e.g. `1-06-05-020`); it is required when `amount >= 50,000` and cleared below that — see the gap note in §3. `serial_no` is `UNIQUE` (NULLs don't clash) |
+| `inspection_acceptance_report` | The IAR, one row per PO number. `iar_number` is **typed by the user** (required; `PoDrService` checks it isn't used by another PO) and can be edited later. `po_number` and `iar_number` are both `UNIQUE`. Holds the Sales Invoice # / date (entered once per PO). `line_transaction` is a JSONB array (`CHECK (jsonb_typeof(...) = 'array')`, GIN-indexed) of delivery receipts. `total_amount` of each DR is the sum of its line amounts (computed by the app) and is what counts toward the PO balance. `items` are stored only when the DR total is 50,000 or more. The `dr_number` (unique within the PO) and each item's `serial_no` (unique across all items of all DRs) are checked in PHP — JSONB array elements can't carry a DB unique key — so there are no `po_delivery_receipt` / entry tables and no FK; deleting the row deletes its DRs |
 
-**Pro-forma JEV (not stored).** The "Pro-forma" action builds a journal entry per delivery receipt on the
-fly (`PoDrService::proforma()`), nothing is persisted: Dr `5-02-03-990` for the lines with no
-`account_code`; Dr each used `account_code` (one row per code, summed); Cr `2-01-01-010` (Accounts
-Payable) for the delivery receipt total. Account titles are looked up in `fims.chart_of_accounts`; the
-Subsidiary Ledger columns are not populated. The Create JEV button is a placeholder — it does not write to
-`journal_entry_vouchers` yet.
+**Pro-forma JEV (not stored separately).** The "Pro-forma" action shows each delivery receipt's
+account rows as debits plus one credit of the DR total to `2-01-01-010` Accounts Payable (account titles are the ones stored with the rows) in the accounting
+grid (`PoDrService::proforma()`). The Subsidiary Ledger columns are not populated. The Create JEV button
+is a placeholder — it does not write to `journal_entry_vouchers` yet.
+
+### 2.5 Property Records
+
+API: `app/routes/property_record.php` (`/property-record/*`). Service: `PropertyRecordService`. Page: `app/pages/property-record-page.php` (PHPMaker page `PropertyRecordPage`). SQL: `01 - table/34 - fims_property_records.sql`.
+External source: the NHA Property Inventory System (PIS) API (`inventory_by_po`), searched by PO number — only a PO that already has an IAR can be searched, and only PAR items (PIS `TYPENO` 1) can be saved.
+
+```mermaid
+erDiagram
+    property_records {
+        int property_record_id PK
+        varchar po_number UK "the PIS PO number"
+        varchar rc_id FK "responsibility_code.rc_id, one per PO"
+        jsonb line_transaction "array: one PIS item per element"
+        int created_by
+        timestamp created_at
+    }
+    responsibility_code ||--o{ property_records : "rc_id"
+```
+
+`line_transaction` element (the PIS fields that are kept, under the PIS's own names): `inv_id, TYPENO, GL, accnt_desc, GLCODE_SUB, inv_glcode_sub, PROPNO, SNO, ITEMDESC, MODELNO, DATEACQD, COST, UNIT, SERV, RCCODE, dept_proj_desc, PO_NO, DEPTCD, District`.
+The PO date and the IAR number are not stored (they stay in the IAR module; the list joins the IAR by PO number). The register shown in the list (combined units, acquisition cost, depreciation) is computed when the page loads — nothing of it is stored.
 
 ---
 
@@ -307,16 +317,14 @@ Subsidiary Ledger columns are not populated. The Create JEV button is a placehol
 | `uac.departments.rc_id` | `fims.responsibility_code.rc_id` | **No — can't be**: type mismatch | `departments.rc_id` is `int4`; `responsibility_code.rc_id` is `VARCHAR(10)`. The column exists ("Responsibility Center Code for financial tracking") but cannot physically FK to the table it's named after. Same issue on `uac.offices.rc_id` |
 | `fims.expense_class` | *(nothing)* | — | Seeded with `CO`/`PS`/`MOOE`/`EO` but **no longer referenced by any FK** — `budget_req.expense_class_id` (its only consumer) was dropped in `03 - alter_table/02 - budget_req_remove_expense_class_flow.sql`. `purchase_orders.expense_class` is a separate, differently-valued free-text column, not a link to this table. Orphaned lookup table; confirm nothing reads it before dropping |
 | `fims.budget_line_items.component_id` / `.type_of_fund_id` | `fims.component_type` / `fims.type_of_fund` | No | Named and seeded to match, but no FK constraint exists yet (see table comment in `03 - alter_table/06`) |
-| `fims.budget_line_items.program_source_code` | `fims.program.program_code` | Yes | Optional; the "Program Sources" searchable picker of the Budget Processing modal lists the programs (`GET /program/all`). Added by `03 - alter_table/17` |
-| `fims.budget_line_items.program_uses` | `fims.sub_program.sub_program_code` | Yes | Optional; the "Program Uses" searchable picker of the Budget Processing modal lists the sub-programs (`GET /sub_program/all`). Independent of `program_source_code` (no cascade). Added by `03 - alter_table/18` |
-| `fims.budget_revision.from_budget_req_id` / `.to_budget_req_id` | `fims.budget_req.budget_reference_number` | No | Plain integers despite the name; nothing stops a dangling value |
+| `fims.budget_revision.from_budget_line_item_id` / `.to_budget_line_item_id` | `fims.budget_line_items.budget_line_item_id` | No | New in `03 - alter_table/23`; no FK, so nothing stops a dangling value — a Draft request's Program edit deletes and re-creates its lines — and a revision whose line is gone (or that was filed before budget lines were revised) still lists, with the line's details blank. The legacy `from_budget_req_id` / `to_budget_req_id` columns point at nothing |
 | `fims.budget_allocation.{program,sub_program,project}_id` | `fims.{program,sub_program,project}` | No — can't be | Those tables are keyed by `*_code VARCHAR`, not an integer id; `budget_allocation` stores integers. Intentionally unconstrained per `03 - alter_table/08` |
 | `fims.disbursement_vouchers.rfa_allocation_id` | `fims.budget_allocation.allocation_id` | No | `fims.budget_allocation` has no CRUD backend of its own yet (see §2.1); `DisbursementVoucherService::fetchRfaOptions()`/`fetchRfaDetail()` are a read-only lookup over it, no FK |
 | `fims.disbursement_vouchers.requesting_department_id` | `uac.departments.department_id` | No | Snapshotted from the selected RFA at save time, same unconstrained convention as the RFA link itself |
 | `fims.disbursement_vouchers.account_code` | `fims.chart_of_accounts.account_code` | No | Required and `posting_allowed`-checked in `DisbursementVoucherService::prepare()`, not a DB FK — mirrors `purchase_order_items.account_code`'s "FK targets an alternate key" exception in §2.2, except here there's no FK at all, only the PHP check |
-| `fims.iar_module.po_number` | `fims.purchase_orders.po_number` | No | Free text typed by the user — the IAR module was built before any PO exists, so there is no FK (an FK attempt was deliberately reverted). The format of the number is not checked against `PO-YYYY-MM-NNNN` |
-| `fims.po_delivery_receipt.iar_number` | `fims.iar_module.iar_number` | No | Copied onto every line by `PoDrService`; the real link between the tables is `po_number` (enforced FK, §2.4) |
-| `fims.po_delivery_receipt.account_code` | `fims.chart_of_accounts.account_code` | No | Validated in PHP against a fixed list of 10 Property & Equipment accounts (`PoDrService::ACCOUNTS`, mirrored in `dr-module-form.php`), not a DB FK; the pro-forma looks the titles up in `chart_of_accounts` |
+| `fims.property_records.po_number` | `fims.inspection_acceptance_report.po_number` | No | Joined at read time (with or without the `PO-` prefix); a PO must have an IAR before it can be searched / saved. `line_transaction[].inv_id` is unique across all rows — checked in PHP (JSONB cannot carry a key) |
+| `fims.inspection_acceptance_report.po_number` | `fims.purchase_orders.po_number` | No | Picked from the Budget Allocation, not typed: `PoDrService` only accepts a `po_number` of a `fims.budget_allocation` row with `allocation_type = 'RFA'` (checked in PHP, see DEVELOPER-GUIDE §8.4). It does **not** reference `purchase_orders` — the PO module has no data yet — and there is no DB FK to `budget_allocation.po_number` either (it is not unique there) |
+| `fims.inspection_acceptance_report.line_transaction[].lines[].account_code` | `fims.chart_of_accounts.account_code` | No | Inside a JSONB array, so there can be no FK: `PoDrService::clean()` checks that each code exists in the chart of accounts and stores the account title next to it (a later title change in the chart does not rewrite it) |
 
 None of the above are bugs to silently "fix" by adding a constraint — several are deliberate
 (per the cited comments). Treat this table as a map of where the schema's actual guarantees stop,

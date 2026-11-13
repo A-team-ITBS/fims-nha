@@ -400,47 +400,121 @@ The furthest-along business workflow in the repo — a Budget Request → Revisi
 |---|---|---|---|
 | Purchase Order | `app/pages/po/page.php` (list) + `po/form.php` (add/edit modal, included by `page.php` — not its own route) + `po/readone.php` (detail, separate PHPMaker page `PurchaseOrderReadone`) + `PurchaseOrderService.php` + `app/routes/purchase-order.php` | `fims.purchase_orders`, `purchase_order_items` | Header comments say this was **ported from a `GLOBAL/` predecessor module and trimmed** to fit the `fims` schema (no PR linkage, no allocation/workflow engine, no payment workflow). Status machine `DRAFT → SUBMITTED → APPROVED/REJECTED → CANCELLED`; generates `PO-YYYY-MM-NNNN` numbers. Fully documented in `app/routes/README.md` |
 | Vendors | `app/pages/vendors-page.php` + `form/vendor-form.php` + `VendorService.php` + `app/routes/vendor.php` | `fims.vendors`, `vendor_types` | Standard CRUD shape. Fully documented in `app/routes/README.md` |
-| Inspection and Acceptance Report (IAR) | `app/pages/iar-module.php` (list) + `form/dr-module-form.php` (add/edit modal **and** the read-only "Actual Delivery" view modal, both included by the list page) + `PoDrService.php` + `app/routes/po_dr.php`; PHPMaker page `IarModule` | `fims.iar_module`, `fims.po_delivery_receipt` (`01 - table/25`) | Records what was delivered against a PO: **1 PO number → 1 IAR → many delivery receipt (DR) lines**. PO and DR numbers are free text (no FK to `purchase_orders` — there are no POs yet). Pattern B with a PHPMaker page shell. See the notes below the table |
+| Inspection and Acceptance Report (IAR) | `app/pages/iar-module.php` (list) + `form/dr-module-form.php` (add/edit modal **and** the read-only "Actual Delivery" view modal, both included by the list page) + `PoDrService.php` + `app/routes/po_dr.php`; PHPMaker page `IarModule` | `fims.inspection_acceptance_report` (`01 - table/25 - fims_inspection_acceptance_report.sql`) | Records what was delivered against a PO: **1 PO → 1 IAR → many delivery receipts (DR)**, all in **one table** — the DRs are the `line_transaction` JSONB of the PO's IAR row. The PO is picked from the Budget Allocation (an RFA's PO number). Pattern B with a PHPMaker page shell. See the notes below the table |
+| Property Records | `app/pages/property-record-page.php` + `PropertyRecordService.php` + `app/routes/property_record.php`; PHPMaker page `PropertyRecordPage` | `fims.property_records` (`01 - table/34`) + the Property Inventory System (PIS) API | The user **searches a PO number in PIS, selects PAR items and saves them** — one row per PO, the saved items as JSONB. The list shows the register of the saved items (never read from PIS); **Add from PIS** opens the search window. See the notes below |
 
 **IAR module notes** (`PoDrService.php` header comment is the quick reference):
 
 - **Addressing.** A PO is addressed by its `po_number` passed as `?po_number=…` (numbers may contain `/`
-  or `-`), not by an id. Routes (all `->add($jwtMiddleware)`): `GET /po-dr/list`, `GET /po-dr/read`,
-  `GET /po-dr/proforma`, `POST /po-dr/add`, `PUT /po-dr/update`, `DELETE /po-dr/delete`.
-- **Header vs. lines.** `iar_module` holds `po_number`, the auto-generated `iar_number`
-  (`IAR-YYYY-0001`, per-year counter) and the Sales Invoice # / date — entered **once per PO**, not per
-  line. `po_delivery_receipt` holds one row per delivered item and carries the PO's `iar_number`.
-  `po_number` is the enforced FK (`ON DELETE/UPDATE CASCADE`): deleting a PO's IAR row removes its lines.
-- **Save payload.** `{po_number, si_number?, si_date?, lines:[{dr_line_id?, dr_number, delivery_date,
-  account_code?, description, quantity, unit, unit_price, model_no?, serial_no?, property_no?, par_no?}]}`.
-  Adding with an existing PO number appends lines to that PO (keeps its IAR number). On update, lines
-  with a `dr_line_id` are updated, lines without are inserted, existing lines missing from the payload
-  are deleted; the PO number may be renamed. Serial numbers are unique across all lines (swaps are
-  handled by parking serials on temporary values inside the transaction).
-- **Business rules (server-enforced in `PoDrService::clean()`).** Quantity is a whole number > 0;
-  `amount = quantity × unit_price` is always recomputed server-side (the form's Amount field is
-  read-only); a **Property & Equipment Category** (`account_code`, one of 10 fixed accounts) is required
-  when the line **amount is 50,000 or more** and is discarded below that. The category list lives in two
-  places that must be kept in sync: `PoDrService::ACCOUNTS` and `AMP_ACCOUNTS` in `dr-module-form.php`.
-  Only the account **code** is stored; the form shows "code - name".
-- **List page** columns: `# | PO Number | IAR Number | Sales Invoice # | PO Date | Requesting Office/Dept |
-  Total Amount | Actions`. **PO Date and Requesting Office/Dept are front-end placeholders** (they render
-  "—" — no service/data behind them yet). Actions: **View** (every item of the PO with its DR number),
-  **Pro-forma**, Edit, Delete.
-- **Pro-forma JEV** (`GET /po-dr/proforma`): one tab per delivery receipt, laid out like the accounting
-  grid (Accounts and Explanation / SL Code / Subsidiary Ledger Dr-Cr / GL Acct Code / General Ledger
-  Dr-Cr) with a Total Debit / Total Credit / Difference bar. Computed on the fly, **nothing is stored**:
-  Dr `5-02-03-990` for lines with no category, Dr each used category account (summed per code), Cr
-  `2-01-01-010` for the DR total; titles come from `fims.chart_of_accounts`. SL columns are empty and
-  the **Create JEV** button is a placeholder (no JEV is written yet).
-- **Install.** `01 - table/25 - fims_po_delivery_receipt.sql` creates both tables. If an earlier local
-  version exists, drop `po_delivery_receipt` then `iar_module` first (the script is `IF NOT EXISTS`).
-  Not browser- or DB-tested as of this writing (2026-11-10).
+  or `-`), not by an id. Routes (all `->add($jwtMiddleware)`): `GET /po-dr/list`, `GET /po-dr/pos`
+  (PO picker), `GET /po-dr/accounts` (Account Code picker), `GET /po-dr/read`, `GET /po-dr/proforma`,
+  `POST /po-dr/add`, `PUT /po-dr/update`, `DELETE /po-dr/delete`.
+- **One table, delivery receipts in JSONB.** `inspection_acceptance_report` has one row per PO: `po_number` (unique),
+  the user-entered `iar_number` (required, unique, editable), the Sales Invoice # / date (once per PO) and
+  `line_transaction` (JSONB **array**, one element per delivery receipt — the same idea as
+  `budget_allocation.line_transaction`):
+  `[{dr_number, delivery_date, total_amount, lines:[{account_code, account_title, amount}], items?:[{description,
+  serial_no, amount, property_no}]}]`. `items` (any number of items, **one line each**) is present only when
+  the total is 50,000 or more and at least one item was entered. There are no separate DR / entry tables and no FK: deleting the PO's row deletes its DRs.
+  A DR is identified inside its PO by its `dr_number` (unique within the PO); a serial number is unique across all
+  items of all DRs. Both are checked in PHP (`PoDrService::drError()`) — JSONB array elements can't carry a DB unique key — and the
+  row is locked (`FOR UPDATE`) while a DR is added / edited.
+- **One DR per save.** Payload: `{po_number, iar_number, si_number?, si_date?, dr:{dr_ref? (edit: the dr_number the DR had
+  when loaded), dr_number, delivery_date, entries:[{account_code, amount}], items?:[{description?, serial_no?,
+  amount?, property_no?}]}}`. **Add** appends the DR to the PO's `line_transaction` (creating the IAR row if the
+  PO has none; if it has one, the IAR number sent must match it — the form pre-fills it when the PO is picked).
+  The account titles are looked up in the chart of accounts and stored with the rows. There is no per-DR delete yet (only Delete PO).
+- **Edit is limited.** The edit modal (with a DR picker for POs with several DRs) can change only the **IAR number**, the **Sales Invoice # / date**,
+  the **DR number and delivery date** of the chosen DR, and its **items** (add / change / remove, when the DR total is 50,000 or more).
+  The **PO number** and the DR's **account entries / amounts** are locked (read-only, no "Add row"), and another DR cannot be added there
+  (that is the Add form). `PoDrService::update()` enforces this: a different `po_number` is refused (`The PO number cannot be changed`), and
+  whatever entries are sent are ignored — the stored rows, titles and total are kept — so an edit can never change the PO balance (no balance
+  check on edit). The DR number / serial uniqueness checks still apply.
+- **Pre-fill from the Budget Allocation.** Picking a PO on a new DR pre-fills the account rows from the RFA's
+  `line_transaction` (`account_code` + `requested_amount`; `GET /po-dr/pos` returns them as `lines`). The rows are
+  filled in order until the PO's available balance is used up, and the user can change the accounts and amounts.
+  Only a new DR whose rows are still untouched is pre-filled — an edit never is.
+- **Business rules (server-enforced in `PoDrService::clean()`).** DR number + delivery date required;
+  at least one account row; each row has an account code that exists in `fims.chart_of_accounts` and an
+  **amount** > 0. There is **no debit/credit to balance** — the user only enters account codes and amounts;
+  the validation is the PO balance (next bullet). The DR **Amount** (`total_amount`) is the sum of the
+  row amounts, computed server-side. From **50,000** (`ITEM_MIN_AMOUNT`
+  in the service, `AMP_ITEM_MIN_AMOUNT` in the form) the optional items (any number, one line each) open; below it any entered items are
+  discarded. A serial number is unique across all items of all DRs; a DR number is unique within its PO.
+- **PO balance limit.** A DR's total may not exceed the PO's **available balance** = PO amount − the totals of
+  the PO's *other* DRs (the DR being edited isn't counted against itself). Enforced in
+  `PoDrService::drError()` on add and update; the form shows the **Balance (after this DR)** field next to
+  PO Amount and disables Save with an "Exceeds PO balance" pill when the total (shown under the Amount column) is over it. A PO that is no longer
+  an RFA PO (legacy data) has no limit. `GET /po-dr/pos` returns `dr_total` (already delivered) for the picker and
+  **leaves out POs with no balance left** (`po_amount - dr_total <= 0`), so a fully delivered PO can't be picked for a new DR;
+  an existing IAR of such a PO stays in the list and can still be viewed and edited.
+- **Account Code picker** searches the **whole chart of accounts** (active, `posting_allowed`; by code
+  or title, 30 hits) — not limited to a category list. Only the code is stored; the form shows
+  "code - title".
+- **PO comes from the Budget Allocation.** The PO Number field is a search-and-pick combobox
+  (`GET /po-dr/pos?search=`), not free text. It lists the `po_number` of `fims.budget_allocation` rows with
+  `allocation_type = 'RFA'` (one per PO number, PO number + PO date shown). Picking one fills the read-only
+  Requesting Office/Dept (`responsibility_code.rc_name` of `requesting_rc_id`), Vendor (`vendors.vendor_name`),
+  PO Date and PO Amount. **PO Amount = sum of `requested_amount` over `line_transaction`**.
+  `PoDrService::create()` (and `update()` when the PO number changes) rejects a PO that isn't an RFA PO.
+  **PO Date is the RFA's `created_at` date** — `budget_allocation` has no PO-date column; change the
+  `po_date` expression in `PoDrService::poSource()` if one is added. There is still no DB FK to the PO.
+- **List page** columns: `# | IAR Number | PO Number | PO Date | Requesting Office/Dept | Vendor | Sales Invoice # |
+  PO Amount | Total DR Amount | Balance | Actions`. **Balance = PO Amount − Total DR Amount** (red when
+  over-delivered, green at 0; "—" for a legacy PO that no longer matches an RFA). Actions: **View** (every
+  DR with its account entries, amount and item details), **Pro-forma**, Edit (no Delete button — a PO's IAR can no longer be deleted from the page; `DELETE /po-dr/delete` still exists in the API).
+- **Pro-forma JEV** (`GET /po-dr/proforma`, returns `po_number`, `iar_number` and one entry per DR): one tab per delivery receipt. The header shows
+  the **IAR Number**, the **Delivery Receipt No.** and the DR's **Total Amount**. The list has three columns — `Account Code - Account Name`,
+  `Debit`, `Credit` — and is built from the DR's stored `lines`: each line is a **debit**, and the DR total is **credited to `2-01-01-010`**
+  (Accounts Payable). A **Total** row shows the debit and credit totals under their columns.
+  The entries are **editable** in the modal: change a row's account (searchable over the chart of accounts) and its **debit or credit** amount (a row is
+  one or the other), add a row (the **+ Add row** button is above the table) or remove one. The edits are a draft kept per DR tab (switching tabs keeps them;
+  closing the modal drops them) — nothing is stored. **Submit** is disabled when a row is incomplete or when the **total debit or the total credit exceeds
+  the DR's total amount** (red "Exceeds DR total" pill beside the Total). The entry must also **balance** (total debit = total credit), but that is only
+  checked when **Submit is clicked**: a SweetAlert warning "Not balanced: total debit ₱X and total credit ₱Y are not equal (difference ₱Z)" is shown
+  and nothing is submitted — no pill or message is shown while editing. Submit is still a placeholder (no JEV endpoint yet): once the entry is valid it
+  only shows a notice.
+- **Screens.** The list's Actions column is one **Actions** dropdown (View · Pro-forma · Edit), the same menu as the Memo Requests list. The **View** (Actual Delivery) and **Pro-forma JEV** windows share one
+  modal in the Memo Request details design (dark header with the IAR number, light body of white cards, Close in the footer); the Pro-forma opens wider (1500px). There is **no PAR # field**: the PIS property
+  number is the PAR number (Property Records), so an item line is Description | Serial No. | Amount | Prop. No.
+- **Install.** `01 - table/25 - fims_inspection_acceptance_report.sql` creates the one table. If an earlier local
+  version exists, drop `po_delivery_receipt_entry`, `po_delivery_receipt` and `iar_module` first (the script is
+  `IF NOT EXISTS`; the table was renamed from `iar_module` and absorbed the delivery-receipt tables).
+  The service was exercised end to end against the database on 2026-11-12 (add / duplicate DR and serial / balance and
+  IAR-number checks / edit and rename / list and search / pro-forma / delete); the pages were not browser-tested.
+
+**Property Records notes** (`PropertyRecordService.php` header comment is the quick reference):
+
+- **The list never reads PIS.** The page (cards + register) is `GET /api/property-record/list`, which reads only `fims.property_records`. PIS is just a source of data to insert: **Add from PIS** (header) opens a window
+  (nothing is requested until the user searches) — **search → select → save**. `GET /api/property-record/search?po_number=` reads the PO's items from the NHA **Property Inventory System**
+  (`GET {PIS_API_BASE_URL}/inventory_by_po?page=&pageSize=&PO_NO=`, `Authorization: Bearer {PIS_API_TOKEN}`, all pages) and returns the items with status **1 Issued, 2 Returned: Unserviceable, 3 Returned: Serviceable,
+  4 Donation** (the API only allows the `PO_NO` filter, so the status is filtered in PHP). The user ticks items and clicks **Save Selected** → `POST /api/property-record/save {po_number, inv_ids[]}`. **PIS is asked again on
+  save**: only the PO number and the chosen `inv_id` values come from the browser; an id that is not in that PO, has another status, or is already saved is not saved. A PO typed with this system's `PO-` prefix that finds nothing is retried without it.
+- **Only POs that are in the IAR module** (`fims.inspection_acceptance_report.po_number`; with or without the `PO-` prefix, any case). Otherwise: *"PO '…' is not in the IAR module. Only a PO that already has an IAR can be searched — add its IAR in the IAR module first."*
+  Checked first in `search()` (PIS is not even called) and again in `save()`.
+- **Only PAR (PIS `TYPENO` = 1) is a property record.** Other types (e.g. 2) are listed in the search window but disabled, tagged *Not a property record*, with a warning; `save()` refuses them too
+  ("This is not a property record: only items with TYPENO 1 (PAR) can be saved…").
+- **One responsibility center per PO** (`fims.responsibility_code`), the first that matches: PIS `RCCODE` = `rc_code` → PIS department / district text equal to a center's name → the center of the PO in the IAR module (its budget allocation RFA).
+  An existing PO row keeps its center. The user does not choose it.
+- **Token.** `PIS_API_BASE_URL` / `PIS_API_TOKEN` are in `.env` (git-ignored; `.env.example` has the placeholders), read with `Env()` on the server only; PIS needs a `Bearer` token.
+- **One table, one row per PO, items as JSONB.** `fims.property_records`: `po_number` (unique), `rc_id` (FK → `responsibility_code.rc_id`) and `line_transaction` (JSONB array, one element per saved unit). Only these PIS fields are kept, under the PIS's own names:
+  `inv_id, TYPENO, GL, accnt_desc, GLCODE_SUB, inv_glcode_sub, PROPNO, SNO, ITEMDESC, MODELNO, DATEACQD, COST, UNIT, SERV, RCCODE, dept_proj_desc, PO_NO, DEPTCD, District`. Saving more items of a PO appends to its row; `inv_id` uniqueness is checked in PHP.
+  `created_by` is filled from the logged-in user (empty for the built-in admin, who has no `uac.users` row).
+- **The list = the register.** Built by `PropertyRecordService::groupRows()`, **looped per responsibility center** (a `{center}:` line, then its items). Units of the **same PO + category (GL) + sub category + item name** are ONE row (model, serial,
+  property number, department, cost and status may differ; punctuation / case are ignored): quantity added, property numbers and departments stacked, description `{qty} {unit} {ITEMDESC}; {serial} / …, {model} (PAR No. {PROPNO}, …)`.
+  Columns: Responsibility Area · Qty · Unit · Description · Location/Department within Responsibility Area (the department code, e.g. BML) · JEV Reference/Date (IAR # and PO #) · Particular document · Date Acquired/Donated · Property Number ·
+  **Unit Cost** (one unit; the average if the units differ) · **Acquisition Cost (a)** (qty × unit cost) · **Additional Cost (b)** (0 — not in PIS) · **Total book balance (c = a + b)** · **Estimated Useful Life** (5 years) · **Salvage/Residual value** (10% of c) ·
+  Accumulated Dep. at January 1 · Depreciation for the year · Monthly Depr'n. · Accumulated Depreciation (f = d + e) · Book Value (c − f) · Remarks · Status · Actions, then a **GRAND TOTAL** row (of every row matching the filters) for Total book balance, Salvage, the depreciation columns and Book Value.
+  Depreciation is straight line from each unit's own acquisition date (60 months, 10% salvage) — PIS carries no useful life, so these are assumptions.
+- **Cards.** Only *Property Record Breakdown by Category*: the 10 register categories by GL code (1-06-05-020 Office Equipment … 1-06-99-990 Other Property, Plant & Equipment), each with book value, `Depr:` accumulated depreciation and number of rows; 5 per line; a click filters the table.
+- **View window** (Actions → View): the Memo Request details design — Property Record, Purchase Order (IAR/PO number, date acquired, Unit Cost, Acquisition Cost a, Additional Cost b), Responsibility Center & Location (the center and the description of the department code, e.g.
+  `Bukidnon | Misamis Occidental | Lanao del Norte District Office (BML)`), a Units table and a Depreciation table.
+- **Install.** `01 - table/34 - fims_property_records.sql` creates the table (`IF NOT EXISTS`). The service and the page were exercised against the real PIS API and the local database; the page was not browser-tested.
 
 ### 8.5 Platform utilities (not page-backed)
 | Feature | Files | Purpose |
 |---|---|---|
-| Notifications | `app/routes/notifications.php` + `app/lib/NotificationManager.php` | Recent/count/mark-read/mark-all-read/send/test — no dedicated page in `app/`, consumed by the shared notification bell UI elsewhere in the framework |
+| Notifications | `app/routes/notifications.php` + `app/services/NotificationService.php` | Notification hub on `uac.notifications` / `uac.notification_reads`: recent / count / mark-read / mark-all-read / send (super admin only). Raised from code with `NotificationService::toUser(...)` etc. — see **§8.6**. Consumed by the shared notification bell (`_shared/notification.php`). The old `app/lib/NotificationManager.php` is legacy and no longer used by the routes |
 | Swagger generation trigger | `app/routes/service.php` | `GET /Service` — generates OpenAPI docs via `ApiService` |
 | Generic CRUD template | `app/routes/crud.php` + `app/services/crudServices.php` | **Dead code — see §7.4** |
 
@@ -448,6 +522,57 @@ The furthest-along business workflow in the repo — a Budget Request → Revisi
 > `vendor`, `purchase-order`, `chart_of_accounts`, and `responsibility_center` routes is kept in
 > **`app/routes/README.md`** — read it before calling or extending any of those endpoints; it's more
 > current than this guide for exact HTTP verbs/paths.
+
+### 8.6 Notifications (bell + optional real-time push)
+
+**Storage** (`_assets/sql/00 - uac/02 - alter_table/06 - notifications_hub.sql`): `uac.notifications`
+(`id`, `type`, `target`, `subject`, `body`, `link`, `from_system`, `sender_id`, `event_key`, `created_at`)
+and `uac.notification_reads` (one row per user who has read a notification). A partial unique index on
+`event_key` makes a repeated event a no-op.
+
+**Audience** — a notification is addressed with `type` + `target`; there are no other types:
+
+| `type` | `target` | Who sees it |
+|---|---|---|
+| `all` | `all` | everyone |
+| `system` | `uac.systems.system_id` | users with a level assignment for that system |
+| `user` | `uac.users.user_id` | that user |
+| `userlevel` | `uac.user_levels.user_level_id` | users assigned that level |
+| `office` | `uac.offices.office_id` | active members of that office |
+| `usergroup` | supervisor's `user_id` | users who report to that supervisor |
+
+**Raise one from business code** (`app/services/NotificationService.php`) — static helpers that never
+throw (they return the new id, or `null` when de-duped or failed):
+
+```php
+NotificationService::toUser($userId, "Program {$code} created", "{$name} was added to Programs.",
+    '/ProgramPage', ['event_key' => "program-created:{$code}"]);
+// also: toAll, toSystem, toUserLevel, toOffice, toUserGroup
+```
+
+`link` must be a relative same-origin path (anything else is dropped). `event_key` is optional; use a
+stable key so retries don't notify twice. Example in use: `ProgramService::create()` notifies the creating
+user.
+
+**API** (`app/routes/notifications.php`, all behind `$jwtMiddleware`): `GET /notifications/recent`,
+`GET /notifications/count`, `POST /notifications/mark-read`, `POST /notifications/mark-all-read`,
+`POST /notifications/send` (super admin only). The browser sends `X-Authorization: Bearer ew.API_JWT_TOKEN`.
+`_shared/notification.php` builds its base URL from `Config('API.FIMS_URL')` and strips a trailing `/api`
+before appending `/api/notifications`, so it works whether or not the config value ends in `/api`.
+
+**Delivery:** the bell polls `/recent` every 30 s (and on tab focus) — polling is the guarantee. After an
+insert, `NotificationService` also publishes to EMQX (`POST {EMQX.API_URL}/api/v5/publish`, topic
+`app/notifications/{type}/{target}`) when `EMQX_API_URL` and `EMQX_API_KEY` are set; the browser client
+(`_shared/mqtt-notification.js`) then triggers an immediate refresh. With EMQX off or unconfigured,
+nothing breaks — notifications just arrive on the next poll. After a local action the page can refresh at
+once with `window.NotificationManager?.updateNotifications()` (done in `program-page.php`).
+
+**EMQX:** the `emqx` service in `docker-compose.yml` (`README-Docker.md` has setup and the API key steps).
+`EMQX_API_URL` must point at the REST port `18083`, not the MQTT port `1883`.
+
+**Known gaps:** `app/lib/NotificationManager.php` and its include in `app/global.php` are legacy and can be
+removed; `mqtt-notification.js` hard-codes `wss://localhost:8084/mqtt` and `/node_modules/mqtt/dist/mqtt.min.js`
+returns 404, so push is not active yet and the bell relies on polling; there is no retention job for old rows.
 
 ---
 
@@ -459,7 +584,7 @@ Cross-cutting code used by every page — coordinate before changing:
 |---|---|
 | Auth | `_shared/auth.php` |
 | Page permissions | `_shared/PagePermission.php` (+ `_shared/README-PagePermission.md`) |
-| Notifications | `_shared/notification.php` (+ `_shared/NOTIFICATION_README.md`) |
+| Notifications | `_shared/notification.php` (bell UI), `_shared/mqtt-notification.js` (optional MQTT push) — design in `_shared/NOTIFICATION-IMPLEMENTATION-PLAN.md`, usage in `_shared/NOTIFICATION_README.md`, summary in §8.6 |
 | Workflow engine | `_shared/workflow-manager/` |
 | File manager | `_shared/file-manager/` |
 | Document/editor | `_shared/document/` |
@@ -474,7 +599,7 @@ Cross-cutting code used by every page — coordinate before changing:
 
 ```bash
 docker-compose up -d
-# php-fpm + nginx (localhost:8090) + postgres (localhost:5433) + redis (6380) + minio (9020/9021) + adminer (8091)
+# php-fpm + nginx (localhost:8090) + postgres (localhost:5433) + redis (6380) + minio (9020/9021) + emqx (1883/8083/18083) + adminer (8091)
 ```
 
 First boot runs `composer install` automatically (named volume `fims-vendor`). Load the schema with

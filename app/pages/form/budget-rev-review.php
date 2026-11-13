@@ -17,7 +17,7 @@ namespace PHPMaker2024\FIMS;
     border-radius: var(--rs, 7px);
 }
 .nha-root .brv-v-card-top { display: flex; align-items: center; gap: 8px; font-size: 13px; }
-.nha-root .brv-v-card-sub { margin-top: 2px; color: var(--subtle, #62657E); }
+.nha-root .brv-v-card-sub { margin-top: 2px; color: var(--subtle, #62657E); white-space: pre-line; overflow-wrap: anywhere; line-height: 1.45; }
 .nha-root .brv-v-card-amt { margin-top: 6px; }
 
 .nha-root .brv-v-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
@@ -77,28 +77,28 @@ namespace PHPMaker2024\FIMS;
         <div class="nha-modal-body">
             <input type="hidden" id="brv-view-id" value="">
 
-            <!-- the From COB (from_budget_req_id): the budget request being revised -->
-            <div class="brv-v-label">From COB</div>
+            <!-- the From budget line (from_budget_line_item_id): the line being revised -->
+            <div class="brv-v-label">From Budget Line</div>
             <div class="brv-v-card">
                 <div class="brv-v-card-top">
-                    <span class="nha-bdg nha-bdg-blue" id="brv-view-type">Program</span>
+                    <span class="nha-bdg nha-bdg-gray" id="brv-view-type">Status</span>
                     <strong id="brv-view-title-req"></strong>
                 </div>
                 <div class="brv-v-card-sub" id="brv-view-req-sub"></div>
                 <div class="brv-v-card-amt">Current amount <strong id="brv-view-req-amount"></strong></div>
             </div>
 
-            <!-- the To COB (to_budget_req_id): the COB that receives the funds; optional -->
-            <div class="brv-v-label">To COB</div>
+            <!-- the To budget line (to_budget_line_item_id): the line that receives the funds; optional -->
+            <div class="brv-v-label">To Budget Line</div>
             <div class="brv-v-card" id="brv-view-to-card" hidden>
                 <div class="brv-v-card-top">
-                    <span class="nha-bdg nha-bdg-blue" id="brv-view-to-type">Program</span>
+                    <span class="nha-bdg nha-bdg-gray" id="brv-view-to-type">Status</span>
                     <strong id="brv-view-to-title-req"></strong>
                 </div>
                 <div class="brv-v-card-sub" id="brv-view-to-req-sub"></div>
                 <div class="brv-v-card-amt">Current amount <strong id="brv-view-to-req-amount"></strong></div>
             </div>
-            <div class="brv-v-reason is-empty" id="brv-view-to-none" hidden>No To COB — only the From COB's amount changes.</div>
+            <div class="brv-v-reason is-empty" id="brv-view-to-none" hidden>No To budget line — only the From budget line's amount changes.</div>
 
             <!-- the revision -->
             <div class="brv-v-label">Revision</div>
@@ -107,7 +107,7 @@ namespace PHPMaker2024\FIMS;
                 <div class="brv-v-cell"><div class="brv-v-cell-k">To Amount</div><div class="brv-v-cell-v" id="brv-view-to"></div></div>
                 <div class="brv-v-cell"><div class="brv-v-cell-k">Change</div><div class="brv-v-cell-v" id="brv-view-change"></div></div>
             </div>
-            <!-- what approving does to the two COBs (only while a To COB is set) -->
+            <!-- what approving does to the two budget lines (only while a To line is set) -->
             <div class="brv-v-effect" id="brv-view-effect" hidden></div>
 
             <div class="brv-v-label">Reason</div>

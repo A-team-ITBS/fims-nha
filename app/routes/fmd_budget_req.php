@@ -44,6 +44,11 @@ $app->get('/fmd/budget_req/list', function ($request, $response, $args) use ($Fm
             '',                                                   // every RC …
             GlobalService::CENTRAL_REVIEW_RC_CODE_FROM            // … that is a Regional / District office
         );
+        if ($result['success']) {
+            // where each row stands in the review chain (For Review -> Budget Officer -> Endorsed -> Budget Head -> Approved)
+            // and whether THIS user may decide it now — the row actions are driven by it
+            $result['data'] = $FmdBudgetReqService->withReview($result['data'], $userId);
+        }
 
         return $response->withJson($result);
     } catch (\Exception $e) {
