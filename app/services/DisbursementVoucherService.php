@@ -1657,11 +1657,17 @@ class DisbursementVoucherService
             if ($authError !== null) {
                 return ['success' => false, 'message' => $authError, 'httpCode' => 403];
             }
+            $jev = null;
             if ($new === 'FOR_TREASURY') {
                 $jev = $this->fetchJev($dvId);
                 if (!$jev || (float) $jev['total_debit'] <= 0 || (float) $jev['total_debit'] !== (float) $jev['total_credit']) {
                     return ['success' => false, 'message' => 'Accounting must save a balanced Journal Entry (debits = credits) before this voucher can go to Treasury.'];
                 }
+            } elseif ($new === 'CANCELLED' && $cur['status'] === 'FOR_TREASURY') {
+                // Only this one path can cancel a DV whose JEV was already posted to the General
+                // Ledger (FOR_ACCOUNTING -> FOR_TREASURY posts it, see below) — RELEASED is
+                // terminal, so there's no later point a posted JEV could still be cancelled from.
+                $jev = $this->fetchJev($dvId);
             }
             $notes = trim((string) $notes);
             if ($new === 'REJECTED' && $notes === '') {
@@ -1683,14 +1689,43 @@ class DisbursementVoucherService
                 $set[] = "rejected_at = CURRENT_TIMESTAMP, rejected_by = {$uid}, rejection_reason = " . $this->str($notes);
             }
 
-            // Guard on the status we read so two concurrent actions can't both win.
-            App\Execute(
-                "UPDATE {$this->table} SET " . implode(', ', $set) . " WHERE dv_id = {$dvId} AND status_id = " . (int) $cur['status_id'],
-                'DB'
-            );
-            $now = App\ExecuteScalar("SELECT status_id FROM {$this->table} WHERE dv_id = {$dvId}", 'DB');
-            if ((int) $now !== $newId) {
-                return ['success' => false, 'message' => 'The disbursement voucher was changed by someone else. Please reload and try again.'];
+            App\Execute('BEGIN', 'DB');
+            try {
+                // Guard on the status we read so two concurrent actions can't both win.
+                App\Execute(
+                    "UPDATE {$this->table} SET " . implode(', ', $set) . " WHERE dv_id = {$dvId} AND status_id = " . (int) $cur['status_id'],
+                    'DB'
+                );
+                $now = App\ExecuteScalar("SELECT status_id FROM {$this->table} WHERE dv_id = {$dvId}", 'DB');
+                if ((int) $now !== $newId) {
+                    App\Execute('ROLLBACK', 'DB');
+
+                    return ['success' => false, 'message' => 'The disbursement voucher was changed by someone else. Please reload and try again.'];
+                }
+
+                // Approve/post the JEV to the General Ledger in the same transaction as the DV's
+                // own status move — "DV approved on the Accounting side" and "JEV posted" are one
+                // atomic step, not two separate actions a caller could do half of.
+                if ($new === 'FOR_TREASURY' && $jev) {
+                    $glResult = (new GeneralLedgerService())->postJev((int) $jev['jev_id'], $userId);
+                    if (!$glResult['success']) {
+                        App\Execute('ROLLBACK', 'DB');
+
+                        return $glResult;
+                    }
+                } elseif ($new === 'CANCELLED' && $jev) {
+                    $glResult = (new GeneralLedgerService())->reverseJev((int) $jev['jev_id'], $userId);
+                    if (!$glResult['success']) {
+                        App\Execute('ROLLBACK', 'DB');
+
+                        return $glResult;
+                    }
+                }
+
+                App\Execute('COMMIT', 'DB');
+            } catch (\Exception $e) {
+                App\Execute('ROLLBACK', 'DB');
+                throw $e;
             }
 
             return ['success' => true, 'message' => "Disbursement Voucher is now {$new}.", 'data' => ['dv_id' => $dvId, 'status' => $new]];

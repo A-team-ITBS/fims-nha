@@ -3,10 +3,19 @@
 > **Status:** rewritten 2026-11-09 against the actual schema in `_assets/sql/` and a verified
 > dry-run install; §2.3 (Disbursement Vouchers & Journal Entries) added 2026-11-10 once that module
 > grew Deductions, multi-row ATC, and Subsidiary Ledger support; §2.4 (Inspection and Acceptance
-> Report — IAR) added 2026-11-10. The previous version of this file
-> described a 9-schema, 371-file predecessor architecture (`shared`, `accounting`, `treasury`,
-> `regional`, `district`, `integration`, an `ACCOUNTING-BAPD/sql/` tree, `npm run …` wrappers) that
-> predates this repo's 2026-11-06 rebuild — none of that exists here. See
+> Report — IAR) added 2026-11-10. §2.6 (Treasury operations: Bank Management / Cash Position / Check
+> Processing) and §2.7 (Fund Tracking — SARO/NCA/Trust/Supplemental, plus the Agency/Pricing Request
+> lookups) added 2026-11-13 once those modules landed in `app/` (see the developer guide's §8.5–§8.9).
+> **§2.8 (JEV approval → GL/SL posting → Journals/Trial Balance) drafted 2026-11-14, implemented the
+> same day** — `fims.general_ledger` (table), `journal_entry_vouchers.status_id` (alter), and
+> `fims.v_journals`/`fims.v_trial_balance` (views) all exist in `_assets/sql/` now, backed by
+> `app/services/GeneralLedgerService.php` and wired into
+> `DisbursementVoucherService::changeStatus()`. Verified via a `BEGIN…ROLLBACK` dry run against the
+> live `fims-nha-postgres` dev container (not yet applied to that container for real — see the note
+> at the top of that section for exactly what was and wasn't tested).
+> The previous version of this file described a 9-schema, 371-file predecessor architecture (`shared`,
+> `accounting`, `treasury`, `regional`, `district`, `integration`, an `ACCOUNTING-BAPD/sql/` tree,
+> `npm run …` wrappers) that predates this repo's 2026-11-06 rebuild — none of that exists here. See
 > `system_docs/developerguide/DEVELOPER-GUIDE.md` §11 for the full list of docs still carrying that
 > old architecture, and `_assets/sql/README.md` for the SQL folder / installer mechanics (not
 > duplicated here).
@@ -17,10 +26,10 @@ Only **two schemas have tables in them today**: `uac` and `fims`. `schema.sql` a
 and `workflow`, but nothing is ever created inside them — leftovers from the predecessor project's
 schema plan (see `_assets/sql/README.md` → Database Schemas).
 
-| Schema | Tables (verified live, 2026-11-10) | Covered below |
+| Schema | Tables (verified live, 2026-11-13) | Covered below |
 |---|---|---|
 | `uac` | 30 | §1 |
-| `fims` | 31 (29 verified live + `inspection_acceptance_report` from §2.4 and `property_records` from §2.5, installed and exercised locally) | §2 |
+| `fims` | 57 (`CREATE TABLE` count in `_assets/sql/01 - fims/`, including §2.8's new `general_ledger`; 29 of these were independently verified live as of 2026-11-10 — the rest, including all of §2.6/§2.7's Treasury-ops and Fund Tracking tables, are **not independently re-verified live**, see the note at the end of each of those sections) — **`pricing_requests`/`pricing_request_attachments` are referenced by code but have no table at all, see §3** | §2 |
 | `fmd` | 0 (schema exists, empty) | — |
 | `workflow` | 0 (schema exists, empty) | — |
 
@@ -307,6 +316,208 @@ erDiagram
 `line_transaction` element (the PIS fields that are kept, under the PIS's own names): `inv_id, TYPENO, GL, accnt_desc, GLCODE_SUB, inv_glcode_sub, PROPNO, SNO, ITEMDESC, MODELNO, DATEACQD, COST, UNIT, SERV, RCCODE, dept_proj_desc, PO_NO, DEPTCD, District`.
 The PO date and the IAR number are not stored (they stay in the IAR module; the list joins the IAR by PO number). The register shown in the list (combined units, acquisition cost, depreciation) is computed when the page loads — nothing of it is stored.
 
+### 2.6 Treasury operations: Bank Management, Cash Position, Check Processing
+
+API: `app/routes/bank-management.php`, `cash-position.php`, `check-processing.php`. Services:
+`BankManagementService`, `CashPositionService`/`CashPositionSoaService`/`CashPositionReportsService`,
+`CheckProcessingService`. Pages: `bank-management-page.php`, `cash-position-page.php`,
+`check-disbursement-voucher-page.php`. Ported from the separate `TREASURY` reference project — see
+developer guide §8.6 for which TREASURY page/service each one came from and what was deliberately
+left unported. **Not independently re-verified live as of this writing** — installed and read from
+code, not confirmed against a running dry-run database the way §1/§2.1–§2.5 were.
+
+```mermaid
+erDiagram
+    bank_accounts ||--o{ bank_account_documents : "bank_account_id (FK)"
+    bank_accounts ||--o{ checks : "bank_account_id"
+    bank_accounts ||--o{ cash_position : "bank_account_id"
+    bank_accounts ||--o{ bank_transactions : "bank_account_id"
+    responsibility_code ||--o{ bank_accounts : "rc_id (optional)"
+    disbursement_vouchers ||--o{ checks : "dv_id (optional — only FOR_TREASURY DVs get one)"
+    checks ||--o| check_cancellations : "check_id (optional)"
+    checks ||--o{ check_cancellations : "replacement_check_id (self-ish, optional)"
+    checks ||--o{ check_claimant_releases : "check_id"
+    check_claimant_releases ||--o{ check_claimant_email_log : "release_id"
+    checks ||--o{ check_region_releases : "check_id"
+    check_region_releases ||--o{ check_region_email_log : "release_id"
+    check_booklets ||--o{ checks : "check_number BETWEEN start/end (not a real FK)"
+```
+
+| Table | Purpose / notes |
+|---|---|
+| `bank_accounts` | One row per disbursing bank account. `fund_source` is free text (no `shared.fund_sources` lookup, unlike TREASURY); `rc_id` (Responsibility Center, unenforced) replaces TREASURY's department-based scoping. `status` (ACTIVE/DORMANT/CLOSED, `03 - alter_table/23`/`24`) is kept in sync with the pre-existing `is_active` boolean |
+| `bank_account_documents` | Google-Drive-link attachments per bank account (not uploads) — added alongside the `status`/`rc_id` columns in `03 - alter_table/23` |
+| `checks` | One row per issued check — the central table of the Check Disbursement Voucher module. Status progression tracked here backs Check Preparation, and is read by every other check-processing tab. `status` values were uppercased in `03 - alter_table/25` |
+| `check_booklets` | One row per received booklet/batch of pre-numbered blank check forms (Check Registry tab). "Received/Issued/Cancelled/Remaining/Stock Status" are **computed from `checks` rows whose `check_number` falls in `[start_check_no, end_check_no]`**, not stored here |
+| `check_register` | A **standalone** ledger of every physical blank check form received, ported verbatim from TREASURY's `treasury.check_register` — deliberately decoupled from `checks` (which tracks a check actually prepared/issued) |
+| `check_cancellations` | One row per cancelled check (Cancellation & Replacements tab); `replacement_check_id` optionally self-references the newly-prepared replacement `checks` row. The cancelled check's own `checks.status` is separately flipped by the service |
+| `check_claimant_releases` / `check_claimant_email_log` | Released-to-Claimants tab (incl. its Unclaimed/Unreleased sub-tab, filtered by `status = 'UNCLAIMED'`) and the email notices sent for it |
+| `check_region_releases` / `check_region_email_log` | Released-to-Regions/Departments tab (Check Tracking, Acknowledgment, and "Return Paid DVs" sub-tabs all read this one table) and its email notices. `region_dept` is a free-text snapshot (e.g. "Region 3"), not an FK. Columns for a Google-Drive attachment exist but `CheckProcessingService::saveRegionDriveLink()` is still a stub |
+| `cash_position` | One row per bank account per day, ported from TREASURY's `treasury.cash_position`. `available_balance` is a **generated column** (`closing_balance - restricted_amount`). Backs Check Preparation's cash-availability check as well as the Cash Position module itself |
+| `cash_position_activity_log` | One row per manual Position-Updates create/update action ("Recent Update Activity" panel) |
+| `bank_transactions` / `soa_transactions` | The bank-statement ledger fed by SOA (bank Statement of Account) uploads — `soa_transactions` is the raw parsed upload, `bank_transactions` the resulting ledger rows (`bank_transactions.transaction_id` is a **deterministic string**, not a sequence, so re-uploading the same statement doesn't duplicate rows) |
+
+Reports tab note: `CashPositionReportsService` runs 18 report types off one `report_type` dispatch;
+daily/period/working-paper/individual-ledger/new-FY-opening-balance are real against the tables
+above, the rest (`cash_flow`, `investment`, `interest_earnings*`, `garnished`, `expropriation*`,
+`investment_schedule`) are intentionally stubbed — their source tables (Collections, Investments,
+FTLA, Garnished/Expropriation Accounts) don't exist in this schema at all.
+
+### 2.7 Fund Tracking (SARO / NCA / Trust Funds / Supplemental) and small lookups
+
+API: `app/routes/fund_tracking.php`, `fund_tracking_type.php`, `nature_of_fund.php`, `agency.php`.
+Service: `fund_trackingServices.php` (+ `fund_tracking_typeServices.php`, `nature_of_fundServices.php`,
+`agencyServices.php`). Pages: `saro-registry-page.php`, `supplemental-funds-page.php`,
+`trust-funds-page.php`, `fund-sourcing-dashboard-page.php` — all four read the **same** table, filtered
+differently (see developer guide §8.7). **Not independently re-verified live**, same caveat as §2.6.
+
+```mermaid
+erDiagram
+    fund_tracking_type ||--o{ fund_tracking : "tracking_type_id (no DB FK)"
+    nature_of_fund ||--o{ fund_tracking : "nature_of_fund_id (no DB FK)"
+    fund_tracking ||--o{ fund_tracking : "parent_id (self, no DB FK)"
+```
+
+| Table | Purpose / notes |
+|---|---|
+| `fund_tracking` | One row per SARO/NCA/Trust Fund/OR document. `parent_id` links a record to the one it was released/derived from (e.g. an NCA to its SARO); `multiple_node_id` groups rows saved together. **Declares no FOREIGN KEYs at all** — `fund_trackingServices::validateReferences()` checks every id/code in PHP instead. `agency_name` references `fims.agency` **by name, not id** |
+| `fund_tracking_type` | Lookup: `SARO` (Special Allotment Release Order), `NCA` (Notice of Cash Allocation), `TRUST` (Trust Fund), `OR` (Obligations Request). `GAAAO` and `SUPPLEMENTAL` are deliberately **not** here — they're natures of fund, not tracking types |
+| `nature_of_fund` | Lookup: Insertions, Equity, GAAAO, Unprogrammed, Supplemental |
+| `agency` | Lookup of source agencies (name only); `fund_tracking.agency_name` stores the chosen name as a string, not this table's id |
+
+**Pricing Requests gap:** `PricingRequestService` (Fund Sourcing Division pricing requests, keyed by
+`project_code`) targets `fims.pricing_requests` / `fims.pricing_request_attachments`, but **no SQL
+file anywhere in this repo creates either table** — see developer guide §7.6. Not drawn above since
+there's no schema to diagram yet.
+
+### 2.8 JEV approval → GL/SL posting → Journals & Trial Balance
+
+Drafted 2026-11-14, **implemented the same day**: `fims.general_ledger` (`01 - table/38`),
+`journal_entry_vouchers.status_id`/`posted_by`/`posted_at` (`03 - alter_table/29`), their
+`journal_entry_voucher` status seed rows (`02 - sample_data/11`), and `fims.v_journals`/
+`fims.v_trial_balance` (`05 - views/01` — a new top-level folder for `fims`, mirroring `uac`'s
+`03 - views`). Service: `app/services/GeneralLedgerService.php`, called from
+`DisbursementVoucherService::changeStatus()`. Route + UI added the same day:
+`app/routes/general_ledger.php` (`GET /general_ledger/journals`, `GET /general_ledger/trial-balance`
+— read-only, posting is never reachable via a route) and the `GeneralLedgerPage` custom page
+(`app/pages/general-ledger-page.php`, menu item 393 under "Vouchers"). **Verified twice**: first a
+`BEGIN…ROLLBACK` dry run against the `fims-nha-postgres` docker-compose container (install order, the
+partial unique index rejecting a raw duplicate post, a full post+reverse cycle netting an account to
+exactly 0.00); then the migration was applied for real to the app's actual database
+(`host.docker.internal:5432/fims` — the separate `fims-nha-postgres` container on port 5433 is *not*
+what `fims-nha-php` connects to, see developer guide §10) and the new routes/page were hit with a real
+session cookie: both endpoints return `{"success":true,...}`, the page renders 200, and the menu item
+appears on `/MainDashboard`.
+
+When a DV is approved on the Accounting side (`FOR_ACCOUNTING → FOR_TREASURY`, the transition that
+already requires its JEV to exist and balance — see §2.3), the JEV itself is now also
+approved/posted in the same DB transaction, and its lines flow into the General Ledger that
+Subsidiary Ledger reports, the Journals register, and the Trial Balance all read from.
+
+```mermaid
+erDiagram
+    disbursement_vouchers ||--o| journal_entry_vouchers : "dv_id (1:1, cascade)"
+    journal_entry_vouchers ||--|{ journal_entry_voucher_lines : "jev_id (cascade)"
+    journal_entry_voucher_lines }o--|| chart_of_accounts : "account_code"
+    journal_entry_voucher_lines }o--o| sl_masters : "sl_code (optional)"
+    journal_entry_voucher_lines }o--o| sl_details : "sl_detail_id (optional)"
+
+    journal_entry_vouchers ||--o{ general_ledger : "jev_id (posted lines)"
+    journal_entry_voucher_lines ||--o| general_ledger : "jev_line_id (post-once, see below)"
+    chart_of_accounts ||--o{ general_ledger : "account_code"
+    sl_masters ||--o{ general_ledger : "sl_code (optional)"
+    sl_details ||--o{ general_ledger : "sl_detail_id (optional)"
+    general_ledger ||--o| general_ledger : "reversed_gl_id (self, optional)"
+
+    general_ledger {
+        int gl_id PK
+        int jev_id FK "fims.journal_entry_vouchers"
+        int jev_line_id FK "fims.journal_entry_voucher_lines, no DB FK on fiscal_yr"
+        varchar account_code FK "fims.chart_of_accounts"
+        varchar sl_code FK "optional"
+        int sl_detail_id FK "optional"
+        varchar rc_id FK "optional"
+        smallint fiscal_yr "no FK, same as journal_entry_vouchers.fiscal_yr"
+        date posting_date
+        numeric debit
+        numeric credit
+        varchar reference_no "jev_no, or jev_no+-REV for a reversal"
+        int reversed_gl_id FK "self; set only on a reversing row"
+        int posted_by
+        timestamptz posted_at
+    }
+```
+
+**Trial Balance and the Journals register are VIEWs over `general_ledger`, not stored tables** —
+consistent with how this repo already prefers computing reports live rather than maintaining a
+parallel stored summary (e.g. Cash Position's generated `available_balance` column). `fims.v_journals`
+joins in the JEV/DV/account/SL labels; `fims.v_trial_balance` groups by `fiscal_yr` + `account_code`.
+
+**Process flow:**
+
+```mermaid
+sequenceDiagram
+    participant O as Originating (DV form)
+    participant FMD as FMD
+    participant ACC as Accounting
+    participant SYS as DisbursementVoucherService
+    participant JEV as journal_entry_vouchers
+    participant GL as GeneralLedgerService
+
+    O->>SYS: POST /voucher/add
+    SYS->>SYS: disbursement_vouchers status = DRAFT
+    Note over JEV: a JEV row is only ever created by saveJournalEntry() at the<br/>FOR_ACCOUNTING stage — there is no auto-created empty JEV on DV add
+
+    O->>SYS: submit-for-review
+    SYS->>SYS: status → FOR_FMD_REVIEW
+    FMD->>SYS: approve
+    SYS->>SYS: status → FOR_ACCOUNTING
+
+    ACC->>SYS: saveJournalEntry() — creates/fills the JEV (status DRAFT), Dr/Cr must balance
+    Note over SYS: already enforced: total_debit = total_credit
+
+    ACC->>SYS: changeStatus(FOR_ACCOUNTING → FOR_TREASURY)  ⟵ "DV approved, accounting side"
+    SYS->>SYS: BEGIN; existing check: JEV exists & balanced; update dv.status_id
+    SYS->>GL: postJev(jev_id, user_id) — same transaction
+    GL->>JEV: status DRAFT → POSTED, posted_by/posted_at set
+    GL->>GL: INSERT one general_ledger row per journal_entry_voucher_line (post-once, partial unique index)
+    Note over GL: sl_code/sl_detail_id/rc_id carried straight from the JEV line — no separate SL posting step
+    SYS->>SYS: COMMIT (or ROLLBACK the whole thing if postJev() fails)
+    Note over GL: v_journals / v_trial_balance immediately reflect it (views, not stored)
+
+    SYS->>SYS: status → FOR_TREASURY → RELEASED (Treasury prepares the check) — terminal, no further transitions
+    SYS-->>GL: (FOR_TREASURY → CANCELLED instead) reverseJev(jev_id, user_id) — JEV → REVERSED, offsetting GL rows inserted
+```
+
+**Design notes (as actually built, differences from the original draft called out):**
+
+- **JEV gets `status_id`** (`DRAFT → POSTED`, or `REVERSED`; **no separate `APPROVED` status was
+  added** — the draft's three-step `DRAFT → APPROVED → POSTED` collapsed to two, since nothing in
+  this flow needs to observe an "approved but not yet posted" moment), resolved through
+  `fims.settings_status` with `status_for = 'journal_entry_voucher'` — same shared-lookup pattern as
+  `disbursement_vouchers.status_id`.
+- **Posting is triggered by the existing `FOR_ACCOUNTING → FOR_TREASURY` transition**, not a separate
+  "approve JEV" action — `DisbursementVoucherService::changeStatus()` now wraps its own status
+  update **and** `GeneralLedgerService::postJev()` in one `BEGIN…COMMIT`/`ROLLBACK` (that method
+  wasn't transactional before this change; it is now).
+- **`general_ledger.jev_line_id` is unique only among *original* postings** — a **partial unique
+  index** (`WHERE reversed_gl_id IS NULL`), not a plain `UNIQUE` constraint as first drafted. A plain
+  `UNIQUE` would have made reverseJev() impossible: a reversing row legitimately re-states the same
+  `jev_line_id` with debit/credit swapped. `postJev()` is still idempotent — re-running it against an
+  already-`POSTED` JEV is a no-op success.
+  `fiscal_yr` has no FK (same looseness as `journal_entry_vouchers.fiscal_yr` itself).
+- **Reversal only fires on `FOR_TREASURY → CANCELLED`**, not "a `RELEASED` DV later cancelled" as the
+  draft said — `DisbursementVoucherService::TRANSITIONS` makes `RELEASED` terminal (nothing moves out
+  of it), so `FOR_TREASURY → CANCELLED` is the *only* transition where a DV can be cancelled after
+  its JEV was already posted. `reverseJev()` inserts one offsetting `general_ledger` row per original
+  line (debit/credit swapped, `reversed_gl_id` pointing back) and flips the JEV to `REVERSED` — never
+  deletes a posted row, same "never delete, link instead" convention as
+  `check_cancellations.replacement_check_id`.
+- **SL (Subsidiary Ledger) and Responsibility Center need no new table** —
+  `journal_entry_voucher_lines.sl_code`/`sl_detail_id`/`rc_id` already exist (§2.3); posting just
+  copies them onto the `general_ledger` row so SL-level reports can filter `general_ledger` directly
+  instead of re-joining back to the JEV.
+
 ---
 
 ## 3. Cross-schema links & known gaps
@@ -319,12 +530,16 @@ The PO date and the IAR number are not stored (they stay in the IAR module; the 
 | `fims.budget_line_items.component_id` / `.type_of_fund_id` | `fims.component_type` / `fims.type_of_fund` | No | Named and seeded to match, but no FK constraint exists yet (see table comment in `03 - alter_table/06`) |
 | `fims.budget_revision.from_budget_line_item_id` / `.to_budget_line_item_id` | `fims.budget_line_items.budget_line_item_id` | No | New in `03 - alter_table/23`; no FK, so nothing stops a dangling value — a Draft request's Program edit deletes and re-creates its lines — and a revision whose line is gone (or that was filed before budget lines were revised) still lists, with the line's details blank. The legacy `from_budget_req_id` / `to_budget_req_id` columns point at nothing |
 | `fims.budget_allocation.{program,sub_program,project}_id` | `fims.{program,sub_program,project}` | No — can't be | Those tables are keyed by `*_code VARCHAR`, not an integer id; `budget_allocation` stores integers. Intentionally unconstrained per `03 - alter_table/08` |
-| `fims.disbursement_vouchers.rfa_allocation_id` | `fims.budget_allocation.allocation_id` | No | `fims.budget_allocation` has no CRUD backend of its own yet (see §2.1); `DisbursementVoucherService::fetchRfaOptions()`/`fetchRfaDetail()` are a read-only lookup over it, no FK |
+| `fims.disbursement_vouchers.rfa_allocation_id` | `fims.budget_allocation.allocation_id` | No | **Stale note fixed 2026-11-13**: `fims.budget_allocation` now *does* have a CRUD backend (`BudgetAllocationService` / `app/routes/budget_allocation.php`, the Memo Request page — see developer guide §8.2/§2.7), but the link here was already soft before that landed and stays soft deliberately — see the comment in `03 - alter_table/11`. `DisbursementVoucherService::fetchRfaOptions()`/`fetchRfaDetail()` are a read-only lookup over it, no FK |
+| `fims.budget_allocation.dv_id` | `fims.disbursement_vouchers.dv_id` | No | The inverse of the row above, added `03 - alter_table/23`: which DV an RFA (`allocation_type = 'RFA'`) is currently drawn into, if any. Soft reference for the same "no CRUD backend" reasoning cited there (now partly outdated — see the row above); `DisbursementVoucherService` enforces "one DV at a time per RFA" itself, not the database |
 | `fims.disbursement_vouchers.requesting_department_id` | `uac.departments.department_id` | No | Snapshotted from the selected RFA at save time, same unconstrained convention as the RFA link itself |
 | `fims.disbursement_vouchers.account_code` | `fims.chart_of_accounts.account_code` | No | Required and `posting_allowed`-checked in `DisbursementVoucherService::prepare()`, not a DB FK — mirrors `purchase_order_items.account_code`'s "FK targets an alternate key" exception in §2.2, except here there's no FK at all, only the PHP check |
+| `fims.checks.dv_id` | `fims.disbursement_vouchers.dv_id` | No | Only a `FOR_TREASURY` DV can get a check prepared against it (`CheckProcessingService::saveCheck()`), checked in PHP, no DB FK — see §2.6 |
 | `fims.property_records.po_number` | `fims.inspection_acceptance_report.po_number` | No | Joined at read time (with or without the `PO-` prefix); a PO must have an IAR before it can be searched / saved. `line_transaction[].inv_id` is unique across all rows — checked in PHP (JSONB cannot carry a key) |
 | `fims.inspection_acceptance_report.po_number` | `fims.purchase_orders.po_number` | No | Picked from the Budget Allocation, not typed: `PoDrService` only accepts a `po_number` of a `fims.budget_allocation` row with `allocation_type = 'RFA'` (checked in PHP, see DEVELOPER-GUIDE §8.4). It does **not** reference `purchase_orders` — the PO module has no data yet — and there is no DB FK to `budget_allocation.po_number` either (it is not unique there) |
 | `fims.inspection_acceptance_report.line_transaction[].lines[].account_code` | `fims.chart_of_accounts.account_code` | No | Inside a JSONB array, so there can be no FK: `PoDrService::clean()` checks that each code exists in the chart of accounts and stores the account title next to it (a later title change in the chart does not rewrite it) |
+| `fims.fund_tracking.{tracking_type_id,nature_of_fund_id,sub_program_code,agency_name,status_id,parent_id}` | `fund_tracking_type` / `nature_of_fund` / `sub_program` / `agency` (by name) / `settings_status` / `fund_tracking` (self) | No | `fims.fund_tracking` declares no FOREIGN KEYs at all; `validateReferences()` checks every id/code in PHP — see §2.7 |
+| `fims.pricing_requests` / `fims.pricing_request_attachments` | *(no table exists)* | — | `PricingRequestService` targets both, but no SQL file in this repo creates either — see §2.7 / developer guide §7.6. Every `/pricing_requests/*` endpoint SQL-errors against a fresh install |
 
 None of the above are bugs to silently "fix" by adding a constraint — several are deliberate
 (per the cited comments). Treat this table as a map of where the schema's actual guarantees stop,

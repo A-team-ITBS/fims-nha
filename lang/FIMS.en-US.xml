@@ -68,6 +68,9 @@
     <menu id="260">
       <phrase id="menutext" value="Check Disbursements"/>
     </menu>
+    <menu id="393">
+      <phrase id="menutext" value="General Ledger"/>
+    </menu>
     <menu id="332">
       <phrase id="menutext" value="Bank Management"/>
     </menu>

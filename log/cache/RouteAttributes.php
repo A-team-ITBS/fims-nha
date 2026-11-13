@@ -103,6 +103,7 @@
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone ($p['PHPMaker2024\\FIMS\\Attributes\\Get'] ?? \Symfony\Component\VarExporter\Internal\Registry::p('PHPMaker2024\\FIMS\\Attributes\\Get')),
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Get'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
@@ -187,6 +188,11 @@
     [
         'PHPMaker2024\\FIMS\\Attributes\\Map' => [
             'methods' => [
+                [
+                    'GET',
+                    'POST',
+                    'OPTIONS',
+                ],
                 [
                     'GET',
                     'POST',
@@ -1165,6 +1171,7 @@
                 '/EventPlayground[/{params:.*}]',
                 '/FileManager[/{params:.*}]',
                 '/FundSourcingDashboardPage[/{params:.*}]',
+                '/GeneralLedgerPage[/{params:.*}]',
                 '/IarModule[/{params:.*}]',
                 '/IdGenerator[/{params:.*}]',
                 '/JournalEntryVoucher[/{params:.*}]',
@@ -1349,6 +1356,7 @@
                 'PHPMaker2024\\FIMS\\EventPlaygroundController:custom',
                 'PHPMaker2024\\FIMS\\FileManagerController:custom',
                 'PHPMaker2024\\FIMS\\FundSourcingDashboardPageController:custom',
+                'PHPMaker2024\\FIMS\\GeneralLedgerPageController:custom',
                 'PHPMaker2024\\FIMS\\IarModuleController:custom',
                 'PHPMaker2024\\FIMS\\IdGeneratorController:custom',
                 'PHPMaker2024\\FIMS\\JournalEntryVoucherController:custom',
@@ -1463,6 +1471,9 @@
                 'PHPMaker2024\\FIMS\\WorkflowManagerController:custom',
             ],
             'middleware' => [
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
                 [
                     'PHPMaker2024\\FIMS\\PermissionMiddleware',
                 ],
@@ -2079,6 +2090,7 @@
                 'custom.EventPlayground',
                 'custom.FileManager',
                 'custom.fund_sourcing_dashboard_page',
+                'custom.GeneralLedgerPage',
                 'custom.IARModule',
                 'custom.IDGenerator',
                 'custom.JournalEntryVoucher',
@@ -2193,6 +2205,7 @@
                 'custom.WorkflowManager',
             ],
             'options' => [
+                [],
                 [],
                 [],
                 [],
@@ -2561,6 +2574,7 @@
         $o[179],
         $o[180],
         $o[181],
+        $o[182],
     ],
     []
 );

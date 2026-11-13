@@ -126,6 +126,7 @@ return [
     "IARModule" => \DI\create(IarModule::class),
     "Voucher" => \DI\create(Voucher::class),
     "JournalEntryVoucher" => \DI\create(JournalEntryVoucher::class),
+    "GeneralLedgerPage" => \DI\create(GeneralLedgerPage::class),
     "ChangePass" => \DI\create(ChangePass::class),
     "CheckDisbursements" => \DI\create(CheckDisbursements::class),
     "budget_prop_page" => \DI\create(BudgetPropPage::class),
