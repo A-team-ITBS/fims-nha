@@ -1142,7 +1142,7 @@ class DisbursementVoucherService
      * own transaction (persistJournalEntry() doesn't) since this is a standalone call, not nested
      * inside create()/update()'s.
      */
-    public function saveJournalEntry(int|string $dvId, array $atcLines, array $lines, int $userId): array
+    public function saveJournalEntry(int|string $dvId, array $atcLines, array $lines, int $userId, array $deductions = []): array
     {
         try {
             $dvId   = (int) $dvId;
@@ -1162,7 +1162,7 @@ class DisbursementVoucherService
 
             App\Execute('BEGIN', 'DB');
             try {
-                $result = $this->persistJournalEntry($dvId, $atcLines, $lines, $userId, true);
+                $result = $this->persistJournalEntry($dvId, $atcLines, $lines, $userId, true, $deductions);
                 if (!$result['success']) {
                     App\Execute('ROLLBACK', 'DB');
 
@@ -1194,8 +1194,15 @@ class DisbursementVoucherService
      *     state, not an error — Accounting still has to prepare a real one later regardless.
      * Full replace of both atc_lines/lines, same upsert shape as PurchaseOrderService's items.
      * Recomputes the DV's net_amount/balance_amount either way.
+     *
+     * $deductions is null for the create()/update() pre-fill call sites — they already manage
+     * fims.disbursement_voucher_deductions themselves (via their own prepareDeductions()/
+     * replaceDeductions() calls, before this runs), so this leaves that table alone. Only
+     * saveJournalEntry() (Accounting) passes a real array — a full replace, same "always send the
+     * current set" convention atc_lines/lines already use, now that Accounting can edit Deductions
+     * too (see app/pages/voucher/readone.php's vje_deductionCard()).
      */
-    private function persistJournalEntry(int $dvId, array $atcLines, array $lines, int $userId, bool $requireBalancedEntry): array
+    private function persistJournalEntry(int $dvId, array $atcLines, array $lines, int $userId, bool $requireBalancedEntry, ?array $deductions = null): array
     {
         $dv = App\ExecuteRow(
             "SELECT dv_id, fiscal_yr, gross_amount, obligation_amount, payments_prior_amount
@@ -1207,6 +1214,11 @@ class DisbursementVoucherService
         }
 
         $errors = [];
+
+        if ($deductions !== null) {
+            [$dedErrors, $cleanDeductions] = $this->prepareDeductions($deductions, (float) $dv['gross_amount']);
+            $errors = array_merge($errors, $dedErrors);
+        }
 
         [$atcErrors, $cleanAtc, $totalWithholding] = $this->prepareAtcLines($atcLines);
         $errors = array_merge($errors, $atcErrors);
@@ -1281,6 +1293,10 @@ class DisbursementVoucherService
         }
         if ($errors) {
             return ['success' => false, 'message' => 'Validation failed.', 'errors' => $errors];
+        }
+
+        if ($deductions !== null) {
+            $this->replaceDeductions($dvId, $cleanDeductions);
         }
 
         $totalDeductions = (float) (App\ExecuteScalar("SELECT COALESCE(SUM(deduction_amount), 0) FROM {$this->tableDvDeductions} WHERE dv_id = {$dvId}", 'DB') ?? 0);
