@@ -155,15 +155,17 @@ $app->patch('/budget_allocation/update/{id}', function ($request, $response, $ar
 // Delete (soft)
 // Review — the Financial Management Department (FMD) approves or returns a request, one step at a time:
 // For Preview (FMD Section Chief) -> For Division Manager (FMD Division Manager) -> For Department Manager
-// (FMD Department Manager) -> Approved. Body: { "decision": "approve" | "return" }. "approve" moves it to the next status;
-// the last approval gives the request its allocation number (by allocation type and document type). "return" at any step
-// gives 'Returned'. Anyone outside FMD, or without the user level of the current step, gets 403 — see
+// (FMD Department Manager) -> Approved. Body: { "decision": "approve" | "return", "remarks"?: string }. "approve" moves it to
+// the next status; the last approval gives the request its allocation number (by allocation type and document type).
+// "return" goes ONE step back (the Section Chief's: 'Returned', the requesting office) and REQUIRES remarks (the reason,
+// saved on budget_allocation.remarks). Anyone outside FMD, or without the user level of the current step, gets 403 — see
 // BudgetAllocationService::process().
 $app->patch('/budget_allocation/process/{id}', function ($request, $response, $args) use ($BudgetAllocationService) {
     try {
         $body = $request->getParsedBody();
         $decision = is_array($body) && is_scalar($body['decision'] ?? null) ? (string) $body['decision'] : '';
-        $result = $BudgetAllocationService->process($args['id'], $decision, (int) $request->getAttribute('user_id'));
+        $remarks  = is_array($body) && is_string($body['remarks'] ?? null) ? $body['remarks'] : null;
+        $result = $BudgetAllocationService->process($args['id'], $decision, (int) $request->getAttribute('user_id'), $remarks);
 
         return $response->withJson($result, $result['success'] ? 200 : (!empty($result['forbidden']) ? 403 : 400));
     } catch (\Exception $e) {

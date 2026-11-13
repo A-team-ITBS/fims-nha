@@ -13,9 +13,16 @@ namespace PHPMaker2024\FIMS;
  * always every Regional / District office — so this page sends no RC parameters and does no RC lookup of its own.
  * Anyone else who opens the page gets that route's 403 message and an empty list.
  *
- * Row actions act on the whole request: View (the request's details, read-only), Budget Processing (user level 2 until it is
- * Endorsed), Budget Preview (level 8 until it is Approved) and Delete of a Draft. A Budget Head's row on an Approved request has
- * no Actions button at all. They open the shared modals from form/budget-processing-form.php and
+ * Row actions act on the whole request: View (the request's details, read-only), Budget Processing (the Budget Officer, while
+ * the request is waiting for them), Budget Preview (level 8 until it is Approved) and Delete of a Draft. A Budget Head's row on
+ * an Approved request has no Actions button at all.
+ *
+ * The review is a step-by-step chain, like the Memo Request's (BudgetReqService::REVIEW_STEPS), and each row carries the
+ * server's view of it (`review`: the step, who acts on it, can_decide for the logged-in user):
+ *   For Review -> Budget Officer endorses -> Endorsed -> Budget Head approves -> Approved
+ *   a Return goes ONE step back: the Budget Head's -> "Returned to Budget Officer" (the Officer acts on it again), the
+ *   Budget Officer's -> "Returned" (the originating office).
+ * Budget Processing is offered only to the user the request is waiting for, and Return / Approve in Budget Preview likewise. They open the shared modals from form/budget-processing-form.php and
  * readone/budget-preview-readone.php (same layout; the Budget Head's Return reason is typed in the preview's own
  * remarks box), which rely on the helpers (and fill the Fiscal Year / Program filters) of
  * form/budget-req-form.php — included below for that, its Add modal is simply not used here.
@@ -173,10 +180,9 @@ const BGR_PAGE_SIZE = 15;
 const BGR_LIST_API = '<?php echo $_bgr_api; ?>' + '/fmd/budget_req/list';
 // false for user level 2 (Budget Officer) — hides the row Delete action.
 const BGR_CAN_MODIFY = <?php echo $_bgr_canModify ? 'true' : 'false'; ?>;
-// true only for user level 2 (Budget Officer) — shows the row "Budget Processing" action.
-const BGR_CAN_BUDGET_PROCESSING = <?php echo $_bgr_isBudgetOfficer ? 'true' : 'false'; ?>;
-// true only for user level 8 (Budget Head) — shows the row "Budget Preview" action,
-// and Return / Approve inside its modal.
+// true only for user level 8 (Budget Head) — shows the row "Budget Preview" action (Return / Approve inside its modal
+// additionally need the row's review.can_decide, see bgr_budgetPreview()). "Budget Processing" has no flag of its own:
+// it is driven by the row's review (see bgr_actionButtons()).
 const BGR_IS_BUDGET_HEAD = <?php echo $_bgr_isBudgetHead ? 'true' : 'false'; ?>;
 let bgr_flatRows = [];   // [{ header, program }] of the rows on screen, for the row actions
 
@@ -290,8 +296,10 @@ function bgr_actionButtons(flatRow, idx) {
             View
         </a>`;
 
-    // Hidden once the request has been Endorsed or Approved — it can't be processed again.
-    const budgetProcessingItem = (BGR_CAN_BUDGET_PROCESSING && !['Endorsed', 'Approved'].includes(header.status_name))
+    // Step 1 of the review chain (BudgetReqService::REVIEW_STEPS): only when the request is waiting for the Budget Officer
+    // ("For Review", or "Returned to Budget Officer" after the Budget Head sent it back) AND this user is that Budget Officer —
+    // the row's review says so (review.can_decide, decided on the server). Once it is Endorsed it is the Budget Head's turn.
+    const budgetProcessingItem = (header.review?.can_decide && header.review.actor === 'Budget Officer')
         ? `<a class="nha-menu-item" href="javascript:void(0);" onclick="bgr_budgetProcessing(${idx});bgr_closeMenus();">
             <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
             Budget Processing
@@ -391,6 +399,9 @@ function bgr_budgetProcessing(idx) {
         rc_code: header.rc_code,
         rc_name: header.rc_name,
         submitted_at: header.submitted_at,
+        // after a Return by the Budget Head: its remarks and the review step (who a Return goes back to)
+        remarks: header.remarks,
+        review: header.review,
     }, programs);
 }
 
@@ -410,8 +421,10 @@ function bgr_budgetPreview(idx) {
         rc_id: header.rc_id,
         rc_code: header.rc_code,
         rc_name: header.rc_name,
-        // Return / Approve (+ the remarks box): Budget Head only, and only once the request is Endorsed.
-        can_decide: BGR_IS_BUDGET_HEAD && header.status_name === 'Endorsed',
+        // Return / Approve (+ the remarks box): the last step of the review chain — only the Budget Head, and only while the
+        // request is Endorsed. The row's review says so (review.can_decide, decided on the server).
+        can_decide: !!header.review?.can_decide && header.review.actor === 'Budget Head',
+        review: header.review,
     }, programs);
 }
 

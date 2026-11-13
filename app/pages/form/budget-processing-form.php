@@ -49,20 +49,26 @@
  *
  * Footer actions:
  *   Return  — needs REMARKS (the box above the footer; required): PUT /budget_req/return/{id} { remarks } sets
- *             the request's status to "Returned" and saves the remarks on fims.budget_req.remarks; the line
+ *             the request's status to "Returned" (back to the originating office — the Budget Officer is the first
+ *             step of the review chain) and saves the remarks on fims.budget_req.remarks; the line
  *             items are left untouched.
  *   Endorse — PUT /budget_req/endorse/{id}: Type of Fund and Component are REQUIRED on every line item of
  *             EVERY Project (Suggested Amount is optional); saves them, and the
  *             Account Code, to fims.budget_line_items and
- *             sets the request's status to "Endorsed" (one transaction). If something required is missing the
+ *             sets the request's status to "Endorsed" — now with the Budget Head (one transaction). If something required is missing the
  *             first such field is focused and its Project section is outlined in red. The remarks box is not used.
+ * The review is a step-by-step chain (BudgetReqService::REVIEW_STEPS): For Review -> Budget Officer (this modal) -> Endorsed
+ * -> Budget Head (budget-preview-readone.php) -> Approved. A request the Budget Head sent back ("Returned to Budget Officer")
+ * comes to this modal again, with the Head's remarks shown above the details; the Officer can endorse it again or return it.
+ * The list rows say whether this user may act (row.review.can_decide); the API enforces it again.
  * Status lives on the request header, so Return/Endorse apply to the whole request, and the modal shows every
  * Project of the request it is given.
  *
  * Trigger: bpr_openModal(requestContext, programs) — called from the list pages' "Budget Processing" row
  * action, where:
- *   requestContext = { budget_reference_number, fiscal_yr, status_name, status_color, rc_id, rc_code, rc_name, submitted_at }
- *                    (rc_* = the requesting office, submitted_at = when it was submitted; both from the list row)
+ *   requestContext = { budget_reference_number, fiscal_yr, status_name, status_color, rc_id, rc_code, rc_name, submitted_at, remarks, review }
+ *                    (rc_* = the requesting office, submitted_at = when it was submitted, remarks = the reason of the last Return,
+ *                    review = the row's review-chain info; all from the list row)
  *   programs       = ONE program or an ARRAY of them, each
  *                    { program_code, program_name, sub_program_code, sub_program_name, projects[] }
  *                    (each project has project_code, project_name, line_items[], straight from the list data; the program's
@@ -216,6 +222,13 @@ $_bpr_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
 }
 .nha-root .bpr-err[hidden] { display: none; }
 
+/* ── "Returned to Budget Officer": who sent it back and why (the Budget Head's remarks) ── */
+.nha-root .bpr-returned {
+    margin: 0 0 16px; padding: 10px 12px; font-size: 13px; border-radius: var(--rs, 7px);
+    background: #FFF8EB; color: #92400E; border: 1px solid #F59E0B; overflow-wrap: anywhere;
+}
+.nha-root .bpr-returned[hidden] { display: none; }
+
 /* ── Footer: Return (outlined) / Endorse (filled) ── */
 .nha-root .nha-modal-foot .nha-btn[disabled] { opacity: .6; cursor: not-allowed; }
 .nha-root .nha-modal-foot .bpr-btn-return {
@@ -254,6 +267,9 @@ $_bpr_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
             <button type="button" class="nha-modal-close" id="bpr-close" aria-label="Close">&times;</button>
         </div>
         <div class="nha-modal-body" id="bpr-body">
+
+            <!-- only on a request the Budget Head sent back: the Head's remarks -->
+            <div class="bpr-returned" id="bpr-returned" hidden></div>
 
             <!-- Originating Unit · Date Submitted · Programs · Projects -->
             <div class="bpr-meta" id="bpr-meta"></div>
@@ -372,6 +388,13 @@ async function bpr_openModal(requestContext, programs) {
     bpr_ctx = requestContext;
     bpr_render(requestContext, programs);
     bpr_hideErr();
+
+    // A request the Budget Head sent back ("Returned to Budget Officer") shows the Head's remarks above the details.
+    const returnedBox = $bpr('bpr-returned');
+    returnedBox.hidden = !requestContext.review?.is_returned;
+    returnedBox.textContent = requestContext.review?.is_returned
+        ? 'Returned by the Budget Head' + (requestContext.remarks ? ' — ' + requestContext.remarks : '.')
+        : '';
     $bpr('bpr-remarks').value = '';
     $bpr('bpr-remarks').classList.remove('is-invalid');
     bpr_updateButtons(false);
@@ -941,7 +964,7 @@ function bpr_collectItems() {
 async function bpr_endorse() {
     bpr_hideErr();
     if (!bpr_validate()) return;
-    if (!confirm(`Endorse budget request ${bpr_ctx.budget_reference_number}? The Type of Fund, Component, Account Code and Suggested Amount will be saved to its line items and its status will change to Endorsed.`)) return;
+    if (!confirm(`Endorse budget request ${bpr_ctx.budget_reference_number} to the Budget Head? The Type of Fund, Component, Account Code and Suggested Amount will be saved to its line items and its status will change to Endorsed.`)) return;
 
     await bpr_send('endorse', { items: bpr_collectItems() }, 'Failed to endorse the budget request.');
 }
@@ -957,7 +980,9 @@ async function bpr_return() {
         bpr_showErr('Remarks are required when returning a request — tell the requesting office what to fix.');
         return;
     }
-    if (!confirm(`Return budget request ${bpr_ctx.budget_reference_number} to the requesting office? Your remarks will be sent with it.`)) return;
+    // The Budget Officer's Return always reaches the originating office (review.return_actor is null for this step).
+    const returnTo = bpr_ctx.review?.return_actor ? `the ${bpr_ctx.review.return_actor}` : 'the originating office';
+    if (!confirm(`Return budget request ${bpr_ctx.budget_reference_number} to ${returnTo}? Your remarks will be sent with it.`)) return;
 
     await bpr_send('return', { remarks }, 'Failed to return the budget request.');
 }

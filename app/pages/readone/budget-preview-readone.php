@@ -17,8 +17,8 @@
  * were dropped, migration alter_table/22.)
  *
  * Trigger: bpv_openModal(requestContext, programs) — called from the list pages' "Budget Preview" row action:
- *   requestContext = { budget_reference_number, fiscal_yr, status_name, status_color, rc_id, rc_code, rc_name, can_decide }
- *                    (the rc_* fields are the requesting office, from the list row)
+ *   requestContext = { budget_reference_number, fiscal_yr, status_name, status_color, rc_id, rc_code, rc_name, can_decide, review }
+ *                    (the rc_* fields are the requesting office, review = the row's review-chain info; both from the list row)
  *   programs       = ONE program or an ARRAY of them, each
  *                    { program_code, program_name, sub_program_code, sub_program_name, projects[] }
  *                    (each project has project_code, project_name, line_items[] carrying type_of_fund_name and
@@ -26,11 +26,15 @@
  * Takes already-fetched request data; nothing is looked up.
  *
  * Footer (Return / Approve and the REMARKS box are hidden unless requestContext.can_decide is true — the list
- * page sets it for the Budget Head on an Endorsed request; without them the footer is just Close):
+ * page sets it for the Budget Head on an Endorsed request, from the row's review.can_decide; without them the footer is
+ * just Close). This is the LAST step of the review chain (BudgetReqService::REVIEW_STEPS): For Review -> Budget Officer ->
+ * Endorsed -> Budget Head (this modal) -> Approved.
  *   Return  — needs REMARKS (the box above the footer; required): PUT /budget_req/return/{id} { remarks }:
- *             status -> "Returned", remarks saved on fims.budget_req.remarks.
- *   Approve — PUT /budget_req/approve/{id}: status -> "Approved" (only an Endorsed request can be approved; the
- *             server enforces that too). The remarks box is not used.
+ *             ONE step back — status -> "Returned to Budget Officer" (the Officer sees it in Budget Processing again, with
+ *             these remarks, and can endorse it again or return it to the originating office); remarks saved on
+ *             fims.budget_req.remarks.
+ *   Approve — PUT /budget_req/approve/{id}: status -> "Approved" (only an Endorsed request can be approved, and only by the
+ *             Budget Head; the server enforces both). The remarks box is not used.
  * Status lives on the request header, so both apply to the whole request. After either one it calls
  * window.bgr_afterSave() so the list reloads.
  *
@@ -207,13 +211,15 @@ async function bpv_decide(action) {
         // Returning needs a reason: the REMARKS box above the footer is required.
         const box = $bpv('bpv-remarks');
         const remarks = box.value.trim();
+        // One step back: the Budget Head's Return goes to the Budget Officer (review.return_actor), who can fix it and endorse it again.
+        const returnTo = bpv_ctx.review?.return_actor ? `the ${bpv_ctx.review.return_actor}` : 'the originating office';
         if (remarks === '') {
             box.classList.add('is-invalid');
             box.focus();
-            bpv_showErr('Remarks are required when returning a request — tell the requesting office what to fix.');
+            bpv_showErr(`Remarks are required when returning a request — tell ${returnTo} what to fix.`);
             return;
         }
-        if (!confirm(`Return budget request ${bpv_ctx.budget_reference_number} to the requesting office? Your remarks will be sent with it.`)) return;
+        if (!confirm(`Return budget request ${bpv_ctx.budget_reference_number} to ${returnTo}? Your remarks will be sent with it.`)) return;
         init.headers = { 'Content-Type': 'application/json' };
         init.body    = JSON.stringify({ remarks });
     }
