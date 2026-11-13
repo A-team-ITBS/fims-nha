@@ -45,7 +45,7 @@ $apiBase = Config('API.FIMS_URL');
 
 // Rendering mode. The including page sets $cbaAsModal = true before include() (see
 // app/pages/memo-req-page.php) to get the form inside an overlay modal that it opens with
-// window.cbaModal.open(). Left unset, the form renders as a normal page, which is what
+// window.cbaModal.open() (a new request) or window.cbaModal.open(id) (edit that record). Left unset, the form renders as a normal page, which is what
 // views/BudgetAllocationForm.php (the "Memo Request Form" menu item) relies on.
 $cbaAsModal = !empty($cbaAsModal);
 
@@ -1823,7 +1823,10 @@ $cbaAsModal = !empty($cbaAsModal);
 		// the logged-in user's own RC (see the PHP header): { rc_id, rc_code, rc_name, office_type }
 		requestingRc: <?php echo json_encode($requestingRc, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE); ?> ,
 	};
-	const CBA_EDIT_MODE = !!CBA_CONFIG.allocationId;
+	// `var`, not `const`: in modal mode the host page chooses at open time — window.cbaModal.open() creates, open(id) edits that
+	// record (see the controller at the end of this script) — instead of it being fixed by ?id= when the page was rendered.
+	// Every reader below checks it when it runs, never at load.
+	var CBA_EDIT_MODE = !!CBA_CONFIG.allocationId;
 	// true when the including page rendered this form inside the overlay modal (see the PHP header)
 	const CBA_AS_MODAL = <?php echo $cbaAsModal ? 'true' : 'false'; ?>;
 	// created_at of the allocation being edited (set by populateEditForm). Stays
@@ -5505,6 +5508,7 @@ $cbaAsModal = !empty($cbaAsModal);
 	// search boxes would never get their listeners again on the second open.
 	function cbaResetState() {
 		CBA_CREATED_AT = null;
+		CBA_CURRENT_STATUS = '';   // the previous record's status must not show in the next one's Save pop-up
 		CBA_REQ_RC = Object.assign({ rc_id: '', rc_code: '', rc_name: '', office_type: '' }, CBA_CONFIG.requestingRc || {});   // back to the user's own RC
 		pcResetState();
 		clearTimeout(CAT_DEBOUNCE); CAT_DEBOUNCE = null;
@@ -5542,11 +5546,26 @@ $cbaAsModal = !empty($cbaAsModal);
 
 	if (CBA_AS_MODAL) {
 		window.cbaModal = {
-			open: function() {
+			// open()    — a new memo request.
+			// open(id)  — edit that record (fims.budget_allocation.allocation_id): the same form, filled in from
+			//             GET /budget_allocation/read/{id} and saved with PATCH /budget_allocation/update/{id}. Used by the
+			//             list's Edit action instead of the full-page BudgetAllocationForm, which has its own page permission.
+			open: function(id) {
 				var container = document.querySelector('.cba-form-container');
 				if (CBA_PRISTINE_HTML === null) CBA_PRISTINE_HTML = container.innerHTML; // first open: still untouched
 				else container.innerHTML = CBA_PRISTINE_HTML;                            // later opens: start over
 				cbaResetState();
+
+				// create or edit — decided here, before cbaBoot() reads it. The markup was just reset to the server's
+				// "create" rendering, so the edit-only parts are switched on (or left off) now.
+				var editId = Number(id) > 0 ? Number(id) : null;
+				CBA_CONFIG.allocationId = editId;
+				CBA_EDIT_MODE = !!editId;
+				document.getElementById('cba-modal-title').textContent = editId ? 'Edit Memo Request' : 'New Memo Request';
+				var numberCard = container.querySelector('.form-header');   // the number / date card: shown for a saved record only
+				if (numberCard) numberCard.style.display = editId ? '' : 'none';
+				var idField = document.getElementById('allocation_id');
+				if (idField) idField.value = editId ? String(editId) : '';
 				document.getElementById('cba-overlay').classList.add('open');
 				document.getElementById('cba-modal-body').scrollTop = 0;
 				cbaBoot();

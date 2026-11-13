@@ -374,6 +374,9 @@ function bgr_programTotals(program) {
 function bgr_actionButtons(flatRow, idx) {
     const { header, program } = flatRow;
     const isDraft = header.status_name === 'Draft';
+    // A request the review sent back to the originating office ("Returned" — NOT "Returned to Budget Officer", which is with
+    // the Budget Officer) can be edited again, like a Draft (BudgetReqService::updateProgram() allows both).
+    const isReturned = header.status_name === 'Returned';
 
     // View and Edit work on ONE Program. In the FMD list a row is a whole request (possibly several
     // Programs), so neither is offered there; the flat list keeps both.
@@ -383,7 +386,7 @@ function bgr_actionButtons(flatRow, idx) {
             View
         </a>`
         : '';
-    const editItem = (BGR_CAN_MODIFY && program && isDraft && !BGR_FMD)
+    const editItem = (BGR_CAN_MODIFY && program && (isDraft || isReturned) && !BGR_FMD)
         ? `<a class="nha-menu-item" href="javascript:void(0);" onclick="bgr_editProgram(${idx});bgr_closeMenus();">
             <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
             Edit
