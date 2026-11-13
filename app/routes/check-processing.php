@@ -1,6 +1,6 @@
 <?php
 // __BASE__/app/routes/check-processing.php
-// Backs app/pages/check-disbursement-voucher.php — see app/services/CheckProcessingService.php
+// Backs app/pages/check-disbursement-voucher-page.php — see app/services/CheckProcessingService.php
 // for the STUB IMPLEMENTATION note (treasury/accounting/shared/workflow/fmd schemas
 // don't exist in this project's database yet; every endpoint below returns an
 // empty-but-structurally-correct response until that migration happens).
@@ -48,6 +48,21 @@ $app->get("/check-processing/preparation/check/{id}/history", function ($request
     return $response->withHeader('Content-Type', 'application/json')->write($service->getCheckHistory($args['id']));
 });
 
+$app->post("/check-processing/preparation/check/{id}/mark-printed", function ($request, $response, $args) {
+    $service = new Service\CheckProcessingService();
+    return $response->withHeader('Content-Type', 'application/json')->write($service->markPrinted($args['id']));
+});
+
+// Streams the print-agent installer zip — not JSON, so this bypasses the
+// json-write convention the rest of this file uses.
+$app->get("/check-processing/print-agent-package", function ($request, $response) {
+    $service = new Service\CheckProcessingService();
+    $response->getBody()->write($service->generatePrintAgentPackage());
+    return $response
+        ->withHeader('Content-Type', 'application/zip')
+        ->withHeader('Content-Disposition', 'attachment; filename="fims-print-agent-setup.zip"');
+});
+
 $app->post("/check-processing/preparation/save", function ($request, $response) {
     $data = $request->getParsedBody();
     $service = new Service\CheckProcessingService();
@@ -91,6 +106,14 @@ $app->post("/check-processing/registry/add-batch", function ($request, $response
 $app->get("/check-processing/registry/summary", function ($request, $response) {
     $service = new Service\CheckProcessingService();
     return $response->withHeader('Content-Type', 'application/json')->write($service->getRegistrySummary());
+});
+
+// Must stay registered after the static /registry/* routes above — FastRoute
+// errors ("shadowed by previously defined variable route") if a dynamic
+// route at the same path depth is registered before a static one.
+$app->get("/check-processing/registry/{id}", function ($request, $response, $args) {
+    $service = new Service\CheckProcessingService();
+    return $response->withHeader('Content-Type', 'application/json')->write($service->getRegistryEntry($args['id']));
 });
 
 // ── Check Released to Claimants ──
@@ -160,6 +183,16 @@ $app->get("/check-processing/checks/{id}/department-emails", function ($request,
 });
 
 // ── Check Released to Regions/Departments ──
+$app->get("/check-processing/region-release/departments", function ($request, $response) {
+    $service = new Service\CheckProcessingService();
+    return $response->withHeader('Content-Type', 'application/json')->write($service->getDepartments());
+});
+
+$app->get("/check-processing/region-release/pending/{deptId}", function ($request, $response, $args) {
+    $service = new Service\CheckProcessingService();
+    return $response->withHeader('Content-Type', 'application/json')->write($service->getPendingRegionReleases($args['deptId']));
+});
+
 $app->get("/check-processing/region-release/list", function ($request, $response) {
     $service = new Service\CheckProcessingService();
     return $response->withHeader('Content-Type', 'application/json')->write($service->getRegionReleasesList($request->getQueryParams()));
