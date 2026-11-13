@@ -557,7 +557,7 @@ class CheckProcessingService
              FROM {$this->tableDv} dv
              JOIN {$this->tableSettingsStatus} st ON st.id = dv.status_id
              WHERE st.status_for = 'disbursement_voucher' AND st.name = 'FOR_TREASURY'
-               AND NOT EXISTS (SELECT 1 FROM {$this->tableChecks} c WHERE c.dv_id = dv.dv_id AND c.status <> 'CANCELLED')
+               AND NOT EXISTS (SELECT 1 FROM {$this->tableChecks} c WHERE c.dv_number = dv.dv_no AND c.status <> 'CANCELLED')
              ORDER BY dv.dv_date",
             'DB'
         );
@@ -807,11 +807,11 @@ BAT;
         try {
             $check = App\ExecuteRow(
                 "INSERT INTO {$this->tableChecks}
-                    (bank_account_id, check_number, check_date, dv_id, dv_number, payee, amount, status,
+                    (bank_account_id, check_number, check_date, dv_number, payee, amount, status,
                      signatory1_name, signatory1_designation, signatory2_name, signatory2_designation,
                      prepared_by, prepared_at)
                  VALUES (
-                    {$bankAccountId}, " . $this->str($checkNumber) . ', ' . $this->str($checkDate) . ", {$dvId}, "
+                    {$bankAccountId}, " . $this->str($checkNumber) . ', ' . $this->str($checkDate) . ', '
                     . $this->str($dv['dv_no']) . ', ' . $this->str($dv['claimant_name']) . ', ' . (float) $dv['net_amount'] . ", 'PREPARED', "
                     . $this->strOrNull($data['signatory1_name'] ?? null) . ', ' . $this->strOrNull($data['signatory1_designation'] ?? null) . ', '
                     . $this->strOrNull($data['signatory2_name'] ?? null) . ', ' . $this->strOrNull($data['signatory2_designation'] ?? null) . ', '
