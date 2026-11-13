@@ -18,13 +18,18 @@ CREATE INDEX IF NOT EXISTS idx_fims_budget_category_deleted_at ON fims.budget_ca
 -- INSERT ... SELECT does not promise row order on its own (the planner is free
 -- to reorder a VALUES list), so each row carries an ordinal and the SELECT is
 -- ORDER BY'd on it: a fresh table gets Infrastructure = 1, Goods and Services = 2,
--- Consultancy = 3.
+-- Consultancy = 3, Equipment = 4. 'Equipment' is just a 4th procurement category a Memo
+-- Request can be tagged with, same as the other three — NOT tied to the voucher module's
+-- expense_class anymore: DisbursementVoucherService derives EQUIPMENT_OUTLAY (and
+-- PS/MOOE/CAPITAL_OUTLAY) straight from the voucher's own account_code now, regardless of
+-- which category (if any) the RFA it draws against was filed under.
 INSERT INTO fims.budget_category (name)
 SELECT v.name
 FROM (VALUES
     (1, 'Infrastructure'),
     (2, 'Goods and Services'),
-    (3, 'Consultancy')
+    (3, 'Consultancy'),
+    (4, 'Equipment')
 ) AS v(ord, name)
 WHERE NOT EXISTS (SELECT 1 FROM fims.budget_category c WHERE c.name = v.name)
 ORDER BY v.ord;
