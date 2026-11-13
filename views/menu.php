@@ -33,6 +33,7 @@ $sideMenu->addMenuItem(260, "mi_CheckDisbursements", $Language->menuPhrase("260"
 $sideMenu->addMenuItem(332, "mi_bank_management_page", $Language->menuPhrase("332", "MenuText"), "BankManagementPage", -1, "", AllowListMenu('{FIMS}bank-management-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(331, "mi_cash_position_page", $Language->menuPhrase("331", "MenuText"), "CashPositionPage", -1, "", AllowListMenu('{FIMS}cash-position-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(330, "mci_Fund_Sourcing", $Language->menuPhrase("330", "MenuText"), "", -1, "", true, false, true, "fas fa-hand-holding-dollar", "", false, true);
+$sideMenu->addMenuItem(392, "mi_fund_sourcing_dashboard_page", $Language->menuPhrase("392", "MenuText"), "FundSourcingDashboardPage", 330, "", AllowListMenu('{FIMS}fund-sourcing-dashboard-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(263, "mi_saro_registry_page", $Language->menuPhrase("263", "MenuText"), "SaroRegistryPage", 330, "", AllowListMenu('{FIMS}saro-registry-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(264, "mi_supplemental_funds_page", $Language->menuPhrase("264", "MenuText"), "SupplementalFundsPage", 330, "", AllowListMenu('{FIMS}supplemental-funds-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(265, "mi_trust_funds_page", $Language->menuPhrase("265", "MenuText"), "TrustFundsPage", 330, "", AllowListMenu('{FIMS}trust-funds-page.php'), false, false, "", "", false, true);

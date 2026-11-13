@@ -1,4 +1,4 @@
-<ew-language date="2026/11/12" id="en-US" author="e.World Technology Limited">
+<ew-language date="2026/11/13" id="en-US" author="e.World Technology Limited">
   <project>
     <phrase id="bodytitle" value="UAC - User Access Control System" />
     <phrase id="footertext" value="&amp;copy;2024 ITBS Corporation. All rights reserved." />
@@ -76,6 +76,9 @@
     </menu>
     <menu id="330">
       <phrase id="menutext" value="Fund Sourcing" />
+    </menu>
+    <menu id="392">
+      <phrase id="menutext" value="Fund Sourcing Dashboard" />
     </menu>
     <menu id="263">
       <phrase id="menutext" value="SARO Registry" />
@@ -1621,6 +1624,9 @@
     </table>
     <table id="vendors_page">
       <phrase id="tblcaption" value="Vendors" />
+    </table>
+    <table id="fund_sourcing_dashboard_page">
+      <phrase id="tblcaption" value="Fund Sourcing Dashboard" />
     </table>
   </project>
 </ew-language>
