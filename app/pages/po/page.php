@@ -310,6 +310,7 @@ function pol_renderTable(rows) {
         <td>${pol_statusBadge(r.status)}</td>
         <td class="no-print" style="white-space:nowrap;">
             <a class="nha-btn-act view" href="${POL_VIEW}?id=${r.po_id}" title="View">View</a>
+            <button type="button" class="nha-btn-act" onclick="prp_open({ po_id: ${r.po_id} }, { type: 'PO' })" title="Print the Purchase Order">Print</button>
             ${canEdit ? `<button type="button" class="nha-btn-act edit" onclick="pof_open(${r.po_id})" title="Edit">Edit</button>` : ''}
             ${canDelete ? `<button type="button" class="nha-btn-act danger" onclick="pol_delete(${r.po_id}, '${pol_escJs(r.po_number)}')" title="Delete">Delete</button>` : ''}
         </td>
@@ -428,3 +429,7 @@ function pol_toast(msg, type = 'info') {
     setTimeout(() => t.remove(), 4000);
 }
 </script>
+<?php
+// Print → the official PO form in the shared print preview (PurchaseOrderPrintService loads the PO from po_id).
+include_once __DIR__ . '/../readone/print-preview-readone.php';
+?>
