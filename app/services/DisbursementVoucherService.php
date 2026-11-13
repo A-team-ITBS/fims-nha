@@ -77,9 +77,16 @@ class DisbursementVoucherService
     private string $tableSlDetails       = 'fims.sl_details';
     private string $tableBudgetCategory  = 'fims.budget_category';
 
-    // Classification tag only (reporting/filtering) — same set fims.purchase_orders.expense_class
-    // uses; it never changes which fields the voucher form shows.
-    private const EXPENSE_CLASSES = ['MOOE', 'PS', 'CAPITAL_OUTLAY', 'OTHER'];
+    // Classification tag only (reporting/filtering) — never changes which fields the voucher form
+    // shows. NOT a manual/pickable field: it is derived server-side from the voucher's own
+    // account_code (see deriveExpenseClass()) — the account already says what kind of spend this
+    // is, so asking the preparer to also pick PS/MOOE/CAPITAL_OUTLAY/EQUIPMENT_OUTLAY separately
+    // would just be a second, potentially-contradicting source of truth. Any expense_class the
+    // client sends in the request body is ignored.
+    // NOTE: fims.purchase_orders.expense_class (PurchaseOrderService::EXPENSE_CLASSES) is still a
+    // separate, manually-validated list (['PS', 'MOOE', 'CAPITAL_OUTLAY', 'CO', 'OTHER']) — that
+    // module was NOT changed here; only this one's concept of expense_class moved to COA-derived.
+    private const EXPENSE_CLASSES = ['MOOE', 'PS', 'CAPITAL_OUTLAY', 'EQUIPMENT_OUTLAY', 'OTHER'];
 
     private const EDITABLE      = ['DRAFT', 'REJECTED'];
     private const DELETABLE     = ['DRAFT', 'CANCELLED'];
@@ -202,12 +209,8 @@ class DisbursementVoucherService
         }
         $fields['fiscal_yr'] = (int) $fy;
 
-        // Expense class (optional) — classification tag only, never branches validation/fields
-        $expenseClass = strtoupper(trim((string) ($body['expense_class'] ?? '')));
-        if ($expenseClass !== '' && !in_array($expenseClass, self::EXPENSE_CLASSES, true)) {
-            $errors[] = 'expense_class must be one of: ' . implode(', ', self::EXPENSE_CLASSES);
-        }
-        $fields['expense_class'] = $expenseClass;
+        // Expense class: derived from account_code below (deriveExpenseClass()), once account_code
+        // itself is resolved — NOT read from $body here; see the EXPENSE_CLASSES doc comment above.
 
         // RFA — soft reference into fims.budget_allocation (allocation_type = 'RFA'); at least one is
         // required, same as the paper General Form No. 1 always citing the allotment(s) it's drawn
@@ -272,7 +275,8 @@ class DisbursementVoucherService
                 $errors[] = "Account code '{$acctCode}' is not postable (it's a summary/header account).";
             }
         }
-        $fields['account_code'] = $acctCode;
+        $fields['account_code']   = $acctCode;
+        $fields['expense_class']  = $this->deriveExpenseClass($acctCode);
 
         $fields['remarks'] = trim((string) ($body['remarks'] ?? ''));
 
@@ -367,6 +371,38 @@ class DisbursementVoucherService
         }
 
         return [$errors, $fields];
+    }
+
+    /**
+     * expense_class is NOT a field the preparer picks — it's derived from the account_code they
+     * already chose, by Chart-of-Accounts prefix. Prefixes mirror this project's own COA seed
+     * (_assets/sql/.../03 - fims_chart_of_accounts.sql):
+     *   5-01-xx          Personnel Services               -> PS
+     *   5-02-xx           Maintenance & Other Op. Expenses -> MOOE
+     *   1-06-05 / -06 / -07 / -08 / -09   Machinery & Equipment, Furniture &
+     *     Fixtures, Leased Assets, Leased Asset Improvements (movable PPE) -> EQUIPMENT_OUTLAY
+     *   1-06-xx (anything else under PPE: Land, Land Improvements,
+     *     Infrastructure Assets, Buildings, Heritage Assets, Service
+     *     Concession, Construction in Progress — all immovable/civil-works) -> CAPITAL_OUTLAY
+     *   anything else (Assets/Liabilities/Equity/Revenue accounts the form
+     *     wouldn't normally post a DV to, or an account outside these trees) -> OTHER
+     */
+    private function deriveExpenseClass(string $accountCode): string
+    {
+        if (str_starts_with($accountCode, '5-01')) {
+            return 'PS';
+        }
+        if (str_starts_with($accountCode, '5-02')) {
+            return 'MOOE';
+        }
+        if (preg_match('/^1-06-0[5-9]/', $accountCode) === 1) {
+            return 'EQUIPMENT_OUTLAY';
+        }
+        if (str_starts_with($accountCode, '1-06')) {
+            return 'CAPITAL_OUTLAY';
+        }
+
+        return 'OTHER';
     }
 
     /**
@@ -615,7 +651,55 @@ class DisbursementVoucherService
         $rfa['paid_amount']        = round($this->priorPaymentsForRfa((int) $rfa['allocation_id'], $excludeDvId), 2);
         $rfa['remaining_balance']  = round($rfa['budget_amount'] - $rfa['paid_amount'], 2);
 
+        $account = $this->rfaFirstLineAccount($rfa);
+        $rfa['account_code']  = $account['account_code']  ?? null;
+        $rfa['account_title'] = $account['account_title'] ?? null;
+        $rfa['expense_class'] = $account ? $this->deriveExpenseClass($account['account_code']) : null;
+
         return $rfa;
+    }
+
+    /**
+     * The Chart-of-Accounts row behind the FIRST budget_line_item_id named in this RFA's own
+     * line_transaction — null if it's empty/unreadable or that line item no longer exists.
+     *
+     * Backs two voucher-form autofills that need to know this BEFORE a voucher (and its own
+     * account_code) exists yet:
+     *   - account_code/account_title: the form's Account Code field autofills from it (see
+     *     vf_onRfaSelectionChange()) the same way Dept/Project, PO Number and Vendor already do —
+     *     the RFA was approved against a specific COB (chart-of-accounts budget line), so the
+     *     voucher drawing on it should default to posting to that same account, not a blank field
+     *     the preparer has to search the Chart of Accounts for by hand.
+     *   - expense_class: the "lock the RFA picker to one class" behavior (vf_renderRfaDropdown()) —
+     *     derived the same way deriveExpenseClass() derives a voucher's, by Chart-of-Accounts prefix.
+     * Every line an RFA this project's demo seed creates carries is from the same class's accounts
+     * (see "07 - budget_request_and_voucher_full_cycle_demo.sql"), so the first line is
+     * representative of the whole RFA for both purposes, not just a guess — but if an RFA's lines
+     * ever do span more than one account, only the first is reflected; Accounting still reconciles
+     * the rest via the Journal Entry Voucher's own per-line account codes regardless.
+     */
+    private function rfaFirstLineAccount(array $rfa): ?array
+    {
+        $lines = json_decode((string) ($rfa['line_transaction'] ?? '[]'), true) ?: [];
+        $firstLineItemId = null;
+        foreach ($lines as $line) {
+            if (isset($line['budget_line_item_id']) && ctype_digit((string) $line['budget_line_item_id'])) {
+                $firstLineItemId = (int) $line['budget_line_item_id'];
+                break;
+            }
+        }
+        if ($firstLineItemId === null) {
+            return null;
+        }
+
+        $row = App\ExecuteRow(
+            "SELECT coa.account_code, coa.account_title FROM fims.budget_line_items bli
+             JOIN {$this->tableCoa} coa ON coa.account_id = bli.account_id
+             WHERE bli.budget_line_item_id = {$firstLineItemId}",
+            'DB'
+        );
+
+        return $row ?: null;
     }
 
     /**
