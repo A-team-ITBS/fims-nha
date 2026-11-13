@@ -564,8 +564,10 @@ function vje_entriesCard(dv) {
         </div>`;
 }
 
+// path must NOT start with "/" — see app/pages/voucher/form.php's vf_getJson() doc comment for why
+// (the sub-folder deployment shim double-prefixes a bare-quoted "/word" literal).
 async function vje_getJson(path) {
-    const res  = await vr_authFetch(VR_API + path);
+    const res  = await vr_authFetch(VR_API + '/' + path);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const json = await res.json();
     if (!json.success) throw new Error(json.message || 'Request failed.');
@@ -579,11 +581,11 @@ async function vje_init(dv) {
             // postable_only (not the region-scoped /chart-of-accounts/all) — posting a voucher
             // isn't restricted to the preparer's own region, so every active+postable GL account
             // should be selectable here regardless of which region it belongs to.
-            vje_getJson('/chart_of_accounts/all?postable_only=1'),
-            vje_getJson('/voucher/atc-codes'),
-            vje_getJson('/voucher/deduction-types'),
-            vje_getJson('/responsibility-center/all'),
-            vje_getJson('/voucher/sl-codes'),
+            vje_getJson('chart_of_accounts/all?postable_only=1'),
+            vje_getJson('voucher/atc-codes'),
+            vje_getJson('voucher/deduction-types'),
+            vje_getJson('responsibility-center/all'),
+            vje_getJson('voucher/sl-codes'),
         ]);
         VJE_COA = (coaJson.data ?? []).filter(a => a.posting_allowed);
         VJE_ATC = atcJson.data ?? [];
@@ -1122,7 +1124,7 @@ async function vje_populateSlCombo(lineId, acctCode, preSlCode = null, preDetail
     sel.innerHTML = '<option value="">— None —</option>';
     if (!matching.length) return;
     const detailLists = await Promise.all(matching.map(s =>
-        vje_getJson(`/voucher/sl-codes/${encodeURIComponent(s.sl_code)}/details`).then(j => j.data ?? []).catch(() => [])));
+        vje_getJson(`voucher/sl-codes/${encodeURIComponent(s.sl_code)}/details`).then(j => j.data ?? []).catch(() => [])));
     matching.forEach((s, i) => {
         const details = detailLists[i];
         if (!details.length) {

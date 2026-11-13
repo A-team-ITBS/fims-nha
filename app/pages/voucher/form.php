@@ -420,8 +420,13 @@ function vf_authFetch(url, opts = {}) {
 const VF_SESSION_EXPIRED_MSG = 'Your session has expired. Please refresh the page and log in again.';
 function vf_isSessionExpiredMessage(msg) { return msg === VF_SESSION_EXPIRED_MSG; }
 
+// path must NOT start with "/" — the sub-folder deployment shim
+// (_shared/subfolder-prefix.php) rewrites any bare-quoted "/word" literal it finds in the
+// rendered JS, which would double-prefix a path handed in with its own leading slash (VF_API
+// already carries the deployment prefix, e.g. "/fims-nha/api"). Concatenating the "/" here,
+// outside any quoted literal, keeps this call immune to that rewrite.
 async function vf_getJson(path) {
-    const res = await vf_authFetch(VF_API + path);
+    const res = await vf_authFetch(VF_API + '/' + path);
     if (res.status === 401) throw new Error(VF_SESSION_EXPIRED_MSG);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const json = await res.json();
@@ -577,7 +582,7 @@ let vf_fiscalYears = []; // fims.fiscal_year rows — Fiscal Year isn't asked fo
 
 async function vf_loadFiscalYears() {
     try {
-        const json = await vf_getJson('/voucher/fiscal-years');
+        const json = await vf_getJson('voucher/fiscal-years');
         vf_fiscalYears = (json.data ?? []).map(r => Number(r.fiscal_yr)).filter(n => !isNaN(n));
     } catch (e) {
         vf_fiscalYears = [];
@@ -596,7 +601,7 @@ function vf_derivedFiscalYear() {
 
 async function vf_loadDeductionTypes() {
     try {
-        const json = await vf_getJson('/voucher/deduction-types');
+        const json = await vf_getJson('voucher/deduction-types');
         vf_dedTypes = json.data ?? [];
     } catch (e) {
         vf_dedTypesReady = null;
@@ -609,7 +614,7 @@ async function vf_loadCoaOptions() {
         // postable_only (not the region-scoped /chart-of-accounts/all) — posting a voucher isn't
         // restricted to the preparer's own region, so every active+postable GL account should be
         // selectable here regardless of which region it belongs to.
-        const json = await vf_getJson('/chart_of_accounts/all?postable_only=1');
+        const json = await vf_getJson('chart_of_accounts/all?postable_only=1');
         vf_coaOptions = (json.data ?? []).filter(a => a.posting_allowed);
         nhaSearchableSelect($vf('vf-account-code'), vf_coaOptions.map(a => ({ value: a.account_code, label: a.account_title })));
     } catch (e) {
@@ -620,7 +625,7 @@ async function vf_loadCoaOptions() {
 
 async function vf_loadAtcCodes() {
     try {
-        const json = await vf_getJson('/voucher/atc-codes');
+        const json = await vf_getJson('voucher/atc-codes');
         VF_ATC = json.data ?? [];
     } catch (e) {
         vf_atcReady = null;
@@ -630,7 +635,7 @@ async function vf_loadAtcCodes() {
 
 async function vf_loadRcOptions() {
     try {
-        const json = await vf_getJson('/responsibility-center/all');
+        const json = await vf_getJson('responsibility-center/all');
         VF_RC = json.data ?? [];
     } catch (e) {
         vf_rcReady = null;
@@ -640,7 +645,7 @@ async function vf_loadRcOptions() {
 
 async function vf_loadSlOptions() {
     try {
-        const json = await vf_getJson('/voucher/sl-codes');
+        const json = await vf_getJson('voucher/sl-codes');
         VF_SL = json.data ?? [];
     } catch (e) {
         vf_slReady = null;
@@ -651,7 +656,7 @@ async function vf_loadSlOptions() {
 async function vf_loadVendors() {
     const sel = $vf('vf-vendor');
     try {
-        const json = await vf_getJson('/vendors/all?active=1');
+        const json = await vf_getJson('vendors/all?active=1');
         vf_vendors = {};
         (json.data ?? []).forEach(v => { vf_vendors[v.vendor_id] = v; });
         sel.innerHTML = '<option value="">— None / type claimant manually —</option>' + (json.data ?? []).map(v =>
@@ -669,7 +674,7 @@ async function vf_loadRfaOptions() {
         // against itself. One RFA only backs one DV at a time server-side (budget_allocation.dv_id)
         // — an RFA linked to a DIFFERENT, still-active DV simply isn't in this list at all.
         const qs   = vf_id ? `?exclude_dv_id=${vf_id}` : '';
-        const json = await vf_getJson(`/voucher/rfa/all${qs}`);
+        const json = await vf_getJson(`voucher/rfa/all${qs}`);
         vf_rfas = {};
         (json.data ?? []).forEach(r => { vf_rfas[r.allocation_id] = r; });
         $vf('vf-rfa-empty-hint').style.display = (json.data ?? []).length ? 'none' : 'block';
@@ -782,7 +787,7 @@ async function vf_onRfaSelectionChange() {
     try {
         const qs = vf_id ? `?exclude_dv_id=${vf_id}` : '';
         const details = await Promise.all(vf_selectedRfaIds.map(id =>
-            vf_getJson(`/voucher/rfa/read/${id}${qs}`).then(j => j.data).catch(() => vf_rfas[id])));
+            vf_getJson(`voucher/rfa/read/${id}${qs}`).then(j => j.data).catch(() => vf_rfas[id])));
         details.forEach(rfa => { if (rfa) vf_rfas[rfa.allocation_id] = rfa; });
         vf_renderRfaChips();
 
@@ -865,7 +870,7 @@ async function vf_refreshDvNumber() {
     const d = $vf('vf-dv-date').value;
     if (!d) return;
     try {
-        const json = await vf_getJson('/voucher/dv-number?dv_date=' + encodeURIComponent(d));
+        const json = await vf_getJson('voucher/dv-number?dv_date=' + encodeURIComponent(d));
         $vf('vf-dv-number').textContent = json.data.dv_no;
     } catch (e) { /* the server assigns a number on save if this stays "—" */ }
 }
@@ -1334,7 +1339,7 @@ async function vf_populateSlCombo(lineId, acctCode, preSlCode = null, preDetailI
     sel.innerHTML = '<option value="">— None —</option>';
     if (!matching.length) return;
     const detailLists = await Promise.all(matching.map(s =>
-        vf_getJson(`/voucher/sl-codes/${encodeURIComponent(s.sl_code)}/details`).then(j => j.data ?? []).catch(() => [])));
+        vf_getJson(`voucher/sl-codes/${encodeURIComponent(s.sl_code)}/details`).then(j => j.data ?? []).catch(() => [])));
     matching.forEach((s, i) => {
         const details = detailLists[i];
         if (!details.length) {
@@ -1538,7 +1543,7 @@ function vf_recalc() {
 
 /* ── Edit mode ─────────────────────────────────────────────── */
 async function vf_loadExisting() {
-    const json = await vf_getJson('/voucher/read/' + vf_id);
+    const json = await vf_getJson('voucher/read/' + vf_id);
     const dv   = json.data;
     if (!VF_EDITABLE.includes(dv.status)) {
         vf_showErrors([`This disbursement voucher is ${dv.status} and can no longer be edited.`]);
