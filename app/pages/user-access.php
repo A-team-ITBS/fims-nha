@@ -2472,4 +2472,4 @@ $deleteAssignmentBaseUrl = GetUrl("UserLevelAssignmentsDelete");
 		// before a user level is selected - only the per-level checkboxes need a level.
 		renderPermissionMatrix('');
 	});
-</script
+</script>

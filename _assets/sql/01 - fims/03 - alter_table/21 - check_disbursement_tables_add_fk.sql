@@ -35,6 +35,12 @@ BEGIN
         FOREIGN KEY (booklet_id) REFERENCES fims.check_booklets(booklet_id);
     END IF;
 
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_checks_dv') THEN
+        ALTER TABLE fims.checks
+        ADD CONSTRAINT fk_checks_dv
+        FOREIGN KEY (dv_id) REFERENCES fims.disbursement_vouchers(dv_id);
+    END IF;
+
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_check_cancellations_check') THEN
         ALTER TABLE fims.check_cancellations
         ADD CONSTRAINT fk_check_cancellations_check
