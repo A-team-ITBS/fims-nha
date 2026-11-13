@@ -1427,20 +1427,32 @@ function bgr_statusBadge(name, color) {
     </span>`;
 }
 
-const BGR_TOAST_SWAL = Swal.mixin({
-    toast: true,
-    position: 'top-end',
-    showConfirmButton: false,
-    timer: 4000,
-    timerProgressBar: true,
-    didOpen: el => {
-        el.onmouseenter = Swal.stopTimer;
-        el.onmouseleave = Swal.resumeTimer;
-    },
-});
+// The toast is built on FIRST USE, not when this script loads: SweetAlert2 is loaded asynchronously by views/layout.php
+// (loadjs bundle "swal"), so a top-level `const … = Swal.mixin(…)` could run before `Swal` existed, throw, and leave the
+// const uninitialized for good — every later bgr_toast() then failed with "Cannot access 'BGR_TOAST_SWAL' before
+// initialization" (e.g. right after a successful Endorse / Return / Approve).
+let bgr_toastSwal = null;
 
 function bgr_toast(msg, type = 'info') {
     const icon = ['success', 'error', 'warning', 'info', 'question'].includes(type) ? type : 'info';
-    BGR_TOAST_SWAL.fire({ icon, title: msg });
+
+    if (typeof Swal === 'undefined') {
+        // SweetAlert2 is still on its way: show the toast as soon as the layout's "swal" bundle is ready
+        if (typeof loadjs !== 'undefined' && loadjs.ready) loadjs.ready('swal', () => bgr_toast(msg, type));
+        return;
+    }
+
+    bgr_toastSwal ??= Swal.mixin({
+        toast: true,
+        position: 'top-end',
+        showConfirmButton: false,
+        timer: 4000,
+        timerProgressBar: true,
+        didOpen: el => {
+            el.onmouseenter = Swal.stopTimer;
+            el.onmouseleave = Swal.resumeTimer;
+        },
+    });
+    bgr_toastSwal.fire({ icon, title: msg });
 }
 </script>
