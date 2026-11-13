@@ -209,27 +209,47 @@ class DisbursementVoucherService
         }
         $fields['expense_class'] = $expenseClass;
 
-        // RFA — soft reference into fims.budget_allocation (allocation_type = 'RFA'); required, same
-        // as the paper General Form No. 1 always citing the allotment it's drawn against.
-        $rfa   = null;
-        $rfaId = $body['rfa_allocation_id'] ?? '';
-        if ($rfaId === '' || $rfaId === null) {
-            $errors[] = 'RFA (rfa_allocation_id) is required.';
-        } elseif (!ctype_digit((string) $rfaId)) {
-            $errors[] = 'rfa_allocation_id must be numeric.';
+        // RFA — soft reference into fims.budget_allocation (allocation_type = 'RFA'); at least one is
+        // required, same as the paper General Form No. 1 always citing the allotment(s) it's drawn
+        // against. The link lives entirely on the RFA SIDE (budget_allocation.dv_id — see
+        // "03 - alter_table/23 - budget_allocation_add_dv_id.sql") — this table carries no RFA
+        // column of its own at all (the old single rfa_allocation_id/rfa_allocation_number snapshot
+        // was dropped in "03 - alter_table/26 - ...-drop_rfa_allocation_columns.sql" once nothing
+        // read it anymore). The actual linking (budget_allocation.dv_id set/cleared for every
+        // selected/deselected RFA) happens in create()/update() after this voucher's own row is
+        // written — see linkRfas().
+        $rfaIdsRaw = $body['rfa_allocation_ids'] ?? ($body['rfa_allocation_id'] ?? []);
+        if (!is_array($rfaIdsRaw)) {
+            $rfaIdsRaw = [$rfaIdsRaw];
+        }
+        $rfaIdsRaw = array_values(array_unique(array_filter(
+            array_map('strval', $rfaIdsRaw),
+            fn ($v) => trim($v) !== ''
+        )));
+
+        $rfas = [];
+        if (!$rfaIdsRaw) {
+            $errors[] = 'At least one RFA is required.';
         } else {
-            $rfa = App\ExecuteRow(
-                "SELECT allocation_id, allocation_number, requesting_rc_id
-                 FROM {$this->tableRfa} WHERE allocation_id = " . (int) $rfaId . " AND allocation_type = 'RFA'",
-                'DB'
-            );
-            if (!$rfa) {
-                $errors[] = "RFA #{$rfaId} does not exist.";
+            foreach ($rfaIdsRaw as $rfaId) {
+                if (!ctype_digit($rfaId)) {
+                    $errors[] = "rfa_allocation_ids: '{$rfaId}' must be numeric.";
+                    continue;
+                }
+                $rfa = App\ExecuteRow(
+                    "SELECT allocation_id, allocation_number, requesting_rc_id, dv_id
+                     FROM {$this->tableRfa} WHERE allocation_id = " . (int) $rfaId . " AND allocation_type = 'RFA'",
+                    'DB'
+                );
+                if (!$rfa) {
+                    $errors[] = "RFA #{$rfaId} does not exist.";
+                    continue;
+                }
+                $rfas[] = $rfa;
             }
         }
-        $fields['rfa_allocation_id']         = $rfa ? (int) $rfa['allocation_id'] : null;
-        $fields['rfa_allocation_number']     = $rfa['allocation_number'] ?? '';
         $fields['requesting_department_id']  = null; // fims.budget_allocation now keys its requesting office by requesting_rc_id (a Responsibility Center), which doesn't fit this INTEGER column — see "14 - budget_allocation_requesting_department_id_to_requesting_rc_id.sql"
+        $fields['_rfaRows'] = $rfas; // internal only — never persisted as a DV column, see linkRfas()
 
         $fields['dept_project'] = trim((string) ($body['dept_project'] ?? ''));
         $fields['fund_source']  = trim((string) ($body['fund_source'] ?? ''));
@@ -323,6 +343,16 @@ class DisbursementVoucherService
         // point of use" split as `deductions` above).
         $fields['atc_lines'] = is_array($body['atc_lines'] ?? null) ? $body['atc_lines'] : [];
         $fields['lines']     = is_array($body['lines'] ?? null) ? $body['lines'] : [];
+
+        // Supporting Documents (optional) — a batch already uploaded client-side via
+        // POST /upload/multi-upload (same fims.file_attachments convention as
+        // fims.budget_allocation; see BudgetAllocationService's identical check).
+        $nodeId = trim((string) ($body['multiple_node_id'] ?? ''));
+        if ($nodeId !== '' && !preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $nodeId)) {
+            $errors[] = 'multiple_node_id must be a UUID.';
+            $nodeId   = '';
+        }
+        $fields['multiple_node_id'] = $nodeId !== '' ? strtolower($nodeId) : null;
 
         // Status the user is saving as — stored as fims.settings_status.id (status_for =
         // 'disbursement_voucher'), looked up by name; see getStatusIdByName()'s doc comment.
@@ -479,32 +509,94 @@ class DisbursementVoucherService
     // ── RFA lookup (read-only; fims.budget_allocation has no CRUD backend of its own) ──
 
     /**
-     * Sum of net_amount from every other non-CANCELLED/REJECTED voucher already on this RFA —
-     * "Payments" on the paper form's Box B. $excludeDvId leaves the voucher being edited out of
-     * its own total. Null $rfaId (no RFA linked) always means 0 — there's nothing to accumulate
-     * against.
+     * net_amount of the OTHER voucher currently linked to this RFA (fims.budget_allocation.dv_id —
+     * see linkRfas()), if any and still active (not CANCELLED/REJECTED) — "Payments" on the paper
+     * form's Box B. Since one RFA only ever points at one DV at a time, this is at most a single
+     * voucher's own net_amount, not a sum. $excludeDvId leaves the voucher being edited out of its
+     * own total (it's always the one currently linked to its own selected RFAs). Null $rfaId (no
+     * RFA linked) or no RFA at all means 0 — there's nothing to accumulate against. This table has
+     * no RFA column of its own to query by — see "03 - alter_table/26 -
+     * ...-drop_rfa_allocation_columns.sql".
      */
     private function priorPaymentsForRfa(?int $rfaId, ?int $excludeDvId): float
     {
         if (!$rfaId) {
             return 0.0;
         }
-        $exclude = $excludeDvId !== null ? " AND dv_id <> {$excludeDvId}" : '';
-
-        return (float) (App\ExecuteScalar(
-            "SELECT COALESCE(SUM(net_amount), 0) FROM {$this->table}
-             WHERE rfa_allocation_id = {$rfaId}
-               AND status_id NOT IN (SELECT id FROM {$this->tableSettingsStatus}
-                                      WHERE status_for = " . $this->str(self::STATUS_FOR) . " AND name IN ('CANCELLED', 'REJECTED')){$exclude}",
+        $linkedDvId = (int) (App\ExecuteScalar("SELECT dv_id FROM {$this->tableRfa} WHERE allocation_id = {$rfaId}", 'DB') ?? 0);
+        if (!$linkedDvId || $linkedDvId === $excludeDvId) {
+            return 0.0;
+        }
+        $row = App\ExecuteRow(
+            "SELECT dv.net_amount, st.name AS status FROM {$this->table} dv
+             LEFT JOIN {$this->tableSettingsStatus} st ON st.id = dv.status_id
+             WHERE dv.dv_id = {$linkedDvId}",
             'DB'
-        ) ?? 0);
+        );
+        if (!$row || in_array($row['status'], ['CANCELLED', 'REJECTED'], true)) {
+            return 0.0;
+        }
+
+        return (float) $row['net_amount'];
+    }
+
+    /** Same as priorPaymentsForRfa(), summed across every RFA a DV cites. */
+    private function priorPaymentsForRfas(array $rfaIds, ?int $excludeDvId): float
+    {
+        $total = 0.0;
+        foreach ($rfaIds as $rfaId) {
+            $total += $this->priorPaymentsForRfa((int) $rfaId, $excludeDvId);
+        }
+
+        return round($total, 2);
+    }
+
+    /**
+     * Points every RFA in $rfaRows (prepare()'s `_rfaRows`) at $dvId — fims.budget_allocation.dv_id
+     * — and clears dv_id back to NULL on any RFA that USED to point at $dvId but isn't part of this
+     * selection anymore (an unchecked chip in the form). One RFA only ever points at one DV at a
+     * time (see "03 - alter_table/23 - budget_allocation_add_dv_id.sql"), so this also refuses to
+     * steal an RFA that's currently linked to a DIFFERENT, still-active (non-CANCELLED/REJECTED) DV
+     * — returns that error message in that case, null otherwise. Called from inside create()/
+     * update()'s own transaction, after this voucher's own row has been written (so $dvId is known) —
+     * a non-null return should trigger a ROLLBACK, same as a persistJournalEntry() failure.
+     */
+    private function linkRfas(int $dvId, array $rfaRows): ?string
+    {
+        $newIds = array_map(fn ($r) => (int) $r['allocation_id'], $rfaRows);
+
+        foreach ($rfaRows as $rfa) {
+            $otherDvId = $rfa['dv_id'] !== null ? (int) $rfa['dv_id'] : null;
+            if ($otherDvId === null || $otherDvId === $dvId) {
+                continue;
+            }
+            $other = App\ExecuteRow(
+                "SELECT dv.dv_no, st.name AS status FROM {$this->table} dv
+                 LEFT JOIN {$this->tableSettingsStatus} st ON st.id = dv.status_id
+                 WHERE dv.dv_id = {$otherDvId}",
+                'DB'
+            );
+            if ($other && !in_array($other['status'], ['CANCELLED', 'REJECTED'], true)) {
+                return "RFA '{$rfa['allocation_number']}' is already linked to Disbursement Voucher {$other['dv_no']} and cannot be selected here.";
+            }
+        }
+
+        $keep = $newIds ? implode(',', $newIds) : '0';
+        App\Execute("UPDATE {$this->tableRfa} SET dv_id = NULL WHERE dv_id = {$dvId} AND allocation_id NOT IN ({$keep})", 'DB');
+        if ($newIds) {
+            App\Execute("UPDATE {$this->tableRfa} SET dv_id = {$dvId} WHERE allocation_id IN ({$keep})", 'DB');
+        }
+
+        return null;
     }
 
     /**
      * Stamps budget_amount (ceiling, from po_amount or summed line_transaction) plus paid_amount /
-     * remaining_balance (sum of net_amount already drawn against this RFA by other active
-     * vouchers) onto an RFA row — several DVs can be drawn against the same RFA over time
-     * (progress payments; see priorPaymentsForRfa()).
+     * remaining_balance onto an RFA row. paid_amount is usually 0 now that one RFA only ever points
+     * at one DV at a time (budget_allocation.dv_id — see linkRfas()); it stays non-zero only for a
+     * historical RFA whose prior DV was CANCELLED/REJECTED (priorPaymentsForRfa() excludes those
+     * from "active", so they don't block re-linking, but their own net_amount still counted here
+     * while they held it).
      */
     private function withRfaBudget(array $rfa, ?int $excludeDvId = null): array
     {
@@ -512,7 +604,11 @@ class DisbursementVoucherService
         if ($budgetAmount <= 0) {
             $lines = json_decode((string) ($rfa['line_transaction'] ?? '[]'), true) ?: [];
             foreach ($lines as $line) {
-                $budgetAmount += (float) ($line['allocated_amount'] ?? 0);
+                // RFA allocations carry their amount in requested_amount — allocated_amount
+                // ("Cash Requirements") is hidden/unused for this allocation_type (see
+                // budget-allocation-form.php's baaApplyCashRequirementsVisibility()), so summing
+                // allocated_amount here always landed on 0.
+                $budgetAmount += (float) ($line['requested_amount'] ?? $line['allocated_amount'] ?? 0);
             }
         }
         $rfa['budget_amount']      = round($budgetAmount, 2);
@@ -523,16 +619,32 @@ class DisbursementVoucherService
     }
 
     /**
-     * RFA picker options. Several DVs can be drawn against the same RFA over time — progress
-     * payments, matching the paper form's Box B "Payments / This Request / Total Payments" lines
-     * — so an already-used RFA still shows (with paid_amount/remaining_balance so Originating can
-     * see what's left before picking it), it isn't excluded. $excludeDvId only matters for
-     * paid_amount's own exclusion when re-opening a DV that's already using this RFA for editing.
+     * WHERE fragment: this RFA is free to pick — unlinked, already linked to the DV currently being
+     * edited, or linked to a DV that's since been CANCELLED/REJECTED (same "not blocking" rule
+     * linkRfas()'s own exclusivity check uses, so an RFA doesn't get stuck unavailable forever just
+     * because nothing else explicitly clears budget_allocation.dv_id when a DV is cancelled).
+     */
+    private function rfaAvailableSql(?int $excludeDvId): string
+    {
+        $exclude = $excludeDvId !== null ? " OR a.dv_id = {$excludeDvId}" : '';
+
+        return "(a.dv_id IS NULL{$exclude} OR a.dv_id IN (
+            SELECT dv.dv_id FROM {$this->table} dv
+            LEFT JOIN {$this->tableSettingsStatus} st ON st.id = dv.status_id
+            WHERE st.name IN ('CANCELLED', 'REJECTED')
+        ))";
+    }
+
+    /**
+     * RFA picker options. One RFA backs only one DV at a time (budget_allocation.dv_id — see
+     * linkRfas()), so an RFA already linked to a DIFFERENT, still-active DV is left out entirely;
+     * $excludeDvId is the DV currently being edited, so its own already-linked RFAs keep showing
+     * (as "already yours", not "taken by someone else").
      */
     public function fetchRfaOptions(array $filters = [], ?int $excludeDvId = null): array
     {
         try {
-            $where = ["a.allocation_type = 'RFA'"];
+            $where = ["a.allocation_type = 'RFA'", $this->rfaAvailableSql($excludeDvId)];
             if (!empty($filters['fiscal_yr'])) {
                 $where[] = 'a.fiscal_year = ' . (int) $filters['fiscal_yr'];
             }
@@ -546,7 +658,7 @@ class DisbursementVoucherService
                 "SELECT a.allocation_id, a.allocation_number, a.request_referrence_no, a.fiscal_year,
                         a.requesting_rc_id, rc.rc_name AS department_name,
                         a.vendor_id, v.vendor_name, v.address AS vendor_address, v.tin AS vendor_tin,
-                        a.po_number, a.po_amount, a.line_transaction,
+                        a.po_number, a.po_amount, a.line_transaction, a.dv_id,
                         a.category_id, bc.name AS category_name
                  FROM {$this->tableRfa} a
                  LEFT JOIN {$this->tableRc}             rc ON rc.rc_id = a.requesting_rc_id
@@ -616,7 +728,10 @@ class DisbursementVoucherService
             }
             if (!empty($filters['search'])) {
                 $kw      = App\QuotedValue('%' . $filters['search'] . '%', App\DataType::STRING, 'DB');
-                $where[] = "(dv.dv_no ILIKE {$kw} OR dv.claimant_name ILIKE {$kw} OR dv.rfa_allocation_number ILIKE {$kw})";
+                // RFA no longer has a column on this table (see linkRfas()) — matched via the
+                // reverse link (budget_allocation.dv_id) instead.
+                $where[] = "(dv.dv_no ILIKE {$kw} OR dv.claimant_name ILIKE {$kw}
+                             OR EXISTS (SELECT 1 FROM {$this->tableRfa} a WHERE a.dv_id = dv.dv_id AND a.allocation_number ILIKE {$kw}))";
             }
             $whereSql = implode(' AND ', $where);
 
@@ -690,6 +805,32 @@ class DisbursementVoucherService
             $row['deductions']         = $this->fetchDeductions($dvId);
             $row['atc_lines']          = $this->fetchAtcLines($dvId);
 
+            // Every RFA currently linked to this DV — the link lives on the RFA side
+            // (budget_allocation.dv_id, see linkRfas()), so this is a plain reverse lookup, not a
+            // column to parse. What the form's multi-select repopulates its chips from, and what the
+            // view shows.
+            $row['rfas'] = array_values(array_filter(array_map(
+                fn (array $r) => ($this->withRfaBudget($r, $dvId)),
+                App\ExecuteRows(
+                    "SELECT a.allocation_id, a.allocation_number, a.request_referrence_no, a.fiscal_year,
+                            a.requesting_rc_id, rc.rc_name AS department_name,
+                            a.vendor_id, v.vendor_name, v.address AS vendor_address, v.tin AS vendor_tin,
+                            a.po_number, a.po_amount, a.line_transaction, a.dv_id,
+                            a.category_id, bc.name AS category_name
+                     FROM {$this->tableRfa} a
+                     LEFT JOIN {$this->tableRc}             rc ON rc.rc_id = a.requesting_rc_id
+                     LEFT JOIN {$this->tableVendor}         v  ON v.vendor_id = a.vendor_id
+                     LEFT JOIN {$this->tableBudgetCategory} bc ON bc.budget_category_id = a.category_id
+                     WHERE a.allocation_type = 'RFA' AND a.dv_id = {$dvId}
+                     ORDER BY a.allocation_id",
+                    'DB'
+                ) ?: []
+            )));
+
+            // Supporting Documents attached to this voucher, if any (same attachment convention as
+            // fims.budget_allocation — see FileUploadServices::attachmentsFor()).
+            $row['file_attachments'] = (new FileUploadServices())->attachmentsFor($row['multiple_node_id'] ?? null);
+
             // account_title/account_posting_allowed let the view show the account's name (same
             // Chart of Accounts lookup the searchable-select pickers use elsewhere) and flag it if
             // it's somehow not posting_allowed (e.g. a legacy voucher saved before that check
@@ -760,11 +901,14 @@ class DisbursementVoucherService
         }
 
         $jev['lines'] = App\ExecuteRows(
-            "SELECT jevl.jevl_id, jevl.line_number, jevl.account_code, jevl.debit, jevl.credit, jevl.description,
-                    jevl.sl_code, sm.sl_name, jevl.sl_detail_id, sd.detail_name AS sl_detail_name
+            "SELECT jevl.jevl_id, jevl.line_number, jevl.account_code, ac.account_title, jevl.debit, jevl.credit, jevl.description,
+                    jevl.sl_code, sm.sl_name, jevl.sl_detail_id, sd.detail_name AS sl_detail_name,
+                    jevl.rc_id, rc.rc_name
              FROM {$this->tableJevLines} jevl
+             LEFT JOIN {$this->tableCoa}       ac ON ac.account_code = jevl.account_code
              LEFT JOIN {$this->tableSlMasters} sm ON sm.sl_code = jevl.sl_code
              LEFT JOIN {$this->tableSlDetails} sd ON sd.sl_detail_id = jevl.sl_detail_id
+             LEFT JOIN {$this->tableRc}        rc ON rc.rc_id = jevl.rc_id
              WHERE jevl.jev_id = " . (int) $jev['jev_id'] . ' ORDER BY jevl.line_number',
             'DB'
         ) ?: [];
@@ -993,6 +1137,7 @@ class DisbursementVoucherService
             $credit      = is_numeric($line['credit'] ?? null) ? (float) $line['credit'] : 0.0;
             $slCode      = trim((string) ($line['sl_code'] ?? ''));
             $slDetailId  = $line['sl_detail_id'] ?? '';
+            $rcId        = trim((string) ($line['rc_id'] ?? ''));
             if ($accountCode === '' && $debit <= 0 && $credit <= 0) {
                 continue; // a fully blank trailing row
             }
@@ -1026,6 +1171,9 @@ class DisbursementVoucherService
             } else {
                 $slDetailId = null;
             }
+            if ($rcId !== '' && (int) App\ExecuteScalar('SELECT COUNT(*) FROM ' . $this->tableRc . ' WHERE rc_id = ' . $this->str($rcId), 'DB') === 0) {
+                $errors[] = "Line {$n}: Resp Center '{$rcId}' is not a known Responsibility Center.";
+            }
             $totalDebit  += $debit;
             $totalCredit += $credit;
             $clean[] = [
@@ -1033,6 +1181,7 @@ class DisbursementVoucherService
                 'description'  => trim((string) ($line['description'] ?? '')),
                 'sl_code'      => $slCode !== '' ? $slCode : null,
                 'sl_detail_id' => $slDetailId,
+                'rc_id'        => $rcId !== '' ? $rcId : null,
             ];
         }
         // 0 lines is only an error when a complete entry is required (the dedicated Accounting
@@ -1081,10 +1230,11 @@ class DisbursementVoucherService
 
             foreach ($clean as $idx => $line) {
                 App\Execute(
-                    "INSERT INTO {$this->tableJevLines} (jev_id, line_number, account_code, debit, credit, description, sl_code, sl_detail_id)
+                    "INSERT INTO {$this->tableJevLines} (jev_id, line_number, account_code, debit, credit, description, sl_code, sl_detail_id, rc_id)
                      VALUES ({$jevId}, " . ($idx + 1) . ', ' . $this->str($line['account_code']) . ', '
                     . (float) $line['debit'] . ', ' . (float) $line['credit'] . ', ' . $this->strOrNull($line['description']) . ', '
-                    . $this->strOrNull($line['sl_code']) . ', ' . $this->intOrNull($line['sl_detail_id']) . ')',
+                    . $this->strOrNull($line['sl_code']) . ', ' . $this->intOrNull($line['sl_detail_id']) . ', '
+                    . $this->strOrNull($line['rc_id']) . ')',
                     'DB'
                 );
             }
@@ -1163,7 +1313,7 @@ class DisbursementVoucherService
                 $dvNo = $this->nextDvNumber($f['dv_date']);
             }
 
-            $paymentsPrior = $this->priorPaymentsForRfa($f['rfa_allocation_id'], null);
+            $paymentsPrior = $this->priorPaymentsForRfas(array_column($f['_rfaRows'], 'allocation_id'), null);
             $balance       = round($f['obligation_amount'] - ($paymentsPrior + $f['net_amount']), 2);
 
             $submitted = $f['status'] === 'FOR_FMD_REVIEW';
@@ -1174,15 +1324,14 @@ class DisbursementVoucherService
                 $row = App\ExecuteRow(
                     "INSERT INTO {$this->table}
                         (dv_no, dv_date, fiscal_yr, expense_class, status_id,
-                         rfa_allocation_id, rfa_allocation_number, requesting_department_id, dept_project, fund_source,
+                         requesting_department_id, dept_project, fund_source,
                          vendor_id, claimant_name, claimant_address, employee_no_tin,
                          particulars, gross_amount, net_amount,
                          po_number, po_amount,
                          account_code, budget_amount, obligation_amount, payments_prior_amount, balance_amount,
-                         remarks, submitted_at, submitted_by, created_by)
+                         remarks, multiple_node_id, submitted_at, submitted_by, created_by)
                      VALUES ("
                     . $this->str($dvNo) . ', ' . $this->str($f['dv_date']) . ', ' . $f['fiscal_yr'] . ', ' . $this->strOrNull($f['expense_class']) . ', ' . (int) $f['status_id'] . ', '
-                    . $this->intOrNull($f['rfa_allocation_id']) . ', ' . $this->strOrNull($f['rfa_allocation_number']) . ', '
                     . $this->intOrNull($f['requesting_department_id']) . ', ' . $this->strOrNull($f['dept_project']) . ', '
                     . $this->strOrNull($f['fund_source']) . ', '
                     . $this->intOrNull($f['vendor_id']) . ', '
@@ -1192,7 +1341,7 @@ class DisbursementVoucherService
                     . $this->strOrNull($f['po_number']) . ', ' . $this->numOrNull($f['po_amount']) . ', '
                     . $this->strOrNull($f['account_code']) . ', ' . (float) $f['budget_amount'] . ', ' . (float) $f['obligation_amount'] . ', '
                     . (float) $paymentsPrior . ', ' . (float) $balance . ', '
-                    . $this->strOrNull($f['remarks']) . ', '
+                    . $this->strOrNull($f['remarks']) . ', ' . $this->strOrNull($f['multiple_node_id']) . ', '
                     . ($submitted ? "CURRENT_TIMESTAMP, {$uid}" : 'NULL, NULL') . ', '
                     . $uid . ')
                      RETURNING dv_id, dv_no',
@@ -1200,6 +1349,13 @@ class DisbursementVoucherService
                 );
 
                 $this->replaceDeductions((int) $row['dv_id'], $f['deductions']);
+
+                $rfaError = $this->linkRfas((int) $row['dv_id'], $f['_rfaRows']);
+                if ($rfaError !== null) {
+                    App\Execute('ROLLBACK', 'DB');
+
+                    return ['success' => false, 'message' => $rfaError];
+                }
 
                 // Optional ATC Code / Accounting Entries pre-fill — see persistJournalEntry()'s
                 // doc comment. A validation failure here rolls back the DV creation too.
@@ -1254,7 +1410,7 @@ class DisbursementVoucherService
                 return ['success' => false, 'message' => 'Validation failed.', 'errors' => $errors];
             }
 
-            $paymentsPrior = $this->priorPaymentsForRfa($f['rfa_allocation_id'], $dvId);
+            $paymentsPrior = $this->priorPaymentsForRfas(array_column($f['_rfaRows'], 'allocation_id'), $dvId);
             $balance       = round($f['obligation_amount'] - ($paymentsPrior + $f['net_amount']), 2);
 
             $submitted = $f['status'] === 'FOR_FMD_REVIEW';
@@ -1267,8 +1423,6 @@ class DisbursementVoucherService
                         dv_date = " . $this->str($f['dv_date']) . ',
                         fiscal_yr = ' . $f['fiscal_yr'] . ',
                         expense_class = ' . $this->strOrNull($f['expense_class']) . ',
-                        rfa_allocation_id = ' . $this->intOrNull($f['rfa_allocation_id']) . ',
-                        rfa_allocation_number = ' . $this->strOrNull($f['rfa_allocation_number']) . ',
                         requesting_department_id = ' . $this->intOrNull($f['requesting_department_id']) . ',
                         dept_project = ' . $this->strOrNull($f['dept_project']) . ',
                         fund_source = ' . $this->strOrNull($f['fund_source']) . ',
@@ -1287,6 +1441,7 @@ class DisbursementVoucherService
                         payments_prior_amount = ' . (float) $paymentsPrior . ',
                         balance_amount = ' . (float) $balance . ',
                         remarks = ' . $this->strOrNull($f['remarks']) . ',
+                        multiple_node_id = ' . $this->strOrNull($f['multiple_node_id']) . ',
                         status_id = ' . (int) $f['status_id'] . ',
                         submitted_at = ' . ($submitted ? 'CURRENT_TIMESTAMP' : 'NULL') . ',
                         submitted_by = ' . ($submitted ? $uid : 'NULL') . ',
@@ -1298,6 +1453,13 @@ class DisbursementVoucherService
                 );
 
                 $this->replaceDeductions($dvId, $f['deductions']);
+
+                $rfaError = $this->linkRfas($dvId, $f['_rfaRows']);
+                if ($rfaError !== null) {
+                    App\Execute('ROLLBACK', 'DB');
+
+                    return ['success' => false, 'message' => $rfaError];
+                }
 
                 // Optional ATC Code / Accounting Entries pre-fill — see persistJournalEntry()'s
                 // doc comment. A validation failure here rolls back the whole update too.
@@ -1456,6 +1618,10 @@ class DisbursementVoucherService
                 return ['success' => false, 'message' => "Only DRAFT or CANCELLED disbursement vouchers can be deleted (current status: {$cur['status']})."];
             }
 
+            // Release any RFA still linked to this voucher (budget_allocation.dv_id) BEFORE deleting
+            // it — otherwise dv_id would dangle, and rfaAvailableSql()'s "my cancelled/rejected DV
+            // doesn't block the RFA" check can't match a dv_id whose row no longer exists at all.
+            App\Execute("UPDATE {$this->tableRfa} SET dv_id = NULL WHERE dv_id = {$dvId}", 'DB');
             App\Execute("DELETE FROM {$this->table} WHERE dv_id = {$dvId}", 'DB');
 
             return ['success' => true, 'message' => "Disbursement Voucher {$cur['dv_no']} deleted successfully."];

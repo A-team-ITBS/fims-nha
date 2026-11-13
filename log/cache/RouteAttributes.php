@@ -179,6 +179,8 @@
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
     ],
     null,
     [
@@ -1075,6 +1077,16 @@
                     'POST',
                     'OPTIONS',
                 ],
+                [
+                    'GET',
+                    'POST',
+                    'OPTIONS',
+                ],
+                [
+                    'GET',
+                    'POST',
+                    'OPTIONS',
+                ],
             ],
             'pattern' => [
                 '/AggregatedAuditLogsList',
@@ -1207,6 +1219,7 @@
                 '/PricingPage[/{params:.*}]',
                 '/ProgramPage[/{params:.*}]',
                 '/ProjectPage[/{params:.*}]',
+                '/PropertyRecordPage[/{params:.*}]',
                 '/PsgcList[/{code_10:.*}]',
                 '/PsgcAdd[/{code_10:.*}]',
                 '/PsgcView[/{code_10:.*}]',
@@ -1253,6 +1266,7 @@
                 '/UsersEdit[/{user_id}]',
                 '/UsersDelete[/{user_id}]',
                 '/VDepartmentHierarchyList',
+                '/VendorsPage[/{params:.*}]',
                 '/Voucher[/{params:.*}]',
                 '/VUserAccessSummaryList',
                 '/WorkflowManager[/{params:.*}]',
@@ -1388,6 +1402,7 @@
                 'PHPMaker2024\\FIMS\\PricingPageController:custom',
                 'PHPMaker2024\\FIMS\\ProgramPageController:custom',
                 'PHPMaker2024\\FIMS\\ProjectPageController:custom',
+                'PHPMaker2024\\FIMS\\PropertyRecordPageController:custom',
                 'PHPMaker2024\\FIMS\\PsgcController:list',
                 'PHPMaker2024\\FIMS\\PsgcController:add',
                 'PHPMaker2024\\FIMS\\PsgcController:view',
@@ -1434,6 +1449,7 @@
                 'PHPMaker2024\\FIMS\\UsersController:edit',
                 'PHPMaker2024\\FIMS\\UsersController:delete',
                 'PHPMaker2024\\FIMS\\VDepartmentHierarchyController:list',
+                'PHPMaker2024\\FIMS\\VendorsPageController:custom',
                 'PHPMaker2024\\FIMS\\VoucherController:custom',
                 'PHPMaker2024\\FIMS\\VUserAccessSummaryController:list',
                 'PHPMaker2024\\FIMS\\WorkflowManagerController:custom',
@@ -1974,6 +1990,12 @@
                 [
                     'PHPMaker2024\\FIMS\\PermissionMiddleware',
                 ],
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
             ],
             'name' => [
                 'list.aggregated_audit_logs',
@@ -2106,6 +2128,7 @@
                 'custom.pricing_page',
                 'custom.program_page',
                 'custom.project_page',
+                'custom.property_record_page',
                 'list.psgc',
                 'add.psgc',
                 'view.psgc',
@@ -2152,11 +2175,14 @@
                 'edit.users',
                 'delete.users',
                 'list.v_department_hierarchy',
+                'custom.vendors_page',
                 'custom.Voucher',
                 'list.v_user_access_summary',
                 'custom.WorkflowManager',
             ],
             'options' => [
+                [],
+                [],
                 [],
                 [],
                 [],
@@ -2519,6 +2545,8 @@
         $o[176],
         $o[177],
         $o[178],
+        $o[179],
+        $o[180],
     ],
     []
 );

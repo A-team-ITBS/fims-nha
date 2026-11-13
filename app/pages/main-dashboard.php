@@ -483,15 +483,15 @@ $dashboardCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.cs
                 </div>
                 <div class="td-weather-right">
                     <div class="td-weather-stat">
-                        <div class="td-weather-stat-icon" style="background:#000E3E;color:#fff;"><i class="fas fa-tint"></i></div>
+                        <div class="td-weather-stat-icon" style="background:var(--afims-heading-fill, #000E3E);color:#fff;"><i class="fas fa-tint"></i></div>
                         <div><div class="td-weather-stat-val"><span id="wt-hum">—</span>%</div><div class="td-weather-stat-lbl">Humidity</div></div>
                     </div>
                     <div class="td-weather-stat">
-                        <div class="td-weather-stat-icon" style="background:#000E3E;color:#fff;"><i class="fas fa-wind"></i></div>
+                        <div class="td-weather-stat-icon" style="background:var(--afims-heading-fill, #000E3E);color:#fff;"><i class="fas fa-wind"></i></div>
                         <div><div class="td-weather-stat-val"><span id="wt-wind">—</span> km/h</div><div class="td-weather-stat-lbl">Wind</div></div>
                     </div>
                     <div class="td-weather-stat">
-                        <div class="td-weather-stat-icon" style="background:#000E3E;color:#fff;"><i class="fas fa-thermometer-half"></i></div>
+                        <div class="td-weather-stat-icon" style="background:var(--afims-heading-fill, #000E3E);color:#fff;"><i class="fas fa-thermometer-half"></i></div>
                         <div><div class="td-weather-stat-val"><span id="wt-feels">—</span>°C</div><div class="td-weather-stat-lbl">Feels like</div></div>
                     </div>
                 </div>
@@ -582,7 +582,7 @@ $dashboardCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.cs
                 <?php else: ?>
                 <?php foreach ($systemHealth as $system): ?>
                 <div class="td-li">
-                    <div class="td-li-av" style="background:#000E3E;"><?php echo HtmlEncode(mb_strtoupper(mb_substr($system['system_name'], 0, 2))); ?></div>
+                    <div class="td-li-av" style="background:var(--afims-heading-fill, #000E3E);"><?php echo HtmlEncode(mb_strtoupper(mb_substr($system['system_name'], 0, 2))); ?></div>
                     <div style="flex:1;min-width:0;">
                         <div class="td-li-name"><?php echo $system['system_name']; ?></div>
                         <div class="td-li-sub"><?php echo $system['active_users']; ?> active user<?php echo $system['active_users'] == 1 ? '' : 's'; ?></div>
@@ -666,22 +666,22 @@ $dashboardCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.cs
             </div>
             <div style="display:flex;flex-direction:column;gap:8px;">
                 <a href="<?php echo $createUserUrl; ?>" class="td-mod">
-                    <div class="td-mod-dot" style="background:#000E3E;"></div>
+                    <div class="td-mod-dot" style="background:var(--afims-heading-fill, #000E3E);"></div>
                     <div class="td-mod-name">Create New User</div>
                     <i class="fas fa-chevron-right" style="margin-left:auto;font-size:.58rem;color:var(--afims-border, #E4ECF2);"></i>
                 </a>
                 <a href="<?php echo $manageUserLevelsUrl; ?>" class="td-mod">
-                    <div class="td-mod-dot" style="background:#000E3E;"></div>
+                    <div class="td-mod-dot" style="background:var(--afims-heading-fill, #000E3E);"></div>
                     <div class="td-mod-name">Manage User Levels</div>
                     <i class="fas fa-chevron-right" style="margin-left:auto;font-size:.58rem;color:var(--afims-border, #E4ECF2);"></i>
                 </a>
                 <a href="<?php echo $manageSystemsUrl; ?>" class="td-mod">
-                    <div class="td-mod-dot" style="background:#000E3E;"></div>
+                    <div class="td-mod-dot" style="background:var(--afims-heading-fill, #000E3E);"></div>
                     <div class="td-mod-name">Manage Systems</div>
                     <i class="fas fa-chevron-right" style="margin-left:auto;font-size:.58rem;color:var(--afims-border, #E4ECF2);"></i>
                 </a>
                 <a href="<?php echo $viewAuditLogsUrl; ?>" class="td-mod">
-                    <div class="td-mod-dot" style="background:#000E3E;"></div>
+                    <div class="td-mod-dot" style="background:var(--afims-heading-fill, #000E3E);"></div>
                     <div class="td-mod-name">View Audit Logs</div>
                     <i class="fas fa-chevron-right" style="margin-left:auto;font-size:.58rem;color:var(--afims-border, #E4ECF2);"></i>
                 </a>
@@ -696,132 +696,141 @@ $dashboardCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.cs
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-document.addEventListener('DOMContentLoaded', function() {
+// Charts read their colors from the AFIMS palette (_shared/css/custom.css) at draw time and are
+// rebuilt on "changetheme" (fired by ew.setTheme), so light and dark mode always match the cards.
+var dashCharts = [];
+var dashData = {
+    growth: <?php echo $userGrowthChartDataJson; ?>,
+    levels: <?php echo $userLevelChartDataJson; ?>,
+    systems: <?php echo $topSystemsChartDataJson; ?>
+};
+
+function dashVar(name, fallback) {
+    var v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    return v || fallback;
+}
+function dashAlpha(color, a) {
+    return 'color-mix(in srgb, ' + color + ' ' + Math.round(a * 100) + '%, transparent)';
+}
+
+function buildDashCharts() {
+    dashCharts.forEach(function (c) { c.destroy(); });
+    dashCharts = [];
+
+    var c1 = dashVar('--afims-chart-1', '#2A78D6'),
+        c3 = dashVar('--afims-chart-3', '#1BAF7A'),
+        palette = ['--afims-chart-1', '--afims-chart-2', '--afims-chart-3', '--afims-chart-4', '--afims-chart-5', '--afims-chart-6']
+            .map(function (n) { return dashVar(n, '#2A78D6'); }),
+        surface = dashVar('--afims-surface', '#FFFFFF'),
+        subtle  = dashVar('--afims-surface-subtle', '#F4F7FA'),
+        grid    = dashVar('--afims-chart-grid', '#EDF0F4'),
+        axis    = dashVar('--afims-chart-axis', '#62657E'),
+        text    = dashVar('--afims-text', '#1A1B21'),
+        heading = dashVar('--afims-heading', '#000E3E'),
+        muted   = dashVar('--afims-text-disabled', '#A9AAB8'),
+        border  = dashVar('--afims-border', '#E4ECF2');
+
     Chart.defaults.font.family = "'Inter', system-ui, sans-serif";
     Chart.defaults.font.size = 11;
-    Chart.defaults.color = '#62657E';
+    Chart.defaults.color = axis;
 
     var tooltipStyle = {
-        backgroundColor: '#000E3E',
-        titleColor: '#fff',
-        bodyColor: 'rgba(255,255,255,.85)',
-        padding: 10,
-        cornerRadius: 10,
-        displayColors: true,
-        boxPadding: 4,
+        backgroundColor: surface, titleColor: text, bodyColor: text,
+        borderColor: border, borderWidth: 1,
+        padding: 10, cornerRadius: 10, displayColors: true, boxPadding: 4,
         titleFont: { weight: '600' }
     };
 
-    // Scriptable backgroundColor — Chart.js calls this per-render with the
-    // real chartArea, which a plain color string can't react to; this is
-    // what makes the fill a soft top-to-bottom fade instead of a flat tint.
-    // Fixed to the theme's single dark blue (#000E3E) rather than deriving
-    // from the dataset, since both series now share that same hue.
-    function fadeGradient(context) {
-        var chart = context.chart;
-        if (!chart.chartArea) return null;
-        var g = chart.ctx.createLinearGradient(0, chart.chartArea.top, 0, chart.chartArea.bottom);
-        g.addColorStop(0, 'rgba(0,14,62,0.25)');
-        g.addColorStop(1, 'rgba(0,14,62,0)');
-        return g;
+    function fade(color) {
+        return function (context) {
+            var chart = context.chart;
+            if (!chart.chartArea) return null;
+            var g = chart.ctx.createLinearGradient(0, chart.chartArea.top, 0, chart.chartArea.bottom);
+            g.addColorStop(0, dashAlpha(color, .28));
+            g.addColorStop(1, dashAlpha(color, 0));
+            return g;
+        };
     }
 
-    var userGrowthData = <?php echo $userGrowthChartDataJson; ?>;
-    userGrowthData.datasets.forEach(function (ds) { ds.backgroundColor = fadeGradient; });
-
-    new Chart(document.getElementById('userGrowthChart').getContext('2d'), {
+    // ── User growth (line) ──
+    var growth = JSON.parse(JSON.stringify(dashData.growth));
+    [c1, c3].forEach(function (col, i) {
+        var ds = growth.datasets[i];
+        if (!ds) return;
+        ds.borderColor = col;
+        ds.backgroundColor = fade(col);
+        ds.pointBackgroundColor = surface;
+        ds.pointBorderColor = col;
+    });
+    dashCharts.push(new Chart(document.getElementById('userGrowthChart').getContext('2d'), {
         type: 'line',
-        data: userGrowthData,
+        data: growth,
         options: {
-            responsive: true,
-            maintainAspectRatio: false,
+            responsive: true, maintainAspectRatio: false,
             animation: { duration: 700, easing: 'easeOutQuart' },
             interaction: { mode: 'index', intersect: false },
             scales: {
-                y: {
-                    beginAtZero: true,
-                    ticks: { precision: 0, padding: 8, font: { size: 11 } },
-                    grid: { color: '#f1f5f9' },
-                    border: { display: false }
-                },
-                x: {
-                    ticks: { padding: 8, font: { size: 11 } },
-                    grid: { display: false },
-                    border: { display: false }
-                }
+                y: { beginAtZero: true, ticks: { precision: 0, padding: 8, color: axis, font: { size: 11 } }, grid: { color: grid }, border: { display: false } },
+                x: { ticks: { padding: 8, color: axis, font: { size: 11 } }, grid: { display: false }, border: { display: false } }
             },
             plugins: {
-                legend: {
-                    position: 'top',
-                    align: 'end',
-                    labels: { usePointStyle: true, pointStyle: 'circle', boxWidth: 7, padding: 16, font: { weight: '600' } }
-                },
+                legend: { position: 'top', align: 'end', labels: { color: text, usePointStyle: true, pointStyle: 'circle', boxWidth: 7, padding: 16, font: { weight: '600' } } },
                 tooltip: tooltipStyle
             }
         }
-    });
+    }));
 
-    // Doughnut with a center "total" label — plugin registered inline since
-    // this is the only chart that needs it.
+    // ── User level distribution (doughnut with a center total) ──
+    var levels = JSON.parse(JSON.stringify(dashData.levels));
+    levels.datasets[0].backgroundColor = levels.datasets[0].data.map(function (_, i) { return palette[i % palette.length]; });
+    levels.datasets[0].borderColor = surface;
     var centerTextPlugin = {
         id: 'centerText',
         afterDraw: function (chart) {
             if (chart.config.type !== 'doughnut') return;
             var total = chart.data.datasets[0].data.reduce(function (a, b) { return a + Number(b || 0); }, 0);
             var ctx = chart.ctx;
-            var x = chart.getDatasetMeta(0).data[0] ? chart.chartArea.left + (chart.chartArea.right - chart.chartArea.left) / 2 : 0;
+            var x = chart.chartArea.left + (chart.chartArea.right - chart.chartArea.left) / 2;
             var y = chart.chartArea.top + (chart.chartArea.bottom - chart.chartArea.top) / 2;
             ctx.save();
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.font = '700 1.4rem Inter, sans-serif';
-            ctx.fillStyle = '#000E3E';
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.font = '700 1.4rem Inter, sans-serif'; ctx.fillStyle = heading;
             ctx.fillText(String(total), x, y - 8);
-            ctx.font = '600 .62rem Inter, sans-serif';
-            ctx.fillStyle = '#A9AAB8';
+            ctx.font = '600 .62rem Inter, sans-serif'; ctx.fillStyle = muted;
             ctx.fillText('TOTAL', x, y + 12);
             ctx.restore();
         }
     };
-
-    new Chart(document.getElementById('userLevelChart').getContext('2d'), {
+    dashCharts.push(new Chart(document.getElementById('userLevelChart').getContext('2d'), {
         type: 'doughnut',
-        data: <?php echo $userLevelChartDataJson; ?>,
+        data: levels,
         plugins: [centerTextPlugin],
         options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            cutout: '72%',
-            spacing: 3,
+            responsive: true, maintainAspectRatio: false,
+            cutout: '72%', spacing: 3,
             animation: { animateScale: true, animateRotate: true, duration: 700, easing: 'easeOutQuart' },
             elements: { arc: { borderRadius: 6 } },
             plugins: {
-                legend: {
-                    position: 'bottom',
-                    labels: { usePointStyle: true, pointStyle: 'circle', boxWidth: 7, padding: 12, font: { weight: '600' } }
-                },
+                legend: { position: 'bottom', labels: { color: text, usePointStyle: true, pointStyle: 'circle', boxWidth: 7, padding: 12, font: { weight: '600' } } },
                 tooltip: tooltipStyle
             }
         }
-    });
+    }));
 
-    // Canvas isn't rendered when there's no data (empty-state message shows
-    // instead — see the PHP side), so guard against a null element here.
+    // ── Top system usage (horizontal bars on a faint track) ──
+    // Canvas isn't rendered when there's no data (empty-state message shows instead).
     var topSystemsCanvas = document.getElementById('topSystemsChart');
     if (topSystemsCanvas) {
-        // Faint full-width rounded "track" drawn behind each bar — a common
-        // modern-dashboard touch (progress-bar-like) instead of bars floating
-        // on bare gridlines.
+        var systems = JSON.parse(JSON.stringify(dashData.systems));
+        systems.datasets[0].backgroundColor = c1;
         var barTrackPlugin = {
             id: 'barTrack',
             beforeDatasetsDraw: function (chart) {
                 var ctx = chart.ctx, xScale = chart.scales.x;
-                var meta = chart.getDatasetMeta(0);
                 ctx.save();
-                ctx.fillStyle = '#f4f7fa';
-                meta.data.forEach(function (bar) {
-                    var half = bar.height / 2;
-                    var left = xScale.left, right = xScale.right;
+                ctx.fillStyle = subtle;
+                chart.getDatasetMeta(0).data.forEach(function (bar) {
+                    var half = bar.height / 2, left = xScale.left, right = xScale.right;
                     if (ctx.roundRect) {
                         ctx.beginPath();
                         ctx.roundRect(left, bar.y - half, right - left, bar.height, half);
@@ -833,28 +842,28 @@ document.addEventListener('DOMContentLoaded', function() {
                 ctx.restore();
             }
         };
-
-        new Chart(topSystemsCanvas.getContext('2d'), {
+        dashCharts.push(new Chart(topSystemsCanvas.getContext('2d'), {
             type: 'bar',
-            data: <?php echo $topSystemsChartDataJson; ?>,
+            data: systems,
             plugins: [barTrackPlugin],
             options: {
                 indexAxis: 'y',
-                responsive: true,
-                maintainAspectRatio: false,
+                responsive: true, maintainAspectRatio: false,
                 animation: { duration: 700, easing: 'easeOutQuart' },
                 scales: {
-                    x: { beginAtZero: true, ticks: { precision: 0, font: { size: 11 } }, grid: { display: false }, border: { display: false } },
-                    y: { grid: { display: false }, border: { display: false }, ticks: { font: { size: 11, weight: '600' } } }
+                    x: { beginAtZero: true, ticks: { precision: 0, color: axis, font: { size: 11 } }, grid: { display: false }, border: { display: false } },
+                    y: { grid: { display: false }, border: { display: false }, ticks: { color: text, font: { size: 11, weight: '600' } } }
                 },
-                plugins: {
-                    legend: { display: false },
-                    tooltip: tooltipStyle
-                }
+                plugins: { legend: { display: false }, tooltip: tooltipStyle }
             }
-        });
+        }));
     }
-});
+}
+
+document.addEventListener('DOMContentLoaded', buildDashCharts);
+// Mode switched (navbar dropdown or Theme Settings panel): redraw with the new palette.
+// Wait a tick so custom.css's [data-bs-theme] rules have applied before the colors are read.
+document.addEventListener('changetheme', function () { setTimeout(buildDashCharts, 50); });
 
 // Export a chart canvas as a PNG — same pattern as the TREASURY dashboard's exportChart().
 function exportChart(canvasId, name) {

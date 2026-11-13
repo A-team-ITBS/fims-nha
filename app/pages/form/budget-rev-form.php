@@ -3,39 +3,92 @@ namespace PHPMaker2024\FIMS;
 $_brv_form_api = Config('API.FIMS_URL');
 ?>
 <style>
-/* ── Budget revision form: sections, searchable dropdowns, summary ─────────
-   Scoped to .nha-root so it picks up the nha-fims.css variables. */
-.nha-root .brv-section {
-    font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+/* ── Budget revision form ──────────────────────────────────────────────────
+   Scoped to .nha-root so it picks up the nha-fims.css tokens. It does not rely on Bootstrap's form classes: every control is
+   styled here, so the form looks the same wherever it is included. */
+
+/* a wide modal for the two budget-line cards and the arrow between them */
+.nha-root #brv-overlay .nha-modal.brv-modal-wide { max-width: 900px; }
+
+/* The modal is a flex column (header · scrolling body · footer) capped at 90vh, but this form's body and footer sit INSIDE a <form>.
+   The form has to be the flex item that passes the height on; left as a plain block it just grows past the modal, which clips it —
+   the body would not scroll and the footer (Cancel / Submit Request) would be pushed out of sight. */
+.nha-root #brv-overlay .nha-modal > form { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+.nha-root #brv-overlay .nha-modal-body { min-height: 0; }
+.nha-root #brv-overlay .nha-modal-foot { flex-shrink: 0; }
+
+.nha-root .brv-intro { margin: 0 0 18px; font-size: 13px; line-height: 1.5; color: var(--sec, #62657E); }
+
+/* ── numbered steps ── */
+.nha-root .brv-step + .brv-step { margin-top: 24px; padding-top: 22px; border-top: 1px solid var(--bdr, #E4ECF2); }
+.nha-root .brv-step-hd {
+    display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; margin: 0 0 14px;
+    font-size: 14px; font-weight: 700; color: var(--afims-heading, #000E3E);
+}
+.nha-root .brv-step-n {
+    display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%;
+    font-size: 12px; font-weight: 700; color: var(--afims-pure-white, #FFFFFF); background: var(--afims-heading-fill, #000E3E);
+}
+.nha-root .brv-step-sub { font-size: 12px; font-weight: 400; color: var(--subtle, #62657E); }
+
+/* ── labels, inputs ── */
+.nha-root .brv-lbl {
+    display: block; margin: 0 0 5px; font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
     color: var(--sec, #62657E);
 }
+.nha-root .brv-req { color: var(--red, #DC3545); }
+.nha-root .brv-optional { font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--subtle, #62657E); }
+.nha-root .brv-in {
+    display: block; box-sizing: border-box; width: 100%; padding: 8px 12px; font: inherit; font-size: 13px; color: var(--txt, #1A1B21);
+    background: var(--afims-surface, #FFFFFF); border: 1px solid var(--bdr, #E4ECF2); border-radius: 8px;
+    transition: border-color .15s, box-shadow .15s;
+}
+/* the theme gives every text input min-width:250px (FIMS.css, >= 576px) — it would overflow the compact filter bar */
+.nha-root .brv-in[type="text"] { min-width: 0 !important; }
+.nha-root .brv-in::placeholder { color: var(--afims-text-disabled, #A9AAB8); }
+.nha-root .brv-in:focus { outline: none; border-color: var(--afims-heading-fill, #000E3E); box-shadow: 0 0 0 3px rgba(15, 32, 69, .1); }
+.nha-root .brv-in:disabled { color: var(--subtle, #62657E); background: var(--surf, #F4F7FA); cursor: not-allowed; }
+.nha-root textarea.brv-in { min-height: 84px; resize: vertical; line-height: 1.45; }
 
-/* From COB and To COB share one row as two separate columns (they stack on narrow screens).
-   Each column is label / box / summary card; where the browser supports subgrid the three rows are
-   shared, so the two boxes are the same height and the two inputs sit on the same line. */
-.nha-root .brv-cobrow { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
+/* ── step 1: From budget line → To budget line ──
+   Three columns (card · arrow · card). Where the browser supports subgrid the cards share their three rows (label, box, summary), so
+   the two boxes are the same height and the arrow sits level with them; elsewhere the arrow is centred on the whole row. */
+.nha-root .brv-cobrow { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-items: start; }
 .nha-root .brv-cobcol { min-width: 0; }
+.nha-root .brv-flow {
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 30px; height: 30px; border-radius: 50%; justify-self: center; align-self: center;
+    color: var(--sec, #62657E); background: var(--surf, #F4F7FA); border: 1px solid var(--bdr, #E4ECF2);
+}
+.nha-root .brv-flow svg { width: 15px; height: 15px; }
+@media (max-width: 767px) { .nha-root .brv-cobrow > .brv-flow svg { transform: rotate(90deg); } }
 @media (min-width: 768px) {
-    .nha-root .brv-cobrow { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 16px; row-gap: 0; }
+    .nha-root .brv-cobrow { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); column-gap: 12px; row-gap: 0; }
+    /* explicit columns: the arrow is pinned to a row below, and an item with a fixed row but no column would be auto-placed first */
+    .nha-root .brv-cobrow > :nth-child(1) { grid-column: 1; }
+    .nha-root .brv-cobrow > :nth-child(2) { grid-column: 2; }
+    .nha-root .brv-cobrow > :nth-child(3) { grid-column: 3; }
 }
 @media (min-width: 768px) {
     @supports (grid-template-rows: subgrid) {
         .nha-root .brv-cobrow { grid-template-rows: auto auto auto; }
         .nha-root .brv-cobcol { display: grid; grid-row: span 3; grid-template-rows: subgrid; }
+        .nha-root .brv-cobrow > .brv-flow { grid-row: 2; }
     }
 }
-/* a wide modal for the two columns (bigger than .nha-modal-md) */
-.nha-root #brv-overlay .nha-modal.brv-modal-wide { max-width: 860px; }
 
-/* COB field with its filter bar (both From COB and To COB): one bordered box, the bar on top, the field below.
-   No overflow:hidden here — the dropdown lists must be able to open outside the box. */
-.nha-root .brv-reqgroup { display: flex; flex-direction: column; border: 1px solid var(--bdr, #E4ECF2); border-radius: var(--rs, 7px); }
+/* a card's title row: the label + what the card is for */
+.nha-root .brv-cob-hd { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.nha-root .brv-cob-hd .brv-lbl { margin: 0; }
+.nha-root .brv-cob-role { font-size: 11.5px; color: var(--subtle, #62657E); text-align: right; }
+
+/* the box: the filter bar on top, the search field below. No overflow:hidden — the dropdown lists open outside it. */
+.nha-root .brv-reqgroup { display: flex; flex-direction: column; background: var(--afims-surface, #FFFFFF); border: 1px solid var(--bdr, #E4ECF2); border-radius: 10px; }
 .nha-root .brv-filterbar {
     position: relative;   /* the three filter lists anchor to the bar, not to their narrow inputs */
     display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
     padding: 8px 10px; background: var(--surf, #F4F7FA);
     border-bottom: 1px solid var(--bdr, #E4ECF2);
-    border-radius: var(--rs, 7px) var(--rs, 7px) 0 0;
+    border-radius: 9px 9px 0 0;
 }
 .nha-root .brv-filterbar-label {
     display: inline-flex; align-items: center; gap: 5px;
@@ -45,7 +98,7 @@ $_brv_form_api = Config('API.FIMS_URL');
 .nha-root .brv-filterbar .brv-combo { position: static; flex: 1 1 90px; min-width: 0; }
 .nha-root .brv-combo-field { position: relative; }   /* holds the input + its clear (×) button */
 .nha-root .brv-filterbar .brv-combo-fy { flex: 0 1 84px; }
-.nha-root .brv-filterbar .form-control { height: 30px; padding: 3px 26px 3px 10px; font-size: 12.5px; }
+.nha-root .brv-filterbar .brv-in { height: 30px; padding: 3px 26px 3px 10px; font-size: 12.5px; }
 .nha-root .brv-filterbar .brv-combo-clear { right: 3px; font-size: 16px; }
 /* the filter lists span the whole bar (positioned against the bar), so they never overflow the modal */
 .nha-root .brv-filterbar .brv-combo-list { left: 0; right: 0; top: calc(100% + 4px); }
@@ -59,9 +112,7 @@ $_brv_form_api = Config('API.FIMS_URL');
 
 /* searchable dropdown (combobox) */
 .nha-root .brv-combo { position: relative; }
-/* The theme (FIMS.css, viewports >= 576px) makes text inputs width:auto with min-width:250px, which
-   would overflow the compact filter bar — so the combo inputs always fill their wrapper. */
-.nha-root .brv-combo .form-control { display: block; width: 100%; min-width: 0 !important; padding-right: 34px; }
+.nha-root .brv-combo .brv-in { padding-right: 34px; }
 .nha-root .brv-combo-clear {
     position: absolute; top: 50%; right: 6px; transform: translateY(-50%);
     border: 0; background: transparent; color: var(--muted, #A9AAB8);
@@ -70,9 +121,9 @@ $_brv_form_api = Config('API.FIMS_URL');
 .nha-root .brv-combo-clear:hover { color: var(--txt, #1A1B21); }
 .nha-root .brv-combo-list {
     position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; right: 0;
-    max-height: 220px; overflow-y: auto; margin: 0; padding: 4px; list-style: none;
-    background: var(--card, #fff); border: 1px solid var(--bdr, #E4ECF2);
-    border-radius: var(--rs, 7px); box-shadow: var(--sh-md, 0 4px 14px rgba(0,0,0,.10));
+    max-height: 240px; overflow-y: auto; margin: 0; padding: 4px; list-style: none;
+    background: var(--afims-surface, #FFFFFF); border: 1px solid var(--bdr, #E4ECF2);
+    border-radius: 10px; box-shadow: 0 8px 24px rgba(0, 0, 0, .12);
 }
 .nha-root .brv-combo-clear[hidden],
 .nha-root .brv-combo-list[hidden],
@@ -80,39 +131,52 @@ $_brv_form_api = Config('API.FIMS_URL');
 .nha-root .brv-change[hidden] { display: none; }
 .nha-root .brv-opt {
     display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1px 8px; align-items: center;
-    padding: 7px 10px; border-radius: var(--rxs, 5px); cursor: pointer;
+    padding: 8px 10px; border-radius: 7px; cursor: pointer;
     font-size: 13px; color: var(--txt, #1A1B21);
 }
 .nha-root .brv-opt:hover,
 .nha-root .brv-opt.is-active { background: var(--navy-lt, #F4F7FA); }
-.nha-root .brv-opt-main { font-weight: 500; overflow-wrap: anywhere; }
+.nha-root .brv-opt-main { font-weight: 600; overflow-wrap: anywhere; }
 .nha-root .brv-opt-sub { grid-column: 1 / -1; font-size: 11.5px; color: var(--subtle, #62657E); }
 .nha-root .brv-opt-empty { padding: 10px; font-size: 12.5px; text-align: center; color: var(--subtle, #62657E); }
 .nha-root .brv-hint { margin-top: 4px; font-size: 11.5px; color: var(--subtle, #62657E); }
 /* "Showing n of N" on the left, the Clear filters link on the right — it never changes the box height */
 .nha-root .brv-hintrow { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-height: 22px; }
 
-/* selected budget request */
+/* the picked budget request */
 .nha-root .brv-summary {
-    margin-top: 10px; padding: 10px 12px; font-size: 12.5px;
-    background: var(--blue-bg, #E6EBF6); border: 1px solid var(--navy-bdr, #E6EBF6);
-    border-radius: var(--rs, 7px);
+    margin-top: 10px; padding: 11px 14px; font-size: 12.5px;
+    background: var(--blue-bg, #E6EBF6); border: 1px solid var(--navy-bdr, #E6EBF6); border-left: 3px solid var(--afims-heading-fill, #000E3E);
+    border-radius: 10px;
 }
 .nha-root .brv-summary-top { display: flex; align-items: center; gap: 8px; font-size: 13px; }
-.nha-root .brv-summary-sub { margin-top: 2px; color: var(--subtle, #62657E); }
-.nha-root .brv-summary-amt { margin-top: 6px; }
+.nha-root .brv-summary-sub { margin-top: 3px; color: var(--subtle, #62657E); white-space: pre-line; overflow-wrap: anywhere; line-height: 1.45; }
+.nha-root .brv-summary-amt { margin-top: 7px; }
+
+/* ── step 2: the revision ── */
+.nha-root .brv-rev { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-items: start; }
+@media (min-width: 640px) {
+    .nha-root .brv-rev { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); }
+    /* the arrow sits level with the two inputs (below their labels) */
+    .nha-root .brv-rev > .brv-flow { margin-top: 24px; align-self: start; }
+}
+@media (max-width: 639px) { .nha-root .brv-rev > .brv-flow svg { transform: rotate(90deg); } }   /* stacked: the arrow points down */
+.nha-root .brv-fld { min-width: 0; }
+.nha-root .brv-money { position: relative; }
+.nha-root .brv-money-sym { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-size: 13px; color: var(--sec, #62657E); pointer-events: none; }
+.nha-root .brv-money .brv-in { padding-left: 28px; text-align: right; font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; -moz-appearance: textfield; }
+.nha-root .brv-money .brv-in::-webkit-outer-spin-button,
+.nha-root .brv-money .brv-in::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 
 /* from/to change indicator */
 .nha-root .brv-change {
-    padding: 6px 10px; border-radius: var(--rs, 7px); font-size: 12.5px; font-weight: 600;
+    margin-top: 12px; padding: 9px 12px; border-radius: 8px; font-size: 12.5px; font-weight: 600;
     background: var(--surf, #F4F7FA); color: var(--subtle, #62657E);
 }
 .nha-root .brv-change.is-up   { background: var(--green-bg, #DBF2E5); color: var(--green-txt, #0C7539); }
 .nha-root .brv-change.is-down { background: var(--red-bg, #FAE1E3);   color: var(--red-txt, #8F222D); }
 .nha-root .brv-change.is-move { background: var(--blue-bg, #E6EBF6);  color: var(--afims-primary-text, #0035A9); }
-
-/* "(optional)" tag next to a label */
-.nha-root .brv-optional { font-weight: 400; color: var(--subtle, #62657E); }
+.nha-root .brv-reason-fld { margin-top: 16px; }   /* not .brv-reason: the page's table uses that name for its truncated Reason cell */
 </style>
 
 <!-- The wrapper makes the modal styles apply wherever this form is included
@@ -125,184 +189,207 @@ $_brv_form_api = Config('API.FIMS_URL');
     <div class="nha-modal nha-modal-md brv-modal-wide">
         <div class="nha-modal-hdr">
             <h3 class="nha-modal-title" id="brv-modal-title">Add Budget Revision Request</h3>
-            <button type="button" class="nha-modal-close" id="brv-modal-close">&times;</button>
+            <button type="button" class="nha-modal-close" id="brv-modal-close" aria-label="Close">&times;</button>
         </div>
         <form id="brv-form">
             <div class="nha-modal-body">
                 <input type="hidden" id="brv-mode" value="add">
                 <input type="hidden" id="brv-id" value="">
-                <input type="hidden" id="brv-budget-req-id" value="">
-                <input type="hidden" id="brv-to-budget-req-id" value="">
-                <div class="row g-3">
+                <input type="hidden" id="brv-line-id" value="">
+                <input type="hidden" id="brv-to-line-id" value="">
 
-                    <!-- ── From COB | To COB: one row, two separate columns ── -->
-                    <div class="col-12">
+                <p class="brv-intro">Revise a budget line's amount, or move funds from one budget line to another. A revision only takes effect once it has been approved; then the From line's adjustment goes down and the To line's goes up.</p>
+
+                <!-- ── 1 · the budget lines: From → To ── -->
+                <section class="brv-step">
+                    <h4 class="brv-step-hd"><span class="brv-step-n">1</span> Budget lines <span class="brv-step-sub">Pick the line to revise and, if funds move, the line that receives them.</span></h4>
+
                     <div class="brv-cobrow">
 
-                    <!-- From COB (budget_revision.from_budget_req_id): a filter bar (Fiscal Year · Program · Project) attached to the searchable field -->
-                    <div class="brv-cobcol">
-                        <label class="form-label" for="brv-req-input">From COB <span class="text-danger">*</span></label>
+                        <!-- From budget line (budget_revision.from_budget_line_item_id): a filter bar (Fiscal Year · Program · Project) attached to the searchable field -->
+                        <div class="brv-cobcol">
+                            <div class="brv-cob-hd">
+                                <label class="brv-lbl" for="brv-req-input">From Budget Line <span class="brv-req">*</span></label>
+                                <span class="brv-cob-role">The line being revised</span>
+                            </div>
 
-                        <div class="brv-reqgroup">
-                            <div class="brv-filterbar" role="group" aria-label="Filter the COB list">
-                                <span class="brv-filterbar-label">
-                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
-                                    Filter
-                                </span>
-                                <div class="brv-combo brv-combo-fy">
-                                    <div class="brv-combo-field">
-                                        <input type="text" class="form-control" id="brv-fy-input" placeholder="Year" aria-label="Filter by fiscal year"
-                                               maxlength="4" inputmode="numeric" autocomplete="off"
-                                               role="combobox" aria-expanded="false" aria-controls="brv-fy-list" aria-autocomplete="list">
-                                        <button type="button" class="brv-combo-clear" id="brv-fy-clear" aria-label="Clear fiscal year" hidden>&times;</button>
+                            <div class="brv-reqgroup">
+                                <div class="brv-filterbar" role="group" aria-label="Filter the budget lines">
+                                    <span class="brv-filterbar-label">
+                                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                                        Filter
+                                    </span>
+                                    <div class="brv-combo brv-combo-fy">
+                                        <div class="brv-combo-field">
+                                            <input type="text" class="brv-in" id="brv-fy-input" placeholder="Year" aria-label="Filter by fiscal year"
+                                                   maxlength="4" inputmode="numeric" autocomplete="off"
+                                                   role="combobox" aria-expanded="false" aria-controls="brv-fy-list" aria-autocomplete="list">
+                                            <button type="button" class="brv-combo-clear" id="brv-fy-clear" aria-label="Clear fiscal year" hidden>&times;</button>
+                                        </div>
+                                        <ul class="brv-combo-list" id="brv-fy-list" role="listbox" hidden></ul>
                                     </div>
-                                    <ul class="brv-combo-list" id="brv-fy-list" role="listbox" hidden></ul>
+                                    <div class="brv-combo">
+                                        <div class="brv-combo-field">
+                                            <input type="text" class="brv-in" id="brv-program-input" placeholder="Program" aria-label="Filter by program"
+                                                   autocomplete="off"
+                                                   role="combobox" aria-expanded="false" aria-controls="brv-program-list" aria-autocomplete="list">
+                                            <button type="button" class="brv-combo-clear" id="brv-program-clear" aria-label="Clear program" hidden>&times;</button>
+                                        </div>
+                                        <ul class="brv-combo-list" id="brv-program-list" role="listbox" hidden></ul>
+                                    </div>
+                                    <div class="brv-combo">
+                                        <div class="brv-combo-field">
+                                            <input type="text" class="brv-in" id="brv-project-input" placeholder="Project" aria-label="Filter by project"
+                                                   autocomplete="off"
+                                                   role="combobox" aria-expanded="false" aria-controls="brv-project-list" aria-autocomplete="list">
+                                            <button type="button" class="brv-combo-clear" id="brv-project-clear" aria-label="Clear project" hidden>&times;</button>
+                                        </div>
+                                        <ul class="brv-combo-list" id="brv-project-list" role="listbox" hidden></ul>
+                                    </div>
                                 </div>
-                                <div class="brv-combo">
-                                    <div class="brv-combo-field">
-                                        <input type="text" class="form-control" id="brv-program-input" placeholder="Program" aria-label="Filter by program"
-                                               autocomplete="off"
-                                               role="combobox" aria-expanded="false" aria-controls="brv-program-list" aria-autocomplete="list">
-                                        <button type="button" class="brv-combo-clear" id="brv-program-clear" aria-label="Clear program" hidden>&times;</button>
+
+                                <div class="brv-reqfield">
+                                    <div class="brv-combo">
+                                        <input type="text" class="brv-in" id="brv-req-input" placeholder="Search by account, particulars, reference no. or project"
+                                               required autocomplete="off"
+                                               role="combobox" aria-expanded="false" aria-controls="brv-req-list" aria-autocomplete="list">
+                                        <button type="button" class="brv-combo-clear" id="brv-req-clear" aria-label="Clear budget line" hidden>&times;</button>
+                                        <ul class="brv-combo-list" id="brv-req-list" role="listbox" hidden></ul>
                                     </div>
-                                    <ul class="brv-combo-list" id="brv-program-list" role="listbox" hidden></ul>
-                                </div>
-                                <div class="brv-combo">
-                                    <div class="brv-combo-field">
-                                        <input type="text" class="form-control" id="brv-project-input" placeholder="Project" aria-label="Filter by project"
-                                               autocomplete="off"
-                                               role="combobox" aria-expanded="false" aria-controls="brv-project-list" aria-autocomplete="list">
-                                        <button type="button" class="brv-combo-clear" id="brv-project-clear" aria-label="Clear project" hidden>&times;</button>
+                                    <div class="brv-hintrow">
+                                        <div class="brv-hint" id="brv-req-hint">Loading budget requests…</div>
+                                        <button type="button" class="brv-filter-reset" id="brv-filter-reset" hidden>Clear filters</button>
                                     </div>
-                                    <ul class="brv-combo-list" id="brv-project-list" role="listbox" hidden></ul>
                                 </div>
                             </div>
 
-                            <div class="brv-reqfield">
-                                <div class="brv-combo">
-                                    <input type="text" class="form-control" id="brv-req-input" placeholder="Search by program, project or fiscal year"
-                                           required autocomplete="off"
-                                           role="combobox" aria-expanded="false" aria-controls="brv-req-list" aria-autocomplete="list">
-                                    <button type="button" class="brv-combo-clear" id="brv-req-clear" aria-label="Clear COB" hidden>&times;</button>
-                                    <ul class="brv-combo-list" id="brv-req-list" role="listbox" hidden></ul>
+                            <div class="brv-summary" id="brv-req-summary" hidden>
+                                <div class="brv-summary-top">
+                                    <span class="nha-bdg nha-bdg-gray" id="brv-sum-type">Status</span>
+                                    <strong id="brv-sum-title"></strong>
                                 </div>
-                                <div class="brv-hintrow">
-                                    <div class="brv-hint" id="brv-req-hint">Loading budget requests…</div>
-                                    <button type="button" class="brv-filter-reset" id="brv-filter-reset" hidden>Clear filters</button>
+                                <div class="brv-summary-sub" id="brv-sum-sub"></div>
+                                <div class="brv-summary-amt">
+                                    <span>Current amount <strong id="brv-sum-amount"></strong></span>
                                 </div>
                             </div>
                         </div>
 
-                        <div class="brv-summary" id="brv-req-summary" hidden>
-                            <div class="brv-summary-top">
-                                <span class="nha-bdg nha-bdg-blue" id="brv-sum-type">Program</span>
-                                <strong id="brv-sum-title"></strong>
-                            </div>
-                            <div class="brv-summary-sub" id="brv-sum-sub"></div>
-                            <div class="brv-summary-amt">
-                                <span>Current amount <strong id="brv-sum-amount"></strong></span>
-                            </div>
+                        <!-- the funds flow from the From line to the To line -->
+                        <div class="brv-flow" aria-hidden="true" title="Funds move from the From budget line to the To budget line">
+                            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14m-6-6l6 6-6 6"/></svg>
                         </div>
-                    </div>
 
-                    <!-- To COB (budget_revision.to_budget_req_id): optional — the COB that receives the funds the From COB gives up.
-                         The same box as the From COB (the same filter bar on top, the searchable field below). -->
-                    <div class="brv-cobcol">
-                        <label class="form-label" for="brv-to-req-input">To COB <span class="brv-optional">(optional — receives the funds)</span></label>
+                        <!-- To budget line (budget_revision.to_budget_line_item_id): optional — the line that receives the funds the From line gives up.
+                             The same box as the From line (the same filter bar on top, the searchable field below). -->
+                        <div class="brv-cobcol">
+                            <div class="brv-cob-hd">
+                                <label class="brv-lbl" for="brv-to-req-input">To Budget Line <span class="brv-optional">(optional)</span></label>
+                                <span class="brv-cob-role">Receives the funds</span>
+                            </div>
 
-                        <div class="brv-reqgroup">
-                            <div class="brv-filterbar" role="group" aria-label="Filter the To COB list">
-                                <span class="brv-filterbar-label">
-                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
-                                    Filter
-                                </span>
-                                <div class="brv-combo brv-combo-fy">
-                                    <div class="brv-combo-field">
-                                        <input type="text" class="form-control" id="brv-to-fy-input" placeholder="Year" aria-label="Filter the To COB by fiscal year"
-                                               maxlength="4" inputmode="numeric" autocomplete="off"
-                                               role="combobox" aria-expanded="false" aria-controls="brv-to-fy-list" aria-autocomplete="list">
-                                        <button type="button" class="brv-combo-clear" id="brv-to-fy-clear" aria-label="Clear fiscal year" hidden>&times;</button>
+                            <div class="brv-reqgroup">
+                                <div class="brv-filterbar" role="group" aria-label="Filter the To budget lines">
+                                    <span class="brv-filterbar-label">
+                                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                                        Filter
+                                    </span>
+                                    <div class="brv-combo brv-combo-fy">
+                                        <div class="brv-combo-field">
+                                            <input type="text" class="brv-in" id="brv-to-fy-input" placeholder="Year" aria-label="Filter the To budget lines by fiscal year"
+                                                   maxlength="4" inputmode="numeric" autocomplete="off"
+                                                   role="combobox" aria-expanded="false" aria-controls="brv-to-fy-list" aria-autocomplete="list">
+                                            <button type="button" class="brv-combo-clear" id="brv-to-fy-clear" aria-label="Clear fiscal year" hidden>&times;</button>
+                                        </div>
+                                        <ul class="brv-combo-list" id="brv-to-fy-list" role="listbox" hidden></ul>
                                     </div>
-                                    <ul class="brv-combo-list" id="brv-to-fy-list" role="listbox" hidden></ul>
+                                    <div class="brv-combo">
+                                        <div class="brv-combo-field">
+                                            <input type="text" class="brv-in" id="brv-to-program-input" placeholder="Program" aria-label="Filter the To budget lines by program"
+                                                   autocomplete="off"
+                                                   role="combobox" aria-expanded="false" aria-controls="brv-to-program-list" aria-autocomplete="list">
+                                            <button type="button" class="brv-combo-clear" id="brv-to-program-clear" aria-label="Clear program" hidden>&times;</button>
+                                        </div>
+                                        <ul class="brv-combo-list" id="brv-to-program-list" role="listbox" hidden></ul>
+                                    </div>
+                                    <div class="brv-combo">
+                                        <div class="brv-combo-field">
+                                            <input type="text" class="brv-in" id="brv-to-project-input" placeholder="Project" aria-label="Filter the To budget lines by project"
+                                                   autocomplete="off"
+                                                   role="combobox" aria-expanded="false" aria-controls="brv-to-project-list" aria-autocomplete="list">
+                                            <button type="button" class="brv-combo-clear" id="brv-to-project-clear" aria-label="Clear project" hidden>&times;</button>
+                                        </div>
+                                        <ul class="brv-combo-list" id="brv-to-project-list" role="listbox" hidden></ul>
+                                    </div>
                                 </div>
-                                <div class="brv-combo">
-                                    <div class="brv-combo-field">
-                                        <input type="text" class="form-control" id="brv-to-program-input" placeholder="Program" aria-label="Filter the To COB by program"
+
+                                <div class="brv-reqfield">
+                                    <div class="brv-combo">
+                                        <input type="text" class="brv-in" id="brv-to-req-input" placeholder="Optional — account, particulars, reference no. or project"
                                                autocomplete="off"
-                                               role="combobox" aria-expanded="false" aria-controls="brv-to-program-list" aria-autocomplete="list">
-                                        <button type="button" class="brv-combo-clear" id="brv-to-program-clear" aria-label="Clear program" hidden>&times;</button>
+                                               role="combobox" aria-expanded="false" aria-controls="brv-to-req-list" aria-autocomplete="list">
+                                        <button type="button" class="brv-combo-clear" id="brv-to-req-clear" aria-label="Clear To budget line" hidden>&times;</button>
+                                        <ul class="brv-combo-list" id="brv-to-req-list" role="listbox" hidden></ul>
                                     </div>
-                                    <ul class="brv-combo-list" id="brv-to-program-list" role="listbox" hidden></ul>
-                                </div>
-                                <div class="brv-combo">
-                                    <div class="brv-combo-field">
-                                        <input type="text" class="form-control" id="brv-to-project-input" placeholder="Project" aria-label="Filter the To COB by project"
-                                               autocomplete="off"
-                                               role="combobox" aria-expanded="false" aria-controls="brv-to-project-list" aria-autocomplete="list">
-                                        <button type="button" class="brv-combo-clear" id="brv-to-project-clear" aria-label="Clear project" hidden>&times;</button>
+                                    <div class="brv-hintrow">
+                                        <div class="brv-hint" id="brv-to-req-hint">Loading budget requests…</div>
+                                        <button type="button" class="brv-filter-reset" id="brv-to-filter-reset" hidden>Clear filters</button>
                                     </div>
-                                    <ul class="brv-combo-list" id="brv-to-project-list" role="listbox" hidden></ul>
                                 </div>
                             </div>
 
-                            <div class="brv-reqfield">
-                                <div class="brv-combo">
-                                    <input type="text" class="form-control" id="brv-to-req-input" placeholder="Optional — search by program, project or year"
-                                           autocomplete="off"
-                                           role="combobox" aria-expanded="false" aria-controls="brv-to-req-list" aria-autocomplete="list">
-                                    <button type="button" class="brv-combo-clear" id="brv-to-req-clear" aria-label="Clear To COB" hidden>&times;</button>
-                                    <ul class="brv-combo-list" id="brv-to-req-list" role="listbox" hidden></ul>
+                            <div class="brv-summary" id="brv-to-req-summary" hidden>
+                                <div class="brv-summary-top">
+                                    <span class="nha-bdg nha-bdg-gray" id="brv-to-sum-type">Status</span>
+                                    <strong id="brv-to-sum-title"></strong>
                                 </div>
-                                <div class="brv-hintrow">
-                                    <div class="brv-hint" id="brv-to-req-hint">Loading budget requests…</div>
-                                    <button type="button" class="brv-filter-reset" id="brv-to-filter-reset" hidden>Clear filters</button>
+                                <div class="brv-summary-sub" id="brv-to-sum-sub"></div>
+                                <div class="brv-summary-amt">
+                                    <span>Current amount <strong id="brv-to-sum-amount"></strong></span>
                                 </div>
                             </div>
                         </div>
-
-                        <div class="brv-summary" id="brv-to-req-summary" hidden>
-                            <div class="brv-summary-top">
-                                <span class="nha-bdg nha-bdg-blue" id="brv-to-sum-type">Program</span>
-                                <strong id="brv-to-sum-title"></strong>
-                            </div>
-                            <div class="brv-summary-sub" id="brv-to-sum-sub"></div>
-                            <div class="brv-summary-amt">
-                                <span>Current amount <strong id="brv-to-sum-amount"></strong></span>
-                            </div>
-                        </div>
-                    </div>
 
                     </div><!-- /.brv-cobrow -->
+                </section>
+
+                <!-- ── 2 · the revision: amounts and reason ── -->
+                <section class="brv-step">
+                    <h4 class="brv-step-hd"><span class="brv-step-n">2</span> Revision</h4>
+
+                    <div class="brv-rev">
+                        <div class="brv-fld">
+                            <label class="brv-lbl" for="brv-from-amount">From Amount <span class="brv-req">*</span></label>
+                            <div class="brv-money">
+                                <span class="brv-money-sym">&#8369;</span>
+                                <input type="number" class="brv-in" id="brv-from-amount" step="0.01" min="0" placeholder="Auto-filled" disabled>
+                            </div>
+                            <div class="brv-hint">The From budget line's current amount.</div>
+                        </div>
+                        <div class="brv-flow" aria-hidden="true">
+                            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14m-6-6l6 6-6 6"/></svg>
+                        </div>
+                        <div class="brv-fld">
+                            <label class="brv-lbl" for="brv-to-amount">To Amount <span class="brv-req">*</span></label>
+                            <div class="brv-money">
+                                <span class="brv-money-sym">&#8369;</span>
+                                <input type="number" class="brv-in" id="brv-to-amount" step="0.01" min="0" placeholder="0.00" required>
+                            </div>
+                            <div class="brv-hint">What the From budget line's amount becomes.</div>
+                        </div>
                     </div>
 
-                    <!-- ── The revision ── -->
-                    <div class="col-12 brv-section">Revision</div>
-                    <div class="col-6">
-                        <label class="form-label" for="brv-from-amount">From Amount <span class="text-danger">*</span></label>
-                        <div class="input-group">
-                            <span class="input-group-text">&#8369;</span>
-                            <input type="number" class="form-control text-end" id="brv-from-amount" step="0.01" min="0" placeholder="Auto-filled" disabled>
-                        </div>
+                    <div class="brv-change" id="brv-change" hidden></div>
+
+                    <div class="brv-fld brv-reason-fld">
+                        <label class="brv-lbl" for="brv-reason">Reason</label>
+                        <textarea class="brv-in" id="brv-reason" rows="3" placeholder="Explain why this budget needs to be revised"></textarea>
                     </div>
-                    <div class="col-6">
-                        <label class="form-label" for="brv-to-amount">To Amount <span class="text-danger">*</span></label>
-                        <div class="input-group">
-                            <span class="input-group-text">&#8369;</span>
-                            <input type="number" class="form-control text-end" id="brv-to-amount" step="0.01" min="0" placeholder="0.00" required>
-                        </div>
-                    </div>
-                    <div class="col-12" id="brv-change-wrap">
-                        <div class="brv-change" id="brv-change" hidden></div>
-                    </div>
-                    <div class="col-12">
-                        <label class="form-label" for="brv-reason">Reason</label>
-                        <textarea class="form-control" id="brv-reason" rows="3" placeholder="Explain why this budget needs to be revised"></textarea>
-                    </div>
-                </div>
+                </section>
             </div>
             <div class="nha-modal-foot">
-                <button type="button" class="nha-btn-ghost" id="brv-cancel">Cancel</button>
-                <button type="submit" class="nha-btn-primary" id="brv-save">Submit Request</button>
+                <button type="button" class="nha-btn nha-btn-ghost" id="brv-cancel">Cancel</button>
+                <button type="submit" class="nha-btn nha-btn-primary" id="brv-save">Submit Request</button>
             </div>
         </form>
     </div>
@@ -310,76 +397,120 @@ $_brv_form_api = Config('API.FIMS_URL');
 
 <script>
 /* ══════════════════════════════════════════════════════════════════════════
-   COB pickers — data comes from GET /budget_req/all (fetched once, shared).
+   Budget line pickers — data comes from GET /budget_req/all (fetched once, shared).
+
+   A revision changes a BUDGET LINE: one chart-of-accounts line item (fims.budget_line_items) of a budget request. The request
+   is a header (reference no. "BP-001", office, fiscal year, status) carrying programs[] > projects[] > line_items[]; the pickers
+   flatten that into one list of lines. A line's CURRENT amount is its proposed amount plus its adjustment — what approving a
+   revision changes (the From line's adjustment goes down, the To line's goes up). The value a picker holds is the line's id.
 
    Two pickers share one layout, and each has its OWN filters and selection:
-     From COB — required (budget_revision.from_budget_req_id)
-     To COB   — optional (budget_revision.to_budget_req_id): the COB that receives
-                the funds the From COB gives up. Its list never offers the From COB.
+     From budget line — required (budget_revision.from_budget_line_item_id)
+     To budget line   — optional (budget_revision.to_budget_line_item_id): the line that receives the funds the From line
+                        gives up. Its list never offers the From line.
 
    Each picker is four searchable dropdowns that work together:
-     Fiscal Year  — years that have a budget request
-     Program      — programs only
+     Fiscal Year  — years that have a budget line
+     Program      — programs that have a budget line
      Project      — projects only. Pick a program first and it lists just that
                     program's projects; pick a project first and it fills in
                     its program.
      the field    — the three filters form a compact bar attached to it (with a
                     "Clear" link); the list is narrowed by them and by whatever
-                    is typed into the field itself
+                    is typed into the field itself (account, particulars, reference
+                    no., office, program, project or status)
 
    Self-contained: needs nothing from the host page. It exposes:
-     window.brvBudgetReqsReady  promise → [{ value, label }] (the host page
+     window.brvBudgetReqsReady  promise → [{ value, label }] — the budget REQUESTS, value = the reference number (the host page
                                 reuses it for its own filter, no second request)
-     window.brvForm.setBudgetReq(fromId, toId)   preselect the From / To COB (used by
-                                Edit); does NOT touch From Amount, so a saved value survives
+     window.brvForm.setBudgetLine(fromId, toId)   preselect the From / To line by id (used by Edit); does NOT touch From Amount,
+                                so a saved value survives
 
-   From Amount is disabled: it always follows the picked From COB. Picking a
-   From COB fills it with that COB's current amount; clearing the COB
+   From Amount is disabled: it always follows the picked From line. Picking a
+   From line fills it with that line's current amount; clearing the line
    clears it.
 
-   With a To COB the revision MOVES funds, so To Amount must be lower than From Amount:
-   the From COB goes down to To Amount and the To COB goes up by the difference.
+   With a To line the revision MOVES funds, so To Amount must be lower than From Amount:
+   the From line goes down to To Amount and the To line goes up by the difference.
 ══════════════════════════════════════════════════════════════════════════ */
 (function () {
     const $ = id => document.getElementById(id);
     const API = '<?php echo $_brv_form_api; ?>' + '/budget_req/all';
     const peso = v => '₱ ' + Number(v || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const signedPeso = v => (v < 0 ? '−' : '+') + peso(Math.abs(v));
+    const LIST_MAX = 100;   // most lines listed at once; typing narrows the rest down
 
-    // rows: every budget request (both pickers read them) · loaded: the first fetch has finished
-    const S = { rows: [], loaded: false };
+    // reqs: the budget requests · lines: every budget line of them, flattened (both pickers read these) · loaded: the first fetch has finished
+    const S = { reqs: [], lines: [], loaded: false };
 
-    // A project-level row carries BOTH codes; project_code is what marks it as a project.
-    const isProject  = r => !!r.project_code;
-    const codeOf     = r => r.project_code || r.program_code || '—';
-    const nameOf     = r => r.project_name || r.program_name || '';
-    const titleOf    = r => codeOf(r) + (nameOf(r) ? ' — ' + nameOf(r) : '');
-    const shortLabel = r => `FY ${r.fiscal_yr} — ${titleOf(r)}`;
-    // What a COB input shows once a request is picked: just its code — the program
-    // code for a program-level request (the project code for a project-level one). No fiscal year,
-    // no name; the full shortLabel is the input's tooltip and the summary card shows the rest.
-    const inputLabel = r => codeOf(r);
-    const fullLabel  = r => `${shortLabel(r)} (${peso(r.amount)})`;
+    // One line, as the pickers use it: its id, the request it belongs to (reference no., fiscal year, office, status), its program and
+    // project, its account, its particulars and its amounts. amount = proposed + adjustment, the line's CURRENT amount.
+    function toLines(requests) {
+        const out = [];
+        requests.forEach(h => (Array.isArray(h.programs) ? h.programs : []).forEach(pg =>
+            (Array.isArray(pg.projects) ? pg.projects : []).forEach(pj =>
+                (Array.isArray(pj.line_items) ? pj.line_items : []).forEach(li => {
+                    const proposed = Number(li.proposed_amount || 0), adjustment = Number(li.adjustment || 0);
+                    out.push({
+                        id: li.budget_line_item_id, ref: String(h.budget_reference_number), fy: h.fiscal_yr,
+                        office: h.rc_name || h.rc_code || '', parentOffice: h.rc_parent_name || '', status: h.status_name, statusColor: h.status_color,
+                        programCode: pg.program_code || '', programName: pg.program_name || '', projectCode: pj.project_code || '', projectName: pj.project_name || '',
+                        accountId: li.account_id || '', accountCode: li.account_code || '', accountTitle: li.account_title || '', particulars: li.particulars || '',
+                        proposed, adjustment, amount: proposed + adjustment,
+                    });
+                }))));
+        return out;
+    }
+
+    const keyOf      = l => String(l.id);
+    const amountOf   = l => l.amount;
+    const withName   = (code, name) => (code ? code + (name ? ' — ' + name : '') : '');
+    // "5-02-010 — Travelling Expenses"; a line with no account known shows its id
+    const titleOf    = l => withName(l.accountCode, l.accountTitle) || l.accountTitle || `Budget line #${l.id}`;
+    // "5-02-010 (BP-001)": short enough for a sentence
+    const nameOf     = l => (l.accountCode || `line #${l.id}`) + ` (${l.ref})`;
+    const placeOf    = l => [l.programCode, l.projectCode].filter(Boolean).join(' / ') || 'No project yet';
+    const shortLabel = l => `FY ${l.fy} — ${l.ref} — ${titleOf(l)}`;
+    // What a picker's input shows once a line is picked: its account. The full shortLabel is the input's tooltip and the summary
+    // card shows the rest.
+    const inputLabel = l => titleOf(l);
     const plural     = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
     const programLabel = code => {
-        const r = S.rows.find(x => x.program_code === code);
-        return code + (r && r.program_name ? ' — ' + r.program_name : '');
+        const l = S.lines.find(x => x.programCode === code);
+        return l ? withName(code, l.programName) : code;
     };
-    const searchText = r => [r.fiscal_yr, r.program_code, r.program_name, r.project_code, r.project_name, isProject(r) ? 'project' : 'program']
-        .join(' ').toLowerCase();
-    const rowItem = r => ({
-        row: r,
-        main: titleOf(r),
-        sub: `FY ${r.fiscal_yr} · ${isProject(r) ? 'Project under ' + r.program_code : 'Program'} · ${peso(r.amount)}`,
-        badge: isProject(r) ? 'Project' : 'Program',
-        badgeClass: isProject(r) ? 'nha-bdg-teal' : 'nha-bdg-blue',
+    const searchText = l => [l.ref, l.fy, l.office, l.parentOffice, l.status, l.programCode, l.programName, l.projectCode, l.projectName,
+        l.accountId, l.accountCode, l.accountTitle, l.particulars].filter(v => v !== null && v !== undefined && v !== '').join(' ').toLowerCase();
+    const rowItem = l => ({
+        row: l,
+        main: titleOf(l),
+        sub: `${l.ref} · FY ${l.fy} · ${placeOf(l)} · ${peso(amountOf(l))}`,
+        status: { name: l.status, color: l.statusColor },
     });
+    // A budget request, as the host page's Budget Request filter lists it
+    const reqLabel = h => `FY ${h.fiscal_yr} — ${h.budget_reference_number}` + ((h.rc_name || h.rc_code) ? ' — ' + (h.rc_name || h.rc_code) : '');
+
+    // A status pill in the status's own colour (settings_status.color) — the same look as the Budget Requests list. Only a plain
+    // #RRGGBB colour is put into a style; anything else (or none) falls back to a grey pill.
+    const HEX_COLOR = /^#[0-9A-Fa-f]{6}$/;
+    function paintStatus(el, name, color) {
+        el.textContent = name || '—';
+        if (name && HEX_COLOR.test(color || '')) {
+            el.className = 'nha-bdg';
+            el.style.cssText = `color:${color};background:${color}1A;border:1px solid ${color}40;`;
+        } else {
+            el.className = 'nha-bdg nha-bdg-gray';
+            el.style.cssText = '';
+        }
+        return el;
+    }
 
     // the form-level fields (not part of either picker)
     const el = { form: $('brv-form'), from: $('brv-from-amount'), to: $('brv-to-amount'), change: $('brv-change') };
 
-    // element ids of each picker (the From COB keeps the original ids)
+    // element ids of each picker (the From picker keeps the original ids)
     const FROM_IDS = {
-        id: 'brv-budget-req-id',
+        id: 'brv-line-id',
         fyIn: 'brv-fy-input', fyClear: 'brv-fy-clear', fyList: 'brv-fy-list',
         prIn: 'brv-program-input', prClear: 'brv-program-clear', prList: 'brv-program-list',
         pjIn: 'brv-project-input', pjClear: 'brv-project-clear', pjList: 'brv-project-list',
@@ -388,7 +519,7 @@ $_brv_form_api = Config('API.FIMS_URL');
         summary: 'brv-req-summary', sumType: 'brv-sum-type', sumTitle: 'brv-sum-title', sumSub: 'brv-sum-sub', sumAmount: 'brv-sum-amount',
     };
     const TO_IDS = {
-        id: 'brv-to-budget-req-id',
+        id: 'brv-to-line-id',
         fyIn: 'brv-to-fy-input', fyClear: 'brv-to-fy-clear', fyList: 'brv-to-fy-list',
         prIn: 'brv-to-program-input', prClear: 'brv-to-program-clear', prList: 'brv-to-program-list',
         pjIn: 'brv-to-project-input', pjClear: 'brv-to-project-clear', pjList: 'brv-to-project-list',
@@ -423,12 +554,7 @@ $_brv_form_api = Config('API.FIMS_URL');
                 main.className = 'brv-opt-main';
                 main.textContent = it.main;
                 li.appendChild(main);
-                if (it.badge) {
-                    const b = document.createElement('span');
-                    b.className = 'nha-bdg ' + it.badgeClass;
-                    b.textContent = it.badge;
-                    li.appendChild(b);
-                }
+                if (it.status && it.status.name) li.appendChild(paintStatus(document.createElement('span'), it.status.name, it.status.color));
                 if (it.sub) {
                     const s = document.createElement('span');
                     s.className = 'brv-opt-sub';
@@ -437,6 +563,12 @@ $_brv_form_api = Config('API.FIMS_URL');
                 }
                 list.appendChild(li);
             });
+            if (shown.more > 0) {   // a long list is cut short: say so
+                const li = document.createElement('li');
+                li.className = 'brv-opt-empty';
+                li.textContent = `Showing the first ${shown.length} of ${shown.length + shown.more} — type to narrow down`;
+                list.appendChild(li);
+            }
         }
         function open()  { render(); list.hidden = false; input.setAttribute('aria-expanded', 'true'); }
         function close() { list.hidden = true; input.setAttribute('aria-expanded', 'false'); active = -1; }
@@ -483,124 +615,133 @@ $_brv_form_api = Config('API.FIMS_URL');
         return { close, syncClear };
     }
 
-    // The card under a COB field (From COB and To COB share the same layout).
-    function renderCard(r, box, typeEl, titleEl, subEl, amountEl) {
-        box.hidden = !r;
-        if (!r) return;
-        const proj = isProject(r);
-        typeEl.textContent = proj ? 'Project' : 'Program';
-        typeEl.className = 'nha-bdg ' + (proj ? 'nha-bdg-teal' : 'nha-bdg-blue');
-        titleEl.textContent = titleOf(r);
-        subEl.textContent = `FY ${r.fiscal_yr}` + (proj
-            ? ` · Program: ${r.program_code}${r.program_name ? ' — ' + r.program_name : ''}` : '');
-        amountEl.textContent = peso(r.amount);
+    // The card under a picker (From and To share the same layout): the request's status, the line's account, then — one per line —
+    // its request / office / fiscal year, its program › project, its particulars and (when revisions changed it) proposed vs adjusted,
+    // and its current amount.
+    function renderCard(l, box, statusEl, titleEl, subEl, amountEl) {
+        box.hidden = !l;
+        if (!l) return;
+        paintStatus(statusEl, l.status, l.statusColor);
+        titleEl.textContent = titleOf(l);
+        const place = [withName(l.programCode, l.programName), withName(l.projectCode, l.projectName)].filter(Boolean).join(' › ') || 'No project yet';
+        subEl.textContent = [
+            `${l.ref}${l.office ? ' · ' + l.office : ''} · FY ${l.fy}`,
+            place,
+            l.particulars,
+            l.adjustment !== 0 ? `Proposed ${peso(l.proposed)} · adjusted ${signedPeso(l.adjustment)}` : '',
+        ].filter(Boolean).join('\n');
+        amountEl.textContent = peso(amountOf(l));
     }
 
-    /* ── one COB picker: filter bar + searchable field + summary card ──────
+    /* ── one picker: filter bar + searchable field + summary card ──────────
        ids       the element ids (FROM_IDS / TO_IDS)
-       exclude   () => a row the list must not offer (the To COB excludes the From COB)
-       required  the field is mandatory — native validation until a COB is picked
-       onSelect  (row, { autofill }) after the selection changed
+       exclude   () => a line the list must not offer (the To picker excludes the From line)
+       required  the field is mandatory — native validation until a line is picked
+       onSelect  (line, { autofill }) after the selection changed
        onClear   the user pressed × on the field (runs just before the selection is cleared) */
     function makePicker(ids, { exclude = () => null, required = false, requiredMsg = '', onSelect = () => {}, onClear = () => {} } = {}) {
         const pe = {};
         Object.keys(ids).forEach(k => { pe[k] = $(ids[k]); });
 
         // fy: '' or '2026' · program: null | { code, label, full } · project: null | { code, label, full, program }
-        // selected: the picked budget request (a row) or null
+        // selected: the picked budget line or null
         const P = { fy: '', program: null, project: null, selected: null };
 
-        // every row this picker may offer
+        // every line this picker may offer
         const baseRows = () => {
             const ex = exclude();
-            return ex ? S.rows.filter(r => String(r.id) !== String(ex.id)) : S.rows;
+            return ex ? S.lines.filter(l => keyOf(l) !== keyOf(ex)) : S.lines;
         };
 
         /* ── filtering ── */
-        // Rows that satisfy the active filters. Each dropdown switches off the
+        // Lines that satisfy the active filters. Each dropdown switches off the
         // filter(s) it feeds, so its suggestions only react to the OTHER filters.
         function matchRows({ fy = true, program = true, project = true, q = '' } = {}) {
             const needle = q.toLowerCase();
-            return baseRows().filter(r => {
-                if (fy && P.fy && String(r.fiscal_yr) !== P.fy) return false;
-                if (program && P.program && r.program_code !== P.program.code) return false;
-                if (project && P.project && r.project_code !== P.project.code) return false;
+            return baseRows().filter(l => {
+                if (fy && P.fy && String(l.fy) !== P.fy) return false;
+                if (program && P.program && l.programCode !== P.program.code) return false;
+                if (project && P.project && l.projectCode !== P.project.code) return false;
                 if (!needle) return true;
-                return searchText(r).includes(needle);
+                return searchText(l).includes(needle);
             });
         }
 
         function fyItems(q) {
             const counts = new Map();
-            matchRows({ fy: false }).forEach(r => {
-                const y = String(r.fiscal_yr);
+            matchRows({ fy: false }).forEach(l => {
+                const y = String(l.fy);
                 counts.set(y, (counts.get(y) || 0) + 1);
             });
             return [...counts.keys()].sort((a, b) => b - a).filter(y => y.includes(q))
-                .map(y => ({ key: y, main: y, sub: plural(counts.get(y), 'budget request') }));
+                .map(y => ({ key: y, main: y, sub: plural(counts.get(y), 'budget line') }));
         }
 
-        // Programs only.
+        // The programs that have a budget line.
         function programItems(q) {
             const progs = new Map();   // code → { name, n }
-            matchRows({ program: false, project: false }).forEach(r => {
-                if (!r.program_code) return;
-                const p = progs.get(r.program_code) || { name: r.program_name || '', n: 0 };
+            matchRows({ program: false, project: false }).forEach(l => {
+                if (!l.programCode) return;
+                const p = progs.get(l.programCode) || { name: l.programName, n: 0 };
                 p.n++;
-                progs.set(r.program_code, p);
+                progs.set(l.programCode, p);
             });
             const needle = q.toLowerCase();
             return [...progs.keys()].sort()
                 .filter(code => !needle || `${code} ${progs.get(code).name}`.toLowerCase().includes(needle))
                 .map(code => {
-                    const label = code + (progs.get(code).name ? ' — ' + progs.get(code).name : '');
-                    return { code, label, main: label, sub: plural(progs.get(code).n, 'budget request') };
+                    const label = withName(code, progs.get(code).name);
+                    return { code, label, main: label, sub: plural(progs.get(code).n, 'budget line') };
                 });
         }
 
         // Projects only — just the picked program's projects when a program is set.
         function projectItems(q) {
             const projs = new Map();   // code → { name, program, programName, n }
-            matchRows({ project: false }).forEach(r => {
-                if (!r.project_code) return;
-                const p = projs.get(r.project_code)
-                    || { name: r.project_name || '', program: r.program_code, programName: r.program_name || '', n: 0 };
+            matchRows({ project: false }).forEach(l => {
+                if (!l.projectCode) return;
+                const p = projs.get(l.projectCode) || { name: l.projectName, program: l.programCode, programName: l.programName, n: 0 };
                 p.n++;
-                projs.set(r.project_code, p);
+                projs.set(l.projectCode, p);
             });
             const needle = q.toLowerCase();
             return [...projs.entries()]
                 .sort(([ac, a], [bc, b]) => String(a.program).localeCompare(String(b.program)) || ac.localeCompare(bc))
                 .filter(([code, p]) => !needle || `${code} ${p.name} ${p.program}`.toLowerCase().includes(needle))
                 .map(([code, p]) => {
-                    const label = code + (p.name ? ' — ' + p.name : '');
+                    const label = withName(code, p.name);
                     return {
                         code, label, main: label, program: p.program,
                         // with a program already picked the parent is obvious; otherwise show it
-                        sub: (P.program ? '' : `Under ${p.program}${p.programName ? ' — ' + p.programName : ''} · `) + plural(p.n, 'budget request'),
+                        sub: (P.program ? '' : `Under ${withName(p.program, p.programName)} · `) + plural(p.n, 'budget line'),
                     };
                 });
         }
 
-        const reqItems = q => matchRows({ q }).map(rowItem);
+        const reqItems = q => {
+            const all = matchRows({ q });
+            const items = all.slice(0, LIST_MAX).map(rowItem);
+            items.more = all.length - items.length;
+            return items;
+        };
 
         /* ── state → UI ── */
         function refresh() {
-            if (S.loaded) pe.hint.textContent = `Showing ${matchRows().length} of ${baseRows().length} budget requests`;
+            if (S.loaded) pe.hint.textContent = `Showing ${matchRows().length} of ${baseRows().length} budget lines`;
             pe.reset.hidden = !(P.fy || P.program || P.project);   // "Clear filters" shows only while a filter is on
         }
 
-        // Set (or clear) the picked budget request.
-        function select(row, opts = {}) {
+        // Set (or clear) the picked budget line.
+        function select(line, opts = {}) {
             const ex = exclude();
-            if (row && ex && String(row.id) === String(ex.id)) row = null;   // never the same COB as the other picker
-            P.selected = row || null;
-            pe.id.value = row ? String(row.id) : '';
-            pe.reqIn.value = row ? inputLabel(row) : '';
-            pe.reqIn.title = row ? shortLabel(row) : '';
-            pe.reqClear.hidden = !row;
+            if (line && ex && keyOf(line) === keyOf(ex)) line = null;   // never the same line as the other picker
+            P.selected = line || null;
+            pe.id.value = line ? keyOf(line) : '';   // the budget line's id
+            pe.reqIn.value = line ? inputLabel(line) : '';
+            pe.reqIn.title = line ? shortLabel(line) : '';
+            pe.reqClear.hidden = !line;
             // native validation message when submitting without a pick
-            if (required) pe.reqIn.setCustomValidity(row ? '' : requiredMsg);
+            if (required) pe.reqIn.setCustomValidity(line ? '' : requiredMsg);
             renderCard(P.selected, pe.summary, pe.sumType, pe.sumTitle, pe.sumSub, pe.sumAmount);
             onSelect(P.selected, opts);
         }
@@ -619,7 +760,7 @@ $_brv_form_api = Config('API.FIMS_URL');
             query: () => (pe.fyIn.value === P.fy ? '' : pe.fyIn.value.trim()),
             onPick: it => { P.fy = it.key; pe.fyIn.value = it.key; refresh(); },
             // typing an exact year applies it straight away
-            onType: v => { const y = v.trim(); P.fy = baseRows().some(r => String(r.fiscal_yr) === y) ? y : ''; refresh(); },
+            onType: v => { const y = v.trim(); P.fy = baseRows().some(l => String(l.fy) === y) ? y : ''; refresh(); },
             onClear: () => { P.fy = ''; pe.fyIn.value = ''; refresh(); },
             onBlur: () => { pe.fyIn.value = P.fy; },
         });
@@ -665,7 +806,7 @@ $_brv_form_api = Config('API.FIMS_URL');
             onBlur: () => { pe.reqIn.value = P.selected ? inputLabel(P.selected) : ''; },
         });
 
-        // Drop every filter. The picked budget request, if any, is left alone.
+        // Drop every filter. The picked budget line, if any, is left alone.
         function clearFilters() {
             P.fy = ''; P.program = null; P.project = null;
             pe.fyIn.value = ''; showProgram(); showProject();
@@ -689,18 +830,18 @@ $_brv_form_api = Config('API.FIMS_URL');
 
     fromPicker = makePicker(FROM_IDS, {
         required: true,
-        requiredMsg: 'Please select a From COB from the list.',
-        onSelect: (row, { autofill = false } = {}) => {
-            // funds can't move from a COB to itself, so picking the To COB as the From COB drops the To COB
+        requiredMsg: 'Please select a From budget line from the list.',
+        onSelect: (line, { autofill = false } = {}) => {
+            // funds can't move from a line to itself, so picking the To line as the From line drops the To line
             const to = toPicker && toPicker.selected();
-            if (row && to && String(to.id) === String(row.id)) toPicker.select(null);
-            // autofill: true only when the USER picks a request. Preselecting one for Edit
+            if (line && to && keyOf(to) === keyOf(line)) toPicker.select(null);
+            // autofill: true only when the USER picks a line. Preselecting one for Edit
             // must leave the saved From Amount alone.
-            if (row && autofill) el.from.value = Number(row.amount || 0).toFixed(2);   // From Amount (disabled) = its current amount
-            if (toPicker) toPicker.refresh();   // the To list no longer offers the From COB
+            if (line && autofill) el.from.value = amountOf(line).toFixed(2);   // From Amount (disabled) = its current amount
+            if (toPicker) toPicker.refresh();   // the To list no longer offers the From line
             updateChange();
         },
-        // From Amount follows the From COB, so clearing the COB clears it too
+        // From Amount follows the From line, so clearing the line clears it too
         onClear: () => { el.from.value = ''; },
     });
     toPicker = makePicker(TO_IDS, {
@@ -711,18 +852,18 @@ $_brv_form_api = Config('API.FIMS_URL');
     function updateChange() {
         const f = el.from.value, t = el.to.value;
         const from = fromPicker.selected(), to = toPicker.selected();
-        el.to.setCustomValidity('');   // set again below when a To COB makes the amounts invalid
+        el.to.setCustomValidity('');   // set again below when a To line makes the amounts invalid
         if (f === '' || t === '' || isNaN(f) || isNaN(t)) { el.change.hidden = true; return; }
         const d = Math.round((Number(t) - Number(f)) * 100) / 100;
         el.change.hidden = false;
 
         if (to) {
-            // With a To COB the revision moves funds: the From COB must go DOWN, the To COB gets the difference.
+            // With a To line the revision moves funds: the From line must go DOWN, the To line gets the difference.
             if (d < 0) {
                 el.change.className = 'brv-change is-move';
-                el.change.textContent = `${peso(-d)} moves from ${from ? codeOf(from) : 'the From COB'} to ${codeOf(to)}`;
+                el.change.textContent = `${peso(-d)} moves from ${from ? nameOf(from) : 'the From budget line'} to ${nameOf(to)}`;
             } else {
-                const msg = 'To Amount must be lower than From Amount to move funds to the To COB.';
+                const msg = 'To Amount must be lower than From Amount to move funds to the To budget line.';
                 el.change.className = 'brv-change is-down';
                 el.change.textContent = msg;
                 el.to.setCustomValidity(msg);
@@ -746,23 +887,28 @@ $_brv_form_api = Config('API.FIMS_URL');
     toPicker.select(null);
 
     /* ── load data ─────────────────────────────────────────────────────── */
-    // Fetch /budget_req/all into S.rows; resolves to the [{ value, label }] list the host page uses.
+    // Fetch /budget_req/all into S.reqs + S.lines; resolves to the [{ value, label }] list of budget requests the host page uses.
     async function loadRows() {
         const res = await fetch(API, { credentials: 'same-origin' });
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        const json = await res.json();
-        if (!json.success) throw new Error(json.message || 'Failed to load budget requests.');
+        // Read the body even on an error status, so the server's own message is shown rather than a bare "HTTP 4xx".
+        const json = await res.json().catch(() => null);
+        if (!res.ok || !json || !json.success) throw new Error((json && json.message) || (res.ok ? 'Failed to load budget requests.' : 'HTTP ' + res.status));
 
-        // newest year first; within a year each program, then the projects under it
-        S.rows = (json.data ?? []).slice().sort((a, b) =>
+        // newest year first; within a year by office, then by reference number (BP-2 before BP-10)
+        const officeOf = h => h.rc_name || h.rc_code || '';
+        S.reqs = (json.data ?? []).slice().sort((a, b) =>
             (b.fiscal_yr - a.fiscal_yr)
-            || String(a.program_code || '').localeCompare(String(b.program_code || ''))
-            || ((a.project_code ? 1 : 0) - (b.project_code ? 1 : 0))
-            || String(a.project_code || '').localeCompare(String(b.project_code || '')));
+            || officeOf(a).localeCompare(officeOf(b))
+            || String(a.budget_reference_number).localeCompare(String(b.budget_reference_number), undefined, { numeric: true }));
+        // the lines follow that order, then program, project and account
+        S.lines = toLines(S.reqs).map((l, i) => ({ l, i })).sort((a, b) =>
+            (a.l.ref === b.l.ref ? 0 : a.i - b.i)
+            || a.l.programCode.localeCompare(b.l.programCode) || a.l.projectCode.localeCompare(b.l.projectCode)
+            || a.l.accountCode.localeCompare(b.l.accountCode, undefined, { numeric: true }) || a.i - b.i).map(x => x.l);
         S.loaded = true;
         fromPicker.refresh();
         toPicker.refresh();
-        return S.rows.map(r => ({ value: String(r.id), label: fullLabel(r) }));
+        return S.reqs.map(h => ({ value: String(h.budget_reference_number), label: reqLabel(h) }));
     }
 
     const ready = (async function () {
@@ -770,7 +916,7 @@ $_brv_form_api = Config('API.FIMS_URL');
             return await loadRows();
         } catch (e) {
             S.loaded = true;
-            [FROM_IDS.hint, TO_IDS.hint].forEach(id => { $(id).textContent = 'Could not load budget requests.'; });
+            [FROM_IDS.hint, TO_IDS.hint].forEach(id => { $(id).textContent = 'Could not load budget lines.'; });
             if (typeof window.brv_toast === 'function') window.brv_toast(e.message, 'error');
             else console.error(e);
             return [];
@@ -780,21 +926,22 @@ $_brv_form_api = Config('API.FIMS_URL');
     window.brvBudgetReqsReady = ready;
     window.brvForm = {
         ready,
-        // Preselect the From COB and the To COB (the latter may be omitted / '' / null for none).
-        // The host page has already put the saved From/To Amount in the inputs, so refresh the chip too.
-        setBudgetReq: (id, toId) => ready.then(() => {
-            const find = v => (v === '' || v == null ? null : (S.rows.find(r => String(r.id) === String(v)) || null));
-            fromPicker.select(find(id));
+        // Preselect the From line and the To line by id (the latter may be omitted / '' / null for none; a line that is no longer on
+        // the list — or a revision filed before budget lines were revised, which has none — leaves that picker empty). The host
+        // page has already put the saved From/To Amount in the inputs, so refresh the chip too.
+        setBudgetLine: (fromId, toId) => ready.then(() => {
+            const find = v => (v === '' || v == null ? null : (S.lines.find(l => keyOf(l) === String(v)) || null));
+            fromPicker.select(find(fromId));
             toPicker.select(find(toId));
             updateChange();
         }),
-        // Re-fetch the budget requests — their amounts change when a revision is approved.
+        // Re-fetch the budget requests — a line's amount changes when a revision is approved.
         // Keeps the current From / To pick (with its fresh amount) but never touches From Amount,
-        // which only follows a user pick. Resolves to the new [{ value, label }] list, or null on failure.
+        // which only follows a user pick. Resolves to the new [{ value, label }] list of requests, or null on failure.
         reload: async () => {
             try {
                 const items = await loadRows();
-                const fresh = row => (row ? S.rows.find(r => String(r.id) === String(row.id)) || null : null);
+                const fresh = line => (line ? S.lines.find(l => keyOf(l) === keyOf(line)) || null : null);
                 if (fromPicker.selected()) fromPicker.select(fresh(fromPicker.selected()));
                 if (toPicker.selected()) toPicker.select(fresh(toPicker.selected()));
                 return items;

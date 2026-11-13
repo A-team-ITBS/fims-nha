@@ -35,6 +35,9 @@ class BudgetAllocationService
     /** settings_status.status_for value that scopes this table's statuses. */
     private const STATUS_FOR = 'budget_allocation';
 
+    /** Longest "Return" remarks accepted (characters); the Process modal's textarea uses the same limit. */
+    public const REMARKS_MAX_LENGTH = 2000;
+
     /**
      * The statuses of the review step, by NAME (their ids differ per install, so they are looked up — see
      * getStatusIdByName()). A request is "For Preview" once its requester submits it; the Financial Management
@@ -484,6 +487,10 @@ class BudgetAllocationService
                 'DB'
             );
 
+            // Frees whatever this request was holding against its COB(s) — a no-op if it was never Approved
+            // (nothing active to release).
+            (new BudgetLineItemService())->releaseForAllocation($id);
+
             return ['success' => true, 'message' => "Memo request #{$id} deleted successfully."];
         } catch (\Exception $e) {
             App\LogError('BudgetAllocationService::delete '.$e->getMessage());
@@ -553,7 +560,10 @@ class BudgetAllocationService
     //   approve -> the next status of the chain; the LAST approval gives 'Approved' and the ALLOCATION NUMBER (below);
     //   return  -> ONE step back, to the user who endorsed it (status 'Returned to Division Manager' / 'Returned to
     //              Section Chief', which that user acts on); the Section Chief's return gives 'Returned' (back to the
-    //              requesting office). No number either way.
+    //              requesting office). No number either way. EVERY return needs REMARKS (the reason: required, at most
+    //              REMARKS_MAX_LENGTH characters): they are saved on budget_allocation.remarks (alter_table/28) in the
+    //              same UPDATE as the status change, and the Process / View modal shows them on a returned request. An
+    //              approval leaves them as they were.
     // Only an FMD user may do this (the central review RC, GlobalService::isCentralReviewRc — read with getUserRcId, which
     // fails closed), only to a request that is in one of the three review statuses, and only when the user holds the
     // user level of that step. The status change and the number are written in ONE transaction, and the UPDATE itself
@@ -562,7 +572,7 @@ class BudgetAllocationService
     // Returns { success, message, status_name, allocation_number }; a refusal for the caller's office or user level also
     // carries `forbidden: true` (the route answers 403 for it).
     // -----------------------------------------------------------------------
-    public function process(int|string $id, string $decision, ?int $userId = null): array
+    public function process(int|string $id, string $decision, ?int $userId = null, ?string $remarks = null): array
     {
         $inTransaction = false;
         try {
@@ -593,6 +603,17 @@ class BudgetAllocationService
                     + ['forbidden' => true];
             }
 
+            // A Return always says why (checked after the permission checks above, so a refusal for the caller comes first).
+            $remarks = is_string($remarks) ? trim($remarks) : '';
+            if ($decision === 'return') {
+                if ($remarks === '') {
+                    return $this->fail('Remarks are required to return a memo request — tell the next person what to fix.');
+                }
+                if (mb_strlen($remarks) > self::REMARKS_MAX_LENGTH) {
+                    return $this->fail('Remarks must be at most '.self::REMARKS_MAX_LENGTH.' characters.');
+                }
+            }
+
             // The status the decision gives. Missing = the seed was not run: say so, change nothing.
             $currentId = (int) ($row['status_id'] ?? 0);
             $targetName = $decision === 'approve' ? $step['next'] : $step['return'];
@@ -607,6 +628,9 @@ class BudgetAllocationService
             $inTransaction = true;
 
             $set = ["status_id = {$targetId}", 'updated_at = CURRENT_TIMESTAMP'];
+            if ($decision === 'return') {
+                $set[] = 'remarks = '.App\QuotedValue($remarks, DataType::STRING, 'DB');
+            }
             $number = trim((string) ($row['allocation_number'] ?? ''));
             if ($isFinal && $number === '') {
                 // (one that already has a number keeps it — approving never renumbers)
@@ -624,6 +648,38 @@ class BudgetAllocationService
 
                 return $this->fail('This memo request was changed by someone else in the meantime. Reload the list and try again.');
             }
+
+            // The final approval moves money against each COB's own balance — ceiling is
+            // budget_line_items.suggested_amount, not proposed_amount. A CBA (or CFA) RESERVES it
+            // (earmarks: not yet a real obligation). An RFA/LAA instead CONVERTS its parent CBA's earmark
+            // into a real obligation (budget_line_items.obligation) — it requires a parent CBA (parent_id);
+            // approving one without it, or one that would draw more than its parent CBA still has actively
+            // earmarked for a COB, is refused. Either way, refusing here rolls back the status change too.
+            if ($isFinal) {
+                $allocationType = strtoupper(trim((string) ($row['allocation_type'] ?? '')));
+                $lineItemService = new BudgetLineItemService();
+
+                if ($allocationType === 'RFA' || $allocationType === 'LAA') {
+                    $parentId = (int) ($row['parent_id'] ?? 0);
+                    if ($parentId <= 0) {
+                        App\Execute('ROLLBACK', 'DB');
+                        $inTransaction = false;
+
+                        return $this->fail("A Parent CBA is required before this {$allocationType} can be approved.");
+                    }
+                    $earmark = $lineItemService->convertEarmarkForRfaApproval($id, $parentId, $row['line_transaction'] ?? null);
+                } else {
+                    $earmark = $lineItemService->createForApproval($id, $row['line_transaction'] ?? null);
+                }
+
+                if (!$earmark['success']) {
+                    App\Execute('ROLLBACK', 'DB');
+                    $inTransaction = false;
+
+                    return $this->fail($earmark['message']);
+                }
+            }
+
             App\Execute('COMMIT', 'DB');
             $inTransaction = false;
 
@@ -1263,9 +1319,23 @@ class BudgetAllocationService
             }
         }
 
+        // ── RFA / LAA: Requested Amount per COB must not exceed what the parent CBA still has actively
+        // earmarked there — the same ceiling BudgetLineItemService::convertEarmarkForRfaApproval() enforces
+        // at Approval time, checked here too (create and update) so a request isn't accepted only to be
+        // rejected later purely over an amount that was already wrong when it was submitted.
+        $effective = static fn (string $f) => array_key_exists($f, $clean) ? $clean[$f] : ($current[$f] ?? null);
+        $effectiveType = strtoupper(trim((string) ($effective('allocation_type') ?? '')));
+        $effectiveParentId = $effective('parent_id');
+        $effectiveLineTransaction = $effective('line_transaction');
+        if (($effectiveType === 'RFA' || $effectiveType === 'LAA') && $effectiveParentId !== null && $effectiveLineTransaction !== null) {
+            $check = (new BudgetLineItemService())->validateRfaAmounts((int) $effectiveParentId, $effectiveLineTransaction);
+            if (!$check['success']) {
+                return $check['message'];
+            }
+        }
+
         // ── Program → Sub-Program → Project must belong together ─────────────
         if (array_intersect(['program_code', 'sub_program_code', 'project_code'], array_keys($clean))) {
-            $effective = static fn (string $f) => array_key_exists($f, $clean) ? $clean[$f] : ($current[$f] ?? null);
             $program = $effective('program_code');
             $sub = $effective('sub_program_code');
             $project = $effective('project_code');

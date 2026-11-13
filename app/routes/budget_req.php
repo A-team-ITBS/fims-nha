@@ -71,6 +71,10 @@ $app->get('/budget_req/list', function ($request, $response, $args) use ($Budget
         $rcId   = GlobalService::resolveBudgetReqRcFilter($scope, $params);
 
         $result = $BudgetReqService->fetchAlls($page, $limit, $params['fiscal_yr'] ?? '', $params['program_code'] ?? '', $rcId, $params['rc_code_from'] ?? '');
+        if ($result['success']) {
+            // where each row stands in FMD's review chain, and whether the caller may decide it now (the row actions)
+            $result['data'] = $BudgetReqService->withReview($result['data'], (int) $request->getAttribute('user_id'));
+        }
 
         return $response->withJson($result);
     } catch (\Exception $e) {
@@ -82,6 +86,9 @@ $app->get('/budget_req/list', function ($request, $response, $args) use ($Budget
 $app->get('/budget_req/read/{id}', function ($request, $response, $args) use ($BudgetReqService) {
     try {
         $result = $BudgetReqService->fetchById($args['id']);
+        if ($result['success']) {
+            $result['data']['review'] = $BudgetReqService->reviewInfo($result['data'], (int) $request->getAttribute('user_id'));
+        }
 
         return $response->withJson($result);
     } catch (\Exception $e) {
@@ -158,39 +165,49 @@ $app->put('/budget_req/submit-for-review/{id}', function ($request, $response, $
     }
 })->add($jwtMiddleware);
 
-// Budget Processing "Endorse" — saves each line item's type_of_fund_id /
-// component_id (both required) and moves the request to "Endorsed".
+// The review chain (BudgetReqService::REVIEW_STEPS): For Review -> [Budget Officer: endorse] -> Endorsed ->
+// [Budget Head: approve] -> Approved, and a Return goes ONE step back. The three calls below act as the logged-in
+// user (the verified JWT's user_id): only an FMD user holding the user level of the request's CURRENT step may act —
+// anyone else gets 403 (the service sets `forbidden` for that).
+
+// Budget Processing "Endorse" (Budget Officer) — saves each line item's type_of_fund_id /
+// component_id (both required) and moves a "For Review" / "Returned to Budget Officer" request to "Endorsed".
 $app->put('/budget_req/endorse/{id}', function ($request, $response, $args) use ($BudgetReqService) {
     try {
         $body   = $request->getParsedBody();
         $items  = is_array($body['items'] ?? null) ? $body['items'] : [];
-        $result = $BudgetReqService->endorse($args['id'], $items);
+        $result = $BudgetReqService->endorse($args['id'], $items, (int) $request->getAttribute('user_id'));
 
-        return $response->withJson($result, $result['success'] ? 200 : 400);
+        return $response->withJson($result, $result['success'] ? 200 : (!empty($result['forbidden']) ? 403 : 400));
     } catch (\Exception $e) {
         return $response->withJson(['success' => false, 'message' => $e->getMessage()], 400);
     }
 })->add($jwtMiddleware);
 
-// Budget Preview "Approve" — moves an Endorsed request to "Approved".
+// Budget Preview "Approve" (Budget Head) — moves an Endorsed request to "Approved".
 $app->put('/budget_req/approve/{id}', function ($request, $response, $args) use ($BudgetReqService) {
     try {
-        $result = $BudgetReqService->approve($args['id']);
+        $result = $BudgetReqService->approve($args['id'], (int) $request->getAttribute('user_id'));
 
-        return $response->withJson($result, $result['success'] ? 200 : 400);
+        return $response->withJson($result, $result['success'] ? 200 : (!empty($result['forbidden']) ? 403 : 400));
     } catch (\Exception $e) {
         return $response->withJson(['success' => false, 'message' => $e->getMessage()], 400);
     }
 })->add($jwtMiddleware);
 
-// Budget Processing / Budget Preview "Return" — moves the request to "Returned" and saves
-// the (required) reason in budget_req.remarks.   body: { remarks }
+// Budget Processing / Budget Preview "Return" — ONE step back and saves the (required) reason in
+// budget_req.remarks: the Budget Head's return gives "Returned to Budget Officer", the Budget Officer's gives
+// "Returned" (the originating office).   body: { remarks }
 $app->put('/budget_req/return/{id}', function ($request, $response, $args) use ($BudgetReqService) {
     try {
         $body   = $request->getParsedBody();
-        $result = $BudgetReqService->returnRequest($args['id'], is_array($body) ? ($body['remarks'] ?? null) : null);
+        $result = $BudgetReqService->returnRequest(
+            $args['id'],
+            is_array($body) && is_string($body['remarks'] ?? null) ? $body['remarks'] : null,
+            (int) $request->getAttribute('user_id')
+        );
 
-        return $response->withJson($result, $result['success'] ? 200 : 400);
+        return $response->withJson($result, $result['success'] ? 200 : (!empty($result['forbidden']) ? 403 : 400));
     } catch (\Exception $e) {
         return $response->withJson(['success' => false, 'message' => $e->getMessage()], 400);
     }
@@ -200,6 +217,19 @@ $app->put('/budget_req/return/{id}', function ($request, $response, $args) use (
 $app->delete('/budget_req/delete/{id}', function ($request, $response, $args) use ($BudgetReqService) {
     try {
         $result = $BudgetReqService->delete($args['id']);
+
+        return $response->withJson($result, $result['success'] ? 200 : 400);
+    } catch (\Exception $e) {
+        return $response->withJson(['success' => false, 'message' => $e->getMessage()], 400);
+    }
+})->add($jwtMiddleware);
+
+// Delete one Program from its budget request — if it was the last Program
+// left, the now-empty header is removed too. Rejected once the request has
+// left Draft (same rule as program update).
+$app->delete('/budget_req/program/delete/{budget_req_program_id}', function ($request, $response, $args) use ($BudgetReqService) {
+    try {
+        $result = $BudgetReqService->deleteProgram($args['budget_req_program_id']);
 
         return $response->withJson($result, $result['success'] ? 200 : 400);
     } catch (\Exception $e) {

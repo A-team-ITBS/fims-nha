@@ -19,7 +19,21 @@ $app->get('/po-dr/list', function ($request, $response, $args) use ($PoDrService
     ));
 })->add($jwtMiddleware);
 
-// Read one PO with its lines
+// PO picker: RFA POs of the Budget Allocation (?search= on the PO number) with PO date, office, vendor and PO amount
+$app->get('/po-dr/pos', function ($request, $response, $args) use ($PoDrService) {
+    $params = $request->getQueryParams();
+
+    return $response->withJson($PoDrService->searchPos((string) ($params['search'] ?? '')));
+})->add($jwtMiddleware);
+
+// Account Code picker: the chart of accounts (?search= on the code or title)
+$app->get('/po-dr/accounts', function ($request, $response, $args) use ($PoDrService) {
+    $params = $request->getQueryParams();
+
+    return $response->withJson($PoDrService->searchAccounts((string) ($params['search'] ?? '')));
+})->add($jwtMiddleware);
+
+// Read one PO with its delivery receipts
 $app->get('/po-dr/read', function ($request, $response, $args) use ($PoDrService) {
     $params = $request->getQueryParams();
 

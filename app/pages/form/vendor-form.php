@@ -41,7 +41,11 @@
         border:1px solid var(--afims-danger-soft, #FAE1E3);border-radius:8px;padding:10px 14px;
         font-size:12px;color:var(--afims-danger, #DC3545); }
 
-    #vnd-body { flex:1;overflow-y:auto;padding:22px; }
+    /* The form sits between the flex card and the body: make it part of the flex chain so only the body scrolls. */
+    #vnd-form { display:flex;flex-direction:column;flex:1 1 auto;min-height:0;margin:0; }
+    #vnd-err { flex-shrink:0; }
+    #vnd-body { flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:22px; }
+    #vnd-footer { flex-shrink:0; }
     .vnd-section { font-size:11px;font-weight:700;color:var(--afims-text-muted, #62657E);text-transform:uppercase;
         letter-spacing:.06em;margin:0 0 12px;padding-bottom:6px;border-bottom:1px solid var(--afims-border, #E4ECF2); }
     .vnd-section:not(:first-child) { margin-top:22px; }
