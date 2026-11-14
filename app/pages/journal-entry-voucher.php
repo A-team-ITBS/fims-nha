@@ -87,10 +87,11 @@ $_jel_voucherView = 'Voucher';
                         <th class="text-end">Total Debit</th>
                         <th class="text-end">Total Credit</th>
                         <th>DV Status</th>
+                        <th class="no-print">Print</th>
                     </tr>
                 </thead>
                 <tbody id="jel-tbody">
-                    <tr><td colspan="8"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
+                    <tr><td colspan="9"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
                 </tbody>
             </table>
         </div>
@@ -186,7 +187,7 @@ async function jel_load() {
 function jel_renderTable(rows) {
     const tbody = $jel('jel-tbody');
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="8"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No journal entry vouchers found.</span></div></td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No journal entry vouchers found.</span></div></td></tr>';
         return;
     }
     tbody.innerHTML = rows.map(r => `<tr style="cursor:pointer;" onclick="jel_viewDv(${r.dv_id})">
@@ -200,11 +201,30 @@ function jel_renderTable(rows) {
         <td class="text-end nha-mono">${jel_peso(r.total_debit)}</td>
         <td class="text-end nha-mono">${jel_peso(r.total_credit)}</td>
         <td>${jel_statusBadge(r.dv_status)}</td>
+        <td class="no-print"><button type="button" class="nha-btn-act" title="Print this Journal Entry Voucher"
+            onclick="event.stopPropagation(); jel_print(${r.dv_id}, this)">Print</button></td>
     </tr>`).join('');
 }
 
 function jel_viewDv(dvId) {
     window.location.href = `${JEL_VOUCHER_VIEW}?dv=${dvId}`;
+}
+
+// Print → the JEV form in the shared print preview (included below): the JEV and its lines come with
+// their DV (GET /voucher/read/{id}); prp_jevFromDv() builds the payload.
+async function jel_print(dvId, btn) {
+    if (btn) btn.disabled = true;
+    try {
+        const res  = await jel_authFetch(`${JEL_API}/read/${dvId}`);
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message || 'Failed to load the voucher.');
+        if (!json.data.jev) throw new Error('This voucher has no journal entry yet.');
+        await prp_open(prp_jevFromDv(json.data), { type: 'JEV' });
+    } catch (e) {
+        jel_showError(e.message);
+    } finally {
+        if (btn) btn.disabled = false;
+    }
 }
 
 /* ── Pagination ────────────────────────────────────────────── */
@@ -254,3 +274,7 @@ function jel_esc(text) {
 function jel_showError(msg) { $jel('jel-error').style.display = 'flex'; $jel('jel-error-msg').textContent = msg; }
 function jel_hideError()    { $jel('jel-error').style.display = 'none'; }
 </script>
+<?php
+// Print → the shared print preview (prp_open + prp_jevFromDv).
+include_once __DIR__ . '/readone/print-preview-readone.php';
+?>

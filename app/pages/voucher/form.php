@@ -203,8 +203,10 @@ if (!isset($_vf_api)) {
                 </div>
 
                 <!-- 3 — Document identity (DV Date drives the DV Number preview; Fiscal Year is
-                     derived from it and Expense Class from the RFA(s) above — neither is asked for
-                     directly anymore, see vf_derivedFiscalYear()/vf_derivedExpenseClass()) -->
+                     derived from it, not asked for directly — see vf_derivedFiscalYear(). Expense
+                     Class isn't asked for at all anymore: DisbursementVoucherService derives it
+                     server-side from the Account Code (step 5 below), by Chart-of-Accounts prefix —
+                     see its deriveExpenseClass(). Whatever this form used to send is ignored. -->
                 <div class="vf-card">
                     <p class="vf-card-title">Document Identity</p>
                     <div class="nha-fg" style="max-width:260px;">
@@ -403,6 +405,7 @@ let VF_SL  = [];              // SL masters, for the Accounting Entries grid's S
 let vf_atcSeq = 0;            // row-id counter for the ATC grid
 let vf_jevSeq = 0;            // row-id counter for the Accounting Entries grid
 let vf_jevGroupSeq = 0;       // GL account-group id counter for the Accounting Entries grid (see vf_addJevGroup())
+let vf_jevAutoMode = true;    // true until the preparer manually adds/removes a GL group or line themselves — governs whether Accounting Entries auto-syncs from Account Code/Amount/Deductions/ATC (see vf_syncAutoLines(), ported from readone.php's vje_syncAutoLines)
 
 function vf_authFetch(url, opts = {}) {
     const headers = { ...(opts.headers || {}) };
@@ -417,8 +420,13 @@ function vf_authFetch(url, opts = {}) {
 const VF_SESSION_EXPIRED_MSG = 'Your session has expired. Please refresh the page and log in again.';
 function vf_isSessionExpiredMessage(msg) { return msg === VF_SESSION_EXPIRED_MSG; }
 
+// path must NOT start with "/" — the sub-folder deployment shim
+// (_shared/subfolder-prefix.php) rewrites any bare-quoted "/word" literal it finds in the
+// rendered JS, which would double-prefix a path handed in with its own leading slash (VF_API
+// already carries the deployment prefix, e.g. "/fims-nha/api"). Concatenating the "/" here,
+// outside any quoted literal, keeps this call immune to that rewrite.
 async function vf_getJson(path) {
-    const res = await vf_authFetch(VF_API + path);
+    const res = await vf_authFetch(VF_API + '/' + path);
     if (res.status === 401) throw new Error(VF_SESSION_EXPIRED_MSG);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const json = await res.json();
@@ -528,6 +536,7 @@ function vf_reset() {
     $vf('vf-jev-tbody').innerHTML = '';
     vf_jevSeq = 0;
     vf_jevGroupSeq = 0;
+    vf_jevAutoMode = true; // fresh voucher — reset in case a previous edit session in this same modal turned it off
     vf_recalcJev();
 
     $vf('vf-dept-project').value = '';
@@ -556,6 +565,14 @@ function vf_bindEvents() {
     $vf('vf-vendor').addEventListener('change', vf_onVendorChange);
     $vf('vf-gross').addEventListener('input', () => vf_recalc());
     $vf('vf-obligation').addEventListener('input', () => vf_recalc());
+    // Account Code / Claimant Name feed the Accounting Entries grid's auto Dr line (vf_syncAutoLines) —
+    // resync whenever either changes, same as every other input that feeds it.
+    $vf('vf-account-code').addEventListener('input', () => vf_recalc());
+    $vf('vf-claimant').addEventListener('input', () => vf_recalc());
+    // Event delegation: deductions are added/removed dynamically, so bind once on their shared
+    // container rather than per-row — a typed-in-directly flat amount (no Rate given) had no
+    // listener at all before, so Accounting Entries (and Net Amount) never resynced from it.
+    $vf('vf-ded-container').addEventListener('input', e => { if (e.target.classList.contains('vf-ded-amount')) vf_recalc(); });
 }
 
 /* ── Reference data ────────────────────────────────────────── */
@@ -565,7 +582,7 @@ let vf_fiscalYears = []; // fims.fiscal_year rows — Fiscal Year isn't asked fo
 
 async function vf_loadFiscalYears() {
     try {
-        const json = await vf_getJson('/voucher/fiscal-years');
+        const json = await vf_getJson('voucher/fiscal-years');
         vf_fiscalYears = (json.data ?? []).map(r => Number(r.fiscal_yr)).filter(n => !isNaN(n));
     } catch (e) {
         vf_fiscalYears = [];
@@ -582,19 +599,9 @@ function vf_derivedFiscalYear() {
     return vf_fiscalYears.reduce((best, y) => Math.abs(y - wanted) < Math.abs(best - wanted) ? y : best, vf_fiscalYears[0]);
 }
 
-/** Best-effort Expense Class from the selected RFA(s)' budget category — see vf_onRfaSelectionChange's mapping. */
-function vf_derivedExpenseClass() {
-    const map = { 'Infrastructure': 'CAPITAL_OUTLAY', 'Goods and Services': 'MOOE', 'Consultancy': 'MOOE' };
-    for (const id of vf_selectedRfaIds) {
-        const mapped = map[vf_rfas[id]?.category_name];
-        if (mapped) return mapped;
-    }
-    return '';
-}
-
 async function vf_loadDeductionTypes() {
     try {
-        const json = await vf_getJson('/voucher/deduction-types');
+        const json = await vf_getJson('voucher/deduction-types');
         vf_dedTypes = json.data ?? [];
     } catch (e) {
         vf_dedTypesReady = null;
@@ -607,7 +614,7 @@ async function vf_loadCoaOptions() {
         // postable_only (not the region-scoped /chart-of-accounts/all) — posting a voucher isn't
         // restricted to the preparer's own region, so every active+postable GL account should be
         // selectable here regardless of which region it belongs to.
-        const json = await vf_getJson('/chart_of_accounts/all?postable_only=1');
+        const json = await vf_getJson('chart_of_accounts/all?postable_only=1');
         vf_coaOptions = (json.data ?? []).filter(a => a.posting_allowed);
         nhaSearchableSelect($vf('vf-account-code'), vf_coaOptions.map(a => ({ value: a.account_code, label: a.account_title })));
     } catch (e) {
@@ -618,7 +625,7 @@ async function vf_loadCoaOptions() {
 
 async function vf_loadAtcCodes() {
     try {
-        const json = await vf_getJson('/voucher/atc-codes');
+        const json = await vf_getJson('voucher/atc-codes');
         VF_ATC = json.data ?? [];
     } catch (e) {
         vf_atcReady = null;
@@ -628,7 +635,7 @@ async function vf_loadAtcCodes() {
 
 async function vf_loadRcOptions() {
     try {
-        const json = await vf_getJson('/responsibility-center/all');
+        const json = await vf_getJson('responsibility-center/all');
         VF_RC = json.data ?? [];
     } catch (e) {
         vf_rcReady = null;
@@ -638,7 +645,7 @@ async function vf_loadRcOptions() {
 
 async function vf_loadSlOptions() {
     try {
-        const json = await vf_getJson('/voucher/sl-codes');
+        const json = await vf_getJson('voucher/sl-codes');
         VF_SL = json.data ?? [];
     } catch (e) {
         vf_slReady = null;
@@ -649,7 +656,7 @@ async function vf_loadSlOptions() {
 async function vf_loadVendors() {
     const sel = $vf('vf-vendor');
     try {
-        const json = await vf_getJson('/vendors/all?active=1');
+        const json = await vf_getJson('vendors/all?active=1');
         vf_vendors = {};
         (json.data ?? []).forEach(v => { vf_vendors[v.vendor_id] = v; });
         sel.innerHTML = '<option value="">— None / type claimant manually —</option>' + (json.data ?? []).map(v =>
@@ -667,7 +674,7 @@ async function vf_loadRfaOptions() {
         // against itself. One RFA only backs one DV at a time server-side (budget_allocation.dv_id)
         // — an RFA linked to a DIFFERENT, still-active DV simply isn't in this list at all.
         const qs   = vf_id ? `?exclude_dv_id=${vf_id}` : '';
-        const json = await vf_getJson(`/voucher/rfa/all${qs}`);
+        const json = await vf_getJson(`voucher/rfa/all${qs}`);
         vf_rfas = {};
         (json.data ?? []).forEach(r => { vf_rfas[r.allocation_id] = r; });
         $vf('vf-rfa-empty-hint').style.display = (json.data ?? []).length ? 'none' : 'block';
@@ -686,11 +693,30 @@ async function vf_loadRfaOptions() {
    details of the RFA" — and Budget Reference (4) further down sums Budget/Payments/Balance across
    every selected RFA, see vf_recalc(). The actual link (fims.budget_allocation.dv_id) is only
    written server-side on save — see DisbursementVoucherService::linkRfas(). ───────────────────── */
+/** The class (PS/MOOE/CAPITAL_OUTLAY/EQUIPMENT_OUTLAY) the first selected RFA locks this voucher
+    to, once one is picked — null while nothing is selected yet, so every class is still offered. */
+function vf_lockedRfaClass() {
+    if (!vf_selectedRfaIds.length) return null;
+    return vf_rfas[vf_selectedRfaIds[0]]?.expense_class ?? null;
+}
+
+/** The Vendor the RFA picker is locked to — whatever is currently chosen in the Vendor dropdown
+    (card 1), regardless of whether it got there by the preparer picking it directly or by an RFA
+    selection autofilling it (vf_onRfaSelectionChange()'s "withVendor" block). Two-way with Vendor:
+    vf_onVendorChange() clears any selected RFA(s) that no longer match when the preparer changes it. */
+function vf_lockedRfaVendorId() {
+    return $vf('vf-vendor').value || null;
+}
+
 function vf_renderRfaDropdown() {
     const box    = $vf('vf-rfa-dropdown');
     const search = $vf('vf-rfa-search').value.trim().toLowerCase();
+    const lockedClass  = vf_lockedRfaClass();
+    const lockedVendor = vf_lockedRfaVendorId();
     const options = Object.values(vf_rfas)
         .filter(r => !vf_selectedRfaIds.includes(String(r.allocation_id)))
+        .filter(r => !lockedClass || r.expense_class === lockedClass)
+        .filter(r => !lockedVendor || String(r.vendor_id || '') === String(lockedVendor))
         .filter(r => !search || r.allocation_number?.toLowerCase().includes(search) || r.request_referrence_no?.toLowerCase().includes(search))
         .slice(0, 30);
 
@@ -700,8 +726,15 @@ function vf_renderRfaDropdown() {
                 <strong>${vf_esc(r.allocation_number)}</strong>
                 <small>${vf_esc(r.department_name || 'Unassigned Dept.')} &middot; FY ${vf_esc(r.fiscal_year)} &middot; ${vf_peso(r.remaining_balance)} left of ${vf_peso(r.budget_amount)}</small>
             </div>`).join('')
-        : '<div class="vf-rfa-opt vf-rfa-opt-empty">No matching approved RFAs.</div>';
+        : `<div class="vf-rfa-opt vf-rfa-opt-empty">${vf_esc(vf_rfaEmptyMessage(lockedClass, lockedVendor))}</div>`;
     box.classList.add('open');
+}
+
+function vf_rfaEmptyMessage(lockedClass, lockedVendor) {
+    if (lockedClass && lockedVendor) return `No other ${lockedClass} RFAs for this vendor match.`;
+    if (lockedClass)  return `No other ${lockedClass} RFAs match.`;
+    if (lockedVendor) return 'No RFAs for this vendor match.';
+    return 'No matching approved RFAs.';
 }
 
 function vf_selectRfa(id) {
@@ -754,7 +787,7 @@ async function vf_onRfaSelectionChange() {
     try {
         const qs = vf_id ? `?exclude_dv_id=${vf_id}` : '';
         const details = await Promise.all(vf_selectedRfaIds.map(id =>
-            vf_getJson(`/voucher/rfa/read/${id}${qs}`).then(j => j.data).catch(() => vf_rfas[id])));
+            vf_getJson(`voucher/rfa/read/${id}${qs}`).then(j => j.data).catch(() => vf_rfas[id])));
         details.forEach(rfa => { if (rfa) vf_rfas[rfa.allocation_id] = rfa; });
         vf_renderRfaChips();
 
@@ -768,11 +801,20 @@ async function vf_onRfaSelectionChange() {
         vf_paymentsPrior = details.filter(Boolean).reduce((s, r) => s + (Number(r.paid_amount) || 0), 0);
         $vf('vf-payments-hint').textContent = vf_paymentsPrior > 0 ? ' (prior draws on these RFAs)' : '';
 
-        // PO number / vendor: first selected RFA that carries one wins — best-effort autofill,
-        // never overwrites what the user already set.
-        const withPo     = details.find(r => r?.po_number);
-        const withVendor = details.find(r => r?.vendor_id);
+        // Amount: the RFA(s)' own requested/remaining amount, same as Budget/Obligation above —
+        // always set from the RFA, not left for the preparer to re-type (a DV draws what its RFA
+        // was approved for; it isn't a free-typed figure). Still a normal, editable input afterward
+        // (e.g. a partial draw), this just stops it from defaulting to blank/stale on every
+        // selection change.
+        $vf('vf-gross').value = details.filter(Boolean).reduce((s, r) => s + (Number(r.remaining_balance) || 0), 0).toFixed(2);
+
+        // PO number / vendor / account code: first selected RFA that carries one wins —
+        // best-effort autofill, never overwrites what the user already set.
+        const withPo      = details.find(r => r?.po_number);
+        const withVendor  = details.find(r => r?.vendor_id);
+        const withAccount = details.find(r => r?.account_code);
         if (withPo && !$vf('vf-po-number').value) $vf('vf-po-number').value = withPo.po_number;
+        if (withAccount && !$vf('vf-account-code').value) $vf('vf-account-code').value = withAccount.account_code;
         if (withVendor) {
             if (!vf_vendors[withVendor.vendor_id]) {
                 vf_vendors[withVendor.vendor_id] = { vendor_id: withVendor.vendor_id, vendor_name: withVendor.vendor_name, address: withVendor.vendor_address, tin: withVendor.vendor_tin };
@@ -792,27 +834,43 @@ async function vf_onRfaSelectionChange() {
     }
 }
 
+/** Vendor <-> RFA is two-way: an RFA selection already autofills Vendor (vf_onRfaSelectionChange()'s
+    "withVendor" block); this is the other direction — changing Vendor (to a different one, or
+    clearing it back to "None") drops any already-selected RFA(s) that no longer match it, since a
+    voucher can't cite an RFA approved for a different vendor than who it's now paying. Re-renders
+    the RFA dropdown too, so a still-open picker immediately reflects the new vendor lock. */
 function vf_onVendorChange() {
     const v = vf_vendors[$vf('vf-vendor').value];
     const card = $vf('vf-vendor-card');
-    if (!v) { card.classList.remove('visible'); return; }
-    $vf('vf-vc-name').textContent    = v.vendor_name || '—';
-    $vf('vf-vc-type').textContent    = v.vendor_type || '—';
-    $vf('vf-vc-address').textContent = v.address || '—';
-    $vf('vf-vc-tin').textContent     = v.tin || '—';
-    card.classList.add('visible');
-    // Vendor fields win over whatever was typed manually, so the claimant always matches the vendor on file.
-    $vf('vf-claimant').value         = v.vendor_name || '';
-    $vf('vf-claimant-address').value = v.address || '';
-    $vf('vf-claimant-tin').value     = v.tin || '';
-    vf_clearFieldError('claimant');
+    if (!v) {
+        card.classList.remove('visible');
+    } else {
+        $vf('vf-vc-name').textContent    = v.vendor_name || '—';
+        $vf('vf-vc-type').textContent    = v.vendor_type || '—';
+        $vf('vf-vc-address').textContent = v.address || '—';
+        $vf('vf-vc-tin').textContent     = v.tin || '—';
+        card.classList.add('visible');
+        // Vendor fields win over whatever was typed manually, so the claimant always matches the vendor on file.
+        $vf('vf-claimant').value         = v.vendor_name || '';
+        $vf('vf-claimant-address').value = v.address || '';
+        $vf('vf-claimant-tin').value     = v.tin || '';
+        vf_clearFieldError('claimant');
+    }
+
+    const vendorId  = $vf('vf-vendor').value;
+    const mismatched = vf_selectedRfaIds.some(id => String(vf_rfas[id]?.vendor_id || '') !== String(vendorId || ''));
+    if (mismatched) {
+        vf_selectedRfaIds = [];
+        vf_onRfaSelectionChange();
+    }
+    if ($vf('vf-rfa-dropdown').classList.contains('open')) vf_renderRfaDropdown();
 }
 
 async function vf_refreshDvNumber() {
     const d = $vf('vf-dv-date').value;
     if (!d) return;
     try {
-        const json = await vf_getJson('/voucher/dv-number?dv_date=' + encodeURIComponent(d));
+        const json = await vf_getJson('voucher/dv-number?dv_date=' + encodeURIComponent(d));
         $vf('vf-dv-number').textContent = json.data.dv_no;
     } catch (e) { /* the server assigns a number on save if this stays "—" */ }
 }
@@ -955,6 +1013,7 @@ function vf_addDeductionLine(d = null) {
     typeSel.addEventListener('change', () => {
         const t = vf_dedTypes.find(t => String(t.deduction_type_id) === typeSel.value);
         descSpan.textContent = t?.description || '';
+        vf_recalc(); // the deduction's own GL account (t.account_code) changed — resync Accounting Entries
     });
     div.querySelector('.vf-ded-rate').addEventListener('input', () => vf_recalcDeductionLine(idx));
 
@@ -1106,6 +1165,7 @@ function vf_recalcAtc() {
     const lines = vf_collectAtcLines();
     const totalWh = lines.reduce((s, l) => s + (l.tax_base * l.rate / 100), 0);
     $vf('vf-atc-total').textContent = vf_peso(totalWh);
+    vf_syncAutoLines();
 }
 
 /* ── Accounting Entries (optional — see card 7's doc comment) — same GL-grouped Journal Entry
@@ -1122,6 +1182,14 @@ function vf_jevGroupAcct(gid) {
 }
 function vf_jevGroupLines(gid) {
     return [...$vf('vf-jev-tbody').querySelectorAll(`tr.vje-grp-line[data-group-id="${gid}"]`)];
+}
+/** The existing group whose Account Code already matches, or a freshly created one — several
+    auto-lines (e.g. two ATC rows both posting to "Due to BIR") land as sibling lines under ONE
+    header instead of one header each. */
+function vf_findOrCreateJevGroup(acctCode) {
+    const hdr = [...$vf('vf-jev-tbody').querySelectorAll('tr.vje-grp-hdr')]
+        .find(h => h.querySelector('.vje-grp-acct').value.trim() === acctCode && acctCode !== '');
+    return hdr ? hdr.dataset.groupId : vf_addJevGroup(acctCode);
 }
 
 function vf_addJevGroup(acctCode = '') {
@@ -1141,18 +1209,29 @@ function vf_addJevGroup(acctCode = '') {
     // parentElement to anchor the dropdown, which is unreliable on a still-detached node.
     nhaSearchableSelect(hdr.querySelector('.vje-grp-acct'), vf_coaOptions.map(a => ({ value: a.account_code, label: a.account_title })));
     hdr.querySelector('.vje-grp-acct').addEventListener('change', () => vf_onJevGroupAcctChange(gid));
-    hdr.querySelector('.vje-grp-add-btn').addEventListener('click', () => { vf_addJevGroupLine(gid); vf_renumberJev(); vf_recalcJev(); });
-    hdr.querySelector('.vf-table-remove').addEventListener('click', () => vf_removeJevGroup(gid));
+    // "+ Line" / the header's own "x" are direct preparer actions — see vf_addNewJevGroup()'s doc
+    // comment on why that turns auto-sync off; vf_removeJevGroup() itself stays "pure" (no side
+    // effect on vf_jevAutoMode) because it's also called internally by vf_syncAutoLines' own cleanup.
+    hdr.querySelector('.vje-grp-add-btn').addEventListener('click', () => { vf_jevAutoMode = false; vf_addJevGroupLine(gid); vf_renumberJev(); vf_recalcJev(); });
+    hdr.querySelector('.vf-table-remove').addEventListener('click', () => { vf_jevAutoMode = false; vf_removeJevGroup(gid); });
     vf_updateJevGroupTotals(gid);
     return gid;
 }
 
+/** Manually adding a GL account is the preparer taking over the grid — stop auto-syncing from
+    Account Code/Amount/Deductions/ATC from here on (vf_jevAutoMode), same as readone.php's
+    vje_syncAutoLines stops once Accounting has saved a JEV once. */
 function vf_addNewJevGroup() {
+    vf_jevAutoMode = false;
     const gid = vf_addJevGroup('');
     vf_addJevGroupLine(gid);
     vf_renumberJev();
 }
 
+/** Deliberately has no effect on vf_jevAutoMode — it's called both by the preparer's own "x"
+    button (which turns auto-sync off itself, see vf_addJevGroup()'s binding) AND internally by
+    vf_syncAutoLines()'s own cleanup of an auto-group left with no lines, which must NOT turn
+    auto-sync off as a side effect of auto-sync doing its job. */
 function vf_removeJevGroup(gid) {
     vf_jevGroupLines(gid).forEach(tr => tr.remove());
     vf_jevGroupHdr(gid)?.remove();
@@ -1220,6 +1299,7 @@ function vf_addJevGroupLine(gid, d = null) {
 function vf_removeJevGroupLine(lineId) {
     const tr = $vf(`vf-jev-row-${lineId}`);
     const gid = tr?.dataset.groupId;
+    if (tr?.dataset.autoSource) vf_jevAutoMode = false; // see vf_removeJevGroup()'s doc comment
     tr?.remove();
     if (gid && vf_jevGroupLines(gid).length === 0) vf_removeJevGroup(gid); // header with no lines left is dead weight
     vf_renumberJev();
@@ -1259,7 +1339,7 @@ async function vf_populateSlCombo(lineId, acctCode, preSlCode = null, preDetailI
     sel.innerHTML = '<option value="">— None —</option>';
     if (!matching.length) return;
     const detailLists = await Promise.all(matching.map(s =>
-        vf_getJson(`/voucher/sl-codes/${encodeURIComponent(s.sl_code)}/details`).then(j => j.data ?? []).catch(() => [])));
+        vf_getJson(`voucher/sl-codes/${encodeURIComponent(s.sl_code)}/details`).then(j => j.data ?? []).catch(() => [])));
     matching.forEach((s, i) => {
         const details = detailLists[i];
         if (!details.length) {
@@ -1324,6 +1404,121 @@ function vf_recalcJev() {
     }
 }
 
+/**
+ * Auto-fills the Accounting Entries grid from this voucher's own Account Code/Amount/Claimant plus
+ * whatever Deduction and ATC rows are currently entered — ported from readone.php's
+ * vje_syncAutoLines() (Accounting's equivalent sync once a DV reaches FOR_ACCOUNTING), so the SAME
+ * auto-derivation is available to Originating here at create/edit time too: Dr the object-of-
+ * expenditure account for the full gross, Cr each Deduction/ATC row that carries a mapped UACS
+ * account (fims.deduction_types.account_code / fims.atc_codes.account_code), Cr Accounts Payable
+ * for whatever's left. Each auto-line is tracked via its row's data-auto-source so repeat syncs
+ * update it in place instead of duplicating it, and a source that no longer applies (a removed
+ * Deduction/ATC row) removes its line too (vf_pruneAutoLines()). Only runs while vf_jevAutoMode is
+ * true — see vf_addNewJevGroup()/vf_removeJevGroup()/vf_removeJevGroupLine()'s doc comments for what
+ * turns it off.
+ */
+function vf_syncAutoLines() {
+    if (!vf_jevAutoMode) return;
+    const gross = parseFloat($vf('vf-gross').value) || 0;
+    const accountCode = $vf('vf-account-code').value.trim();
+
+    // Nothing meaningful to post yet (a brand-new voucher before Amount/Account Code are filled
+    // in) — clear any stale auto lines instead of planting an empty/₱0.00 Dr line.
+    if (gross <= 0 && !accountCode) {
+        vf_pruneAutoLines('', () => false);
+        vf_renumberJev();
+        vf_recalcJev();
+        return;
+    }
+
+    vf_upsertAutoLine('dr', {
+        account_code: accountCode,
+        debit: gross, credit: 0,
+        description: $vf('vf-claimant').value.trim(),
+    });
+
+    const dedIds = new Set();
+    let dedCreditTotal = 0;
+    $vf('vf-ded-container').querySelectorAll('.vf-ded-row').forEach(row => {
+        const idx    = row.id.replace('vf-ded-row-', '');
+        const typeId = row.querySelector('.vf-ded-type').value;
+        const amount = parseFloat(row.querySelector('.vf-ded-amount').value) || 0;
+        const type   = vf_dedTypes.find(t => String(t.deduction_type_id) === typeId);
+        if (!typeId || !type?.account_code || amount <= 0) return;
+        dedIds.add(idx);
+        dedCreditTotal += amount;
+        vf_upsertAutoLine(`ded:${idx}`, { account_code: type.account_code, debit: 0, credit: amount, description: type.name });
+    });
+    vf_pruneAutoLines('ded:', id => dedIds.has(id));
+
+    const atcIds = new Set();
+    let atcCreditTotal = 0;
+    $vf('vf-atc-tbody').querySelectorAll('tr').forEach(tr => {
+        const idx  = tr.id.replace('vf-atc-row-', '');
+        const code = tr.querySelector('.vf-atc-code').value;
+        const rate = parseFloat(tr.querySelector('.vf-atc-rate').value) || 0;
+        const base = parseFloat(tr.querySelector('.vf-atc-base').value) || 0;
+        const atcDef = VF_ATC.find(c => c.atc_code === code);
+        if (!code || !atcDef?.account_code || base <= 0 || rate <= 0) return;
+        const credit = Math.round(base * rate) / 100;
+        atcIds.add(idx);
+        atcCreditTotal += credit;
+        // Several ATC rows commonly share one GL (e.g. several withholding rates all post to "Due
+        // to BIR") — vf_upsertAutoLine finds-or-creates that GL's group, so they land as sibling
+        // lines under ONE header instead of one header each.
+        vf_upsertAutoLine(`atc:${idx}`, { account_code: atcDef.account_code, debit: 0, credit, description: `${rate}% ${atcDef.description}` });
+    });
+    vf_pruneAutoLines('atc:', id => atcIds.has(id));
+
+    const apRemainder = Math.round((gross - dedCreditTotal - atcCreditTotal) * 100) / 100;
+    if (apRemainder > 0.004) {
+        vf_upsertAutoLine('ap', { account_code: '2-01-01-010', debit: 0, credit: apRemainder, description: 'Net Amount Payable' });
+    } else {
+        const tr = $vf('vf-jev-tbody').querySelector('tr.vje-grp-line[data-auto-source="ap"]');
+        const gid = tr?.dataset.groupId;
+        tr?.remove();
+        if (gid && vf_jevGroupLines(gid).length === 0) vf_removeJevGroup(gid);
+    }
+
+    vf_renumberJev();
+    vf_recalcJev();
+}
+
+function vf_upsertAutoLine(sourceKey, d) {
+    const tr = $vf('vf-jev-tbody').querySelector(`tr.vje-grp-line[data-auto-source="${sourceKey}"]`);
+    if (!tr) {
+        const gid = vf_findOrCreateJevGroup(d.account_code || '');
+        const lineId = vf_addJevGroupLine(gid, d);
+        $vf(`vf-jev-row-${lineId}`).dataset.autoSource = sourceKey;
+        return;
+    }
+    // If the account this line should post to changed (e.g. a different ATC code's mapped
+    // account), move it to the right group rather than leaving it under the old one.
+    if ((d.account_code || '') !== vf_jevGroupAcct(tr.dataset.groupId)) {
+        const oldGid = tr.dataset.groupId;
+        tr.remove();
+        if (vf_jevGroupLines(oldGid).length === 0) vf_removeJevGroup(oldGid);
+        const gid = vf_findOrCreateJevGroup(d.account_code || '');
+        const lineId = vf_addJevGroupLine(gid, d);
+        $vf(`vf-jev-row-${lineId}`).dataset.autoSource = sourceKey;
+        return;
+    }
+    tr.querySelector('.vje-line-desc').value = d.description || '';
+    tr.querySelector('.vje-debit').value  = d.debit  > 0 ? d.debit.toFixed(2)  : '';
+    tr.querySelector('.vje-credit').value = d.credit > 0 ? d.credit.toFixed(2) : '';
+}
+
+/** Removes auto-tracked lines whose source (a Deduction or live ATC row) no longer applies, and
+    any group left with no lines as a result. */
+function vf_pruneAutoLines(prefix, keepFn) {
+    $vf('vf-jev-tbody').querySelectorAll(`tr.vje-grp-line[data-auto-source^="${prefix}"]`).forEach(tr => {
+        if (keepFn(tr.dataset.autoSource.slice(prefix.length))) return;
+        const gid = tr.dataset.groupId;
+        tr.remove();
+        if (vf_jevGroupLines(gid).length === 0) vf_removeJevGroup(gid);
+    });
+}
+
 /* ── Live computation ──────────────────────────────────────── */
 function vf_recalc() {
     const gross = parseFloat($vf('vf-gross').value) || 0;
@@ -1342,11 +1537,13 @@ function vf_recalc() {
     $vf('vf-this-request').textContent   = vf_peso(netAmount);
     $vf('vf-total-payments').textContent = vf_peso(totalPayments);
     $vf('vf-balance').textContent        = vf_peso(balance);
+
+    vf_syncAutoLines();
 }
 
 /* ── Edit mode ─────────────────────────────────────────────── */
 async function vf_loadExisting() {
-    const json = await vf_getJson('/voucher/read/' + vf_id);
+    const json = await vf_getJson('voucher/read/' + vf_id);
     const dv   = json.data;
     if (!VF_EDITABLE.includes(dv.status)) {
         vf_showErrors([`This disbursement voucher is ${dv.status} and can no longer be edited.`]);
@@ -1397,6 +1594,11 @@ async function vf_loadExisting() {
     $vf('vf-jev-tbody').innerHTML = '';
     vf_jevSeq = 0;
     vf_jevGroupSeq = 0;
+    // Already saved at least once — respect what was committed; auto-sync stays off for the rest
+    // of this edit session even if Deductions/ATC/Account Code change afterward (same rule
+    // readone.php's vje_init() uses). A DRAFT that never reached a saved Accounting Entry yet
+    // keeps auto-syncing normally.
+    vf_jevAutoMode = !(dv.jev?.lines ?? []).length;
     {
         let lastAcct = null, gid = null;
         (dv.jev?.lines ?? []).forEach(l => {
@@ -1421,6 +1623,13 @@ async function vf_loadExisting() {
     // re-selecting an RFA chip (vf_onRfaSelectionChange) refreshes it live if needed.
     vf_paymentsPrior = parseFloat(dv.payments_prior_amount) || 0;
     $vf('vf-payments-hint').textContent = vf_paymentsPrior > 0 ? ' (prior draws on these RFAs)' : '';
+
+    // Account Code (just set above) and every other auto-sync input were set via .value = — that
+    // doesn't fire the 'input' listeners vf_syncAutoLines() normally rides on, so a DRAFT reopened
+    // for edit would otherwise show an empty Accounting Entries grid until the preparer next
+    // touches something. Re-run once now that every field is in its final state; a no-op if
+    // vf_jevAutoMode was already turned off above because a real JEV was loaded.
+    vf_syncAutoLines();
 }
 
 /* ── Validation ────────────────────────────────────────────── */
@@ -1465,7 +1674,6 @@ async function vf_save(status) {
         dv_no              : vf_id || dvNumber === '—' ? undefined : dvNumber,
         dv_date            : $vf('vf-dv-date').value,
         fiscal_yr          : vf_derivedFiscalYear(),
-        expense_class      : vf_derivedExpenseClass(),
         rfa_allocation_ids : vf_selectedRfaIds.map(Number),
         dept_project       : $vf('vf-dept-project').value.trim(),
         fund_source        : $vf('vf-fund-source').value.trim(),

@@ -1,4 +1,4 @@
-<ew-language date="2026/11/12" id="en-US" author="e.World Technology Limited">
+<ew-language date="2026/11/13" id="en-US" author="e.World Technology Limited">
   <project>
     <phrase id="bodytitle" value="UAC - User Access Control System"/>
     <phrase id="footertext" value="&amp;copy;2024 ITBS Corporation. All rights reserved."/>
@@ -45,16 +45,16 @@
       <phrase id="menutext" value="Responsibilty Center"/>
     </menu>
     <menu id="391">
-      <phrase id="menutext" value="Vendors" />
+      <phrase id="menutext" value="Vendors"/>
     </menu>
     <menu id="390">
-      <phrase id="menutext" value="Inventory" />
+      <phrase id="menutext" value="Inventory"/>
     </menu>
     <menu id="91">
       <phrase id="menutext" value="IAR Module"/>
     </menu>
     <menu id="333">
-      <phrase id="menutext" value="Property Record" />
+      <phrase id="menutext" value="Property Record"/>
     </menu>
     <menu id="258">
       <phrase id="menutext" value="Vouchers"/>
@@ -76,6 +76,9 @@
     </menu>
     <menu id="330">
       <phrase id="menutext" value="Fund Sourcing"/>
+    </menu>
+    <menu id="392">
+      <phrase id="menutext" value="Fund Sourcing Dashboard"/>
     </menu>
     <menu id="263">
       <phrase id="menutext" value="SARO Registry"/>
@@ -1617,10 +1620,13 @@
       <phrase id="tblcaption" value="Bank Management Page"/>
     </table>
     <table id="property_record_page">
-      <phrase id="tblcaption" value="Property Record" />
+      <phrase id="tblcaption" value="Property Record"/>
     </table>
     <table id="vendors_page">
-      <phrase id="tblcaption" value="Vendors" />
+      <phrase id="tblcaption" value="Vendors"/>
+    </table>
+    <table id="fund_sourcing_dashboard_page">
+      <phrase id="tblcaption" value="Fund Sourcing Dashboard"/>
     </table>
   </project>
 </ew-language>

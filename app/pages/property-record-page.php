@@ -723,7 +723,7 @@ function prp_renderSearch(typed) {
         $prp('prp-search-empty').style.display = '';
         const hid = d.hidden_by_status || 0;
         $prp('prp-search-empty').innerHTML = `<div class="prp-empty"><strong>No items found</strong>
-            PO <b>${prp_esc(typed)}</b> has no items with status Issued, Returned or Donation in the Property Inventory System.
+            PO <b>${prp_esc(typed)}</b> has no PAR items with status Issued, Returned or Donation in the Property Inventory System.
             ${hid ? `<br>(${hid} item${hid === 1 ? '' : 's'} of this PO ${hid === 1 ? 'has' : 'have'} another status and ${hid === 1 ? 'is' : 'are'} not offered.)` : ''}</div>`;
         return;
     }
@@ -748,10 +748,6 @@ function prp_renderSearch(typed) {
     if (d.hidden_by_status > 0) {
         const n = d.hidden_by_status;
         msgs.push(n + ' other item' + (n === 1 ? '' : 's') + ' of this PO ha' + (n === 1 ? 's' : 've') + ' a dropped status (Disposed, Destroyed, Donation or Transfer) and ' + (n === 1 ? 'is' : 'are') + ' not offered.');
-    }
-    if (d.not_property > 0) {
-        const n = d.not_property;
-        msgs.push('Warning: ' + n + ' item' + (n === 1 ? '' : 's') + ' of this PO ' + (n === 1 ? 'is' : 'are') + ' not a property record (PIS TYPENO other than 1). Only PAR items (TYPENO 1) can be saved.');
     }
     note.style.display = msgs.length ? '' : 'none';
     note.innerHTML = msgs.map(prp_esc).join('<br>');

@@ -88,6 +88,7 @@ $_vl_view = (int) ($_GET['dv'] ?? 0);
                     <option value="MOOE">MOOE</option>
                     <option value="PS">PS</option>
                     <option value="CAPITAL_OUTLAY">Capital Outlay</option>
+                    <option value="EQUIPMENT_OUTLAY">Equipment Outlay</option>
                     <option value="OTHER">Other</option>
                 </select>
             </div>
@@ -335,7 +336,7 @@ function vl_statusBadge(s) {
     return `<span class="nha-bdg ${cls}">${vl_esc(label)}</span>`;
 }
 function vl_classBadge(c) {
-    const map = { MOOE: ['nha-bdg-teal', 'MOOE'], PS: ['nha-bdg-blue', 'PS'], CAPITAL_OUTLAY: ['nha-bdg-purple', 'Capital Outlay'], OTHER: ['nha-bdg-gray', 'Other'] };
+    const map = { MOOE: ['nha-bdg-teal', 'MOOE'], PS: ['nha-bdg-blue', 'PS'], CAPITAL_OUTLAY: ['nha-bdg-purple', 'Capital Outlay'], EQUIPMENT_OUTLAY: ['nha-bdg-navy', 'Equipment Outlay'], OTHER: ['nha-bdg-gray', 'Other'] };
     const [cls, label] = map[c] || ['nha-bdg-gray', '—'];
     return `<span class="nha-bdg ${cls}">${vl_esc(label)}</span>`;
 }

@@ -138,6 +138,7 @@ return [
     "bank_management_page" => \DI\create(BankManagementPage::class),
     "property_record_page" => \DI\create(PropertyRecordPage::class),
     "vendors_page" => \DI\create(VendorsPage::class),
+    "fund_sourcing_dashboard_page" => \DI\create(FundSourcingDashboardPage::class),
 
     // User table
     "usertable" => \DI\get("users"),
