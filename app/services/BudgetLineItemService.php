@@ -106,10 +106,7 @@ class BudgetLineItemService
                            li.type_of_fund_id, tf.name AS type_of_fund,
                            li.account_id, coa.account_code, coa.account_title,
                            li.proposed_amount, li.suggested_amount, li.adjustment, li.obligation,
-                           (li.suggested_amount + li.adjustment - li.obligation - COALESCE((
-                               SELECT SUM(e.amount) FROM {$this->tableEarmark} e
-                               WHERE e.budget_line_item_id = li.budget_line_item_id AND e.status = 'active'
-                           ), 0)) AS available_amount,
+                           li.suggested_amount AS available_amount,
                            li.particulars, st.name AS status_name
                     FROM {$this->table} li
                     JOIN {$this->tableBudgetReq} br ON br.budget_reference_number = li.budget_reference_number
@@ -199,6 +196,17 @@ class BudgetLineItemService
     // in BEGIN/COMMIT); none of these open, commit or roll one back themselves. See the table's own SQL
     // file for the full column/lifecycle comment: "_assets/sql/01 - fims/01 - table/26 -
     // fims_budget_line_item_earmark.sql".
+    //
+    // The final approval of a CBA / CFA also MOVES the money on the line item itself (createForApproval()):
+    //   suggested_amount - R, account_payable + R, obligation + R    (R = that request's requested_amount for the line)
+    // and marks its earmark row balance_applied. So the line item's own suggested_amount is what is still free to request:
+    // available = suggested_amount — the earmark no longer subtracts again, it only remains as the ceiling an
+    // RFA / LAA draws against (and that draw adds nothing to obligation: the CBA already did). An approved Budget Revision
+    // moves suggested_amount too (BudgetRevisionService::approve(), together with adjustment), so adjustment is NOT added here:
+    // that would count every revision twice. Deleting an Approved
+    // CBA / CFA reverses the three updates (releaseForAllocation()). An earmark row from before this rule
+    // (balance_applied = FALSE) never had the three updates, so it is neither reversed nor spared the old obligation
+    // increase at RFA / LAA approval.
     // -----------------------------------------------------------------------
 
     /**
@@ -255,16 +263,16 @@ class BudgetLineItemService
     }
 
     /**
-     * The balance still available to earmark against one line item: suggested_amount + adjustment -
-     * obligation - SUM(active earmarks). Locks the row (SELECT ... FOR UPDATE) so two concurrent
-     * approvals against the same line item can't both pass the check before either commits — the
-     * caller must already be inside an open transaction. Returns null when the line item no longer
-     * exists.
+     * The balance still available to request against one line item: its suggested_amount (already reduced by every
+     * Approved CBA / CFA — see createForApproval() — and moved by every approved Budget Revision). Locks the row
+     * (SELECT ... FOR UPDATE) so two concurrent approvals against the same line item can't both pass the check
+     * before either commits — the caller must already be inside an open transaction. Returns null when the line
+     * item no longer exists.
      */
     public function lockAndGetAvailable(int $budgetLineItemId): ?float
     {
         $row = App\ExecuteRow(
-            "SELECT suggested_amount, adjustment, obligation FROM {$this->table}
+            "SELECT suggested_amount FROM {$this->table}
              WHERE budget_line_item_id = {$budgetLineItemId} FOR UPDATE",
             'DB'
         );
@@ -272,13 +280,7 @@ class BudgetLineItemService
             return null;
         }
 
-        $earmarked = (float) App\ExecuteScalar(
-            "SELECT COALESCE(SUM(amount), 0) FROM {$this->tableEarmark}
-             WHERE budget_line_item_id = {$budgetLineItemId} AND status = 'active'",
-            'DB'
-        );
-
-        return (float) $row['suggested_amount'] + (float) $row['adjustment'] - (float) $row['obligation'] - $earmarked;
+        return (float) $row['suggested_amount'];
     }
 
     /**
@@ -288,8 +290,15 @@ class BudgetLineItemService
      * COB (not one per raw line_transaction entry — two lines against the same COB become one combined
      * row). That keeps exactly one active row per (allocation, COB) pair, which
      * convertEarmarkForRfaApproval() below relies on to shrink cleanly as RFAs/LAAs draw it down.
+     *
+     * Each COB's line item is also charged with the combined requested amount R, in the same pass:
+     *   suggested_amount = suggested_amount - R
+     *   account_payable  = account_payable  + R
+     *   obligation       = obligation       + R
+     * and its earmark row is created with balance_applied = TRUE, so a later delete knows to reverse exactly this.
+     *
      * Returns ['success' => true] (including when there is nothing to reserve) or
-     * ['success' => false, 'message' => ...]; on failure nothing is inserted — the caller
+     * ['success' => false, 'message' => ...]; on failure nothing is written — the caller
      * (mid-transaction) is expected to roll back.
      */
     public function createForApproval(int $allocationId, mixed $lineTransaction): array
@@ -319,10 +328,18 @@ class BudgetLineItemService
         }
 
         foreach ($totals as $lineItemId => $requested) {
-            $amount = App\QuotedValue($requested, DataType::NUMBER, 'DB');
+            $amount = App\QuotedValue(round($requested, 2), DataType::NUMBER, 'DB');
             App\Execute(
-                "INSERT INTO {$this->tableEarmark} (budget_line_item_id, allocation_id, amount, original_amount, status)
-                 VALUES ({$lineItemId}, {$allocationId}, {$amount}, {$amount}, 'active')",
+                "INSERT INTO {$this->tableEarmark} (budget_line_item_id, allocation_id, amount, original_amount, status, balance_applied)
+                 VALUES ({$lineItemId}, {$allocationId}, {$amount}, {$amount}, 'active', TRUE)",
+                'DB'
+            );
+            App\Execute(
+                "UPDATE {$this->table}
+                 SET suggested_amount = suggested_amount - {$amount},
+                     account_payable  = account_payable  + {$amount},
+                     obligation       = obligation       + {$amount}
+                 WHERE budget_line_item_id = {$lineItemId}",
                 'DB'
             );
         }
@@ -339,7 +356,10 @@ class BudgetLineItemService
      *     remaining amount, so a later RFA/LAA can still draw down what's left;
      *   - a new 'converted' row is inserted, attributed to this RFA/LAA's OWN allocation_id, so what
      *     each RFA/LAA actually converted stays traceable independently of what the CBA still has left;
-     *   - budget_line_items.obligation is increased by the same amount — the real deduction.
+     *   - budget_line_items.obligation is increased by the same amount — ONLY when the parent's earmark row predates
+     *     createForApproval()'s own line-item update (balance_applied = FALSE). A CBA approved under the current rule
+     *     already added its whole amount to obligation (and account_payable) when it was approved, so its RFA/LAA draws
+     *     change nothing on the line item — adding it again would count the same money twice.
      * Refuses (nothing written, caller should roll back) if the CBA has no active earmark for a COB at
      * all, or if the drawn amount for any COB exceeds what's still actively earmarked there.
      */
@@ -363,7 +383,7 @@ class BudgetLineItemService
             App\ExecuteRow("SELECT 1 FROM {$this->table} WHERE budget_line_item_id = {$lineItemId} FOR UPDATE", 'DB');
 
             $earmark = App\ExecuteRow(
-                "SELECT earmark_id, amount FROM {$this->tableEarmark}
+                "SELECT earmark_id, amount, balance_applied FROM {$this->tableEarmark}
                  WHERE allocation_id = {$parentAllocationId} AND budget_line_item_id = {$lineItemId} AND status = 'active'
                  FOR UPDATE",
                 'DB'
@@ -406,14 +426,23 @@ class BudgetLineItemService
                 'DB'
             );
 
-            App\Execute(
-                "UPDATE {$this->table} SET obligation = obligation + ".App\QuotedValue($requested, DataType::NUMBER, 'DB')."
-                 WHERE budget_line_item_id = {$lineItemId}",
-                'DB'
-            );
+            // A parent CBA/CFA whose line item was already charged at its own approval has nothing left to add here.
+            if (!$this->isTrue($earmark['balance_applied'] ?? false)) {
+                App\Execute(
+                    "UPDATE {$this->table} SET obligation = obligation + ".App\QuotedValue($requested, DataType::NUMBER, 'DB')."
+                     WHERE budget_line_item_id = {$lineItemId}",
+                    'DB'
+                );
+            }
         }
 
         return ['success' => true];
+    }
+
+    /** A Postgres boolean as the driver hands it back: true / 't' / 'true' / '1' / 1. */
+    private function isTrue(mixed $v): bool
+    {
+        return $v === true || $v === 1 || $v === '1' || $v === 't' || $v === 'true';
     }
 
     /**
@@ -458,12 +487,42 @@ class BudgetLineItemService
         return ['success' => true];
     }
 
-    /** Frees every still-active earmark an allocation is holding (e.g. it was deleted after being Approved). */
+    /**
+     * Frees whatever an allocation is holding (e.g. it was deleted after being Approved):
+     *   1. gives back what createForApproval() took from each line item — suggested_amount + original_amount,
+     *      account_payable - original_amount, obligation - original_amount — for every one of its earmark rows
+     *      that is balance_applied and not yet released ('active', or 'converted' = fully drawn by RFAs/LAAs, which
+     *      add nothing to the line item themselves; original_amount is the figure that was charged). A row from
+     *      before that rule (balance_applied = FALSE) never took anything, so nothing is given back for it;
+     *   2. marks those rows, and every other still-active one, 'released' — which also makes a second call a no-op.
+     * An RFA/LAA's own 'converted' rows (balance_applied = FALSE) are left exactly as they are.
+     * Runs inside the caller's transaction (BudgetAllocationService::delete() opens one).
+     */
     public function releaseForAllocation(int $allocationId): void
     {
+        $held = App\ExecuteRows(
+            "SELECT earmark_id, budget_line_item_id, original_amount FROM {$this->tableEarmark}
+             WHERE allocation_id = {$allocationId} AND balance_applied = TRUE AND status IN ('active', 'converted')
+             ORDER BY earmark_id FOR UPDATE",
+            'DB'
+        ) ?: [];
+
+        foreach ($held as $row) {
+            $lineItemId = (int) $row['budget_line_item_id'];
+            $amount     = App\QuotedValue(round((float) $row['original_amount'], 2), DataType::NUMBER, 'DB');
+            App\Execute(
+                "UPDATE {$this->table}
+                 SET suggested_amount = suggested_amount + {$amount},
+                     account_payable  = account_payable  - {$amount},
+                     obligation       = obligation       - {$amount}
+                 WHERE budget_line_item_id = {$lineItemId}",
+                'DB'
+            );
+        }
+
         App\Execute(
-            "UPDATE {$this->tableEarmark} SET status = 'released', released_at = CURRENT_TIMESTAMP
-             WHERE allocation_id = {$allocationId} AND status = 'active'",
+            "UPDATE {$this->tableEarmark} SET status = 'released', released_at = COALESCE(released_at, CURRENT_TIMESTAMP)
+             WHERE allocation_id = {$allocationId} AND (status = 'active' OR (status = 'converted' AND balance_applied = TRUE))",
             'DB'
         );
     }
