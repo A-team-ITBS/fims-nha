@@ -199,7 +199,7 @@ $app->get('/voucher/atc-codes', function ($request, $response, $args) use ($Vouc
 // Accounting saves (or edits) this DV's Journal Entry Voucher + withholding tax classification +
 // Deductions (Accounting can now edit Deductions too, not just Originating at creation).
 // body: { atc_lines: [{atc_code, rate, tax_base, chargeability?}], lines: [{account_code, debit, credit, description?, sl_code?, sl_detail_id?}],
-//         deductions: [{deduction_type_id, rate?, gross_amount?, deduction_amount?}] }
+//         deductions: [{deduction_type_id, rate?, gross_amount?, deduction_amount?}], book_id (required whenever lines is non-empty — fims.books) }
 // FOR_ACCOUNTING status + Accounting Department (RC-012) only; required (balanced) before FOR_TREASURY.
 $app->post('/voucher/{id}/journal-entry', function ($request, $response, $args) use ($VoucherService) {
     try {
@@ -209,7 +209,8 @@ $app->post('/voucher/{id}/journal-entry', function ($request, $response, $args) 
             is_array($body['atc_lines'] ?? null) ? $body['atc_lines'] : [],
             is_array($body['lines'] ?? null) ? $body['lines'] : [],
             (int) $request->getAttribute('user_id'),
-            is_array($body['deductions'] ?? null) ? $body['deductions'] : []
+            is_array($body['deductions'] ?? null) ? $body['deductions'] : [],
+            $body['book_id'] ?? null
         );
 
         return $response->withJson($result, $result['httpCode'] ?? ($result['success'] ? 200 : 400));

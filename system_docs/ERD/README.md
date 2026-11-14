@@ -397,17 +397,25 @@ Drafted 2026-11-14, **implemented the same day**: `fims.general_ledger` (`01 - t
 `journal_entry_voucher` status seed rows (`02 - sample_data/11`), and `fims.v_journals`/
 `fims.v_trial_balance` (`05 - views/01` — a new top-level folder for `fims`, mirroring `uac`'s
 `03 - views`). Service: `app/services/GeneralLedgerService.php`, called from
-`DisbursementVoucherService::changeStatus()`. Route + UI added the same day:
-`app/routes/general_ledger.php` (`GET /general_ledger/journals`, `GET /general_ledger/trial-balance`
-— read-only, posting is never reachable via a route) and the `GeneralLedgerPage` custom page
-(`app/pages/general-ledger-page.php`, menu item 393 under "Vouchers"). **Verified twice**: first a
-`BEGIN…ROLLBACK` dry run against the `fims-nha-postgres` docker-compose container (install order, the
-partial unique index rejecting a raw duplicate post, a full post+reverse cycle netting an account to
-exactly 0.00); then the migration was applied for real to the app's actual database
-(`host.docker.internal:5432/fims` — the separate `fims-nha-postgres` container on port 5433 is *not*
-what `fims-nha-php` connects to, see developer guide §10) and the new routes/page were hit with a real
-session cookie: both endpoints return `{"success":true,...}`, the page renders 200, and the menu item
-appears on `/MainDashboard`.
+`DisbursementVoucherService::changeStatus()`.
+
+Route + UI added the same day, as **four separate modules** (General Ledger, Subsidiary Ledger,
+Journals, Trial Balance are each their own page — not tabs of one page; see developer guide §8.5 for
+the full table of which page/endpoint shows what), all under `app/routes/general_ledger.php`
+(every endpoint read-only — posting is never reachable via a route) and a new "Ledgers" sidebar
+group. **Verified three times, increasingly end-to-end**:
+
+1. A `BEGIN…ROLLBACK` dry run against the `fims-nha-postgres` docker-compose container (install
+   order, the partial unique index rejecting a raw duplicate post, a full post+reverse cycle netting
+   an account to exactly 0.00).
+2. The migration applied for real to the app's actual database (`host.docker.internal:5432/fims` —
+   the separate `fims-nha-postgres` container on port 5433 is *not* what `fims-nha-php` connects to,
+   see developer guide §10), all four pages confirmed rendering 200 with no PHP errors, and the
+   "Ledgers" menu group appearing on `/MainDashboard`.
+3. A full `curl` round-trip with a real session cookie: created a DV, approved it to `FOR_TREASURY`
+   (posting fired), confirmed General Ledger / Subsidiary Ledger (a second DV with an `sl_code` on
+   its JEV line) / Journals / Trial Balance **all** show it with correctly-signed running balances;
+   cancelled it (`reverseJev()` fired) and confirmed both ledger cards net back to exactly `0.00`.
 
 When a DV is approved on the Accounting side (`FOR_ACCOUNTING → FOR_TREASURY`, the transition that
 already requires its JEV to exist and balance — see §2.3), the JEV itself is now also

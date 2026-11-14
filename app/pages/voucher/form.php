@@ -332,6 +332,11 @@ if (!isset($_vf_api)) {
                     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
                         <span class="vje-amt-badge">Required if filled in: DR = CR (balanced)</span>
                     </div>
+                    <div class="nha-fg" style="max-width:260px;margin-bottom:10px;">
+                        <label>Book <span id="vf-book-req" class="nha-req" style="display:none;">*</span></label>
+                        <select id="vf-book"><option value="">Select a book…</option></select>
+                        <span class="vf-err" id="err-book">Book is required once Accounting Entries lines are filled in.</span>
+                    </div>
                     <p class="vf-hint" style="margin:0 0 8px;">Grouped by GL account (UACS code) — pick the account once per group, then add one SL Code line per amount under it.</p>
                     <div style="overflow-x:auto;">
                         <table class="vf-ledger vje-grp-edit-table" style="min-width:760px;">
@@ -385,6 +390,7 @@ let vf_saving  = false;
 let vf_vendors = {};         // vendor_id -> row, for the summary card
 let vf_rfas    = {};         // allocation_id -> row
 let vf_refReady = null;      // promise: fiscal years, loaded once on first open
+let vf_booksReady = null;    // promise: books of accounts, loaded once on first open
 let vf_dedTypesReady = null;  // promise: deduction types, loaded once on first open
 let vf_coaReady = null;       // promise: postable chart-of-accounts codes, loaded once on first open
 let vf_atcReady = null;       // promise: active ATC codes, loaded once on first open
@@ -446,6 +452,7 @@ async function vf_open(id = 0) {
     window.PagePreloader?.show();
     try {
         vf_refReady ??= vf_loadFiscalYears();
+        vf_booksReady ??= vf_loadBooks();
         vf_dedTypesReady ??= vf_loadDeductionTypes();
         vf_coaReady ??= vf_loadCoaOptions();
         vf_atcReady ??= vf_loadAtcCodes();
@@ -457,7 +464,7 @@ async function vf_open(id = 0) {
         // the form (including the RFA list) may have loaded fine. Collect every failure instead so
         // the form still opens with whatever did load, and the user sees the full picture.
         const results = await Promise.allSettled([
-            vf_refReady, vf_dedTypesReady, vf_coaReady, vf_atcReady, vf_rcReady, vf_slReady,
+            vf_refReady, vf_booksReady, vf_dedTypesReady, vf_coaReady, vf_atcReady, vf_rcReady, vf_slReady,
             vf_loadVendors(), vf_loadRfaOptions(),
         ]);
         const loadErrors = results.filter(r => r.status === 'rejected').map(r => r.reason?.message || String(r.reason));
@@ -501,8 +508,9 @@ document.addEventListener('keydown', e => {
 
 function vf_reset() {
     vf_showErrors([]);
-    ['dv-date', 'rfa', 'claimant', 'particulars', 'gross'].forEach(vf_clearFieldError);
+    ['dv-date', 'book', 'rfa', 'claimant', 'particulars', 'gross'].forEach(vf_clearFieldError);
     $vf('vf-dv-date').value       = new Date().toISOString().slice(0, 10);
+    $vf('vf-book').value          = '';
     $vf('vf-rfa-search').value    = '';
     $vf('vf-rfa-dropdown').classList.remove('open');
     $vf('vf-rfa-empty-hint').style.display = 'none';
@@ -588,6 +596,23 @@ async function vf_loadFiscalYears() {
         vf_fiscalYears = [];
         vf_refReady = null;
         throw new Error('Failed to load fiscal years: ' + e.message);
+    }
+}
+
+/* Books (fims.books — Main Office/CISFA/NGC/MPLC-PPMO/PPMO) via GET /books/all. Book is an
+   accounting classification, not a DV-header field, so it lives in the Accounting Entries card
+   (see vf-book there) — required only once at least one Accounting Entries line is filled in. */
+async function vf_loadBooks() {
+    try {
+        const json = await vf_getJson('books/all');
+        const sel = $vf('vf-book');
+        const current = sel.value;
+        sel.innerHTML = '<option value="">Select a book…</option>' +
+            (json.data ?? []).map(b => `<option value="${b.book_id}">${vf_esc(b.name)}</option>`).join('');
+        if (current) sel.value = current;
+    } catch (e) {
+        vf_booksReady = null;
+        throw new Error('Failed to load books: ' + e.message);
     }
 }
 
@@ -1553,6 +1578,7 @@ async function vf_loadExisting() {
     $vf('vf-dv-number').textContent = dv.dv_no;
     $vf('vf-status').textContent    = dv.status;
     $vf('vf-dv-date').value         = String(dv.dv_date).slice(0, 10);
+    $vf('vf-book').value            = dv.jev?.book_id || '';
 
     vf_selectedRfaIds = (dv.rfas ?? []).map(r => String(r.allocation_id));
     (dv.rfas ?? []).forEach(r => { vf_rfas[r.allocation_id] = r; });
@@ -1644,6 +1670,12 @@ function vf_validate() {
     const check = (ok, field, msg) => { vf_setFieldError(field, !ok); if (!ok) errors.push(msg); };
 
     check(!!$vf('vf-dv-date').value,   'dv-date',   'DV Date is required.');
+    // Book is only required once Accounting Entries lines are actually filled in (vf_collectJevLines()
+    // mirrors this on the server in persistJournalEntry()) — the whole Accounting Entries section is
+    // optional at this stage, see its card's own doc comment.
+    const vf_hasJevLines = vf_collectJevLines().length > 0;
+    $vf('vf-book-req').style.display = vf_hasJevLines ? 'inline' : 'none';
+    check(!vf_hasJevLines || !!$vf('vf-book').value, 'book', 'Book is required once Accounting Entries lines are filled in.');
     check(vf_selectedRfaIds.length > 0, 'rfa',      'At least one RFA is required.');
     check(!!$vf('vf-claimant').value.trim(), 'claimant', 'Claimant Name is required.');
     check(!!$vf('vf-particulars').value.trim(), 'particulars', 'Particulars is required.');
@@ -1674,6 +1706,7 @@ async function vf_save(status) {
         dv_no              : vf_id || dvNumber === '—' ? undefined : dvNumber,
         dv_date            : $vf('vf-dv-date').value,
         fiscal_yr          : vf_derivedFiscalYear(),
+        book_id            : $vf('vf-book').value || null,
         rfa_allocation_ids : vf_selectedRfaIds.map(Number),
         dept_project       : $vf('vf-dept-project').value.trim(),
         fund_source        : $vf('vf-fund-source').value.trim(),

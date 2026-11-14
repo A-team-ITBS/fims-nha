@@ -554,25 +554,38 @@ offsetting entries rather than deleting anything. `fims.v_journals`/`fims.v_tria
 reports built on top. Fully documented, including the design differences from the original draft, in
 the ERD doc's **§2.8** — read that before extending posting/reversal logic.
 
-**Route + UI (2026-11-14):** `app/routes/general_ledger.php` (`GET /general_ledger/journals`,
-`GET /general_ledger/trial-balance`, both read-only — posting itself is never reachable via a route,
-only from `DisbursementVoucherService::changeStatus()`) backs a new page, `GeneralLedgerPage`
-(`app/pages/general-ledger-page.php`, PHPMaker page `GeneralLedgerPage` — `controllers/
-GeneralLedgerPageController.php` + `models/GeneralLedgerPage.php` + `views/GeneralLedgerPage.php`,
-DI-bound in `src/definitions.php`, menu item 393 under the "Vouchers" group next to `JournalEntryVoucher`
-and `Voucher`, registered in `src/userlevelsettings.php`). Two tabs: **Journals** (`fims.v_journals`,
-paged, filterable by fiscal year/account code/JEV or DV number) and **Trial Balance** (`fims.v_trial_balance`
-by fiscal year, with a Balanced/Out-of-balance badge). **Verified end-to-end against the live dev
-stack** (2026-11-14): the migration was applied for real to the app's actual database
-(`host.docker.internal:5432/fims` — *not* the separate `fims-nha-postgres` docker-compose container,
-see §13's note on that distinction), `composer routes` regenerated, then confirmed via `curl` with a
-real session cookie: `GET /api/general_ledger/journals` and `/trial-balance` both return
-`{"success":true,...}`, `GET /GeneralLedgerPage` renders 200 with no PHP errors, and the new menu
-item appears on `/MainDashboard` next to the existing Vouchers items.
-`host.docker.internal:5432/fims` is the database `fims-nha-php` actually connects to (`.env`'s
-`DB_HOST`/`DB_PORT`/`DB_NAME`) — the separate `fims-nha-postgres` container this docker-compose stack
-also runs (port 5433) is a different, unrelated Postgres instance; don't confuse the two when applying
-a migration for real (see §10).
+**Route + UI — four separate modules (2026-11-14):** `GeneralLedgerPage`/`JournalsPage`/
+`TrialBalancePage`/`SubsidiaryLedgerPage` are four independent custom pages (not tabs of one page —
+an earlier same-day iteration combined Journals + Trial Balance into one page's tabs; that was split
+apart once the intended module boundary was clarified), all backed by `app/routes/general_ledger.php`
+(all four endpoints read-only — posting itself is never reachable via a route, only from
+`DisbursementVoucherService::changeStatus()`) and `GeneralLedgerService.php`:
+
+| Module | Page | Endpoint | Shows |
+|---|---|---|---|
+| Journals | `app/pages/journals-page.php` | `GET /general_ledger/journals` | The book of original entry — every posted line, chronological, paged. Filterable by fiscal year/account code/JEV or DV number |
+| General Ledger | `app/pages/general-ledger-page.php` | `GET /general_ledger/ledger?account_code=` | Pick ONE chart-of-accounts account (combobox over `GET /chart_of_accounts/all?postable_only=1`) → every posting to it, oldest first, with a **running balance** signed the normal accounting way (`GeneralLedgerService::DEBIT_NORMAL_TYPES` — Asset/Expense accounts run debit-minus-credit, Liability/Equity/Revenue run credit-minus-debit) |
+| Subsidiary Ledger | `app/pages/subsidiary-ledger-page.php` | `GET /general_ledger/subsidiary-ledger?sl_code=` | Same ledger-card idea as General Ledger, but keyed by SL code (+ optional SL detail, reusing the existing `GET /voucher/sl-codes` / `.../{sl_code}/details` pickers) instead of a GL account — e.g. one vendor's Accounts Payable sub-ledger. Normal-balance side follows the SL master's own control account (`fims.sl_masters.account_code`); falls back to credit-normal if a master has none |
+| Trial Balance | `app/pages/trial-balance-page.php` | `GET /general_ledger/trial-balance` | Total debit/credit per account, as of now, with a Balanced/Out-of-balance badge |
+
+Each page is a full PHPMaker custom page (controller + model + view, DI-bound in
+`src/definitions.php`, registered in `src/userlevelsettings.php`) under a new sidebar group,
+**"Ledgers"** (menu id 394, icon `fa-scale-balanced`) — General Ledger (393), Subsidiary Ledger (395),
+Journals (396), Trial Balance (397), in that order; General Ledger's menu item moved out of the
+"Vouchers" group into this new one.
+
+**Verified end-to-end against the live dev stack** (2026-11-14): the migration was applied for real
+to the app's actual database (`host.docker.internal:5432/fims` — *not* the separate
+`fims-nha-postgres` docker-compose container on port 5433, a different, unrelated Postgres instance;
+don't confuse the two when applying a migration for real, see §10), `composer routes` regenerated,
+then confirmed via `curl` with a real session cookie end to end: created a DV, approved it through to
+`FOR_TREASURY` (posting fired), confirmed the General Ledger ledger-card, Subsidiary Ledger
+ledger-card (a second DV whose JEV line carried an `sl_code`), Journals, and Trial Balance **all**
+show the posting with correctly-signed running balances; cancelled it from `FOR_TREASURY`
+(`reverseJev()` fired) and confirmed both ledger cards net back to exactly `0.00`; confirmed the
+idempotency guard (retrying an already-`FOR_TREASURY` transition is rejected by the state machine,
+no double-post); and confirmed all four pages render 200 with no PHP errors and the new "Ledgers"
+menu group appears on `/MainDashboard`.
 
 ### 8.6 Treasury operations: Bank Management, Cash Position, Check Processing
 

@@ -358,6 +358,7 @@ let VJE_ATC = []; // active ATC codes, loaded once per modal open
 let VJE_DED = []; // active deduction types, loaded once per modal open
 let VJE_RC  = []; // responsibility centers, for ATC "Chargeability", loaded once per modal open
 let VJE_SL  = []; // SL masters, for the Accounting Entries grid's SL Code picker, loaded once per modal open
+let VJE_BOOKS = []; // fims.books (Main Office/CISFA/NGC/MPLC-PPMO/PPMO), for the Accounting Entries Book picker, loaded once per modal open
 let vje_seq    = 0;
 let vje_groupSeq = 0; // GL account-group id counter for the Accounting Entries grid (see vje_addGroup())
 let vje_atcSeq = 0;
@@ -424,7 +425,7 @@ function vje_groupedEntriesCard(dv) {
     const totalCredit = lines.reduce((s, l) => s + (Number(l.credit) || 0), 0);
 
     return `<div class="vr-card">
-        <p class="vr-card-title">Accounting Entries</p>
+        <p class="vr-card-title">Accounting Entries${dv.jev?.book_name ? ` — ${vr_esc(dv.jev.book_name)}` : ''}</p>
         <div style="overflow-x:auto;">
         <table class="vje-grp-table" style="min-width:600px;">
             <thead><tr>
@@ -536,6 +537,11 @@ function vje_entriesCard(dv) {
                 <span class="vje-amt-badge">Gross: <span id="vje-badge-gross">₱ 0.00</span></span>
                 <span class="vje-amt-badge">Net after Deductions: <span id="vje-badge-net-ded">₱ 0.00</span></span>
             </div>
+            <div class="nha-fg" style="max-width:260px;margin-bottom:10px;">
+                <label>Book <span class="nha-req">*</span></label>
+                <select id="vje-book"><option value="">Select a book…</option></select>
+                <span class="vje-err" id="vje-err-book" style="display:none;color:var(--afims-danger,#C0392B);font-size:12px;">Book is required.</span>
+            </div>
             <div style="overflow-x:auto;">
                 <table class="vr-ledger vje-grp-edit-table" style="min-width:760px;">
                     <thead><tr>
@@ -577,7 +583,7 @@ async function vje_getJson(path) {
 async function vje_init(dv) {
     vje_dv = dv;
     try {
-        const [coaJson, atcJson, dedJson, rcJson, slJson] = await Promise.all([
+        const [coaJson, atcJson, dedJson, rcJson, slJson, booksJson] = await Promise.all([
             // postable_only (not the region-scoped /chart-of-accounts/all) — posting a voucher
             // isn't restricted to the preparer's own region, so every active+postable GL account
             // should be selectable here regardless of which region it belongs to.
@@ -586,14 +592,23 @@ async function vje_init(dv) {
             vje_getJson('voucher/deduction-types'),
             vje_getJson('responsibility-center/all'),
             vje_getJson('voucher/sl-codes'),
+            vje_getJson('books/all'),
         ]);
         VJE_COA = (coaJson.data ?? []).filter(a => a.posting_allowed);
         VJE_ATC = atcJson.data ?? [];
         VJE_DED = dedJson.data ?? [];
         VJE_RC  = rcJson.data ?? [];
         VJE_SL  = slJson.data ?? [];
+        VJE_BOOKS = booksJson.data ?? [];
     } catch (e) {
-        VJE_COA = []; VJE_ATC = []; VJE_DED = []; VJE_RC = []; VJE_SL = [];
+        VJE_COA = []; VJE_ATC = []; VJE_DED = []; VJE_RC = []; VJE_SL = []; VJE_BOOKS = [];
+    }
+
+    const vjeBookSel = $vr('vje-book');
+    if (vjeBookSel) {
+        vjeBookSel.innerHTML = '<option value="">Select a book…</option>' +
+            VJE_BOOKS.map(b => `<option value="${b.book_id}">${vr_esc(b.name)}</option>`).join('');
+        vjeBookSel.value = dv.jev?.book_id || '';
     }
 
     vje_dedSeq = 0;
@@ -1192,12 +1207,22 @@ async function vje_save() {
     const lines = vje_collectLines();
     const atc_lines = vje_collectAtcLines();
     const deductions = vje_collectDeductions();
+    const book_id = $vr('vje-book')?.value || null;
+
+    const errBook = $vr('vje-err-book');
+    if (lines.length && !book_id) {
+        if (errBook) errBook.style.display = 'block';
+        alert('Book is required once Accounting Entries lines are filled in.');
+        return;
+    }
+    if (errBook) errBook.style.display = 'none';
+
     window.PagePreloader?.show();
     try {
         const res  = await vr_authFetch(`${VR_API}/voucher/${vr_id}/journal-entry`, {
             method  : 'POST',
             headers : { 'Content-Type': 'application/json' },
-            body    : JSON.stringify({ atc_lines, lines, deductions }),
+            body    : JSON.stringify({ atc_lines, lines, deductions, book_id }),
         });
         const json = await res.json();
         if (!json.success) {

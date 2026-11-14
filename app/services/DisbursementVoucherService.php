@@ -64,6 +64,7 @@ class DisbursementVoucherService
     private string $tableRfa      = 'fims.budget_allocation';
     private string $tableUsers    = 'uac.users';
     private string $tableFiscal   = 'fims.fiscal_year';
+    private string $tableBooks    = 'fims.books';
     private string $tableCoa      = 'fims.chart_of_accounts';
     private string $tableAtc      = 'fims.atc_codes';
     private string $tableJev      = 'fims.journal_entry_vouchers';
@@ -208,6 +209,13 @@ class DisbursementVoucherService
             $errors[] = "Fiscal year {$fy} does not exist.";
         }
         $fields['fiscal_yr'] = (int) $fy;
+
+        // Book (fims.books — Main Office/CISFA/NGC/MPLC-PPMO/PPMO) isn't a DV-header field — it's an
+        // accounting classification chosen on the Accounting Entries section (same place as Account
+        // Code/SL Code), so it's not validated/stored here. Just passed through raw for create()/
+        // update()'s own optional Accounting Entries pre-fill call into persistJournalEntry(), which
+        // does the real validation — see "03 - alter_table/30".
+        $fields['book_id'] = $body['book_id'] ?? null;
 
         // Expense class: derived from account_code below (deriveExpenseClass()), once account_code
         // itself is resolved — NOT read from $body here; see the EXPENSE_CLASSES doc comment above.
@@ -979,7 +987,13 @@ class DisbursementVoucherService
     /** The JEV for a DV (header + lines, with any SL breakdown), or null if not prepared yet. */
     private function fetchJev(int $dvId): ?array
     {
-        $jev = App\ExecuteRow("SELECT * FROM {$this->tableJev} WHERE dv_id = {$dvId}", 'DB');
+        $jev = App\ExecuteRow(
+            "SELECT jev.*, b.name AS book_name
+             FROM {$this->tableJev} jev
+             LEFT JOIN {$this->tableBooks} b ON b.book_id = jev.book_id
+             WHERE jev.dv_id = {$dvId}",
+            'DB'
+        );
         if (!$jev) {
             return null;
         }
@@ -1142,7 +1156,7 @@ class DisbursementVoucherService
      * own transaction (persistJournalEntry() doesn't) since this is a standalone call, not nested
      * inside create()/update()'s.
      */
-    public function saveJournalEntry(int|string $dvId, array $atcLines, array $lines, int $userId, array $deductions = []): array
+    public function saveJournalEntry(int|string $dvId, array $atcLines, array $lines, int $userId, array $deductions = [], mixed $bookId = null): array
     {
         try {
             $dvId   = (int) $dvId;
@@ -1162,7 +1176,7 @@ class DisbursementVoucherService
 
             App\Execute('BEGIN', 'DB');
             try {
-                $result = $this->persistJournalEntry($dvId, $atcLines, $lines, $userId, true, $deductions);
+                $result = $this->persistJournalEntry($dvId, $atcLines, $lines, $userId, true, $deductions, $bookId);
                 if (!$result['success']) {
                     App\Execute('ROLLBACK', 'DB');
 
@@ -1201,8 +1215,13 @@ class DisbursementVoucherService
      * saveJournalEntry() (Accounting) passes a real array — a full replace, same "always send the
      * current set" convention atc_lines/lines already use, now that Accounting can edit Deductions
      * too (see app/pages/voucher/readone.php's vje_deductionCard()).
+     *
+     * $bookId (fims.books — see "03 - alter_table/30") is required whenever $lines is non-empty —
+     * Book is an accounting classification chosen alongside the Accounting Entries themselves, not
+     * a DV-header field, so it's validated here rather than in prepare(). Moot when $lines is empty
+     * (no JEV being saved at all).
      */
-    private function persistJournalEntry(int $dvId, array $atcLines, array $lines, int $userId, bool $requireBalancedEntry, ?array $deductions = null): array
+    private function persistJournalEntry(int $dvId, array $atcLines, array $lines, int $userId, bool $requireBalancedEntry, ?array $deductions = null, mixed $bookId = null): array
     {
         $dv = App\ExecuteRow(
             "SELECT dv_id, fiscal_yr, gross_amount, obligation_amount, payments_prior_amount
@@ -1211,6 +1230,14 @@ class DisbursementVoucherService
         );
         if (!$dv) {
             return ['success' => false, 'message' => "Disbursement Voucher #{$dvId} not found.", 'httpCode' => 404];
+        }
+
+        $bookId = ($bookId !== null && $bookId !== '' && ctype_digit((string) $bookId)) ? (int) $bookId : null;
+        if ($lines && $bookId === null) {
+            return ['success' => false, 'message' => 'Book (book_id) is required when Accounting Entries lines are provided.'];
+        }
+        if ($bookId !== null && (int) App\ExecuteScalar("SELECT COUNT(*) FROM {$this->tableBooks} WHERE book_id = {$bookId}", 'DB') === 0) {
+            return ['success' => false, 'message' => "Book #{$bookId} does not exist."];
         }
 
         $errors = [];
@@ -1311,6 +1338,7 @@ class DisbursementVoucherService
                 $jevId = (int) $existing['jev_id'];
                 App\Execute(
                     "UPDATE {$this->tableJev} SET
+                        book_id = " . $this->intOrNull($bookId) . ",
                         total_debit = {$totalDebit}, total_credit = {$totalCredit},
                         updated_by = {$uid}, updated_at = CURRENT_TIMESTAMP
                      WHERE jev_id = {$jevId}",
@@ -1320,8 +1348,8 @@ class DisbursementVoucherService
             } else {
                 $jevNo = $this->nextJevNumber(date('Y-m-d'));
                 $row = App\ExecuteRow(
-                    "INSERT INTO {$this->tableJev} (jev_no, dv_id, fiscal_yr, total_debit, total_credit, created_by)
-                     VALUES (" . $this->str($jevNo) . ", {$dvId}, " . (int) $dv['fiscal_yr'] . ", {$totalDebit}, {$totalCredit}, {$uid})
+                    "INSERT INTO {$this->tableJev} (jev_no, dv_id, fiscal_yr, book_id, total_debit, total_credit, created_by)
+                     VALUES (" . $this->str($jevNo) . ", {$dvId}, " . (int) $dv['fiscal_yr'] . ', ' . $this->intOrNull($bookId) . ", {$totalDebit}, {$totalCredit}, {$uid})
                      RETURNING jev_id",
                     'DB'
                 );
@@ -1460,7 +1488,7 @@ class DisbursementVoucherService
                 // Optional ATC Code / Accounting Entries pre-fill — see persistJournalEntry()'s
                 // doc comment. A validation failure here rolls back the DV creation too.
                 if ($f['atc_lines'] || $f['lines']) {
-                    $jevResult = $this->persistJournalEntry((int) $row['dv_id'], $f['atc_lines'], $f['lines'], $userId, false);
+                    $jevResult = $this->persistJournalEntry((int) $row['dv_id'], $f['atc_lines'], $f['lines'], $userId, false, null, $f['book_id']);
                     if (!$jevResult['success']) {
                         App\Execute('ROLLBACK', 'DB');
 
@@ -1564,7 +1592,7 @@ class DisbursementVoucherService
                 // Optional ATC Code / Accounting Entries pre-fill — see persistJournalEntry()'s
                 // doc comment. A validation failure here rolls back the whole update too.
                 if ($f['atc_lines'] || $f['lines']) {
-                    $jevResult = $this->persistJournalEntry($dvId, $f['atc_lines'], $f['lines'], $userId, false);
+                    $jevResult = $this->persistJournalEntry($dvId, $f['atc_lines'], $f['lines'], $userId, false, null, $f['book_id']);
                     if (!$jevResult['success']) {
                         App\Execute('ROLLBACK', 'DB');
 
@@ -1751,6 +1779,24 @@ class DisbursementVoucherService
             }
             if (!in_array($cur['status'], self::DELETABLE, true)) {
                 return ['success' => false, 'message' => "Only DRAFT or CANCELLED disbursement vouchers can be deleted (current status: {$cur['status']})."];
+            }
+
+            // A CANCELLED voucher is normally deletable, but NOT if its JEV was ever posted to the
+            // General Ledger (GeneralLedgerService::postJev(), on an earlier FOR_ACCOUNTING ->
+            // FOR_TREASURY — the only way a CANCELLED voucher gets here is FOR_TREASURY ->
+            // CANCELLED, see TRANSITIONS) — fims.general_ledger.jev_id/jev_line_id have no ON
+            // DELETE CASCADE (posted ledger rows are never deleted, only reversed — see
+            // GeneralLedgerService's docblock), so the DELETE below would otherwise fail on a raw
+            // FK violation with no useful message. Check up front instead, same reasoning as the
+            // status check above.
+            $jevStatus = App\ExecuteScalar(
+                "SELECT st.name FROM {$this->tableJev} jev
+                 LEFT JOIN {$this->tableSettingsStatus} st ON st.id = jev.status_id
+                 WHERE jev.dv_id = {$dvId}",
+                'DB'
+            );
+            if (in_array($jevStatus, ['POSTED', 'REVERSED'], true)) {
+                return ['success' => false, 'message' => "This voucher's Journal Entry Voucher has already been posted to the General Ledger and cannot be deleted — posted ledger entries are never removed, only reversed. See the General Ledger / Journals for its posted/reversing entries."];
             }
 
             // Release any RFA still linked to this voucher (budget_allocation.dv_id) BEFORE deleting

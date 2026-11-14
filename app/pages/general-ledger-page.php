@@ -2,11 +2,10 @@
 namespace PHPMaker2024\FIMS;
 @session_start();
 
-// General Ledger — read-only reports over fims.general_ledger (see GeneralLedgerService.php and
-// system_docs/ERD/README.md §2.8). Posting happens only inside
-// DisbursementVoucherService::changeStatus() (Accounting approving a DV moves its Journal Entry
-// Voucher to FOR_TREASURY and posts it here) — nothing on this page writes anything.
-// Two tabs: Journals (fims.v_journals, paged) and Trial Balance (fims.v_trial_balance, by fiscal year).
+// General Ledger — pick ONE chart-of-accounts account, see every posting to it (fims.general_ledger,
+// via fims.v_journals) in order with a running balance. Read-only — see GeneralLedgerService.php and
+// system_docs/ERD/README.md §2.8. Separate module from Subsidiary Ledger (same idea, keyed by SL
+// code instead), Journals (chronological, every account) and Trial Balance (totals, no detail).
 $_gl_api = rtrim((string) Config('API.FIMS_URL'), '/');
 $_gl_api = preg_match('~/api$~', $_gl_api) ? $_gl_api : $_gl_api . '/api';
 ?>
@@ -15,6 +14,26 @@ $_gl_api = preg_match('~/api$~', $_gl_api) ? $_gl_api : $_gl_api . '/api';
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
+
+<style>
+    #gl-root .gl-combo-wrap { position: relative; }
+    #gl-root .gl-combo-results {
+        position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 20;
+        background: #fff; border: 1px solid var(--afims-border, #E2E4ED); border-radius: 8px;
+        box-shadow: 0 8px 24px rgba(0,0,0,.08); max-height: 260px; overflow-y: auto; display: none;
+    }
+    #gl-root .gl-combo-item { padding: 8px 12px; cursor: pointer; font-size: 13px; }
+    #gl-root .gl-combo-item:hover { background: var(--afims-bg-soft, #F5F6FA); }
+    #gl-root .gl-combo-empty { padding: 8px 12px; font-size: 13px; color: var(--afims-text-muted,#62657E); }
+    #gl-root .gl-summary-cards { display: flex; gap: 12px; flex-wrap: wrap; margin: 0 0 14px; }
+    #gl-root .gl-summary-card {
+        flex: 1 1 180px; border: 1px solid var(--afims-border, #E2E4ED); border-radius: 10px;
+        padding: 12px 14px; background: #fff;
+    }
+    #gl-root .gl-summary-label { font-size: 11px; color: var(--afims-text-muted,#62657E); text-transform: uppercase; letter-spacing: .03em; }
+    #gl-root .gl-summary-value { font-size: 18px; font-weight: 600; margin-top: 4px; }
+    #gl-root .gl-group-row td { background: var(--afims-bg-soft, #F5F6FA); font-weight: 600; }
+</style>
 
 <div id="gl-root" class="nha-root">
 
@@ -40,9 +59,7 @@ $_gl_api = preg_match('~/api$~', $_gl_api) ? $_gl_api : $_gl_api . '/api';
     </div>
 
     <p class="nha-hint no-print" style="margin:0 0 14px;color:var(--afims-text-muted,#62657E);font-size:13px;">
-        A Journal Entry Voucher is posted here the moment Accounting approves its Disbursement Voucher
-        (For Accounting → For Treasury). Nothing on this page is editable — Journals is the book of
-        original entry, Trial Balance is debits vs. credits per account.
+        Showing every posted account. Pick one above to see just its ledger, oldest first, with a running balance.
     </p>
 
     <!-- Error banner -->
@@ -51,96 +68,71 @@ $_gl_api = preg_match('~/api$~', $_gl_api) ? $_gl_api : $_gl_api . '/api';
         <span id="gl-error-msg">Failed to load data.</span>
     </div>
 
-    <!-- ── TABS ───────────────────────────────────────────── -->
-    <div class="nha-tabs no-print" role="tablist" aria-label="Report">
-        <button type="button" class="nha-tab active" id="gl-tab-journals" data-tab="JOURNALS" role="tab" aria-selected="true">Journals</button>
-        <button type="button" class="nha-tab" id="gl-tab-tb" data-tab="TRIAL_BALANCE" role="tab" aria-selected="false">Trial Balance</button>
-    </div>
-
     <!-- ── FILTERS ────────────────────────────────────────── -->
     <div class="nha-filters no-print">
         <div class="nha-filter-row">
+            <div class="nha-filter-group nha-filter-group-search" style="flex:1 1 320px;">
+                <label class="nha-filter-label">Account</label>
+                <div class="gl-combo-wrap">
+                    <input type="text" id="gl-account-search" class="nha-filter-input" style="width:100%;"
+                           placeholder="Search account code or title…" autocomplete="off">
+                    <div id="gl-account-results" class="gl-combo-results"></div>
+                </div>
+            </div>
             <div class="nha-filter-group">
                 <label class="nha-filter-label">Fiscal Year</label>
                 <select id="gl-filter-fy" class="nha-filter-select">
                     <option value="">All Years</option>
                 </select>
             </div>
-            <div class="nha-filter-group" id="gl-filter-account-wrap">
-                <label class="nha-filter-label">Account Code</label>
-                <input type="text" id="gl-filter-account" class="nha-filter-select" placeholder="e.g. 2-01-01-010" style="width:160px;">
-            </div>
-            <div class="nha-filter-group nha-filter-group-search" id="gl-filter-search-wrap">
-                <label class="nha-filter-label">Search</label>
-                <div class="nha-filter-search-wrap">
-                    <svg class="nha-filter-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-                    </svg>
-                    <input type="text" id="gl-filter-search" class="nha-filter-input" placeholder="JEV number or DV number…">
-                </div>
+            <div class="nha-filter-group">
+                <label class="nha-filter-label">Book</label>
+                <select id="gl-filter-book" class="nha-filter-select">
+                    <option value="">All Books</option>
+                </select>
             </div>
         </div>
     </div>
 
-    <!-- ── JOURNALS TAB ───────────────────────────────────── -->
-    <div id="gl-panel-journals" class="nha-tab-panel">
-        <div class="nha-table-wrap">
-            <div class="nha-tbl-scroll">
-                <table class="nha-tbl">
-                    <thead>
-                        <tr>
-                            <th>Posting Date</th>
-                            <th>JEV Number</th>
-                            <th>DV Number</th>
-                            <th>Account</th>
-                            <th>SL Code</th>
-                            <th class="text-end">Debit</th>
-                            <th class="text-end">Credit</th>
-                        </tr>
-                    </thead>
-                    <tbody id="gl-journals-tbody">
-                        <tr><td colspan="7"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
-                    </tbody>
-                </table>
-            </div>
+    <!-- ── SUMMARY ────────────────────────────────────────── -->
+    <div id="gl-summary" class="gl-summary-cards no-print" style="display:none;">
+        <div class="gl-summary-card">
+            <div class="gl-summary-label">Account</div>
+            <div class="gl-summary-value" id="gl-summary-account" style="font-size:14px;">—</div>
         </div>
-        <div class="nha-pag-wrap">
-            <span class="nha-pag-info">Showing <strong><span id="gl-from">0</span>–<span id="gl-to">0</span></strong> of <strong><span id="gl-total">0</span></strong></span>
-            <div id="gl-pagination" class="nha-pag-btns"></div>
+        <div class="gl-summary-card">
+            <div class="gl-summary-label">Total Debit</div>
+            <div class="gl-summary-value nha-mono" id="gl-summary-debit">₱ 0.00</div>
+        </div>
+        <div class="gl-summary-card">
+            <div class="gl-summary-label">Total Credit</div>
+            <div class="gl-summary-value nha-mono" id="gl-summary-credit">₱ 0.00</div>
+        </div>
+        <div class="gl-summary-card">
+            <div class="gl-summary-label">Ending Balance</div>
+            <div class="gl-summary-value nha-mono" id="gl-summary-balance">₱ 0.00</div>
         </div>
     </div>
 
-    <!-- ── TRIAL BALANCE TAB ──────────────────────────────── -->
-    <div id="gl-panel-tb" class="nha-tab-panel" style="display:none;">
-        <div style="margin:0 0 12px;">
-            <span id="gl-tb-badge" class="nha-bdg nha-bdg-gray">—</span>
-        </div>
-        <div class="nha-table-wrap">
-            <div class="nha-tbl-scroll">
-                <table class="nha-tbl">
-                    <thead>
-                        <tr>
-                            <th>Account Code</th>
-                            <th>Account Title</th>
-                            <th>Account Type</th>
-                            <th class="text-end">Total Debit</th>
-                            <th class="text-end">Total Credit</th>
-                            <th class="text-end">Balance</th>
-                        </tr>
-                    </thead>
-                    <tbody id="gl-tb-tbody">
-                        <tr><td colspan="6"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
-                    </tbody>
-                    <tfoot>
-                        <tr style="font-weight:600;">
-                            <td colspan="3">Total</td>
-                            <td class="text-end nha-mono" id="gl-tb-total-debit">₱ 0.00</td>
-                            <td class="text-end nha-mono" id="gl-tb-total-credit">₱ 0.00</td>
-                            <td></td>
-                        </tr>
-                    </tfoot>
-                </table>
-            </div>
+    <!-- ── TABLE ──────────────────────────────────────────── -->
+    <div class="nha-table-wrap">
+        <div class="nha-tbl-scroll">
+            <table class="nha-tbl">
+                <thead>
+                    <tr>
+                        <th>Posting Date</th>
+                        <th>JEV Number</th>
+                        <th>DV Number</th>
+                        <th>SL Code</th>
+                        <th class="text-end">Debit</th>
+                        <th class="text-end">Credit</th>
+                        <th class="text-end">Balance</th>
+                    </tr>
+                </thead>
+                <tbody id="gl-tbody">
+                    <tr><td colspan="7"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
+                </tbody>
+            </table>
         </div>
     </div>
 
@@ -153,11 +145,11 @@ $_gl_api = preg_match('~/api$~', $_gl_api) ? $_gl_api : $_gl_api . '/api';
 
 const GL_BASE = <?= json_encode($_gl_api) ?>;
 const GL_API  = GL_BASE + '/general_ledger';
-const GL_FY_API = GL_BASE + '/fiscal_year/all';
+const GL_COA_API = GL_BASE + '/chart_of_accounts/all';
+const GL_FY_API  = GL_BASE + '/fiscal_year/all';
+const GL_BOOK_API = GL_BASE + '/books/all';
 
-const GL_PAGE_SIZE = 25;
-let gl_page = 1;
-let gl_tab  = 'JOURNALS';
+let gl_selectedAccount = null; // { account_code, account_title }
 let gl_searchTimer = null;
 
 const $gl = id => document.getElementById(id);
@@ -170,7 +162,7 @@ function gl_authFetch(url, opts = {}) {
 }
 
 async function gl_boot() {
-    await gl_loadFiscalYears();
+    await Promise.all([gl_loadFiscalYears(), gl_loadBooks()]);
     gl_bindEvents();
     gl_load();
 }
@@ -178,33 +170,23 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
 else gl_boot();
 
 function gl_bindEvents() {
-    document.querySelectorAll('#gl-root .nha-tab').forEach(b => b.addEventListener('click', () => gl_switchTab(b.dataset.tab)));
-    $gl('gl-refresh')?.addEventListener('click', () => { gl_page = 1; gl_load(); });
-    $gl('gl-filter-fy')?.addEventListener('change', () => { gl_page = 1; gl_load(); });
-    $gl('gl-filter-account')?.addEventListener('input', () => {
-        clearTimeout(gl_searchTimer);
-        gl_searchTimer = setTimeout(() => { gl_page = 1; gl_load(); }, 400);
-    });
-    $gl('gl-filter-search')?.addEventListener('input', () => {
-        clearTimeout(gl_searchTimer);
-        gl_searchTimer = setTimeout(() => { gl_page = 1; gl_load(); }, 400);
-    });
-}
+    $gl('gl-refresh')?.addEventListener('click', () => gl_load());
+    $gl('gl-filter-fy')?.addEventListener('change', () => gl_load());
+    $gl('gl-filter-book')?.addEventListener('change', () => gl_load());
 
-function gl_switchTab(tab) {
-    gl_tab = tab;
-    document.querySelectorAll('#gl-root .nha-tab').forEach(b => {
-        const active = b.dataset.tab === tab;
-        b.classList.toggle('active', active);
-        b.setAttribute('aria-selected', active ? 'true' : 'false');
+    const input = $gl('gl-account-search');
+    input.addEventListener('input', () => {
+        gl_selectedAccount = null;
+        clearTimeout(gl_searchTimer);
+        gl_searchTimer = setTimeout(() => gl_searchAccounts(input.value.trim()), 300);
+        if (!input.value.trim()) gl_load();
     });
-    $gl('gl-panel-journals').style.display = tab === 'JOURNALS' ? '' : 'none';
-    $gl('gl-panel-tb').style.display       = tab === 'TRIAL_BALANCE' ? '' : 'none';
-    // Trial Balance has no Account Code / Search filters (fetchTrialBalance only takes fiscal_yr).
-    $gl('gl-filter-account-wrap').style.display = tab === 'JOURNALS' ? '' : 'none';
-    $gl('gl-filter-search-wrap').style.display  = tab === 'JOURNALS' ? '' : 'none';
-    gl_page = 1;
-    gl_load();
+    input.addEventListener('focus', () => { if (input.value.trim()) gl_searchAccounts(input.value.trim()); });
+    document.addEventListener('click', e => {
+        if (!e.target.closest('#gl-account-search') && !e.target.closest('#gl-account-results')) {
+            $gl('gl-account-results').style.display = 'none';
+        }
+    });
 }
 
 /* Fiscal years come from fims.fiscal_year via GET /fiscal_year/all → {success, data:[{fiscal_yr}]}. */
@@ -222,129 +204,137 @@ async function gl_loadFiscalYears() {
     }
 }
 
-/* ── Load ──────────────────────────────────────────────────── */
-function gl_load() {
-    return gl_tab === 'JOURNALS' ? gl_loadJournals() : gl_loadTrialBalance();
-}
-
-async function gl_loadJournals() {
-    window.PagePreloader?.show();
-    gl_hideError();
+/* Books come from fims.books via GET /books/all → {success, data:[{book_id, code, name}]}. */
+async function gl_loadBooks() {
+    const sel = $gl('gl-filter-book');
     try {
-        const search = $gl('gl-filter-search').value.trim();
-        const params = new URLSearchParams({
-            page         : gl_page,
-            limit        : GL_PAGE_SIZE,
-            fiscal_yr    : $gl('gl-filter-fy').value,
-            account_code : $gl('gl-filter-account').value.trim(),
-        });
-        // One free-text box covers both jev_no and dv_no — try dv_no only if it looks like one
-        // (JEV numbers are JEV-..., DV numbers are not), otherwise send it as jev_no.
-        if (search) params.set(/^JEV-/i.test(search) ? 'jev_no' : 'dv_no', search);
-
-        const res  = await gl_authFetch(`${GL_API}/journals?${params}`);
+        const res  = await gl_authFetch(GL_BOOK_API);
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const json = await res.json();
-        if (!json.success) throw new Error(json.message || 'Failed to load the Journals register.');
-
-        gl_renderJournals(json.data ?? []);
-        gl_renderPagination(json.pagination ?? {});
+        if (!json.success) throw new Error(json.message || 'Failed to load books.');
+        sel.innerHTML = '<option value="">All Books</option>' +
+            (json.data ?? []).map(r => `<option value="${gl_esc(r.book_id)}">${gl_esc(r.name)}</option>`).join('');
     } catch (e) {
-        gl_renderJournals([]);
-        gl_showError('Could not load data: ' + e.message);
-    } finally {
-        window.PagePreloader?.hide();
+        gl_showError('Books: ' + e.message);
     }
 }
 
-async function gl_loadTrialBalance() {
+/* Account combobox — postable (posting_allowed, Active) accounts only, GET /chart_of_accounts/all?postable_only=1 */
+async function gl_searchAccounts(search) {
+    const box = $gl('gl-account-results');
+    try {
+        const params = new URLSearchParams({ postable_only: '1', search });
+        const res  = await gl_authFetch(`${GL_COA_API}?${params}`);
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const json = await res.json();
+        const rows = (json.data ?? []).slice(0, 30);
+        if (!rows.length) {
+            box.innerHTML = '<div class="gl-combo-empty">No matching accounts.</div>';
+        } else {
+            box.innerHTML = rows.map(r => `<div class="gl-combo-item" data-code="${gl_esc(r.account_code)}" data-title="${gl_esc(r.account_title)}">
+                <strong class="nha-mono">${gl_esc(r.account_code)}</strong> — ${gl_esc(r.account_title)}
+            </div>`).join('');
+            box.querySelectorAll('.gl-combo-item').forEach(el => el.addEventListener('click', () => {
+                gl_selectedAccount = { account_code: el.dataset.code, account_title: el.dataset.title };
+                $gl('gl-account-search').value = `${el.dataset.code} — ${el.dataset.title}`;
+                box.style.display = 'none';
+                gl_load();
+            }));
+        }
+        box.style.display = 'block';
+    } catch (e) {
+        gl_showError('Account search: ' + e.message);
+    }
+}
+
+/* ── Load ──────────────────────────────────────────────────── */
+async function gl_load() {
     window.PagePreloader?.show();
     gl_hideError();
     try {
         const params = new URLSearchParams();
+        if (gl_selectedAccount) params.set('account_code', gl_selectedAccount.account_code);
         const fy = $gl('gl-filter-fy').value;
         if (fy) params.set('fiscal_yr', fy);
+        const book = $gl('gl-filter-book').value;
+        if (book) params.set('book_id', book);
 
-        const res  = await gl_authFetch(`${GL_API}/trial-balance?${params}`);
+        const res  = await gl_authFetch(`${GL_API}/ledger?${params}`);
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const json = await res.json();
-        if (!json.success) throw new Error(json.message || 'Failed to load the Trial Balance.');
+        if (!json.success) throw new Error(json.message || 'Failed to load the General Ledger.');
 
-        gl_renderTrialBalance(json);
+        if (json.grouped) {
+            $gl('gl-summary').style.display = 'none';
+            gl_renderGroupedTable(json.accounts ?? []);
+        } else {
+            gl_renderSummary(json);
+            gl_renderTable(json.data ?? [], json.debit_normal);
+        }
     } catch (e) {
-        gl_renderTrialBalance({ data: [], total_debit: 0, total_credit: 0, balanced: true });
+        gl_renderTable([]);
         gl_showError('Could not load data: ' + e.message);
     } finally {
         window.PagePreloader?.hide();
     }
 }
 
-/* ── Journals table ────────────────────────────────────────── */
-function gl_renderJournals(rows) {
-    const tbody = $gl('gl-journals-tbody');
+/* ── Summary ───────────────────────────────────────────────── */
+function gl_renderSummary(json) {
+    $gl('gl-summary').style.display = '';
+    $gl('gl-summary-account').textContent = `${json.account.account_code} — ${json.account.account_title}`;
+    $gl('gl-summary-debit').textContent  = gl_peso(json.total_debit);
+    $gl('gl-summary-credit').textContent = gl_peso(json.total_credit);
+    $gl('gl-summary-balance').textContent = gl_peso(Math.abs(json.ending_balance)) + gl_balSide(json.ending_balance, json.debit_normal);
+}
+
+/* ── Table ─────────────────────────────────────────────────── */
+function gl_renderTable(rows, debitNormal) {
+    const tbody = $gl('gl-tbody');
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="7"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No posted journal entries found.</span></div></td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No posted transactions for this account.</span></div></td></tr>';
         return;
     }
-    tbody.innerHTML = rows.map(r => `<tr>
+    tbody.innerHTML = rows.map(r => gl_rowHtml(r, debitNormal)).join('');
+}
+
+/* Default view (no account picked): every account's ledger, one sub-header + its lines each. */
+function gl_renderGroupedTable(accounts) {
+    const tbody = $gl('gl-tbody');
+    if (!accounts.length) {
+        tbody.innerHTML = '<tr><td colspan="7"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">Nothing posted yet.</span></div></td></tr>';
+        return;
+    }
+    tbody.innerHTML = accounts.map(a => `
+        <tr class="gl-group-row">
+            <td colspan="4">${gl_esc(a.account.account_code)} — ${gl_esc(a.account.account_title)}</td>
+            <td class="text-end nha-mono">${gl_peso(a.total_debit)}</td>
+            <td class="text-end nha-mono">${gl_peso(a.total_credit)}</td>
+            <td class="text-end nha-mono">${gl_peso(Math.abs(a.ending_balance))}${gl_balSide(a.ending_balance, a.debit_normal)}</td>
+        </tr>
+        ${a.data.map(r => gl_rowHtml(r, a.debit_normal)).join('')}
+    `).join('');
+}
+
+function gl_rowHtml(r, debitNormal) {
+    return `<tr${r.reversed_gl_id ? ' style="opacity:.7;"' : ''}>
         <td class="nha-td-date">${gl_fmtDate(r.posting_date)}</td>
-        <td class="nha-mono">${gl_esc(r.jev_no) || '—'}</td>
+        <td class="nha-mono">${gl_esc(r.jev_no) || '—'}${r.reference_no && r.reference_no.endsWith('-REV') ? ' <span class="nha-bdg nha-bdg-orange" style="margin-left:4px;">Reversal</span>' : ''}</td>
         <td class="nha-mono">${gl_esc(r.dv_no) || '—'}</td>
-        <td title="${gl_esc(r.account_title)}">${gl_esc(r.account_code)} ${r.account_title ? '— ' + gl_esc(r.account_title) : ''}</td>
         <td>${gl_esc(r.sl_code) || '—'}</td>
         <td class="text-end nha-mono">${Number(r.debit) > 0 ? gl_peso(r.debit) : ''}</td>
         <td class="text-end nha-mono">${Number(r.credit) > 0 ? gl_peso(r.credit) : ''}</td>
-    </tr>`).join('');
+        <td class="text-end nha-mono">${gl_peso(Math.abs(r.running_balance))}${gl_balSide(r.running_balance, debitNormal)}</td>
+    </tr>`;
 }
 
-/* ── Trial Balance table ───────────────────────────────────── */
-function gl_renderTrialBalance(json) {
-    const rows  = json.data ?? [];
-    const tbody = $gl('gl-tb-tbody');
-    if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="6"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">Nothing posted yet.</span></div></td></tr>';
-    } else {
-        tbody.innerHTML = rows.map(r => `<tr>
-            <td class="nha-mono">${gl_esc(r.account_code)}</td>
-            <td>${gl_esc(r.account_title) || '—'}</td>
-            <td>${gl_esc(r.account_type) || '—'}</td>
-            <td class="text-end nha-mono">${gl_peso(r.total_debit)}</td>
-            <td class="text-end nha-mono">${gl_peso(r.total_credit)}</td>
-            <td class="text-end nha-mono">${gl_peso(r.balance)}</td>
-        </tr>`).join('');
-    }
-    $gl('gl-tb-total-debit').textContent  = gl_peso(json.total_debit);
-    $gl('gl-tb-total-credit').textContent = gl_peso(json.total_credit);
-
-    const badge = $gl('gl-tb-badge');
-    if (json.balanced) {
-        badge.className = 'nha-bdg nha-bdg-green';
-        badge.textContent = 'Balanced';
-    } else {
-        badge.className = 'nha-bdg nha-bdg-red';
-        badge.textContent = 'Out of balance';
-    }
+/* Running/ending balance is signed (debit - credit) for debit-normal accounts, (credit - debit)
+   otherwise — see GeneralLedgerService::DEBIT_NORMAL_TYPES. A positive value is always the
+   account's NORMAL side, so the Dr/Cr suffix has to flip with debitNormal, not just the sign. */
+function gl_balSide(balance, debitNormal) {
+    const onDebitSide = debitNormal ? Number(balance) >= 0 : Number(balance) < 0;
+    return onDebitSide ? ' Dr' : ' Cr';
 }
-
-/* ── Pagination (Journals only) ────────────────────────────── */
-function gl_renderPagination(p) {
-    const { current_page = 1, last_page = 1, total = 0, per_page = GL_PAGE_SIZE } = p;
-    $gl('gl-from').textContent  = total > 0 ? (current_page - 1) * per_page + 1 : 0;
-    $gl('gl-to').textContent    = total > 0 ? Math.min(current_page * per_page, total) : 0;
-    $gl('gl-total').textContent = total;
-
-    const box = $gl('gl-pagination');
-    if (last_page <= 1) { box.innerHTML = ''; return; }
-    const pages = [];
-    for (let i = Math.max(1, current_page - 2); i <= Math.min(last_page, current_page + 2); i++) {
-        pages.push(`<button class="nha-pag-btn${i === current_page ? ' active' : ''}" onclick="gl_goTo(${i})">${i}</button>`);
-    }
-    box.innerHTML =
-        `<button class="nha-pag-btn${current_page === 1 ? ' disabled' : ''}" onclick="gl_goTo(${current_page - 1})">‹</button>` +
-        pages.join('') +
-        `<button class="nha-pag-btn${current_page === last_page ? ' disabled' : ''}" onclick="gl_goTo(${current_page + 1})">›</button>`;
-}
-function gl_goTo(page) { if (page >= 1) { gl_page = page; gl_load(); } }
 
 /* ── Formatters ────────────────────────────────────────────── */
 function gl_peso(v) {

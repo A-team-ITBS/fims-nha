@@ -68,8 +68,20 @@
     <menu id="260">
       <phrase id="menutext" value="Check Disbursements"/>
     </menu>
+    <menu id="394">
+      <phrase id="menutext" value="Ledgers"/>
+    </menu>
     <menu id="393">
       <phrase id="menutext" value="General Ledger"/>
+    </menu>
+    <menu id="395">
+      <phrase id="menutext" value="Subsidiary Ledger"/>
+    </menu>
+    <menu id="396">
+      <phrase id="menutext" value="Journals"/>
+    </menu>
+    <menu id="397">
+      <phrase id="menutext" value="Trial Balance"/>
     </menu>
     <menu id="332">
       <phrase id="menutext" value="Bank Management"/>
