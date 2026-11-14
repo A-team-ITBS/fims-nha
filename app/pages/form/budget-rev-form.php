@@ -198,7 +198,7 @@ $_brv_form_api = Config('API.FIMS_URL');
                 <input type="hidden" id="brv-line-id" value="">
                 <input type="hidden" id="brv-to-line-id" value="">
 
-                <p class="brv-intro">Revise a budget line's amount, or move funds from one budget line to another. A revision only takes effect once it has been approved; then the From line's adjustment goes down and the To line's goes up.</p>
+                <p class="brv-intro">Revise a budget line's amount, or move funds from one budget line to another. A revision only takes effect once it has been approved; then the From line's adjustment and suggested amount go down and the To line's go up.</p>
 
                 <!-- ── 1 · the budget lines: From → To ── -->
                 <section class="brv-step">
@@ -401,7 +401,8 @@ $_brv_form_api = Config('API.FIMS_URL');
 
    A revision changes a BUDGET LINE: one chart-of-accounts line item (fims.budget_line_items) of a budget request. The request
    is a header (reference no. "BP-001", office, fiscal year, status) carrying programs[] > projects[] > line_items[]; the pickers
-   flatten that into one list of lines. A line's CURRENT amount is its proposed amount plus its adjustment — what approving a
+   flatten that into one list of lines — only the lines of an APPROVED request (a request still in review / draft / returned has
+   no budget to revise yet). A revision saved earlier against a line of another status still opens in Edit with that line shown. A line's CURRENT amount is its proposed amount plus its adjustment — what approving a
    revision changes (the From line's adjustment goes down, the To line's goes up). The value a picker holds is the line's id.
 
    Two pickers share one layout, and each has its OWN filters and selection:
@@ -440,8 +441,15 @@ $_brv_form_api = Config('API.FIMS_URL');
     const signedPeso = v => (v < 0 ? '−' : '+') + peso(Math.abs(v));
     const LIST_MAX = 100;   // most lines listed at once; typing narrows the rest down
 
-    // reqs: the budget requests · lines: every budget line of them, flattened (both pickers read these) · loaded: the first fetch has finished
-    const S = { reqs: [], lines: [], loaded: false };
+    // reqs: the budget requests · lines: the budget lines the pickers OFFER — only those of an Approved budget request, flattened
+    // (both pickers read these) · allLines: every budget line whatever its request's status, only used to look up a line by id (a
+    // revision filed earlier may point at a line of a request that is not Approved, and Edit must still be able to show it) ·
+    // loaded: the first fetch has finished
+    const S = { reqs: [], lines: [], allLines: [], loaded: false };
+
+    // Only a line of an Approved budget request may be revised or receive funds (status compared ignoring case and spaces,
+    // the same rule BudgetLineItemService::fetchApproved() uses for the Memo Request form's COBs)
+    const isApproved = l => String(l.status || '').trim().toLowerCase() === 'approved';
 
     // One line, as the pickers use it: its id, the request it belongs to (reference no., fiscal year, office, status), its program and
     // project, its account, its particulars and its amounts. amount = proposed + adjustment, the line's CURRENT amount.
@@ -451,12 +459,14 @@ $_brv_form_api = Config('API.FIMS_URL');
             (Array.isArray(pg.projects) ? pg.projects : []).forEach(pj =>
                 (Array.isArray(pj.line_items) ? pj.line_items : []).forEach(li => {
                     const proposed = Number(li.proposed_amount || 0), adjustment = Number(li.adjustment || 0);
+                    // suggested: the line's live balance (suggested_amount) — what a revision that lowers the line may not exceed
+                    const suggested = Number(li.suggested_amount || 0);
                     out.push({
                         id: li.budget_line_item_id, ref: String(h.budget_reference_number), fy: h.fiscal_yr,
                         office: h.rc_name || h.rc_code || '', parentOffice: h.rc_parent_name || '', status: h.status_name, statusColor: h.status_color,
                         programCode: pg.program_code || '', programName: pg.program_name || '', projectCode: pj.project_code || '', projectName: pj.project_name || '',
                         accountId: li.account_id || '', accountCode: li.account_code || '', accountTitle: li.account_title || '', particulars: li.particulars || '',
-                        proposed, adjustment, amount: proposed + adjustment,
+                        proposed, adjustment, suggested, amount: proposed + adjustment,
                     });
                 }))));
         return out;
@@ -629,6 +639,7 @@ $_brv_form_api = Config('API.FIMS_URL');
             place,
             l.particulars,
             l.adjustment !== 0 ? `Proposed ${peso(l.proposed)} · adjusted ${signedPeso(l.adjustment)}` : '',
+            `Suggested amount (balance) ${peso(l.suggested)}`,
         ].filter(Boolean).join('\n');
         amountEl.textContent = peso(amountOf(l));
     }
@@ -849,13 +860,33 @@ $_brv_form_api = Config('API.FIMS_URL');
         onSelect: () => updateChange(),
     });
 
+    // The From line may not be left with a negative balance. Approving moves its suggested_amount by (To Amount − its current amount),
+    // so lowering the line by more than that suggested_amount would take it below zero. Returns the message, or '' when it is fine
+    // (an increase, or a decrease that fits). The server checks the same rule (BudgetRevisionService::fromBalanceError()).
+    function fromBalanceError(line, toAmount) {
+        if (!line) return '';
+        const change = Math.round((Number(toAmount) - amountOf(line)) * 100) / 100;   // negative = the line goes down
+        const left   = Math.round((line.suggested + change) * 100) / 100;
+        if (change >= 0 || left >= 0) return '';
+        return `The From budget line has only ${peso(line.suggested)} left (its suggested amount), so it can't go down by ${peso(-change)} — that would leave it at −${peso(-left)}.`;
+    }
+
     function updateChange() {
         const f = el.from.value, t = el.to.value;
         const from = fromPicker.selected(), to = toPicker.selected();
-        el.to.setCustomValidity('');   // set again below when a To line makes the amounts invalid
+        el.to.setCustomValidity('');   // set again below when the amounts are invalid
         if (f === '' || t === '' || isNaN(f) || isNaN(t)) { el.change.hidden = true; return; }
         const d = Math.round((Number(t) - Number(f)) * 100) / 100;
         el.change.hidden = false;
+
+        // nothing is submitted that would leave the From line negative
+        const low = fromBalanceError(from, t);
+        if (low) {
+            el.change.className = 'brv-change is-down';
+            el.change.textContent = low;
+            el.to.setCustomValidity(low);
+            return;
+        }
 
         if (to) {
             // With a To line the revision moves funds: the From line must go DOWN, the To line gets the difference.
@@ -901,10 +932,11 @@ $_brv_form_api = Config('API.FIMS_URL');
             || officeOf(a).localeCompare(officeOf(b))
             || String(a.budget_reference_number).localeCompare(String(b.budget_reference_number), undefined, { numeric: true }));
         // the lines follow that order, then program, project and account
-        S.lines = toLines(S.reqs).map((l, i) => ({ l, i })).sort((a, b) =>
+        S.allLines = toLines(S.reqs).map((l, i) => ({ l, i })).sort((a, b) =>
             (a.l.ref === b.l.ref ? 0 : a.i - b.i)
             || a.l.programCode.localeCompare(b.l.programCode) || a.l.projectCode.localeCompare(b.l.projectCode)
             || a.l.accountCode.localeCompare(b.l.accountCode, undefined, { numeric: true }) || a.i - b.i).map(x => x.l);
+        S.lines = S.allLines.filter(isApproved);   // what the From / To pickers list
         S.loaded = true;
         fromPicker.refresh();
         toPicker.refresh();
@@ -930,7 +962,7 @@ $_brv_form_api = Config('API.FIMS_URL');
         // the list — or a revision filed before budget lines were revised, which has none — leaves that picker empty). The host
         // page has already put the saved From/To Amount in the inputs, so refresh the chip too.
         setBudgetLine: (fromId, toId) => ready.then(() => {
-            const find = v => (v === '' || v == null ? null : (S.lines.find(l => keyOf(l) === String(v)) || null));
+            const find = v => (v === '' || v == null ? null : (S.allLines.find(l => keyOf(l) === String(v)) || null));
             fromPicker.select(find(fromId));
             toPicker.select(find(toId));
             updateChange();
@@ -941,7 +973,7 @@ $_brv_form_api = Config('API.FIMS_URL');
         reload: async () => {
             try {
                 const items = await loadRows();
-                const fresh = line => (line ? S.lines.find(l => keyOf(l) === keyOf(line)) || null : null);
+                const fresh = line => (line ? S.allLines.find(l => keyOf(l) === keyOf(line)) || null : null);
                 if (fromPicker.selected()) fromPicker.select(fresh(fromPicker.selected()));
                 if (toPicker.selected()) toPicker.select(fresh(toPicker.selected()));
                 return items;

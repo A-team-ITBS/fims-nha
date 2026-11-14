@@ -3606,8 +3606,8 @@ $cbaAsModal = !empty($cbaAsModal);
 		if (dd) dd.style.display = 'none';
 		baaBvClearError(idx);
 
-		// available_amount (suggested_amount + adjustment - obligation - active earmarks, from
-		// BudgetLineItemService::fetchApproved()) is the real, earmark-aware ceiling — what's actually still
+		// available_amount (the line's suggested_amount, from BudgetLineItemService::fetchApproved() — already
+		// reduced by every Approved CBA / CFA and moved by every approved Budget Revision) is the real ceiling — what's actually still
 		// free to request against this COB right now. Falls back to proposed_amount only if the API response
 		// doesn't carry it (shouldn't happen once the backend is deployed, but keeps this from breaking).
 		// Only the real ceiling for CBA / CFA — RFA / LAA use CBA Available Balance instead (see baaRefreshCbaAmount()).

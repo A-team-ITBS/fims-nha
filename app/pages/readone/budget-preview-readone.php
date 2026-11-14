@@ -12,6 +12,14 @@
  *       Type of Fund · Component · Account Code · Description (the account name,
  *       the line's particulars under it) · Amount (proposed) · Adjustment (budget_line_items.adjustment, signed: green
  *       "+", red "−", a dash for none) · Suggested Amount, with a Total row under all three amount columns.
+ *   - under that table, the Project's Supporting Documents — the same read-only section as the Budget Processing modal:
+ *     the documents the originating office attached to THAT Project (fims.budget_req_project_attachment: an uploaded file or a
+ *     pasted link, keyed by the Program and the project code), one line each: the name (a link that opens the document),
+ *     File / Link, the date and "Open ↗". They are not part of the list data (opening a file needs a freshly signed URL), so
+ *     when the modal opens each Project asks for its own (GET /budget_req_project_attachment/list?budget_req_program_id=…&project_code=…,
+ *     all in parallel); the table is usable straight away and each section says "Loading…" until its answer comes. A section
+ *     whose request failed says so and offers Retry. A link is only opened when it is a web address (http / https) — the server
+ *     stores a pasted link as typed, so anything else is shown as text, never as a clickable link.
  * A Program that has no Projects yet gets its card and a "No projects yet." note.
  * (There used to be Program Sources / Program Uses columns — budget_line_items.program_source_code / program_uses
  * were dropped, migration alter_table/22.)
@@ -22,8 +30,9 @@
  *   programs       = ONE program or an ARRAY of them, each
  *                    { program_code, program_name, sub_program_code, sub_program_name, projects[] }
  *                    (each project has project_code, project_name, line_items[] carrying type_of_fund_name and
- *                    component_name, straight from the list data)
- * Takes already-fetched request data; nothing is looked up.
+ *                    component_name, straight from the list data; the program's budget_req_program_id is what a Project's
+ *                    Supporting Documents are looked up by)
+ * Takes already-fetched request data; the only thing it looks up is each Project's Supporting Documents.
  *
  * Footer (Return / Approve and the REMARKS box are hidden unless requestContext.can_decide is true — the list
  * page sets it for the Budget Head on an Endorsed request, from the row's review.can_decide; without them the footer is
@@ -81,6 +90,43 @@ $_bpv_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
 .nha-root .bpv-tbl tfoot td { padding: 11px 12px; font-weight: 700; background: var(--surf); border-top: 1px solid var(--bdr); }
 .nha-root .bpv-empty, .nha-root .bpv-noproj { padding: 18px 12px; text-align: center; font-size: 12.5px; color: var(--subtle); }
 .nha-root .bpv-noproj { margin-top: 14px; border: 1px solid var(--bdr); border-radius: 12px; font-style: italic; }
+
+/* ── Supporting Documents of a Project (under its table): one line per document ── */
+.nha-root .bpv-docs { margin-top: 14px; }
+.nha-root .bpv-docs-hd {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+    font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--sec);
+}
+.nha-root .bpv-docs-n {
+    min-width: 18px; padding: 1px 6px; border-radius: 10px; text-align: center; letter-spacing: 0;
+    font-size: 11px; color: var(--sec); background: var(--surf); border: 1px solid var(--bdr);
+}
+.nha-root .bpv-doc-list { margin: 0; padding: 0; list-style: none; border: 1px solid var(--bdr); border-radius: 10px; overflow: hidden; }
+.nha-root .bpv-doc { display: flex; align-items: center; gap: 10px; padding: 9px 12px; font-size: 13px; color: var(--txt); background: var(--afims-surface, #FFFFFF); }
+.nha-root .bpv-doc + .bpv-doc { border-top: 1px solid var(--bdr); }
+.nha-root .bpv-doc-ico { width: 16px; height: 16px; flex-shrink: 0; color: var(--subtle); }
+.nha-root .bpv-doc-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.nha-root a.bpv-doc-link { color: var(--afims-primary-text, #0035A9); text-decoration: none; }
+.nha-root a.bpv-doc-link:hover { text-decoration: underline; }
+.nha-root a.bpv-doc-link:focus-visible, .nha-root .bpv-doc-open:focus-visible { outline: 2px solid var(--afims-primary, #0035A9); outline-offset: 2px; border-radius: 3px; }
+.nha-root .bpv-doc-kind {
+    flex-shrink: 0; padding: 1px 7px; border-radius: 4px; font-size: 10.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+    color: var(--sec); background: var(--surf); border: 1px solid var(--bdr);
+}
+.nha-root .bpv-doc-date { flex-shrink: 0; font-size: 11.5px; color: var(--subtle); white-space: nowrap; }
+.nha-root .bpv-doc-open { flex-shrink: 0; font-size: 12px; font-weight: 600; white-space: nowrap; text-decoration: none; color: var(--afims-heading-fill, #000E3E); }
+.nha-root .bpv-doc-open:hover { text-decoration: underline; }
+.nha-root .bpv-doc-na { flex-shrink: 0; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-style: italic; color: var(--subtle); }
+.nha-root .bpv-docs-note {
+    padding: 10px 12px; font-size: 12.5px; font-style: italic; color: var(--subtle);
+    background: var(--surf); border: 1px dashed var(--bdr); border-radius: 10px;
+}
+.nha-root .bpv-docs-err { font-style: normal; color: var(--red-txt, #8F222D); background: var(--red-bg, #FAE1E3); border-color: transparent; }
+.nha-root .bpv-docs-retry {
+    margin-left: 6px; padding: 0; border: 0; background: none; cursor: pointer; font: inherit; font-weight: 700;
+    text-decoration: underline; color: inherit;
+}
+@media (max-width: 640px) { .nha-root .bpv-doc-date, .nha-root .bpv-doc-kind { display: none; } }
 
 /* ── Remarks (only when the user can decide) ── */
 .nha-root .bpv-remarks-label {
@@ -153,12 +199,14 @@ $_bpv_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
    BUDGET PREVIEW MODAL   prefix: bpv_
    Depends on bgr_esc / bgr_escHtmlAttr / bgr_fmtMoney / bgr_statusBadge /
    bgr_toast from form/budget-req-form.php, included on the same page.
-   Takes already-fetched request data; nothing is looked up. Return / Approve call the API.
+   Takes already-fetched request data; only each Project's Supporting Documents are looked up. Return / Approve call the API.
 ═══════════════════════════════════════════════════════════════ */
 
 const BPV_BUDGET_REQ_API = '<?php echo $_bpv_api; ?>' + '/budget_req';
+const BPV_ATTACHMENT_API = '<?php echo $_bpv_api; ?>' + '/budget_req_project_attachment';   // a Project's Supporting Documents
 
 let bpv_ctx = null;       // requestContext of the modal that is currently open
+let bpv_renderSeq = 0;    // bumped by every render and every close: a Supporting Documents answer that arrives after that is dropped
 
 const $bpv = id => document.getElementById(id);
 
@@ -169,6 +217,12 @@ document.addEventListener('DOMContentLoaded', () => {
     $bpv('bpv-approve')?.addEventListener('click', () => bpv_decide('approve'));
 
     $bpv('bpv-remarks')?.addEventListener('input', e => e.target.classList.remove('is-invalid'));
+
+    // "Retry" in a Project's Supporting Documents section whose request failed
+    $bpv('bpv-blocks')?.addEventListener('click', e => {
+        const retry = e.target.closest('.bpv-docs-retry');
+        if (retry) bpv_loadDocsFor(retry.closest('.bpv-docs'), bpv_renderSeq);
+    });
 });
 
 // `programs` is one program or an array of them (see the header comment).
@@ -243,6 +297,7 @@ async function bpv_decide(action) {
 }
 
 function bpv_closeModal() {
+    bpv_renderSeq++;   // documents still on their way belong to a modal nobody is looking at
     $bpv('bpv-overlay').classList.remove('open');
 }
 
@@ -325,11 +380,101 @@ function bpv_cardHtml(ctx, program, project) {
     </div>`;
 }
 
-// One block = the info card + (the Project's table | "No projects yet." when the Program has no Project)
+/* ── Supporting Documents of a Project ───────────────────────────────── */
+const BPV_ICON_FILE = '<svg class="bpv-doc-ico" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>';
+const BPV_ICON_LINK = '<svg class="bpv-doc-ico" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M10 14a3.5 3.5 0 005 0l4-4a3.5 3.5 0 00-5-5l-.5.5M14 10a3.5 3.5 0 00-5 0l-4 4a3.5 3.5 0 005 5l.5-.5"/></svg>';
+
+// Postgres timestamps arrive as "2026-11-10 08:30:00.123456+08": make that ISO enough for every browser's Date(), then show it
+// as "Nov 10, 2026". '' when there is no date.
+function bpv_fmtDate(value) {
+    if (!value) return '';
+    const iso = String(value).trim().replace(' ', 'T').replace(/(\.\d{3})\d+/, '$1').replace(/([+-]\d{2})$/, '$1:00');
+    const d = new Date(iso);
+    return isNaN(d) ? String(value) : d.toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+// A pasted link is stored as typed (the server does not check what it is), so only a web address may become a clickable
+// link: a javascript: / data: / "file:" link is shown as text instead. '' = not openable.
+function bpv_safeUrl(url) {
+    const u = String(url ?? '').trim();
+    return /^https?:\/\/\S+$/i.test(u) ? u : '';
+}
+
+// The section's frame. Its documents are looked up by the Program's id + the project code (that is how they are stored), so a
+// Project without either gets no section rather than a false "none attached".
+function bpv_docsHtml(program, project) {
+    const programId = program.budget_req_program_id;
+    if (programId === null || programId === undefined || programId === '' || !project.project_code) return '';
+    return `<div class="bpv-docs" data-program-id="${bgr_escHtmlAttr(programId)}" data-project-code="${bgr_escHtmlAttr(project.project_code)}">
+        <div class="bpv-docs-hd"><span>Supporting Documents</span><span class="bpv-docs-n" hidden></span></div>
+        <div class="bpv-docs-body"><div class="bpv-docs-note">Loading documents…</div></div>
+    </div>`;
+}
+
+// One attachment: { attachment_id, document_name, storage_key, external_link, uploaded_at, view_url }.
+// view_url is a signed link for an uploaded file, the pasted link otherwise.
+function bpv_docRowHtml(a) {
+    const isFile = !!a.storage_key;
+    const name   = a.document_name || (isFile ? 'Document' : (a.external_link || 'Document'));
+    const url    = bpv_safeUrl(a.view_url || a.external_link);
+    const date   = bpv_fmtDate(a.uploaded_at);
+    const href   = bgr_escHtmlAttr(url);
+    // the name opens the document too (the same address as "Open ↗"); with no openable address it is plain text
+    const nameEl = url
+        ? `<a class="bpv-doc-name bpv-doc-link" href="${href}" target="_blank" rel="noopener noreferrer" title="${bgr_escHtmlAttr(name)}">${bgr_esc(name)}</a>`
+        : `<span class="bpv-doc-name" title="${bgr_escHtmlAttr(name)}">${bgr_esc(name)}</span>`;
+    const open   = url
+        ? `<a class="bpv-doc-open" href="${href}" target="_blank" rel="noopener noreferrer" aria-label="Open ${bgr_escHtmlAttr(name)}">Open ↗</a>`
+        : (isFile ? '<span class="bpv-doc-na">File unavailable</span>'
+                  : `<span class="bpv-doc-na" title="${bgr_escHtmlAttr(a.external_link || '')}">Not a web link: ${bgr_esc(a.external_link || '—')}</span>`);
+    return `<li class="bpv-doc">
+        ${isFile ? BPV_ICON_FILE : BPV_ICON_LINK}
+        ${nameEl}
+        <span class="bpv-doc-kind">${isFile ? 'File' : 'Link'}</span>
+        ${date ? `<span class="bpv-doc-date">${bgr_esc(date)}</span>` : ''}
+        ${open}
+    </li>`;
+}
+
+function bpv_fillDocs(box, docs) {
+    const count = box.querySelector('.bpv-docs-n');
+    count.textContent = docs.length;
+    count.hidden = docs.length === 0;
+    box.querySelector('.bpv-docs-body').innerHTML = docs.length
+        ? `<ul class="bpv-doc-list">${docs.map(bpv_docRowHtml).join('')}</ul>`
+        : '<div class="bpv-docs-note">No supporting documents were attached to this project.</div>';
+}
+
+// Asks for ONE Project's documents. `seq` is the render it was asked for: an answer that arrives after the modal was closed or
+// re-opened for another request (or after its section was replaced) is dropped.
+async function bpv_loadDocsFor(box, seq) {
+    if (!box) return;
+    const body  = box.querySelector('.bpv-docs-body');
+    const stale = () => seq !== bpv_renderSeq || !box.isConnected;
+    body.innerHTML = '<div class="bpv-docs-note">Loading documents…</div>';
+    try {
+        const params = new URLSearchParams({ budget_req_program_id: box.dataset.programId, project_code: box.dataset.projectCode });
+        const res    = await fetch(`${BPV_ATTACHMENT_API}/list?${params}`, { credentials: 'same-origin' });
+        const json   = await res.json().catch(() => null);
+        if (!res.ok || !json || !json.success) throw new Error((json && json.message) || 'HTTP ' + res.status);
+        if (stale()) return;
+        bpv_fillDocs(box, Array.isArray(json.data) ? json.data : []);
+    } catch (e) {
+        if (stale()) return;
+        body.innerHTML = `<div class="bpv-docs-note bpv-docs-err">Could not load the supporting documents — ${bgr_esc(e.message)}<button type="button" class="bpv-docs-retry">Retry</button></div>`;
+    }
+}
+
+// Every Project section of the freshly rendered modal, at once.
+function bpv_loadDocs(seq) {
+    document.querySelectorAll('#bpv-blocks .bpv-docs').forEach(box => { bpv_loadDocsFor(box, seq); });
+}
+
+// One block = the info card + (the Project's table + its Supporting Documents | "No projects yet." when the Program has no Project)
 function bpv_blockHtml(ctx, program, project) {
     return `<section class="bpv-block">
         ${bpv_cardHtml(ctx, program, project)}
-        ${project ? bpv_tableHtml(project) : '<div class="bpv-noproj">No projects yet.</div>'}
+        ${project ? bpv_tableHtml(project) + bpv_docsHtml(program, project) : '<div class="bpv-noproj">No projects yet.</div>'}
     </section>`;
 }
 
@@ -347,5 +492,7 @@ function bpv_render(requestContext, programArg) {
         else projects.forEach(project => blocks.push(bpv_blockHtml(requestContext, program, project)));
     });
     $bpv('bpv-blocks').innerHTML = blocks.length ? blocks.join('') : '<div class="bpv-noproj">No programs yet.</div>';
+
+    bpv_loadDocs(++bpv_renderSeq);   // the Projects' Supporting Documents fill in as their answers arrive
 }
 </script>
