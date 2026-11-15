@@ -458,34 +458,56 @@ function vje_groupedEntriesCard(dv) {
     </div>`;
 }
 
-/** One card per PAYMENT JEV — the settlement entry Treasury's check/ADA release PREPARES as a DRAFT
-    (GeneralLedgerService::createPaymentJev(): Dr Accounts Payable / Cr Cash), which the Accounting
-    Department then reviews and posts to the General Ledger via the "Post to General Ledger" button
-    (vr_postPaymentJev -> DisbursementVoucherService::postPaymentJev()). Separate from the SETUP JEV
-    above since it's its own JEV number/source document (jev_no, source_module, doc_ref_no — see
-    "03 - alter_table/31"). Empty string when nothing's been released yet. */
+/** The PAYMENT JEV — the settlement entry (Dr Accounts Payable / Cr Cash) for a released DV. Accounting
+    owns its whole lifecycle: a preparer builds it ("Prepare Payment JEV" -> preparePaymentJev()), then it
+    runs the review chain (Section Chief -> Division Manager -> Department Manager posts it, via
+    vr_jevStatus -> DisbursementVoucherService::changeJevStatus()). Treasury never prepares or posts it.
+    Separate from the SETUP JEV above since it's its own JEV number/source document. When no payment JEV
+    exists yet and the DV is RELEASED, this shows the "Prepare Payment JEV" prompt instead. */
 function vje_paymentEntriesCard(dv) {
     const jevs = dv.payment_jevs ?? [];
-    if (!jevs.length) return '';
-
-    // Accounting's "touch": a PAYMENT JEV is prepared (DRAFT) by Treasury on release, and only the
-    // Accounting Department (RC 012) or a superadmin posts it to the General Ledger.
+    // Accounting (RC 012) or a superadmin drives the whole payment-JEV lifecycle: prepare it, then move
+    // it through the review chain. Treasury never prepares or posts it.
     const canPost = VR_IS_SYSADMIN || VR_RC_ID === '012';
-    const payBadge = s => {
-        const map = { DRAFT: ['nha-bdg-amber', 'Draft — awaiting Accounting'], POSTED: ['nha-bdg-green', 'Posted to GL'], REVERSED: ['nha-bdg-red', 'Reversed'] };
-        const [cls, label] = map[s] || ['nha-bdg-gray', s || '—'];
-        return `<span class="nha-bdg ${cls}">${vr_esc(label)}</span>`;
+
+    // No payment JEV yet, but Treasury has released the voucher — Accounting prepares it here.
+    if (!jevs.length) {
+        if (dv.status === 'RELEASED' && canPost) {
+            return `<div class="vr-card">
+                <p class="vr-card-title">Payment Entry</p>
+                <p class="vr-hint" style="margin:6px 0 10px;">Treasury has released this voucher. Accounting can now prepare the payment Journal Entry (Dr Accounts Payable / Cr Cash), which then goes through review: Section Chief → Division Manager → Department Manager posts it.</p>
+                <button type="button" class="nha-btn nha-btn-primary" onclick="vr_preparePaymentJev(${dv.dv_id})">Prepare Payment JEV</button>
+            </div>`;
+        }
+        return '';
+    }
+
+    // Read-only here: the review chain is actioned in the Journal Entry Voucher register (that module's
+    // own row buttons), not in this DV modal. This card just shows where each payment JEV stands.
+    const chain = {
+        DRAFT:                  ['nha-bdg-gray',   'Draft'],
+        FOR_SECTION_CHIEF:      ['nha-bdg-amber',  'For Section Chief'],
+        FOR_DIVISION_MANAGER:   ['nha-bdg-purple', 'For Division Manager'],
+        FOR_DEPARTMENT_MANAGER: ['nha-bdg-navy',   'For Department Manager'],
+        POSTED:                 ['nha-bdg-green',  'Posted to GL'],
+        REVERSED:               ['nha-bdg-red',    'Reversed'],
     };
 
-    return jevs.map(jev => `<div class="vr-card">
-        <div class="vje-section-hdr">
-            <p class="vr-card-title" style="margin:0;">Payment Entry — ${vr_esc(jev.jev_no)} (${vr_esc(jev.source_module)} — ${vr_esc(jev.doc_ref_no)})${jev.book_name ? ` — ${vr_esc(jev.book_name)}` : ''}</p>
-            ${payBadge(jev.status)}
-        </div>
-        ${jev.status === 'DRAFT' ? `<p class="vr-hint" style="margin:6px 0 8px;">Prepared by Treasury on release. ${canPost ? 'Review the entry below, then post it to the General Ledger.' : 'Awaiting the Accounting Department to review and post it to the General Ledger.'}</p>` : ''}
-        ${vje_groupedTable(jev.lines ?? [])}
-        ${jev.status === 'DRAFT' && canPost ? `<button type="button" class="nha-btn nha-btn-primary" style="margin-top:10px;" onclick="vr_postPaymentJev(${jev.jev_id})">Post to General Ledger</button>` : ''}
-    </div>`).join('');
+    return jevs.map(jev => {
+        const [cls, label] = chain[jev.status] || ['nha-bdg-gray', jev.status || '—'];
+        const inReview = !['POSTED', 'REVERSED'].includes(jev.status);
+        const hint = inReview
+            ? `<p class="vr-hint" style="margin:6px 0 8px;">In Accounting review — advance it from the <strong>Journal Entry Vouchers</strong> register (Section Chief → Division Manager → Department Manager posts).</p>`
+            : '';
+        return `<div class="vr-card">
+            <div class="vje-section-hdr">
+                <p class="vr-card-title" style="margin:0;">Payment Entry — ${vr_esc(jev.jev_no)} (${vr_esc(jev.source_module)} — ${vr_esc(jev.doc_ref_no)})${jev.book_name ? ` — ${vr_esc(jev.book_name)}` : ''}</p>
+                <span class="nha-bdg ${cls}">${vr_esc(label)}</span>
+            </div>
+            ${hint}
+            ${vje_groupedTable(jev.lines ?? [])}
+        </div>`;
+    }).join('');
 }
 
 /** Editable at the Accounting stage — was a static read-only table set only by Originating at
@@ -1321,15 +1343,35 @@ async function vr_changeStatus(status) {
     }
 }
 
-// Accounting's "touch": post a DRAFT payment Journal Entry (prepared by Treasury on release) to the
-// General Ledger. Server re-checks RC-012/sysadmin — see DisbursementVoucherService::postPaymentJev().
-async function vr_postPaymentJev(jevId) {
-    if (!confirm('Post this payment Journal Entry to the General Ledger? This settles Accounts Payable against Cash.')) return;
+// Accounting prepares the payment Journal Entry for a released DV (Dr A/P / Cr Cash from its check).
+// Server re-checks RC-012/sysadmin — see DisbursementVoucherService::preparePaymentJev().
+async function vr_preparePaymentJev(dvId) {
+    if (!confirm('Prepare the payment Journal Entry for this voucher? It will enter the Accounting review chain: Section Chief → Division Manager → Department Manager posts it.')) return;
     window.PagePreloader?.show();
     try {
-        const res  = await vr_authFetch(`${VR_API}/voucher/journal-entry/${jevId}/post-payment`, { method: 'POST' });
+        const res  = await vr_authFetch(`${VR_API}/voucher/${dvId}/prepare-payment-jev`, { method: 'POST' });
         const json = await res.json();
-        if (!json.success) throw new Error(json.message || 'Failed to post the payment entry.');
+        if (!json.success) throw new Error(json.message || 'Failed to prepare the payment entry.');
+        window.vf_onSaved?.(null, json.message);
+        await vr_open(vr_id);
+    } catch (e) {
+        alert(e.message);
+    } finally {
+        window.PagePreloader?.hide();
+    }
+}
+
+// Advance a payment Journal Entry one step along the review chain (and post it on the final step).
+// Server re-checks RC-012/sysadmin and the allowed transition — see DisbursementVoucherService::changeJevStatus().
+async function vr_jevStatus(jevId, status) {
+    if (!confirm(`Move this payment Journal Entry to ${status.replace(/_/g, ' ')}?`)) return;
+    window.PagePreloader?.show();
+    try {
+        const res  = await vr_authFetch(`${VR_API}/voucher/journal-entry/${jevId}/jev-status`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }),
+        });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message || 'Failed to update the Journal Entry.');
         window.vf_onSaved?.(null, json.message);
         await vr_open(vr_id);
     } catch (e) {

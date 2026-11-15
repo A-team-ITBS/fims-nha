@@ -828,19 +828,11 @@ BAT;
                 return json_encode(["success" => false, "message" => $released['message']]);
             }
 
-            // Prepares (as a DRAFT) the payment entry that settles whatever the voucher's JEV routed
-            // through Accounts Payable, crediting this bank account's own mapped Cash account — see
-            // GeneralLedgerService::createPaymentJev()'s doc comment for why this is a second JEV, not
-            // an edit to the first. It is NOT posted to the ledger here: Accounting reviews and posts
-            // it afterwards (DisbursementVoucherService::postPaymentJev()), keeping a deliberate
-            // Accounting touch on every cash disbursement before it hits the General Ledger.
-            $glService = new GeneralLedgerService();
-            $paymentJev = $glService->createPaymentJev($dvId, $bankAccountId, (float) $dv['net_amount'], 'CHECK NO. ' . $checkNumber, $userId);
-            if (!$paymentJev['success']) {
-                App\Execute('ROLLBACK', 'DB');
-
-                return json_encode(["success" => false, "message" => $paymentJev['message']]);
-            }
+            // NOTE: Treasury does NOT create the payment Journal Entry here. Preparing the payment JEV
+            // (Dr Accounts Payable / Cr Cash) is Accounting's job — an Accounting preparer does it on the
+            // released DV via "Prepare Payment JEV" (DisbursementVoucherService::preparePaymentJev()),
+            // after which it runs the JEV review chain (Section Chief -> Division Manager -> Department
+            // Manager posts). Treasury only releases the DV and records the check.
 
             App\Execute(
                 "UPDATE {$this->tableCheckRegister}

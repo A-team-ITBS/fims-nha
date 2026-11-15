@@ -17,6 +17,22 @@ INSERT INTO fims.settings_status (name, status_for, color)
 SELECT 'APPROVED', 'journal_entry_voucher', '#2563EB'
 WHERE NOT EXISTS (SELECT 1 FROM fims.settings_status WHERE name = 'APPROVED' AND status_for = 'journal_entry_voucher');
 
+-- JEV review chain for PAYMENT and standalone JEVs (Setup JEVs still post via the DV's own chain).
+-- Preparer (Accounting) prepares -> Section Chief review -> Division Manager -> Department Manager
+-- approves & posts. All held by the Accounting Department (RC 012); see
+-- DisbursementVoucherService::JEV_TRANSITIONS / preparePaymentJev() / changeJevStatus().
+INSERT INTO fims.settings_status (name, status_for, color)
+SELECT 'FOR_SECTION_CHIEF', 'journal_entry_voucher', '#D97706'
+WHERE NOT EXISTS (SELECT 1 FROM fims.settings_status WHERE name = 'FOR_SECTION_CHIEF' AND status_for = 'journal_entry_voucher');
+
+INSERT INTO fims.settings_status (name, status_for, color)
+SELECT 'FOR_DIVISION_MANAGER', 'journal_entry_voucher', '#7C3AED'
+WHERE NOT EXISTS (SELECT 1 FROM fims.settings_status WHERE name = 'FOR_DIVISION_MANAGER' AND status_for = 'journal_entry_voucher');
+
+INSERT INTO fims.settings_status (name, status_for, color)
+SELECT 'FOR_DEPARTMENT_MANAGER', 'journal_entry_voucher', '#4F46E5'
+WHERE NOT EXISTS (SELECT 1 FROM fims.settings_status WHERE name = 'FOR_DEPARTMENT_MANAGER' AND status_for = 'journal_entry_voucher');
+
 INSERT INTO fims.settings_status (name, status_for, color)
 SELECT 'POSTED', 'journal_entry_voucher', '#16A34A'
 WHERE NOT EXISTS (SELECT 1 FROM fims.settings_status WHERE name = 'POSTED' AND status_for = 'journal_entry_voucher');

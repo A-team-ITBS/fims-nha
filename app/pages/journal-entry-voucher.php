@@ -313,13 +313,31 @@ function jel_renderTable(rows) {
         const rowClick = isStandalone
             ? (r.jev_status === 'DRAFT' ? `jaf_openEdit(${r.jev_id})` : `jaf_openView(${r.jev_id})`)
             : `jel_viewDv(${r.dv_id})`;
+        // Standalone JEV review chain (same as payment JEVs): DRAFT -> Section Chief -> Division Manager
+        // -> Department Manager posts. Each status shows its single next action.
+        const nextStep  = { DRAFT: 'FOR_SECTION_CHIEF', FOR_SECTION_CHIEF: 'FOR_DIVISION_MANAGER', FOR_DIVISION_MANAGER: 'FOR_DEPARTMENT_MANAGER', FOR_DEPARTMENT_MANAGER: 'POSTED' };
+        const nextLabel = { DRAFT: 'Submit for Review', FOR_SECTION_CHIEF: 'Section Chief: Review', FOR_DIVISION_MANAGER: 'Division Mgr: Review', FOR_DEPARTMENT_MANAGER: 'Dept Mgr: Approve & Post' };
         const actions = isStandalone
-            ? (r.jev_status === 'DRAFT'
-                ? `<button type="button" class="nha-btn-act" title="Edit" onclick="event.stopPropagation(); jaf_openEdit(${r.jev_id})">Edit</button>
-                   <button type="button" class="nha-btn-act" title="Post to the General Ledger" onclick="event.stopPropagation(); jaf_post(${r.jev_id}, this)">Post</button>
-                   <button type="button" class="nha-btn-act" title="Delete" onclick="event.stopPropagation(); jaf_delete(${r.jev_id}, this)">Delete</button>`
-                : `<button type="button" class="nha-btn-act" title="View" onclick="event.stopPropagation(); jaf_openView(${r.jev_id})">View</button>`)
-            : `<button type="button" class="nha-btn-act" title="Print this Journal Entry Voucher" onclick="event.stopPropagation(); jel_print(${r.dv_id}, this, ${r.jev_id})">Print</button>`;
+            ? [
+                r.jev_status === 'DRAFT'
+                    ? `<button type="button" class="nha-btn-act" title="Edit" onclick="event.stopPropagation(); jaf_openEdit(${r.jev_id})">Edit</button>`
+                    : `<button type="button" class="nha-btn-act" title="View" onclick="event.stopPropagation(); jaf_openView(${r.jev_id})">View</button>`,
+                nextStep[r.jev_status]
+                    ? `<button type="button" class="nha-btn-act" title="Advance this Journal Entry" onclick="event.stopPropagation(); jaf_jevStatus(${r.jev_id}, '${nextStep[r.jev_status]}', this)">${nextLabel[r.jev_status]}</button>`
+                    : '',
+                r.jev_status === 'DRAFT'
+                    ? `<button type="button" class="nha-btn-act" title="Delete" onclick="event.stopPropagation(); jaf_delete(${r.jev_id}, this)">Delete</button>`
+                    : '',
+              ].join('')
+            : [
+                // DV-linked PAYMENT JEVs run the same review chain, actioned right here in the register
+                // (Section Chief -> Division Manager -> Department Manager posts). SETUP JEVs ride the
+                // DV's own approval chain, so they only get Print.
+                (r.jev_type === 'PAYMENT' && nextStep[r.jev_status])
+                    ? `<button type="button" class="nha-btn-act" title="Advance this payment Journal Entry" onclick="event.stopPropagation(); jaf_jevStatus(${r.jev_id}, '${nextStep[r.jev_status]}', this)">${nextLabel[r.jev_status]}</button>`
+                    : '',
+                `<button type="button" class="nha-btn-act" title="Print this Journal Entry Voucher" onclick="event.stopPropagation(); jel_print(${r.dv_id}, this, ${r.jev_id})">Print</button>`,
+              ].join('');
         return `<tr style="cursor:pointer;" onclick="${rowClick}">
         <td class="nha-mono">${jel_esc(r.jev_no) || '—'}</td>
         <td class="nha-td-date">${jel_fmtDate(r.jev_date)}</td>
@@ -426,6 +444,9 @@ function jel_classificationBadge(c) {
 function jel_jevStatusBadge(s) {
     const map = {
         DRAFT: ['nha-bdg-gray', 'Draft'], APPROVED: ['nha-bdg-amber', 'Approved'],
+        FOR_SECTION_CHIEF: ['nha-bdg-amber', 'For Section Chief'],
+        FOR_DIVISION_MANAGER: ['nha-bdg-purple', 'For Division Manager'],
+        FOR_DEPARTMENT_MANAGER: ['nha-bdg-navy', 'For Department Manager'],
         POSTED: ['nha-bdg-green', 'Posted'], REVERSED: ['nha-bdg-red', 'Reversed'],
     };
     const [cls, label] = map[s] || ['nha-bdg-gray', s || '—'];
@@ -626,14 +647,18 @@ async function jaf_save() {
     }
 }
 
-async function jaf_post(jevId, btn) {
-    if (!confirm('Post this Journal Entry Voucher to the General Ledger? This cannot be undone from here.')) return;
+// Advance a standalone JEV one step along the review chain (and post it on the final step). Mirrors the
+// payment-JEV chain — server re-checks RC-012/sysadmin and the allowed transition (changeJevStatus()).
+async function jaf_jevStatus(jevId, status, btn) {
+    if (!confirm(`Move this Journal Entry to ${status.replace(/_/g, ' ')}?${status === 'POSTED' ? ' This posts it to the General Ledger.' : ''}`)) return;
     if (btn) btn.disabled = true;
     window.PagePreloader?.show();
     try {
-        const res  = await jel_authFetch(`${JEL_API}/journal-entry/${jevId}/post`, { method: 'POST' });
+        const res  = await jel_authFetch(`${JEL_API}/journal-entry/${jevId}/jev-status`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }),
+        });
         const json = await res.json();
-        if (!json.success) throw new Error(json.message || 'Failed to post.');
+        if (!json.success) throw new Error(json.message || 'Failed to update the Journal Entry.');
         jel_load();
     } catch (e) {
         jel_showError(e.message);

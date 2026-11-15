@@ -290,16 +290,36 @@ $app->post('/voucher/journal-entry/{id}/post', function ($request, $response, $a
     }
 })->add($accessMiddleware)->add($jwtMiddleware);
 
-// Accounting posts a DRAFT PAYMENT JEV (prepared by Treasury's check/ADA release) to the General
-// Ledger — the Accounting "touch" that settles Accounts Payable against Cash. Accounting Dept (RC-012)
-// or superadmin only; refuses anything that isn't a not-yet-posted PAYMENT JEV.
-$app->post('/voucher/journal-entry/{id}/post-payment', function ($request, $response, $args) use ($VoucherService) {
+// Accounting PREPARES the payment JEV for a RELEASED DV (Dr Accounts Payable / Cr Cash, built from the
+// DV's check) — the "Prepare Payment JEV" action. Creates it at FOR_SECTION_CHIEF to enter the JEV
+// review chain. Accounting Dept (RC-012) or superadmin only.
+$app->post('/voucher/{id}/prepare-payment-jev', function ($request, $response, $args) use ($VoucherService) {
     try {
-        $result = $VoucherService->postPaymentJev((int) $args['id'], (int) $request->getAttribute('user_id'));
+        $result = $VoucherService->preparePaymentJev((int) $args['id'], (int) $request->getAttribute('user_id'));
+
+        return $response->withJson($result, $result['httpCode'] ?? ($result['success'] ? 201 : 400));
+    } catch (\Exception $e) {
+        LogError('POST /voucher/prepare-payment-jev ' . $e->getMessage());
+
+        return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
+    }
+})->add($accessMiddleware)->add($jwtMiddleware);
+
+// Advances a PAYMENT or standalone JEV one step along its review chain (and posts it on the final step)
+// — body: { status: FOR_SECTION_CHIEF | FOR_DIVISION_MANAGER | FOR_DEPARTMENT_MANAGER | POSTED }.
+// Accounting Dept (RC-012) or superadmin only; SETUP JEVs are refused (they ride the DV's own chain).
+$app->post('/voucher/journal-entry/{id}/jev-status', function ($request, $response, $args) use ($VoucherService) {
+    try {
+        $body   = $request->getParsedBody() ?: [];
+        $status = trim((string) ($body['status'] ?? ''));
+        if ($status === '') {
+            return $response->withJson(['success' => false, 'message' => 'status is required.'], 400);
+        }
+        $result = $VoucherService->changeJevStatus((int) $args['id'], $status, (int) $request->getAttribute('user_id'));
 
         return $response->withJson($result, $result['httpCode'] ?? ($result['success'] ? 200 : 400));
     } catch (\Exception $e) {
-        LogError('POST /voucher/journal-entry/{id}/post-payment ' . $e->getMessage());
+        LogError('POST /voucher/journal-entry/{id}/jev-status ' . $e->getMessage());
 
         return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
     }

@@ -231,15 +231,17 @@ class GeneralLedgerService
     }
 
     /**
-     * PREPARES (does not post) the PAYMENT entry Treasury's own release (a check or ADA) represents —
-     * the entry that settles the Accounts Payable balance Accounting's SETUP JEV created, and credits
-     * Cash. Called from CheckProcessingService::prepareCheck() right after a DV is RELEASED (a future
-     * ADA-release flow would call this the same way).
+     * PREPARES (does not post) the PAYMENT entry a released DV's check/ADA represents — the entry that
+     * settles the Accounts Payable balance Accounting's SETUP JEV created, and credits Cash. This is
+     * ACCOUNTING's job, never Treasury's: it is called from DisbursementVoucherService::preparePaymentJev()
+     * (the "Prepare Payment JEV" action an Accounting preparer takes on a released DV), NOT from the
+     * Treasury check-release flow.
      *
-     * This creates the PAYMENT JEV as a DRAFT only — it is NOT written to the General Ledger here.
-     * Accounting reviews and posts it afterwards (DisbursementVoucherService::postPaymentJev() ->
-     * postJev()), so the Accounting Division keeps a deliberate "touch" on every cash disbursement
-     * before it hits the ledger. Until Accounting posts it, Accounts Payable stays open on the books.
+     * The PAYMENT JEV is created at FOR_SECTION_CHIEF (prepared by Accounting, awaiting Section Chief
+     * review) — it is NOT written to the General Ledger here. It then runs the JEV review chain
+     * (Section Chief -> Division Manager -> Department Manager) and only the Department Manager's
+     * approval posts it (DisbursementVoucherService::changeJevStatus() -> postJev()). Until then,
+     * Accounts Payable stays open on the books.
      *
      * A no-op (not an error) if the DV's SETUP JEV never routed through Accounts Payable
      * (self::AP_ACCOUNT_CODE) at all — e.g. a DV whose JEV credited Cash directly instead of AP (see
@@ -288,9 +290,10 @@ class GeneralLedgerService
                 : "Bank account #{$bankAccountId} not found."];
         }
 
-        $draftId = $this->getStatusIdByName('DRAFT');
-        if ($draftId === null) {
-            return ['success' => false, 'message' => "Status 'DRAFT' is not configured in fims.settings_status for journal entry vouchers."];
+        // Created at FOR_SECTION_CHIEF: Accounting has prepared it, it now awaits Section Chief review.
+        $startId = $this->getStatusIdByName('FOR_SECTION_CHIEF');
+        if ($startId === null) {
+            return ['success' => false, 'message' => "Status 'FOR_SECTION_CHIEF' is not configured in fims.settings_status for journal entry vouchers."];
         }
 
         $jevNo = $this->nextJevNumber(date('Y-m-d'));
@@ -300,7 +303,7 @@ class GeneralLedgerService
                 (jev_no, dv_id, fiscal_yr, book_id, jev_type, source_module, doc_ref_no, total_debit, total_credit, status_id, created_by)
              VALUES (" . $this->str($jevNo) . ", {$dvId}, " . $this->intOrNull($setupJev['fiscal_yr']) . ', '
                 . $this->intOrNull($setupJev['book_id']) . ", 'PAYMENT', 'TREASURY', " . $this->str($docRefNo) . ', '
-                . (float) $amount . ', ' . (float) $amount . ", {$draftId}, {$uid})
+                . (float) $amount . ', ' . (float) $amount . ", {$startId}, {$uid})
              RETURNING jev_id",
             'DB'
         );
@@ -321,7 +324,7 @@ class GeneralLedgerService
             'DB'
         );
 
-        return ['success' => true, 'message' => "Payment Journal Entry Voucher {$jevNo} prepared (draft) — Accounting will review and post it to the General Ledger.", 'data' => ['jev_id' => $jevId, 'jev_no' => $jevNo, 'posted' => false]];
+        return ['success' => true, 'message' => "Payment Journal Entry Voucher {$jevNo} prepared — now in review (Section Chief → Division Manager → Department Manager posts).", 'data' => ['jev_id' => $jevId, 'jev_no' => $jevNo, 'posted' => false]];
     }
 
     /**
