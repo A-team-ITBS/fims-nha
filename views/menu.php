@@ -24,7 +24,6 @@ $sideMenu->addMenuItem(90, "mi_responsibility_center_page", $Language->menuPhras
 $sideMenu->addMenuItem(391, "mi_vendors_page", $Language->menuPhrase("391", "MenuText"), "VendorsPage", 148, "", AllowListMenu('{FIMS}vendors-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(390, "mci_Inventory", $Language->menuPhrase("390", "MenuText"), "", -1, "", true, false, true, "fas fa-clipboard-check", "", false, true);
 $sideMenu->addMenuItem(91, "mi_IARModule", $Language->menuPhrase("91", "MenuText"), "IarModule", 390, "", AllowListMenu('{FIMS}IARModule.php'), false, false, "", "", false, true);
-$sideMenu->addMenuItem(333, "mi_property_record_page", $Language->menuPhrase("333", "MenuText"), "PropertyRecordPage", 390, "", AllowListMenu('{FIMS}property-record-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(258, "mci_Vouchers", $Language->menuPhrase("258", "MenuText"), "", -1, "", true, false, true, "fas fa-file-invoice-dollar", "", false, true);
 $sideMenu->addMenuItem(208, "mi_JournalEntryVoucher", $Language->menuPhrase("208", "MenuText"), "JournalEntryVoucher", 258, "", AllowListMenu('{FIMS}JournalEntryVoucher.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(207, "mi_Voucher", $Language->menuPhrase("207", "MenuText"), "Voucher", 258, "", AllowListMenu('{FIMS}Voucher.php'), false, false, "", "", false, true);

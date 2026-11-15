@@ -9,12 +9,15 @@ namespace PHPMaker2024\FIMS;
  * Ported from the FMD app's FP-FS/fund-sourcing-dashboard.php to FIMS, in the same shape as saro-registry-page.php: the shared
  * nha-fims.css look (.nha-root), the shared nhaSearchableSelect for the Program filter, no jQuery / fmd.css.
  *
- * UI ONLY FOR NOW — the page renders from sample data. The real API is already wired behind one switch:
+ * LIVE DATA, except what the FIMS database cannot supply yet. Every read goes through fsd_get(key, params):
  *
- *     const FSD_USE_MOCK = true;     // → false  = every call below goes to the FIMS API instead
+ *     FSD_STATIC  — keys that still answer from sample data (no table / endpoint behind them). Each one is marked on screen
+ *                   with a faint "static" tag (.fsd-static) so it is easy to tell what is not real. Today that is only the
+ *                   Fund Transfer / Borrowing section (card + tab). When its API exists: add the URL to FSD_API and delete
+ *                   the key from FSD_STATIC — nothing else changes.
+ *     FSD_USE_MOCK — dev switch, true = EVERYTHING from sample data (offline / demo).
  *
- * Every read goes through fsd_get(key, params). The mock answers with the SAME response shapes as the real endpoints
- * (and the same query-string names), so flipping the switch needs no change in any render code:
+ * The sample data answers with the SAME response shapes as the real endpoints (and the same query-string names):
  *
  *   dashboard      GET /fund_tracking/dashboard   fiscal_year, program_code
  *                  → data.government_funds {saro_allocation, saro_unreleased, saro_record_count, nca_received, nca_unreleased,
@@ -26,9 +29,9 @@ namespace PHPMaker2024\FIMS;
  *   fiscalYears    GET /fiscal_year/all           → data[].fiscal_yr
  *   programs       GET /program/all               → data[].program_code / program_name
  *
- * Not in FIMS yet (live mode shows "not available yet" for them instead of failing the page):
+ * Static for now (not in FIMS yet — see FSD_STATIC):
  *   – Fund Transfer / Borrowing of Funds (SRS 1.2.1.1.1): the dashboard payload has no `cross_access_funds`
- *     (treasury.fund_transfers does not exist here) and there is no GET /fund_transfer/list.
+ *     (treasury.fund_transfers does not exist here) and there is no GET /fund_transfer/list. Keys: crossAccess, fundTransfers.
  *   – `pagination.total_amount` on /fund_tracking/list (the table footers' "Total Amount"). When the API does not send it,
  *     the footer falls back to the matching dashboard figure (fallbackTotal) and otherwise shows "—".
  */
@@ -43,10 +46,15 @@ $_fsd_api = rtrim((string) Config('API.FIMS_URL'), '/');
 <script src="/_shared/js/searchable-select.js?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/js/searchable-select.js') ?>"></script>
 
 <style>
-    /* ── Section headings: the SRS reference sits next to the title ── */
+    /* ── Section headings ── */
     #fsd-root .nha-sec-hd { margin-top: 6px; }
-    #fsd-root .fsd-ref { font-size: 10px; font-weight: 600; letter-spacing: .04em; text-transform: none; color: var(--muted); background: var(--surf); border: 1px solid var(--bdr); border-radius: 20px; padding: 1px 8px; }
     #fsd-root .fsd-section { margin-bottom: 22px; }
+
+    /* Faint "static" marker — flags the parts still answered from sample data (FSD_STATIC). Deliberately quiet:
+       tiny, low-contrast, takes its colour from its surroundings (so it also works on the active navy tab); hover for the note. */
+    #fsd-root .fsd-static { display: inline-block; vertical-align: middle; margin-left: 7px; padding: 0 4px; font-size: 8.5px; font-weight: 600; line-height: 13px;
+        letter-spacing: .08em; text-transform: uppercase; color: currentColor; opacity: .4; border: 1px dashed currentColor; border-radius: 3px; cursor: help; white-space: nowrap; }
+    #fsd-root .fsd-static:hover { opacity: .8; }
 
     /* ── Sample-data notice (only while FSD_USE_MOCK is on) ── */
     #fsd-root .fsd-note { display: flex; align-items: center; gap: 10px; background: var(--amber-bg); border: 1px solid color-mix(in srgb, var(--amber) 55%, transparent); border-radius: 8px; padding: 9px 14px; font-size: 12px; color: var(--amber-txt); margin-bottom: 14px; }
@@ -172,7 +180,7 @@ $_fsd_api = rtrim((string) Config('API.FIMS_URL'), '/');
                 <label class="nha-filter-label" for="fsd-program">Program</label>
                 <div class="nha-filter-search-wrap">
                     <svg class="nha-filter-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                    <input type="text" id="fsd-program" class="nha-filter-input" placeholder="All programs" autocomplete="off" title="Type a program code or name, then pick it from the list. Clear the box for all programs.">
+                    <input type="text" id="fsd-program" class="nha-filter-input" placeholder="All programs" autocomplete="off" title="Type a program name or code, then pick it from the list. Clear the box for all programs.">
                 </div>
             </div>
             <div class="nha-filter-group nha-filter-group-md">
@@ -193,13 +201,13 @@ $_fsd_api = rtrim((string) Config('API.FIMS_URL'), '/');
 
     <!-- ══ SRS 1.2.1.1.1 — FUND TRANSFER / BORROWING OF FUNDS ══ -->
     <div class="fsd-section">
-        <div class="nha-sec-hd"><span>Fund Transfer / Borrowing of Funds</span><span class="fsd-ref">SRS 1.2.1.1.1</span><span class="nha-sec-hd-line"></span></div>
+        <div class="nha-sec-hd"><span>Fund Transfer / Borrowing of Funds</span><span class="fsd-static" title="Static sample data — no fund transfer table or API in FIMS yet">static</span><span class="nha-sec-hd-line"></span></div>
         <div class="nha-summary" id="fsd-cards-cross"></div>
     </div>
 
     <!-- ══ SRS 1.2.1.1.2 — SARO ALLOCATIONS / NCA RECEIVED / AVAILABLE FUNDS ══ -->
     <div class="fsd-section">
-        <div class="nha-sec-hd"><span>Government Funds — SARO, NCA &amp; Available Funds</span><span class="fsd-ref">SRS 1.2.1.1.2</span><span class="nha-sec-hd-line"></span></div>
+        <div class="nha-sec-hd"><span>Government Funds — SARO, NCA &amp; Available Funds</span><span class="nha-sec-hd-line"></span></div>
         <div class="nha-summary" id="fsd-cards-gov"></div>
 
         <div class="fsd-ch-grid">
@@ -228,13 +236,13 @@ $_fsd_api = rtrim((string) Config('API.FIMS_URL'), '/');
 
     <!-- ══ SRS 1.2.1.3.2 — SPECIAL FUNDS (Trust / Supplemental) ══ -->
     <div class="fsd-section">
-        <div class="nha-sec-hd"><span>Special Funds — Trust &amp; Supplemental</span><span class="fsd-ref">SRS 1.2.1.3.2</span><span class="nha-sec-hd-line"></span></div>
+        <div class="nha-sec-hd"><span>Special Funds — Trust &amp; Supplemental</span><span class="nha-sec-hd-line"></span></div>
         <div class="nha-summary" id="fsd-cards-special"></div>
     </div>
 
     <!-- ══ SRS 1.2.1.3 — FUND SOURCES OVERVIEW ══ -->
     <div class="fsd-section">
-        <div class="nha-sec-hd"><span>Fund Sources Overview</span><span class="fsd-ref">SRS 1.2.1.3</span><span class="nha-sec-hd-line"></span></div>
+        <div class="nha-sec-hd"><span>Fund Sources Overview</span><span class="nha-sec-hd-line"></span></div>
         <div class="fsd-ch-grid">
             <div class="fsd-ch-card">
                 <div class="fsd-ch-head">
@@ -278,7 +286,7 @@ $_fsd_api = rtrim((string) Config('API.FIMS_URL'), '/');
             </button>
             <button type="button" class="nha-tab" data-tab="transfer" role="tab">
                 <svg fill="none" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4M16 17H4m0 0l4 4m-4-4l4-4"/></svg>
-                Fund Transfer
+                Fund Transfer<span class="fsd-static" title="Static sample data — no fund transfer table or API in FIMS yet">static</span>
             </button>
         </div>
 
@@ -347,25 +355,29 @@ $_fsd_api = rtrim((string) Config('API.FIMS_URL'), '/');
 ═══════════════════════════════════════════════════════════════ */
 
 /* ── Config ─────────────────────────────────────────────────── */
-const FSD_USE_MOCK = true;                       // true = sample data · false = FIMS API
+const FSD_USE_MOCK = false;                      // dev switch: true = EVERYTHING from sample data
+const FSD_STATIC = new Set(['crossAccess', 'fundTransfers']);   // answered from sample data until their API exists
 const FSD_BASE = <?= json_encode($_fsd_api) ?>;
 const FSD_API = {
     dashboard:     FSD_BASE + '/fund_tracking/dashboard',
     list:          FSD_BASE + '/fund_tracking/list',
     fiscalYears:   FSD_BASE + '/fiscal_year/all',
     programs:      FSD_BASE + '/program/all',
-    fundTransfers: FSD_BASE + '/fund_transfer/list',   // not in FIMS yet — see the header comment
+    // Not in FIMS yet (names are proposals) — used only once the key is removed from FSD_STATIC
+    crossAccess:   FSD_BASE + '/fund_transfer/summary',
+    fundTransfers: FSD_BASE + '/fund_transfer/list',
 };
 
 const $f = id => document.getElementById(id);
 const fsd_esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fsd_dash = '<span class="nha-text-muted">—</span>';
+const FSD_STATIC_HINT = '<span class="fsd-static" title="Static sample data — no fund transfer table or API in FIMS yet">static</span>';
 
 /* ── Data access — the ONLY place that knows whether data is real ───
    key: a FSD_API key · params: query-string names exactly as the API takes them.
    Resolves with the API's JSON ({success, data, pagination?}) or throws Error(message). */
 async function fsd_get(key, params = {}) {
-    if (FSD_USE_MOCK) return fsd_mock.respond(key, params);
+    if (FSD_USE_MOCK || FSD_STATIC.has(key)) return fsd_mock.respond(key, params);
 
     const qs = new URLSearchParams();
     Object.entries(params).forEach(([k, v]) => { if (v !== '' && v !== null && v !== undefined) qs.set(k, v); });
@@ -417,7 +429,7 @@ const fsd = {
     gov: null, special: null, cross: undefined,    // cross: undefined = not loaded · null = API does not provide it
     req: 0,                       // bumped per dashboard request so a stale response never overwrites a newer one
     charts: {},
-    programCodes: new Set(),
+    programLabel: '',             // the name shown in the Program box (fsd.program holds its code)
     tab: 'overview',
     expanded: new Set(),          // Overview rows currently expanded
     errors: [],
@@ -471,6 +483,7 @@ function fsd_card({ tone, label, value, sub, icon, wide, extra = '' }) {
 function fsd_renderCross() {
     const el = $f('fsd-cards-cross');
     const c = fsd.cross;
+    if (c === undefined) { el.innerHTML = fsd_skeleton(1, true); return; }
     if (!c) {
         el.innerHTML = `<div class="nha-sc nha-sc-gray"><div class="nha-sc-top"><div>
             <p class="nha-sc-label">Payable / Receivable</p>
@@ -486,7 +499,7 @@ function fsd_renderCross() {
         <div class="nha-sc-top">
             <div class="fsd-pr">
                 <div class="fsd-pr-col">
-                    <p class="nha-sc-label">Payable</p>
+                    <p class="nha-sc-label">Payable<span class="fsd-static" title="Static sample data — no fund transfer table or API in FIMS yet">static</span></p>
                     <p class="nha-sc-val" title="${fsd_pesoFull(pay)}">${fsd_peso(pay)}</p>
                     <p class="nha-kpi-sub">${fsd_plural(payN, 'record')} · pending${late > 0 ? `<span class="fsd-overdue">${late} overdue</span>` : ''}</p>
                 </div>
@@ -707,7 +720,7 @@ function fsd_makeList(cfg) {
                 const pg = json.pagination || {};
                 st.rows = json.data || [];
                 st.total = parseInt(pg.total) || st.rows.length;
-                st.totalAmount = pg.total_amount ?? json.total_amount ?? (cfg.fallbackTotal ? cfg.fallbackTotal() : null);
+                st.totalAmount = pg.total_amount ?? json.total_amount ?? null;   // the dashboard fallback is resolved at render time
             }
             st.loaded = true;
         } catch (e) {
@@ -727,6 +740,8 @@ function fsd_makeList(cfg) {
         else if (!st.rows.length) body = `<tr><td colspan="${span}" class="fsd-state">${fsd_esc(cfg.emptyText || 'No records found.')}</td></tr>`;
         else body = st.rows.map((r, i) => `<tr><td class="nha-td-seq">${(st.page - 1) * st.limit + i + 1}</td>${cols.row(r)}</tr>`).join('');
 
+        // total from the API when it sends one; otherwise the matching dashboard figure (null → "—")
+        const total = st.totalAmount ?? (cfg.fallbackTotal && st.loaded ? cfg.fallbackTotal() : null) ?? null;
         const last = Math.max(1, Math.ceil(st.total / st.limit));
         const from = st.total ? (st.page - 1) * st.limit + 1 : 0;
         const to = Math.min(st.page * st.limit, st.total);
@@ -741,8 +756,8 @@ function fsd_makeList(cfg) {
                 <tbody>${body}</tbody>
             </table></div>
             <div class="nha-pag-wrap no-print">
-                <span class="nha-pag-info">${st.total ? `Showing <strong>${from}–${to}</strong> of <strong>${st.total}</strong> records` : '—'}</span>
-                <span class="fsd-total">${cfg.totalLabel || 'Total Amount'}: ${st.totalAmount === null || st.totalAmount === undefined ? '—' : fsd_peso(st.totalAmount)}</span>
+                <span class="nha-pag-info">${st.total ? `Showing <strong>${from}–${to}</strong> of <strong>${st.total}</strong> records` : '—'}${FSD_STATIC.has(cfg.endpoint) ? FSD_STATIC_HINT : ''}</span>
+                <span class="fsd-total">${cfg.totalLabel || 'Total Amount'}: ${total === null || total === undefined ? '—' : fsd_peso(total)}</span>
                 <div class="nha-pag-btns">${pager}</div>
             </div>`;
 
@@ -860,21 +875,34 @@ function fsd_renderAll() {
     fsd_renderOverview();
 }
 
+function fsd_lists_render() {
+    Object.values(fsd_ovLists).forEach(l => l.render());
+    Object.values(fsd_lists).forEach(l => l.render());
+}
+
 async function fsd_loadDashboard() {
     const my = ++fsd.req;
     $f('fsd-cards-cross').innerHTML = fsd_skeleton(1, true);
     $f('fsd-cards-gov').innerHTML = fsd_skeleton(3, true);
     $f('fsd-cards-special').innerHTML = fsd_skeleton(2);
     try {
+        // The Fund Transfer card has its own call, started alongside but never awaited together with the real figures:
+        // the real data must not wait on it, and a failure there must not take the real figures down.
+        const crossCall = fsd_get('crossAccess').then(c => c.data || null).catch(e => { console.warn('[fsd] crossAccess:', e); return null; });
         const json = await fsd_get('dashboard', fsd_filters());
         if (my !== fsd.req) return;                       // a newer request replaced this one
         const d = json.data || {};
         fsd.gov = d.government_funds || {};
         fsd.special = d.special_funds || {};
-        fsd.cross = d.cross_access_funds || null;         // FIMS does not send it yet → "not available" card
+        fsd.cross = d.cross_access_funds || undefined;    // undefined → still loading (skeleton) until crossCall answers
         fsd_hideError();
         fsd_renderAll();
+        fsd_lists_render();                               // footers that fall back to a dashboard total can resolve it now
         fsd_stamp();
+        if (fsd.cross === undefined) {
+            fsd.cross = await crossCall;                  // null → "not available" card
+            if (my === fsd.req) fsd_renderCross();
+        }
     } catch (e) {
         if (my !== fsd.req) return;
         fsd.gov = fsd.gov || {}; fsd.special = fsd.special || {}; fsd.cross = fsd.cross ?? null;
@@ -910,8 +938,7 @@ async function fsd_loadFilterOptions() {
 
     if (pr.status === 'fulfilled') {
         const programs = (pr.value.data || []).map(p => ({ value: String(p.program_code), label: String(p.program_name ?? '') }));
-        fsd.programCodes = new Set(programs.map(p => p.value));
-        if (typeof nhaSearchableSelect === 'function') nhaSearchableSelect($f('fsd-program'), programs);
+        if (typeof nhaSearchableSelect === 'function') nhaSearchableSelect($f('fsd-program'), programs, fsd_pickProgram);
     } else console.warn('[fsd] programs:', pr.reason);
 }
 
@@ -920,27 +947,32 @@ async function fsd_loadFilterOptions() {
 ═══════════════════════════════════════════════════════════════ */
 $f('fsd-fy').addEventListener('change', e => { fsd.fy = e.target.value; fsd_applyFilters(); });
 
-// Program: the box takes a code or a name; it only filters once a suggestion is picked (or the box is emptied)
-$f('fsd-program').addEventListener('change', e => {
-    const v = e.target.value.trim();
-    if (v !== '' && !fsd.programCodes.has(v)) return;
-    if (v === fsd.program) return;
-    fsd.program = v; fsd_applyFilters();
-});
+// Program: the box SHOWS the program name; the filter itself uses the program code (fsd.program).
+// nhaSearchableSelect has just written the option's value (the code) into the box when it calls this — put the name back.
+function fsd_pickProgram(opt) {
+    const box = $f('fsd-program');
+    box.value = opt.label || opt.value;               // a program without a name falls back to its code
+    fsd.programLabel = box.value;
+    if (fsd.program !== opt.value) { fsd.program = opt.value; fsd_applyFilters(); }
+}
+// Emptying the box means "all programs"
 $f('fsd-program').addEventListener('input', e => {
-    if (e.target.value.trim() === '' && fsd.program !== '') { fsd.program = ''; fsd_applyFilters(); }
+    if (e.target.value.trim() === '' && fsd.program !== '') { fsd.program = ''; fsd.programLabel = ''; fsd_applyFilters(); }
 });
+// Text that was typed but never picked from the list doesn't filter — put the current selection back when leaving the box
+$f('fsd-program').addEventListener('change', e => { if (e.target.value.trim() !== fsd.programLabel) e.target.value = fsd.programLabel; });
+// Click into the box → whole name selected, so typing replaces it and the list searches fresh
+$f('fsd-program').addEventListener('focus', e => e.target.select());
 
 // Amount Unit: display only — re-render everything that is on screen from cache, no refetch
 $f('fsd-unit').addEventListener('change', e => {
     fsd.unit = FSD_UNITS[e.target.value] ? e.target.value : 'full';
     fsd_renderAll();
-    Object.values(fsd_ovLists).forEach(l => l.render());
-    Object.values(fsd_lists).forEach(l => l.render());
+    fsd_lists_render();
 });
 
 $f('fsd-clear').addEventListener('click', () => {
-    fsd.fy = ''; fsd.program = '';
+    fsd.fy = ''; fsd.program = ''; fsd.programLabel = '';
     $f('fsd-fy').value = ''; $f('fsd-program').value = '';
     fsd_applyFilters();
 });
@@ -953,7 +985,7 @@ $f('fsd-refresh').addEventListener('click', () => {
 $f('fsd-print').addEventListener('click', () => window.print());
 
 /* ═══════════════════════════════════════════════════════════════
-   SAMPLE DATA (only used while FSD_USE_MOCK is true)
+   SAMPLE DATA (used for the keys in FSD_STATIC, and for everything while FSD_USE_MOCK is true)
    Deterministic and internally consistent: the dashboard totals are computed from the very same records the tables list,
    and every response has the shape of the real endpoint it stands in for (see the header comment).
 ═══════════════════════════════════════════════════════════════ */
@@ -1062,7 +1094,8 @@ const fsd_mock = (() => {
         };
     };
     const newestFirst = rows => [...rows].sort((a, b) => ((a.date || a.transfer_date) < (b.date || b.transfer_date) ? 1 : -1));
-    const wait = () => new Promise(r => setTimeout(r, 250 + Math.random() * 250));    // lets the loading states show
+    // Fake latency (so the loading states can be seen) only in the full-demo mode — the static parts of a live page answer at once
+    const wait = () => (FSD_USE_MOCK ? new Promise(r => setTimeout(r, 250 + Math.random() * 250)) : Promise.resolve());
 
     const handlers = {
         dashboard(p) {
@@ -1096,6 +1129,14 @@ const fsd_mock = (() => {
             const q = String(p.agency_or_program_search || '').trim().toLowerCase();
             if (q) rows = rows.filter(r => [r.agency?.name, r.sub_program?.program_name, r.sub_program?.program_code, r.sub_program?.sub_program_name].some(v => String(v || '').toLowerCase().includes(q)));
             return { success: true, ...paginate(newestFirst(rows), p) };
+        },
+        // Static stand-in for the Fund Transfer card (not filtered by fiscal year / program, like the transfers themselves)
+        crossAccess() {
+            const open = transfers.filter(t => t.status !== 'Completed'), done = transfers.filter(t => t.status === 'Completed');
+            return { success: true, data: {
+                payable_amount: sum(open), payable_count: open.length, payable_overdue_count: open.filter(t => t.status === 'Overdue').length,
+                receivable_amount: sum(done), receivable_count: done.length,
+            } };
         },
         fundTransfers(p) {
             const q = String(p.search || '').trim().toLowerCase();
