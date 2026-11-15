@@ -8,21 +8,30 @@ use PHPMaker2024\FIMS as App;
  * Budget revisions: a request to change a BUDGET LINE's amount — a chart-of-accounts line item of a budget request
  * (fims.budget_line_items) — optionally moving the difference to a second budget line (the To line).
  *
- * A line's CURRENT amount is  proposed_amount + adjustment.  Approving a revision only ever moves `adjustment`
- * ("net adjustments applied to the proposed amount"); proposed_amount stays exactly as the office filed it:
- *   From line  adjustment := adjustment + (to_amount − its current amount)       → its current amount becomes to_amount
- *   To line    adjustment := adjustment + (the From line's current amount − to_amount)   → it receives the difference
+ * A line's CURRENT amount is  proposed_amount + adjustment.  Approving a revision moves `adjustment` ("net adjustments
+ * applied to the proposed amount" — the running record of approved revisions) AND `suggested_amount` (the line's live
+ * balance, the figure a Memo Request draws on) by the same delta; proposed_amount stays exactly as the office filed it:
+ *   From line  adjustment, suggested_amount += (to_amount − its current amount)       → its current amount becomes to_amount
+ *   To line    adjustment, suggested_amount += (the From line's current amount − to_amount)   → it receives the difference
  * so a transfer deducts from one line and adds to the other by the same amount.
+ * (Because suggested_amount moves too, a line's Available Balance is suggested_amount alone — adding adjustment on top would
+ * count every revision twice. See BudgetLineItemService::fetchApproved().)
+ * A revision that would leave the From line's suggested_amount negative is refused — when it is filed, when it is edited and
+ * again when it is approved (fromBalanceError()); an increase is never refused.
  * See _assets/sql/01 - fims/03 - alter_table/23 - budget_revision_on_budget_reference_number.sql.
  */
 class BudgetRevisionService
 {
-    // status_id values (there is no status lookup table). status_id is NOT NULL and is not
-    // on the form, so a newly filed revision starts as PENDING; review() then moves it to
-    // APPROVED or DECLINED.
-    private const STATUS_PENDING  = 1;
-    private const STATUS_APPROVED = 2;
-    private const STATUS_DECLINED = 3;
+    // The statuses live in fims.settings_status (status_for = 'budget_revision'), looked up by NAME — their ids differ per
+    // install (see statusId()). status_id is NOT NULL and is not on the form, so a newly filed revision starts as Pending;
+    // review() then moves it to Approved or Declined. Seeded by "_assets/sql/01 - fims/04 - seed_data/08 - budget_revision_statuses.sql".
+    private const STATUS_FOR      = 'budget_revision';
+    private const STATUS_PENDING  = 'Pending';
+    private const STATUS_APPROVED = 'Approved';
+    private const STATUS_DECLINED = 'Declined';
+
+    /** @var array<string, int> status name => id, read once per request */
+    private array $statusIds = [];
 
     // A line's current amount is kept below 10^13 (proposed_amount is NUMERIC(15,2)).
     private const MAX_LINE_AMOUNT = 10000000000000;
@@ -73,13 +82,18 @@ class BudgetRevisionService
     // fl… = the From line (from_budget_line_item_id) and what hangs off it; tl… = the optional To line.
     private function joinSql(): string
     {
+        // rs = the REVISION's own status. Matched on status_for too, so a status_id that still holds an old number (the seed was not
+        // run yet) is not read as some other module's status.
         return "FROM {$this->table} rv
+                LEFT JOIN {$this->tableStatus} rs ON rs.id = rv.status_id AND rs.status_for = " . App\QuotedValue(self::STATUS_FOR, App\DataType::STRING, 'DB') . "
                 " . $this->lineJoins('f', 'from_budget_line_item_id') . "
                 " . $this->lineJoins('t', 'to_budget_line_item_id') . "
                 LEFT JOIN {$this->tableUser} us ON us.user_id = rv.user_id";
     }
 
-    // `status` is the readable form of status_id; requested_by_* is who filed it
+    // `status` is the readable form of the status — its name in capitals: PENDING / APPROVED / DECLINED, or UNKNOWN when status_id
+    // matches no revision status — and status_name / status_color are the settings_status row itself (the page paints its badge
+    // with that colour); requested_by_* is who filed it
     // (both NULL for the built-in administrator, whose user_id -1 has no users row).
     // The From line comes back as budget_reference_number / fiscal_yr / rc_* / budget_req_status_* (its request), program_* / project_*,
     // account_* / particulars, proposed_amount / line_adjustment / line_amount (its CURRENT amount); the To line (all NULL when
@@ -89,15 +103,36 @@ class BudgetRevisionService
         return "SELECT rv.*,
                        " . $this->lineSelect('f', '') . ",
                        " . $this->lineSelect('t', 'to_') . ",
-                       CASE rv.status_id
-                            WHEN " . self::STATUS_PENDING . " THEN 'PENDING'
-                            WHEN " . self::STATUS_APPROVED . " THEN 'APPROVED'
-                            WHEN " . self::STATUS_DECLINED . " THEN 'DECLINED'
-                            ELSE 'UNKNOWN'
-                       END AS status,
+                       COALESCE(UPPER(rs.name), 'UNKNOWN') AS status, rs.name AS status_name, rs.color AS status_color,
                        us.username AS requested_by_username,
                        NULLIF(TRIM(CONCAT_WS(' ', us.first_name, us.last_name)), '') AS requested_by_name "
             . $this->joinSql();
+    }
+
+    // The id of the revision status called $name (Pending / Approved / Declined), or null when it is not set up — the seed was not run.
+    private function statusId(string $name): ?int
+    {
+        if (!array_key_exists($name, $this->statusIds)) {
+            $row = App\ExecuteRow(
+                "SELECT id FROM {$this->tableStatus} WHERE status_for = " . App\QuotedValue(self::STATUS_FOR, App\DataType::STRING, 'DB')
+                . ' AND name = ' . App\QuotedValue($name, App\DataType::STRING, 'DB'),
+                'DB'
+            );
+            if (!isset($row['id'])) {
+                return null;   // not cached: a status added after this is picked up on the next call
+            }
+            $this->statusIds[$name] = (int) $row['id'];
+        }
+
+        return $this->statusIds[$name];
+    }
+
+    // The response for a status that is not set up: say what to run, change nothing.
+    private function missingStatus(string $name): array
+    {
+        return ['success' => false, 'message' => "The status \"{$name}\" is not set up in the database yet, so nothing was changed. "
+            . 'Run "_assets/sql/01 - fims/04 - seed_data/08 - budget_revision_statuses.sql" on the database '
+            . '(or ask an administrator to run the SQL installer: node install_system.js --sql-only), then try again.'];
     }
 
     private function lineExists(int $id): bool
@@ -150,6 +185,32 @@ class BudgetRevisionService
         }
 
         return null;
+    }
+
+    // The From line must not end up with a negative balance. Approving moves its suggested_amount (its live balance — what is left
+    // after the CBAs/CFAs already approved against it) by (To Amount − its current amount, proposed_amount + adjustment). So a
+    // revision that LOWERS the line by more than its suggested_amount would leave it below zero, and is refused; an increase
+    // (or a decrease that fits) is always fine. Measured against the line's live figures — the same ones approve() uses, never the
+    // stored from_amount, which can be stale. Returns an error message, or null when the revision is fine.
+    private function fromBalanceError(int $fromId, mixed $toAmount): ?string
+    {
+        $line = App\ExecuteRow(
+            "SELECT suggested_amount, proposed_amount + adjustment AS current_amount FROM {$this->tableLines} WHERE budget_line_item_id = "
+            . App\QuotedValue($fromId, App\DataType::NUMBER, 'DB'),
+            'DB'
+        );
+        if (!$line) {
+            return null;   // a missing line is reported by the callers' own lineExists() checks
+        }
+
+        $suggested = round((float) $line['suggested_amount'], 2);
+        $change    = round((float) $toAmount - (float) $line['current_amount'], 2);   // negative = the line goes down
+        if ($change >= 0 || round($suggested + $change, 2) >= 0) {
+            return null;
+        }
+
+        return 'The From budget line has only ' . number_format($suggested, 2) . ' left (its suggested amount), so it cannot go down by '
+            . number_format(-$change, 2) . ' — that would leave it negative (' . number_format($suggested + $change, 2) . ').';
     }
 
     // reason is optional long text — empty string is stored as NULL.
@@ -278,10 +339,20 @@ class BudgetRevisionService
                     return ['success' => false, 'message' => $error];
                 }
             }
+            // the From line may not be left with a negative balance
+            $error = $this->fromBalanceError($fromId, $toAmount);
+            if ($error !== null) {
+                return ['success' => false, 'message' => $error];
+            }
             // PHPMaker gives the built-in administrator (superadmin) the id -1, so a negative id
             // is a valid user. Only an empty / non-numeric / 0 id means nobody is logged in.
             if (!is_numeric($userId) || (int) $userId === 0) {
                 return ['success' => false, 'message' => 'Unable to determine the current user.'];
+            }
+            // a new revision starts as Pending (looked up first: when the status is missing nothing is written)
+            $pendingId = $this->statusId(self::STATUS_PENDING);
+            if ($pendingId === null) {
+                return $this->missingStatus(self::STATUS_PENDING);
             }
 
             $sql = "INSERT INTO {$this->table} (from_budget_line_item_id, to_budget_line_item_id, from_amount, to_amount, reason, user_id, status_id)
@@ -292,7 +363,7 @@ class BudgetRevisionService
                 . App\QuotedValue($toAmount, App\DataType::NUMBER, 'DB') . ', '
                 . $this->reasonSql($body) . ', '
                 . App\QuotedValue((int) $userId, App\DataType::NUMBER, 'DB') . ', '
-                . self::STATUS_PENDING . ')
+                . $pendingId . ')
                     RETURNING id';
 
             $row = App\ExecuteRow($sql, 'DB');
@@ -317,7 +388,7 @@ class BudgetRevisionService
 
             // An approved revision has already been applied to its lines' adjustments, so
             // changing it afterwards would leave the two out of step.
-            if ((int) $check['data']['status_id'] === self::STATUS_APPROVED) {
+            if (($check['data']['status'] ?? '') === 'APPROVED') {
                 return ['success' => false, 'message' => "Budget revision request #{$id} is already approved and can no longer be edited."];
             }
 
@@ -375,6 +446,11 @@ class BudgetRevisionService
                     return ['success' => false, 'message' => $error];
                 }
             }
+            // the From line may not be left with a negative balance
+            $error = $this->fromBalanceError($fromId, $toAmt);
+            if ($error !== null) {
+                return ['success' => false, 'message' => $error];
+            }
 
             // reason can be cleared, so it is applied whenever the key is sent.
             if (array_key_exists('reason', $body)) {
@@ -414,12 +490,21 @@ class BudgetRevisionService
                 return ['success' => false, 'message' => "status must be 'APPROVED' or 'DECLINED'."];
             }
 
+            // The statuses are looked up first: when one is missing nothing has been read as pending or changed.
+            if ($this->statusId(self::STATUS_PENDING) === null) {
+                return $this->missingStatus(self::STATUS_PENDING);
+            }
+            $targetId = $this->statusId($target);
+            if ($targetId === null) {
+                return $this->missingStatus($target);
+            }
+
             $check = $this->fetchById($id);
             if (!$check['success']) {
                 return $check;
             }
 
-            if ((int) $check['data']['status_id'] !== self::STATUS_PENDING) {
+            if (($check['data']['status'] ?? '') !== 'PENDING') {
                 $current = ucfirst(strtolower((string) $check['data']['status']));
 
                 return ['success' => false, 'message' => "Only pending requests can be reviewed — request #{$id} is already {$current}."];
@@ -434,8 +519,8 @@ class BudgetRevisionService
             // between the read above and this UPDATE, no row matches.
             $affected = App\Execute(
                 "UPDATE {$this->table}
-                 SET status_id = {$target}, update_at = NOW()
-                 WHERE id = " . (int) $id . ' AND deleted_at IS NULL AND status_id = ' . self::STATUS_PENDING,
+                 SET status_id = {$targetId}, update_at = NOW()
+                 WHERE id = " . (int) $id . ' AND deleted_at IS NULL AND status_id = ' . $this->statusId(self::STATUS_PENDING),
                 'DB'
             );
             if (!$affected) {
@@ -453,11 +538,12 @@ class BudgetRevisionService
     }
 
     // Approve = record the decision AND apply it to the budget line(s), as ONE statement so
-    // either everything happens or nothing does. Only the lines' adjustment moves (never proposed_amount):
+    // either everything happens or nothing does. The lines' adjustment AND suggested_amount move, both by the same delta
+    // (never proposed_amount):
     //   From line (from_budget_line_item_id) — always:
-    //     adjustment := adjustment + (to_amount − the amount the line has right now)   → its current amount becomes to_amount
+    //     adjustment, suggested_amount += (to_amount − the amount the line has right now)   → its current amount becomes to_amount
     //   To line (to_budget_line_item_id) — only when the revision has one: it receives what the From line gave up,
-    //     adjustment := adjustment + (the From line's current amount − to_amount)
+    //     adjustment, suggested_amount += (the From line's current amount − to_amount)
     // so the two move by the same amount in opposite directions. The change is measured against the live amount, not
     // from_amount: from_amount can be stale if another revision was approved after this one was filed.
     private function approve(int $id, array $rev): array
@@ -466,11 +552,26 @@ class BudgetRevisionService
         $toId   = $rev['to_budget_line_item_id'] === null ? null : (int) $rev['to_budget_line_item_id'];
         $newAmt = round((float) $rev['to_amount'], 2);
 
+        // the ids of the two statuses the approval moves the revision between (review() has already found them)
+        $pendingId  = $this->statusId(self::STATUS_PENDING);
+        $approvedId = $this->statusId(self::STATUS_APPROVED);
+        if ($pendingId === null) {
+            return $this->missingStatus(self::STATUS_PENDING);
+        }
+        if ($approvedId === null) {
+            return $this->missingStatus(self::STATUS_APPROVED);
+        }
+
         if ($newAmt >= self::MAX_LINE_AMOUNT) {
             return ['success' => false, 'message' => 'To Amount is too large for a budget line (maximum 9,999,999,999,999.99).'];
         }
         if ($fromId === null || !$this->lineExists($fromId)) {
             return ['success' => false, 'message' => "The From budget line for revision #{$id} no longer exists."];
+        }
+        // The balance may have dropped since this was filed (CBAs approved against the line in the meantime): re-check it now.
+        $balanceError = $this->fromBalanceError($fromId, $newAmt);
+        if ($balanceError !== null) {
+            return ['success' => false, 'message' => $balanceError];
         }
 
         $moved = 0.0;
@@ -502,9 +603,12 @@ class BudgetRevisionService
         $row = App\ExecuteRow(
             "WITH approved AS (
                  UPDATE {$this->table} rv
-                 SET status_id = " . self::STATUS_APPROVED . ", update_at = NOW()
-                 WHERE rv.id = {$id} AND rv.deleted_at IS NULL AND rv.status_id = " . self::STATUS_PENDING . "
+                 SET status_id = {$approvedId}, update_at = NOW()
+                 WHERE rv.id = {$id} AND rv.deleted_at IS NULL AND rv.status_id = {$pendingId}
                    AND EXISTS (SELECT 1 FROM {$this->tableLines} x WHERE x.budget_line_item_id = rv.from_budget_line_item_id)
+                   AND (SELECT rv.to_amount >= g.proposed_amount + g.adjustment
+                               OR g.suggested_amount + (rv.to_amount - (g.proposed_amount + g.adjustment)) >= 0
+                        FROM {$this->tableLines} g WHERE g.budget_line_item_id = rv.from_budget_line_item_id)
                    AND (rv.to_budget_line_item_id IS NULL
                         OR (rv.to_budget_line_item_id <> rv.from_budget_line_item_id
                             AND EXISTS (SELECT 1 FROM {$this->tableLines} t WHERE t.budget_line_item_id = rv.to_budget_line_item_id)
@@ -514,21 +618,23 @@ class BudgetRevisionService
              ),
              from_upd AS (
                  UPDATE {$this->tableLines} fl
-                 SET adjustment = fl.adjustment + (approved.to_amount - (fl.proposed_amount + fl.adjustment))
+                 SET adjustment       = fl.adjustment       + (approved.to_amount - (fl.proposed_amount + fl.adjustment)),
+                     suggested_amount = fl.suggested_amount + (approved.to_amount - (fl.proposed_amount + fl.adjustment))
                  FROM approved
                  WHERE fl.budget_line_item_id = approved.from_budget_line_item_id
-                 RETURNING fl.budget_line_item_id, fl.adjustment
+                 RETURNING fl.budget_line_item_id, fl.adjustment, fl.suggested_amount
              ),
              to_upd AS (
                  UPDATE {$this->tableLines} tl
-                 SET adjustment = tl.adjustment + ((fr.proposed_amount + fr.adjustment) - approved.to_amount)
+                 SET adjustment       = tl.adjustment       + ((fr.proposed_amount + fr.adjustment) - approved.to_amount),
+                     suggested_amount = tl.suggested_amount + ((fr.proposed_amount + fr.adjustment) - approved.to_amount)
                  FROM approved
                  JOIN {$this->tableLines} fr ON fr.budget_line_item_id = approved.from_budget_line_item_id
                  WHERE tl.budget_line_item_id = approved.to_budget_line_item_id
-                 RETURNING tl.budget_line_item_id, tl.adjustment
+                 RETURNING tl.budget_line_item_id, tl.adjustment, tl.suggested_amount
              )
-             SELECT f.budget_line_item_id AS from_id, f.adjustment AS from_adjustment,
-                    t.budget_line_item_id AS to_id,   t.adjustment AS to_adjustment
+             SELECT f.budget_line_item_id AS from_id, f.adjustment AS from_adjustment, f.suggested_amount AS from_suggested,
+                    t.budget_line_item_id AS to_id,   t.adjustment AS to_adjustment,   t.suggested_amount AS to_suggested
              FROM from_upd f
              LEFT JOIN to_upd t ON TRUE",
             'DB'
@@ -544,11 +650,11 @@ class BudgetRevisionService
                 ? "Budget revision request #{$id} approved and applied to the budget line."
                 : "Budget revision request #{$id} approved: " . number_format($moved, 2) . ' moved from the From budget line to the To budget line.',
             'status'      => 'APPROVED',
-            // the From line: its id, its new current amount, its new adjustment
-            'budget_line' => ['budget_line_item_id' => (int) $row['from_id'], 'amount' => $newAmt, 'adjustment' => $row['from_adjustment']],
+            // the From line: its id, its new current amount, its new adjustment and suggested amount
+            'budget_line' => ['budget_line_item_id' => (int) $row['from_id'], 'amount' => $newAmt, 'adjustment' => $row['from_adjustment'], 'suggested_amount' => $row['from_suggested']],
         ];
         if ($row['to_id'] !== null) {
-            $result['to_budget_line'] = ['budget_line_item_id' => (int) $row['to_id'], 'amount' => round($toNow + $moved, 2), 'adjustment' => $row['to_adjustment']];
+            $result['to_budget_line'] = ['budget_line_item_id' => (int) $row['to_id'], 'amount' => round($toNow + $moved, 2), 'adjustment' => $row['to_adjustment'], 'suggested_amount' => $row['to_suggested']];
         }
 
         return $result;
