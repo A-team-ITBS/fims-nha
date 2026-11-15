@@ -448,6 +448,8 @@ class PropertyRecordService
             }
 
             $kept  = array_map(fn($r) => $this->keep($r), $rows);
+            // only PAR (TYPENO 1) is a property record: the other items (ICS) are not shown at all
+            $kept  = array_values(array_filter($kept, fn($k) => $this->text($k['TYPENO'] ?? '') === self::PROPERTY_TYPENO));
             $shown = array_values(array_filter($kept, fn($k) => in_array((string) $k['SERV'], self::VISIBLE_STATUSES, true)));
             $saved = $this->savedInvIds(array_column($shown, 'inv_id'));
             $items = array_map(fn($k) => $this->display($k, isset($saved[(int) $k['inv_id']])), $shown);
@@ -472,7 +474,6 @@ class PropertyRecordService
                 'hidden_by_status' => count($kept) - count($shown),         // PIS rows of this PO with status 5-8, not offered
                 'saved_count'      => count(array_filter($items, fn($i) => $i['saved'])),
                 'rc'               => $rc,
-                'not_property'     => count(array_filter($items, fn($i) => !$i['is_property'])),   // PIS TYPENO other than 1: shown with a warning, not saveable
                 'summary'          => $this->summarize(array_values(array_filter($items, fn($i) => $i['is_property']))),
             ]];
         } catch (\Throwable $e) {

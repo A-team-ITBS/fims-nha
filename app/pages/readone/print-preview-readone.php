@@ -311,8 +311,10 @@ function prp_dvPayload(dv) {
 }
 
 /** The JEV of a DV (dv.jev + its lines) → the JEV form. Account titles are filled in server-side. */
-function prp_jevFromDv(dv) {
-    const j = dv.jev || {};
+function prp_jevFromDv(dv, jev) {
+    // `jev` lets callers print a SPECIFIC JEV (e.g. a PAYMENT JEV from dv.payment_jevs); defaults to
+    // the DV's SETUP JEV (dv.jev) when omitted, keeping existing callers unchanged.
+    const j = jev || dv.jev || {};
     return {
         jev_number: j.jev_no || '',
         jev_date: j.jev_date || '',

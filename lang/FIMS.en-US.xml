@@ -1,4 +1,4 @@
-<ew-language date="2026/11/13" id="en-US" author="e.World Technology Limited">
+<ew-language date="2026/11/15" id="en-US" author="e.World Technology Limited">
   <project>
     <phrase id="bodytitle" value="UAC - User Access Control System" />
     <phrase id="footertext" value="&amp;copy;2024 ITBS Corporation. All rights reserved." />
@@ -66,7 +66,7 @@
       <phrase id="menutext" value="Disbursement Voucher" />
     </menu>
     <menu id="260">
-      <phrase id="menutext" value="Check Disbursements" />
+      <phrase id="menutext" value="Check Disbursements"/>
     </menu>
     <menu id="332">
       <phrase id="menutext" value="Bank Management Page" />
@@ -1584,7 +1584,7 @@
       <phrase id="tblcaption" value="Change Password" />
     </table>
     <table id="checkdisbursements">
-      <phrase id="tblcaption" value="Check Disbursements" />
+      <phrase id="tblcaption" value="Check Disbursements"/>
     </table>
     <table id="budget_prop_page">
       <phrase id="tblcaption" value="Budget Propose" />

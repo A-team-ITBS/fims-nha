@@ -3,6 +3,12 @@
 -- does NOT touch budget_line_items.obligation / disbursement / account_payable (a later, harder
 -- commitment stage), and it does NOT reduce budget_line_items.suggested_amount itself.
 --
+-- UPDATE (alter_table/29): for a CBA / CFA the same final approval ALSO takes its amount R off the line item —
+-- suggested_amount - R, account_payable + R, obligation + R — and sets this row's balance_applied; the Available Balance
+-- is then simply suggested_amount (an approved Budget Revision moves it too, so adjustment is not added on top; the earmark
+-- is only the ceiling its RFAs / LAAs draw against, and their draws no longer add obligation). The paragraphs below
+-- describe the original design.
+--
 -- The ceiling is suggested_amount, NOT proposed_amount: proposed_amount is only what the requesting
 -- office originally asked for, while suggested_amount is what FMD actually approved for this line item
 -- during Budget Processing (see app/pages/form/budget-processing-form.php) — the real, spendable amount.

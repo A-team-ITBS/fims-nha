@@ -125,7 +125,7 @@ const VR_IS_SYSADMIN     = <?= json_encode((bool) $_vr_isSysAdmin) ?>;
 const VR_CURRENT_USER_ID = <?= json_encode($_vr_currentUserId) ?>;
 const VR_RC_ID           = <?= json_encode($_vr_rcId) ?>;
 // Mirrors DisbursementVoucherService::STAGE_HOLDER_RC — UX only, server is authoritative.
-const VR_STAGE_HOLDER_RC = { FOR_FMD_REVIEW: '013', FOR_ACCOUNTING: '012', FOR_TREASURY: '014' };
+const VR_STAGE_HOLDER_RC = { FOR_FMD_REVIEW: '013', FOR_ACCOUNTING: '012', FOR_DIVISION_MANAGER: '012', FOR_DEPARTMENT_MANAGER: '012', FOR_TREASURY: '014' };
 const $vr = id => document.getElementById(id);
 let vr_id  = 0;
 let vr_dv  = null;
@@ -208,8 +208,9 @@ function vr_render(dv) {
             </dl>
         </div>`;
 
-    // Set by Originating at creation (see app/pages/voucher/form.php) — shown whenever any exist,
-    // not gated to the Accounting stage like the ATC/Accounting Entries cards below.
+    // Read-only fallback for every stage OTHER than FOR_ACCOUNTING — while FOR_ACCOUNTING,
+    // vje_deductionCard() (part of vje_section()) renders the SAME data as an editable grid instead
+    // (Accounting can now add/change/remove Deduction rows, not just Originating at creation).
     const deductionSection = (dv.deductions ?? []).length ? `
         <div class="vr-card">
             <p class="vr-card-title">Deduction</p>
@@ -266,14 +267,17 @@ function vr_render(dv) {
             ${dv.remarks ? `<p class="vr-particulars" style="margin-top:12px;"><strong>Remarks:</strong> ${vr_esc(dv.remarks)}</p>` : ''}
         </div>
         ${vr_attachmentsSection(dv)}
-        ${deductionSection}
+        ${vje_visible(dv) ? '' : deductionSection}
         ${vje_visible(dv) ? vje_section(dv) : vje_groupedEntriesCard(dv)}
+        ${vje_paymentEntriesCard(dv)}
         <div class="vr-card" style="margin-bottom:0;">
             <p class="vr-card-title">Workflow History</p>
             <dl class="vr-dl vr-dl3">
                 <div><dt>Originating (Submitted)</dt><dd>${vr_fmtDateTime(dv.submitted_at)}</dd></div>
                 <div><dt>FMD (Obligation Checked)</dt><dd>${vr_fmtDateTime(dv.fmd_approved_at)}</dd></div>
-                <div><dt>Accounting (Processed)</dt><dd>${vr_fmtDateTime(dv.accounting_processed_at)}</dd></div>
+                <div><dt>Accounting — Section Chief (Processed)</dt><dd>${vr_fmtDateTime(dv.accounting_processed_at)}</dd></div>
+                <div><dt>Accounting — Division Manager (Reviewed)</dt><dd>${vr_fmtDateTime(dv.division_reviewed_at)}</dd></div>
+                <div><dt>Accounting — Department Manager (Approved)</dt><dd>${vr_fmtDateTime(dv.department_approved_at)}</dd></div>
                 <div><dt>Treasury (Released)</dt><dd>${vr_fmtDateTime(dv.treasury_released_at)}</dd></div>
             </dl>
         </div>`;
@@ -335,7 +339,9 @@ function vr_renderActions(dv) {
     let html = '';
     if (allowed.includes('FOR_FMD_REVIEW')) html += btn('Submit to FMD', 'FOR_FMD_REVIEW', 'nha-btn-primary');
     if (allowed.includes('FOR_ACCOUNTING')) html += btn('FMD Approve', 'FOR_ACCOUNTING', 'nha-btn-primary');
-    if (allowed.includes('FOR_TREASURY'))   html += btn('Forward to Treasury', 'FOR_TREASURY', 'nha-btn-primary');
+    if (allowed.includes('FOR_DIVISION_MANAGER'))   html += btn('Forward to Division Manager', 'FOR_DIVISION_MANAGER', 'nha-btn-primary');
+    if (allowed.includes('FOR_DEPARTMENT_MANAGER')) html += btn('Forward to Department Manager', 'FOR_DEPARTMENT_MANAGER', 'nha-btn-primary');
+    if (allowed.includes('FOR_TREASURY'))   html += btn('Approve &amp; Forward to Treasury', 'FOR_TREASURY', 'nha-btn-primary');
     if (allowed.includes('RELEASED'))       html += btn('Release Payment', 'RELEASED', 'nha-btn-primary');
     if (allowed.includes('REJECTED'))       html += btn('Reject', 'REJECTED', 'nha-btn-outline');
     if (allowed.includes('CANCELLED'))      html += btn('Cancel', 'CANCELLED', 'nha-btn-ghost');
@@ -344,7 +350,9 @@ function vr_renderActions(dv) {
 
 /* ══════════════════════════════════════════════════════════════
    JOURNAL ENTRY (Accounting stage)   prefix: vje_
-   Three sub-sections, all saved together via one POST .../journal-entry:
+   Four sub-sections, all saved together via one POST .../journal-entry:
+     - Deduction — 0+ rows, fims.disbursement_voucher_deductions (editable here; was a static
+       read-only table set only by Originating until Accounting could edit it too)
      - Withholding Tax Classification (ATC) — 0+ rows, fims.disbursement_voucher_atc_lines
      - Tax Computation — derived display only, nothing to save
      - Accounting Entries (DV) — the actual debit/credit JEV, with optional SL Code/SL Detail
@@ -352,13 +360,15 @@ function vr_renderActions(dv) {
 
 let VJE_COA = []; // posting_allowed chart-of-accounts rows, loaded once per modal open
 let VJE_ATC = []; // active ATC codes, loaded once per modal open
+let VJE_DED = []; // active deduction types, loaded once per modal open
 let VJE_RC  = []; // responsibility centers, for ATC "Chargeability", loaded once per modal open
 let VJE_SL  = []; // SL masters, for the Accounting Entries grid's SL Code picker, loaded once per modal open
+let VJE_BOOKS = []; // fims.books (Main Office/CISFA/NGC/MPLC-PPMO/PPMO), for the Accounting Entries Book picker, loaded once per modal open
 let vje_seq    = 0;
 let vje_groupSeq = 0; // GL account-group id counter for the Accounting Entries grid (see vje_addGroup())
 let vje_atcSeq = 0;
-let vje_dv     = null; // the open DV — ATC rows reference its net_amount (deductions already applied) as a Tax Base default
-let vje_autoMode = true; // true until a JEV has been saved at least once this visit — governs whether Accounting Entries auto-syncs from Deduction/ATC rows (see vje_syncAutoLines)
+let vje_dedSeq = 0;
+let vje_dv     = null; // the open DV — vje_liveGrossLessDeductions() reads its gross_amount
 
 // Visible only while the voucher is at FOR_ACCOUNTING and the viewer is Accounting Dept (RC 012)
 // or sysadmin — same rule the server enforces in DisbursementVoucherService::saveJournalEntry().
@@ -367,7 +377,7 @@ function vje_visible(dv) {
 }
 
 function vje_section(dv) {
-    return vje_atcCard(dv) + vje_entriesCard(dv);
+    return vje_deductionCard(dv) + vje_atcCard(dv) + vje_entriesCard(dv);
 }
 
 /**
@@ -381,10 +391,9 @@ function vje_section(dv) {
  * SL Code name, and the small number is the line's position in the JEV (jevl.line_number), not an
  * SL code.
  */
-function vje_groupedEntriesCard(dv) {
-    const lines = dv.jev?.lines ?? [];
-    if (!lines.length) return '';
-
+/** GL-grouped, read-only rendering of a posted JEV's lines — shared by the SETUP JEV's read-only
+    presentation (vje_groupedEntriesCard()) and each PAYMENT JEV's own card (vje_paymentEntriesCard()). */
+function vje_groupedTable(lines) {
     const groups = [];
     const byAccount = new Map();
     lines.forEach(l => {
@@ -419,9 +428,7 @@ function vje_groupedEntriesCard(dv) {
     const totalDebit  = lines.reduce((s, l) => s + (Number(l.debit)  || 0), 0);
     const totalCredit = lines.reduce((s, l) => s + (Number(l.credit) || 0), 0);
 
-    return `<div class="vr-card">
-        <p class="vr-card-title">Accounting Entries</p>
-        <div style="overflow-x:auto;">
+    return `<div style="overflow-x:auto;">
         <table class="vje-grp-table" style="min-width:600px;">
             <thead><tr>
                 <th style="text-align:left;">Account Code / Description</th>
@@ -438,8 +445,101 @@ function vje_groupedEntriesCard(dv) {
                 <td></td>
             </tr></tfoot>
         </table>
-        </div>
+        </div>`;
+}
+
+function vje_groupedEntriesCard(dv) {
+    const lines = dv.jev?.lines ?? [];
+    if (!lines.length) return '';
+
+    return `<div class="vr-card">
+        <p class="vr-card-title">Accounting Entries${dv.jev?.book_name ? ` — ${vr_esc(dv.jev.book_name)}` : ''}</p>
+        ${vje_groupedTable(lines)}
     </div>`;
+}
+
+/** The PAYMENT JEV — the settlement entry (Dr Accounts Payable / Cr Cash) for a released DV. Accounting
+    owns its whole lifecycle: a preparer builds it ("Prepare Payment JEV" -> preparePaymentJev()), then it
+    runs the review chain (Section Chief -> Division Manager -> Department Manager posts it, via
+    vr_jevStatus -> DisbursementVoucherService::changeJevStatus()). Treasury never prepares or posts it.
+    Separate from the SETUP JEV above since it's its own JEV number/source document. When no payment JEV
+    exists yet and the DV is RELEASED, this shows the "Prepare Payment JEV" prompt instead. */
+function vje_paymentEntriesCard(dv) {
+    const jevs = dv.payment_jevs ?? [];
+    // Accounting (RC 012) or a superadmin drives the whole payment-JEV lifecycle: prepare it, then move
+    // it through the review chain. Treasury never prepares or posts it.
+    const canPost = VR_IS_SYSADMIN || VR_RC_ID === '012';
+
+    // No payment JEV yet, but Treasury has released the voucher — Accounting prepares it here.
+    if (!jevs.length) {
+        if (dv.status === 'RELEASED' && canPost) {
+            return `<div class="vr-card">
+                <p class="vr-card-title">Payment Entry</p>
+                <p class="vr-hint" style="margin:6px 0 10px;">Treasury has released this voucher. Accounting can now prepare the payment Journal Entry (Dr Accounts Payable / Cr Cash), which then goes through review: Section Chief → Division Manager → Department Manager posts it.</p>
+                <button type="button" class="nha-btn nha-btn-primary" onclick="vr_preparePaymentJev(${dv.dv_id})">Prepare Payment JEV</button>
+            </div>`;
+        }
+        return '';
+    }
+
+    // Read-only here: the review chain is actioned in the Journal Entry Voucher register (that module's
+    // own row buttons), not in this DV modal. This card just shows where each payment JEV stands.
+    const chain = {
+        DRAFT:                  ['nha-bdg-gray',   'Draft'],
+        FOR_SECTION_CHIEF:      ['nha-bdg-amber',  'For Section Chief'],
+        FOR_DIVISION_MANAGER:   ['nha-bdg-purple', 'For Division Manager'],
+        FOR_DEPARTMENT_MANAGER: ['nha-bdg-navy',   'For Department Manager'],
+        POSTED:                 ['nha-bdg-green',  'Posted to GL'],
+        REVERSED:               ['nha-bdg-red',    'Reversed'],
+    };
+
+    return jevs.map(jev => {
+        const [cls, label] = chain[jev.status] || ['nha-bdg-gray', jev.status || '—'];
+        const inReview = !['POSTED', 'REVERSED'].includes(jev.status);
+        const hint = inReview
+            ? `<p class="vr-hint" style="margin:6px 0 8px;">In Accounting review — advance it from the <strong>Journal Entry Vouchers</strong> register (Section Chief → Division Manager → Department Manager posts).</p>`
+            : '';
+        return `<div class="vr-card">
+            <div class="vje-section-hdr">
+                <p class="vr-card-title" style="margin:0;">Payment Entry — ${vr_esc(jev.jev_no)} (${vr_esc(jev.source_module)} — ${vr_esc(jev.doc_ref_no)})${jev.book_name ? ` — ${vr_esc(jev.book_name)}` : ''}</p>
+                <span class="nha-bdg ${cls}">${vr_esc(label)}</span>
+            </div>
+            ${hint}
+            ${vje_groupedTable(jev.lines ?? [])}
+        </div>`;
+    }).join('');
+}
+
+/** Editable at the Accounting stage — was a static read-only table set only by Originating at
+    creation; Accounting can now add/change/remove rows here too, same as ATC below. Feeds
+    vje_syncAutoLines()'s Cr lines the same way a loaded one from creation always did. */
+function vje_deductionCard(dv) {
+    return `
+        <div class="vr-card">
+            <div class="vje-section-hdr">
+                <p class="vr-card-title" style="margin:0;">Deduction</p>
+                <span class="vje-badge">Accounting Entry</span>
+            </div>
+            <p class="vr-hint" style="margin:0 0 8px;">Non-tax amounts withheld from gross (e.g. contractor retention) — separate from ATC withholding tax below.</p>
+            <div style="overflow-x:auto;">
+                <table class="vr-ledger" style="min-width:600px;">
+                    <thead><tr>
+                        <th style="text-align:left;">Type</th>
+                        <th style="text-align:right;width:85px;">Rate (%)</th>
+                        <th style="text-align:right;width:120px;">Gross (₱)</th>
+                        <th style="text-align:right;width:130px;">Amount (₱)</th>
+                        <th style="width:30px;"></th>
+                    </tr></thead>
+                    <tbody id="vje-ded-tbody"></tbody>
+                    <tfoot><tr class="vr-l-total">
+                        <td colspan="3" style="text-align:right;">Total Deductions</td>
+                        <td class="vr-l-val" id="vje-ded-total">₱ 0.00</td>
+                        <td></td>
+                    </tr></tfoot>
+                </table>
+            </div>
+            <button type="button" class="nha-btn nha-btn-ghost" style="margin-top:8px;" onclick="vje_addDeductionLine()">+ Add Deduction</button>
+        </div>`;
 }
 
 function vje_atcCard(dv) {
@@ -494,11 +594,28 @@ function vje_entriesCard(dv) {
                 <p class="vr-card-title" style="margin:0;">Accounting Entries</p>
                 <span class="vje-badge">Accounting Entry</span>
             </div>
-            <p class="vr-hint" style="margin:0 0 8px;">Grouped by GL account (UACS code) — pick the account once per group (<span class="vje-auto-tag">auto</span> groups are filled from Deduction/ATC rows that have a UACS account code, and stay in sync with them until this Journal Entry is first saved), then add one SL Code line per amount under it.</p>
+            <p class="vr-hint" style="margin:0 0 8px;">Grouped by GL account (UACS code) — pick the account once per group (<span class="vje-auto-tag">auto</span> groups are filled from Deduction/ATC rows that have a UACS account code, and always stay in sync with them — editing a line you added yourself here is safe, it's never touched), then add one SL Code line per amount under it.</p>
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
                 <span class="vje-amt-badge">Required: DR = CR (balanced)</span>
                 <span class="vje-amt-badge">Gross: <span id="vje-badge-gross">₱ 0.00</span></span>
                 <span class="vje-amt-badge">Net after Deductions: <span id="vje-badge-net-ded">₱ 0.00</span></span>
+            </div>
+            <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:10px;">
+                <div class="nha-fg" style="max-width:260px;">
+                    <label>Book <span class="nha-req">*</span></label>
+                    <select id="vje-book"><option value="">Select a book…</option></select>
+                    <span class="vje-err" id="vje-err-book" style="display:none;color:var(--afims-danger,#C0392B);font-size:12px;">Book is required.</span>
+                </div>
+                <div class="nha-fg" style="max-width:220px;">
+                    <label>JEV Classification</label>
+                    <select id="vje-classification">
+                        <option value="REGULAR">Regular</option>
+                        <option value="ACCRUAL">Accrual</option>
+                        <option value="DEPRECIATION">Depreciation</option>
+                        <option value="PREPAYMENTS">Prepayments</option>
+                        <option value="CLOSING">Closing</option>
+                    </select>
+                </div>
             </div>
             <div style="overflow-x:auto;">
                 <table class="vr-ledger vje-grp-edit-table" style="min-width:760px;">
@@ -528,8 +645,10 @@ function vje_entriesCard(dv) {
         </div>`;
 }
 
+// path must NOT start with "/" — see app/pages/voucher/form.php's vf_getJson() doc comment for why
+// (the sub-folder deployment shim double-prefixes a bare-quoted "/word" literal).
 async function vje_getJson(path) {
-    const res  = await vr_authFetch(VR_API + path);
+    const res  = await vr_authFetch(VR_API + '/' + path);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const json = await res.json();
     if (!json.success) throw new Error(json.message || 'Request failed.');
@@ -539,22 +658,40 @@ async function vje_getJson(path) {
 async function vje_init(dv) {
     vje_dv = dv;
     try {
-        const [coaJson, atcJson, rcJson, slJson] = await Promise.all([
+        const [coaJson, atcJson, dedJson, rcJson, slJson, booksJson] = await Promise.all([
             // postable_only (not the region-scoped /chart-of-accounts/all) — posting a voucher
             // isn't restricted to the preparer's own region, so every active+postable GL account
             // should be selectable here regardless of which region it belongs to.
-            vje_getJson('/chart_of_accounts/all?postable_only=1'),
-            vje_getJson('/voucher/atc-codes'),
-            vje_getJson('/responsibility-center/all'),
-            vje_getJson('/voucher/sl-codes'),
+            vje_getJson('chart_of_accounts/all?postable_only=1'),
+            vje_getJson('voucher/atc-codes'),
+            vje_getJson('voucher/deduction-types'),
+            vje_getJson('responsibility-center/all'),
+            vje_getJson('voucher/sl-codes'),
+            vje_getJson('books/all'),
         ]);
         VJE_COA = (coaJson.data ?? []).filter(a => a.posting_allowed);
         VJE_ATC = atcJson.data ?? [];
+        VJE_DED = dedJson.data ?? [];
         VJE_RC  = rcJson.data ?? [];
         VJE_SL  = slJson.data ?? [];
+        VJE_BOOKS = booksJson.data ?? [];
     } catch (e) {
-        VJE_COA = []; VJE_ATC = []; VJE_RC = []; VJE_SL = [];
+        VJE_COA = []; VJE_ATC = []; VJE_DED = []; VJE_RC = []; VJE_SL = []; VJE_BOOKS = [];
     }
+
+    const vjeBookSel = $vr('vje-book');
+    if (vjeBookSel) {
+        vjeBookSel.innerHTML = '<option value="">Select a book…</option>' +
+            VJE_BOOKS.map(b => `<option value="${b.book_id}">${vr_esc(b.name)}</option>`).join('');
+        vjeBookSel.value = dv.jev?.book_id || '';
+    }
+    const vjeClassSel = $vr('vje-classification');
+    if (vjeClassSel) vjeClassSel.value = dv.jev?.jev_classification || 'REGULAR';
+
+    vje_dedSeq = 0;
+    $vr('vje-ded-tbody').innerHTML = '';
+    (dv.deductions ?? []).forEach(d => vje_addDeductionLine(d));
+    vje_recalcDeductions();
 
     vje_atcSeq = 0;
     $vr('vje-atc-tbody').innerHTML = '';
@@ -565,28 +702,152 @@ async function vje_init(dv) {
     vje_groupSeq = 0;
     $vr('vje-lines-tbody').innerHTML = '';
     if (dv.jev && (dv.jev.lines ?? []).length) {
-        // Already saved once — respect what Accounting committed; auto-sync stops here even if
-        // they add more ATC rows afterward (see vje_syncAutoLines's doc comment). Lines were saved
-        // in GL-grouped order (see vje_collectLines()), so a run of consecutive same-account lines
-        // reopens as one group, same as it was entered.
-        vje_autoMode = false;
+        // Reload whatever was saved before (GL-grouped order — see vje_collectLines() — so a run of
+        // consecutive same-account lines reopens as one group, same as it was entered), then TAG
+        // each loaded line with the same data-auto-source vje_upsertAutoLine() would have given it,
+        // by matching it against the Dr account/the just-loaded Deduction rows/the just-loaded ATC
+        // rows. Accounting Entries now ALWAYS auto-syncs (see vje_syncAutoLines()'s doc comment) —
+        // without this, that sync would duplicate a line that's already there instead of recognizing
+        // and updating it. A loaded line matching none of those (a manual split, a custom SL
+        // breakdown Accounting entered by hand, etc.) is left untagged, so sync never touches it.
         let lastAcct = null, gid = null;
+        const usedDed = new Set(), usedAtc = new Set();
+        let drUsed = false, apUsed = false;
         dv.jev.lines.forEach(l => {
             if (l.account_code !== lastAcct) {
                 gid = vje_addGroup(l.account_code);
                 lastAcct = l.account_code;
             }
-            vje_addGroupLine(gid, l);
+            const lineId = vje_addGroupLine(gid, l);
+            const tr = $vr(`vje-row-${lineId}`);
+            const debit  = Number(l.debit)  || 0;
+            const credit = Number(l.credit) || 0;
+
+            if (!drUsed && debit > 0 && l.account_code === (dv.account_code || '')) {
+                tr.dataset.autoSource = 'dr';
+                drUsed = true;
+                return;
+            }
+            const dedMatch = [...$vr('vje-ded-tbody').querySelectorAll('tr')].find(dtr => {
+                const idx = dtr.id.replace('vje-ded-row-', '');
+                if (usedDed.has(idx)) return false;
+                const type = VJE_DED.find(t => String(t.deduction_type_id) === dtr.querySelector('.vje-ded-type').value);
+                const amount = parseFloat(dtr.querySelector('.vje-ded-amount').value) || 0;
+                return type?.account_code === l.account_code && Math.abs(amount - credit) < 0.01;
+            });
+            if (dedMatch) {
+                const idx = dedMatch.id.replace('vje-ded-row-', '');
+                usedDed.add(idx);
+                tr.dataset.autoSource = `ded:${idx}`;
+                return;
+            }
+            const atcMatch = [...$vr('vje-atc-tbody').querySelectorAll('tr')].find(atr => {
+                const idx = atr.id.replace('vje-atc-row-', '');
+                if (usedAtc.has(idx)) return false;
+                const def  = VJE_ATC.find(c => c.atc_code === atr.querySelector('.vje-atc-code').value);
+                const rate = parseFloat(atr.querySelector('.vje-atc-rate').value) || 0;
+                const base = parseFloat(atr.querySelector('.vje-atc-base').value) || 0;
+                return def?.account_code === l.account_code && Math.abs((Math.round(base * rate) / 100) - credit) < 0.01;
+            });
+            if (atcMatch) {
+                const idx = atcMatch.id.replace('vje-atc-row-', '');
+                usedAtc.add(idx);
+                tr.dataset.autoSource = `atc:${idx}`;
+                return;
+            }
+            if (!apUsed && credit > 0 && l.account_code === '2-01-01-010') {
+                tr.dataset.autoSource = 'ap';
+                apUsed = true;
+            }
         });
         vje_renumber();
         vje_recalc();
-    } else {
-        vje_autoMode = true;
-        vje_syncAutoLines();
     }
+    vje_syncAutoLines();
 
     $vr('vje-badge-gross').textContent = vr_peso(dv.gross_amount);
-    $vr('vje-badge-net-ded').textContent = vr_peso(dv.net_amount);
+    $vr('vje-badge-net-ded').textContent = vr_peso(vje_liveGrossLessDeductions());
+}
+
+/** Gross minus whatever is currently in the Deduction grid — the live "net before withholding tax"
+    figure. Used wherever the old code read the DV's static dv.net_amount (which was fixed at
+    whatever deductions existed at save time); now that Deductions are editable here, that snapshot
+    would go stale the moment a row changes. */
+function vje_liveGrossLessDeductions() {
+    return Math.max(0, (Number(vje_dv?.gross_amount) || 0) - vje_totalDeductions());
+}
+
+/* ── Deduction (editable — was Originating-only at creation; Accounting can now add/change/
+   remove rows here too) ──────────────────────────────────────── */
+function vje_addDeductionLine(d = null) {
+    const idx = ++vje_dedSeq;
+    const tr = document.createElement('tr');
+    tr.id = `vje-ded-row-${idx}`;
+    tr.innerHTML = `
+        <td><select class="vje-ded-type">
+            <option value="">— Select type —</option>
+            ${VJE_DED.map(t => `<option value="${vr_esc(t.deduction_type_id)}">${vr_esc(t.name)}</option>`).join('')}
+        </select></td>
+        <td><input type="number" class="vje-ded-rate" min="0" step="0.01" placeholder="e.g. 10"></td>
+        <td><input type="text" class="vje-ded-gross" readonly></td>
+        <td><input type="number" class="vje-ded-amount" min="0" step="0.01" placeholder="Auto-computed"></td>
+        <td><button type="button" class="vje-remove" title="Remove" onclick="vje_removeDeductionLine(${idx})">&times;</button></td>`;
+    tr.querySelector('.vje-ded-type').value = d?.deduction_type_id != null ? String(d.deduction_type_id) : '';
+    tr.querySelector('.vje-ded-rate').value = d?.rate ?? '';
+    tr.querySelector('.vje-ded-amount').value = d ? Number(d.deduction_amount || 0).toFixed(2) : '';
+    tr.querySelector('.vje-ded-type').addEventListener('change', () => vje_recalcDeductionLine(idx));
+    tr.querySelector('.vje-ded-rate').addEventListener('input', () => vje_recalcDeductionLine(idx));
+    tr.querySelector('.vje-ded-amount').addEventListener('input', () => vje_recalcDeductionLine(idx));
+    $vr('vje-ded-tbody').appendChild(tr);
+    vje_recalcDeductionLine(idx);
+}
+
+function vje_removeDeductionLine(idx) {
+    $vr(`vje-ded-row-${idx}`)?.remove();
+    vje_recalcDeductions();
+}
+
+/* A deduction's gross_amount always mirrors this DV's own gross_amount (not separately editable —
+   see the "Gross" column's readonly styling); its deduction_amount is rate% of that unless the
+   preparer types an amount directly (no rate given = flat peso deduction). Same convention as
+   app/pages/voucher/form.php's vf_recalcDeductionLine(). */
+function vje_recalcDeductionLine(idx) {
+    const tr = $vr(`vje-ded-row-${idx}`);
+    if (!tr) return;
+    const gross = Number(vje_dv?.gross_amount) || 0;
+    tr.querySelector('.vje-ded-gross').value = vr_peso(gross);
+    const rate = parseFloat(tr.querySelector('.vje-ded-rate').value);
+    if (!isNaN(rate) && rate > 0) {
+        tr.querySelector('.vje-ded-amount').value = (gross * rate / 100).toFixed(2);
+    }
+    vje_recalcDeductions();
+}
+
+function vje_collectDeductions() {
+    const out = [];
+    $vr('vje-ded-tbody').querySelectorAll('tr').forEach(tr => {
+        const typeId = tr.querySelector('.vje-ded-type').value;
+        const amount = parseFloat(tr.querySelector('.vje-ded-amount').value) || 0;
+        if (!typeId && amount <= 0) return; // blank trailing row
+        out.push({
+            deduction_type_id: typeId || null,
+            rate             : tr.querySelector('.vje-ded-rate').value === '' ? null : parseFloat(tr.querySelector('.vje-ded-rate').value),
+            gross_amount     : Number(vje_dv?.gross_amount) || 0,
+            deduction_amount : amount,
+        });
+    });
+    return out;
+}
+
+function vje_totalDeductions() {
+    return vje_collectDeductions().reduce((s, d) => s + d.deduction_amount, 0);
+}
+
+function vje_recalcDeductions() {
+    $vr('vje-ded-total').textContent = vr_peso(vje_totalDeductions());
+    const badge = $vr('vje-badge-net-ded');
+    if (badge) badge.textContent = vr_peso(vje_liveGrossLessDeductions());
+    vje_syncAutoLines();
 }
 
 /* ── Withholding Tax Classification (ATC) ────────────────────── */
@@ -606,7 +867,7 @@ function vje_addAtcLine(a = null) {
         <td><button type="button" class="vje-remove" title="Remove" onclick="vje_removeAtcLine(${idx})">&times;</button></td>`;
     tr.querySelector('.vje-atc-code').value = a?.atc_code ?? '';
     tr.querySelector('.vje-atc-rate').value = a?.rate ?? '';
-    tr.querySelector('.vje-atc-base').value = a ? (Number(a.tax_base) || 0).toFixed(2) : (Number(vje_dv?.net_amount) || 0).toFixed(2);
+    tr.querySelector('.vje-atc-base').value = a ? (Number(a.tax_base) || 0).toFixed(2) : vje_liveGrossLessDeductions().toFixed(2);
     tr.querySelector('.vje-atc-rc').value   = a?.chargeability ?? '';
     tr.querySelector('.vje-atc-code').addEventListener('change', () => vje_onAtcCodeSelect(idx));
     tr.querySelectorAll('.vje-atc-rate, .vje-atc-base').forEach(el => el.addEventListener('input', () => vje_recalcAtcLine(idx)));
@@ -677,7 +938,7 @@ function vje_recalcAtc() {
     $vr('vje-atc-total').textContent = vr_peso(totalWh);
 
     const gross   = Number(vje_dv?.gross_amount) || 0;
-    const netPreWh = Number(vje_dv?.net_amount) || 0; // already net of deductions
+    const netPreWh = vje_liveGrossLessDeductions(); // live net of deductions, not the stale dv.net_amount snapshot
     const totalBase = lines.reduce((s, l) => s + l.tax_base, 0);
     $vr('vje-tax-gross').textContent = vr_peso(gross);
     $vr('vje-tax-base').textContent  = vr_peso(totalBase);
@@ -691,8 +952,10 @@ function vje_recalcAtc() {
  * Upserts the auto-derived lines (Dr expense for the full gross, Cr each Deduction/ATC row that
  * carries a mapped UACS account code, Cr Accounts Payable for whatever's left) into the grid,
  * tracked via each row's data-auto-source so repeat syncs update in place instead of duplicating.
- * Only runs while vje_autoMode is true — see vje_init()'s doc comment. A no-op once Accounting has
- * saved this Journal Entry at least once this visit.
+ * Always runs, on every Deduction/ATC/Account Code change, including after a Journal Entry has
+ * already been saved once — a line the preparer added manually (no data-auto-source) is never
+ * touched; see vje_init()'s matching logic for how a RELOADED saved line gets re-tagged so this
+ * doesn't duplicate it.
  */
 /* ── Accounting Entries grid: GL-grouped, "Select GL then its sub-lines" ──────────────────────
    One header row per GL account (its own Account Code picker + add/remove-group controls),
@@ -837,7 +1100,6 @@ function vje_renumber() {
 }
 
 function vje_syncAutoLines() {
-    if (!vje_autoMode) return;
     const gross = Number(vje_dv?.gross_amount) || 0;
 
     // description is what the grouped read-only "Accounting Entries" card (vje_groupedEntriesCard())
@@ -846,13 +1108,19 @@ function vje_syncAutoLines() {
     // session ends.
     vje_upsertAutoLine('dr', { account_code: vje_dv?.account_code || '', debit: gross, credit: 0, description: vje_dv?.claimant_name || '' });
 
+    // Reads the LIVE Deduction grid (vje_deductionCard()), not a static vje_dv.deductions snapshot —
+    // Accounting can now add/change/remove rows here, see vje_addDeductionLine()'s doc comment.
     const dedIds = new Set();
     let dedCreditTotal = 0;
-    (vje_dv?.deductions ?? []).forEach(d => {
-        if (!d.account_code) return;
-        dedIds.add(String(d.dv_deduction_id));
-        dedCreditTotal += Number(d.deduction_amount) || 0;
-        vje_upsertAutoLine(`ded:${d.dv_deduction_id}`, { account_code: d.account_code, debit: 0, credit: Number(d.deduction_amount) || 0, description: d.name });
+    $vr('vje-ded-tbody').querySelectorAll('tr').forEach(tr => {
+        const idx    = tr.id.replace('vje-ded-row-', '');
+        const typeId = tr.querySelector('.vje-ded-type').value;
+        const amount = parseFloat(tr.querySelector('.vje-ded-amount').value) || 0;
+        const type   = VJE_DED.find(t => String(t.deduction_type_id) === typeId);
+        if (!typeId || !type?.account_code || amount <= 0) return;
+        dedIds.add(idx);
+        dedCreditTotal += amount;
+        vje_upsertAutoLine(`ded:${idx}`, { account_code: type.account_code, debit: 0, credit: amount, description: type.name });
     });
     vje_pruneAutoLines('ded:', id => dedIds.has(id));
 
@@ -948,7 +1216,7 @@ async function vje_populateSlCombo(lineId, acctCode, preSlCode = null, preDetail
     sel.innerHTML = '<option value="">— None —</option>';
     if (!matching.length) return;
     const detailLists = await Promise.all(matching.map(s =>
-        vje_getJson(`/voucher/sl-codes/${encodeURIComponent(s.sl_code)}/details`).then(j => j.data ?? []).catch(() => [])));
+        vje_getJson(`voucher/sl-codes/${encodeURIComponent(s.sl_code)}/details`).then(j => j.data ?? []).catch(() => [])));
     matching.forEach((s, i) => {
         const details = detailLists[i];
         if (!details.length) {
@@ -1015,12 +1283,24 @@ function vje_recalc() {
 async function vje_save() {
     const lines = vje_collectLines();
     const atc_lines = vje_collectAtcLines();
+    const deductions = vje_collectDeductions();
+    const book_id = $vr('vje-book')?.value || null;
+    const jev_classification = $vr('vje-classification')?.value || 'REGULAR';
+
+    const errBook = $vr('vje-err-book');
+    if (lines.length && !book_id) {
+        if (errBook) errBook.style.display = 'block';
+        alert('Book is required once Accounting Entries lines are filled in.');
+        return;
+    }
+    if (errBook) errBook.style.display = 'none';
+
     window.PagePreloader?.show();
     try {
         const res  = await vr_authFetch(`${VR_API}/voucher/${vr_id}/journal-entry`, {
             method  : 'POST',
             headers : { 'Content-Type': 'application/json' },
-            body    : JSON.stringify({ atc_lines, lines }),
+            body    : JSON.stringify({ atc_lines, lines, deductions, book_id, jev_classification }),
         });
         const json = await res.json();
         if (!json.success) {
@@ -1063,10 +1343,49 @@ async function vr_changeStatus(status) {
     }
 }
 
+// Accounting prepares the payment Journal Entry for a released DV (Dr A/P / Cr Cash from its check).
+// Server re-checks RC-012/sysadmin — see DisbursementVoucherService::preparePaymentJev().
+async function vr_preparePaymentJev(dvId) {
+    if (!confirm('Prepare the payment Journal Entry for this voucher? It will enter the Accounting review chain: Section Chief → Division Manager → Department Manager posts it.')) return;
+    window.PagePreloader?.show();
+    try {
+        const res  = await vr_authFetch(`${VR_API}/voucher/${dvId}/prepare-payment-jev`, { method: 'POST' });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message || 'Failed to prepare the payment entry.');
+        window.vf_onSaved?.(null, json.message);
+        await vr_open(vr_id);
+    } catch (e) {
+        alert(e.message);
+    } finally {
+        window.PagePreloader?.hide();
+    }
+}
+
+// Advance a payment Journal Entry one step along the review chain (and post it on the final step).
+// Server re-checks RC-012/sysadmin and the allowed transition — see DisbursementVoucherService::changeJevStatus().
+async function vr_jevStatus(jevId, status) {
+    if (!confirm(`Move this payment Journal Entry to ${status.replace(/_/g, ' ')}?`)) return;
+    window.PagePreloader?.show();
+    try {
+        const res  = await vr_authFetch(`${VR_API}/voucher/journal-entry/${jevId}/jev-status`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }),
+        });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message || 'Failed to update the Journal Entry.');
+        window.vf_onSaved?.(null, json.message);
+        await vr_open(vr_id);
+    } catch (e) {
+        alert(e.message);
+    } finally {
+        window.PagePreloader?.hide();
+    }
+}
+
 /* ── Helpers ───────────────────────────────────────────────── */
 function vr_statusClass(s) {
     const map = {
         DRAFT: 'nha-bdg-gray', FOR_FMD_REVIEW: 'nha-bdg-amber', FOR_ACCOUNTING: 'nha-bdg-blue',
+        FOR_DIVISION_MANAGER: 'nha-bdg-purple', FOR_DEPARTMENT_MANAGER: 'nha-bdg-navy',
         FOR_TREASURY: 'nha-bdg-teal', RELEASED: 'nha-bdg-green', REJECTED: 'nha-bdg-red', CANCELLED: 'nha-bdg-orange',
     };
     return map[s] || 'nha-bdg-gray';
