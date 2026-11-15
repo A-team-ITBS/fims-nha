@@ -293,12 +293,11 @@ root (the `css/` folder exists but doesn't contain it). The real file is `_share
 which every other custom page (e.g. `budget-req-page.php`) correctly references. Effect: both pages
 likely render without the shared NHA theme (404 on the stylesheet request).
 
-### 7.3 `app/pages/form/budget-allocation-form.php` targets a different, non-existent API
-Declares `namespace PHPMaker2024\FMD;` (every other file in `app/` uses `PHPMaker2024\FIMS`) and
-calls `Config('API.FMD_URL')`. `.env` does define `API_FMD_URL` (underscore form — every other API
-config key in this repo uses the dot form, e.g. `API.FIMS_URL`). Looks like an unported leftover
-from a predecessor FMD module. Not confirmed as a live crash (sits behind login) — don't build on
-this page without fixing the namespace/config mismatch first.
+### 7.3 ~~`app/pages/form/budget-allocation-form.php` targets a different, non-existent API~~ — fixed
+**Resolved** as part of building out the Memo Request module (2026-11-10/12, see §8.2). The file now
+declares `namespace PHPMaker2024\FIMS;` and calls `Config('API.FIMS_URL')`, with a comment at the top
+explaining why the namespace line is required (an include from `views/BudgetAllocationForm.php`
+doesn't inherit that file's namespace). No longer targets `FMD`/`API.FMD_URL`.
 
 ### 7.4 `app/routes/crud.php` + `app/services/crudServices.php` are dead code pointing at a schema that doesn't exist
 Both declare the leftover template namespace `PHPMaker2024\FMD` / `PHPMaker2024\FMD\Service`.
@@ -309,11 +308,9 @@ schema, not the class-not-found error from §7.1. Treat as dead code — delete 
 real `fims` table if the generic-CRUD idea is still wanted. Don't copy its namespace into new
 service/route files — use `PHPMaker2024\FIMS`.
 
-### 7.5 `memo-req-page.php` is registered but empty (and `AirModule` leftovers)
-`app/pages/memo-req-page.php` is a **zero-byte file** (confirmed via direct size check). It is fully
-wired at the framework level (registered in `src/definitions.php`, menu entry in `views/menu.php`), so
-it renders a blank page rather than erroring. Pure scaffolding — don't assume the feature is
-implemented just because it appears in the menu.
+### 7.5 ~~`memo-req-page.php` is registered but empty~~ — built out; `AirModule` leftovers remain
+**No longer empty.** `app/pages/memo-req-page.php` was built out 2026-11-10/12 into the full Memo
+Request list — see §8.2. The `AirModule` leftovers below are still accurate:
 
 `app/pages/air-module.php` (the other former empty stub) is gone: the module was built out as the
 **Inspection and Acceptance Report (IAR)** module — see §8.4 — in `app/pages/iar-module.php`, served
@@ -324,8 +321,9 @@ by the PHPMaker page **`IarModule`** (`controllers/IarModuleController.php`, `mo
 no longer generates them.
 
 > If you're fixing any of the above: §7.1 and §7.2 are independent, low-risk, verified fixes. §7.4
-> is a safe delete (confirmed zero callers). §7.3 needs a decision on whether the page is active
-> work before fixing. §7.5 isn't a fix, just a heads-up. None of these have been applied — this
+> is a safe delete (confirmed zero callers). §7.3 and §7.5's original issues are now resolved (see
+> their updated text above) — only §7.5's `AirModule` leftover cleanup remains open. None of these,
+> besides §7.3/§7.5 resolving themselves via the Memo Request build-out, have been applied — this
 > guide only reports what's there.
 
 ---
@@ -378,9 +376,8 @@ The furthest-along business workflow in the repo — a Budget Request → Revisi
 | Budget Request | `app/pages/budget-req-page.php` + `form/budget-req-form.php` + `form/budget-processing-form.php` + `readone/budget-req-readone.php` + `readone/budget-preview-readone.php` + `BudgetReqService.php` + `app/routes/budget_req.php` | `fims.budget_req`, `budget_req_program`, `budget_req_project`, `budget_line_items` + reference tables | The richest service in `app/` — not flat CRUD. One request (per fiscal year) holds nested Program → Project → COA-line-item blocks. `/budget_req/add` adds one Program-block (auto-creates the request header if absent); `/budget_req/program/update/{id}` replaces one Program-block. State machine: `submit-for-review` → `endorse` → `approve`/`return`, moving status `Draft → For Review → Endorsed → Approved`/`Returned`. `budget-processing-form.php` is the "Endorse" modal (Type of Fund + Component required per line, Suggested Amount optional). Role-gated: level 2 = Budget Officer (no Add/Edit/Delete), level 8 = Budget Head (no Add; sees Budget Preview) — the **only** page in `app/` with inline per-level UI gating |
 | Budget Proposal | `app/pages/budget-prop-page.php` (+ the shared `form/budget-req-form.php` helpers, `form/budget-processing-form.php`, `readone/budget-preview-readone.php`) + `BudgetReqService.php` + `app/routes/fmd_budget_req.php` | `fims.budget_req` (+ its program / project / line-item tables) | The Financial Management Department's list of every Regional / District office's request: Submission Ref No., Region / Originating Unit, Submitted Date (`budget_req.submitted_at`), Amount, Status. Fetched from `GET /fmd/budget_req/list`, which fixes the scope server-side (FMD only, recognised by rc_code; else 403) — the page sends no RC parameters |
 | Budget Revision | `app/pages/budget-revision-page.php` + `form/budget-rev-form.php` + `form/budget-rev-review.php` + `BudgetRevisionService.php` + `app/routes/budget_revision.php` | `fims.budget_req`, `budget_revision` | Revises an existing approved request; `budget-rev-review.php` is the approve/reject reviewer modal (`PUT /budget_revision/review/{id}`). **CSS bug — see §7.2** |
-| Budget Allocation (CBA) | `form/budget-allocation-form.php` | — | **Leftover-namespace bug — see §7.3.** Client-side placeholder CBA-number generation (`'CBA#'.date('Y-m-d').rand(1,999)`), not a server-generated sequence like COA/RC use |
-| Certificate of Budget (COB) | `app/pages/cob-page.php` | — | **CSS bug — see §7.2** |
-| Memo Request | `app/pages/memo-req-page.php` | — | **Empty stub — see §7.5** |
+| Memo Request (CBA / RFA / LAA) | `app/pages/memo-req-page.php` (list, tabbed CBA/RFA/LAA) + `form/budget-allocation-form.php` (the Add/Edit form, opened as a modal, `window.cbaModal`) + `readone/memo-process-readone.php` (FMD's Approve/Return review screen) + `BudgetAllocationService.php` + `app/routes/budget_allocation.php` | `fims.budget_allocation`, `fims.budget_line_item_earmark` (+ `budget_line_items` it reserves against) | Built out 2026-11-10/12 (§7.3/§7.5's old issues are resolved by this — see there). One table, one `allocation_type` column drives three document types: **CBA** (Certificate of Budget Allocation, the root reservation against a budget line item — no Program/Sub-Program/Project fields in the form), **RFA** (Request for Fund Allotment, draws down a parent CBA, used under ₱50M) and **LAA** (Letter of Advice of Allotment, same conversion as RFA, ₱50M and up) — both require picking a Parent CBA (`GET /budget_allocation/all?allocation_type=CBA&status=Approved`). FMD review chain (`PATCH /budget_allocation/process/{id}`): `For Preview` (Section Chief) → `For Division Manager` → `For Department Manager` → `Approved`, or returned one step back; only FMD users (rc_code `35-074-0000000-032`) holding the current step's user level may act — everyone else gets a read-only "Process" action hidden and sees only their own office's requests (server-decided, not client-sent). On final Approval the request gets a server-generated `allocation_number` (template varies by type — `CBA 2026-42-86-01` / `2642-87-01` / `LAA 2026-42-01`, see `app/routes/README.md`) and an `active` row is inserted/converted in `budget_line_item_earmark` (see `system_docs/ERD/README.md` §2.1). An Approved RFA also soft-links (`budget_allocation.dv_id`, no FK) to the one Disbursement Voucher it's currently drawn into — LAA isn't wired into the DV module yet. Supporting Documents upload via `file_upload.php` (§8.5-adjacent, see `app/routes/README.md`) |
+| Certificate of Budget (COB) | `app/pages/cob-page.php` | `fims.budget_req` (reused `budget_req` listing under a different page name) | **CSS bug — see §7.2.** Despite the name, its API calls go to `/budget_req/list`, not `budget_allocation` — not part of the CBA/RFA/LAA memo-request flow above |
 | Fiscal Year | `FiscalYearService.php` + `app/routes/fiscal_year.php` | `fims.fiscal_year` (reads `budget_req`) | Read key is `{fiscal_yr}`, not `{id}`. Create/delete only, no update route. No dedicated page — feeds dropdowns on the budget pages |
 | Expense Class | `ExpenseClassService.php` + `app/routes/expense_class.php` | `fims.expense_class` | Standard CRUD shape. No dedicated page — dropdown source |
 | Component Type | `ComponentTypeService.php` + `app/routes/component_type.php` | `fims.component_type` | Standard CRUD shape. Used by the Budget Processing line-item form |
