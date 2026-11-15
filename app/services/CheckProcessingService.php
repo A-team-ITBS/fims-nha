@@ -828,6 +828,12 @@ BAT;
                 return json_encode(["success" => false, "message" => $released['message']]);
             }
 
+            // NOTE: Treasury does NOT create the payment Journal Entry here. Preparing the payment JEV
+            // (Dr Accounts Payable / Cr Cash) is Accounting's job — an Accounting preparer does it on the
+            // released DV via "Prepare Payment JEV" (DisbursementVoucherService::preparePaymentJev()),
+            // after which it runs the JEV review chain (Section Chief -> Division Manager -> Department
+            // Manager posts). Treasury only releases the DV and records the check.
+
             App\Execute(
                 "UPDATE {$this->tableCheckRegister}
                  SET current_status = 'ISSUED', entry_type = 'ISSUED', check_id = {$check['check_id']}, updated_at = CURRENT_TIMESTAMP
