@@ -319,7 +319,7 @@ function jel_renderTable(rows) {
                    <button type="button" class="nha-btn-act" title="Post to the General Ledger" onclick="event.stopPropagation(); jaf_post(${r.jev_id}, this)">Post</button>
                    <button type="button" class="nha-btn-act" title="Delete" onclick="event.stopPropagation(); jaf_delete(${r.jev_id}, this)">Delete</button>`
                 : `<button type="button" class="nha-btn-act" title="View" onclick="event.stopPropagation(); jaf_openView(${r.jev_id})">View</button>`)
-            : `<button type="button" class="nha-btn-act" title="Print this Journal Entry Voucher" onclick="event.stopPropagation(); jel_print(${r.dv_id}, this)">Print</button>`;
+            : `<button type="button" class="nha-btn-act" title="Print this Journal Entry Voucher" onclick="event.stopPropagation(); jel_print(${r.dv_id}, this, ${r.jev_id})">Print</button>`;
         return `<tr style="cursor:pointer;" onclick="${rowClick}">
         <td class="nha-mono">${jel_esc(r.jev_no) || '—'}</td>
         <td class="nha-td-date">${jel_fmtDate(r.jev_date)}</td>
@@ -349,14 +349,22 @@ function jel_viewDv(dvId) {
 
 // Print → the JEV form in the shared print preview (included below): the JEV and its lines come with
 // their DV (GET /voucher/read/{id}); prp_jevFromDv() builds the payload.
-async function jel_print(dvId, btn) {
+async function jel_print(dvId, btn, jevId) {
     if (btn) btn.disabled = true;
     try {
         const res  = await jel_authFetch(`${JEL_API}/read/${dvId}`);
         const json = await res.json();
         if (!json.success) throw new Error(json.message || 'Failed to load the voucher.');
-        if (!json.data.jev) throw new Error('This voucher has no journal entry yet.');
-        await prp_open(prp_jevFromDv(json.data), { type: 'JEV' });
+        const dv = json.data;
+        // Print the EXACT JEV this row is for — the SETUP JEV (dv.jev) or a specific PAYMENT JEV
+        // (dv.payment_jevs), so a PAYMENT row prints its own Accounts Payable → Cash entry, not the
+        // setup entry. A DV can have both since the Treasury check/ADA release adds a PAYMENT JEV.
+        let jev = dv.jev;
+        if (jevId && (!jev || Number(jev.jev_id) !== Number(jevId))) {
+            jev = (dv.payment_jevs || []).find(p => Number(p.jev_id) === Number(jevId)) || jev;
+        }
+        if (!jev) throw new Error('This voucher has no journal entry yet.');
+        await prp_open(prp_jevFromDv(dv, jev), { type: 'JEV' });
     } catch (e) {
         jel_showError(e.message);
     } finally {
@@ -397,7 +405,8 @@ function jel_statusBadge(s) {
     return `<span class="nha-bdg ${cls}">${jel_esc(label)}</span>`;
 }
 // SETUP = Accounting's original Dr/Cr entry when processing the DV; PAYMENT = the second JEV
-// GeneralLedgerService::postPaymentJev() posts once Treasury actually releases the check/ADA.
+// GeneralLedgerService::createPaymentJev() prepares (as DRAFT) once Treasury releases the check/ADA;
+// Accounting then posts it (DisbursementVoucherService::postPaymentJev()).
 function jel_typeBadge(t) {
     const [cls, label] = t === 'PAYMENT' ? ['nha-bdg-teal', 'Payment'] : ['nha-bdg-blue', 'Setup'];
     return `<span class="nha-bdg ${cls}">${jel_esc(label)}</span>`;

@@ -13,12 +13,12 @@ use PHPMaker2024\FIMS\Attributes\Post;
 use PHPMaker2024\FIMS\Attributes\Put;
 
 /**
- * TrialBalancePage controller
+ * trial_balance_page controller
  */
 class TrialBalancePageController extends ControllerBase
 {
     // custom
-    #[Map(["GET", "POST", "OPTIONS"], "/TrialBalancePage[/{params:.*}]", [PermissionMiddleware::class], "custom.TrialBalancePage")]
+    #[Map(["GET", "POST", "OPTIONS"], "/TrialBalancePage[/{params:.*}]", [PermissionMiddleware::class], "custom.trial_balance_page")]
     public function custom(Request $request, Response $response, array $args): Response
     {
         return $this->runPage($request, $response, $args, "TrialBalancePage");

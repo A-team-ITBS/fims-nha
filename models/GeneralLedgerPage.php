@@ -113,7 +113,7 @@ class GeneralLedgerPage
 
         // Table name (for backward compatibility only)
         if (!defined(PROJECT_NAMESPACE . "TABLE_NAME")) {
-            define(PROJECT_NAMESPACE . "TABLE_NAME", 'GeneralLedgerPage.php');
+            define(PROJECT_NAMESPACE . "TABLE_NAME", 'general-ledger-page.php');
         }
 
         // Start timer
@@ -279,8 +279,8 @@ class GeneralLedgerPage
     protected function setupBreadcrumb()
     {
         global $Breadcrumb, $Language;
-        $Breadcrumb = Breadcrumb::create("index")->add("custom", "GeneralLedgerPage", CurrentUrl(), "", "GeneralLedgerPage", true);
-        $this->Heading = $Language->tablePhrase("GeneralLedgerPage", "TblCaption");
+        $Breadcrumb = Breadcrumb::create("index")->add("custom", "general_ledger_page", CurrentUrl(), "", "general_ledger_page", true);
+        $this->Heading = $Language->tablePhrase("general_ledger_page", "TblCaption");
     }
 
     // Page Load event

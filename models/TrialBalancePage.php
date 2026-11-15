@@ -113,7 +113,7 @@ class TrialBalancePage
 
         // Table name (for backward compatibility only)
         if (!defined(PROJECT_NAMESPACE . "TABLE_NAME")) {
-            define(PROJECT_NAMESPACE . "TABLE_NAME", 'TrialBalancePage.php');
+            define(PROJECT_NAMESPACE . "TABLE_NAME", 'trial-balance-page.php');
         }
 
         // Start timer
@@ -279,8 +279,8 @@ class TrialBalancePage
     protected function setupBreadcrumb()
     {
         global $Breadcrumb, $Language;
-        $Breadcrumb = Breadcrumb::create("index")->add("custom", "TrialBalancePage", CurrentUrl(), "", "TrialBalancePage", true);
-        $this->Heading = $Language->tablePhrase("TrialBalancePage", "TblCaption");
+        $Breadcrumb = Breadcrumb::create("index")->add("custom", "trial_balance_page", CurrentUrl(), "", "trial_balance_page", true);
+        $this->Heading = $Language->tablePhrase("trial_balance_page", "TblCaption");
     }
 
     // Page Load event

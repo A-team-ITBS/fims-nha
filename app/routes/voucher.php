@@ -290,6 +290,21 @@ $app->post('/voucher/journal-entry/{id}/post', function ($request, $response, $a
     }
 })->add($accessMiddleware)->add($jwtMiddleware);
 
+// Accounting posts a DRAFT PAYMENT JEV (prepared by Treasury's check/ADA release) to the General
+// Ledger — the Accounting "touch" that settles Accounts Payable against Cash. Accounting Dept (RC-012)
+// or superadmin only; refuses anything that isn't a not-yet-posted PAYMENT JEV.
+$app->post('/voucher/journal-entry/{id}/post-payment', function ($request, $response, $args) use ($VoucherService) {
+    try {
+        $result = $VoucherService->postPaymentJev((int) $args['id'], (int) $request->getAttribute('user_id'));
+
+        return $response->withJson($result, $result['httpCode'] ?? ($result['success'] ? 200 : 400));
+    } catch (\Exception $e) {
+        LogError('POST /voucher/journal-entry/{id}/post-payment ' . $e->getMessage());
+
+        return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
+    }
+})->add($accessMiddleware)->add($jwtMiddleware);
+
 // Deduction type options (e.g. Retention) for the DV form's Deductions section
 $app->get('/voucher/deduction-types', function ($request, $response, $args) use ($VoucherService) {
     try {

@@ -113,7 +113,7 @@ class JournalsPage
 
         // Table name (for backward compatibility only)
         if (!defined(PROJECT_NAMESPACE . "TABLE_NAME")) {
-            define(PROJECT_NAMESPACE . "TABLE_NAME", 'JournalsPage.php');
+            define(PROJECT_NAMESPACE . "TABLE_NAME", 'journals-page.php');
         }
 
         // Start timer
@@ -279,8 +279,8 @@ class JournalsPage
     protected function setupBreadcrumb()
     {
         global $Breadcrumb, $Language;
-        $Breadcrumb = Breadcrumb::create("index")->add("custom", "JournalsPage", CurrentUrl(), "", "JournalsPage", true);
-        $this->Heading = $Language->tablePhrase("JournalsPage", "TblCaption");
+        $Breadcrumb = Breadcrumb::create("index")->add("custom", "journals_page", CurrentUrl(), "", "journals_page", true);
+        $this->Heading = $Language->tablePhrase("journals_page", "TblCaption");
     }
 
     // Page Load event

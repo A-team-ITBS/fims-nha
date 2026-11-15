@@ -13,12 +13,12 @@ use PHPMaker2024\FIMS\Attributes\Post;
 use PHPMaker2024\FIMS\Attributes\Put;
 
 /**
- * SubsidiaryLedgerPage controller
+ * subsidiary_ledger_page controller
  */
 class SubsidiaryLedgerPageController extends ControllerBase
 {
     // custom
-    #[Map(["GET", "POST", "OPTIONS"], "/SubsidiaryLedgerPage[/{params:.*}]", [PermissionMiddleware::class], "custom.SubsidiaryLedgerPage")]
+    #[Map(["GET", "POST", "OPTIONS"], "/SubsidiaryLedgerPage[/{params:.*}]", [PermissionMiddleware::class], "custom.subsidiary_ledger_page")]
     public function custom(Request $request, Response $response, array $args): Response
     {
         return $this->runPage($request, $response, $args, "SubsidiaryLedgerPage");

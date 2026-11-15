@@ -231,12 +231,15 @@ class GeneralLedgerService
     }
 
     /**
-     * Posts the PAYMENT entry Treasury's own release (a check or ADA) represents — the step that
-     * actually settles the Accounts Payable balance Accounting's SETUP JEV created, and credits
-     * Cash. Without this, fims.general_ledger showed the obligation going up at FOR_ACCOUNTING time
-     * and then never coming back down — Accounts Payable/Cash balances were permanently wrong past
-     * that point. Called from CheckProcessingService::prepareCheck() right after a DV is RELEASED
-     * (a future ADA-release flow would call this the same way).
+     * PREPARES (does not post) the PAYMENT entry Treasury's own release (a check or ADA) represents —
+     * the entry that settles the Accounts Payable balance Accounting's SETUP JEV created, and credits
+     * Cash. Called from CheckProcessingService::prepareCheck() right after a DV is RELEASED (a future
+     * ADA-release flow would call this the same way).
+     *
+     * This creates the PAYMENT JEV as a DRAFT only — it is NOT written to the General Ledger here.
+     * Accounting reviews and posts it afterwards (DisbursementVoucherService::postPaymentJev() ->
+     * postJev()), so the Accounting Division keeps a deliberate "touch" on every cash disbursement
+     * before it hits the ledger. Until Accounting posts it, Accounts Payable stays open on the books.
      *
      * A no-op (not an error) if the DV's SETUP JEV never routed through Accounts Payable
      * (self::AP_ACCOUNT_CODE) at all — e.g. a DV whose JEV credited Cash directly instead of AP (see
@@ -247,13 +250,10 @@ class GeneralLedgerService
      * see "03 - alter_table/31" for why dv_id is no longer unique) rather than editing the SETUP
      * JEV, so Journals/CKDJ keep a clean, separate JEV number per source document, same as the
      * illustrated JEV-0002 (ACCOUNTING, setup) / JEV-0003 (TREASURY, payment) pair.
-     *
-     * Posts via postJev() (not a bespoke INSERT) so it gets every post-once/idempotency guarantee
-     * that method already provides for free.
      */
     private const AP_ACCOUNT_CODE = '2-01-01-010'; // Accounts Payable — same hardcoded control account app/pages/voucher/{form,readone}.php's auto "Net Amount Payable" line already uses
 
-    public function postPaymentJev(int $dvId, int $bankAccountId, float $amount, string $docRefNo, int $userId): array
+    public function createPaymentJev(int $dvId, int $bankAccountId, float $amount, string $docRefNo, int $userId): array
     {
         $setupJev = App\ExecuteRow(
             "SELECT jev_id, jev_no, fiscal_yr, book_id
@@ -288,14 +288,19 @@ class GeneralLedgerService
                 : "Bank account #{$bankAccountId} not found."];
         }
 
+        $draftId = $this->getStatusIdByName('DRAFT');
+        if ($draftId === null) {
+            return ['success' => false, 'message' => "Status 'DRAFT' is not configured in fims.settings_status for journal entry vouchers."];
+        }
+
         $jevNo = $this->nextJevNumber(date('Y-m-d'));
         $uid   = $userId > 0 ? (string) $userId : 'NULL';
         $row   = App\ExecuteRow(
             "INSERT INTO {$this->tableJev}
-                (jev_no, dv_id, fiscal_yr, book_id, jev_type, source_module, doc_ref_no, total_debit, total_credit, created_by)
+                (jev_no, dv_id, fiscal_yr, book_id, jev_type, source_module, doc_ref_no, total_debit, total_credit, status_id, created_by)
              VALUES (" . $this->str($jevNo) . ", {$dvId}, " . $this->intOrNull($setupJev['fiscal_yr']) . ', '
                 . $this->intOrNull($setupJev['book_id']) . ", 'PAYMENT', 'TREASURY', " . $this->str($docRefNo) . ', '
-                . (float) $amount . ', ' . (float) $amount . ", {$uid})
+                . (float) $amount . ', ' . (float) $amount . ", {$draftId}, {$uid})
              RETURNING jev_id",
             'DB'
         );
@@ -316,12 +321,7 @@ class GeneralLedgerService
             'DB'
         );
 
-        $posted = $this->postJev($jevId, $userId);
-        if (!$posted['success']) {
-            return $posted;
-        }
-
-        return ['success' => true, 'message' => "Payment Journal Entry Voucher {$jevNo} posted to the General Ledger.", 'data' => ['jev_id' => $jevId, 'jev_no' => $jevNo, 'posted' => true]];
+        return ['success' => true, 'message' => "Payment Journal Entry Voucher {$jevNo} prepared (draft) — Accounting will review and post it to the General Ledger.", 'data' => ['jev_id' => $jevId, 'jev_no' => $jevNo, 'posted' => false]];
     }
 
     /**

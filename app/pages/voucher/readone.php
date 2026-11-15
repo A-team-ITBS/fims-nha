@@ -458,17 +458,33 @@ function vje_groupedEntriesCard(dv) {
     </div>`;
 }
 
-/** One read-only card per PAYMENT JEV (GeneralLedgerService::postPaymentJev()) — the settlement
-    entry Treasury's check/ADA release posts (Dr Accounts Payable / Cr Cash), separate from the
-    SETUP JEV above since it's its own JEV number/source document (jev_no, source_module, doc_ref_no
-    — see "03 - alter_table/31"). Empty string when nothing's been released yet. */
+/** One card per PAYMENT JEV — the settlement entry Treasury's check/ADA release PREPARES as a DRAFT
+    (GeneralLedgerService::createPaymentJev(): Dr Accounts Payable / Cr Cash), which the Accounting
+    Department then reviews and posts to the General Ledger via the "Post to General Ledger" button
+    (vr_postPaymentJev -> DisbursementVoucherService::postPaymentJev()). Separate from the SETUP JEV
+    above since it's its own JEV number/source document (jev_no, source_module, doc_ref_no — see
+    "03 - alter_table/31"). Empty string when nothing's been released yet. */
 function vje_paymentEntriesCard(dv) {
     const jevs = dv.payment_jevs ?? [];
     if (!jevs.length) return '';
 
+    // Accounting's "touch": a PAYMENT JEV is prepared (DRAFT) by Treasury on release, and only the
+    // Accounting Department (RC 012) or a superadmin posts it to the General Ledger.
+    const canPost = VR_IS_SYSADMIN || VR_RC_ID === '012';
+    const payBadge = s => {
+        const map = { DRAFT: ['nha-bdg-amber', 'Draft — awaiting Accounting'], POSTED: ['nha-bdg-green', 'Posted to GL'], REVERSED: ['nha-bdg-red', 'Reversed'] };
+        const [cls, label] = map[s] || ['nha-bdg-gray', s || '—'];
+        return `<span class="nha-bdg ${cls}">${vr_esc(label)}</span>`;
+    };
+
     return jevs.map(jev => `<div class="vr-card">
-        <p class="vr-card-title">Payment Entry — ${vr_esc(jev.jev_no)} (${vr_esc(jev.source_module)} — ${vr_esc(jev.doc_ref_no)})${jev.book_name ? ` — ${vr_esc(jev.book_name)}` : ''}</p>
+        <div class="vje-section-hdr">
+            <p class="vr-card-title" style="margin:0;">Payment Entry — ${vr_esc(jev.jev_no)} (${vr_esc(jev.source_module)} — ${vr_esc(jev.doc_ref_no)})${jev.book_name ? ` — ${vr_esc(jev.book_name)}` : ''}</p>
+            ${payBadge(jev.status)}
+        </div>
+        ${jev.status === 'DRAFT' ? `<p class="vr-hint" style="margin:6px 0 8px;">Prepared by Treasury on release. ${canPost ? 'Review the entry below, then post it to the General Ledger.' : 'Awaiting the Accounting Department to review and post it to the General Ledger.'}</p>` : ''}
         ${vje_groupedTable(jev.lines ?? [])}
+        ${jev.status === 'DRAFT' && canPost ? `<button type="button" class="nha-btn nha-btn-primary" style="margin-top:10px;" onclick="vr_postPaymentJev(${jev.jev_id})">Post to General Ledger</button>` : ''}
     </div>`).join('');
 }
 
@@ -1297,6 +1313,24 @@ async function vr_changeStatus(status) {
         const json = await res.json();
         if (!json.success) throw new Error(json.message || 'Failed to change status.');
         window.vf_onSaved?.(null, json.message); // reuses the list page's toast + reload hook
+        await vr_open(vr_id);
+    } catch (e) {
+        alert(e.message);
+    } finally {
+        window.PagePreloader?.hide();
+    }
+}
+
+// Accounting's "touch": post a DRAFT payment Journal Entry (prepared by Treasury on release) to the
+// General Ledger. Server re-checks RC-012/sysadmin — see DisbursementVoucherService::postPaymentJev().
+async function vr_postPaymentJev(jevId) {
+    if (!confirm('Post this payment Journal Entry to the General Ledger? This settles Accounts Payable against Cash.')) return;
+    window.PagePreloader?.show();
+    try {
+        const res  = await vr_authFetch(`${VR_API}/voucher/journal-entry/${jevId}/post-payment`, { method: 'POST' });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message || 'Failed to post the payment entry.');
+        window.vf_onSaved?.(null, json.message);
         await vr_open(vr_id);
     } catch (e) {
         alert(e.message);

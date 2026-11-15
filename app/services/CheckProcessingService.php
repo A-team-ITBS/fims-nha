@@ -828,11 +828,14 @@ BAT;
                 return json_encode(["success" => false, "message" => $released['message']]);
             }
 
-            // Settles whatever the voucher's JEV routed through Accounts Payable, crediting this
-            // bank account's own mapped Cash account — see GeneralLedgerService::postPaymentJev()'s
-            // doc comment for why this has to be a second JEV, not an edit to the first.
+            // Prepares (as a DRAFT) the payment entry that settles whatever the voucher's JEV routed
+            // through Accounts Payable, crediting this bank account's own mapped Cash account — see
+            // GeneralLedgerService::createPaymentJev()'s doc comment for why this is a second JEV, not
+            // an edit to the first. It is NOT posted to the ledger here: Accounting reviews and posts
+            // it afterwards (DisbursementVoucherService::postPaymentJev()), keeping a deliberate
+            // Accounting touch on every cash disbursement before it hits the General Ledger.
             $glService = new GeneralLedgerService();
-            $paymentJev = $glService->postPaymentJev($dvId, $bankAccountId, (float) $dv['net_amount'], 'CHECK NO. ' . $checkNumber, $userId);
+            $paymentJev = $glService->createPaymentJev($dvId, $bankAccountId, (float) $dv['net_amount'], 'CHECK NO. ' . $checkNumber, $userId);
             if (!$paymentJev['success']) {
                 App\Execute('ROLLBACK', 'DB');
 

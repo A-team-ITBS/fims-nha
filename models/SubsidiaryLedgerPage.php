@@ -113,7 +113,7 @@ class SubsidiaryLedgerPage
 
         // Table name (for backward compatibility only)
         if (!defined(PROJECT_NAMESPACE . "TABLE_NAME")) {
-            define(PROJECT_NAMESPACE . "TABLE_NAME", 'SubsidiaryLedgerPage.php');
+            define(PROJECT_NAMESPACE . "TABLE_NAME", 'subsidiary-ledger-page.php');
         }
 
         // Start timer
@@ -279,8 +279,8 @@ class SubsidiaryLedgerPage
     protected function setupBreadcrumb()
     {
         global $Breadcrumb, $Language;
-        $Breadcrumb = Breadcrumb::create("index")->add("custom", "SubsidiaryLedgerPage", CurrentUrl(), "", "SubsidiaryLedgerPage", true);
-        $this->Heading = $Language->tablePhrase("SubsidiaryLedgerPage", "TblCaption");
+        $Breadcrumb = Breadcrumb::create("index")->add("custom", "subsidiary_ledger_page", CurrentUrl(), "", "subsidiary_ledger_page", true);
+        $this->Heading = $Language->tablePhrase("subsidiary_ledger_page", "TblCaption");
     }
 
     // Page Load event

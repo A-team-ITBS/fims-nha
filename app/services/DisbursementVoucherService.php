@@ -1008,8 +1008,8 @@ class DisbursementVoucherService
     /**
      * The editable SETUP JEV for a DV (header + lines, with any SL breakdown), or null if not
      * prepared yet. dv_id is no longer unique on fims.journal_entry_vouchers — a DV can also have
-     * one or more read-only PAYMENT JEVs (see fetchPaymentJevs(), GeneralLedgerService::
-     * postPaymentJev()) — so this filters to jev_type = 'SETUP' explicitly, the only one this
+     * one or more PAYMENT JEVs (see fetchPaymentJevs(), GeneralLedgerService::
+     * createPaymentJev()) — so this filters to jev_type = 'SETUP' explicitly, the only one this
      * class's own create/update/saveJournalEntry() ever read or write.
      */
     private function fetchJev(int $dvId): ?array
@@ -1042,16 +1042,18 @@ class DisbursementVoucherService
     }
 
     /**
-     * Every PAYMENT JEV posted against a DV (GeneralLedgerService::postPaymentJev(), e.g. one per
-     * check/ADA release) — read-only, oldest first. A DV's whole JEV picture is its one SETUP JEV
-     * (fetchJev(), editable) plus zero or more of these.
+     * Every PAYMENT JEV against a DV (GeneralLedgerService::createPaymentJev(), e.g. one per
+     * check/ADA release) — oldest first; each carries its status (DRAFT until Accounting posts it via
+     * postPaymentJev(), then POSTED). A DV's whole JEV picture is its one SETUP JEV (fetchJev(),
+     * editable) plus zero or more of these.
      */
     private function fetchPaymentJevs(int $dvId): array
     {
         $jevs = App\ExecuteRows(
-            "SELECT jev.*, b.name AS book_name
+            "SELECT jev.*, b.name AS book_name, st.name AS status
              FROM {$this->tableJev} jev
              LEFT JOIN {$this->tableBooks} b ON b.book_id = jev.book_id
+             LEFT JOIN {$this->tableSettingsStatus} st ON st.id = jev.status_id
              WHERE jev.dv_id = {$dvId} AND jev.jev_type = 'PAYMENT'
              ORDER BY jev.jev_id",
             'DB'
@@ -1778,6 +1780,59 @@ class DisbursementVoucherService
             App\LogError('DisbursementVoucherService::postStandaloneJev ' . $e->getMessage());
 
             return ['success' => false, 'message' => 'Failed to post the Journal Entry Voucher.'];
+        }
+    }
+
+    /**
+     * Accounting's "touch" on a disbursement: posts a DRAFT PAYMENT JEV — the one Treasury's check/ADA
+     * release prepared (GeneralLedgerService::createPaymentJev()) — to the General Ledger, settling
+     * Accounts Payable against Cash. Gated to the Accounting Department (RC 012, the same office that
+     * prepared the SETUP JEV) or a superadmin. Refuses anything that isn't a not-yet-posted PAYMENT
+     * JEV, so it can't be used to post a SETUP JEV out of band (that still rides the DV's own
+     * FOR_ACCOUNTING -> FOR_DIVISION_MANAGER -> FOR_DEPARTMENT_MANAGER -> FOR_TREASURY chain).
+     */
+    public function postPaymentJev(int $jevId, int $userId): array
+    {
+        try {
+            if (!GlobalService::getUserRcScope()['is_admin'] && $this->currentUserRcId() !== self::STAGE_HOLDER_RC['FOR_ACCOUNTING']) {
+                return ['success' => false, 'message' => 'Only Accounting Department staff can post this payment Journal Entry Voucher.', 'httpCode' => 403];
+            }
+            $jev = App\ExecuteRow(
+                "SELECT jev.jev_id, jev.jev_type, st.name AS status
+                 FROM {$this->tableJev} jev
+                 LEFT JOIN {$this->tableSettingsStatus} st ON st.id = jev.status_id
+                 WHERE jev.jev_id = {$jevId}",
+                'DB'
+            );
+            if (!$jev) {
+                return ['success' => false, 'message' => "Journal Entry Voucher #{$jevId} not found.", 'httpCode' => 404];
+            }
+            if ($jev['jev_type'] !== 'PAYMENT') {
+                return ['success' => false, 'message' => 'Only a payment Journal Entry Voucher can be posted here.'];
+            }
+            if ($jev['status'] === 'POSTED') {
+                return ['success' => true, 'message' => 'This payment Journal Entry Voucher is already posted.', 'data' => ['jev_id' => $jevId, 'status' => 'POSTED']];
+            }
+
+            App\Execute('BEGIN', 'DB');
+            try {
+                $result = (new GeneralLedgerService())->postJev($jevId, $userId);
+                if (!$result['success']) {
+                    App\Execute('ROLLBACK', 'DB');
+
+                    return $result;
+                }
+                App\Execute('COMMIT', 'DB');
+            } catch (\Exception $e) {
+                App\Execute('ROLLBACK', 'DB');
+                throw $e;
+            }
+
+            return ['success' => true, 'message' => 'Payment Journal Entry posted to the General Ledger.', 'data' => ['jev_id' => $jevId, 'status' => 'POSTED']];
+        } catch (\Exception $e) {
+            App\LogError('DisbursementVoucherService::postPaymentJev ' . $e->getMessage());
+
+            return ['success' => false, 'message' => 'Failed to post the payment Journal Entry Voucher.'];
         }
     }
 
