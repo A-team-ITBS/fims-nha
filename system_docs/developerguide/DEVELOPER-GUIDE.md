@@ -539,10 +539,12 @@ API: `app/routes/voucher.php` (`/voucher/*`). Pages: `app/pages/voucher/{page,fo
 `JevPrintService` — see §8.8). Fully documented in the ERD doc's **§2.3**, not duplicated here — read
 that for the table-level detail (Deductions, multi-row ATC, Subsidiary Ledger). Summary: one generic
 DV shape backs every claimant/payment type, pipelined `DRAFT → FOR_FMD_REVIEW → FOR_ACCOUNTING →
-FOR_TREASURY → RELEASED` (or `REJECTED`/`CANCELLED`), with the Journal Entry (one per DV) prepared
-during `FOR_ACCOUNTING` and its Accounting Entries grid auto-filled from the DV's Deduction/ATC rows.
-`CheckProcessingService` (§8.6) is the only thing that can move a DV from `FOR_TREASURY` to
-`RELEASED`, by preparing a check against it.
+FOR_TREASURY → RELEASED` (or `REJECTED`/`CANCELLED`), with the **SETUP** Journal Entry prepared
+during `FOR_ACCOUNTING` (its Accounting Entries grid auto-filled from the DV's Deduction/ATC rows, and
+its **Book of Accounts** + optional **classification** chosen there too — see below). A DV now carries
+**one SETUP JEV plus any number of PAYMENT JEVs** (not strictly one JEV per DV any more — see the
+Payment-settlement note). `CheckProcessingService` (§8.6) is the only thing that can move a DV from
+`FOR_TREASURY` to `RELEASED`, by preparing a check against it.
 
 **General Ledger posting (2026-11-14):** `GeneralLedgerService.php` posts a DV's JEV to
 `fims.general_ledger` the moment Accounting approves it (`FOR_ACCOUNTING → FOR_TREASURY`) —
@@ -587,6 +589,46 @@ idempotency guard (retrying an already-`FOR_TREASURY` transition is rejected by 
 no double-post); and confirmed all four pages render 200 with no PHP errors and the new "Ledgers"
 menu group appears on `/MainDashboard`.
 
+**Extended 2026-11-15** (the SQL for this is **uncommitted** in `_assets/sql/` as of this writing;
+read from code, not re-verified against a fresh install). Read the ERD doc's **§2.8** for the
+schema-level detail — the summary of what's new, and where each piece lives:
+
+- **Books of Accounts** (`fims.books` — Main Office, CISFA, NGC, MPLC/PPMO, PPMO). A "Book" is an
+  Accounting classification chosen on the DV's Accounting Entries section (`readone.php`'s
+  `vje_entriesCard()`), **not** a DV-header field — it's saved onto the JEV (`persistJournalEntry()`'s
+  `$bookId`) and copied down to each `general_ledger` row at post time. All four ledger pages (and the
+  JEV register, CKDJ/ADADJ) scope by it. `book_id` was added to `journal_entry_vouchers`,
+  `general_ledger`, and `official_receipts` (`03 - alter_table/30`); `fims.books` is `01 - table/41`.
+- **Payment-settlement JEVs** (`GeneralLedgerService::postPaymentJev()`, called from
+  `CheckProcessingService::prepareCheck()` right after a DV is `RELEASED`). The SETUP JEV raises
+  Accounts Payable at approval time; this inserts a **second, distinct** JEV (`jev_type = 'PAYMENT'`,
+  `source_module = 'TREASURY'`, `doc_ref_no = 'CHECK NO. …'`) that Debits AP / Credits the bank
+  account's mapped Cash account (`fims.bank_accounts.account_code`, new nullable FK) and posts it —
+  closing the loop so AP comes back down and Cash moves. Errors out if the bank account has no Cash
+  account mapped; a clean no-op if the SETUP JEV never routed through AP. This is why
+  `journal_entry_vouchers.dv_id` is no longer `UNIQUE` — the guarantee became a partial unique index
+  on `(dv_id) WHERE jev_type = 'SETUP'` (`03 - alter_table/31`). `source_module`/`doc_ref_no` are on
+  both `journal_entry_vouchers` and `general_ledger`.
+- **JEV classification** (`journal_entry_vouchers.jev_classification`: `REGULAR` default / `ACCRUAL` /
+  `DEPRECIATION` / `PREPAYMENTS` / `CLOSING`, `03 - alter_table/32`) — a reporting label, **orthogonal
+  to `jev_type`** (SETUP/PAYMENT, which is posting mechanics). Passed to `saveJournalEntry()` /
+  `POST /voucher/{id}/journal-entry` as an optional `jev_classification` field.
+- **Standalone (no-DV) Journal Entry Vouchers** (`03 - alter_table/33` makes `dv_id` nullable). For
+  period-end adjusting/closing entries Accounting books directly, with no Disbursement Voucher. Backed
+  by `DisbursementVoucherService::{create,update,delete,post}StandaloneJev()` and new routes under
+  `app/routes/voucher.php`: `GET /voucher/journal-entry/{id}`, `POST /voucher/journal-entry/add`,
+  `PUT /voucher/journal-entry/update/{id}`, `DELETE /voucher/journal-entry/delete/{id}`,
+  `POST /voucher/journal-entry/{id}/post` (the standalone equivalent of a DV's
+  `FOR_ACCOUNTING → FOR_TREASURY` transition triggering a post). The Add-JEV form lives in
+  `app/pages/journal-entry-voucher.php` (the JEV-register page, +411 lines).
+- **JEV register page / view.** `app/pages/journal-entry-voucher.php` lists JEVs from the new
+  `fims.v_journal_entry_vouchers` view (`05 - views/02`) — one row per JEV header with its DV, book,
+  and both `jev_status`/`dv_status` labels. `GET /voucher/journal-entries` now reads this view and
+  accepts `jev_type` / `jev_classification` filters in addition to `fiscal_yr` / `search`. The JEV's
+  own lifecycle (`DRAFT → APPROVED → POSTED`, or `REVERSED`) is distinct from its DV's; note that while
+  all four statuses are seeded and badged, `postJev()` currently writes `DRAFT → POSTED` directly (no
+  code path writes `APPROVED` yet — see the ERD §2.8 correction note).
+
 ### 8.6 Treasury operations: Bank Management, Cash Position, Check Processing
 
 These three modules are **ports of the separate `TREASURY` reference project**, adapted to this
@@ -600,7 +642,7 @@ more detailed than this table.
 |---|---|---|---|
 | Bank Account Management | `app/pages/bank-management-page.php` + `BankManagementService.php` + `app/routes/bank-management.php` | `fims.bank_accounts` (+ `bank_account_documents`) | One row per disbursing bank account; `fund_source` is free text (no `shared.fund_sources` lookup here, unlike TREASURY); Region/Office is a Responsibility Center (`rc_id`, unenforced), not `uac.departments`. `status` (ACTIVE/DORMANT/CLOSED) is kept in sync with the pre-existing `is_active` boolean. Documents are Google-Drive links, not uploads |
 | Cash Position | `app/pages/cash-position-page.php` + `CashPositionService.php` / `CashPositionSoaService.php` / `CashPositionReportsService.php` + `app/routes/cash-position.php` | `fims.cash_position`, `cash_position_activity_log`, `bank_transactions`/`soa_bank_transactions` | 4 tabs, 3 real + 1 mostly stubbed. **Dashboard** and **Position Updates** (manual entries + SOA upload — a verbatim-ported pure-PHP xlsx parser, `ZipArchive`+`SimpleXML`, no PhpSpreadsheet) and **Available Cash Balances Tracking** are fully wired. **Reports** (18 report types off one `report_type` dispatch) has daily/period/working-paper/individual-ledger/new-FY-opening-balance real against this schema; the rest (`cash_flow`, `investment`, `interest_earnings*`, `garnished`, `expropriation*`, `investment_schedule`) are **intentionally stubbed** — each needs a whole TREASURY subsystem (Collections/Investments/FTLA/Garnished/Expropriation Accounts) this project has never built |
-| Check Disbursement Voucher (Check Processing) | `app/pages/check-disbursement-voucher-page.php` + `CheckProcessingService.php` + `app/routes/check-processing.php` | `fims.checks`, `check_booklets`, `check_register`, `check_cancellations`, `check_claimant_releases`, `check_claimant_email_log`, `check_region_releases`, `check_region_email_log` | 7 tabs ported from TREASURY's 7 check-processing pages: **Check Preparation** (only a `FOR_TREASURY` DV can get a check — doing so calls `DisbursementVoucherService::changeStatus()` to flip it `RELEASED`, same auth as every other caller), **Check Registry** (`check_booklets`/`check_register`, incl. the RAF inventory tab computed live from `fims.checks` rows in a booklet's number range, not stored), **Released to Claimants**, **Released to Regions/Departments** (both send real SMTP email via `App\SendEmail()`, a PHPMailer wrapper — Regions' Google-Drive attachment is still a `saveRegionDriveLink()` stub), and **Cancellation & Replacements**. All RC-scoped like Bank Management, not department-scoped |
+| Check Disbursement Voucher (Check Processing) | `app/pages/check-disbursement-voucher-page.php` + `CheckProcessingService.php` + `app/routes/check-processing.php` | `fims.checks`, `check_booklets`, `check_register`, `check_cancellations`, `check_claimant_releases`, `check_claimant_email_log`, `check_region_releases`, `check_region_email_log` | 7 tabs ported from TREASURY's 7 check-processing pages: **Check Preparation** (only a `FOR_TREASURY` DV can get a check — doing so calls `DisbursementVoucherService::changeStatus()` to flip it `RELEASED`, same auth as every other caller, and then posts a **payment-settlement JEV** via `GeneralLedgerService::postPaymentJev()` — see §8.5's 2026-11-15 note — so Accounts Payable comes down and Cash moves; the bank account must have a Cash `account_code` mapped first), **Check Registry** (`check_booklets`/`check_register`, incl. the RAF inventory tab computed live from `fims.checks` rows in a booklet's number range, not stored), **Released to Claimants**, **Released to Regions/Departments** (both send real SMTP email via `App\SendEmail()`, a PHPMailer wrapper — Regions' Google-Drive attachment is still a `saveRegionDriveLink()` stub), and **Cancellation & Replacements**. All RC-scoped like Bank Management, not department-scoped |
 
 ### 8.7 Fund Tracking (SARO / NCA / Trust Funds / Supplemental)
 

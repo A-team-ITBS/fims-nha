@@ -107,17 +107,21 @@ $_jr_api = preg_match('~/api$~', $_jr_api) ? $_jr_api : $_jr_api . '/api';
                 <table class="nha-tbl">
                     <thead>
                         <tr>
-                            <th>Posting Date</th>
-                            <th>JEV Number</th>
+                            <th>Date Transacted</th>
+                            <th>JEV No.</th>
+                            <th>Source Module</th>
+                            <th>Doc Ref No.</th>
                             <th>DV Number</th>
-                            <th>Account</th>
+                            <th>Account No.</th>
+                            <th>Account Description</th>
                             <th>SL Code</th>
-                            <th class="text-end">Debit</th>
-                            <th class="text-end">Credit</th>
+                            <th>Particulars</th>
+                            <th>Entry Side</th>
+                            <th class="text-end">Amount</th>
                         </tr>
                     </thead>
                     <tbody id="jr-tbody">
-                        <tr><td colspan="7"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
+                        <tr><td colspan="11"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
                     </tbody>
                 </table>
             </div>
@@ -424,21 +428,33 @@ async function jr_load() {
 }
 
 /* ── Table ─────────────────────────────────────────────────── */
+/* GJ mirrors the raw NGAS "JEV Listing" sheet — Account No./Account Description as two columns
+   (there's no per-account header to fold them into here, unlike General Ledger/Subsidiary Ledger),
+   and one Entry Side (Dr/Cr) + one Amount column instead of separate Debit/Credit — exactly one of
+   r.debit/r.credit is ever non-zero. */
 function jr_renderTable(rows) {
     const tbody = $jr('jr-tbody');
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="7"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No posted journal entries found.</span></div></td></tr>';
+        tbody.innerHTML = '<tr><td colspan="11"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No posted journal entries found.</span></div></td></tr>';
         return;
     }
-    tbody.innerHTML = rows.map(r => `<tr>
+    tbody.innerHTML = rows.map(r => {
+        const isDebit = Number(r.debit) > 0;
+        const amount  = isDebit ? r.debit : r.credit;
+        return `<tr>
         <td class="nha-td-date">${jr_fmtDate(r.posting_date)}</td>
         <td class="nha-mono">${jr_esc(r.jev_no) || '—'}</td>
+        <td>${jr_esc(r.source_module) || '—'}</td>
+        <td class="nha-mono">${jr_esc(r.doc_ref_no) || '—'}</td>
         <td class="nha-mono">${jr_esc(r.dv_no) || '—'}</td>
-        <td title="${jr_esc(r.account_title)}">${jr_esc(r.account_code)} ${r.account_title ? '— ' + jr_esc(r.account_title) : ''}</td>
+        <td class="nha-mono">${jr_esc(r.account_code)}</td>
+        <td>${jr_esc(r.account_title) || '—'}</td>
         <td>${jr_esc(r.sl_code) || '—'}</td>
-        <td class="text-end nha-mono">${Number(r.debit) > 0 ? jr_peso(r.debit) : ''}</td>
-        <td class="text-end nha-mono">${Number(r.credit) > 0 ? jr_peso(r.credit) : ''}</td>
-    </tr>`).join('');
+        <td>${jr_esc(r.description) || jr_esc(r.sl_name) || '—'}</td>
+        <td>${isDebit ? 'DEBIT' : 'CREDIT'}</td>
+        <td class="text-end nha-mono">${jr_peso(amount)}</td>
+    </tr>`;
+    }).join('');
 }
 
 /* ── Pagination ────────────────────────────────────────────── */

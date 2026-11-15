@@ -13,6 +13,17 @@
 > `DisbursementVoucherService::changeStatus()`. Verified via a `BEGIN…ROLLBACK` dry run against the
 > live `fims-nha-postgres` dev container (not yet applied to that container for real — see the note
 > at the top of that section for exactly what was and wasn't tested).
+> **§2.8 extended 2026-11-15** once the module grew: **Books of Accounts** (`fims.books`,
+> `01 - table/41` + `book_id` on JEV/GL/official_receipts, `03 - alter_table/30`) scoping all four
+> ledger reports; **Payment JEVs** (`jev_type` SETUP/PAYMENT + `source_module`/`doc_ref_no`,
+> `03 - alter_table/31`; `bank_accounts.account_code`) so Treasury's actual check/ADA release settles
+> the Accounts Payable the setup entry raised and credits Cash; **JEV classification**
+> (`jev_classification` REGULAR/ACCRUAL/DEPRECIATION/PREPAYMENTS/CLOSING, `03 - alter_table/32`);
+> **standalone (no-DV) JEVs** (`dv_id` made nullable, `03 - alter_table/33`) for period-end entries
+> Accounting books directly; and a **JEV-register view** (`fims.v_journal_entry_vouchers`,
+> `05 - views/02`). §2.3's "one JEV per DV / `dv_id` is UNIQUE" statements were corrected in the same
+> pass. These SQL files are **untracked / uncommitted** as of this writing — present in `_assets/sql/`
+> and read by the services/pages, but read from code, not re-verified against a fresh install.
 > The previous version of this file described a 9-schema, 371-file predecessor architecture (`shared`,
 > `accounting`, `treasury`, `regional`, `district`, `integration`, an `ACCOUNTING-BAPD/sql/` tree,
 > `npm run …` wrappers) that predates this repo's 2026-11-06 rebuild — none of that exists here. See
@@ -29,7 +40,7 @@ schema plan (see `_assets/sql/README.md` → Database Schemas).
 | Schema | Tables (verified live, 2026-11-13) | Covered below |
 |---|---|---|
 | `uac` | 30 | §1 |
-| `fims` | 57 (`CREATE TABLE` count in `_assets/sql/01 - fims/`, including §2.8's new `general_ledger`; 29 of these were independently verified live as of 2026-11-10 — the rest, including all of §2.6/§2.7's Treasury-ops and Fund Tracking tables, are **not independently re-verified live**, see the note at the end of each of those sections) — **`pricing_requests`/`pricing_request_attachments` are referenced by code but have no table at all, see §3** | §2 |
+| `fims` | 59 (`CREATE TABLE` count in `_assets/sql/01 - fims/`, including §2.8's `general_ledger` and `books`; 29 of these were independently verified live as of 2026-11-10 — the rest, including all of §2.6/§2.7's Treasury-ops and Fund Tracking tables, are **not independently re-verified live**, see the note at the end of each of those sections) — **`pricing_requests`/`pricing_request_attachments` are referenced by code but have no table at all, see §3** | §2 |
 | `fmd` | 0 (schema exists, empty) | — |
 | `workflow` | 0 (schema exists, empty) | — |
 
@@ -223,7 +234,7 @@ what differs is only what gets written into Particulars/Amount.
 erDiagram
     fiscal_year ||--o{ disbursement_vouchers : "fiscal_yr"
     vendors ||--o{ disbursement_vouchers : "vendor_id (optional)"
-    disbursement_vouchers ||--o| journal_entry_vouchers : "dv_id (1:1, cascade)"
+    disbursement_vouchers ||--o{ journal_entry_vouchers : "dv_id (1 SETUP + N PAYMENT; see §2.8)"
     journal_entry_vouchers ||--|{ journal_entry_voucher_lines : "jev_id (cascade)"
     chart_of_accounts ||--o{ journal_entry_voucher_lines : "account_code"
     sl_masters ||--o{ journal_entry_voucher_lines : "sl_code (optional)"
@@ -242,7 +253,7 @@ erDiagram
 | Table | Purpose / notes |
 |---|---|
 | `disbursement_vouchers` | One DV header. Pipeline: `DRAFT → FOR_FMD_REVIEW → FOR_ACCOUNTING → FOR_TREASURY → RELEASED` (Originating → FMD checks the obligation → Accounting processes → Treasury releases), or `REJECTED` (notes required) / `CANCELLED` from any non-terminal stage — see `DisbursementVoucherService::TRANSITIONS`/`authorizeTransition()`. `status_id` FKs to `settings_status` (`status_for = 'disbursement_voucher'`, seeded in `02 - sample_data/01 - fims_settings_status.sql`) — same shared-lookup convention as `budget_req`/`budget_allocation`; resolved by name via `DisbursementVoucherService::getStatusIdByName()`, so the pipeline names above are unchanged, only their storage moved off a free-text column (`03 - alter_table/21`). `account_code` is **required**, must be `posting_allowed` — validated in PHP, not a DB FK (the Journal Entry's auto-filled Dr line, see `readone.php`'s `vje_syncAutoLines`, would otherwise be blank). `net_amount` is a **service-computed snapshot** (`gross_amount - total deductions - total withholding tax`), not a generated column — it started as one (`gross - vat - wtax`) but those columns were dropped once deductions/withholding became repeating tables (`03 - alter_table/17`). `budget_amount`/`obligation_amount`/`payments_prior_amount`/`balance_amount` are likewise snapshots, stamped at save time from the selected RFA and recomputed on every `create()`/`update()`/`saveJournalEntry()` call — see the denormalization note below |
-| `journal_entry_vouchers` | The accounting entry Accounting prepares during `FOR_ACCOUNTING` (`jev_no` auto-numbered `JEV-{YY}-{MM}-{NNNN}`). **One per DV** (`dv_id` is `UNIQUE`) — this project doesn't model a separate obligation-setup JEV and payment JEV, just one combined entry. `total_debit`/`total_credit` are a snapshot of the lines, must be equal and >0 before `FOR_ACCOUNTING → FOR_TREASURY` is allowed (`changeStatus()`) |
+| `journal_entry_vouchers` | The accounting entry Accounting prepares during `FOR_ACCOUNTING` (`jev_no` auto-numbered `JEV-{YY}-{MM}-{NNNN}`). Originally **one per DV** (`dv_id` was `UNIQUE`); as of §2.8's 2026-11-15 extension a DV carries **one `SETUP` JEV plus any number of `PAYMENT` JEVs** (`jev_type`), and a JEV can now have **no DV at all** (`dv_id` nullable — standalone period-end entries). The old `UNIQUE(dv_id)` was replaced by a **partial unique index** `uq_journal_entry_vouchers_dv_id_setup` (`WHERE jev_type = 'SETUP'`), so "at most one SETUP JEV per DV" still holds while PAYMENT rows are unconstrained — see §2.8 for the full column set (`jev_type`, `jev_classification`, `source_module`, `doc_ref_no`, `book_id`, `status_id`). `total_debit`/`total_credit` are a snapshot of the lines, must be equal and >0 before `FOR_ACCOUNTING → FOR_TREASURY` is allowed (`changeStatus()`) |
 | `journal_entry_voucher_lines` | Debit/credit lines (`UNIQUE(jev_id, line_number)`; exactly one of debit/credit nonzero — validated in PHP, not a CHECK constraint, same convention as `purchase_order_items`). `account_code` is a required FK to `chart_of_accounts` (`posting_allowed` enforced in PHP). `sl_code`/`sl_detail_id` are optional Subsidiary Ledger breakdown columns — not every line needs one |
 | `sl_masters` / `sl_details` | Subsidiary Ledger registry, added for the Accounting Entries grid's SL Code/SL Detail columns — this project had **no SL infrastructure at all** before. An `sl_masters` row optionally ties to one `chart_of_accounts` control account (e.g. one Accounts Payable row per major vendor); `sl_details` further splits a master (e.g. by PO/contract) |
 | `deduction_types` | Lookup of non-tax deductions a DV's gross can be reduced by (e.g. contractor retention — currently the only seeded row). `account_code` (optional) is the GL account the Accounting Entries grid auto-credits when this type is used — see the auto-fill note below |
@@ -399,6 +410,33 @@ Drafted 2026-11-14, **implemented the same day**: `fims.general_ledger` (`01 - t
 `03 - views`). Service: `app/services/GeneralLedgerService.php`, called from
 `DisbursementVoucherService::changeStatus()`.
 
+> **Extended 2026-11-15 (uncommitted in `_assets/sql/` as of this writing — read from code, not
+> re-verified against a fresh install):**
+> - **Books of Accounts** — `fims.books` (`01 - table/41`: Main Office, CISFA, NGC, MPLC/PPMO, PPMO)
+>   plus `book_id` columns on `journal_entry_vouchers`, `general_ledger`, and `official_receipts`
+>   (`03 - alter_table/30`). Book is an **Accounting classification chosen on the DV's Accounting
+>   Entries section** (`persistJournalEntry()`'s `$bookId`), *not* a DV-header field — so
+>   `disbursement_vouchers` deliberately has no `book_id`; it's tagged on the JEV and copied down to
+>   each `general_ledger` row at post time (same snapshot convention as `fiscal_yr`). All four ledger
+>   reports scope by it.
+> - **Payment JEVs** — `journal_entry_vouchers.jev_type` (`SETUP` default | `PAYMENT`),
+>   `source_module` (`ACCOUNTING` | `TREASURY`), `doc_ref_no` (e.g. `CHECK NO. 001`), and matching
+>   `source_module`/`doc_ref_no` on `general_ledger` (`03 - alter_table/31`). The old `UNIQUE(dv_id)`
+>   became a **partial unique index** `uq_journal_entry_vouchers_dv_id_setup` (`WHERE jev_type =
+>   'SETUP'`). `bank_accounts.account_code` (nullable FK → `chart_of_accounts`) maps each bank account
+>   to the Cash GL account its outflow credits. See the payment-settlement design note below.
+> - **JEV classification** — `journal_entry_vouchers.jev_classification` (`03 - alter_table/32`:
+>   `REGULAR` default | `ACCRUAL` | `DEPRECIATION` | `PREPAYMENTS` | `CLOSING`, `CHECK`-constrained).
+>   A **business/reporting label, independent of `jev_type`** (which is GL-posting mechanics).
+> - **Standalone (no-DV) JEVs** — `journal_entry_vouchers.dv_id` made nullable (`03 - alter_table/33`)
+>   so Accounting can book period-end adjusting/closing entries directly, with no Disbursement
+>   Voucher. The partial unique index still works (Postgres treats NULLs as distinct). New service
+>   methods `createStandaloneJev()`/`updateStandaloneJev()`/`deleteStandaloneJev()`/`postStandaloneJev()`
+>   and `/voucher/journal-entry/*` routes back the new Add-JEV form.
+> - **JEV-register view** — `fims.v_journal_entry_vouchers` (`05 - views/02`): one row per JEV header
+>   with its DV/book/status labels, replacing an inline join; `fims.v_journals`'s DV join was changed
+>   to a `LEFT JOIN` so standalone (no-DV) postings still appear.
+
 Route + UI added the same day, as **four separate modules** (General Ledger, Subsidiary Ledger,
 Journals, Trial Balance are each their own page — not tabs of one page; see developer guide §8.5 for
 the full table of which page/endpoint shows what), all under `app/routes/general_ledger.php`
@@ -424,11 +462,14 @@ Subsidiary Ledger reports, the Journals register, and the Trial Balance all read
 
 ```mermaid
 erDiagram
-    disbursement_vouchers ||--o| journal_entry_vouchers : "dv_id (1:1, cascade)"
+    disbursement_vouchers ||--o{ journal_entry_vouchers : "dv_id (1 SETUP + N PAYMENT; NULL for standalone)"
+    books ||--o{ journal_entry_vouchers : "book_id (optional)"
+    books ||--o{ general_ledger : "book_id (optional)"
     journal_entry_vouchers ||--|{ journal_entry_voucher_lines : "jev_id (cascade)"
     journal_entry_voucher_lines }o--|| chart_of_accounts : "account_code"
     journal_entry_voucher_lines }o--o| sl_masters : "sl_code (optional)"
     journal_entry_voucher_lines }o--o| sl_details : "sl_detail_id (optional)"
+    bank_accounts }o--o| chart_of_accounts : "account_code (Cash account, optional)"
 
     journal_entry_vouchers ||--o{ general_ledger : "jev_id (posted lines)"
     journal_entry_voucher_lines ||--o| general_ledger : "jev_line_id (post-once, see below)"
@@ -436,6 +477,23 @@ erDiagram
     sl_masters ||--o{ general_ledger : "sl_code (optional)"
     sl_details ||--o{ general_ledger : "sl_detail_id (optional)"
     general_ledger ||--o| general_ledger : "reversed_gl_id (self, optional)"
+
+    journal_entry_vouchers {
+        int jev_id PK
+        int dv_id FK "nullable since 03-alter/33 (standalone)"
+        varchar jev_no "JEV-YY-MM-NNNN"
+        varchar jev_type "SETUP (default) | PAYMENT"
+        varchar jev_classification "REGULAR|ACCRUAL|DEPRECIATION|PREPAYMENTS|CLOSING"
+        varchar source_module "ACCOUNTING | TREASURY"
+        varchar doc_ref_no "e.g. CHECK NO. 001"
+        int book_id FK "fims.books, optional"
+        smallint fiscal_yr "no FK"
+        int status_id FK "settings_status: DRAFT|APPROVED|POSTED|REVERSED"
+        numeric total_debit
+        numeric total_credit
+        int posted_by
+        timestamptz posted_at
+    }
 
     general_ledger {
         int gl_id PK
@@ -445,6 +503,9 @@ erDiagram
         varchar sl_code FK "optional"
         int sl_detail_id FK "optional"
         varchar rc_id FK "optional"
+        int book_id FK "fims.books, optional (copied from JEV)"
+        varchar source_module "copied from JEV"
+        varchar doc_ref_no "copied from JEV"
         smallint fiscal_yr "no FK, same as journal_entry_vouchers.fiscal_yr"
         date posting_date
         numeric debit
@@ -456,54 +517,75 @@ erDiagram
     }
 ```
 
-**Trial Balance and the Journals register are VIEWs over `general_ledger`, not stored tables** —
+**Trial Balance, the Journals register, and the JEV register are VIEWs, not stored tables** —
 consistent with how this repo already prefers computing reports live rather than maintaining a
 parallel stored summary (e.g. Cash Position's generated `available_balance` column). `fims.v_journals`
-joins in the JEV/DV/account/SL labels; `fims.v_trial_balance` groups by `fiscal_yr` + `account_code`.
+joins the JEV/DV/account/SL/**book** labels onto each posted `general_ledger` line (its DV join is a
+`LEFT JOIN` so standalone no-DV postings still show); `fims.v_trial_balance` groups by `fiscal_yr` +
+**`book_id`** + `account_code`; `fims.v_journal_entry_vouchers` (new in `05 - views/02`) gives one row
+per JEV **header** with its `jev_type`/`jev_classification`/`source_module`/`doc_ref_no`/book and both
+`jev_status`/`dv_status` labels — it backs the JEV register page's list and search.
 
 **Process flow:**
 
+Standard process flowchart (terminators as stadium nodes, processes as rectangles, decisions as
+diamonds). The `fims.general_ledger` INSERT is drawn as a data/IO step (parallelogram):
+
 ```mermaid
-sequenceDiagram
-    participant O as Originating (DV form)
-    participant FMD as FMD
-    participant ACC as Accounting
-    participant SYS as DisbursementVoucherService
-    participant JEV as journal_entry_vouchers
-    participant GL as GeneralLedgerService
-
-    O->>SYS: POST /voucher/add
-    SYS->>SYS: disbursement_vouchers status = DRAFT
-    Note over JEV: a JEV row is only ever created by saveJournalEntry() at the<br/>FOR_ACCOUNTING stage — there is no auto-created empty JEV on DV add
-
-    O->>SYS: submit-for-review
-    SYS->>SYS: status → FOR_FMD_REVIEW
-    FMD->>SYS: approve
-    SYS->>SYS: status → FOR_ACCOUNTING
-
-    ACC->>SYS: saveJournalEntry() — creates/fills the JEV (status DRAFT), Dr/Cr must balance
-    Note over SYS: already enforced: total_debit = total_credit
-
-    ACC->>SYS: changeStatus(FOR_ACCOUNTING → FOR_TREASURY)  ⟵ "DV approved, accounting side"
-    SYS->>SYS: BEGIN; existing check: JEV exists & balanced; update dv.status_id
-    SYS->>GL: postJev(jev_id, user_id) — same transaction
-    GL->>JEV: status DRAFT → POSTED, posted_by/posted_at set
-    GL->>GL: INSERT one general_ledger row per journal_entry_voucher_line (post-once, partial unique index)
-    Note over GL: sl_code/sl_detail_id/rc_id carried straight from the JEV line — no separate SL posting step
-    SYS->>SYS: COMMIT (or ROLLBACK the whole thing if postJev() fails)
-    Note over GL: v_journals / v_trial_balance immediately reflect it (views, not stored)
-
-    SYS->>SYS: status → FOR_TREASURY → RELEASED (Treasury prepares the check) — terminal, no further transitions
-    SYS-->>GL: (FOR_TREASURY → CANCELLED instead) reverseJev(jev_id, user_id) — JEV → REVERSED, offsetting GL rows inserted
+flowchart TD
+    start([Start — Originating creates a DV]) --> p1[POST /voucher/add<br/>disbursement_vouchers status = DRAFT]
+    p1 --> p2[Originating submits for review<br/>status = FOR_FMD_REVIEW]
+    p2 --> d1{FMD approves?}
+    d1 -- No --> rej([REJECTED / returned])
+    d1 -- Yes --> p3[status = FOR_ACCOUNTING]
+    p3 --> p4[Accounting runs saveJournalEntry book_id, jev_classification<br/>creates the SETUP JEV, status DRAFT]
+    p4 --> d2{JEV balanced — total_debit = total_credit?}
+    d2 -- No, fix lines --> p4
+    d2 -- Yes --> p5[changeStatus FOR_ACCOUNTING to FOR_TREASURY<br/>BEGIN transaction, update dv.status_id]
+    p5 --> p6[postJev on SETUP JEV<br/>JEV DRAFT to POSTED, posted_by/posted_at set]
+    p6 --> p7[/INSERT one general_ledger row per JEV line<br/>post-once via partial unique index<br/>book_id, source_module, doc_ref_no copied down/]
+    p7 --> d3{postJev succeeded?}
+    d3 -- No --> rb([ROLLBACK the whole transaction])
+    d3 -- Yes --> p8[COMMIT<br/>v_journals and v_trial_balance reflect it immediately]
+    p8 --> d4{DV released or cancelled?}
+    d4 -- Cancelled FOR_TREASURY to CANCELLED --> rv[reverseJev on SETUP JEV<br/>JEV to REVERSED, offsetting GL rows inserted]
+    rv --> endc([End — reversed, ledgers net to 0.00])
+    d4 -- Released --> p9[Treasury runs prepareCheck<br/>FOR_TREASURY to RELEASED — terminal]
+    p9 --> p10[postPaymentJev dv_id, bank_account, net_amount, CHECK NO.]
+    p10 --> d5{SETUP JEV routed through Accounts Payable?}
+    d5 -- No --> noop([No-op — nothing to settle])
+    d5 -- Yes --> d6{Bank account has a Cash account mapped?}
+    d6 -- No --> err([Error — configure bank_accounts.account_code first])
+    d6 -- Yes --> p11[INSERT 2nd JEV jev_type = PAYMENT, source_module = TREASURY<br/>Dr Accounts Payable / Cr bank Cash account]
+    p11 --> p12[postJev on the PAYMENT JEV<br/>settles AP, credits Cash]
+    p12 --> endr([End — paid and fully posted])
+    noop --> endr
 ```
+
+> A JEV row is only ever created by `saveJournalEntry()` at the `FOR_ACCOUNTING` stage — there is no
+> auto-created empty JEV on DV add. `sl_code`/`sl_detail_id`/`rc_id` ride straight from the JEV line
+> onto each posted `general_ledger` row — there is no separate SL posting step. `postJev()` is
+> idempotent (a retried `FOR_ACCOUNTING → FOR_TREASURY` is rejected by the state machine, so no
+> double-post); `RELEASED` is terminal, so `FOR_TREASURY → CANCELLED` is the only point a posted JEV
+> can still be reversed.
+
+**Standalone (no-DV) JEVs** skip this whole DV pipeline — Accounting prepares a period-end
+adjusting/closing entry directly via the Add-JEV form (`createStandaloneJev()`, `dv_id IS NULL`,
+always `DRAFT`), then posts it with its own explicit action (`postStandaloneJev()` →
+`GeneralLedgerService::postJev()`), since there's no `FOR_ACCOUNTING → FOR_TREASURY` transition to
+ride on.
 
 **Design notes (as actually built, differences from the original draft called out):**
 
-- **JEV gets `status_id`** (`DRAFT → POSTED`, or `REVERSED`; **no separate `APPROVED` status was
-  added** — the draft's three-step `DRAFT → APPROVED → POSTED` collapsed to two, since nothing in
-  this flow needs to observe an "approved but not yet posted" moment), resolved through
-  `fims.settings_status` with `status_for = 'journal_entry_voucher'` — same shared-lookup pattern as
-  `disbursement_vouchers.status_id`.
+- **JEV gets `status_id`**, resolved through `fims.settings_status` with
+  `status_for = 'journal_entry_voucher'` — same shared-lookup pattern as
+  `disbursement_vouchers.status_id`. **Correction (2026-11-15):** the 2026-11-14 draft collapsed this
+  to two statuses (`DRAFT → POSTED`) and dropped `APPROVED`; `APPROVED` is now back in the seed
+  (`02 - sample_data/11` seeds all four: `DRAFT`, `APPROVED`, `POSTED`, `REVERSED`, and
+  `journal-entry-voucher.php` has a badge for each). **In practice the posting path still writes
+  `DRAFT → POSTED` directly** — `postJev()`'s own docstring says "flips it DRAFT → APPROVED → POSTED"
+  but the code sets `status_id` to `POSTED` in one step; no code path currently writes the `APPROVED`
+  row. It exists in the lookup/UI for the lifecycle's sake, not as an observed intermediate state.
 - **Posting is triggered by the existing `FOR_ACCOUNTING → FOR_TREASURY` transition**, not a separate
   "approve JEV" action — `DisbursementVoucherService::changeStatus()` now wraps its own status
   update **and** `GeneralLedgerService::postJev()` in one `BEGIN…COMMIT`/`ROLLBACK` (that method
@@ -525,6 +607,40 @@ sequenceDiagram
   `journal_entry_voucher_lines.sl_code`/`sl_detail_id`/`rc_id` already exist (§2.3); posting just
   copies them onto the `general_ledger` row so SL-level reports can filter `general_ledger` directly
   instead of re-joining back to the JEV.
+
+**Design notes — 2026-11-15 extension:**
+
+- **Payment settlement is a second JEV, not an edit** (`03 - alter_table/31`). The SETUP JEV
+  Accounting posts at `FOR_ACCOUNTING → FOR_TREASURY` typically raises Accounts Payable (Cr
+  `2-01-01-010`); nothing used to settle it when Treasury actually paid — AP sat forever at its
+  setup-time balance and Cash never moved. `CheckProcessingService::prepareCheck()` now calls
+  `GeneralLedgerService::postPaymentJev()` right after the DV is `RELEASED`, which **inserts a distinct
+  `journal_entry_vouchers` row** (`jev_type = 'PAYMENT'`, `source_module = 'TREASURY'`,
+  `doc_ref_no = 'CHECK NO. …'`, its own JEV number) — Dr Accounts Payable / Cr the **bank account's
+  mapped Cash account** (`bank_accounts.account_code`) — and posts it through the same `postJev()`. A
+  bank account with no `account_code` mapped **errors out** (doesn't guess); a SETUP JEV that never
+  routed through AP (paid straight from Cash) is a clean **no-op, not an error**. This is why `dv_id`
+  is no longer plain-`UNIQUE` — one DV legitimately has a SETUP JEV *and* one or more PAYMENT JEVs.
+- **`jev_type` (SETUP/PAYMENT) and `jev_classification` (REGULAR/ACCRUAL/…) are orthogonal**
+  (`03 - alter_table/32`). `jev_type` is GL-posting mechanics — it's what the partial unique index and
+  `postPaymentJev()` key off to tell Accounting's setup entry from Treasury's settlement entry for the
+  same DV. `jev_classification` is a business/reporting label; a SETUP or PAYMENT JEV can carry any
+  classification, and nothing about posting behavior changes with it. It defaults to `REGULAR` so every
+  pre-existing JEV backfills cleanly.
+- **Book is tagged on the JEV, never on the DV** (`03 - alter_table/30`). An earlier cut put `book_id`
+  on `disbursement_vouchers` and copied it down, but that framed it as an Originating-time decision
+  when it's really Accounting's call when they prepare the Journal Entry — so `disbursement_vouchers`
+  has **no `book_id`**; it's set in `persistJournalEntry()` and copied onto each `general_ledger` row
+  at post time (snapshot, not a live join — same as `fiscal_yr`). `fims.checks`/`ada_releases` need no
+  book column of their own: CKDJ/ADADJ read it through the JEV they join to. `fims.books` **replaced an
+  earlier attempt** to reuse `fims.type_of_fund` as the "Book" dimension — that was the wrong axis
+  (fund cluster, not office/program entity); `type_of_fund` stays as-is for `budget_line_items`.
+- **Standalone JEVs reuse the whole posting machinery** (`03 - alter_table/33`). `dv_id` is nullable
+  so `createStandaloneJev()` can write a `DRAFT` JEV with no DV; the partial unique index
+  (`WHERE jev_type = 'SETUP'`) tolerates any number of them because Postgres never treats two NULLs as
+  equal. `postStandaloneJev()` is just a thin wrapper over `GeneralLedgerService::postJev()` — the
+  standalone equivalent of the DV transition that fires posting. `fims.v_journals`'s DV join became a
+  `LEFT JOIN` for exactly this reason (an INNER JOIN would have hidden every standalone posting).
 
 ---
 

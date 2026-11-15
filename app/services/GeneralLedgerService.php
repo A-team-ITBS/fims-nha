@@ -107,7 +107,7 @@ class GeneralLedgerService
     public function postJev(int $jevId, int $userId): array
     {
         $jev = App\ExecuteRow(
-            "SELECT jev.jev_id, jev.jev_no, jev.fiscal_yr, jev.book_id, jev.status_id, st.name AS status
+            "SELECT jev.jev_id, jev.jev_no, jev.fiscal_yr, jev.book_id, jev.source_module, jev.doc_ref_no, jev.status_id, st.name AS status
              FROM {$this->tableJev} jev
              LEFT JOIN {$this->tableSettingsStatus} st ON st.id = jev.status_id
              WHERE jev.jev_id = {$jevId}",
@@ -137,7 +137,7 @@ class GeneralLedgerService
             // against the same race the UNIQUE constraint itself already blocks.
             App\Execute(
                 "INSERT INTO {$this->table}
-                    (jev_id, jev_line_id, account_code, sl_code, sl_detail_id, rc_id, fiscal_yr, book_id,
+                    (jev_id, jev_line_id, account_code, sl_code, sl_detail_id, rc_id, fiscal_yr, book_id, source_module, doc_ref_no,
                      debit, credit, reference_no, description, posted_by)
                  SELECT {$jevId}, " . (int) $line['jevl_id'] . ', '
                     . $this->str($line['account_code']) . ', '
@@ -146,6 +146,8 @@ class GeneralLedgerService
                     . $this->strOrNull($line['rc_id']) . ', '
                     . $this->intOrNull($jev['fiscal_yr']) . ', '
                     . $this->intOrNull($jev['book_id']) . ', '
+                    . $this->strOrNull($jev['source_module']) . ', '
+                    . $this->strOrNull($jev['doc_ref_no']) . ', '
                     . (float) $line['debit'] . ', ' . (float) $line['credit'] . ', '
                     . $this->str($jev['jev_no']) . ', '
                     . $this->strOrNull($line['description']) . ', ' . $uid . "
@@ -192,7 +194,7 @@ class GeneralLedgerService
         }
 
         $postedRows = App\ExecuteRows(
-            "SELECT gl_id, jev_line_id, account_code, sl_code, sl_detail_id, rc_id, fiscal_yr, book_id, debit, credit
+            "SELECT gl_id, jev_line_id, account_code, sl_code, sl_detail_id, rc_id, fiscal_yr, book_id, source_module, doc_ref_no, debit, credit
              FROM {$this->table} WHERE jev_id = {$jevId} AND reversed_gl_id IS NULL",
             'DB'
         ) ?: [];
@@ -202,7 +204,7 @@ class GeneralLedgerService
         foreach ($postedRows as $row) {
             App\Execute(
                 "INSERT INTO {$this->table}
-                    (jev_id, jev_line_id, account_code, sl_code, sl_detail_id, rc_id, fiscal_yr, book_id,
+                    (jev_id, jev_line_id, account_code, sl_code, sl_detail_id, rc_id, fiscal_yr, book_id, source_module, doc_ref_no,
                      debit, credit, reference_no, description, reversed_gl_id, posted_by)
                  VALUES ({$jevId}, " . (int) $row['jev_line_id'] . ', ' . $this->str($row['account_code']) . ', '
                     . $this->strOrNull($row['sl_code']) . ', '
@@ -210,6 +212,8 @@ class GeneralLedgerService
                     . $this->strOrNull($row['rc_id']) . ', '
                     . $this->intOrNull($row['fiscal_yr']) . ', '
                     . $this->intOrNull($row['book_id']) . ', '
+                    . $this->strOrNull($row['source_module']) . ', '
+                    . $this->strOrNull($row['doc_ref_no']) . ', '
                     . (float) $row['credit'] . ', ' . (float) $row['debit'] . ', ' // swapped
                     . $this->str($jev['jev_no'] . '-REV') . ', '
                     . $this->str("Reversal of GL #{$row['gl_id']}") . ', ' . (int) $row['gl_id'] . ', ' . $uid . ')',
@@ -224,6 +228,119 @@ class GeneralLedgerService
         App\Execute("UPDATE {$this->tableJev} SET status_id = {$reversedId} WHERE jev_id = {$jevId}", 'DB');
 
         return ['success' => true, 'message' => "Journal Entry Voucher {$jev['jev_no']} reversed.", 'data' => ['jev_id' => $jevId, 'status' => 'REVERSED']];
+    }
+
+    /**
+     * Posts the PAYMENT entry Treasury's own release (a check or ADA) represents — the step that
+     * actually settles the Accounts Payable balance Accounting's SETUP JEV created, and credits
+     * Cash. Without this, fims.general_ledger showed the obligation going up at FOR_ACCOUNTING time
+     * and then never coming back down — Accounts Payable/Cash balances were permanently wrong past
+     * that point. Called from CheckProcessingService::prepareCheck() right after a DV is RELEASED
+     * (a future ADA-release flow would call this the same way).
+     *
+     * A no-op (not an error) if the DV's SETUP JEV never routed through Accounts Payable
+     * (self::AP_ACCOUNT_CODE) at all — e.g. a DV whose JEV credited Cash directly instead of AP (see
+     * "09 - gl_sl_demo_postings.sql"'s GLDEMO-0002) has nothing left to settle; the obligation was
+     * already fully recorded against Cash at setup time.
+     *
+     * Creates a second, distinct journal_entry_vouchers row (jev_type = 'PAYMENT', same dv_id —
+     * see "03 - alter_table/31" for why dv_id is no longer unique) rather than editing the SETUP
+     * JEV, so Journals/CKDJ keep a clean, separate JEV number per source document, same as the
+     * illustrated JEV-0002 (ACCOUNTING, setup) / JEV-0003 (TREASURY, payment) pair.
+     *
+     * Posts via postJev() (not a bespoke INSERT) so it gets every post-once/idempotency guarantee
+     * that method already provides for free.
+     */
+    private const AP_ACCOUNT_CODE = '2-01-01-010'; // Accounts Payable — same hardcoded control account app/pages/voucher/{form,readone}.php's auto "Net Amount Payable" line already uses
+
+    public function postPaymentJev(int $dvId, int $bankAccountId, float $amount, string $docRefNo, int $userId): array
+    {
+        $setupJev = App\ExecuteRow(
+            "SELECT jev_id, jev_no, fiscal_yr, book_id
+             FROM {$this->tableJev}
+             WHERE dv_id = {$dvId} AND jev_type = 'SETUP'",
+            'DB'
+        );
+        if (!$setupJev) {
+            return ['success' => false, 'message' => "Disbursement Voucher #{$dvId} has no posted Journal Entry Voucher to settle."];
+        }
+
+        $apLine = App\ExecuteRow(
+            "SELECT sl_code, sl_detail_id, rc_id
+             FROM {$this->tableJevLines}
+             WHERE jev_id = " . (int) $setupJev['jev_id'] . ' AND account_code = ' . $this->str(self::AP_ACCOUNT_CODE) . ' AND credit > 0
+             ORDER BY line_number LIMIT 1',
+            'DB'
+        );
+        if (!$apLine) {
+            // Nothing routed through Accounts Payable — e.g. already paid straight out of Cash at
+            // setup time. Not an error; there's simply no payment entry to post.
+            return ['success' => true, 'message' => 'Nothing to settle — the Journal Entry did not route through Accounts Payable.', 'data' => ['posted' => false]];
+        }
+
+        $bank = App\ExecuteRow(
+            "SELECT account_code, account_name FROM {$this->tableBankAccounts} WHERE bank_account_id = {$bankAccountId}",
+            'DB'
+        );
+        if (!$bank || !$bank['account_code']) {
+            return ['success' => false, 'message' => $bank
+                ? "Bank account '{$bank['account_name']}' has no Chart-of-Accounts Cash account mapped — configure it before releasing checks against it."
+                : "Bank account #{$bankAccountId} not found."];
+        }
+
+        $jevNo = $this->nextJevNumber(date('Y-m-d'));
+        $uid   = $userId > 0 ? (string) $userId : 'NULL';
+        $row   = App\ExecuteRow(
+            "INSERT INTO {$this->tableJev}
+                (jev_no, dv_id, fiscal_yr, book_id, jev_type, source_module, doc_ref_no, total_debit, total_credit, created_by)
+             VALUES (" . $this->str($jevNo) . ", {$dvId}, " . $this->intOrNull($setupJev['fiscal_yr']) . ', '
+                . $this->intOrNull($setupJev['book_id']) . ", 'PAYMENT', 'TREASURY', " . $this->str($docRefNo) . ', '
+                . (float) $amount . ', ' . (float) $amount . ", {$uid})
+             RETURNING jev_id",
+            'DB'
+        );
+        $jevId = (int) $row['jev_id'];
+
+        App\Execute(
+            "INSERT INTO {$this->tableJevLines} (jev_id, line_number, account_code, debit, credit, description, sl_code, sl_detail_id, rc_id)
+             VALUES ({$jevId}, 1, " . $this->str(self::AP_ACCOUNT_CODE) . ', ' . (float) $amount . ', 0, '
+                . $this->str("Payment via {$docRefNo}") . ', '
+                . $this->strOrNull($apLine['sl_code']) . ', ' . $this->intOrNull($apLine['sl_detail_id']) . ', '
+                . $this->strOrNull($apLine['rc_id']) . ')',
+            'DB'
+        );
+        App\Execute(
+            "INSERT INTO {$this->tableJevLines} (jev_id, line_number, account_code, debit, credit, description)
+             VALUES ({$jevId}, 2, " . $this->str($bank['account_code']) . ', 0, ' . (float) $amount . ', '
+                . $this->str("Payment via {$docRefNo}") . ')',
+            'DB'
+        );
+
+        $posted = $this->postJev($jevId, $userId);
+        if (!$posted['success']) {
+            return $posted;
+        }
+
+        return ['success' => true, 'message' => "Payment Journal Entry Voucher {$jevNo} posted to the General Ledger.", 'data' => ['jev_id' => $jevId, 'jev_no' => $jevNo, 'posted' => true]];
+    }
+
+    /**
+     * Same numbering scheme as DisbursementVoucherService::nextJevNumber() (kept as a separate
+     * private copy, same "small SQL helpers duplicated per service" convention as str()/strOrNull()
+     * below) — PAYMENT JEVs share the same JEV-YY-MM-#### sequence as SETUP ones, just a later
+     * number for the same month.
+     */
+    private function nextJevNumber(string $jevDate): string
+    {
+        $prefix = 'JEV-' . substr($jevDate, 2, 2) . '-' . substr($jevDate, 5, 2) . '-';
+        $max    = (int) App\ExecuteScalar(
+            "SELECT COALESCE(MAX(CAST(SUBSTRING(jev_no FROM '[0-9]+$') AS INTEGER)), 0)
+             FROM {$this->tableJev}
+             WHERE jev_no LIKE " . $this->str($prefix . '%') . " AND jev_no ~ '-[0-9]+$'",
+            'DB'
+        );
+
+        return $prefix . str_pad((string) ($max + 1), 4, '0', STR_PAD_LEFT);
     }
 
     /** fims.v_journals, paged and optionally filtered by fiscal year / book / account code / DV / JEV number. */
@@ -530,7 +647,7 @@ class GeneralLedgerService
                 $where[] = 'book_id = ' . (int) $bookId;
             }
             $data = App\ExecuteRows(
-                "SELECT gl_id, posting_date, jev_no, dv_no, sl_code, sl_name, debit, credit, reference_no, description, reversed_gl_id,
+                "SELECT gl_id, posting_date, jev_no, dv_no, doc_ref_no, sl_code, sl_name, debit, credit, reference_no, description, reversed_gl_id,
                         SUM({$sign}) OVER (ORDER BY posting_date, gl_id) AS running_balance
                  FROM {$this->tableViewJournals}
                  WHERE " . implode(' AND ', $where) . '
@@ -546,6 +663,7 @@ class GeneralLedgerService
                 'grouped' => false,
                 'account' => $account,
                 'debit_normal' => $debitNormal,
+                'normal_balance' => $debitNormal ? 'DEBIT' : 'CREDIT',
                 'data' => $data,
                 'total_debit' => $totalDebit,
                 'total_credit' => $totalCredit,
@@ -569,7 +687,7 @@ class GeneralLedgerService
         $where = $fiscalYr !== null ? 'AND v.fiscal_yr = ' . (int) $fiscalYr : '';
         $where .= $bookId !== null ? ' AND v.book_id = ' . (int) $bookId : '';
         $rows  = App\ExecuteRows(
-            "SELECT v.gl_id, v.posting_date, v.jev_no, v.dv_no, v.account_code, v.account_title, c.account_type,
+            "SELECT v.gl_id, v.posting_date, v.jev_no, v.dv_no, v.doc_ref_no, v.account_code, v.account_title, c.account_type,
                     v.sl_code, v.sl_name, v.debit, v.credit, v.reference_no, v.description, v.reversed_gl_id,
                     SUM(CASE WHEN c.account_type IN ('Asset', 'Expense') THEN (v.debit - v.credit) ELSE (v.credit - v.debit) END)
                         OVER (PARTITION BY v.account_code ORDER BY v.posting_date, v.gl_id) AS running_balance
@@ -584,9 +702,11 @@ class GeneralLedgerService
         foreach ($rows as $row) {
             $code = $row['account_code'];
             if (!isset($accounts[$code])) {
+                $debitNormal = in_array($row['account_type'], self::DEBIT_NORMAL_TYPES, true);
                 $accounts[$code] = [
                     'account' => ['account_code' => $code, 'account_title' => $row['account_title'], 'account_type' => $row['account_type']],
-                    'debit_normal' => in_array($row['account_type'], self::DEBIT_NORMAL_TYPES, true),
+                    'debit_normal' => $debitNormal,
+                    'normal_balance' => $debitNormal ? 'DEBIT' : 'CREDIT',
                     'data' => [],
                     'total_debit' => 0.0,
                     'total_credit' => 0.0,
@@ -647,7 +767,7 @@ class GeneralLedgerService
                 $where[] = 'book_id = ' . (int) $bookId;
             }
             $data = App\ExecuteRows(
-                "SELECT gl_id, posting_date, jev_no, dv_no, account_code, account_title, sl_detail_id, sl_detail_name, debit, credit, reference_no, description, reversed_gl_id,
+                "SELECT gl_id, posting_date, jev_no, dv_no, doc_ref_no, account_code, account_title, sl_detail_id, sl_detail_name, debit, credit, reference_no, description, reversed_gl_id,
                         SUM({$sign}) OVER (ORDER BY posting_date, gl_id) AS running_balance
                  FROM {$this->tableViewJournals}
                  WHERE " . implode(' AND ', $where) . '
@@ -663,6 +783,7 @@ class GeneralLedgerService
                 'grouped' => false,
                 'master' => $master,
                 'debit_normal' => $debitNormal,
+                'normal_balance' => $debitNormal ? 'DEBIT' : 'CREDIT',
                 'data' => $data,
                 'total_debit' => $totalDebit,
                 'total_credit' => $totalCredit,
@@ -687,7 +808,7 @@ class GeneralLedgerService
         $where = $fiscalYr !== null ? 'AND v.fiscal_yr = ' . (int) $fiscalYr : '';
         $where .= $bookId !== null ? ' AND v.book_id = ' . (int) $bookId : '';
         $rows  = App\ExecuteRows(
-            "SELECT v.gl_id, v.posting_date, v.jev_no, v.dv_no, v.account_code, v.account_title, v.sl_code, sm.sl_name,
+            "SELECT v.gl_id, v.posting_date, v.jev_no, v.dv_no, v.doc_ref_no, v.account_code, v.account_title, v.sl_code, sm.sl_name,
                     v.sl_detail_id, v.sl_detail_name, v.debit, v.credit, v.reference_no, v.description, v.reversed_gl_id,
                     c.account_type,
                     SUM(CASE WHEN c.account_type IN ('Asset', 'Expense') THEN (v.debit - v.credit) ELSE (v.credit - v.debit) END)
@@ -704,9 +825,11 @@ class GeneralLedgerService
         foreach ($rows as $row) {
             $code = $row['sl_code'];
             if (!isset($masters[$code])) {
+                $debitNormal = in_array($row['account_type'], self::DEBIT_NORMAL_TYPES, true);
                 $masters[$code] = [
-                    'master' => ['sl_code' => $code, 'sl_name' => $row['sl_name']],
-                    'debit_normal' => in_array($row['account_type'], self::DEBIT_NORMAL_TYPES, true),
+                    'master' => ['sl_code' => $code, 'sl_name' => $row['sl_name'], 'account_type' => $row['account_type']],
+                    'debit_normal' => $debitNormal,
+                    'normal_balance' => $debitNormal ? 'DEBIT' : 'CREDIT',
                     'data' => [],
                     'total_debit' => 0.0,
                     'total_credit' => 0.0,

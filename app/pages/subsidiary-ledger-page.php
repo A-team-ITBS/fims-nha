@@ -34,6 +34,8 @@ $_sl_api = preg_match('~/api$~', $_sl_api) ? $_sl_api : $_sl_api . '/api';
     #sl-root .sl-summary-label { font-size: 11px; color: var(--afims-text-muted,#62657E); text-transform: uppercase; letter-spacing: .03em; }
     #sl-root .sl-summary-value { font-size: 18px; font-weight: 600; margin-top: 4px; }
     #sl-root .sl-group-row td { background: var(--afims-bg-soft, #F5F6FA); font-weight: 600; }
+    #sl-root .sl-ending-balance { text-align: right; padding: 8px 4px; font-size: 13px; color: var(--afims-text-muted,#62657E); }
+    #sl-root .sl-ending-balance strong { color: inherit; font-weight: 700; }
 </style>
 
 <div id="sl-root" class="nha-root">
@@ -110,16 +112,20 @@ $_sl_api = preg_match('~/api$~', $_sl_api) ? $_sl_api : $_sl_api . '/api';
             <div class="sl-summary-value" id="sl-summary-master" style="font-size:14px;">—</div>
         </div>
         <div class="sl-summary-card">
+            <div class="sl-summary-label">Normal Balance</div>
+            <div class="sl-summary-value" id="sl-summary-normal" style="font-size:14px;">—</div>
+        </div>
+        <div class="sl-summary-card">
+            <div class="sl-summary-label">Account Class</div>
+            <div class="sl-summary-value" id="sl-summary-class" style="font-size:14px;">—</div>
+        </div>
+        <div class="sl-summary-card">
             <div class="sl-summary-label">Total Debit</div>
             <div class="sl-summary-value nha-mono" id="sl-summary-debit">₱ 0.00</div>
         </div>
         <div class="sl-summary-card">
             <div class="sl-summary-label">Total Credit</div>
             <div class="sl-summary-value nha-mono" id="sl-summary-credit">₱ 0.00</div>
-        </div>
-        <div class="sl-summary-card">
-            <div class="sl-summary-label">Ending Balance</div>
-            <div class="sl-summary-value nha-mono" id="sl-summary-balance">₱ 0.00</div>
         </div>
     </div>
 
@@ -130,20 +136,23 @@ $_sl_api = preg_match('~/api$~', $_sl_api) ? $_sl_api : $_sl_api . '/api';
                 <thead>
                     <tr>
                         <th>Posting Date</th>
-                        <th>JEV Number</th>
+                        <th>JEV No.</th>
+                        <th>Doc Ref No.</th>
                         <th>DV Number</th>
                         <th>Account</th>
+                        <th>Particulars</th>
                         <th class="text-end">Debit</th>
                         <th class="text-end">Credit</th>
                         <th class="text-end">Balance</th>
                     </tr>
                 </thead>
                 <tbody id="sl-tbody">
-                    <tr><td colspan="7"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
+                    <tr><td colspan="9"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
                 </tbody>
             </table>
         </div>
     </div>
+    <div id="sl-ending" class="sl-ending-balance no-print" style="display:none;"></div>
 
 </div><!-- /#sl-root -->
 
@@ -304,10 +313,12 @@ async function sl_load() {
 
         if (json.grouped) {
             $sl('sl-summary').style.display = 'none';
+            $sl('sl-ending').style.display = 'none';
             sl_renderGroupedTable(json.masters ?? []);
         } else {
             sl_renderSummary(json);
             sl_renderTable(json.data ?? [], json.debit_normal);
+            sl_renderEnding(json.ending_balance, json.debit_normal);
         }
     } catch (e) {
         sl_renderTable([]);
@@ -317,20 +328,29 @@ async function sl_load() {
     }
 }
 
-/* ── Summary ───────────────────────────────────────────────── */
+/* ── Summary (SL master header — code/name/normal balance/class) ──────────── */
 function sl_renderSummary(json) {
     $sl('sl-summary').style.display = '';
     $sl('sl-summary-master').textContent = `${json.master.sl_code} — ${json.master.sl_name}`;
+    $sl('sl-summary-normal').textContent = json.normal_balance || '—';
+    $sl('sl-summary-class').textContent  = json.master.account_type || '—';
     $sl('sl-summary-debit').textContent  = sl_peso(json.total_debit);
     $sl('sl-summary-credit').textContent = sl_peso(json.total_credit);
-    $sl('sl-summary-balance').textContent = sl_peso(Math.abs(json.ending_balance)) + sl_balSide(json.ending_balance, json.debit_normal);
+}
+
+/* "Ending Balance as of {today}" footer, shown only for a single-SL-code ledger (grouped/all-masters
+   view has its own per-master ending balance already in the group header). */
+function sl_renderEnding(endingBalance, debitNormal) {
+    const el = $sl('sl-ending');
+    el.style.display = '';
+    el.innerHTML = `Ending Balance as of ${sl_fmtDate(new Date().toISOString())}: <strong>${sl_peso(Math.abs(endingBalance))}${sl_balSide(endingBalance, debitNormal)}</strong>`;
 }
 
 /* ── Table ─────────────────────────────────────────────────── */
 function sl_renderTable(rows, debitNormal) {
     const tbody = $sl('sl-tbody');
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="7"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No posted transactions for this SL code.</span></div></td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No posted transactions for this SL code.</span></div></td></tr>';
         return;
     }
     tbody.innerHTML = rows.map(r => sl_rowHtml(r, debitNormal)).join('');
@@ -340,12 +360,12 @@ function sl_renderTable(rows, debitNormal) {
 function sl_renderGroupedTable(masters) {
     const tbody = $sl('sl-tbody');
     if (!masters.length) {
-        tbody.innerHTML = '<tr><td colspan="7"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">Nothing posted yet.</span></div></td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">Nothing posted yet.</span></div></td></tr>';
         return;
     }
     tbody.innerHTML = masters.map(m => `
         <tr class="sl-group-row">
-            <td colspan="4">${sl_esc(m.master.sl_code)} — ${sl_esc(m.master.sl_name)}</td>
+            <td colspan="6">${sl_esc(m.master.sl_code)} — ${sl_esc(m.master.sl_name)} <span style="font-weight:400;color:var(--afims-text-muted,#62657E);">(${sl_esc(m.normal_balance)}-normal${m.master.account_type ? ', ' + sl_esc(m.master.account_type) : ''})</span></td>
             <td class="text-end nha-mono">${sl_peso(m.total_debit)}</td>
             <td class="text-end nha-mono">${sl_peso(m.total_credit)}</td>
             <td class="text-end nha-mono">${sl_peso(Math.abs(m.ending_balance))}${sl_balSide(m.ending_balance, m.debit_normal)}</td>
@@ -358,8 +378,10 @@ function sl_rowHtml(r, debitNormal) {
     return `<tr${r.reversed_gl_id ? ' style="opacity:.7;"' : ''}>
         <td class="nha-td-date">${sl_fmtDate(r.posting_date)}</td>
         <td class="nha-mono">${sl_esc(r.jev_no) || '—'}${r.reference_no && r.reference_no.endsWith('-REV') ? ' <span class="nha-bdg nha-bdg-orange" style="margin-left:4px;">Reversal</span>' : ''}</td>
+        <td class="nha-mono">${sl_esc(r.doc_ref_no) || '—'}</td>
         <td class="nha-mono">${sl_esc(r.dv_no) || '—'}</td>
         <td title="${sl_esc(r.account_title)}">${sl_esc(r.account_code)}</td>
+        <td>${sl_esc(r.description) || sl_esc(r.sl_detail_name) || '—'}</td>
         <td class="text-end nha-mono">${Number(r.debit) > 0 ? sl_peso(r.debit) : ''}</td>
         <td class="text-end nha-mono">${Number(r.credit) > 0 ? sl_peso(r.credit) : ''}</td>
         <td class="text-end nha-mono">${sl_peso(Math.abs(r.running_balance))}${sl_balSide(r.running_balance, debitNormal)}</td>

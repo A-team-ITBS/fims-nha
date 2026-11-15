@@ -125,7 +125,7 @@ const VR_IS_SYSADMIN     = <?= json_encode((bool) $_vr_isSysAdmin) ?>;
 const VR_CURRENT_USER_ID = <?= json_encode($_vr_currentUserId) ?>;
 const VR_RC_ID           = <?= json_encode($_vr_rcId) ?>;
 // Mirrors DisbursementVoucherService::STAGE_HOLDER_RC — UX only, server is authoritative.
-const VR_STAGE_HOLDER_RC = { FOR_FMD_REVIEW: '013', FOR_ACCOUNTING: '012', FOR_TREASURY: '014' };
+const VR_STAGE_HOLDER_RC = { FOR_FMD_REVIEW: '013', FOR_ACCOUNTING: '012', FOR_DIVISION_MANAGER: '012', FOR_DEPARTMENT_MANAGER: '012', FOR_TREASURY: '014' };
 const $vr = id => document.getElementById(id);
 let vr_id  = 0;
 let vr_dv  = null;
@@ -269,12 +269,15 @@ function vr_render(dv) {
         ${vr_attachmentsSection(dv)}
         ${vje_visible(dv) ? '' : deductionSection}
         ${vje_visible(dv) ? vje_section(dv) : vje_groupedEntriesCard(dv)}
+        ${vje_paymentEntriesCard(dv)}
         <div class="vr-card" style="margin-bottom:0;">
             <p class="vr-card-title">Workflow History</p>
             <dl class="vr-dl vr-dl3">
                 <div><dt>Originating (Submitted)</dt><dd>${vr_fmtDateTime(dv.submitted_at)}</dd></div>
                 <div><dt>FMD (Obligation Checked)</dt><dd>${vr_fmtDateTime(dv.fmd_approved_at)}</dd></div>
-                <div><dt>Accounting (Processed)</dt><dd>${vr_fmtDateTime(dv.accounting_processed_at)}</dd></div>
+                <div><dt>Accounting — Section Chief (Processed)</dt><dd>${vr_fmtDateTime(dv.accounting_processed_at)}</dd></div>
+                <div><dt>Accounting — Division Manager (Reviewed)</dt><dd>${vr_fmtDateTime(dv.division_reviewed_at)}</dd></div>
+                <div><dt>Accounting — Department Manager (Approved)</dt><dd>${vr_fmtDateTime(dv.department_approved_at)}</dd></div>
                 <div><dt>Treasury (Released)</dt><dd>${vr_fmtDateTime(dv.treasury_released_at)}</dd></div>
             </dl>
         </div>`;
@@ -336,7 +339,9 @@ function vr_renderActions(dv) {
     let html = '';
     if (allowed.includes('FOR_FMD_REVIEW')) html += btn('Submit to FMD', 'FOR_FMD_REVIEW', 'nha-btn-primary');
     if (allowed.includes('FOR_ACCOUNTING')) html += btn('FMD Approve', 'FOR_ACCOUNTING', 'nha-btn-primary');
-    if (allowed.includes('FOR_TREASURY'))   html += btn('Forward to Treasury', 'FOR_TREASURY', 'nha-btn-primary');
+    if (allowed.includes('FOR_DIVISION_MANAGER'))   html += btn('Forward to Division Manager', 'FOR_DIVISION_MANAGER', 'nha-btn-primary');
+    if (allowed.includes('FOR_DEPARTMENT_MANAGER')) html += btn('Forward to Department Manager', 'FOR_DEPARTMENT_MANAGER', 'nha-btn-primary');
+    if (allowed.includes('FOR_TREASURY'))   html += btn('Approve &amp; Forward to Treasury', 'FOR_TREASURY', 'nha-btn-primary');
     if (allowed.includes('RELEASED'))       html += btn('Release Payment', 'RELEASED', 'nha-btn-primary');
     if (allowed.includes('REJECTED'))       html += btn('Reject', 'REJECTED', 'nha-btn-outline');
     if (allowed.includes('CANCELLED'))      html += btn('Cancel', 'CANCELLED', 'nha-btn-ghost');
@@ -386,10 +391,9 @@ function vje_section(dv) {
  * SL Code name, and the small number is the line's position in the JEV (jevl.line_number), not an
  * SL code.
  */
-function vje_groupedEntriesCard(dv) {
-    const lines = dv.jev?.lines ?? [];
-    if (!lines.length) return '';
-
+/** GL-grouped, read-only rendering of a posted JEV's lines — shared by the SETUP JEV's read-only
+    presentation (vje_groupedEntriesCard()) and each PAYMENT JEV's own card (vje_paymentEntriesCard()). */
+function vje_groupedTable(lines) {
     const groups = [];
     const byAccount = new Map();
     lines.forEach(l => {
@@ -424,9 +428,7 @@ function vje_groupedEntriesCard(dv) {
     const totalDebit  = lines.reduce((s, l) => s + (Number(l.debit)  || 0), 0);
     const totalCredit = lines.reduce((s, l) => s + (Number(l.credit) || 0), 0);
 
-    return `<div class="vr-card">
-        <p class="vr-card-title">Accounting Entries${dv.jev?.book_name ? ` — ${vr_esc(dv.jev.book_name)}` : ''}</p>
-        <div style="overflow-x:auto;">
+    return `<div style="overflow-x:auto;">
         <table class="vje-grp-table" style="min-width:600px;">
             <thead><tr>
                 <th style="text-align:left;">Account Code / Description</th>
@@ -443,8 +445,31 @@ function vje_groupedEntriesCard(dv) {
                 <td></td>
             </tr></tfoot>
         </table>
-        </div>
+        </div>`;
+}
+
+function vje_groupedEntriesCard(dv) {
+    const lines = dv.jev?.lines ?? [];
+    if (!lines.length) return '';
+
+    return `<div class="vr-card">
+        <p class="vr-card-title">Accounting Entries${dv.jev?.book_name ? ` — ${vr_esc(dv.jev.book_name)}` : ''}</p>
+        ${vje_groupedTable(lines)}
     </div>`;
+}
+
+/** One read-only card per PAYMENT JEV (GeneralLedgerService::postPaymentJev()) — the settlement
+    entry Treasury's check/ADA release posts (Dr Accounts Payable / Cr Cash), separate from the
+    SETUP JEV above since it's its own JEV number/source document (jev_no, source_module, doc_ref_no
+    — see "03 - alter_table/31"). Empty string when nothing's been released yet. */
+function vje_paymentEntriesCard(dv) {
+    const jevs = dv.payment_jevs ?? [];
+    if (!jevs.length) return '';
+
+    return jevs.map(jev => `<div class="vr-card">
+        <p class="vr-card-title">Payment Entry — ${vr_esc(jev.jev_no)} (${vr_esc(jev.source_module)} — ${vr_esc(jev.doc_ref_no)})${jev.book_name ? ` — ${vr_esc(jev.book_name)}` : ''}</p>
+        ${vje_groupedTable(jev.lines ?? [])}
+    </div>`).join('');
 }
 
 /** Editable at the Accounting stage — was a static read-only table set only by Originating at
@@ -537,10 +562,22 @@ function vje_entriesCard(dv) {
                 <span class="vje-amt-badge">Gross: <span id="vje-badge-gross">₱ 0.00</span></span>
                 <span class="vje-amt-badge">Net after Deductions: <span id="vje-badge-net-ded">₱ 0.00</span></span>
             </div>
-            <div class="nha-fg" style="max-width:260px;margin-bottom:10px;">
-                <label>Book <span class="nha-req">*</span></label>
-                <select id="vje-book"><option value="">Select a book…</option></select>
-                <span class="vje-err" id="vje-err-book" style="display:none;color:var(--afims-danger,#C0392B);font-size:12px;">Book is required.</span>
+            <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:10px;">
+                <div class="nha-fg" style="max-width:260px;">
+                    <label>Book <span class="nha-req">*</span></label>
+                    <select id="vje-book"><option value="">Select a book…</option></select>
+                    <span class="vje-err" id="vje-err-book" style="display:none;color:var(--afims-danger,#C0392B);font-size:12px;">Book is required.</span>
+                </div>
+                <div class="nha-fg" style="max-width:220px;">
+                    <label>JEV Classification</label>
+                    <select id="vje-classification">
+                        <option value="REGULAR">Regular</option>
+                        <option value="ACCRUAL">Accrual</option>
+                        <option value="DEPRECIATION">Depreciation</option>
+                        <option value="PREPAYMENTS">Prepayments</option>
+                        <option value="CLOSING">Closing</option>
+                    </select>
+                </div>
             </div>
             <div style="overflow-x:auto;">
                 <table class="vr-ledger vje-grp-edit-table" style="min-width:760px;">
@@ -610,6 +647,8 @@ async function vje_init(dv) {
             VJE_BOOKS.map(b => `<option value="${b.book_id}">${vr_esc(b.name)}</option>`).join('');
         vjeBookSel.value = dv.jev?.book_id || '';
     }
+    const vjeClassSel = $vr('vje-classification');
+    if (vjeClassSel) vjeClassSel.value = dv.jev?.jev_classification || 'REGULAR';
 
     vje_dedSeq = 0;
     $vr('vje-ded-tbody').innerHTML = '';
@@ -1208,6 +1247,7 @@ async function vje_save() {
     const atc_lines = vje_collectAtcLines();
     const deductions = vje_collectDeductions();
     const book_id = $vr('vje-book')?.value || null;
+    const jev_classification = $vr('vje-classification')?.value || 'REGULAR';
 
     const errBook = $vr('vje-err-book');
     if (lines.length && !book_id) {
@@ -1222,7 +1262,7 @@ async function vje_save() {
         const res  = await vr_authFetch(`${VR_API}/voucher/${vr_id}/journal-entry`, {
             method  : 'POST',
             headers : { 'Content-Type': 'application/json' },
-            body    : JSON.stringify({ atc_lines, lines, deductions, book_id }),
+            body    : JSON.stringify({ atc_lines, lines, deductions, book_id, jev_classification }),
         });
         const json = await res.json();
         if (!json.success) {
@@ -1269,6 +1309,7 @@ async function vr_changeStatus(status) {
 function vr_statusClass(s) {
     const map = {
         DRAFT: 'nha-bdg-gray', FOR_FMD_REVIEW: 'nha-bdg-amber', FOR_ACCOUNTING: 'nha-bdg-blue',
+        FOR_DIVISION_MANAGER: 'nha-bdg-purple', FOR_DEPARTMENT_MANAGER: 'nha-bdg-navy',
         FOR_TREASURY: 'nha-bdg-teal', RELEASED: 'nha-bdg-green', REJECTED: 'nha-bdg-red', CANCELLED: 'nha-bdg-orange',
     };
     return map[s] || 'nha-bdg-gray';

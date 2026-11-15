@@ -6,6 +6,12 @@ namespace PHPMaker2024\FIMS;
 // via fims.v_journals) in order with a running balance. Read-only — see GeneralLedgerService.php and
 // system_docs/ERD/README.md §2.8. Separate module from Subsidiary Ledger (same idea, keyed by SL
 // code instead), Journals (chronological, every account) and Trial Balance (totals, no detail).
+//
+// Column layout matches the illustrated "DISPLAY IN FIMS" format: account header carries Normal
+// Balance/Account Class, each row has its own Doc Ref No. (the source document — e.g. "CHECK NO.
+// X") alongside Debit/Credit/running Balance, and the footer reads "Ending Balance as of [date]".
+// (The Entry Side + single Amount convention in that same illustration is the raw JEV-listing/
+// back-end representation — that's Journals (GJ), not this page.)
 $_gl_api = rtrim((string) Config('API.FIMS_URL'), '/');
 $_gl_api = preg_match('~/api$~', $_gl_api) ? $_gl_api : $_gl_api . '/api';
 ?>
@@ -27,12 +33,14 @@ $_gl_api = preg_match('~/api$~', $_gl_api) ? $_gl_api : $_gl_api . '/api';
     #gl-root .gl-combo-empty { padding: 8px 12px; font-size: 13px; color: var(--afims-text-muted,#62657E); }
     #gl-root .gl-summary-cards { display: flex; gap: 12px; flex-wrap: wrap; margin: 0 0 14px; }
     #gl-root .gl-summary-card {
-        flex: 1 1 180px; border: 1px solid var(--afims-border, #E2E4ED); border-radius: 10px;
+        flex: 1 1 160px; border: 1px solid var(--afims-border, #E2E4ED); border-radius: 10px;
         padding: 12px 14px; background: #fff;
     }
     #gl-root .gl-summary-label { font-size: 11px; color: var(--afims-text-muted,#62657E); text-transform: uppercase; letter-spacing: .03em; }
     #gl-root .gl-summary-value { font-size: 18px; font-weight: 600; margin-top: 4px; }
     #gl-root .gl-group-row td { background: var(--afims-bg-soft, #F5F6FA); font-weight: 600; }
+    #gl-root .gl-ending-balance { text-align: right; padding: 8px 4px; font-size: 13px; color: var(--afims-text-muted,#62657E); }
+    #gl-root .gl-ending-balance strong { color: inherit; font-weight: 700; }
 </style>
 
 <div id="gl-root" class="nha-root">
@@ -94,11 +102,19 @@ $_gl_api = preg_match('~/api$~', $_gl_api) ? $_gl_api : $_gl_api . '/api';
         </div>
     </div>
 
-    <!-- ── SUMMARY ────────────────────────────────────────── -->
+    <!-- ── SUMMARY (account header — code/name/normal balance/class) ──────── -->
     <div id="gl-summary" class="gl-summary-cards no-print" style="display:none;">
         <div class="gl-summary-card">
             <div class="gl-summary-label">Account</div>
             <div class="gl-summary-value" id="gl-summary-account" style="font-size:14px;">—</div>
+        </div>
+        <div class="gl-summary-card">
+            <div class="gl-summary-label">Normal Balance</div>
+            <div class="gl-summary-value" id="gl-summary-normal" style="font-size:14px;">—</div>
+        </div>
+        <div class="gl-summary-card">
+            <div class="gl-summary-label">Account Class</div>
+            <div class="gl-summary-value" id="gl-summary-class" style="font-size:14px;">—</div>
         </div>
         <div class="gl-summary-card">
             <div class="gl-summary-label">Total Debit</div>
@@ -107,10 +123,6 @@ $_gl_api = preg_match('~/api$~', $_gl_api) ? $_gl_api : $_gl_api . '/api';
         <div class="gl-summary-card">
             <div class="gl-summary-label">Total Credit</div>
             <div class="gl-summary-value nha-mono" id="gl-summary-credit">₱ 0.00</div>
-        </div>
-        <div class="gl-summary-card">
-            <div class="gl-summary-label">Ending Balance</div>
-            <div class="gl-summary-value nha-mono" id="gl-summary-balance">₱ 0.00</div>
         </div>
     </div>
 
@@ -121,20 +133,23 @@ $_gl_api = preg_match('~/api$~', $_gl_api) ? $_gl_api : $_gl_api . '/api';
                 <thead>
                     <tr>
                         <th>Posting Date</th>
-                        <th>JEV Number</th>
+                        <th>JEV No.</th>
+                        <th>Doc Ref No.</th>
                         <th>DV Number</th>
                         <th>SL Code</th>
+                        <th>Particulars</th>
                         <th class="text-end">Debit</th>
                         <th class="text-end">Credit</th>
                         <th class="text-end">Balance</th>
                     </tr>
                 </thead>
                 <tbody id="gl-tbody">
-                    <tr><td colspan="7"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
+                    <tr><td colspan="9"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
                 </tbody>
             </table>
         </div>
     </div>
+    <div id="gl-ending" class="gl-ending-balance no-print" style="display:none;"></div>
 
 </div><!-- /#gl-root -->
 
@@ -266,10 +281,12 @@ async function gl_load() {
 
         if (json.grouped) {
             $gl('gl-summary').style.display = 'none';
+            $gl('gl-ending').style.display = 'none';
             gl_renderGroupedTable(json.accounts ?? []);
         } else {
             gl_renderSummary(json);
             gl_renderTable(json.data ?? [], json.debit_normal);
+            gl_renderEnding(json.ending_balance, json.debit_normal);
         }
     } catch (e) {
         gl_renderTable([]);
@@ -279,20 +296,29 @@ async function gl_load() {
     }
 }
 
-/* ── Summary ───────────────────────────────────────────────── */
+/* ── Summary (account header — code/name/normal balance/class) ──────────────── */
 function gl_renderSummary(json) {
     $gl('gl-summary').style.display = '';
     $gl('gl-summary-account').textContent = `${json.account.account_code} — ${json.account.account_title}`;
-    $gl('gl-summary-debit').textContent  = gl_peso(json.total_debit);
-    $gl('gl-summary-credit').textContent = gl_peso(json.total_credit);
-    $gl('gl-summary-balance').textContent = gl_peso(Math.abs(json.ending_balance)) + gl_balSide(json.ending_balance, json.debit_normal);
+    $gl('gl-summary-normal').textContent  = json.normal_balance || '—';
+    $gl('gl-summary-class').textContent   = json.account.account_type || '—';
+    $gl('gl-summary-debit').textContent   = gl_peso(json.total_debit);
+    $gl('gl-summary-credit').textContent  = gl_peso(json.total_credit);
+}
+
+/* "Ending Balance as of {today}" footer, shown only for a single-account ledger (grouped/all-accounts
+   view has its own per-account ending balance already in the group header). */
+function gl_renderEnding(endingBalance, debitNormal) {
+    const el = $gl('gl-ending');
+    el.style.display = '';
+    el.innerHTML = `Ending Balance as of ${gl_fmtDate(new Date().toISOString())}: <strong>${gl_peso(Math.abs(endingBalance))}${gl_balSide(endingBalance, debitNormal)}</strong>`;
 }
 
 /* ── Table ─────────────────────────────────────────────────── */
 function gl_renderTable(rows, debitNormal) {
     const tbody = $gl('gl-tbody');
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="7"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No posted transactions for this account.</span></div></td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No posted transactions for this account.</span></div></td></tr>';
         return;
     }
     tbody.innerHTML = rows.map(r => gl_rowHtml(r, debitNormal)).join('');
@@ -302,12 +328,12 @@ function gl_renderTable(rows, debitNormal) {
 function gl_renderGroupedTable(accounts) {
     const tbody = $gl('gl-tbody');
     if (!accounts.length) {
-        tbody.innerHTML = '<tr><td colspan="7"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">Nothing posted yet.</span></div></td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">Nothing posted yet.</span></div></td></tr>';
         return;
     }
     tbody.innerHTML = accounts.map(a => `
         <tr class="gl-group-row">
-            <td colspan="4">${gl_esc(a.account.account_code)} — ${gl_esc(a.account.account_title)}</td>
+            <td colspan="6">${gl_esc(a.account.account_code)} — ${gl_esc(a.account.account_title)} <span style="font-weight:400;color:var(--afims-text-muted,#62657E);">(${gl_esc(a.normal_balance)}-normal, ${gl_esc(a.account.account_type)})</span></td>
             <td class="text-end nha-mono">${gl_peso(a.total_debit)}</td>
             <td class="text-end nha-mono">${gl_peso(a.total_credit)}</td>
             <td class="text-end nha-mono">${gl_peso(Math.abs(a.ending_balance))}${gl_balSide(a.ending_balance, a.debit_normal)}</td>
@@ -320,8 +346,10 @@ function gl_rowHtml(r, debitNormal) {
     return `<tr${r.reversed_gl_id ? ' style="opacity:.7;"' : ''}>
         <td class="nha-td-date">${gl_fmtDate(r.posting_date)}</td>
         <td class="nha-mono">${gl_esc(r.jev_no) || '—'}${r.reference_no && r.reference_no.endsWith('-REV') ? ' <span class="nha-bdg nha-bdg-orange" style="margin-left:4px;">Reversal</span>' : ''}</td>
+        <td class="nha-mono">${gl_esc(r.doc_ref_no) || '—'}</td>
         <td class="nha-mono">${gl_esc(r.dv_no) || '—'}</td>
         <td>${gl_esc(r.sl_code) || '—'}</td>
+        <td>${gl_esc(r.description) || gl_esc(r.sl_name) || '—'}</td>
         <td class="text-end nha-mono">${Number(r.debit) > 0 ? gl_peso(r.debit) : ''}</td>
         <td class="text-end nha-mono">${Number(r.credit) > 0 ? gl_peso(r.credit) : ''}</td>
         <td class="text-end nha-mono">${gl_peso(Math.abs(r.running_balance))}${gl_balSide(r.running_balance, debitNormal)}</td>

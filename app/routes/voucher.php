@@ -8,7 +8,7 @@ $VoucherService = new DisbursementVoucherService();
 
 $voucherFilterKeys = ['status', 'fiscal_yr', 'expense_class', 'search'];
 $rfaFilterKeys     = ['fiscal_yr', 'search'];
-$jevFilterKeys     = ['fiscal_yr', 'search'];
+$jevFilterKeys     = ['fiscal_yr', 'search', 'jev_type', 'jev_classification'];
 
 // Fetch all — no pagination. Optional: status, fiscal_yr, expense_class, search
 $app->get('/voucher/all', function ($request, $response, $args) use ($VoucherService, $voucherFilterKeys) {
@@ -143,7 +143,7 @@ $app->put('/voucher/update/{id}', function ($request, $response, $args) use ($Vo
     }
 })->add($accessMiddleware)->add($jwtMiddleware);
 
-// Change status — body: { status: FOR_FMD_REVIEW|FOR_ACCOUNTING|FOR_TREASURY|RELEASED|REJECTED|CANCELLED, notes?: string }
+// Change status — body: { status: FOR_FMD_REVIEW|FOR_ACCOUNTING|FOR_DIVISION_MANAGER|FOR_DEPARTMENT_MANAGER|FOR_TREASURY|RELEASED|REJECTED|CANCELLED, notes?: string }
 // REJECTED requires notes (stored as rejection_reason).
 $app->post('/voucher/{id}/status', function ($request, $response, $args) use ($VoucherService) {
     try {
@@ -210,12 +210,81 @@ $app->post('/voucher/{id}/journal-entry', function ($request, $response, $args) 
             is_array($body['lines'] ?? null) ? $body['lines'] : [],
             (int) $request->getAttribute('user_id'),
             is_array($body['deductions'] ?? null) ? $body['deductions'] : [],
-            $body['book_id'] ?? null
+            $body['book_id'] ?? null,
+            $body['jev_classification'] ?? null
         );
 
         return $response->withJson($result, $result['httpCode'] ?? ($result['success'] ? 200 : 400));
     } catch (\Exception $e) {
         LogError('POST /voucher/journal-entry ' . $e->getMessage());
+
+        return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
+    }
+})->add($accessMiddleware)->add($jwtMiddleware);
+
+// Standalone Journal Entry Voucher (no DV — period-end ACCRUAL/DEPRECIATION/PREPAYMENTS/CLOSING
+// entries Accounting books directly, "03 - alter_table/33"). Separate from the DV-embedded
+// /voucher/{id}/journal-entry above — these never touch a disbursement_vouchers row at all.
+$app->get('/voucher/journal-entry/{id}', function ($request, $response, $args) use ($VoucherService) {
+    try {
+        $result = $VoucherService->fetchStandaloneJev((int) $args['id']);
+
+        return $response->withJson($result, $result['httpCode'] ?? ($result['success'] ? 200 : 404));
+    } catch (\Exception $e) {
+        LogError('GET /voucher/journal-entry/{id} ' . $e->getMessage());
+
+        return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
+    }
+})->add($accessMiddleware)->add($jwtMiddleware);
+
+// Create — DRAFT. body: { jev_date, fiscal_yr, book_id, jev_classification, particulars?, lines: [...] } (lines ≥2, balanced, required)
+$app->post('/voucher/journal-entry/add', function ($request, $response, $args) use ($VoucherService) {
+    try {
+        $result = $VoucherService->createStandaloneJev($request->getParsedBody() ?: [], (int) $request->getAttribute('user_id'));
+
+        return $response->withJson($result, $result['httpCode'] ?? ($result['success'] ? 200 : 400));
+    } catch (\Exception $e) {
+        LogError('POST /voucher/journal-entry/add ' . $e->getMessage());
+
+        return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
+    }
+})->add($accessMiddleware)->add($jwtMiddleware);
+
+// Full replace — DRAFT only, same body shape as add
+$app->put('/voucher/journal-entry/update/{id}', function ($request, $response, $args) use ($VoucherService) {
+    try {
+        $result = $VoucherService->updateStandaloneJev((int) $args['id'], $request->getParsedBody() ?: [], (int) $request->getAttribute('user_id'));
+
+        return $response->withJson($result, $result['httpCode'] ?? ($result['success'] ? 200 : 400));
+    } catch (\Exception $e) {
+        LogError('PUT /voucher/journal-entry/update/{id} ' . $e->getMessage());
+
+        return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
+    }
+})->add($accessMiddleware)->add($jwtMiddleware);
+
+// DRAFT only
+$app->delete('/voucher/journal-entry/delete/{id}', function ($request, $response, $args) use ($VoucherService) {
+    try {
+        $result = $VoucherService->deleteStandaloneJev((int) $args['id'], (int) $request->getAttribute('user_id'));
+
+        return $response->withJson($result, $result['httpCode'] ?? ($result['success'] ? 200 : 400));
+    } catch (\Exception $e) {
+        LogError('DELETE /voucher/journal-entry/delete/{id} ' . $e->getMessage());
+
+        return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
+    }
+})->add($accessMiddleware)->add($jwtMiddleware);
+
+// Posts to the General Ledger (GeneralLedgerService::postJev()) — no DV status chain to ride on,
+// so this is its own direct action instead of something /voucher/{id}/status triggers.
+$app->post('/voucher/journal-entry/{id}/post', function ($request, $response, $args) use ($VoucherService) {
+    try {
+        $result = $VoucherService->postStandaloneJev((int) $args['id'], (int) $request->getAttribute('user_id'));
+
+        return $response->withJson($result, $result['httpCode'] ?? ($result['success'] ? 200 : 400));
+    } catch (\Exception $e) {
+        LogError('POST /voucher/journal-entry/{id}/post ' . $e->getMessage());
 
         return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
     }
