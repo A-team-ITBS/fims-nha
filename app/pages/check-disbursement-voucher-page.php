@@ -2097,7 +2097,11 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
     function registryGroupSummary(rows) {
         const counts = {};
         rows.forEach(function (r) { counts[r.current_status] = (counts[r.current_status] || 0) + 1; });
-        return Object.keys(counts).map(function (status) { return counts[status] + ' ' + status.charAt(0) + status.slice(1).toLowerCase(); }).join(', ');
+        return Object.keys(counts).map(function (status) {
+            const label = status.charAt(0) + status.slice(1).toLowerCase();
+            const badgeClass = REGISTRY_STATUS_BADGE[status] || 'fims-badge-gray';
+            return '<span class="fims-badge ' + badgeClass + '" style="margin-right:4px;">' + counts[status] + ' ' + escapeHtml(label) + '</span>';
+        }).join(' ');
     }
 
     // Client-side pagination (no refetch) over the booklet/batch groups.
