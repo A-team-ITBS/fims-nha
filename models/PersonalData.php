@@ -44,7 +44,7 @@ class PersonalData
     public $RenderingView = false;
 
     // CSS class/style
-    public $CurrentPageName = "CobPageController";
+    public $CurrentPageName = "AccountableFormsRegistryPageController";
 
     // Page headings
     public $Heading = "";

@@ -196,9 +196,13 @@ class BudgetAllocationService
                     $rcIds
                 )).')';
             }
-            $type = trim((string) ($filters['allocation_type'] ?? ''));
-            if ($type !== '') {
-                $where[] = 'UPPER(a.allocation_type) = UPPER('.App\QuotedValue($type, DataType::STRING, 'DB').')';
+            // allocation_type: one type ("CBA") or several, comma-separated ("RFA,LAA" — the RFA / LAA memo request page lists both).
+            $types = array_values(array_filter(array_map('trim', explode(',', (string) ($filters['allocation_type'] ?? ''))), 'strlen'));
+            if ($types) {
+                $where[] = 'UPPER(a.allocation_type) IN ('.implode(', ', array_map(
+                    fn ($t) => 'UPPER('.App\QuotedValue($t, DataType::STRING, 'DB').')',
+                    $types
+                )).')';
             }
             $rcId = trim((string) ($filters['rc_id'] ?? ''));
             if ($rcId !== '') {

@@ -146,6 +146,15 @@ return [
     "ftla_page" => \DI\create(FtlaPage::class),
     "ledger_budget_allocation" => \DI\create(LedgerBudgetAllocation::class),
     "cob_page" => \DI\create(CobPage::class),
+    "cba_memo_request_page" => \DI\create(CbaMemoRequestPage::class),
+    "rfa_laa_memo_request_page" => \DI\create(RfaLaaMemoRequestPage::class),
+    "budget_proposal_review_page" => \DI\create(BudgetProposalReviewPage::class),
+    "cba_review_page" => \DI\create(CbaReviewPage::class),
+    "rfa_laa_review_page" => \DI\create(RfaLaaReviewPage::class),
+    "dv_review_page" => \DI\create(DvReviewPage::class),
+    "liquidation_voucher_page" => \DI\create(LiquidationVoucherPage::class),
+    "check_registry_page" => \DI\create(CheckRegistryPage::class),
+    "accountable_forms_registry_page" => \DI\create(AccountableFormsRegistryPage::class),
 
     // User table
     "usertable" => \DI\get("users"),
