@@ -1257,8 +1257,10 @@ function vf_addJevLine(d = null) {
     name prints in red when this row IS the DV's own primary expense/claim account (same
     readone.php's vje_groupSubLines() uses for the posted JEV), each matching ATC withholding
     row's rate/type prints in plain black when this row is a "Due to ..." withholding account,
-    and otherwise falls back to the account's own parent/child hierarchy (chart_of_accounts
-    parent_account_id — SL is no longer a separate sl_masters table, see "03 - alter_table/37"). */
+    and otherwise — when the picked account is itself a chart_of_accounts child row
+    (parent_account_id set, a vendor/SL sub-account; SL is no longer a separate sl_masters table,
+    see "03 - alter_table/37") — shows that account's own code labeled "SL Code:", same as the
+    sub-line readone.php's vje_groupSubLines() shows under its PARENT control account header. */
 function vf_renderAcctHint(tr) {
     const code = tr.querySelector('.vje-acct-code').value.trim();
     const hint = tr.querySelector('.vje-sl-hint');
@@ -1280,9 +1282,8 @@ function vf_renderAcctHint(tr) {
     if (atcMatches.length) { hint.innerHTML = atcMatches.join('<br>'); return; }
 
     const acct = vf_coaOptions.find(a => a.account_code === code);
-    const parent = acct?.parent_account_id ? vf_coaOptions.find(a => a.account_id === acct.parent_account_id) : null;
-    if (parent) {
-        hint.innerHTML = `<span style="margin-right:3px;">↳ under</span>${vf_codeChip(parent.account_code)}<span style="margin-left:4px;">${vf_esc(parent.account_title || '—')}</span>`;
+    if (acct?.parent_account_id) {
+        hint.innerHTML = `<span style="margin-right:3px;">SL Code:</span>${vf_codeChip(acct.account_code)}<span style="margin-left:4px;">${vf_esc(acct.account_title || '—')}</span>`;
         return;
     }
     hint.innerHTML = '';

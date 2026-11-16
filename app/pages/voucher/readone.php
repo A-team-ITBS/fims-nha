@@ -414,9 +414,10 @@ function vr_codeChip(code) {
 
 /** A group's sub-lines under its GL title — General Form No. 1 convention: the claimant/vendor
     name prints in red (it's the filled-in variable, same as a handwritten entry on the paper
-    form), each withholding tax rate/type breakdown prints in plain black. Falls back to the
-    account's own parent/child hierarchy (chart_of_accounts parent_account_id — SL is no longer a
-    separate sl_masters table, see "03 - alter_table/37") when neither applies. */
+    form), each withholding tax rate/type breakdown prints in plain black, and any line actually
+    posted to a chart_of_accounts child row (parent_account_id set — a vendor/SL sub-account; SL
+    is no longer a separate sl_masters table, see "03 - alter_table/37") shows that child account's
+    own code labeled "SL Code:" — the group header above already shows its PARENT control account. */
 function vje_groupSubLines(group, dv) {
     if (dv?.account_code && group.account_code === dv.account_code) {
         const name = dv.claimant_name || dv.vendor_name;
@@ -436,44 +437,54 @@ function vje_groupSubLines(group, dv) {
                 </td>
             </tr>`).join('');
     }
-    const acct   = (VJE_COA || []).find(a => a.account_code === group.account_code);
-    const parent = acct?.parent_account_id ? (VJE_COA || []).find(a => a.account_id === acct.parent_account_id) : null;
-    if (parent) {
-        return `<tr style="border-bottom:1px solid var(--afims-surface-subtle, #F4F7FA);">
+    const childLines = group.items.filter(it => it.isChild);
+    if (childLines.length) {
+        return childLines.map(it => `<tr style="border-bottom:1px solid var(--afims-surface-subtle, #F4F7FA);">
                 <td style="padding:2px 4px 10px;"></td>
-                <td colspan="4" style="padding:2px 4px 10px 22px;font-size:11px;color:var(--afims-text-muted, #62657E);">
-                    <span style="margin-right:4px;">under</span>${vr_codeChip(parent.account_code)}
-                    <span style="margin-left:6px;">${vr_esc(parent.account_title || '—')}</span>
+                <td colspan="4" style="padding:2px 4px 10px 22px;font-size:12px;color:var(--afims-text-muted, #62657E);">
+                    <span style="margin-right:4px;">SL Code:</span>${vr_codeChip(it.line.account_code)}
+                    <span style="margin-left:6px;">${vr_esc(it.line.account_title || '—')}</span>
                 </td>
-            </tr>`;
+            </tr>`).join('');
     }
-    return group.lines.filter(l => l.description).map(l => `<tr style="border-bottom:1px solid var(--afims-surface-subtle, #F4F7FA);">
+    return group.items.filter(it => it.line.description).map(it => `<tr style="border-bottom:1px solid var(--afims-surface-subtle, #F4F7FA);">
                 <td style="padding:2px 4px 10px;"></td>
-                <td colspan="4" style="padding:2px 4px 10px 22px;font-size:13px;color:var(--afims-text-muted, #62657E);">${vr_esc(l.description)}</td>
+                <td colspan="4" style="padding:2px 4px 10px 22px;font-size:13px;color:var(--afims-text-muted, #62657E);">${vr_esc(it.line.description)}</td>
             </tr>`).join('');
 }
 
 /** GL-grouped, read-only rendering of a posted JEV's lines — shared by the SETUP JEV's read-only
     presentation (vje_groupedEntriesCard()) and each PAYMENT JEV's own card (vje_paymentEntriesCard()).
-    One header row per unique GL account (merging every line posted to it), then its sub-lines —
-    see vje_groupSubLines() — same "GL title, then its breakdown underneath" layout as the paper
-    General Form No. 1's own Accounting Entries box. */
+    A line posted directly to a chart_of_accounts child row (an SL/vendor sub-account) groups under
+    its PARENT control account instead of its own code, same as the paper form shows one control
+    account with its SL breakdown underneath — see vje_groupSubLines() for that breakdown. */
 function vje_groupedTable(lines, dv = null) {
     const totalDebit  = lines.reduce((s, l) => s + (Number(l.debit)  || 0), 0);
     const totalCredit = lines.reduce((s, l) => s + (Number(l.credit) || 0), 0);
 
+    const resolved = lines.map(l => {
+        const acct   = (VJE_COA || []).find(a => a.account_code === l.account_code);
+        const parent = acct?.parent_account_id ? (VJE_COA || []).find(a => a.account_id === acct.parent_account_id) : null;
+        return {
+            line: l,
+            isChild: !!parent,
+            headerCode:  parent ? parent.account_code : l.account_code,
+            headerTitle: parent ? parent.account_title : l.account_title,
+        };
+    });
+
     const groups = [];
     const byCode = new Map();
-    lines.forEach(l => {
-        if (!byCode.has(l.account_code)) {
-            const g = { account_code: l.account_code, account_title: l.account_title, lines: [], debit: 0, credit: 0 };
-            byCode.set(l.account_code, g);
+    resolved.forEach(it => {
+        if (!byCode.has(it.headerCode)) {
+            const g = { account_code: it.headerCode, account_title: it.headerTitle, items: [], debit: 0, credit: 0 };
+            byCode.set(it.headerCode, g);
             groups.push(g);
         }
-        const g = byCode.get(l.account_code);
-        g.lines.push(l);
-        g.debit  += Number(l.debit)  || 0;
-        g.credit += Number(l.credit) || 0;
+        const g = byCode.get(it.headerCode);
+        g.items.push(it);
+        g.debit  += Number(it.line.debit)  || 0;
+        g.credit += Number(it.line.credit) || 0;
     });
 
     const rows = groups.map((g, idx) => `<tr style="border-bottom:none;">
