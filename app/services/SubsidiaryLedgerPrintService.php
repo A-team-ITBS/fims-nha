@@ -2,6 +2,8 @@
 
 namespace PHPMaker2024\FIMS\Service;
 
+use PHPMaker2024\FIMS as App;
+
 /**
  * Subsidiary Ledger print form — one SL master's (or SL detail's) ledger card, as the official SUBSIDIARY LEDGER
  * sheet: Entity Name / Fund, the SL Account Name box beside GL Account Name / Account Code / Bank Account No., then
@@ -11,7 +13,9 @@ namespace PHPMaker2024\FIMS\Service;
  * posting, with the running balance on every line.
  *
  * Data: the Subsidiary Ledger page's GET /general_ledger/subsidiary-ledger (GeneralLedgerService::fetchSubsidiaryLedger),
- * mapped by the preview's prp_slPayload(). No letterhead (the sheet has its own title). Printed through
+ * mapped by the preview's prp_slPayload(). An SL is a child account in fims.chart_of_accounts (there are no SL tables):
+ * the sheet's GL Account Name / Account Code are its parent account, looked up here when the payload has none.
+ * No letterhead (the sheet has its own title). Printed through
  * PrintService::print('SL', …); DOCX: scripts/gen_sl_docx.js.
  */
 class SubsidiaryLedgerPrintService
@@ -23,8 +27,8 @@ class SubsidiaryLedgerPrintService
 
     /**
      * Model. Payload (all optional):
-     *   sl_code, sl_name, sl_detail_name (when one SL detail is printed),
-     *   gl_account_code, gl_account_title (the SL master's control account), bank_account_no,
+     *   sl_code, sl_name (the SL account's code and title), sl_detail_name (optional suffix to the name),
+     *   gl_account_code, gl_account_title (the SL's parent account — looked up from sl_code when not given), bank_account_no,
      *   entity_name, fund (blank by default — filled in by hand; the page passes the Book filter's name),
      *   fiscal_year (for the file name),
      *   debit_normal (true default; false = credit-normal: the balance is credit - debit),
@@ -60,14 +64,21 @@ class SubsidiaryLedgerPrintService
         $detail = $t('sl_detail_name');
         $code   = $t('sl_code');
         $year   = $t('fiscal_year');
+        $glCode  = $t('gl_account_code');
+        $glTitle = $t('gl_account_title');
+        if ($code !== '' && ($glCode === '' || $glTitle === '')) {
+            $parent  = self::parentAccount($code);
+            $glCode  = $glCode !== '' ? $glCode : ($parent['account_code'] ?? '');
+            $glTitle = $glTitle !== '' ? $glTitle : ($parent['account_title'] ?? '');
+        }
 
         return [
             'entity'    => $t('entity_name'),
             'fund'      => $t('fund'),
             'sl_name'   => mb_strtoupper(trim($slName . ($detail !== '' ? ' — ' . $detail : ''))),
             'sl_code'   => $code,
-            'gl_title'  => mb_strtoupper($t('gl_account_title')),
-            'gl_code'   => $t('gl_account_code'),
+            'gl_title'  => mb_strtoupper($glTitle),
+            'gl_code'   => $glCode,
             'bank'      => $t('bank_account_no'),
             'rows'      => $rows,
             'min_rows'  => self::MIN_ROWS,
@@ -76,6 +87,26 @@ class SubsidiaryLedgerPrintService
             'footer_text'  => '',
             'file_base' => 'SL-' . (preg_replace('/[^A-Za-z0-9\-]/', '_', $code) ?: 'ACCOUNT') . ($year !== '' ? '-' . $year : ''),
         ];
+    }
+
+    /**
+     * The GL account an SL belongs to: the SL's parent in fims.chart_of_accounts ({ account_code, account_title }),
+     * [] when it has none or the table can't be read — the sheet then leaves the GL fields blank.
+     */
+    private static function parentAccount(string $slCode): array
+    {
+        try {
+            return App\ExecuteRow(
+                'SELECT p.account_code, p.account_title FROM fims.chart_of_accounts c
+                 JOIN fims.chart_of_accounts p ON p.account_id = c.parent_account_id
+                 WHERE c.account_code = ' . App\QuotedValue($slCode, App\DataType::STRING, 'DB'),
+                'DB'
+            ) ?: [];
+        } catch (\Throwable $e) {
+            App\LogError('SubsidiaryLedgerPrintService::parentAccount ' . $e->getMessage());
+
+            return [];
+        }
     }
 
     /** Y-m-d → "01/15/2026" (blank / anything else as given). */

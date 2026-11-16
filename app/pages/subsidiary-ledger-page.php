@@ -321,7 +321,7 @@ async function sl_load() {
         if (json.grouped) {
             $sl('sl-summary').style.display = 'none';
             $sl('sl-ending').style.display = 'none';
-            sl_renderGroupedTable(json.masters ?? []);
+            sl_renderGroupedTable(json.accounts ?? json.masters ?? []);
         } else {
             sl_renderSummary(json);
             sl_renderTable(json.data ?? [], json.debit_normal);
@@ -338,8 +338,8 @@ async function sl_load() {
 
 /* ── Print — the SUBSIDIARY LEDGER sheet of the SL shown (one line per posting) ─────────────────────
    Shared print preview (readone/print-preview-readone.php): prp_slPayload(ledger) → prp_open(…, SL).
-   The SL Detail filter is printed with the SL name, the Book filter as the Fund. Only for a single SL
-   code — hidden in the all-masters view. */
+   The Book filter prints as the Fund; the SL's GL account (its Chart of Accounts parent) is looked up by
+   the print. Only for a single SL code — hidden in the all-accounts view. */
 function sl_setPrintable(json) {
     sl_ledger = json;
     const btn = $sl('sl-print');
@@ -348,9 +348,7 @@ function sl_setPrintable(json) {
 async function sl_print() {
     if (!sl_ledger || typeof prp_open !== 'function') return;
     const opt = id => { const s = $sl(id); return s && s.value ? (s.options[s.selectedIndex]?.text || '') : ''; };
-    const detail = opt('sl-detail-select');
     await prp_open(prp_slPayload(sl_ledger, {
-        sl_detail_name: detail.includes(' — ') ? detail.split(' — ').slice(1).join(' — ') : detail,
         fund: opt('sl-filter-book'),
         fiscal_year: $sl('sl-filter-fy').value,
     }), { type: 'SL' });
@@ -359,7 +357,9 @@ async function sl_print() {
 /* ── Summary (SL master header — code/name/normal balance/class) ──────────── */
 function sl_renderSummary(json) {
     $sl('sl-summary').style.display = '';
-    $sl('sl-summary-master').textContent = `${json.master.sl_code} — ${json.master.sl_name}`;
+    // SL = a child account in the Chart of Accounts: master { account_code, account_title, account_type }
+    // (sl_code / sl_name: the old SL-master shape)
+    $sl('sl-summary-master').textContent = `${json.master.account_code ?? json.master.sl_code ?? '—'} — ${json.master.account_title ?? json.master.sl_name ?? ''}`;
     $sl('sl-summary-normal').textContent = json.normal_balance || '—';
     $sl('sl-summary-class').textContent  = json.master.account_type || '—';
     $sl('sl-summary-debit').textContent  = sl_peso(json.total_debit);
@@ -393,7 +393,7 @@ function sl_renderGroupedTable(masters) {
     }
     tbody.innerHTML = masters.map(m => `
         <tr class="sl-group-row">
-            <td colspan="6">${sl_esc(m.master.sl_code)} — ${sl_esc(m.master.sl_name)} <span style="font-weight:400;color:var(--afims-text-muted,#62657E);">(${sl_esc(m.normal_balance)}-normal${m.master.account_type ? ', ' + sl_esc(m.master.account_type) : ''})</span></td>
+            <td colspan="6">${sl_esc(m.master.account_code ?? m.master.sl_code)} — ${sl_esc(m.master.account_title ?? m.master.sl_name)} <span style="font-weight:400;color:var(--afims-text-muted,#62657E);">(${sl_esc(m.normal_balance)}-normal${m.master.account_type ? ', ' + sl_esc(m.master.account_type) : ''})</span></td>
             <td class="text-end nha-mono">${sl_peso(m.total_debit)}</td>
             <td class="text-end nha-mono">${sl_peso(m.total_credit)}</td>
             <td class="text-end nha-mono">${sl_peso(Math.abs(m.ending_balance))}${sl_balSide(m.ending_balance, m.debit_normal)}</td>

@@ -750,6 +750,11 @@ tuned to a physical form we have no template of.
 
 ## JEV — Journal Entry Voucher
 
+**From a DV (`prp_jevFromDv`):** the office box is the JEV's book (`jev.book_name`: Main Office, CISFA, …;
+"MAIN OFFICE" when none); the journal label follows `jev_type` / `doc_ref_no` (CKDJ / ADADJ / GJ); RFA No. lists
+the RFAs linked to the DV (`dv.rfas[].allocation_number` — the DV's `rfa_allocation_number` column was
+dropped); an SL line's title is looked up from its `sl_code` (a Chart of Accounts code).
+
 One form: the NHA paper JEV, from the old GLOBAL
 `JevServices::renderPrintHtml()` — itself the merge of ACCOUNTING's
 `/jev-listing/print` (GAD) and `/jev-listing/dcd-print` (DCD) templates. DCD's
@@ -1106,27 +1111,36 @@ printed with `prp_open(payload, { type: 'GL' })` — the page's header **Print**
 
 `SubsidiaryLedgerPrintService` + `scripts/gen_sl_docx.js`. Letter portrait, Times 10pt, no letterhead.
 
-- **Header** (repeats on every page): SUBSIDIARY LEDGER; Entity Name / Fund; the SL Account Name box (SL name,
-  plus "— detail" when one SL detail is printed, and the SL code) beside GL Account Name / Account Code /
-  Bank Account No.; then Date · Particulars · Ref · Amount (Debit · Credit · Balance).
+- **What an SL is:** a **bottom-level** account in `fims.chart_of_accounts` (it has a parent and no children; the
+  SL tables `sl_masters` / `sl_details` were dropped). Its GL account is its parent. The SL search
+  (`DisbursementVoucherService::fetchSlCodes`) and the SL ledger (`GeneralLedgerService::fetchSubsidiaryLedger` /
+  `fetchAllSubsidiaryLedgers`) only take bottom-level accounts, so group accounts (e.g. "2-01-01 Payables")
+  are not SLs.
+- **Header** (repeats on every page): SUBSIDIARY LEDGER; Entity Name / Fund; the SL Account Name box (the SL
+  account's title and code) beside GL Account Name / Account Code (its parent account) / Bank Account No.;
+  then Date · Particulars · Ref · Amount (Debit · Credit · Balance).
 - **Rows:** unlike the GL sheet, **one line per posting**: date (mm/dd/yyyy), particulars (the posting's
   description), Ref (the JEV no.), debit, credit and the running balance on every line. An optional
   "Balance forwarded" first line (`opening_balance`).
 - **Filler and totals:** blank rows fill the sheet (wrapped Particulars count as several lines), then
   **Totals**: total debit, total credit, ending balance.
-- **Balance:** `debit_normal` follows the SL master's control account; AP masters are credit-normal.
+- **Balance:** `debit_normal` follows the parent account's type; payables are credit-normal.
 
 **Payload:**
-- `sl_code`, `sl_name`, `sl_detail_name`
-- `gl_account_code`, `gl_account_title`
+- `sl_code`, `sl_name` (the SL account's code and title); `sl_detail_name` (optional suffix, no longer used)
+- `gl_account_code`, `gl_account_title` (optional: when blank, `SubsidiaryLedgerPrintService` looks up the SL
+  account's parent in `fims.chart_of_accounts`)
 - `bank_account_no`, `entity_name` (both blank: filled in by hand)
 - `fund`, `fiscal_year`, `debit_normal`, `opening_balance`
 - `lines [{ posting_date, particulars, ref, debit, credit }]`
 
 **Data:** the Subsidiary Ledger page's `GET /general_ledger/subsidiary-ledger` response is mapped by
-`prp_slPayload(resp, opts)`. GL Account Name is the title on the postings to the master's control account.
-The page's header **Print** button passes the SL Detail filter (→ the name), the Book filter (→ Fund) and
-the Fiscal Year.
+`prp_slPayload(resp, opts)`: `master { account_code, account_title, account_type }` is the SL account (the
+older `{ sl_code, sl_name, account_code }` master is still read). The page's header **Print** button passes
+the Book filter (→ Fund) and the Fiscal Year.
+
+**JEV:** the SL line of a JEV now carries only `sl_code` (an account code). `JevPrintService` fills its title
+from `fims.chart_of_accounts`, together with the account titles.
 
 ## Requirements
 
@@ -1146,10 +1160,10 @@ calls the same helper.
 |---|---|---|---|
 | Memo Request — `form/budget-allocation-form.php` | Print Preview | CBA / RFA / LAA / CFA (by `allocation_type`) | the form on screen (`printCBA()`) |
 | Purchase Orders — `po/page.php` (row) and `po/readone.php` | Print | PO | `{ po_id }` — PurchaseOrderPrintService loads the PO |
-| Disbursement Vouchers — `voucher/readone.php` (`voucher.php`'s view modal) | Print / Print JEV (once Accounting saved the JEV) | DV / JEV | `GET /voucher/read/{id}` → `prp_dvPayload` / `prp_jevFromDv` |
+| Disbursement Vouchers — `voucher/readone.php` (`voucher.php`'s view modal) | Print | DV | `GET /voucher/read/{id}` → `prp_dvPayload` (its JEVs print from the Journal Entry Voucher register) |
 | Journal Entry Vouchers — `journal-entry-voucher.php` (row) | Print | JEV | the row's DV (`/voucher/read/{dv_id}`) → `prp_jevFromDv` |
 | General Ledger — `general-ledger-page.php` (header; shown once one account is picked) | Print | GL | the loaded ledger (`GET /general_ledger/ledger`) → `prp_glPayload`; fiscal year = the Fiscal Year filter, else the postings' year (several years → asks to pick one) |
-| Subsidiary Ledger — `subsidiary-ledger-page.php` (header; shown once one SL code is picked) | Print | SL | the loaded ledger (`GET /general_ledger/subsidiary-ledger`) → `prp_slPayload`; SL Detail filter → name, Book → Fund |
+| Subsidiary Ledger — `subsidiary-ledger-page.php` (header; shown once one SL code is picked) | Print | SL | the loaded ledger (`GET /general_ledger/subsidiary-ledger`) → `prp_slPayload`; Book → Fund; GL account = the SL account's parent (looked up) |
 | IAR Module — `iar-module.php` (row; pro-forma view) | Print IAR; Print JEV | IAR; JEV | the row (IAR header + delivery lines) + its PO (`/purchase-order/all?search=`) → `prp_iarPayload`; the delivery receipt's pro-forma → `prp_jevFromProforma` |
 
 DV deductions print with the withholding taxes (ATC lines) under the

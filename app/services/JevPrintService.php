@@ -88,7 +88,7 @@ class JevPrintService
                 if ($desc !== '') {
                     $rows[] = ['kind' => 'desc', 'text' => $desc];
                 }
-                $rows[] = ['kind' => 'sl', 'text' => $slPath !== '' ? $slPath : $slCode, 'sl' => $slCode, 'sl_d' => $money($d), 'sl_c' => $money($c)];
+                $rows[] = ['kind' => 'sl', 'text' => $slPath !== '' ? $slPath : ($titles[$slCode] ?? $slCode), 'sl' => $slCode, 'sl_d' => $money($d), 'sl_c' => $money($c)];
             }
         }
 
@@ -127,8 +127,8 @@ class JevPrintService
     }
 
     /**
-     * Account titles from fims.chart_of_accounts for the lines sent without one
-     * (account code => title). One query per print; [] when the table can't be read
+     * Account titles from fims.chart_of_accounts for the lines sent without one, and
+     * for their SL codes (an SL is a child account there) (account code => title). One query per print; [] when the table can't be read
      * — the title then just stays blank.
      */
     private function accountTitles(array $lines): array
@@ -138,6 +138,11 @@ class JevPrintService
             $code = PrintService::text($l['account_code'] ?? '');
             if ($code !== '' && PrintService::text($l['account_title'] ?? '') === '') {
                 $codes[$code] = App\QuotedValue($code, App\DataType::STRING, 'DB');
+            }
+            // an SL is a child account in fims.chart_of_accounts (no SL tables) — its title names the SL line
+            $sl = PrintService::text($l['sl_code'] ?? '');
+            if ($sl !== '' && PrintService::text($l['sl_path'] ?? $l['sl_detail_path'] ?? '') === '') {
+                $codes[$sl] = App\QuotedValue($sl, App\DataType::STRING, 'DB');
             }
         }
         if (!$codes) {

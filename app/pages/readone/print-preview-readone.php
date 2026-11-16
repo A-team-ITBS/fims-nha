@@ -330,12 +330,19 @@ function prp_jevJournal(j) {
     return '';
 }
 
-/** The JEV of a DV (dv.jev + its lines) → the JEV form. Account titles are filled in server-side. */
+/**
+ * The JEV of a DV (dv.jev + its lines) → the JEV form. Account titles — and SL titles: a line carries only its
+ * sl_code, an account in the Chart of Accounts — are filled in server-side. The office box is the JEV's book
+ * (jev.book_name: Main Office, CISFA, …); RFA No. = the RFA(s) linked to the DV (dv.rfas — the DV's own
+ * rfa_allocation_number column was dropped).
+ */
 function prp_jevFromDv(dv, jev) {
     // `jev` lets callers print a SPECIFIC JEV (e.g. a PAYMENT JEV from dv.payment_jevs); defaults to
     // the DV's SETUP JEV (dv.jev) when omitted, keeping existing callers unchanged.
     const j = jev || dv.jev || {};
+    const rfas = (dv.rfas || []).map(r => r.allocation_number).filter(Boolean);
     return {
+        office: j.book_name || '',
         journal: prp_jevJournal(j),
         jev_number: j.jev_no || '',
         jev_date: j.jev_date || '',
@@ -347,7 +354,7 @@ function prp_jevFromDv(dv, jev) {
         reference_no: dv.dv_no || '',
         payee_name: dv.claimant_name || '',
         particulars: j.particulars || dv.particulars || '',
-        rfa_number: dv.rfa_allocation_number || '',
+        rfa_number: rfas.length ? rfas.join(', ') : (dv.rfa_allocation_number || ''),
     };
 }
 
@@ -375,23 +382,25 @@ function prp_glPayload(resp, opts = {}) {
 }
 
 /**
- * One SL master's ledger card (the Subsidiary Ledger page's GET /general_ledger/subsidiary-ledger?sl_code=… response:
- * { master { sl_code, sl_name, account_code }, debit_normal, data [{ posting_date, jev_no, doc_ref_no, account_code,
- * account_title, sl_detail_name, description, debit, credit }] }) → the SUBSIDIARY LEDGER sheet, one line per posting
- * (SubsidiaryLedgerPrintService). GL Account Name = the title on the postings to the master's control account.
- * `opts` (optional): sl_detail_name (the SL Detail filter), fund (the Book filter's name), fiscal_year,
- * entity_name, bank_account_no, opening_balance.
+ * One SL account's ledger card (the Subsidiary Ledger page's GET /general_ledger/subsidiary-ledger?sl_code=… response:
+ * { master { account_code, account_title, account_type }, debit_normal, data [{ posting_date, jev_no, doc_ref_no,
+ * description, debit, credit }] }) → the SUBSIDIARY LEDGER sheet, one line per posting (SubsidiaryLedgerPrintService).
+ * An SL is a child account in the Chart of Accounts: master = the SL account; its parent (the sheet's GL Account
+ * Name / Account Code) is looked up server-side. Still reads the older { sl_code, sl_name, account_code } master.
+ * `opts` (optional): fund (the Book filter's name), fiscal_year, entity_name, bank_account_no, opening_balance,
+ * gl_account_code / gl_account_title (skip the lookup), sl_detail_name.
  */
 function prp_slPayload(resp, opts = {}) {
     const m = (resp && resp.master) || {};
     const data = (resp && resp.data) || [];
-    const ctl = data.find(l => l.account_code && l.account_code === m.account_code) || {};
+    const legacy = !!m.sl_code;   // the old SL-master shape: account_code was the control (GL) account
+    const ctl = legacy ? (data.find(l => l.account_code && l.account_code === m.account_code) || {}) : {};
     return {
-        sl_code: m.sl_code || '',
-        sl_name: m.sl_name || '',
+        sl_code: m.sl_code || m.account_code || '',
+        sl_name: m.sl_name || m.account_title || '',
         sl_detail_name: opts.sl_detail_name || '',
-        gl_account_code: m.account_code || '',
-        gl_account_title: ctl.account_title || '',
+        gl_account_code: opts.gl_account_code || (legacy ? m.account_code || '' : ''),
+        gl_account_title: opts.gl_account_title || ctl.account_title || '',
         bank_account_no: opts.bank_account_no || '',
         entity_name: opts.entity_name || '',
         fund: opts.fund || '',
@@ -400,7 +409,7 @@ function prp_slPayload(resp, opts = {}) {
         opening_balance: opts.opening_balance ?? '',
         lines: data.map(l => ({
             posting_date: l.posting_date, debit: l.debit, credit: l.credit,
-            particulars: l.description || l.sl_detail_name || l.doc_ref_no || '',
+            particulars: l.description || l.doc_ref_no || '',
             ref: l.jev_no || l.doc_ref_no || '',
         })),
     };

@@ -534,7 +534,9 @@ class DisbursementVoucherService
     public function fetchSlCodes(string $search = ''): array
     {
         try {
-            $where = ['c.status = ' . $this->str('Active'), 'c.parent_account_id IS NOT NULL'];
+            // an SL is a BOTTOM-level account (a child with no children of its own) — group accounts are not SLs
+            $where = ['c.status = ' . $this->str('Active'), 'c.parent_account_id IS NOT NULL',
+                      "NOT EXISTS (SELECT 1 FROM {$this->tableCoa} k WHERE k.parent_account_id = c.account_id)"];
             if ($search !== '') {
                 $kw      = App\QuotedValue('%' . $search . '%', App\DataType::STRING, 'DB');
                 $where[] = "(c.account_code ILIKE {$kw} OR c.account_title ILIKE {$kw})";
