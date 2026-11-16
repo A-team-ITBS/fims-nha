@@ -45,7 +45,7 @@ WHERE NOT EXISTS (SELECT 1 FROM fims.settings_status WHERE name = 'Approved' AND
 
 -- status_for = 'budget_allocation' (fims.budget_allocation — Memo Request page).
 -- Only the starting status is seeded here; BudgetAllocationService gives every new
--- memo request 'Draft' and looks it up by name. 'For Preview' (what the form's
+-- memo request 'Draft' and looks it up by name. 'For Review' (what the form's
 -- "Submit for Review" choice sets) is seeded in 06 - fims_settings_status_budget_allocation.sql;
 -- add the rest of the workflow statuses (and their next_actors) once the approval flow is defined.
 INSERT INTO fims.settings_status (name, status_for, color)

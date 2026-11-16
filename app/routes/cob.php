@@ -14,13 +14,14 @@ use PHPMaker2024\FIMS\Service\GlobalService;
  *
  *   GET /cob/filters                 the options of the filter drop-downs (values that exist in approved data)
  *   GET /cob/summary                 the KPI cards: counts + totals
- *   GET /cob/rollup?layout_by=       the tree tabs: fund_source | component | region
- *   GET /cob/list                    the COB records (one row per line item), paginated: page, limit — not used by the page any more (no Records tab)
+ *   GET /cob/rollup?layout_by=       the tree tabs: region | fund_source | component. Every node carries the eight columns of the COB
+ *                                    Monitoring sheet: approved_amount, revision_amount, revised_amount, cba_requested, available_amount,
+ *                                    rfa_approved, laa_issued, remaining_balance
  *   GET /cob/read/{budget_reference_number}   one approved request in full, attachments included
  *   GET /cob/report                  the Generate Report dialog: layout_by, depth (0-4), unit (full|thousand|million|billion), format =
  *                                    json (the model + both previews) | pdf | xlsx (the file: { filename, mime, data: base64 }) — CobReportService
  *
- * Filters (all optional, same on summary / rollup / list): fiscal_yr, type_of_fund_id, component_id, program_code,
+ * Filters (all optional, same on summary / rollup / report): fiscal_yr, type_of_fund_id, component_id, program_code,
  * project_code, account_id, region_id ('central' = the central offices), search.
  *
  * Like the Budget Request list, a user who belongs to an RC sees that RC and its descendants only; a superadmin / user
@@ -69,14 +70,6 @@ $app->get('/cob/rollup', function ($request, $response, $args) use ($CobService,
     }
 
     return $cobRespond($response, fn () => $CobService->rollup($layoutBy, $params, $cobScopeRcId($request)), '/cob/rollup');
-})->add($accessMiddleware)->add($jwtMiddleware);
-
-$app->get('/cob/list', function ($request, $response, $args) use ($CobService, $cobScopeRcId, $cobRespond) {
-    $params = $request->getQueryParams();
-    $page = isset($params['page']) ? (int) $params['page'] : 1;
-    $limit = isset($params['limit']) ? (int) $params['limit'] : 15;
-
-    return $cobRespond($response, fn () => $CobService->fetchAlls($page, $limit, $params, $cobScopeRcId($request)), '/cob/list');
 })->add($accessMiddleware)->add($jwtMiddleware);
 
 $app->get('/cob/read/{id}', function ($request, $response, $args) use ($CobService, $cobScopeRcId, $cobRespond) {

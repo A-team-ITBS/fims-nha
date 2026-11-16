@@ -5,7 +5,9 @@
  * Opened from the COB page (app/pages/cob-page.php) by a project row's "View": window.cobModal.open(budgetReferenceNumber,
  * projectCode?) — projectCode, when given, scrolls to and highlights that project. It shows what the request is made of, straight
  * from GET /cob/read/{budget_reference_number} (CobService::fetchById): the request, then every Program block, every Project of
- * it, each Project's chart-of-accounts line items with their figures, and its supporting documents (fims.budget_req_project_attachment).
+ * it, each Project's chart-of-accounts line items with the eight COB columns (Approved Amount, Revision / Realignment, Revised Amount,
+ * CBA Requested, Available for Earmarking, RFA Approved, LAA Issued, Remaining Balance), and its supporting documents
+ * (fims.budget_req_project_attachment).
  *
  * Included INSIDE the page's .nha-root: every .nha-overlay / .nha-modal rule of _shared/css/nha-fims.css is scoped to it.
  *
@@ -22,9 +24,6 @@
 #cobv-overlay .cobv-tile { padding:10px 12px;border:1px solid var(--afims-border, #E4ECF2);border-radius:10px;background:var(--afims-surface-subtle, #F4F7FA); }
 #cobv-overlay .cobv-tile .cobv-k { font-size:10px; }
 #cobv-overlay .cobv-tile b { display:block;margin-top:3px;font-family:'IBM Plex Mono',monospace;font-size:14px;color:var(--afims-heading, #000E3E); }
-#cobv-overlay .cobv-tile.cobv-total { background:var(--afims-heading-fill, #000E3E);border-color:var(--afims-heading-fill, #000E3E); }
-#cobv-overlay .cobv-tile.cobv-total .cobv-k,
-#cobv-overlay .cobv-tile.cobv-total b { color:#fff; }
 #cobv-overlay .cobv-prog { margin-bottom:18px; }
 #cobv-overlay .cobv-prog-hdr { display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:6px 14px;padding:8px 12px;margin-bottom:8px;
     background:var(--afims-surface-subtle, #F4F7FA);border-radius:8px;font-weight:700;font-size:13.5px;color:var(--afims-heading, #000E3E); }
@@ -34,7 +33,7 @@
 #cobv-overlay .cobv-proj-hdr { display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:4px 14px;margin-bottom:8px;font-weight:600;font-size:13px; }
 #cobv-overlay .cobv-proj-hdr small { font-weight:500;font-size:12px;color:var(--afims-text-muted, #62657E); }
 #cobv-overlay .cobv-scroll { overflow-x:auto; }
-#cobv-overlay table.cobv-tbl { width:100%;min-width:900px;border-collapse:collapse;font-size:12.5px; }
+#cobv-overlay table.cobv-tbl { width:100%;min-width:1180px;border-collapse:collapse;font-size:12.5px; }
 #cobv-overlay .cobv-tbl th:first-child, #cobv-overlay .cobv-tbl td:first-child { min-width:180px; }
 #cobv-overlay .cobv-tbl th:nth-child(2), #cobv-overlay .cobv-tbl td:nth-child(2) { min-width:100px; }
 #cobv-overlay .cobv-tbl th:nth-child(3), #cobv-overlay .cobv-tbl td:nth-child(3) { min-width:90px; }
@@ -52,8 +51,8 @@
 #cobv-overlay .cobv-doc a:hover { text-decoration:underline; }
 #cobv-overlay .cobv-doc .cobv-na { color:var(--afims-text-disabled, #A9AAB8);font-size:12px; }
 #cobv-overlay .cobv-muted { color:var(--afims-text-muted, #62657E);font-size:12.5px; }
-#cobv-overlay .cobv-adj-pos { color:#16a34a; }
-#cobv-overlay .cobv-adj-neg { color:#dc2626; }
+#cobv-overlay .cobv-neg { color:#dc2626; }
+#cobv-overlay .cobv-dash { color:var(--afims-text-disabled, #A9AAB8); }
 </style>
 
 <div id="cobv-overlay" class="nha-overlay no-print">
@@ -92,34 +91,39 @@
         else if (/^[+-]\d{4}$/.test(tz)) tz = tz.slice(0, 3) + ':' + tz.slice(3);
         return show(new Date(`${m[1]}T${m[2]}${m[3] || ':00'}${tz}`));
     }
-    const adj = v => {
+    // the tables, as on the COB sheet: a dash for zero, a negative in red brackets (the tiles keep the peso sign)
+    const plain = v => Number(v || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const num = v => {
         const n = Number(v || 0);
-        return n === 0 ? '—' : `<span class="${n > 0 ? 'cobv-adj-pos' : 'cobv-adj-neg'}">${n > 0 ? '+' : '−'} ${money(Math.abs(n))}</span>`;
+        if (Math.abs(n) < 0.005) return '<span class="cobv-dash">-</span>';
+        return n < 0 ? `<span class="cobv-neg">(${plain(-n)})</span>` : plain(n);
     };
+    // the eight columns, in the order of the COB sheet: [key, heading, tooltip]
+    const COLS = [
+        ['approved_amount', 'Approved Amount', 'What FMD suggested in the Budget Proposal module'],
+        ['revision_amount', 'Revision / Realignment', 'Net of the approved Budget Revisions'],
+        ['revised_amount', 'Revised Amount', 'Approved Amount + Revision / Realignment'],
+        ['cba_requested', 'CBA Requested', 'Taken off the budget by approved CBAs'],
+        ['available_amount', 'Available for Earmarking', 'Revised Amount less CBA Requested'],
+        ['rfa_approved', 'RFA Approved', 'Drawn from the CBAs by approved RFAs'],
+        ['laa_issued', 'LAA Issued', 'Drawn from the CBAs by issued LAAs'],
+        ['remaining_balance', 'Remaining Balance', 'Revised Amount less RFA Approved and LAA Issued'],
+    ];
 
     const state = { seq: 0, lastFocus: null };
 
-    const tile = (label, value, cls) => `<div class="cobv-tile ${cls || ''}"><span class="cobv-k">${esc(label)}</span><b>${value}</b></div>`;
-    const tiles = t => `<div class="cobv-tiles">`
-        + tile('Total', money(t.total), 'cobv-total') + tile('Fund Balance', money(t.fund_balance))
-        + tile('Adjustment', adj(t.adjustment)) + tile('Carry Over Obligation', money(t.carry_over_obligation))
-        + tile('Obligation', money(t.obligation)) + tile('Disbursement', money(t.disbursement)) + `</div>`;
+    const tile = (label, value, cls, title) => `<div class="cobv-tile ${cls || ''}" title="${esc(title || '')}"><span class="cobv-k">${esc(label)}</span><b>${value}</b></div>`;
+    const tiles = t => `<div class="cobv-tiles">` + COLS.map(([k, label, hint]) => tile(label, money(t[k]), '', hint)).join('') + `</div>`;
 
     function lineTable(lines, totals) {
         if (!lines.length) return `<p class="cobv-muted">No line items.</p>`;
+        const cells = o => COLS.map(([k]) => `<td class="cobv-num">${num(o[k])}</td>`).join('');
         const rows = lines.map(l => `<tr>
             <td>${esc(l.account_title || '—')}${l.account_code ? ` ${chip(l.account_code)}` : ''}${l.particulars ? `<span class="cobv-sub" style="display:block;font-size:11.5px;color:var(--afims-text-muted,#62657E);">${esc(l.particulars)}</span>` : ''}</td>
-            <td>${esc(l.type_of_fund_name || '—')}</td><td>${esc(l.component_name || '—')}</td>
-            <td class="cobv-num">${money(l.proposed_amount)}</td><td class="cobv-num">${adj(l.adjustment)}</td>
-            <td class="cobv-num">${money(l.fund_balance)}</td><td class="cobv-num">${money(l.carry_over_obligation)}</td>
-            <td class="cobv-num">${money(l.obligation)}</td><td class="cobv-num">${money(l.disbursement)}</td></tr>`).join('');
+            <td>${esc(l.type_of_fund_name || '—')}</td><td>${esc(l.component_name || '—')}</td>${cells(l)}</tr>`).join('');
         return `<div class="cobv-scroll"><table class="cobv-tbl"><thead><tr>
-            <th>Account</th><th>Type of Fund</th><th>Component</th><th class="cobv-num">Proposed</th><th class="cobv-num">Adjustment</th>
-            <th class="cobv-num">Fund Balance</th><th class="cobv-num">Carry Over Obligation</th><th class="cobv-num">Obligation</th><th class="cobv-num">Disbursement</th>
-            </tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="3">Total</td>
-            <td class="cobv-num">${money(totals.proposed_amount)}</td><td class="cobv-num">${adj(totals.adjustment)}</td><td class="cobv-num">${money(totals.fund_balance)}</td>
-            <td class="cobv-num">${money(totals.carry_over_obligation)}</td><td class="cobv-num">${money(totals.obligation)}</td><td class="cobv-num">${money(totals.disbursement)}</td>
-            </tr></tfoot></table></div>`;
+            <th>Account</th><th>Type of Fund</th><th>Component</th>${COLS.map(([k, label, hint]) => `<th class="cobv-num" title="${esc(hint)}">${esc(label)}</th>`).join('')}
+            </tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="3">Total</td>${cells(totals)}</tr></tfoot></table></div>`;
     }
 
     function docsHtml(docs) {
@@ -134,7 +138,7 @@
 
     const projectCard = (p, focusCode) => `<div class="cobv-proj${focusCode && p.project_code === focusCode ? ' cobv-focus' : ''}" data-project="${esc(p.project_code)}">
         <div class="cobv-proj-hdr"><span>${esc(p.project_name || p.project_code || 'No project')} ${chip(p.project_code)}</span>
-            <small>${p.location ? esc(p.location) + ' · ' : ''}Fund Balance ${money(p.totals.fund_balance)}</small></div>
+            <small>${p.location ? esc(p.location) + ' · ' : ''}Revised ${money(p.totals.revised_amount)} · Remaining ${money(p.totals.remaining_balance)}</small></div>
         ${lineTable(p.line_items, p.totals)}${docsHtml(p.attachments)}</div>`;
 
     function render(r, focusCode) {
@@ -152,13 +156,12 @@
         const programs = r.programs || [];
         html += programs.map(g => `<div class="cobv-prog">
             <div class="cobv-prog-hdr"><span>${esc(g.program_name || g.program_code)} ${chip(g.program_code)}${g.sub_program_name ? ` <small>· ${esc(g.sub_program_name)}</small>` : ''}</span>
-                <small>Fund Balance ${money(g.totals.fund_balance)}</small></div>
+                <small>Revised ${money(g.totals.revised_amount)} · Remaining ${money(g.totals.remaining_balance)}</small></div>
             ${(g.projects || []).length ? g.projects.map(p => projectCard(p, focusCode)).join('') : '<p class="cobv-muted" style="margin-left:12px;">No projects under this program.</p>'}</div>`).join('');
 
         const loose = r.unassigned_line_items || [];
         if (loose.length) {
-            const t = loose.reduce((a, l) => { for (const k of ['proposed_amount', 'adjustment', 'fund_balance', 'carry_over_obligation', 'obligation', 'disbursement']) a[k] += Number(l[k] || 0); return a; },
-                { proposed_amount: 0, adjustment: 0, fund_balance: 0, carry_over_obligation: 0, obligation: 0, disbursement: 0 });
+            const t = loose.reduce((a, l) => { for (const [k] of COLS) a[k] += Number(l[k] || 0); return a; }, Object.fromEntries(COLS.map(([k]) => [k, 0])));
             html += `<div class="cobv-prog"><div class="cobv-prog-hdr"><span>No program / project</span><small>Line items of an older request with no program block</small></div>
                 <div class="cobv-proj">${lineTable(loose, t)}</div></div>`;
         }

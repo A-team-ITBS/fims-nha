@@ -1,10 +1,10 @@
 -- Seed data for fims.settings_status, status_for = 'budget_allocation' (fims.budget_allocation — the Memo Request page):
--- the two outcomes of the Financial Management Department's (FMD) review of a request that is 'For Preview'.
+-- the two outcomes of the Financial Management Department's (FMD) review of a request that is 'For Review'.
 --
 --   Approved  set by the Memo Request list's "Process" modal (Approve): the request also gets its allocation number.
 --   Returned  set by the same modal (Return): the request goes back to the requesting office, no number is given.
 --
--- 'Draft' is seeded in "01 - fims_settings_status.sql" and 'For Preview' in "06 - fims_settings_status_budget_allocation.sql".
+-- 'Draft' is seeded in "01 - fims_settings_status.sql" and 'For Review' in "06 - fims_settings_status_budget_allocation.sql".
 -- BudgetAllocationService looks all of them up BY NAME, so the names below must stay as they are (the API says so, and
 -- changes nothing, when one is missing). 'Approved' is also what the Parent CBA picker of the memo form offers.
 --
