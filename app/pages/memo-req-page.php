@@ -295,8 +295,9 @@ const MRQ_LOOKUP_SOURCES = {
 // The two statuses the "Submit for Review" action moves a request between (names of memo-request statuses in
 // fims.settings_status; their ids are looked up, never hardcoded). 'For Preview' is seeded by
 // sample_data/06 - fims_settings_status_budget_allocation.sql, the same status the form's "Submit for Review" gives.
-const MRQ_STATUS_DRAFT   = 'Draft';
-const MRQ_STATUS_PREVIEW = 'For Preview';
+const MRQ_STATUS_DRAFT    = 'Draft';
+const MRQ_STATUS_PREVIEW  = 'For Preview';
+const MRQ_STATUS_RETURNED = 'Returned';
 
 const $mrq = id => document.getElementById(id);
 
