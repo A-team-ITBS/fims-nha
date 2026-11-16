@@ -5,6 +5,22 @@ namespace PHPMaker2024\FIMS;
 @session_start();
 $_mrq_api = Config('API.FIMS_URL');
 
+// WHICH memo requests this page lists. The page is hosted by one wrapper per kind of request, and each sets $alloc_type
+// before including this file:
+//   cba-memo-request-page.php      $alloc_type = 'CBA'
+//   rfa-laa-memo-request-page.php  $alloc_type = 'RFA/LAA'      (both kinds, one list — there are no tabs any more)
+// (budget_allocation.allocation_type). The list, its cards, the Vendor column and the form's Allocation Type all follow it.
+// Included with no $alloc_type (the older MemoReqPage / BudgetAllocationForm views) it falls back to ?type=, then to CBA.
+$_mrq_allowedTypes = ['CBA', 'RFA', 'LAA'];
+$_mrq_rawType      = isset($alloc_type) ? (string) $alloc_type : (string) ($_GET['type'] ?? '');
+$_mrq_types        = array_values(array_intersect(
+    $_mrq_allowedTypes,
+    array_map('trim', preg_split('/[\/,|]+/', strtoupper($_mrq_rawType)) ?: [])
+));
+if (!$_mrq_types) {
+    $_mrq_types = ['CBA'];
+}
+
 // Who is looking: the logged-in user's office. uac.users gives the rc_id (that column only) and is joined to
 // fims.responsibility_code for the RC itself — the same lookup as budget-req-page.php. The Financial Management
 // Department (FMD: rc_code 35-074-0000000-032, rc_id 013 in this data) REVIEWS every office's memo requests, so for its
@@ -69,8 +85,9 @@ try {
 #prp-overlay { z-index: 9080; }
 
 /* ── KPI row: only 3 cards here, not the 4 .nha-summary assumes elsewhere — fill the row instead of leaving a
-   fourth column empty. */
+   fourth column empty. The CBA page shows 2 (Total Memo Requests, Total Requested Amount): mrq_applyTypes adds .mrq-cols-2. */
 #mrq-root .nha-summary { grid-template-columns: repeat(3, 1fr); }
+#mrq-root .nha-summary.mrq-cols-2 { grid-template-columns: repeat(2, 1fr); }
 @media (max-width: 900px) {
     #mrq-root .nha-summary { grid-template-columns: repeat(2, 1fr); }
 }
@@ -87,7 +104,7 @@ try {
                 </svg>
             </div>
             <div>
-                <div class="nha-hdr-title">Memo Requests</div>
+                <div class="nha-hdr-title"><?php echo htmlspecialchars(implode('/', $_mrq_types)); ?> Memo Requests</div>
             </div>
         </div>
         <div class="nha-hdr-r">
@@ -97,16 +114,9 @@ try {
             </button>
             <button id="mrq-add" type="button" class="nha-btn-hdr" style="background:var(--afims-success, #11A752);" title="Create a memo request">
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
-                <span id="mrq-add-label">New CBA Memo Request</span>
+                <span id="mrq-add-label">New <?php echo htmlspecialchars(implode('/', $_mrq_types)); ?> Memo Request</span>
             </button>
         </div>
-    </div>
-
-    <!-- ── TABS (CBA / RFA / LAA — budget_allocation.allocation_type) ──── -->
-    <div class="nha-tabs no-print">
-        <button type="button" class="nha-tab active" data-type="CBA" onclick="mrq_switchTab('CBA')">CBA</button>
-        <button type="button" class="nha-tab" data-type="RFA" onclick="mrq_switchTab('RFA')">RFA</button>
-        <button type="button" class="nha-tab" data-type="LAA" onclick="mrq_switchTab('LAA')">LAA</button>
     </div>
 
     <!-- ── KPI CARDS (cover every row matching the filters, not just this page) ── -->
@@ -118,14 +128,22 @@ try {
             </div></div>
             <p class="nha-kpi-sub">Matches current filters</p>
         </div>
-        <div class="nha-sc nha-sc-teal">
+        <!-- Which cards a page shows is set by data-for (see mrq_applyTypes): a CBA buys nothing, so it has no PR / PO to total -->
+        <div class="nha-sc nha-sc-teal" data-for="CBA">
+            <div class="nha-sc-top"><div>
+                <div class="nha-sc-label">Total Requested Amount</div>
+                <div class="nha-sc-val" id="mrq-kpi-req">—</div>
+            </div></div>
+            <p class="nha-kpi-sub">Amount requested on the certificates</p>
+        </div>
+        <div class="nha-sc nha-sc-teal" data-for="RFA LAA">
             <div class="nha-sc-top"><div>
                 <div class="nha-sc-label">Total PR Amount</div>
                 <div class="nha-sc-val" id="mrq-kpi-pr">—</div>
             </div></div>
             <p class="nha-kpi-sub">Purchase requests raised</p>
         </div>
-        <div class="nha-sc nha-sc-amber">
+        <div class="nha-sc nha-sc-amber" data-for="RFA LAA">
             <div class="nha-sc-top"><div>
                 <div class="nha-sc-label">Total PO Amount</div>
                 <div class="nha-sc-val" id="mrq-kpi-po">—</div>
@@ -173,7 +191,7 @@ try {
                         <th>FY</th>
                         <th>Requesting Office</th>
                         <th>Program / Project</th>
-                        <th>Vendor</th>
+                        <th id="mrq-th-vendor">Vendor</th>
                         <th>Amount</th>
                         <th>Submitted Date</th>
                         <th>Status</th>
@@ -196,7 +214,10 @@ try {
 // form to render inside an overlay modal instead of as a full page — the same file is still the
 // standalone page behind the "Memo Request Form" menu item. In modal mode it exposes
 // window.cbaModal and calls window.mrq_load() after a successful save, to refresh this list.
+// $cbaAllowedTypes narrows the form's Allocation Type to this page's kinds: one kind -> preselected and locked,
+// several (RFA/LAA) -> only those are offered.
 $cbaAsModal = true;
+$cbaAllowedTypes = $_mrq_types;
 include __DIR__.'/form/budget-allocation-form.php';
 
 // The request-details modal: opened read-only by every row's "View" action (everybody), and with the Endorse / Approve / Return
@@ -223,9 +244,8 @@ include_once __DIR__.'/readone/print-preview-readone.php';
    Create  → the CBA form modal (app/pages/form/budget-allocation-form.php, window.cbaModal)
    Edit    → the same form modal opened on that record: window.cbaModal.open(id)
    View    → (Actions menu, every row, every user) the request's details, read-only: the same modal as Process, opened
-             without the decision buttons — mpr_open(id, true) in readone/memo-process-readone.php. An RFA that has a CAF
-             (form/caf-form.php -> fims.caf) gets a Details | CAF tab bar there: Details is the default, CAF shows the CAF's details
-   Preview → (Actions menu, Draft requests only) PATCH status_id = the 'For Preview' status
+             without the decision buttons — mpr_open(id, true) in readone/memo-process-readone.php
+   Submit for Review → (Actions menu, Draft requests only) PATCH status_id = the 'For Preview' status
    Process → (Actions menu, FMD only — instead of Edit / Delete) the details modal with Endorse / Approve / Return:
              readone/memo-process-readone.php (mpr_*), PATCH /budget_allocation/process/{id}. The review is a chain:
              For Preview (FMD Section Chief) -> For Division Manager (FMD Division Manager) -> For Department Manager
@@ -233,13 +253,13 @@ include_once __DIR__.'/readone/print-preview-readone.php';
              step it is. Every Return needs REMARKS (typed in the modal, saved on budget_allocation.remarks); a request
              that is back with someone shows the last return's remarks at the top of its View / Process modal.
 
-   Create CAF → (Actions menu, RFA tab only) the CAF form modal with that RFA already selected: form/caf-form.php
+   Create CAF → (Actions menu, RFA rows only) the CAF form modal with that RFA already selected: form/caf-form.php
              (window.cafModal), saved with POST /caf/add → fims.caf
-   Print   → (Actions menu, every row on every tab) the printed form of the request — CBA / RFA / LAA by its allocation type — in
+   Print   → (Actions menu, every row) the printed form of the request — CBA / RFA / LAA by its allocation type — in
              the shared print preview (readone/print-preview-readone.php): GET /print/payload/allocation/{id}, then
              prp_open(payload, { type }). The details modal has ONE Print button in its footer: it prints the request, or — for an
              RFA that has a CAF — opens a small menu: Print RFA / Print CAF.
-   Print CAF → (Actions menu, RFA tab only) the printed CAF of that RFA (GET /print/payload/caf/{id}).
+   Print CAF → (Actions menu, RFA rows only) the printed CAF of that RFA (GET /print/payload/caf/{id}).
 
    The reference shown for every row ("Request Reference Number") is budget_allocation.request_referrence_no — RR-001,
    RR-002, … generated by the database when the row is created. The search box matches it too.
@@ -254,17 +274,12 @@ let mrq_page = 1;
 let mrq_rows = [];
 const MRQ_PAGE_SIZE = 15;
 
-// Which allocation_type the list (and KPI cards) are scoped to. budget_allocation holds all three kinds of memo
-// request in one table (see form/budget-allocation-form.php's "Allocation Type" select) — the tabs just filter the
-// same /budget_allocation/list by it. Starts from ?type= in the page URL so a link such as
-// memo-req-page?type=RFA opens straight onto that tab; kept in sync with the URL (replaceState, no new history
-// entries) so "New Memo Request" — which reads window.location.search itself, see budget-allocation-form.php's
-// cbaBoot() — pre-selects the matching Allocation Type without any extra wiring.
-const MRQ_TYPES = ['CBA', 'RFA', 'LAA'];
-let mrq_activeType = (() => {
-    const t = (new URLSearchParams(window.location.search).get('type') || '').toUpperCase();
-    return MRQ_TYPES.includes(t) ? t : 'CBA';
-})();
+// Which allocation_type(s) this page lists — decided by the wrapper that hosts it ($alloc_type, see the PHP at the top:
+// ['CBA'] or ['RFA', 'LAA']). budget_allocation holds all three kinds of memo request in one table; the list, the KPI cards
+// and the form's Allocation Type are scoped to these. There are no tabs: each kind has its own page.
+const MRQ_TYPES = <?php echo json_encode($_mrq_types); ?>;
+// A CBA buys nothing from a vendor (its form hides Vendor and the PR number), so a page of CBAs alone has no Vendor column.
+const MRQ_SHOW_VENDOR = MRQ_TYPES.some(t => t !== 'CBA');
 
 // Set once the Fiscal Year filter has been defaulted to the current year (see mrq_fillFilters) — so a later
 // refill (e.g. mrq_statusId re-reading statuses) never overrides a year the user has since picked themselves.
@@ -277,18 +292,17 @@ const MRQ_LOOKUP_SOURCES = {
     statuses    : `${MRQ_API}/statuses`,
 };
 
-// The two statuses the "Preview" action moves a request between (names of memo-request statuses in
+// The two statuses the "Submit for Review" action moves a request between (names of memo-request statuses in
 // fims.settings_status; their ids are looked up, never hardcoded). 'For Preview' is seeded by
-// sample_data/06 - fims_settings_status_budget_allocation.sql, the same status the form's "Submit for Preview" gives.
-const MRQ_STATUS_DRAFT    = 'Draft';
-const MRQ_STATUS_PREVIEW  = 'For Preview';
-const MRQ_STATUS_RETURNED = 'Returned';   // back with the requesting office (see mrq_isReturned())
+// sample_data/06 - fims_settings_status_budget_allocation.sql, the same status the form's "Submit for Review" gives.
+const MRQ_STATUS_DRAFT   = 'Draft';
+const MRQ_STATUS_PREVIEW = 'For Preview';
 
 const $mrq = id => document.getElementById(id);
 
 // Status names are compared ignoring case and surrounding spaces.
 function mrq_sameStatus(a, b) { return String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase(); }
-// Only a request that is still a Draft can be sent on for preview.
+// Only a request that is still a Draft can be sent on for review.
 function mrq_isDraft(r)       { return mrq_sameStatus(r.status_name, MRQ_STATUS_DRAFT); }
 // A request the FMD review sent back to the requesting office (status exactly "Returned" — NOT "Returned to Section Chief" /
 // "Returned to Division Manager", which are with FMD): its office can Edit it again, and the form's Save dialog offers
@@ -309,30 +323,21 @@ async function mrq_bootstrapLoad() {
         window.PagePreloader?.hide();
     }
     mrq_bindEvents();
-    mrq_syncTabUrl();   // the tab the page opened on (default or ?type=) belongs in the URL from the start
+    mrq_applyTypes();
     await mrq_load();
 }
 
-/* ── Tabs (CBA / RFA / LAA) ───────────────────────────────────── */
-// Keeps ?type= on the page URL equal to mrq_activeType, without adding a history entry — so Back/Forward
-// doesn't step through tabs, but a refresh (or a copied link) reopens the same one.
-function mrq_syncTabUrl() {
-    document.querySelectorAll('.nha-tabs .nha-tab').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.type === mrq_activeType);
+/* ── Kind of request (CBA / RFA+LAA) ──────────────────────────── */
+// KPI cards: each one lists the kinds it belongs to in data-for, and shows when this page lists any of them. The row is
+// 2 columns wide when only 2 cards show.
+function mrq_applyTypes() {
+    let shown = 0;
+    document.querySelectorAll('.nha-summary .nha-sc[data-for]').forEach(card => {
+        const on = card.dataset.for.split(' ').some(t => MRQ_TYPES.includes(t));
+        card.style.display = on ? '' : 'none';
+        if (on) shown++;
     });
-    const addLabel = $mrq('mrq-add-label');
-    if (addLabel) addLabel.textContent = `New ${mrq_activeType} Memo Request`;
-    const url = new URL(window.location.href);
-    url.searchParams.set('type', mrq_activeType);
-    window.history.replaceState(window.history.state, '', url);
-}
-
-function mrq_switchTab(type) {
-    if (!MRQ_TYPES.includes(type) || type === mrq_activeType) return;
-    mrq_activeType = type;
-    mrq_syncTabUrl();
-    mrq_page = 1;
-    mrq_load();
+    document.querySelector('.nha-summary')?.classList.toggle('mrq-cols-2', shown + 1 === 2);   // +1: Total Memo Requests always shows
 }
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', mrq_bootstrapLoad);
@@ -426,7 +431,7 @@ async function mrq_load() {
             search          : $mrq('mrq-filter-search')?.value || '',
             fiscal_year     : $mrq('mrq-filter-fy')?.value     || '',
             status_id       : $mrq('mrq-filter-status')?.value || '',
-            allocation_type : mrq_activeType,
+            allocation_type : MRQ_TYPES.join(','),   // one or several kinds — the API accepts a comma-separated list
             page            : mrq_page,
             limit           : MRQ_PAGE_SIZE,
         });
@@ -439,6 +444,7 @@ async function mrq_load() {
         mrq_renderTable(mrq_rows);
         mrq_renderPagination(json.pagination ?? {});
         $mrq('mrq-kpi-total').textContent = json.pagination?.total ?? mrq_rows.length;
+        $mrq('mrq-kpi-req').textContent   = mrq_money(json.summary?.total_requested_amount);
         $mrq('mrq-kpi-pr').textContent    = mrq_money(json.summary?.total_pr_amount);
         $mrq('mrq-kpi-po').textContent    = mrq_money(json.summary?.total_po_amount);
     } catch (e) {
@@ -481,8 +487,13 @@ function mrq_dateCell(value) {
 
 function mrq_renderTable(rows) {
     const tbody = $mrq('mrq-tbody');
+    // A page of CBAs has no Vendor column (see MRQ_SHOW_VENDOR). The header and the cells are switched together, here, so
+    // they never disagree.
+    const showVendor = MRQ_SHOW_VENDOR;
+    const vendorTh = $mrq('mrq-th-vendor');
+    if (vendorTh) vendorTh.style.display = showVendor ? '' : 'none';
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="10"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No memo requests found.</span></div></td></tr>';
+        tbody.innerHTML = `<tr><td colspan="${showVendor ? 10 : 9}"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No memo requests found.</span></div></td></tr>`;
         return;
     }
     const offset = (mrq_page - 1) * MRQ_PAGE_SIZE;
@@ -510,11 +521,11 @@ function mrq_renderTable(rows) {
             ${r.sub_program_name ? `<div class="nha-td-sub" style="margin-top:2px;">${mrq_esc(r.sub_program_name)}</div>` : ''}
             ${r.project_name ? `<div class="nha-td-sub" style="margin-top:2px;">${mrq_esc(r.project_name)}</div>` : ''}
         </td>
-        <td>${mrq_esc(r.vendor_name || '—')}</td>
+        ${showVendor ? `<td>${mrq_esc(r.vendor_name || '—')}</td>` : ''}
         <td style="white-space:nowrap;">${mrq_money(r.requested_total)}</td>
         <td>${mrq_dateCell(r.created_at)}</td>
         <td>${mrq_statusBadge(r.status_name, r.status_color)}</td>
-        <td>${mrq_actionMenu(id, mrq_isDraft(r), mrq_isReturned(r))}</td>
+        <td>${mrq_actionMenu(id, mrq_isDraft(r), mrq_isReturned(r), String(r.allocation_type || '').toUpperCase())}</td>
     </tr>`;
     }).join('');
 }
@@ -523,26 +534,27 @@ function mrq_renderTable(rows) {
 // One "Actions" button per row that opens a small menu — the same idea as the Budget Requirements list. Sections, with a
 // divider between each one that is shown:
 //   View     — the request's details, read-only: on every row, for every user;
-//   Print    — right under View, on every row: the printed form of the request (CBA / RFA / LAA);
-//   Preview  — only while the request is still a Draft: it moves it on to For Preview;
+//   Submit for Review — only while the request is still a Draft: it moves it on to For Preview;
 //   Edit and Delete — only while the request is a Draft (once it has left Draft it can no longer be changed or removed
 //              by the requesting office); FMD never gets them;
 //   Edit     — also on a request that was Returned to the requesting office (Delete stays Draft-only);
 //   Process  — FMD only (in place of Edit and Delete), on every row.
 // The menu is positioned with fixed coordinates, so the table's own scrolling never clips it.
-function mrq_actionMenu(id, isDraft, isReturned = false) {
+// `type` is the row's own allocation type (CBA / RFA / LAA): an RFA page lists RFAs and LAAs together, so what is offered
+// per row (CAF) follows the row, not the page.
+function mrq_actionMenu(id, isDraft, isReturned = false, type = '') {
     // View: the details modal without its decision buttons (see readone/memo-process-readone.php).
     const viewItem = `<button type="button" class="nha-menu-item" data-action="view" title="See the details of this memo request" onclick="mrq_closeMenus();mpr_open(${id}, true);">
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
                 View
             </button>`;
 
-    // Preview is tinted with the colour of the status it gives (For Preview's settings_status.color); Edit and Delete
+    // Submit for Review is tinted with the colour of the status it gives (For Preview's settings_status.color); Edit and Delete
     // keep the plain look. With no usable colour it is a plain item too.
     const color = isDraft ? mrq_statusColor(MRQ_STATUS_PREVIEW) : '';
-    const previewItem = !isDraft ? '' : `<button type="button" class="nha-menu-item${color ? ' has-color' : ''}"${color ? ` style="--nha-item-color:${color};"` : ''} data-action="preview" title="Submit for preview: its status becomes ${MRQ_STATUS_PREVIEW}" onclick="mrq_closeMenus();mrq_preview(${id});">
+    const previewItem = !isDraft ? '' : `<button type="button" class="nha-menu-item${color ? ' has-color' : ''}"${color ? ` style="--nha-item-color:${color};"` : ''} data-action="preview" title="Submit for review: its status becomes ${MRQ_STATUS_PREVIEW}" onclick="mrq_closeMenus();mrq_preview(${id});">
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-                Preview
+                Submit for Review
             </button>`;
 
     // FMD REVIEWS requests instead of editing them: Edit and Delete are hidden for it and each row gets "Process" (a modal
@@ -562,20 +574,20 @@ function mrq_actionMenu(id, isDraft, isReturned = false) {
             </button>`;
     const editAndDelete = `${editItem}<div class="nha-menu-divider"></div>${deleteItem}`;
 
-    // Create CAF: only on the RFA tab (a CAF certifies an RFA) — opens the CAF form with this RFA already selected.
-    const cafItem = mrq_activeType !== 'RFA' ? '' : `<button type="button" class="nha-menu-item" data-action="create-caf" title="Create a Certificate as to Availability of Funds for this RFA" onclick="mrq_closeMenus();mrq_createCaf(${id});">
+    // Create CAF: only on an RFA row (a CAF certifies an RFA) — opens the CAF form with this RFA already selected.
+    const cafItem = type !== 'RFA' ? '' : `<button type="button" class="nha-menu-item" data-action="create-caf" title="Create a Certificate as to Availability of Funds for this RFA" onclick="mrq_closeMenus();mrq_createCaf(${id});">
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                 Create CAF
             </button>`;
 
-    // Print: on every row, every tab — the printed form of this request (CBA / RFA / LAA by its allocation type).
+    // Print: on every row — the printed form of this request (CBA / RFA / LAA by its allocation type).
     const printIcon = '<svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>';
-    const printItem = `<button type="button" class="nha-menu-item" data-action="print" title="Print this ${mrq_esc(mrq_activeType)}" onclick="mrq_closeMenus();mrq_printAllocation(${id});">
+    const printItem = `<button type="button" class="nha-menu-item" data-action="print" title="Print this ${mrq_esc(type || 'request')}" onclick="mrq_closeMenus();mrq_printAllocation(${id});">
                 ${printIcon}
                 Print
             </button>`;
-    // Print CAF: RFA tab only — the CAF of this RFA (a row does not know its CAFs: they are looked up when it is clicked).
-    const printCafItem = mrq_activeType !== 'RFA' ? '' : `<button type="button" class="nha-menu-item" data-action="print-caf" title="Print the Certificate as to Availability of Funds of this RFA" onclick="mrq_closeMenus();mrq_printCafOfRfa(${id});">
+    // Print CAF: RFA rows only — the CAF of this RFA (a row does not know its CAFs: they are looked up when it is clicked).
+    const printCafItem = type !== 'RFA' ? '' : `<button type="button" class="nha-menu-item" data-action="print-caf" title="Print the Certificate as to Availability of Funds of this RFA" onclick="mrq_closeMenus();mrq_printCafOfRfa(${id});">
                 ${printIcon}
                 Print CAF
             </button>`;
@@ -667,7 +679,7 @@ function mrq_edit(id) {
 }
 
 // Create CAF: the CAF form modal (form/caf-form.php, window.cafModal) opened on this RFA — it comes up with the RFA already
-// selected in its RFA field. RFA tab only (see mrq_actionMenu()).
+// selected in its RFA field. RFA rows only (see mrq_actionMenu()).
 function mrq_createCaf(id) {
     if (!window.cafModal) {
         mrq_toast('The CAF form could not be loaded. Please refresh the page.', 'error');
@@ -732,7 +744,7 @@ async function mrq_printCafOfRfa(allocationId) {
     return mrq_printCaf(cafs[cafs.length - 1].id);      // oldest first: the last one is the latest
 }
 
-/* ── Preview: Draft -> For Preview ─────────────────────────── */
+/* ── Submit for Review: Draft -> For Preview ───────────────── */
 // The id of the memo-request status called `name`. It is looked up in the statuses loaded at start-up; when it is not
 // there they are read again once (it may have been added since the page opened). Throws when it still isn't set up.
 async function mrq_statusId(name) {
@@ -751,16 +763,16 @@ async function mrq_statusId(name) {
     return Number(hit.id);
 }
 
-// "Preview" in a Draft row's Actions menu: after a confirmation, sets the request's status to For Preview — the same
-// status the memo form's "Submit for Preview" gives — and refreshes the list.
+// "Submit for Review" in a Draft row's Actions menu: after a confirmation, sets the request's status to For Preview — the same
+// status the memo form's "Submit for Review" gives — and refreshes the list.
 async function mrq_preview(id) {
     const row = mrq_rows.find(r => Number(r.allocation_id) === Number(id));
     if (!row || !mrq_isDraft(row)) {
-        mrq_toast(`Only a ${MRQ_STATUS_DRAFT} request can be submitted for preview.`, 'warning');
+        mrq_toast(`Only a ${MRQ_STATUS_DRAFT} request can be submitted for review.`, 'warning');
         return;
     }
     const ref = mrq_refOf(row) ? `"${mrq_refOf(row)}"` : `#${id}`;
-    if (!confirm(`Submit memo request ${ref} for preview? Its status will change from ${MRQ_STATUS_DRAFT} to ${MRQ_STATUS_PREVIEW}.`)) return;
+    if (!confirm(`Submit memo request ${ref} for review? Its status will change from ${MRQ_STATUS_DRAFT} to ${MRQ_STATUS_PREVIEW}.`)) return;
 
     window.PagePreloader?.show();
     try {
@@ -771,7 +783,7 @@ async function mrq_preview(id) {
             headers: { 'Content-Type': 'application/json' },
             body   : JSON.stringify({ status_id: statusId }),
         });
-        mrq_toast(`Memo request ${ref} submitted for preview.`, 'success');
+        mrq_toast(`Memo request ${ref} submitted for review.`, 'success');
         mrq_load();
     } catch (e) {
         mrq_toast(e.message, 'error');

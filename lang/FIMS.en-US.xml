@@ -8,26 +8,80 @@
     <menu id="9">
       <phrase id="menutext" value="Dashboard" />
     </menu>
-    <menu id="146">
-      <phrase id="menutext" value="Budget" />
+    <menu id="541">
+      <phrase id="menutext" value="COB Preparation" />
     </menu>
-    <menu id="88">
-      <phrase id="menutext" value="Memo Request" />
+    <menu id="261">
+      <phrase id="menutext" value="Budget Proposal" />
     </menu>
     <menu id="81">
       <phrase id="menutext" value="Budget Request" />
     </menu>
-    <menu id="261">
-      <phrase id="menutext" value="Budget Propose" />
+    <menu id="555">
+      <phrase id="menutext" value="Budget Proposal Review" />
     </menu>
     <menu id="85">
       <phrase id="menutext" value="Budget Revision" />
     </menu>
+    <menu id="146">
+      <phrase id="menutext" value="Budget Process" />
+    </menu>
+    <menu id="553">
+      <phrase id="menutext" value="Request for Allocation(CBA)" />
+    </menu>
+    <menu id="556">
+      <phrase id="menutext" value="CBA Review" />
+    </menu>
+    <menu id="554">
+      <phrase id="menutext" value="Request for Allocation(RFA/LAA)" />
+    </menu>
+    <menu id="557">
+      <phrase id="menutext" value="RFA/LAA Review" />
+    </menu>
     <menu id="399">
       <phrase id="menutext" value="Ledger of Budget Allocation" />
     </menu>
-    <menu id="147">
-      <phrase id="menutext" value="Programs &amp; Projects " />
+    <menu id="88">
+      <phrase id="menutext" value="Memo Request" />
+    </menu>
+    <menu id="549">
+      <phrase id="menutext" value="DV Processing" />
+    </menu>
+    <menu id="207">
+      <phrase id="menutext" value="Disbursement Voucher" />
+    </menu>
+    <menu id="558">
+      <phrase id="menutext" value="DV Review" />
+    </menu>
+    <menu id="559">
+      <phrase id="menutext" value="Liquidation Voucher" />
+    </menu>
+    <menu id="551">
+      <phrase id="menutext" value="Registry/NCA" />
+    </menu>
+    <menu id="263">
+      <phrase id="menutext" value="SARO Registry" />
+    </menu>
+    <menu id="560">
+      <phrase id="menutext" value="Check Registry" />
+    </menu>
+    <menu id="561">
+      <phrase id="menutext" value="Accountable Forms Registry" />
+    </menu>
+    <menu id="552">
+      <phrase id="menutext" value="Reports" />
+    </menu>
+    <menu id="400">
+      <phrase id="menutext" value="COB Monitoring" />
+    </menu>
+    <menu id="652">
+      <phrase id="menutext" value="FMR" />
+    </menu>
+    <menu id="653">
+      <phrase id="menutext" value="Remittance List (Deductions)" />
+    </menu>
+    <menu id="651">
+      <phrase id="menutext" value="Accounts Set-up" />
     </menu>
     <menu id="80">
       <phrase id="menutext" value="Program" />
@@ -35,14 +89,29 @@
     <menu id="82">
       <phrase id="menutext" value="Sub Program" />
     </menu>
+    <menu id="89">
+      <phrase id="menutext" value="Chart of Accounts" />
+    </menu>
+    <menu id="654">
+      <phrase id="menutext" value="Supplier / Contract" />
+    </menu>
+    <menu id="332">
+      <phrase id="menutext" value="Banks Accounts" />
+    </menu>
+    <menu id="655">
+      <phrase id="menutext" value="Fund Source" />
+    </menu>
+    <menu id="656">
+      <phrase id="menutext" value="Program Sources" />
+    </menu>
+    <menu id="147">
+      <phrase id="menutext" value="Programs &amp; Projects " />
+    </menu>
     <menu id="79">
       <phrase id="menutext" value="Projects" />
     </menu>
     <menu id="148">
       <phrase id="menutext" value="Accounting Records" />
-    </menu>
-    <menu id="89">
-      <phrase id="menutext" value="Chart of Accounts" />
     </menu>
     <menu id="90">
       <phrase id="menutext" value="Responsibilty Center" />
@@ -65,9 +134,6 @@
     <menu id="208">
       <phrase id="menutext" value="Journal Entry Voucher" />
     </menu>
-    <menu id="207">
-      <phrase id="menutext" value="Disbursement Voucher" />
-    </menu>
     <menu id="260">
       <phrase id="menutext" value="Check Disbursements" />
     </menu>
@@ -86,15 +152,6 @@
     <menu id="397">
       <phrase id="menutext" value="Trial Balance" />
     </menu>
-    <menu id="480">
-      <phrase id="menutext" value="Monitoring" />
-    </menu>
-    <menu id="400">
-      <phrase id="menutext" value="COB" />
-    </menu>
-    <menu id="332">
-      <phrase id="menutext" value="Bank Management Page" />
-    </menu>
     <menu id="398">
       <phrase id="menutext" value="Fund Transfer Letter of Advice" />
     </menu>
@@ -106,9 +163,6 @@
     </menu>
     <menu id="392">
       <phrase id="menutext" value="Fund Sourcing Dashboard" />
-    </menu>
-    <menu id="263">
-      <phrase id="menutext" value="SARO Registry" />
     </menu>
     <menu id="264">
       <phrase id="menutext" value="Supplemental Funds" />
@@ -1675,6 +1729,48 @@
     </table>
     <table id="cob_page">
       <phrase id="tblcaption" value="COB" />
+    </table>
+    <table id="cba_memo_request_page">
+      <phrase id="tblcaption" value="CBA Memo Request" />
+    </table>
+    <table id="rfa_laa_memo_request_page">
+      <phrase id="tblcaption" value="RFA/LAA Memo Request" />
+    </table>
+    <table id="budget_proposal_review_page">
+      <phrase id="tblcaption" value="Budget Proposal Review" />
+    </table>
+    <table id="cba_review_page">
+      <phrase id="tblcaption" value="CBA Review" />
+    </table>
+    <table id="rfa_laa_review_page">
+      <phrase id="tblcaption" value="RFA/LAA Review" />
+    </table>
+    <table id="dv_review_page">
+      <phrase id="tblcaption" value="DV Review" />
+    </table>
+    <table id="liquidation_voucher_page">
+      <phrase id="tblcaption" value="Liquidation Voucher" />
+    </table>
+    <table id="check_registry_page">
+      <phrase id="tblcaption" value="Check Registry" />
+    </table>
+    <table id="accountable_forms_registry_page">
+      <phrase id="tblcaption" value="Accountable Forms Registry" />
+    </table>
+    <table id="fmr_page">
+      <phrase id="tblcaption" value="FMR" />
+    </table>
+    <table id="remittance_list_page">
+      <phrase id="tblcaption" value="Remittance List(Deductions)" />
+    </table>
+    <table id="supplier_contract_page">
+      <phrase id="tblcaption" value="Supplier / Contract" />
+    </table>
+    <table id="fund_source_page">
+      <phrase id="tblcaption" value="Fund Source" />
+    </table>
+    <table id="program_sources_page">
+      <phrase id="tblcaption" value="Program Source" />
     </table>
   </project>
 </ew-language>
