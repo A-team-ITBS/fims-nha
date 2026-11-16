@@ -155,6 +155,11 @@ return [
     "liquidation_voucher_page" => \DI\create(LiquidationVoucherPage::class),
     "check_registry_page" => \DI\create(CheckRegistryPage::class),
     "accountable_forms_registry_page" => \DI\create(AccountableFormsRegistryPage::class),
+    "fmr_page" => \DI\create(FmrPage::class),
+    "remittance_list_page" => \DI\create(RemittanceListPage::class),
+    "supplier_contract_page" => \DI\create(SupplierContractPage::class),
+    "fund_source_page" => \DI\create(FundSourcePage::class),
+    "program_sources_page" => \DI\create(ProgramSourcesPage::class),
 
     // User table
     "usertable" => \DI\get("users"),

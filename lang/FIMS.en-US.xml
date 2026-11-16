@@ -74,8 +74,14 @@
     <menu id="400">
       <phrase id="menutext" value="COB Monitoring" />
     </menu>
-    <menu id="147">
-      <phrase id="menutext" value="Programs &amp; Projects " />
+    <menu id="652">
+      <phrase id="menutext" value="FMR" />
+    </menu>
+    <menu id="653">
+      <phrase id="menutext" value="Remittance List (Deductions)" />
+    </menu>
+    <menu id="651">
+      <phrase id="menutext" value="Accounts Set-up" />
     </menu>
     <menu id="80">
       <phrase id="menutext" value="Program" />
@@ -83,14 +89,29 @@
     <menu id="82">
       <phrase id="menutext" value="Sub Program" />
     </menu>
+    <menu id="89">
+      <phrase id="menutext" value="Chart of Accounts" />
+    </menu>
+    <menu id="654">
+      <phrase id="menutext" value="Supplier / Contract" />
+    </menu>
+    <menu id="332">
+      <phrase id="menutext" value="Banks Accounts" />
+    </menu>
+    <menu id="655">
+      <phrase id="menutext" value="Fund Source" />
+    </menu>
+    <menu id="656">
+      <phrase id="menutext" value="Program Sources" />
+    </menu>
+    <menu id="147">
+      <phrase id="menutext" value="Programs &amp; Projects " />
+    </menu>
     <menu id="79">
       <phrase id="menutext" value="Projects" />
     </menu>
     <menu id="148">
       <phrase id="menutext" value="Accounting Records" />
-    </menu>
-    <menu id="89">
-      <phrase id="menutext" value="Chart of Accounts" />
     </menu>
     <menu id="90">
       <phrase id="menutext" value="Responsibilty Center" />
@@ -130,9 +151,6 @@
     </menu>
     <menu id="397">
       <phrase id="menutext" value="Trial Balance" />
-    </menu>
-    <menu id="332">
-      <phrase id="menutext" value="Bank Management Page" />
     </menu>
     <menu id="398">
       <phrase id="menutext" value="Fund Transfer Letter of Advice" />
@@ -1738,6 +1756,21 @@
     </table>
     <table id="accountable_forms_registry_page">
       <phrase id="tblcaption" value="Accountable Forms Registry" />
+    </table>
+    <table id="fmr_page">
+      <phrase id="tblcaption" value="FMR" />
+    </table>
+    <table id="remittance_list_page">
+      <phrase id="tblcaption" value="Remittance List(Deductions)" />
+    </table>
+    <table id="supplier_contract_page">
+      <phrase id="tblcaption" value="Supplier / Contract" />
+    </table>
+    <table id="fund_source_page">
+      <phrase id="tblcaption" value="Fund Source" />
+    </table>
+    <table id="program_sources_page">
+      <phrase id="tblcaption" value="Program Source" />
     </table>
   </project>
 </ew-language>
