@@ -2,8 +2,9 @@
 namespace PHPMaker2024\FIMS;
 
 // Disbursement Voucher VIEW modal — a partial included by app/pages/voucher.php (not a page of its
-// own). Print opens the official DV (General Form No. 1, DvPrintService) and Print JEV this DV's
-// Journal Entry Voucher (JevPrintService), both in the shared print preview included at the end.
+// own). Print opens the official DV (General Form No. 1, DvPrintService) in the shared print preview
+// included at the end. Printing this DV's own Journal Entry Voucher(s) (JevPrintService) is done from
+// the Journal Entry Voucher register instead (each row's own Print action there).
 //
 // API:  vr_open(id)
 //       vr_close()
@@ -107,7 +108,6 @@ $_vr_rcId          = $_vr_isSysAdmin ? null : ($_vr_userRow['rc_id'] ?? null);
             <div class="nha-modal-foot no-print">
                 <button type="button" class="nha-btn nha-btn-ghost" onclick="vr_close()">Close</button>
                 <button type="button" class="nha-btn nha-btn-outline" onclick="vr_print()">Print</button>
-                <button type="button" class="nha-btn nha-btn-outline" id="vr-btn-jev" onclick="vr_printJev()" style="display:none;">Print JEV</button>
                 <span id="vr-actions"></span>
             </div>
 
@@ -160,7 +160,6 @@ async function vr_open(id) {
             } catch (e) { /* grouped card falls back to showing the raw account_code */ }
         }
         vr_render(vr_dv);
-        $vr('vr-btn-jev').style.display = (vr_dv.jev?.lines || []).length ? '' : 'none';   // once Accounting saved the JEV
     } catch (e) {
         $vr('vr-body').innerHTML = `<div class="nha-error" style="display:flex;"><span>${vr_esc(e.message)}</span></div>`;
     } finally {
@@ -176,14 +175,11 @@ document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && $vr('vr-overlay')?.classList.contains('open')) vr_close();
 });
 
-// Print → the official DV form (PDF, pdftk fill); Print JEV → this DV's Journal Entry Voucher.
-// Both open the shared print preview (included below); the payloads are built by its prp_* helpers.
+// Print → the official DV form (PDF, pdftk fill), via the shared print preview (included below) —
+// the payload is built by its prp_dvPayload() helper. Printing this DV's own Journal Entry Voucher(s)
+// is done from the Journal Entry Voucher register instead (each row's own Print action there).
 function vr_print() {
     if (vr_dv) prp_open(prp_dvPayload(vr_dv), { type: 'DV' });
-}
-
-function vr_printJev() {
-    if (vr_dv?.jev) prp_open(prp_jevFromDv(vr_dv), { type: 'JEV' });
 }
 
 function vr_render(dv) {
@@ -1423,6 +1419,6 @@ function vr_esc(text) {
 }
 </script>
 <?php
-// Print / Print JEV → the shared print preview (prp_open + the prp_dvPayload / prp_jevFromDv helpers).
+// Print → the shared print preview (prp_open + the prp_dvPayload helper).
 include_once __DIR__ . '/../readone/print-preview-readone.php';
 ?>

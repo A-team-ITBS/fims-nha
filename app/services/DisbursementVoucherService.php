@@ -1522,6 +1522,10 @@ class DisbursementVoucherService
                 'DB'
             ) ?: [];
 
+            // Supporting Documents attached to this standalone JEV, if any — same convention as
+            // DisbursementVoucherService::fetchById()'s file_attachments.
+            $jev['file_attachments'] = (new FileUploadServices())->attachmentsFor($jev['multiple_node_id'] ?? null);
+
             return ['success' => true, 'data' => $jev];
         } catch (\Exception $e) {
             App\LogError('DisbursementVoucherService::fetchStandaloneJev ' . $e->getMessage());
@@ -1578,6 +1582,16 @@ class DisbursementVoucherService
             } elseif (!$errors && ($totalDebit <= 0 || $totalDebit !== $totalCredit)) {
                 $errors[] = 'Total debits (' . number_format($totalDebit, 2) . ') must equal total credits (' . number_format($totalCredit, 2) . ') and be greater than zero.';
             }
+
+            // Supporting Documents (optional) — a batch already uploaded client-side via
+            // POST /upload/multi-upload, same convention as DisbursementVoucherService::prepare().
+            $nodeId = trim((string) ($body['multiple_node_id'] ?? ''));
+            if ($nodeId !== '' && !preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $nodeId)) {
+                $errors[] = 'multiple_node_id must be a UUID.';
+                $nodeId   = '';
+            }
+            $multipleNodeId = $nodeId !== '' ? strtolower($nodeId) : null;
+
             if ($errors) {
                 return ['success' => false, 'message' => 'Validation failed.', 'errors' => $errors];
             }
@@ -1593,10 +1607,10 @@ class DisbursementVoucherService
             try {
                 $row = App\ExecuteRow(
                     "INSERT INTO {$this->tableJev}
-                        (jev_no, jev_date, dv_id, fiscal_yr, book_id, jev_classification, particulars, total_debit, total_credit, status_id, created_by)
+                        (jev_no, jev_date, dv_id, fiscal_yr, book_id, jev_classification, particulars, total_debit, total_credit, status_id, multiple_node_id, created_by)
                      VALUES (" . $this->str($jevNo) . ', ' . $this->str($jevDate) . ', NULL, ' . (int) $fiscalYr . ', ' . (int) $bookId . ', '
                         . $this->str($jevClassification) . ', ' . $this->strOrNull(trim((string) ($body['particulars'] ?? ''))) . ", {$totalDebit}, {$totalCredit}, "
-                        . $this->intOrNull($draftStatusId) . ", {$uid})
+                        . $this->intOrNull($draftStatusId) . ', ' . $this->strOrNull($multipleNodeId) . ", {$uid})
                      RETURNING jev_id",
                     'DB'
                 );
@@ -1682,11 +1696,24 @@ class DisbursementVoucherService
             } elseif (!$errors && ($totalDebit <= 0 || $totalDebit !== $totalCredit)) {
                 $errors[] = 'Total debits (' . number_format($totalDebit, 2) . ') must equal total credits (' . number_format($totalCredit, 2) . ') and be greater than zero.';
             }
+
+            // Supporting Documents — undefined (key absent) means "unchanged, keep whatever this JEV
+            // already has"; null/'' means "cleared"; anything else must be a UUID — same convention as
+            // createStandaloneJev()/DisbursementVoucherService::prepare().
+            $keepMultipleNodeId = !array_key_exists('multiple_node_id', $body);
+            $nodeId = trim((string) ($body['multiple_node_id'] ?? ''));
+            if ($nodeId !== '' && !preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $nodeId)) {
+                $errors[] = 'multiple_node_id must be a UUID.';
+                $nodeId   = '';
+            }
+            $multipleNodeId = $nodeId !== '' ? strtolower($nodeId) : null;
+
             if ($errors) {
                 return ['success' => false, 'message' => 'Validation failed.', 'errors' => $errors];
             }
 
             $uid = $userId > 0 ? (string) $userId : 'NULL';
+            $multipleNodeIdSql = $keepMultipleNodeId ? 'multiple_node_id' : $this->strOrNull($multipleNodeId);
 
             App\Execute('BEGIN', 'DB');
             try {
@@ -1696,6 +1723,7 @@ class DisbursementVoucherService
                         jev_classification = " . $this->str($jevClassification) . ",
                         particulars = " . $this->strOrNull(trim((string) ($body['particulars'] ?? ''))) . ",
                         total_debit = {$totalDebit}, total_credit = {$totalCredit},
+                        multiple_node_id = {$multipleNodeIdSql},
                         updated_by = {$uid}, updated_at = CURRENT_TIMESTAMP
                      WHERE jev_id = {$jevId}",
                     'DB'
