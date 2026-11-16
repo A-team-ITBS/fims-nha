@@ -453,4 +453,27 @@ class GlobalService
             App\LogError("GlobalService::logStatusChange ({$statusFor}#{$recordId} -> {$status}) " . $e->getMessage());
         }
     }
+
+    /**
+     * The remarks logged alongside a record's MOST RECENT status change (same
+     * ($statusFor, $recordId) scoping as logStatusChange() — this is its read-side
+     * counterpart), or null if that latest change didn't carry any — NOT the last
+     * time any remarks were ever given. e.g. for a fims.budget_req row that was
+     * Returned (with remarks) and has since been Endorsed and Approved (neither of
+     * which carries remarks), this returns null: the Return reason no longer
+     * describes the request's current status, so it should no longer be shown as
+     * if it still does.
+     */
+    public static function getLatestRemarks(string $statusFor, int|string $recordId): ?string
+    {
+        $row = App\ExecuteRow(
+            'SELECT remarks FROM fims.status_change_log'
+            . ' WHERE status_for = ' . App\QuotedValue($statusFor, App\DataType::STRING, 'DB')
+            . ' AND record_id = ' . App\QuotedValue((string) $recordId, App\DataType::STRING, 'DB')
+            . ' ORDER BY changed_at DESC, status_change_log_id DESC LIMIT 1',
+            'DB'
+        );
+
+        return $row['remarks'] ?? null;
+    }
 }

@@ -50,8 +50,8 @@
  * Footer actions:
  *   Return  — needs REMARKS (the box above the footer; required): PUT /budget_req/return/{id} { remarks } sets
  *             the request's status to "Returned" (back to the originating office — the Budget Officer is the first
- *             step of the review chain) and saves the remarks on fims.budget_req.remarks; the line
- *             items are left untouched.
+ *             step of the review chain) and saves the remarks to fims.status_change_log (via
+ *             GlobalService::logStatusChange()); the line items are left untouched.
  *   Endorse — PUT /budget_req/endorse/{id}: Type of Fund and Component are REQUIRED on every line item of
  *             EVERY Project (Suggested Amount is optional); saves them, and the
  *             Account Code, to fims.budget_line_items and
