@@ -118,6 +118,8 @@
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone ($p['PHPMaker2024\\FIMS\\Attributes\\Get'] ?? \Symfony\Component\VarExporter\Internal\Registry::p('PHPMaker2024\\FIMS\\Attributes\\Get')),
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Get'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
@@ -210,6 +212,16 @@
     [
         'PHPMaker2024\\FIMS\\Attributes\\Map' => [
             'methods' => [
+                [
+                    'GET',
+                    'POST',
+                    'OPTIONS',
+                ],
+                [
+                    'GET',
+                    'POST',
+                    'OPTIONS',
+                ],
                 [
                     'GET',
                     'POST',
@@ -1234,6 +1246,7 @@
             ],
             'pattern' => [
                 '/AccountableFormsRegistryPage[/{params:.*}]',
+                '/AccountableOfficerPage[/{params:.*}]',
                 '/AggregatedAuditLogsList',
                 '/AiAssistant[/{params:.*}]',
                 '/AirModule[/{params:.*}]',
@@ -1325,6 +1338,7 @@
                 '/JwtSessionsEdit[/{session_id}]',
                 '/JwtSessionsDelete[/{session_id}]',
                 '/LedgerBudgetAllocation[/{params:.*}]',
+                '/LedgerPage[/{params:.*}]',
                 '/LiquidationVoucherPage[/{params:.*}]',
                 '/MainDashboard[/{params:.*}]',
                 '/MemoReqPage[/{params:.*}]',
@@ -1441,6 +1455,7 @@
             ],
             'handler' => [
                 'PHPMaker2024\\FIMS\\AccountableFormsRegistryPageController:custom',
+                'PHPMaker2024\\FIMS\\AccountableOfficerPageController:custom',
                 'PHPMaker2024\\FIMS\\AggregatedAuditLogsController:list',
                 'PHPMaker2024\\FIMS\\AiAssistantController:custom',
                 'PHPMaker2024\\FIMS\\AirModuleController:custom',
@@ -1532,6 +1547,7 @@
                 'PHPMaker2024\\FIMS\\JwtSessionsController:edit',
                 'PHPMaker2024\\FIMS\\JwtSessionsController:delete',
                 'PHPMaker2024\\FIMS\\LedgerBudgetAllocationController:custom',
+                'PHPMaker2024\\FIMS\\LedgerPageController:custom',
                 'PHPMaker2024\\FIMS\\LiquidationVoucherPageController:custom',
                 'PHPMaker2024\\FIMS\\MainDashboardController:custom',
                 'PHPMaker2024\\FIMS\\MemoReqPageController:custom',
@@ -1647,6 +1663,12 @@
                 'PHPMaker2024\\FIMS\\WorkflowManagerController:custom',
             ],
             'middleware' => [
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
                 [
                     'PHPMaker2024\\FIMS\\PermissionMiddleware',
                 ],
@@ -2263,6 +2285,7 @@
             ],
             'name' => [
                 'custom.accountable_forms_registry_page',
+                'custom.accountable_officer_page',
                 'list.aggregated_audit_logs',
                 'custom.AiAssistant',
                 'custom.AIRModule',
@@ -2354,6 +2377,7 @@
                 'edit.jwt_sessions',
                 'delete.jwt_sessions',
                 'custom.ledger_budget_allocation',
+                'custom.ledger_page',
                 'custom.liquidation_voucher_page',
                 'custom.MainDashboard',
                 'custom.memo_req_page',
@@ -2469,6 +2493,8 @@
                 'custom.WorkflowManager',
             ],
             'options' => [
+                [],
+                [],
                 [],
                 [],
                 [],
@@ -2883,6 +2909,8 @@
         $o[202],
         $o[203],
         $o[204],
+        $o[205],
+        $o[206],
     ],
     []
 );

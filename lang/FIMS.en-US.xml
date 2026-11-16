@@ -23,6 +23,9 @@
     <menu id="85">
       <phrase id="menutext" value="Budget Revision" />
     </menu>
+    <menu id="657">
+      <phrase id="menutext" value="Ledger" />
+    </menu>
     <menu id="146">
       <phrase id="menutext" value="Budget Process" />
     </menu>
@@ -103,6 +106,9 @@
     </menu>
     <menu id="656">
       <phrase id="menutext" value="Program Sources" />
+    </menu>
+    <menu id="658">
+      <phrase id="menutext" value="Accountable Officer" />
     </menu>
     <menu id="147">
       <phrase id="menutext" value="Programs &amp; Projects " />
@@ -1771,6 +1777,12 @@
     </table>
     <table id="program_sources_page">
       <phrase id="tblcaption" value="Program Source" />
+    </table>
+    <table id="ledger_page">
+      <phrase id="tblcaption" value="Ledger" />
+    </table>
+    <table id="accountable_officer_page">
+      <phrase id="tblcaption" value="Accountable Officer" />
     </table>
   </project>
 </ew-language>

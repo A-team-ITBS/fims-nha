@@ -15,6 +15,7 @@ $sideMenu->addMenuItem(261, "mi_budget_prop_page", $Language->menuPhrase("261", 
 $sideMenu->addMenuItem(81, "mi_budget_req_page", $Language->menuPhrase("81", "MenuText"), "BudgetReqPage", 541, "", AllowListMenu('{FIMS}budget-req-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(555, "mi_budget_proposal_review_page", $Language->menuPhrase("555", "MenuText"), "BudgetProposalReviewPage", 541, "", AllowListMenu('{FIMS}budget-proposal-review-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(85, "mi_budget_revision_page", $Language->menuPhrase("85", "MenuText"), "BudgetRevisionPage", 541, "", AllowListMenu('{FIMS}budget-revision-page.php'), false, false, "", "", false, true);
+$sideMenu->addMenuItem(657, "mi_ledger_page", $Language->menuPhrase("657", "MenuText"), "LedgerPage", 541, "", AllowListMenu('{FIMS}ledger-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(146, "mci_Budget_Process", $Language->menuPhrase("146", "MenuText"), "", -1, "", true, false, true, "fas fa-calculator", "", false, true);
 $sideMenu->addMenuItem(553, "mi_cba_memo_request_page", $Language->menuPhrase("553", "MenuText"), "CbaMemoRequestPage", 146, "", AllowListMenu('{FIMS}cba-memo-request-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(556, "mi_cba_review_page", $Language->menuPhrase("556", "MenuText"), "CbaReviewPage", 146, "", AllowListMenu('{FIMS}cba-review-page.php'), false, false, "", "", false, true);
@@ -40,6 +41,7 @@ $sideMenu->addMenuItem(654, "mi_supplier_contract_page", $Language->menuPhrase("
 $sideMenu->addMenuItem(332, "mi_bank_management_page", $Language->menuPhrase("332", "MenuText"), "BankManagementPage", 651, "", AllowListMenu('{FIMS}bank-management-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(655, "mi_fund_source_page", $Language->menuPhrase("655", "MenuText"), "FundSourcePage", 651, "", AllowListMenu('{FIMS}fund-source-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(656, "mi_program_sources_page", $Language->menuPhrase("656", "MenuText"), "ProgramSourcesPage", 651, "", AllowListMenu('{FIMS}program-sources-page.php'), false, false, "", "", false, true);
+$sideMenu->addMenuItem(658, "mi_accountable_officer_page", $Language->menuPhrase("658", "MenuText"), "AccountableOfficerPage", 651, "", AllowListMenu('{FIMS}accountable_officer-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(90, "mi_responsibility_center_page", $Language->menuPhrase("90", "MenuText"), "ResponsibilityCenterPage", 148, "", AllowListMenu('{FIMS}responsibility-center-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(391, "mi_vendors_page", $Language->menuPhrase("391", "MenuText"), "VendorsPage", 148, "", AllowListMenu('{FIMS}vendors-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(91, "mi_IARModule", $Language->menuPhrase("91", "MenuText"), "IarModule", 390, "", AllowListMenu('{FIMS}IARModule.php'), false, false, "", "", false, true);

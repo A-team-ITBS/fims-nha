@@ -160,6 +160,8 @@ return [
     "supplier_contract_page" => \DI\create(SupplierContractPage::class),
     "fund_source_page" => \DI\create(FundSourcePage::class),
     "program_sources_page" => \DI\create(ProgramSourcesPage::class),
+    "ledger_page" => \DI\create(LedgerPage::class),
+    "accountable_officer_page" => \DI\create(AccountableOfficerPage::class),
 
     // User table
     "usertable" => \DI\get("users"),
