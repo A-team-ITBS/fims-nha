@@ -27,21 +27,27 @@ use PHPMaker2024\FIMS as App;
  * adds a narrow, read-only lookup over it (fetchRfaOptions / fetchRfaDetail) -
  * no write path, no FK.
  *
- * Status is a plain column moved by changeStatus(), modeling the real four-office
- * review chain (Originating -> FMD -> Accounting -> Treasury) as a straight-line
- * pipeline, same state-machine shape as PurchaseOrderService otherwise:
- *   DRAFT            -> FOR_FMD_REVIEW | CANCELLED                 (Originating submits)
- *   FOR_FMD_REVIEW    -> FOR_ACCOUNTING | REJECTED | CANCELLED      (FMD checks the obligation, approves)
- *   FOR_ACCOUNTING    -> FOR_TREASURY | REJECTED | CANCELLED        (Accounting processes the DV)
- *   FOR_TREASURY      -> RELEASED | CANCELLED                       (Treasury releases payment)
- *   REJECTED          -> CANCELLED           (or edited + re-saved via update())
+ * Status is a plain column moved by changeStatus(), modeling the real office review
+ * chain (Originating -> FMD -> Accounting -> Treasury) as a straight-line pipeline.
+ * Accounting itself is a three-step internal review (Section Chief processes the DV,
+ * Division Manager reviews, Department Manager approves) before the voucher is released
+ * to Treasury — same state-machine shape as PurchaseOrderService otherwise:
+ *   DRAFT                  -> FOR_FMD_REVIEW | CANCELLED                       (Originating submits)
+ *   FOR_FMD_REVIEW          -> FOR_ACCOUNTING | REJECTED | CANCELLED            (FMD checks the obligation, approves)
+ *   FOR_ACCOUNTING          -> FOR_DIVISION_MANAGER | REJECTED | CANCELLED      (Accounting Section Chief processes the DV + prepares the JEV)
+ *   FOR_DIVISION_MANAGER    -> FOR_DEPARTMENT_MANAGER | REJECTED | CANCELLED    (Division Manager reviews)
+ *   FOR_DEPARTMENT_MANAGER  -> FOR_TREASURY | REJECTED | CANCELLED              (Department Manager approves)
+ *   FOR_TREASURY            -> RELEASED | CANCELLED                             (Treasury releases payment)
+ *   REJECTED                -> CANCELLED           (or edited + re-saved via update())
  *   RELEASED / CANCELLED are terminal.
  *
- * Accounting's stage requires preparing a Journal Entry Voucher (saveJournalEntry() -
- * fims.journal_entry_vouchers/_lines, a balanced single combined entry: Dr the DV's
- * object-of-expenditure account_code, Cr Due to BIR for any withholding tax, Cr
- * Accounts Payable for the net) - checked by changeStatus() before FOR_ACCOUNTING can
- * advance to FOR_TREASURY. ATC withholding lines are optional (0 or more) and saved in
+ * Accounting's first step (FOR_ACCOUNTING, the Section Chief) requires preparing a Journal
+ * Entry Voucher (saveJournalEntry() - fims.journal_entry_vouchers/_lines, a balanced single
+ * combined entry: Dr the DV's object-of-expenditure account_code, Cr Due to BIR for any
+ * withholding tax, Cr Accounts Payable for the net) - checked by changeStatus() before
+ * FOR_ACCOUNTING can advance to FOR_DIVISION_MANAGER. The JEV is posted to the General Ledger
+ * only at the end of the chain, when the Department Manager approves it onward to Treasury
+ * (FOR_DEPARTMENT_MANAGER -> FOR_TREASURY). ATC withholding lines are optional (0 or more) and saved in
  * the same call. Treasury's actual cash entry (AP -> Cash) isn't modeled; this project
  * treats the JEV as the single combined obligation+payment entry.
  *
@@ -64,10 +70,12 @@ class DisbursementVoucherService
     private string $tableRfa      = 'fims.budget_allocation';
     private string $tableUsers    = 'uac.users';
     private string $tableFiscal   = 'fims.fiscal_year';
+    private string $tableBooks    = 'fims.books';
     private string $tableCoa      = 'fims.chart_of_accounts';
     private string $tableAtc      = 'fims.atc_codes';
     private string $tableJev      = 'fims.journal_entry_vouchers';
     private string $tableJevLines = 'fims.journal_entry_voucher_lines';
+    private string $tableViewJev  = 'fims.v_journal_entry_vouchers';
     private string $tableRc              = 'fims.responsibility_code';
     private string $tableDeductionTypes  = 'fims.deduction_types';
     private string $tableDvDeductions    = 'fims.disbursement_voucher_deductions';
@@ -77,21 +85,30 @@ class DisbursementVoucherService
     private string $tableSlDetails       = 'fims.sl_details';
     private string $tableBudgetCategory  = 'fims.budget_category';
 
-    // Classification tag only (reporting/filtering) — same set fims.purchase_orders.expense_class
-    // uses; it never changes which fields the voucher form shows.
-    private const EXPENSE_CLASSES = ['MOOE', 'PS', 'CAPITAL_OUTLAY', 'OTHER'];
+    // Classification tag only (reporting/filtering) — never changes which fields the voucher form
+    // shows. NOT a manual/pickable field: it is derived server-side from the voucher's own
+    // account_code (see deriveExpenseClass()) — the account already says what kind of spend this
+    // is, so asking the preparer to also pick PS/MOOE/CAPITAL_OUTLAY/EQUIPMENT_OUTLAY separately
+    // would just be a second, potentially-contradicting source of truth. Any expense_class the
+    // client sends in the request body is ignored.
+    // NOTE: fims.purchase_orders.expense_class (PurchaseOrderService::EXPENSE_CLASSES) is still a
+    // separate, manually-validated list (['PS', 'MOOE', 'CAPITAL_OUTLAY', 'CO', 'OTHER']) — that
+    // module was NOT changed here; only this one's concept of expense_class moved to COA-derived.
+    private const EXPENSE_CLASSES = ['MOOE', 'PS', 'CAPITAL_OUTLAY', 'EQUIPMENT_OUTLAY', 'OTHER'];
 
     private const EDITABLE      = ['DRAFT', 'REJECTED'];
     private const DELETABLE     = ['DRAFT', 'CANCELLED'];
     private const SAVE_STATUSES = ['DRAFT', 'FOR_FMD_REVIEW'];
     private const TRANSITIONS   = [
-        'DRAFT'           => ['FOR_FMD_REVIEW', 'CANCELLED'],
-        'FOR_FMD_REVIEW'  => ['FOR_ACCOUNTING', 'REJECTED', 'CANCELLED'],
-        'FOR_ACCOUNTING'  => ['FOR_TREASURY', 'REJECTED', 'CANCELLED'],
-        'FOR_TREASURY'    => ['RELEASED', 'CANCELLED'],
-        'REJECTED'        => ['CANCELLED'],
-        'RELEASED'        => [],
-        'CANCELLED'       => [],
+        'DRAFT'                  => ['FOR_FMD_REVIEW', 'CANCELLED'],
+        'FOR_FMD_REVIEW'         => ['FOR_ACCOUNTING', 'REJECTED', 'CANCELLED'],
+        'FOR_ACCOUNTING'         => ['FOR_DIVISION_MANAGER', 'REJECTED', 'CANCELLED'],
+        'FOR_DIVISION_MANAGER'   => ['FOR_DEPARTMENT_MANAGER', 'REJECTED', 'CANCELLED'],
+        'FOR_DEPARTMENT_MANAGER' => ['FOR_TREASURY', 'REJECTED', 'CANCELLED'],
+        'FOR_TREASURY'           => ['RELEASED', 'CANCELLED'],
+        'REJECTED'               => ['CANCELLED'],
+        'RELEASED'               => [],
+        'CANCELLED'              => [],
     ];
 
     // Responsibility Center (fims.responsibility_code.rc_id) that HOLDS the voucher while it sits
@@ -100,10 +117,17 @@ class DisbursementVoucherService
     // STAGE_HOLDER_RC['FOR_FMD_REVIEW'] is FMD because FMD is who's holding it for review right
     // now, which is also, not coincidentally, who must approve moving it on to FOR_ACCOUNTING.
     // DRAFT has no entry (Originating holds it, open to anyone) — see authorizeTransition().
+    // The three Accounting steps (FOR_ACCOUNTING -> FOR_DIVISION_MANAGER -> FOR_DEPARTMENT_MANAGER)
+    // are all held by the Accounting Department (RC 012) — Section Chief, Division Manager and
+    // Department Manager are positions WITHIN that one office, so any Accounting-Department user may
+    // advance each step. (Enforcing a distinct approver per step would need per-position roles, which
+    // this project doesn't model — see DisbursementVoucherService's docblock.)
     private const STAGE_HOLDER_RC = [
-        'FOR_FMD_REVIEW' => '013', // Financial Management Department (FMD)
-        'FOR_ACCOUNTING' => '012', // Accounting Department
-        'FOR_TREASURY'   => '014', // Treasury Department
+        'FOR_FMD_REVIEW'         => '013', // Financial Management Department (FMD)
+        'FOR_ACCOUNTING'         => '012', // Accounting Department — Section Chief processes + prepares JEV
+        'FOR_DIVISION_MANAGER'   => '012', // Accounting Department — Division Manager reviews
+        'FOR_DEPARTMENT_MANAGER' => '012', // Accounting Department — Department Manager approves
+        'FOR_TREASURY'           => '014', // Treasury Department
     ];
     private const STAGE_RC_LABEL = [
         '013' => 'Financial Management Department (FMD)',
@@ -202,12 +226,19 @@ class DisbursementVoucherService
         }
         $fields['fiscal_yr'] = (int) $fy;
 
-        // Expense class (optional) — classification tag only, never branches validation/fields
-        $expenseClass = strtoupper(trim((string) ($body['expense_class'] ?? '')));
-        if ($expenseClass !== '' && !in_array($expenseClass, self::EXPENSE_CLASSES, true)) {
-            $errors[] = 'expense_class must be one of: ' . implode(', ', self::EXPENSE_CLASSES);
-        }
-        $fields['expense_class'] = $expenseClass;
+        // Book (fims.books — Main Office/CISFA/NGC/MPLC-PPMO/PPMO) isn't a DV-header field — it's an
+        // accounting classification chosen on the Accounting Entries section (same place as Account
+        // Code/SL Code), so it's not validated/stored here. Just passed through raw for create()/
+        // update()'s own optional Accounting Entries pre-fill call into persistJournalEntry(), which
+        // does the real validation — see "03 - alter_table/30".
+        $fields['book_id'] = $body['book_id'] ?? null;
+
+        // Same "passed through raw, validated inside persistJournalEntry()" treatment as book_id
+        // above — REGULAR | ACCRUAL | DEPRECIATION | PREPAYMENTS | CLOSING, see "03 - alter_table/32".
+        $fields['jev_classification'] = $body['jev_classification'] ?? null;
+
+        // Expense class: derived from account_code below (deriveExpenseClass()), once account_code
+        // itself is resolved — NOT read from $body here; see the EXPENSE_CLASSES doc comment above.
 
         // RFA — soft reference into fims.budget_allocation (allocation_type = 'RFA'); at least one is
         // required, same as the paper General Form No. 1 always citing the allotment(s) it's drawn
@@ -272,7 +303,8 @@ class DisbursementVoucherService
                 $errors[] = "Account code '{$acctCode}' is not postable (it's a summary/header account).";
             }
         }
-        $fields['account_code'] = $acctCode;
+        $fields['account_code']   = $acctCode;
+        $fields['expense_class']  = $this->deriveExpenseClass($acctCode);
 
         $fields['remarks'] = trim((string) ($body['remarks'] ?? ''));
 
@@ -367,6 +399,38 @@ class DisbursementVoucherService
         }
 
         return [$errors, $fields];
+    }
+
+    /**
+     * expense_class is NOT a field the preparer picks — it's derived from the account_code they
+     * already chose, by Chart-of-Accounts prefix. Prefixes mirror this project's own COA seed
+     * (_assets/sql/.../03 - fims_chart_of_accounts.sql):
+     *   5-01-xx          Personnel Services               -> PS
+     *   5-02-xx           Maintenance & Other Op. Expenses -> MOOE
+     *   1-06-05 / -06 / -07 / -08 / -09   Machinery & Equipment, Furniture &
+     *     Fixtures, Leased Assets, Leased Asset Improvements (movable PPE) -> EQUIPMENT_OUTLAY
+     *   1-06-xx (anything else under PPE: Land, Land Improvements,
+     *     Infrastructure Assets, Buildings, Heritage Assets, Service
+     *     Concession, Construction in Progress — all immovable/civil-works) -> CAPITAL_OUTLAY
+     *   anything else (Assets/Liabilities/Equity/Revenue accounts the form
+     *     wouldn't normally post a DV to, or an account outside these trees) -> OTHER
+     */
+    private function deriveExpenseClass(string $accountCode): string
+    {
+        if (str_starts_with($accountCode, '5-01')) {
+            return 'PS';
+        }
+        if (str_starts_with($accountCode, '5-02')) {
+            return 'MOOE';
+        }
+        if (preg_match('/^1-06-0[5-9]/', $accountCode) === 1) {
+            return 'EQUIPMENT_OUTLAY';
+        }
+        if (str_starts_with($accountCode, '1-06')) {
+            return 'CAPITAL_OUTLAY';
+        }
+
+        return 'OTHER';
     }
 
     /**
@@ -615,7 +679,55 @@ class DisbursementVoucherService
         $rfa['paid_amount']        = round($this->priorPaymentsForRfa((int) $rfa['allocation_id'], $excludeDvId), 2);
         $rfa['remaining_balance']  = round($rfa['budget_amount'] - $rfa['paid_amount'], 2);
 
+        $account = $this->rfaFirstLineAccount($rfa);
+        $rfa['account_code']  = $account['account_code']  ?? null;
+        $rfa['account_title'] = $account['account_title'] ?? null;
+        $rfa['expense_class'] = $account ? $this->deriveExpenseClass($account['account_code']) : null;
+
         return $rfa;
+    }
+
+    /**
+     * The Chart-of-Accounts row behind the FIRST budget_line_item_id named in this RFA's own
+     * line_transaction — null if it's empty/unreadable or that line item no longer exists.
+     *
+     * Backs two voucher-form autofills that need to know this BEFORE a voucher (and its own
+     * account_code) exists yet:
+     *   - account_code/account_title: the form's Account Code field autofills from it (see
+     *     vf_onRfaSelectionChange()) the same way Dept/Project, PO Number and Vendor already do —
+     *     the RFA was approved against a specific COB (chart-of-accounts budget line), so the
+     *     voucher drawing on it should default to posting to that same account, not a blank field
+     *     the preparer has to search the Chart of Accounts for by hand.
+     *   - expense_class: the "lock the RFA picker to one class" behavior (vf_renderRfaDropdown()) —
+     *     derived the same way deriveExpenseClass() derives a voucher's, by Chart-of-Accounts prefix.
+     * Every line an RFA this project's demo seed creates carries is from the same class's accounts
+     * (see "07 - budget_request_and_voucher_full_cycle_demo.sql"), so the first line is
+     * representative of the whole RFA for both purposes, not just a guess — but if an RFA's lines
+     * ever do span more than one account, only the first is reflected; Accounting still reconciles
+     * the rest via the Journal Entry Voucher's own per-line account codes regardless.
+     */
+    private function rfaFirstLineAccount(array $rfa): ?array
+    {
+        $lines = json_decode((string) ($rfa['line_transaction'] ?? '[]'), true) ?: [];
+        $firstLineItemId = null;
+        foreach ($lines as $line) {
+            if (isset($line['budget_line_item_id']) && ctype_digit((string) $line['budget_line_item_id'])) {
+                $firstLineItemId = (int) $line['budget_line_item_id'];
+                break;
+            }
+        }
+        if ($firstLineItemId === null) {
+            return null;
+        }
+
+        $row = App\ExecuteRow(
+            "SELECT coa.account_code, coa.account_title FROM fims.budget_line_items bli
+             JOIN {$this->tableCoa} coa ON coa.account_id = bli.account_id
+             WHERE bli.budget_line_item_id = {$firstLineItemId}",
+            'DB'
+        );
+
+        return $row ?: null;
     }
 
     /**
@@ -748,7 +860,7 @@ class DisbursementVoucherService
             $summary = App\ExecuteRow(
                 "SELECT COALESCE(SUM(dv.net_amount), 0) AS total_amount,
                         COUNT(*) FILTER (WHERE st.name = 'RELEASED')                              AS approved,
-                        COUNT(*) FILTER (WHERE st.name IN ('FOR_FMD_REVIEW','FOR_ACCOUNTING','FOR_TREASURY')) AS pending,
+                        COUNT(*) FILTER (WHERE st.name IN ('FOR_FMD_REVIEW','FOR_ACCOUNTING','FOR_DIVISION_MANAGER','FOR_DEPARTMENT_MANAGER','FOR_TREASURY')) AS pending,
                         COUNT(*) FILTER (WHERE st.name IN ('REJECTED','CANCELLED'))                AS rejected
                  FROM {$from} WHERE {$whereSql}",
                 'DB'
@@ -802,6 +914,7 @@ class DisbursementVoucherService
             $row['allowed_transitions'] = self::TRANSITIONS[$row['status']] ?? [];
             $row['is_editable']        = in_array($row['status'], self::EDITABLE, true);
             $row['jev']                = $this->fetchJev($dvId);
+            $row['payment_jevs']       = $this->fetchPaymentJevs($dvId);
             $row['deductions']         = $this->fetchDeductions($dvId);
             $row['atc_lines']          = $this->fetchAtcLines($dvId);
 
@@ -892,10 +1005,22 @@ class DisbursementVoucherService
 
     // ── Journal Entry Voucher (Accounting stage) ──
 
-    /** The JEV for a DV (header + lines, with any SL breakdown), or null if not prepared yet. */
+    /**
+     * The editable SETUP JEV for a DV (header + lines, with any SL breakdown), or null if not
+     * prepared yet. dv_id is no longer unique on fims.journal_entry_vouchers — a DV can also have
+     * one or more PAYMENT JEVs (see fetchPaymentJevs(), GeneralLedgerService::
+     * createPaymentJev()) — so this filters to jev_type = 'SETUP' explicitly, the only one this
+     * class's own create/update/saveJournalEntry() ever read or write.
+     */
     private function fetchJev(int $dvId): ?array
     {
-        $jev = App\ExecuteRow("SELECT * FROM {$this->tableJev} WHERE dv_id = {$dvId}", 'DB');
+        $jev = App\ExecuteRow(
+            "SELECT jev.*, b.name AS book_name
+             FROM {$this->tableJev} jev
+             LEFT JOIN {$this->tableBooks} b ON b.book_id = jev.book_id
+             WHERE jev.dv_id = {$dvId} AND jev.jev_type = 'SETUP'",
+            'DB'
+        );
         if (!$jev) {
             return null;
         }
@@ -917,6 +1042,43 @@ class DisbursementVoucherService
     }
 
     /**
+     * Every PAYMENT JEV against a DV (GeneralLedgerService::createPaymentJev(), e.g. one per
+     * check/ADA release) — oldest first; each carries its status (DRAFT until Accounting posts it via
+     * postPaymentJev(), then POSTED). A DV's whole JEV picture is its one SETUP JEV (fetchJev(),
+     * editable) plus zero or more of these.
+     */
+    private function fetchPaymentJevs(int $dvId): array
+    {
+        $jevs = App\ExecuteRows(
+            "SELECT jev.*, b.name AS book_name, st.name AS status
+             FROM {$this->tableJev} jev
+             LEFT JOIN {$this->tableBooks} b ON b.book_id = jev.book_id
+             LEFT JOIN {$this->tableSettingsStatus} st ON st.id = jev.status_id
+             WHERE jev.dv_id = {$dvId} AND jev.jev_type = 'PAYMENT'
+             ORDER BY jev.jev_id",
+            'DB'
+        ) ?: [];
+
+        foreach ($jevs as &$jev) {
+            $jev['lines'] = App\ExecuteRows(
+                "SELECT jevl.jevl_id, jevl.line_number, jevl.account_code, ac.account_title, jevl.debit, jevl.credit, jevl.description,
+                        jevl.sl_code, sm.sl_name, jevl.sl_detail_id, sd.detail_name AS sl_detail_name,
+                        jevl.rc_id, rc.rc_name
+                 FROM {$this->tableJevLines} jevl
+                 LEFT JOIN {$this->tableCoa}       ac ON ac.account_code = jevl.account_code
+                 LEFT JOIN {$this->tableSlMasters} sm ON sm.sl_code = jevl.sl_code
+                 LEFT JOIN {$this->tableSlDetails} sd ON sd.sl_detail_id = jevl.sl_detail_id
+                 LEFT JOIN {$this->tableRc}        rc ON rc.rc_id = jevl.rc_id
+                 WHERE jevl.jev_id = " . (int) $jev['jev_id'] . ' ORDER BY jevl.line_number',
+                'DB'
+            ) ?: [];
+        }
+        unset($jev);
+
+        return $jevs;
+    }
+
+    /**
      * JEV register — every Journal Entry Voucher prepared so far, joined with its DV, for the
      * standalone Journal Entry Voucher page (read-only; a JEV is only ever created/edited from
      * within its DV's Accounting stage, see saveJournalEntry()).
@@ -926,21 +1088,21 @@ class DisbursementVoucherService
         try {
             $where = ['1=1'];
             if (!empty($filters['fiscal_yr'])) {
-                $where[] = 'j.fiscal_yr = ' . (int) $filters['fiscal_yr'];
+                $where[] = 'fiscal_yr = ' . (int) $filters['fiscal_yr'];
+            }
+            if (!empty($filters['jev_type'])) {
+                $where[] = 'jev_type = ' . App\QuotedValue($filters['jev_type'], App\DataType::STRING, 'DB');
+            }
+            if (!empty($filters['jev_classification'])) {
+                $where[] = 'jev_classification = ' . App\QuotedValue($filters['jev_classification'], App\DataType::STRING, 'DB');
             }
             if (!empty($filters['search'])) {
                 $kw      = App\QuotedValue('%' . $filters['search'] . '%', App\DataType::STRING, 'DB');
-                $where[] = "(j.jev_no ILIKE {$kw} OR dv.dv_no ILIKE {$kw} OR dv.claimant_name ILIKE {$kw})";
+                $where[] = "(jev_no ILIKE {$kw} OR dv_no ILIKE {$kw} OR claimant_name ILIKE {$kw})";
             }
             $whereSql = implode(' AND ', $where);
 
-            $select = "SELECT j.jev_id, j.jev_no, j.jev_date, j.fiscal_yr, j.total_debit, j.total_credit, j.created_at,
-                              dv.dv_id, dv.dv_no, dv.claimant_name, st.name AS dv_status
-                       FROM {$this->tableJev} j
-                       JOIN {$this->table} dv ON dv.dv_id = j.dv_id
-                       LEFT JOIN {$this->tableSettingsStatus} st ON st.id = dv.status_id
-                       WHERE {$whereSql}
-                       ORDER BY j.created_at DESC, j.jev_id DESC";
+            $select = "SELECT * FROM {$this->tableViewJev} WHERE {$whereSql} ORDER BY created_at DESC, jev_id DESC";
 
             if ($page === null) {
                 return ['success' => true, 'data' => App\ExecuteRows($select, 'DB') ?: []];
@@ -948,7 +1110,7 @@ class DisbursementVoucherService
 
             $limit  = max(1, $limit);
             $offset = (max(1, $page) - 1) * $limit;
-            $total  = (int) App\ExecuteScalar("SELECT COUNT(*) FROM {$this->tableJev} j JOIN {$this->table} dv ON dv.dv_id = j.dv_id WHERE {$whereSql}", 'DB');
+            $total  = (int) App\ExecuteScalar("SELECT COUNT(*) FROM {$this->tableViewJev} WHERE {$whereSql}", 'DB');
 
             return [
                 'success'    => true,
@@ -1058,7 +1220,7 @@ class DisbursementVoucherService
      * own transaction (persistJournalEntry() doesn't) since this is a standalone call, not nested
      * inside create()/update()'s.
      */
-    public function saveJournalEntry(int|string $dvId, array $atcLines, array $lines, int $userId): array
+    public function saveJournalEntry(int|string $dvId, array $atcLines, array $lines, int $userId, array $deductions = [], mixed $bookId = null, mixed $jevClassification = null): array
     {
         try {
             $dvId   = (int) $dvId;
@@ -1078,7 +1240,7 @@ class DisbursementVoucherService
 
             App\Execute('BEGIN', 'DB');
             try {
-                $result = $this->persistJournalEntry($dvId, $atcLines, $lines, $userId, true);
+                $result = $this->persistJournalEntry($dvId, $atcLines, $lines, $userId, true, $deductions, $bookId, $jevClassification);
                 if (!$result['success']) {
                     App\Execute('ROLLBACK', 'DB');
 
@@ -1110,23 +1272,31 @@ class DisbursementVoucherService
      *     state, not an error — Accounting still has to prepare a real one later regardless.
      * Full replace of both atc_lines/lines, same upsert shape as PurchaseOrderService's items.
      * Recomputes the DV's net_amount/balance_amount either way.
+     *
+     * $deductions is null for the create()/update() pre-fill call sites — they already manage
+     * fims.disbursement_voucher_deductions themselves (via their own prepareDeductions()/
+     * replaceDeductions() calls, before this runs), so this leaves that table alone. Only
+     * saveJournalEntry() (Accounting) passes a real array — a full replace, same "always send the
+     * current set" convention atc_lines/lines already use, now that Accounting can edit Deductions
+     * too (see app/pages/voucher/readone.php's vje_deductionCard()).
+     *
+     * $bookId (fims.books — see "03 - alter_table/30") is required whenever $lines is non-empty —
+     * Book is an accounting classification chosen alongside the Accounting Entries themselves, not
+     * a DV-header field, so it's validated here rather than in prepare(). Moot when $lines is empty
+     * (no JEV being saved at all).
      */
-    private function persistJournalEntry(int $dvId, array $atcLines, array $lines, int $userId, bool $requireBalancedEntry): array
+    private const JEV_CLASSIFICATIONS = ['REGULAR', 'ACCRUAL', 'DEPRECIATION', 'PREPAYMENTS', 'CLOSING'];
+
+    /**
+     * Shared Dr/Cr line validation — used by both persistJournalEntry() (DV-driven JEVs) and
+     * createStandaloneJev()/updateStandaloneJev() (no-DV ACCRUAL/DEPRECIATION/PREPAYMENTS/CLOSING
+     * entries, "03 - alter_table/33"). Returns [errors, cleanLines, totalDebit, totalCredit] — does
+     * NOT itself enforce "≥2 lines"/"balanced", since callers need that check worded differently
+     * (persistJournalEntry's $requireBalancedEntry flag allows 0 lines as "nothing entered yet").
+     */
+    private function validateJevLines(array $lines): array
     {
-        $dv = App\ExecuteRow(
-            "SELECT dv_id, fiscal_yr, gross_amount, obligation_amount, payments_prior_amount
-             FROM {$this->table} WHERE dv_id = {$dvId}",
-            'DB'
-        );
-        if (!$dv) {
-            return ['success' => false, 'message' => "Disbursement Voucher #{$dvId} not found.", 'httpCode' => 404];
-        }
-
         $errors = [];
-
-        [$atcErrors, $cleanAtc, $totalWithholding] = $this->prepareAtcLines($atcLines);
-        $errors = array_merge($errors, $atcErrors);
-
         $clean = [];
         $totalDebit = 0.0;
         $totalCredit = 0.0;
@@ -1184,19 +1354,64 @@ class DisbursementVoucherService
                 'rc_id'        => $rcId !== '' ? $rcId : null,
             ];
         }
+
+        return [$errors, $clean, round($totalDebit, 2), round($totalCredit, 2)];
+    }
+
+    private function persistJournalEntry(int $dvId, array $atcLines, array $lines, int $userId, bool $requireBalancedEntry, ?array $deductions = null, mixed $bookId = null, mixed $jevClassification = null): array
+    {
+        $dv = App\ExecuteRow(
+            "SELECT dv_id, fiscal_yr, gross_amount, obligation_amount, payments_prior_amount
+             FROM {$this->table} WHERE dv_id = {$dvId}",
+            'DB'
+        );
+        if (!$dv) {
+            return ['success' => false, 'message' => "Disbursement Voucher #{$dvId} not found.", 'httpCode' => 404];
+        }
+
+        $bookId = ($bookId !== null && $bookId !== '' && ctype_digit((string) $bookId)) ? (int) $bookId : null;
+        if ($lines && $bookId === null) {
+            return ['success' => false, 'message' => 'Book (book_id) is required when Accounting Entries lines are provided.'];
+        }
+        if ($bookId !== null && (int) App\ExecuteScalar("SELECT COUNT(*) FROM {$this->tableBooks} WHERE book_id = {$bookId}", 'DB') === 0) {
+            return ['success' => false, 'message' => "Book #{$bookId} does not exist."];
+        }
+
+        $jevClassification = strtoupper(trim((string) ($jevClassification ?? 'REGULAR')));
+        if ($jevClassification === '') {
+            $jevClassification = 'REGULAR';
+        }
+        if (!in_array($jevClassification, self::JEV_CLASSIFICATIONS, true)) {
+            return ['success' => false, 'message' => "jev_classification must be one of: " . implode(', ', self::JEV_CLASSIFICATIONS) . '.'];
+        }
+
+        $errors = [];
+
+        if ($deductions !== null) {
+            [$dedErrors, $cleanDeductions] = $this->prepareDeductions($deductions, (float) $dv['gross_amount']);
+            $errors = array_merge($errors, $dedErrors);
+        }
+
+        [$atcErrors, $cleanAtc, $totalWithholding] = $this->prepareAtcLines($atcLines);
+        $errors = array_merge($errors, $atcErrors);
+
+        [$lineErrors, $clean, $totalDebit, $totalCredit] = $this->validateJevLines($lines);
+        $errors = array_merge($errors, $lineErrors);
         // 0 lines is only an error when a complete entry is required (the dedicated Accounting
         // save); as an optional pre-fill, "nothing entered yet" isn't a validation failure, just
         // nothing to save. 1 line is always wrong either way — a JEV can't have only one side.
         if (count($clean) === 1 || ($requireBalancedEntry && count($clean) === 0)) {
             $errors[] = 'A Journal Entry needs at least two lines (one debit, one credit).';
         }
-        $totalDebit  = round($totalDebit, 2);
-        $totalCredit = round($totalCredit, 2);
         if (count($clean) >= 2 && !$errors && ($totalDebit <= 0 || $totalDebit !== $totalCredit)) {
             $errors[] = "Total debits (" . number_format($totalDebit, 2) . ") must equal total credits (" . number_format($totalCredit, 2) . ') and be greater than zero.';
         }
         if ($errors) {
             return ['success' => false, 'message' => 'Validation failed.', 'errors' => $errors];
+        }
+
+        if ($deductions !== null) {
+            $this->replaceDeductions($dvId, $cleanDeductions);
         }
 
         $totalDeductions = (float) (App\ExecuteScalar("SELECT COALESCE(SUM(deduction_amount), 0) FROM {$this->tableDvDeductions} WHERE dv_id = {$dvId}", 'DB') ?? 0);
@@ -1211,6 +1426,8 @@ class DisbursementVoucherService
                 $jevId = (int) $existing['jev_id'];
                 App\Execute(
                     "UPDATE {$this->tableJev} SET
+                        book_id = " . $this->intOrNull($bookId) . ",
+                        jev_classification = " . $this->str($jevClassification) . ",
                         total_debit = {$totalDebit}, total_credit = {$totalCredit},
                         updated_by = {$uid}, updated_at = CURRENT_TIMESTAMP
                      WHERE jev_id = {$jevId}",
@@ -1220,8 +1437,8 @@ class DisbursementVoucherService
             } else {
                 $jevNo = $this->nextJevNumber(date('Y-m-d'));
                 $row = App\ExecuteRow(
-                    "INSERT INTO {$this->tableJev} (jev_no, dv_id, fiscal_yr, total_debit, total_credit, created_by)
-                     VALUES (" . $this->str($jevNo) . ", {$dvId}, " . (int) $dv['fiscal_yr'] . ", {$totalDebit}, {$totalCredit}, {$uid})
+                    "INSERT INTO {$this->tableJev} (jev_no, dv_id, fiscal_yr, book_id, jev_classification, total_debit, total_credit, created_by)
+                     VALUES (" . $this->str($jevNo) . ", {$dvId}, " . (int) $dv['fiscal_yr'] . ', ' . $this->intOrNull($bookId) . ', ' . $this->str($jevClassification) . ", {$totalDebit}, {$totalCredit}, {$uid})
                      RETURNING jev_id",
                     'DB'
                 );
@@ -1264,6 +1481,448 @@ class DisbursementVoucherService
         );
 
         return ['success' => true, 'message' => 'Journal Entry saved.', 'data' => ['dv_id' => $dvId, 'net_amount' => $netAmount, 'balance_amount' => $balance]];
+    }
+
+    // ── Standalone Journal Entry Voucher (no DV — "03 - alter_table/33") ──
+    //
+    // Every JEV above is prepared from inside a DV's Accounting stage. Period-end adjusting/closing
+    // entries (jev_classification ACCRUAL/DEPRECIATION/PREPAYMENTS/CLOSING) aren't disbursement-
+    // driven at all in real NGAS practice — Accounting books them directly in the General Journal,
+    // with no claimant, no payment, nothing for FMD/Treasury to act on. These four methods are that
+    // standalone path: dv_id is NULL, jev_type stays 'SETUP' (still the only kind this class ever
+    // writes — fits the existing partial unique index fine since multiple NULL dv_id rows don't
+    // collide), and posting to the GL is this class's own direct action (postStandaloneJev()) rather
+    // than something DisbursementVoucherService::changeStatus() triggers on a DV transition.
+
+    /** One standalone JEV + its lines, or null if it doesn't exist / isn't standalone (has a dv_id). */
+    public function fetchStandaloneJev(int $jevId): array
+    {
+        try {
+            $jev = App\ExecuteRow(
+                "SELECT jev.*, b.name AS book_name, st.name AS jev_status
+                 FROM {$this->tableJev} jev
+                 LEFT JOIN {$this->tableBooks} b ON b.book_id = jev.book_id
+                 LEFT JOIN {$this->tableSettingsStatus} st ON st.id = jev.status_id
+                 WHERE jev.jev_id = {$jevId} AND jev.dv_id IS NULL",
+                'DB'
+            );
+            if (!$jev) {
+                return ['success' => false, 'message' => "Standalone Journal Entry Voucher #{$jevId} not found.", 'httpCode' => 404];
+            }
+            $jev['lines'] = App\ExecuteRows(
+                "SELECT jevl.jevl_id, jevl.line_number, jevl.account_code, ac.account_title, jevl.debit, jevl.credit, jevl.description,
+                        jevl.sl_code, sm.sl_name, jevl.sl_detail_id, sd.detail_name AS sl_detail_name,
+                        jevl.rc_id, rc.rc_name
+                 FROM {$this->tableJevLines} jevl
+                 LEFT JOIN {$this->tableCoa}       ac ON ac.account_code = jevl.account_code
+                 LEFT JOIN {$this->tableSlMasters} sm ON sm.sl_code = jevl.sl_code
+                 LEFT JOIN {$this->tableSlDetails} sd ON sd.sl_detail_id = jevl.sl_detail_id
+                 LEFT JOIN {$this->tableRc}        rc ON rc.rc_id = jevl.rc_id
+                 WHERE jevl.jev_id = {$jevId} ORDER BY jevl.line_number",
+                'DB'
+            ) ?: [];
+
+            return ['success' => true, 'data' => $jev];
+        } catch (\Exception $e) {
+            App\LogError('DisbursementVoucherService::fetchStandaloneJev ' . $e->getMessage());
+
+            return ['success' => false, 'message' => 'Failed to load the Journal Entry Voucher.'];
+        }
+    }
+
+    /**
+     * Create a standalone JEV — DRAFT, no dv_id. Accounting Department only (same RC gate as
+     * saveJournalEntry()). $body: jev_date, fiscal_yr, book_id, jev_classification, particulars?,
+     * lines: [{account_code, debit, credit, description?, sl_code?, sl_detail_id?, rc_id?}] (≥2,
+     * balanced — always required here, unlike persistJournalEntry()'s optional-prefill case).
+     */
+    public function createStandaloneJev(array $body, int $userId): array
+    {
+        try {
+            if (!GlobalService::getUserRcScope()['is_admin'] && $this->currentUserRcId() !== self::STAGE_HOLDER_RC['FOR_ACCOUNTING']) {
+                return ['success' => false, 'message' => 'Only Accounting Department staff can prepare a Journal Entry Voucher.', 'httpCode' => 403];
+            }
+
+            $errors = [];
+            $jevDate = trim((string) ($body['jev_date'] ?? ''));
+            if (!$this->validDate($jevDate)) {
+                $errors[] = 'jev_date is required and must be a valid date (YYYY-MM-DD).';
+            }
+            $fiscalYr = $body['fiscal_yr'] ?? '';
+            if ($fiscalYr === '' || $fiscalYr === null || !ctype_digit((string) $fiscalYr)) {
+                $errors[] = 'fiscal_yr is required.';
+            } elseif ((int) App\ExecuteScalar("SELECT COUNT(*) FROM {$this->tableFiscal} WHERE fiscal_yr = " . (int) $fiscalYr, 'DB') === 0) {
+                $errors[] = "Fiscal year {$fiscalYr} does not exist.";
+            }
+
+            $bookId = $body['book_id'] ?? null;
+            $bookId = ($bookId !== null && $bookId !== '' && ctype_digit((string) $bookId)) ? (int) $bookId : null;
+            if ($bookId === null) {
+                $errors[] = 'book_id is required.';
+            } elseif ((int) App\ExecuteScalar("SELECT COUNT(*) FROM {$this->tableBooks} WHERE book_id = {$bookId}", 'DB') === 0) {
+                $errors[] = "Book #{$bookId} does not exist.";
+            }
+
+            $jevClassification = strtoupper(trim((string) ($body['jev_classification'] ?? 'REGULAR')));
+            if ($jevClassification === '') {
+                $jevClassification = 'REGULAR';
+            }
+            if (!in_array($jevClassification, self::JEV_CLASSIFICATIONS, true)) {
+                $errors[] = 'jev_classification must be one of: ' . implode(', ', self::JEV_CLASSIFICATIONS) . '.';
+            }
+
+            [$lineErrors, $clean, $totalDebit, $totalCredit] = $this->validateJevLines(is_array($body['lines'] ?? null) ? $body['lines'] : []);
+            $errors = array_merge($errors, $lineErrors);
+            if (count($clean) < 2) {
+                $errors[] = 'A Journal Entry needs at least two lines (one debit, one credit).';
+            } elseif (!$errors && ($totalDebit <= 0 || $totalDebit !== $totalCredit)) {
+                $errors[] = 'Total debits (' . number_format($totalDebit, 2) . ') must equal total credits (' . number_format($totalCredit, 2) . ') and be greater than zero.';
+            }
+            if ($errors) {
+                return ['success' => false, 'message' => 'Validation failed.', 'errors' => $errors];
+            }
+
+            $draftStatusId = App\ExecuteScalar(
+                "SELECT id FROM {$this->tableSettingsStatus} WHERE status_for = 'journal_entry_voucher' AND name = 'DRAFT'",
+                'DB'
+            );
+            $uid = $userId > 0 ? (string) $userId : 'NULL';
+            $jevNo = $this->nextJevNumber($jevDate);
+
+            App\Execute('BEGIN', 'DB');
+            try {
+                $row = App\ExecuteRow(
+                    "INSERT INTO {$this->tableJev}
+                        (jev_no, jev_date, dv_id, fiscal_yr, book_id, jev_classification, particulars, total_debit, total_credit, status_id, created_by)
+                     VALUES (" . $this->str($jevNo) . ', ' . $this->str($jevDate) . ', NULL, ' . (int) $fiscalYr . ', ' . (int) $bookId . ', '
+                        . $this->str($jevClassification) . ', ' . $this->strOrNull(trim((string) ($body['particulars'] ?? ''))) . ", {$totalDebit}, {$totalCredit}, "
+                        . $this->intOrNull($draftStatusId) . ", {$uid})
+                     RETURNING jev_id",
+                    'DB'
+                );
+                $jevId = (int) $row['jev_id'];
+
+                foreach ($clean as $idx => $line) {
+                    App\Execute(
+                        "INSERT INTO {$this->tableJevLines} (jev_id, line_number, account_code, debit, credit, description, sl_code, sl_detail_id, rc_id)
+                         VALUES ({$jevId}, " . ($idx + 1) . ', ' . $this->str($line['account_code']) . ', '
+                        . (float) $line['debit'] . ', ' . (float) $line['credit'] . ', ' . $this->strOrNull($line['description']) . ', '
+                        . $this->strOrNull($line['sl_code']) . ', ' . $this->intOrNull($line['sl_detail_id']) . ', '
+                        . $this->strOrNull($line['rc_id']) . ')',
+                        'DB'
+                    );
+                }
+                App\Execute('COMMIT', 'DB');
+            } catch (\Exception $e) {
+                App\Execute('ROLLBACK', 'DB');
+                throw $e;
+            }
+
+            return ['success' => true, 'message' => "Journal Entry Voucher {$jevNo} saved as draft.", 'data' => ['jev_id' => $jevId, 'jev_no' => $jevNo]];
+        } catch (\Exception $e) {
+            App\LogError('DisbursementVoucherService::createStandaloneJev ' . $e->getMessage());
+
+            return ['success' => false, 'message' => 'Failed to save the Journal Entry Voucher.'];
+        }
+    }
+
+    /** Full-replace edit of a standalone JEV — DRAFT only, same validation as createStandaloneJev(). */
+    public function updateStandaloneJev(int $jevId, array $body, int $userId): array
+    {
+        try {
+            if (!GlobalService::getUserRcScope()['is_admin'] && $this->currentUserRcId() !== self::STAGE_HOLDER_RC['FOR_ACCOUNTING']) {
+                return ['success' => false, 'message' => 'Only Accounting Department staff can edit this Journal Entry Voucher.', 'httpCode' => 403];
+            }
+
+            $existing = App\ExecuteRow(
+                "SELECT jev.jev_id, st.name AS status FROM {$this->tableJev} jev
+                 LEFT JOIN {$this->tableSettingsStatus} st ON st.id = jev.status_id
+                 WHERE jev.jev_id = {$jevId} AND jev.dv_id IS NULL",
+                'DB'
+            );
+            if (!$existing) {
+                return ['success' => false, 'message' => "Standalone Journal Entry Voucher #{$jevId} not found.", 'httpCode' => 404];
+            }
+            if ($existing['status'] !== 'DRAFT') {
+                return ['success' => false, 'message' => "Only a DRAFT Journal Entry Voucher can be edited (current status: {$existing['status']})."];
+            }
+
+            $errors = [];
+            $jevDate = trim((string) ($body['jev_date'] ?? ''));
+            if (!$this->validDate($jevDate)) {
+                $errors[] = 'jev_date is required and must be a valid date (YYYY-MM-DD).';
+            }
+            $fiscalYr = $body['fiscal_yr'] ?? '';
+            if ($fiscalYr === '' || $fiscalYr === null || !ctype_digit((string) $fiscalYr)) {
+                $errors[] = 'fiscal_yr is required.';
+            } elseif ((int) App\ExecuteScalar("SELECT COUNT(*) FROM {$this->tableFiscal} WHERE fiscal_yr = " . (int) $fiscalYr, 'DB') === 0) {
+                $errors[] = "Fiscal year {$fiscalYr} does not exist.";
+            }
+
+            $bookId = $body['book_id'] ?? null;
+            $bookId = ($bookId !== null && $bookId !== '' && ctype_digit((string) $bookId)) ? (int) $bookId : null;
+            if ($bookId === null) {
+                $errors[] = 'book_id is required.';
+            } elseif ((int) App\ExecuteScalar("SELECT COUNT(*) FROM {$this->tableBooks} WHERE book_id = {$bookId}", 'DB') === 0) {
+                $errors[] = "Book #{$bookId} does not exist.";
+            }
+
+            $jevClassification = strtoupper(trim((string) ($body['jev_classification'] ?? 'REGULAR')));
+            if ($jevClassification === '') {
+                $jevClassification = 'REGULAR';
+            }
+            if (!in_array($jevClassification, self::JEV_CLASSIFICATIONS, true)) {
+                $errors[] = 'jev_classification must be one of: ' . implode(', ', self::JEV_CLASSIFICATIONS) . '.';
+            }
+
+            [$lineErrors, $clean, $totalDebit, $totalCredit] = $this->validateJevLines(is_array($body['lines'] ?? null) ? $body['lines'] : []);
+            $errors = array_merge($errors, $lineErrors);
+            if (count($clean) < 2) {
+                $errors[] = 'A Journal Entry needs at least two lines (one debit, one credit).';
+            } elseif (!$errors && ($totalDebit <= 0 || $totalDebit !== $totalCredit)) {
+                $errors[] = 'Total debits (' . number_format($totalDebit, 2) . ') must equal total credits (' . number_format($totalCredit, 2) . ') and be greater than zero.';
+            }
+            if ($errors) {
+                return ['success' => false, 'message' => 'Validation failed.', 'errors' => $errors];
+            }
+
+            $uid = $userId > 0 ? (string) $userId : 'NULL';
+
+            App\Execute('BEGIN', 'DB');
+            try {
+                App\Execute(
+                    "UPDATE {$this->tableJev} SET
+                        jev_date = " . $this->str($jevDate) . ", fiscal_yr = " . (int) $fiscalYr . ", book_id = " . (int) $bookId . ",
+                        jev_classification = " . $this->str($jevClassification) . ",
+                        particulars = " . $this->strOrNull(trim((string) ($body['particulars'] ?? ''))) . ",
+                        total_debit = {$totalDebit}, total_credit = {$totalCredit},
+                        updated_by = {$uid}, updated_at = CURRENT_TIMESTAMP
+                     WHERE jev_id = {$jevId}",
+                    'DB'
+                );
+                App\Execute("DELETE FROM {$this->tableJevLines} WHERE jev_id = {$jevId}", 'DB');
+                foreach ($clean as $idx => $line) {
+                    App\Execute(
+                        "INSERT INTO {$this->tableJevLines} (jev_id, line_number, account_code, debit, credit, description, sl_code, sl_detail_id, rc_id)
+                         VALUES ({$jevId}, " . ($idx + 1) . ', ' . $this->str($line['account_code']) . ', '
+                        . (float) $line['debit'] . ', ' . (float) $line['credit'] . ', ' . $this->strOrNull($line['description']) . ', '
+                        . $this->strOrNull($line['sl_code']) . ', ' . $this->intOrNull($line['sl_detail_id']) . ', '
+                        . $this->strOrNull($line['rc_id']) . ')',
+                        'DB'
+                    );
+                }
+                App\Execute('COMMIT', 'DB');
+            } catch (\Exception $e) {
+                App\Execute('ROLLBACK', 'DB');
+                throw $e;
+            }
+
+            return ['success' => true, 'message' => 'Journal Entry Voucher updated.', 'data' => ['jev_id' => $jevId]];
+        } catch (\Exception $e) {
+            App\LogError('DisbursementVoucherService::updateStandaloneJev ' . $e->getMessage());
+
+            return ['success' => false, 'message' => 'Failed to update the Journal Entry Voucher.'];
+        }
+    }
+
+    /** DRAFT only, no dv_id — deletes the header (lines cascade via FK). */
+    public function deleteStandaloneJev(int $jevId, int $userId): array
+    {
+        try {
+            if (!GlobalService::getUserRcScope()['is_admin'] && $this->currentUserRcId() !== self::STAGE_HOLDER_RC['FOR_ACCOUNTING']) {
+                return ['success' => false, 'message' => 'Only Accounting Department staff can delete this Journal Entry Voucher.', 'httpCode' => 403];
+            }
+            $existing = App\ExecuteRow(
+                "SELECT jev.jev_id, st.name AS status FROM {$this->tableJev} jev
+                 LEFT JOIN {$this->tableSettingsStatus} st ON st.id = jev.status_id
+                 WHERE jev.jev_id = {$jevId} AND jev.dv_id IS NULL",
+                'DB'
+            );
+            if (!$existing) {
+                return ['success' => false, 'message' => "Standalone Journal Entry Voucher #{$jevId} not found.", 'httpCode' => 404];
+            }
+            if ($existing['status'] !== 'DRAFT') {
+                return ['success' => false, 'message' => "Only a DRAFT Journal Entry Voucher can be deleted (current status: {$existing['status']})."];
+            }
+            App\Execute("DELETE FROM {$this->tableJev} WHERE jev_id = {$jevId}", 'DB');
+
+            return ['success' => true, 'message' => 'Journal Entry Voucher deleted.'];
+        } catch (\Exception $e) {
+            App\LogError('DisbursementVoucherService::deleteStandaloneJev ' . $e->getMessage());
+
+            return ['success' => false, 'message' => 'Failed to delete the Journal Entry Voucher.'];
+        }
+    }
+
+    /**
+     * Posts a standalone JEV to the General Ledger — delegates to GeneralLedgerService::postJev(),
+     * same posting logic as every DV-driven JEV, just triggered directly here instead of from
+     * DisbursementVoucherService::changeStatus() (there's no DV status chain to ride on). Guards
+     * dv_id IS NULL so this endpoint can't be used to post a DV-linked JEV out of band, bypassing
+     * that voucher's own FOR_ACCOUNTING -> FOR_TREASURY approval chain.
+     */
+    public function postStandaloneJev(int $jevId, int $userId): array
+    {
+        try {
+            if (!GlobalService::getUserRcScope()['is_admin'] && $this->currentUserRcId() !== self::STAGE_HOLDER_RC['FOR_ACCOUNTING']) {
+                return ['success' => false, 'message' => 'Only Accounting Department staff can post this Journal Entry Voucher.', 'httpCode' => 403];
+            }
+            $jev = App\ExecuteRow("SELECT jev_id, dv_id FROM {$this->tableJev} WHERE jev_id = {$jevId}", 'DB');
+            if (!$jev) {
+                return ['success' => false, 'message' => "Journal Entry Voucher #{$jevId} not found.", 'httpCode' => 404];
+            }
+            if ($jev['dv_id'] !== null) {
+                return ['success' => false, 'message' => 'This Journal Entry Voucher is tied to a Disbursement Voucher — post it via that voucher\'s own Accounting stage instead.'];
+            }
+
+            return (new GeneralLedgerService())->postJev($jevId, $userId);
+        } catch (\Exception $e) {
+            App\LogError('DisbursementVoucherService::postStandaloneJev ' . $e->getMessage());
+
+            return ['success' => false, 'message' => 'Failed to post the Journal Entry Voucher.'];
+        }
+    }
+
+    /**
+     * Accounting prepares the PAYMENT Journal Entry for a RELEASED DV — the "Prepare Payment JEV"
+     * action. Builds the Dr Accounts Payable / Cr Cash entry from the DV's check (via
+     * GeneralLedgerService::createPaymentJev()), creating it at FOR_SECTION_CHIEF so it enters the JEV
+     * review chain. Treasury never prepares this — it is Accounting's job (RC 012) or a superadmin.
+     */
+    public function preparePaymentJev(int $dvId, int $userId): array
+    {
+        try {
+            if (!GlobalService::getUserRcScope()['is_admin'] && $this->currentUserRcId() !== self::STAGE_HOLDER_RC['FOR_ACCOUNTING']) {
+                return ['success' => false, 'message' => 'Only Accounting Department staff can prepare a payment Journal Entry.', 'httpCode' => 403];
+            }
+            $dv = App\ExecuteRow(
+                "SELECT dv.dv_id, dv.dv_no, dv.net_amount, st.name AS status
+                 FROM {$this->table} dv LEFT JOIN {$this->tableSettingsStatus} st ON st.id = dv.status_id
+                 WHERE dv.dv_id = {$dvId}",
+                'DB'
+            );
+            if (!$dv) {
+                return ['success' => false, 'message' => "Disbursement Voucher #{$dvId} not found.", 'httpCode' => 404];
+            }
+            if ($dv['status'] !== 'RELEASED') {
+                return ['success' => false, 'message' => "A payment Journal Entry can only be prepared once the voucher is RELEASED (current status: {$dv['status']})."];
+            }
+            if ((int) App\ExecuteScalar("SELECT COUNT(*) FROM {$this->tableJev} WHERE dv_id = {$dvId} AND jev_type = 'PAYMENT'", 'DB') > 0) {
+                return ['success' => false, 'message' => 'This voucher already has a payment Journal Entry.'];
+            }
+            // The check Treasury released against this DV — its bank account's Cash account is the Cr line.
+            $check = App\ExecuteRow(
+                "SELECT bank_account_id, check_number FROM fims.checks
+                 WHERE dv_number = " . $this->str($dv['dv_no']) . " AND status <> 'CANCELLED'
+                 ORDER BY check_id DESC LIMIT 1",
+                'DB'
+            );
+            if (!$check) {
+                return ['success' => false, 'message' => 'No check has been prepared against this voucher yet — Treasury must release it first.'];
+            }
+
+            App\Execute('BEGIN', 'DB');
+            try {
+                $result = (new GeneralLedgerService())->createPaymentJev($dvId, (int) $check['bank_account_id'], (float) $dv['net_amount'], 'CHECK NO. ' . $check['check_number'], $userId);
+                if (!$result['success']) {
+                    App\Execute('ROLLBACK', 'DB');
+
+                    return $result;
+                }
+                App\Execute('COMMIT', 'DB');
+            } catch (\Exception $e) {
+                App\Execute('ROLLBACK', 'DB');
+                throw $e;
+            }
+
+            return $result;
+        } catch (\Exception $e) {
+            App\LogError('DisbursementVoucherService::preparePaymentJev ' . $e->getMessage());
+
+            return ['success' => false, 'message' => 'Failed to prepare the payment Journal Entry.'];
+        }
+    }
+
+    /**
+     * Advances a PAYMENT or standalone JEV one step along its review chain, and POSTS it to the General
+     * Ledger on the final step. SETUP JEVs are refused here — they ride their own DV's approval chain.
+     *   DRAFT                  -> FOR_SECTION_CHIEF      (standalone preparer submits for review)
+     *   FOR_SECTION_CHIEF      -> FOR_DIVISION_MANAGER   (Section Chief reviews)
+     *   FOR_DIVISION_MANAGER   -> FOR_DEPARTMENT_MANAGER (Division Manager reviews)
+     *   FOR_DEPARTMENT_MANAGER -> POSTED                 (Department Manager approves & posts to the GL)
+     * Every step is held by the Accounting Department (RC 012) or a superadmin.
+     */
+    public function changeJevStatus(int $jevId, string $newStatus, int $userId): array
+    {
+        $transitions = [
+            'DRAFT'                  => ['FOR_SECTION_CHIEF'],
+            'FOR_SECTION_CHIEF'      => ['FOR_DIVISION_MANAGER'],
+            'FOR_DIVISION_MANAGER'   => ['FOR_DEPARTMENT_MANAGER'],
+            'FOR_DEPARTMENT_MANAGER' => ['POSTED'],
+        ];
+        try {
+            if (!GlobalService::getUserRcScope()['is_admin'] && $this->currentUserRcId() !== self::STAGE_HOLDER_RC['FOR_ACCOUNTING']) {
+                return ['success' => false, 'message' => 'Only Accounting Department staff can act on this Journal Entry.', 'httpCode' => 403];
+            }
+            $new = strtoupper(trim($newStatus));
+            $jev = App\ExecuteRow(
+                "SELECT jev.jev_id, jev.jev_type, jev.dv_id, st.name AS status
+                 FROM {$this->tableJev} jev LEFT JOIN {$this->tableSettingsStatus} st ON st.id = jev.status_id
+                 WHERE jev.jev_id = {$jevId}",
+                'DB'
+            );
+            if (!$jev) {
+                return ['success' => false, 'message' => "Journal Entry Voucher #{$jevId} not found.", 'httpCode' => 404];
+            }
+            if ($jev['jev_type'] === 'SETUP' && $jev['dv_id'] !== null) {
+                return ['success' => false, 'message' => 'A setup Journal Entry posts through its Disbursement Voucher\'s own approval chain, not here.'];
+            }
+            $allowed = $transitions[$jev['status']] ?? [];
+            if (!in_array($new, $allowed, true)) {
+                return ['success' => false, 'message' => "Cannot move a {$jev['status']} Journal Entry to {$new}."];
+            }
+
+            if ($new === 'POSTED') {
+                App\Execute('BEGIN', 'DB');
+                try {
+                    $result = (new GeneralLedgerService())->postJev($jevId, $userId);
+                    if (!$result['success']) {
+                        App\Execute('ROLLBACK', 'DB');
+
+                        return $result;
+                    }
+                    App\Execute('COMMIT', 'DB');
+                } catch (\Exception $e) {
+                    App\Execute('ROLLBACK', 'DB');
+                    throw $e;
+                }
+
+                return ['success' => true, 'message' => 'Journal Entry approved and posted to the General Ledger.', 'data' => ['jev_id' => $jevId, 'status' => 'POSTED']];
+            }
+
+            $newId = $this->getJevStatusIdByName($new);
+            if ($newId === null) {
+                return ['success' => false, 'message' => "Status '{$new}' is not configured for journal entry vouchers."];
+            }
+            App\Execute("UPDATE {$this->tableJev} SET status_id = {$newId} WHERE jev_id = {$jevId}", 'DB');
+
+            return ['success' => true, 'message' => "Journal Entry is now {$new}.", 'data' => ['jev_id' => $jevId, 'status' => $new]];
+        } catch (\Exception $e) {
+            App\LogError('DisbursementVoucherService::changeJevStatus ' . $e->getMessage());
+
+            return ['success' => false, 'message' => 'Failed to update the Journal Entry status.'];
+        }
+    }
+
+    /** JEV-status id lookup (status_for = 'journal_entry_voucher'); see getStatusIdByName() for the DV equivalent. */
+    private function getJevStatusIdByName(string $name): ?int
+    {
+        $row = App\ExecuteRow(
+            "SELECT id FROM {$this->tableSettingsStatus} WHERE status_for = 'journal_entry_voucher' AND name = " . $this->str($name),
+            'DB'
+        );
+
+        return isset($row['id']) ? (int) $row['id'] : null;
     }
 
     /** Next free "{YY}-{MM}-{NNNN}" for the month of $dvDate (uses MAX, so deletes can't cause a clash). */
@@ -1360,7 +2019,7 @@ class DisbursementVoucherService
                 // Optional ATC Code / Accounting Entries pre-fill — see persistJournalEntry()'s
                 // doc comment. A validation failure here rolls back the DV creation too.
                 if ($f['atc_lines'] || $f['lines']) {
-                    $jevResult = $this->persistJournalEntry((int) $row['dv_id'], $f['atc_lines'], $f['lines'], $userId, false);
+                    $jevResult = $this->persistJournalEntry((int) $row['dv_id'], $f['atc_lines'], $f['lines'], $userId, false, null, $f['book_id'], $f['jev_classification']);
                     if (!$jevResult['success']) {
                         App\Execute('ROLLBACK', 'DB');
 
@@ -1464,7 +2123,7 @@ class DisbursementVoucherService
                 // Optional ATC Code / Accounting Entries pre-fill — see persistJournalEntry()'s
                 // doc comment. A validation failure here rolls back the whole update too.
                 if ($f['atc_lines'] || $f['lines']) {
-                    $jevResult = $this->persistJournalEntry($dvId, $f['atc_lines'], $f['lines'], $userId, false);
+                    $jevResult = $this->persistJournalEntry($dvId, $f['atc_lines'], $f['lines'], $userId, false, null, $f['book_id'], $f['jev_classification']);
                     if (!$jevResult['success']) {
                         App\Execute('ROLLBACK', 'DB');
 
@@ -1557,11 +2216,27 @@ class DisbursementVoucherService
             if ($authError !== null) {
                 return ['success' => false, 'message' => $authError, 'httpCode' => 403];
             }
-            if ($new === 'FOR_TREASURY') {
+            $jev = null;
+            if ($new === 'FOR_DIVISION_MANAGER') {
+                // The Accounting Section Chief must have saved a balanced JEV at the FOR_ACCOUNTING
+                // step before the voucher can move up the Accounting review chain (Division Manager
+                // -> Department Manager). Checked here, where it leaves the Section Chief's hands.
                 $jev = $this->fetchJev($dvId);
                 if (!$jev || (float) $jev['total_debit'] <= 0 || (float) $jev['total_debit'] !== (float) $jev['total_credit']) {
-                    return ['success' => false, 'message' => 'Accounting must save a balanced Journal Entry (debits = credits) before this voucher can go to Treasury.'];
+                    return ['success' => false, 'message' => 'Accounting must save a balanced Journal Entry (debits = credits) before this voucher can move to Division Manager review.'];
                 }
+            } elseif ($new === 'FOR_TREASURY') {
+                // Department Manager's final approval releases the voucher to Treasury and posts the
+                // JEV to the General Ledger (see the postJev() call below) — re-check it's still balanced.
+                $jev = $this->fetchJev($dvId);
+                if (!$jev || (float) $jev['total_debit'] <= 0 || (float) $jev['total_debit'] !== (float) $jev['total_credit']) {
+                    return ['success' => false, 'message' => 'A balanced Journal Entry (debits = credits) is required before this voucher can go to Treasury.'];
+                }
+            } elseif ($new === 'CANCELLED' && $cur['status'] === 'FOR_TREASURY') {
+                // Only this one path can cancel a DV whose JEV was already posted to the General
+                // Ledger (FOR_ACCOUNTING -> FOR_TREASURY posts it, see below) — RELEASED is
+                // terminal, so there's no later point a posted JEV could still be cancelled from.
+                $jev = $this->fetchJev($dvId);
             }
             $notes = trim((string) $notes);
             if ($new === 'REJECTED' && $notes === '') {
@@ -1575,22 +2250,56 @@ class DisbursementVoucherService
                 $set[] = 'rejected_at = NULL, rejected_by = NULL, rejection_reason = NULL';
             } elseif ($new === 'FOR_ACCOUNTING') {
                 $set[] = "fmd_approved_at = CURRENT_TIMESTAMP, fmd_approved_by = {$uid}";
-            } elseif ($new === 'FOR_TREASURY') {
+            } elseif ($new === 'FOR_DIVISION_MANAGER') {
+                // Accounting Section Chief finished processing the DV (and its JEV) and forwarded it on.
                 $set[] = "accounting_processed_at = CURRENT_TIMESTAMP, accounting_processed_by = {$uid}";
+            } elseif ($new === 'FOR_DEPARTMENT_MANAGER') {
+                $set[] = "division_reviewed_at = CURRENT_TIMESTAMP, division_reviewed_by = {$uid}";
+            } elseif ($new === 'FOR_TREASURY') {
+                $set[] = "department_approved_at = CURRENT_TIMESTAMP, department_approved_by = {$uid}";
             } elseif ($new === 'RELEASED') {
                 $set[] = "treasury_released_at = CURRENT_TIMESTAMP, treasury_released_by = {$uid}";
             } elseif ($new === 'REJECTED') {
                 $set[] = "rejected_at = CURRENT_TIMESTAMP, rejected_by = {$uid}, rejection_reason = " . $this->str($notes);
             }
 
-            // Guard on the status we read so two concurrent actions can't both win.
-            App\Execute(
-                "UPDATE {$this->table} SET " . implode(', ', $set) . " WHERE dv_id = {$dvId} AND status_id = " . (int) $cur['status_id'],
-                'DB'
-            );
-            $now = App\ExecuteScalar("SELECT status_id FROM {$this->table} WHERE dv_id = {$dvId}", 'DB');
-            if ((int) $now !== $newId) {
-                return ['success' => false, 'message' => 'The disbursement voucher was changed by someone else. Please reload and try again.'];
+            App\Execute('BEGIN', 'DB');
+            try {
+                // Guard on the status we read so two concurrent actions can't both win.
+                App\Execute(
+                    "UPDATE {$this->table} SET " . implode(', ', $set) . " WHERE dv_id = {$dvId} AND status_id = " . (int) $cur['status_id'],
+                    'DB'
+                );
+                $now = App\ExecuteScalar("SELECT status_id FROM {$this->table} WHERE dv_id = {$dvId}", 'DB');
+                if ((int) $now !== $newId) {
+                    App\Execute('ROLLBACK', 'DB');
+
+                    return ['success' => false, 'message' => 'The disbursement voucher was changed by someone else. Please reload and try again.'];
+                }
+
+                // Approve/post the JEV to the General Ledger in the same transaction as the DV's
+                // own status move — "DV approved on the Accounting side" and "JEV posted" are one
+                // atomic step, not two separate actions a caller could do half of.
+                if ($new === 'FOR_TREASURY' && $jev) {
+                    $glResult = (new GeneralLedgerService())->postJev((int) $jev['jev_id'], $userId);
+                    if (!$glResult['success']) {
+                        App\Execute('ROLLBACK', 'DB');
+
+                        return $glResult;
+                    }
+                } elseif ($new === 'CANCELLED' && $jev) {
+                    $glResult = (new GeneralLedgerService())->reverseJev((int) $jev['jev_id'], $userId);
+                    if (!$glResult['success']) {
+                        App\Execute('ROLLBACK', 'DB');
+
+                        return $glResult;
+                    }
+                }
+
+                App\Execute('COMMIT', 'DB');
+            } catch (\Exception $e) {
+                App\Execute('ROLLBACK', 'DB');
+                throw $e;
             }
 
             return ['success' => true, 'message' => "Disbursement Voucher is now {$new}.", 'data' => ['dv_id' => $dvId, 'status' => $new]];
@@ -1616,6 +2325,24 @@ class DisbursementVoucherService
             }
             if (!in_array($cur['status'], self::DELETABLE, true)) {
                 return ['success' => false, 'message' => "Only DRAFT or CANCELLED disbursement vouchers can be deleted (current status: {$cur['status']})."];
+            }
+
+            // A CANCELLED voucher is normally deletable, but NOT if its JEV was ever posted to the
+            // General Ledger (GeneralLedgerService::postJev(), on an earlier FOR_ACCOUNTING ->
+            // FOR_TREASURY — the only way a CANCELLED voucher gets here is FOR_TREASURY ->
+            // CANCELLED, see TRANSITIONS) — fims.general_ledger.jev_id/jev_line_id have no ON
+            // DELETE CASCADE (posted ledger rows are never deleted, only reversed — see
+            // GeneralLedgerService's docblock), so the DELETE below would otherwise fail on a raw
+            // FK violation with no useful message. Check up front instead, same reasoning as the
+            // status check above.
+            $jevStatus = App\ExecuteScalar(
+                "SELECT st.name FROM {$this->tableJev} jev
+                 LEFT JOIN {$this->tableSettingsStatus} st ON st.id = jev.status_id
+                 WHERE jev.dv_id = {$dvId}",
+                'DB'
+            );
+            if (in_array($jevStatus, ['POSTED', 'REVERSED'], true)) {
+                return ['success' => false, 'message' => "This voucher's Journal Entry Voucher has already been posted to the General Ledger and cannot be deleted — posted ledger entries are never removed, only reversed. See the General Ledger / Journals for its posted/reversing entries."];
             }
 
             // Release any RFA still linked to this voucher (budget_allocation.dv_id) BEFORE deleting

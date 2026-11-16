@@ -6,7 +6,8 @@ namespace PHPMaker2024\FIMS;
  * budget-revision-page.php — "Budget Revision Requests": the requests to change a BUDGET LINE's amount (a chart-of-accounts line
  * item of a budget request) and optionally move the difference to a second budget line. Originating offices file and edit
  * them; the Financial Management Department (FMD) reviews them — approves or declines. Approving changes the lines'
- * budget_line_items.adjustment: the From line goes down, the To line goes up.
+ * budget_line_items.adjustment AND budget_line_items.suggested_amount (by the same amount): the From line goes down, the To
+ * line goes up.
  *
  * Who is looking decides what a row offers. There is no point-of-view switch: it follows the logged-in user's office.
  */
@@ -209,7 +210,9 @@ let brv_page = 1;
 let brv_viewRow = null;   // the revision currently open in the details modal
 const BRV_PAGE_SIZE = 15;
 
-// `status` codes returned by the API (BudgetRevisionService) → label + badge colour
+// `status` codes returned by the API (BudgetRevisionService: the upper-cased name of the revision's fims.settings_status row,
+// status_for = 'budget_revision') → label + badge class. A FALLBACK only: the badge is painted with the status row's own
+// colour (status_color) and name (status_name) whenever the API sends them — see brv_statusBadge().
 const BRV_STATUS = {
     PENDING : { label: 'Pending',  cls: 'nha-bdg-amber' },
     APPROVED: { label: 'Approved', cls: 'nha-bdg-green' },
@@ -350,7 +353,7 @@ function brv_renderTable(rows) {
         <td class="text-end"><div style="font-weight:600;">${brv_fmtMoney(r.to_amount)}</div></td>
         <td class="text-end ${trend}" style="font-weight:600;">${brv_fmtChange(diff)}</td>
         <td><div class="brv-reason" title="${brv_esc(r.reason || '')}">${reason}</div></td>
-        <td>${brv_statusBadge(r.status)}</td>
+        <td>${brv_statusBadge(r)}</td>
         <td>
             ${date ? `<span class="nha-td-date">${brv_esc(date)}</span>` : '<span class="nha-td-sub">—</span>'}
             <div class="nha-td-sub">${brv_esc(brv_requestedBy(r))}</div>
@@ -588,11 +591,14 @@ function brv_openView(r) {
     const known   = BRV_STATUS[r.status];
     const s       = known || { label: r.status || 'Unknown', cls: 'nha-bdg-gray' };
     const pending = r.status === 'PENDING';
+    const label   = r.status_name || s.label;   // the settings_status name, else the fallback label
+    const style   = brv_statusStyle(r.status_color);
     const badge   = $brv('brv-view-status');
-    badge.textContent = s.label;
-    badge.className   = 'nha-bdg ' + s.cls;
+    badge.textContent = label;
+    badge.className   = style ? 'nha-bdg' : 'nha-bdg ' + s.cls;
+    badge.style.cssText = style;   // '' clears a colour left by the previously opened request
     $brv('brv-view-status-note').textContent = pending ? 'Waiting for a decision'
-        : known ? `${s.label} on ${brv_fmtDateTime(r.update_at)}` : 'Unrecognised status';
+        : known ? `${label} on ${brv_fmtDateTime(r.update_at)}` : 'Unrecognised status';
     $brv('brv-view-actions').hidden = !(pending && BRV_IS_FMD);
     brv_setReviewBusy(false);
 
@@ -653,12 +659,12 @@ async function brv_review(status) {
             const fromCode  = brv_lineName(v, '') || 'The From budget line';
             const toCode    = brv_lineName(v, 'to_') || 'The To budget line';
             question += `\n\n${fromCode} (From budget line) will change from ${brv_fmtMoney(current)} to ${brv_fmtMoney(target)}, `
-                      + `and ${brv_fmtChange(-moved)} will be added to its adjustment.`
+                      + `and ${brv_fmtChange(-moved)} will be added to its adjustment and its suggested amount.`
                       + `\n${toCode} (To budget line) will change from ${brv_fmtMoney(toCurrent)} to ${brv_fmtMoney(toCurrent + moved)}, `
-                      + `and ${brv_fmtChange(moved)} will be added to its adjustment.`;
+                      + `and ${brv_fmtChange(moved)} will be added to its adjustment and its suggested amount.`;
         } else if (!v.to_budget_line_item_id) {
             question += `\n\nThe budget line amount will change from ${brv_fmtMoney(current)} to ${brv_fmtMoney(target)}, `
-                      + `and ${brv_fmtChange(target - current)} will be added to its adjustment.`;
+                      + `and ${brv_fmtChange(target - current)} will be added to its adjustment and its suggested amount.`;
         }
     }
     if (!id || !confirm(question)) return;
@@ -776,9 +782,20 @@ function brv_paintStatus(el, name, color) {
         el.style.cssText = '';
     }
 }
-function brv_statusBadge(code) {
-    const s = BRV_STATUS[code] || { label: code || 'Unknown', cls: 'nha-bdg-gray' };
-    return `<span class="nha-bdg ${s.cls}">${brv_esc(s.label)}</span>`;
+// The inline style of a status pill in the status's own colour (settings_status.color); '' unless it is a plain #RRGGBB colour —
+// nothing else is ever put into a style attribute.
+function brv_statusStyle(color) {
+    return /^#[0-9A-Fa-f]{6}$/.test(color || '') ? `color:${color};background:${color}1A;border:1px solid ${color}40;` : '';
+}
+// A revision's status pill: its settings_status name and colour (status_name / status_color), falling back to BRV_STATUS's label and
+// class when the row has no usable colour or the API did not send one.
+function brv_statusBadge(r) {
+    const known = BRV_STATUS[r.status];
+    const label = r.status_name || (known ? known.label : (r.status || 'Unknown'));
+    const style = brv_statusStyle(r.status_color);
+    return style
+        ? `<span class="nha-bdg" style="${style}">${brv_esc(label)}</span>`
+        : `<span class="nha-bdg ${known ? known.cls : 'nha-bdg-gray'}">${brv_esc(label)}</span>`;
 }
 // HTML-escapes text for markup AND for attribute values (the Reason's tooltip is one): innerHTML leaves quotes alone, so
 // they are escaped here — otherwise a reason containing a double quote could close the attribute and inject its own.

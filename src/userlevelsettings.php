@@ -144,6 +144,14 @@ $USER_LEVEL_PRIVS = [["{FIMS}audit_logs","-2","0"],
     ["{FIMS}ChangePass.php","0","0"],
     ["{FIMS}CheckDisbursements.php","-2","0"],
     ["{FIMS}CheckDisbursements.php","0","0"],
+    ["{FIMS}general-ledger-page.php","-2","0"],
+    ["{FIMS}general-ledger-page.php","0","0"],
+    ["{FIMS}subsidiary-ledger-page.php","-2","0"],
+    ["{FIMS}subsidiary-ledger-page.php","0","0"],
+    ["{FIMS}journals-page.php","-2","0"],
+    ["{FIMS}journals-page.php","0","0"],
+    ["{FIMS}trial-balance-page.php","-2","0"],
+    ["{FIMS}trial-balance-page.php","0","0"],
     ["{FIMS}budget-prop-page.php","-2","0"],
     ["{FIMS}budget-prop-page.php","0","0"],
     ["{FIMS}notification_reads","-2","0"],
@@ -163,7 +171,11 @@ $USER_LEVEL_PRIVS = [["{FIMS}audit_logs","-2","0"],
     ["{FIMS}property-record-page.php","-2","0"],
     ["{FIMS}property-record-page.php","0","0"],
     ["{FIMS}vendors-page.php","-2","0"],
-    ["{FIMS}vendors-page.php","0","0"]];
+    ["{FIMS}vendors-page.php","0","0"],
+    ["{FIMS}fund-sourcing-dashboard-page.php","-2","0"],
+    ["{FIMS}fund-sourcing-dashboard-page.php","0","0"],
+    ["{FIMS}ftla-page.php","-2","0"],
+    ["{FIMS}ftla-page.php","0","0"]];
 
 /**
  * Tables
@@ -237,6 +249,10 @@ $USER_LEVEL_TABLES = [["audit_logs","audit_logs","Audit Logs",false,"{FIMS}",""]
     ["JournalEntryVoucher.php","JournalEntryVoucher","Journal Entry Voucher",true,"{FIMS}","JournalEntryVoucher"],
     ["ChangePass.php","ChangePass","Change Password",true,"{FIMS}","ChangePass"],
     ["CheckDisbursements.php","CheckDisbursements","Check Disbursements",true,"{FIMS}","CheckDisbursements"],
+    ["general-ledger-page.php","general_ledger_page","General Ledger",true,"{FIMS}","GeneralLedgerPage"],
+    ["subsidiary-ledger-page.php","subsidiary_ledger_page","Subsidiary Ledger",true,"{FIMS}","SubsidiaryLedgerPage"],
+    ["journals-page.php","journals_page","Journals",true,"{FIMS}","JournalsPage"],
+    ["trial-balance-page.php","trial_balance_page","Trial Balance",true,"{FIMS}","TrialBalancePage"],
     ["budget-prop-page.php","budget_prop_page","Budget Propose",true,"{FIMS}","BudgetPropPage"],
     ["notification_reads","notification_reads","notification reads",true,"{FIMS}","NotificationReadsList"],
     ["saro-registry-page.php","saro_registry_page","SARO Registry",true,"{FIMS}","SaroRegistryPage"],
@@ -246,4 +262,6 @@ $USER_LEVEL_TABLES = [["audit_logs","audit_logs","Audit Logs",false,"{FIMS}",""]
     ["cash-position-page.php","cash_position_page","Cash Position",true,"{FIMS}","CashPositionPage"],
     ["bank-management-page.php","bank_management_page","Bank Management Page",true,"{FIMS}","BankManagementPage"],
     ["property-record-page.php","property_record_page","Property Record",true,"{FIMS}","PropertyRecordPage"],
-    ["vendors-page.php","vendors_page","Vendors",true,"{FIMS}","VendorsPage"]];
+    ["vendors-page.php","vendors_page","Vendors",true,"{FIMS}","VendorsPage"],
+    ["fund-sourcing-dashboard-page.php","fund_sourcing_dashboard_page","Fund Sourcing Dashboard",true,"{FIMS}","FundSourcingDashboardPage"],
+    ["ftla-page.php","ftla_page","Fund Transfer Letter of Advice",true,"{FIMS}","FtlaPage"]];

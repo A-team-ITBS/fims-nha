@@ -77,7 +77,8 @@ $_pod_form = $_pod_list;
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
                 Back
             </a>
-            <button type="button" class="nha-btn-hdr" onclick="window.print()">Print</button>
+            <!-- the official PO form (PurchaseOrderPrintService loads the saved PO from po_id) -->
+            <button type="button" class="nha-btn-hdr" onclick="prp_open({ po_id: POD_ID }, { type: 'PO' })">Print</button>
         </div>
     </div>
 
@@ -466,3 +467,7 @@ function pod_toast(msg, type = 'info') {
     setTimeout(() => t.remove(), 4000);
 }
 </script>
+<?php
+// Print → the official PO form in the shared print preview (prp_open; PDF / DOCX).
+include_once __DIR__ . '/../readone/print-preview-readone.php';
+?>

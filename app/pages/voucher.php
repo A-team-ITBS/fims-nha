@@ -68,7 +68,9 @@ $_vl_view = (int) ($_GET['dv'] ?? 0);
                     <option value="">All Status</option>
                     <option value="DRAFT">Draft</option>
                     <option value="FOR_FMD_REVIEW">For FMD Review</option>
-                    <option value="FOR_ACCOUNTING">For Accounting</option>
+                    <option value="FOR_ACCOUNTING">For Accounting (Section Chief)</option>
+                    <option value="FOR_DIVISION_MANAGER">For Division Manager</option>
+                    <option value="FOR_DEPARTMENT_MANAGER">For Department Manager</option>
                     <option value="FOR_TREASURY">For Treasury</option>
                     <option value="RELEASED">Released</option>
                     <option value="REJECTED">Rejected</option>
@@ -88,6 +90,7 @@ $_vl_view = (int) ($_GET['dv'] ?? 0);
                     <option value="MOOE">MOOE</option>
                     <option value="PS">PS</option>
                     <option value="CAPITAL_OUTLAY">Capital Outlay</option>
+                    <option value="EQUIPMENT_OUTLAY">Equipment Outlay</option>
                     <option value="OTHER">Other</option>
                 </select>
             </div>
@@ -326,6 +329,8 @@ function vl_statusBadge(s) {
         DRAFT: ['nha-bdg-gray', 'Draft'],
         FOR_FMD_REVIEW: ['nha-bdg-amber', 'For FMD Review'],
         FOR_ACCOUNTING: ['nha-bdg-blue', 'For Accounting'],
+        FOR_DIVISION_MANAGER: ['nha-bdg-purple', 'For Division Manager'],
+        FOR_DEPARTMENT_MANAGER: ['nha-bdg-navy', 'For Department Manager'],
         FOR_TREASURY: ['nha-bdg-teal', 'For Treasury'],
         RELEASED: ['nha-bdg-green', 'Released'],
         REJECTED: ['nha-bdg-red', 'Rejected'],
@@ -335,7 +340,7 @@ function vl_statusBadge(s) {
     return `<span class="nha-bdg ${cls}">${vl_esc(label)}</span>`;
 }
 function vl_classBadge(c) {
-    const map = { MOOE: ['nha-bdg-teal', 'MOOE'], PS: ['nha-bdg-blue', 'PS'], CAPITAL_OUTLAY: ['nha-bdg-purple', 'Capital Outlay'], OTHER: ['nha-bdg-gray', 'Other'] };
+    const map = { MOOE: ['nha-bdg-teal', 'MOOE'], PS: ['nha-bdg-blue', 'PS'], CAPITAL_OUTLAY: ['nha-bdg-purple', 'Capital Outlay'], EQUIPMENT_OUTLAY: ['nha-bdg-navy', 'Equipment Outlay'], OTHER: ['nha-bdg-gray', 'Other'] };
     const [cls, label] = map[c] || ['nha-bdg-gray', '—'];
     return `<span class="nha-bdg ${cls}">${vl_esc(label)}</span>`;
 }

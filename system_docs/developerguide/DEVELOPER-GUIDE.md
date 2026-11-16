@@ -1,7 +1,10 @@
 # FIMS NHA — Developer Guide
 
-> Status: this guide documents the **actual code in this repository** as of **2026-11-09** (branch
-> `documents`; the Inspection and Acceptance Report module — §8.4 / §7.5 — added 2026-11-10). It is deliberately narrower than `README.md` at the repo root — see
+> Status: this guide documents the **actual code in this repository** as of **2026-11-13** (branch
+> `documents`; the Inspection and Acceptance Report module — §8.4 / §7.5 — added 2026-11-10; §8.5–§8.8
+> — Disbursement Vouchers/JEV, Bank Management, Cash Position, Check Processing, Fund Tracking
+> (SARO/NCA/Trust/Supplemental), Pricing Requests, and Printing/Letterhead — added 2026-11-13 once
+> those modules landed in `app/`). It is deliberately narrower than `README.md` at the repo root — see
 > [A note on other documentation in this repo](#a-note-on-other-documentation-in-this-repo) for why
 > the two disagree, and don't be misled by the older doc's module list.
 
@@ -98,9 +101,10 @@ fims-nha/
 │   ├── preloader.php
 │   ├── lib/              # Hand-written helpers not auto-discovered (GlobalService.php, etc.)
 │   ├── pages/            # Custom page bodies (HTML+PHP+JS), one file per custom feature
-│   │   ├── form/          # Create/edit form fragments for budget features
+│   │   ├── form/          # Create/edit form fragments (budget, IAR, Memo/CBA, pricing request, …)
 │   │   ├── readone/       # Detail/view fragments
-│   │   └── po/            # Purchase Order page/form/readone trio
+│   │   ├── po/            # Purchase Order page/form/readone trio
+│   │   └── voucher/       # Disbursement Voucher page/form/readone trio (§8.5)
 │   ├── routes/            # Slim route files (auto-discovered, see §2)
 │   └── services/          # Business-logic service classes (auto-discovered)
 ├── controllers/          # PHPMaker-generated — one *Controller.php per page/table (58 files)
@@ -309,11 +313,13 @@ schema, not the class-not-found error from §7.1. Treat as dead code — delete 
 real `fims` table if the generic-CRUD idea is still wanted. Don't copy its namespace into new
 service/route files — use `PHPMaker2024\FIMS`.
 
-### 7.5 `memo-req-page.php` is registered but empty (and `AirModule` leftovers)
-`app/pages/memo-req-page.php` is a **zero-byte file** (confirmed via direct size check). It is fully
-wired at the framework level (registered in `src/definitions.php`, menu entry in `views/menu.php`), so
-it renders a blank page rather than erroring. Pure scaffolding — don't assume the feature is
-implemented just because it appears in the menu.
+### 7.5 `memo-req-page.php` is no longer empty; `AirModule` leftovers remain
+
+~~`app/pages/memo-req-page.php` is a zero-byte file~~ — **stale as of 2026-11-13**: the page is now a
+real ~42 KB implementation (the **Memo Request** register — see §8.2), built on top of
+`fims.budget_allocation` / `BudgetAllocationService` with `app/pages/cba-form.php` as its Add/Edit
+modal (shared with the CBA/RFA/LAA allocation types). Don't trust this entry for current behavior —
+it's kept only so the history of the stub is visible; see §8.2 for what's actually there today.
 
 `app/pages/air-module.php` (the other former empty stub) is gone: the module was built out as the
 **Inspection and Acceptance Report (IAR)** module — see §8.4 — in `app/pages/iar-module.php`, served
@@ -323,10 +329,23 @@ by the PHPMaker page **`IarModule`** (`controllers/IarModuleController.php`, `mo
 `iar-module.php`, but nothing in the menu uses them any more — safe to remove once the `.pmp` project
 no longer generates them.
 
-> If you're fixing any of the above: §7.1 and §7.2 are independent, low-risk, verified fixes. §7.4
-> is a safe delete (confirmed zero callers). §7.3 needs a decision on whether the page is active
-> work before fixing. §7.5 isn't a fix, just a heads-up. None of these have been applied — this
-> guide only reports what's there.
+### 7.6 `PricingRequestService` targets two tables that no SQL file creates
+
+`app/services/PricingRequestService.php` (table `fims.pricing_requests`) and its attachments table
+(`fims.pricing_request_attachments`) back `app/pages/pricing-page.php` + `app/routes/pricing_requests.php`
+(`/pricing_requests/*`), but a repo-wide search of `_assets/sql/` for either table name finds **zero
+`CREATE TABLE` statements** — unlike every other module in §8, this one's schema was never committed.
+**Effect:** every `pricing_requests` endpoint SQL-errors (`relation "fims.pricing_requests" does not
+exist`) on a freshly installed database; the page's cards/register/form all depend on it. **Fix:**
+add a `01 - table/NN - fims_pricing_requests.sql` (+ attachments) under `_assets/sql/01 - fims/`,
+matching the columns `PricingRequestService`'s header comment documents (`project_code` required;
+day-count fields `(c)`/`(e)`/`(g)`/total `(h)`; attachments as an uploaded object-storage key or a
+pasted link, soft-deleted). Not applied yet — flagging for a decision, same as the other entries here.
+
+> If you're fixing any of the above: §7.1, §7.2, and §7.6 are independent, low-risk, verified gaps.
+> §7.4 is a safe delete (confirmed zero callers). §7.3 needs a decision on whether the page is active
+> work before fixing. §7.5 isn't a fix, just a heads-up on now-stale history. None of these have been
+> applied — this guide only reports what's there.
 
 ---
 
@@ -380,7 +399,9 @@ The furthest-along business workflow in the repo — a Budget Request → Revisi
 | Budget Revision | `app/pages/budget-revision-page.php` + `form/budget-rev-form.php` + `form/budget-rev-review.php` + `BudgetRevisionService.php` + `app/routes/budget_revision.php` | `fims.budget_req`, `budget_revision` | Revises an existing approved request; `budget-rev-review.php` is the approve/reject reviewer modal (`PUT /budget_revision/review/{id}`). **CSS bug — see §7.2** |
 | Budget Allocation (CBA) | `form/budget-allocation-form.php` | — | **Leftover-namespace bug — see §7.3.** Client-side placeholder CBA-number generation (`'CBA#'.date('Y-m-d').rand(1,999)`), not a server-generated sequence like COA/RC use |
 | Certificate of Budget (COB) | `app/pages/cob-page.php` | — | **CSS bug — see §7.2** |
-| Memo Request | `app/pages/memo-req-page.php` | — | **Empty stub — see §7.5** |
+| Memo Request | `app/pages/memo-req-page.php` + `cba-form.php` (shared Add/Edit modal) + `BudgetAllocationService.php` + `app/routes/budget_allocation.php` | `fims.budget_allocation` | **No longer the empty stub §7.5 used to describe** — a real register of memo/PR/PO tracking rows per fiscal year + requesting RC/district. `allocation_type` distinguishes this from the CBA/RFA/LAA/CFA allocations the same table backs elsewhere (IAR's RFA lookup, §8.4/§8.5); starts life in the `Draft` status (`fims.settings_status`, `status_for='budget_allocation'`). `requesting_district_id`/`requesting_rc_id` carry no DB FK — validated in PHP (see `03 - alter_table/08`/`14`) |
+| Budget Category | `BudgetCategoryService.php` + `app/routes/budget_category.php` | `fims.budget_category` | Standard CRUD shape, soft-deleted via `deleted_at`. Feeds the Category picker on the Memo Request form |
+| Budget Line Item (approved) | `BudgetLineItemService.php` + `app/routes/budget_line_item.php` | `fims.budget_line_items`, `budget_line_item_earmark` | Reads/edits one line item in isolation (outside the full Budget Request nested-add flow in the row above). `GET /budget_line_item/approved` lists only lines a Budget Request has approved (ceiling = `suggested_amount`, not `proposed_amount`); `/{id}/earmarks` lists the CBA/RFA/LAA/CFA allocations that have **earmarked** (reserved, not yet obligated) an amount against that line once their request reached Approved — see `fims.budget_line_item_earmark`'s table comment for the obligation/disbursement distinction |
 | Fiscal Year | `FiscalYearService.php` + `app/routes/fiscal_year.php` | `fims.fiscal_year` (reads `budget_req`) | Read key is `{fiscal_yr}`, not `{id}`. Create/delete only, no update route. No dedicated page — feeds dropdowns on the budget pages |
 | Expense Class | `ExpenseClassService.php` + `app/routes/expense_class.php` | `fims.expense_class` | Standard CRUD shape. No dedicated page — dropdown source |
 | Component Type | `ComponentTypeService.php` + `app/routes/component_type.php` | `fims.component_type` | Standard CRUD shape. Used by the Budget Processing line-item form |
@@ -511,19 +532,204 @@ The furthest-along business workflow in the repo — a Budget Request → Revisi
   `Bukidnon | Misamis Occidental | Lanao del Norte District Office (BML)`), a Units table and a Depreciation table.
 - **Install.** `01 - table/34 - fims_property_records.sql` creates the table (`IF NOT EXISTS`). The service and the page were exercised against the real PIS API and the local database; the page was not browser-tested.
 
-### 8.5 Platform utilities (not page-backed)
+### 8.5 Disbursement Vouchers & Journal Entries
+
+API: `app/routes/voucher.php` (`/voucher/*`). Pages: `app/pages/voucher/{page,form,readone}.php` +
+`app/pages/journal-entry-voucher.php`. Service: `DisbursementVoucherService.php` (+ `DvPrintService`,
+`JevPrintService` — see §8.8). Fully documented in the ERD doc's **§2.3**, not duplicated here — read
+that for the table-level detail (Deductions, multi-row ATC, Subsidiary Ledger). Summary: one generic
+DV shape backs every claimant/payment type, pipelined `DRAFT → FOR_FMD_REVIEW → FOR_ACCOUNTING →
+FOR_TREASURY → RELEASED` (or `REJECTED`/`CANCELLED`), with the **SETUP** Journal Entry prepared
+during `FOR_ACCOUNTING` (its Accounting Entries grid auto-filled from the DV's Deduction/ATC rows, and
+its **Book of Accounts** + optional **classification** chosen there too — see below). A DV now carries
+**one SETUP JEV plus any number of PAYMENT JEVs** (not strictly one JEV per DV any more — see the
+Payment-settlement note). `CheckProcessingService` (§8.6) is the only thing that can move a DV from
+`FOR_TREASURY` to `RELEASED`, by preparing a check against it.
+
+**General Ledger posting (2026-11-14):** `GeneralLedgerService.php` posts a DV's JEV to
+`fims.general_ledger` the moment Accounting approves it (`FOR_ACCOUNTING → FOR_TREASURY`) —
+`DisbursementVoucherService::changeStatus()` now wraps its own status update and
+`GeneralLedgerService::postJev()` in one DB transaction (that method wasn't transactional before
+this change). A DV cancelled from `FOR_TREASURY` (the only point a posted JEV can still be unwound —
+`RELEASED` is terminal) triggers `GeneralLedgerService::reverseJev()` instead, which inserts
+offsetting entries rather than deleting anything. `fims.v_journals`/`fims.v_trial_balance` are the
+reports built on top. Fully documented, including the design differences from the original draft, in
+the ERD doc's **§2.8** — read that before extending posting/reversal logic.
+
+**Route + UI — four separate modules (2026-11-14):** `GeneralLedgerPage`/`JournalsPage`/
+`TrialBalancePage`/`SubsidiaryLedgerPage` are four independent custom pages (not tabs of one page —
+an earlier same-day iteration combined Journals + Trial Balance into one page's tabs; that was split
+apart once the intended module boundary was clarified), all backed by `app/routes/general_ledger.php`
+(all four endpoints read-only — posting itself is never reachable via a route, only from
+`DisbursementVoucherService::changeStatus()`) and `GeneralLedgerService.php`:
+
+| Module | Page | Endpoint | Shows |
+|---|---|---|---|
+| Journals | `app/pages/journals-page.php` | `GET /general_ledger/journals` | The book of original entry — every posted line, chronological, paged. Filterable by fiscal year/account code/JEV or DV number |
+| General Ledger | `app/pages/general-ledger-page.php` | `GET /general_ledger/ledger?account_code=` | Pick ONE chart-of-accounts account (combobox over `GET /chart_of_accounts/all?postable_only=1`) → every posting to it, oldest first, with a **running balance** signed the normal accounting way (`GeneralLedgerService::DEBIT_NORMAL_TYPES` — Asset/Expense accounts run debit-minus-credit, Liability/Equity/Revenue run credit-minus-debit) |
+| Subsidiary Ledger | `app/pages/subsidiary-ledger-page.php` | `GET /general_ledger/subsidiary-ledger?sl_code=` | Same ledger-card idea as General Ledger, but keyed by SL code (+ optional SL detail, reusing the existing `GET /voucher/sl-codes` / `.../{sl_code}/details` pickers) instead of a GL account — e.g. one vendor's Accounts Payable sub-ledger. Normal-balance side follows the SL master's own control account (`fims.sl_masters.account_code`); falls back to credit-normal if a master has none |
+| Trial Balance | `app/pages/trial-balance-page.php` | `GET /general_ledger/trial-balance` | Total debit/credit per account, as of now, with a Balanced/Out-of-balance badge |
+
+Each page is a full PHPMaker custom page (controller + model + view, DI-bound in
+`src/definitions.php`, registered in `src/userlevelsettings.php`) under a new sidebar group,
+**"Ledgers"** (menu id 394, icon `fa-scale-balanced`) — General Ledger (393), Subsidiary Ledger (395),
+Journals (396), Trial Balance (397), in that order; General Ledger's menu item moved out of the
+"Vouchers" group into this new one.
+
+**Verified end-to-end against the live dev stack** (2026-11-14): the migration was applied for real
+to the app's actual database (`host.docker.internal:5432/fims` — *not* the separate
+`fims-nha-postgres` docker-compose container on port 5433, a different, unrelated Postgres instance;
+don't confuse the two when applying a migration for real, see §10), `composer routes` regenerated,
+then confirmed via `curl` with a real session cookie end to end: created a DV, approved it through to
+`FOR_TREASURY` (posting fired), confirmed the General Ledger ledger-card, Subsidiary Ledger
+ledger-card (a second DV whose JEV line carried an `sl_code`), Journals, and Trial Balance **all**
+show the posting with correctly-signed running balances; cancelled it from `FOR_TREASURY`
+(`reverseJev()` fired) and confirmed both ledger cards net back to exactly `0.00`; confirmed the
+idempotency guard (retrying an already-`FOR_TREASURY` transition is rejected by the state machine,
+no double-post); and confirmed all four pages render 200 with no PHP errors and the new "Ledgers"
+menu group appears on `/MainDashboard`.
+
+**Extended 2026-11-15** (the SQL for this is **uncommitted** in `_assets/sql/` as of this writing;
+read from code, not re-verified against a fresh install). Read the ERD doc's **§2.8** for the
+schema-level detail — the summary of what's new, and where each piece lives:
+
+- **Books of Accounts** (`fims.books` — Main Office, CISFA, NGC, MPLC/PPMO, PPMO). A "Book" is an
+  Accounting classification chosen on the DV's Accounting Entries section (`readone.php`'s
+  `vje_entriesCard()`), **not** a DV-header field — it's saved onto the JEV (`persistJournalEntry()`'s
+  `$bookId`) and copied down to each `general_ledger` row at post time. All four ledger pages (and the
+  JEV register, CKDJ/ADADJ) scope by it. `book_id` was added to `journal_entry_vouchers`,
+  `general_ledger`, and `official_receipts` (`03 - alter_table/30`); `fims.books` is `01 - table/41`.
+- **Payment-settlement JEVs** (`GeneralLedgerService::postPaymentJev()`, called from
+  `CheckProcessingService::prepareCheck()` right after a DV is `RELEASED`). The SETUP JEV raises
+  Accounts Payable at approval time; this inserts a **second, distinct** JEV (`jev_type = 'PAYMENT'`,
+  `source_module = 'TREASURY'`, `doc_ref_no = 'CHECK NO. …'`) that Debits AP / Credits the bank
+  account's mapped Cash account (`fims.bank_accounts.account_code`, new nullable FK) and posts it —
+  closing the loop so AP comes back down and Cash moves. Errors out if the bank account has no Cash
+  account mapped; a clean no-op if the SETUP JEV never routed through AP. This is why
+  `journal_entry_vouchers.dv_id` is no longer `UNIQUE` — the guarantee became a partial unique index
+  on `(dv_id) WHERE jev_type = 'SETUP'` (`03 - alter_table/31`). `source_module`/`doc_ref_no` are on
+  both `journal_entry_vouchers` and `general_ledger`.
+- **JEV classification** (`journal_entry_vouchers.jev_classification`: `REGULAR` default / `ACCRUAL` /
+  `DEPRECIATION` / `PREPAYMENTS` / `CLOSING`, `03 - alter_table/32`) — a reporting label, **orthogonal
+  to `jev_type`** (SETUP/PAYMENT, which is posting mechanics). Passed to `saveJournalEntry()` /
+  `POST /voucher/{id}/journal-entry` as an optional `jev_classification` field.
+- **Standalone (no-DV) Journal Entry Vouchers** (`03 - alter_table/33` makes `dv_id` nullable). For
+  period-end adjusting/closing entries Accounting books directly, with no Disbursement Voucher. Backed
+  by `DisbursementVoucherService::{create,update,delete,post}StandaloneJev()` and new routes under
+  `app/routes/voucher.php`: `GET /voucher/journal-entry/{id}`, `POST /voucher/journal-entry/add`,
+  `PUT /voucher/journal-entry/update/{id}`, `DELETE /voucher/journal-entry/delete/{id}`,
+  `POST /voucher/journal-entry/{id}/post` (the standalone equivalent of a DV's
+  `FOR_ACCOUNTING → FOR_TREASURY` transition triggering a post). The Add-JEV form lives in
+  `app/pages/journal-entry-voucher.php` (the JEV-register page, +411 lines).
+- **JEV register page / view.** `app/pages/journal-entry-voucher.php` lists JEVs from the new
+  `fims.v_journal_entry_vouchers` view (`05 - views/02`) — one row per JEV header with its DV, book,
+  and both `jev_status`/`dv_status` labels. `GET /voucher/journal-entries` now reads this view and
+  accepts `jev_type` / `jev_classification` filters in addition to `fiscal_yr` / `search`. The JEV's
+  own lifecycle (`DRAFT → APPROVED → POSTED`, or `REVERSED`) is distinct from its DV's; note that while
+  all four statuses are seeded and badged, `postJev()` currently writes `DRAFT → POSTED` directly (no
+  code path writes `APPROVED` yet — see the ERD §2.8 correction note).
+
+### 8.6 Treasury operations: Bank Management, Cash Position, Check Processing
+
+These three modules are **ports of the separate `TREASURY` reference project**, adapted to this
+repo's `fims` schema and RC-based (not department-based) scoping. Each service's header comment names
+exactly which TREASURY page/service it came from and what was deliberately **not** ported (usually:
+whatever needs a TREASURY subsystem — Collections, Investments, FTLA, Garnished/Expropriation
+Accounts — that doesn't exist here) — read those comments before extending any of the three, they're
+more detailed than this table.
+
+| Feature | Files | Backing table(s) | Purpose |
+|---|---|---|---|
+| Bank Account Management | `app/pages/bank-management-page.php` + `BankManagementService.php` + `app/routes/bank-management.php` | `fims.bank_accounts` (+ `bank_account_documents`) | One row per disbursing bank account; `fund_source` is free text (no `shared.fund_sources` lookup here, unlike TREASURY); Region/Office is a Responsibility Center (`rc_id`, unenforced), not `uac.departments`. `status` (ACTIVE/DORMANT/CLOSED) is kept in sync with the pre-existing `is_active` boolean. Documents are Google-Drive links, not uploads |
+| Cash Position | `app/pages/cash-position-page.php` + `CashPositionService.php` / `CashPositionSoaService.php` / `CashPositionReportsService.php` + `app/routes/cash-position.php` | `fims.cash_position`, `cash_position_activity_log`, `bank_transactions`/`soa_bank_transactions` | 4 tabs, 3 real + 1 mostly stubbed. **Dashboard** and **Position Updates** (manual entries + SOA upload — a verbatim-ported pure-PHP xlsx parser, `ZipArchive`+`SimpleXML`, no PhpSpreadsheet) and **Available Cash Balances Tracking** are fully wired. **Reports** (18 report types off one `report_type` dispatch) has daily/period/working-paper/individual-ledger/new-FY-opening-balance real against this schema; the rest (`cash_flow`, `investment`, `interest_earnings*`, `garnished`, `expropriation*`, `investment_schedule`) are **intentionally stubbed** — each needs a whole TREASURY subsystem (Collections/Investments/FTLA/Garnished/Expropriation Accounts) this project has never built |
+| Check Disbursement Voucher (Check Processing) | `app/pages/check-disbursement-voucher-page.php` + `CheckProcessingService.php` + `app/routes/check-processing.php` | `fims.checks`, `check_booklets`, `check_register`, `check_cancellations`, `check_claimant_releases`, `check_claimant_email_log`, `check_region_releases`, `check_region_email_log` | 7 tabs ported from TREASURY's 7 check-processing pages: **Check Preparation** (only a `FOR_TREASURY` DV can get a check — doing so calls `DisbursementVoucherService::changeStatus()` to flip it `RELEASED`, same auth as every other caller, and then posts a **payment-settlement JEV** via `GeneralLedgerService::postPaymentJev()` — see §8.5's 2026-11-15 note — so Accounts Payable comes down and Cash moves; the bank account must have a Cash `account_code` mapped first), **Check Registry** (`check_booklets`/`check_register`, incl. the RAF inventory tab computed live from `fims.checks` rows in a booklet's number range, not stored), **Released to Claimants**, **Released to Regions/Departments** (both send real SMTP email via `App\SendEmail()`, a PHPMailer wrapper — Regions' Google-Drive attachment is still a `saveRegionDriveLink()` stub), and **Cancellation & Replacements**. All RC-scoped like Bank Management, not department-scoped |
+
+### 8.7 Fund Tracking (SARO / NCA / Trust Funds / Supplemental)
+
+One table, `fims.fund_tracking`, backs **4 distinct pages** filtered by `tracking_type_id` /
+`nature_of_fund_id` — know which page you're looking at before assuming a filter is missing:
+
+| Page | Files | Filter | Purpose |
+|---|---|---|---|
+| SARO / NCA Tracking | `app/pages/saro-registry-page.php` + `form/saro-processing-form.php` | `tracking_type IN (SARO, NCA)`, `exclude_nature_of_fund=SUPPLEMENTAL` | Register of every SARO (parent row) with its NCA releases nested under it (one save can add NCA releases alongside the SARO) |
+| Supplemental Fund Tracking | `app/pages/supplemental-funds-page.php` | `nature_of_fund = SUPPLEMENTAL` | Flat list, no tree |
+| Trust Funds | `app/pages/trust-funds-page.php` + `form/trust-fund-form.php` | `tracking_type = TRUST` | Register of Trust Fund records + their Official Receipts |
+| Fund Sourcing Dashboard | `app/pages/fund-sourcing-dashboard-page.php` | (aggregated, no single filter) | Summary view over the whole table — `GET /fund_tracking/fund_sourcing_determination` / `/supplemental_status_summary` / `/dashboard` |
+
+Backing services: `fund_trackingServices.php` + `app/routes/fund_tracking.php` (`/fund_tracking/*` —
+also `/import` and `/import-trust-fund` for spreadsheet ingestion). `fims.fund_tracking` declares
+**no FOREIGN KEYs at all**; `validateReferences()` checks every id/code in code instead. Two lookup
+tables feed it: `fund_tracking_type` (`fund_tracking_type_id`: SARO/NCA/TRUST/OR — GAAAO and
+SUPPLEMENTAL are **natures of fund**, not tracking types, don't confuse the two) via
+`fund_trackingTypeServices.php` + `app/routes/fund_tracking_type.php`, and `nature_of_fund`
+(Insertions/Equity/GAAAO/Unprogrammed/Supplemental) via `nature_of_fundServices.php` +
+`app/routes/nature_of_fund.php` — both standard CRUD shapes. A third lookup, **Agency**
+(`fims.agency` — source agency of a fund tracking record) via `agencyServices.php` +
+`app/routes/agency.php`, is referenced from `fund_tracking.agency_name` **by name, not id** (the
+lookup table is for picking a value, the column stores the string).
+
+### 8.8 Pricing Requests
+
+`app/pages/pricing-page.php` + `form/pricing-request-form.php` + `readone/pricing-request-readone.php`
++ `PricingRequestService.php` + `app/routes/pricing_requests.php`. Fund Sourcing Division requests,
+keyed by `project_code`; day-count fields and a total are computed client-side and saved as sent;
+attachments are an uploaded object-storage key or a pasted link. **The backing tables
+(`fims.pricing_requests`/`pricing_request_attachments`) have no SQL file anywhere in this repo — see
+§7.6.** Don't rely on this feature working against a fresh install until that's fixed.
+
+### 8.9 Printing & document branding
+
+**`PrintService.php`** (`app/routes/print.php`, `POST /print/{doc}`) is the shared pipeline behind
+every printed form — one registry (`PrintService::DOCS`) maps a doc code to its own
+`<Doc>PrintService` (wording/layout) plus an optional DOCX generator script
+(`scripts/gen_<form>_docx.js`, Node + the `docx` package):
+
+| Doc code | Service | Notes |
+|---|---|---|
+| `CBA` / `CAF` | `CbaPrintService` / `CafPrintService` | CAF reuses the CBA layout |
+| `RFA` | `RfaPrintService` | |
+| `LAA` / `LAAREQ` | `LaaPrintService` / `LaaRequestPrintService` | `LAAREQ` is the release request's memo layout |
+| `FTLA` / `FTLAREQ` | `FtlaPrintService` / `FtlaRequestPrintService` | `FTLAREQ` reuses `LAAREQ`'s memo layout |
+| `CFA` | `CfaPrintService` | Funding-request memo, the shared memo layout |
+| `MEMO` | `MemoRequestPrintService` | The originating unit's (non-FMD) memo request, same shared memo layout |
+| `PO` / `PR` | `PurchaseOrderPrintService` / `PurchaseRequestPrintService` | |
+| `IAR` | `IarPrintService` | |
+| `LV` | `LvPrintService` | |
+| `JEV` | `JevPrintService` | A4 landscape |
+| `DV` | `DvPrintService` | **`pdf_only`** — an official PDF form filled directly, no HTML/DOCX layout or letterhead |
+
+Every non-`pdf_only` doc renders through one path so preview/PDF/DOCX can't drift: `html()` → preview
+(`app/pages/readone/print-preview-readone.php`) and the Dompdf-rendered PDF; the DOCX script reads the
+same `model()` payload. `GET /print/resolve-signatory` looks up the current holder of a signatory
+role for the form's signature block.
+
+**`LetterheadLayoutService.php`** (`app/routes/letterhead.php`, `/letterhead/{doc}`) stores a
+per-document-code default header/footer layout (`fims.letterhead_layout` — freely positioned logo/
+brand/seal/title items + a footer line, in px on a 630px-wide reference header that each form scales
+to its own paper width). "Save as default header" in the print preview writes a row; deleting it
+("Restore original") falls back to the built-in `_shared/DocumentBranding.php` banner. Not every doc
+code registered in `PrintService::DOCS` necessarily has a matching data-entry page yet (e.g. `LV`,
+`FTLA`) — the print registry can be ahead of the feature it prints.
+
+**File uploads**: `app/routes/file_upload.php` (`/upload/single-upload`, `/upload/multi-upload`,
+`/upload/file`) is the one shared object-storage upload endpoint several of the modules above
+(Pricing Request attachments, Bank Management documents, Budget Request supporting docs) are meant to
+funnel through — see `GlobalService::uploadFileToStorage()` (§5) for the underlying primitive.
+
+### 8.10 Platform utilities (not page-backed)
 | Feature | Files | Purpose |
 |---|---|---|
-| Notifications | `app/routes/notifications.php` + `app/services/NotificationService.php` | Notification hub on `uac.notifications` / `uac.notification_reads`: recent / count / mark-read / mark-all-read / send (super admin only). Raised from code with `NotificationService::toUser(...)` etc. — see **§8.6**. Consumed by the shared notification bell (`_shared/notification.php`). The old `app/lib/NotificationManager.php` is legacy and no longer used by the routes |
+| Notifications | `app/routes/notifications.php` + `app/services/NotificationService.php` | Notification hub on `uac.notifications` / `uac.notification_reads`: recent / count / mark-read / mark-all-read / send (super admin only). Raised from code with `NotificationService::toUser(...)` etc. — see **§8.11**. Consumed by the shared notification bell (`_shared/notification.php`). The old `app/lib/NotificationManager.php` is legacy and no longer used by the routes |
 | Swagger generation trigger | `app/routes/service.php` | `GET /Service` — generates OpenAPI docs via `ApiService` |
 | Generic CRUD template | `app/routes/crud.php` + `app/services/crudServices.php` | **Dead code — see §7.4** |
 
 > Full current API surface for `user-access`, `department-management`, `position-management`,
 > `vendor`, `purchase-order`, `chart_of_accounts`, and `responsibility_center` routes is kept in
 > **`app/routes/README.md`** — read it before calling or extending any of those endpoints; it's more
-> current than this guide for exact HTTP verbs/paths.
+> current than this guide for exact HTTP verbs/paths. The newer modules in §8.5–§8.9 are not yet
+> covered by that file — read their service header comments instead.
 
-### 8.6 Notifications (bell + optional real-time push)
+### 8.11 Notifications (bell + optional real-time push)
 
 **Storage** (`_assets/sql/00 - uac/02 - alter_table/06 - notifications_hub.sql`): `uac.notifications`
 (`id`, `type`, `target`, `subject`, `body`, `link`, `from_system`, `sender_id`, `event_key`, `created_at`)
@@ -584,7 +790,7 @@ Cross-cutting code used by every page — coordinate before changing:
 |---|---|
 | Auth | `_shared/auth.php` |
 | Page permissions | `_shared/PagePermission.php` (+ `_shared/README-PagePermission.md`) |
-| Notifications | `_shared/notification.php` (bell UI), `_shared/mqtt-notification.js` (optional MQTT push) — design in `_shared/NOTIFICATION-IMPLEMENTATION-PLAN.md`, usage in `_shared/NOTIFICATION_README.md`, summary in §8.6 |
+| Notifications | `_shared/notification.php` (bell UI), `_shared/mqtt-notification.js` (optional MQTT push) — design in `_shared/NOTIFICATION-IMPLEMENTATION-PLAN.md`, usage in `_shared/NOTIFICATION_README.md`, summary in §8.11 |
 | Workflow engine | `_shared/workflow-manager/` |
 | File manager | `_shared/file-manager/` |
 | Document/editor | `_shared/document/` |
@@ -609,6 +815,15 @@ First boot runs `composer install` automatically (named volume `fims-vendor`). L
 `composer routes` must be re-run inside the container after adding/changing a `#[Map(...)]` route
 attribute (§2).
 
+**Two different Postgres instances, same DB name — don't confuse them (verified 2026-11-14).**
+`docker-compose.yml` runs its own `postgres` service (container `fims-nha-postgres`, exposed on host
+port **5433**, also named database `fims`), and Adminer is pre-wired to it. But `.env`'s
+`DB_HOST=host.docker.internal` / `DB_PORT=5432` means `fims-nha-php` actually connects to a
+**separate Postgres on the host machine itself, port 5432** — the docker-compose `postgres` service
+is not in that connection path at all. If you apply a migration or seed by hand, target
+`host.docker.internal:5432` (from inside a container) / `localhost:5432` (from the host) — applying
+it to the `fims-nha-postgres` container on 5433 instead will silently do nothing for the running app.
+
 ---
 
 ## 11. Documentation index
@@ -621,7 +836,7 @@ attribute (§2).
 | `app/routes/README.md` | Authoritative per-endpoint reference for the routes it covers (see §8 note) |
 | `_assets/sql/README.md` | SQL folder conventions — **partially stale**, see §13 |
 | `system_docs/modules/*.docx` (also at `_assets/System Requirements/`) | Full target-scope SRS: Accounting Department, District, FMD, Regional, Treasury Department — the roadmap, not current state |
-| `system_docs/ERD/` | Entity-relationship diagrams for `uac` + `fims` (rewritten 2026-11-09) — expand as schemas grow |
+| `system_docs/ERD/` | Entity-relationship diagrams for `uac` + `fims` (rewritten 2026-11-09, latest update 2026-11-13) — expand as schemas grow |
 | `README-Docker.md`, `README-DEPLOY.md`, `README-installation.md` | Docker setup, on-prem deploy, project-wizard tooling |
 
 ---
@@ -631,11 +846,15 @@ attribute (§2).
 Per the SRS docs in `system_docs/modules/`, the target system also covers **Accounting Department**
 (Disbursement Control, Branch & Property, General Division — vouchers, JEVs, ledgers, payroll,
 assets, receivables), **Treasury Department** (checks, cash position, FTLA, bonds, fund sweeping),
-and **Regional/District offices** (field-office accounting cycle). None of that exists in this repo
-yet — only User Access administration and the Financial Management Department's Budgeting/Reference/
-Procurement slice (§8) have been built so far. When scoping new work, check the relevant SRS docx
-first; don't assume prior-NHA-FIMS conventions (per-module folders, multi-schema `fmd`/`accounting`/
-`treasury`/`regional` layout) apply here until they're actually implemented.
+and **Regional/District offices** (field-office accounting cycle). As of 2026-11-13 this is **no
+longer all unbuilt** — Disbursement Vouchers & Journal Entries (§8.5), Bank Account Management, Cash
+Position, and Check Processing (§8.6, ported from the separate `TREASURY` reference project) exist
+and are largely wired against this schema. Still genuinely missing: payroll, fixed assets,
+receivables, bonds/fund-sweeping, FTLA, and the full Regional/District field-office cycle — none of
+those tables or pages exist here yet. When scoping new work, check the relevant SRS docx first; don't
+assume prior-NHA-FIMS conventions (per-module folders, multi-schema `fmd`/`accounting`/`treasury`/
+`regional` layout) apply here until they're actually implemented, and check §8 before assuming a
+Treasury-sounding feature is unbuilt — several now are.
 
 ---
 
@@ -651,16 +870,22 @@ haven't been rewritten for this rebuild yet. Don't let them mislead you:
   flat at the repo root (§3).
 - **`_assets/sql/README.md`** describes 371 files across 9 schemas (`shared`, `uac`, `fmd`,
   `accounting`, `treasury`, `workflow`, `regional`, `district`, `integration`) including an
-  `ACCOUNTING-BAPD/sql/` tree. The actual `_assets/sql/` tree today has **49 files** across two
-  schemas (`uac`, `fims`) — see §3/§10. Use this guide's description, not that README's, until it's
-  updated.
+  `ACCOUNTING-BAPD/sql/` tree. The actual `_assets/sql/` tree today has **139 files** (14 under
+  `00 - uac`, 123 under `01 - fims`, 2 under `00 - public`) across two schemas (`uac`, `fims`) — see
+  §3/§10. Use this guide's description, not that README's, until it's updated. The count has grown a
+  lot since the 2026-11-09 rewrite (49 files then) as §8.5–§8.9's modules landed — see the ERD doc's
+  §2 for the table-level detail, not duplicated here.
 - **`install_system.js`** still contains logic referencing an `ACCOUNTING-BAPD/sql/` root that
   doesn't exist here — **verified 2026-11-09 that this is harmless**: the script checks
   `fs.pathExists()` before walking a root, so the missing folder just contributes zero files and
-  doesn't error. A full dry run (all 49 files under `_assets/sql/`, in the exact order the script
-  computes) on a throwaway database completed with **no errors** and produced the expected 30
-  `uac` + 20 `fims` tables, with `superadmin` seeded correctly. So: the installer's file-discovery
-  and execution logic is sound for this repo as-is — you do not need to fix it before using it.
+  doesn't error. A full dry run (the 49 files under `_assets/sql/` as of that date, in the exact
+  order the script computes) on a throwaway database completed with **no errors** and produced the
+  expected 30 `uac` + 20 `fims` tables, with `superadmin` seeded correctly. The 90 files added since
+  (§8.5–§8.9's tables) have **not** been re-verified with a fresh dry run as of this update — they
+  follow the same `IF NOT EXISTS`/idempotent convention and install in folder-number order, so this
+  is low-risk, but don't take the "no errors" claim above as covering them. So: the installer's
+  file-discovery and execution logic is sound for this repo as-is — you do not need to fix it before
+  using it (for the part that has actually been re-verified).
   One piece of real (cosmetic) cruft found during that dry run: `00 - public/schema.sql` still runs
   `CREATE SCHEMA IF NOT EXISTS` for `fmd` and `workflow` — leftover from the old multi-schema plan.
   Both schemas get created empty (no tables land in them anywhere in this repo) — harmless, but

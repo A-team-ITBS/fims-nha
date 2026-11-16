@@ -1,0 +1,21 @@
+-- ============================================================================
+-- Standalone (no-DV) Journal Entry Vouchers — period-end adjusting/closing
+-- entries (jev_classification ACCRUAL/DEPRECIATION/PREPAYMENTS/CLOSING, "03 -
+-- alter_table/32") are booked by Accounting directly in the General Journal;
+-- real NGAS practice never routes them through a Disbursement Voucher at all
+-- (no claimant, no payment, nothing for FMD/Treasury to act on). Every JEV
+-- until now was DV-driven (dv_id NOT NULL) — this relaxes that so Accounting
+-- can prepare one of these directly via the new standalone Add JEV form (see
+-- DisbursementVoucherService::createStandaloneJev()).
+--
+-- dv_id already isn't a plain UNIQUE column (dropped in "03 - alter_table/31"
+-- in favor of the partial uq_journal_entry_vouchers_dv_id_setup index) — that
+-- index still works fine with dv_id NULL: Postgres never treats two NULLs as
+-- equal, so any number of standalone (dv_id IS NULL) SETUP-type rows can
+-- coexist without tripping it.
+--
+-- REGULAR-classified JEVs are unaffected — they still always carry a dv_id
+-- in practice (nothing in the UI creates a REGULAR one without a DV), this
+-- migration only removes the DB-level requirement.
+-- ============================================================================
+ALTER TABLE fims.journal_entry_vouchers ALTER COLUMN dv_id DROP NOT NULL;

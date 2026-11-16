@@ -463,10 +463,13 @@ class BudgetAllocationService
 
     // -----------------------------------------------------------------------
     // Delete (soft) — /budget_allocation/delete/{id}
-    // Blocked while other memo requests still have this one as their parent.
+    // Blocked while other memo requests still have this one as their parent. Deleting an Approved CBA / CFA also gives
+    // back what its approval took from each line item (see BudgetLineItemService::releaseForAllocation()); the soft
+    // delete and that reversal are ONE transaction, so a failure part-way leaves both untouched.
     // -----------------------------------------------------------------------
     public function delete(int|string $id): array
     {
+        $inTransaction = false;
         try {
             $id = (int) $id;
             $check = $this->fetchById($id);
@@ -482,17 +485,29 @@ class BudgetAllocationService
                 return $this->fail("Memo request #{$id} is the parent of {$children} other memo request(s) — delete or re-parent those first.");
             }
 
+            App\Execute('BEGIN', 'DB');
+            $inTransaction = true;
+
             App\Execute(
                 "UPDATE {$this->table} SET deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE allocation_id = {$id}",
                 'DB'
             );
 
-            // Frees whatever this request was holding against its COB(s) — a no-op if it was never Approved
-            // (nothing active to release).
+            // Frees whatever this request was holding against its COB(s) and gives back what its approval took from
+            // them — a no-op if it was never Approved (nothing held, nothing applied).
             (new BudgetLineItemService())->releaseForAllocation($id);
+
+            App\Execute('COMMIT', 'DB');
+            $inTransaction = false;
 
             return ['success' => true, 'message' => "Memo request #{$id} deleted successfully."];
         } catch (\Exception $e) {
+            if ($inTransaction) {
+                try {
+                    App\Execute('ROLLBACK', 'DB');
+                } catch (\Throwable $ignored) {
+                }
+            }
             App\LogError('BudgetAllocationService::delete '.$e->getMessage());
 
             return $this->fail('Failed to delete memo request.');
@@ -650,11 +665,13 @@ class BudgetAllocationService
             }
 
             // The final approval moves money against each COB's own balance — ceiling is
-            // budget_line_items.suggested_amount, not proposed_amount. A CBA (or CFA) RESERVES it
-            // (earmarks: not yet a real obligation). An RFA/LAA instead CONVERTS its parent CBA's earmark
-            // into a real obligation (budget_line_items.obligation) — it requires a parent CBA (parent_id);
-            // approving one without it, or one that would draw more than its parent CBA still has actively
-            // earmarked for a COB, is refused. Either way, refusing here rolls back the status change too.
+            // budget_line_items.suggested_amount, not proposed_amount. A CBA (or CFA) takes its requested_amount R
+            // off each COB's line item straight away: suggested_amount - R, account_payable + R, obligation + R
+            // (and keeps an earmark row, the ceiling its RFAs/LAAs draw against). An RFA/LAA instead DRAWS DOWN its
+            // parent CBA's earmark — it requires a parent CBA (parent_id), and adds nothing to the line item again
+            // (the CBA already did); approving one without a parent, or one that would draw more than its parent CBA
+            // still has actively earmarked for a COB, is refused. Either way, refusing here rolls back the status
+            // change too.
             if ($isFinal) {
                 $allocationType = strtoupper(trim((string) ($row['allocation_type'] ?? '')));
                 $lineItemService = new BudgetLineItemService();

@@ -25,6 +25,9 @@ $_amp_api = $_brv_api;
 .iar-menu-item:hover { background:var(--afims-surface-subtle, #F4F7FA);color:var(--afims-heading-fill, #000E3E); }
 .iar-menu-item svg { width:13px;height:13px;flex-shrink:0;opacity:.7; }
 .iar-menu-divider { border-top:1px solid var(--afims-border, #E4ECF2);margin:3px 0; }
+/* three KPI cards here: fill the row (the shared .nha-summary assumes four) */
+#amp-root .nha-summary { grid-template-columns: repeat(3, 1fr); }
+@media (max-width: 900px) { #amp-root .nha-summary { grid-template-columns: repeat(2, 1fr); } }
 </style>
 
 <div id="amp-root" class="nha-root">
@@ -53,6 +56,15 @@ $_amp_api = $_brv_api;
         </div>
     </div>
 
+    <!-- ── TABS (Deliveries / Infrastructure) ──────────────── -->
+    <div class="nha-tabs no-print">
+        <button type="button" class="nha-tab active" data-tab="deliveries" onclick="amp_switchTab('deliveries')">Deliveries</button>
+        <button type="button" class="nha-tab" data-tab="infrastructure" onclick="amp_switchTab('infrastructure')">Infrastructure</button>
+    </div>
+
+    <!-- ═════════ TAB 1: DELIVERIES ═════════ -->
+    <div id="amp-pane-deliveries">
+
     <!-- ── KPI ────────────────────────────────────────────── -->
     <div class="nha-summary">
         <div class="nha-sc nha-sc-navy">
@@ -63,6 +75,24 @@ $_amp_api = $_brv_api;
                 </div>
             </div>
             <p class="nha-kpi-sub">All records</p>
+        </div>
+        <div class="nha-sc nha-sc-teal">
+            <div class="nha-sc-top">
+                <div>
+                    <div class="nha-sc-label">Total PO Amount</div>
+                    <div class="nha-sc-val" id="amp-kpi-po">—</div>
+                </div>
+            </div>
+            <p class="nha-kpi-sub">Matches current search</p>
+        </div>
+        <div class="nha-sc nha-sc-amber">
+            <div class="nha-sc-top">
+                <div>
+                    <div class="nha-sc-label">Total DR Amount</div>
+                    <div class="nha-sc-val" id="amp-kpi-dr">—</div>
+                </div>
+            </div>
+            <p class="nha-kpi-sub">Delivery receipts recorded</p>
         </div>
     </div>
 
@@ -112,6 +142,15 @@ $_amp_api = $_brv_api;
         </div>
     </div>
 
+    </div><!-- /#amp-pane-deliveries -->
+
+    <!-- ═════════ TAB 2: INFRASTRUCTURE ═════════ -->
+    <div id="amp-pane-infrastructure" hidden>
+        <div class="nha-table-wrap">
+            <div class="nha-empty nha-empty-sm"><span class="nha-empty-title">Infrastructure — coming soon.</span></div>
+        </div>
+    </div>
+
 <?php include __DIR__ . '/form/dr-module-form.php'; ?>
 
 </div><!-- /#amp-root -->
@@ -129,8 +168,33 @@ const AMP_PAGE_SIZE = 15;
 
 const $amp = id => document.getElementById(id);
 
+/* ── Tabs (Deliveries / Infrastructure) ────────────────────── */
+// Starts from ?tab= in the page URL and keeps it in sync (replaceState, no history entries), like the Memo Requests tabs.
+const AMP_TABS = ['deliveries', 'infrastructure'];
+let amp_activeTab = (() => {
+    const t = (new URLSearchParams(window.location.search).get('tab') || '').toLowerCase();
+    return AMP_TABS.includes(t) ? t : 'deliveries';
+})();
+
+function amp_syncTab() {
+    document.querySelectorAll('.nha-tabs .nha-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === amp_activeTab));
+    AMP_TABS.forEach(t => { const p = $amp('amp-pane-' + t); if (p) p.hidden = t !== amp_activeTab; });
+    const add = $amp('amp-add');                                  // "Add PO Record" belongs to Deliveries only
+    if (add) add.style.display = amp_activeTab === 'deliveries' ? '' : 'none';
+    const url = new URL(window.location.href);
+    url.searchParams.set('tab', amp_activeTab);
+    window.history.replaceState(window.history.state, '', url);
+}
+
+function amp_switchTab(tab) {
+    if (!AMP_TABS.includes(tab) || tab === amp_activeTab) return;
+    amp_activeTab = tab;
+    amp_syncTab();
+}
+
 async function amp_bootstrapLoad() {
     amp_bindEvents();
+    amp_syncTab();
     await amp_load();
 }
 if (document.readyState === 'loading') {
@@ -178,6 +242,9 @@ async function amp_load() {
         amp_renderTable(json.data ?? []);
         amp_renderPagination(json.pagination ?? {});
         $amp('amp-kpi-total').textContent = json.pagination?.total ?? (json.data ?? []).length;
+        const kpiMoney = v => '₱ ' + Number(v || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        $amp('amp-kpi-po').textContent = kpiMoney(json.summary?.total_po_amount);
+        $amp('amp-kpi-dr').textContent = kpiMoney(json.summary?.total_dr_amount);
     } catch (e) {
         amp_renderTable([]);
         amp_toast(e.message, 'error');
@@ -226,7 +293,6 @@ function amp_renderTable(rows) {
                         <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
                         View
                     </button>
-                    <div class="iar-menu-divider"></div>
                     <button type="button" class="iar-menu-item" onclick="amp_closeMenus();amp_proforma('${amp_escAttr(r.po_number)}')" title="Pro-forma JEV of each delivery receipt">
                         <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                         Pro-forma
@@ -405,6 +471,7 @@ function amp_renderProforma(active) {
             <span class="amp-pf-msg" id="amp-pf-msg"></span>
         </div>
         <div class="amp-jev-actions">
+            <button type="button" class="nha-btn-act" style="margin-right:8px;" onclick="amp_printProformaJev(${active})" title="Print this pro-forma JEV (the rows as edited)">Print JEV</button>
             <button type="button" class="amp-jev-btn" id="amp-pf-submit" onclick="amp_submitJev(${active})">Submit</button>
         </div></div>`;
 
@@ -482,6 +549,16 @@ function amp_submitJev(active) {
     }
     if (err) { amp_toast(err.text, 'error'); return; }
     amp_toast('Submitting a JEV for ' + rc.dr_number + ' is not available yet.', 'info');
+}
+
+/* ── Print (the shared print preview, included at the end) ─── */
+
+// Print JEV (pro-forma view) → the JEV form for the delivery receipt on screen, with the rows as edited (its draft).
+function amp_printProformaJev(active) {
+    const rc = amp_pf.receipts[active];
+    if (!rc) return;
+    prp_open(prp_jevFromProforma(amp_pf.po, rc), { type: 'JEV' });
+    $amp('amp-view-overlay').classList.remove('open');          // close the Pro-forma window; the print preview takes over
 }
 
 /* Searchable account code dropdown of a pro-forma row (GET /po-dr/accounts?search=): only an account picked from the list is kept */
@@ -667,3 +744,7 @@ function amp_toast(msg, type = 'info') {
     setTimeout(() => t.remove(), 4000);
 }
 </script>
+<?php
+// Print IAR / Print JEV → the shared print preview (prp_open + prp_iarPayload / prp_jevFromProforma).
+include_once __DIR__ . '/readone/print-preview-readone.php';
+?>

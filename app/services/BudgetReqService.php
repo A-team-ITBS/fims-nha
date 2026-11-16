@@ -638,7 +638,9 @@ class BudgetReqService
      * Fully replaces one Program's project blocks + line items with the
      * submitted set (simplest-correct approach — project/line-item ids do
      * not stay stable across an edit). Sibling Programs under the same
-     * header are untouched. Rejected once the header has left Draft.
+     * header are untouched. Rejected once the header has left Draft — except
+     * "Returned" (sent back to the originating office by the review), which can
+     * be edited again.
      * The request's submitted_at is refreshed (NOW()) — this is a new save of it.
      */
     public function updateProgram(int|string $budgetReqProgramId, array $header, array $projects): array
@@ -656,7 +658,8 @@ class BudgetReqService
         if (!$programRow) {
             return ['success' => false, 'message' => "Program #{$id} not found."];
         }
-        if (($programRow['status_name'] ?? '') !== 'Draft') {
+        // A Draft, or one the review sent back to the originating office ('Returned') so it can be corrected.
+        if (!in_array($programRow['status_name'] ?? '', ['Draft', self::STATUS_RETURNED], true)) {
             return ['success' => false, 'message' => "This budget request is '{$programRow['status_name']}' and its programs can no longer be edited."];
         }
 
