@@ -514,9 +514,22 @@ class PoDrService
                 $data[] = $this->withPo($row, $info[$row['po_number']] ?? null, $row['receipts']);
             }
 
+            // KPI cards: totals over EVERY row matching the search, not just this page
+            $sumPo = 0.0;
+            $sumDr = 0.0;
+            $all   = App\ExecuteRows('SELECT ' . self::COLS . " FROM {$this->h} i WHERE {$where}", 'DB') ?: [];
+            $allInfo = $this->poInfo(array_column($all, 'po_number'));
+            foreach ($all as $r) {
+                $row    = $this->shapeRow($r);
+                $full   = $this->withPo($row, $allInfo[$row['po_number']] ?? null, $row['receipts']);
+                $sumPo += (float) ($full['po_amount'] ?? 0);
+                $sumDr += (float) ($full['dr_total'] ?? 0);
+            }
+
             return [
                 'success'    => true,
                 'data'       => $data,
+                'summary'    => ['total_po_amount' => round($sumPo, 2), 'total_dr_amount' => round($sumDr, 2)],
                 'pagination' => [
                     'total'        => $total,
                     'per_page'     => $limit,

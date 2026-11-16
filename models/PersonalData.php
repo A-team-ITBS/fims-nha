@@ -44,7 +44,7 @@ class PersonalData
     public $RenderingView = false;
 
     // CSS class/style
-    public $CurrentPageName = "FundSourcingDashboardPageController";
+    public $CurrentPageName = "FtlaPageController";
 
     // Page headings
     public $Heading = "";
