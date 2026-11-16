@@ -245,10 +245,10 @@ include_once __DIR__.'/readone/print-preview-readone.php';
    Edit    → the same form modal opened on that record: window.cbaModal.open(id)
    View    → (Actions menu, every row, every user) the request's details, read-only: the same modal as Process, opened
              without the decision buttons — mpr_open(id, true) in readone/memo-process-readone.php
-   Submit for Review → (Actions menu, Draft requests only) PATCH status_id = the 'For Preview' status
+   Submit for Review → (Actions menu, Draft requests only) PATCH status_id = the 'For Review' status
    Process → (Actions menu, FMD only — instead of Edit / Delete) the details modal with Endorse / Approve / Return:
              readone/memo-process-readone.php (mpr_*), PATCH /budget_allocation/process/{id}. The review is a chain:
-             For Preview (FMD Section Chief) -> For Division Manager (FMD Division Manager) -> For Department Manager
+             For Review (FMD Section Chief) -> For Division Manager (FMD Division Manager) -> For Department Manager
              (FMD Department Manager) -> Approved; Return at any step. The buttons show only for the user level whose
              step it is. Every Return needs REMARKS (typed in the modal, saved on budget_allocation.remarks); a request
              that is back with someone shows the last return's remarks at the top of its View / Process modal.
@@ -293,10 +293,11 @@ const MRQ_LOOKUP_SOURCES = {
 };
 
 // The two statuses the "Submit for Review" action moves a request between (names of memo-request statuses in
-// fims.settings_status; their ids are looked up, never hardcoded). 'For Preview' is seeded by
+// fims.settings_status; their ids are looked up, never hardcoded). 'For Review' is seeded by
 // sample_data/06 - fims_settings_status_budget_allocation.sql, the same status the form's "Submit for Review" gives.
-const MRQ_STATUS_DRAFT   = 'Draft';
-const MRQ_STATUS_PREVIEW = 'For Preview';
+const MRQ_STATUS_DRAFT    = 'Draft';
+const MRQ_STATUS_REVIEW  = 'For Review';
+const MRQ_STATUS_RETURNED = 'Returned';   // back with the requesting office (see mrq_isReturned())
 
 const $mrq = id => document.getElementById(id);
 
@@ -306,7 +307,7 @@ function mrq_sameStatus(a, b) { return String(a || '').trim().toLowerCase() === 
 function mrq_isDraft(r)       { return mrq_sameStatus(r.status_name, MRQ_STATUS_DRAFT); }
 // A request the FMD review sent back to the requesting office (status exactly "Returned" — NOT "Returned to Section Chief" /
 // "Returned to Division Manager", which are with FMD): its office can Edit it again, and the form's Save dialog offers
-// "Submit for Preview" to send it on once corrected.
+// "Submit for Review" to send it on once corrected.
 function mrq_isReturned(r)    { return mrq_sameStatus(r.status_name, MRQ_STATUS_RETURNED); }
 // A status's colour (settings_status.color, from the statuses loaded at start-up), or '' when it has none, is not loaded,
 // or is not a plain hex colour — nothing else may be put into a style attribute.
@@ -534,7 +535,7 @@ function mrq_renderTable(rows) {
 // One "Actions" button per row that opens a small menu — the same idea as the Budget Requirements list. Sections, with a
 // divider between each one that is shown:
 //   View     — the request's details, read-only: on every row, for every user;
-//   Submit for Review — only while the request is still a Draft: it moves it on to For Preview;
+//   Submit for Review — only while the request is still a Draft: it moves it on to For Review;
 //   Edit and Delete — only while the request is a Draft (once it has left Draft it can no longer be changed or removed
 //              by the requesting office); FMD never gets them;
 //   Edit     — also on a request that was Returned to the requesting office (Delete stays Draft-only);
@@ -549,10 +550,10 @@ function mrq_actionMenu(id, isDraft, isReturned = false, type = '') {
                 View
             </button>`;
 
-    // Submit for Review is tinted with the colour of the status it gives (For Preview's settings_status.color); Edit and Delete
+    // Submit for Review is tinted with the colour of the status it gives (For Review's settings_status.color); Edit and Delete
     // keep the plain look. With no usable colour it is a plain item too.
-    const color = isDraft ? mrq_statusColor(MRQ_STATUS_PREVIEW) : '';
-    const previewItem = !isDraft ? '' : `<button type="button" class="nha-menu-item${color ? ' has-color' : ''}"${color ? ` style="--nha-item-color:${color};"` : ''} data-action="preview" title="Submit for review: its status becomes ${MRQ_STATUS_PREVIEW}" onclick="mrq_closeMenus();mrq_preview(${id});">
+    const color = isDraft ? mrq_statusColor(MRQ_STATUS_REVIEW) : '';
+    const previewItem = !isDraft ? '' : `<button type="button" class="nha-menu-item${color ? ' has-color' : ''}"${color ? ` style="--nha-item-color:${color};"` : ''} data-action="preview" title="Submit for review: its status becomes ${MRQ_STATUS_REVIEW}" onclick="mrq_closeMenus();mrq_preview(${id});">
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                 Submit for Review
             </button>`;
@@ -744,7 +745,7 @@ async function mrq_printCafOfRfa(allocationId) {
     return mrq_printCaf(cafs[cafs.length - 1].id);      // oldest first: the last one is the latest
 }
 
-/* ── Submit for Review: Draft -> For Preview ───────────────── */
+/* ── Submit for Review: Draft -> For Review ───────────────── */
 // The id of the memo-request status called `name`. It is looked up in the statuses loaded at start-up; when it is not
 // there they are read again once (it may have been added since the page opened). Throws when it still isn't set up.
 async function mrq_statusId(name) {
@@ -763,7 +764,7 @@ async function mrq_statusId(name) {
     return Number(hit.id);
 }
 
-// "Submit for Review" in a Draft row's Actions menu: after a confirmation, sets the request's status to For Preview — the same
+// "Submit for Review" in a Draft row's Actions menu: after a confirmation, sets the request's status to For Review — the same
 // status the memo form's "Submit for Review" gives — and refreshes the list.
 async function mrq_preview(id) {
     const row = mrq_rows.find(r => Number(r.allocation_id) === Number(id));
@@ -772,12 +773,12 @@ async function mrq_preview(id) {
         return;
     }
     const ref = mrq_refOf(row) ? `"${mrq_refOf(row)}"` : `#${id}`;
-    if (!confirm(`Submit memo request ${ref} for review? Its status will change from ${MRQ_STATUS_DRAFT} to ${MRQ_STATUS_PREVIEW}.`)) return;
+    if (!confirm(`Submit memo request ${ref} for review? Its status will change from ${MRQ_STATUS_DRAFT} to ${MRQ_STATUS_REVIEW}.`)) return;
 
     window.PagePreloader?.show();
     try {
         // looked up first: when the status is missing this throws and nothing has been changed
-        const statusId = await mrq_statusId(MRQ_STATUS_PREVIEW);
+        const statusId = await mrq_statusId(MRQ_STATUS_REVIEW);
         await mrq_request(`${MRQ_API}/update/${encodeURIComponent(id)}`, {
             method : 'PATCH',
             headers: { 'Content-Type': 'application/json' },

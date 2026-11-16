@@ -154,7 +154,7 @@ $app->patch('/budget_allocation/update/{id}', function ($request, $response, $ar
 
 // Delete (soft)
 // Review — the Financial Management Department (FMD) approves or returns a request, one step at a time:
-// For Preview (FMD Section Chief) -> For Division Manager (FMD Division Manager) -> For Department Manager
+// For Review (FMD Section Chief) -> For Division Manager (FMD Division Manager) -> For Department Manager
 // (FMD Department Manager) -> Approved. Body: { "decision": "approve" | "return", "remarks"?: string }. "approve" moves it to
 // the next status; the last approval gives the request its allocation number (by allocation type and document type).
 // "return" goes ONE step back (the Section Chief's: 'Returned', the requesting office) and REQUIRES remarks (the reason,

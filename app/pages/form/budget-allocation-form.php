@@ -874,7 +874,7 @@ $cbaAllowedTypes = array_values(array_intersect(['CBA', 'RFA', 'LAA', 'CFA'], ar
 		}
 
 		.cbadec-opt-desc strong {
-			white-space: nowrap; /* a status name ("For Preview") never breaks across two lines */
+			white-space: nowrap; /* a status name ("For Review") never breaks across two lines */
 		}
 
 		.cbadec-ftr {
@@ -5242,11 +5242,11 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 	// ── Submit decision pop-up ────────────────────────────────────────────────────
 	// What "Submit Request" can turn a request into. `status` is the NAME of a memo-request status
 	// (fims.settings_status, status_for = 'budget_allocation'); its id comes from the API (cbaStatusIdFor), so no
-	// install-specific id lives here. 'Draft' ships with the schema, 'For Preview' with
+	// install-specific id lives here. 'Draft' ships with the schema, 'For Review' with
 	// sample_data/06 - fims_settings_status_budget_allocation.sql.
 	var CBA_DECISIONS = {
 		preview: {
-			status: 'For Preview',
+			status: 'For Review',
 			done: 'submitted for review',
 			busy: 'Submitting'
 		},

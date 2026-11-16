@@ -22,7 +22,9 @@
  *    list page's filter bar (budget-req-page.php, and the FMD's Budget Proposal
  *    page, budget-prop-page.php), passed that same filter's current value
  *    ('' = every fiscal year); extraParams are extra query parameters for the
- *    fetch (the FMD page widens it to every Regional / District office). No row/request context, no summary cards, no accordion —
+ *    fetch (the FMD page widens it to every Regional / District office);
+ *    options.byUnit groups the outline per originating unit. No row/request
+ *    context, no summary cards, no accordion —
  *    a flat, always-visible indented outline (Program / Sub-Program /
  *    Project), built by its own renderer (bgrv_cobRowsHtml), not the
  *    panel/card one bgrv_openModal uses below. Sourced from the actual
@@ -142,6 +144,19 @@
         white-space:nowrap;flex-shrink:0; }
     .bgrv-cob-project .bgrv-cob-amt { font-weight:600;color:var(--afims-text-muted, #62657E); }
     .bgrv-cob-empty .bgrv-cob-amt { display:none; }
+
+    /* COB mode, one block per originating unit (options.byUnit): a unit row, then that unit's own Program / Sub-Program / Project rows,
+       indented one level further than in the folded outline. */
+    .bgrv-cob-unit { align-items:flex-start;font-weight:700;font-size:13px;border-top:2px solid var(--afims-border, #E4ECF2);
+        background:color-mix(in srgb, var(--afims-heading-fill, #000E3E) 7%, #fff); }
+    .bgrv-cob-list > .bgrv-cob-unit:first-child { border-top:none; }
+    .bgrv-cob-unit small { display:block;margin-top:2px;font-size:11px;font-weight:500;color:var(--afims-text-muted, #62657E); }
+    .bgrv-cob-unit-code { font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600;padding:1px 6px;border-radius:5px;
+        background:var(--afims-surface, #FFFFFF);color:var(--afims-text-muted, #62657E); }
+    .bgrv-cob-unit-meta { display:flex;align-items:center;gap:10px;flex-shrink:0; }
+    #bgrv-card .bgrv-cob-nest .bgrv-cob-program { padding-left:28px; }
+    #bgrv-card .bgrv-cob-nest .bgrv-cob-subprogram { padding-left:52px; }
+    #bgrv-card .bgrv-cob-nest .bgrv-cob-project { padding-left:76px; }
 
     /* COB mode only — larger text to match the wider modal (.bgrv-wide, see #bgrv-card above). */
     #bgrv-card.bgrv-wide .bgrv-hdr-title { font-size:17px; }
@@ -290,17 +305,22 @@ async function bgrv_openModal(requestContext, program) {
 // extraParams: more query parameters for GET /budget_req/all. The Budget Requirements list passes none (it is the caller's own RC scope);
 // the FMD's Budget Proposal list (budget-prop-page.php) passes { central: '1', rc_code_from } so the outline covers every Regional / District
 // office — the API honours central=1 only for the central review RC, so it widens nothing for anyone else.
-async function bgrv_openCobModal(fiscalYr = '', extraParams = {}) {
+// options.byUnit: one block per ORIGINATING UNIT (every request the fiscal year has, whatever its status, each with its own Programs /
+// Sub-Programs / Projects and total) instead of one outline folded across all of them. The FMD page uses it: it is the only view
+// that says which office a project belongs to, and it keeps a request that has no Program yet on the list.
+async function bgrv_openCobModal(fiscalYr = '', extraParams = {}, options = {}) {
+    const byUnit = !!(options && options.byUnit);
     $bgrv('bgrv-card').classList.add('bgrv-wide');
     $bgrv('bgrv-hdr-tag').textContent = 'Corporate Operating Budget (COB)';
-    $bgrv('bgrv-modal-title').textContent = fiscalYr ? `All Programs — FY ${bgr_esc(fiscalYr)}` : 'All Programs — All Years';
-    $bgrv('bgrv-sec-hd-label').textContent = 'Programs';
+    const what = byUnit ? 'All Originating Units' : 'All Programs';
+    $bgrv('bgrv-modal-title').textContent = fiscalYr ? `${what} — FY ${bgr_esc(fiscalYr)}` : `${what} — All Years`;
+    $bgrv('bgrv-sec-hd-label').textContent = byUnit ? 'Originating Units' : 'Programs';
     $bgrv('bgrv-sec-hd-total').textContent = '';
     $bgrv('bgrv-header-total-val').textContent = '—';
     $bgrv('bgrv-header-total').classList.add('show');
     bgrv_setSummary([]);
     $bgrv('bgrv-panels').innerHTML = '';
-    $bgrv('bgrv-empty').textContent = 'No programs found.';
+    $bgrv('bgrv-empty').textContent = byUnit ? 'No budget requests found.' : 'No programs found.';
     $bgrv('bgrv-empty').style.display = 'none';
     $bgrv('bgrv-overlay').classList.add('open');
 
@@ -316,65 +336,49 @@ async function bgrv_openCobModal(fiscalYr = '', extraParams = {}) {
 
         const headers = json.data ?? [];
 
-        // Flattened across every header this fetch returned — more than one
-        // when "All Years" is picked, or when the caller's RC scope spans
-        // several descendant rc_ids for the same year. A Program (or
-        // Sub-Program) added more than once collapses to a single row; its
-        // Projects and the grand total still count every occurrence.
-        const programMap   = new Map(); // program_code -> { program_code, program_name }
-        const subByProgram = new Map(); // program_code -> Map(sub_program_code -> { sub_program_code, sub_program_name })
-        const projByProgram = new Map(); // program_code -> [{ project_code, project_name, sub_program_code, amount }, ...]
-        const programTotals = new Map(); // program_code -> sum of its projects' amounts
-        let grandTotal   = 0;
-        let projectCount = 0;
-
-        headers.forEach(h => {
-            (h.programs || []).forEach(prog => {
-                if (!programMap.has(prog.program_code)) {
-                    programMap.set(prog.program_code, { program_code: prog.program_code, program_name: prog.program_name });
-                    subByProgram.set(prog.program_code, new Map());
-                    projByProgram.set(prog.program_code, []);
-                    programTotals.set(prog.program_code, 0);
+        if (byUnit) {
+            // Region first (a District office under its Regional office), then the unit, then the request: every request of the
+            // fiscal year is a block, so a unit that has not added a Program yet is still on the list.
+            const key = h => [h.rc_parent_name || h.rc_name || '', h.rc_code || '', h.budget_reference_number || ''];
+            const units = [...headers].sort((x, y) => {
+                const kx = key(x), ky = key(y);
+                for (let i = 0; i < kx.length; i++) {
+                    const c = String(kx[i]).localeCompare(String(ky[i]), undefined, { numeric: true, sensitivity: 'base' });
+                    if (c) return c;
                 }
-                if (prog.sub_program_code) {
-                    subByProgram.get(prog.program_code).set(prog.sub_program_code, {
-                        sub_program_code: prog.sub_program_code,
-                        sub_program_name: prog.sub_program_name,
-                    });
-                }
-                (prog.projects || []).forEach(p => {
-                    const amount = (p.line_items || []).reduce((sum, li) => sum + (Number(li.proposed_amount) || 0), 0);
-                    projByProgram.get(prog.program_code).push({
-                        project_code: p.project_code,
-                        project_name: p.project_name,
-                        sub_program_code: prog.sub_program_code,
-                        amount,
-                    });
-                    programTotals.set(prog.program_code, programTotals.get(prog.program_code) + amount);
-                    projectCount++;
-                    grandTotal += amount;
-                });
+                return 0;
             });
-        });
+            let grandTotal = 0, programCount = 0, subProgramCount = 0, projectCount = 0;
+            const unitsHtml = units.map(h => {
+                const c = bgrv_cobCollect([h]);
+                grandTotal += c.grandTotal; programCount += c.programs.length; subProgramCount += c.subProgramCount; projectCount += c.projectCount;
+                const where = [h.rc_parent_name, h.budget_reference_number].filter(Boolean).map(bgr_esc).join(' · ');
+                return `<div class="bgrv-cob-row bgrv-cob-unit">
+                            <span>${bgr_esc(h.rc_name || h.rc_id || '—')}${h.rc_code ? ` <code class="bgrv-cob-unit-code">${bgr_esc(h.rc_code)}</code>` : ''}
+                                ${where ? `<small>${where}</small>` : ''}</span>
+                            <span class="bgrv-cob-unit-meta">${bgr_statusBadge(h.status_name, h.status_color)}
+                                <span class="bgrv-cob-amt">${bgr_fmtMoney(c.grandTotal)}</span></span>
+                        </div>
+                        <div class="bgrv-cob-nest">${c.html || '<div class="bgrv-cob-row bgrv-cob-project bgrv-cob-empty">No programs added yet.</div>'}</div>`;
+            }).join('');
 
-        const programs = Array.from(programMap.values());
-        const subProgramCount = Array.from(subByProgram.values()).reduce((sum, m) => sum + m.size, 0);
+            $bgrv('bgrv-header-total-val').textContent = bgr_fmtMoney(grandTotal);
+            $bgrv('bgrv-panels').innerHTML = unitsHtml ? `<div class="bgrv-cob-list">${unitsHtml}</div>` : '';
+            $bgrv('bgrv-empty').style.display = units.length ? 'none' : '';
+            $bgrv('bgrv-sec-hd-total').textContent =
+                `${units.length} originating unit(s) · ${programCount} program(s) · ${subProgramCount} sub-program(s) · ${projectCount} project(s)`;
+            return;
+        }
 
-        const rowsHtml = programs.map(prog => {
-            const progSubPrograms = Array.from(subByProgram.get(prog.program_code).values());
-            const progProjects    = projByProgram.get(prog.program_code) || [];
-            return `<div class="bgrv-cob-row bgrv-cob-program">
-                        <span>${bgr_esc(prog.program_code)} — ${bgr_esc(prog.program_name)}</span>
-                        <span class="bgrv-cob-amt">${bgr_fmtMoney(programTotals.get(prog.program_code) || 0)}</span>
-                    </div>`
-                + bgrv_cobRowsHtml(progSubPrograms, progProjects);
-        }).join('');
-
-        $bgrv('bgrv-header-total-val').textContent = bgr_fmtMoney(grandTotal);
-        $bgrv('bgrv-panels').innerHTML = rowsHtml ? `<div class="bgrv-cob-list">${rowsHtml}</div>` : '';
-        $bgrv('bgrv-empty').style.display = programs.length ? 'none' : '';
+        // Folded across every header this fetch returned — more than one when "All Years" is picked, or when the caller's RC scope
+        // spans several descendant rc_ids for the same year. A Program (or Sub-Program) added more than once collapses to a single
+        // row; its Projects and the grand total still count every occurrence.
+        const c = bgrv_cobCollect(headers);
+        $bgrv('bgrv-header-total-val').textContent = bgr_fmtMoney(c.grandTotal);
+        $bgrv('bgrv-panels').innerHTML = c.html ? `<div class="bgrv-cob-list">${c.html}</div>` : '';
+        $bgrv('bgrv-empty').style.display = c.programs.length ? 'none' : '';
         $bgrv('bgrv-sec-hd-total').textContent =
-            `${programs.length} program(s) · ${subProgramCount} sub-program(s) · ${projectCount} project(s)`;
+            `${c.programs.length} program(s) · ${c.subProgramCount} sub-program(s) · ${c.projectCount} project(s)`;
     } catch (e) {
         $bgrv('bgrv-panels').innerHTML = '';
         $bgrv('bgrv-empty').style.display = '';
@@ -384,6 +388,61 @@ async function bgrv_openCobModal(fiscalYr = '', extraParams = {}) {
     } finally {
         window.PagePreloader?.hide();
     }
+}
+
+// bgrv_openCobModal: folds the given budget requests (headers) into Program -> Sub-Program -> Project rows. Returns the rows' HTML
+// and the counts / total they add up to. A Program (or Sub-Program) that appears in more than one header collapses to a single row; its
+// Projects and the total still count every occurrence.
+function bgrv_cobCollect(headers) {
+    const programMap    = new Map(); // program_code -> { program_code, program_name }
+    const subByProgram  = new Map(); // program_code -> Map(sub_program_code -> { sub_program_code, sub_program_name })
+    const projByProgram = new Map(); // program_code -> [{ project_code, project_name, sub_program_code, amount }, ...]
+    const programTotals = new Map(); // program_code -> sum of its projects' amounts
+    let grandTotal   = 0;
+    let projectCount = 0;
+
+    headers.forEach(h => {
+        (h.programs || []).forEach(prog => {
+            if (!programMap.has(prog.program_code)) {
+                programMap.set(prog.program_code, { program_code: prog.program_code, program_name: prog.program_name });
+                subByProgram.set(prog.program_code, new Map());
+                projByProgram.set(prog.program_code, []);
+                programTotals.set(prog.program_code, 0);
+            }
+            if (prog.sub_program_code) {
+                subByProgram.get(prog.program_code).set(prog.sub_program_code, {
+                    sub_program_code: prog.sub_program_code,
+                    sub_program_name: prog.sub_program_name,
+                });
+            }
+            (prog.projects || []).forEach(p => {
+                const amount = (p.line_items || []).reduce((sum, li) => sum + (Number(li.proposed_amount) || 0), 0);
+                projByProgram.get(prog.program_code).push({
+                    project_code: p.project_code,
+                    project_name: p.project_name,
+                    sub_program_code: prog.sub_program_code,
+                    amount,
+                });
+                programTotals.set(prog.program_code, programTotals.get(prog.program_code) + amount);
+                projectCount++;
+                grandTotal += amount;
+            });
+        });
+    });
+
+    const programs = Array.from(programMap.values());
+    const subProgramCount = Array.from(subByProgram.values()).reduce((sum, m) => sum + m.size, 0);
+    const html = programs.map(prog => {
+        const progSubPrograms = Array.from(subByProgram.get(prog.program_code).values());
+        const progProjects    = projByProgram.get(prog.program_code) || [];
+        return `<div class="bgrv-cob-row bgrv-cob-program">
+                    <span>${bgr_esc(prog.program_code)} — ${bgr_esc(prog.program_name)}</span>
+                    <span class="bgrv-cob-amt">${bgr_fmtMoney(programTotals.get(prog.program_code) || 0)}</span>
+                </div>`
+            + bgrv_cobRowsHtml(progSubPrograms, progProjects);
+    }).join('');
+
+    return { programs, subProgramCount, projectCount, grandTotal, html };
 }
 
 // bgrv_openModal only: groups the given Projects by sub_program_code — a

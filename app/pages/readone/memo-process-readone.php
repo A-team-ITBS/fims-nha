@@ -12,7 +12,7 @@
  * allocation lines and the supporting documents.
  *
  * The review is a chain of three steps, each acted on by one FMD user level (BudgetAllocationService::REVIEW_STEPS):
- *   For Preview (FMD Section Chief) -> For Division Manager (FMD Division Manager)
+ *   For Review (FMD Section Chief) -> For Division Manager (FMD Division Manager)
  *   -> For Department Manager (FMD Department Manager) -> Approved
  * The read answers with data.review { in_review, actor, next_status, is_final, can_decide } for the logged-in user.
  *

@@ -134,8 +134,8 @@ $_bgr_fmdRcCodeFrom = '35-074-0000001-000';
                     <option value="">All</option>
                 </select>
             </div>
-            <!-- The same "View as COB" as the Budget Requirements list (budget-req-page.php): the budgeted Programs, Sub-Programs and
-                 Projects as an outline, for the fiscal year picked above — here over every Regional / District office. -->
+            <!-- "View as COB" like the Budget Requirements list's (budget-req-page.php): the budgeted Programs, Sub-Programs and Projects as an
+                 outline for the fiscal year picked above — here grouped by originating unit, over every Regional / District office. -->
             <div class="nha-filter-group-actions">
                 <button type="button" id="bgr-view-cob" class="nha-btn nha-btn-outline" onclick="bgr_viewAsCob()" title="Browse every Program, Sub-Program and Project">
                     <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.477 0 8.268 2.943 9.542 7-1.274 4.057-5.065 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
@@ -200,11 +200,12 @@ const BGR_IS_BUDGET_HEAD = <?php echo $_bgr_isBudgetHead ? 'true' : 'false'; ?>;
 let bgr_flatRows = [];   // [{ header, program }] of the rows on screen, for the row actions
 const BGR_FMD_RC_FROM = <?php echo json_encode($_bgr_fmdRcCodeFrom); ?>;
 
-// "View as COB" (readone/budget-req-readone.php, bgrv_openCobModal): the Programs / Sub-Programs / Projects budgeted for the Fiscal Year
-// filter's current value ('' = every year), across every Regional / District office. central=1 + rc_code_from are what widen
-// GET /budget_req/all from the caller's own RC to those offices — and only the central review RC (this page's users) is let through.
+// "View as COB" (readone/budget-req-readone.php, bgrv_openCobModal): every budget request created for the Fiscal Year filter's current
+// value ('' = every year), one block per ORIGINATING UNIT — each Regional / District office with its own Programs / Sub-Programs /
+// Projects and total (byUnit), whatever the request's status. central=1 + rc_code_from are what widen GET /budget_req/all from the
+// caller's own RC to those offices — and only the central review RC (this page's users) is let through.
 function bgr_viewAsCob() {
-    bgrv_openCobModal($bgr('bgr-filter-fiscal-yr')?.value || '', { central: '1', rc_code_from: BGR_FMD_RC_FROM });
+    bgrv_openCobModal($bgr('bgr-filter-fiscal-yr')?.value || '', { central: '1', rc_code_from: BGR_FMD_RC_FROM }, { byUnit: true });
 }
 
 window.bgr_afterSave = () => bgr_load();

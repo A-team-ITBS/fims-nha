@@ -40,11 +40,11 @@ class BudgetAllocationService
 
     /**
      * The statuses of the review step, by NAME (their ids differ per install, so they are looked up — see
-     * getStatusIdByName()). A request is "For Preview" once its requester submits it; the Financial Management
+     * getStatusIdByName()). A request is "For Review" once its requester submits it; the Financial Management
      * Department then moves it step by step to Approved, or to Returned (process(), REVIEW_STEPS). Seeded by
      * sample_data/06 and 07 and seed_data/04.
      */
-    private const STATUS_FOR_PREVIEW = 'For Preview';
+    private const STATUS_FOR_REVIEW = 'For Review';
     private const STATUS_FOR_DIVISION_MANAGER = 'For Division Manager';
     private const STATUS_FOR_DEPARTMENT_MANAGER = 'For Department Manager';
     private const STATUS_APPROVED = 'Approved';
@@ -57,7 +57,7 @@ class BudgetAllocationService
      * uac.user_levels row — its id differs per install), the status an approval ('next') moves it to and the status a
      * Return ('return') moves it to. Only the last approval ('Approved') gives the request its allocation number.
      *
-     *   For Preview -> FMD Section Chief -> For Division Manager -> FMD Division Manager
+     *   For Review  -> FMD Section Chief -> For Division Manager -> FMD Division Manager
      *               -> For Department Manager -> FMD Department Manager -> Approved
      *
      * A Return goes back ONE step, to the user who endorsed it, who then sees it in their own status and can endorse
@@ -67,7 +67,7 @@ class BudgetAllocationService
      *   Section Chief returns      -> 'Returned'                     (back to the requesting office)
      */
     private const REVIEW_STEPS = [
-        self::STATUS_FOR_PREVIEW => [
+        self::STATUS_FOR_REVIEW => [
             'actor' => 'FMD Section Chief',      'next' => self::STATUS_FOR_DIVISION_MANAGER,   'return' => self::STATUS_RETURNED,
         ],
         self::STATUS_FOR_DIVISION_MANAGER => [
@@ -581,7 +581,7 @@ class BudgetAllocationService
     // Review — /budget_allocation/process/{id}
     //
     // The Financial Management Department (FMD) reviews a request that its office submitted for review, in three steps
-    // (REVIEW_STEPS): For Preview (FMD Section Chief) -> For Division Manager (FMD Division Manager) ->
+    // (REVIEW_STEPS): For Review (FMD Section Chief) -> For Division Manager (FMD Division Manager) ->
     // For Department Manager (FMD Department Manager) -> Approved. At each step:
     //   approve -> the next status of the chain; the LAST approval gives 'Approved' and the ALLOCATION NUMBER (below);
     //   return  -> ONE step back, to the user who endorsed it (status 'Returned to Division Manager' / 'Returned to
