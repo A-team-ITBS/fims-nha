@@ -424,6 +424,10 @@ function coa_renderTable(rows) {
                     Actions
                 </button>
                 <div class="coa-action-menu" id="coa-menu-${coa_escAttr(r.account_id)}">
+                    ${(r.posting_allowed === true || r.posting_allowed === 't') ? `<button type="button" class="coa-menu-item" onclick="coa_addSL('${coa_escAttr(r.account_id)}', '${coa_escAttr(r.account_code)}'); coa_closeDropdown('coa-menu-${coa_escAttr(r.account_id)}')">
+                        <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                        Add Sub-Ledger
+                    </button>` : ''}
                     <button type="button" class="coa-menu-item" onclick="coa_edit('${coa_escAttr(r.account_id)}'); coa_closeDropdown('coa-menu-${coa_escAttr(r.account_id)}')">
                         <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
                         Edit
@@ -562,6 +566,45 @@ function coa_addSL(parentId, parentCode) {
     $coa('coa-posting-allowed').checked = false;
     $coa('coa-source-document').value = parent?.source_document || '';
     $coa('coa-books').value = parent?.books || '';
+    $coa('coa-overlay').classList.add('open');
+}
+
+function coa_addSL(parentId, parentCode) {
+    const parent = coa_rows.find(r => r.account_id === parentId);
+    if (!parent) return;
+
+    // Find all children of this parent and generate next code
+    const children = coa_rows.filter(r => r.parent_account_id === parentId);
+    const childCodes = children.map(c => c.account_code).filter(Boolean);
+
+    let nextCode = `${parentCode}-01`;
+    if (childCodes.length > 0) {
+        const lastSegments = childCodes.map(code => {
+            const parts = code.split('-');
+            return parseInt(parts[parts.length - 1], 10) || 0;
+        });
+        const maxSegment = Math.max(...lastSegments);
+        const nextSegment = String(maxSegment + 1).padStart(2, '0');
+        nextCode = `${parentCode}-${nextSegment}`;
+    }
+
+    coa_hideErr();
+    $coa('coa-mode').value = 'add';
+    $coa('coa-modal-title').textContent = `Add Sub-Ledger under ${parent.account_code}`;
+    $coa('coa-account-id').value = '';
+    $coa('coa-account-code').value = nextCode;
+    $coa('coa-account-code').disabled = false;
+    $coa('coa-account-code').placeholder = `e.g. ${nextCode} (auto-increment)`;
+    $coa('coa-account-title').value = '';
+    $coa('coa-account-type').value = parent.account_type || '';
+    $coa('coa-region-code').value = parent.region_code || '';
+    $coa('coa-project-code').value = parent.project_code || '';
+    coa_renderParentOptions(null);
+    $coa('coa-parent-account-id').value = parentId;
+    $coa('coa-account-purpose').value = parent.account_purpose || '';
+    $coa('coa-posting-allowed').checked = false;
+    $coa('coa-source-document').value = parent.source_document || '';
+    $coa('coa-books').value = parent.books || '';
     $coa('coa-overlay').classList.add('open');
 }
 
