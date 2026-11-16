@@ -1,4 +1,4 @@
-<ew-language date="2026/11/16" id="en-US" author="e.World Technology Limited">
+<ew-language date="2026/11/17" id="en-US" author="e.World Technology Limited">
   <project>
     <phrase id="bodytitle" value="UAC - User Access Control System" />
     <phrase id="footertext" value="&amp;copy;2024 ITBS Corporation. All rights reserved." />
@@ -52,6 +52,15 @@
     </menu>
     <menu id="260">
       <phrase id="menutext" value="Check Disbursements" />
+    </menu>
+    <menu id="390">
+      <phrase id="menutext" value="Inventory" />
+    </menu>
+    <menu id="91">
+      <phrase id="menutext" value="IAR Module" />
+    </menu>
+    <menu id="333">
+      <phrase id="menutext" value="Property Record" />
     </menu>
     <menu id="755">
       <phrase id="menutext" value="Monitoring" />
@@ -148,15 +157,6 @@
     </menu>
     <menu id="79">
       <phrase id="menutext" value="Projects" />
-    </menu>
-    <menu id="390">
-      <phrase id="menutext" value="Inventory" />
-    </menu>
-    <menu id="91">
-      <phrase id="menutext" value="IAR Module" />
-    </menu>
-    <menu id="333">
-      <phrase id="menutext" value="Property Record" />
     </menu>
     <menu id="258">
       <phrase id="menutext" value="Vouchers" />
