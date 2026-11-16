@@ -236,6 +236,8 @@ document.addEventListener('click', () => {
 
 async function coa_bootstrapLoad() {
     await coa_loadParentOptions();
+    await coa_loadRegions();
+    await coa_loadProjects();
     coa_bindEvents();
     await coa_load();
 }
@@ -294,6 +296,42 @@ function coa_renderParentOptions(excludeId = null) {
         .join('');
     sel.innerHTML = '<option value="">— No parent (top-level) —</option>' + options;
     sel.value = current;
+}
+
+async function coa_loadRegions() {
+    try {
+        const res = await fetch(`${COA_API}/regions`, { credentials: 'same-origin' });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message || 'Failed to load regions.');
+
+        const sel = $coa('coa-region-code');
+        const current = sel.value;
+        const options = (json.data ?? [])
+            .map(r => `<option value="${coa_escAttr(r.region_code)}">${coa_esc(r.region_name)}</option>`)
+            .join('');
+        sel.innerHTML = '<option value="">— None (national/HO) —</option>' + options;
+        sel.value = current;
+    } catch (e) {
+        coa_toast(e.message, 'error');
+    }
+}
+
+async function coa_loadProjects() {
+    try {
+        const res = await fetch(`${COA_API}/projects`, { credentials: 'same-origin' });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message || 'Failed to load projects.');
+
+        const sel = $coa('coa-project-code');
+        const current = sel.value;
+        const options = (json.data ?? [])
+            .map(p => `<option value="${coa_escAttr(p.project_code)}">${coa_esc(p.project_code)} — ${coa_esc(p.project_name)}</option>`)
+            .join('');
+        sel.innerHTML = '<option value="">— None —</option>' + options;
+        sel.value = current;
+    } catch (e) {
+        coa_toast(e.message, 'error');
+    }
 }
 
 async function coa_load() {
@@ -512,8 +550,11 @@ function coa_statusBadge(status) {
 }
 
 /* ── Modal ─────────────────────────────────────────────────── */
-function coa_openModal(mode, row = null, parentId = null) {
+async function coa_openModal(mode, row = null, parentId = null) {
     coa_hideErr();
+    await coa_loadRegions();
+    await coa_loadProjects();
+
     $coa('coa-mode').value = mode;
     $coa('coa-modal-title').textContent = mode === 'edit' ? 'Edit Account' : 'Add Account';
     $coa('coa-account-id').value = row?.account_id || '';
@@ -526,6 +567,8 @@ function coa_openModal(mode, row = null, parentId = null) {
     $coa('coa-account-purpose').value = row?.account_purpose || '';
     $coa('coa-posting-allowed').checked = !!(row && (row.posting_allowed === true || row.posting_allowed === 't'));
     $coa('coa-source-document').value = row?.source_document || '';
+    $coa('coa-region-code').value = row?.region_code || '';
+    $coa('coa-project-code').value = row?.project_code || '';
 
     // Set checkboxes for books
     const booksArray = row?.books ? row.books.split(',').map(b => b.trim()).filter(b => b) : [];
@@ -537,7 +580,7 @@ function coa_openModal(mode, row = null, parentId = null) {
     $coa('coa-overlay').classList.add('open');
 }
 
-function coa_addSL(parentId, parentCode) {
+async function coa_addSL(parentId, parentCode) {
     const parent = coa_rows.find(r => r.account_id === parentId);
     if (!parent) return;
 
@@ -557,6 +600,9 @@ function coa_addSL(parentId, parentCode) {
     }
 
     coa_hideErr();
+    await coa_loadRegions();
+    await coa_loadProjects();
+
     $coa('coa-mode').value = 'add';
     $coa('coa-modal-title').textContent = `Add Sub-Ledger under ${parent.account_code}`;
     $coa('coa-account-id').value = '';
@@ -583,44 +629,6 @@ function coa_addSL(parentId, parentCode) {
     $coa('coa-overlay').classList.add('open');
 }
 
-function coa_addSL(parentId, parentCode) {
-    const parent = coa_rows.find(r => r.account_id === parentId);
-    if (!parent) return;
-
-    // Find all children of this parent and generate next code
-    const children = coa_rows.filter(r => r.parent_account_id === parentId);
-    const childCodes = children.map(c => c.account_code).filter(Boolean);
-
-    let nextCode = `${parentCode}-01`;
-    if (childCodes.length > 0) {
-        const lastSegments = childCodes.map(code => {
-            const parts = code.split('-');
-            return parseInt(parts[parts.length - 1], 10) || 0;
-        });
-        const maxSegment = Math.max(...lastSegments);
-        const nextSegment = String(maxSegment + 1).padStart(2, '0');
-        nextCode = `${parentCode}-${nextSegment}`;
-    }
-
-    coa_hideErr();
-    $coa('coa-mode').value = 'add';
-    $coa('coa-modal-title').textContent = `Add Sub-Ledger under ${parent.account_code}`;
-    $coa('coa-account-id').value = '';
-    $coa('coa-account-code').value = nextCode;
-    $coa('coa-account-code').disabled = false;
-    $coa('coa-account-code').placeholder = `e.g. ${nextCode} (auto-increment)`;
-    $coa('coa-account-title').value = '';
-    $coa('coa-account-type').value = parent.account_type || '';
-    $coa('coa-region-code').value = parent.region_code || '';
-    $coa('coa-project-code').value = parent.project_code || '';
-    coa_renderParentOptions(null);
-    $coa('coa-parent-account-id').value = parentId;
-    $coa('coa-account-purpose').value = parent.account_purpose || '';
-    $coa('coa-posting-allowed').checked = false;
-    $coa('coa-source-document').value = parent.source_document || '';
-    $coa('coa-books').value = parent.books || '';
-    $coa('coa-overlay').classList.add('open');
-}
 
 function coa_closeModal() {
     $coa('coa-overlay').classList.remove('open');

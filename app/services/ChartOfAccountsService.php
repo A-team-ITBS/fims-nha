@@ -296,4 +296,18 @@ class ChartOfAccountsService
             return ['success' => false, 'message' => $e->getMessage()];
         }
     }
+
+    public function fetchProjects(): array
+    {
+        try {
+            $data = App\ExecuteRows(
+                "SELECT project_code, project_name FROM fims.project ORDER BY project_code ASC",
+                'DB'
+            );
+
+            return ['success' => true, 'data' => $data ?: []];
+        } catch (\Exception $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
 }

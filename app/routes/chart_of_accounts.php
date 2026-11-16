@@ -78,6 +78,17 @@ $app->get('/chart-of-accounts/regions', function ($request, $response, $args) us
     }
 })->add($jwtMiddleware);
 
+// Projects lookup (for Project filter/dropdown)
+$app->get('/chart-of-accounts/projects', function ($request, $response, $args) use ($ChartOfAccountsService) {
+    try {
+        $result = $ChartOfAccountsService->fetchProjects();
+
+        return $response->withJson($result);
+    } catch (\Exception $e) {
+        return $response->withJson(['success' => false, 'message' => $e->getMessage()], 400);
+    }
+})->add($jwtMiddleware);
+
 // Fetch all (with pagination)
 $app->get('/chart-of-accounts/list', function ($request, $response, $args) use ($ChartOfAccountsService) {
     try {
