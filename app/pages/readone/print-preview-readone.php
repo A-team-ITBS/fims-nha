@@ -321,6 +321,7 @@ function prp_jevFromDv(dv, jev) {
         lines: (j.lines || []).map(l => ({
             account_code: l.account_code, debit: l.debit, credit: l.credit, description: l.description || '',
             sl_code: l.sl_code || '', sl_path: [l.sl_name, l.sl_detail_name].filter(Boolean).join(' › '),
+            responsibility_center: l.rc_id ? [l.rc_id, l.rc_name].filter(Boolean).join(' — ') : '',
         })),
         reference_no: dv.dv_no || '',
         payee_name: dv.claimant_name || '',
