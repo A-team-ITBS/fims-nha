@@ -14,7 +14,7 @@ namespace PHPMaker2024\FIMS;
  *   OR         — a flat list of OR records, each naming the Trust Fund it belongs to —
  * with the filters, summary cards and Export around them. Data comes from the FIMS API only:
  *   /fund_tracking/list  /fund_tracking/read/{id}  /fund_tracking/delete/{id}     (app/routes/fund_tracking.php)
- *   /fiscal_year/all  /program/all  /agency/all
+ *   /fiscal_year/all  /agency/all
  *
  * New Entry opens a small chooser — Trust Fund or OR. Both forms are modals included below:
  *   form/trust-fund-form.php      the Trust Fund form      window.trustFundModal.open(id?)   → calls window.tfl_reload() after a save
@@ -32,7 +32,6 @@ $_tfl_api = Config('API.FIMS_URL');
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
-<script src="/_shared/js/searchable-select.js?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/js/searchable-select.js') ?>"></script>
 
 <style>
     #tfl-root { --tfl-line: color-mix(in srgb, var(--afims-success, #11A752) 50%, transparent); }
@@ -42,16 +41,17 @@ $_tfl_api = Config('API.FIMS_URL');
     #tfl-root .nha-summary > .nha-sc { flex: 1 1 210px; min-width: 210px; }
     #tfl-root .nha-sc-val { white-space: nowrap; }
 
-    /* Program: a search box like Agency / Program — it keeps room for "All programs" next to its magnifier icon (the default
-       130px group minimum cut the text off), and has no × button, so the right padding the shared search style reserves for one goes */
-    #tfl-root .tfl-program-group { flex: 1 1 190px; min-width: 190px; }
-    #tfl-root .tfl-program-group .nha-filter-input { padding-right: 10px; }
+    /* The Agency search box must never be wider than its group. The IDs matter: PHPMaker's generated FIMS.css gives EVERY
+       input[type=text]:not([size]) `min-width: 250px`, which a plain class selector cannot beat — that min-width would push the box
+       out of its group, on top of the next filter. */
+    #tfl-root .nha-filter-search-wrap { min-width: 0; }
+    #tfl-root .nha-filter-input { min-width: 0; max-width: 100%; }
 
     /* the Trust Fund / OR switch sits right above the table it controls */
     #tfl-root .nha-tabs { max-width: 360px; }
 
     /* ── Table ── */
-    #tfl-root .tfl-tbl { min-width: 1180px; }
+    #tfl-root .tfl-tbl { min-width: 990px; }
     #tfl-root .tfl-tbl .tfl-num { font-family: 'IBM Plex Mono', monospace; text-align: right; white-space: nowrap; }
     #tfl-root .tfl-empty { text-align: center; color: var(--afims-text-disabled, #A9AAB8); padding: 32px; font-size: 13px; }
 
@@ -166,8 +166,6 @@ $_tfl_api = Config('API.FIMS_URL');
     #tfl-root .tflv-row { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 12px; align-items: baseline; font-size: 13px; }
     #tfl-root .tflv-k { font-weight: 600; color: var(--sec); }
     #tfl-root .tflv-v { color: var(--txt); overflow-wrap: anywhere; }
-    #tfl-root .tflv-chip { display: inline-block; margin-right: 4px; padding: 2px 7px; border-radius: 4px; vertical-align: 1px;
-        font: 600 11px/1.4 var(--mono); color: var(--afims-primary-text, #0035A9); background: var(--afims-surface, #FFFFFF); border: 1px solid var(--navy-bdr, #E6EBF6); }
     #tfl-root .tflv-muted { color: var(--subtle); }
     #tfl-root .tflv-doc { display: flex; align-items: center; gap: 10px; padding: 9px 12px; margin-bottom: 6px; font-size: 13px;
         background: var(--afims-surface, #FFFFFF); border: 1px solid var(--bdr); border-radius: 10px; }
@@ -230,21 +228,13 @@ $_tfl_api = Config('API.FIMS_URL');
                 <label class="nha-filter-label">Fiscal Year</label>
                 <select id="tfl-fy" class="nha-filter-select"><option value="">All Years</option></select>
             </div>
-            <div class="nha-filter-group nha-filter-group-lg tfl-program-group">
-                <label class="nha-filter-label">Program</label>
-                <div class="nha-filter-search-wrap">
-                    <svg class="nha-filter-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                    <input type="text" id="tfl-program" class="nha-filter-input" placeholder="All programs" autocomplete="off" title="Type a program code or name, then pick it from the list. Clear the box for all programs.">
-                </div>
-            </div>
-            <!-- Agency / Program: live-searches the agency name OR the sub-program / program name or code (agency_or_program_search —
-                 trust fund entries don't reliably carry a meaningful reference number). Typing narrows the list as you go; picking an
-                 agency from the suggestions applies it at once. -->
+            <!-- Agency: live-searches the agency name (agency_or_program_search — trust fund entries don't reliably carry a meaningful
+                 reference number). Typing narrows the list as you go; picking an agency from the suggestions applies it at once. -->
             <div class="nha-filter-group nha-filter-group-search">
-                <label class="nha-filter-label">Agency / Program</label>
+                <label class="nha-filter-label">Agency</label>
                 <div class="nha-filter-search-wrap">
                     <svg class="nha-filter-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                    <input type="text" id="tfl-search" class="nha-filter-input" placeholder="Filter by agency or program…" autocomplete="off">
+                    <input type="text" id="tfl-search" class="nha-filter-input" placeholder="Filter by agency…" autocomplete="off">
                     <button class="nha-filter-clear-btn" id="tfl-search-clear" hidden type="button">×</button>
                 </div>
             </div>
@@ -283,7 +273,7 @@ $_tfl_api = Config('API.FIMS_URL');
                 <!-- the header row is drawn per tab by tfl_renderHead() -->
                 <thead id="tfl-thead"></thead>
                 <tbody id="tfl-tbody">
-                    <tr><td colspan="8"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
+                    <tr><td colspan="7"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
                 </tbody>
             </table>
         </div>
@@ -354,10 +344,6 @@ $_tfl_api = Config('API.FIMS_URL');
                     <select id="tfl-xm-fy"><option value="">All Years</option></select>
                 </div>
                 <div class="nha-fg">
-                    <label for="tfl-xm-program">Program</label>
-                    <input type="text" id="tfl-xm-program" placeholder="All programs" autocomplete="off">
-                </div>
-                <div class="nha-fg">
                     <label for="tfl-xm-agency">Agency</label>
                     <input type="text" id="tfl-xm-agency" placeholder="All agencies" autocomplete="off">
                 </div>
@@ -390,7 +376,6 @@ const TFL_U = {
     read:     id => TFL_API + '/fund_tracking/read/' + encodeURIComponent(id),
     del:      id => TFL_API + '/fund_tracking/delete/' + encodeURIComponent(id),
     years:    TFL_API + '/fiscal_year/all',
-    programs: TFL_API + '/program/all',
     agencies: TFL_API + '/agency/all',
 };
 
@@ -405,7 +390,7 @@ const tfl_esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '
 /* ── State ──────────────────────────────────────────────────── */
 const tfl = {
     tab: TFL_TRUST,           // 'TRUST_FUND' (tree of Trust Funds) | 'OR' (flat list of OR records)
-    fy: '', program: '', search: '',
+    fy: '', search: '',
     page: 1, limit: 10,
     total: 0,                 // top-level rows matching the filters
     rows: [],                 // this page's rows — Trust Fund tab: each with its `children` (the ORs under it)
@@ -414,8 +399,6 @@ const tfl = {
     cardsReq: 0,
     expanded: new Set(),      // ids of the rows currently expanded
     searchTimer: null,
-    programs: [],             // [{value: program_code, label: program_name}]
-    programCodes: new Set(),
     agencies: [],             // agency names
 };
 
@@ -499,8 +482,8 @@ function tfl_findRecord(id) {
    (an OR with no Trust Fund belongs on the OR tab, not here). page/limit count the top-level rows, so paging walks Trust Funds —
    a Trust Fund's ORs are never split across pages.
    OR tab — a flat list of OR records (type=OR), each naming the Trust Fund it belongs to.
-   Fiscal Year, Program and the search narrow the top-level rows; a Trust Fund that matches always shows all of its ORs. The
-   search is agency_or_program_search — free text against the agency name and the sub-program / program name or code. */
+   Fiscal Year and the search narrow the top-level rows; a Trust Fund that matches always shows all of its ORs. The search is
+   agency_or_program_search — free text against the agency name. */
 function tfl_listParams(f = tfl, tab = f.tab) {
     const p = new URLSearchParams();
     if (tab === TFL_OR) {
@@ -512,7 +495,6 @@ function tfl_listParams(f = tfl, tab = f.tab) {
         p.set('root_type', TFL_TRUST);
     }
     if (f.fy) p.set('fiscal_year', f.fy);
-    if (f.program) p.set('program_code', f.program);
     if (f.search) p.set('agency_or_program_search', f.search);
     return p;
 }
@@ -574,25 +556,8 @@ async function tfl_loadYears() {
     } catch (e) { console.warn('[tfl_loadYears]', e); }
 }
 
-async function tfl_loadPrograms() {
-    try {
-        const json = await tfl_api(TFL_U.programs);
-        tfl.programs = (json.data || []).map(p => ({ value: String(p.program_code), label: String(p.program_name ?? '') }));
-        tfl.programCodes = new Set(tfl.programs.map(p => p.value));
-        nhaSearchableSelect($tfl('tfl-program'), tfl.programs);
-        nhaSearchableSelect($tfl('tfl-xm-program'), tfl.programs);
-    } catch (e) { console.warn('[tfl_loadPrograms]', e); }
-}
-
-/* The Program input shows the code of the program picked from the list; anything typed that isn't a
-   real program code is not a filter, so it is dropped. */
-function tfl_programValue(inputId) {
-    const v = $tfl(inputId).value.trim();
-    return tfl.programCodes.has(v) ? v : '';
-}
-
-/* A small type-ahead over the agency names. It has the look of the shared .nha-ss-dropdown, but prints the whole name in the
-   body font — nhaSearchableSelect prints a value as a one-line monospace "code", which would run a long agency name off the list. */
+/* A small type-ahead over the agency names. It has the look of the shared .nha-ss-dropdown and prints the whole name in the
+   body font, so a long agency name wraps instead of running off the list. */
 function tfl_nameCombo(input, getNames, onPick) {
     const box = document.createElement('div');
     box.className = 'nha-ss-dropdown';
@@ -647,15 +612,6 @@ const tfl_dash = '<span class="nha-text-muted">—</span>';
 function tfl_agencyCell(r) {
     const n = r.agency?.name || r.agency_name;
     return n ? `<span style="font-size:12px;font-weight:600;">${tfl_esc(n)}</span>` : tfl_dash;
-}
-
-function tfl_programCell(r) {
-    const sp = r.sub_program;
-    if (!sp) return tfl_dash;
-    return `<div style="font-size:12px;line-height:1.35;">
-        <div style="font-weight:500;">${tfl_esc(sp.sub_program_name)}</div>
-        <div class="nha-mono" style="font-size:10px;color:var(--afims-text-disabled, #A9AAB8);">${tfl_esc(sp.sub_program_code)}${sp.program_name ? ' · ' + tfl_esc(sp.program_name) : ''}</div>
-    </div>`;
 }
 
 function tfl_amountCell(v) {
@@ -750,7 +706,6 @@ function tfl_parentRow(r, expanded) {
             <div class="tfl-tags">${tags}</div>
         </td>
         <td>${tfl_agencyCell(r)}</td>
-        <td>${tfl_programCell(r)}</td>
         <td class="tfl-num">${tfl_amountCell(r.amount)}</td>
         <td class="nha-td-date" style="white-space:nowrap;">${tfl_esc(tfl_fmtDate(r.date))}</td>
         <td class="tfl-num">${hasKids ? tfl_amountCell(tfl_sum(kids)) : '—'}</td>
@@ -771,7 +726,6 @@ function tfl_childRow(c, isLast) {
             </div>
         </td>
         <td>${tfl_agencyCell(c)}</td>
-        <td>${tfl_programCell(c)}</td>
         <td class="tfl-num">${tfl_amountCell(c.amount)}</td>
         <td class="nha-td-date" style="white-space:nowrap;">${tfl_esc(tfl_fmtDate(c.date))}</td>
         <td class="tfl-num">—</td>
@@ -799,7 +753,6 @@ function tfl_orRow(r) {
         </td>
         <td>${tfl_trustFundCell(r)}</td>
         <td>${tfl_agencyCell(r)}</td>
-        <td>${tfl_programCell(r)}</td>
         <td class="tfl-num">${tfl_amountCell(r.amount)}</td>
         <td class="nha-td-date" style="white-space:nowrap;">${tfl_esc(tfl_fmtDate(r.date))}</td>
         <td>${tfl_remarksCell(r.remarks)}</td>
@@ -812,7 +765,6 @@ const TFL_HEAD = {
     TRUST_FUND: `<tr>
         <th style="min-width:210px;">Reference No.</th>
         <th style="min-width:170px;">Agency</th>
-        <th style="min-width:190px;">Program / Sub-Program</th>
         <th style="text-align:right;">Amount (₱)</th>
         <th>Date</th>
         <th style="text-align:right;">OR Total (₱)</th>
@@ -823,7 +775,6 @@ const TFL_HEAD = {
         <th style="min-width:180px;">OR No.</th>
         <th style="min-width:170px;">Trust Fund</th>
         <th style="min-width:170px;">Agency</th>
-        <th style="min-width:190px;">Program / Sub-Program</th>
         <th style="text-align:right;">Amount (₱)</th>
         <th>Date</th>
         <th style="min-width:150px;">Remarks</th>
@@ -842,11 +793,11 @@ function tfl_renderTable() {
     const isOr = tfl.tab === TFL_OR;
 
     if (tfl.error) {
-        body.innerHTML = `<tr><td colspan="8" class="tfl-empty">Could not load records: ${tfl_esc(tfl.error)}</td></tr>`;
+        body.innerHTML = `<tr><td colspan="7" class="tfl-empty">Could not load records: ${tfl_esc(tfl.error)}</td></tr>`;
     } else if (!tfl.loaded) {
-        body.innerHTML = '<tr><td colspan="8"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>';
+        body.innerHTML = '<tr><td colspan="7"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>';
     } else if (!tfl.rows.length) {
-        body.innerHTML = `<tr><td colspan="8"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">${TFL_TAB_TEXT[tfl.tab].empty}</span></div></td></tr>`;
+        body.innerHTML = `<tr><td colspan="7"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">${TFL_TAB_TEXT[tfl.tab].empty}</span></div></td></tr>`;
     } else if (isOr) {
         body.innerHTML = tfl.rows.map(tfl_orRow).join('');
     } else {
@@ -951,8 +902,6 @@ function tfl_reload() { return Promise.all([tfl_loadCards(), tfl_loadTable()]); 
 /* ── Apply / reset filters ──────────────────────────────────── */
 function tfl_apply() {
     tfl.fy = $tfl('tfl-fy').value;
-    tfl.program = tfl_programValue('tfl-program');
-    if (!tfl.program) $tfl('tfl-program').value = '';
     tfl.search = $tfl('tfl-search').value.trim();
     tfl.limit = parseInt($tfl('tfl-limit').value) || 10;
     tfl.expanded.clear();
@@ -961,7 +910,7 @@ function tfl_apply() {
 }
 
 function tfl_resetFilters() {
-    ['tfl-fy', 'tfl-program', 'tfl-search'].forEach(id => { $tfl(id).value = ''; });
+    ['tfl-fy', 'tfl-search'].forEach(id => { $tfl(id).value = ''; });
     $tfl('tfl-search-clear').hidden = true;
     $tfl('tfl-limit').value = '10';
     tfl_apply();
@@ -987,11 +936,9 @@ async function tfl_view(id) {
         tfl_viewId = Number(d.id);
         const type = tfl_typeCode(d) === TFL_OR ? TFL_OR : TFL_TRUST;
         tfl_viewType = type;
-        const sp = d.sub_program;
         const parent = tfl_parentOf(d);
         const ors = type === TFL_TRUST ? tfl_orsOf(d) : [];
         const has = v => v !== null && v !== undefined && String(v).trim() !== '';
-        const chip = code => `<span class="tflv-chip">${tfl_esc(code)}</span>`;
         const agency = d.agency?.name || d.agency_name;
 
         // title: "Reference No. <ref>" and the record type as a badge
@@ -1003,8 +950,6 @@ async function tfl_view(id) {
         const classification = [
             tfl_vrow('Tracking Type', d.tracking_type ? `${tfl_esc(d.tracking_type.fund_tracking_code)} <span class="tflv-muted">— ${tfl_esc(d.tracking_type.fund_tracking_name || '')}</span>` : tfl_dash),
             tfl_vrow('Fiscal Year', d.fiscal_year ? 'FY ' + tfl_esc(d.fiscal_year) : tfl_dash),
-            tfl_vrow('Program', sp && sp.program_code ? `${chip(sp.program_code)}${tfl_esc(sp.program_name || '')}` : tfl_dash),
-            tfl_vrow('Sub-Program', sp ? `${chip(sp.sub_program_code)}${tfl_esc(sp.sub_program_name)}` : tfl_dash),
         ];
         if (type === TFL_OR) {
             classification.push(tfl_vrow('Trust Fund', parent
@@ -1119,34 +1064,30 @@ async function tfl_delete(id) {
 }
 
 /* ── Export ──────────────────────────────────────────────────────
-   Follows the active tab (Trust Funds, or OR records) and has its own Fiscal Year / Program / Agency, independent of the
+   Follows the active tab (Trust Funds, or OR records) and has its own Fiscal Year / Agency, independent of the
    Filters bar and of the table's paging — it walks /fund_tracking/list page by page and includes EVERY matching record, one flat
    line each. Excel-compatible CSV, or a print-ready table for "Save as PDF" (no spreadsheet / PDF library is installed in this app). */
 function tfl_exportOpen() {
     $tfl('tfl-xm-title').textContent = TFL_TAB_TEXT[tfl.tab].exportTitle;
     $tfl('tfl-xm-fy').innerHTML = $tfl('tfl-fy').innerHTML;     // mirror the years the Filters bar has loaded
     $tfl('tfl-xm-fy').value = '';
-    $tfl('tfl-xm-program').value = '';
     $tfl('tfl-xm-agency').value = '';
     $tfl('tfl-xm-format').value = 'csv';
     tfl_openOverlay('tfl-xm-ov');
 }
 
 const TFL_EXPORT_HEAD = {
-    TRUST_FUND: ['Agency', 'Program', 'Sub-Program', 'Reference No.', 'OR No.', 'Amount', 'Date', 'Remarks'],
-    OR:         ['Agency', 'Program', 'Sub-Program', 'OR No.', 'Trust Fund No.', 'Amount', 'Date', 'Remarks'],
+    TRUST_FUND: ['Agency', 'Reference No.', 'OR No.', 'Amount', 'Date', 'Remarks'],
+    OR:         ['Agency', 'OR No.', 'Trust Fund No.', 'Amount', 'Date', 'Remarks'],
 };
-const TFL_EXPORT_AMOUNT_COL = 5;
+const TFL_EXPORT_AMOUNT_COL = 3;
 
 // One flat line per record — the table's columns, with full, unabbreviated values
 function tfl_exportRows(records, tab) {
     return records.map(r => {
-        const sp = r.sub_program;
         const tf = tfl_parentOf(r);
         return [
             r.agency?.name || r.agency_name || '',
-            sp && sp.program_code ? [sp.program_code, sp.program_name].filter(Boolean).join(' - ') : '',
-            sp ? [sp.sub_program_code, sp.sub_program_name].filter(Boolean).join(' - ') : '',
             r.reference_number || '',
             tab === TFL_OR
                 ? (tf ? (tf.reference_number || tf.name || '') : '')                                   // the Trust Fund this OR belongs to
@@ -1215,13 +1156,11 @@ async function tfl_exportSubmit() {
     const format = $tfl('tfl-xm-format').value === 'pdf' ? 'pdf' : 'csv';
     const f = {
         fy: $tfl('tfl-xm-fy').value,
-        program: tfl_programValue('tfl-xm-program'),
         search: $tfl('tfl-xm-agency').value.trim(),      // by name, the same agency_or_program_search the Filters bar uses
     };
 
     const parts = [tab === TFL_OR ? 'OR records' : 'Trust Funds'];
     if (f.fy) parts.push('Fiscal Year: ' + f.fy);
-    if (f.program) parts.push('Program: ' + f.program);
     if (f.search) parts.push('Agency: ' + f.search);
     const subtitle = parts.join('  |  ');
 
@@ -1262,10 +1201,7 @@ function tfl_bind() {
     $tfl('tfl-reset').addEventListener('click', tfl_resetFilters);
     ['tfl-fy', 'tfl-limit'].forEach(id => $tfl(id).addEventListener('change', tfl_apply));
 
-    // Picking a program from the list (or clearing the box) applies right away
-    $tfl('tfl-program').addEventListener('change', tfl_apply);
-
-    // Agency / Program: typing live-searches (debounced); picking an agency from the suggestions applies at once
+    // Agency: typing live-searches (debounced); picking an agency from the suggestions applies at once
     const search = $tfl('tfl-search'), clear = $tfl('tfl-search-clear');
     search.addEventListener('input', () => {
         clear.hidden = !search.value;
@@ -1299,7 +1235,7 @@ async function tfl_boot() {
     tfl_renderHead();
     tfl_loadTable();
     tfl_loadCards();
-    await Promise.all([tfl_loadYears(), tfl_loadPrograms(), tfl_loadAgencies()]);
+    await Promise.all([tfl_loadYears(), tfl_loadAgencies()]);
 }
 
 if (document.readyState === 'loading') {

@@ -3,7 +3,7 @@
  * COB — "Generate Report" dialog. prefix: cobr_
  *
  * Opened by the Generate Report button of each tree tab of the COB page (app/pages/cob-page.php): window.cobReport.open(tab), tab =
- * fund_source | component | region. The user picks how deep the report goes (the first level only … down to the accounts), checks a PREVIEW
+ * region | fund_source | component. The user picks how deep the report goes (the first level only … down to the projects), checks a PREVIEW
  * (switchable PDF / Excel look), then exports to PDF or Excel.
  *
  * Everything is built by the server (GET /cob/report, CobReportService): the preview is the very HTML the PDF is laid out from, the Excel
@@ -33,7 +33,7 @@
 #cobr-overlay .cobr-seg button { padding: 5px 14px; font-size: 12px; font-weight: 600; border: 0; background: var(--afims-surface, #fff); color: var(--afims-text-muted, #62657E); cursor: pointer; font-family: inherit; }
 #cobr-overlay .cobr-seg button.active { background: var(--afims-heading-fill, #000E3E); color: #fff; }
 #cobr-overlay .cobr-stage { max-height: 44vh; overflow: auto; padding: 14px; background: #E8ECF2; border: 1px solid var(--afims-border, #E4ECF2); border-radius: 10px; }
-#cobr-overlay .cobr-paper-wrap { min-width: 620px; padding: 14px 16px; background: #fff; box-shadow: 0 1px 6px rgba(15, 32, 69, .18); }
+#cobr-overlay .cobr-paper-wrap { min-width: 1000px; padding: 14px 16px; background: #fff; box-shadow: 0 1px 6px rgba(15, 32, 69, .18); }
 #cobr-overlay .cobr-empty { padding: 28px 8px; text-align: center; font-size: 13px; color: var(--afims-text-muted, #62657E); }
 #cobr-overlay .cobr-note { margin: 10px 0 0; font-size: 11.5px; line-height: 1.5; color: var(--afims-text-muted, #62657E); }
 #cobr-overlay .cobr-msg { min-height: 16px; margin: 6px 0 0; font-size: 12.5px; font-weight: 600; color: #b42318; }
@@ -80,28 +80,28 @@
     const $ = id => document.getElementById(id);
     const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-    // What each tab can include, shallowest first (the server's CobReportService::LAYOUTS says the same, longhand).
+    // What each tab can include, shallowest first (the server's CobReportService::LAYOUTS says the same, longhand). A level means "down to it":
+    // a program with no Sub-Program simply has no Sub-Program row.
     const TABS = {
-        fund_source: { title: 'Sources and Uses of Funds', levels: [
+        region: { title: 'Per Region', levels: [
+            ['Region', 'Only the region rows'],
+            ['Region + Program', 'Regions split by program'],
+            ['Region + Program + Sub-Program', 'Programs split by sub-program'],
+            ['Region + Program + Sub-Program + Projects', 'Down to the projects'],
+        ] },
+        fund_source: { title: 'Per Type of Fund', levels: [
             ['Type of Fund', 'Only the type of fund rows'],
             ['Type of Fund + Component', 'Fund types and their components'],
             ['Type of Fund + Component + Program', 'Components split by program'],
-            ['Type of Fund + Component + Program + Projects', 'Programs broken down to projects'],
-            ['Type of Fund + Component + Program + Projects + Accounts', 'Projects broken down by chart-of-accounts line'],
+            ['Type of Fund + Component + Program + Sub-Program', 'Programs split by sub-program'],
+            ['Type of Fund + Component + Program + Sub-Program + Projects', 'Down to the projects'],
         ] },
-        component: { title: 'Uses of Funds Per Component', levels: [
+        component: { title: 'Per Component', levels: [
             ['Component', 'Only the component rows'],
             ['Component + Type of Fund', 'Components and the funds paying for them'],
             ['Component + Type of Fund + Program', 'Funds split by program'],
-            ['Component + Type of Fund + Program + Projects', 'Programs broken down to projects'],
-            ['Component + Type of Fund + Program + Projects + Accounts', 'Projects broken down by chart-of-accounts line'],
-        ] },
-        region: { title: 'Uses of Funds Per Region', levels: [
-            ['Region', 'Only the region rows'],
-            ['Region + Office', 'Regions and their offices'],
-            ['Region + Office + Program', 'Offices split by program'],
-            ['Region + Office + Program + Projects', 'Programs broken down to projects'],
-            ['Region + Office + Program + Projects + Accounts', 'Projects broken down by chart-of-accounts line'],
+            ['Component + Type of Fund + Program + Sub-Program', 'Programs split by sub-program'],
+            ['Component + Type of Fund + Program + Sub-Program + Projects', 'Down to the projects'],
         ] },
     };
 

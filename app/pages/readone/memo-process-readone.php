@@ -8,11 +8,11 @@
  *            same details plus the decision buttons described below.
  *
  * It reads the request (GET /budget_allocation/read/{id}) and shows its
- * details read-only: the request itself, Program / Sub-Program / Project, vendor and PR / PO, the purpose, the budget
+ * details read-only: the request itself, Program / Sub-Program / Project, PR / PO, the purpose, the budget
  * allocation lines and the supporting documents.
  *
  * The review is a chain of three steps, each acted on by one FMD user level (BudgetAllocationService::REVIEW_STEPS):
- *   For Preview (FMD Section Chief) -> For Division Manager (FMD Division Manager)
+ *   For Review (FMD Section Chief) -> For Division Manager (FMD Division Manager)
  *   -> For Department Manager (FMD Department Manager) -> Approved
  * The read answers with data.review { in_review, actor, next_status, is_final, can_decide } for the logged-in user.
  *
@@ -534,9 +534,8 @@ function mpr_render(r) {
             mpr_row_('Program', mpr_named(r.program_name, r.program_code)) +
             mpr_row_('Sub-Program', mpr_named(r.sub_program_name, r.sub_program_code)) +
             mpr_row_('Project', mpr_named(r.project_name, r.project_code))),
-        // A CBA buys nothing from a vendor (its form hides Vendor and the PR / PO number), so it gets no such card.
-        String(r.allocation_type || '').toUpperCase() === 'CBA' ? '' : mpr_card('Vendor and Purchase Documents',
-            mpr_row_('Vendor', mrq_esc(r.vendor_name || '')) +
+        // no Vendor row: the vendor is not part of the request's details, for the requesting office (View) or for FMD (Process)
+        mpr_card('Purchase Documents',
             mpr_docRow('Purchase Request (PR)', r.pr_number, r.pr_amount) +
             mpr_docRow('Purchase Order (PO)', r.po_number, r.po_amount)),
         mpr_card('Purpose / Description', mpr_viewOnly

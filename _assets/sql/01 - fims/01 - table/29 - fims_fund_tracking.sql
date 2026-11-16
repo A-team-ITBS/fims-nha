@@ -6,18 +6,17 @@
 --   status_id          -> fims.settings_status.id
 -- No FOREIGN KEY constraints are declared here (none were specified); add them
 -- in a later "alter_table" file if wanted.
+-- No unreleased amount and no sub-program: a record carries neither (dropped by "03 - alter_table/41" in an existing database).
 -- Soft-deleted via deleted_at.
 CREATE TABLE IF NOT EXISTS fims.fund_tracking (
     id SERIAL PRIMARY KEY,
     fiscal_year INT4,
     tracking_type_id INT4,
     reference_number VARCHAR(225),
-    sub_program_code VARCHAR(225),
     nature_of_fund_id INT4,
     name VARCHAR(225),
-    date DATE,
+    date DATE DEFAULT CURRENT_DATE,   -- the day the record was created (stamped by the API; never entered)
     amount NUMERIC(18,2),
-    unreleased NUMERIC(18,2),
     bank_account_no VARCHAR(225),
     agency_name VARCHAR(225),
     remarks TEXT,
