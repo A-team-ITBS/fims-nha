@@ -10,7 +10,7 @@ class ChartOfAccountsService
     private string $table = 'fims.chart_of_accounts';
 
     private array $allowedFields = [
-        'account_code', 'account_title', 'account_type', 'parent_account_id',
+        'account_id', 'account_code', 'account_title', 'account_type', 'parent_account_id',
         'posting_allowed', 'status', 'source_document', 'region_code', 'project_code',
         'account_purpose', 'books', 'for_budget_proposal',
     ];
@@ -155,6 +155,15 @@ class ChartOfAccountsService
             }
 
             $fields = array_intersect_key($body, array_flip($this->allowedFields));
+
+            // Generate account_id (sequential) if not provided
+            if (!array_key_exists('account_id', $fields) || trim((string) ($fields['account_id'] ?? '')) === '') {
+                $maxId = (int) App\ExecuteScalar(
+                    "SELECT COALESCE(MAX(CAST(account_id AS INTEGER)), 0) FROM {$this->table}",
+                    'DB'
+                );
+                $fields['account_id'] = (string) ($maxId + 1);
+            }
 
             foreach (['parent_account_id', 'region_code', 'project_code', 'source_document', 'account_purpose', 'books'] as $k) {
                 if (array_key_exists($k, $fields) && trim((string) $fields[$k]) === '') {
