@@ -167,13 +167,13 @@
                 <div class="coa-row">
                     <div class="coa-group full">
                         <label class="coa-label">Books (Fund Sources)</label>
-                        <select class="coa-select" id="coa-books" multiple style="min-height: 120px;">
+                        <p class="coa-hint" style="margin-bottom: 8px;">Hold Ctrl/Cmd to select multiple options</p>
+                        <select class="coa-select" id="coa-books" multiple style="min-height: 140px; padding: 8px;">
                             <option value="MO">MO</option>
                             <option value="CISFA">CISFA</option>
                             <option value="NGC">NGC</option>
                             <option value="MPLC">MPLC</option>
                         </select>
-                        <p class="coa-hint">Select one or more books (hold Ctrl/Cmd to select multiple)</p>
                     </div>
                 </div>
 
