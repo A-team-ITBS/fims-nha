@@ -197,7 +197,17 @@ $USER_LEVEL_PRIVS = [["{FIMS}audit_logs","-2","0"],
     ["{FIMS}check-registry-page.php","-2","0"],
     ["{FIMS}check-registry-page.php","0","0"],
     ["{FIMS}accountable-forms-registry-page.php","-2","0"],
-    ["{FIMS}accountable-forms-registry-page.php","0","0"]];
+    ["{FIMS}accountable-forms-registry-page.php","0","0"],
+    ["{FIMS}fmr-page.php","-2","0"],
+    ["{FIMS}fmr-page.php","0","0"],
+    ["{FIMS}remittance-list-page.php","-2","0"],
+    ["{FIMS}remittance-list-page.php","0","0"],
+    ["{FIMS}supplier-contract-page.php","-2","0"],
+    ["{FIMS}supplier-contract-page.php","0","0"],
+    ["{FIMS}fund-source-page.php","-2","0"],
+    ["{FIMS}fund-source-page.php","0","0"],
+    ["{FIMS}program-sources-page.php","-2","0"],
+    ["{FIMS}program-sources-page.php","0","0"]];
 
 /**
  * Tables
@@ -297,4 +307,9 @@ $USER_LEVEL_TABLES = [["audit_logs","audit_logs","Audit Logs",false,"{FIMS}",""]
     ["dv-review-page.php","dv_review_page","DV Review",true,"{FIMS}","DvReviewPage"],
     ["liquidation-voucher-page.php","liquidation_voucher_page","Liquidation Voucher",true,"{FIMS}","LiquidationVoucherPage"],
     ["check-registry-page.php","check_registry_page","Check Registry",true,"{FIMS}","CheckRegistryPage"],
-    ["accountable-forms-registry-page.php","accountable_forms_registry_page","Accountable Forms Registry",true,"{FIMS}","AccountableFormsRegistryPage"]];
+    ["accountable-forms-registry-page.php","accountable_forms_registry_page","Accountable Forms Registry",true,"{FIMS}","AccountableFormsRegistryPage"],
+    ["fmr-page.php","fmr_page","FMR",true,"{FIMS}","FmrPage"],
+    ["remittance-list-page.php","remittance_list_page","Remittance List(Deductions)",true,"{FIMS}","RemittanceListPage"],
+    ["supplier-contract-page.php","supplier_contract_page","Supplier / Contract",true,"{FIMS}","SupplierContractPage"],
+    ["fund-source-page.php","fund_source_page","Fund Source",true,"{FIMS}","FundSourcePage"],
+    ["program-sources-page.php","program_sources_page","Program Source",true,"{FIMS}","ProgramSourcesPage"]];
