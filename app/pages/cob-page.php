@@ -3,22 +3,52 @@
 namespace PHPMaker2024\FIMS;
 
 @session_start();
-$_bgr_api = Config('API.FIMS_URL');
+$_cob_api = Config('API.FIMS_URL');
 ?>
 
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="/css/nha-fims.css?v=<?php echo @filemtime($_SERVER['DOCUMENT_ROOT'].'/css/nha-fims.css'); ?>" />
+<?php /* The shared theme, linked the way every other custom page links it (GetUrl adds the app's base path; the version comes from the file
+          next to this page, so a changed stylesheet is never served stale). */ ?>
+<link rel="stylesheet" href="<?php echo GetUrl('_shared/css/nha-fims.css'); ?>?v=<?php echo @filemtime(dirname(__DIR__, 2).'/_shared/css/nha-fims.css'); ?>" />
 <style>
-@media (min-width: 901px) {
-    .nha-root .bgr-summary-2col { grid-template-columns: repeat(2, 1fr); }
-}
-/* "Beginning Balance" spans Fund Balance + Adjustment + Carry Over Obligation */
-.nha-root .nha-tbl thead th.bgr-grp { text-align: center; border-bottom: 1px solid rgba(255, 255, 255, .28); }
+#cob-root .nha-summary { grid-template-columns: repeat(4, 1fr); }
+@media (max-width: 900px) { #cob-root .nha-summary { grid-template-columns: repeat(2, 1fr); } }
+
+/* the two-row table header: "Beginning Balance" groups Fund Balance / Adjustment / Carry Over Obligation */
+#cob-root .nha-tbl thead th { cursor: default; }
+#cob-root .nha-tbl thead th.cob-grp { text-align: center; border-bottom: 1px solid rgba(255, 255, 255, .28); }
+#cob-root .nha-tbl thead th.text-end { text-align: right; }
+
+#cob-root .cob-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 10px 14px; border-bottom: 1px solid var(--afims-border, #E4ECF2); }
+#cob-root .cob-hint { font-size: 12px; color: var(--afims-text-muted, #62657E); }
+#cob-root .cob-tool-btns { display: flex; gap: 6px; }
+#cob-root .cob-note { margin: 0; padding: 10px 14px; font-size: 11.5px; line-height: 1.5; color: var(--afims-text-muted, #62657E); border-top: 1px solid var(--afims-border, #E4ECF2); }
+
+/* tree rows */
+#cob-root .cob-row.cob-has-kids { cursor: pointer; }
+#cob-root .cob-row.cob-has-kids:focus-visible { outline: 2px solid var(--afims-heading-fill, #000E3E); outline-offset: -2px; }
+#cob-root .cob-d0 > td { background: var(--afims-surface-subtle, #F4F7FA); font-weight: 700; color: var(--afims-heading, #000E3E); }
+#cob-root .cob-d1 > td { font-weight: 600; }
+#cob-root .cob-t-account > td { color: var(--afims-text-muted, #62657E); font-size: 12px; }
+#cob-root .cob-name { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; padding-left: calc(var(--d, 0) * 22px); }
+#cob-root .cob-caret { width: 14px; height: 14px; flex: none; transition: transform .15s; stroke: currentColor; }
+#cob-root .cob-caret.open { transform: rotate(90deg); }
+#cob-root .cob-caret-sp { width: 14px; flex: none; }
+#cob-root .cob-sub { font-size: 11.5px; font-weight: 400; color: var(--afims-text-muted, #62657E); }
+#cob-root .cob-unassigned { font-style: italic; color: #B45309; }
+#cob-root .cob-num { font-family: 'IBM Plex Mono', monospace; font-size: 12px; text-align: right; white-space: nowrap; }
+#cob-root .cob-d0 > td.cob-num { font-size: 12.5px; }
+#cob-root .cob-adj-pos { color: #16a34a; font-weight: 600; }
+#cob-root .cob-adj-neg { color: #dc2626; font-weight: 600; }
+#cob-root .cob-dash { color: var(--afims-text-disabled, #A9AAB8); }
+#cob-root .cob-clip { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; font-weight: 600; color: var(--afims-primary-text, #0035A9); }
+#cob-root .cob-clip svg { width: 12px; height: 12px; stroke: currentColor; }
+#cob-root .cob-total-row > td { font-weight: 700; background: var(--afims-surface-subtle, #F4F7FA); border-top: 2px solid var(--afims-border, #E4ECF2); }
 </style>
 
-<div id="bgr-root" class="nha-root">
+<div id="cob-root" class="nha-root">
 
     <!-- ── HEADER ─────────────────────────────────────────── -->
     <div class="nha-hdr no-print">
@@ -30,228 +60,488 @@ $_bgr_api = Config('API.FIMS_URL');
             </div>
             <div>
                 <div class="nha-hdr-title">Corporate Operating Budget (COB)</div>
+                <div class="nha-hdr-sub">Approved budget requests only — fund balance, adjustments and obligations</div>
             </div>
         </div>
         <div class="nha-hdr-r">
-            <button id="bgr-refresh" type="button" class="nha-btn-hdr" title="Refresh">
+            <button id="cob-refresh" type="button" class="nha-btn-hdr" title="Refresh">
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                 Refresh
             </button>
         </div>
     </div>
 
-    <!-- ── KPI CARDS ─────────────────────────────────────── -->
-    <div class="nha-summary bgr-summary-2col">
+    <!-- ── KPI CARDS (cover everything matching the filters) ── -->
+    <div class="nha-summary">
         <div class="nha-sc nha-sc-navy">
-            <div class="nha-sc-top">
-                <div>
-                    <div class="nha-sc-label">Total Requests</div>
-                    <div class="nha-sc-val" id="bgr-kpi-total">—</div>
-                </div>
-            </div>
-            <p class="nha-kpi-sub">All records</p>
+            <div class="nha-sc-top"><div>
+                <div class="nha-sc-label">Approved Requests</div>
+                <div class="nha-sc-val" id="cob-kpi-requests">—</div>
+            </div></div>
+            <p class="nha-kpi-sub" id="cob-kpi-requests-sub">Matches current filters</p>
+        </div>
+        <div class="nha-sc nha-sc-teal">
+            <div class="nha-sc-top"><div>
+                <div class="nha-sc-label">Total</div>
+                <div class="nha-sc-val" id="cob-kpi-total">—</div>
+            </div></div>
+            <p class="nha-kpi-sub">Fund Balance + Carry Over Obligation</p>
         </div>
         <div class="nha-sc nha-sc-green">
-            <div class="nha-sc-top">
-                <div>
-                    <div class="nha-sc-label">Total Amount</div>
-                    <div class="nha-sc-val" id="bgr-kpi-amount">—</div>
-                </div>
-            </div>
-            <p class="nha-kpi-sub">Matches current filters</p>
+            <div class="nha-sc-top"><div>
+                <div class="nha-sc-label">Fund Balance</div>
+                <div class="nha-sc-val" id="cob-kpi-fund">—</div>
+            </div></div>
+            <p class="nha-kpi-sub">Approved (suggested) amount still available</p>
+        </div>
+        <div class="nha-sc nha-sc-amber">
+            <div class="nha-sc-top"><div>
+                <div class="nha-sc-label">Carry Over Obligation</div>
+                <div class="nha-sc-val" id="cob-kpi-carry">—</div>
+            </div></div>
+            <p class="nha-kpi-sub">Obligated, not yet disbursed</p>
         </div>
     </div>
 
-    <!-- ── FILTERS ────────────────────────────────────────── -->
+    <!-- ── TABS ───────────────────────────────────────────── -->
+    <div class="nha-tabs no-print" role="tablist" aria-label="COB views">
+        <button type="button" class="nha-tab active" role="tab" aria-selected="true"  data-tab="fund_source">Sources and Uses of Funds</button>
+        <button type="button" class="nha-tab"        role="tab" aria-selected="false" data-tab="component">Uses of Funds Per Component</button>
+        <button type="button" class="nha-tab"        role="tab" aria-selected="false" data-tab="region">Uses of Funds Per Region</button>
+    </div>
+
+    <!-- ── FILTERS (shared by every tab) ──────────────────── -->
     <div class="nha-filters no-print">
         <div class="nha-filter-row">
-            <div class="nha-filter-group-fixed">
-                <label class="nha-filter-label" for="bgr-filter-fiscal-yr">Fiscal Year</label>
-                <input type="number" id="bgr-filter-fiscal-yr" class="nha-filter-input" style="width:160px;" placeholder="Fiscal year" min="2000" max="2100">
+            <div class="nha-filter-group">
+                <label class="nha-filter-label" for="cob-f-fy">Fiscal Year</label>
+                <select id="cob-f-fy" class="nha-filter-select"><option value="">All Years</option></select>
+            </div>
+            <div class="nha-filter-group">
+                <label class="nha-filter-label" for="cob-f-fund">Type of Fund</label>
+                <select id="cob-f-fund" class="nha-filter-select"><option value="">All Types of Fund</option></select>
+            </div>
+            <div class="nha-filter-group">
+                <label class="nha-filter-label" for="cob-f-component">Component</label>
+                <select id="cob-f-component" class="nha-filter-select"><option value="">All Components</option></select>
+            </div>
+            <div class="nha-filter-group">
+                <label class="nha-filter-label" for="cob-f-region">Region</label>
+                <select id="cob-f-region" class="nha-filter-select"><option value="">All Regions</option></select>
+            </div>
+            <div class="nha-filter-group">
+                <label class="nha-filter-label" for="cob-f-program">Program</label>
+                <select id="cob-f-program" class="nha-filter-select"><option value="">All Programs</option></select>
+            </div>
+        </div>
+        <div class="nha-filter-row">
+            <div class="nha-filter-group nha-filter-group-search">
+                <label class="nha-filter-label" for="cob-f-search">Search</label>
+                <div class="nha-filter-search-wrap">
+                    <svg class="nha-filter-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                    </svg>
+                    <input type="text" id="cob-f-search" class="nha-filter-input" placeholder="Search request ref, program, project, account, office…" autocomplete="off">
+                    <button class="nha-filter-clear-btn" id="cob-f-search-clear" hidden type="button" aria-label="Clear search">×</button>
+                </div>
+            </div>
+            <div class="nha-filter-group">
+                <label class="nha-filter-label" for="cob-f-unit">Amount Unit</label>
+                <select id="cob-f-unit" class="nha-filter-select">
+                    <option value="full">Full Amount</option>
+                    <option value="thousand">Thousands (K)</option>
+                    <option value="million">Millions (M)</option>
+                    <option value="billion">Billions (B)</option>
+                </select>
+            </div>
+            <div class="nha-filter-group nha-filter-group-actions">
+                <button type="button" id="cob-reset" class="nha-btn nha-btn-outline">Reset</button>
             </div>
         </div>
     </div>
 
-    <!-- ── TABLE ──────────────────────────────────────────── -->
-    <div class="nha-table-wrap">
-        <div class="nha-tbl-scroll">
-            <table class="nha-tbl">
-                <thead>
-                    <tr>
-                        <th rowspan="2">#</th>
-                        <th rowspan="2">Fiscal Year</th>
-                        <th rowspan="2">Type of Fund</th>
-                        <th rowspan="2">Program / Project</th>
-                        <th colspan="3" class="bgr-grp">Beginning Balance</th>
-                        <th rowspan="2" class="text-end">New Funds</th>
-                    </tr>
-                    <tr>
-                        <th class="text-end">Fund Balance</th>
-                        <th class="text-end">Adjustment</th>
-                        <th class="text-end">Carry Over Obligation</th>
-                    </tr>
-                </thead>
-                <tbody id="bgr-tbody">
-                    <tr><td colspan="8"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
-                </tbody>
-            </table>
-        </div>
-        <div class="nha-pag-wrap">
-            <span class="nha-pag-info">Showing <strong><span id="bgr-from">0</span>–<span id="bgr-to">0</span></strong> of <strong><span id="bgr-total">0</span></strong></span>
-            <div id="bgr-pagination" class="nha-pag-btns"></div>
+    <!-- ── ROLL-UP TABS: one tree per view, same table ──────── -->
+    <?php foreach ([
+        'fund_source' => ['Type of Fund', 'Type of Fund → Component → Program → Project → Account'],
+        'component'   => ['Component', 'Component → Type of Fund → Program → Project → Account'],
+        'region'      => ['Region / Office', 'Region → Office → Program → Project → Account'],
+    ] as $_cob_tab => [$_cob_col, $_cob_levels]) { ?>
+    <div class="nha-panel<?php echo $_cob_tab === 'fund_source' ? ' active' : ''; ?>" id="cob-panel-<?php echo $_cob_tab; ?>" role="tabpanel">
+        <div class="nha-table-wrap">
+            <div class="cob-toolbar no-print">
+                <span class="cob-hint" id="cob-info-<?php echo $_cob_tab; ?>"><?php echo htmlspecialchars($_cob_levels); ?></span>
+                <span class="cob-tool-btns">
+                    <button type="button" class="nha-btn nha-btn-primary nha-btn-sm" data-act="report" data-tab="<?php echo $_cob_tab; ?>" title="Generate a PDF or Excel report of this table">
+                        <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+                        Generate Report
+                    </button>
+                    <button type="button" class="nha-btn nha-btn-outline nha-btn-sm" data-act="expand" data-tab="<?php echo $_cob_tab; ?>">Expand all</button>
+                    <button type="button" class="nha-btn nha-btn-outline nha-btn-sm" data-act="collapse" data-tab="<?php echo $_cob_tab; ?>">Collapse all</button>
+                </span>
+            </div>
+            <div class="nha-tbl-scroll">
+                <table class="nha-tbl" id="cob-tbl-<?php echo $_cob_tab; ?>">
+                    <thead>
+                        <tr>
+                            <th rowspan="2"><?php echo htmlspecialchars($_cob_col); ?></th>
+                            <th rowspan="2" class="text-end">Total</th>
+                            <th colspan="3" class="cob-grp">Beginning Balance</th>
+                            <th rowspan="2" class="no-print">Actions</th>
+                        </tr>
+                        <tr>
+                            <th class="text-end">Fund Balance</th>
+                            <th class="text-end" title="Net of approved budget revisions — already included in Fund Balance">Adjustment</th>
+                            <th class="text-end" title="Obligated, not yet disbursed">Carry Over Obligation</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cob-tbody-<?php echo $_cob_tab; ?>">
+                        <tr><td colspan="6"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <p class="cob-note">Only <strong>Approved</strong> budget requests are counted. Fund Balance is the approved (suggested) amount still available — it already includes approved
+                budget revisions, so Adjustment is shown for reference and is not added again to Total. Carry Over Obligation is what has been obligated but not yet disbursed.</p>
         </div>
     </div>
+    <?php } ?>
 
-</div><!-- /#bgr-root -->
+<?php
+// "View" on a project row: the approved request in full — programs, projects, line items, supporting documents.
+// window.cobModal.open(budgetReferenceNumber, projectCode) — GET /cob/read/{id}.
+include __DIR__.'/readone/cob-readone.php';
+
+// "Generate Report" on a tree tab: a dialog to pick how deep the report goes, preview it, and export it to PDF or Excel.
+// window.cobReport.open(tab) — GET /cob/report (CobReportService).
+include __DIR__.'/readone/cob-report-readone.php';
+?>
+
+</div><!-- /#cob-root -->
 
 <script>
 /* ══════════════════════════════════════════════════════════════
-   CORPORATE OPERATING BUDGET (COB) LIST   prefix: bgr_  (read-only)
+   CORPORATE OPERATING BUDGET (COB)   prefix: cob_   (read-only)
+   Backed by CobService → app/routes/cob.php:
+     GET /cob/filters   the filter drop-downs        GET /cob/summary   the KPI cards
+     GET /cob/rollup    one tree per tab (layout_by)
+   and, for the View modal, GET /cob/read/{id} (readone/cob-readone.php → window.cobModal), and for Generate Report — a button on each tree tab —
+   GET /cob/report (readone/cob-report-readone.php → window.cobReport): pick how deep the report goes, preview it, export PDF or Excel. The
+   report is built by the server from the same filters and the same Amount Unit as this page.
+
+   What it shows: ONLY the Approved budget requests (fims.budget_req, status 'Approved') and what hangs off them — programs, projects,
+   chart-of-accounts line items, supporting documents. Per line item:
+     Fund Balance           = budget_line_items.suggested_amount   (the approved amount still available)
+     Adjustment             = budget_line_items.adjustment         (net approved revisions; already inside Fund Balance, so not added to Total)
+     Carry Over Obligation  = budget_line_items.account_payable    (obligated, not yet disbursed)
+     Total                  = Fund Balance + Carry Over Obligation
+   The server decides what each user may see (their RC and the RCs below it; FMD and administrators see all) — nothing here can widen it.
 ═══════════════════════════════════════════════════════════════ */
 
-const BGR_API = '<?php echo $_bgr_api; ?>' + '/budget_req';
+const COB_API = '<?php echo $_cob_api; ?>' + '/cob';
+const COB_TABS = ['fund_source', 'component', 'region'];
+const COB_UNITS = { full: { div: 1, suffix: '' }, thousand: { div: 1e3, suffix: ' K' }, million: { div: 1e6, suffix: ' M' }, billion: { div: 1e9, suffix: ' B' } };
+const COB_UNIT_STORE = 'cob.amountUnit';
+// the id of each filter control -> the query-string key the API reads
+const COB_FILTER_IDS = { 'cob-f-fy': 'fiscal_yr', 'cob-f-fund': 'type_of_fund_id', 'cob-f-component': 'component_id', 'cob-f-region': 'region_id', 'cob-f-program': 'program_code' };
 
-let bgr_page = 1;
-const BGR_PAGE_SIZE = 15;
-const BGR_CURRENT_YEAR = new Date().getFullYear();
+const cob_state = {
+    tab: 'fund_source',
+    unit: 'full',
+    filters: { fiscal_yr: '', type_of_fund_id: '', component_id: '', region_id: '', program_code: '', search: '' },
+    defaultFiscalYr: '',
+    summary: null,
+    data: { fund_source: null, component: null, region: null },   // the last tree of each tab
+    totals: { fund_source: null, component: null, region: null },
+    expanded: { fund_source: new Set(), component: new Set(), region: new Set() },
+    loaded: {},    // tab -> the query it was loaded with (a tab reloads only when that changes)
+    seq: {},       // tab -> the newest request number; an older response is dropped
+    busy: 0,
+};
 
-const $bgr = id => document.getElementById(id);
+const $cob = id => document.getElementById(id);
+const cob_esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-async function bgr_bootstrapLoad() {
-    await bgr_load();
-    bgr_bindEvents();
+/* ── Amounts ───────────────────────────────────────────────── */
+function cob_fmt(v) {
+    const u = COB_UNITS[cob_state.unit] || COB_UNITS.full;
+    return '₱ ' + (Number(v || 0) / u.div).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + u.suffix;
 }
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', bgr_bootstrapLoad);
-} else {
-    bgr_bootstrapLoad();
+// signed + coloured: + green (an increase), − red (a decrease), a dash for none
+function cob_adj(v) {
+    const n = Number(v || 0);
+    if (!n) return '<span class="cob-dash">—</span>';
+    return `<span class="${n > 0 ? 'cob-adj-pos' : 'cob-adj-neg'}">${n > 0 ? '+' : '−'} ${cob_fmt(Math.abs(n))}</span>`;
 }
 
-function bgr_bindEvents() {
-    $bgr('bgr-refresh')?.addEventListener('click', () => { bgr_page = 1; bgr_load(); });
-    $bgr('bgr-filter-fiscal-yr')?.addEventListener('change', () => { bgr_page = 1; bgr_load(); });
+/* ── Toast / busy / request ────────────────────────────────── */
+function cob_toast(msg, type = 'info') {
+    if (!window.Swal) return;
+    const icon = ['success', 'error', 'warning', 'info', 'question'].includes(type) ? type : 'info';
+    Swal.mixin({ toast: true, position: 'top-end', showConfirmButton: false, timer: 4000, timerProgressBar: true }).fire({ icon, title: msg });
+}
+function cob_busy(on) {
+    cob_state.busy = Math.max(0, cob_state.busy + (on ? 1 : -1));
+    if (on && cob_state.busy === 1) window.PagePreloader?.show();
+    if (!on && cob_state.busy === 0) window.PagePreloader?.hide();
+}
+async function cob_request(path, params) {
+    const qs = params ? '?' + new URLSearchParams(params) : '';
+    const res = await fetch(COB_API + path + qs, { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+    let json = null;
+    try { json = await res.json(); } catch (e) { /* not JSON */ }
+    if (!res.ok || !json || json.success === false) throw new Error((json && json.message) || ('HTTP ' + res.status));
+    return json;
+}
+// The filters that are set, plus central=1: the server honours it only for the central review RC (FMD), so it widens nothing for anyone else.
+function cob_params(extra = {}) {
+    const p = { central: '1' };
+    for (const [k, v] of Object.entries(cob_state.filters)) if (v !== '' && v != null) p[k] = v;
+    return Object.assign(p, extra);
 }
 
-/* ── Load ──────────────────────────────────────────────────── */
-// The table only ever shows the selected fiscal year. It starts on the current year, and a
-// blank or out-of-range entry snaps back to the current year rather than meaning "all years".
-function bgr_fiscalYear() {
-    const input = $bgr('bgr-filter-fiscal-yr');
-    const year  = parseInt(input.value, 10);
-    input.value = (year >= 2000 && year <= 2100) ? year : BGR_CURRENT_YEAR;
-    return input.value;
+/* ── Boot ──────────────────────────────────────────────────── */
+async function cob_boot() {
+    try { const u = localStorage.getItem(COB_UNIT_STORE); if (u && COB_UNITS[u]) cob_state.unit = u; } catch (e) { /* storage may be blocked */ }
+    $cob('cob-f-unit').value = cob_state.unit;
+    const wanted = new URLSearchParams(location.search).get('tab');
+    if (COB_TABS.includes(wanted)) cob_state.tab = wanted;
+    cob_bindEvents();
+    cob_showTab(cob_state.tab);
+    cob_busy(true);
+    try { await cob_loadFilterOptions(true); } catch (e) { cob_toast(e.message, 'error'); }
+    finally { cob_busy(false); }
+    cob_reload();
 }
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', cob_boot); else cob_boot();
 
-async function bgr_load() {
-    window.PagePreloader?.show();
-    try {
-        const params = new URLSearchParams({
-            fiscal_yr : bgr_fiscalYear(),
-            page      : bgr_page,
-            limit     : BGR_PAGE_SIZE,
+function cob_bindEvents() {
+    document.querySelectorAll('#cob-root .nha-tabs .nha-tab').forEach(b => b.addEventListener('click', () => cob_switchTab(b.dataset.tab)));
+    $cob('cob-refresh').addEventListener('click', cob_refresh);
+    $cob('cob-reset').addEventListener('click', cob_resetFilters);
+    for (const id of Object.keys(COB_FILTER_IDS)) $cob(id).addEventListener('change', cob_onFilterChange);
+    $cob('cob-f-unit').addEventListener('change', e => {
+        cob_state.unit = COB_UNITS[e.target.value] ? e.target.value : 'full';
+        try { localStorage.setItem(COB_UNIT_STORE, cob_state.unit); } catch (err) { /* convenience only */ }
+        cob_renderSummary(); cob_renderActive();           // a display scale: nothing to refetch
+    });
+    let timer = null;
+    $cob('cob-f-search').addEventListener('input', e => {
+        $cob('cob-f-search-clear').hidden = !e.target.value;
+        clearTimeout(timer);
+        timer = setTimeout(cob_onFilterChange, 350);
+    });
+    $cob('cob-f-search-clear').addEventListener('click', () => { $cob('cob-f-search').value = ''; $cob('cob-f-search-clear').hidden = true; cob_onFilterChange(); });
+
+    // trees: one delegated handler per body — View buttons first, then the row toggle
+    for (const tab of COB_TABS) {
+        const body = $cob('cob-tbody-' + tab);
+        body.addEventListener('click', e => {
+            const view = e.target.closest('[data-view]');
+            if (view) { cob_openRequest(view); return; }
+            const row = e.target.closest('tr[data-path]');
+            if (row && row.classList.contains('cob-has-kids')) cob_toggle(tab, row.dataset.path);
         });
-        const res  = await fetch(`${BGR_API}/list?${params}`, { credentials: 'same-origin' });
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        const json = await res.json();
-        if (!json.success) throw new Error(json.message || 'Failed to load.');
+        body.addEventListener('keydown', e => {
+            if (e.key !== 'Enter' && e.key !== ' ') return;
+            const row = e.target.closest('tr[data-path].cob-has-kids');
+            if (row && e.target === row) { e.preventDefault(); cob_toggle(tab, row.dataset.path); }
+        });
+    }
+    document.querySelectorAll('#cob-root [data-act="expand"], #cob-root [data-act="collapse"]').forEach(b =>
+        b.addEventListener('click', () => cob_expandAll(b.dataset.tab, b.dataset.act === 'expand')));
+    document.querySelectorAll('#cob-root [data-act="report"]').forEach(b =>
+        b.addEventListener('click', () => {
+            if (!window.cobReport) { cob_toast('The report dialog is not available.', 'error'); return; }
+            window.cobReport.open(b.dataset.tab);
+        }));
+}
 
-        bgr_renderTable(json.data ?? []);
-        bgr_renderPagination(json.pagination ?? {});
-        $bgr('bgr-kpi-total').textContent  = json.pagination?.total ?? (json.data ?? []).length;
-        $bgr('bgr-kpi-amount').textContent = bgr_fmtMoney(json.total_amount ?? 0);
+function cob_openRequest(btn) {
+    if (!window.cobModal) { cob_toast('The request viewer is not available.', 'error'); return; }
+    window.cobModal.open(btn.dataset.view, btn.dataset.project || '');
+}
+
+/* ── Filters ───────────────────────────────────────────────── */
+function cob_fillSelect(id, allLabel, items, valueOf, labelOf) {
+    const sel = $cob(id), keep = sel.value;
+    sel.innerHTML = `<option value="">${cob_esc(allLabel)}</option>` + items.map(i => `<option value="${cob_esc(valueOf(i))}">${cob_esc(labelOf(i))}</option>`).join('');
+    sel.value = [...sel.options].some(o => o.value === keep) ? keep : '';     // a choice that no longer exists falls back to "all"
+}
+async function cob_loadFilterOptions(first) {
+    const { data } = await cob_request('/filters', { central: '1' });
+    cob_fillSelect('cob-f-fy', 'All Years', data.fiscal_years || [], y => y, y => y);
+    cob_fillSelect('cob-f-fund', 'All Types of Fund', data.types_of_fund || [], f => f.type_of_fund_id, f => f.name);
+    cob_fillSelect('cob-f-component', 'All Components', data.components || [], c => c.component_id, c => c.name);
+    cob_fillSelect('cob-f-region', 'All Regions', data.regions || [], r => r.region_id, r => r.rc_name || r.region_id);
+    cob_fillSelect('cob-f-program', 'All Programs', data.programs || [], p => p.program_code, p => p.program_name ? `${p.program_name} (${p.program_code})` : p.program_code);
+    // the first load opens on the newest fiscal year that has approved data, not on every year at once
+    cob_state.defaultFiscalYr = (data.fiscal_years || [])[0] != null ? String(data.fiscal_years[0]) : '';
+    if (first) $cob('cob-f-fy').value = cob_state.defaultFiscalYr;
+    cob_readFilters();
+}
+function cob_readFilters() {
+    for (const [id, key] of Object.entries(COB_FILTER_IDS)) cob_state.filters[key] = $cob(id).value;
+    cob_state.filters.search = $cob('cob-f-search').value.trim();
+}
+function cob_onFilterChange() {
+    cob_readFilters();
+    cob_reload();
+}
+function cob_resetFilters() {
+    for (const id of Object.keys(COB_FILTER_IDS)) $cob(id).value = '';
+    $cob('cob-f-fy').value = cob_state.defaultFiscalYr;
+    $cob('cob-f-search').value = ''; $cob('cob-f-search-clear').hidden = true;
+    cob_onFilterChange();
+}
+
+/* ── Loading ───────────────────────────────────────────────── */
+function cob_reload() {
+    cob_state.loaded = {};
+    return Promise.all([cob_loadSummary(), cob_loadTab(cob_state.tab)]);
+}
+async function cob_refresh() {
+    cob_busy(true);
+    try { await cob_loadFilterOptions(false); } catch (e) { cob_toast(e.message, 'error'); }
+    finally { cob_busy(false); }
+    cob_reload();
+}
+async function cob_loadSummary() {
+    const my = cob_state.seq.summary = (cob_state.seq.summary || 0) + 1;
+    try {
+        const json = await cob_request('/summary', cob_params());
+        if (my !== cob_state.seq.summary) return;
+        cob_state.summary = json.data;
     } catch (e) {
-        bgr_renderTable([]);
-        bgr_toast(e.message, 'error');
+        if (my !== cob_state.seq.summary) return;
+        cob_state.summary = null;
+        cob_toast(e.message, 'error');
+    }
+    cob_renderSummary();
+}
+async function cob_loadTab(tab) {
+    const key = JSON.stringify(cob_params());
+    if (cob_state.loaded[tab] === key) return;
+    const my = cob_state.seq[tab] = (cob_state.seq[tab] || 0) + 1;
+    cob_busy(true);
+    try {
+        const json = await cob_request('/rollup', cob_params({ layout_by: tab }));
+        if (my !== cob_state.seq[tab]) return;
+        cob_state.data[tab] = json.data || []; cob_state.totals[tab] = json.totals || null;
+        cob_state.loaded[tab] = key;
+        cob_renderTree(tab);
+    } catch (e) {
+        if (my !== cob_state.seq[tab]) return;
+        delete cob_state.loaded[tab];
+        $cob('cob-tbody-' + tab).innerHTML = `<tr><td colspan="6"><div class="nha-error">${cob_esc(e.message)}</div></td></tr>`;
+        cob_toast(e.message, 'error');
     } finally {
-        window.PagePreloader?.hide();
+        cob_busy(false);
     }
 }
 
-/* ── Table ─────────────────────────────────────────────────── */
-function bgr_renderTable(rows) {
-    const tbody = $bgr('bgr-tbody');
-    if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="8"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No budget requests found.</span></div></td></tr>';
+/* ── Tabs ──────────────────────────────────────────────────── */
+function cob_showTab(tab) {
+    cob_state.tab = tab;
+    document.querySelectorAll('#cob-root .nha-tabs .nha-tab').forEach(b => {
+        const on = b.dataset.tab === tab;
+        b.classList.toggle('active', on);
+        b.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    for (const t of COB_TABS) $cob('cob-panel-' + t).classList.toggle('active', t === tab);
+}
+function cob_switchTab(tab) {
+    if (!COB_TABS.includes(tab)) return;
+    cob_showTab(tab);
+    try { const u = new URL(location.href); u.searchParams.set('tab', tab); history.replaceState(null, '', u); } catch (e) { /* cosmetic */ }
+    cob_loadTab(tab);
+}
+function cob_renderActive() {
+    if (cob_state.data[cob_state.tab]) cob_renderTree(cob_state.tab);
+}
+
+/* ── KPI cards ─────────────────────────────────────────────── */
+function cob_renderSummary() {
+    const s = cob_state.summary;
+    $cob('cob-kpi-requests').textContent = s ? s.requests : '—';
+    $cob('cob-kpi-requests-sub').textContent = s ? `${s.programs} program${s.programs === 1 ? '' : 's'} · ${s.projects} project${s.projects === 1 ? '' : 's'}` : 'Matches current filters';
+    $cob('cob-kpi-total').textContent = s ? cob_fmt(s.total) : '—';
+    $cob('cob-kpi-fund').textContent = s ? cob_fmt(s.fund_balance) : '—';
+    $cob('cob-kpi-carry').textContent = s ? cob_fmt(s.carry_over_obligation) : '—';
+}
+
+/* ── Trees ─────────────────────────────────────────────────── */
+const COB_CARET = '<svg class="cob-caret%OPEN%" viewBox="0 0 24 24" fill="none" stroke-width="2.4"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>';
+const COB_CLIP = '<svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/></svg>';
+
+function cob_nodeLabel(n) {
+    let html = `<span>${n.unassigned ? `<span class="cob-unassigned">${cob_esc(n.label)}</span>` : cob_esc(n.label)}</span>`;
+    if (n.code) html += ` <span class="nha-code">${cob_esc(n.code)}</span>`;
+    if (n.sub) html += ` <span class="cob-sub">${cob_esc(n.sub)}</span>`;
+    if (n.type === 'project') {
+        if (n.fiscal_yr) html += ` <span class="nha-bdg nha-bdg-gray nha-bdg-xs">FY ${cob_esc(n.fiscal_yr)}</span>`;
+        if (cob_state.tab !== 'region' && n.rc_name) html += ` <span class="cob-sub">${cob_esc(n.rc_name)}</span>`;
+        if (n.attachment_count > 0) html += ` <span class="cob-clip" title="${n.attachment_count} supporting document${n.attachment_count === 1 ? '' : 's'}">${COB_CLIP}${n.attachment_count}</span>`;
+    }
+    return html;
+}
+
+function cob_treeRow(n, depth, path, hasKids, open) {
+    const view = n.type === 'project' && n.budget_reference_number
+        ? `<button type="button" class="nha-btn-act view" data-view="${cob_esc(n.budget_reference_number)}" data-project="${cob_esc(n.code || '')}" title="View the approved request ${cob_esc(n.budget_reference_number)}">View</button>`
+        : '';
+    return `<tr class="cob-row cob-d${Math.min(depth, 4)} cob-t-${cob_esc(n.type)}${hasKids ? ' cob-has-kids' : ''}${open ? ' open' : ''}" data-path="${cob_esc(path)}"${hasKids ? ` tabindex="0" role="button" aria-expanded="${open}"` : ''}>
+        <td><div class="cob-name" style="--d:${depth}">${hasKids ? COB_CARET.replace('%OPEN%', open ? ' open' : '') : '<span class="cob-caret-sp"></span>'}${cob_nodeLabel(n)}</div></td>
+        <td class="cob-num">${cob_fmt(n.total)}</td>
+        <td class="cob-num">${cob_fmt(n.fund_balance)}</td>
+        <td class="cob-num">${cob_adj(n.adjustment)}</td>
+        <td class="cob-num">${cob_fmt(n.carry_over_obligation)}</td>
+        <td class="no-print">${view}</td></tr>`;
+}
+
+// Only the rows that are visible are built: a collapsed node's children never reach the DOM.
+function cob_collect(tab, nodes, depth, parentPath, out) {
+    for (const n of nodes) {
+        const path = `${parentPath}/${n.type}:${n.key}`;
+        const hasKids = Array.isArray(n.children) && n.children.length > 0;
+        const open = hasKids && cob_state.expanded[tab].has(path);
+        out.push(cob_treeRow(n, depth, path, hasKids, open));
+        if (open) cob_collect(tab, n.children, depth + 1, path, out);
+    }
+}
+function cob_renderTree(tab) {
+    const nodes = cob_state.data[tab] || [], totals = cob_state.totals[tab];
+    const body = $cob('cob-tbody-' + tab);
+    if (!nodes.length) {
+        body.innerHTML = `<tr><td colspan="6"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No approved budget found.</span>
+            <div class="nha-empty-text">Only Approved budget requests are part of the COB. Try a different fiscal year or clear the filters.</div></div></td></tr>`;
+        $cob('cob-info-' + tab).textContent = 'No approved line items match the current filters';
         return;
     }
-    const offset = (bgr_page - 1) * BGR_PAGE_SIZE;
-    tbody.innerHTML = rows.map((r, i) => {
-        // program_code is set on every row; a row is project-level when project_code is set too
-        const isProgram = !r.project_code;
-        const code = isProgram ? r.program_code : r.project_code;
-        const name = isProgram ? r.program_name : r.project_name;
-        return `<tr>
-        <td class="nha-td-seq">${offset + i + 1}</td>
-        <td>${bgr_esc(r.fiscal_yr)}</td>
-        <td>${r.fund_type ? bgr_esc(r.fund_type) : '<span style="color:var(--muted, #94a3b8);">—</span>'}</td>
-        <td>
-            <div style="font-weight:500;">${bgr_esc(code || '—')}</div>
-            ${name ? `<div class="nha-td-sub" style="margin-top:2px;">${bgr_esc(name)}${isProgram ? '' : ' · ' + bgr_esc(r.program_code)}</div>` : ''}
-        </td>
-        <td class="text-end"><div style="font-weight:600;">${bgr_fmtMoney(r.amount)}</div></td>
-        <td class="text-end">${bgr_fmtAdjustment(r.adjustment)}</td>
-        <td class="text-end"><div style="font-weight:600;color:var(--sec, #62657E);">${bgr_fmtMoney(r.carry_over_obligation)}</div></td>
-        <td class="text-end"><div style="font-weight:600;color:#16a34a;">${bgr_fmtMoney(r.new_funds)}</div></td>
-    </tr>`;
-    }).join('');
+    const rows = [];
+    cob_collect(tab, nodes, 0, '', rows);
+    if (totals) rows.push(`<tr class="cob-total-row"><td>TOTAL</td><td class="cob-num">${cob_fmt(totals.total)}</td><td class="cob-num">${cob_fmt(totals.fund_balance)}</td>
+        <td class="cob-num">${cob_adj(totals.adjustment)}</td><td class="cob-num">${cob_fmt(totals.carry_over_obligation)}</td><td class="no-print"></td></tr>`);
+    body.innerHTML = rows.join('');
+    const n = totals ? totals.line_count : 0;
+    $cob('cob-info-' + tab).textContent = `${n} approved line item${n === 1 ? '' : 's'} — click a row to expand it`;
 }
-
-/* ── Pagination ────────────────────────────────────────────── */
-function bgr_renderPagination(p) {
-    const { current_page = 1, last_page = 1, total = 0, per_page = BGR_PAGE_SIZE } = p;
-    const from = total > 0 ? (current_page - 1) * per_page + 1 : 0;
-    const to   = total > 0 ? Math.min(current_page * per_page, total) : 0;
-    $bgr('bgr-from').textContent  = from;
-    $bgr('bgr-to').textContent    = to;
-    $bgr('bgr-total').textContent = total;
-
-    const container = $bgr('bgr-pagination');
-    if (last_page <= 1) { container.innerHTML = ''; return; }
-    const pages = [];
-    for (let i = Math.max(1, current_page - 2); i <= Math.min(last_page, current_page + 2); i++) {
-        pages.push(`<button class="nha-pag-btn${i === current_page ? ' active' : ''}" onclick="bgr_goTo(${i})">${i}</button>`);
+function cob_toggle(tab, path) {
+    const set = cob_state.expanded[tab];
+    if (set.has(path)) set.delete(path); else set.add(path);
+    cob_renderTree(tab);
+    // the re-render replaced the row: put the keyboard focus back on it
+    const row = [...$cob('cob-tbody-' + tab).querySelectorAll('tr[data-path]')].find(r => r.dataset.path === path);
+    if (row && document.activeElement === document.body) row.focus();
+}
+function cob_expandAll(tab, expand) {
+    const set = cob_state.expanded[tab];
+    set.clear();
+    if (expand) {
+        const walk = (nodes, parentPath) => nodes.forEach(n => {
+            const path = `${parentPath}/${n.type}:${n.key}`;
+            if (Array.isArray(n.children) && n.children.length) { set.add(path); walk(n.children, path); }
+        });
+        walk(cob_state.data[tab] || [], '');
     }
-    container.innerHTML =
-        `<button class="nha-pag-btn${current_page === 1 ? ' disabled' : ''}" onclick="bgr_goTo(${current_page - 1})">‹</button>` +
-        pages.join('') +
-        `<button class="nha-pag-btn${current_page === last_page ? ' disabled' : ''}" onclick="bgr_goTo(${current_page + 1})">›</button>`;
-}
-
-function bgr_goTo(page) { bgr_page = page; bgr_load(); }
-
-/* ── Helpers ───────────────────────────────────────────────── */
-function bgr_fmtMoney(v) {
-    return '₱ ' + Number(v || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-// Signed, colour-coded adjustment: + green (increase), − red (decrease), — for none.
-function bgr_fmtAdjustment(v) {
-    const n = Number(v || 0);
-    if (!n) return '<span style="color:var(--muted, #94a3b8);">—</span>';
-    const abs   = Math.abs(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    const color = n > 0 ? '#16a34a' : '#dc2626';   // green / red, same as the Change column on the revision page
-    return `<span style="font-weight:600;color:${color};">${n > 0 ? '+' : '−'} ₱ ${abs}</span>`;
-}
-function bgr_esc(text) {
-    if (text === null || text === undefined) return '';
-    const d = document.createElement('div');
-    d.textContent = text;
-    return d.innerHTML;
-}
-
-const BGR_TOAST_SWAL = Swal.mixin({
-    toast: true,
-    position: 'top-end',
-    showConfirmButton: false,
-    timer: 4000,
-    timerProgressBar: true,
-    didOpen: el => {
-        el.onmouseenter = Swal.stopTimer;
-        el.onmouseleave = Swal.resumeTimer;
-    },
-});
-
-function bgr_toast(msg, type = 'info') {
-    const icon = ['success', 'error', 'warning', 'info', 'question'].includes(type) ? type : 'info';
-    BGR_TOAST_SWAL.fire({ icon, title: msg });
+    cob_renderTree(tab);
 }
 </script>
