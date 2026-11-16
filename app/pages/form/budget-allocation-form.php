@@ -5077,7 +5077,7 @@ $cbaAsModal = !empty($cbaAsModal);
 	var CBA_DECISIONS = {
 		preview: {
 			status: 'For Preview',
-			done: 'submitted for preview',
+			done: 'submitted for review',
 			busy: 'Submitting'
 		},
 		draft: {
@@ -5125,8 +5125,8 @@ $cbaAsModal = !empty($cbaAsModal);
 				'<p class="cbadec-text" id="cbadec-text"></p>' +
 				'<p class="cbadec-current" id="cbadec-current" hidden></p>' +
 				'<button type="button" class="cbadec-opt cbadec-opt-primary" data-decision="preview">' +
-				'<span class="cbadec-opt-title">Submit for Preview</span>' +
-				'<span class="cbadec-opt-desc">Sends the request on to be previewed. Its status becomes <strong></strong>.</span>' +
+				'<span class="cbadec-opt-title">Submit for Review</span>' +
+				'<span class="cbadec-opt-desc">Sends the request on to be reviewed. Its status becomes <strong></strong>.</span>' +
 				'</button>' +
 				'<button type="button" class="cbadec-opt" data-decision="draft">' +
 				'<span class="cbadec-opt-title">Save as Draft</span>' +
@@ -5242,7 +5242,7 @@ $cbaAsModal = !empty($cbaAsModal);
 		}
 		var typeLabel = getTypeLabel();
 
-		// Replaces the old "Are you sure?" confirm(): ask what should become of the request — submitted for preview, or
+		// Replaces the old "Are you sure?" confirm(): ask what should become of the request — submitted for review, or
 		// kept as a draft — and give it that status. Cancelled -> nothing is sent.
 		var choice = await cbaAskDecision(typeLabel);
 		if (!choice) return;

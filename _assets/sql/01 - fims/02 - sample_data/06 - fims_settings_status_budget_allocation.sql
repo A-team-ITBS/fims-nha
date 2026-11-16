@@ -1,8 +1,8 @@
 -- Seed data for fims.settings_status, status_for = 'budget_allocation' (fims.budget_allocation — the Memo Request page).
 --
 -- 'Draft' (the starting status of every memo request) is seeded in "01 - fims_settings_status.sql". This file adds the
--- status a request takes when it is SUBMITTED FOR PREVIEW: the Memo Request form's "Submit Request" button opens a
--- pop-up that offers "Submit for Preview" (status 'For Preview') or "Save as Draft" (status 'Draft'), and the form
+-- status a request takes when it is SUBMITTED FOR REVIEW: the Memo Request form's "Submit Request" button opens a
+-- pop-up that offers "Submit for Review" (status 'For Preview') or "Save as Draft" (status 'Draft'), and the form
 -- sends the id of the chosen status. It is looked up BY NAME, so the name below must stay 'For Preview' (the form
 -- shows a clear message, and saves nothing, when the status does not exist).
 --

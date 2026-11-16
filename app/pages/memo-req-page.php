@@ -64,8 +64,9 @@ try {
 .nha-menu-divider { border-top:1px solid var(--afims-border, #E4ECF2);margin:3px 0; }
 
 /* ── KPI row: only 3 cards here, not the 4 .nha-summary assumes elsewhere — fill the row instead of leaving a
-   fourth column empty. */
+   fourth column empty. CBA shows 2 (Total Memo Requests, Total Requested Amount): mrq_syncTabUrl adds .mrq-cols-2. */
 #mrq-root .nha-summary { grid-template-columns: repeat(3, 1fr); }
+#mrq-root .nha-summary.mrq-cols-2 { grid-template-columns: repeat(2, 1fr); }
 @media (max-width: 900px) {
     #mrq-root .nha-summary { grid-template-columns: repeat(2, 1fr); }
 }
@@ -113,14 +114,22 @@ try {
             </div></div>
             <p class="nha-kpi-sub">Matches current filters</p>
         </div>
-        <div class="nha-sc nha-sc-teal">
+        <!-- Which cards a tab shows is set by data-for (see mrq_syncTabUrl): a CBA buys nothing, so it has no PR / PO to total -->
+        <div class="nha-sc nha-sc-teal" data-for="CBA">
+            <div class="nha-sc-top"><div>
+                <div class="nha-sc-label">Total Requested Amount</div>
+                <div class="nha-sc-val" id="mrq-kpi-req">—</div>
+            </div></div>
+            <p class="nha-kpi-sub">Amount requested on the certificates</p>
+        </div>
+        <div class="nha-sc nha-sc-teal" data-for="RFA LAA">
             <div class="nha-sc-top"><div>
                 <div class="nha-sc-label">Total PR Amount</div>
                 <div class="nha-sc-val" id="mrq-kpi-pr">—</div>
             </div></div>
             <p class="nha-kpi-sub">Purchase requests raised</p>
         </div>
-        <div class="nha-sc nha-sc-amber">
+        <div class="nha-sc nha-sc-amber" data-for="RFA LAA">
             <div class="nha-sc-top"><div>
                 <div class="nha-sc-label">Total PO Amount</div>
                 <div class="nha-sc-val" id="mrq-kpi-po">—</div>
@@ -168,7 +177,7 @@ try {
                         <th>FY</th>
                         <th>Requesting Office</th>
                         <th>Program / Project</th>
-                        <th>Vendor</th>
+                        <th id="mrq-th-vendor">Vendor</th>
                         <th>Amount</th>
                         <th>Submitted Date</th>
                         <th>Status</th>
@@ -211,7 +220,7 @@ include __DIR__.'/readone/memo-process-readone.php';
    Edit    → the same form as a full page: BudgetAllocationForm?id=N
    View    → (Actions menu, every row, every user) the request's details, read-only: the same modal as Process, opened
              without the decision buttons — mpr_open(id, true) in readone/memo-process-readone.php
-   Preview → (Actions menu, Draft requests only) PATCH status_id = the 'For Preview' status
+   Submit for Review → (Actions menu, Draft requests only) PATCH status_id = the 'For Preview' status
    Process → (Actions menu, FMD only — instead of Edit / Delete) the details modal with Endorse / Approve / Return:
              readone/memo-process-readone.php (mpr_*), PATCH /budget_allocation/process/{id}. The review is a chain:
              For Preview (FMD Section Chief) -> For Division Manager (FMD Division Manager) -> For Department Manager
@@ -254,9 +263,9 @@ const MRQ_LOOKUP_SOURCES = {
     statuses    : `${MRQ_API}/statuses`,
 };
 
-// The two statuses the "Preview" action moves a request between (names of memo-request statuses in
+// The two statuses the "Submit for Review" action moves a request between (names of memo-request statuses in
 // fims.settings_status; their ids are looked up, never hardcoded). 'For Preview' is seeded by
-// sample_data/06 - fims_settings_status_budget_allocation.sql, the same status the form's "Submit for Preview" gives.
+// sample_data/06 - fims_settings_status_budget_allocation.sql, the same status the form's "Submit for Review" gives.
 const MRQ_STATUS_DRAFT   = 'Draft';
 const MRQ_STATUS_PREVIEW = 'For Preview';
 
@@ -264,7 +273,7 @@ const $mrq = id => document.getElementById(id);
 
 // Status names are compared ignoring case and surrounding spaces.
 function mrq_sameStatus(a, b) { return String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase(); }
-// Only a request that is still a Draft can be sent on for preview.
+// Only a request that is still a Draft can be sent on for review.
 function mrq_isDraft(r)       { return mrq_sameStatus(r.status_name, MRQ_STATUS_DRAFT); }
 // A status's colour (settings_status.color, from the statuses loaded at start-up), or '' when it has none, is not loaded,
 // or is not a plain hex colour — nothing else may be put into a style attribute.
@@ -294,6 +303,14 @@ function mrq_syncTabUrl() {
     });
     const addLabel = $mrq('mrq-add-label');
     if (addLabel) addLabel.textContent = `New ${mrq_activeType} Memo Request`;
+    // KPI cards: each one lists the tabs it belongs to in data-for. The row is 2 columns wide when only 2 cards show.
+    let shown = 0;
+    document.querySelectorAll('.nha-summary .nha-sc[data-for]').forEach(card => {
+        const on = card.dataset.for.split(' ').includes(mrq_activeType);
+        card.style.display = on ? '' : 'none';
+        if (on) shown++;
+    });
+    document.querySelector('.nha-summary')?.classList.toggle('mrq-cols-2', shown + 1 === 2);   // +1: Total Memo Requests always shows
     const url = new URL(window.location.href);
     url.searchParams.set('type', mrq_activeType);
     window.history.replaceState(window.history.state, '', url);
@@ -411,6 +428,7 @@ async function mrq_load() {
         mrq_renderTable(mrq_rows);
         mrq_renderPagination(json.pagination ?? {});
         $mrq('mrq-kpi-total').textContent = json.pagination?.total ?? mrq_rows.length;
+        $mrq('mrq-kpi-req').textContent   = mrq_money(json.summary?.total_requested_amount);
         $mrq('mrq-kpi-pr').textContent    = mrq_money(json.summary?.total_pr_amount);
         $mrq('mrq-kpi-po').textContent    = mrq_money(json.summary?.total_po_amount);
     } catch (e) {
@@ -453,8 +471,13 @@ function mrq_dateCell(value) {
 
 function mrq_renderTable(rows) {
     const tbody = $mrq('mrq-tbody');
+    // A CBA buys nothing from a vendor (the form hides Vendor for it), so its list has no Vendor column. The header and
+    // the cells are switched together, here, so they never disagree.
+    const showVendor = mrq_activeType !== 'CBA';
+    const vendorTh = $mrq('mrq-th-vendor');
+    if (vendorTh) vendorTh.style.display = showVendor ? '' : 'none';
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="10"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No memo requests found.</span></div></td></tr>';
+        tbody.innerHTML = `<tr><td colspan="${showVendor ? 10 : 9}"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No memo requests found.</span></div></td></tr>`;
         return;
     }
     const offset = (mrq_page - 1) * MRQ_PAGE_SIZE;
@@ -482,7 +505,7 @@ function mrq_renderTable(rows) {
             ${r.sub_program_name ? `<div class="nha-td-sub" style="margin-top:2px;">${mrq_esc(r.sub_program_name)}</div>` : ''}
             ${r.project_name ? `<div class="nha-td-sub" style="margin-top:2px;">${mrq_esc(r.project_name)}</div>` : ''}
         </td>
-        <td>${mrq_esc(r.vendor_name || '—')}</td>
+        ${showVendor ? `<td>${mrq_esc(r.vendor_name || '—')}</td>` : ''}
         <td style="white-space:nowrap;">${mrq_money(r.requested_total)}</td>
         <td>${mrq_dateCell(r.created_at)}</td>
         <td>${mrq_statusBadge(r.status_name, r.status_color)}</td>
@@ -495,7 +518,7 @@ function mrq_renderTable(rows) {
 // One "Actions" button per row that opens a small menu — the same idea as the Budget Requirements list. Sections, with a
 // divider between each one that is shown:
 //   View     — the request's details, read-only: on every row, for every user;
-//   Preview  — only while the request is still a Draft: it moves it on to For Preview;
+//   Submit for Review — only while the request is still a Draft: it moves it on to For Preview;
 //   Edit and Delete — only while the request is a Draft (once it has left Draft it can no longer be changed or removed
 //              by the requesting office); FMD never gets them;
 //   Process  — FMD only (in place of Edit and Delete), on every row.
@@ -507,12 +530,12 @@ function mrq_actionMenu(id, isDraft) {
                 View
             </button>`;
 
-    // Preview is tinted with the colour of the status it gives (For Preview's settings_status.color); Edit and Delete
+    // Submit for Review is tinted with the colour of the status it gives (For Preview's settings_status.color); Edit and Delete
     // keep the plain look. With no usable colour it is a plain item too.
     const color = isDraft ? mrq_statusColor(MRQ_STATUS_PREVIEW) : '';
-    const previewItem = !isDraft ? '' : `<button type="button" class="nha-menu-item${color ? ' has-color' : ''}"${color ? ` style="--nha-item-color:${color};"` : ''} data-action="preview" title="Submit for preview: its status becomes ${MRQ_STATUS_PREVIEW}" onclick="mrq_closeMenus();mrq_preview(${id});">
+    const previewItem = !isDraft ? '' : `<button type="button" class="nha-menu-item${color ? ' has-color' : ''}"${color ? ` style="--nha-item-color:${color};"` : ''} data-action="preview" title="Submit for review: its status becomes ${MRQ_STATUS_PREVIEW}" onclick="mrq_closeMenus();mrq_preview(${id});">
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-                Preview
+                Submit for Review
             </button>`;
 
     // FMD REVIEWS requests instead of editing them: Edit and Delete are hidden for it and each row gets "Process" (a modal
@@ -611,7 +634,7 @@ function mrq_edit(id) {
     window.location.href = 'BudgetAllocationForm?id=' + encodeURIComponent(id);
 }
 
-/* ── Preview: Draft -> For Preview ─────────────────────────── */
+/* ── Submit for Review: Draft -> For Preview ───────────────── */
 // The id of the memo-request status called `name`. It is looked up in the statuses loaded at start-up; when it is not
 // there they are read again once (it may have been added since the page opened). Throws when it still isn't set up.
 async function mrq_statusId(name) {
@@ -630,16 +653,16 @@ async function mrq_statusId(name) {
     return Number(hit.id);
 }
 
-// "Preview" in a Draft row's Actions menu: after a confirmation, sets the request's status to For Preview — the same
-// status the memo form's "Submit for Preview" gives — and refreshes the list.
+// "Submit for Review" in a Draft row's Actions menu: after a confirmation, sets the request's status to For Preview — the same
+// status the memo form's "Submit for Review" gives — and refreshes the list.
 async function mrq_preview(id) {
     const row = mrq_rows.find(r => Number(r.allocation_id) === Number(id));
     if (!row || !mrq_isDraft(row)) {
-        mrq_toast(`Only a ${MRQ_STATUS_DRAFT} request can be submitted for preview.`, 'warning');
+        mrq_toast(`Only a ${MRQ_STATUS_DRAFT} request can be submitted for review.`, 'warning');
         return;
     }
     const ref = mrq_refOf(row) ? `"${mrq_refOf(row)}"` : `#${id}`;
-    if (!confirm(`Submit memo request ${ref} for preview? Its status will change from ${MRQ_STATUS_DRAFT} to ${MRQ_STATUS_PREVIEW}.`)) return;
+    if (!confirm(`Submit memo request ${ref} for review? Its status will change from ${MRQ_STATUS_DRAFT} to ${MRQ_STATUS_PREVIEW}.`)) return;
 
     window.PagePreloader?.show();
     try {
@@ -650,7 +673,7 @@ async function mrq_preview(id) {
             headers: { 'Content-Type': 'application/json' },
             body   : JSON.stringify({ status_id: statusId }),
         });
-        mrq_toast(`Memo request ${ref} submitted for preview.`, 'success');
+        mrq_toast(`Memo request ${ref} submitted for review.`, 'success');
         mrq_load();
     } catch (e) {
         mrq_toast(e.message, 'error');

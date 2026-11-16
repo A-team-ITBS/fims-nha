@@ -225,7 +225,8 @@ class BudgetAllocationService
             $summary = App\ExecuteRow(
                 "SELECT COUNT(*) AS total,
                         COALESCE(SUM(a.pr_amount), 0) AS total_pr_amount,
-                        COALESCE(SUM(a.po_amount), 0) AS total_po_amount
+                        COALESCE(SUM(a.po_amount), 0) AS total_po_amount,
+                        COALESCE(SUM({$this->requestedTotalSql()}), 0) AS total_requested_amount
                  FROM {$core} WHERE {$whereSql}",
                 'DB'
             );
@@ -551,7 +552,7 @@ class BudgetAllocationService
     // -----------------------------------------------------------------------
     // Review — /budget_allocation/process/{id}
     //
-    // The Financial Management Department (FMD) reviews a request that its office submitted for preview, in three steps
+    // The Financial Management Department (FMD) reviews a request that its office submitted for review, in three steps
     // (REVIEW_STEPS): For Preview (FMD Section Chief) -> For Division Manager (FMD Division Manager) ->
     // For Department Manager (FMD Department Manager) -> Approved. At each step:
     //   approve -> the next status of the chain; the LAST approval gives 'Approved' and the ALLOCATION NUMBER (below);
