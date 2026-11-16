@@ -896,6 +896,12 @@ memo). "Php" instead of "₱" — the memo font has no ₱ in the PDF.
 
 ## CFA — Certified Funds Available
 
+> **Status (team change, 2026-11):** no page offers CFA any more. The memo form is hosted only by the
+> "CBA Memo Request" page (type CBA) and the "RFA/LAA Memo Request" page (RFA, LAA), and it removes every other
+> type; the saved-record print (`PrintPayloadService`) and the FMD review modal have no CFA either. The CFA print
+> below is kept as is, unused, until the team brings CFA back. Then it prints from the form again with no change
+> on our side.
+
 The requesting office's **funding-request memorandum** that FMD certifies — not
 the CAF certificate (CafPrintService). Printed from the Memo Request form when
 `allocation_type` is CFA (offered for COE only). Built from a scanned CFA
