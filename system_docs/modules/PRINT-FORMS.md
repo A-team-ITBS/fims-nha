@@ -64,7 +64,9 @@ app/services/LvPrintService.php      LV: model(), html()
 app/services/JevPrintService.php     JEV: model(), html() — A4 landscape
 app/services/DvPrintService.php      DV (PDF only): model(), pdf() — pdftk fill of the official form
 app/services/LetterheadLayoutService.php   letterhead layout + saved default per document
-app/routes/print.php                 POST /api/print/{doc}, GET /api/print/resolve-signatory
+app/services/PrintPayloadService.php the print payload of a SAVED memo request / CAF: forAllocation(), forCaf() (+ the static mappings)
+app/routes/print.php                 POST /api/print/{doc}, GET /api/print/resolve-signatory,
+                                     GET /api/print/payload/allocation/{id}, GET /api/print/payload/caf/{id}
 app/routes/letterhead.php            GET / POST / DELETE /api/letterhead/{doc}
 app/pages/readone/print-preview-readone.php   preview modal + letterhead designer (prefix prp_)
 scripts/gen_{cba,rfa,laa,laareq,po,pr,iar,lv,jev,ftla}_docx.js   Word layouts (the CAF uses gen_cba_docx.js,
@@ -486,6 +488,42 @@ Payload: `caf_number`, `date`, `caf_amount` (or `amount`), `purpose` (or
 as given, e.g. "Corporate Receipts (CR)"), `allocation_number` (or `rfa_number` /
 `laa_number`), `ref_type`, `certified_name`, `certified_title` (default "Chief
 Corporate Accountant A"), `certified_office`, `body_variant`.
+
+## Printing a saved record — memo request (CBA / RFA / LAA) and CAF
+
+The Memo Request list prints a **saved** request or CAF without opening a form: **Actions → Print** (every row, on the CBA / RFA
+/ LAA tabs), **Actions → Print CAF** (RFA tab), and the **Print** button of the request details modal — one button: it prints the
+request, or, for an RFA that has a CAF, opens a menu to choose **Print RFA** or **Print CAF** (one entry per CAF when there are
+several). The API builds the payload from the record (`PrintPayloadService`); the page then opens the usual
+preview — the same `prp_open(payload, { type })` the memo form's Print Preview uses.
+
+| Endpoint | Answers |
+|---|---|
+| `GET /api/print/payload/allocation/{id}` | a memo request → `{ success, doc: 'CBA' \| 'RFA' \| 'LAA', payload }` — its `allocation_type` picks the form; any other type → 400 |
+| `GET /api/print/payload/caf/{id}` | a CAF → `{ success, doc: 'CAF', payload }` |
+
+**Memo request** (`allocationPayload()`) — the fields `printCBA()` sends for the same request, from the saved record: allocation
+number, fiscal year, document type, category (name looked up from `category_id`), Program / Sub-Program / Project, description
+(`project_description`; `particulars` for the RFA, `description` for the LAA), requested amount (the sum of the lines'
+`requested_amount`), allocated amount (the sum of `allocated_amount` — the CO CBA's "Cash Requirement"), bidding, remarks, fund
+source (the first line's Type of Fund) and the created date (the LAA writes its day without the leading zero). RFA / LAA add their
+own fields as in `printCBA()`; the signatories are blank (the FMD Department Manager is filled in by the print service). The
+**requesting office's `office_type`** decides the variant: Regional / District → `issuing_office: 'REGIONAL'` (the RFA also gets
+`requesting_department_type`, MAIN → the STAFF form).
+
+- The **allocation number** is only given by the final approval, so a request that has not been approved prints it blank (the
+  memo form shows a provisional number only while the request is being filled in).
+- A CBA also sends `amount` (the requested amount, else the allocated). The regional CBA reads its one amount as
+  `amount ?? allocated_amount ?? requested_amount`, and `??` takes an *empty* `allocated_amount` (`''` — a CBA has no cash
+  requirement) over the requested one, so without `amount` it prints **P0.00**. The main-office CBA never reads `amount`.
+  *(The memo form's own Print Preview sends no `amount` for a CBA, so a regional CBA printed from the form has the same P0.00 —
+  not changed here.)*
+
+**CAF** (`cafPayload()`) — `caf_number` (the RFA's number), `allocation_number` (the RFA's: "per RFA# …"), `caf_amount` (the sum of
+the lines' `caf_amount`), `purpose` (the RFA's description), `fund_source_name` (the first line's Type of Fund), `date` (the day the
+CAF was created, `Y-m-d`), `payee_name` / `payee_office_address` (the RFA's vendor and its address). An RFA of a Regional / District
+office prints the regional CAF: `body_variant` `entered_into_with` with the vendor, or `in_favor_of` the requesting office when the
+RFA has no vendor. A CAF whose RFA is gone still prints, from its own lines.
 
 ## LAA release request — regional memorandum
 
