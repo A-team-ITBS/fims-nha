@@ -177,7 +177,9 @@ $USER_LEVEL_PRIVS = [["{FIMS}audit_logs","-2","0"],
     ["{FIMS}ftla-page.php","-2","0"],
     ["{FIMS}ftla-page.php","0","0"],
     ["{FIMS}ledger-budget-allocation.php","-2","0"],
-    ["{FIMS}ledger-budget-allocation.php","0","0"]];
+    ["{FIMS}ledger-budget-allocation.php","0","0"],
+    ["{FIMS}cob-page.php","-2","0"],
+    ["{FIMS}cob-page.php","0","0"]];
 
 /**
  * Tables
@@ -267,4 +269,5 @@ $USER_LEVEL_TABLES = [["audit_logs","audit_logs","Audit Logs",false,"{FIMS}",""]
     ["vendors-page.php","vendors_page","Vendors",true,"{FIMS}","VendorsPage"],
     ["fund-sourcing-dashboard-page.php","fund_sourcing_dashboard_page","Fund Sourcing Dashboard",true,"{FIMS}","FundSourcingDashboardPage"],
     ["ftla-page.php","ftla_page","Fund Transfer Letter of Advice",true,"{FIMS}","FtlaPage"],
-    ["ledger-budget-allocation.php","ledger_budget_allocation","Ledger of Budget Allocation",true,"{FIMS}","LedgerBudgetAllocation"]];
+    ["ledger-budget-allocation.php","ledger_budget_allocation","Ledger of Budget Allocation",true,"{FIMS}","LedgerBudgetAllocation"],
+    ["cob-page.php","cob_page","COB",true,"{FIMS}","CobPage"]];

@@ -86,6 +86,12 @@
     <menu id="397">
       <phrase id="menutext" value="Trial Balance" />
     </menu>
+    <menu id="480">
+      <phrase id="menutext" value="Monitoring" />
+    </menu>
+    <menu id="400">
+      <phrase id="menutext" value="COB" />
+    </menu>
     <menu id="332">
       <phrase id="menutext" value="Bank Management Page" />
     </menu>
@@ -1666,6 +1672,9 @@
     </table>
     <table id="ledger_budget_allocation">
       <phrase id="tblcaption" value="Ledger of Budget Allocation" />
+    </table>
+    <table id="cob_page">
+      <phrase id="tblcaption" value="COB" />
     </table>
   </project>
 </ew-language>
