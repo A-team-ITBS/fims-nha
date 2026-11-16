@@ -143,8 +143,48 @@
                         </select>
                     </div>
                     <div class="coa-group">
+                        <label class="coa-label">Account Purpose</label>
+                        <select class="coa-select" id="coa-account-purpose">
+                            <option value="">— None —</option>
+                            <option value="Vendor Payable">Vendor Payable</option>
+                            <option value="Employee Compensation">Employee Compensation</option>
+                            <option value="Bank Account">Bank Account</option>
+                            <option value="Operating Expense">Operating Expense</option>
+                            <option value="Revenue">Revenue</option>
+                            <option value="Asset">Asset</option>
+                            <option value="Liability">Liability</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="coa-row">
+                    <div class="coa-group full">
                         <label class="coa-label">Source Document</label>
                         <input type="text" class="coa-input" id="coa-source-document" maxlength="255" placeholder="e.g. UACS Manual 2020">
+                    </div>
+                </div>
+
+                <div class="coa-row">
+                    <div class="coa-group full">
+                        <label class="coa-label">Books (Fund Sources)</label>
+                        <div id="coa-books-container" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; padding: 12px; background: var(--afims-surface-subtle, #F4F7FA); border-radius: 8px; border: 1px solid var(--afims-border, #E4ECF2);">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <input type="checkbox" id="coa-book-mo" value="MO" style="width: 16px; height: 16px; cursor: pointer;">
+                                <label for="coa-book-mo" style="cursor: pointer; margin: 0; font-size: 13px; font-weight: 500;">MO</label>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <input type="checkbox" id="coa-book-cisfa" value="CISFA" style="width: 16px; height: 16px; cursor: pointer;">
+                                <label for="coa-book-cisfa" style="cursor: pointer; margin: 0; font-size: 13px; font-weight: 500;">CISFA</label>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <input type="checkbox" id="coa-book-ngc" value="NGC" style="width: 16px; height: 16px; cursor: pointer;">
+                                <label for="coa-book-ngc" style="cursor: pointer; margin: 0; font-size: 13px; font-weight: 500;">NGC</label>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <input type="checkbox" id="coa-book-mplc" value="MPLC" style="width: 16px; height: 16px; cursor: pointer;">
+                                <label for="coa-book-mplc" style="cursor: pointer; margin: 0; font-size: 13px; font-weight: 500;">MPLC</label>
+                            </div>
+                        </div>
                     </div>
                 </div>
 

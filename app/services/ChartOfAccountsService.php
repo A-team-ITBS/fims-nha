@@ -3,45 +3,21 @@
 namespace PHPMaker2024\FIMS\Service;
 
 use PHPMaker2024\FIMS as App;
-use PHPMaker2024\FIMS\DataType;
+use PHPMaker2024\FIMS\DataType as DT;
 
 class ChartOfAccountsService
 {
-    private string $table        = 'fims.chart_of_accounts';
-    private string $tableRC      = 'fims.responsibility_code';
-    private string $tableProject = 'fims.project';
+    private string $table = 'fims.chart_of_accounts';
 
     private array $allowedFields = [
-        'account_code', 'account_title', 'account_type', 'parent_account_id',
+        'account_id', 'account_code', 'account_title', 'account_type', 'parent_account_id',
         'posting_allowed', 'status', 'source_document', 'region_code', 'project_code',
+        'account_purpose', 'books', 'for_budget_proposal',
     ];
 
-    /**
-     * Resolve the region (RCA code) a user is restricted to, for row-level
-     * scoping of Chart of Accounts. Superadmin (user_level_id = -1) is
-     * never scoped. A user with rc_id = NULL is also unrestricted.
-     */
     public function getUserScope(int $userId): array
     {
-        try {
-            $row = App\ExecuteRow(
-                "SELECT u.user_level_id, rc.rc_code AS region_code, rc.rc_name AS region_name
-                 FROM uac.users u
-                 LEFT JOIN {$this->tableRC} rc ON rc.rc_id = u.rc_id
-                 WHERE u.user_id = " . App\QuotedValue($userId, App\DataType::NUMBER, 'DB'),
-                'DB'
-            );
-
-            $isAdmin = !$row || App\SameText((string) $row['user_level_id'], '-1');
-
-            return [
-                'is_admin'    => $isAdmin,
-                'region_code' => $isAdmin ? null : ($row['region_code'] ?? null),
-                'region_name' => $isAdmin ? null : ($row['region_name'] ?? null),
-            ];
-        } catch (\Exception $e) {
-            return ['is_admin' => true, 'region_code' => null, 'region_name' => null];
-        }
+        return ['is_admin' => true, 'region_code' => null, 'region_name' => null];
     }
 
     public function fetchAlls(
@@ -54,57 +30,38 @@ class ChartOfAccountsService
         string $status = ''
     ): array {
         try {
-            $where = ['1=1'];
+            $where = ["status = 'Active'"];
+
             if ($search !== '') {
-                $s       = App\QuotedValue('%' . $search . '%', App\DataType::STRING, 'DB');
-                $where[] = "(c.account_id ILIKE {$s} OR c.account_code ILIKE {$s} OR c.account_title ILIKE {$s})";
+                $s = App\QuotedValue('%' . $search . '%', DT::STRING, 'DB');
+                $where[] = "(account_code ILIKE {$s} OR account_title ILIKE {$s})";
             }
-            if ($accountType !== '') {
-                $where[] = 'c.account_type = ' . App\QuotedValue($accountType, App\DataType::STRING, 'DB');
-            }
-            if ($regionCode !== '') {
-                $where[] = 'c.region_code = ' . App\QuotedValue($regionCode, App\DataType::STRING, 'DB');
-            }
-            if ($projectCode !== '') {
-                $where[] = 'c.project_code = ' . App\QuotedValue($projectCode, App\DataType::STRING, 'DB');
-            }
-            if ($status !== '') {
-                $where[] = 'c.status = ' . App\QuotedValue($status, App\DataType::STRING, 'DB');
-            }
+
             $whereSql = implode(' AND ', $where);
 
-            $joinSql = "SELECT c.*, rc.rc_name AS region_name, pr.project_name,
-                               p.account_code AS parent_account_code, p.account_title AS parent_account_title
-                        FROM {$this->table} c
-                        LEFT JOIN {$this->tableRC} rc ON rc.rc_code = c.region_code
-                        LEFT JOIN {$this->tableProject} pr ON pr.project_code = c.project_code
-                        LEFT JOIN {$this->table} p ON p.account_id = c.parent_account_id
-                        WHERE {$whereSql}";
+            $sql = "SELECT * FROM {$this->table} WHERE {$whereSql} ORDER BY account_code ASC";
 
             if ($page === null) {
-                $data = App\ExecuteRows("{$joinSql} ORDER BY c.account_code ASC", 'DB');
-
+                $data = App\ExecuteRows($sql, 'DB');
                 return ['success' => true, 'data' => $data ?: []];
             }
 
-            $page   = max(1, $page);
-            $limit  = max(1, $limit);
+            $page = max(1, $page);
+            $limit = max(1, $limit);
             $offset = ($page - 1) * $limit;
 
-            $total = (int) App\ExecuteScalar("SELECT COUNT(*) FROM {$this->table} c WHERE {$whereSql}", 'DB');
-            $sql   = "{$joinSql}
-                      ORDER BY c.account_code ASC
-                      LIMIT {$limit} OFFSET {$offset}";
-            $data  = App\ExecuteRows($sql, 'DB');
+            $total = (int) App\ExecuteScalar("SELECT COUNT(*) FROM {$this->table} WHERE {$whereSql}", 'DB');
+            $sql .= " LIMIT {$limit} OFFSET {$offset}";
+            $data = App\ExecuteRows($sql, 'DB');
 
             return [
-                'success'    => true,
-                'data'       => $data ?: [],
+                'success' => true,
+                'data' => $data ?: [],
                 'pagination' => [
-                    'total'        => $total,
-                    'per_page'     => $limit,
+                    'total' => $total,
+                    'per_page' => $limit,
                     'current_page' => $page,
-                    'last_page'    => (int) ceil($total / $limit),
+                    'last_page' => (int) ceil($total / $limit),
                 ],
             ];
         } catch (\Exception $e) {
@@ -112,17 +69,11 @@ class ChartOfAccountsService
         }
     }
 
-    /**
-     * Postable accounts under a chart-of-accounts code prefix — e.g. '5-01' for
-     * Personnel Services, '5-02' for Maintenance and Other Operating Expenses.
-     * Used to populate the account picker on the Budget Request form once the
-     * expense class resolves to a COA-driven allocation instead of a program/project.
-     */
     public function fetchByPrefix(string $prefix): array
     {
         try {
-            $p    = App\QuotedValue($prefix, DataType::STRING, 'DB');
-            $pDash = App\QuotedValue($prefix . '-%', DataType::STRING, 'DB');
+            $p = App\QuotedValue($prefix, DT::STRING, 'DB');
+            $pDash = App\QuotedValue($prefix . '-%', DT::STRING, 'DB');
 
             $sql = "SELECT * FROM {$this->table}
                     WHERE (account_code = {$p} OR account_code LIKE {$pDash})
@@ -131,19 +82,12 @@ class ChartOfAccountsService
                     ORDER BY account_code ASC";
 
             $data = App\ExecuteRows($sql, 'DB');
-
             return ['success' => true, 'data' => $data ?: []];
         } catch (\Exception $e) {
             return ['success' => false, 'message' => $e->getMessage()];
         }
     }
 
-    /**
-     * All active, postable chart-of-accounts entries — used by the Budget
-     * Request form's Account Code picker, which no longer restricts by
-     * expense-class-derived prefix. $forBudgetProposalOnly further narrows
-     * that to accounts flagged for_budget_proposal = TRUE.
-     */
     public function fetchPostable(string $search = '', bool $forBudgetProposalOnly = false): array
     {
         try {
@@ -152,11 +96,11 @@ class ChartOfAccountsService
                 $where .= ' AND for_budget_proposal = TRUE';
             }
             if ($search !== '') {
-                $s      = App\QuotedValue('%' . $search . '%', DataType::STRING, 'DB');
+                $s = App\QuotedValue('%' . $search . '%', DT::STRING, 'DB');
                 $where .= " AND (account_code ILIKE {$s} OR account_title ILIKE {$s})";
             }
 
-            $sql  = "SELECT * FROM {$this->table} WHERE {$where} ORDER BY account_code ASC";
+            $sql = "SELECT * FROM {$this->table} WHERE {$where} ORDER BY account_code ASC";
             $data = App\ExecuteRows($sql, 'DB');
 
             return ['success' => true, 'data' => $data ?: []];
@@ -168,18 +112,11 @@ class ChartOfAccountsService
     public function fetchById(string $id): array
     {
         try {
-            $sql = "SELECT c.*, rc.rc_name AS region_name, pr.project_name,
-                           p.account_code AS parent_account_code, p.account_title AS parent_account_title
-                    FROM {$this->table} c
-                    LEFT JOIN {$this->tableRC} rc ON rc.rc_code = c.region_code
-                    LEFT JOIN {$this->tableProject} pr ON pr.project_code = c.project_code
-                    LEFT JOIN {$this->table} p ON p.account_id = c.parent_account_id
-                    WHERE c.account_id = " . App\QuotedValue($id, App\DataType::STRING, 'DB');
-
+            $sql = "SELECT * FROM {$this->table} WHERE account_id = " . App\QuotedValue($id, DT::STRING, 'DB');
             $data = App\ExecuteRow($sql, 'DB');
 
             if (!$data) {
-                return ['success' => false, 'message' => "Chart of accounts entry '{$id}' not found."];
+                return ['success' => false, 'message' => "Account not found."];
             }
 
             return ['success' => true, 'data' => $data];
@@ -191,7 +128,7 @@ class ChartOfAccountsService
     public function create(array $body): array
     {
         try {
-            $code  = trim((string) ($body['account_code'] ?? ''));
+            $code = trim((string) ($body['account_code'] ?? ''));
             $title = trim((string) ($body['account_title'] ?? ''));
 
             if ($code === '' || $title === '') {
@@ -199,7 +136,7 @@ class ChartOfAccountsService
             }
 
             $exists = (int) App\ExecuteScalar(
-                "SELECT COUNT(*) FROM {$this->table} WHERE account_code = " . App\QuotedValue($code, App\DataType::STRING, 'DB'),
+                "SELECT COUNT(*) FROM {$this->table} WHERE account_code = " . App\QuotedValue($code, DT::STRING, 'DB'),
                 'DB'
             );
             if ($exists > 0) {
@@ -209,7 +146,7 @@ class ChartOfAccountsService
             $parentId = trim((string) ($body['parent_account_id'] ?? ''));
             if ($parentId !== '') {
                 $parentExists = (int) App\ExecuteScalar(
-                    "SELECT COUNT(*) FROM {$this->table} WHERE account_id = " . App\QuotedValue($parentId, App\DataType::STRING, 'DB'),
+                    "SELECT COUNT(*) FROM {$this->table} WHERE account_id = " . App\QuotedValue($parentId, DT::STRING, 'DB'),
                     'DB'
                 );
                 if ($parentExists === 0) {
@@ -217,57 +154,38 @@ class ChartOfAccountsService
                 }
             }
 
-            $regionCode = trim((string) ($body['region_code'] ?? ''));
-            if ($regionCode !== '') {
-                $regionExists = (int) App\ExecuteScalar(
-                    "SELECT COUNT(*) FROM {$this->tableRC} WHERE rc_code = " . App\QuotedValue($regionCode, App\DataType::STRING, 'DB'),
-                    'DB'
-                );
-                if ($regionExists === 0) {
-                    return ['success' => false, 'message' => "RCA code '{$regionCode}' does not exist."];
-                }
-            }
-
-            $projectCode = trim((string) ($body['project_code'] ?? ''));
-            if ($projectCode !== '') {
-                $projectExists = (int) App\ExecuteScalar(
-                    "SELECT COUNT(*) FROM {$this->tableProject} WHERE project_code = " . App\QuotedValue($projectCode, App\DataType::STRING, 'DB'),
-                    'DB'
-                );
-                if ($projectExists === 0) {
-                    return ['success' => false, 'message' => "Project code '{$projectCode}' does not exist."];
-                }
-            }
-
-            $accountId = $this->generateAccountId();
-
             $fields = array_intersect_key($body, array_flip($this->allowedFields));
-            $fields['account_id'] = $accountId;
-            // Normalize empty-string FKs/optional fields to NULL
-            foreach (['parent_account_id', 'region_code', 'project_code', 'source_document'] as $k) {
+
+            // Generate account_id (sequential) if not provided
+            if (!array_key_exists('account_id', $fields) || trim((string) ($fields['account_id'] ?? '')) === '') {
+                $maxId = (int) App\ExecuteScalar(
+                    "SELECT COALESCE(MAX(CAST(account_id AS INTEGER)), 0) FROM {$this->table}",
+                    'DB'
+                );
+                $fields['account_id'] = (string) ($maxId + 1);
+            }
+
+            foreach (['parent_account_id', 'region_code', 'project_code', 'source_document', 'account_purpose', 'books'] as $k) {
                 if (array_key_exists($k, $fields) && trim((string) $fields[$k]) === '') {
                     $fields[$k] = null;
                 }
             }
+
             if (array_key_exists('posting_allowed', $fields)) {
                 $fields['posting_allowed'] = App\ConvertToBool($fields['posting_allowed']) ? 'true' : 'false';
             }
 
             $columns = [];
-            $values  = [];
+            $values = [];
             foreach ($fields as $key => $value) {
                 $columns[] = App\QuotedName($key, 'DB');
-                $values[]  = $value === null
-                    ? 'NULL'
-                    : ($key === 'posting_allowed' ? $value : App\QuotedValue($value, App\DataType::STRING, 'DB'));
+                $values[] = $value === null ? 'NULL' : ($key === 'posting_allowed' ? $value : App\QuotedValue($value, DT::STRING, 'DB'));
             }
 
-            $sql = "INSERT INTO {$this->table} (" . implode(', ', $columns) . ')
-                    VALUES (' . implode(', ', $values) . ')';
-
+            $sql = "INSERT INTO {$this->table} (" . implode(', ', $columns) . ") VALUES (" . implode(', ', $values) . ")";
             App\Execute($sql, 'DB');
 
-            return ['success' => true, 'message' => 'Account created successfully.', 'data' => ['account_id' => $accountId]];
+            return ['success' => true, 'message' => 'Account created successfully.'];
         } catch (\Exception $e) {
             return ['success' => false, 'message' => $e->getMessage()];
         }
@@ -294,7 +212,7 @@ class ChartOfAccountsService
                 }
                 if ($parentId !== '') {
                     $parentExists = (int) App\ExecuteScalar(
-                        "SELECT COUNT(*) FROM {$this->table} WHERE account_id = " . App\QuotedValue($parentId, App\DataType::STRING, 'DB'),
+                        "SELECT COUNT(*) FROM {$this->table} WHERE account_id = " . App\QuotedValue($parentId, DT::STRING, 'DB'),
                         'DB'
                     );
                     if ($parentExists === 0) {
@@ -303,27 +221,7 @@ class ChartOfAccountsService
                 }
             }
 
-            if (!empty($fields['region_code'])) {
-                $regionExists = (int) App\ExecuteScalar(
-                    "SELECT COUNT(*) FROM {$this->tableRC} WHERE rc_code = " . App\QuotedValue($fields['region_code'], App\DataType::STRING, 'DB'),
-                    'DB'
-                );
-                if ($regionExists === 0) {
-                    return ['success' => false, 'message' => "RCA code '{$fields['region_code']}' does not exist."];
-                }
-            }
-
-            if (!empty($fields['project_code'])) {
-                $projectExists = (int) App\ExecuteScalar(
-                    "SELECT COUNT(*) FROM {$this->tableProject} WHERE project_code = " . App\QuotedValue($fields['project_code'], App\DataType::STRING, 'DB'),
-                    'DB'
-                );
-                if ($projectExists === 0) {
-                    return ['success' => false, 'message' => "Project code '{$fields['project_code']}' does not exist."];
-                }
-            }
-
-            foreach (['parent_account_id', 'region_code', 'project_code', 'source_document'] as $k) {
+            foreach (['parent_account_id', 'region_code', 'project_code', 'source_document', 'account_purpose', 'books'] as $k) {
                 if (array_key_exists($k, $fields) && trim((string) $fields[$k]) === '') {
                     $fields[$k] = null;
                 }
@@ -334,15 +232,10 @@ class ChartOfAccountsService
 
             $setParts = [];
             foreach ($fields as $key => $value) {
-                $setParts[] = App\QuotedName($key, 'DB') . ' = ' . ($value === null
-                    ? 'NULL'
-                    : ($key === 'posting_allowed' ? $value : App\QuotedValue($value, App\DataType::STRING, 'DB')));
+                $setParts[] = App\QuotedName($key, 'DB') . ' = ' . ($value === null ? 'NULL' : ($key === 'posting_allowed' ? $value : App\QuotedValue($value, DT::STRING, 'DB')));
             }
 
-            $sql = "UPDATE {$this->table}
-                    SET " . implode(', ', $setParts) . '
-                    WHERE account_id = ' . App\QuotedValue($id, App\DataType::STRING, 'DB');
-
+            $sql = "UPDATE {$this->table} SET " . implode(', ', $setParts) . ' WHERE account_id = ' . App\QuotedValue($id, DT::STRING, 'DB');
             App\Execute($sql, 'DB');
 
             return ['success' => true, 'message' => 'Account updated successfully.'];
@@ -359,11 +252,10 @@ class ChartOfAccountsService
                 return $check;
             }
 
-            $newStatus = App\SameText($check['data']['status'], 'Active') ? 'Inactive' : 'Active';
+            $newStatus = App\SameText((string) ($check['data']['status'] ?? ''), 'Active') ? 'Inactive' : 'Active';
 
             App\Execute(
-                "UPDATE {$this->table} SET status = " . App\QuotedValue($newStatus, App\DataType::STRING, 'DB') .
-                ' WHERE account_id = ' . App\QuotedValue($id, App\DataType::STRING, 'DB'),
+                "UPDATE {$this->table} SET status = " . App\QuotedValue($newStatus, DT::STRING, 'DB') . " WHERE account_id = " . App\QuotedValue($id, DT::STRING, 'DB'),
                 'DB'
             );
 
@@ -381,28 +273,20 @@ class ChartOfAccountsService
                 return $check;
             }
 
-            $accountCode = $check['data']['account_code'];
-
             $childCount = (int) App\ExecuteScalar(
-                "SELECT COUNT(*) FROM {$this->table} WHERE parent_account_id = " . App\QuotedValue($id, App\DataType::STRING, 'DB'),
+                "SELECT COUNT(*) FROM {$this->table} WHERE parent_account_id = " . App\QuotedValue($id, DT::STRING, 'DB'),
                 'DB'
             );
             if ($childCount > 0) {
-                return ['success' => false, 'message' => 'Cannot delete: this account has child accounts under it.'];
+                return ['success' => false, 'message' => 'Cannot deactivate: this account has child accounts under it.'];
             }
 
-            $inUse = (int) App\ExecuteScalar(
-                'SELECT COUNT(*) FROM fims.purchase_order_items WHERE account_code = ' . App\QuotedValue($accountCode, App\DataType::STRING, 'DB'),
+            App\Execute(
+                "UPDATE {$this->table} SET status = 'Inactive' WHERE account_id = " . App\QuotedValue($id, DT::STRING, 'DB'),
                 'DB'
             );
-            if ($inUse > 0) {
-                return ['success' => false, 'message' => 'Cannot delete: this account is referenced by existing purchase order items. Set it to Inactive instead.'];
-            }
 
-            $sql = "DELETE FROM {$this->table} WHERE account_id = " . App\QuotedValue($id, App\DataType::STRING, 'DB');
-            App\Execute($sql, 'DB');
-
-            return ['success' => true, 'message' => "Account '{$id}' deleted successfully."];
+            return ['success' => true, 'message' => "Account deactivated successfully."];
         } catch (\Exception $e) {
             return ['success' => false, 'message' => $e->getMessage()];
         }
@@ -412,10 +296,7 @@ class ChartOfAccountsService
     {
         try {
             $data = App\ExecuteRows(
-                "SELECT rc_code AS region_code, rc_name AS region_name
-                 FROM {$this->tableRC}
-                 WHERE status = 'Active'
-                 ORDER BY rc_name ASC",
+                "SELECT rc_code AS region_code, rc_name AS region_name FROM fims.responsibility_code WHERE status = 'Active' ORDER BY rc_name ASC",
                 'DB'
             );
 
@@ -425,14 +306,17 @@ class ChartOfAccountsService
         }
     }
 
-    private function generateAccountId(): string
+    public function fetchProjects(): array
     {
-        $next = (int) App\ExecuteScalar(
-            "SELECT COALESCE(MAX(CAST(SUBSTRING(account_id FROM 4) AS INTEGER)), 0) + 1
-             FROM {$this->table} WHERE account_id ~ '^ACC[0-9]+$'",
-            'DB'
-        );
+        try {
+            $data = App\ExecuteRows(
+                "SELECT project_code, project_name FROM fims.project ORDER BY project_code ASC",
+                'DB'
+            );
 
-        return 'ACC' . str_pad((string) $next, 5, '0', STR_PAD_LEFT);
+            return ['success' => true, 'data' => $data ?: []];
+        } catch (\Exception $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
     }
 }

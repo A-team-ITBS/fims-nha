@@ -194,8 +194,6 @@ $USER_LEVEL_PRIVS = [["{FIMS}audit_logs","-2","0"],
     ["{FIMS}fmr-page.php","0","0"],
     ["{FIMS}remittance-list-page.php","-2","0"],
     ["{FIMS}remittance-list-page.php","0","0"],
-    ["{FIMS}supplier-contract-page.php","-2","0"],
-    ["{FIMS}supplier-contract-page.php","0","0"],
     ["{FIMS}fund-source-page.php","-2","0"],
     ["{FIMS}fund-source-page.php","0","0"],
     ["{FIMS}program-sources-page.php","-2","0"],
@@ -203,7 +201,9 @@ $USER_LEVEL_PRIVS = [["{FIMS}audit_logs","-2","0"],
     ["{FIMS}ledger-page.php","-2","0"],
     ["{FIMS}ledger-page.php","0","0"],
     ["{FIMS}accountable_officer-page.php","-2","0"],
-    ["{FIMS}accountable_officer-page.php","0","0"]];
+    ["{FIMS}accountable_officer-page.php","0","0"],
+    ["{FIMS}rfa-laa-monitoring-page.php","-2","0"],
+    ["{FIMS}rfa-laa-monitoring-page.php","0","0"]];
 
 /**
  * Tables
@@ -302,8 +302,8 @@ $USER_LEVEL_TABLES = [["audit_logs","audit_logs","Audit Logs",false,"{FIMS}",""]
     ["accountable-forms-registry-page.php","accountable_forms_registry_page","Accountable Forms Registry",true,"{FIMS}","AccountableFormsRegistryPage"],
     ["fmr-page.php","fmr_page","FMR",true,"{FIMS}","FmrPage"],
     ["remittance-list-page.php","remittance_list_page","Remittance List(Deductions)",true,"{FIMS}","RemittanceListPage"],
-    ["supplier-contract-page.php","supplier_contract_page","Supplier / Contract",true,"{FIMS}","SupplierContractPage"],
     ["fund-source-page.php","fund_source_page","Fund Source",true,"{FIMS}","FundSourcePage"],
     ["program-sources-page.php","program_sources_page","Program Source",true,"{FIMS}","ProgramSourcesPage"],
     ["ledger-page.php","ledger_page","Ledger",true,"{FIMS}","LedgerPage"],
-    ["accountable_officer-page.php","accountable_officer_page","Accountable Officer",true,"{FIMS}","AccountableOfficerPage"]];
+    ["accountable_officer-page.php","accountable_officer_page","Accountable Officer",true,"{FIMS}","AccountableOfficerPage"],
+    ["rfa-laa-monitoring-page.php","rfa_laa_monitoring_page","RFA / LAA Monitoring",true,"{FIMS}","RfaLaaMonitoringPage"]];
