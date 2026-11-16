@@ -49,6 +49,11 @@ $apiBase = Config('API.FIMS_URL');
 // views/BudgetAllocationForm.php (the "Memo Request Form" menu item) relies on.
 $cbaAsModal = !empty($cbaAsModal);
 
+// Which Allocation Types this form may create / edit: the including page sets $cbaAllowedTypes (memo-req-page.php: ['CBA'] or
+// ['RFA', 'LAA'], from the $alloc_type of its wrapper). One type -> it is preselected and locked; several -> only those are
+// offered. Left unset (the stand-alone "Memo Request Form" page) every type stays available, as before.
+$cbaAllowedTypes = array_values(array_intersect(['CBA', 'RFA', 'LAA', 'CFA'], array_map('strval', (array) ($cbaAllowedTypes ?? []))));
+
 ?>
 
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -1925,6 +1930,8 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 	var CBA_EDIT_MODE = !!CBA_CONFIG.allocationId;
 	// true when the including page rendered this form inside the overlay modal (see the PHP header)
 	const CBA_AS_MODAL = <?php echo $cbaAsModal ? 'true' : 'false'; ?>;
+	// the Allocation Types the including page limits this form to ([] = no limit) — see the PHP header
+	const CBA_ALLOWED_TYPES = <?php echo json_encode($cbaAllowedTypes); ?>;
 	// created_at of the allocation being edited (set by populateEditForm). Stays
 	// null in add mode — nothing is saved yet, so the RFA print date is today's.
 	var CBA_CREATED_AT = null;
@@ -2054,22 +2061,32 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 		document.getElementById('document_type').addEventListener('change',
 			applyBudgetVersionVisibilityForDocType);
 
+		// ── Allocation Type limited by the page that hosts the form (CBA_ALLOWED_TYPES) ──
+		// The CBA page allows only CBA, the RFA/LAA page only those two: every other <option> is taken out, so a request
+		// can never be created on the wrong page. (Re-run on every open — the markup is rebuilt each time.)
+		if (CBA_ALLOWED_TYPES.length) {
+			Array.prototype.slice.call(document.getElementById('allocation_type').options).forEach(function(opt) {
+				if (opt.value && CBA_ALLOWED_TYPES.indexOf(opt.value) === -1) opt.remove();
+			});
+		}
+
 		// ── Pre-populate from URL params (?type=CBA|RFA|LAA&parent_cba_id=N) ──
-		// In modal mode this is the host page's own URL (e.g. memo-req-page?type=RFA) — memo-req-page.php keeps
-		// ?type= in sync with whichever of its CBA / RFA / LAA tabs is active, so "New Memo Request" opens this
-		// form with the matching Allocation Type already chosen. Skipped entirely in edit mode — editing an
-		// existing record should never trigger the "generate RFA/LAA from parent CBA" autofill flow.
+		// A page that limits the form to ONE type (the CBA page) decides it; otherwise ?type= on the URL still presets it
+		// (e.g. the "Generate RFA/LAA" link from a CBA). Skipped entirely in edit mode — editing an existing record should
+		// never trigger the "generate RFA/LAA from parent CBA" autofill flow.
 		const _urlParams = new URLSearchParams(window.location.search);
-		const _presetType = CBA_EDIT_MODE ? '' : (_urlParams.get('type') || '').toUpperCase();
+		const _presetType = CBA_EDIT_MODE ? '' :
+			(CBA_ALLOWED_TYPES.length === 1 ? CBA_ALLOWED_TYPES[0] : (_urlParams.get('type') || '').toUpperCase());
 		const _presetCbaId = CBA_EDIT_MODE ? '' : (_urlParams.get('parent_cba_id') || '').trim();
 
-		if (_presetType === 'CBA' || _presetType === 'RFA' || _presetType === 'LAA') {
+		if ((_presetType === 'CBA' || _presetType === 'RFA' || _presetType === 'LAA') &&
+			(!CBA_ALLOWED_TYPES.length || CBA_ALLOWED_TYPES.indexOf(_presetType) !== -1)) {
 			var allocTypeEl = document.getElementById('allocation_type');
 			allocTypeEl.value = _presetType;
-			// Locked: the tab it was opened from (memo-req-page.php's CBA / RFA / LAA tabs) already decided this —
-			// changing it here would disagree with where the user clicked "New ... Memo Request" from.
+			// Locked: the page it was opened from already decided this — changing it here would disagree with where the
+			// user clicked "New ... Memo Request" from. (On the RFA/LAA page a ?type= preset locks it to that one.)
 			allocTypeEl.disabled = true;
-			allocTypeEl.title = 'Determined by the tab this was opened from.';
+			allocTypeEl.title = 'Determined by the page this was opened from.';
 			generateCBANumber();
 			toggleCbaIdRow();
 		}
@@ -4179,7 +4196,8 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 		if (!ALLOC_CFA_OPTION) return;
 
 		var present = ALLOC_CFA_OPTION.parentNode === sel;
-		var hide = docType === 'CO' && !(CBA_EDIT_MODE && sel.value === 'CFA');
+		var cfaAllowed = !CBA_ALLOWED_TYPES.length || CBA_ALLOWED_TYPES.indexOf('CFA') !== -1; // a CBA / RFA / LAA page never offers CFA
+		var hide = !cfaAllowed || (docType === 'CO' && !(CBA_EDIT_MODE && sel.value === 'CFA'));
 
 		if (hide && present) {
 			var wasCfa = sel.value === 'CFA';
@@ -5220,7 +5238,7 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 	var CBA_DECISIONS = {
 		preview: {
 			status: 'For Preview',
-			done: 'submitted for preview',
+			done: 'submitted for review',
 			busy: 'Submitting'
 		},
 		draft: {
@@ -5268,8 +5286,8 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 				'<p class="cbadec-text" id="cbadec-text"></p>' +
 				'<p class="cbadec-current" id="cbadec-current" hidden></p>' +
 				'<button type="button" class="cbadec-opt cbadec-opt-primary" data-decision="preview">' +
-				'<span class="cbadec-opt-title">Submit for Preview</span>' +
-				'<span class="cbadec-opt-desc">Sends the request on to be previewed. Its status becomes <strong></strong>.</span>' +
+				'<span class="cbadec-opt-title">Submit for Review</span>' +
+				'<span class="cbadec-opt-desc">Sends the request on to be reviewed. Its status becomes <strong></strong>.</span>' +
 				'</button>' +
 				'<button type="button" class="cbadec-opt" data-decision="draft">' +
 				'<span class="cbadec-opt-title">Save as Draft</span>' +
@@ -5385,7 +5403,7 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 		}
 		var typeLabel = getTypeLabel();
 
-		// Replaces the old "Are you sure?" confirm(): ask what should become of the request — submitted for preview, or
+		// Replaces the old "Are you sure?" confirm(): ask what should become of the request — submitted for review, or
 		// kept as a draft — and give it that status. Cancelled -> nothing is sent.
 		var choice = await cbaAskDecision(typeLabel);
 		if (!choice) return;
