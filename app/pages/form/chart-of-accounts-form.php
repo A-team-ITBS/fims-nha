@@ -167,13 +167,24 @@
                 <div class="coa-row">
                     <div class="coa-group full">
                         <label class="coa-label">Books (Fund Sources)</label>
-                        <p class="coa-hint" style="margin-bottom: 8px;">Hold Ctrl/Cmd to select multiple options</p>
-                        <select class="coa-select" id="coa-books" multiple style="min-height: 140px; padding: 8px;">
-                            <option value="MO">MO</option>
-                            <option value="CISFA">CISFA</option>
-                            <option value="NGC">NGC</option>
-                            <option value="MPLC">MPLC</option>
-                        </select>
+                        <div id="coa-books-container" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; padding: 12px; background: var(--afims-surface-subtle, #F4F7FA); border-radius: 8px; border: 1px solid var(--afims-border, #E4ECF2);">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <input type="checkbox" id="coa-book-mo" value="MO" style="width: 16px; height: 16px; cursor: pointer;">
+                                <label for="coa-book-mo" style="cursor: pointer; margin: 0; font-size: 13px; font-weight: 500;">MO</label>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <input type="checkbox" id="coa-book-cisfa" value="CISFA" style="width: 16px; height: 16px; cursor: pointer;">
+                                <label for="coa-book-cisfa" style="cursor: pointer; margin: 0; font-size: 13px; font-weight: 500;">CISFA</label>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <input type="checkbox" id="coa-book-ngc" value="NGC" style="width: 16px; height: 16px; cursor: pointer;">
+                                <label for="coa-book-ngc" style="cursor: pointer; margin: 0; font-size: 13px; font-weight: 500;">NGC</label>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <input type="checkbox" id="coa-book-mplc" value="MPLC" style="width: 16px; height: 16px; cursor: pointer;">
+                                <label for="coa-book-mplc" style="cursor: pointer; margin: 0; font-size: 13px; font-weight: 500;">MPLC</label>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
