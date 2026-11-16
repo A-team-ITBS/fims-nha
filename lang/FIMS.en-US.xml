@@ -86,6 +86,9 @@
     <menu id="332">
       <phrase id="menutext" value="Bank Management Page" />
     </menu>
+    <menu id="398">
+      <phrase id="menutext" value="Fund Transfer Letter of Advice" />
+    </menu>
     <menu id="331">
       <phrase id="menutext" value="Cash Position" />
     </menu>
@@ -1654,6 +1657,9 @@
     </table>
     <table id="fund_sourcing_dashboard_page">
       <phrase id="tblcaption" value="Fund Sourcing Dashboard" />
+    </table>
+    <table id="ftla_page">
+      <phrase id="tblcaption" value="Fund Transfer Letter of Advice" />
     </table>
   </project>
 </ew-language>
