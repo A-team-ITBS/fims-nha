@@ -2,12 +2,42 @@
 
 namespace PHPMaker2024\FIMS;
 
+use PHPMaker2024\FIMS\Service\PrintPayloadService;
 use PHPMaker2024\FIMS\Service\PrintService;
 
 // Printed forms — one endpoint for every form (CBA, CAF, RFA, LAA, …), run by
 // PrintService (the forms are registered in PrintService::DOCS).
 // Preview modal: app/pages/readone/print-preview-readone.php (prp_open(payload, { type })).
 $PrintService = new PrintService();
+$PrintPayloadService = new PrintPayloadService();
+
+// The print payload of a SAVED record, so a list can print it without opening a form:
+//   GET /print/payload/allocation/{id}   a memo request (CBA / RFA / LAA) -> { success, doc: CBA|RFA|LAA, payload }
+//   GET /print/payload/caf/{id}          a CAF                            -> { success, doc: CAF, payload }
+// The page then calls prp_open(payload, { type: doc }) — the preview, PDF and DOCX all go through POST /print/{doc} below.
+$app->get('/print/payload/allocation/{id:[0-9]+}', function ($request, $response, $args) use ($PrintPayloadService) {
+    try {
+        $result = $PrintPayloadService->forAllocation($args['id']);
+
+        return $response->withJson($result, $result['httpCode'] ?? ($result['success'] ? 200 : 400));
+    } catch (\Throwable $e) {
+        LogError('GET /print/payload/allocation ' . $e->getMessage());
+
+        return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
+    }
+})->add($accessMiddleware)->add($jwtMiddleware);
+
+$app->get('/print/payload/caf/{id:[0-9]+}', function ($request, $response, $args) use ($PrintPayloadService) {
+    try {
+        $result = $PrintPayloadService->forCaf($args['id']);
+
+        return $response->withJson($result, $result['httpCode'] ?? ($result['success'] ? 200 : 400));
+    } catch (\Throwable $e) {
+        LogError('GET /print/payload/caf ' . $e->getMessage());
+
+        return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
+    }
+})->add($accessMiddleware)->add($jwtMiddleware);
 
 // Print a form from a payload. {doc} = cba | caf | rfa | laa
 // Body: { format: html|pdf|docx, ...payload } — payload fields are documented on each
