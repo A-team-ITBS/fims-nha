@@ -207,6 +207,7 @@
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
     ],
     null,
     [
@@ -1243,6 +1244,11 @@
                     'POST',
                     'OPTIONS',
                 ],
+                [
+                    'GET',
+                    'POST',
+                    'OPTIONS',
+                ],
             ],
             'pattern' => [
                 '/AccountableFormsRegistryPage[/{params:.*}]',
@@ -1405,6 +1411,7 @@
                 '/RemittanceListPage[/{params:.*}]',
                 '/ResponsibilityCenterPage[/{params:.*}]',
                 '/RfaLaaMemoRequestPage[/{params:.*}]',
+                '/RfaLaaMonitoringPage[/{params:.*}]',
                 '/RfaLaaReview[/{params:.*}]',
                 '/RfaLaaReviewPage[/{params:.*}]',
                 '/SaroRegistryPage[/{params:.*}]',
@@ -1614,6 +1621,7 @@
                 'PHPMaker2024\\FIMS\\RemittanceListPageController:custom',
                 'PHPMaker2024\\FIMS\\ResponsibilityCenterPageController:custom',
                 'PHPMaker2024\\FIMS\\RfaLaaMemoRequestPageController:custom',
+                'PHPMaker2024\\FIMS\\RfaLaaMonitoringPageController:custom',
                 'PHPMaker2024\\FIMS\\RfaLaaReviewController:custom',
                 'PHPMaker2024\\FIMS\\RfaLaaReviewPageController:custom',
                 'PHPMaker2024\\FIMS\\SaroRegistryPageController:custom',
@@ -2282,6 +2290,9 @@
                 [
                     'PHPMaker2024\\FIMS\\PermissionMiddleware',
                 ],
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
             ],
             'name' => [
                 'custom.accountable_forms_registry_page',
@@ -2444,6 +2455,7 @@
                 'custom.remittance_list_page',
                 'custom.responsibility_center_page',
                 'custom.rfa_laa_memo_request_page',
+                'custom.rfa_laa_monitoring_page',
                 'custom.rfa_laa_review',
                 'custom.rfa_laa_review_page',
                 'custom.saro_registry_page',
@@ -2493,6 +2505,7 @@
                 'custom.WorkflowManager',
             ],
             'options' => [
+                [],
                 [],
                 [],
                 [],
@@ -2911,6 +2924,7 @@
         $o[204],
         $o[205],
         $o[206],
+        $o[207],
     ],
     []
 );
