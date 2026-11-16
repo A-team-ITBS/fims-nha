@@ -81,8 +81,6 @@ class DisbursementVoucherService
     private string $tableDvDeductions    = 'fims.disbursement_voucher_deductions';
     private string $tableDvAtcLines      = 'fims.disbursement_voucher_atc_lines';
     private string $tableSettingsStatus  = 'fims.settings_status';
-    private string $tableSlMasters       = 'fims.sl_masters';
-    private string $tableSlDetails       = 'fims.sl_details';
     private string $tableBudgetCategory  = 'fims.budget_category';
 
     // Classification tag only (reporting/filtering) — never changes which fields the voucher form
@@ -530,18 +528,23 @@ class DisbursementVoucherService
         }
     }
 
-    // ── Subsidiary Ledger lookup (read-only; fims.sl_masters/sl_details have no CRUD backend of their own) ──
+    // ── Subsidiary Ledger lookup (now uses Chart of Accounts hierarchy) ──
+    // SL accounts are Chart of Accounts entries with a parent_account_id (GL parent)
 
     public function fetchSlCodes(string $search = ''): array
     {
         try {
-            $where = ['is_active = TRUE'];
+            $where = ['c.status = ' . $this->str('Active'), 'c.parent_account_id IS NOT NULL'];
             if ($search !== '') {
                 $kw      = App\QuotedValue('%' . $search . '%', App\DataType::STRING, 'DB');
-                $where[] = "(sl_code ILIKE {$kw} OR sl_name ILIKE {$kw})";
+                $where[] = "(c.account_code ILIKE {$kw} OR c.account_title ILIKE {$kw})";
             }
             $rows = App\ExecuteRows(
-                'SELECT sl_code, sl_name, account_code FROM ' . $this->tableSlMasters . ' WHERE ' . implode(' AND ', $where) . ' ORDER BY sl_code LIMIT 50',
+                "SELECT c.account_code AS sl_code, c.account_title AS sl_name, p.account_code
+                 FROM {$this->tableCoa} c
+                 LEFT JOIN {$this->tableCoa} p ON p.account_id = c.parent_account_id
+                 WHERE " . implode(' AND ', $where) . '
+                 ORDER BY c.account_code LIMIT 50',
                 'DB'
             ) ?: [];
 
@@ -555,19 +558,9 @@ class DisbursementVoucherService
 
     public function fetchSlDetails(string $slCode): array
     {
-        try {
-            $rows = App\ExecuteRows(
-                'SELECT sl_detail_id, detail_code, detail_name FROM ' . $this->tableSlDetails
-                . ' WHERE sl_code = ' . $this->str($slCode) . ' AND is_active = TRUE ORDER BY detail_code',
-                'DB'
-            ) ?: [];
-
-            return ['success' => true, 'data' => $rows];
-        } catch (\Exception $e) {
-            App\LogError('DisbursementVoucherService::fetchSlDetails ' . $e->getMessage());
-
-            return ['success' => false, 'message' => 'Failed to load SL details.'];
-        }
+        // SL Details are no longer used — COA hierarchy is flat (GL parent -> SL child).
+        // Kept for backward compatibility but returns empty array.
+        return ['success' => true, 'data' => []];
     }
 
     // ── RFA lookup (read-only; fims.budget_allocation has no CRUD backend of its own) ──
@@ -771,7 +764,7 @@ class DisbursementVoucherService
                         a.requesting_rc_id, rc.rc_name AS department_name,
                         a.vendor_id, v.vendor_name, v.address AS vendor_address, v.tin AS vendor_tin,
                         a.po_number, a.po_amount, a.line_transaction, a.dv_id,
-                        a.category_id, bc.name AS category_name
+                        a.category_id, bc.name AS category_name, a.description
                  FROM {$this->tableRfa} a
                  LEFT JOIN {$this->tableRc}             rc ON rc.rc_id = a.requesting_rc_id
                  LEFT JOIN {$this->tableVendor}         v  ON v.vendor_id = a.vendor_id
@@ -801,7 +794,7 @@ class DisbursementVoucherService
                         a.requesting_rc_id, rc.rc_name AS department_name,
                         a.vendor_id, v.vendor_name, v.address AS vendor_address, v.tin AS vendor_tin,
                         a.po_number, a.po_amount, a.line_transaction,
-                        a.category_id, bc.name AS category_name
+                        a.category_id, bc.name AS category_name, a.description
                  FROM {$this->tableRfa} a
                  LEFT JOIN {$this->tableRc}             rc ON rc.rc_id = a.requesting_rc_id
                  LEFT JOIN {$this->tableVendor}         v  ON v.vendor_id = a.vendor_id
@@ -929,7 +922,7 @@ class DisbursementVoucherService
                             a.requesting_rc_id, rc.rc_name AS department_name,
                             a.vendor_id, v.vendor_name, v.address AS vendor_address, v.tin AS vendor_tin,
                             a.po_number, a.po_amount, a.line_transaction, a.dv_id,
-                            a.category_id, bc.name AS category_name
+                            a.category_id, bc.name AS category_name, a.description
                      FROM {$this->tableRfa} a
                      LEFT JOIN {$this->tableRc}             rc ON rc.rc_id = a.requesting_rc_id
                      LEFT JOIN {$this->tableVendor}         v  ON v.vendor_id = a.vendor_id
@@ -1027,12 +1020,10 @@ class DisbursementVoucherService
 
         $jev['lines'] = App\ExecuteRows(
             "SELECT jevl.jevl_id, jevl.line_number, jevl.account_code, ac.account_title, jevl.debit, jevl.credit, jevl.description,
-                    jevl.sl_code, sm.sl_name, jevl.sl_detail_id, sd.detail_name AS sl_detail_name,
+                    jevl.sl_code, jevl.sl_detail_id,
                     jevl.rc_id, rc.rc_name
              FROM {$this->tableJevLines} jevl
              LEFT JOIN {$this->tableCoa}       ac ON ac.account_code = jevl.account_code
-             LEFT JOIN {$this->tableSlMasters} sm ON sm.sl_code = jevl.sl_code
-             LEFT JOIN {$this->tableSlDetails} sd ON sd.sl_detail_id = jevl.sl_detail_id
              LEFT JOIN {$this->tableRc}        rc ON rc.rc_id = jevl.rc_id
              WHERE jevl.jev_id = " . (int) $jev['jev_id'] . ' ORDER BY jevl.line_number',
             'DB'
@@ -1062,12 +1053,10 @@ class DisbursementVoucherService
         foreach ($jevs as &$jev) {
             $jev['lines'] = App\ExecuteRows(
                 "SELECT jevl.jevl_id, jevl.line_number, jevl.account_code, ac.account_title, jevl.debit, jevl.credit, jevl.description,
-                        jevl.sl_code, sm.sl_name, jevl.sl_detail_id, sd.detail_name AS sl_detail_name,
+                        jevl.sl_code, jevl.sl_detail_id,
                         jevl.rc_id, rc.rc_name
                  FROM {$this->tableJevLines} jevl
                  LEFT JOIN {$this->tableCoa}       ac ON ac.account_code = jevl.account_code
-                 LEFT JOIN {$this->tableSlMasters} sm ON sm.sl_code = jevl.sl_code
-                 LEFT JOIN {$this->tableSlDetails} sd ON sd.sl_detail_id = jevl.sl_detail_id
                  LEFT JOIN {$this->tableRc}        rc ON rc.rc_id = jevl.rc_id
                  WHERE jevl.jev_id = " . (int) $jev['jev_id'] . ' ORDER BY jevl.line_number',
                 'DB'
@@ -1327,20 +1316,7 @@ class DisbursementVoucherService
             if (($debit > 0) === ($credit > 0)) {
                 $errors[] = "Line {$n}: enter either a debit or a credit amount, not both or neither.";
             }
-            if ($slCode !== '' && (int) App\ExecuteScalar('SELECT COUNT(*) FROM ' . $this->tableSlMasters . ' WHERE sl_code = ' . $this->str($slCode) . ' AND is_active = TRUE', 'DB') === 0) {
-                $errors[] = "Line {$n}: SL code '{$slCode}' does not exist or is inactive.";
-            }
-            if (ctype_digit((string) $slDetailId) && (int) $slDetailId > 0) {
-                $detail = App\ExecuteRow('SELECT sl_code FROM ' . $this->tableSlDetails . ' WHERE sl_detail_id = ' . (int) $slDetailId, 'DB');
-                if (!$detail) {
-                    $errors[] = "Line {$n}: SL detail #{$slDetailId} does not exist.";
-                } elseif ($slCode !== '' && $detail['sl_code'] !== $slCode) {
-                    $errors[] = "Line {$n}: SL detail #{$slDetailId} does not belong to SL code '{$slCode}'.";
-                }
-                $slDetailId = (int) $slDetailId;
-            } else {
-                $slDetailId = null;
-            }
+            $slDetailId = ctype_digit((string) $slDetailId) && (int) $slDetailId > 0 ? (int) $slDetailId : null;
             if ($rcId !== '' && (int) App\ExecuteScalar('SELECT COUNT(*) FROM ' . $this->tableRc . ' WHERE rc_id = ' . $this->str($rcId), 'DB') === 0) {
                 $errors[] = "Line {$n}: Resp Center '{$rcId}' is not a known Responsibility Center.";
             }
@@ -1511,12 +1487,10 @@ class DisbursementVoucherService
             }
             $jev['lines'] = App\ExecuteRows(
                 "SELECT jevl.jevl_id, jevl.line_number, jevl.account_code, ac.account_title, jevl.debit, jevl.credit, jevl.description,
-                        jevl.sl_code, sm.sl_name, jevl.sl_detail_id, sd.detail_name AS sl_detail_name,
+                        jevl.sl_code, jevl.sl_detail_id,
                         jevl.rc_id, rc.rc_name
                  FROM {$this->tableJevLines} jevl
                  LEFT JOIN {$this->tableCoa}       ac ON ac.account_code = jevl.account_code
-                 LEFT JOIN {$this->tableSlMasters} sm ON sm.sl_code = jevl.sl_code
-                 LEFT JOIN {$this->tableSlDetails} sd ON sd.sl_detail_id = jevl.sl_detail_id
                  LEFT JOIN {$this->tableRc}        rc ON rc.rc_id = jevl.rc_id
                  WHERE jevl.jev_id = {$jevId} ORDER BY jevl.line_number",
                 'DB'

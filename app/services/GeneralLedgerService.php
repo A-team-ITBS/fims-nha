@@ -61,7 +61,6 @@ class GeneralLedgerService
     private string $tableViewJournals     = 'fims.v_journals';
     private string $tableViewTrialBalance = 'fims.v_trial_balance';
     private string $tableCoa        = 'fims.chart_of_accounts';
-    private string $tableSlMasters  = 'fims.sl_masters';
     private string $tableDv               = 'fims.disbursement_vouchers';
     private string $tableChecks           = 'fims.checks';
     private string $tableBankAccounts     = 'fims.bank_accounts';
@@ -746,23 +745,20 @@ class GeneralLedgerService
                 return $this->fetchAllSubsidiaryLedgers($fiscalYr, $bookId);
             }
 
-            $master = App\ExecuteRow(
-                "SELECT sm.sl_code, sm.sl_name, sm.account_code, c.account_type
-                 FROM {$this->tableSlMasters} sm
-                 LEFT JOIN {$this->tableCoa} c ON c.account_code = sm.account_code
-                 WHERE sm.sl_code = " . $this->str($slCode),
+            $slAccount = App\ExecuteRow(
+                "SELECT c.account_id, c.account_code, c.account_title, c.parent_account_id, p.account_type
+                 FROM {$this->tableCoa} c
+                 LEFT JOIN {$this->tableCoa} p ON p.account_id = c.parent_account_id
+                 WHERE c.account_code = " . $this->str($slCode) . " AND c.parent_account_id IS NOT NULL",
                 'DB'
             );
-            if (!$master) {
-                return ['success' => false, 'message' => "SL code '{$slCode}' does not exist."];
+            if (!$slAccount) {
+                return ['success' => false, 'message' => "SL account code '{$slCode}' does not exist or is not a subsidiary ledger."];
             }
-            $debitNormal = in_array($master['account_type'], self::DEBIT_NORMAL_TYPES, true);
+            $debitNormal = in_array($slAccount['account_type'], self::DEBIT_NORMAL_TYPES, true);
             $sign        = $debitNormal ? '(debit - credit)' : '(credit - debit)';
 
-            $where = ['sl_code = ' . $this->str($slCode)];
-            if ($slDetailId !== null) {
-                $where[] = 'sl_detail_id = ' . (int) $slDetailId;
-            }
+            $where = ['account_code = ' . $this->str($slCode)];
             if ($fiscalYr !== null) {
                 $where[] = 'fiscal_yr = ' . (int) $fiscalYr;
             }
@@ -770,7 +766,7 @@ class GeneralLedgerService
                 $where[] = 'book_id = ' . (int) $bookId;
             }
             $data = App\ExecuteRows(
-                "SELECT gl_id, posting_date, jev_no, dv_no, doc_ref_no, account_code, account_title, sl_detail_id, sl_detail_name, debit, credit, reference_no, description, reversed_gl_id,
+                "SELECT gl_id, posting_date, jev_no, dv_no, doc_ref_no, account_code, account_title, debit, credit, reference_no, description, reversed_gl_id,
                         SUM({$sign}) OVER (ORDER BY posting_date, gl_id) AS running_balance
                  FROM {$this->tableViewJournals}
                  WHERE " . implode(' AND ', $where) . '
@@ -784,7 +780,7 @@ class GeneralLedgerService
             return [
                 'success' => true,
                 'grouped' => false,
-                'master' => $master,
+                'master' => ['account_code' => $slAccount['account_code'], 'account_title' => $slAccount['account_title'], 'account_type' => $slAccount['account_type']],
                 'debit_normal' => $debitNormal,
                 'normal_balance' => $debitNormal ? 'DEBIT' : 'CREDIT',
                 'data' => $data,
@@ -811,26 +807,26 @@ class GeneralLedgerService
         $where = $fiscalYr !== null ? 'AND v.fiscal_yr = ' . (int) $fiscalYr : '';
         $where .= $bookId !== null ? ' AND v.book_id = ' . (int) $bookId : '';
         $rows  = App\ExecuteRows(
-            "SELECT v.gl_id, v.posting_date, v.jev_no, v.dv_no, v.doc_ref_no, v.account_code, v.account_title, v.sl_code, sm.sl_name,
-                    v.sl_detail_id, v.sl_detail_name, v.debit, v.credit, v.reference_no, v.description, v.reversed_gl_id,
-                    c.account_type,
-                    SUM(CASE WHEN c.account_type IN ('Asset', 'Expense') THEN (v.debit - v.credit) ELSE (v.credit - v.debit) END)
-                        OVER (PARTITION BY v.sl_code ORDER BY v.posting_date, v.gl_id) AS running_balance
+            "SELECT v.gl_id, v.posting_date, v.jev_no, v.dv_no, v.doc_ref_no, v.account_code, v.account_title,
+                    v.debit, v.credit, v.reference_no, v.description, v.reversed_gl_id,
+                    p.account_type,
+                    SUM(CASE WHEN p.account_type IN ('Asset', 'Expense') THEN (v.debit - v.credit) ELSE (v.credit - v.debit) END)
+                        OVER (PARTITION BY v.account_code ORDER BY v.posting_date, v.gl_id) AS running_balance
              FROM {$this->tableViewJournals} v
-             JOIN {$this->tableSlMasters} sm ON sm.sl_code = v.sl_code
-             LEFT JOIN {$this->tableCoa} c ON c.account_code = sm.account_code
-             WHERE v.sl_code IS NOT NULL {$where}
-             ORDER BY v.sl_code, v.posting_date, v.gl_id",
+             JOIN {$this->tableCoa} c ON c.account_code = v.account_code AND c.parent_account_id IS NOT NULL
+             LEFT JOIN {$this->tableCoa} p ON p.account_id = c.parent_account_id
+             WHERE 1=1 {$where}
+             ORDER BY v.account_code, v.posting_date, v.gl_id",
             'DB'
         ) ?: [];
 
-        $masters = [];
+        $accounts = [];
         foreach ($rows as $row) {
-            $code = $row['sl_code'];
-            if (!isset($masters[$code])) {
+            $code = $row['account_code'];
+            if (!isset($accounts[$code])) {
                 $debitNormal = in_array($row['account_type'], self::DEBIT_NORMAL_TYPES, true);
-                $masters[$code] = [
-                    'master' => ['sl_code' => $code, 'sl_name' => $row['sl_name'], 'account_type' => $row['account_type']],
+                $accounts[$code] = [
+                    'master' => ['account_code' => $code, 'account_title' => $row['account_title'], 'account_type' => $row['account_type']],
                     'debit_normal' => $debitNormal,
                     'normal_balance' => $debitNormal ? 'DEBIT' : 'CREDIT',
                     'data' => [],
@@ -838,19 +834,19 @@ class GeneralLedgerService
                     'total_credit' => 0.0,
                 ];
             }
-            unset($row['sl_name'], $row['account_type']);
-            $masters[$code]['data'][]        = $row;
-            $masters[$code]['total_debit']  += (float) $row['debit'];
-            $masters[$code]['total_credit'] += (float) $row['credit'];
+            unset($row['account_title'], $row['account_type']);
+            $accounts[$code]['data'][]        = $row;
+            $accounts[$code]['total_debit']  += (float) $row['debit'];
+            $accounts[$code]['total_credit'] += (float) $row['credit'];
         }
-        foreach ($masters as &$m) {
-            $m['total_debit']    = round($m['total_debit'], 2);
-            $m['total_credit']   = round($m['total_credit'], 2);
-            $m['ending_balance'] = $m['data'] ? (float) end($m['data'])['running_balance'] : 0.0;
+        foreach ($accounts as &$a) {
+            $a['total_debit']    = round($a['total_debit'], 2);
+            $a['total_credit']   = round($a['total_credit'], 2);
+            $a['ending_balance'] = $a['data'] ? (float) end($a['data'])['running_balance'] : 0.0;
         }
-        unset($m);
+        unset($a);
 
-        return ['success' => true, 'grouped' => true, 'masters' => array_values($masters)];
+        return ['success' => true, 'grouped' => true, 'accounts' => array_values($accounts)];
     }
 
     // ── small SQL helpers (same shape as DisbursementVoucherService) ──

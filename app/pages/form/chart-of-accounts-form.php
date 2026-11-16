@@ -104,14 +104,7 @@
                     </div>
                     <div class="coa-group">
                         <label class="coa-label">Account Type</label>
-                        <select class="coa-select" id="coa-account-type">
-                            <option value="">— Select type —</option>
-                            <option value="Asset">Asset</option>
-                            <option value="Liability">Liability</option>
-                            <option value="Equity">Equity</option>
-                            <option value="Income">Income</option>
-                            <option value="Expense">Expense</option>
-                        </select>
+                        <input type="text" class="coa-input" id="coa-account-type" placeholder="e.g. Asset, Liability, Expense" maxlength="255">
                     </div>
                 </div>
 
@@ -137,21 +130,38 @@
 
                 <div class="coa-row">
                     <div class="coa-group">
-                        <label class="coa-label">Parent Account</label>
-                        <select class="coa-select" id="coa-parent-account-id">
-                            <option value="">— No parent (top-level) —</option>
-                        </select>
+                        <label class="coa-label">Parent Account Code</label>
+                        <input type="text" class="coa-input" id="coa-parent-account-code" maxlength="50" placeholder="e.g. 1-01-02">
                     </div>
                     <div class="coa-group">
-                        <label class="coa-label">Source Document</label>
-                        <input type="text" class="coa-input" id="coa-source-document" maxlength="255" placeholder="e.g. UACS Manual 2020">
+                        <label class="coa-label">Normal Balance</label>
+                        <select class="coa-select" id="coa-normal-balance">
+                            <option value="">— Select —</option>
+                            <option value="Debit">Debit</option>
+                            <option value="Credit">Credit</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="coa-row">
+                    <div class="coa-group full">
+                        <label class="coa-label">Account Description</label>
+                        <textarea class="coa-input" id="coa-account-description" maxlength="1000" placeholder="Detailed description of this account" style="resize:vertical;min-height:80px;"></textarea>
+                    </div>
+                </div>
+
+                <div class="coa-row">
+                    <div class="coa-group full">
+                        <label class="coa-label">Books (Fund Sources)</label>
+                        <input type="text" class="coa-input" id="coa-books" maxlength="255" placeholder="e.g. MO, CISFA, NGC, MPLC">
+                        <p class="coa-hint">Comma-separated list of books this account applies to.</p>
                     </div>
                 </div>
 
                 <div class="coa-group full">
                     <div class="coa-check-row">
-                        <input type="checkbox" id="coa-posting-allowed">
-                        <label for="coa-posting-allowed">Posting Allowed — transactions can post directly to this account</label>
+                        <input type="checkbox" id="coa-allow-transactions">
+                        <label for="coa-allow-transactions">Allow Transactions — transactions can post directly to this account</label>
                     </div>
                 </div>
             </div>
