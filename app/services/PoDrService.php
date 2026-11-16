@@ -12,7 +12,7 @@ use PHPMaker2024\FIMS\DataType;
  *                                       line_transaction (JSONB) = the PO's delivery receipts (DR):
  *   [ { dr_number, delivery_date, total_amount,
  *       lines: [ { account_code, account_title, amount } ],
- *       items?: [ { description, serial_no, amount, property_no, par_no } ] } ]   // items only when the total is >= 50,000
+ *       items?: [ { description, serial_no, amount, property_no } ] } ]   // items only when the total is >= 50,000
  *
  * The PO is picked from the Budget Allocation (the po_number of an RFA row — see poSource()). One save handles ONE DR. A DR is
  * identified inside its PO by its dr_number (unique within the PO); a serial number is unique across all DRs.
@@ -22,17 +22,17 @@ use PHPMaker2024\FIMS\DataType;
  *   { po_number, iar_number, si_number?, si_date?,
  *     dr: { dr_ref? (edit: the dr_number the DR had when it was loaded), dr_number, delivery_date,
  *           entries: [ { account_code, amount } ],                           // account codes from fims.chart_of_accounts
- *           items?: [ { description?, serial_no?, amount?, property_no?, par_no? } ] } }   // many items, one line each; kept only when the total is >= 50,000
+ *           items?: [ { description?, serial_no?, amount?, property_no? } ] } }   // many items, one line each; kept only when the total is >= 50,000
  *
  * API shape of a delivery receipt (read / list):
  *   { dr_number, delivery_date, total_amount, entries: [ { account_code, account_title, amount } ],
- *     items: [ { description, serial_no, amount, property_no, par_no } ] }     // items is [] when none were added
+ *     items: [ { description, serial_no, amount, property_no } ] }     // items is [] when none were added
  */
 class PoDrService
 {
     private string $h = 'fims.inspection_acceptance_report';   // po_number, iar_number, si_number, si_date, line_transaction
 
-    /** DR total at or above which the optional items (description, serial, amount, property no., PAR no. — one line each) apply. */
+    /** DR total at or above which the optional items (description, serial, amount, property no. — one line each) apply. */
     private const ITEM_MIN_AMOUNT = 50000;
 
     /** Pro-forma JEV: the DR total is credited to Accounts Payable. */
@@ -222,7 +222,6 @@ class PoDrService
                     'serial_no'   => $this->nullable($it['serial_no'] ?? null),
                     'amount'      => null,
                     'property_no' => $this->nullable($it['property_no'] ?? null),
-                    'par_no'      => $this->nullable($it['par_no'] ?? null),
                 ];
                 $amtRaw = trim((string) ($it['amount'] ?? ''));
                 if ($amtRaw !== '') {
@@ -232,7 +231,7 @@ class PoDrService
                     }
                     $row['amount'] = $amt;
                 }
-                foreach (['serial_no' => 'Serial no.', 'property_no' => 'Property no.', 'par_no' => 'PAR no.'] as $k => $label) {
+                foreach (['serial_no' => 'Serial no.', 'property_no' => 'Property no.'] as $k => $label) {
                     if ($row[$k] !== null && mb_strlen($row[$k]) > 100) {
                         return [null, null, "Item {$n}: {$label} must be 100 characters or fewer."];
                     }
@@ -493,7 +492,7 @@ class PoDrService
             $where = '1=1';
             if ($search !== '') {
                 // the delivery receipts live in line_transaction: matching its text covers DR no., account codes / titles,
-                // description, serial, property and PAR numbers
+                // description, serial and property numbers
                 $s     = $this->q('%' . $search . '%');
                 $where = "(i.po_number ILIKE {$s} OR i.iar_number ILIKE {$s} OR i.si_number ILIKE {$s} OR i.line_transaction::text ILIKE {$s})";
             }

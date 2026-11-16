@@ -115,7 +115,7 @@ class GlobalService
             $year ?: (int) date('Y'),
             $rcId,
             self::trailingDigits($programCode, 3),
-            self::trailingDigits($subProgramCode, 4)
+            self::trailingDigits($subProgramCode, 3)
         );
 
         $last = (int) App\ExecuteScalar(

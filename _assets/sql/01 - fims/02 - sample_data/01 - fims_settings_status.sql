@@ -69,6 +69,17 @@ INSERT INTO fims.settings_status (name, status_for, color)
 SELECT 'FOR_ACCOUNTING', 'disbursement_voucher', '#2563EB'
 WHERE NOT EXISTS (SELECT 1 FROM fims.settings_status WHERE name = 'FOR_ACCOUNTING' AND status_for = 'disbursement_voucher');
 
+-- Accounting's internal review chain (all held by the Accounting Department, RC 012):
+-- Section Chief (FOR_ACCOUNTING) -> Division Manager review -> Department Manager approval ->
+-- Treasury. See DisbursementVoucherService::TRANSITIONS / STAGE_HOLDER_RC.
+INSERT INTO fims.settings_status (name, status_for, color)
+SELECT 'FOR_DIVISION_MANAGER', 'disbursement_voucher', '#7C3AED'
+WHERE NOT EXISTS (SELECT 1 FROM fims.settings_status WHERE name = 'FOR_DIVISION_MANAGER' AND status_for = 'disbursement_voucher');
+
+INSERT INTO fims.settings_status (name, status_for, color)
+SELECT 'FOR_DEPARTMENT_MANAGER', 'disbursement_voucher', '#4F46E5'
+WHERE NOT EXISTS (SELECT 1 FROM fims.settings_status WHERE name = 'FOR_DEPARTMENT_MANAGER' AND status_for = 'disbursement_voucher');
+
 INSERT INTO fims.settings_status (name, status_for, color)
 SELECT 'FOR_TREASURY', 'disbursement_voucher', '#0D9488'
 WHERE NOT EXISTS (SELECT 1 FROM fims.settings_status WHERE name = 'FOR_TREASURY' AND status_for = 'disbursement_voucher');

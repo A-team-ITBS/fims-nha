@@ -35,6 +35,9 @@ class BudgetAllocationService
     /** settings_status.status_for value that scopes this table's statuses. */
     private const STATUS_FOR = 'budget_allocation';
 
+    /** Longest "Return" remarks accepted (characters); the Process modal's textarea uses the same limit. */
+    public const REMARKS_MAX_LENGTH = 2000;
+
     /**
      * The statuses of the review step, by NAME (their ids differ per install, so they are looked up — see
      * getStatusIdByName()). A request is "For Preview" once its requester submits it; the Financial Management
@@ -460,10 +463,13 @@ class BudgetAllocationService
 
     // -----------------------------------------------------------------------
     // Delete (soft) — /budget_allocation/delete/{id}
-    // Blocked while other memo requests still have this one as their parent.
+    // Blocked while other memo requests still have this one as their parent. Deleting an Approved CBA / CFA also gives
+    // back what its approval took from each line item (see BudgetLineItemService::releaseForAllocation()); the soft
+    // delete and that reversal are ONE transaction, so a failure part-way leaves both untouched.
     // -----------------------------------------------------------------------
     public function delete(int|string $id): array
     {
+        $inTransaction = false;
         try {
             $id = (int) $id;
             $check = $this->fetchById($id);
@@ -479,17 +485,29 @@ class BudgetAllocationService
                 return $this->fail("Memo request #{$id} is the parent of {$children} other memo request(s) — delete or re-parent those first.");
             }
 
+            App\Execute('BEGIN', 'DB');
+            $inTransaction = true;
+
             App\Execute(
                 "UPDATE {$this->table} SET deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE allocation_id = {$id}",
                 'DB'
             );
 
-            // Frees whatever this request was holding against its COB(s) — a no-op if it was never Approved
-            // (nothing active to release).
+            // Frees whatever this request was holding against its COB(s) and gives back what its approval took from
+            // them — a no-op if it was never Approved (nothing held, nothing applied).
             (new BudgetLineItemService())->releaseForAllocation($id);
+
+            App\Execute('COMMIT', 'DB');
+            $inTransaction = false;
 
             return ['success' => true, 'message' => "Memo request #{$id} deleted successfully."];
         } catch (\Exception $e) {
+            if ($inTransaction) {
+                try {
+                    App\Execute('ROLLBACK', 'DB');
+                } catch (\Throwable $ignored) {
+                }
+            }
             App\LogError('BudgetAllocationService::delete '.$e->getMessage());
 
             return $this->fail('Failed to delete memo request.');
@@ -557,7 +575,10 @@ class BudgetAllocationService
     //   approve -> the next status of the chain; the LAST approval gives 'Approved' and the ALLOCATION NUMBER (below);
     //   return  -> ONE step back, to the user who endorsed it (status 'Returned to Division Manager' / 'Returned to
     //              Section Chief', which that user acts on); the Section Chief's return gives 'Returned' (back to the
-    //              requesting office). No number either way.
+    //              requesting office). No number either way. EVERY return needs REMARKS (the reason: required, at most
+    //              REMARKS_MAX_LENGTH characters): they are saved on budget_allocation.remarks (alter_table/28) in the
+    //              same UPDATE as the status change, and the Process / View modal shows them on a returned request. An
+    //              approval leaves them as they were.
     // Only an FMD user may do this (the central review RC, GlobalService::isCentralReviewRc — read with getUserRcId, which
     // fails closed), only to a request that is in one of the three review statuses, and only when the user holds the
     // user level of that step. The status change and the number are written in ONE transaction, and the UPDATE itself
@@ -566,7 +587,7 @@ class BudgetAllocationService
     // Returns { success, message, status_name, allocation_number }; a refusal for the caller's office or user level also
     // carries `forbidden: true` (the route answers 403 for it).
     // -----------------------------------------------------------------------
-    public function process(int|string $id, string $decision, ?int $userId = null): array
+    public function process(int|string $id, string $decision, ?int $userId = null, ?string $remarks = null): array
     {
         $inTransaction = false;
         try {
@@ -597,6 +618,17 @@ class BudgetAllocationService
                     + ['forbidden' => true];
             }
 
+            // A Return always says why (checked after the permission checks above, so a refusal for the caller comes first).
+            $remarks = is_string($remarks) ? trim($remarks) : '';
+            if ($decision === 'return') {
+                if ($remarks === '') {
+                    return $this->fail('Remarks are required to return a memo request — tell the next person what to fix.');
+                }
+                if (mb_strlen($remarks) > self::REMARKS_MAX_LENGTH) {
+                    return $this->fail('Remarks must be at most '.self::REMARKS_MAX_LENGTH.' characters.');
+                }
+            }
+
             // The status the decision gives. Missing = the seed was not run: say so, change nothing.
             $currentId = (int) ($row['status_id'] ?? 0);
             $targetName = $decision === 'approve' ? $step['next'] : $step['return'];
@@ -611,6 +643,9 @@ class BudgetAllocationService
             $inTransaction = true;
 
             $set = ["status_id = {$targetId}", 'updated_at = CURRENT_TIMESTAMP'];
+            if ($decision === 'return') {
+                $set[] = 'remarks = '.App\QuotedValue($remarks, DataType::STRING, 'DB');
+            }
             $number = trim((string) ($row['allocation_number'] ?? ''));
             if ($isFinal && $number === '') {
                 // (one that already has a number keeps it — approving never renumbers)
@@ -630,11 +665,13 @@ class BudgetAllocationService
             }
 
             // The final approval moves money against each COB's own balance — ceiling is
-            // budget_line_items.suggested_amount, not proposed_amount. A CBA (or CFA) RESERVES it
-            // (earmarks: not yet a real obligation). An RFA/LAA instead CONVERTS its parent CBA's earmark
-            // into a real obligation (budget_line_items.obligation) — it requires a parent CBA (parent_id);
-            // approving one without it, or one that would draw more than its parent CBA still has actively
-            // earmarked for a COB, is refused. Either way, refusing here rolls back the status change too.
+            // budget_line_items.suggested_amount, not proposed_amount. A CBA (or CFA) takes its requested_amount R
+            // off each COB's line item straight away: suggested_amount - R, account_payable + R, obligation + R
+            // (and keeps an earmark row, the ceiling its RFAs/LAAs draw against). An RFA/LAA instead DRAWS DOWN its
+            // parent CBA's earmark — it requires a parent CBA (parent_id), and adds nothing to the line item again
+            // (the CBA already did); approving one without a parent, or one that would draw more than its parent CBA
+            // still has actively earmarked for a COB, is refused. Either way, refusing here rolls back the status
+            // change too.
             if ($isFinal) {
                 $allocationType = strtoupper(trim((string) ($row['allocation_type'] ?? '')));
                 $lineItemService = new BudgetLineItemService();

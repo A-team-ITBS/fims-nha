@@ -11,7 +11,7 @@
 --       "lines": [ { "account_code": "1-06-05-030", "account_title": "Information and Communications Technology Equipment",
 --                    "amount": "600000.00" },
 --                  { "account_code": "5-02-03-990", "account_title": "Other Supplies and Materials Expenses", "amount": "200000.00" } ],
---       "items": [ { "description": "...", "serial_no": "...", "amount": "...", "property_no": "...", "par_no": "..." } ] } ]
+--       "items": [ { "description": "...", "serial_no": "...", "amount": "...", "property_no": "..." } ] } ]
 --   "total_amount" = the sum of the line amounts. "items" (any number, one line each) is present only when the total is >= 50,000
 --   and at least one item was entered. A dr_number is unique within the PO and a serial_no is unique across all items of all
 --   delivery receipts (both checked by the app).

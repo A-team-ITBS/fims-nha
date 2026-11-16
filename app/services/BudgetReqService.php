@@ -33,6 +33,47 @@ class BudgetReqService
     /** Longest "Return" remarks accepted (characters); the Return pop-up's textarea uses the same limit. */
     public const REMARKS_MAX_LENGTH = 2000;
 
+    /**
+     * The statuses of the review chain, by NAME (their ids differ per install, so they are looked up — see
+     * getStatusIdByName()). The originating office submits a request ("For Review", submitForReview()); the Financial
+     * Management Department then moves it step by step to Approved, or back (REVIEW_STEPS). Seeded by
+     * sample_data/01 and seed_data/07.
+     */
+    private const STATUS_FOR_REVIEW = 'For Review';
+    private const STATUS_ENDORSED = 'Endorsed';
+    private const STATUS_APPROVED = 'Approved';
+    private const STATUS_RETURNED = 'Returned';
+    private const STATUS_RETURNED_TO_BUDGET_OFFICER = 'Returned to Budget Officer';
+
+    /**
+     * The review chain inside FMD, one step per status — the same idea as the Memo Request's
+     * (BudgetAllocationService::REVIEW_STEPS). Per status: who acts on a request in it (the NAME of a uac.user_levels
+     * row — its id differs per install), the status an approval ('next') moves it to and the status a Return ('return')
+     * moves it to.
+     *
+     *   For Review -> Budget Officer -> Endorsed -> Budget Head -> Approved
+     *
+     * A Return goes back ONE step, to the user who endorsed it, who then sees it in their own status and can endorse it
+     * again or return it further; only the Budget Officer's Return reaches the originating office ('Returned'):
+     *   Budget Head returns    -> 'Returned to Budget Officer' (acted on by the Budget Officer)
+     *   Budget Officer returns -> 'Returned'                   (back to the originating office)
+     */
+    private const REVIEW_STEPS = [
+        self::STATUS_FOR_REVIEW => [
+            'actor' => 'Budget Officer', 'next' => self::STATUS_ENDORSED, 'return' => self::STATUS_RETURNED,
+        ],
+        self::STATUS_ENDORSED => [
+            'actor' => 'Budget Head',    'next' => self::STATUS_APPROVED, 'return' => self::STATUS_RETURNED_TO_BUDGET_OFFICER,
+        ],
+        self::STATUS_RETURNED_TO_BUDGET_OFFICER => [
+            'actor' => 'Budget Officer', 'next' => self::STATUS_ENDORSED, 'return' => self::STATUS_RETURNED,
+        ],
+    ];
+
+    /** Per request: does user N hold user level X? / is user N of the central review RC? (see hasUserLevel() / isReviewer()) */
+    private array $levelCache = [];
+    private array $reviewerCache = [];
+
     private string $table = 'fims.budget_req';
     private string $tableBudgetReqProgram = 'fims.budget_req_program';
     private string $tableBudgetReqProject = 'fims.budget_req_project';
@@ -597,7 +638,9 @@ class BudgetReqService
      * Fully replaces one Program's project blocks + line items with the
      * submitted set (simplest-correct approach — project/line-item ids do
      * not stay stable across an edit). Sibling Programs under the same
-     * header are untouched. Rejected once the header has left Draft.
+     * header are untouched. Rejected once the header has left Draft — except
+     * "Returned" (sent back to the originating office by the review), which can
+     * be edited again.
      * The request's submitted_at is refreshed (NOW()) — this is a new save of it.
      */
     public function updateProgram(int|string $budgetReqProgramId, array $header, array $projects): array
@@ -615,7 +658,8 @@ class BudgetReqService
         if (!$programRow) {
             return ['success' => false, 'message' => "Program #{$id} not found."];
         }
-        if (($programRow['status_name'] ?? '') !== 'Draft') {
+        // A Draft, or one the review sent back to the originating office ('Returned') so it can be corrected.
+        if (!in_array($programRow['status_name'] ?? '', ['Draft', self::STATUS_RETURNED], true)) {
             return ['success' => false, 'message' => "This budget request is '{$programRow['status_name']}' and its programs can no longer be edited."];
         }
 
@@ -744,19 +788,18 @@ class BudgetReqService
     }
 
     /**
-     * Budget Processing "Endorse": saves each line item's Type of Fund and
-     * Component (both required for every item) plus its optional Suggested
-     * Amount (blank = 0) and Account (the Budget Officer may re-code a line to
-     * another chart-of-accounts entry), and moves the request to
-     * "Endorsed", all in one transaction — if any item is invalid, nothing is
-     * saved and the status is unchanged. Rejected for a Cancelled,
-     * already-Endorsed or Approved request. The status lives on the request header, so it
-     * applies to the whole request, not just the Program the items came from.
+     * Budget Processing "Endorse" — step 1 of the review chain (REVIEW_STEPS): the Budget Officer fills in each line
+     * item's Type of Fund and Component (both required for every item) plus its optional Suggested Amount (blank = 0)
+     * and Account (the Budget Officer may re-code a line to another chart-of-accounts entry), and moves the request to
+     * "Endorsed" — for the Budget Head — all in one transaction: if any item is invalid, nothing is saved and the
+     * status is unchanged. Only a request that is "For Review" or "Returned to Budget Officer" can be endorsed, only by
+     * an FMD user holding the Budget Officer user level (see guardReviewStep()). The status lives on the request
+     * header, so it applies to the whole request, not just the Program the items came from.
      *
      * @param array $items [['budget_line_item_id' => .., 'type_of_fund_id' => .., 'component_id' => .., 'suggested_amount' => .., 'account_id' => ..], ...]
      *                     (the last two are optional — see BudgetLineItemService::applyProcessing())
      */
-    public function endorse(string $budgetReferenceNumber, array $items): array
+    public function endorse(string $budgetReferenceNumber, array $items, ?int $userId = null): array
     {
         $id = $budgetReferenceNumber;
 
@@ -765,18 +808,21 @@ class BudgetReqService
             return $check;
         }
 
-        $current = $check['data']['status_name'] ?? '';
-        if (in_array($current, ['Cancelled', 'Endorsed', 'Approved'], true)) {
-            return ['success' => false, 'message' => "Budget request {$id} is already '{$current}' and cannot be endorsed."];
+        $guard = $this->guardReviewStep($check['data'], $userId, self::STATUS_ENDORSED);
+        if (!$guard['success']) {
+            return $guard;
         }
 
-        $endorsedId = $this->getStatusIdByName('Endorsed');
+        $endorsedId = $this->getStatusIdByName(self::STATUS_ENDORSED);
         if ($endorsedId === null) {
-            return ['success' => false, 'message' => "'Endorsed' status is not configured."];
+            return $this->statusMissing(self::STATUS_ENDORSED);
         }
+        $currentId = (int) ($check['data']['status_id'] ?? 0);
 
+        $inTransaction = false;
         try {
             App\Execute('BEGIN', 'DB');
+            $inTransaction = true;
 
             $error = (new BudgetLineItemService())->applyProcessing($items, $id, true);
             if ($error !== null) {
@@ -785,29 +831,59 @@ class BudgetReqService
                 return ['success' => false, 'message' => $error];
             }
 
-            App\Execute("UPDATE {$this->table} SET status_id = {$endorsedId} WHERE budget_reference_number = ".App\QuotedValue($id, DataType::STRING, 'DB'), 'DB');
+            // the UPDATE re-checks the status, so two reviewers acting at once cannot both succeed
+            $done = App\ExecuteRow(
+                "UPDATE {$this->table} SET status_id = {$endorsedId} WHERE budget_reference_number = ".App\QuotedValue($id, DataType::STRING, 'DB')
+                ." AND status_id = {$currentId} RETURNING budget_reference_number",
+                'DB'
+            );
+            if (!$done) {
+                App\Execute('ROLLBACK', 'DB');
+
+                return ['success' => false, 'message' => 'This budget request was changed by someone else in the meantime. Reload the list and try again.'];
+            }
 
             App\Execute('COMMIT', 'DB');
+            $inTransaction = false;
 
-            return ['success' => true, 'message' => 'Budget request endorsed successfully.'];
+            return [
+                'success' => true,
+                'message' => 'Budget request endorsed: it is now '.self::STATUS_ENDORSED.' ('.self::REVIEW_STEPS[self::STATUS_ENDORSED]['actor'].').',
+                'status_name' => self::STATUS_ENDORSED,
+            ];
         } catch (\Exception $e) {
-            App\Execute('ROLLBACK', 'DB');
+            if ($inTransaction) {
+                App\Execute('ROLLBACK', 'DB');
+            }
 
             return ['success' => false, 'message' => $e->getMessage()];
         }
     }
 
     /**
-     * Budget Processing / Budget Preview "Return": moves the request to
-     * "Returned" without touching its line items, and saves the reason in
-     * budget_req.remarks. The remarks are REQUIRED (blank / whitespace-only is
-     * rejected, so is anything over REMARKS_MAX_LENGTH characters). Rejected for a
-     * Cancelled, already-Returned or Approved request. Like endorse(), it
-     * applies to the whole request.
+     * Budget Processing / Budget Preview "Return" — ONE step back along the review chain (REVIEW_STEPS), saving the
+     * reason in budget_req.remarks:
+     *   Budget Head returns    -> "Returned to Budget Officer" (the Budget Officer then sees it in their own status and
+     *                             can endorse it again or return it further)
+     *   Budget Officer returns -> "Returned" (back to the originating office)
+     * The line items are left untouched. The remarks are REQUIRED (blank / whitespace-only is rejected, so is anything
+     * over REMARKS_MAX_LENGTH characters). Only an FMD user holding the user level of the request's current step may
+     * return it (see guardReviewStep()). Like endorse(), it applies to the whole request.
      */
-    public function returnRequest(string $budgetReferenceNumber): array
+    public function returnRequest(string $budgetReferenceNumber, ?string $remarks = null, ?int $userId = null): array
     {
         $id = $budgetReferenceNumber;
+
+        $check = $this->fetchById($id);
+        if (!$check['success']) {
+            return $check;
+        }
+
+        $guard = $this->guardReviewStep($check['data'], $userId, null);
+        if (!$guard['success']) {
+            return $guard;
+        }
+        $step = $guard['step'];
 
         $remarks = is_string($remarks) ? trim($remarks) : '';
         if ($remarks === '') {
@@ -817,36 +893,40 @@ class BudgetReqService
             return ['success' => false, 'message' => 'Remarks must be at most '.self::REMARKS_MAX_LENGTH.' characters.'];
         }
 
-        $check = $this->fetchById($id);
-        if (!$check['success']) {
-            return $check;
+        $targetName = $step['return'];
+        $targetId = $this->getStatusIdByName($targetName);
+        if ($targetId === null) {
+            return $this->statusMissing($targetName);
         }
+        $currentId = (int) ($check['data']['status_id'] ?? 0);
 
-        $current = $check['data']['status_name'] ?? '';
-        if (in_array($current, ['Cancelled', 'Returned', 'Approved'], true)) {
-            return ['success' => false, 'message' => "Budget request {$id} is already '{$current}' and cannot be returned."];
-        }
-
-        $returnedId = $this->getStatusIdByName('Returned');
-        if ($returnedId === null) {
-            return ['success' => false, 'message' => "'Returned' status is not configured."];
-        }
-
-        App\Execute(
-            "UPDATE {$this->table} SET status_id = {$returnedId}, remarks = ".App\QuotedValue($remarks, DataType::STRING, 'DB')
-            ." WHERE budget_reference_number = {$id}",
+        $done = App\ExecuteRow(
+            "UPDATE {$this->table} SET status_id = {$targetId}, remarks = ".App\QuotedValue($remarks, DataType::STRING, 'DB')
+            .' WHERE budget_reference_number = '.App\QuotedValue($id, DataType::STRING, 'DB')
+            ." AND status_id = {$currentId} RETURNING budget_reference_number",
             'DB'
         );
+        if (!$done) {
+            return ['success' => false, 'message' => 'This budget request was changed by someone else in the meantime. Reload the list and try again.'];
+        }
 
-        return ['success' => true, 'message' => 'Budget request returned.'];
+        $backTo = self::REVIEW_STEPS[$targetName]['actor'] ?? null;
+
+        return [
+            'success' => true,
+            'message' => $backTo !== null
+                ? "Budget request returned to the {$backTo} (now {$targetName})."
+                : 'Budget request returned to the originating office.',
+            'status_name' => $targetName,
+        ];
     }
 
     /**
-     * Budget Preview "Approve": moves an Endorsed request to "Approved". Only
-     * an Endorsed request can be approved — it has to have been through Budget
-     * Processing first. Applies to the whole request.
+     * Budget Preview "Approve" — the last step of the review chain: the Budget Head moves an Endorsed request to
+     * "Approved". Only an Endorsed request can be approved — it has to have been through Budget Processing first — and
+     * only by an FMD user holding the Budget Head user level (see guardReviewStep()). Applies to the whole request.
      */
-    public function approve(string $budgetReferenceNumber): array
+    public function approve(string $budgetReferenceNumber, ?int $userId = null): array
     {
         $id = $budgetReferenceNumber;
 
@@ -855,19 +935,185 @@ class BudgetReqService
             return $check;
         }
 
-        $current = $check['data']['status_name'] ?? '';
-        if ($current !== 'Endorsed') {
-            return ['success' => false, 'message' => "Only an Endorsed budget request can be approved (budget request {$id} is '".($current ?: 'no status')."')."];
+        $guard = $this->guardReviewStep($check['data'], $userId, self::STATUS_APPROVED);
+        if (!$guard['success']) {
+            return $guard;
         }
 
-        $approvedId = $this->getStatusIdByName('Approved');
+        $approvedId = $this->getStatusIdByName(self::STATUS_APPROVED);
         if ($approvedId === null) {
-            return ['success' => false, 'message' => "'Approved' status is not configured."];
+            return $this->statusMissing(self::STATUS_APPROVED);
+        }
+        $currentId = (int) ($check['data']['status_id'] ?? 0);
+
+        $done = App\ExecuteRow(
+            "UPDATE {$this->table} SET status_id = {$approvedId} WHERE budget_reference_number = ".App\QuotedValue($id, DataType::STRING, 'DB')
+            ." AND status_id = {$currentId} RETURNING budget_reference_number",
+            'DB'
+        );
+        if (!$done) {
+            return ['success' => false, 'message' => 'This budget request was changed by someone else in the meantime. Reload the list and try again.'];
         }
 
-        App\Execute("UPDATE {$this->table} SET status_id = {$approvedId} WHERE budget_reference_number = ".App\QuotedValue($id, DataType::STRING, 'DB'), 'DB');
+        return ['success' => true, 'message' => 'Budget request approved successfully.', 'status_name' => self::STATUS_APPROVED];
+    }
 
-        return ['success' => true, 'message' => 'Budget request approved successfully.'];
+    // -----------------------------------------------------------------------
+    // Review chain helpers — see REVIEW_STEPS
+    // -----------------------------------------------------------------------
+
+    /** A status the chain needs is not in fims.settings_status: say so and change nothing. */
+    private function statusMissing(string $name): array
+    {
+        return ['success' => false, 'message' => "The status \"{$name}\" is not set up in the database yet, so nothing was changed. "
+            .'Ask an administrator to run the SQL installer (node install_system.js --sql-only).'];
+    }
+
+    /**
+     * May this user act on the request in its current status? Used by endorse() / approve() / returnRequest(), and the
+     * route answers 403 for a result carrying `forbidden`. The request must be one of the REVIEW_STEPS statuses (never
+     * Draft, Returned or Approved), the user must be of the central review RC (FMD) AND hold the user level of THAT step,
+     * and — when $expectedNext is given — the step must be the one that leads there: endorse() only works on a step whose
+     * approval gives "Endorsed" (the Budget Officer's), approve() only on the one that gives "Approved" (the Budget Head's).
+     * Returns { success: true, step } (the REVIEW_STEPS entry + 'status') or the refusal.
+     */
+    private function guardReviewStep(array $row, ?int $userId, ?string $expectedNext): array
+    {
+        $fail = fn (string $message): array => ['success' => false, 'message' => $message];
+
+        if (!$this->isReviewer($userId)) {
+            return $fail('Only the Financial Management Department can endorse, approve or return budget requests.') + ['forbidden' => true];
+        }
+
+        $id = (string) ($row['budget_reference_number'] ?? '');
+        $current = (string) ($row['status_name'] ?? '');
+        $step = $this->reviewStepOf($row);
+        if ($step === null) {
+            return $fail('Only a budget request that is under review ('.implode(', ', array_keys(self::REVIEW_STEPS))
+                .") can be endorsed, approved or returned — budget request {$id} is ".($current !== '' ? "'{$current}'" : 'without a status').'.');
+        }
+        if ($expectedNext !== null && $step['next'] !== $expectedNext) {
+            $verb = $expectedNext === self::STATUS_APPROVED ? 'approved' : 'endorsed';
+
+            return $fail("Budget request {$id} is '{$step['status']}' and cannot be {$verb} at this step — it is waiting for the {$step['actor']}.");
+        }
+        if (!$this->hasUserLevel($userId, $step['actor'])) {
+            return $fail("This budget request is {$step['status']}: only the {$step['actor']} can act on it at this step.") + ['forbidden' => true];
+        }
+
+        return ['success' => true, 'step' => $step];
+    }
+
+    /**
+     * Where a request stands in the review chain, for the lists / the modals (each row gets it as `review`, see
+     * withReview()): in_review, the status it is in, who acts on it (actor, a user level name), the status an approval
+     * gives (next_status), whether that is the final approval (is_final), where a Return sends it and whom (return_status,
+     * return_actor — null = back to the originating office), is_returned (it came back from the Budget Head) and
+     * whether THIS user may decide it now (can_decide: an FMD user holding the step's user level). The endorse /
+     * approve / return calls enforce the same rules again.
+     */
+    public function reviewInfo(array $row, ?int $userId): array
+    {
+        $step = $this->reviewStepOf($row);
+        if ($step === null) {
+            return ['in_review' => false, 'can_decide' => false];
+        }
+
+        return [
+            'in_review' => true,
+            'status' => $step['status'],
+            'actor' => $step['actor'],
+            'next_status' => $step['next'],
+            'is_final' => $step['next'] === self::STATUS_APPROVED,
+            'return_status' => $step['return'],
+            'return_actor' => self::REVIEW_STEPS[$step['return']]['actor'] ?? null,
+            'is_returned' => $step['status'] === self::STATUS_RETURNED_TO_BUDGET_OFFICER,
+            'can_decide' => $this->isReviewer($userId) && $this->hasUserLevel($userId, $step['actor']),
+        ];
+    }
+
+    /** Adds `review` (reviewInfo()) to every row of a list. */
+    public function withReview(array $rows, ?int $userId): array
+    {
+        foreach ($rows as &$row) {
+            $row['review'] = $this->reviewInfo($row, $userId);
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /** The REVIEW_STEPS entry (+ 'status') of the status this row is in, or null when it is not under review. */
+    private function reviewStepOf(array $row): ?array
+    {
+        $name = strtolower(trim((string) ($row['status_name'] ?? '')));
+        foreach (self::REVIEW_STEPS as $status => $step) {
+            if ($name === strtolower($status)) {
+                return $step + ['status' => $status];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Does this user hold the user level called $levelName? uac.users.user_level_id is a VARCHAR that may list several
+     * ids ("3,10"); each is looked up in uac.user_levels and compared by NAME, ignoring case. A missing user, no level,
+     * or a lookup failure is "no" — never "yes".
+     */
+    private function hasUserLevel(?int $userId, string $levelName): bool
+    {
+        $userId = (int) $userId;
+        $key = $userId.'|'.strtolower(trim($levelName));
+        if (array_key_exists($key, $this->levelCache)) {
+            return $this->levelCache[$key];
+        }
+
+        try {
+            if ($userId <= 0) {
+                return false;
+            }
+            $raw = (string) App\ExecuteScalar("SELECT user_level_id FROM uac.users WHERE user_id = {$userId}", 'DB');
+            $ids = [];
+            foreach (explode(',', $raw) as $part) {
+                if (preg_match('/^-?\d+$/', $part = trim($part))) {
+                    $ids[] = (int) $part;
+                }
+            }
+            if (!$ids) {
+                return $this->levelCache[$key] = false;
+            }
+
+            return $this->levelCache[$key] = (int) App\ExecuteScalar(
+                'SELECT COUNT(*) FROM uac.user_levels WHERE user_level_id IN ('.implode(', ', $ids).')'
+                .' AND LOWER(TRIM(name)) = LOWER('.App\QuotedValue(trim($levelName), DataType::STRING, 'DB').')',
+                'DB'
+            ) > 0;
+        } catch (\Throwable $e) {
+            App\LogError('BudgetReqService::hasUserLevel '.$e->getMessage());
+
+            return false;   // (not cached: a failed lookup is retried)
+        }
+    }
+
+    /** Is this user of the central review RC (FMD)? A missing user, no RC, or a lookup failure is "no" — never "yes". */
+    private function isReviewer(?int $userId): bool
+    {
+        $userId = (int) $userId;
+        if ($userId <= 0) {
+            return false;
+        }
+        if (array_key_exists($userId, $this->reviewerCache)) {
+            return $this->reviewerCache[$userId];
+        }
+
+        try {
+            return $this->reviewerCache[$userId] = GlobalService::isCentralReviewRc(GlobalService::getUserRcId($userId));
+        } catch (\Throwable $e) {
+            App\LogError('BudgetReqService::isReviewer '.$e->getMessage());
+
+            return false;
+        }
     }
 
     /** Deletes the header — fims.budget_req_program (and via it, fims.budget_req_project/fims.budget_line_items) cascades via ON DELETE CASCADE. */
