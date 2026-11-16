@@ -406,16 +406,20 @@ async function cob_refresh() {
 }
 async function cob_loadSummary() {
     const my = cob_state.seq.summary = (cob_state.seq.summary || 0) + 1;
+    cob_busy(true);                                  // the preloader covers the KPI cards too, not only the table
     try {
         const json = await cob_request('/summary', cob_params());
         if (my !== cob_state.seq.summary) return;
         cob_state.summary = json.data;
+        cob_renderSummary();
     } catch (e) {
         if (my !== cob_state.seq.summary) return;
         cob_state.summary = null;
+        cob_renderSummary();
         cob_toast(e.message, 'error');
+    } finally {
+        cob_busy(false);
     }
-    cob_renderSummary();
 }
 async function cob_loadTab(tab) {
     const key = JSON.stringify(cob_params());
