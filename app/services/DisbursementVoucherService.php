@@ -988,6 +988,7 @@ class DisbursementVoucherService
     {
         return App\ExecuteRows(
             "SELECT dval.dv_atc_line_id, dval.line_number, dval.atc_code, ac.account_code,
+                    ac.description AS atc_description,
                     dval.rate, dval.tax_base, dval.withholding_tax, dval.chargeability
              FROM {$this->tableDvAtcLines} dval
              JOIN {$this->tableAtc} ac ON ac.atc_code = dval.atc_code

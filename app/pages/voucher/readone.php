@@ -397,20 +397,92 @@ function vje_section(dv) {
  * SL Code name, and the small number is the line's position in the JEV (jevl.line_number), not an
  * SL code.
  */
+/** Account code rendered as separate boxed segments (e.g. "2 01 01 010 02") — same visual
+    convention as the Chart of Accounts page's own code chip (chart-of-accounts-page.php's
+    coa_codeChip()), reused here so a line's account reads the same way in both places. */
+function vr_codeChip(code) {
+    const parts = String(code ?? '').split('-').filter(p => p !== '');
+    if (!parts.length) return '';
+    const segs = parts.map((p, i) => {
+        const bg     = i === 0 ? '#EEF1F7' : '#EAF1FE';
+        const fg     = i === 0 ? '#1A1B21' : '#2F5FD6';
+        const border = i > 0 ? 'border-left:1px solid rgba(15,32,69,.08);' : '';
+        return `<span style="background:${bg};color:${fg};padding:2px 6px;font-size:11px;font-weight:700;font-family:'IBM Plex Mono',monospace;${border}">${vr_esc(p)}</span>`;
+    }).join('');
+    return `<span style="display:inline-flex;border:1px solid var(--afims-border, #E4ECF2);border-radius:5px;overflow:hidden;vertical-align:middle;">${segs}</span>`;
+}
+
+/** A group's sub-lines under its GL title — General Form No. 1 convention: the claimant/vendor
+    name prints in red (it's the filled-in variable, same as a handwritten entry on the paper
+    form), each withholding tax rate/type breakdown prints in plain black. Falls back to the
+    account's own parent/child hierarchy (chart_of_accounts parent_account_id — SL is no longer a
+    separate sl_masters table, see "03 - alter_table/37") when neither applies. */
+function vje_groupSubLines(group, dv) {
+    if (dv?.account_code && group.account_code === dv.account_code) {
+        const name = dv.claimant_name || dv.vendor_name;
+        if (name) {
+            return `<tr style="border-bottom:1px solid var(--afims-surface-subtle, #F4F7FA);">
+                <td style="padding:2px 4px 10px;"></td>
+                <td colspan="4" style="padding:2px 4px 10px 22px;font-size:13px;color:#D32F2F;">${vr_esc(name)}</td>
+            </tr>`;
+        }
+    }
+    const atcMatches = (dv?.atc_lines ?? []).filter(a => a.account_code === group.account_code);
+    if (atcMatches.length) {
+        return atcMatches.map(a => `<tr style="border-bottom:1px solid var(--afims-surface-subtle, #F4F7FA);">
+                <td style="padding:2px 4px 10px;"></td>
+                <td colspan="4" style="padding:2px 4px 10px 22px;font-size:13px;color:var(--afims-text, #1e293b);">
+                    <span style="display:inline-block;width:40px;">${vr_esc(a.rate)}%</span>${vr_esc(a.atc_description || a.atc_code)}
+                </td>
+            </tr>`).join('');
+    }
+    const acct   = (VJE_COA || []).find(a => a.account_code === group.account_code);
+    const parent = acct?.parent_account_id ? (VJE_COA || []).find(a => a.account_id === acct.parent_account_id) : null;
+    if (parent) {
+        return `<tr style="border-bottom:1px solid var(--afims-surface-subtle, #F4F7FA);">
+                <td style="padding:2px 4px 10px;"></td>
+                <td colspan="4" style="padding:2px 4px 10px 22px;font-size:11px;color:var(--afims-text-muted, #62657E);">
+                    <span style="margin-right:4px;">under</span>${vr_codeChip(parent.account_code)}
+                    <span style="margin-left:6px;">${vr_esc(parent.account_title || '—')}</span>
+                </td>
+            </tr>`;
+    }
+    return group.lines.filter(l => l.description).map(l => `<tr style="border-bottom:1px solid var(--afims-surface-subtle, #F4F7FA);">
+                <td style="padding:2px 4px 10px;"></td>
+                <td colspan="4" style="padding:2px 4px 10px 22px;font-size:13px;color:var(--afims-text-muted, #62657E);">${vr_esc(l.description)}</td>
+            </tr>`).join('');
+}
+
 /** GL-grouped, read-only rendering of a posted JEV's lines — shared by the SETUP JEV's read-only
-    presentation (vje_groupedEntriesCard()) and each PAYMENT JEV's own card (vje_paymentEntriesCard()). */
-function vje_groupedTable(lines) {
+    presentation (vje_groupedEntriesCard()) and each PAYMENT JEV's own card (vje_paymentEntriesCard()).
+    One header row per unique GL account (merging every line posted to it), then its sub-lines —
+    see vje_groupSubLines() — same "GL title, then its breakdown underneath" layout as the paper
+    General Form No. 1's own Accounting Entries box. */
+function vje_groupedTable(lines, dv = null) {
     const totalDebit  = lines.reduce((s, l) => s + (Number(l.debit)  || 0), 0);
     const totalCredit = lines.reduce((s, l) => s + (Number(l.credit) || 0), 0);
 
-    const rows = lines.map((l, idx) => `<tr style="border-bottom:1px solid var(--afims-surface-subtle, #F4F7FA);">
+    const groups = [];
+    const byCode = new Map();
+    lines.forEach(l => {
+        if (!byCode.has(l.account_code)) {
+            const g = { account_code: l.account_code, account_title: l.account_title, lines: [], debit: 0, credit: 0 };
+            byCode.set(l.account_code, g);
+            groups.push(g);
+        }
+        const g = byCode.get(l.account_code);
+        g.lines.push(l);
+        g.debit  += Number(l.debit)  || 0;
+        g.credit += Number(l.credit) || 0;
+    });
+
+    const rows = groups.map((g, idx) => `<tr style="border-bottom:none;">
                 <td style="padding:10px 4px;text-align:center;font-weight:600;color:var(--afims-text-muted, #62657E);font-size:13px;width:40px;">${String(idx + 1).padStart(2, '0')}</td>
-                <td style="padding:10px 4px;font-size:13px;color:var(--afims-text, #1e293b);">${vr_esc(l.account_code)} — ${vr_esc(l.account_title || '—')}</td>
-                <td style="padding:10px 4px;font-size:13px;color:var(--afims-text, #1e293b);">${vr_esc(l.description || '—')}</td>
-                <td style="padding:10px 4px;font-size:13px;color:var(--afims-text, #1e293b);">${vr_esc(l.sl_code || '—')}</td>
-                <td style="padding:10px 4px;text-align:right;font-size:13px;color:var(--afims-text, #1e293b);font-family:'IBM Plex Mono',monospace;width:130px;">${Number(l.debit) > 0 ? vr_peso(l.debit) : '0.00'}</td>
-                <td style="padding:10px 4px;text-align:right;font-size:13px;color:var(--afims-text, #1e293b);font-family:'IBM Plex Mono',monospace;width:130px;">${Number(l.credit) > 0 ? vr_peso(l.credit) : '0.00'}</td>
-            </tr>`).join('');
+                <td style="padding:10px 4px;font-size:13px;color:var(--afims-text, #1e293b);">${vr_codeChip(g.account_code)} <span style="margin-left:6px;">${vr_esc(g.account_title || '—')}</span></td>
+                <td style="padding:10px 4px;"></td>
+                <td style="padding:10px 4px;text-align:right;font-size:13px;color:var(--afims-text, #1e293b);font-family:'IBM Plex Mono',monospace;width:130px;">${Number(g.debit) > 0 ? vr_peso(g.debit) : '0.00'}</td>
+                <td style="padding:10px 4px;text-align:right;font-size:13px;color:var(--afims-text, #1e293b);font-family:'IBM Plex Mono',monospace;width:130px;">${Number(g.credit) > 0 ? vr_peso(g.credit) : '0.00'}</td>
+            </tr>${vje_groupSubLines(g, dv)}`).join('');
 
     return `<div style="overflow-x:auto;">
         <table class="vje-grp-table" style="min-width:100%;border-collapse:collapse;">
@@ -418,13 +490,12 @@ function vje_groupedTable(lines) {
                 <th style="text-align:center;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--afims-text-muted, #62657E);padding:10px 4px;width:40px;">#</th>
                 <th style="text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--afims-text-muted, #62657E);padding:10px 4px;">Account Code</th>
                 <th style="text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--afims-text-muted, #62657E);padding:10px 4px;">Description</th>
-                <th style="text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--afims-text-muted, #62657E);padding:10px 4px;">RFA</th>
                 <th style="text-align:right;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--afims-text-muted, #62657E);padding:10px 4px;width:130px;">Debit (₱)</th>
                 <th style="text-align:right;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--afims-text-muted, #62657E);padding:10px 4px;width:130px;">Credit (₱)</th>
             </tr></thead>
             <tbody>${rows}</tbody>
             <tfoot><tr style="border-top:2px solid var(--afims-border, #E4ECF2);font-weight:700;background:var(--afims-surface-subtle, #F4F7FA);">
-                <td colspan="4" style="text-align:right;padding:10px 4px;font-size:13px;">Total</td>
+                <td colspan="3" style="text-align:right;padding:10px 4px;font-size:13px;">Total</td>
                 <td style="text-align:right;padding:10px 4px;font-size:13px;font-family:'IBM Plex Mono',monospace;">${vr_peso(totalDebit)}</td>
                 <td style="text-align:right;padding:10px 4px;font-size:13px;font-family:'IBM Plex Mono',monospace;">${vr_peso(totalCredit)}</td>
             </tr></tfoot>
@@ -438,7 +509,7 @@ function vje_groupedEntriesCard(dv) {
 
     return `<div class="vr-card">
         <p class="vr-card-title">Accounting Entries${dv.jev?.book_name ? ` — ${vr_esc(dv.jev.book_name)}` : ''}</p>
-        ${vje_groupedTable(lines)}
+        ${vje_groupedTable(lines, dv)}
     </div>`;
 }
 
@@ -489,7 +560,7 @@ function vje_paymentEntriesCard(dv) {
                 <span class="nha-bdg ${cls}">${vr_esc(label)}</span>
             </div>
             ${hint}
-            ${vje_groupedTable(jev.lines ?? [])}
+            ${vje_groupedTable(jev.lines ?? [], dv)}
         </div>`;
     }).join('');
 }
