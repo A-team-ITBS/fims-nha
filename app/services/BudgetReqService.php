@@ -430,7 +430,8 @@ class BudgetReqService
                                COALESCE(prg.program_count, 0) AS program_count,
                                COALESCE(proj.project_count, 0) AS project_count,
                                COALESCE(li.li_count, 0) AS li_count,
-                               COALESCE(li.li_total, 0) AS li_total
+                               COALESCE(li.li_total, 0) AS li_total,
+                               rmk.remarks
                         FROM {$this->table} br
                         LEFT JOIN fims.settings_status st ON st.id = br.status_id
                         LEFT JOIN fims.responsibility_code rc ON rc.rc_id = br.rc_id
@@ -450,6 +451,14 @@ class BudgetReqService
                             FROM {$this->tableLineItems}
                             GROUP BY budget_reference_number
                         ) li ON li.budget_reference_number = br.budget_reference_number
+                        LEFT JOIN LATERAL (
+                            -- Remarks of this request's MOST RECENT status change (null if that change didn't
+                            -- carry any, e.g. Endorse/Approve) — see GlobalService::getLatestRemarks(), inlined
+                            -- here (rather than called per row) since this runs across the whole list.
+                            SELECT remarks FROM fims.status_change_log
+                            WHERE status_for = 'budget_req' AND record_id = br.budget_reference_number
+                            ORDER BY changed_at DESC, status_change_log_id DESC LIMIT 1
+                        ) rmk ON TRUE
                         WHERE {$whereSql}";
 
             if ($page === null) {
@@ -534,6 +543,8 @@ class BudgetReqService
             if (!$data) {
                 return ['success' => false, 'message' => "Budget request {$id} not found."];
             }
+
+            $data['remarks'] = GlobalService::getLatestRemarks('budget_req', $id);
 
             [$data] = $this->attachProgramsToHeaders([$data]);
 
@@ -760,7 +771,13 @@ class BudgetReqService
         }
     }
 
-    /** Transitions a Draft budget request to "For Review". Locks it from further Program additions/edits. */
+    /**
+     * Transitions a Draft OR Returned budget request to "For Review". Locks it from further Program
+     * additions/edits. 'Returned' (the Budget Officer's Return — see REVIEW_STEPS) is the originating
+     * office's own request sent back to them for correction; updateProgram() already treats it the same
+     * as Draft for editing (see its own guard), so it must be resubmittable the same way too, or there
+     * would be no way back into the review chain after a Return.
+     */
     public function submitForReview(string $budgetReferenceNumber, ?int $userId = null): array
     {
         $id = $budgetReferenceNumber;
@@ -769,8 +786,8 @@ class BudgetReqService
         if (!$check['success']) {
             return $check;
         }
-        if (($check['data']['status_name'] ?? '') !== 'Draft') {
-            return ['success' => false, 'message' => "Budget request {$id} is not in Draft status."];
+        if (!in_array($check['data']['status_name'] ?? '', ['Draft', self::STATUS_RETURNED], true)) {
+            return ['success' => false, 'message' => "Budget request {$id} is not in Draft or Returned status."];
         }
         if (empty($check['data']['programs'])) {
             return ['success' => false, 'message' => 'Add at least one program before submitting for review.'];
@@ -865,7 +882,8 @@ class BudgetReqService
 
     /**
      * Budget Processing / Budget Preview "Return" — ONE step back along the review chain (REVIEW_STEPS), saving the
-     * reason in budget_req.remarks:
+     * reason via GlobalService::logStatusChange() (into fims.status_change_log — read back with
+     * GlobalService::getLatestRemarks('budget_req', $id)):
      *   Budget Head returns    -> "Returned to Budget Officer" (the Budget Officer then sees it in their own status and
      *                             can endorse it again or return it further)
      *   Budget Officer returns -> "Returned" (back to the originating office)
@@ -904,7 +922,7 @@ class BudgetReqService
         $currentId = (int) ($check['data']['status_id'] ?? 0);
 
         $done = App\ExecuteRow(
-            "UPDATE {$this->table} SET status_id = {$targetId}, remarks = ".App\QuotedValue($remarks, DataType::STRING, 'DB')
+            "UPDATE {$this->table} SET status_id = {$targetId}"
             .' WHERE budget_reference_number = '.App\QuotedValue($id, DataType::STRING, 'DB')
             ." AND status_id = {$currentId} RETURNING budget_reference_number",
             'DB'

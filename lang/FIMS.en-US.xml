@@ -53,6 +53,15 @@
     <menu id="260">
       <phrase id="menutext" value="Check Disbursements" />
     </menu>
+    <menu id="755">
+      <phrase id="menutext" value="Monitoring" />
+    </menu>
+    <menu id="400">
+      <phrase id="menutext" value="COB Monitoring" />
+    </menu>
+    <menu id="756">
+      <phrase id="menutext" value="RFA / LAA Monitoring" />
+    </menu>
     <menu id="551">
       <phrase id="menutext" value="Registry/NCA" />
     </menu>
@@ -68,65 +77,11 @@
     <menu id="552">
       <phrase id="menutext" value="Reports" />
     </menu>
-    <menu id="400">
-      <phrase id="menutext" value="COB Monitoring" />
-    </menu>
     <menu id="652">
       <phrase id="menutext" value="FMR" />
     </menu>
     <menu id="653">
       <phrase id="menutext" value="Remittance List (Deductions)" />
-    </menu>
-    <menu id="651">
-      <phrase id="menutext" value="Accounts Set-up" />
-    </menu>
-    <menu id="80">
-      <phrase id="menutext" value="Program" />
-    </menu>
-    <menu id="82">
-      <phrase id="menutext" value="Sub Program" />
-    </menu>
-    <menu id="89">
-      <phrase id="menutext" value="Chart of Accounts" />
-    </menu>
-    <menu id="332">
-      <phrase id="menutext" value="Banks Accounts" />
-    </menu>
-    <menu id="391">
-      <phrase id="menutext" value="Vendors" />
-    </menu>
-    <menu id="655">
-      <phrase id="menutext" value="Fund Source" />
-    </menu>
-    <menu id="656">
-      <phrase id="menutext" value="Program Sources" />
-    </menu>
-    <menu id="658">
-      <phrase id="menutext" value="Accountable Officer" />
-    </menu>
-    <menu id="147">
-      <phrase id="menutext" value="Programs &amp; Projects " />
-    </menu>
-    <menu id="79">
-      <phrase id="menutext" value="Projects" />
-    </menu>
-    <menu id="148">
-      <phrase id="menutext" value="Accounting Records" />
-    </menu>
-    <menu id="90">
-      <phrase id="menutext" value="Responsibilty Center" />
-    </menu>
-    <menu id="390">
-      <phrase id="menutext" value="Inventory" />
-    </menu>
-    <menu id="91">
-      <phrase id="menutext" value="IAR Module" />
-    </menu>
-    <menu id="333">
-      <phrase id="menutext" value="Property Record" />
-    </menu>
-    <menu id="258">
-      <phrase id="menutext" value="Vouchers" />
     </menu>
     <menu id="394">
       <phrase id="menutext" value="Ledgers" />
@@ -143,11 +98,35 @@
     <menu id="397">
       <phrase id="menutext" value="Trial Balance" />
     </menu>
-    <menu id="398">
-      <phrase id="menutext" value="Fund Transfer Letter of Advice" />
+    <menu id="651">
+      <phrase id="menutext" value="Accounts Set-up" />
     </menu>
-    <menu id="331">
-      <phrase id="menutext" value="Cash Position" />
+    <menu id="80">
+      <phrase id="menutext" value="Program" />
+    </menu>
+    <menu id="82">
+      <phrase id="menutext" value="Sub Program" />
+    </menu>
+    <menu id="89">
+      <phrase id="menutext" value="Chart of Accounts" />
+    </menu>
+    <menu id="90">
+      <phrase id="menutext" value="Responsibilty Center" />
+    </menu>
+    <menu id="332">
+      <phrase id="menutext" value="Banks Accounts" />
+    </menu>
+    <menu id="391">
+      <phrase id="menutext" value="Vendors" />
+    </menu>
+    <menu id="655">
+      <phrase id="menutext" value="Fund Source" />
+    </menu>
+    <menu id="656">
+      <phrase id="menutext" value="Program Sources" />
+    </menu>
+    <menu id="658">
+      <phrase id="menutext" value="Accountable Officer" />
     </menu>
     <menu id="330">
       <phrase id="menutext" value="Fund Sourcing" />
@@ -163,6 +142,30 @@
     </menu>
     <menu id="266">
       <phrase id="menutext" value="Pricing" />
+    </menu>
+    <menu id="147">
+      <phrase id="menutext" value="Programs &amp; Projects " />
+    </menu>
+    <menu id="79">
+      <phrase id="menutext" value="Projects" />
+    </menu>
+    <menu id="390">
+      <phrase id="menutext" value="Inventory" />
+    </menu>
+    <menu id="91">
+      <phrase id="menutext" value="IAR Module" />
+    </menu>
+    <menu id="333">
+      <phrase id="menutext" value="Property Record" />
+    </menu>
+    <menu id="258">
+      <phrase id="menutext" value="Vouchers" />
+    </menu>
+    <menu id="398">
+      <phrase id="menutext" value="Fund Transfer Letter of Advice" />
+    </menu>
+    <menu id="331">
+      <phrase id="menutext" value="Cash Position" />
     </menu>
     <menu id="206">
       <phrase id="menutext" value="Administration" />
@@ -1753,6 +1756,9 @@
     </table>
     <table id="accountable_officer_page">
       <phrase id="tblcaption" value="Accountable Officer" />
+    </table>
+    <table id="rfa_laa_monitoring_page">
+      <phrase id="tblcaption" value="RFA / LAA Monitoring" />
     </table>
   </project>
 </ew-language>

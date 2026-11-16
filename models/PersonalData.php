@@ -44,7 +44,7 @@ class PersonalData
     public $RenderingView = false;
 
     // CSS class/style
-    public $CurrentPageName = "AccountableOfficerPageController";
+    public $CurrentPageName = "RfaLaaMonitoringPageController";
 
     // Page headings
     public $Heading = "";
