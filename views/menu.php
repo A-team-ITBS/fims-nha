@@ -21,6 +21,8 @@ $sideMenu->addMenuItem(554, "mi_rfa_laa_memo_request_page", $Language->menuPhras
 $sideMenu->addMenuItem(549, "mci_DV_Processing", $Language->menuPhrase("549", "MenuText"), "", -1, "", true, false, true, "fas fa-file-invoice", "", false, true);
 $sideMenu->addMenuItem(207, "mi_Voucher", $Language->menuPhrase("207", "MenuText"), "Voucher", 549, "", AllowListMenu('{FIMS}Voucher.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(559, "mi_liquidation_voucher_page", $Language->menuPhrase("559", "MenuText"), "LiquidationVoucherPage", 549, "", AllowListMenu('{FIMS}liquidation-voucher-page.php'), false, false, "", "", false, true);
+$sideMenu->addMenuItem(208, "mi_JournalEntryVoucher", $Language->menuPhrase("208", "MenuText"), "JournalEntryVoucher", 549, "", AllowListMenu('{FIMS}JournalEntryVoucher.php'), false, false, "", "", false, true);
+$sideMenu->addMenuItem(260, "mi_CheckDisbursements", $Language->menuPhrase("260", "MenuText"), "CheckDisbursements", 549, "", AllowListMenu('{FIMS}CheckDisbursements.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(551, "mci_Registry/NCA", $Language->menuPhrase("551", "MenuText"), "", -1, "", true, false, true, "fas fa-book", "", false, true);
 $sideMenu->addMenuItem(263, "mi_saro_registry_page", $Language->menuPhrase("263", "MenuText"), "SaroRegistryPage", 551, "", AllowListMenu('{FIMS}saro-registry-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(560, "mi_check_registry_page", $Language->menuPhrase("560", "MenuText"), "CheckRegistryPage", 551, "", AllowListMenu('{FIMS}check-registry-page.php'), false, false, "", "", false, true);
@@ -33,16 +35,14 @@ $sideMenu->addMenuItem(651, "mci_Accounts_Set-up", $Language->menuPhrase("651", 
 $sideMenu->addMenuItem(80, "mi_program_page", $Language->menuPhrase("80", "MenuText"), "ProgramPage", 651, "", AllowListMenu('{FIMS}program-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(82, "mi_sub_program_page", $Language->menuPhrase("82", "MenuText"), "SubProgramPage", 651, "", AllowListMenu('{FIMS}sub-program-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(89, "mi_chart_of_accounts_page", $Language->menuPhrase("89", "MenuText"), "ChartOfAccountsPage", 651, "", AllowListMenu('{FIMS}chart-of-accounts-page.php'), false, false, "", "", false, true);
-$sideMenu->addMenuItem(654, "mi_supplier_contract_page", $Language->menuPhrase("654", "MenuText"), "SupplierContractPage", 651, "", AllowListMenu('{FIMS}supplier-contract-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(332, "mi_bank_management_page", $Language->menuPhrase("332", "MenuText"), "BankManagementPage", 651, "", AllowListMenu('{FIMS}bank-management-page.php'), false, false, "", "", false, true);
+$sideMenu->addMenuItem(391, "mi_vendors_page", $Language->menuPhrase("391", "MenuText"), "VendorsPage", 651, "", AllowListMenu('{FIMS}vendors-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(655, "mi_fund_source_page", $Language->menuPhrase("655", "MenuText"), "FundSourcePage", 651, "", AllowListMenu('{FIMS}fund-source-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(656, "mi_program_sources_page", $Language->menuPhrase("656", "MenuText"), "ProgramSourcesPage", 651, "", AllowListMenu('{FIMS}program-sources-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(658, "mi_accountable_officer_page", $Language->menuPhrase("658", "MenuText"), "AccountableOfficerPage", 651, "", AllowListMenu('{FIMS}accountable_officer-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(90, "mi_responsibility_center_page", $Language->menuPhrase("90", "MenuText"), "ResponsibilityCenterPage", 148, "", AllowListMenu('{FIMS}responsibility-center-page.php'), false, false, "", "", false, true);
-$sideMenu->addMenuItem(391, "mi_vendors_page", $Language->menuPhrase("391", "MenuText"), "VendorsPage", 148, "", AllowListMenu('{FIMS}vendors-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(91, "mi_IARModule", $Language->menuPhrase("91", "MenuText"), "IarModule", 390, "", AllowListMenu('{FIMS}IARModule.php'), false, false, "", "", false, true);
-$sideMenu->addMenuItem(208, "mi_JournalEntryVoucher", $Language->menuPhrase("208", "MenuText"), "JournalEntryVoucher", 258, "", AllowListMenu('{FIMS}JournalEntryVoucher.php'), false, false, "", "", false, true);
-$sideMenu->addMenuItem(260, "mi_CheckDisbursements", $Language->menuPhrase("260", "MenuText"), "CheckDisbursements", 258, "", AllowListMenu('{FIMS}CheckDisbursements.php'), false, false, "", "", false, true);
+$sideMenu->addMenuItem(394, "mci_Ledgers", $Language->menuPhrase("394", "MenuText"), "", -1, "", true, false, true, "fas fa-scale-balanced", "", false, true);
 $sideMenu->addMenuItem(393, "mi_general_ledger_page", $Language->menuPhrase("393", "MenuText"), "GeneralLedgerPage", 394, "", AllowListMenu('{FIMS}general-ledger-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(395, "mi_subsidiary_ledger_page", $Language->menuPhrase("395", "MenuText"), "SubsidiaryLedgerPage", 394, "", AllowListMenu('{FIMS}subsidiary-ledger-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(396, "mi_journals_page", $Language->menuPhrase("396", "MenuText"), "JournalsPage", 394, "", AllowListMenu('{FIMS}journals-page.php'), false, false, "", "", false, true);
