@@ -174,8 +174,8 @@ $USER_LEVEL_PRIVS = [["{FIMS}audit_logs","-2","0"],
     ["{FIMS}vendors-page.php","0","0"],
     ["{FIMS}fund-sourcing-dashboard-page.php","-2","0"],
     ["{FIMS}fund-sourcing-dashboard-page.php","0","0"],
-    ["{FIMS}ftla-page","-2","0"],
-    ["{FIMS}ftla-page","0","0"]];
+    ["{FIMS}ftla-page.php","-2","0"],
+    ["{FIMS}ftla-page.php","0","0"]];
 
 /**
  * Tables
@@ -264,4 +264,4 @@ $USER_LEVEL_TABLES = [["audit_logs","audit_logs","Audit Logs",false,"{FIMS}",""]
     ["property-record-page.php","property_record_page","Property Record",true,"{FIMS}","PropertyRecordPage"],
     ["vendors-page.php","vendors_page","Vendors",true,"{FIMS}","VendorsPage"],
     ["fund-sourcing-dashboard-page.php","fund_sourcing_dashboard_page","Fund Sourcing Dashboard",true,"{FIMS}","FundSourcingDashboardPage"],
-    ["ftla-page","ftla_page","Fund Transfer Letter of Advice",true,"{FIMS}","FtlaPage"]];
+    ["ftla-page.php","ftla_page","Fund Transfer Letter of Advice",true,"{FIMS}","FtlaPage"]];
