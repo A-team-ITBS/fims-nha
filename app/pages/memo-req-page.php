@@ -12,8 +12,8 @@ $_mrq_api = Config('API.FIMS_URL');
 // (budget_allocation.allocation_type). The list, its cards, the Vendor column and the form's Allocation Type all follow it.
 // Included with no $alloc_type (the older MemoReqPage / BudgetAllocationForm views) it falls back to ?type=, then to CBA.
 $_mrq_allowedTypes = ['CBA', 'RFA', 'LAA'];
-$_mrq_rawType      = isset($alloc_type) ? (string) $alloc_type : (string) ($_GET['type'] ?? '');
-$_mrq_types        = array_values(array_intersect(
+$_mrq_rawType = isset($alloc_type) ? (string) $alloc_type : (string) ($_GET['type'] ?? '');
+$_mrq_types = array_values(array_intersect(
     $_mrq_allowedTypes,
     array_map('trim', preg_split('/[\/,|]+/', strtoupper($_mrq_rawType)) ?: [])
 ));
