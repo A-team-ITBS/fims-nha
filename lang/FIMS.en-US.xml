@@ -23,6 +23,9 @@
     <menu id="85">
       <phrase id="menutext" value="Budget Revision" />
     </menu>
+    <menu id="399">
+      <phrase id="menutext" value="Ledger of Budget Allocation" />
+    </menu>
     <menu id="147">
       <phrase id="menutext" value="Programs &amp; Projects " />
     </menu>
@@ -1660,6 +1663,9 @@
     </table>
     <table id="ftla_page">
       <phrase id="tblcaption" value="Fund Transfer Letter of Advice" />
+    </table>
+    <table id="ledger_budget_allocation">
+      <phrase id="tblcaption" value="Ledger of Budget Allocation" />
     </table>
   </project>
 </ew-language>

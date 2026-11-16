@@ -144,6 +144,7 @@ return [
     "vendors_page" => \DI\create(VendorsPage::class),
     "fund_sourcing_dashboard_page" => \DI\create(FundSourcingDashboardPage::class),
     "ftla_page" => \DI\create(FtlaPage::class),
+    "ledger_budget_allocation" => \DI\create(LedgerBudgetAllocation::class),
 
     // User table
     "usertable" => \DI\get("users"),

@@ -106,6 +106,7 @@
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone ($p['PHPMaker2024\\FIMS\\Attributes\\Get'] ?? \Symfony\Component\VarExporter\Internal\Registry::p('PHPMaker2024\\FIMS\\Attributes\\Get')),
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Get'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
@@ -192,6 +193,11 @@
     [
         'PHPMaker2024\\FIMS\\Attributes\\Map' => [
             'methods' => [
+                [
+                    'GET',
+                    'POST',
+                    'OPTIONS',
+                ],
                 [
                     'GET',
                     'POST',
@@ -1206,6 +1212,7 @@
                 '/JwtSessionsView[/{session_id}]',
                 '/JwtSessionsEdit[/{session_id}]',
                 '/JwtSessionsDelete[/{session_id}]',
+                '/LedgerBudgetAllocation[/{params:.*}]',
                 '/MainDashboard[/{params:.*}]',
                 '/MemoReqPage[/{params:.*}]',
                 '/MemoRequest[/{params:.*}]',
@@ -1395,6 +1402,7 @@
                 'PHPMaker2024\\FIMS\\JwtSessionsController:view',
                 'PHPMaker2024\\FIMS\\JwtSessionsController:edit',
                 'PHPMaker2024\\FIMS\\JwtSessionsController:delete',
+                'PHPMaker2024\\FIMS\\LedgerBudgetAllocationController:custom',
                 'PHPMaker2024\\FIMS\\MainDashboardController:custom',
                 'PHPMaker2024\\FIMS\\MemoReqPageController:custom',
                 'PHPMaker2024\\FIMS\\MemoRequestController:custom',
@@ -1503,6 +1511,9 @@
                 'PHPMaker2024\\FIMS\\WorkflowManagerController:custom',
             ],
             'middleware' => [
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
                 [
                     'PHPMaker2024\\FIMS\\PermissionMiddleware',
                 ],
@@ -2145,6 +2156,7 @@
                 'view.jwt_sessions',
                 'edit.jwt_sessions',
                 'delete.jwt_sessions',
+                'custom.ledger_budget_allocation',
                 'custom.MainDashboard',
                 'custom.memo_req_page',
                 'custom.MemoRequest',
@@ -2253,6 +2265,7 @@
                 'custom.WorkflowManager',
             ],
             'options' => [
+                [],
                 [],
                 [],
                 [],
@@ -2631,6 +2644,7 @@
         $o[184],
         $o[185],
         $o[186],
+        $o[187],
     ],
     []
 );
