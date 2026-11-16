@@ -104,7 +104,14 @@
                     </div>
                     <div class="coa-group">
                         <label class="coa-label">Account Type</label>
-                        <input type="text" class="coa-input" id="coa-account-type" placeholder="e.g. Asset, Liability, Expense" maxlength="255">
+                        <select class="coa-select" id="coa-account-type">
+                            <option value="">— Select type —</option>
+                            <option value="Asset">Asset</option>
+                            <option value="Liability">Liability</option>
+                            <option value="Equity">Equity</option>
+                            <option value="Income">Income</option>
+                            <option value="Expense">Expense</option>
+                        </select>
                     </div>
                 </div>
 
@@ -160,8 +167,13 @@
                 <div class="coa-row">
                     <div class="coa-group full">
                         <label class="coa-label">Books (Fund Sources)</label>
-                        <input type="text" class="coa-input" id="coa-books" maxlength="255" placeholder="e.g. MO, CISFA, NGC, MPLC">
-                        <p class="coa-hint">Comma-separated list of books this account applies to.</p>
+                        <select class="coa-select" id="coa-books" multiple style="min-height: 120px;">
+                            <option value="MO">MO</option>
+                            <option value="CISFA">CISFA</option>
+                            <option value="NGC">NGC</option>
+                            <option value="MPLC">MPLC</option>
+                        </select>
+                        <p class="coa-hint">Select one or more books (hold Ctrl/Cmd to select multiple)</p>
                     </div>
                 </div>
 

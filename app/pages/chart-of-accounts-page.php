@@ -526,7 +526,16 @@ function coa_openModal(mode, row = null, parentId = null) {
     $coa('coa-account-purpose').value = row?.account_purpose || '';
     $coa('coa-posting-allowed').checked = !!(row && (row.posting_allowed === true || row.posting_allowed === 't'));
     $coa('coa-source-document').value = row?.source_document || '';
-    $coa('coa-books').value = row?.books || '';
+
+    // Set multiple select for books
+    const booksSelect = $coa('coa-books');
+    if (booksSelect) {
+        const booksArray = row?.books ? row.books.split(',').map(b => b.trim()).filter(b => b) : [];
+        Array.from(booksSelect.options).forEach(option => {
+            option.selected = booksArray.includes(option.value);
+        });
+    }
+
     $coa('coa-overlay').classList.add('open');
 }
 
@@ -565,7 +574,16 @@ function coa_addSL(parentId, parentCode) {
     $coa('coa-account-purpose').value = parent?.account_purpose || '';
     $coa('coa-posting-allowed').checked = false;
     $coa('coa-source-document').value = parent?.source_document || '';
-    $coa('coa-books').value = parent?.books || '';
+
+    // Set multiple select for books
+    const booksSelect = $coa('coa-books');
+    if (booksSelect) {
+        const booksArray = parent?.books ? parent.books.split(',').map(b => b.trim()).filter(b => b) : [];
+        Array.from(booksSelect.options).forEach(option => {
+            option.selected = booksArray.includes(option.value);
+        });
+    }
+
     $coa('coa-overlay').classList.add('open');
 }
 
@@ -642,6 +660,10 @@ async function coa_save(ev) {
     coa_hideErr();
     const mode = $coa('coa-mode').value;
     const id   = $coa('coa-account-id').value;
+    // Get selected books as comma-separated string
+    const booksSelect = $coa('coa-books');
+    const selectedBooks = Array.from(booksSelect.selectedOptions).map(o => o.value).join(', ');
+
     const payload = {
         account_code       : $coa('coa-account-code').value.trim(),
         account_title      : $coa('coa-account-title').value.trim(),
@@ -652,7 +674,7 @@ async function coa_save(ev) {
         account_purpose    : $coa('coa-account-purpose').value,
         posting_allowed    : $coa('coa-posting-allowed').checked,
         source_document    : $coa('coa-source-document').value.trim(),
-        books              : $coa('coa-books').value.trim(),
+        books              : selectedBooks,
     };
 
     window.PagePreloader?.show();
