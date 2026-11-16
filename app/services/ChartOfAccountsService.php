@@ -7,7 +7,7 @@ use PHPMaker2024\FIMS\DataType as DT;
 
 class ChartOfAccountsService
 {
-    private string $table = 'shared.chart_of_accounts';
+    private string $table = 'fims.chart_of_accounts';
 
     private array $allowedFields = [
         'account_code', 'account_title', 'account_type_id', 'account_class_id',
