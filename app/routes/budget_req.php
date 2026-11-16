@@ -153,8 +153,8 @@ $app->map(['PUT', 'POST'], '/budget_req/program/update/{budget_req_program_id}',
     }
 })->add($jwtMiddleware);
 
-// Transition a Draft budget request to "For Review" — locks it from
-// further program additions/edits.
+// Transition a Draft OR Returned budget request to "For Review" — locks it
+// from further program additions/edits.
 $app->put('/budget_req/submit-for-review/{id}', function ($request, $response, $args) use ($BudgetReqService) {
     try {
         $result = $BudgetReqService->submitForReview($args['id'], (int) $request->getAttribute('user_id'));

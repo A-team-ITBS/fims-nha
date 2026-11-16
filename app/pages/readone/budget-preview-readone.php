@@ -3,8 +3,8 @@
  * budget-preview-readone.php
  *
  * Read-only "Budget Preview" modal for a budget request — the read-only counterpart of the Budget Processing
- * modal (form/budget-processing-form.php): the same columns, but laid out per Project (the Processing modal has
- * since moved to Program cards with a meta line, Subtotals and a Grand Total; this one has not). Header: "Submission Ref. No. <ref>" with the
+ * modal (form/budget-processing-form.php): the same columns, but laid out per Project (the Processing modal is
+ * grouped into Program cards with a meta line; this one is not). Header: "Submission Ref. No. <ref>" with the
  * request's status badge. Then, for every Project of the request, one block:
  *   - an info card: Originating Unit / Region (the requesting office), Program, Sub-Program, Project
  *     (each with its code as a chip), and
@@ -12,6 +12,7 @@
  *       Type of Fund · Component · Account Code · Description (the account name,
  *       the line's particulars under it) · Amount (proposed) · Adjustment (budget_line_items.adjustment, signed: green
  *       "+", red "−", a dash for none) · Suggested Amount, with a Total row under all three amount columns.
+ *   - a Grand Total bar (Amount / Adjustment / Suggested Amount, every Project of every Program, under the last block)
  *   - under that table, the Project's Supporting Documents — the same read-only section as the Budget Processing modal:
  *     the documents the originating office attached to THAT Project (fims.budget_req_project_attachment: an uploaded file or a
  *     pasted link, keyed by the Program and the project code), one line each: the name (a link that opens the document),
@@ -40,8 +41,8 @@
  * Endorsed -> Budget Head (this modal) -> Approved.
  *   Return  — needs REMARKS (the box above the footer; required): PUT /budget_req/return/{id} { remarks }:
  *             ONE step back — status -> "Returned to Budget Officer" (the Officer sees it in Budget Processing again, with
- *             these remarks, and can endorse it again or return it to the originating office); remarks saved on
- *             fims.budget_req.remarks.
+ *             these remarks, and can endorse it again or return it to the originating office); remarks saved to
+ *             fims.status_change_log (via GlobalService::logStatusChange()).
  *   Approve — PUT /budget_req/approve/{id}: status -> "Approved" (only an Endorsed request can be approved, and only by the
  *             Budget Head; the server enforces both). The remarks box is not used.
  * Status lives on the request header, so both apply to the whole request. After either one it calls
@@ -90,6 +91,19 @@ $_bpv_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
 .nha-root .bpv-tbl tfoot td { padding: 11px 12px; font-weight: 700; background: var(--surf); border-top: 1px solid var(--bdr); }
 .nha-root .bpv-empty, .nha-root .bpv-noproj { padding: 18px 12px; text-align: center; font-size: 12.5px; color: var(--subtle); }
 .nha-root .bpv-noproj { margin-top: 14px; border: 1px solid var(--bdr); border-radius: 12px; font-style: italic; }
+
+/* ── Grand Total (every Project of every Program): Amount / Adjustment / Suggested Amount ── */
+.nha-root .bpv-grand {
+    display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: baseline; gap: 6px 30px; font-weight: 700;
+    margin-bottom: 20px; padding: 16px 22px; border-radius: 12px; font-size: 16px;
+    background: var(--afims-heading-fill, #000E3E); color: var(--afims-pure-white, #FFFFFF);
+}
+.nha-root .bpv-grand[hidden] { display: none; }
+.nha-root .bpv-foot-v small { margin-right: 2px; font-size: 10.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: rgba(255, 255, 255, .7); }
+/* the per-table Adjustment colors (bpv-adj-up/down/muted) read fine on a light row, but this bar's background is dark */
+.nha-root .bpv-grand .bpv-muted { color: rgba(255, 255, 255, .7); }
+.nha-root .bpv-grand .bpv-adj-up { color: #4ADE80; }
+.nha-root .bpv-grand .bpv-adj-down { color: #F87171; }
 
 /* ── Supporting Documents of a Project (under its table): one line per document ── */
 .nha-root .bpv-docs { margin-top: 14px; }
@@ -177,6 +191,14 @@ $_bpv_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
 
             <!-- one block per Project: info card + its table of line items (read-only) -->
             <div id="bpv-blocks"></div>
+
+            <!-- every Project of every Program, under the last block -->
+            <div class="bpv-grand" id="bpv-grand" hidden>
+                <span>Grand Total</span>
+                <span class="bpv-foot-v"><small>Amount</small> <span id="bpv-grand-p">₱ 0.00</span></span>
+                <span class="bpv-foot-v"><small>Adjustment</small> <span id="bpv-grand-a">—</span></span>
+                <span class="bpv-foot-v"><small>Suggested</small> <span id="bpv-grand-s">₱ 0.00</span></span>
+            </div>
 
             <div class="bpv-remarks-wrap" id="bpv-remarks-wrap" hidden>
                 <label class="bpv-remarks-label" for="bpv-remarks">Remarks / Compliance Needed (required when returning)</label>
@@ -478,6 +500,17 @@ function bpv_blockHtml(ctx, program, project) {
     </section>`;
 }
 
+// Grand Total: every line item of every Project of every Program, summed per amount column.
+function bpv_renderGrandTotal(programs) {
+    const lineItems = programs.flatMap(program => (program.projects ?? []).flatMap(project => project.line_items ?? []));
+    const sum = key => lineItems.reduce((s, li) => s + (Number(li[key]) || 0), 0);
+
+    $bpv('bpv-grand').hidden = lineItems.length === 0;
+    $bpv('bpv-grand-p').textContent = bgr_fmtMoney(sum('proposed_amount'));
+    $bpv('bpv-grand-a').innerHTML   = bpv_adjHtml(sum('adjustment'));
+    $bpv('bpv-grand-s').textContent = bgr_fmtMoney(sum('suggested_amount'));
+}
+
 // `programArg`: one program or an array of them
 function bpv_render(requestContext, programArg) {
     const programs = Array.isArray(programArg) ? programArg : (programArg ? [programArg] : []);
@@ -492,6 +525,7 @@ function bpv_render(requestContext, programArg) {
         else projects.forEach(project => blocks.push(bpv_blockHtml(requestContext, program, project)));
     });
     $bpv('bpv-blocks').innerHTML = blocks.length ? blocks.join('') : '<div class="bpv-noproj">No programs yet.</div>';
+    bpv_renderGrandTotal(programs);
 
     bpv_loadDocs(++bpv_renderSeq);   // the Projects' Supporting Documents fill in as their answers arrive
 }
