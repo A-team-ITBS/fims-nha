@@ -153,7 +153,6 @@ return [
     "accountable_forms_registry_page" => \DI\create(AccountableFormsRegistryPage::class),
     "fmr_page" => \DI\create(FmrPage::class),
     "remittance_list_page" => \DI\create(RemittanceListPage::class),
-    "supplier_contract_page" => \DI\create(SupplierContractPage::class),
     "fund_source_page" => \DI\create(FundSourcePage::class),
     "program_sources_page" => \DI\create(ProgramSourcesPage::class),
     "ledger_page" => \DI\create(LedgerPage::class),
