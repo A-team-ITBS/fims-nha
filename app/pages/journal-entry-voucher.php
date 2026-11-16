@@ -27,6 +27,59 @@ $_jel_voucherView = 'Voucher';
     #jel-root .jaf-line-total td.jaf-l-val { text-align: right; font-family: "IBM Plex Mono", monospace; }
     #jel-root .jaf-remove-btn { background: none; border: none; cursor: pointer; color: var(--afims-danger, #C0392B); font-size: 16px; line-height: 1; padding: 4px 6px; border-radius: 5px; }
     #jel-root .jaf-remove-btn:hover { background: var(--afims-danger-soft, #FAE1E3); }
+    #jel-root .jaf-rc { width: 100%; }
+
+    /* Supporting Documents card — same convention as voucher/form.php's #vf-root .vf-card/.vf-dz/.vf-att-*. */
+    #jel-root .jaf-card { background: var(--afims-surface, #fff); border: 1px solid var(--afims-border, #E4ECF2); border-radius: 12px; padding: 16px 18px; margin-bottom: 14px; }
+    #jel-root .jaf-card-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--afims-text-muted, #62657E); margin: 0 0 12px; }
+    #jel-root .jaf-dz { border: 2px dashed var(--afims-border, #E4ECF2); border-radius: 10px; padding: 18px; text-align: center; cursor: pointer; }
+    #jel-root .jaf-dz.drag-over { border-color: var(--afims-primary, #0035A9); background: var(--afims-primary-soft, #E6EBF6); }
+    #jel-root .jaf-dz-hint { font-size: 11px; color: var(--afims-text-muted, #62657E); margin-top: 4px; }
+    #jel-root .jaf-att-link-row { display: flex; gap: 8px; margin-top: 10px; align-items: center; }
+    #jel-root .jaf-att-link-row input { flex: 1; font-size: 13px; padding: 8px 10px; border: 1px solid var(--afims-border, #E4ECF2); border-radius: 6px; box-sizing: border-box; }
+    #jel-root .jaf-att-link-row input#jaf-att-link-name { flex: 0 0 200px; }
+    #jel-root .jaf-att-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+    #jel-root .jaf-att-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border: 1px solid var(--afims-border, #E4ECF2); border-radius: 8px; }
+    #jel-root .jaf-att-name { flex: 1; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #jel-root .jaf-att-name a { color: var(--afims-primary-text, #0035A9); text-decoration: none; }
+    #jel-root .jaf-att-name a:hover { text-decoration: underline; }
+    #jel-root .jaf-att-remove { background: none; border: none; cursor: pointer; color: var(--afims-danger, #DC3545); font-size: 16px; line-height: 1; padding: 2px 6px; border-radius: 5px; }
+    #jel-root .jaf-att-remove:hover { background: var(--afims-danger-soft, #FAE1E3); }
+
+    /* Actions column (last column — review-chain buttons + Print) stays visible without having to
+       scroll the table all the way right: pinned via position:sticky, same convention as a frozen
+       spreadsheet column. #jel-root gives these enough specificity to beat the shared .nha-tbl rules
+       (hover background, etc.) they'd otherwise be overridden by. */
+    #jel-root .nha-tbl-scroll { position: relative; }
+    #jel-root .nha-tbl th:last-child,
+    #jel-root .nha-tbl td:last-child {
+        position: sticky;
+        right: 0;
+        white-space: nowrap;
+        box-shadow: -1px 0 0 var(--afims-border, #E2E4ED) inset;
+    }
+    #jel-root .nha-tbl thead th:last-child { background: var(--afims-heading-fill, #000E3E); z-index: 2; }
+    #jel-root .nha-tbl tbody td:last-child { background: #fff; z-index: 1; }
+    #jel-root .nha-tbl tbody tr:hover td:last-child { background: var(--afims-surface-subtle, #F4F7FA); }
+
+    /* Actions dropdown menu — same convention as app/pages/budget-req-page.php's nha-tools-menu. */
+    .nha-tools-menu { position:relative;display:inline-block; }
+    .nha-menu-trigger { display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border-radius:6px;
+        font-size:11px;font-weight:600;cursor:pointer;border:1px solid var(--afims-border, #E4ECF2);
+        background:var(--afims-surface, #FFFFFF);color:var(--afims-text, #1A1B21);white-space:nowrap;
+        font-family:'IBM Plex Sans',sans-serif;transition:all .15s; }
+    .nha-menu-trigger:hover { background:var(--afims-surface-subtle, #F4F7FA);border-color:var(--afims-text-disabled, #A9AAB8); }
+    .nha-menu-trigger svg { width:12px;height:12px;flex-shrink:0; }
+    .nha-tools-dropdown { display:none;position:fixed;min-width:170px;background:var(--afims-surface, #FFFFFF);
+        border:1px solid var(--afims-border, #E4ECF2);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.12);
+        z-index:9999;padding:4px 0; }
+    .nha-tools-dropdown.open { display:block; }
+    .nha-menu-item { display:flex;align-items:center;gap:8px;padding:8px 12px;font-size:12px;font-weight:500;
+        color:var(--afims-text, #1A1B21);text-decoration:none;white-space:nowrap;cursor:pointer;
+        border:none;background:none;width:100%;text-align:left;transition:background .1s; }
+    .nha-menu-item:hover { background:var(--afims-surface-subtle, #F4F7FA);color:var(--afims-heading-fill, #000E3E); }
+    .nha-menu-item svg { width:13px;height:13px;flex-shrink:0;opacity:.7; }
+    .nha-menu-divider { border-top:1px solid var(--afims-border, #E4ECF2);margin:3px 0; }
 </style>
 
 <div id="jel-root" class="nha-root">
@@ -125,7 +178,7 @@ $_jel_voucherView = 'Voucher';
                         <th class="text-end">Total Credit</th>
                         <th>JEV Status</th>
                         <th>DV Status</th>
-                        <th class="no-print">Print</th>
+                        <th class="no-print">Actions</th>
                     </tr>
                 </thead>
                 <tbody id="jel-tbody">
@@ -141,7 +194,7 @@ $_jel_voucherView = 'Voucher';
 
     <!-- ── ADD/EDIT JEV MODAL (standalone — no DV, prefix: jaf_) ──────── -->
     <div id="jaf-overlay" class="nha-overlay no-print">
-        <div class="nha-modal" role="dialog" aria-modal="true" aria-labelledby="jaf-modal-title">
+        <div class="nha-modal nha-modal-full" role="dialog" aria-modal="true" aria-labelledby="jaf-modal-title">
             <div class="nha-modal-hdr">
                 <h3 class="nha-modal-title" id="jaf-modal-title">Add Journal Entry Voucher</h3>
                 <button type="button" class="nha-modal-close" onclick="jaf_close()" aria-label="Close">&times;</button>
@@ -181,14 +234,38 @@ $_jel_voucherView = 'Voucher';
                     <textarea id="jaf-particulars" rows="2" style="width:100%;"></textarea>
                 </div>
 
+                <!-- Supporting Documents (optional) — same fims.file_attachments / multiple_node_id
+                     convention as voucher/form.php's Attachments card. Files upload to storage as
+                     soon as they're dropped; the batch itself (multiple_node_id) is only registered
+                     when the Journal Entry is saved (jaf_save -> jaf_persistAttachments). -->
+                <div class="jaf-card" id="jaf-att-card">
+                    <p class="jaf-card-title">Supporting Documents</p>
+                    <div class="jaf-dz" id="jaf-dz" onclick="document.getElementById('jaf-att-input').click()"
+                         ondragover="event.preventDefault(); this.classList.add('drag-over');"
+                         ondragleave="this.classList.remove('drag-over');"
+                         ondrop="jaf_onAttDrop(event)">
+                        <strong>Click to upload</strong> or drag and drop supporting documents here
+                        <div class="jaf-dz-hint">Max 25MB each &middot; PDF, DOC, XLS, JPG, PNG</div>
+                    </div>
+                    <input type="file" id="jaf-att-input" multiple hidden
+                           accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png" onchange="jaf_onAttChange(event)">
+                    <div class="jaf-att-link-row">
+                        <input type="text" id="jaf-att-link-name" placeholder="Document name">
+                        <input type="text" id="jaf-att-link-url" placeholder="e.g. https://drive.google.com/…">
+                        <button type="button" class="nha-btn nha-btn-ghost" onclick="jaf_addLinkAttachment()">+ Add Link</button>
+                    </div>
+                    <div class="jaf-att-list" id="jaf-att-list"></div>
+                </div>
+
                 <datalist id="jaf-coa-options"></datalist>
                 <datalist id="jaf-sl-options"></datalist>
 
                 <div style="overflow-x:auto;">
-                    <table class="nha-tbl" style="min-width:680px;">
+                    <table class="nha-tbl" style="min-width:880px;">
                         <thead><tr>
                             <th>Account Code</th>
                             <th>SL Code</th>
+                            <th style="width:200px;">Responsibility Center</th>
                             <th class="text-end" style="width:120px;">Debit (₱)</th>
                             <th class="text-end" style="width:120px;">Credit (₱)</th>
                             <th style="width:30px;"></th>
@@ -196,6 +273,7 @@ $_jel_voucherView = 'Voucher';
                         <tbody id="jaf-lines-tbody"></tbody>
                         <tfoot><tr class="jaf-line-total">
                             <td class="text-end">Total</td>
+                            <td></td>
                             <td></td>
                             <td class="jaf-l-val" id="jaf-total-debit">₱ 0.00</td>
                             <td class="jaf-l-val" id="jaf-total-credit">₱ 0.00</td>
@@ -209,6 +287,7 @@ $_jel_voucherView = 'Voucher';
                 </div>
             </div>
             <div class="nha-modal-foot">
+                <button type="button" class="nha-btn nha-btn-ghost" id="jaf-btn-print" style="display:none;margin-right:auto;" onclick="jaf_print()">Print</button>
                 <button type="button" class="nha-btn nha-btn-ghost" onclick="jaf_close()">Cancel</button>
                 <button type="button" class="nha-btn nha-btn-primary" id="jaf-btn-save" onclick="jaf_save()">Save as Draft</button>
             </div>
@@ -303,6 +382,10 @@ async function jel_load() {
 
 /* ── Table ─────────────────────────────────────────────────── */
 function jel_renderTable(rows) {
+    // Drop any dropdown(s) a previous render portaled out to <body> (see jel_toggleMenu) — the
+    // fresh tbody.innerHTML below creates brand-new ones, so these would otherwise leak/pile up.
+    document.querySelectorAll('body > .nha-tools-dropdown').forEach(d => d.remove());
+
     const tbody = $jel('jel-tbody');
     if (!rows.length) {
         tbody.innerHTML = '<tr><td colspan="14"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No journal entry vouchers found.</span></div></td></tr>';
@@ -313,31 +396,7 @@ function jel_renderTable(rows) {
         const rowClick = isStandalone
             ? (r.jev_status === 'DRAFT' ? `jaf_openEdit(${r.jev_id})` : `jaf_openView(${r.jev_id})`)
             : `jel_viewDv(${r.dv_id})`;
-        // Standalone JEV review chain (same as payment JEVs): DRAFT -> Section Chief -> Division Manager
-        // -> Department Manager posts. Each status shows its single next action.
-        const nextStep  = { DRAFT: 'FOR_SECTION_CHIEF', FOR_SECTION_CHIEF: 'FOR_DIVISION_MANAGER', FOR_DIVISION_MANAGER: 'FOR_DEPARTMENT_MANAGER', FOR_DEPARTMENT_MANAGER: 'POSTED' };
-        const nextLabel = { DRAFT: 'Submit for Review', FOR_SECTION_CHIEF: 'Section Chief: Review', FOR_DIVISION_MANAGER: 'Division Mgr: Review', FOR_DEPARTMENT_MANAGER: 'Dept Mgr: Approve & Post' };
-        const actions = isStandalone
-            ? [
-                r.jev_status === 'DRAFT'
-                    ? `<button type="button" class="nha-btn-act" title="Edit" onclick="event.stopPropagation(); jaf_openEdit(${r.jev_id})">Edit</button>`
-                    : `<button type="button" class="nha-btn-act" title="View" onclick="event.stopPropagation(); jaf_openView(${r.jev_id})">View</button>`,
-                nextStep[r.jev_status]
-                    ? `<button type="button" class="nha-btn-act" title="Advance this Journal Entry" onclick="event.stopPropagation(); jaf_jevStatus(${r.jev_id}, '${nextStep[r.jev_status]}', this)">${nextLabel[r.jev_status]}</button>`
-                    : '',
-                r.jev_status === 'DRAFT'
-                    ? `<button type="button" class="nha-btn-act" title="Delete" onclick="event.stopPropagation(); jaf_delete(${r.jev_id}, this)">Delete</button>`
-                    : '',
-              ].join('')
-            : [
-                // DV-linked PAYMENT JEVs run the same review chain, actioned right here in the register
-                // (Section Chief -> Division Manager -> Department Manager posts). SETUP JEVs ride the
-                // DV's own approval chain, so they only get Print.
-                (r.jev_type === 'PAYMENT' && nextStep[r.jev_status])
-                    ? `<button type="button" class="nha-btn-act" title="Advance this payment Journal Entry" onclick="event.stopPropagation(); jaf_jevStatus(${r.jev_id}, '${nextStep[r.jev_status]}', this)">${nextLabel[r.jev_status]}</button>`
-                    : '',
-                `<button type="button" class="nha-btn-act" title="Print this Journal Entry Voucher" onclick="event.stopPropagation(); jel_print(${r.dv_id}, this, ${r.jev_id})">Print</button>`,
-              ].join('');
+        const actions = jel_actionButtons(r, isStandalone);
         return `<tr style="cursor:pointer;" onclick="${rowClick}">
         <td class="nha-mono">${jel_esc(r.jev_no) || '—'}</td>
         <td class="nha-td-date">${jel_fmtDate(r.jev_date)}</td>
@@ -364,6 +423,83 @@ function jel_renderTable(rows) {
 function jel_viewDv(dvId) {
     window.location.href = `${JEL_VOUCHER_VIEW}?dv=${dvId}`;
 }
+
+/* ── Actions dropdown menu (same "nha-tools-menu" convention as budget-req-page.php's
+   bgr_actionButtons) — one "Actions" trigger per row holding View + the review-chain action +
+   Print/Edit/Delete, instead of a row of separate buttons. ──────────────────────────────── */
+const JEL_ICON_VIEW    = `<svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.477 0 8.268 2.943 9.542 7-1.274 4.057-5.065 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>`;
+const JEL_ICON_EDIT    = `<svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>`;
+const JEL_ICON_ADVANCE = `<svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>`;
+const JEL_ICON_PRINT   = `<svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a1 1 0 001-1v-4a1 1 0 00-1-1H9a1 1 0 00-1 1v4a1 1 0 001 1zm8-12V5a1 1 0 00-1-1H8a1 1 0 00-1 1v4h10z"/></svg>`;
+const JEL_ICON_DELETE  = `<svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>`;
+
+function jel_actionButtons(r, isStandalone) {
+    // Review chain (standalone JEVs and DV-linked PAYMENT JEVs — SETUP JEVs ride the DV's own
+    // FOR_ACCOUNTING -> ... -> FOR_TREASURY chain instead, so they never get an advance item here).
+    // DRAFT -> FOR_SECTION_CHIEF -> FOR_DIVISION_MANAGER -> FOR_DEPARTMENT_MANAGER -> POSTED.
+    const nextStep  = { DRAFT: 'FOR_SECTION_CHIEF', FOR_SECTION_CHIEF: 'FOR_DIVISION_MANAGER', FOR_DIVISION_MANAGER: 'FOR_DEPARTMENT_MANAGER', FOR_DEPARTMENT_MANAGER: 'POSTED' };
+    const nextLabel = { DRAFT: 'Submit for Review', FOR_SECTION_CHIEF: 'Section Chief: Review', FOR_DIVISION_MANAGER: 'Division Mgr: Review', FOR_DEPARTMENT_MANAGER: 'Dept Mgr: Approve & Post' };
+
+    const viewItem = isStandalone
+        ? (r.jev_status === 'DRAFT'
+            ? `<a class="nha-menu-item" href="javascript:void(0);" onclick="jel_closeMenus(); jaf_openEdit(${r.jev_id});">${JEL_ICON_EDIT}Edit</a>`
+            : `<a class="nha-menu-item" href="javascript:void(0);" onclick="jel_closeMenus(); jaf_openView(${r.jev_id});">${JEL_ICON_VIEW}View</a>`)
+        : `<a class="nha-menu-item" href="javascript:void(0);" onclick="jel_closeMenus(); jel_viewDv(${r.dv_id});">${JEL_ICON_VIEW}View</a>`;
+
+    const canAdvance = isStandalone ? !!nextStep[r.jev_status] : (r.jev_type === 'PAYMENT' && !!nextStep[r.jev_status]);
+    const advanceItem = canAdvance
+        ? `<a class="nha-menu-item" href="javascript:void(0);" onclick="jel_closeMenus(); jaf_jevStatus(${r.jev_id}, '${nextStep[r.jev_status]}', null);">${JEL_ICON_ADVANCE}${nextLabel[r.jev_status]}</a>`
+        : '';
+
+    const printItem = !isStandalone
+        ? `<a class="nha-menu-item" href="javascript:void(0);" onclick="jel_closeMenus(); jel_print(${r.dv_id}, null, ${r.jev_id});">${JEL_ICON_PRINT}Print</a>`
+        : '';
+
+    const deleteItem = (isStandalone && r.jev_status === 'DRAFT')
+        ? `<a class="nha-menu-item danger" href="javascript:void(0);" onclick="jel_closeMenus(); jaf_delete(${r.jev_id}, null);">${JEL_ICON_DELETE}Delete</a>`
+        : '';
+
+    const items = [viewItem, advanceItem, printItem].filter(Boolean).join('');
+    const deleteSection = deleteItem ? `<div class="nha-menu-divider"></div>${deleteItem}` : '';
+
+    return `<div class="nha-tools-menu">
+        <button type="button" class="nha-menu-trigger" onclick="event.stopPropagation(); jel_toggleMenu(this, ${r.jev_id})">
+            <svg fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+            Actions
+        </button>
+        <div class="nha-tools-dropdown" data-jev-id="${r.jev_id}">${items}${deleteSection}</div>
+    </div>`;
+}
+
+// Open/close. The sticky Actions column (see the #jel-root CSS above) gives each row's last <td>
+// its own z-index to stay pinned — which also traps a plain nested position:fixed dropdown inside
+// that cell's local stacking context, so a LATER row's opaque sticky cell can paint over an open
+// EARLIER row's dropdown. Fix: while open, move the dropdown out to a direct child of <body> (a
+// "portal", same trick most dropdown/tooltip libraries use to escape an ancestor's stacking/overflow)
+// — found by data-jev-id rather than DOM nesting, since after the first move it's no longer inside
+// its row's own .nha-tools-menu. jel_renderTable() purges any leftover body-level dropdowns before
+// it rebuilds the table, so closed ones never pile up.
+function jel_toggleMenu(btn, jevId) {
+    const drop = document.querySelector(`.nha-tools-dropdown[data-jev-id="${jevId}"]`);
+    const isOpen = drop.classList.contains('open');
+    jel_closeMenus();
+    if (isOpen) return;
+
+    if (drop.parentElement !== document.body) document.body.appendChild(drop);
+    const rect = btn.getBoundingClientRect();
+    drop.style.top = (rect.bottom + 4) + 'px';
+    drop.style.right = (window.innerWidth - rect.right) + 'px';
+    drop.classList.add('open');
+}
+
+function jel_closeMenus() {
+    document.querySelectorAll('.nha-tools-dropdown.open').forEach(d => d.classList.remove('open'));
+}
+
+document.addEventListener('click', e => {
+    if (!e.target.closest('.nha-tools-menu')) jel_closeMenus();
+});
+document.addEventListener('scroll', jel_closeMenus, true);
 
 // Print → the JEV form in the shared print preview (included below): the JEV and its lines come with
 // their DV (GET /voucher/read/{id}); prp_jevFromDv() builds the payload.
@@ -476,6 +612,7 @@ function jel_hideError()    { $jel('jel-error').style.display = 'none'; }
 ═══════════════════════════════════════════════════════════════ */
 let JAF_COA = [];   // postable chart-of-accounts rows, loaded once on first open
 let JAF_SL  = [];   // active SL masters, loaded once on first open
+let JAF_RC  = [];   // responsibility centers (fims.responsibility_code), loaded once on first open
 let jaf_lookupsReady = null; // promise, so a fast double-open doesn't double-fetch
 let jaf_editId = null;       // jev_id being edited, or null when adding
 let jaf_readOnly = false;    // viewing a non-DRAFT standalone JEV
@@ -485,11 +622,12 @@ async function jaf_ensureLookups() {
     if (jaf_lookupsReady) return jaf_lookupsReady;
     jaf_lookupsReady = (async () => {
         try {
-            const [fyJson, bookJson, coaJson, slJson] = await Promise.all([
+            const [fyJson, bookJson, coaJson, slJson, rcJson] = await Promise.all([
                 jel_authFetch(JEL_API + '/fiscal-years').then(r => r.json()),
                 jel_authFetch(JEL_BASE + '/books/all').then(r => r.json()),
                 jel_authFetch(JEL_BASE + '/chart_of_accounts/all?postable_only=1').then(r => r.json()),
                 jel_authFetch(JEL_API + '/sl-codes').then(r => r.json()),
+                jel_authFetch(JEL_BASE + '/responsibility-center/all').then(r => r.json()),
             ]);
             $jel('jaf-fy').innerHTML = '<option value="">Select…</option>' +
                 (fyJson.data ?? []).map(r => `<option value="${jel_esc(r.fiscal_yr)}">${jel_esc(r.fiscal_yr)}</option>`).join('');
@@ -497,6 +635,7 @@ async function jaf_ensureLookups() {
                 (bookJson.data ?? []).map(b => `<option value="${b.book_id}">${jel_esc(b.name)}</option>`).join('');
             JAF_COA = (coaJson.data ?? []).filter(a => a.posting_allowed);
             JAF_SL  = slJson.data ?? [];
+            JAF_RC  = rcJson.data ?? [];
             $jel('jaf-coa-options').innerHTML = JAF_COA.map(a => `<option value="${jel_esc(a.account_code)}">${jel_esc(a.account_title)}</option>`).join('');
             $jel('jaf-sl-options').innerHTML  = JAF_SL.map(s => `<option value="${jel_esc(s.sl_code)}">${jel_esc(s.sl_name)}</option>`).join('');
         } catch (e) {
@@ -511,7 +650,12 @@ function jaf_setFieldsDisabled(disabled) {
     ['jaf-date', 'jaf-fy', 'jaf-book', 'jaf-classification', 'jaf-particulars'].forEach(id => { $jel(id).disabled = disabled; });
     $jel('jaf-btn-save').style.display = disabled ? 'none' : '';
     $jel('jaf-btn-addline').disabled = disabled;
-    document.querySelectorAll('#jaf-lines-tbody input, #jaf-lines-tbody button').forEach(el => { el.disabled = disabled; });
+    document.querySelectorAll('#jaf-lines-tbody input, #jaf-lines-tbody select, #jaf-lines-tbody button').forEach(el => { el.disabled = disabled; });
+    // Supporting Documents: hide the upload/link controls when read-only — the list (with its
+    // Remove buttons already suppressed by jaf_renderAttachments()'s own jaf_readOnly check) stays.
+    $jel('jaf-dz').style.display = disabled ? 'none' : '';
+    const linkRow = document.querySelector('#jaf-att-card .jaf-att-link-row');
+    if (linkRow) linkRow.style.display = disabled ? 'none' : '';
 }
 
 async function jaf_openAdd() {
@@ -528,7 +672,12 @@ async function jaf_openAdd() {
     $jel('jaf-lines-tbody').innerHTML = '';
     jaf_lineSeq = 0;
     jaf_addLine(); jaf_addLine();
+    jaf_attachments = [];
+    jaf_attDirty = false;
+    jaf_existingMultipleNodeId = null;
+    jaf_renderAttachments();
     jaf_setFieldsDisabled(false);
+    $jel('jaf-btn-print').style.display = 'none'; // nothing saved yet — no jev_no to print
     $jel('jaf-overlay').classList.add('open');
 }
 
@@ -561,7 +710,18 @@ async function jaf_loadForEdit(jevId, readOnly) {
         (jev.lines ?? []).forEach(l => jaf_addLine(l));
         if ((jev.lines ?? []).length < 2) { jaf_addLine(); jaf_addLine(); }
         jaf_recalc();
+
+        jaf_attachments = (jev.file_attachments ?? []).map(a => ({
+            document_name: a.file_meta?.document_name || 'Supporting Document',
+            link: a.file_meta?.link || null,
+            size: null,
+        }));
+        jaf_attDirty = false;
+        jaf_existingMultipleNodeId = jev.multiple_node_id || null;
+        jaf_renderAttachments();
+
         jaf_setFieldsDisabled(readOnly);
+        $jel('jaf-btn-print').style.display = ''; // a saved JEV always has a jev_no to print
         $jel('jaf-overlay').classList.add('open');
     } catch (e) {
         jaf_showError(e.message);
@@ -574,19 +734,42 @@ function jaf_close() {
     $jel('jaf-overlay').classList.remove('open');
 }
 
+// Print this standalone JEV via the shared print preview (prp_open + prp_jevFromDv — passing an
+// empty {} as the "dv" lets its fallbacks (reference_no/payee_name/rfa_number) naturally come out
+// blank, which is correct here since a standalone JEV has no DV at all). Re-fetches rather than
+// reusing in-memory form state, so Print always reflects what was actually saved.
+async function jaf_print() {
+    if (!jaf_editId) return;
+    window.PagePreloader?.show();
+    try {
+        const res  = await jel_authFetch(`${JEL_API}/journal-entry/${jaf_editId}`);
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message || 'Failed to load the Journal Entry Voucher.');
+        await prp_open(prp_jevFromDv({}, json.data), { type: 'JEV' });
+    } catch (e) {
+        jaf_showError(e.message);
+    } finally {
+        window.PagePreloader?.hide();
+    }
+}
+
 function jaf_addLine(line) {
     const id = ++jaf_lineSeq;
     const tr = document.createElement('tr');
     tr.id = `jaf-line-${id}`;
+    const rcOptions = '<option value="">— None —</option>' +
+        JAF_RC.map(r => `<option value="${jel_esc(r.rc_id)}">${jel_esc(r.rc_id)} — ${jel_esc(r.rc_name)}</option>`).join('');
     tr.innerHTML = `
         <td><input type="text" list="jaf-coa-options" class="nha-filter-input jaf-acct" style="width:100%;" value="${jel_esc(line?.account_code)}"></td>
         <td><input type="text" list="jaf-sl-options" class="nha-filter-input jaf-sl" style="width:100%;" value="${jel_esc(line?.sl_code)}"></td>
+        <td><select class="nha-filter-select jaf-rc">${rcOptions}</select></td>
         <td><input type="number" step="0.01" min="0" class="nha-filter-input jaf-debit text-end" style="width:100%;" value="${line?.debit > 0 ? line.debit : ''}" oninput="jaf_onAmountInput(this, 'debit')"></td>
         <td><input type="number" step="0.01" min="0" class="nha-filter-input jaf-credit text-end" style="width:100%;" value="${line?.credit > 0 ? line.credit : ''}" oninput="jaf_onAmountInput(this, 'credit')"></td>
         <td><button type="button" class="jaf-remove-btn" title="Remove line" onclick="jaf_removeLine(${id})">&times;</button></td>
     `;
     $jel('jaf-lines-tbody').appendChild(tr);
-    tr.querySelectorAll('input').forEach(el => el.addEventListener('input', jaf_recalc));
+    tr.querySelector('.jaf-rc').value = line?.rc_id || '';
+    tr.querySelectorAll('input, select').forEach(el => el.addEventListener('input', jaf_recalc));
 }
 function jaf_removeLine(id) {
     $jel(`jaf-line-${id}`)?.remove();
@@ -604,6 +787,7 @@ function jaf_collectLines() {
     return [...document.querySelectorAll('#jaf-lines-tbody tr')].map(tr => ({
         account_code: tr.querySelector('.jaf-acct').value.trim(),
         sl_code     : tr.querySelector('.jaf-sl').value.trim(),
+        rc_id       : tr.querySelector('.jaf-rc').value.trim(),
         debit       : parseFloat(tr.querySelector('.jaf-debit').value) || 0,
         credit      : parseFloat(tr.querySelector('.jaf-credit').value) || 0,
     })).filter(l => l.account_code || l.debit || l.credit);
@@ -620,6 +804,115 @@ function jaf_recalc() {
     msg.style.color = balanced ? 'var(--afims-success,#1D8A4C)' : 'var(--afims-danger,#C0392B)';
 }
 
+/* ── Supporting Documents (optional — same fims.file_attachments / multiple_node_id convention as
+   voucher/form.php's vf_ Attachments card; see FileUploadServices) ──
+   Each file uploads to storage (POST /upload/file) as soon as it's picked — jaf_attachments just
+   tracks the resulting {document_name, link} entries. The batch itself (multiple_node_id) is only
+   registered — via POST /upload/multi-upload — when the Journal Entry is actually saved, see
+   jaf_persistAttachments(). ─────────────────────────────────────────────────────────────────────── */
+const JAF_ATT_MAX_BYTES = 26214400; // 25MB — mirrors FileUploadServices' own limit
+let jaf_attachments = [];             // staged Supporting Documents: { document_name, link, size, uploading }
+let jaf_attDirty = false;             // true once the attachments list has changed since open
+let jaf_existingMultipleNodeId = null; // this JEV's current multiple_node_id (edit mode), reused as-is when attachments weren't touched
+
+function jaf_onAttDrop(e) {
+    e.preventDefault();
+    $jel('jaf-dz').classList.remove('drag-over');
+    if (e.dataTransfer.files?.length) jaf_stageAttFiles(e.dataTransfer.files);
+}
+function jaf_onAttChange(e) {
+    if (e.target.files?.length) jaf_stageAttFiles(e.target.files);
+    e.target.value = '';
+}
+
+async function jaf_stageAttFiles(fileList) {
+    for (const file of Array.from(fileList)) {
+        if (file.size > JAF_ATT_MAX_BYTES) {
+            jel_showError(`"${file.name}" is over the 25MB limit and was not added.`);
+            continue;
+        }
+        const row = { document_name: file.name.replace(/\.[^./]+$/, ''), link: null, size: file.size, uploading: true };
+        jaf_attachments.push(row);
+        jaf_renderAttachments();
+
+        const form = new FormData();
+        form.append('file', file);
+        try {
+            const res  = await jel_authFetch(`${JEL_BASE}/upload/file`, { method: 'POST', body: form });
+            const json = await res.json();
+            if (!json.success) throw new Error(json.message || 'Upload failed.');
+            row.link = json.link;
+            row.uploading = false;
+            jaf_attDirty = true;
+        } catch (e) {
+            jaf_attachments = jaf_attachments.filter(r => r !== row);
+            jel_showError(`Failed to upload "${file.name}": ${e.message}`);
+        }
+        jaf_renderAttachments();
+    }
+}
+
+function jaf_removeAttachment(idx) {
+    jaf_attachments.splice(idx, 1);
+    jaf_attDirty = true;
+    jaf_renderAttachments();
+}
+
+/** A typed reference (Google Drive, SharePoint, etc.) instead of an uploaded file — same
+    fims.ip_filemeta.link convention FileUploadServices already accepts either way. */
+function jaf_addLinkAttachment() {
+    const nameEl = $jel('jaf-att-link-name');
+    const urlEl  = $jel('jaf-att-link-url');
+    const name = nameEl.value.trim();
+    const url  = urlEl.value.trim();
+    if (!name || !url) { jel_showError('Enter both a document name and a link.'); return; }
+    if (!/^https?:\/\//i.test(url)) { jel_showError('Link must start with http:// or https://'); return; }
+    jaf_attachments.push({ document_name: name, link: url, size: null });
+    jaf_attDirty = true;
+    nameEl.value = '';
+    urlEl.value  = '';
+    jaf_renderAttachments();
+}
+
+function jaf_renderAttachments() {
+    $jel('jaf-att-list').innerHTML = jaf_attachments.map((a, idx) => {
+        const isLink = /^https?:\/\//i.test(a.link || '');
+        const name   = isLink
+            ? `<a href="${jel_esc(a.link)}" target="_blank" rel="noopener noreferrer">${jel_esc(a.document_name)}</a>`
+            : jel_esc(a.document_name);
+        const removeBtn = jaf_readOnly ? '' : `<button type="button" class="jaf-att-remove" title="Remove" onclick="jaf_removeAttachment(${idx})">&times;</button>`;
+        return `<div class="jaf-att-row">
+            <span class="jaf-att-name" title="${jel_esc(a.document_name)}">${a.uploading ? '⏳ ' : ''}${name}${a.size ? ' <small>(' + jaf_fmtSize(a.size) + ')</small>' : ''}</span>
+            ${removeBtn}
+        </div>`;
+    }).join('');
+}
+
+function jaf_fmtSize(bytes) {
+    return bytes >= 1024 * 1024 ? (bytes / (1024 * 1024)).toFixed(1) + ' MB' : Math.ceil(bytes / 1024) + ' KB';
+}
+
+/**
+ * Registers the staged files as one Supporting Documents batch (POST /upload/multi-upload) and
+ * returns the multiple_node_id to save on the Journal Entry — null if there's nothing to attach, or
+ * undefined if attachments haven't changed since this JEV was opened (jaf_attDirty), in which case
+ * the caller reuses whatever multiple_node_id the JEV already has.
+ */
+async function jaf_persistAttachments() {
+    if (!jaf_attDirty) return undefined;
+    if (!jaf_attachments.length) return null;
+
+    const file_data = jaf_attachments.filter(a => a.link).map(a => ({ document_name: a.document_name, link: a.link }));
+    if (!file_data.length) return null;
+
+    const res  = await jel_authFetch(`${JEL_BASE}/upload/multi-upload`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ file_data }),
+    });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.message || 'Failed to save attachments.');
+    return json.multiple_node_id;
+}
+
 async function jaf_save() {
     jaf_hideError();
     const body = {
@@ -632,6 +925,9 @@ async function jaf_save() {
     };
     window.PagePreloader?.show();
     try {
+        const persistedNodeId = await jaf_persistAttachments();
+        body.multiple_node_id = persistedNodeId === undefined ? jaf_existingMultipleNodeId : persistedNodeId;
+
         const url    = jaf_editId ? `${JEL_API}/journal-entry/update/${jaf_editId}` : `${JEL_API}/journal-entry/add`;
         const method = jaf_editId ? 'PUT' : 'POST';
         const res    = await jel_authFetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
