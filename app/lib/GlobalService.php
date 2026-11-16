@@ -45,6 +45,16 @@ use PHPMaker2024\FIMS as App;
  *   against the returned key. Lives here by request, as the one shared
  *   upload primitive every future feature should call instead of each
  *   reimplementing its own S3Client validation/putObject logic.
+ * - logStatusChange()  writes one row to the shared fims.status_change_log
+ *   (see "35 - fims_status_change_log.sql") — an append-only, cross-module
+ *   status-change audit trail. $statusFor scopes rows to one owning table
+ *   (same convention as fims.settings_status.status_for), independent of
+ *   whether that table actually drives its live status off a plain VARCHAR
+ *   column or a status_id FK. Called by FtlaService (status_for =
+ *   'fund_transfers'), BudgetAllocationService (LAA/RFA/CBA all share
+ *   'budget_allocation'), and DisbursementVoucherService::changeJevStatus()
+ *   ('journal_entry_voucher'). Never throws — a logging failure must not
+ *   fail the status change itself.
  */
 class GlobalService
 {
@@ -407,5 +417,40 @@ class GlobalService
         }
 
         return (string) ($scopeRcId ?? ($params['rc_id'] ?? ''));
+    }
+
+    /**
+     * One row per status change, in the shared cross-module fims.status_change_log.
+     * Append-only audit trail, independent of however the caller's own table stores
+     * its CURRENT status (a plain VARCHAR column, or a status_id FK into
+     * fims.settings_status) — this just records "record #$recordId under $statusFor
+     * moved to $status, by whom, when, optionally why".
+     *
+     * $statusFor scopes rows to one owning table — same convention as
+     * fims.settings_status.status_for — e.g. 'fund_transfers', 'budget_allocation'
+     * (shared by LAA/RFA/CBA, which are all the same table), 'journal_entry_voucher',
+     * 'budget_req'. No FK on record_id since it points at a different table per
+     * $statusFor — stored as text, since most PKs here are numeric but not all
+     * (fims.budget_req's is the string budget_reference_number, "BP-007").
+     *
+     * Never throws: logged (LogError) and swallowed, so a logging failure can never
+     * fail the status change a caller just committed. Call this right after that
+     * commit, fire-and-forget.
+     */
+    public static function logStatusChange(string $statusFor, int|string $recordId, string $status, ?int $userId = null, ?string $remarks = null): void
+    {
+        try {
+            App\Execute(
+                'INSERT INTO fims.status_change_log (status_for, record_id, status, remarks, changed_by, changed_at) VALUES ('
+                . App\QuotedValue($statusFor, App\DataType::STRING, 'DB') . ', '
+                . App\QuotedValue((string) $recordId, App\DataType::STRING, 'DB') . ', '
+                . App\QuotedValue($status, App\DataType::STRING, 'DB') . ', '
+                . (trim((string) $remarks) !== '' ? App\QuotedValue(trim((string) $remarks), App\DataType::STRING, 'DB') : 'NULL') . ', '
+                . ($userId !== null && $userId > 0 ? $userId : 'NULL') . ', CURRENT_TIMESTAMP)',
+                'DB'
+            );
+        } catch (\Throwable $e) {
+            App\LogError("GlobalService::logStatusChange ({$statusFor}#{$recordId} -> {$status}) " . $e->getMessage());
+        }
     }
 }

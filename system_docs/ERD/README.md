@@ -3,30 +3,13 @@
 > **Status:** rewritten 2026-11-09 against the actual schema in `_assets/sql/` and a verified
 > dry-run install; §2.3 (Disbursement Vouchers & Journal Entries) added 2026-11-10 once that module
 > grew Deductions, multi-row ATC, and Subsidiary Ledger support; §2.4 (Inspection and Acceptance
-> Report — IAR) added 2026-11-10. §2.6 (Treasury operations: Bank Management / Cash Position / Check
-> Processing) and §2.7 (Fund Tracking — SARO/NCA/Trust/Supplemental, plus the Agency/Pricing Request
-> lookups) added 2026-11-13 once those modules landed in `app/` (see the developer guide's §8.5–§8.9).
-> **§2.8 (JEV approval → GL/SL posting → Journals/Trial Balance) drafted 2026-11-14, implemented the
-> same day** — `fims.general_ledger` (table), `journal_entry_vouchers.status_id` (alter), and
-> `fims.v_journals`/`fims.v_trial_balance` (views) all exist in `_assets/sql/` now, backed by
-> `app/services/GeneralLedgerService.php` and wired into
-> `DisbursementVoucherService::changeStatus()`. Verified via a `BEGIN…ROLLBACK` dry run against the
-> live `fims-nha-postgres` dev container (not yet applied to that container for real — see the note
-> at the top of that section for exactly what was and wasn't tested).
-> **§2.8 extended 2026-11-15** once the module grew: **Books of Accounts** (`fims.books`,
-> `01 - table/41` + `book_id` on JEV/GL/official_receipts, `03 - alter_table/30`) scoping all four
-> ledger reports; **Payment JEVs** (`jev_type` SETUP/PAYMENT + `source_module`/`doc_ref_no`,
-> `03 - alter_table/31`; `bank_accounts.account_code`) so Treasury's actual check/ADA release settles
-> the Accounts Payable the setup entry raised and credits Cash; **JEV classification**
-> (`jev_classification` REGULAR/ACCRUAL/DEPRECIATION/PREPAYMENTS/CLOSING, `03 - alter_table/32`);
-> **standalone (no-DV) JEVs** (`dv_id` made nullable, `03 - alter_table/33`) for period-end entries
-> Accounting books directly; and a **JEV-register view** (`fims.v_journal_entry_vouchers`,
-> `05 - views/02`). §2.3's "one JEV per DV / `dv_id` is UNIQUE" statements were corrected in the same
-> pass. These SQL files are **untracked / uncommitted** as of this writing — present in `_assets/sql/`
-> and read by the services/pages, but read from code, not re-verified against a fresh install.
-> The previous version of this file described a 9-schema, 371-file predecessor architecture (`shared`,
-> `accounting`, `treasury`, `regional`, `district`, `integration`, an `ACCOUNTING-BAPD/sql/` tree,
-> `npm run …` wrappers) that predates this repo's 2026-11-06 rebuild — none of that exists here. See
+> Report — IAR) added 2026-11-10; §2.1's `budget_allocation` row and `budget_line_item_earmark`
+> table updated 2026-11-16 for the CBA/RFA/LAA memo-request lifecycle (earmark-then-convert against a
+> budget line item, plus its soft link to a Disbursement Voucher) built out 2026-11-10/12. The
+> previous version of this file
+> described a 9-schema, 371-file predecessor architecture (`shared`, `accounting`, `treasury`,
+> `regional`, `district`, `integration`, an `ACCOUNTING-BAPD/sql/` tree, `npm run …` wrappers) that
+> predates this repo's 2026-11-06 rebuild — none of that exists here. See
 > `system_docs/developerguide/DEVELOPER-GUIDE.md` §11 for the full list of docs still carrying that
 > old architecture, and `_assets/sql/README.md` for the SQL folder / installer mechanics (not
 > duplicated here).
@@ -40,7 +23,7 @@ schema plan (see `_assets/sql/README.md` → Database Schemas).
 | Schema | Tables (verified live, 2026-11-13) | Covered below |
 |---|---|---|
 | `uac` | 30 | §1 |
-| `fims` | 59 (`CREATE TABLE` count in `_assets/sql/01 - fims/`, including §2.8's `general_ledger` and `books`; 29 of these were independently verified live as of 2026-11-10 — the rest, including all of §2.6/§2.7's Treasury-ops and Fund Tracking tables, are **not independently re-verified live**, see the note at the end of each of those sections) — **`pricing_requests`/`pricing_request_attachments` are referenced by code but have no table at all, see §3** | §2 |
+| `fims` | 31 (29 verified live 2026-11-10 + `inspection_acceptance_report` from §2.4 + `budget_line_item_earmark` from §2.1, both installed/exercised locally 2026-11-12) | §2 |
 | `fmd` | 0 (schema exists, empty) | — |
 | `workflow` | 0 (schema exists, empty) | — |
 
@@ -168,6 +151,8 @@ erDiagram
     responsibility_code ||--o{ chart_of_accounts : "region_code -> rc_code"
     project ||--o{ chart_of_accounts : "project_code (optional scope)"
     budget_allocation ||--o{ budget_allocation : "parent_id (self)"
+    budget_allocation ||--o{ budget_line_item_earmark : "allocation_id (cascade)"
+    budget_line_items ||--o{ budget_line_item_earmark : "budget_line_item_id (cascade)"
 ```
 
 | Table | Purpose / notes |
@@ -183,7 +168,8 @@ erDiagram
 | `chart_of_accounts` | COA tree (`parent_account_id` self-FK). Optionally scoped to a responsibility center (`region_code -> responsibility_code.rc_code`) and/or a `project_code` |
 | `responsibility_code` | RCA (Responsibility Center/Accounting) tree (`parent_rc_id` self-FK). `is_budget_holding_rc` flags units that can hold a budget. `rc_id` is the PK and is `VARCHAR(10)` — see the `uac.departments`/`uac.offices` type-mismatch gap in §3 |
 | `type_of_fund` / `component_type` | Small lookup tables (fund source; CO / Other-CO / COE) seeded with a handful of rows. Referenced by `budget_line_items.type_of_fund_id` / `.component_id` **by convention only — no FK exists yet** |
-| `budget_allocation` | Memo/PR/PO allocation tracking per fiscal year + requesting RC (the creator's `uac.users.rc_id`) / district, with a `parent_id` self-FK for derived allocations. Built via `CREATE TABLE fims.budget_allocation(); ALTER TABLE ... ADD COLUMN` (see the file for why). `request_referrence_no` (VARCHAR(50) — the spelling is the column's real name) is **generated by the database**: its default is `fims.next_request_referrence_no()`, which takes the next value of a sequence and formats it `RR-001`, `RR-002`, … (it grows past 999, never truncates); unique, never reused (a failed insert leaves a gap). Added, with the existing rows numbered oldest-first, by `03 - alter_table/19`. Most of its columns (`requesting_rc_id` — VARCHAR(50), renamed from `requesting_department_id` in `03 - alter_table/14` — `requesting_district_id`, `program_id`, `sub_program_id`, `project_id`, `category_id`, `user_id`) are **deliberately left unconstrained** — see the comment in `03 - alter_table/08 - budget_allocation_add_fk.sql` for the reasoning per column |
+| `budget_allocation` | Memo/PR/PO allocation tracking per fiscal year + requesting RC (the creator's `uac.users.rc_id`) / district, with a `parent_id` self-FK for derived allocations. Built via `CREATE TABLE fims.budget_allocation(); ALTER TABLE ... ADD COLUMN` (see the file for why). `request_referrence_no` (VARCHAR(50) — the spelling is the column's real name) is **generated by the database**: its default is `fims.next_request_referrence_no()`, which takes the next value of a sequence and formats it `RR-001`, `RR-002`, … (it grows past 999, never truncates); unique, never reused (a failed insert leaves a gap). Added, with the existing rows numbered oldest-first, by `03 - alter_table/19`. Most of its columns (`requesting_rc_id` — VARCHAR(50), renamed from `requesting_department_id` in `03 - alter_table/14` — `requesting_district_id`, `program_id`, `sub_program_id`, `project_id`, `category_id`, `user_id`) are **deliberately left unconstrained** — see the comment in `03 - alter_table/08 - budget_allocation_add_fk.sql` for the reasoning per column. `allocation_type` (free-text VARCHAR(20), no CHECK) is the "Memo Request" module's own document type — `CBA` (Certificate of Budget Allocation, the root reservation against a COB), `RFA` (Request for Fund Allotment, draws part of a parent CBA down into an obligation, used under ₱50M) and `LAA` (Letter of Advice of Allotment, same conversion as RFA but ₱50M and above) are the three in active use; `CFA` is named alongside `CBA` in a few guard conditions/comments (e.g. `budget_line_item_earmark`'s header comment, `BudgetLineItemService`'s earmark filters) but never actually produced by the form — treat it as reserved/unimplemented, not a fourth live type. For RFA/LAA, `parent_id` must point at an Approved CBA; `BudgetAllocationService::process()` assigns the final `allocation_number` on last approval, templated by `allocation_type` (`BudgetAllocationService.php` ~L798-814): `CBA` → `CBA <y>-<q><m>-86-<series>`, `RFA` → `<yy><q><m>-<code>-<series>` (`code` 57 for `document_type='COE'`, 87 for `CO`), `LAA` → `LAA <y>-<q><m>-<series>` (no code segment). `dv_id` (added by `03 - alter_table/23 - budget_allocation_add_dv_id.sql`, 2026-11-12) is an RFA row's **soft** link to the one `disbursement_vouchers.dv_id` it currently backs (one DV can draw on several RFA rows, but each RFA row backs only one active DV at a time — enforced by `DisbursementVoucherService`, not a DB FK; see §3) |
+| `budget_line_item_earmark` | The CBA/RFA/LAA reservation ledger against `budget_line_items` (added 2026-11-12, `01 - table/26`). One row per Approved `budget_allocation` line "holding" an amount against a line item's balance — reserved only, separate from `budget_line_items.obligation`/`disbursement`/`account_payable`. A line item's still-available balance = `suggested_amount + adjustment - obligation - SUM(amount) WHERE status = 'active'` (the FMD-approved `suggested_amount`, not the requester's `proposed_amount`). `status`: `active` (default, while its CBA stays Approved) → `released` (its CBA was deleted — amount freed back) or `converted` (an RFA/LAA naming this row's allocation as `parent_id` was itself Approved: `BudgetLineItemService::convertEarmarkForRfaApproval()` shrinks — or fully flips — the CBA's own row by the drawn amount, inserts a **separate** `converted` row attributed to the RFA/LAA's own `allocation_id` so each draw stays traceable, and raises `budget_line_items.obligation` by that same amount — the real commitment). `original_amount` (added `03 - alter_table/23 - budget_line_item_earmark_add_original_amount.sql`, 2026-11-12) freezes the amount the row was first created with, since `amount` itself shrinks on every partial RFA/LAA draw — used so "where this COB's balance is held" can show a CBA's originally-approved figure, not its current remainder. Both `budget_line_item_id` and `allocation_id` are enforced FKs, `ON DELETE CASCADE` |
 | `ip_filemeta` | One uploaded file (or typed link / reference) of a Supporting Document: `document_name VARCHAR(225)`, `link TEXT` (the object-storage key, or the link), `created_by`, a unique `node_id` UUID (default `gen_random_uuid()`), `created_at` / `updated_at`, soft-delete `deleted_at`. Written by `FileUploadServices` (`01 - table/17`) |
 | `file_attachments` | Groups files: one `multiple_node_id` UUID per upload batch, one row per file with that file's `ip_filemeta.node_id` as `file_node_id` (+ its own `node_id`, `created_by`, timestamps, `deleted_at`). The owning record stores the `multiple_node_id` (`budget_allocation.multiple_node_id`). No FKs, by convention (`01 - table/18`) |
 
@@ -654,8 +640,8 @@ ride on.
 | `fims.budget_line_items.component_id` / `.type_of_fund_id` | `fims.component_type` / `fims.type_of_fund` | No | Named and seeded to match, but no FK constraint exists yet (see table comment in `03 - alter_table/06`) |
 | `fims.budget_revision.from_budget_line_item_id` / `.to_budget_line_item_id` | `fims.budget_line_items.budget_line_item_id` | No | New in `03 - alter_table/23`; no FK, so nothing stops a dangling value — a Draft request's Program edit deletes and re-creates its lines — and a revision whose line is gone (or that was filed before budget lines were revised) still lists, with the line's details blank. The legacy `from_budget_req_id` / `to_budget_req_id` columns point at nothing |
 | `fims.budget_allocation.{program,sub_program,project}_id` | `fims.{program,sub_program,project}` | No — can't be | Those tables are keyed by `*_code VARCHAR`, not an integer id; `budget_allocation` stores integers. Intentionally unconstrained per `03 - alter_table/08` |
-| `fims.disbursement_vouchers.rfa_allocation_id` | `fims.budget_allocation.allocation_id` | No | **Stale note fixed 2026-11-13**: `fims.budget_allocation` now *does* have a CRUD backend (`BudgetAllocationService` / `app/routes/budget_allocation.php`, the Memo Request page — see developer guide §8.2/§2.7), but the link here was already soft before that landed and stays soft deliberately — see the comment in `03 - alter_table/11`. `DisbursementVoucherService::fetchRfaOptions()`/`fetchRfaDetail()` are a read-only lookup over it, no FK |
-| `fims.budget_allocation.dv_id` | `fims.disbursement_vouchers.dv_id` | No | The inverse of the row above, added `03 - alter_table/23`: which DV an RFA (`allocation_type = 'RFA'`) is currently drawn into, if any. Soft reference for the same "no CRUD backend" reasoning cited there (now partly outdated — see the row above); `DisbursementVoucherService` enforces "one DV at a time per RFA" itself, not the database |
+| `fims.disbursement_vouchers.rfa_allocation_id` | `fims.budget_allocation.allocation_id` | No | `fims.budget_allocation` has no CRUD backend of its own yet (see §2.1); `DisbursementVoucherService::fetchRfaOptions()`/`fetchRfaDetail()` are a read-only lookup over it, no FK |
+| `fims.budget_allocation.dv_id` | `fims.disbursement_vouchers.dv_id` | No | The reverse link (which DV an RFA row is currently drawn into). Same "no CRUD backend yet" reasoning as the row above; `DisbursementVoucherService` enforces the one-RFA-backs-one-active-DV-at-a-time rule in PHP, not the schema. LAA rows never populate this — only RFA is wired into the DV module so far |
 | `fims.disbursement_vouchers.requesting_department_id` | `uac.departments.department_id` | No | Snapshotted from the selected RFA at save time, same unconstrained convention as the RFA link itself |
 | `fims.disbursement_vouchers.account_code` | `fims.chart_of_accounts.account_code` | No | Required and `posting_allowed`-checked in `DisbursementVoucherService::prepare()`, not a DB FK — mirrors `purchase_order_items.account_code`'s "FK targets an alternate key" exception in §2.2, except here there's no FK at all, only the PHP check |
 | `fims.checks.dv_id` | `fims.disbursement_vouchers.dv_id` | No | Only a `FOR_TREASURY` DV can get a check prepared against it (`CheckProcessingService::saveCheck()`), checked in PHP, no DB FK — see §2.6 |
