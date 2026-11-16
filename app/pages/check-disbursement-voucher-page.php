@@ -60,8 +60,7 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
     <div class="fims-tabs-underline mb-3" id="cpTabNav">
         <button class="fims-tab-underline active" data-cp-tab="prep">Check Preparation</button>
         <button class="fims-tab-underline" data-cp-tab="registry">Check Registry</button>
-        <button class="fims-tab-underline" data-cp-tab="claimants">Released to Claimants</button>
-        <button class="fims-tab-underline" data-cp-tab="regions">Released to Regions</button>
+        <button class="fims-tab-underline" data-cp-tab="released">Released</button>
         <button class="fims-tab-underline" data-cp-tab="cancel">Cancellation &amp; Replacements</button>
         <button class="fims-tab-underline" data-cp-tab="raf">Inventory (RAF)</button>
     </div>
@@ -92,8 +91,8 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
         </div>
 
         <div class="cp-status-tabs" id="prepStatusTabs">
-            <?php foreach (["PREPARED" => "Prepared", "RELEASED" => "Released", "ENCASHED" => "Encashed", "OUTSTANDING" => "Outstanding", "STALE" => "Stale", "CANCELLED" => "Cancelled", "VOIDED" => "Voided", "" => "All"] as $val => $label): ?>
-            <button type="button" class="fims-badge cp-status-tab<?= $val === "PREPARED" ? " active" : "" ?>" data-status="<?= $val ?>"><?= $label ?></button>
+            <?php foreach (["" => "All", "PREPARED" => "Prepared", "RELEASED" => "Released", "ENCASHED" => "Encashed", "OUTSTANDING" => "Outstanding", "STALE" => "Stale", "CANCELLED" => "Cancelled", "VOIDED" => "Voided"] as $val => $label): ?>
+            <button type="button" class="fims-badge cp-status-tab<?= $val === "" ? " active" : "" ?>" data-status="<?= $val ?>"><?= $label ?></button>
             <?php endforeach; ?>
         </div>
 
@@ -119,7 +118,7 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
                             <th>Bank / Account</th>
                             <th class="text-right">Amount</th>
                             <th class="text-center">Status</th>
-                            <th class="text-center" style="width:70px">Actions</th>
+                            <th class="text-center" style="width:260px">Actions</th>
                         </tr>
                     </thead>
                     <tbody><tr class="fims-empty"><td colspan="10">Loading…</td></tr></tbody>
@@ -199,12 +198,11 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
                 <table class="fims-table" id="registryTable">
                     <thead>
                         <tr>
-                            <th>#</th><th>Check No.</th><th>Booklet No.</th><th>Entry Date</th><th>Entry Type</th>
-                            <th>Account Name</th><th>Account No.</th><th class="text-center">Status</th><th>Series</th>
-                            <th>Dept. Type</th><th class="text-center" style="width:70px">Actions</th>
+                            <th>#</th><th>Booklet No.</th><th>Series</th><th>Bank / Account</th>
+                            <th>Dept. Type</th><th class="text-center">Checks</th><th>Status Summary</th>
                         </tr>
                     </thead>
-                    <tbody><tr class="fims-empty"><td colspan="11">No records.</td></tr></tbody>
+                    <tbody><tr class="fims-empty"><td colspan="7">No records.</td></tr></tbody>
                 </table>
             </div>
             <div class="fims-pagination" id="registryPagination"></div>
@@ -214,13 +212,14 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
     <!-- ══════════════════════════════════════════════
          TAB 3: RELEASED TO CLAIMANTS
     ══════════════════════════════════════════════ -->
-    <div class="fims-tab-underline-content" id="cpClaimants" style="display:none">
-        <div class="fims-stat-grid" id="claimantsKpiCards" style="grid-template-columns:repeat(5,1fr)">
+    <div class="fims-tab-underline-content" id="cpReleased" style="display:none">
+        <div class="fims-stat-grid" id="releasedKpiCards" style="grid-template-columns:repeat(6,1fr)">
             <div class="fims-stat-card fims-card-gray"><div class="fims-stat-top"><span class="fims-stat-label">Pending</span></div><div class="fims-stat-value" data-kpi="PENDING">0</div></div>
             <div class="fims-stat-card fims-card-blue"><div class="fims-stat-top"><span class="fims-stat-label">Notified</span></div><div class="fims-stat-value" data-kpi="NOTIFIED">0</div></div>
             <div class="fims-stat-card fims-card-green"><div class="fims-stat-top"><span class="fims-stat-label">Released</span></div><div class="fims-stat-value" data-kpi="RELEASED">0</div></div>
             <div class="fims-stat-card fims-card-indigo"><div class="fims-stat-top"><span class="fims-stat-label">Acknowledged</span></div><div class="fims-stat-value" data-kpi="ACKNOWLEDGED">0</div></div>
             <div class="fims-stat-card fims-card-red"><div class="fims-stat-top"><span class="fims-stat-label">Unclaimed</span></div><div class="fims-stat-value" data-kpi="UNCLAIMED">0</div></div>
+            <div class="fims-stat-card fims-card-violet"><div class="fims-stat-top"><span class="fims-stat-label">Return Paid DVs</span></div><div class="fims-stat-value" data-kpi="DV_RETURNED">0</div></div>
         </div>
 
         <div class="fims-table-panel" style="border-radius:var(--fims-radius-lg) var(--fims-radius-lg) 0 0;border-bottom:none;margin-bottom:0">
@@ -228,9 +227,9 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
                 <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
                     <div class="fims-search-wrap">
                         <svg class="fims-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                        <input type="text" class="fims-input fims-input-sm" id="claimFilterSearch" placeholder="Check No. or Payee" style="width:190px">
+                        <input type="text" class="fims-input fims-input-sm" id="relFilterSearch" placeholder="Check No. or Payee" style="width:190px">
                     </div>
-                    <select class="fims-select fims-input-sm" id="claimFilterStatus" style="width:160px">
+                    <select class="fims-select fims-input-sm" id="relFilterStatus" style="width:160px">
                         <option value="">Status: All</option>
                         <option value="PENDING">Pending</option>
                         <option value="NOTIFIED">Notified</option>
@@ -238,150 +237,85 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
                         <option value="ACKNOWLEDGED">Acknowledged</option>
                         <option value="UNCLAIMED">Unclaimed</option>
                     </select>
-                    <select class="fims-select fims-input-sm" id="claimFilterType" style="width:150px">
+                    <select class="fims-select fims-input-sm" id="relFilterType" style="width:170px">
                         <option value="">Type: All</option>
                         <option value="DIRECT">Direct</option>
                         <option value="EMAIL_NOTICE">Email Notice</option>
+                        <option value="REGION">Region/Dept</option>
                     </select>
+                    <select class="fims-select fims-input-sm" id="relFilterDept" style="width:190px"><option value="">All Regions/Depts</option></select>
                 </div>
                 <div style="display:flex;gap:8px;">
-                    <button type="button" class="fims-btn fims-btn-primary fims-btn-sm" id="claimRecordReleaseBtn"><i class="fas fa-plus mr-1"></i>Record Release</button>
-                    <button type="button" class="fims-btn fims-btn-outline fims-btn-sm" id="claimEmailNoticeBtn"><i class="fas fa-envelope mr-1"></i>Send Email Notice</button>
-                    <button type="button" class="fims-btn fims-btn-outline fims-btn-sm" id="claimFollowUpBtn"><i class="fas fa-bell mr-1"></i>Follow-up Unclaimed</button>
+                    <button type="button" class="fims-btn fims-btn-primary fims-btn-sm" id="relRecordReleaseBtn"><i class="fas fa-plus mr-1"></i>Record Release</button>
+                    <button type="button" class="fims-btn fims-btn-outline fims-btn-sm" id="relSendNoticeBtn"><i class="fas fa-envelope mr-1"></i>Send Notice</button>
+                    <button type="button" class="fims-btn fims-btn-outline fims-btn-sm" id="relFollowUpBtn"><i class="fas fa-bell mr-1"></i>Follow-up Unclaimed</button>
                 </div>
             </div>
         </div>
 
-        <div class="fims-tabs-underline mb-0" id="claimSubTabs" style="border-radius:0;border-top:none;">
-            <button class="fims-tab-underline active" data-sub-target="claimListPane">Check Release List</button>
-            <button class="fims-tab-underline" data-sub-target="claimUnclaimedPane">Unclaimed / Unreleased</button>
-            <button class="fims-tab-underline" data-sub-target="claimEmailLogPane">Email Log</button>
+        <div class="fims-tabs-underline mb-0" id="relSubTabs" style="border-radius:0;border-top:none;">
+            <button class="fims-tab-underline active" data-sub-target="relListPane">Check Release List</button>
+            <button class="fims-tab-underline" data-sub-target="relUnclaimedPane">Unclaimed / Unreleased</button>
+            <button class="fims-tab-underline" data-sub-target="relAckPane">Acknowledgment</button>
+            <button class="fims-tab-underline" data-sub-target="relEmailLogPane">Email Log</button>
+            <button class="fims-tab-underline" data-sub-target="relDvPane">Return Paid DVs</button>
         </div>
 
         <div class="fims-table-panel" style="border-radius:0 0 var(--fims-radius-lg) var(--fims-radius-lg)">
-            <div class="fims-tab-underline-content active" id="claimListPane">
+            <div class="fims-tab-underline-content active" id="relListPane">
                 <div class="fims-table-wrap">
-                    <table class="fims-table" id="claimantsTable">
+                    <table class="fims-table" id="releasesTable">
                         <thead>
                             <tr>
-                                <th>#</th><th>Check No.</th><th>Payee / Amount</th><th>Claimant</th>
-                                <th>ID Type / No.</th><th>Release Type</th><th>Release Date</th>
-                                <th class="text-center">Status</th><th>Acknowledgment</th><th class="text-center" style="width:70px">Actions</th>
+                                <th>#</th><th>Check No.</th><th>Payee / Amount</th><th>Type</th><th>Claimant / Region</th>
+                                <th>ID / RDTF No.</th><th>Release Date</th>
+                                <th class="text-center">Status</th><th>Acknowledgment</th><th class="text-center" style="width:120px"></th>
                             </tr>
                         </thead>
                         <tbody><tr class="fims-empty"><td colspan="10">No records.</td></tr></tbody>
                     </table>
                 </div>
             </div>
-            <div class="fims-tab-underline-content" id="claimUnclaimedPane" style="display:none">
+            <div class="fims-tab-underline-content" id="relUnclaimedPane" style="display:none">
                 <div class="fims-table-wrap">
-                    <table class="fims-table" id="claimUnclaimedTable">
+                    <table class="fims-table" id="relUnclaimedTable">
                         <thead>
                             <tr>
-                                <th>#</th><th>Check No.</th><th>Payee / Amount</th><th>Claimant</th>
+                                <th>#</th><th>Check No.</th><th>Payee / Amount</th><th>Type</th><th>Claimant / Region</th>
                                 <th class="text-center">Status</th><th>Days Since Prep.</th><th>Last Follow-up</th>
-                                <th>Follow-up Remarks</th><th class="text-center" style="width:70px">Actions</th>
+                                <th>Follow-up Remarks</th>
                             </tr>
                         </thead>
                         <tbody><tr class="fims-empty"><td colspan="9">No records.</td></tr></tbody>
                     </table>
                 </div>
             </div>
-            <div class="fims-tab-underline-content" id="claimEmailLogPane" style="display:none">
+            <div class="fims-tab-underline-content" id="relAckPane" style="display:none">
                 <div class="fims-table-wrap">
-                    <table class="fims-table" id="claimEmailLogTable">
-                        <thead>
-                            <tr><th>#</th><th>Check No.</th><th>Recipient Email</th><th>Sent At</th><th>Sent By</th><th class="text-center">Status</th><th>Error</th></tr>
-                        </thead>
-                        <tbody><tr class="fims-empty"><td colspan="7">No records.</td></tr></tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- ══════════════════════════════════════════════
-         TAB 4: RELEASED TO REGIONS/DEPARTMENTS
-    ══════════════════════════════════════════════ -->
-    <div class="fims-tab-underline-content" id="cpRegions" style="display:none">
-        <div class="fims-stat-grid" id="regionsKpiCards" style="grid-template-columns:repeat(5,1fr)">
-            <div class="fims-stat-card fims-card-gray"><div class="fims-stat-top"><span class="fims-stat-label">Pending Release</span></div><div class="fims-stat-value" data-kpi="PENDING">0</div></div>
-            <div class="fims-stat-card fims-card-green"><div class="fims-stat-top"><span class="fims-stat-label">Released</span></div><div class="fims-stat-value" data-kpi="RELEASED">0</div></div>
-            <div class="fims-stat-card fims-card-indigo"><div class="fims-stat-top"><span class="fims-stat-label">Acknowledged</span></div><div class="fims-stat-value" data-kpi="ACKNOWLEDGED">0</div></div>
-            <div class="fims-stat-card fims-card-amber"><div class="fims-stat-top"><span class="fims-stat-label">Stale (&gt;180 days)</span></div><div class="fims-stat-value" data-kpi="STALE">0</div></div>
-            <div class="fims-stat-card fims-card-violet"><div class="fims-stat-top"><span class="fims-stat-label">Return Paid DVs</span></div><div class="fims-stat-value" data-kpi="DV_RETURNED">0</div></div>
-        </div>
-
-        <div class="fims-table-panel" style="border-radius:var(--fims-radius-lg) var(--fims-radius-lg) 0 0;border-bottom:none;margin-bottom:0">
-            <div class="fims-toolbar">
-                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-                    <select class="fims-select fims-input-sm" id="regionFilterDept" style="width:200px"><option value="">All Regions/Depts</option></select>
-                    <select class="fims-select fims-input-sm" id="regionFilterStatus" style="width:150px">
-                        <option value="">Status: All</option>
-                        <option value="PENDING">Pending</option>
-                        <option value="RELEASED">Released</option>
-                        <option value="UNCLAIMED">Unclaimed</option>
-                    </select>
-                    <div class="fims-search-wrap">
-                        <svg class="fims-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                        <input type="text" class="fims-input fims-input-sm" id="regionFilterSearch" placeholder="Check No. or Payee" style="width:190px">
-                    </div>
-                </div>
-                <div style="display:flex;gap:8px;">
-                    <button type="button" class="fims-btn fims-btn-primary fims-btn-sm" id="regionNewReleaseBtn"><i class="fas fa-plus mr-1"></i>New Release</button>
-                    <button type="button" class="fims-btn fims-btn-outline fims-btn-sm" id="regionMonthlyNoticeBtn"><i class="fas fa-envelope mr-1"></i>Send Monthly Notice</button>
-                </div>
-            </div>
-        </div>
-
-        <div class="fims-tabs-underline mb-0" id="regionSubTabs" style="border-radius:0;border-top:none;">
-            <button class="fims-tab-underline active" data-sub-target="regionTrackingPane">Check Tracking</button>
-            <button class="fims-tab-underline" data-sub-target="regionAckPane">Acknowledgment</button>
-            <button class="fims-tab-underline" data-sub-target="regionEmailLogPane">Email Log</button>
-            <button class="fims-tab-underline" data-sub-target="regionDvPane">Return Paid DVs</button>
-        </div>
-
-        <div class="fims-table-panel" style="border-radius:0 0 var(--fims-radius-lg) var(--fims-radius-lg)">
-            <div class="fims-tab-underline-content active" id="regionTrackingPane">
-                <div class="fims-table-wrap">
-                    <table class="fims-table" id="regionTrackingTable">
+                    <table class="fims-table" id="relAckTable">
                         <thead>
                             <tr>
-                                <th>#</th><th>Check No.</th><th>Check Date</th><th>Payee</th><th class="text-right">Amount</th>
-                                <th>Region/Dept</th><th>Claimant</th><th>Release Date</th><th class="text-center">Status</th>
-                                <th>Days Outstanding</th><th class="text-center" style="width:70px">Actions</th>
+                                <th>#</th><th>Check No.</th><th>Payee</th><th class="text-right">Amount</th><th>Type</th><th>Claimant / Region</th>
+                                <th>Release Date</th><th>Acknowledgment Date</th><th>ID / Submitted</th>
                             </tr>
-                        </thead>
-                        <tbody><tr class="fims-empty"><td colspan="11">No records.</td></tr></tbody>
-                    </table>
-                </div>
-            </div>
-            <div class="fims-tab-underline-content" id="regionAckPane" style="display:none">
-                <div class="fims-table-wrap">
-                    <table class="fims-table" id="regionAckTable">
-                        <thead>
-                            <tr>
-                                <th>#</th><th>Check No.</th><th>Payee</th><th class="text-right">Amount</th><th>Region/Dept</th>
-                                <th>Claimant</th><th>Release Date</th><th>Acknowledgment Date</th><th>ID Submitted</th><th class="text-center" style="width:70px">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody><tr class="fims-empty"><td colspan="10">No records.</td></tr></tbody>
-                    </table>
-                </div>
-            </div>
-            <div class="fims-tab-underline-content" id="regionEmailLogPane" style="display:none">
-                <div class="fims-table-wrap">
-                    <table class="fims-table" id="regionEmailLogTable">
-                        <thead>
-                            <tr><th>#</th><th>Sent Date</th><th>Region/Unit</th><th>Recipient Email</th><th>Checks</th><th class="text-right">Total Amount</th><th>Sent By</th><th class="text-center">Status</th><th class="text-center" style="width:70px">Actions</th></tr>
                         </thead>
                         <tbody><tr class="fims-empty"><td colspan="9">No records.</td></tr></tbody>
                     </table>
                 </div>
             </div>
-            <div class="fims-tab-underline-content" id="regionDvPane" style="display:none">
+            <div class="fims-tab-underline-content" id="relEmailLogPane" style="display:none">
                 <div class="fims-table-wrap">
-                    <table class="fims-table" id="regionDvTable">
+                    <table class="fims-table" id="relEmailLogTable">
+                        <thead>
+                            <tr><th>#</th><th>Check No. / Region</th><th>Recipient Email</th><th>Checks</th><th class="text-right">Total Amount</th><th>Sent At</th><th>Sent By</th><th class="text-center">Status</th></tr>
+                        </thead>
+                        <tbody><tr class="fims-empty"><td colspan="8">No records.</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="fims-tab-underline-content" id="relDvPane" style="display:none">
+                <div class="fims-table-wrap">
+                    <table class="fims-table" id="relDvTable">
                         <thead>
                             <tr>
                                 <th>#</th><th>Check No.</th><th>DV Reference</th><th>Payee</th><th class="text-right">Amount</th>
@@ -426,20 +360,16 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
         <div class="fims-table-panel" style="border-radius:0 0 var(--fims-radius-lg) var(--fims-radius-lg)">
             <div class="fims-panel-header">
                 <div class="fims-panel-title">Cancelled Checks</div>
-                <div style="display:flex;gap:8px;">
-                    <button type="button" class="fims-btn fims-btn-outline fims-btn-sm" id="cancelReportsBtn"><i class="fas fa-file-alt mr-1"></i>Reports</button>
-                    <button type="button" class="fims-btn fims-btn-danger fims-btn-sm" id="cancelCheckBtn"><i class="fas fa-ban mr-1"></i>Cancel Check</button>
-                </div>
             </div>
             <div class="fims-table-wrap">
                 <table class="fims-table" id="cancelTable">
                     <thead>
                         <tr>
                             <th>#</th><th>Check No.</th><th>Bank / Account</th><th>Payee</th><th class="text-right">Amount</th>
-                            <th>Check Date</th><th>Cancelled Date</th><th>Reason</th><th class="text-center">Status</th><th class="text-center" style="width:70px">Actions</th>
+                            <th>Check Date</th><th>Cancelled Date</th><th>Reason</th><th class="text-center">Status</th>
                         </tr>
                     </thead>
-                    <tbody><tr class="fims-empty"><td colspan="10">No records.</td></tr></tbody>
+                    <tbody><tr class="fims-empty"><td colspan="9">No records.</td></tr></tbody>
                 </table>
             </div>
             <div class="fims-pagination" id="cancelPagination"></div>
@@ -518,24 +448,164 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
                         <div class="col-md-6"><label class="fims-label">DV Number <span class="text-danger">*</span></label>
                             <select class="fims-select" id="prepDvSelect"><option value="">Select a DV...</option></select>
                         </div>
+                        <div class="col-md-6"><label class="fims-label">Program</label><input type="text" class="fims-input" id="prepProgram" disabled placeholder="—"></div>
                         <div class="col-md-6"><label class="fims-label">Payee</label><input type="text" class="fims-input" id="prepPayee" disabled></div>
                         <div class="col-md-6"><label class="fims-label">Bank Account <span class="text-danger">*</span></label>
                             <select class="fims-select" id="prepBankAccount"><option value="">Select bank account...</option></select>
                         </div>
                         <div class="col-md-6"><label class="fims-label">Check Date <span class="text-danger">*</span></label><input type="date" class="fims-input" id="prepCheckDate"></div>
                         <div class="col-md-6"><label class="fims-label">Check Number <span class="text-danger">*</span></label>
-                            <select class="fims-select" id="prepCheckNumber" disabled><option value="">Select bank account first...</option></select>
+                            <input type="text" class="fims-input" id="prepCheckNumber" placeholder="Select bank account first..." disabled>
                         </div>
                         <div class="col-md-6"><label class="fims-label">Net Amount</label><input type="text" class="fims-input" id="prepNetAmount" disabled></div>
-                        <div class="col-md-6"><label class="fims-label">Signatory 1 Name</label><input type="text" class="fims-input" id="prepSig1Name"></div>
-                        <div class="col-md-6"><label class="fims-label">Signatory 1 Designation</label><input type="text" class="fims-input" id="prepSig1Desig"></div>
-                        <div class="col-md-6"><label class="fims-label">Signatory 2 Name</label><input type="text" class="fims-input" id="prepSig2Name"></div>
-                        <div class="col-md-6"><label class="fims-label">Signatory 2 Designation</label><input type="text" class="fims-input" id="prepSig2Desig"></div>
+                    </div>
+                    <div class="row g-2 mt-1">
+                        <div class="col-md-6"><label class="fims-label">Signatory 1 Name</label><input type="text" class="fims-input" id="prepSig1Name" placeholder="e.g. JUAN D. DELA CRUZ"></div>
+                        <div class="col-md-6"><label class="fims-label">Signatory 1 Designation</label><input type="text" class="fims-input" id="prepSig1Desig" placeholder="e.g. Manager"></div>
+                    </div>
+                    <div class="row g-2 mt-1">
+                        <div class="col-md-6"><label class="fims-label">Signatory 2 Name</label><input type="text" class="fims-input" id="prepSig2Name" placeholder="e.g. MARIA S. SANTOS"></div>
+                        <div class="col-md-6"><label class="fims-label">Signatory 2 Designation</label><input type="text" class="fims-input" id="prepSig2Desig" placeholder="e.g. Department Manager"></div>
                     </div>
                 </div>
                 <div class="fims-modal-footer">
                     <button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-close="m-prepare-check">Cancel</button>
                     <button type="button" class="fims-btn fims-btn-primary fims-btn-sm" id="prepSaveBtn">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════
+         MODAL: Set Check Status — manual override of fims.checks.status
+         directly from Check Preparation. The Released/Cancellation tabs
+         keep this in sync automatically for the normal release/cancel
+         flows (see CheckProcessingService::syncCheckStatusFromRelease() /
+         cancelCheck()); this is for everything else (ENCASHED/OUTSTANDING/
+         VOIDED, or a manual correction) that nothing else in this module
+         sets on its own.
+    ══════════════════════════════════════════════ -->
+    <div class="fims-modal-overlay" id="m-set-check-status" style="display:none;">
+        <div class="fims-modal-dialog" style="max-width:420px;width:95vw;">
+            <div class="fims-modal-content">
+                <div class="fims-modal-header">
+                    <div><div class="fims-modal-title">Set Check Status</div><p class="fims-modal-subtitle" id="setStatusSubtitle" style="margin:0;font-size:12px;color:var(--fims-text-subtle);"></p></div>
+                    <button class="fims-modal-close" data-close="m-set-check-status">&times;</button>
+                </div>
+                <div class="fims-modal-body">
+                    <label class="fims-label">Status <span class="text-danger">*</span></label>
+                    <select class="fims-select" id="setStatusSelect">
+                        <option value="PREPARED">Prepared</option>
+                        <option value="RELEASED">Released</option>
+                        <option value="ENCASHED">Encashed</option>
+                        <option value="OUTSTANDING">Outstanding</option>
+                        <option value="STALE">Stale</option>
+                        <option value="CANCELLED">Cancelled</option>
+                        <option value="VOIDED">Voided</option>
+                    </select>
+                    <div id="setStatusReasonGroup" style="display:none;margin-top:10px;">
+                        <label class="fims-label">Cancellation Reason <span class="text-danger">*</span></label>
+                        <select class="fims-select" id="setStatusReason">
+                            <option value="LOST">Lost</option>
+                            <option value="DAMAGED">Damaged</option>
+                            <option value="ERROR">Error in Check</option>
+                            <option value="PAYEE_REQUEST">Payee Request</option>
+                            <option value="OTHER">Other</option>
+                        </select>
+                    </div>
+                    <div id="setStatusClaimantGroup" style="display:none;margin-top:10px;">
+                        <label class="fims-label">Claimant Type</label>
+                        <select class="fims-select" id="setStatusClaimantType" style="margin-bottom:8px;">
+                            <option value="PAYEE">Payee</option>
+                            <option value="AUTHORIZED_REP">Authorized Representative</option>
+                            <option value="ORIGINATING_UNIT">Originating Unit</option>
+                        </select>
+                        <label class="fims-label">Quick Pick</label>
+                        <select class="fims-select" id="setStatusClaimantQuickPick" style="margin-bottom:8px;"><option value="">Type manually…</option></select>
+                        <label class="fims-label">Claimant Name</label>
+                        <input type="text" class="fims-input" id="setStatusClaimantName">
+                    </div>
+                </div>
+                <div class="fims-modal-footer">
+                    <button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-close="m-set-check-status">Cancel</button>
+                    <button type="button" class="fims-btn fims-btn-primary fims-btn-sm" id="setStatusSaveBtn">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════
+         MODAL: Set Claimant — edits a release record's claimant name/type
+         after the fact. Mainly for releases created by Check Preparation's
+         "Set Status" shortcut, which has no claimant field of its own and
+         always inserts with claimant_name NULL.
+    ══════════════════════════════════════════════ -->
+    <div class="fims-modal-overlay" id="m-set-claimant" style="display:none;">
+        <div class="fims-modal-dialog" style="max-width:420px;width:95vw;">
+            <div class="fims-modal-content">
+                <div class="fims-modal-header">
+                    <div><div class="fims-modal-title">Set Claimant</div><p class="fims-modal-subtitle" id="setClaimantSubtitle" style="margin:0;font-size:12px;color:var(--fims-text-subtle);"></p></div>
+                    <button class="fims-modal-close" data-close="m-set-claimant">&times;</button>
+                </div>
+                <div class="fims-modal-body">
+                    <div class="row g-2">
+                        <div class="col-md-12" id="setClaimantTypeGroup"><label class="fims-label">Claimant Type</label>
+                            <select class="fims-select" id="setClaimantType">
+                                <option value="PAYEE">Payee</option>
+                                <option value="AUTHORIZED_REP">Authorized Representative</option>
+                                <option value="ORIGINATING_UNIT">Originating Unit</option>
+                            </select>
+                        </div>
+                        <div class="col-md-12">
+                            <label class="fims-label">Quick Pick</label>
+                            <select class="fims-select" id="setClaimantQuickPick"><option value="">Type manually…</option></select>
+                        </div>
+                        <div class="col-md-12"><label class="fims-label" id="setClaimantNameLabel">Claimant Name</label><input type="text" class="fims-input" id="setClaimantName"></div>
+                    </div>
+                </div>
+                <div class="fims-modal-footer">
+                    <button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-close="m-set-claimant">Cancel</button>
+                    <button type="button" class="fims-btn fims-btn-primary fims-btn-sm" id="setClaimantSaveBtn">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════
+         MODAL: Acknowledge Release — captures the ID presented at pickup
+         (type + number) and flips the release to ACKNOWLEDGED. Previously
+         had no UI entry point at all despite the backend already
+         supporting it.
+    ══════════════════════════════════════════════ -->
+    <div class="fims-modal-overlay" id="m-acknowledge-release" style="display:none;">
+        <div class="fims-modal-dialog" style="max-width:420px;width:95vw;">
+            <div class="fims-modal-content">
+                <div class="fims-modal-header">
+                    <div><div class="fims-modal-title">Acknowledge Release</div><p class="fims-modal-subtitle" id="ackSubtitle" style="margin:0;font-size:12px;color:var(--fims-text-subtle);"></p></div>
+                    <button class="fims-modal-close" data-close="m-acknowledge-release">&times;</button>
+                </div>
+                <div class="fims-modal-body">
+                    <div class="row g-2">
+                        <div class="col-md-12"><label class="fims-label">ID Type</label>
+                            <select class="fims-select" id="ackIdType">
+                                <option value="">Select...</option>
+                                <option value="DRIVERS_LICENSE">Driver's License</option>
+                                <option value="PASSPORT">Passport</option>
+                                <option value="UMID">UMID</option>
+                                <option value="SSS_ID">SSS ID</option>
+                                <option value="PHILHEALTH_ID">PhilHealth ID</option>
+                                <option value="VOTERS_ID">Voter's ID</option>
+                                <option value="POSTAL_ID">Postal ID</option>
+                                <option value="COMPANY_ID">Company ID</option>
+                                <option value="OTHER">Other</option>
+                            </select>
+                        </div>
+                        <div class="col-md-12"><label class="fims-label">ID Number</label><input type="text" class="fims-input" id="ackIdNumber"></div>
+                    </div>
+                </div>
+                <div class="fims-modal-footer">
+                    <button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-close="m-acknowledge-release">Cancel</button>
+                    <button type="button" class="fims-btn fims-btn-primary fims-btn-sm" id="ackSaveBtn">Acknowledge</button>
                 </div>
             </div>
         </div>
@@ -761,19 +831,24 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
                         <div class="col-md-6"><label class="fims-label">Amount</label><input type="text" class="fims-input" id="releaseAmount" readonly></div>
                         <div class="col-md-6"><label class="fims-label">Release Type <span class="text-danger">*</span></label>
                             <select class="fims-select" id="releaseType">
-                                <option value="DIRECT">Direct</option>
-                                <option value="EMAIL_NOTICE">Email Notice</option>
+                                <option value="DIRECT">Direct (to claimant)</option>
+                                <option value="EMAIL_NOTICE">Email Notice (to claimant)</option>
+                                <option value="REGION">Region / Department</option>
                             </select>
                         </div>
-                        <div class="col-md-6"><label class="fims-label">Claimant Type</label>
+                        <div class="col-md-6" id="releaseClaimantTypeGroup"><label class="fims-label">Claimant Type</label>
                             <select class="fims-select" id="releaseClaimantType">
                                 <option value="PAYEE">Payee</option>
                                 <option value="AUTHORIZED_REP">Authorized Representative</option>
                                 <option value="ORIGINATING_UNIT">Originating Unit</option>
                             </select>
                         </div>
-                        <div class="col-md-6"><label class="fims-label">Claimant Name</label><input type="text" class="fims-input" id="releaseClaimantName"></div>
+                        <div class="col-md-6" id="releaseDeptGroup" style="display:none;"><label class="fims-label">Region/Department <span class="text-danger">*</span></label>
+                            <select class="fims-select" id="releaseDept"><option value="">Select...</option></select>
+                        </div>
+                        <div class="col-md-6"><label class="fims-label" id="releaseClaimantNameLabel">Claimant Name</label><input type="text" class="fims-input" id="releaseClaimantName"></div>
                         <div class="col-md-6" id="releaseEmailGroup" style="display:none;"><label class="fims-label">Recipient Email <span class="text-danger">*</span></label><input type="email" class="fims-input" id="releaseClaimantEmail" placeholder="claimant@example.com"></div>
+                        <div class="col-md-6" id="releaseRdtfGroup" style="display:none;"><label class="fims-label">RDTF No.</label><input type="text" class="fims-input" id="releaseRdtf"></div>
                         <div class="col-md-6"><label class="fims-label">Release Date</label><input type="date" class="fims-input" id="releaseDate"></div>
                         <div class="col-md-12"><label class="fims-label">Remarks</label><textarea class="fims-input" id="releaseRemarks" rows="2"></textarea></div>
                     </div>
@@ -787,94 +862,52 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
     </div>
 
     <!-- ══════════════════════════════════════════════
-         MODAL: New Region Release (tab 4 primary action)
+         MODAL: Send Notice (unified — Released tab's primary notice action).
+         Scope toggle swaps between a single pending Email-Notice release
+         (claimant case) and a bundled monthly notice to a region/department
+         (region case) — replaces the two separate modals that existed when
+         Tabs 3/4 were separate.
     ══════════════════════════════════════════════ -->
-    <div class="fims-modal-overlay" id="m-region-release" style="display:none;">
+    <div class="fims-modal-overlay" id="m-send-notice" style="display:none;">
         <div class="fims-modal-dialog" style="max-width:720px;width:95vw;">
             <div class="fims-modal-content">
                 <div class="fims-modal-header">
-                    <div><div class="fims-modal-title">New Release to Region/Department</div></div>
-                    <button class="fims-modal-close" data-close="m-region-release">&times;</button>
+                    <div><div class="fims-modal-title">Send Notice</div></div>
+                    <button class="fims-modal-close" data-close="m-send-notice">&times;</button>
                 </div>
                 <div class="fims-modal-body">
+                    <div id="noticeError" class="fims-alert fims-alert-danger" style="display:none;"><div class="fims-alert-body"></div></div>
                     <div class="row g-2">
-                        <div class="col-md-6"><label class="fims-label">Check Number <span class="text-danger">*</span></label><select class="fims-select" id="regionReleaseCheck"><option value="">Select check...</option></select></div>
-                        <div class="col-md-6"><label class="fims-label">Region/Department <span class="text-danger">*</span></label><select class="fims-select" id="regionReleaseDept"><option value="">Select...</option></select></div>
-                        <div class="col-md-6"><label class="fims-label">Release Date</label><input type="date" class="fims-input" id="regionReleaseDate"></div>
-                        <div class="col-md-6"><label class="fims-label">Authorized Representative</label><input type="text" class="fims-input" id="regionReleaseClaimant"></div>
-                        <div class="col-md-6"><label class="fims-label">RDTF No.</label><input type="text" class="fims-input" id="regionReleaseRdtf"></div>
-                        <div class="col-md-12"><label class="fims-label">Remarks</label><textarea class="fims-input" id="regionReleaseRemarks" rows="2"></textarea></div>
-                    </div>
-                </div>
-                <div class="fims-modal-footer">
-                    <button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-close="m-region-release">Cancel</button>
-                    <button type="button" class="fims-btn fims-btn-primary fims-btn-sm" id="regionReleaseSaveBtn">Save</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- ══════════════════════════════════════════════
-         MODAL: Send Email Notice (tab 3 — claimants)
-    ══════════════════════════════════════════════ -->
-    <div class="fims-modal-overlay" id="m-claim-email-notice" style="display:none;">
-        <div class="fims-modal-dialog" style="max-width:640px;width:95vw;">
-            <div class="fims-modal-content">
-                <div class="fims-modal-header">
-                    <div><div class="fims-modal-title">Send Email Notice</div></div>
-                    <button class="fims-modal-close" data-close="m-claim-email-notice">&times;</button>
-                </div>
-                <div class="fims-modal-body">
-                    <div id="claimEmailError" class="fims-alert fims-alert-danger" style="display:none;"><div class="fims-alert-body"></div></div>
-                    <div class="row g-2">
-                        <div class="col-md-12"><label class="fims-label">Pending Notice <span class="text-danger">*</span></label>
-                            <select class="fims-select" id="claimEmailReleaseSelect"><option value="">Select a pending notice...</option></select>
+                        <div class="col-md-12"><label class="fims-label">Notice Scope <span class="text-danger">*</span></label>
+                            <select class="fims-select" id="noticeScope">
+                                <option value="SINGLE">Single Release (Email Notice)</option>
+                                <option value="BULK">Region/Department Bundle (Monthly)</option>
+                            </select>
                         </div>
-                        <div class="col-md-12"><label class="fims-label">Recipient Email <span class="text-danger">*</span></label><input type="email" class="fims-input" id="claimEmailRecipient"></div>
-                        <div class="col-md-12"><label class="fims-label">Additional Message</label><textarea class="fims-input" id="claimEmailMessage" rows="3" placeholder="Optional note to include in the email"></textarea></div>
-                    </div>
-                </div>
-                <div class="fims-modal-footer">
-                    <button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-close="m-claim-email-notice">Cancel</button>
-                    <button type="button" class="fims-btn fims-btn-primary fims-btn-sm" id="claimEmailSendBtn"><i class="fas fa-paper-plane mr-1"></i>Send</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- ══════════════════════════════════════════════
-         MODAL: Send Monthly Notice (tab 4 — regions)
-    ══════════════════════════════════════════════ -->
-    <div class="fims-modal-overlay" id="m-region-email-notice" style="display:none;">
-        <div class="fims-modal-dialog" style="max-width:720px;width:95vw;">
-            <div class="fims-modal-content">
-                <div class="fims-modal-header">
-                    <div><div class="fims-modal-title">Send Monthly Notice</div></div>
-                    <button class="fims-modal-close" data-close="m-region-email-notice">&times;</button>
-                </div>
-                <div class="fims-modal-body">
-                    <div id="regionEmailError" class="fims-alert fims-alert-danger" style="display:none;"><div class="fims-alert-body"></div></div>
-                    <div class="row g-2">
-                        <div class="col-md-6"><label class="fims-label">Region/Department <span class="text-danger">*</span></label>
-                            <select class="fims-select" id="regionEmailDept"><option value="">Select...</option></select>
+                        <div class="col-md-12" id="noticeSingleGroup">
+                            <label class="fims-label">Pending Notice <span class="text-danger">*</span></label>
+                            <select class="fims-select" id="noticeSingleRelease"><option value="">Select a pending notice...</option></select>
                         </div>
-                        <div class="col-md-6"><label class="fims-label">Recipient Email <span class="text-danger">*</span></label><input type="email" class="fims-input" id="regionEmailRecipient"></div>
-                        <div class="col-md-6"><label class="fims-label">Period</label><input type="text" class="fims-input" id="regionEmailPeriod" placeholder="e.g. November 2026"></div>
-                        <div class="col-md-12"><label class="fims-label">Additional Message</label><textarea class="fims-input" id="regionEmailMessage" rows="2" placeholder="Optional note to include in the email"></textarea></div>
+                        <div class="col-md-6" id="noticeBulkDeptGroup" style="display:none;"><label class="fims-label">Region/Department <span class="text-danger">*</span></label>
+                            <select class="fims-select" id="noticeBulkDept"><option value="">Select...</option></select>
+                        </div>
+                        <div class="col-md-6" id="noticeBulkPeriodGroup" style="display:none;"><label class="fims-label">Period</label><input type="text" class="fims-input" id="noticeBulkPeriod" placeholder="e.g. November 2026"></div>
+                        <div class="col-md-6"><label class="fims-label">Recipient Email <span class="text-danger">*</span></label><input type="email" class="fims-input" id="noticeRecipient"></div>
+                        <div class="col-md-12"><label class="fims-label">Additional Message</label><textarea class="fims-input" id="noticeMessage" rows="3" placeholder="Optional note to include in the email"></textarea></div>
                     </div>
-                    <div id="regionEmailPendingWrap" style="display:none;">
+                    <div id="noticeBulkPendingWrap" style="display:none;">
                         <div class="fims-label" style="margin-top:8px;">Checks to include (currently pending for this department)</div>
                         <div class="fims-table-wrap" style="max-height:220px;overflow-y:auto;">
                             <table class="fims-table">
                                 <thead><tr><th>Check No.</th><th>Date</th><th>Payee</th><th class="text-right">Amount</th></tr></thead>
-                                <tbody id="regionEmailPendingBody"></tbody>
+                                <tbody id="noticeBulkPendingBody"></tbody>
                             </table>
                         </div>
                     </div>
                 </div>
                 <div class="fims-modal-footer">
-                    <button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-close="m-region-email-notice">Cancel</button>
-                    <button type="button" class="fims-btn fims-btn-primary fims-btn-sm" id="regionEmailSendBtn"><i class="fas fa-paper-plane mr-1"></i>Send</button>
+                    <button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-close="m-send-notice">Cancel</button>
+                    <button type="button" class="fims-btn fims-btn-primary fims-btn-sm" id="noticeSendBtn"><i class="fas fa-paper-plane mr-1"></i>Send</button>
                 </div>
             </div>
         </div>
@@ -1016,7 +1049,7 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
 
     // ── Top-level module tabs ──
     const initialized = {};
-    const tabPaneIds = { prep: 'cpPrep', registry: 'cpRegistry', claimants: 'cpClaimants', regions: 'cpRegions', cancel: 'cpCancel', raf: 'cpRaf' };
+    const tabPaneIds = { prep: 'cpPrep', registry: 'cpRegistry', released: 'cpReleased', cancel: 'cpCancel', raf: 'cpRaf' };
     document.querySelectorAll('#cpTabNav [data-cp-tab]').forEach(function (btn) {
         btn.addEventListener('click', function () {
             document.querySelectorAll('#cpTabNav .fims-tab-underline').forEach(b => b.classList.remove('active'));
@@ -1050,15 +1083,15 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
     function initTab(tab) {
         if (tab === 'prep') initPrep();
         else if (tab === 'registry') initRegistry();
-        else if (tab === 'claimants') initClaimants();
-        else if (tab === 'regions') initRegions();
+        else if (tab === 'released') initReleased();
         else if (tab === 'cancel') initCancel();
         else if (tab === 'raf') initRaf();
     }
 
-    // Status tabs (Check Preparation) — defaults to the PREPARED tab, same
-    // as TREASURY's check-preparation.php (hidden filter-status input
-    // defaults to 'PREPARED', not "All").
+    // Status tabs (Check Preparation) — defaults to "All" rather than
+    // TREASURY's PREPARED default, so previously-made checks (anything that
+    // has since moved to Released/Cancelled/etc.) stay visible here instead
+    // of silently dropping out of view the moment their status changes.
     function updateBatchPrintVisibility(status) {
         const btn = document.getElementById('prepBatchPrintBtn');
         if (btn) btn.style.display = status === 'PREPARED' ? '' : 'none';
@@ -1071,15 +1104,15 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
             loadPrepChecks();
         });
     });
-    updateBatchPrintVisibility('PREPARED');
+    updateBatchPrintVisibility('');
     document.getElementById('prepFilterBtn')?.addEventListener('click', loadPrepChecks);
     document.getElementById('prepResetBtn')?.addEventListener('click', function () {
         ['prepFilterCheckNo', 'prepFilterDvNo', 'prepFilterPayee', 'prepFilterBank', 'prepFilterDateFrom', 'prepFilterDateTo'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.value = '';
         });
-        document.querySelectorAll('#prepStatusTabs .cp-status-tab').forEach(b => b.classList.toggle('active', b.dataset.status === 'PREPARED'));
-        updateBatchPrintVisibility('PREPARED');
+        document.querySelectorAll('#prepStatusTabs .cp-status-tab').forEach(b => b.classList.toggle('active', b.dataset.status === ''));
+        updateBatchPrintVisibility('');
         loadPrepChecks();
     });
     document.getElementById('prepPrepareBtn')?.addEventListener('click', function () {
@@ -1115,7 +1148,7 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
     const prepSelectedChecks = new Set();
     function loadPrepChecks() {
         const tbody = document.querySelector('#prepChecksTable tbody');
-        fetch(API + '/preparation/checks?' + buildPrepParams().toString(), { headers: authHeaders() })
+        fetch(API + '/preparation/checks?' + buildPrepParams().toString(), { headers: authHeaders(), cache: 'no-store' })
             .then(r => r.json())
             .then(function (json) {
                 const rows = (json && json.data) ? json.data : [];
@@ -1127,7 +1160,7 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
                 }
                 tbody.innerHTML = rows.map(function (r, i) {
                     const printedBadge = r.printed_at ? ' <span class="fims-badge fims-badge-blue" title="Printed ' + escapeHtml(r.printed_at) + '"><i class="fas fa-print"></i></span>' : '';
-                    return '<tr>' +
+                    return '<tr data-row-check-id="' + r.check_id + '">' +
                         '<td><input type="checkbox" class="prep-row-check" data-check-id="' + r.check_id + '"></td>' +
                         '<td>' + (i + 1) + '</td>' +
                         '<td>' + escapeHtml(r.check_number) + printedBadge + '</td>' +
@@ -1136,10 +1169,11 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
                         '<td>' + escapeHtml(r.payee || '') + '</td>' +
                         '<td>' + escapeHtml(r.account_name || '') + '</td>' +
                         '<td class="text-right">' + peso(r.amount) + '</td>' +
-                        '<td class="text-center"><span class="fims-badge">' + escapeHtml(r.status) + '</span></td>' +
-                        '<td class="text-center">' +
-                            '<button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-view-check="' + r.check_id + '" title="View"><i class="fas fa-eye"></i></button> ' +
-                            (r.status === 'PREPARED' ? '<button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-view-check="' + r.check_id + '" title="Print"><i class="fas fa-print"></i></button>' : '') +
+                        '<td class="text-center prep-status-cell"><span class="fims-badge">' + escapeHtml(r.status) + '</span></td>' +
+                        '<td class="text-center prep-actions-cell">' +
+                            '<button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-view-check="' + r.check_id + '" title="View"><i class="fas fa-eye mr-1"></i>View</button> ' +
+                            (r.status === 'PREPARED' ? '<button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-view-check="' + r.check_id + '" title="Print"><i class="fas fa-print mr-1"></i>Print</button> ' : '') +
+                            '<button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-set-status="' + r.check_id + '" title="Set Status"><i class="fas fa-flag mr-1"></i>Set Status</button>' +
                         '</td>' +
                         '</tr>';
                 }).join('');
@@ -1149,6 +1183,9 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
                 // the Print button inside the preview modal itself).
                 tbody.querySelectorAll('[data-view-check]').forEach(function (btn) {
                     btn.addEventListener('click', function () { viewCheck(this.dataset.viewCheck); });
+                });
+                tbody.querySelectorAll('[data-set-status]').forEach(function (btn) {
+                    btn.addEventListener('click', function () { openSetStatusModal(this.dataset.setStatus); });
                 });
                 tbody.querySelectorAll('.prep-row-check').forEach(function (cb) {
                     cb.checked = prepSelectedChecks.has(cb.dataset.checkId);
@@ -1168,6 +1205,88 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
             else prepSelectedChecks.delete(cb.dataset.checkId);
         });
     });
+
+    // ── Set Check Status — manual override; see the modal's own comment. ──
+    let setStatusCheckId = null;
+    function openSetStatusModal(checkId) {
+        const check = prepChecksById[checkId];
+        setStatusCheckId = checkId;
+        document.getElementById('setStatusSubtitle').textContent = check ? ('Check #' + check.check_number) : '';
+        document.getElementById('setStatusSelect').value = check ? check.status : 'PREPARED';
+        document.getElementById('setStatusReason').value = 'OTHER';
+        document.getElementById('setStatusClaimantType').value = 'PAYEE';
+        document.getElementById('setStatusClaimantName').value = '';
+        const names = new Set();
+        if (check && check.payee) names.add(check.payee);
+        if (typeof releasesById === 'object') {
+            Object.values(releasesById).forEach(function (r) { if (r.claimant_name) names.add(r.claimant_name); });
+        }
+        const quickPick = document.getElementById('setStatusClaimantQuickPick');
+        quickPick.innerHTML = '<option value="">Type manually…</option>' +
+            Array.from(names).map(function (n) { return '<option value="' + escapeHtml(n) + '">' + escapeHtml(n) + '</option>'; }).join('');
+        quickPick.value = '';
+        const currentStatus = document.getElementById('setStatusSelect').value;
+        document.getElementById('setStatusReasonGroup').style.display = currentStatus === 'CANCELLED' ? '' : 'none';
+        document.getElementById('setStatusClaimantGroup').style.display = currentStatus === 'RELEASED' ? '' : 'none';
+        openModal('m-set-check-status');
+    }
+    document.getElementById('setStatusSelect')?.addEventListener('change', function () {
+        document.getElementById('setStatusReasonGroup').style.display = this.value === 'CANCELLED' ? '' : 'none';
+        document.getElementById('setStatusClaimantGroup').style.display = this.value === 'RELEASED' ? '' : 'none';
+    });
+    document.getElementById('setStatusClaimantQuickPick')?.addEventListener('change', function () {
+        if (this.value) document.getElementById('setStatusClaimantName').value = this.value;
+    });
+    document.getElementById('setStatusSaveBtn')?.addEventListener('click', function () {
+        const btn = this;
+        const checkId = setStatusCheckId;
+        const newStatus = document.getElementById('setStatusSelect').value;
+        const payload = { status: newStatus };
+        if (newStatus === 'CANCELLED') payload.reason = document.getElementById('setStatusReason').value;
+        if (newStatus === 'RELEASED') {
+            payload.claimant_type = document.getElementById('setStatusClaimantType').value;
+            payload.claimant_name = document.getElementById('setStatusClaimantName').value.trim();
+        }
+        btn.disabled = true;
+        fetch(API + '/preparation/check/' + checkId + '/set-status', {
+            method: 'POST',
+            headers: authHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify(payload),
+        })
+            .then(r => r.json())
+            .then(function (json) {
+                btn.disabled = false;
+                toast(json.message || (json.success ? 'Status updated.' : 'Could not update status.'), !json.success);
+                if (json.success) { closeModal('m-set-check-status'); applyStatusInPlace(checkId, newStatus); }
+            })
+            .catch(function () { btn.disabled = false; toast('Could not reach the server.', true); });
+    });
+
+    // Updates the row's status badge (and Print button visibility) in place
+    // instead of reloading the filtered list — the user explicitly doesn't
+    // want a status change to make the row vanish out from under them just
+    // because it no longer matches whatever status tab happens to be active.
+    function applyStatusInPlace(checkId, newStatus) {
+        const check = prepChecksById[checkId];
+        if (check) check.status = newStatus;
+        const row = document.querySelector('#prepChecksTable tbody tr[data-row-check-id="' + checkId + '"]');
+        if (!row) return;
+        const statusCell = row.querySelector('.prep-status-cell');
+        if (statusCell) statusCell.innerHTML = '<span class="fims-badge">' + escapeHtml(newStatus) + '</span>';
+        const actionsCell = row.querySelector('.prep-actions-cell');
+        if (actionsCell) {
+            actionsCell.innerHTML =
+                '<button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-view-check="' + checkId + '" title="View"><i class="fas fa-eye mr-1"></i>View</button> ' +
+                (newStatus === 'PREPARED' ? '<button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-view-check="' + checkId + '" title="Print"><i class="fas fa-print mr-1"></i>Print</button> ' : '') +
+                '<button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-set-status="' + checkId + '" title="Set Status"><i class="fas fa-flag mr-1"></i>Set Status</button>';
+            actionsCell.querySelectorAll('[data-view-check]').forEach(function (btn) {
+                btn.addEventListener('click', function () { viewCheck(this.dataset.viewCheck); });
+            });
+            actionsCell.querySelectorAll('[data-set-status]').forEach(function (btn) {
+                btn.addEventListener('click', function () { openSetStatusModal(this.dataset.setStatus); });
+            });
+        }
+    }
 
     function fillSelect(selector, items, placeholder) {
         const sel = document.querySelector(selector);
@@ -1613,9 +1732,11 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
         if (err) err.style.display = 'none';
         document.getElementById('prepCashCheck').style.display = 'none';
         document.getElementById('prepPayee').value = '';
+        document.getElementById('prepProgram').value = '';
         document.getElementById('prepNetAmount').value = '';
         const checkNoSel = document.getElementById('prepCheckNumber');
-        checkNoSel.innerHTML = '<option value="">Select bank account first...</option>';
+        checkNoSel.value = '';
+        checkNoSel.placeholder = 'Select bank account first...';
         checkNoSel.disabled = true;
         document.getElementById('prepCheckDate').value = new Date().toISOString().slice(0, 10);
         ['prepSig1Name', 'prepSig1Desig', 'prepSig2Name', 'prepSig2Desig'].forEach(id => {
@@ -1647,6 +1768,7 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
     document.getElementById('prepDvSelect')?.addEventListener('change', function () {
         const dv = prepDvsById[this.value];
         document.getElementById('prepPayee').value = dv ? (dv.claimant_name || '') : '';
+        document.getElementById('prepProgram').value = dv ? (dv.program_names || '') : '';
         document.getElementById('prepNetAmount').value = dv ? peso(dv.net_amount) : '';
         verifyPrepCash();
     });
@@ -1655,25 +1777,34 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
         const checkNoSel = document.getElementById('prepCheckNumber');
         const bankAccountId = this.value;
         verifyPrepCash();
+        checkNoSel.value = '';
         if (!bankAccountId) {
-            checkNoSel.innerHTML = '<option value="">Select bank account first...</option>';
+            checkNoSel.placeholder = 'Select bank account first...';
             checkNoSel.disabled = true;
             return;
         }
-        checkNoSel.innerHTML = '<option value="">Loading...</option>';
+        checkNoSel.placeholder = 'Loading...';
         checkNoSel.disabled = true;
         fetch(API + '/preparation/unused-checks/' + bankAccountId, { headers: authHeaders() })
             .then(r => r.json())
             .then(function (json) {
                 const numbers = (json && json.data) ? json.data : [];
-                checkNoSel.innerHTML = '<option value="">' +
-                    (numbers.length ? 'Select check number...' : 'No unused checks for this account — add a batch in Check Registry') +
-                    '</option>' +
-                    numbers.map(n => '<option value="' + n + '">' + n + '</option>').join('');
-                checkNoSel.disabled = numbers.length === 0;
+                // Only the next number in line (the registry's own ordering —
+                // lowest unused check_number) is shown, not the whole
+                // remaining batch, so checks always get used strictly in
+                // order instead of letting someone pick an arbitrary one out
+                // of sequence. Plain read-only field, not a dropdown — there's
+                // never more than this one value to show.
+                if (!numbers.length) {
+                    checkNoSel.placeholder = 'No unused checks — add a batch in Check Registry';
+                    checkNoSel.disabled = true;
+                    return;
+                }
+                checkNoSel.value = numbers[0];
+                checkNoSel.disabled = true;
             })
             .catch(function () {
-                checkNoSel.innerHTML = '<option value="">Could not load check numbers</option>';
+                checkNoSel.placeholder = 'Could not load check numbers';
             });
     });
 
@@ -1942,10 +2073,9 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
     // TREASURY's bank -> series -> booklet grouping, collapsed to one
     // level since booklet_no already carries the series context. Rows with
     // no booklet_no (individually-added checks) fall into their own
-    // "No Booklet" group per bank account rather than being hidden. Each
-    // group gets a stable absolute `id` (its index in regGroups) so its
-    // expand state and its own inner check-list page survive independently
-    // of which outer (booklet) page is currently showing.
+    // "No Booklet" group per bank account rather than being hidden. This
+    // tab shows only these booklet/batch-level summaries — never the
+    // individual check rows within a booklet.
     function groupRegistryRows(rows) {
         const groups = [];
         const index = {};
@@ -1955,7 +2085,7 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
                 index[key] = {
                     id: groups.length, account_name: r.account_name, bank_name: r.bank_name,
                     booklet_no: r.booklet_no || null, check_series: r.check_series,
-                    department_type: r.department_type, rows: [], expanded: false, leafPage: 1,
+                    department_type: r.department_type, rows: [],
                 };
                 groups.push(index[key]);
             }
@@ -1970,13 +2100,8 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
         return Object.keys(counts).map(function (status) { return counts[status] + ' ' + status.charAt(0) + status.slice(1).toLowerCase(); }).join(', ');
     }
 
-    // Two independent levels of pagination, both client-side (no refetch):
-    // REG_GROUPS_PER_PAGE paginates the outer list of booklet groups;
-    // REG_LEAF_PAGE_SIZE paginates the individual checks *within* one
-    // expanded group, so opening a 2000-check booklet doesn't dump 2000
-    // rows at once.
+    // Client-side pagination (no refetch) over the booklet/batch groups.
     const REG_GROUPS_PER_PAGE = 20;
-    const REG_LEAF_PAGE_SIZE = 20;
     let regGroups = [];
     let regPage = 1;
 
@@ -1989,7 +2114,7 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
             }).catch(() => {});
 
         const tbody = document.querySelector('#registryTable tbody');
-        tbody.innerHTML = '<tr class="fims-empty"><td colspan="11">Loading…</td></tr>';
+        tbody.innerHTML = '<tr class="fims-empty"><td colspan="7">Loading…</td></tr>';
         fetch(API + '/registry/list?' + buildRegistryParams().toString(), { headers: authHeaders() })
             .then(r => r.json())
             .then(function (json) {
@@ -1998,65 +2123,16 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
                 regPage = 1;
                 renderRegistryPage();
             })
-            .catch(() => { tbody.innerHTML = '<tr class="fims-empty"><td colspan="11">Could not reach the server.</td></tr>'; });
+            .catch(() => { tbody.innerHTML = '<tr class="fims-empty"><td colspan="7">Could not reach the server.</td></tr>'; });
     }
 
-    // Builds the nested check-list table for one group's *current* leaf
-    // page, plus its own mini pager if it has more than one page.
-    function renderGroupContentHtml(g) {
-        const lastPage = Math.max(1, Math.ceil(g.rows.length / REG_LEAF_PAGE_SIZE));
-        g.leafPage = Math.min(Math.max(1, g.leafPage), lastPage);
-        const start = (g.leafPage - 1) * REG_LEAF_PAGE_SIZE;
-        const pageRows = g.rows.slice(start, start + REG_LEAF_PAGE_SIZE);
-
-        const rowsHtml = pageRows.map(function (r) {
-            const badgeClass = REGISTRY_STATUS_BADGE[r.current_status] || 'fims-badge-gray';
-            return '<tr>' +
-                '<td>' + escapeHtml(r.check_number) + '</td>' +
-                '<td>' + escapeHtml(r.entry_date || '') + '</td>' +
-                '<td>' + escapeHtml(r.entry_type || '') + '</td>' +
-                '<td>' + escapeHtml(r.account_number || '') + '</td>' +
-                '<td class="text-center"><span class="fims-badge ' + badgeClass + '">' + escapeHtml(r.current_status) + '</span></td>' +
-                '<td class="text-center"><button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-update-status="' + r.register_entry_id + '" title="Update Status"><i class="fas fa-pen"></i></button></td>' +
-                '</tr>';
-        }).join('');
-
-        let pager = '';
-        if (lastPage > 1) {
-            const pages = [];
-            for (let i = Math.max(1, g.leafPage - 2); i <= Math.min(lastPage, g.leafPage + 2); i++) {
-                pages.push('<button type="button" class="fims-page-btn' + (i === g.leafPage ? ' active' : '') + '" data-leaf-page="' + i + '">' + i + '</button>');
-            }
-            pager = '<div class="reg-group-pager" data-group-id="' + g.id + '" style="margin-top:6px;display:flex;align-items:center;gap:4px;">' +
-                '<span style="font-size:11px;color:var(--fims-text-subtle);margin-right:6px;">' + g.rows.length + ' check(s)</span>' +
-                '<button type="button" class="fims-page-btn" data-leaf-page="' + (g.leafPage - 1) + '"' + (g.leafPage === 1 ? ' disabled' : '') + '>‹</button>' +
-                pages.join('') +
-                '<button type="button" class="fims-page-btn" data-leaf-page="' + (g.leafPage + 1) + '"' + (g.leafPage === lastPage ? ' disabled' : '') + '>›</button>' +
-                '</div>';
-        }
-
-        return '<table class="fims-table reg-group-table" style="margin:0;"><thead><tr>' +
-            '<th>Check No.</th><th>Entry Date</th><th>Entry Type</th><th>Account No.</th><th class="text-center">Status</th><th class="text-center">Actions</th>' +
-            '</tr></thead><tbody>' + rowsHtml + '</tbody></table>' + pager;
-    }
-
-    function wireGroupContentEvents(contentCell, g) {
-        contentCell.querySelectorAll('[data-update-status]').forEach(function (btn) {
-            btn.addEventListener('click', function () { openUpdateStatusModal(this.dataset.updateStatus); });
-        });
-        contentCell.querySelectorAll('[data-leaf-page]').forEach(function (btn) {
-            btn.addEventListener('click', function () {
-                g.leafPage = parseInt(this.dataset.leafPage, 10);
-                contentCell.innerHTML = renderGroupContentHtml(g);
-                wireGroupContentEvents(contentCell, g);
-            });
-        });
-    }
-
+    // Plain booklet/batch summary rows — no per-check list underneath
+    // (each row is just its booklet_no/series/bank/dept + a check count and
+    // a status breakdown, not expandable).
     function renderRegistryPage() {
         const tbody = document.querySelector('#registryTable tbody');
         if (!regGroups.length) {
-            tbody.innerHTML = '<tr class="fims-empty"><td colspan="11">No records.</td></tr>';
+            tbody.innerHTML = '<tr class="fims-empty"><td colspan="7">No records.</td></tr>';
             renderRegistryPagination();
             return;
         }
@@ -2065,48 +2141,20 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
         const start = (regPage - 1) * REG_GROUPS_PER_PAGE;
         const pageGroups = regGroups.slice(start, start + REG_GROUPS_PER_PAGE);
 
-        tbody.innerHTML = pageGroups.map(function (g) {
+        tbody.innerHTML = pageGroups.map(function (g, i) {
             const bankLabel = g.account_name
                 ? escapeHtml(g.account_name) + (g.bank_name ? ' — ' + escapeHtml(g.bank_name) : '')
                 : '—';
-            const caretClass = g.expanded ? 'fa-caret-down' : 'fa-caret-right';
-            const headerRow = '<tr class="reg-group-header" data-group-id="' + g.id + '" style="cursor:pointer;background:var(--fims-table-head-bg, #f4f6fb);">' +
-                '<td class="text-center"><i class="fas ' + caretClass + '"></i></td>' +
-                '<td colspan="9"><strong>' + escapeHtml(g.booklet_no || 'No Booklet') + '</strong>' +
-                    ' <span class="fims-badge">' + escapeHtml(g.check_series || '—') + '</span>' +
-                    ' <span style="color:var(--fims-text-subtle);font-size:12px;">' + bankLabel + (g.department_type ? ' • ' + escapeHtml(g.department_type) : '') + '</span>' +
-                    ' <span style="color:var(--fims-text-subtle);font-size:12px;float:right;">' + g.rows.length + ' check(s) — ' + registryGroupSummary(g.rows) + '</span>' +
-                '</td>' +
-                '<td></td>' +
+            return '<tr>' +
+                '<td>' + (start + i + 1) + '</td>' +
+                '<td>' + escapeHtml(g.booklet_no || 'No Booklet') + '</td>' +
+                '<td><span class="fims-badge">' + escapeHtml(g.check_series || '—') + '</span></td>' +
+                '<td>' + bankLabel + '</td>' +
+                '<td>' + escapeHtml(g.department_type || '—') + '</td>' +
+                '<td class="text-center">' + g.rows.length + '</td>' +
+                '<td>' + (registryGroupSummary(g.rows) || '—') + '</td>' +
                 '</tr>';
-            const contentRow = '<tr class="reg-group-content" data-group-content="' + g.id + '" style="display:' + (g.expanded ? '' : 'none') + ';">' +
-                '<td></td><td colspan="10" style="padding:8px 8px 8px 24px;background:var(--fims-surface-subtle, #fafbfe);"></td>' +
-                '</tr>';
-            return headerRow + contentRow;
         }).join('');
-
-        tbody.querySelectorAll('.reg-group-content').forEach(function (tr) {
-            const g = regGroups[parseInt(tr.dataset.groupContent, 10)];
-            const cell = tr.querySelector('td:last-child');
-            if (g.expanded) {
-                cell.innerHTML = renderGroupContentHtml(g);
-                wireGroupContentEvents(cell, g);
-            }
-        });
-        tbody.querySelectorAll('.reg-group-header').forEach(function (header) {
-            header.addEventListener('click', function () {
-                const g = regGroups[parseInt(this.dataset.groupId, 10)];
-                g.expanded = !g.expanded;
-                const contentRow = tbody.querySelector('[data-group-content="' + g.id + '"]');
-                const cell = contentRow.querySelector('td:last-child');
-                contentRow.style.display = g.expanded ? '' : 'none';
-                this.querySelector('.fa-caret-right, .fa-caret-down').className = 'fas ' + (g.expanded ? 'fa-caret-down' : 'fa-caret-right');
-                if (g.expanded) {
-                    cell.innerHTML = renderGroupContentHtml(g);
-                    wireGroupContentEvents(cell, g);
-                }
-            });
-        });
         renderRegistryPagination();
     }
 
@@ -2190,7 +2238,9 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
             .catch(() => toast('Could not reach the server.', true));
     });
 
-    // ── Claimants ──
+    // ── Released (unified — was two separate tabs/tables, "Released to
+    // Claimants" and "Released to Regions/Departments"; see
+    // CheckProcessingService's docblock for the merge). ──
     function fillCheckSelect(selector, placeholder) {
         fetch(API + '/checks/lookup', { headers: authHeaders() })
             .then(r => r.json())
@@ -2204,129 +2254,8 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
             })
             .catch(() => {});
     }
-
-    document.getElementById('claimRecordReleaseBtn')?.addEventListener('click', function () {
-        document.getElementById('releaseAmount').value = '';
-        document.getElementById('releaseClaimantName').value = '';
-        document.getElementById('releaseClaimantEmail').value = '';
-        document.getElementById('releaseDate').value = '';
-        document.getElementById('releaseRemarks').value = '';
-        document.getElementById('releaseType').value = 'DIRECT';
-        document.getElementById('releaseEmailGroup').style.display = 'none';
-        fillCheckSelect('#releaseCheckNumber', 'Select check...');
-        openModal('m-record-release');
-    });
-    document.getElementById('releaseCheckNumber')?.addEventListener('change', function () {
-        const opt = this.options[this.selectedIndex];
-        document.getElementById('releaseAmount').value = opt && opt.dataset.amount ? peso(opt.dataset.amount) : '';
-    });
-    document.getElementById('releaseType')?.addEventListener('change', function () {
-        document.getElementById('releaseEmailGroup').style.display = this.value === 'EMAIL_NOTICE' ? '' : 'none';
-    });
-    document.getElementById('releaseSaveBtn')?.addEventListener('click', function () {
-        const payload = {
-            check_number: document.getElementById('releaseCheckNumber').value,
-            release_type: document.getElementById('releaseType').value,
-            claimant_type: document.getElementById('releaseClaimantType').value,
-            claimant_name: document.getElementById('releaseClaimantName').value,
-            claimant_email: document.getElementById('releaseClaimantEmail').value,
-            release_date: document.getElementById('releaseDate').value,
-            remarks: document.getElementById('releaseRemarks').value,
-        };
-        fetch(API + '/releases/save', { method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(payload) })
-            .then(r => r.json())
-            .then(json => { toast(json.message || (json.success ? 'Saved.' : 'Could not save.'), !json.success); if (json.success) { closeModal('m-record-release'); loadClaimants(); } });
-    });
-
-    let claimantReleases = [];
-    function loadClaimants() {
-        fetch(API + '/releases', { headers: authHeaders() })
-            .then(r => r.json())
-            .then(function (json) {
-                claimantReleases = (json && json.data) ? json.data : [];
-                const tbody = document.querySelector('#claimantsTable tbody');
-                if (!claimantReleases.length) {
-                    tbody.innerHTML = '<tr class="fims-empty"><td colspan="10">No records.</td></tr>';
-                    return;
-                }
-                tbody.innerHTML = claimantReleases.map(function (r, i) {
-                    return '<tr>' +
-                        '<td>' + (i + 1) + '</td>' +
-                        '<td>' + escapeHtml(r.check_number) + '</td>' +
-                        '<td>' + escapeHtml(r.payee || '') + ' / ' + peso(r.amount) + '</td>' +
-                        '<td>' + escapeHtml(r.claimant_name || '') + '</td>' +
-                        '<td>' + escapeHtml(r.id_type || '') + ' ' + escapeHtml(r.id_number || '') + '</td>' +
-                        '<td>' + escapeHtml(r.release_type) + '</td>' +
-                        '<td>' + escapeHtml(r.release_date || '') + '</td>' +
-                        '<td class="text-center"><span class="fims-badge">' + escapeHtml(r.status) + '</span></td>' +
-                        '<td>' + escapeHtml(r.acknowledgment_date || '') + '</td>' +
-                        '<td class="text-center">—</td>' +
-                        '</tr>';
-                }).join('');
-            })
-            .catch(() => {});
-    }
-    function initClaimants() { loadClaimants(); }
-
-    // "Send Email Notice" — picks from releases that are release_type
-    // EMAIL_NOTICE and still PENDING (i.e. recorded but no notice sent yet).
-    document.getElementById('claimEmailNoticeBtn')?.addEventListener('click', function () {
-        const err = document.getElementById('claimEmailError');
-        if (err) err.style.display = 'none';
-        document.getElementById('claimEmailMessage').value = '';
-        document.getElementById('claimEmailRecipient').value = '';
-        fetch(API + '/releases', { headers: authHeaders() })
-            .then(r => r.json())
-            .then(function (json) {
-                const pending = ((json && json.data) ? json.data : []).filter(r => r.release_type === 'EMAIL_NOTICE' && r.status === 'PENDING');
-                const sel = document.getElementById('claimEmailReleaseSelect');
-                sel.innerHTML = '<option value="">' + (pending.length ? 'Select a pending notice...' : 'No pending email notices') + '</option>' +
-                    pending.map(r => '<option value="' + r.release_id + '" data-email="' + escapeHtml(r.claimant_email || '') + '">' +
-                        escapeHtml(r.check_number) + ' — ' + escapeHtml(r.claimant_name || '') + '</option>').join('');
-            })
-            .catch(() => {});
-        openModal('m-claim-email-notice');
-    });
-    document.getElementById('claimEmailReleaseSelect')?.addEventListener('change', function () {
-        const opt = this.options[this.selectedIndex];
-        document.getElementById('claimEmailRecipient').value = opt ? (opt.dataset.email || '') : '';
-    });
-    document.getElementById('claimEmailSendBtn')?.addEventListener('click', function () {
-        const btn = this;
-        const err = document.getElementById('claimEmailError');
-        const releaseId = document.getElementById('claimEmailReleaseSelect').value;
-        const recipient = document.getElementById('claimEmailRecipient').value.trim();
-        if (!releaseId || !recipient) {
-            if (err) { err.querySelector('.fims-alert-body').textContent = 'Select a pending notice and enter a recipient email.'; err.style.display = ''; }
-            return;
-        }
-        btn.disabled = true;
-        fetch(API + '/releases/' + releaseId + '/send-notice', {
-            method: 'POST',
-            headers: authHeaders({ 'Content-Type': 'application/json' }),
-            body: JSON.stringify({ recipient_email: recipient, message: document.getElementById('claimEmailMessage').value })
-        })
-            .then(r => r.json())
-            .then(function (json) {
-                btn.disabled = false;
-                if (json.success) {
-                    toast(json.message || 'Email notice sent.');
-                    closeModal('m-claim-email-notice');
-                    loadClaimants();
-                } else if (err) {
-                    err.querySelector('.fims-alert-body').textContent = json.message || 'Could not send email.';
-                    err.style.display = '';
-                }
-            })
-            .catch(function () {
-                btn.disabled = false;
-                if (err) { err.querySelector('.fims-alert-body').textContent = 'Could not reach the server. Please try again.'; err.style.display = ''; }
-            });
-    });
-
-    // ── Regions ──
     function fillDepartmentSelect(selector, placeholder) {
-        fetch(API + '/region-release/departments', { headers: authHeaders() })
+        fetch(API + '/releases/departments', { headers: authHeaders() })
             .then(r => r.json())
             .then(function (json) {
                 const rows = (json && json.data) ? json.data : [];
@@ -2339,79 +2268,378 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
             .catch(() => {});
     }
 
-    document.getElementById('regionNewReleaseBtn')?.addEventListener('click', function () {
-        document.getElementById('regionReleaseDate').value = '';
-        document.getElementById('regionReleaseClaimant').value = '';
-        document.getElementById('regionReleaseRdtf').value = '';
-        document.getElementById('regionReleaseRemarks').value = '';
-        fillCheckSelect('#regionReleaseCheck', 'Select check...');
-        fillDepartmentSelect('#regionReleaseDept', 'Select...');
-        openModal('m-region-release');
+    // ── Record Release modal — release type drives which fields apply
+    // (Claimant Type/Email for DIRECT/EMAIL_NOTICE, Department/RDTF for
+    // REGION) — see CheckProcessingService::saveRelease(). ──
+    document.getElementById('relRecordReleaseBtn')?.addEventListener('click', function () {
+        document.getElementById('releaseAmount').value = '';
+        document.getElementById('releaseClaimantName').value = '';
+        document.getElementById('releaseClaimantEmail').value = '';
+        document.getElementById('releaseRdtf').value = '';
+        document.getElementById('releaseDate').value = '';
+        document.getElementById('releaseRemarks').value = '';
+        document.getElementById('releaseType').value = 'DIRECT';
+        document.getElementById('releaseType').dispatchEvent(new Event('change'));
+        fillCheckSelect('#releaseCheckNumber', 'Select check...');
+        fillDepartmentSelect('#releaseDept', 'Select...');
+        openModal('m-record-release');
     });
-    document.getElementById('regionReleaseSaveBtn')?.addEventListener('click', function () {
+    document.getElementById('releaseCheckNumber')?.addEventListener('change', function () {
+        const opt = this.options[this.selectedIndex];
+        document.getElementById('releaseAmount').value = opt && opt.dataset.amount ? peso(opt.dataset.amount) : '';
+    });
+    document.getElementById('releaseType')?.addEventListener('change', function () {
+        const isRegion = this.value === 'REGION';
+        document.getElementById('releaseEmailGroup').style.display = this.value === 'EMAIL_NOTICE' ? '' : 'none';
+        document.getElementById('releaseClaimantTypeGroup').style.display = isRegion ? 'none' : '';
+        document.getElementById('releaseDeptGroup').style.display = isRegion ? '' : 'none';
+        document.getElementById('releaseRdtfGroup').style.display = isRegion ? '' : 'none';
+        document.getElementById('releaseClaimantNameLabel').textContent = isRegion ? 'Authorized Representative' : 'Claimant Name';
+    });
+    document.getElementById('releaseSaveBtn')?.addEventListener('click', function () {
         const payload = {
-            check_number: document.getElementById('regionReleaseCheck').value,
-            department_id: document.getElementById('regionReleaseDept').value,
-            release_date: document.getElementById('regionReleaseDate').value,
-            claimant_name: document.getElementById('regionReleaseClaimant').value,
-            rdtf_no: document.getElementById('regionReleaseRdtf').value,
-            remarks: document.getElementById('regionReleaseRemarks').value,
+            check_number: document.getElementById('releaseCheckNumber').value,
+            release_type: document.getElementById('releaseType').value,
+            claimant_type: document.getElementById('releaseClaimantType').value,
+            claimant_name: document.getElementById('releaseClaimantName').value,
+            claimant_email: document.getElementById('releaseClaimantEmail').value,
+            department_id: document.getElementById('releaseDept').value,
+            rdtf_no: document.getElementById('releaseRdtf').value,
+            release_date: document.getElementById('releaseDate').value,
+            remarks: document.getElementById('releaseRemarks').value,
         };
-        fetch(API + '/region-release/save', { method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(payload) })
+        fetch(API + '/releases/save', { method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(payload) })
             .then(r => r.json())
-            .then(json => { toast(json.message || (json.success ? 'Saved.' : 'Could not save.'), !json.success); if (json.success) { closeModal('m-region-release'); initRegions(); } });
+            .then(json => { toast(json.message || (json.success ? 'Saved.' : 'Could not save.'), !json.success); if (json.success) { closeModal('m-record-release'); initReleased(); } });
     });
 
-    function initRegions() {
-        fetch(API + '/region-release/list', { headers: authHeaders() })
+    const RELEASE_TYPE_LABELS = { DIRECT: 'Direct', EMAIL_NOTICE: 'Email Notice', REGION: 'Region/Dept' };
+    let releasesById = {};
+
+    function loadReleasesList() {
+        fetch(API + '/releases', { headers: authHeaders() })
             .then(r => r.json())
             .then(function (json) {
                 const rows = (json && json.data) ? json.data : [];
-                const tbody = document.querySelector('#regionTrackingTable tbody');
+                releasesById = {};
+                rows.forEach(function (r) { releasesById[r.release_id] = r; });
+                const tbody = document.querySelector('#releasesTable tbody');
                 if (!tbody) return;
                 if (!rows.length) {
-                    tbody.innerHTML = '<tr class="fims-empty"><td colspan="11">No records.</td></tr>';
+                    tbody.innerHTML = '<tr class="fims-empty"><td colspan="10">No records.</td></tr>';
                     return;
                 }
                 tbody.innerHTML = rows.map(function (r, i) {
+                    const isRegion = r.release_type === 'REGION';
+                    return '<tr data-row-release-id="' + r.release_id + '">' +
+                        '<td>' + (i + 1) + '</td>' +
+                        '<td>' + escapeHtml(r.check_number) + '</td>' +
+                        '<td>' + escapeHtml(r.payee || '') + ' / ' + peso(r.amount) + '</td>' +
+                        '<td>' + escapeHtml(RELEASE_TYPE_LABELS[r.release_type] || r.release_type) + '</td>' +
+                        '<td class="rel-claimant-cell">' + escapeHtml(isRegion ? (r.region_dept || '') : (r.claimant_name || '')) + '</td>' +
+                        '<td class="rel-id-cell">' + escapeHtml(isRegion ? (r.rdtf_no || '') : ([r.id_type, r.id_number].filter(Boolean).join(' '))) + '</td>' +
+                        '<td>' + escapeHtml(r.release_date || '') + '</td>' +
+                        '<td class="text-center rel-status-cell"><span class="fims-badge">' + escapeHtml(r.status) + '</span></td>' +
+                        '<td class="rel-ack-cell">' + escapeHtml(r.acknowledgment_date || '') + '</td>' +
+                        '<td class="text-center rel-ack-actions">' + (r.status === 'ACKNOWLEDGED' ? '' : ('<button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-acknowledge="' + r.release_id + '" title="Acknowledge"><i class="fas fa-check-circle mr-1"></i>Acknowledge</button>')) + '</td>' +
+                        '</tr>';
+                }).join('');
+                tbody.querySelectorAll('[data-acknowledge]').forEach(function (btn) {
+                    btn.addEventListener('click', function () { openAcknowledgeModal(this.dataset.acknowledge); });
+                });
+            })
+            .catch(() => {});
+    }
+
+    // ── Set Claimant — edits a release's claimant name/type after the fact
+    // (mainly for releases created by Check Preparation's "Set Status"
+    // shortcut, which leaves claimant_name NULL). Updates in place, same
+    // reasoning as applyStatusInPlace(): don't make the row vanish or
+    // reorder just because one field changed. ──
+    let setClaimantReleaseId = null;
+    function openSetClaimantModal(releaseId) {
+        const release = releasesById[releaseId];
+        const isRegion = release && release.release_type === 'REGION';
+        setClaimantReleaseId = releaseId;
+        document.getElementById('setClaimantSubtitle').textContent = release ? ('Check #' + release.check_number) : '';
+        document.getElementById('setClaimantTypeGroup').style.display = isRegion ? 'none' : '';
+        document.getElementById('setClaimantNameLabel').textContent = isRegion ? 'Authorized Representative' : 'Claimant Name';
+        document.getElementById('setClaimantType').value = (release && release.claimant_type) ? release.claimant_type : 'PAYEE';
+        document.getElementById('setClaimantName').value = release ? (release.claimant_name || '') : '';
+
+        // Quick Pick: the check's own payee, plus any claimant names already
+        // used elsewhere (so a repeat claimant doesn't need re-typing).
+        const names = new Set();
+        if (release && release.payee) names.add(release.payee);
+        Object.values(releasesById).forEach(function (r) { if (r.claimant_name) names.add(r.claimant_name); });
+        const quickPick = document.getElementById('setClaimantQuickPick');
+        quickPick.innerHTML = '<option value="">Type manually…</option>' +
+            Array.from(names).map(function (n) { return '<option value="' + escapeHtml(n) + '">' + escapeHtml(n) + '</option>'; }).join('');
+        quickPick.value = '';
+        openModal('m-set-claimant');
+    }
+    document.getElementById('setClaimantQuickPick')?.addEventListener('change', function () {
+        if (this.value) document.getElementById('setClaimantName').value = this.value;
+    });
+    document.getElementById('setClaimantSaveBtn')?.addEventListener('click', function () {
+        const btn = this;
+        const releaseId = setClaimantReleaseId;
+        const release = releasesById[releaseId];
+        const isRegion = release && release.release_type === 'REGION';
+        const newName = document.getElementById('setClaimantName').value.trim();
+        const payload = { claimant_name: newName };
+        if (!isRegion) payload.claimant_type = document.getElementById('setClaimantType').value;
+        btn.disabled = true;
+        fetch(API + '/releases/' + releaseId + '/set-claimant', {
+            method: 'POST',
+            headers: authHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify(payload),
+        })
+            .then(r => r.json())
+            .then(function (json) {
+                btn.disabled = false;
+                toast(json.message || (json.success ? 'Claimant updated.' : 'Could not update claimant.'), !json.success);
+                if (json.success) {
+                    closeModal('m-set-claimant');
+                    if (release) {
+                        release.claimant_name = newName;
+                        if (!isRegion) release.claimant_type = payload.claimant_type;
+                    }
+                    const row = document.querySelector('#releasesTable tbody tr[data-row-release-id="' + releaseId + '"]');
+                    const cell = row ? row.querySelector('.rel-claimant-cell') : null;
+                    if (cell) cell.textContent = isRegion ? (release.region_dept || '') : newName;
+                }
+            })
+            .catch(function () { btn.disabled = false; toast('Could not reach the server.', true); });
+    });
+
+    // ── Acknowledge Release — had no UI entry point at all before this;
+    // the backend (acknowledgeRelease()) and the Acknowledgment sub-tab's
+    // read-only list already existed, but nothing could actually put a
+    // release into that state. ──
+    let ackReleaseId = null;
+    function openAcknowledgeModal(releaseId) {
+        const release = releasesById[releaseId];
+        ackReleaseId = releaseId;
+        document.getElementById('ackSubtitle').textContent = release ? ('Check #' + release.check_number) : '';
+        document.getElementById('ackIdType').value = (release && release.id_type) ? release.id_type : '';
+        document.getElementById('ackIdNumber').value = release ? (release.id_number || '') : '';
+        openModal('m-acknowledge-release');
+    }
+    document.getElementById('ackSaveBtn')?.addEventListener('click', function () {
+        const btn = this;
+        const releaseId = ackReleaseId;
+        const release = releasesById[releaseId];
+        const idType = document.getElementById('ackIdType').value;
+        const idNumber = document.getElementById('ackIdNumber').value.trim();
+        btn.disabled = true;
+        fetch(API + '/releases/' + releaseId + '/acknowledge', {
+            method: 'POST',
+            headers: authHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({ id_type: idType, id_number: idNumber }),
+        })
+            .then(r => r.json())
+            .then(function (json) {
+                btn.disabled = false;
+                toast(json.message || (json.success ? 'Release acknowledged.' : 'Could not acknowledge release.'), !json.success);
+                if (json.success) {
+                    closeModal('m-acknowledge-release');
+                    const today = new Date().toISOString().slice(0, 10);
+                    if (release) {
+                        release.status = 'ACKNOWLEDGED';
+                        release.acknowledgment_date = today;
+                        if (idType) release.id_type = idType;
+                        if (idNumber) release.id_number = idNumber;
+                    }
+                    const row = document.querySelector('#releasesTable tbody tr[data-row-release-id="' + releaseId + '"]');
+                    if (row) {
+                        const statusCell = row.querySelector('.rel-status-cell');
+                        if (statusCell) statusCell.innerHTML = '<span class="fims-badge">ACKNOWLEDGED</span>';
+                        const ackCell = row.querySelector('.rel-ack-cell');
+                        if (ackCell) ackCell.textContent = today;
+                        const idCell = row.querySelector('.rel-id-cell');
+                        if (idCell && release && release.release_type !== 'REGION') {
+                            idCell.textContent = [release.id_type, release.id_number].filter(Boolean).join(' ');
+                        }
+                        const actionsCell = row.querySelector('.rel-ack-actions');
+                        if (actionsCell) actionsCell.innerHTML = '';
+                    }
+                    loadReleasesAck();
+                }
+            })
+            .catch(function () { btn.disabled = false; toast('Could not reach the server.', true); });
+    });
+
+    function loadReleasesUnclaimed() {
+        fetch(API + '/releases/unclaimed', { headers: authHeaders() })
+            .then(r => r.json())
+            .then(function (json) {
+                const rows = (json && json.data) ? json.data : [];
+                const tbody = document.querySelector('#relUnclaimedTable tbody');
+                if (!tbody) return;
+                if (!rows.length) {
+                    tbody.innerHTML = '<tr class="fims-empty"><td colspan="9">No records.</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = rows.map(function (r, i) {
+                    const isRegion = r.release_type === 'REGION';
                     return '<tr>' +
                         '<td>' + (i + 1) + '</td>' +
                         '<td>' + escapeHtml(r.check_number) + '</td>' +
-                        '<td>' + escapeHtml(r.check_date || '') + '</td>' +
-                        '<td>' + escapeHtml(r.payee || '') + '</td>' +
-                        '<td class="text-right">' + peso(r.amount) + '</td>' +
-                        '<td>' + escapeHtml(r.region_dept || '') + '</td>' +
-                        '<td>' + escapeHtml(r.claimant_name || '') + '</td>' +
-                        '<td>' + escapeHtml(r.release_date || '') + '</td>' +
+                        '<td>' + escapeHtml(r.payee || '') + ' / ' + peso(r.amount) + '</td>' +
+                        '<td>' + escapeHtml(RELEASE_TYPE_LABELS[r.release_type] || r.release_type) + '</td>' +
+                        '<td>' + escapeHtml(isRegion ? (r.region_dept || '') : (r.claimant_name || '')) + '</td>' +
                         '<td class="text-center"><span class="fims-badge">' + escapeHtml(r.status) + '</span></td>' +
-                        '<td>' + (r.days_outstanding != null ? r.days_outstanding : '—') + '</td>' +
-                        '<td class="text-center">—</td>' +
+                        '<td>' + (r.days_since_prep != null ? r.days_since_prep : '—') + '</td>' +
+                        '<td>' + escapeHtml(r.last_follow_up_date || '') + '</td>' +
+                        '<td>' + escapeHtml(r.follow_up_remarks || '') + '</td>' +
                         '</tr>';
                 }).join('');
             })
             .catch(() => {});
     }
 
-    // "Send Monthly Notice" — bundles every currently-PENDING release for the
-    // chosen department into one email (see
-    // CheckProcessingService::sendRegionReleaseNotice()).
-    document.getElementById('regionMonthlyNoticeBtn')?.addEventListener('click', function () {
-        const err = document.getElementById('regionEmailError');
+    function loadReleasesAck() {
+        fetch(API + '/releases/acknowledgment-list', { headers: authHeaders() })
+            .then(r => r.json())
+            .then(function (json) {
+                const rows = (json && json.data) ? json.data : [];
+                const tbody = document.querySelector('#relAckTable tbody');
+                if (!tbody) return;
+                if (!rows.length) {
+                    tbody.innerHTML = '<tr class="fims-empty"><td colspan="9">No records.</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = rows.map(function (r, i) {
+                    const isRegion = r.release_type === 'REGION';
+                    return '<tr>' +
+                        '<td>' + (i + 1) + '</td>' +
+                        '<td>' + escapeHtml(r.check_number) + '</td>' +
+                        '<td>' + escapeHtml(r.payee || '') + '</td>' +
+                        '<td class="text-right">' + peso(r.amount) + '</td>' +
+                        '<td>' + escapeHtml(RELEASE_TYPE_LABELS[r.release_type] || r.release_type) + '</td>' +
+                        '<td>' + escapeHtml(isRegion ? (r.region_dept || '') : (r.claimant_name || '')) + '</td>' +
+                        '<td>' + escapeHtml(r.release_date || '') + '</td>' +
+                        '<td>' + escapeHtml(r.acknowledgment_date || '') + '</td>' +
+                        '<td>' + escapeHtml(r.id_number || '') + '</td>' +
+                        '</tr>';
+                }).join('');
+            })
+            .catch(() => {});
+    }
+
+    function loadReleasesEmailLog() {
+        fetch(API + '/releases/email-log', { headers: authHeaders() })
+            .then(r => r.json())
+            .then(function (json) {
+                const rows = (json && json.data) ? json.data : [];
+                const tbody = document.querySelector('#relEmailLogTable tbody');
+                if (!tbody) return;
+                if (!rows.length) {
+                    tbody.innerHTML = '<tr class="fims-empty"><td colspan="8">No records.</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = rows.map(function (r, i) {
+                    const isBulk = r.check_number == null;
+                    return '<tr>' +
+                        '<td>' + (i + 1) + '</td>' +
+                        '<td>' + escapeHtml(isBulk ? (r.region_dept || '') : r.check_number) + '</td>' +
+                        '<td>' + escapeHtml(r.recipient_email || '') + '</td>' +
+                        '<td>' + (isBulk ? (r.checks_count ?? '—') : '—') + '</td>' +
+                        '<td class="text-right">' + (isBulk ? peso(r.total_amount) : '—') + '</td>' +
+                        '<td>' + escapeHtml(r.sent_at || '') + '</td>' +
+                        '<td>' + escapeHtml(r.sent_by || '') + '</td>' +
+                        '<td class="text-center"><span class="fims-badge">' + escapeHtml(r.status) + '</span></td>' +
+                        '</tr>';
+                }).join('');
+            })
+            .catch(() => {});
+    }
+
+    function loadReleasesDvMonitoring() {
+        fetch(API + '/releases/dv-monitoring', { headers: authHeaders() })
+            .then(r => r.json())
+            .then(function (json) {
+                const rows = (json && json.data) ? json.data : [];
+                const tbody = document.querySelector('#relDvTable tbody');
+                if (!tbody) return;
+                if (!rows.length) {
+                    tbody.innerHTML = '<tr class="fims-empty"><td colspan="10">No records.</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = rows.map(function (r, i) {
+                    return '<tr>' +
+                        '<td>' + (i + 1) + '</td>' +
+                        '<td>' + escapeHtml(r.check_number) + '</td>' +
+                        '<td>' + escapeHtml(r.dv_reference || '') + '</td>' +
+                        '<td>' + escapeHtml(r.payee || '') + '</td>' +
+                        '<td class="text-right">' + peso(r.amount) + '</td>' +
+                        '<td>' + escapeHtml(r.region_dept || '') + '</td>' +
+                        '<td>' + escapeHtml(r.release_date || '') + '</td>' +
+                        '<td>' + escapeHtml(r.dv_return_date || '') + '</td>' +
+                        '<td>' + (r.days_pending != null ? r.days_pending : '—') + '</td>' +
+                        '<td class="text-center"><span class="fims-badge">' + escapeHtml(r.status) + '</span></td>' +
+                        '</tr>';
+                }).join('');
+            })
+            .catch(() => {});
+    }
+
+    function initReleased() {
+        loadReleasesList();
+        loadReleasesUnclaimed();
+        loadReleasesAck();
+        loadReleasesEmailLog();
+        loadReleasesDvMonitoring();
+        fillDepartmentSelect('#relFilterDept', 'All Regions/Depts');
+    }
+
+    // "Send Notice" — scope toggles between a single pending Email-Notice
+    // release (claimant case) and a bundled monthly notice to a department
+    // (region case) — see CheckProcessingService::sendReleaseNotice() /
+    // sendBulkReleaseNotice().
+    document.getElementById('relSendNoticeBtn')?.addEventListener('click', function () {
+        const err = document.getElementById('noticeError');
         if (err) err.style.display = 'none';
-        document.getElementById('regionEmailRecipient').value = '';
-        document.getElementById('regionEmailPeriod').value = '';
-        document.getElementById('regionEmailMessage').value = '';
-        document.getElementById('regionEmailPendingWrap').style.display = 'none';
-        document.getElementById('regionEmailPendingBody').innerHTML = '';
-        fillDepartmentSelect('#regionEmailDept', 'Select...');
-        openModal('m-region-email-notice');
+        document.getElementById('noticeMessage').value = '';
+        document.getElementById('noticeRecipient').value = '';
+        document.getElementById('noticeBulkPeriod').value = '';
+        document.getElementById('noticeBulkPendingWrap').style.display = 'none';
+        document.getElementById('noticeBulkPendingBody').innerHTML = '';
+        document.getElementById('noticeScope').value = 'SINGLE';
+        document.getElementById('noticeScope').dispatchEvent(new Event('change'));
+        fillDepartmentSelect('#noticeBulkDept', 'Select...');
+        fetch(API + '/releases', { headers: authHeaders() })
+            .then(r => r.json())
+            .then(function (json) {
+                const pending = ((json && json.data) ? json.data : []).filter(r => r.release_type === 'EMAIL_NOTICE' && r.status === 'PENDING');
+                const sel = document.getElementById('noticeSingleRelease');
+                sel.innerHTML = '<option value="">' + (pending.length ? 'Select a pending notice...' : 'No pending email notices') + '</option>' +
+                    pending.map(r => '<option value="' + r.release_id + '" data-email="' + escapeHtml(r.claimant_email || '') + '">' +
+                        escapeHtml(r.check_number) + ' — ' + escapeHtml(r.claimant_name || '') + '</option>').join('');
+            })
+            .catch(() => {});
+        openModal('m-send-notice');
     });
-    document.getElementById('regionEmailDept')?.addEventListener('change', function () {
+    document.getElementById('noticeScope')?.addEventListener('change', function () {
+        const isBulk = this.value === 'BULK';
+        document.getElementById('noticeSingleGroup').style.display = isBulk ? 'none' : '';
+        document.getElementById('noticeBulkDeptGroup').style.display = isBulk ? '' : 'none';
+        document.getElementById('noticeBulkPeriodGroup').style.display = isBulk ? '' : 'none';
+        document.getElementById('noticeBulkPendingWrap').style.display = 'none';
+        document.getElementById('noticeBulkPendingBody').innerHTML = '';
+        document.getElementById('noticeRecipient').value = '';
+    });
+    document.getElementById('noticeSingleRelease')?.addEventListener('change', function () {
+        const opt = this.options[this.selectedIndex];
+        document.getElementById('noticeRecipient').value = opt ? (opt.dataset.email || '') : '';
+    });
+    document.getElementById('noticeBulkDept')?.addEventListener('change', function () {
         const departmentId = this.value;
-        const wrap = document.getElementById('regionEmailPendingWrap');
-        const body = document.getElementById('regionEmailPendingBody');
+        const wrap = document.getElementById('noticeBulkPendingWrap');
+        const body = document.getElementById('noticeBulkPendingBody');
         if (!departmentId) { wrap.style.display = 'none'; body.innerHTML = ''; return; }
-        fetch(API + '/region-release/pending/' + departmentId, { headers: authHeaders() })
+        fetch(API + '/releases/pending/' + departmentId, { headers: authHeaders() })
             .then(r => r.json())
             .then(function (json) {
                 const rows = (json && json.data) ? json.data : [];
@@ -2423,28 +2651,41 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
             })
             .catch(() => { body.innerHTML = '<tr class="fims-empty"><td colspan="4">Could not load pending releases.</td></tr>'; });
     });
-    document.getElementById('regionEmailSendBtn')?.addEventListener('click', function () {
+    document.getElementById('noticeSendBtn')?.addEventListener('click', function () {
         const btn = this;
-        const err = document.getElementById('regionEmailError');
-        const payload = {
-            department_id: document.getElementById('regionEmailDept').value,
-            recipient_email: document.getElementById('regionEmailRecipient').value.trim(),
-            period: document.getElementById('regionEmailPeriod').value,
-            message: document.getElementById('regionEmailMessage').value,
-        };
-        if (!payload.department_id || !payload.recipient_email) {
-            if (err) { err.querySelector('.fims-alert-body').textContent = 'Select a region/department and enter a recipient email.'; err.style.display = ''; }
-            return;
+        const err = document.getElementById('noticeError');
+        const isBulk = document.getElementById('noticeScope').value === 'BULK';
+        const recipient = document.getElementById('noticeRecipient').value.trim();
+        const message = document.getElementById('noticeMessage').value;
+
+        let url, payload;
+        if (isBulk) {
+            const departmentId = document.getElementById('noticeBulkDept').value;
+            if (!departmentId || !recipient) {
+                if (err) { err.querySelector('.fims-alert-body').textContent = 'Select a region/department and enter a recipient email.'; err.style.display = ''; }
+                return;
+            }
+            url = API + '/releases/bulk-send-notice';
+            payload = { department_id: departmentId, recipient_email: recipient, period: document.getElementById('noticeBulkPeriod').value, message: message };
+        } else {
+            const releaseId = document.getElementById('noticeSingleRelease').value;
+            if (!releaseId || !recipient) {
+                if (err) { err.querySelector('.fims-alert-body').textContent = 'Select a pending notice and enter a recipient email.'; err.style.display = ''; }
+                return;
+            }
+            url = API + '/releases/' + releaseId + '/send-notice';
+            payload = { recipient_email: recipient, message: message };
         }
+
         btn.disabled = true;
-        fetch(API + '/region-release/send-notice', { method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(payload) })
+        fetch(url, { method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(payload) })
             .then(r => r.json())
             .then(function (json) {
                 btn.disabled = false;
                 if (json.success) {
-                    toast(json.message || 'Monthly notice sent.');
-                    closeModal('m-region-email-notice');
-                    initRegions();
+                    toast(json.message || 'Notice sent.');
+                    closeModal('m-send-notice');
+                    initReleased();
                 } else if (err) {
                     err.querySelector('.fims-alert-body').textContent = json.message || 'Could not send email.';
                     err.style.display = '';
@@ -2457,7 +2698,25 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
     });
 
     // ── Cancellation ──
-    document.getElementById('cancelCheckBtn')?.addEventListener('click', function () { openModal('m-cancel-check'); });
+    document.getElementById('cancelCheckBtn')?.addEventListener('click', function () {
+        document.getElementById('cancelReason').value = '';
+        document.getElementById('cancelDate').value = '';
+        document.getElementById('cancelDescription').value = '';
+        document.getElementById('cancelIssueReplacement').checked = false;
+        document.getElementById('cancelReplacementBox').style.display = 'none';
+        document.getElementById('cancelNewCheckNo').value = '';
+        document.getElementById('cancelNewCheckDate').value = '';
+        fetch(API + '/cancellation/lookups', { headers: authHeaders() })
+            .then(r => r.json())
+            .then(function (json) {
+                const rows = (json && json.data && json.data.eligible_checks) ? json.data.eligible_checks : [];
+                const sel = document.getElementById('cancelCheckSelect');
+                sel.innerHTML = '<option value="">Select a check to cancel...</option>' +
+                    rows.map(c => '<option value="' + c.check_id + '">' + escapeHtml(c.check_number) + ' — ' + escapeHtml(c.payee || '') + ' (' + escapeHtml(c.status) + ')</option>').join('');
+            })
+            .catch(() => {});
+        openModal('m-cancel-check');
+    });
     document.getElementById('cancelIssueReplacement')?.addEventListener('change', function () {
         document.getElementById('cancelReplacementBox').style.display = this.checked ? 'flex' : 'none';
     });
@@ -2476,6 +2735,35 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
             .then(json => { toast(json.message || (json.success ? 'Cancelled.' : 'Could not process.'), !json.success); if (json.success) { closeModal('m-cancel-check'); initCancel(); } });
     });
 
+    function loadCancellationList() {
+        fetch(API + '/cancellation/list', { headers: authHeaders() })
+            .then(r => r.json())
+            .then(function (json) {
+                const rows = (json && json.data) ? json.data : [];
+                const tbody = document.querySelector('#cancelTable tbody');
+                document.getElementById('cancelListMeta').textContent = rows.length ? (rows.length + ' record(s).') : 'No records.';
+                if (!rows.length) {
+                    tbody.innerHTML = '<tr class="fims-empty"><td colspan="9">No records.</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = rows.map(function (r, i) {
+                    const replacement = r.replacement_check_id ? (' <span class="fims-badge fims-badge-blue" title="Replaced by check ' + escapeHtml(r.replacement_check_number || r.replacement_check_id) + '">Replaced</span>') : '';
+                    return '<tr>' +
+                        '<td>' + (i + 1) + '</td>' +
+                        '<td>' + escapeHtml(r.check_number) + '</td>' +
+                        '<td>' + escapeHtml(r.bank_name || '') + ' — ' + escapeHtml(r.account_number || '') + '</td>' +
+                        '<td>' + escapeHtml(r.payee || '') + '</td>' +
+                        '<td class="text-right">' + peso(r.amount) + '</td>' +
+                        '<td>' + escapeHtml(r.check_date || '') + '</td>' +
+                        '<td>' + escapeHtml(r.cancelled_date || '') + '</td>' +
+                        '<td>' + escapeHtml(r.reason || '') + '</td>' +
+                        '<td class="text-center"><span class="fims-badge">' + escapeHtml(r.status) + '</span>' + replacement + '</td>' +
+                        '</tr>';
+                }).join('');
+            })
+            .catch(() => {});
+    }
+
     function initCancel() {
         fetch(API + '/cancellation/kpis', { headers: authHeaders() })
             .then(r => r.json())
@@ -2486,17 +2774,93 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
                     el.textContent = key === 'cancelled_amount' ? peso(d[key]) : (d[key] ?? 0);
                 });
             }).catch(() => {});
-        fetch(API + '/cancellation/list', { headers: authHeaders() })
+        fetch(API + '/cancellation/lookups', { headers: authHeaders() })
             .then(r => r.json())
-            .then(json => renderEmptyNotice(document.querySelector('#cancelTable tbody'), json, 10))
+            .then(json => fillSelect('#cancelFilterBank', json.data ? json.data.bank_accounts : [], 'All Banks'))
             .catch(() => {});
+        loadCancellationList();
+    }
+
+    // ── Inventory (RAF) — computed from fims.check_register's own booklet
+    // groupings (same source as Check Registry's summary view), not a
+    // server-rendered static page like TREASURY's original — see
+    // CheckProcessingService::rafGroupsSql()'s comment for why this doesn't
+    // read fims.check_booklets (exists in the schema, but never actually
+    // populated by Add Batch). ──
+    const RAF_STOCK_BADGE = { NORMAL: 'fims-badge-green', LOW_STOCK: 'fims-badge-red' };
+
+    function buildRafParams() {
+        const params = new URLSearchParams();
+        const fiscalYear = document.getElementById('rafFilterYear')?.value;
+        const bankAccountId = document.getElementById('rafFilterBank')?.value;
+        const lowStock = document.getElementById('rafFilterLowStock')?.value;
+        const search = document.getElementById('rafFilterSearch')?.value?.trim();
+        if (fiscalYear) params.set('fiscal_year', fiscalYear);
+        if (bankAccountId) params.set('bank_account_id', bankAccountId);
+        if (lowStock) params.set('low_stock', lowStock);
+        if (search) params.set('search', search);
+        return params;
+    }
+
+    function loadRaf() {
+        fetch(API + '/raf/summary', { headers: authHeaders() })
+            .then(r => r.json())
+            .then(json => {
+                const d = json.data || {};
+                document.querySelectorAll('#rafKpiCards [data-kpi]').forEach(el => { el.textContent = d[el.dataset.kpi] ?? 0; });
+            }).catch(() => {});
+
+        const tbody = document.querySelector('#rafTable tbody');
+        tbody.innerHTML = '<tr class="fims-empty"><td colspan="11">Loading…</td></tr>';
+        fetch(API + '/raf/list?' + buildRafParams().toString(), { headers: authHeaders() })
+            .then(r => r.json())
+            .then(function (json) {
+                const rows = (json && json.data) ? json.data : [];
+                if (!rows.length) {
+                    tbody.innerHTML = '<tr class="fims-empty"><td colspan="11">No records — check register has no booklets yet.</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = rows.map(function (r) {
+                    const badgeClass = RAF_STOCK_BADGE[r.stock_status] || 'fims-badge-gray';
+                    const bankLabel = r.account_name ? escapeHtml(r.account_name) + (r.bank_name ? ' — ' + escapeHtml(r.bank_name) : '') : '—';
+                    return '<tr>' +
+                        '<td>' + escapeHtml(r.booklet_no || 'No Booklet') + '</td>' +
+                        '<td><span class="fims-badge">' + escapeHtml(r.check_series || '—') + '</span></td>' +
+                        '<td>' + escapeHtml(r.fiscal_year || '—') + '</td>' +
+                        '<td>' + escapeHtml(r.start_check_no) + ' – ' + escapeHtml(r.end_check_no) + '</td>' +
+                        '<td class="text-center">' + r.received + '</td>' +
+                        '<td class="text-center">' + r.issued + '</td>' +
+                        '<td class="text-center">' + r.cancelled + '</td>' +
+                        '<td class="text-center">' + r.remaining + '</td>' +
+                        '<td>' + escapeHtml(r.last_entry || '—') + '</td>' +
+                        '<td class="text-center"><span class="fims-badge ' + badgeClass + '">' + escapeHtml(r.stock_status.replace('_', ' ')) + '</span></td>' +
+                        '<td class="text-center">—</td>' +
+                        '</tr>';
+                }).join('');
+            })
+            .catch(() => { tbody.innerHTML = '<tr class="fims-empty"><td colspan="11">Could not reach the server.</td></tr>'; });
     }
 
     function initRaf() {
-        // check-inventory-raf.php is server-rendered with no AJAX in the source
-        // project (all data injected as JSON on load). With no treasury schema
-        // to query yet, the table already shows its static "no records" row.
+        fetch(API + '/raf/years', { headers: authHeaders() })
+            .then(r => r.json())
+            .then(function (json) {
+                const years = (json && json.data) ? json.data : [];
+                const sel = document.getElementById('rafFilterYear');
+                sel.innerHTML = '<option value="">Fiscal Year: All</option>' +
+                    years.map(y => '<option value="' + y + '">' + y + '</option>').join('');
+            })
+            .catch(() => {});
+        fetch(API + '/preparation/bank-accounts', { headers: authHeaders() })
+            .then(r => r.json()).then(json => fillSelect('#rafFilterBank', json.data, 'All Banks')).catch(() => {});
+        loadRaf();
     }
+    ['rafFilterYear', 'rafFilterBank', 'rafFilterLowStock'].forEach(function (id) {
+        document.getElementById(id)?.addEventListener('change', loadRaf);
+    });
+    document.getElementById('rafFilterSearch')?.addEventListener('keyup', function (e) {
+        if (e.key === 'Enter') loadRaf();
+    });
 
     // First tab is active by default on page load.
     initTab('prep');
