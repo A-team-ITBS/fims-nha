@@ -11,9 +11,9 @@ use PHPMaker2024\FIMS as App;
  * check-released-regions, check-cancellation-replacements, check-inventory-raf).
  *
  * The tables this module needs exist in the `fims` schema
- * (_assets/sql/01 - fims/01 - table/26 through 33 — bank_accounts,
- * check_booklets, checks, check_cancellations, check_claimant_releases,
- * check_claimant_email_log, check_region_releases, check_region_email_log).
+ * (_assets/sql/01 - fims/01 - table/26 through 38 — bank_accounts,
+ * check_booklets, checks, check_cancellations, check_releases,
+ * check_release_email_log).
  *
  * Check Preparation (getBankAccounts/getDvsForPrep/getChecksList/saveCheck)
  * is wired to real queries, including the connection to
@@ -23,24 +23,32 @@ use PHPMaker2024\FIMS as App;
  * same transition/authorization logic that service already enforces for
  * every other caller (Treasury RC or admin only).
  *
- * Released to Claimants (saveRelease/sendReleaseNotice/previewReleaseNotice)
- * and Released to Regions (saveRegionRelease/sendRegionReleaseNotice/
- * previewRegionReleaseNotice/resendRegionEmail) are wired too, including
- * real SMTP sending — same mechanism the TREASURY reference project used
- * (the global App\SendEmail() helper, a thin PHPMailer wrapper in
- * src/phpfn.php; see sendModuleEmail()), not PHPMaker's templated-file
- * Email::load() class, since these notices are per-check dynamic HTML
- * (and, for regions, bundle a variable number of checks into one email),
- * not a fixed single-recipient template. This project's own .env already
- * has real Gmail SMTP credentials configured (Config("SMTP.*")/
- * Config("SENDER_EMAIL")) — sending here will actually dispatch real email.
- * A claimant release only captures an email address when release_type =
- * EMAIL_NOTICE (claimant_email column); region releases always go through
- * a department (department_id, FK to uac.departments) since "Send Monthly
- * Notice" bundles every currently-PENDING release for that department into
- * one email. Email templates are PHP string builders
- * (buildClaimantEmailBody/buildRegionEmailBody), not separate template
- * files or DB rows — same approach TREASURY used.
+ * Released (saveRelease/sendReleaseNotice/previewReleaseNotice/
+ * sendBulkReleaseNotice/previewBulkReleaseNotice/resendBulkReleaseEmail) is
+ * wired too, including real SMTP sending — same mechanism the TREASURY
+ * reference project used (the global App\SendEmail() helper, a thin
+ * PHPMailer wrapper in src/phpfn.php; see sendModuleEmail()), not
+ * PHPMaker's templated-file Email::load() class, since these notices are
+ * per-check dynamic HTML (and, for REGION releases, bundle a variable
+ * number of checks into one email), not a fixed single-recipient template.
+ * This project's own .env already has real Gmail SMTP credentials
+ * configured (Config("SMTP.*")/Config("SENDER_EMAIL")) — sending here will
+ * actually dispatch real email.
+ *
+ * This Released tab/workflow originally shipped as two separate tabs/tables
+ * ("Released to Claimants" and "Released to Regions/Departments", each its
+ * own faithful port of a separate TREASURY page) and was later merged into
+ * one release_type-discriminated table (fims.check_releases — see "01 -
+ * table/38 - fims_check_releases_unified.sql" for exactly which columns
+ * only apply to which release_type and why). release_type = DIRECT/
+ * EMAIL_NOTICE only captures an email address when EMAIL_NOTICE
+ * (claimant_email column); release_type = REGION always goes through a
+ * department (department_id, FK to uac.departments) since "Send Monthly
+ * Notice" bundles every currently-PENDING REGION release for that
+ * department into one email — there's no per-release NOTIFIED step for
+ * that type, it goes PENDING -> RELEASED directly. Email templates are one
+ * shared PHP string builder (buildReleaseEmailBody()), not separate
+ * template files, DB rows, or (post-merge) separate builders per type.
  *
  * Check Registry (getRegistryList/getSeriesList/getBooklets/
  * addRegisterBatch/updateRegisterStatus/getRegistrySummary/getRegistryEntry)
@@ -91,12 +99,16 @@ class CheckProcessingService
     private string $tableBankAccounts      = 'fims.bank_accounts';
     private string $tableCheckRegister     = 'fims.check_register';
     private string $tableCashPosition      = 'fims.cash_position';
+    private string $tableCancellations     = 'fims.check_cancellations';
     private string $tableDv                = 'fims.disbursement_vouchers';
     private string $tableSettingsStatus    = 'fims.settings_status';
-    private string $tableClaimantReleases  = 'fims.check_claimant_releases';
-    private string $tableClaimantEmailLog  = 'fims.check_claimant_email_log';
-    private string $tableRegionReleases    = 'fims.check_region_releases';
-    private string $tableRegionEmailLog    = 'fims.check_region_email_log';
+    // Unified Tab 3+4 ("Released to Claimants" / "Released to Regions") —
+    // see "01 - table/38 - fims_check_releases_unified.sql" for why these
+    // replaced four separate tables (fims.check_claimant_releases,
+    // fims.check_claimant_email_log, fims.check_region_releases,
+    // fims.check_region_email_log).
+    private string $tableReleases          = 'fims.check_releases';
+    private string $tableReleaseEmailLog   = 'fims.check_release_email_log';
     private string $tableDepartments       = 'uac.departments';
 
     private const REGISTER_STATUSES   = ['UNUSED', 'ISSUED', 'ENCASHED', 'OUTSTANDING', 'CANCELLED', 'VOIDED', 'SPOILED', 'STALE'];
@@ -166,28 +178,53 @@ class CheckProcessingService
         return ['success' => false, 'message' => is_string($result) && $result !== '' ? $result : 'Unknown SMTP error.'];
     }
 
-    // Official "NOTICE OF AVAILABILITY OF CHECK FOR RELEASE" memo — ported
-    // verbatim from the TREASURY reference project's
-    // CheckReleaseService::_buildEmailBody() (field names adapted to this
-    // project's schema: payee_name -> check_payee, voucher_number ->
-    // dv_number, particulars kept as-is via the fims.disbursement_vouchers
-    // join in fetchClaimantReleaseWithCheck()). Cites the real NHA
+    // Unified notice email — replaces the two near-duplicate builders that
+    // existed when Tabs 3/4 were separate (buildClaimantEmailBody /
+    // buildRegionEmailBody, both ported from TREASURY's
+    // CheckReleaseService::_buildEmailBody() /
+    // CheckRegionReleaseService::buildEmailBody()). $checks is one-or-more
+    // rows (each with check_number, check_date, dv_number, payee, bank_name,
+    // particulars) — a single-element array reproduces the old claimant
+    // single-check email exactly; multiple elements reproduce the old
+    // region bundled-notice email. $recipientLabel is the payee name
+    // (claimant case) or region/department label (region case) underlined
+    // in the subject bar and "in favor of" line. Cites the real NHA
     // Memorandum Circular No. 2024-066 governing check release — this is
-    // the actual document template, not placeholder copy, so the wording
-    // is intentionally kept exactly as TREASURY had it rather than
-    // simplified.
-    private function buildClaimantEmailBody(array $release, string $extraMessage): string
+    // the actual document template, not placeholder copy, so the wording is
+    // intentionally kept exactly as TREASURY had it.
+    //
+    // The two source builders had drifted into slightly different bold/
+    // underline styling for the per-check paragraph (claimant underlined
+    // every value, region only bolded them) — picked the claimant styling
+    // as the one canonical paragraph format applied whether looping over
+    // one check or many, since that divergence was never a deliberate
+    // design choice, just copy-paste drift between the two original pages.
+    private function buildReleaseEmailBody(array $checks, string $recipientLabel, string $extraMessage): string
     {
-        $payee      = htmlspecialchars($release['check_payee'] ?? '');
-        $checkNo    = htmlspecialchars($release['check_number'] ?? "\u{2014}");
-        $dvNo       = htmlspecialchars($release['dv_number'] ?? "\u{2014}");
-        $bankName   = htmlspecialchars($release['bank_name'] ?? '');
-        $particulars = trim((string) ($release['particulars'] ?? ''));
-        $natureOfPayment = $particulars !== '' ? htmlspecialchars($particulars) : str_repeat('&nbsp;', 30);
-        $checkDate  = !empty($release['check_date']) ? date('m/d/Y', strtotime($release['check_date'])) : "\u{2014}";
-        $today      = (new \DateTime('now', new \DateTimeZone('Asia/Manila')))->format('F d, Y');
+        $recipient    = htmlspecialchars($recipientLabel);
+        $today        = (new \DateTime('now', new \DateTimeZone('Asia/Manila')))->format('F d, Y');
         $annexBlank   = str_repeat('&nbsp;', 6);
         $payableBlank = str_repeat('&nbsp;', 45);
+        $natureBlank  = str_repeat('&nbsp;', 30);
+
+        $checkParas = '';
+        foreach ($checks as $c) {
+            $checkNo     = htmlspecialchars($c['check_number'] ?? "\u{2014}");
+            $checkDate   = !empty($c['check_date']) ? date('m/d/Y', strtotime($c['check_date'])) : "\u{2014}";
+            $dvNo        = htmlspecialchars($c['dv_number'] ?? "\u{2014}");
+            $payee       = htmlspecialchars($c['payee'] ?? "\u{2014}");
+            $bankName    = htmlspecialchars($c['bank_name'] ?? '');
+            $particulars = trim((string) ($c['particulars'] ?? ''));
+            $natureOfPayment = $particulars !== '' ? htmlspecialchars($particulars) : $natureBlank;
+            $checkParas .= '
+    <tr><td style="padding-bottom:14px;text-align:justify;line-height:1.7;">
+      Please be informed that ' . ($bankName !== '' ? $bankName : 'the') . ' Check No. <strong><u>' . $checkNo . '</u></strong>
+      dated <strong><u>' . $checkDate . '</u></strong> covered by DV#<strong><u>' . $dvNo . '</u></strong>
+      in favor of <strong><u>' . $payee . '</u></strong> representing payment for
+      <u>' . $natureOfPayment . '</u>
+      is available for release and may be released thru Region.
+    </td></tr>';
+        }
 
         $extraNote = $extraMessage !== ''
             ? '<tr><td style="padding-bottom:14px;"><p style="margin:14px 0 0;font-size:13px;color:#374151;font-style:italic">' . nl2br(htmlspecialchars($extraMessage)) . '</p></td></tr>'
@@ -215,7 +252,7 @@ class CheckProcessingService
       <table width="100%" cellpadding="0" cellspacing="0">
         <tr>
           <td style="font-size:12px;font-weight:bold;width:80px;vertical-align:top;padding-bottom:6px;">SUBJECT</td>
-          <td style="font-size:12px;font-weight:bold;vertical-align:top;padding-bottom:6px;">:&nbsp;&nbsp;NOTICE OF AVAILABILITY OF CHECK FOR RELEASE IN FAVOR OF <u>' . $payee . '</u></td>
+          <td style="font-size:12px;font-weight:bold;vertical-align:top;padding-bottom:6px;">:&nbsp;&nbsp;NOTICE OF AVAILABILITY OF CHECK FOR RELEASE IN FAVOR OF <u>' . $recipient . '</u></td>
         </tr>
       </table>
     </td></tr>
@@ -236,14 +273,8 @@ class CheckProcessingService
       <span style="font-size:13px;">Greetings!</span>
     </td></tr>
 
-    <!-- Body paragraph -->
-    <tr><td style="padding-bottom:14px;text-align:justify;line-height:1.7;">
-      Please be informed that ' . ($bankName ?: 'the') . ' Check No. <strong><u>' . $checkNo . '</u></strong>
-      dated <strong><u>' . $checkDate . '</u></strong> covered by DV#<strong><u>' . $dvNo . '</u></strong>
-      in favor of <strong><u>' . $payee . '</u></strong> representing payment for
-      <u>' . $natureOfPayment . '</u>
-      is available for release and may be released thru Region.
-    </td></tr>
+    <!-- One paragraph per check -->
+    ' . $checkParas . '
 
     <!-- Documentary requirements paragraph -->
     <tr><td style="padding-bottom:14px;text-align:justify;line-height:1.7;">
@@ -300,138 +331,6 @@ class CheckProcessingService
 
     <!-- Attachment notes -->
     <tr><td style="border-top:1px solid #ccc;padding-top:12px;font-size:12px;color:#555;line-height:1.6;">
-      &bull; (Attachment of Annexes referring to the Annexes under NHA MC No. 2024-066 dtd. October 08, 2024)<br>
-      &bull; (Attachment of duly approved DV)
-    </td></tr>
-
-  </table>
-  </td></tr>
-</table>
-</body></html>';
-    }
-
-    // Bundled multi-check monthly notice to a region/department (Tab 4) —
-    // ported verbatim from TREASURY's CheckRegionReleaseService::
-    // buildEmailBody(): one notice paragraph per check, same official memo
-    // wording/citation as the claimant version above.
-    private function buildRegionEmailBody(array $releases, string $regionLabel, string $period, string $extraMessage): string
-    {
-        $region = htmlspecialchars($regionLabel);
-        $annexBlank   = str_repeat('&nbsp;', 6);
-        $payableBlank = str_repeat('&nbsp;', 45);
-        $natureBlank  = str_repeat('&nbsp;', 30);
-
-        $checkParas = '';
-        foreach ($releases as $c) {
-            $checkNo   = htmlspecialchars($c['check_number'] ?? "\u{2014}");
-            $checkDate = !empty($c['check_date']) ? date('F d, Y', strtotime($c['check_date'])) : "\u{2014}";
-            $dvNo      = htmlspecialchars($c['dv_number'] ?? "\u{2014}");
-            $payee     = htmlspecialchars($c['payee'] ?? "\u{2014}");
-            $bankName  = $c['bank_name'] ?? '';
-            $particulars = trim((string) ($c['particulars'] ?? ''));
-            $natureLine = $particulars !== '' ? '<strong>' . htmlspecialchars($particulars) . '</strong>' : '<u>' . $natureBlank . '</u>';
-            $checkParas .= '
-    <tr><td style="padding-bottom:14px;text-align:justify;line-height:1.7;">
-      Please be informed that ' . ($bankName !== '' ? htmlspecialchars($bankName) : 'the') . ' Check No. <strong>' . $checkNo . '</strong> dated <strong>' . $checkDate . '</strong>
-      covered by DV#<strong>' . $dvNo . '</strong> in favor of <strong>' . $payee . '</strong>
-      representing payment for ' . $natureLine . '
-      is available for release and may be released thru Region.
-    </td></tr>';
-        }
-
-        $extraNote = $extraMessage !== ''
-            ? '<tr><td style="padding-bottom:14px;font-size:13px;font-style:italic;">' . nl2br(htmlspecialchars($extraMessage)) . '</td></tr>'
-            : '';
-
-        return '<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<style>
-@media print {
-  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  body { margin: 0; padding: 0; background: white !important; }
-  .outer-wrap { background: white !important; padding: 0 !important; }
-  .inner-wrap { width: 100% !important; max-width: 100% !important; border: none !important; padding: 16px !important; box-shadow: none !important; }
-}
-</style>
-</head>
-<body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#111;">
-<table class="outer-wrap" width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:28px 0;">
-  <tr><td align="center">
-  <table class="inner-wrap" width="620" cellpadding="0" cellspacing="0" style="background:#fff;padding:36px 44px;border:1px solid #ccc;">
-
-    <!-- Subject Bar -->
-    <tr><td style="padding-bottom:4px;border-bottom:1px solid #000;">
-      <table width="100%" cellpadding="0" cellspacing="0">
-        <tr>
-          <td style="font-size:12px;font-weight:bold;width:80px;vertical-align:top;padding-bottom:6px;">SUBJECT</td>
-          <td style="font-size:12px;font-weight:bold;vertical-align:top;padding-bottom:6px;">:&nbsp;&nbsp;NOTICE OF AVAILABILITY OF CHECK FOR RELEASE IN FAVOR OF <u>' . $region . '</u></td>
-        </tr>
-      </table>
-    </td></tr>
-    <tr><td style="padding-bottom:14px;"></td></tr>
-
-    <!-- Date -->
-    <tr><td style="padding-bottom:14px;">
-      <span style="font-size:13px;">Date: <u>' . (new \DateTime('now', new \DateTimeZone('Asia/Manila')))->format('F d, Y') . '</u></span>
-    </td></tr>
-
-    <!-- Attention -->
-    <tr><td style="padding-bottom:6px;">
-      <span style="font-size:13px;">ATTENTION: <strong>Corporate Accountant</strong></span>
-    </td></tr>
-
-    <!-- Greeting -->
-    <tr><td style="padding-bottom:14px;">
-      <span style="font-size:13px;">Greetings!</span>
-    </td></tr>
-
-    <!-- One paragraph per check -->
-    ' . $checkParas . '
-
-    <!-- Paragraph 2 -->
-    <tr><td style="padding-bottom:14px;text-align:justify;line-height:1.7;">
-      Release of the aforementioned check is subject to submission of documentary requirements in
-      accordance with the Updated Guidelines and Procedures on the Release of Checks for Payment of
-      Goods and Services to Stakeholders Representing Current Operating Expenses (COE)/Maintenance
-      and Other Operating Expenses (MOOE) and Capital Expenditures per NHA Memorandum Circular No.
-      2024-066 dated October 08, 2024, kindly refer to the attached Annex
-      <u>' . $annexBlank . '</u>
-      re: Documentary Requirements Pertaining to Release of Check Payable to
-      <u>' . $payableBlank . '</u>
-    </td></tr>
-
-    <!-- Reminder items -->
-    <tr><td style="padding-bottom:10px;line-height:1.7;">
-      Likewise, as a gentle reminder, please be guided of the following:
-    </td></tr>
-    <tr><td style="padding-bottom:14px;text-align:justify;line-height:1.7;padding-left:20px;">
-      a.&nbsp;&nbsp;The said check shall become stale and no longer negotiable after one hundred eighty (180)
-      days from the issue date. Thus, if an unclaimed/outstanding check has become stale despite the
-      Notice of the Availability of check already sent either directly to the proper claimant/payee or
-      through the initiating unit/Department/Regional/Sector Office, it shall be automatically cancelled
-      together with its corresponding Disbursement Vouchers, original copy of which shall be forwarded
-      to the Accounting Department for their appropriate action.
-    </td></tr>
-    <tr><td style="padding-bottom:14px;text-align:justify;line-height:1.7;padding-left:20px;">
-      b.&nbsp;&nbsp;A processing/service fee in the amount of P200.00 per check shall be charged for a
-      replacement of a stale check or change of name of the proper claimant/payee and shall be
-      shouldered by the proper claimant/payee upon request for a replacement of the stale
-      check/change of name of payee. The said processing fee shall cover the cost of the check, and
-      the manhours spent/incidental expenses in the reprocessing of a new Disbursement Voucher and
-      the corresponding check.
-    </td></tr>
-
-    <tr><td style="padding-bottom:6px;">For information and request appropriate action.</td></tr>
-    <tr><td style="padding-bottom:20px;">Kindly acknowledge receipt of this email.</td></tr>
-
-    ' . $extraNote . '
-
-    <tr><td style="padding-bottom:4px;">Thank you.</td></tr>
-    <tr><td style="padding-bottom:4px;">Regards,</td></tr>
-    <tr><td style="padding-bottom:20px;"><strong>Treasury Department</strong></td></tr>
-
-    <tr><td style="border-top:1px solid #ccc;padding-top:12px;font-size:12px;color:#555;line-height:1.8;">
       &bull; (Attachment of Annexes referring to the Annexes under NHA MC No. 2024-066 dtd. October 08, 2024)<br>
       &bull; (Attachment of duly approved DV)
     </td></tr>
@@ -553,9 +452,19 @@ class CheckProcessingService
     public function getDvsForPrep($params)
     {
         $rows = App\ExecuteRowsAssociative(
-            "SELECT dv.dv_id, dv.dv_no, dv.dv_date, dv.claimant_name, dv.net_amount
+            "SELECT dv.dv_id, dv.dv_no, dv.dv_date, dv.claimant_name, dv.net_amount, prog.program_names
              FROM {$this->tableDv} dv
              JOIN {$this->tableSettingsStatus} st ON st.id = dv.status_id
+             LEFT JOIN LATERAL (
+                 -- A DV can cite more than one RFA (fims.budget_allocation.dv_id,
+                 -- allocation_type = 'RFA' — see DisbursementVoucherService::linkRfas()),
+                 -- each with its own program_code, so this is every DISTINCT program
+                 -- name across all of them, not a single value.
+                 SELECT STRING_AGG(DISTINCT p.program_name, ', ' ORDER BY p.program_name) AS program_names
+                 FROM fims.budget_allocation a
+                 JOIN fims.program p ON p.program_code = a.program_code
+                 WHERE a.dv_id = dv.dv_id AND a.allocation_type = 'RFA'
+             ) prog ON TRUE
              WHERE st.status_for = 'disbursement_voucher' AND st.name = 'FOR_TREASURY'
                AND NOT EXISTS (SELECT 1 FROM {$this->tableChecks} c WHERE c.dv_number = dv.dv_no AND c.status <> 'CANCELLED')
              ORDER BY dv.dv_date",
@@ -648,6 +557,139 @@ class CheckProcessingService
         App\Execute("UPDATE {$this->tableChecks} SET printed_at = CURRENT_TIMESTAMP WHERE check_id = {$id}", 'DB');
 
         return $this->ok(['check_id' => $id]);
+    }
+
+    // Direct manual override of fims.checks.status from Check Preparation
+    // itself — syncCheckStatusFromRelease()/cancelCheck() keep status in
+    // sync automatically for the normal Release/Cancel flows, but this lets
+    // Treasury correct it by hand (e.g. a check that bounced back ENCASHED/
+    // OUTSTANDING/VOIDED, states nothing else in this module sets on its
+    // own) without having to go through a release or cancellation record
+    // just to change a label.
+    //
+    // Moving INTO RELEASED or CANCELLED this way also creates/updates the
+    // matching detail row (fims.check_releases / fims.check_cancellations)
+    // — same tables the real Release/Cancel flows write to — so the check
+    // actually shows up in the Released/Cancellation tab too, not just as a
+    // relabeled row sitting only in Check Preparation. The release side
+    // takes $data['claimant_name'] (and ['claimant_type']) from this same
+    // modal's claimant dropdown/field if given — still optional/nullable,
+    // see setReleaseClaimant() to fill it in later if skipped here; the
+    // cancellation side takes $data['reason'] the same way (defaulting to
+    // OTHER if omitted/invalid).
+    public function setCheckStatus($id, $data)
+    {
+        $id     = (int) $id;
+        $status = strtoupper(trim((string) ($data['status'] ?? '')));
+        if (!in_array($status, ['PREPARED', 'RELEASED', 'ENCASHED', 'OUTSTANDING', 'STALE', 'CANCELLED', 'VOIDED'], true)) {
+            return json_encode(["success" => false, "message" => "Invalid status."]);
+        }
+        $check = App\ExecuteRow("SELECT check_id, bank_account_id, check_number FROM {$this->tableChecks} WHERE check_id = {$id}", 'DB');
+        if (!$check) {
+            return json_encode(["success" => false, "message" => "Check not found."]);
+        }
+        $userId = (int) App\CurrentUserID();
+        $registerReason = null;
+
+        App\Execute("BEGIN", "DB");
+        try {
+            App\Execute(
+                "UPDATE {$this->tableChecks} SET status = " . $this->str($status) . ", updated_at = CURRENT_TIMESTAMP WHERE check_id = {$id}",
+                'DB'
+            );
+
+            if ($status === 'RELEASED') {
+                $claimantName = trim((string) ($data['claimant_name'] ?? ''));
+                $claimantType = strtoupper(trim((string) ($data['claimant_type'] ?? '')));
+                if (!in_array($claimantType, ['PAYEE', 'AUTHORIZED_REP', 'ORIGINATING_UNIT'], true)) {
+                    $claimantType = 'PAYEE';
+                }
+                $existing = App\ExecuteRow(
+                    "SELECT release_id FROM {$this->tableReleases} WHERE check_id = {$id} ORDER BY release_id DESC LIMIT 1",
+                    'DB'
+                );
+                if ($existing) {
+                    App\Execute(
+                        "UPDATE {$this->tableReleases}
+                         SET status = 'RELEASED', release_date = COALESCE(release_date, CURRENT_DATE),
+                             claimant_name = COALESCE(" . $this->strOrNull($claimantName ?: null) . ", claimant_name),
+                             claimant_type = " . ($claimantName !== '' ? $this->str($claimantType) : 'claimant_type') . ",
+                             updated_at = CURRENT_TIMESTAMP
+                         WHERE release_id = {$existing['release_id']}",
+                        'DB'
+                    );
+                } else {
+                    App\Execute(
+                        "INSERT INTO {$this->tableReleases} (check_id, release_type, claimant_type, claimant_name, status, release_date, created_by)
+                         VALUES ({$id}, 'DIRECT', " . $this->str($claimantType) . ', ' . $this->strOrNull($claimantName ?: null) . ", 'RELEASED', CURRENT_DATE, {$userId})",
+                        'DB'
+                    );
+                }
+            } elseif ($status === 'CANCELLED') {
+                $reason = strtoupper(trim((string) ($data['reason'] ?? '')));
+                if (!in_array($reason, ['LOST', 'DAMAGED', 'ERROR', 'PAYEE_REQUEST', 'OTHER'], true)) {
+                    $reason = 'OTHER';
+                }
+                $registerReason = $reason;
+                App\Execute(
+                    "INSERT INTO {$this->tableCancellations} (check_id, reason, cancelled_date, cancelled_by)
+                     VALUES ({$id}, " . $this->str($reason) . ", CURRENT_DATE, {$userId})
+                     ON CONFLICT (check_id) DO UPDATE SET reason = EXCLUDED.reason, cancelled_date = EXCLUDED.cancelled_date",
+                    'DB'
+                );
+            }
+
+            // fims.check_register.current_status was never kept in sync with
+            // fims.checks.status for anything past the initial "ISSUED" write
+            // at registration — a check cancelled (or moved to ENCASHED/
+            // OUTSTANDING/STALE/VOIDED) here would silently keep showing
+            // ISSUED in Check Registry/RAF forever. Mirrored here instead of
+            // only at cancellation time, since every one of these statuses
+            // has the exact same staleness problem.
+            $this->syncRegisterStatus((int) $check['bank_account_id'], (string) $check['check_number'], $status, $registerReason);
+
+            App\Execute("COMMIT", "DB");
+        } catch (\Exception $e) {
+            App\Execute("ROLLBACK", "DB");
+            App\LogError("Error in CheckProcessingService::setCheckStatus: " . $e->getMessage());
+
+            return json_encode(["success" => false, "message" => "Internal server error."]);
+        }
+
+        return $this->ok(['check_id' => $id, 'status' => $status]);
+    }
+
+    // fims.checks.status and fims.check_register.current_status use almost
+    // the same vocabulary but not quite — the register has no PREPARED/
+    // RELEASED (a check is simply ISSUED once it's in active use at all) and
+    // additionally has SPOILED (never set from this side). Returns null for
+    // anything with no real register equivalent.
+    private function checkStatusToRegisterStatus(string $checkStatus): ?string
+    {
+        $map = [
+            'PREPARED' => 'ISSUED', 'RELEASED' => 'ISSUED', 'ENCASHED' => 'ENCASHED',
+            'OUTSTANDING' => 'OUTSTANDING', 'STALE' => 'STALE', 'CANCELLED' => 'CANCELLED', 'VOIDED' => 'VOIDED',
+        ];
+
+        return $map[$checkStatus] ?? null;
+    }
+
+    private function syncRegisterStatus(?int $bankAccountId, ?string $checkNumber, string $checkStatus, ?string $cancellationReason = null): void
+    {
+        if (!$bankAccountId || !$checkNumber) {
+            return;
+        }
+        $registerStatus = $this->checkStatusToRegisterStatus($checkStatus);
+        if ($registerStatus === null) {
+            return;
+        }
+        $reasonSql = $cancellationReason !== null ? ', cancellation_reason = ' . $this->str($cancellationReason) : '';
+        App\Execute(
+            "UPDATE {$this->tableCheckRegister}
+             SET current_status = " . $this->str($registerStatus) . "{$reasonSql}, updated_at = CURRENT_TIMESTAMP
+             WHERE bank_account_id = " . (int) $bankAccountId . ' AND check_number = ' . $this->str($checkNumber),
+            'DB'
+        );
     }
 
     // Zips up the local print agent (a tiny local PHP HTTP server — see
@@ -1214,15 +1256,26 @@ BAT;
         return $this->ok(['register_entry_id' => $entryId, 'status' => $status]);
     }
 
-    // ── Check Released to Claimants ──
+    // ── Check Released (unified — was two separate tabs/tables, "Released to
+    // Claimants" and "Released to Regions"; see "01 - table/38 -
+    // fims_check_releases_unified.sql" for the schema-merge reasoning). ──
     public function getReleasesList($params)
     {
+        $where = ['1=1'];
+        $releaseType = strtoupper(trim((string) ($params['release_type'] ?? '')));
+        if (in_array($releaseType, ['DIRECT', 'EMAIL_NOTICE', 'REGION'], true)) {
+            $where[] = 'r.release_type = ' . $this->str($releaseType);
+        }
+        $whereSql = implode(' AND ', $where);
+
         $rows = App\ExecuteRowsAssociative(
             "SELECT r.release_id, c.check_number, c.payee, c.amount,
-                    r.claimant_name, r.claimant_email, r.id_type, r.id_number, r.release_type,
+                    r.release_type, r.claimant_type, r.claimant_name, r.claimant_email, r.id_type, r.id_number,
+                    r.department_id, r.region_dept, r.rdtf_no,
                     r.release_date, r.status, r.acknowledgment_date
-             FROM {$this->tableClaimantReleases} r
+             FROM {$this->tableReleases} r
              JOIN {$this->tableChecks} c ON c.check_id = r.check_id
+             WHERE {$whereSql}
              ORDER BY r.created_at DESC",
             'DB'
         );
@@ -1233,19 +1286,23 @@ BAT;
     // Structured (non-HTML) list of a department's currently-PENDING region
     // releases — backs the Send Monthly Notice modal's preview table. Thin
     // public wrapper so the frontend doesn't have to scrape
-    // previewRegionReleaseNotice()'s HTML string for this.
-    public function getPendingRegionReleases($departmentId)
+    // previewBulkReleaseNotice()'s HTML string for this.
+    public function getPendingReleases($departmentId)
     {
-        return $this->ok($this->fetchPendingRegionReleases((int) $departmentId));
+        return $this->ok($this->fetchPendingReleasesForDepartment((int) $departmentId));
     }
 
+    // Across BOTH release types now — a nice side-effect of the merge: a
+    // claimant release and a region release can equally end up UNCLAIMED, and
+    // before this they'd have shown on two separate sub-tabs with no shared view.
     public function getUnclaimedReleases($params)
     {
         $rows = App\ExecuteRowsAssociative(
-            "SELECT r.release_id, c.check_number, c.payee, c.amount, r.claimant_name, r.status,
+            "SELECT r.release_id, c.check_number, c.payee, c.amount, r.release_type,
+                    r.claimant_name, r.region_dept, r.status,
                     r.last_follow_up_date, r.follow_up_remarks,
                     EXTRACT(DAY FROM CURRENT_TIMESTAMP - c.prepared_at)::int AS days_since_prep
-             FROM {$this->tableClaimantReleases} r
+             FROM {$this->tableReleases} r
              JOIN {$this->tableChecks} c ON c.check_id = r.check_id
              WHERE r.status = 'UNCLAIMED'
              ORDER BY c.prepared_at",
@@ -1255,12 +1312,16 @@ BAT;
         return $this->dataTable($params['draw'] ?? 1, $rows);
     }
 
+    // Unified email log — a single-check row (claimant EMAIL_NOTICE) has
+    // check_number/recipient only; a bundled row (region monthly notice) has
+    // region_dept/checks_count/total_amount instead, check_number NULL.
     public function getEmailLog($params)
     {
         $rows = App\ExecuteRowsAssociative(
-            "SELECT l.log_id, c.check_number, l.recipient_email, l.sent_at, l.sent_by, l.status, l.error_message
-             FROM {$this->tableClaimantEmailLog} l
-             JOIN {$this->tableChecks} c ON c.check_id = l.check_id
+            "SELECT l.log_id, c.check_number, l.region_dept, l.checks_count, l.total_amount,
+                    l.recipient_email, l.sent_at, l.sent_by, l.status, l.error_message
+             FROM {$this->tableReleaseEmailLog} l
+             LEFT JOIN {$this->tableChecks} c ON c.check_id = l.check_id
              ORDER BY l.sent_at DESC",
             'DB'
         );
@@ -1270,7 +1331,7 @@ BAT;
 
     public function getRelease($id)
     {
-        $release = $this->fetchClaimantReleaseWithCheck((int) $id);
+        $release = $this->fetchReleaseWithCheck((int) $id);
         if (!$release) {
             return json_encode(["success" => false, "message" => "Release not found."]);
         }
@@ -1278,12 +1339,12 @@ BAT;
         return $this->ok($release);
     }
 
-    private function fetchClaimantReleaseWithCheck(int $releaseId): ?array
+    private function fetchReleaseWithCheck(int $releaseId): ?array
     {
         return App\ExecuteRow(
-            "SELECT r.*, c.check_number, c.check_date, c.dv_number, c.amount, c.payee AS check_payee,
+            "SELECT r.*, c.check_number, c.check_date, c.dv_number, c.amount, c.payee,
                     ba.bank_name, dv.particulars
-             FROM {$this->tableClaimantReleases} r
+             FROM {$this->tableReleases} r
              JOIN {$this->tableChecks} c ON c.check_id = r.check_id
              LEFT JOIN {$this->tableBankAccounts} ba ON ba.bank_account_id = c.bank_account_id
              LEFT JOIN {$this->tableDv} dv ON dv.dv_no = c.dv_number
@@ -1292,12 +1353,18 @@ BAT;
         ) ?: null;
     }
 
-    // Records a release — DIRECT hand-off is immediately RELEASED; EMAIL_NOTICE
-    // starts PENDING until sendReleaseNotice() actually sends and flips it to
-    // NOTIFIED. $data['check_number'] is the Record Check Release modal's
-    // check <select> value, which is populated with check_id (not the check's
-    // printed number) — same naming the frontend already used before this was
-    // wired, kept as-is rather than renaming the payload key.
+    // Records a release:
+    //   DIRECT        -> handed over immediately, status RELEASED right away.
+    //   EMAIL_NOTICE  -> starts PENDING until sendReleaseNotice() actually
+    //                     sends and flips it to NOTIFIED.
+    //   REGION        -> always goes through a department, status PENDING;
+    //                     notified later, in bulk, via sendBulkReleaseNotice()
+    //                     rather than at save time — there is no per-release
+    //                     NOTIFIED step for this type.
+    // $data['check_number'] is the Record Release modal's check <select>
+    // value, which is populated with check_id (not the check's printed
+    // number) — same naming the frontend already used before this was wired,
+    // kept as-is rather than renaming the payload key.
     public function saveRelease($data)
     {
         $checkId     = (int) ($data['check_number'] ?? 0);
@@ -1305,22 +1372,48 @@ BAT;
         if ($checkId <= 0) {
             return json_encode(["success" => false, "message" => "Select a check."]);
         }
-        if (!in_array($releaseType, ['DIRECT', 'EMAIL_NOTICE'], true)) {
+        if (!in_array($releaseType, ['DIRECT', 'EMAIL_NOTICE', 'REGION'], true)) {
             return json_encode(["success" => false, "message" => "Invalid release type."]);
-        }
-        $claimantEmail = trim((string) ($data['claimant_email'] ?? ''));
-        if ($releaseType === 'EMAIL_NOTICE' && $claimantEmail === '') {
-            return json_encode(["success" => false, "message" => "Recipient email is required for an Email Notice release."]);
         }
         if (!App\ExecuteRow("SELECT check_id FROM {$this->tableChecks} WHERE check_id = {$checkId}", 'DB')) {
             return json_encode(["success" => false, "message" => "Check not found."]);
         }
-
         $userId = (int) App\CurrentUserID();
+
+        if ($releaseType === 'REGION') {
+            $departmentId = (int) ($data['department_id'] ?? 0);
+            if ($departmentId <= 0) {
+                return json_encode(["success" => false, "message" => "Select a region/department."]);
+            }
+            $dept = App\ExecuteRow("SELECT department_name, department_acronym FROM {$this->tableDepartments} WHERE department_id = {$departmentId}", 'DB');
+            if (!$dept) {
+                return json_encode(["success" => false, "message" => "Department not found."]);
+            }
+            $regionLabel = $dept['department_acronym'] ? "{$dept['department_acronym']} - {$dept['department_name']}" : $dept['department_name'];
+
+            $row = App\ExecuteRow(
+                "INSERT INTO {$this->tableReleases}
+                    (check_id, release_type, claimant_type, department_id, region_dept, claimant_name, rdtf_no, status, release_date, remarks, created_by)
+                 VALUES (
+                    {$checkId}, 'REGION', 'REGION_DEPT', {$departmentId}, " . $this->str($regionLabel) . ', '
+                    . $this->strOrNull($data['claimant_name'] ?? null) . ', ' . $this->strOrNull($data['rdtf_no'] ?? null) . ", "
+                    . "'PENDING', " . $this->dateOrNull($data['release_date'] ?? null) . ', '
+                    . $this->strOrNull($data['remarks'] ?? null) . ", {$userId})
+                 RETURNING release_id",
+                'DB'
+            );
+
+            return $this->ok(['release_id' => $row['release_id']]);
+        }
+
+        $claimantEmail = trim((string) ($data['claimant_email'] ?? ''));
+        if ($releaseType === 'EMAIL_NOTICE' && $claimantEmail === '') {
+            return json_encode(["success" => false, "message" => "Recipient email is required for an Email Notice release."]);
+        }
         $status = $releaseType === 'DIRECT' ? 'RELEASED' : 'PENDING';
 
         $row = App\ExecuteRow(
-            "INSERT INTO {$this->tableClaimantReleases}
+            "INSERT INTO {$this->tableReleases}
                 (check_id, release_type, claimant_type, claimant_name, claimant_email, status, release_date, remarks, created_by)
              VALUES (
                 {$checkId}, " . $this->str($releaseType) . ', ' . $this->strOrNull($data['claimant_type'] ?? null) . ', '
@@ -1330,28 +1423,50 @@ BAT;
              RETURNING release_id",
             'DB'
         );
+        $this->syncCheckStatusFromRelease($checkId, $status);
 
         return $this->ok(['release_id' => $row['release_id']]);
     }
 
+    // fims.checks.status is the single source of truth for "what state is
+    // this physical check in" (drives Check Preparation's own status tabs —
+    // PREPARED/RELEASED/ENCASHED/OUTSTANDING/STALE/CANCELLED/VOIDED), kept
+    // in sync here whenever a release record's own, finer-grained status
+    // changes. Only RELEASED/ACKNOWLEDGED/UNCLAIMED actually move the check
+    // (to RELEASED/RELEASED/STALE respectively) — PENDING and NOTIFIED mean
+    // the check hasn't physically left Treasury's custody yet, so the check
+    // itself is left exactly as it is (still PREPARED, usually).
+    private function syncCheckStatusFromRelease(int $checkId, string $releaseStatus): void
+    {
+        $map = ['RELEASED' => 'RELEASED', 'ACKNOWLEDGED' => 'RELEASED', 'UNCLAIMED' => 'STALE'];
+        if (!isset($map[$releaseStatus])) {
+            return;
+        }
+        App\Execute(
+            "UPDATE {$this->tableChecks} SET status = " . $this->str($map[$releaseStatus]) . ", updated_at = CURRENT_TIMESTAMP WHERE check_id = {$checkId}",
+            'DB'
+        );
+    }
+
     public function previewReleaseNotice($id, $params)
     {
-        $release = $this->fetchClaimantReleaseWithCheck((int) $id);
+        $release = $this->fetchReleaseWithCheck((int) $id);
         if (!$release) {
             return $this->ok(['html' => '<p>Release not found.</p>']);
         }
 
-        return $this->ok(['html' => $this->buildClaimantEmailBody($release, (string) ($params['message'] ?? ''))]);
+        return $this->ok(['html' => $this->buildReleaseEmailBody([$release], $release['claimant_name'] ?? $release['payee'] ?? '', (string) ($params['message'] ?? ''))]);
     }
 
-    // Sends (and logs) a real email via SendEmail() — see this class's
-    // docblock and sendModuleEmail(). Flips the release to NOTIFIED on
-    // success so it drops off the "pending notice" list the Send Email
-    // Notice modal reads from.
+    // Sends (and logs) a real email via SendEmail() for a SINGLE release —
+    // see this class's docblock and sendModuleEmail(). Flips the release to
+    // NOTIFIED on success so it drops off the "pending notice" list the Send
+    // Email Notice modal reads from. (Bulk/region sends go through
+    // sendBulkReleaseNotice() instead — see that method.)
     public function sendReleaseNotice($id, $data)
     {
         $releaseId = (int) $id;
-        $release   = $this->fetchClaimantReleaseWithCheck($releaseId);
+        $release   = $this->fetchReleaseWithCheck($releaseId);
         if (!$release) {
             return json_encode(["success" => false, "message" => "Release not found."]);
         }
@@ -1361,19 +1476,19 @@ BAT;
         }
         $message = trim((string) ($data['message'] ?? ''));
         $subject = "Check Release Notice \u{2014} Check #{$release['check_number']}";
-        $body    = $this->buildClaimantEmailBody($release, $message);
+        $body    = $this->buildReleaseEmailBody([$release], $release['claimant_name'] ?? $release['payee'] ?? '', $message);
         $result  = $this->sendModuleEmail($recipient, $subject, $body);
         $userId  = (int) App\CurrentUserID();
         $checkId = (int) $release['check_id'];
 
         if ($result['success']) {
             App\Execute(
-                "INSERT INTO {$this->tableClaimantEmailLog} (release_id, check_id, recipient_email, status, sent_by)
+                "INSERT INTO {$this->tableReleaseEmailLog} (release_id, check_id, recipient_email, status, sent_by)
                  VALUES ({$releaseId}, {$checkId}, " . $this->str($recipient) . ", 'SENT', {$userId})",
                 'DB'
             );
             App\Execute(
-                "UPDATE {$this->tableClaimantReleases} SET status = 'NOTIFIED', updated_at = CURRENT_TIMESTAMP WHERE release_id = {$releaseId}",
+                "UPDATE {$this->tableReleases} SET status = 'NOTIFIED', updated_at = CURRENT_TIMESTAMP WHERE release_id = {$releaseId}",
                 'DB'
             );
 
@@ -1381,7 +1496,7 @@ BAT;
         }
 
         App\Execute(
-            "INSERT INTO {$this->tableClaimantEmailLog} (release_id, check_id, recipient_email, status, error_message, sent_by)
+            "INSERT INTO {$this->tableReleaseEmailLog} (release_id, check_id, recipient_email, status, error_message, sent_by)
              VALUES ({$releaseId}, {$checkId}, " . $this->str($recipient) . ", 'FAILED', " . $this->str($result['message']) . ", {$userId})",
             'DB'
         );
@@ -1392,11 +1507,11 @@ BAT;
     public function saveReleaseFollowUp($id, $data)
     {
         $releaseId = (int) $id;
-        if (!App\ExecuteRow("SELECT release_id FROM {$this->tableClaimantReleases} WHERE release_id = {$releaseId}", 'DB')) {
+        if (!App\ExecuteRow("SELECT release_id FROM {$this->tableReleases} WHERE release_id = {$releaseId}", 'DB')) {
             return json_encode(["success" => false, "message" => "Release not found."]);
         }
         App\Execute(
-            "UPDATE {$this->tableClaimantReleases}
+            "UPDATE {$this->tableReleases}
              SET last_follow_up_date = CURRENT_DATE, follow_up_remarks = " . $this->strOrNull($data['remarks'] ?? null) . ", updated_at = CURRENT_TIMESTAMP
              WHERE release_id = {$releaseId}",
             'DB'
@@ -1405,18 +1520,52 @@ BAT;
         return $this->ok(['release_id' => $releaseId]);
     }
 
-    public function acknowledgeRelease($id, $data)
+    // Lets the claimant name (and type) be filled in/corrected after the
+    // fact — most notably for a release row created by Check Preparation's
+    // "Set Status" shortcut (setCheckStatus()), which has no claimant field
+    // of its own and so always inserts with claimant_name NULL.
+    public function setReleaseClaimant($id, $data)
     {
         $releaseId = (int) $id;
-        if (!App\ExecuteRow("SELECT release_id FROM {$this->tableClaimantReleases} WHERE release_id = {$releaseId}", 'DB')) {
+        if (!App\ExecuteRow("SELECT release_id FROM {$this->tableReleases} WHERE release_id = {$releaseId}", 'DB')) {
             return json_encode(["success" => false, "message" => "Release not found."]);
         }
+        $claimantType = strtoupper(trim((string) ($data['claimant_type'] ?? '')));
+        if ($claimantType !== '' && !in_array($claimantType, ['PAYEE', 'AUTHORIZED_REP', 'ORIGINATING_UNIT', 'REGION_DEPT'], true)) {
+            return json_encode(["success" => false, "message" => "Invalid claimant type."]);
+        }
         App\Execute(
-            "UPDATE {$this->tableClaimantReleases}
-             SET status = 'ACKNOWLEDGED', acknowledgment_date = CURRENT_DATE, updated_at = CURRENT_TIMESTAMP
+            "UPDATE {$this->tableReleases}
+             SET claimant_name = " . $this->strOrNull($data['claimant_name'] ?? null) . ','
+             . ($claimantType !== '' ? ' claimant_type = ' . $this->str($claimantType) . ',' : '') . "
+                 updated_at = CURRENT_TIMESTAMP
              WHERE release_id = {$releaseId}",
             'DB'
         );
+
+        return $this->ok(['release_id' => $releaseId]);
+    }
+
+    // Works for either release type now — id_number doubles as what used to
+    // be the region-only id_submitted (captured at acknowledgment time for
+    // either type, not just REGION; see the unified table's own comment).
+    public function acknowledgeRelease($id, $data)
+    {
+        $releaseId = (int) $id;
+        $existing  = App\ExecuteRow("SELECT release_id, check_id FROM {$this->tableReleases} WHERE release_id = {$releaseId}", 'DB');
+        if (!$existing) {
+            return json_encode(["success" => false, "message" => "Release not found."]);
+        }
+        App\Execute(
+            "UPDATE {$this->tableReleases}
+             SET status = 'ACKNOWLEDGED', acknowledgment_date = CURRENT_DATE,
+                 id_type = COALESCE(" . $this->strOrNull($data['id_type'] ?? null) . ", id_type),
+                 id_number = COALESCE(" . $this->strOrNull($data['id_number'] ?? null) . ", id_number),
+                 updated_at = CURRENT_TIMESTAMP
+             WHERE release_id = {$releaseId}",
+            'DB'
+        );
+        $this->syncCheckStatusFromRelease((int) $existing['check_id'], 'ACKNOWLEDGED');
 
         return $this->ok(['release_id' => $releaseId]);
     }
@@ -1428,19 +1577,100 @@ BAT;
         if (!in_array($status, ['PENDING', 'NOTIFIED', 'RELEASED', 'ACKNOWLEDGED', 'UNCLAIMED'], true)) {
             return json_encode(["success" => false, "message" => "Invalid status."]);
         }
-        if (!App\ExecuteRow("SELECT release_id FROM {$this->tableClaimantReleases} WHERE release_id = {$releaseId}", 'DB')) {
+        $existing = App\ExecuteRow("SELECT release_id, check_id FROM {$this->tableReleases} WHERE release_id = {$releaseId}", 'DB');
+        if (!$existing) {
             return json_encode(["success" => false, "message" => "Release not found."]);
         }
         App\Execute(
-            "UPDATE {$this->tableClaimantReleases} SET status = " . $this->str($status) . ", updated_at = CURRENT_TIMESTAMP WHERE release_id = {$releaseId}",
+            "UPDATE {$this->tableReleases} SET status = " . $this->str($status) . ", updated_at = CURRENT_TIMESTAMP WHERE release_id = {$releaseId}",
+            'DB'
+        );
+        $this->syncCheckStatusFromRelease((int) $existing['check_id'], $status);
+
+        return $this->ok(['release_id' => $releaseId]);
+    }
+
+    // Generalized from the old region-only "mark stale" action (>180 days
+    // unclaimed) — works for either release type, same UNCLAIMED status
+    // either already used.
+    public function markReleaseStale($id, $data)
+    {
+        $releaseId = (int) $id;
+        $existing  = App\ExecuteRow("SELECT release_id, check_id FROM {$this->tableReleases} WHERE release_id = {$releaseId}", 'DB');
+        if (!$existing) {
+            return json_encode(["success" => false, "message" => "Release not found."]);
+        }
+        App\Execute(
+            "UPDATE {$this->tableReleases} SET status = 'UNCLAIMED', updated_at = CURRENT_TIMESTAMP WHERE release_id = {$releaseId}",
+            'DB'
+        );
+        $this->syncCheckStatusFromRelease((int) $existing['check_id'], 'UNCLAIMED');
+
+        return $this->ok(['release_id' => $releaseId]);
+    }
+
+    public function getReleaseDocuments($id)
+    {
+        return $this->ok([]);
+    }
+
+    // Generalized from the old region-only "Return Paid DVs" action — the
+    // dv_returned/dv_reference/dv_return_date columns stay meaningful
+    // regardless of release_type, though in practice only REGION releases
+    // are expected to ever go through this (a direct/email claimant release
+    // has no "DV needs to come back from the region" step).
+    public function recordDvReturn($id, $data)
+    {
+        $releaseId = (int) $id;
+        if (!App\ExecuteRow("SELECT release_id FROM {$this->tableReleases} WHERE release_id = {$releaseId}", 'DB')) {
+            return json_encode(["success" => false, "message" => "Release not found."]);
+        }
+        App\Execute(
+            "UPDATE {$this->tableReleases}
+             SET dv_returned = TRUE, dv_return_date = CURRENT_DATE, dv_reference = " . $this->strOrNull($data['dv_reference'] ?? null) . ", updated_at = CURRENT_TIMESTAMP
+             WHERE release_id = {$releaseId}",
             'DB'
         );
 
         return $this->ok(['release_id' => $releaseId]);
     }
 
-    // Populates the check <select> on both the Record Check Release and New
-    // Region Release modals.
+    // Generalized from the old region-only acknowledgment list — works for
+    // either release type now (a claimant release can be ACKNOWLEDGED too).
+    public function getAcknowledgmentList($params)
+    {
+        $rows = App\ExecuteRowsAssociative(
+            "SELECT r.release_id, c.check_number, c.payee, c.amount, r.release_type,
+                    r.claimant_name, r.region_dept, r.release_date, r.acknowledgment_date, r.id_number
+             FROM {$this->tableReleases} r
+             JOIN {$this->tableChecks} c ON c.check_id = r.check_id
+             WHERE r.status = 'ACKNOWLEDGED'
+             ORDER BY r.acknowledgment_date DESC",
+            'DB'
+        );
+
+        return $this->dataTable($params['draw'] ?? 1, $rows);
+    }
+
+    // Generalized from the old region-only DV monitoring sub-tab — same
+    // dv_returned filter, works for either release type.
+    public function getDvReturnMonitoring($params)
+    {
+        $rows = App\ExecuteRowsAssociative(
+            "SELECT r.release_id, c.check_number, r.dv_reference, c.payee, c.amount, r.region_dept,
+                    r.release_date, r.dv_return_date,
+                    (CURRENT_DATE - r.release_date) AS days_pending, r.status
+             FROM {$this->tableReleases} r
+             JOIN {$this->tableChecks} c ON c.check_id = r.check_id
+             WHERE r.dv_returned = TRUE
+             ORDER BY r.dv_return_date DESC",
+            'DB'
+        );
+
+        return $this->dataTable($params['draw'] ?? 1, $rows);
+    }
+
+    // Populates the check <select> on the Record Release modal.
     public function lookupChecks($params)
     {
         $rows = App\ExecuteRowsAssociative(
@@ -1456,8 +1686,8 @@ BAT;
         return $this->ok([]);
     }
 
-    // Populates the Region/Department <select> on both the New Region
-    // Release modal and the Send Monthly Notice modal.
+    // Populates the Region/Department <select> on both the Record Release
+    // modal (when release type = REGION) and the Send Monthly Notice modal.
     public function getDepartments()
     {
         $rows = App\ExecuteRowsAssociative(
@@ -1471,187 +1701,21 @@ BAT;
         return $this->ok($rows);
     }
 
-    // ── Check Released to Regions ──
-    public function getRegionReleasesList($params)
-    {
-        $rows = App\ExecuteRowsAssociative(
-            "SELECT rr.region_release_id, c.check_number, c.check_date, c.payee, c.amount,
-                    rr.region_dept, rr.claimant_name, rr.release_date, rr.status,
-                    (CURRENT_DATE - rr.release_date) AS days_outstanding
-             FROM {$this->tableRegionReleases} rr
-             JOIN {$this->tableChecks} c ON c.check_id = rr.check_id
-             ORDER BY rr.created_at DESC",
-            'DB'
-        );
-
-        return $this->dataTable($params['draw'] ?? 1, $rows);
-    }
-
-    public function getRegionAcknowledgmentList($params)
-    {
-        $rows = App\ExecuteRowsAssociative(
-            "SELECT rr.region_release_id, c.check_number, c.payee, c.amount, rr.region_dept, rr.claimant_name,
-                    rr.release_date, rr.acknowledgment_date, rr.id_submitted
-             FROM {$this->tableRegionReleases} rr
-             JOIN {$this->tableChecks} c ON c.check_id = rr.check_id
-             WHERE rr.status = 'ACKNOWLEDGED'
-             ORDER BY rr.acknowledgment_date DESC",
-            'DB'
-        );
-
-        return $this->dataTable($params['draw'] ?? 1, $rows);
-    }
-
-    public function getRegionEmailLog($params)
-    {
-        $rows = App\ExecuteRowsAssociative(
-            "SELECT log_id, region_dept, recipient_email, checks_count, total_amount, status, sent_by, sent_at, error_message
-             FROM {$this->tableRegionEmailLog}
-             ORDER BY sent_at DESC",
-            'DB'
-        );
-
-        return $this->dataTable($params['draw'] ?? 1, $rows);
-    }
-
-    public function getRegionDvMonitoring($params)
-    {
-        $rows = App\ExecuteRowsAssociative(
-            "SELECT rr.region_release_id, c.check_number, rr.dv_reference, c.payee, c.amount, rr.region_dept,
-                    rr.release_date, rr.dv_return_date,
-                    (CURRENT_DATE - rr.release_date) AS days_pending, rr.status
-             FROM {$this->tableRegionReleases} rr
-             JOIN {$this->tableChecks} c ON c.check_id = rr.check_id
-             WHERE rr.dv_returned = TRUE
-             ORDER BY rr.dv_return_date DESC",
-            'DB'
-        );
-
-        return $this->dataTable($params['draw'] ?? 1, $rows);
-    }
-
-    public function getRegionRelease($id)
-    {
-        $row = App\ExecuteRow(
-            "SELECT rr.*, c.check_number, c.check_date, c.payee, c.amount
-             FROM {$this->tableRegionReleases} rr
-             JOIN {$this->tableChecks} c ON c.check_id = rr.check_id
-             WHERE rr.region_release_id = " . (int) $id,
-            'DB'
-        );
-        if (!$row) {
-            return json_encode(["success" => false, "message" => "Region release not found."]);
-        }
-
-        return $this->ok($row);
-    }
-
-    public function markRegionReleaseStale($id, $data)
-    {
-        $regionReleaseId = (int) $id;
-        if (!App\ExecuteRow("SELECT region_release_id FROM {$this->tableRegionReleases} WHERE region_release_id = {$regionReleaseId}", 'DB')) {
-            return json_encode(["success" => false, "message" => "Region release not found."]);
-        }
-        App\Execute(
-            "UPDATE {$this->tableRegionReleases} SET status = 'UNCLAIMED', updated_at = CURRENT_TIMESTAMP WHERE region_release_id = {$regionReleaseId}",
-            'DB'
-        );
-
-        return $this->ok(['region_release_id' => $regionReleaseId]);
-    }
-
-    public function getRegionReleaseDocuments($id)
-    {
-        return $this->ok([]);
-    }
-
-    // Same release-type-free shape as saveRelease(), minus EMAIL_NOTICE vs
-    // DIRECT — region releases always go through a department and are
-    // notified later, in bulk, via sendRegionReleaseNotice() rather than at
-    // save time. $data['check_number'] is again the <select>'s check_id
-    // value (see saveRelease()'s comment on that naming).
-    public function saveRegionRelease($data)
-    {
-        $checkId      = (int) ($data['check_number'] ?? 0);
-        $departmentId = (int) ($data['department_id'] ?? 0);
-        if ($checkId <= 0) {
-            return json_encode(["success" => false, "message" => "Select a check."]);
-        }
-        if ($departmentId <= 0) {
-            return json_encode(["success" => false, "message" => "Select a region/department."]);
-        }
-        if (!App\ExecuteRow("SELECT check_id FROM {$this->tableChecks} WHERE check_id = {$checkId}", 'DB')) {
-            return json_encode(["success" => false, "message" => "Check not found."]);
-        }
-        $dept = App\ExecuteRow("SELECT department_name, department_acronym FROM {$this->tableDepartments} WHERE department_id = {$departmentId}", 'DB');
-        if (!$dept) {
-            return json_encode(["success" => false, "message" => "Department not found."]);
-        }
-        $regionLabel = $dept['department_acronym'] ? "{$dept['department_acronym']} - {$dept['department_name']}" : $dept['department_name'];
-        $userId      = (int) App\CurrentUserID();
-
-        $row = App\ExecuteRow(
-            "INSERT INTO {$this->tableRegionReleases}
-                (check_id, department_id, region_dept, claimant_name, rdtf_no, status, release_date, remarks, created_by)
-             VALUES (
-                {$checkId}, {$departmentId}, " . $this->str($regionLabel) . ', '
-                . $this->strOrNull($data['claimant_name'] ?? null) . ', ' . $this->strOrNull($data['rdtf_no'] ?? null) . ", "
-                . "'PENDING', " . $this->dateOrNull($data['release_date'] ?? null) . ', '
-                . $this->strOrNull($data['remarks'] ?? null) . ", {$userId})
-             RETURNING region_release_id",
-            'DB'
-        );
-
-        return $this->ok(['region_release_id' => $row['region_release_id']]);
-    }
-
-    public function acknowledgeRegionRelease($id, $data)
-    {
-        $regionReleaseId = (int) $id;
-        if (!App\ExecuteRow("SELECT region_release_id FROM {$this->tableRegionReleases} WHERE region_release_id = {$regionReleaseId}", 'DB')) {
-            return json_encode(["success" => false, "message" => "Region release not found."]);
-        }
-        App\Execute(
-            "UPDATE {$this->tableRegionReleases}
-             SET status = 'ACKNOWLEDGED', acknowledgment_date = CURRENT_DATE, id_submitted = " . $this->strOrNull($data['id_submitted'] ?? null) . ", updated_at = CURRENT_TIMESTAMP
-             WHERE region_release_id = {$regionReleaseId}",
-            'DB'
-        );
-
-        return $this->ok(['region_release_id' => $regionReleaseId]);
-    }
-
-    public function recordRegionDvReturn($id, $data)
-    {
-        $regionReleaseId = (int) $id;
-        if (!App\ExecuteRow("SELECT region_release_id FROM {$this->tableRegionReleases} WHERE region_release_id = {$regionReleaseId}", 'DB')) {
-            return json_encode(["success" => false, "message" => "Region release not found."]);
-        }
-        App\Execute(
-            "UPDATE {$this->tableRegionReleases}
-             SET dv_returned = TRUE, dv_return_date = CURRENT_DATE, dv_reference = " . $this->strOrNull($data['dv_reference'] ?? null) . ", updated_at = CURRENT_TIMESTAMP
-             WHERE region_release_id = {$regionReleaseId}",
-            'DB'
-        );
-
-        return $this->ok(['region_release_id' => $regionReleaseId]);
-    }
-
-    // Every region release currently PENDING for a department — the set
-    // sendRegionReleaseNotice()/previewRegionReleaseNotice() bundle into one
-    // email, and resendRegionEmail() re-gathers via the log's stored
+    // Every REGION release currently PENDING for a department — the set
+    // sendBulkReleaseNotice()/previewBulkReleaseNotice() bundle into one
+    // email, and resendBulkReleaseEmail() re-gathers via the log's stored
     // department_id (see that method's comment on why it re-sends fresh
     // rather than replaying stored content).
-    private function fetchPendingRegionReleases(int $departmentId): array
+    private function fetchPendingReleasesForDepartment(int $departmentId): array
     {
         return App\ExecuteRowsAssociative(
-            "SELECT rr.region_release_id, c.check_id, c.check_number, c.check_date, c.payee, c.amount,
+            "SELECT r.release_id, c.check_id, c.check_number, c.check_date, c.payee, c.amount,
                     c.dv_number, ba.bank_name, dv.particulars
-             FROM {$this->tableRegionReleases} rr
-             JOIN {$this->tableChecks} c ON c.check_id = rr.check_id
+             FROM {$this->tableReleases} r
+             JOIN {$this->tableChecks} c ON c.check_id = r.check_id
              LEFT JOIN {$this->tableBankAccounts} ba ON ba.bank_account_id = c.bank_account_id
              LEFT JOIN {$this->tableDv} dv ON dv.dv_no = c.dv_number
-             WHERE rr.department_id = {$departmentId} AND rr.status = 'PENDING'
+             WHERE r.department_id = {$departmentId} AND r.release_type = 'REGION' AND r.status = 'PENDING'
              ORDER BY c.check_date",
             'DB'
         );
@@ -1667,22 +1731,22 @@ BAT;
         return $dept['department_acronym'] ? "{$dept['department_acronym']} - {$dept['department_name']}" : $dept['department_name'];
     }
 
-    public function previewRegionReleaseNotice($params)
+    public function previewBulkReleaseNotice($params)
     {
         $departmentId = (int) ($params['department_id'] ?? 0);
         if ($departmentId <= 0) {
             return $this->ok(['html' => '<p>Select a region/department first.</p>']);
         }
         $label = $this->departmentLabel($departmentId) ?? '';
-        $releases = $this->fetchPendingRegionReleases($departmentId);
+        $releases = $this->fetchPendingReleasesForDepartment($departmentId);
 
-        return $this->ok(['html' => $this->buildRegionEmailBody($releases, $label, (string) ($params['period'] ?? ''), (string) ($params['message'] ?? ''))]);
+        return $this->ok(['html' => $this->buildReleaseEmailBody($releases, $label, (string) ($params['message'] ?? ''))]);
     }
 
-    // Bundles every currently-PENDING release for one department into a
-    // single email + log row, then flips them all to RELEASED. See this
+    // Bundles every currently-PENDING REGION release for one department into
+    // a single email + log row, then flips them all to RELEASED. See this
     // class's docblock for why this calls App\SendEmail() directly.
-    public function sendRegionReleaseNotice($data)
+    public function sendBulkReleaseNotice($data)
     {
         $departmentId = (int) ($data['department_id'] ?? 0);
         $recipient    = trim((string) ($data['recipient_email'] ?? ''));
@@ -1692,40 +1756,40 @@ BAT;
         if ($recipient === '') {
             return json_encode(["success" => false, "message" => "Recipient email is required."]);
         }
-        $releases = $this->fetchPendingRegionReleases($departmentId);
+        $releases = $this->fetchPendingReleasesForDepartment($departmentId);
         if (!$releases) {
             return json_encode(["success" => false, "message" => "No pending releases for this region/department."]);
         }
         $label  = $this->departmentLabel($departmentId) ?? '';
         $period = trim((string) ($data['period'] ?? ''));
 
-        return $this->dispatchRegionNotice($departmentId, $label, $releases, $period, trim((string) ($data['message'] ?? '')), $recipient);
+        return $this->dispatchBulkReleaseNotice($departmentId, $label, $releases, $period, trim((string) ($data['message'] ?? '')), $recipient);
     }
 
-    // No stored subject/body/check-list snapshot on check_region_email_log
+    // No stored subject/body/check-list snapshot on check_release_email_log
     // (see that table's own header comment) — "resend" means re-gather
     // whatever is currently PENDING for the log row's department and send a
     // fresh notice, not replay the original email verbatim.
-    public function resendRegionEmail($logId)
+    public function resendBulkReleaseEmail($logId)
     {
-        $log = App\ExecuteRow("SELECT department_id, recipient_email FROM {$this->tableRegionEmailLog} WHERE log_id = " . (int) $logId, 'DB');
+        $log = App\ExecuteRow("SELECT department_id, recipient_email FROM {$this->tableReleaseEmailLog} WHERE log_id = " . (int) $logId, 'DB');
         if (!$log || !$log['department_id']) {
             return json_encode(["success" => false, "message" => "Log entry not found or has no department on record to resend to."]);
         }
         $departmentId = (int) $log['department_id'];
-        $releases     = $this->fetchPendingRegionReleases($departmentId);
+        $releases     = $this->fetchPendingReleasesForDepartment($departmentId);
         if (!$releases) {
             return json_encode(["success" => false, "message" => "No pending releases remain for this region/department — nothing to resend."]);
         }
         $label = $this->departmentLabel($departmentId) ?? '';
 
-        return $this->dispatchRegionNotice($departmentId, $label, $releases, '', '', $log['recipient_email']);
+        return $this->dispatchBulkReleaseNotice($departmentId, $label, $releases, '', '', $log['recipient_email']);
     }
 
-    private function dispatchRegionNotice(int $departmentId, string $label, array $releases, string $period, string $message, string $recipient)
+    private function dispatchBulkReleaseNotice(int $departmentId, string $label, array $releases, string $period, string $message, string $recipient)
     {
         $subject = "Monthly Check Release Notice \u{2014} {$label}" . ($period !== '' ? " ({$period})" : '');
-        $body    = $this->buildRegionEmailBody($releases, $label, $period, $message);
+        $body    = $this->buildReleaseEmailBody($releases, $label, $message);
         $result  = $this->sendModuleEmail($recipient, $subject, $body);
         $userId  = (int) App\CurrentUserID();
         $count   = count($releases);
@@ -1733,15 +1797,20 @@ BAT;
 
         if ($result['success']) {
             App\Execute(
-                "INSERT INTO {$this->tableRegionEmailLog} (region_dept, department_id, recipient_email, checks_count, total_amount, status, sent_by)
+                "INSERT INTO {$this->tableReleaseEmailLog} (region_dept, department_id, recipient_email, checks_count, total_amount, status, sent_by)
                  VALUES (" . $this->str($label) . ", {$departmentId}, " . $this->str($recipient) . ", {$count}, {$total}, 'SENT', {$userId})",
                 'DB'
             );
-            $ids = implode(',', array_column($releases, 'region_release_id'));
+            $ids = implode(',', array_column($releases, 'release_id'));
             App\Execute(
-                "UPDATE {$this->tableRegionReleases}
+                "UPDATE {$this->tableReleases}
                  SET status = 'RELEASED', release_date = COALESCE(release_date, CURRENT_DATE), updated_at = CURRENT_TIMESTAMP
-                 WHERE region_release_id IN ({$ids})",
+                 WHERE release_id IN ({$ids})",
+                'DB'
+            );
+            $checkIds = implode(',', array_column($releases, 'check_id'));
+            App\Execute(
+                "UPDATE {$this->tableChecks} SET status = 'RELEASED', updated_at = CURRENT_TIMESTAMP WHERE check_id IN ({$checkIds})",
                 'DB'
             );
 
@@ -1749,7 +1818,7 @@ BAT;
         }
 
         App\Execute(
-            "INSERT INTO {$this->tableRegionEmailLog} (region_dept, department_id, recipient_email, checks_count, total_amount, status, error_message, sent_by)
+            "INSERT INTO {$this->tableReleaseEmailLog} (region_dept, department_id, recipient_email, checks_count, total_amount, status, error_message, sent_by)
              VALUES (" . $this->str($label) . ", {$departmentId}, " . $this->str($recipient) . ", {$count}, {$total}, 'FAILED', " . $this->str($result['message']) . ", {$userId})",
             'DB'
         );
@@ -1757,45 +1826,208 @@ BAT;
         return json_encode(["success" => false, "message" => "Could not send email: {$result['message']}"]);
     }
 
-    public function saveRegionDriveLink($data)
+    public function saveDriveLink($data)
     {
         return json_encode(["success" => false, "message" => "Not yet wired — schema migration pending."]);
     }
 
-    // ── Check Cancellation & Replacements ──
+    // ── Check Cancellation & Replacements ── fims.check_cancellations
+    // already existed (see that table's own header comment: "The cancelled
+    // check's own fims.checks.status is separately flipped to 'cancelled'
+    // by the service") but these methods were left as stubs claiming a
+    // migration was still pending — it wasn't; the table's been there all
+    // along. Wired for real now, same spirit as syncCheckStatusFromRelease()
+    // above: cancelling (or being released) actually moves fims.checks.status,
+    // so Check Preparation's own status tabs reflect what really happened
+    // instead of requiring a trip to this tab to find out.
     public function getCancellationKpis()
     {
-        return $this->ok([
-            "total_cancelled" => 0,
-            "with_replacement" => 0,
-            "pending_replacement" => 0,
-            "cancelled_amount" => 0,
-        ]);
+        $row = App\ExecuteRowAssociative(
+            "SELECT COUNT(*) AS total_cancelled,
+                    COUNT(*) FILTER (WHERE cc.replacement_check_id IS NOT NULL) AS with_replacement,
+                    COUNT(*) FILTER (WHERE cc.replacement_check_id IS NULL) AS pending_replacement,
+                    COALESCE(SUM(c.amount), 0) AS cancelled_amount
+             FROM {$this->tableCancellations} cc
+             JOIN {$this->tableChecks} c ON c.check_id = cc.check_id",
+            'DB'
+        ) ?: ['total_cancelled' => 0, 'with_replacement' => 0, 'pending_replacement' => 0, 'cancelled_amount' => 0];
+
+        return $this->ok($row);
     }
 
+    // Eligible = any check not already cancelled/voided — a check can be
+    // cancelled whether it's still PREPARED or already RELEASED (lost in
+    // transit, damaged, misprinted, etc.), just not one that's already
+    // CANCELLED/VOIDED.
     public function getCancellationLookups()
     {
-        return $this->ok(["bank_accounts" => [], "eligible_checks" => []]);
+        $bankAccounts = App\ExecuteRowsAssociative(
+            "SELECT bank_account_id, account_name, account_number, bank_name FROM {$this->tableBankAccounts} WHERE is_active = TRUE ORDER BY account_name",
+            'DB'
+        );
+        $eligibleChecks = App\ExecuteRowsAssociative(
+            "SELECT check_id, check_number, payee, amount, status FROM {$this->tableChecks} WHERE status NOT IN ('CANCELLED', 'VOIDED') ORDER BY check_date DESC",
+            'DB'
+        );
+
+        return $this->ok(["bank_accounts" => $bankAccounts, "eligible_checks" => $eligibleChecks]);
     }
 
     public function getCancellationList($params)
     {
-        return $this->emptyDataTable($params["draw"] ?? 1);
+        $where = ["c.status = 'CANCELLED'"];
+        $search = trim((string) ($params['search'] ?? ''));
+        if ($search !== '') {
+            $kw = $this->str('%' . $search . '%');
+            $where[] = "(c.check_number ILIKE {$kw} OR c.payee ILIKE {$kw})";
+        }
+        $bankAccountId = (int) ($params['bank_account_id'] ?? 0);
+        if ($bankAccountId > 0) {
+            $where[] = "c.bank_account_id = {$bankAccountId}";
+        }
+        $dateFrom = trim((string) ($params['date_from'] ?? ''));
+        if ($dateFrom !== '') {
+            $where[] = 'cc.cancelled_date >= ' . $this->str($dateFrom);
+        }
+        $dateTo = trim((string) ($params['date_to'] ?? ''));
+        if ($dateTo !== '') {
+            $where[] = 'cc.cancelled_date <= ' . $this->str($dateTo);
+        }
+        $whereSql = implode(' AND ', $where);
+
+        $rows = App\ExecuteRowsAssociative(
+            "SELECT c.check_id, c.check_number, c.check_date, c.payee, c.amount, c.status,
+                    ba.account_name, ba.account_number, ba.bank_name,
+                    cc.reason, cc.reason_description, cc.cancelled_date, cc.replacement_check_id, rc.check_number AS replacement_check_number
+             FROM {$this->tableChecks} c
+             JOIN {$this->tableCancellations} cc ON cc.check_id = c.check_id
+             JOIN {$this->tableBankAccounts} ba ON ba.bank_account_id = c.bank_account_id
+             LEFT JOIN {$this->tableChecks} rc ON rc.check_id = cc.replacement_check_id
+             WHERE {$whereSql}
+             ORDER BY cc.cancelled_date DESC, c.check_id DESC",
+            'DB'
+        );
+
+        return $this->dataTable($params['draw'] ?? 1, $rows);
     }
 
+    // Cancels a check (status -> CANCELLED) and records why in
+    // check_cancellations; optionally issues a replacement check in the same
+    // transaction (a fresh fims.checks row, status PREPARED, same bank
+    // account/DV/payee/amount as the original) when issue_replacement is set.
     public function cancelCheck($data)
     {
-        return json_encode(["success" => false, "message" => "Check cancellation is not yet wired — schema migration pending."]);
+        $checkId       = (int) ($data['check_id'] ?? 0);
+        $reason        = strtoupper(trim((string) ($data['reason'] ?? '')));
+        $cancelledDate = trim((string) ($data['cancelled_date'] ?? ''));
+        if ($checkId <= 0) {
+            return json_encode(["success" => false, "message" => "Select a check to cancel."]);
+        }
+        if (!in_array($reason, ['LOST', 'DAMAGED', 'ERROR', 'PAYEE_REQUEST', 'OTHER'], true)) {
+            return json_encode(["success" => false, "message" => "Invalid cancellation reason."]);
+        }
+        if ($cancelledDate === '') {
+            return json_encode(["success" => false, "message" => "Cancelled date is required."]);
+        }
+        $check = App\ExecuteRow(
+            "SELECT check_id, bank_account_id, check_number, dv_id, dv_number, payee, amount, status FROM {$this->tableChecks} WHERE check_id = {$checkId}",
+            'DB'
+        );
+        if (!$check) {
+            return json_encode(["success" => false, "message" => "Check not found."]);
+        }
+        if (in_array($check['status'], ['CANCELLED', 'VOIDED'], true)) {
+            return json_encode(["success" => false, "message" => "This check is already {$check['status']}."]);
+        }
+
+        $issueReplacement = App\ConvertToBool($data['issue_replacement'] ?? false);
+        $newCheckNo        = trim((string) ($data['new_check_no'] ?? ''));
+        $newCheckDate      = trim((string) ($data['new_check_date'] ?? ''));
+        if ($issueReplacement) {
+            if ($newCheckNo === '') {
+                return json_encode(["success" => false, "message" => "New check number is required to issue a replacement."]);
+            }
+            if ($newCheckDate === '') {
+                return json_encode(["success" => false, "message" => "New check date is required to issue a replacement."]);
+            }
+            if (App\ExecuteRow(
+                "SELECT check_id FROM {$this->tableChecks} WHERE bank_account_id = {$check['bank_account_id']} AND check_number = " . $this->str($newCheckNo),
+                'DB'
+            )) {
+                return json_encode(["success" => false, "message" => "Check number {$newCheckNo} is already used for this bank account."]);
+            }
+        }
+
+        $userId = (int) App\CurrentUserID();
+        App\Execute("BEGIN", "DB");
+        try {
+            $replacementCheckId = null;
+            if ($issueReplacement) {
+                $replacement = App\ExecuteRow(
+                    "INSERT INTO {$this->tableChecks}
+                        (bank_account_id, check_number, check_date, dv_id, dv_number, payee, amount, status, prepared_by, prepared_at)
+                     VALUES (
+                        {$check['bank_account_id']}, " . $this->str($newCheckNo) . ', ' . $this->str($newCheckDate) . ', '
+                        . ($check['dv_id'] !== null ? (int) $check['dv_id'] : 'NULL') . ', ' . $this->strOrNull($check['dv_number']) . ', '
+                        . $this->str($check['payee']) . ", {$check['amount']}, 'PREPARED', {$userId}, CURRENT_TIMESTAMP)
+                     RETURNING check_id",
+                    'DB'
+                );
+                $replacementCheckId = (int) $replacement['check_id'];
+            }
+
+            App\Execute(
+                "INSERT INTO {$this->tableCancellations} (check_id, reason, reason_description, cancelled_date, replacement_check_id, cancelled_by)
+                 VALUES ({$checkId}, " . $this->str($reason) . ', ' . $this->strOrNull($data['description'] ?? null) . ', '
+                    . $this->str($cancelledDate) . ', ' . ($replacementCheckId !== null ? $replacementCheckId : 'NULL') . ", {$userId})
+                 ON CONFLICT (check_id) DO UPDATE SET
+                    reason = EXCLUDED.reason, reason_description = EXCLUDED.reason_description,
+                    cancelled_date = EXCLUDED.cancelled_date, replacement_check_id = EXCLUDED.replacement_check_id",
+                'DB'
+            );
+            App\Execute(
+                "UPDATE {$this->tableChecks} SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP WHERE check_id = {$checkId}",
+                'DB'
+            );
+            $this->syncRegisterStatus((int) $check['bank_account_id'], (string) $check['check_number'], 'CANCELLED', $reason);
+
+            App\Execute("COMMIT", "DB");
+        } catch (\Exception $e) {
+            App\Execute("ROLLBACK", "DB");
+            App\LogError("Error in CheckProcessingService::cancelCheck: " . $e->getMessage());
+
+            return json_encode(["success" => false, "message" => "Internal server error."]);
+        }
+
+        return $this->ok(['check_id' => $checkId, 'replacement_check_id' => $replacementCheckId]);
     }
 
+    // No frontend caller as of this writing (the Cancel Check modal's
+    // "issue a replacement immediately" checkbox goes through cancelCheck()
+    // itself) — kept as a safe no-op rather than a hard error so an
+    // eventual "add a replacement to an already-cancelled check" action has
+    // somewhere real to land without another round of schema work.
     public function replaceCheck($data)
     {
-        return json_encode(["success" => false, "message" => "Check replacement is not yet wired — schema migration pending."]);
+        return json_encode(["success" => false, "message" => "Not supported yet — cancel with \"issue a replacement immediately\" instead."]);
     }
 
     public function getCancelledCheck($id)
     {
-        return json_encode(["success" => false, "message" => "Not found (schema not migrated yet)"]);
+        $row = App\ExecuteRow(
+            "SELECT c.*, ba.account_name, ba.account_number, ba.bank_name,
+                    cc.reason, cc.reason_description, cc.cancelled_date, cc.replacement_check_id
+             FROM {$this->tableChecks} c
+             JOIN {$this->tableBankAccounts} ba ON ba.bank_account_id = c.bank_account_id
+             LEFT JOIN {$this->tableCancellations} cc ON cc.check_id = c.check_id
+             WHERE c.check_id = " . (int) $id,
+            'DB'
+        );
+        if (!$row) {
+            return json_encode(["success" => false, "message" => "Check not found."]);
+        }
+
+        return $this->ok($row);
     }
 
     public function getCancelledCheckHistory($id)
@@ -1803,5 +2035,96 @@ BAT;
         return $this->ok([]);
     }
 
-    // ── Check Inventory / RAF (server-rendered, no AJAX — see page PHP) ──
+    // ── Check Inventory / RAF ── Computed entirely from fims.check_register,
+    // same (bank_account, booklet_no) grouping as the Check Registry tab's
+    // own summary — NOT from fims.check_booklets, which exists in the schema
+    // (with its own fiscal_year/low_stock_threshold columns) but is never
+    // actually written to by addRegisterBatch(); joining to it would just
+    // produce an empty report. fiscal_year here is derived from each
+    // booklet's earliest entry_date (PH government fiscal year = calendar
+    // year), and the low-stock threshold uses check_booklets' own column
+    // default (10) as a stand-in until that table is actually wired.
+    private const RAF_LOW_STOCK_THRESHOLD = 10;
+
+    private function rafGroupsSql($params)
+    {
+        $where = ['1=1'];
+        $fiscalYear = trim((string) ($params['fiscal_year'] ?? ''));
+        $bankAccountId = (int) ($params['bank_account_id'] ?? 0);
+        $search = trim((string) ($params['search'] ?? ''));
+        if ($bankAccountId > 0) {
+            $where[] = "cr.bank_account_id = {$bankAccountId}";
+        }
+        if ($search !== '') {
+            $kw = $this->str('%' . $search . '%');
+            $where[] = "(cr.booklet_no ILIKE {$kw} OR cr.check_series ILIKE {$kw})";
+        }
+        $whereSql = implode(' AND ', $where);
+
+        $havingSql = '';
+        if ($fiscalYear !== '' && ctype_digit($fiscalYear)) {
+            $havingSql = ' HAVING EXTRACT(YEAR FROM MIN(cr.entry_date)) = ' . (int) $fiscalYear;
+        }
+
+        return "SELECT cr.bank_account_id, ba.account_name, ba.account_number, ba.bank_name,
+                       cr.booklet_no, MIN(cr.check_series) AS check_series,
+                       EXTRACT(YEAR FROM MIN(cr.entry_date))::int AS fiscal_year,
+                       MIN(cr.check_number) AS start_check_no, MAX(cr.check_number) AS end_check_no,
+                       COUNT(*)::int AS received,
+                       COUNT(*) FILTER (WHERE cr.current_status = 'ISSUED')::int AS issued,
+                       COUNT(*) FILTER (WHERE cr.current_status = 'CANCELLED')::int AS cancelled,
+                       COUNT(*) FILTER (WHERE cr.current_status = 'UNUSED')::int AS remaining,
+                       MAX(cr.updated_at)::date AS last_entry
+                FROM {$this->tableCheckRegister} cr
+                JOIN {$this->tableBankAccounts} ba ON ba.bank_account_id = cr.bank_account_id
+                WHERE {$whereSql}
+                GROUP BY cr.bank_account_id, ba.account_name, ba.account_number, ba.bank_name, cr.booklet_no
+                {$havingSql}";
+    }
+
+    public function getRafSummary()
+    {
+        $rows = App\ExecuteRowsAssociative($this->rafGroupsSql([]), 'DB');
+        $booklets = count($rows);
+        $remaining = array_sum(array_column($rows, 'remaining'));
+        $issued = array_sum(array_column($rows, 'issued'));
+        $lowStock = count(array_filter($rows, fn ($r) => (int) $r['remaining'] <= self::RAF_LOW_STOCK_THRESHOLD));
+
+        return $this->ok([
+            'booklets' => $booklets,
+            'remaining' => $remaining,
+            'issued' => $issued,
+            'low_stock' => $lowStock,
+        ]);
+    }
+
+    public function getRafList($params)
+    {
+        $rows = App\ExecuteRowsAssociative($this->rafGroupsSql($params), 'DB');
+        $lowStockOnly = App\ConvertToBool($params['low_stock'] ?? false);
+        if ($lowStockOnly) {
+            $rows = array_values(array_filter($rows, fn ($r) => (int) $r['remaining'] <= self::RAF_LOW_STOCK_THRESHOLD));
+        }
+        foreach ($rows as &$row) {
+            $row['stock_status'] = (int) $row['remaining'] <= self::RAF_LOW_STOCK_THRESHOLD ? 'LOW_STOCK' : 'NORMAL';
+        }
+
+        return $this->dataTable($params['draw'] ?? 1, $rows);
+    }
+
+    // Distinct fiscal years actually present in the register, for the RAF
+    // tab's year filter — not a fixed/config-driven list, since fiscal_year
+    // itself is derived from entry_date rather than stored.
+    public function getRafYears()
+    {
+        $rows = App\ExecuteRowsAssociative(
+            "SELECT DISTINCT EXTRACT(YEAR FROM entry_date)::int AS fiscal_year
+             FROM {$this->tableCheckRegister}
+             WHERE entry_date IS NOT NULL
+             ORDER BY fiscal_year DESC",
+            'DB'
+        );
+
+        return $this->ok(array_column($rows, 'fiscal_year'));
+    }
 }
