@@ -148,10 +148,6 @@ return [
     "cob_page" => \DI\create(CobPage::class),
     "cba_memo_request_page" => \DI\create(CbaMemoRequestPage::class),
     "rfa_laa_memo_request_page" => \DI\create(RfaLaaMemoRequestPage::class),
-    "budget_proposal_review_page" => \DI\create(BudgetProposalReviewPage::class),
-    "cba_review_page" => \DI\create(CbaReviewPage::class),
-    "rfa_laa_review_page" => \DI\create(RfaLaaReviewPage::class),
-    "dv_review_page" => \DI\create(DvReviewPage::class),
     "liquidation_voucher_page" => \DI\create(LiquidationVoucherPage::class),
     "check_registry_page" => \DI\create(CheckRegistryPage::class),
     "accountable_forms_registry_page" => \DI\create(AccountableFormsRegistryPage::class),
@@ -160,6 +156,8 @@ return [
     "supplier_contract_page" => \DI\create(SupplierContractPage::class),
     "fund_source_page" => \DI\create(FundSourcePage::class),
     "program_sources_page" => \DI\create(ProgramSourcesPage::class),
+    "ledger_page" => \DI\create(LedgerPage::class),
+    "accountable_officer_page" => \DI\create(AccountableOfficerPage::class),
 
     // User table
     "usertable" => \DI\get("users"),
