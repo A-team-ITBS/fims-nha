@@ -363,6 +363,12 @@ class BudgetAllocationService
                 $inTransaction = false;
             }
 
+            if (isset($row['allocation_id'])) {
+                // Usually 'Draft' (the default just above), but a caller-supplied status_id is honored too.
+                $initialStatus = App\ExecuteScalar("SELECT name FROM {$this->tableStatus} WHERE id = ".(int) $clean['status_id'], 'DB') ?: 'Draft';
+                GlobalService::logStatusChange('budget_allocation', (int) $row['allocation_id'], (string) $initialStatus, $userId);
+            }
+
             $result = [
                 'success' => true,
                 'message' => 'Memo request created successfully.',
@@ -699,6 +705,10 @@ class BudgetAllocationService
 
             App\Execute('COMMIT', 'DB');
             $inTransaction = false;
+
+            // LAA/RFA/CBA are all fims.budget_allocation rows (allocation_type tells them apart) —
+            // one shared log entry per decision, regardless of type.
+            GlobalService::logStatusChange('budget_allocation', $id, $targetName, $userId, $decision === 'return' ? $remarks : null);
 
             if ($decision === 'return') {
                 $message = isset(self::REVIEW_STEPS[$targetName])

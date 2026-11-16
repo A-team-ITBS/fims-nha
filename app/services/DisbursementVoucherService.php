@@ -1925,6 +1925,8 @@ class DisbursementVoucherService
                     throw $e;
                 }
 
+                GlobalService::logStatusChange('journal_entry_voucher', $jevId, 'POSTED', $userId);
+
                 return ['success' => true, 'message' => 'Journal Entry approved and posted to the General Ledger.', 'data' => ['jev_id' => $jevId, 'status' => 'POSTED']];
             }
 
@@ -1933,6 +1935,7 @@ class DisbursementVoucherService
                 return ['success' => false, 'message' => "Status '{$new}' is not configured for journal entry vouchers."];
             }
             App\Execute("UPDATE {$this->tableJev} SET status_id = {$newId} WHERE jev_id = {$jevId}", 'DB');
+            GlobalService::logStatusChange('journal_entry_voucher', $jevId, $new, $userId);
 
             return ['success' => true, 'message' => "Journal Entry is now {$new}.", 'data' => ['jev_id' => $jevId, 'status' => $new]];
         } catch (\Exception $e) {

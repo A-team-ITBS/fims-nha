@@ -5,7 +5,7 @@ namespace PHPMaker2024\FIMS\Service;
 use PHPMaker2024\FIMS as App;
 
 /**
- * Fund Transfer Letter of Advice (FTLA) — fims.fund_transfers (+ fims.ftla_status_log).
+ * Fund Transfer Letter of Advice (FTLA) — fims.fund_transfers (+ the shared fims.status_change_log).
  *
  * Standalone port of REGIONAL's treasury FTLAService, trimmed to what exists in the
  * `fims` schema — same spirit as PurchaseOrderService. Deliberately NOT ported: the
@@ -23,11 +23,13 @@ use PHPMaker2024\FIMS as App;
 class FtlaService
 {
     private string $table          = 'fims.fund_transfers';
-    private string $tableStatusLog = 'fims.ftla_status_log';
     private string $tableBank      = 'fims.bank_accounts';
     private string $tableUsers     = 'uac.users';
     private string $tableDv        = 'fims.disbursement_vouchers';
     private string $tableDvStatus  = 'fims.settings_status';
+
+    /** This module's row in fims.status_change_log.status_for — see GlobalService::logStatusChange(). */
+    private const STATUS_LOG_FOR = 'fund_transfers';
 
     /** value => [name, color] — color matches the client's _statusBadge() COLOR_MAP. */
     private const STATUSES = [
@@ -371,7 +373,7 @@ class FtlaService
                 return ['success' => false, 'message' => 'Failed to create FTLA record.'];
             }
 
-            $this->_logStatus((int) $row['fund_transfer_id'], $status, null, $userId);
+            GlobalService::logStatusChange(self::STATUS_LOG_FOR, (int) $row['fund_transfer_id'], $status, $userId);
 
             return [
                 'success'  => true,
@@ -390,7 +392,7 @@ class FtlaService
      * Builds its SET clause only from whatever keys are present in the body — a bare
      * {status: 'X'} call (from the list page's row actions / the status-tracking modal)
      * touches only status-related columns; a full edit from the form modal touches
-     * every field it sends. $remarks is stored in fims.ftla_status_log, not on the row.
+     * every field it sends. $remarks is stored in fims.status_change_log, not on the row.
      */
     public function update(int|string $id, array $body, int $userId, ?string $remarks = null): array
     {
@@ -497,7 +499,7 @@ class FtlaService
             }
 
             if ($newStatus !== null) {
-                $this->_logStatus($ftId, $newStatus, $remarks ?: null, $userId);
+                GlobalService::logStatusChange(self::STATUS_LOG_FOR, $ftId, $newStatus, $userId, $remarks ?: null);
             }
 
             return [
@@ -509,19 +511,6 @@ class FtlaService
             App\LogError('FtlaService::update ' . $e->getMessage());
 
             return ['success' => false, 'message' => 'Failed to update FTLA record.'];
-        }
-    }
-
-    private function _logStatus(int $id, string $status, ?string $remarks, int $userId): void
-    {
-        try {
-            App\Execute(
-                "INSERT INTO {$this->tableStatusLog} (fund_transfer_id, status, remarks, changed_by, changed_at)
-                 VALUES ({$id}, {$this->str($status)}, {$this->strOrNull($remarks)}, " . ($userId > 0 ? $userId : 'NULL') . ', CURRENT_TIMESTAMP)',
-                'DB'
-            );
-        } catch (\Exception $e) {
-            App\LogError('FtlaService::_logStatus ' . $e->getMessage());
         }
     }
 
@@ -670,10 +659,10 @@ class FtlaService
         $rows = App\ExecuteRows(
             "SELECT l.status, l.remarks, l.changed_at,
                     TRIM(CONCAT_WS(' ', u.first_name, u.last_name)) AS actor_name
-             FROM {$this->tableStatusLog} l
+             FROM fims.status_change_log l
              LEFT JOIN {$this->tableUsers} u ON u.user_id = l.changed_by
-             WHERE l.fund_transfer_id = {$id}
-             ORDER BY l.changed_at ASC, l.ftla_status_log_id ASC",
+             WHERE l.status_for = " . $this->str(self::STATUS_LOG_FOR) . " AND l.record_id = " . $this->str((string) $id) . "
+             ORDER BY l.changed_at ASC, l.status_change_log_id ASC",
             'DB'
         ) ?: [];
 

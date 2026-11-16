@@ -79,16 +79,6 @@ CREATE INDEX IF NOT EXISTS idx_fund_transfers_status             ON fims.fund_tr
 CREATE INDEX IF NOT EXISTS idx_fund_transfers_transfer_date      ON fims.fund_transfers (transfer_date);
 CREATE INDEX IF NOT EXISTS idx_fund_transfers_to_bank_account_id ON fims.fund_transfers (to_bank_account_id);
 
--- Chronological, per-row audit trail of status changes — powers /ftla/{id}/history.
-CREATE TABLE IF NOT EXISTS fims.ftla_status_log (
-    ftla_status_log_id  SERIAL PRIMARY KEY,
-    fund_transfer_id    INTEGER NOT NULL REFERENCES fims.fund_transfers(fund_transfer_id) ON DELETE CASCADE,
-    status              VARCHAR(30) NOT NULL,
-    remarks             TEXT,
-    changed_by          INTEGER REFERENCES uac.users(user_id),
-    changed_at          TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-COMMENT ON TABLE fims.ftla_status_log IS 'One row per FTLA status change — chronological audit trail for the status-tracking modal';
-
-CREATE INDEX IF NOT EXISTS idx_ftla_status_log_fund_transfer_id ON fims.ftla_status_log (fund_transfer_id);
+-- FTLA's status-change audit trail (powers GET /ftla/{id}/history) lives in the
+-- shared fims.status_change_log — see "35 - fims_status_change_log.sql" — scoped
+-- with status_for = 'fund_transfers', record_id = fund_transfer_id.

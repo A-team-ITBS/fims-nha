@@ -761,7 +761,7 @@ class BudgetReqService
     }
 
     /** Transitions a Draft budget request to "For Review". Locks it from further Program additions/edits. */
-    public function submitForReview(string $budgetReferenceNumber): array
+    public function submitForReview(string $budgetReferenceNumber, ?int $userId = null): array
     {
         $id = $budgetReferenceNumber;
 
@@ -783,6 +783,7 @@ class BudgetReqService
 
         // submitted_at = the "Date Submitted" shown on the FMD's Budget Requirements list (alter_table/16).
         App\Execute("UPDATE {$this->table} SET status_id = {$forReviewId}, submitted_at = NOW() WHERE budget_reference_number = ".App\QuotedValue($id, DataType::STRING, 'DB'), 'DB');
+        GlobalService::logStatusChange('budget_req', $id, 'For Review', $userId);
 
         return ['success' => true, 'message' => 'Budget request submitted for review.'];
     }
@@ -845,6 +846,8 @@ class BudgetReqService
 
             App\Execute('COMMIT', 'DB');
             $inTransaction = false;
+
+            GlobalService::logStatusChange('budget_req', $id, self::STATUS_ENDORSED, $userId);
 
             return [
                 'success' => true,
@@ -910,6 +913,8 @@ class BudgetReqService
             return ['success' => false, 'message' => 'This budget request was changed by someone else in the meantime. Reload the list and try again.'];
         }
 
+        GlobalService::logStatusChange('budget_req', $id, $targetName, $userId, $remarks);
+
         $backTo = self::REVIEW_STEPS[$targetName]['actor'] ?? null;
 
         return [
@@ -954,6 +959,8 @@ class BudgetReqService
         if (!$done) {
             return ['success' => false, 'message' => 'This budget request was changed by someone else in the meantime. Reload the list and try again.'];
         }
+
+        GlobalService::logStatusChange('budget_req', $id, self::STATUS_APPROVED, $userId);
 
         return ['success' => true, 'message' => 'Budget request approved successfully.', 'status_name' => self::STATUS_APPROVED];
     }

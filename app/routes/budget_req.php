@@ -157,7 +157,7 @@ $app->map(['PUT', 'POST'], '/budget_req/program/update/{budget_req_program_id}',
 // further program additions/edits.
 $app->put('/budget_req/submit-for-review/{id}', function ($request, $response, $args) use ($BudgetReqService) {
     try {
-        $result = $BudgetReqService->submitForReview($args['id']);
+        $result = $BudgetReqService->submitForReview($args['id'], (int) $request->getAttribute('user_id'));
 
         return $response->withJson($result, $result['success'] ? 200 : 400);
     } catch (\Exception $e) {
