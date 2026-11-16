@@ -49,9 +49,17 @@ $_sr_api = Config('API.FIMS_URL');
     #sr-root .sr-range .nha-filter-select { width: 100px; }
     #sr-root .sr-fy-group { flex: 0 0 auto; max-width: none; }   /* two selects need more than nha-filter-group-lg's 200px */
     /* Program: a search box like Reference No. — it keeps room for "All programs" next to its magnifier icon (the default 130px
-       group minimum cut the text off), and has no × button, so the right padding the shared search style reserves for one goes */
-    #sr-root .sr-program-group { flex: 1 1 190px; min-width: 190px; }
-    #sr-root .sr-program-group .nha-filter-input { padding-right: 10px; }
+       group minimum cut the text off), and has no × button, so the right padding the shared search style reserves for one goes.
+       Widths come from these page classes alone (not the shared -md / -lg caps of 180 / 200px): the Program box must never be wider than
+       its group, and Amount Unit's longest option, "Centavos (Full Amount)", is wider than 180px in IBM Plex Sans.
+       The IDs matter: PHPMaker's generated FIMS.css gives EVERY input[type=text]:not([size]) `min-width: 250px`, which a plain class
+       selector cannot beat — that min-width pushed the Program box out of its group, on top of the next filter. */
+    #sr-root .sr-program-group { flex: 1 1 260px; min-width: 210px; max-width: 380px; }
+    #sr-root .sr-program-group .nha-filter-input { padding-right: 10px; text-overflow: ellipsis; }
+    #sr-root .nha-filter-search-wrap { min-width: 0; }
+    #sr-root .nha-filter-input { min-width: 0; max-width: 100%; }
+    #sr-root .sr-unit-group { flex: 0 1 240px; min-width: 200px; }
+    #sr-root .sr-unit-group .nha-filter-select { min-width: 0; text-overflow: ellipsis; }
 
     /* ── Table: one row per Supplemental record ── */
     #sr-root .sr-tbl { min-width: 1200px; }
@@ -193,7 +201,7 @@ $_sr_api = Config('API.FIMS_URL');
                 <label class="nha-filter-label">Tracking Type</label>
                 <select id="sr-type" class="nha-filter-select"><option value="">All Types</option></select>
             </div>
-            <div class="nha-filter-group nha-filter-group-lg sr-program-group">
+            <div class="nha-filter-group sr-program-group">
                 <label class="nha-filter-label">Program</label>
                 <div class="nha-filter-search-wrap">
                     <svg class="nha-filter-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -217,7 +225,7 @@ $_sr_api = Config('API.FIMS_URL');
                     <option value="100">100 / page</option>
                 </select>
             </div>
-            <div class="nha-filter-group nha-filter-group-md">
+            <div class="nha-filter-group sr-unit-group">
                 <label class="nha-filter-label">Amount Unit</label>
                 <select id="sr-unit" class="nha-filter-select">
                     <option value="full">Centavos (Full Amount)</option>

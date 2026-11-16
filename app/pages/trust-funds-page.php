@@ -43,9 +43,14 @@ $_tfl_api = Config('API.FIMS_URL');
     #tfl-root .nha-sc-val { white-space: nowrap; }
 
     /* Program: a search box like Agency / Program — it keeps room for "All programs" next to its magnifier icon (the default
-       130px group minimum cut the text off), and has no × button, so the right padding the shared search style reserves for one goes */
-    #tfl-root .tfl-program-group { flex: 1 1 190px; min-width: 190px; }
-    #tfl-root .tfl-program-group .nha-filter-input { padding-right: 10px; }
+       130px group minimum cut the text off), and has no × button, so the right padding the shared search style reserves for one goes.
+       Its width comes from this page class alone (not the shared -lg cap of 200px) and the Program box must never be wider than its
+       group. The IDs matter: PHPMaker's generated FIMS.css gives EVERY input[type=text]:not([size]) `min-width: 250px`, which a plain
+       class selector cannot beat — that min-width pushed the Program box out of its group, on top of the next filter. */
+    #tfl-root .tfl-program-group { flex: 1 1 260px; min-width: 210px; max-width: 380px; }
+    #tfl-root .tfl-program-group .nha-filter-input { padding-right: 10px; text-overflow: ellipsis; }
+    #tfl-root .nha-filter-search-wrap { min-width: 0; }
+    #tfl-root .nha-filter-input { min-width: 0; max-width: 100%; }
 
     /* the Trust Fund / OR switch sits right above the table it controls */
     #tfl-root .nha-tabs { max-width: 360px; }
@@ -230,7 +235,7 @@ $_tfl_api = Config('API.FIMS_URL');
                 <label class="nha-filter-label">Fiscal Year</label>
                 <select id="tfl-fy" class="nha-filter-select"><option value="">All Years</option></select>
             </div>
-            <div class="nha-filter-group nha-filter-group-lg tfl-program-group">
+            <div class="nha-filter-group tfl-program-group">
                 <label class="nha-filter-label">Program</label>
                 <div class="nha-filter-search-wrap">
                     <svg class="nha-filter-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>

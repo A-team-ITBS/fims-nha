@@ -18,9 +18,11 @@
  *    since the full tree isn't part of the already-fetched list data; only
  *    the amounts come from program.projects[].
  *
- *  - bgrv_openCobModal(fiscalYr) — "View COB" button in the list page's
- *    filter bar, passed that same filter's current value ('' = every
- *    fiscal year). No row/request context, no summary cards, no accordion —
+ *  - bgrv_openCobModal(fiscalYr, extraParams) — "View as COB" button in the
+ *    list page's filter bar (budget-req-page.php, and the FMD's Budget Proposal
+ *    page, budget-prop-page.php), passed that same filter's current value
+ *    ('' = every fiscal year); extraParams are extra query parameters for the
+ *    fetch (the FMD page widens it to every Regional / District office). No row/request context, no summary cards, no accordion —
  *    a flat, always-visible indented outline (Program / Sub-Program /
  *    Project), built by its own renderer (bgrv_cobRowsHtml), not the
  *    panel/card one bgrv_openModal uses below. Sourced from the actual
@@ -33,7 +35,7 @@
  * Exclusive-accordion behavior (bgrv_openModal only) is scoped to each
  * panel's own immediate list (see bgrv_togglePanel).
  *
- * Included directly into budget-req-page.php rather than registered as its
+ * Included directly into budget-req-page.php and budget-prop-page.php rather than registered as its
  * own routed page — these are modals, not separate pages. Read-only: use
  * the list row's own "Edit" action to edit a Program.
  *
@@ -285,7 +287,10 @@ async function bgrv_openModal(requestContext, program) {
 // really been budgeted for that year (under the caller's own RC scope,
 // same as the list page), never a Program/Project that happens to exist in
 // master data but was never added to any request.
-async function bgrv_openCobModal(fiscalYr = '') {
+// extraParams: more query parameters for GET /budget_req/all. The Budget Requirements list passes none (it is the caller's own RC scope);
+// the FMD's Budget Proposal list (budget-prop-page.php) passes { central: '1', rc_code_from } so the outline covers every Regional / District
+// office — the API honours central=1 only for the central review RC, so it widens nothing for anyone else.
+async function bgrv_openCobModal(fiscalYr = '', extraParams = {}) {
     $bgrv('bgrv-card').classList.add('bgrv-wide');
     $bgrv('bgrv-hdr-tag').textContent = 'Corporate Operating Budget (COB)';
     $bgrv('bgrv-modal-title').textContent = fiscalYr ? `All Programs — FY ${bgr_esc(fiscalYr)}` : 'All Programs — All Years';
@@ -301,7 +306,10 @@ async function bgrv_openCobModal(fiscalYr = '') {
 
     window.PagePreloader?.show();
     try {
-        const params = fiscalYr ? `?fiscal_yr=${encodeURIComponent(fiscalYr)}` : '';
+        const query = new URLSearchParams();
+        if (fiscalYr) query.set('fiscal_yr', fiscalYr);
+        Object.entries(extraParams || {}).forEach(([k, v]) => { if (v !== '' && v != null) query.set(k, v); });
+        const params = query.toString() ? `?${query}` : '';
         const res  = await fetch(`${BGR_API}/all${params}`, { credentials: 'same-origin' });
         const json = await res.json();
         if (!json.success) throw new Error(json.message || 'Failed to load budget requests.');

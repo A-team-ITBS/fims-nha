@@ -90,10 +90,17 @@ $_fsd_api = rtrim((string) Config('API.FIMS_URL'), '/');
     #fsd-root .fsd-skel { background: linear-gradient(90deg, var(--surf) 25%, var(--bdr) 50%, var(--surf) 75%); background-size: 200% 100%; animation: fsd-shimmer 1.3s infinite; border-radius: 5px; }
     @keyframes fsd-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 
-    /* ── Filters ── */
-    #fsd-root .fsd-fy-group { flex: 0 1 170px; }
-    #fsd-root .fsd-program-group { flex: 1 1 220px; min-width: 200px; }
-    #fsd-root .fsd-program-group .nha-filter-input { padding-right: 10px; }
+    /* ── Filters ──
+       Widths come from these page classes alone (the shared -md / -lg caps of 180 / 200px are not used): Amount Unit's longest
+       option, "Centavos (Full Amount)", is wider than 180px in IBM Plex Sans, and the Program box must never be wider than its group.
+       The ID in the selectors matters: PHPMaker's generated FIMS.css gives EVERY input[type=text]:not([size]) `min-width: 250px`,
+       which a plain class selector cannot beat — that min-width is what pushed the Program box out of its group, on top of Amount Unit. */
+    #fsd-root .fsd-fy-group { flex: 0 1 170px; min-width: 150px; }
+    #fsd-root .fsd-program-group { flex: 1 1 280px; min-width: 220px; max-width: 460px; }
+    #fsd-root .fsd-program-group .nha-filter-search-wrap { min-width: 0; }
+    #fsd-root .fsd-program-group .nha-filter-input { min-width: 0; max-width: 100%; padding-right: 10px; text-overflow: ellipsis; }
+    #fsd-root .fsd-unit-group { flex: 0 1 240px; min-width: 200px; }
+    #fsd-root .fsd-unit-group .nha-filter-select { min-width: 0; text-overflow: ellipsis; }
 
     /* ── Charts ── */
     #fsd-root .fsd-ch-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; margin-bottom: 8px; }
@@ -176,14 +183,14 @@ $_fsd_api = rtrim((string) Config('API.FIMS_URL'), '/');
                 <label class="nha-filter-label" for="fsd-fy">Fiscal Year</label>
                 <select id="fsd-fy" class="nha-filter-select"><option value="">All Fiscal Years</option></select>
             </div>
-            <div class="nha-filter-group nha-filter-group-lg fsd-program-group">
+            <div class="nha-filter-group fsd-program-group">
                 <label class="nha-filter-label" for="fsd-program">Program</label>
                 <div class="nha-filter-search-wrap">
                     <svg class="nha-filter-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                     <input type="text" id="fsd-program" class="nha-filter-input" placeholder="All programs" autocomplete="off" title="Type a program name or code, then pick it from the list. Clear the box for all programs.">
                 </div>
             </div>
-            <div class="nha-filter-group nha-filter-group-md">
+            <div class="nha-filter-group fsd-unit-group">
                 <label class="nha-filter-label" for="fsd-unit">Amount Unit</label>
                 <select id="fsd-unit" class="nha-filter-select">
                     <option value="full">Centavos (Full Amount)</option>
