@@ -356,7 +356,8 @@ function mpr_render(r) {
             mpr_row_('Program', mpr_named(r.program_name, r.program_code)) +
             mpr_row_('Sub-Program', mpr_named(r.sub_program_name, r.sub_program_code)) +
             mpr_row_('Project', mpr_named(r.project_name, r.project_code))),
-        mpr_card('Vendor and Purchase Documents',
+        // A CBA buys nothing from a vendor (its form hides Vendor and the PR / PO number), so it gets no such card.
+        String(r.allocation_type || '').toUpperCase() === 'CBA' ? '' : mpr_card('Vendor and Purchase Documents',
             mpr_row_('Vendor', mrq_esc(r.vendor_name || '')) +
             mpr_docRow('Purchase Request (PR)', r.pr_number, r.pr_amount) +
             mpr_docRow('Purchase Order (PO)', r.po_number, r.po_amount)),
