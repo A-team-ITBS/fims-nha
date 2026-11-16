@@ -3,7 +3,7 @@
 namespace PHPMaker2024\FIMS\Service;
 
 use PHPMaker2024\FIMS as App;
-use PHPMaker2024\FIMS\DataType;
+use PHPMaker2024\FIMS\DataType as DT;
 
 class ChartOfAccountsService
 {
@@ -34,7 +34,7 @@ class ChartOfAccountsService
             $where = ['is_active = true'];
 
             if ($search !== '') {
-                $s = App\QuotedValue('%' . $search . '%', App\DataType::STRING, 'DB');
+                $s = App\QuotedValue('%' . $search . '%', DT::STRING, 'DB');
                 $where[] = "(account_code ILIKE {$s} OR account_title ILIKE {$s})";
             }
 
@@ -73,8 +73,8 @@ class ChartOfAccountsService
     public function fetchByPrefix(string $prefix): array
     {
         try {
-            $p = App\QuotedValue($prefix, DataType::STRING, 'DB');
-            $pDash = App\QuotedValue($prefix . '-%', DataType::STRING, 'DB');
+            $p = App\QuotedValue($prefix, DT::STRING, 'DB');
+            $pDash = App\QuotedValue($prefix . '-%', DT::STRING, 'DB');
 
             $sql = "SELECT * FROM {$this->table}
                     WHERE (account_code = {$p} OR account_code LIKE {$pDash})
@@ -94,7 +94,7 @@ class ChartOfAccountsService
         try {
             $where = "is_active = TRUE AND allow_transactions = TRUE";
             if ($search !== '') {
-                $s = App\QuotedValue('%' . $search . '%', DataType::STRING, 'DB');
+                $s = App\QuotedValue('%' . $search . '%', DT::STRING, 'DB');
                 $where .= " AND (account_code ILIKE {$s} OR account_title ILIKE {$s})";
             }
 
@@ -110,7 +110,7 @@ class ChartOfAccountsService
     public function fetchById(string $id): array
     {
         try {
-            $sql = "SELECT * FROM {$this->table} WHERE account_id = " . App\QuotedValue($id, App\DataType::STRING, 'DB');
+            $sql = "SELECT * FROM {$this->table} WHERE account_id = " . App\QuotedValue($id, DT::STRING, 'DB');
             $data = App\ExecuteRow($sql, 'DB');
 
             if (!$data) {
@@ -134,7 +134,7 @@ class ChartOfAccountsService
             }
 
             $exists = (int) App\ExecuteScalar(
-                "SELECT COUNT(*) FROM {$this->table} WHERE account_code = " . App\QuotedValue($code, App\DataType::STRING, 'DB'),
+                "SELECT COUNT(*) FROM {$this->table} WHERE account_code = " . App\QuotedValue($code, DT::STRING, 'DB'),
                 'DB'
             );
             if ($exists > 0) {
@@ -160,10 +160,10 @@ class ChartOfAccountsService
             $values = [];
             foreach ($fields as $key => $value) {
                 $columns[] = App\QuotedName($key, 'DB');
-                $values[] = $value === null ? 'NULL' : App\QuotedValue($value, App\DataType::STRING, 'DB');
+                $values[] = $value === null ? 'NULL' : App\QuotedValue($value, DT::STRING, 'DB');
             }
 
-            $sql = "INSERT INTO {$this->table} (" . implode(', ', $columns) . ') VALUES (' . implode(', ', $values) . ')";
+            $sql = "INSERT INTO {$this->table} (" . implode(', ', $columns) . ") VALUES (" . implode(', ', $values) . ")";
             App\Execute($sql, 'DB');
 
             return ['success' => true, 'message' => 'Account created successfully.'];
@@ -201,10 +201,10 @@ class ChartOfAccountsService
 
             $setParts = [];
             foreach ($fields as $key => $value) {
-                $setParts[] = App\QuotedName($key, 'DB') . ' = ' . ($value === null ? 'NULL' : App\QuotedValue($value, App\DataType::STRING, 'DB'));
+                $setParts[] = App\QuotedName($key, 'DB') . ' = ' . ($value === null ? 'NULL' : App\QuotedValue($value, DT::STRING, 'DB'));
             }
 
-            $sql = "UPDATE {$this->table} SET " . implode(', ', $setParts) . ' WHERE account_id = ' . App\QuotedValue($id, App\DataType::STRING, 'DB');
+            $sql = "UPDATE {$this->table} SET " . implode(', ', $setParts) . ' WHERE account_id = ' . App\QuotedValue($id, DT::STRING, 'DB');
             App\Execute($sql, 'DB');
 
             return ['success' => true, 'message' => 'Account updated successfully.'];
@@ -224,7 +224,7 @@ class ChartOfAccountsService
             $newStatus = (bool) ($check['data']['is_active'] ?? false) ? 'false' : 'true';
 
             App\Execute(
-                "UPDATE {$this->table} SET is_active = {$newStatus} WHERE account_id = " . App\QuotedValue($id, App\DataType::STRING, 'DB'),
+                "UPDATE {$this->table} SET is_active = {$newStatus} WHERE account_id = " . App\QuotedValue($id, DT::STRING, 'DB'),
                 'DB'
             );
 
@@ -243,7 +243,7 @@ class ChartOfAccountsService
             }
 
             App\Execute(
-                "UPDATE {$this->table} SET is_active = false WHERE account_id = " . App\QuotedValue($id, App\DataType::STRING, 'DB'),
+                "UPDATE {$this->table} SET is_active = false WHERE account_id = " . App\QuotedValue($id, DT::STRING, 'DB'),
                 'DB'
             );
 
