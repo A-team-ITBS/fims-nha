@@ -105,6 +105,7 @@
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone ($p['PHPMaker2024\\FIMS\\Attributes\\Get'] ?? \Symfony\Component\VarExporter\Internal\Registry::p('PHPMaker2024\\FIMS\\Attributes\\Get')),
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Get'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
@@ -191,6 +192,11 @@
     [
         'PHPMaker2024\\FIMS\\Attributes\\Map' => [
             'methods' => [
+                [
+                    'GET',
+                    'POST',
+                    'OPTIONS',
+                ],
                 [
                     'GET',
                     'POST',
@@ -1188,6 +1194,7 @@
                 '/DocumentTypeManager[/{params:.*}]',
                 '/EventPlayground[/{params:.*}]',
                 '/FileManager[/{params:.*}]',
+                '/FtlaPage[/{params:.*}]',
                 '/FundSourcingDashboardPage[/{params:.*}]',
                 '/GeneralLedgerPage[/{params:.*}]',
                 '/IarModule[/{params:.*}]',
@@ -1376,6 +1383,7 @@
                 'PHPMaker2024\\FIMS\\DocumentTypeManagerController:custom',
                 'PHPMaker2024\\FIMS\\EventPlaygroundController:custom',
                 'PHPMaker2024\\FIMS\\FileManagerController:custom',
+                'PHPMaker2024\\FIMS\\FtlaPageController:custom',
                 'PHPMaker2024\\FIMS\\FundSourcingDashboardPageController:custom',
                 'PHPMaker2024\\FIMS\\GeneralLedgerPageController:custom',
                 'PHPMaker2024\\FIMS\\IarModuleController:custom',
@@ -1495,6 +1503,9 @@
                 'PHPMaker2024\\FIMS\\WorkflowManagerController:custom',
             ],
             'middleware' => [
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
                 [
                     'PHPMaker2024\\FIMS\\PermissionMiddleware',
                 ],
@@ -2122,6 +2133,7 @@
                 'custom.DocumentTypeManager',
                 'custom.EventPlayground',
                 'custom.FileManager',
+                'custom.ftla_page',
                 'custom.fund_sourcing_dashboard_page',
                 'custom.general_ledger_page',
                 'custom.IARModule',
@@ -2241,6 +2253,7 @@
                 'custom.WorkflowManager',
             ],
             'options' => [
+                [],
                 [],
                 [],
                 [],
@@ -2617,6 +2630,7 @@
         $o[183],
         $o[184],
         $o[185],
+        $o[186],
     ],
     []
 );
