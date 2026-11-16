@@ -40,8 +40,8 @@
  * Endorsed -> Budget Head (this modal) -> Approved.
  *   Return  — needs REMARKS (the box above the footer; required): PUT /budget_req/return/{id} { remarks }:
  *             ONE step back — status -> "Returned to Budget Officer" (the Officer sees it in Budget Processing again, with
- *             these remarks, and can endorse it again or return it to the originating office); remarks saved on
- *             fims.budget_req.remarks.
+ *             these remarks, and can endorse it again or return it to the originating office); remarks saved to
+ *             fims.status_change_log (via GlobalService::logStatusChange()).
  *   Approve — PUT /budget_req/approve/{id}: status -> "Approved" (only an Endorsed request can be approved, and only by the
  *             Budget Head; the server enforces both). The remarks box is not used.
  * Status lives on the request header, so both apply to the whole request. After either one it calls
