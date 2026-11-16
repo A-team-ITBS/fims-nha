@@ -103,6 +103,8 @@ $_vnd_api = Config('API.FIMS_URL');
                         <th>Type</th>
                         <th>Contact</th>
                         <th>Tax</th>
+                        <th>GL Account</th>
+                        <th>Sub-Ledger</th>
                         <th>Status</th>
                         <th>Actions</th>
                     </tr>
@@ -119,6 +121,123 @@ $_vnd_api = Config('API.FIMS_URL');
     </div>
 
 <?php include __DIR__ . '/form/vendor-form.php'; ?>
+
+<!-- ══════════════════════════════════════════════════════════
+     SUB-LEDGER ASSIGNMENT MODAL   JS namespace: vnd_sl_
+══════════════════════════════════════════════════════════ -->
+<style>
+    #vnd-sl-overlay { display:none;position:fixed;inset:0;z-index:9100;
+        background:rgba(15,32,69,.6);align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(3px); }
+    #vnd-sl-overlay.open { display:flex; }
+    #vnd-sl-card { background:var(--afims-surface, #FFFFFF);border-radius:16px;width:100%;max-width:600px;
+        max-height:85vh;display:flex;flex-direction:column;overflow:hidden;
+        box-shadow:0 32px 80px rgba(0,0,0,.28);font-family:'IBM Plex Sans',sans-serif;
+        animation:vndSlIn .2s ease; }
+    @keyframes vndSlIn { from{opacity:0;transform:translateY(16px) scale(.98);} to{opacity:1;transform:none;} }
+
+    #vnd-sl-header { display:flex;align-items:center;justify-content:space-between;
+        padding:16px 22px;background:var(--afims-heading-fill, #000E3E);flex-shrink:0; }
+    #vnd-sl-header-info { display:flex;align-items:center;gap:10px; }
+    .vnd-sl-hdr-tag { font-size:10px;color:var(--afims-text-disabled, #A9AAB8);margin:0 0 2px;letter-spacing:.06em;text-transform:uppercase; }
+    .vnd-sl-hdr-title { font-size:14px;font-weight:700;color:var(--afims-pure-white, #FFFFFF);margin:0; }
+    #vnd-sl-close { border:none;background:color-mix(in srgb, var(--afims-surface, #FFFFFF) 12%, transparent);cursor:pointer;
+        width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;
+        color:var(--afims-text-disabled, #A9AAB8);font-size:18px;line-height:1;transition:background .15s; }
+    #vnd-sl-close:hover { background:color-mix(in srgb, var(--afims-surface, #FFFFFF) 22%, transparent);color:var(--afims-pure-white, #FFFFFF); }
+
+    #vnd-sl-err { display:none;margin:18px 22px -4px;background:var(--afims-danger-soft, #FAE1E3);
+        border:1px solid var(--afims-danger-soft, #FAE1E3);border-radius:8px;padding:10px 14px;
+        font-size:12px;color:var(--afims-danger, #DC3545); }
+
+    #vnd-sl-form { display:flex;flex-direction:column;flex:1 1 auto;min-height:0;margin:0; }
+    #vnd-sl-body { flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:22px; }
+    #vnd-sl-footer { flex-shrink:0; }
+    .vnd-sl-section { font-size:11px;font-weight:700;color:var(--afims-text-muted, #62657E);text-transform:uppercase;
+        letter-spacing:.06em;margin:0 0 12px;padding-bottom:6px;border-bottom:1px solid var(--afims-border, #E4ECF2); }
+    .vnd-sl-group { display:flex;flex-direction:column;gap:5px;margin-bottom:14px; }
+    .vnd-sl-label { font-size:11px;font-weight:700;color:var(--afims-text, #1A1B21);
+        text-transform:uppercase;letter-spacing:.05em; }
+    .vnd-sl-input { width:100%;padding:9px 12px;border:1px solid var(--afims-border, #E4ECF2);border-radius:8px;
+        font-size:13px;color:var(--afims-text, #1A1B21);font-family:'IBM Plex Sans',sans-serif;
+        background:var(--afims-surface, #FFFFFF);transition:border-color .15s,box-shadow .15s;box-sizing:border-box; }
+    .vnd-sl-input:focus { outline:none;border-color:var(--afims-heading-fill, #000E3E);box-shadow:0 0 0 3px rgba(15,32,69,.08); }
+    .vnd-sl-hint { font-size:11px;color:var(--afims-text-disabled, #A9AAB8);margin:0; }
+    .vnd-sl-radio { display:flex;align-items:center;gap:8px;font-size:13px;color:var(--afims-text, #1A1B21);
+        padding:10px;border:1px solid var(--afims-border, #E4ECF2);border-radius:8px;cursor:pointer;margin-bottom:8px;transition:background .15s; }
+    .vnd-sl-radio:hover { background:var(--afims-surface-subtle, #F4F7FA); }
+    .vnd-sl-radio input[type="radio"] { width:16px;height:16px;accent-color:var(--afims-heading-fill, #000E3E); }
+
+    #vnd-sl-footer { display:flex;align-items:center;justify-content:flex-end;gap:8px;
+        padding:14px 22px;background:var(--afims-surface-subtle, #F4F7FA);border-top:1px solid var(--afims-border, #E4ECF2);flex-shrink:0; }
+    #vnd-sl-footer .vnd-sl-btn { height:36px;padding:0 20px;border-radius:8px;border:1px solid var(--afims-border, #E4ECF2);
+        font-size:13px;font-weight:600;font-family:'IBM Plex Sans',sans-serif;cursor:pointer;transition:background .15s; }
+    #vnd-sl-footer .vnd-sl-btn:disabled { opacity:.5;cursor:not-allowed; }
+    #vnd-sl-footer .vnd-sl-btn-ghost { background:var(--afims-surface, #FFFFFF);color:var(--afims-text, #1A1B21); }
+    #vnd-sl-footer .vnd-sl-btn-ghost:hover:not(:disabled) { background:var(--afims-surface-subtle, #F4F7FA); }
+    #vnd-sl-footer .vnd-sl-btn-navy { background:var(--afims-heading-fill, #000E3E);border-color:var(--afims-heading-fill, #000E3E);color:var(--afims-pure-white, #FFFFFF); }
+    #vnd-sl-footer .vnd-sl-btn-navy:hover:not(:disabled) { opacity:.92; }
+</style>
+
+<div id="vnd-sl-overlay">
+    <div id="vnd-sl-card">
+        <div id="vnd-sl-header">
+            <div id="vnd-sl-header-info">
+                <div>
+                    <p class="vnd-sl-hdr-tag">Sub-Ledger Assignment</p>
+                    <p class="vnd-sl-hdr-title">Link Sub-Ledger Code</p>
+                </div>
+            </div>
+            <button type="button" id="vnd-sl-close">&times;</button>
+        </div>
+
+        <div id="vnd-sl-err"></div>
+
+        <form id="vnd-sl-form" novalidate>
+            <div id="vnd-sl-body">
+                <input type="hidden" id="vnd-sl-vendor-id" value="">
+
+                <p class="vnd-sl-section">1. Select GL Account</p>
+                <div class="vnd-sl-group" style="position:relative;">
+                    <label class="vnd-sl-label">Search GL Account <span class="req">*</span></label>
+                    <input type="hidden" id="vnd-sl-gl-account-id" value="">
+                    <input type="text" class="vnd-sl-input" id="vnd-sl-gl-search" maxlength="500" placeholder="Type GL account code or name...">
+                    <div id="vnd-sl-gl-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;margin-top:4px;background:#fff;border:1px solid #E4ECF2;border-radius:8px;max-height:180px;overflow-y:auto;z-index:1001;box-shadow:0 4px 12px rgba(0,0,0,.1);"></div>
+                    <p class="vnd-sl-hint">This is the parent payables account for the vendor.</p>
+                </div>
+                <div id="vnd-sl-gl-selected" style="padding:10px;background:#F4F7FA;border-radius:6px;display:none;margin-top:8px;">
+                    <strong>GL:</strong> <span id="vnd-sl-gl-selected-text"></span>
+                </div>
+
+                <div id="vnd-sl-section-2" style="margin-top:22px;opacity:.5;pointer-events:none;">
+                    <p class="vnd-sl-section">2. Select or Create Sub-Ledger (Child Account)</p>
+                    <div class="vnd-sl-group" style="position:relative;">
+                        <label class="vnd-sl-label">Search Sub-Ledger <span class="req">*</span></label>
+                        <input type="text" class="vnd-sl-input" id="vnd-sl-search" maxlength="500" placeholder="Select a GL account first…" disabled>
+                        <div id="vnd-sl-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;margin-top:4px;background:#fff;border:1px solid #E4ECF2;border-radius:8px;max-height:180px;overflow-y:auto;z-index:1000;box-shadow:0 4px 12px rgba(0,0,0,.1);"></div>
+                        <p class="vnd-sl-hint">Pick an existing child account under this GL, or create a new one below.</p>
+                        <p id="vnd-sl-empty-note" class="vnd-sl-hint" style="display:none;color:var(--afims-danger, #DC3545);">No child accounts exist under this GL account yet. Create one below.</p>
+                    </div>
+                    <div id="vnd-sl-selected-item" style="padding:10px;background:#F4F7FA;border-radius:6px;display:none;margin-top:8px;">
+                        <strong>Selected:</strong> <span id="vnd-sl-selected-code"></span>
+                    </div>
+                    <input type="hidden" id="vnd-sl-selected-code-value">
+
+                    <div class="vnd-sl-group" style="margin-top:14px;border-top:1px dashed var(--afims-border, #E4ECF2);padding-top:14px;">
+                        <label class="vnd-sl-label">New Sub-Ledger Title</label>
+                        <input type="text" class="vnd-sl-input" id="vnd-sl-new-title" maxlength="255" placeholder="e.g., 0213 CONSTRUCTION AND SUPPLIES OPC">
+                        <p class="vnd-sl-hint">Not in the list above? Type a title and click Create.</p>
+                        <button type="button" class="vnd-sl-btn vnd-sl-btn-ghost" id="vnd-sl-create-btn" style="margin-top:8px;align-self:flex-start;">+ Create Sub-Ledger Account</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="vnd-sl-footer">
+                <button type="button" class="vnd-sl-btn vnd-sl-btn-ghost" id="vnd-sl-cancel">Cancel</button>
+                <button type="submit" class="vnd-sl-btn vnd-sl-btn-navy" id="vnd-sl-save">Assign Sub-Ledger</button>
+            </div>
+        </form>
+    </div>
+</div>
 
 </div><!-- /#vnd-root -->
 
@@ -187,6 +306,23 @@ function vnd_bindEvents() {
         clearBtn.hidden = true;
         vnd_page = 1; vnd_load();
     });
+
+    // COA account search
+    const coaSearch = $vnd('vnd-coa-account-search');
+    if (coaSearch) {
+        coaSearch.addEventListener('input', vnd_searchCoaAccounts);
+        coaSearch.addEventListener('focus', () => {
+            const dropdown = $vnd('vnd-coa-dropdown');
+            if (coaSearch.value.trim() && dropdown.children.length) {
+                dropdown.style.display = 'block';
+            }
+        });
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('#vnd-coa-account-search') && !e.target.closest('#vnd-coa-dropdown')) {
+                $vnd('vnd-coa-dropdown').style.display = 'none';
+            }
+        });
+    }
 }
 
 /* ── Load ──────────────────────────────────────────────────── */
@@ -253,11 +389,19 @@ function vnd_renderTable(rows) {
             ${vnd_truthy(r.is_vat_registered) ? '<span class="nha-bdg nha-bdg-teal">VAT</span>' : '<span class="nha-bdg nha-bdg-gray">Non-VAT</span>'}
             ${r.tax_classification ? `<div class="nha-td-sub" style="margin-top:2px;">${vnd_esc(r.tax_classification)}</div>` : ''}
         </td>
-        <td>${vnd_statusBadge(r.status)}</td>
+        <td><code class="nha-code">${vnd_esc(r.coa_account_code || '—')}</code></td>
         <td>
+            ${r.sl_code ? `<span class="nha-bdg nha-bdg-green">${vnd_esc(r.sl_account_code || r.sl_code)}</span>` : '<span class="nha-bdg nha-bdg-gray">None</span>'}
+        </td>
+        <td>${vnd_statusBadge(r.status)}</td>
+        <td style="display:flex;gap:4px;flex-wrap:wrap;">
             <button class="nha-btn-act edit" onclick="vnd_edit(${Number(r.vendor_id)})" title="Edit">
                 <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
                 Edit
+            </button>
+            <button class="nha-btn-act" onclick="vnd_openSlModal(${Number(r.vendor_id)}, '${vnd_escAttr(r.coa_account_id)}', '${vnd_escAttr(r.sl_code || '')}')" title="Link Sub-Ledger" style="background:var(--afims-info, #0066CC);">
+                <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.658 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
+                Link SL
             </button>
         </td>
     </tr>`;
@@ -303,6 +447,9 @@ const VND_TEXT_FIELDS = {          // payload key → input id
     bank_account_number : 'vnd-bank-acct',
 };
 
+let vnd_coaSearchTimer;
+let vnd_coaCache = {};
+
 function vnd_openModal(mode, row = null) {
     vnd_hideErr();
     $vnd('vnd-mode').value = mode;
@@ -314,6 +461,19 @@ function vnd_openModal(mode, row = null) {
     }
     if (!row?.status) $vnd('vnd-status').value = 'ACTIVE';
     $vnd('vnd-vat').checked = vnd_truthy(row?.is_vat_registered);
+
+    // COA account (populate if editing)
+    $vnd('vnd-coa-account-id').value = row?.coa_account_id || '';
+    if (row?.coa_account_id) {
+        $vnd('vnd-coa-account-search').value = `${row.coa_account_code} — ${row.coa_account_name}`;
+        $vnd('vnd-coa-selected').innerHTML = `<strong>${row.coa_account_code}</strong><br><small>${row.coa_account_name}</small>`;
+        $vnd('vnd-coa-selected').style.display = 'block';
+    } else {
+        $vnd('vnd-coa-account-search').value = '';
+        $vnd('vnd-coa-selected').style.display = 'none';
+    }
+    $vnd('vnd-coa-dropdown').style.display = 'none';
+    $vnd('vnd-coa-dropdown').innerHTML = '';
 
     $vnd('vnd-vendor-code').disabled = mode === 'edit';
     $vnd('vnd-code-hint').textContent = mode === 'edit'
@@ -364,9 +524,13 @@ async function vnd_save(ev) {
     payload.is_vat_registered = $vnd('vnd-vat').checked;
     if (mode === 'edit') delete payload.vendor_code;       // locked
 
+    const coaAccountId = $vnd('vnd-coa-account-id').value;
+
     if (mode === 'add' && !payload.vendor_code) { vnd_showErr('Vendor code is required.'); return; }
     if (!payload.vendor_name)                   { vnd_showErr('Vendor name is required.'); return; }
     if (payload.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payload.email)) { vnd_showErr('Email address is not valid.'); return; }
+
+    if (coaAccountId) payload.coa_account_id = coaAccountId;  // Optional — Link SL can assign this later
 
     window.PagePreloader?.show();
     try {
@@ -425,4 +589,361 @@ function vnd_toast(msg, type = 'info') {
     wrap.appendChild(t);
     setTimeout(() => t.remove(), 4000);
 }
+
+/* ── COA Account Picker ────────────────────────────────────── */
+async function vnd_searchCoaAccounts(ev) {
+    const query = ev.target.value.trim();
+    const dropdown = $vnd('vnd-coa-dropdown');
+
+    if (!query || query.length < 1) {
+        dropdown.style.display = 'none';
+        dropdown.innerHTML = '';
+        return;
+    }
+
+    clearTimeout(vnd_coaSearchTimer);
+    vnd_coaSearchTimer = setTimeout(async () => {
+        try {
+            const res = await fetch(`${VND_API}/../accounting/coa/search?q=${encodeURIComponent(query)}&limit=20`, { credentials: 'same-origin' });
+            const json = await res.json();
+
+            if (!json.success || !json.data?.length) {
+                dropdown.innerHTML = '<div style="padding:10px;color:#999;font-size:12px;">No accounts found.</div>';
+                dropdown.style.display = 'block';
+                return;
+            }
+
+            dropdown.innerHTML = json.data.map(account =>
+                `<div class="vnd-coa-item" data-id="${account.account_id}" data-code="${vnd_esc(account.account_code)}" data-name="${vnd_esc(account.account_title)}" style="padding:10px 12px;border-bottom:1px solid #E4ECF2;cursor:pointer;font-size:13px;transition:background .15s;">
+                    <div style="font-weight:600;">${vnd_esc(account.account_code)}</div>
+                    <div style="font-size:11px;color:#999;margin-top:2px;">${vnd_esc(account.account_title)}</div>
+                </div>`
+            ).join('');
+
+            dropdown.style.display = 'block';
+            dropdown.querySelectorAll('.vnd-coa-item').forEach(item => {
+                item.addEventListener('mouseover', () => item.style.background = '#F4F7FA');
+                item.addEventListener('mouseout', () => item.style.background = 'transparent');
+                item.addEventListener('click', () => vnd_selectCoaAccount(item));
+            });
+        } catch (e) {
+            dropdown.innerHTML = `<div style="padding:10px;color:#d32f2f;font-size:12px;">Error: ${vnd_esc(e.message)}</div>`;
+            dropdown.style.display = 'block';
+        }
+    }, 300);
+}
+
+function vnd_selectCoaAccount(item) {
+    const accountId = item.dataset.id;  // This is account_id from COA
+    const code = item.dataset.code;
+    const name = item.dataset.name;
+
+    $vnd('vnd-coa-account-id').value = accountId;  // Store the numeric account_id, not the code
+    $vnd('vnd-coa-account-search').value = `${code} — ${name}`;
+    $vnd('vnd-coa-dropdown').style.display = 'none';
+
+    const selected = $vnd('vnd-coa-selected');
+    selected.innerHTML = `<strong>${code}</strong><br><small>${name}</small>`;
+    selected.style.display = 'block';
+}
+
+/* ── SL Modal Functions ─────────────────────────────────────── */
+function vnd_openSlModal(vendorId, accountId, currentSl) {
+    $vnd('vnd-sl-vendor-id').value = vendorId;
+
+    // Reset GL section
+    $vnd('vnd-sl-gl-account-id').value = '';
+    $vnd('vnd-sl-gl-search').value = '';
+    $vnd('vnd-sl-gl-dropdown').innerHTML = '';
+    $vnd('vnd-sl-gl-dropdown').style.display = 'none';
+    $vnd('vnd-sl-gl-selected').style.display = 'none';
+
+    // Reset SL section
+    $vnd('vnd-sl-search').value = '';
+    $vnd('vnd-sl-search').disabled = true;
+    $vnd('vnd-sl-search').placeholder = 'Select a GL account first…';
+    $vnd('vnd-sl-selected-code-value').value = '';
+    $vnd('vnd-sl-selected-item').style.display = 'none';
+    $vnd('vnd-sl-dropdown').innerHTML = '';
+    $vnd('vnd-sl-dropdown').style.display = 'none';
+    $vnd('vnd-sl-empty-note').style.display = 'none';
+    $vnd('vnd-sl-new-title').value = '';
+    $vnd('vnd-sl-section-2').style.opacity = '.5';
+    $vnd('vnd-sl-section-2').style.pointerEvents = 'none';
+
+    vnd_slHideErr();
+    $vnd('vnd-sl-overlay').classList.add('open');
+
+    // Pre-fill GL if the vendor already has one assigned.
+    if (accountId) {
+        vnd_fetchAndSelectGl(accountId, currentSl);
+    }
+}
+
+// Look up the GL account's display info, then wire up the SL section for it.
+async function vnd_fetchAndSelectGl(accountId, currentSl) {
+    try {
+        const res = await fetch(`${VND_API}/../accounting/coa/search?q=${encodeURIComponent(accountId)}&limit=50`, { credentials: 'same-origin' });
+        const json = await res.json();
+        const match = json.success ? (json.data || []).find(a => String(a.account_id) === String(accountId)) : null;
+        if (match) {
+            vnd_selectGlAccount({ dataset: { id: match.account_id, code: match.account_code, name: match.account_title } });
+        }
+    } catch (e) {
+        // Non-fatal — user can still pick a GL manually.
+    }
+
+    if (currentSl) {
+        vnd_loadSlCodesForAccount(accountId, currentSl);
+    }
+}
+
+function vnd_closeSlModal() {
+    $vnd('vnd-sl-overlay').classList.remove('open');
+    $vnd('vnd-sl-form').reset();
+    vnd_slHideErr();
+}
+
+function vnd_slShowErr(msg) {
+    const el = $vnd('vnd-sl-err');
+    el.textContent = msg;
+    el.style.display = 'block';
+}
+function vnd_slHideErr() {
+    $vnd('vnd-sl-err').style.display = 'none';
+}
+
+/* ── Step 1: GL Account picker ──────────────────────────────── */
+let vnd_slGlSearchTimer;
+$vnd('vnd-sl-gl-search')?.addEventListener('input', (ev) => {
+    const query = ev.target.value.trim();
+    const dropdown = $vnd('vnd-sl-gl-dropdown');
+    clearTimeout(vnd_slGlSearchTimer);
+
+    if (!query) {
+        dropdown.style.display = 'none';
+        return;
+    }
+
+    vnd_slGlSearchTimer = setTimeout(() => {
+        fetch(`${VND_API}/../accounting/coa/search?q=${encodeURIComponent(query)}&limit=20`, { credentials: 'same-origin' })
+            .then(r => r.json())
+            .then(json => {
+                if (json.success && json.data?.length) {
+                    dropdown.innerHTML = json.data.map(a =>
+                        `<div class="vnd-sl-gl-item" data-id="${a.account_id}" data-code="${vnd_escAttr(a.account_code)}" data-name="${vnd_escAttr(a.account_title)}" style="padding:10px 12px;border-bottom:1px solid #E4ECF2;cursor:pointer;font-size:13px;transition:background .15s;">
+                            <div style="font-weight:600;">${vnd_esc(a.account_code)}</div>
+                            <div style="font-size:11px;color:#999;margin-top:2px;">${vnd_esc(a.account_title)}</div>
+                        </div>`
+                    ).join('');
+                    dropdown.style.display = 'block';
+                    dropdown.querySelectorAll('.vnd-sl-gl-item').forEach(item => {
+                        item.addEventListener('mouseover', () => item.style.background = '#F4F7FA');
+                        item.addEventListener('mouseout', () => item.style.background = 'transparent');
+                        item.addEventListener('click', () => vnd_selectGlAccount(item));
+                    });
+                } else {
+                    dropdown.innerHTML = '<div style="padding:10px;color:#999;font-size:12px;">No accounts found.</div>';
+                    dropdown.style.display = 'block';
+                }
+            })
+            .catch(e => vnd_slShowErr('GL search failed: ' + e.message));
+    }, 300);
+});
+
+function vnd_selectGlAccount(item) {
+    const accountId = item.dataset.id;
+    const code = item.dataset.code;
+    const name = item.dataset.name;
+
+    $vnd('vnd-sl-gl-account-id').value = accountId;
+    $vnd('vnd-sl-gl-search').value = `${code} — ${name}`;
+    $vnd('vnd-sl-gl-dropdown').style.display = 'none';
+
+    const selected = $vnd('vnd-sl-gl-selected');
+    selected.innerHTML = `<strong>${vnd_esc(code)}</strong> — ${vnd_esc(name)}`;
+    selected.style.display = 'block';
+
+    // Changing the GL invalidates any previously selected SL.
+    $vnd('vnd-sl-selected-code-value').value = '';
+    $vnd('vnd-sl-selected-item').style.display = 'none';
+    $vnd('vnd-sl-search').value = '';
+    $vnd('vnd-sl-search').disabled = false;
+    $vnd('vnd-sl-search').placeholder = 'Type account code or description...';
+    $vnd('vnd-sl-section-2').style.opacity = '1';
+    $vnd('vnd-sl-section-2').style.pointerEvents = 'auto';
+
+    vnd_loadSlCodesForAccount(accountId);
+}
+
+/* ── Step 2: Sub-Ledger (child account) picker ──────────────── */
+// Load SL codes for an account; optionally pre-select a known current SL id.
+async function vnd_loadSlCodesForAccount(accountId, preselectId = null) {
+    try {
+        const res = await fetch(`${VND_API}/../accounting/sl/by-account?account_id=${encodeURIComponent(accountId)}&limit=50`, { credentials: 'same-origin' });
+        const json = await res.json();
+
+        if (!json.success || !json.data?.length) {
+            // Quiet inline note instead of an overlapping dropdown box.
+            $vnd('vnd-sl-empty-note').style.display = 'block';
+            $vnd('vnd-sl-dropdown').style.display = 'none';
+            return;
+        }
+
+        $vnd('vnd-sl-empty-note').style.display = 'none';
+        vnd_renderSlList(json.data);
+        $vnd('vnd-sl-dropdown').style.display = 'none'; // don't force it open — just cache for typing
+
+        if (preselectId) {
+            const match = json.data.find(a => String(a.account_id) === String(preselectId));
+            if (match) {
+                $vnd('vnd-sl-search').value = match.account_code;
+                $vnd('vnd-sl-selected-code-value').value = match.account_id;
+                $vnd('vnd-sl-selected-code').textContent = match.account_code;
+                $vnd('vnd-sl-selected-item').style.display = 'block';
+            }
+        }
+    } catch (e) {
+        vnd_slShowErr('Failed to load sub-ledgers: ' + e.message);
+    }
+}
+
+// Render SL dropdown list
+function vnd_renderSlList(items) {
+    const dropdown = $vnd('vnd-sl-dropdown');
+    dropdown.innerHTML = items.map(item =>
+        `<div class="vnd-sl-item" data-code="${vnd_escAttr(item.account_id)}" data-display="${vnd_escAttr(item.account_code)}" style="padding:10px 12px;border-bottom:1px solid #E4ECF2;cursor:pointer;font-size:13px;transition:background .15s;">
+            <div style="font-weight:600;">${vnd_esc(item.account_code)}</div>
+            ${item.account_title ? `<div style="font-size:11px;color:#999;margin-top:2px;">${vnd_esc(item.account_title)}</div>` : ''}
+        </div>`
+    ).join('');
+
+    dropdown.style.display = 'block';
+    dropdown.querySelectorAll('.vnd-sl-item').forEach(item => {
+        item.addEventListener('mouseover', () => item.style.background = '#F4F7FA');
+        item.addEventListener('mouseout', () => item.style.background = 'transparent');
+        item.addEventListener('click', () => vnd_selectSlCode(item));
+    });
+}
+
+// Select a SL code
+function vnd_selectSlCode(item) {
+    const slId = item.dataset.code;  // This is the account_id from COA
+    const display = item.dataset.display;  // This is the account_code for display
+    $vnd('vnd-sl-search').value = display;
+    $vnd('vnd-sl-selected-code-value').value = slId;
+    $vnd('vnd-sl-selected-code').textContent = display;
+    $vnd('vnd-sl-selected-item').style.display = 'block';
+    $vnd('vnd-sl-dropdown').style.display = 'none';
+}
+
+// Handle SL search input
+let vnd_slSearchTimer;
+$vnd('vnd-sl-search')?.addEventListener('input', (ev) => {
+    const query = ev.target.value.trim();
+    clearTimeout(vnd_slSearchTimer);
+
+    if (!query) {
+        $vnd('vnd-sl-dropdown').style.display = 'none';
+        return;
+    }
+
+    vnd_slSearchTimer = setTimeout(() => {
+        const accountId = $vnd('vnd-sl-gl-account-id').value;
+        if (!accountId) return;
+        fetch(`${VND_API}/../accounting/sl/search?account_id=${encodeURIComponent(accountId)}&q=${encodeURIComponent(query)}&limit=50`, { credentials: 'same-origin' })
+            .then(r => r.json())
+            .then(json => {
+                if (json.success && json.data?.length) {
+                    vnd_renderSlList(json.data);
+                } else {
+                    const dropdown = $vnd('vnd-sl-dropdown');
+                    dropdown.innerHTML = '<div style="padding:10px;color:#999;font-size:12px;">No matching sub-ledgers. Try creating one below.</div>';
+                    dropdown.style.display = 'block';
+                }
+            })
+            .catch(e => vnd_slShowErr('Search failed: ' + e.message));
+    }, 300);
+});
+
+/* ── Step 2b: Create a new sub-ledger under the selected GL ───── */
+$vnd('vnd-sl-create-btn')?.addEventListener('click', async () => {
+    vnd_slHideErr();
+    const glAccountId = $vnd('vnd-sl-gl-account-id').value;
+    const title = $vnd('vnd-sl-new-title').value.trim();
+
+    if (!glAccountId) { vnd_slShowErr('Select a GL account first.'); return; }
+    if (!title)        { vnd_slShowErr('Enter a title for the new sub-ledger.'); return; }
+
+    try {
+        window.PagePreloader?.show();
+        const res = await fetch(`${VND_API}/../accounting/sl/create`, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ parent_account_id: glAccountId, account_title: title }),
+        });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message || 'Failed to create sub-ledger.');
+
+        const created = json.data;
+        $vnd('vnd-sl-search').value = created.account_code;
+        $vnd('vnd-sl-selected-code-value').value = created.account_id;
+        $vnd('vnd-sl-selected-code').textContent = created.account_code;
+        $vnd('vnd-sl-selected-item').style.display = 'block';
+        $vnd('vnd-sl-empty-note').style.display = 'none';
+        $vnd('vnd-sl-new-title').value = '';
+
+        vnd_toast('Sub-ledger account created.', 'success');
+    } catch (e) {
+        vnd_slShowErr(e.message);
+    } finally {
+        window.PagePreloader?.hide();
+    }
+});
+
+/* ── Save: GL + SL assignment ───────────────────────────────── */
+$vnd('vnd-sl-form')?.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    vnd_slHideErr();
+
+    const vendorId = $vnd('vnd-sl-vendor-id').value;
+    const glAccountId = $vnd('vnd-sl-gl-account-id').value;
+    const slCode = $vnd('vnd-sl-selected-code-value').value;
+
+    if (!glAccountId) { vnd_slShowErr('Please select a GL account.'); return; }
+    if (!slCode)       { vnd_slShowErr('Please select or create a sub-ledger account.'); return; }
+
+    try {
+        window.PagePreloader?.show();
+        const res = await fetch(`${VND_API}/update/${encodeURIComponent(vendorId)}`, {
+            method: 'PUT',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ coa_account_id: glAccountId, sl_code: slCode }),
+        });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message || 'Failed to update vendor.');
+
+        vnd_toast(`Sub-ledger assigned successfully.`, 'success');
+        vnd_closeSlModal();
+        vnd_load();
+    } catch (e) {
+        vnd_slShowErr(e.message);
+    } finally {
+        window.PagePreloader?.hide();
+    }
+});
+
+// Close button
+document.addEventListener('click', (e) => {
+    if (!e.target.closest('#vnd-sl-gl-search') && !e.target.closest('#vnd-sl-gl-dropdown')) {
+        $vnd('vnd-sl-gl-dropdown').style.display = 'none';
+    }
+    if (!e.target.closest('#vnd-sl-search') && !e.target.closest('#vnd-sl-dropdown')) {
+        $vnd('vnd-sl-dropdown').style.display = 'none';
+    }
+});
+$vnd('vnd-sl-close')?.addEventListener('click', vnd_closeSlModal);
+$vnd('vnd-sl-cancel')?.addEventListener('click', vnd_closeSlModal);
 </script>

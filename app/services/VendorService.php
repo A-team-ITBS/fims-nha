@@ -16,6 +16,7 @@ class VendorService
     private array $textFields = [
         'vendor_code', 'vendor_name', 'vendor_type', 'tin', 'address', 'contact_person',
         'contact_number', 'email', 'bank_name', 'bank_account_number', 'tax_classification', 'status',
+        'sl_code',
     ];
 
     private function str(mixed $v): string
@@ -36,6 +37,25 @@ class VendorService
         return $exists === 0
             ? ['success' => false, 'message' => "Vendor type '{$type}' does not exist or is inactive."]
             : null;
+    }
+
+    /** Validate COA account exists. */
+    private function validateCoaAccount(?string $accountId): ?array
+    {
+        $accountId = trim((string) ($accountId ?? ''));
+        if ($accountId === '') {
+            return ['success' => false, 'message' => 'Chart of Accounts assignment is required.'];
+        }
+
+        $exists = (int) App\ExecuteScalar(
+            "SELECT COUNT(*) FROM fims.chart_of_accounts WHERE account_id = " . $this->str($accountId),
+            'DB'
+        );
+        if ($exists === 0) {
+            return ['success' => false, 'message' => "Account '{$accountId}' does not exist in the Chart of Accounts."];
+        }
+
+        return null;
     }
 
     /** Active vendor types, for dropdowns. */
@@ -79,7 +99,14 @@ class VendorService
             $whereSql = implode(' AND ', $where);
 
             if ($page === null) {
-                $data = App\ExecuteRows("SELECT v.* FROM {$this->table} v WHERE {$whereSql} ORDER BY v.vendor_name ASC", 'DB');
+                $data = App\ExecuteRows(
+                    "SELECT v.*, COALESCE(c.account_code, '') as coa_account_code, COALESCE(s.account_code, '') as sl_account_code
+                     FROM {$this->table} v
+                     LEFT JOIN fims.chart_of_accounts c ON v.coa_account_id = c.account_id
+                     LEFT JOIN fims.chart_of_accounts s ON v.sl_code = s.account_id
+                     WHERE {$whereSql} ORDER BY v.vendor_name ASC",
+                    'DB'
+                );
 
                 return ['success' => true, 'data' => $data ?: []];
             }
@@ -88,7 +115,11 @@ class VendorService
             $offset = (max(1, $page) - 1) * $limit;
             $total  = (int) App\ExecuteScalar("SELECT COUNT(*) FROM {$this->table} v WHERE {$whereSql}", 'DB');
             $data   = App\ExecuteRows(
-                "SELECT v.* FROM {$this->table} v WHERE {$whereSql} ORDER BY v.vendor_name ASC LIMIT {$limit} OFFSET {$offset}",
+                "SELECT v.*, COALESCE(c.account_code, '') as coa_account_code, COALESCE(s.account_code, '') as sl_account_code
+                 FROM {$this->table} v
+                 LEFT JOIN fims.chart_of_accounts c ON v.coa_account_id = c.account_id
+                 LEFT JOIN fims.chart_of_accounts s ON v.sl_code = s.account_id
+                 WHERE {$whereSql} ORDER BY v.vendor_name ASC LIMIT {$limit} OFFSET {$offset}",
                 'DB'
             );
 
@@ -124,9 +155,23 @@ class VendorService
             $id   = (int) $id;
             $data = App\ExecuteRow("SELECT * FROM {$this->table} WHERE vendor_id = {$id}", 'DB');
 
-            return $data
-                ? ['success' => true, 'data' => $data]
-                : ['success' => false, 'message' => "Vendor #{$id} not found."];
+            if (!$data) {
+                return ['success' => false, 'message' => "Vendor #{$id} not found."];
+            }
+
+            // Include COA account details if assigned
+            if (!empty($data['coa_account_id'])) {
+                $coa = App\ExecuteRow(
+                    "SELECT account_id, account_code, account_title FROM fims.chart_of_accounts WHERE account_id = " . $this->str($data['coa_account_id']),
+                    'DB'
+                );
+                if ($coa) {
+                    $data['coa_account_code'] = $coa['account_code'];
+                    $data['coa_account_name'] = $coa['account_title'];
+                }
+            }
+
+            return ['success' => true, 'data' => $data];
         } catch (\Exception $e) {
             App\LogError('VendorService::fetchById ' . $e->getMessage());
 
@@ -150,6 +195,11 @@ class VendorService
             if ($err = $this->validateType($body['vendor_type'] ?? null)) {
                 return $err;
             }
+            // COA account is optional on create — can be linked later via "Link SL".
+            $accountId = trim((string) ($body['coa_account_id'] ?? ''));
+            if ($accountId !== '' && ($err = $this->validateCoaAccount($accountId))) {
+                return $err;
+            }
 
             $columns = [];
             $values  = [];
@@ -163,6 +213,10 @@ class VendorService
             if (array_key_exists('is_vat_registered', $body)) {
                 $columns[] = 'is_vat_registered';
                 $values[]  = filter_var($body['is_vat_registered'], FILTER_VALIDATE_BOOLEAN) ? 'TRUE' : 'FALSE';
+            }
+            if ($accountId !== '') {
+                $columns[] = 'coa_account_id';
+                $values[]  = $this->str($accountId);
             }
 
             $row = App\ExecuteRow(
@@ -199,6 +253,13 @@ class VendorService
             if ($err = $this->validateType($body['vendor_type'] ?? null)) {
                 return $err;
             }
+            // Validate COA account if provided
+            if (isset($body['coa_account_id'])) {
+                $accountId = trim((string) ($body['coa_account_id'] ?? ''));
+                if ($accountId !== '' && ($err = $this->validateCoaAccount($accountId))) {
+                    return $err;
+                }
+            }
 
             $set = [];
             foreach ($this->textFields as $f) {
@@ -214,6 +275,10 @@ class VendorService
             }
             if (array_key_exists('is_vat_registered', $body)) {
                 $set[] = 'is_vat_registered = ' . (filter_var($body['is_vat_registered'], FILTER_VALIDATE_BOOLEAN) ? 'TRUE' : 'FALSE');
+            }
+            if (array_key_exists('coa_account_id', $body)) {
+                $accountId = trim((string) ($body['coa_account_id'] ?? ''));
+                $set[] = 'coa_account_id = ' . ($accountId !== '' ? $this->str($accountId) : 'NULL');
             }
             if (!$set) {
                 return ['success' => false, 'message' => 'No valid fields provided for update.'];
