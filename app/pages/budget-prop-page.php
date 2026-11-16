@@ -202,10 +202,11 @@ const BGR_FMD_RC_FROM = <?php echo json_encode($_bgr_fmdRcCodeFrom); ?>;
 
 // "View as COB" (readone/budget-req-readone.php, bgrv_openCobModal): every budget request created for the Fiscal Year filter's current
 // value ('' = every year), one block per ORIGINATING UNIT — each Regional / District office with its own Programs / Sub-Programs /
-// Projects and total (byUnit), whatever the request's status. central=1 + rc_code_from are what widen GET /budget_req/all from the
+// Projects and total (byUnit), whatever the request's status — each Project also shows its Type(s) of Fund (showFund; "—" until Budget
+// Processing has set one). central=1 + rc_code_from are what widen GET /budget_req/all from the
 // caller's own RC to those offices — and only the central review RC (this page's users) is let through.
 function bgr_viewAsCob() {
-    bgrv_openCobModal($bgr('bgr-filter-fiscal-yr')?.value || '', { central: '1', rc_code_from: BGR_FMD_RC_FROM }, { byUnit: true });
+    bgrv_openCobModal($bgr('bgr-filter-fiscal-yr')?.value || '', { central: '1', rc_code_from: BGR_FMD_RC_FROM }, { byUnit: true, showFund: true });
 }
 
 window.bgr_afterSave = () => bgr_load();

@@ -16,31 +16,32 @@
  *
  * API (app/routes/fund_tracking.php and friends — the user is the logged-in session, never sent):
  *   GET   /fund_tracking/read/{id}      POST /fund_tracking/add      PATCH /fund_tracking/update/{id}
- *   GET   /fund-tracking-type/all  /fiscal_year/all  /sub_program/all  /agency/all  /nature-of-fund/all
+ *   GET   /fund-tracking-type/all  /fiscal_year/all  /agency/all  /nature-of-fund/all
  *   POST  /agency/add                   (a new agency, typed into the Agency field — see below)
  *   POST  /upload/file (multipart)  POST /upload/multi-upload     (an OR's Supporting Documents)
  *   POST  /fund_tracking/add also takes `ors` — the OR records added under a NEW trust fund (see "OR Records" below)
  *
  * What changed from the FMD version (a Trust Fund is an ordinary fims.fund_tracking row now — there is no /trust_fund API):
- *   Program (program_id)       → Sub-Program (sub_program_code); its program is shown under it. Optional, as before
+ *   Program (program_id)       → gone: a Trust Fund (and its ORs) carries no program / sub-program — fims.fund_tracking has no
+ *                                sub_program_code any more
  *   Agency (an agency id)      → the agency's NAME, saved as text in agency_name. It is picked from /agency/all — or TYPED: a name
  *                                that is not on the list is added to fims.agency (POST /agency/add) when the trust fund is saved,
  *                                so there is no need to leave this form to create it. It is created at SAVE, not as you type, so
  *                                cancelling the form never leaves a stray agency behind. A name that matches an existing agency in
  *                                any letter case (an inactive one too) uses that agency instead — fims.agency.name is unique
  *   (new) Fiscal Year          → fiscal_year, a plain year picked from fims.fiscal_year. The list page filters by it
- *   Reference No.              → still suggested from the program's initials + the year (e.g. BEDP-2026), but editable now:
- *                                a Trust Fund saved with no sub-program has nothing to suggest it from, and the API
- *                                requires a reference number
- *   Date of SARO               → date;  Remarks → remarks;  Amount → amount
+ *   Reference No.              → typed in, and required (the API requires a reference number); with no program there is
+ *                                nothing left to suggest it from
+ *   Date of SARO               → gone: the API stamps the date — the day the record is created — so the form never sends one
+ *   Remarks → remarks;  Amount → amount
  *   OR No. (hidden link)       → gone. A Trust Fund is the PARENT of its ORs (the OR form picks the Trust Fund), and an
  *                                edit never sends parent_id, so an existing record keeps whatever link it has
  *   (new) OR Records           → while CREATING a trust fund, any number of ORs can be added at the bottom with "Add OR" — the same
  *                                idea as the NCA Releases of the SARO form (saro-processing-form.php). Each is a full OR entry — the
- *                                same fields as the OR form (Sub-Program, Nature of Fund, Fiscal Year, OR No., Name, Amount, Date,
- *                                Unreleased, Bank Account No. and its own Supporting Documents), plus Remarks, which the list page
- *                                shows for an OR. It becomes an OR record with the new trust fund as its parent and takes its agency
- *                                (its Fiscal Year and Sub-Program start as the trust fund's and follow it until changed on the card);
+ *                                same fields as the OR form (Nature of Fund, Fiscal Year, OR No., Name, Amount, Bank Account No. and
+ *                                its own Supporting Documents), plus Remarks, which the list page shows for an OR. It becomes an OR
+ *                                record with the new trust fund as its parent and takes its agency (its Fiscal Year starts as the
+ *                                trust fund's and follows it until changed on the card);
  *                                the API saves the trust fund and all of them in one transaction, and the cards' documents are
  *                                attached afterwards. An existing trust fund's ORs are added with the OR form instead
  *   created_by                 → no longer sent; the API stamps user_id from the session
@@ -86,7 +87,7 @@ $apiBase = Config('API.FIMS_URL');
         background: var(--afims-success-soft, #DBF2E5); color: var(--afims-success-hover, #0C7539); font-size: 11px; font-weight: 700; letter-spacing: 0; }
     /* every OR is a card: a header band — a collapse toggle (chevron + title) that says what the card is while it is open and
        summarises it in one line once collapsed, and the remove button — then the body. The body is laid out by what each field is
-       FOR: the receipt itself (OR No., Fiscal Year, Date, Amount) first, then its classification, then the optional details */
+       FOR: the receipt itself (OR No., Fiscal Year, Amount) first, then its classification, then the optional details */
     .nha-root .tf-or-row { border: 1px solid var(--afims-border, #E4ECF2); border-left: 3px solid var(--afims-success, #11A752); border-radius: 10px;
         background: var(--afims-surface, #FFFFFF); margin-bottom: 12px; overflow: hidden; }
     .nha-root .tf-or-hd { display: flex; align-items: center; gap: 6px; padding: 4px 8px 4px 4px;
@@ -110,13 +111,9 @@ $apiBase = Config('API.FIMS_URL');
     /* one grid for the whole card; minmax(0,…) so a long value can never push a column wider than its share */
     .nha-root .tf-or-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0 12px; }
     .nha-root .tf-or-grid .tf-span-2 { grid-column: span 2; }
-    .nha-root .tf-or-grid .tf-span-3 { grid-column: span 3; }
     @media (max-width: 760px) {
         .nha-root .tf-or-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-        .nha-root .tf-or-grid .tf-span-3 { grid-column: 1 / -1; }
     }
-    /* a picked Sub-Program must not look like the field that has focus: inside a card its border stays neutral */
-    .nha-root .tf-or-row .nha-fg .tf-has-value { border-color: var(--afims-border-strong, #C5CEDA); }
     .nha-root .tf-or-rm { flex-shrink: 0; background: none; border: 1px solid transparent; border-radius: 6px; padding: 4px 8px; cursor: pointer;
         color: var(--afims-danger, #DC3545); display: flex; align-items: center; transition: background .15s, border-color .15s; }
     .nha-root .tf-or-rm:hover { background: var(--afims-danger-soft, #FAE1E3); border-color: var(--afims-danger-soft, #FAE1E3); }
@@ -181,17 +178,6 @@ $apiBase = Config('API.FIMS_URL');
         <div class="nha-modal-body" id="tf-body">
             <div id="tf-err" class="tf-err" role="alert"></div>
 
-            <!-- ── Program ──────────────────────────────────────────── -->
-            <div class="tf-sec">
-                <h4 class="tf-sec-hd">Program</h4>
-                <div class="nha-fg" style="margin-bottom:0;">
-                    <label for="tf-sub">Sub-Program</label>
-                    <input type="text" id="tf-sub" placeholder="Search sub-program code, name or program…">
-                    <input type="hidden" id="tf-sub-code" value="">
-                    <span class="tf-hint" id="tf-sub-hint">Program associated with this trust fund entry (optional)</span>
-                </div>
-            </div>
-
             <!-- ── Agency & Fund Tracking ───────────────────────────── -->
             <div class="tf-sec">
                 <h4 class="tf-sec-hd">Agency &amp; Fund Tracking</h4>
@@ -199,8 +185,7 @@ $apiBase = Config('API.FIMS_URL');
                 <div class="nha-fg-row">
                     <div class="nha-fg">
                         <label for="tf-ref">Reference No. <span class="nha-req">*</span></label>
-                        <input type="text" id="tf-ref" maxlength="225" placeholder="Suggested from the selected program">
-                        <span class="tf-hint">Suggested from the program's name and the fiscal year (e.g. BEDP-2026) — change it if this download has its own</span>
+                        <input type="text" id="tf-ref" maxlength="225" placeholder="Enter reference number">
                     </div>
                     <div class="nha-fg">
                         <label for="tf-year">Fiscal Year <span class="nha-req">*</span></label>
@@ -216,20 +201,16 @@ $apiBase = Config('API.FIMS_URL');
                 </div>
             </div>
 
-            <!-- ── Download Amount & Date ───────────────────────────── -->
+            <!-- ── Download Amount ──────────────────────────────────── -->
             <div class="tf-sec">
-                <h4 class="tf-sec-hd">Download Amount &amp; Date</h4>
+                <h4 class="tf-sec-hd">Download Amount</h4>
                 <div class="nha-fg-row">
                     <div class="nha-fg" style="margin-bottom:0;">
                         <label for="tf-amount">Trust Fund Amount <span class="nha-req">*</span></label>
                         <div class="tf-money"><span>&#8369;</span><input type="text" inputmode="decimal" id="tf-amount" placeholder="0.00"></div>
                         <span class="tf-hint">Actual cash amount received / downloaded by NHA from the agency</span>
                     </div>
-                    <div class="nha-fg" style="margin-bottom:0;">
-                        <label for="tf-date">Date of SARO</label>
-                        <input type="date" id="tf-date">
-                        <span class="tf-hint">Date of the SARO associated with this trust fund download</span>
-                    </div>
+                    <div></div>
                 </div>
             </div>
 
@@ -247,7 +228,7 @@ $apiBase = Config('API.FIMS_URL');
                  with it, each a record of its own with this trust fund as its parent. -->
             <div class="tf-sec tf-or-sec" id="tf-or-section" style="display:none;">
                 <h4 class="tf-sec-hd">OR Records <span class="tf-count" id="tf-or-count">0</span></h4>
-                <span class="tf-hint" style="margin:0 0 12px;">Optional. Each OR below is a separate record with this trust fund as its parent fund, listed under it on the Trust Funds page, and has the same fields as a normal OR. Its Fiscal Year and Sub-Program start as this trust fund's and follow it until you change them on that OR; its Agency is this trust fund's. They are saved together with the trust fund — all or none.</span>
+                <span class="tf-hint" style="margin:0 0 12px;">Optional. Each OR below is a separate record with this trust fund as its parent fund, listed under it on the Trust Funds page, and has the same fields as a normal OR. Its Fiscal Year starts as this trust fund's and follows it until you change it on that OR; its Agency is this trust fund's. They are saved together with the trust fund — all or none.</span>
                 <div id="tf-ors"></div>
                 <span class="tf-hint" id="tf-or-empty" style="margin:0 0 10px;">No OR added — you can add them now or later with the OR form.</span>
                 <div class="tf-or-foot">
@@ -265,7 +246,7 @@ $apiBase = Config('API.FIMS_URL');
                     <p>Trust Fund Process Reminders</p>
                     <ul>
                         <li>Trust Fund entries record cash downloaded by NHA from an agency or LGU under a MOA</li>
-                        <li>Reference No., Agency / LGU, Fiscal Year and Amount are required; Sub-Program, Date and Remarks are optional</li>
+                        <li>Reference No., Agency / LGU, Fiscal Year and Amount are required; Remarks are optional. The date recorded is the day the entry is created</li>
                         <li>The Amount is the actual cash received — not the SARO face value</li>
                         <li>Official Receipts (ORs) against this fund can be added at the bottom while creating it — they are saved together with it, linked to it as their parent, and show under it on the Trust Funds page. To add an OR to a trust fund that already exists, use the OR form</li>
                         <li>ORs added here are saved with the trust fund — if any of them is rejected, nothing is saved</li>
@@ -294,7 +275,6 @@ $apiBase = Config('API.FIMS_URL');
         update:   id => API + '/fund_tracking/update/' + encodeURIComponent(id),
         types:    API + '/fund-tracking-type/all',
         years:    API + '/fiscal_year/all',
-        subs:     API + '/sub_program/all',
         agencies: API + '/agency/all',
         agencyAdd: API + '/agency/add',
         natures:  API + '/nature-of-fund/all',
@@ -320,7 +300,6 @@ $apiBase = Config('API.FIMS_URL');
         opening: false,
         loaded: {},          // which lookups have been read
         typeId: null,        // fims.fund_tracking_type id of the TRUST FUND type
-        subs: [],            // sub-programs
         natures: [],         // natures of fund [{nature_of_fund_id, name}] — for the OR cards
         agencies: [],        // the agencies offered in the list (active ones) [{name}]
         agencyNames: new Map(),  // EVERY agency name (inactive too), lower-cased → its exact spelling: decides "already exists?"
@@ -535,10 +514,6 @@ $apiBase = Config('API.FIMS_URL');
                 document.querySelectorAll('#tf-ors .tf-or-year').forEach(sel => { const cur = sel.value; sel.innerHTML = el.innerHTML; sel.value = cur; });
             },
         },
-        subs: {
-            label: 'sub-programs', url: U.subs,
-            apply(rows) { S.subs = rows; },
-        },
         natures: {
             label: 'natures of fund', url: U.natures,
             apply(rows) {
@@ -620,65 +595,7 @@ $apiBase = Config('API.FIMS_URL');
         else if (!S.typeId) showErr('There is no "Trust Fund" tracking type, so a trust fund cannot be saved yet. Add it under Fund Tracking Types first.');
     }
 
-    /* ── Reference No. suggestion ─────────────────────────────────
-       The program name's initials + the year, e.g. "Bonifacio East Development Project" → "BEDP-2026". Long names are kept short by
-       ignoring the "[CODE]" suffix and anything in parentheses; stopping at the first clause word (in, for, at, under, …) — what
-       follows is usually location / beneficiaries, not the name; skipping filler words (of, and, the, …) and number-only words;
-       and using at most REF_MAX_INITIALS letters. "Acquisition of lot, site development and core housing construction in Buhi
-       Resettlement Project …" → "ALSDC-2026". '' when there is no usable name. */
-    const REF_MAX_INITIALS = 5;
-    const REF_FILLER = ['of', 'and', 'the', 'a', 'an', 'on', 'to', 'with'];
-    const REF_STOP = ['in', 'for', 'at', 'under', 'from', 'by', 'affected'];
-
-    function generateRef(name, year) {
-        const words = String(name || '').replace(/\[.*?\]|\(.*?\)/g, ' ').split(/[^A-Za-z0-9]+/).filter(Boolean);
-        let initials = '';
-        for (let i = 0; i < words.length && initials.length < REF_MAX_INITIALS; i++) {
-            const w = words[i].toLowerCase();
-            if (REF_STOP.includes(w) && initials) break;
-            if (REF_FILLER.includes(w) || REF_STOP.includes(w)) continue;
-            if (/^\d+$/.test(w)) continue;
-            initials += w.charAt(0).toUpperCase();
-        }
-        return initials ? initials + '-' + (year || new Date().getFullYear()) : '';
-    }
-
-    const subOf = () => S.subs.find(s => s.sub_program_code === $('tf-sub-code').value) || null;
-
-    // Fills the Reference No. while it is empty or still holds what was suggested (data-auto); once the user types their
-    // own it is left alone, and so is the reference of a record being edited.
-    function suggestRef() {
-        const input = $('tf-ref');
-        if (input.value.trim() !== '' && input.dataset.auto !== '1') return;
-        const sp = subOf();
-        const ref = sp ? generateRef(sp.program_name || sp.sub_program_name, $('tf-year').value) : '';
-        input.value = ref;
-        input.dataset.auto = ref ? '1' : '';
-        syncOrDefaults();    // the ORs name this reference as their parent
-    }
-
-    function syncSubHint() {
-        const sp = subOf();
-        $('tf-sub-hint').innerHTML = sp && sp.program_name
-            ? 'Program: <strong>' + esc(sp.program_name) + '</strong>'
-            : 'Program associated with this trust fund entry (optional)';
-    }
-
     /* ── Pickers ────────────────────────────────────────────────── */
-    // A Sub-Program picker over the loaded list: the trust fund's own, and one for every OR card
-    const subPicker = (input, hidden, onChange) => makeCombo({
-        input, hidden, onChange,
-        items: () => S.subs,
-        match: s => [s.sub_program_code, s.sub_program_name, s.program_code, s.program_name].join(' '),
-        key: s => s.sub_program_code,
-        label: s => s.sub_program_code + ' — ' + s.sub_program_name,
-        render: (s, q) => `<span class="nha-ss-opt-code">${hl(s.sub_program_code, q)}</span><span class="nha-ss-opt-label">${hl(s.sub_program_name, q)}${s.program_name ? ' · ' + esc(s.program_name) : ''}</span>`,
-        empty: 'No sub-programs found', noMatch: 'No matching sub-programs',
-    });
-
-    // when the trust fund's sub-program changes, its OR cards that haven't been given their own follow it
-    const subCombo = subPicker('tf-sub', 'tf-sub-code', () => { syncSubHint(); suggestRef(); syncOrDefaults(); });
-
     const agencyCombo = makeCombo({
         input: 'tf-agency', hidden: 'tf-agency-name',
         items: () => S.agencies,
@@ -698,7 +615,7 @@ $apiBase = Config('API.FIMS_URL');
     /* ── OR Records (a NEW trust fund only) ─────────────────────────
        While creating a trust fund, the Official Receipts recorded against it can be added right here. Each row becomes its own OR
        record whose parent fund is this trust fund: the API (POST /fund_tracking/add, `ors`) saves the trust fund and all of its ORs
-       in one transaction, each OR taking the trust fund's agency and sub-program. A row nothing has been entered in is ignored.
+       in one transaction, each OR taking the trust fund's agency. A row nothing has been entered in is ignored.
        Nothing is offered for an existing trust fund — its ORs are records of their own: add one with the OR form, its Parent Fund
        set to the trust fund. */
     const orVisible = () => !S.editId;
@@ -716,10 +633,10 @@ $apiBase = Config('API.FIMS_URL');
     const natureOptions = () => '<option value="">— None —</option>'
         + S.natures.map(n => `<option value="${esc(n.nature_of_fund_id)}">${esc(n.name)}</option>`).join('');
 
-    // A full OR entry — the same fields as the OR form (the SARO form held to the OR type): Sub-Program, Nature of Fund, Fiscal Year,
-    // OR No., Name, Amount, Date, Unreleased, Bank Account No., and its own Supporting Documents (plus Remarks, which the Trust Funds
-    // page lists for an OR). Tracking Type (OR) and Parent Fund (this trust fund) are fixed, so they are only shown. Fiscal Year and
-    // Sub-Program start as the trust fund's and follow it until changed on the card (syncOrDefaults); the agency is the trust fund's.
+    // A full OR entry — the same fields as the OR form (the SARO form held to the OR type): Nature of Fund, Fiscal Year, OR No., Name,
+    // Amount, Bank Account No., and its own Supporting Documents (plus Remarks, which the Trust Funds page lists for an OR). Tracking
+    // Type (OR) and Parent Fund (this trust fund) are fixed, so they are only shown. The Fiscal Year starts as the trust fund's and
+    // follows it until changed on the card (syncOrDefaults); the agency is the trust fund's. The date is the API's: the day it is saved.
     function addOrRow() {
         const row = document.createElement('div');
         row.className = 'tf-or-row';
@@ -734,17 +651,14 @@ $apiBase = Config('API.FIMS_URL');
                 <button type="button" class="tf-or-rm" title="Remove this OR" aria-label="Remove this OR">${OR_RM_ICON}</button>
             </div>
             <div class="tf-or-body">
-                <!-- laid out by what the field is for, on a 4-column grid: the receipt itself first (OR No., Fiscal Year, Date, Amount),
-                     then where it belongs (Sub-Program takes three columns, Nature of Fund the fourth), then the optional details -->
+                <!-- laid out by what the field is for, on a 4-column grid: the receipt itself first (OR No. takes two columns, then
+                     Fiscal Year and Amount), then its classification and optional details (Nature of Fund, Name, Bank Account No.) -->
                 <div class="tf-or-grid">
-                    <div class="nha-fg"><label>OR No. <span class="nha-req">*</span></label><input type="text" class="tf-or-ref" maxlength="225" placeholder="Actual OR number"></div>
+                    <div class="nha-fg tf-span-2"><label>OR No. <span class="nha-req">*</span></label><input type="text" class="tf-or-ref" maxlength="225" placeholder="Actual OR number"></div>
                     <div class="nha-fg"><label>Fiscal Year <span class="nha-req">*</span></label><select class="tf-or-year"></select></div>
-                    <div class="nha-fg"><label>Date</label><input type="date" class="tf-or-date"></div>
                     <div class="nha-fg"><label>Amount <span class="nha-req">*</span></label><div class="tf-money"><span>&#8369;</span><input type="text" inputmode="decimal" class="tf-or-amount" placeholder="0.00"></div></div>
-                    <div class="nha-fg tf-span-3"><label>Sub-Program</label><input type="text" class="tf-or-sub" placeholder="Search sub-program code, name or program…"><input type="hidden" class="tf-or-sub-code" value=""></div>
                     <div class="nha-fg"><label>Nature of Fund</label><select class="tf-or-nature"></select></div>
                     <div class="nha-fg tf-span-2"><label>Name</label><input type="text" class="tf-or-name" maxlength="225" placeholder="Optional"></div>
-                    <div class="nha-fg"><label>Unreleased</label><div class="tf-money"><span>&#8369;</span><input type="text" inputmode="decimal" class="tf-or-unreleased" placeholder="0.00"></div></div>
                     <div class="nha-fg"><label>Bank Account No.</label><input type="text" class="tf-or-bank" maxlength="225" placeholder="e.g. 0702-1068-34"></div>
                     <div class="nha-fg tf-span-all"><label>Remarks</label><input type="text" class="tf-or-remarks" placeholder="Optional"></div>
                 </div>
@@ -766,22 +680,20 @@ $apiBase = Config('API.FIMS_URL');
         row.addEventListener('input', () => updateOrSummary(row));
         row.addEventListener('change', () => updateOrSummary(row));
 
-        // the same pick-lists as the trust fund's own Fiscal Year; a change made on the card stops it following the trust fund
+        // the same pick-list as the trust fund's own Fiscal Year; a change made on the card stops it following the trust fund
         const year = row.querySelector('.tf-or-year');
         year.innerHTML = $('tf-year').innerHTML;
         year.addEventListener('change', () => { year.dataset.touched = '1'; });
         row.querySelector('.tf-or-nature').innerHTML = natureOptions();
-        const sub = row.querySelector('.tf-or-sub');
-        row._sub = subPicker(sub, row.querySelector('.tf-or-sub-code'), () => { sub.dataset.touched = '1'; });
 
-        row.querySelectorAll('.tf-money input').forEach(wireMoneyInput);      // Amount and Unreleased
+        row.querySelectorAll('.tf-money input').forEach(wireMoneyInput);      // Amount
         const docs = row.querySelector('.tf-or-docs');
         wireDocList(docs, row.querySelector('.tf-or-doc-add'));
         addDocRow(undefined, docs);
 
         $('tf-ors').appendChild(row);
         renumberOrs();
-        syncOrDefaults();   // starts the card at the trust fund's fiscal year / sub-program, and names its parent
+        syncOrDefaults();   // starts the card at the trust fund's fiscal year, and names its parent
         updateOrSummary(row);
         return row;
     }
@@ -791,27 +703,22 @@ $apiBase = Config('API.FIMS_URL');
         row.querySelector('.tf-or-toggle').setAttribute('aria-expanded', collapsed ? 'false' : 'true');
     }
 
-    const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-    // "OR No. · ₱ amount · date" — what the header of a collapsed card shows
+    // "OR No. · ₱ amount" — what the header of a collapsed card shows
     function updateOrSummary(row) {
         const f = c => row.querySelector('.tf-or-' + c);
-        const ref = f('ref').value.trim(), amount = parseMoney(f('amount').value), m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(f('date').value);
+        const ref = f('ref').value.trim(), amount = parseMoney(f('amount').value);
         const parts = [ref ? `<strong>${esc(ref)}</strong>` : '<span class="tf-or-sum-none">No OR No. yet</span>'];
         if (!isNaN(amount) && amount > 0) parts.push('₱ ' + fmtMoney(amount));
-        if (m && MONTHS[+m[2] - 1]) parts.push(MONTHS[+m[2] - 1] + ' ' + (+m[3]) + ', ' + m[1]);
         f('sum').innerHTML = parts.join(' · ');
     }
 
-    // An OR card follows the trust fund's Fiscal Year and Sub-Program until they are changed on the card itself, and always shows
-    // which trust fund it will be a child of (its reference, once there is one).
+    // An OR card follows the trust fund's Fiscal Year until it is changed on the card itself, and always shows which trust fund it
+    // will be a child of (its reference, once there is one).
     function syncOrDefaults() {
         const year = $('tf-year').value, ref = $('tf-ref').value.trim();
-        const subCode = subCombo.value(), subLabel = $('tf-sub').value;
         document.querySelectorAll('#tf-ors .tf-or-row').forEach(row => {
-            const y = row.querySelector('.tf-or-year'), sub = row.querySelector('.tf-or-sub');
+            const y = row.querySelector('.tf-or-year');
             if (!y.dataset.touched) y.value = year;
-            if (!sub.dataset.touched) { if (subCode) row._sub.set(subCode, subLabel); else row._sub.reset(); }
             row.querySelector('.tf-or-parent').textContent = ref || 'this trust fund';
         });
     }
@@ -821,10 +728,10 @@ $apiBase = Config('API.FIMS_URL');
     function orEntries() {
         return [...document.querySelectorAll('#tf-ors .tf-or-row')].map((row, i) => {
             const f = c => row.querySelector('.tf-or-' + c);
-            return { row, n: i + 1, ref: f('ref').value.trim(), name: f('name').value.trim(), date: f('date').value, amount: f('amount').value.trim(),
-                unreleased: f('unreleased').value.trim(), bank: f('bank').value.trim(), remarks: f('remarks').value.trim(),
-                year: f('year').value, sub: f('sub-code').value, nature: f('nature').value, docs: getDocs(f('docs')) };
-        }).filter(e => e.ref || e.name || e.date || e.amount || e.unreleased || e.bank || e.remarks || e.docs.length);
+            return { row, n: i + 1, ref: f('ref').value.trim(), name: f('name').value.trim(), amount: f('amount').value.trim(),
+                bank: f('bank').value.trim(), remarks: f('remarks').value.trim(),
+                year: f('year').value, nature: f('nature').value, docs: getDocs(f('docs')) };
+        }).filter(e => e.ref || e.name || e.amount || e.bank || e.remarks || e.docs.length);
     }
 
     // "Total OR: ₱ …", with a (non-blocking) note when it is more than the trust fund's own amount
@@ -844,7 +751,6 @@ $apiBase = Config('API.FIMS_URL');
     }
 
     function clearOrs() {
-        document.querySelectorAll('#tf-ors .tf-or-row').forEach(row => row._sub && row._sub.destroy());   // their dropdowns live on <body>
         $('tf-ors').innerHTML = '';
         renumberOrs();
         updateOrTotal();
@@ -993,12 +899,9 @@ $apiBase = Config('API.FIMS_URL');
         $('tf-form').reset();
         showErr('');
         clearOrs();
-        subCombo.reset();
         agencyCombo.reset();
-        $('tf-ref').dataset.auto = '';
         $('tf-form').querySelectorAll('.tf-invalid').forEach(el => el.classList.remove('tf-invalid'));
         S.origAgency = '';
-        syncSubHint();
         syncAgencyHint();
     }
 
@@ -1011,13 +914,8 @@ $apiBase = Config('API.FIMS_URL');
     }
 
     function populate(r) {
-        const sp = r.sub_program;
-        if (r.sub_program_code) subCombo.set(r.sub_program_code, sp ? sp.sub_program_code + ' — ' + sp.sub_program_name : r.sub_program_code);
-        syncSubHint();
-
         selectValue('tf-year', r.fiscal_year);
-        $('tf-ref').value = r.reference_number || '';       // data-auto stays off: the saved reference is never re-suggested
-        $('tf-ref').dataset.auto = '';
+        $('tf-ref').value = r.reference_number || '';
 
         const agency = r.agency_name || (r.agency && r.agency.name) || '';
         S.origAgency = agency;                              // saved as it is unless the user changes it — never "created" afresh
@@ -1025,7 +923,6 @@ $apiBase = Config('API.FIMS_URL');
         syncAgencyHint();
 
         $('tf-amount').value = r.amount != null ? fmtMoney(r.amount) : '';
-        $('tf-date').value = r.date ? String(r.date).slice(0, 10) : '';
         $('tf-remarks').value = r.remarks || '';
     }
 
@@ -1069,7 +966,6 @@ $apiBase = Config('API.FIMS_URL');
 
     function close() {
         $('tf-overlay').classList.remove('open');
-        subCombo.hide();
         agencyCombo.hide();
     }
 
@@ -1125,31 +1021,27 @@ $apiBase = Config('API.FIMS_URL');
 
             // Every field the form has is always sent (null clears an optional one on update, '' clears the text); parent_id,
             // nature of fund, name and the rest are not on this form, so they are never sent and an edit leaves them as they are.
+            // There is no date: the API stamps the day the record is created.
             const payload = {
                 tracking_type_id: S.typeId,
                 fiscal_year: parseInt($('tf-year').value, 10) || null,
-                sub_program_code: $('tf-sub-code').value || null,
                 agency_name: agency.name,
                 reference_number: v('tf-ref'),
                 amount: parseMoney(v('tf-amount')),
-                date: v('tf-date') || null,
                 remarks: v('tf-remarks'),
             };
 
             // The ORs go with a NEW trust fund, in the same request: the API saves them all or none, each with the new trust fund
-            // as its parent and with its agency. Fiscal Year, Sub-Program and Nature of Fund are always sent as the card shows
-            // them (null = none), so a card that was changed on its own keeps its own value and one that was cleared stays empty.
+            // as its parent and with its agency. Fiscal Year and Nature of Fund are always sent as the card shows them (null = none),
+            // so a card that was changed on its own keeps its own value and one that was cleared stays empty.
             const ors = orVisible() ? orEntries() : [];
             if (ors.length) {
                 payload.ors = ors.map(e => ({
                     fiscal_year: parseInt(e.year, 10) || null,
-                    sub_program_code: e.sub || null,
                     nature_of_fund_id: parseInt(e.nature, 10) || null,
                     reference_number: e.ref,
                     name: e.name,
-                    date: e.date || null,
                     amount: parseMoney(e.amount),
-                    unreleased: parseMoney(e.unreleased) || null,
                     bank_account_no: e.bank,
                     remarks: e.remarks,
                 }));
@@ -1186,18 +1078,16 @@ $apiBase = Config('API.FIMS_URL');
     $('tf-cancel').addEventListener('click', close);
     document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('tf-overlay').classList.contains('open') && !S.saving) close(); });
 
-    // typing a Reference No. of your own stops it being re-suggested; a new fiscal year re-suggests a suggested one
-    $('tf-ref').addEventListener('input', () => { $('tf-ref').dataset.auto = ''; syncOrDefaults(); });
-    $('tf-year').addEventListener('change', () => { suggestRef(); syncOrDefaults(); });
+    // the ORs follow the trust fund's Reference No. (as their parent) and Fiscal Year
+    $('tf-ref').addEventListener('input', syncOrDefaults);
+    $('tf-year').addEventListener('change', syncOrDefaults);
 
     // OR Records
     $('tf-or-add').addEventListener('click', () => { addOrRow().querySelector('.tf-or-ref').focus(); });
     $('tf-ors').addEventListener('click', e => {
         const rm = e.target.closest('.tf-or-rm');
         if (!rm) return;
-        const row = rm.closest('.tf-or-row');
-        if (row._sub) row._sub.destroy();
-        row.remove();
+        rm.closest('.tf-or-row').remove();
         renumberOrs();
         updateOrTotal();
     });

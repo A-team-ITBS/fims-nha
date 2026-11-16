@@ -239,7 +239,7 @@ blocks unauthorized calls.
 
 The generated `css/FIMS.css` has `input[type=text]:not([size]) { min-width: 250px }`, which applies on every page, inside `.nha-root` too. A text input
 in a narrow `.nha-filter-group` (the `-sm` / `-md` / `-lg` caps are 150 / 180 / 200px) therefore refuses to shrink and spills out of its group over the next
-filter — the Fund Sourcing Dashboard's Program box sat on top of Amount Unit. A selector with the same weight as the shared class cannot beat that rule, so
+filter — the Fund Sourcing Dashboard's (since removed) Program box sat on top of Amount Unit. A selector with the same weight as the shared class cannot beat that rule, so
 give the page's own filter group an **ID-scoped** override (`#my-root .my-group .nha-filter-input { min-width: 0; }`) and set the group's width on the page
 class. Selects are not affected; only `type=text` / `password` without a `size` attribute.
 
@@ -638,10 +638,16 @@ One table, `fims.fund_tracking`, backs **4 distinct pages** filtered by `trackin
 
 | Page | Files | Filter | Purpose |
 |---|---|---|---|
-| SARO / NCA Tracking | `app/pages/saro-registry-page.php` + `form/saro-processing-form.php` | `tracking_type IN (SARO, NCA)`, `exclude_nature_of_fund=SUPPLEMENTAL` | Register of every SARO (parent row) with its NCA releases nested under it (one save can add NCA releases alongside the SARO) |
+| SARO / NCA Tracking | `app/pages/saro-registry-page.php` + `form/saro-processing-form.php` | `tracking_type IN (SARO, NCA)`, `exclude_nature_of_fund=SUPPLEMENTAL` | Two tabs: **SARO** (every SARO as a parent row with its NCA releases nested under it) and **NCA** (a flat list, each NCA with the SARO it belongs to). The entry form opens with "What are you adding?" (SARO or NCA, `$sarTypeFirst`); choosing SARO removes the parent field (a SARO has no parent and is saved with `parent_id` null); choosing NCA shows a **SARO** field (SAROs only) for the SARO it was released under |
 | Supplemental Fund Tracking | `app/pages/supplemental-funds-page.php` | `nature_of_fund = SUPPLEMENTAL` | Flat list, no tree |
 | Trust Funds | `app/pages/trust-funds-page.php` + `form/trust-fund-form.php` | `tracking_type = TRUST` | Register of Trust Fund records + their Official Receipts |
 | Fund Sourcing Dashboard | `app/pages/fund-sourcing-dashboard-page.php` | (aggregated, no single filter) | Summary view over the whole table — `GET /fund_tracking/fund_sourcing_determination` / `/supplemental_status_summary` / `/dashboard` |
+
+A record carries **no unreleased amount and no sub-program** — `unreleased` and `sub_program_code` were dropped from `fims.fund_tracking`
+(`_assets/sql/01 - fims/03 - alter_table/41`, destructive: the values are lost), so none of the four pages has an Unreleased figure or a
+Program / Sub-Program filter, column or field, and the API neither returns nor accepts them. A record's `date` is **the day it was created**: the
+API stamps it on add (no form has a Date field, nothing can change it afterwards); the Excel imports keep a date their sheet carries and default to
+the import day.
 
 Backing services: `fund_trackingServices.php` + `app/routes/fund_tracking.php` (`/fund_tracking/*` —
 also `/import` and `/import-trust-fund` for spreadsheet ingestion). `fims.fund_tracking` declares

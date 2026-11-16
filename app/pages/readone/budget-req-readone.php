@@ -23,7 +23,8 @@
  *    page, budget-prop-page.php), passed that same filter's current value
  *    ('' = every fiscal year); extraParams are extra query parameters for the
  *    fetch (the FMD page widens it to every Regional / District office);
- *    options.byUnit groups the outline per originating unit. No row/request
+ *    options.byUnit groups the outline per originating unit; options.showFund
+ *    adds each Project's Type(s) of Fund (the FMD page only). No row/request
  *    context, no summary cards, no accordion —
  *    a flat, always-visible indented outline (Program / Sub-Program /
  *    Project), built by its own renderer (bgrv_cobRowsHtml), not the
@@ -144,6 +145,16 @@
         white-space:nowrap;flex-shrink:0; }
     .bgrv-cob-project .bgrv-cob-amt { font-weight:600;color:var(--afims-text-muted, #62657E); }
     .bgrv-cob-empty .bgrv-cob-amt { display:none; }
+
+    /* COB mode with options.showFund (the FMD's Budget Proposal page): the Type(s) of Fund of a Project, after its name. */
+    .bgrv-cob-fund-wrap { display:inline-flex;align-items:center;flex-wrap:wrap;gap:4px;margin-left:10px;vertical-align:middle; }
+    .bgrv-cob-fund-label { font-size:11px;font-weight:500;color:var(--afims-text-muted, #62657E); }
+    .bgrv-cob-fund { display:inline-block;padding:1px 8px;border-radius:10px;font-size:11px;font-weight:600;white-space:nowrap;
+        color:var(--afims-heading-fill, #000E3E);background:color-mix(in srgb, var(--afims-heading-fill, #000E3E) 8%, #fff); }
+    .bgrv-cob-fund-none { font-size:11px;color:var(--afims-text-muted, #62657E); }
+    #bgrv-card.bgrv-wide .bgrv-cob-fund-label,
+    #bgrv-card.bgrv-wide .bgrv-cob-fund,
+    #bgrv-card.bgrv-wide .bgrv-cob-fund-none { font-size:12px; }
 
     /* COB mode, one block per originating unit (options.byUnit): a unit row, then that unit's own Program / Sub-Program / Project rows,
        indented one level further than in the folded outline. */
@@ -310,6 +321,7 @@ async function bgrv_openModal(requestContext, program) {
 // that says which office a project belongs to, and it keeps a request that has no Program yet on the list.
 async function bgrv_openCobModal(fiscalYr = '', extraParams = {}, options = {}) {
     const byUnit = !!(options && options.byUnit);
+    const showFund = !!(options && options.showFund);
     $bgrv('bgrv-card').classList.add('bgrv-wide');
     $bgrv('bgrv-hdr-tag').textContent = 'Corporate Operating Budget (COB)';
     const what = byUnit ? 'All Originating Units' : 'All Programs';
@@ -350,7 +362,7 @@ async function bgrv_openCobModal(fiscalYr = '', extraParams = {}, options = {}) 
             });
             let grandTotal = 0, programCount = 0, subProgramCount = 0, projectCount = 0;
             const unitsHtml = units.map(h => {
-                const c = bgrv_cobCollect([h]);
+                const c = bgrv_cobCollect([h], showFund);
                 grandTotal += c.grandTotal; programCount += c.programs.length; subProgramCount += c.subProgramCount; projectCount += c.projectCount;
                 const where = [h.rc_parent_name, h.budget_reference_number].filter(Boolean).map(bgr_esc).join(' · ');
                 return `<div class="bgrv-cob-row bgrv-cob-unit">
@@ -373,7 +385,7 @@ async function bgrv_openCobModal(fiscalYr = '', extraParams = {}, options = {}) 
         // Folded across every header this fetch returned — more than one when "All Years" is picked, or when the caller's RC scope
         // spans several descendant rc_ids for the same year. A Program (or Sub-Program) added more than once collapses to a single
         // row; its Projects and the grand total still count every occurrence.
-        const c = bgrv_cobCollect(headers);
+        const c = bgrv_cobCollect(headers, showFund);
         $bgrv('bgrv-header-total-val').textContent = bgr_fmtMoney(c.grandTotal);
         $bgrv('bgrv-panels').innerHTML = c.html ? `<div class="bgrv-cob-list">${c.html}</div>` : '';
         $bgrv('bgrv-empty').style.display = c.programs.length ? 'none' : '';
@@ -393,10 +405,12 @@ async function bgrv_openCobModal(fiscalYr = '', extraParams = {}, options = {}) 
 // bgrv_openCobModal: folds the given budget requests (headers) into Program -> Sub-Program -> Project rows. Returns the rows' HTML
 // and the counts / total they add up to. A Program (or Sub-Program) that appears in more than one header collapses to a single row; its
 // Projects and the total still count every occurrence.
-function bgrv_cobCollect(headers) {
+// showFund: each Project row also lists the Type(s) of Fund of its line items (set by Budget Processing; a Project can have several, and
+// none before it has been processed).
+function bgrv_cobCollect(headers, showFund = false) {
     const programMap    = new Map(); // program_code -> { program_code, program_name }
     const subByProgram  = new Map(); // program_code -> Map(sub_program_code -> { sub_program_code, sub_program_name })
-    const projByProgram = new Map(); // program_code -> [{ project_code, project_name, sub_program_code, amount }, ...]
+    const projByProgram = new Map(); // program_code -> [{ project_code, project_name, sub_program_code, amount, funds }, ...]
     const programTotals = new Map(); // program_code -> sum of its projects' amounts
     let grandTotal   = 0;
     let projectCount = 0;
@@ -417,11 +431,14 @@ function bgrv_cobCollect(headers) {
             }
             (prog.projects || []).forEach(p => {
                 const amount = (p.line_items || []).reduce((sum, li) => sum + (Number(li.proposed_amount) || 0), 0);
+                // distinct Types of Fund across the project's line items, in line-item order
+                const funds = [...new Set((p.line_items || []).map(li => String(li.type_of_fund_name ?? '').trim()).filter(Boolean))];
                 projByProgram.get(prog.program_code).push({
                     project_code: p.project_code,
                     project_name: p.project_name,
                     sub_program_code: prog.sub_program_code,
                     amount,
+                    funds,
                 });
                 programTotals.set(prog.program_code, programTotals.get(prog.program_code) + amount);
                 projectCount++;
@@ -439,7 +456,7 @@ function bgrv_cobCollect(headers) {
                     <span>${bgr_esc(prog.program_code)} — ${bgr_esc(prog.program_name)}</span>
                     <span class="bgrv-cob-amt">${bgr_fmtMoney(programTotals.get(prog.program_code) || 0)}</span>
                 </div>`
-            + bgrv_cobRowsHtml(progSubPrograms, progProjects);
+            + bgrv_cobRowsHtml(progSubPrograms, progProjects, showFund);
     }).join('');
 
     return { programs, subProgramCount, projectCount, grandTotal, html };
@@ -523,11 +540,17 @@ function bgrv_togglePanel(headerEl) {
     });
 }
 
+// bgrv_openCobModal (showFund): "Type of Fund: [chip] [chip]" for a Project row; "—" while none of its line items has one yet.
+function bgrv_cobFundHtml(funds) {
+    const chips = (funds || []).map(f => `<span class="bgrv-cob-fund">${bgr_esc(f)}</span>`).join('');
+    return `<span class="bgrv-cob-fund-wrap"><span class="bgrv-cob-fund-label">Type of Fund:</span>${chips || '<span class="bgrv-cob-fund-none">—</span>'}</span>`;
+}
+
 // bgrv_openCobModal only: flat indented rows (Sub-Program, then its
 // Projects) for one Program — same sub_program_code grouping rule as
 // bgrv_subProgramAccordionHtml above, just rendered as plain rows instead
-// of accordion panels.
-function bgrv_cobRowsHtml(subPrograms, projects) {
+// of accordion panels. showFund adds the Project's Type(s) of Fund after its name.
+function bgrv_cobRowsHtml(subPrograms, projects, showFund = false) {
     const bySubProgram = new Map();
     subPrograms.forEach(sp => bySubProgram.set(sp.sub_program_code, []));
 
@@ -556,7 +579,7 @@ function bgrv_cobRowsHtml(subPrograms, projects) {
         const subTotal = g.projects.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
         const projRows = g.projects.length
             ? g.projects.map(p => `<div class="bgrv-cob-row bgrv-cob-project">
-                    <span>${bgr_esc(p.project_code)} — ${bgr_esc(p.project_name)}</span>
+                    <span>${bgr_esc(p.project_code)} — ${bgr_esc(p.project_name)}${showFund ? bgrv_cobFundHtml(p.funds) : ''}</span>
                     <span class="bgrv-cob-amt">${bgr_fmtMoney(p.amount || 0)}</span>
                 </div>`).join('')
             : '<div class="bgrv-cob-row bgrv-cob-project bgrv-cob-empty">No projects yet.</div>';

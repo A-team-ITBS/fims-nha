@@ -7,7 +7,7 @@ namespace PHPMaker2024\FIMS;
  * (SRS 1.2.1.1 Fund Sourcing Division + 1.2.1.3 Fund Sources Determination, Financial Management Department).
  *
  * Ported from the FMD app's FP-FS/fund-sourcing-dashboard.php to FIMS, in the same shape as saro-registry-page.php: the shared
- * nha-fims.css look (.nha-root), the shared nhaSearchableSelect for the Program filter, no jQuery / fmd.css.
+ * nha-fims.css look (.nha-root), no jQuery / fmd.css.
  *
  * LIVE DATA, except what the FIMS database cannot supply yet. Every read goes through fsd_get(key, params):
  *
@@ -19,15 +19,13 @@ namespace PHPMaker2024\FIMS;
  *
  * The sample data answers with the SAME response shapes as the real endpoints (and the same query-string names):
  *
- *   dashboard      GET /fund_tracking/dashboard   fiscal_year, program_code
- *                  → data.government_funds {saro_allocation, saro_unreleased, saro_record_count, nca_received, nca_unreleased,
- *                                           nca_record_count, available_funds}
+ *   dashboard      GET /fund_tracking/dashboard   fiscal_year
+ *                  → data.government_funds {saro_allocation, saro_record_count, nca_received, nca_record_count, available_funds}
  *                    data.special_funds {trust_funds, trust_funds_record_count, supplemental_funds, supplemental_funds_record_count}
  *   list           GET /fund_tracking/list        type (SARO | NCA | TRUST_FUND), nature_of_fund (SUPPLEMENTAL), fiscal_year,
- *                                                 program_code, agency_or_program_search, page, limit
+ *                                                 agency_or_program_search (matches the agency name), page, limit
  *                  → data[] (fund_tracking rows), pagination {total, per_page, current_page, last_page}
  *   fiscalYears    GET /fiscal_year/all           → data[].fiscal_yr
- *   programs       GET /program/all               → data[].program_code / program_name
  *
  * Static for now (not in FIMS yet — see FSD_STATIC):
  *   – Fund Transfer / Borrowing of Funds (SRS 1.2.1.1.1): the dashboard payload has no `cross_access_funds`
@@ -43,7 +41,6 @@ $_fsd_api = rtrim((string) Config('API.FIMS_URL'), '/');
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
-<script src="/_shared/js/searchable-select.js?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/js/searchable-select.js') ?>"></script>
 
 <style>
     /* ── Section headings ── */
@@ -92,13 +89,8 @@ $_fsd_api = rtrim((string) Config('API.FIMS_URL'), '/');
 
     /* ── Filters ──
        Widths come from these page classes alone (the shared -md / -lg caps of 180 / 200px are not used): Amount Unit's longest
-       option, "Centavos (Full Amount)", is wider than 180px in IBM Plex Sans, and the Program box must never be wider than its group.
-       The ID in the selectors matters: PHPMaker's generated FIMS.css gives EVERY input[type=text]:not([size]) `min-width: 250px`,
-       which a plain class selector cannot beat — that min-width is what pushed the Program box out of its group, on top of Amount Unit. */
+       option, "Centavos (Full Amount)", is wider than 180px in IBM Plex Sans. */
     #fsd-root .fsd-fy-group { flex: 0 1 170px; min-width: 150px; }
-    #fsd-root .fsd-program-group { flex: 1 1 280px; min-width: 220px; max-width: 460px; }
-    #fsd-root .fsd-program-group .nha-filter-search-wrap { min-width: 0; }
-    #fsd-root .fsd-program-group .nha-filter-input { min-width: 0; max-width: 100%; padding-right: 10px; text-overflow: ellipsis; }
     #fsd-root .fsd-unit-group { flex: 0 1 240px; min-width: 200px; }
     #fsd-root .fsd-unit-group .nha-filter-select { min-width: 0; text-overflow: ellipsis; }
 
@@ -176,19 +168,12 @@ $_fsd_api = rtrim((string) Config('API.FIMS_URL'), '/');
         <span id="fsd-error-msg">Failed to load data. Please refresh.</span>
     </div>
 
-    <!-- ── FILTERS (fiscal_year / program_code pass-through) ──────────────────── -->
+    <!-- ── FILTERS (fiscal_year pass-through) ──────────────────── -->
     <div class="nha-filters no-print">
         <div class="nha-filter-row">
             <div class="nha-filter-group fsd-fy-group">
                 <label class="nha-filter-label" for="fsd-fy">Fiscal Year</label>
                 <select id="fsd-fy" class="nha-filter-select"><option value="">All Fiscal Years</option></select>
-            </div>
-            <div class="nha-filter-group fsd-program-group">
-                <label class="nha-filter-label" for="fsd-program">Program</label>
-                <div class="nha-filter-search-wrap">
-                    <svg class="nha-filter-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                    <input type="text" id="fsd-program" class="nha-filter-input" placeholder="All programs" autocomplete="off" title="Type a program name or code, then pick it from the list. Clear the box for all programs.">
-                </div>
             </div>
             <div class="nha-filter-group fsd-unit-group">
                 <label class="nha-filter-label" for="fsd-unit">Amount Unit</label>
@@ -221,7 +206,7 @@ $_fsd_api = rtrim((string) Config('API.FIMS_URL'), '/');
             <div class="fsd-ch-card">
                 <div class="fsd-ch-head">
                     <div>
-                        <p class="fsd-ch-title">SARO Allocation vs NCA Received vs Unreleased NCA</p>
+                        <p class="fsd-ch-title">SARO Allocation vs NCA Received vs Available Funds</p>
                         <p class="fsd-ch-sub">Government fund flow comparison</p>
                     </div>
                     <span class="fsd-ch-pill">Government Funds</span>
@@ -232,7 +217,7 @@ $_fsd_api = rtrim((string) Config('API.FIMS_URL'), '/');
                 <div class="fsd-ch-head">
                     <div>
                         <p class="fsd-ch-title">SARO Utilization</p>
-                        <p class="fsd-ch-sub">Released vs unreleased</p>
+                        <p class="fsd-ch-sub">NCA received vs available funds</p>
                     </div>
                 </div>
                 <div class="fsd-ch-wrap" style="height:200px;"><canvas id="fsd-chart-saro"></canvas><div class="fsd-ch-off"></div></div>
@@ -306,12 +291,11 @@ $_fsd_api = rtrim((string) Config('API.FIMS_URL'), '/');
                             <tr>
                                 <th>Fund Source</th>
                                 <th class="num" style="text-align:right;">Amount</th>
-                                <th class="num" style="text-align:right;">Unreleased</th>
                                 <th class="num" style="text-align:right;">Records</th>
                             </tr>
                         </thead>
                         <tbody id="fsd-ov-body">
-                            <tr><td colspan="4" class="fsd-state"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
+                            <tr><td colspan="3" class="fsd-state"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -322,10 +306,10 @@ $_fsd_api = rtrim((string) Config('API.FIMS_URL'), '/');
         <div class="nha-panel" id="fsd-panel-trust">
             <div class="fsd-sub-filter-wrap no-print">
                 <div class="fsd-sub-filter">
-                    <label class="nha-filter-label" for="fsd-trust-search">Agency / Program</label>
+                    <label class="nha-filter-label" for="fsd-trust-search">Agency</label>
                     <div class="nha-filter-search-wrap">
                         <svg class="nha-filter-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                        <input type="text" id="fsd-trust-search" class="nha-filter-input" placeholder="Filter by agency or program…" autocomplete="off">
+                        <input type="text" id="fsd-trust-search" class="nha-filter-input" placeholder="Filter by agency…" autocomplete="off">
                     </div>
                 </div>
             </div>
@@ -337,7 +321,7 @@ $_fsd_api = rtrim((string) Config('API.FIMS_URL'), '/');
             <div class="nha-table-wrap" id="fsd-box-saro"></div>
         </div>
 
-        <!-- Fund Transfer — records are not touched by the Fiscal Year / Program filters (a transfer carries neither) -->
+        <!-- Fund Transfer — records are not touched by the Fiscal Year filter (a transfer carries none) -->
         <div class="nha-panel" id="fsd-panel-transfer">
             <div class="fsd-sub-filter-wrap no-print">
                 <div class="fsd-sub-filter">
@@ -369,7 +353,6 @@ const FSD_API = {
     dashboard:     FSD_BASE + '/fund_tracking/dashboard',
     list:          FSD_BASE + '/fund_tracking/list',
     fiscalYears:   FSD_BASE + '/fiscal_year/all',
-    programs:      FSD_BASE + '/program/all',
     // Not in FIMS yet (names are proposals) — used only once the key is removed from FSD_STATIC
     crossAccess:   FSD_BASE + '/fund_transfer/summary',
     fundTransfers: FSD_BASE + '/fund_transfer/list',
@@ -431,17 +414,16 @@ function fsd_date(str) {
 
 /* ── State ──────────────────────────────────────────────────── */
 const fsd = {
-    fy: '', program: '',          // the two server-side filters (fiscal_year, program_code)
+    fy: '',                       // the server-side filter (fiscal_year)
     unit: 'full',
     gov: null, special: null, cross: undefined,    // cross: undefined = not loaded · null = API does not provide it
     req: 0,                       // bumped per dashboard request so a stale response never overwrites a newer one
     charts: {},
-    programLabel: '',             // the name shown in the Program box (fsd.program holds its code)
     tab: 'overview',
     expanded: new Set(),          // Overview rows currently expanded
     errors: [],
 };
-const fsd_filters = () => ({ fiscal_year: fsd.fy, program_code: fsd.program });
+const fsd_filters = () => ({ fiscal_year: fsd.fy });
 
 function fsd_showError(msg) {
     if (!fsd.errors.includes(msg)) fsd.errors.push(msg);
@@ -530,11 +512,11 @@ function fsd_renderGov() {
     $f('fsd-cards-gov').innerHTML =
         fsd_card({
             tone: 'navy', label: 'SARO Allocation', value: saro, wide: true, icon: 'receipt',
-            sub: `${fsd_plural(saroN, 'SARO record')} · Unreleased: ${fsd_peso(avail)}`,
+            sub: fsd_plural(saroN, 'SARO record'),
             extra: `<div class="fsd-prog"><span data-w="${pct}"></span></div><p class="fsd-prog-lbl">${pct}% of SARO allocation still available</p>`,
         }) +
         fsd_card({ tone: 'blue', label: 'NCA Received', value: nca, icon: 'plus', sub: fsd_plural(ncaN, 'record') }) +
-        fsd_card({ tone: 'teal', label: 'Unreleased NCA', value: avail, icon: 'clock', sub: 'SARO − NCA' });
+        fsd_card({ tone: 'teal', label: 'Available Funds', value: avail, icon: 'clock', sub: 'SARO − NCA' });
 
     requestAnimationFrame(() => setTimeout(() => {
         $f('fsd-cards-gov').querySelectorAll('.fsd-prog > span').forEach(b => { b.style.width = b.dataset.w + '%'; });
@@ -624,14 +606,13 @@ function fsd_legend(id, items) {
 function fsd_renderCharts() {
     const g = fsd.gov || {}, s = fsd.special || {};
     const saro = parseFloat(g.saro_allocation) || 0, nca = parseFloat(g.nca_received) || 0, avail = parseFloat(g.available_funds) || 0;
-    const unrel = parseFloat(g.saro_unreleased) || 0;
     const trust = parseFloat(s.trust_funds) || 0, supp = parseFloat(s.supplemental_funds) || 0;
 
-    fsd_chart('gov', 'fsd-chart-gov', fsd_barConfig(['SARO Allocation', 'NCA Received', 'Unreleased NCA'], [saro, nca, avail], [FSD_COLOR.navy, FSD_COLOR.blue, FSD_COLOR.green]));
+    fsd_chart('gov', 'fsd-chart-gov', fsd_barConfig(['SARO Allocation', 'NCA Received', 'Available Funds'], [saro, nca, avail], [FSD_COLOR.navy, FSD_COLOR.blue, FSD_COLOR.green]));
 
     const saroItems = [
-        { label: 'Released', value: Math.max(0, saro - unrel), color: FSD_COLOR.blue },
-        { label: 'Unreleased', value: unrel, color: FSD_COLOR.amber },
+        { label: 'NCA Received', value: nca, color: FSD_COLOR.blue },
+        { label: 'Available Funds', value: Math.max(0, avail), color: FSD_COLOR.green },
     ];
     fsd_chart('saro', 'fsd-chart-saro', fsd_doughnutConfig(saroItems));
     fsd_legend('fsd-leg-saro', saroItems);
@@ -663,33 +644,28 @@ const fsd_amtCell = v => { const n = parseFloat(v) || 0; return `<td class="num"
 const fsd_parentRef = r => (Array.isArray(r.parent) ? r.parent[0] : null)?.reference_number || '';
 const fsd_refCell = ref => ref ? `<span class="nha-mono nha-td-bold">${fsd_esc(ref)}</span>` : fsd_dash;
 const fsd_yearCell = r => r.fiscal_year ? `<span style="font-size:11px;">FY ${fsd_esc(r.fiscal_year)}</span>` : fsd_dash;
-function fsd_programCell(sp) {
-    if (!sp || !(sp.program_name || sp.sub_program_name)) return fsd_dash;
-    return `<div style="font-size:12px;line-height:1.35;"><div style="font-weight:500;">${fsd_esc(sp.sub_program_name || sp.program_name)}</div>
-        <div class="nha-mono" style="font-size:10px;color:var(--muted);">${fsd_esc(sp.sub_program_code || sp.program_code || '')}${sp.program_name ? ' · ' + fsd_esc(sp.program_name) : ''}</div></div>`;
-}
 const fsd_transferTone = s => ({ completed: 'green', pending: 'amber', overdue: 'red', cancelled: 'gray' }[String(s || '').toLowerCase()] || 'gray');
 
 // Column sets. `head`: [label, right-aligned?] · `row(r)`: the cells after the leading #.
 const FSD_COLS = {
-    // SARO / NCA / Unreleased NCA records (the SARO / NCA Tracking register's columns)
+    // SARO / NCA records (the SARO / NCA Tracking register's columns)
     tracking: {
-        head: [['Reference No.'], ['Name / Title'], ['Program'], ['Tracking Type'], ['Nature of Fund'], ['Fiscal Year'], ['Amount (₱)', 1], ['Date'], ['Unreleased (₱)', 1]],
-        row: r => `<td>${fsd_refCell(r.reference_number)}</td><td>${fsd_esc(r.name) || fsd_dash}</td><td>${fsd_programCell(r.sub_program)}</td>
+        head: [['Reference No.'], ['Name / Title'], ['Tracking Type'], ['Nature of Fund'], ['Fiscal Year'], ['Amount (₱)', 1], ['Date']],
+        row: r => `<td>${fsd_refCell(r.reference_number)}</td><td>${fsd_esc(r.name) || fsd_dash}</td>
             <td>${fsd_badge(r.tracking_type?.fund_tracking_code, 'navy')}</td><td>${fsd_badge(r.nature_of_fund?.name, 'blue')}</td><td>${fsd_yearCell(r)}</td>
-            ${fsd_amtCell(r.amount)}<td>${fsd_date(r.date)}</td>${fsd_amtCell(r.unreleased)}`,
+            ${fsd_amtCell(r.amount)}<td>${fsd_date(r.date)}</td>`,
     },
     // Trust Fund MOAs register
     trust: {
-        head: [['Agency'], ['Program'], ['SARO No. / OR No. / CA No.'], ['Amount (₱)', 1], ['Date'], ['Remarks']],
-        row: r => `<td class="nha-td-bold">${fsd_esc(r.agency?.name) || fsd_dash}</td><td>${fsd_programCell(r.sub_program)}</td><td>${fsd_refCell(fsd_parentRef(r))}</td>
+        head: [['Agency'], ['SARO No. / OR No. / CA No.'], ['Amount (₱)', 1], ['Date'], ['Remarks']],
+        row: r => `<td class="nha-td-bold">${fsd_esc(r.agency?.name) || fsd_dash}</td><td>${fsd_refCell(fsd_parentRef(r))}</td>
             ${fsd_amtCell(r.amount)}<td>${fsd_date(r.date)}</td>
             <td title="${fsd_esc(r.remarks)}">${r.remarks ? fsd_esc(r.remarks.length > 60 ? r.remarks.slice(0, 60) + '…' : r.remarks) : fsd_dash}</td>`,
     },
     // Supplemental Funds — identified by `purpose` rather than a name
     supp: {
-        head: [['Reference No.'], ['Program'], ['Purpose'], ['Nature of Fund'], ['Fiscal Year'], ['Amount (₱)', 1], ['Parent Reference'], ['Date']],
-        row: r => `<td>${fsd_refCell(r.reference_number)}</td><td>${fsd_programCell(r.sub_program)}</td><td style="font-size:12px;">${fsd_esc(r.purpose) || fsd_dash}</td>
+        head: [['Reference No.'], ['Purpose'], ['Nature of Fund'], ['Fiscal Year'], ['Amount (₱)', 1], ['Parent Reference'], ['Date']],
+        row: r => `<td>${fsd_refCell(r.reference_number)}</td><td style="font-size:12px;">${fsd_esc(r.purpose) || fsd_dash}</td>
             <td>${fsd_badge(r.nature_of_fund?.name, 'amber')}</td><td>${fsd_yearCell(r)}</td>${fsd_amtCell(r.amount)}
             <td>${fsd_parentRef(r) ? `<span class="nha-mono" style="font-size:12px;">${fsd_esc(fsd_parentRef(r))}</span>` : fsd_dash}</td><td>${fsd_date(r.date)}</td>`,
     },
@@ -701,34 +677,21 @@ const FSD_COLS = {
     },
 };
 
-/* cfg: { cols, endpoint?, params(): extra query params, fallbackTotal(): number|null, totalLabel?,
-          unreleasedOnly? — fetch one big batch, keep records with an unreleased amount, page client-side, emptyText? } */
+/* cfg: { cols, endpoint?, params(): extra query params, fallbackTotal(): number|null, totalLabel?, emptyText? } */
 function fsd_makeList(cfg) {
-    const st = { page: 1, limit: 10, total: 0, rows: [], totalAmount: null, loaded: false, loading: false, error: null, req: 0, box: null, allData: null };
+    const st = { page: 1, limit: 10, total: 0, rows: [], totalAmount: null, loaded: false, loading: false, error: null, req: 0, box: null };
     const cols = FSD_COLS[cfg.cols];
 
     async function load() {
         const my = ++st.req;
         st.loading = true; st.error = null; render();
         try {
-            if (cfg.unreleasedOnly) {
-                if (!st.allData) {
-                    const json = await fsd_get(cfg.endpoint || 'list', { ...cfg.params(), page: 1, limit: 500 });
-                    if (my !== st.req) return;
-                    st.allData = (json.data || []).filter(r => (parseFloat(r.unreleased) || 0) > 0);
-                }
-                const off = (st.page - 1) * st.limit;
-                st.total = st.allData.length;
-                st.rows = st.allData.slice(off, off + st.limit);
-                st.totalAmount = st.allData.reduce((a, r) => a + (parseFloat(r.unreleased) || 0), 0);
-            } else {
-                const json = await fsd_get(cfg.endpoint || 'list', { ...cfg.params(), page: st.page, limit: st.limit });
-                if (my !== st.req) return;
-                const pg = json.pagination || {};
-                st.rows = json.data || [];
-                st.total = parseInt(pg.total) || st.rows.length;
-                st.totalAmount = pg.total_amount ?? json.total_amount ?? null;   // the dashboard fallback is resolved at render time
-            }
+            const json = await fsd_get(cfg.endpoint || 'list', { ...cfg.params(), page: st.page, limit: st.limit });
+            if (my !== st.req) return;
+            const pg = json.pagination || {};
+            st.rows = json.data || [];
+            st.total = parseInt(pg.total) || st.rows.length;
+            st.totalAmount = pg.total_amount ?? json.total_amount ?? null;   // the dashboard fallback is resolved at render time
             st.loaded = true;
         } catch (e) {
             if (my !== st.req) return;
@@ -777,18 +740,16 @@ function fsd_makeList(cfg) {
         st, load, render,
         mount(box) { st.box = box; render(); },
         // filters changed → drop the cache and go back to page 1 (the caller reloads it if it is on screen)
-        reset() { st.page = 1; st.loaded = false; st.allData = null; st.rows = []; st.total = 0; st.totalAmount = null; st.error = null; st.req++; st.loading = false; },
+        reset() { st.page = 1; st.loaded = false; st.rows = []; st.total = 0; st.totalAmount = null; st.error = null; st.req++; st.loading = false; },
     };
 }
 
 /* Fund-source rows of the Overview tab: key → [label, badge tone, dot colour, list config].
-   "Unreleased NCA" has no tracking type of its own (its card is SARO − NCA), so its breakdown pulls NCA records and keeps the
-   ones that carry an unreleased amount. Supplemental Funds are matched by nature of fund, not by tracking type. */
-const fsd_filterParams = () => ({ fiscal_year: fsd.fy, program_code: fsd.program });
+   Supplemental Funds are matched by nature of fund, not by tracking type. */
+const fsd_filterParams = () => ({ fiscal_year: fsd.fy });
 const FSD_OV = {
     saro:  { label: 'SARO Allocation / GAAAO', tone: 'blue',   dot: FSD_COLOR.blue,   cols: 'tracking', params: () => ({ ...fsd_filterParams(), type: 'SARO' }),       fallbackTotal: () => fsd.gov?.saro_allocation },
     nca:   { label: 'NCA Received',            tone: 'green',  dot: FSD_COLOR.green,  cols: 'tracking', params: () => ({ ...fsd_filterParams(), type: 'NCA' }),        fallbackTotal: () => fsd.gov?.nca_received },
-    unrel: { label: 'Unreleased NCA',          tone: 'teal',   dot: '#047857',        cols: 'tracking', params: () => ({ ...fsd_filterParams(), type: 'NCA' }),        unreleasedOnly: true, totalLabel: 'Total Unreleased', emptyText: 'No records with unreleased NCA found.' },
     trust: { label: 'Trust Funds',             tone: 'purple', dot: FSD_COLOR.purple, cols: 'trust',    params: () => ({ ...fsd_filterParams(), type: 'TRUST_FUND' }), fallbackTotal: () => fsd.special?.trust_funds },
     supp:  { label: 'Supplemental Funds',      tone: 'amber',  dot: '#B45309',        cols: 'supp',     params: () => ({ ...fsd_filterParams(), nature_of_fund: 'SUPPLEMENTAL' }), fallbackTotal: () => fsd.special?.supplemental_funds },
 };
@@ -821,25 +782,23 @@ const FSD_CARET = '<svg class="fsd-ov-caret" viewBox="0 0 24 24"><path stroke-li
 function fsd_renderOverview() {
     const g = fsd.gov, s = fsd.special;
     const body = $f('fsd-ov-body');
-    if (!g || !s) { body.innerHTML = `<tr><td colspan="4" class="fsd-state"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>`; return; }
+    if (!g || !s) { body.innerHTML = `<tr><td colspan="3" class="fsd-state"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>`; return; }
 
     const figures = {
-        saro:  [g.saro_allocation, g.saro_unreleased, g.saro_record_count],
-        nca:   [g.nca_received, null, g.nca_record_count],
-        unrel: [g.available_funds, null, null],
-        trust: [s.trust_funds, null, s.trust_funds_record_count],
-        supp:  [s.supplemental_funds, null, s.supplemental_funds_record_count],
+        saro:  [g.saro_allocation, g.saro_record_count],
+        nca:   [g.nca_received, g.nca_record_count],
+        trust: [s.trust_funds, s.trust_funds_record_count],
+        supp:  [s.supplemental_funds, s.supplemental_funds_record_count],
     };
     body.innerHTML = Object.entries(FSD_OV).map(([k, c]) => {
-        const [amount, unreleased, count] = figures[k];
+        const [amount, count] = figures[k];
         const open = fsd.expanded.has(k);
         return `
         <tr class="fsd-ov-parent${open ? ' expanded' : ''}" data-ov="${k}">
             <td>${FSD_CARET}<span class="nha-bdg nha-bdg-${c.tone}"><span class="fsd-dot" style="background:${c.dot};"></span>${fsd_esc(c.label)}</span></td>
             <td class="num" title="${fsd_pesoFull(amount)}">${fsd_peso(amount)}</td>
-            <td class="num">${unreleased !== null ? fsd_peso(unreleased) : '—'}</td>
             <td class="num">${count !== null ? count : '—'}</td>
-        </tr>${open ? `<tr class="fsd-ov-child"><td colspan="4"><div class="nha-table-wrap" id="fsd-ov-box-${k}"></div></td></tr>` : ''}`;
+        </tr>${open ? `<tr class="fsd-ov-child"><td colspan="3"><div class="nha-table-wrap" id="fsd-ov-box-${k}"></div></td></tr>` : ''}`;
     }).join('');
 
     // the child tables were just rebuilt — hand each its new box (rendering from cache, or loading on first open)
@@ -929,47 +888,23 @@ function fsd_reloadLists({ includeTransfer = false } = {}) {
 }
 
 function fsd_applyFilters() {
-    $f('fsd-clear').disabled = !(fsd.fy || fsd.program);
+    $f('fsd-clear').disabled = !fsd.fy;
     fsd_hideError();
     fsd_loadDashboard();
     fsd_reloadLists();
 }
 
 async function fsd_loadFilterOptions() {
-    const [fy, pr] = await Promise.allSettled([fsd_get('fiscalYears'), fsd_get('programs')]);
-
-    if (fy.status === 'fulfilled') {
-        const years = [...new Set((fy.value.data || []).map(r => Number(r.fiscal_yr)).filter(Boolean))].sort((a, b) => b - a);
+    try {
+        const years = [...new Set(((await fsd_get('fiscalYears')).data || []).map(r => Number(r.fiscal_yr)).filter(Boolean))].sort((a, b) => b - a);
         $f('fsd-fy').insertAdjacentHTML('beforeend', years.map(y => `<option value="${y}">${y}</option>`).join(''));
-    } else console.warn('[fsd] fiscal years:', fy.reason);   // filters are a convenience — the page still works unfiltered
-
-    if (pr.status === 'fulfilled') {
-        const programs = (pr.value.data || []).map(p => ({ value: String(p.program_code), label: String(p.program_name ?? '') }));
-        if (typeof nhaSearchableSelect === 'function') nhaSearchableSelect($f('fsd-program'), programs, fsd_pickProgram);
-    } else console.warn('[fsd] programs:', pr.reason);
+    } catch (e) { console.warn('[fsd] fiscal years:', e); }   // filters are a convenience — the page still works unfiltered
 }
 
 /* ═══════════════════════════════════════════════════════════════
    UI WIRING
 ═══════════════════════════════════════════════════════════════ */
 $f('fsd-fy').addEventListener('change', e => { fsd.fy = e.target.value; fsd_applyFilters(); });
-
-// Program: the box SHOWS the program name; the filter itself uses the program code (fsd.program).
-// nhaSearchableSelect has just written the option's value (the code) into the box when it calls this — put the name back.
-function fsd_pickProgram(opt) {
-    const box = $f('fsd-program');
-    box.value = opt.label || opt.value;               // a program without a name falls back to its code
-    fsd.programLabel = box.value;
-    if (fsd.program !== opt.value) { fsd.program = opt.value; fsd_applyFilters(); }
-}
-// Emptying the box means "all programs"
-$f('fsd-program').addEventListener('input', e => {
-    if (e.target.value.trim() === '' && fsd.program !== '') { fsd.program = ''; fsd.programLabel = ''; fsd_applyFilters(); }
-});
-// Text that was typed but never picked from the list doesn't filter — put the current selection back when leaving the box
-$f('fsd-program').addEventListener('change', e => { if (e.target.value.trim() !== fsd.programLabel) e.target.value = fsd.programLabel; });
-// Click into the box → whole name selected, so typing replaces it and the list searches fresh
-$f('fsd-program').addEventListener('focus', e => e.target.select());
 
 // Amount Unit: display only — re-render everything that is on screen from cache, no refetch
 $f('fsd-unit').addEventListener('change', e => {
@@ -979,8 +914,8 @@ $f('fsd-unit').addEventListener('change', e => {
 });
 
 $f('fsd-clear').addEventListener('click', () => {
-    fsd.fy = ''; fsd.program = ''; fsd.programLabel = '';
-    $f('fsd-fy').value = ''; $f('fsd-program').value = '';
+    fsd.fy = '';
+    $f('fsd-fy').value = '';
     fsd_applyFilters();
 });
 
@@ -1007,13 +942,7 @@ const fsd_mock = (() => {
     const sum = (arr, k = 'amount') => arr.reduce((a, r) => a + (parseFloat(r[k]) || 0), 0);
 
     const YEARS = [2023, 2024, 2025, 2026];
-    const PROGRAMS = [
-        { program_code: 'HDP', program_name: 'Housing Development Program', subs: [['HDP-01', 'Resettlement Housing'], ['HDP-02', 'Site Development']] },
-        { program_code: 'SHP', program_name: 'Socialized Housing Program', subs: [['SHP-01', 'Community Mortgage'], ['SHP-02', 'Medium-Rise Housing']] },
-        { program_code: 'CRP', program_name: 'Calamity Recovery Program', subs: [['CRP-01', 'Emergency Shelter'], ['CRP-02', 'Rehabilitation']] },
-        { program_code: 'URP', program_name: 'Urban Renewal Program', subs: [['URP-01', 'Slum Upgrading']] },
-    ];
-    const subProgram = (pg, sub) => ({ sub_program_code: sub[0], sub_program_name: sub[1], program_code: pg.program_code, program_name: pg.program_name });
+    const TITLES = ['Resettlement Housing', 'Community Mortgage', 'Emergency Shelter', 'Slum Upgrading'];
     const TYPE = {
         SARO: { fund_tracking_code: 'SARO', fund_tracking_name: 'Special Allotment Release Order' },
         NCA: { fund_tracking_code: 'NCA', fund_tracking_name: 'Notice of Cash Allocation' },
@@ -1023,40 +952,36 @@ const fsd_mock = (() => {
     let id = 1000, saroSeq = 0, ncaSeq = 0, trustSeq = 0, suppSeq = 0;
     const saros = [], ncas = [], trusts = [], supps = [];
 
-    // SAROs: one per program per fiscal year, each released in 1–3 NCAs that cover 55–95% of it
-    YEARS.forEach(fy => PROGRAMS.forEach(pg => {
-        const sub = pick(pg.subs);
+    // SAROs: one per title per fiscal year, each released in 1–3 NCAs that cover 55–95% of it
+    YEARS.forEach(fy => TITLES.forEach(title => {
         const saro = {
-            id: ++id, fiscal_year: fy, reference_number: `SARO-ROCS-${fy}-${pad(++saroSeq)}`, name: `${sub[1]} ${fy}`,
-            amount: money(90e6, 850e6), unreleased: 0, date: iso(fy, 1 + Math.floor(rnd() * 5), 1 + Math.floor(rnd() * 27)),
+            id: ++id, fiscal_year: fy, reference_number: `SARO-ROCS-${fy}-${pad(++saroSeq)}`, name: `${title} ${fy}`,
+            amount: money(90e6, 850e6), date: iso(fy, 1 + Math.floor(rnd() * 5), 1 + Math.floor(rnd() * 27)),
             tracking_type: TYPE.SARO, nature_of_fund: { name: pick(['GAA', 'GAA', 'GAAAO', 'Continuing']) },
-            sub_program: subProgram(pg, sub), agency: null, remarks: null, parent: [], children: [],
+            agency: null, remarks: null, parent: [], children: [],
         };
         const released = saro.amount * between(0.55, 0.95), n = 1 + Math.floor(rnd() * 3);
-        let total = 0;
         for (let i = 0; i < n; i++) {
             const amount = Math.round(released / n * 100) / 100;
-            total += amount;
             const nca = {
-                id: ++id, fiscal_year: fy, reference_number: `NCA-${fy}-${pad(++ncaSeq)}`, name: `${sub[1]} — release ${i + 1}`,
-                amount, unreleased: rnd() < 0.45 ? money(0.5e6, amount * 0.3) : 0, date: iso(fy, 4 + i * 2, 1 + Math.floor(rnd() * 27)),
-                tracking_type: TYPE.NCA, nature_of_fund: saro.nature_of_fund, sub_program: saro.sub_program, agency: null, remarks: null,
+                id: ++id, fiscal_year: fy, reference_number: `NCA-${fy}-${pad(++ncaSeq)}`, name: `${title} — release ${i + 1}`,
+                amount, date: iso(fy, 4 + i * 2, 1 + Math.floor(rnd() * 27)),
+                tracking_type: TYPE.NCA, nature_of_fund: saro.nature_of_fund, agency: null, remarks: null,
                 parent: [{ id: saro.id, reference_number: saro.reference_number, name: saro.name, amount: saro.amount }], children: [],
             };
             ncas.push(nca); saro.children.push(nca);
         }
-        saro.unreleased = Math.round((saro.amount - total) * 100) / 100;
         saros.push(saro);
     }));
 
     const AGENCIES = ['Department of Public Works and Highways', 'Quezon City Government', 'Department of Social Welfare and Development', 'Provincial Government of Leyte', 'Bureau of Fire Protection', 'Cebu City Government'];
     const REMARKS = ['Counterpart fund for site development works', 'Downloaded per MOA, first tranche', 'For relocation of informal settler families', 'Funds for road and drainage works', 'Remaining balance to be downloaded upon completion of Phase 1 of the housing project', null];
     for (let i = 0; i < 16; i++) {
-        const fy = pick(YEARS), pg = pick(PROGRAMS), sub = pick(pg.subs), parentRef = pick(['OR', 'CA', 'SARO']);
+        const fy = pick(YEARS), parentRef = pick(['OR', 'CA', 'SARO']);
         trusts.push({
-            id: ++id, fiscal_year: fy, reference_number: `TF-${fy}-${pad(++trustSeq)}`, name: null, amount: money(5e6, 120e6), unreleased: 0,
+            id: ++id, fiscal_year: fy, reference_number: `TF-${fy}-${pad(++trustSeq)}`, name: null, amount: money(5e6, 120e6),
             date: iso(fy, 1 + Math.floor(rnd() * 11), 1 + Math.floor(rnd() * 27)), tracking_type: TYPE.TRUST, nature_of_fund: { name: 'Trust Fund' },
-            sub_program: subProgram(pg, sub), agency: { name: pick(AGENCIES) }, remarks: pick(REMARKS),
+            agency: { name: pick(AGENCIES) }, remarks: pick(REMARKS),
             parent: [{ id: ++id, reference_number: `${parentRef}-${fy}-${pad(Math.floor(rnd() * 900) + 100)}`, amount: money(100e6, 400e6) }], children: [],
         });
     }
@@ -1065,14 +990,14 @@ const fsd_mock = (() => {
     for (let i = 0; i < 9; i++) {
         const parent = pick(saros);
         supps.push({
-            id: ++id, fiscal_year: parent.fiscal_year, reference_number: `SUP-${parent.fiscal_year}-${pad(++suppSeq)}`, name: null, amount: money(8e6, 90e6), unreleased: 0,
+            id: ++id, fiscal_year: parent.fiscal_year, reference_number: `SUP-${parent.fiscal_year}-${pad(++suppSeq)}`, name: null, amount: money(8e6, 90e6),
             date: iso(parent.fiscal_year, 6 + Math.floor(rnd() * 6), 1 + Math.floor(rnd() * 27)), tracking_type: TYPE.SARO, nature_of_fund: { name: 'SUPPLEMENTAL' },
-            sub_program: parent.sub_program, agency: null, remarks: null, purpose: pick(PURPOSES),
+            agency: null, remarks: null, purpose: pick(PURPOSES),
             parent: [{ id: parent.id, reference_number: parent.reference_number, amount: parent.amount }], children: [],
         });
     }
 
-    // Fund transfers — not filtered by fiscal year / program. Pending ones past due_date are "overdue" payables.
+    // Fund transfers — not filtered by fiscal year. Pending ones past due_date are "overdue" payables.
     const today = new Date(), shift = days => { const d = new Date(today); d.setDate(d.getDate() + days); return d.toISOString().slice(0, 10); };
     const FUNDS = ['Regular Agency Fund', 'Trust Fund 101', 'Special Account — Housing', 'Revolving Fund', 'Calamity Fund'];
     const PAYEES = ['NHA Region IV-A', 'NHA Region VII', 'NHA National Capital Region', 'NHA Region VIII', 'NHA Region XI'];
@@ -1089,9 +1014,7 @@ const fsd_mock = (() => {
     }
     transfers.sort((a, b) => (a.transfer_date < b.transfer_date ? 1 : -1));
 
-    const inScope = p => r =>
-        (!p.fiscal_year || String(r.fiscal_year) === String(p.fiscal_year)) &&
-        (!p.program_code || r.sub_program?.program_code === p.program_code);
+    const inScope = p => r => !p.fiscal_year || String(r.fiscal_year) === String(p.fiscal_year);
 
     const paginate = (rows, p) => {
         const limit = Math.max(1, parseInt(p.limit) || 10), page = Math.max(1, parseInt(p.page) || 1);
@@ -1112,8 +1035,8 @@ const fsd_mock = (() => {
                 success: true,
                 data: {
                     government_funds: {
-                        saro_allocation: sum(S), saro_unreleased: sum(S, 'unreleased'), saro_record_count: S.length,
-                        nca_received: sum(N), nca_unreleased: sum(N, 'unreleased'), nca_record_count: N.length,
+                        saro_allocation: sum(S), saro_record_count: S.length,
+                        nca_received: sum(N), nca_record_count: N.length,
                         available_funds: sum(S) - sum(N),
                     },
                     special_funds: {
@@ -1126,7 +1049,7 @@ const fsd_mock = (() => {
                         receivable_amount: sum(done), receivable_count: done.length,
                     },
                 },
-                filters: { fiscal_year: p.fiscal_year || null, program_code: p.program_code || null },
+                filters: { fiscal_year: p.fiscal_year || null },
             };
         },
         list(p) {
@@ -1134,10 +1057,10 @@ const fsd_mock = (() => {
             const source = nature === 'SUPPLEMENTAL' ? supps : ({ SARO: saros, NCA: ncas, TRUST_FUND: trusts }[String(p.type || '').toUpperCase()] || []);
             let rows = source.filter(inScope(p));
             const q = String(p.agency_or_program_search || '').trim().toLowerCase();
-            if (q) rows = rows.filter(r => [r.agency?.name, r.sub_program?.program_name, r.sub_program?.program_code, r.sub_program?.sub_program_name].some(v => String(v || '').toLowerCase().includes(q)));
+            if (q) rows = rows.filter(r => String(r.agency?.name || '').toLowerCase().includes(q));
             return { success: true, ...paginate(newestFirst(rows), p) };
         },
-        // Static stand-in for the Fund Transfer card (not filtered by fiscal year / program, like the transfers themselves)
+        // Static stand-in for the Fund Transfer card (not filtered by fiscal year, like the transfers themselves)
         crossAccess() {
             const open = transfers.filter(t => t.status !== 'Completed'), done = transfers.filter(t => t.status === 'Completed');
             return { success: true, data: {
@@ -1151,7 +1074,6 @@ const fsd_mock = (() => {
             return { success: true, ...paginate(rows, p) };
         },
         fiscalYears() { return { success: true, data: YEARS.map(y => ({ fiscal_yr: y })) }; },
-        programs() { return { success: true, data: PROGRAMS.map(({ program_code, program_name }) => ({ program_code, program_name })) }; },
     };
 
     return {

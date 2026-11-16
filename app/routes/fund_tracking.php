@@ -8,9 +8,11 @@ use PHPMaker2024\FIMS\Service\FundTrackingServices;
 // Route file : fund_tracking.php
 // Service    : FundTrackingServices (app/services/fund_trackingServices.php)
 // Table      : fims.fund_tracking — lookups fims.fund_tracking_type,
-//              fims.nature_of_fund, fims.agency, fims.sub_program
+//              fims.nature_of_fund, fims.agency
 // Soft-deleted via deleted_at. user_id is the verified (JWT) user — it is
-// never read from the request body.
+// never read from the request body. A record has no unreleased amount and no
+// sub-program, and its `date` is the day it was created (stamped on add, never
+// sent): the API neither returns nor accepts those three.
 // =============================================================================
 
 $Services = new FundTrackingServices();
@@ -49,9 +51,6 @@ $app->get('/fund_tracking/all', function ($request, $response, $args) use ($Serv
 //               fiscal_year_from / fiscal_year_to — inclusive year range
 //               (e.g. 2010-2012), matched against fund_tracking.fiscal_year.
 //               Independent of fiscal_year; both may be applied.
-//               sub_program_code — a sub-program (fims.sub_program),
-//               program_code — every record whose sub-program belongs to
-//               that program,
 //               status_id — a fims.settings_status id,
 //               reference_number — ILIKE partial match, e.g.
 //               ?page=1&limit=10&search=009911 (also accepts reference_number
@@ -71,8 +70,7 @@ $app->get('/fund_tracking/all', function ($request, $response, $args) use ($Serv
 //               type; `type` still decides which children come back, e.g.
 //               ?type=TRUST&type=OR&roots_only=1&root_type=TRUST
 //               lists Trust Funds (not parentless ORs), each with its ORs.
-//               agency_or_program_search — free text against the agency name
-//               and the sub-program / program name or code.
+//               agency_or_program_search — free text against the agency name.
 // -----------------------------------------------------------------------
 $app->get('/fund_tracking/list', function ($request, $response, $args) use ($Services) {
     try {
@@ -113,27 +111,28 @@ $app->get('/fund_tracking/read/{id}', function ($request, $response, $args) use 
 // POST /fund_tracking/add — create new record
 // Body (JSON): tracking_type_id (required), fiscal_year, reference_number
 //              (required unless the nature of fund is GAAAO, which generates
-//              it), sub_program_code, nature_of_fund_id, name, date, amount,
-//              unreleased, bank_account_no, agency_name (the agency's name as
-//              text), remarks, purpose, multiple_node_id, status_id, parent_id,
-//              and optionally `supplemental` {…}.
+//              it), nature_of_fund_id, name, amount, bank_account_no,
+//              agency_name (the agency's name as text), remarks, purpose,
+//              multiple_node_id, status_id, parent_id, and optionally
+//              `supplemental` {…}. `date` is stamped by the API (today); a
+//              `date`, `unreleased` or `sub_program_code` in the body is ignored.
 //              And, for a SARO only, optionally `ncas`: [{ reference_number
-//              (required), name, date, amount, unreleased, bank_account_no,
-//              fiscal_year, sub_program_code, nature_of_fund_id }, …]
+//              (required), name, amount, bank_account_no, fiscal_year,
+//              nature_of_fund_id }, …]
 //              — NCA records created under the new SARO (parent_id = the SARO).
-//              fiscal_year, sub_program_code and nature_of_fund_id are the SARO's
+//              fiscal_year and nature_of_fund_id are the SARO's
 //              unless the item has its own: a key left out inherits the SARO's
 //              value, a value overrides it (and must exist), an explicit null
 //              means none. The SARO and all its NCAs are saved in one transaction:
 //              if any NCA is invalid, nothing is saved (400, the message names
 //              "NCA #n").
 //              And, for a Trust Fund only, optionally `ors`: [{ reference_number
-//              (required), name, date, amount, unreleased, bank_account_no,
-//              remarks, fiscal_year, sub_program_code, nature_of_fund_id,
-//              agency_name }, …] — OR records created under the new Trust Fund
-//              (parent_id = the Trust Fund), same rules as `ncas`: a key left out
-//              inherits the Trust Fund's value (fiscal year, sub-program, nature
-//              of fund and agency), one saved transaction, "OR #n" in the message.
+//              (required), name, amount, bank_account_no, remarks, fiscal_year,
+//              nature_of_fund_id, agency_name }, …] — OR records created under
+//              the new Trust Fund (parent_id = the Trust Fund), same rules as
+//              `ncas`: a key left out inherits the Trust Fund's value (fiscal
+//              year, nature of fund and agency), one saved transaction, "OR #n"
+//              in the message.
 // user_id is the JWT user. Returns { success, message, id, nca_ids, or_ids } —
 // nca_ids / or_ids in the order the children were sent.
 // -----------------------------------------------------------------------
@@ -152,8 +151,8 @@ $app->post('/fund_tracking/add', function ($request, $response, $args) use ($Ser
 // -----------------------------------------------------------------------
 // PATCH /fund_tracking/update/{id} — update existing record
 // Partial: only the fields sent change. For the optional ids / codes
-// (sub_program_code, fiscal_year, parent_id, multiple_node_id,
-// nature_of_fund_id, status_id) '' leaves the value alone and null clears it.
+// (fiscal_year, parent_id, multiple_node_id, nature_of_fund_id, status_id)
+// '' leaves the value alone and null clears it. `date` never changes.
 // -----------------------------------------------------------------------
 $app->patch('/fund_tracking/update/{id}', function ($request, $response, $args) use ($Services, $fundTrackingUserId) {
     try {
@@ -194,17 +193,15 @@ $app->delete('/fund_tracking/delete/{id}', function ($request, $response, $args)
 // Body (JSON): { "rows": [ {...}, ... ] } — user_id of every imported record is
 // the JWT user (a `created_by` in the body is ignored).
 // Row keys (all optional except a fully-blank row, which is silently
-// skipped): sub_program (a sub-program code or name; the legacy `program` key
-// works too — required, see below), fiscal_year, nature_of_fund,
+// skipped): fiscal_year, nature_of_fund,
 //           saro_reference_number (→ reference_number),
 //           saro_name (→ name, falls back to nca_release_reference),
-//           saro_date (→ date), amount, unreleased_saro (→ unreleased)
-//           nca_release_reference, nca_amount, nca_date, unreleased_nca,
+//           saro_date (→ date), amount,
+//           nca_release_reference, nca_amount, nca_date,
 //           bank_account_no, saro_multiple_node_id, nca_multiple_node_id
-//
-// A row is skipped when its sub-program matches nothing in fims.sub_program
-// (it can't be auto-created: a sub-program needs its program) — create it,
-// then re-import; already-imported references are skipped as duplicates.
+// A sheet's sub_program / program / unreleased_saro / unreleased_nca columns are
+// not read (a record has no sub-program or unreleased amount); a row without a
+// date is dated the day it is imported.
 //
 // "tracking_type_id" is intentionally NOT part of this import: it is resolved
 // to SARO / NCA by code for the SARO / NCA side of each row.
@@ -265,8 +262,8 @@ $app->post('/fund_tracking/import', function ($request, $response, $args) use ($
 // tracking_type_id is always resolved to 'TRUST' server-side.
 //
 // Body (JSON): { "rows": [ {...}, ... ] } — user_id is the JWT user.
-// Row keys: agency, sub_program (or the legacy `program`), reference_number,
-// amount, date, remarks — see FundTrackingServices::importTrustFundFromExcel()
+// Row keys: agency, reference_number, amount, date, remarks (a sheet's
+// sub_program / program column is not read) — see FundTrackingServices::importTrustFundFromExcel()
 // for full field mapping, carry-forward, and parent-link rules.
 //
 // Returns: { success, imported, duplicates, skipped, errors[], row_results[], message }
@@ -313,8 +310,7 @@ $app->post('/fund_tracking/import-trust-fund', function ($request, $response, $a
 //          1.2.1.3.2 — Trust Funds and Supplemental Funds
 // Query params (all optional): fiscal_year, fiscal_year_from / fiscal_year_to
 // (inclusive range, matched against fund_tracking.fiscal_year; independent of
-// fiscal_year), sub_program_code, program_code (the program the record's
-// sub-program belongs to), exclude_nature_of_fund (a nature of fund id or name,
+// fiscal_year), exclude_nature_of_fund (a nature of fund id or name,
 // e.g. SUPPLEMENTAL — leaves that nature out of the SARO / NCA / Trust totals;
 // the Supplemental total itself is not affected).
 // -----------------------------------------------------------------------
@@ -322,14 +318,12 @@ $app->get('/fund_tracking/fund_sourcing_determination', function ($request, $res
     try {
         $params = $request->getQueryParams();
         $fiscalYear = !empty($params['fiscal_year']) ? (int) $params['fiscal_year'] : null;
-        $subProgramCode = !empty($params['sub_program_code']) ? (string) $params['sub_program_code'] : null;
-        $programCode = !empty($params['program_code']) ? (string) $params['program_code'] : null;
         $fiscalYearFrom = isset($params['fiscal_year_from']) && $params['fiscal_year_from'] !== '' ? (int) $params['fiscal_year_from'] : null;
         $fiscalYearTo = isset($params['fiscal_year_to']) && $params['fiscal_year_to'] !== '' ? (int) $params['fiscal_year_to'] : null;
         $excludeNature = isset($params['exclude_nature_of_fund']) && is_string($params['exclude_nature_of_fund']) && $params['exclude_nature_of_fund'] !== ''
             ? $params['exclude_nature_of_fund'] : null;
 
-        $result = $Services->fetchFundSourcingDetermination($fiscalYear, $subProgramCode, $programCode, $fiscalYearFrom, $fiscalYearTo, $excludeNature);
+        $result = $Services->fetchFundSourcingDetermination($fiscalYear, $fiscalYearFrom, $fiscalYearTo, $excludeNature);
 
         return $response->withJson($result);
     } catch (\Exception $e) {
@@ -362,7 +356,7 @@ $app->get('/fund_tracking/supplemental_status_summary', function ($request, $res
 // Funds in one payload (`government_funds`, `special_funds`).
 // SRS Ref: 1.2.1.1.2 — SARO Allocations, NCA Received, Available Funds
 //          1.2.1.1.3 — Trust Funds and Supplemental Funds
-// Query params: fiscal_year, sub_program_code, program_code (all optional).
+// Query params: fiscal_year (optional).
 // The Cross-Access / Borrowing section (SRS 1.2.1.1.1) is not part of the
 // payload: its source table (treasury.fund_transfers) does not exist here.
 // -----------------------------------------------------------------------
@@ -370,10 +364,8 @@ $app->get('/fund_tracking/dashboard', function ($request, $response, $args) use 
     try {
         $params = $request->getQueryParams();
         $fiscalYear = !empty($params['fiscal_year']) ? (int) $params['fiscal_year'] : null;
-        $subProgramCode = !empty($params['sub_program_code']) ? (string) $params['sub_program_code'] : null;
-        $programCode = !empty($params['program_code']) ? (string) $params['program_code'] : null;
 
-        $result = $Services->fetchFundSourcingDashboard($fiscalYear, $subProgramCode, $programCode);
+        $result = $Services->fetchFundSourcingDashboard($fiscalYear);
 
         return $response->withJson($result);
     } catch (\Exception $e) {

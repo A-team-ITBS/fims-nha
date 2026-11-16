@@ -14,12 +14,12 @@ namespace PHPMaker2024\FIMS;
  * Supplemental.) The record it is linked to by parent_id is shown as a tag under its reference number instead.
  * Data comes from the FIMS API only:
  *   /fund_tracking/list  /fund_tracking/read/{id}      (app/routes/fund_tracking.php — fims.fund_tracking)
- *   /fiscal_year/all  /fund-tracking-type/all  /program/all
+ *   /fiscal_year/all  /fund-tracking-type/all
  *
  * New Entry / Edit is the "SARO processing form" modal in form/saro-processing-form.php (included below):
  * window.sarModal.open(id?, { nature }). A new entry opens with Nature of Fund already set to SUPPLEMENTAL, so what is
  * entered here lands in this list. The form is used exactly as the SARO / NCA page uses it — the same input fields (Name,
- * Amount, Date, Unreleased, Bank Account No., documents …); SUPPLEMENTAL is just the nature of fund, so the form's own
+ * Amount, Bank Account No., documents …; the Date is stamped by the backend when the record is created); SUPPLEMENTAL is just the nature of fund, so the form's own
  * Supplemental-only fields (Purpose, Supplemental Details) are switched off with $sarSupplementalFields = false below.
  * After a save the form calls window.sr_reload(), which this page defines.
  * Row actions are one "Actions" dropdown per row (View Details / Edit / Delete), the same control as budget-prop-page.php;
@@ -48,21 +48,17 @@ $_sr_api = Config('API.FIMS_URL');
     #sr-root .sr-range { display: flex; align-items: center; gap: 6px; }
     #sr-root .sr-range .nha-filter-select { width: 100px; }
     #sr-root .sr-fy-group { flex: 0 0 auto; max-width: none; }   /* two selects need more than nha-filter-group-lg's 200px */
-    /* Program: a search box like Reference No. — it keeps room for "All programs" next to its magnifier icon (the default 130px
-       group minimum cut the text off), and has no × button, so the right padding the shared search style reserves for one goes.
-       Widths come from these page classes alone (not the shared -md / -lg caps of 180 / 200px): the Program box must never be wider than
-       its group, and Amount Unit's longest option, "Centavos (Full Amount)", is wider than 180px in IBM Plex Sans.
+    /* Widths come from these page classes alone (not the shared -md / -lg caps of 180 / 200px): the Reference No. box must never be
+       wider than its group, and Amount Unit's longest option, "Centavos (Full Amount)", is wider than 180px in IBM Plex Sans.
        The IDs matter: PHPMaker's generated FIMS.css gives EVERY input[type=text]:not([size]) `min-width: 250px`, which a plain class
-       selector cannot beat — that min-width pushed the Program box out of its group, on top of the next filter. */
-    #sr-root .sr-program-group { flex: 1 1 260px; min-width: 210px; max-width: 380px; }
-    #sr-root .sr-program-group .nha-filter-input { padding-right: 10px; text-overflow: ellipsis; }
+       selector cannot beat — that min-width would push the box out of its group, on top of the next filter. */
     #sr-root .nha-filter-search-wrap { min-width: 0; }
     #sr-root .nha-filter-input { min-width: 0; max-width: 100%; }
     #sr-root .sr-unit-group { flex: 0 1 240px; min-width: 200px; }
     #sr-root .sr-unit-group .nha-filter-select { min-width: 0; text-overflow: ellipsis; }
 
     /* ── Table: one row per Supplemental record ── */
-    #sr-root .sr-tbl { min-width: 1200px; }
+    #sr-root .sr-tbl { min-width: 980px; }
     #sr-root .sr-tbl .sr-num { font-family: 'IBM Plex Mono', monospace; text-align: right; white-space: nowrap; }
     #sr-root .sr-amt { font-size: calc(1em * var(--sr-amt-scale, 1)); white-space: nowrap; }
     #sr-root .sr-empty { text-align: center; color: var(--afims-text-disabled, #A9AAB8); padding: 32px; font-size: 13px; }
@@ -129,8 +125,6 @@ $_sr_api = Config('API.FIMS_URL');
     #sr-root .srv-row { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 12px; align-items: baseline; font-size: 13px; }
     #sr-root .srv-k { font-weight: 600; color: var(--sec); }
     #sr-root .srv-v { color: var(--txt); overflow-wrap: anywhere; }
-    #sr-root .srv-chip { display: inline-block; margin-right: 4px; padding: 2px 7px; border-radius: 4px; vertical-align: 1px;
-        font: 600 11px/1.4 var(--mono); color: var(--afims-primary-text, #0035A9); background: var(--afims-surface, #FFFFFF); border: 1px solid var(--navy-bdr, #E6EBF6); }
     #sr-root .srv-muted { color: var(--subtle); }
     #sr-root .srv-doc { display: flex; align-items: center; gap: 10px; padding: 9px 12px; margin-bottom: 6px; font-size: 13px;
         background: var(--afims-surface, #FFFFFF); border: 1px solid var(--bdr); border-radius: 10px; }
@@ -201,13 +195,6 @@ $_sr_api = Config('API.FIMS_URL');
                 <label class="nha-filter-label">Tracking Type</label>
                 <select id="sr-type" class="nha-filter-select"><option value="">All Types</option></select>
             </div>
-            <div class="nha-filter-group sr-program-group">
-                <label class="nha-filter-label">Program</label>
-                <div class="nha-filter-search-wrap">
-                    <svg class="nha-filter-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                    <input type="text" id="sr-program" class="nha-filter-input" placeholder="All programs" autocomplete="off" title="Type a program code or name, then pick it from the list. Clear the box for all programs.">
-                </div>
-            </div>
             <div class="nha-filter-group nha-filter-group-search">
                 <label class="nha-filter-label">Reference No.</label>
                 <div class="nha-filter-search-wrap">
@@ -256,17 +243,15 @@ $_sr_api = Config('API.FIMS_URL');
                     <tr>
                         <th style="min-width:210px;">Reference No.</th>
                         <th style="min-width:170px;">Name / Title</th>
-                        <th style="min-width:190px;">Program / Sub-Program</th>
                         <th>Nature of Fund</th>
                         <th>Fiscal Year</th>
                         <th style="text-align:right;">Amount (₱)</th>
                         <th>Date</th>
-                        <th style="text-align:right;">Unreleased (₱)</th>
                         <th class="no-print" style="text-align:center;">Actions</th>
                     </tr>
                 </thead>
                 <tbody id="sr-tbody">
-                    <tr><td colspan="9"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
+                    <tr><td colspan="7"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
                 </tbody>
             </table>
         </div>
@@ -323,10 +308,6 @@ $_sr_api = Config('API.FIMS_URL');
                     <select id="sr-xm-type"><option value="">All Types</option></select>
                 </div>
                 <div class="nha-fg">
-                    <label for="sr-xm-program">Program</label>
-                    <input type="text" id="sr-xm-program" placeholder="All programs" autocomplete="off">
-                </div>
-                <div class="nha-fg">
                     <label for="sr-xm-unit">Amount Unit</label>
                     <select id="sr-xm-unit">
                         <option value="full">Centavos (Full Amount)</option>
@@ -366,7 +347,6 @@ const SR_U = {
     del:      id => SR_API + '/fund_tracking/delete/' + encodeURIComponent(id),
     years:    SR_API + '/fiscal_year/all',
     types:    SR_API + '/fund-tracking-type/all',
-    programs: SR_API + '/program/all',
 };
 
 // This page is dedicated to Supplemental Funds — every list request is locked to this nature of fund (any tracking type).
@@ -380,7 +360,7 @@ const sr_esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<
 
 /* ── State ──────────────────────────────────────────────────── */
 const sr = {
-    fyFrom: '', fyTo: '', type: '', program: '', search: '',
+    fyFrom: '', fyTo: '', type: '', search: '',
     page: 1, limit: 10,
     total: 0,                 // records matching the filters
     rows: [],                 // this page's records
@@ -390,8 +370,6 @@ const sr = {
     cards: null,              // last summary, kept so an Amount Unit change needn't refetch
     unit: 'full',
     searchTimer: null,
-    programs: [],             // [{value: program_code, label: program_name}]
-    programCodes: new Set(),
 };
 
 /* ── API helpers ────────────────────────────────────────────── */
@@ -493,7 +471,6 @@ function sr_listParams(f = sr) {
     if (f.search) p.set('search', f.search);
     if (f.fyFrom) p.set('fiscal_year_from', f.fyFrom);
     if (f.fyTo) p.set('fiscal_year_to', f.fyTo);
-    if (f.program) p.set('program_code', f.program);
     return p;
 }
 
@@ -515,7 +492,7 @@ async function sr_fetchAll(f) {
 }
 
 /* ── Summary cards ───────────────────────────────────────────────
-   Counted from EVERY Supplemental record matching the Fiscal Year range and the Program filter (all pages, not just the
+   Counted from EVERY Supplemental record matching the Fiscal Year range (all pages, not just the
    table page on screen). Tracking Type and the reference search narrow the table only. */
 function sr_renderCards(c) {
     c = c || { total: 0, amount: 0 };
@@ -531,7 +508,7 @@ function sr_renderCards(c) {
 async function sr_loadCards() {
     const token = ++sr.cardsReq;
     try {
-        const rows = await sr_fetchAll({ fyFrom: sr.fyFrom, fyTo: sr.fyTo, program: sr.program });
+        const rows = await sr_fetchAll({ fyFrom: sr.fyFrom, fyTo: sr.fyTo });
         if (token !== sr.cardsReq) return;                // superseded by a newer request
         sr.cards = { total: rows.length, amount: sr_sum(rows) };
         sr_renderCards(sr.cards);
@@ -563,34 +540,8 @@ async function sr_loadTypes() {
     } catch (e) { console.warn('[sr_loadTypes]', e); }
 }
 
-async function sr_loadPrograms() {
-    try {
-        const json = await sr_api(SR_U.programs);
-        sr.programs = (json.data || []).map(p => ({ value: String(p.program_code), label: String(p.program_name ?? '') }));
-        sr.programCodes = new Set(sr.programs.map(p => p.value));
-        nhaSearchableSelect($sr('sr-program'), sr.programs);
-        nhaSearchableSelect($sr('sr-xm-program'), sr.programs);
-    } catch (e) { console.warn('[sr_loadPrograms]', e); }
-}
-
-/* The Program input shows the code of the program picked from the list; anything typed that isn't a
-   real program code is not a filter, so it is dropped. */
-function sr_programValue(inputId) {
-    const v = $sr(inputId).value.trim();
-    return sr.programCodes.has(v) ? v : '';
-}
-
 /* ── Cells ───────────────────────────────────────────────────── */
 const sr_dash = '<span class="nha-text-muted">—</span>';
-
-function sr_programCell(r) {
-    const sp = r.sub_program;
-    if (!sp) return sr_dash;
-    return `<div style="font-size:12px;line-height:1.35;">
-        <div style="font-weight:500;">${sr_esc(sp.sub_program_name)}</div>
-        <div class="nha-mono" style="font-size:10px;color:var(--afims-text-disabled, #A9AAB8);">${sr_esc(sp.sub_program_code)}${sp.program_name ? ' · ' + sr_esc(sp.program_name) : ''}</div>
-    </div>`;
-}
 
 const sr_natureCell = r => (r.nature_of_fund ? `<span class="nha-bdg nha-bdg-navy">${sr_esc(r.nature_of_fund.name)}</span>` : sr_dash);
 const sr_yearCell = r => (r.fiscal_year ? `<span style="font-size:11px;">FY ${sr_esc(r.fiscal_year)}</span>` : sr_dash);
@@ -603,13 +554,6 @@ const sr_nameCell = r => {
 function sr_amountCell(v) {
     const val = parseFloat(v) || 0;
     return val ? `<span class="sr-amt" title="${sr_esc(sr_pesoFull(val))}">${sr_esc(sr_peso(val))}</span>` : '—';
-}
-
-function sr_unreleasedCell(v) {
-    const val = parseFloat(v) || 0;
-    return val
-        ? `<span class="nha-bdg nha-bdg-red" title="${sr_esc(sr_pesoFull(val))}" style="font-size:calc(11px * var(--sr-amt-scale, 1));">${sr_esc(sr_peso(val))}</span>`
-        : '—';
 }
 
 const sr_refLink = r =>
@@ -687,12 +631,10 @@ function sr_row(r) {
             <div class="sr-tags">${sr_refTags(r)}</div>
         </td>
         <td>${sr_nameCell(r)}</td>
-        <td>${sr_programCell(r)}</td>
         <td>${sr_natureCell(r)}</td>
         <td>${sr_yearCell(r)}</td>
         <td class="sr-num">${sr_amountCell(r.amount)}</td>
         <td class="nha-td-date" style="white-space:nowrap;">${sr_esc(sr_fmtDate(r.date))}</td>
-        <td class="sr-num">${sr_unreleasedCell(r.unreleased)}</td>
         ${sr_toolsCell(r)}
     </tr>`;
 }
@@ -701,11 +643,11 @@ function sr_renderTable() {
     const body = $sr('sr-tbody');
 
     if (sr.error) {
-        body.innerHTML = `<tr><td colspan="9" class="sr-empty">Could not load records: ${sr_esc(sr.error)}</td></tr>`;
+        body.innerHTML = `<tr><td colspan="7" class="sr-empty">Could not load records: ${sr_esc(sr.error)}</td></tr>`;
     } else if (!sr.loaded) {
-        body.innerHTML = `<tr><td colspan="9"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>`;
+        body.innerHTML = `<tr><td colspan="7"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>`;
     } else if (!sr.rows.length) {
-        body.innerHTML = `<tr><td colspan="9"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No Supplemental Fund records found.</span></div></td></tr>`;
+        body.innerHTML = `<tr><td colspan="7"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No Supplemental Fund records found.</span></div></td></tr>`;
     } else {
         body.innerHTML = sr.rows.map(sr_row).join('');
     }
@@ -781,8 +723,6 @@ function sr_apply() {
     sr.fyFrom = from;
     sr.fyTo = to;
     sr.type = $sr('sr-type').value;
-    sr.program = sr_programValue('sr-program');
-    if (!sr.program) $sr('sr-program').value = '';
     sr.search = $sr('sr-search').value.trim();
     sr.limit = parseInt($sr('sr-limit').value) || 10;
     sr_reloadTable();
@@ -790,7 +730,7 @@ function sr_apply() {
 }
 
 function sr_resetFilters() {
-    ['sr-fy-from', 'sr-fy-to', 'sr-type', 'sr-program', 'sr-search'].forEach(id => { $sr(id).value = ''; });
+    ['sr-fy-from', 'sr-fy-to', 'sr-type', 'sr-search'].forEach(id => { $sr(id).value = ''; });
     $sr('sr-search-clear').hidden = true;
     $sr('sr-limit').value = '10';
     sr_apply();
@@ -814,7 +754,6 @@ async function sr_view(id) {
         const d = (await sr_api(SR_U.read(id))).data;
         sr_viewId = Number(d.id);
         const type = sr_typeCode(d);
-        const sp = d.sub_program;
         const parent = sr_parentOf(d);
         const kids = sr_kids(d);
         const supp = d.supplemental;
@@ -822,22 +761,19 @@ async function sr_view(id) {
         const text = v => (has(v) ? sr_esc(v) : sr_dash);
         const date = v => (has(v) ? sr_esc(sr_fmtDate(v)) : sr_dash);
         const money = v => (parseFloat(v) ? sr_esc(sr_pesoFull(v)) : sr_dash);
-        const chip = code => `<span class="srv-chip">${sr_esc(code)}</span>`;
 
         // title: "Reference No. <ref>" and the tracking type as a badge
         $sr('sr-view-title').innerHTML = `Reference No. <span class="srv-ref">${sr_esc(d.reference_number || '#' + d.id)}</span>`
             + (type ? `<span class="srv-badge nha-bdg nha-bdg-navy">${sr_esc(type)}</span>` : '');
 
-        // Amount and Unreleased as on the SARO / NCA page; a record that already has Supplemental Details (saved before this
+        // Amount as on the SARO / NCA page; a record that already has Supplemental Details (saved before this
         // form dropped them) also shows its Budgetary Requirement
-        let html = `<div class="srv-stats">${sr_vstat('Amount', d.amount)}${sr_vstat('Unreleased', d.unreleased)}${supp ? sr_vstat('Budgetary Requirement', supp.budgetary_requirement) : ''}</div>`;
+        let html = `<div class="srv-stats">${sr_vstat('Amount', d.amount)}${supp ? sr_vstat('Budgetary Requirement', supp.budgetary_requirement) : ''}</div>`;
 
         const classification = [
             sr_vrow('Tracking Type', d.tracking_type ? `${sr_esc(d.tracking_type.fund_tracking_code)} <span class="srv-muted">— ${sr_esc(d.tracking_type.fund_tracking_name || '')}</span>` : sr_dash),
             sr_vrow('Nature of Fund', d.nature_of_fund ? sr_esc(d.nature_of_fund.name) : sr_dash),
             sr_vrow('Fiscal Year', d.fiscal_year ? 'FY ' + sr_esc(d.fiscal_year) : sr_dash),
-            sr_vrow('Program', sp && sp.program_code ? `${chip(sp.program_code)}${sr_esc(sp.program_name || '')}` : sr_dash),
-            sr_vrow('Sub-Program', sp ? `${chip(sp.sub_program_code)}${sr_esc(sp.sub_program_name)}` : sr_dash),
         ];
         if (parent) {
             classification.push(sr_vrow('Parent Fund', `<a href="#" class="nha-tbl-link nha-mono" onclick="event.preventDefault();sr_view(${Number(parent.id)})">${sr_esc(parent.reference_number || '#' + parent.id)}</a> `
@@ -946,7 +882,7 @@ async function sr_delete(id) {
 }
 
 /* ── Export ──────────────────────────────────────────────────────
-   Has its own Fiscal Year / Tracking Type / Program / Amount Unit, independent of the Filters bar and of the table's
+   Has its own Fiscal Year / Tracking Type / Amount Unit, independent of the Filters bar and of the table's
    paging — it walks /fund_tracking/list page by page and includes EVERY matching Supplemental record, once each, as a
    flat list (the record it is linked to is in the Parent Reference No. column). Excel-compatible CSV, or a print-ready
    table for "Save as PDF" (no spreadsheet / PDF library is installed in this app). */
@@ -955,33 +891,28 @@ function sr_exportOpen() {
         $sr(to).innerHTML = $sr(from).innerHTML;
         $sr(to).value = '';
     });
-    $sr('sr-xm-program').value = '';
-    $sr('sr-xm-unit').value = sr.unit;                   // default to the page's current unit
+    $sr('sr-xm-unit').value = sr.unit;                  // default to the page's current unit
     $sr('sr-xm-format').value = 'csv';
     sr_openOverlay('sr-xm-ov');
 }
 
-const SR_EXPORT_HEAD = ['Reference No.', 'Name / Title', 'Program', 'Sub-Program', 'Tracking Type', 'Nature of Fund', 'Fiscal Year', 'Amount', 'Date', 'Unreleased', 'Parent Reference No.'];
-const SR_EXPORT_AMOUNT_COLS = [7, 9];
+const SR_EXPORT_HEAD = ['Reference No.', 'Name / Title', 'Tracking Type', 'Nature of Fund', 'Fiscal Year', 'Amount', 'Date', 'Parent Reference No.'];
+const SR_EXPORT_AMOUNT_COLS = [5];
 
-// One flat line per record — the table's columns. Amount / Unreleased are divided by the chosen unit.
+// One flat line per record — the table's columns. Amount is divided by the chosen unit.
 function sr_exportRows(records, unitKey) {
     const unit = SR_UNITS[unitKey] || SR_UNITS.full;
     const scale = v => { const s = (parseFloat(v) || 0) / unit.divisor; return Number(s.toFixed(sr_decimals(s))); };
     return records.map(r => {
-        const sp = r.sub_program;
         const parent = sr_parentOf(r);
         return [
             r.reference_number || '',
             (r.name || r.purpose || '').trim(),
-            sp && sp.program_code ? [sp.program_code, sp.program_name].filter(Boolean).join(' - ') : '',
-            sp ? [sp.sub_program_code, sp.sub_program_name].filter(Boolean).join(' - ') : '',
             sr_typeCode(r),
             r.nature_of_fund?.name || '',
             r.fiscal_year ? 'FY ' + r.fiscal_year : '',
             scale(r.amount),
             r.date ? sr_fmtDate(r.date) : '',
-            scale(r.unreleased),
             parent ? (parent.reference_number || '') : '',
         ];
     });
@@ -1043,12 +974,11 @@ async function sr_exportSubmit() {
     const unitKey = $sr('sr-xm-unit').value;
     let from = $sr('sr-xm-fy-from').value, to = $sr('sr-xm-fy-to').value;
     if (from && to && parseInt(from) > parseInt(to)) [from, to] = [to, from];
-    const f = { fyFrom: from, fyTo: to, type: $sr('sr-xm-type').value, program: sr_programValue('sr-xm-program') };
+    const f = { fyFrom: from, fyTo: to, type: $sr('sr-xm-type').value };
 
     const parts = [];
     if (from || to) parts.push('Fiscal Year: ' + (from || 'Start') + ' – ' + (to || 'Latest'));
     parts.push('Tracking Type: ' + (f.type || 'All'));
-    if (f.program) parts.push('Program: ' + f.program);
     const subtitle = parts.join('  |  ');
 
     const btn = $sr('sr-xm-submit');
@@ -1085,9 +1015,6 @@ function sr_bind() {
     ['sr-fy-from', 'sr-fy-to', 'sr-type', 'sr-limit'].forEach(id => $sr(id).addEventListener('change', sr_apply));
     $sr('sr-unit').addEventListener('change', e => sr_setUnit(e.target.value));
 
-    // Picking a program from the list (or clearing the box) applies right away
-    $sr('sr-program').addEventListener('change', sr_apply);
-
     const search = $sr('sr-search'), clear = $sr('sr-search-clear');
     search.addEventListener('input', () => {
         clear.hidden = !search.value;
@@ -1114,7 +1041,7 @@ async function sr_boot() {
     sr_bind();
     sr_loadTable();
     sr_loadCards();
-    await Promise.all([sr_loadYears(), sr_loadTypes(), sr_loadPrograms()]);
+    await Promise.all([sr_loadYears(), sr_loadTypes()]);
 }
 
 if (document.readyState === 'loading') {
