@@ -13,17 +13,13 @@ $sideMenu->addMenuItem(9, "mi_MainDashboard", $Language->menuPhrase("9", "MenuTe
 $sideMenu->addMenuItem(541, "mci_COB_Preparation", $Language->menuPhrase("541", "MenuText"), "", -1, "", true, false, true, "fas fa-file-circle-plus", "", false, true);
 $sideMenu->addMenuItem(261, "mi_budget_prop_page", $Language->menuPhrase("261", "MenuText"), "BudgetPropPage", 541, "", AllowListMenu('{FIMS}budget-prop-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(81, "mi_budget_req_page", $Language->menuPhrase("81", "MenuText"), "BudgetReqPage", 541, "", AllowListMenu('{FIMS}budget-req-page.php'), false, false, "", "", false, true);
-$sideMenu->addMenuItem(555, "mi_budget_proposal_review_page", $Language->menuPhrase("555", "MenuText"), "BudgetProposalReviewPage", 541, "", AllowListMenu('{FIMS}budget-proposal-review-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(85, "mi_budget_revision_page", $Language->menuPhrase("85", "MenuText"), "BudgetRevisionPage", 541, "", AllowListMenu('{FIMS}budget-revision-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(657, "mi_ledger_page", $Language->menuPhrase("657", "MenuText"), "LedgerPage", 541, "", AllowListMenu('{FIMS}ledger-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(146, "mci_Budget_Process", $Language->menuPhrase("146", "MenuText"), "", -1, "", true, false, true, "fas fa-calculator", "", false, true);
 $sideMenu->addMenuItem(553, "mi_cba_memo_request_page", $Language->menuPhrase("553", "MenuText"), "CbaMemoRequestPage", 146, "", AllowListMenu('{FIMS}cba-memo-request-page.php'), false, false, "", "", false, true);
-$sideMenu->addMenuItem(556, "mi_cba_review_page", $Language->menuPhrase("556", "MenuText"), "CbaReviewPage", 146, "", AllowListMenu('{FIMS}cba-review-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(554, "mi_rfa_laa_memo_request_page", $Language->menuPhrase("554", "MenuText"), "RfaLaaMemoRequestPage", 146, "", AllowListMenu('{FIMS}rfa-laa-memo-request-page.php'), false, false, "", "", false, true);
-$sideMenu->addMenuItem(557, "mi_rfa_laa_review_page", $Language->menuPhrase("557", "MenuText"), "RfaLaaReviewPage", 146, "", AllowListMenu('{FIMS}rfa-laa-review-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(549, "mci_DV_Processing", $Language->menuPhrase("549", "MenuText"), "", -1, "", true, false, true, "fas fa-file-invoice", "", false, true);
 $sideMenu->addMenuItem(207, "mi_Voucher", $Language->menuPhrase("207", "MenuText"), "Voucher", 549, "", AllowListMenu('{FIMS}Voucher.php'), false, false, "", "", false, true);
-$sideMenu->addMenuItem(558, "mi_dv_review_page", $Language->menuPhrase("558", "MenuText"), "DvReviewPage", 549, "", AllowListMenu('{FIMS}dv-review-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(559, "mi_liquidation_voucher_page", $Language->menuPhrase("559", "MenuText"), "LiquidationVoucherPage", 549, "", AllowListMenu('{FIMS}liquidation-voucher-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(551, "mci_Registry/NCA", $Language->menuPhrase("551", "MenuText"), "", -1, "", true, false, true, "fas fa-book", "", false, true);
 $sideMenu->addMenuItem(263, "mi_saro_registry_page", $Language->menuPhrase("263", "MenuText"), "SaroRegistryPage", 551, "", AllowListMenu('{FIMS}saro-registry-page.php'), false, false, "", "", false, true);
