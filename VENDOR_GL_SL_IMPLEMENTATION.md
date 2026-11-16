@@ -8,8 +8,8 @@ This implementation adds **Chart of Accounts** assignment to the Vendors module.
 
 ### 1. Database Migration
 - **File**: `_assets/sql/01 - fims/03 - alter/50 - add_gl_sl_to_vendors.sql`
-- **What**: Adds `coa_account_id` (INT, FK to accounting.coa) column to `fims.vendors`
-- **Run**: `npm run db-migrate` or manually execute the SQL
+- **What**: Adds `coa_account_id` (VARCHAR(10), FK to `fims.chart_of_accounts(account_id)`) and `sl_code` (VARCHAR(100)) to `fims.vendors`
+- **Run**: Manually execute the SQL against the existing database. It is safe to rerun: existing columns, the vendor foreign key, and indexes are preserved.
 
 ### 2. Backend Routes
 - **File**: `app/routes/accounting.php` (NEW)
@@ -56,8 +56,8 @@ This implementation adds **Chart of Accounts** assignment to the Vendors module.
 ## How to Test
 
 ### 1. Run Migration
-```bash
-npm run db-migrate
+```powershell
+psql -h localhost -U postgres -d <database> -v ON_ERROR_STOP=1 -f "_assets\sql\01 - fims\03 - alter\50 - add_gl_sl_to_vendors.sql"
 ```
 
 ### 2. Add a Vendor with COA Assignment

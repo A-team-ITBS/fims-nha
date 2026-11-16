@@ -894,9 +894,19 @@ class DisbursementVoucherService
     {
         try {
             $dvId = (int) $id;
+            // vendor_ap_account_code: the vendor's own Accounts Payable sub-ledger account
+            // (fims.vendors.sl_code -> a chart_of_accounts child row, e.g. "2-01-01-010-01")
+            // when the claimant is a registered vendor with one set up — what the Accounting
+            // Entries grid's auto-generated "Net Amount Payable" line should credit instead of the
+            // bare AP control account, so the payable actually lands in that vendor's subsidiary
+            // ledger (see readone.php's vje_syncAutoLines()).
             $row  = App\ExecuteRow(
-                "SELECT dv.*, st.name AS status, st.color AS status_color
-                 FROM {$this->table} dv LEFT JOIN {$this->tableSettingsStatus} st ON st.id = dv.status_id
+                "SELECT dv.*, st.name AS status, st.color AS status_color,
+                        vcoa.account_code AS vendor_ap_account_code
+                 FROM {$this->table} dv
+                 LEFT JOIN {$this->tableSettingsStatus} st ON st.id = dv.status_id
+                 LEFT JOIN {$this->tableVendor} v ON v.vendor_id = dv.vendor_id
+                 LEFT JOIN {$this->tableCoa} vcoa ON vcoa.account_id = v.sl_code
                  WHERE dv.dv_id = {$dvId}",
                 'DB'
             );
@@ -988,6 +998,7 @@ class DisbursementVoucherService
     {
         return App\ExecuteRows(
             "SELECT dval.dv_atc_line_id, dval.line_number, dval.atc_code, ac.account_code,
+                    ac.description AS atc_description,
                     dval.rate, dval.tax_base, dval.withholding_tax, dval.chargeability
              FROM {$this->tableDvAtcLines} dval
              JOIN {$this->tableAtc} ac ON ac.atc_code = dval.atc_code
