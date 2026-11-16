@@ -137,7 +137,29 @@ if (!isset($_vf_api)) {
                     <ul id="vf-errors-ul"></ul>
                 </div>
 
-                <!-- 1 — Vendor first: picking one auto-fills the claimant fields below. Vendor
+
+                
+                <!-- 1 — RFA (multi-select): picking one or more auto-fills the department/vendor
+                     claimant fields (1, if not already set there) and the Budget Reference ledger
+                     (4) further down. Several RFAs can be cited at once — each selected RFA's own
+                     details stay visible as a chip below the picker. One RFA only ever backs one DV
+                     at a time (fims.budget_allocation.dv_id — see
+                     DisbursementVoucherService::linkRfas()), so an RFA already used elsewhere won't
+                     appear here. -->
+                <div class="vf-card">
+                    <p class="vf-card-title">Request for Allotment (RFA)</p>
+                    <div class="nha-fg">
+                        <label>RFA <span class="nha-req">*</span> <span class="vf-hint" style="display:inline;">(search and select one or more approved RFAs)</span></label>
+                        <input type="text" id="vf-rfa-search" placeholder="Search RFA number or reference no…" autocomplete="off">
+                        <div id="vf-rfa-dropdown" class="vf-rfa-dropdown"></div>
+                        <span class="vf-hint" id="vf-rfa-empty-hint" style="display:none;color:var(--afims-warning-text,#8A6400);">No RFAs are available yet — an RFA (Request for Allotment) must exist before a Disbursement Voucher can be created. Contact Budget/FMD to set one up.</span>
+                        <span class="vf-err" id="err-rfa">At least one RFA is required.</span>
+                    </div>
+                    <div id="vf-rfa-chips" class="vf-rfa-chips"></div>
+                </div>
+
+
+                <!-- 2 — Vendor first: picking one auto-fills the claimant fields below. Vendor
                      wins over whatever the RFA (2) below would otherwise auto-fill — it's never
                      overwritten once set, see vf_onRfaSelectionChange()'s "never overwrites what
                      the user already set" guard. -->
@@ -181,25 +203,6 @@ if (!isset($_vf_api)) {
                         <input type="number" id="vf-gross" min="0" step="0.01" placeholder="0.00">
                         <span class="vf-err" id="err-gross">Amount must be greater than zero.</span>
                     </div>
-                </div>
-
-                <!-- 2 — RFA (multi-select): picking one or more auto-fills the department/vendor
-                     claimant fields (1, if not already set there) and the Budget Reference ledger
-                     (4) further down. Several RFAs can be cited at once — each selected RFA's own
-                     details stay visible as a chip below the picker. One RFA only ever backs one DV
-                     at a time (fims.budget_allocation.dv_id — see
-                     DisbursementVoucherService::linkRfas()), so an RFA already used elsewhere won't
-                     appear here. -->
-                <div class="vf-card">
-                    <p class="vf-card-title">Request for Allotment (RFA)</p>
-                    <div class="nha-fg">
-                        <label>RFA <span class="nha-req">*</span> <span class="vf-hint" style="display:inline;">(search and select one or more approved RFAs)</span></label>
-                        <input type="text" id="vf-rfa-search" placeholder="Search RFA number or reference no…" autocomplete="off">
-                        <div id="vf-rfa-dropdown" class="vf-rfa-dropdown"></div>
-                        <span class="vf-hint" id="vf-rfa-empty-hint" style="display:none;color:var(--afims-warning-text,#8A6400);">No RFAs are available yet — an RFA (Request for Allotment) must exist before a Disbursement Voucher can be created. Contact Budget/FMD to set one up.</span>
-                        <span class="vf-err" id="err-rfa">At least one RFA is required.</span>
-                    </div>
-                    <div id="vf-rfa-chips" class="vf-rfa-chips"></div>
                 </div>
 
                 <!-- 3 — Document identity (DV Date drives the DV Number preview; Fiscal Year is
