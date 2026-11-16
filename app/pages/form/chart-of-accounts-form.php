@@ -130,23 +130,45 @@
 
                 <div class="coa-row">
                     <div class="coa-group">
-                        <label class="coa-label">Parent Account Code</label>
-                        <input type="text" class="coa-input" id="coa-parent-account-code" maxlength="50" placeholder="e.g. 1-01-02">
+                        <label class="coa-label">Region (RCA Code)</label>
+                        <select class="coa-select" id="coa-region-code">
+                            <option value="">— None (national/HO) —</option>
+                        </select>
                     </div>
                     <div class="coa-group">
-                        <label class="coa-label">Normal Balance</label>
-                        <select class="coa-select" id="coa-normal-balance">
-                            <option value="">— Select —</option>
-                            <option value="Debit">Debit</option>
-                            <option value="Credit">Credit</option>
+                        <label class="coa-label">Project</label>
+                        <select class="coa-select" id="coa-project-code">
+                            <option value="">— None —</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="coa-row">
+                    <div class="coa-group">
+                        <label class="coa-label">Parent Account</label>
+                        <select class="coa-select" id="coa-parent-account-id">
+                            <option value="">— No parent (top-level) —</option>
+                        </select>
+                    </div>
+                    <div class="coa-group">
+                        <label class="coa-label">Account Purpose</label>
+                        <select class="coa-select" id="coa-account-purpose">
+                            <option value="">— None —</option>
+                            <option value="Vendor Payable">Vendor Payable</option>
+                            <option value="Employee Compensation">Employee Compensation</option>
+                            <option value="Bank Account">Bank Account</option>
+                            <option value="Operating Expense">Operating Expense</option>
+                            <option value="Revenue">Revenue</option>
+                            <option value="Asset">Asset</option>
+                            <option value="Liability">Liability</option>
                         </select>
                     </div>
                 </div>
 
                 <div class="coa-row">
                     <div class="coa-group full">
-                        <label class="coa-label">Account Description</label>
-                        <textarea class="coa-input" id="coa-account-description" maxlength="1000" placeholder="Detailed description of this account" style="resize:vertical;min-height:80px;"></textarea>
+                        <label class="coa-label">Source Document</label>
+                        <input type="text" class="coa-input" id="coa-source-document" maxlength="255" placeholder="e.g. UACS Manual 2020">
                     </div>
                 </div>
 
@@ -160,8 +182,8 @@
 
                 <div class="coa-group full">
                     <div class="coa-check-row">
-                        <input type="checkbox" id="coa-allow-transactions">
-                        <label for="coa-allow-transactions">Allow Transactions — transactions can post directly to this account</label>
+                        <input type="checkbox" id="coa-posting-allowed">
+                        <label for="coa-posting-allowed">Posting Allowed — transactions can post directly to this account</label>
                     </div>
                 </div>
             </div>

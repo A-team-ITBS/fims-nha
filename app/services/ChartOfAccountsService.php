@@ -10,10 +10,9 @@ class ChartOfAccountsService
     private string $table = 'fims.chart_of_accounts';
 
     private array $allowedFields = [
-        'account_code', 'account_title', 'account_type_id', 'account_class_id',
-        'expense_class_id', 'allow_transactions', 'is_active', 'books', 'libis_acct_type',
-        'account_description', 'normal_balance', 'parent_account_code', 'level',
-        'is_control_account', 'sort_order', 'superseded_by_account_code',
+        'account_code', 'account_title', 'account_type', 'parent_account_id',
+        'posting_allowed', 'status', 'source_document', 'region_code', 'project_code',
+        'account_purpose', 'books', 'for_budget_proposal',
     ];
 
     public function getUserScope(int $userId): array
@@ -31,7 +30,7 @@ class ChartOfAccountsService
         string $status = ''
     ): array {
         try {
-            $where = ['is_active = true'];
+            $where = ["status = 'Active'"];
 
             if ($search !== '') {
                 $s = App\QuotedValue('%' . $search . '%', DT::STRING, 'DB');
@@ -78,8 +77,8 @@ class ChartOfAccountsService
 
             $sql = "SELECT * FROM {$this->table}
                     WHERE (account_code = {$p} OR account_code LIKE {$pDash})
-                      AND allow_transactions = TRUE
-                      AND is_active = TRUE
+                      AND posting_allowed = TRUE
+                      AND status = 'Active'
                     ORDER BY account_code ASC";
 
             $data = App\ExecuteRows($sql, 'DB');
@@ -92,7 +91,10 @@ class ChartOfAccountsService
     public function fetchPostable(string $search = '', bool $forBudgetProposalOnly = false): array
     {
         try {
-            $where = "is_active = TRUE AND allow_transactions = TRUE";
+            $where = "status = 'Active' AND posting_allowed = TRUE";
+            if ($forBudgetProposalOnly) {
+                $where .= ' AND for_budget_proposal = TRUE';
+            }
             if ($search !== '') {
                 $s = App\QuotedValue('%' . $search . '%', DT::STRING, 'DB');
                 $where .= " AND (account_code ILIKE {$s} OR account_title ILIKE {$s})";
@@ -141,26 +143,34 @@ class ChartOfAccountsService
                 return ['success' => false, 'message' => "Account code '{$code}' already exists."];
             }
 
+            $parentId = trim((string) ($body['parent_account_id'] ?? ''));
+            if ($parentId !== '') {
+                $parentExists = (int) App\ExecuteScalar(
+                    "SELECT COUNT(*) FROM {$this->table} WHERE account_id = " . App\QuotedValue($parentId, DT::STRING, 'DB'),
+                    'DB'
+                );
+                if ($parentExists === 0) {
+                    return ['success' => false, 'message' => "Parent account '{$parentId}' does not exist."];
+                }
+            }
+
             $fields = array_intersect_key($body, array_flip($this->allowedFields));
 
-            foreach ($this->allowedFields as $k) {
+            foreach (['parent_account_id', 'region_code', 'project_code', 'source_document', 'account_purpose', 'books'] as $k) {
                 if (array_key_exists($k, $fields) && trim((string) $fields[$k]) === '') {
                     $fields[$k] = null;
                 }
             }
 
-            if (array_key_exists('allow_transactions', $fields)) {
-                $fields['allow_transactions'] = App\ConvertToBool($fields['allow_transactions']) ? 'true' : 'false';
-            }
-            if (array_key_exists('is_active', $fields)) {
-                $fields['is_active'] = App\ConvertToBool($fields['is_active']) ? 'true' : 'false';
+            if (array_key_exists('posting_allowed', $fields)) {
+                $fields['posting_allowed'] = App\ConvertToBool($fields['posting_allowed']) ? 'true' : 'false';
             }
 
             $columns = [];
             $values = [];
             foreach ($fields as $key => $value) {
                 $columns[] = App\QuotedName($key, 'DB');
-                $values[] = $value === null ? 'NULL' : App\QuotedValue($value, DT::STRING, 'DB');
+                $values[] = $value === null ? 'NULL' : ($key === 'posting_allowed' ? $value : App\QuotedValue($value, DT::STRING, 'DB'));
             }
 
             $sql = "INSERT INTO {$this->table} (" . implode(', ', $columns) . ") VALUES (" . implode(', ', $values) . ")";
@@ -186,22 +196,34 @@ class ChartOfAccountsService
                 return ['success' => false, 'message' => 'No valid fields provided for update.'];
             }
 
-            foreach ($this->allowedFields as $k) {
+            if (array_key_exists('parent_account_id', $fields)) {
+                $parentId = trim((string) $fields['parent_account_id']);
+                if ($parentId === $id) {
+                    return ['success' => false, 'message' => 'An account cannot be its own parent.'];
+                }
+                if ($parentId !== '') {
+                    $parentExists = (int) App\ExecuteScalar(
+                        "SELECT COUNT(*) FROM {$this->table} WHERE account_id = " . App\QuotedValue($parentId, DT::STRING, 'DB'),
+                        'DB'
+                    );
+                    if ($parentExists === 0) {
+                        return ['success' => false, 'message' => "Parent account '{$parentId}' does not exist."];
+                    }
+                }
+            }
+
+            foreach (['parent_account_id', 'region_code', 'project_code', 'source_document', 'account_purpose', 'books'] as $k) {
                 if (array_key_exists($k, $fields) && trim((string) $fields[$k]) === '') {
                     $fields[$k] = null;
                 }
             }
-
-            if (array_key_exists('allow_transactions', $fields)) {
-                $fields['allow_transactions'] = App\ConvertToBool($fields['allow_transactions']) ? 'true' : 'false';
-            }
-            if (array_key_exists('is_active', $fields)) {
-                $fields['is_active'] = App\ConvertToBool($fields['is_active']) ? 'true' : 'false';
+            if (array_key_exists('posting_allowed', $fields)) {
+                $fields['posting_allowed'] = App\ConvertToBool($fields['posting_allowed']) ? 'true' : 'false';
             }
 
             $setParts = [];
             foreach ($fields as $key => $value) {
-                $setParts[] = App\QuotedName($key, 'DB') . ' = ' . ($value === null ? 'NULL' : App\QuotedValue($value, DT::STRING, 'DB'));
+                $setParts[] = App\QuotedName($key, 'DB') . ' = ' . ($value === null ? 'NULL' : ($key === 'posting_allowed' ? $value : App\QuotedValue($value, DT::STRING, 'DB')));
             }
 
             $sql = "UPDATE {$this->table} SET " . implode(', ', $setParts) . ' WHERE account_id = ' . App\QuotedValue($id, DT::STRING, 'DB');
@@ -221,14 +243,14 @@ class ChartOfAccountsService
                 return $check;
             }
 
-            $newStatus = (bool) ($check['data']['is_active'] ?? false) ? 'false' : 'true';
+            $newStatus = App\SameText((string) ($check['data']['status'] ?? ''), 'Active') ? 'Inactive' : 'Active';
 
             App\Execute(
-                "UPDATE {$this->table} SET is_active = {$newStatus} WHERE account_id = " . App\QuotedValue($id, DT::STRING, 'DB'),
+                "UPDATE {$this->table} SET status = " . App\QuotedValue($newStatus, DT::STRING, 'DB') . " WHERE account_id = " . App\QuotedValue($id, DT::STRING, 'DB'),
                 'DB'
             );
 
-            return ['success' => true, 'message' => 'Account status updated.', 'data' => ['is_active' => $newStatus === 'true']];
+            return ['success' => true, 'message' => "Account status set to {$newStatus}.", 'data' => ['status' => $newStatus]];
         } catch (\Exception $e) {
             return ['success' => false, 'message' => $e->getMessage()];
         }
@@ -242,8 +264,16 @@ class ChartOfAccountsService
                 return $check;
             }
 
+            $childCount = (int) App\ExecuteScalar(
+                "SELECT COUNT(*) FROM {$this->table} WHERE parent_account_id = " . App\QuotedValue($id, DT::STRING, 'DB'),
+                'DB'
+            );
+            if ($childCount > 0) {
+                return ['success' => false, 'message' => 'Cannot deactivate: this account has child accounts under it.'];
+            }
+
             App\Execute(
-                "UPDATE {$this->table} SET is_active = false WHERE account_id = " . App\QuotedValue($id, DT::STRING, 'DB'),
+                "UPDATE {$this->table} SET status = 'Inactive' WHERE account_id = " . App\QuotedValue($id, DT::STRING, 'DB'),
                 'DB'
             );
 
@@ -255,6 +285,15 @@ class ChartOfAccountsService
 
     public function fetchRegions(): array
     {
-        return ['success' => true, 'data' => []];
+        try {
+            $data = App\ExecuteRows(
+                "SELECT rc_code AS region_code, rc_name AS region_name FROM fims.responsibility_code WHERE status = 'Active' ORDER BY rc_name ASC",
+                'DB'
+            );
+
+            return ['success' => true, 'data' => $data ?: []];
+        } catch (\Exception $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
     }
 }

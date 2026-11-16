@@ -166,14 +166,15 @@ $_coa_api = Config('API.FIMS_URL');
                         <th>Account ID</th>
                         <th>Account</th>
                         <th>Books</th>
-                        <th>Normal Balance</th>
-                        <th>Allow Transactions</th>
+                        <th>Account Type</th>
+                        <th>Parent Account</th>
+                        <th>Posting Allowed</th>
                         <th>Status</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody id="coa-tbody">
-                    <tr><td colspan="8"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
+                    <tr><td colspan="9"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
                 </tbody>
             </table>
         </div>
@@ -234,6 +235,7 @@ document.addEventListener('click', () => {
 });
 
 async function coa_bootstrapLoad() {
+    await coa_loadParentOptions();
     coa_bindEvents();
     await coa_load();
 }
@@ -269,6 +271,31 @@ function coa_bindEvents() {
 }
 
 /* ── Load ──────────────────────────────────────────────────── */
+let coa_allAccounts = [];
+async function coa_loadParentOptions() {
+    try {
+        const res = await fetch(`${COA_API}/all`, { credentials: 'same-origin' });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message || 'Failed to load accounts.');
+
+        coa_allAccounts = json.data ?? [];
+        coa_renderParentOptions();
+    } catch (e) {
+        coa_toast(e.message, 'error');
+    }
+}
+
+function coa_renderParentOptions(excludeId = null) {
+    const sel = $coa('coa-parent-account-id');
+    const current = sel.value;
+    const options = coa_allAccounts
+        .filter(a => a.account_id !== excludeId)
+        .map(a => `<option value="${coa_escAttr(a.account_id)}">${coa_esc(a.account_code)} — ${coa_esc(a.account_title)}</option>`)
+        .join('');
+    sel.innerHTML = '<option value="">— No parent (top-level) —</option>' + options;
+    sel.value = current;
+}
+
 async function coa_load() {
     window.PagePreloader?.show();
     try {
@@ -284,8 +311,8 @@ async function coa_load() {
         coa_currentPage = 1;
         coa_renderTable(coa_rows);
         $coa('coa-kpi-total').textContent = coa_rows.length;
-        $coa('coa-kpi-active').textContent = coa_rows.filter(r => r.is_active === true || r.is_active === 't').length;
-        $coa('coa-kpi-posting').textContent = coa_rows.filter(r => r.allow_transactions === true || r.allow_transactions === 't').length;
+        $coa('coa-kpi-active').textContent = coa_rows.filter(r => r.status === 'Active').length;
+        $coa('coa-kpi-posting').textContent = coa_rows.filter(r => r.posting_allowed === true || r.posting_allowed === 't').length;
     } catch (e) {
         coa_rows = [];
         coa_renderTable([]);
@@ -346,7 +373,7 @@ function coa_collapseAll() {
 function coa_renderTable(rows) {
     const tbody = $coa('coa-tbody');
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="8"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No accounts found.</span></div></td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No accounts found.</span></div></td></tr>';
         coa_renderPagination(0, 0);
         return;
     }
@@ -386,9 +413,10 @@ function coa_renderTable(rows) {
             </div>
         </td>
         <td>${r.books ? coa_esc(r.books) : '<span class="nha-td-sub">—</span>'}</td>
-        <td>${r.normal_balance ? coa_esc(r.normal_balance) : '<span class="nha-td-sub">—</span>'}</td>
-        <td>${coa_boolBadge(r.allow_transactions)}</td>
-        <td>${coa_statusBadge(r.is_active)}</td>
+        <td>${r.account_type ? coa_esc(r.account_type) : '<span class="nha-td-sub">—</span>'}</td>
+        <td>${r.parent_account_id ? coa_esc(r.parent_account_id) : '<span class="nha-td-sub">—</span>'}</td>
+        <td>${coa_boolBadge(r.posting_allowed)}</td>
+        <td>${coa_statusBadge(r.status)}</td>
         <td>
             <div class="coa-action-dropdown">
                 <button class="coa-action-btn" onclick="coa_toggleDropdown(event, 'coa-menu-${coa_escAttr(r.account_id)}')">
@@ -402,7 +430,7 @@ function coa_renderTable(rows) {
                     </button>
                     <button type="button" class="coa-menu-item" onclick="coa_toggleStatus('${coa_escAttr(r.account_id)}'); coa_closeDropdown('coa-menu-${coa_escAttr(r.account_id)}')">
                         <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-                        ${r.is_active ? 'Deactivate' : 'Activate'}
+                        ${r.status === 'Active' ? 'Deactivate' : 'Activate'}
                     </button>
                 </div>
             </div>
@@ -474,8 +502,8 @@ function coa_boolBadge(val) {
     const on = val === true || val === 't' || val === 'true' || val === 1;
     return coa_pill(on ? 'Yes' : 'No', on);
 }
-function coa_statusBadge(isActive) {
-    const active = isActive === true || isActive === 't' || isActive === 'true' || isActive === 1;
+function coa_statusBadge(status) {
+    const active = status === 'Active' || status === 'true';
     return coa_pill(active ? 'Active' : 'Inactive', active);
 }
 
@@ -488,11 +516,12 @@ function coa_openModal(mode, row = null, parentId = null) {
     $coa('coa-account-code').value = row?.account_code || '';
     $coa('coa-account-code').disabled = mode === 'edit';
     $coa('coa-account-title').value = row?.account_title || '';
-    $coa('coa-account-type').value = row?.account_type_id || '';
-    $coa('coa-parent-account-code').value = row?.parent_account_code || '';
-    $coa('coa-normal-balance').value = row?.normal_balance || '';
-    $coa('coa-account-description').value = row?.account_description || '';
-    $coa('coa-allow-transactions').checked = !!(row && (row.allow_transactions === true || row.allow_transactions === 't'));
+    $coa('coa-account-type').value = row?.account_type || '';
+    coa_renderParentOptions(row?.account_id || null);
+    $coa('coa-parent-account-id').value = parentId || row?.parent_account_id || '';
+    $coa('coa-account-purpose').value = row?.account_purpose || '';
+    $coa('coa-posting-allowed').checked = !!(row && (row.posting_allowed === true || row.posting_allowed === 't'));
+    $coa('coa-source-document').value = row?.source_document || '';
     $coa('coa-books').value = row?.books || '';
     $coa('coa-overlay').classList.add('open');
 }
@@ -527,10 +556,11 @@ function coa_addSL(parentId, parentCode) {
     $coa('coa-account-type').value = parent.account_type || '';
     $coa('coa-region-code').value = parent.region_code || '';
     $coa('coa-project-code').value = parent.project_code || '';
-    $coa('coa-parent-account-code').value = parentId || '';
-    $coa('coa-normal-balance').value = parent?.normal_balance || '';
-    $coa('coa-account-description').value = parent?.account_description || '';
-    $coa('coa-allow-transactions').checked = false;
+    coa_renderParentOptions(null);
+    $coa('coa-parent-account-id').value = parentId;
+    $coa('coa-account-purpose').value = parent?.account_purpose || '';
+    $coa('coa-posting-allowed').checked = false;
+    $coa('coa-source-document').value = parent?.source_document || '';
     $coa('coa-books').value = parent?.books || '';
     $coa('coa-overlay').classList.add('open');
 }
@@ -570,13 +600,16 @@ async function coa_save(ev) {
     const mode = $coa('coa-mode').value;
     const id   = $coa('coa-account-id').value;
     const payload = {
-        account_code        : $coa('coa-account-code').value.trim(),
-        account_title       : $coa('coa-account-title').value.trim(),
-        account_description : $coa('coa-account-description').value.trim(),
-        parent_account_code : $coa('coa-parent-account-code').value.trim(),
-        normal_balance      : $coa('coa-normal-balance').value,
-        allow_transactions  : $coa('coa-allow-transactions').checked,
-        books               : $coa('coa-books').value.trim(),
+        account_code       : $coa('coa-account-code').value.trim(),
+        account_title      : $coa('coa-account-title').value.trim(),
+        account_type       : $coa('coa-account-type').value,
+        region_code        : $coa('coa-region-code').value,
+        project_code       : $coa('coa-project-code').value,
+        parent_account_id  : $coa('coa-parent-account-id').value,
+        account_purpose    : $coa('coa-account-purpose').value,
+        posting_allowed    : $coa('coa-posting-allowed').checked,
+        source_document    : $coa('coa-source-document').value.trim(),
+        books              : $coa('coa-books').value.trim(),
     };
 
     window.PagePreloader?.show();
@@ -595,6 +628,7 @@ async function coa_save(ev) {
         coa_toast(`Account ${mode === 'edit' ? 'updated' : 'created'} successfully.`, 'success');
         coa_closeModal();
         coa_load();
+        coa_loadParentOptions();
     } catch (e) {
         coa_showErr(e.message);
     } finally {
@@ -635,6 +669,7 @@ async function coa_delete(id) {
 
         coa_toast('Account deactivated successfully.', 'success');
         coa_load();
+        coa_loadParentOptions();
     } catch (e) {
         coa_toast(e.message, 'error');
     } finally {
