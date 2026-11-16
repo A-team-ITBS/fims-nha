@@ -63,6 +63,10 @@ $_gl_api = preg_match('~/api$~', $_gl_api) ? $_gl_api : $_gl_api . '/api';
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                 Refresh
             </button>
+            <button id="gl-print" type="button" class="nha-btn-hdr" title="Print this account's General Ledger sheet" style="display:none;">
+                <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+                Print
+            </button>
         </div>
     </div>
 
@@ -166,6 +170,7 @@ const GL_BOOK_API = GL_BASE + '/books/all';
 
 let gl_selectedAccount = null; // { account_code, account_title }
 let gl_searchTimer = null;
+let gl_ledger = null;          // the last single-account ledger loaded (what Print prints); null in the all-accounts view
 
 const $gl = id => document.getElementById(id);
 
@@ -186,6 +191,7 @@ else gl_boot();
 
 function gl_bindEvents() {
     $gl('gl-refresh')?.addEventListener('click', () => gl_load());
+    $gl('gl-print')?.addEventListener('click', () => gl_print());
     $gl('gl-filter-fy')?.addEventListener('change', () => gl_load());
     $gl('gl-filter-book')?.addEventListener('change', () => gl_load());
 
@@ -279,6 +285,7 @@ async function gl_load() {
         const json = await res.json();
         if (!json.success) throw new Error(json.message || 'Failed to load the General Ledger.');
 
+        gl_setPrintable(json.grouped ? null : json);
         if (json.grouped) {
             $gl('gl-summary').style.display = 'none';
             $gl('gl-ending').style.display = 'none';
@@ -289,11 +296,36 @@ async function gl_load() {
             gl_renderEnding(json.ending_balance, json.debit_normal);
         }
     } catch (e) {
+        gl_setPrintable(null);
         gl_renderTable([]);
         gl_showError('Could not load data: ' + e.message);
     } finally {
         window.PagePreloader?.hide();
     }
+}
+
+/* ── Print — the GENERAL LEDGER sheet (monthly summary) of the account shown ──────────────────────
+   Shared print preview (readone/print-preview-readone.php): prp_glPayload(ledger) → prp_open(…, GL).
+   The sheet is one fiscal year: the Fiscal Year filter, else the year of the postings shown (when they
+   span several years, pick one first). Only for a single account — hidden in the all-accounts view. */
+function gl_setPrintable(json) {
+    gl_ledger = json;
+    const btn = $gl('gl-print');
+    if (btn) btn.style.display = json ? '' : 'none';
+}
+async function gl_print() {
+    if (!gl_ledger || typeof prp_open !== 'function') return;
+    gl_hideError();
+    let fy = $gl('gl-filter-fy').value;
+    if (!fy) {
+        const years = [...new Set((gl_ledger.data ?? []).map(r => String(r.posting_date || '').slice(0, 4)).filter(Boolean))];
+        if (years.length > 1) {
+            gl_showError('This account has postings in ' + years.join(', ') + ' — pick a Fiscal Year to print (the ledger sheet is one year).');
+            return;
+        }
+        fy = years[0] || String(new Date().getFullYear());
+    }
+    await prp_open(prp_glPayload(gl_ledger, { fiscal_year: fy }), { type: 'GL' });
 }
 
 /* ── Summary (account header — code/name/normal balance/class) ──────────────── */
@@ -382,3 +414,7 @@ function gl_esc(text) {
 function gl_showError(msg) { $gl('gl-error').style.display = 'flex'; $gl('gl-error-msg').textContent = msg; }
 function gl_hideError()    { $gl('gl-error').style.display = 'none'; }
 </script>
+<?php
+// Print → the shared print preview (prp_open + prp_glPayload).
+include_once __DIR__ . '/readone/print-preview-readone.php';
+?>

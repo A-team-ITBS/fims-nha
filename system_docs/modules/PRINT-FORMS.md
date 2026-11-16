@@ -1007,6 +1007,15 @@ is a fillable PDF filled with pdftk, ported from the old REGIONAL
 layout, no letterhead (the form carries its own heading). No DV module in this
 repo yet, so it prints from the payload.
 
+**More than the form holds** (the voucher module allows any number of lines and
+any length): the box keeps what fits and says so, and an **attachment page** —
+inserted after the front, before the back page, only when something overflowed —
+lists everything with totals:
+- accounting entries > 11 → rows 1–10, then row 11 **SEE ATTACHED** carrying the
+  sum of the remaining debits / credits (the columns still add up);
+- deductions > 12 → rows 1–11, then row 12 **See attached** with the rest's sum;
+- particulars longer than ≈ 3 lines → their start + "... (see attached)".
+
 | | |
 |---|---|
 | Endpoint | `POST /api/print/dv` (`format` = pdf only — html / docx → 400) |
@@ -1054,6 +1063,71 @@ Not on the form's fields (filled by hand, as on the old print): Journalized /
 Indexed, the CHECK and OFFICIAL RECEIPT boxes, Received From / releasing
 officer, and For COA Use Only.
 
+## GL — General Ledger
+
+`GeneralLedgerPrintService` + `scripts/gen_gl_docx.js`. Letter portrait, Arial 9pt, no
+letterhead (the sheet has its own title). One account's ledger card, printed as the
+official sheet's **monthly summary**, not every posting:
+
+- Header (repeats on every page): GENERAL LEDGER, Entity Name / Account Code,
+  Account Title / Sheet No., then Date (month | day) · Particulars · Ref. · Amount
+  (Debit · Credit · Balance).
+- The year row, then an optional "Jan 1 Balance" line (`opening_balance`; the system
+  has no brought-forward balance, so there is none unless the caller passes one).
+- Per month, one line per journal, in the order CKDJ, ADADJ, CRDJ, GJ, each with the
+  journal's debit and credit for the month:
+  - CKDJ and ADADJ print as "Disbursements".
+  - CRDJ prints as "Collections & Deposits".
+  - GJ prints as "Various Adjustments".
+- Each line is dated the month's last day. The month name is on the first line only,
+  and the balance on the last. A blank row separates months.
+- Blank filler rows up to `MIN_ROWS`, then "Dec 31 Balance" with the total debit and
+  credit (the opening balance counted on its normal side) and the ending balance.
+
+**Journal of a posting:** from its `doc_ref_no` (the JEV's, copied to the GL line):
+"CHECK…" → CKDJ, "ADA…" → ADADJ, "OR…" → CRDJ, anything else → GJ. A payload line
+may override this with `journal`. CRDJ does not occur yet, because official receipts
+are not posted to the GL.
+
+**Balance:** `debit_normal` (default true) gives debit − credit; false gives
+credit − debit.
+
+**Payload:**
+- `account_code`, `account_title`, `fiscal_year`, `debit_normal`, `opening_balance`
+- `entity_name`, `sheet_no` (both blank by default: filled in by hand)
+- `lines [{ posting_date, debit, credit, doc_ref_no, journal? }]`
+
+**Data:** the General Ledger page's `GET /general_ledger/ledger?account_code=&fiscal_yr=&book_id=`
+response is mapped by `prp_glPayload(resp, { fiscal_year, opening_balance })` and
+printed with `prp_open(payload, { type: 'GL' })` — the page's header **Print** button
+(`general-ledger-page.php`, see "Module integration").
+
+## SL — Subsidiary Ledger
+
+`SubsidiaryLedgerPrintService` + `scripts/gen_sl_docx.js`. Letter portrait, Times 10pt, no letterhead.
+
+- **Header** (repeats on every page): SUBSIDIARY LEDGER; Entity Name / Fund; the SL Account Name box (SL name,
+  plus "— detail" when one SL detail is printed, and the SL code) beside GL Account Name / Account Code /
+  Bank Account No.; then Date · Particulars · Ref · Amount (Debit · Credit · Balance).
+- **Rows:** unlike the GL sheet, **one line per posting**: date (mm/dd/yyyy), particulars (the posting's
+  description), Ref (the JEV no.), debit, credit and the running balance on every line. An optional
+  "Balance forwarded" first line (`opening_balance`).
+- **Filler and totals:** blank rows fill the sheet (wrapped Particulars count as several lines), then
+  **Totals**: total debit, total credit, ending balance.
+- **Balance:** `debit_normal` follows the SL master's control account; AP masters are credit-normal.
+
+**Payload:**
+- `sl_code`, `sl_name`, `sl_detail_name`
+- `gl_account_code`, `gl_account_title`
+- `bank_account_no`, `entity_name` (both blank: filled in by hand)
+- `fund`, `fiscal_year`, `debit_normal`, `opening_balance`
+- `lines [{ posting_date, particulars, ref, debit, credit }]`
+
+**Data:** the Subsidiary Ledger page's `GET /general_ledger/subsidiary-ledger` response is mapped by
+`prp_slPayload(resp, opts)`. GL Account Name is the title on the postings to the master's control account.
+The page's header **Print** button passes the SL Detail filter (→ the name), the Book filter (→ Fund) and
+the Fiscal Year.
+
 ## Requirements
 
 - Node on the PHP host (Dockerfile installs it) and the `docx` npm package —
@@ -1074,6 +1148,8 @@ calls the same helper.
 | Purchase Orders — `po/page.php` (row) and `po/readone.php` | Print | PO | `{ po_id }` — PurchaseOrderPrintService loads the PO |
 | Disbursement Vouchers — `voucher/readone.php` (`voucher.php`'s view modal) | Print / Print JEV (once Accounting saved the JEV) | DV / JEV | `GET /voucher/read/{id}` → `prp_dvPayload` / `prp_jevFromDv` |
 | Journal Entry Vouchers — `journal-entry-voucher.php` (row) | Print | JEV | the row's DV (`/voucher/read/{dv_id}`) → `prp_jevFromDv` |
+| General Ledger — `general-ledger-page.php` (header; shown once one account is picked) | Print | GL | the loaded ledger (`GET /general_ledger/ledger`) → `prp_glPayload`; fiscal year = the Fiscal Year filter, else the postings' year (several years → asks to pick one) |
+| Subsidiary Ledger — `subsidiary-ledger-page.php` (header; shown once one SL code is picked) | Print | SL | the loaded ledger (`GET /general_ledger/subsidiary-ledger`) → `prp_slPayload`; SL Detail filter → name, Book → Fund |
 | IAR Module — `iar-module.php` (row; pro-forma view) | Print IAR; Print JEV | IAR; JEV | the row (IAR header + delivery lines) + its PO (`/purchase-order/all?search=`) → `prp_iarPayload`; the delivery receipt's pro-forma → `prp_jevFromProforma` |
 
 DV deductions print with the withholding taxes (ATC lines) under the

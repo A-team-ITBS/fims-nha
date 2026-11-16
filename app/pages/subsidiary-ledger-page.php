@@ -58,6 +58,10 @@ $_sl_api = preg_match('~/api$~', $_sl_api) ? $_sl_api : $_sl_api . '/api';
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                 Refresh
             </button>
+            <button id="sl-print" type="button" class="nha-btn-hdr" title="Print this SL's Subsidiary Ledger sheet" style="display:none;">
+                <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+                Print
+            </button>
         </div>
     </div>
 
@@ -169,6 +173,7 @@ const SL_BOOK_API  = SL_BASE + '/books/all';
 
 let sl_selectedMaster = null; // { sl_code, sl_name }
 let sl_searchTimer = null;
+let sl_ledger = null;          // the last single-SL ledger loaded (what Print prints); null in the all-masters view
 
 const $sl = id => document.getElementById(id);
 
@@ -189,6 +194,7 @@ else sl_boot();
 
 function sl_bindEvents() {
     $sl('sl-refresh')?.addEventListener('click', () => sl_load());
+    $sl('sl-print')?.addEventListener('click', () => sl_print());
     $sl('sl-filter-fy')?.addEventListener('change', () => sl_load());
     $sl('sl-filter-book')?.addEventListener('change', () => sl_load());
     $sl('sl-detail-select')?.addEventListener('change', () => sl_selectedMaster && sl_load());
@@ -311,6 +317,7 @@ async function sl_load() {
         const json = await res.json();
         if (!json.success) throw new Error(json.message || 'Failed to load the Subsidiary Ledger.');
 
+        sl_setPrintable(json.grouped ? null : json);
         if (json.grouped) {
             $sl('sl-summary').style.display = 'none';
             $sl('sl-ending').style.display = 'none';
@@ -321,11 +328,32 @@ async function sl_load() {
             sl_renderEnding(json.ending_balance, json.debit_normal);
         }
     } catch (e) {
+        sl_setPrintable(null);
         sl_renderTable([]);
         sl_showError('Could not load data: ' + e.message);
     } finally {
         window.PagePreloader?.hide();
     }
+}
+
+/* ── Print — the SUBSIDIARY LEDGER sheet of the SL shown (one line per posting) ─────────────────────
+   Shared print preview (readone/print-preview-readone.php): prp_slPayload(ledger) → prp_open(…, SL).
+   The SL Detail filter is printed with the SL name, the Book filter as the Fund. Only for a single SL
+   code — hidden in the all-masters view. */
+function sl_setPrintable(json) {
+    sl_ledger = json;
+    const btn = $sl('sl-print');
+    if (btn) btn.style.display = json ? '' : 'none';
+}
+async function sl_print() {
+    if (!sl_ledger || typeof prp_open !== 'function') return;
+    const opt = id => { const s = $sl(id); return s && s.value ? (s.options[s.selectedIndex]?.text || '') : ''; };
+    const detail = opt('sl-detail-select');
+    await prp_open(prp_slPayload(sl_ledger, {
+        sl_detail_name: detail.includes(' — ') ? detail.split(' — ').slice(1).join(' — ') : detail,
+        fund: opt('sl-filter-book'),
+        fiscal_year: $sl('sl-filter-fy').value,
+    }), { type: 'SL' });
 }
 
 /* ── Summary (SL master header — code/name/normal balance/class) ──────────── */
@@ -415,3 +443,7 @@ function sl_esc(text) {
 function sl_showError(msg) { $sl('sl-error').style.display = 'flex'; $sl('sl-error-msg').textContent = msg; }
 function sl_hideError()    { $sl('sl-error').style.display = 'none'; }
 </script>
+<?php
+// Print → the shared print preview (prp_open + prp_slPayload).
+include_once __DIR__ . '/readone/print-preview-readone.php';
+?>
