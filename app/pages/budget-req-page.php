@@ -143,6 +143,10 @@ $_bgr_canModify = !$_bgr_isBudgetOfficer;
                     <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.477 0 8.268 2.943 9.542 7-1.274 4.057-5.065 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
                     View as COB
                 </button>
+                <button type="button" id="bgr-view-remarks" class="nha-btn nha-btn-outline" hidden>
+                    <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+                    View Remarks
+                </button>
                 <button type="button" id="bgr-submit-review" class="nha-btn nha-btn-success" disabled title="Filter by a single Draft fiscal year to submit its request">
                     <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
                     Submit for Review
@@ -276,6 +280,7 @@ async function bgr_load() {
         if (!json.success) throw new Error(json.message || 'Failed to load.');
         bgr_renderTable(json.data ?? []);
         bgr_updateSubmitButton(json.data ?? []);
+        bgr_updateRemarksButton(json.data ?? []);
 
         bgr_renderPagination(json.pagination ?? {});
         $bgr('bgr-kpi-total').textContent  = json.pagination?.total ?? (json.data ?? []).length;
@@ -572,26 +577,71 @@ function bgr_renderTable(headers) {
     }).join('');
 }
 
-/* ── Top-of-filters "Submit for Review" — acts on whichever single Draft
-   request the Fiscal Year filter currently narrows the list down to.
-   Disabled unless that filter names exactly one Draft request. ────────── */
+// Shows one request's remarks — status/remarks live on the REQUEST, not the Program, so this is reached
+// from the toolbar's "View Remarks" button (one header, scoped by the Fiscal Year filter — see
+// bgr_updateRemarksButton), not from a per-row action, to avoid implying any one Program was singled out.
+function bgr_openRemarksDialog(header) {
+    Swal.fire({
+        icon: 'warning',
+        title: header.status_name || 'Remarks',
+        html: `<div style="text-align:left;font-size:13px;line-height:1.5;">${bgr_esc(header.remarks)}</div>`,
+        confirmButtonText: 'Close',
+    });
+}
+
+/* ── Top-of-filters "Submit for Review" — acts on whichever single Draft OR
+   Returned request the Fiscal Year filter currently narrows the list down
+   to ('Returned' = the Budget Officer sent it back to this office; it's
+   resubmittable the same way a Draft is — see BudgetReqService::submitForReview()).
+   Disabled unless that filter names exactly one such request. ──────────── */
 function bgr_updateSubmitButton(headers) {
     const btn = $bgr('bgr-submit-review');
     if (!btn) return;
 
     // Enabled whenever the current view (filtered or not) already narrows
-    // down to exactly one Draft request — no need to type a fiscal year
-    // into the filter first if there's only one Draft request to begin with.
-    const draftHeaders = headers.filter(h => h.status_name === 'Draft');
-    const match = draftHeaders.length === 1 ? draftHeaders[0] : null;
+    // down to exactly one submittable request — no need to type a fiscal
+    // year into the filter first if there's only one to begin with.
+    const submittableHeaders = headers.filter(h => h.status_name === 'Draft' || h.status_name === 'Returned');
+    const match = submittableHeaders.length === 1 ? submittableHeaders[0] : null;
 
     btn.disabled = !match;
     btn.title = match
         ? `Submit the fiscal year ${match.fiscal_yr} request for review`
-        : draftHeaders.length > 1
+        : submittableHeaders.length > 1
             ? 'Filter by a single fiscal year to submit its request'
-            : 'No Draft request to submit';
+            : 'No Draft or Returned request to submit';
     btn.onclick = match ? () => bgr_submitForReview(match.budget_reference_number) : null;
+}
+
+/* ── Toolbar "View Remarks" — a pure view action, unlike Submit for Review's
+   workflow gate, so it's HIDDEN rather than disabled when there's nothing to
+   view: most requests (Draft / For Review / Endorsed / Approved) never carry
+   remarks, so a permanently greyed-out button would be clutter for the
+   common case, and a disabled button's reason is invisible until hovered —
+   no better than not being there. It's only shown DISABLED when there IS
+   something to see but it's ambiguous which request (more than one in the
+   current view has remarks) — that's recoverable by filtering, so it stays
+   visible with an explanation instead of disappearing. Otherwise (current
+   filters narrow the list down to exactly one request with remarks), it's
+   shown enabled. Avoids repeating the same remarks on every one of that
+   request's Program rows in the table. ───────────────────────────────── */
+function bgr_updateRemarksButton(headers) {
+    const btn = $bgr('bgr-view-remarks');
+    if (!btn) return;
+
+    const withRemarks = headers.filter(h => h.remarks);
+    if (!withRemarks.length) {
+        btn.hidden = true;
+        return;
+    }
+
+    const match = withRemarks.length === 1 ? withRemarks[0] : null;
+    btn.hidden = false;
+    btn.disabled = !match;
+    btn.title = match
+        ? `View why the fiscal year ${match.fiscal_yr} request was returned`
+        : 'Filter by a single fiscal year to view its remarks';
+    btn.onclick = match ? () => bgr_openRemarksDialog(match) : null;
 }
 
 /* ── Pagination ────────────────────────────────────────────── */

@@ -196,9 +196,13 @@ class BudgetAllocationService
                     $rcIds
                 )).')';
             }
-            $type = trim((string) ($filters['allocation_type'] ?? ''));
-            if ($type !== '') {
-                $where[] = 'UPPER(a.allocation_type) = UPPER('.App\QuotedValue($type, DataType::STRING, 'DB').')';
+            // allocation_type: one type ("CBA") or several, comma-separated ("RFA,LAA" — the RFA / LAA memo request page lists both).
+            $types = array_values(array_filter(array_map('trim', explode(',', (string) ($filters['allocation_type'] ?? ''))), 'strlen'));
+            if ($types) {
+                $where[] = 'UPPER(a.allocation_type) IN ('.implode(', ', array_map(
+                    fn ($t) => 'UPPER('.App\QuotedValue($t, DataType::STRING, 'DB').')',
+                    $types
+                )).')';
             }
             $rcId = trim((string) ($filters['rc_id'] ?? ''));
             if ($rcId !== '') {
@@ -228,7 +232,8 @@ class BudgetAllocationService
             $summary = App\ExecuteRow(
                 "SELECT COUNT(*) AS total,
                         COALESCE(SUM(a.pr_amount), 0) AS total_pr_amount,
-                        COALESCE(SUM(a.po_amount), 0) AS total_po_amount
+                        COALESCE(SUM(a.po_amount), 0) AS total_po_amount,
+                        COALESCE(SUM({$this->requestedTotalSql()}), 0) AS total_requested_amount
                  FROM {$core} WHERE {$whereSql}",
                 'DB'
             );
@@ -575,7 +580,7 @@ class BudgetAllocationService
     // -----------------------------------------------------------------------
     // Review — /budget_allocation/process/{id}
     //
-    // The Financial Management Department (FMD) reviews a request that its office submitted for preview, in three steps
+    // The Financial Management Department (FMD) reviews a request that its office submitted for review, in three steps
     // (REVIEW_STEPS): For Preview (FMD Section Chief) -> For Division Manager (FMD Division Manager) ->
     // For Department Manager (FMD Department Manager) -> Approved. At each step:
     //   approve -> the next status of the chain; the LAST approval gives 'Approved' and the ALLOCATION NUMBER (below);

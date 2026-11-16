@@ -146,6 +146,18 @@ return [
     "ftla_page" => \DI\create(FtlaPage::class),
     "ledger_budget_allocation" => \DI\create(LedgerBudgetAllocation::class),
     "cob_page" => \DI\create(CobPage::class),
+    "cba_memo_request_page" => \DI\create(CbaMemoRequestPage::class),
+    "rfa_laa_memo_request_page" => \DI\create(RfaLaaMemoRequestPage::class),
+    "liquidation_voucher_page" => \DI\create(LiquidationVoucherPage::class),
+    "check_registry_page" => \DI\create(CheckRegistryPage::class),
+    "accountable_forms_registry_page" => \DI\create(AccountableFormsRegistryPage::class),
+    "fmr_page" => \DI\create(FmrPage::class),
+    "remittance_list_page" => \DI\create(RemittanceListPage::class),
+    "fund_source_page" => \DI\create(FundSourcePage::class),
+    "program_sources_page" => \DI\create(ProgramSourcesPage::class),
+    "ledger_page" => \DI\create(LedgerPage::class),
+    "accountable_officer_page" => \DI\create(AccountableOfficerPage::class),
+    "rfa_laa_monitoring_page" => \DI\create(RfaLaaMonitoringPage::class),
 
     // User table
     "usertable" => \DI\get("users"),

@@ -179,6 +179,17 @@
                         <input type="text" class="vnd-input" id="vnd-bank-acct" maxlength="100">
                     </div>
                 </div>
+
+                <p class="vnd-section">Chart of Accounts Assignment</p>
+                <p style="font-size:12px;color:var(--afims-text-muted, #62657E);margin:-8px 0 14px;">Optional. GL and Sub-Ledger can also be linked later via "Link SL" on the vendor list.</p>
+                <div class="vnd-group full" style="position:relative;">
+                    <label class="vnd-label">Account</label>
+                    <input type="hidden" id="vnd-coa-account-id" value="">
+                    <input type="text" class="vnd-input" id="vnd-coa-account-search" maxlength="500" placeholder="Search: account code or name (e.g., 01-01-010-01, Accounts Payable)">
+                    <p class="vnd-hint">Start typing to search Chart of Accounts</p>
+                    <div id="vnd-coa-dropdown" style="display:none;position:absolute;background:#fff;border:1px solid #E4ECF2;border-radius:8px;max-height:200px;overflow-y:auto;width:100%;z-index:1000;box-shadow:0 4px 12px rgba(0,0,0,.1);"></div>
+                    <div id="vnd-coa-selected" style="margin-top:8px;padding:8px;background:#F4F7FA;border-radius:6px;display:none;"></div>
+                </div>
             </div>
             <div id="vnd-footer">
                 <button type="button" class="vnd-btn vnd-btn-ghost" id="vnd-cancel">Cancel</button>
