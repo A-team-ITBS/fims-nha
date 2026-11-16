@@ -1,12 +1,12 @@
 -- Seed data for fims.settings_status, status_for = 'budget_allocation' (fims.budget_allocation — the Memo Request page):
 -- the two in-between statuses of the Financial Management Department's (FMD) review chain.
 --
---   For Preview             acted on by the FMD Section Chief       approve -> For Division Manager
+--   For Review             acted on by the FMD Section Chief       approve -> For Division Manager
 --   For Division Manager    acted on by the FMD Division Manager    approve -> For Department Manager
 --   For Department Manager  acted on by the FMD Department Manager  approve -> Approved (+ the allocation number)
 --   a Return at any of the three steps -> Returned
 --
--- 'Draft' is seeded in "02 - sample_data/01", 'For Preview' in "02 - sample_data/06", 'Approved' / 'Returned' in
+-- 'Draft' is seeded in "02 - sample_data/01", 'For Review' in "02 - sample_data/06", 'Approved' / 'Returned' in
 -- "02 - sample_data/07". BudgetAllocationService (REVIEW_STEPS) looks all of them up BY NAME, and the actors by the NAME
 -- of their uac.user_levels row, so the names below must stay as they are (the API says so, and changes nothing, when a
 -- status is missing).
@@ -32,7 +32,7 @@ BEGIN
         UPDATE fims.settings_status s
         SET next_actors = jsonb_build_object('users', '[]'::jsonb, 'userLevel', v.user_level, 'department', 'Financial Management Department (FMD)')
         FROM (VALUES
-            ('For Preview',            'FMD Section Chief'),
+            ('For Review',            'FMD Section Chief'),
             ('For Division Manager',   'FMD Division Manager'),
             ('For Department Manager', 'FMD Department Manager')
         ) AS v(name, user_level)
