@@ -10,7 +10,8 @@ $_mrq_api = Config('API.FIMS_URL');
 // Department (FMD: rc_code 35-074-0000000-032, rc_id 013 in this data) REVIEWS every office's memo requests, so for its
 // users the list is the central one (every office, ?central=1), Edit and Delete are hidden, and each row gets a "Process"
 // action (details + Approve / Return, readone/memo-process-readone.php). Everyone else sees their own office's requests —
-// the API decides that from the logged-in user, not from anything sent here — and gets Edit and Delete on a Draft request only.
+// the API decides that from the logged-in user, not from anything sent here — and gets Edit and Delete on a Draft request
+// (and Edit alone on one the FMD review Returned to them).
 // FMD is recognised by its rc_code, NOT its rc_id (the id's format differs between datasets: "013" vs "RC-013"). Mirrors
 // GlobalService::CENTRAL_REVIEW_RC_CODE, which the API checks again server-side (process() refuses anyone else).
 $userid = CurrentUserID();
@@ -62,6 +63,10 @@ try {
 .nha-menu-item.has-color svg { opacity:1; }
 .nha-menu-item.has-color:hover { background:color-mix(in srgb, var(--nha-item-color) 12%, #fff);color:var(--nha-item-color); }
 .nha-menu-divider { border-top:1px solid var(--afims-border, #E4ECF2);margin:3px 0; }
+
+/* The print preview opens ABOVE the request details modal (z-index 9060) and the CAF form (9070) — printing starts from the
+   details modal's Print button. The shared stylesheet puts every overlay at 9050, which would hide it behind them. */
+#prp-overlay { z-index: 9080; }
 
 /* ── KPI row: only 3 cards here, not the 4 .nha-summary assumes elsewhere — fill the row instead of leaving a
    fourth column empty. CBA shows 2 (Total Memo Requests, Total Requested Amount): mrq_syncTabUrl adds .mrq-cols-2. */
@@ -206,6 +211,14 @@ include __DIR__.'/form/budget-allocation-form.php';
 // The request-details modal: opened read-only by every row's "View" action (everybody), and with the Endorse / Approve / Return
 // buttons by FMD's "Process" action (only FMD is offered it, and the API refuses anyone else).
 include __DIR__.'/readone/memo-process-readone.php';
+
+// The CAF form (Certificate as to Availability of Funds): a modal, opened by the "Create CAF" action of an RFA row —
+// window.cafModal.open(allocationId), see mrq_createCaf(). Saves through POST /caf/add (app/routes/caf.php).
+include __DIR__.'/form/caf-form.php';
+
+// The shared print preview (HTML preview, PDF / DOCX download, letterhead): the "Print" and "Print CAF" actions open it with
+// prp_open(payload, { type }) — see mrq_printAllocation() / mrq_printCaf(). include_once: the memo form above loads it too.
+include_once __DIR__.'/readone/print-preview-readone.php';
 ?>
 
 </div><!-- /#mrq-root -->
@@ -217,7 +230,7 @@ include __DIR__.'/readone/memo-process-readone.php';
    (routes in app/routes/budget_allocation.php, modeled on /crud)
 
    Create  → the CBA form modal (app/pages/form/budget-allocation-form.php, window.cbaModal)
-   Edit    → the same form as a full page: BudgetAllocationForm?id=N
+   Edit    → the same form modal opened on that record: window.cbaModal.open(id)
    View    → (Actions menu, every row, every user) the request's details, read-only: the same modal as Process, opened
              without the decision buttons — mpr_open(id, true) in readone/memo-process-readone.php
    Submit for Review → (Actions menu, Draft requests only) PATCH status_id = the 'For Preview' status
@@ -225,7 +238,16 @@ include __DIR__.'/readone/memo-process-readone.php';
              readone/memo-process-readone.php (mpr_*), PATCH /budget_allocation/process/{id}. The review is a chain:
              For Preview (FMD Section Chief) -> For Division Manager (FMD Division Manager) -> For Department Manager
              (FMD Department Manager) -> Approved; Return at any step. The buttons show only for the user level whose
-             step it is.
+             step it is. Every Return needs REMARKS (typed in the modal, saved on budget_allocation.remarks); a request
+             that is back with someone shows the last return's remarks at the top of its View / Process modal.
+
+   Create CAF → (Actions menu, RFA tab only) the CAF form modal with that RFA already selected: form/caf-form.php
+             (window.cafModal), saved with POST /caf/add → fims.caf
+   Print   → (Actions menu, every row on every tab) the printed form of the request — CBA / RFA / LAA by its allocation type — in
+             the shared print preview (readone/print-preview-readone.php): GET /print/payload/allocation/{id}, then
+             prp_open(payload, { type }). The details modal has ONE Print button in its footer: it prints the request, or — for an
+             RFA that has a CAF — opens a small menu: Print RFA / Print CAF.
+   Print CAF → (Actions menu, RFA tab only) the printed CAF of that RFA (GET /print/payload/caf/{id}).
 
    The reference shown for every row ("Request Reference Number") is budget_allocation.request_referrence_no — RR-001,
    RR-002, … generated by the database when the row is created. The search box matches it too.
@@ -275,6 +297,10 @@ const $mrq = id => document.getElementById(id);
 function mrq_sameStatus(a, b) { return String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase(); }
 // Only a request that is still a Draft can be sent on for review.
 function mrq_isDraft(r)       { return mrq_sameStatus(r.status_name, MRQ_STATUS_DRAFT); }
+// A request the FMD review sent back to the requesting office (status exactly "Returned" — NOT "Returned to Section Chief" /
+// "Returned to Division Manager", which are with FMD): its office can Edit it again, and the form's Save dialog offers
+// "Submit for Preview" to send it on once corrected.
+function mrq_isReturned(r)    { return mrq_sameStatus(r.status_name, MRQ_STATUS_RETURNED); }
 // A status's colour (settings_status.color, from the statuses loaded at start-up), or '' when it has none, is not loaded,
 // or is not a plain hex colour — nothing else may be put into a style attribute.
 function mrq_statusColor(name) {
@@ -509,7 +535,7 @@ function mrq_renderTable(rows) {
         <td style="white-space:nowrap;">${mrq_money(r.requested_total)}</td>
         <td>${mrq_dateCell(r.created_at)}</td>
         <td>${mrq_statusBadge(r.status_name, r.status_color)}</td>
-        <td>${mrq_actionMenu(id, mrq_isDraft(r))}</td>
+        <td>${mrq_actionMenu(id, mrq_isDraft(r), mrq_isReturned(r))}</td>
     </tr>`;
     }).join('');
 }
@@ -521,9 +547,10 @@ function mrq_renderTable(rows) {
 //   Submit for Review — only while the request is still a Draft: it moves it on to For Preview;
 //   Edit and Delete — only while the request is a Draft (once it has left Draft it can no longer be changed or removed
 //              by the requesting office); FMD never gets them;
+//   Edit     — also on a request that was Returned to the requesting office (Delete stays Draft-only);
 //   Process  — FMD only (in place of Edit and Delete), on every row.
 // The menu is positioned with fixed coordinates, so the table's own scrolling never clips it.
-function mrq_actionMenu(id, isDraft) {
+function mrq_actionMenu(id, isDraft, isReturned = false) {
     // View: the details modal without its decision buttons (see readone/memo-process-readone.php).
     const viewItem = `<button type="button" class="nha-menu-item" data-action="view" title="See the details of this memo request" onclick="mrq_closeMenus();mpr_open(${id}, true);">
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
@@ -540,22 +567,41 @@ function mrq_actionMenu(id, isDraft) {
 
     // FMD REVIEWS requests instead of editing them: Edit and Delete are hidden for it and each row gets "Process" (a modal
     // with the request's details and Approve / Return — readone/memo-process-readone.php). Everybody else gets Edit and
-    // Delete, but only on a Draft row.
+    // Delete, but only on a Draft row — and a Returned row gets Edit alone.
     const processItem = `<button type="button" class="nha-menu-item" data-action="process" title="Review this request: approve it or return it" onclick="mrq_closeMenus();mpr_open(${id});">
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
                 Process
             </button>`;
-    const editAndDelete = `<button type="button" class="nha-menu-item" data-action="edit" onclick="mrq_closeMenus();mrq_edit(${id});">
+    const editItem = `<button type="button" class="nha-menu-item" data-action="edit" onclick="mrq_closeMenus();mrq_edit(${id});">
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
                 Edit
-            </button>
-            <div class="nha-menu-divider"></div>
-            <button type="button" class="nha-menu-item danger" data-action="delete" onclick="mrq_closeMenus();mrq_delete(${id});">
+            </button>`;
+    const deleteItem = `<button type="button" class="nha-menu-item danger" data-action="delete" onclick="mrq_closeMenus();mrq_delete(${id});">
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                 Delete
             </button>`;
+    const editAndDelete = `${editItem}<div class="nha-menu-divider"></div>${deleteItem}`;
+
+    // Create CAF: only on the RFA tab (a CAF certifies an RFA) — opens the CAF form with this RFA already selected.
+    const cafItem = mrq_activeType !== 'RFA' ? '' : `<button type="button" class="nha-menu-item" data-action="create-caf" title="Create a Certificate as to Availability of Funds for this RFA" onclick="mrq_closeMenus();mrq_createCaf(${id});">
+                <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                Create CAF
+            </button>`;
+
+    // Print: on every row, every tab — the printed form of this request (CBA / RFA / LAA by its allocation type).
+    const printIcon = '<svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>';
+    const printItem = `<button type="button" class="nha-menu-item" data-action="print" title="Print this ${mrq_esc(mrq_activeType)}" onclick="mrq_closeMenus();mrq_printAllocation(${id});">
+                ${printIcon}
+                Print
+            </button>`;
+    // Print CAF: RFA tab only — the CAF of this RFA (a row does not know its CAFs: they are looked up when it is clicked).
+    const printCafItem = mrq_activeType !== 'RFA' ? '' : `<button type="button" class="nha-menu-item" data-action="print-caf" title="Print the Certificate as to Availability of Funds of this RFA" onclick="mrq_closeMenus();mrq_printCafOfRfa(${id});">
+                ${printIcon}
+                Print CAF
+            </button>`;
+
     // the sections that apply to this row, a divider between each — so a row never ends (or starts) with a stray divider
-    const sections = [viewItem, previewItem, MRQ_IS_FMD ? processItem : (isDraft ? editAndDelete : '')]
+    const sections = [viewItem + printItem, previewItem, MRQ_IS_FMD ? processItem : (isDraft ? editAndDelete : (isReturned ? editItem : '')), cafItem + printCafItem]
         .filter(Boolean)
         .join('<div class="nha-menu-divider"></div>');
     return `<div class="nha-tools-menu">
@@ -629,9 +675,81 @@ function mrq_new() {
     window.cbaModal.open();
 }
 
-// Edit: the same form as a full page, which reads ?id= and loads that record.
+// Edit: the same form modal as "New", opened on that record — window.cbaModal.open(id) loads it and saves it back. It used to
+// navigate to the full-page BudgetAllocationForm, a separate page with its own permission, so a user who can create (the
+// modal) got "no permission" on Edit.
 function mrq_edit(id) {
-    window.location.href = 'BudgetAllocationForm?id=' + encodeURIComponent(id);
+    if (!window.cbaModal) {
+        mrq_toast('The memo request form could not be loaded. Please refresh the page.', 'error');
+        return;
+    }
+    window.cbaModal.open(id);
+}
+
+// Create CAF: the CAF form modal (form/caf-form.php, window.cafModal) opened on this RFA — it comes up with the RFA already
+// selected in its RFA field. RFA tab only (see mrq_actionMenu()).
+function mrq_createCaf(id) {
+    if (!window.cafModal) {
+        mrq_toast('The CAF form could not be loaded. Please refresh the page.', 'error');
+        return;
+    }
+    window.cafModal.open(id);
+}
+
+/* ── Print ─────────────────────────────────────────────────── */
+// The printed form of a SAVED record. The API builds the print payload from the record (GET /print/payload/..., app/routes/
+// print.php) and the shared print preview opens on it — HTML preview, PDF / DOCX download, letterhead — exactly as the memo
+// form's own Print Preview does. Used by the Actions menu and by the request details modal (readone/memo-process-readone.php).
+let mrq_printing = false;   // a print is being prepared: a second click is ignored
+
+async function mrq_openPrint(url) {
+    if (mrq_printing) return;
+    if (typeof prp_open !== 'function') {
+        mrq_toast('The print preview could not be loaded. Please refresh the page.', 'error');
+        return;
+    }
+    mrq_printing = true;
+    window.PagePreloader?.show();
+    try {
+        const json = await mrq_request(url);            // { success, doc, payload }
+        window.PagePreloader?.hide();                   // the preview shows its own "generating" state
+        await prp_open(json.payload, { type: json.doc });
+    } catch (e) {
+        mrq_toast(e.message, 'error');
+    } finally {
+        window.PagePreloader?.hide();
+        mrq_printing = false;
+    }
+}
+
+// A memo request: CBA / RFA / LAA, by its allocation type.
+function mrq_printAllocation(id) { return mrq_openPrint(`${MRQ_BASE}/print/payload/allocation/${encodeURIComponent(id)}`); }
+
+// A CAF, by its own id (fims.caf.id).
+function mrq_printCaf(cafId)     { return mrq_openPrint(`${MRQ_BASE}/print/payload/caf/${encodeURIComponent(cafId)}`); }
+
+// "Print CAF" on an RFA row. The row does not know its CAFs, so they are looked up first: none -> say so; one -> print it;
+// several -> print the latest (the request details' Print menu lists each CAF).
+async function mrq_printCafOfRfa(allocationId) {
+    if (mrq_printing) return;
+    let cafs;
+    window.PagePreloader?.show();
+    try {
+        cafs = (await mrq_request(`${MRQ_BASE}/caf/all?allocation_id=${encodeURIComponent(allocationId)}`)).data ?? [];
+    } catch (e) {
+        mrq_toast(e.message, 'error');
+        return;
+    } finally {
+        window.PagePreloader?.hide();
+    }
+    if (!cafs.length) {
+        mrq_toast('This RFA has no CAF yet — use "Create CAF" first.', 'info');
+        return;
+    }
+    if (cafs.length > 1) {
+        mrq_toast(`This RFA has ${cafs.length} CAFs — printing the latest. Open View and use Print to choose another.`, 'info');
+    }
+    return mrq_printCaf(cafs[cafs.length - 1].id);      // oldest first: the last one is the latest
 }
 
 /* ── Submit for Review: Draft -> For Preview ───────────────── */

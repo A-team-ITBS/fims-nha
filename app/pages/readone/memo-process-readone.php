@@ -16,6 +16,19 @@
  *   -> For Department Manager (FMD Department Manager) -> Approved
  * The read answers with data.review { in_review, actor, next_status, is_final, can_decide } for the logged-in user.
  *
+ * Tabs — once a CAF has been saved for an RFA (form/caf-form.php -> fims.caf), the modal gets two tabs under its header: "Details"
+ * (the default: everything above) and "CAF" (what the CAF is about — the RFA's Program, Sub-Program, Project and its purpose /
+ * description — then the CAF's own details: number, document type, fiscal year, date created, and its lines with the CAF Amount). The CAFs are read from GET /caf/all?allocation_id={id} right after the request itself; an RFA can
+ * have more than one, each shown in turn on the CAF tab. An RFA with no CAF, and every CBA / LAA, shows no tabs and no CAF request
+ * is even made for them — the modal is exactly as it was. The tabs are in both modes (View and Process); the footer buttons are the
+ * same on either tab.
+ *
+ * Print — ONE Print button in the footer. A CBA / LAA, or an RFA with no CAF, has one thing to print, so the button ("Print CBA",
+ * "Print RFA", …) prints it. An RFA that has a CAF has two: the button then reads "Print ▾" and opens a small menu — "Print RFA" /
+ * "Print CAF" (one "Print CAF n of N" per CAF when there are several). Printing goes through the page's mrq_printAllocation() /
+ * mrq_printCaf() -> the shared print preview (readone/print-preview-readone.php), which memo-req-page.php lifts above this modal;
+ * while it is open, this modal's own Escape and Tab handling stand aside so they do not close this modal or steal the focus.
+ *
  * Footer — Return and Endorse / Approve appear only when review.can_decide: the request is at a step of the chain AND the
  * user holds that step's user level (the API enforces both again); otherwise the modal is a read-only view with Close,
  * which says who the request is waiting for:
@@ -23,10 +36,13 @@
  *   Approve  the same call at the last step: status -> "Approved", and the request is given its ALLOCATION NUMBER, by
  *            allocation type and document type (CBA / RFA / LAA; RFA 57 for COE, 87 for CO), in the same step. The
  *            number is not shown before that: it is only generated then.
- *   Return   { decision: "return" } at any step, ONE step back: the Department Manager's goes to "Returned to Division
+ *   Return   { decision: "return", remarks } at any step, ONE step back: the Department Manager's goes to "Returned to Division
  *            Manager" and the Division Manager's to "Returned to Section Chief" — those statuses are steps of the chain
  *            too, so that user sees Endorse / Return again; the Section Chief's goes to "Returned", back to the
- *            requesting office. No number.
+ *            requesting office. No number. EVERY return needs REMARKS — the box under the details (required, at most
+ *            2000 characters; checked here and by the API), saved on fims.budget_allocation.remarks. On a request that is
+ *            back with someone ("Returned…") the last return's remarks show in a card at the top, in View mode too, so the
+ *            requesting office sees why it came back.
  * Both ask for a confirmation first. After either the modal closes, a message says what happened (with the number, for an
  * approval) and the list reloads.
  *
@@ -50,6 +66,15 @@
 .mpr-close { width:30px;height:30px;font-size:20px;line-height:1;color:#fff;cursor:pointer;border-radius:8px;
     background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25); }
 .mpr-close:hover { background:rgba(255,255,255,.22); }
+/* Details | CAF tab bar (only for an RFA that has a CAF — see mpr_renderTabs()); sits under the header, outside the scrolling body */
+.mpr-tabs { display:flex;flex-shrink:0;gap:4px;padding:0 20px;background:var(--afims-surface, #FFFFFF);border-bottom:1px solid var(--afims-border, #E4ECF2); }
+.mpr-tabs[hidden] { display:none; }
+.mpr-tab { margin-bottom:-1px;padding:11px 16px;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;
+    color:var(--afims-text-secondary, #475569);background:none;border:none;border-bottom:2px solid transparent; }
+.mpr-tab:hover { color:var(--afims-heading-fill, #000E3E); }
+.mpr-tab.is-active { color:var(--afims-heading-fill, #000E3E);border-bottom-color:var(--afims-primary, #0035A9); }
+.mpr-tab-count { display:inline-block;min-width:18px;margin-left:5px;padding:0 5px;font-size:11px;line-height:18px;text-align:center;border-radius:9px;
+    color:#fff;background:var(--afims-primary, #0035A9); }
 .mpr-body { padding:18px 20px 6px;overflow-y:auto; }
 .mpr-card { margin-bottom:14px;padding:14px 18px;background:var(--afims-surface, #FFFFFF);
     border:1px solid var(--afims-border, #E4ECF2);border-radius:12px; }
@@ -79,12 +104,29 @@
    read-only in View mode. Saved together with Endorse / Return / Approve — see mpr_decide(). */
 .mpr-desc-input { display:block;width:100%;min-height:70px;padding:8px 10px;font:13px/1.55 inherit;color:inherit;
     background:var(--afims-surface, #FFFFFF);border:1px solid var(--afims-border, #E4ECF2);border-radius:8px;resize:vertical;box-sizing:border-box; }
+/* Remarks of a Return: the box the reviewer types them in (Process mode, on their own step), and — on a request that was
+   returned — the card that shows the last return's remarks (in View mode too). */
+.mpr-desc-input.is-invalid { border-color:#DC3545;box-shadow:0 0 0 3px rgba(220,53,69,.15); }
+.mpr-card-returned { background:#FFF8EB;border-color:#F59E0B; }
+.mpr-card-returned .mpr-card-title { color:#92400E; }
+.mpr-hint { margin:0 0 8px;font-size:12px;color:#8A94A6; }
 .mpr-err { margin:0 0 12px;padding:8px 10px;font-size:12.5px;border-radius:7px;background:#FAE1E3;color:#8F222D; }
 .mpr-err[hidden] { display:none; }
 .mpr-foot { display:flex;justify-content:flex-end;gap:10px;padding:12px 20px;background:var(--afims-surface, #FFFFFF);
     border-top:1px solid var(--afims-border, #E4ECF2); }
 .mpr-btn { padding:8px 18px;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;border-radius:8px;border:1px solid transparent; }
 .mpr-btn[hidden] { display:none; }
+/* The footer's Print button, and — for an RFA that has a CAF — the little menu it opens upwards: Print RFA / Print CAF. */
+.mpr-print { position:relative; }
+.mpr-print[hidden] { display:none; }
+.mpr-btn.has-menu::after { content:'';display:inline-block;margin-left:8px;vertical-align:middle;border:4px solid transparent;border-top-color:currentColor;border-bottom:0; }
+.mpr-print-menu { position:absolute;left:0;bottom:calc(100% + 6px);z-index:5;min-width:200px;padding:4px;background:var(--afims-surface, #FFFFFF);
+    border:1px solid var(--afims-border, #E4ECF2);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.16); }
+.mpr-print-menu[hidden] { display:none; }
+.mpr-print-item { display:flex;align-items:center;justify-content:space-between;gap:14px;width:100%;padding:8px 12px;font-family:inherit;font-size:13px;
+    font-weight:500;text-align:left;white-space:nowrap;cursor:pointer;color:var(--afims-text, #1A1B21);background:none;border:none;border-radius:7px; }
+.mpr-print-item:hover, .mpr-print-item:focus-visible { background:var(--afims-surface-subtle, #F4F7FA);outline:none; }
+.mpr-print-item small { font-size:11px;font-weight:400;color:#8A94A6; }
 .mpr-btn[disabled] { opacity:.6;cursor:not-allowed; }
 .mpr-btn-ghost { color:var(--afims-text, #1A1B21);background:var(--afims-surface, #FFFFFF);border-color:var(--afims-border, #E4ECF2); }
 .mpr-btn-ghost:hover:not([disabled]) { background:var(--afims-surface-subtle, #F4F7FA); }
@@ -103,9 +145,14 @@
             <h3 class="mpr-title" id="mpr-title"><span id="mpr-title-text">Process Memo Request</span><span class="mpr-ref" id="mpr-ref"></span><span class="mpr-status" id="mpr-status"></span></h3>
             <button type="button" class="mpr-close" id="mpr-close" aria-label="Close">&times;</button>
         </div>
+        <div class="mpr-tabs" id="mpr-tabs" role="tablist" aria-label="Memo request sections" hidden></div>
         <div class="mpr-body" id="mpr-body"></div>
         <div class="mpr-body" style="padding-top:0;overflow:visible;"><div class="mpr-err" id="mpr-err" hidden></div></div>
         <div class="mpr-foot">
+            <div class="mpr-print" id="mpr-print-wrap" hidden>
+                <button type="button" class="mpr-btn mpr-btn-ghost" id="mpr-print" title="Print this request" aria-haspopup="false" aria-expanded="false" hidden>Print</button>
+                <div class="mpr-print-menu" id="mpr-print-menu" role="menu" aria-label="Print" hidden></div>
+            </div>
             <button type="button" class="mpr-btn mpr-btn-ghost" id="mpr-cancel">Close</button>
             <button type="button" class="mpr-btn mpr-btn-return" id="mpr-return" hidden>Return</button>
             <button type="button" class="mpr-btn mpr-btn-approve" id="mpr-approve" hidden>Approve</button>
@@ -122,6 +169,8 @@
 // to tint the buttons with their colours — the API looks the statuses up itself.
 const MPR_APPROVED = 'Approved';
 const MPR_RETURNED = 'Returned';
+// Longest Return remarks (characters) — keep in sync with BudgetAllocationService::REMARKS_MAX_LENGTH, which enforces it.
+const MPR_REMARKS_MAX = 2000;
 
 const mpr_$ = id => document.getElementById(id);
 
@@ -130,6 +179,8 @@ let mpr_seq    = 0;       // bumped on every open / close, so a slow answer for 
 let mpr_busy   = false;   // an Approve / Return is in flight
 let mpr_opener = null;    // what had the focus before the modal opened
 let mpr_viewOnly = false; // opened by "View": the details only, no decision buttons
+let mpr_cafs   = [];      // the CAFs saved for the RFA shown (rows of fims.caf); [] for an RFA without one and for CBA / LAA
+let mpr_tab    = 'details'; // the tab shown: 'details' (the default) or 'caf' — only meaningful while mpr_cafs is not empty
 
 /* ── Open / close ──────────────────────────────────────────── */
 // viewOnly = true: the read-only "View" (the details, for any user); otherwise "Process" (the details + the decision buttons
@@ -143,6 +194,9 @@ async function mpr_open(id, viewOnly = false) {
     mpr_$('mpr-title-text').textContent = mpr_viewOnly ? 'Memo Request Details' : 'Process Memo Request';
     mpr_$('mpr-ref').textContent = '';
     mpr_$('mpr-status').innerHTML = '';
+    mpr_cafs = [];
+    mpr_renderTabs();                       // no tabs until the request and its CAFs are known
+    mpr_hidePrint();                        // nor a Print button
     mpr_$('mpr-body').innerHTML = '<div class="mpr-loading">Loading…</div>';
     mpr_showErr('');
     mpr_setButtons(false);
@@ -152,7 +206,10 @@ async function mpr_open(id, viewOnly = false) {
     try {
         const json = await mrq_request(`${MRQ_API}/read/${encodeURIComponent(id)}`);
         if (seq !== mpr_seq) return;
-        mpr_row = json.data;
+        const cafs = await mpr_loadCafs(json.data);   // an RFA's CAFs; [] for anything else (never throws)
+        if (seq !== mpr_seq) return;
+        mpr_row  = json.data;
+        mpr_cafs = cafs;
         mpr_render(mpr_row);
     } catch (e) {
         if (seq !== mpr_seq) return;
@@ -160,10 +217,24 @@ async function mpr_open(id, viewOnly = false) {
     }
 }
 
+// The CAFs saved for an RFA (GET /caf/all?allocation_id=), oldest first. Only an RFA can have one, so nothing is asked for a
+// CBA / LAA. A failure must not take the request's details away: it is reported and the modal shows no CAF tab.
+async function mpr_loadCafs(row) {
+    if (!row || String(row.allocation_type || '').toUpperCase() !== 'RFA') return [];
+    try {
+        const json = await mrq_request(`${MRQ_BASE}/caf/all?allocation_id=${encodeURIComponent(row.allocation_id)}`);
+        return Array.isArray(json.data) ? json.data : [];
+    } catch (e) {
+        mrq_toast(`Could not load the CAF of this RFA: ${e.message}`, 'warning');
+        return [];
+    }
+}
+
 function mpr_close() {
     if (mpr_busy) return;                    // not while an Approve / Return is being saved
     mpr_seq++;
     mpr_row = null;
+    mpr_closePrintMenu();
     mpr_$('mpr-overlay').classList.remove('open');
     if (mpr_opener && typeof mpr_opener.focus === 'function') mpr_opener.focus();
 }
@@ -213,6 +284,18 @@ async function mpr_decide(action) {
             : `Approve memo request ${ref}? It will be given its allocation number and its status will change to ${MPR_APPROVED}.`;
     // Same Swal.fire() confirm convention as budget-req-page.php (title/text/icon, confirmButtonColor by
     // severity) — Swal is loaded globally by views/layout.php.
+    // Every Return needs remarks — the box above the footer (see mpr_render()); checked before anything is asked or sent.
+    let remarks = '';
+    if (!approve) {
+        const box = mpr_$('mpr-remarks');
+        remarks = box ? box.value.trim() : '';
+        if (remarks === '') {
+            mpr_showTab('details');   // the remarks box is on the Details tab: show it before pointing at it
+            if (box) { box.classList.add('is-invalid'); box.focus(); }
+            mpr_showErr(`Remarks are required when returning a request — tell ${rv.return_actor || 'the requesting office'} what to fix.`);
+            return;
+        }
+    }
     const confirmed = await Swal.fire({
         title: !approve ? 'Return Memo Request' : isEndorse ? 'Endorse Memo Request' : 'Approve Memo Request',
         text: ask,
@@ -247,7 +330,7 @@ async function mpr_decide(action) {
         const json = await mrq_request(`${MRQ_API}/process/${encodeURIComponent(mpr_row.allocation_id)}`, {
             method : 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body   : JSON.stringify({ decision: action }),
+            body   : JSON.stringify(approve ? { decision: action } : { decision: action, remarks }),
         });
         mpr_setBusy(false);
         mrq_toast(json.message || (approve ? 'Memo request processed.' : 'Memo request returned.'), 'success');
@@ -318,6 +401,89 @@ function mpr_docsHtml(files) {
     }).join('')}</ul>`;
 }
 
+/* ── CAF tab ───────────────────────────────────────────────── */
+// A CAF's lines: the RFA line it was made from (type of fund, account, requested amount) and the CAF Amount certified for it.
+function mpr_cafLines(c) {
+    const lt = c && c.line_transaction;
+    return Array.isArray(lt) ? lt.filter(l => l && typeof l === 'object') : ((lt && typeof lt === 'object') ? [lt] : []);
+}
+
+function mpr_cafLinesHtml(c) {
+    const lines = mpr_cafLines(c);
+    if (!lines.length) return '<div class="mpr-empty">No CAF lines.</div>';
+    let requested = 0, certified = 0;
+    const body = lines.map(l => {
+        requested += Number(l.requested_amount || 0);
+        certified += Number(l.caf_amount || 0);
+        return `<tr>
+            <td>${mrq_esc(l.type_of_fund || '') || mpr_dash}</td>
+            <td>${l.account_code ? mpr_chip(l.account_code) : ''}${l.account_title ? `<div class="mpr-sub">${mrq_esc(l.account_title)}</div>` : (l.account_code ? '' : mpr_dash)}</td>
+            <td class="mpr-amt">${mrq_money(l.requested_amount)}</td>
+            <td class="mpr-amt">${mrq_money(l.caf_amount)}</td>
+        </tr>`;
+    }).join('');
+    return `<div class="mpr-tbl-wrap"><table class="mpr-tbl">
+        <thead><tr><th>Type of Fund</th><th>Account</th><th class="mpr-amt">RFA Requested</th><th class="mpr-amt">CAF Amount</th></tr></thead>
+        <tbody>${body}</tbody>
+        <tfoot><tr><td colspan="2">Total</td><td class="mpr-amt">${mrq_money(requested)}</td><td class="mpr-amt">${mrq_money(certified)}</td></tr></tfoot>
+    </table></div>`;
+}
+
+// What the CAF is about — the RFA's Program / Sub-Program / Project and its purpose / description. Shown once at the top of the
+// CAF tab (it is the RFA's, the same for every CAF of it), read-only and from the RFA already loaded: it is not stored on the CAF.
+function mpr_cafContextHtml(r) {
+    return mpr_card('Program, Sub-Program and Project',
+            mpr_row_('Program', mpr_named(r.program_name, r.program_code)) +
+            mpr_row_('Sub-Program', mpr_named(r.sub_program_name, r.sub_program_code)) +
+            mpr_row_('Project', mpr_named(r.project_name, r.project_code))) +
+        mpr_card('Purpose / Description',
+            r.description ? `<div class="mpr-desc">${mrq_esc(r.description)}</div>` : '<div class="mpr-empty">No description.</div>');
+}
+
+// The CAF tab: the RFA's context once, then for each CAF a card with its own details and a card with its lines.
+function mpr_cafHtml(cafs, r) {
+    const many = cafs.length > 1;
+    return mpr_cafContextHtml(r) + cafs.map((c, i) => {
+        const total = mpr_cafLines(c).reduce((sum, l) => sum + Number(l.caf_amount || 0), 0);
+        const tag = many ? ` ${i + 1} of ${cafs.length}` : '';
+        return mpr_card(`CAF${tag}`,
+                mpr_row_('CAF Number', c.caf_number ? `<span class="mpr-num">${mrq_esc(c.caf_number)}</span>` : '<span class="mpr-muted">Not assigned</span>') +
+                mpr_row_('Document Type', c.document_type ? `<span class="nha-bdg nha-bdg-gray">${mrq_esc(c.document_type)}</span>` : '') +
+                mpr_row_('Fiscal Year', mrq_esc(c.fiscal_year)) +
+                mpr_row_('Total CAF Amount', `<span class="mpr-num">${mrq_money(total)}</span>`) +
+                mpr_row_('Date Created', mrq_esc(mpr_fmtDate(c.created_at)))) +
+            mpr_card(`CAF${tag} Lines`, mpr_cafLinesHtml(c));
+    }).join('');
+}
+
+// The Details | CAF tab bar: only while the RFA shown has a CAF (otherwise it is empty and hidden). Always starts on Details.
+function mpr_renderTabs() {
+    const bar = mpr_$('mpr-tabs');
+    if (!mpr_cafs.length) { bar.innerHTML = ''; bar.hidden = true; mpr_tab = 'details'; return; }
+    bar.innerHTML =
+        `<button type="button" class="mpr-tab" role="tab" id="mpr-tab-details" data-tab="details" aria-controls="mpr-panel-details">Details</button>` +
+        `<button type="button" class="mpr-tab" role="tab" id="mpr-tab-caf" data-tab="caf" aria-controls="mpr-panel-caf">CAF` +
+            `${mpr_cafs.length > 1 ? `<span class="mpr-tab-count">${mpr_cafs.length}</span>` : ''}</button>`;
+    bar.hidden = false;
+    mpr_showTab('details');
+}
+
+// Shows one tab's panel and hides the other. A no-op without CAFs (there is then only the details, with no panels).
+function mpr_showTab(name) {
+    const previous = mpr_tab;
+    mpr_closePrintMenu();
+    mpr_tab = (name === 'caf' && mpr_cafs.length) ? 'caf' : 'details';
+    document.querySelectorAll('#mpr-tabs .mpr-tab').forEach(b => {
+        const on = b.dataset.tab === mpr_tab;
+        b.classList.toggle('is-active', on);
+        b.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    const details = mpr_$('mpr-panel-details'), caf = mpr_$('mpr-panel-caf');
+    if (details) details.hidden = mpr_tab !== 'details';
+    if (caf)     caf.hidden     = mpr_tab !== 'caf';
+    if (mpr_tab !== previous) mpr_$('mpr-body').scrollTop = 0;   // a different tab starts at its top; the same one is left where it is
+}
+
 function mpr_render(r) {
     const rv        = r.review || {};
     const isActor   = rv.can_decide === true;               // this user holds the user level of the step the request is at
@@ -342,7 +508,19 @@ function mpr_render(r) {
         ? `${mpr_named(r.requesting_rc_name, r.requesting_rc_code)}${r.requesting_district_name ? `<div class="mpr-sub">${mrq_esc(r.requesting_district_name)}</div>` : ''}`
         : (r.requesting_district_name ? mrq_esc(r.requesting_district_name) : '');
 
-    mpr_$('mpr-body').innerHTML = [
+    // The reason of the last Return (budget_allocation.remarks), for everybody who opens a request that is back with someone:
+    // "Returned", "Returned to Section Chief", … Once it is endorsed again its status is no longer a returned one and the
+    // card is gone (the remarks stay in the database until the next Return replaces them).
+    const returnedCard = (r.remarks && /^returned/i.test(String(r.status_name || '').trim()))
+        ? `<div class="mpr-card mpr-card-returned"><h4 class="mpr-card-title">Returned — Remarks</h4><div class="mpr-desc">${mrq_esc(r.remarks)}</div></div>`
+        : '';
+    // The box a Return's remarks are typed in: only for the user who can decide this step (Process mode); empty each time.
+    const remarksCard = !canDecide ? '' : mpr_card('Remarks / Compliance Needed',
+        `<p class="mpr-hint">Required when returning${rv.return_actor ? ` — they go to the ${mrq_esc(rv.return_actor)}` : ' — they go to the requesting office'}. Not used when endorsing or approving.</p>` +
+        `<textarea id="mpr-remarks" class="mpr-desc-input" rows="3" maxlength="${MPR_REMARKS_MAX}" placeholder="e.g. missing supporting documents, wrong amount"></textarea>`);
+
+    const detailsHtml = [
+        returnedCard,
         mpr_card('Request',
             mpr_row_('Request Reference Number', mpr_chip(mrq_refOf(r))) +
             step +
@@ -366,11 +544,101 @@ function mpr_render(r) {
             : `<textarea id="mpr-desc-input" class="mpr-desc-input" rows="3" placeholder="No description.">${mrq_esc(r.description || '')}</textarea>`),
         mpr_card('Budget Allocation Lines', mpr_linesHtml(r.line_transaction)),
         mpr_card('Supporting Documents', mpr_docsHtml(r.file_attachments)),
+        remarksCard,
     ].join('');
+    // With a CAF the body holds two panels (Details, the default, and CAF) switched by the tab bar; without one it is the
+    // details alone, exactly as before.
+    mpr_$('mpr-body').innerHTML = mpr_cafs.length
+        ? `<div id="mpr-panel-details" role="tabpanel" aria-labelledby="mpr-tab-details">${detailsHtml}</div>` +
+          `<div id="mpr-panel-caf" role="tabpanel" aria-labelledby="mpr-tab-caf" hidden>${mpr_cafHtml(mpr_cafs, r)}</div>`
+        : detailsHtml;
+    mpr_renderTabs();
+    mpr_$('mpr-remarks')?.addEventListener('input', e => { e.target.classList.remove('is-invalid'); mpr_showErr(''); });
     mpr_setButtons(canDecide);
+
+    mpr_renderPrint();
+}
+
+/* ── Print ─────────────────────────────────────────────────── */
+// The footer's ONE Print button. What there is to print: the request's own form — CBA / RFA / LAA, by its allocation type
+// (the page's mrq_printAllocation()) — and, for an RFA, each of its CAFs (mrq_printCaf()). With one thing to print the button
+// prints it; with more (an RFA that has a CAF) it opens a small menu above it: "Print RFA", "Print CAF" — one "Print CAF n of N"
+// per CAF when there are several. Any other allocation type has no printed form: no button.
+function mpr_printEntries() {
+    if (!mpr_row) return [];
+    const type = String(mpr_row.allocation_type || '').toUpperCase();
+    if (!['CBA', 'RFA', 'LAA'].includes(type)) return [];
+    const entries = [{ label: `Print ${type}`, sub: '', run: () => mrq_printAllocation(mpr_row.allocation_id) }];
+    if (type === 'RFA') {
+        const many = mpr_cafs.length > 1;
+        mpr_cafs.forEach((c, i) => entries.push({
+            label: many ? `Print CAF ${i + 1} of ${mpr_cafs.length}` : 'Print CAF',
+            sub:   many ? mpr_fmtDate(c.created_at) : '',
+            run:   () => mrq_printCaf(c.id),
+        }));
+    }
+    return entries;
+}
+
+function mpr_hidePrint() {
+    mpr_closePrintMenu();
+    mpr_$('mpr-print-wrap').hidden = mpr_$('mpr-print').hidden = true;
+}
+
+function mpr_renderPrint() {
+    mpr_closePrintMenu();
+    const entries = mpr_printEntries();
+    const btn = mpr_$('mpr-print');
+    mpr_$('mpr-print-wrap').hidden = btn.hidden = entries.length === 0;
+    if (!entries.length) return;
+    const choose = entries.length > 1;
+    btn.textContent = choose ? 'Print' : entries[0].label;
+    btn.classList.toggle('has-menu', choose);
+    btn.setAttribute('aria-haspopup', choose ? 'menu' : 'false');
+    btn.title = choose ? 'Print this RFA or its CAF' : `Print this ${String(mpr_row.allocation_type).toUpperCase()}`;
+}
+
+// The menu's buttons exist only while it is open (so a closed menu leaves nothing for the Tab key to land on).
+function mpr_openPrintMenu() {
+    const entries = mpr_printEntries();
+    if (entries.length < 2) return;
+    const menu = mpr_$('mpr-print-menu');
+    menu.innerHTML = entries.map((en, i) =>
+        `<button type="button" class="mpr-print-item" role="menuitem" data-i="${i}">${mrq_esc(en.label)}${en.sub ? `<small>${mrq_esc(en.sub)}</small>` : ''}</button>`).join('');
+    menu.hidden = false;
+    mpr_$('mpr-print').setAttribute('aria-expanded', 'true');
+    menu.querySelector('.mpr-print-item').focus();
+}
+
+function mpr_closePrintMenu() {
+    const menu = mpr_$('mpr-print-menu');
+    menu.hidden = true;
+    menu.innerHTML = '';
+    mpr_$('mpr-print').setAttribute('aria-expanded', 'false');
 }
 
 /* ── Wiring ────────────────────────────────────────────────── */
+mpr_$('mpr-tabs').addEventListener('click', e => {
+    const tab = e.target.closest('.mpr-tab');
+    if (tab) mpr_showTab(tab.dataset.tab);
+});
+// Print: one thing to print -> print it; several (an RFA with a CAF) -> open / close the menu
+mpr_$('mpr-print').addEventListener('click', () => {
+    const entries = mpr_printEntries();
+    if (entries.length === 1) { entries[0].run(); return; }
+    if (mpr_$('mpr-print-menu').hidden) mpr_openPrintMenu(); else mpr_closePrintMenu();
+});
+// a choice in the menu: close it (focus back on Print) and print that
+mpr_$('mpr-print-menu').addEventListener('click', e => {
+    const item = e.target.closest('.mpr-print-item');
+    if (!item) return;
+    const entry = mpr_printEntries()[Number(item.dataset.i)];
+    mpr_closePrintMenu();
+    mpr_$('mpr-print').focus();
+    if (entry) entry.run();
+});
+// a click anywhere else in the modal closes an open menu
+mpr_$('mpr-overlay').addEventListener('click', e => { if (!e.target.closest('#mpr-print-wrap')) mpr_closePrintMenu(); });
 mpr_$('mpr-close').addEventListener('click', mpr_close);
 mpr_$('mpr-cancel').addEventListener('click', mpr_close);
 mpr_$('mpr-approve').addEventListener('click', () => mpr_decide('approve'));
@@ -379,6 +647,20 @@ mpr_$('mpr-return').addEventListener('click', () => mpr_decide('return'));
 mpr_$('mpr-overlay').addEventListener('mousedown', e => { if (e.target === mpr_$('mpr-overlay')) mpr_close(); });
 document.addEventListener('keydown', e => {
     if (!mpr_$('mpr-overlay').classList.contains('open')) return;
+    // The print preview (opened from the Print buttons) is on top of this modal: its Escape closes IT, and its Tab order is its
+    // own — not ours to close this modal with, or to pull the focus back into.
+    if (document.getElementById('prp-overlay')?.classList.contains('open')) return;
+    // An open Print menu is closed first (Escape), and is moved through with the arrow keys.
+    if (!mpr_$('mpr-print-menu').hidden) {
+        if (e.key === 'Escape') { e.preventDefault(); mpr_closePrintMenu(); mpr_$('mpr-print').focus(); return; }
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            e.preventDefault();
+            const items = [...mpr_$('mpr-print-menu').querySelectorAll('.mpr-print-item')];
+            const at = items.indexOf(document.activeElement);
+            items[(at + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length].focus();
+            return;
+        }
+    }
     if (e.key === 'Escape') { e.preventDefault(); mpr_close(); return; }
     if (e.key === 'Tab') {   // keep the focus inside the modal
         const els = [...mpr_$('mpr-overlay').querySelectorAll('button:not([hidden]):not([disabled]), a[href]')];

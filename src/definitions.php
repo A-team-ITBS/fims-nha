@@ -128,6 +128,10 @@ return [
     "JournalEntryVoucher" => \DI\create(JournalEntryVoucher::class),
     "ChangePass" => \DI\create(ChangePass::class),
     "CheckDisbursements" => \DI\create(CheckDisbursements::class),
+    "general_ledger_page" => \DI\create(GeneralLedgerPage::class),
+    "subsidiary_ledger_page" => \DI\create(SubsidiaryLedgerPage::class),
+    "journals_page" => \DI\create(JournalsPage::class),
+    "trial_balance_page" => \DI\create(TrialBalancePage::class),
     "budget_prop_page" => \DI\create(BudgetPropPage::class),
     "notification_reads" => \DI\create(NotificationReads::class),
     "saro_registry_page" => \DI\create(SaroRegistryPage::class),
@@ -138,6 +142,10 @@ return [
     "bank_management_page" => \DI\create(BankManagementPage::class),
     "property_record_page" => \DI\create(PropertyRecordPage::class),
     "vendors_page" => \DI\create(VendorsPage::class),
+    "fund_sourcing_dashboard_page" => \DI\create(FundSourcingDashboardPage::class),
+    "ftla_page" => \DI\create(FtlaPage::class),
+    "ledger_budget_allocation" => \DI\create(LedgerBudgetAllocation::class),
+    "cob_page" => \DI\create(CobPage::class),
 
     // User table
     "usertable" => \DI\get("users"),

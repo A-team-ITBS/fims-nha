@@ -26,6 +26,16 @@
  *                fims.budget_line_items.account_id (NOT NULL, FK to fims.chart_of_accounts) by Endorse, which sends
  *                account_id for every line; the server only writes the lines whose account actually changed.
  *
+ * Supporting Documents — under each Project's table, the documents the originating office attached to THAT Project
+ *                (fims.budget_req_project_attachment: an uploaded file or a pasted link, keyed by the Program and the project
+ *                code). They are read-only here, one line each: the name (a link that opens the document), File / Link, the date,
+ *                and "Open ↗". They are not part of
+ *                the list data (opening a file needs a freshly signed URL), so when the modal opens each Project asks for its own
+ *                (GET /budget_req_project_attachment/list?budget_req_program_id=…&project_code=…, all in parallel); the table
+ *                is usable straight away and each section says "Loading…" until its answer comes. A section whose request failed
+ *                says so and offers Retry. A link is only opened when it is a web address (http / https) — the server stores a
+ *                pasted link as typed, so anything else is shown as text, never as a clickable link.
+ *
  * (There used to be Program Sources and Program Uses columns — fims.budget_line_items.program_source_code / program_uses.
  * They were dropped, migration alter_table/22.)
  *
@@ -39,24 +49,31 @@
  *
  * Footer actions:
  *   Return  — needs REMARKS (the box above the footer; required): PUT /budget_req/return/{id} { remarks } sets
- *             the request's status to "Returned" and saves the remarks on fims.budget_req.remarks; the line
+ *             the request's status to "Returned" (back to the originating office — the Budget Officer is the first
+ *             step of the review chain) and saves the remarks on fims.budget_req.remarks; the line
  *             items are left untouched.
  *   Endorse — PUT /budget_req/endorse/{id}: Type of Fund and Component are REQUIRED on every line item of
  *             EVERY Project (Suggested Amount is optional); saves them, and the
  *             Account Code, to fims.budget_line_items and
- *             sets the request's status to "Endorsed" (one transaction). If something required is missing the
+ *             sets the request's status to "Endorsed" — now with the Budget Head (one transaction). If something required is missing the
  *             first such field is focused and its Project section is outlined in red. The remarks box is not used.
+ * The review is a step-by-step chain (BudgetReqService::REVIEW_STEPS): For Review -> Budget Officer (this modal) -> Endorsed
+ * -> Budget Head (budget-preview-readone.php) -> Approved. A request the Budget Head sent back ("Returned to Budget Officer")
+ * comes to this modal again, with the Head's remarks shown above the details; the Officer can endorse it again or return it.
+ * The list rows say whether this user may act (row.review.can_decide); the API enforces it again.
  * Status lives on the request header, so Return/Endorse apply to the whole request, and the modal shows every
  * Project of the request it is given.
  *
  * Trigger: bpr_openModal(requestContext, programs) — called from the list pages' "Budget Processing" row
  * action, where:
- *   requestContext = { budget_reference_number, fiscal_yr, status_name, status_color, rc_id, rc_code, rc_name, submitted_at }
- *                    (rc_* = the requesting office, submitted_at = when it was submitted; both from the list row)
+ *   requestContext = { budget_reference_number, fiscal_yr, status_name, status_color, rc_id, rc_code, rc_name, submitted_at, remarks, review }
+ *                    (rc_* = the requesting office, submitted_at = when it was submitted, remarks = the reason of the last Return,
+ *                    review = the row's review-chain info; all from the list row)
  *   programs       = ONE program or an ARRAY of them, each
  *                    { program_code, program_name, sub_program_code, sub_program_name, projects[] }
- *                    (each project has project_code, project_name, line_items[], straight from the list data)
- * The line items are NOT re-fetched; only the three option lists are (once, then cached).
+ *                    (each project has project_code, project_name, line_items[], straight from the list data; the program's
+ *                    budget_req_program_id is what a Project's Supporting Documents are looked up by)
+ * The line items are NOT re-fetched; only the three option lists are (once, then cached) and, per Project, its Supporting Documents.
  *
  * Included directly into budget-req-page.php / budget-prop-page.php (inside #bgr-root, so the .nha-root-scoped
  * modal styles apply). Depends on bgr_esc, bgr_escHtmlAttr, bgr_fmtMoney, bgr_fmtAmount, bgr_fmtAmountInitial,
@@ -125,6 +142,43 @@ $_bpr_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
 .nha-root .bpr-ro-amt { align-items: flex-end; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .nha-root .bpr-desc-sub { margin-top: 2px; font-size: 11.5px; color: var(--subtle); }
 
+/* ── Supporting Documents of a Project (under its table): one line per document ── */
+.nha-root .bpr-docs { margin-top: 14px; }
+.nha-root .bpr-docs-hd {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+    font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--sec);
+}
+.nha-root .bpr-docs-n {
+    min-width: 18px; padding: 1px 6px; border-radius: 10px; text-align: center; letter-spacing: 0;
+    font-size: 11px; color: var(--sec); background: var(--surf); border: 1px solid var(--bdr);
+}
+.nha-root .bpr-doc-list { margin: 0; padding: 0; list-style: none; border: 1px solid var(--bdr); border-radius: 10px; overflow: hidden; }
+.nha-root .bpr-doc { display: flex; align-items: center; gap: 10px; padding: 9px 12px; font-size: 13px; color: var(--txt); background: var(--afims-surface, #FFFFFF); }
+.nha-root .bpr-doc + .bpr-doc { border-top: 1px solid var(--bdr); }
+.nha-root .bpr-doc-ico { width: 16px; height: 16px; flex-shrink: 0; color: var(--subtle); }
+.nha-root .bpr-doc-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.nha-root a.bpr-doc-link { color: var(--afims-primary-text, #0035A9); text-decoration: none; }
+.nha-root a.bpr-doc-link:hover { text-decoration: underline; }
+.nha-root a.bpr-doc-link:focus-visible, .nha-root .bpr-doc-open:focus-visible { outline: 2px solid var(--afims-primary, #0035A9); outline-offset: 2px; border-radius: 3px; }
+.nha-root .bpr-doc-kind {
+    flex-shrink: 0; padding: 1px 7px; border-radius: 4px; font-size: 10.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+    color: var(--sec); background: var(--surf); border: 1px solid var(--bdr);
+}
+.nha-root .bpr-doc-date { flex-shrink: 0; font-size: 11.5px; color: var(--subtle); white-space: nowrap; }
+.nha-root .bpr-doc-open { flex-shrink: 0; font-size: 12px; font-weight: 600; white-space: nowrap; text-decoration: none; color: var(--afims-heading-fill, #000E3E); }
+.nha-root .bpr-doc-open:hover { text-decoration: underline; }
+.nha-root .bpr-doc-na { flex-shrink: 0; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-style: italic; color: var(--subtle); }
+.nha-root .bpr-docs-note {
+    padding: 10px 12px; font-size: 12.5px; font-style: italic; color: var(--subtle);
+    background: var(--surf); border: 1px dashed var(--bdr); border-radius: 10px;
+}
+.nha-root .bpr-docs-err { font-style: normal; color: var(--red-txt, #8F222D); background: var(--red-bg, #FAE1E3); border-color: transparent; }
+.nha-root .bpr-docs-retry {
+    margin-left: 6px; padding: 0; border: 0; background: none; cursor: pointer; font: inherit; font-weight: 700;
+    text-decoration: underline; color: inherit;
+}
+@media (max-width: 640px) { .nha-root .bpr-doc-date, .nha-root .bpr-doc-kind { display: none; } }
+
 /* Subtotal (the last row of each Project's table, under its Amount / Suggested Amount columns) */
 .nha-root .bpr-tbl tfoot td {
     padding: 11px 8px; font-size: 13.5px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap;
@@ -168,6 +222,13 @@ $_bpr_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
 }
 .nha-root .bpr-err[hidden] { display: none; }
 
+/* ── "Returned to Budget Officer": who sent it back and why (the Budget Head's remarks) ── */
+.nha-root .bpr-returned {
+    margin: 0 0 16px; padding: 10px 12px; font-size: 13px; border-radius: var(--rs, 7px);
+    background: #FFF8EB; color: #92400E; border: 1px solid #F59E0B; overflow-wrap: anywhere;
+}
+.nha-root .bpr-returned[hidden] { display: none; }
+
 /* ── Footer: Return (outlined) / Endorse (filled) ── */
 .nha-root .nha-modal-foot .nha-btn[disabled] { opacity: .6; cursor: not-allowed; }
 .nha-root .nha-modal-foot .bpr-btn-return {
@@ -206,6 +267,9 @@ $_bpr_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
             <button type="button" class="nha-modal-close" id="bpr-close" aria-label="Close">&times;</button>
         </div>
         <div class="nha-modal-body" id="bpr-body">
+
+            <!-- only on a request the Budget Head sent back: the Head's remarks -->
+            <div class="bpr-returned" id="bpr-returned" hidden></div>
 
             <!-- Originating Unit · Date Submitted · Programs · Projects -->
             <div class="bpr-meta" id="bpr-meta"></div>
@@ -248,6 +312,7 @@ const BPR_TYPE_OF_FUND_API  = '<?php echo $_bpr_api; ?>' + '/type_of_fund/all';
 const BPR_COMPONENT_API     = '<?php echo $_bpr_api; ?>' + '/component_type/all';
 const BPR_ACCOUNT_API      = '<?php echo $_bpr_api; ?>' + '/chart_of_accounts/all?postable_only=1&for_budget_proposal=1';   // the Account Code picker: the same list as the Budget Request form
 const BPR_BUDGET_REQ_API    = '<?php echo $_bpr_api; ?>' + '/budget_req';
+const BPR_ATTACHMENT_API    = '<?php echo $_bpr_api; ?>' + '/budget_req_project_attachment';   // a Project's Supporting Documents
 
 let BPR_FUNDS = null;       // [{ type_of_fund_id, name }]       — null until loaded
 let BPR_COMPONENTS = null;  // [{ component_type_id, name }]     — null until loaded
@@ -255,6 +320,7 @@ let BPR_ACCOUNTS = null;    // [{ account_id, account_code, account_title }] —
 
 let bpr_ctx = null;         // requestContext of the modal that is currently open
 let bpr_rowCount = 0;       // number of line-item rows rendered, across all blocks
+let bpr_renderSeq = 0;      // bumped by every render and every close: a Supporting Documents answer that arrives after that is dropped
 
 const $bpr = id => document.getElementById(id);
 
@@ -263,6 +329,12 @@ document.addEventListener('DOMContentLoaded', () => {
     $bpr('bpr-return')?.addEventListener('click', bpr_return);
     $bpr('bpr-endorse')?.addEventListener('click', bpr_endorse);
     bpr_pickInit();
+
+    // "Retry" in a Project's Supporting Documents section whose request failed
+    $bpr('bpr-blocks')?.addEventListener('click', e => {
+        const retry = e.target.closest('.bpr-docs-retry');
+        if (retry) bpr_loadDocsFor(retry.closest('.bpr-docs'), bpr_renderSeq);
+    });
 
     $bpr('bpr-body')?.addEventListener('input', e => {
         const el = e.target;
@@ -316,6 +388,13 @@ async function bpr_openModal(requestContext, programs) {
     bpr_ctx = requestContext;
     bpr_render(requestContext, programs);
     bpr_hideErr();
+
+    // A request the Budget Head sent back ("Returned to Budget Officer") shows the Head's remarks above the details.
+    const returnedBox = $bpr('bpr-returned');
+    returnedBox.hidden = !requestContext.review?.is_returned;
+    returnedBox.textContent = requestContext.review?.is_returned
+        ? 'Returned by the Budget Head' + (requestContext.remarks ? ' — ' + requestContext.remarks : '.')
+        : '';
     $bpr('bpr-remarks').value = '';
     $bpr('bpr-remarks').classList.remove('is-invalid');
     bpr_updateButtons(false);
@@ -324,6 +403,7 @@ async function bpr_openModal(requestContext, programs) {
 
 function bpr_closeModal() {
     bpr_pickClose();
+    bpr_renderSeq++;   // documents still on their way belong to a modal nobody is looking at
     $bpr('bpr-overlay').classList.remove('open');
 }
 
@@ -680,11 +760,94 @@ function bpr_codeNameHtml(code, name, bold) {
     return (code ? bpr_chip(code) + ' ' : '') + nameHtml;
 }
 
-// One Project section: its title line + its table. It is the unit that gets the red outline when something required is missing.
-function bpr_projectHtml(project, id) {
+/* ── Supporting Documents of a Project ───────────────────────────────── */
+const BPR_ICON_FILE = '<svg class="bpr-doc-ico" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>';
+const BPR_ICON_LINK = '<svg class="bpr-doc-ico" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M10 14a3.5 3.5 0 005 0l4-4a3.5 3.5 0 00-5-5l-.5.5M14 10a3.5 3.5 0 00-5 0l-4 4a3.5 3.5 0 005 5l.5-.5"/></svg>';
+
+// The section's frame. Its documents are looked up by the Program's id + the project code (that is how they are stored), so a
+// Project without either gets no section rather than a false "none attached".
+function bpr_docsHtml(program, project) {
+    const programId = program.budget_req_program_id;
+    if (programId === null || programId === undefined || programId === '' || !project.project_code) return '';
+    return `<div class="bpr-docs" data-program-id="${bgr_escHtmlAttr(programId)}" data-project-code="${bgr_escHtmlAttr(project.project_code)}">
+        <div class="bpr-docs-hd"><span>Supporting Documents</span><span class="bpr-docs-n" hidden></span></div>
+        <div class="bpr-docs-body"><div class="bpr-docs-note">Loading documents…</div></div>
+    </div>`;
+}
+
+// A pasted link is stored as typed (the server does not check what it is), so only a web address may become a clickable
+// link: a javascript: / data: / "file:" link is shown as text instead. '' = not openable.
+function bpr_safeUrl(url) {
+    const u = String(url ?? '').trim();
+    return /^https?:\/\/\S+$/i.test(u) ? u : '';
+}
+
+// One attachment: { attachment_id, document_name, storage_key, external_link, uploaded_at, view_url }.
+// view_url is a signed link for an uploaded file, the pasted link otherwise.
+function bpr_docRowHtml(a) {
+    const isFile = !!a.storage_key;
+    const name   = a.document_name || (isFile ? 'Document' : (a.external_link || 'Document'));
+    const url    = bpr_safeUrl(a.view_url || a.external_link);
+    const date   = bpr_fmtDate(a.uploaded_at);
+    const href   = bgr_escHtmlAttr(url);
+    // the name opens the document too (the same address as "Open ↗"); with no openable address it is plain text
+    const nameEl = url
+        ? `<a class="bpr-doc-name bpr-doc-link" href="${href}" target="_blank" rel="noopener noreferrer" title="${bgr_escHtmlAttr(name)}">${bgr_esc(name)}</a>`
+        : `<span class="bpr-doc-name" title="${bgr_escHtmlAttr(name)}">${bgr_esc(name)}</span>`;
+    const open   = url
+        ? `<a class="bpr-doc-open" href="${href}" target="_blank" rel="noopener noreferrer" aria-label="Open ${bgr_escHtmlAttr(name)}">Open ↗</a>`
+        : (isFile ? '<span class="bpr-doc-na">File unavailable</span>'
+                  : `<span class="bpr-doc-na" title="${bgr_escHtmlAttr(a.external_link || '')}">Not a web link: ${bgr_esc(a.external_link || '—')}</span>`);
+    return `<li class="bpr-doc">
+        ${isFile ? BPR_ICON_FILE : BPR_ICON_LINK}
+        ${nameEl}
+        <span class="bpr-doc-kind">${isFile ? 'File' : 'Link'}</span>
+        ${date ? `<span class="bpr-doc-date">${bgr_esc(date)}</span>` : ''}
+        ${open}
+    </li>`;
+}
+
+function bpr_fillDocs(box, docs) {
+    const count = box.querySelector('.bpr-docs-n');
+    count.textContent = docs.length;
+    count.hidden = docs.length === 0;
+    box.querySelector('.bpr-docs-body').innerHTML = docs.length
+        ? `<ul class="bpr-doc-list">${docs.map(bpr_docRowHtml).join('')}</ul>`
+        : '<div class="bpr-docs-note">No supporting documents were attached to this project.</div>';
+}
+
+// Asks for ONE Project's documents. `seq` is the render it was asked for: an answer that arrives after the modal was closed or
+// re-opened for another request (or after its section was replaced) is dropped.
+async function bpr_loadDocsFor(box, seq) {
+    if (!box) return;
+    const body  = box.querySelector('.bpr-docs-body');
+    const stale = () => seq !== bpr_renderSeq || !box.isConnected;
+    body.innerHTML = '<div class="bpr-docs-note">Loading documents…</div>';
+    try {
+        const params = new URLSearchParams({ budget_req_program_id: box.dataset.programId, project_code: box.dataset.projectCode });
+        const res    = await fetch(`${BPR_ATTACHMENT_API}/list?${params}`, { credentials: 'same-origin' });
+        const json   = await res.json().catch(() => null);
+        if (!res.ok || !json || !json.success) throw new Error((json && json.message) || 'HTTP ' + res.status);
+        if (stale()) return;
+        bpr_fillDocs(box, Array.isArray(json.data) ? json.data : []);
+    } catch (e) {
+        if (stale()) return;
+        body.innerHTML = `<div class="bpr-docs-note bpr-docs-err">Could not load the supporting documents — ${bgr_esc(e.message)}<button type="button" class="bpr-docs-retry">Retry</button></div>`;
+    }
+}
+
+// Every Project section of the freshly rendered modal, at once.
+function bpr_loadDocs(seq) {
+    document.querySelectorAll('#bpr-blocks .bpr-docs').forEach(box => { bpr_loadDocsFor(box, seq); });
+}
+
+// One Project section: its title line + its table + its Supporting Documents. The table is the part that gets the red outline
+// when something required is missing.
+function bpr_projectHtml(project, id, program) {
     return `<section class="bpr-block" data-block="${id}">
         <div class="bpr-proj"><span class="bpr-proj-k">Project</span> ${bpr_codeNameHtml(project.project_code, project.project_name)}</div>
         ${bpr_tableHtml(project)}
+        ${bpr_docsHtml(program, project)}
     </section>`;
 }
 
@@ -694,7 +857,7 @@ function bpr_programHtml(program, pi) {
     const row = (label, valueHtml) => `<div class="bpr-row"><span class="bpr-row-k">${label}</span><span class="bpr-row-v">${valueHtml}</span></div>`;
     const hasSub = program.sub_program_code || program.sub_program_name;
     const body = projects.length
-        ? projects.map((project, j) => bpr_projectHtml(project, `b${pi}_${j}`)).join('')
+        ? projects.map((project, j) => bpr_projectHtml(project, `b${pi}_${j}`, program)).join('')
         : '<div class="bpr-noproj">No projects yet.</div>';
 
     return `<section class="bpr-prog" data-prog="${pi}">
@@ -719,6 +882,7 @@ function bpr_render(requestContext, programArg) {
         : '<div class="bpr-noproj">No programs yet.</div>';
 
     bpr_updateTotals();   // the opening totals
+    bpr_loadDocs(++bpr_renderSeq);   // the Projects' Supporting Documents fill in as their answers arrive
 }
 
 /* ── Messages / buttons ──────────────────────────────────────── */
@@ -800,7 +964,7 @@ function bpr_collectItems() {
 async function bpr_endorse() {
     bpr_hideErr();
     if (!bpr_validate()) return;
-    if (!confirm(`Endorse budget request ${bpr_ctx.budget_reference_number}? The Type of Fund, Component, Account Code and Suggested Amount will be saved to its line items and its status will change to Endorsed.`)) return;
+    if (!confirm(`Endorse budget request ${bpr_ctx.budget_reference_number} to the Budget Head? The Type of Fund, Component, Account Code and Suggested Amount will be saved to its line items and its status will change to Endorsed.`)) return;
 
     await bpr_send('endorse', { items: bpr_collectItems() }, 'Failed to endorse the budget request.');
 }
@@ -816,7 +980,9 @@ async function bpr_return() {
         bpr_showErr('Remarks are required when returning a request — tell the requesting office what to fix.');
         return;
     }
-    if (!confirm(`Return budget request ${bpr_ctx.budget_reference_number} to the requesting office? Your remarks will be sent with it.`)) return;
+    // The Budget Officer's Return always reaches the originating office (review.return_actor is null for this step).
+    const returnTo = bpr_ctx.review?.return_actor ? `the ${bpr_ctx.review.return_actor}` : 'the originating office';
+    if (!confirm(`Return budget request ${bpr_ctx.budget_reference_number} to ${returnTo}? Your remarks will be sent with it.`)) return;
 
     await bpr_send('return', { remarks }, 'Failed to return the budget request.');
 }

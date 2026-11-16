@@ -1,6 +1,6 @@
 <?php
 // __BASE__/app/routes/check-processing.php
-// Backs app/pages/check-disbursement-voucher.php — see app/services/CheckProcessingService.php
+// Backs app/pages/check-disbursement-voucher-page.php — see app/services/CheckProcessingService.php
 // for the STUB IMPLEMENTATION note (treasury/accounting/shared/workflow/fmd schemas
 // don't exist in this project's database yet; every endpoint below returns an
 // empty-but-structurally-correct response until that migration happens).
@@ -19,7 +19,10 @@ $app->get("/check-processing/preparation/fund-sources", function ($request, $res
 
 $app->get("/check-processing/preparation/checks", function ($request, $response) {
     $service = new Service\CheckProcessingService();
-    return $response->withHeader('Content-Type', 'application/json')->write($service->getChecksList($request->getQueryParams()));
+    return $response
+        ->withHeader('Content-Type', 'application/json')
+        ->withHeader('Cache-Control', 'no-store, no-cache, must-revalidate')
+        ->write($service->getChecksList($request->getQueryParams()));
 });
 
 $app->get("/check-processing/preparation/dvs-for-prep", function ($request, $response) {
@@ -46,6 +49,27 @@ $app->get("/check-processing/preparation/check/{id}", function ($request, $respo
 $app->get("/check-processing/preparation/check/{id}/history", function ($request, $response, $args) {
     $service = new Service\CheckProcessingService();
     return $response->withHeader('Content-Type', 'application/json')->write($service->getCheckHistory($args['id']));
+});
+
+$app->post("/check-processing/preparation/check/{id}/mark-printed", function ($request, $response, $args) {
+    $service = new Service\CheckProcessingService();
+    return $response->withHeader('Content-Type', 'application/json')->write($service->markPrinted($args['id']));
+});
+
+$app->post("/check-processing/preparation/check/{id}/set-status", function ($request, $response, $args) {
+    $data = $request->getParsedBody();
+    $service = new Service\CheckProcessingService();
+    return $response->withHeader('Content-Type', 'application/json')->write($service->setCheckStatus($args['id'], $data));
+});
+
+// Streams the print-agent installer zip — not JSON, so this bypasses the
+// json-write convention the rest of this file uses.
+$app->get("/check-processing/print-agent-package", function ($request, $response) {
+    $service = new Service\CheckProcessingService();
+    $response->getBody()->write($service->generatePrintAgentPackage());
+    return $response
+        ->withHeader('Content-Type', 'application/zip')
+        ->withHeader('Content-Disposition', 'attachment; filename="fims-print-agent-setup.zip"');
 });
 
 $app->post("/check-processing/preparation/save", function ($request, $response) {
@@ -93,7 +117,38 @@ $app->get("/check-processing/registry/summary", function ($request, $response) {
     return $response->withHeader('Content-Type', 'application/json')->write($service->getRegistrySummary());
 });
 
-// ── Check Released to Claimants ──
+// ── Check Inventory / RAF ──
+$app->get("/check-processing/raf/summary", function ($request, $response) {
+    $service = new Service\CheckProcessingService();
+    return $response->withHeader('Content-Type', 'application/json')->write($service->getRafSummary());
+});
+
+$app->get("/check-processing/raf/years", function ($request, $response) {
+    $service = new Service\CheckProcessingService();
+    return $response->withHeader('Content-Type', 'application/json')->write($service->getRafYears());
+});
+
+$app->get("/check-processing/raf/list", function ($request, $response) {
+    $service = new Service\CheckProcessingService();
+    return $response->withHeader('Content-Type', 'application/json')->write($service->getRafList($request->getQueryParams()));
+});
+
+// Must stay registered after the static /registry/* routes above — FastRoute
+// errors ("shadowed by previously defined variable route") if a dynamic
+// route at the same path depth is registered before a static one.
+$app->get("/check-processing/registry/{id}", function ($request, $response, $args) {
+    $service = new Service\CheckProcessingService();
+    return $response->withHeader('Content-Type', 'application/json')->write($service->getRegistryEntry($args['id']));
+});
+
+// ── Check Released (unified — was two separate route families, /releases/*
+// for "Released to Claimants" and /region-release/* for "Released to
+// Regions/Departments"; see CheckProcessingService's docblock and "01 -
+// table/38 - fims_check_releases_unified.sql" for the merge). Every static
+// route below must stay registered before the dynamic GET/POST
+// /releases/{id}... routes further down — FastRoute errors ("shadowed by
+// previously defined variable route") if a dynamic route at the same path
+// depth is registered first. ──
 $app->get("/check-processing/releases", function ($request, $response) {
     $service = new Service\CheckProcessingService();
     return $response->withHeader('Content-Type', 'application/json')->write($service->getReleasesList($request->getQueryParams()));
@@ -109,9 +164,29 @@ $app->get("/check-processing/releases/email-log", function ($request, $response)
     return $response->withHeader('Content-Type', 'application/json')->write($service->getEmailLog($request->getQueryParams()));
 });
 
-$app->get("/check-processing/releases/{id}", function ($request, $response, $args) {
+$app->get("/check-processing/releases/departments", function ($request, $response) {
     $service = new Service\CheckProcessingService();
-    return $response->withHeader('Content-Type', 'application/json')->write($service->getRelease($args['id']));
+    return $response->withHeader('Content-Type', 'application/json')->write($service->getDepartments());
+});
+
+$app->get("/check-processing/releases/pending/{deptId}", function ($request, $response, $args) {
+    $service = new Service\CheckProcessingService();
+    return $response->withHeader('Content-Type', 'application/json')->write($service->getPendingReleases($args['deptId']));
+});
+
+$app->get("/check-processing/releases/acknowledgment-list", function ($request, $response) {
+    $service = new Service\CheckProcessingService();
+    return $response->withHeader('Content-Type', 'application/json')->write($service->getAcknowledgmentList($request->getQueryParams()));
+});
+
+$app->get("/check-processing/releases/dv-monitoring", function ($request, $response) {
+    $service = new Service\CheckProcessingService();
+    return $response->withHeader('Content-Type', 'application/json')->write($service->getDvReturnMonitoring($request->getQueryParams()));
+});
+
+$app->get("/check-processing/releases/bulk-preview-notice", function ($request, $response) {
+    $service = new Service\CheckProcessingService();
+    return $response->withHeader('Content-Type', 'application/json')->write($service->previewBulkReleaseNotice($request->getQueryParams()));
 });
 
 $app->post("/check-processing/releases/save", function ($request, $response) {
@@ -120,9 +195,36 @@ $app->post("/check-processing/releases/save", function ($request, $response) {
     return $response->withHeader('Content-Type', 'application/json')->write($service->saveRelease($data));
 });
 
+$app->post("/check-processing/releases/bulk-send-notice", function ($request, $response) {
+    $data = $request->getParsedBody();
+    $service = new Service\CheckProcessingService();
+    return $response->withHeader('Content-Type', 'application/json')->write($service->sendBulkReleaseNotice($data));
+});
+
+$app->post("/check-processing/releases/bulk-resend-email/{logId}", function ($request, $response, $args) {
+    $service = new Service\CheckProcessingService();
+    return $response->withHeader('Content-Type', 'application/json')->write($service->resendBulkReleaseEmail($args['logId']));
+});
+
+$app->post("/check-processing/releases/save-drive-link", function ($request, $response) {
+    $data = $request->getParsedBody();
+    $service = new Service\CheckProcessingService();
+    return $response->withHeader('Content-Type', 'application/json')->write($service->saveDriveLink($data));
+});
+
+$app->get("/check-processing/releases/{id}", function ($request, $response, $args) {
+    $service = new Service\CheckProcessingService();
+    return $response->withHeader('Content-Type', 'application/json')->write($service->getRelease($args['id']));
+});
+
 $app->get("/check-processing/releases/{id}/preview-notice", function ($request, $response, $args) {
     $service = new Service\CheckProcessingService();
     return $response->withHeader('Content-Type', 'application/json')->write($service->previewReleaseNotice($args['id'], $request->getQueryParams()));
+});
+
+$app->get("/check-processing/releases/{id}/documents", function ($request, $response, $args) {
+    $service = new Service\CheckProcessingService();
+    return $response->withHeader('Content-Type', 'application/json')->write($service->getReleaseDocuments($args['id']));
 });
 
 $app->post("/check-processing/releases/{id}/send-notice", function ($request, $response, $args) {
@@ -137,6 +239,12 @@ $app->post("/check-processing/releases/{id}/follow-up", function ($request, $res
     return $response->withHeader('Content-Type', 'application/json')->write($service->saveReleaseFollowUp($args['id'], $data));
 });
 
+$app->post("/check-processing/releases/{id}/set-claimant", function ($request, $response, $args) {
+    $data = $request->getParsedBody();
+    $service = new Service\CheckProcessingService();
+    return $response->withHeader('Content-Type', 'application/json')->write($service->setReleaseClaimant($args['id'], $data));
+});
+
 $app->post("/check-processing/releases/{id}/acknowledge", function ($request, $response, $args) {
     $data = $request->getParsedBody();
     $service = new Service\CheckProcessingService();
@@ -149,6 +257,18 @@ $app->post("/check-processing/releases/{id}/update-status", function ($request, 
     return $response->withHeader('Content-Type', 'application/json')->write($service->updateReleaseStatus($args['id'], $data));
 });
 
+$app->post("/check-processing/releases/{id}/mark-stale", function ($request, $response, $args) {
+    $data = $request->getParsedBody();
+    $service = new Service\CheckProcessingService();
+    return $response->withHeader('Content-Type', 'application/json')->write($service->markReleaseStale($args['id'], $data));
+});
+
+$app->post("/check-processing/releases/{id}/record-dv-return", function ($request, $response, $args) {
+    $data = $request->getParsedBody();
+    $service = new Service\CheckProcessingService();
+    return $response->withHeader('Content-Type', 'application/json')->write($service->recordDvReturn($args['id'], $data));
+});
+
 $app->get("/check-processing/checks/lookup", function ($request, $response) {
     $service = new Service\CheckProcessingService();
     return $response->withHeader('Content-Type', 'application/json')->write($service->lookupChecks($request->getQueryParams()));
@@ -157,86 +277,6 @@ $app->get("/check-processing/checks/lookup", function ($request, $response) {
 $app->get("/check-processing/checks/{id}/department-emails", function ($request, $response, $args) {
     $service = new Service\CheckProcessingService();
     return $response->withHeader('Content-Type', 'application/json')->write($service->getCheckDepartmentEmails($args['id']));
-});
-
-// ── Check Released to Regions/Departments ──
-$app->get("/check-processing/region-release/list", function ($request, $response) {
-    $service = new Service\CheckProcessingService();
-    return $response->withHeader('Content-Type', 'application/json')->write($service->getRegionReleasesList($request->getQueryParams()));
-});
-
-$app->get("/check-processing/region-release/acknowledgment-list", function ($request, $response) {
-    $service = new Service\CheckProcessingService();
-    return $response->withHeader('Content-Type', 'application/json')->write($service->getRegionAcknowledgmentList($request->getQueryParams()));
-});
-
-$app->get("/check-processing/region-release/email-log", function ($request, $response) {
-    $service = new Service\CheckProcessingService();
-    return $response->withHeader('Content-Type', 'application/json')->write($service->getRegionEmailLog($request->getQueryParams()));
-});
-
-$app->get("/check-processing/region-release/dv-monitoring", function ($request, $response) {
-    $service = new Service\CheckProcessingService();
-    return $response->withHeader('Content-Type', 'application/json')->write($service->getRegionDvMonitoring($request->getQueryParams()));
-});
-
-// Must stay registered before the GET /region-release/{id} catch-all below —
-// FastRoute errors ("shadowed by previously defined variable route") if a
-// static route at the same path depth is registered after a dynamic one.
-$app->get("/check-processing/region-release/preview-notice", function ($request, $response) {
-    $service = new Service\CheckProcessingService();
-    return $response->withHeader('Content-Type', 'application/json')->write($service->previewRegionReleaseNotice($request->getQueryParams()));
-});
-
-$app->get("/check-processing/region-release/{id}", function ($request, $response, $args) {
-    $service = new Service\CheckProcessingService();
-    return $response->withHeader('Content-Type', 'application/json')->write($service->getRegionRelease($args['id']));
-});
-
-$app->post("/check-processing/region-release/{id}/mark-stale", function ($request, $response, $args) {
-    $data = $request->getParsedBody();
-    $service = new Service\CheckProcessingService();
-    return $response->withHeader('Content-Type', 'application/json')->write($service->markRegionReleaseStale($args['id'], $data));
-});
-
-$app->get("/check-processing/region-release/{id}/documents", function ($request, $response, $args) {
-    $service = new Service\CheckProcessingService();
-    return $response->withHeader('Content-Type', 'application/json')->write($service->getRegionReleaseDocuments($args['id']));
-});
-
-$app->post("/check-processing/region-release/save", function ($request, $response) {
-    $data = $request->getParsedBody();
-    $service = new Service\CheckProcessingService();
-    return $response->withHeader('Content-Type', 'application/json')->write($service->saveRegionRelease($data));
-});
-
-$app->post("/check-processing/region-release/{id}/acknowledge", function ($request, $response, $args) {
-    $data = $request->getParsedBody();
-    $service = new Service\CheckProcessingService();
-    return $response->withHeader('Content-Type', 'application/json')->write($service->acknowledgeRegionRelease($args['id'], $data));
-});
-
-$app->post("/check-processing/region-release/{id}/record-dv-return", function ($request, $response, $args) {
-    $data = $request->getParsedBody();
-    $service = new Service\CheckProcessingService();
-    return $response->withHeader('Content-Type', 'application/json')->write($service->recordRegionDvReturn($args['id'], $data));
-});
-
-$app->post("/check-processing/region-release/send-notice", function ($request, $response) {
-    $data = $request->getParsedBody();
-    $service = new Service\CheckProcessingService();
-    return $response->withHeader('Content-Type', 'application/json')->write($service->sendRegionReleaseNotice($data));
-});
-
-$app->post("/check-processing/region-release/resend-email/{logId}", function ($request, $response, $args) {
-    $service = new Service\CheckProcessingService();
-    return $response->withHeader('Content-Type', 'application/json')->write($service->resendRegionEmail($args['logId']));
-});
-
-$app->post("/check-processing/region-release/save-drive-link", function ($request, $response) {
-    $data = $request->getParsedBody();
-    $service = new Service\CheckProcessingService();
-    return $response->withHeader('Content-Type', 'application/json')->write($service->saveRegionDriveLink($data));
 });
 
 // ── Check Cancellation & Replacements ──

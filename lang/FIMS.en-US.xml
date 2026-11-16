@@ -1,4 +1,4 @@
-<ew-language date="2026/11/12" id="en-US" author="e.World Technology Limited">
+<ew-language date="2026/11/16" id="en-US" author="e.World Technology Limited">
   <project>
     <phrase id="bodytitle" value="UAC - User Access Control System" />
     <phrase id="footertext" value="&amp;copy;2024 ITBS Corporation. All rights reserved." />
@@ -22,6 +22,9 @@
     </menu>
     <menu id="85">
       <phrase id="menutext" value="Budget Revision" />
+    </menu>
+    <menu id="399">
+      <phrase id="menutext" value="Ledger of Budget Allocation" />
     </menu>
     <menu id="147">
       <phrase id="menutext" value="Programs &amp; Projects " />
@@ -68,14 +71,41 @@
     <menu id="260">
       <phrase id="menutext" value="Check Disbursements" />
     </menu>
+    <menu id="394">
+      <phrase id="menutext" value="Ledgers" />
+    </menu>
+    <menu id="393">
+      <phrase id="menutext" value="General Ledger" />
+    </menu>
+    <menu id="395">
+      <phrase id="menutext" value="Subsidiary Ledger" />
+    </menu>
+    <menu id="396">
+      <phrase id="menutext" value="Journals" />
+    </menu>
+    <menu id="397">
+      <phrase id="menutext" value="Trial Balance" />
+    </menu>
+    <menu id="480">
+      <phrase id="menutext" value="Monitoring" />
+    </menu>
+    <menu id="400">
+      <phrase id="menutext" value="COB" />
+    </menu>
     <menu id="332">
       <phrase id="menutext" value="Bank Management Page" />
+    </menu>
+    <menu id="398">
+      <phrase id="menutext" value="Fund Transfer Letter of Advice" />
     </menu>
     <menu id="331">
       <phrase id="menutext" value="Cash Position" />
     </menu>
     <menu id="330">
       <phrase id="menutext" value="Fund Sourcing" />
+    </menu>
+    <menu id="392">
+      <phrase id="menutext" value="Fund Sourcing Dashboard" />
     </menu>
     <menu id="263">
       <phrase id="menutext" value="SARO Registry" />
@@ -1583,6 +1613,18 @@
     <table id="checkdisbursements">
       <phrase id="tblcaption" value="Check Disbursements" />
     </table>
+    <table id="general_ledger_page">
+      <phrase id="tblcaption" value="General Ledger" />
+    </table>
+    <table id="subsidiary_ledger_page">
+      <phrase id="tblcaption" value="Subsidiary Ledger" />
+    </table>
+    <table id="journals_page">
+      <phrase id="tblcaption" value="Journals" />
+    </table>
+    <table id="trial_balance_page">
+      <phrase id="tblcaption" value="Trial Balance" />
+    </table>
     <table id="budget_prop_page">
       <phrase id="tblcaption" value="Budget Propose" />
     </table>
@@ -1621,6 +1663,18 @@
     </table>
     <table id="vendors_page">
       <phrase id="tblcaption" value="Vendors" />
+    </table>
+    <table id="fund_sourcing_dashboard_page">
+      <phrase id="tblcaption" value="Fund Sourcing Dashboard" />
+    </table>
+    <table id="ftla_page">
+      <phrase id="tblcaption" value="Fund Transfer Letter of Advice" />
+    </table>
+    <table id="ledger_budget_allocation">
+      <phrase id="tblcaption" value="Ledger of Budget Allocation" />
+    </table>
+    <table id="cob_page">
+      <phrase id="tblcaption" value="COB" />
     </table>
   </project>
 </ew-language>
