@@ -103,6 +103,20 @@ $_sr_api = Config('API.FIMS_URL');
     #sr-root .nha-menu-divider { border-top: 1px solid var(--afims-border, #E4ECF2); margin: 3px 0; }
     #sr-root .nha-menu-item.danger { color: var(--afims-danger, #DC3545); }
     #sr-root .nha-menu-item.danger:hover, #sr-root .nha-menu-item.danger:focus-visible { background: var(--afims-danger-soft, #FAE1E3); color: var(--afims-danger, #DC3545); }
+    /* Dark mode (SARO and NCA tabs share this menu): hover/focus text was the navy fill colour (navy on dark), the trigger was
+       dim, and Delete's hover was a light-pink block */
+    html.afims-dark[data-bs-theme="dark"] #sr-root .nha-menu-trigger { color: #FFFFFF; background: #3861BC; border-color: #3861BC; }
+    html.afims-dark[data-bs-theme="dark"] #sr-root .nha-menu-trigger:hover,
+    html.afims-dark[data-bs-theme="dark"] #sr-root .nha-menu-trigger[aria-expanded="true"] { background: #2E59B8; border-color: #2E59B8; }
+    html.afims-dark[data-bs-theme="dark"] #sr-root .nha-tools-dropdown { background: var(--afims-surface, #1A1F38); border-color: var(--afims-border-strong, #4A5270); box-shadow: 0 8px 24px rgba(0,0,0,.45); }
+    html.afims-dark[data-bs-theme="dark"] #sr-root .nha-menu-item { color: var(--afims-text, #E4ECF2); }
+    html.afims-dark[data-bs-theme="dark"] #sr-root .nha-menu-item svg { opacity: .85; }
+    html.afims-dark[data-bs-theme="dark"] #sr-root .nha-menu-item:hover,
+    html.afims-dark[data-bs-theme="dark"] #sr-root .nha-menu-item:focus-visible { color: #FFFFFF; background: var(--afims-primary-soft, #0F2456); }
+    html.afims-dark[data-bs-theme="dark"] #sr-root .nha-menu-item.danger { color: #F87171; }
+    html.afims-dark[data-bs-theme="dark"] #sr-root .nha-menu-item.danger:hover,
+    html.afims-dark[data-bs-theme="dark"] #sr-root .nha-menu-item.danger:focus-visible { color: #FCA5A5; background: rgba(220,53,69,.18); }
+    html.afims-dark[data-bs-theme="dark"] #sr-root .nha-menu-divider { border-top-color: var(--afims-border-strong, #4A5270); }
     #sr-root .sr-tbl .sr-parent > td.sr-menu-open, #sr-root .sr-tbl .sr-child > td.sr-menu-open { z-index: 30; }
 
     /* parent: the STRONG row — bolder type; opened, a deeper blue band, a blue left rail and a stem down to its NCAs */

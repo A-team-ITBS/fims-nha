@@ -64,11 +64,11 @@ use PHPMaker2024\FIMS as App;
 class GlobalService
 {
     /**
-     * Builds the next program code: a plain 3-digit sequence, starting at "100", then "101", "102", …
+     * Builds the next program code: a plain 3-digit sequence, starting at "101", then "102", "103", …
      *
      * It is the highest existing fims.program.program_code that is exactly 3 digits, plus one. Codes in
      * any other shape (e.g. "PROG-001", or older "2026-35-074-…-001" codes) are ignored, and the
-     * sequence never starts below 100.
+     * sequence never starts below 101.
      *
      * $userId and $year are no longer used (the code has no RC or year part); the parameters stay only
      * so existing callers (ProgramService::create, GET /program/next-code) keep working.
@@ -80,7 +80,7 @@ class GlobalService
      */
     public static function generateProgramCode(?int $userId = null, ?int $year = null): string
     {
-        $last = max(99, (int) App\ExecuteScalar(
+        $last = max(100, (int) App\ExecuteScalar(
             "SELECT COALESCE(MAX(CAST(program_code AS INTEGER)), 0) FROM fims.program WHERE program_code ~ '^[0-9]{3}$'",
             'DB'
         ));
