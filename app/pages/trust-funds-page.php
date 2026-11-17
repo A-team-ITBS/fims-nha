@@ -626,7 +626,7 @@ function tfl_remarksCell(v) {
 }
 
 const tfl_refLink = r =>
-    `<a href="#" class="nha-tbl-link nha-mono tfl-ref" onclick="event.preventDefault();event.stopPropagation();tfl_view(${Number(r.id)})">${tfl_esc(r.reference_number || '—')}</a>`;
+    `<a href="#" class="nha-tbl-link nha-mono tfl-ref" onclick="event.preventDefault();event.stopPropagation();tfl_view(${Number(r.id)})">${tfl_esc(r.saro_id || '—')}</a>`;
 
 /* ── Rows ────────────────────────────────────────────────────── */
 const TFL_CARET = '<span class="tfl-caret__CLS__" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg></span>';
@@ -738,8 +738,8 @@ function tfl_childRow(c, isLast) {
 function tfl_trustFundCell(r) {
     const tf = tfl_parentOf(r);
     if (!tf) return '<span class="tfl-tag tfl-tag-none" title="This OR has no parent Trust Fund">No Trust Fund</span>';
-    const ref = tf.reference_number || tf.name || '—';
-    const sub = tf.name && tf.name !== ref ? `<div class="tfl-tf-name">${tfl_esc(tf.name)}</div>` : '';
+    const ref = tf.saro_id || tf.description || '—';
+    const sub = tf.description && tf.description !== ref ? `<div class="tfl-tf-name">${tfl_esc(tf.description)}</div>` : '';
     return `<a href="#" class="nha-tbl-link nha-mono" onclick="event.preventDefault();event.stopPropagation();tfl_view(${Number(tf.id)})">${tfl_esc(ref)}</a>${sub}`;
 }
 
@@ -942,7 +942,7 @@ async function tfl_view(id) {
         const agency = d.agency?.name || d.agency_name;
 
         // title: "Reference No. <ref>" and the record type as a badge
-        $tfl('tfl-view-title').innerHTML = `Reference No. <span class="tflv-ref">${tfl_esc(d.reference_number || '#' + d.id)}</span>`
+        $tfl('tfl-view-title').innerHTML = `Reference No. <span class="tflv-ref">${tfl_esc(d.saro_id || '#' + d.id)}</span>`
             + `<span class="tflv-badge nha-bdg nha-bdg-navy">${type === TFL_OR ? 'OR' : 'TRUST FUND'}</span>`;
 
         let html = `<div class="tflv-stats">${tfl_vstat('Amount', d.amount)}${ors.length ? tfl_vstat('OR Total', tfl_sum(ors)) : ''}</div>`;
@@ -953,7 +953,7 @@ async function tfl_view(id) {
         ];
         if (type === TFL_OR) {
             classification.push(tfl_vrow('Trust Fund', parent
-                ? `<a href="#" class="nha-tbl-link nha-mono" onclick="event.preventDefault();tfl_view(${Number(parent.id)})">${tfl_esc(parent.reference_number || '#' + parent.id)}</a>`
+                ? `<a href="#" class="nha-tbl-link nha-mono" onclick="event.preventDefault();tfl_view(${Number(parent.id)})">${tfl_esc(parent.saro_id || '#' + parent.id)}</a>`
                 : '<span class="tflv-muted">None — this OR has no parent Trust Fund</span>'));
         }
         html += tfl_vsec('Classification', `<div class="tflv-info">${classification.join('')}</div>`);
@@ -962,7 +962,7 @@ async function tfl_view(id) {
             tfl_vrow('Agency / LGU', has(agency) ? tfl_esc(agency) : tfl_dash),
             tfl_vrow(type === TFL_OR ? 'Date' : 'Date of SARO', has(d.date) ? tfl_esc(tfl_fmtDate(d.date)) : tfl_dash),
         ];
-        if (has(d.name)) info.unshift(tfl_vrow('Name / Title', tfl_esc(d.name)));
+        if (has(d.description)) info.unshift(tfl_vrow('Name / Title', tfl_esc(d.description)));
         if (has(d.bank_account_no)) info.push(tfl_vrow('Bank Account No.', tfl_esc(d.bank_account_no)));
         if (has(d.remarks)) info.push(tfl_vrow('Remarks', tfl_esc(d.remarks)));
         html += tfl_vsec('Fund Information', `<div class="tflv-info">${info.join('')}</div>`);
@@ -970,7 +970,7 @@ async function tfl_view(id) {
         // the ORs recorded against this Trust Fund
         if (ors.length) {
             const rows = ors.map(c => `<tr>
-                <td><a href="#" class="nha-tbl-link nha-mono" onclick="event.preventDefault();tfl_view(${Number(c.id)})">${tfl_esc(c.reference_number || '#' + c.id)}</a></td>
+                <td><a href="#" class="nha-tbl-link nha-mono" onclick="event.preventDefault();tfl_view(${Number(c.id)})">${tfl_esc(c.saro_id || '#' + c.id)}</a></td>
                 <td>${c.fiscal_year ? 'FY ' + tfl_esc(c.fiscal_year) : tfl_dash}</td>
                 <td class="r">${tfl_esc(tfl_peso(c.amount))}</td>
                 <td style="white-space:nowrap;">${tfl_esc(tfl_fmtDate(c.date))}</td>
@@ -1047,7 +1047,7 @@ function tfl_newPick(kind) {
 async function tfl_delete(id) {
     id = Number(id);
     const rec = tfl_findRecord(id);
-    const ref = (rec && rec.reference_number) || '#' + id;
+    const ref = (rec && rec.saro_id) || '#' + id;
     if (!confirm(`Delete trust fund ${ref}? This cannot be undone.`)) return;
 
     window.PagePreloader?.show();
@@ -1088,10 +1088,10 @@ function tfl_exportRows(records, tab) {
         const tf = tfl_parentOf(r);
         return [
             r.agency?.name || r.agency_name || '',
-            r.reference_number || '',
+            r.saro_id || '',
             tab === TFL_OR
-                ? (tf ? (tf.reference_number || tf.name || '') : '')                                   // the Trust Fund this OR belongs to
-                : tfl_orsOf(r).map(c => c.reference_number).filter(Boolean).join(', '),               // the ORs under this Trust Fund
+                ? (tf ? (tf.saro_id || tf.description || '') : '')                                   // the Trust Fund this OR belongs to
+                : tfl_orsOf(r).map(c => c.saro_id).filter(Boolean).join(', '),               // the ORs under this Trust Fund
             parseFloat(r.amount) || 0,
             r.date ? tfl_fmtDate(r.date) : '',
             r.remarks || '',

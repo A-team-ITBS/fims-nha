@@ -36,20 +36,21 @@ Every row, group and total is the SUM of these per line item (`CobService::lineA
 |---|---|---|
 | **Approved Amount** | What FMD suggested in the Budget Proposal module | `budget_line_items.suggested_amount`, as it stands |
 | **Revision / Realignment** | Net of the approved Budget Revisions (an increase, or a decrease in brackets) | `budget_line_items.adjustment` |
-| **Revised Amount** | The revised amount recorded on the line item. A plain column the application maintains: it is **not** worked out from the two columns before it | `budget_line_items.revised_amount` (added by migration `43 - budget_line_items_add_revised_amount`). Approving a Budget Revision writes it on each line it touches: the line's new current amount, `proposed_amount + adjustment`. A line no revision has touched keeps `0` |
+| **Revised Amount** | Approved Amount − Revision / Realignment. Worked out per line, so a line no revision has touched shows its Approved Amount | `suggested_amount − adjustment`. The stored `budget_line_items.revised_amount` column (written only when a Budget Revision is approved, `0` otherwise) is no longer read by the COB |
 | **CBA Requested** | What approved CBAs (and CFAs) took off the budget | earmark rows of CBA / CFA allocations: `original_amount`, only those that did take it off (`balance_applied`) and are not released |
 | **Available for Earmarking** | Revised Amount − CBA Requested: what a new CBA can still draw | `revised_amount − CBA Requested` |
 | **RFA Approved** | Drawn from the CBAs by approved RFAs | the `converted` earmark rows of RFA allocations |
 | **LAA Issued** | Drawn from the CBAs by issued LAAs | the `converted` earmark rows of LAA allocations |
 | **Remaining Balance** | Revised Amount − RFA Approved − LAA Issued | A CBA only *reserves* money; an RFA / LAA actually uses it, so only they reduce what remains |
 
-Available and Remaining are worked from Revised Amount, so two identities hold on every row, group and total (the tests check them on every node):
-`Revised − CBA = Available` and `Revised − RFA − LAA = Remaining`. `Approved + Revision = Revised` is **not** guaranteed: Revised Amount is its own column, so it only equals that sum while whatever maintains it keeps it so.
+Revised, Available and Remaining are all worked out, so three identities hold on every row, group and total:
+`Approved − Revision = Revised`, `Revised − CBA = Available` and `Revised − RFA − LAA = Remaining`.
 
-> **Revised Amount is only written when a Budget Revision is approved.** `budget_line_items.revised_amount` is `NOT NULL DEFAULT 0` and carries no formula or trigger; the COB just reads it, and
-> `BudgetRevisionService::approve()` is the one place that writes it (in the same statement that moves `adjustment` / `suggested_amount`): the From line gets To Amount, the To line of a
-> realignment gets its new current amount. So a line that has never been revised still shows `0`, and so do Available for Earmarking and Remaining Balance (they start from it) until the
-> column is filled in. A one-off backfill that matches what approval writes would be `UPDATE fims.budget_line_items SET revised_amount = proposed_amount + adjustment;` — not run by the migration.
+> **Revised Amount is worked out, not read.** It used to be the stored `budget_line_items.revised_amount` column, which only a Budget Revision approval writes (`0` for every other line, so those
+> lines showed `0` Revised, Available and Remaining). The COB now computes `suggested_amount − adjustment` per line, so an untouched line shows its Approved Amount. Keep in mind that
+> `suggested_amount` is also the line's live balance — an approved revision moves it by the same amount as `adjustment`, and approved CBAs take theirs off it — so on a line that has
+> been revised or has CBAs the Approved Amount already includes those movements, and `Approved − Revision` is the sheet's formula, not a rebuild of the line's current amount
+> (`proposed_amount + adjustment`, which the RFA / LAA Monitoring page uses).
 >
 > **`suggested_amount` is also the line's live balance.** An approved CBA/CFA takes its amount off `suggested_amount`, and an approved Budget Revision moves it by the same delta as
 > `adjustment`, so Approved Amount on a line that already has a CBA or a revision is what is left, not what was first suggested. If the sheet should show the amount as first suggested
@@ -60,6 +61,29 @@ Rules worth knowing:
 - A CBA approved **before** "charge the line on approval" (`balance_applied = FALSE`) never reduced the line, so it is not in CBA Requested either — which keeps `Available = Revised − CBA` true.
 - A CBA fully drawn by RFAs / LAAs still shows its original amount in CBA Requested (`original_amount`; the row's `amount` shrinks as it is drawn).
 - Carry Over Obligation, Obligation and Disbursement are **not** part of the COB table any more: nothing writes `disbursement`, and `account_payable` is only filled by CBA / CFA approvals — it was a CBA figure under another name.
+
+### Five more figures — for the RFA / LAA Monitoring page
+
+`CobService` also sends five figures per row, group and total (`AMOUNT_KEYS` goes on after the eight) for `rfa-laa-monitoring-page.php`, whose columns are
+Revised Amount · RFA / LAA Amount · Disbursement · Unallocated Amount · Account Payable. The COB page, its View modal and its report name the keys they show,
+so they are unaffected.
+
+| Key | Per budget line |
+|---|---|
+| `revised_computed` | `proposed_amount + adjustment` — the proposed amount net of the approved revisions / realignments (the adjustment is signed, so a decrease lowers it). **This page's Revised Amount**: worked out per line — a different formula from the COB page's `approved − revision` |
+| `rfa_laa_amount` | `rfa_approved + laa_issued` |
+| `disbursement` | `budget_line_items.disbursement`, as recorded |
+| `unallocated_amount` | `revised_computed − rfa_approved − laa_issued` |
+| `account_payable` | `rfa_laa_amount − disbursement` — what the RFAs / LAAs have drawn that has not been disbursed yet. Worked out per line; the stored `budget_line_items.account_payable` column is not used |
+
+Caveat: as noted above, nothing writes `disbursement` yet (it is 0 on every line), so on this page Disbursement shows dashes and Account Payable equals the
+RFA / LAA Amount until something real feeds Disbursement.
+
+**Under a project** (RFA / LAA Monitoring page only — `GET /cob/rollup?...&with_allocations=1`): the project row opens onto the RFAs and LAAs that drew against
+its budget lines — one row each, `RFA / LAA Amount` being the sum of that allocation's 'converted' earmark rows on the project's lines — and an RFA row opens onto
+its disbursement voucher (`budget_allocation.dv_id`; `Disbursement` = the voucher's `net_amount`, with its status, date and claimant). Only RFAs are linked to a
+voucher, so an LAA row has nothing to open; a voucher that was cancelled or rejected is no longer connected and is left out. These rows are detail: they are added
+after the totals, so no figure above them changes. If they cannot be read the tree is returned without them and the page says so.
 
 ## The page
 

@@ -1049,14 +1049,15 @@ function vf_syncAutoJevLines() {
     const dedIds = new Set();
     let dedCreditTotal = 0;
     $vf('vf-ded-container').querySelectorAll('.vf-ded-row').forEach(row => {
-        const idx    = row.id.replace('vf-ded-row-', '');
-        const typeId = row.dataset.typeId;
-        const amount = vf_numVal(row.querySelector('.vf-ded-amount').value);
-        const type   = vf_dedTypes.find(t => String(t.deduction_type_id) === String(typeId));
-        if (!typeId || !type?.account_code || amount <= 0) return;
+        const idx       = row.id.replace('vf-ded-row-', '');
+        const typeId    = row.dataset.typeId;
+        const amount    = vf_numVal(row.querySelector('.vf-ded-amount').value);
+        const type      = vf_dedTypes.find(t => String(t.deduction_type_id) === String(typeId));
+        const acctCode  = type?.account_code || row.querySelector('.vf-ded-acct')?.value.trim() || '';
+        if (!typeId || !acctCode || amount <= 0) return;
         dedIds.add(idx);
         dedCreditTotal += amount;
-        vf_upsertAutoLine(`ded:${idx}`, { account_code: type.account_code, debit: 0, credit: amount, description: type.name });
+        vf_upsertAutoLine(`ded:${idx}`, { account_code: acctCode, debit: 0, credit: amount, description: type.name });
     });
     vf_pruneAutoLines('ded:', id => dedIds.has(id));
 
@@ -1240,9 +1241,14 @@ async function vf_persistAttachments() {
 /* ── Deductions (optional — e.g. contractor retention) ─────────
    The type is picked once, up front, from its own "+ TYPE" pill (vf_renderDedTypeButtons) instead
    of a per-row <select> — each row is created already bound to one fixed deduction type. */
+// A deduction type with no default posting account (account_code NULL — e.g. "OTHER", see
+// "08 - deduction_types_other_recoupment_penalty_vat.sql") used to silently get no Accounting
+// Entries line at all. Now the preparer must pick one here — required, same searchable
+// chart-of-accounts picker the Accounting Entries grid itself uses (vf_coaOptions).
 function vf_addDeductionLine(d = null) {
     const idx = ++vf_dedSeq;
     const t = vf_dedTypes.find(t => String(t.deduction_type_id) === String(d?.deduction_type_id));
+    const needsAcct = !!t && !t.account_code;
     const div = document.createElement('div');
     div.className = 'vf-ded-row';
     div.id = `vf-ded-row-${idx}`;
@@ -1255,11 +1261,23 @@ function vf_addDeductionLine(d = null) {
             <div class="nha-fg"><label>Rate (%)</label><input type="number" class="vf-ded-rate" min="0" step="0.01" placeholder="e.g. 10"></div>
             <div class="nha-fg"><label>Gross Amount (₱)</label><input type="text" class="vf-ded-gross" readonly></div>
             <div class="nha-fg"><label>Deduction Amount (₱)</label><input type="text" inputmode="decimal" class="vf-ded-amount" placeholder="Auto-computed"></div>
-        </div>`;
+        </div>
+        ${needsAcct ? `<div class="nha-fg" style="margin-top:8px;">
+            <label>Posting Account <span class="nha-req">*</span></label>
+            <input type="text" class="vf-ded-acct" placeholder="Search GL account code (UACS)…">
+            <span class="vf-hint">No default account for "${vf_esc(t?.name)}" — required before this can post to the General Ledger.</span>
+        </div>` : ''}`;
     $vf('vf-ded-container').appendChild(div);
 
     div.querySelector('.vf-ded-rate').addEventListener('input', () => vf_recalcDeductionLine(idx));
     vf_bindMoneyInput(div.querySelector('.vf-ded-amount'));
+
+    if (needsAcct) {
+        const acctInput = div.querySelector('.vf-ded-acct');
+        acctInput.value = d?.account_code ?? '';
+        nhaSearchableSelect(acctInput, vf_coaOptions.map(a => ({ value: a.account_code, label: a.account_title })), () => vf_recalcDeductionLine(idx));
+        acctInput.addEventListener('input', () => vf_recalcDeductionLine(idx));
+    }
 
     if (d) {
         div.querySelector('.vf-ded-rate').value = d.rate ?? '';
@@ -1307,6 +1325,7 @@ function vf_collectDeductions() {
             rate             : row.querySelector('.vf-ded-rate').value === '' ? null : parseFloat(row.querySelector('.vf-ded-rate').value),
             gross_amount     : vf_numVal($vf('vf-gross').value),
             deduction_amount : amount,
+            account_code     : row.querySelector('.vf-ded-acct')?.value.trim() || null,
         });
     });
     return out;
@@ -1783,6 +1802,13 @@ function vf_validate() {
     check(!!$vf('vf-particulars').value.trim(), 'particulars', 'Particulars is required.');
     check((vf_numVal($vf('vf-gross').value)) > 0, 'gross', 'Amount must be greater than zero.');
     check(!!$vf('vf-account-code').value.trim(), 'account-code', 'Account Code is required.');
+
+    $vf('vf-ded-container').querySelectorAll('.vf-ded-row').forEach(row => {
+        const acctInput = row.querySelector('.vf-ded-acct');
+        if (!acctInput) return; // this deduction type already has a default posting account
+        const label = row.querySelector('.vf-ded-type-label')?.textContent || 'This deduction';
+        if (!acctInput.value.trim()) errors.push(`${label} has no default posting account — pick one before saving.`);
+    });
 
     return errors;
 }

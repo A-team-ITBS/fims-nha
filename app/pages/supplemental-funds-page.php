@@ -547,7 +547,7 @@ const sr_natureCell = r => (r.nature_of_fund ? `<span class="nha-bdg nha-bdg-nav
 const sr_yearCell = r => (r.fiscal_year ? `<span style="font-size:11px;">FY ${sr_esc(r.fiscal_year)}</span>` : sr_dash);
 // The Name the form collects. A record saved before this form took a Name may only have a Purpose, so that is the fallback.
 const sr_nameCell = r => {
-    const t = (r.name && String(r.name).trim()) || (r.purpose && String(r.purpose).trim()) || '';
+    const t = (r.description && String(r.description).trim()) || (r.purpose && String(r.purpose).trim()) || '';
     return t ? `<span style="font-size:12px;">${sr_esc(t)}</span>` : sr_dash;
 };
 
@@ -557,14 +557,14 @@ function sr_amountCell(v) {
 }
 
 const sr_refLink = r =>
-    `<a href="#" class="nha-tbl-link nha-mono sr-ref" onclick="event.preventDefault();sr_view(${Number(r.id)})">${sr_esc(r.reference_number || '—')}</a>`;
+    `<a href="#" class="nha-tbl-link nha-mono sr-ref" onclick="event.preventDefault();sr_view(${Number(r.id)})">${sr_esc(r.saro_id || '—')}</a>`;
 
 // What a record IS (SARO / NCA / OR) and, when it has one, the record it is linked to — e.g. "SARO SARO-26-001"
 function sr_refTags(r) {
     const type = sr_typeCode(r);
     const p = sr_parentOf(r);
     return (type ? `<span class="sr-tag sr-tag-type">${sr_esc(type)}</span>` : '')
-        + (p ? `<span class="sr-tag sr-tag-link" title="The record this one is linked to">${sr_esc(sr_typeCode(p) || 'Parent')} ${sr_esc(p.reference_number || '#' + p.id)}</span>` : '');
+        + (p ? `<span class="sr-tag sr-tag-link" title="The record this one is linked to">${sr_esc(sr_typeCode(p) || 'Parent')} ${sr_esc(p.saro_id || '#' + p.id)}</span>` : '');
 }
 
 /* ── Table ───────────────────────────────────────────────────── */
@@ -763,7 +763,7 @@ async function sr_view(id) {
         const money = v => (parseFloat(v) ? sr_esc(sr_pesoFull(v)) : sr_dash);
 
         // title: "Reference No. <ref>" and the tracking type as a badge
-        $sr('sr-view-title').innerHTML = `Reference No. <span class="srv-ref">${sr_esc(d.reference_number || '#' + d.id)}</span>`
+        $sr('sr-view-title').innerHTML = `Reference No. <span class="srv-ref">${sr_esc(d.saro_id || '#' + d.id)}</span>`
             + (type ? `<span class="srv-badge nha-bdg nha-bdg-navy">${sr_esc(type)}</span>` : '');
 
         // Amount as on the SARO / NCA page; a record that already has Supplemental Details (saved before this
@@ -776,13 +776,13 @@ async function sr_view(id) {
             sr_vrow('Fiscal Year', d.fiscal_year ? 'FY ' + sr_esc(d.fiscal_year) : sr_dash),
         ];
         if (parent) {
-            classification.push(sr_vrow('Parent Fund', `<a href="#" class="nha-tbl-link nha-mono" onclick="event.preventDefault();sr_view(${Number(parent.id)})">${sr_esc(parent.reference_number || '#' + parent.id)}</a> `
+            classification.push(sr_vrow('Parent Fund', `<a href="#" class="nha-tbl-link nha-mono" onclick="event.preventDefault();sr_view(${Number(parent.id)})">${sr_esc(parent.saro_id || '#' + parent.id)}</a> `
                 + `<span class="srv-muted">${sr_esc(parent.tracking_type?.fund_tracking_code || '')}</span>`));
         }
         html += sr_vsec('Classification', `<div class="srv-info">${classification.join('')}</div>`);
 
         const info = [sr_vrow('Date', date(d.date))];
-        if (has(d.name)) info.unshift(sr_vrow('Name / Title', sr_esc(d.name)));
+        if (has(d.description)) info.unshift(sr_vrow('Name / Title', sr_esc(d.description)));
         if (has(d.purpose)) info.push(sr_vrow('Purpose', sr_esc(d.purpose)));
         if (has(d.bank_account_no)) info.push(sr_vrow('Bank Account No.', sr_esc(d.bank_account_no)));
         if (d.agency && has(d.agency.name)) info.push(sr_vrow('Agency', sr_esc(d.agency.name)));
@@ -807,7 +807,7 @@ async function sr_view(id) {
         // the records linked to this one (their parent_id is this record)
         if (kids.length) {
             const rows = kids.map(c => `<tr>
-                <td><a href="#" class="nha-tbl-link nha-mono" onclick="event.preventDefault();sr_view(${Number(c.id)})">${sr_esc(c.reference_number || '#' + c.id)}</a></td>
+                <td><a href="#" class="nha-tbl-link nha-mono" onclick="event.preventDefault();sr_view(${Number(c.id)})">${sr_esc(c.saro_id || '#' + c.id)}</a></td>
                 <td>${sr_esc(sr_typeCode(c) || '—')}</td>
                 <td>${c.fiscal_year ? 'FY ' + sr_esc(c.fiscal_year) : sr_dash}</td>
                 <td class="r">${sr_esc(sr_pesoFull(c.amount))}</td>
@@ -865,7 +865,7 @@ const sr_edit = id => { sr_closeOverlay('sr-view-ov'); return sr_openForm(id); }
 async function sr_delete(id) {
     id = Number(id);
     const rec = sr.rows.find(r => Number(r.id) === id);
-    const ref = (rec && rec.reference_number) || '#' + id;
+    const ref = (rec && rec.saro_id) || '#' + id;
     if (!confirm(`Delete Supplemental Fund record ${ref}? This cannot be undone.`)) return;
 
     window.PagePreloader?.show();
@@ -906,14 +906,14 @@ function sr_exportRows(records, unitKey) {
     return records.map(r => {
         const parent = sr_parentOf(r);
         return [
-            r.reference_number || '',
-            (r.name || r.purpose || '').trim(),
+            r.saro_id || '',
+            (r.description || r.purpose || '').trim(),
             sr_typeCode(r),
             r.nature_of_fund?.name || '',
             r.fiscal_year ? 'FY ' + r.fiscal_year : '',
             scale(r.amount),
             r.date ? sr_fmtDate(r.date) : '',
-            parent ? (parent.reference_number || '') : '',
+            parent ? (parent.saro_id || '') : '',
         ];
     });
 }
