@@ -8,6 +8,25 @@ $_vnd_api = Config('API.FIMS_URL');
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
+<style>
+/* ── Actions dropdown menu ──────────────────────────────────── */
+.nha-tools-menu { position:relative;display:inline-block; }
+.nha-menu-trigger { display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border-radius:6px;
+    font-size:11px;font-weight:600;cursor:pointer;border:1px solid var(--afims-border, #E4ECF2);
+    background:var(--afims-surface, #FFFFFF);color:var(--afims-text, #1A1B21);white-space:nowrap;
+    font-family:'IBM Plex Sans',sans-serif;transition:all .15s; }
+.nha-menu-trigger:hover { background:var(--afims-surface-subtle, #F4F7FA);border-color:var(--afims-text-disabled, #A9AAB8); }
+.nha-menu-trigger svg { width:12px;height:12px;flex-shrink:0; }
+.nha-tools-dropdown { display:none;position:fixed;min-width:170px;background:var(--afims-surface, #FFFFFF);
+    border:1px solid var(--afims-border, #E4ECF2);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.12);
+    z-index:9999;padding:4px 0; }
+.nha-tools-dropdown.open { display:block; }
+.nha-menu-item { display:flex;align-items:center;gap:8px;padding:8px 12px;font-size:12px;font-weight:500;
+    color:var(--afims-text, #1A1B21);text-decoration:none;white-space:nowrap;cursor:pointer;
+    border:none;background:none;width:100%;text-align:left;transition:background .1s; }
+.nha-menu-item:hover { background:var(--afims-surface-subtle, #F4F7FA);color:var(--afims-heading-fill, #000E3E); }
+.nha-menu-item svg { width:13px;height:13px;flex-shrink:0;opacity:.7; }
+</style>
 
 <div id="vnd-root" class="nha-root">
 
@@ -110,7 +129,7 @@ $_vnd_api = Config('API.FIMS_URL');
                     </tr>
                 </thead>
                 <tbody id="vnd-tbody">
-                    <tr><td colspan="8"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
+                    <tr><td colspan="10"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
                 </tbody>
             </table>
         </div>
@@ -367,7 +386,7 @@ function vnd_statusBadge(s) {
 function vnd_renderTable(rows) {
     const tbody = $vnd('vnd-tbody');
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="8"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No vendors found.</span></div></td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No vendors found.</span></div></td></tr>';
         return;
     }
     const offset = (vnd_page - 1) * VND_PAGE_SIZE;
@@ -394,19 +413,53 @@ function vnd_renderTable(rows) {
             ${r.sl_code ? `<span class="nha-bdg nha-bdg-green">${vnd_esc(r.sl_account_code || r.sl_code)}</span>` : '<span class="nha-bdg nha-bdg-gray">None</span>'}
         </td>
         <td>${vnd_statusBadge(r.status)}</td>
-        <td style="display:flex;gap:4px;flex-wrap:wrap;">
-            <button class="nha-btn-act edit" onclick="vnd_edit(${Number(r.vendor_id)})" title="Edit">
-                <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
-                Edit
-            </button>
-            <button class="nha-btn-act" onclick="vnd_openSlModal(${Number(r.vendor_id)}, '${vnd_escAttr(r.coa_account_id)}', '${vnd_escAttr(r.sl_code || '')}')" title="Link Sub-Ledger" style="background:var(--afims-info, #0066CC);">
-                <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.658 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
-                Link SL
-            </button>
-        </td>
+        <td>${vnd_actionMenu(r)}</td>
     </tr>`;
     }).join('');
 }
+
+function vnd_actionMenu(r) {
+    const id = Number(r.vendor_id);
+    return `<div class="nha-tools-menu">
+        <button type="button" class="nha-menu-trigger" onclick="vnd_toggleMenu(this)">
+            <svg fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+            Actions
+        </button>
+        <div class="nha-tools-dropdown">
+            <a class="nha-menu-item" href="javascript:void(0);" onclick="vnd_closeMenus();vnd_edit(${id});">
+                <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                Edit
+            </a>
+            <a class="nha-menu-item" href="javascript:void(0);" onclick="vnd_closeMenus();vnd_openSlModal(${id}, '${vnd_escAttr(r.coa_account_id)}', '${vnd_escAttr(r.sl_code || '')}');">
+                <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.658 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
+                Link SL
+            </a>
+        </div>
+    </div>`;
+}
+
+/* ── Actions dropdown — open/close (closes others, positions via fixed
+   coords so the table's own overflow never clips it) ─────────────── */
+function vnd_toggleMenu(btn) {
+    const drop = btn.closest('.nha-tools-menu').querySelector('.nha-tools-dropdown');
+    const isOpen = drop.classList.contains('open');
+    vnd_closeMenus();
+    if (isOpen) return;
+
+    const rect = btn.getBoundingClientRect();
+    drop.style.top = (rect.bottom + 4) + 'px';
+    drop.style.right = (window.innerWidth - rect.right) + 'px';
+    drop.classList.add('open');
+}
+
+function vnd_closeMenus() {
+    document.querySelectorAll('.nha-tools-dropdown.open').forEach(d => d.classList.remove('open'));
+}
+
+document.addEventListener('click', e => {
+    if (!e.target.closest('.nha-tools-menu')) vnd_closeMenus();
+});
+document.addEventListener('scroll', vnd_closeMenus, true);
 
 /* ── Pagination ────────────────────────────────────────────── */
 function vnd_renderPagination(p) {

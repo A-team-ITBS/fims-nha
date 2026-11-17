@@ -299,6 +299,8 @@ class BudgetReqService
         }
     }
 
+    // Shared by addProgram() and addCoeRequest() — ONE header per (fiscal_yr, rc_id), whatever
+    // shape its content takes (Programs, headless COE line items, or both).
     private function fetchHeaderByFiscalYearAndRc(string $fiscalYr, string $rcId): ?array
     {
         return App\ExecuteRow(
@@ -381,6 +383,12 @@ class BudgetReqService
             }
 
             $header['programs'] = array_values($programs);
+            // COE's own line items — no Project ever claims these (budget_req_project_id stays
+            // NULL), so they'd otherwise never surface in $lineItemRows' per-project filtering above.
+            $header['coe_line_items'] = array_values(array_filter(
+                $lineItemRows,
+                fn ($li) => (string) $li['budget_reference_number'] === $brn && $li['budget_req_project_id'] === null
+            ));
             $header['is_draft'] = ($header['status_name'] ?? '') === 'Draft';
         }
         unset($header);
@@ -646,6 +654,193 @@ class BudgetReqService
     }
 
     /**
+     * COE's own line-item check — the same three rules validateLineItem() applies
+     * (account exists/active/postable, a numeric proposed amount > 0, particulars
+     * required) but worded without the "Project N" label, since a COE request has no
+     * Project at all.
+     */
+    private function validateCoeLineItems(array $lineItems): ?string
+    {
+        if (empty($lineItems)) {
+            return 'At least one line item is required.';
+        }
+
+        foreach ($lineItems as $i => $lineItem) {
+            $label = 'Line item '.($i + 1).': ';
+            $accountId = trim((string) ($lineItem['account_id'] ?? ''));
+            $amount = $lineItem['proposed_amount'] ?? $lineItem['amount'] ?? '';
+            $particulars = trim((string) ($lineItem['particulars'] ?? ''));
+
+            if ($accountId === '') {
+                return $label.'select a chart of accounts entry.';
+            }
+            if ($amount === '' || !is_numeric($amount) || (float) $amount <= 0) {
+                return $label.'a numeric proposed amount greater than zero is required.';
+            }
+            if ($particulars === '') {
+                return $label.'particulars is required.';
+            }
+
+            $account = App\ExecuteRow(
+                "SELECT account_id FROM {$this->tableChartOfAccounts}
+                 WHERE account_id = ".App\QuotedValue($accountId, DataType::STRING, 'DB')."
+                   AND status = 'Active' AND posting_allowed = TRUE",
+                'DB'
+            );
+            if (!$account) {
+                return $label."chart of accounts entry '{$accountId}' does not exist or is not postable.";
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Adds a batch of line items — NO Program/Sub-Program/Project at all — to the SAME
+     * header addProgram() would use for $header['fiscal_yr'] (ONE header per
+     * (fiscal_yr, rc_id), whatever shape its content takes — see
+     * fetchHeaderByFiscalYearAndRc()): creates it (status Draft) if it doesn't exist
+     * yet, or appends to it if it does and is still Draft/Returned. A header can end up
+     * with Programs, headless COE line items, or both.
+     * $lineItems shape: [['account_id'=>.., 'particulars'=>.., 'proposed_amount'=>..], ...].
+     * $supportingDocuments: one shared list for the whole request (see persistCoeAttachments()).
+     */
+    public function addCoeRequest(array $header, array $lineItems, array $supportingDocuments = []): array
+    {
+        $fiscalYr = trim((string) ($header['fiscal_yr'] ?? ''));
+        $rcId = trim((string) ($header['rc_id'] ?? ''));
+
+        if ($fiscalYr === '') {
+            return ['success' => false, 'message' => 'fiscal_yr is required.'];
+        }
+        if ($rcId === '') {
+            // Defense in depth — the route is expected to have already resolved this
+            // from the caller's own uac.users.rc_id (GlobalService::getUserRcId()).
+            return ['success' => false, 'message' => 'rc_id is required.'];
+        }
+        $err = $this->validateCoeLineItems($lineItems);
+        if ($err) {
+            return ['success' => false, 'message' => $err];
+        }
+
+        try {
+            App\Execute('BEGIN', 'DB');
+
+            $existingHeader = $this->fetchHeaderByFiscalYearAndRc($fiscalYr, $rcId);
+            $createdNewHeader = false;
+
+            if ($existingHeader) {
+                if (!in_array($existingHeader['status_name'] ?? '', ['Draft', self::STATUS_RETURNED], true)) {
+                    App\Execute('ROLLBACK', 'DB');
+
+                    return ['success' => false, 'message' => "The budget request for fiscal year {$fiscalYr} is already '{$existingHeader['status_name']}' and can no longer accept new line items."];
+                }
+                $budgetReferenceNumber = (string) $existingHeader['budget_reference_number'];
+                $this->touchSubmittedAt($budgetReferenceNumber);   // appending line items = a new save of this request
+            } else {
+                $defaultStatusId = $this->getDefaultStatusId();
+                // Must be generated inside this same open transaction, immediately
+                // before the INSERT that uses it — see addProgram()'s own note on
+                // GlobalService::generateBudgetReferenceNumber().
+                $budgetReferenceNumber = GlobalService::generateBudgetReferenceNumber();
+                $headerRow = App\ExecuteRow(
+                    "INSERT INTO {$this->table} (budget_reference_number, fiscal_yr, status_id, rc_id, submitted_at)
+                     VALUES (".App\QuotedValue($budgetReferenceNumber, DataType::STRING, 'DB').', '
+                        .App\QuotedValue($fiscalYr, DataType::NUMBER, 'DB').', '
+                        .($defaultStatusId !== null ? $defaultStatusId : 'NULL').', '
+                        .App\QuotedValue($rcId, DataType::STRING, 'DB').', NOW())
+                     RETURNING budget_reference_number',
+                    'DB'
+                );
+                $budgetReferenceNumber = (string) $headerRow['budget_reference_number'];
+                $createdNewHeader = true;
+            }
+
+            $lineItemService = new BudgetLineItemService();
+            foreach ($lineItems as $lineItem) {
+                $lineItemService->create(array_merge($lineItem, ['budget_reference_number' => $budgetReferenceNumber]));
+            }
+
+            $this->persistCoeAttachments($budgetReferenceNumber, $supportingDocuments);
+
+            App\Execute('COMMIT', 'DB');
+
+            return [
+                'success' => true,
+                'message' => $createdNewHeader
+                    ? 'COE budget request created successfully.'
+                    : 'Line items added to the existing COE budget request.',
+                'budget_reference_number' => $budgetReferenceNumber,
+                'created_new_header' => $createdNewHeader,
+            ];
+        } catch (\Exception $e) {
+            App\Execute('ROLLBACK', 'DB');
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Fully replaces a COE request's line items + supporting documents with the
+     * submitted set (same simplest-correct approach updateProgram() uses — line-item
+     * ids do not stay stable across an edit). Rejected once the header has left Draft —
+     * except "Returned", which can be edited again (same rule as updateProgram()).
+     * The request's submitted_at is refreshed (NOW()) — this is a new save of it.
+     */
+    public function updateCoeRequest(string $budgetReferenceNumber, array $lineItems, array $supportingDocuments = []): array
+    {
+        $headerRow = App\ExecuteRow(
+            "SELECT br.budget_reference_number, st.name AS status_name
+             FROM {$this->table} br
+             LEFT JOIN fims.settings_status st ON st.id = br.status_id
+             WHERE br.budget_reference_number = ".App\QuotedValue($budgetReferenceNumber, DataType::STRING, 'DB'),
+            'DB'
+        );
+        if (!$headerRow) {
+            return ['success' => false, 'message' => "Budget request {$budgetReferenceNumber} not found."];
+        }
+        if (!in_array($headerRow['status_name'] ?? '', ['Draft', self::STATUS_RETURNED], true)) {
+            return ['success' => false, 'message' => "This budget request is '{$headerRow['status_name']}' and can no longer be edited."];
+        }
+
+        $err = $this->validateCoeLineItems($lineItems);
+        if ($err) {
+            return ['success' => false, 'message' => $err];
+        }
+
+        try {
+            App\Execute('BEGIN', 'DB');
+
+            // Full replace of this header's headless line items only (budget_req_project_id IS
+            // NULL — a COE header never has any other kind). Attachments are NOT wiped here —
+            // same precedent as updateProgram()/persistAttachments(): already-saved ones (carried
+            // forward by attachment_id) are left alone and skipped on re-insert below; removing one
+            // is its own immediate action (deleteAttachment(), unchanged for COE).
+            App\Execute(
+                "DELETE FROM {$this->tableLineItems} WHERE budget_reference_number = ".App\QuotedValue($budgetReferenceNumber, DataType::STRING, 'DB').'
+                   AND budget_req_project_id IS NULL',
+                'DB'
+            );
+
+            $lineItemService = new BudgetLineItemService();
+            foreach ($lineItems as $lineItem) {
+                $lineItemService->create(array_merge($lineItem, ['budget_reference_number' => $budgetReferenceNumber]));
+            }
+
+            $this->persistCoeAttachments($budgetReferenceNumber, $supportingDocuments);
+            $this->touchSubmittedAt($budgetReferenceNumber);
+
+            App\Execute('COMMIT', 'DB');
+
+            return ['success' => true, 'message' => 'COE budget request updated successfully.'];
+        } catch (\Exception $e) {
+            App\Execute('ROLLBACK', 'DB');
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
      * Fully replaces one Program's project blocks + line items with the
      * submitted set (simplest-correct approach — project/line-item ids do
      * not stay stable across an edit). Sibling Programs under the same
@@ -750,8 +945,15 @@ class BudgetReqService
                 "SELECT COUNT(*) FROM {$this->tableBudgetReqProgram} WHERE budget_reference_number = ".App\QuotedValue($budgetReferenceNumber, DataType::STRING, 'DB'),
                 'DB'
             );
+            // The header may also carry COE line items (budget_req_project_id IS NULL) of its
+            // own — this was the header's last Program only if those are gone too.
+            $remainingCoe = (int) App\ExecuteScalar(
+                "SELECT COUNT(*) FROM {$this->tableLineItems} WHERE budget_reference_number = ".App\QuotedValue($budgetReferenceNumber, DataType::STRING, 'DB').'
+                   AND budget_req_project_id IS NULL',
+                'DB'
+            );
 
-            $headerDeleted = $remaining === 0;
+            $headerDeleted = $remaining === 0 && $remainingCoe === 0;
             if ($headerDeleted) {
                 App\Execute("DELETE FROM {$this->table} WHERE budget_reference_number = ".App\QuotedValue($budgetReferenceNumber, DataType::STRING, 'DB'), 'DB');
             }
@@ -763,6 +965,69 @@ class BudgetReqService
                 'message' => $headerDeleted
                     ? 'Program deleted — that was the last program, so the budget request was removed as well.'
                     : 'Program deleted successfully.',
+            ];
+        } catch (\Exception $e) {
+            App\Execute('ROLLBACK', 'DB');
+
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Deletes a header's own headless (COE) line items + their Supporting Documents —
+     * budget_req_project_id IS NULL, so sibling Programs under the same header (if any)
+     * are untouched. Rejected once the header has left Draft, same rule as
+     * deleteProgram(). If the header had no Programs either, the now-empty header is
+     * deleted too (same rule as delete()/deleteProgram() — Draft only, already
+     * guaranteed by the check above).
+     */
+    public function deleteCoeLineItems(string $budgetReferenceNumber): array
+    {
+        $headerRow = App\ExecuteRow(
+            "SELECT br.budget_reference_number, st.name AS status_name
+             FROM {$this->table} br
+             LEFT JOIN fims.settings_status st ON st.id = br.status_id
+             WHERE br.budget_reference_number = ".App\QuotedValue($budgetReferenceNumber, DataType::STRING, 'DB'),
+            'DB'
+        );
+        if (!$headerRow) {
+            return ['success' => false, 'message' => "Budget request {$budgetReferenceNumber} not found."];
+        }
+        if (($headerRow['status_name'] ?? '') !== 'Draft') {
+            return ['success' => false, 'message' => "This budget request is '{$headerRow['status_name']}' and its line items can no longer be deleted."];
+        }
+
+        try {
+            App\Execute('BEGIN', 'DB');
+
+            App\Execute(
+                "DELETE FROM {$this->tableAttachment} WHERE budget_reference_number = ".App\QuotedValue($budgetReferenceNumber, DataType::STRING, 'DB').'
+                   AND budget_req_program_id IS NULL',
+                'DB'
+            );
+            App\Execute(
+                "DELETE FROM {$this->tableLineItems} WHERE budget_reference_number = ".App\QuotedValue($budgetReferenceNumber, DataType::STRING, 'DB').'
+                   AND budget_req_project_id IS NULL',
+                'DB'
+            );
+
+            $remainingPrograms = (int) App\ExecuteScalar(
+                "SELECT COUNT(*) FROM {$this->tableBudgetReqProgram} WHERE budget_reference_number = ".App\QuotedValue($budgetReferenceNumber, DataType::STRING, 'DB'),
+                'DB'
+            );
+
+            $headerDeleted = $remainingPrograms === 0;
+            if ($headerDeleted) {
+                App\Execute("DELETE FROM {$this->table} WHERE budget_reference_number = ".App\QuotedValue($budgetReferenceNumber, DataType::STRING, 'DB'), 'DB');
+            }
+
+            App\Execute('COMMIT', 'DB');
+
+            return [
+                'success' => true,
+                'message' => $headerDeleted
+                    ? 'Line items deleted — the budget request had no programs either, so it was removed as well.'
+                    : 'Line items deleted successfully.',
             ];
         } catch (\Exception $e) {
             App\Execute('ROLLBACK', 'DB');
@@ -789,7 +1054,7 @@ class BudgetReqService
         if (!in_array($check['data']['status_name'] ?? '', ['Draft', self::STATUS_RETURNED], true)) {
             return ['success' => false, 'message' => "Budget request {$id} is not in Draft or Returned status."];
         }
-        if (empty($check['data']['programs'])) {
+        if (empty($check['data']['programs']) && empty($check['data']['coe_line_items'])) {
             return ['success' => false, 'message' => 'Add at least one program before submitting for review.'];
         }
 
@@ -807,8 +1072,9 @@ class BudgetReqService
 
     /**
      * Budget Processing "Endorse" — step 1 of the review chain (REVIEW_STEPS): the Budget Officer fills in each line
-     * item's Type of Fund and Component (both required for every item) plus its optional Suggested Amount (blank = 0)
-     * and Account (the Budget Officer may re-code a line to another chart-of-accounts entry), and moves the request to
+     * item's Type of Fund (required for every item) plus its optional Suggested Amount (blank = 0), Component
+     * (hidden in budget-processing-form.php's own UI), and Account (the Budget Officer may re-code a line to
+     * another chart-of-accounts entry), and moves the request to
      * "Endorsed" — for the Budget Head — all in one transaction: if any item is invalid, nothing is saved and the
      * status is unchanged. Only a request that is "For Review" or "Returned to Budget Officer" can be endorsed, only by
      * an FMD user holding the Budget Officer user level (see guardReviewStep()). The status lives on the request
@@ -1273,6 +1539,112 @@ class BudgetReqService
                     .$userId.')',
                 'DB'
             );
+        }
+    }
+
+    /**
+     * COE's own supporting-document upload — one shared list for the whole request
+     * (no Project to scope it to), uploaded under a key prefix of just the
+     * budget_reference_number. Same file_index resolution as uploadSupportingDocFiles().
+     *
+     * @param array $docs          the request body's own "supporting_documents" array
+     * @param array $uploadedFiles $request->getUploadedFiles()
+     */
+    public function uploadCoeSupportingDocFiles(array $docs, array $uploadedFiles, string $budgetReferenceNumber): array
+    {
+        $keyPrefix = self::ATTACHMENT_KEY_PREFIX . $budgetReferenceNumber;
+
+        foreach ($docs as &$doc) {
+            if (!isset($doc['file_index'])) {
+                continue;
+            }
+
+            $fileKey = 'doc_file_'.$doc['file_index'];
+            unset($doc['file_index']);
+            $file = $uploadedFiles[$fileKey] ?? null;
+            if (!$file || $file->getError() !== UPLOAD_ERR_OK) {
+                continue;
+            }
+
+            $doc['storage_key'] = GlobalService::uploadFileToStorage(
+                $file,
+                $keyPrefix,
+                self::ATTACHMENT_ALLOWED_EXT,
+                self::ATTACHMENT_MAX_BYTES
+            );
+            if (empty($doc['document_name'])) {
+                $doc['document_name'] = pathinfo($file->getClientFilename(), PATHINFO_FILENAME);
+            }
+        }
+        unset($doc);
+
+        return $docs;
+    }
+
+    /**
+     * COE's own persistAttachments() — same shape (inserts one row per already-resolved
+     * doc, skips anything already carrying an attachment_id) but headless:
+     * budget_req_program_id/project_code are both left NULL, scoped by
+     * budget_reference_number alone. Must run inside the caller's open transaction.
+     *
+     * @param array $docs [{document_name, storage_key?, link?}, ...]
+     */
+    private function persistCoeAttachments(string $budgetReferenceNumber, array $docs): void
+    {
+        if (empty($docs)) {
+            return;
+        }
+
+        $userId = (int) App\CurrentUserID();
+
+        foreach ($docs as $doc) {
+            if (!empty($doc['attachment_id'])) {
+                continue;
+            }
+
+            $storageKey = trim((string) ($doc['storage_key'] ?? ''));
+            $link = trim((string) ($doc['link'] ?? ''));
+            $name = trim((string) ($doc['document_name'] ?? ''));
+            if ($storageKey === '' && $link === '') {
+                continue;
+            }
+            if ($name === '') {
+                $name = $storageKey !== '' ? pathinfo($storageKey, PATHINFO_FILENAME) : $link;
+            }
+
+            App\Execute(
+                "INSERT INTO {$this->tableAttachment} (budget_reference_number, budget_req_program_id, project_code, document_name, storage_key, external_link, uploaded_by)
+                 VALUES (".App\QuotedValue($budgetReferenceNumber, DataType::STRING, 'DB').', NULL, NULL, '
+                    .App\QuotedValue($name, DataType::STRING, 'DB').', '
+                    .($storageKey !== '' ? App\QuotedValue($storageKey, DataType::STRING, 'DB') : 'NULL').', '
+                    .($link !== '' ? App\QuotedValue($link, DataType::STRING, 'DB') : 'NULL').', '
+                    .$userId.')',
+                'DB'
+            );
+        }
+    }
+
+    /** COE's own fetchAttachmentsForProject() — scoped by budget_reference_number alone (budget_req_program_id IS NULL marks it headless). */
+    public function fetchAttachmentsForRequest(string $budgetReferenceNumber): array
+    {
+        try {
+            $rows = App\ExecuteRows(
+                "SELECT attachment_id, document_name, storage_key, external_link, uploaded_at
+                 FROM {$this->tableAttachment}
+                 WHERE budget_reference_number = ".App\QuotedValue($budgetReferenceNumber, DataType::STRING, 'DB').'
+                   AND budget_req_program_id IS NULL
+                 ORDER BY uploaded_at ASC',
+                'DB'
+            ) ?: [];
+
+            foreach ($rows as &$row) {
+                $row['view_url'] = $row['storage_key'] ? \GetSignedUrl($row['storage_key']) : $row['external_link'];
+            }
+            unset($row);
+
+            return ['success' => true, 'data' => $rows];
+        } catch (\Exception $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
         }
     }
 

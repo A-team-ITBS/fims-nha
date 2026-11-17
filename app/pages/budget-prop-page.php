@@ -331,7 +331,8 @@ function bgr_actionButtons(flatRow, idx) {
     // Read-only counterpart of Budget Processing — every line item with its
     // Type of Fund, Suggested Amount and Component, nothing to fill in.
     // Budget Head (level 8) only. Hidden once the request is Approved: the Budget Head has nothing left to decide.
-    const budgetPreviewItem = (BGR_IS_BUDGET_HEAD && program && !headIsDone)
+    // `program` alone would miss a header that has ONLY headless COE line items and no Program at all.
+    const budgetPreviewItem = (BGR_IS_BUDGET_HEAD && (program || (header.coe_line_items ?? []).length) && !headIsDone)
         ? `<a class="nha-menu-item" href="javascript:void(0);" onclick="bgr_budgetPreview(${idx});bgr_closeMenus();">
             <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
             Budget Preview
@@ -384,7 +385,8 @@ document.addEventListener('scroll', bgr_closeMenus, true);
 /* "View" row action (every user) — opens the read-only Budget Preview modal (readone/budget-preview-readone.php, bpv_*) WITHOUT its
    Return / Approve (can_decide is false whatever the user level or the request's status): the request's status, and for every Project
    of every Program the originating unit, program, sub-program, project and its line items with their totals. The row is a whole
-   request, so the modal gets ALL of its Programs; a request with none yet says "No programs yet.". */
+   request, so the modal gets ALL of its Programs AND its own headless COE line items (header.coe_line_items), if it has any — both
+   passed in together; a request with neither says "No programs yet.". */
 function bgr_viewRequest(idx) {
     const { header } = bgr_flatRows[idx];
     bpv_openModal({
@@ -397,18 +399,21 @@ function bgr_viewRequest(idx) {
         rc_code: header.rc_code,
         rc_name: header.rc_name,
         can_decide: false,
-    }, header.programs ?? []);
+    }, header.programs ?? [], header.coe_line_items ?? []);
 }
 
 /* "Budget Processing" row action (level 2 / Budget Officer only) — opens the
    Budget Processing modal (form/budget-processing-form.php, bpr_*): one card per Program,
-   a section per Project in it with its line-item table (Type of Fund, Program Sources,
-   Program Uses, Component, account, Amount, Suggested Amount), a Subtotal per Project and a
-   Grand Total. The row is a whole request, so the modal gets ALL of its Programs. */
+   a section per Project in it with its line-item table (Type of Fund, Account Code,
+   Account Description, Amount, Suggested Amount), a Subtotal per Project and a Grand Total.
+   The row is a whole request, so the modal gets ALL of its Programs AND its own headless COE
+   line items (header.coe_line_items), if it has any — bpr_openModal renders the latter as its
+   own sibling card (bpr_coeContainerHtml) alongside the Program cards. */
 function bgr_budgetProcessing(idx) {
     const { header } = bgr_flatRows[idx];
     const programs = header.programs ?? [];
-    if (!programs.length) {
+    const coeLineItems = header.coe_line_items ?? [];
+    if (!programs.length && !coeLineItems.length) {
         bgr_toast('This budget request has no programs yet.', 'warning');
         return;
     }
@@ -425,16 +430,18 @@ function bgr_budgetProcessing(idx) {
         // after a Return by the Budget Head: its remarks and the review step (who a Return goes back to)
         remarks: header.remarks,
         review: header.review,
-    }, programs);
+    }, programs, coeLineItems);
 }
 
 /* "Budget Preview" row action (level 8 / Budget Head only) — opens the read-only Budget Preview modal
    (readone/budget-preview-readone.php, bpv_*): the same columns as the Budget Processing one, one block per
-   Project (info card + line-item table). The row is a whole request, so the modal gets ALL of its Programs. */
+   Project (info card + line-item table). The row is a whole request, so the modal gets ALL of its Programs AND
+   its own headless COE line items (header.coe_line_items), if it has any — see bgr_budgetProcessing above. */
 function bgr_budgetPreview(idx) {
     const { header } = bgr_flatRows[idx];
     const programs = header.programs ?? [];
-    if (!programs.length) return;
+    const coeLineItems = header.coe_line_items ?? [];
+    if (!programs.length && !coeLineItems.length) return;
     bpv_openModal({
         budget_reference_number: header.budget_reference_number,
         fiscal_yr: header.fiscal_yr,
@@ -448,7 +455,7 @@ function bgr_budgetPreview(idx) {
         // request is Endorsed. The row's review says so (review.can_decide, decided on the server).
         can_decide: !!header.review?.can_decide && header.review.actor === 'Budget Head',
         review: header.review,
-    }, programs);
+    }, programs, coeLineItems);
 }
 
 /* ── Pagination ────────────────────────────────────────────── */

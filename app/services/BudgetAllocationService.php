@@ -28,6 +28,7 @@ class BudgetAllocationService
     private string $tableProgram = 'fims.program';
     private string $tableSubProgram = 'fims.sub_program';
     private string $tableProject = 'fims.project';
+    private string $tableAllocationProject = 'fims.budget_allocation_project';
     private string $tableDepartment = 'uac.departments';
     private string $tableUser = 'uac.users';
     private string $tableRc = 'fims.responsibility_code';
@@ -91,7 +92,9 @@ class BudgetAllocationService
      */
     private const ALLOCATION_NUMBER_TIMEZONE = 'Asia/Manila';
 
-    /** VARCHAR columns → max length. */
+    /** VARCHAR columns → max length. Program / Sub-Program / Project moved to fims.budget_allocation_project
+     *  (one row per project block, see normalizeProjectBlocksShape() / resolveProjectBlocks()) — a record can
+     *  now cover several, so they are no longer columns on this table. */
     private const STRING_FIELDS = [
         'allocation_type' => 20,
         'allocation_number' => 100,
@@ -99,10 +102,11 @@ class BudgetAllocationService
         'pr_number' => 50,
         'po_number' => 50,
         'workflow_route' => 20,
-        // program_code / sub_program_code are copies of fims.program.program_code / fims.sub_program.sub_program_code
-        // (VARCHAR(64), generated "<year>-<rc_code>-<NNN>" codes run 27+ chars), so they share that width.
-        // project_code is a copy of fims.project.project_code, VARCHAR(64) too once alter_table/15 is run
-        // (generated "<year>-<rc_id>-<prog3>-<subprog4>-<series4>" codes are 22+ chars).
+    ];
+
+    /** VARCHAR columns of ONE project block (fims.budget_allocation_project) → max length. Same widths as the
+     *  record-level columns these replaced (see the STRING_FIELDS comment above, pre-multi-project). */
+    private const BLOCK_STRING_FIELDS = [
         'program_code' => 64,
         'sub_program_code' => 64,
         'project_code' => 64,
@@ -131,9 +135,9 @@ class BudgetAllocationService
     private const AMOUNT_FIELDS = ['pr_amount', 'po_amount'];
 
     /**
-     * A Program / Sub-Program / Project that does not exist yet can be TYPED instead of picked: the body then carries
-     * its name (and no code) and it is created here, together with the memo request — see resolveTypedEntities().
-     * body key => level. The three name columns are VARCHAR(255).
+     * A project block's Program / Sub-Program / Project that does not exist yet can be TYPED instead of picked: the
+     * block then carries its name (and no code) and it is created here, together with the memo request — see
+     * resolveProjectBlocks(). block key => level. The three name fields are VARCHAR(255).
      */
     private const TYPED_NAME_FIELDS = ['program' => 'program_name', 'sub_program' => 'sub_program_name', 'project' => 'project_name'];
     private const TYPED_NAME_MAX = 255;
@@ -141,9 +145,10 @@ class BudgetAllocationService
     /** Largest amount accepted (NUMERIC(18,2) holds more; this keeps float math exact to the centavo). */
     private const MAX_AMOUNT = 9999999999999.99;
 
-    /** Every column except line_transaction (jsonb, can be large) — used by list / all. */
+    /** Every column of this table — used by list / all (per-block data, including line_transaction, is attached
+     *  separately as `projects` — see fetchProjectBlocksFor()). */
     private const LIST_COLUMNS = 'a.allocation_id, a.request_referrence_no, a.allocation_type, a.allocation_number, a.fiscal_year,
-        a.requesting_rc_id, a.requesting_district_id, a.program_code, a.sub_program_code, a.project_code,
+        a.requesting_rc_id, a.requesting_district_id,
         a.vendor_id, a.parent_id, a.document_type, a.description, a.pr_number, a.pr_amount, a.po_number, a.po_amount,
         a.workflow_route, a.category_id, a.is_bidding, a.multiple_node_id, a.status_id, a.user_id,
         a.created_at, a.updated_at';
@@ -218,9 +223,10 @@ class BudgetAllocationService
             $order = 'ORDER BY a.created_at DESC, a.allocation_id DESC';
 
             if ($page === null) {
-                $data = App\ExecuteRows($this->baseSelect(self::LIST_COLUMNS)." WHERE {$whereSql} {$order}", 'DB');
+                $data = App\ExecuteRows($this->baseSelect(self::LIST_COLUMNS)." WHERE {$whereSql} {$order}", 'DB') ?: [];
+                $this->attachProjects($data);
 
-                return ['success' => true, 'data' => $data ?: []];
+                return ['success' => true, 'data' => $data];
             }
 
             $limit = min(200, max(1, $limit));
@@ -242,11 +248,12 @@ class BudgetAllocationService
             $data = App\ExecuteRows(
                 $this->baseSelect(self::LIST_COLUMNS)." WHERE {$whereSql} {$order} LIMIT {$limit} OFFSET {$offset}",
                 'DB'
-            );
+            ) ?: [];
+            $this->attachProjects($data);
 
             return [
                 'success' => true,
-                'data' => $data ?: [],
+                'data' => $data,
                 'summary' => $summary,
                 'pagination' => [
                     'total' => $total,
@@ -278,10 +285,9 @@ class BudgetAllocationService
             if (!$data) {
                 return $this->fail("Memo request #{$id} not found.");
             }
-            // jsonb comes back as a string — hand the client the decoded structure.
-            if (isset($data['line_transaction']) && is_string($data['line_transaction'])) {
-                $data['line_transaction'] = json_decode($data['line_transaction'], true);
-            }
+            $rows = [$data];
+            $this->attachProjects($rows);
+            $data = $rows[0];
             if ($withFiles) {
                 $data['file_attachments'] = (new FileUploadServices())->attachmentsFor($data['multiple_node_id'] ?? null);
             }
@@ -309,9 +315,12 @@ class BudgetAllocationService
             if ($err) {
                 return $this->fail($err);
             }
-            [$names, $err] = $this->typedNames($body);
+            [$rawBlocks, $err] = $this->normalizeProjectBlocksShape($body);
             if ($err) {
                 return $this->fail($err);
+            }
+            if ($rawBlocks === null) {
+                return $this->fail('projects is required: at least one project is needed.');
             }
             if (($clean['fiscal_year'] ?? null) === null) {
                 return $this->fail('fiscal_year is required.');
@@ -322,23 +331,20 @@ class BudgetAllocationService
                 $clean[self::REQUESTING_RC_FIELD] = $rcId;
             }
 
-            // Typed (new) Program / Sub-Program / Project are created first, inside the transaction that also saves the row.
-            $created = [];
-            if ($names) {
-                App\Execute('BEGIN', 'DB');
-                $inTransaction = true;
-                [$created, $err] = $this->resolveTypedEntities($clean, $names, null, $userId);
-                if ($err) {
-                    App\Execute('ROLLBACK', 'DB');
+            // The row and its project block(s) are always one transaction: a failure partway (a bad reference, a
+            // typed Program/Project that fails to create) must leave neither behind.
+            App\Execute('BEGIN', 'DB');
+            $inTransaction = true;
 
-                    return $this->fail($err);
-                }
+            [$blocks, $created, $err] = $this->resolveProjectBlocks($rawBlocks, $clean['fiscal_year'] ?? null, $userId);
+            if ($err) {
+                App\Execute('ROLLBACK', 'DB');
+
+                return $this->fail($err);
             }
 
-            if ($err = $this->validateReferences($clean)) {
-                if ($inTransaction) {
-                    App\Execute('ROLLBACK', 'DB');
-                }
+            if ($err = $this->validateReferences($clean, $blocks)) {
+                App\Execute('ROLLBACK', 'DB');
 
                 return $this->fail($err);
             }
@@ -363,25 +369,31 @@ class BudgetAllocationService
                 "INSERT INTO {$this->table} (".implode(', ', $columns).') VALUES ('.implode(', ', $values).') RETURNING allocation_id, '.self::GENERATED_REFERENCE_FIELD,
                 'DB'
             );
-            if ($inTransaction) {
-                App\Execute('COMMIT', 'DB');
+            $allocationId = isset($row['allocation_id']) ? (int) $row['allocation_id'] : 0;
+            if ($allocationId <= 0) {
+                App\Execute('ROLLBACK', 'DB');
                 $inTransaction = false;
+
+                return $this->fail('Failed to create memo request.');
             }
 
-            if (isset($row['allocation_id'])) {
-                // Usually 'Draft' (the default just above), but a caller-supplied status_id is honored too.
-                $initialStatus = App\ExecuteScalar("SELECT name FROM {$this->tableStatus} WHERE id = ".(int) $clean['status_id'], 'DB') ?: 'Draft';
-                GlobalService::logStatusChange('budget_allocation', (int) $row['allocation_id'], (string) $initialStatus, $userId);
-            }
+            $this->insertProjectBlocks($allocationId, $blocks);
+
+            App\Execute('COMMIT', 'DB');
+            $inTransaction = false;
+
+            // Usually 'Draft' (the default just above), but a caller-supplied status_id is honored too.
+            $initialStatus = App\ExecuteScalar("SELECT name FROM {$this->tableStatus} WHERE id = ".(int) $clean['status_id'], 'DB') ?: 'Draft';
+            GlobalService::logStatusChange('budget_allocation', $allocationId, (string) $initialStatus, $userId);
 
             $result = [
                 'success' => true,
                 'message' => 'Memo request created successfully.',
-                'allocation_id' => isset($row['allocation_id']) ? (int) $row['allocation_id'] : null,
+                'allocation_id' => $allocationId,
                 self::GENERATED_REFERENCE_FIELD => $row[self::GENERATED_REFERENCE_FIELD] ?? null,
             ];
             if ($created) {
-                $result['created'] = $created;   // the codes of the Program / Sub-Program / Project this call created
+                $result['created'] = $created;   // the codes of the Program / Sub-Program / Project this call created, per block
             }
 
             return $result;
@@ -412,23 +424,28 @@ class BudgetAllocationService
             if ($err) {
                 return $this->fail($err);
             }
-            [$names, $err] = $this->typedNames($body);
+            [$rawBlocks, $err] = $this->normalizeProjectBlocksShape($body);
             if ($err) {
                 return $this->fail($err);
             }
-            if (!$clean && !$names) {
+            if (!$clean && $rawBlocks === null) {
                 return $this->fail('No valid fields provided for update.');
             }
             if (array_key_exists('fiscal_year', $clean) && $clean['fiscal_year'] === null) {
                 return $this->fail('fiscal_year cannot be empty.');
             }
 
-            // Typed (new) Program / Sub-Program / Project: created first, inside the transaction that also saves the change.
+            App\Execute('BEGIN', 'DB');
+            $inTransaction = true;
+
+            // Typed (new) Program / Sub-Program / Project per block: created first, inside the same transaction as
+            // the change itself. $rawBlocks === null means the body didn't touch `projects` at all — the stored
+            // blocks are left exactly as they are (and are what validateReferences() below checks against).
             $created = [];
-            if ($names) {
-                App\Execute('BEGIN', 'DB');
-                $inTransaction = true;
-                [$created, $err] = $this->resolveTypedEntities($clean, $names, $check['data'], null);
+            $blocks = null;
+            if ($rawBlocks !== null) {
+                $effectiveFiscalYear = array_key_exists('fiscal_year', $clean) ? $clean['fiscal_year'] : ($check['data']['fiscal_year'] ?? null);
+                [$blocks, $created, $err] = $this->resolveProjectBlocks($rawBlocks, $effectiveFiscalYear, null);
                 if ($err) {
                     App\Execute('ROLLBACK', 'DB');
 
@@ -436,25 +453,27 @@ class BudgetAllocationService
                 }
             }
 
-            if ($err = $this->validateReferences($clean, $check['data'], $id)) {
-                if ($inTransaction) {
-                    App\Execute('ROLLBACK', 'DB');
-                }
+            if ($err = $this->validateReferences($clean, $blocks ?? $check['data']['projects'], $check['data'], $id)) {
+                App\Execute('ROLLBACK', 'DB');
 
                 return $this->fail($err);
             }
 
-            $set = [];
-            foreach ($clean as $field => $value) {
-                $set[] = App\QuotedName($field, 'DB').' = '.$this->literal($field, $value);
+            if ($clean) {
+                $set = [];
+                foreach ($clean as $field => $value) {
+                    $set[] = App\QuotedName($field, 'DB').' = '.$this->literal($field, $value);
+                }
+                $set[] = 'updated_at = CURRENT_TIMESTAMP';
+                App\Execute("UPDATE {$this->table} SET ".implode(', ', $set)." WHERE allocation_id = {$id} AND deleted_at IS NULL", 'DB');
             }
-            $set[] = 'updated_at = CURRENT_TIMESTAMP';
 
-            App\Execute("UPDATE {$this->table} SET ".implode(', ', $set)." WHERE allocation_id = {$id} AND deleted_at IS NULL", 'DB');
-            if ($inTransaction) {
-                App\Execute('COMMIT', 'DB');
-                $inTransaction = false;
+            if ($blocks !== null) {
+                $this->replaceProjectBlocks($id, $blocks);
             }
+
+            App\Execute('COMMIT', 'DB');
+            $inTransaction = false;
 
             $result = ['success' => true, 'message' => 'Memo request updated successfully.'];
             if ($created) {
@@ -686,6 +705,7 @@ class BudgetAllocationService
             if ($isFinal) {
                 $allocationType = strtoupper(trim((string) ($row['allocation_type'] ?? '')));
                 $lineItemService = new BudgetLineItemService();
+                $blocks = $row['projects'] ?? [];
 
                 if ($allocationType === 'RFA' || $allocationType === 'LAA') {
                     $parentId = (int) ($row['parent_id'] ?? 0);
@@ -695,16 +715,33 @@ class BudgetAllocationService
 
                         return $this->fail("A Parent CBA is required before this {$allocationType} can be approved.");
                     }
-                    $earmark = $lineItemService->convertEarmarkForRfaApproval($id, $parentId, $row['line_transaction'] ?? null);
+                    // Each of THIS request's own project blocks draws against the matching project block on the
+                    // parent CBA (resolved by project_code — see convertEarmarkForRfaApproval()).
+                    foreach ($blocks as $block) {
+                        $earmark = $lineItemService->convertEarmarkForRfaApproval(
+                            $id,
+                            (int) $block['budget_allocation_project_id'],
+                            $parentId,
+                            (string) ($block['project_code'] ?? ''),
+                            $block['line_transaction'] ?? null
+                        );
+                        if (!$earmark['success']) {
+                            App\Execute('ROLLBACK', 'DB');
+                            $inTransaction = false;
+
+                            return $this->fail($earmark['message']);
+                        }
+                    }
                 } else {
-                    $earmark = $lineItemService->createForApproval($id, $row['line_transaction'] ?? null);
-                }
+                    foreach ($blocks as $block) {
+                        $earmark = $lineItemService->createForApproval($id, (int) $block['budget_allocation_project_id'], $block['line_transaction'] ?? null);
+                        if (!$earmark['success']) {
+                            App\Execute('ROLLBACK', 'DB');
+                            $inTransaction = false;
 
-                if (!$earmark['success']) {
-                    App\Execute('ROLLBACK', 'DB');
-                    $inTransaction = false;
-
-                    return $this->fail($earmark['message']);
+                            return $this->fail($earmark['message']);
+                        }
+                    }
                 }
             }
 
@@ -910,9 +947,10 @@ class BudgetAllocationService
     }
 
     /**
-     * SQL for the sum of "requested_amount" over the lines of line_transaction (jsonb; an array of lines, or a single
-     * line object). A line whose requested_amount is missing, blank or not a number counts as 0, so one bad line can
-     * never fail the whole list. Commas in a text amount ("1,500,000.00") are ignored. Constant SQL, no user input.
+     * SQL for the sum of "requested_amount" over the lines of EVERY project block's line_transaction (jsonb; an
+     * array of lines, or a single line object) belonging to this allocation row. A line whose requested_amount is
+     * missing, blank or not a number counts as 0, so one bad line can never fail the whole list. Commas in a text
+     * amount ("1,500,000.00") are ignored. Constant SQL (correlated to the outer query's `a` alias), no user input.
      */
     private function requestedTotalSql(): string
     {
@@ -924,16 +962,19 @@ class BudgetAllocationService
                                    THEN REPLACE(ln.value->>'requested_amount', ',', '')::numeric
                                  ELSE 0
                                END)
-                    FROM jsonb_array_elements(CASE jsonb_typeof(a.line_transaction)
-                                                WHEN 'array'  THEN a.line_transaction
-                                                WHEN 'object' THEN jsonb_build_array(a.line_transaction)
+                    FROM {$this->tableAllocationProject} bap
+                    CROSS JOIN LATERAL jsonb_array_elements(CASE jsonb_typeof(bap.line_transaction)
+                                                WHEN 'array'  THEN bap.line_transaction
+                                                WHEN 'object' THEN jsonb_build_array(bap.line_transaction)
                                                 ELSE '[]'::jsonb
                                               END) AS ln(value)
-                    WHERE jsonb_typeof(ln.value) = 'object'
+                    WHERE bap.allocation_id = a.allocation_id AND bap.deleted_at IS NULL
+                      AND jsonb_typeof(ln.value) = 'object'
                 ), 0)";
     }
 
-    /** SELECT + every join the list / read views need; callers append WHERE / ORDER BY. */
+    /** SELECT + every join the list / read views need; callers append WHERE / ORDER BY. Program / Sub-Program /
+     *  Project (now per project block) are attached separately — see attachProjects(). */
     private function baseSelect(string $columns): string
     {
         return "SELECT {$columns},
@@ -944,9 +985,6 @@ class BudgetAllocationService
                        rc.rc_name     AS requesting_rc_name,
                        rc.office_type AS requesting_rc_office_type,
                        dd.department_name AS requesting_district_name,
-                       pg.program_name,
-                       sp.sub_program_name,
-                       pj.project_name,
                        pa.request_referrence_no AS parent_request_referrence_no,
                        {$this->requestedTotalSql()} AS requested_total
                 FROM {$this->table} a
@@ -954,10 +992,86 @@ class BudgetAllocationService
                 LEFT JOIN {$this->tableVendor} v      ON v.vendor_id = a.vendor_id
                 LEFT JOIN {$this->tableRc} rc         ON rc.rc_id = a.requesting_rc_id
                 LEFT JOIN {$this->tableDepartment} dd ON dd.department_id = a.requesting_district_id
-                LEFT JOIN {$this->tableProgram} pg    ON pg.program_code = a.program_code
-                LEFT JOIN {$this->tableSubProgram} sp ON sp.sub_program_code = a.sub_program_code
-                LEFT JOIN {$this->tableProject} pj    ON pj.project_code = a.project_code
                 LEFT JOIN {$this->table} pa           ON pa.allocation_id = a.parent_id";
+    }
+
+    /**
+     * Attaches `projects` (every project block of each row, see fetchProjectBlocksFor()) IN PLACE, plus a
+     * compatibility mirror of the FIRST block's program_code / sub_program_code / project_code / program_name /
+     * sub_program_name / project_name onto the row itself — callers written before multi-project support (print
+     * payloads, the ledger, read-only views) that only ever read one project per record keep working unchanged
+     * for the (still by far the common) single-block case; a multi-block record simply shows its first block
+     * there until those callers are updated to read the full `projects` array. line_transaction, unlike those
+     * single-value fields, is MERGED across every block (in block order) rather than taken from the first one
+     * alone — a caller summing/listing lines off this field must see every one of them.
+     *
+     * @param array<int,array<string,mixed>> &$rows rows from baseSelect(), modified in place
+     */
+    private function attachProjects(array &$rows): void
+    {
+        if (!$rows) {
+            return;
+        }
+        $byAllocation = $this->fetchProjectBlocksFor(array_column($rows, 'allocation_id'));
+        foreach ($rows as &$row) {
+            $blocks = $byAllocation[(int) $row['allocation_id']] ?? [];
+            $row['projects'] = $blocks;
+            $first = $blocks[0] ?? null;
+            foreach (['program_code', 'sub_program_code', 'project_code', 'program_name', 'sub_program_name', 'project_name'] as $field) {
+                $row[$field] = $first[$field] ?? null;
+            }
+            $lines = [];
+            foreach ($blocks as $block) {
+                $blockLines = $block['line_transaction'] ?? null;
+                if (is_array($blockLines)) {
+                    array_push($lines, ...(array_is_list($blockLines) ? $blockLines : [$blockLines]));
+                }
+            }
+            $row['line_transaction'] = $lines ?: null;
+        }
+        unset($row);
+    }
+
+    /**
+     * Every project block (fims.budget_allocation_project) of the given allocations, with Program / Sub-Program /
+     * Project names joined in, ordered by sort_order — the batched read-side counterpart to insertProjectBlocks() /
+     * replaceProjectBlocks(). One query regardless of how many allocation ids are passed (same batching precedent
+     * as BudgetReqService::attachProgramsToHeaders()).
+     *
+     * @param array<int,int|string> $allocationIds
+     *
+     * @return array<int, array<int, array<string,mixed>>> allocation_id => its blocks, decoded line_transaction
+     */
+    private function fetchProjectBlocksFor(array $allocationIds): array
+    {
+        $allocationIds = array_values(array_unique(array_map('intval', $allocationIds)));
+        if (!$allocationIds) {
+            return [];
+        }
+
+        $rows = App\ExecuteRows(
+            "SELECT p.budget_allocation_project_id, p.allocation_id, p.sort_order,
+                    p.program_code, p.sub_program_code, p.project_code, p.line_transaction,
+                    pg.program_name, sp.sub_program_name, pj.project_name
+             FROM {$this->tableAllocationProject} p
+             LEFT JOIN {$this->tableProgram} pg    ON pg.program_code = p.program_code
+             LEFT JOIN {$this->tableSubProgram} sp ON sp.sub_program_code = p.sub_program_code
+             LEFT JOIN {$this->tableProject} pj    ON pj.project_code = p.project_code
+             WHERE p.deleted_at IS NULL AND p.allocation_id IN (".implode(', ', $allocationIds).')
+             ORDER BY p.allocation_id, p.sort_order, p.budget_allocation_project_id',
+            'DB'
+        ) ?: [];
+
+        $byAllocation = [];
+        foreach ($rows as $row) {
+            if (isset($row['line_transaction']) && is_string($row['line_transaction'])) {
+                $row['line_transaction'] = json_decode($row['line_transaction'], true);
+            }
+            $row['budget_allocation_project_id'] = (int) $row['budget_allocation_project_id'];
+            $byAllocation[(int) $row['allocation_id']][] = $row;
+        }
+
+        return $byAllocation;
     }
 
     /** The Responsibility Center (rc_id) of a user: uac.users.rc_id, that column only. Null when the user has none. */
@@ -976,115 +1090,261 @@ class BudgetAllocationService
     }
 
     /**
-     * The names of Programs / Sub-Programs / Projects that were TYPED instead of picked: body program_name /
-     * sub_program_name / project_name. Trimmed, inner whitespace collapsed; blank ones are dropped.
+     * Validates the SHAPE of the request body's `projects` array — one entry per project block — without
+     * resolving typed names or touching the database yet (see resolveProjectBlocks() for that, which must run
+     * inside the caller's open transaction). Each block may carry program_code / sub_program_code / project_code
+     * (picked) and/or program_name / sub_program_name / project_name (typed — see resolveProjectBlocks()),
+     * optionally budget_allocation_project_id (update(): which existing block this is — absent means "new block"),
+     * and line_transaction (that block's own itemized COB draws, same shape the record's line_transaction used to
+     * carry directly).
      *
-     * @return array{0: array<string,string>, 1: ?string} [level => name (program | sub_program | project), error]
+     * @return array{0: ?array, 1: ?string} [blocks (raw, still unresolved), error] — blocks is null when the body
+     *                                       has no `projects` key at all (create() requires it; update() leaves
+     *                                       the stored blocks untouched when it's absent)
      */
-    private function typedNames(array $body): array
+    private function normalizeProjectBlocksShape(array $body): array
     {
-        $names = [];
-        foreach (self::TYPED_NAME_FIELDS as $level => $key) {
-            if (!array_key_exists($key, $body)) {
-                continue;
-            }
-            $v = $body[$key];
-            if ($v !== null && !is_scalar($v)) {
-                return [[], "{$key} must be a plain value."];
-            }
-            $v = trim((string) preg_replace('/\s+/u', ' ', (string) ($v ?? '')));
-            if ($v === '') {
-                continue;
-            }
-            if (mb_strlen($v) > self::TYPED_NAME_MAX) {
-                return [[], "{$key} must be ".self::TYPED_NAME_MAX.' characters or fewer.'];
-            }
-            $names[$level] = $v;
+        if (!array_key_exists('projects', $body)) {
+            return [null, null];
+        }
+        $projects = $body['projects'];
+        if (is_string($projects)) {
+            $projects = json_decode($projects, true);
+        }
+        if (!is_array($projects) || !array_is_list($projects)) {
+            return [null, 'projects must be a JSON array of project blocks.'];
+        }
+        if (!$projects) {
+            return [null, 'At least one project is required.'];
         }
 
-        return [$names, null];
+        $blocks = [];
+        foreach ($projects as $i => $block) {
+            $n = $i + 1;
+            if (!is_array($block)) {
+                return [null, "Project block {$n} must be an object."];
+            }
+
+            $clean = [];
+            if (isset($block['budget_allocation_project_id']) && $block['budget_allocation_project_id'] !== '') {
+                if (!is_numeric($block['budget_allocation_project_id'])) {
+                    return [null, "Project block {$n}: budget_allocation_project_id must be a whole number."];
+                }
+                $clean['budget_allocation_project_id'] = (int) $block['budget_allocation_project_id'];
+            }
+
+            foreach (self::BLOCK_STRING_FIELDS as $field => $max) {
+                if (!array_key_exists($field, $block)) {
+                    continue;
+                }
+                if ($block[$field] !== null && !is_scalar($block[$field])) {
+                    return [null, "Project block {$n}: {$field} must be a plain value."];
+                }
+                $v = trim((string) ($block[$field] ?? ''));
+                if (mb_strlen($v) > $max) {
+                    return [null, "Project block {$n}: {$field} must be {$max} characters or fewer."];
+                }
+                $clean[$field] = $v === '' ? null : $v;
+            }
+
+            foreach (self::TYPED_NAME_FIELDS as $key) {
+                if (!array_key_exists($key, $block)) {
+                    continue;
+                }
+                $v = $block[$key];
+                if ($v !== null && !is_scalar($v)) {
+                    return [null, "Project block {$n}: {$key} must be a plain value."];
+                }
+                $v = trim((string) preg_replace('/\s+/u', ' ', (string) ($v ?? '')));
+                if ($v === '') {
+                    continue;
+                }
+                if (mb_strlen($v) > self::TYPED_NAME_MAX) {
+                    return [null, "Project block {$n}: {$key} must be ".self::TYPED_NAME_MAX.' characters or fewer.'];
+                }
+                $clean[$key] = $v;
+            }
+
+            if (array_key_exists('line_transaction', $block)) {
+                $lt = $block['line_transaction'];
+                if ($lt === null || $lt === '') {
+                    $clean['line_transaction'] = null;
+                } else {
+                    $decoded = $lt;
+                    if (is_string($lt)) {
+                        $decoded = json_decode($lt, true);
+                        if (json_last_error() !== JSON_ERROR_NONE) {
+                            return [null, "Project block {$n}: line_transaction is not valid JSON."];
+                        }
+                    }
+                    if (!is_array($decoded)) {
+                        return [null, "Project block {$n}: line_transaction must be a JSON array or object."];
+                    }
+                    $clean['line_transaction'] = $decoded;
+                }
+            } else {
+                $clean['line_transaction'] = null;
+            }
+
+            $blocks[] = $clean;
+        }
+
+        return [$blocks, null];
     }
 
     /**
-     * Turns the typed names into codes, creating what does not exist yet — in the order Program, Sub-Program, Project,
-     * because each belongs to the one before it. A level whose code was PICKED (present in $clean) is left alone: the
-     * picked code wins over any name. Writes the resulting codes into $clean. Must run inside the caller's open
-     * transaction (the caller rolls back on an error, so nothing created here survives a failed save).
+     * Turns each block's typed name(s) into codes, creating what does not exist yet — in the order Program,
+     * Sub-Program, Project, because each belongs to the one before it (same find-or-create precedent the record
+     * itself used to have — see findOrCreateProgram() / findOrCreateSubProgram() / findOrCreateProject() below,
+     * unchanged). A level whose code was PICKED on that block wins over any typed name for it. Must run inside the
+     * caller's open transaction (the caller rolls back on an error, so nothing created here survives a failed save).
      *
-     * On update ($current = the stored row) a Program / Sub-Program that differs from the stored one clears the
-     * levels below it unless the body supplies them: the old Sub-Program / Project cannot belong to it.
+     * @param array<int,array<string,mixed>> $rawBlocks  from normalizeProjectBlocksShape()
+     * @param ?int                           $fiscalYear the record's effective fiscal_year (a newly typed Project
+     *                                                    is created under it)
      *
-     * @param array<string,mixed>  $clean normalized body (modified)
-     * @param array<string,string> $names from typedNames()
-     *
-     * @return array{0: array<string,string>, 1: ?string} [codes created (program_code / sub_program_code / project_code), error]
+     * @return array{0: array, 1: array<string,string>, 2: ?string} [resolved blocks, created codes (keyed
+     *                                                                "projects.<i>.<field>"), error]
      */
-    private function resolveTypedEntities(array &$clean, array $names, ?array $current, ?int $userId): array
+    private function resolveProjectBlocks(array $rawBlocks, ?int $fiscalYear, ?int $userId): array
     {
+        $resolved = [];
         $created = [];
-        // These read $clean BY REFERENCE: each level below must see the codes the levels above it have just resolved
-        // (an arrow function would have copied $clean at this point, and never seen them).
-        $effective = function (string $f) use (&$clean, $current) {
-            return array_key_exists($f, $clean) ? $clean[$f] : ($current[$f] ?? null);
-        };
-        $hasCode = function (string $f) use (&$clean) {
-            return ($clean[$f] ?? null) !== null;
-        };
 
-        if (isset($names['program']) && !$hasCode('program_code')) {
-            [$code, $isNew, $err] = $this->findOrCreateProgram($names['program'], $userId);
-            if ($err) {
-                return [$created, $err];
-            }
-            $clean['program_code'] = $code;
-            if ($isNew) {
-                $created['program_code'] = $code;
-            }
-            if ($current !== null && ($current['program_code'] ?? null) !== $code) {
-                foreach (['sub_program_code', 'project_code'] as $below) {
-                    if (!array_key_exists($below, $clean)) {
-                        $clean[$below] = null;
-                    }
+        foreach ($rawBlocks as $i => $block) {
+            $n = $i + 1;
+            $program = $block['program_code'] ?? null;
+            $sub = $block['sub_program_code'] ?? null;
+            $project = $block['project_code'] ?? null;
+
+            if ($program === null && isset($block['program_name'])) {
+                [$program, $isNew, $err] = $this->findOrCreateProgram($block['program_name'], $userId);
+                if ($err) {
+                    return [[], $created, "Project block {$n}: {$err}"];
+                }
+                if ($isNew) {
+                    $created["projects.{$i}.program_code"] = $program;
                 }
             }
+            if ($sub === null && isset($block['sub_program_name'])) {
+                if ($program === null) {
+                    return [[], $created, "Project block {$n}: a new sub-program needs a program — pick or type the program first."];
+                }
+                [$sub, $isNew, $err] = $this->findOrCreateSubProgram($block['sub_program_name'], (string) $program);
+                if ($err) {
+                    return [[], $created, "Project block {$n}: {$err}"];
+                }
+                if ($isNew) {
+                    $created["projects.{$i}.sub_program_code"] = $sub;
+                }
+            }
+            if ($project === null && isset($block['project_name'])) {
+                if ($program === null) {
+                    return [[], $created, "Project block {$n}: a new project needs a program — pick or type the program first."];
+                }
+                [$project, $isNew, $err] = $this->findOrCreateProject($block['project_name'], (string) $program, $sub, $fiscalYear);
+                if ($err) {
+                    return [[], $created, "Project block {$n}: {$err}"];
+                }
+                if ($isNew) {
+                    $created["projects.{$i}.project_code"] = $project;
+                }
+            }
+
+            $resolved[] = [
+                'budget_allocation_project_id' => $block['budget_allocation_project_id'] ?? null,
+                'program_code' => $program,
+                'sub_program_code' => $sub,
+                'project_code' => $project,
+                'line_transaction' => $block['line_transaction'] ?? null,
+            ];
         }
 
-        if (isset($names['sub_program']) && !$hasCode('sub_program_code')) {
-            $program = $effective('program_code');
-            if ($program === null) {
-                return [$created, 'A new sub-program needs a program: pick or type the program first.'];
-            }
-            [$code, $isNew, $err] = $this->findOrCreateSubProgram($names['sub_program'], (string) $program);
-            if ($err) {
-                return [$created, $err];
-            }
-            $clean['sub_program_code'] = $code;
-            if ($isNew) {
-                $created['sub_program_code'] = $code;
-            }
-            if ($current !== null && ($current['sub_program_code'] ?? null) !== $code && !array_key_exists('project_code', $clean)) {
-                $clean['project_code'] = null;
+        return [$resolved, $created, null];
+    }
+
+    /** SQL literal for a nullable VARCHAR block field. */
+    private function blockStringLiteral(?string $value): string
+    {
+        return $value === null ? 'NULL' : App\QuotedValue($value, DataType::STRING, 'DB');
+    }
+
+    /** SQL literal (::jsonb) for a block's line_transaction. */
+    private function blockLineTransactionLiteral(mixed $value): string
+    {
+        return $value === null ? 'NULL'
+            : App\QuotedValue(json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), DataType::STRING, 'DB').'::jsonb';
+    }
+
+    /** create(): every resolved block is brand new — one INSERT per block, in the order given (sort_order). */
+    private function insertProjectBlocks(int $allocationId, array $blocks): void
+    {
+        foreach ($blocks as $i => $block) {
+            App\Execute(
+                "INSERT INTO {$this->tableAllocationProject} (allocation_id, sort_order, program_code, sub_program_code, project_code, line_transaction)
+                 VALUES ({$allocationId}, {$i}, "
+                    .$this->blockStringLiteral($block['program_code']).', '
+                    .$this->blockStringLiteral($block['sub_program_code']).', '
+                    .$this->blockStringLiteral($block['project_code']).', '
+                    .$this->blockLineTransactionLiteral($block['line_transaction']).')',
+                'DB'
+            );
+        }
+    }
+
+    /**
+     * update(): a block carrying a budget_allocation_project_id that still belongs to this allocation is updated
+     * IN PLACE (never dropped and recreated — fims.budget_line_item_earmark rows reference a block's id, and that
+     * FK is ON DELETE CASCADE); a block with no id (or one that doesn't match) is a new block, inserted. Any
+     * existing block not present among $blocks is SOFT-deleted (deleted_at), never hard-deleted, for the same
+     * earmark-safety reason — see the table's own SQL file.
+     */
+    private function replaceProjectBlocks(int $allocationId, array $blocks): void
+    {
+        $existingIds = array_map('intval', array_column(
+            App\ExecuteRows(
+                "SELECT budget_allocation_project_id FROM {$this->tableAllocationProject}
+                 WHERE allocation_id = {$allocationId} AND deleted_at IS NULL",
+                'DB'
+            ) ?: [],
+            'budget_allocation_project_id'
+        ));
+        $keptIds = [];
+
+        foreach ($blocks as $i => $block) {
+            $programLit = $this->blockStringLiteral($block['program_code']);
+            $subLit = $this->blockStringLiteral($block['sub_program_code']);
+            $projectLit = $this->blockStringLiteral($block['project_code']);
+            $ltLit = $this->blockLineTransactionLiteral($block['line_transaction']);
+
+            $blockId = $block['budget_allocation_project_id'] ?? null;
+            if ($blockId !== null && in_array((int) $blockId, $existingIds, true)) {
+                $blockId = (int) $blockId;
+                $keptIds[] = $blockId;
+                App\Execute(
+                    "UPDATE {$this->tableAllocationProject}
+                     SET sort_order = {$i}, program_code = {$programLit}, sub_program_code = {$subLit},
+                         project_code = {$projectLit}, line_transaction = {$ltLit}, updated_at = CURRENT_TIMESTAMP
+                     WHERE budget_allocation_project_id = {$blockId} AND allocation_id = {$allocationId}",
+                    'DB'
+                );
+            } else {
+                App\Execute(
+                    "INSERT INTO {$this->tableAllocationProject} (allocation_id, sort_order, program_code, sub_program_code, project_code, line_transaction)
+                     VALUES ({$allocationId}, {$i}, {$programLit}, {$subLit}, {$projectLit}, {$ltLit})",
+                    'DB'
+                );
             }
         }
 
-        if (isset($names['project']) && !$hasCode('project_code')) {
-            $program = $effective('program_code');
-            if ($program === null) {
-                return [$created, 'A new project needs a program: pick or type the program first.'];
-            }
-            $sub = $effective('sub_program_code');
-            $fiscalYr = $effective('fiscal_year');
-            [$code, $isNew, $err] = $this->findOrCreateProject($names['project'], (string) $program, $sub === null ? null : (string) $sub, $fiscalYr === null ? null : (int) $fiscalYr);
-            if ($err) {
-                return [$created, $err];
-            }
-            $clean['project_code'] = $code;
-            if ($isNew) {
-                $created['project_code'] = $code;
-            }
+        $removedIds = array_diff($existingIds, $keptIds);
+        if ($removedIds) {
+            App\Execute(
+                "UPDATE {$this->tableAllocationProject} SET deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+                 WHERE budget_allocation_project_id IN (".implode(', ', $removedIds).')',
+                'DB'
+            );
         }
-
-        return [$created, null];
     }
 
     /** @return array{0: ?string, 1: bool, 2: ?string} [program_code, created?, error] — an existing program with that name (any case) is reused */
@@ -1236,25 +1496,6 @@ class BudgetAllocationService
             $clean['is_bidding'] = ($b === null || $b === '') ? null : filter_var($b, FILTER_VALIDATE_BOOLEAN);
         }
 
-        if (array_key_exists('line_transaction', $body)) {
-            $lt = $body['line_transaction'];
-            if ($lt === null || $lt === '') {
-                $clean['line_transaction'] = null;
-            } else {
-                $decoded = $lt;
-                if (is_string($lt)) {
-                    $decoded = json_decode($lt, true);
-                    if (json_last_error() !== JSON_ERROR_NONE) {
-                        return [[], 'line_transaction is not valid JSON.'];
-                    }
-                }
-                if (!is_array($decoded)) {
-                    return [[], 'line_transaction must be a JSON array or object.'];
-                }
-                $clean['line_transaction'] = $decoded;
-            }
-        }
-
         if (array_key_exists('multiple_node_id', $body)) {
             $v = trim((string) ($body['multiple_node_id'] ?? ''));
             if ($v === '') {
@@ -1287,9 +1528,6 @@ class BudgetAllocationService
         if ($field === 'is_bidding') {
             return $value ? 'TRUE' : 'FALSE';
         }
-        if ($field === 'line_transaction') {
-            return App\QuotedValue(json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), DataType::STRING, 'DB').'::jsonb';
-        }
         if ($field === 'multiple_node_id') {
             return App\QuotedValue((string) $value, DataType::STRING, 'DB').'::uuid';
         }
@@ -1306,22 +1544,24 @@ class BudgetAllocationService
 
     /**
      * Friendly errors for bad references (the FKs would reject them too, but with
-     * an opaque DB message). $current / $id are set on update: the program →
-     * sub-program → project chain is checked against the *effective* values
-     * (the body merged over the stored row), and the parent may not be the row
-     * itself or one of its descendants.
+     * an opaque DB message). $current / $id are set on update: the parent may not
+     * be the row itself or one of its descendants. $blocks is the record's
+     * EFFECTIVE set of project blocks — resolved ones from resolveProjectBlocks()
+     * when the body touched `projects`, otherwise the stored blocks (fetchById()'s
+     * `projects`) — each checked for its own Program → Sub-Program → Project chain.
+     *
+     * @param array<int,array<string,mixed>> $blocks
      *
      * @return ?string error message, or null when everything checks out
      */
-    private function validateReferences(array $clean, ?array $current = null, ?int $id = null): ?string
+    private function validateReferences(array $clean, array $blocks, ?array $current = null, ?int $id = null): ?string
     {
         $checks = [
-            ['fiscal_year',               $this->tableFiscalYear, 'fiscal_yr',     '',                                                   'Fiscal year'],
-            ['vendor_id',                 $this->tableVendor,     'vendor_id',     '',                                                   'Vendor'],
-            ['status_id',                 $this->tableStatus,     'id',            " AND status_for = '".self::STATUS_FOR."'",       'Status'],
-            [self::REQUESTING_RC_FIELD,   $this->tableRc,         'rc_id',         '',                                                   'Requesting RC'],
-            ['requesting_district_id',    $this->tableDepartment, 'department_id', '',                                                   'Requesting district'],
-            ['program_code',              $this->tableProgram,    'program_code',  '',                                                   'Program'],
+            ['fiscal_year',               $this->tableFiscalYear, 'fiscal_yr',     '',                                             'Fiscal year'],
+            ['vendor_id',                 $this->tableVendor,     'vendor_id',     '',                                             'Vendor'],
+            ['status_id',                 $this->tableStatus,     'id',            " AND status_for = '".self::STATUS_FOR."'", 'Status'],
+            [self::REQUESTING_RC_FIELD,   $this->tableRc,         'rc_id',         '',                                             'Requesting RC'],
+            ['requesting_district_id',    $this->tableDepartment, 'department_id', '',                                             'Requesting district'],
         ];
         foreach ($checks as [$field, $table, $column, $extra, $label]) {
             $value = $clean[$field] ?? null;
@@ -1351,59 +1591,85 @@ class BudgetAllocationService
             }
         }
 
-        // ── RFA / LAA: Requested Amount per COB must not exceed what the parent CBA still has actively
-        // earmarked there — the same ceiling BudgetLineItemService::convertEarmarkForRfaApproval() enforces
-        // at Approval time, checked here too (create and update) so a request isn't accepted only to be
-        // rejected later purely over an amount that was already wrong when it was submitted.
         $effective = static fn (string $f) => array_key_exists($f, $clean) ? $clean[$f] : ($current[$f] ?? null);
         $effectiveType = strtoupper(trim((string) ($effective('allocation_type') ?? '')));
         $effectiveParentId = $effective('parent_id');
-        $effectiveLineTransaction = $effective('line_transaction');
-        if (($effectiveType === 'RFA' || $effectiveType === 'LAA') && $effectiveParentId !== null && $effectiveLineTransaction !== null) {
-            $check = (new BudgetLineItemService())->validateRfaAmounts((int) $effectiveParentId, $effectiveLineTransaction);
-            if (!$check['success']) {
-                return $check['message'];
-            }
+
+        if (!$blocks) {
+            return 'At least one project is required.';
         }
 
-        // ── Program → Sub-Program → Project must belong together ─────────────
-        if (array_intersect(['program_code', 'sub_program_code', 'project_code'], array_keys($clean))) {
-            $program = $effective('program_code');
-            $sub = $effective('sub_program_code');
-            $project = $effective('project_code');
+        // RFA / LAA: every project block must be one the parent CBA itself has a block for — the parent-earmark
+        // lookup (convertEarmarkForRfaApproval() / validateRfaAmounts()) matches by project_code, so a project
+        // that isn't one of the parent's own blocks could otherwise never resolve an earmark at all.
+        $parentProjectCodes = null;
+        if (($effectiveType === 'RFA' || $effectiveType === 'LAA') && $effectiveParentId !== null) {
+            $parentProjectCodes = array_column(
+                App\ExecuteRows(
+                    "SELECT project_code FROM {$this->tableAllocationProject} WHERE allocation_id = ".(int) $effectiveParentId.' AND deleted_at IS NULL',
+                    'DB'
+                ) ?: [],
+                'project_code'
+            );
+        }
 
+        foreach ($blocks as $i => $block) {
+            $n = $i + 1;
+            $program = $block['program_code'] ?? null;
+            $sub = $block['sub_program_code'] ?? null;
+            $project = $block['project_code'] ?? null;
+
+            // ── Program → Sub-Program → Project must belong together ─────────
+            if ($program !== null && !$this->exists($this->tableProgram, 'program_code', $program)) {
+                return "Project block {$n}: program '{$program}' does not exist.";
+            }
             if ($sub !== null) {
                 $row = App\ExecuteRow(
                     "SELECT program_code FROM {$this->tableSubProgram} WHERE sub_program_code = ".App\QuotedValue($sub, DataType::STRING, 'DB'),
                     'DB'
                 );
                 if (!$row) {
-                    return "Sub-program '{$sub}' does not exist.";
+                    return "Project block {$n}: sub-program '{$sub}' does not exist.";
                 }
                 if ($program === null) {
-                    return 'Select a program for the sub-program.';
+                    return "Project block {$n}: select a program for the sub-program.";
                 }
                 if ($row['program_code'] !== $program) {
-                    return "Sub-program '{$sub}' does not belong to program '{$program}'.";
+                    return "Project block {$n}: sub-program '{$sub}' does not belong to program '{$program}'.";
                 }
             }
+            if ($project === null) {
+                return "Project block {$n}: a project is required.";
+            }
+            $row = App\ExecuteRow(
+                "SELECT program_code, sub_program_code FROM {$this->tableProject} WHERE project_code = ".App\QuotedValue($project, DataType::STRING, 'DB'),
+                'DB'
+            );
+            if (!$row) {
+                return "Project block {$n}: project '{$project}' does not exist.";
+            }
+            if ($program === null) {
+                return "Project block {$n}: select a program for the project.";
+            }
+            if ($row['program_code'] !== $program) {
+                return "Project block {$n}: project '{$project}' does not belong to program '{$program}'.";
+            }
+            if ($sub !== null && ($row['sub_program_code'] ?? null) !== null && $row['sub_program_code'] !== $sub) {
+                return "Project block {$n}: project '{$project}' belongs to sub-program '{$row['sub_program_code']}', not '{$sub}'.";
+            }
 
-            if ($project !== null) {
-                $row = App\ExecuteRow(
-                    "SELECT program_code, sub_program_code FROM {$this->tableProject} WHERE project_code = ".App\QuotedValue($project, DataType::STRING, 'DB'),
-                    'DB'
-                );
-                if (!$row) {
-                    return "Project '{$project}' does not exist.";
-                }
-                if ($program === null) {
-                    return 'Select a program for the project.';
-                }
-                if ($row['program_code'] !== $program) {
-                    return "Project '{$project}' does not belong to program '{$program}'.";
-                }
-                if ($sub !== null && ($row['sub_program_code'] ?? null) !== null && $row['sub_program_code'] !== $sub) {
-                    return "Project '{$project}' belongs to sub-program '{$row['sub_program_code']}', not '{$sub}'.";
+            if ($parentProjectCodes !== null && !in_array($project, $parentProjectCodes, true)) {
+                return "Project block {$n}: project '{$project}' is not one of parent CBA #{$effectiveParentId}'s project blocks.";
+            }
+
+            // RFA / LAA: this block's Requested Amount per COB must not exceed what the matching parent-CBA block
+            // still has actively earmarked there — the same ceiling convertEarmarkForRfaApproval() enforces at
+            // Approval time, checked here too (create and update) so a request isn't accepted only to be rejected
+            // later purely over an amount that was already wrong when it was submitted.
+            if (($effectiveType === 'RFA' || $effectiveType === 'LAA') && $effectiveParentId !== null && ($block['line_transaction'] ?? null) !== null) {
+                $check = (new BudgetLineItemService())->validateRfaAmounts((int) $effectiveParentId, (string) $project, $block['line_transaction']);
+                if (!$check['success']) {
+                    return $check['message'];
                 }
             }
         }

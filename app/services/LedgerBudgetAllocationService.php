@@ -33,6 +33,7 @@ class LedgerBudgetAllocationService
     private string $tableRc = 'fims.responsibility_code';
     private string $tableProgram = 'fims.program';
     private string $tableProject = 'fims.project';
+    private string $tableAllocationProject = 'fims.budget_allocation_project';
     private string $tableDv = 'fims.disbursement_vouchers';
 
     private const TYPES = ['RFA', 'LAA'];
@@ -169,15 +170,25 @@ class LedgerBudgetAllocationService
         $in = implode(', ', array_map('intval', $parentIds));
 
         $parents = [];
+        // A CBA can now cover several project blocks (fims.budget_allocation_project) — the ledger still shows
+        // one Program / Project per parent group, so this takes only its FIRST block (lowest sort_order). Showing
+        // every block's own ceiling separately is a later fast-follow; `amount` below (requestedTotalSql())
+        // already sums ALL of the parent's blocks, so the ceiling itself stays correct even though the
+        // Program / Project label shown doesn't.
         $rows = App\ExecuteRows(
             "SELECT p.allocation_id, p.allocation_type, p.allocation_number, p.request_referrence_no, p.fiscal_year,
-                    p.description, p.program_code, pg.program_name, p.project_code, pj.project_name,
+                    p.description, pb.program_code, pg.program_name, pb.project_code, pj.project_name,
                     st.name AS status_name, p.created_at,
                     {$this->requestedTotalSql('p')} AS amount
              FROM {$this->table} p
              LEFT JOIN {$this->tableStatus} st  ON st.id = p.status_id
-             LEFT JOIN {$this->tableProgram} pg ON pg.program_code = p.program_code
-             LEFT JOIN {$this->tableProject} pj ON pj.project_code = p.project_code
+             LEFT JOIN LATERAL (
+                 SELECT program_code, project_code FROM {$this->tableAllocationProject}
+                 WHERE allocation_id = p.allocation_id AND deleted_at IS NULL
+                 ORDER BY sort_order, budget_allocation_project_id LIMIT 1
+             ) pb ON TRUE
+             LEFT JOIN {$this->tableProgram} pg ON pg.program_code = pb.program_code
+             LEFT JOIN {$this->tableProject} pj ON pj.project_code = pb.project_code
              WHERE p.allocation_id IN ({$in})",
             'DB'
         ) ?: [];
@@ -252,9 +263,10 @@ class LedgerBudgetAllocationService
     }
 
     /**
-     * Sum of "requested_amount" over line_transaction for the row aliased $alias — same tolerant rules as
-     * BudgetAllocationService::requestedTotalSql() (missing / non-numeric = 0, commas ignored). $alias is a
-     * constant from this class, never user input.
+     * Sum of "requested_amount" over EVERY project block's line_transaction belonging to the row aliased $alias
+     * — same tolerant rules as BudgetAllocationService::requestedTotalSql() (missing / non-numeric = 0, commas
+     * ignored), now summed across fims.budget_allocation_project rather than a flat column on $alias itself.
+     * $alias is a constant from this class, never user input.
      */
     private function requestedTotalSql(string $alias): string
     {
@@ -266,12 +278,14 @@ class LedgerBudgetAllocationService
                                    THEN REPLACE(ln.value->>'requested_amount', ',', '')::numeric
                                  ELSE 0
                                END)
-                    FROM jsonb_array_elements(CASE jsonb_typeof({$alias}.line_transaction)
-                                                WHEN 'array'  THEN {$alias}.line_transaction
-                                                WHEN 'object' THEN jsonb_build_array({$alias}.line_transaction)
+                    FROM {$this->tableAllocationProject} bap
+                    CROSS JOIN LATERAL jsonb_array_elements(CASE jsonb_typeof(bap.line_transaction)
+                                                WHEN 'array'  THEN bap.line_transaction
+                                                WHEN 'object' THEN jsonb_build_array(bap.line_transaction)
                                                 ELSE '[]'::jsonb
                                               END) AS ln(value)
-                    WHERE jsonb_typeof(ln.value) = 'object'
+                    WHERE bap.allocation_id = {$alias}.allocation_id AND bap.deleted_at IS NULL
+                      AND jsonb_typeof(ln.value) = 'object'
                 ), 0)";
     }
 
