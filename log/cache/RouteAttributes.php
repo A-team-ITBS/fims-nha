@@ -123,6 +123,7 @@
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone ($p['PHPMaker2024\\FIMS\\Attributes\\Get'] ?? \Symfony\Component\VarExporter\Internal\Registry::p('PHPMaker2024\\FIMS\\Attributes\\Get')),
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Get'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
@@ -219,6 +220,11 @@
     [
         'PHPMaker2024\\FIMS\\Attributes\\Map' => [
             'methods' => [
+                [
+                    'GET',
+                    'POST',
+                    'OPTIONS',
+                ],
                 [
                     'GET',
                     'POST',
@@ -1366,6 +1372,7 @@
                 '/DocumentTypeManager[/{params:.*}]',
                 '/DvReviewPage[/{params:.*}]',
                 '/EventPlayground[/{params:.*}]',
+                '/FarReportPage[/{params:.*}]',
                 '/FidelityBondPage[/{params:.*}]',
                 '/FileManager[/{params:.*}]',
                 '/FmrPage[/{params:.*}]',
@@ -1582,6 +1589,7 @@
                 'PHPMaker2024\\FIMS\\DocumentTypeManagerController:custom',
                 'PHPMaker2024\\FIMS\\DvReviewPageController:custom',
                 'PHPMaker2024\\FIMS\\EventPlaygroundController:custom',
+                'PHPMaker2024\\FIMS\\FarReportPageController:custom',
                 'PHPMaker2024\\FIMS\\FidelityBondPageController:custom',
                 'PHPMaker2024\\FIMS\\FileManagerController:custom',
                 'PHPMaker2024\\FIMS\\FmrPageController:custom',
@@ -1719,6 +1727,9 @@
                 'PHPMaker2024\\FIMS\\WorkflowManagerController:custom',
             ],
             'middleware' => [
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
                 [
                     'PHPMaker2024\\FIMS\\PermissionMiddleware',
                 ],
@@ -2440,6 +2451,7 @@
                 'custom.DocumentTypeManager',
                 'custom.dv_review_page',
                 'custom.EventPlayground',
+                'custom.far_report_page',
                 'custom.fidelity_bond_page',
                 'custom.FileManager',
                 'custom.fmr_page',
@@ -2577,6 +2589,7 @@
                 'custom.WorkflowManager',
             ],
             'options' => [
+                [],
                 [],
                 [],
                 [],
@@ -3009,6 +3022,7 @@
         $o[211],
         $o[212],
         $o[213],
+        $o[214],
     ],
     []
 );

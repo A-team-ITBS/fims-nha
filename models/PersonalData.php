@@ -44,7 +44,7 @@ class PersonalData
     public $RenderingView = false;
 
     // CSS class/style
-    public $CurrentPageName = "RemittancePageController";
+    public $CurrentPageName = "FarReportPageController";
 
     // Page headings
     public $Heading = "";

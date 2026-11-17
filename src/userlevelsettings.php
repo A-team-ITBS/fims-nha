@@ -213,7 +213,9 @@ $USER_LEVEL_PRIVS = [["{FIMS}audit_logs","-2","0"],
     ["{FIMS}payroll-page.php","-2","0"],
     ["{FIMS}payroll-page.php","0","0"],
     ["{FIMS}remittance-page.php","-2","0"],
-    ["{FIMS}remittance-page.php","0","0"]];
+    ["{FIMS}remittance-page.php","0","0"],
+    ["{FIMS}far-report-page.php","-2","0"],
+    ["{FIMS}far-report-page.php","0","0"]];
 
 /**
  * Tables
@@ -321,4 +323,5 @@ $USER_LEVEL_TABLES = [["audit_logs","audit_logs","Audit Logs",false,"{FIMS}",""]
     ["payroll-setup-page.php","payroll_setup_page","Payroll Setup",true,"{FIMS}","PayrollSetupPage"],
     ["fidelity-bond-page.php","fidelity_bond_page","Fidelity Bond",true,"{FIMS}","FidelityBondPage"],
     ["payroll-page.php","payroll_page","Payroll Management",true,"{FIMS}","PayrollPage"],
-    ["remittance-page.php","remittance_page","Remittance",true,"{FIMS}","RemittancePage"]];
+    ["remittance-page.php","remittance_page","Remittance",true,"{FIMS}","RemittancePage"],
+    ["far-report-page.php","far_report_page","FAR Report",true,"{FIMS}","FarReportPage"]];

@@ -101,6 +101,9 @@
     <menu id="653">
       <phrase id="menutext" value="Remittance List (Deductions)" />
     </menu>
+    <menu id="763">
+      <phrase id="menutext" value="FAR Report" />
+    </menu>
     <menu id="394">
       <phrase id="menutext" value="Ledgers" />
     </menu>
@@ -1789,6 +1792,9 @@
     </table>
     <table id="remittance_page">
       <phrase id="tblcaption" value="Remittance" />
+    </table>
+    <table id="far_report_page">
+      <phrase id="tblcaption" value="FAR Report" />
     </table>
   </project>
 </ew-language>
