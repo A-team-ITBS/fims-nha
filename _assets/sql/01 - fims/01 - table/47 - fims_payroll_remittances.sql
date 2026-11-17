@@ -7,10 +7,11 @@
 CREATE TABLE IF NOT EXISTS fims.payroll_remittances (
     payroll_remittance_id SERIAL PRIMARY KEY,
     payroll_period_id INTEGER NOT NULL,
-    remittance_agency VARCHAR(30) NOT NULL, -- BIR | SSS | PHILHEALTH | PAGIBIG | INTERNAL
+    remittance_agency VARCHAR(30) NOT NULL, -- GSIS | BIR | PHILHEALTH | PAGIBIG | OTHERS (Deductions & Remittances page)
     deduction_type_id INTEGER,
 
     -- Remittance details
+    due_date DATE, -- set by Accounting when it schedules the remittance for Treasury
     remittance_date DATE,
     remittance_no VARCHAR(50), -- Official remittance receipt/reference number
     remittance_method VARCHAR(30), -- ONLINE | CHECK | BANK_TRANSFER | MANUAL
@@ -20,8 +21,9 @@ CREATE TABLE IF NOT EXISTS fims.payroll_remittances (
     amount_remitted NUMERIC(18,2) DEFAULT 0,
     amount_pending NUMERIC(18,2) DEFAULT 0,
 
-    -- Status: PENDING (deductions collected, awaiting remittance) | SUBMITTED (remitted, awaiting confirmation)
-    -- | CONFIRMED (remittance verified) | CANCELLED
+    -- Status (Deductions & Remittances page, DeductionRemittanceService): a row is created when Accounting schedules a
+    -- month's agency remittance — SCHEDULED (for Treasury) → REMITTED (Treasury paid it) → CONFIRMED (agency receipt);
+    -- CANCELLED = unscheduled. PENDING (deductions not scheduled yet) is shown without a row.
     remittance_status VARCHAR(20) DEFAULT 'PENDING',
 
     -- Proof & audit trail
@@ -47,8 +49,9 @@ CREATE TABLE IF NOT EXISTS fims.payroll_remittances (
 );
 
 COMMENT ON TABLE fims.payroll_remittances IS 'Track withholdings remitted to BIR, SSS, PhilHealth, Pag-IBIG, and internal allocations';
-COMMENT ON COLUMN fims.payroll_remittances.remittance_agency IS 'BIR | SSS | PHILHEALTH | PAGIBIG | INTERNAL';
-COMMENT ON COLUMN fims.payroll_remittances.remittance_status IS 'PENDING | SUBMITTED | CONFIRMED | CANCELLED';
+COMMENT ON COLUMN fims.payroll_remittances.remittance_agency IS 'GSIS | BIR | PHILHEALTH | PAGIBIG | OTHERS';
+COMMENT ON COLUMN fims.payroll_remittances.remittance_status IS 'SCHEDULED | REMITTED | CONFIRMED | CANCELLED (PENDING = not scheduled yet, no row)';
+COMMENT ON COLUMN fims.payroll_remittances.due_date IS 'Due date Accounting set when scheduling the remittance for Treasury';
 COMMENT ON COLUMN fims.payroll_remittances.is_consolidated IS 'TRUE if this row consolidates multiple detail rows for the same period/agency';
 COMMENT ON COLUMN fims.payroll_remittances.tax_return_form IS 'BIR form reference (2307 for annual, 1601C for monthly, etc.)';
 COMMENT ON COLUMN fims.payroll_remittances.disbursement_voucher_id IS 'DV used for remittance payment (optional, for consolidation)';

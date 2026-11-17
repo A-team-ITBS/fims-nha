@@ -1078,6 +1078,8 @@ class PayrollManagementService
             $blocked = "The {$label} payroll period is {$p['status']}.";
         } elseif ($dvs) {
             $blocked = "The {$label} payroll is used by Disbursement Voucher {$dvs}. Cancel or delete that DV first.";
+        } elseif ($rem = (new DeductionRemittanceService())->liveRemittanceAgencies($id)) {
+            $blocked = "The {$label} deductions are already scheduled / remitted (" . implode(', ', $rem) . ') in Deductions & Remittances.';
         }
 
         return ['payroll_period_id' => $id, 'record_count' => $count, 'blocked' => $blocked];
