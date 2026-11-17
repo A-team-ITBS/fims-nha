@@ -2010,151 +2010,81 @@ erDiagram
 
 ```mermaid
 erDiagram
-    uac_users ||--o{ uac_user_level_assignments : "soft: user_id"
-    uac_departments ||--o{ uac_users : "soft: department_id"
-    uac_position_categories ||--o{ uac_positions : "soft: position_category_id"
-    uac_systems ||--o{ uac_user_levels : "soft: system_id"
-    uac_audit_logs }o..o{ uac_users : "soft text: audit_logs.user = username/id string"
-    uac_users {
-        int4 user_id PK
-        varchar username
-        bool is_active
-        int4 department_id "soft"
-        timestamp date_created
-    }
-    uac_user_level_assignments {
-        int4 assignment_id PK
-        int4 user_id "soft"
-    }
-    uac_departments {
-        int4 department_id PK
-        varchar department_name
-        varchar department_type
-        bool is_budget_unit
-    }
-    uac_positions {
-        int4 position_id PK
-        int4 position_category_id "soft"
-    }
-    uac_position_categories {
-        int4 position_category_id PK
-        varchar category_name
-    }
-    uac_user_levels {
-        int4 user_level_id PK
-        int4 system_id "soft"
-    }
-    uac_systems {
-        int4 system_id PK
-        bool is_active
-    }
-    uac_audit_logs {
-        int4 id PK
-        timestamp date_time
-        varchar script
-        varchar user "quoted column name"
-        varchar action
-        varchar table "quoted column name"
-        varchar field
-        text key_value
-        text old_value
-        text new_value
-    }
+    fund_tracking_type ||--o{ fund_tracking : "tracking_type_id (no DB FK)"
+    nature_of_fund ||--o{ fund_tracking : "nature_of_fund_id (no DB FK)"
+    fund_tracking ||--o{ fund_tracking : "parent_id (self, no DB FK)"
 ```
-- **Table notes:**
-  - uac.audit_logs — PHPMaker audit trail sink (`AUDIT_TRAIL_TABLE_NAME=audit_logs`, `src/config.php:371-383`), one row per changed field; no FK, user stored as text. Filtered/paged here; aggregated by view `uac.aggregated_audit_logs` (read by `app/pages/main-dashboard.php:99`).
-  - Other tables: same as previous sections, counted only (`COUNT(*)`, `GROUP BY`).
 
-### Department Management
+| Table | Purpose / notes |
+|---|---|
+| `fund_tracking` | One row per SARO/NCA/Trust Fund/OR document. `parent_id` links a record to the one it was released/derived from (e.g. an NCA to its SARO); `multiple_node_id` groups rows saved together. No `unreleased` and no `sub_program_code` column (dropped, `03 - alter_table/41`); `date` is the creation day (defaults to `CURRENT_DATE`, stamped by the API). **Declares no FOREIGN KEYs at all** — `fund_trackingServices::validateReferences()` checks every id/code in PHP instead. `agency_name` references `fims.agency` **by name, not id** |
+| `fund_tracking_type` | Lookup: `SARO` (Special Allotment Release Order), `NCA` (Notice of Cash Allocation), `TRUST` (Trust Fund), `OR` (Obligations Request). `GAAAO` and `SUPPLEMENTAL` are deliberately **not** here — they're natures of fund, not tracking types |
+| `nature_of_fund` | Lookup: Insertions, Equity, GAAAO, Unprogrammed, Supplemental |
+| `agency` | Lookup of source agencies (name only); `fund_tracking.agency_name` stores the chosen name as a string, not this table's id |
 
-- **Status:** Built — custom page + Slim API.
-- **Code:** `views/DepartmentManagement.php` → `app/pages/department-management.php`; routes `app/routes/department-management.php` (`POST /api/department-management/departments`, `PUT /…/departments/{id}`); service `app/lib/DepartmentManagementService.php`. PHPMaker CRUD `models/Departments*.php`, `DepartmentSystems*.php`, `VDepartmentHierarchyList` also generated (not in this menu).
-- **Tables written:** uac.departments (insert/update of department_name, department_acronym, department_code, description, department_type, parent_department_id, hierarchy_level, is_budget_unit, is_active). **Tables read:** uac.departments (self-join for parent, recursive CTE cycle check), uac.offices (office name), uac.users (department head name).
-- **Status workflow:** none.
+**Pricing Requests gap:** `PricingRequestService` (Fund Sourcing Division pricing requests, keyed by
+`project_code`) targets `fims.pricing_requests` / `fims.pricing_request_attachments`, but **no SQL
+file anywhere in this repo creates either table** — see developer guide §7.6. Not drawn above since
+there's no schema to diagram yet.
 
-```mermaid
-erDiagram
-    uac_departments ||--o{ uac_departments : "soft self-ref: parent_department_id"
-    uac_users ||--o{ uac_departments : "soft: department_head_id"
-    uac_offices ||--o{ uac_departments : "soft: office_id"
-    fims_responsibility_code ||--o{ uac_departments : "cross-schema soft: rc_id (int4 vs varchar(10) - type mismatch)"
-    uac_departments ||--o{ uac_users : "soft: users.department_id"
-    uac_departments ||--o{ uac_department_systems : "soft: department_id"
-    uac_departments {
-        int4 department_id PK
-        varchar department_name "dup-checked by service"
-        varchar department_code
-        varchar department_acronym
-        int4 parent_department_id "soft self"
-        int4 department_head_id "soft -> users"
-        int4 office_id "soft -> offices"
-        int4 rc_id "soft, int4"
-        varchar department_type "MAIN/DIVISION/SECTION/UNIT/REGIONAL/DISTRICT"
-        int4 hierarchy_level "service derives parent+1"
-        bool is_budget_unit
-        bool is_active
-    }
-    uac_offices {
-        int4 office_id PK
-        varchar office_name
-        varchar office_code
-        int4 parent_office_id "soft self"
-        int4 rc_id "soft"
-    }
-    uac_users {
-        int4 user_id PK
-        int4 department_id "soft"
-    }
-    uac_department_systems {
-        int4 department_system_id PK
-        int4 department_id "soft"
-        int4 system_id "soft"
-    }
-    fims_responsibility_code {
-        varchar rc_id PK
-    }
-```
-- **Table notes:**
-  - uac.departments — org hierarchy; no FKs at all (parent, head, office, rc all soft). Service enforces unique name, existing parent and no cycles (recursive CTE). `department_head_id`, `office_id`, `rc_id`, contact fields are displayed but never written by this page. Inbound real FKs from fims: `fims.check_releases.department_id` and `fims.check_release_email_log.department_id` (`01 - fims/01 - table/38 - fims_check_releases_unified.sql`); bank_accounts' FK was dropped by alter 24.
-  - uac.offices — read for the office label only; also target of real FKs `fims.pricing_requests.regional_office_id / district_office_id` (`01 - fims/01 - table/34 - fims_pricing_requests.sql`).
-  - uac.department_systems — department→system access mapping; PHPMaker CRUD only, not used by this page.
+### 2.8 JEV approval → GL/SL posting → Journals & Trial Balance
 
-### Change Password
+Drafted 2026-11-14, **implemented the same day**: `fims.general_ledger` (`01 - table/38`),
+`journal_entry_vouchers.status_id`/`posted_by`/`posted_at` (`03 - alter_table/29`), their
+`journal_entry_voucher` status seed rows (`02 - sample_data/11`), and `fims.v_journals`/
+`fims.v_trial_balance` (`05 - views/01` — a new top-level folder for `fims`, mirroring `uac`'s
+`03 - views`). Service: `app/services/GeneralLedgerService.php`, called from
+`DisbursementVoucherService::changeStatus()`.
 
-- **Status:** Built — custom UI shell over PHPMaker's ChangePassword handler.
-- **Code:** `views/ChangePass.php` → `app/pages/change-pass.php` (fetches a CSRF token from `/changepassword`, then does a real form POST); handler `models/ChangePassword.php` (PHPMaker) using `_shared/auth.php`.
-- **Tables written:** uac.users.password_hash (via the user entity, `models/ChangePassword.php:349-357`). **Tables read:** uac.users.
-- **Status workflow:** none.
+> **Extended 2026-11-15 (uncommitted in `_assets/sql/` as of this writing — read from code, not
+> re-verified against a fresh install):**
+> - **Books of Accounts** — `fims.books` (`01 - table/41`: Main Office, CISFA, NGC, MPLC/PPMO, PPMO)
+>   plus `book_id` columns on `journal_entry_vouchers`, `general_ledger`, and `official_receipts`
+>   (`03 - alter_table/30`). Book is an **Accounting classification chosen on the DV's Accounting
+>   Entries section** (`persistJournalEntry()`'s `$bookId`), *not* a DV-header field — so
+>   `disbursement_vouchers` deliberately has no `book_id`; it's tagged on the JEV and copied down to
+>   each `general_ledger` row at post time (same snapshot convention as `fiscal_yr`). All four ledger
+>   reports scope by it.
+> - **Payment JEVs** — `journal_entry_vouchers.jev_type` (`SETUP` default | `PAYMENT`),
+>   `source_module` (`ACCOUNTING` | `TREASURY`), `doc_ref_no` (e.g. `CHECK NO. 001`), and matching
+>   `source_module`/`doc_ref_no` on `general_ledger` (`03 - alter_table/31`). The old `UNIQUE(dv_id)`
+>   became a **partial unique index** `uq_journal_entry_vouchers_dv_id_setup` (`WHERE jev_type =
+>   'SETUP'`). `bank_accounts.account_code` (nullable FK → `chart_of_accounts`) maps each bank account
+>   to the Cash GL account its outflow credits. See the payment-settlement design note below.
+> - **JEV classification** — `journal_entry_vouchers.jev_classification` (`03 - alter_table/32`:
+>   `REGULAR` default | `ACCRUAL` | `DEPRECIATION` | `PREPAYMENTS` | `CLOSING`, `CHECK`-constrained).
+>   A **business/reporting label, independent of `jev_type`** (which is GL-posting mechanics).
+> - **Standalone (no-DV) JEVs** — `journal_entry_vouchers.dv_id` made nullable (`03 - alter_table/33`)
+>   so Accounting can book period-end adjusting/closing entries directly, with no Disbursement
+>   Voucher. The partial unique index still works (Postgres treats NULLs as distinct). New service
+>   methods `createStandaloneJev()`/`updateStandaloneJev()`/`deleteStandaloneJev()`/`postStandaloneJev()`
+>   and `/voucher/journal-entry/*` routes back the new Add-JEV form.
+> - **JEV-register view** — `fims.v_journal_entry_vouchers` (`05 - views/02`): one row per JEV header
+>   with its DV/book/status labels, replacing an inline join; `fims.v_journals`'s DV join was changed
+>   to a `LEFT JOIN` so standalone (no-DV) postings still appear.
 
-```mermaid
-erDiagram
-    uac_users ||--o{ uac_jwt_sessions : "FK jwt_sessions_user_fk (not touched here)"
-    uac_users {
-        int4 user_id PK
-        varchar username UK
-        varchar email UK
-        varchar password_hash "updated here"
-        bool must_change_password "NOT cleared by this flow"
-        bool is_active
-        timestamp last_login
-    }
-    uac_jwt_sessions {
-        int4 session_id PK
-        int4 user_id FK
-    }
-```
-- **Table notes:**
-  - uac.users — only `password_hash` changes; PHPMaker compares lowercased passwords (`CASE_SENSITIVE_PASSWORD` false, see `00 - uac/04 - seed_data/01 - superadmin_user.sql` comment). `must_change_password` is referenced only by PHPMaker Users models/Entity — no code sets/clears or enforces it in app/ or _shared/.
+Route + UI added the same day, as **four separate modules** (General Ledger, Subsidiary Ledger,
+Journals, Trial Balance are each their own page — not tabs of one page; see developer guide §8.5 for
+the full table of which page/endpoint shows what), all under `app/routes/general_ledger.php`
+(every endpoint read-only — posting is never reachable via a route) and a new "Ledgers" sidebar
+group. **Verified three times, increasingly end-to-end**:
 
-## Pages not in the sidebar
+1. A `BEGIN…ROLLBACK` dry run against the `fims-nha-postgres` docker-compose container (install
+   order, the partial unique index rejecting a raw duplicate post, a full post+reverse cycle netting
+   an account to exactly 0.00).
+2. The migration applied for real to the app's actual database (`host.docker.internal:5432/fims` —
+   the separate `fims-nha-postgres` container on port 5433 is *not* what `fims-nha-php` connects to,
+   see developer guide §10), all four pages confirmed rendering 200 with no PHP errors, and the
+   "Ledgers" menu group appearing on `/MainDashboard`.
+3. A full `curl` round-trip with a real session cookie: created a DV, approved it to `FOR_TREASURY`
+   (posting fired), confirmed General Ledger / Subsidiary Ledger (a second DV with an `sl_code` on
+   its JEV line) / Journals / Trial Balance **all** show it with correctly-signed running balances;
+   cancelled it (`reverseJev()` fired) and confirmed both ledger cards net back to exactly `0.00`.
 
-These pages are built and have tables, but `views/menu.php` has no entry for them (reachable only by URL or from other pages).
-
-### Purchase Orders
-- **Status:** Built — not in the sidebar (`views/PoPage.php` → `app/pages/po/{page,form,readone}.php`).
-- **Code:** `app/routes/vendor.php`, `app/routes/purchase-order.php`; `PurchaseOrderService` (status changes in `changeStatus()`).
-- **Tables written:** `purchase_orders`, `purchase_order_items`. **Tables read:** `vendors`, `vendor_types`, `fiscal_year`, `program`, `project`, `chart_of_accounts`.
-- **Status workflow:** DRAFT → SUBMITTED → APPROVED / REJECTED; DRAFT / SUBMITTED / REJECTED can be CANCELLED.
+When a DV is approved on the Accounting side (`FOR_ACCOUNTING → FOR_TREASURY`, the transition that
+already requires its JEV to exist and balance — see §2.3), the JEV itself is now also
+approved/posted in the same DB transaction, and its lines flow into the General Ledger that
+Subsidiary Ledger reports, the Journals register, and the Trial Balance all read from.
 
 ```mermaid
 erDiagram

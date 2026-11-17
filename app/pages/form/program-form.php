@@ -122,7 +122,7 @@ $_prgf_api = $_prg_api ?? \PHPMaker2024\FIMS\Config('API.FIMS_URL');
 
                 <div class="prg-group">
                     <label class="prg-label">Program Name <span class="req">*</span></label>
-                    <input type="text" class="prg-input" id="prg-program-name" required maxlength="255" placeholder="e.g. Housing Finance Program">
+                    <input type="text" class="prg-input" id="prg-program-name" required maxlength="255" autocapitalize="characters" placeholder="e.g. HOUSING FINANCE PROGRAM">
                 </div>
             </div>
             <div id="prg-footer">

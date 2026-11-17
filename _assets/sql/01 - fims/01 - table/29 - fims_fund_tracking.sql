@@ -6,17 +6,21 @@
 --   status_id          -> fims.settings_status.id
 -- No FOREIGN KEY constraints are declared here (none were specified); add them
 -- in a later "alter_table" file if wanted.
--- No unreleased amount and no sub-program: a record carries neither (dropped by "03 - alter_table/41" in an existing database).
+-- unreleased (dropped by "03 - alter_table/41") is back, from "03 - alter_table/47" in an existing database.
+-- saro_id (was reference_number), description (was name) and sub_program (dropped by 41, brought back) come from "03 - alter_table/45"
+-- in an existing database; a new database gets them here.
 -- Soft-deleted via deleted_at.
 CREATE TABLE IF NOT EXISTS fims.fund_tracking (
     id SERIAL PRIMARY KEY,
     fiscal_year INT4,
     tracking_type_id INT4,
-    reference_number VARCHAR(225),
+    saro_id VARCHAR(225),             -- the SARO ID / NCA No. / Trust Fund No. / OR No. of the record (was reference_number)
     nature_of_fund_id INT4,
-    name VARCHAR(225),
-    date DATE DEFAULT CURRENT_DATE,   -- the day the record was created (stamped by the API; never entered)
+    description TEXT,                  -- was name (VARCHAR 225); long text since "03 - alter_table/46"
+    sub_program VARCHAR(225),
+    date DATE DEFAULT CURRENT_DATE,   -- entered on the SARO / NCA / Supplemental form; a record saved without one (Trust Fund / OR) gets the day it is created
     amount NUMERIC(18,2),
+    unreleased NUMERIC(18,2),
     bank_account_no VARCHAR(225),
     agency_name VARCHAR(225),
     remarks TEXT,

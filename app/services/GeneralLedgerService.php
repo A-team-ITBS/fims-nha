@@ -270,11 +270,20 @@ class GeneralLedgerService
             return ['success' => false, 'message' => "Disbursement Voucher #{$dvId} has no posted Journal Entry Voucher to settle."];
         }
 
+        // Matches the control account itself (self::AP_ACCOUNT_CODE) OR one of its SL sub-ledger
+        // children (e.g. a vendor's own fims.vendors.coa_account_id under it, see
+        // voucher/{form,readone}.php's "Net Amount Payable" line) — same single-level
+        // parent_account_id convention GeneralLedgerService::fetchSubsidiaryLedger() already uses.
         $apLine = App\ExecuteRow(
-            "SELECT sl_code, sl_detail_id, rc_id
-             FROM {$this->tableJevLines}
-             WHERE jev_id = " . (int) $setupJev['jev_id'] . ' AND account_code = ' . $this->str(self::AP_ACCOUNT_CODE) . ' AND credit > 0
-             ORDER BY line_number LIMIT 1',
+            "SELECT jl.account_code, jl.sl_code, jl.sl_detail_id, jl.rc_id
+             FROM {$this->tableJevLines} jl
+             JOIN {$this->tableCoa} c ON c.account_code = jl.account_code
+             LEFT JOIN {$this->tableCoa} p ON p.account_id = c.parent_account_id
+             WHERE jl.jev_id = " . (int) $setupJev['jev_id'] . '
+               AND jl.credit > 0
+               AND (jl.account_code = ' . $this->str(self::AP_ACCOUNT_CODE) . '
+                    OR p.account_code = ' . $this->str(self::AP_ACCOUNT_CODE) . ')
+             ORDER BY jl.line_number LIMIT 1',
             'DB'
         );
         if (!$apLine) {
@@ -312,9 +321,13 @@ class GeneralLedgerService
         );
         $jevId = (int) $row['jev_id'];
 
+        // Debits the SAME account the SETUP JEV actually credited — the control account itself, or
+        // a vendor's own SL sub-ledger account under it — never the hardcoded control code, or a
+        // vendor with its own SL account would settle against the wrong ledger (control account
+        // debited, vendor's SL balance left outstanding forever).
         App\Execute(
             "INSERT INTO {$this->tableJevLines} (jev_id, line_number, account_code, debit, credit, description, sl_code, sl_detail_id, rc_id)
-             VALUES ({$jevId}, 1, " . $this->str(self::AP_ACCOUNT_CODE) . ', ' . (float) $amount . ', 0, '
+             VALUES ({$jevId}, 1, " . $this->str($apLine['account_code']) . ', ' . (float) $amount . ', 0, '
                 . $this->str("Payment via {$docRefNo}") . ', '
                 . $this->strOrNull($apLine['sl_code']) . ', ' . $this->intOrNull($apLine['sl_detail_id']) . ', '
                 . $this->strOrNull($apLine['rc_id']) . ')',
