@@ -25,8 +25,36 @@ fims.budget_req                       fiscal year, requesting RC (rc_id), status
 and what has been drawn against it from the memo requests (CBA / RFA / LAA) through the reservation ledger `fims.budget_line_item_earmark`
 (joined to `fims.budget_allocation` for the type; see `BudgetLineItemService`).
 
-One COB "record" is one **budget line item**. A line item of an older request that never got a program block still counts — it shows as
-"No program" / "No project" rather than disappearing.
+One COB "record" is one **budget line item**. A line item with no program never disappears: a COE budget request carries line items of its own
+(`budget_line_items.budget_req_project_id IS NULL`, no Program / Sub-Program / Project), and so does an older request that never got a program block.
+In the plain tree they sit under "No program" / "No project"; the two monitoring pages ask for the CO / COE split below, which gives them a proper home.
+
+### CO and COE
+
+A line's **expense class** is read off its chart-of-accounts code (`CobService::expenseClassSql()` — the same prefix rule as
+`DisbursementVoucherService::deriveExpenseClass()` and the Budget Proposal "View as COB"; there is no stored column for it):
+
+| Account code starts with | Class | Side |
+|---|---|---|
+| `1` | **CO** (capital outlay) | CO |
+| `5-01` | **PS** (Personal Services) | COE |
+| `5-02` | **MOOE** (Maintenance & Other Operating Expenses) | COE |
+
+`costTypeOf()` decides the side: a line is **COE** when it has **no program** (a COE budget request) **or** its account is PS / MOOE; otherwise it is CO. A
+programless line whose account is neither PS nor MOOE is kept, as COE → "Other (not PS / MOOE)". (The Budget Request form already keeps PS / MOOE accounts to
+COE requests and everything else to programs, so the two rules agree on current data; the tie-break only matters for older requests.)
+
+`GET /cob/rollup?...&split_coe=1` (both pages send it; the Generate Report and the other layouts do not, so their tree is unchanged) cuts the tree in two at the
+top, each half a root node (`type: 'bucket'`, key `CO` / `COE`) carrying the sums of what is under it:
+
+```
+CO    Program → Sub-Program → Originating Unit → Project
+COE   PS | MOOE → Originating Unit → Request        (the leaf is the line's project if it has one, else the request: type 'request', named by its reference no.)
+```
+
+With `with_allocations=1` a request leaf gets its RFAs / LAAs and vouchers like a project does; a COE request's PS and MOOE lines are separate leaves, so an RFA
+that drew on both shows under each with what it drew there (`leafKey()`). In the View modal the request's programless lines come back in `unassigned_line_items`
+and are shown as a **COE** card split into PS / MOOE; every line carries its `expense_class`.
 
 ## The eight columns
 
@@ -157,3 +185,5 @@ repo as `cob-page.old-design.php` next to the other old-COB reference files.
 - First version: *Total | Fund Balance | Adjustment | Carry Over Obligation* over Type of Fund / Component / Region trees down to the account. Replaced by the
   Corporate Operating Budget Monitoring sheet's eight columns: the account level and the Office level are gone (an account is still in the View modal), and Sub-Program is a level.
 - Second pass: the Approved Amount is `suggested_amount` as it stands (it had been rebuilt as the amount before CBAs and revisions), and the row / column colour coding was removed.
+- CO / COE: the COB and RFA / LAA Monitoring pages separate **CO** (accounts `1…`, the programs' projects) from **COE** (no program; PS `5-01…` / MOOE `5-02…`), the way the
+  Budget Proposal "View as COB" does; the "No program" / "No project" rows of those pages are gone.
