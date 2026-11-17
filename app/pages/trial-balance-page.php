@@ -21,11 +21,44 @@ $_tb_api = preg_match('~/api$~', $_tb_api) ? $_tb_api : $_tb_api . '/api';
 
 <style>
     #tb-root .tb-report-title { text-align: center; margin: 0 0 18px; }
-    #tb-root .tb-report-title div { font-weight: 700; font-size: 14px; line-height: 1.6; }
+    #tb-root .tb-report-title div { font-weight: 700; line-height: 1.6; }
     #tb-root .tb-report-title .tb-report-date { font-weight: 400; }
     #tb-root .tb-major-row td { background: #1B2B6B; color: #fff; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; }
-    #tb-root .tb-group-row td { background: var(--afims-bg-soft, #F5F6FA); font-weight: 600; text-transform: uppercase; font-size: 12px; }
+    #tb-root .tb-group-row td { background: var(--afims-bg-soft, #F5F6FA); font-weight: 600; text-transform: uppercase; }
+
+    /* Larger type for low-vision readers; tighter row padding keeps the table compact. Scoped to this page only (shared
+       nha-fims.css is used by other modules). Amounts/codes never wrap, long account titles wrap instead of overflowing.
+       Font sizes are set in rem DIRECTLY on the cells. _shared/js/custom.js injects
+       `td, th { font-size: calc(1em * var(--td-scale)) !important }`, which beats any normal font-size (so the shared
+       nha-fims.css `td { font-size: 12px }` is dead); the rules below are !important with a higher selector specificity (#tb-root)
+       so they win it, and keep the same `* var(--td-scale)` multiplier so the Theme Settings table-size control still works. */
+    #tb-root .nha-tbl thead th        { font-size: calc(0.75rem * var(--td-scale, 1)) !important; }    /* 12px  column headers */
+    #tb-root .nha-tbl tbody td        { font-size: calc(0.875rem * var(--td-scale, 1)) !important; }   /* 14px  account rows */
+    #tb-root .nha-tbl tr.tb-major-row td { font-size: calc(0.875rem * var(--td-scale, 1)) !important; }  /* 14px  LIABILITIES etc. */
+    #tb-root .nha-tbl tr.tb-group-row td { font-size: calc(0.8125rem * var(--td-scale, 1)) !important; } /* 13px  asset sub-headers */
+    #tb-root .nha-tbl tfoot td        { font-size: calc(1rem * var(--td-scale, 1)) !important; }       /* 16px  Total */
+
+    /* The rest of the page used 10-13px (shared nha-fims.css), tiny next to the table. Raised here so the page reads as one scale.
+       custom.js also forces `1em * scale !important` on inputs/selects/buttons, so those get the same direct rem + !important. */
+    #tb-root .nha-hdr-tag             { font-size: 0.75rem; }    /* 12px  (was 10) */
+    #tb-root .nha-hdr-title           { font-size: 1.25rem; }    /* 20px  (was 17) */
+    #tb-root .nha-btn-hdr             { font-size: calc(0.875rem * var(--button-scale, 1)) !important; } /* 14px  Refresh */
+    #tb-root .nha-filter-label        { font-size: 0.75rem; }    /* 12px  (was 10) */
+    #tb-root .nha-filter-select       { font-size: calc(0.875rem * var(--input-scale, 1)) !important; }  /* 14px  dropdowns (was 13) */
+    #tb-root .nha-bdg                 { font-size: 0.8125rem; }  /* 13px  status badge (was 11) */
+    #tb-root .nha-error               { font-size: 0.875rem; }   /* 14px  (was 13) */
+    #tb-root .nha-hint                { font-size: 0.875rem; }   /* 14px  (was 13) */
+    #tb-root .nha-tbl thead th       { padding: 6px 12px; }
+    #tb-root .nha-tbl td             { line-height: 1.25; padding: 4px 12px; }
+    #tb-root .nha-tbl td.nha-mono, #tb-root .nha-tbl td.text-end { white-space: nowrap; }
+    #tb-root .nha-tbl td:first-child { overflow-wrap: anywhere; }
+    #tb-root .tb-major-row td        { padding: 5px 12px; }
+    #tb-root .nha-tbl tfoot td       { padding: 8px 12px; }
+    #tb-root .tb-report-title div    { font-size: 1rem; }
     #tb-root .tb-account-row td:first-child { padding-left: 28px; }
+
+    /* Total row: set apart from the account rows by a top and bottom border (double rule underneath, accounting style) */
+    #tb-root .nha-tbl tfoot td { border-top: 2px solid var(--afims-border-strong, #1B2B6B); border-bottom: 3px double var(--afims-border-strong, #1B2B6B); font-weight: 700; }
 
     /* Dark mode: --afims-bg-soft is not a theme token, so the account-group rows (e.g. "Cash and Cash Equivalents") fell back to a
        near-white #F5F6FA with light text on it; the major classification rows get the brand blue so they stand out from the table */
@@ -60,7 +93,7 @@ $_tb_api = preg_match('~/api$~', $_tb_api) ? $_tb_api : $_tb_api . '/api';
         </div>
     </div>
 
-    <p class="nha-hint no-print" style="margin:0 0 14px;color:var(--afims-text-muted,#62657E);font-size:13px;">
+    <p class="nha-hint no-print" style="margin:0 0 14px;color:var(--afims-text-muted,#62657E);">
         Showing the total debit and credit posted to every account, grouped under its major
         classification (Assets, Liabilities, Equity, Revenue, Expenses) — e.g. a snapshot of all
         General Ledger balances as of today.
@@ -249,7 +282,18 @@ function tb_render(json) {
                 lastGroup = null; // a new major group always restarts its own sub-groups
             }
             if (r.account_group && r.account_group !== lastGroup) {
-                header += `<tr class="tb-group-row"><td colspan="4">${tb_esc(r.account_group)}</td></tr>`;
+                // Assets keep the filled sub-header (e.g. "Cash and Cash Equivalents"). Every other class —
+                // Liabilities especially — lists its group (e.g. "Financial Liabilities" 2-01, "Inter-Agency
+                // Payables" 2-02) as a plain row at the same level as the accounts, like the NHA reference.
+                if (/^assets$/i.test(String(r.major_group).trim())) {
+                    header += `<tr class="tb-group-row"><td colspan="4">${tb_esc(r.account_group)}</td></tr>`;
+                } else {
+                    header += `<tr class="tb-account-row">
+                        <td>${tb_esc(r.account_group)}</td>
+                        <td class="nha-mono">${tb_esc(r.account_group_code)}</td>
+                        <td></td><td></td>
+                    </tr>`;
+                }
             }
             lastMajor = r.major_group;
             lastGroup = r.account_group;
@@ -257,8 +301,8 @@ function tb_render(json) {
             return header + `<tr class="tb-account-row">
                 <td>${tb_esc(r.account_title) || '—'}</td>
                 <td class="nha-mono">${tb_esc(r.account_code)}</td>
-                <td class="text-end nha-mono">${Number(r.total_debit) > 0 ? tb_peso(r.total_debit) : ''}</td>
-                <td class="text-end nha-mono">${Number(r.total_credit) > 0 ? tb_peso(r.total_credit) : ''}</td>
+                <td class="text-end nha-mono">${tb_peso(r.total_debit)}</td>
+                <td class="text-end nha-mono">${tb_peso(r.total_credit)}</td>
             </tr>`;
         }).join('');
     }
