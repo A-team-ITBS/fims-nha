@@ -49,6 +49,11 @@ $apiBase = Config('API.FIMS_URL');
 // views/BudgetAllocationForm.php (the "Memo Request Form" menu item) relies on.
 $cbaAsModal = !empty($cbaAsModal);
 
+// Which Allocation Types this form may create / edit: the including page sets $cbaAllowedTypes (memo-req-page.php: ['CBA'] or
+// ['RFA', 'LAA'], from the $alloc_type of its wrapper). One type -> it is preselected and locked; several -> only those are
+// offered. Left unset (the stand-alone "Memo Request Form" page) every type stays available, as before.
+$cbaAllowedTypes = array_values(array_intersect(['CBA', 'RFA', 'LAA', 'CFA'], array_map('strval', (array) ($cbaAllowedTypes ?? []))));
+
 ?>
 
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -664,6 +669,23 @@ $cbaAsModal = !empty($cbaAsModal);
 			opacity: .9;
 		}
 
+		/* Dark mode: custom.css paints every .btn-primary with `var(--navy) !important`, and inside the
+		   .nha-root modal nha-fims.css redefines --navy as the (light) heading TEXT colour — so the
+		   Submit button became white text on a near-white fill. Keep the navy fill used in light mode. */
+		html.afims-dark[data-bs-theme="dark"] .cba-form-container button.btn.btn-primary,
+		html.afims-dark[data-bs-theme="dark"] .cba-form-container button.btn.btn-primary:disabled {
+			color: var(--afims-pure-white, #FFFFFF) !important;
+			background-color: var(--afims-heading-fill, #22305E) !important;
+			border-color: var(--afims-heading-fill, #22305E) !important;
+		}
+
+		html.afims-dark[data-bs-theme="dark"] .cba-form-container button.btn.btn-primary:hover:not(:disabled),
+		html.afims-dark[data-bs-theme="dark"] .cba-form-container button.btn.btn-primary:focus:not(:disabled) {
+			color: var(--afims-pure-white, #FFFFFF) !important;
+			background-color: var(--afims-primary, #3861BC) !important;
+			border-color: var(--afims-primary, #3861BC) !important;
+		}
+
 		.cba-form-container .btn-secondary {
 			color: var(--afims-text, #1A1B21);
 			background: var(--afims-surface, #FFFFFF);
@@ -869,7 +891,7 @@ $cbaAsModal = !empty($cbaAsModal);
 		}
 
 		.cbadec-opt-desc strong {
-			white-space: nowrap; /* a status name ("For Preview") never breaks across two lines */
+			white-space: nowrap; /* a status name ("For Review") never breaks across two lines */
 		}
 
 		.cbadec-ftr {
@@ -1925,6 +1947,8 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 	var CBA_EDIT_MODE = !!CBA_CONFIG.allocationId;
 	// true when the including page rendered this form inside the overlay modal (see the PHP header)
 	const CBA_AS_MODAL = <?php echo $cbaAsModal ? 'true' : 'false'; ?>;
+	// the Allocation Types the including page limits this form to ([] = no limit) — see the PHP header
+	const CBA_ALLOWED_TYPES = <?php echo json_encode($cbaAllowedTypes); ?>;
 	// created_at of the allocation being edited (set by populateEditForm). Stays
 	// null in add mode — nothing is saved yet, so the RFA print date is today's.
 	var CBA_CREATED_AT = null;
@@ -2054,22 +2078,32 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 		document.getElementById('document_type').addEventListener('change',
 			applyBudgetVersionVisibilityForDocType);
 
+		// ── Allocation Type limited by the page that hosts the form (CBA_ALLOWED_TYPES) ──
+		// The CBA page allows only CBA, the RFA/LAA page only those two: every other <option> is taken out, so a request
+		// can never be created on the wrong page. (Re-run on every open — the markup is rebuilt each time.)
+		if (CBA_ALLOWED_TYPES.length) {
+			Array.prototype.slice.call(document.getElementById('allocation_type').options).forEach(function(opt) {
+				if (opt.value && CBA_ALLOWED_TYPES.indexOf(opt.value) === -1) opt.remove();
+			});
+		}
+
 		// ── Pre-populate from URL params (?type=CBA|RFA|LAA&parent_cba_id=N) ──
-		// In modal mode this is the host page's own URL (e.g. memo-req-page?type=RFA) — memo-req-page.php keeps
-		// ?type= in sync with whichever of its CBA / RFA / LAA tabs is active, so "New Memo Request" opens this
-		// form with the matching Allocation Type already chosen. Skipped entirely in edit mode — editing an
-		// existing record should never trigger the "generate RFA/LAA from parent CBA" autofill flow.
+		// A page that limits the form to ONE type (the CBA page) decides it; otherwise ?type= on the URL still presets it
+		// (e.g. the "Generate RFA/LAA" link from a CBA). Skipped entirely in edit mode — editing an existing record should
+		// never trigger the "generate RFA/LAA from parent CBA" autofill flow.
 		const _urlParams = new URLSearchParams(window.location.search);
-		const _presetType = CBA_EDIT_MODE ? '' : (_urlParams.get('type') || '').toUpperCase();
+		const _presetType = CBA_EDIT_MODE ? '' :
+			(CBA_ALLOWED_TYPES.length === 1 ? CBA_ALLOWED_TYPES[0] : (_urlParams.get('type') || '').toUpperCase());
 		const _presetCbaId = CBA_EDIT_MODE ? '' : (_urlParams.get('parent_cba_id') || '').trim();
 
-		if (_presetType === 'CBA' || _presetType === 'RFA' || _presetType === 'LAA') {
+		if ((_presetType === 'CBA' || _presetType === 'RFA' || _presetType === 'LAA') &&
+			(!CBA_ALLOWED_TYPES.length || CBA_ALLOWED_TYPES.indexOf(_presetType) !== -1)) {
 			var allocTypeEl = document.getElementById('allocation_type');
 			allocTypeEl.value = _presetType;
-			// Locked: the tab it was opened from (memo-req-page.php's CBA / RFA / LAA tabs) already decided this —
-			// changing it here would disagree with where the user clicked "New ... Memo Request" from.
+			// Locked: the page it was opened from already decided this — changing it here would disagree with where the
+			// user clicked "New ... Memo Request" from. (On the RFA/LAA page a ?type= preset locks it to that one.)
 			allocTypeEl.disabled = true;
-			allocTypeEl.title = 'Determined by the tab this was opened from.';
+			allocTypeEl.title = 'Determined by the page this was opened from.';
 			generateCBANumber();
 			toggleCbaIdRow();
 		}
@@ -3421,6 +3455,13 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 		return (v == null || v === '') ? '—' : '₱' + baaFormatAmt(parseFloat(v) || 0);
 	}
 
+	// A COB's Available Amount IS its budget_line_items.suggested_amount (GET /budget_line_item/approved sends it as
+	// `suggested_amount`) — never proposed_amount, which is only what the office first asked for. '' when the record has none
+	// (a saved line whose COB has since left the approved list and was saved before the snapshot kept it).
+	function cobSuggested(rec) {
+		return rec && rec.suggested_amount != null && rec.suggested_amount !== '' ? rec.suggested_amount : '';
+	}
+
 	function baaRowTemplate(idx) {
 		return '' +
 			'<div class="baa-line form-row cols-baa" data-idx="' + idx + '">' +
@@ -3716,7 +3757,7 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 				'<div class="bv-item-name">' + pcEsc(r.account_code || 'No account code') + '</div>' +
 				(r.account_title ? '<div class="bv-item-sub">' + pcEsc(r.account_title) + '</div>' : '') +
 				'<div class="bv-item-sub">FY ' + pcEsc(r.fiscal_yr) + ' · Available ' +
-			pcEsc(cobAmount(r.available_amount != null && r.available_amount !== '' ? r.available_amount : r.proposed_amount)) +
+			pcEsc(cobAmount(cobSuggested(r))) +
 				(r.project_name ? ' · ' + pcEsc(r.project_name) : '') + '</div>' +
 				'</div>';
 		}).join('') + (rows.length > shown.length ?
@@ -3746,14 +3787,14 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 		if (dd) dd.style.display = 'none';
 		baaBvClearError(idx);
 
-		// available_amount (the line's suggested_amount, from BudgetLineItemService::fetchApproved() — already
-		// reduced by every Approved CBA / CFA and moved by every approved Budget Revision) is the real ceiling — what's actually still
-		// free to request against this COB right now. Falls back to proposed_amount only if the API response
-		// doesn't carry it (shouldn't happen once the backend is deployed, but keeps this from breaking).
+		// The Available Amount is the line's suggested_amount (BudgetLineItemService::fetchApproved() sends it as `suggested_amount`)
+		// — the same figure the server checks the Requested Amount against (lockAndGetAvailable()), already reduced by every
+		// Approved CBA / CFA and moved by every approved Budget Revision. It is the real ceiling — what's actually still free to
+		// request against this COB right now. There is no fallback to proposed_amount.
 		// Only the real ceiling for CBA / CFA — RFA / LAA use CBA Available Balance instead (see baaRefreshCbaAmount()).
 		var proposedEl = cobEl('proposed_amount', idx);
 		if (proposedEl) {
-			var availableAmt = rec.available_amount != null && rec.available_amount !== '' ? rec.available_amount : rec.proposed_amount;
+			var availableAmt = cobSuggested(rec);
 			proposedEl.value = (availableAmt != null && availableAmt !== '') ?
 				baaFormatAmt(parseFloat(availableAmt) || 0) : '';
 		}
@@ -4030,7 +4071,8 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 				account_code: snapshot.account_code || '',
 				account_title: snapshot.account_title || '',
 				fiscal_yr: snapshot.fiscal_yr || '',
-				proposed_amount: snapshot.proposed_amount
+				proposed_amount: snapshot.proposed_amount,
+					suggested_amount: snapshot.suggested_amount
 			};
 		}
 		if (rec) cobSelect(idx, rec);
@@ -4179,7 +4221,8 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 		if (!ALLOC_CFA_OPTION) return;
 
 		var present = ALLOC_CFA_OPTION.parentNode === sel;
-		var hide = docType === 'CO' && !(CBA_EDIT_MODE && sel.value === 'CFA');
+		var cfaAllowed = !CBA_ALLOWED_TYPES.length || CBA_ALLOWED_TYPES.indexOf('CFA') !== -1; // a CBA / RFA / LAA page never offers CFA
+		var hide = !cfaAllowed || (docType === 'CO' && !(CBA_EDIT_MODE && sel.value === 'CFA'));
 
 		if (hide && present) {
 			var wasCfa = sel.value === 'CFA';
@@ -4332,6 +4375,7 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 				account_title: sel ? (sel.account_title || '') : '',
 				fiscal_yr: sel && sel.fiscal_yr != null ? String(sel.fiscal_yr) : '',
 				proposed_amount: sel && sel.proposed_amount != null ? String(sel.proposed_amount) : '',
+				suggested_amount: sel && sel.suggested_amount != null ? String(sel.suggested_amount) : '',
 				requested_amount: (document.getElementById('requested_amount_' + idx + '_raw') || {}).value || '',
 				allocated_amount: (document.getElementById('allocated_amount_' + idx + '_raw') || {}).value || '',
 			};
@@ -5215,12 +5259,12 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 	// ── Submit decision pop-up ────────────────────────────────────────────────────
 	// What "Submit Request" can turn a request into. `status` is the NAME of a memo-request status
 	// (fims.settings_status, status_for = 'budget_allocation'); its id comes from the API (cbaStatusIdFor), so no
-	// install-specific id lives here. 'Draft' ships with the schema, 'For Preview' with
+	// install-specific id lives here. 'Draft' ships with the schema, 'For Review' with
 	// sample_data/06 - fims_settings_status_budget_allocation.sql.
 	var CBA_DECISIONS = {
 		preview: {
-			status: 'For Preview',
-			done: 'submitted for preview',
+			status: 'For Review',
+			done: 'submitted for review',
 			busy: 'Submitting'
 		},
 		draft: {
@@ -5268,8 +5312,8 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 				'<p class="cbadec-text" id="cbadec-text"></p>' +
 				'<p class="cbadec-current" id="cbadec-current" hidden></p>' +
 				'<button type="button" class="cbadec-opt cbadec-opt-primary" data-decision="preview">' +
-				'<span class="cbadec-opt-title">Submit for Preview</span>' +
-				'<span class="cbadec-opt-desc">Sends the request on to be previewed. Its status becomes <strong></strong>.</span>' +
+				'<span class="cbadec-opt-title">Submit for Review</span>' +
+				'<span class="cbadec-opt-desc">Sends the request on to be reviewed. Its status becomes <strong></strong>.</span>' +
 				'</button>' +
 				'<button type="button" class="cbadec-opt" data-decision="draft">' +
 				'<span class="cbadec-opt-title">Save as Draft</span>' +
@@ -5385,7 +5429,7 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 		}
 		var typeLabel = getTypeLabel();
 
-		// Replaces the old "Are you sure?" confirm(): ask what should become of the request — submitted for preview, or
+		// Replaces the old "Are you sure?" confirm(): ask what should become of the request — submitted for review, or
 		// kept as a draft — and give it that status. Cancelled -> nothing is sent.
 		var choice = await cbaAskDecision(typeLabel);
 		if (!choice) return;

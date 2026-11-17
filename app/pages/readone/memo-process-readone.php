@@ -8,11 +8,11 @@
  *            same details plus the decision buttons described below.
  *
  * It reads the request (GET /budget_allocation/read/{id}) and shows its
- * details read-only: the request itself, Program / Sub-Program / Project, vendor and PR / PO, the purpose, the budget
+ * details read-only: the request itself, Program / Sub-Program / Project, PR / PO, the purpose, the budget
  * allocation lines and the supporting documents.
  *
  * The review is a chain of three steps, each acted on by one FMD user level (BudgetAllocationService::REVIEW_STEPS):
- *   For Preview (FMD Section Chief) -> For Division Manager (FMD Division Manager)
+ *   For Review (FMD Section Chief) -> For Division Manager (FMD Division Manager)
  *   -> For Department Manager (FMD Department Manager) -> Approved
  * The read answers with data.review { in_review, actor, next_status, is_final, can_decide } for the logged-in user.
  *
@@ -136,6 +136,26 @@
 .mpr-btn-approve { color:#fff;background:var(--mpr-c, #16A34A);border-color:var(--mpr-c, #16A34A); }
 .mpr-btn-approve:hover:not([disabled]) { opacity:.92; }
 @media (max-width:640px) { .mpr-row { grid-template-columns:1fr;gap:2px; } }
+/* Dark mode: --afims-text-secondary is not defined by the theme, so the labels above fell back to the light-mode
+   slate (#475569) — near-invisible on the dark surface. Use the theme's muted text colour instead. */
+html.afims-dark[data-bs-theme="dark"] .mpr-k,
+html.afims-dark[data-bs-theme="dark"] .mpr-card-title,
+html.afims-dark[data-bs-theme="dark"] .mpr-tbl th,
+html.afims-dark[data-bs-theme="dark"] .mpr-tab { color:var(--afims-text-muted, #AAAFBE); }
+html.afims-dark[data-bs-theme="dark"] .mpr-tab:hover,
+html.afims-dark[data-bs-theme="dark"] .mpr-tab.is-active { color:var(--afims-text, #E4ECF2); }
+html.afims-dark[data-bs-theme="dark"] .mpr-muted,
+html.afims-dark[data-bs-theme="dark"] .mpr-sub,
+html.afims-dark[data-bs-theme="dark"] .mpr-hint,
+html.afims-dark[data-bs-theme="dark"] .mpr-empty,
+html.afims-dark[data-bs-theme="dark"] .mpr-loading { color:#9AA3B5; }
+/* Code chips (RR no., RC code, program / project codes, account code): the light-mode dark blue on a near-white
+   border was unreadable on the dark surface — use the theme's light blue text on a soft blue fill. */
+html.afims-dark[data-bs-theme="dark"] .mpr-code { color:#FFFFFF;background:#3861BC;border-color:#5B7FCF; }
+/* Allocation Type / Document Type badges (shared .nha-bdg classes — only restyled inside this modal) */
+html.afims-dark[data-bs-theme="dark"] .mpr-modal .nha-bdg-blue { color:#FFFFFF;background:#3861BC; }
+html.afims-dark[data-bs-theme="dark"] .mpr-modal .nha-bdg-gray { color:#FFFFFF;background:#4A5270; }
+html.afims-dark[data-bs-theme="dark"] .mpr-docs a { color:var(--afims-primary-text, #94AADB); }
 </style>
 
 <!-- ── MEMO REQUEST: DETAILS MODAL (View / Process) ───────── -->
@@ -534,8 +554,8 @@ function mpr_render(r) {
             mpr_row_('Program', mpr_named(r.program_name, r.program_code)) +
             mpr_row_('Sub-Program', mpr_named(r.sub_program_name, r.sub_program_code)) +
             mpr_row_('Project', mpr_named(r.project_name, r.project_code))),
-        mpr_card('Vendor and Purchase Documents',
-            mpr_row_('Vendor', mrq_esc(r.vendor_name || '')) +
+        // no Vendor row: the vendor is not part of the request's details, for the requesting office (View) or for FMD (Process)
+        mpr_card('Purchase Documents',
             mpr_docRow('Purchase Request (PR)', r.pr_number, r.pr_amount) +
             mpr_docRow('Purchase Order (PO)', r.po_number, r.po_amount)),
         mpr_card('Purpose / Description', mpr_viewOnly

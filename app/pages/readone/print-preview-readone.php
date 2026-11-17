@@ -149,24 +149,27 @@ const PRP_API            = '<?php echo $_prp_api; ?>';
 // letterhead: false = the form has its own printed title block — no letterhead, no editor
 // (matches LetterheadLayoutService::DOCUMENTS, which lists only the letterhead forms).
 const PRP_TYPES = {
-    CBA: { title: 'Certificate of Budget Allocation',        print: '/print/cba', hdrPt: 468 },
-    RFA: { title: 'Request for Fund Allotment',              print: '/print/rfa', hdrPt: 540 },
-    LAA: { title: 'Letter of Advice of Allotment',           print: '/print/laa', hdrPt: 480 },
-    CAF: { title: 'Certificate as to Availability of Funds', print: '/print/caf', hdrPt: 468 },
-    LAAREQ: { title: 'LAA Release Request',                 print: '/print/laareq', hdrPt: 468 },
-    PO:  { title: 'Purchase Order',                          print: '/print/po', letterhead: false },
-    PR:  { title: 'Purchase Requisition',                    print: '/print/pr', hdrPt: 532.8 },
-    IAR: { title: 'Inspection and Acceptance Report',        print: '/print/iar', letterhead: false },
-    LV:  { title: 'Liquidation Voucher',                     print: '/print/lv', letterhead: false },
-    JEV: { title: 'Journal Entry Voucher',                   print: '/print/jev', letterhead: false, wide: true },   // A4 landscape
-    FTLA: { title: 'Fund Transfer Letter of Advice',         print: '/print/ftla', hdrPt: 510 },
-    FTLAREQ: { title: 'FTLA Request',                        print: '/print/ftlareq', hdrPt: 468 },   // the LAA release request's memo layout
-    CFA: { title: 'Certified Funds Available',               print: '/print/cfa', hdrPt: 451.28 },   // funding-request memo (A4, shared memo layout)
-    MEMO: { title: 'Memo Request',                           print: '/print/memo', hdrPt: 451.28 },   // the originating unit's memo (non-FMD; A4, shared memo layout)    // pdfOnly: an official PDF form — the preview shows the PDF itself; no DOCX, no letterhead editor.
-    DV:  { title: 'Disbursement Voucher',                    print: '/print/dv', pdfOnly: true },
+    CBA: { title: 'Certificate of Budget Allocation',        print: 'print/cba', hdrPt: 468 },
+    RFA: { title: 'Request for Fund Allotment',              print: 'print/rfa', hdrPt: 540 },
+    LAA: { title: 'Letter of Advice of Allotment',           print: 'print/laa', hdrPt: 480 },
+    CAF: { title: 'Certificate as to Availability of Funds', print: 'print/caf', hdrPt: 468 },
+    LAAREQ: { title: 'LAA Release Request',                 print: 'print/laareq', hdrPt: 468 },
+    PO:  { title: 'Purchase Order',                          print: 'print/po', letterhead: false },
+    PR:  { title: 'Purchase Requisition',                    print: 'print/pr', hdrPt: 532.8 },
+    IAR: { title: 'Inspection and Acceptance Report',        print: 'print/iar', letterhead: false },
+    LV:  { title: 'Liquidation Voucher',                     print: 'print/lv', letterhead: false },
+    JEV: { title: 'Journal Entry Voucher',                   print: 'print/jev', letterhead: false, wide: true },   // A4 landscape
+    FTLA: { title: 'Fund Transfer Letter of Advice',         print: 'print/ftla', hdrPt: 510 },
+    FTLAREQ: { title: 'FTLA Request',                        print: 'print/ftlareq', hdrPt: 468 },   // the LAA release request's memo layout
+    CFA: { title: 'Certified Funds Available',               print: 'print/cfa', hdrPt: 451.28 },   // funding-request memo (A4, shared memo layout)
+    MEMO: { title: 'Memo Request',                           print: 'print/memo', hdrPt: 451.28 },   // the originating unit's memo (non-FMD; A4, shared memo layout)    // pdfOnly: an official PDF form — the preview shows the PDF itself; no DOCX, no letterhead editor.
+    DV:  { title: 'Disbursement Voucher',                    print: 'print/dv', pdfOnly: true },
 };
 let prp_type = 'CBA';
-const prp_printApi      = () => PRP_API + PRP_TYPES[prp_type].print;
+// The print paths carry no leading "/" (the "/" is joined here, outside any quoted literal): on a sub-folder
+// deployment _shared/subfolder-prefix.php prefixes every bare-quoted "/word" in the page's JS, which would
+// double-prefix them (…/api/fims-nha/print/…) — same convention as app/pages/voucher/form.php.
+const prp_printApi      = () => PRP_API + '/' + PRP_TYPES[prp_type].print;
 const prp_letterheadApi = () => PRP_API + '/letterhead/' + prp_type;
 const PRP_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
 const PRP_MAX_ITEMS       = 8;
