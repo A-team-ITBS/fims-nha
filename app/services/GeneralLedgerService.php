@@ -36,8 +36,12 @@ use PHPMaker2024\FIMS as App;
  *                             order with a running balance (debit-normal or credit-normal per
  *                             DEBIT_NORMAL_TYPES, not just a raw debit-minus-credit number).
  *   - fetchSubsidiaryLedger() Subsidiary Ledger — the same ledger-card idea as General Ledger,
- *                             but keyed by SL code/detail (fims.sl_masters/sl_details) instead
- *                             of a GL account — e.g. one vendor's Accounts Payable sub-ledger.
+ *                             but keyed by an SL account — a child fims.chart_of_accounts row
+ *                             (parent_account_id IS NOT NULL) under a control account — instead
+ *                             of a top-level GL account. e.g. one vendor's Accounts Payable
+ *                             sub-ledger, added via the Chart of Accounts page's "Add Sub-Ledger"
+ *                             action. fims.sl_masters/sl_details are a retired, unrelated table —
+ *                             not used here.
  *   - fetchTrialBalance()     Trial Balance — total debit/credit per account, as of now.
  *
  * Three more special-journal tabs sit alongside GJ on the Journals page, each sourced from its own
@@ -548,15 +552,37 @@ class GeneralLedgerService
             }
             $whereSql = implode(' AND ', $where);
 
+            // Roll SL/child postings up into their GL account. An SL account (e.g. the Chart of
+            // Accounts page's "Add Sub-Ledger" action) is only ever created under a parent that is
+            // ITSELF already posting_allowed — chart-of-accounts-page.php's coa_addSL() only offers
+            // that action on a postable row. A plain classification ancestor (e.g. "1-02-02", not
+            // postable) is not an SL parent, so climbing stops there: the GL code for any leaf is
+            // the highest ancestor still reached through an unbroken chain of postable parents.
             $data = App\ExecuteRows(
-                "SELECT v.account_code, v.account_id, v.account_title, v.account_type,
+                "WITH RECURSIVE climb AS (
+                     SELECT account_id AS leaf_id, account_id, parent_account_id, 0 AS depth
+                     FROM {$this->tableCoa}
+                     UNION ALL
+                     SELECT climb.leaf_id, p.account_id, p.parent_account_id, climb.depth + 1
+                     FROM climb
+                     JOIN {$this->tableCoa} p ON p.account_id = climb.parent_account_id
+                     WHERE p.posting_allowed = TRUE
+                 ),
+                 gl_of AS (
+                     SELECT DISTINCT ON (leaf_id) leaf_id, account_id AS gl_account_id
+                     FROM climb
+                     ORDER BY leaf_id, depth DESC
+                 )
+                 SELECT gl.account_code, gl.account_id, gl.account_title, gl.account_type,
                         SUM(v.total_debit)  AS total_debit,
                         SUM(v.total_credit) AS total_credit,
                         SUM(v.total_debit) - SUM(v.total_credit) AS balance
                  FROM {$this->tableViewTrialBalance} v
+                 JOIN gl_of ON gl_of.leaf_id = v.account_id
+                 JOIN {$this->tableCoa} gl ON gl.account_id = gl_of.gl_account_id
                  WHERE {$whereSql}
-                 GROUP BY v.account_code, v.account_id, v.account_title, v.account_type
-                 ORDER BY v.account_code",
+                 GROUP BY gl.account_code, gl.account_id, gl.account_title, gl.account_type
+                 ORDER BY gl.account_code",
                 'DB'
             ) ?: [];
             $totalDebit  = round(array_sum(array_column($data, 'total_debit')), 2);
@@ -730,15 +756,14 @@ class GeneralLedgerService
     }
 
     /**
-     * Subsidiary Ledger — same ledger-card idea as fetchGeneralLedger(), but keyed by SL code
-     * (and optionally SL detail) instead of a GL account. The normal-balance side follows the SL
-     * master's own control account (fims.sl_masters.account_code) when it has one; a master with
-     * no control account (nullable, see "01 - table/23") falls back to credit-normal, since every
-     * SL master seeded so far is an Accounts Payable breakdown — the far more common case.
-     * $slCode omitted/blank: every SL master with at least one posting, all at once (see
+     * Subsidiary Ledger — same ledger-card idea as fetchGeneralLedger(), but keyed by an SL
+     * account (a child fims.chart_of_accounts row, parent_account_id IS NOT NULL) instead of a
+     * top-level GL account. The normal-balance side follows the SL account's own parent/control
+     * account (chart_of_accounts.parent_account_id -> account_type).
+     * $slCode omitted/blank: every SL account with at least one posting, all at once (see
      * fetchAllSubsidiaryLedgers()) — the page's default view before one SL code is picked.
      */
-    public function fetchSubsidiaryLedger(?string $slCode, ?int $slDetailId = null, ?int $fiscalYr = null, ?int $bookId = null): array
+    public function fetchSubsidiaryLedger(?string $slCode, ?int $fiscalYr = null, ?int $bookId = null): array
     {
         try {
             if ($slCode === null || trim($slCode) === '') {
