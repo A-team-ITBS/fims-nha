@@ -166,6 +166,10 @@ One endpoint for every form; each form is a service registered in `PrintService:
 - `POST /letterhead/{doc}` - Save as default header: `{layout: {items, footer_text}}`. System Administrator / FMD Department Manager only (403 otherwise)
 - `DELETE /letterhead/{doc}` - Restore original (drop the saved default). Same roles
 
+### ledger_budget_allocation.php (`LedgerBudgetAllocationService`, table `fims.budget_allocation`; page `app/pages/ledger-budget-allocation.php`, "Ledger of Budget Allocation")
+Read-only ledger of the RFAs and LAAs, grouped under the allocation they draw against (`parent_id`, normally an Approved CBA).
+- `GET /ledger_budget_allocation/list` - Optional: `fiscal_year`, `allocation_type` (`RFA` / `LAA`, anything else 400), `status` (a status name, e.g. `Approved`), `search` (allocation no. / ref no. / description / vendor / parent's numbers / DV no.), `parent_id`. Office scope: same rule as `GET /budget_allocation/list`. Returns `data[]` = groups `{ parent, ceiling, total_drawn, balance, entries[] }` (the no-parent group last, with `parent`/`ceiling`/`balance` null) and `summary` `{ entries, rfa_count, laa_count, total_amount, total_drawn, with_dv }`. Each entry carries `amount` (sum of `line_transaction` requested_amount), `is_drawn` (Approved) and `running_balance` (ceiling minus the Approved draws up to and including it, oldest first), plus its DV (`dv_no`, `dv_date`, `dv_status`, via `budget_allocation.dv_id`). Only Approved RFA / LAA are deducted; the running balance counts every Approved draw of the parent even when the filters hide some.
+
 ### budget_category.php (`BudgetCategoryService`, table `fims.budget_category`)
 Shaped like `crud.php` (`all` / `list` / `read` / `add` / `PATCH update` / `delete`). Soft-deleted via `deleted_at`. Seeded with Infrastructure, Goods and Services, Consultancy (ids 1–3).
 - `GET /budget_category/all` - All categories, no pagination (dropdown). Optional: `search` (case-insensitive, partial match on `name`)

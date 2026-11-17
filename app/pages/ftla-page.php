@@ -16,63 +16,6 @@ $fileBaseUrl      = json_encode(rtrim(BasePath(), '/'));
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
-<style>
-    /* ── Tools dropdown menu ─────────────────────────────────────── */
-    .nha-tools-menu { position: relative; display: inline-block; }
-    .nha-menu-trigger {
-        display: inline-flex; align-items: center; gap: 5px;
-        padding: 5px 10px; border-radius: 6px; font-size: 11px;
-        font-weight: 600; cursor: pointer; border: 1px solid var(--afims-border, #E4ECF2);
-        background: var(--afims-surface, #FFFFFF); color: var(--afims-text, #1A1B21); white-space: nowrap;
-        font-family: 'IBM Plex Sans', sans-serif; transition: all .15s;
-    }
-    .nha-menu-trigger:hover { background: var(--afims-surface-subtle, #F4F7FA); border-color: var(--afims-text-disabled, #A9AAB8); }
-    .nha-menu-trigger svg { width: 12px; height: 12px; flex-shrink: 0; }
-    .nha-tools-dropdown {
-        display: none; position: fixed;
-        min-width: 165px; background: var(--afims-surface, #FFFFFF); border: 1px solid var(--afims-border, #E4ECF2);
-        border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.12);
-        z-index: 9999; padding: 4px 0;
-    }
-    .nha-tools-dropdown.open { display: block; }
-    .nha-menu-item {
-        display: flex; align-items: center; gap: 8px;
-        padding: 8px 12px; font-size: 12px; font-weight: 500;
-        color: var(--afims-text, #1A1B21); text-decoration: none; white-space: nowrap;
-        cursor: pointer; transition: background .1s;
-    }
-    .nha-menu-item:hover { background: var(--afims-surface-subtle, #F4F7FA); color: var(--afims-heading, #000E3E); }
-    .nha-menu-item svg { width: 13px; height: 13px; flex-shrink: 0; opacity: .7; }
-    .nha-menu-divider { border-top: 1px solid var(--afims-border, #E4ECF2); margin: 3px 0; }
-    /* ── NHA Toast ──────────────────────────────────────────────── */
-    #nha-toast-container{position:fixed;top:24px;right:24px;z-index:99999;display:flex;flex-direction:column;gap:10px;pointer-events:none;}
-    .nha-toast{display:flex;align-items:flex-start;gap:10px;padding:12px 16px;border-radius:10px;background:var(--afims-surface, #FFFFFF);box-shadow:0 8px 24px rgba(0,0,0,.15),0 2px 6px rgba(0,0,0,.08);font-family:'IBM Plex Sans',sans-serif;font-size:13px;font-weight:500;color:var(--afims-text, #1A1B21);min-width:260px;max-width:360px;pointer-events:auto;transform:translateX(120%);transition:transform .3s cubic-bezier(.34,1.56,.64,1),opacity .3s;opacity:0;border-left:4px solid var(--afims-border, #E4ECF2);}
-    .nha-toast.show{transform:translateX(0);opacity:1;}
-    .nha-toast-success{border-left-color:var(--afims-success, #11A752);}.nha-toast-error{border-left-color:var(--afims-danger, #DC3545);}.nha-toast-warning{border-left-color:var(--afims-warning, #FCD20F);}.nha-toast-info{border-left-color:var(--afims-primary, #0035A9);}
-    .nha-toast-ico{width:18px;height:18px;flex-shrink:0;margin-top:1px;}.nha-toast-body{flex:1;}
-    .nha-toast-title{font-weight:700;font-size:12px;margin-bottom:2px;text-transform:uppercase;letter-spacing:.04em;}.nha-toast-msg{font-size:12.5px;color:var(--afims-text-muted, #62657E);}
-    .nha-toast-close{border:none;background:none;cursor:pointer;color:var(--afims-text-disabled, #A9AAB8);font-size:16px;line-height:1;padding:0;flex-shrink:0;}.nha-toast-close:hover{color:var(--afims-text-muted, #62657E);}
-    /* ── NHA Alert Modal ─────────────────────────────────────────── */
-    #nha-alert-overlay{position:fixed;inset:0;z-index:99990;background:rgba(15,32,69,.45);display:none;align-items:center;justify-content:center;padding:16px;}
-    #nha-alert-box{background:var(--afims-surface, #FFFFFF);border-radius:14px;width:420px;max-width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3);overflow:hidden;font-family:'IBM Plex Sans',sans-serif;}
-    #nha-alert-hdr{display:flex;align-items:center;justify-content:space-between;padding:16px 20px 13px;background:var(--afims-heading-fill, #000E3E);}
-    #nha-alert-hdr-title{font-size:14px;font-weight:700;color:var(--afims-pure-white, #FFFFFF);display:flex;align-items:center;gap:8px;}
-    #nha-alert-hdr-title svg{width:16px;height:16px;flex-shrink:0;}#nha-alert-close{border:none;background:none;cursor:pointer;color:rgba(255,255,255,.6);font-size:20px;line-height:1;padding:0;}#nha-alert-close:hover{color:var(--afims-pure-white, #FFFFFF);}
-    #nha-alert-body{padding:20px 22px 8px;font-size:13.5px;color:var(--afims-text, #1A1B21);line-height:1.55;}
-    #nha-alert-foot{padding:12px 22px 18px;display:flex;justify-content:flex-end;}
-    #nha-alert-ok{height:34px;padding:0 22px;background:var(--afims-heading-fill, #000E3E);color:var(--afims-pure-white, #FFFFFF);border:none;border-radius:8px;font-size:13px;font-weight:600;font-family:'IBM Plex Sans',sans-serif;cursor:pointer;}#nha-alert-ok:hover{background:var(--afims-heading-fill, #000E3E);}
-    /* ── NHA Confirm Modal ───────────────────────────────────────── */
-    #nha-confirm-overlay{position:fixed;inset:0;z-index:99991;background:rgba(15,32,69,.45);display:none;align-items:center;justify-content:center;padding:16px;}
-    #nha-confirm-box{background:var(--afims-surface, #FFFFFF);border-radius:14px;width:420px;max-width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3);overflow:hidden;font-family:'IBM Plex Sans',sans-serif;}
-    #nha-confirm-hdr{display:flex;align-items:center;justify-content:space-between;padding:16px 20px 13px;background:var(--afims-heading-fill, #000E3E);}
-    #nha-confirm-hdr-title{font-size:14px;font-weight:700;color:var(--afims-pure-white, #FFFFFF);}#nha-confirm-close{border:none;background:none;cursor:pointer;color:rgba(255,255,255,.6);font-size:20px;line-height:1;padding:0;}#nha-confirm-close:hover{color:var(--afims-pure-white, #FFFFFF);}
-    #nha-confirm-body{padding:20px 22px 8px;font-size:13.5px;color:var(--afims-text, #1A1B21);line-height:1.55;}
-    #nha-confirm-foot{padding:12px 22px 18px;display:flex;justify-content:flex-end;gap:8px;}
-    .nha-confirm-btn-cancel{height:34px;padding:0 18px;background:var(--afims-surface, #FFFFFF);color:var(--afims-text, #1A1B21);border:1px solid var(--afims-border, #E4ECF2);border-radius:8px;font-size:13px;font-weight:600;font-family:'IBM Plex Sans',sans-serif;cursor:pointer;}.nha-confirm-btn-cancel:hover{background:var(--afims-surface-subtle, #F4F7FA);}
-    .nha-confirm-btn-action{height:34px;padding:0 22px;border:none;border-radius:8px;font-size:13px;font-weight:600;font-family:'IBM Plex Sans',sans-serif;cursor:pointer;color:var(--afims-pure-white, #FFFFFF);}
-    .nha-confirm-btn-action.danger{background:var(--afims-danger, #DC3545);}.nha-confirm-btn-action.danger:hover{background:var(--afims-danger, #DC3545);}
-    .nha-confirm-btn-action.navy{background:var(--afims-heading-fill, #000E3E);}.nha-confirm-btn-action.navy:hover{background:var(--afims-heading-fill, #000E3E);}
-</style>
 
 <div id="ftla-root" class="nha-root">
 
@@ -96,6 +39,15 @@ $fileBaseUrl      = json_encode(rtrim(BasePath(), '/'));
                     <line x1="5" y1="12" x2="19" y2="12" />
                 </svg>
                 New FTLA
+            </button>
+            <button type="button" class="nha-btn-hdr" id="btn-new-ftla-request" title="Memo requesting a fund transfer from Treasury — a separate document from the FTLA bank letter">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="9" y1="13" x2="15" y2="13"/>
+                    <line x1="9" y1="17" x2="15" y2="17"/>
+                </svg>
+                FTLA Request
             </button>
             <button class="nha-btn-hdr" id="btn-refresh" title="Refresh data">
                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" width="14" height="14">
@@ -387,7 +339,368 @@ $fileBaseUrl      = json_encode(rtrim(BasePath(), '/'));
     </div>
 </div>
 
+<!-- MODAL: FTLA Request Memo — the regional office's memo TO Treasury, a separate
+     document from the FTLA bank letter itself. Print-only: nothing here is saved,
+     since the real request memo is sent before any FTLA record exists. -->
+<style>
+    #modal-ftla-request .nha-modal { max-width: 1120px; width: 96vw; max-height: 92vh; display: flex; flex-direction: column; }
+    #ftlreq-body-split { flex: 1; display: flex; overflow: hidden; min-height: 0; }
+    #ftlreq-fields { flex: 1 1 380px; min-width: 0; overflow-y: auto; padding: 20px 24px; }
+    #ftlreq-preview-panel {
+        flex: 1.6 1 420px; min-width: 0; display: flex; flex-direction: column;
+        background: var(--afims-surface-subtle, #F4F7FA); overflow: hidden;
+    }
+    #ftlreq-preview-label {
+        font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em;
+        color: var(--afims-text-disabled, #A9AAB8); padding: 10px 14px 6px; flex-shrink: 0;
+    }
+    #ftlreq-preview-wrap { flex: 1; overflow: auto; padding: 0 10px 10px; position: relative; }
+    #ftlreq-preview-inner {
+        transform-origin: top left; background: var(--afims-surface, #FFFFFF);
+        box-shadow: 0 2px 12px rgba(0,0,0,.13); width: 612px;
+    }
+    @media (max-width: 860px) {
+        #ftlreq-preview-panel { display: none; }
+        #ftlreq-fields { flex: 1; }
+    }
+</style>
+
+<div id="modal-ftla-request" class="nha-overlay" role="dialog" aria-modal="true" style="display:none">
+    <div class="nha-modal">
+        <div class="nha-modal-hdr">
+            <div>
+                <div class="nha-modal-title">FTLA Request Memo</div>
+                <div class="fims-modal-subtitle">Memorandum requesting a fund transfer from Treasury</div>
+            </div>
+            <button type="button" class="nha-modal-close" id="modal-ftla-request-close" title="Close">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+            </button>
+        </div>
+        <div id="ftlreq-body-split">
+        <div id="ftlreq-fields">
+            <div id="ftlreq-error" style="display:none;margin-bottom:12px;padding:8px 12px;border-radius:7px;background:#FDECEC;color:#B42318;font-size:13px;"></div>
+
+            <div class="ftlm-grid-2">
+                <div class="ftlm-fg">
+                    <label class="ftlm-label" for="ftlreq_date">Date</label>
+                    <input type="date" class="form-control" id="ftlreq_date">
+                </div>
+                <div class="ftlm-fg">
+                    <label class="ftlm-label" for="ftlreq_amount">Amount (PHP)</label>
+                    <input type="text" class="form-control" id="ftlreq_amount" inputmode="decimal" placeholder="0.00"
+                           oninput="ftlm_formatAmount(this)">
+                </div>
+            </div>
+
+            <div class="ftlm-grid-2">
+                <div class="ftlm-fg">
+                    <label class="ftlm-label" for="ftlreq_for_name">FOR — Name</label>
+                    <input type="text" class="form-control" id="ftlreq_for_name" placeholder="e.g. JOEBEN A. TAI">
+                </div>
+                <div class="ftlm-fg">
+                    <label class="ftlm-label" for="ftlreq_for_title">FOR — Title</label>
+                    <input type="text" class="form-control" id="ftlreq_for_title" placeholder="e.g. General Manager">
+                </div>
+            </div>
+            <div class="ftlm-grid-2">
+                <div class="ftlm-fg">
+                    <label class="ftlm-label" for="ftlreq_thru_name">THRU — Name</label>
+                    <input type="text" class="form-control" id="ftlreq_thru_name" placeholder="e.g. LEO CARMELO C. BONILLA">
+                </div>
+                <div class="ftlm-fg">
+                    <label class="ftlm-label" for="ftlreq_thru_title">THRU — Title</label>
+                    <input type="text" class="form-control" id="ftlreq_thru_title" placeholder="e.g. Department Manager, Treasury Dept.">
+                </div>
+            </div>
+            <div class="ftlm-fg">
+                <label class="ftlm-label" for="ftlreq_subject">Subject</label>
+                <textarea class="form-control" id="ftlreq_subject" rows="2" placeholder="Request for Fund Transfer"></textarea>
+            </div>
+            <div class="ftlm-fg">
+                <label class="ftlm-label" for="ftlreq_particulars">Particulars <span style="font-size:10px;font-weight:400;color:var(--afims-text-disabled, #A9AAB8);">(what the transfer covers)</span></label>
+                <textarea class="form-control" id="ftlreq_particulars" rows="2" placeholder="e.g. emergency housing assistance for Region III"></textarea>
+            </div>
+
+            <div class="ftlm-fg">
+                <label class="ftlm-label" for="ftlreq_bank_account_id">Credit Account</label>
+                <select class="form-control" id="ftlreq_bank_account_id">
+                    <option value="">Loading…</option>
+                </select>
+            </div>
+
+            <div class="ftlm-grid-2">
+                <div class="ftlm-fg">
+                    <label class="ftlm-label" for="ftlreq_laa_number">LAA Number</label>
+                    <select class="form-control" id="ftlreq_laa_number">
+                        <option value="">— Select LAA —</option>
+                    </select>
+                </div>
+                <div class="ftlm-fg">
+                    <label class="ftlm-label" for="ftlreq_rfa_number">RFA Number</label>
+                    <select class="form-control" id="ftlreq_rfa_number">
+                        <option value="">— Select RFA —</option>
+                    </select>
+                </div>
+            </div>
+            <input type="hidden" id="ftlreq_laa_fiscal_year">
+            <input type="hidden" id="ftlreq_rfa_date">
+
+            <div class="ftlm-grid-2">
+                <div class="ftlm-fg">
+                    <label class="ftlm-label" for="ftlreq_sig_name">Signatory Name</label>
+                    <input type="text" class="form-control" id="ftlreq_sig_name" placeholder="e.g. MA. FATIMA T. DELA CRUZ">
+                </div>
+                <div class="ftlm-fg">
+                    <label class="ftlm-label" for="ftlreq_sig_title">Signatory Title</label>
+                    <input type="text" class="form-control" id="ftlreq_sig_title" placeholder="e.g. Regional Manager">
+                </div>
+            </div>
+        </div><!-- /ftlreq-fields -->
+
+        <div id="ftlreq-preview-panel">
+            <div id="ftlreq-preview-label">Live Preview — Request Memo</div>
+            <div id="ftlreq-preview-wrap">
+                <div id="ftlreq-preview-inner">
+                    <div class="ftlm-preview-placeholder">Fill in the particulars to see the preview</div>
+                </div>
+            </div>
+        </div><!-- /ftlreq-preview-panel -->
+        </div><!-- /ftlreq-body-split -->
+
+        <div class="nha-modal-foot">
+            <button type="button" class="nha-btn nha-btn-primary" id="btn-ftlreq-preview">
+                <svg fill="none" viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
+                </svg>
+                Preview &amp; Print
+            </button>
+            <button type="button" class="nha-btn nha-btn-ghost" id="modal-ftla-request-cancel">Close</button>
+        </div>
+    </div>
+</div>
+
 </div><!-- /#ftla-root -->
+
+<script>
+/* ══════════════════════════════════════════════════════════════
+   FTLA REQUEST MEMO — standalone, print-only (prefix: ftlreq_)
+   A separate document from the FTLA bank letter — the regional office's
+   memo TO Treasury asking for the transfer. Nothing here is ever saved;
+   "Preview & Print" hands the payload straight to the shared print-preview
+   modal (prp_open), which already knows how to render/PDF/DOCX 'FTLAREQ'
+   (see print-preview-readone.php's PRP_TYPES.FTLAREQ).
+═══════════════════════════════════════════════════════════════ */
+let ftlreq_banksLoaded = false;
+let ftlreq_banks        = [];
+let ftlreq_allocLoaded  = false;
+let ftlreq_laaOptions   = [];
+let ftlreq_rfaOptions   = [];
+
+function ftlreq$(id) { return document.getElementById(id); }
+
+async function ftlreq_fetch(endpoint) {
+    const token = window.ew?.API_JWT_TOKEN || '';
+    const res = await fetch(`${FTLM_API_BASE}/${endpoint}`, {
+        headers: { 'X-Authorization': `Bearer ${token}` },
+    });
+    const text = await res.text();
+    let json = {};
+    if (text) { try { json = JSON.parse(text); } catch { throw new Error(`Non-JSON response (HTTP ${res.status})`); } }
+    if (!res.ok) throw new Error(json.message || `HTTP ${res.status}`);
+    return json;
+}
+
+async function ftlreq_loadBankAccounts() {
+    const sel = ftlreq$('ftlreq_bank_account_id');
+    try {
+        const res = await ftlreq_fetch('ftla/bank-accounts');
+        ftlreq_banks = res.data || [];
+        if (sel) {
+            sel.innerHTML = '<option value="">— Select —</option>' +
+                ftlreq_banks.map(b => `<option value="${b.bank_account_id}">${ftlmEsc(b.bank_name)} — ${ftlmEsc(b.account_name)} (${ftlmEsc(b.account_number)})</option>`).join('');
+        }
+    } catch (e) {
+        if (sel) sel.innerHTML = '<option value="">Failed to load</option>';
+    }
+}
+
+function ftlreq_allocOptsHtml(placeholder, rows) {
+    return `<option value="">${placeholder}</option>` + rows.map(r =>
+        `<option value="${ftlmEsc(r.allocation_number)}">${ftlmEsc(r.allocation_number)}</option>`).join('');
+}
+
+async function ftlreq_loadAllocationOptions() {
+    const laaSel = ftlreq$('ftlreq_laa_number');
+    const rfaSel = ftlreq$('ftlreq_rfa_number');
+    try {
+        const [laaRes, rfaRes] = await Promise.all([
+            ftlreq_fetch('budget_allocation/variance/list?type=LAA&status=PROCESSED&limit=500'),
+            ftlreq_fetch('budget_allocation/variance/list?type=RFA&status=APPROVED,PROCESSED&limit=500'),
+        ]);
+        ftlreq_laaOptions = laaRes.data || [];
+        ftlreq_rfaOptions = rfaRes.data || [];
+        if (laaSel) laaSel.innerHTML = ftlreq_allocOptsHtml('— Select LAA —', ftlreq_laaOptions);
+        if (rfaSel) rfaSel.innerHTML = ftlreq_allocOptsHtml('— Select RFA —', ftlreq_rfaOptions);
+    } catch (e) {
+        console.error('[FTLREQ] allocation options:', e.message);
+    }
+}
+
+function ftlreq_onLaaSelect() {
+    const opt = ftlreq_laaOptions.find(o => o.allocation_number === ftlreq$('ftlreq_laa_number')?.value);
+    ftlreq$('ftlreq_laa_fiscal_year').value = opt?.fiscal_year || '';
+}
+function ftlreq_onRfaSelect() {
+    const opt = ftlreq_rfaOptions.find(o => o.allocation_number === ftlreq$('ftlreq_rfa_number')?.value);
+    ftlreq$('ftlreq_rfa_date').value = opt?.allocation_date || opt?.rfa_date || '';
+}
+
+function ftlreq_showError(msg) {
+    const el = ftlreq$('ftlreq-error');
+    if (el) { el.textContent = msg; el.style.display = ''; }
+}
+function ftlreq_hideError() {
+    const el = ftlreq$('ftlreq-error');
+    if (el) el.style.display = 'none';
+}
+
+async function ftlreq_open() {
+    ftlreq_hideError();
+    [
+        'ftlreq_for_name', 'ftlreq_for_title', 'ftlreq_thru_name', 'ftlreq_thru_title',
+        'ftlreq_subject', 'ftlreq_particulars', 'ftlreq_amount', 'ftlreq_bank_account_id',
+        'ftlreq_laa_number', 'ftlreq_laa_fiscal_year', 'ftlreq_rfa_number', 'ftlreq_rfa_date',
+        'ftlreq_sig_name', 'ftlreq_sig_title',
+    ].forEach(id => { const el = ftlreq$(id); if (el) el.value = ''; });
+    ftlreq$('ftlreq_date').value = new Date().toISOString().slice(0, 10);
+
+    window._ftlaApp?._openModal('modal-ftla-request');
+    ftlreq_updatePreview();
+
+    if (!ftlreq_banksLoaded) { ftlreq_banksLoaded = true; ftlreq_loadBankAccounts(); }
+    if (!ftlreq_allocLoaded) { ftlreq_allocLoaded = true; ftlreq_loadAllocationOptions(); }
+}
+
+function ftlreq_close() {
+    window._ftlaApp?._closeModal('modal-ftla-request');
+}
+
+/** Mirrors LaaRequestPrintService::html()'s memo layout with FtlaRequestPrintService's own wording. */
+function ftlreq_renderMemo(d) {
+    const e  = s => ftlmEsc(s ?? '');
+    const nb = s => (s !== '' && s != null) ? e(s) : '&nbsp;';
+    const longDate = raw => {
+        if (!raw) return '';
+        const dt = new Date(raw);
+        return isNaN(dt) ? '' : dt.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    };
+
+    let rows = '';
+    if (d.for_name) rows += `<tr><td class="l">FOR</td><td class="c">:</td><td><b>${e(d.for_name)}</b><div class="rt">${nb(d.for_title)}</div></td></tr>`;
+    if (d.thru_name) rows += `<tr><td class="l">THRU</td><td class="c">:</td><td><b>${e(d.thru_name)}</b><div class="rt">${nb(d.thru_title)}</div></td></tr>`;
+    rows += `<tr><td class="l">SUBJECT</td><td class="c">:</td><td><b>${e(d.subject || 'Request for Fund Transfer')}</b></td></tr>`;
+
+    const amount = d.amount || 0;
+    const words  = amount > 0 ? ftlm_numberToWordsUpper(amount) : '';
+    const particularsText = d.particulars
+        ? `We humbly request the transfer of fund to cover the ${e(d.particulars)} in the amount of <b>${e(words)} (Php ${e(ftlm_fmtPeso(amount))}).</b>`
+        : '';
+
+    const fundingParts = [];
+    if (d.laa_number) fundingParts.push(`LAA No. <b>${e(d.laa_number)}</b>` + (d.fiscal_year ? ` CY ${e(d.fiscal_year)}` : ''));
+    if (d.rfa_number) {
+        const rfaDateStr = longDate(d.rfa_date);
+        fundingParts.push(`RFA No. <b>${e(d.rfa_number)}</b>` + (rfaDateStr ? ` dated ${e(rfaDateStr)}` : ''));
+    }
+    const bankLine = d.bank_account_line ? `${e(d.bank_account_line)}.` : '';
+    const transferText = bankLine
+        ? (fundingParts.length
+            ? `The above-mentioned amount is funded under the ${fundingParts.join(' &amp; ')}. Kindly transfer said amount to <b>${bankLine}</b>`
+            : `Kindly transfer said amount to <b>${bankLine}</b>`)
+        : '';
+
+    return `<div style="font-family:Arial,Helvetica,sans-serif;font-size:11pt;color:#000;line-height:1.2;padding:36px 48px;background:#fff;">
+        <p style="margin:0 0 14px;">${nb(longDate(d.date))}</p>
+        <p style="font-weight:bold;margin:0 0 14px;">MEMORANDUM</p>
+        <table style="border-collapse:collapse;width:100%;">
+            <style>.l{width:80px;font-weight:bold;vertical-align:top;padding:0 0 6px;}.c{width:18px;vertical-align:top;padding:0 0 6px;}.rt{margin-bottom:10px;}</style>
+            ${rows}
+        </table>
+        <div style="border-bottom:1px solid #000;margin:8px 0 12px;"></div>
+        ${particularsText ? `<p style="text-align:justify;margin:0 0 14px;">${particularsText}</p>` : ''}
+        ${transferText ? `<p style="text-align:justify;margin:0 0 14px;">${transferText}</p>` : ''}
+        <p style="text-align:justify;margin:0 0 14px;">Kindly inform us and provide us with a copy of Fund Transfer Letter Advice (FTLA) once it is approved.</p>
+        <p>For your consideration.</p>
+        <div style="margin-top:44px;"><b>${nb(d.sig_name)}</b><br>${e(d.sig_title || '')}</div>
+    </div>`;
+}
+
+let ftlreq_previewTimer = null;
+function ftlreq_updatePreview() {
+    const inner = ftlreq$('ftlreq-preview-inner');
+    const wrap  = ftlreq$('ftlreq-preview-wrap');
+    if (!inner || !wrap) return;
+    inner.innerHTML = ftlreq_renderMemo(ftlreq_buildPayload());
+    inner.style.opacity = '1';
+    requestAnimationFrame(() => {
+        const scale = Math.max(0.72, Math.min(1, wrap.offsetWidth / 612));
+        inner.style.transform = `scale(${scale})`;
+        wrap.style.height = Math.ceil(inner.scrollHeight * scale) + 'px';
+    });
+}
+function ftlreq_schedulePreviewUpdate() {
+    const inner = ftlreq$('ftlreq-preview-inner');
+    if (inner) inner.style.opacity = '0.6';
+    clearTimeout(ftlreq_previewTimer);
+    ftlreq_previewTimer = setTimeout(ftlreq_updatePreview, 220);
+}
+
+function ftlreq_buildPayload() {
+    const v = id => ftlreq$(id)?.value || '';
+    const bank = ftlreq_banks.find(b => b.bank_account_id === parseInt(v('ftlreq_bank_account_id')));
+    const bankAccountLine = bank ? `${bank.account_name} ${bank.bank_name} Account No.${bank.account_number}` : '';
+
+    return {
+        date: v('ftlreq_date'),
+        for_name: v('ftlreq_for_name'), for_title: v('ftlreq_for_title'),
+        thru_name: v('ftlreq_thru_name'), thru_title: v('ftlreq_thru_title'),
+        subject: v('ftlreq_subject') || 'Request for Fund Transfer',
+        particulars: v('ftlreq_particulars'),
+        amount: ftlm_parseAmount(v('ftlreq_amount')),
+        laa_number: v('ftlreq_laa_number'), laa_department: '', fiscal_year: v('ftlreq_laa_fiscal_year'),
+        rfa_number: v('ftlreq_rfa_number'), rfa_date: v('ftlreq_rfa_date'),
+        bank_account_line: bankAccountLine,
+        sig_name: v('ftlreq_sig_name'), sig_title: v('ftlreq_sig_title'),
+    };
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    ftlreq$('modal-ftla-request-close') ?.addEventListener('click', ftlreq_close);
+    ftlreq$('modal-ftla-request-cancel')?.addEventListener('click', ftlreq_close);
+    ftlreq$('ftlreq_laa_number')?.addEventListener('change', ftlreq_onLaaSelect);
+    ftlreq$('ftlreq_rfa_number')?.addEventListener('change', ftlreq_onRfaSelect);
+    // Delegated — catches every field (typed or selected) without wiring each one individually.
+    ftlreq$('ftlreq-fields')?.addEventListener('input',  ftlreq_schedulePreviewUpdate);
+    ftlreq$('ftlreq-fields')?.addEventListener('change', ftlreq_schedulePreviewUpdate);
+    ftlreq$('btn-ftlreq-preview')?.addEventListener('click', () => {
+        if (!ftlreq$('ftlreq_particulars')?.value.trim()) {
+            ftlreq_showError('Particulars is required.');
+            return;
+        }
+        ftlreq_hideError();
+        if (typeof prp_open === 'function') {
+            prp_open(ftlreq_buildPayload(), { type: 'FTLAREQ' });
+        } else {
+            ftlreq_showError('Print preview is unavailable right now.');
+        }
+    });
+});
+</script>
+
+<?php include __DIR__ . '/readone/print-preview-readone.php'; ?>
 
 <!-- Remarks overlay for workflow actions that require a reason -->
 <div id="ftla-remarks-overlay" style="display:none;position:fixed;inset:0;z-index:10200;background:rgba(15,32,69,.5);align-items:center;justify-content:center;padding:16px;">
@@ -424,7 +737,7 @@ $fileBaseUrl      = json_encode(rtrim(BasePath(), '/'));
     class FTLAPreparation {
 
         static TOTAL_STEPS = 2;
-        static MODAL_IDS = ['modal-status-track', 'modal-attachments', 'modal-view-docs', 'modal-print'];
+        static MODAL_IDS = ['modal-status-track', 'modal-attachments', 'modal-view-docs', 'modal-print', 'modal-ftla-request'];
         static scrollPosition = 0;
 
         static TYPE_LABEL = {
@@ -438,6 +751,27 @@ $fileBaseUrl      = json_encode(rtrim(BasePath(), '/'));
             SUBSIDY_TRANSFER: 'Transfer of Subsidy',
             REVERSAL: 'Reversal of Funds',
             GENERAL_FUND: 'Transfer to General Fund',
+        };
+
+        // Mirrors FtlaPrintService::SUBJECT_BY_TYPE / FIXED_SUBJECT_BY_TYPE_AND_LAYOUT (app/services/FtlaPrintService.php)
+        // so the live preview shows the same subject line the actual printed letter will.
+        static SUBJECT_BY_TYPE = {
+            ERRONEOUS_CHARGEABILITY: 'AUTHORITY TO DEBIT/CREDIT ACCOUNT (CORRECTION OF ERRONEOUS CHARGEABILITY)',
+            ERRONEOUS_DEPOSIT:       'AUTHORITY TO DEBIT/CREDIT ACCOUNT (CORRECTION OF ERRONEOUS DEPOSIT)',
+            REMITTANCE_ECHMLP:       'AUTHORITY TO DEBIT/CREDIT ACCOUNT (REMITTANCE — ECHMLP)',
+            REMITTANCE_HLA:          'AUTHORITY TO DEBIT/CREDIT ACCOUNT (REMITTANCE — HOUSE & LOT AWARDS)',
+            SUBSIDY_TRANSFER:        'AUTHORITY TO DEBIT/CREDIT ACCOUNT (TRANSFER OF SUBSIDY)',
+            REVERSAL:                'AUTHORITY TO DEBIT/CREDIT ACCOUNT (REVERSAL OF FUNDS)',
+            GENERAL_FUND:            'AUTHORITY TO TRANSFER FUNDS TO GENERAL FUND ACCOUNT',
+            TEMPORARY:               'AUTHORITY TO DEBIT/CREDIT ACCOUNT (TEMPORARY CASH TRANSFER)',
+        };
+        static FIXED_SUBJECT_BY_TYPE_AND_LAYOUT = {
+            REGIONAL_FUND_TRANSFER: { debit_list: 'AUTHORITY TO TRANSFER FUNDS', pairs: 'AUTHORITY TO TRANSFER FUNDS' },
+            SETTLEMENT_TO_MAIN: {
+                single: 'AUTHORITY TO TRANSFER SETTLEMENT FUNDS TO MAIN DEPOSITORY ACCOUNT',
+                debit_list: 'AUTHORITY TO TRANSFER SETTLEMENT FUNDS TO MAIN DEPOSITORY ACCOUNT',
+                pairs: 'AUTHORITY TO TRANSFER SETTLEMENT FUNDS TO MAIN DEPOSITORY ACCOUNT',
+            },
         };
 
         static STATUSES = [{
@@ -588,6 +922,7 @@ $fileBaseUrl      = json_encode(rtrim(BasePath(), '/'));
             };
 
             on('btn-new-ftla', 'click', () => ftlm_open());
+            on('btn-new-ftla-request', 'click', () => ftlreq_open());
             on('btn-refresh', 'click', async function (e) {
                 const btn = e.currentTarget;
                 btn.disabled = true;
@@ -1121,9 +1456,15 @@ $fileBaseUrl      = json_encode(rtrim(BasePath(), '/'));
                 if (btn) { btn.disabled = true; btn.innerHTML = '<span>Generating…</span>'; }
                 const res = await this.fetchApi(`ftla/${id}/print-pdf`, { method: 'POST', body: JSON.stringify({}) });
                 if (!res.success) throw new Error(res.message || 'PDF generation failed.');
-                const win = window.open(res.view_url, '_blank',
+                const bytes = atob(res.data);
+                const arr   = new Uint8Array(bytes.length);
+                for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+                const blob = new Blob([arr], { type: 'application/pdf' });
+                const url  = URL.createObjectURL(blob);
+                const win  = window.open(url, '_blank',
                     `width=${Math.floor(screen.width/2)},height=${screen.height},left=0,top=0,menubar=no,toolbar=no,location=no,status=no`);
                 if (!win) this._toast('Pop-up blocked. Please allow pop-ups for this site to print.', 'error');
+                setTimeout(() => URL.revokeObjectURL(url), 60000);
             } catch (err) {
                 this._toast('Preview failed: ' + err.message, 'error');
             } finally {
@@ -1506,6 +1847,130 @@ $fileBaseUrl      = json_encode(rtrim(BasePath(), '/'));
             const d = document.createElement('span');
             d.textContent = String(s ?? '');
             return d.innerHTML;
+        }
+
+        /** Same rule as FtlaPrintService::subjectFor(): single strips the parenthetical, debit_list/pairs keep it. */
+        _subjectFor(transferType, layout) {
+            const fixed = FTLAPreparation.FIXED_SUBJECT_BY_TYPE_AND_LAYOUT[transferType]?.[layout];
+            if (fixed) return fixed;
+            const full = FTLAPreparation.SUBJECT_BY_TYPE[transferType] || 'AUTHORITY TO DEBIT/CREDIT ACCOUNT';
+            return layout === 'single' ? full.replace(/\s*\(.*?\)/, '') : full;
+        }
+
+        /**
+         * Live preview of the FTLA bank letter — mirrors FtlaPrintService::html() closely enough to be
+         * a faithful approximation while typing (same layout rules, same subject-by-type, same field
+         * labels), without round-tripping to the server on every keystroke. Called from ftla-form.php's
+         * ftlm_updatePreview(). $d: see ftlm_buildPreviewData().
+         */
+        _renderPrintSummary(d) {
+            const e   = s => this._esc(s);
+            const nb  = s => s !== '' ? e(s) : '&nbsp;';
+            const fmt = v => ftlm_fmtPeso(v);
+            const words = v => v > 0 ? ftlm_numberToWordsUpper(v) : '';
+
+            const debits  = Array.isArray(d.debit_accounts) ? d.debit_accounts.filter(a => a.account_number || a.account_name) : [];
+            const credits = Array.isArray(d.credit_accounts) ? d.credit_accounts : [];
+            const uniqueCredits = [...new Set(credits.map(c => (c.account_number || '') + '|' + (c.account_name || '')))];
+            const layout = debits.length === 0 ? 'single' : (uniqueCredits.length <= 1 ? 'debit_list' : 'pairs');
+
+            const subject = this._subjectFor(d.transfer_type, layout);
+            const total = layout === 'single' ? (d.transfer_amount || 0) : debits.reduce((s, a) => s + (parseFloat(a.amount) || 0), 0);
+
+            const toHeader = `
+                <table style="width:100%;border-collapse:collapse;font-size:9.5pt;margin-bottom:10px;"><tr>
+                    <td style="width:72px;vertical-align:bottom;padding:0 0 3px;">TO</td>
+                    <td style="width:16px;vertical-align:bottom;padding:0 0 3px;">:</td>
+                    <td style="vertical-align:bottom;padding:0 0 3px;"><div style="font-weight:700;">${nb(d.to_bank_name || 'LANDBANK OF THE PHILIPPINES')}</div></td>
+                </tr><tr>
+                    <td style="vertical-align:bottom;padding:0;">SUBJECT</td>
+                    <td style="vertical-align:bottom;padding:0;">:</td>
+                    <td style="vertical-align:bottom;padding:0;font-weight:700;">${e(subject)}</td>
+                </tr></table>`;
+
+            let body;
+            if (layout === 'single') {
+                const ul = 'border-bottom:1px solid #000;', vb = 'vertical-align:bottom;', pad = 'padding:0 0 3px;';
+                body = `<table style="width:100%;border-collapse:collapse;font-size:9.5pt;margin-bottom:8px;">
+                    <tr><td style="white-space:nowrap;${vb}padding:0 6px 5px 0;">Please debit our Account</td>
+                        <td colspan="2" style="${ul}${vb}${pad}text-align:center;">${nb(d.from_account_name || d.from_bank_name || '')}</td></tr>
+                    <tr><td style="white-space:nowrap;${vb}padding:0 6px 5px 0;">Account No.</td>
+                        <td style="${ul}${vb}${pad}text-align:center;width:38%;">${nb(d.from_account_number || '')}</td>
+                        <td style="white-space:nowrap;${vb}padding:0 0 5px 8px;">the amount of PESOS:</td></tr>
+                    <tr><td></td><td colspan="2" style="${ul}${vb}${pad}text-align:center;">${nb(words(d.transfer_amount))}</td></tr>
+                    <tr><td></td><td colspan="2" style="padding:0 0 5px;">Php <u>${e(fmt(d.transfer_amount))}</u></td></tr>
+                    <tr><td style="white-space:nowrap;${vb}padding:0 6px 5px 0;">and credit</td>
+                        <td colspan="2" style="${ul}${vb}${pad}text-align:center;">${nb(d.to_account_name || '')}</td></tr>
+                    <tr><td style="white-space:nowrap;${vb}padding:0 6px 5px 0;">Account No.:</td>
+                        <td style="${ul}${vb}${pad}text-align:center;">${nb(d.to_account_number || '')}</td>
+                        <td style="white-space:nowrap;${vb}padding:0 0 5px 8px;">representing</td></tr>
+                    <tr><td colspan="3" style="${ul}${vb}${pad}padding-top:2px;">${nb(d.purpose || '')}</td></tr>
+                </table>`;
+            } else {
+                const rows = debits.map(a => `
+                    <tr><td style="border:1px solid #000;padding:3pt 6pt;text-align:center;">${nb(a.account_number)}</td>
+                        <td style="border:1px solid #000;padding:3pt 6pt;">${nb(a.account_name)}</td>
+                        <td style="border:1px solid #000;padding:3pt 6pt;text-align:right;">P ${e(fmt(a.amount))}</td></tr>`).join('');
+                body = `<p style="margin:0 0 6px;font-size:9.5pt;">Please <u><b>debit</b></u> the following depository/disbursing accounts:</p>
+                    <table style="width:100%;border-collapse:collapse;font-size:9pt;margin-bottom:10px;">
+                        <tr><th colspan="3" style="border:1px solid #000;padding:3pt 6pt;">BANK ACCOUNT</th></tr>
+                        <tr><th style="border:1px solid #000;padding:3pt 6pt;width:26%;">NUMBER</th>
+                            <th style="border:1px solid #000;padding:3pt 6pt;width:48%;">NAME</th>
+                            <th style="border:1px solid #000;padding:3pt 6pt;width:26%;">AMOUNT</th></tr>
+                        ${rows}
+                        <tr><td colspan="2" style="border:1px solid #000;padding:3pt 6pt;font-weight:700;">TOTAL</td>
+                            <td style="border:1px solid #000;padding:3pt 6pt;text-align:right;font-weight:700;">P ${e(fmt(total))}</td></tr>
+                    </table>
+                    <p style="margin:0 0 10px;font-size:9.5pt;text-align:justify;">and <u><b>credit</b></u> the account of
+                        <u>(${nb(d.to_account_number || '')}) (${nb(d.to_account_name || '')})</u> in the total amount of
+                        <u>${nb(words(total))} (Php ${e(fmt(total))})</u>.</p>`;
+            }
+
+            // Same letterhead markup/proportions as Treasury's _letterhead() (58px logo column,
+            // 54px logo height, 46px badge height) — see ftla-form.php's Review-step preview.
+            const letterhead = `
+                <table style="width:100%;border-collapse:collapse;margin-bottom:10px;"><tr>
+                    <td style="width:58px;vertical-align:middle;padding-right:8px;">
+                        <img src="/_shared/images/letterhead/nha-logo.png" alt="NHA" style="height:54px;display:block;object-fit:contain;">
+                    </td>
+                    <td style="vertical-align:middle;text-align:center;">
+                        <div style="font-size:12.5pt;font-weight:900;letter-spacing:.01em;line-height:1.15;">NATIONAL HOUSING AUTHORITY</div>
+                        <div style="font-size:8pt;color:#62657e;margin-top:1px;">Build Better More Housing</div>
+                    </td>
+                    <td style="text-align:right;vertical-align:middle;white-space:nowrap;">
+                        <img src="/_shared/images/letterhead/pambansang-pabahay.png" alt="Pambansang Pabahay"
+                             style="height:46px;margin-right:5px;vertical-align:middle;object-fit:contain;">
+                        <img src="/_shared/images/letterhead/bagong-pilipinas.png" alt="Bagong Pilipinas"
+                             style="height:46px;vertical-align:middle;object-fit:contain;">
+                    </td>
+                </tr></table>`;
+
+            // Bank-letter signatories (sig1/sig2) are only ever entered at print time (the
+            // Print modal's override fields) — FtlaService::_buildPrintPayload()'s own
+            // fallback when nothing has been overridden yet, so the preview matches what
+            // an unprinted draft would actually show: blank names, default titles.
+            const sigLines = title => title.split('\n').map(l => `<div>${e(l)}</div>`).join('');
+            const signatories = `
+                <table style="width:100%;border-collapse:collapse;font-size:9.5pt;margin-top:30px;"><tr>
+                    <td style="width:48%;vertical-align:top;">
+                        <div style="font-weight:700;">${nb(d.sig_left_name || '')}</div>
+                        ${sigLines(d.sig_left_title || 'Officer-in-Charge\nTreasury Department')}
+                    </td>
+                    <td style="width:4%;"></td>
+                    <td style="width:48%;vertical-align:top;text-align:right;">
+                        <div style="font-weight:700;">${nb(d.sig_right_name || '')}</div>
+                        ${sigLines(d.sig_right_title || 'Acting Group Manager\nFinancial Services Group')}
+                    </td>
+                </tr></table>`;
+
+            return `<div style="font-family:Arial,Helvetica,sans-serif;font-size:9.5pt;color:#1A1B21;padding:24px 30px;background:#fff;line-height:1.35;">
+                ${letterhead}
+                <p style="margin:0 0 8px;">${this._date(d.transfer_date) || '—'}</p>
+                ${toHeader}
+                ${body}
+                <p style="margin:0 0 6px;text-align:justify;font-size:9.5pt;">We declare under penalty of perjury that our co-depositors are still living. This also authorizes you to debit our account for the corresponding service charge.</p>
+                ${signatories}
+            </div>`;
         }
     }
 

@@ -108,6 +108,22 @@ if (!isset($_vf_api)) {
 #vf-root .vf-att-remove { background: none; border: none; cursor: pointer; color: var(--afims-danger, #DC3545); font-size: 16px; line-height: 1; padding: 2px 6px; border-radius: 5px; }
 #vf-root .vf-att-remove:hover { background: var(--afims-danger-soft, #FAE1E3); }
 
+/* Dark mode — the Budget / Obligation inputs, the attachment link inputs and the Accounting Entries lines / SL Code selects
+   have no background of their own, so the browser painted its native grey (#3B3B3B) instead of the theme surface.
+   Give every field of the form the same dark look as the .nha-fg ones. */
+html.afims-dark[data-bs-theme="dark"] #vf-root { color-scheme: dark; }
+html.afims-dark[data-bs-theme="dark"] #vf-root :is(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]), select, textarea) {
+    background-color: var(--afims-surface, #1A1F38); color: var(--afims-text, #E4ECF2); border-color: var(--afims-border-strong, #4A5270);
+}
+html.afims-dark[data-bs-theme="dark"] #vf-root select option { background-color: var(--afims-surface, #1A1F38); color: var(--afims-text, #E4ECF2); }
+html.afims-dark[data-bs-theme="dark"] #vf-root :is(input, textarea)::placeholder { color: #9AA3B5; opacity: 1; }
+html.afims-dark[data-bs-theme="dark"] #vf-root :is(input, select, textarea):focus {
+    outline: none; border-color: var(--afims-primary, #3861BC); box-shadow: 0 0 0 3px color-mix(in srgb, var(--afims-primary, #3861BC) 25%, transparent);
+}
+html.afims-dark[data-bs-theme="dark"] #vf-root :is(input, select, textarea):is(:disabled, [readonly]) {
+    background-color: var(--afims-surface-subtle, #22294A); color: var(--afims-text-muted, #AAAFBE);
+}
+
 @media (max-width: 768px) {
     #vf-root .vf-grid3, #vf-root .vf-grid2 { grid-template-columns: 1fr; }
     #vf-root .vf-span2, #vf-root .vf-span3 { grid-column: span 1; }

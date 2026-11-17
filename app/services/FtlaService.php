@@ -10,10 +10,16 @@ use PHPMaker2024\FIMS as App;
  * Standalone port of REGIONAL's treasury FTLAService, trimmed to what exists in the
  * `fims` schema — same spirit as PurchaseOrderService. Deliberately NOT ported: the
  * generic workflow engine (workflow.workflow_steps / workflow_statuses / workflow_instances),
- * department/role-based actor gating (DepartmentFilterHelper), and the
- * from_bank_account_id / from_fund_source_id pair (Treasury fills those in later,
- * when actually processing the transfer out of the correct HQ account — see
- * form/ftla-form.php's note on ftlm_from_bank_account_id).
+ * department/role-based actor gating (DepartmentFilterHelper), and cash-ledger
+ * debit/credit side effects (Treasury's treasury.cash_position adjustments on
+ * VALIDATED/APPROVED) — fims has no equivalent cash ledger yet.
+ *
+ * Account shape merges Treasury's three FTLA pages (ftla-preparation.php's single-to
+ * + optional multi-from, ftlafundtransfer.php's paired multi-from/multi-to, and
+ * ftlasettlement.php's multi-from + single-to) into one: always a single
+ * to_bank_account_id destination, plus from_accounts — [] (legacy/no declared
+ * source), one row, or several rows whose amounts sum to transfer_amount. See
+ * normalizeFromAccounts() and form/ftla-form.php's "Multiple debit accounts" checkbox.
  *
  * Status is a plain column moved by update() along self::NEXT — no role system yet,
  * so (unlike PurchaseOrderService's SUBMITTED/APPROVED/REJECTED actor split) any
@@ -30,6 +36,28 @@ class FtlaService
 
     /** This module's row in fims.status_change_log.status_for — see GlobalService::logStatusChange(). */
     private const STATUS_LOG_FOR = 'fund_transfers';
+
+    /**
+     * value => label — the full Treasury vocabulary (ftla-preparation.php,
+     * ftlafundtransfer.php, ftlasettlement.php combined), since this module merges
+     * all three of their account shapes into one form. See getTransferTypes().
+     */
+    private const TRANSFER_TYPES = [
+        'REGIONAL_FUND_TRANSFER'  => 'Regional Fund Transfer',
+        'INTER_ACCOUNT'           => 'Inter-Account Transfer',
+        'ERRONEOUS_CHARGEABILITY' => 'Erroneous Chargeability',
+        'ERRONEOUS_DEPOSIT'       => 'Erroneous Deposit',
+        'REMITTANCE_ECHMLP'       => 'Remittance - ECHMLP',
+        'REMITTANCE_HLA'          => 'Remittance - HLA',
+        'SUBSIDY_TRANSFER'        => 'Subsidy Transfer',
+        'REVERSAL'                => 'Reversal',
+        'GENERAL_FUND'            => 'General Fund',
+        'TEMPORARY'               => 'Temporary',
+        'CROSS_ACCESS'            => 'Cross Access',
+        'POOL_MOVEMENT'           => 'Pool Movement',
+        'REVERSION'               => 'Reversion',
+        'SETTLEMENT_TO_MAIN'      => 'Settlement to Main Depository',
+    ];
 
     /** value => [name, color] — color matches the client's _statusBadge() COLOR_MAP. */
     private const STATUSES = [
@@ -85,16 +113,26 @@ class FtlaService
         'transfer_type', 'request_reference', 'for_name', 'for_title', 'thru_name', 'thru_title',
         'subject', 'signatory_name_memo', 'signatory_position_memo', 'remarks',
     ];
-    private const INT_FIELDS     = ['to_bank_account_id', 'laa_id', 'rfa_id', 'fund_source_id', 'reviewed_by', 'approved_by', 'prepared_by'];
+    private const INT_FIELDS     = ['laa_id', 'rfa_id', 'fund_source_id', 'reviewed_by', 'approved_by', 'prepared_by'];
     private const BOOL_FIELDS    = ['is_temporary'];
     private const DATE_FIELDS    = ['transfer_date', 'repayment_due_date'];
     private const JSON_FIELDS    = ['supporting_documents', 'signatories', 'bank_officers'];
 
     // ── small SQL helpers (same shape as PurchaseOrderService's) ──
 
+    /**
+     * Quotes a string for a plain Postgres '...' literal directly — NOT via the
+     * shared App\QuotedValue(STRING), whose AdjustSql() escapes "\n"/"\r"/"\t" the
+     * MySQL way (backslash + letter). Postgres' standard_conforming_strings (on by
+     * default) does not interpret backslash escapes in a plain literal, so that
+     * turns a real newline into the two literal characters "\n" on save — visible
+     * here as literal "\n" in a multi-line dv_numbers/purpose/remarks value once
+     * printed. Only a single quote needs doubling; every other character, newlines
+     * included, is stored byte-for-byte as given.
+     */
     private function str(mixed $v): string
     {
-        return App\QuotedValue(trim((string) $v), App\DataType::STRING, 'DB');
+        return "'" . str_replace("'", "''", trim((string) $v)) . "'";
     }
 
     private function strOrNull(mixed $v): string
@@ -155,7 +193,58 @@ class FtlaService
         return new FileUploadServices();
     }
 
+    /**
+     * Normalizes the "multiple debit accounts" payload (Treasury's from_accounts
+     * shape, trimmed to {bank_account_id, amount}): drops rows missing either
+     * field, rounds amount to 2dp. Returns [] for a legacy single-account
+     * transfer that never declared a source account.
+     */
+    private function normalizeFromAccounts(mixed $raw): array
+    {
+        $rows = is_array($raw) ? $raw : (json_decode((string) $raw, true) ?: []);
+        $out  = [];
+        foreach ($rows as $r) {
+            $bankId = (int) ($r['bank_account_id'] ?? 0);
+            $amount = is_numeric($r['amount'] ?? null) ? round((float) $r['amount'], 2) : 0.0;
+            if ($bankId > 0 && $amount > 0) {
+                $out[] = ['bank_account_id' => $bankId, 'amount' => $amount];
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Normalizes a plain list of bank account ids (Treasury's to_accounts shape
+     * when paired with from_accounts — ftlafundtransfer.php's "pairs" layout, no
+     * per-row amount of its own; the pair's amount lives on the from_accounts row
+     * at the same index). Drops non-positive/missing ids.
+     */
+    private function normalizeAccountIds(mixed $raw): array
+    {
+        $rows = is_array($raw) ? $raw : (json_decode((string) $raw, true) ?: []);
+        $out  = [];
+        foreach ($rows as $r) {
+            $bankId = (int) (is_array($r) ? ($r['bank_account_id'] ?? 0) : $r);
+            if ($bankId > 0) {
+                $out[] = ['bank_account_id' => $bankId];
+            }
+        }
+
+        return $out;
+    }
+
     // ── lookups ──
+
+    public function getTransferTypes(): array
+    {
+        $data = [];
+        foreach (self::TRANSFER_TYPES as $value => $label) {
+            $data[] = ['value' => $value, 'label' => $label];
+        }
+
+        return ['success' => true, 'data' => $data];
+    }
 
     public function getBankAccounts(bool $all = false): array
     {
@@ -246,11 +335,13 @@ class FtlaService
         $row = App\ExecuteRow(
             "SELECT ft.*,
                     b.bank_name AS to_bank_name, b.account_number AS to_account_number, b.account_name AS to_account_name,
+                    fb.bank_name AS from_bank_name, fb.account_number AS from_account_number, fb.account_name AS from_account_name,
                     TRIM(CONCAT_WS(' ', pu.first_name, pu.last_name)) AS prepared_by_name,
                     TRIM(CONCAT_WS(' ', ru.first_name, ru.last_name)) AS reviewed_by_name,
                     TRIM(CONCAT_WS(' ', au.first_name, au.last_name)) AS approved_by_name
              FROM {$this->table} ft
              LEFT JOIN {$this->tableBank}  b  ON b.bank_account_id = ft.to_bank_account_id
+             LEFT JOIN {$this->tableBank}  fb ON fb.bank_account_id = ft.from_bank_account_id
              LEFT JOIN {$this->tableUsers} pu ON pu.user_id = ft.prepared_by
              LEFT JOIN {$this->tableUsers} ru ON ru.user_id = ft.reviewed_by
              LEFT JOIN {$this->tableUsers} au ON au.user_id = ft.approved_by
@@ -265,9 +356,41 @@ class FtlaService
         $row['supporting_documents'] = json_decode($row['supporting_documents'] ?? '[]', true) ?: [];
         $row['signatories']          = json_decode($row['signatories'] ?? '{}', true) ?: [];
         $row['bank_officers']        = json_decode($row['bank_officers'] ?? '{}', true) ?: [];
+        $row['from_accounts']        = $this->_resolveFromAccountNames($row['from_accounts'] ?? '[]');
+        $row['to_accounts']          = $this->_resolveFromAccountNames($row['to_accounts'] ?? '[]');
+        $row['is_paired']            = count($row['from_accounts']) > 1 && count($row['to_accounts']) === count($row['from_accounts']);
         $row['is_editable']          = in_array($row['status'], self::EDITABLE, true);
 
         return ['success' => true, 'data' => $row];
+    }
+
+    /** Each {bank_account_id, amount} row + its bank_name/account_name/account_number, for the readone/print views. */
+    private function _resolveFromAccountNames(mixed $raw): array
+    {
+        $rows = is_array($raw) ? $raw : (json_decode((string) $raw, true) ?: []);
+        if (!$rows) {
+            return [];
+        }
+        $ids    = array_unique(array_map(static fn ($r) => (int) ($r['bank_account_id'] ?? 0), $rows));
+        $banks  = App\ExecuteRows(
+            "SELECT bank_account_id, bank_name, account_name, account_number FROM {$this->tableBank}
+             WHERE bank_account_id IN (" . implode(',', array_map('intval', $ids)) . ')',
+            'DB'
+        ) ?: [];
+        $byId = [];
+        foreach ($banks as $b) {
+            $byId[(int) $b['bank_account_id']] = $b;
+        }
+
+        return array_map(static function (array $r) use ($byId) {
+            $b = $byId[(int) ($r['bank_account_id'] ?? 0)] ?? [];
+
+            return $r + [
+                'bank_name'      => $b['bank_name'] ?? null,
+                'account_name'   => $b['account_name'] ?? null,
+                'account_number' => $b['account_number'] ?? null,
+            ];
+        }, $rows);
     }
 
     /** Refreshes each attachment's signed url (durable object key lives in "link"). */
@@ -310,7 +433,48 @@ class FtlaService
             $amount       = $body['transfer_amount'] ?? null;
             $purpose      = trim((string) ($body['purpose'] ?? ''));
 
+            // "Multiple debit accounts" (Treasury's ftla-preparation.php checkbox) and/or
+            // "multiple credit accounts" (Treasury's ftlafundtransfer.php paired FROM/TO
+            // rows). transfer_amount is always the from_accounts sum when rows are given —
+            // never the client-entered total — same principle as Treasury's FtlaFundTransferService.
+            $fromAccounts = $this->normalizeFromAccounts($body['from_accounts'] ?? []);
+            $toAccountIds = $this->normalizeAccountIds($body['to_accounts'] ?? []);
+            $paired       = count($toAccountIds) > 1;
+
             $errors = [];
+            if ($paired && count($toAccountIds) !== count($fromAccounts)) {
+                $errors[] = 'Paired debit/credit accounts must have the same number of rows.';
+            }
+
+            if ($paired && !$errors) {
+                foreach ($fromAccounts as $i => $r) {
+                    if ($r['bank_account_id'] === $toAccountIds[$i]['bank_account_id']) {
+                        $errors[] = 'Row ' . ($i + 1) . ": the debit and credit account can't be the same.";
+                        break;
+                    }
+                }
+                $amount     = array_sum(array_column($fromAccounts, 'amount'));
+                $toBankId   = (string) $toAccountIds[0]['bank_account_id'];
+                $fromBankId = $fromAccounts[0]['bank_account_id'];
+            } else {
+                $toBankId = $this->intOrNull(
+                    $toAccountIds ? $toAccountIds[0]['bank_account_id'] : ($body['to_bank_account_id'] ?? null)
+                );
+                if ($fromAccounts) {
+                    $amount = array_sum(array_column($fromAccounts, 'amount'));
+                }
+                $fromBankId = $fromAccounts
+                    ? $fromAccounts[0]['bank_account_id']
+                    : (!empty($body['from_bank_account_id']) ? (int) $body['from_bank_account_id'] : null);
+
+                foreach ($fromAccounts as $r) {
+                    if ($toBankId !== 'NULL' && $r['bank_account_id'] === (int) $toBankId) {
+                        $errors[] = 'A debit (source) account cannot be the same as the destination account.';
+                        break;
+                    }
+                }
+            }
+
             if (!$this->validDate($transferDate)) {
                 $errors[] = 'Transfer Date is required and must be a valid date (YYYY-MM-DD).';
             }
@@ -343,7 +507,8 @@ class FtlaService
 
             $row = App\ExecuteRow(
                 "INSERT INTO {$this->table} (
-                    ftla_number, transfer_type, transfer_date, to_bank_account_id, transfer_amount,
+                    ftla_number, transfer_type, transfer_date, to_bank_account_id, from_bank_account_id,
+                    from_accounts, to_accounts, transfer_amount,
                     is_temporary, repayment_due_date, purpose, request_reference, dv_numbers,
                     supporting_documents, signatories, bank_officers,
                     laa_id, rfa_id, fund_source_id,
@@ -352,7 +517,8 @@ class FtlaService
                     prepared_by, status, created_by, created_at{$extraCol}
                 ) VALUES (
                     {$this->str($ftlaNumber)}, {$this->str($transferType)}, {$this->str($transferDate)},
-                    {$this->intOrNull($body['to_bank_account_id'] ?? null)}, {$this->decimal($amount)},
+                    {$toBankId}, {$this->intOrNull($fromBankId)},
+                    {$this->jsonb($fromAccounts, '[]')}, {$this->jsonb($toAccountIds, '[]')}, {$this->decimal($amount)},
                     {$this->bool($body['is_temporary'] ?? false)}, {$this->dateOrNull($body['repayment_due_date'] ?? null)},
                     {$this->str($purpose)}, {$this->strOrNull($body['request_reference'] ?? null)},
                     {$this->strOrNull($body['dv_numbers'] ?? '')},
@@ -398,7 +564,7 @@ class FtlaService
     {
         try {
             $ftId = (int) $id;
-            $cur  = App\ExecuteRow("SELECT fund_transfer_id, status, ftla_number FROM {$this->table} WHERE fund_transfer_id = {$ftId}", 'DB');
+            $cur  = App\ExecuteRow("SELECT fund_transfer_id, status, ftla_number, to_bank_account_id FROM {$this->table} WHERE fund_transfer_id = {$ftId}", 'DB');
             if (!$cur) {
                 return ['success' => false, 'message' => "FTLA #{$ftId} not found.", 'httpCode' => 404];
             }
@@ -439,11 +605,79 @@ class FtlaService
                 $set[]        = 'dv_numbers = ' . $this->strOrNull($body['dv_numbers']);
                 $hasFieldEdit = true;
             }
+
+            // "Multiple debit accounts" and/or "multiple credit accounts" (paired FROM/TO
+            // rows) — same shapes/precedence as create(). to_bank_account_id is handled
+            // here too (not in the generic INT_FIELDS loop) since paired mode derives it
+            // from to_accounts[0] instead of trusting the body's own value.
+            $fromAccountsProvided = array_key_exists('from_accounts', $body);
+            $toAccountsProvided   = array_key_exists('to_accounts', $body);
+            $fromAccounts         = $fromAccountsProvided ? $this->normalizeFromAccounts($body['from_accounts']) : null;
+            $toAccountIds         = $toAccountsProvided ? $this->normalizeAccountIds($body['to_accounts']) : null;
+            $paired               = $toAccountsProvided && count($toAccountIds) > 1;
+            $pairedAmount         = null;
+
+            if ($paired) {
+                $pairFrom = $fromAccounts ?? [];
+                if (count($toAccountIds) !== count($pairFrom)) {
+                    return ['success' => false, 'message' => 'Paired debit/credit accounts must have the same number of rows.'];
+                }
+                foreach ($pairFrom as $i => $r) {
+                    if ($r['bank_account_id'] === $toAccountIds[$i]['bank_account_id']) {
+                        return ['success' => false, 'message' => "Row " . ($i + 1) . ": the debit and credit account can't be the same."];
+                    }
+                }
+                $set[]        = 'from_accounts = ' . $this->jsonb($pairFrom, '[]');
+                $set[]        = 'to_accounts = ' . $this->jsonb($toAccountIds, '[]');
+                $set[]        = 'from_bank_account_id = ' . $this->intOrNull($pairFrom[0]['bank_account_id'] ?? null);
+                $set[]        = 'to_bank_account_id = ' . $this->intOrNull($toAccountIds[0]['bank_account_id']);
+                $pairedAmount = array_sum(array_column($pairFrom, 'amount'));
+                $hasFieldEdit = true;
+            } else {
+                if ($toAccountsProvided) {
+                    $set[]        = 'to_accounts = ' . $this->jsonb($toAccountIds, '[]');
+                    $set[]        = 'to_bank_account_id = ' . $this->intOrNull(
+                        $toAccountIds ? $toAccountIds[0]['bank_account_id'] : ($body['to_bank_account_id'] ?? null)
+                    );
+                    $hasFieldEdit = true;
+                } elseif (array_key_exists('to_bank_account_id', $body)) {
+                    $set[]        = 'to_bank_account_id = ' . $this->intOrNull($body['to_bank_account_id']);
+                    $hasFieldEdit = true;
+                }
+
+                if ($fromAccountsProvided) {
+                    $toBankIdForCheck = $toAccountIds[0]['bank_account_id'] ?? (array_key_exists('to_bank_account_id', $body)
+                        ? (int) $body['to_bank_account_id']
+                        : (int) ($cur['to_bank_account_id'] ?? 0));
+                    foreach ($fromAccounts as $r) {
+                        if ($toBankIdForCheck > 0 && $r['bank_account_id'] === $toBankIdForCheck) {
+                            return ['success' => false, 'message' => 'A debit (source) account cannot be the same as the destination account.'];
+                        }
+                    }
+                    $fromBankId = $fromAccounts
+                        ? $fromAccounts[0]['bank_account_id']
+                        : (!empty($body['from_bank_account_id']) ? (int) $body['from_bank_account_id'] : null);
+                    $set[]        = 'from_accounts = ' . $this->jsonb($fromAccounts, '[]');
+                    $set[]        = 'from_bank_account_id = ' . $this->intOrNull($fromBankId);
+                    $hasFieldEdit = true;
+                } elseif (array_key_exists('from_bank_account_id', $body)) {
+                    $set[]        = 'from_bank_account_id = ' . $this->intOrNull($body['from_bank_account_id']);
+                    $hasFieldEdit = true;
+                }
+            }
+
             if (array_key_exists('transfer_amount', $body)) {
-                if (!is_numeric($body['transfer_amount']) || (float) $body['transfer_amount'] <= 0) {
+                $amt = $pairedAmount ?? ($fromAccounts ? array_sum(array_column($fromAccounts, 'amount')) : $body['transfer_amount']);
+                if (!is_numeric($amt) || (float) $amt <= 0) {
                     return ['success' => false, 'message' => 'Transfer Amount must be greater than zero.'];
                 }
-                $set[]        = 'transfer_amount = ' . $this->decimal($body['transfer_amount']);
+                $set[]        = 'transfer_amount = ' . $this->decimal($amt);
+                $hasFieldEdit = true;
+            } elseif ($pairedAmount !== null) {
+                $set[]        = 'transfer_amount = ' . $this->decimal($pairedAmount);
+                $hasFieldEdit = true;
+            } elseif ($fromAccountsProvided && $fromAccounts) {
+                $set[]        = 'transfer_amount = ' . $this->decimal(array_sum(array_column($fromAccounts, 'amount')));
                 $hasFieldEdit = true;
             }
 
@@ -735,15 +969,98 @@ class FtlaService
         ]];
     }
 
-    // ── printing — no DOCX/PDF template exists yet for FTLA ──
+    // ── printing — delegates to FtlaPrintService via the shared PrintService (PrintService::DOCS['FTLA']) ──
 
-    public function printDocx(int $id): array
+    /**
+     * The saved record as a FtlaPrintService payload: transfers[] from from_accounts
+     * (empty → model() falls back to the single to-account fields), signatories from
+     * the stored signatories/bank_officers jsonb, overridable by $overrides (the form's
+     * "sig_overrides" — same field names as ftla-form.php's _getSigOverrides()).
+     */
+    private function _buildPrintPayload(int $id, array $overrides = []): array
     {
-        return ['success' => false, 'message' => 'DOCX generation is not yet available for FTLA. Please attach a scanned copy instead.'];
+        $rec = $this->getRecord($id);
+        if (!$rec['success']) {
+            return $rec;
+        }
+        $row  = $rec['data'];
+        $sigs = is_array($row['signatories']) ? $row['signatories'] : [];
+        $bank = is_array($row['bank_officers']) ? $row['bank_officers'] : [];
+        $ov   = is_array($overrides['sig_overrides'] ?? null) ? $overrides['sig_overrides'] : [];
+        $pick = static fn (string $ovKey, string $sigKey, string $default = '') => trim((string) ($ov[$ovKey] ?? $sigs[$sigKey] ?? $default));
+
+        // Paired mode (Treasury's ftlafundtransfer.php "pairs" shape): each from_accounts[i]
+        // funds the to_accounts[i] at the same index, not the single to_bank_account_id —
+        // FtlaPrintService::model() auto-picks its "pairs" layout from this shape.
+        if (!empty($row['is_paired'])) {
+            $transfers = [];
+            foreach ($row['from_accounts'] as $i => $fa) {
+                $ta          = $row['to_accounts'][$i] ?? [];
+                $transfers[] = [
+                    'from_account_number' => $fa['account_number'] ?? '',
+                    'from_account_name'   => $fa['account_name'] ?? ($fa['bank_name'] ?? ''),
+                    'to_account_number'   => $ta['account_number'] ?? '',
+                    'to_account_name'     => $ta['account_name'] ?? ($ta['bank_name'] ?? ''),
+                    'amount'              => $fa['amount'] ?? 0,
+                ];
+            }
+        } else {
+            $transfers = array_map(static fn (array $fa) => [
+                'from_account_number' => $fa['account_number'] ?? '',
+                'from_account_name'   => $fa['account_name'] ?? ($fa['bank_name'] ?? ''),
+                'to_account_number'   => $row['to_account_number'] ?? '',
+                'to_account_name'     => $row['to_account_name'] ?? '',
+                'amount'              => $fa['amount'] ?? 0,
+            ], $row['from_accounts'] ?? []);
+        }
+
+        $dvNumbers = array_values(array_filter(array_map('trim', explode("\n", (string) ($row['dv_numbers'] ?? '')))));
+
+        return ['success' => true, 'data' => [
+            'ftla_number'         => $row['ftla_number'],
+            'transfer_type'       => $row['transfer_type'] ?? '',
+            'date'                => $row['transfer_date'],
+            'to_bank_name'        => $row['to_bank_name'] ?? '',
+            'transfers'           => $transfers,
+            // Legacy/scalar-only records (from_bank_account_id set, no from_accounts rows)
+            // never reach $transfers above — fall back to the joined from_bank_account_id's
+            // own name/number so the single-account layout isn't left blank.
+            'from_account_name'   => $row['from_accounts'][0]['account_name'] ?? ($row['from_account_name'] ?? $row['from_bank_name'] ?? ''),
+            'from_account_number' => $row['from_accounts'][0]['account_number'] ?? ($row['from_account_number'] ?? ''),
+            'to_account_name'     => $row['to_account_name'] ?? '',
+            'to_account_number'   => $row['to_account_number'] ?? '',
+            'amount'              => $row['transfer_amount'] ?? 0,
+            'purpose'             => $row['purpose'] ?? '',
+            'sig_left_name'       => $pick('sig1_name', 'sig1_name', $row['reviewed_by_name'] ?? ''),
+            'sig_left_title'      => $pick('sig1_title', 'sig1_title'),
+            'sig_right_name'      => $pick('sig2_name', 'sig2_name', $row['approved_by_name'] ?? ''),
+            'sig_right_title'     => $pick('sig2_title', 'sig2_title'),
+            'dv_numbers'          => $dvNumbers,
+            'fund_classification' => $sigs['fund_classification'] ?? '',
+            'bank_sig_verified'   => $pick('bk_sig', 'sig_verified', $bank['sig_verified'] ?? ''),
+            'bank_checked'        => $pick('bk_chk', 'checked', $bank['checked'] ?? ''),
+            'bank_approved'       => $pick('bk_app', 'approved', $bank['approved'] ?? ''),
+            'bank_posted'         => $pick('bk_pst', 'posted', $bank['posted'] ?? ''),
+        ]];
     }
 
-    public function printPdf(int $id): array
+    public function printDocx(int $id, array $body = []): array
     {
-        return ['success' => false, 'message' => 'PDF preview is not yet available for FTLA. Please attach a scanned copy instead.'];
+        $payload = $this->_buildPrintPayload($id, $body);
+        if (!$payload['success']) {
+            return $payload;
+        }
+
+        return (new PrintService())->print('FTLA', $payload['data'], 'docx');
+    }
+
+    public function printPdf(int $id, array $body = []): array
+    {
+        $payload = $this->_buildPrintPayload($id, $body);
+        if (!$payload['success']) {
+            return $payload;
+        }
+
+        return (new PrintService())->print('FTLA', $payload['data'], 'pdf');
     }
 }

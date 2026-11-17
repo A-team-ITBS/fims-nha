@@ -31,6 +31,42 @@ class FtlaPrintService
 {
     public const DEFAULT_SUBJECT = 'AUTHORITY TO DEBIT/CREDIT ACCOUNT';
 
+    /**
+     * transfer_type => subject line, ported from ftlafundtransfer.php's ftFTLASubject().
+     * The single-account layout strips the parenthetical qualifier (Treasury's own
+     * single-account templates do too); debit_list/pairs keep it in full. Two types
+     * get an entirely different subject regardless of layout — see subjectFor().
+     */
+    private const SUBJECT_BY_TYPE = [
+        'ERRONEOUS_CHARGEABILITY' => 'AUTHORITY TO DEBIT/CREDIT ACCOUNT (CORRECTION OF ERRONEOUS CHARGEABILITY)',
+        'ERRONEOUS_DEPOSIT'       => 'AUTHORITY TO DEBIT/CREDIT ACCOUNT (CORRECTION OF ERRONEOUS DEPOSIT)',
+        'REMITTANCE_ECHMLP'       => 'AUTHORITY TO DEBIT/CREDIT ACCOUNT (REMITTANCE — ECHMLP)',
+        'REMITTANCE_HLA'          => 'AUTHORITY TO DEBIT/CREDIT ACCOUNT (REMITTANCE — HOUSE & LOT AWARDS)',
+        'SUBSIDY_TRANSFER'        => 'AUTHORITY TO DEBIT/CREDIT ACCOUNT (TRANSFER OF SUBSIDY)',
+        'REVERSAL'                => 'AUTHORITY TO DEBIT/CREDIT ACCOUNT (REVERSAL OF FUNDS)',
+        'GENERAL_FUND'            => 'AUTHORITY TO TRANSFER FUNDS TO GENERAL FUND ACCOUNT',
+        'TEMPORARY'               => 'AUTHORITY TO DEBIT/CREDIT ACCOUNT (TEMPORARY CASH TRANSFER)',
+    ];
+
+    /** transfer_type => subject regardless of debit/credit shape (ftla-preparation.php's Regional multi; ftlasettlement.php). */
+    private const FIXED_SUBJECT_BY_TYPE_AND_LAYOUT = [
+        'REGIONAL_FUND_TRANSFER' => ['debit_list' => 'AUTHORITY TO TRANSFER FUNDS', 'pairs' => 'AUTHORITY TO TRANSFER FUNDS'],
+        'SETTLEMENT_TO_MAIN'     => ['single' => 'AUTHORITY TO TRANSFER SETTLEMENT FUNDS TO MAIN DEPOSITORY ACCOUNT',
+            'debit_list' => 'AUTHORITY TO TRANSFER SETTLEMENT FUNDS TO MAIN DEPOSITORY ACCOUNT', 'pairs' => 'AUTHORITY TO TRANSFER SETTLEMENT FUNDS TO MAIN DEPOSITORY ACCOUNT'],
+    ];
+
+    /** The caller's own `subject` always wins; otherwise transfer_type + layout picks one, else DEFAULT_SUBJECT. */
+    private function subjectFor(string $transferType, string $layout): string
+    {
+        $fixed = self::FIXED_SUBJECT_BY_TYPE_AND_LAYOUT[$transferType][$layout] ?? null;
+        if ($fixed !== null) {
+            return $fixed;
+        }
+        $full = self::SUBJECT_BY_TYPE[$transferType] ?? self::DEFAULT_SUBJECT;
+
+        return $layout === 'single' ? trim((string) preg_replace('/\s*\(.*?\)/', '', $full)) : $full;
+    }
+
     // The two signatories' default titles (TREASURY's FTLA).
     private const SIGNATORY_TITLES = [
         'left'  => "Officer-in-Charge\nTreasury Department",
@@ -105,7 +141,7 @@ class FtlaPrintService
             'date'        => PrintService::longDate($p['date'] ?? $p['transfer_date'] ?? ''),
             'to_bank'     => mb_strtoupper($t('to_bank_name') ?: 'LANDBANK OF THE PHILIPPINES'),
             'to_branch'   => $t('to_bank_branch'),
-            'subject'     => mb_strtoupper($t('subject') ?: self::DEFAULT_SUBJECT),
+            'subject'     => mb_strtoupper($t('subject') ?: $this->subjectFor($t('transfer_type'), $layout)),
             'layout'      => $layout,
             'single'      => $rows[0] + ['amount_text' => PrintService::money($rows[0]['amount']),
                                           'words' => $rows[0]['amount'] > 0 ? PrintService::amountInWordsCentavos($rows[0]['amount']) : ''],
