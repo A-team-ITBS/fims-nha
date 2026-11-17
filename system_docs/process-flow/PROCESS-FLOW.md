@@ -43,6 +43,7 @@ account needs both set correctly (Section 1, step 2).
 | Accounting Division Manager | Accounting Department (RC 012) | 8, 9, 10 |
 | Accounting Department Manager | Accounting Department (RC 012) | 8, 9, 10 |
 | Treasury Officer | Treasury Department (RC 014) | 9 |
+| Payroll officer | any office given access to Payroll Setup / Payroll Management | 1, 8A |
 | Any user (read-only checks) | any | 11 |
 
 ## Contents
@@ -56,6 +57,7 @@ account needs both set correctly (Section 1, step 2).
 6. [Request for Allocation — RFA / LAA and CAF](#6-request-for-allocation--rfa--laa-and-caf)
 7. [Deliveries and IAR](#7-deliveries-and-iar)
 8. [Disbursement Voucher](#8-disbursement-voucher)
+8A. [Payroll — import and payroll DV](#8a-payroll--import-and-payroll-dv)
 9. [Check release and payment entry](#9-check-release-and-payment-entry)
 10. [Adjusting entries (Journal Entry Voucher)](#10-adjusting-entries-journal-entry-voucher)
 11. [Verification — ledgers and monitoring](#11-verification--ledgers-and-monitoring)
@@ -74,6 +76,8 @@ flowchart TD
     B --> C["5 — CBA<br/>Requesting office → FMD review chain<br/>• Reserve approved COB funds"]
     C --> D["6 — RFA / LAA AND CAF<br/>Requesting office → FMD review chain<br/>• Draw down the CBA's reserved funds<br/>• CAF for the RFA"]
     D --> IAR["7 — DELIVERIES AND IAR<br/>Inventory<br/>• Deliveries against the RFA's PO"]
+    A -.-> PR["8A — PAYROLL<br/>Payroll officer<br/>• Import the monthly payroll<br/>• Payroll DV from the imported month"]
+    PR -.-> E
     IAR --> E["8 — DISBURSEMENT VOUCHER<br/>FMD → Accounting → Treasury<br/>• Voucher, journal entry, approvals<br/>• FOR_TREASURY posts the entry to the GL"]
     E --> F["9 — CHECK RELEASE AND PAYMENT ENTRY<br/>Treasury → Accounting<br/>• Check prepared and released<br/>• Payment JEV posted to the GL"]
     F --> J["10 — ADJUSTING ENTRIES<br/>Accounting<br/>• Journal Entry Vouchers without a DV"]
@@ -96,7 +100,8 @@ flowchart TD
 | 7 | System Administrator | Accounts Set-up → Responsibility Center | Check FMD (013), Accounting (012), Treasury (014) and the requesting offices are Active | Listed as Active |
 | 8 | System Administrator | Accounts Set-up → Banks Accounts | Add the disbursing bank account | Status ACTIVE |
 | 9 | System Administrator | Accounts Set-up → Vendors | Add a vendor with its assigned Chart of Accounts account | Vendor is ACTIVE and can be picked in an RFA |
-| 10 | Each new user | Change Password | Change the initial password | Password updated |
+| 10 | Payroll officer | Accounts Set-up → Payroll Setup | Add one payroll item per amount column of the payroll import form: item code = the column name (e.g. BASIC_SALARY), category (Earning / Deduction / Refund / Employer Share) and its account | Items ACTIVE; Payroll Management → File Template shows those columns as set up |
+| 11 | Each new user | Change Password | Change the initial password | Password updated |
 
 ```mermaid
 flowchart TD
@@ -106,7 +111,8 @@ flowchart TD
     S3 --> S4["STEP 4 — PROGRAM STRUCTURE<br/>Accounts Set-up — Program, Sub Program<br/>• Programs and sub-programs<br/>(projects are added in Budget Request)"]
     S4 --> S5["STEP 5 — CHART OF ACCOUNTS<br/>Accounts Set-up — Chart of Accounts<br/>• GL accounts and their bottom-level SL accounts<br/>• Books, Active / Inactive"]
     S5 --> S6["STEP 6 — OFFICES, BANKS, VENDORS<br/>Accounts Set-up<br/>• Responsibility Centers<br/>• Bank accounts (ACTIVE)<br/>• Vendors with their COA account"]
-    S6 --> S7["STEP 7 — FIRST SIGN-IN<br/>Each user — Change Password"]
+    S6 --> SP["STEP 7 — PAYROLL ITEMS<br/>Payroll officer — Payroll Setup<br/>• One item per payroll column:<br/>code, category, account"]
+    SP --> S7["STEP 8 — FIRST SIGN-IN<br/>Each user — Change Password"]
     S7 --> END(["Ready — go to Section 2"])
 ```
 
@@ -334,17 +340,59 @@ flowchart TD
 > A DV can also be **cancelled** at any open stage by the office holding it or its creator. Cancelling at
 > FOR_TREASURY reverses the posted General Ledger entry — test it on a separate DV.
 
+## 8A. Payroll — import and payroll DV
+
+**Needs:** Section 1 (payroll items in Payroll Setup) and an RFA for the payroll (Section 6). **Sidebar:** Accounts
+Set-up → Payroll Management, DV Processing → Disbursement Voucher. **Payroll month status:** Imported → DV Created
+(back to Imported when the DV is cancelled or deleted). The payroll DV then follows Section 8 from step 2.
+
+| Step | Log in as | Where (sidebar → page) | Do this | Expected result |
+|---|---|---|---|---|
+| 1 | Payroll officer | Payroll Management → File Template | Download Import Form; fill one row per employee (employee no., names and the amounts) | The file has the payroll office's columns and no employee rows |
+| 2 | Payroll officer | Payroll Management → Payroll Imports → Import Payroll | Pick the month and year, choose the file, Preview | Employees, gross, deductions, refunds, net and employer share shown; nothing saved yet |
+| 2a | Payroll officer (alternative) | Import Payroll → Preview | A file with a column not set up in Payroll Setup, a repeated employee no. or a text amount | "Cannot import yet" with the reason — add the item in Payroll Setup / fix the file, then Preview again |
+| 3 | Payroll officer | Import Payroll | Import | Month listed: Import Date, status Imported, Total Payroll Amount = gross |
+| 3a | Payroll officer (alternative) | Import Payroll | Import the same month again | Asked to replace it; Replace Import replaces the month |
+| 4 | Payroll officer | Payroll Imports → click the month name → Items; Year-to-Date Report | Check the employees, their item amounts and accounts; generate the YTD report | Totals agree with the file |
+| 5 | Requesting office user | Payroll Management → Payroll Imports → **Create DV** on the month | Disbursement Voucher opens a New DV for the month (Vendor or Payroll = "Payroll — month"); pick the RFA and the Book; save | Claimant, particulars, amount, deductions and the balanced accounting entry were filled; DV DRAFT; the month shows **DV Created** and its button becomes **View DV** |
+| 5a | Requesting office user (alternative) | New DV | Change Vendor or Payroll back to None | Every field the payroll filled is cleared |
+| 5b | Payroll officer (alternative) | Payroll Imports | Replace the month, or click the month name → Delete Import, while it has a DV | Replace refused — "used by Disbursement Voucher …"; Delete Import is not offered |
+| 5c | Any user | Payroll Imports → **View DV** | Open the month's DV | The DV's view opens in Disbursement Voucher |
+| 6 | (Section 8) | Disbursement Voucher | Submit and process the payroll DV as in Section 8, steps 2–7 | FOR_TREASURY; the payroll entry is posted |
+| 6a | Office holding the DV (alternative) | Disbursement Voucher | Cancel the payroll DV | The month is back to Imported and can be used by a new DV |
+
+The payroll DV's accounting entry: Dr each earnings account (e.g. Salaries and Wages, PERA), Cr each deduction
+account (Due to BIR, GSIS, Pag-IBIG, PhilHealth, other payables), Cr Accounts Payable for the net pay. The
+employer share is not on the payroll DV.
+
+```mermaid
+flowchart TD
+    START(["Start"]) --> S1["STEP 1 — IMPORT FORM<br/>Payroll officer — Payroll Management, File Template<br/>• Download the import form<br/>• One row per employee"]
+    S1 --> S2["STEP 2 — PREVIEW<br/>Payroll officer — Payroll Imports<br/>• Month, year, file<br/>• Totals shown, nothing saved"]
+    S2 --> D1{"Every column set up,<br/>file valid?"}
+    D1 -->|"No"| R1["Add the missing item in Payroll Setup<br/>or fix the file"]
+    R1 --> S2
+    D1 -->|"Yes"| S3["STEP 3 — IMPORT<br/>Payroll officer — Payroll Imports<br/>• Month listed<br/>• Status: Imported"]
+    S3 --> S4["STEP 4 — CHECK<br/>Payroll officer<br/>• View: employees and items<br/>• Year-to-Date Report"]
+    S4 --> S5["STEP 5 — PAYROLL DV<br/>Requesting office — Payroll Imports, Create DV<br/>• New DV filled from the month<br/>• RFA and Book, save — DV DRAFT<br/>• Month: DV Created, button View DV"]
+    S5 --> S6["STEP 6 — DV APPROVALS<br/>Section 8, steps 2 to 7<br/>• Entry posted at FOR_TREASURY"]
+    S6 --> D2{"DV cancelled?"}
+    D2 -->|"Yes"| X["Month back to Imported<br/>• A new DV can use it"]
+    X --> S5
+    D2 -->|"No"| END(["Go to Section 9"])
+```
+
 ## 9. Check release and payment entry
 
-**Needs:** a DV at FOR_TREASURY (Section 8). **Sidebar:** DV Processing → Check Disbursements (Treasury),
+**Needs:** a DV at FOR_TREASURY (Section 8). **Sidebar:** DV Processing → Disbursement Preparation (Treasury),
 Disbursement Voucher and Journal Entry Voucher (Accounting). **Check:** PREPARED → RELEASED → ENCASHED /
 OUTSTANDING → STALE, or CANCELLED / VOIDED. **Release:** PENDING → NOTIFIED → RELEASED → ACKNOWLEDGED, or UNCLAIMED.
 
 | Step | Log in as | Where (sidebar → page) | Do this | Expected result |
 |---|---|---|---|---|
-| 1 | Treasury Officer (RC 014) | DV Processing → Check Disbursements | Prepare the check for the DV: bank account, check number | Check PREPARED; the DV becomes RELEASED |
-| 2 | Treasury Officer | Check Disbursements → releases | Create the release and notify the payee | Release PENDING → NOTIFIED (email sent) |
-| 3 | Treasury Officer | Check Disbursements → releases | Release the check to the payee; record the acknowledgment | RELEASED → ACKNOWLEDGED |
+| 1 | Treasury Officer (RC 014) | DV Processing → Disbursement Preparation | Prepare the check for the DV: bank account, check number | Check PREPARED; the DV becomes RELEASED |
+| 2 | Treasury Officer | Disbursement Preparation → releases | Create the release and notify the payee | Release PENDING → NOTIFIED (email sent) |
+| 3 | Treasury Officer | Disbursement Preparation → releases | Release the check to the payee; record the acknowledgment | RELEASED → ACKNOWLEDGED |
 | 3a | Treasury Officer (alternative) | releases | Mark it unclaimed | UNCLAIMED; the check becomes STALE |
 | 4 | Accounting Section Chief (RC 012) | Disbursement Voucher → view → Prepare Payment JEV | Prepare the payment entry (Dr Accounts Payable / Cr Cash in Bank) | Payment JEV at FOR_SECTION_CHIEF |
 | 5 | Accounting Section Chief → Division Manager → Department Manager | DV Processing → Journal Entry Voucher | Move it forward at each level | FOR_DIVISION_MANAGER → FOR_DEPARTMENT_MANAGER → POSTED |
@@ -352,11 +400,11 @@ OUTSTANDING → STALE, or CANCELLED / VOIDED. **Release:** PENDING → NOTIFIED 
 
 ```mermaid
 flowchart TD
-    START(["DV at FOR_TREASURY"]) --> S1["STEP 1 — PREPARE THE CHECK<br/>Treasury (RC 014) — Check Disbursements<br/>• Bank account and check number<br/>• Check: PREPARED<br/>• DV: RELEASED"]
-    S1 --> S2["STEP 2 — NOTIFY THE PAYEE<br/>Treasury — Check Disbursements<br/>• Release: PENDING → NOTIFIED (email)"]
+    START(["DV at FOR_TREASURY"]) --> S1["STEP 1 — PREPARE THE CHECK<br/>Treasury (RC 014) — Disbursement Preparation<br/>• Bank account and check number<br/>• Check: PREPARED<br/>• DV: RELEASED"]
+    S1 --> S2["STEP 2 — NOTIFY THE PAYEE<br/>Treasury — Disbursement Preparation<br/>• Release: PENDING → NOTIFIED (email)"]
     S2 --> D1{"Check claimed?"}
     D1 -->|"No — Unclaimed"| U["UNCLAIMED<br/>• Check becomes STALE<br/>• Cancel / replace if needed"]
-    D1 -->|"Yes"| S3["STEP 3 — RELEASE<br/>Treasury — Check Disbursements<br/>• RELEASED → ACKNOWLEDGED"]
+    D1 -->|"Yes"| S3["STEP 3 — RELEASE<br/>Treasury — Disbursement Preparation<br/>• RELEASED → ACKNOWLEDGED"]
     S1 --> S4["STEP 4 — PAYMENT JEV<br/>Accounting Section Chief (RC 012) — DV view<br/>• Prepare Payment JEV<br/>• Dr Accounts Payable / Cr Cash in Bank<br/>• Status: FOR_SECTION_CHIEF"]
     S4 --> S5["STEP 5 — APPROVALS<br/>Accounting Section Chief → Division Manager →<br/>Department Manager — Journal Entry Voucher<br/>• Forward only (no return step)"]
     S5 --> S6["STEP 6 — POSTED<br/>• Status: POSTED<br/>• Posted to the General Ledger<br/>• Listed in the CKDJ journal"]
@@ -429,7 +477,7 @@ flowchart TD
 | Monitoring | RFA / LAA Monitoring |
 | Registry/NCA | Check Registry, Accountable Forms Registry |
 | Reports | FMR, Remittance List (Deductions) |
-| Accounts Set-up | Fund Source, Program Sources, Accountable Officer |
+| Accounts Set-up | Fund Source, Program Sources, Accountable Officer, Fidelity Bond |
 | Fund Sourcing | Pricing (the request form and API exist; the page is empty) |
 
 **Known limitations — expected behaviour today, not test failures:**
@@ -442,4 +490,6 @@ flowchart TD
   revision twice; confirm the figures by hand (see `system_docs/ERD/README.md`, Known gaps).
 - **Journals CKDJ** can list a check twice once its Payment JEV exists.
 - **Journal Entry Vouchers** have no return step; a **rejected DV** can only be cancelled.
+- **Payroll DV deductions** show as one "Other" line until the payroll deduction types are seeded
+  (`04 - seed_data/08`); the accounting entry is right either way.
 - Pages that work but are **not in the sidebar**: Purchase Orders, Property Records, Cash Position, FTLA.

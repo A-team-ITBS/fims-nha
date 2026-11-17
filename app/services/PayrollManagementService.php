@@ -67,6 +67,7 @@ class PayrollManagementService
                         COALESCE(SUM(r.total_employer_share), 0) AS total_employer_share,
                         COUNT(dv.dv_id) FILTER (WHERE COALESCE(st.name, '') <> 'CANCELLED') AS linked_count,
                         STRING_AGG(DISTINCT dv.dv_no, ', ') FILTER (WHERE COALESCE(st.name, '') <> 'CANCELLED') AS dv_nos,
+                        MIN(dv.dv_id) FILTER (WHERE COALESCE(st.name, '') <> 'CANCELLED') AS dv_id,
                         STRING_AGG(DISTINCT st.name, ', ') FILTER (WHERE COALESCE(st.name, '') <> 'CANCELLED') AS dv_statuses
                    FROM {$this->tPeriod} p
                    JOIN {$this->tRecord} r ON r.payroll_period_id = p.payroll_period_id
@@ -106,6 +107,537 @@ class PayrollManagementService
 
             return ['success' => false, 'message' => 'Failed to load the imported payrolls.'];
         }
+    }
+
+    // ═══ Employee records of an imported month (the "View" of a summary row) ═════════════
+
+    /** The employees of one imported month with their totals; search (employee no. / name), page, limit. */
+    public function fetchRecords(int $periodId, array $q = []): array
+    {
+        try {
+            $p = App\ExecuteRow("SELECT payroll_period_id, fiscal_yr, payroll_month, period_name, status FROM {$this->tPeriod} WHERE payroll_period_id = {$periodId}", 'DB');
+            if (!$p) {
+                return ['success' => false, 'httpCode' => 404, 'message' => 'Payroll month not found.'];
+            }
+            $where = ["r.payroll_period_id = {$periodId}"];
+            $search = trim((string) ($q['search'] ?? ''));
+            if ($search !== '') {
+                $s = $this->str('%' . $search . '%');
+                $where[] = "(e.employee_no ILIKE {$s} OR e.full_name ILIKE {$s} OR e.department ILIKE {$s})";
+            }
+            $w     = implode(' AND ', $where);
+            $from  = "FROM {$this->tRecord} r JOIN {$this->tEmp} e ON e.employee_id = r.employee_id
+                      LEFT JOIN {$this->tDv} dv ON dv.dv_id = r.disbursement_voucher_id WHERE {$w}";
+            $total = (int) App\ExecuteScalar("SELECT COUNT(*) {$from}", 'DB');
+            $limit = max(5, min(200, (int) ($q['limit'] ?? 25)));
+            $page  = max(1, (int) ($q['page'] ?? 1));
+            $rows  = App\ExecuteRows(
+                "SELECT r.payroll_record_id, e.employee_no, e.last_name, e.first_name, e.middle_name, e.department, e.position,
+                        r.gross_amount, r.total_deductions, r.total_refunds, r.net_amount, r.total_employer_share, r.status, dv.dv_no
+                 {$from}
+                 ORDER BY e.last_name, e.first_name, e.employee_no
+                 LIMIT {$limit} OFFSET " . (($page - 1) * $limit),
+                'DB'
+            ) ?: [];
+
+            return ['success' => true, 'data' => $rows,
+                'period' => ['payroll_period_id' => (int) $p['payroll_period_id'], 'label' => (self::MONTHS[(int) $p['payroll_month']] ?? '') . ' ' . $p['fiscal_yr'], 'status' => $p['status']],
+                'pagination' => ['total' => $total, 'per_page' => $limit, 'current_page' => $page, 'last_page' => (int) ceil($total / $limit)]];
+        } catch (\Throwable $e) {
+            App\LogError('PayrollManagementService::fetchRecords ' . $e->getMessage());
+
+            return ['success' => false, 'message' => 'Failed to load the employee records.'];
+        }
+    }
+
+    /** One employee's amounts for the month, per payroll item (category, item, account, amount). */
+    public function fetchRecordItems(int $recordId): array
+    {
+        try {
+            $rows = App\ExecuteRows(
+                "SELECT i.item_code, i.item_name, i.category, ri.account_code, c.account_title, ri.amount
+                   FROM {$this->tLine} ri
+                   JOIN {$this->tItem} i ON i.payroll_item_id = ri.payroll_item_id
+                   LEFT JOIN fims.chart_of_accounts c ON c.account_code = ri.account_code
+                  WHERE ri.payroll_record_id = {$recordId}
+                  ORDER BY CASE i.category WHEN 'EARNING' THEN 1 WHEN 'REFUND' THEN 2 WHEN 'DEDUCTION' THEN 3 ELSE 4 END, i.sort_order, i.item_code",
+                'DB'
+            ) ?: [];
+
+            return ['success' => true, 'data' => $rows];
+        } catch (\Throwable $e) {
+            App\LogError('PayrollManagementService::fetchRecordItems ' . $e->getMessage());
+
+            return ['success' => false, 'message' => 'Failed to load the payroll items of this employee.'];
+        }
+    }
+
+    // ═══ Year-to-Date report ══════════════════════════════════════════════════════════════
+
+    /**
+     * Per employee: the months paid and the totals of the imported payrolls of a year, up to an optional month.
+     * Filters: year (required), month (as of), department, status (payroll_employees.employment_status), search.
+     */
+    public function fetchYtd(array $q): array
+    {
+        try {
+            $year = (int) ($q['year'] ?? 0);
+            if ($year < 2000 || $year > 2100) {
+                return ['success' => false, 'message' => 'Choose the fiscal year.'];
+            }
+            $where = ["p.fiscal_yr = {$year}"];
+            $month = (int) ($q['month'] ?? 0);
+            if ($month >= 1 && $month <= 12) {
+                $where[] = "p.payroll_month <= {$month}";
+            }
+            if (trim((string) ($q['department'] ?? '')) !== '') {
+                $where[] = 'e.department = ' . $this->str(trim((string) $q['department']));
+            }
+            if (trim((string) ($q['status'] ?? '')) !== '') {
+                $where[] = 'e.employment_status = ' . $this->str(trim((string) $q['status']));
+            }
+            $search = trim((string) ($q['search'] ?? ''));
+            if ($search !== '') {
+                $s = $this->str('%' . $search . '%');
+                $where[] = "(e.employee_no ILIKE {$s} OR e.full_name ILIKE {$s})";
+            }
+            $rows = App\ExecuteRows(
+                "SELECT e.employee_no, e.last_name, e.first_name, e.middle_name, e.position, e.department, e.employment_status,
+                        e.tin, e.pagibig_no, e.philhealth_no,
+                        COUNT(DISTINCT p.payroll_period_id) AS months,
+                        SUM(r.gross_amount) AS ytd_gross, SUM(r.total_deductions) AS ytd_deductions,
+                        SUM(r.total_refunds) AS ytd_refunds, SUM(r.net_amount) AS ytd_net,
+                        SUM(r.total_employer_share) AS ytd_employer_share
+                   FROM {$this->tRecord} r
+                   JOIN {$this->tPeriod} p ON p.payroll_period_id = r.payroll_period_id
+                   JOIN {$this->tEmp} e ON e.employee_id = r.employee_id
+                  WHERE " . implode(' AND ', $where) . '
+                  GROUP BY e.employee_id
+                  ORDER BY e.last_name, e.first_name, e.employee_no',
+                'DB'
+            ) ?: [];
+            $sum = fn (string $k) => round(array_sum(array_map('floatval', array_column($rows, $k))), 2);
+            $departments = array_column(App\ExecuteRows(
+                "SELECT DISTINCT e.department FROM {$this->tRecord} r
+                   JOIN {$this->tPeriod} p ON p.payroll_period_id = r.payroll_period_id
+                   JOIN {$this->tEmp} e ON e.employee_id = r.employee_id
+                  WHERE p.fiscal_yr = {$year} AND COALESCE(e.department, '') <> '' ORDER BY 1",
+                'DB'
+            ) ?: [], 'department');
+            $months = array_map('intval', array_column(App\ExecuteRows(
+                "SELECT DISTINCT p.payroll_month FROM {$this->tPeriod} p
+                  WHERE p.fiscal_yr = {$year} AND EXISTS (SELECT 1 FROM {$this->tRecord} r WHERE r.payroll_period_id = p.payroll_period_id) ORDER BY 1",
+                'DB'
+            ) ?: [], 'payroll_month'));
+
+            return ['success' => true, 'data' => $rows, 'departments' => $departments,
+                'months_imported' => array_map(fn ($m) => self::MONTHS[$m], $months),
+                'totals' => ['employees' => count($rows), 'ytd_gross' => $sum('ytd_gross'), 'ytd_deductions' => $sum('ytd_deductions'),
+                    'ytd_refunds' => $sum('ytd_refunds'), 'ytd_net' => $sum('ytd_net'), 'ytd_employer_share' => $sum('ytd_employer_share')]];
+        } catch (\Throwable $e) {
+            App\LogError('PayrollManagementService::fetchYtd ' . $e->getMessage());
+
+            return ['success' => false, 'message' => 'Failed to build the Year-to-Date report.'];
+        }
+    }
+
+    // ═══ File template ═══════════════════════════════════════════════════════════════════
+
+    /**
+     * The columns the import recognises: the identity columns, every ACTIVE Payroll Setup item, and the amount columns
+     * of the actual import form with their Payroll Setup status (form_columns).
+     */
+    public function fetchTemplateColumns(): array
+    {
+        try {
+            $items = $this->templateItems();
+
+            return ['success' => true, 'identity' => [
+                ['column' => self::COL_EMPNO, 'label' => 'Employee Number', 'required' => true],
+                ['column' => self::COL_DEPT, 'label' => 'Department Code', 'required' => false],
+                ['column' => self::COL_LNAME, 'label' => 'Last Name', 'required' => true],
+                ['column' => self::COL_FNAME, 'label' => 'First Name', 'required' => true],
+                ['column' => self::COL_MI, 'label' => 'Middle Initial', 'required' => false],
+            ], 'items' => $items, 'form_file' => basename(self::templateFile()), 'form_columns' => $this->formColumns()];
+        } catch (\Throwable $e) {
+            App\LogError('PayrollManagementService::fetchTemplateColumns ' . $e->getMessage());
+
+            return ['success' => false, 'message' => 'Failed to load the template columns.'];
+        }
+    }
+
+    /**
+     * The download: the payroll office's actual import form, _shared/template/MONTHLY-PAYROLL-TEMPLATE.xlsx (sheet
+     * "MONTHLY PAYROLL", its 132 columns, styles, widths and frozen header) with every employee row removed, so the
+     * same file comes back filled. The header cells become inline strings and the shared-string list is emptied, so no
+     * name from the sample rows is left inside the file; calcChain goes too (its formulas were in the removed rows).
+     * Returns the .xlsx bytes, or null when the form is missing / unreadable.
+     */
+    public function buildTemplate(): ?string
+    {
+        $src = self::templateFile();
+        $in  = new \ZipArchive();
+        if (!is_file($src) || $in->open($src) !== true) {
+            return null;
+        }
+        $tmp = tempnam(sys_get_temp_dir(), 'prtpl');
+        $out = new \ZipArchive();
+        try {
+            $sheet = (string) $in->getFromName('xl/worksheets/sheet1.xml');
+            if ($sheet === '' || !preg_match('~<row r="1"[^>]*>.*?</row>~s', $sheet, $m)) {
+                return null;
+            }
+            $shared = [];
+            if (($ss = $in->getFromName('xl/sharedStrings.xml')) !== false) {
+                foreach (simplexml_load_string($ss)->si as $si) {
+                    $t = isset($si->t) ? (string) $si->t : '';
+                    if (!isset($si->t)) {
+                        foreach ($si->r as $run) {
+                            $t .= (string) $run->t;
+                        }
+                    }
+                    $shared[] = $t;
+                }
+            }
+            $lastCol = 'A';
+            $header = preg_replace_callback('~<c r="([A-Z]+)1"([^>]*?)(?:/>|>(.*?)</c>)~s', function ($c) use ($shared, &$lastCol) {
+                $lastCol = $c[1];
+                $attrs = preg_replace('~\s+t="[^"]*"~', '', $c[2]);
+                $inner = $c[3] ?? '';
+                $value = '';
+                if (preg_match('~<v>(.*?)</v>~s', $inner, $v)) {
+                    $value = str_contains($c[2], 't="s"') ? ($shared[(int) $v[1]] ?? '') : html_entity_decode($v[1], ENT_XML1);
+                } elseif (preg_match('~<t[^>]*>(.*?)</t>~s', $inner, $v)) {
+                    $value = html_entity_decode($v[1], ENT_XML1);
+                }
+
+                return $value === '' ? "<c r=\"{$c[1]}1\"{$attrs}/>"
+                    : "<c r=\"{$c[1]}1\"{$attrs} t=\"inlineStr\"><is><t>" . htmlspecialchars($value, ENT_XML1) . '</t></is></c>';
+            }, $m[0]);
+            $sheet = preg_replace('~<sheetData>.*</sheetData>~s', '<sheetData>' . $header . '</sheetData>', $sheet);
+            $sheet = preg_replace('~<dimension ref="[^"]*"/>~', '<dimension ref="A1:' . $lastCol . '1"/>', $sheet);
+            $sheet = preg_replace(['~topLeftCell="[A-Z]+\d+"~', '~activeCell="[A-Z]+\d+"~', '~sqref="[A-Z]+\d+"~'], ['topLeftCell="A2"', 'activeCell="A2"', 'sqref="A2"'], $sheet);
+
+            if ($out->open($tmp, \ZipArchive::OVERWRITE) !== true) {
+                return null;
+            }
+            for ($i = 0; $i < $in->numFiles; $i++) {
+                $name = $in->getNameIndex($i);
+                $data = (string) $in->getFromIndex($i);
+                if ($name === 'xl/calcChain.xml') {
+                    continue;
+                }
+                if ($name === 'xl/worksheets/sheet1.xml') {
+                    $data = $sheet;
+                } elseif ($name === 'xl/sharedStrings.xml') {
+                    $data = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="0" uniqueCount="0"/>';
+                } elseif ($name === '[Content_Types].xml') {
+                    $data = preg_replace('~<Override PartName="/xl/calcChain\.xml"[^>]*/>~', '', $data);
+                } elseif ($name === 'xl/_rels/workbook.xml.rels') {
+                    $data = preg_replace('~<Relationship [^>]*Target="calcChain\.xml"[^>]*/>~', '', $data);
+                }
+                $out->addFromString($name, $data);
+            }
+            $out->close();
+
+            return (string) file_get_contents($tmp);
+        } finally {
+            $in->close();
+            @unlink($tmp);
+        }
+    }
+
+    /** The payroll office's import form (also the download). */
+    private static function templateFile(): string
+    {
+        return dirname(__DIR__, 2) . '/_shared/template/MONTHLY-PAYROLL-TEMPLATE.xlsx';
+    }
+
+    /**
+     * The amount columns of the import form (row 1, without identity / Expr columns), each with its Payroll Setup
+     * status: ACTIVE / INACTIVE item, or NOT_SET_UP — what the File Template tab shows.
+     */
+    private function formColumns(): array
+    {
+        $items = [];
+        foreach (App\ExecuteRows("SELECT item_code, item_name, category, account_code, status FROM {$this->tItem}", 'DB') ?: [] as $it) {
+            $items[$this->itemKey($it['item_code'])] = $it;
+        }
+        $rows = is_file(self::templateFile()) ? $this->readXlsx(self::templateFile()) : null;
+        $out  = [];
+        foreach ($rows[1] ?? [] as $h) {
+            $h = trim((string) $h);
+            $u = strtoupper($h);
+            if ($h === '' || preg_match('/^EXPR\d*$/i', $h) || str_starts_with($u, '1INCOME.') || str_starts_with($u, '2INCOME.')) {
+                continue;
+            }
+            $key  = $this->itemKey($h);
+            $item = $items[$key] ?? null;
+            $out[] = ['column' => $key, 'status' => $item ? $item['status'] : 'NOT_SET_UP', 'category' => $item['category'] ?? null,
+                'account_code' => $item['account_code'] ?? null, 'item_name' => $item['item_name'] ?? null];
+        }
+
+        return $out;
+    }
+
+    private function templateItems(): array
+    {
+        return App\ExecuteRows(
+            "SELECT i.item_code, i.item_name, i.category, i.account_code, c.account_title
+               FROM {$this->tItem} i LEFT JOIN fims.chart_of_accounts c ON c.account_code = i.account_code
+              WHERE i.status = 'ACTIVE'
+              ORDER BY CASE i.category WHEN 'EARNING' THEN 1 WHEN 'REFUND' THEN 2 WHEN 'DEDUCTION' THEN 3 ELSE 4 END, i.sort_order, i.item_code",
+            'DB'
+        ) ?: [];
+    }
+
+    // ═══ DV module (the payroll DV is prepared in Disbursement Voucher from an imported month) ═══
+    // Link: fims.payroll_records.disbursement_voucher_id — every record of the month points at the DV.
+    // A CANCELLED DV releases the month (releaseDv()); a deleted DV clears it too (and the FK is ON DELETE SET NULL).
+
+    /** fims.deduction_types codes the payroll deductions are shown under on the DV, by account prefix. */
+    private const DV_DED_TYPE_BY_PREFIX = [
+        '2-02-01-020' => 'PAYROLL_GSIS',
+        '2-02-01-040' => 'PAYROLL_PHILHEALTH',
+        '2-02-01-030' => 'PAYROLL_PAGIBIG',
+        '2-02-01-010' => 'PAYROLL_WTAX',
+    ];
+    private const DV_DED_TYPE_OTHER = 'PAYROLL_OTHER';
+    private const DV_AP_ACCOUNT     = '2-01-01-010'; // Accounts Payable — what Treasury's payment entry debits
+
+    /** Imported months a DV can be prepared from: not used by another live DV (plus the one DV $dvId already uses). */
+    public function available(int $dvId = 0): array
+    {
+        try {
+            $rows = App\ExecuteRows(
+                "SELECT p.payroll_period_id, p.fiscal_yr, p.payroll_month,
+                        COUNT(r.payroll_record_id) AS employee_count,
+                        COALESCE(SUM(r.gross_amount), 0) AS total_gross, COALESCE(SUM(r.net_amount), 0) AS total_net,
+                        BOOL_OR(r.disbursement_voucher_id = {$dvId}) AS is_this_dv
+                   FROM {$this->tPeriod} p
+                   JOIN {$this->tRecord} r ON r.payroll_period_id = p.payroll_period_id
+                   LEFT JOIN {$this->tDv} dv ON dv.dv_id = r.disbursement_voucher_id
+                   LEFT JOIN {$this->tSt} st ON st.id = dv.status_id
+                  GROUP BY p.payroll_period_id
+                 HAVING NOT BOOL_OR(r.disbursement_voucher_id IS NOT NULL AND r.disbursement_voucher_id <> {$dvId} AND COALESCE(st.name, '') <> 'CANCELLED')
+                  ORDER BY p.fiscal_yr DESC, p.payroll_month DESC",
+                'DB'
+            ) ?: [];
+            foreach ($rows as &$r) {
+                $r['label'] = (self::MONTHS[(int) $r['payroll_month']] ?? '') . ' ' . $r['fiscal_yr'];
+            }
+            unset($r);
+
+            return ['success' => true, 'data' => $rows];
+        } catch (\Throwable $e) {
+            App\LogError('PayrollManagementService::available ' . $e->getMessage());
+
+            return ['success' => false, 'message' => 'Failed to load the imported payroll months.'];
+        }
+    }
+
+    /**
+     * What the DV form fills from an imported month. Amounts are summed per account from payroll_record_items:
+     *   expense side (5-…): EARNING adds, a DEDUCTION / REFUND on an expense account (leave without pay, overpayment
+     *     recovery…) changes that same account — this is the DV's gross amount (the debits);
+     *   everything else (Due to GSIS / BIR / PhilHealth / Pag-IBIG, other payables, receivables): DEDUCTION credits it,
+     *     REFUND debits it back — these are the DV's deductions;
+     *   net = gross − deductions = the month's total net pay → Cr Accounts Payable.
+     * The employer share is not part of the payroll DV (it is not paid to the employees).
+     */
+    public function dvData(int $periodId): array
+    {
+        try {
+            $p = App\ExecuteRow("SELECT payroll_period_id, fiscal_yr, payroll_month FROM {$this->tPeriod} WHERE payroll_period_id = {$periodId}", 'DB');
+            if (!$p) {
+                return ['success' => false, 'httpCode' => 404, 'message' => 'Payroll month not found.'];
+            }
+            $label = (self::MONTHS[(int) $p['payroll_month']] ?? '') . ' ' . $p['fiscal_yr'];
+            $tot = App\ExecuteRow(
+                "SELECT COUNT(*) AS n, COALESCE(SUM(net_amount), 0) AS net FROM {$this->tRecord} WHERE payroll_period_id = {$periodId}",
+                'DB'
+            );
+            if (!(int) $tot['n']) {
+                return ['success' => false, 'message' => "{$label} has no imported payroll."];
+            }
+            $sums = App\ExecuteRows(
+                "SELECT i.category, ri.account_code, SUM(ri.amount) AS amount
+                   FROM {$this->tLine} ri
+                   JOIN {$this->tRecord} r ON r.payroll_record_id = ri.payroll_record_id
+                   JOIN {$this->tItem} i ON i.payroll_item_id = ri.payroll_item_id
+                  WHERE r.payroll_period_id = {$periodId} AND i.category <> 'EMPLOYER_SHARE'
+                  GROUP BY i.category, ri.account_code",
+                'DB'
+            ) ?: [];
+
+            $expense = $liability = [];
+            $missing = [];
+            foreach ($sums as $s) {
+                $acct = (string) ($s['account_code'] ?? '');
+                $amt  = (float) $s['amount'];
+                if ($acct === '') {
+                    $missing[] = $s['category'];
+                    continue;
+                }
+                $isExpense = str_starts_with($acct, '5-');
+                $sign = match ($s['category']) {
+                    'EARNING' => 1,
+                    'REFUND'  => $isExpense ? 1 : -1,
+                    default   => $isExpense ? -1 : 1, // DEDUCTION
+                };
+                if ($isExpense) {
+                    $expense[$acct] = ($expense[$acct] ?? 0) + $sign * $amt;
+                } else {
+                    $liability[$acct] = ($liability[$acct] ?? 0) + $sign * $amt;
+                }
+            }
+            if ($missing) {
+                return ['success' => false, 'message' => 'Some payroll items of ' . $label . ' have no account. Set their account in Payroll Setup, then import the month again.'];
+            }
+            $gross = round(array_sum($expense), 2);
+            $dedTotal = round(array_sum($liability), 2);
+            $net = round($gross - $dedTotal, 2);
+            if ($gross <= 0) {
+                return ['success' => false, 'message' => "{$label} has no earnings to pay."];
+            }
+
+            $titles = [];
+            $codes  = array_unique(array_merge(array_keys($expense), array_keys($liability), [self::DV_AP_ACCOUNT]));
+            foreach (App\ExecuteRows('SELECT account_code, account_title FROM fims.chart_of_accounts WHERE account_code IN (' . implode(', ', array_map(fn ($c) => $this->str($c), $codes)) . ')', 'DB') ?: [] as $c) {
+                $titles[$c['account_code']] = $c['account_title'];
+            }
+
+            // DV deductions, grouped into the payroll deduction types (fallback: OTHER)
+            $types = [];
+            foreach (App\ExecuteRows("SELECT deduction_type_id, code, name FROM fims.deduction_types WHERE is_active", 'DB') ?: [] as $t) {
+                $types[$t['code']] = $t;
+            }
+            $byType = [];
+            foreach ($liability as $acct => $amt) {
+                $code = self::DV_DED_TYPE_OTHER;
+                foreach (self::DV_DED_TYPE_BY_PREFIX as $prefix => $c) {
+                    if (str_starts_with($acct, $prefix)) {
+                        $code = $c;
+                        break;
+                    }
+                }
+                if (!isset($types[$code])) {
+                    $code = isset($types[self::DV_DED_TYPE_OTHER]) ? self::DV_DED_TYPE_OTHER : 'OTHER';
+                }
+                $byType[$code] = ($byType[$code] ?? 0) + $amt;
+            }
+            $warnings = [];
+            if (array_filter($byType, fn ($a) => $a < -0.004)) {
+                // refunds larger than a type's deductions: show one combined line instead
+                $byType = [isset($types[self::DV_DED_TYPE_OTHER]) ? self::DV_DED_TYPE_OTHER : 'OTHER' => $dedTotal];
+                $warnings[] = 'Refunds exceed some deductions — the deductions are shown as one combined line.';
+            }
+            if (!isset($types[self::DV_DED_TYPE_OTHER]) && !isset($types['PAYROLL_GSIS'])) {
+                $warnings[] = 'The payroll deduction types (GSIS, PhilHealth, Pag-IBIG, Withholding Tax) are not set up yet, so the deductions show as "Other" — run the deduction types seed (04 - seed_data/08).';
+            }
+            $deductions = [];
+            foreach ($byType as $code => $amt) {
+                $amt = round($amt, 2);
+                if (abs($amt) < 0.005 || !isset($types[$code])) {
+                    continue;
+                }
+                $deductions[] = ['deduction_type_id' => (int) $types[$code]['deduction_type_id'], 'code' => $code, 'name' => $types[$code]['name'], 'rate' => null, 'deduction_amount' => $amt];
+            }
+
+            // accounting entry: Dr expense, Cr payables / receivables, Cr Accounts Payable for the net pay
+            $lines = [];
+            $desc  = "Payroll — {$label}";
+            arsort($expense);
+            foreach ($expense as $acct => $amt) {
+                $amt = round($amt, 2);
+                if (abs($amt) >= 0.005) {
+                    $lines[] = ['account_code' => $acct, 'description' => $desc, 'debit' => $amt > 0 ? $amt : 0, 'credit' => $amt < 0 ? -$amt : 0];
+                }
+            }
+            ksort($liability);
+            foreach ($liability as $acct => $amt) {
+                $amt = round($amt, 2);
+                if (abs($amt) >= 0.005) {
+                    $lines[] = ['account_code' => $acct, 'description' => $titles[$acct] ?? $desc, 'debit' => $amt < 0 ? -$amt : 0, 'credit' => $amt > 0 ? $amt : 0];
+                }
+            }
+            if ($net > 0) {
+                $lines[] = ['account_code' => self::DV_AP_ACCOUNT, 'description' => "Net pay — {$label}", 'debit' => 0, 'credit' => $net];
+            }
+
+            return ['success' => true, 'data' => [
+                'payroll_period_id' => (int) $p['payroll_period_id'],
+                'label'             => $label,
+                'employee_count'    => (int) $tot['n'],
+                'gross_amount'      => $gross,
+                'total_deductions'  => $dedTotal,
+                'net_amount'        => $net,
+                'claimant_name'     => 'Officers and Employees of NHA',
+                'particulars'       => "Payment of salaries and other compensation of {$tot['n']} officers and employees for the month of {$label}.",
+                'account_code'      => array_key_first($expense),
+                'deductions'        => $deductions,
+                'lines'             => $lines,
+                'warnings'          => $warnings,
+            ]];
+        } catch (\Throwable $e) {
+            App\LogError('PayrollManagementService::dvData ' . $e->getMessage());
+
+            return ['success' => false, 'message' => 'Failed to read the imported payroll for the DV.'];
+        }
+    }
+
+    /** DisbursementVoucherService::create()/update(): error text, or null when month $periodId may be used by DV $dvId. */
+    public function validateDvLink(int $periodId, int $dvId = 0): ?string
+    {
+        $avail = $this->available($dvId);
+        if (!$avail['success']) {
+            return $avail['message'];
+        }
+        foreach ($avail['data'] as $r) {
+            if ((int) $r['payroll_period_id'] === $periodId) {
+                return null;
+            }
+        }
+        $p = App\ExecuteRow("SELECT fiscal_yr, payroll_month FROM {$this->tPeriod} WHERE payroll_period_id = {$periodId}", 'DB');
+
+        return $p ? 'The ' . (self::MONTHS[(int) $p['payroll_month']] ?? '') . " {$p['fiscal_yr']} payroll has no imported records or is already used by another Disbursement Voucher."
+            : "Payroll month #{$periodId} does not exist.";
+    }
+
+    /** DisbursementVoucherService::create()/update(), inside their transaction: point month $periodId (or none) at DV $dvId. */
+    public function syncDvLink(int $dvId, ?int $periodId): void
+    {
+        App\Execute("UPDATE {$this->tRecord} SET disbursement_voucher_id = NULL, updated_at = CURRENT_TIMESTAMP
+                      WHERE disbursement_voucher_id = {$dvId}" . ($periodId ? " AND payroll_period_id <> {$periodId}" : ''), 'DB');
+        if ($periodId) {
+            App\Execute("UPDATE {$this->tRecord} SET disbursement_voucher_id = {$dvId}, updated_at = CURRENT_TIMESTAMP
+                          WHERE payroll_period_id = {$periodId}", 'DB');
+        }
+    }
+
+    /** DisbursementVoucherService::changeStatus() (CANCELLED) / delete(): the month is free for a new DV again. */
+    public function releaseDv(int $dvId): void
+    {
+        App\Execute("UPDATE {$this->tRecord} SET disbursement_voucher_id = NULL, updated_at = CURRENT_TIMESTAMP WHERE disbursement_voucher_id = {$dvId}", 'DB');
+    }
+
+    /** DisbursementVoucherService::fetchById(): the imported month this DV pays, or null. */
+    public function forDv(int $dvId): ?array
+    {
+        $row = App\ExecuteRow(
+            "SELECT p.payroll_period_id, p.fiscal_yr, p.payroll_month, COUNT(*) AS employee_count,
+                    SUM(r.gross_amount) AS total_gross, SUM(r.net_amount) AS total_net
+               FROM {$this->tRecord} r JOIN {$this->tPeriod} p ON p.payroll_period_id = r.payroll_period_id
+              WHERE r.disbursement_voucher_id = {$dvId}
+              GROUP BY p.payroll_period_id LIMIT 1",
+            'DB'
+        );
+        if (!$row) {
+            return null;
+        }
+        $row['label'] = (self::MONTHS[(int) $row['payroll_month']] ?? '') . ' ' . $row['fiscal_yr'];
+
+        return $row;
     }
 
     // ═══ Import ══════════════════════════════════════════════════════════════════════════
