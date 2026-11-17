@@ -468,9 +468,12 @@ function prp_jevFromProforma(poNumber, receipt) {
     const rows = receipt.draft
         ? receipt.draft.rows.map(r => ({ account_code: r.code, account_title: r.title, debit: r.debit, credit: r.credit }))
         : (receipt.rows || []);
+    // once submitted, the printout carries the real JEV number and date (and the submitted particulars)
+    const submitted = !!receipt.jev_no;
     return {
         lines: rows.map(r => ({ account_title: r.account_title, account_code: r.account_code, debit: r.debit, credit: r.credit })),
-        particulars: `Pro-forma JEV — Delivery Receipt No. ${receipt.dr_number} of PO No. ${poNumber}`,
+        particulars: submitted && receipt.draft?.particulars ? receipt.draft.particulars : `Pro-forma JEV — Delivery Receipt No. ${receipt.dr_number} of PO No. ${poNumber}`,
+        ...(submitted ? { jev_number: receipt.jev_no, jev_date: receipt.jev_date || '' } : {}),
     };
 }
 

@@ -1274,6 +1274,11 @@
                     'POST',
                     'OPTIONS',
                 ],
+                [
+                    'GET',
+                    'POST',
+                    'OPTIONS',
+                ],
             ],
             'pattern' => [
                 '/AccountableFormsRegistryPage[/{params:.*}]',
@@ -2772,6 +2777,7 @@
                 [],
                 [],
                 [],
+                [],
             ],
         ],
     ],
@@ -2988,6 +2994,7 @@
         $o[209],
         $o[210],
         $o[211],
+        $o[212],
     ],
     []
 );
