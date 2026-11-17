@@ -387,7 +387,18 @@ function amp_toggleItems(btn) {
 }
 
 /* ── Pro-forma JEV: one tab per delivery receipt ───────────── */
-let amp_pf = { po: '', iar: '', receipts: [] };
+let amp_pf = { po: '', iar: '', rc: '', receipts: [] };
+let amp_books = null;                                          // fims.books, loaded once (GET /books/all) for the pro-forma's Book picker
+
+async function amp_loadBooks() {
+    if (amp_books) return amp_books;
+    try {
+        const res  = await fetch(AMP_API.replace(/\/po-dr$/, '') + '/books/all', { credentials: 'same-origin', headers: amp_authHeaders() });
+        const json = await res.json();
+        amp_books = json.success ? (json.data || []) : [];
+    } catch (e) { amp_books = []; }
+    return amp_books;
+}
 
 async function amp_proforma(poNumber) {
     window.PagePreloader?.show();
@@ -395,7 +406,22 @@ async function amp_proforma(poNumber) {
         const res  = await fetch(`${AMP_API}/proforma?po_number=${encodeURIComponent(poNumber)}`, { credentials: 'same-origin', headers: amp_authHeaders() });
         const json = await res.json();
         if (!json.success) throw new Error(json.message || 'Failed to load the pro-forma.');
-        amp_pf = { po: json.data.po_number, iar: json.data.iar_number || '', receipts: json.data.receipts || [] };
+        await amp_loadBooks();
+        amp_pf = { po: json.data.po_number, iar: json.data.iar_number || '', rc: json.data.requesting_rc_id || '', receipts: json.data.receipts || [] };
+        // A delivery receipt whose pro-forma was already submitted is READ-ONLY and shows what was submitted (the JEV's own book,
+        // particulars and lines), not the original pro-forma. If the JEV cannot be read, the pro-forma rows are shown (still locked).
+        await Promise.all(amp_pf.receipts.filter(r => r.jev_id).map(async r => {
+            try {
+                const jr = await fetch(AMP_API.replace(/\/po-dr$/, '') + '/voucher/journal-entry/' + encodeURIComponent(r.jev_id), { credentials: 'same-origin', headers: amp_authHeaders() });
+                const jj = await jr.json();
+                if (!jj.success) return;
+                r.jev_status = jj.data.jev_status || '';
+                r.draft = {
+                    rows: (jj.data.lines || []).map(l => ({ code: l.account_code, title: l.account_title || '', debit: Number(l.debit) || 0, credit: Number(l.credit) || 0 })),
+                    book: jj.data.book_id || '', particulars: jj.data.particulars || '',
+                };
+            } catch (e) { /* keep the pro-forma rows */ }
+        }));
         amp_renderProforma(0);
         $amp('amp-view-card').classList.add('amp-wide');
         $amp('amp-view-title').textContent = 'Pro-forma JEV';
@@ -416,6 +442,8 @@ function amp_pfDraft(rc) {
     if (!rc.draft) {
         rc.draft = {
             rows: rc.rows.map(r => ({ code: r.account_code, title: r.account_title || '', debit: Number(r.debit) || 0, credit: Number(r.credit) || 0 })),
+            book: '',            // fims.books.book_id, required to submit
+            particulars: 'To record the delivery of ' + rc.dr_number + ' (PO ' + amp_pf.po + ')',   // pre-filled sentence, editable
         };
         if (!rc.draft.rows.length) rc.draft.rows.push({ code: '', title: '', debit: 0, credit: 0 });
     }
@@ -451,6 +479,18 @@ function amp_renderProforma(active) {
             ${vrow('Delivery Receipt No.', amp_esc(rc.dr_number))}
             ${vrow('Total Amount', '<span class="amp-vw-num">₱' + num(rc.total) + '</span>')}
         </div>
+        <div class="amp-vw-card"><h4 class="amp-vw-card-title">Journal Entry Voucher</h4>
+            <div class="amp-row c2" style="margin-bottom:12px;">
+                <div class="amp-group">
+                    <label class="amp-label" for="amp-pf-book">Book <span class="req">*</span></label>
+                    <select id="amp-pf-book" class="amp-input"><option value="">Select a book…</option>${(amp_books || []).map(b => `<option value="${amp_attrEsc(b.book_id)}"${String(d.book) === String(b.book_id) ? ' selected' : ''}>${amp_esc(b.name)}</option>`).join('')}</select>
+                </div>
+            </div>
+            <div class="amp-group">
+                <label class="amp-label" for="amp-pf-particulars">Particulars <span class="opt">(optional)</span></label>
+                <textarea id="amp-pf-particulars" class="amp-input" rows="2" placeholder="Particulars of the entry">${amp_esc(d.particulars)}</textarea>
+            </div>
+        </div>
         <div class="amp-vw-card"><h4 class="amp-vw-card-title">Pro-forma JEV</h4>
         <div class="amp-tabs">${amp_pf.receipts.map(tab).join('')}</div>
         <div class="amp-pf-top"><button type="button" class="amp-add-btn" id="amp-pf-add">+ Add row</button></div>
@@ -474,6 +514,10 @@ function amp_renderProforma(active) {
             <button type="button" class="nha-btn-act" style="margin-right:8px;" onclick="amp_printProformaJev(${active})" title="Print this pro-forma JEV (the rows as edited)">Print JEV</button>
             <button type="button" class="amp-jev-btn" id="amp-pf-submit" onclick="amp_submitJev(${active})">Submit</button>
         </div></div>`;
+
+    // Book / Particulars are kept in this delivery receipt's draft
+    $amp('amp-pf-book').addEventListener('change', e => { d.book = e.target.value; });
+    $amp('amp-pf-particulars').addEventListener('input', e => { d.particulars = e.target.value; });
 
     // wire the editable rows
     document.querySelectorAll('#amp-view-body .amp-pf-row').forEach(el => {
@@ -531,11 +575,20 @@ function amp_pfRefresh(active) {
     }
     const btn = $amp('amp-pf-submit');
     if (btn) btn.disabled = !!err && !err.submitOnly;                                  // "not balanced" is reported on click, so the button stays enabled
+    if (rc.jev_no) {                                                                    // already submitted as a JEV: it cannot be submitted again
+        if (btn) { btn.disabled = true; btn.textContent = 'Submitted'; }
+        if (msg) { msg.innerHTML = 'Submitted as Journal Entry Voucher <strong>' + amp_esc(rc.jev_no) + '</strong>' + (rc.jev_status ? ' (' + amp_esc(String(rc.jev_status).replace(/_/g, ' ').toLowerCase()) + ')' : '') + ' — read-only. <a href="JournalEntryVoucher">Open Journal Entry Vouchers</a>'; msg.classList.add('muted'); }
+        ['amp-pf-book', 'amp-pf-particulars', 'amp-pf-add'].forEach(id => { const el = $amp(id); if (el) el.disabled = true; });
+        document.querySelectorAll('#amp-view-body .amp-pf-row input, #amp-view-body .amp-pf-row button').forEach(el => { el.disabled = true; });
+    }
 }
 
-// Submit the pro-forma as a JEV. It cannot be submitted when a total exceeds the DR total (checked again here). There is no
-// JEV page / endpoint to receive it yet, so for now it only says so.
-function amp_submitJev(active) {
+// Submit the pro-forma as a Journal Entry Voucher — the same call as the Journal Entry Vouchers page's "Add JEV"
+// (POST /voucher/journal-entry/add, journal-entry-voucher.php jaf_save): a standalone JEV saved as DRAFT, which Accounting then
+// sends along that page's review chain. Date = the delivery date, fiscal year = its year, lines = the rows as edited (each line
+// carries the PO's responsibility center), Book and Particulars from the form above. Only Accounting staff may prepare a JEV
+// (the API refuses anyone else and says so).
+async function amp_submitJev(active) {
     const rc = amp_pf.receipts[active];
     if (!rc) return;
     const err = amp_pfError(rc);
@@ -548,7 +601,42 @@ function amp_submitJev(active) {
         return;
     }
     if (err) { amp_toast(err.text, 'error'); return; }
-    amp_toast('Submitting a JEV for ' + rc.dr_number + ' is not available yet.', 'info');
+
+    const d = amp_pfDraft(rc);
+    if (!d.book) { amp_toast('Select a Book before submitting.', 'warning'); $amp('amp-pf-book')?.focus(); return; }
+    if (!confirm('Submit the Journal Entry Voucher for ' + rc.dr_number + '? It is saved as a Draft on the Journal Entry Vouchers page.')) return;
+
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(String(rc.delivery_date || '')) ? rc.delivery_date : new Date().toISOString().slice(0, 10);
+    const body = {
+        po_number         : amp_pf.po,
+        dr_number         : rc.dr_number,
+        jev_date          : date,
+        fiscal_yr         : date.slice(0, 4),
+        book_id           : d.book,
+        jev_classification: 'REGULAR',
+        particulars       : (d.particulars || '').trim() || ('To record the delivery of ' + rc.dr_number + ' (PO ' + amp_pf.po + ')'),
+        lines             : d.rows.map(r => ({ account_code: r.code, rc_id: amp_pf.rc || '', debit: Number(r.debit) || 0, credit: Number(r.credit) || 0 })),
+    };
+    const btn = $amp('amp-pf-submit');
+    if (btn) btn.disabled = true;
+    window.PagePreloader?.show();
+    try {
+        const res  = await fetch(AMP_API + '/proforma-submit', {
+            method: 'POST', credentials: 'same-origin',
+            headers: amp_authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(body),
+        });
+        const json = await res.json();
+        if (!json.success) throw new Error((json.errors?.length ? json.errors.join('\n') : null) || json.message || 'Failed to submit the Journal Entry Voucher.');
+        rc.jev_no = json.data?.jev_no || 'saved';                // this delivery receipt can no longer be submitted
+        amp_toast(json.message || ('Journal Entry Voucher submitted for ' + rc.dr_number + ' (Draft).'), 'success');
+        $amp('amp-view-overlay').classList.remove('open');
+        window.location.href = 'JournalEntryVoucher';              // continue on the Journal Entry Vouchers page
+    } catch (e) {
+        amp_toast(e.message, 'error');
+        if (btn) btn.disabled = false;
+    } finally {
+        window.PagePreloader?.hide();
+    }
 }
 
 /* ── Print (the shared print preview, included at the end) ─── */

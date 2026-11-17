@@ -9,6 +9,8 @@
 -- ============================================================================
 
 -- General Journal — one row per posted GL line, book-of-original-entry order (oldest first).
+-- NOTE: sl_code and sl_detail_id are kept for backward compatibility but are now populated
+-- from the Chart of Accounts hierarchy (no separate SL Masters/Details tables).
 CREATE OR REPLACE VIEW fims.v_journals AS
 SELECT
     g.gl_id,
@@ -18,9 +20,9 @@ SELECT
     g.account_code,
     c.account_title,
     g.sl_code,
-    sm.sl_name,
+    NULL::VARCHAR(100) AS sl_name,
     g.sl_detail_id,
-    sd.detail_name AS sl_detail_name,
+    NULL::VARCHAR(255) AS sl_detail_name,
     g.rc_id,
     g.debit,
     g.credit,
@@ -36,12 +38,10 @@ FROM fims.general_ledger g
 JOIN fims.journal_entry_vouchers j ON j.jev_id = g.jev_id
 LEFT JOIN fims.disbursement_vouchers d ON d.dv_id = j.dv_id
 JOIN fims.chart_of_accounts c ON c.account_code = g.account_code
-LEFT JOIN fims.sl_masters sm ON sm.sl_code = g.sl_code
-LEFT JOIN fims.sl_details sd ON sd.sl_detail_id = g.sl_detail_id
 LEFT JOIN fims.books b ON b.book_id = g.book_id
 ORDER BY g.posting_date, g.gl_id;
 
-COMMENT ON VIEW fims.v_journals IS 'General Journal — one row per posted fims.general_ledger line, with its JEV/DV/account/SL/book labels joined in. d/dv_no is LEFT JOINed (not every JEV has a dv_id — see "03 - alter_table/33": standalone adjusting/closing entries have none). Read-only report, nothing writes to this.';
+COMMENT ON VIEW fims.v_journals IS 'General Journal — one row per posted fims.general_ledger line, with its JEV/DV/account/book labels joined in. d/dv_no is LEFT JOINed (not every JEV has a dv_id — see "03 - alter_table/33": standalone adjusting/closing entries have none). SL data is now from Chart of Accounts hierarchy. Read-only report, nothing writes to this.';
 
 -- Trial Balance — one row per account per fiscal year per book (fims.books, "01 - table/41"), as
 -- of whatever has been posted so far. Grouped finer than "per account per fiscal year" (also by

@@ -3,7 +3,7 @@
 -- see "02 - sample_data/02 - fims_responsibility_code.sql").
 --
 -- rc_id '013' is the central review RC (GlobalService::CENTRAL_REVIEW_RC_CODE), so these accounts see
--- every requesting office's budget requests and can Approve / Return a Memo Request that is 'For Preview'
+-- every requesting office's budget requests and can Approve / Return a Memo Request that is 'For Review'
 -- (BudgetAllocationService::isReviewer()).
 --
 -- Roles (uac.user_levels): this file creates all four itself, so it does not depend on
