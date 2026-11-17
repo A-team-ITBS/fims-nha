@@ -42,9 +42,11 @@ $_cob_showReport = false;
 /* tree rows */
 #cob-root .cob-row.cob-has-kids { cursor: pointer; }
 #cob-root .cob-row.cob-has-kids:focus-visible { outline: 2px solid var(--afims-heading-fill, #000E3E); outline-offset: -2px; }
-/* group rows (everything above a project) are bold; a project is plain */
-#cob-root .cob-row:not(.cob-t-project) > td { font-weight: 600; color: var(--afims-heading, #000E3E); }
-#cob-root .cob-d0:not(.cob-t-project) > td { font-weight: 700; }
+/* group rows (everything above a project) are bold; a project — or, under COE, a request — is plain */
+#cob-root .cob-row:not(.cob-t-project):not(.cob-t-request) > td { font-weight: 600; color: var(--afims-heading, #000E3E); }
+#cob-root .cob-d0:not(.cob-t-project):not(.cob-t-request) > td { font-weight: 700; }
+/* the two halves of the sheet, CO and COE, each start on a row of their own */
+#cob-root .cob-t-bucket > td { background: var(--afims-surface-subtle, #F4F7FA); border-top: 2px solid var(--afims-border, #E4ECF2); }
 /* The name flows as ordinary text (name, then FY / office / documents after it) and wraps inside its cell; the caret is pinned to the left of it, so it can never end
    up on a line of its own. Indented 16px per level. */
 #cob-root .cob-name { position: relative; line-height: 1.45; padding-left: calc(var(--d, 0) * 16px + 22px); }
@@ -52,7 +54,7 @@ $_cob_showReport = false;
 /* a project row: the name (+ paperclip) on the first line, then ONE muted line under it with the fiscal year and the requesting office */
 #cob-root .cob-name > .cob-sub { display: block; margin-top: 3px; line-height: 1.5; }
 #cob-root .cob-name > .cob-sub .nha-bdg { margin-right: 6px; vertical-align: 1px; }
-#cob-root .cob-t-project > td { vertical-align: middle; }
+#cob-root .cob-t-project > td, #cob-root .cob-t-request > td { vertical-align: middle; }
 #cob-root .cob-caret { position: absolute; left: calc(var(--d, 0) * 16px); top: 2px; width: 14px; height: 14px; transition: transform .15s; stroke: currentColor; }
 #cob-root .cob-caret.open { transform: rotate(90deg); }
 #cob-root .cob-caret-sp { display: none; }
@@ -187,7 +189,7 @@ $_cob_showReport = false;
         ['remaining_balance', 'Remaining Balance', 'Revised Amount less RFA Approved and LAA Issued'],
     ];
     foreach ([
-        'program'     => 'Program → Sub-Program → Originating Unit → Project',
+        'program'     => 'CO: Program → Sub-Program → Originating Unit → Project · COE: PS / MOOE → Originating Unit → Request',
         'region'      => 'Region → Program → Sub-Program → Project',
         'fund_source' => 'Type of Fund → Component → Program → Sub-Program → Project',
         'component'   => 'Component → Type of Fund → Program → Sub-Program → Project',
@@ -227,7 +229,10 @@ $_cob_showReport = false;
             <p class="cob-note">Only <strong>Approved</strong> budget requests are counted. <strong>Approved Amount</strong> is what FMD suggested in the Budget Proposal module;
                 <strong>Revision / Realignment</strong> is the net of its approved Budget Revisions, and <strong>Revised Amount</strong> is the Approved Amount less it. <strong>CBA Requested</strong> is what approved CBAs have taken off the
                 budget, which leaves <strong>Available for Earmarking</strong>. A CBA only reserves money: <strong>RFA Approved</strong> and <strong>LAA Issued</strong> are what has
-                actually been drawn from those reservations, so <strong>Remaining Balance</strong> is the Revised Amount less both. A dash means zero; brackets mean negative.</p>
+                actually been drawn from those reservations, so <strong>Remaining Balance</strong> is the Revised Amount less both. A dash means zero; brackets mean negative.
+                The table is in two parts. <strong>CO</strong> (capital outlay, accounts starting with 1) is the budget of the programs and their projects. <strong>COE</strong> is the budget
+                that belongs to no program — a COE budget request has only line items, no program or project — and is split into <strong>PS</strong> (accounts 5-01) and
+                <strong>MOOE</strong> (accounts 5-02), then by originating unit.</p>
         </div>
     </div>
     <?php } ?>
@@ -265,6 +270,9 @@ if ($_cob_showReport) {
      Available for Earmarking = Revised Amount - CBA Requested (the line's live balance)
      RFA Approved / LAA Issued   drawn from the CBAs' reservations by approved RFAs / LAAs
      Remaining Balance      = Revised Amount - RFA Approved - LAA Issued
+   CO and COE: the Per Program tree is asked for with split_coe=1 and so starts with two rows — CO (capital outlay: Program > Sub-Program > Originating Unit >
+   Project) and COE (the lines of a budget request that has no program, as PS / MOOE > Originating Unit > Request). A line is told apart by its account code:
+   1… is CO, 5-01… is PS, 5-02… is MOOE; PS and MOOE are the COE (CobService::expenseClassSql() / costTypeOf()). Those are the 'bucket', 'class' and 'request' nodes.
    The server decides what each user may see (their RC and the RCs below it; FMD and administrators see all) — nothing here can widen it.
 ═══════════════════════════════════════════════════════════════ */
 
@@ -293,6 +301,7 @@ const cob_state = {
     data: Object.fromEntries(COB_TABS.map(t => [t, null])),             // the last tree of each tab
     totals: Object.fromEntries(COB_TABS.map(t => [t, null])),
     expanded: Object.fromEntries(COB_TABS.map(t => [t, new Set()])),
+    rootsSeen: Object.fromEntries(COB_TABS.map(t => [t, new Set()])),    // the CO / COE rows already opened once — so one the user closes stays closed after a reload
     searchTimer: null,   // the typing pause before the Search box reloads
     loaded: {},    // tab -> the query it was loaded with (a tab reloads only when that changes)
     seq: {},       // tab -> the newest request number; an older response is dropped
@@ -480,10 +489,12 @@ async function cob_loadTab(tab) {
     const my = cob_state.seq[tab] = (cob_state.seq[tab] || 0) + 1;
     cob_busy(true);
     try {
-        const json = await cob_request('rollup', cob_params({ layout_by: tab }));
+        // Per Program is cut into CO and COE (split_coe) — a budget request with no program is COE, told apart into PS and MOOE by account code
+        const json = await cob_request('rollup', cob_params(Object.assign({ layout_by: tab }, tab === 'program' ? { split_coe: '1' } : {})));
         if (my !== cob_state.seq[tab]) return;
         cob_state.data[tab] = json.data || []; cob_state.totals[tab] = json.totals || null;
         cob_state.loaded[tab] = key;
+        cob_openRoots(tab);
         cob_renderTree(tab);
     } catch (e) {
         if (my !== cob_state.seq[tab]) return;
@@ -519,10 +530,21 @@ function cob_renderSummary() {
 const COB_CARET = '<svg class="cob-caret%OPEN%" viewBox="0 0 24 24" fill="none" stroke-width="2.4"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>';
 const COB_CLIP = '<svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/></svg>';
 
+// The page opens with its two halves, CO and COE, already unrolled (the programs / the PS and MOOE rows are what people come for) — each only the
+// first time it is seen, so closing one is remembered across a refresh or a filter change.
+function cob_openRoots(tab) {
+    for (const n of cob_state.data[tab] || []) {
+        if (n.type !== 'bucket' || cob_state.rootsSeen[tab].has(n.key)) continue;
+        cob_state.rootsSeen[tab].add(n.key);
+        cob_state.expanded[tab].add(`/${n.type}:${n.key}`);
+    }
+}
+
 // the Name cell: the name, then what tells two of the same name apart. A node's code has a column of its own.
+// A request (the leaf of the COE half — a COE budget request has no project) is drawn like a project: its reference number, then its fiscal year.
 function cob_nodeLabel(n, tab) {
     let html = `<span>${n.unassigned ? `<span class="cob-unassigned">${cob_esc(n.label)}</span>` : cob_esc(n.label)}</span>`;
-    if (n.type === 'project') {
+    if (n.type === 'project' || n.type === 'request') {
         // line 1: the project name and its supporting documents; line 2 (muted): the fiscal year and the requesting office — except in the Per Program
         // view, where the office is the row just above the project and saying it again would only repeat it
         if (n.attachment_count > 0) html += ` <span class="cob-clip" title="${n.attachment_count} supporting document${n.attachment_count === 1 ? '' : 's'}">${COB_CLIP}${n.attachment_count}</span>`;
@@ -537,7 +559,7 @@ function cob_amountCells(o) {
 }
 
 function cob_treeRow(n, depth, path, hasKids, open, tab) {
-    const view = n.type === 'project' && n.budget_reference_number
+    const view = (n.type === 'project' || n.type === 'request') && n.budget_reference_number
         ? `<button type="button" class="nha-btn-act view" data-view="${cob_esc(n.budget_reference_number)}" data-project="${cob_esc(n.code || '')}" title="View the approved request ${cob_esc(n.budget_reference_number)}">View</button>`
         : '';
     return `<tr class="cob-row cob-d${Math.min(depth, 4)} cob-t-${cob_esc(n.type)}${hasKids ? ' cob-has-kids' : ''}${open ? ' open' : ''}" data-path="${cob_esc(path)}"${hasKids ? ` tabindex="0" role="button" aria-expanded="${open}"` : ''}>
