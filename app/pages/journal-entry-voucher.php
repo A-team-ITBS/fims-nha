@@ -27,7 +27,6 @@ $_jel_voucherView = 'Voucher';
     #jel-root .jaf-line-total td.jaf-l-val { text-align: right; font-family: "IBM Plex Mono", monospace; }
     #jel-root .jaf-remove-btn { background: none; border: none; cursor: pointer; color: var(--afims-danger, #C0392B); font-size: 16px; line-height: 1; padding: 4px 6px; border-radius: 5px; }
     #jel-root .jaf-remove-btn:hover { background: var(--afims-danger-soft, #FAE1E3); }
-    #jel-root .jaf-rc { width: 100%; }
 
     /* Supporting Documents card — same convention as voucher/form.php's #vf-root .vf-card/.vf-dz/.vf-att-*. */
     #jel-root .jaf-card { background: var(--afims-surface, #fff); border: 1px solid var(--afims-border, #E4ECF2); border-radius: 12px; padding: 16px 18px; margin-bottom: 14px; }
@@ -122,31 +121,6 @@ $_jel_voucherView = 'Voucher';
     <!-- ── FILTERS ────────────────────────────────────────── -->
     <div class="nha-filters no-print">
         <div class="nha-filter-row">
-            <div class="nha-filter-group">
-                <label class="nha-filter-label">Fiscal Year</label>
-                <select id="jel-filter-fy" class="nha-filter-select">
-                    <option value="">All Years</option>
-                </select>
-            </div>
-            <div class="nha-filter-group">
-                <label class="nha-filter-label">Type</label>
-                <select id="jel-filter-type" class="nha-filter-select">
-                    <option value="">All Types</option>
-                    <option value="SETUP">Setup</option>
-                    <option value="PAYMENT">Payment</option>
-                </select>
-            </div>
-            <div class="nha-filter-group">
-                <label class="nha-filter-label">Classification</label>
-                <select id="jel-filter-classification" class="nha-filter-select">
-                    <option value="">All Classifications</option>
-                    <option value="REGULAR">Regular</option>
-                    <option value="ACCRUAL">Accrual</option>
-                    <option value="DEPRECIATION">Depreciation</option>
-                    <option value="PREPAYMENTS">Prepayments</option>
-                    <option value="CLOSING">Closing</option>
-                </select>
-            </div>
             <div class="nha-filter-group nha-filter-group-search">
                 <label class="nha-filter-label">Search</label>
                 <div class="nha-filter-search-wrap">
@@ -167,13 +141,10 @@ $_jel_voucherView = 'Voucher';
                     <tr>
                         <th>JEV Number</th>
                         <th>JEV Date</th>
-                        <th>Type</th>
-                        <th>Classification</th>
                         <th>Source / Ref No.</th>
                         <th>DV Number</th>
                         <th>Claimant</th>
                         <th>Book</th>
-                        <th>Fiscal Year</th>
                         <th class="text-end">Total Debit</th>
                         <th class="text-end">Total Credit</th>
                         <th>JEV Status</th>
@@ -182,7 +153,7 @@ $_jel_voucherView = 'Voucher';
                     </tr>
                 </thead>
                 <tbody id="jel-tbody">
-                    <tr><td colspan="14"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
+                    <tr><td colspan="11"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
                 </tbody>
             </table>
         </div>
@@ -210,23 +181,13 @@ $_jel_voucherView = 'Voucher';
                         <label>JEV Date <span class="nha-req">*</span></label>
                         <input type="date" id="jaf-date">
                     </div>
-                    <div class="nha-fg" style="max-width:160px;">
-                        <label>Fiscal Year <span class="nha-req">*</span></label>
-                        <select id="jaf-fy"><option value="">Select…</option></select>
-                    </div>
                     <div class="nha-fg" style="max-width:220px;">
                         <label>Book <span class="nha-req">*</span></label>
                         <select id="jaf-book"><option value="">Select a book…</option></select>
                     </div>
-                    <div class="nha-fg" style="max-width:220px;">
-                        <label>Classification</label>
-                        <select id="jaf-classification">
-                            <option value="REGULAR">Regular</option>
-                            <option value="ACCRUAL">Accrual</option>
-                            <option value="DEPRECIATION">Depreciation</option>
-                            <option value="PREPAYMENTS">Prepayments</option>
-                            <option value="CLOSING">Closing</option>
-                        </select>
+                    <div class="nha-fg" style="max-width:240px;">
+                        <label>Responsibility Center</label>
+                        <select id="jaf-rc"><option value="">— None —</option></select>
                     </div>
                 </div>
                 <div class="nha-fg" style="margin-bottom:10px;">
@@ -258,23 +219,20 @@ $_jel_voucherView = 'Voucher';
                 </div>
 
                 <datalist id="jaf-coa-options"></datalist>
-                <datalist id="jaf-sl-options"></datalist>
 
                 <div style="overflow-x:auto;">
                     <table class="nha-tbl" style="min-width:880px;">
                         <thead><tr>
+                            <th style="width:36px;">#</th>
                             <th>Account Code</th>
-                            <th>SL Code</th>
-                            <th style="width:200px;">Responsibility Center</th>
+                            <th>Description</th>
                             <th class="text-end" style="width:120px;">Debit (₱)</th>
                             <th class="text-end" style="width:120px;">Credit (₱)</th>
                             <th style="width:30px;"></th>
                         </tr></thead>
                         <tbody id="jaf-lines-tbody"></tbody>
                         <tfoot><tr class="jaf-line-total">
-                            <td class="text-end">Total</td>
-                            <td></td>
-                            <td></td>
+                            <td colspan="3" class="text-end">Total</td>
                             <td class="jaf-l-val" id="jaf-total-debit">₱ 0.00</td>
                             <td class="jaf-l-val" id="jaf-total-credit">₱ 0.00</td>
                             <td></td>
@@ -319,7 +277,6 @@ function jel_authFetch(url, opts = {}) {
 }
 
 async function jel_boot() {
-    await jel_loadFiscalYears();
     jel_bindEvents();
     jel_load();
 }
@@ -328,28 +285,10 @@ else jel_boot();
 
 function jel_bindEvents() {
     $jel('jel-refresh')?.addEventListener('click', () => { jel_page = 1; jel_load(); });
-    $jel('jel-filter-fy')?.addEventListener('change', () => { jel_page = 1; jel_load(); });
-    $jel('jel-filter-type')?.addEventListener('change', () => { jel_page = 1; jel_load(); });
-    $jel('jel-filter-classification')?.addEventListener('change', () => { jel_page = 1; jel_load(); });
     $jel('jel-filter-search')?.addEventListener('input', () => {
         clearTimeout(jel_searchTimer);
         jel_searchTimer = setTimeout(() => { jel_page = 1; jel_load(); }, 400);
     });
-}
-
-/* Fiscal years come from fims.fiscal_year via GET /voucher/fiscal-years → {success, data:[{fiscal_yr}]}, newest first. */
-async function jel_loadFiscalYears() {
-    const sel = $jel('jel-filter-fy');
-    try {
-        const res  = await jel_authFetch(JEL_API + '/fiscal-years');
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        const json = await res.json();
-        if (!json.success) throw new Error(json.message || 'Failed to load fiscal years.');
-        sel.innerHTML = '<option value="">All Years</option>' +
-            (json.data ?? []).map(r => `<option value="${jel_esc(r.fiscal_yr)}">${jel_esc(r.fiscal_yr)}</option>`).join('');
-    } catch (e) {
-        jel_showError('Fiscal years: ' + e.message);
-    }
 }
 
 /* ── Load ──────────────────────────────────────────────────── */
@@ -360,9 +299,6 @@ async function jel_load() {
         const params = new URLSearchParams({
             page      : jel_page,
             limit     : JEL_PAGE_SIZE,
-            fiscal_yr : $jel('jel-filter-fy').value,
-            jev_type           : $jel('jel-filter-type').value,
-            jev_classification : $jel('jel-filter-classification').value,
             search             : $jel('jel-filter-search').value.trim(),
         });
         const res  = await jel_authFetch(`${JEL_API}/journal-entries?${params}`);
@@ -388,7 +324,7 @@ function jel_renderTable(rows) {
 
     const tbody = $jel('jel-tbody');
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="14"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No journal entry vouchers found.</span></div></td></tr>';
+        tbody.innerHTML = '<tr><td colspan="11"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No journal entry vouchers found.</span></div></td></tr>';
         return;
     }
     tbody.innerHTML = rows.map(r => {
@@ -400,8 +336,6 @@ function jel_renderTable(rows) {
         return `<tr style="cursor:pointer;" onclick="${rowClick}">
         <td class="nha-mono">${jel_esc(r.jev_no) || '—'}</td>
         <td class="nha-td-date">${jel_fmtDate(r.jev_date)}</td>
-        <td>${jel_typeBadge(r.jev_type)}</td>
-        <td>${jel_classificationBadge(r.jev_classification)}</td>
         <td title="${jel_esc(r.source_module)}${r.doc_ref_no ? ' — ' + jel_esc(r.doc_ref_no) : ''}">
             ${jel_esc(r.source_module) || '—'}${r.doc_ref_no ? '<br><span class="nha-mono" style="font-size:11px;color:var(--afims-text-muted,#62657E);">' + jel_esc(r.doc_ref_no) + '</span>' : ''}
         </td>
@@ -410,7 +344,6 @@ function jel_renderTable(rows) {
             <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${jel_esc(r.claimant_name) || '—'}</div>
         </td>
         <td>${jel_esc(r.book_name) || '—'}</td>
-        <td>${jel_esc(r.fiscal_yr) || '—'}</td>
         <td class="text-end nha-mono">${jel_peso(r.total_debit)}</td>
         <td class="text-end nha-mono">${jel_peso(r.total_credit)}</td>
         <td>${jel_jevStatusBadge(r.jev_status)}</td>
@@ -558,24 +491,6 @@ function jel_statusBadge(s) {
     const [cls, label] = map[s] || ['nha-bdg-gray', s || '—'];
     return `<span class="nha-bdg ${cls}">${jel_esc(label)}</span>`;
 }
-// SETUP = Accounting's original Dr/Cr entry when processing the DV; PAYMENT = the second JEV
-// GeneralLedgerService::createPaymentJev() prepares (as DRAFT) once Treasury releases the check/ADA;
-// Accounting then posts it (DisbursementVoucherService::postPaymentJev()).
-function jel_typeBadge(t) {
-    const [cls, label] = t === 'PAYMENT' ? ['nha-bdg-teal', 'Payment'] : ['nha-bdg-blue', 'Setup'];
-    return `<span class="nha-bdg ${cls}">${jel_esc(label)}</span>`;
-}
-// Business/reporting nature of the entry (REGULAR default, or a period-end adjusting/closing
-// kind) — independent of jel_typeBadge()'s SETUP/PAYMENT, which is GL-posting mechanics.
-function jel_classificationBadge(c) {
-    const map = {
-        REGULAR: ['nha-bdg-gray', 'Regular'], ACCRUAL: ['nha-bdg-amber', 'Accrual'],
-        DEPRECIATION: ['nha-bdg-blue', 'Depreciation'], PREPAYMENTS: ['nha-bdg-teal', 'Prepayments'],
-        CLOSING: ['nha-bdg-orange', 'Closing'],
-    };
-    const [cls, label] = map[c] || ['nha-bdg-gray', c || 'Regular'];
-    return `<span class="nha-bdg ${cls}">${jel_esc(label)}</span>`;
-}
 // The JEV's own lifecycle (DRAFT -> APPROVED -> POSTED, or REVERSED), separate from its DV's.
 function jel_jevStatusBadge(s) {
     const map = {
@@ -611,7 +526,6 @@ function jel_hideError()    { $jel('jel-error').style.display = 'none'; }
    POST .../{id}/post, DELETE .../delete/{id} — see app/routes/voucher.php.
 ═══════════════════════════════════════════════════════════════ */
 let JAF_COA = [];   // postable chart-of-accounts rows, loaded once on first open
-let JAF_SL  = [];   // active SL masters, loaded once on first open
 let JAF_RC  = [];   // responsibility centers (fims.responsibility_code), loaded once on first open
 let jaf_lookupsReady = null; // promise, so a fast double-open doesn't double-fetch
 let jaf_editId = null;       // jev_id being edited, or null when adding
@@ -622,22 +536,18 @@ async function jaf_ensureLookups() {
     if (jaf_lookupsReady) return jaf_lookupsReady;
     jaf_lookupsReady = (async () => {
         try {
-            const [fyJson, bookJson, coaJson, slJson, rcJson] = await Promise.all([
-                jel_authFetch(JEL_API + '/fiscal-years').then(r => r.json()),
+            const [bookJson, coaJson, rcJson] = await Promise.all([
                 jel_authFetch(JEL_BASE + '/books/all').then(r => r.json()),
                 jel_authFetch(JEL_BASE + '/chart_of_accounts/all?postable_only=1').then(r => r.json()),
-                jel_authFetch(JEL_API + '/sl-codes').then(r => r.json()),
                 jel_authFetch(JEL_BASE + '/responsibility-center/all').then(r => r.json()),
             ]);
-            $jel('jaf-fy').innerHTML = '<option value="">Select…</option>' +
-                (fyJson.data ?? []).map(r => `<option value="${jel_esc(r.fiscal_yr)}">${jel_esc(r.fiscal_yr)}</option>`).join('');
             $jel('jaf-book').innerHTML = '<option value="">Select a book…</option>' +
                 (bookJson.data ?? []).map(b => `<option value="${b.book_id}">${jel_esc(b.name)}</option>`).join('');
             JAF_COA = (coaJson.data ?? []).filter(a => a.posting_allowed);
-            JAF_SL  = slJson.data ?? [];
             JAF_RC  = rcJson.data ?? [];
             $jel('jaf-coa-options').innerHTML = JAF_COA.map(a => `<option value="${jel_esc(a.account_code)}">${jel_esc(a.account_title)}</option>`).join('');
-            $jel('jaf-sl-options').innerHTML  = JAF_SL.map(s => `<option value="${jel_esc(s.sl_code)}">${jel_esc(s.sl_name)}</option>`).join('');
+            $jel('jaf-rc').innerHTML = '<option value="">— None —</option>' +
+                JAF_RC.map(r => `<option value="${jel_esc(r.rc_id)}">${jel_esc(r.rc_id)} — ${jel_esc(r.rc_name)}</option>`).join('');
         } catch (e) {
             jaf_showError('Failed to load form data: ' + e.message);
         }
@@ -647,7 +557,7 @@ async function jaf_ensureLookups() {
 }
 
 function jaf_setFieldsDisabled(disabled) {
-    ['jaf-date', 'jaf-fy', 'jaf-book', 'jaf-classification', 'jaf-particulars'].forEach(id => { $jel(id).disabled = disabled; });
+    ['jaf-date', 'jaf-book', 'jaf-rc', 'jaf-particulars'].forEach(id => { $jel(id).disabled = disabled; });
     $jel('jaf-btn-save').style.display = disabled ? 'none' : '';
     $jel('jaf-btn-addline').disabled = disabled;
     document.querySelectorAll('#jaf-lines-tbody input, #jaf-lines-tbody select, #jaf-lines-tbody button').forEach(el => { el.disabled = disabled; });
@@ -665,9 +575,8 @@ async function jaf_openAdd() {
     $jel('jaf-modal-title').textContent = 'Add Journal Entry Voucher';
     jaf_hideError();
     $jel('jaf-date').value = new Date().toISOString().slice(0, 10);
-    $jel('jaf-fy').value = '';
     $jel('jaf-book').value = '';
-    $jel('jaf-classification').value = 'REGULAR';
+    $jel('jaf-rc').value = '';
     $jel('jaf-particulars').value = '';
     $jel('jaf-lines-tbody').innerHTML = '';
     jaf_lineSeq = 0;
@@ -701,9 +610,8 @@ async function jaf_loadForEdit(jevId, readOnly) {
         jaf_readOnly = readOnly;
         $jel('jaf-modal-title').textContent = readOnly ? `View Journal Entry Voucher — ${jel_esc(jev.jev_no)}` : `Edit Journal Entry Voucher — ${jel_esc(jev.jev_no)}`;
         $jel('jaf-date').value = String(jev.jev_date).slice(0, 10);
-        $jel('jaf-fy').value = jev.fiscal_yr || '';
         $jel('jaf-book').value = jev.book_id || '';
-        $jel('jaf-classification').value = jev.jev_classification || 'REGULAR';
+        $jel('jaf-rc').value = (jev.lines ?? []).find(l => l.rc_id)?.rc_id || '';
         $jel('jaf-particulars').value = jev.particulars || '';
         $jel('jaf-lines-tbody').innerHTML = '';
         jaf_lineSeq = 0;
@@ -757,23 +665,29 @@ function jaf_addLine(line) {
     const id = ++jaf_lineSeq;
     const tr = document.createElement('tr');
     tr.id = `jaf-line-${id}`;
-    const rcOptions = '<option value="">— None —</option>' +
-        JAF_RC.map(r => `<option value="${jel_esc(r.rc_id)}">${jel_esc(r.rc_id)} — ${jel_esc(r.rc_name)}</option>`).join('');
     tr.innerHTML = `
-        <td><input type="text" list="jaf-coa-options" class="nha-filter-input jaf-acct" style="width:100%;" value="${jel_esc(line?.account_code)}"></td>
-        <td><input type="text" list="jaf-sl-options" class="nha-filter-input jaf-sl" style="width:100%;" value="${jel_esc(line?.sl_code)}"></td>
-        <td><select class="nha-filter-select jaf-rc">${rcOptions}</select></td>
-        <td><input type="number" step="0.01" min="0" class="nha-filter-input jaf-debit text-end" style="width:100%;" value="${line?.debit > 0 ? line.debit : ''}" oninput="jaf_onAmountInput(this, 'debit')"></td>
-        <td><input type="number" step="0.01" min="0" class="nha-filter-input jaf-credit text-end" style="width:100%;" value="${line?.credit > 0 ? line.credit : ''}" oninput="jaf_onAmountInput(this, 'credit')"></td>
+        <td class="jaf-line-no" style="text-align:center;color:var(--afims-text-muted,#62657E);"></td>
+        <td><input type="text" list="jaf-coa-options" class="nha-filter-input jaf-acct" style="width:100%;" placeholder="Search GL account code (UACS)…" value="${jel_esc(line?.account_code)}"></td>
+        <td><input type="text" class="nha-filter-input jaf-desc" style="width:100%;" placeholder="Description" value="${jel_esc(line?.description)}"></td>
+        <td><input type="number" step="0.01" min="0" class="nha-filter-input jaf-debit text-end" style="width:100%;" placeholder="0.00" value="${line?.debit > 0 ? line.debit : ''}" oninput="jaf_onAmountInput(this, 'debit')"></td>
+        <td><input type="number" step="0.01" min="0" class="nha-filter-input jaf-credit text-end" style="width:100%;" placeholder="0.00" value="${line?.credit > 0 ? line.credit : ''}" oninput="jaf_onAmountInput(this, 'credit')"></td>
         <td><button type="button" class="jaf-remove-btn" title="Remove line" onclick="jaf_removeLine(${id})">&times;</button></td>
     `;
     $jel('jaf-lines-tbody').appendChild(tr);
-    tr.querySelector('.jaf-rc').value = line?.rc_id || '';
-    tr.querySelectorAll('input, select').forEach(el => el.addEventListener('input', jaf_recalc));
+    tr.querySelectorAll('input').forEach(el => el.addEventListener('input', jaf_recalc));
+    jaf_renumberLines();
 }
 function jaf_removeLine(id) {
     $jel(`jaf-line-${id}`)?.remove();
+    jaf_renumberLines();
     jaf_recalc();
+}
+// Keeps the leading "#" column in sync (01, 02, …) whenever a line is added/removed.
+function jaf_renumberLines() {
+    document.querySelectorAll('#jaf-lines-tbody tr').forEach((tr, idx) => {
+        const cell = tr.querySelector('.jaf-line-no');
+        if (cell) cell.textContent = String(idx + 1).padStart(2, '0');
+    });
 }
 // A line is either a debit or a credit, never both — clearing the other side when one is typed
 // into mirrors readone.php's vje_ grid convention.
@@ -783,11 +697,14 @@ function jaf_onAmountInput(el, side) {
     if (side === 'credit' && parseFloat(el.value) > 0) tr.querySelector('.jaf-debit').value = '';
     jaf_recalc();
 }
+// Every line shares the header-level Responsibility Center (jaf-rc) — there is no per-line RC
+// control anymore.
 function jaf_collectLines() {
+    const rcId = $jel('jaf-rc').value.trim();
     return [...document.querySelectorAll('#jaf-lines-tbody tr')].map(tr => ({
         account_code: tr.querySelector('.jaf-acct').value.trim(),
-        sl_code     : tr.querySelector('.jaf-sl').value.trim(),
-        rc_id       : tr.querySelector('.jaf-rc').value.trim(),
+        description : tr.querySelector('.jaf-desc').value.trim(),
+        rc_id       : rcId,
         debit       : parseFloat(tr.querySelector('.jaf-debit').value) || 0,
         credit      : parseFloat(tr.querySelector('.jaf-credit').value) || 0,
     })).filter(l => l.account_code || l.debit || l.credit);
@@ -916,12 +833,10 @@ async function jaf_persistAttachments() {
 async function jaf_save() {
     jaf_hideError();
     const body = {
-        jev_date          : $jel('jaf-date').value,
-        fiscal_yr         : $jel('jaf-fy').value,
-        book_id           : $jel('jaf-book').value,
-        jev_classification: $jel('jaf-classification').value,
-        particulars       : $jel('jaf-particulars').value.trim(),
-        lines             : jaf_collectLines(),
+        jev_date    : $jel('jaf-date').value,
+        book_id     : $jel('jaf-book').value,
+        particulars : $jel('jaf-particulars').value.trim(),
+        lines       : jaf_collectLines(),
     };
     window.PagePreloader?.show();
     try {

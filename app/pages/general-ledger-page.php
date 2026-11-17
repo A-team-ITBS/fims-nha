@@ -136,7 +136,6 @@ $_gl_api = preg_match('~/api$~', $_gl_api) ? $_gl_api : $_gl_api . '/api';
                         <th>JEV No.</th>
                         <th>Doc Ref No.</th>
                         <th>DV Number</th>
-                        <th>SL Code</th>
                         <th>Particulars</th>
                         <th class="text-end">Debit</th>
                         <th class="text-end">Credit</th>
@@ -144,7 +143,7 @@ $_gl_api = preg_match('~/api$~', $_gl_api) ? $_gl_api : $_gl_api . '/api';
                     </tr>
                 </thead>
                 <tbody id="gl-tbody">
-                    <tr><td colspan="9"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
+                    <tr><td colspan="8"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
                 </tbody>
             </table>
         </div>
@@ -318,7 +317,7 @@ function gl_renderEnding(endingBalance, debitNormal) {
 function gl_renderTable(rows, debitNormal) {
     const tbody = $gl('gl-tbody');
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="9"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No posted transactions for this account.</span></div></td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No posted transactions for this account.</span></div></td></tr>';
         return;
     }
     tbody.innerHTML = rows.map(r => gl_rowHtml(r, debitNormal)).join('');
@@ -328,12 +327,12 @@ function gl_renderTable(rows, debitNormal) {
 function gl_renderGroupedTable(accounts) {
     const tbody = $gl('gl-tbody');
     if (!accounts.length) {
-        tbody.innerHTML = '<tr><td colspan="9"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">Nothing posted yet.</span></div></td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">Nothing posted yet.</span></div></td></tr>';
         return;
     }
     tbody.innerHTML = accounts.map(a => `
         <tr class="gl-group-row">
-            <td colspan="6">${gl_esc(a.account.account_code)} — ${gl_esc(a.account.account_title)} <span style="font-weight:400;color:var(--afims-text-muted,#62657E);">(${gl_esc(a.normal_balance)}-normal, ${gl_esc(a.account.account_type)})</span></td>
+            <td colspan="5">${gl_esc(a.account.account_code)} — ${gl_esc(a.account.account_title)} <span style="font-weight:400;color:var(--afims-text-muted,#62657E);">(${gl_esc(a.normal_balance)}-normal, ${gl_esc(a.account.account_type)})</span></td>
             <td class="text-end nha-mono">${gl_peso(a.total_debit)}</td>
             <td class="text-end nha-mono">${gl_peso(a.total_credit)}</td>
             <td class="text-end nha-mono">${gl_peso(Math.abs(a.ending_balance))}${gl_balSide(a.ending_balance, a.debit_normal)}</td>
@@ -348,7 +347,6 @@ function gl_rowHtml(r, debitNormal) {
         <td class="nha-mono">${gl_esc(r.jev_no) || '—'}${r.reference_no && r.reference_no.endsWith('-REV') ? ' <span class="nha-bdg nha-bdg-orange" style="margin-left:4px;">Reversal</span>' : ''}</td>
         <td class="nha-mono">${gl_esc(r.doc_ref_no) || '—'}</td>
         <td class="nha-mono">${gl_esc(r.dv_no) || '—'}</td>
-        <td>${gl_esc(r.sl_code) || '—'}</td>
         <td>${gl_esc(r.description) || gl_esc(r.sl_name) || '—'}</td>
         <td class="text-end nha-mono">${Number(r.debit) > 0 ? gl_peso(r.debit) : ''}</td>
         <td class="text-end nha-mono">${Number(r.credit) > 0 ? gl_peso(r.credit) : ''}</td>

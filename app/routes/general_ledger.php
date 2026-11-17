@@ -128,19 +128,19 @@ $app->get('/general_ledger/ledger', function ($request, $response, $args) use ($
     }
 })->add($accessMiddleware)->add($jwtMiddleware);
 
-// Subsidiary Ledger — one SL code's (optionally one SL detail's) ledger card with a running
-// balance, or (sl_code omitted) every SL master's ledger card at once — the page's default view
-// before one is picked. Optional: sl_code, sl_detail_id, fiscal_yr, book_id.
-// SL picker: reuse GET /voucher/sl-codes and GET /voucher/sl-codes/{sl_code}/details — not duplicated here.
+// Subsidiary Ledger — one SL account's ledger card with a running balance, or (sl_code omitted)
+// every SL account's ledger card at once — the page's default view before one is picked. An "SL
+// account" is a child fims.chart_of_accounts row (parent_account_id IS NOT NULL) under a control
+// account — see GeneralLedgerService::fetchSubsidiaryLedger(). Optional: sl_code, fiscal_yr,
+// book_id. SL picker: reuse GET /chart_of_accounts/all?postable_only=1, filtered client-side to
+// rows with a parent_account_id — not duplicated here.
 $app->get('/general_ledger/subsidiary-ledger', function ($request, $response, $args) use ($GeneralLedgerService, $glIntOrNull) {
     try {
         $params = $request->getQueryParams();
         $slCode = trim((string) ($params['sl_code'] ?? ''));
         $slCode = $slCode !== '' ? $slCode : null;
-        $slDetailId = $params['sl_detail_id'] ?? null;
         $result     = $GeneralLedgerService->fetchSubsidiaryLedger(
             $slCode,
-            $slDetailId !== null && $slDetailId !== '' && ctype_digit((string) $slDetailId) ? (int) $slDetailId : null,
             $glIntOrNull($params['fiscal_yr'] ?? null),
             $glIntOrNull($params['book_id'] ?? null)
         );
