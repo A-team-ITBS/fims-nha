@@ -65,6 +65,9 @@
 | Accounts Set-up | [Fund Source](#fund-source) | Empty placeholder (0-byte page) |
 | Accounts Set-up | [Program Sources](#program-sources) | Empty placeholder (0-byte page) |
 | Accounts Set-up | [Accountable Officer](#accountable-officer) | Empty placeholder (0-byte page) |
+| Accounts Set-up | [Payroll Setup](#payroll-setup) | Built |
+| Accounts Set-up | [Payroll Management](#payroll-management) | Built (import only) |
+| Accounts Set-up | [Fidelity Bond](#fidelity-bond) | Empty placeholder (0-byte page) |
 | Fund Sourcing | [Fund Sourcing Dashboard](#fund-sourcing-dashboard) | Partial |
 | Fund Sourcing | [Supplemental Funds](#supplemental-funds) | Built |
 | Fund Sourcing | [Trust Funds](#trust-funds) | Built |
@@ -505,7 +508,7 @@ erDiagram
 
 - **Status:** Built — Full CRUD, the 9-status pipeline, the Accounting Entries (SETUP JEV) editor, ATC and deduction lines, RFA linking, and "Prepare Payment JEV" are all wired to real SQL.
 - **Code:** `views/Voucher.php` → `app/pages/voucher.php` (list) + `app/pages/voucher/form.php` (create/edit) + `app/pages/voucher/readone.php` (view, Accounting Entries, status actions). Route `app/routes/voucher.php`: `GET /voucher/list|all|fiscal-years|dv-number|atc-codes|deduction-types|sl-codes|sl-codes/{sl_code}/details|rfa/all|rfa/read/{id}|read/{id}`, `POST /voucher/add`, `PUT /voucher/update/{id}`, `POST /voucher/{id}/status`, `POST /voucher/{id}/journal-entry` (save the SETUP JEV, ATC lines, and deductions), `POST /voucher/{id}/prepare-payment-jev`, `POST /voucher/journal-entry/{id}/jev-status`, `DELETE /voucher/delete/{id}`. Service: `app/services/DisbursementVoucherService.php`, which calls `GeneralLedgerService::postJev()/reverseJev()/createPaymentJev()`. Print: `DvPrintService`/`JevPrintService` through `/print-preview-readone`.
-- **Tables written:** fims.disbursement_vouchers, fims.disbursement_voucher_deductions, fims.disbursement_voucher_atc_lines, fims.journal_entry_vouchers, fims.journal_entry_voucher_lines, fims.budget_allocation (only `dv_id`, in `linkRfas()`), fims.general_ledger (indirectly, through postJev/reverseJev), fims.status_change_log (JEV status only, through `GlobalService::logStatusChange`). **Tables read:** fims.settings_status (`status_for='disbursement_voucher'` and `'journal_entry_voucher'`), fims.vendors (joins `vendors.sl_code` → `chart_of_accounts.account_id` for the vendor AP sub-ledger), fims.chart_of_accounts (also the source of the SL list: leaf accounts with `parent_account_id`), fims.responsibility_code, fims.fiscal_year, fims.books, fims.atc_codes, fims.deduction_types, fims.budget_allocation (`allocation_type='RFA'`), fims.budget_category, fims.budget_line_items (the account of the RFA's first line), fims.checks (the latest non-cancelled check by `dv_number`, for the payment JEV), fims.bank_accounts (`account_code`, the Cr Cash line), fims.file_attachments (by `multiple_node_id`), fims.v_journal_entry_vouchers, uac.users (`rc_id` for stage authorization).
+- **Tables written:** fims.disbursement_vouchers, fims.disbursement_voucher_deductions, fims.disbursement_voucher_atc_lines, fims.journal_entry_vouchers, fims.journal_entry_voucher_lines, fims.budget_allocation (only `dv_id`, in `linkRfas()`), fims.payroll_records (only `disbursement_voucher_id` — a payroll DV, see [Payroll Management](#payroll-management)), fims.general_ledger (indirectly, through postJev/reverseJev), fims.status_change_log (JEV status only, through `GlobalService::logStatusChange`). **Tables read:** fims.settings_status (`status_for='disbursement_voucher'` and `'journal_entry_voucher'`), fims.vendors (joins `vendors.sl_code` → `chart_of_accounts.account_id` for the vendor AP sub-ledger), fims.chart_of_accounts (also the source of the SL list: leaf accounts with `parent_account_id`), fims.responsibility_code, fims.fiscal_year, fims.books, fims.atc_codes, fims.deduction_types, fims.budget_allocation (`allocation_type='RFA'`), fims.budget_category, fims.budget_line_items (the account of the RFA's first line), fims.checks (the latest non-cancelled check by `dv_number`, for the payment JEV), fims.bank_accounts (`account_code`, the Cr Cash line), fims.file_attachments (by `multiple_node_id`), fims.v_journal_entry_vouchers, uac.users (`rc_id` for stage authorization).
 - **Status workflow:** `DRAFT → FOR_FMD_REVIEW (RC 013) → FOR_ACCOUNTING (RC 012, Section Chief saves a balanced JEV) → FOR_DIVISION_MANAGER (012) → FOR_DEPARTMENT_MANAGER (012) → FOR_TREASURY (014; this step POSTS the SETUP JEV to the GL) → RELEASED` (set by Check Disbursements `saveCheck`). Any non-terminal status can go to `REJECTED` (reason required) or `CANCELLED`. `FOR_TREASURY→CANCELLED` reverses the GL entries. `REJECTED→CANCELLED` only. Source: `DisbursementVoucherService::TRANSITIONS` (l.100) and `STAGE_HOLDER_RC`. Seeds: `02 - sample_data/01 - fims_settings_status.sql`.
 
 ```mermaid
@@ -1535,6 +1538,119 @@ erDiagram
 - **Status:** Empty placeholder (0-byte page) — `app/pages/accountable-officer-page.php` is 0 bytes.
 - **Code:** none — the page file is 0 bytes.
 - **Tables:** No tables yet. Nothing in `_assets/sql` mentions accountable officers.
+
+### Payroll Setup
+
+- **Status:** Built — the catalogue of payroll items: list with KPIs and filters, add, edit (item code is fixed once saved). No delete: an item used by a payroll can only be set INACTIVE.
+- **Code:** `app/pages/payroll-setup-page.php` + `app/pages/form/payroll-form.php`; `app/routes/payroll_setup.php` (`GET /payroll-setup/list|accounts|read/{id}`, `POST /payroll-setup/add`, `PUT /payroll-setup/update/{id}`); `app/services/PayrollSetupService.php`.
+- **Tables written:** fims.payroll_items; fims.chart_of_accounts (only when an item is saved with a 5th / 6th-part sub-ledger account that does not exist yet — created with the item, removed again if the item fails). **Tables read:** fims.chart_of_accounts.
+- **Status workflow:** `status` ACTIVE | INACTIVE. An item's **category** (EARNING / DEDUCTION / REFUND / EMPLOYER_SHARE) decides how its amounts count and the side it posts to (DEDUCTION = credit, the others = debit).
+- **Used by:** Payroll Management — `item_code` is the column name in the payroll import form.
+
+```mermaid
+erDiagram
+    chart_of_accounts ||--o{ payroll_items : "account_code"
+    payroll_items {
+        serial payroll_item_id PK
+        varchar60 item_code UK "= import column name"
+        varchar150 item_name
+        varchar20 category "EARNING | DEDUCTION | REFUND | EMPLOYER_SHARE"
+        varchar30 account_code FK "nullable until set"
+        int sort_order
+        varchar20 status "ACTIVE | INACTIVE"
+    }
+    chart_of_accounts {
+        varchar30 account_code UK
+        varchar account_title
+        bool posting_allowed
+    }
+```
+- **Table notes:**
+  - fims.payroll_items (`01 - table/48`): FKs from `03 - alter_table/37` — `account_code` → chart_of_accounts.account_code, `created_by` / `updated_by` → uac.users. Nothing is seeded.
+
+### Payroll Management
+
+- **Status:** Built (import only) — imports the monthly employee payroll (the payroll office's form `_shared/template/MONTHLY-PAYROLL-TEMPLATE.xlsx`) and keeps one summary row per month. Tabs: **Payroll Imports** (preview → import / replace, list with Month, Year, Import Date, Status, Total Payroll Amount = gross and one action — **Create DV** / **View DV**; the month name opens its employee records → items, with Delete Import while no DV uses it), **Year-to-Date Report** (per employee, filters, CSV export), **File Template** (download the blank form; its columns vs Payroll Setup). No DV is created here.
+- **Code:** `app/pages/payroll-page.php` (PayrollPage); `app/routes/payroll_management.php` (`GET /payroll-management/list|records/{periodId}|record-items/{id}|ytd|template-columns|template|available|dv-data/{periodId}`, `POST /payroll-management/preview|import`, `DELETE /payroll-management/delete/{periodId}`); `app/services/PayrollManagementService.php`.
+- **Tables written:** fims.payroll_periods (one per month, created when missing; `prepared_at` / `prepared_by` = import date / user), fims.payroll_employees (employees not in the directory yet; existing ones unchanged), fims.payroll_records (one per employee per month, category totals), fims.payroll_record_items (one per employee per item with an amount). **Tables read:** fims.payroll_items, fims.chart_of_accounts, fims.disbursement_vouchers + fims.settings_status (DV link), uac.users.
+- **Import rules:** each amount column must match an ACTIVE Payroll Setup item code (quotes from the HRIS export ignored); a column with amounts and no item, a repeated employee no. or a non-numeric value stops the import. Inactive items are skipped. A month already imported is replaced only on request, and never while a live DV uses it or the period is LOCKED / CLOSED.
+- **Status workflow (summary):** Imported → DV Created (every record linked to a non-cancelled DV) / Partly in a DV. Derived from `payroll_records.disbursement_voucher_id`, not stored.
+- **DV link:** the list's **Create DV** opens Disbursement Voucher (`Voucher?payroll={payroll_period_id}`) with a new DV for the month; **View DV** opens its DV (`Voucher?dv={dv_id}`). On the DV form the month sits in the Vendor dropdown's "Payroll (imported months)" group (months no live DV uses); picking it fills claimant, particulars, account, gross, deductions and the accounting entry (Dr expense accounts, Cr deduction accounts, Cr Accounts Payable 2-01-01-010 for the net pay; employer share not included). Saving sets `payroll_records.disbursement_voucher_id`; cancelling or deleting the DV clears it. Choosing None or a vendor instead clears everything the month filled.
+
+```mermaid
+erDiagram
+    payroll_periods ||--o{ payroll_records : "payroll_period_id"
+    payroll_employees ||--o{ payroll_records : "employee_id"
+    payroll_records ||--o{ payroll_record_items : "payroll_record_id (cascade)"
+    payroll_items ||--o{ payroll_record_items : "payroll_item_id"
+    chart_of_accounts ||--o{ payroll_record_items : "account_code (snapshot)"
+    disbursement_vouchers ||--o{ payroll_records : "disbursement_voucher_id"
+    payroll_periods {
+        serial payroll_period_id PK
+        smallint fiscal_yr "UK with payroll_month"
+        smallint payroll_month "1-12 (13 = year-end)"
+        varchar100 period_name
+        date period_start_date
+        date period_end_date
+        varchar20 status "OPEN | LOCKED | CLOSED"
+        timestamp prepared_at "import date"
+        int prepared_by FK "importer"
+    }
+    payroll_employees {
+        serial employee_id PK
+        varchar50 employee_no UK
+        varchar last_name
+        varchar first_name
+        varchar middle_name
+        varchar full_name "generated"
+        varchar department
+        varchar employment_status
+    }
+    payroll_records {
+        serial payroll_record_id PK
+        int payroll_period_id FK "UK with employee_id"
+        int employee_id FK
+        numeric total_earnings
+        numeric total_deductions
+        numeric total_refunds
+        numeric total_employer_share
+        numeric gross_amount "generated = total_earnings"
+        numeric net_amount "generated = earnings + refunds - deductions"
+        varchar20 status "DRAFT on import"
+        int disbursement_voucher_id FK "payroll DV"
+    }
+    payroll_record_items {
+        serial payroll_record_item_id PK
+        int payroll_record_id FK "UK with payroll_item_id"
+        int payroll_item_id FK
+        numeric amount
+        varchar30 account_code FK "snapshot of the item's account"
+    }
+    payroll_items {
+        serial payroll_item_id PK
+        varchar60 item_code UK
+        varchar20 category
+        varchar30 account_code FK
+    }
+    disbursement_vouchers {
+        serial dv_id PK
+        varchar dv_no UK
+    }
+    chart_of_accounts {
+        varchar30 account_code UK
+    }
+```
+- **Table notes:**
+  - fims.payroll_periods (`01 - table/44`), fims.payroll_employees (`42`), fims.payroll_records (`45`), fims.payroll_record_items (`49`); FKs from `03 - alter_table/36` and `/37`. `03 - alter_table/38` regenerates `gross_amount` / `net_amount` from the category totals (the old `regular_pay` … `other_income` columns stay, deprecated).
+  - `03 - alter_table/36` also added `disbursement_vouchers.payroll_record_id` (FK → payroll_records); this module does not use it — a payroll DV covers a whole month, so the link is kept on the records side.
+  - fims.payroll_deduction_types (`43`, 12 seeded rows), fims.payroll_deductions (`46`) and fims.payroll_remittances (`47`) belong to the earlier payroll design; `payroll_record_items` replaces payroll_deductions (see alter 38's clean-up note). The routes in `app/routes/payroll.php` that read them are not registered (the file returns a closure that `app/api.php` never calls).
+  - The payroll DV's deductions use fims.deduction_types `PAYROLL_GSIS`, `PAYROLL_PHILHEALTH`, `PAYROLL_PAGIBIG`, `PAYROLL_WTAX`, `PAYROLL_OTHER` (`04 - seed_data/08`); until that seed is run they show under OTHER.
+
+### Fidelity Bond
+
+- **Status:** Empty placeholder (0-byte page) — `app/pages/fidelity-bond-page.php` is 0 bytes.
+- **Code:** none — the page file is 0 bytes.
+- **Tables:** No tables yet.
 
 ## Fund Sourcing
 
