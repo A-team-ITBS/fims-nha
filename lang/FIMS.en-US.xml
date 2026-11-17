@@ -80,6 +80,9 @@
     <menu id="560">
       <phrase id="menutext" value="Check Registry" />
     </menu>
+    <menu id="398">
+      <phrase id="menutext" value="Fund Transfer Letter of Advice" />
+    </menu>
     <menu id="561">
       <phrase id="menutext" value="Accountable Forms Registry" />
     </menu>
@@ -163,9 +166,6 @@
     </menu>
     <menu id="258">
       <phrase id="menutext" value="Vouchers" />
-    </menu>
-    <menu id="398">
-      <phrase id="menutext" value="Fund Transfer Letter of Advice" />
     </menu>
     <menu id="206">
       <phrase id="menutext" value="Administration" />
