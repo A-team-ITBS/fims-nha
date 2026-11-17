@@ -43,7 +43,7 @@
 | DV Processing | [Disbursement Voucher](#disbursement-voucher) | Built |
 | DV Processing | [Liquidation Voucher](#liquidation-voucher) | Empty placeholder (0-byte page) |
 | DV Processing | [Journal Entry Voucher](#journal-entry-voucher) | Built |
-| DV Processing | [Check Disbursements](#check-disbursements) | Built, with stubs |
+| DV Processing | [Disbursement Preparation](#disbursement-preparation) | Built, with stubs |
 | Inventory | [IAR Module](#iar-module) | Partial |
 | Monitoring | [COB Monitoring](#cob-monitoring) | Built |
 | Monitoring | [RFA / LAA Monitoring](#rfa--laa-monitoring) | Empty placeholder (0-byte page) |
@@ -343,8 +343,7 @@ erDiagram
         text reason
         int user_id "soft: uac.users"
         int status_id FK
-        int from_budget_req_id "LEGACY unused"
-        int to_budget_req_id "LEGACY unused"
+        varchar request_type "REVISION | REALIGNMENT"
         timestamp deleted_at
     }
     budget_line_items {
@@ -353,6 +352,7 @@ erDiagram
         numeric proposed_amount
         numeric adjustment "net of approved revisions"
         numeric suggested_amount "live balance"
+        numeric revised_amount "set on revision approval"
     }
     budget_line_items ||--o{ budget_revision : "soft: from_budget_line_item_id"
     budget_line_items ||--o{ budget_revision : "soft: to_budget_line_item_id"
@@ -360,8 +360,8 @@ erDiagram
     budget_req ||--o{ budget_line_items : "budget_reference_number"
 ```
 - **Table notes:**
-  - `fims.budget_revision` — base `01 - table/05 - budget_rev.sql`; `budget_req_id`→`from_budget_req_id` + `to_budget_req_id` in `02 - alter_table/03` (note: a separate `02 - alter_table` folder); `from/to_budget_line_item_id` added and `from_budget_req_id` made nullable in `03 - alter_table/23 - budget_revision_on_budget_reference_number.sql` (no FK by design: Draft edits recreate lines); `status_id` FK added by `04 - seed_data/08`. Column is `update_at` (sic).
-  - `fims.budget_line_items` — approval: From line `adjustment, suggested_amount += to_amount − (proposed+adjustment)`; To line gets the opposite delta; `proposed_amount` never changes.
+  - `fims.budget_revision` — base `01 - table/05 - budget_rev.sql`; `budget_req_id`→`from_budget_req_id` + `to_budget_req_id` in `02 - alter_table/03` (note: a separate `02 - alter_table` folder); `from/to_budget_line_item_id` added and `from_budget_req_id` made nullable in `03 - alter_table/23 - budget_revision_on_budget_reference_number.sql` (no FK by design: Draft edits recreate lines); `status_id` FK added by `04 - seed_data/08`. Column is `update_at` (sic). `request_type` (`03 - alter_table/42`, `CHECK IN ('REVISION','REALIGNMENT')`, default REVISION): REVISION = no To line, REALIGNMENT = has a To line (the API keeps it in step); the same alter dropped the legacy `from_budget_req_id` / `to_budget_req_id`.
+  - `fims.budget_line_items` — approval: From line `adjustment, suggested_amount += to_amount − (proposed+adjustment)`; To line gets the opposite delta; `proposed_amount` never changes. Each touched line's `revised_amount` (plain column, migration "43 - budget_line_items_add_revised_amount" — not in the repo yet) is set to its new `proposed_amount + adjustment`; the COB reads its Revised Amount from it.
 
 ### Ledger
 
@@ -440,36 +440,19 @@ erDiagram
     budget_category ||--o{ budget_allocation : "soft: category_id"
     budget_allocation ||--o{ status_change_log : "soft: record_id"
 ```
+- **Table notes:**
+  - `fims.budget_allocation` — one table for CBA/RFA/LAA/CFA memo requests (`allocation_type` discriminator), soft delete `deleted_at`. FKs from `03 - alter_table/08` (fiscal_year, program, sub_program, project, vendor, parent, status). `requesting_department_id`→`requesting_rc_id` VARCHAR(50) (alter 14, no FK); `program_id/sub_program_id/project_id` int columns dropped (09); `request_referrence_no` sequence/default/unique (19, misspelt on purpose); `memo_ref_no` dropped (20); `dv_id` added (23, no FK — RFA→DV link lives here); `remarks` added (28, Return reason). Other columns: `requesting_district_id` (soft → uac.departments), `document_type` (CO/COE), `pr_number/pr_amount/po_number/po_amount`, `workflow_route`, `category_id` (soft → budget_category.budget_category_id), `is_bidding`, `description`, `user_id`.
+  - `line_transaction` (JSONB) — array of COB lines: `budget_line_item_id, type_of_fund_id, type_of_fund, account_code, account_title, fiscal_yr, proposed_amount, suggested_amount, requested_amount, allocated_amount` (denormalised copies of the line item at save time); parsed by `BudgetLineItemService::parseLineTransaction()`.
+  - `fims.budget_line_item_earmark` — reservation ledger: one 'active' row per (CBA/CFA, COB) on approval (`balance_applied=TRUE`); `original_amount` added by alter 23, `balance_applied` by alter 29. RFA/LAA approvals shrink/convert the parent's row and insert their own 'converted' row.
+  - `fims.file_attachments` / `fims.ip_filemeta` — generic attachment group (`multiple_node_id`) → file meta (`node_id`); no FKs.
+  - `fims.status_change_log` — see Budget Proposal; status_for='budget_allocation', record_id = allocation_id.
 
-| Table | Purpose / notes |
-|---|---|
-| `settings_status` | Shared status lookup, scoped per entity via `status_for` (e.g. `'fiscal_year'`, `'budget_req'`). `next_actors` (JSONB; renamed from `actors`) names who acts next on a record that has reached that status |
-| `fiscal_year` | One row per fiscal year; PK is the year itself (`SMALLINT`) |
-| `program` / `sub_program` / `project` | Budget hierarchy. A project optionally narrows to a `sub_program_code`; a sub-program always belongs to one `program_code` |
-| `budget_req` | **One header row per fiscal year** (`UNIQUE(fiscal_yr)`, enforced in `03 - alter_table/04`). Despite the name, it no longer carries an amount, program, or expense class directly — see gap note in §3. Carries `remarks` (nullable `TEXT`, `03 - alter_table/13`): the reason entered when the request was last Returned |
-| `budget_req_program` | One Program (optionally + Sub-Program) line added to a `budget_req` header |
-| `budget_req_project` | One Project line, nested under a `budget_req_program` row (and, redundantly, under the `budget_req` header directly — see denormalization note below) |
-| `budget_line_items` | One chart-of-accounts allocation under a `budget_req_project` row. Carries `proposed_amount`, `suggested_amount`, and the execution-tracking amounts `adjustment` / `obligation` / `disbursement` / `account_payable` (all `NOT NULL DEFAULT 0`). `component_id` / `type_of_fund_id` are present but **have no FK** — see §3. The `program_source_code` / `program_uses` columns that `03 - alter_table/17` and `/18` added were dropped again by `03 - alter_table/22` |
-| `budget_revision` | Revises a **budget line** (`budget_line_items` row): changes the From line's amount, or moves the difference to a To line (`to_budget_line_item_id IS NULL` = a plain revision of one line). `from_budget_line_item_id` / `to_budget_line_item_id` hold a `budget_line_items.budget_line_item_id` (`03 - alter_table/23`); `status_id` / `user_id` are plain integers; **none of them has an FK** — not drawn above. The earlier `from_budget_req_id` / `to_budget_req_id` (a budget *request's* id, which no longer exists) are left in place, unused. A line's current amount is `proposed_amount + adjustment`; approving a revision only moves `budget_line_items.adjustment` — the From line goes down, the To line goes up — and never `proposed_amount` |
-| `chart_of_accounts` | COA tree (`parent_account_id` self-FK). Optionally scoped to a responsibility center (`region_code -> responsibility_code.rc_code`) and/or a `project_code` |
-| `responsibility_code` | RCA (Responsibility Center/Accounting) tree (`parent_rc_id` self-FK). `is_budget_holding_rc` flags units that can hold a budget. `rc_id` is the PK and is `VARCHAR(10)` — see the `uac.departments`/`uac.offices` type-mismatch gap in §3 |
-| `type_of_fund` / `component_type` | Small lookup tables (fund source; CO / Other-CO / COE) seeded with a handful of rows. Referenced by `budget_line_items.type_of_fund_id` / `.component_id` **by convention only — no FK exists yet** |
-| `budget_allocation` | Memo/PR/PO allocation tracking per fiscal year + requesting RC (the creator's `uac.users.rc_id`) / district, with a `parent_id` self-FK for derived allocations. Built via `CREATE TABLE fims.budget_allocation(); ALTER TABLE ... ADD COLUMN` (see the file for why). `request_referrence_no` (VARCHAR(50) — the spelling is the column's real name) is **generated by the database**: its default is `fims.next_request_referrence_no()`, which takes the next value of a sequence and formats it `RR-001`, `RR-002`, … (it grows past 999, never truncates); unique, never reused (a failed insert leaves a gap). Added, with the existing rows numbered oldest-first, by `03 - alter_table/19`. Most of its columns (`requesting_rc_id` — VARCHAR(50), renamed from `requesting_department_id` in `03 - alter_table/14` — `requesting_district_id`, `program_id`, `sub_program_id`, `project_id`, `category_id`, `user_id`) are **deliberately left unconstrained** — see the comment in `03 - alter_table/08 - budget_allocation_add_fk.sql` for the reasoning per column. `allocation_type` (free-text VARCHAR(20), no CHECK) is the "Memo Request" module's own document type — `CBA` (Certificate of Budget Allocation, the root reservation against a COB), `RFA` (Request for Fund Allotment, draws part of a parent CBA down into an obligation, used under ₱50M) and `LAA` (Letter of Advice of Allotment, same conversion as RFA but ₱50M and above) are the three in active use; `CFA` is named alongside `CBA` in a few guard conditions/comments (e.g. `budget_line_item_earmark`'s header comment, `BudgetLineItemService`'s earmark filters) but never actually produced by the form — treat it as reserved/unimplemented, not a fourth live type. For RFA/LAA, `parent_id` must point at an Approved CBA; `BudgetAllocationService::process()` assigns the final `allocation_number` on last approval, templated by `allocation_type` (`BudgetAllocationService.php` ~L798-814): `CBA` → `CBA <y>-<q><m>-86-<series>`, `RFA` → `<yy><q><m>-<code>-<series>` (`code` 57 for `document_type='COE'`, 87 for `CO`), `LAA` → `LAA <y>-<q><m>-<series>` (no code segment). `dv_id` (added by `03 - alter_table/23 - budget_allocation_add_dv_id.sql`, 2026-11-12) is an RFA row's **soft** link to the one `disbursement_vouchers.dv_id` it currently backs (one DV can draw on several RFA rows, but each RFA row backs only one active DV at a time — enforced by `DisbursementVoucherService`, not a DB FK; see §3) |
-| `budget_line_item_earmark` | The CBA/RFA/LAA reservation ledger against `budget_line_items` (added 2026-11-12, `01 - table/26`). One row per Approved `budget_allocation` line "holding" an amount against a line item's balance — reserved only, separate from `budget_line_items.obligation`/`disbursement`/`account_payable`. A line item's still-available balance = `suggested_amount + adjustment - obligation - SUM(amount) WHERE status = 'active'` (the FMD-approved `suggested_amount`, not the requester's `proposed_amount`). `status`: `active` (default, while its CBA stays Approved) → `released` (its CBA was deleted — amount freed back) or `converted` (an RFA/LAA naming this row's allocation as `parent_id` was itself Approved: `BudgetLineItemService::convertEarmarkForRfaApproval()` shrinks — or fully flips — the CBA's own row by the drawn amount, inserts a **separate** `converted` row attributed to the RFA/LAA's own `allocation_id` so each draw stays traceable, and raises `budget_line_items.obligation` by that same amount — the real commitment). `original_amount` (added `03 - alter_table/23 - budget_line_item_earmark_add_original_amount.sql`, 2026-11-12) freezes the amount the row was first created with, since `amount` itself shrinks on every partial RFA/LAA draw — used so "where this COB's balance is held" can show a CBA's originally-approved figure, not its current remainder. Both `budget_line_item_id` and `allocation_id` are enforced FKs, `ON DELETE CASCADE` |
-| `ip_filemeta` | One uploaded file (or typed link / reference) of a Supporting Document: `document_name VARCHAR(225)`, `link TEXT` (the object-storage key, or the link), `created_by`, a unique `node_id` UUID (default `gen_random_uuid()`), `created_at` / `updated_at`, soft-delete `deleted_at`. Written by `FileUploadServices` (`01 - table/17`) |
-| `file_attachments` | Groups files: one `multiple_node_id` UUID per upload batch, one row per file with that file's `ip_filemeta.node_id` as `file_node_id` (+ its own `node_id`, `created_by`, timestamps, `deleted_at`). The owning record stores the `multiple_node_id` (`budget_allocation.multiple_node_id`). No FKs, by convention (`01 - table/18`) |
+### Request for Allocation (RFA/LAA)
 
-**Denormalization, twice:** `budget_line_items` carries both `budget_req_project_id` (the real
-parent) and `budget_reference_number` (the grandparent header), and `budget_req_project` carries
-both `budget_req_program_id` (the real parent) and `budget_reference_number` (same grandparent).
-Both are intentional — see the comments in `03 - alter_table/03` and `03 - alter_table/05` — so
-existing header-level joins/counts keep working without walking the full chain. The service layer
-keeps both columns in sync on write; nothing in the DB enforces that they agree.
-
-### 2.2 Vendors & procurement
-
-API: `app/routes/vendor.php`, `app/routes/purchase-order.php` (see `app/routes/README.md`).
-Pages: `app/pages/po/{page,form,readone}.php`.
+- **Status:** Built — `rfa-laa-memo-request-page.php` sets `$alloc_type='RFA/LAA'` and includes the same `memo-req-page.php`; RFA rows additionally get Create CAF / Print CAF. CFA cannot be created from either sidebar page (`$_mrq_allowedTypes = ['CBA','RFA','LAA']` in memo-req-page.php line 13 feeds `$cbaAllowedTypes`), but the CFA option, CFA print and CFA earmark/COB logic remain in `budget-allocation-form.php`, `BudgetLineItemService`, `CobService`.
+- **Code:** `views/RfaLaaMemoRequestPage.php` → `app/pages/rfa-laa-memo-request-page.php` → `memo-req-page.php` (same includes/routes/services as CBA) + `app/pages/form/caf-form.php` → `app/routes/caf.php` (`GET /caf/all|list|read/{id}`, `POST /caf/add`, `PATCH /caf/update/{id}`, `DELETE /caf/delete/{id}`) → `app/services/CafService.php`; print `RfaPrintService`, `LaaPrintService`, `CafPrintService` (`/print/payload/caf/{id}`).
+- **Tables written:** `fims.budget_allocation` (type RFA/LAA, `parent_id` = CBA), `fims.budget_line_item_earmark` (convert parent CBA earmark + own 'converted' row), `fims.budget_line_items.obligation` (only for legacy parent earmarks with `balance_applied=FALSE`), `fims.caf`, `fims.status_change_log`, `fims.file_attachments`/`fims.ip_filemeta`. **Tables read:** same lookups as CBA, plus `fims.fiscal_year` (CAF validation).
+- **Status workflow:** same `budget_allocation` chain as CBA (Draft → For Review → For Division Manager → For Department Manager → Approved / Returned*); final approval requires a `parent_id` CBA with enough active earmark. `fims.caf` has no status (soft delete only).
 
 ```mermaid
 erDiagram
@@ -731,7 +714,7 @@ erDiagram
   - `fims.journal_entry_vouchers` and `fims.journal_entry_voucher_lines`: see the Disbursement Voucher section. Standalone JEVs have `dv_id` NULL and `jev_type` SETUP, and are inserted with `status_id` = DRAFT. DV-linked SETUP JEVs are inserted by `persistJournalEntry` without a `status_id` (NULL until postJev sets POSTED).
   - `fims.v_journal_entry_vouchers` (`05 - views/02`) is the read-only register view and includes `jev_status`, `dv_status`, and `jev_classification`.
 
-### Check Disbursements
+### Disbursement Preparation
 
 - **Status:** Built, with stubs — Check preparation, registry (blank stock), releases (unified, with real SMTP), cancellation/replacement, and inventory/RAF are wired. `getSubsidyReport`, `getReleaseDocuments`, and `saveDriveLink` are stubs ("schema migration pending").
 - **Code:** `views/CheckDisbursements.php` → `app/pages/check-disbursement-voucher-page.php`. Route `app/routes/check-processing.php` (`/check-processing/...`): `preparation/{bank-accounts,dvs-for-prep,checks,unused-checks/{bankId},cash-availability,check/{id},check/{id}/history,check/{id}/mark-printed,check/{id}/set-status,save}`, `registry/{list,summary,series-list,booklets,add-batch,update-status,{id}}`, `releases/{save,unclaimed,email-log,departments,pending/{deptId},acknowledgment-list,dv-monitoring,bulk-send-notice,bulk-resend-email/{logId},{id}/send-notice|follow-up|set-claimant|acknowledge|update-status|mark-stale|record-dv-return}`, `cancellation/{kpis,lookups,list,cancel,replace,{id},{id}/history}`, `raf/{summary,years,list}`, `print-agent-package`. Service: `app/services/CheckProcessingService.php`. `saveCheck` calls `DisbursementVoucherService::changeStatus(dv,'RELEASED')`.
@@ -964,7 +947,7 @@ erDiagram
     type_of_fund ||--o{ budget_line_items : "soft: type_of_fund_id"
     component_type ||--o{ budget_line_items : "soft: component_id"
 ```
-- **Table notes:** no own tables. Per line: approved = `suggested_amount`; revision = `adjustment`; revised = suggested+adjustment; cba_requested = Σ`original_amount` of CBA/CFA earmarks with `balance_applied` and status active/converted; rfa_approved / laa_issued = Σ`amount` of 'converted' rows of RFA / LAA allocations; available = revised − cba; remaining = revised − rfa − laa (`CobService::earmarkSql()`/`lineAmountExprs()`). Attachments joined by (`budget_req_program_id`, `project_code`) for a count.
+- **Table notes:** no own tables. Per line: approved = `suggested_amount`; revision = `adjustment`; revised = `budget_line_items.revised_amount`; cba_requested = Σ`original_amount` of CBA/CFA earmarks with `balance_applied` and status active/converted; rfa_approved / laa_issued = Σ`amount` of 'converted' rows of RFA / LAA allocations; available = revised − cba; remaining = revised − rfa − laa (`CobService::earmarkSql()`/`lineAmountExprs()`). Attachments joined by (`budget_req_program_id`, `project_code`) for a count.
 
 ### RFA / LAA Monitoring
 
@@ -1288,144 +1271,1131 @@ erDiagram
 - **Status workflow:** none.
 
 ```mermaid
-flowchart TD
-    start([Start — Originating creates a DV]) --> p1[POST /voucher/add<br/>disbursement_vouchers status = DRAFT]
-    p1 --> p2[Originating submits for review<br/>status = FOR_FMD_REVIEW]
-    p2 --> d1{FMD approves?}
-    d1 -- No --> rej([REJECTED / returned])
-    d1 -- Yes --> p3[status = FOR_ACCOUNTING]
-    p3 --> p4[Accounting runs saveJournalEntry book_id, jev_classification<br/>creates the SETUP JEV, status DRAFT]
-    p4 --> d2{JEV balanced — total_debit = total_credit?}
-    d2 -- No, fix lines --> p4
-    d2 -- Yes --> p5[changeStatus FOR_ACCOUNTING to FOR_TREASURY<br/>BEGIN transaction, update dv.status_id]
-    p5 --> p6[postJev on SETUP JEV<br/>JEV DRAFT to POSTED, posted_by/posted_at set]
-    p6 --> p7[/INSERT one general_ledger row per JEV line<br/>post-once via partial unique index<br/>book_id, source_module, doc_ref_no copied down/]
-    p7 --> d3{postJev succeeded?}
-    d3 -- No --> rb([ROLLBACK the whole transaction])
-    d3 -- Yes --> p8[COMMIT<br/>v_journals and v_trial_balance reflect it immediately]
-    p8 --> d4{DV released or cancelled?}
-    d4 -- Cancelled FOR_TREASURY to CANCELLED --> rv[reverseJev on SETUP JEV<br/>JEV to REVERSED, offsetting GL rows inserted]
-    rv --> endc([End — reversed, ledgers net to 0.00])
-    d4 -- Released --> p9[Treasury runs prepareCheck<br/>FOR_TREASURY to RELEASED — terminal]
-    p9 --> p10[postPaymentJev dv_id, bank_account, net_amount, CHECK NO.]
-    p10 --> d5{SETUP JEV routed through Accounts Payable?}
-    d5 -- No --> noop([No-op — nothing to settle])
-    d5 -- Yes --> d6{Bank account has a Cash account mapped?}
-    d6 -- No --> err([Error — configure bank_accounts.account_code first])
-    d6 -- Yes --> p11[INSERT 2nd JEV jev_type = PAYMENT, source_module = TREASURY<br/>Dr Accounts Payable / Cr bank Cash account]
-    p11 --> p12[postJev on the PAYMENT JEV<br/>settles AP, credits Cash]
-    p12 --> endr([End — paid and fully posted])
-    noop --> endr
+erDiagram
+    program ||--o{ sub_program : "program_code"
+    program ||--o{ project : "program_code"
+    sub_program ||--o{ project : "sub_program_code"
+    program {
+        varchar64 program_code PK
+        varchar program_name
+    }
+    sub_program {
+        varchar64 sub_program_code PK
+        varchar sub_program_name
+        varchar64 program_code FK
+    }
+    project {
+        varchar30 project_code PK
+        varchar project_name
+        varchar64 program_code FK
+        varchar64 sub_program_code FK
+    }
 ```
+- **Table notes:**
+  - fims.program (`01 - table/03`): a natural-key PK (program_code). It has no status or audit columns.
+  - fims.project (`04`): alter `01 - project_add_sub_program_code` added `sub_program_code` with an FK. Alter 14 widened `project_code` to VARCHAR(30). Alters 11 and 15 widened program_code and sub_program_code to VARCHAR(64).
 
-> A JEV row is only ever created by `saveJournalEntry()` at the `FOR_ACCOUNTING` stage — there is no
-> auto-created empty JEV on DV add. `sl_code`/`sl_detail_id`/`rc_id` ride straight from the JEV line
-> onto each posted `general_ledger` row — there is no separate SL posting step. `postJev()` is
-> idempotent (a retried `FOR_ACCOUNTING → FOR_TREASURY` is rejected by the state machine, so no
-> double-post); `RELEASED` is terminal, so `FOR_TREASURY → CANCELLED` is the only point a posted JEV
-> can still be reversed.
+### Sub Program
 
-**Standalone (no-DV) JEVs** skip this whole DV pipeline — Accounting prepares a period-end
-adjusting/closing entry directly via the Add-JEV form (`createStandaloneJev()`, `dv_id IS NULL`,
-always `DRAFT`), then posts it with its own explicit action (`postStandaloneJev()` →
-`GeneralLedgerService::postJev()`), since there's no `FOR_ACCOUNTING → FOR_TREASURY` transition to
-ride on.
+- **Status:** Built — The page does CRUD, plus a batch add of several sub-programs under one program.
+- **Code:** `app/pages/sub-program-page.php`; `app/routes/sub_program.php` (`GET /sub_program/next-code|all|list|read/{code}`, `POST /sub_program/add`, `POST /sub_program/add-with-items` (createBatch), `PUT /sub_program/update/{code}`, `DELETE /sub_program/delete/{code}`), plus `GET /program/all`; `app/services/SubProgramService.php`.
+- **Tables written:** fims.sub_program. **Tables read:** fims.program.
+- **Status workflow:** none.
 
-**Design notes (as actually built, differences from the original draft called out):**
+```mermaid
+erDiagram
+    program ||--o{ sub_program : "program_code"
+    sub_program ||--o{ project : "sub_program_code"
+    program {
+        varchar64 program_code PK
+        varchar program_name
+    }
+    sub_program {
+        varchar64 sub_program_code PK
+        varchar sub_program_name
+        varchar64 program_code FK "NOT NULL"
+    }
+    project {
+        varchar30 project_code PK
+        varchar64 sub_program_code FK
+    }
+```
+- **Table notes:**
+  - fims.sub_program (`01 - table/10`): the child of program. "add-with-items" inserts several sub-programs at once, not projects.
 
-- **JEV gets `status_id`**, resolved through `fims.settings_status` with
-  `status_for = 'journal_entry_voucher'` — same shared-lookup pattern as
-  `disbursement_vouchers.status_id`. **Correction (2026-11-15):** the 2026-11-14 draft collapsed this
-  to two statuses (`DRAFT → POSTED`) and dropped `APPROVED`; `APPROVED` is now back in the seed
-  (`02 - sample_data/11` seeds all four: `DRAFT`, `APPROVED`, `POSTED`, `REVERSED`, and
-  `journal-entry-voucher.php` has a badge for each). **In practice the posting path still writes
-  `DRAFT → POSTED` directly** — `postJev()`'s own docstring says "flips it DRAFT → APPROVED → POSTED"
-  but the code sets `status_id` to `POSTED` in one step; no code path currently writes the `APPROVED`
-  row. It exists in the lookup/UI for the lifecycle's sake, not as an observed intermediate state.
-- **Posting is triggered by the existing `FOR_ACCOUNTING → FOR_TREASURY` transition**, not a separate
-  "approve JEV" action — `DisbursementVoucherService::changeStatus()` now wraps its own status
-  update **and** `GeneralLedgerService::postJev()` in one `BEGIN…COMMIT`/`ROLLBACK` (that method
-  wasn't transactional before this change; it is now).
-- **`general_ledger.jev_line_id` is unique only among *original* postings** — a **partial unique
-  index** (`WHERE reversed_gl_id IS NULL`), not a plain `UNIQUE` constraint as first drafted. A plain
-  `UNIQUE` would have made reverseJev() impossible: a reversing row legitimately re-states the same
-  `jev_line_id` with debit/credit swapped. `postJev()` is still idempotent — re-running it against an
-  already-`POSTED` JEV is a no-op success.
-  `fiscal_yr` has no FK (same looseness as `journal_entry_vouchers.fiscal_yr` itself).
-- **Reversal only fires on `FOR_TREASURY → CANCELLED`**, not "a `RELEASED` DV later cancelled" as the
-  draft said — `DisbursementVoucherService::TRANSITIONS` makes `RELEASED` terminal (nothing moves out
-  of it), so `FOR_TREASURY → CANCELLED` is the *only* transition where a DV can be cancelled after
-  its JEV was already posted. `reverseJev()` inserts one offsetting `general_ledger` row per original
-  line (debit/credit swapped, `reversed_gl_id` pointing back) and flips the JEV to `REVERSED` — never
-  deletes a posted row, same "never delete, link instead" convention as
-  `check_cancellations.replacement_check_id`.
-- **SL (Subsidiary Ledger) and Responsibility Center need no new table** —
-  `journal_entry_voucher_lines.sl_code`/`sl_detail_id`/`rc_id` already exist (§2.3); posting just
-  copies them onto the `general_ledger` row so SL-level reports can filter `general_ledger` directly
-  instead of re-joining back to the JEV.
+### Chart of Accounts
 
-**Design notes — 2026-11-15 extension:**
+- **Status:** Built — The page does CRUD, toggles status and filters by region/project scope. A soft delete sets status to Inactive.
+- **Code:** `app/pages/chart-of-accounts-page.php`; `app/routes/chart_of_accounts.php` (`GET /chart_of_accounts/all`, `/chart-of-accounts/my-scope|all|regions|projects|list|read/{id}`, `POST /chart-of-accounts/add`, `PUT /chart-of-accounts/update/{id}`, `PATCH /chart-of-accounts/{id}/toggle-status`, `DELETE /chart-of-accounts/delete/{id}`); `app/routes/accounting.php` (`GET /accounting/coa/search`, `/accounting/sl/by-account`, `/accounting/sl/search`, `POST /accounting/sl/create`); services `app/services/ChartOfAccountsService.php`, `app/services/AccountingService.php`.
+- **Tables written:** fims.chart_of_accounts. The delete is a soft delete that sets status = 'Inactive' (`ChartOfAccountsService.php:285`). `AccountingService::createChildAccount` inserts SL rows. **Tables read:** fims.responsibility_code (the regions lookup), fims.project (the projects lookup).
+- **Status workflow:** `status` is 'Active' or 'Inactive', switched by toggle-status.
 
-- **Payment settlement is a second JEV, not an edit** (`03 - alter_table/31`). The SETUP JEV
-  Accounting posts at `FOR_ACCOUNTING → FOR_TREASURY` typically raises Accounts Payable (Cr
-  `2-01-01-010`); nothing used to settle it when Treasury actually paid — AP sat forever at its
-  setup-time balance and Cash never moved. `CheckProcessingService::prepareCheck()` now calls
-  `GeneralLedgerService::postPaymentJev()` right after the DV is `RELEASED`, which **inserts a distinct
-  `journal_entry_vouchers` row** (`jev_type = 'PAYMENT'`, `source_module = 'TREASURY'`,
-  `doc_ref_no = 'CHECK NO. …'`, its own JEV number) — Dr Accounts Payable / Cr the **bank account's
-  mapped Cash account** (`bank_accounts.account_code`) — and posts it through the same `postJev()`. A
-  bank account with no `account_code` mapped **errors out** (doesn't guess); a SETUP JEV that never
-  routed through AP (paid straight from Cash) is a clean **no-op, not an error**. This is why `dv_id`
-  is no longer plain-`UNIQUE` — one DV legitimately has a SETUP JEV *and* one or more PAYMENT JEVs.
-- **`jev_type` (SETUP/PAYMENT) and `jev_classification` (REGULAR/ACCRUAL/…) are orthogonal**
-  (`03 - alter_table/32`). `jev_type` is GL-posting mechanics — it's what the partial unique index and
-  `postPaymentJev()` key off to tell Accounting's setup entry from Treasury's settlement entry for the
-  same DV. `jev_classification` is a business/reporting label; a SETUP or PAYMENT JEV can carry any
-  classification, and nothing about posting behavior changes with it. It defaults to `REGULAR` so every
-  pre-existing JEV backfills cleanly.
-- **Book is tagged on the JEV, never on the DV** (`03 - alter_table/30`). An earlier cut put `book_id`
-  on `disbursement_vouchers` and copied it down, but that framed it as an Originating-time decision
-  when it's really Accounting's call when they prepare the Journal Entry — so `disbursement_vouchers`
-  has **no `book_id`**; it's set in `persistJournalEntry()` and copied onto each `general_ledger` row
-  at post time (snapshot, not a live join — same as `fiscal_yr`). `fims.checks`/`ada_releases` need no
-  book column of their own: CKDJ/ADADJ read it through the JEV they join to. `fims.books` **replaced an
-  earlier attempt** to reuse `fims.type_of_fund` as the "Book" dimension — that was the wrong axis
-  (fund cluster, not office/program entity); `type_of_fund` stays as-is for `budget_line_items`.
-- **Standalone JEVs reuse the whole posting machinery** (`03 - alter_table/33`). `dv_id` is nullable
-  so `createStandaloneJev()` can write a `DRAFT` JEV with no DV; the partial unique index
-  (`WHERE jev_type = 'SETUP'`) tolerates any number of them because Postgres never treats two NULLs as
-  equal. `postStandaloneJev()` is just a thin wrapper over `GeneralLedgerService::postJev()` — the
-  standalone equivalent of the DV transition that fires posting. `fims.v_journals`'s DV join became a
-  `LEFT JOIN` for exactly this reason (an INNER JOIN would have hidden every standalone posting).
+```mermaid
+erDiagram
+    chart_of_accounts ||--o{ chart_of_accounts : "parent_account_id (GL -> SL)"
+    responsibility_code ||--o{ chart_of_accounts : "region_code -> rc_code"
+    project ||--o{ chart_of_accounts : "project_code"
+    chart_of_accounts ||--o{ vendors : "coa_account_id"
+    chart_of_accounts ||--o{ vendors : "soft: sl_code = account_id"
+    books ||--o{ chart_of_accounts : "soft: books (comma-separated codes)"
+    chart_of_accounts {
+        varchar10 account_id PK
+        varchar30 account_code UK
+        varchar account_title
+        varchar account_type
+        varchar10 parent_account_id FK
+        bool posting_allowed
+        varchar status "Active|Inactive"
+        varchar30 region_code FK
+        varchar30 project_code FK
+        bool for_budget_proposal
+        varchar100 account_purpose
+        varchar255 books
+    }
+    responsibility_code {
+        varchar10 rc_id PK
+        varchar30 rc_code UK
+        varchar rc_name
+    }
+    project {
+        varchar30 project_code PK
+        varchar project_name
+    }
+    books {
+        serial book_id PK
+        varchar code UK
+        varchar name
+    }
+    vendors {
+        serial vendor_id PK
+        varchar10 coa_account_id FK
+        varchar100 sl_code
+    }
+```
+- **Table notes:**
+  - fims.chart_of_accounts (`01 - table/06`): a self-referencing tree.
+    - **An SL is a leaf child** created by `/accounting/sl/create`. The child gets account_id = MAX(numeric id) + 1, account_code = parent code + `-NN`, posting_allowed = TRUE and the parent's account_type (`AccountingService.php:111-161`).
+    - Alter `01 - chart_of_accounts_add_region_project` added `region_code` (FK to responsibility_code.**rc_code**, ON DELETE SET NULL) and `project_code` (FK to project, ON DELETE SET NULL).
+    - Alter 12 added `for_budget_proposal` (and seeded it TRUE for a list of codes). Alter 36 added `account_purpose`. Alter 39 added `books` (comma-separated text).
+    - Other column: `source_document`.
+    - The old `sl_masters` / `sl_details` tables were dropped by alter 37.
 
----
+### Responsibility Center
 
-## 3. Cross-schema links & known gaps
+- **Status:** Built — The page does CRUD, toggles status and hard-deletes.
+- **Code:** `app/pages/responsibility-center-page.php`; `app/routes/responsibility_center.php` (`GET /responsibility-center/all|list|read/{id}`, `POST /responsibility-center/add`, `PUT /responsibility-center/update/{id}`, `PATCH /responsibility-center/{id}/toggle-status`, `DELETE /responsibility-center/delete/{id}`); `app/services/ResponsibilityCenterService.php`.
+- **Tables written:** fims.responsibility_code. **Tables read:** fims.responsibility_code (the parent picker).
+- **Status workflow:** `status` is 'Active' or 'Inactive'.
 
-| From | To | Enforced? | Note |
-|---|---|---|---|
-| `uac.users.region_code` | `fims.responsibility_code.rc_code` | **Yes** (FK) | Scopes a user to one RCA code for Chart-of-Accounts row-level security; `NULL` = unrestricted. Superadmin (`user_level_id` containing `-1`) always bypasses it regardless |
-| `uac.departments.rc_id` | `fims.responsibility_code.rc_id` | **No — can't be**: type mismatch | `departments.rc_id` is `int4`; `responsibility_code.rc_id` is `VARCHAR(10)`. The column exists ("Responsibility Center Code for financial tracking") but cannot physically FK to the table it's named after. Same issue on `uac.offices.rc_id` |
-| `fims.expense_class` | *(nothing)* | — | Seeded with `CO`/`PS`/`MOOE`/`EO` but **no longer referenced by any FK** — `budget_req.expense_class_id` (its only consumer) was dropped in `03 - alter_table/02 - budget_req_remove_expense_class_flow.sql`. `purchase_orders.expense_class` is a separate, differently-valued free-text column, not a link to this table. Orphaned lookup table; confirm nothing reads it before dropping |
-| `fims.budget_line_items.component_id` / `.type_of_fund_id` | `fims.component_type` / `fims.type_of_fund` | No | Named and seeded to match, but no FK constraint exists yet (see table comment in `03 - alter_table/06`) |
-| `fims.budget_revision.from_budget_line_item_id` / `.to_budget_line_item_id` | `fims.budget_line_items.budget_line_item_id` | No | New in `03 - alter_table/23`; no FK, so nothing stops a dangling value — a Draft request's Program edit deletes and re-creates its lines — and a revision whose line is gone (or that was filed before budget lines were revised) still lists, with the line's details blank. The legacy `from_budget_req_id` / `to_budget_req_id` columns point at nothing |
-| `fims.budget_allocation.{program,sub_program,project}_id` | `fims.{program,sub_program,project}` | No — can't be | Those tables are keyed by `*_code VARCHAR`, not an integer id; `budget_allocation` stores integers. Intentionally unconstrained per `03 - alter_table/08` |
-| `fims.disbursement_vouchers.rfa_allocation_id` | `fims.budget_allocation.allocation_id` | No | `fims.budget_allocation` has no CRUD backend of its own yet (see §2.1); `DisbursementVoucherService::fetchRfaOptions()`/`fetchRfaDetail()` are a read-only lookup over it, no FK |
-| `fims.budget_allocation.dv_id` | `fims.disbursement_vouchers.dv_id` | No | The reverse link (which DV an RFA row is currently drawn into). Same "no CRUD backend yet" reasoning as the row above; `DisbursementVoucherService` enforces the one-RFA-backs-one-active-DV-at-a-time rule in PHP, not the schema. LAA rows never populate this — only RFA is wired into the DV module so far |
-| `fims.disbursement_vouchers.requesting_department_id` | `uac.departments.department_id` | No | Snapshotted from the selected RFA at save time, same unconstrained convention as the RFA link itself |
-| `fims.disbursement_vouchers.account_code` | `fims.chart_of_accounts.account_code` | No | Required and `posting_allowed`-checked in `DisbursementVoucherService::prepare()`, not a DB FK — mirrors `purchase_order_items.account_code`'s "FK targets an alternate key" exception in §2.2, except here there's no FK at all, only the PHP check |
-| `fims.checks.dv_id` | `fims.disbursement_vouchers.dv_id` | No | Only a `FOR_TREASURY` DV can get a check prepared against it (`CheckProcessingService::saveCheck()`), checked in PHP, no DB FK — see §2.6 |
-| `fims.property_records.po_number` | `fims.inspection_acceptance_report.po_number` | No | Joined at read time (with or without the `PO-` prefix); a PO must have an IAR before it can be searched / saved. `line_transaction[].inv_id` is unique across all rows — checked in PHP (JSONB cannot carry a key) |
-| `fims.inspection_acceptance_report.po_number` | `fims.purchase_orders.po_number` | No | Picked from the Budget Allocation, not typed: `PoDrService` only accepts a `po_number` of a `fims.budget_allocation` row with `allocation_type = 'RFA'` (checked in PHP, see DEVELOPER-GUIDE §8.4). It does **not** reference `purchase_orders` — the PO module has no data yet — and there is no DB FK to `budget_allocation.po_number` either (it is not unique there) |
-| `fims.inspection_acceptance_report.line_transaction[].lines[].account_code` | `fims.chart_of_accounts.account_code` | No | Inside a JSONB array, so there can be no FK: `PoDrService::clean()` checks that each code exists in the chart of accounts and stores the account title next to it (a later title change in the chart does not rewrite it) |
-| `fims.fund_tracking.{tracking_type_id,nature_of_fund_id,agency_name,status_id,parent_id}` | `fund_tracking_type` / `nature_of_fund` / `agency` (by name) / `settings_status` / `fund_tracking` (self) | No | `fims.fund_tracking` declares no FOREIGN KEYs at all; `validateReferences()` checks every id/code in PHP — see §2.7 |
-| `fims.pricing_requests` / `fims.pricing_request_attachments` | *(no table exists)* | — | `PricingRequestService` targets both, but no SQL file in this repo creates either — see §2.7 / developer guide §7.6. Every `/pricing_requests/*` endpoint SQL-errors against a fresh install |
+```mermaid
+erDiagram
+    responsibility_code ||--o{ responsibility_code : "parent_rc_id"
+    responsibility_code ||--o{ chart_of_accounts : "rc_code = region_code"
+    responsibility_code ||--o{ users : "rc_id (uac.users)"
+    responsibility_code ||--o{ bank_accounts : "soft: rc_id"
+    responsibility_code {
+        varchar10 rc_id PK
+        varchar30 rc_code UK
+        varchar rc_name
+        varchar10 parent_rc_id FK
+        varchar office_type
+        varchar status "Active|Inactive"
+        varchar source_document
+        bool is_budget_holding_rc
+    }
+    chart_of_accounts {
+        varchar10 account_id PK
+        varchar30 region_code FK
+    }
+    users {
+        int user_id PK
+        varchar10 rc_id FK
+    }
+    bank_accounts {
+        serial bank_account_id PK
+        varchar50 rc_id
+    }
+```
+- **Table notes:**
+  - fims.responsibility_code (`01 - table/07`): a self-referencing tree. No alters touch its columns.
+  - Alter `09 - users_replace_rc_code_with_rc_id` gave `uac.users` an `rc_id` FK to this table (ON DELETE SET NULL) and dropped `users.rc_code`.
+  - budget_allocation.requesting_rc_id also points here (alter 14). That table is out of scope for this file.
 
-None of the above are bugs to silently "fix" by adding a constraint — several are deliberate
-(per the cited comments). Treat this table as a map of where the schema's actual guarantees stop,
-not a to-do list.
+### Banks Accounts
 
----
+- **Status:** Built — The page covers the list, stats, dormancy alerts, create/update, status change and Google Drive document links.
+- **Code:** `app/pages/bank-management-page.php` (view `views/BankManagementPage.php`); `app/routes/bank-management.php` (`GET /bank-management/stats|list|dormancy-alerts|lookup/responsibility-centers|lookup/fund-sources|{id}|{id}/documents`, `POST /bank-management/store|{id}/update|{id}/status|{id}/documents/link|{id}/documents/remove`); `app/services/BankManagementService.php`.
+- **Tables written:** fims.bank_accounts, fims.bank_account_documents (link insert and hard DELETE), fims.bank_account_audit_log (CREATE / UPDATE / STATUS_CHANGE with before/after JSONB). **Tables read:** fims.responsibility_code. The fund-sources lookup is a `SELECT DISTINCT fund_source` from bank_accounts itself.
+- **Status workflow:** `status` is ACTIVE, DORMANT or CLOSED (`BankManagementService.php:86`). `is_active` is kept in sync (TRUE only when ACTIVE). A "dormancy alert" is an ACTIVE account whose last_transaction_date is 300-365 days old.
+
+```mermaid
+erDiagram
+    bank_accounts ||--o{ bank_account_documents : "bank_account_id"
+    bank_accounts ||--o{ bank_account_audit_log : "soft: bank_account_id"
+    responsibility_code ||--o{ bank_accounts : "soft: rc_id"
+    bank_accounts {
+        serial bank_account_id PK
+        varchar account_name
+        varchar account_number
+        varchar bank_name
+        varchar account_type
+        varchar account_classification
+        varchar fund_source "free text"
+        varchar50 rc_id
+        bool is_main_depository
+        numeric current_balance
+        date last_transaction_date
+        varchar status "ACTIVE|DORMANT|CLOSED"
+    }
+    bank_account_documents {
+        serial document_id PK
+        int bank_account_id FK
+        varchar link_name
+        varchar gdrive_link
+        int added_by
+    }
+    bank_account_audit_log {
+        serial log_id PK
+        int bank_account_id
+        varchar action "CREATE|UPDATE|STATUS_CHANGE"
+        jsonb before_data
+        jsonb after_data
+        int performed_by
+    }
+    responsibility_code {
+        varchar10 rc_id PK
+        varchar rc_name
+    }
+```
+- **Table notes:**
+  - fims.bank_accounts (`01 - table/26`): base columns are account_name, account_number, bank_name, office_type, department_type, current_balance, is_active, created_by and timestamps.
+    - Alter 23 added account_type, account_classification, bank_branch, fund_source, department_id, is_main_depository, date_opened, last_transaction_date and status.
+    - Alter 24 dropped the uac.departments FK and renamed department_id to **rc_id VARCHAR(50)**. **No FK was re-added.** The column is wider than responsibility_code.rc_id (VARCHAR(10)).
+    - It is also referenced by fund_transfers (real FK) and by cash_position, check_register and bank_transactions (soft links).
+  - fims.bank_account_documents (created in alter 23): has a real FK to bank_accounts. Rows are hard-deleted on remove.
+  - fims.bank_account_audit_log (created in alter 23): **has no FK constraint**, only an index on bank_account_id.
+
+### Vendors
+
+- **Status:** Built — The page does list, stats, create and update. It has no delete endpoint; status is used instead.
+- **Code:** `app/pages/vendors-page.php`; `app/routes/vendor.php` (`GET /vendors/types|all|list|read/{id}`, `POST /vendors/add`, `PUT /vendors/update/{id}`); `app/services/VendorService.php`.
+- **Tables written:** fims.vendors. **Tables read:** fims.vendor_types, fims.chart_of_accounts (joined twice: `c` on coa_account_id = GL and `s` on sl_code = SL, `VendorService.php:105-106`).
+- **Status workflow:** `status` is ACTIVE or anything else (inactive). A NULL status counts as ACTIVE.
+
+```mermaid
+erDiagram
+    vendor_types ||--o{ vendors : "vendor_type"
+    chart_of_accounts ||--o{ vendors : "coa_account_id (GL)"
+    chart_of_accounts ||--o{ vendors : "soft: sl_code = account_id (SL)"
+    vendors {
+        serial vendor_id PK
+        varchar vendor_code UK
+        varchar vendor_name
+        varchar20 vendor_type FK
+        varchar tin
+        varchar tax_classification
+        bool is_vat_registered
+        varchar bank_name
+        varchar bank_account_number
+        varchar status "ACTIVE default"
+        varchar10 coa_account_id FK
+        varchar100 sl_code
+    }
+    vendor_types {
+        serial vendor_type_id PK
+        varchar20 vendor_type UK
+        text description
+        bool is_active
+    }
+    chart_of_accounts {
+        varchar10 account_id PK
+        varchar30 account_code UK
+        varchar account_title
+        varchar10 parent_account_id FK
+    }
+```
+- **Table notes:**
+  - fims.vendors (`01 - table/08`): the FK on vendor_type points to vendor_types.**vendor_type** (a text natural key), not to its id. Alter `03 - alter/50` added `coa_account_id` (FK to chart_of_accounts.account_id, ON DELETE SET NULL) and `sl_code` VARCHAR(100). `sl_code` has no FK but holds a chart_of_accounts.account_id (the SL child).
+  - fims.vendor_types (`07`): seeded with SUPPLIER, CONTRACTOR, CONSULTANT, SERVICE_PROVIDER, EMPLOYEE.
+
+### Fund Source
+
+- **Status:** Empty placeholder (0-byte page) — `app/pages/fund-source-page.php` is 0 bytes.
+- **Code:** none — the page file is 0 bytes.
+- **Tables:** No tables yet. "Fund source" exists today only as free-text columns: `bank_accounts.fund_source` (alter 23), `disbursement_vouchers.fund_source` and `fund_transfers.fund_source_id` (an INTEGER with no target table). `shared.fund_sources` (from TREASURY) does not exist here (`BankManagementService.php:13-17`, `CashPositionService.php:22`).
+
+### Program Sources
+
+- **Status:** Empty placeholder (0-byte page) — `app/pages/program-sources-page.php` is 0 bytes.
+- **Code:** none — the page file is 0 bytes.
+- **Tables:** No tables yet. `budget_line_items.program_source_code` and `program_uses` were added in alters 17/18 and dropped again in alter 22.
+
+### Accountable Officer
+
+- **Status:** Empty placeholder (0-byte page) — `app/pages/accountable-officer-page.php` is 0 bytes.
+- **Code:** none — the page file is 0 bytes.
+- **Tables:** No tables yet. Nothing in `_assets/sql` mentions accountable officers.
+
+## Fund Sourcing
+
+### Fund Sourcing Dashboard
+
+- **Status:** Partial — The SARO/NCA/Trust/Supplemental figures are live. The Fund Transfer / Borrowing card and tab are static sample data (`FSD_STATIC`): the page calls `/fund_transfer/summary` and `/fund_transfer/list`, and **neither route exists**.
+- **Code:** `app/pages/fund-sourcing-dashboard-page.php`; `app/routes/fund_tracking.php` (`GET /fund_tracking/dashboard`, `GET /fund_tracking/list`), `/fiscal_year/all`; `app/services/fund_trackingServices.php`.
+- **Tables written:** none. **Tables read:** fims.fund_tracking, fims.fund_tracking_type, fims.nature_of_fund, fims.agency, fmd.supplemental_fund_details (for supplemental totals), fims.fiscal_year.
+- **Status workflow:** none.
+
+```mermaid
+erDiagram
+    fund_tracking_type ||--o{ fund_tracking : "soft: tracking_type_id"
+    nature_of_fund ||--o{ fund_tracking : "soft: nature_of_fund_id"
+    fund_tracking ||--o| supplemental_fund_details : "soft: fund_tracking_id (fmd schema)"
+    fund_tracking {
+        serial id PK
+        int fiscal_year
+        int tracking_type_id
+        int nature_of_fund_id
+        numeric amount
+        varchar agency_name
+        int parent_id
+        timestamp deleted_at
+    }
+    fund_tracking_type {
+        serial fund_tracking_type_id PK
+        varchar fund_tracking_code
+    }
+    nature_of_fund {
+        serial nature_of_fund_id PK
+        varchar name UK
+    }
+    supplemental_fund_details {
+        int fund_tracking_id UK
+        varchar status
+        numeric budgetary_requirement
+    }
+```
+- **Table notes:**
+  - The dashboard payload (`government_funds`, `special_funds`) is computed from fund_tracking by type and nature (`fund_trackingServices.php` ~1000-1060).
+  - No `cross_access_funds` is computed because `treasury.fund_transfers` does not exist (`routes/fund_tracking.php:361`). fims.fund_transfers (FTLA) does exist but is not wired to the dashboard.
+
+### Supplemental Funds
+
+- **Status:** Built — a flat list of fund_tracking rows with nature_of_fund = SUPPLEMENTAL. It reuses `form/saro-processing-form.php` and the 1:1 supplemental details block. That details table has no DDL in the repo.
+- **Code:** `app/pages/supplemental-funds-page.php` + `app/pages/form/saro-processing-form.php`; `app/routes/fund_tracking.php` (`list`, `read/{id}`, `add`, `update/{id}`, `delete/{id}`, `GET /fund_tracking/supplemental_status_summary`), `/fund-tracking-type/all`, `/fiscal_year/all`, `/upload/*`; `app/services/fund_trackingServices.php`.
+- **Tables written:** fims.fund_tracking, fmd.supplemental_fund_details (upsert, `fund_trackingServices.php:1399`), fims.ip_filemeta, fims.file_attachments. **Tables read:** fims.fund_tracking_type, fims.nature_of_fund, fims.settings_status, shared.v_rc_regions (validates regional_office; no SQL in the repo).
+- **Status workflow:** `supplemental_fund_details.status` goes IN_PROCESS → AT_NDRRMC → AT_OP → APPROVED / DENIED. A record with no details row counts as IN_PROCESS (`fund_trackingServices.php:50, 1190-1204`).
+
+```mermaid
+erDiagram
+    nature_of_fund ||--o{ fund_tracking : "soft: nature_of_fund_id = SUPPLEMENTAL"
+    fund_tracking_type ||--o{ fund_tracking : "soft: tracking_type_id (SARO|NCA|OR)"
+    fund_tracking ||--o{ fund_tracking : "soft: parent_id"
+    fund_tracking ||--o| supplemental_fund_details : "soft: fund_tracking_id (UNIQUE)"
+    v_rc_regions ||--o{ supplemental_fund_details : "soft: regional_office = rc_name"
+    fund_tracking ||--o{ file_attachments : "soft: multiple_node_id"
+    fund_tracking {
+        serial id PK
+        int fiscal_year
+        int tracking_type_id
+        varchar reference_number
+        int nature_of_fund_id
+        numeric amount
+        uuid multiple_node_id
+        int status_id
+        int parent_id
+        timestamp deleted_at
+    }
+    supplemental_fund_details {
+        int fund_tracking_id UK
+        varchar status "IN_PROCESS|AT_NDRRMC|AT_OP|APPROVED|DENIED"
+        varchar regional_office
+        numeric budgetary_requirement
+        date date_received
+        date date_forwarded_ndrrmc
+        int days_fmd
+        date date_forwarded_op
+        int days_ndrrmc
+        date date_approved_op
+        int days_op
+        int days_total
+    }
+    nature_of_fund {
+        serial nature_of_fund_id PK
+        varchar name UK
+    }
+    fund_tracking_type {
+        serial fund_tracking_type_id PK
+        varchar fund_tracking_code
+    }
+    v_rc_regions {
+        varchar rc_name
+    }
+    file_attachments {
+        serial id PK
+        uuid multiple_node_id
+    }
+```
+- **Table notes:**
+  - fmd.supplemental_fund_details: the columns are inferred from `SUPPLEMENTAL_FIELDS` in `fund_trackingServices.php:52-64`. **There is no CREATE TABLE in `_assets/sql`.** Its reads are wrapped in try/catch, so the page works without it.
+  - shared.v_rc_regions: also missing from the SQL.
+
+### Trust Funds
+
+- **Status:** Built — It shows Trust Fund records, each with its ORs as children (OR.parent_id → Trust Fund). It uses two modals: `form/trust-fund-form.php` and `form/saro-processing-form.php` (held to the OR type).
+- **Code:** `app/pages/trust-funds-page.php`, `app/pages/form/trust-fund-form.php`, `app/pages/form/saro-processing-form.php`; `app/routes/fund_tracking.php` (`list`, `read/{id}`, `add`, `update/{id}`, `delete/{id}` (refused while ORs are linked), `POST /fund_tracking/import-trust-fund`), `app/routes/agency.php` (`GET /agency/all`), `/fiscal_year/all`, `/upload/*`; services `fund_trackingServices.php`, `agencyServices.php`.
+- **Tables written:** fims.fund_tracking, fims.agency (a new name gets inserted), fims.ip_filemeta, fims.file_attachments. **Tables read:** fims.fund_tracking_type, fims.agency, fims.nature_of_fund, fims.settings_status.
+- **Status workflow:** none (`status_id` is optional).
+
+```mermaid
+erDiagram
+    fund_tracking_type ||--o{ fund_tracking : "soft: tracking_type_id (TRUST FUND|OR)"
+    fund_tracking ||--o{ fund_tracking : "soft: parent_id (OR -> Trust Fund)"
+    agency ||--o{ fund_tracking : "soft: agency_name = agency.name"
+    fund_tracking ||--o{ file_attachments : "soft: multiple_node_id"
+    fund_tracking {
+        serial id PK
+        int fiscal_year
+        int tracking_type_id
+        varchar reference_number
+        varchar name
+        numeric amount
+        varchar agency_name
+        text purpose
+        text remarks
+        uuid multiple_node_id
+        int parent_id
+        timestamp deleted_at
+    }
+    agency {
+        serial agency_id PK
+        varchar name UK
+        bool is_active
+    }
+    fund_tracking_type {
+        serial fund_tracking_type_id PK
+        varchar fund_tracking_code
+    }
+    file_attachments {
+        serial id PK
+        uuid multiple_node_id
+        uuid file_node_id
+    }
+```
+- **Table notes:**
+  - fims.fund_tracking: Trust Fund and OR are rows of the same table as SARO/NCA. The MOA party is stored as agency name text.
+  - fims.agency (`01 - table/28`): agencies are auto-inserted by the service when a trust fund or import names one that does not exist (`fund_trackingServices.php:480-503`).
+
+### Pricing
+
+- **Status:** Partial — `app/pages/pricing-page.php` is 0 bytes, so the menu shows nothing. The backend and modals do exist: `app/pages/form/pricing-request-form.php`, `app/pages/readone/pricing-request-readone.php`, `app/routes/pricing_requests.php` and `app/services/PricingRequestService.php`. The form expects a `prq_save()` defined in the empty host page.
+- **Code:** routes `GET /pricing_requests/all|list|read/{id}`, `POST /pricing_requests/add`, `PUT|POST|PATCH /pricing_requests/update/{id}` (multipart with a `data` JSON field + `doc_file_N`), `GET /pricing_request_attachments/list`, `DELETE /pricing_request_attachments/delete/{id}`; service `PricingRequestService.php`.
+- **Tables written:** fims.pricing_requests (hard DELETE in the service; no route exposes it), fims.pricing_request_attachments (soft delete). **Tables read:** fims.project, uac.offices.
+- **Status workflow:** `status` is free VARCHAR(50). No CHECK constraint or settings_status link was found. The routing timeline is date_received → FSG → OGM → approved, with day counts.
+
+```mermaid
+erDiagram
+    project ||--o{ pricing_requests : "project_code"
+    offices ||--o{ pricing_requests : "regional_office_id"
+    offices ||--o{ pricing_requests : "district_office_id"
+    pricing_requests ||--o{ pricing_request_attachments : "pricing_request_id (CASCADE)"
+    pricing_requests {
+        serial id PK
+        varchar30 project_code FK
+        varchar type_of_request
+        varchar status
+        numeric unsold_inventories
+        int regional_office_id FK
+        int district_office_id FK
+        date date_received
+        date date_forwarded_fsg
+        date date_forwarded_ogm
+        date date_approved_ogm
+        int total_days
+    }
+    pricing_request_attachments {
+        serial attachment_id PK
+        int pricing_request_id FK
+        varchar document_name
+        varchar storage_key
+        varchar external_link
+        timestamp deleted_at
+    }
+    project {
+        varchar30 project_code PK
+        varchar project_name
+    }
+    offices {
+        int office_id PK
+        varchar office_name
+    }
+```
+- **Table notes:**
+  - fims.pricing_requests (`01 - table/34`): UNIQUE on (project_code, type_of_request, date_received). Other columns: signed_by, assigned_to, date_received_complete_docs, days_with_fmd/fsg/ogm, remarks, is_active, created_by.
+  - fims.pricing_request_attachments (`35`): a CHECK requires storage_key OR external_link. The FK uses ON DELETE CASCADE.
+
+## Administration
+
+### Position Management
+
+- **Status:** Built — custom page + Slim API; PHPMaker CRUD for Positions/PositionCategories also generated but not in the sidebar.
+- **Code:** `views/PositionManagement.php` → `app/pages/position-management.php`; routes `app/routes/position-management.php` (`POST/PUT /api/position-management/categories[/{id}]`, `POST/PUT /api/position-management/positions[/{id}]`); service `app/lib/PositionManagementService.php`. PHPMaker models `models/Positions*.php`, `models/PositionCategories*.php` (not linked from the menu).
+- **Tables written:** uac.position_categories (insert/update), uac.positions (insert/update, `created_by` set). No deletes. **Tables read:** uac.positions, uac.position_categories.
+- **Status workflow:** none.
+
+```mermaid
+erDiagram
+    uac_position_categories ||--o{ uac_positions : "soft: position_category_id (no FK)"
+    uac_positions ||--o{ uac_users : "FK users_position_id_fkey (ON DELETE SET NULL)"
+    uac_positions ||--o{ uac_plantilla_items : "soft: position_id"
+    uac_position_categories {
+        int4 position_category_id PK
+        varchar category_name "dup-checked case-insensitively in service"
+        text description
+        bool is_active
+        timestamptz created_at
+    }
+    uac_positions {
+        int4 position_id PK
+        int4 position_category_id "soft -> position_categories"
+        varchar position_code "unique by service, not by DB"
+        varchar position_title
+        int4 position_level
+        int4 salary_grade "SG 1-33"
+        int4 step_increment
+        text job_description
+        text qualification_standards
+        jsonb competency_requirements "not set by the page"
+        bool is_active
+        int4 created_by "soft -> uac.users"
+    }
+    uac_users {
+        int4 user_id PK
+        int4 position_id FK
+    }
+    uac_plantilla_items {
+        int4 plantilla_item_id PK
+        int4 department_id "soft"
+        int4 position_id "soft"
+    }
+```
+- **Table notes:**
+  - uac.position_categories — position classification (First/Second/Third Level…); sequence setval to 8 in the dump implies ~7 seeded categories in the original DB but no seed file in this repo inserts them.
+  - uac.positions — generic position templates; `position_code` uniqueness only enforced in `PositionManagementService::validatePositionFields` (an index exists, no UNIQUE). Referenced by `uac.users.position_id` (the only real FK into positions).
+  - uac.plantilla_items — shown only for context; no code in this app reads/writes it (listed in the hidden-module list of `app/pages/user-access.php`).
+
+### User Access Management
+
+- **Status:** Built — custom page + Slim API.
+- **Code:** `views/UserAccess.php` → `app/pages/user-access.php` (2,474 lines); routes `app/routes/user-access.php` (`POST/PUT /api/user-access/users`, `POST /user-access/permissions`, `POST /user-access/sync-modules`, `POST /user-access/module-caption`, `POST /user-access/module-visibility`, `POST/PUT /user-access/user-levels`, `POST /user-access/assignments`); service `app/lib/UserAccessService.php`. Module list comes from PHPMaker's `$USER_LEVEL_TABLES` (`src/userlevelsettings.php`).
+- **Tables written:** uac.users (insert/update: username, email, password_hash, employee_id, name parts, mobile, is_active, rc_id, position_id; `user_level_id` on assignment), uac.user_levels (insert with `MAX+1` id / update), uac.user_level_permissions (upsert `ON CONFLICT (user_level_id, table_name)`; zero rows seeded for every module on new level; sync-modules inserts missing rows), uac.user_level_assignments (insert), uac.permission_module_captions (upsert caption / is_hidden). Also uac.audit_logs indirectly via PHPMaker audit trail (`src/config.php:371-383`). **Tables read:** uac.users, uac.departments, uac.user_offices, uac.offices, uac.user_level_assignments, uac.user_levels, uac.systems, uac.user_level_permissions, uac.permission_module_captions, uac.positions, fims.responsibility_code.
+- **Status workflow:** none.
+
+```mermaid
+erDiagram
+    uac_users ||--o{ uac_user_level_assignments : "soft: user_id"
+    uac_user_levels ||--o{ uac_user_level_assignments : "soft: user_level_id"
+    uac_systems ||--o{ uac_user_level_assignments : "soft: system_id (nullable)"
+    uac_systems ||--o{ uac_user_levels : "soft: system_id"
+    uac_user_levels ||--o{ uac_user_level_permissions : "soft: user_level_id (part of PK)"
+    uac_user_levels ||--o{ uac_users : "soft: users.user_level_id VARCHAR (CSV-capable)"
+    uac_permission_module_captions ||--o{ uac_user_level_permissions : "soft: table_name (unprefixed vs {FIMS}-prefixed)"
+    uac_positions ||--o{ uac_users : "FK position_id"
+    fims_responsibility_code ||--o{ uac_users : "cross-schema FK: rc_id"
+    uac_departments ||--o{ uac_users : "soft: department_id"
+    uac_users ||--o{ uac_user_offices : "soft: user_id"
+    uac_offices ||--o{ uac_user_offices : "soft: office_id"
+    uac_users {
+        int4 user_id PK
+        varchar username UK
+        varchar email UK
+        varchar password_hash "bcrypt, lowercased pwd"
+        varchar user_level_id "VARCHAR; what the PHPMaker login reads"
+        bool is_active
+        int4 department_id "soft"
+        int4 reports_to_user_id "soft self-ref"
+        int4 position_id FK
+        varchar rc_id FK "varchar(10) -> fims.responsibility_code"
+        varchar employee_id
+        bool must_change_password
+    }
+    uac_user_levels {
+        int4 user_level_id PK "not serial; -2/-1/0 reserved"
+        varchar name
+        text description
+        int4 system_id "soft"
+    }
+    uac_user_level_permissions {
+        int4 user_level_id PK
+        varchar table_name PK "e.g. {FIMS}users / {FIMS}UserAccess.php"
+        int4 permission "bitmask"
+    }
+    uac_user_level_assignments {
+        int4 assignment_id PK
+        int4 system_id "soft"
+        int4 user_id "soft"
+        int4 user_level_id "soft"
+        int4 assigned_by "soft -> users"
+        timestamp created_at
+    }
+    uac_permission_module_captions {
+        varchar table_name PK "unprefixed key"
+        varchar caption
+        bool is_hidden
+        timestamptz updated_at
+    }
+    uac_systems {
+        int4 system_id PK
+        varchar system_code UK
+        varchar system_name
+        jsonb level_permissions
+        bool is_active
+    }
+    uac_user_offices {
+        int4 user_office_id PK
+        int4 user_id "soft"
+        int4 office_id "soft"
+        bool is_primary
+        bool is_active
+    }
+    uac_offices {
+        int4 office_id PK
+        varchar office_name
+    }
+    uac_departments {
+        int4 department_id PK
+        varchar department_name
+    }
+    uac_positions {
+        int4 position_id PK
+        varchar position_title
+    }
+    fims_responsibility_code {
+        varchar rc_id PK "varchar(10)"
+        varchar rc_code UK
+        varchar rc_name
+    }
+```
+- **Table notes:**
+  - uac.users — login table (`USER_TABLE_NAME`, `LOGIN_PASSWORD_FIELD_NAME=password_hash`, `USER_LEVEL_FIELD_NAME=user_level_id`, `src/config.php:447-454`). Effective columns after alters: + `position_id` (FK), `employee_id`, `must_change_password` (`00 - uac/02 - alter_table/03`), + `rc_id varchar(10)` FK to fims.responsibility_code and `rc_code` dropped (`01 - fims/03 - alter_table/09`). `profile` (text/JSON) is read by `_shared/auth.php:140`. `department_id` is never set by this page (only read).
+  - uac.user_levels — roles; PK is NOT a sequence — `UserAccessService` computes `GREATEST(1, MAX+1)`. Config `USER_LEVEL_TABLE = uac.user_levels` (`src/config.php:430`). Must contain -2 (see Platform section).
+  - uac.user_level_permissions — PHPMaker bitmask privileges (`USER_LEVEL_PRIV_TABLE`), composite PK (user_level_id, table_name); table_name carries the `{FIMS}` project prefix.
+  - uac.user_level_assignments — this page's per-system role log; the login engine does NOT read it, so `assignUserLevel` also writes `users.user_level_id` (`UserAccessService.php:762-778`). The page unions both sources to display access.
+  - uac.permission_module_captions — admin rename/hide override for the module list; key is the unprefixed table name (`normalizeTableKey()`); hiding never deletes permission rows.
+  - uac.systems — read for role/assignment labels; `level_permissions` JSONB also read by `_shared/PagePermission.php`.
+  - uac.user_offices / uac.offices — read only (primary office label); no writer in this app.
+  - fims.responsibility_code — RC dropdown + existence check for `users.rc_id`; this FK makes uac depend on fims (uac alter must run after fims tables).
+
+### User Level Management
+
+- **Status:** Built — but it is a read-only dashboard: menu item `UserManagement` (`views/menu.php:61`) includes `app/pages/security-management.php`, which shows counts/breakdowns, an audit-log browser and quick links; no writes, no route/service.
+- **Code:** `views/UserManagement.php` → `app/pages/security-management.php`. Quick links to `UserAccess`, `DepartmentManagement`, `PositionManagement`, `UserLevelsList`, `SystemsList` (PHPMaker controllers `controllers/UserLevelsController.php`, `SystemsController.php`; models `models/UserLevels*.php`, `models/Systems*.php`).
+- **Tables written:** none (PHPMaker pages behind the quick links can write uac.user_levels / uac.systems). **Tables read:** uac.users, uac.user_level_assignments, uac.departments, uac.positions, uac.position_categories, uac.user_levels, uac.systems, uac.audit_logs.
+- **Status workflow:** none.
+
+```mermaid
+erDiagram
+    uac_users ||--o{ uac_user_level_assignments : "soft: user_id"
+    uac_departments ||--o{ uac_users : "soft: department_id"
+    uac_position_categories ||--o{ uac_positions : "soft: position_category_id"
+    uac_systems ||--o{ uac_user_levels : "soft: system_id"
+    uac_audit_logs }o..o{ uac_users : "soft text: audit_logs.user = username/id string"
+    uac_users {
+        int4 user_id PK
+        varchar username
+        bool is_active
+        int4 department_id "soft"
+        timestamp date_created
+    }
+    uac_user_level_assignments {
+        int4 assignment_id PK
+        int4 user_id "soft"
+    }
+    uac_departments {
+        int4 department_id PK
+        varchar department_name
+        varchar department_type
+        bool is_budget_unit
+    }
+    uac_positions {
+        int4 position_id PK
+        int4 position_category_id "soft"
+    }
+    uac_position_categories {
+        int4 position_category_id PK
+        varchar category_name
+    }
+    uac_user_levels {
+        int4 user_level_id PK
+        int4 system_id "soft"
+    }
+    uac_systems {
+        int4 system_id PK
+        bool is_active
+    }
+    uac_audit_logs {
+        int4 id PK
+        timestamp date_time
+        varchar script
+        varchar user "quoted column name"
+        varchar action
+        varchar table "quoted column name"
+        varchar field
+        text key_value
+        text old_value
+        text new_value
+    }
+```
+- **Table notes:**
+  - uac.audit_logs — PHPMaker audit trail sink (`AUDIT_TRAIL_TABLE_NAME=audit_logs`, `src/config.php:371-383`), one row per changed field; no FK, user stored as text. Filtered/paged here; aggregated by view `uac.aggregated_audit_logs` (read by `app/pages/main-dashboard.php:99`).
+  - Other tables: same as previous sections, counted only (`COUNT(*)`, `GROUP BY`).
+
+### Department Management
+
+- **Status:** Built — custom page + Slim API.
+- **Code:** `views/DepartmentManagement.php` → `app/pages/department-management.php`; routes `app/routes/department-management.php` (`POST /api/department-management/departments`, `PUT /…/departments/{id}`); service `app/lib/DepartmentManagementService.php`. PHPMaker CRUD `models/Departments*.php`, `DepartmentSystems*.php`, `VDepartmentHierarchyList` also generated (not in this menu).
+- **Tables written:** uac.departments (insert/update of department_name, department_acronym, department_code, description, department_type, parent_department_id, hierarchy_level, is_budget_unit, is_active). **Tables read:** uac.departments (self-join for parent, recursive CTE cycle check), uac.offices (office name), uac.users (department head name).
+- **Status workflow:** none.
+
+```mermaid
+erDiagram
+    uac_departments ||--o{ uac_departments : "soft self-ref: parent_department_id"
+    uac_users ||--o{ uac_departments : "soft: department_head_id"
+    uac_offices ||--o{ uac_departments : "soft: office_id"
+    fims_responsibility_code ||--o{ uac_departments : "cross-schema soft: rc_id (int4 vs varchar(10) - type mismatch)"
+    uac_departments ||--o{ uac_users : "soft: users.department_id"
+    uac_departments ||--o{ uac_department_systems : "soft: department_id"
+    uac_departments {
+        int4 department_id PK
+        varchar department_name "dup-checked by service"
+        varchar department_code
+        varchar department_acronym
+        int4 parent_department_id "soft self"
+        int4 department_head_id "soft -> users"
+        int4 office_id "soft -> offices"
+        int4 rc_id "soft, int4"
+        varchar department_type "MAIN/DIVISION/SECTION/UNIT/REGIONAL/DISTRICT"
+        int4 hierarchy_level "service derives parent+1"
+        bool is_budget_unit
+        bool is_active
+    }
+    uac_offices {
+        int4 office_id PK
+        varchar office_name
+        varchar office_code
+        int4 parent_office_id "soft self"
+        int4 rc_id "soft"
+    }
+    uac_users {
+        int4 user_id PK
+        int4 department_id "soft"
+    }
+    uac_department_systems {
+        int4 department_system_id PK
+        int4 department_id "soft"
+        int4 system_id "soft"
+    }
+    fims_responsibility_code {
+        varchar rc_id PK
+    }
+```
+- **Table notes:**
+  - uac.departments — org hierarchy; no FKs at all (parent, head, office, rc all soft). Service enforces unique name, existing parent and no cycles (recursive CTE). `department_head_id`, `office_id`, `rc_id`, contact fields are displayed but never written by this page. Inbound real FKs from fims: `fims.check_releases.department_id` and `fims.check_release_email_log.department_id` (`01 - fims/01 - table/38 - fims_check_releases_unified.sql`); bank_accounts' FK was dropped by alter 24.
+  - uac.offices — read for the office label only; also target of real FKs `fims.pricing_requests.regional_office_id / district_office_id` (`01 - fims/01 - table/34 - fims_pricing_requests.sql`).
+  - uac.department_systems — department→system access mapping; PHPMaker CRUD only, not used by this page.
+
+### Change Password
+
+- **Status:** Built — custom UI shell over PHPMaker's ChangePassword handler.
+- **Code:** `views/ChangePass.php` → `app/pages/change-pass.php` (fetches a CSRF token from `/changepassword`, then does a real form POST); handler `models/ChangePassword.php` (PHPMaker) using `_shared/auth.php`.
+- **Tables written:** uac.users.password_hash (via the user entity, `models/ChangePassword.php:349-357`). **Tables read:** uac.users.
+- **Status workflow:** none.
+
+```mermaid
+erDiagram
+    uac_users ||--o{ uac_jwt_sessions : "FK jwt_sessions_user_fk (not touched here)"
+    uac_users {
+        int4 user_id PK
+        varchar username UK
+        varchar email UK
+        varchar password_hash "updated here"
+        bool must_change_password "NOT cleared by this flow"
+        bool is_active
+        timestamp last_login
+    }
+    uac_jwt_sessions {
+        int4 session_id PK
+        int4 user_id FK
+    }
+```
+- **Table notes:**
+  - uac.users — only `password_hash` changes; PHPMaker compares lowercased passwords (`CASE_SENSITIVE_PASSWORD` false, see `00 - uac/04 - seed_data/01 - superadmin_user.sql` comment). `must_change_password` is referenced only by PHPMaker Users models/Entity — no code sets/clears or enforces it in app/ or _shared/.
+
+## Pages not in the sidebar
+
+These pages are built and have tables, but `views/menu.php` has no entry for them (reachable only by URL or from other pages).
+
+### Purchase Orders
+- **Status:** Built — not in the sidebar (`views/PoPage.php` → `app/pages/po/{page,form,readone}.php`).
+- **Code:** `app/routes/vendor.php`, `app/routes/purchase-order.php`; `PurchaseOrderService` (status changes in `changeStatus()`).
+- **Tables written:** `purchase_orders`, `purchase_order_items`. **Tables read:** `vendors`, `vendor_types`, `fiscal_year`, `program`, `project`, `chart_of_accounts`.
+- **Status workflow:** DRAFT → SUBMITTED → APPROVED / REJECTED; DRAFT / SUBMITTED / REJECTED can be CANCELLED.
+
+```mermaid
+erDiagram
+    vendor_types ||--o{ vendors : "vendor_type"
+    vendors ||--o{ purchase_orders : "vendor_id"
+    fiscal_year ||--o{ purchase_orders : "fiscal_yr"
+    program ||--o{ purchase_orders : "program_code (optional)"
+    project ||--o{ purchase_orders : "project_code (optional)"
+    purchase_orders ||--|{ purchase_order_items : "po_id (cascade)"
+    chart_of_accounts ||--o{ purchase_order_items : "account_code (optional)"
+```
+- **Table notes:**
+  - `purchase_orders` — `po_number` UNIQUE (`PO-YYYY-MM-NNNN`); vendor name / address / TIN are a snapshot copied on save. `expense_class` is free text with its own CHECK list (`PS, MOOE, CAPITAL_OUTLAY, CO, OTHER`), not linked to `fims.expense_class`.
+  - `purchase_order_items` — `total_cost` generated (`quantity_ordered * unit_cost`); `(po_id, line_number)` UNIQUE; `account_code` FKs to `chart_of_accounts.account_code` (an alternate key, not the PK).
+  - Not used by the IAR Module, whose "PO" is the `po_number` of an RFA in `budget_allocation`.
+
+### Property Records
+- **Status:** Built — not in the sidebar (`views/PropertyRecordPage.php` → `app/pages/property-record-page.php`).
+- **Code:** `app/routes/property_record.php` (`/property-record/*`), `PropertyRecordService`; external source: the NHA Property Inventory System (PIS) API (`inventory_by_po`) — only a PO that already has an IAR can be searched, only PAR items (PIS `TYPENO` 1) can be saved.
+- **Tables written:** `property_records`. **Tables read:** `responsibility_code`, `inspection_acceptance_report` (by `po_number`).
+- **Status workflow:** none.
+
+```mermaid
+erDiagram
+    property_records {
+        int property_record_id PK
+        varchar po_number UK "the PIS PO number"
+        varchar rc_id FK "responsibility_code.rc_id"
+        jsonb line_transaction "one PIS item per element"
+        int created_by
+        timestamp created_at
+    }
+    responsibility_code ||--o{ property_records : "rc_id"
+    inspection_acceptance_report ||--o{ property_records : "soft: po_number"
+```
+- **Table notes:** `line_transaction` keeps the PIS fields under their own names (`inv_id, TYPENO, GL, PROPNO, SNO, ITEMDESC, DATEACQD, COST, UNIT, RCCODE, PO_NO, …`). The register shown in the list (units, acquisition cost, depreciation) is computed on load, not stored.
+
+### Cash Position and FTLA
+Both are built but not in the sidebar (`views/CashPositionPage.php` → `cash-position-page.php`; `views/FtlaPage.php` → `ftla-page.php`). Their tables (`cash_position`, `cash_position_activity_log`, `soa_transactions`, `bank_transactions`; `fund_transfers`) are in [Shared reference tables](#shared-reference-tables).
+
+## Shared reference tables
+
+- **Status:** these are lookups used across modules. None of them has its own sidebar entry, except that Cash Position and FTLA have pages (`views/CashPositionPage.php` → `cash-position-page.php`, `views/FtlaPage.php` → `ftla-page.php`) that are **not in `views/menu.php`**.
+- **Code:**
+  - Lookup routes, each backed by its own service: `fiscal_year.php` (FiscalYearService), `books.php` (BookService), `budget_category.php` (BudgetCategoryService), `expense_class.php` (ExpenseClassService), `type_of_fund.php` (TypeOfFundService), `component_type.php` (ComponentTypeService).
+  - `cash-position.php` → CashPositionService, CashPositionSoaService, CashPositionReportsService.
+  - `ftla.php` → FtlaService and FtlaPrintService (`/ftla/list|kpis|bank-accounts|workflow-meta|workflow-steps|{id}|{id}/timeline|{id}/history|{id}/utilization`, `POST /ftla/add|update/{id}|attachment|{id}/print-docx|{id}/print-pdf`).
+- **Tables written:**
+  - fiscal_year (insert/delete; delete is guarded by budget_req).
+  - cash_position, cash_position_activity_log, soa_transactions, bank_transactions (Cash Position).
+  - fund_transfers, plus status_change_log through `GlobalService::logStatusChange('fund_transfers', ...)` (FTLA).
+- **Tables read:** books, budget_category, expense_class, type_of_fund, component_type, settings_status, bank_accounts, responsibility_code, check_register, checks, disbursement_vouchers (FTLA matches its `dv_numbers` text against DVs), uac.users.
+- **Status workflow:**
+  - fund_transfers.status is held by a CHECK constraint: DRAFT → FOR_RM_APPROVAL → FOR_REVIEW → FOR_APPROVAL → APPROVED → TRANSMITTED → VALIDATED → SUBMITTED_TO_ACCOUNTING → COMPLETED, plus CANCELLED.
+  - fiscal_year.status_id points to settings_status.
+- **Mermaid ER diagram**
+```mermaid
+erDiagram
+    settings_status ||--o{ fiscal_year : "status_id"
+    bank_accounts ||--o{ fund_transfers : "to_bank_account_id"
+    users ||--o{ fund_transfers : "prepared_by/reviewed_by/approved_by/created_by"
+    fund_transfers ||--o{ status_change_log : "soft: status_for='fund_transfers', record_id"
+    bank_accounts ||--o{ cash_position : "soft: bank_account_id"
+    cash_position ||--o{ cash_position_activity_log : "soft: cash_position_id"
+    bank_accounts ||--o{ soa_transactions : "soft: bank_account_id"
+    bank_accounts ||--o{ bank_transactions : "soft: bank_account_id"
+    settings_status {
+        serial id PK
+        varchar name
+        varchar status_for
+        varchar color
+        jsonb next_actors
+    }
+    fiscal_year {
+        smallint fiscal_yr PK
+        int status_id FK
+    }
+    books {
+        serial book_id PK
+        varchar30 code UK
+        varchar name
+    }
+    budget_category {
+        serial budget_category_id PK
+        varchar name
+        timestamp deleted_at
+    }
+    expense_class {
+        serial expense_class_id PK
+        varchar expense_class_code
+        varchar expense_class_name
+        timestamptz deleted_at
+    }
+    type_of_fund {
+        serial type_of_fund_id PK
+        varchar name
+        timestamp deleted_at
+    }
+    component_type {
+        serial component_type_id PK
+        varchar name
+        timestamp deleted_at
+    }
+    fund_transfers {
+        serial fund_transfer_id PK
+        varchar ftla_number UK
+        varchar transfer_type
+        date transfer_date
+        int to_bank_account_id FK
+        numeric transfer_amount
+        bool is_temporary
+        text dv_numbers "soft list of DV nos"
+        int laa_id "soft"
+        int rfa_id "soft"
+        int fund_source_id "soft, no target"
+        varchar status "CHECK list"
+    }
+    status_change_log {
+        serial status_change_log_id PK
+        varchar status_for
+        varchar record_id
+        varchar status
+        int changed_by FK
+    }
+    cash_position {
+        serial cash_position_id PK
+        int bank_account_id
+        date position_date
+        numeric opening_balance
+        numeric total_receipts
+        numeric total_disbursements
+        numeric closing_balance
+        numeric restricted_amount
+        numeric available_balance "GENERATED"
+        numeric adjustment_amount
+        varchar adjustment_direction
+        bool reconciled
+    }
+    cash_position_activity_log {
+        serial activity_id PK
+        int cash_position_id
+        int bank_account_id
+        varchar action "CREATE|UPDATE"
+    }
+    soa_transactions {
+        bigserial soa_transaction_id PK
+        int bank_account_id
+        date transaction_date
+        numeric debit_amount
+        numeric credit_amount
+        uuid upload_batch_id
+    }
+    bank_transactions {
+        bigserial bank_transaction_id PK
+        varchar transaction_type "CHECK|COLLECTION|FTLA|INTEREST"
+        varchar60 transaction_id UK
+        int bank_account_id
+        numeric amount
+        varchar direction "INFLOW|OUTFLOW"
+    }
+    bank_accounts {
+        serial bank_account_id PK
+    }
+    users {
+        int user_id PK
+    }
+```
+- **Table notes:**
+  - fims.settings_status (`01 - table/01`): a generic status catalogue keyed by `status_for`. Alter `21 - settings_status_rename_actors_to_next_actors` renamed `actors` to `next_actors` (JSONB). Alter 40 renamed the "for preview" statuses to "for review" (a data change).
+  - fims.fiscal_year (`02`): the PK is the year itself. It has an FK to settings_status.
+  - fims.books (`41`): seeded with MAIN-OFFICE, CISFA, NGC, MPLC, PPMO (ids 1-5, upsert). DV, JEV, GL and OR carry a book_id (alter 30).
+  - fims.budget_category (`16`), fims.type_of_fund (`13`), fims.component_type (`14`), fims.expense_class (`05`): simple soft-delete lookups seeded by NOT EXISTS inserts.
+  - fims.fund_transfers (`34`, FTLA): FKs go to bank_accounts and uac.users (x5). It holds many JSONB columns (supporting_documents, attachments, bank_officers, signatories) and step timestamps. `laa_id`, `rfa_id` and `fund_source_id` have no FK.
+  - fims.status_change_log (`35`): a polymorphic history table keyed by (status_for, record_id).
+  - fims.cash_position (`35`): UNIQUE (bank_account_id, position_date). `available_balance` is a stored generated column. Alter 26 added restricted_breakdown, adjustment_amount, adjustment_direction, adjustment_details, reference_number and remarks. **There is no FK to bank_accounts.**
+  - fims.cash_position_activity_log (`36`), fims.soa_transactions and fims.bank_transactions (`37`): none of them has an FK. bank_transactions.transaction_id is a deterministic natural key.
+
+## Platform & cross-cutting tables
+
+- **Status:** Built (no sidebar page of their own in this app; PHPMaker scaffolds exist for most uac ones).
+- **Code:** branding `_shared/DocumentBranding.php` (`ACTIVE_ASSETS_SQL`, `ensurePublished`) called from `app/services/PrintService.php:174`; letterhead `app/services/LetterheadLayoutService.php` + `app/routes/letterhead.php` (`GET/POST/DELETE /letterhead/{doc}`); status log `app/lib/GlobalService.php:440-475` (`logStatusChange` / `getLatestRemarks`) used by BudgetAllocationService, BudgetReqService, DisbursementVoucherService, FtlaService, `app/pages/form/budget-processing-form.php`, `app/pages/readone/budget-preview-readone.php`; uploads `app/services/file_uploadServices.php` + `app/routes/file_upload.php` (`/upload/single-upload`, `/upload/multi-upload`, `/upload/file`); auth helpers `_shared/auth.php`, `_shared/PagePermission.php`; security `src/AdvancedSecurity.php`, `app/api.php`.
+- **Tables written:** fims.letterhead_layout (upsert/delete), fims.status_change_log (insert), fims.ip_filemeta + fims.file_attachments (insert), uac.user_levels / uac.user_level_permissions (auto-insert of -2 rows by `AdvancedSecurity::setupUserLevelEx`), uac.audit_logs (PHPMaker audit trail). **Tables read:** uac.document_header_assets, uac.document_asset_types, uac.document_header_slots, fims.letterhead_layout, fims.status_change_log, fims.file_attachments, fims.ip_filemeta, uac.users (rc_id, profile), uac.systems (level_permissions), uac.user_level_permissions, uac.aggregated_audit_logs (view).
+
+```mermaid
+erDiagram
+    uac_document_asset_types ||--o{ uac_document_header_assets : "FK document_asset_type_id"
+    uac_document_header_slots ||--o{ uac_document_header_assets : "FK header_slot_id (NULL = whole-header image)"
+    uac_users ||--o{ fims_letterhead_layout : "cross-schema soft: updated_by"
+    uac_users ||--o{ fims_status_change_log : "cross-schema FK: changed_by"
+    fims_ip_filemeta ||--o{ fims_file_attachments : "soft: file_node_id = ip_filemeta.node_id (UUID)"
+    fims_budget_allocation ||--o{ fims_file_attachments : "soft: multiple_node_id (also DV, JEV, fund_tracking)"
+    uac_users ||--o{ fims_ip_filemeta : "cross-schema soft: created_by"
+    uac_users ||--o{ uac_jwt_sessions : "FK user_id"
+    uac_id_format_configs ||--o{ uac_id_sequences : "soft: config_id"
+    uac_id_reset_strategies ||--o{ uac_id_format_configs : "soft: reset_strategy"
+    uac_document_asset_types {
+        int4 document_asset_type_id PK
+        varchar category "UK(category,type_code)"
+        varchar type_code "HEADER|FOOTER"
+        int4 default_render_width
+        int4 default_render_height
+        bool is_active
+    }
+    uac_document_header_slots {
+        int4 header_slot_id PK
+        varchar slot_code UK "LOGO|TITLE|BRAND|SEAL (seeded)"
+        varchar part_kind "image|text"
+        int4 display_order
+        numeric default_column_pct
+        varchar default_align
+    }
+    uac_document_header_assets {
+        int4 header_asset_id PK
+        varchar asset_code UK
+        int4 document_asset_type_id FK
+        int4 header_slot_id FK
+        varchar scope_system_code "NULL = all"
+        varchar scope_document_code "NULL = all"
+        varchar part_kind "CHECK payload"
+        text image_data "base64, nullable"
+        text text_line1
+        int4 render_width
+        bool is_active "1 active per type+slot+scope"
+        int4 created_by "soft -> users"
+    }
+    fims_letterhead_layout {
+        varchar document_code PK "CBA, RFA, LAA, CAF..."
+        jsonb layout "items + footer_text"
+        int updated_by "soft -> uac.users"
+        timestamp updated_at
+    }
+    fims_status_change_log {
+        serial status_change_log_id PK
+        varchar status_for "owning table name"
+        varchar record_id "owning PK as text, no FK"
+        varchar status
+        text remarks
+        int changed_by FK
+        timestamptz changed_at
+    }
+    fims_ip_filemeta {
+        serial id PK
+        varchar document_name
+        text link "object-storage key or typed link"
+        uuid node_id UK
+        int created_by "soft"
+        timestamp deleted_at "soft delete"
+    }
+    fims_file_attachments {
+        serial id PK
+        uuid multiple_node_id "batch id stored on owner"
+        uuid file_node_id "-> ip_filemeta.node_id"
+        uuid node_id UK
+        int created_by "soft"
+        timestamp deleted_at
+    }
+    fims_budget_allocation {
+        serial allocation_id PK
+        uuid multiple_node_id
+    }
+    uac_users {
+        int4 user_id PK
+        varchar rc_id FK
+        text profile
+    }
+    uac_jwt_sessions {
+        int4 session_id PK
+        char token_hash UK "sha256"
+        int4 user_id FK
+        varchar system "default LIBIS"
+        timestamptz expires_at
+        timestamptz revoked_at
+    }
+    uac_id_format_configs {
+        int4 config_id PK
+        varchar module_code
+        varchar document_type
+        varchar reset_strategy "soft -> id_reset_strategies"
+        bool partition_by_month "added by alter 01"
+    }
+    uac_id_sequences {
+        int4 sequence_id PK
+        int4 config_id "soft"
+        int4 current_sequence
+    }
+    uac_id_reset_strategies {
+        varchar strategy_code PK
+    }
+```
+- **Table notes:**
+  - uac.document_asset_types — HEADER/FOOTER kinds + render size; no seed row in this repo's SQL (the slot alter's TITLE seed joins on `type_code='HEADER'`, so it inserts nothing until a HEADER type exists).
+  - uac.document_header_slots — the four letterhead parts, seeded by `02 - alter_table/02 - document_header_slots.sql` (upsert).
+  - uac.document_header_assets — uploaded header/footer parts; partial unique index `uq_dha_active_per_slot_scope`; CHECK `document_header_assets_payload_ck`. Read-only in this app (`DocumentBranding::ensurePublished` mirrors active rows to `_shared/branding/`); the writer UI (`/UAC/HeaderManagement`) is a different system.
+  - fims.letterhead_layout — per-document saved default letterhead (JSONB); precedence: print-preview payload > this row > built-in banner (`LetterheadLayoutService.php:31-33`); no row = built-in. Independent of the uac branding tables.
+  - fims.status_change_log — shared append-only status audit (`01 - fims/01 - table/35 - fims_status_change_log.sql`); polymorphic (status_for, record_id) with no FK; only real FK is `changed_by → uac.users`. Replaced budget_req.remarks (alter 36); renamed statuses rewritten by alter 40.
+  - fims.ip_filemeta / fims.file_attachments — the upload tables: one ip_filemeta row per file, one file_attachments row per file linking it to a batch `multiple_node_id`; owners storing `multiple_node_id`: fims.budget_allocation, fims.disbursement_vouchers (alter 24), fims.journal_entry_vouchers (alter 35), fims.fund_tracking. Both soft-delete via `deleted_at`; no FKs anywhere (UUID soft links).
+  - uac.jwt_sessions — JWT registry for LIBIS/other surfaces; only PHPMaker scaffold (`src/Entity/JwtSession.php`) here, no app code uses it.
+  - uac.id_format_configs / id_sequences / id_reset_strategies + function `uac.generate_next_id(int4, varchar, date)` — configurable document numbering; not called by any fims-nha code found.
+  - uac.systems — module registry; `level_permissions` JSONB read by `_shared/PagePermission.php`.
+  - uac.department_systems, user_offices, offices, plantilla_items, psgc — org/geo reference; PHPMaker CRUD only (offices also read by PricingRequestService and FK-targeted by pricing_requests).
+  - uac.chat_history / chat_sessions (AI chat), file_shares / file_share_permissions / file_share_activity / shared_folder_access (S3/ONLYOFFICE file sharing) — shared-platform tables; no fims-nha code uses them (file_shares is in the hidden-module list of `app/pages/user-access.php:168`).
+  - uac.audit_logs + view uac.aggregated_audit_logs — PHPMaker audit trail and its per-save rollup (main dashboard).
+  - **Seed requirement — Anonymous level -2:** `AdvancedSecurity::ANONYMOUS_USER_LEVEL_ID = -2` (`src/AdvancedSecurity.php:11`). `setupUserLevelEx()` (`src/AdvancedSecurity.php:792-801`) INSERTs the -2 row into uac.user_levels (and per-module -2 rows into uac.user_level_permissions) if missing, using `$Language->phrase()`; in API requests `$Language` is null, so every `/api/...` call fails. `app/api.php:146-230` falls back to -2 for unauthenticated JWTs. The UAC structure file DROPs/recreates user_levels and **no seed in `00 - uac/04 - seed_data` inserts -2 (or 0)** — only -1 (`01 - superadmin_user.sql`) and positive role ids (seeds 02/04/06 note "-2/-1/0 are reserved"). The ERD/seed must include `(-2,'Anonymous')` and `(0,'Default')` in uac.user_levels.
+
+## Known gaps & open questions
+
+Found while mapping the modules (2026-11-17). Grouped; each is verified in code or SQL unless marked *(unverified)*.
+
+**Links without a database constraint (soft links)**
+- `uac`: the base dump has no FKs. Real FKs after the alters: `users.position_id`, `users.rc_id` → `fims.responsibility_code` (cross-schema, alter `01 - fims/03 - alter_table/09`), `jwt_sessions.user_id`, the two on `document_header_assets`, `notification_reads.notification_id`. Every other `uac` link is soft.
+- `budget_allocation.requesting_rc_id / requesting_district_id / category_id / dv_id / multiple_node_id`, `budget_line_items.type_of_fund_id / component_id`, `budget_revision.from/to_budget_line_item_id`, `caf.user_id`, `budget_req_project_attachment.uploaded_by`.
+- `fund_tracking` (SARO / NCA / Trust / Supplemental / OR) has **no FKs at all**.
+- Tables pointing at `bank_accounts` without an FK: `cash_position`, `cash_position_activity_log`, `soa_transactions`, `bank_transactions`, `bank_account_audit_log`, `check_register`; `check_releases.check_id` too.
+- `checks.dv_id` has an FK (alter 21) but the code links a check to its DV by `dv_number` only.
+- `vendors.sl_code` (VARCHAR(100), no FK) is joined to `chart_of_accounts.account_id` by `VendorService`.
+
+**Type / value mismatches**
+- `uac.departments.rc_id` and `uac.offices.rc_id` are `int4`; `fims.responsibility_code.rc_id` is `varchar(10)` — no FK possible as is.
+- `bank_accounts.rc_id` is `varchar(50)` with no FK (alter 24).
+- `chart_of_accounts.books` (alter 39) stores the codes `MO, CISFA, NGC, MPLC` from the Chart of Accounts page, but `fims.books.code` is `MAIN-OFFICE, CISFA, NGC, MPLC, PPMO` — "MO" matches nothing.
+- `chart_of_accounts.region_code` → `responsibility_code.rc_code` (the only FK to `rc_code` instead of `rc_id`).
+
+**Subsidiary Ledger leftovers** (SLs are now bottom-level accounts in `chart_of_accounts`)
+- `journal_entry_voucher_lines.sl_code / sl_detail_id` and `general_ledger.sl_code / sl_detail_id` remain as plain columns (FKs gone with the CASCADE drop in alter 37); the DV form still writes `sl_code`, the SL report keys on `account_code`.
+- `01 - table/38` (general_ledger) still declares `REFERENCES fims.sl_masters`; `01 - table/23`, `/24` create the SL tables that alter 37 drops — works only because of install order.
+- `v_journals` returns `sl_name`, `sl_detail_name` as NULL; it is defined twice (alter 38 and `05 - views/01`), and the views file's comment says the SL fields are "populated from the Chart of Accounts".
+
+**Tables / columns with no writer**
+- `ada_releases`, `official_receipts`, `official_receipt_lines` — nothing in `app/` writes them, so the Journals page's ADADJ and CRDJ tabs are always empty.
+- `check_booklets` (and `checks.booklet_id`); `disbursement_vouchers.requesting_department_id` (always NULL); the seeded `APPROVED` JEV status (never set — DV-linked SETUP JEVs have a NULL status until posted); `uac.users.must_change_password` (nothing sets or enforces it).
+
+**Referenced but not created**
+- `fmd.supplemental_fund_details` and `shared.v_rc_regions` are read by `app/services/fund_trackingServices.php`; no SQL creates them.
+- The Fund Sourcing Dashboard calls `/fund_transfer/summary` and `/fund_transfer/list`, which don't exist (it shows sample data); FTLA's real table is `fund_transfers`.
+
+**Seeds**
+- `uac.user_levels` must contain **−2 (Anonymous)** — `AdvancedSecurity` inserts it on the fly, which fails in API requests, so every `/api` call breaks without it — and **0 (Default)**. No seed in `00 - uac/04 - seed_data` inserts either.
+- No seed creates the `uac.document_asset_types` HEADER / FOOTER rows (branding falls back to the built-in banner).
+
+**Behaviour to confirm**
+- **COB double count:** `budget_line_items.suggested_amount` is both the COB "Approved Amount" and the live balance (CBA approval and revisions change it), so COB's Revised / Available columns re-count those effects — `CobService` says so in its header.
+- **CFA cannot be created anywhere:** every page that hosts the memo form (`cba-memo-request-page.php`, `rfa-laa-memo-request-page.php`, and the old `views/BudgetAllocationForm.php` / `views/MemoReqPage.php`, which include `memo-req-page.php`) limits it to CBA / RFA / LAA. The CFA earmark, COB and print logic still exists.
+- **CAF:** the server checks neither that `caf.allocation_id` is an RFA nor one CAF per RFA.
+- **Journals CKDJ / ADADJ** join every JEV of a DV, so a check appears twice once its PAYMENT JEV exists.
+- **IAR "PO"** is the `po_number` of an RFA (`budget_allocation`), not `purchase_orders`; `property_records` links to the IAR by `po_number` only.
+
+**SQL housekeeping (affects anyone reading the SQL)**
+- Duplicate alter numbers: 21, 23, 29, 30, 36 (two `36`s: `budget_req_drop_remarks`, `chart_of_accounts_add_account_purpose`).
+- Extra folders beside the main ones: `01 - fims/02 - alter_table`, `02 - seed_data`, `03 - alter` (only `50 - add_gl_sl_to_vendors.sql`).
+- `budget_req_project_attachment` is created twice (`01 - table/16` and `03 - alter_table/16`).
+- Misleading names/comments: `23 - budget_revision_on_budget_reference_number.sql` (changes budget lines), `30 - add_book_to_dv_jev_gl_or.sql`, the `41 - fims_books.sql` header, the `check_releases` header (cites the dropped `rfa_allocation_number`).
+- `_assets/sql/README.md` is out of date (file counts / next number).
+
+**Pages**
+- Empty (0-byte) placeholders in the sidebar: Ledger, Liquidation Voucher, RFA / LAA Monitoring, Check Registry, Accountable Forms Registry, FMR, Remittance List, Fund Source, Program Sources, Accountable Officer, Pricing (Pricing has a full backend: route, service, form and tables). `ledger-budget-allocation.php` is empty and not in the menu.
+- Built but **not in the sidebar**: Purchase Orders, Property Records, Cash Position, FTLA (see [Pages not in the sidebar](#pages-not-in-the-sidebar)).
+- The Security Management quick link `UserLevelsList` has a controller route but no view/model *(may be broken)*.
 
 ## Related docs
 
