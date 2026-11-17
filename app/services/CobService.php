@@ -59,7 +59,7 @@ use PHPMaker2024\FIMS\DataType;
  *
  * With rollup(..., $withAllocations = true) — only the RFA / LAA Monitoring page asks — every project node also carries, as children, the RFAs and
  * LAAs that drew against its budget lines (type 'allocation': RFA / LAA Amount = what it drew there) and, under each RFA, its disbursement voucher
- * (type 'dv': Disbursement = the voucher's net amount). They are detail rows: no total counts them.
+ * (type 'dv': Disbursement = the voucher's gross_amount). They are detail rows: no total counts them.
  *
  * Views:
  *   summary()       the KPI cards
@@ -429,7 +429,7 @@ class CobService
             'SELECT br.budget_reference_number, brpg.budget_req_program_id, brpj.project_code,
                     a.allocation_id, UPPER(a.allocation_type) AS allocation_type, a.allocation_number, a.request_referrence_no, a.description,
                     COALESCE(SUM(e.amount), 0) AS drawn_amount,
-                    dv.dv_id, dv.dv_no, dv.dv_date, dv.claimant_name, dv.net_amount AS dv_amount,
+                    dv.dv_id, dv.dv_no, dv.dv_date, dv.claimant_name, dv.gross_amount AS dv_amount,
                     dst.name AS dv_status, dst.color AS dv_status_color
              '.$this->fromSql()."
              JOIN {$this->tableEarmark} e ON e.budget_line_item_id = li.budget_line_item_id AND e.status = 'converted'
@@ -441,7 +441,7 @@ class CobService
              WHERE ".implode(' AND ', $this->conditions($f, $scopeRcId)).'
              GROUP BY br.budget_reference_number, brpg.budget_req_program_id, brpj.project_code,
                       a.allocation_id, a.allocation_type, a.allocation_number, a.request_referrence_no, a.description,
-                      dv.dv_id, dv.dv_no, dv.dv_date, dv.claimant_name, dv.net_amount, dst.name, dst.color
+                      dv.dv_id, dv.dv_no, dv.dv_date, dv.claimant_name, dv.gross_amount, dst.name, dst.color
              ORDER BY a.allocation_type, a.allocation_number, a.allocation_id',
             'DB'
         ) ?: [];
@@ -455,7 +455,7 @@ class CobService
 
             $children = [];
             if (!empty($r['dv_id'])) {
-                // a voucher row: its amount (net of deductions) goes in the Disbursement column
+                // a voucher row: its gross_amount goes in the Disbursement column
                 $children[] = [
                     'type' => 'dv', 'key' => 'd'.$r['dv_id'], 'label' => (string) ($r['dv_no'] ?? ('DV #'.$r['dv_id'])), 'code' => 'DV', 'unassigned' => false,
                     'dv_id' => (int) $r['dv_id'], 'dv_date' => $r['dv_date'] ?? null, 'claimant_name' => $r['claimant_name'] ?? null,
