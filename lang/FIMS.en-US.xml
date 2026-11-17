@@ -101,6 +101,9 @@
     <menu id="653">
       <phrase id="menutext" value="Remittance List (Deductions)" />
     </menu>
+    <menu id="763">
+      <phrase id="menutext" value="FAR Report" />
+    </menu>
     <menu id="394">
       <phrase id="menutext" value="Ledgers" />
     </menu>
@@ -151,6 +154,9 @@
     </menu>
     <menu id="761">
       <phrase id="menutext" value="Payroll Management" />
+    </menu>
+    <menu id="762">
+      <phrase id="menutext" value="Remittance" />
     </menu>
     <menu id="760">
       <phrase id="menutext" value="Fidelity Bond" />
@@ -1783,6 +1789,12 @@
     </table>
     <table id="payroll_page">
       <phrase id="tblcaption" value="Payroll Management" />
+    </table>
+    <table id="remittance_page">
+      <phrase id="tblcaption" value="Remittance" />
+    </table>
+    <table id="far_report_page">
+      <phrase id="tblcaption" value="FAR Report" />
     </table>
   </project>
 </ew-language>

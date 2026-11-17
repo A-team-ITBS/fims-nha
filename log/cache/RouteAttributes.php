@@ -123,8 +123,10 @@
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone ($p['PHPMaker2024\\FIMS\\Attributes\\Get'] ?? \Symfony\Component\VarExporter\Internal\Registry::p('PHPMaker2024\\FIMS\\Attributes\\Get')),
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Get'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
@@ -835,9 +837,19 @@
                 ],
                 [
                     'GET',
+                    'POST',
+                    'OPTIONS',
                 ],
                 [
                     'GET',
+                ],
+                [
+                    'GET',
+                ],
+                [
+                    'GET',
+                    'POST',
+                    'OPTIONS',
                 ],
                 [
                     'GET',
@@ -1360,6 +1372,7 @@
                 '/DocumentTypeManager[/{params:.*}]',
                 '/DvReviewPage[/{params:.*}]',
                 '/EventPlayground[/{params:.*}]',
+                '/FarReportPage[/{params:.*}]',
                 '/FidelityBondPage[/{params:.*}]',
                 '/FileManager[/{params:.*}]',
                 '/FmrPage[/{params:.*}]',
@@ -1444,6 +1457,7 @@
                 '/PsgcMap[/{params:.*}]',
                 '/PurchaseOrder[/{params:.*}]',
                 '/RemittanceListPage[/{params:.*}]',
+                '/RemittancePage[/{params:.*}]',
                 '/ResponsibilityCenterPage[/{params:.*}]',
                 '/RfaLaaMemoRequestPage[/{params:.*}]',
                 '/RfaLaaMonitoringPage[/{params:.*}]',
@@ -1575,6 +1589,7 @@
                 'PHPMaker2024\\FIMS\\DocumentTypeManagerController:custom',
                 'PHPMaker2024\\FIMS\\DvReviewPageController:custom',
                 'PHPMaker2024\\FIMS\\EventPlaygroundController:custom',
+                'PHPMaker2024\\FIMS\\FarReportPageController:custom',
                 'PHPMaker2024\\FIMS\\FidelityBondPageController:custom',
                 'PHPMaker2024\\FIMS\\FileManagerController:custom',
                 'PHPMaker2024\\FIMS\\FmrPageController:custom',
@@ -1659,6 +1674,7 @@
                 'PHPMaker2024\\FIMS\\PsgcMapController:custom',
                 'PHPMaker2024\\FIMS\\PurchaseOrderController:custom',
                 'PHPMaker2024\\FIMS\\RemittanceListPageController:custom',
+                'PHPMaker2024\\FIMS\\RemittancePageController:custom',
                 'PHPMaker2024\\FIMS\\ResponsibilityCenterPageController:custom',
                 'PHPMaker2024\\FIMS\\RfaLaaMemoRequestPageController:custom',
                 'PHPMaker2024\\FIMS\\RfaLaaMonitoringPageController:custom',
@@ -1711,6 +1727,9 @@
                 'PHPMaker2024\\FIMS\\WorkflowManagerController:custom',
             ],
             'middleware' => [
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
                 [
                     'PHPMaker2024\\FIMS\\PermissionMiddleware',
                 ],
@@ -2348,6 +2367,9 @@
                 [
                     'PHPMaker2024\\FIMS\\PermissionMiddleware',
                 ],
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
             ],
             'name' => [
                 'custom.accountable_forms_registry_page',
@@ -2429,6 +2451,7 @@
                 'custom.DocumentTypeManager',
                 'custom.dv_review_page',
                 'custom.EventPlayground',
+                'custom.far_report_page',
                 'custom.fidelity_bond_page',
                 'custom.FileManager',
                 'custom.fmr_page',
@@ -2513,6 +2536,7 @@
                 'custom.PSGCMap',
                 'custom.PurchaseOrder',
                 'custom.remittance_list_page',
+                'custom.remittance_page',
                 'custom.responsibility_center_page',
                 'custom.rfa_laa_memo_request_page',
                 'custom.rfa_laa_monitoring_page',
@@ -2565,6 +2589,8 @@
                 'custom.WorkflowManager',
             ],
             'options' => [
+                [],
+                [],
                 [],
                 [],
                 [],
@@ -2995,6 +3021,8 @@
         $o[210],
         $o[211],
         $o[212],
+        $o[213],
+        $o[214],
     ],
     []
 );
