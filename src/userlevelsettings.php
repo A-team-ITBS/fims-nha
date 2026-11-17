@@ -207,7 +207,9 @@ $USER_LEVEL_PRIVS = [["{FIMS}audit_logs","-2","0"],
     ["{FIMS}check-disbursement-voucher-page.php","-2","0"],
     ["{FIMS}check-disbursement-voucher-page.php","0","0"],
     ["{FIMS}payroll-setup-page.php","-2","0"],
-    ["{FIMS}payroll-setup-page.php","0","0"]];
+    ["{FIMS}payroll-setup-page.php","0","0"],
+    ["{FIMS}fidelity-bond-page.php","-2","0"],
+    ["{FIMS}fidelity-bond-page.php","0","0"]];
 
 /**
  * Tables
@@ -312,4 +314,5 @@ $USER_LEVEL_TABLES = [["audit_logs","audit_logs","Audit Logs",false,"{FIMS}",""]
     ["rfa-laa-monitoring-page.php","rfa_laa_monitoring_page","RFA / LAA Monitoring",true,"{FIMS}","RfaLaaMonitoringPage"],
     ["collections-page.php","collections_page","Collections",true,"{FIMS}","CollectionsPage"],
     ["check-disbursement-voucher-page.php","check_disbursement_voucher_page","Check Disbursement",true,"{FIMS}","CheckDisbursementVoucherPage"],
-    ["payroll-setup-page.php","payroll_setup_page","Payroll Setup",true,"{FIMS}","PayrollSetupPage"]];
+    ["payroll-setup-page.php","payroll_setup_page","Payroll Setup",true,"{FIMS}","PayrollSetupPage"],
+    ["fidelity-bond-page.php","fidelity_bond_page","Fidelity Bond",true,"{FIMS}","FidelityBondPage"]];

@@ -390,6 +390,46 @@ $bamCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
 .bam-step-pill.active .bam-step-num { background:#000E3E; color:#fff; }
 .bam-step-pill.done .bam-step-num { background:#000E3E; color:#fff; }
 .bam-step-line { flex:1; height:2px; background:var(--fims-border); margin:0 10px; }
+
+/* ── Row Actions dropdown (same menu as the Memo Requests / Responsibility Center lists) ── */
+#bamModule .bam-menu { position:relative; display:inline-block; }
+#bamModule .bam-menu-trigger { display:inline-flex; align-items:center; gap:5px; padding:5px 10px; border-radius:6px; font-size:11px; font-weight:600;
+    cursor:pointer; white-space:nowrap; border:1px solid var(--fims-border, #E4ECF2); background:var(--afims-surface, #FFFFFF); color:var(--afims-text, #1A1B21); }
+#bamModule .bam-menu-trigger:hover { background:var(--afims-surface-subtle, #F4F7FA); }
+#bamModule .bam-menu-drop { display:none; position:fixed; z-index:9999; min-width:190px; padding:4px 0; text-align:left;
+    background:var(--afims-surface, #FFFFFF); border:1px solid var(--fims-border, #E4ECF2); border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,.12); }
+#bamModule .bam-menu-drop.open { display:block; }
+#bamModule .bam-menu-item { display:flex; align-items:center; gap:8px; width:100%; padding:8px 12px; font-size:12px; font-weight:500; text-align:left;
+    white-space:nowrap; cursor:pointer; border:none; background:none; color:var(--afims-text, #1A1B21); }
+#bamModule .bam-menu-item i { width:13px; opacity:.7; }
+#bamModule .bam-menu-item:hover { background:var(--afims-surface-subtle, #F4F7FA); color:#000E3E; }
+
+/* ── Dark mode — the page hard-codes navy (#000E3E) for its primary / outline buttons and active step (navy on dark, and
+   invisible on the navy header), and the selects use the browser's native grey ── */
+html.afims-dark[data-bs-theme="dark"] #bamModule { color-scheme:dark; }
+html.afims-dark[data-bs-theme="dark"] #bamModule .fims-btn-primary { background:#3861BC; border-color:#3861BC; color:#fff; }
+html.afims-dark[data-bs-theme="dark"] #bamModule .fims-btn-primary:hover { background:#2E59B8; color:#fff; }
+html.afims-dark[data-bs-theme="dark"] #bamModule .fims-btn-outline { color:#94AADB; border-color:#5B7FCF; background:transparent; }
+html.afims-dark[data-bs-theme="dark"] #bamModule .fims-btn-outline:hover { background:#3861BC; border-color:#3861BC; color:#fff; }
+html.afims-dark[data-bs-theme="dark"] #bamModule .fims-btn-ghost { color:var(--afims-text, #E4ECF2); }
+html.afims-dark[data-bs-theme="dark"] #bamModule .fims-page-header .fims-btn-ghost { background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.25); color:#fff; }
+html.afims-dark[data-bs-theme="dark"] #bamModule .fims-page-header .fims-btn-ghost:hover { background:rgba(255,255,255,.22); }
+html.afims-dark[data-bs-theme="dark"] #bamModule :is(select.fims-select, .fims-input) {
+    background-color:var(--afims-surface, #1A1F38); color:var(--afims-text, #E4ECF2); border-color:var(--afims-border-strong, #4A5270); }
+html.afims-dark[data-bs-theme="dark"] #bamModule select.fims-select option { background-color:var(--afims-surface, #1A1F38); color:var(--afims-text, #E4ECF2); }
+html.afims-dark[data-bs-theme="dark"] #bamModule .fims-input::placeholder { color:#9AA3B5; }
+html.afims-dark[data-bs-theme="dark"] .bam-doc-row a { color:#94AADB; }
+html.afims-dark[data-bs-theme="dark"] .bam-step-pill { color:var(--afims-text-muted, #AAAFBE); }
+html.afims-dark[data-bs-theme="dark"] .bam-step-pill.active { color:#fff; }
+html.afims-dark[data-bs-theme="dark"] .bam-step-pill .bam-step-num { background:#2E3656; color:var(--afims-text, #E4ECF2); }
+html.afims-dark[data-bs-theme="dark"] :is(.bam-step-pill.active, .bam-step-pill.done) .bam-step-num { background:#3861BC; color:#fff; }
+html.afims-dark[data-bs-theme="dark"] .bam-step-line { background:#2E3656; }
+html.afims-dark[data-bs-theme="dark"] #bamModule .bam-menu-trigger { color:#fff; background:#3861BC; border-color:#3861BC; }
+html.afims-dark[data-bs-theme="dark"] #bamModule .bam-menu-trigger:hover { background:#2E59B8; }
+html.afims-dark[data-bs-theme="dark"] #bamModule .bam-menu-drop { background:var(--afims-surface, #1A1F38); border-color:var(--afims-border-strong, #4A5270); box-shadow:0 8px 24px rgba(0,0,0,.45); }
+html.afims-dark[data-bs-theme="dark"] #bamModule .bam-menu-item { color:var(--afims-text, #E4ECF2); }
+html.afims-dark[data-bs-theme="dark"] #bamModule .bam-menu-item i { opacity:.85; }
+html.afims-dark[data-bs-theme="dark"] #bamModule .bam-menu-item:hover { color:#fff; background:var(--afims-primary-soft, #0F2456); }
 </style>
 
 <script>
@@ -626,12 +666,24 @@ $bamCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
                         '<td>' + escapeHtml(r.date_opened || '—') + '</td>' +
                         '<td>' + escapeHtml(r.last_transaction_date || '—') + '</td>' +
                         '<td class="text-center">' +
-                            '<button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-edit="' + r.bank_account_id + '" title="Edit"><i class="fas fa-pen"></i></button> ' +
-                            '<button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-tag-code="' + r.bank_account_id + '" data-tag-code-name="' + escapeHtml(r.account_name) + '" data-tag-code-current="' + escapeHtml(r.account_code || '') + '" title="Tag GL Account Code"><i class="fas fa-tag"></i></button> ' +
-                            '<button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-docs="' + r.bank_account_id + '" data-docs-name="' + escapeHtml(r.account_name) + '" title="Documents"><i class="fas fa-file-alt"></i></button>' +
+                            '<div class="bam-menu">' +
+                                '<button type="button" class="bam-menu-trigger" aria-haspopup="true" aria-expanded="false">' +
+                                    '<i class="fas fa-ellipsis-v"></i> Actions</button>' +
+                                '<div class="bam-menu-drop">' +
+                                    '<button type="button" class="bam-menu-item" data-edit="' + r.bank_account_id + '"><i class="fas fa-pen"></i> Edit</button>' +
+                                    '<button type="button" class="bam-menu-item" data-tag-code="' + r.bank_account_id + '" data-tag-code-name="' + escapeHtml(r.account_name) + '" data-tag-code-current="' + escapeHtml(r.account_code || '') + '"><i class="fas fa-tag"></i> Tag GL Account Code</button>' +
+                                    '<button type="button" class="bam-menu-item" data-docs="' + r.bank_account_id + '" data-docs-name="' + escapeHtml(r.account_name) + '"><i class="fas fa-file-alt"></i> Documents</button>' +
+                                '</div>' +
+                            '</div>' +
                         '</td>' +
                         '</tr>';
                 }).join('');
+                tbody.querySelectorAll('.bam-menu-trigger').forEach(function (btn) {
+                    btn.addEventListener('click', function (e) { e.stopPropagation(); toggleMenu(this); });
+                });
+                tbody.querySelectorAll('.bam-menu-item').forEach(function (btn) {
+                    btn.addEventListener('click', closeMenus);   // runs before each item's own action below
+                });
                 tbody.querySelectorAll('[data-edit]').forEach(function (btn) {
                     btn.addEventListener('click', function () { openAccountModal(this.dataset.edit); });
                 });
@@ -646,6 +698,26 @@ $bamCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
             })
             .catch(() => { tbody.innerHTML = '<tr class="fims-empty"><td colspan="12">Could not reach the server.</td></tr>'; });
     }
+
+    // ── Row Actions dropdown — fixed position below its button, so the table's overflow never clips it ──
+    function closeMenus() {
+        document.querySelectorAll('#bamModule .bam-menu-drop.open').forEach(d => d.classList.remove('open'));
+        document.querySelectorAll('#bamModule .bam-menu-trigger[aria-expanded="true"]').forEach(b => b.setAttribute('aria-expanded', 'false'));
+    }
+    function toggleMenu(btn) {
+        const drop = btn.parentElement.querySelector('.bam-menu-drop');
+        const isOpen = drop.classList.contains('open');
+        closeMenus();
+        if (isOpen) return;
+        const r = btn.getBoundingClientRect();
+        drop.style.top = (r.bottom + 4) + 'px';
+        drop.style.right = (window.innerWidth - r.right) + 'px';
+        drop.classList.add('open');
+        btn.setAttribute('aria-expanded', 'true');
+    }
+    document.addEventListener('click', function (e) { if (!e.target.closest('#bamModule .bam-menu')) closeMenus(); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeMenus(); });
+    document.addEventListener('scroll', closeMenus, true);
 
     document.getElementById('bamFilterBtn').addEventListener('click', loadList);
     document.getElementById('bamResetBtn').addEventListener('click', function () {

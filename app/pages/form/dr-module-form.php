@@ -383,6 +383,19 @@ $_ampf_api = $_amp_api ?? \PHPMaker2024\FIMS\Config('API.FIMS_URL');
     .amp-v-count { margin-left:8px;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;
         color:var(--afims-primary-text, #0035A9);background:color-mix(in srgb, var(--afims-primary, #0035A9) 10%, #fff); }
     .amp-v-sub > td { background:var(--afims-surface-subtle, #F4F7FA);padding:12px 16px 16px; }
+    /* Dark mode (Actual Delivery / Pro-forma view): --afims-text-secondary is not defined by the theme, so the labels fell back to
+       the light-mode slate; the item-count pill mixed with white (light text on a near-white pill); the IAR chip was dark blue on dark */
+    html.afims-dark[data-bs-theme="dark"] :is(.amp-vw-card-title, .amp-vw-k) { color:var(--afims-text-muted, #AAAFBE); }
+    html.afims-dark[data-bs-theme="dark"] .amp-v-count { color:#FFFFFF;background:#3861BC; }
+    /* "+ Add row" (navy text / dashed border = navy on dark) and the Pro-forma JEV column headers (undefined token → slate) */
+    html.afims-dark[data-bs-theme="dark"] .amp-add-btn { color:#94AADB;border-color:#5B7FCF; }
+    html.afims-dark[data-bs-theme="dark"] .amp-add-btn:hover { color:#FFFFFF;background:rgba(56,97,188,.25); }
+    html.afims-dark[data-bs-theme="dark"] .amp-jev-h { color:var(--afims-text, #E4ECF2); }
+    /* <select class="amp-input"> (e.g. the Pro-forma's Book): rendered with the browser's native grey instead of the theme surface */
+    html.afims-dark[data-bs-theme="dark"] select.amp-input { color-scheme:dark;color:var(--afims-text, #E4ECF2);
+        background-color:var(--afims-surface, #1A1F38);border-color:var(--afims-border-strong, #4A5270); }
+    html.afims-dark[data-bs-theme="dark"] select.amp-input option { color:var(--afims-text, #E4ECF2);background-color:var(--afims-surface, #1A1F38); }
+    html.afims-dark[data-bs-theme="dark"] .amp-vw-code { color:#FFFFFF;background:#3861BC;border-color:#5B7FCF; }
     .amp-v-inner { background:var(--afims-surface, #FFFFFF);border:1px solid var(--afims-border, #E4ECF2);border-radius:8px;overflow:hidden; }
     .amp-v-inner th { background:var(--afims-surface-subtle, #F4F7FA); }
 </style>
