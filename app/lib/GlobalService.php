@@ -192,7 +192,7 @@ class GlobalService
     }
 
     /**
-     * Where sub-program codes for a program start: ['prefix' => '100', 'next' => 3].
+     * Where sub-program codes for a program start: ['prefix' => '101', 'next' => 3].
      *
      *  - prefix : the selected program code itself (program "100" -> sub-programs "100-001", "100-002", …).
      *  - next   : highest existing fims.sub_program.sub_program_code of the form "<prefix>-NNN", plus one

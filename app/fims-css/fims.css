@@ -8746,3 +8746,16 @@ tr.comp-at-risk       td { background:rgba(245,158,11,.05)  !important; }
     .fims-page-header, .card:has(#rg-report-cards), .card:has(#rg-period-tabs),
     .rg-pagination-bar { display: none !important; }
 }
+
+/* ── Dark mode — SweetAlert2 toasts (e.g. bgr_toast): the popup stayed white while its title took the theme's light text ── */
+html.afims-dark[data-bs-theme="dark"] .swal2-popup.swal2-toast {
+    background: var(--afims-surface, #1A1F38) !important;
+    border: 1px solid var(--afims-border-strong, #4A5270);
+    box-shadow: 0 8px 24px rgba(0,0,0,.45) !important;
+}
+html.afims-dark[data-bs-theme="dark"] .swal2-popup.swal2-toast :is(.swal2-title, .swal2-html-container) {
+    color: var(--afims-text, #E4ECF2) !important;
+}
+html.afims-dark[data-bs-theme="dark"] .swal2-popup.swal2-toast .swal2-timer-progress-bar {
+    background: rgba(255,255,255,.35);
+}
