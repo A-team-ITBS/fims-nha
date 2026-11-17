@@ -12,7 +12,8 @@ namespace PHPMaker2024\FIMS;
  *   Revised Amount · RFA / LAA Amount · Disbursement · Unallocated Amount · Account Payable
  * (CobService works the figures out per budget line; see its header comment for each definition). The Revised Amount is the proposed amount net
  * of its adjustments / realignments (proposed + adjustment, the adjustment being signed) — worked out per line, not the recorded revised_amount.
- * Account Payable is the RFA / LAA Amount less the Disbursement.
+ * Disbursement is what the disbursement vouchers connected to the RFAs / LAAs have disbursed (each voucher's gross_amount, a cancelled or rejected one
+ * not counted), and it is part of every total — the project rows, the TOTAL and the cards. Account Payable is the RFA / LAA Amount less the Disbursement.
  *
  * The server still answers with its Program > Sub-Program > Originating Unit > Project tree (layout_by=program, so every filter and the totals work as
  * before); the page lifts the projects out of it, in that same order, so a program's projects stay together.
@@ -138,7 +139,7 @@ $_rlm_api = Config('API.FIMS_URL');
                 <div class="nha-sc-label">Disbursement</div>
                 <div class="nha-sc-val" id="rlm-kpi-disbursement">—</div>
             </div></div>
-            <p class="nha-kpi-sub">Disbursed against the budget lines</p>
+            <p class="nha-kpi-sub">Gross amount of the connected disbursement vouchers</p>
         </div>
         <div class="nha-sc nha-sc-amber">
             <div class="nha-sc-top"><div>
@@ -212,7 +213,7 @@ $_rlm_api = Config('API.FIMS_URL');
     $_rlm_cols = [
         ['revised_computed', 'Revised Amount', 'The proposed amount net of its adjustments / realignments (a decrease lowers it): proposed + adjustment'],
         ['rfa_laa_amount', 'RFA / LAA Amount', 'RFA Approved plus LAA Issued — what approved RFAs and issued LAAs have drawn from the CBAs'],
-        ['disbursement', 'Disbursement', 'The amount disbursed against the budget line (budget_line_items.disbursement)'],
+        ['disbursement', 'Disbursement', 'The gross amount of the disbursement vouchers connected to the RFAs / LAAs (a cancelled or rejected voucher is not counted)'],
         ['unallocated_amount', 'Unallocated Amount', 'Revised Amount less the RFA / LAA Amount — the revised budget no RFA or LAA has drawn yet'],
         ['account_payable', 'Account Payable', 'RFA / LAA Amount less Disbursement — what the RFAs and LAAs have drawn that has not been disbursed yet'],
     ];
@@ -243,7 +244,7 @@ $_rlm_api = Config('API.FIMS_URL');
         </div>
         <p class="rlm-note">Each row is a project of an <strong>Approved</strong> budget request; under the project's name is where it sits (program › sub-program › originating unit). <strong>Revised Amount</strong> is the proposed amount net of its adjustments and realignments (a decrease lowers it).
             <strong>RFA / LAA Amount</strong> is what approved RFAs and issued LAAs have drawn from the CBAs' reservations, and <strong>Unallocated Amount</strong> is the
-            Revised Amount less it. <strong>Disbursement</strong> is the amount recorded against each budget line, and <strong>Account Payable</strong> is the RFA / LAA Amount less it. Open a project to see
+            Revised Amount less it. <strong>Disbursement</strong> is the gross amount of the disbursement vouchers connected to the RFAs and LAAs (a cancelled or rejected voucher is not counted) and is included in every total, and <strong>Account Payable</strong> is the RFA / LAA Amount less it. Open a project to see
             the RFAs and LAAs drawn against it, and an RFA or LAA that has a disbursement voucher connected (a "1 DV" tag) to see it. A dash means zero; brackets mean negative.</p>
     </div>
 
@@ -269,7 +270,7 @@ include __DIR__.'/readone/cob-readone.php';
    What it shows: ONLY the Approved budget requests, in five amount columns that start at the Revised Amount:
      Revised Amount         budget_line_items.proposed_amount + adjustment (the adjustment is signed: a decrease / realignment out is negative), worked out per line
      RFA / LAA Amount       RFA Approved + LAA Issued: what approved RFAs / LAAs drew from the CBAs' reservations
-     Disbursement           budget_line_items.disbursement, as recorded
+     Disbursement           the gross_amount of the vouchers connected to the RFAs / LAAs (cancelled / rejected not counted), in every total
      Unallocated Amount     = Revised Amount - RFA / LAA Amount
      Account Payable        = RFA / LAA Amount - Disbursement
    The server decides what each user may see (their RC and the RCs below it; FMD and administrators see all) — nothing here can widen it.
@@ -538,7 +539,7 @@ function rlm_nodeLabel(n) {
     }
     if (n.type === 'dv') {
         // the disbursement voucher of an RFA: its number and status, then its date and claimant
-        const meta = [rlm_fmtDate(n.dv_date), n.claimant_name || ''].filter(Boolean).map(rlm_esc).join(' · ');
+        const meta = [rlm_fmtDate(n.dv_date), n.claimant_name || '', n.counted === false ? 'not counted in Disbursement' : ''].filter(Boolean).map(rlm_esc).join(' · ');
         return `<span>${rlm_esc(n.label)}</span> ${rlm_statusPill(n.status_name, n.status_color)}${meta ? `<span class="rlm-sub">${meta}</span>` : ''}`;
     }
     let html = `<span>${n.unassigned ? `<span class="rlm-unassigned">${rlm_esc(n.label)}</span>` : rlm_esc(n.label)}</span>`;
