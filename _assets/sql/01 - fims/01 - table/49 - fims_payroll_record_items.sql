@@ -19,8 +19,6 @@ ADD COLUMN IF NOT EXISTS amount NUMERIC(18,2) NOT NULL DEFAULT 0,
 -- payroll_items do not rewrite what a released payroll posted to. (The posting side follows
 -- from the item's category, so it is not snapshotted.)
 ADD COLUMN IF NOT EXISTS account_code VARCHAR(30),
-ADD COLUMN IF NOT EXISTS sl_code VARCHAR(30),
-ADD COLUMN IF NOT EXISTS sl_detail_id INTEGER,
 ADD COLUMN IF NOT EXISTS reference_no VARCHAR(50), -- loan / policy number, etc.
 ADD COLUMN IF NOT EXISTS remarks TEXT,
 ADD COLUMN IF NOT EXISTS created_by INTEGER,
@@ -31,8 +29,6 @@ ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
 COMMENT ON TABLE fims.payroll_record_items IS 'Amount per payroll item per payroll record (earnings, deductions, refunds, employer shares)';
 COMMENT ON COLUMN fims.payroll_record_items.amount IS 'Amount as entered; direction comes from payroll_items.category';
 COMMENT ON COLUMN fims.payroll_record_items.account_code IS 'Snapshot of payroll_items.account_code at preparation time';
-COMMENT ON COLUMN fims.payroll_record_items.sl_code IS 'Snapshot of payroll_items.sl_code at preparation time';
-COMMENT ON COLUMN fims.payroll_record_items.sl_detail_id IS 'Snapshot of payroll_items.sl_detail_id at preparation time';
 
 -- payroll_record_items indexes (the UNIQUE (payroll_record_id, payroll_item_id) constraint is in 03 - alter_table/37)
 CREATE INDEX IF NOT EXISTS idx_payroll_record_items_payroll_item_id ON fims.payroll_record_items (payroll_item_id);

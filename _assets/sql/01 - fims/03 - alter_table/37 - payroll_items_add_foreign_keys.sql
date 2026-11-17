@@ -16,27 +16,6 @@ BEGIN
         FOREIGN KEY (account_code) REFERENCES fims.chart_of_accounts(account_code);
     END IF;
 
-    -- Subsidiary ledger of the account (fims.sl_masters / fims.sl_details), same links the journal lines use.
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_payroll_items_sl_code') THEN
-        ALTER TABLE fims.payroll_items
-        ADD CONSTRAINT fk_payroll_items_sl_code
-        FOREIGN KEY (sl_code) REFERENCES fims.sl_masters(sl_code);
-    END IF;
-
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_payroll_items_sl_detail_id') THEN
-        ALTER TABLE fims.payroll_items
-        ADD CONSTRAINT fk_payroll_items_sl_detail_id
-        FOREIGN KEY (sl_detail_id) REFERENCES fims.sl_details(sl_detail_id);
-    END IF;
-
-    -- An SL belongs to an account, and a detail belongs to an SL. (That the SL is one OF this account
-    -- (sl_masters.account_code) is not enforced here, same as journal_entry_voucher_lines; the form only offers matching SLs.)
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_payroll_items_sl_chain') THEN
-        ALTER TABLE fims.payroll_items
-        ADD CONSTRAINT chk_payroll_items_sl_chain
-        CHECK ((sl_code IS NULL OR account_code IS NOT NULL) AND (sl_detail_id IS NULL OR sl_code IS NOT NULL));
-    END IF;
-
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_payroll_items_created_by') THEN
         ALTER TABLE fims.payroll_items
         ADD CONSTRAINT fk_payroll_items_created_by
@@ -73,18 +52,6 @@ BEGIN
         ALTER TABLE fims.payroll_record_items
         ADD CONSTRAINT fk_payroll_record_items_account_code
         FOREIGN KEY (account_code) REFERENCES fims.chart_of_accounts(account_code);
-    END IF;
-
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_payroll_record_items_sl_code') THEN
-        ALTER TABLE fims.payroll_record_items
-        ADD CONSTRAINT fk_payroll_record_items_sl_code
-        FOREIGN KEY (sl_code) REFERENCES fims.sl_masters(sl_code);
-    END IF;
-
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_payroll_record_items_sl_detail_id') THEN
-        ALTER TABLE fims.payroll_record_items
-        ADD CONSTRAINT fk_payroll_record_items_sl_detail_id
-        FOREIGN KEY (sl_detail_id) REFERENCES fims.sl_details(sl_detail_id);
     END IF;
 
     -- One amount per item per payroll record (one column per item in the monthly payroll register).
