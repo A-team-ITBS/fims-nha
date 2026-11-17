@@ -14,6 +14,7 @@ $_vl_api = preg_match('~/api$~', $_vl_api) ? $_vl_api : $_vl_api . '/api';
 // reserved PHPMaker query param (Config("VIEW") === "view", used to pick a view-template override)
 // and colliding with it makes the framework try to render a template literally named "<dv_id>.php".
 $_vl_view = (int) ($_GET['dv'] ?? 0);
+$_vl_payroll = (int) ($_GET['payroll'] ?? 0); // Payroll Management "Create DV": payroll_period_id to open a new DV for
 ?>
 
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -149,6 +150,7 @@ include __DIR__ . '/voucher/readone.php';  // view / print modal — defines vr_
 const VL_BASE = <?= json_encode($_vl_api) ?>;
 const VL_API  = VL_BASE + '/voucher';
 const VL_VIEW = <?= (int) $_vl_view ?>; // dv_id to open in the view modal on load (0 = none)
+const VL_PAYROLL = <?= (int) $_vl_payroll ?>; // imported payroll month to open a new DV for on load (0 = none) — see vf_openForPayroll()
 
 const VL_PAGE_SIZE = 15;
 let vl_page = 1;
@@ -169,6 +171,10 @@ async function vl_boot() {
     vl_bindEvents();
     vl_load();
     if (VL_VIEW > 0) vr_open(VL_VIEW);
+    else if (VL_PAYROLL > 0) {
+        history.replaceState(null, '', location.pathname); // a refresh after saving must not open another payroll DV
+        vf_openForPayroll(VL_PAYROLL);
+    }
 }
 
 /* The form modal calls this after a successful save: confirm, then refresh the list. */

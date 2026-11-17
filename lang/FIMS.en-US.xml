@@ -149,6 +149,9 @@
     <menu id="759">
       <phrase id="menutext" value="Payroll Setup" />
     </menu>
+    <menu id="761">
+      <phrase id="menutext" value="Payroll Management" />
+    </menu>
     <menu id="760">
       <phrase id="menutext" value="Fidelity Bond" />
     </menu>
@@ -1777,6 +1780,9 @@
     </table>
     <table id="fidelity_bond_page">
       <phrase id="tblcaption" value="Fidelity Bond" />
+    </table>
+    <table id="payroll_page">
+      <phrase id="tblcaption" value="Payroll Management" />
     </table>
   </project>
 </ew-language>

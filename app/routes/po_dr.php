@@ -61,9 +61,20 @@ $app->post('/po-dr/proforma-submit', function ($request, $response, $args) use (
         if ($done = $PoDrService->jevOf($po, $dr)) {
             return $response->withJson(['success' => false, 'message' => "The pro-forma of {$dr} was already submitted as Journal Entry Voucher {$done['jev_no']}.", 'data' => $done], 409);
         }
-        $result = (new \PHPMaker2024\FIMS\Service\DisbursementVoucherService())->createStandaloneJev($body, (int) $request->getAttribute('user_id'));
+        $uid     = (int) $request->getAttribute('user_id');
+        $voucher = new \PHPMaker2024\FIMS\Service\DisbursementVoucherService();
+        $result  = $voucher->createStandaloneJev($body, $uid);
         if (!empty($result['success'])) {
-            $PoDrService->linkJev($po, $dr, (int) $result['data']['jev_id'], (string) $result['data']['jev_no']);
+            $jevId = (int) $result['data']['jev_id'];
+            $PoDrService->linkJev($po, $dr, $jevId, (string) $result['data']['jev_no']);
+            // Submit for approval right away: DRAFT -> FOR_SECTION_CHIEF (the JEV list's own "Submit" step)
+            $sub = $voucher->changeJevStatus($jevId, 'FOR_SECTION_CHIEF', $uid);
+            if (!empty($sub['success'])) {
+                $result['data']['status'] = 'FOR_SECTION_CHIEF';
+                $result['message']        = 'Journal Entry Voucher ' . $result['data']['jev_no'] . ' created and submitted for approval.';
+            } else {
+                $result['message'] = 'Journal Entry Voucher ' . $result['data']['jev_no'] . ' was created as a draft, but could not be submitted for approval: ' . ($sub['message'] ?? 'unknown error');
+            }
         }
 
         return $response->withJson($result, $result['httpCode'] ?? ($result['success'] ? 200 : 400));

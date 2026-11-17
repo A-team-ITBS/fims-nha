@@ -48,10 +48,9 @@ $sideMenu->addMenuItem(89, "mi_chart_of_accounts_page", $Language->menuPhrase("8
 $sideMenu->addMenuItem(90, "mi_responsibility_center_page", $Language->menuPhrase("90", "MenuText"), "ResponsibilityCenterPage", 651, "", AllowListMenu('{FIMS}responsibility-center-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(332, "mi_bank_management_page", $Language->menuPhrase("332", "MenuText"), "BankManagementPage", 651, "", AllowListMenu('{FIMS}bank-management-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(391, "mi_vendors_page", $Language->menuPhrase("391", "MenuText"), "VendorsPage", 651, "", AllowListMenu('{FIMS}vendors-page.php'), false, false, "", "", false, true);
-$sideMenu->addMenuItem(655, "mi_fund_source_page", $Language->menuPhrase("655", "MenuText"), "FundSourcePage", 651, "", AllowListMenu('{FIMS}fund-source-page.php'), false, false, "", "", false, true);
-$sideMenu->addMenuItem(656, "mi_program_sources_page", $Language->menuPhrase("656", "MenuText"), "ProgramSourcesPage", 651, "", AllowListMenu('{FIMS}program-sources-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(658, "mi_accountable_officer_page", $Language->menuPhrase("658", "MenuText"), "AccountableOfficerPage", 651, "", AllowListMenu('{FIMS}accountable_officer-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(759, "mi_payroll_setup_page", $Language->menuPhrase("759", "MenuText"), "PayrollSetupPage", 651, "", AllowListMenu('{FIMS}payroll-setup-page.php'), false, false, "", "", false, true);
+$sideMenu->addMenuItem(761, "mi_payroll_page", $Language->menuPhrase("761", "MenuText"), "PayrollPage", 651, "", AllowListMenu('{FIMS}payroll-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(760, "mi_fidelity_bond_page", $Language->menuPhrase("760", "MenuText"), "FidelityBondPage", 651, "", AllowListMenu('{FIMS}fidelity-bond-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(330, "mci_Fund_Sourcing", $Language->menuPhrase("330", "MenuText"), "", -1, "", true, false, true, "fas fa-hand-holding-dollar", "", false, true);
 $sideMenu->addMenuItem(392, "mi_fund_sourcing_dashboard_page", $Language->menuPhrase("392", "MenuText"), "FundSourcingDashboardPage", 330, "", AllowListMenu('{FIMS}fund-sourcing-dashboard-page.php'), false, false, "", "", false, true);

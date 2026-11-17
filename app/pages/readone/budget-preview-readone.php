@@ -261,10 +261,12 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 
-// `programs` is one program or an array of them (see the header comment).
-async function bpv_openModal(requestContext, programs) {
+// `programs` is one program or an array of them (see the header comment). `coeLineItems`
+// is a COE request's own flat line items (no Program/Project at all) — mutually
+// exclusive with `programs` (a header is either REGULAR or COE, never both).
+async function bpv_openModal(requestContext, programs, coeLineItems = []) {
     bpv_ctx = requestContext;
-    bpv_render(requestContext, programs);
+    bpv_render(requestContext, programs, coeLineItems);
 
     // Return / Approve (and the remarks they need) only appear when the list page says this user may decide;
     // otherwise the footer is just Close.
@@ -514,9 +516,25 @@ function bpv_blockHtml(ctx, program, project) {
     </section>`;
 }
 
-// Grand Total: every line item of every Project of every Program, summed per amount column.
-function bpv_renderGrandTotal(programs) {
-    const lineItems = programs.flatMap(program => (program.projects ?? []).flatMap(project => project.line_items ?? []));
+// A COE request's own block — no Program/Sub-Program/Project to show in the info card, and no
+// per-Project Supporting Documents panel (COE's own Supporting Documents are request-level — see the
+// COE form's own modal). Reuses bpv_tableHtml unchanged by handing it a synthetic { line_items } object.
+function bpv_coeBlockHtml(ctx, lineItems) {
+    const row = (label, valueHtml) => `<div class="bpv-info-row"><span class="bpv-info-k">${label}</span><span class="bpv-info-v">${valueHtml}</span></div>`;
+    return `<section class="bpv-block">
+        <div class="bpv-info">${row('Originating Unit / Region', bpv_unitHtml(ctx))}</div>
+        ${bpv_tableHtml({ line_items: lineItems })}
+    </section>`;
+}
+
+// Grand Total: every line item of every Project of every Program (or, for a COE request, its own flat
+// line items), summed per amount column.
+// A header can have Programs AND its own COE line items at once — both are summed together.
+function bpv_renderGrandTotal(programs, coeLineItems = []) {
+    const lineItems = [
+        ...programs.flatMap(program => (program.projects ?? []).flatMap(project => project.line_items ?? [])),
+        ...coeLineItems,
+    ];
     const sum = key => lineItems.reduce((s, li) => s + (Number(li[key]) || 0), 0);
 
     $bpv('bpv-grand').hidden = lineItems.length === 0;
@@ -525,8 +543,9 @@ function bpv_renderGrandTotal(programs) {
     $bpv('bpv-grand-s').textContent = bgr_fmtMoney(sum('suggested_amount'));
 }
 
-// `programArg`: one program or an array of them
-function bpv_render(requestContext, programArg) {
+// `programArg`: one program or an array of them. `coeLineItems`: the same header's own flat
+// COE line items, if it has any — rendered as an extra block alongside the Program ones.
+function bpv_render(requestContext, programArg, coeLineItems = []) {
     const programs = Array.isArray(programArg) ? programArg : (programArg ? [programArg] : []);
 
     $bpv('bpv-ref').textContent = requestContext.budget_reference_number ?? '';
@@ -538,9 +557,10 @@ function bpv_render(requestContext, programArg) {
         if (!projects.length) blocks.push(bpv_blockHtml(requestContext, program, null));
         else projects.forEach(project => blocks.push(bpv_blockHtml(requestContext, program, project)));
     });
+    if (coeLineItems.length) blocks.push(bpv_coeBlockHtml(requestContext, coeLineItems));
     $bpv('bpv-blocks').innerHTML = blocks.length ? blocks.join('') : '<div class="bpv-noproj">No programs yet.</div>';
-    bpv_renderGrandTotal(programs);
+    bpv_renderGrandTotal(programs, coeLineItems);
 
-    bpv_loadDocs(++bpv_renderSeq);   // the Projects' Supporting Documents fill in as their answers arrive
+    bpv_loadDocs(++bpv_renderSeq);   // the Projects' Supporting Documents fill in as their answers arrive (none for a COE block)
 }
 </script>

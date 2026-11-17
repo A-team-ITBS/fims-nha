@@ -48,7 +48,10 @@ class CafPrintService
         if ($words !== '') {
             $body[] = ['text' => $words, 'bold' => true];
         }
-        $body = array_merge($body, $this->ordinalRuns(' necessary to cover ' . $purpose));
+        // "necessary to cover the <purpose>": the purpose is the RFA's description as typed (with or without a leading
+        // "the") — same rule as the regional CAF, never "the the".
+        $thePurpose = $purpose === '' || preg_match('/^the\s/i', $purpose) ? $purpose : 'the ' . $purpose;
+        $body = array_merge($body, $this->ordinalRuns(' necessary to cover ' . $thePurpose));
         if ($payee !== '') {
             $body[] = ['text' => ' to be released to ', 'bold' => false];
             $body[] = ['text' => $payee . ($payeeRep !== '' ? ' ' . $payeeRep : ''), 'bold' => true];
@@ -115,9 +118,13 @@ class CafPrintService
         $cafNumber = PrintService::text($p['caf_number'] ?? '');
         $amount    = PrintService::amount($p['caf_amount'] ?? $p['amount'] ?? null);
         $purpose   = PrintService::text($p['purpose'] ?? $p['description'] ?? '');
+        // "necessary to cover the <purpose>": the purpose is the RFA's description as typed, which may already start
+        // with "the" — never print "the the".
+        $thePurpose = $purpose === '' || preg_match('/^the\s/i', $purpose) ? $purpose : 'the ' . $purpose;
         $payee     = mb_strtoupper(PrintService::text($p['payee_name'] ?? ''));
         $address   = PrintService::text($p['payee_office_address'] ?? '');
-        $fund      = PrintService::text($p['fund_source_name'] ?? '');
+        // a CAF whose lines carry no Type of Fund: the same wording as the FMD CAF, never "available from ."
+        $fund      = PrintService::text($p['fund_source_name'] ?? '') ?: 'the appropriate fund source';
         $refNo     = PrintService::text($p['allocation_number'] ?? $p['rfa_number'] ?? $p['laa_number'] ?? '');
         $ref       = $refNo !== '' ? ' per ' . (strtoupper(PrintService::text($p['ref_type'] ?? '')) === 'LAA' ? 'LAA#' : 'RFA#') . ' ' . $refNo : '';
         $variant   = in_array($p['body_variant'] ?? '', self::REGIONAL_BODY_VARIANTS, true) ? $p['body_variant'] : 'entered_into_with';
@@ -134,9 +141,9 @@ class CafPrintService
         } elseif ($variant === 'in_favor_of') {
             $body[] = ['text' => 'in favor of ', 'bold' => false];
             $body[] = ['text' => $payee, 'bold' => true];
-            $body[] = ['text' => ' necessary to cover the ' . $purpose . ' is available from ' . $fund . $ref . '.', 'bold' => false];
+            $body[] = ['text' => ' necessary to cover ' . $thePurpose . ' is available from ' . $fund . $ref . '.', 'bold' => false];
         } else {
-            $body[] = ['text' => 'necessary to cover the ' . $purpose . ' entered into with ', 'bold' => false];
+            $body[] = ['text' => 'necessary to cover ' . $thePurpose . ' entered into with ', 'bold' => false];
             $body[] = ['text' => $payee, 'bold' => true];
             $body[] = ['text' => ($address !== '' ? ' with principal office at ' . $address : '')
                 . ' is available from ' . $fund . $ref . '.', 'bold' => false];
