@@ -32,6 +32,7 @@ $sideMenu->addMenuItem(551, "mci_Registry/NCA", $Language->menuPhrase("551", "Me
 $sideMenu->addMenuItem(263, "mi_saro_registry_page", $Language->menuPhrase("263", "MenuText"), "SaroRegistryPage", 551, "", AllowListMenu('{FIMS}saro-registry-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(560, "mi_check_registry_page", $Language->menuPhrase("560", "MenuText"), "CheckRegistryPage", 551, "", AllowListMenu('{FIMS}check-registry-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(561, "mi_accountable_forms_registry_page", $Language->menuPhrase("561", "MenuText"), "AccountableFormsRegistryPage", 551, "", AllowListMenu('{FIMS}accountable-forms-registry-page.php'), false, false, "", "", false, true);
+$sideMenu->addMenuItem(757, "mi_collections_page", $Language->menuPhrase("757", "MenuText"), "CollectionsPage", 551, "", AllowListMenu('{FIMS}collections-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(552, "mci_Reports", $Language->menuPhrase("552", "MenuText"), "", -1, "", true, false, true, "fas fa-chart-pie", "", false, true);
 $sideMenu->addMenuItem(652, "mi_fmr_page", $Language->menuPhrase("652", "MenuText"), "FmrPage", 552, "", AllowListMenu('{FIMS}fmr-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(653, "mi_remittance_list_page", $Language->menuPhrase("653", "MenuText"), "RemittanceListPage", 552, "", AllowListMenu('{FIMS}remittance-list-page.php'), false, false, "", "", false, true);

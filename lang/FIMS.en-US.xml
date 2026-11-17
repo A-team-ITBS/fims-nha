@@ -83,6 +83,9 @@
     <menu id="561">
       <phrase id="menutext" value="Accountable Forms Registry" />
     </menu>
+    <menu id="757">
+      <phrase id="menutext" value="Collections" />
+    </menu>
     <menu id="552">
       <phrase id="menutext" value="Reports" />
     </menu>
@@ -1753,6 +1756,9 @@
     </table>
     <table id="rfa_laa_monitoring_page">
       <phrase id="tblcaption" value="RFA / LAA Monitoring" />
+    </table>
+    <table id="collections_page">
+      <phrase id="tblcaption" value="Collections" />
     </table>
   </project>
 </ew-language>

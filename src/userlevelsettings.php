@@ -201,7 +201,9 @@ $USER_LEVEL_PRIVS = [["{FIMS}audit_logs","-2","0"],
     ["{FIMS}accountable_officer-page.php","-2","0"],
     ["{FIMS}accountable_officer-page.php","0","0"],
     ["{FIMS}rfa-laa-monitoring-page.php","-2","0"],
-    ["{FIMS}rfa-laa-monitoring-page.php","0","0"]];
+    ["{FIMS}rfa-laa-monitoring-page.php","0","0"],
+    ["{FIMS}collections-page.php","-2","0"],
+    ["{FIMS}collections-page.php","0","0"]];
 
 /**
  * Tables
@@ -303,4 +305,5 @@ $USER_LEVEL_TABLES = [["audit_logs","audit_logs","Audit Logs",false,"{FIMS}",""]
     ["program-sources-page.php","program_sources_page","Program Source",true,"{FIMS}","ProgramSourcesPage"],
     ["ledger-page.php","ledger_page","Ledger",true,"{FIMS}","LedgerPage"],
     ["accountable_officer-page.php","accountable_officer_page","Accountable Officer",true,"{FIMS}","AccountableOfficerPage"],
-    ["rfa-laa-monitoring-page.php","rfa_laa_monitoring_page","RFA / LAA Monitoring",true,"{FIMS}","RfaLaaMonitoringPage"]];
+    ["rfa-laa-monitoring-page.php","rfa_laa_monitoring_page","RFA / LAA Monitoring",true,"{FIMS}","RfaLaaMonitoringPage"],
+    ["collections-page.php","collections_page","Collections",true,"{FIMS}","CollectionsPage"]];
