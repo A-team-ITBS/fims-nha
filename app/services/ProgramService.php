@@ -49,7 +49,16 @@ class ProgramService
                      LIMIT {$limit} OFFSET {$offset}";
             $data = App\ExecuteRows($sql, 'DB');
 
-            return [
+            // The Programs page's tree also shows how many sub-programs there are in all — under EVERY program the search matches, not only the
+            // page of programs on screen (the rows carry only their own page's sub-programs).
+            $totals = $withSubPrograms
+                ? ['totals' => ['sub_programs' => (int) App\ExecuteScalar(
+                    "SELECT COUNT(*) FROM {$this->tableSub} all_sub WHERE all_sub.program_code IN (SELECT program_code FROM {$this->table} WHERE {$where})",
+                    'DB'
+                )]]
+                : [];
+
+            return $totals + [
                 'success'    => true,
                 'data'       => $withSubPrograms ? $this->attachSubPrograms($data ?: []) : ($data ?: []),
                 'pagination' => [

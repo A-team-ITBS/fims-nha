@@ -27,10 +27,9 @@ use PHPMaker2024\FIMS\DataType;
  *
  *   approved_amount     budget_line_items.suggested_amount, as it stands — the amount FMD suggested in the Budget Proposal module
  *   revision_amount     budget_line_items.adjustment: the net of the approved Budget Revisions (Revision / Realignment)
- *   revised_amount      budget_line_items.revised_amount: a plain, app-maintained column (migration "43 - budget_line_items_add_revised_amount");
- *                       it is NOT computed from the two figures above. Approving a Budget Revision writes it on each line it touches
- *                       (BudgetRevisionService::approve(): the line's new current amount, proposed_amount + adjustment); a line no
- *                       revision has touched keeps whatever the column holds, 0 by default
+ *   revised_amount      approved_amount - revision_amount: the Approved Amount less the Revision / Realignment, worked out per line — so a
+ *                       line no revision has touched shows its Approved Amount. The stored budget_line_items.revised_amount column (written
+ *                       only when a Budget Revision is approved, 0 otherwise) is no longer read here
  *   cba_requested      what approved CBAs (and CFAs) took off the line: their earmark rows' original_amount, only those that
  *                       actually reduced the balance (balance_applied) and are not released
  *   available_amount    revised_amount - cba_requested   (Available for Earmarking)
@@ -38,15 +37,29 @@ use PHPMaker2024\FIMS\DataType;
  *   laa_issued          the same for LAAs
  *   remaining_balance   revised_amount - rfa_approved - laa_issued  (a CBA only RESERVES money; an RFA / LAA actually uses it)
  *
- * Available and Remaining are worked from Revised Amount, so the identities  Revised - CBA = Available  and
- * Revised - RFA - LAA = Remaining  hold on every row, group and total. Approved + Revision = Revised is NOT guaranteed any more:
- * revised_amount is its own column, so it equals that sum only while whatever maintains it keeps it so.
+ * Five more figures per line item are for the RFA / LAA Monitoring page (rfa-laa-monitoring-page.php), which starts at the Revised Amount:
+ *
+ *   revised_computed    budget_line_items.proposed_amount + adjustment — the proposed amount net of the approved revisions / realignments (the
+ *                       adjustment is signed, so a decrease lowers it). This page's Revised Amount; it is a different formula from the COB
+ *                       page's revised_amount (approved_amount - revision_amount)
+ *   rfa_laa_amount      rfa_approved + laa_issued — what approved RFAs and issued LAAs have drawn from the CBAs
+ *   disbursement        budget_line_items.disbursement, as recorded (a plain column — migration "06")
+ *   unallocated_amount  revised_computed - rfa_approved - laa_issued — the revised budget not yet drawn by an RFA or LAA
+ *   account_payable     rfa_laa_amount - disbursement — what the RFAs / LAAs have drawn that has not been disbursed yet. Worked out per line; the
+ *                       stored budget_line_items.account_payable column (filled only by CBA / CFA approvals) is not used
+ *
+ * Revised, Available and Remaining are all worked out, so the identities  Approved - Revision = Revised,  Revised - CBA = Available  and
+ * Revised - RFA - LAA = Remaining  hold on every row, group and total.
  * NOTE: suggested_amount is also the line's LIVE balance — an approved CBA takes its amount off it and an approved Budget Revision
  * moves it — so Approved Amount on a line that already has a CBA or a revision is what is left, not what was first suggested;
  * see COB-MONITORING.md.
  *
  * Deleted memo requests do not count. A CBA approved before the "charge the line on approval" rule never took anything off the
  * line, so it is not in CBA Requested either.
+ *
+ * With rollup(..., $withAllocations = true) — only the RFA / LAA Monitoring page asks — every project node also carries, as children, the RFAs and
+ * LAAs that drew against its budget lines (type 'allocation': RFA / LAA Amount = what it drew there) and, under each RFA, its disbursement voucher
+ * (type 'dv': Disbursement = the voucher's net amount). They are detail rows: no total counts them.
  *
  * Views:
  *   summary()       the KPI cards
@@ -61,8 +74,13 @@ use PHPMaker2024\FIMS\DataType;
  */
 class CobService
 {
-    /** The amount columns every row, group and total carries (see the header comment for what each is). */
-    public const AMOUNT_KEYS = ['approved_amount', 'revision_amount', 'revised_amount', 'cba_requested', 'available_amount', 'rfa_approved', 'laa_issued', 'remaining_balance'];
+    /**
+     * The amount columns every row, group and total carries (see the header comment for what each is): the eight of the COB Monitoring sheet,
+     * then the five more the RFA / LAA Monitoring page shows (revised_computed, rfa_laa_amount, disbursement, unallocated_amount, account_payable). The COB
+     * page, its View modal and its report name the keys they show, so the extra four change nothing there.
+     */
+    public const AMOUNT_KEYS = ['approved_amount', 'revision_amount', 'revised_amount', 'cba_requested', 'available_amount', 'rfa_approved', 'laa_issued', 'remaining_balance',
+        'revised_computed', 'rfa_laa_amount', 'disbursement', 'unallocated_amount', 'account_payable'];
 
     public const LAYOUTS = ['region', 'fund_source', 'component', 'program'];
 
@@ -123,37 +141,47 @@ class CobService
                 ) att ON att.budget_req_program_id = brpg.budget_req_program_id AND att.project_code = brpj.project_code";
     }
 
-    /** One line item's eight figures (see the header comment), aliased to AMOUNT_KEYS — the building block of every SUM. */
+    /** One line item's figures (see the header comment), aliased to AMOUNT_KEYS — the building block of every SUM. */
     private function lineAmountExprs(): array
     {
         $cba = 'COALESCE(ear.cba_requested, 0)';
         $rfa = 'COALESCE(ear.rfa_approved, 0)';
         $laa = 'COALESCE(ear.laa_issued, 0)';
+        // The COB sheet's Revised Amount: the Approved Amount (suggested_amount) less the Revision / Realignment (adjustment), worked out per line.
+        // One definition: Available and Remaining below start from it, so they follow it.
+        $revised = '(COALESCE(li.suggested_amount, 0) - COALESCE(li.adjustment, 0))';
+        // the RFA / LAA Monitoring page's Revised Amount: the proposed amount net of the adjustment (signed — a decrease / realignment out is
+        // negative), worked out from the line itself. One definition, used by revised_computed and by unallocated_amount below.
+        $revisedCalc = '(COALESCE(li.proposed_amount, 0) + COALESCE(li.adjustment, 0))';
+        $rfaLaa = "({$rfa} + {$laa})";
 
         return [
             'approved_amount' => 'li.suggested_amount',
             'revision_amount' => 'li.adjustment',
-            'revised_amount' => 'li.revised_amount',
+            'revised_amount' => $revised,
             'cba_requested' => $cba,
-            'available_amount' => "(li.revised_amount - {$cba})",
+            'available_amount' => "({$revised} - {$cba})",
             'rfa_approved' => $rfa,
             'laa_issued' => $laa,
-            'remaining_balance' => "(li.revised_amount - {$rfa} - {$laa})",
+            'remaining_balance' => "({$revised} - {$rfa} - {$laa})",
+            // the RFA / LAA Monitoring page's own figures. Its Revised Amount is worked out from the line — the proposed amount net of the
+            // adjustment (a signed total: a decrease or a realignment out is negative) — not read from the recorded revised_amount column
+            'revised_computed' => $revisedCalc,
+            'rfa_laa_amount' => $rfaLaa,
+            'disbursement' => 'li.disbursement',
+            // Unallocated Amount = Revised Amount - RFA / LAA Amount (so it foots on every row, group and total)
+            'unallocated_amount' => "({$revisedCalc} - {$rfaLaa})",
+            // Account Payable = RFA / LAA Amount - Disbursement (it foots on every row, group and total)
+            'account_payable' => "({$rfaLaa} - COALESCE(li.disbursement, 0))",
         ];
     }
 
     /**
-     * The result for a query that threw: logged with its real cause, and returned with a message the page can show. When the cause is
-     * budget_line_items.revised_amount not existing yet (the migration has not been run on this database) the message says so.
+     * The result for a query that threw: logged with its real cause, and returned with a message the page can show.
      */
     private function failure(string $method, string $message, \Throwable $e, array $extra = []): array
     {
         App\LogError('CobService::'.$method.' '.$e->getMessage());
-
-        $text = $e->getMessage();
-        if (stripos($text, 'revised_amount') !== false && stripos($text, 'does not exist') !== false) {
-            $message .= ' The budget_line_items.revised_amount column is missing — run the migration "43 - budget_line_items_add_revised_amount.sql".';
-        }
 
         return ['success' => false, 'message' => $message] + $extra;
     }
@@ -327,7 +355,7 @@ class CobService
      *
      * @return array{success: bool, layout_by?: string, data?: array, totals?: array, message?: string}
      */
-    public function rollup(string $layoutBy, array $filters, string $scopeRcId = ''): array
+    public function rollup(string $layoutBy, array $filters, string $scopeRcId = '', bool $withAllocations = false): array
     {
         if (!in_array($layoutBy, self::LAYOUTS, true)) {
             return ['success' => false, 'message' => 'Unknown layout_by: '.$layoutBy];
@@ -365,10 +393,102 @@ class CobService
                 $totals = $this->addTo($totals, $node);
             }
 
-            return ['success' => true, 'layout_by' => $layoutBy, 'data' => $tree, 'totals' => $totals];
+            // The RFA / LAA Monitoring page also wants, under every project, the RFAs and LAAs drawn against it and under each RFA its
+            // disbursement voucher. They are detail rows added AFTER the totals, so no figure above them changes; if they cannot be read
+            // the tree is still returned, with a message.
+            $extra = [];
+            if ($withAllocations) {
+                try {
+                    $tree = $this->attachAllocations($tree, $this->allocationRows($f, $scopeRcId));
+                } catch (\Throwable $e) {
+                    App\LogError('CobService::rollup (allocations) '.$e->getMessage());
+                    $extra['allocation_error'] = 'The RFAs / LAAs under the projects could not be loaded.';
+                }
+            }
+
+            return ['success' => true, 'layout_by' => $layoutBy, 'data' => $tree, 'totals' => $totals] + $extra;
         } catch (\Throwable $e) {
             return $this->failure('rollup', 'Failed to load the COB roll-up.', $e);
         }
+    }
+
+    /**
+     * The RFAs and LAAs that have drawn against each project, with the voucher of each, keyed like the tree's project nodes
+     * (budget reference no. | program block | project code). One row per (project, allocation): the allocation's drawn amount on THAT
+     * project is the sum of its 'converted' earmark rows on the project's budget lines — the same rows that make up RFA Approved and
+     * LAA Issued. A deleted allocation does not count. An allocation's disbursement voucher is the one budget_allocation.dv_id points
+     * at (only RFAs are linked to one); a voucher that was cancelled or rejected is no longer connected, so it is left out. A voucher's status is read
+     * through fims.settings_status (status_id): the table has no status column of its own any more ("03 - alter_table/21").
+     * The same filters and the same RC scope as the tree itself.
+     *
+     * @return array<string, list<array>> project key => allocation nodes, each with its voucher (if any) as its only child
+     */
+    private function allocationRows(array $f, string $scopeRcId): array
+    {
+        $rows = App\ExecuteRows(
+            'SELECT br.budget_reference_number, brpg.budget_req_program_id, brpj.project_code,
+                    a.allocation_id, UPPER(a.allocation_type) AS allocation_type, a.allocation_number, a.request_referrence_no, a.description,
+                    COALESCE(SUM(e.amount), 0) AS drawn_amount,
+                    dv.dv_id, dv.dv_no, dv.dv_date, dv.claimant_name, dv.net_amount AS dv_amount,
+                    dst.name AS dv_status, dst.color AS dv_status_color
+             '.$this->fromSql()."
+             JOIN {$this->tableEarmark} e ON e.budget_line_item_id = li.budget_line_item_id AND e.status = 'converted'
+             JOIN {$this->tableAllocation} a ON a.allocation_id = e.allocation_id AND a.deleted_at IS NULL
+                                            AND UPPER(a.allocation_type) IN ('RFA', 'LAA')
+             LEFT JOIN fims.disbursement_vouchers dv ON dv.dv_id = a.dv_id
+                  AND UPPER(COALESCE((SELECT s.name FROM fims.settings_status s WHERE s.id = dv.status_id), '')) NOT IN ('CANCELLED', 'REJECTED')
+             LEFT JOIN fims.settings_status dst ON dst.id = dv.status_id
+             WHERE ".implode(' AND ', $this->conditions($f, $scopeRcId)).'
+             GROUP BY br.budget_reference_number, brpg.budget_req_program_id, brpj.project_code,
+                      a.allocation_id, a.allocation_type, a.allocation_number, a.request_referrence_no, a.description,
+                      dv.dv_id, dv.dv_no, dv.dv_date, dv.claimant_name, dv.net_amount, dst.name, dst.color
+             ORDER BY a.allocation_type, a.allocation_number, a.allocation_id',
+            'DB'
+        ) ?: [];
+
+        $byProject = [];
+        foreach ($rows as $r) {
+            $key = ($r['budget_reference_number'] ?? '').'|'.($r['budget_req_program_id'] ?? '').'|'.($r['project_code'] ?? '');
+            $number = trim((string) ($r['allocation_number'] ?? '')) !== ''
+                ? (string) $r['allocation_number']
+                : (string) ($r['request_referrence_no'] ?? ('#'.$r['allocation_id']));
+
+            $children = [];
+            if (!empty($r['dv_id'])) {
+                // a voucher row: its amount (net of deductions) goes in the Disbursement column
+                $children[] = [
+                    'type' => 'dv', 'key' => 'd'.$r['dv_id'], 'label' => (string) ($r['dv_no'] ?? ('DV #'.$r['dv_id'])), 'code' => 'DV', 'unassigned' => false,
+                    'dv_id' => (int) $r['dv_id'], 'dv_date' => $r['dv_date'] ?? null, 'claimant_name' => $r['claimant_name'] ?? null,
+                    'status_name' => $r['dv_status'] ?? null, 'status_color' => $r['dv_status_color'] ?? null,
+                    'disbursement' => $this->num($r['dv_amount'] ?? 0),
+                ] + $this->zeroAmounts() + ['children' => []];
+            }
+
+            // an allocation row: what it drew on this project goes in the RFA / LAA Amount column
+            $byProject[$key][] = [
+                'type' => 'allocation', 'key' => 'a'.$r['allocation_id'], 'label' => $number, 'code' => (string) $r['allocation_type'], 'unassigned' => false,
+                'allocation_id' => (int) $r['allocation_id'], 'allocation_type' => (string) $r['allocation_type'],
+                'description' => $r['description'] ?? null,
+                'rfa_laa_amount' => $this->num($r['drawn_amount'] ?? 0),
+            ] + $this->zeroAmounts() + ['children' => $children];
+        }
+
+        return $byProject;
+    }
+
+    /** Hangs each project's allocations (allocationRows()) on its project node, wherever in the tree the node sits. */
+    private function attachAllocations(array $nodes, array $byProject): array
+    {
+        foreach ($nodes as &$node) {
+            if (($node['type'] ?? '') === 'project') {
+                $node['children'] = $byProject[$node['key']] ?? [];
+            } elseif (!empty($node['children'])) {
+                $node['children'] = $this->attachAllocations($node['children'], $byProject);
+            }
+        }
+        unset($node);
+
+        return $nodes;
     }
 
     private function zeroAmounts(): array
