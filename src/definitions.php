@@ -132,6 +132,7 @@ return [
     "journals_page" => \DI\create(JournalsPage::class),
     "trial_balance_page" => \DI\create(TrialBalancePage::class),
     "balance_sheet_page" => \DI\create(BalanceSheetPage::class),
+    "income_statement_page" => \DI\create(IncomeStatementPage::class),
     "budget_prop_page" => \DI\create(BudgetPropPage::class),
     "notification_reads" => \DI\create(NotificationReads::class),
     "saro_registry_page" => \DI\create(SaroRegistryPage::class),

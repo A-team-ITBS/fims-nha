@@ -125,6 +125,7 @@
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone ($p['PHPMaker2024\\FIMS\\Attributes\\Get'] ?? \Symfony\Component\VarExporter\Internal\Registry::p('PHPMaker2024\\FIMS\\Attributes\\Get')),
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Get'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
@@ -221,6 +222,11 @@
     [
         'PHPMaker2024\\FIMS\\Attributes\\Map' => [
             'methods' => [
+                [
+                    'GET',
+                    'POST',
+                    'OPTIONS',
+                ],
                 [
                     'GET',
                     'POST',
@@ -1389,6 +1395,7 @@
                 '/GeneralLedgerPage[/{params:.*}]',
                 '/IarModule[/{params:.*}]',
                 '/IdGenerator[/{params:.*}]',
+                '/IncomeStatementPage[/{params:.*}]',
                 '/JournalEntryVoucher[/{params:.*}]',
                 '/JournalsPage[/{params:.*}]',
                 '/JwtSessionsList[/{session_id}]',
@@ -1607,6 +1614,7 @@
                 'PHPMaker2024\\FIMS\\GeneralLedgerPageController:custom',
                 'PHPMaker2024\\FIMS\\IarModuleController:custom',
                 'PHPMaker2024\\FIMS\\IdGeneratorController:custom',
+                'PHPMaker2024\\FIMS\\IncomeStatementPageController:custom',
                 'PHPMaker2024\\FIMS\\JournalEntryVoucherController:custom',
                 'PHPMaker2024\\FIMS\\JournalsPageController:custom',
                 'PHPMaker2024\\FIMS\\JwtSessionsController:list',
@@ -1735,6 +1743,9 @@
                 'PHPMaker2024\\FIMS\\WorkflowManagerController:custom',
             ],
             'middleware' => [
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
                 [
                     'PHPMaker2024\\FIMS\\PermissionMiddleware',
                 ],
@@ -2473,6 +2484,7 @@
                 'custom.general_ledger_page',
                 'custom.IARModule',
                 'custom.IDGenerator',
+                'custom.income_statement_page',
                 'custom.JournalEntryVoucher',
                 'custom.journals_page',
                 'list.jwt_sessions',
@@ -2601,6 +2613,7 @@
                 'custom.WorkflowManager',
             ],
             'options' => [
+                [],
                 [],
                 [],
                 [],
@@ -3037,6 +3050,7 @@
         $o[213],
         $o[214],
         $o[215],
+        $o[216],
     ],
     []
 );
