@@ -12,6 +12,7 @@ routes/
 ├── department-management.php # Department Management page routes (create/update department)
 ├── position-management.php   # Position Management page routes (create/update category, position)
 ├── vendor.php          # Vendor + vendor type routes
+├── accountable_officer.php # Accountable Officer CRUD routes
 ├── purchase-order.php  # Purchase order CRUD + status routes
 ├── voucher.php         # Disbursement Voucher CRUD + status + RFA lookup routes
 ├── notifications.php   # Notification hub API (uac.notifications) for the bell
@@ -69,6 +70,13 @@ with an `/api` prefix, e.g. `POST /user-access/users` below is actually `POST /a
 - `GET /vendors/read/{id}` - One vendor
 - `POST /vendors/add` - Create (`vendor_code` and `vendor_name` required, `vendor_code` unique)
 - `PUT /vendors/update/{id}` - Update
+
+### accountable_officer.php (`AccountableOfficerService`, table `fims.accountable_officers`)
+- `GET /accountable-officers/all` - All accountable officers, no pagination (dropdown). Optional: `search`
+- `GET /accountable-officers/list` - Paginated; also returns `summary` {active, inactive} for every row matching the filters. Optional: `page`, `limit`, `search`, `status` (ACTIVE / INACTIVE)
+- `GET /accountable-officers/read/{id}` - One accountable officer
+- `POST /accountable-officers/add` - Create (`officer_name` required). Optional `rc_id` (region, must exist in `fims.responsibility_code`) and `coa_account_id` (must exist in `fims.chart_of_accounts`) — the form's Region dropdown is populated from the existing `GET /responsibility-center/all?status=Active`, and its Account picker from the existing `GET /accounting/coa/search`
+- `PUT /accountable-officers/update/{id}` - Update
 
 ### purchase-order.php (`PurchaseOrderService`, tables `fims.purchase_orders` / `fims.purchase_order_items`)
 - `GET /purchase-order/all` - All POs, no pagination. Optional filters: `status`, `fiscal_yr`, `expense_class`, `vendor_id`, `search`
