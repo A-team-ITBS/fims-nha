@@ -73,6 +73,37 @@ $_coa_api = Config('API.FIMS_URL');
     .coa-menu-item svg {
         flex-shrink: 0;
     }
+
+    /* ── Account column: expand toggle, segmented account-code chip, account title ── */
+    #coa-root .coa-toggle { width:22px;height:22px;flex-shrink:0;padding:0;font-size:12px;cursor:pointer;border-radius:6px;
+        display:inline-flex;align-items:center;justify-content:center;
+        color:var(--afims-heading-fill, #000E3E);background:var(--afims-surface, #FFFFFF);border:1px solid var(--afims-border, #E4ECF2); }
+    #coa-root .coa-chip { display:inline-flex;flex-shrink:0;overflow:hidden;border-radius:6px;border:1px solid var(--afims-border, #E4ECF2); }
+    #coa-root .coa-chip-seg { padding:3px 8px;font:700 12px 'IBM Plex Mono',monospace;color:#2F5FD6;background:#EAF1FE;
+        border-left:1px solid rgba(15,32,69,.08); }
+    #coa-root .coa-chip-seg.is-root { color:#1A1B21;background:#EEF1F7;border-left:0; }
+    #coa-root .coa-title { font-weight:700;color:var(--afims-heading-fill, #000E3E); }
+
+    /* ── Dark mode ──
+       Account column: --afims-heading-fill stays navy (a fill colour), so the title and toggle were navy on navy.
+       Actions menu: its background was a hard-coded white while the items take the (light, in dark mode) theme text colour,
+       so Edit / Deactivate were white on white. */
+    html.afims-dark[data-bs-theme="dark"] #coa-root .coa-title { color:#FFFFFF; }
+    html.afims-dark[data-bs-theme="dark"] #coa-root .coa-toggle { color:#FFFFFF;background:#3861BC;border-color:#5B7FCF; }
+    html.afims-dark[data-bs-theme="dark"] #coa-root .coa-toggle:hover { background:#2E59B8; }
+    html.afims-dark[data-bs-theme="dark"] #coa-root .coa-chip { border-color:#5B7FCF; }
+    html.afims-dark[data-bs-theme="dark"] #coa-root .coa-chip-seg { color:#FFFFFF;background:#3861BC;border-left-color:rgba(255,255,255,.25); }
+    html.afims-dark[data-bs-theme="dark"] #coa-root .coa-chip-seg.is-root { color:#FFFFFF;background:#22305E; }
+
+    html.afims-dark[data-bs-theme="dark"] .coa-action-menu {
+        background:var(--afims-surface, #1A1F38);border-color:var(--afims-border-strong, #4A5270);box-shadow:0 8px 24px rgba(0,0,0,.45);
+    }
+    html.afims-dark[data-bs-theme="dark"] .coa-menu-item { color:var(--afims-text, #E4ECF2); }
+    html.afims-dark[data-bs-theme="dark"] .coa-menu-item:hover { color:#FFFFFF;background:var(--afims-primary-soft, #0F2456); }
+    html.afims-dark[data-bs-theme="dark"] .coa-menu-item.danger { color:#F87171; }
+    html.afims-dark[data-bs-theme="dark"] .coa-menu-item.danger:hover { background:rgba(220,53,69,.18); }
+    html.afims-dark[data-bs-theme="dark"] .coa-action-btn { color:#FFFFFF;background:#3861BC; }
+    html.afims-dark[data-bs-theme="dark"] .coa-action-btn:hover { background:#2E59B8; }
 </style>
 
 <div id="coa-root" class="nha-root">
@@ -431,10 +462,7 @@ function coa_renderTable(rows) {
         const indent = r._depth * 26;
         const expanded = !coa_collapsed.has(r.account_id);
         const toggle = r._hasChildren
-            ? `<button type="button" onclick="coa_toggleNode('${coa_escAttr(r.account_id)}')" title="${expanded ? 'Collapse' : 'Expand'}"
-                   style="width:22px;height:22px;flex-shrink:0;border:1px solid var(--afims-border, #E4ECF2);border-radius:6px;
-                          background:var(--afims-surface, #FFFFFF);cursor:pointer;color:var(--afims-heading-fill, #000E3E);
-                          font-size:12px;padding:0;display:inline-flex;align-items:center;justify-content:center;">
+            ? `<button type="button" class="coa-toggle" onclick="coa_toggleNode('${coa_escAttr(r.account_id)}')" title="${expanded ? 'Collapse' : 'Expand'}">
                    <span style="display:inline-block;transform:rotate(${expanded ? 90 : 0}deg);transition:transform .15s;">›</span>
                </button>`
             : `<span style="width:22px;height:22px;flex-shrink:0;display:inline-block;"></span>`;
@@ -447,7 +475,7 @@ function coa_renderTable(rows) {
             <div style="display:flex;align-items:center;gap:8px;padding-left:${indent}px;">
                 ${toggle}
                 ${coa_codeChip(r.account_code)}
-                <span style="font-weight:700;color:var(--afims-heading-fill, #000E3E);">${coa_esc(r.account_title)}</span>
+                <span class="coa-title">${coa_esc(r.account_title)}</span>
             </div>
         </td>
         <td>${r.books ? coa_esc(r.books) : '<span class="nha-td-sub">—</span>'}</td>
@@ -526,13 +554,9 @@ function coa_prevPage() {
 function coa_codeChip(code) {
     const parts = String(code ?? '').split('-').filter(p => p !== '');
     if (!parts.length) return '';
-    const segs = parts.map((p, i) => {
-        const bg     = i === 0 ? '#EEF1F7' : '#EAF1FE';
-        const fg     = i === 0 ? '#1A1B21' : '#2F5FD6';
-        const border = i > 0 ? 'border-left:1px solid rgba(15,32,69,.08);' : '';
-        return `<span style="background:${bg};color:${fg};padding:3px 8px;font-size:12px;font-weight:700;font-family:'IBM Plex Mono',monospace;${border}">${coa_esc(p)}</span>`;
-    }).join('');
-    return `<span style="display:inline-flex;border:1px solid var(--afims-border, #E4ECF2);border-radius:6px;overflow:hidden;flex-shrink:0;">${segs}</span>`;
+    // first segment = the account class (neutral), the rest = sub-codes (blue); colours in the <style> block above (light + dark)
+    const segs = parts.map((p, i) => `<span class="coa-chip-seg${i === 0 ? ' is-root' : ''}">${coa_esc(p)}</span>`).join('');
+    return `<span class="coa-chip">${segs}</span>`;
 }
 
 function coa_pill(text, on) {

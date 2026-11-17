@@ -47,6 +47,33 @@ $app->get('/po-dr/proforma', function ($request, $response, $args) use ($PoDrSer
     return $response->withJson($PoDrService->proforma((string) ($params['po_number'] ?? '')));
 })->add($jwtMiddleware);
 
+// Submit the pro-forma of ONE delivery receipt as a Journal Entry Voucher (standalone, DRAFT — the same creation as
+// POST /voucher/journal-entry/add). body: { po_number, dr_number, jev_date, fiscal_yr, book_id, particulars?, lines[] }.
+// The JEV is recorded on the delivery receipt (jev_id / jev_no), and a receipt that already has one cannot be submitted again.
+$app->post('/po-dr/proforma-submit', function ($request, $response, $args) use ($PoDrService) {
+    try {
+        $body = $request->getParsedBody() ?: [];
+        $po   = trim((string) ($body['po_number'] ?? ''));
+        $dr   = trim((string) ($body['dr_number'] ?? ''));
+        if ($po === '' || $dr === '') {
+            return $response->withJson(['success' => false, 'message' => 'PO number and delivery receipt no. are required.'], 400);
+        }
+        if ($done = $PoDrService->jevOf($po, $dr)) {
+            return $response->withJson(['success' => false, 'message' => "The pro-forma of {$dr} was already submitted as Journal Entry Voucher {$done['jev_no']}.", 'data' => $done], 409);
+        }
+        $result = (new \PHPMaker2024\FIMS\Service\DisbursementVoucherService())->createStandaloneJev($body, (int) $request->getAttribute('user_id'));
+        if (!empty($result['success'])) {
+            $PoDrService->linkJev($po, $dr, (int) $result['data']['jev_id'], (string) $result['data']['jev_no']);
+        }
+
+        return $response->withJson($result, $result['httpCode'] ?? ($result['success'] ? 200 : 400));
+    } catch (\Exception $e) {
+        LogError('POST /po-dr/proforma-submit ' . $e->getMessage());
+
+        return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
+    }
+})->add($jwtMiddleware);
+
 // Add (po_number + lines[])
 $app->post('/po-dr/add', function ($request, $response, $args) use ($PoDrService) {
     $result = $PoDrService->create($request->getParsedBody() ?: [], (int) $request->getAttribute('user_id'));
