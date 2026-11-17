@@ -30,8 +30,11 @@ CREATE TABLE IF NOT EXISTS fims.payroll_records (
     -- Kept as denormalized snapshot for performance
     total_deductions NUMERIC(18,2) DEFAULT 0,
 
+    -- A generated column cannot reference another generated column (gross_amount), so the earnings are repeated.
+    -- 03 - alter_table/38 later regenerates both from the payroll_record_items totals.
     net_amount NUMERIC(18,2) GENERATED ALWAYS AS (
-        gross_amount - COALESCE(total_deductions, 0)
+        regular_pay + COALESCE(overtime_pay, 0) + COALESCE(bonus_pay, 0) +
+        COALESCE(allowances, 0) + COALESCE(other_income, 0) - COALESCE(total_deductions, 0)
     ) STORED,
 
     -- Payment status: DRAFT | FOR_REVIEW | APPROVED | RELEASED | PAID | REVERSED

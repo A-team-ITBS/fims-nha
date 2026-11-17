@@ -10,8 +10,9 @@ CREATE TABLE IF NOT EXISTS fims.payroll_employees (
     first_name VARCHAR(100) NOT NULL,
     last_name VARCHAR(100) NOT NULL,
     middle_name VARCHAR(100),
+    -- Uses || not CONCAT(): CONCAT is only STABLE, and PostgreSQL requires an IMMUTABLE generation expression.
     full_name VARCHAR(255) GENERATED ALWAYS AS (
-        TRIM(CONCAT(first_name, ' ', COALESCE(middle_name, ''), ' ', last_name))
+        TRIM(first_name || ' ' || COALESCE(middle_name || ' ', '') || last_name)
     ) STORED,
 
     -- Government ID numbers

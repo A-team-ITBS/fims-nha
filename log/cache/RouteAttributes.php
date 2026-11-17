@@ -188,6 +188,7 @@
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
     ],
     null,
     [
@@ -1129,6 +1130,11 @@
                     'POST',
                     'OPTIONS',
                 ],
+                [
+                    'GET',
+                    'POST',
+                    'OPTIONS',
+                ],
             ],
             'pattern' => [
                 '/AggregatedAuditLogsList',
@@ -1241,6 +1247,7 @@
                 '/swagger/swagger',
                 '/[index]',
                 '/PageEditor[/{params:.*}]',
+                '/PayrollPage[/{params:.*}]',
                 '/PermissionModuleCaptionsList[/{table_name:.*}]',
                 '/PermissionModuleCaptionsAdd[/{table_name:.*}]',
                 '/PermissionModuleCaptionsView[/{table_name:.*}]',
@@ -1431,6 +1438,7 @@
                 'PHPMaker2024\\FIMS\\OthersController:swagger',
                 'PHPMaker2024\\FIMS\\OthersController:index',
                 'PHPMaker2024\\FIMS\\PageEditorController:custom',
+                'PHPMaker2024\\FIMS\\PayrollPageController:custom',
                 'PHPMaker2024\\FIMS\\PermissionModuleCaptionsController:list',
                 'PHPMaker2024\\FIMS\\PermissionModuleCaptionsController:add',
                 'PHPMaker2024\\FIMS\\PermissionModuleCaptionsController:view',
@@ -2073,6 +2081,9 @@
                 [
                     'PHPMaker2024\\FIMS\\PermissionMiddleware',
                 ],
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
             ],
             'name' => [
                 'list.aggregated_audit_logs',
@@ -2185,6 +2196,7 @@
                 'swagger',
                 'index',
                 'custom.PageEditor',
+                'custom.payroll_page',
                 'list.permission_module_captions',
                 'add.permission_module_captions',
                 'view.permission_module_captions',
@@ -2265,6 +2277,7 @@
                 'custom.WorkflowManager',
             ],
             'options' => [
+                [],
                 [],
                 [],
                 [],
@@ -2645,6 +2658,7 @@
         $o[185],
         $o[186],
         $o[187],
+        $o[188],
     ],
     []
 );
