@@ -8,6 +8,35 @@ $_rc_api = Config('API.FIMS_URL');
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
+<style>
+/* ── Actions dropdown — same menu as the Memo Requests / Budget Proposal lists ── */
+#rc-root .nha-tools-menu { position:relative;display:inline-block; }
+#rc-root .nha-menu-trigger { display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;
+    border:1px solid var(--afims-border, #E4ECF2);background:var(--afims-surface, #FFFFFF);color:var(--afims-text, #1A1B21);white-space:nowrap;
+    font-family:'IBM Plex Sans',sans-serif;transition:all .15s; }
+#rc-root .nha-menu-trigger:hover { background:var(--afims-surface-subtle, #F4F7FA);border-color:var(--afims-text-disabled, #A9AAB8); }
+#rc-root .nha-menu-trigger svg { width:12px;height:12px;flex-shrink:0; }
+#rc-root .nha-tools-dropdown { display:none;position:fixed;min-width:170px;background:var(--afims-surface, #FFFFFF);border:1px solid var(--afims-border, #E4ECF2);
+    border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.12);z-index:9999;padding:4px 0; }
+#rc-root .nha-tools-dropdown.open { display:block; }
+#rc-root .nha-menu-item { display:flex;align-items:center;gap:8px;padding:8px 12px;font-size:12px;font-weight:500;color:var(--afims-text, #1A1B21);
+    white-space:nowrap;cursor:pointer;border:none;background:none;width:100%;text-align:left;transition:background .1s;font-family:'IBM Plex Sans',sans-serif; }
+#rc-root .nha-menu-item:hover { background:var(--afims-surface-subtle, #F4F7FA);color:var(--afims-heading-fill, #000E3E); }
+#rc-root .nha-menu-item.danger { color:var(--afims-danger, #DC3545); }
+#rc-root .nha-menu-item.danger:hover { background:#fdecec;color:#c0392b; }
+#rc-root .nha-menu-item svg { width:13px;height:13px;flex-shrink:0;opacity:.7; }
+#rc-root .nha-menu-divider { border-top:1px solid var(--afims-border, #E4ECF2);margin:3px 0; }
+/* dark mode */
+html.afims-dark[data-bs-theme="dark"] #rc-root .nha-menu-trigger { color:#FFFFFF;background:#3861BC;border-color:#3861BC; }
+html.afims-dark[data-bs-theme="dark"] #rc-root .nha-menu-trigger:hover { background:#2E59B8;border-color:#2E59B8; }
+html.afims-dark[data-bs-theme="dark"] #rc-root .nha-tools-dropdown { background:var(--afims-surface, #1A1F38);border-color:var(--afims-border-strong, #4A5270);box-shadow:0 8px 24px rgba(0,0,0,.45); }
+html.afims-dark[data-bs-theme="dark"] #rc-root .nha-menu-item { color:var(--afims-text, #E4ECF2); }
+html.afims-dark[data-bs-theme="dark"] #rc-root .nha-menu-item svg { opacity:.85; }
+html.afims-dark[data-bs-theme="dark"] #rc-root .nha-menu-item:hover { color:#FFFFFF;background:var(--afims-primary-soft, #0F2456); }
+html.afims-dark[data-bs-theme="dark"] #rc-root .nha-menu-item.danger { color:#F87171; }
+html.afims-dark[data-bs-theme="dark"] #rc-root .nha-menu-item.danger:hover { color:#FCA5A5;background:rgba(220,53,69,.18); }
+html.afims-dark[data-bs-theme="dark"] #rc-root .nha-menu-divider { border-top-color:var(--afims-border-strong, #4A5270); }
+</style>
 
 <div id="rc-root" class="nha-root">
 
@@ -120,7 +149,7 @@ $_rc_api = Config('API.FIMS_URL');
                     </tr>
                 </thead>
                 <tbody id="rc-tbody">
-                    <tr><td colspan="9"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
+                    <tr><td colspan="10"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
                 </tbody>
             </table>
         </div>
@@ -240,7 +269,7 @@ async function rc_load() {
 function rc_renderTable(rows) {
     const tbody = $rc('rc-tbody');
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="9"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No responsibility centers found.</span></div></td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No responsibility centers found.</span></div></td></tr>';
         return;
     }
     const offset = (rc_page - 1) * RC_PAGE_SIZE;
@@ -255,21 +284,50 @@ function rc_renderTable(rows) {
         <td>${r.source_document ? rc_esc(r.source_document) : '<span class="nha-td-sub">—</span>'}</td>
         <td>${rc_boolBadge(r.is_budget_holding_rc)}</td>
         <td>
-            <button class="nha-btn-act edit" onclick="rc_edit('${rc_escAttr(r.rc_id)}')" title="Edit">
-                <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
-                Edit
-            </button>
-            <button class="nha-btn-act" onclick="rc_toggleStatus('${rc_escAttr(r.rc_id)}')" title="Toggle status">
-                <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-                ${r.status === 'Active' ? 'Deactivate' : 'Activate'}
-            </button>
-            <button class="nha-btn-act danger" onclick="rc_delete('${rc_escAttr(r.rc_id)}')" title="Delete">
-                <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-                Delete
-            </button>
+            <div class="nha-tools-menu">
+                <button type="button" class="nha-menu-trigger" aria-haspopup="true" aria-expanded="false" onclick="rc_toggleMenu(this)">
+                    <svg fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+                    Actions
+                </button>
+                <div class="nha-tools-dropdown">
+                    <button type="button" class="nha-menu-item" onclick="rc_closeMenus();rc_edit('${rc_escAttr(r.rc_id)}')" title="Edit">
+                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                        Edit
+                    </button>
+                    <button type="button" class="nha-menu-item" onclick="rc_closeMenus();rc_toggleStatus('${rc_escAttr(r.rc_id)}')" title="Toggle status">
+                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                        ${r.status === 'Active' ? 'Deactivate' : 'Activate'}
+                    </button>
+                    <div class="nha-menu-divider"></div>
+                    <button type="button" class="nha-menu-item danger" onclick="rc_closeMenus();rc_delete('${rc_escAttr(r.rc_id)}')" title="Delete">
+                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                        Delete
+                    </button>
+                </div>
+            </div>
         </td>
     </tr>`).join('');
 }
+
+/* ── Actions dropdown — opens below its button with fixed coords, so the table's own overflow never clips it ── */
+function rc_toggleMenu(btn) {
+    const drop = btn.closest('.nha-tools-menu').querySelector('.nha-tools-dropdown');
+    const isOpen = drop.classList.contains('open');
+    rc_closeMenus();
+    if (isOpen) return;
+    const r = btn.getBoundingClientRect();
+    drop.style.top = (r.bottom + 4) + 'px';
+    drop.style.right = (window.innerWidth - r.right) + 'px';
+    drop.classList.add('open');
+    btn.setAttribute('aria-expanded', 'true');
+}
+function rc_closeMenus() {
+    document.querySelectorAll('#rc-root .nha-tools-dropdown.open').forEach(d => d.classList.remove('open'));
+    document.querySelectorAll('#rc-root .nha-menu-trigger[aria-expanded="true"]').forEach(b => b.setAttribute('aria-expanded', 'false'));
+}
+document.addEventListener('click', e => { if (!e.target.closest('#rc-root .nha-tools-menu')) rc_closeMenus(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') rc_closeMenus(); });
+document.addEventListener('scroll', rc_closeMenus, true);
 
 function rc_pill(text, on) {
     const bg = on ? 'rgba(17,167,82,.12)' : 'rgba(169,170,184,.18)';

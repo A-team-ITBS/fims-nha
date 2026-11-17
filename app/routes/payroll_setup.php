@@ -59,7 +59,8 @@ $app->get('/payroll-setup/read/{id}', function ($request, $response, $args) use 
     }
 })->add($accessMiddleware)->add($jwtMiddleware);
 
-// Add. Optional `new_account` {account_title}: the item's account_code does not exist yet and is created as a sub-ledger first.
+// Add. Optional `new_accounts` [{account_code, account_title}, ...] (parent first): the item's account_code does not exist yet,
+// so the missing 5th and/or 6th part accounts are created with the item (and removed again if the item fails to save).
 $app->post('/payroll-setup/add', function ($request, $response, $args) use ($PayrollSetupService) {
     try {
         $result = $PayrollSetupService->create($request->getParsedBody() ?: [], (int) $request->getAttribute('user_id'));
@@ -72,7 +73,7 @@ $app->post('/payroll-setup/add', function ($request, $response, $args) use ($Pay
     }
 })->add($accessMiddleware)->add($jwtMiddleware);
 
-// Update (item_code is immutable). Same optional `new_account` as add.
+// Update (item_code is immutable). Same optional `new_accounts` as add.
 $app->put('/payroll-setup/update/{id}', function ($request, $response, $args) use ($PayrollSetupService) {
     try {
         $result = $PayrollSetupService->update($args['id'], $request->getParsedBody() ?: [], (int) $request->getAttribute('user_id'));

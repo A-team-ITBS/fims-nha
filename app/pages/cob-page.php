@@ -4,6 +4,10 @@ namespace PHPMaker2024\FIMS;
 
 @session_start();
 $_cob_api = Config('API.FIMS_URL');
+
+// Generate Report (the PDF / Excel dialog on each table) is switched off: its button and its dialog are not rendered. Set this to true to bring both back.
+// (The dialog only knows the Per Region / Per Type of Fund / Per Component views — see readone/cob-report-readone.php — not the Per Program one.)
+$_cob_showReport = false;
 ?>
 
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -99,7 +103,7 @@ $_cob_api = Config('API.FIMS_URL');
                 <div class="nha-sc-label">Revised Amount</div>
                 <div class="nha-sc-val" id="cob-kpi-revised">—</div>
             </div></div>
-            <p class="nha-kpi-sub" id="cob-kpi-revised-sub">Approved Amount + Revision / Realignment</p>
+            <p class="nha-kpi-sub" id="cob-kpi-revised-sub">As recorded on the budget line items</p>
         </div>
         <div class="nha-sc nha-sc-green">
             <div class="nha-sc-top"><div>
@@ -117,14 +121,7 @@ $_cob_api = Config('API.FIMS_URL');
         </div>
     </div>
 
-    <!-- ── TABS ───────────────────────────────────────────── -->
-    <div class="nha-tabs no-print" role="tablist" aria-label="COB views">
-        <button type="button" class="nha-tab active" role="tab" aria-selected="true"  data-tab="region">Per Region</button>
-        <button type="button" class="nha-tab"        role="tab" aria-selected="false" data-tab="fund_source">Per Type of Fund</button>
-        <button type="button" class="nha-tab"        role="tab" aria-selected="false" data-tab="component">Per Component</button>
-    </div>
-
-    <!-- ── FILTERS (shared by every tab) ──────────────────── -->
+    <!-- ── FILTERS ────────────────────────────────────────── -->
     <div class="nha-filters no-print">
         <div class="nha-filter-row">
             <div class="nha-filter-group">
@@ -174,13 +171,15 @@ $_cob_api = Config('API.FIMS_URL');
         </div>
     </div>
 
-    <!-- ── ROLL-UP TABS: one tree per view, same eight columns ──────── -->
+    <!-- ── ROLL-UP: one tree per view, same eight columns. There is no tab bar: the page opens on Per Program (Program → Sub-Program →
+         Originating Unit → Project) and that is the only view on screen. The Per Region, Per Type of Fund and Per Component panels are still
+         defined here (hidden, never loaded) so a tab bar can be put back without rebuilding them. ──────── -->
     <?php
     // The columns of the COB Monitoring sheet (key = what the API sends, in this order) — cob-page's JS carries the same list (COB_COLS).
     $_cob_cols = [
         ['approved_amount', 'Approved Amount', 'The amount FMD suggested in the Budget Proposal module'],
         ['revision_amount', 'Revision / Realignment', 'Net of the approved Budget Revisions (an increase, or a decrease in brackets)'],
-        ['revised_amount', 'Revised Amount', 'Approved Amount + Revision / Realignment'],
+        ['revised_amount', 'Revised Amount', 'The revised amount recorded on each budget line item'],
         ['cba_requested', 'CBA Requested', 'Taken off the budget by approved CBAs (Certificates of Budget Availability)'],
         ['available_amount', 'Available for Earmarking', 'Revised Amount less CBA Requested — what a new CBA can still draw'],
         ['rfa_approved', 'RFA Approved', 'Drawn from the CBAs by approved RFAs'],
@@ -188,19 +187,22 @@ $_cob_api = Config('API.FIMS_URL');
         ['remaining_balance', 'Remaining Balance', 'Revised Amount less RFA Approved and LAA Issued'],
     ];
     foreach ([
+        'program'     => 'Program → Sub-Program → Originating Unit → Project',
         'region'      => 'Region → Program → Sub-Program → Project',
         'fund_source' => 'Type of Fund → Component → Program → Sub-Program → Project',
         'component'   => 'Component → Type of Fund → Program → Sub-Program → Project',
     ] as $_cob_tab => $_cob_levels) { ?>
-    <div class="nha-panel<?php echo $_cob_tab === 'region' ? ' active' : ''; ?>" id="cob-panel-<?php echo $_cob_tab; ?>" role="tabpanel">
+    <div class="nha-panel<?php echo $_cob_tab === 'program' ? ' active' : ''; ?>" id="cob-panel-<?php echo $_cob_tab; ?>" role="tabpanel">
         <div class="nha-table-wrap">
             <div class="cob-toolbar no-print">
                 <span class="cob-hint"><span id="cob-info-<?php echo $_cob_tab; ?>"><?php echo htmlspecialchars($_cob_levels); ?></span> · <span class="cob-unit-note">Amounts in ₱</span></span>
                 <span class="cob-tool-btns">
+                    <?php if ($_cob_showReport) { ?>
                     <button type="button" class="nha-btn nha-btn-primary nha-btn-sm" data-act="report" data-tab="<?php echo $_cob_tab; ?>" title="Generate a PDF or Excel report of this table">
                         <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
                         Generate Report
                     </button>
+                    <?php } ?>
                     <button type="button" class="nha-btn nha-btn-outline nha-btn-sm" data-act="expand" data-tab="<?php echo $_cob_tab; ?>">Expand all</button>
                     <button type="button" class="nha-btn nha-btn-outline nha-btn-sm" data-act="collapse" data-tab="<?php echo $_cob_tab; ?>">Collapse all</button>
                 </span>
@@ -236,8 +238,10 @@ $_cob_api = Config('API.FIMS_URL');
 include __DIR__.'/readone/cob-readone.php';
 
 // "Generate Report" on a tree tab: a dialog to pick how deep the report goes, preview it, and export it to PDF or Excel.
-// window.cobReport.open(tab) — GET /cob/report (CobReportService).
-include __DIR__.'/readone/cob-report-readone.php';
+// window.cobReport.open(tab) — GET /cob/report (CobReportService). Only loaded while $_cob_showReport is on (nothing opens it otherwise).
+if ($_cob_showReport) {
+    include __DIR__.'/readone/cob-report-readone.php';
+}
 ?>
 
 </div><!-- /#cob-root -->
@@ -256,7 +260,7 @@ include __DIR__.'/readone/cob-report-readone.php';
    chart-of-accounts line items, supporting documents — in the eight columns of the COB Monitoring sheet (CobService has the exact definitions):
      Approved Amount        what FMD suggested in the Budget Proposal module
      Revision / Realignment net of the approved Budget Revisions
-     Revised Amount         Approved Amount + Revision / Realignment
+     Revised Amount         budget_line_items.revised_amount (recorded on each line item, not worked out here)
      CBA Requested          taken off the budget by approved CBAs
      Available for Earmarking = Revised Amount - CBA Requested (the line's live balance)
      RFA Approved / LAA Issued   drawn from the CBAs' reservations by approved RFAs / LAAs
@@ -265,7 +269,9 @@ include __DIR__.'/readone/cob-report-readone.php';
 ═══════════════════════════════════════════════════════════════ */
 
 const COB_API = '<?php echo $_cob_api; ?>' + '/cob';
-const COB_TABS = ['region', 'fund_source', 'component'];
+// The trees the page can show; the FIRST is the one it opens on (Per Program: Program > Sub-Program > Originating Unit > Project). There is no tab
+// bar, so only that one is ever loaded — the others are kept so a tab bar can come back.
+const COB_TABS = ['program', 'region', 'fund_source', 'component'];
 const COB_UNITS = {
     full: { div: 1, suffix: '', note: 'Amounts in ₱' },
     thousand: { div: 1e3, suffix: ' K', note: 'Amounts in ₱ thousands' },
@@ -279,14 +285,14 @@ const COB_UNIT_STORE = 'cob.amountUnit';
 const COB_FILTER_IDS = { 'cob-f-fy': 'fiscal_yr', 'cob-f-fund': 'type_of_fund_id', 'cob-f-component': 'component_id', 'cob-f-region': 'region_id', 'cob-f-program': 'program_code' };
 
 const cob_state = {
-    tab: 'region',
+    tab: COB_TABS[0],
     unit: 'full',
     filters: { fiscal_yr: '', type_of_fund_id: '', component_id: '', region_id: '', program_code: '', search: '' },
     defaultFiscalYr: '',
     summary: null,
-    data: { region: null, fund_source: null, component: null },   // the last tree of each tab
-    totals: { region: null, fund_source: null, component: null },
-    expanded: { region: new Set(), fund_source: new Set(), component: new Set() },
+    data: Object.fromEntries(COB_TABS.map(t => [t, null])),             // the last tree of each tab
+    totals: Object.fromEntries(COB_TABS.map(t => [t, null])),
+    expanded: Object.fromEntries(COB_TABS.map(t => [t, new Set()])),
     searchTimer: null,   // the typing pause before the Search box reloads
     loaded: {},    // tab -> the query it was loaded with (a tab reloads only when that changes)
     seq: {},       // tab -> the newest request number; an older response is dropped
@@ -344,8 +350,6 @@ async function cob_boot() {
     try { const u = localStorage.getItem(COB_UNIT_STORE); if (u && COB_UNITS[u]) cob_state.unit = u; } catch (e) { /* storage may be blocked */ }
     $cob('cob-f-unit').value = cob_state.unit;
     cob_unitNote();
-    const wanted = new URLSearchParams(location.search).get('tab');
-    if (COB_TABS.includes(wanted)) cob_state.tab = wanted;
     cob_bindEvents();
     cob_showTab(cob_state.tab);
     cob_busy(true);
@@ -356,7 +360,6 @@ async function cob_boot() {
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', cob_boot); else cob_boot();
 
 function cob_bindEvents() {
-    document.querySelectorAll('#cob-root .nha-tabs .nha-tab').forEach(b => b.addEventListener('click', () => cob_switchTab(b.dataset.tab)));
     $cob('cob-refresh').addEventListener('click', cob_refresh);
     $cob('cob-reset').addEventListener('click', cob_resetFilters);
     for (const id of Object.keys(COB_FILTER_IDS)) $cob(id).addEventListener('change', cob_onFilterChange);
@@ -489,21 +492,11 @@ async function cob_loadTab(tab) {
     }
 }
 
-/* ── Tabs ──────────────────────────────────────────────────── */
+/* ── The view on screen ────────────────────────────────────── */
+// There is no tab bar any more, so this runs once, at boot, for the page's first view (Per Program): it shows that panel and hides the others.
 function cob_showTab(tab) {
     cob_state.tab = tab;
-    document.querySelectorAll('#cob-root .nha-tabs .nha-tab').forEach(b => {
-        const on = b.dataset.tab === tab;
-        b.classList.toggle('active', on);
-        b.setAttribute('aria-selected', on ? 'true' : 'false');
-    });
     for (const t of COB_TABS) $cob('cob-panel-' + t).classList.toggle('active', t === tab);
-}
-function cob_switchTab(tab) {
-    if (!COB_TABS.includes(tab)) return;
-    cob_showTab(tab);
-    try { const u = new URL(location.href); u.searchParams.set('tab', tab); history.replaceState(null, '', u); } catch (e) { /* cosmetic */ }
-    cob_loadTab(tab);
 }
 function cob_renderActive() {
     if (cob_state.data[cob_state.tab]) cob_renderTree(cob_state.tab);
@@ -515,7 +508,6 @@ function cob_renderSummary() {
     $cob('cob-kpi-requests').textContent = s ? s.requests : '—';
     $cob('cob-kpi-requests-sub').textContent = s ? `${s.programs} program${s.programs === 1 ? '' : 's'} · ${s.projects} project${s.projects === 1 ? '' : 's'}` : 'Matches current filters';
     $cob('cob-kpi-revised').textContent = s ? cob_fmt(s.revised_amount) : '—';
-    $cob('cob-kpi-revised-sub').textContent = s ? `Approved ${cob_fmt(s.approved_amount)} ${s.revision_amount < 0 ? '−' : '+'} revisions ${cob_fmt(Math.abs(s.revision_amount))}` : 'Approved Amount + Revision / Realignment';
     $cob('cob-kpi-available').textContent = s ? cob_fmt(s.available_amount) : '—';
     $cob('cob-kpi-remaining').textContent = s ? cob_fmt(s.remaining_balance) : '—';
 }
@@ -525,12 +517,13 @@ const COB_CARET = '<svg class="cob-caret%OPEN%" viewBox="0 0 24 24" fill="none" 
 const COB_CLIP = '<svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/></svg>';
 
 // the Name cell: the name, then what tells two of the same name apart. A node's code has a column of its own.
-function cob_nodeLabel(n) {
+function cob_nodeLabel(n, tab) {
     let html = `<span>${n.unassigned ? `<span class="cob-unassigned">${cob_esc(n.label)}</span>` : cob_esc(n.label)}</span>`;
     if (n.type === 'project') {
-        // line 1: the project name and its supporting documents; line 2 (muted): the fiscal year and the requesting office
+        // line 1: the project name and its supporting documents; line 2 (muted): the fiscal year and the requesting office — except in the Per Program
+        // view, where the office is the row just above the project and saying it again would only repeat it
         if (n.attachment_count > 0) html += ` <span class="cob-clip" title="${n.attachment_count} supporting document${n.attachment_count === 1 ? '' : 's'}">${COB_CLIP}${n.attachment_count}</span>`;
-        const meta = [n.fiscal_yr ? `<span class="nha-bdg nha-bdg-gray nha-bdg-xs">FY ${cob_esc(n.fiscal_yr)}</span>` : '', n.rc_name ? cob_esc(n.rc_name) : ''].filter(Boolean).join(' ');
+        const meta = [n.fiscal_yr ? `<span class="nha-bdg nha-bdg-gray nha-bdg-xs">FY ${cob_esc(n.fiscal_yr)}</span>` : '', n.rc_name && tab !== 'program' ? cob_esc(n.rc_name) : ''].filter(Boolean).join(' ');
         if (meta) html += `<span class="cob-sub">${meta}</span>`;
     }
     return html;
@@ -540,13 +533,13 @@ function cob_amountCells(o) {
     return COB_COLS.map(k => `<td class="cob-num">${cob_num(o[k])}</td>`).join('');
 }
 
-function cob_treeRow(n, depth, path, hasKids, open) {
+function cob_treeRow(n, depth, path, hasKids, open, tab) {
     const view = n.type === 'project' && n.budget_reference_number
         ? `<button type="button" class="nha-btn-act view" data-view="${cob_esc(n.budget_reference_number)}" data-project="${cob_esc(n.code || '')}" title="View the approved request ${cob_esc(n.budget_reference_number)}">View</button>`
         : '';
     return `<tr class="cob-row cob-d${Math.min(depth, 4)} cob-t-${cob_esc(n.type)}${hasKids ? ' cob-has-kids' : ''}${open ? ' open' : ''}" data-path="${cob_esc(path)}"${hasKids ? ` tabindex="0" role="button" aria-expanded="${open}"` : ''}>
         <td class="cob-code">${cob_esc(n.code || '')}</td>
-        <td><div class="cob-name" style="--d:${depth}">${hasKids ? COB_CARET.replace('%OPEN%', open ? ' open' : '') : '<span class="cob-caret-sp"></span>'}${cob_nodeLabel(n)}</div></td>
+        <td><div class="cob-name" style="--d:${depth}">${hasKids ? COB_CARET.replace('%OPEN%', open ? ' open' : '') : '<span class="cob-caret-sp"></span>'}${cob_nodeLabel(n, tab)}</div></td>
         ${cob_amountCells(n)}
         <td class="no-print">${view}</td></tr>`;
 }
@@ -557,7 +550,7 @@ function cob_collect(tab, nodes, depth, parentPath, out) {
         const path = `${parentPath}/${n.type}:${n.key}`;
         const hasKids = Array.isArray(n.children) && n.children.length > 0;
         const open = hasKids && cob_state.expanded[tab].has(path);
-        out.push(cob_treeRow(n, depth, path, hasKids, open));
+        out.push(cob_treeRow(n, depth, path, hasKids, open, tab));
         if (open) cob_collect(tab, n.children, depth + 1, path, out);
     }
 }

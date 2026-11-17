@@ -25,6 +25,18 @@ $_amp_api = $_brv_api;
 .iar-menu-item:hover { background:var(--afims-surface-subtle, #F4F7FA);color:var(--afims-heading-fill, #000E3E); }
 .iar-menu-item svg { width:13px;height:13px;flex-shrink:0;opacity:.7; }
 .iar-menu-divider { border-top:1px solid var(--afims-border, #E4ECF2);margin:3px 0; }
+/* Dark mode: the hovered item's text was the navy fill colour (navy on dark — "View" went blank on hover) */
+html.afims-dark[data-bs-theme="dark"] .iar-menu-drop { background:var(--afims-surface, #1A1F38);border-color:var(--afims-border-strong, #4A5270);
+    box-shadow:0 8px 24px rgba(0,0,0,.45); }
+html.afims-dark[data-bs-theme="dark"] .iar-menu-item { color:var(--afims-text, #E4ECF2); }
+html.afims-dark[data-bs-theme="dark"] .iar-menu-item svg { opacity:.85; }
+html.afims-dark[data-bs-theme="dark"] .iar-menu-item:hover { color:#FFFFFF;background:var(--afims-primary-soft, #0F2456); }
+html.afims-dark[data-bs-theme="dark"] .iar-menu-divider { border-top-color:var(--afims-border-strong, #4A5270); }
+html.afims-dark[data-bs-theme="dark"] .iar-menu-trigger { color:#FFFFFF;background:#3861BC;border-color:#3861BC; }
+html.afims-dark[data-bs-theme="dark"] .iar-menu-trigger:hover { background:#2E59B8;border-color:#2E59B8; }
+/* Dark mode: the IAR / PO number chips (shared .nha-code, restyled on this page only) — white text on the brand blue,
+   the same look as the Memo Request modal's code chips */
+html.afims-dark[data-bs-theme="dark"] #amp-root .nha-code { color:#FFFFFF;background:#3861BC;border-color:#5B7FCF; }
 /* three KPI cards here: fill the row (the shared .nha-summary assumes four) */
 #amp-root .nha-summary { grid-template-columns: repeat(3, 1fr); }
 @media (max-width: 900px) { #amp-root .nha-summary { grid-template-columns: repeat(2, 1fr); } }

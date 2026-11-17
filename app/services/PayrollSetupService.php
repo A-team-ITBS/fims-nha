@@ -11,8 +11,8 @@ use PHPMaker2024\FIMS as App;
  *   - payroll items (fims.payroll_items): the setup catalogue of everything a payroll can carry —
  *     earnings, deductions, refunds and employer shares — each pointing at the Chart of Accounts account it posts to;
  *   - the account list for the page's Account picker (read-only view of fims.chart_of_accounts);
- *   - creating a NEW sub-ledger account (the 5th / 6th part of an account code, like "Add Sub-Ledger" on the Chart of
- *     Accounts page) together with the item that uses it.
+ *   - creating NEW sub-ledger accounts (the 5th and/or 6th part of an account code, like "Add Sub-Ledger" on the Chart of
+ *     Accounts page) together with the item that uses them — a new 6th part may sit under a new 5th part.
  *
  * The posting side is NOT stored: it follows from the category
  * (EARNING / REFUND / EMPLOYER_SHARE post as a debit, DEDUCTION as a credit).
@@ -90,14 +90,28 @@ class PayrollSetupService
         return null;
     }
 
+    private function partCount(string $code): int
+    {
+        return count(explode('-', $code));
+    }
+
+    private function parentCode(string $code): string
+    {
+        return substr($code, 0, (int) strrpos($code, '-'));
+    }
+
     /**
      * Decides what to do about the account an item will carry. Returns:
-     *   ['error' => <failure array>]                         — refuse
-     *   ['create' => false]                                  — nothing to create (blank, or an account that is fine as it is)
-     *   ['create' => true, 'parent' => row, 'title' => str]  — a NEW sub-ledger to add first
-     * $new is the optional {"account_title": "..."} the page sends for an account that does not exist yet.
+     *   ['error' => <failure array>]                              — refuse
+     *   ['create' => false]                                       — nothing to create (blank, or an account that is fine as it is)
+     *   ['create' => true, 'parent' => row, 'chain' => [...]]     — NEW sub-ledger(s) to add first, parent first:
+     *                                                               chain = [['code' => ..., 'title' => ...], ...] (1 or 2 accounts)
+     * $newAccounts is the optional [{account_code, account_title}, ...] the page sends for the parts that do not exist yet.
+     * A new 6th part under a new 5th part needs both entries; a new 6th part under an existing 5th part needs only its own.
+     * The account the item uses ($code, the last part) is titled with the ITEM NAME unless an entry gives it a title; a new
+     * 5th part that is only created to make room for a 6th part has no such default and must come with its own title.
      */
-    private function planAccount(string $code, ?array $new): array
+    private function planAccount(string $code, array $newAccounts, string $itemName = ''): array
     {
         if ($code === '') {
             return ['create' => false];
@@ -112,26 +126,36 @@ class PayrollSetupService
 
             return $err ? ['error' => $err] : ['create' => false];
         }
-        if ($new === null) {
+        if (!$newAccounts) {
             return ['error' => ['success' => false, 'message' => "Account '{$code}' does not exist in the Chart of Accounts."]];
         }
 
-        // A new sub-ledger: its code is its parent's code + one more part, and it can only hang under a postable account.
+        // New sub-ledgers: each code is its parent's code + one more part (5th, then 6th), and they hang under a postable account.
         if (!preg_match('/^\d(-\d{2,3}){4,5}$/', $code)) {
             return ['error' => ['success' => false, 'message' => "A new sub-ledger code must have 5 or 6 parts, like 5-01-02-990-37 (got '{$code}')."]];
         }
-        $title = trim((string) ($new['account_title'] ?? ''));
-        if ($title === '') {
-            return ['error' => ['success' => false, 'message' => "account_title is required for the new sub-ledger {$code}."]];
+        $titles = [];
+        foreach ($newAccounts as $n) {
+            if (is_array($n)) {
+                $titles[trim((string) ($n['account_code'] ?? ''))] = trim((string) ($n['account_title'] ?? ''));
+            }
         }
-        if (mb_strlen($title) > 255) {
-            return ['error' => ['success' => false, 'message' => 'account_title is too long (max 255 characters).']];
-        }
-        $parentCode = substr($code, 0, (int) strrpos($code, '-'));
-        // SELECT * on purpose: the optional attributes (books, account_purpose, region_code, ...) only exist once their alters ran
-        $parent = App\ExecuteRow("SELECT * FROM {$this->tableCoa} WHERE account_code = " . $this->str($parentCode), 'DB');
-        if (!$parent) {
-            return ['error' => ['success' => false, 'message' => "Parent account '{$parentCode}' does not exist in the Chart of Accounts."]];
+
+        // walk up from the item's account to the nearest account that already exists, collecting the missing ones
+        $missing = [];
+        $cur     = $code;
+        while (true) {
+            $missing[]  = $cur;
+            $parentCode = $this->parentCode($cur);
+            // SELECT * on purpose: the optional attributes (books, account_purpose, region_code, ...) only exist once their alters ran
+            $parent = App\ExecuteRow("SELECT * FROM {$this->tableCoa} WHERE account_code = " . $this->str($parentCode), 'DB');
+            if ($parent) {
+                break;
+            }
+            if ($this->partCount($parentCode) <= 4) {
+                return ['error' => ['success' => false, 'message' => "Parent account '{$parentCode}' does not exist in the Chart of Accounts."]];
+            }
+            $cur = $parentCode;      // a missing 5th part: it is created too, so it needs its own title
         }
         if (($parent['status'] ?? 'Active') !== 'Active') {
             return ['error' => ['success' => false, 'message' => "Parent account '{$parentCode}' is not active."]];
@@ -140,47 +164,86 @@ class PayrollSetupService
             return ['error' => ['success' => false, 'message' => "Parent account '{$parentCode}' does not allow posting, so it cannot have a sub-ledger."]];
         }
 
-        return ['create' => true, 'parent' => $parent, 'title' => $title];
+        $chain = [];
+        foreach (array_reverse($missing) as $c) {
+            $title = $titles[$c] ?? '';
+            if ($title === '' && $c === $code) {
+                $title = $itemName;      // the account the item uses is named after the item
+            }
+            if ($title === '') {
+                return ['error' => ['success' => false, 'message' => "account_title is required for the new sub-ledger {$c}."]];
+            }
+            if (mb_strlen($title) > 255) {
+                return ['error' => ['success' => false, 'message' => 'account_title is too long (max 255 characters).']];
+            }
+            $chain[] = ['code' => $c, 'title' => $title];
+        }
+
+        return ['create' => true, 'parent' => $parent, 'chain' => $chain];
     }
 
-    /** Adds the sub-ledger through the Chart of Accounts' own create(), inheriting the parent's attributes. */
-    private function createAccount(string $code, array $plan, int $userId): array
+    /** Adds one sub-ledger through the Chart of Accounts' own create(), inheriting the parent's attributes. */
+    private function createAccount(string $code, string $title, array $parent, int $userId): array
     {
         $coa   = new ChartOfAccountsService();
         $scope = $coa->getUserScope($userId);
-        $p     = $plan['parent'];
 
         $body = [
             'account_code'      => $code,
-            'account_title'     => $plan['title'],
-            'account_type'      => $p['account_type'] ?? '',
-            'parent_account_id' => $p['account_id'],
-            'posting_allowed'   => true,      // a payroll item posts to it, so it must allow posting
+            'account_title'     => $title,
+            'account_type'      => $parent['account_type'] ?? '',
+            'parent_account_id' => $parent['account_id'],
+            'posting_allowed'   => true,      // a payroll item posts to it (or to a child of it), so it must allow posting
         ];
         // inherit whatever optional attributes the parent has (and only those — a column that is not there yet cannot be written)
         foreach (['region_code', 'project_code', 'account_purpose', 'source_document', 'books'] as $k) {
-            if (array_key_exists($k, $p)) {
-                $body[$k] = $p[$k] ?? '';
+            if (array_key_exists($k, $parent)) {
+                $body[$k] = $parent[$k] ?? '';
             }
         }
-        if (!empty($scope['region_code']) && array_key_exists('region_code', $p)) {
+        if (!empty($scope['region_code']) && array_key_exists('region_code', $parent)) {
             $body['region_code'] = $scope['region_code'];   // a regional user's accounts stay in their region
         }
 
         return $coa->create($body);
     }
 
-    /** The item write failed after the sub-ledger was added: take the (brand-new, unreferenced) account back out. */
-    private function dropCreatedAccount(string $code): void
+    /**
+     * Creates the planned chain parent-first (a new 6th part is created under the new 5th part just made).
+     * If any step fails, the ones already created are taken back out. Returns ['success' => true, 'created' => [codes]] or the failure.
+     */
+    private function createAccounts(array $plan, int $userId): array
     {
-        try {
-            App\Execute(
-                "DELETE FROM {$this->tableCoa} WHERE account_code = " . $this->str($code)
-                . " AND NOT EXISTS (SELECT 1 FROM {$this->table} WHERE account_code = " . $this->str($code) . ')',
-                'DB'
-            );
-        } catch (\Exception $e) {
-            App\LogError("PayrollSetupService: could not remove sub-ledger {$code} after a failed item save: " . $e->getMessage());
+        $created = [];
+        $parent  = $plan['parent'];
+        foreach ($plan['chain'] as $step) {
+            $res = $this->createAccount($step['code'], $step['title'], $parent, $userId);
+            if (!$res['success']) {
+                $this->dropCreatedAccounts($created);
+
+                return $res;
+            }
+            $created[] = $step['code'];
+            // the next step hangs under the account just made
+            $parent = App\ExecuteRow("SELECT * FROM {$this->tableCoa} WHERE account_code = " . $this->str($step['code']), 'DB') ?: $parent;
+        }
+
+        return ['success' => true, 'created' => $created];
+    }
+
+    /** A later write failed: take the (brand-new, unreferenced) accounts back out, children before parents. */
+    private function dropCreatedAccounts(array $codes): void
+    {
+        foreach (array_reverse($codes) as $code) {
+            try {
+                App\Execute(
+                    "DELETE FROM {$this->tableCoa} WHERE account_code = " . $this->str($code)
+                    . " AND NOT EXISTS (SELECT 1 FROM {$this->table} WHERE account_code = " . $this->str($code) . ')',
+                    'DB'
+                );
+            } catch (\Exception $e) {
+                App\LogError("PayrollSetupService: could not remove sub-ledger {$code} after a failed save: " . $e->getMessage());
+            }
         }
     }
 
@@ -287,8 +350,9 @@ class PayrollSetupService
 
     /**
      * $body: item_code, item_name, category (required); status, remarks, account_code (optional).
-     * An account_code that is not in the chart yet is created as a sub-ledger when $body['new_account'] = {account_title}
-     * is sent; if the item then fails to save, that sub-ledger is taken back out so nothing is left behind.
+     * An account_code that is not in the chart yet is created as a sub-ledger when $body['new_accounts'] =
+     * [{account_code, account_title}, ...] is sent (parent first: a new 6th part under a new 5th part lists both); if the
+     * item then fails to save, the sub-ledgers just created are taken back out so nothing is left behind.
      */
     public function create(array $body, int $userId = 0): array
     {
@@ -299,7 +363,7 @@ class PayrollSetupService
             $status   = strtoupper(trim((string) ($body['status'] ?? ''))) ?: 'ACTIVE';
             $account  = trim((string) ($body['account_code'] ?? ''));
             $remarks  = trim((string) ($body['remarks'] ?? ''));
-            $new      = is_array($body['new_account'] ?? null) ? $body['new_account'] : null;
+            $new      = is_array($body['new_accounts'] ?? null) ? $body['new_accounts'] : [];
 
             if ($code === '' || $name === '') {
                 return ['success' => false, 'message' => 'item_code and item_name are required.'];
@@ -319,19 +383,19 @@ class PayrollSetupService
             if ((int) App\ExecuteScalar("SELECT COUNT(*) FROM {$this->table} WHERE item_code = " . $this->str($code), 'DB') > 0) {
                 return ['success' => false, 'message' => "Item code '{$code}' already exists."];
             }
-            $plan = $this->planAccount($account, $new);
+            $plan = $this->planAccount($account, $new, $name);
             if (isset($plan['error'])) {
                 return $plan['error'];
             }
 
             // all checks passed — only now write
-            $createdAccount = null;
+            $createdAccounts = [];
             if ($plan['create']) {
-                $made = $this->createAccount($account, $plan, $userId);
+                $made = $this->createAccounts($plan, $userId);
                 if (!$made['success']) {
                     return $made;
                 }
-                $createdAccount = $account;
+                $createdAccounts = $made['created'];
             }
 
             $by      = $this->userIdOrNull($userId);
@@ -356,16 +420,14 @@ class PayrollSetupService
                     'DB'
                 );
             } catch (\Exception $e) {
-                if ($createdAccount !== null) {
-                    $this->dropCreatedAccount($createdAccount);
-                }
+                $this->dropCreatedAccounts($createdAccounts);
                 throw $e;
             }
 
             return [
                 'success' => true,
                 'message' => 'Payroll item created successfully.',
-                'data'    => ['payroll_item_id' => (int) $row['payroll_item_id'], 'created_account' => $createdAccount],
+                'data'    => ['payroll_item_id' => (int) $row['payroll_item_id'], 'created_accounts' => $createdAccounts],
             ];
         } catch (\Exception $e) {
             App\LogError('PayrollSetupService::create ' . $e->getMessage());
@@ -374,7 +436,7 @@ class PayrollSetupService
         }
     }
 
-    /** Same optional $body['new_account'] as create(). item_code is immutable. */
+    /** Same optional $body['new_accounts'] as create(). item_code is immutable. */
     public function update(int|string $id, array $body, int $userId = 0): array
     {
         try {
@@ -428,7 +490,7 @@ class PayrollSetupService
                 $account = trim((string) $body['account_code']);
                 // keeping the account the item already has is always allowed (it may have been deactivated since)
                 if ($account !== (string) ($current['account_code'] ?? '')) {
-                    $plan = $this->planAccount($account, is_array($body['new_account'] ?? null) ? $body['new_account'] : null);
+                    $plan = $this->planAccount($account, is_array($body['new_accounts'] ?? null) ? $body['new_accounts'] : [], trim((string) ($body['item_name'] ?? $current['item_name'])));
                     if (isset($plan['error'])) {
                         return $plan['error'];
                     }
@@ -448,24 +510,22 @@ class PayrollSetupService
             }
 
             // all checks passed — only now write
-            $createdAccount = null;
+            $createdAccounts = [];
             if ($plan['create']) {
-                $made = $this->createAccount((string) $account, $plan, $userId);
+                $made = $this->createAccounts($plan, $userId);
                 if (!$made['success']) {
                     return $made;
                 }
-                $createdAccount = $account;
+                $createdAccounts = $made['created'];
             }
             try {
                 App\Execute("UPDATE {$this->table} SET " . implode(', ', $set) . " WHERE payroll_item_id = {$id}", 'DB');
             } catch (\Exception $e) {
-                if ($createdAccount !== null) {
-                    $this->dropCreatedAccount($createdAccount);
-                }
+                $this->dropCreatedAccounts($createdAccounts);
                 throw $e;
             }
 
-            return ['success' => true, 'message' => 'Payroll item updated successfully.', 'data' => ['created_account' => $createdAccount]];
+            return ['success' => true, 'message' => 'Payroll item updated successfully.', 'data' => ['created_accounts' => $createdAccounts]];
         } catch (\Exception $e) {
             App\LogError('PayrollSetupService::update ' . $e->getMessage());
 

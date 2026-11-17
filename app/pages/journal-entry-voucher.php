@@ -58,7 +58,8 @@ $_jel_voucherView = 'Voucher';
         box-shadow: -1px 0 0 var(--afims-border, #E2E4ED) inset;
     }
     #jel-root .nha-tbl thead th:last-child { background: var(--afims-heading-fill, #000E3E); z-index: 2; }
-    #jel-root .nha-tbl tbody td:last-child { background: #fff; z-index: 1; }
+    /* opaque (cells scrolled under it must not show through) but in the theme's surface colour, not a hard-coded white */
+    #jel-root .nha-tbl tbody td:last-child { background: var(--afims-surface, #FFFFFF); z-index: 1; }
     #jel-root .nha-tbl tbody tr:hover td:last-child { background: var(--afims-surface-subtle, #F4F7FA); }
 
     /* Actions dropdown menu — same convention as app/pages/budget-req-page.php's nha-tools-menu. */
@@ -79,6 +80,19 @@ $_jel_voucherView = 'Voucher';
     .nha-menu-item:hover { background:var(--afims-surface-subtle, #F4F7FA);color:var(--afims-heading-fill, #000E3E); }
     .nha-menu-item svg { width:13px;height:13px;flex-shrink:0;opacity:.7; }
     .nha-menu-divider { border-top:1px solid var(--afims-border, #E4ECF2);margin:3px 0; }
+
+    /* Dark mode — the sticky Actions cell, its hover, the Actions button and its dropdown (hover text was the navy fill colour) */
+    html.afims-dark[data-bs-theme="dark"] #jel-root .nha-tbl tbody td:last-child { background: var(--afims-surface, #1A1F38); }
+    html.afims-dark[data-bs-theme="dark"] #jel-root .nha-tbl tbody tr:hover td:last-child { background: var(--afims-surface-subtle, #22294A); }
+    html.afims-dark[data-bs-theme="dark"] #jel-root .nha-tbl th:last-child,
+    html.afims-dark[data-bs-theme="dark"] #jel-root .nha-tbl td:last-child { box-shadow: -1px 0 0 var(--afims-border-strong, #4A5270) inset; }
+    html.afims-dark[data-bs-theme="dark"] .nha-menu-trigger { color:#FFFFFF;background:#3861BC;border-color:#3861BC; }
+    html.afims-dark[data-bs-theme="dark"] .nha-menu-trigger:hover { background:#2E59B8;border-color:#2E59B8; }
+    html.afims-dark[data-bs-theme="dark"] .nha-tools-dropdown { background:var(--afims-surface, #1A1F38);border-color:var(--afims-border-strong, #4A5270);
+        box-shadow:0 8px 24px rgba(0,0,0,.45); }
+    html.afims-dark[data-bs-theme="dark"] .nha-menu-item { color:var(--afims-text, #E4ECF2); }
+    html.afims-dark[data-bs-theme="dark"] .nha-menu-item:hover { color:#FFFFFF;background:var(--afims-primary-soft, #0F2456); }
+    html.afims-dark[data-bs-theme="dark"] .nha-menu-divider { border-top-color:var(--afims-border-strong, #4A5270); }
 </style>
 
 <div id="jel-root" class="nha-root">

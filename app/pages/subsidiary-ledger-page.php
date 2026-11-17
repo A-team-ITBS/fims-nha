@@ -40,6 +40,14 @@ $_sl_api = preg_match('~/api$~', $_sl_api) ? $_sl_api : $_sl_api . '/api';
     #sl-root .sl-group-row td { background: var(--afims-bg-soft, #F5F6FA); font-weight: 600; }
     #sl-root .sl-ending-balance { text-align: right; padding: 8px 4px; font-size: 13px; color: var(--afims-text-muted,#62657E); }
     #sl-root .sl-ending-balance strong { color: inherit; font-weight: 700; }
+
+    /* Dark mode: --afims-bg-soft is not a theme token, so the SL group rows fell back to a near-white #F5F6FA (light text on
+       it = unreadable); the SL account search results and the summary cards were hard-coded white */
+    html.afims-dark[data-bs-theme="dark"] #sl-root .sl-group-row td { background: var(--afims-surface-subtle, #22294A); color: #FFFFFF; border-top: 1px solid var(--afims-border-strong, #4A5270); }
+    html.afims-dark[data-bs-theme="dark"] #sl-root .sl-group-row td span { color: var(--afims-text-muted, #AAAFBE) !important; }
+    html.afims-dark[data-bs-theme="dark"] #sl-root :is(.sl-combo-results, .sl-summary-card) { background: var(--afims-surface, #1A1F38); border-color: var(--afims-border-strong, #4A5270); color: var(--afims-text, #E4ECF2); }
+    html.afims-dark[data-bs-theme="dark"] #sl-root .sl-combo-item:hover { background: var(--afims-primary-soft, #0F2456); color: #FFFFFF; }
+    html.afims-dark[data-bs-theme="dark"] #sl-root :is(.sl-summary-label, .sl-combo-empty, .sl-ending-balance) { color: var(--afims-text-muted, #AAAFBE); }
 </style>
 
 <div id="sl-root" class="nha-root">

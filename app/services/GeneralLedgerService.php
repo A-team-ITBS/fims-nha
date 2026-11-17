@@ -408,6 +408,23 @@ class GeneralLedgerService
      * listing, same as the other two special journals below. Optionally filtered by fiscal year /
      * check or DV number / payee.
      */
+    /**
+     * The ONE JEV a CKDJ / ADADJ row shows, as `jev`: a DV has a SETUP JEV (Dr expense / Cr Accounts Payable) and, once it
+     * is paid, a PAYMENT JEV (Dr Accounts Payable / Cr Cash in Bank). A plain `LEFT JOIN … ON jev.dv_id = d.dv_id` returned
+     * both, so every paid check / ADA was listed twice. A disbursements journal records the payment, so the PAYMENT JEV
+     * wins, falling back to the SETUP JEV (latest first) while the payment has not been journalized yet.
+     */
+    private function disbursementJevJoin(): string
+    {
+        return "LEFT JOIN LATERAL (
+                    SELECT j.jev_no, j.book_id
+                    FROM {$this->tableJev} j
+                    WHERE j.dv_id = d.dv_id
+                    ORDER BY (j.jev_type = 'PAYMENT') DESC, j.jev_id DESC
+                    LIMIT 1
+                 ) jev ON TRUE";
+    }
+
     public function fetchCkdj(?int $fiscalYr = null, ?string $search = null, ?int $bookId = null): array
     {
         try {
@@ -428,7 +445,7 @@ class GeneralLedgerService
                         ba.bank_name, ba.account_name AS bank_account_name, ba.account_number AS bank_account_number
                  FROM {$this->tableChecks} c
                  LEFT JOIN {$this->tableDv} d ON d.dv_no = c.dv_number
-                 LEFT JOIN {$this->tableJev} jev ON jev.dv_id = d.dv_id
+                 " . $this->disbursementJevJoin() . "
                  LEFT JOIN {$this->tableBankAccounts} ba ON ba.bank_account_id = c.bank_account_id
                  WHERE " . implode(' AND ', $where) . '
                  ORDER BY c.check_date, c.check_id',
@@ -468,7 +485,7 @@ class GeneralLedgerService
                         ba.bank_name, ba.account_name AS bank_account_name, ba.account_number AS bank_account_number
                  FROM {$this->tableAdaReleases} a
                  LEFT JOIN {$this->tableDv} d ON d.dv_no = a.dv_number
-                 LEFT JOIN {$this->tableJev} jev ON jev.dv_id = d.dv_id
+                 " . $this->disbursementJevJoin() . "
                  LEFT JOIN {$this->tableBankAccounts} ba ON ba.bank_account_id = a.bank_account_id
                  WHERE " . implode(' AND ', $where) . '
                  ORDER BY a.ada_date, a.ada_id',
