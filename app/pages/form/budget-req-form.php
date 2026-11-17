@@ -2,10 +2,14 @@
 /**
  * budget-req-form.php
  *
- * Add-a-Program / Edit-a-Program modal, opened from two places:
- *   - app/pages/budget-req-page.php's "+ Add Budget Request" button ('add' mode)
+ * Add-a-Program / Edit-a-Program modal — AND the Add/Edit modal for a COE Budget
+ * Request ('add-coe'/'edit-coe' modes, toggled via the #bgr-card.bgr-mode-coe CSS
+ * class and the `coeMode` branches in bgr_addProjectBlock()/bgr_save()). Opened from:
+ *   - app/pages/budget-req-page.php's "+ Add Budget Request" button ('add' mode) and
+ *     "+ Add COE Budget Request" button ('add-coe' mode)
  *   - a Program row's "Edit" action, or the Edit button inside the Program
  *     View modal (readone/budget-req-readone.php) ('edit-program' mode)
+ *   - a COE row's own "Edit" action ('edit-coe' mode)
  *
  * fims.budget_req is a four-level structure, one request per fiscal year:
  *   fims.budget_req          — header: Fiscal Year, Status (Draft -> For Review)
@@ -18,6 +22,9 @@
  *   fims.budget_line_items   — one "Chart of Accounts line item" per account
  *                              allocation under a project block (repeatable
  *                              "+ Add Line Item" rows nested inside each block)
+ * A COE request skips the middle two levels entirely — its budget_line_items rows
+ * hang directly off the header (budget_req_project_id stays NULL); see
+ * BudgetReqService::addCoeRequest()/updateCoeRequest().
  *
  * Trigger:
  *   bgr_openModal('add')                    — add a Program to the request for
@@ -29,6 +36,13 @@
  *                                              must include budget_req_program_id,
  *                                              fiscal_yr, program_code,
  *                                              sub_program_code, projects[]
+ *   bgr_openModal('add-coe')                — add line items to the COE request for
+ *                                              the chosen fiscal year (same
+ *                                              create-or-append rule as 'add')
+ *   bgr_openModal('edit-coe', header)        — fully replace one COE request's line
+ *                                              items + documents; `header` must
+ *                                              include budget_reference_number,
+ *                                              fiscal_yr, coe_line_items[]
  *
  * After a successful save this calls window.bgr_afterSave?.(mode, json) —
  * each host page defines that hook to its own refresh logic, keeping this
@@ -270,6 +284,16 @@ $_bgr_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
 
     @media (max-width: 520px) { .bgr-row { grid-template-columns:1fr; } }
 
+    /* ── COE mode ('add-coe'/'edit-coe') — a COE request has no Program/Sub-Program/Project at
+       all, just one flat line-items table + one Supporting Documents section. Reuses the exact
+       same single "block" (#bgr-blocks-wrap's one .bgr-block) the regular flow already builds per
+       Project — only its Project-specific header (name/code/location/collapse/remove) is hidden,
+       along with Program/Sub-Program and "+ Add Project" (COE never has more than one block). */
+    #bgr-card.bgr-mode-coe #bgr-program-group,
+    #bgr-card.bgr-mode-coe #bgr-sub-program-group,
+    #bgr-card.bgr-mode-coe #bgr-add-project-block,
+    #bgr-card.bgr-mode-coe .bgr-block-hd { display:none; }
+
     /* ── Dark mode ──────────────────────────────────────────────────────
        --afims-heading-fill stays NAVY in dark mode (it is a fill colour for white text), so every place above that
        uses it as a TEXT colour (Projects heading, Grand Total, collapse chevron, doc link) became navy-on-navy.
@@ -327,7 +351,7 @@ $_bgr_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
                             <option value="">— Select fiscal year —</option>
                         </select>
                     </div>
-                    <div class="bgr-group">
+                    <div class="bgr-group" id="bgr-program-group">
                         <label class="bgr-label">Program <span class="req">*</span></label>
                         <select class="bgr-select" id="bgr-program-code" required>
                             <option value="">— Select program —</option>
@@ -335,7 +359,7 @@ $_bgr_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
                     </div>
                 </div>
                 <div class="bgr-row">
-                    <div class="bgr-group">
+                    <div class="bgr-group" id="bgr-sub-program-group">
                         <label class="bgr-label">Sub-Program</label>
                         <select class="bgr-select" id="bgr-sub-program-code">
                             <option value="">— None —</option>
@@ -348,7 +372,7 @@ $_bgr_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
                 </div>
                 <p class="bgr-hint" id="bgr-program-context" style="display:none;"></p>
 
-                <p class="bgr-sec-hd">Projects</p>
+                <p class="bgr-sec-hd" id="bgr-blocks-sec-hd">Projects</p>
                 <div id="bgr-blocks-wrap"></div>
                 <button type="button" id="bgr-add-project-block" class="bgr-btn-ghost">+ Add Project</button>
             </div>
@@ -514,9 +538,18 @@ function bgr_accountLabel(a) {
     return `${a.account_code} — ${a.account_title}`;
 }
 
+// COE mode only (bgr_initAccountPicker) — chart_of_accounts carries no stored expense-class
+// column, so PS/MOOE is derived from the account_code prefix, same rule
+// DisbursementVoucherService::deriveExpenseClass() uses (also mirrored in
+// readone/budget-req-readone.php for the COB view's PS/MOOE breakdown).
+function bgr_isCoeEligibleAccount(accountCode) {
+    const code = String(accountCode || '');
+    return code.startsWith('5-01') || code.startsWith('5-02');
+}
+
 /* ── Project blocks — one per "Project line item" (fims.budget_req_project),
    each holding its own repeatable Chart-of-Accounts line items table ──── */
-function bgr_addProjectBlock(prefillBlock = null) {
+function bgr_addProjectBlock(prefillBlock = null, coeMode = false) {
     bgr_blockSeq++;
     const block = document.createElement('div');
     block.className = 'bgr-block';
@@ -584,32 +617,42 @@ function bgr_addProjectBlock(prefillBlock = null) {
     `;
     $bgr('bgr-blocks-wrap').appendChild(block);
 
-    const $nameInput = $(block.querySelector('.bgr-block-project-name'));
-    bgr_initProjectTypeahead($nameInput);
-    if (prefillBlock && prefillBlock.project_code) {
-        const label = `${prefillBlock.project_code} — ${prefillBlock.project_name || ''}`;
-        $nameInput.val(label).data('bgr-matched-text', label);
-        bgr_setProjectCode($nameInput, prefillBlock.project_code);
-    } else {
-        // A brand-new block with nothing picked yet already WOULD create a
-        // new project if saved as-is — preview its code immediately, rather
-        // than waiting for the user to type something first (the code never
-        // depends on the typed name anyway, only on the header's Program/
-        // Sub-Program).
-        bgr_updateProjectCodeField($nameInput);
+    // COE mode skips everything Project-specific (its header row is hidden via CSS anyway —
+    // #bgr-card.bgr-mode-coe .bgr-block-hd) — no typeahead, no project-code preview, no
+    // "remove this block" (COE only ever has the one).
+    if (!coeMode) {
+        const $nameInput = $(block.querySelector('.bgr-block-project-name'));
+        bgr_initProjectTypeahead($nameInput);
+        if (prefillBlock && prefillBlock.project_code) {
+            const label = `${prefillBlock.project_code} — ${prefillBlock.project_name || ''}`;
+            $nameInput.val(label).data('bgr-matched-text', label);
+            bgr_setProjectCode($nameInput, prefillBlock.project_code);
+        } else {
+            // A brand-new block with nothing picked yet already WOULD create a
+            // new project if saved as-is — preview its code immediately, rather
+            // than waiting for the user to type something first (the code never
+            // depends on the typed name anyway, only on the header's Program/
+            // Sub-Program).
+            bgr_updateProjectCodeField($nameInput);
+        }
+        if (prefillBlock && prefillBlock.location) {
+            block.querySelector('.bgr-block-location').value = prefillBlock.location;
+        }
+        block.querySelector('.bgr-block-remove').addEventListener('click', () => bgr_removeProjectBlock(block));
     }
-    if (prefillBlock && prefillBlock.location) {
-        block.querySelector('.bgr-block-location').value = prefillBlock.location;
-    }
-
-    block.querySelector('.bgr-block-remove').addEventListener('click', () => bgr_removeProjectBlock(block));
-    block.querySelector('.bgr-block-add-li').addEventListener('click', () => bgr_addLineItemRow(block, {}));
+    block.querySelector('.bgr-block-add-li').addEventListener('click', () => bgr_addLineItemRow(block, {}, coeMode));
     block.querySelector('.bgr-block-toggle').addEventListener('click', () => bgr_toggleProjectBlock(block));
 
     const items = (prefillBlock && prefillBlock.line_items && prefillBlock.line_items.length) ? prefillBlock.line_items : [{}];
-    items.forEach(li => bgr_addLineItemRow(block, li));
+    items.forEach(li => bgr_addLineItemRow(block, li, coeMode));
 
-    bgr_wireDocSection(block, prefillBlock);
+    // COE's Supporting Documents are request-level (keyed by budget_reference_number, held in
+    // #bgr-id for 'edit-coe' — see bgr_openModal) rather than per (Program, Project).
+    if (coeMode) {
+        bgr_wireCoeDocSection(block);
+    } else {
+        bgr_wireDocSection(block, prefillBlock);
+    }
 
     return block;
 }
@@ -634,6 +677,32 @@ function bgr_wireDocSection(block, prefillBlock) {
     if (!budgetReqProgramId || !projectCode) return;
 
     const params = new URLSearchParams({ budget_req_program_id: budgetReqProgramId, project_code: projectCode });
+    fetch(`${BGR_ATTACHMENT_API}/list?${params}`, { credentials: 'same-origin' })
+        .then(res => res.json())
+        .then(json => {
+            if (!json.success) return;
+            (json.data || []).forEach(a => bgr_addDocRow(block, {
+                mode: a.storage_key ? 'upload' : 'link',
+                name: a.document_name,
+                attachmentId: a.attachment_id,
+                viewUrl: a.view_url,
+                link: a.external_link || '',
+            }));
+        })
+        .catch(() => {});
+}
+
+// COE's own bgr_wireDocSection — Supporting Documents for a COE request are request-level
+// (keyed by budget_reference_number alone, held in #bgr-id for 'edit-coe' — there is no
+// Program/Project to key off). A brand-new ('add-coe') request has none yet.
+function bgr_wireCoeDocSection(block) {
+    block.querySelector('.bgr-block-doc-add-upload').addEventListener('click', () => bgr_addDocRow(block, { mode: 'upload' }));
+    block.querySelector('.bgr-block-doc-add-link').addEventListener('click', () => bgr_addDocRow(block, { mode: 'link' }));
+
+    const budgetReferenceNumber = $bgr('bgr-id').value;
+    if (!budgetReferenceNumber) return;
+
+    const params = new URLSearchParams({ budget_reference_number: budgetReferenceNumber });
     fetch(`${BGR_ATTACHMENT_API}/list?${params}`, { credentials: 'same-origin' })
         .then(res => res.json())
         .then(json => {
@@ -1031,7 +1100,7 @@ document.addEventListener('mousedown', (ev) => {
 });
 
 /* ── Line items — repeatable rows nested inside a project block ─────── */
-function bgr_addLineItemRow(blockEl, prefill = {}) {
+function bgr_addLineItemRow(blockEl, prefill = {}, coeMode = false) {
     bgr_liSeq++;
     const seq = bgr_liSeq;
     const tr = document.createElement('tr');
@@ -1049,7 +1118,7 @@ function bgr_addLineItemRow(blockEl, prefill = {}) {
     blockEl.querySelector('.bgr-block-li-tbody').appendChild(tr);
 
     const $acctInput = $(tr.querySelector('.bgr-li-account-code'));
-    bgr_initAccountPicker($acctInput);
+    bgr_initAccountPicker($acctInput, coeMode);
     if (prefill.account_id != null && prefill.account_id !== '') {
         const opt = BGR_COA_OPTIONS.find(a => String(a.account_id) === String(prefill.account_id));
         const label = opt ? bgr_accountLabel(opt) : '';
@@ -1122,7 +1191,12 @@ function bgr_setAccountId($input, id) {
 // which field, and bgr_removeLineItemRow can clean up its own entry.
 const BGR_ACCT_MENUS = new Map();
 
-function bgr_initAccountPicker($input) {
+// coeMode: only PS/MOOE accounts are offered. The regular (non-COE) flow is the mirror
+// image — PS/MOOE accounts are now reserved for COE line items only, so they're excluded
+// there instead. Either way, chart_of_accounts has no stored expense-class column, so this is
+// the same account_code-prefix rule DisbursementVoucherService::deriveExpenseClass() uses —
+// see bgr_isCoeEligibleAccount() below.
+function bgr_initAccountPicker($input, coeMode = false) {
     const input = $input.get(0);
     const menu  = document.createElement('div');
     menu.className = 'bgr-acct-menu';
@@ -1132,12 +1206,13 @@ function bgr_initAccountPicker($input) {
 
     function renderOptions(query) {
         const q = query.trim().toLowerCase();
-        const matches = BGR_COA_OPTIONS
+        const base = BGR_COA_OPTIONS.filter(a => bgr_isCoeEligibleAccount(a.account_code) === coeMode);
+        const matches = base
             .filter(a => !q || a.account_code.toLowerCase().includes(q) || a.account_title.toLowerCase().includes(q))
             .slice(0, 50);
         menu.innerHTML = matches.length
             ? matches.map(a => `<div class="bgr-acct-option" data-account-id="${bgr_escHtmlAttr(a.account_id)}">${bgr_esc(bgr_accountLabel(a))}</div>`).join('')
-            : '<div class="bgr-acct-empty">No matching account.</div>';
+            : `<div class="bgr-acct-empty">${coeMode ? 'No matching PS/MOOE account.' : 'No matching account.'}</div>`;
     }
 
     function openMenu() {
@@ -1235,6 +1310,17 @@ async function bgr_openModal(mode, data = null) {
     BGR_PROJECT_CODE_CACHE = null; // fresh session — don't carry over a prior open's series cache
     $bgr('bgr-grand-total-display').value = '0.00'; // recomputed as project blocks are (re)built below
 
+    // 'add-coe'/'edit-coe': a COE request has no Program/Sub-Program/Project at all — see the
+    // #bgr-card.bgr-mode-coe CSS above and the coeMode branches in bgr_addProjectBlock/bgr_save.
+    const isCoe = mode === 'add-coe' || mode === 'edit-coe';
+    $bgr('bgr-card').classList.toggle('bgr-mode-coe', isCoe);
+    $bgr('bgr-blocks-sec-hd').textContent = isCoe ? 'Line Items' : 'Projects';
+    // #bgr-program-code is `required` — hidden (display:none) by the CSS above in COE mode, and a
+    // hidden required field makes the browser's native form validation silently block the submit
+    // event entirely ("An invalid form control with name='' is not focusable", no error shown,
+    // nothing happens on Save). Must be un-required whenever it's hidden.
+    $bgr('bgr-program-code').required = !isCoe;
+
     // Lazy-loaded here rather than at page load — the Account Code picker
     // (built inside bgr_addProjectBlock below) needs BGR_COA_OPTIONS already
     // populated, so this must finish before any project block is built.
@@ -1262,9 +1348,29 @@ async function bgr_openModal(mode, data = null) {
         bgr_cleanupAccountMenus($bgr('bgr-blocks-wrap'));
         $bgr('bgr-blocks-wrap').innerHTML = '';
         (data.projects && data.projects.length ? data.projects : [{}]).forEach(p => bgr_addProjectBlock(p));
+    } else if (mode === 'edit-coe') {
+        // #bgr-id holds the budget_reference_number directly here (not a budget_req_program_id —
+        // a COE request has no Program) — see bgr_wireCoeDocSection() and bgr_save().
+        $bgr('bgr-id').value = data.budget_reference_number;
+        $bgr('bgr-modal-title').textContent = 'Edit COE Budget Request';
+        $bgr('bgr-save').textContent = 'Save Request';
+
+        $bgr('bgr-fiscal-yr').value = data.fiscal_yr || '';
+        $bgr('bgr-fiscal-yr').disabled = true;
+        $bgr('bgr-program-code').value = '';
+        bgr_fillSubPrograms('');
+
+        const ctx = $bgr('bgr-program-context');
+        ctx.textContent = `Editing COE Budget Request ${data.budget_reference_number} (FY ${data.fiscal_yr}).`;
+        ctx.style.display = '';
+
+        bgr_cleanupAccountMenus($bgr('bgr-blocks-wrap'));
+        $bgr('bgr-blocks-wrap').innerHTML = '';
+        bgr_addProjectBlock({ line_items: (data.coe_line_items && data.coe_line_items.length) ? data.coe_line_items : [{}] }, true);
     } else {
+        // 'add' or 'add-coe'
         $bgr('bgr-id').value = '';
-        $bgr('bgr-modal-title').textContent = 'Add Budget Request';
+        $bgr('bgr-modal-title').textContent = isCoe ? 'Add COE Budget Request' : 'Add Budget Request';
         $bgr('bgr-save').textContent = 'Save Request';
 
         // Default a new request to the current year rather than an empty
@@ -1278,7 +1384,7 @@ async function bgr_openModal(mode, data = null) {
 
         bgr_cleanupAccountMenus($bgr('bgr-blocks-wrap'));
         $bgr('bgr-blocks-wrap').innerHTML = '';
-        bgr_addProjectBlock();
+        bgr_addProjectBlock(null, isCoe);
     }
 
     $bgr('bgr-overlay').classList.add('open');
@@ -1308,10 +1414,13 @@ async function bgr_save(ev) {
     const mode = $bgr('bgr-mode').value;
     const id   = $bgr('bgr-id').value;
 
-    const fiscalYr       = $bgr('bgr-fiscal-yr').value;
+    const fiscalYr = $bgr('bgr-fiscal-yr').value;
+    if (!fiscalYr) { bgr_showErr('Select a fiscal year.'); return; }
+
+    if (mode === 'add-coe' || mode === 'edit-coe') { await bgr_saveCoe(mode, id, fiscalYr); return; }
+
     const programCode    = $bgr('bgr-program-code').value;
     const subProgramCode = $bgr('bgr-sub-program-code').value;
-    if (!fiscalYr) { bgr_showErr('Select a fiscal year.'); return; }
     if (!programCode) { bgr_showErr('Select a program.'); return; }
 
     const projects = [];
@@ -1372,6 +1481,62 @@ async function bgr_save(ev) {
         const message = mode === 'edit-program'
             ? 'Program updated successfully.'
             : (json.created_new_header ? 'Budget request created successfully.' : 'Program added to the existing budget request.');
+        bgr_toast(message, 'success');
+        bgr_closeModal();
+        window.bgr_afterSave?.(mode, json);
+    } catch (e) {
+        bgr_showErr(e.message);
+    } finally {
+        window.PagePreloader?.hide();
+    }
+}
+
+// 'add-coe'/'edit-coe' save — a COE request is exactly ONE block (the single flat
+// line-items table + its Supporting Documents, see bgr_addProjectBlock's coeMode branch):
+// no Program/Sub-Program, no project_code/project_name/location, and it posts to the
+// dedicated COE endpoints instead of /add or /program/update.
+async function bgr_saveCoe(mode, id, fiscalYr) {
+    const block = document.querySelector('#bgr-blocks-wrap .bgr-block');
+    const rows  = block ? Array.from(block.querySelectorAll('.bgr-block-li-tbody tr')) : [];
+    if (!rows.length) { bgr_showErr('Add at least one line item.'); return; }
+
+    const lineItems = [];
+    for (let li = 0; li < rows.length; li++) {
+        const tr          = rows[li];
+        const accountId   = tr.querySelector('.bgr-li-account-id').value;
+        const particulars = tr.querySelector('.bgr-li-particulars').value.trim();
+        const amount      = bgr_unformatAmount(tr.querySelector('.bgr-li-amt').value);
+        if (!accountId) { bgr_showErr(`Line item ${li + 1}: select a chart of accounts entry.`); return; }
+        if (!particulars) { bgr_showErr(`Line item ${li + 1}: particulars is required.`); return; }
+        if (!amount) { bgr_showErr(`Line item ${li + 1}: proposed amount is required.`); return; }
+        lineItems.push({ account_id: accountId, particulars, proposed_amount: amount });
+    }
+
+    const docFiles = [];
+    const supportingDocuments = bgr_getProjectDocPayload(block, docFiles);
+
+    const body   = { fiscal_yr: fiscalYr, line_items: lineItems, supporting_documents: supportingDocuments };
+    const url    = mode === 'edit-coe' ? `${BGR_API}/coe/update/${id}` : `${BGR_API}/add-coe`;
+    const method = (mode === 'edit-coe' && !docFiles.length) ? 'PUT' : 'POST';
+
+    window.PagePreloader?.show();
+    try {
+        let fetchOpts;
+        if (docFiles.length) {
+            const fd = new FormData();
+            fd.append('data', JSON.stringify(body));
+            docFiles.forEach((f, i) => fd.append('doc_file_' + i, f));
+            fetchOpts = { method, credentials: 'same-origin', body: fd };
+        } else {
+            fetchOpts = { method, credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
+        }
+        const res  = await fetch(url, fetchOpts);
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message || 'Failed to save.');
+
+        const message = mode === 'edit-coe'
+            ? 'COE budget request updated successfully.'
+            : (json.created_new_header ? 'COE budget request created successfully.' : 'Line items added to the existing COE budget request.');
         bgr_toast(message, 'success');
         bgr_closeModal();
         window.bgr_afterSave?.(mode, json);

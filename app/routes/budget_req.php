@@ -30,6 +30,25 @@ $budgetReqParseBody = function ($request) use ($BudgetReqService) {
     return $body;
 };
 
+// Same idea as $budgetReqParseBody above, but for a COE request: one flat
+// "supporting_documents" array (no per-project nesting) uploaded under a key prefix of
+// just the budget_reference_number (uploadCoeSupportingDocFiles()).
+$budgetReqCoeParseBody = function ($request) use ($BudgetReqService) {
+    $raw  = $request->getParsedBody();
+    $body = isset($raw['data']) ? (json_decode($raw['data'], true) ?? []) : ($raw ?? []);
+
+    $uploadedFiles = $request->getUploadedFiles();
+    if (!empty($uploadedFiles) && !empty($body['supporting_documents']) && is_array($body['supporting_documents'])) {
+        $body['supporting_documents'] = $BudgetReqService->uploadCoeSupportingDocFiles(
+            $body['supporting_documents'],
+            $uploadedFiles,
+            (string) ($body['budget_reference_number'] ?? $body['fiscal_yr'] ?? '')
+        );
+    }
+
+    return $body;
+};
+
 // Fetch all — no pagination
 $app->get('/budget_req/all', function ($request, $response, $args) use ($BudgetReqService) {
     try {
@@ -153,6 +172,57 @@ $app->map(['PUT', 'POST'], '/budget_req/program/update/{budget_req_program_id}',
     }
 })->add($jwtMiddleware);
 
+// Add a batch of line items — NO Program/Sub-Program/Project at all — to the SAME header
+// a regular /add would use for the given fiscal year + office (one budget_req row per
+// (fiscal_yr, rc_id) — see migration 45). Creates it (status Draft) if it doesn't exist
+// yet, or appends to it if it does and is still Draft/Returned; a header can end up with
+// Programs, COE line items, or both. body: { fiscal_yr, line_items: [{ account_id, particulars, proposed_amount }, ...], supporting_documents: [...] }
+$app->post('/budget_req/add-coe', function ($request, $response, $args) use ($BudgetReqService, $budgetReqCoeParseBody) {
+    try {
+        $body      = $budgetReqCoeParseBody($request);
+        $lineItems = $body['line_items'] ?? [];
+
+        if (!is_array($lineItems) || empty($lineItems)) {
+            return $response->withJson(['success' => false, 'message' => 'line_items is required and must be a non-empty array.'], 400);
+        }
+
+        // rc_id is auto-detected from the caller's own account — same rule as /add.
+        $rcId = GlobalService::getUserRcId();
+        if ($rcId === null) {
+            return $response->withJson(['success' => false, 'message' =>
+                'Your account has no RC assigned (uac.users.rc_id). Ask an administrator to set it.'], 400);
+        }
+        $body['rc_id'] = $rcId;
+
+        $result = $BudgetReqService->addCoeRequest($body, $lineItems, $body['supporting_documents'] ?? []);
+
+        return $response->withJson($result, $result['success'] ? 201 : 400);
+    } catch (\Exception $e) {
+        return $response->withJson(['success' => false, 'message' => $e->getMessage()], 400);
+    }
+})->add($jwtMiddleware);
+
+// Fully replaces a COE request's line items + supporting documents. Rejected once that
+// request has moved past Draft/Returned. Accepts PUT (plain JSON) or POST (FormData
+// with new attachment files) — same PUT-vs-POST rule as /program/update above.
+// body: { line_items: [...], supporting_documents: [...] }
+$app->map(['PUT', 'POST'], '/budget_req/coe/update/{budget_reference_number}', function ($request, $response, $args) use ($BudgetReqService, $budgetReqCoeParseBody) {
+    try {
+        $body      = $budgetReqCoeParseBody($request);
+        $lineItems = $body['line_items'] ?? [];
+
+        if (!is_array($lineItems) || empty($lineItems)) {
+            return $response->withJson(['success' => false, 'message' => 'line_items is required and must be a non-empty array.'], 400);
+        }
+
+        $result = $BudgetReqService->updateCoeRequest($args['budget_reference_number'], $lineItems, $body['supporting_documents'] ?? []);
+
+        return $response->withJson($result, $result['success'] ? 200 : 400);
+    } catch (\Exception $e) {
+        return $response->withJson(['success' => false, 'message' => $e->getMessage()], 400);
+    }
+})->add($jwtMiddleware);
+
 // Transition a Draft OR Returned budget request to "For Review" — locks it
 // from further program additions/edits.
 $app->put('/budget_req/submit-for-review/{id}', function ($request, $response, $args) use ($BudgetReqService) {
@@ -170,8 +240,9 @@ $app->put('/budget_req/submit-for-review/{id}', function ($request, $response, $
 // user (the verified JWT's user_id): only an FMD user holding the user level of the request's CURRENT step may act —
 // anyone else gets 403 (the service sets `forbidden` for that).
 
-// Budget Processing "Endorse" (Budget Officer) — saves each line item's type_of_fund_id /
-// component_id (both required) and moves a "For Review" / "Returned to Budget Officer" request to "Endorsed".
+// Budget Processing "Endorse" (Budget Officer) — saves each line item's type_of_fund_id (required)
+// and component_id (optional — hidden in budget-processing-form.php's own UI) and moves a
+// "For Review" / "Returned to Budget Officer" request to "Endorsed".
 $app->put('/budget_req/endorse/{id}', function ($request, $response, $args) use ($BudgetReqService) {
     try {
         $body   = $request->getParsedBody();
@@ -237,17 +308,39 @@ $app->delete('/budget_req/program/delete/{budget_req_program_id}', function ($re
     }
 })->add($jwtMiddleware);
 
+// Deletes a header's own headless (COE) line items only — sibling Programs under the same
+// header, if any, are untouched. If it had no Programs either, the now-empty header is
+// removed too (same rule as /program/delete above).
+$app->delete('/budget_req/coe/delete/{budget_reference_number}', function ($request, $response, $args) use ($BudgetReqService) {
+    try {
+        $result = $BudgetReqService->deleteCoeLineItems($args['budget_reference_number']);
+
+        return $response->withJson($result, $result['success'] ? 200 : 400);
+    } catch (\Exception $e) {
+        return $response->withJson(['success' => false, 'message' => $e->getMessage()], 400);
+    }
+})->add($jwtMiddleware);
+
 // Lists one project's supporting documents (each with a presigned view_url
 // for an upload, or its raw external_link). Scoped by (budget_req_program_id,
 // project_code) — see fims_budget_req_project_attachment.sql for why.
+// A COE request has no Project to scope by — pass budget_reference_number ALONE
+// (no budget_req_program_id/project_code) to list its headless attachments instead.
 $app->get('/budget_req_project_attachment/list', function ($request, $response, $args) use ($BudgetReqService) {
     try {
         $params             = $request->getQueryParams();
         $budgetReqProgramId = (int) ($params['budget_req_program_id'] ?? 0);
         $projectCode        = trim((string) ($params['project_code'] ?? ''));
+        $budgetReferenceNumber = trim((string) ($params['budget_reference_number'] ?? ''));
+
+        if ($budgetReqProgramId <= 0 && $projectCode === '' && $budgetReferenceNumber !== '') {
+            $result = $BudgetReqService->fetchAttachmentsForRequest($budgetReferenceNumber);
+
+            return $response->withJson($result, $result['success'] ? 200 : 400);
+        }
 
         if ($budgetReqProgramId <= 0 || $projectCode === '') {
-            return $response->withJson(['success' => false, 'message' => 'budget_req_program_id and project_code are required.'], 400);
+            return $response->withJson(['success' => false, 'message' => 'budget_req_program_id and project_code are required (or budget_reference_number alone, for a COE request).'], 400);
         }
 
         $result = $BudgetReqService->fetchAttachmentsForProject($budgetReqProgramId, $projectCode);

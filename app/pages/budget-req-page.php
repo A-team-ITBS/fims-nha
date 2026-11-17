@@ -49,6 +49,7 @@ $_bgr_canModify = !$_bgr_isBudgetOfficer;
     .nha-root .bgr-summary-2col { grid-template-columns: repeat(2, 1fr); }
 }
 .nha-root #bgr-submit-review:disabled { opacity:.45;cursor:not-allowed; }
+.nha-root #bgr-add-coe:disabled { opacity:.45;cursor:not-allowed; }
 
 /* ── Actions dropdown menu ──────────────────────────────────── */
 .nha-tools-menu { position:relative;display:inline-block; }
@@ -94,6 +95,10 @@ $_bgr_canModify = !$_bgr_isBudgetOfficer;
             <button id="bgr-add" type="button" class="nha-btn-hdr" style="background:var(--afims-success, #11A752);" title="Add a budget request">
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
                 Add Budget Request
+            </button>
+            <button id="bgr-add-coe" type="button" class="nha-btn-hdr" style="background:var(--afims-success, #11A752);" title="Add a COE budget request — no Program/Project, just PS/MOOE chart-of-accounts line items">
+                <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                Add COE Budget Request
             </button>
             <?php } ?>
         </div>
@@ -249,6 +254,7 @@ if (document.readyState === 'loading') {
 function bgr_bindListEvents() {
     $bgr('bgr-refresh')?.addEventListener('click', () => { bgr_page = 1; bgr_load(); });
     $bgr('bgr-add')?.addEventListener('click', () => bgr_openModal('add'));
+    $bgr('bgr-add-coe')?.addEventListener('click', () => bgr_openModal('add-coe'));
 
     ['bgr-filter-fiscal-yr', 'bgr-filter-program'].forEach(id => {
         $bgr(id)?.addEventListener('change', () => { bgr_page = 1; bgr_load(); });
@@ -281,6 +287,7 @@ async function bgr_load() {
         bgr_renderTable(json.data ?? []);
         bgr_updateSubmitButton(json.data ?? []);
         bgr_updateRemarksButton(json.data ?? []);
+        bgr_updateAddCoeButton(json.data ?? []);
 
         bgr_renderPagination(json.pagination ?? {});
         $bgr('bgr-kpi-total').textContent  = json.pagination?.total ?? (json.data ?? []).length;
@@ -349,16 +356,23 @@ function bgr_renderFmdTable(headers) {
     }).join('');
 }
 
-/* ── Flatten: one table row per Program, falling back to one placeholder
-   row for a fiscal year's request that has no programs yet ──────────── */
+/* ── Flatten: one table row per Program, PLUS one extra row for the header's own headless
+   COE line items (header.coe_line_items) if it has any — a header can hold Programs, COE
+   line items, or both at once (they share the one budget_req row per fiscal year/office; see
+   BudgetReqService::addCoeRequest()). Falls back to one placeholder row only when a header
+   has neither yet. ──────────────────────────────────────────────────────────────────── */
 function bgr_flattenRows(headers) {
     const rows = [];
     headers.forEach(header => {
         const programs = header.programs ?? [];
-        if (!programs.length) {
-            rows.push({ header, program: null });
-        } else {
+        const coeLineItems = header.coe_line_items ?? [];
+        if (programs.length) {
             programs.forEach(program => rows.push({ header, program }));
+        } else if (!coeLineItems.length) {
+            rows.push({ header, program: null });
+        }
+        if (coeLineItems.length) {
+            rows.push({ header, program: null, isCoe: true });
         }
     });
     return rows;
@@ -376,23 +390,31 @@ function bgr_programTotals(program) {
     return { projectCount: projects.length, lineItemCount, amount };
 }
 
+// COE row only — header.coe_line_items is flat already (no Project to count).
+function bgr_coeTotals(header) {
+    const lineItems = header.coe_line_items ?? [];
+    const amount = lineItems.reduce((sum, li) => sum + Number(li.proposed_amount || 0), 0);
+    return { projectCount: 0, lineItemCount: lineItems.length, amount };
+}
+
 function bgr_actionButtons(flatRow, idx) {
-    const { header, program } = flatRow;
+    const { header, program, isCoe } = flatRow;
     const isDraft = header.status_name === 'Draft';
     // A request the review sent back to the originating office ("Returned" — NOT "Returned to Budget Officer", which is with
     // the Budget Officer) can be edited again, like a Draft (BudgetReqService::updateProgram() allows both).
     const isReturned = header.status_name === 'Returned';
 
-    // View and Edit work on ONE Program. In the FMD list a row is a whole request (possibly several
-    // Programs), so neither is offered there; the flat list keeps both.
-    const viewItem = (program && !BGR_FMD)
-        ? `<a class="nha-menu-item" href="javascript:void(0);" onclick="bgr_viewProgram(${idx});bgr_closeMenus();">
+    // View and Edit work on ONE Program (or, for a COE row, the whole flat request — it has no
+    // Program to split into several rows in the first place, see bgr_flattenRows). In the FMD list a row
+    // is a whole request (possibly several Programs), so neither is offered there; the flat list keeps both.
+    const viewItem = (!BGR_FMD && (program || isCoe))
+        ? `<a class="nha-menu-item" href="javascript:void(0);" onclick="${isCoe ? `bgr_viewCoe(${idx})` : `bgr_viewProgram(${idx})`};bgr_closeMenus();">
             <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.477 0 8.268 2.943 9.542 7-1.274 4.057-5.065 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
             View
         </a>`
         : '';
-    const editItem = (BGR_CAN_MODIFY && program && (isDraft || isReturned) && !BGR_FMD)
-        ? `<a class="nha-menu-item" href="javascript:void(0);" onclick="bgr_editProgram(${idx});bgr_closeMenus();">
+    const editItem = (BGR_CAN_MODIFY && !BGR_FMD && (program || isCoe) && (isDraft || isReturned))
+        ? `<a class="nha-menu-item" href="javascript:void(0);" onclick="${isCoe ? `bgr_editCoe(${idx})` : `bgr_editProgram(${idx})`};bgr_closeMenus();">
             <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
             Edit
         </a>`
@@ -409,26 +431,32 @@ function bgr_actionButtons(flatRow, idx) {
     // Read-only counterpart of Budget Processing — every line item with its
     // Type of Fund, Suggested Amount and Component, nothing to fill in.
     // Budget Head (level 8) only.
-    const budgetPreviewItem = (BGR_IS_BUDGET_HEAD && program)
+    const budgetPreviewItem = (BGR_IS_BUDGET_HEAD && (program || isCoe))
         ? `<a class="nha-menu-item" href="javascript:void(0);" onclick="bgr_budgetPreview(${idx});bgr_closeMenus();">
             <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
             Budget Preview
         </a>`
         : '';
-    // A flat-list row is one Program — its Delete removes just that Program
-    // (bgr_deleteProgram). An FMD row is the whole request, so Delete there
-    // still removes the whole request (bgr_delete), same as when the row
-    // has no Program yet.
+    // A flat-list Program row's Delete removes just that Program (bgr_deleteProgram); the
+    // header's dedicated COE row removes just its headless line items (bgr_deleteCoe) — either
+    // way, if that leaves the header with nothing at all, the server removes the header too (see
+    // deleteProgram()/deleteCoeLineItems()). A row with no Program and not COE either (the "no
+    // programs yet" placeholder) and any FMD row both remove the whole request (bgr_delete).
     const deleteItem = (BGR_CAN_MODIFY && isDraft)
-        ? (program && !BGR_FMD
-            ? `<a class="nha-menu-item danger" href="javascript:void(0);" onclick="bgr_closeMenus();bgr_deleteProgram(${idx});">
+        ? (isCoe
+            ? `<a class="nha-menu-item danger" href="javascript:void(0);" onclick="bgr_closeMenus();bgr_deleteCoe(${idx});">
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                 Delete
             </a>`
-            : `<a class="nha-menu-item danger" href="javascript:void(0);" onclick="bgr_closeMenus();bgr_delete('${header.budget_reference_number}', ${header.fiscal_yr});">
-                <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-                Delete
-            </a>`)
+            : (program && !BGR_FMD
+                ? `<a class="nha-menu-item danger" href="javascript:void(0);" onclick="bgr_closeMenus();bgr_deleteProgram(${idx});">
+                    <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                    Delete
+                </a>`
+                : `<a class="nha-menu-item danger" href="javascript:void(0);" onclick="bgr_closeMenus();bgr_delete('${header.budget_reference_number}', ${header.fiscal_yr});">
+                    <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                    Delete
+                </a>`))
         : '';
 
     const items = [viewItem, editItem, budgetProcessingItem, budgetPreviewItem].filter(Boolean).join('');
@@ -480,16 +508,41 @@ function bgr_viewProgram(idx) {
     }, program);
 }
 
+// COE row's "View" — read-only, so this reuses the Budget Preview modal (same flat
+// line-items table bpv_openModal already renders for a COE header) just without the
+// Return/Approve buttons (can_decide: false), the same way the regular flat list's
+// "View" (Program-shaped) is distinct from Budget Head's "Budget Preview" action.
+function bgr_viewCoe(idx) {
+    const { header, isCoe } = bgr_flatRows[idx];
+    if (!isCoe) return;
+    bpv_openModal({
+        budget_reference_number: header.budget_reference_number,
+        fiscal_yr: header.fiscal_yr,
+        status_name: header.status_name,
+        status_color: header.status_color,
+        rc_id: header.rc_id,
+        rc_code: header.rc_code,
+        rc_name: header.rc_name,
+        can_decide: false,
+        review: header.review,
+    }, [], header.coe_line_items ?? []);
+}
+
 /* "Budget Processing" row action (level 2 / Budget Officer only) — opens the
    Budget Processing modal (form/budget-processing-form.php, bpr_*): one card per Program,
-   a section per Project in it with its line-item table (Type of Fund, Program Sources,
-   Program Uses, Component, account, Amount, Suggested Amount), a Subtotal per Project and a
-   Grand Total. In the FMD list the row is a whole request, so the modal
-   gets ALL of that request's Programs; in the flat list the row is one Program. */
+   a section per Project in it with its line-item table (Type of Fund, Account Code,
+   Account Description, Amount, Suggested Amount), a Subtotal per Project and a Grand Total.
+   The header's own COE line items (header.coe_line_items), if it has any, ALWAYS come along
+   too — as their own sibling card (bpr_coeContainerHtml) — regardless of whether the row
+   clicked was a Program row or the header's dedicated COE row: Budget Processing acts on the
+   WHOLE request's line items at once, not just the clicked row's own slice (unlike View/Edit,
+   which are per-Program). In the flat list a row's own `program` still narrows which Program(s)
+   are included (one, not every sibling Program under the same header) — only COE is unconditional. */
 function bgr_budgetProcessing(idx) {
     const { header, program } = bgr_flatRows[idx];
     const programs = BGR_FMD ? (header.programs ?? []) : (program ? [program] : []);
-    if (!programs.length) {
+    const coeLineItems = header.coe_line_items ?? [];
+    if (!programs.length && !coeLineItems.length) {
         bgr_toast('This budget request has no programs yet.', 'warning');
         return;
     }
@@ -506,17 +559,18 @@ function bgr_budgetProcessing(idx) {
         // after a Return by the Budget Head: its remarks and the review step (who a Return goes back to)
         remarks: header.remarks,
         review: header.review,
-    }, programs);
+    }, programs, coeLineItems);
 }
 
 /* "Budget Preview" row action (level 8 / Budget Head only) — opens the read-only Budget Preview modal
    (readone/budget-preview-readone.php, bpv_*): the same columns as the Budget Processing one, one block per
-   Project (info card + line-item table). In the FMD list the row is a whole request, so the modal gets
-   ALL of that request's Programs; in the flat list the row is one Program. */
+   Project (info card + line-item table). The header's own COE line items (header.coe_line_items), if it has
+   any, ALWAYS come along too as their own sibling block — see bgr_budgetProcessing above for why. */
 function bgr_budgetPreview(idx) {
     const { header, program } = bgr_flatRows[idx];
     const programs = BGR_FMD ? (header.programs ?? []) : (program ? [program] : []);
-    if (!programs.length) return;
+    const coeLineItems = header.coe_line_items ?? [];
+    if (!programs.length && !coeLineItems.length) return;
     bpv_openModal({
         budget_reference_number: header.budget_reference_number,
         fiscal_yr: header.fiscal_yr,
@@ -530,7 +584,14 @@ function bgr_budgetPreview(idx) {
         // request is Endorsed. The row's review says so (review.can_decide, decided on the server).
         can_decide: !!header.review?.can_decide && header.review.actor === 'Budget Head',
         review: header.review,
-    }, programs);
+    }, programs, coeLineItems);
+}
+
+// COE row only — opens the same Add/Edit modal (form/budget-req-form.php, bgr_*) in 'edit-coe' mode.
+function bgr_editCoe(idx) {
+    const { header, isCoe } = bgr_flatRows[idx];
+    if (!isCoe) return;
+    bgr_openModal('edit-coe', header);
 }
 
 function bgr_editProgram(idx) {
@@ -556,18 +617,23 @@ function bgr_renderTable(headers) {
     }
 
     tbody.innerHTML = bgr_flatRows.map((flatRow, idx) => {
-        const { header, program } = flatRow;
-        const totals = program ? bgr_programTotals(program) : { projectCount: 0, lineItemCount: 0, amount: 0 };
+        const { header, program, isCoe } = flatRow;
+        const totals = isCoe ? bgr_coeTotals(header) : (program ? bgr_programTotals(program) : { projectCount: 0, lineItemCount: 0, amount: 0 });
 
         return `<tr>
             <td class="nha-td-seq">${idx + 1}</td>
             <td>${bgr_esc(header.fiscal_yr)}</td>
             <td>
-                ${program
-                    ? `<div style="font-weight:500;">${bgr_esc(program.program_code)} — ${bgr_esc(program.program_name)}</div>`
-                    : '<span class="nha-td-sub">No programs added yet</span>'}
+                ${isCoe
+                    ? `<span style="display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:999px;
+                        font-size:11px;font-weight:700;color:var(--afims-heading-fill, #000E3E);
+                        background:color-mix(in srgb, var(--afims-heading-fill, #000E3E) 10%, #fff);
+                        border:1px solid color-mix(in srgb, var(--afims-heading-fill, #000E3E) 25%, transparent);">COE</span>`
+                    : (program
+                        ? `<div style="font-weight:500;">${bgr_esc(program.program_code)} — ${bgr_esc(program.program_name)}</div>`
+                        : '<span class="nha-td-sub">No programs added yet</span>')}
             </td>
-            <td>${program && program.sub_program_name ? bgr_esc(program.sub_program_name) : '<span class="nha-td-sub">—</span>'}</td>
+            <td>${(!isCoe && program && program.sub_program_name) ? bgr_esc(program.sub_program_name) : '<span class="nha-td-sub">—</span>'}</td>
             <td class="text-end">${totals.projectCount}</td>
             <td class="text-end">${totals.lineItemCount}</td>
             <td class="text-end"><div style="font-weight:600;">${bgr_fmtMoney(totals.amount)}</div></td>
@@ -611,6 +677,34 @@ function bgr_updateSubmitButton(headers) {
             ? 'Filter by a single fiscal year to submit its request'
             : 'No Draft or Returned request to submit';
     btn.onclick = match ? () => bgr_submitForReview(match.budget_reference_number) : null;
+}
+
+/* ── Header "+ Add COE Budget Request" — at most one shared budget_req header per fiscal
+   year per office already (fims.budget_req's own UNIQUE (fiscal_yr, rc_id) — see
+   migration 45), which that header's own COE line items (if any) live on. Disabled here
+   too, as soon as the Fiscal Year filter narrows the list down to one specific year whose
+   header already has COE line items, pointing the user at that row's own Edit action
+   instead of silently appending more via Add. Left enabled when "All Years" is selected
+   (ambiguous which year to restrict) or the
+   Program filter is active (a COE row never matches it, so this view can't tell either
+   way) — the server-side constraint still catches an actual collision regardless. ──── */
+function bgr_updateAddCoeButton(headers) {
+    const btn = $bgr('bgr-add-coe');
+    if (!btn) return;
+
+    const fiscalYr    = $bgr('bgr-filter-fiscal-yr')?.value || '';
+    const programCode = $bgr('bgr-filter-program')?.value || '';
+    if (!fiscalYr || programCode) {
+        btn.disabled = false;
+        btn.title = 'Add a COE budget request — each line item has no Program/Project, just chart-of-accounts allocations';
+        return;
+    }
+
+    const existing = headers.find(h => (h.coe_line_items ?? []).length);
+    btn.disabled = !!existing;
+    btn.title = existing
+        ? `Fiscal year ${fiscalYr} already has a COE budget request (${existing.budget_reference_number}) — use its own Edit action to add more line items.`
+        : 'Add a COE budget request — each line item has no Program/Project, just chart-of-accounts allocations';
 }
 
 /* ── Toolbar "View Remarks" — a pure view action, unlike Submit for Review's
@@ -761,6 +855,44 @@ async function bgr_doDeleteProgram(budgetReqProgramId) {
         if (!json.success) throw new Error(json.message || 'Failed to delete program.');
 
         bgr_toast(json.message || 'Program deleted successfully.', 'success');
+        bgr_load();
+    } catch (e) {
+        bgr_toast(e.message, 'error');
+    } finally {
+        window.PagePreloader?.hide();
+    }
+}
+
+// COE row only — deletes just that header's headless line items (its Programs, if any,
+// are untouched). If it had no Programs either, the server removes the now-empty header too.
+function bgr_deleteCoe(idx) {
+    const { header, isCoe } = bgr_flatRows[idx];
+    if (!isCoe) return;
+
+    Swal.fire({
+        title: 'Delete COE Line Items',
+        text: `Delete the COE line items of budget reference number ${header.budget_reference_number}? This cannot be undone.`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Yes, delete',
+        cancelButtonText: 'Cancel',
+        confirmButtonColor: '#dc3545',
+    }).then(result => {
+        if (result.isConfirmed) bgr_doDeleteCoe(header.budget_reference_number);
+    });
+}
+
+async function bgr_doDeleteCoe(budgetReferenceNumber) {
+    window.PagePreloader?.show();
+    try {
+        const res  = await fetch(`${BGR_API}/coe/delete/${budgetReferenceNumber}`, {
+            method: 'DELETE',
+            credentials: 'same-origin',
+        });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message || 'Failed to delete the COE line items.');
+
+        bgr_toast(json.message || 'COE line items deleted successfully.', 'success');
         bgr_load();
     } catch (e) {
         bgr_toast(e.message, 'error');
