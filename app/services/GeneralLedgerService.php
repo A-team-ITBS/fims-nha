@@ -791,7 +791,8 @@ class GeneralLedgerService
                 "SELECT c.account_id, c.account_code, c.account_title, c.parent_account_id, p.account_type
                  FROM {$this->tableCoa} c
                  LEFT JOIN {$this->tableCoa} p ON p.account_id = c.parent_account_id
-                 WHERE c.account_code = " . $this->str($slCode) . " AND c.parent_account_id IS NOT NULL",
+                 WHERE c.account_code = " . $this->str($slCode) . " AND c.parent_account_id IS NOT NULL
+                   AND NOT EXISTS (SELECT 1 FROM {$this->tableCoa} k WHERE k.parent_account_id = c.account_id)",
                 'DB'
             );
             if (!$slAccount) {
@@ -856,6 +857,7 @@ class GeneralLedgerService
                         OVER (PARTITION BY v.account_code ORDER BY v.posting_date, v.gl_id) AS running_balance
              FROM {$this->tableViewJournals} v
              JOIN {$this->tableCoa} c ON c.account_code = v.account_code AND c.parent_account_id IS NOT NULL
+                  AND NOT EXISTS (SELECT 1 FROM {$this->tableCoa} k WHERE k.parent_account_id = c.account_id)
              LEFT JOIN {$this->tableCoa} p ON p.account_id = c.parent_account_id
              WHERE 1=1 {$where}
              ORDER BY v.account_code, v.posting_date, v.gl_id",

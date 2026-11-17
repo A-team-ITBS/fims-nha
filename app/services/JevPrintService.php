@@ -46,7 +46,10 @@ class JevPrintService
      *   reference_no (DV#), payee_name, particulars, rfa_number, saro_number,
      *   prepared_by_name / _title, reviewed_by_name / _title, approved_by_name /
      *   _title, approved_by_label ("Certified Correct:" default, e.g.
-     *   "Approved by:"), footer_remarks.
+     *   "Approved by:"), footer_remarks,
+     *   journal — the book of original entry, printed bold on the 2nd line of the
+     *   top-right box as on the official form: GJ / CKDJ / ADADJ (blank → no line).
+     *   prp_jevFromDv() derives it from the JEV (see there).
      */
     public function model(array $p): array
     {
@@ -118,7 +121,7 @@ class JevPrintService
                 if ($desc !== '') {
                     $rows[] = ['kind' => 'desc', 'text' => $desc];
                 }
-                $rows[] = ['kind' => 'sl', 'text' => $slPath !== '' ? $slPath : $slCode, 'sl' => $slCode, 'sl_d' => $money($d), 'sl_c' => $money($c)];
+                $rows[] = ['kind' => 'sl', 'text' => $slPath !== '' ? $slPath : ($titles[$slCode] ?? $slCode), 'sl' => $slCode, 'sl_d' => $money($d), 'sl_c' => $money($c)];
             }
         }
 
@@ -148,6 +151,7 @@ class JevPrintService
             'temp_number'  => $temp ? $number : '',
             'date'         => $t('jev_date') === '' ? '' : PrintService::longDate($t('jev_date')),
             'office'       => mb_strtoupper($t('office') ?: 'MAIN OFFICE'),
+            'journal'      => mb_strtoupper($t('journal')),   // GJ / CKDJ / ADADJ — the box's 2nd line ('' = none)
             'rows'         => $rows,
             'min_rows'     => self::MIN_ENTRY_ROWS,
             'reference_no' => $t('reference_no'),
@@ -165,8 +169,8 @@ class JevPrintService
     }
 
     /**
-     * Account titles from fims.chart_of_accounts for the lines sent without one
-     * (account code => title). One query per print; [] when the table can't be read
+     * Account titles from fims.chart_of_accounts for the lines sent without one, and
+     * for their SL codes (an SL is a child account there) (account code => title). One query per print; [] when the table can't be read
      * — the title then just stays blank.
      */
     private function accountTitles(array $lines): array
@@ -176,6 +180,11 @@ class JevPrintService
             $code = PrintService::text($l['account_code'] ?? '');
             if ($code !== '' && PrintService::text($l['account_title'] ?? '') === '') {
                 $codes[$code] = App\QuotedValue($code, App\DataType::STRING, 'DB');
+            }
+            // an SL is a child account in fims.chart_of_accounts (no SL tables) — its title names the SL line
+            $sl = PrintService::text($l['sl_code'] ?? '');
+            if ($sl !== '' && PrintService::text($l['sl_path'] ?? $l['sl_detail_path'] ?? '') === '') {
+                $codes[$sl] = App\QuotedValue($sl, App\DataType::STRING, 'DB');
             }
         }
         if (!$codes) {
@@ -312,6 +321,7 @@ class JevPrintService
             . '.office{padding:0;}.office div{padding:3pt 5pt;}'
             . '.office .off-title{font-size:10pt;font-weight:bold;text-align:center;border-bottom:1.2pt solid #000;}'
             . '.office .off-no{font-size:8.5pt;border-top:.75pt solid #000;}.office .off-no.first{border-top:none;}'
+            . '.office .off-title.no-rule{border-bottom:none;}.office .off-journal{font-size:10pt;font-weight:bold;text-align:center;}'
             . '.main{border:1.2pt solid #000;margin-top:-1pt;}'
             . '.main th,.main td{border:.75pt solid #000;padding:1.5pt 3pt;font-size:7.5pt;vertical-align:middle;}'
             . '.main tr.widths td{border:none;padding:0;height:0;}'
@@ -333,7 +343,9 @@ class JevPrintService
             . PrintService::bodyOpen($media, 'sheet', '<div class="hdr">' . PrintService::headerHtml($m, 774, 'JEV') . '</div>', '')
             . '<table class="head"><tr><td class="agency"' . $w(78) . '><div class="form-title">JOURNAL ENTRY VOUCHER</div>'
             . '<div class="agency-nm">NATIONAL HOUSING AUTHORITY</div></td>'
-            . '<td class="office"' . $w(22) . '><div class="off-title">' . $e($m['office']) . '</div>'
+            // with a journal: office / journal / No. run on without rule lines between them, as on the official form
+            . '<td class="office"' . $w(22) . '><div class="off-title' . (($m['journal'] ?? '') !== '' ? ' no-rule' : '') . '">' . $e($m['office']) . '</div>'
+            . (($m['journal'] ?? '') !== '' ? '<div class="off-journal">' . $e($m['journal']) . '</div>' : '')
             . '<div class="off-no first">JEV No. : &nbsp;' . $e($m['jev_number']) . '</div><div class="off-no">Date : &nbsp;' . $e($m['date']) . '</div></td></tr></table>'
             . '<table class="main">' . $widthRow
             . '<tr><th rowspan="3" style="font-size:6pt;">Responsibility<br>Center</th><th rowspan="3">Accounts and Explanation</th><th rowspan="3" style="font-size:6.5pt;">SL<br>Code</th>'

@@ -159,6 +159,8 @@ const PRP_TYPES = {
     IAR: { title: 'Inspection and Acceptance Report',        print: 'print/iar', letterhead: false },
     LV:  { title: 'Liquidation Voucher',                     print: 'print/lv', letterhead: false },
     JEV: { title: 'Journal Entry Voucher',                   print: 'print/jev', letterhead: false, wide: true },   // A4 landscape
+    GL:  { title: 'General Ledger',                          print: 'print/gl', letterhead: false },
+    SL:  { title: 'Subsidiary Ledger',                       print: 'print/sl', letterhead: false },
     FTLA: { title: 'Fund Transfer Letter of Advice',         print: 'print/ftla', hdrPt: 510 },
     FTLAREQ: { title: 'FTLA Request',                        print: 'print/ftlareq', hdrPt: 468 },   // the LAA release request's memo layout
     CFA: { title: 'Certified Funds Available',               print: 'print/cfa', hdrPt: 451.28 },   // funding-request memo (A4, shared memo layout)
@@ -313,12 +315,35 @@ function prp_dvPayload(dv) {
     };
 }
 
-/** The JEV of a DV (dv.jev + its lines) → the JEV form. Account titles are filled in server-side. */
+/**
+ * The journal printed on the 2nd line of the JEV's top-right box (as on the official form). A PAYMENT JEV
+ * (Treasury's Dr Accounts Payable / Cr Cash entry — GeneralLedgerService::createPaymentJev()) belongs to the
+ * journal of its instrument, named in doc_ref_no: "CHECK NO. …" → CKDJ (Check Disbursements Journal),
+ * "ADA …" → ADADJ (Advice to Debit Account Disbursement Journal); any other JEV (a DV's SETUP entry, a
+ * standalone one) → GJ (General Journal) — the same split as the Journals page's tabs.
+ */
+function prp_jevJournal(j) {
+    if (String(j.jev_type || '').toUpperCase() !== 'PAYMENT') return 'GJ';
+    const ref = String(j.doc_ref_no || '').trim().toUpperCase();
+    if (ref.startsWith('CHECK')) return 'CKDJ';
+    if (ref.startsWith('ADA')) return 'ADADJ';
+    return '';
+}
+
+/**
+ * The JEV of a DV (dv.jev + its lines) → the JEV form. Account titles — and SL titles: a line carries only its
+ * sl_code, an account in the Chart of Accounts — are filled in server-side. The office box is the JEV's book
+ * (jev.book_name: Main Office, CISFA, …); RFA No. = the RFA(s) linked to the DV (dv.rfas — the DV's own
+ * rfa_allocation_number column was dropped).
+ */
 function prp_jevFromDv(dv, jev) {
     // `jev` lets callers print a SPECIFIC JEV (e.g. a PAYMENT JEV from dv.payment_jevs); defaults to
     // the DV's SETUP JEV (dv.jev) when omitted, keeping existing callers unchanged.
     const j = jev || dv.jev || {};
+    const rfas = (dv.rfas || []).map(r => r.allocation_number).filter(Boolean);
     return {
+        office: j.book_name || '',
+        journal: prp_jevJournal(j),
         jev_number: j.jev_no || '',
         jev_date: j.jev_date || '',
         lines: (j.lines || []).map(l => ({
@@ -329,7 +354,64 @@ function prp_jevFromDv(dv, jev) {
         reference_no: dv.dv_no || '',
         payee_name: dv.claimant_name || '',
         particulars: j.particulars || dv.particulars || '',
-        rfa_number: dv.rfa_allocation_number || '',
+        rfa_number: rfas.length ? rfas.join(', ') : (dv.rfa_allocation_number || ''),
+    };
+}
+
+/**
+ * One account's ledger card (the General Ledger page's GET /general_ledger/ledger?account_code=… response:
+ * { account { account_code, account_title }, debit_normal, data [{ posting_date, debit, credit, doc_ref_no }] })
+ * → the GENERAL LEDGER sheet, printed as its monthly summary (GeneralLedgerPrintService). `opts` (optional):
+ * fiscal_year (the page's Fiscal Year filter), opening_balance (the "Jan 1 Balance" — the system has no
+ * brought-forward balance, so none by default), entity_name, sheet_no (blank: filled in by hand).
+ */
+function prp_glPayload(resp, opts = {}) {
+    const a = (resp && resp.account) || {};
+    return {
+        account_code: a.account_code || '',
+        account_title: a.account_title || '',
+        debit_normal: resp && resp.debit_normal !== false,
+        fiscal_year: opts.fiscal_year || '',
+        opening_balance: opts.opening_balance ?? '',
+        entity_name: opts.entity_name || '',
+        sheet_no: opts.sheet_no || '',
+        lines: ((resp && resp.data) || []).map(l => ({
+            posting_date: l.posting_date, debit: l.debit, credit: l.credit, doc_ref_no: l.doc_ref_no || '',
+        })),
+    };
+}
+
+/**
+ * One SL account's ledger card (the Subsidiary Ledger page's GET /general_ledger/subsidiary-ledger?sl_code=… response:
+ * { master { account_code, account_title, account_type }, debit_normal, data [{ posting_date, jev_no, doc_ref_no,
+ * description, debit, credit }] }) → the SUBSIDIARY LEDGER sheet, one line per posting (SubsidiaryLedgerPrintService).
+ * An SL is a child account in the Chart of Accounts: master = the SL account; its parent (the sheet's GL Account
+ * Name / Account Code) is looked up server-side. Still reads the older { sl_code, sl_name, account_code } master.
+ * `opts` (optional): fund (the Book filter's name), fiscal_year, entity_name, bank_account_no, opening_balance,
+ * gl_account_code / gl_account_title (skip the lookup), sl_detail_name.
+ */
+function prp_slPayload(resp, opts = {}) {
+    const m = (resp && resp.master) || {};
+    const data = (resp && resp.data) || [];
+    const legacy = !!m.sl_code;   // the old SL-master shape: account_code was the control (GL) account
+    const ctl = legacy ? (data.find(l => l.account_code && l.account_code === m.account_code) || {}) : {};
+    return {
+        sl_code: m.sl_code || m.account_code || '',
+        sl_name: m.sl_name || m.account_title || '',
+        sl_detail_name: opts.sl_detail_name || '',
+        gl_account_code: opts.gl_account_code || (legacy ? m.account_code || '' : ''),
+        gl_account_title: opts.gl_account_title || ctl.account_title || '',
+        bank_account_no: opts.bank_account_no || '',
+        entity_name: opts.entity_name || '',
+        fund: opts.fund || '',
+        fiscal_year: opts.fiscal_year || '',
+        debit_normal: resp && resp.debit_normal !== false,
+        opening_balance: opts.opening_balance ?? '',
+        lines: data.map(l => ({
+            posting_date: l.posting_date, debit: l.debit, credit: l.credit,
+            particulars: l.description || l.doc_ref_no || '',
+            ref: l.jev_no || l.doc_ref_no || '',
+        })),
     };
 }
 
