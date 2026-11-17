@@ -12,6 +12,7 @@ routes/
 ├── department-management.php # Department Management page routes (create/update department)
 ├── position-management.php   # Position Management page routes (create/update category, position)
 ├── vendor.php          # Vendor + vendor type routes
+├── payroll_setup.php   # Payroll Setup page API: items list / read / add / update + account list (the page's only API)
 ├── purchase-order.php  # Purchase order CRUD + status routes
 ├── voucher.php         # Disbursement Voucher CRUD + status + RFA lookup routes
 ├── notifications.php   # Notification hub API (uac.notifications) for the bell
@@ -69,6 +70,17 @@ with an `/api` prefix, e.g. `POST /user-access/users` below is actually `POST /a
 - `GET /vendors/read/{id}` - One vendor
 - `POST /vendors/add` - Create (`vendor_code` and `vendor_name` required, `vendor_code` unique)
 - `PUT /vendors/update/{id}` - Update
+
+### payroll_setup.php (`PayrollSetupService`, table `fims.payroll_items`; page `app/pages/payroll-setup-page.php`, Accounts Set-up → "Payroll Setup")
+The Payroll Setup page calls **only** these routes (it does not call the chart-of-accounts routes).
+- `GET /payroll-setup/accounts` - Every ACTIVE chart account as `{account_code, account_title, posting_allowed}` (no pagination) — feeds the page's searchable Account dropdown (it lists the postable ones)
+- `GET /payroll-setup/list` - Paginated; also returns `summary` {earnings, deductions (DEDUCTION + REFUND), employer_share, no_account, active, inactive} for every row matching the filters. Optional: `page`, `limit`, `search` (item code / name / account code / account title), `category` (EARNING / DEDUCTION / REFUND / EMPLOYER_SHARE), `status` (ACTIVE / INACTIVE), `account` (`with` / `none`). `all=1` returns every match without pagination. Each row carries `account_title` from the chart of accounts
+- `GET /payroll-setup/read/{id}` - One item (404 when unknown)
+- `POST /payroll-setup/add` - Create (`item_code`, `item_name`, `category` required; `item_code` is upper-cased and unique; `status` defaults ACTIVE; `account_code` optional but, when given, must be an existing, active chart account that allows posting). Response `data`: `{payroll_item_id, created_accounts}`
+- `PUT /payroll-setup/update/{id}` - Update `item_name`, `category`, `status`, `account_code` (blank clears it), `remarks`. `item_code` is immutable; `category` cannot change once the item is used in `fims.payroll_record_items`. Response `data`: `{created_accounts}`
+- **New sub-ledgers:** add/update also accept `new_accounts: [{account_code, account_title}, ...]`, parent first, for an `account_code` that is not in the chart yet. The code must have 5 or 6 parts. The service walks up from the item's account to the nearest account that exists (it must be active and allow posting) and creates every missing part below it — so a new 5th part, a new 6th part under an existing 5th part, or a new 6th part under a new 5th part (both listed, 5th first). The account the item uses (the last part) is titled with the **item name** unless its entry carries an `account_title`; a new 5th part that only makes room for a 6th part has no default and needs its own `account_title`. Accounts are created through `ChartOfAccountsService::create()` (posting allowed; type, project, books, purpose and source document inherited from the parent when those columns exist). `created_accounts` in the response lists the codes created. If a later step or the item save fails, everything created in that request is removed again (children first), so nothing is left behind.
+- The Debit/Credit side is not stored — it follows from the category (EARNING / REFUND / EMPLOYER_SHARE = debit, DEDUCTION = credit).
+- Note: the older `payroll.php` in this folder returns a closure, which the auto-loader (`app/api.php`) never calls, so its routes are not registered.
 
 ### purchase-order.php (`PurchaseOrderService`, tables `fims.purchase_orders` / `fims.purchase_order_items`)
 - `GET /purchase-order/all` - All POs, no pagination. Optional filters: `status`, `fiscal_yr`, `expense_class`, `vendor_id`, `search`
