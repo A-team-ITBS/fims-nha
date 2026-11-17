@@ -416,9 +416,11 @@ class CobService
      * The RFAs and LAAs that have drawn against each project, with the voucher of each, keyed like the tree's project nodes
      * (budget reference no. | program block | project code). One row per (project, allocation): the allocation's drawn amount on THAT
      * project is the sum of its 'converted' earmark rows on the project's budget lines — the same rows that make up RFA Approved and
-     * LAA Issued. A deleted allocation does not count. An allocation's disbursement voucher is the one budget_allocation.dv_id points
-     * at (only RFAs are linked to one); a voucher that was cancelled or rejected is no longer connected, so it is left out. A voucher's status is read
-     * through fims.settings_status (status_id): the table has no status column of its own any more ("03 - alter_table/21").
+     * LAA Issued. A deleted allocation does not count. An allocation's disbursement voucher is the row of fims.disbursement_vouchers that
+     * budget_allocation.dv_id points at — for an RFA or an LAA alike: any allocation with a dv_id gets its voucher as its child (today only RFAs are
+     * linked to one by the voucher form, DisbursementVoucherService::linkRfas()). The voucher is shown whatever its status — a cancelled or rejected one
+     * too, its status pill says so. A voucher's status is read through fims.settings_status (status_id): the table has no status column of its own any
+     * more ("03 - alter_table/21").
      * The same filters and the same RC scope as the tree itself.
      *
      * @return array<string, list<array>> project key => allocation nodes, each with its voucher (if any) as its only child
@@ -436,7 +438,6 @@ class CobService
              JOIN {$this->tableAllocation} a ON a.allocation_id = e.allocation_id AND a.deleted_at IS NULL
                                             AND UPPER(a.allocation_type) IN ('RFA', 'LAA')
              LEFT JOIN fims.disbursement_vouchers dv ON dv.dv_id = a.dv_id
-                  AND UPPER(COALESCE((SELECT s.name FROM fims.settings_status s WHERE s.id = dv.status_id), '')) NOT IN ('CANCELLED', 'REJECTED')
              LEFT JOIN fims.settings_status dst ON dst.id = dv.status_id
              WHERE ".implode(' AND ', $this->conditions($f, $scopeRcId)).'
              GROUP BY br.budget_reference_number, brpg.budget_req_program_id, brpj.project_code,

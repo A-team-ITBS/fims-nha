@@ -330,9 +330,12 @@ function cob_busy(on) {
     if (on && cob_state.busy === 1) window.PagePreloader?.show();
     if (!on && cob_state.busy === 0) window.PagePreloader?.hide();
 }
+// `path` is given WITHOUT a leading slash ('filters', 'summary', 'rollup') and joined with '/' here. A standalone '/filters' string would be
+// rewritten to '/fims-nha/filters' by _shared/subfolder-prefix.php on a sub-folder deployment (the live site), giving /api/cob/fims-nha/filters — which
+// matches no route, falls into the API catch-all and comes back 401. A '/' after a '+' is left alone, like every other page's base + '/path'.
 async function cob_request(path, params) {
     const qs = params ? '?' + new URLSearchParams(params) : '';
-    const res = await fetch(COB_API + path + qs, { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+    const res = await fetch(COB_API + '/' + path + qs, { credentials: 'same-origin', headers: { Accept: 'application/json' } });
     let json = null;
     try { json = await res.json(); } catch (e) { /* not JSON */ }
     if (!res.ok || !json || json.success === false) throw new Error((json && json.message) || ('HTTP ' + res.status));
@@ -416,7 +419,7 @@ function cob_fillSelect(id, allLabel, items, valueOf, labelOf) {
     sel.value = [...sel.options].some(o => o.value === keep) ? keep : '';     // a choice that no longer exists falls back to "all"
 }
 async function cob_loadFilterOptions(first) {
-    const { data } = await cob_request('/filters', { central: '1' });
+    const { data } = await cob_request('filters', { central: '1' });
     cob_fillSelect('cob-f-fy', 'All Years', data.fiscal_years || [], y => y, y => y);
     cob_fillSelect('cob-f-fund', 'All Types of Fund', data.types_of_fund || [], f => f.type_of_fund_id, f => f.name);
     cob_fillSelect('cob-f-component', 'All Components', data.components || [], c => c.component_id, c => c.name);
@@ -458,7 +461,7 @@ async function cob_loadSummary() {
     const my = cob_state.seq.summary = (cob_state.seq.summary || 0) + 1;
     cob_busy(true);                                  // the preloader covers the KPI cards too, not only the table
     try {
-        const json = await cob_request('/summary', cob_params());
+        const json = await cob_request('summary', cob_params());
         if (my !== cob_state.seq.summary) return;
         cob_state.summary = json.data;
         cob_renderSummary();
@@ -477,7 +480,7 @@ async function cob_loadTab(tab) {
     const my = cob_state.seq[tab] = (cob_state.seq[tab] || 0) + 1;
     cob_busy(true);
     try {
-        const json = await cob_request('/rollup', cob_params({ layout_by: tab }));
+        const json = await cob_request('rollup', cob_params({ layout_by: tab }));
         if (my !== cob_state.seq[tab]) return;
         cob_state.data[tab] = json.data || []; cob_state.totals[tab] = json.totals || null;
         cob_state.loaded[tab] = key;

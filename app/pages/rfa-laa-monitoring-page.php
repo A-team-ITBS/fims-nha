@@ -18,8 +18,9 @@ namespace PHPMaker2024\FIMS;
  * before); the page lifts the projects out of it, in that same order, so a program's projects stay together.
  *
  * Open a project and the RFAs and LAAs drawn against its budget lines are listed under it (RFA / LAA Amount = what each drew there); open an RFA and
- * its disbursement voucher is listed under it — fetched by the RFA's budget_allocation.dv_id from fims.disbursement_vouchers (Disbursement = the voucher's gross_amount). Only an RFA is linked to a voucher,
- * so an LAA has nothing to open. These rows are detail: the totals above them do not change. The server sends them when asked with with_allocations=1.
+ * its disbursement voucher is listed under it — fetched by the budget_allocation's dv_id from fims.disbursement_vouchers (Disbursement = the voucher's
+ * gross_amount). That goes for an RFA or an LAA alike: a row with a voucher connected shows a "1 DV" tag and drops down to it when clicked; one without shows
+ * "No DV". These rows are detail: the totals above them do not change. The server sends them when asked with with_allocations=1.
  *
  * Same API as the COB page: GET /cob/filters, /cob/summary, /cob/rollup (layout_by=program) and, for a project row's View, /cob/read/{id} through the
  * shared request viewer (readone/cob-readone.php → window.cobModal, which reads this page's COB_API). The server decides what each user may see — the
@@ -243,7 +244,7 @@ $_rlm_api = Config('API.FIMS_URL');
         <p class="rlm-note">Each row is a project of an <strong>Approved</strong> budget request; under the project's name is where it sits (program › sub-program › originating unit). <strong>Revised Amount</strong> is the proposed amount net of its adjustments and realignments (a decrease lowers it).
             <strong>RFA / LAA Amount</strong> is what approved RFAs and issued LAAs have drawn from the CBAs' reservations, and <strong>Unallocated Amount</strong> is the
             Revised Amount less it. <strong>Disbursement</strong> is the amount recorded against each budget line, and <strong>Account Payable</strong> is the RFA / LAA Amount less it. Open a project to see
-            the RFAs and LAAs drawn against it, and an RFA to see its disbursement voucher (LAAs are not linked to one). A dash means zero; brackets mean negative.</p>
+            the RFAs and LAAs drawn against it, and an RFA or LAA that has a disbursement voucher connected (a "1 DV" tag) to see it. A dash means zero; brackets mean negative.</p>
     </div>
 
 <?php
@@ -335,9 +336,11 @@ function rlm_busy(on) {
     if (on && rlm.busy === 1) window.PagePreloader?.show();
     if (!on && rlm.busy === 0) window.PagePreloader?.hide();
 }
+// `path` is given WITHOUT a leading slash ('filters', 'summary', 'rollup') and joined with '/' here: a standalone '/filters' string is rewritten to
+// '/fims-nha/filters' by _shared/subfolder-prefix.php on the live sub-folder deployment (see cob-page.php's cob_request).
 async function rlm_request(path, params) {
     const qs = params ? '?' + new URLSearchParams(params) : '';
-    const res = await fetch(COB_API + path + qs, { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+    const res = await fetch(COB_API + '/' + path + qs, { credentials: 'same-origin', headers: { Accept: 'application/json' } });
     let json = null;
     try { json = await res.json(); } catch (e) { /* not JSON */ }
     if (!res.ok || !json || json.success === false) throw new Error((json && json.message) || ('HTTP ' + res.status));
@@ -413,7 +416,7 @@ function rlm_fillSelect(id, allLabel, items, valueOf, labelOf) {
     sel.value = [...sel.options].some(o => o.value === keep) ? keep : '';     // a choice that no longer exists falls back to "all"
 }
 async function rlm_loadFilterOptions(first) {
-    const { data } = await rlm_request('/filters', { central: '1' });
+    const { data } = await rlm_request('filters', { central: '1' });
     rlm_fillSelect('rlm-f-fy', 'All Years', data.fiscal_years || [], y => y, y => y);
     rlm_fillSelect('rlm-f-fund', 'All Types of Fund', data.types_of_fund || [], f => f.type_of_fund_id, f => f.name);
     rlm_fillSelect('rlm-f-component', 'All Components', data.components || [], c => c.component_id, c => c.name);
@@ -455,7 +458,7 @@ async function rlm_loadSummary() {
     const my = ++rlm.summarySeq;
     rlm_busy(true);                                  // the preloader covers the KPI cards too, not only the table
     try {
-        const json = await rlm_request('/summary', rlm_params());
+        const json = await rlm_request('summary', rlm_params());
         if (my !== rlm.summarySeq) return;
         rlm.summary = json.data;
         rlm_renderSummary();
@@ -474,7 +477,7 @@ async function rlm_loadTree() {
     const my = ++rlm.seq;
     rlm_busy(true);
     try {
-        const json = await rlm_request('/rollup', rlm_params({ layout_by: RLM_LAYOUT, with_allocations: '1' }));
+        const json = await rlm_request('rollup', rlm_params({ layout_by: RLM_LAYOUT, with_allocations: '1' }));
         if (my !== rlm.seq) return;
         rlm.data = rlm_projectsOf(json.data || []); rlm.totals = json.totals || null;
         if (json.allocation_error) rlm_toast(json.allocation_error, 'warning');
@@ -526,7 +529,12 @@ function rlm_nodeLabel(n) {
         // an RFA / LAA drawn against the project above it: a badge saying which, its number, then its description
         const desc = n.description && String(n.description).trim() ? `<span class="rlm-sub">${rlm_esc(String(n.description).trim())}</span>` : '';
         const kind = n.allocation_type === 'LAA' ? 'nha-bdg-teal' : 'nha-bdg-blue';
-        return `<span class="nha-bdg ${kind} nha-bdg-xs">${rlm_esc(n.allocation_type || n.code || '')}</span><span>${rlm_esc(n.label)}</span>${desc}`;
+        // does it have a disbursement voucher connected (its dv_id)? a row that has one drops down to it when clicked
+        const dvs = (n.children || []).filter(c => c.type === 'dv').length;
+        const dvTag = dvs
+            ? `<span class="nha-bdg nha-bdg-green nha-bdg-xs" title="Click the row to see its disbursement voucher">${dvs} DV</span>`
+            : `<span class="nha-bdg nha-bdg-gray nha-bdg-xs" title="No disbursement voucher is connected to this ${rlm_esc(n.allocation_type || 'allocation')}">No DV</span>`;
+        return `<span class="nha-bdg ${kind} nha-bdg-xs">${rlm_esc(n.allocation_type || n.code || '')}</span><span>${rlm_esc(n.label)}</span>${dvTag}${desc}`;
     }
     if (n.type === 'dv') {
         // the disbursement voucher of an RFA: its number and status, then its date and claimant
