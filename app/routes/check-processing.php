@@ -198,7 +198,7 @@ $app->post("/check-processing/releases/save", function ($request, $response) {
 $app->post("/check-processing/releases/bulk-send-notice", function ($request, $response) {
     $data = $request->getParsedBody();
     $service = new Service\CheckProcessingService();
-    return $response->withHeader('Content-Type', 'application/json')->write($service->sendBulkReleaseNotice($data));
+    return $response->withHeader('Content-Type', 'application/json')->write($service->sendBulkReleaseNotice($data, $request->getUploadedFiles()['attachment'] ?? []));
 });
 
 $app->post("/check-processing/releases/bulk-resend-email/{logId}", function ($request, $response, $args) {
@@ -230,7 +230,7 @@ $app->get("/check-processing/releases/{id}/documents", function ($request, $resp
 $app->post("/check-processing/releases/{id}/send-notice", function ($request, $response, $args) {
     $data = $request->getParsedBody();
     $service = new Service\CheckProcessingService();
-    return $response->withHeader('Content-Type', 'application/json')->write($service->sendReleaseNotice($args['id'], $data));
+    return $response->withHeader('Content-Type', 'application/json')->write($service->sendReleaseNotice($args['id'], $data, $request->getUploadedFiles()['attachment'] ?? []));
 });
 
 $app->post("/check-processing/releases/{id}/follow-up", function ($request, $response, $args) {
