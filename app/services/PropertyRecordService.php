@@ -74,6 +74,97 @@ class PropertyRecordService
     private const PAGE_SIZE = 100;
     private const MAX_PAGES = 30;       // safety cap per PO
 
+    /** An account row of at least this amount has items in the IAR module (same value as PoDrService::ITEM_MIN_AMOUNT). */
+    private const IAR_ITEM_MIN_AMOUNT = 50000;
+
+    /**
+     * The items entered in the IAR module (fims.inspection_acceptance_report → line_transaction[].items) whose account is one of the
+     * property categories (CATEGORIES, or a sub-ledger of one). One entry per item:
+     *   { po_number, iar_number, dr_number, rc_id, rc_name, account_code, account_title, description, serial_no, property_no,
+     *     date_acquired (the delivery date of its DR), amount (acquisition cost) }
+     * The item's account is the one stored with it; an older item without one is matched to the account row of the same amount
+     * (or, failing that, the account rows of 50,000 or more in order). The responsibility center is the PO's (the RFA's requesting RC).
+     */
+    public function iarItems(): array
+    {
+        try {
+            $rows = App\ExecuteRows(
+                "SELECT i.po_number, i.iar_number, i.line_transaction, a.requesting_rc_id AS rc_id, rc.rc_name
+                   FROM fims.inspection_acceptance_report i
+                   LEFT JOIN LATERAL (
+                        SELECT ba.requesting_rc_id FROM fims.budget_allocation ba
+                         WHERE ba.po_number = i.po_number AND UPPER(COALESCE(ba.allocation_type, '')) = 'RFA' AND ba.deleted_at IS NULL
+                         ORDER BY ba.created_at DESC, ba.allocation_id DESC LIMIT 1
+                   ) a ON TRUE
+                   LEFT JOIN fims.responsibility_code rc ON rc.rc_id = a.requesting_rc_id
+                  ORDER BY i.iar_number",
+                'DB'
+            ) ?: [];
+            $out = [];
+            foreach ($rows as $r) {
+                $drs = is_string($r['line_transaction']) ? json_decode($r['line_transaction'], true) : $r['line_transaction'];
+                foreach (is_array($drs) ? $drs : [] as $dr) {
+                    $items   = array_values(array_filter(is_array($dr['items'] ?? null) ? $dr['items'] : [], 'is_array'));
+                    $entries = array_values(array_filter(is_array($dr['lines'] ?? null) ? $dr['lines'] : [], 'is_array'));
+                    if (!$items) {
+                        continue;
+                    }
+                    $pool = [];   // the account rows that need items, not matched to an item yet
+                    foreach ($entries as $en) {
+                        if ((float) ($en['amount'] ?? 0) >= self::IAR_ITEM_MIN_AMOUNT) {
+                            $pool[] = $en;
+                        }
+                    }
+                    foreach ($items as $k => $it) {
+                        $code  = trim((string) ($it['account_code'] ?? ''));
+                        $title = '';
+                        if ($code !== '') {
+                            foreach ($entries as $en) {
+                                if (($en['account_code'] ?? '') === $code) {
+                                    $title = (string) ($en['account_title'] ?? '');
+                                    break;
+                                }
+                            }
+                        } else {
+                            $cents = (int) round((float) ($it['amount'] ?? 0) * 100);
+                            $hit   = null;
+                            foreach ($pool as $pk => $en) {
+                                if ((int) round((float) $en['amount'] * 100) === $cents) {
+                                    $hit = $pk;
+                                    break;
+                                }
+                            }
+                            $hit ??= isset($pool[$k]) ? $k : null;
+                            if ($hit !== null) {
+                                $code  = (string) ($pool[$hit]['account_code'] ?? '');
+                                $title = (string) ($pool[$hit]['account_title'] ?? '');
+                                unset($pool[$hit]);
+                            }
+                        }
+                        $gl = preg_match('/^(\d+-\d+-\d+-\d+)/', $code, $mt) ? $mt[1] : $code;
+                        if ($code === '' || !isset(self::CATEGORIES[$gl])) {
+                            continue;   // only the property accounts
+                        }
+                        $out[] = [
+                            'po_number' => $r['po_number'], 'iar_number' => $r['iar_number'], 'dr_number' => (string) ($dr['dr_number'] ?? ''),
+                            'rc_id' => $r['rc_id'], 'rc_name' => $r['rc_name'],
+                            'account_code' => $code, 'account_title' => $title !== '' ? $title : self::CATEGORIES[$gl],
+                            'description' => (string) ($it['description'] ?? ''), 'serial_no' => $it['serial_no'] ?? null, 'property_no' => $it['property_no'] ?? null,
+                            'date_acquired' => $dr['delivery_date'] ?? null, 'amount' => (float) ($it['amount'] ?? 0),
+                        ];
+                    }
+                }
+            }
+            usort($out, fn($a, $b) => strcmp((string) $b['date_acquired'], (string) $a['date_acquired']));
+
+            return ['success' => true, 'data' => ['items' => $out]];
+        } catch (\Exception $e) {
+            App\LogError('PropertyRecordService::iarItems ' . $e->getMessage());
+
+            return ['success' => false, 'message' => 'Failed to load the items of the IAR module.'];
+        }
+    }
+
     private function q($v): string
     {
         return App\QuotedValue((string) $v, App\DataType::STRING, 'DB');

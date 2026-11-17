@@ -61,10 +61,11 @@ $_ampf_api = $_amp_api ?? \PHPMaker2024\FIMS\Config('API.FIMS_URL');
     .amp-row { display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:18px 20px;align-items:start;margin-bottom:18px; }
     .amp-section > .amp-row:last-child { margin-bottom:0; }
     .amp-row.c5 { grid-template-columns:repeat(5,minmax(0,1fr));column-gap:20px; }
+    .amp-row.c6 { grid-template-columns:repeat(6,minmax(0,1fr));column-gap:20px; }
     .amp-row.c2 { grid-template-columns:repeat(2,minmax(0,1fr)); }
     .amp-group { display:flex;flex-direction:column;gap:6px;min-width:0;position:relative; }
-    @media (max-width:1100px) { .amp-row.c5 { grid-template-columns:repeat(3,minmax(0,1fr)); } }
-    @media (max-width:760px) { .amp-row, .amp-row.c5 { grid-template-columns:minmax(0,1fr) minmax(0,1fr) !important; } }
+    @media (max-width:1100px) { .amp-row.c5, .amp-row.c6 { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+    @media (max-width:760px) { .amp-row, .amp-row.c5, .amp-row.c6 { grid-template-columns:minmax(0,1fr) minmax(0,1fr) !important; } }
     .amp-label { display:block;margin:0;font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--afims-text, #1A1B21); }
     .amp-label .req { margin-left:2px;color:var(--afims-danger, #DC3545); }
     .amp-label .opt { font-weight:500;text-transform:none;letter-spacing:0;color:var(--afims-text-muted, #62657E); }
@@ -195,7 +196,11 @@ $_ampf_api = $_amp_api ?? \PHPMaker2024\FIMS\Config('API.FIMS_URL');
                     </div>
 
                     <!-- Filled from the selected PO (Budget Allocation RFA): read-only -->
-                    <div class="amp-row c5">
+                    <div class="amp-row c6">
+                        <div class="amp-group">
+                            <label class="amp-label" for="amp-po-rfa">RFA Number</label>
+                            <input type="text" class="amp-input" id="amp-po-rfa" readonly tabindex="-1" placeholder="Loaded from the PO">
+                        </div>
                         <div class="amp-group">
                             <label class="amp-label" for="amp-po-office">Requesting Office/Dept</label>
                             <input type="text" class="amp-input" id="amp-po-office" readonly tabindex="-1" placeholder="Loaded from the PO">
@@ -254,13 +259,15 @@ $_ampf_api = $_amp_api ?? \PHPMaker2024\FIMS\Config('API.FIMS_URL');
                     </div>
                 </div>
 
-                <!-- ── Opens when the total is 50,000 or more; all optional. Any number of items, one line each. ── -->
+                <!-- ── One item line (filled in automatically with the amount) for every account row of 50,000 or more; the description is required.
+                     The items add up to the total of those account rows, e.g. 50,000 + 300,000 = 350,000. ── -->
                 <div class="amp-section" id="amp-item-box" style="display:none;">
-                    <h4 class="amp-section-header">Items <span class="opt">(optional — total is 50,000 or more)</span>
+                    <h4 class="amp-section-header">Items <span class="opt">(required — description is required; the items must total the accounts of 50,000 or more)</span>
                         <span class="amp-hdr-right"><button type="button" class="amp-add-btn" id="amp-add-item">+ Add item</button></span>
                     </h4>
                     <div class="amp-itm amp-itm-head"><span class="c c-desc">Description</span><span class="c c-serial">Serial No.</span><span class="c c-amt" style="text-align:right;">Amount</span><span class="c c-prop">Prop. No.</span><span class="c c-x"></span></div>
                     <div id="amp-items"></div>
+                    <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:4px;font-size:13px;">Items total <strong id="amp-items-total">0.00</strong></div>
                 </div>
             </div>
             <div id="amp-footer">
@@ -459,6 +466,7 @@ function amp_today() {
    Selecting one fills Requesting Office/Dept, Vendor, PO Date and PO Amount (requested_amount of the RFA). */
 function amp_fillPo(po) {
     const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v ?? ''; };
+    set('amp-po-rfa',    po?.rfa_number || '');
     set('amp-po-office', po?.requesting_office || '');
     set('amp-po-vendor', po?.vendor_name || '');
     set('amp-po-date',   po?.po_date || '');
@@ -771,6 +779,15 @@ function amp_drError() {
         if (!r.querySelector('.amp-f-acct').dataset.code) return 'Row ' + (i + 1) + ': please choose an account code.';
         if (a <= 0) return 'Row ' + (i + 1) + ': enter an amount greater than 0.';
     }
+    const itemRows = [...document.querySelectorAll('#amp-items .amp-itm')];
+    for (let i = 0; i < itemRows.length; i++) {
+        if (!itemRows[i].querySelector('.amp-i-desc').value.trim()) return 'Item ' + (i + 1) + ': the description is required.';
+        if (!((parseFloat(amp_unfmt(itemRows[i].querySelector('.amp-i-amount').value)) || 0) > 0)) return 'Item ' + (i + 1) + ': enter an amount greater than 0.';
+    }
+    if (itemRows.length) {
+        const st = amp_itemsState();
+        if (st.have !== st.need) return 'The items total ' + amp_fmtMoney(st.have / 100) + ' but must equal ' + amp_fmtMoney(st.need / 100) + '.';
+    }
     const avail = amp_availableBalance(), total = amp_totals().total;
     if (!amp_isEdit() && avail !== null && Math.round(total * 100) > Math.round(avail * 100)) {   // an edit never changes the total
         return 'The total (' + amp_fmtMoney(total) + ') exceeds the PO balance (' + amp_fmtMoney(Math.max(0, avail)) + ').';
@@ -790,12 +807,7 @@ function amp_updateTotals() {
         pill.innerHTML = over ? '&#10006; Exceeds PO balance' : '';          // only the warning is shown; nothing when the total is within the balance
         pill.style.display = pill.innerHTML ? '' : 'none';
     }
-    // the optional item fields open from 50,000
-    const box = document.getElementById('amp-item-box');
-    if (box) {
-        box.style.display = total >= AMP_ITEM_MIN_AMOUNT ? '' : 'none';
-        if (box.style.display === '' && !document.querySelector('#amp-items .amp-itm')) amp_addItem();   // start with one blank item line
-    }
+    amp_syncItems();                                         // one item line per account row of 50,000 or more
     // can't submit while a row is incomplete or the total is over the PO balance
     const save = document.getElementById('amp-save');
     if (save) save.disabled = !!amp_drError();
@@ -812,7 +824,7 @@ function amp_loadDr(dr = {}) {
     const entries = dr.entries?.length ? dr.entries : [{}];            // a new DR starts with one account row
     entries.forEach(en => amp_addEntry(en));
     document.getElementById('amp-items').innerHTML = '';
-    (dr.items || []).forEach(it => amp_addItem(it));         // the DR's saved items, one line each
+    amp_syncItems(dr.items || []);                           // the DR's saved items (description, serial, property no.) go to the qualifying account rows in order
     amp_refreshBalance();
 }
 
@@ -838,26 +850,68 @@ document.getElementById('amp-add-entry')?.addEventListener('click', () => {
     const el = amp_addEntry();
     el.querySelector('.amp-f-acct').focus();
 });
-/* One optional item = one line: Description | Serial No. | Amount | Prop. No. */
-function amp_addItem(it = {}) {
-    const box = document.getElementById('amp-items');
+/* Items: one line per account row of AMP_ITEM_MIN_AMOUNT or more — Description (required) | Serial No. | Amount (filled in from
+   the account row, read-only) | Prop. No. So the items always add up to the total of those account rows (e.g. 50,000 + 300,000 = 350,000).
+   Account rows below the minimum have no item. A line is created / removed / re-amounted as the account rows change. */
+function amp_amtOf(entEl) { return parseFloat(amp_unfmt(entEl.querySelector('.amp-f-amount').value)) || 0; }
+function amp_syncItems(saved) {
+    const box = document.getElementById('amp-item-box'), wrap = document.getElementById('amp-items');
+    if (!box || !wrap) return;
+    const ents = [...document.querySelectorAll('#amp-entries .amp-ent')].filter(r => amp_amtOf(r) >= AMP_ITEM_MIN_AMOUNT);
+    [...wrap.querySelectorAll('.amp-itm')].forEach(r => { if (!ents.includes(r._ent)) r.remove(); });
+    ents.forEach((ent, k) => {
+        let row = [...wrap.querySelectorAll('.amp-itm')].find(r => r._ent === ent);
+        if (!row) row = amp_addItem(saved && saved[k] ? saved[k] : {}, ent);
+        row.querySelector('.amp-i-acctlbl').textContent = ent.querySelector('.amp-f-acct').value || '(choose an account code)';
+        if (!row._edited) row.querySelector('.amp-i-amount').value = amp_fmtMoney(amp_amtOf(ent));   // the amount follows the account row until the user edits it
+        wrap.appendChild(row);                               // keep the lines in the order of the account rows
+    });
+    // saved items beyond the account rows, and items the user added, come after them
+    if (saved) saved.slice(ents.length).forEach(it => amp_addItem(it, null));
+    [...wrap.querySelectorAll('.amp-itm')].filter(r => !r._ent).forEach(r => wrap.appendChild(r));
+    box.style.display = ents.length ? '' : 'none';
+    amp_itemsTotals();
+}
+/* items total vs the total of the account rows of 50,000 or more (cents) */
+function amp_itemsState() {
+    const need = [...document.querySelectorAll('#amp-entries .amp-ent')].reduce((s, r) => s + (amp_amtOf(r) >= AMP_ITEM_MIN_AMOUNT ? Math.round(amp_amtOf(r) * 100) : 0), 0);
+    const have = [...document.querySelectorAll('#amp-items .amp-itm')].reduce((s, r) => s + Math.round((parseFloat(amp_unfmt(r.querySelector('.amp-i-amount').value)) || 0) * 100), 0);
+    return { need, have };
+}
+function amp_itemsTotals() {
+    const { need, have } = amp_itemsState();
+    const t = document.getElementById('amp-items-total'), n = document.getElementById('amp-items-need');
+    if (t) { t.textContent = amp_fmtMoney(have / 100) || '0.00'; t.style.color = have === need ? '' : '#DC3545'; }
+    if (n) n.textContent = amp_fmtMoney(need / 100) || '0.00';
+}
+function amp_addItem(it = {}, ent = null) {
     const el  = document.createElement('div');
     el.className = 'amp-itm';
+    el._ent = ent;                                            // the account row this item starts from (null = an extra item the user added)
     const a = Number(it.amount || 0);
+    el._edited = a > 0;                                       // a saved amount is kept; a new one follows its account row
     el.innerHTML = `
-        <div class="c c-desc"><textarea class="amp-input amp-i-desc" rows="2" placeholder="Item description">${amp_textEsc(it.description)}</textarea></div>
+        <div class="c c-desc"><div class="amp-i-acctlbl" style="font-size:11px;font-weight:600;color:var(--afims-text-secondary, #5B5E73);margin-bottom:4px;">${ent ? '' : 'Additional item'}</div>
+            <textarea class="amp-input amp-i-desc" rows="2" placeholder="Item description (required)" required>${amp_textEsc(it.description)}</textarea></div>
         <div class="c c-serial"><input type="text" class="amp-input amp-i-serial" maxlength="100" value="${amp_attrEsc(it.serial_no)}"></div>
         <div class="c c-amt"><input type="text" inputmode="decimal" class="amp-input amp-num amp-i-amount" placeholder="0.00" value="${a > 0 ? amp_attrEsc(amp_fmtMoney(a)) : ''}"></div>
         <div class="c c-prop"><input type="text" class="amp-input amp-i-prop" maxlength="100" value="${amp_attrEsc(it.property_no)}"></div>
-        <div class="c c-x"><button type="button" class="amp-link-danger amp-ent-remove" title="Remove item">&times;</button></div>`;
+        <div class="c c-x">${ent ? '' : '<button type="button" class="amp-link-danger amp-ent-remove" title="Remove item">&times;</button>'}</div>`;
+    const refresh = () => { amp_itemsTotals(); const save = document.getElementById('amp-save'); if (save) save.disabled = !!amp_drError(); };
     const amt = el.querySelector('.amp-i-amount');
-    amt.addEventListener('input', () => { amt.value = amp_liveFmt(amt.value, true); });
+    amt.addEventListener('input', () => { amt.value = amp_liveFmt(amt.value, true); el._edited = true; refresh(); });
     amt.addEventListener('blur', () => { if (amt.value) amt.value = amp_fmtMoney(amp_unfmt(amt.value)); });
-    el.querySelector('.amp-ent-remove').addEventListener('click', () => { el.remove(); });
-    box.appendChild(el);
+    el.querySelector('.amp-i-desc').addEventListener('input', refresh);
+    el.querySelector('.amp-ent-remove')?.addEventListener('click', () => { el.remove(); refresh(); });
+    document.getElementById('amp-items').appendChild(el);
     return el;
 }
-document.getElementById('amp-add-item')?.addEventListener('click', () => amp_addItem().querySelector('.amp-i-desc').focus());
+document.getElementById('amp-add-item')?.addEventListener('click', () => {
+    const el = amp_addItem({}, null);
+    amp_itemsTotals();
+    el.querySelector('.amp-i-desc').focus();
+    const save = document.getElementById('amp-save'); if (save) save.disabled = !!amp_drError();
+});
 
 /* ── Collect the DR into the API payload ───────────────────── */
 function amp_collectDr() {
@@ -873,6 +927,7 @@ function amp_collectDr() {
     };
     if (document.getElementById('amp-item-box').style.display !== 'none') {       // only when the optional items are open
         dr.items = [...document.querySelectorAll('#amp-items .amp-itm')].map(r => ({
+            account_code: r._ent ? (r._ent.querySelector('.amp-f-acct').dataset.code || '') : '',   // the account row the item came from
             description : r.querySelector('.amp-i-desc').value.trim(),
             serial_no   : r.querySelector('.amp-i-serial').value.trim(),
             amount      : amp_unfmt(r.querySelector('.amp-i-amount').value),

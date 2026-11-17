@@ -30,6 +30,14 @@ $app->post('/property-record/save', function ($request, $response, $args) use ($
     return $response->withJson($result, $result['success'] ? 201 : 400);
 })->add($jwtMiddleware);
 
+// The items entered in the IAR module for the property accounts (description, serial / property no., amount, delivery date, PO's RC)
+// GET /property-record/iar-items   → { success, data: { items[] } }
+$app->get('/property-record/iar-items', function ($request, $response, $args) use ($PropertyRecordService) {
+    $result = $PropertyRecordService->iarItems();
+
+    return $response->withJson($result, $result['success'] ? 200 : 400);
+})->add($jwtMiddleware);
+
 // Everything that is saved (items of every PO, with the PO's responsibility center) + the numbers for the cards
 // GET /property-record/list   → { success, data: { items[], po_count, summary{} } }
 $app->get('/property-record/list', function ($request, $response, $args) use ($PropertyRecordService) {
