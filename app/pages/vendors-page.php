@@ -326,22 +326,7 @@ function vnd_bindEvents() {
         vnd_page = 1; vnd_load();
     });
 
-    // COA account search
-    const coaSearch = $vnd('vnd-coa-account-search');
-    if (coaSearch) {
-        coaSearch.addEventListener('input', vnd_searchCoaAccounts);
-        coaSearch.addEventListener('focus', () => {
-            const dropdown = $vnd('vnd-coa-dropdown');
-            if (coaSearch.value.trim() && dropdown.children.length) {
-                dropdown.style.display = 'block';
-            }
-        });
-        document.addEventListener('click', (e) => {
-            if (!e.target.closest('#vnd-coa-account-search') && !e.target.closest('#vnd-coa-dropdown')) {
-                $vnd('vnd-coa-dropdown').style.display = 'none';
-            }
-        });
-    }
+    vnd_formGlSlBindEvents();
 }
 
 /* ── Load ──────────────────────────────────────────────────── */
@@ -500,9 +485,6 @@ const VND_TEXT_FIELDS = {          // payload key → input id
     bank_account_number : 'vnd-bank-acct',
 };
 
-let vnd_coaSearchTimer;
-let vnd_coaCache = {};
-
 function vnd_openModal(mode, row = null) {
     vnd_hideErr();
     $vnd('vnd-mode').value = mode;
@@ -515,18 +497,11 @@ function vnd_openModal(mode, row = null) {
     if (!row?.status) $vnd('vnd-status').value = 'ACTIVE';
     $vnd('vnd-vat').checked = vnd_truthy(row?.is_vat_registered);
 
-    // COA account (populate if editing)
-    $vnd('vnd-coa-account-id').value = row?.coa_account_id || '';
+    // GL / Sub-Ledger assignment (populate if editing)
+    vnd_formGlSlReset();
     if (row?.coa_account_id) {
-        $vnd('vnd-coa-account-search').value = `${row.coa_account_code} — ${row.coa_account_name}`;
-        $vnd('vnd-coa-selected').innerHTML = `<strong>${row.coa_account_code}</strong><br><small>${row.coa_account_name}</small>`;
-        $vnd('vnd-coa-selected').style.display = 'block';
-    } else {
-        $vnd('vnd-coa-account-search').value = '';
-        $vnd('vnd-coa-selected').style.display = 'none';
+        vnd_formSelectGlAccount({ dataset: { id: row.coa_account_id, code: row.coa_account_code, name: row.coa_account_name } }, row.sl_code);
     }
-    $vnd('vnd-coa-dropdown').style.display = 'none';
-    $vnd('vnd-coa-dropdown').innerHTML = '';
 
     $vnd('vnd-vendor-code').disabled = mode === 'edit';
     $vnd('vnd-code-hint').textContent = mode === 'edit'
@@ -538,6 +513,7 @@ function vnd_openModal(mode, row = null) {
 function vnd_closeModal() {
     $vnd('vnd-overlay').classList.remove('open');
     $vnd('vnd-form').reset();
+    vnd_formGlSlReset();
     vnd_hideErr();
 }
 
@@ -577,13 +553,15 @@ async function vnd_save(ev) {
     payload.is_vat_registered = $vnd('vnd-vat').checked;
     if (mode === 'edit') delete payload.vendor_code;       // locked
 
-    const coaAccountId = $vnd('vnd-coa-account-id').value;
+    const coaAccountId = $vnd('vnd-form-gl-account-id').value;
+    const slCode       = $vnd('vnd-form-sl-selected-code-value').value;
 
     if (mode === 'add' && !payload.vendor_code) { vnd_showErr('Vendor code is required.'); return; }
     if (!payload.vendor_name)                   { vnd_showErr('Vendor name is required.'); return; }
     if (payload.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payload.email)) { vnd_showErr('Email address is not valid.'); return; }
 
     if (coaAccountId) payload.coa_account_id = coaAccountId;  // Optional — Link SL can assign this later
+    if (slCode)        payload.sl_code = slCode;
 
     window.PagePreloader?.show();
     try {
@@ -643,61 +621,223 @@ function vnd_toast(msg, type = 'info') {
     setTimeout(() => t.remove(), 4000);
 }
 
-/* ── COA Account Picker ────────────────────────────────────── */
-async function vnd_searchCoaAccounts(ev) {
-    const query = ev.target.value.trim();
-    const dropdown = $vnd('vnd-coa-dropdown');
+/* ── GL + Sub-Ledger Picker (Add/Edit Vendor form) ──────────── */
+function vnd_formGlSlBindEvents() {
+    const glSearch = $vnd('vnd-form-gl-search');
+    if (glSearch) {
+        glSearch.addEventListener('input', vnd_formSearchGlAccounts);
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('#vnd-form-gl-search') && !e.target.closest('#vnd-form-gl-dropdown')) {
+                $vnd('vnd-form-gl-dropdown').style.display = 'none';
+            }
+            if (!e.target.closest('#vnd-form-sl-search') && !e.target.closest('#vnd-form-sl-dropdown')) {
+                $vnd('vnd-form-sl-dropdown').style.display = 'none';
+            }
+        });
+    }
+    $vnd('vnd-form-sl-search')?.addEventListener('input', vnd_formSearchSlAccounts);
+    $vnd('vnd-form-sl-create-btn')?.addEventListener('click', vnd_formCreateSlAccount);
+}
 
-    if (!query || query.length < 1) {
+function vnd_formGlSlReset() {
+    $vnd('vnd-form-gl-account-id').value = '';
+    $vnd('vnd-form-gl-search').value = '';
+    $vnd('vnd-form-gl-dropdown').innerHTML = '';
+    $vnd('vnd-form-gl-dropdown').style.display = 'none';
+    $vnd('vnd-form-gl-selected').style.display = 'none';
+
+    $vnd('vnd-form-sl-search').value = '';
+    $vnd('vnd-form-sl-search').disabled = true;
+    $vnd('vnd-form-sl-search').placeholder = 'Select a GL account first…';
+    $vnd('vnd-form-sl-selected-code-value').value = '';
+    $vnd('vnd-form-sl-selected-item').style.display = 'none';
+    $vnd('vnd-form-sl-dropdown').innerHTML = '';
+    $vnd('vnd-form-sl-dropdown').style.display = 'none';
+    $vnd('vnd-form-sl-empty-note').style.display = 'none';
+    $vnd('vnd-form-sl-new-title').value = '';
+    $vnd('vnd-form-sl-section').style.opacity = '.5';
+    $vnd('vnd-form-sl-section').style.pointerEvents = 'none';
+}
+
+let vnd_formGlSearchTimer;
+function vnd_formSearchGlAccounts(ev) {
+    const query = ev.target.value.trim();
+    const dropdown = $vnd('vnd-form-gl-dropdown');
+    clearTimeout(vnd_formGlSearchTimer);
+
+    if (!query) {
         dropdown.style.display = 'none';
-        dropdown.innerHTML = '';
         return;
     }
 
-    clearTimeout(vnd_coaSearchTimer);
-    vnd_coaSearchTimer = setTimeout(async () => {
-        try {
-            const res = await fetch(`${VND_API}/../accounting/coa/search?q=${encodeURIComponent(query)}&limit=20`, { credentials: 'same-origin' });
-            const json = await res.json();
-
-            if (!json.success || !json.data?.length) {
-                dropdown.innerHTML = '<div style="padding:10px;color:#999;font-size:12px;">No accounts found.</div>';
-                dropdown.style.display = 'block';
-                return;
-            }
-
-            dropdown.innerHTML = json.data.map(account =>
-                `<div class="vnd-coa-item" data-id="${account.account_id}" data-code="${vnd_esc(account.account_code)}" data-name="${vnd_esc(account.account_title)}" style="padding:10px 12px;border-bottom:1px solid #E4ECF2;cursor:pointer;font-size:13px;transition:background .15s;">
-                    <div style="font-weight:600;">${vnd_esc(account.account_code)}</div>
-                    <div style="font-size:11px;color:#999;margin-top:2px;">${vnd_esc(account.account_title)}</div>
-                </div>`
-            ).join('');
-
-            dropdown.style.display = 'block';
-            dropdown.querySelectorAll('.vnd-coa-item').forEach(item => {
-                item.addEventListener('mouseover', () => item.style.background = '#F4F7FA');
-                item.addEventListener('mouseout', () => item.style.background = 'transparent');
-                item.addEventListener('click', () => vnd_selectCoaAccount(item));
-            });
-        } catch (e) {
-            dropdown.innerHTML = `<div style="padding:10px;color:#d32f2f;font-size:12px;">Error: ${vnd_esc(e.message)}</div>`;
-            dropdown.style.display = 'block';
-        }
+    vnd_formGlSearchTimer = setTimeout(() => {
+        fetch(`${VND_API}/../accounting/coa/search?q=${encodeURIComponent(query)}&limit=20`, { credentials: 'same-origin' })
+            .then(r => r.json())
+            .then(json => {
+                if (json.success && json.data?.length) {
+                    dropdown.innerHTML = json.data.map(a =>
+                        `<div class="vnd-form-gl-item" data-id="${a.account_id}" data-code="${vnd_escAttr(a.account_code)}" data-name="${vnd_escAttr(a.account_title)}" style="padding:10px 12px;border-bottom:1px solid #E4ECF2;cursor:pointer;font-size:13px;transition:background .15s;">
+                            <div style="font-weight:600;">${vnd_esc(a.account_code)}</div>
+                            <div style="font-size:11px;color:#999;margin-top:2px;">${vnd_esc(a.account_title)}</div>
+                        </div>`
+                    ).join('');
+                    dropdown.style.display = 'block';
+                    dropdown.querySelectorAll('.vnd-form-gl-item').forEach(item => {
+                        item.addEventListener('mouseover', () => item.style.background = '#F4F7FA');
+                        item.addEventListener('mouseout', () => item.style.background = 'transparent');
+                        item.addEventListener('click', () => vnd_formSelectGlAccount(item));
+                    });
+                } else {
+                    dropdown.innerHTML = '<div style="padding:10px;color:#999;font-size:12px;">No accounts found.</div>';
+                    dropdown.style.display = 'block';
+                }
+            })
+            .catch(e => vnd_showErr('GL search failed: ' + e.message));
     }, 300);
 }
 
-function vnd_selectCoaAccount(item) {
-    const accountId = item.dataset.id;  // This is account_id from COA
+function vnd_formSelectGlAccount(item, preselectSlId = null) {
+    const accountId = item.dataset.id;
     const code = item.dataset.code;
     const name = item.dataset.name;
 
-    $vnd('vnd-coa-account-id').value = accountId;  // Store the numeric account_id, not the code
-    $vnd('vnd-coa-account-search').value = `${code} — ${name}`;
-    $vnd('vnd-coa-dropdown').style.display = 'none';
+    $vnd('vnd-form-gl-account-id').value = accountId;
+    $vnd('vnd-form-gl-search').value = `${code} — ${name}`;
+    $vnd('vnd-form-gl-dropdown').style.display = 'none';
 
-    const selected = $vnd('vnd-coa-selected');
-    selected.innerHTML = `<strong>${code}</strong><br><small>${name}</small>`;
+    const selected = $vnd('vnd-form-gl-selected');
+    selected.innerHTML = `<strong>${vnd_esc(code)}</strong> — ${vnd_esc(name)}`;
     selected.style.display = 'block';
+
+    // Changing the GL invalidates any previously selected SL.
+    $vnd('vnd-form-sl-selected-code-value').value = '';
+    $vnd('vnd-form-sl-selected-item').style.display = 'none';
+    $vnd('vnd-form-sl-search').value = '';
+    $vnd('vnd-form-sl-search').disabled = false;
+    $vnd('vnd-form-sl-search').placeholder = 'Type account code or description...';
+    $vnd('vnd-form-sl-section').style.opacity = '1';
+    $vnd('vnd-form-sl-section').style.pointerEvents = 'auto';
+
+    vnd_formLoadSlCodesForAccount(accountId, preselectSlId);
+}
+
+async function vnd_formLoadSlCodesForAccount(accountId, preselectId = null) {
+    try {
+        const res = await fetch(`${VND_API}/../accounting/sl/by-account?account_id=${encodeURIComponent(accountId)}&limit=50`, { credentials: 'same-origin' });
+        const json = await res.json();
+
+        if (!json.success || !json.data?.length) {
+            $vnd('vnd-form-sl-empty-note').style.display = 'block';
+            $vnd('vnd-form-sl-dropdown').style.display = 'none';
+            return;
+        }
+
+        $vnd('vnd-form-sl-empty-note').style.display = 'none';
+        vnd_formRenderSlList(json.data);
+        $vnd('vnd-form-sl-dropdown').style.display = 'none';
+
+        if (preselectId) {
+            const match = json.data.find(a => String(a.account_id) === String(preselectId));
+            if (match) {
+                $vnd('vnd-form-sl-search').value = match.account_code;
+                $vnd('vnd-form-sl-selected-code-value').value = match.account_id;
+                $vnd('vnd-form-sl-selected-code').textContent = match.account_code;
+                $vnd('vnd-form-sl-selected-item').style.display = 'block';
+            }
+        }
+    } catch (e) {
+        vnd_showErr('Failed to load sub-ledgers: ' + e.message);
+    }
+}
+
+function vnd_formRenderSlList(items) {
+    const dropdown = $vnd('vnd-form-sl-dropdown');
+    dropdown.innerHTML = items.map(item =>
+        `<div class="vnd-form-sl-item" data-code="${vnd_escAttr(item.account_id)}" data-display="${vnd_escAttr(item.account_code)}" style="padding:10px 12px;border-bottom:1px solid #E4ECF2;cursor:pointer;font-size:13px;transition:background .15s;">
+            <div style="font-weight:600;">${vnd_esc(item.account_code)}</div>
+            ${item.account_title ? `<div style="font-size:11px;color:#999;margin-top:2px;">${vnd_esc(item.account_title)}</div>` : ''}
+        </div>`
+    ).join('');
+
+    dropdown.style.display = 'block';
+    dropdown.querySelectorAll('.vnd-form-sl-item').forEach(item => {
+        item.addEventListener('mouseover', () => item.style.background = '#F4F7FA');
+        item.addEventListener('mouseout', () => item.style.background = 'transparent');
+        item.addEventListener('click', () => vnd_formSelectSlCode(item));
+    });
+}
+
+function vnd_formSelectSlCode(item) {
+    const slId = item.dataset.code;
+    const display = item.dataset.display;
+    $vnd('vnd-form-sl-search').value = display;
+    $vnd('vnd-form-sl-selected-code-value').value = slId;
+    $vnd('vnd-form-sl-selected-code').textContent = display;
+    $vnd('vnd-form-sl-selected-item').style.display = 'block';
+    $vnd('vnd-form-sl-dropdown').style.display = 'none';
+}
+
+let vnd_formSlSearchTimer;
+function vnd_formSearchSlAccounts(ev) {
+    const query = ev.target.value.trim();
+    clearTimeout(vnd_formSlSearchTimer);
+
+    if (!query) {
+        $vnd('vnd-form-sl-dropdown').style.display = 'none';
+        return;
+    }
+
+    vnd_formSlSearchTimer = setTimeout(() => {
+        const accountId = $vnd('vnd-form-gl-account-id').value;
+        if (!accountId) return;
+        fetch(`${VND_API}/../accounting/sl/search?account_id=${encodeURIComponent(accountId)}&q=${encodeURIComponent(query)}&limit=50`, { credentials: 'same-origin' })
+            .then(r => r.json())
+            .then(json => {
+                if (json.success && json.data?.length) {
+                    vnd_formRenderSlList(json.data);
+                } else {
+                    const dropdown = $vnd('vnd-form-sl-dropdown');
+                    dropdown.innerHTML = '<div style="padding:10px;color:#999;font-size:12px;">No matching sub-ledgers. Try creating one below.</div>';
+                    dropdown.style.display = 'block';
+                }
+            })
+            .catch(e => vnd_showErr('Search failed: ' + e.message));
+    }, 300);
+}
+
+async function vnd_formCreateSlAccount() {
+    vnd_hideErr();
+    const glAccountId = $vnd('vnd-form-gl-account-id').value;
+    const title = $vnd('vnd-form-sl-new-title').value.trim();
+
+    if (!glAccountId) { vnd_showErr('Select a GL account first.'); return; }
+    if (!title)        { vnd_showErr('Enter a title for the new sub-ledger.'); return; }
+
+    try {
+        window.PagePreloader?.show();
+        const res = await fetch(`${VND_API}/../accounting/sl/create`, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ parent_account_id: glAccountId, account_title: title }),
+        });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message || 'Failed to create sub-ledger.');
+
+        const created = json.data;
+        $vnd('vnd-form-sl-search').value = created.account_code;
+        $vnd('vnd-form-sl-selected-code-value').value = created.account_id;
+        $vnd('vnd-form-sl-selected-code').textContent = created.account_code;
+        $vnd('vnd-form-sl-selected-item').style.display = 'block';
+        $vnd('vnd-form-sl-empty-note').style.display = 'none';
+        $vnd('vnd-form-sl-new-title').value = '';
+
+        vnd_toast('Sub-ledger account created.', 'success');
+    } catch (e) {
+        vnd_showErr(e.message);
+    } finally {
+        window.PagePreloader?.hide();
+    }
 }
 
 /* ── SL Modal Functions ─────────────────────────────────────── */
