@@ -43,10 +43,12 @@ use PHPMaker2024\FIMS\DataType;
  *                       adjustment is signed, so a decrease lowers it). This page's Revised Amount; it is a different formula from the COB
  *                       page's revised_amount (approved_amount - revision_amount)
  *   rfa_laa_amount      rfa_approved + laa_issued — what approved RFAs and issued LAAs have drawn from the CBAs
- *   disbursement        budget_line_items.disbursement, as recorded (a plain column — migration "06")
+ *   disbursement        what the disbursement vouchers connected to the line's RFAs / LAAs (budget_allocation.dv_id) have disbursed: each voucher's
+ *                       gross_amount spread over the draws of the RFAs / LAAs that point at it (disbursementSql()); cancelled / rejected vouchers
+ *                       count for nothing. The stored budget_line_items.disbursement column, which nothing writes, is not used
  *   unallocated_amount  revised_computed - rfa_approved - laa_issued — the revised budget not yet drawn by an RFA or LAA
- *   account_payable     rfa_laa_amount - disbursement — what the RFAs / LAAs have drawn that has not been disbursed yet. Worked out per line; the
- *                       stored budget_line_items.account_payable column (filled only by CBA / CFA approvals) is not used
+ *   account_payable     rfa_laa_amount - disbursement — what the RFAs / LAAs have drawn that has not been disbursed yet. Worked out per line, so
+ *                       it takes the vouchers into account; the stored budget_line_items.account_payable column is not used
  *
  * Revised, Available and Remaining are all worked out, so the identities  Approved - Revision = Revised,  Revised - CBA = Available  and
  * Revised - RFA - LAA = Remaining  hold on every row, group and total.
@@ -59,7 +61,7 @@ use PHPMaker2024\FIMS\DataType;
  *
  * With rollup(..., $withAllocations = true) — only the RFA / LAA Monitoring page asks — every project node also carries, as children, the RFAs and
  * LAAs that drew against its budget lines (type 'allocation': RFA / LAA Amount = what it drew there) and, under each RFA, its disbursement voucher
- * (type 'dv': Disbursement = the voucher's net amount). They are detail rows: no total counts them.
+ * (type 'dv': Disbursement = the voucher's gross_amount). They are detail rows: no total counts them.
  *
  * Views:
  *   summary()       the KPI cards
@@ -114,6 +116,32 @@ class CobService
     }
 
     /**
+     * What the disbursement vouchers connected to RFAs / LAAs have disbursed, one row per budget line item (so joining it multiplies nothing).
+     * A voucher is connected to an allocation by budget_allocation.dv_id. Its gross_amount is spread over the 'converted' earmark rows of EVERY
+     * RFA / LAA that points at it, in proportion to what each row drew (e.amount) — so a voucher that pays two RFAs, or an RFA that draws on two
+     * budget lines, is never counted twice, and the shares add back up to the voucher's gross_amount. A cancelled or rejected voucher counts for
+     * nothing, and neither does a deleted allocation. This is the Disbursement of the RFA / LAA Monitoring page.
+     */
+    private function disbursementSql(): string
+    {
+        return "SELECT e.budget_line_item_id,
+                       SUM(dv.gross_amount * e.amount / NULLIF(tot.total, 0)) AS dv_gross
+                FROM {$this->tableEarmark} e
+                JOIN {$this->tableAllocation} a ON a.allocation_id = e.allocation_id AND a.deleted_at IS NULL
+                                               AND UPPER(a.allocation_type) IN ('RFA', 'LAA')
+                JOIN fims.disbursement_vouchers dv ON dv.dv_id = a.dv_id
+                JOIN (SELECT a2.dv_id, SUM(e2.amount) AS total
+                        FROM {$this->tableEarmark} e2
+                        JOIN {$this->tableAllocation} a2 ON a2.allocation_id = e2.allocation_id AND a2.deleted_at IS NULL
+                                                        AND UPPER(a2.allocation_type) IN ('RFA', 'LAA')
+                       WHERE e2.status = 'converted' AND a2.dv_id IS NOT NULL
+                       GROUP BY a2.dv_id) tot ON tot.dv_id = a.dv_id
+                WHERE e.status = 'converted'
+                  AND UPPER(COALESCE((SELECT s.name FROM fims.settings_status s WHERE s.id = dv.status_id), '')) NOT IN ('CANCELLED', 'REJECTED')
+                GROUP BY e.budget_line_item_id";
+    }
+
+    /**
      * The joins every COB query shares. One row = one budget line item of a request that has a status; the project /
      * program joins are LEFT, so a line item of an older request that never got its program block still counts (it just
      * has no program or project). Every join is many-to-one, so no join can multiply a line item's amounts.
@@ -134,6 +162,7 @@ class CobService
                 LEFT JOIN fims.responsibility_code rc ON rc.rc_id = br.rc_id
                 LEFT JOIN fims.responsibility_code prc ON prc.rc_id = rc.parent_rc_id
                 LEFT JOIN ({$this->earmarkSql()}) ear ON ear.budget_line_item_id = li.budget_line_item_id
+                LEFT JOIN ({$this->disbursementSql()}) dvl ON dvl.budget_line_item_id = li.budget_line_item_id
                 LEFT JOIN (
                     SELECT budget_req_program_id, project_code, COUNT(*) AS attachment_count
                     FROM {$this->tableAttachment}
@@ -154,6 +183,9 @@ class CobService
         // negative), worked out from the line itself. One definition, used by revised_computed and by unallocated_amount below.
         $revisedCalc = '(COALESCE(li.proposed_amount, 0) + COALESCE(li.adjustment, 0))';
         $rfaLaa = "({$rfa} + {$laa})";
+        // Disbursement = what the vouchers connected to the line's RFAs / LAAs have disbursed (disbursementSql()); the stored
+        // budget_line_items.disbursement column, which nothing writes, is not used
+        $disb = 'COALESCE(dvl.dv_gross, 0)';
 
         return [
             'approved_amount' => 'li.suggested_amount',
@@ -168,11 +200,11 @@ class CobService
             // adjustment (a signed total: a decrease or a realignment out is negative) — not read from the recorded revised_amount column
             'revised_computed' => $revisedCalc,
             'rfa_laa_amount' => $rfaLaa,
-            'disbursement' => 'li.disbursement',
+            'disbursement' => $disb,
             // Unallocated Amount = Revised Amount - RFA / LAA Amount (so it foots on every row, group and total)
             'unallocated_amount' => "({$revisedCalc} - {$rfaLaa})",
             // Account Payable = RFA / LAA Amount - Disbursement (it foots on every row, group and total)
-            'account_payable' => "({$rfaLaa} - COALESCE(li.disbursement, 0))",
+            'account_payable' => "({$rfaLaa} - {$disb})",
         ];
     }
 
@@ -416,9 +448,11 @@ class CobService
      * The RFAs and LAAs that have drawn against each project, with the voucher of each, keyed like the tree's project nodes
      * (budget reference no. | program block | project code). One row per (project, allocation): the allocation's drawn amount on THAT
      * project is the sum of its 'converted' earmark rows on the project's budget lines — the same rows that make up RFA Approved and
-     * LAA Issued. A deleted allocation does not count. An allocation's disbursement voucher is the one budget_allocation.dv_id points
-     * at (only RFAs are linked to one); a voucher that was cancelled or rejected is no longer connected, so it is left out. A voucher's status is read
-     * through fims.settings_status (status_id): the table has no status column of its own any more ("03 - alter_table/21").
+     * LAA Issued. A deleted allocation does not count. An allocation's disbursement voucher is the row of fims.disbursement_vouchers that
+     * budget_allocation.dv_id points at — for an RFA or an LAA alike: any allocation with a dv_id gets its voucher as its child (today only RFAs are
+     * linked to one by the voucher form, DisbursementVoucherService::linkRfas()). The voucher is shown whatever its status — a cancelled or rejected one
+     * too, its status pill says so. A voucher's status is read through fims.settings_status (status_id): the table has no status column of its own any
+     * more ("03 - alter_table/21").
      * The same filters and the same RC scope as the tree itself.
      *
      * @return array<string, list<array>> project key => allocation nodes, each with its voucher (if any) as its only child
@@ -429,19 +463,18 @@ class CobService
             'SELECT br.budget_reference_number, brpg.budget_req_program_id, brpj.project_code,
                     a.allocation_id, UPPER(a.allocation_type) AS allocation_type, a.allocation_number, a.request_referrence_no, a.description,
                     COALESCE(SUM(e.amount), 0) AS drawn_amount,
-                    dv.dv_id, dv.dv_no, dv.dv_date, dv.claimant_name, dv.net_amount AS dv_amount,
+                    dv.dv_id, dv.dv_no, dv.dv_date, dv.claimant_name, dv.gross_amount AS dv_amount,
                     dst.name AS dv_status, dst.color AS dv_status_color
              '.$this->fromSql()."
              JOIN {$this->tableEarmark} e ON e.budget_line_item_id = li.budget_line_item_id AND e.status = 'converted'
              JOIN {$this->tableAllocation} a ON a.allocation_id = e.allocation_id AND a.deleted_at IS NULL
                                             AND UPPER(a.allocation_type) IN ('RFA', 'LAA')
              LEFT JOIN fims.disbursement_vouchers dv ON dv.dv_id = a.dv_id
-                  AND UPPER(COALESCE((SELECT s.name FROM fims.settings_status s WHERE s.id = dv.status_id), '')) NOT IN ('CANCELLED', 'REJECTED')
              LEFT JOIN fims.settings_status dst ON dst.id = dv.status_id
              WHERE ".implode(' AND ', $this->conditions($f, $scopeRcId)).'
              GROUP BY br.budget_reference_number, brpg.budget_req_program_id, brpj.project_code,
                       a.allocation_id, a.allocation_type, a.allocation_number, a.request_referrence_no, a.description,
-                      dv.dv_id, dv.dv_no, dv.dv_date, dv.claimant_name, dv.net_amount, dst.name, dst.color
+                      dv.dv_id, dv.dv_no, dv.dv_date, dv.claimant_name, dv.gross_amount, dst.name, dst.color
              ORDER BY a.allocation_type, a.allocation_number, a.allocation_id',
             'DB'
         ) ?: [];
@@ -455,12 +488,15 @@ class CobService
 
             $children = [];
             if (!empty($r['dv_id'])) {
-                // a voucher row: its amount (net of deductions) goes in the Disbursement column
+                // a voucher row: its gross_amount goes in the Disbursement column — unless the voucher is cancelled / rejected, which counts for nothing
+                // in the totals (disbursementSql()), so its row shows a dash too and says it is not counted
+                $void = in_array(strtoupper((string) ($r['dv_status'] ?? '')), ['CANCELLED', 'REJECTED'], true);
                 $children[] = [
                     'type' => 'dv', 'key' => 'd'.$r['dv_id'], 'label' => (string) ($r['dv_no'] ?? ('DV #'.$r['dv_id'])), 'code' => 'DV', 'unassigned' => false,
                     'dv_id' => (int) $r['dv_id'], 'dv_date' => $r['dv_date'] ?? null, 'claimant_name' => $r['claimant_name'] ?? null,
                     'status_name' => $r['dv_status'] ?? null, 'status_color' => $r['dv_status_color'] ?? null,
-                    'disbursement' => $this->num($r['dv_amount'] ?? 0),
+                    'counted' => !$void,
+                    'disbursement' => $void ? 0.0 : $this->num($r['dv_amount'] ?? 0),
                 ] + $this->zeroAmounts() + ['children' => []];
             }
 
@@ -800,6 +836,7 @@ class CobService
                  LEFT JOIN fims.type_of_fund tof ON tof.type_of_fund_id = li.type_of_fund_id
                  LEFT JOIN fims.component_type ct ON ct.component_type_id = li.component_id
                  LEFT JOIN ({$this->earmarkSql()}) ear ON ear.budget_line_item_id = li.budget_line_item_id
+                 LEFT JOIN ({$this->disbursementSql()}) dvl ON dvl.budget_line_item_id = li.budget_line_item_id
                  WHERE li.budget_reference_number = {$brn}
                  ORDER BY coa.account_code ASC NULLS LAST, li.budget_line_item_id ASC",
                 'DB'
