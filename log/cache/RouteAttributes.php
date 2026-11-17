@@ -204,6 +204,8 @@
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+<<<<<<< HEAD
+=======
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
@@ -211,6 +213,7 @@
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+>>>>>>> e9c209bf97dc4d8be8f92aa2e1b6cbc1ce285b80
     ],
     null,
     [
@@ -1267,6 +1270,11 @@
                     'POST',
                     'OPTIONS',
                 ],
+                [
+                    'GET',
+                    'POST',
+                    'OPTIONS',
+                ],
             ],
             'pattern' => [
                 '/AccountableFormsRegistryPage[/{params:.*}]',
@@ -1394,7 +1402,11 @@
                 '/swagger/swagger',
                 '/[index]',
                 '/PageEditor[/{params:.*}]',
+<<<<<<< HEAD
+                '/PayrollPage[/{params:.*}]',
+=======
                 '/PayrollSetupPage[/{params:.*}]',
+>>>>>>> e9c209bf97dc4d8be8f92aa2e1b6cbc1ce285b80
                 '/PermissionModuleCaptionsList[/{table_name:.*}]',
                 '/PermissionModuleCaptionsAdd[/{table_name:.*}]',
                 '/PermissionModuleCaptionsView[/{table_name:.*}]',
@@ -1607,7 +1619,11 @@
                 'PHPMaker2024\\FIMS\\OthersController:swagger',
                 'PHPMaker2024\\FIMS\\OthersController:index',
                 'PHPMaker2024\\FIMS\\PageEditorController:custom',
+<<<<<<< HEAD
+                'PHPMaker2024\\FIMS\\PayrollPageController:custom',
+=======
                 'PHPMaker2024\\FIMS\\PayrollSetupPageController:custom',
+>>>>>>> e9c209bf97dc4d8be8f92aa2e1b6cbc1ce285b80
                 'PHPMaker2024\\FIMS\\PermissionModuleCaptionsController:list',
                 'PHPMaker2024\\FIMS\\PermissionModuleCaptionsController:add',
                 'PHPMaker2024\\FIMS\\PermissionModuleCaptionsController:view',
@@ -2305,6 +2321,8 @@
                 [
                     'PHPMaker2024\\FIMS\\PermissionMiddleware',
                 ],
+<<<<<<< HEAD
+=======
                 [
                     'PHPMaker2024\\FIMS\\PermissionMiddleware',
                 ],
@@ -2326,6 +2344,7 @@
                 [
                     'PHPMaker2024\\FIMS\\PermissionMiddleware',
                 ],
+>>>>>>> e9c209bf97dc4d8be8f92aa2e1b6cbc1ce285b80
             ],
             'name' => [
                 'custom.accountable_forms_registry_page',
@@ -2453,7 +2472,11 @@
                 'swagger',
                 'index',
                 'custom.PageEditor',
+<<<<<<< HEAD
+                'custom.payroll_page',
+=======
                 'custom.payroll_setup_page',
+>>>>>>> e9c209bf97dc4d8be8f92aa2e1b6cbc1ce285b80
                 'list.permission_module_captions',
                 'add.permission_module_captions',
                 'view.permission_module_captions',
@@ -2730,6 +2753,8 @@
                 [],
                 [],
                 [],
+<<<<<<< HEAD
+=======
                 [],
                 [],
                 [],
@@ -2752,6 +2777,7 @@
                 [],
                 [],
                 [],
+>>>>>>> e9c209bf97dc4d8be8f92aa2e1b6cbc1ce285b80
             ],
         ],
     ],
@@ -2945,6 +2971,8 @@
         $o[186],
         $o[187],
         $o[188],
+<<<<<<< HEAD
+=======
         $o[189],
         $o[190],
         $o[191],
@@ -2967,6 +2995,7 @@
         $o[208],
         $o[209],
         $o[210],
+>>>>>>> e9c209bf97dc4d8be8f92aa2e1b6cbc1ce285b80
     ],
     []
 );
