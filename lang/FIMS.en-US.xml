@@ -68,6 +68,9 @@
     <menu id="756">
       <phrase id="menutext" value="RFA / LAA Monitoring" />
     </menu>
+    <menu id="331">
+      <phrase id="menutext" value="Cash Position" />
+    </menu>
     <menu id="551">
       <phrase id="menutext" value="Registry/NCA" />
     </menu>
@@ -160,9 +163,6 @@
     </menu>
     <menu id="398">
       <phrase id="menutext" value="Fund Transfer Letter of Advice" />
-    </menu>
-    <menu id="331">
-      <phrase id="menutext" value="Cash Position" />
     </menu>
     <menu id="206">
       <phrase id="menutext" value="Administration" />
