@@ -661,6 +661,27 @@ $cpsCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
 .cps-step-pill.active .cps-step-num { background:#000E3E; color:#fff; }
 .cps-step-pill.done .cps-step-num { background:#000E3E; color:#fff; }
 .cps-step-line { flex:1; height:2px; background:var(--fims-border); margin:0 10px; }
+
+/* ── Dark mode ──
+   The page hard-codes navy (#000E3E) for its primary / outline buttons and the active step (navy on dark), the fund-source
+   group rows fall back to a light #f4f6fb (light text on near-white), and the selects use the browser's native grey. */
+html.afims-dark[data-bs-theme="dark"] #cashPositionModule { color-scheme:dark; }
+html.afims-dark[data-bs-theme="dark"] #cashPositionModule .fims-btn-primary { background:#3861BC; border-color:#3861BC; color:#fff; }
+html.afims-dark[data-bs-theme="dark"] #cashPositionModule .fims-btn-primary:hover { background:#2E59B8; color:#fff; }
+html.afims-dark[data-bs-theme="dark"] #cashPositionModule .fims-btn-outline { color:#94AADB; border-color:#5B7FCF; background:transparent; }
+html.afims-dark[data-bs-theme="dark"] #cashPositionModule .fims-btn-outline:hover { background:#3861BC; border-color:#3861BC; color:#fff; }
+html.afims-dark[data-bs-theme="dark"] #cashPositionModule .fims-btn-ghost { color:var(--afims-text, #E4ECF2); }
+html.afims-dark[data-bs-theme="dark"] #cashPositionModule :is(select.fims-select, .fims-input) {
+    background-color:var(--afims-surface, #1A1F38); color:var(--afims-text, #E4ECF2); border-color:var(--afims-border-strong, #4A5270); }
+html.afims-dark[data-bs-theme="dark"] #cashPositionModule select.fims-select option { background-color:var(--afims-surface, #1A1F38); color:var(--afims-text, #E4ECF2); }
+html.afims-dark[data-bs-theme="dark"] #cashPositionModule .cps-group-header,
+html.afims-dark[data-bs-theme="dark"] #cashPositionModule .cps-group-header > td { background:var(--afims-surface-subtle, #22294A) !important; color:var(--afims-text, #E4ECF2) !important; }
+html.afims-dark[data-bs-theme="dark"] #cashPositionModule .cps-group-header :is(span, strong, small, td *) { color:inherit; }
+html.afims-dark[data-bs-theme="dark"] .cps-step-pill { color:var(--afims-text-muted, #AAAFBE); }
+html.afims-dark[data-bs-theme="dark"] .cps-step-pill.active { color:#FFFFFF; }
+html.afims-dark[data-bs-theme="dark"] :is(.cps-step-pill.active, .cps-step-pill.done) .cps-step-num { background:#3861BC; color:#fff; }
+html.afims-dark[data-bs-theme="dark"] .cps-step-pill .cps-step-num { background:#2E3656; color:var(--afims-text, #E4ECF2); }
+html.afims-dark[data-bs-theme="dark"] .cps-step-line { background:#2E3656; }
 </style>
 
 <script>

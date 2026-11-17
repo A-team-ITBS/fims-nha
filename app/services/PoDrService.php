@@ -366,7 +366,9 @@ class PoDrService
     /**
      * The POs the IAR can be recorded against: the PO numbers of the Budget Allocation's RFA rows (allocation_type = 'RFA').
      * One row per PO number: { po_number, po_date, requesting_rc_id, requesting_office, vendor_id, vendor_name, po_amount, dr_total, lines }.
-     *   po_date          = the RFA's creation date (budget_allocation has no PO date column of its own)
+     *   po_date          = the PO's own date when the PO exists in the Purchase Order module (fims.purchase_orders, same
+     *                      po_number, not CANCELLED); otherwise the RFA's creation date (budget_allocation has no PO date column)
+     *   vendor_id/_name  = the RFA's vendor; when the RFA has none, the vendor of that Purchase Order
      *   requesting_office = fims.responsibility_code.rc_name of requesting_rc_id
      *   po_amount        = sum of line_transaction[].requested_amount
      *   dr_total         = total of the delivery receipts already recorded for the PO (PO balance = po_amount - dr_total)
@@ -388,9 +390,9 @@ class PoDrService
         }
         $sql = "SELECT * FROM (
                     SELECT DISTINCT ON (a.po_number)
-                           a.po_number, TO_CHAR(a.created_at, 'YYYY-MM-DD') AS po_date, a.created_at,
+                           a.po_number, TO_CHAR(COALESCE(pom.po_date, a.created_at), 'YYYY-MM-DD') AS po_date, a.created_at,
                            a.requesting_rc_id, rc.rc_name AS requesting_office,
-                           a.vendor_id, v.vendor_name,
+                           COALESCE(a.vendor_id, pom.vendor_id) AS vendor_id, COALESCE(v.vendor_name, pom.vendor_name) AS vendor_name,
                            " . $this->requestedTotalSql() . " AS po_amount,
                            (SELECT COALESCE(SUM((d.value ->> 'total_amount')::numeric), 0)
                               FROM {$this->h} i, jsonb_array_elements(i.line_transaction) AS d(value)
@@ -399,6 +401,13 @@ class PoDrService
                     FROM fims.budget_allocation a
                     LEFT JOIN fims.responsibility_code rc ON rc.rc_id = a.requesting_rc_id
                     LEFT JOIN fims.vendors v ON v.vendor_id = a.vendor_id
+                    LEFT JOIN LATERAL (
+                        SELECT p.po_date, p.vendor_id, p.vendor_name
+                        FROM fims.purchase_orders p
+                        WHERE p.po_number = a.po_number AND p.status <> 'CANCELLED'
+                        ORDER BY p.po_id DESC
+                        LIMIT 1
+                    ) pom ON TRUE
                     WHERE {$where}
                     ORDER BY a.po_number, a.created_at DESC, a.allocation_id DESC
                 ) po" . ($onlyWithBalance ? ' WHERE po.po_amount - po.dr_total > 0' : '') . " ORDER BY po.created_at DESC, po.po_number" . ($limit > 0 ? ' LIMIT ' . (int) $limit : '');

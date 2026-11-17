@@ -67,6 +67,22 @@
     #proj-footer .proj-btn-navy:hover:not(:disabled) { opacity:.92; }
 
     @media (max-width: 520px) { .proj-row { grid-template-columns:1fr; } }
+    /* Close button: the rules above target #proj-close, which matches nothing (the button's id is proj-modal-close), so it showed
+       as a bare grey browser button — styled here like the other FIMS modals */
+    #proj-modal-close { flex-shrink:0;width:30px;height:30px;padding:0;border-radius:8px;cursor:pointer;display:flex;align-items:center;
+        justify-content:center;font-size:20px;line-height:1;color:var(--afims-pure-white, #FFFFFF);background:rgba(255,255,255,.12);
+        border:1px solid rgba(255,255,255,.25);transition:background .15s; }
+    #proj-modal-close:hover { background:rgba(255,255,255,.22); }
+
+    /* Dark mode — the selects rendered with the browser's native grey; match the text inputs and the theme */
+    html.afims-dark[data-bs-theme="dark"] :is(.proj-input, .proj-select) { color-scheme:dark;background-color:var(--afims-surface, #1A1F38) !important;
+        border-color:var(--afims-border-strong, #4A5270) !important;color:var(--afims-text, #E4ECF2) !important; }
+    html.afims-dark[data-bs-theme="dark"] .proj-select option { background-color:var(--afims-surface, #1A1F38);color:var(--afims-text, #E4ECF2); }
+    html.afims-dark[data-bs-theme="dark"] .proj-input::placeholder { color:#9AA3B5;opacity:1; }
+    html.afims-dark[data-bs-theme="dark"] :is(.proj-input, .proj-select):focus { border-color:var(--afims-primary, #3861BC) !important;
+        box-shadow:0 0 0 3px color-mix(in srgb, var(--afims-primary, #3861BC) 25%, transparent); }
+    html.afims-dark[data-bs-theme="dark"] :is(.proj-input, .proj-select):disabled { background-color:var(--afims-surface-subtle, #22294A) !important;
+        color:var(--afims-text-muted, #AAAFBE) !important; }
 </style>
 
 <div id="proj-overlay">

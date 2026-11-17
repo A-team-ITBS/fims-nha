@@ -1069,6 +1069,9 @@
     font-family: var(--mono);
 }
 
+/* Dark mode: code chips (reference / account / PO numbers …) as white text on the brand blue, readable on the dark surface */
+html.afims-dark[data-bs-theme="dark"] .nha-root .nha-code { color: #FFFFFF; background: #3861BC; border-color: #5B7FCF; }
+
 /* Badge size modifier */
 .nha-root .nha-bdg-xs { font-size: 10px; }
 
