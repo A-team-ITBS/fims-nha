@@ -34,14 +34,16 @@ $app->get('/program/all', function ($request, $response, $args) use ($ProgramSer
     }
 })->add($jwtMiddleware);
 
-// Fetch all (with pagination)
+// Fetch all (with pagination). ?with_sub_programs=1 is the Programs page's tree: every program also carries its sub_programs[] and
+// sub_program_count, and the search matches a sub-program's code / name as well.
 $app->get('/program/list', function ($request, $response, $args) use ($ProgramService) {
     try {
         $params = $request->getQueryParams();
         $page   = isset($params['page']) ? (int) $params['page'] : 1;
         $limit  = isset($params['limit']) ? (int) $params['limit'] : 10;
+        $withSubPrograms = filter_var($params['with_sub_programs'] ?? false, FILTER_VALIDATE_BOOLEAN);
 
-        $result = $ProgramService->fetchAlls($page, $limit, $params['search'] ?? '');
+        $result = $ProgramService->fetchAlls($page, $limit, $params['search'] ?? '', $withSubPrograms);
 
         return $response->withJson($result);
     } catch (\Exception $e) {

@@ -10,6 +10,14 @@ class SubProgramService
     private string $table        = 'fims.sub_program';
     private string $tableProgram = 'fims.program';
 
+    /** What the tables that reference a sub-program are called in "it is still used by …" (any other table is named after itself). */
+    private const USED_BY = [
+        'project'            => 'project(s)',
+        'budget_req_program' => 'budget request(s)',
+        'budget_req'         => 'budget request(s)',
+        'budget_allocation'  => 'memo request(s)',
+    ];
+
     public function fetchAlls(?int $page = null, int $limit = 10, string $search = '', string $programCode = ''): array
     {
         try {
@@ -239,11 +247,23 @@ class SubProgramService
                 return $check;
             }
 
+            // A sub-program that projects, budget requests or memo requests still use cannot go: say what uses it
+            // (the database would refuse with its own "violates foreign key constraint" text).
+            $used = GlobalService::describeReferences(GlobalService::referencesTo($this->table, $code), self::USED_BY);
+            if ($used !== '') {
+                return ['success' => false, 'message' => "Cannot delete sub-program '{$code}' — it is still used by {$used}. Change or remove it there first."];
+            }
+
             $sql = "DELETE FROM {$this->table} WHERE sub_program_code = " . App\QuotedValue($code, DataType::STRING, 'DB');
             App\Execute($sql, 'DB');
 
             return ['success' => true, 'message' => "Sub-program '{$code}' deleted successfully."];
         } catch (\Exception $e) {
+            // someone started using it between the check above and the DELETE: still a message, not the raw database error
+            if (stripos($e->getMessage(), 'violates foreign key constraint') !== false) {
+                return ['success' => false, 'message' => "Cannot delete sub-program '{$code}' — other records still use it."];
+            }
+
             return ['success' => false, 'message' => $e->getMessage()];
         }
     }

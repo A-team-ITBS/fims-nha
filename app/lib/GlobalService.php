@@ -45,6 +45,11 @@ use PHPMaker2024\FIMS as App;
  *   against the returned key. Lives here by request, as the one shared
  *   upload primitive every future feature should call instead of each
  *   reimplementing its own S3Client validation/putObject logic.
+ * - referencesTo() / describeReferences()  what still points at one row of a table, and that as a sentence
+ *   ("2 project(s) and 1 budget request(s)"). Read from the database's own foreign-key catalog, so it
+ *   covers every table that references the row today — and any added later — instead of a hard-coded
+ *   list. Called by ProgramService::delete() and SubProgramService::delete() to refuse a delete with a
+ *   message rather than let PostgreSQL's raw "violates foreign key constraint" error out.
  * - logStatusChange()  writes one row to the shared fims.status_change_log
  *   (see "35 - fims_status_change_log.sql") — an append-only, cross-module
  *   status-change audit trail. $statusFor scopes rows to one owning table
@@ -305,6 +310,68 @@ class GlobalService
         ) ?: [];
 
         return array_map(fn ($r) => (string) $r['rc_id'], $rows);
+    }
+
+    /**
+     * What still points at ONE row of a table: for every foreign key that references $table through a single column AND would stop the row
+     * being deleted (ON DELETE NO ACTION / RESTRICT — a CASCADE or SET NULL key does not), how many rows hold $value. Read from the
+     * database's own catalog (pg_constraint), so it names every referencing table today and any added later.
+     *
+     * @param string $table schema-qualified, e.g. "fims.sub_program"
+     * @param string $value the key of the row, e.g. "101-001" (compared as text to the referencing column)
+     * @return array<string,int> referencing table name => number of rows that point at the row; only the tables with at least one
+     */
+    public static function referencesTo(string $table, string $value): array
+    {
+        $refs = App\ExecuteRows(
+            "SELECT n.nspname AS schema_name, cl.relname AS table_name, a.attname AS column_name
+               FROM pg_constraint c
+               JOIN pg_class cl ON cl.oid = c.conrelid
+               JOIN pg_namespace n ON n.oid = cl.relnamespace
+               JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = c.conkey[1]
+              WHERE c.contype = 'f' AND cardinality(c.conkey) = 1 AND c.confdeltype IN ('a', 'r')
+                AND c.confrelid = " . App\QuotedValue($table, App\DataType::STRING, 'DB') . '::regclass
+              ORDER BY cl.relname, a.attname',
+            'DB'
+        ) ?: [];
+
+        $ident = fn (string $name) => '"' . str_replace('"', '""', $name) . '"';
+        $quoted = App\QuotedValue($value, App\DataType::STRING, 'DB');
+        $used = [];
+        foreach ($refs as $ref) {
+            $count = (int) App\ExecuteScalar(
+                'SELECT COUNT(*) FROM ' . $ident($ref['schema_name']) . '.' . $ident($ref['table_name'])
+                . ' WHERE ' . $ident($ref['column_name']) . '::text = ' . $quoted,
+                'DB'
+            );
+            if ($count > 0) {
+                $used[$ref['table_name']] = ($used[$ref['table_name']] ?? 0) + $count;
+            }
+        }
+
+        return $used;
+    }
+
+    /**
+     * referencesTo()'s result as a sentence fragment: "2 project(s) and 1 budget request(s)". $labels maps a table name to the words for
+     * it; a table with no label is named after itself ("budget_req_program" -> "budget req program"). '' when nothing references the row.
+     *
+     * @param array<string,int>    $used   from referencesTo()
+     * @param array<string,string> $labels e.g. ['project' => 'project(s)']
+     */
+    public static function describeReferences(array $used, array $labels = []): string
+    {
+        $parts = [];
+        foreach ($used as $table => $count) {
+            $parts[] = $count . ' ' . ($labels[$table] ?? str_replace('_', ' ', $table));
+        }
+        if (count($parts) > 1) {
+            $last = array_pop($parts);
+
+            return implode(', ', $parts) . ' and ' . $last;
+        }
+
+        return $parts[0] ?? '';
     }
 
     /**

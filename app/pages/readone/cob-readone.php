@@ -102,7 +102,7 @@
     const COLS = [
         ['approved_amount', 'Approved Amount', 'What FMD suggested in the Budget Proposal module'],
         ['revision_amount', 'Revision / Realignment', 'Net of the approved Budget Revisions'],
-        ['revised_amount', 'Revised Amount', 'Approved Amount + Revision / Realignment'],
+        ['revised_amount', 'Revised Amount', 'The revised amount recorded on each budget line item'],
         ['cba_requested', 'CBA Requested', 'Taken off the budget by approved CBAs'],
         ['available_amount', 'Available for Earmarking', 'Revised Amount less CBA Requested'],
         ['rfa_approved', 'RFA Approved', 'Drawn from the CBAs by approved RFAs'],

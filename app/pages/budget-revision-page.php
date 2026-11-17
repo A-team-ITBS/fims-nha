@@ -10,6 +10,10 @@ namespace PHPMaker2024\FIMS;
  * line goes up.
  *
  * Who is looking decides what a row offers. There is no point-of-view switch: it follows the logged-in user's office.
+ *
+ * Two kinds of request, chosen with the Revision / Realignment tabs of the Add / Edit form (form/budget-rev-form.php): a REVISION
+ * changes one budget line's amount (no To budget line); a REALIGNMENT moves funds from the From line to a To line. The table's Type
+ * column says which one each request was filed as (fims.budget_revision.request_type, kept in step with the To line by the API).
  */
 @session_start();
 $_brv_api = Config('API.FIMS_URL');
@@ -99,8 +103,8 @@ try {
             <div>
                 <div class="nha-hdr-title">Budget Revision Requests</div>
                 <p class="nha-hdr-sub" id="brv-hdr-sub"><?php echo $_brv_isFmd
-                    ? 'Review the revision requests filed by the offices — approve or decline them.'
-                    : 'File a revision request for a budget request and follow its status.'; ?></p>
+                    ? 'Review the revision and realignment requests filed by the offices — approve or decline them.'
+                    : 'File a revision or realignment request for a budget request and follow its status.'; ?></p>
             </div>
         </div>
         <div class="nha-hdr-r">
@@ -108,9 +112,9 @@ try {
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                 Refresh
             </button>
-            <button id="brv-add" type="button" class="nha-btn-hdr" style="background:var(--afims-success, #11A752);" title="File a budget revision request">
+            <button id="brv-add" type="button" class="nha-btn-hdr" style="background:var(--afims-success, #11A752);" title="File a budget revision or realignment request">
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
-                Add Revision Request
+                Add Request
             </button>
         </div>
     </div>
@@ -162,6 +166,7 @@ try {
                 <thead>
                     <tr>
                         <th>Request No.</th>
+                        <th>Type</th>
                         <th>Budget Line</th>
                         <th class="text-right">From</th>
                         <th class="text-right">To</th>
@@ -173,7 +178,7 @@ try {
                     </tr>
                 </thead>
                 <tbody id="brv-tbody">
-                    <tr><td colspan="9"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
+                    <tr><td colspan="10"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
                 </tbody>
             </table>
         </div>
@@ -218,6 +223,22 @@ const BRV_STATUS = {
     APPROVED: { label: 'Approved', cls: 'nha-bdg-green' },
     DECLINED: { label: 'Declined', cls: 'nha-bdg-red'   },
 };
+
+// What kind of request a row is: a REALIGNMENT moves funds to a To budget line, a REVISION only changes the From line's amount. The API
+// sends it as request_type (a column of fims.budget_revision); the To line is the fallback for a database that has not had
+// "03 - alter_table/42" yet, whose rows have no request_type.
+const BRV_TYPE = {
+    REVISION   : { label: 'Revision',    cls: 'nha-bdg-blue' },
+    REALIGNMENT: { label: 'Realignment', cls: 'nha-bdg-teal' },
+};
+function brv_typeOf(r) {
+    const t = String(r?.request_type || '').toUpperCase();
+    return BRV_TYPE[t] ? t : (r?.to_budget_line_item_id ? 'REALIGNMENT' : 'REVISION');
+}
+function brv_typeBadge(r) {
+    const t = BRV_TYPE[brv_typeOf(r)];
+    return `<span class="nha-bdg ${t.cls}">${t.label}</span>`;
+}
 
 const $brv = id => document.getElementById(id);
 
@@ -331,7 +352,7 @@ async function brv_load() {
 function brv_renderTable(rows) {
     const tbody = $brv('brv-tbody');
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="9"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No budget revision requests found.</span></div></td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No budget revision requests found.</span></div></td></tr>';
         return;
     }
     tbody.innerHTML = rows.map(r => {
@@ -344,6 +365,7 @@ function brv_renderTable(rows) {
             <code class="nha-code">#${brv_esc(r.id)}</code>
             <div class="nha-td-sub">FY ${brv_esc(r.fiscal_yr ?? '—')}</div>
         </td>
+        <td>${brv_typeBadge(r)}</td>
         <td>
             <div class="nha-td-bold">${brv_esc(brv_lineTitle(r, ''))}</div>
             <div class="nha-td-sub">${brv_esc(brv_linePlace(r, ''))}</div>
@@ -454,6 +476,9 @@ function brv_openModal(mode, row = null) {
     $brv('brv-mode').value = mode;
     $brv('brv-id').value = row?.id || '';
     $brv('brv-modal-title').textContent = mode === 'edit' ? 'Edit Budget Revision Request' : 'Add Budget Revision Request';
+    // the Revision / Realignment tabs: a new request starts as a Revision; an existing one opens on the kind it was filed as
+    // (the form hides the To budget line for a Revision — see form/budget-rev-form.php)
+    window.brvForm?.setType(row ? brv_typeOf(row) : 'REVISION');
     // the From / To budget line fields are searchable dropdowns owned by form/budget-rev-form.php
     if (window.brvForm) window.brvForm.setBudgetLine(row?.from_budget_line_item_id ?? '', row?.to_budget_line_item_id ?? '');
     else {
@@ -496,15 +521,19 @@ async function brv_save(ev) {
     const mode = $brv('brv-mode').value;
     const id   = $brv('brv-id').value;
 
+    const type = $brv('brv-type').value === 'REALIGNMENT' ? 'REALIGNMENT' : 'REVISION';   // the tab the form is on
     const payload = {
+        request_type             : type,
         from_budget_line_item_id : $brv('brv-line-id').value,
-        to_budget_line_item_id   : $brv('brv-to-line-id').value,   // '' = no To line (cleared on edit)
+        // a Revision has no To line ('' also clears one on edit); a Realignment must name it
+        to_budget_line_item_id   : type === 'REALIGNMENT' ? $brv('brv-to-line-id').value : '',
         from_amount              : $brv('brv-from-amount').value,
         to_amount                : $brv('brv-to-amount').value,
         reason                   : $brv('brv-reason').value.trim(),
     };
 
     if (!payload.from_budget_line_item_id) { brv_toast('Please select a From budget line.', 'error'); return; }
+    if (type === 'REALIGNMENT' && !payload.to_budget_line_item_id) { brv_toast('Please select a To budget line to move the funds to.', 'error'); return; }
     if (payload.to_budget_line_item_id && Number(payload.to_amount) >= Number(payload.from_amount)) {
         brv_toast('To Amount must be lower than From Amount to move funds to the To budget line.', 'error');
         return;
@@ -554,7 +583,7 @@ function brv_openView(r) {
 
     brv_viewRow = r;
     $brv('brv-view-id').value = r.id;
-    $brv('brv-view-title').textContent = `Budget Revision Request #${r.id}`;
+    $brv('brv-view-title').textContent = `Budget ${BRV_TYPE[brv_typeOf(r)].label} Request #${r.id}`;
 
     // the budget line being revised: its request's status, its account, where it sits (request · office · fiscal year, program ›
     // project, particulars) and its CURRENT amount (proposed + adjustment). One that no longer exists says so.
