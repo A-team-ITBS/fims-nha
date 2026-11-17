@@ -26,6 +26,15 @@ $_tb_api = preg_match('~/api$~', $_tb_api) ? $_tb_api : $_tb_api . '/api';
     #tb-root .tb-major-row td { background: #1B2B6B; color: #fff; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; }
     #tb-root .tb-group-row td { background: var(--afims-bg-soft, #F5F6FA); font-weight: 600; text-transform: uppercase; font-size: 12px; }
     #tb-root .tb-account-row td:first-child { padding-left: 28px; }
+
+    /* Dark mode: --afims-bg-soft is not a theme token, so the account-group rows (e.g. "Cash and Cash Equivalents") fell back to a
+       near-white #F5F6FA with light text on it; the major classification rows get the brand blue so they stand out from the table */
+    html.afims-dark[data-bs-theme="dark"] #tb-root .tb-group-row td { background: var(--afims-surface-subtle, #22294A); color: #FFFFFF; border-top: 1px solid var(--afims-border-strong, #4A5270); }
+    html.afims-dark[data-bs-theme="dark"] #tb-root .tb-major-row td { background: #2E4A8F; color: #FFFFFF; }
+    html.afims-dark[data-bs-theme="dark"] #tb-root .nha-tbl tfoot td { background: var(--afims-surface-subtle, #22294A); color: #FFFFFF; border-top: 2px solid var(--afims-border-strong, #4A5270); }
+    @media print {
+        #tb-root .tb-report-title { display: block !important; }
+    }
 </style>
 
 <div id="tb-root" class="nha-root">
@@ -51,6 +60,12 @@ $_tb_api = preg_match('~/api$~', $_tb_api) ? $_tb_api : $_tb_api . '/api';
         </div>
     </div>
 
+    <p class="nha-hint no-print" style="margin:0 0 14px;color:var(--afims-text-muted,#62657E);font-size:13px;">
+        Showing the total debit and credit posted to every account, grouped under its major
+        classification (Assets, Liabilities, Equity, Revenue, Expenses) — e.g. a snapshot of all
+        General Ledger balances as of today.
+    </p>
+
     <!-- Error banner -->
     <div id="tb-error" class="nha-error" style="display:none;">
         <svg fill="none" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
@@ -73,13 +88,14 @@ $_tb_api = preg_match('~/api$~', $_tb_api) ? $_tb_api : $_tb_api . '/api';
                 </select>
             </div>
             <div class="nha-filter-group">
+                <label class="nha-filter-label">Status</label>
                 <span id="tb-badge" class="nha-bdg nha-bdg-gray">—</span>
             </div>
         </div>
     </div>
 
-    <!-- ── REPORT TITLE ───────────────────────────────────── -->
-    <div class="tb-report-title">
+    <!-- ── REPORT TITLE (shown only on print) ────────────── -->
+    <div class="tb-report-title d-print-block" style="display:none;">
         <div>NATIONAL HOUSING AUTHORITY</div>
         <div>TRIAL BALANCE<span id="tb-report-book"></span></div>
         <div class="tb-report-date">As of <span id="tb-report-date">—</span></div>

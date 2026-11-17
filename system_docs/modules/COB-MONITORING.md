@@ -36,20 +36,24 @@ Every row, group and total is the SUM of these per line item (`CobService::lineA
 |---|---|---|
 | **Approved Amount** | What FMD suggested in the Budget Proposal module | `budget_line_items.suggested_amount`, as it stands |
 | **Revision / Realignment** | Net of the approved Budget Revisions (an increase, or a decrease in brackets) | `budget_line_items.adjustment` |
-| **Revised Amount** | Approved Amount + Revision / Realignment | `suggested_amount + adjustment` |
+| **Revised Amount** | The revised amount recorded on the line item. A plain column the application maintains: it is **not** worked out from the two columns before it | `budget_line_items.revised_amount` (added by migration `43 - budget_line_items_add_revised_amount`). Approving a Budget Revision writes it on each line it touches: the line's new current amount, `proposed_amount + adjustment`. A line no revision has touched keeps `0` |
 | **CBA Requested** | What approved CBAs (and CFAs) took off the budget | earmark rows of CBA / CFA allocations: `original_amount`, only those that did take it off (`balance_applied`) and are not released |
-| **Available for Earmarking** | Revised Amount − CBA Requested: what a new CBA can still draw | `suggested_amount + adjustment − CBA Requested` |
+| **Available for Earmarking** | Revised Amount − CBA Requested: what a new CBA can still draw | `revised_amount − CBA Requested` |
 | **RFA Approved** | Drawn from the CBAs by approved RFAs | the `converted` earmark rows of RFA allocations |
 | **LAA Issued** | Drawn from the CBAs by issued LAAs | the `converted` earmark rows of LAA allocations |
 | **Remaining Balance** | Revised Amount − RFA Approved − LAA Issued | A CBA only *reserves* money; an RFA / LAA actually uses it, so only they reduce what remains |
 
-The columns follow the sheet's own arithmetic from Approved Amount, so three identities hold on every row, group and total (the tests check them on every node):
-`Approved + Revision = Revised`, `Revised − CBA = Available`, `Revised − RFA − LAA = Remaining`.
+Available and Remaining are worked from Revised Amount, so two identities hold on every row, group and total (the tests check them on every node):
+`Revised − CBA = Available` and `Revised − RFA − LAA = Remaining`. `Approved + Revision = Revised` is **not** guaranteed: Revised Amount is its own column, so it only equals that sum while whatever maintains it keeps it so.
 
-> **Caveat — `suggested_amount` is also the line's live balance.** An approved CBA/CFA takes its amount off `suggested_amount`, and an approved Budget Revision moves it by the
-> same delta as `adjustment`. Taking it as the Approved Amount therefore means that on a line that already has a CBA or a revision, Revised and Available count that CBA / revision
-> a second time (e.g. a 900,000 line with a 200,000 CBA is stored as 700,000: Approved 700,000, Available 500,000, though 700,000 is still free). If the sheet should show the amount
-> as first suggested instead, rebuild it in `CobService::lineAmountExprs()` as `suggested_amount + CBA Requested − adjustment`.
+> **Revised Amount is only written when a Budget Revision is approved.** `budget_line_items.revised_amount` is `NOT NULL DEFAULT 0` and carries no formula or trigger; the COB just reads it, and
+> `BudgetRevisionService::approve()` is the one place that writes it (in the same statement that moves `adjustment` / `suggested_amount`): the From line gets To Amount, the To line of a
+> realignment gets its new current amount. So a line that has never been revised still shows `0`, and so do Available for Earmarking and Remaining Balance (they start from it) until the
+> column is filled in. A one-off backfill that matches what approval writes would be `UPDATE fims.budget_line_items SET revised_amount = proposed_amount + adjustment;` — not run by the migration.
+>
+> **`suggested_amount` is also the line's live balance.** An approved CBA/CFA takes its amount off `suggested_amount`, and an approved Budget Revision moves it by the same delta as
+> `adjustment`, so Approved Amount on a line that already has a CBA or a revision is what is left, not what was first suggested. If the sheet should show the amount as first suggested
+> instead, rebuild it in `CobService::lineAmountExprs()` as `suggested_amount + CBA Requested − adjustment`.
 
 Rules worth knowing:
 - A **deleted** memo request (`budget_allocation.deleted_at`) counts for nothing — the earmark rows of a deleted RFA / LAA survive in the ledger, so the allocation's `deleted_at` is what is filtered on.
@@ -59,14 +63,13 @@ Rules worth knowing:
 
 ## The page
 
-Three tabs share one set of filters (Fiscal Year, Type of Fund, Component, Region, Program, Search, Amount Unit) and four KPI cards (Approved Requests, Revised
-Amount, Available for Earmarking, Remaining Balance):
+There is no tab bar: the page opens straight on **Per Program** (a stale `?tab=` in the URL is ignored), under one set of filters (Fiscal Year, Type of Fund, Component, Region, Program, Search, Amount
+Unit) and four KPI cards (Approved Requests, Revised Amount, Available for Earmarking, Remaining Balance). The Generate Report button is hidden by the `$_cob_showReport` flag at the top of `cob-page.php`.
 
-| Tab | Shows |
+| View | Shows |
 |---|---|
-| **Per Region** (default) | Region → Program → Sub-Program → Project. The Region row's code is its RC id (`R04`); a District office rolls up into its Regional office, the central departments into "Central Office" |
-| Per Type of Fund | Type of Fund → Component → Program → Sub-Program → Project |
-| Per Component | Component → Type of Fund → Program → Sub-Program → Project |
+| **Per Program** (the one on the page) | Program → Sub-Program → Originating Unit → Project. The Originating Unit row's code is its RC id and its name the office (rows in RC-code order; a request with no office is kept, last, as "No originating unit"). The office is named once, on its unit row, not again under each project |
+| Per Region, Per Type of Fund, Per Component | Still served by `GET /cob/rollup?layout_by=region\|fund_source\|component` (and their panels are still in the markup, hidden and never loaded), but nothing on the page switches to them |
 
 Behaviour worth knowing:
 - Code and Name are separate columns (a code is its program / sub-program / project code, `R04` for a region; a fund or component has none). There is **no colour coding** of rows or columns:

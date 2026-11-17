@@ -44,7 +44,7 @@ class PersonalData
     public $RenderingView = false;
 
     // CSS class/style
-    public $CurrentPageName = "CollectionsPageController";
+    public $CurrentPageName = "FidelityBondPageController";
 
     // Page headings
     public $Heading = "";

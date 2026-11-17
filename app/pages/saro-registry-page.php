@@ -8,12 +8,13 @@ namespace PHPMaker2024\FIMS;
  *
  * Ported from the FMD app's FP-FS/saro-processing-page.php to FIMS, in the same shape as budget-prop-page.php and
  * supplemental-funds-page.php: the shared nha-fims.css look, one "Actions" dropdown per row, modals instead of
- * separate pages. What stays from the FMD page is the idea of it — each SARO is a parent row that expands into the
- * NCA releases under it (same columns, indented), with the filters, summary cards, Amount Unit and Export around it.
+ * separate pages. What stays from the FMD page is the filters, summary cards, Amount Unit and Export around the table.
  *
- * Two tabs, SARO and NCA (?tab=saro / ?tab=nca): the SARO tab lists the SAROs, each expanding into the NCAs released under it; the NCA
- * tab is a flat list of the NCA records, each with the SARO it belongs to. The summary cards, the reference search and the New Entry
- * form follow the tab (the Export has its own Tracking Type, which starts at the tab you are on).
+ * One tree table: each SARO is a parent row that expands into the NCAs released under it (same columns, indented); an NCA with no SARO
+ * is a top-level row of its own. The columns run Date → Amount → NCA Received → Unreleased (a SARO's amount less its NCAs). The
+ * Tracking Type filter (All Types / SARO / NCA) narrows the table — NCA lists the NCA records flat. There is no "New Entry" button: the
+ * "+" in the Reference No. header opens the entry form for a new SARO, connected to nothing, and the "+" beside a SARO's NCA Received
+ * amount opens it for a new NCA with that SARO already picked.
  * Data comes from the FIMS API only:
  *   /fund_tracking/list  /fund_tracking/read/{id}  /fund_tracking/fund_sourcing_determination   (fims.fund_tracking)
  *   /fiscal_year/all  /fund-tracking-type/all
@@ -21,12 +22,12 @@ namespace PHPMaker2024\FIMS;
  * What belongs here: only SARO and NCA records (never a Trust Fund or an OR), and never a record whose Nature of Fund is
  * SUPPLEMENTAL — those are listed on supplemental-funds-page.php. The list and the summary cards ask the API for exactly
  * that (type=SARO&type=NCA, exclude_nature_of_fund=SUPPLEMENTAL), so totals and paging stay exact; a record with no
- * nature of fund still shows. The New Entry form is held to the same rule (see the include below).
+ * nature of fund still shows. The entry form is held to the same rule (see the include below).
  *
  * A record has no sub-program and no unreleased amount (both dropped from fims.fund_tracking), so the register has no Program filter,
  * no Program / Sub-Program column and no Unreleased figure; its Date is the day the record was created (the API stamps it).
  *
- * New Entry / Edit is the "SARO processing form" modal in form/saro-processing-form.php (included below):
+ * The entry / edit form is the "SARO processing form" modal in form/saro-processing-form.php (included below):
  * window.sarModal.open(id?, { type }). An NCA is its own entry (choose NCA, then the SARO it was released under). After a save
  * the form calls window.sr_reload(), which this page defines.
  * View Details opens a modal of this page, built from /fund_tracking/read/{id} (a SARO lists its NCA releases).
@@ -62,12 +63,8 @@ $_sr_api = Config('API.FIMS_URL');
     #sr-root .sr-unit-group { flex: 0 1 240px; min-width: 200px; }
     #sr-root .sr-unit-group .nha-filter-select { min-width: 0; text-overflow: ellipsis; }
 
-    /* the SARO / NCA tabs: how many records each holds, beside its name */
-    #sr-root .nha-tab .sr-tab-n { margin-left: 8px; font-size: 11px; font-weight: 600; opacity: .7; }
-    #sr-root .nha-tab .sr-tab-n:empty { display: none; }
-
     /* ── Tree table: a SARO is the strong parent row, the NCAs released under it the recessed rows below it ── */
-    #sr-root .sr-tbl { min-width: 990px; }
+    #sr-root .sr-tbl { min-width: 1180px; }
     #sr-root .sr-tbl .sr-num { font-family: 'IBM Plex Mono', monospace; text-align: right; white-space: nowrap; }
     #sr-root .sr-amt { font-size: calc(1em * var(--sr-amt-scale, 1)); white-space: nowrap; }
     #sr-root .sr-empty { text-align: center; color: var(--afims-text-disabled, #A9AAB8); padding: 32px; font-size: 13px; }
@@ -106,6 +103,20 @@ $_sr_api = Config('API.FIMS_URL');
     #sr-root .nha-menu-divider { border-top: 1px solid var(--afims-border, #E4ECF2); margin: 3px 0; }
     #sr-root .nha-menu-item.danger { color: var(--afims-danger, #DC3545); }
     #sr-root .nha-menu-item.danger:hover, #sr-root .nha-menu-item.danger:focus-visible { background: var(--afims-danger-soft, #FAE1E3); color: var(--afims-danger, #DC3545); }
+    /* Dark mode (SARO and NCA tabs share this menu): hover/focus text was the navy fill colour (navy on dark), the trigger was
+       dim, and Delete's hover was a light-pink block */
+    html.afims-dark[data-bs-theme="dark"] #sr-root .nha-menu-trigger { color: #FFFFFF; background: #3861BC; border-color: #3861BC; }
+    html.afims-dark[data-bs-theme="dark"] #sr-root .nha-menu-trigger:hover,
+    html.afims-dark[data-bs-theme="dark"] #sr-root .nha-menu-trigger[aria-expanded="true"] { background: #2E59B8; border-color: #2E59B8; }
+    html.afims-dark[data-bs-theme="dark"] #sr-root .nha-tools-dropdown { background: var(--afims-surface, #1A1F38); border-color: var(--afims-border-strong, #4A5270); box-shadow: 0 8px 24px rgba(0,0,0,.45); }
+    html.afims-dark[data-bs-theme="dark"] #sr-root .nha-menu-item { color: var(--afims-text, #E4ECF2); }
+    html.afims-dark[data-bs-theme="dark"] #sr-root .nha-menu-item svg { opacity: .85; }
+    html.afims-dark[data-bs-theme="dark"] #sr-root .nha-menu-item:hover,
+    html.afims-dark[data-bs-theme="dark"] #sr-root .nha-menu-item:focus-visible { color: #FFFFFF; background: var(--afims-primary-soft, #0F2456); }
+    html.afims-dark[data-bs-theme="dark"] #sr-root .nha-menu-item.danger { color: #F87171; }
+    html.afims-dark[data-bs-theme="dark"] #sr-root .nha-menu-item.danger:hover,
+    html.afims-dark[data-bs-theme="dark"] #sr-root .nha-menu-item.danger:focus-visible { color: #FCA5A5; background: rgba(220,53,69,.18); }
+    html.afims-dark[data-bs-theme="dark"] #sr-root .nha-menu-divider { border-top-color: var(--afims-border-strong, #4A5270); }
     #sr-root .sr-tbl .sr-parent > td.sr-menu-open, #sr-root .sr-tbl .sr-child > td.sr-menu-open { z-index: 30; }
 
     /* parent: the STRONG row — bolder type; opened, a deeper blue band, a blue left rail and a stem down to its NCAs */
@@ -141,6 +152,26 @@ $_sr_api = Config('API.FIMS_URL');
     #sr-root .sr-child-ref { padding-left: 40px; }
     #sr-root .sr-child-ref .sr-tags { padding-left: 0; }
     #sr-root .sr-child .sr-ref { font-size: 12px; font-weight: 600; }
+
+    /* the "+" in the Reference No. header: a new SARO, connected to nothing. The header is navy, so it is an outlined light circle that
+       fills on hover. */
+    #sr-root .sr-th-add { display: inline-flex; align-items: center; gap: 8px; }
+    #sr-root .sr-th-plus { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 20px; height: 20px; padding: 0;
+        border-radius: 50%; cursor: pointer; border: 1px solid rgba(255, 255, 255, .75); background: transparent; color: var(--afims-pure-white, #FFFFFF);
+        transition: background .15s, color .15s, box-shadow .15s; }
+    #sr-root .sr-th-plus svg { width: 11px; height: 11px; }
+    #sr-root .sr-th-plus:hover, #sr-root .sr-th-plus:focus-visible { background: var(--afims-pure-white, #FFFFFF); color: var(--afims-heading-fill, #000E3E); outline: none;
+        box-shadow: 0 0 0 3px rgba(255, 255, 255, .28); }
+
+    /* the "+" beside a SARO's NCA Received amount: files a new NCA under that SARO */
+    #sr-root .sr-nca-cell { display: inline-flex; align-items: center; justify-content: flex-end; gap: 8px; }
+    #sr-root .sr-add-nca { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 22px; height: 22px; padding: 0;
+        border-radius: 50%; cursor: pointer; border: 1px solid var(--afims-success, #11A752); background: var(--afims-surface, #FFFFFF);
+        color: var(--afims-success, #11A752); transition: background .15s, color .15s, box-shadow .15s; }
+    #sr-root .sr-add-nca svg { width: 12px; height: 12px; }
+    #sr-root .sr-add-nca:hover:not(:disabled), #sr-root .sr-add-nca:focus-visible:not(:disabled) {
+        background: var(--afims-success, #11A752); color: var(--afims-pure-white, #FFFFFF); outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--afims-success, #11A752) 22%, transparent); }
+    #sr-root .sr-add-nca:disabled { cursor: not-allowed; opacity: .4; border-color: var(--afims-border, #E4ECF2); color: var(--afims-text-disabled, #A9AAB8); }
 
     #sr-root .sr-tag { display: inline-flex; align-items: center; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 20px; white-space: nowrap; }
     #sr-root .sr-tag-parent { background: var(--afims-primary-text, #0035A9); color: var(--afims-surface, #FFFFFF); letter-spacing: .04em; }
@@ -200,10 +231,6 @@ $_sr_api = Config('API.FIMS_URL');
             </div>
         </div>
         <div class="nha-hdr-r">
-            <button id="sr-new" type="button" class="nha-btn-hdr" style="background:var(--afims-success, #11A752);border:none;" title="New SARO / NCA entry">
-                <svg viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
-                New Entry
-            </button>
             <button id="sr-refresh" type="button" class="nha-btn-hdr" title="Refresh">
                 <svg viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                 Refresh
@@ -222,12 +249,6 @@ $_sr_api = Config('API.FIMS_URL');
         <span id="sr-error-msg">Failed to load data. Please refresh.</span>
     </div>
 
-    <!-- ── TABS ───────────────────────────────────────────── -->
-    <div class="nha-tabs no-print" role="tablist" aria-label="SARO and NCA records">
-        <button type="button" class="nha-tab active" role="tab" aria-selected="true" data-tab="SARO">SARO<span class="sr-tab-n" id="sr-tab-n-SARO"></span></button>
-        <button type="button" class="nha-tab" role="tab" aria-selected="false" data-tab="NCA">NCA<span class="sr-tab-n" id="sr-tab-n-NCA"></span></button>
-    </div>
-
     <!-- ── FILTERS ────────────────────────────────────────── -->
     <div class="nha-filters no-print">
         <div class="nha-filter-row">
@@ -239,8 +260,12 @@ $_sr_api = Config('API.FIMS_URL');
                     <select id="sr-fy-to" class="nha-filter-select"><option value="">To</option></select>
                 </div>
             </div>
+            <div class="nha-filter-group nha-filter-group-md">
+                <label class="nha-filter-label">Tracking Type</label>
+                <select id="sr-type" class="nha-filter-select"><option value="">All Types</option></select>
+            </div>
             <div class="nha-filter-group nha-filter-group-search">
-                <label class="nha-filter-label" id="sr-search-label">SARO Reference</label>
+                <label class="nha-filter-label">SARO Reference</label>
                 <div class="nha-filter-search-wrap">
                     <svg class="nha-filter-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                     <input type="text" id="sr-search" class="nha-filter-input" placeholder="Filter by SARO ref no…">
@@ -275,9 +300,9 @@ $_sr_api = Config('API.FIMS_URL');
 
     <!-- ── SUMMARY CARDS ──────────────────────────────────── -->
     <div class="nha-summary" id="sr-cards">
-        <div class="nha-sc nha-sc-navy"><div class="nha-sc-top"><div><div class="nha-sc-label">Total SARO Records</div><div class="nha-sc-val">—</div></div></div><p class="nha-kpi-sub">SARO entries</p></div>
+        <div class="nha-sc nha-sc-navy"><div class="nha-sc-top"><div><div class="nha-sc-label">Total Records</div><div class="nha-sc-val">—</div></div></div><p class="nha-kpi-sub">SARO + NCA entries</p></div>
         <div class="nha-sc nha-sc-blue"><div class="nha-sc-top"><div><div class="nha-sc-label">Total SARO</div><div class="nha-sc-val">—</div></div></div><p class="nha-kpi-sub">&nbsp;</p></div>
-        <div class="nha-sc nha-sc-green"><div class="nha-sc-top"><div><div class="nha-sc-label">NCA Received</div><div class="nha-sc-val">—</div></div></div><p class="nha-kpi-sub">&nbsp;</p></div>
+        <div class="nha-sc nha-sc-green"><div class="nha-sc-top"><div><div class="nha-sc-label">Total NCA</div><div class="nha-sc-val">—</div></div></div><p class="nha-kpi-sub">&nbsp;</p></div>
     </div>
 
     <!-- ── TABLE ──────────────────────────────────────────── -->
@@ -286,23 +311,29 @@ $_sr_api = Config('API.FIMS_URL');
             <table class="nha-tbl sr-tbl">
                 <thead>
                     <tr>
-                        <th style="min-width:210px;">Reference No.</th>
+                        <th style="min-width:210px;">
+                            <span class="sr-th-add">Reference No.
+                                <!-- icon only: a new SARO that is not connected to anything (sr_addSaro) -->
+                                <button type="button" id="sr-add-saro" class="sr-th-plus no-print" title="New SARO" aria-label="New SARO"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14M5 12h14"/></svg></button>
+                            </span>
+                        </th>
                         <th style="min-width:170px;">Name / Title</th>
                         <th>Nature of Fund</th>
                         <th>Fiscal Year</th>
-                        <th style="text-align:right;">Amount (₱)</th>
                         <th>Date</th>
-                        <th id="sr-th-extra" style="text-align:right;">NCA Received (₱)</th>
+                        <th style="text-align:right;">Amount (₱)</th>
+                        <th style="text-align:right;">NCA Received (₱)</th>
+                        <th style="text-align:right;" title="What is left of a SARO: its amount less the NCAs released under it">Unreleased (₱)</th>
                         <th class="no-print" style="text-align:center;">Actions</th>
                     </tr>
                 </thead>
                 <tbody id="sr-tbody">
-                    <tr><td colspan="8"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
+                    <tr><td colspan="9"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
                 </tbody>
             </table>
         </div>
         <div class="nha-pag-wrap no-print">
-            <span class="nha-pag-info">Showing <strong><span id="sr-from">0</span>–<span id="sr-to">0</span></strong> of <strong><span id="sr-total">0</span></strong> <span id="sr-pager-tail">SARO records — click a row with a chevron to expand its NCAs</span></span>
+            <span class="nha-pag-info">Showing <strong><span id="sr-from">0</span>–<span id="sr-to">0</span></strong> of <strong><span id="sr-total">0</span></strong> records — click a row with a chevron to expand its NCAs</span>
             <div id="sr-pagination" class="nha-pag-btns"></div>
         </div>
     </div>
@@ -323,7 +354,7 @@ $_sr_api = Config('API.FIMS_URL');
     </div>
 
     <?php
-    // New Entry / Edit is the "SARO processing form", a modal in its own file. It opens with window.sarModal.open(id?)
+    // The entry / edit form is the "SARO processing form", a modal in its own file. It opens with window.sarModal.open(id?)
     // and calls window.sr_reload() (defined below) after a save. This register only holds SAROs and NCAs, so those are
     // the two tracking types the form offers (an OR belongs to a Trust Fund, a Supplemental record to its own page).
     // $sarExcludeNatures: SUPPLEMENTAL is not offered as a Nature of Fund here — a record saved with it would vanish from this
@@ -332,7 +363,8 @@ $_sr_api = Config('API.FIMS_URL');
     $sarAllowedTypes = ['SARO', 'NCA'];
     $sarExcludeNatures = ['SUPPLEMENTAL'];
     $sarParentTypes = ['SARO', 'NCA'];
-    // $sarTypeFirst: the form starts by asking what is being added — a SARO, or an NCA released under one (a new entry starts as the tab's type)
+    // $sarTypeFirst: the form starts by asking what is being added — a SARO, or an NCA released under one (a new entry starts as the
+    // Tracking Type filter's type, or a SARO when that is "All Types")
     $sarTypeFirst = true;
     include __DIR__ . '/form/saro-processing-form.php';
     ?>
@@ -412,10 +444,8 @@ const sr_esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<
 
 /* ── State ──────────────────────────────────────────────────── */
 const sr = {
-    tab: 'SARO',              // the tab on screen: 'SARO' | 'NCA' (?tab=saro | ?tab=nca)
-    type: 'SARO',             // the tracking type the table asks for — always the tab's (kept equal to it by sr_setTab)
-    typeCodes: [],            // the tracking types the database defines among the allowed ones (the Export's Tracking Type offers them)
-    fyFrom: '', fyTo: '', search: '',
+    fyFrom: '', fyTo: '', type: '', search: '',   // type: '' = All Types, or 'SARO' / 'NCA' (the Tracking Type filter)
+    typeCodes: [],            // the tracking types the database defines among the allowed ones (the Export's Tracking Type offers them too)
     page: 1, limit: 10,
     total: 0,                 // top-level rows matching the filters
     rows: [],                 // this page's rows, each with its `children` (the NCAs released under a SARO)
@@ -524,9 +554,7 @@ const sr_sum = list => list.reduce((s, c) => s + (parseFloat(c.amount) || 0), 0)
 /* ── Summary cards ───────────────────────────────────────────────
    From /fund_tracking/fund_sourcing_determination — an aggregate by tracking type, not the paginated table data, so
    the totals cover EVERY matching SARO / NCA record, not just the page on screen — except Supplemental ones
-   (exclude_nature_of_fund). It follows the Fiscal Year range; the reference search narrows the table only.
-   The cards are the tab's: the SARO tab shows the SARO records, their amount and the NCA received; the NCA tab the NCA records
-   and their amount. The counts on both tabs come from the same answer. */
+   (exclude_nature_of_fund). It follows the Fiscal Year range; Tracking Type and the reference search narrow the table only. */
 function sr_renderCards(gf) {
     gf = gf || {};
     const nSaro = gf.saro_record_count || 0, nNca = gf.nca_record_count || 0;
@@ -536,15 +564,10 @@ function sr_renderCards(gf) {
     const amt = v => `<div class="nha-sc-val sr-amt-val" title="${sr_esc(sr_pesoFull(v))}">${sr_esc(sr_peso(v))}</div>`;
     const sub = text => `<p class="nha-kpi-sub">${text}</p>`;
 
-    $sr('sr-cards').innerHTML = sr.tab === 'NCA'
-        ? card('nha-sc-navy', 'Total NCA Records', cnt(nNca), sub('NCA entries')) +
-          card('nha-sc-green', 'Total NCA', amt(gf.nca_received), sub(nNca.toLocaleString() + ' NCA entries'))
-        : card('nha-sc-navy', 'Total SARO Records', cnt(nSaro), sub('SARO entries')) +
-          card('nha-sc-blue', 'Total SARO', amt(gf.saro_allocation), sub(nSaro.toLocaleString() + ' SARO entries')) +
-          card('nha-sc-green', 'NCA Received', amt(gf.nca_received), sub(nNca.toLocaleString() + ' NCA entries'));
-
-    $sr('sr-tab-n-SARO').textContent = gf.saro_record_count == null ? '' : nSaro.toLocaleString();
-    $sr('sr-tab-n-NCA').textContent = gf.nca_record_count == null ? '' : nNca.toLocaleString();
+    $sr('sr-cards').innerHTML =
+        card('nha-sc-navy', 'Total Records', cnt(nSaro + nNca), sub('SARO + NCA entries')) +
+        card('nha-sc-blue', 'Total SARO', amt(gf.saro_allocation), sub(nSaro.toLocaleString() + ' SARO entries')) +
+        card('nha-sc-green', 'Total NCA', amt(gf.nca_received), sub(nNca.toLocaleString() + ' NCA entries'));
 }
 
 async function sr_loadCards() {
@@ -582,19 +605,42 @@ async function sr_loadTypes() {
         sr.typeCodes = [...new Set((json.data || [])
             .filter(t => !t.deleted_at && SR_ALLOWED_TYPES.includes(String(t.fund_tracking_code || '').toUpperCase()))
             .map(t => String(t.fund_tracking_code).toUpperCase()))];
+        $sr('sr-type').insertAdjacentHTML('beforeend', sr.typeCodes.map(c => `<option value="${sr_esc(c)}">${sr_esc(c)}</option>`).join(''));
     } catch (e) { console.warn('[sr_loadTypes]', e); }
 }
 
 /* ── Cells ───────────────────────────────────────────────────── */
 const sr_dash = '<span class="nha-text-muted">—</span>';
 
-const sr_natureCell = r => (r.nature_of_fund ? `<span class="nha-bdg nha-bdg-navy">${sr_esc(r.nature_of_fund.name)}</span>` : sr_dash);
+// an NCA has no Nature of Fund (the form no longer asks for one), so its cell is always a dash
+const sr_natureCell = r => (r.nature_of_fund && sr_typeCode(r) !== 'NCA' ? `<span class="nha-bdg nha-bdg-navy">${sr_esc(r.nature_of_fund.name)}</span>` : sr_dash);
 const sr_yearCell = r => (r.fiscal_year ? `<span style="font-size:11px;">FY ${sr_esc(r.fiscal_year)}</span>` : sr_dash);
 const sr_nameCell = r => (r.name && String(r.name).trim() ? `<span style="font-size:12px;">${sr_esc(r.name)}</span>` : sr_dash);
 
 function sr_amountCell(v) {
     const val = parseFloat(v) || 0;
     return val ? `<span class="sr-amt" title="${sr_esc(sr_pesoFull(val))}">${sr_esc(sr_peso(val))}</span>` : '—';
+}
+
+// A SARO's Unreleased amount: its amount less every NCA released under it. The stored amount is never rewritten (it stays the original
+// allotment, and the Fund Sourcing dashboard already deducts the NCAs from the SARO total) — this is worked out from the SARO's own
+// NCAs, so it follows an NCA being added, changed or deleted. Red when the NCAs add up to more than the SARO.
+function sr_unreleasedCell(r, kids) {
+    const bal = (parseFloat(r.amount) || 0) - sr_sum(kids);
+    if (!bal && !kids.length) return '—';
+    const over = bal < 0;
+    return `<span class="sr-amt"${over ? ' style="color:var(--afims-danger, #DC3545);"' : ''} title="${sr_esc(sr_pesoFull(bal))}${over ? ' — the NCAs released exceed the SARO amount' : ''}">${sr_esc(sr_peso(bal))}</span>`;
+}
+
+// The "+" beside a SARO's NCA Received amount: opens the NCA form with this SARO already picked (sr_addNca). It is switched off when the
+// SARO has nothing left to release (its amount less its NCAs is zero or less) — the form could not save an NCA against it anyway. It stops
+// the click from reaching the row, which would expand / collapse it.
+function sr_addNcaButton(r, kids) {
+    const ref = r.reference_number || '#' + r.id;
+    const off = (parseFloat(r.amount) || 0) - sr_sum(kids) <= 0;
+    const title = off ? `SARO ${ref} has nothing left to release` : `Add an NCA released under SARO ${ref}`;
+    return `<button type="button" class="sr-add-nca" title="${sr_esc(title)}" aria-label="${sr_esc(title)}"${off ? ' disabled' : ''}
+        onclick="event.stopPropagation();sr_addNca(${Number(r.id)})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14M5 12h14"/></svg></button>`;
 }
 
 const sr_refLink = r =>
@@ -605,8 +651,8 @@ const sr_refLink = r =>
    `children` array of the NCAs whose parent is it. page/limit count the top-level rows, so paging walks SAROs — a
    SARO's NCAs are never split across pages. An NCA with no parent SARO is a top-level row too: it reads "NCA · no SARO"
    and has nothing to expand.
-     SARO tab → root_type=SARO keeps the top-level rows to SAROs (their NCAs still come back).
-     NCA tab  → a flat list of NCA records (no tree); each shows the SARO it belongs to, in its own column.
+     Tracking Type = SARO → root_type=SARO keeps the top-level rows to SAROs (their NCAs still come back).
+     Tracking Type = NCA  → a flat list of NCA records (no tree); each shows the SARO it belongs to.
    Search (reference no.) and Fiscal Year narrow the top-level rows only; a SARO that matches always shows all
    of its NCAs. */
 const SR_CARET = '<span class="sr-caret__CLS__" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg></span>';
@@ -617,8 +663,11 @@ const SR_MENU_ICON = '<svg fill="currentColor" viewBox="0 0 24 24"><circle cx="1
 
 // One "Actions" button per row that opens a menu — the same control as budget-prop-page.php (View Details / Edit, then
 // Delete under a divider). The cell stops the click from reaching the row, which would expand / collapse it.
+// A SARO that has NCAs connected to it has no Delete at all (the API refuses it too: its NCAs would be left pointing at a hidden parent);
+// delete its NCAs first. The NCAs counted are the ones the row carries (`children`).
 const sr_toolsCell = r => {
     const id = Number(r.id);
+    const hasNcas = sr_typeCode(r) === 'SARO' && sr_kids(r).length > 0;
     return `
     <td class="no-print" style="text-align:center;" onclick="event.stopPropagation()">
         <div class="nha-tools-menu">
@@ -626,8 +675,8 @@ const sr_toolsCell = r => {
             <div class="nha-tools-dropdown" role="menu">
                 <button type="button" role="menuitem" class="nha-menu-item" onclick="sr_closeMenus();sr_view(${id})">${SR_VIEW_ICON}View Details</button>
                 <button type="button" role="menuitem" class="nha-menu-item" onclick="sr_closeMenus();sr_edit(${id})">${SR_EDIT_ICON}Edit</button>
-                <div class="nha-menu-divider" role="separator"></div>
-                <button type="button" role="menuitem" class="nha-menu-item danger" onclick="sr_closeMenus();sr_delete(${id})">${SR_DELETE_ICON}Delete</button>
+                ${hasNcas ? '' : `<div class="nha-menu-divider" role="separator"></div>
+                <button type="button" role="menuitem" class="nha-menu-item danger" onclick="sr_closeMenus();sr_delete(${id})">${SR_DELETE_ICON}Delete</button>`}
             </div>
         </div>
     </td>`;
@@ -666,45 +715,48 @@ document.addEventListener('mousedown', e => { if (!e.target.closest('.nha-tools-
 document.addEventListener('scroll', sr_closeMenus, true);
 window.addEventListener('resize', sr_closeMenus);
 
-// What a top-level row IS: a SARO says how many NCAs sit beneath it. On the NCA tab a row is just an NCA — the SARO it belongs to has its own column.
+// What a top-level row IS: a SARO says how many NCAs sit beneath it; an NCA says whether it has a SARO.
 function sr_parentTags(r, kids) {
     const type = sr_typeCode(r);
-    if (type === 'NCA') return `<span class="sr-tag sr-tag-child">NCA</span>`;
+    if (type === 'NCA') {
+        const p = sr_parentOf(r);
+        return p
+            ? `<span class="sr-tag sr-tag-child">NCA</span><span class="sr-tag sr-tag-none" title="The record this NCA belongs to">${sr_esc(sr_typeCode(p) || 'SARO')} ${sr_esc(p.reference_number || '#' + p.id)}</span>`
+            : `<span class="sr-tag sr-tag-child" title="This NCA has no parent SARO">NCA · no SARO</span>`;
+    }
     return `<span class="sr-tag sr-tag-parent">${sr_esc(type || 'SARO')}</span>` + (kids.length
         ? `<span class="sr-tag sr-tag-count" title="${kids.length} NCA under this SARO">${kids.length} NCA</span>`
         : `<span class="sr-tag sr-tag-none">No NCA yet</span>`);
 }
 
-// The NCA tab's 8th column: the SARO the NCA was released under (a link to it), or nothing to link to
-function sr_sarocCell(r) {
-    const p = sr_parentOf(r);
-    return p
-        ? `${sr_refLink(p)} <span class="nha-text-muted" style="font-size:11px;">${sr_esc(sr_typeCode(p) || 'SARO')}</span>`
-        : `<span class="nha-text-muted" title="This NCA has no parent SARO">No SARO</span>`;
-}
-
+// Columns: Reference No. · Name / Title · Nature of Fund · Fiscal Year · Date · Amount · NCA Received · Unreleased · Actions.
+// NCA Received and Unreleased are a SARO's roll-ups (an NCA has neither: its own amount is in the Amount column).
 function sr_parentRow(r, expanded) {
     const kids = sr_kids(r);
     const hasKids = kids.length > 0;
+    const isSaro = sr_typeCode(r) === 'SARO';
     return `
     <tr class="sr-parent${hasKids ? ' has-kids' : ''}${expanded ? ' expanded' : ''}"
         ${hasKids ? `aria-expanded="${expanded ? 'true' : 'false'}" onclick="sr_toggle(${Number(r.id)})"` : ''}>
         <td>
-            <div class="sr-ref-line">${sr.tab === 'NCA' ? '' : SR_CARET.replace('__CLS__', hasKids ? '' : ' none')}${sr_refLink(r)}</div>
+            <div class="sr-ref-line">${SR_CARET.replace('__CLS__', hasKids ? '' : ' none')}${sr_refLink(r)}</div>
             <div class="sr-tags">${sr_parentTags(r, kids)}</div>
         </td>
         <td>${sr_nameCell(r)}</td>
         <td>${sr_natureCell(r)}</td>
         <td>${sr_yearCell(r)}</td>
-        <td class="sr-num">${sr_amountCell(r.amount)}</td>
         <td class="nha-td-date" style="white-space:nowrap;">${sr_esc(sr_fmtDate(r.date))}</td>
-        ${sr.tab === 'NCA' ? `<td>${sr_sarocCell(r)}</td>` : `<td class="sr-num">${hasKids ? sr_amountCell(sr_sum(kids)) : '—'}</td>`}
+        <td class="sr-num">${sr_amountCell(r.amount)}</td>
+        <td class="sr-num">${isSaro
+            ? `<span class="sr-nca-cell">${hasKids ? sr_amountCell(sr_sum(kids)) : '—'}${sr_addNcaButton(r, kids)}</span>`
+            : (hasKids ? sr_amountCell(sr_sum(kids)) : '—')}</td>
+        <td class="sr-num">${isSaro ? sr_unreleasedCell(r, kids) : '—'}</td>
         ${sr_toolsCell(r)}
     </tr>`;
 }
 
 // One NCA under its SARO — same columns, but a recessed row with a tree connector back to the parent's chevron.
-// "NCA Received" is a SARO-level roll-up, so it stays blank here (this NCA's own amount is in the Amount column).
+// NCA Received and Unreleased are SARO-level roll-ups, so they stay blank here (this NCA's own amount is in the Amount column).
 function sr_childRow(c, isLast) {
     return `
     <tr class="sr-child${isLast ? ' last' : ''}">
@@ -717,8 +769,9 @@ function sr_childRow(c, isLast) {
         <td>${sr_nameCell(c)}</td>
         <td>${sr_natureCell(c)}</td>
         <td>${sr_yearCell(c)}</td>
-        <td class="sr-num">${sr_amountCell(c.amount)}</td>
         <td class="nha-td-date" style="white-space:nowrap;">${sr_esc(sr_fmtDate(c.date))}</td>
+        <td class="sr-num">${sr_amountCell(c.amount)}</td>
+        <td class="sr-num">—</td>
         <td class="sr-num">—</td>
         ${sr_toolsCell(c)}
     </tr>`;
@@ -728,11 +781,11 @@ function sr_renderTable() {
     const body = $sr('sr-tbody');
 
     if (sr.error) {
-        body.innerHTML = `<tr><td colspan="8" class="sr-empty">Could not load records: ${sr_esc(sr.error)}</td></tr>`;
+        body.innerHTML = `<tr><td colspan="9" class="sr-empty">Could not load records: ${sr_esc(sr.error)}</td></tr>`;
     } else if (!sr.loaded) {
-        body.innerHTML = `<tr><td colspan="8"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>`;
+        body.innerHTML = `<tr><td colspan="9"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>`;
     } else if (!sr.rows.length) {
-        body.innerHTML = `<tr><td colspan="8"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No ${sr.tab === 'NCA' ? 'NCA' : 'SARO'} records found.</span></div></td></tr>`;
+        body.innerHTML = `<tr><td colspan="9"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No SARO / NCA records found.</span></div></td></tr>`;
     } else {
         body.innerHTML = sr.rows.map(r => {
             const expanded = sr_kids(r).length > 0 && sr.expanded.has(Number(r.id));
@@ -796,7 +849,7 @@ function sr_filterParams(p, f) {
 function sr_treeParams(f = sr) {
     const p = new URLSearchParams();
     if (f.type === 'NCA') {
-        p.append('type', 'NCA');                         // the NCA tab: a flat list of NCA records
+        p.append('type', 'NCA');                         // Tracking Type = NCA: a flat list of NCA records
     } else {
         // Both types are needed even for "SARO": `type` also decides which CHILDREN come back, so asking for SARO alone
         // would drop every NCA. root_type keeps the top-level rows to SAROs.
@@ -832,42 +885,6 @@ async function sr_loadTable() {
 
 function sr_reloadTable() { sr.page = 1; return sr_loadTable(); }
 
-/* ── Tabs: SARO | NCA ───────────────────────────────────────────
-   The tab is the Tracking Type of the table and of the cards (it used to be a dropdown in the Filters bar). It is kept in the URL
-   (?tab=saro | ?tab=nca) so a refresh or a copied link reopens the same one. Switching keeps the other filters, goes back to page 1 and
-   asks the API again; the cards are the same answer drawn differently, so they are not fetched again. */
-const SR_TABS = ['SARO', 'NCA'];
-
-function sr_syncTabUi() {
-    const nca = sr.tab === 'NCA';
-    document.querySelectorAll('#sr-root .nha-tabs .nha-tab').forEach(b => {
-        const on = b.dataset.tab === sr.tab;
-        b.classList.toggle('active', on);
-        b.setAttribute('aria-selected', on ? 'true' : 'false');
-    });
-    $sr('sr-search-label').textContent = nca ? 'NCA Reference' : 'SARO Reference';
-    $sr('sr-search').placeholder = nca ? 'Filter by NCA ref no…' : 'Filter by SARO ref no…';
-    const th = $sr('sr-th-extra');
-    th.textContent = nca ? 'SARO' : 'NCA Received (₱)';
-    th.style.textAlign = nca ? 'left' : 'right';
-    $sr('sr-pager-tail').textContent = nca ? 'NCA records' : 'SARO records — click a row with a chevron to expand its NCAs';
-    $sr('sr-new').title = nca ? 'New NCA entry' : 'New SARO entry';
-}
-
-function sr_setTab(tab, { reload = true } = {}) {
-    tab = String(tab || '').toUpperCase();
-    if (!SR_TABS.includes(tab) || tab === sr.tab) return;
-    sr.tab = tab;
-    sr.type = tab;
-    sr.expanded.clear();
-    sr_syncTabUi();
-    try { const u = new URL(location.href); u.searchParams.set('tab', tab.toLowerCase()); history.replaceState(null, '', u); } catch (e) { /* cosmetic */ }
-    if (!reload) return;
-    sr.rows = []; sr.loaded = false; sr.error = null;           // not the other tab's rows while this one loads
-    sr_renderTable();
-    sr_renderCards(sr.cards);
-    sr_reloadTable();
-}
 function sr_reload() { return Promise.all([sr_loadCards(), sr_loadTable()]); }
 
 /* ── Apply / reset filters ──────────────────────────────────── */
@@ -881,6 +898,7 @@ function sr_apply() {
     }
     sr.fyFrom = from;
     sr.fyTo = to;
+    sr.type = $sr('sr-type').value;
     sr.search = $sr('sr-search').value.trim();
     sr.limit = parseInt($sr('sr-limit').value) || 10;
     sr.expanded.clear();
@@ -889,14 +907,14 @@ function sr_apply() {
 }
 
 function sr_resetFilters() {
-    ['sr-fy-from', 'sr-fy-to', 'sr-search'].forEach(id => { $sr(id).value = ''; });
+    ['sr-fy-from', 'sr-fy-to', 'sr-type', 'sr-search'].forEach(id => { $sr(id).value = ''; });
     $sr('sr-search-clear').hidden = true;
     $sr('sr-limit').value = '10';
     sr_apply();
 }
 
 /* ── View modal ─────────────────────────────────────────────── */
-let sr_viewId = null;
+let sr_viewId = null;   // the record open in the View Details modal — what its Edit button edits
 
 function sr_openOverlay(id) { $sr(id).classList.add('open'); }
 function sr_closeOverlay(id) { $sr(id).classList.remove('open'); }
@@ -925,11 +943,14 @@ async function sr_view(id) {
         $sr('sr-view-title').innerHTML = `Reference No. <span class="srv-ref">${sr_esc(d.reference_number || '#' + d.id)}</span>`
             + (type ? `<span class="srv-badge nha-bdg nha-bdg-navy">${sr_esc(type)}</span>` : '');
 
-        let html = `<div class="srv-stats">${sr_vstat('Amount', d.amount)}${kids.length ? sr_vstat('NCA Received', sr_sum(kids)) : ''}</div>`;
+        // a SARO with NCAs under it: what it has left once they are deducted
+        let html = `<div class="srv-stats">${sr_vstat('Amount', d.amount)}${kids.length ? sr_vstat('NCA Received', sr_sum(kids)) : ''}`
+            + `${type === 'SARO' && kids.length ? sr_vstat('Unreleased', (parseFloat(d.amount) || 0) - sr_sum(kids)) : ''}</div>`;
 
         const classification = [
             sr_vrow('Tracking Type', d.tracking_type ? `${sr_esc(d.tracking_type.fund_tracking_code)} <span class="srv-muted">— ${sr_esc(d.tracking_type.fund_tracking_name || '')}</span>` : sr_dash),
-            sr_vrow('Nature of Fund', d.nature_of_fund ? sr_esc(d.nature_of_fund.name) : sr_dash),
+            // an NCA has no Nature of Fund
+            ...(type === 'NCA' ? [] : [sr_vrow('Nature of Fund', d.nature_of_fund ? sr_esc(d.nature_of_fund.name) : sr_dash)]),
             sr_vrow('Fiscal Year', d.fiscal_year ? 'FY ' + sr_esc(d.fiscal_year) : sr_dash),
         ];
         if (parent) {
@@ -996,21 +1017,42 @@ async function sr_view(id) {
 
 /* ── New / Edit ─────────────────────────────────────────────────
    The form is the modal in form/saro-processing-form.php (included above): window.sarModal.open() for a new entry and
-   window.sarModal.open(id) to edit. After a save the form calls window.sr_reload() — that name is fixed by the form —
-   so the cards and the table refresh, staying on the current page. */
+   window.sarModal.open(id) to edit. After a save the form calls window.sr_reload() — that name is fixed by the form — so the cards
+   and the table refresh, staying on the current page. */
 window.sr_reload = sr_reload;
 
-async function sr_openForm(id = null) {
+// Opens the entry form. With an id it EDITS that record; without one it is a NEW record and opts is what the form takes: { type } to
+// start as SARO / NCA, { parent } to start an NCA with its SARO already picked.
+async function sr_openForm(opts = {}, id = null) {
     if (!window.sarModal) { sr_toast('The entry form could not be loaded. Please refresh the page.', 'error'); return; }
     try {
-        await window.sarModal.open(id, id ? {} : { type: sr.tab });      // a new entry starts as the tab's Tracking Type
+        await window.sarModal.open(id, id ? {} : opts);
     } catch (e) {
         console.error('[sr_openForm]', e);
         sr_toast('Could not open the entry form: ' + e.message, 'error');
     }
 }
 
-const sr_edit = id => { sr_closeOverlay('sr-view-ov'); return sr_openForm(id); };
+// Edit: from a row's Actions menu, or from the View Details modal (which closes first)
+const sr_edit = id => {
+    id = Number(id);
+    if (!id) return Promise.resolve();   // nothing to edit (no id would open the form for a NEW record)
+    sr_closeOverlay('sr-view-ov');
+    return sr_openForm({}, id);
+};
+
+// The "+" in the Reference No. header: a new SARO — a SARO has no parent and nothing is picked for it, so it is not connected to any row
+const sr_addSaro = () => sr_openForm({ type: 'SARO' });
+
+// The "+" on a SARO's NCA Received amount: a new NCA with that SARO already picked (the form then shows what it has left)
+function sr_addNca(id) {
+    id = Number(id);
+    const saro = sr_findRecord(id);
+    return sr_openForm({
+        type: 'NCA',
+        parent: { id, reference_number: saro ? saro.reference_number : '', type: (saro && sr_typeCode(saro)) || 'SARO' },
+    });
+}
 
 /* ── Delete ─────────────────────────────────────────────────────
    DELETE /fund_tracking/delete/{id} — a soft delete (the API stamps deleted_at). The API refuses with a 409 and says why
@@ -1056,9 +1098,9 @@ function sr_exportOpen() {
         $sr(to).innerHTML = $sr(from).innerHTML;
         $sr(to).value = '';
     });
-    // Tracking Type: all of them, or one — it starts as the tab on screen
+    // Tracking Type: all of them, or one — it starts as the page's Tracking Type filter
     $sr('sr-xm-type').innerHTML = '<option value="">All Types</option>' + sr.typeCodes.map(c => `<option value="${sr_esc(c)}">${sr_esc(c)}</option>`).join('');
-    $sr('sr-xm-type').value = sr.typeCodes.includes(sr.tab) ? sr.tab : '';
+    $sr('sr-xm-type').value = sr.typeCodes.includes(sr.type) ? sr.type : '';
     $sr('sr-xm-unit').value = sr.unit;                   // default to the page's current unit
     $sr('sr-xm-format').value = 'csv';
     sr_openOverlay('sr-xm-ov');
@@ -1192,13 +1234,12 @@ function sr_bind() {
         btn.classList.add('loading');
         try { await sr_reload(); } finally { btn.classList.remove('loading'); }
     });
-    $sr('sr-new').addEventListener('click', () => sr_openForm(null));
+    $sr('sr-add-saro').addEventListener('click', sr_addSaro);
     $sr('sr-export-open').addEventListener('click', sr_exportOpen);
 
     $sr('sr-apply').addEventListener('click', sr_apply);
     $sr('sr-reset').addEventListener('click', sr_resetFilters);
-    ['sr-fy-from', 'sr-fy-to', 'sr-limit'].forEach(id => $sr(id).addEventListener('change', sr_apply));
-    document.querySelectorAll('#sr-root .nha-tabs .nha-tab').forEach(b => b.addEventListener('click', () => sr_setTab(b.dataset.tab)));
+    ['sr-fy-from', 'sr-fy-to', 'sr-type', 'sr-limit'].forEach(id => $sr(id).addEventListener('change', sr_apply));
     $sr('sr-unit').addEventListener('change', e => sr_setUnit(e.target.value));
 
     const search = $sr('sr-search'), clear = $sr('sr-search-clear');
@@ -1225,7 +1266,6 @@ function sr_bind() {
 /* ── Bootstrap ──────────────────────────────────────────────── */
 async function sr_boot() {
     sr_bind();
-    sr_setTab(new URLSearchParams(location.search).get('tab'), { reload: false });   // ?tab=nca opens the NCA tab; anything else, SARO
     sr_loadTable();
     sr_loadCards();
     await Promise.all([sr_loadYears(), sr_loadTypes()]);

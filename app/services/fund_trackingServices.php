@@ -1409,10 +1409,11 @@ class FundTrackingServices
     // record's fiscal_year (falls back to the current year when none is given).
     // Returns null when the nature of fund can't be resolved.
     //
-    // The reference number is system-generated only for GAAAO records:
-    // create()/update() never trust a client-supplied value for those
-    // (saro-processing-form.php shows the field readonly and only previews
-    // the same format). Other natures of fund take a user-entered value.
+    // The reference number is generated only for GAAAO records, and only as a DEFAULT:
+    // create()/update() use it when the client sends none (or a blank one), but keep a
+    // reference the client does send (saro-processing-form.php pre-fills this same
+    // format, lets the user edit it, and has a Generate link to fill it in again).
+    // Other natures of fund take a user-entered value.
     // -----------------------------------------------------------------------
     public function generateReferenceNumber(int|string|null $natureOfFundId, int|string|null $fiscalYear = null): ?string
     {
@@ -1460,6 +1461,79 @@ class FundTrackingServices
         );
 
         return strtoupper(trim((string) $name)) === 'GAAAO';
+    }
+
+    // -----------------------------------------------------------------------
+    // The amount of an NCA is deducted from the SARO it is released under, so a SARO can never be released more than it is worth:
+    // the NCAs already under it (live ones, not counting $excludeId — the NCA being changed) plus $amount may not exceed the SARO's
+    // own amount. It applies only when $parentId is a SARO (an NCA under any other record is not capped). The SARO's amount itself is
+    // never rewritten — what it has left is always its amount less its NCAs (the Fund Sourcing totals work the same way).
+    // $lock takes a row lock on the SARO, held until the caller's transaction ends, so two NCAs saved at the same moment cannot both
+    // fit into what is left. Returns an error message, or null when it fits (an amount of zero always fits).
+    // -----------------------------------------------------------------------
+    private function ncaOverSaroError(int $parentId, float $amount, ?int $excludeId = null, bool $lock = false): ?string
+    {
+        $saroTypeId = $this->resolveTrackingTypeId('SARO');
+        $ncaTypeId = $this->resolveTrackingTypeId('NCA');
+        if ($saroTypeId === null || $ncaTypeId === null || $parentId <= 0) {
+            return null;
+        }
+
+        $saro = App\ExecuteRow(
+            "SELECT reference_number, amount FROM {$this->table}
+              WHERE id = {$parentId} AND tracking_type_id = {$saroTypeId} AND deleted_at IS NULL"
+            .($lock ? ' FOR UPDATE' : ''),
+            'DB'
+        );
+        if (!$saro) {
+            return null;
+        }
+
+        $exclude = $excludeId !== null ? " AND id <> {$excludeId}" : '';
+        $released = (float) App\ExecuteScalar(
+            "SELECT COALESCE(SUM(amount), 0) FROM {$this->table}
+              WHERE parent_id = {$parentId} AND tracking_type_id = {$ncaTypeId} AND deleted_at IS NULL{$exclude}",
+            'DB'
+        );
+
+        $saroAmount = (float) ($saro['amount'] ?? 0);
+        $left = round($saroAmount - $released, 2);
+        if (round($amount, 2) <= 0 || round($amount, 2) <= $left) {
+            return null;
+        }
+
+        $peso = fn (float $v): string => '₱'.number_format($v, 2);
+
+        return 'This NCA ('.$peso($amount).') is more than SARO '.($saro['reference_number'] ?? '#'.$parentId).' has left ('
+            .$peso(max($left, 0.0)).' of '.$peso($saroAmount).'; '.$peso($released).' already released under it).';
+    }
+
+    // -----------------------------------------------------------------------
+    // The counterpart of ncaOverSaroError(): a SARO's amount may not be lowered below the NCAs already released under it (the live NCAs
+    // whose parent it is). Only a decrease is looked at — a new amount that still covers the NCAs, or that is not lower than the old one
+    // (saving it unchanged, raising it), always fits. Returns an error message, or null when it fits.
+    // -----------------------------------------------------------------------
+    private function saroBelowNcasError(int $saroId, float $newAmount, float $oldAmount): ?string
+    {
+        $ncaTypeId = $this->resolveTrackingTypeId('NCA');
+        if ($ncaTypeId === null || $saroId <= 0) {
+            return null;
+        }
+
+        $released = (float) App\ExecuteScalar(
+            "SELECT COALESCE(SUM(amount), 0) FROM {$this->table}
+              WHERE parent_id = {$saroId} AND tracking_type_id = {$ncaTypeId} AND deleted_at IS NULL",
+            'DB'
+        );
+
+        if (round($newAmount, 2) >= round($released, 2) || round($newAmount, 2) >= round($oldAmount, 2)) {
+            return null;
+        }
+
+        $peso = fn (float $v): string => '₱'.number_format($v, 2);
+
+        return 'This SARO\'s amount cannot be lowered to '.$peso($newAmount).': '.$peso($released)
+            .' has already been released under it (its NCAs), so it must stay at '.$peso($released).' or more.';
     }
 
     // Most child records (NCAs under a SARO / ORs under a Trust Fund) one create() call may add.
@@ -1584,10 +1658,10 @@ class FundTrackingServices
     // -----------------------------------------------------------------------
     // Create — /fund_tracking/add
     // Required: tracking_type_id (nature_of_fund_id is optional). reference_number is
-    // auto-generated from nature of fund + the fiscal year (see
-    // generateReferenceNumber()) only when the nature of fund is GAAAO (see
-    // isGaaaoNature()); for every other nature of fund it is required and
-    // taken as typed by the user.
+    // generated from nature of fund + the fiscal year (see generateReferenceNumber())
+    // when the nature of fund is GAAAO (see isGaaaoNature()) and none is sent (a reference
+    // that is sent is kept, so it is optional there); for every other nature of fund it is
+    // required and taken as typed by the user.
     //
     // Optional `ncas` (SARO only — see prepareNcas()): NCA records to create under
     // the new SARO. The SARO and every NCA are saved in ONE transaction, so a bad
@@ -1639,11 +1713,18 @@ class FundTrackingServices
             }
 
             if ($this->isGaaaoNature($fields['nature_of_fund_id'] ?? null)) {
-                $reference = $this->generateReferenceNumber($fields['nature_of_fund_id'], $fields['fiscal_year'] ?? null);
-                if ($reference === null) {
-                    return ['success' => false, 'message' => 'nature_of_fund_id does not match any nature of fund.'];
+                // GAAAO: the reference is generated from the nature of fund + fiscal year UNLESS the client sends one of its own (the
+                // form fills in the generated value and lets the user edit it) — blank means "generate it"
+                $given = trim((string) ($fields['reference_number'] ?? ''));
+                if ($given !== '') {
+                    $fields['reference_number'] = $given;
+                } else {
+                    $reference = $this->generateReferenceNumber($fields['nature_of_fund_id'], $fields['fiscal_year'] ?? null);
+                    if ($reference === null) {
+                        return ['success' => false, 'message' => 'nature_of_fund_id does not match any nature of fund.'];
+                    }
+                    $fields['reference_number'] = $reference;
                 }
-                $fields['reference_number'] = $reference;
             } else {
                 $referenceNumber = trim((string) ($fields['reference_number'] ?? ''));
                 if ($referenceNumber === '') {
@@ -1675,6 +1756,24 @@ class FundTrackingServices
                 $childLabel = $label;
             }
 
+            // A SARO created together with its NCAs: they are deducted from it, so they cannot add up to more than it is worth
+            if ($childLabel === 'NCA') {
+                $releasedNow = array_sum(array_map(fn ($c) => (float) ($c['amount'] ?? 0), $children));
+                $saroAmount = (float) ($fields['amount'] ?? 0);
+                if (round($releasedNow - $saroAmount, 2) > 0) {
+                    return ['success' => false, 'message' => 'The NCA records add up to ₱'.number_format($releasedNow, 2)
+                        .', more than the SARO\'s own amount (₱'.number_format($saroAmount, 2).').'];
+                }
+            }
+
+            // An NCA released under a SARO may not be more than that SARO has left (ncaOverSaroError) — checked below, inside the
+            // transaction, with the SARO locked
+            $capParent = null;
+            $ncaTypeId = $this->resolveTrackingTypeId('NCA');
+            if ($ncaTypeId !== null && !empty($fields['parent_id']) && (int) ($fields['tracking_type_id'] ?? 0) === $ncaTypeId) {
+                $capParent = (int) $fields['parent_id'];
+            }
+
             $columns = [];
             $values = [];
 
@@ -1692,9 +1791,19 @@ class FundTrackingServices
 
             // The record and its children go in together (BEGIN … COMMIT, the same way the rest of the app does it) —
             // when there are no children it is the single INSERT it always was.
-            if ($children) {
+            if ($children || $capParent !== null) {
                 App\Execute('BEGIN', 'DB');
                 $inTransaction = true;
+            }
+
+            if ($capParent !== null) {
+                $over = $this->ncaOverSaroError($capParent, (float) ($fields['amount'] ?? 0), null, true);
+                if ($over !== null) {
+                    App\Execute('ROLLBACK', 'DB');
+                    $inTransaction = false;
+
+                    return ['success' => false, 'message' => $over];
+                }
             }
 
             $sql = "INSERT INTO {$this->table} ({$colList}) VALUES ({$valList}) RETURNING id";
@@ -1792,13 +1901,14 @@ class FundTrackingServices
                 }
             }
 
-            // reference_number is system-generated only for GAAAO records —
-            // never take it from the client there. Regenerate only when the
+            // reference_number is generated only for GAAAO records, and only as a
+            // default: a value the client sends is kept as sent; without one (or with a
+            // blank one) it is generated — but, when none is sent, only when the
             // record has none yet or its nature of fund / fiscal year is
             // being changed, so editing other fields never overwrites an
             // existing (e.g. imported or DBM-issued) reference number.
-            // Every other nature of fund is the exception: the reference
-            // number is user-entered, so a client-supplied value is kept
+            // Every other nature of fund: the reference number is
+            // user-entered, so a client-supplied value is kept
             // (blank is rejected).
             $existing = $check['data'];
             // nature_of_fund_id is optional: an explicit null clears it, so test
@@ -1815,14 +1925,22 @@ class FundTrackingServices
             }
 
             if ($this->isGaaaoNature($newNatureId)) {
-                unset($fields['reference_number']);
-                $newYear = array_key_exists('fiscal_year', $fields) ? $fields['fiscal_year'] : ($existing['fiscal_year'] ?? null);
-                $natureChanged = $natureSent && (int) $newNatureId !== (int) ($existing['nature_of_fund_id'] ?? 0);
-                $yearChanged = isset($fields['fiscal_year']) && (int) $fields['fiscal_year'] !== (int) ($existing['fiscal_year'] ?? 0);
-                if (empty($existing['reference_number']) || $natureChanged || $yearChanged) {
-                    $reference = $this->generateReferenceNumber($newNatureId, $newYear);
-                    if ($reference !== null) {
-                        $fields['reference_number'] = $reference;
+                // A reference the client sends is kept as sent (the form shows the generated one and lets the user edit it). Without
+                // one — or with a blank one, which means "generate it" — it is generated, but only when the record has none yet or its
+                // nature of fund / fiscal year is being changed, so editing other fields never overwrites an existing reference.
+                $given = array_key_exists('reference_number', $fields) ? trim((string) $fields['reference_number']) : null;
+                if ($given !== null && $given !== '') {
+                    $fields['reference_number'] = $given;
+                } else {
+                    unset($fields['reference_number']);
+                    $newYear = array_key_exists('fiscal_year', $fields) ? $fields['fiscal_year'] : ($existing['fiscal_year'] ?? null);
+                    $natureChanged = $natureSent && (int) $newNatureId !== (int) ($existing['nature_of_fund_id'] ?? 0);
+                    $yearChanged = isset($fields['fiscal_year']) && (int) $fields['fiscal_year'] !== (int) ($existing['fiscal_year'] ?? 0);
+                    if ($given === '' || empty($existing['reference_number']) || $natureChanged || $yearChanged) {
+                        $reference = $this->generateReferenceNumber($newNatureId, $newYear);
+                        if ($reference !== null) {
+                            $fields['reference_number'] = $reference;
+                        }
                     }
                 }
             } elseif (array_key_exists('reference_number', $fields)) {
@@ -1840,6 +1958,35 @@ class FundTrackingServices
             // A record cannot be its own parent
             if (isset($fields['parent_id']) && (int) $fields['parent_id'] === (int) $id) {
                 return ['success' => false, 'message' => 'parent_id cannot reference the record\'s own id.'];
+            }
+
+            // An NCA's amount is deducted from its SARO: changing its amount, its SARO or its type must still fit into what that
+            // SARO has left (not counting this NCA's own saved amount). A change to anything else is not looked at.
+            if (array_key_exists('amount', $fields) || array_key_exists('parent_id', $fields) || array_key_exists('tracking_type_id', $fields)) {
+                $ncaTypeId = $this->resolveTrackingTypeId('NCA');
+                $finalType = array_key_exists('tracking_type_id', $fields) ? $fields['tracking_type_id'] : ($existing['tracking_type_id'] ?? null);
+                $finalParent = array_key_exists('parent_id', $fields) ? $fields['parent_id'] : ($existing['parent_id'] ?? null);
+                $finalAmount = array_key_exists('amount', $fields) ? $fields['amount'] : ($existing['amount'] ?? null);
+                if ($ncaTypeId !== null && (int) $finalType === $ncaTypeId && (int) $finalParent > 0) {
+                    $over = $this->ncaOverSaroError((int) $finalParent, (float) $finalAmount, (int) $id);
+                    if ($over !== null) {
+                        return ['success' => false, 'message' => $over];
+                    }
+                }
+            }
+
+            // …and the other way round: a SARO's amount cannot be lowered below what has already been released under it (its NCAs),
+            // or the SARO would go negative. Only a DECREASE below the NCA total is refused, so saving a SARO with its amount unchanged
+            // (the form always sends it) or raising it always works — even for one that was already over-released before this rule.
+            if (array_key_exists('amount', $fields)) {
+                $saroTypeId = $this->resolveTrackingTypeId('SARO');
+                $typeNow = array_key_exists('tracking_type_id', $fields) ? $fields['tracking_type_id'] : ($existing['tracking_type_id'] ?? null);
+                if ($saroTypeId !== null && (int) $typeNow === $saroTypeId) {
+                    $below = $this->saroBelowNcasError((int) $id, (float) ($fields['amount'] ?? 0), (float) ($existing['amount'] ?? 0));
+                    if ($below !== null) {
+                        return ['success' => false, 'message' => $below];
+                    }
+                }
             }
 
             $id = (int) $id;

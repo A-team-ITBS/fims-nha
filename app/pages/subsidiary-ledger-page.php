@@ -2,11 +2,15 @@
 namespace PHPMaker2024\FIMS;
 @session_start();
 
-// Subsidiary Ledger — pick one SL master (optionally one SL detail), see every posting to it
-// (fims.general_ledger, via fims.v_journals) in order with a running balance — e.g. one vendor's
-// Accounts Payable sub-ledger. Read-only — see GeneralLedgerService.php and
-// system_docs/ERD/README.md §2.8. Separate module from General Ledger (same idea, keyed by a GL
-// account instead), Journals (chronological, every account) and Trial Balance (totals, no detail).
+// Subsidiary Ledger — pick one SL account, see every posting to it (fims.general_ledger, via
+// fims.v_journals) in order with a running balance — e.g. one vendor's Accounts Payable
+// sub-ledger. An "SL account" is a child fims.chart_of_accounts row (parent_account_id IS NOT
+// NULL) under a control account — the same child rows the Chart of Accounts page's "Add
+// Sub-Ledger" action creates (see chart-of-accounts-page.php's coa_addSL()). fims.sl_masters/
+// sl_details are a retired, unrelated table — not used here. Read-only — see
+// GeneralLedgerService.php and system_docs/ERD/README.md §2.8. Separate module from General Ledger
+// (same idea, keyed by any GL account instead of just a child one), Journals (chronological, every
+// account) and Trial Balance (totals, no detail).
 $_sl_api = rtrim((string) Config('API.FIMS_URL'), '/');
 $_sl_api = preg_match('~/api$~', $_sl_api) ? $_sl_api : $_sl_api . '/api';
 ?>
@@ -36,6 +40,14 @@ $_sl_api = preg_match('~/api$~', $_sl_api) ? $_sl_api : $_sl_api . '/api';
     #sl-root .sl-group-row td { background: var(--afims-bg-soft, #F5F6FA); font-weight: 600; }
     #sl-root .sl-ending-balance { text-align: right; padding: 8px 4px; font-size: 13px; color: var(--afims-text-muted,#62657E); }
     #sl-root .sl-ending-balance strong { color: inherit; font-weight: 700; }
+
+    /* Dark mode: --afims-bg-soft is not a theme token, so the SL group rows fell back to a near-white #F5F6FA (light text on
+       it = unreadable); the SL account search results and the summary cards were hard-coded white */
+    html.afims-dark[data-bs-theme="dark"] #sl-root .sl-group-row td { background: var(--afims-surface-subtle, #22294A); color: #FFFFFF; border-top: 1px solid var(--afims-border-strong, #4A5270); }
+    html.afims-dark[data-bs-theme="dark"] #sl-root .sl-group-row td span { color: var(--afims-text-muted, #AAAFBE) !important; }
+    html.afims-dark[data-bs-theme="dark"] #sl-root :is(.sl-combo-results, .sl-summary-card) { background: var(--afims-surface, #1A1F38); border-color: var(--afims-border-strong, #4A5270); color: var(--afims-text, #E4ECF2); }
+    html.afims-dark[data-bs-theme="dark"] #sl-root .sl-combo-item:hover { background: var(--afims-primary-soft, #0F2456); color: #FFFFFF; }
+    html.afims-dark[data-bs-theme="dark"] #sl-root :is(.sl-summary-label, .sl-combo-empty, .sl-ending-balance) { color: var(--afims-text-muted, #AAAFBE); }
 </style>
 
 <div id="sl-root" class="nha-root">
@@ -62,9 +74,8 @@ $_sl_api = preg_match('~/api$~', $_sl_api) ? $_sl_api : $_sl_api . '/api';
     </div>
 
     <p class="nha-hint no-print" style="margin:0 0 14px;color:var(--afims-text-muted,#62657E);font-size:13px;">
-        Showing every SL master with a posting. Pick an SL code (and, if it has any, an SL detail)
-        above to see just its ledger, oldest first, with a running balance — e.g. one vendor's
-        Accounts Payable sub-ledger.
+        Showing every SL account with a posting. Pick an SL account above to see just its ledger,
+        oldest first, with a running balance — e.g. one vendor's Accounts Payable sub-ledger.
     </p>
 
     <!-- Error banner -->
@@ -77,18 +88,12 @@ $_sl_api = preg_match('~/api$~', $_sl_api) ? $_sl_api : $_sl_api . '/api';
     <div class="nha-filters no-print">
         <div class="nha-filter-row">
             <div class="nha-filter-group nha-filter-group-search" style="flex:1 1 260px;">
-                <label class="nha-filter-label">SL Code</label>
+                <label class="nha-filter-label">SL Account</label>
                 <div class="sl-combo-wrap">
                     <input type="text" id="sl-code-search" class="nha-filter-input" style="width:100%;"
-                           placeholder="Search SL code or name…" autocomplete="off">
+                           placeholder="Search SL account code or title…" autocomplete="off">
                     <div id="sl-code-results" class="sl-combo-results"></div>
                 </div>
-            </div>
-            <div class="nha-filter-group">
-                <label class="nha-filter-label">SL Detail</label>
-                <select id="sl-detail-select" class="nha-filter-select" disabled>
-                    <option value="">All Details</option>
-                </select>
             </div>
             <div class="nha-filter-group">
                 <label class="nha-filter-label">Fiscal Year</label>
@@ -163,11 +168,11 @@ $_sl_api = preg_match('~/api$~', $_sl_api) ? $_sl_api : $_sl_api . '/api';
 
 const SL_BASE = <?= json_encode($_sl_api) ?>;
 const SL_API  = SL_BASE + '/general_ledger';
-const SL_CODES_API = SL_BASE + '/voucher/sl-codes';
+const SL_COA_API   = SL_BASE + '/chart_of_accounts/all';
 const SL_FY_API    = SL_BASE + '/fiscal_year/all';
 const SL_BOOK_API  = SL_BASE + '/books/all';
 
-let sl_selectedMaster = null; // { sl_code, sl_name }
+let sl_selectedMaster = null; // { sl_code, sl_name } — sl_code is a child chart_of_accounts.account_code
 let sl_searchTimer = null;
 
 const $sl = id => document.getElementById(id);
@@ -191,12 +196,10 @@ function sl_bindEvents() {
     $sl('sl-refresh')?.addEventListener('click', () => sl_load());
     $sl('sl-filter-fy')?.addEventListener('change', () => sl_load());
     $sl('sl-filter-book')?.addEventListener('change', () => sl_load());
-    $sl('sl-detail-select')?.addEventListener('change', () => sl_selectedMaster && sl_load());
 
     const input = $sl('sl-code-search');
     input.addEventListener('input', () => {
         sl_selectedMaster = null;
-        sl_resetDetails();
         clearTimeout(sl_searchTimer);
         sl_searchTimer = setTimeout(() => sl_searchCodes(input.value.trim()), 300);
         if (!input.value.trim()) sl_load();
@@ -207,12 +210,6 @@ function sl_bindEvents() {
             $sl('sl-code-results').style.display = 'none';
         }
     });
-}
-
-function sl_resetDetails() {
-    const sel = $sl('sl-detail-select');
-    sel.innerHTML = '<option value="">All Details</option>';
-    sel.disabled = true;
 }
 
 /* Fiscal years come from fims.fiscal_year via GET /fiscal_year/all → {success, data:[{fiscal_yr}]}. */
@@ -245,48 +242,33 @@ async function sl_loadBooks() {
     }
 }
 
-/* SL code combobox — GET /voucher/sl-codes?search= → {success, data:[{sl_code, sl_name, account_code}]} */
+/* SL account combobox — chart_of_accounts rows with a parent (a child/SL account under a control
+   account — the same rows the Chart of Accounts page's "Add Sub-Ledger" action creates), filtered
+   client-side since /chart_of_accounts/all has no "has a parent" query param. */
 async function sl_searchCodes(search) {
     const box = $sl('sl-code-results');
     try {
-        const params = new URLSearchParams({ search });
-        const res  = await sl_authFetch(`${SL_CODES_API}?${params}`);
+        const params = new URLSearchParams({ postable_only: '1', search });
+        const res  = await sl_authFetch(`${SL_COA_API}?${params}`);
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const json = await res.json();
-        const rows = json.data ?? [];
+        const rows = (json.data ?? []).filter(r => r.parent_account_id).slice(0, 30);
         if (!rows.length) {
-            box.innerHTML = '<div class="sl-combo-empty">No matching SL codes.</div>';
+            box.innerHTML = '<div class="sl-combo-empty">No matching SL accounts.</div>';
         } else {
-            box.innerHTML = rows.map(r => `<div class="sl-combo-item" data-code="${sl_esc(r.sl_code)}" data-name="${sl_esc(r.sl_name)}">
-                <strong class="nha-mono">${sl_esc(r.sl_code)}</strong> — ${sl_esc(r.sl_name)}
+            box.innerHTML = rows.map(r => `<div class="sl-combo-item" data-code="${sl_esc(r.account_code)}" data-name="${sl_esc(r.account_title)}">
+                <strong class="nha-mono">${sl_esc(r.account_code)}</strong> — ${sl_esc(r.account_title)}
             </div>`).join('');
             box.querySelectorAll('.sl-combo-item').forEach(el => el.addEventListener('click', () => {
                 sl_selectedMaster = { sl_code: el.dataset.code, sl_name: el.dataset.name };
                 $sl('sl-code-search').value = `${el.dataset.code} — ${el.dataset.name}`;
                 box.style.display = 'none';
-                sl_loadDetails(el.dataset.code);
                 sl_load();
             }));
         }
         box.style.display = 'block';
     } catch (e) {
-        sl_showError('SL code search: ' + e.message);
-    }
-}
-
-/* SL detail dropdown for the chosen master — GET /voucher/sl-codes/{sl_code}/details */
-async function sl_loadDetails(slCode) {
-    const sel = $sl('sl-detail-select');
-    try {
-        const res  = await sl_authFetch(`${SL_CODES_API}/${encodeURIComponent(slCode)}/details`);
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        const json = await res.json();
-        const rows = json.data ?? [];
-        sel.innerHTML = '<option value="">All Details</option>' +
-            rows.map(r => `<option value="${sl_esc(r.sl_detail_id)}">${sl_esc(r.detail_code)} — ${sl_esc(r.detail_name)}</option>`).join('');
-        sel.disabled = rows.length === 0;
-    } catch (e) {
-        sl_showError('SL details: ' + e.message);
+        sl_showError('SL account search: ' + e.message);
     }
 }
 
@@ -298,8 +280,6 @@ async function sl_load() {
         const params = new URLSearchParams();
         if (sl_selectedMaster) {
             params.set('sl_code', sl_selectedMaster.sl_code);
-            const detailId = $sl('sl-detail-select').value;
-            if (detailId) params.set('sl_detail_id', detailId);
         }
         const fy = $sl('sl-filter-fy').value;
         if (fy) params.set('fiscal_yr', fy);
@@ -314,7 +294,7 @@ async function sl_load() {
         if (json.grouped) {
             $sl('sl-summary').style.display = 'none';
             $sl('sl-ending').style.display = 'none';
-            sl_renderGroupedTable(json.masters ?? []);
+            sl_renderGroupedTable(json.accounts ?? []);
         } else {
             sl_renderSummary(json);
             sl_renderTable(json.data ?? [], json.debit_normal);
@@ -331,7 +311,7 @@ async function sl_load() {
 /* ── Summary (SL master header — code/name/normal balance/class) ──────────── */
 function sl_renderSummary(json) {
     $sl('sl-summary').style.display = '';
-    $sl('sl-summary-master').textContent = `${json.master.sl_code} — ${json.master.sl_name}`;
+    $sl('sl-summary-master').textContent = `${json.master.account_code} — ${json.master.account_title}`;
     $sl('sl-summary-normal').textContent = json.normal_balance || '—';
     $sl('sl-summary-class').textContent  = json.master.account_type || '—';
     $sl('sl-summary-debit').textContent  = sl_peso(json.total_debit);
@@ -365,7 +345,7 @@ function sl_renderGroupedTable(masters) {
     }
     tbody.innerHTML = masters.map(m => `
         <tr class="sl-group-row">
-            <td colspan="6">${sl_esc(m.master.sl_code)} — ${sl_esc(m.master.sl_name)} <span style="font-weight:400;color:var(--afims-text-muted,#62657E);">(${sl_esc(m.normal_balance)}-normal${m.master.account_type ? ', ' + sl_esc(m.master.account_type) : ''})</span></td>
+            <td colspan="6">${sl_esc(m.master.account_code)} — ${sl_esc(m.master.account_title)} <span style="font-weight:400;color:var(--afims-text-muted,#62657E);">(${sl_esc(m.normal_balance)}-normal${m.master.account_type ? ', ' + sl_esc(m.master.account_type) : ''})</span></td>
             <td class="text-end nha-mono">${sl_peso(m.total_debit)}</td>
             <td class="text-end nha-mono">${sl_peso(m.total_credit)}</td>
             <td class="text-end nha-mono">${sl_peso(Math.abs(m.ending_balance))}${sl_balSide(m.ending_balance, m.debit_normal)}</td>

@@ -111,7 +111,8 @@ $app->get('/fund_tracking/read/{id}', function ($request, $response, $args) use 
 // POST /fund_tracking/add — create new record
 // Body (JSON): tracking_type_id (required), fiscal_year, reference_number
 //              (required unless the nature of fund is GAAAO, which generates
-//              it), nature_of_fund_id, name, amount, bank_account_no,
+//              it when none is sent — one that is sent is kept, so it is optional
+//              there and can be edited), nature_of_fund_id, name, amount, bank_account_no,
 //              agency_name (the agency's name as text), remarks, purpose,
 //              multiple_node_id, status_id, parent_id, and optionally
 //              `supplemental` {…}. `date` is stamped by the API (today); a
@@ -133,6 +134,10 @@ $app->get('/fund_tracking/read/{id}', function ($request, $response, $args) use 
 //              `ncas`: a key left out inherits the Trust Fund's value (fiscal
 //              year, nature of fund and agency), one saved transaction, "OR #n"
 //              in the message.
+// An NCA's amount is deducted from the SARO it is released under (parent_id), so a SARO can never go negative: an NCA is
+// refused (400) when its amount is more than the SARO has left (the SARO's amount less the NCAs already under it), and so is a
+// SARO sent with `ncas` that add up to more than its own amount. The SARO's stored amount is never rewritten. The Excel import
+// is not held to this (it loads historical sheets as they are).
 // user_id is the JWT user. Returns { success, message, id, nca_ids, or_ids } —
 // nca_ids / or_ids in the order the children were sent.
 // -----------------------------------------------------------------------
@@ -153,6 +158,9 @@ $app->post('/fund_tracking/add', function ($request, $response, $args) use ($Ser
 // Partial: only the fields sent change. For the optional ids / codes
 // (fiscal_year, parent_id, multiple_node_id, nature_of_fund_id, status_id)
 // '' leaves the value alone and null clears it. `date` never changes.
+// Changing an NCA's amount, SARO (parent_id) or type is held to the same limit as /add: it must fit into what its SARO has left,
+// not counting the NCA's own saved amount (400 otherwise). The other way round, a SARO's amount cannot be lowered below the NCAs
+// already released under it (400): only a decrease below their total is refused, so saving it unchanged or raising it always works.
 // -----------------------------------------------------------------------
 $app->patch('/fund_tracking/update/{id}', function ($request, $response, $args) use ($Services, $fundTrackingUserId) {
     try {

@@ -50,6 +50,9 @@
     <menu id="208">
       <phrase id="menutext" value="Journal Entry Voucher" />
     </menu>
+    <menu id="758">
+      <phrase id="menutext" value="Disbursement Preparation" />
+    </menu>
     <menu id="390">
       <phrase id="menutext" value="Inventory" />
     </menu>
@@ -142,6 +145,12 @@
     </menu>
     <menu id="658">
       <phrase id="menutext" value="Accountable Officer" />
+    </menu>
+    <menu id="759">
+      <phrase id="menutext" value="Payroll Setup" />
+    </menu>
+    <menu id="760">
+      <phrase id="menutext" value="Fidelity Bond" />
     </menu>
     <menu id="330">
       <phrase id="menutext" value="Fund Sourcing" />
@@ -1759,6 +1768,15 @@
     </table>
     <table id="collections_page">
       <phrase id="tblcaption" value="Collections" />
+    </table>
+    <table id="check_disbursement_voucher_page">
+      <phrase id="tblcaption" value="Check Disbursement" />
+    </table>
+    <table id="payroll_setup_page">
+      <phrase id="tblcaption" value="Payroll Setup" />
+    </table>
+    <table id="fidelity_bond_page">
+      <phrase id="tblcaption" value="Fidelity Bond" />
     </table>
   </project>
 </ew-language>
