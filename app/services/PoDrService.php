@@ -99,6 +99,8 @@ class PoDrService
             'total_amount'  => $d['total_amount'] ?? '0.00',
             'entries'       => array_values(array_filter($d['lines'] ?? [], 'is_array')),
             'items'         => array_values(array_filter($d['items'] ?? [], 'is_array')),
+            'jev_id'        => $d['jev_id'] ?? null,    // set once its pro-forma was submitted as a JEV
+            'jev_no'        => $d['jev_no'] ?? null,
         ];
     }
 
@@ -580,7 +582,37 @@ class PoDrService
                 return ['success' => false, 'message' => "No delivery receipts found for PO '{$poNumber}'."];
             }
 
-            $payableTitle = (string) (App\ExecuteScalar('SELECT account_title FROM fims.chart_of_accounts WHERE account_code = ' . $this->q(self::PAYABLE_ACCOUNT) . ' LIMIT 1', 'DB') ?: 'Accounts Payable');
+            // Credit the vendor's own Accounts Payable sub-ledger (fims.vendors.sl_code -> COA child row, e.g. 2-01-01-010-01),
+            // the same way the DV does; fall back to the 2-01-01-010 control account when the vendor has none.
+            $payableCode  = self::PAYABLE_ACCOUNT;
+            $payableTitle = '';
+            $vendorId     = trim((string) ($res['data']['vendor_id'] ?? ''));
+            if ($vendorId !== '') {
+                $sl = App\ExecuteRows(
+                    'SELECT c.account_code, c.account_title FROM fims.vendors v JOIN fims.chart_of_accounts c ON c.account_id = v.sl_code OR c.account_code = v.sl_code'
+                    . ' WHERE v.vendor_id = ' . $this->q($vendorId) . ' LIMIT 1',
+                    'DB'
+                );
+                if ($sl) {
+                    $payableCode  = (string) $sl[0]['account_code'];
+                    $payableTitle = (string) $sl[0]['account_title'];
+                }
+            }
+            if ($payableTitle === '') {
+                // no vendor sub-ledger: use the first active sub-ledger under Accounts Payable (e.g. 2-01-01-010-01), if any
+                $first = App\ExecuteRows(
+                    'SELECT c.account_code, c.account_title FROM fims.chart_of_accounts c JOIN fims.chart_of_accounts p ON p.account_id = c.parent_account_id'
+                    . ' WHERE p.account_code = ' . $this->q(self::PAYABLE_ACCOUNT) . " AND c.status = 'Active' ORDER BY c.account_code LIMIT 1",
+                    'DB'
+                );
+                if ($first) {
+                    $payableCode  = (string) $first[0]['account_code'];
+                    $payableTitle = (string) $first[0]['account_title'];
+                }
+            }
+            if ($payableTitle === '') {
+                $payableTitle = (string) (App\ExecuteScalar('SELECT account_title FROM fims.chart_of_accounts WHERE account_code = ' . $this->q($payableCode) . ' LIMIT 1', 'DB') ?: 'Accounts Payable');
+            }
             $receipts = [];
             foreach ($res['data']['receipts'] as $dr) {
                 $rows = [];
@@ -594,7 +626,7 @@ class PoDrService
                 }
                 $rows[] = [
                     'account_title' => $payableTitle,
-                    'account_code'  => self::PAYABLE_ACCOUNT,
+                    'account_code'  => $payableCode,
                     'debit'         => 0,
                     'credit'        => round((float) $dr['total_amount'], 2),
                 ];

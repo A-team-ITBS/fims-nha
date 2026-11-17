@@ -416,6 +416,7 @@ async function amp_proforma(poNumber) {
                 const jj = await jr.json();
                 if (!jj.success) return;
                 r.jev_status = jj.data.jev_status || '';
+                r.jev_date   = jj.data.jev_date || '';                 // printed with the JEV number
                 r.draft = {
                     rows: (jj.data.lines || []).map(l => ({ code: l.account_code, title: l.account_title || '', debit: Number(l.debit) || 0, credit: Number(l.credit) || 0 })),
                     book: jj.data.book_id || '', particulars: jj.data.particulars || '',
@@ -442,7 +443,8 @@ function amp_pfDraft(rc) {
     if (!rc.draft) {
         rc.draft = {
             rows: rc.rows.map(r => ({ code: r.account_code, title: r.account_title || '', debit: Number(r.debit) || 0, credit: Number(r.credit) || 0 })),
-            book: '',            // fims.books.book_id, required to submit
+            // fims.books.book_id, required to submit — defaults to Main Office (book 1) until the user picks another
+            book: String((amp_books || []).find(b => String(b.book_id) === '1' || b.book_code === 'MAIN-OFFICE')?.book_id ?? ''),
             particulars: 'To record the delivery of ' + rc.dr_number + ' (PO ' + amp_pf.po + ')',   // pre-filled sentence, editable
         };
         if (!rc.draft.rows.length) rc.draft.rows.push({ code: '', title: '', debit: 0, credit: 0 });
@@ -479,7 +481,9 @@ function amp_renderProforma(active) {
             ${vrow('Delivery Receipt No.', amp_esc(rc.dr_number))}
             ${vrow('Total Amount', '<span class="amp-vw-num">₱' + num(rc.total) + '</span>')}
         </div>
-        <div class="amp-vw-card"><h4 class="amp-vw-card-title">Journal Entry Voucher</h4>
+        <div class="amp-vw-card"><h4 class="amp-vw-card-title">Pro-forma JEV</h4>
+        <div class="amp-tabs">${amp_pf.receipts.map(tab).join('')}</div>
+        <div style="margin-top:14px;">
             <div class="amp-row c2" style="margin-bottom:12px;">
                 <div class="amp-group">
                     <label class="amp-label" for="amp-pf-book">Book <span class="req">*</span></label>
@@ -491,8 +495,6 @@ function amp_renderProforma(active) {
                 <textarea id="amp-pf-particulars" class="amp-input" rows="2" placeholder="Particulars of the entry">${amp_esc(d.particulars)}</textarea>
             </div>
         </div>
-        <div class="amp-vw-card"><h4 class="amp-vw-card-title">Pro-forma JEV</h4>
-        <div class="amp-tabs">${amp_pf.receipts.map(tab).join('')}</div>
         <div class="amp-pf-top"><button type="button" class="amp-add-btn" id="amp-pf-add">+ Add row</button></div>
         <div class="amp-jev">
             <div class="amp-jev-head">
@@ -578,8 +580,11 @@ function amp_pfRefresh(active) {
     if (rc.jev_no) {                                                                    // already submitted as a JEV: it cannot be submitted again
         if (btn) { btn.disabled = true; btn.textContent = 'Submitted'; }
         if (msg) { msg.innerHTML = 'Submitted as Journal Entry Voucher <strong>' + amp_esc(rc.jev_no) + '</strong>' + (rc.jev_status ? ' (' + amp_esc(String(rc.jev_status).replace(/_/g, ' ').toLowerCase()) + ')' : '') + ' — read-only. <a href="JournalEntryVoucher">Open Journal Entry Vouchers</a>'; msg.classList.add('muted'); }
-        ['amp-pf-book', 'amp-pf-particulars', 'amp-pf-add'].forEach(id => { const el = $amp(id); if (el) el.disabled = true; });
-        document.querySelectorAll('#amp-view-body .amp-pf-row input, #amp-view-body .amp-pf-row button').forEach(el => { el.disabled = true; });
+        ['amp-pf-book', 'amp-pf-particulars'].forEach(id => { const el = $amp(id); if (el) el.disabled = true; });
+        document.querySelectorAll('#amp-view-body .amp-pf-row input').forEach(el => { el.disabled = true; });
+        // nothing left to edit or submit: no Add row, Submit or remove (×) buttons — only Print JEV remains
+        ['amp-pf-add', 'amp-pf-submit'].forEach(id => { const el = $amp(id); if (el) el.style.display = 'none'; });
+        document.querySelectorAll('#amp-view-body .amp-pf-del').forEach(el => { el.style.display = 'none'; });
     }
 }
 
@@ -604,7 +609,17 @@ async function amp_submitJev(active) {
 
     const d = amp_pfDraft(rc);
     if (!d.book) { amp_toast('Select a Book before submitting.', 'warning'); $amp('amp-pf-book')?.focus(); return; }
-    if (!confirm('Submit the Journal Entry Voucher for ' + rc.dr_number + '? It is saved as a Draft on the Journal Entry Vouchers page.')) return;
+    const confirmText = 'It is submitted for approval right away (Section Chief review).';
+    if (window.Swal) {
+        const ok = await window.Swal.fire({
+            icon: 'question', title: 'Submit the Journal Entry Voucher for ' + rc.dr_number + '?', text: confirmText,
+            showCancelButton: true, confirmButtonText: 'Submit', cancelButtonText: 'Cancel',
+            confirmButtonColor: '#0f2045', customClass: { container: 'amp-swal' },
+        });
+        if (!ok.isConfirmed) return;
+    } else if (!confirm('Submit the Journal Entry Voucher for ' + rc.dr_number + '? ' + confirmText)) {
+        return;
+    }
 
     const date = /^\d{4}-\d{2}-\d{2}$/.test(String(rc.delivery_date || '')) ? rc.delivery_date : new Date().toISOString().slice(0, 10);
     const body = {
@@ -628,7 +643,7 @@ async function amp_submitJev(active) {
         const json = await res.json();
         if (!json.success) throw new Error((json.errors?.length ? json.errors.join('\n') : null) || json.message || 'Failed to submit the Journal Entry Voucher.');
         rc.jev_no = json.data?.jev_no || 'saved';                // this delivery receipt can no longer be submitted
-        amp_toast(json.message || ('Journal Entry Voucher submitted for ' + rc.dr_number + ' (Draft).'), 'success');
+        amp_toast(json.message || ('Journal Entry Voucher submitted for ' + rc.dr_number + ' for approval.'), 'success');
         $amp('amp-view-overlay').classList.remove('open');
         window.location.href = 'JournalEntryVoucher';              // continue on the Journal Entry Vouchers page
     } catch (e) {
@@ -730,6 +745,14 @@ function amp_openModal(mode, row = null) {
     $amp('amp-si-number').value  = row?.si_number || '';
     $amp('amp-si-date').value    = row?.si_date || '';
     amp_initDrForm(row);                                      // one delivery receipt: DR no./date, balanced entries (form/dr-module-form.php)
+    // When editing, the IAR number, DR number and delivery date identify the record: shown but not editable
+    ['amp-iar-number', 'amp-dr-number', 'amp-dr-date'].forEach(id => {
+        const el = $amp(id);
+        el.readOnly = mode === 'edit';
+        el.style.background = mode === 'edit' ? 'var(--afims-surface-subtle, #F4F7FA)' : '';
+        el.style.pointerEvents = mode === 'edit' ? 'none' : '';   // also blocks the date picker
+        el.tabIndex = mode === 'edit' ? -1 : 0;
+    });
     $amp('amp-overlay').classList.add('open');
     if (mode === 'add') $amp('amp-po-number').focus();
 }

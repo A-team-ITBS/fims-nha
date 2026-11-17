@@ -58,7 +58,15 @@ class JevPrintService
         $rows   = [];
         $slD    = $slC = $glD = $glC = 0.0;
         $lines  = array_values(is_array($p['lines'] ?? null) ? $p['lines'] : []);
+        // Arrangement: debit lines first, then credit lines; within each, by GL account code (a sub-ledger sorts under its GL), so
+        // e.g. 1-06-05-030 Dr, 5-02-03-990 Dr, 2-01-01-010-01 Cr. Equal keys keep the order they were entered in (usort is stable).
+        $glOf = static fn ($l) => preg_match('/^(\d+-\d+-\d+-\d+)/', (string) ($l['account_code'] ?? ''), $mt) ? $mt[1] : (string) ($l['account_code'] ?? '');
+        $isCr = static fn ($l) => PrintService::amount($l['debit'] ?? $l['debit_amount'] ?? 0) == 0 && PrintService::amount($l['credit'] ?? $l['credit_amount'] ?? 0) != 0;
+        usort($lines, static fn ($a, $b) => [(int) $isCr($a), $glOf($a)] <=> [(int) $isCr($b), $glOf($b)]);
         $titles = $this->accountTitles($lines);
+        $slMap = $this->subLedgers($lines);   // account code => [gl_code, gl_title] for lines that post to a sub-ledger account
+        $grp    = null;                        // index (in $rows) of the open GL row that following SL lines of the same GL roll up into
+        $grpGl  = '';
         foreach ($lines as $i => $l) {
             $d      = PrintService::amount($l['debit'] ?? $l['debit_amount'] ?? 0);
             $c      = PrintService::amount($l['credit'] ?? $l['credit_amount'] ?? 0);
@@ -71,6 +79,30 @@ class JevPrintService
             $hasSl = $slCode !== '' || $slPath !== '';
             $glD += $d;
             $glC += $c;
+            $code = PrintService::text($l['account_code'] ?? '');
+            if (!$hasSl && isset($slMap[$code])) {
+                // A chart-of-accounts sub-ledger (e.g. 2-01-01-010-01): one GL row (GL title + GL code, the GL amount = the sum of its
+                // SL lines) followed by an indented SL row (SL title, SL code "01", the SL amount in the Subsidiary Ledger columns).
+                $info = $slMap[$code];
+                if ($grp === null || $grpGl !== $info['gl_code']) {
+                    $rows[] = ['kind' => 'gl', 'rc' => PrintService::text($l['responsibility_center'] ?? '') ?: $rc,
+                        'text' => $info['gl_title'], 'code' => $info['gl_code'], 'p' => $i === 0 ? 'P' : '', '_d' => 0.0, '_c' => 0.0, 'sl_d' => '', 'sl_c' => ''];
+                    $grp   = array_key_last($rows);
+                    $grpGl = $info['gl_code'];
+                }
+                $rows[$grp]['_d'] += $d;
+                $rows[$grp]['_c'] += $c;
+                $suffix = str_starts_with($code, $info['gl_code'] . '-') ? substr($code, strlen($info['gl_code']) + 1) : $code;
+                $rows[] = ['kind' => 'sl', 'text' => PrintService::text($l['account_title'] ?? '') ?: ($titles[$code] ?? $info['sl_title']), 'sl' => $suffix, 'sl_d' => $money($d), 'sl_c' => $money($c)];
+                $slD += $d;
+                $slC += $c;
+                continue;
+            }
+            $grp = null;
+            if (!$hasSl) {   // a GL with no sub-ledger: its amount also fills the Subsidiary Ledger columns (so both totals are the full amount)
+                $slD += $d;
+                $slC += $c;
+            }
             if ($hasSl) {
                 $slD += $d;
                 $slC += $c;
@@ -79,7 +111,8 @@ class JevPrintService
             $rows[] = ['kind' => 'gl', 'rc' => PrintService::text($l['responsibility_center'] ?? '') ?: $rc,
                 'text' => PrintService::text($l['account_title'] ?? '') ?: ($titles[PrintService::text($l['account_code'] ?? '')] ?? ''),
                 'code' => PrintService::text($l['account_code'] ?? ''),
-                'p' => $i === 0 ? 'P' : '', 'gl_d' => $money($d), 'gl_c' => $money($c)];
+                'p' => $i === 0 ? 'P' : '', 'gl_d' => $money($d), 'gl_c' => $money($c),
+                'sl_d' => $hasSl ? '' : $money($d), 'sl_c' => $hasSl ? '' : $money($c)];
             if ($hasSl) {
                 $desc = trim((string) ($l['description'] ?? ''));
                 if ($desc !== '') {
@@ -89,8 +122,17 @@ class JevPrintService
             }
         }
 
+        foreach ($rows as &$r) {   // rolled-up GL rows get their summed amounts
+            if (isset($r['_d'])) {
+                $r['gl_d'] = $money($r['_d']);
+                $r['gl_c'] = $money($r['_c']);
+                unset($r['_d'], $r['_c']);
+            }
+        }
+        unset($r);
+
         $number = $t('jev_number');
-        $temp   = $number === '' || stripos($number, 'TEMP') === 0;
+        $temp   =$number === '' || stripos($number, 'TEMP') === 0;
 
         $signatories = [];
         foreach (self::SIGNATORIES as [$key, $label, $title]) {
@@ -157,6 +199,42 @@ class JevPrintService
     }
 
     /**
+     * Lines posted to a sub-ledger account (a fims.chart_of_accounts child row, e.g. 2-01-01-010-01) →
+     * account code => [gl_code, gl_title, sl_title] of its parent GL. [] when nothing matches or the table can't be read.
+     */
+    private function subLedgers(array $lines): array
+    {
+        // By the code's shape: a GL code has 4 parts (2-01-01-010); one more part (2-01-01-010-01) makes it a sub-ledger of that GL.
+        $map = [];
+        $gls = [];
+        foreach ($lines as $l) {
+            $code = PrintService::text($l['account_code'] ?? '');
+            if (preg_match('/^(\d+-\d+-\d+-\d+)-([A-Za-z0-9]+)$/', $code, $mt)) {
+                $map[$code] = ['gl_code' => $mt[1], 'gl_title' => $mt[1], 'sl_title' => ''];
+                $gls[$mt[1]] = App\QuotedValue($mt[1], App\DataType::STRING, 'DB');
+            }
+        }
+        if (!$map) {
+            return [];
+        }
+        try {
+            $titles = [];
+            foreach (App\ExecuteRows('SELECT account_code, account_title FROM fims.chart_of_accounts WHERE account_code IN (' . implode(',', $gls) . ')', 'DB') ?: [] as $r) {
+                $titles[$r['account_code']] = $r['account_title'];
+            }
+            foreach ($map as $code => $info) {
+                $map[$code]['gl_title'] = $titles[$info['gl_code']] ?? $info['gl_code'];
+            }
+
+            return $map;
+        } catch (\Throwable $e) {
+            App\LogError('JevPrintService::subLedgers ' . $e->getMessage());
+
+            return [];
+        }
+    }
+
+    /**
      * A4 landscape (842 × 595pt), 12mm sides / 9mm top-bottom (774pt wide), Arial.
      * Mirrors scripts/gen_jev_docx.js. $media as CbaPrintService::html().
      * Dompdf ignores <colgroup> widths, so the first row carries them.
@@ -166,26 +244,30 @@ class JevPrintService
         $e   = static fn ($v) => htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8');
         $nl  = static fn ($v) => nl2br(htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8'), false);
         $w   = static fn (float $pct, string $css = '') => ' style="width:' . $pct . '%;' . $css . '"';   // one style attribute per cell
-        $php = '<span class="sym">₱</span>&nbsp;';   // ₱ — not in Helvetica for Dompdf
-        // 9 columns: RC | Accounts and Explanation | SL Code | SL Dr | SL Cr | Acct Code | P | GL Dr | GL Cr
-        $widths = [6.6, 43, 6.9, 8.3, 8.3, 8.3, 1.9, 8.3, 8.4];
-        $row = static function (array $c): string {   // $c: 9 cells as [html, class]
+        // 8 columns: RC | Accounts and Explanation | SL Code | SL Dr | SL Cr | Acct Code | GL Dr | GL Cr
+        $widths = [6.6, 47.8, 4.0, 8.3, 8.3, 8.3, 8.3, 8.4];
+        $row = static function (array $c): string {   // $c: 8 cells as [html, class]
             return '<tr>' . implode('', array_map(static fn ($x) => '<td' . ($x[1] ? ' class="' . $x[1] . '"' : '') . '>' . $x[0] . '</td>', $c)) . '</tr>';
         };
-        $text = static fn (string $html, string $cls = 'ac') => $row([['', 'rc'], [$html, $cls], ['', ''], ['', ''], ['', ''], ['', ''], ['', ''], ['', ''], ['', '']]);
+        $text = static fn (string $html, string $cls = 'ac') => $row([['', 'rc'], [$html, $cls], ['', ''], ['', ''], ['', ''], ['', ''], ['', ''], ['', '']]);
+        // The peso sign sits at the left of the first Debit amount of the Subsidiary Ledger and of the General Ledger (once each).
+        $slP = $glP = false;
+        $pesoLeft = '<span class="pl sym">₱</span>';
+        $slDr = function (string $v) use (&$slP, $e, $pesoLeft): string { $o = ($v !== '' && !$slP ? $pesoLeft : '') . $e($v); $slP = $slP || $v !== ''; return $o; };
+        $glDr = function (string $v) use (&$glP, $e, $pesoLeft): string { $o = ($v !== '' && !$glP ? $pesoLeft : '') . $e($v); $glP = $glP || $v !== ''; return $o; };
 
         $body  = '';
         $count = 0;
         foreach ($m['rows'] as $r) {
             $count++;
             if ($r['kind'] === 'gl') {
-                $body .= $row([[$e($r['rc']), 'rc'], [$e($r['text']), 'ac'], ['', 'sl'], ['', 'am'], ['', 'am'],
-                    [$e($r['code']), 'gc'], [$r['p'], 'p'], [$e($r['gl_d']), 'am'], [$e($r['gl_c']), 'am']]);
+                $body .= $row([[$e($r['rc']), 'rc'], [$e($r['text']), 'ac b'], ['', 'sl'], [$slDr((string) ($r['sl_d'] ?? '')), 'am'], [$e($r['sl_c'] ?? ''), 'am'],
+                    [$e($r['code']), 'gc'], [$glDr((string) $r['gl_d']), 'am'], [$e($r['gl_c']), 'am']]);
             } elseif ($r['kind'] === 'desc') {
                 $body .= $text($nl($r['text']), 'ac in1');
             } else {
-                $body .= $row([['', 'rc'], [$e($r['text']), 'ac in2'], [$e($r['sl']), 'sl'], [$e($r['sl_d']), 'am'], [$e($r['sl_c']), 'am'],
-                    ['', ''], ['', ''], ['', ''], ['', '']]);
+                $body .= $row([['', 'rc'], [$e($r['text']), 'ac in2'], [$e($r['sl']), 'sl'], [$slDr((string) $r['sl_d']), 'am'], [$e($r['sl_c']), 'am'],
+                    ['', ''], ['', ''], ['', '']]);
             }
         }
         for (; $count < $m['min_rows']; $count++) {
@@ -221,6 +303,7 @@ class JevPrintService
             . 'p{margin:0;}table{width:100%;border-collapse:collapse;table-layout:fixed;}'
             . '.hdr{text-align:center;margin-bottom:6pt;}.hdr>img{width:auto !important;height:auto;max-width:774pt;max-height:80pt;}'
             . '.sym{font-family:"DejaVu Sans",sans-serif;font-size:7pt;font-weight:bold;}'
+            . '.pl{float:left;}'
             . '.b{font-weight:bold;}'
             . '.head{border:1.2pt solid #000;}.head td{vertical-align:middle;}'
             . '.head .agency{border-right:1.2pt solid #000;text-align:center;padding:5pt 8pt;}'
@@ -233,7 +316,7 @@ class JevPrintService
             . '.main th,.main td{border:.75pt solid #000;padding:1.5pt 3pt;font-size:7.5pt;vertical-align:middle;}'
             . '.main tr.widths td{border:none;padding:0;height:0;}'
             . '.main th{font-weight:bold;text-align:center;}.main th.entries{font-size:8.5pt;}'
-            . '.main td.rc{text-align:center;font-size:7pt;}.main td.sl{text-align:center;}'
+            . '.main td.rc{text-align:center;font-size:7pt;}.main td.sl{text-align:center;font-weight:bold;}'
             . '.main td.am{text-align:right;font-family:"Courier New",Courier,monospace;white-space:nowrap;}'
             . '.main td.gc{text-align:center;font-family:"Courier New",Courier,monospace;font-weight:bold;}'
             . '.main td.p{text-align:center;font-weight:bold;padding:1.5pt 1pt;}'
@@ -254,13 +337,13 @@ class JevPrintService
             . '<div class="off-no first">JEV No. : &nbsp;' . $e($m['jev_number']) . '</div><div class="off-no">Date : &nbsp;' . $e($m['date']) . '</div></td></tr></table>'
             . '<table class="main">' . $widthRow
             . '<tr><th rowspan="3" style="font-size:6pt;">Responsibility<br>Center</th><th rowspan="3">Accounts and Explanation</th><th rowspan="3" style="font-size:6.5pt;">SL<br>Code</th>'
-            . '<th colspan="3" class="entries">ACCOUNTING ENTRIES</th><th rowspan="3"></th><th colspan="2" style="border-top:none;border-right:none;"></th></tr>'
+            . '<th colspan="3" class="entries">ACCOUNTING ENTRIES</th><th colspan="2" style="border-top:none;border-right:none;"></th></tr>'
             . '<tr><th colspan="2">Subsidiary Ledger</th><th rowspan="2">Account Code</th><th colspan="2">General Ledger</th></tr>'
             . '<tr><th>Debit</th><th>Credit</th><th>Debit</th><th>Credit</th></tr>'
             . $body
-            . '<tr class="total"><td colspan="3" style="text-align:center;">TOTAL</td>'
-            . '<td class="am">' . $php . $e($tt['sl_d']) . '</td><td class="am">' . $php . $e($tt['sl_c']) . '</td><td></td><td></td>'
-            . '<td class="am">' . $php . $e($tt['gl_d']) . '</td><td class="am">' . $php . $e($tt['gl_c']) . '</td></tr></table>'
+            . '<tr class="total"><td></td><td style="text-align:right;font-weight:normal;border-right:none;">TOTAL</td><td style="border-left:none;"></td>'
+            . '<td class="am">' . $pesoLeft . $e($tt['sl_d']) . '</td><td class="am">' . $pesoLeft . $e($tt['sl_c']) . '</td><td></td>'
+            . '<td class="am">' . $pesoLeft . $e($tt['gl_d']) . '</td><td class="am">' . $pesoLeft . $e($tt['gl_c']) . '</td></tr></table>'
             . '<table class="sigs"><tr>' . $sigs . '</tr></table>'
             . ($m['footer'] !== '' ? '<div class="foot">' . $e($m['footer']) . '</div>' : '')
             . ($m['temp_number'] !== '' ? '<div class="temp">Temporary Reference No.: <b>' . $e($m['temp_number']) . '</b></div>' : '')
