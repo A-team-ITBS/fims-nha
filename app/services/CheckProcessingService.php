@@ -158,7 +158,7 @@ class CheckProcessingService
     // class. Returns a plain success/message array instead of SendEmail()'s
     // own true|string-error-message return, so callers don't need to know
     // that convention.
-    private function sendModuleEmail(string $to, string $subject, string $htmlBody): array
+    private function sendModuleEmail(string $to, string $subject, string $htmlBody, array $attachments = []): array
     {
         $result = App\SendEmail(
             App\Config('SENDER_EMAIL'),
@@ -169,13 +169,45 @@ class CheckProcessingService
             $htmlBody,
             'HTML',
             'utf-8',
-            App\Config('SMTP.SECURE_OPTION')
+            App\Config('SMTP.SECURE_OPTION'),
+            $attachments
         );
         if ($result === true) {
             return ['success' => true];
         }
 
         return ['success' => false, 'message' => is_string($result) && $result !== '' ? $result : 'Unknown SMTP error.'];
+    }
+
+    // Builds the ['filename' => ..., 'content' => ...] shape App\SendEmail()
+    // expects (addStringAttachment under the hood — see src/phpfn.php) from
+    // one-or-more PSR-7 UploadedFileInterface objects straight off the
+    // request (the Send Notice modal's "attachment[]" file input, which can
+    // have multiple files selected — same object app/routes/file_upload.php's
+    // /upload/file passes to FileUploadServices::uploadFileToStorage() for a
+    // single one). Nothing is persisted to object storage here — the files
+    // only ever travel with this one email.
+    private function buildEmailAttachments($uploadedFiles): array
+    {
+        if (!$uploadedFiles) {
+            return [];
+        }
+        if (!is_array($uploadedFiles)) {
+            $uploadedFiles = [$uploadedFiles];
+        }
+
+        $attachments = [];
+        foreach ($uploadedFiles as $uploadedFile) {
+            if (!$uploadedFile || $uploadedFile->getError() !== UPLOAD_ERR_OK) {
+                continue;
+            }
+            $attachments[] = [
+                'filename' => $uploadedFile->getClientFilename(),
+                'content' => $uploadedFile->getStream()->getContents(),
+            ];
+        }
+
+        return $attachments;
     }
 
     // Unified notice email — replaces the two near-duplicate builders that
@@ -416,6 +448,18 @@ class CheckProcessingService
         if ($status !== '') {
             $where[] = 'c.status = ' . $this->str($status);
         }
+        // Splits the Check Preparation status pills' "For Released" vs
+        // "Released" (both status=RELEASED underneath — see
+        // syncCheckStatusFromRelease()) by the associated release row's own
+        // status, referencing the LATERAL-joined `cr` alias built below —
+        // fine to reference here since this only becomes SQL text once
+        // $whereSql is interpolated into the final query after that join.
+        $releasePhase = strtoupper(trim((string) ($params['release_phase'] ?? '')));
+        if ($releasePhase === 'PENDING') {
+            $where[] = "(cr.status IS NULL OR cr.status NOT IN ('RELEASED', 'ACKNOWLEDGED'))";
+        } elseif ($releasePhase === 'DONE') {
+            $where[] = "cr.status IN ('RELEASED', 'ACKNOWLEDGED')";
+        }
         $bankAccountId = (int) ($params['bank_account_id'] ?? 0);
         if ($bankAccountId > 0) {
             $where[] = "c.bank_account_id = {$bankAccountId}";
@@ -430,11 +474,37 @@ class CheckProcessingService
         }
         $whereSql = implode(' AND ', $where);
 
+        // LATERAL join to this check's most recent release row (if any) —
+        // surfaces the claimant and release sub-status (PENDING/NOTIFIED/
+        // RELEASED/ACKNOWLEDGED/UNCLAIMED) directly on the Check Preparation
+        // list, so "Mark as Released"/"Send Notice" can act on it without a
+        // second round-trip. A check only ever gets a release row once its
+        // own status moves to RELEASED (see setCheckStatus()), so this is
+        // null for PREPARED checks.
+        // Plain LEFT JOIN (not LATERAL) for cancellation — a check can only
+        // ever be cancelled once (cancelCheck() rejects an already
+        // CANCELLED/VOIDED check), so there's at most one check_cancellations
+        // row per check, unlike releases which can accumulate history.
+        // Surfaces the reason directly on the Check Preparation list for the
+        // "Cancelled" status pill, instead of a separate tab/table for it.
         $rows = App\ExecuteRowsAssociative(
             "SELECT c.check_id, c.check_number, c.check_date, c.dv_number, c.payee, c.amount, c.status, c.printed_at,
-                    c.bank_account_id, ba.account_name, ba.account_number, ba.bank_name, ba.bank_branch
+                    c.bank_account_id, ba.account_name, ba.account_number, ba.bank_name, ba.bank_branch,
+                    cr.release_id, cr.claimant_name, cr.claimant_email, cr.release_type,
+                    cr.status AS release_status,
+                    cc.reason AS cancel_reason, cc.reason_description AS cancel_reason_description,
+                    cc.cancelled_date, cc.replacement_check_id, rc.check_number AS replacement_check_number
              FROM {$this->tableChecks} c
              JOIN {$this->tableBankAccounts} ba ON ba.bank_account_id = c.bank_account_id
+             LEFT JOIN LATERAL (
+                 SELECT release_id, claimant_name, claimant_email, release_type, status
+                 FROM {$this->tableReleases} r
+                 WHERE r.check_id = c.check_id
+                 ORDER BY r.release_id DESC
+                 LIMIT 1
+             ) cr ON TRUE
+             LEFT JOIN {$this->tableCancellations} cc ON cc.check_id = c.check_id
+             LEFT JOIN {$this->tableChecks} rc ON rc.check_id = cc.replacement_check_id
              WHERE {$whereSql}
              ORDER BY c.check_date DESC, c.check_id DESC",
             'DB'
@@ -573,11 +643,14 @@ class CheckProcessingService
     // Moving INTO RELEASED or CANCELLED this way also creates/updates the
     // matching detail row (fims.check_releases / fims.check_cancellations)
     // — same tables the real Release/Cancel flows write to — so the check
-    // actually shows up in the Released/Cancellation tab too, not just as a
-    // relabeled row sitting only in Check Preparation. The release side
-    // takes $data['claimant_name'] (and ['claimant_type']) from this same
-    // modal's claimant dropdown/field if given — still optional/nullable,
-    // see setReleaseClaimant() to fill it in later if skipped here; the
+    // actually shows up in the For Released/Cancellation tab too, not just as
+    // a relabeled row sitting only in Check Preparation. The release side is
+    // created PENDING, not RELEASED — this only queues it into the For
+    // Released tab; Treasury still confirms the actual hand-over there via
+    // "Mark as Released" (updateReleaseStatus()). It takes
+    // $data['claimant_name'] (and ['claimant_type']) from this same modal's
+    // claimant dropdown/field if given — still optional/nullable, see
+    // setReleaseClaimant() to fill it in later if skipped here; the
     // cancellation side takes $data['reason'] the same way (defaulting to
     // OTHER if omitted/invalid).
     public function setCheckStatus($id, $data)
@@ -611,10 +684,15 @@ class CheckProcessingService
                     "SELECT release_id FROM {$this->tableReleases} WHERE check_id = {$id} ORDER BY release_id DESC LIMIT 1",
                     'DB'
                 );
+                // Status PENDING, not RELEASED — this just moves the check into the
+                // "For Released" queue; it isn't actually handed over yet. Treasury
+                // confirms the real hand-over afterward via the For Released tab's
+                // "Mark as Released" action (updateReleaseStatus()), which is what
+                // stamps release_date and syncs fims.checks.status back to RELEASED.
                 if ($existing) {
                     App\Execute(
                         "UPDATE {$this->tableReleases}
-                         SET status = 'RELEASED', release_date = COALESCE(release_date, CURRENT_DATE),
+                         SET status = 'PENDING',
                              claimant_name = COALESCE(" . $this->strOrNull($claimantName ?: null) . ", claimant_name),
                              claimant_type = " . ($claimantName !== '' ? $this->str($claimantType) : 'claimant_type') . ",
                              updated_at = CURRENT_TIMESTAMP
@@ -623,8 +701,8 @@ class CheckProcessingService
                     );
                 } else {
                     App\Execute(
-                        "INSERT INTO {$this->tableReleases} (check_id, release_type, claimant_type, claimant_name, status, release_date, created_by)
-                         VALUES ({$id}, 'DIRECT', " . $this->str($claimantType) . ', ' . $this->strOrNull($claimantName ?: null) . ", 'RELEASED', CURRENT_DATE, {$userId})",
+                        "INSERT INTO {$this->tableReleases} (check_id, release_type, claimant_type, claimant_name, status, created_by)
+                         VALUES ({$id}, 'DIRECT', " . $this->str($claimantType) . ', ' . $this->strOrNull($claimantName ?: null) . ", 'PENDING', {$userId})",
                         'DB'
                     );
                 }
@@ -1405,6 +1483,7 @@ BAT;
                  RETURNING release_id",
                 'DB'
             );
+            $this->syncCheckStatusFromRelease($checkId, 'PENDING');
 
             return $this->ok(['release_id' => $row['release_id']]);
         }
@@ -1435,13 +1514,17 @@ BAT;
     // this physical check in" (drives Check Preparation's own status tabs —
     // PREPARED/RELEASED/ENCASHED/OUTSTANDING/STALE/CANCELLED/VOIDED), kept
     // in sync here whenever a release record's own, finer-grained status
-    // changes. Only RELEASED/ACKNOWLEDGED/UNCLAIMED actually move the check
-    // (to RELEASED/RELEASED/STALE respectively) — PENDING and NOTIFIED mean
-    // the check hasn't physically left Treasury's custody yet, so the check
-    // itself is left exactly as it is (still PREPARED, usually).
+    // changes. PENDING/NOTIFIED/RELEASED/ACKNOWLEDGED all map the check to
+    // RELEASED ("For Released" vs "Released" is then distinguished purely by
+    // the release row's own status — see check-disbursement-voucher-page.php's
+    // checkStatusLabel()) — a check with any release record in flight, even
+    // one still physically in Treasury's custody awaiting an email notice,
+    // belongs under the For Released filter so its Mark as Released/Send
+    // Notice actions are actually discoverable there. UNCLAIMED still moves
+    // it to STALE.
     private function syncCheckStatusFromRelease(int $checkId, string $releaseStatus): void
     {
-        $map = ['RELEASED' => 'RELEASED', 'ACKNOWLEDGED' => 'RELEASED', 'UNCLAIMED' => 'STALE'];
+        $map = ['PENDING' => 'RELEASED', 'NOTIFIED' => 'RELEASED', 'RELEASED' => 'RELEASED', 'ACKNOWLEDGED' => 'RELEASED', 'UNCLAIMED' => 'STALE'];
         if (!isset($map[$releaseStatus])) {
             return;
         }
@@ -1466,7 +1549,7 @@ BAT;
     // NOTIFIED on success so it drops off the "pending notice" list the Send
     // Email Notice modal reads from. (Bulk/region sends go through
     // sendBulkReleaseNotice() instead — see that method.)
-    public function sendReleaseNotice($id, $data)
+    public function sendReleaseNotice($id, $data, $attachments = [])
     {
         $releaseId = (int) $id;
         $release   = $this->fetchReleaseWithCheck($releaseId);
@@ -1480,7 +1563,7 @@ BAT;
         $message = trim((string) ($data['message'] ?? ''));
         $subject = "Check Release Notice \u{2014} Check #{$release['check_number']}";
         $body    = $this->buildReleaseEmailBody([$release], $release['claimant_name'] ?? $release['payee'] ?? '', $message);
-        $result  = $this->sendModuleEmail($recipient, $subject, $body);
+        $result  = $this->sendModuleEmail($recipient, $subject, $body, $this->buildEmailAttachments($attachments));
         $userId  = (int) App\CurrentUserID();
         $checkId = (int) $release['check_id'];
 
@@ -1584,8 +1667,12 @@ BAT;
         if (!$existing) {
             return json_encode(["success" => false, "message" => "Release not found."]);
         }
+        // Mirrors the DIRECT-release creation path: moving into RELEASED stamps
+        // release_date if the release got here via EMAIL_NOTICE (PENDING/NOTIFIED)
+        // and never had one set.
+        $releaseDateSql = $status === 'RELEASED' ? 'release_date = COALESCE(release_date, CURRENT_DATE), ' : '';
         App\Execute(
-            "UPDATE {$this->tableReleases} SET status = " . $this->str($status) . ", updated_at = CURRENT_TIMESTAMP WHERE release_id = {$releaseId}",
+            "UPDATE {$this->tableReleases} SET {$releaseDateSql}status = " . $this->str($status) . ", updated_at = CURRENT_TIMESTAMP WHERE release_id = {$releaseId}",
             'DB'
         );
         $this->syncCheckStatusFromRelease((int) $existing['check_id'], $status);
@@ -1749,7 +1836,7 @@ BAT;
     // Bundles every currently-PENDING REGION release for one department into
     // a single email + log row, then flips them all to RELEASED. See this
     // class's docblock for why this calls App\SendEmail() directly.
-    public function sendBulkReleaseNotice($data)
+    public function sendBulkReleaseNotice($data, $attachments = [])
     {
         $departmentId = (int) ($data['department_id'] ?? 0);
         $recipient    = trim((string) ($data['recipient_email'] ?? ''));
@@ -1766,7 +1853,7 @@ BAT;
         $label  = $this->departmentLabel($departmentId) ?? '';
         $period = trim((string) ($data['period'] ?? ''));
 
-        return $this->dispatchBulkReleaseNotice($departmentId, $label, $releases, $period, trim((string) ($data['message'] ?? '')), $recipient);
+        return $this->dispatchBulkReleaseNotice($departmentId, $label, $releases, $period, trim((string) ($data['message'] ?? '')), $recipient, $this->buildEmailAttachments($attachments));
     }
 
     // No stored subject/body/check-list snapshot on check_release_email_log
@@ -1789,11 +1876,11 @@ BAT;
         return $this->dispatchBulkReleaseNotice($departmentId, $label, $releases, '', '', $log['recipient_email']);
     }
 
-    private function dispatchBulkReleaseNotice(int $departmentId, string $label, array $releases, string $period, string $message, string $recipient)
+    private function dispatchBulkReleaseNotice(int $departmentId, string $label, array $releases, string $period, string $message, string $recipient, array $attachments = [])
     {
         $subject = "Monthly Check Release Notice \u{2014} {$label}" . ($period !== '' ? " ({$period})" : '');
         $body    = $this->buildReleaseEmailBody($releases, $label, $message);
-        $result  = $this->sendModuleEmail($recipient, $subject, $body);
+        $result  = $this->sendModuleEmail($recipient, $subject, $body, $attachments);
         $userId  = (int) App\CurrentUserID();
         $count   = count($releases);
         $total   = array_sum(array_map(fn ($r) => (float) $r['amount'], $releases));
