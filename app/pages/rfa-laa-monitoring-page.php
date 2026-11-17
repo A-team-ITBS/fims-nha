@@ -18,7 +18,7 @@ namespace PHPMaker2024\FIMS;
  * before); the page lifts the projects out of it, in that same order, so a program's projects stay together.
  *
  * Open a project and the RFAs and LAAs drawn against its budget lines are listed under it (RFA / LAA Amount = what each drew there); open an RFA and
- * its disbursement voucher is listed under it (Disbursement = the voucher's net amount). Only an RFA is linked to a voucher (budget_allocation.dv_id),
+ * its disbursement voucher is listed under it — fetched by the RFA's budget_allocation.dv_id from fims.disbursement_vouchers (Disbursement = the voucher's gross_amount). Only an RFA is linked to a voucher,
  * so an LAA has nothing to open. These rows are detail: the totals above them do not change. The server sends them when asked with with_allocations=1.
  *
  * Same API as the COB page: GET /cob/filters, /cob/summary, /cob/rollup (layout_by=program) and, for a project row's View, /cob/read/{id} through the

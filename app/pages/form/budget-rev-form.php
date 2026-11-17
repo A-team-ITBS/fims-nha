@@ -926,7 +926,20 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
             pe.reqIn.setCustomValidity(isRequired() && !P.selected ? requiredMsg : '');
         }
 
-        // Set (or clear) the picked budget line.
+        // Sets the three filters to where a budget line sits: its originating unit (the office that filed its request), its program and its
+        // project — shown exactly as picking them in the filter bar would, and applied the same way (they narrow the list; "Clear filters"
+        // drops them). A line with no program / project leaves that filter empty.
+        function syncFiltersTo(l) {
+            P.unit    = l.rcId ? { key: l.rcId, label: l.office || l.rcId, full: withName(l.rcId, l.office) } : null;
+            P.program = l.programCode ? { code: l.programCode, label: withName(l.programCode, l.programName), full: withName(l.programCode, l.programName) } : null;
+            P.project = l.projectCode ? { code: l.projectCode, label: l.projectCode, full: withName(l.projectCode, l.projectName), program: l.programCode } : null;
+            showUnit(); showProgram(); showProject();
+            [unCombo, prCombo, pjCombo].forEach(c => c.syncClear());
+            refresh();
+        }
+
+        // Set (or clear) the picked budget line. opts.syncFilters: the user picked this line directly (by its account code, not through the
+        // filters), so the filters follow it — see syncFiltersTo().
         function select(line, opts = {}) {
             const ex = exclude();
             if (line && ex && keyOf(line) === keyOf(ex)) line = null;   // never the same line as the other picker
@@ -935,6 +948,7 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
             pe.reqIn.value = line ? inputLabel(line) : '';
             pe.reqIn.title = line ? shortLabel(line) : '';
             pe.reqClear.hidden = !line;
+            if (line && opts.syncFilters) syncFiltersTo(line);
             // native validation message when submitting without a pick
             syncRequired();
             renderCard(P.selected, pe.summary, pe.sumType, pe.sumTitle, pe.sumSub, pe.sumAmount);
@@ -997,7 +1011,7 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
         const reqCombo = combo({
             input: pe.reqIn, list: pe.reqList, clear: pe.reqClear, items: reqItems,
             query: () => (P.selected && pe.reqIn.value === inputLabel(P.selected) ? '' : pe.reqIn.value.trim()),
-            onPick: it => select(it.row, { autofill: true }),
+            onPick: it => select(it.row, { autofill: true, syncFilters: true }),   // picked directly: the filters follow the line
             onClear: () => { onClear(); select(null); },
             onBlur: () => { pe.reqIn.value = P.selected ? inputLabel(P.selected) : ''; },
         });

@@ -81,7 +81,7 @@ RFA / LAA Amount until something real feeds Disbursement.
 
 **Under a project** (RFA / LAA Monitoring page only — `GET /cob/rollup?...&with_allocations=1`): the project row opens onto the RFAs and LAAs that drew against
 its budget lines — one row each, `RFA / LAA Amount` being the sum of that allocation's 'converted' earmark rows on the project's lines — and an RFA row opens onto
-its disbursement voucher (`budget_allocation.dv_id`; `Disbursement` = the voucher's `net_amount`, with its status, date and claimant). Only RFAs are linked to a
+its disbursement voucher (`budget_allocation.dv_id`; the voucher is fetched from `fims.disbursement_vouchers` by that `dv_id`; `Disbursement` = the voucher's `gross_amount`, with its status, date and claimant). Only RFAs are linked to a
 voucher, so an LAA row has nothing to open; a voucher that was cancelled or rejected is no longer connected and is left out. These rows are detail: they are added
 after the totals, so no figure above them changes. If they cannot be read the tree is returned without them and the page says so.
 
