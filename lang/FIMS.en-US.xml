@@ -119,6 +119,12 @@
     <menu id="397">
       <phrase id="menutext" value="Trial Balance" />
     </menu>
+    <menu id="398">
+      <phrase id="menutext" value="Balance Sheet" />
+    </menu>
+    <menu id="764">
+      <phrase id="menutext" value="Income Statement" />
+    </menu>
     <menu id="651">
       <phrase id="menutext" value="Accounts Set-up" />
     </menu>
@@ -1687,6 +1693,12 @@
     </table>
     <table id="trial_balance_page">
       <phrase id="tblcaption" value="Trial Balance" />
+    </table>
+    <table id="balance_sheet_page">
+      <phrase id="tblcaption" value="Balance Sheet" />
+    </table>
+    <table id="income_statement_page">
+      <phrase id="tblcaption" value="Income Statement" />
     </table>
     <table id="budget_prop_page">
       <phrase id="tblcaption" value="Budget Propose" />

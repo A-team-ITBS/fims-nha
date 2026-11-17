@@ -124,6 +124,8 @@
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone ($p['PHPMaker2024\\FIMS\\Attributes\\Get'] ?? \Symfony\Component\VarExporter\Internal\Registry::p('PHPMaker2024\\FIMS\\Attributes\\Get')),
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Get'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
@@ -220,6 +222,16 @@
     [
         'PHPMaker2024\\FIMS\\Attributes\\Map' => [
             'methods' => [
+                [
+                    'GET',
+                    'POST',
+                    'OPTIONS',
+                ],
+                [
+                    'GET',
+                    'POST',
+                    'OPTIONS',
+                ],
                 [
                     'GET',
                     'POST',
@@ -1318,6 +1330,7 @@
                 '/AuditLogsView[/{id}]',
                 '/AuditLogsEdit[/{id}]',
                 '/AuditLogsDelete[/{id}]',
+                '/BalanceSheetPage[/{params:.*}]',
                 '/BankAccountManagementPage[/{params:.*}]',
                 '/BankManagementPage[/{params:.*}]',
                 '/BudgetAllocationForm[/{params:.*}]',
@@ -1382,6 +1395,7 @@
                 '/GeneralLedgerPage[/{params:.*}]',
                 '/IarModule[/{params:.*}]',
                 '/IdGenerator[/{params:.*}]',
+                '/IncomeStatementPage[/{params:.*}]',
                 '/JournalEntryVoucher[/{params:.*}]',
                 '/JournalsPage[/{params:.*}]',
                 '/JwtSessionsList[/{session_id}]',
@@ -1535,6 +1549,7 @@
                 'PHPMaker2024\\FIMS\\AuditLogsController:view',
                 'PHPMaker2024\\FIMS\\AuditLogsController:edit',
                 'PHPMaker2024\\FIMS\\AuditLogsController:delete',
+                'PHPMaker2024\\FIMS\\BalanceSheetPageController:custom',
                 'PHPMaker2024\\FIMS\\BankAccountManagementPageController:custom',
                 'PHPMaker2024\\FIMS\\BankManagementPageController:custom',
                 'PHPMaker2024\\FIMS\\BudgetAllocationFormController:custom',
@@ -1599,6 +1614,7 @@
                 'PHPMaker2024\\FIMS\\GeneralLedgerPageController:custom',
                 'PHPMaker2024\\FIMS\\IarModuleController:custom',
                 'PHPMaker2024\\FIMS\\IdGeneratorController:custom',
+                'PHPMaker2024\\FIMS\\IncomeStatementPageController:custom',
                 'PHPMaker2024\\FIMS\\JournalEntryVoucherController:custom',
                 'PHPMaker2024\\FIMS\\JournalsPageController:custom',
                 'PHPMaker2024\\FIMS\\JwtSessionsController:list',
@@ -1727,6 +1743,12 @@
                 'PHPMaker2024\\FIMS\\WorkflowManagerController:custom',
             ],
             'middleware' => [
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
                 [
                     'PHPMaker2024\\FIMS\\PermissionMiddleware',
                 ],
@@ -2397,6 +2419,7 @@
                 'view.audit_logs',
                 'edit.audit_logs',
                 'delete.audit_logs',
+                'custom.balance_sheet_page',
                 'custom.bank_account_management_page',
                 'custom.bank_management_page',
                 'custom.budget_allocation_form',
@@ -2461,6 +2484,7 @@
                 'custom.general_ledger_page',
                 'custom.IARModule',
                 'custom.IDGenerator',
+                'custom.income_statement_page',
                 'custom.JournalEntryVoucher',
                 'custom.journals_page',
                 'list.jwt_sessions',
@@ -2589,6 +2613,8 @@
                 'custom.WorkflowManager',
             ],
             'options' => [
+                [],
+                [],
                 [],
                 [],
                 [],
@@ -3023,6 +3049,8 @@
         $o[212],
         $o[213],
         $o[214],
+        $o[215],
+        $o[216],
     ],
     []
 );
