@@ -38,6 +38,21 @@ class CbaPrintService
     }
 
     /**
+     * " necessary to cover the <description>" for the certify sentence. The description is the memo request's as typed
+     * (with or without a leading "the"), so "the" is added only when missing — never "the the"; a blank description
+     * leaves the phrase out ("funds in the amount of …"), never "to cover the in the amount". Same rule as the LAA.
+     */
+    private static function coverPhrase(string $desc): string
+    {
+        $desc = trim($desc);
+        if ($desc === '') {
+            return '';
+        }
+
+        return ' necessary to cover ' . (preg_match('/^the\s/i', $desc) ? '' : 'the ') . $desc;
+    }
+
+    /**
      * CBA model. Payload (all optional):
      *   allocation_number, document_type (CO | COE), project_description,
      *   requested_amount, allocated_amount, fiscal_year, fiscal_year_label,
@@ -66,7 +81,7 @@ class CbaPrintService
 
         // ── Certify paragraph: amount phrases bold ──────────────────────────
         $body = [
-            ['text' => 'This is to certify that funds necessary to cover the ' . $projectDesc . ' in the amount of ', 'bold' => false],
+            ['text' => 'This is to certify that funds' . self::coverPhrase($projectDesc) . ' in the amount of ', 'bold' => false],
             ['text' => strtoupper(PrintService::amountInWords($primary)) . ' (P' . PrintService::money($primary) . ')', 'bold' => true],
         ];
         if ($cash > 0) {
@@ -153,7 +168,7 @@ class CbaPrintService
         $words = preg_replace('/\s+Pesos$/', '', PrintService::amountInWords((float) intdiv($cents, 100)))
             . sprintf(' and %02d/100 Pesos', $cents % 100);
 
-        $body = [['text' => 'This is to certify that budgetary requirement necessary to cover the ' . $desc
+        $body = [['text' => 'This is to certify that budgetary requirement' . self::coverPhrase($desc)
             . ' in the amount of ' . $words . ' (P' . PrintService::money($amount) . ')'
             . ' is provided for in the Approved Corporate Operating Budget' . ($year !== '' ? ' for CY ' . $year : '') . '.', 'bold' => false]];
 

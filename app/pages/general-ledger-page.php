@@ -41,6 +41,14 @@ $_gl_api = preg_match('~/api$~', $_gl_api) ? $_gl_api : $_gl_api . '/api';
     #gl-root .gl-group-row td { background: var(--afims-bg-soft, #F5F6FA); font-weight: 600; }
     #gl-root .gl-ending-balance { text-align: right; padding: 8px 4px; font-size: 13px; color: var(--afims-text-muted,#62657E); }
     #gl-root .gl-ending-balance strong { color: inherit; font-weight: 700; }
+
+    /* Dark mode: --afims-bg-soft is not a theme token, so the account group rows fell back to a near-white #F5F6FA (light text on
+       it = unreadable); the account search results and the summary cards were hard-coded white */
+    html.afims-dark[data-bs-theme="dark"] #gl-root .gl-group-row td { background: var(--afims-surface-subtle, #22294A); color: #FFFFFF; border-top: 1px solid var(--afims-border-strong, #4A5270); }
+    html.afims-dark[data-bs-theme="dark"] #gl-root .gl-group-row td span { color: var(--afims-text-muted, #AAAFBE) !important; }
+    html.afims-dark[data-bs-theme="dark"] #gl-root :is(.gl-combo-results, .gl-summary-card) { background: var(--afims-surface, #1A1F38); border-color: var(--afims-border-strong, #4A5270); color: var(--afims-text, #E4ECF2); }
+    html.afims-dark[data-bs-theme="dark"] #gl-root .gl-combo-item:hover { background: var(--afims-primary-soft, #0F2456); color: #FFFFFF; }
+    html.afims-dark[data-bs-theme="dark"] #gl-root :is(.gl-summary-label, .gl-combo-empty, .gl-ending-balance) { color: var(--afims-text-muted, #AAAFBE); }
 </style>
 
 <div id="gl-root" class="nha-root">
@@ -62,6 +70,10 @@ $_gl_api = preg_match('~/api$~', $_gl_api) ? $_gl_api : $_gl_api . '/api';
             <button id="gl-refresh" type="button" class="nha-btn-hdr" title="Refresh">
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                 Refresh
+            </button>
+            <button id="gl-print" type="button" class="nha-btn-hdr" title="Print this account's General Ledger sheet" style="display:none;">
+                <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+                Print
             </button>
         </div>
     </div>
@@ -136,7 +148,6 @@ $_gl_api = preg_match('~/api$~', $_gl_api) ? $_gl_api : $_gl_api . '/api';
                         <th>JEV No.</th>
                         <th>Doc Ref No.</th>
                         <th>DV Number</th>
-                        <th>SL Code</th>
                         <th>Particulars</th>
                         <th class="text-end">Debit</th>
                         <th class="text-end">Credit</th>
@@ -144,7 +155,7 @@ $_gl_api = preg_match('~/api$~', $_gl_api) ? $_gl_api : $_gl_api . '/api';
                     </tr>
                 </thead>
                 <tbody id="gl-tbody">
-                    <tr><td colspan="9"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
+                    <tr><td colspan="8"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
                 </tbody>
             </table>
         </div>
@@ -166,6 +177,7 @@ const GL_BOOK_API = GL_BASE + '/books/all';
 
 let gl_selectedAccount = null; // { account_code, account_title }
 let gl_searchTimer = null;
+let gl_ledger = null;          // the last single-account ledger loaded (what Print prints); null in the all-accounts view
 
 const $gl = id => document.getElementById(id);
 
@@ -186,6 +198,7 @@ else gl_boot();
 
 function gl_bindEvents() {
     $gl('gl-refresh')?.addEventListener('click', () => gl_load());
+    $gl('gl-print')?.addEventListener('click', () => gl_print());
     $gl('gl-filter-fy')?.addEventListener('change', () => gl_load());
     $gl('gl-filter-book')?.addEventListener('change', () => gl_load());
 
@@ -279,6 +292,7 @@ async function gl_load() {
         const json = await res.json();
         if (!json.success) throw new Error(json.message || 'Failed to load the General Ledger.');
 
+        gl_setPrintable(json.grouped ? null : json);
         if (json.grouped) {
             $gl('gl-summary').style.display = 'none';
             $gl('gl-ending').style.display = 'none';
@@ -289,11 +303,36 @@ async function gl_load() {
             gl_renderEnding(json.ending_balance, json.debit_normal);
         }
     } catch (e) {
+        gl_setPrintable(null);
         gl_renderTable([]);
         gl_showError('Could not load data: ' + e.message);
     } finally {
         window.PagePreloader?.hide();
     }
+}
+
+/* ── Print — the GENERAL LEDGER sheet (monthly summary) of the account shown ──────────────────────
+   Shared print preview (readone/print-preview-readone.php): prp_glPayload(ledger) → prp_open(…, GL).
+   The sheet is one fiscal year: the Fiscal Year filter, else the year of the postings shown (when they
+   span several years, pick one first). Only for a single account — hidden in the all-accounts view. */
+function gl_setPrintable(json) {
+    gl_ledger = json;
+    const btn = $gl('gl-print');
+    if (btn) btn.style.display = json ? '' : 'none';
+}
+async function gl_print() {
+    if (!gl_ledger || typeof prp_open !== 'function') return;
+    gl_hideError();
+    let fy = $gl('gl-filter-fy').value;
+    if (!fy) {
+        const years = [...new Set((gl_ledger.data ?? []).map(r => String(r.posting_date || '').slice(0, 4)).filter(Boolean))];
+        if (years.length > 1) {
+            gl_showError('This account has postings in ' + years.join(', ') + ' — pick a Fiscal Year to print (the ledger sheet is one year).');
+            return;
+        }
+        fy = years[0] || String(new Date().getFullYear());
+    }
+    await prp_open(prp_glPayload(gl_ledger, { fiscal_year: fy }), { type: 'GL' });
 }
 
 /* ── Summary (account header — code/name/normal balance/class) ──────────────── */
@@ -318,7 +357,7 @@ function gl_renderEnding(endingBalance, debitNormal) {
 function gl_renderTable(rows, debitNormal) {
     const tbody = $gl('gl-tbody');
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="9"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No posted transactions for this account.</span></div></td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No posted transactions for this account.</span></div></td></tr>';
         return;
     }
     tbody.innerHTML = rows.map(r => gl_rowHtml(r, debitNormal)).join('');
@@ -328,12 +367,12 @@ function gl_renderTable(rows, debitNormal) {
 function gl_renderGroupedTable(accounts) {
     const tbody = $gl('gl-tbody');
     if (!accounts.length) {
-        tbody.innerHTML = '<tr><td colspan="9"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">Nothing posted yet.</span></div></td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">Nothing posted yet.</span></div></td></tr>';
         return;
     }
     tbody.innerHTML = accounts.map(a => `
         <tr class="gl-group-row">
-            <td colspan="6">${gl_esc(a.account.account_code)} — ${gl_esc(a.account.account_title)} <span style="font-weight:400;color:var(--afims-text-muted,#62657E);">(${gl_esc(a.normal_balance)}-normal, ${gl_esc(a.account.account_type)})</span></td>
+            <td colspan="5">${gl_esc(a.account.account_code)} — ${gl_esc(a.account.account_title)} <span style="font-weight:400;color:var(--afims-text-muted,#62657E);">(${gl_esc(a.normal_balance)}-normal, ${gl_esc(a.account.account_type)})</span></td>
             <td class="text-end nha-mono">${gl_peso(a.total_debit)}</td>
             <td class="text-end nha-mono">${gl_peso(a.total_credit)}</td>
             <td class="text-end nha-mono">${gl_peso(Math.abs(a.ending_balance))}${gl_balSide(a.ending_balance, a.debit_normal)}</td>
@@ -348,7 +387,6 @@ function gl_rowHtml(r, debitNormal) {
         <td class="nha-mono">${gl_esc(r.jev_no) || '—'}${r.reference_no && r.reference_no.endsWith('-REV') ? ' <span class="nha-bdg nha-bdg-orange" style="margin-left:4px;">Reversal</span>' : ''}</td>
         <td class="nha-mono">${gl_esc(r.doc_ref_no) || '—'}</td>
         <td class="nha-mono">${gl_esc(r.dv_no) || '—'}</td>
-        <td>${gl_esc(r.sl_code) || '—'}</td>
         <td>${gl_esc(r.description) || gl_esc(r.sl_name) || '—'}</td>
         <td class="text-end nha-mono">${Number(r.debit) > 0 ? gl_peso(r.debit) : ''}</td>
         <td class="text-end nha-mono">${Number(r.credit) > 0 ? gl_peso(r.credit) : ''}</td>
@@ -382,3 +420,7 @@ function gl_esc(text) {
 function gl_showError(msg) { $gl('gl-error').style.display = 'flex'; $gl('gl-error-msg').textContent = msg; }
 function gl_hideError()    { $gl('gl-error').style.display = 'none'; }
 </script>
+<?php
+// Print → the shared print preview (prp_open + prp_glPayload).
+include_once __DIR__ . '/readone/print-preview-readone.php';
+?>

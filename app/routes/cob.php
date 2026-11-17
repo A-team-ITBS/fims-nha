@@ -14,7 +14,7 @@ use PHPMaker2024\FIMS\Service\GlobalService;
  *
  *   GET /cob/filters                 the options of the filter drop-downs (values that exist in approved data)
  *   GET /cob/summary                 the KPI cards: counts + totals
- *   GET /cob/rollup?layout_by=       the tree tabs: region | fund_source | component. Every node carries the eight columns of the COB
+ *   GET /cob/rollup?layout_by=       the tree tabs: region | fund_source | component | program. Every node carries the eight columns of the COB
  *                                    Monitoring sheet: approved_amount, revision_amount, revised_amount, cba_requested, available_amount,
  *                                    rfa_approved, laa_issued, remaining_balance
  *   GET /cob/read/{budget_reference_number}   one approved request in full, attachments included

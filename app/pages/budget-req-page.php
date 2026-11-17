@@ -244,6 +244,40 @@ window.bgr_afterSave = () => bgr_load();
 async function bgr_bootstrapLoad() {
     await bgr_load();
     bgr_bindListEvents();
+    bgr_openFromLink();
+}
+
+/* ── Opened from a notification ─────────────────────────────────
+   When a budget revision / realignment is approved, every user of the originating office is notified (BudgetRevisionService); the
+   notification's link is BudgetReqPage?open=cob&fy=<year>. Arriving with it, this sets the Fiscal Year filter to that year (the list
+   behind follows it) and then presses "View as COB" exactly as a click would — so the user lands on the revised budget. The button only
+   exists for the originating offices (not on the FMD's list), so nobody else gets a modal. The parameters are removed from the address
+   afterwards, so a refresh or the Back button does not open it again.
+   The parameter is "open", not "view": "view" is reserved by PHPMaker (Config("VIEW")) — the page class reads it as a template name, so
+   ?view=cob failed with 'View cannot render "cob.php"' before this page even loaded. */
+async function bgr_openFromLink() {
+    const q = new URLSearchParams(location.search);
+    if (q.get('open') !== 'cob') return;
+    const fy = (q.get('fy') || '').trim();
+    try {
+        const u = new URL(location.href);
+        u.searchParams.delete('open');
+        u.searchParams.delete('fy');
+        history.replaceState(null, '', u);
+    } catch (e) { /* cosmetic */ }
+
+    try { await window.bgrFormReady; } catch (e) { /* the form reports its own load errors */ }   // the year dropdown is filled by then
+
+    const sel = $bgr('bgr-filter-fiscal-yr');
+    if (sel && /^\d{4}$/.test(fy)) {
+        if (![...sel.options].some(o => o.value === fy)) sel.insertAdjacentHTML('beforeend', `<option value="${fy}">${fy}</option>`);
+        if (sel.value !== fy) {
+            sel.value = fy;
+            bgr_page = 1;
+            await bgr_load();
+        }
+    }
+    $bgr('bgr-view-cob')?.click();
 }
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', bgr_bootstrapLoad);

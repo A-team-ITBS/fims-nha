@@ -415,9 +415,18 @@ const $bgr = id => document.getElementById(id);
 // bgr_loadChartOfAccounts is NOT included here — it's only needed once the
 // modal actually opens (bgr_openModal awaits it there), so it's not fetched
 // at all on page load unless the user opens the form.
+// window.bgrFormReady settles once the dropdowns above are filled (Programs, Sub-Programs, and the Fiscal Years the list's own Fiscal Year
+// filter shows too). The host page awaits it before it acts on a notification link (budget-req-page.php, bgr_openFromLink), so the year
+// it asks for is already in the filter — in order, and not added twice.
+let bgr_formReadyResolve;
+window.bgrFormReady = new Promise(resolve => { bgr_formReadyResolve = resolve; });
 async function bgr_formBootstrap() {
-    await Promise.all([bgr_loadPrograms(), bgr_loadSubPrograms(), bgr_loadFiscalYears()]);
-    bgr_bindFormEvents();
+    try {
+        await Promise.all([bgr_loadPrograms(), bgr_loadSubPrograms(), bgr_loadFiscalYears()]);
+        bgr_bindFormEvents();
+    } finally {
+        bgr_formReadyResolve();
+    }
 }
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', bgr_formBootstrap);

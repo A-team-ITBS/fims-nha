@@ -73,6 +73,22 @@ $_prgf_api = $_prg_api ?? \PHPMaker2024\FIMS\Config('API.FIMS_URL');
     #prg-footer .prg-btn-ghost:hover:not(:disabled) { background:var(--afims-surface-subtle, #F4F7FA); }
     #prg-footer .prg-btn-navy { background:var(--afims-heading-fill, #000E3E);border-color:var(--afims-heading-fill, #000E3E);color:var(--afims-pure-white, #FFFFFF); }
     #prg-footer .prg-btn-navy:hover:not(:disabled) { opacity:.92; }
+    /* Close button: the rules above target #prg-close, which matches nothing (the button's id is prg-modal-close), so it showed
+       as a bare grey browser button — styled here like the other FIMS modals */
+    #prg-modal-close { flex-shrink:0;width:30px;height:30px;padding:0;border-radius:8px;cursor:pointer;display:flex;align-items:center;
+        justify-content:center;font-size:20px;line-height:1;color:var(--afims-pure-white, #FFFFFF);background:rgba(255,255,255,.12);
+        border:1px solid rgba(255,255,255,.25);transition:background .15s; }
+    #prg-modal-close:hover { background:rgba(255,255,255,.22); }
+
+    /* Dark mode — the selects rendered with the browser's native grey; match the text inputs and the theme */
+    html.afims-dark[data-bs-theme="dark"] :is(.prg-input, .prg-select) { color-scheme:dark;background-color:var(--afims-surface, #1A1F38) !important;
+        border-color:var(--afims-border-strong, #4A5270) !important;color:var(--afims-text, #E4ECF2) !important; }
+    html.afims-dark[data-bs-theme="dark"] .prg-select option { background-color:var(--afims-surface, #1A1F38);color:var(--afims-text, #E4ECF2); }
+    html.afims-dark[data-bs-theme="dark"] .prg-input::placeholder { color:#9AA3B5;opacity:1; }
+    html.afims-dark[data-bs-theme="dark"] :is(.prg-input, .prg-select):focus { border-color:var(--afims-primary, #3861BC) !important;
+        box-shadow:0 0 0 3px color-mix(in srgb, var(--afims-primary, #3861BC) 25%, transparent); }
+    html.afims-dark[data-bs-theme="dark"] :is(.prg-input, .prg-select):disabled { background-color:var(--afims-surface-subtle, #22294A) !important;
+        color:var(--afims-text-muted, #AAAFBE) !important; }
 </style>
 
 <div id="prg-overlay">

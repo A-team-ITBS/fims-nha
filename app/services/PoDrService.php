@@ -99,6 +99,8 @@ class PoDrService
             'total_amount'  => $d['total_amount'] ?? '0.00',
             'entries'       => array_values(array_filter($d['lines'] ?? [], 'is_array')),
             'items'         => array_values(array_filter($d['items'] ?? [], 'is_array')),
+            'jev_id'        => $d['jev_id'] ?? null,    // set once its pro-forma was submitted as a JEV
+            'jev_no'        => $d['jev_no'] ?? null,
         ];
     }
 
@@ -199,6 +201,7 @@ class PoDrService
         foreach (App\ExecuteRows("SELECT account_code, account_title FROM fims.chart_of_accounts WHERE account_code IN ({$in})", 'DB') ?: [] as $r) {
             $titles[$r['account_code']] = (string) $r['account_title'];
         }
+        // (a subsidiary ledger, e.g. 5-02-03-010-01, is a child row of its GL account in the chart of accounts, so it is found here too)
         foreach ($entries as &$en) {
             if (!isset($titles[$en['account_code']])) {
                 return [null, null, "Account code '{$en['account_code']}' was not found in the chart of accounts."];
@@ -365,7 +368,9 @@ class PoDrService
     /**
      * The POs the IAR can be recorded against: the PO numbers of the Budget Allocation's RFA rows (allocation_type = 'RFA').
      * One row per PO number: { po_number, po_date, requesting_rc_id, requesting_office, vendor_id, vendor_name, po_amount, dr_total, lines }.
-     *   po_date          = the RFA's creation date (budget_allocation has no PO date column of its own)
+     *   po_date          = the PO's own date when the PO exists in the Purchase Order module (fims.purchase_orders, same
+     *                      po_number, not CANCELLED); otherwise the RFA's creation date (budget_allocation has no PO date column)
+     *   vendor_id/_name  = the RFA's vendor; when the RFA has none, the vendor of that Purchase Order
      *   requesting_office = fims.responsibility_code.rc_name of requesting_rc_id
      *   po_amount        = sum of line_transaction[].requested_amount
      *   dr_total         = total of the delivery receipts already recorded for the PO (PO balance = po_amount - dr_total)
@@ -387,9 +392,9 @@ class PoDrService
         }
         $sql = "SELECT * FROM (
                     SELECT DISTINCT ON (a.po_number)
-                           a.po_number, TO_CHAR(a.created_at, 'YYYY-MM-DD') AS po_date, a.created_at,
+                           a.po_number, TO_CHAR(COALESCE(pom.po_date, a.created_at), 'YYYY-MM-DD') AS po_date, a.created_at,
                            a.requesting_rc_id, rc.rc_name AS requesting_office,
-                           a.vendor_id, v.vendor_name,
+                           COALESCE(a.vendor_id, pom.vendor_id) AS vendor_id, COALESCE(v.vendor_name, pom.vendor_name) AS vendor_name,
                            " . $this->requestedTotalSql() . " AS po_amount,
                            (SELECT COALESCE(SUM((d.value ->> 'total_amount')::numeric), 0)
                               FROM {$this->h} i, jsonb_array_elements(i.line_transaction) AS d(value)
@@ -398,6 +403,13 @@ class PoDrService
                     FROM fims.budget_allocation a
                     LEFT JOIN fims.responsibility_code rc ON rc.rc_id = a.requesting_rc_id
                     LEFT JOIN fims.vendors v ON v.vendor_id = a.vendor_id
+                    LEFT JOIN LATERAL (
+                        SELECT p.po_date, p.vendor_id, p.vendor_name
+                        FROM fims.purchase_orders p
+                        WHERE p.po_number = a.po_number AND p.status <> 'CANCELLED'
+                        ORDER BY p.po_id DESC
+                        LIMIT 1
+                    ) pom ON TRUE
                     WHERE {$where}
                     ORDER BY a.po_number, a.created_at DESC, a.allocation_id DESC
                 ) po" . ($onlyWithBalance ? ' WHERE po.po_amount - po.dr_total > 0' : '') . " ORDER BY po.created_at DESC, po.po_number" . ($limit > 0 ? ' LIMIT ' . (int) $limit : '');
@@ -421,18 +433,28 @@ class PoDrService
         }
     }
 
-    /** Search for the Account Code picker: the whole chart of accounts (postable, active), by code or title. */
+    /**
+     * Search for the Account Code picker, by code or title: the postable, active accounts of the chart of accounts — except a
+     * GL account that has subsidiary ledgers. An SL is a child row of its GL account (chart_of_accounts.parent_account_id), e.g.
+     * 5-02-03-010-01 "Office Supplies" under 5-02-03-010 "Office Supplies Expenses"; when a GL account has postable SLs only its
+     * SLs are offered. Typing the GL code (5-02-03-010) finds its SLs too.
+     */
     public function searchAccounts(string $search = ''): array
     {
         try {
-            $where = "COALESCE(posting_allowed, TRUE) AND COALESCE(status, 'Active') ILIKE 'active'";
+            $where = "COALESCE(c.posting_allowed, TRUE) AND COALESCE(c.status, 'Active') ILIKE 'active'
+                      AND NOT EXISTS (SELECT 1 FROM fims.chart_of_accounts ch
+                                       WHERE ch.parent_account_id = c.account_id AND ch.posting_allowed AND COALESCE(ch.status, 'Active') ILIKE 'active')";
             if (trim($search) !== '') {
                 $s      = $this->q('%' . trim($search) . '%');
-                $where .= " AND (account_code ILIKE {$s} OR account_title ILIKE {$s})";
+                $where .= " AND (c.account_code ILIKE {$s} OR c.account_title ILIKE {$s} OR p.account_code ILIKE {$s})";
             }
             $rows = App\ExecuteRows(
-                "SELECT DISTINCT ON (account_code) account_code, account_title FROM fims.chart_of_accounts WHERE {$where}
-                 ORDER BY account_code LIMIT 30",
+                "SELECT DISTINCT ON (c.account_code) c.account_code, c.account_title
+                   FROM fims.chart_of_accounts c
+                   LEFT JOIN fims.chart_of_accounts p ON p.account_id = c.parent_account_id
+                  WHERE {$where}
+                  ORDER BY c.account_code LIMIT 30",
                 'DB'
             ) ?: [];
 
@@ -569,7 +591,37 @@ class PoDrService
                 return ['success' => false, 'message' => "No delivery receipts found for PO '{$poNumber}'."];
             }
 
-            $payableTitle = (string) (App\ExecuteScalar('SELECT account_title FROM fims.chart_of_accounts WHERE account_code = ' . $this->q(self::PAYABLE_ACCOUNT) . ' LIMIT 1', 'DB') ?: 'Accounts Payable');
+            // Credit the vendor's own Accounts Payable sub-ledger (fims.vendors.sl_code -> COA child row, e.g. 2-01-01-010-01),
+            // the same way the DV does; fall back to the 2-01-01-010 control account when the vendor has none.
+            $payableCode  = self::PAYABLE_ACCOUNT;
+            $payableTitle = '';
+            $vendorId     = trim((string) ($res['data']['vendor_id'] ?? ''));
+            if ($vendorId !== '') {
+                $sl = App\ExecuteRows(
+                    'SELECT c.account_code, c.account_title FROM fims.vendors v JOIN fims.chart_of_accounts c ON c.account_id = v.sl_code OR c.account_code = v.sl_code'
+                    . ' WHERE v.vendor_id = ' . $this->q($vendorId) . ' LIMIT 1',
+                    'DB'
+                );
+                if ($sl) {
+                    $payableCode  = (string) $sl[0]['account_code'];
+                    $payableTitle = (string) $sl[0]['account_title'];
+                }
+            }
+            if ($payableTitle === '') {
+                // no vendor sub-ledger: use the first active sub-ledger under Accounts Payable (e.g. 2-01-01-010-01), if any
+                $first = App\ExecuteRows(
+                    'SELECT c.account_code, c.account_title FROM fims.chart_of_accounts c JOIN fims.chart_of_accounts p ON p.account_id = c.parent_account_id'
+                    . ' WHERE p.account_code = ' . $this->q(self::PAYABLE_ACCOUNT) . " AND c.status = 'Active' ORDER BY c.account_code LIMIT 1",
+                    'DB'
+                );
+                if ($first) {
+                    $payableCode  = (string) $first[0]['account_code'];
+                    $payableTitle = (string) $first[0]['account_title'];
+                }
+            }
+            if ($payableTitle === '') {
+                $payableTitle = (string) (App\ExecuteScalar('SELECT account_title FROM fims.chart_of_accounts WHERE account_code = ' . $this->q($payableCode) . ' LIMIT 1', 'DB') ?: 'Accounts Payable');
+            }
             $receipts = [];
             foreach ($res['data']['receipts'] as $dr) {
                 $rows = [];
@@ -583,16 +635,65 @@ class PoDrService
                 }
                 $rows[] = [
                     'account_title' => $payableTitle,
-                    'account_code'  => self::PAYABLE_ACCOUNT,
+                    'account_code'  => $payableCode,
                     'debit'         => 0,
                     'credit'        => round((float) $dr['total_amount'], 2),
                 ];
-                $receipts[] = ['dr_number' => (string) $dr['dr_number'], 'rows' => $rows, 'total' => round((float) $dr['total_amount'], 2)];
+                $receipts[] = [
+                    'dr_number' => (string) $dr['dr_number'], 'delivery_date' => $dr['delivery_date'] ?? null, 'rows' => $rows, 'total' => round((float) $dr['total_amount'], 2),
+                    'jev_id' => $dr['jev_id'] ?? null, 'jev_no' => $dr['jev_no'] ?? null,   // set once its pro-forma was submitted as a JEV
+                ];
             }
 
-            return ['success' => true, 'data' => ['po_number' => $poNumber, 'iar_number' => $res['data']['iar_number'], 'receipts' => $receipts]];
+            return ['success' => true, 'data' => [
+                'po_number' => $poNumber, 'iar_number' => $res['data']['iar_number'],
+                'requesting_rc_id' => $res['data']['requesting_rc_id'] ?? null,   // the JEV lines' Responsibility Center when it is submitted
+                'receipts' => $receipts,
+            ]];
         } catch (\Exception $e) {
             return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /** The JEV a delivery receipt's pro-forma was submitted as ({jev_id, jev_no}), or null when it has not been submitted. */
+    public function jevOf(string $poNumber, string $drNumber): ?array
+    {
+        $rows = App\ExecuteRows("SELECT line_transaction FROM {$this->h} WHERE po_number = " . $this->q($poNumber), 'DB');
+        foreach ($rows ? $this->drsFrom($rows[0]['line_transaction']) : [] as $d) {
+            if ((string) ($d['dr_number'] ?? '') === $drNumber && !empty($d['jev_id'])) {
+                return ['jev_id' => (int) $d['jev_id'], 'jev_no' => (string) ($d['jev_no'] ?? '')];
+            }
+        }
+
+        return null;
+    }
+
+    /** Records on the delivery receipt (in line_transaction) the JEV its pro-forma was submitted as: the pro-forma cannot be submitted twice. */
+    public function linkJev(string $poNumber, string $drNumber, int $jevId, string $jevNo): bool
+    {
+        App\Execute('BEGIN', 'DB');
+        try {
+            $cur   = App\ExecuteRows("SELECT line_transaction FROM {$this->h} WHERE po_number = " . $this->q($poNumber) . ' FOR UPDATE', 'DB');
+            $drs   = $cur ? $this->drsFrom($cur[0]['line_transaction']) : [];
+            $found = false;
+            foreach ($drs as $i => $d) {
+                if ((string) ($d['dr_number'] ?? '') === $drNumber) {
+                    $drs[$i]['jev_id'] = $jevId;
+                    $drs[$i]['jev_no'] = $jevNo;
+                    $found = true;
+                }
+            }
+            if ($found) {
+                App\Execute("UPDATE {$this->h} SET line_transaction = " . $this->jsonSql($drs) . ' WHERE po_number = ' . $this->q($poNumber), 'DB');
+            }
+            App\Execute('COMMIT', 'DB');
+
+            return $found;
+        } catch (\Exception $e) {
+            App\Execute('ROLLBACK', 'DB');
+            App\LogError('PoDrService::linkJev ' . $e->getMessage());
+
+            return false;
         }
     }
 

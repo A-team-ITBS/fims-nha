@@ -280,6 +280,11 @@ class DisbursementVoucherService
         $fields['requesting_department_id']  = null; // fims.budget_allocation now keys its requesting office by requesting_rc_id (a Responsibility Center), which doesn't fit this INTEGER column — see "14 - budget_allocation_requesting_department_id_to_requesting_rc_id.sql"
         $fields['_rfaRows'] = $rfas; // internal only — never persisted as a DV column, see linkRfas()
 
+        // Payroll DV (optional): the imported payroll month this voucher pays (Payroll Management —
+        // PayrollManagementService). Validated / linked in create()/update() (payroll_records.disbursement_voucher_id).
+        $payrollPeriodId = $body['payroll_period_id'] ?? null;
+        $fields['_payrollPeriodId'] = ($payrollPeriodId !== null && $payrollPeriodId !== '' && ctype_digit((string) $payrollPeriodId)) ? (int) $payrollPeriodId : null;
+
         $fields['dept_project'] = trim((string) ($body['dept_project'] ?? ''));
         $fields['fund_source']  = trim((string) ($body['fund_source'] ?? ''));
 
@@ -534,7 +539,9 @@ class DisbursementVoucherService
     public function fetchSlCodes(string $search = ''): array
     {
         try {
-            $where = ['c.status = ' . $this->str('Active'), 'c.parent_account_id IS NOT NULL'];
+            // an SL is a BOTTOM-level account (a child with no children of its own) — group accounts are not SLs
+            $where = ['c.status = ' . $this->str('Active'), 'c.parent_account_id IS NOT NULL',
+                      "NOT EXISTS (SELECT 1 FROM {$this->tableCoa} k WHERE k.parent_account_id = c.account_id)"];
             if ($search !== '') {
                 $kw      = App\QuotedValue('%' . $search . '%', App\DataType::STRING, 'DB');
                 $where[] = "(c.account_code ILIKE {$kw} OR c.account_title ILIKE {$kw})";
@@ -920,6 +927,7 @@ class DisbursementVoucherService
             $row['payment_jevs']       = $this->fetchPaymentJevs($dvId);
             $row['deductions']         = $this->fetchDeductions($dvId);
             $row['atc_lines']          = $this->fetchAtcLines($dvId);
+            $row['payroll']            = (new PayrollManagementService())->forDv($dvId); // imported payroll month this DV pays, or null
 
             // Every RFA currently linked to this DV — the link lives on the RFA side
             // (budget_allocation.dv_id, see linkRfas()), so this is a plain reverse lookup, not a
@@ -1537,11 +1545,12 @@ class DisbursementVoucherService
             if (!$this->validDate($jevDate)) {
                 $errors[] = 'jev_date is required and must be a valid date (YYYY-MM-DD).';
             }
-            $fiscalYr = $body['fiscal_yr'] ?? '';
-            if ($fiscalYr === '' || $fiscalYr === null || !ctype_digit((string) $fiscalYr)) {
-                $errors[] = 'fiscal_yr is required.';
-            } elseif ((int) App\ExecuteScalar("SELECT COUNT(*) FROM {$this->tableFiscal} WHERE fiscal_yr = " . (int) $fiscalYr, 'DB') === 0) {
-                $errors[] = "Fiscal year {$fiscalYr} does not exist.";
+            // fiscal_yr is derived from jev_date's year, not taken from the client — fims.fiscal_year
+            // rows are plain calendar years (see "01 - table/02"), so the JEV's own date already
+            // determines it.
+            $fiscalYr = $jevDate !== '' ? (int) substr($jevDate, 0, 4) : 0;
+            if ($fiscalYr > 0 && (int) App\ExecuteScalar("SELECT COUNT(*) FROM {$this->tableFiscal} WHERE fiscal_yr = {$fiscalYr}", 'DB') === 0) {
+                $errors[] = "No fiscal year {$fiscalYr} is configured for this JEV date.";
             }
 
             $bookId = $body['book_id'] ?? null;
@@ -1552,13 +1561,7 @@ class DisbursementVoucherService
                 $errors[] = "Book #{$bookId} does not exist.";
             }
 
-            $jevClassification = strtoupper(trim((string) ($body['jev_classification'] ?? 'REGULAR')));
-            if ($jevClassification === '') {
-                $jevClassification = 'REGULAR';
-            }
-            if (!in_array($jevClassification, self::JEV_CLASSIFICATIONS, true)) {
-                $errors[] = 'jev_classification must be one of: ' . implode(', ', self::JEV_CLASSIFICATIONS) . '.';
-            }
+            $jevClassification = 'REGULAR';
 
             [$lineErrors, $clean, $totalDebit, $totalCredit] = $this->validateJevLines(is_array($body['lines'] ?? null) ? $body['lines'] : []);
             $errors = array_merge($errors, $lineErrors);
@@ -1651,11 +1654,11 @@ class DisbursementVoucherService
             if (!$this->validDate($jevDate)) {
                 $errors[] = 'jev_date is required and must be a valid date (YYYY-MM-DD).';
             }
-            $fiscalYr = $body['fiscal_yr'] ?? '';
-            if ($fiscalYr === '' || $fiscalYr === null || !ctype_digit((string) $fiscalYr)) {
-                $errors[] = 'fiscal_yr is required.';
-            } elseif ((int) App\ExecuteScalar("SELECT COUNT(*) FROM {$this->tableFiscal} WHERE fiscal_yr = " . (int) $fiscalYr, 'DB') === 0) {
-                $errors[] = "Fiscal year {$fiscalYr} does not exist.";
+            // fiscal_yr is derived from jev_date's year, not taken from the client — see
+            // createStandaloneJev().
+            $fiscalYr = $jevDate !== '' ? (int) substr($jevDate, 0, 4) : 0;
+            if ($fiscalYr > 0 && (int) App\ExecuteScalar("SELECT COUNT(*) FROM {$this->tableFiscal} WHERE fiscal_yr = {$fiscalYr}", 'DB') === 0) {
+                $errors[] = "No fiscal year {$fiscalYr} is configured for this JEV date.";
             }
 
             $bookId = $body['book_id'] ?? null;
@@ -1666,13 +1669,7 @@ class DisbursementVoucherService
                 $errors[] = "Book #{$bookId} does not exist.";
             }
 
-            $jevClassification = strtoupper(trim((string) ($body['jev_classification'] ?? 'REGULAR')));
-            if ($jevClassification === '') {
-                $jevClassification = 'REGULAR';
-            }
-            if (!in_array($jevClassification, self::JEV_CLASSIFICATIONS, true)) {
-                $errors[] = 'jev_classification must be one of: ' . implode(', ', self::JEV_CLASSIFICATIONS) . '.';
-            }
+            $jevClassification = 'REGULAR';
 
             [$lineErrors, $clean, $totalDebit, $totalCredit] = $this->validateJevLines(is_array($body['lines'] ?? null) ? $body['lines'] : []);
             $errors = array_merge($errors, $lineErrors);
@@ -1981,6 +1978,9 @@ class DisbursementVoucherService
             if ($dvNo !== '' && (int) App\ExecuteScalar("SELECT COUNT(*) FROM {$this->table} WHERE dv_no = " . $this->str($dvNo), 'DB') > 0) {
                 $errors[] = "DV Number '{$dvNo}' already exists.";
             }
+            if ($f['_payrollPeriodId'] && ($payrollError = (new PayrollManagementService())->validateDvLink($f['_payrollPeriodId'])) !== null) {
+                $errors[] = $payrollError;
+            }
             if ($errors) {
                 return ['success' => false, 'message' => 'Validation failed.', 'errors' => $errors];
             }
@@ -2024,6 +2024,9 @@ class DisbursementVoucherService
                 );
 
                 $this->replaceDeductions((int) $row['dv_id'], $f['deductions']);
+                if ($f['_payrollPeriodId']) {
+                    (new PayrollManagementService())->syncDvLink((int) $row['dv_id'], $f['_payrollPeriodId']);
+                }
 
                 $rfaError = $this->linkRfas((int) $row['dv_id'], $f['_rfaRows']);
                 if ($rfaError !== null) {
@@ -2081,6 +2084,9 @@ class DisbursementVoucherService
             }
 
             [$errors, $f] = $this->prepare($body);
+            if ($f['_payrollPeriodId'] && ($payrollError = (new PayrollManagementService())->validateDvLink($f['_payrollPeriodId'], $dvId)) !== null) {
+                $errors[] = $payrollError;
+            }
             if ($errors) {
                 return ['success' => false, 'message' => 'Validation failed.', 'errors' => $errors];
             }
@@ -2128,6 +2134,7 @@ class DisbursementVoucherService
                 );
 
                 $this->replaceDeductions($dvId, $f['deductions']);
+                (new PayrollManagementService())->syncDvLink($dvId, $f['_payrollPeriodId']); // also releases a month no longer picked
 
                 $rfaError = $this->linkRfas($dvId, $f['_rfaRows']);
                 if ($rfaError !== null) {
@@ -2311,6 +2318,9 @@ class DisbursementVoucherService
                         return $glResult;
                     }
                 }
+                if ($new === 'CANCELLED') {
+                    (new PayrollManagementService())->releaseDv($dvId); // a payroll month this DV paid can get a new DV
+                }
 
                 App\Execute('COMMIT', 'DB');
             } catch (\Exception $e) {
@@ -2365,6 +2375,7 @@ class DisbursementVoucherService
             // it — otherwise dv_id would dangle, and rfaAvailableSql()'s "my cancelled/rejected DV
             // doesn't block the RFA" check can't match a dv_id whose row no longer exists at all.
             App\Execute("UPDATE {$this->tableRfa} SET dv_id = NULL WHERE dv_id = {$dvId}", 'DB');
+            (new PayrollManagementService())->releaseDv($dvId); // same for a payroll month this DV paid
             App\Execute("DELETE FROM {$this->table} WHERE dv_id = {$dvId}", 'DB');
 
             return ['success' => true, 'message' => "Disbursement Voucher {$cur['dv_no']} deleted successfully."];

@@ -158,6 +158,10 @@ return [
     "accountable_officer_page" => \DI\create(AccountableOfficerPage::class),
     "rfa_laa_monitoring_page" => \DI\create(RfaLaaMonitoringPage::class),
     "collections_page" => \DI\create(CollectionsPage::class),
+    "check_disbursement_voucher_page" => \DI\create(CheckDisbursementVoucherPage::class),
+    "payroll_setup_page" => \DI\create(PayrollSetupPage::class),
+    "fidelity_bond_page" => \DI\create(FidelityBondPage::class),
+    "payroll_page" => \DI\create(PayrollPage::class),
 
     // User table
     "usertable" => \DI\get("users"),
