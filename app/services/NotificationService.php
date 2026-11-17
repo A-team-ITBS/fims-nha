@@ -9,9 +9,11 @@ use PHPMaker2024\FIMS\DataType;
  * Notification hub for schema uac — implements _shared/NOTIFICATION-IMPLEMENTATION-PLAN.md.
  *
  *  READ  : recent / unreadCount / markRead / markAllRead  (one audience query, §3.3)
- *  WRITE : send() + the toAll/toSystem/toUser/toUserLevel/toOffice/toUserGroup helpers (§5).
+ *  WRITE : send() + the toAll/toSystem/toUser/toUserLevel/toOffice/toUserGroup helpers (§5), and toRc() — everyone of a
+ *          Responsibility Center (uac.users.rc_id), sent as one 'user' notification each.
  *          Business code calls the helpers; they never throw (return the id, or null).
  *  PUSH  : optional EMQX publish after the INSERT (§6); polling is the delivery guarantee.
+ *  TEST  : sendTest() — one notification to the caller only, with a report of the INSERT and of what the broker answered.
  *
  * Audience types (the only vocabulary): all | system | user | userlevel | office | usergroup
  *   all       target 'all'
@@ -162,6 +164,52 @@ class NotificationService
             : ['success' => true, 'id' => $id];
     }
 
+    /**
+     * POST /notifications/test: one real notification to $uid ONLY (type 'user', target = that user — never a broadcast), sent through the
+     * same insert() + publish() as every other notification, with a report of both halves:
+     *   stored  — it reached uac.notifications (the polling path: it will show in the bell), unread_before / unread_after prove it;
+     *   push    — what the EMQX REST API answered (the live path), with a plain-language hint when it did not work.
+     * @return array{success:bool,id:?string,stored:bool,topic:string,unread_before:int,unread_after:int,push:array}
+     */
+    public function sendTest(int $uid): array
+    {
+        $before = $this->unreadCount($uid);
+        $this->lastPush = null;
+
+        $id = $this->insert(
+            'user',
+            (string) $uid,
+            'Test notification',
+            'Sent by POST /notifications/test at ' . date('Y-m-d H:i:s') . '. If you can read this, notifications are working.',
+            null,
+            ['from_system' => self::APP_CODE, 'sender_id' => $uid]
+        );
+
+        // not stored: nothing was published either, so there is no push to report on
+        if ($id === null) {
+            return [
+                'success' => false, 'id' => null, 'stored' => false, 'topic' => self::topic('user', (string) $uid),
+                'unread_before' => $before, 'unread_after' => $before, 'push' => null,
+                'message' => 'The notification could not be stored in uac.notifications (see the PHP error log).',
+            ];
+        }
+
+        // publish() always runs after a successful insert, so lastPush is set; the fallback only guards a future change
+        $push = $this->lastPush ?? ['attempted' => false, 'ok' => false, 'status' => null, 'broker' => null, 'error' => null];
+        unset($push['topic']);
+        $push['hint'] = self::pushHint($this->lastPush ?? ['attempted' => false, 'status' => null]);
+
+        return [
+            'success'       => true,
+            'id'            => $id,
+            'stored'        => true,
+            'topic'         => self::topic('user', (string) $uid),
+            'unread_before' => $before,
+            'unread_after'  => $this->unreadCount($uid),
+            'push'          => $push,
+        ];
+    }
+
     // ── Sender library (§5) — static, never throws ───────────────
 
     public static function send(string $type, string $target, string $subject, ?string $body = null, ?string $link = null, array $opts = []): ?string
@@ -207,6 +255,52 @@ class NotificationService
     public static function toUserGroup(int $supervisorId, string $subject, ?string $body = null, ?string $link = null, array $opts = []): ?string
     {
         return self::send('usergroup', (string) $supervisorId, $subject, $body, $link, $opts);
+    }
+
+    /**
+     * Every ACTIVE user of a Responsibility Center — uac.users.rc_id = $rcId, the same column fims.budget_req.rc_id matches — gets the
+     * notification. There is no "rc" audience in the hub (§3), so this is a fan-out: one ordinary 'user' notification per person, which
+     * keeps the per-user read tracking and the per-user MQTT topic exactly as they are.
+     *   opts['sender_id']  is left out of the recipients (the sender knows what they just did) and recorded as the sender;
+     *   opts['event_key']  is made per recipient ("<key>:<user_id>"), so sending the same event twice never notifies anyone twice.
+     * Never throws. @return int how many people were notified
+     */
+    public static function toRc(string $rcId, string $subject, ?string $body = null, ?string $link = null, array $opts = []): int
+    {
+        $rcId = trim($rcId);
+        if ($rcId === '') {
+            return 0;
+        }
+
+        try {
+            $rows = App\ExecuteRows(
+                'SELECT user_id FROM uac.users WHERE rc_id = ' . App\QuotedValue($rcId, DataType::STRING, 'DB') . ' AND COALESCE(is_active, TRUE)',
+                'DB'
+            ) ?: [];
+
+            $skip  = (int) ($opts['sender_id'] ?? 0);
+            $key   = isset($opts['event_key']) && $opts['event_key'] !== '' ? (string) $opts['event_key'] : null;
+            $count = 0;
+            foreach ($rows as $row) {
+                $uid = (int) ($row['user_id'] ?? 0);
+                if ($uid <= 0 || $uid === $skip) {
+                    continue;
+                }
+                $o = $opts;
+                if ($key !== null) {
+                    $o['event_key'] = $key . ':' . $uid;
+                }
+                if (self::toUser($uid, $subject, $body, $link, $o) !== null) {
+                    ++$count;
+                }
+            }
+
+            return $count;
+        } catch (\Throwable $e) {
+            App\LogError('Notification toRc failed: ' . $e->getMessage());
+
+            return 0;
+        }
     }
 
     // ── Internals ────────────────────────────────────────────────
@@ -256,9 +350,19 @@ class NotificationService
         return "app/notifications/{$type}/{$target}";
     }
 
-    /** Optional real-time push via EMQX REST. Off when not configured; failures never surface. */
+    /** What the last publish() did (read by sendTest()); null until one has run. */
+    private ?array $lastPush = null;
+
+    /**
+     * Optional real-time push via EMQX REST. Off when not configured; failures never surface to the caller (they are logged, and
+     * recorded in $lastPush so the test route can show them).
+     */
     private function publish(array $payload): void
     {
+        $result = [
+            'attempted' => false, 'ok' => false, 'status' => null, 'broker' => null, 'error' => null,
+            'topic'     => self::topic($payload['type'], $payload['target']),
+        ];
         try {
             $url    = trim((string) App\Config('EMQX.API_URL'));
             $key    = (string) App\Config('EMQX.API_KEY');
@@ -267,18 +371,66 @@ class NotificationService
                 return;
             }
 
-            (new \GuzzleHttp\Client(['base_uri' => $url, 'timeout' => 3.0]))->post('/api/v5/publish', [
+            $result['attempted'] = true;
+            $result['broker']    = self::brokerOf($url);
+
+            $res = (new \GuzzleHttp\Client(['base_uri' => $url, 'timeout' => 3.0, 'http_errors' => false]))->post('/api/v5/publish', [
                 'auth' => [$key, $secret],
                 'json' => [
-                    'topic'   => self::topic($payload['type'], $payload['target']),
+                    'topic'   => $result['topic'],
                     'qos'     => 1,
                     'payload' => json_encode($payload),
                     'retain'  => false,
                 ],
             ]);
+
+            $result['status'] = $res->getStatusCode();
+            $result['ok']     = $result['status'] >= 200 && $result['status'] < 300;
+            if (!$result['ok']) {
+                $result['error'] = 'HTTP ' . $result['status'];
+                App\LogError('Notification publish failed: HTTP ' . $result['status'] . ' ' . mb_substr((string) $res->getBody(), 0, 200));
+            }
         } catch (\Throwable $e) {
+            $result['error'] = $e->getMessage();
             App\LogError('Notification publish failed: ' . $e->getMessage());
+        } finally {
+            $this->lastPush = $result;
         }
+    }
+
+    /** "http://host:18083" — the broker's address without any credentials that may be in the URL. */
+    private static function brokerOf(string $url): string
+    {
+        $p = parse_url($url);
+        if (!is_array($p) || empty($p['host'])) {
+            return '(unreadable EMQX.API_URL)';
+        }
+
+        return ($p['scheme'] ?? 'http') . '://' . $p['host'] . (isset($p['port']) ? ':' . $p['port'] : '');
+    }
+
+    /** Plain-language reading of what publish() recorded, for the test route. */
+    private static function pushHint(array $p): string
+    {
+        if (!$p['attempted']) {
+            return 'EMQX is not configured (EMQX.API_URL / EMQX.API_KEY are empty), so there is no live push. The notification is stored and will '
+                . 'show in the bell on its next poll.';
+        }
+        if ($p['status'] === null) {
+            return "Could not reach the broker's REST API at {$p['broker']} ({$p['error']}). EMQX.API_URL must be the dashboard / API port "
+                . '(18083), not the MQTT port (1883), and the broker must be running.';
+        }
+
+        return match (true) {
+            $p['status'] === 200 => 'The broker accepted it and delivered it to a subscriber — a page this user has open should show it now. If '
+                . 'nothing appears, check the browser console for the MQTT connection.',
+            $p['status'] === 202 => 'The broker accepted it, but nobody is subscribed to this topic right now: this user has no open page with a live '
+                . 'MQTT connection. The notification is stored and will still show on the next poll.',
+            in_array($p['status'], [401, 403], true) => 'The broker rejected the API key / secret (HTTP ' . $p['status'] . '). Create an API key in the '
+                . 'EMQX dashboard (System → API Keys) and set EMQX.API_KEY / EMQX.API_SECRET.',
+            $p['status'] === 404 => 'The broker answered 404 — EMQX.API_URL probably points at the wrong port, or at something that is not EMQX\'s REST API.',
+            default => 'The broker answered HTTP ' . $p['status'] . '.',
+        };
     }
 
     private static function allowedSystems(): array

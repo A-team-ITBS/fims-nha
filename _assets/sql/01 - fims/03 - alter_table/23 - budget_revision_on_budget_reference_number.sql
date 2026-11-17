@@ -19,6 +19,7 @@
 -- exactly as they are, unused. They are not reinterpreted as line ids — that would point old revisions at unrelated lines, and
 -- approving one would change the wrong line. A revision filed before this change has no budget line: it still lists (with the line's
 -- details blank) but cannot be approved. from_budget_req_id was NOT NULL, so that is relaxed for the revisions filed from now on.
+-- (They are dropped for good by "42 - budget_revision_add_request_type_drop_legacy_req_ids".)
 --
 -- Idempotent (IF NOT EXISTS / IF EXISTS guards): safe to run any number of times, on any environment.
 -- ============================================================
@@ -46,7 +47,23 @@ COMMENT ON COLUMN fims.budget_revision.from_budget_line_item_id IS
     'fims.budget_line_items.budget_line_item_id the revision changes (the line being revised). No FK: a line is deleted and re-created whenever a Draft request''s Program is edited.';
 COMMENT ON COLUMN fims.budget_revision.to_budget_line_item_id IS
     'fims.budget_line_items.budget_line_item_id that receives the funds the From line gives up. NULL when there is none.';
-COMMENT ON COLUMN fims.budget_revision.from_budget_req_id IS
-    'LEGACY, unused: the id of a budget request, before budget requests became headers keyed by budget_reference_number. Superseded by from_budget_line_item_id.';
-COMMENT ON COLUMN fims.budget_revision.to_budget_req_id IS
-    'LEGACY, unused: see from_budget_req_id. Superseded by to_budget_line_item_id.';
+-- The legacy columns are dropped by "42 - budget_revision_add_request_type_drop_legacy_req_ids", and a new database is no longer created
+-- with them — so comment on each only while it is there.
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+         WHERE table_schema = 'fims' AND table_name = 'budget_revision' AND column_name = 'from_budget_req_id'
+    ) THEN
+        COMMENT ON COLUMN fims.budget_revision.from_budget_req_id IS
+            'LEGACY, unused: the id of a budget request, before budget requests became headers keyed by budget_reference_number. Superseded by from_budget_line_item_id.';
+    END IF;
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+         WHERE table_schema = 'fims' AND table_name = 'budget_revision' AND column_name = 'to_budget_req_id'
+    ) THEN
+        COMMENT ON COLUMN fims.budget_revision.to_budget_req_id IS
+            'LEGACY, unused: see from_budget_req_id. Superseded by to_budget_line_item_id.';
+    END IF;
+END
+$$;

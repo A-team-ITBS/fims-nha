@@ -33,10 +33,22 @@ BEGIN
 END
 $$;
 
-ALTER TABLE fims.budget_revision
-    ADD COLUMN IF NOT EXISTS to_budget_req_id INTEGER NULL;
+-- Only while the legacy columns are still part of the table: "03 - alter_table/42" drops them, and a new database is no longer created with
+-- them, so on those this must not add one back or comment on one that is not there.
+DO $$
+BEGIN
+    IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+             WHERE table_schema = 'fims' AND table_name = 'budget_revision'
+               AND column_name = 'from_budget_req_id')
+    THEN
+        ALTER TABLE fims.budget_revision
+            ADD COLUMN IF NOT EXISTS to_budget_req_id INTEGER NULL;
 
-COMMENT ON COLUMN fims.budget_revision.from_budget_req_id IS
-    'fims.budget_req.id the revision moves from (the request being revised).';
-COMMENT ON COLUMN fims.budget_revision.to_budget_req_id IS
-    'fims.budget_req.id the revision moves to. NULL when there is no target request.';
+        COMMENT ON COLUMN fims.budget_revision.from_budget_req_id IS
+            'fims.budget_req.id the revision moves from (the request being revised).';
+        COMMENT ON COLUMN fims.budget_revision.to_budget_req_id IS
+            'fims.budget_req.id the revision moves to. NULL when there is no target request.';
+    END IF;
+END
+$$;

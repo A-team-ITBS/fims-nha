@@ -27,19 +27,21 @@ use PHPMaker2024\FIMS\DataType;
  *
  *   approved_amount     budget_line_items.suggested_amount, as it stands — the amount FMD suggested in the Budget Proposal module
  *   revision_amount     budget_line_items.adjustment: the net of the approved Budget Revisions (Revision / Realignment)
- *   revised_amount      approved_amount + revision_amount
- *   cba_requested       what approved CBAs (and CFAs) took off the line: their earmark rows' original_amount, only those that
+ *   revised_amount      budget_line_items.revised_amount: a plain, app-maintained column (migration "43 - budget_line_items_add_revised_amount");
+ *                       it is NOT computed from the two figures above, so it is only as current as whatever writes it (0 until then)
+ *   cba_requested      what approved CBAs (and CFAs) took off the line: their earmark rows' original_amount, only those that
  *                       actually reduced the balance (balance_applied) and are not released
  *   available_amount    revised_amount - cba_requested   (Available for Earmarking)
  *   rfa_approved        what approved RFAs drew down the CBAs' reservations (their 'converted' earmark rows)
  *   laa_issued          the same for LAAs
  *   remaining_balance   revised_amount - rfa_approved - laa_issued  (a CBA only RESERVES money; an RFA / LAA actually uses it)
  *
- * The columns follow the sheet's own arithmetic from Approved Amount, so the identities  Approved + Revision = Revised,
- * Revised - CBA = Available and Revised - RFA - LAA = Remaining hold on every row, group and total.
+ * Available and Remaining are worked from Revised Amount, so the identities  Revised - CBA = Available  and
+ * Revised - RFA - LAA = Remaining  hold on every row, group and total. Approved + Revision = Revised is NOT guaranteed any more:
+ * revised_amount is its own column, so it equals that sum only while whatever maintains it keeps it so.
  * NOTE: suggested_amount is also the line's LIVE balance — an approved CBA takes its amount off it and an approved Budget Revision
- * moves it — so on a line that already has a CBA or a revision, Revised and Available count those once more. That is what taking the
- * suggested_amount as the Approved Amount means; see COB-MONITORING.md.
+ * moves it — so Approved Amount on a line that already has a CBA or a revision is what is left, not what was first suggested;
+ * see COB-MONITORING.md.
  *
  * Deleted memo requests do not count. A CBA approved before the "charge the line on approval" rule never took anything off the
  * line, so it is not in CBA Requested either.
@@ -47,7 +49,8 @@ use PHPMaker2024\FIMS\DataType;
  * Views:
  *   summary()       the KPI cards
  *   rollup()        a tree, by 'fund_source' (Type of Fund > Component > Program > Sub-Program > Project),
- *                   'component' (Component > Type of Fund > ...) or 'region' (Region > Program > Sub-Program > Project)
+ *                   'component' (Component > Type of Fund > ...), 'region' (Region > Program > Sub-Program > Project) or
+ *                   'program' (Program > Sub-Program > Originating Unit > Project)
  *   fetchById()     one approved request in full: its programs, projects, line items and attachments
  *   filterOptions() what the filter drop-downs offer (only values that exist in approved data)
  *
@@ -59,7 +62,7 @@ class CobService
     /** The amount columns every row, group and total carries (see the header comment for what each is). */
     public const AMOUNT_KEYS = ['approved_amount', 'revision_amount', 'revised_amount', 'cba_requested', 'available_amount', 'rfa_approved', 'laa_issued', 'remaining_balance'];
 
-    public const LAYOUTS = ['region', 'fund_source', 'component'];
+    public const LAYOUTS = ['region', 'fund_source', 'component', 'program'];
 
     private string $tableBudgetReq = 'fims.budget_req';
     private string $tableLineItems = 'fims.budget_line_items';
@@ -128,13 +131,29 @@ class CobService
         return [
             'approved_amount' => 'li.suggested_amount',
             'revision_amount' => 'li.adjustment',
-            'revised_amount' => '(li.suggested_amount + li.adjustment)',
+            'revised_amount' => 'li.revised_amount',
             'cba_requested' => $cba,
-            'available_amount' => "(li.suggested_amount + li.adjustment - {$cba})",
+            'available_amount' => "(li.revised_amount - {$cba})",
             'rfa_approved' => $rfa,
             'laa_issued' => $laa,
-            'remaining_balance' => "(li.suggested_amount + li.adjustment - {$rfa} - {$laa})",
+            'remaining_balance' => "(li.revised_amount - {$rfa} - {$laa})",
         ];
+    }
+
+    /**
+     * The result for a query that threw: logged with its real cause, and returned with a message the page can show. When the cause is
+     * budget_line_items.revised_amount not existing yet (the migration has not been run on this database) the message says so.
+     */
+    private function failure(string $method, string $message, \Throwable $e, array $extra = []): array
+    {
+        App\LogError('CobService::'.$method.' '.$e->getMessage());
+
+        $text = $e->getMessage();
+        if (stripos($text, 'revised_amount') !== false && stripos($text, 'does not exist') !== false) {
+            $message .= ' The budget_line_items.revised_amount column is missing — run the migration "43 - budget_line_items_add_revised_amount.sql".';
+        }
+
+        return ['success' => false, 'message' => $message] + $extra;
     }
 
     /** The SUMs of the eight figures, aliased to AMOUNT_KEYS, plus how many line items they cover. */
@@ -289,9 +308,7 @@ class CobService
                 'line_items' => (int) ($row['line_count'] ?? 0),
             ] + $this->amountsOf($row)];
         } catch (\Throwable $e) {
-            App\LogError('CobService::summary '.$e->getMessage());
-
-            return ['success' => false, 'message' => 'Failed to load the COB summary.'];
+            return $this->failure('summary', 'Failed to load the COB summary.', $e);
         }
     }
 
@@ -348,9 +365,7 @@ class CobService
 
             return ['success' => true, 'layout_by' => $layoutBy, 'data' => $tree, 'totals' => $totals];
         } catch (\Throwable $e) {
-            App\LogError('CobService::rollup '.$e->getMessage());
-
-            return ['success' => false, 'message' => 'Failed to load the COB roll-up.'];
+            return $this->failure('rollup', 'Failed to load the COB roll-up.', $e);
         }
     }
 
@@ -390,6 +405,17 @@ class CobService
 
             return [$id, ['label' => $name, 'code' => $id === 'central' ? null : $id, 'sort' => $sort, 'unassigned' => false]];
         }];
+        // An Originating Unit is the office (RC) that requested the budget — fims.budget_req.rc_id. Like a Region node it shows its RC id as its
+        // code and is ordered by its RC code ('sort'). A request with no RC is kept, as 'No originating unit', and sorted last.
+        $unit = ['type' => 'unit', 'of' => static fn (array $r): array => [
+            $r['rc_id'] ?? 'none',
+            [
+                'label' => $r['rc_name'] ?? ($r['rc_id'] ?? 'No originating unit'),
+                'code' => $r['rc_id'] ?? null,
+                'sort' => $r['rc_code'] ?? '',
+                'unassigned' => empty($r['rc_id']),
+            ],
+        ]];
         $program = ['type' => 'program', 'of' => static fn (array $r): array => [
             $r['program_code'] ?? 'none',
             [
@@ -425,6 +451,8 @@ class CobService
         return match ($layoutBy) {
             'fund_source' => [$fund, $component, $program, $subProgram, $project],
             'component' => [$component, $fund, $program, $subProgram, $project],
+            // a program block with no Sub-Program has no Sub-Program level (see insertRow): its offices sit directly under the program
+            'program' => [$program, $subProgram, $unit, $project],
             default => [$region, $program, $subProgram, $project],
         };
     }
@@ -528,6 +556,12 @@ class CobService
                 break;
             case 'region':
                 $byCode = strcmp((string) ($a['sort'] ?? ''), (string) ($b['sort'] ?? ''));
+                if ($byCode !== 0) {
+                    return $byCode;
+                }
+                break;
+            case 'unit':   // offices by their RC code, so a Region and its Districts stay together
+                $byCode = strnatcasecmp((string) ($a['sort'] ?? ''), (string) ($b['sort'] ?? ''));
                 if ($byCode !== 0) {
                     return $byCode;
                 }
@@ -711,9 +745,7 @@ class CobService
                 'unassigned_line_items' => $unassigned,
             ]];
         } catch (\Throwable $e) {
-            App\LogError('CobService::fetchById '.$e->getMessage());
-
-            return ['success' => false, 'httpCode' => 500, 'message' => 'Failed to load the budget request.'];
+            return $this->failure('fetchById', 'Failed to load the budget request.', $e, ['httpCode' => 500]);
         }
     }
 
@@ -799,9 +831,7 @@ class CobService
                 'regions' => $regionList,
             ]];
         } catch (\Throwable $e) {
-            App\LogError('CobService::filterOptions '.$e->getMessage());
-
-            return ['success' => false, 'message' => 'Failed to load the COB filters.'];
+            return $this->failure('filterOptions', 'Failed to load the COB filters.', $e);
         }
     }
 }

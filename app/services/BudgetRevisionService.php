@@ -19,6 +19,15 @@ use PHPMaker2024\FIMS as App;
  * A revision that would leave the From line's suggested_amount negative is refused — when it is filed, when it is edited and
  * again when it is approved (fromBalanceError()); an increase is never refused.
  * See _assets/sql/01 - fims/03 - alter_table/23 - budget_revision_on_budget_reference_number.sql.
+ *
+ * Two kinds of request, stored in fims.budget_revision.request_type (03 - alter_table/42):
+ *   REVISION     — no To line: the From line's amount simply changes.
+ *   REALIGNMENT  — a To line: funds MOVE from the From line to the To line, and both lines must be in the SAME FISCAL YEAR
+ *                  (sameYearError(): refused when it is filed or edited, and when it is approved).
+ * The type always follows the To line — it is written with the request (typeFor()) and rewritten whenever the To line is edited, so
+ * the two can never disagree. A client may also send `request_type` when it files / edits a request to say which one it means; it is
+ * then held to it (a realignment needs its To line, a revision cannot have one — see typeError()).
+ * (03 - alter_table/42 also dropped the legacy from_budget_req_id / to_budget_req_id columns.)
  */
 class BudgetRevisionService
 {
@@ -169,9 +178,63 @@ class BudgetRevisionService
         return ($id === false || $id <= 0) ? false : $id;
     }
 
+    // The request_type a request with this To line has: no To line = a REVISION, a To line = a REALIGNMENT.
+    private function typeFor(?int $toId): string
+    {
+        return $toId === null ? 'REVISION' : 'REALIGNMENT';
+    }
+
+    // The kind of request the client says it is filing (`request_type`, optional): REVISION or REALIGNMENT. When it is sent it must
+    // agree with the To line — a realignment needs one, a revision cannot have one. Left out, nothing is held to it (the type is
+    // then simply worked out from the To line). Returns an error message, or null when it fits.
+    private function typeError(mixed $requested, ?int $toId): ?string
+    {
+        if ($requested === null || $requested === '') {
+            return null;
+        }
+        $type = strtoupper(trim((string) $requested));
+        if ($type === 'REALIGNMENT' && $toId === null) {
+            return 'A realignment needs a To budget line (to_budget_line_item_id).';
+        }
+        if ($type === 'REVISION' && $toId !== null) {
+            return 'A revision cannot have a To budget line — file a realignment to move funds to another budget line.';
+        }
+        if ($type !== 'REVISION' && $type !== 'REALIGNMENT') {
+            return 'request_type must be REVISION or REALIGNMENT.';
+        }
+
+        return null;
+    }
+
+    // The fiscal year of a budget line: its budget request's fiscal_yr (null when the line, or its request, no longer exists).
+    private function fiscalYearOf(int $lineId): ?int
+    {
+        $year = App\ExecuteScalar(
+            "SELECT b.fiscal_yr FROM {$this->tableLines} l
+               JOIN {$this->tableReq} b ON b.budget_reference_number = l.budget_reference_number
+              WHERE l.budget_line_item_id = " . App\QuotedValue($lineId, App\DataType::NUMBER, 'DB'),
+            'DB'
+        );
+
+        return ($year === null || $year === false || $year === '') ? null : (int) $year;
+    }
+
+    // A realignment stays inside one fiscal year: funds cannot be moved to a budget line of another year's budget. Returns an error
+    // message, or null when the two lines are in the same year (or a year is unknown — a line that no longer exists is reported on its own).
+    private function sameYearError(int $fromId, int $toId): ?string
+    {
+        $from = $this->fiscalYearOf($fromId);
+        $to   = $this->fiscalYearOf($toId);
+        if ($from !== null && $to !== null && $from !== $to) {
+            return "Funds can only be moved between budget lines of the same fiscal year — the From budget line is in FY {$from}, the To budget line in FY {$to}.";
+        }
+
+        return null;
+    }
+
     // A revision with a To line MOVES funds: the From line goes down to To Amount and the To line goes up by the difference.
-    // So the To line must exist, be a different line, and To Amount must be lower than From Amount (an increase would mean taking
-    // funds out of the To line). Returns an error message, or null when the combination is fine.
+    // So the To line must exist, be a different line IN THE SAME FISCAL YEAR, and To Amount must be lower than From Amount (an increase
+    // would mean taking funds out of the To line). Returns an error message, or null when the combination is fine.
     private function transferError(int $fromId, int $toId, mixed $fromAmount, mixed $toAmount): ?string
     {
         if ($toId === $fromId) {
@@ -179,6 +242,10 @@ class BudgetRevisionService
         }
         if (!$this->lineExists($toId)) {
             return 'to_budget_line_item_id does not exist.';
+        }
+        $yearError = $this->sameYearError($fromId, $toId);
+        if ($yearError !== null) {
+            return $yearError;
         }
         if (round((float) $toAmount, 2) >= round((float) $fromAmount, 2)) {
             return 'To Amount must be lower than From Amount to move funds to the To budget line.';
@@ -224,13 +291,17 @@ class BudgetRevisionService
         return $reason === '' ? 'NULL' : App\Conn('DB')->quote($reason);
     }
 
-    // A failed statement, as the response. A database that has not had the revision migration yet fails in a recognisable way —
-    // the from_ / to_budget_line_item_id columns do not exist — and for that the message says what to run; the database's own
-    // message is kept after it.
+    // A failed statement, as the response. A database that has not had the revision migrations yet fails in a recognisable way —
+    // the from_ / to_budget_line_item_id columns (23) or request_type (42) do not exist — and for that the message says what to run; the
+    // database's own message is kept after it.
     private function failure(\Throwable $e): array
     {
         $message = $e->getMessage();
-        if (preg_match('/_budget_line_item_id.{0,80}does not exist/is', $message)) {
+        if (preg_match('/request_type.{0,80}does not exist/is', $message)) {
+            $message = 'Budget revisions need a database update that has not been applied yet. Run '
+                . '"_assets/sql/01 - fims/03 - alter_table/42 - budget_revision_add_request_type_drop_legacy_req_ids.sql" on the database, then reload. '
+                . '(' . $message . ')';
+        } elseif (preg_match('/_budget_line_item_id.{0,80}does not exist/is', $message)) {
             $message = 'Budget revisions need a database update that has not been applied yet. Run '
                 . '"_assets/sql/01 - fims/03 - alter_table/23 - budget_revision_on_budget_reference_number.sql" on the database, then reload. '
                 . '(' . $message . ')';
@@ -333,6 +404,10 @@ class BudgetRevisionService
             if ($toId === false) {
                 return ['success' => false, 'message' => 'to_budget_line_item_id does not exist.'];
             }
+            $error = $this->typeError($body['request_type'] ?? null, $toId);
+            if ($error !== null) {
+                return ['success' => false, 'message' => $error];
+            }
             if ($toId !== null) {
                 $error = $this->transferError($fromId, $toId, $fromAmount, $toAmount);
                 if ($error !== null) {
@@ -355,8 +430,9 @@ class BudgetRevisionService
                 return $this->missingStatus(self::STATUS_PENDING);
             }
 
-            $sql = "INSERT INTO {$this->table} (from_budget_line_item_id, to_budget_line_item_id, from_amount, to_amount, reason, user_id, status_id)
+            $sql = "INSERT INTO {$this->table} (request_type, from_budget_line_item_id, to_budget_line_item_id, from_amount, to_amount, reason, user_id, status_id)
                     VALUES ("
+                . App\QuotedValue($this->typeFor($toId), App\DataType::STRING, 'DB') . ', '
                 . App\QuotedValue($fromId, App\DataType::NUMBER, 'DB') . ', '
                 . ($toId === null ? 'NULL' : App\QuotedValue($toId, App\DataType::NUMBER, 'DB')) . ', '
                 . App\QuotedValue($fromAmount, App\DataType::NUMBER, 'DB') . ', '
@@ -418,6 +494,8 @@ class BudgetRevisionService
                     return ['success' => false, 'message' => 'to_budget_line_item_id does not exist.'];
                 }
                 $setParts[] = 'to_budget_line_item_id = ' . ($toId === null ? 'NULL' : App\QuotedValue($toId, App\DataType::NUMBER, 'DB'));
+                // the type follows the To line, in the same UPDATE: dropping the To line makes it a REVISION, adding one a REALIGNMENT
+                $setParts[] = 'request_type = ' . App\QuotedValue($this->typeFor($toId), App\DataType::STRING, 'DB');
             }
 
             foreach (['from_amount', 'to_amount'] as $field) {
@@ -439,6 +517,10 @@ class BudgetRevisionService
             // A revision filed before budget lines were revised has no From line; it can be edited only by giving it one.
             if ($fromId === null) {
                 return ['success' => false, 'message' => 'from_budget_line_item_id is required: this revision was filed before budget lines could be revised, so pick its budget line.'];
+            }
+            $error = $this->typeError($body['request_type'] ?? null, $toId);
+            if ($error !== null) {
+                return ['success' => false, 'message' => $error];
             }
             if ($toId !== null) {
                 $error = $this->transferError($fromId, $toId, $fromAmt, $toAmt);
@@ -583,6 +665,11 @@ class BudgetRevisionService
             if (!$this->lineExists($toId)) {
                 return ['success' => false, 'message' => "The To budget line for revision #{$id} no longer exists."];
             }
+            // a request filed before the same-year rule could span two fiscal years: it cannot be approved (decline it and file it again)
+            $yearError = $this->sameYearError($fromId, $toId);
+            if ($yearError !== null) {
+                return ['success' => false, 'message' => "Request #{$id} cannot be approved. {$yearError} Decline it and file the realignment again."];
+            }
             // What the From line has right now decides how much moves; it must really go down.
             $fromNow = $this->currentAmountOf($fromId);
             $toNow   = $this->currentAmountOf($toId);
@@ -657,7 +744,98 @@ class BudgetRevisionService
             $result['to_budget_line'] = ['budget_line_item_id' => (int) $row['to_id'], 'amount' => round($toNow + $moved, 2), 'adjustment' => $row['to_adjustment'], 'suggested_amount' => $row['to_suggested']];
         }
 
+        // the approval is committed: tell the offices whose budget just changed (can never fail it)
+        $result['notified'] = $this->notifyApproved($id, $rev, $fromId, $toId, $newAmt, $moved);
+
         return $result;
+    }
+
+    // The rc_id of the budget request(s) the given budget lines belong to (fims.budget_req.rc_id — the originating office), each once.
+    private function budgetRcIdsOf(array $lineIds): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $lineIds), fn ($v) => $v > 0)));
+        if (!$ids) {
+            return [];
+        }
+        $rows = App\ExecuteRows(
+            "SELECT DISTINCT b.rc_id FROM {$this->tableLines} l
+               JOIN {$this->tableReq} b ON b.budget_reference_number = l.budget_reference_number
+              WHERE l.budget_line_item_id IN (" . implode(', ', $ids) . ")
+                AND b.rc_id IS NOT NULL AND TRIM(b.rc_id) <> ''",
+            'DB'
+        ) ?: [];
+
+        return array_values(array_unique(array_map(fn ($r) => trim((string) $r['rc_id']), $rows)));
+    }
+
+    // "5-02-010 — Travelling Expenses (BP-001)" for the notification text; $pre is '' for the From line, 'to_' for the To line.
+    private function lineLabel(array $rev, string $pre, int $lineId): string
+    {
+        $code  = trim((string) ($rev[$pre . 'account_code'] ?? ''));
+        $title = trim((string) ($rev[$pre . 'account_title'] ?? ''));
+        $ref   = trim((string) ($rev[$pre . 'budget_reference_number'] ?? ''));
+        $name  = $code !== '' ? $code . ($title !== '' ? ' — ' . $title : '') : "budget line #{$lineId}";
+
+        return $ref !== '' ? "{$name} ({$ref})" : $name;
+    }
+
+    // Where a click on the notification goes: the Budget Requirements page (route BudgetReqPage), which then opens "View as COB" for the
+    // fiscal year (budget-req-page.php reads open=cob and fy). GetUrl() adds the app's base path (it may live in a sub-folder); the hub only
+    // accepts a link that starts with "/", so one is added when the base path is empty.
+    // NOT "view": that is a reserved PHPMaker query parameter (Config("VIEW")) — every page class reads it as the name of a template to
+    // render, so ?view=cob made the framework look for "cob.php" and fail before the page ever loaded. Any new parameter name here must not be one
+    // the framework reserves (see the "TABLE_*", "PAGE_*", "VIEW", "API_*" names in src/config.php).
+    private function budgetReqPageLink(?int $fiscalYr): string
+    {
+        $path = 'BudgetReqPage?open=cob' . ($fiscalYr ? '&fy=' . $fiscalYr : '');
+        try {
+            $link = (string) App\GetUrl($path);
+        } catch (\Throwable $e) {
+            $link = $path;
+        }
+
+        return '/' . ltrim($link, '/');
+    }
+
+    // An approved revision / realignment changes an office's budget, so that office is told: every active user whose uac.users.rc_id is the
+    // rc_id of a budget request it touched — the From line's request, and (a realignment) the To line's, which may be another office's.
+    // Sent once per office and person (event_key), never to the reviewer. Never throws; returns how many people were notified.
+    private function notifyApproved(int $id, array $rev, int $fromId, ?int $toId, float $newAmt, float $moved): int
+    {
+        try {
+            $rcIds = $this->budgetRcIdsOf([$fromId, $toId]);
+            if (!$rcIds) {
+                return 0;
+            }
+
+            $fromName = $this->lineLabel($rev, '', $fromId);
+            if ($toId === null) {
+                $subject = 'Budget revision approved';
+                $body    = "Request #{$id}: {$fromName} was changed from ₱" . number_format((float) ($rev['line_amount'] ?? 0), 2)
+                    . ' to ₱' . number_format($newAmt, 2) . '.';
+            } else {
+                $subject = 'Budget realignment approved';
+                $body    = "Request #{$id}: ₱" . number_format($moved, 2) . " was moved from {$fromName} to " . $this->lineLabel($rev, 'to_', $toId) . '.';
+            }
+
+            $year   = $rev['fiscal_yr'] ?? null;
+            $link   = $this->budgetReqPageLink(is_numeric($year) ? (int) $year : null);
+            $sender = (int) App\CurrentUserID();
+
+            $count = 0;
+            foreach ($rcIds as $rc) {
+                $count += NotificationService::toRc($rc, $subject, $body, $link, [
+                    'sender_id' => $sender > 0 ? $sender : null,
+                    'event_key' => "budget_revision_approved:{$id}:{$rc}",
+                ]);
+            }
+
+            return $count;
+        } catch (\Throwable $e) {
+            App\LogError("BudgetRevisionService: could not notify for revision #{$id} — " . $e->getMessage());
+
+            return 0;
+        }
     }
 
     // Soft delete — the table carries deleted_at, so the row is kept.
