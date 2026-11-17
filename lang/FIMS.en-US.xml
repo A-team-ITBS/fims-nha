@@ -146,6 +146,9 @@
     <menu id="658">
       <phrase id="menutext" value="Accountable Officer" />
     </menu>
+    <menu id="759">
+      <phrase id="menutext" value="Payroll Setup" />
+    </menu>
     <menu id="330">
       <phrase id="menutext" value="Fund Sourcing" />
     </menu>
@@ -1765,6 +1768,9 @@
     </table>
     <table id="check_disbursement_voucher_page">
       <phrase id="tblcaption" value="Check Disbursement" />
+    </table>
+    <table id="payroll_setup_page">
+      <phrase id="tblcaption" value="Payroll Setup" />
     </table>
   </project>
 </ew-language>

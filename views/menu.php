@@ -53,6 +53,7 @@ $sideMenu->addMenuItem(391, "mi_vendors_page", $Language->menuPhrase("391", "Men
 $sideMenu->addMenuItem(655, "mi_fund_source_page", $Language->menuPhrase("655", "MenuText"), "FundSourcePage", 651, "", AllowListMenu('{FIMS}fund-source-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(656, "mi_program_sources_page", $Language->menuPhrase("656", "MenuText"), "ProgramSourcesPage", 651, "", AllowListMenu('{FIMS}program-sources-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(658, "mi_accountable_officer_page", $Language->menuPhrase("658", "MenuText"), "AccountableOfficerPage", 651, "", AllowListMenu('{FIMS}accountable_officer-page.php'), false, false, "", "", false, true);
+$sideMenu->addMenuItem(759, "mi_payroll_setup_page", $Language->menuPhrase("759", "MenuText"), "PayrollSetupPage", 651, "", AllowListMenu('{FIMS}payroll-setup-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(330, "mci_Fund_Sourcing", $Language->menuPhrase("330", "MenuText"), "", -1, "", true, false, true, "fas fa-hand-holding-dollar", "", false, true);
 $sideMenu->addMenuItem(392, "mi_fund_sourcing_dashboard_page", $Language->menuPhrase("392", "MenuText"), "FundSourcingDashboardPage", 330, "", AllowListMenu('{FIMS}fund-sourcing-dashboard-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(264, "mi_supplemental_funds_page", $Language->menuPhrase("264", "MenuText"), "SupplementalFundsPage", 330, "", AllowListMenu('{FIMS}supplemental-funds-page.php'), false, false, "", "", false, true);
