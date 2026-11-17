@@ -82,6 +82,7 @@ class DisbursementVoucherService
     private string $tableDvAtcLines      = 'fims.disbursement_voucher_atc_lines';
     private string $tableSettingsStatus  = 'fims.settings_status';
     private string $tableBudgetCategory  = 'fims.budget_category';
+    private string $tableRfaProjects     = 'fims.budget_allocation_project';
 
     // Classification tag only (reporting/filtering) — never changes which fields the voucher form
     // shows. NOT a manual/pickable field: it is derived server-side from the voucher's own
@@ -761,6 +762,21 @@ class DisbursementVoucherService
      * linkRfas()'s own exclusivity check uses, so an RFA doesn't get stuck unavailable forever just
      * because nothing else explicitly clears budget_allocation.dv_id when a DV is cancelled).
      */
+    /**
+     * line_transaction moved off fims.budget_allocation onto its child fims.budget_allocation_project
+     * ("03 - alter_table/48 - budget_allocation_drop_project_columns.sql") — a memo request can now
+     * cover several Project blocks, each with its own itemized COB draws. This flattens every block's
+     * line_transaction array into one combined array per RFA, matching the single array withRfaBudget()
+     * and rfaFirstLineAccount() used to read directly off a.line_transaction.
+     */
+    private function rfaLineTransactionSql(): string
+    {
+        return "(SELECT COALESCE(jsonb_agg(elem), '[]'::jsonb)
+                  FROM {$this->tableRfaProjects} bap
+                  CROSS JOIN LATERAL jsonb_array_elements(COALESCE(bap.line_transaction, '[]'::jsonb)) elem
+                  WHERE bap.allocation_id = a.allocation_id AND bap.deleted_at IS NULL) AS line_transaction";
+    }
+
     private function rfaAvailableSql(?int $excludeDvId): string
     {
         $exclude = $excludeDvId !== null ? " OR a.dv_id = {$excludeDvId}" : '';
@@ -795,7 +811,7 @@ class DisbursementVoucherService
                 "SELECT a.allocation_id, a.allocation_number, a.request_referrence_no, a.fiscal_year,
                         a.requesting_rc_id, rc.rc_name AS department_name,
                         a.vendor_id, v.vendor_name, v.address AS vendor_address, v.tin AS vendor_tin,
-                        a.po_number, a.po_amount, a.line_transaction, a.dv_id,
+                        a.po_number, a.po_amount, {$this->rfaLineTransactionSql()}, a.dv_id,
                         a.category_id, bc.name AS category_name, a.description
                  FROM {$this->tableRfa} a
                  LEFT JOIN {$this->tableRc}             rc ON rc.rc_id = a.requesting_rc_id
@@ -825,7 +841,7 @@ class DisbursementVoucherService
                 "SELECT a.allocation_id, a.allocation_number, a.request_referrence_no, a.fiscal_year,
                         a.requesting_rc_id, rc.rc_name AS department_name,
                         a.vendor_id, v.vendor_name, v.address AS vendor_address, v.tin AS vendor_tin,
-                        a.po_number, a.po_amount, a.line_transaction,
+                        a.po_number, a.po_amount, {$this->rfaLineTransactionSql()},
                         a.category_id, bc.name AS category_name, a.description
                  FROM {$this->tableRfa} a
                  LEFT JOIN {$this->tableRc}             rc ON rc.rc_id = a.requesting_rc_id
@@ -964,7 +980,7 @@ class DisbursementVoucherService
                     "SELECT a.allocation_id, a.allocation_number, a.request_referrence_no, a.fiscal_year,
                             a.requesting_rc_id, rc.rc_name AS department_name,
                             a.vendor_id, v.vendor_name, v.address AS vendor_address, v.tin AS vendor_tin,
-                            a.po_number, a.po_amount, a.line_transaction, a.dv_id,
+                            a.po_number, a.po_amount, {$this->rfaLineTransactionSql()}, a.dv_id,
                             a.category_id, bc.name AS category_name, a.description
                      FROM {$this->tableRfa} a
                      LEFT JOIN {$this->tableRc}             rc ON rc.rc_id = a.requesting_rc_id
