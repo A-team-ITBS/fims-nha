@@ -131,6 +131,7 @@ return [
     "subsidiary_ledger_page" => \DI\create(SubsidiaryLedgerPage::class),
     "journals_page" => \DI\create(JournalsPage::class),
     "trial_balance_page" => \DI\create(TrialBalancePage::class),
+    "balance_sheet_page" => \DI\create(BalanceSheetPage::class),
     "budget_prop_page" => \DI\create(BudgetPropPage::class),
     "notification_reads" => \DI\create(NotificationReads::class),
     "saro_registry_page" => \DI\create(SaroRegistryPage::class),

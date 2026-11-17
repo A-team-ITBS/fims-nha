@@ -23,6 +23,7 @@ $_tb_api = preg_match('~/api$~', $_tb_api) ? $_tb_api : $_tb_api . '/api';
     #tb-root .tb-report-title { text-align: center; margin: 0 0 18px; }
     #tb-root .tb-report-title div { font-weight: 700; line-height: 1.6; }
     #tb-root .tb-report-title .tb-report-date { font-weight: 400; }
+    #tb-root .tb-account-row.tb-contra-row td:first-child { font-style: italic; }
     #tb-root .tb-major-row td { background: #1B2B6B; color: #fff; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; }
     #tb-root .tb-group-row td { background: var(--afims-bg-soft, #F5F6FA); font-weight: 600; text-transform: uppercase; }
 
@@ -52,6 +53,15 @@ $_tb_api = preg_match('~/api$~', $_tb_api) ? $_tb_api : $_tb_api . '/api';
     #tb-root .nha-tbl td             { line-height: 1.25; padding: 4px 12px; }
     #tb-root .nha-tbl td.nha-mono, #tb-root .nha-tbl td.text-end { white-space: nowrap; }
     #tb-root .nha-tbl td:first-child { overflow-wrap: anywhere; }
+
+    /* Scroll the body vertically instead of growing the page — header row and totals stay pinned in view. */
+    #tb-root .nha-tbl-scroll { max-height: 70vh; overflow-y: auto; }
+    #tb-root .nha-tbl thead th { position: sticky; top: 0; z-index: 1; }
+    #tb-root .nha-tbl tfoot td { position: sticky; bottom: 0; z-index: 1; background: var(--afims-surface, #fff); }
+    html.afims-dark[data-bs-theme="dark"] #tb-root .nha-tbl tfoot td { background: var(--afims-surface-subtle, #22294A); }
+    @media print {
+        #tb-root .nha-tbl-scroll { max-height: none; overflow-y: visible; }
+    }
     #tb-root .tb-major-row td        { padding: 5px 12px; }
     #tb-root .nha-tbl tfoot td       { padding: 8px 12px; }
     #tb-root .tb-report-title div    { font-size: 1rem; }
@@ -66,7 +76,8 @@ $_tb_api = preg_match('~/api$~', $_tb_api) ? $_tb_api : $_tb_api . '/api';
     html.afims-dark[data-bs-theme="dark"] #tb-root .tb-major-row td { background: #2E4A8F; color: #FFFFFF; }
     html.afims-dark[data-bs-theme="dark"] #tb-root .nha-tbl tfoot td { background: var(--afims-surface-subtle, #22294A); color: #FFFFFF; border-top: 2px solid var(--afims-border-strong, #4A5270); }
     @media print {
-        #tb-root .tb-report-title { display: block !important; }
+        #tb-root .tb-letterhead,
+        #tb-root .tb-cert { display: block !important; }
     }
 </style>
 
@@ -128,10 +139,24 @@ $_tb_api = preg_match('~/api$~', $_tb_api) ? $_tb_api : $_tb_api . '/api';
     </div>
 
     <!-- ── REPORT TITLE (shown only on print) ────────────── -->
-    <div class="tb-report-title d-print-block" style="display:none;">
-        <div>NATIONAL HOUSING AUTHORITY</div>
-        <div>TRIAL BALANCE<span id="tb-report-book"></span></div>
-        <div class="tb-report-date">As of <span id="tb-report-date">—</span></div>
+    <div class="tb-letterhead" style="display:none;border:1px solid #000;padding:8px 10px;margin-bottom:0;">
+        <table style="width:100%;border-collapse:collapse;"><tr>
+            <td style="width:14%;vertical-align:middle;">
+                <img src="/_shared/images/letterhead/nha-logo.png" alt="NHA" style="height:54px;display:block;margin:0 auto;object-fit:contain;">
+            </td>
+            <td class="tb-report-title" style="width:51%;text-align:center;vertical-align:middle;">
+                <div style="font-weight:700;">NATIONAL HOUSING AUTHORITY</div>
+                <div style="font-weight:700;">TRIAL BALANCE<span id="tb-report-book"></span></div>
+                <div style="font-weight:700;">MAIN OFFICE</div>
+                <div class="tb-report-date"><span id="tb-report-date">—</span></div>
+            </td>
+            <td style="width:35%;text-align:center;vertical-align:middle;white-space:nowrap;">
+                <img src="/_shared/images/letterhead/pambansang-pabahay.png" alt="Pambansang Pabahay"
+                     style="height:46px;margin-right:5px;vertical-align:middle;object-fit:contain;">
+                <img src="/_shared/images/letterhead/bagong-pilipinas.png" alt="Bagong Pilipinas"
+                     style="height:46px;vertical-align:middle;object-fit:contain;">
+            </td>
+        </tr></table>
     </div>
 
     <!-- ── TABLE ──────────────────────────────────────────── -->
@@ -140,10 +165,10 @@ $_tb_api = preg_match('~/api$~', $_tb_api) ? $_tb_api : $_tb_api . '/api';
             <table class="nha-tbl">
                 <thead>
                     <tr>
-                        <th>Account Title</th>
-                        <th>Acct Code</th>
-                        <th class="text-end">Debit</th>
-                        <th class="text-end">Credit</th>
+                        <th>Accounts</th>
+                        <th>Acct. Code</th>
+                        <th class="text-end">Debit Balances</th>
+                        <th class="text-end">Credit Balances</th>
                     </tr>
                 </thead>
                 <tbody id="tb-tbody">
@@ -157,6 +182,17 @@ $_tb_api = preg_match('~/api$~', $_tb_api) ? $_tb_api : $_tb_api . '/api';
                     </tr>
                 </tfoot>
             </table>
+        </div>
+    </div>
+
+    <!-- ── CERTIFICATION (shown only on print) ───────────── -->
+    <div class="tb-cert" style="display:none;margin-top:28px;font-size:9.5pt;">
+        <p style="margin:0 0 30px;">I HEREBY CERTIFY that the trial balance is a true and complete statement of all
+            accounts as shown in the ledger prepared and presented in conformity with International Public Sector
+            Accounting Standards (IPSAS).</p>
+        <div style="width:260px;text-align:center;">
+            <div style="border-top:1px solid #000;padding-top:4px;">Signature Over Printed Name</div>
+            <div>Head of Accounting Department</div>
         </div>
     </div>
 
@@ -298,7 +334,8 @@ function tb_render(json) {
             lastMajor = r.major_group;
             lastGroup = r.account_group;
 
-            return header + `<tr class="tb-account-row">
+            const contra = /^(Accumulated Depreciation|Allowance for Impairment)/i.test(String(r.account_title || ''));
+            return header + `<tr class="tb-account-row${contra ? ' tb-contra-row' : ''}">
                 <td>${tb_esc(r.account_title) || '—'}</td>
                 <td class="nha-mono">${tb_esc(r.account_code)}</td>
                 <td class="text-end nha-mono">${tb_peso(r.total_debit)}</td>
