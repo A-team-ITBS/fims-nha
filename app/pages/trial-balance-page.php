@@ -26,6 +26,12 @@ $_tb_api = preg_match('~/api$~', $_tb_api) ? $_tb_api : $_tb_api . '/api';
     #tb-root .tb-major-row td { background: #1B2B6B; color: #fff; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; }
     #tb-root .tb-group-row td { background: var(--afims-bg-soft, #F5F6FA); font-weight: 600; text-transform: uppercase; font-size: 12px; }
     #tb-root .tb-account-row td:first-child { padding-left: 28px; }
+
+    /* Dark mode: --afims-bg-soft is not a theme token, so the account-group rows (e.g. "Cash and Cash Equivalents") fell back to a
+       near-white #F5F6FA with light text on it; the major classification rows get the brand blue so they stand out from the table */
+    html.afims-dark[data-bs-theme="dark"] #tb-root .tb-group-row td { background: var(--afims-surface-subtle, #22294A); color: #FFFFFF; border-top: 1px solid var(--afims-border-strong, #4A5270); }
+    html.afims-dark[data-bs-theme="dark"] #tb-root .tb-major-row td { background: #2E4A8F; color: #FFFFFF; }
+    html.afims-dark[data-bs-theme="dark"] #tb-root .nha-tbl tfoot td { background: var(--afims-surface-subtle, #22294A); color: #FFFFFF; border-top: 2px solid var(--afims-border-strong, #4A5270); }
     @media print {
         #tb-root .tb-report-title { display: block !important; }
     }
