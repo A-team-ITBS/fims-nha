@@ -50,6 +50,9 @@
     <menu id="208">
       <phrase id="menutext" value="Journal Entry Voucher" />
     </menu>
+    <menu id="758">
+      <phrase id="menutext" value="Check Disbursement" />
+    </menu>
     <menu id="390">
       <phrase id="menutext" value="Inventory" />
     </menu>
@@ -1759,6 +1762,9 @@
     </table>
     <table id="collections_page">
       <phrase id="tblcaption" value="Collections" />
+    </table>
+    <table id="check_disbursement_voucher_page">
+      <phrase id="tblcaption" value="Check Disbursement" />
     </table>
   </project>
 </ew-language>
