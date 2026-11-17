@@ -199,6 +199,7 @@ class PoDrService
         foreach (App\ExecuteRows("SELECT account_code, account_title FROM fims.chart_of_accounts WHERE account_code IN ({$in})", 'DB') ?: [] as $r) {
             $titles[$r['account_code']] = (string) $r['account_title'];
         }
+        // (a subsidiary ledger, e.g. 5-02-03-010-01, is a child row of its GL account in the chart of accounts, so it is found here too)
         foreach ($entries as &$en) {
             if (!isset($titles[$en['account_code']])) {
                 return [null, null, "Account code '{$en['account_code']}' was not found in the chart of accounts."];
@@ -421,18 +422,28 @@ class PoDrService
         }
     }
 
-    /** Search for the Account Code picker: the whole chart of accounts (postable, active), by code or title. */
+    /**
+     * Search for the Account Code picker, by code or title: the postable, active accounts of the chart of accounts — except a
+     * GL account that has subsidiary ledgers. An SL is a child row of its GL account (chart_of_accounts.parent_account_id), e.g.
+     * 5-02-03-010-01 "Office Supplies" under 5-02-03-010 "Office Supplies Expenses"; when a GL account has postable SLs only its
+     * SLs are offered. Typing the GL code (5-02-03-010) finds its SLs too.
+     */
     public function searchAccounts(string $search = ''): array
     {
         try {
-            $where = "COALESCE(posting_allowed, TRUE) AND COALESCE(status, 'Active') ILIKE 'active'";
+            $where = "COALESCE(c.posting_allowed, TRUE) AND COALESCE(c.status, 'Active') ILIKE 'active'
+                      AND NOT EXISTS (SELECT 1 FROM fims.chart_of_accounts ch
+                                       WHERE ch.parent_account_id = c.account_id AND ch.posting_allowed AND COALESCE(ch.status, 'Active') ILIKE 'active')";
             if (trim($search) !== '') {
                 $s      = $this->q('%' . trim($search) . '%');
-                $where .= " AND (account_code ILIKE {$s} OR account_title ILIKE {$s})";
+                $where .= " AND (c.account_code ILIKE {$s} OR c.account_title ILIKE {$s} OR p.account_code ILIKE {$s})";
             }
             $rows = App\ExecuteRows(
-                "SELECT DISTINCT ON (account_code) account_code, account_title FROM fims.chart_of_accounts WHERE {$where}
-                 ORDER BY account_code LIMIT 30",
+                "SELECT DISTINCT ON (c.account_code) c.account_code, c.account_title
+                   FROM fims.chart_of_accounts c
+                   LEFT JOIN fims.chart_of_accounts p ON p.account_id = c.parent_account_id
+                  WHERE {$where}
+                  ORDER BY c.account_code LIMIT 30",
                 'DB'
             ) ?: [];
 
@@ -587,12 +598,61 @@ class PoDrService
                     'debit'         => 0,
                     'credit'        => round((float) $dr['total_amount'], 2),
                 ];
-                $receipts[] = ['dr_number' => (string) $dr['dr_number'], 'rows' => $rows, 'total' => round((float) $dr['total_amount'], 2)];
+                $receipts[] = [
+                    'dr_number' => (string) $dr['dr_number'], 'delivery_date' => $dr['delivery_date'] ?? null, 'rows' => $rows, 'total' => round((float) $dr['total_amount'], 2),
+                    'jev_id' => $dr['jev_id'] ?? null, 'jev_no' => $dr['jev_no'] ?? null,   // set once its pro-forma was submitted as a JEV
+                ];
             }
 
-            return ['success' => true, 'data' => ['po_number' => $poNumber, 'iar_number' => $res['data']['iar_number'], 'receipts' => $receipts]];
+            return ['success' => true, 'data' => [
+                'po_number' => $poNumber, 'iar_number' => $res['data']['iar_number'],
+                'requesting_rc_id' => $res['data']['requesting_rc_id'] ?? null,   // the JEV lines' Responsibility Center when it is submitted
+                'receipts' => $receipts,
+            ]];
         } catch (\Exception $e) {
             return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /** The JEV a delivery receipt's pro-forma was submitted as ({jev_id, jev_no}), or null when it has not been submitted. */
+    public function jevOf(string $poNumber, string $drNumber): ?array
+    {
+        $rows = App\ExecuteRows("SELECT line_transaction FROM {$this->h} WHERE po_number = " . $this->q($poNumber), 'DB');
+        foreach ($rows ? $this->drsFrom($rows[0]['line_transaction']) : [] as $d) {
+            if ((string) ($d['dr_number'] ?? '') === $drNumber && !empty($d['jev_id'])) {
+                return ['jev_id' => (int) $d['jev_id'], 'jev_no' => (string) ($d['jev_no'] ?? '')];
+            }
+        }
+
+        return null;
+    }
+
+    /** Records on the delivery receipt (in line_transaction) the JEV its pro-forma was submitted as: the pro-forma cannot be submitted twice. */
+    public function linkJev(string $poNumber, string $drNumber, int $jevId, string $jevNo): bool
+    {
+        App\Execute('BEGIN', 'DB');
+        try {
+            $cur   = App\ExecuteRows("SELECT line_transaction FROM {$this->h} WHERE po_number = " . $this->q($poNumber) . ' FOR UPDATE', 'DB');
+            $drs   = $cur ? $this->drsFrom($cur[0]['line_transaction']) : [];
+            $found = false;
+            foreach ($drs as $i => $d) {
+                if ((string) ($d['dr_number'] ?? '') === $drNumber) {
+                    $drs[$i]['jev_id'] = $jevId;
+                    $drs[$i]['jev_no'] = $jevNo;
+                    $found = true;
+                }
+            }
+            if ($found) {
+                App\Execute("UPDATE {$this->h} SET line_transaction = " . $this->jsonSql($drs) . ' WHERE po_number = ' . $this->q($poNumber), 'DB');
+            }
+            App\Execute('COMMIT', 'DB');
+
+            return $found;
+        } catch (\Exception $e) {
+            App\Execute('ROLLBACK', 'DB');
+            App\LogError('PoDrService::linkJev ' . $e->getMessage());
+
+            return false;
         }
     }
 
