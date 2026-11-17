@@ -79,6 +79,21 @@ try {
 .nha-menu-item.has-color svg { opacity:1; }
 .nha-menu-item.has-color:hover { background:color-mix(in srgb, var(--nha-item-color) 12%, #fff);color:var(--nha-item-color); }
 .nha-menu-divider { border-top:1px solid var(--afims-border, #E4ECF2);margin:3px 0; }
+/* Dark mode: the hover text was the navy fill colour (navy on dark — the hovered item went blank), a status-tinted item
+   (e.g. Submit for Review) kept its dark status colour, and Delete's hover was a light-pink block. */
+html.afims-dark[data-bs-theme="dark"] .nha-tools-dropdown { background:var(--afims-surface, #1A1F38);border-color:var(--afims-border-strong, #4A5270);
+    box-shadow:0 8px 24px rgba(0,0,0,.45); }
+html.afims-dark[data-bs-theme="dark"] .nha-menu-item { color:var(--afims-text, #E4ECF2); }
+html.afims-dark[data-bs-theme="dark"] .nha-menu-item svg { opacity:.85; }
+html.afims-dark[data-bs-theme="dark"] .nha-menu-item:hover { color:#FFFFFF;background:var(--afims-primary-soft, #0F2456); }
+html.afims-dark[data-bs-theme="dark"] .nha-menu-item.danger { color:#F87171; }
+html.afims-dark[data-bs-theme="dark"] .nha-menu-item.danger:hover { color:#FCA5A5;background:rgba(220,53,69,.18); }
+html.afims-dark[data-bs-theme="dark"] .nha-menu-item.has-color { color:color-mix(in srgb, var(--nha-item-color) 45%, #FFFFFF); }
+html.afims-dark[data-bs-theme="dark"] .nha-menu-item.has-color:hover { color:#FFFFFF;
+    background:color-mix(in srgb, var(--nha-item-color) 30%, var(--afims-surface, #1A1F38)); }
+html.afims-dark[data-bs-theme="dark"] .nha-menu-divider { border-top-color:var(--afims-border-strong, #4A5270); }
+html.afims-dark[data-bs-theme="dark"] .nha-menu-trigger { color:#FFFFFF;background:#3861BC;border-color:#3861BC; }
+html.afims-dark[data-bs-theme="dark"] .nha-menu-trigger:hover { background:#2E59B8;border-color:#2E59B8; }
 
 /* The print preview opens ABOVE the request details modal (z-index 9060) and the CAF form (9070) — printing starts from the
    details modal's Print button. The shared stylesheet puts every overlay at 9050, which would hide it behind them. */

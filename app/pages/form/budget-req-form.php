@@ -269,6 +269,32 @@ $_bgr_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
     .bgr-acct-empty { padding:8px 12px;font-size:12px;color:var(--afims-text-disabled, #A9AAB8);font-style:italic; }
 
     @media (max-width: 520px) { .bgr-row { grid-template-columns:1fr; } }
+
+    /* ── Dark mode ──────────────────────────────────────────────────────
+       --afims-heading-fill stays NAVY in dark mode (it is a fill colour for white text), so every place above that
+       uses it as a TEXT colour (Projects heading, Grand Total, collapse chevron, doc link) became navy-on-navy.
+       The selects also rendered with the browser's black native dark style instead of the theme surface. */
+    html.afims-dark[data-bs-theme="dark"] #bgr-card { color-scheme:dark; }
+    html.afims-dark[data-bs-theme="dark"] #bgr-card :is(.bgr-select, .bgr-input, .bgr-textarea, .bgr-li-input, .bgr-li-select) {
+        background-color:var(--afims-surface, #1A1F38) !important;border-color:var(--afims-border, #2E3656) !important;
+        color:var(--afims-text, #E4ECF2) !important; }
+    html.afims-dark[data-bs-theme="dark"] #bgr-card :is(.bgr-select, .bgr-li-select) option {
+        background-color:var(--afims-surface, #1A1F38);color:var(--afims-text, #E4ECF2); }
+    html.afims-dark[data-bs-theme="dark"] #bgr-card :is(.bgr-input, .bgr-textarea, .bgr-li-input)::placeholder {
+        color:var(--afims-text-muted, #AAAFBE);opacity:1; }
+    html.afims-dark[data-bs-theme="dark"] #bgr-card :is(.bgr-select, .bgr-input, .bgr-textarea, .bgr-li-input, .bgr-li-select):focus,
+    html.afims-dark[data-bs-theme="dark"] #bgr-card .bgr-amt-wrap:focus-within {
+        border-color:var(--afims-primary, #3861BC) !important;box-shadow:0 0 0 3px color-mix(in srgb, var(--afims-primary, #3861BC) 25%, transparent); }
+    html.afims-dark[data-bs-theme="dark"] #bgr-card :is(.bgr-select, .bgr-li-input, .bgr-li-select):disabled {
+        background-color:var(--afims-surface-subtle, #141830) !important;color:var(--afims-text-muted, #AAAFBE) !important; }
+    html.afims-dark[data-bs-theme="dark"] #bgr-card #bgr-grand-total-display {
+        background-color:var(--afims-surface-subtle, #141830) !important;color:var(--afims-text, #E4ECF2) !important; }
+    html.afims-dark[data-bs-theme="dark"] #bgr-card .bgr-block-project-code-display { color:var(--afims-text-muted, #AAAFBE) !important; }
+    html.afims-dark[data-bs-theme="dark"] #bgr-card .bgr-sec-hd { color:var(--afims-text, #E4ECF2); }
+    html.afims-dark[data-bs-theme="dark"] #bgr-card .bgr-block-toggle { color:var(--afims-text, #E4ECF2);
+        border-color:var(--afims-border, #2E3656); }
+    html.afims-dark[data-bs-theme="dark"] #bgr-card .bgr-block-toggle:hover { background:var(--afims-surface-subtle, #141830); }
+    html.afims-dark[data-bs-theme="dark"] #bgr-card .bgr-doc-open { color:var(--afims-primary-text, #94AADB); }
 </style>
 
 <div id="bgr-overlay">
