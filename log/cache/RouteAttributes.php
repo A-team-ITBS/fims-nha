@@ -212,6 +212,7 @@
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
     ],
     null,
     [
@@ -1401,6 +1402,7 @@
                 '/swagger/swagger',
                 '/[index]',
                 '/PageEditor[/{params:.*}]',
+                '/PayrollPage[/{params:.*}]',
                 '/PayrollSetupPage[/{params:.*}]',
                 '/PermissionModuleCaptionsList[/{table_name:.*}]',
                 '/PermissionModuleCaptionsAdd[/{table_name:.*}]',
@@ -1615,6 +1617,7 @@
                 'PHPMaker2024\\FIMS\\OthersController:swagger',
                 'PHPMaker2024\\FIMS\\OthersController:index',
                 'PHPMaker2024\\FIMS\\PageEditorController:custom',
+                'PHPMaker2024\\FIMS\\PayrollPageController:custom',
                 'PHPMaker2024\\FIMS\\PayrollSetupPageController:custom',
                 'PHPMaker2024\\FIMS\\PermissionModuleCaptionsController:list',
                 'PHPMaker2024\\FIMS\\PermissionModuleCaptionsController:add',
@@ -2337,6 +2340,9 @@
                 [
                     'PHPMaker2024\\FIMS\\PermissionMiddleware',
                 ],
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
             ],
             'name' => [
                 'custom.accountable_forms_registry_page',
@@ -2465,6 +2471,7 @@
                 'swagger',
                 'index',
                 'custom.PageEditor',
+                'custom.payroll_page',
                 'custom.payroll_setup_page',
                 'list.permission_module_captions',
                 'add.permission_module_captions',
