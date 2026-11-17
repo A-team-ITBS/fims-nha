@@ -485,8 +485,8 @@ function brv_openModal(mode, row = null) {
         $brv('brv-line-id').value = row?.from_budget_line_item_id || '';
         $brv('brv-to-line-id').value = row?.to_budget_line_item_id || '';
     }
-    $brv('brv-from-amount').value = row?.from_amount ?? '';
-    $brv('brv-to-amount').value = row?.to_amount ?? '';
+    $brv('brv-from-amount').value = brv_amtText(row?.from_amount);
+    $brv('brv-to-amount').value = brv_amtText(row?.to_amount);
     $brv('brv-reason').value = row?.reason || '';
 
     $brv('brv-overlay').classList.add('open');
@@ -527,15 +527,15 @@ async function brv_save(ev) {
         from_budget_line_item_id : $brv('brv-line-id').value,
         // a Revision has no To line ('' also clears one on edit); a Realignment must name it
         to_budget_line_item_id   : type === 'REALIGNMENT' ? $brv('brv-to-line-id').value : '',
-        from_amount              : $brv('brv-from-amount').value,
-        to_amount                : $brv('brv-to-amount').value,
+        from_amount              : brv_amtRaw('brv-from-amount'),
+        to_amount                : brv_amtRaw('brv-to-amount'),
         reason                   : $brv('brv-reason').value.trim(),
     };
 
     if (!payload.from_budget_line_item_id) { brv_toast('Please select a From budget line.', 'error'); return; }
     if (type === 'REALIGNMENT' && !payload.to_budget_line_item_id) { brv_toast('Please select a To budget line to move the funds to.', 'error'); return; }
     if (payload.to_budget_line_item_id && Number(payload.to_amount) >= Number(payload.from_amount)) {
-        brv_toast('To Amount must be lower than From Amount to move funds to the To budget line.', 'error');
+        brv_toast(window.brvForm?.moveAmountError?.(payload.to_amount, payload.from_amount) || "Amount must not exceed the From budget line's revised amount.", 'error');
         return;
     }
 
@@ -591,6 +591,8 @@ function brv_openView(r) {
     $brv('brv-view-title-req').textContent = brv_lineTitle(r, '');
     $brv('brv-view-req-sub').textContent = brv_lineSub(r, '');
     $brv('brv-view-req-amount').textContent = brv_fmtMoney(r.line_amount);
+    // a budget line that has never been revised (no adjustment) has no revised amount — its amount is its approved amount
+    $brv('brv-view-req-amt-lbl').textContent = Number(r.line_adjustment || 0) !== 0 ? 'Revised amount' : 'Approved amount';
 
     // the To line — a card when the revision has one, a one-line note when it doesn't
     const hasTo = !!r.to_budget_line_item_id;
@@ -601,6 +603,7 @@ function brv_openView(r) {
         $brv('brv-view-to-title-req').textContent = brv_lineTitle(r, 'to_');
         $brv('brv-view-to-req-sub').textContent = brv_lineSub(r, 'to_');
         $brv('brv-view-to-req-amount').textContent = brv_fmtMoney(r.to_line_amount);
+        $brv('brv-view-to-req-amt-lbl').textContent = Number(r.to_line_adjustment || 0) !== 0 ? 'Revised amount' : 'Approved amount';
     }
 
     // the revision
@@ -687,13 +690,13 @@ async function brv_review(status) {
             const toCurrent = Number(v.to_line_amount || 0);
             const fromCode  = brv_lineName(v, '') || 'The From budget line';
             const toCode    = brv_lineName(v, 'to_') || 'The To budget line';
-            question += `\n\n${fromCode} (From budget line) will change from ${brv_fmtMoney(current)} to ${brv_fmtMoney(target)}, `
-                      + `and ${brv_fmtChange(-moved)} will be added to its adjustment and its suggested amount.`
-                      + `\n${toCode} (To budget line) will change from ${brv_fmtMoney(toCurrent)} to ${brv_fmtMoney(toCurrent + moved)}, `
-                      + `and ${brv_fmtChange(moved)} will be added to its adjustment and its suggested amount.`;
+            question += `\n\n${fromCode} (From budget line): its revised amount will change from ${brv_fmtMoney(current)} to ${brv_fmtMoney(target)}, `
+                      + `and ${brv_fmtChange(-moved)} will be added to its adjustment.`
+                      + `\n${toCode} (To budget line): its revised amount will change from ${brv_fmtMoney(toCurrent)} to ${brv_fmtMoney(toCurrent + moved)}, `
+                      + `and ${brv_fmtChange(moved)} will be added to its adjustment.`;
         } else if (!v.to_budget_line_item_id) {
-            question += `\n\nThe budget line amount will change from ${brv_fmtMoney(current)} to ${brv_fmtMoney(target)}, `
-                      + `and ${brv_fmtChange(target - current)} will be added to its adjustment and its suggested amount.`;
+            question += `\n\nThe budget line's revised amount will change from ${brv_fmtMoney(current)} to ${brv_fmtMoney(target)}, `
+                      + `and ${brv_fmtChange(target - current)} will be added to its adjustment.`;
         }
     }
     if (!id || !confirm(question)) return;
@@ -735,6 +738,14 @@ function brv_apiHeaders(extra = {}) {
 }
 function brv_fmtMoney(v) {
     return '₱ ' + Number(v || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+// The form's From / To Amount inputs show thousands commas ("1,000.00", see form/budget-rev-form.php): brv_amtText puts an amount into
+// one ('' when there is none), brv_amtRaw reads one back as the plain number string the API takes ("1000.00").
+function brv_amtText(v) {
+    return v === '' || v === null || v === undefined || isNaN(Number(v)) ? '' : Number(v).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function brv_amtRaw(id) {
+    return String($brv(id).value ?? '').replace(/,/g, '').trim();
 }
 // Signed amount: +₱ 1,000.00 / −₱ 500.00 / ₱ 0.00
 function brv_fmtChange(v) {
@@ -783,7 +794,7 @@ function brv_linePlace(r, pre) {
     return [r[pre + 'budget_reference_number'], [r[pre + 'program_code'], r[pre + 'project_code']].filter(Boolean).join(' / ')].filter(Boolean).join(' · ');
 }
 // The details card's text, one line each: "BP-001 · Region III Office · FY 2026", "P-100 — Core Shelter › PJ-1 — Resettlement", the
-// particulars, and — when approved revisions have changed it — "Proposed ₱ … · adjusted ±₱ …".
+// particulars, and — when approved revisions have changed it — "Approved amount ₱ … · Adjustment ±₱ …".
 function brv_lineSub(r, pre) {
     const id = r[(pre ? 'to' : 'from') + '_budget_line_item_id'];
     if (!id) return 'Filed before budget lines could be revised — pick its budget line when editing it';
@@ -796,7 +807,7 @@ function brv_lineSub(r, pre) {
         `${r[pre + 'budget_reference_number']}${office ? ' · ' + office : ''} · FY ${fy}`,
         [withName(r[pre + 'program_code'], r[pre + 'program_name']), withName(r[pre + 'project_code'], r[pre + 'project_name'])].filter(Boolean).join(' › ') || 'No project yet',
         r[pre + 'particulars'] || '',
-        adj !== 0 ? `Proposed ${brv_fmtMoney(r[pre + 'proposed_amount'])} · adjusted ${brv_fmtChange(adj)}` : '',
+        adj !== 0 ? `Approved amount ${brv_fmtMoney(r[pre + 'proposed_amount'])} · Adjustment ${brv_fmtChange(adj)}` : '',
     ].filter(Boolean).join('\n');
 }
 // A budget request's status pill in the status's own colour (settings_status.color); only a plain #RRGGBB colour is put into a

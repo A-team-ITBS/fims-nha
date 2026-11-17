@@ -241,6 +241,12 @@ function prg_bindEvents() {
     $prg('prg-modal-close')?.addEventListener('click', prg_closeModal);
     $prg('prg-cancel')?.addEventListener('click', prg_closeModal);
     $prg('prg-form')?.addEventListener('submit', prg_save);
+    // Program Name is always in capitals: what is typed or pasted is turned into capitals as it goes (the caret stays where it was)
+    $prg('prg-program-name')?.addEventListener('input', e => {
+        const el = e.target, from = el.selectionStart, to = el.selectionEnd;
+        const up = el.value.toUpperCase();
+        if (up !== el.value) { el.value = up; el.setSelectionRange(from, to); }
+    });
 
     // the sub-program form (form/sub-program-form.php)
     $prg('sp-modal-close')?.addEventListener('click', spf_close);
@@ -465,7 +471,7 @@ function prg_openModal(mode, row = null) {
     $prg('prg-code-hint').textContent = mode === 'edit'
         ? 'Program codes cannot be changed after creation.'
         : 'Auto-generated next 3-digit code.';
-    $prg('prg-program-name').value = row?.program_name || '';
+    $prg('prg-program-name').value = String(row?.program_name || '').toUpperCase();   // always shown (and saved) in capitals
     $prg('prg-save').disabled = false;
     if (mode === 'add') prg_loadCodePreview();     // defined in form/program-form.php
     $prg('prg-overlay').classList.add('open');
@@ -505,7 +511,7 @@ async function prg_save(ev) {
     const code = $prg('prg-program-code').value.trim();
     const payload = {
         program_code : code,
-        program_name : $prg('prg-program-name').value.trim(),
+        program_name : $prg('prg-program-name').value.trim().toUpperCase(),   // capitals, whatever got into the box
     };
 
     window.PagePreloader?.show();

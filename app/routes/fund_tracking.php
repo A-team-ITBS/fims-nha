@@ -10,9 +10,9 @@ use PHPMaker2024\FIMS\Service\FundTrackingServices;
 // Table      : fims.fund_tracking — lookups fims.fund_tracking_type,
 //              fims.nature_of_fund, fims.agency
 // Soft-deleted via deleted_at. user_id is the verified (JWT) user — it is
-// never read from the request body. A record has no unreleased amount and no
-// sub-program, and its `date` is the day it was created (stamped on add, never
-// sent): the API neither returns nor accepts those three.
+// never read from the request body. A record carries `unreleased` (NUMERIC 18,2) and `sub_program` (VARCHAR 225) — the API returns both.
+// `unreleased` is the balance of a SARO (its amount less its NCAs): the API works it out and keeps it up to date, on SAROs only. Its `date` is entered on the
+// SARO / NCA / Supplemental form; a request that sends none is dated the day it is created.
 // =============================================================================
 
 $Services = new FundTrackingServices();
@@ -27,7 +27,7 @@ $fundTrackingUserId = function ($request): ?int {
 
 // -----------------------------------------------------------------------
 // GET /fund_tracking/all — full list, no pagination (public — no JWT)
-// Query params: search — matched against reference_number (ILIKE, partial)
+// Query params: search — matched against saro_id (ILIKE, partial)
 //               lean   — 1/true: skip the nested parent/children relations
 //                        (pickers that only need the record itself)
 // -----------------------------------------------------------------------
@@ -52,7 +52,7 @@ $app->get('/fund_tracking/all', function ($request, $response, $args) use ($Serv
 //               (e.g. 2010-2012), matched against fund_tracking.fiscal_year.
 //               Independent of fiscal_year; both may be applied.
 //               status_id — a fims.settings_status id,
-//               reference_number — ILIKE partial match, e.g.
+//               saro_id — ILIKE partial match, e.g.
 //               ?page=1&limit=10&search=009911 (also accepts reference_number
 //               or the legacy saro_reference_number as param names),
 //               type (repeatable — e.g. ?type=SARO&type=NCA — filters to
@@ -109,16 +109,16 @@ $app->get('/fund_tracking/read/{id}', function ($request, $response, $args) use 
 
 // -----------------------------------------------------------------------
 // POST /fund_tracking/add — create new record
-// Body (JSON): tracking_type_id (required), fiscal_year, reference_number
+// Body (JSON): tracking_type_id (required), fiscal_year, saro_id
 //              (required unless the nature of fund is GAAAO, which generates
 //              it when none is sent — one that is sent is kept, so it is optional
-//              there and can be edited), nature_of_fund_id, name, amount, bank_account_no,
+//              there and can be edited), nature_of_fund_id, description, sub_program, amount, bank_account_no,
 //              agency_name (the agency's name as text), remarks, purpose,
 //              multiple_node_id, status_id, parent_id, and optionally
-//              `supplemental` {…}. `date` is stamped by the API (today); a
-//              `date`, `unreleased` or `sub_program_code` in the body is ignored.
-//              And, for a SARO only, optionally `ncas`: [{ reference_number
-//              (required), name, amount, bank_account_no, fiscal_year,
+//              `supplemental` {…}, and `date` (YYYY-MM-DD, entered on the form — a request without one is dated today); a
+//              `sub_program_code` and `unreleased` in the body are ignored (`unreleased` is worked out by the API; `sub_program` — up to 225 characters, the SARO form sends a fims.sub_program code — is accepted).
+//              And, for a SARO only, optionally `ncas`: [{ saro_id
+//              (required), description, amount, bank_account_no, fiscal_year,
 //              nature_of_fund_id }, …]
 //              — NCA records created under the new SARO (parent_id = the SARO).
 //              fiscal_year and nature_of_fund_id are the SARO's
@@ -127,8 +127,8 @@ $app->get('/fund_tracking/read/{id}', function ($request, $response, $args) use 
 //              means none. The SARO and all its NCAs are saved in one transaction:
 //              if any NCA is invalid, nothing is saved (400, the message names
 //              "NCA #n").
-//              And, for a Trust Fund only, optionally `ors`: [{ reference_number
-//              (required), name, amount, bank_account_no, remarks, fiscal_year,
+//              And, for a Trust Fund only, optionally `ors`: [{ saro_id
+//              (required), description, amount, bank_account_no, remarks, fiscal_year,
 //              nature_of_fund_id, agency_name }, …] — OR records created under
 //              the new Trust Fund (parent_id = the Trust Fund), same rules as
 //              `ncas`: a key left out inherits the Trust Fund's value (fiscal
@@ -202,13 +202,13 @@ $app->delete('/fund_tracking/delete/{id}', function ($request, $response, $args)
 // the JWT user (a `created_by` in the body is ignored).
 // Row keys (all optional except a fully-blank row, which is silently
 // skipped): fiscal_year, nature_of_fund,
-//           saro_reference_number (→ reference_number),
-//           saro_name (→ name, falls back to nca_release_reference),
+//           saro_reference_number (→ saro_id),
+//           saro_name (→ description, falls back to nca_release_reference),
 //           saro_date (→ date), amount,
 //           nca_release_reference, nca_amount, nca_date,
 //           bank_account_no, saro_multiple_node_id, nca_multiple_node_id
 // A sheet's sub_program / program / unreleased_saro / unreleased_nca columns are
-// not read (a record has no sub-program or unreleased amount); a row without a
+// not read (a SARO's unreleased is worked out by the API from its NCAs); a row without a
 // date is dated the day it is imported.
 //
 // "tracking_type_id" is intentionally NOT part of this import: it is resolved
