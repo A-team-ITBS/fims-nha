@@ -640,6 +640,7 @@ function vje_deductionCard(dv) {
                 <table class="vr-ledger" style="min-width:600px;">
                     <thead><tr>
                         <th style="text-align:left;">Type</th>
+                        <th style="text-align:left;width:180px;">Posting Account</th>
                         <th style="text-align:right;width:85px;">Rate (%)</th>
                         <th style="text-align:right;width:120px;">Gross (₱)</th>
                         <th style="text-align:right;width:130px;">Amount (₱)</th>
@@ -647,7 +648,7 @@ function vje_deductionCard(dv) {
                     </tr></thead>
                     <tbody id="vje-ded-tbody"></tbody>
                     <tfoot><tr class="vr-l-total">
-                        <td colspan="3" style="text-align:right;">Total Deductions</td>
+                        <td colspan="4" style="text-align:right;">Total Deductions</td>
                         <td class="vr-l-val" id="vje-ded-total">₱ 0.00</td>
                         <td></td>
                     </tr></tfoot>
@@ -825,8 +826,9 @@ async function vje_init(dv) {
                 const idx = dtr.id.replace('vje-ded-row-', '');
                 if (usedDed.has(idx)) return false;
                 const type = VJE_DED.find(t => String(t.deduction_type_id) === dtr.querySelector('.vje-ded-type').value);
+                const acctCode = type?.account_code || dtr.querySelector('.vje-ded-acct')?.value.trim() || '';
                 const amount = parseFloat(dtr.querySelector('.vje-ded-amount').value) || 0;
-                return type?.account_code === l.account_code && Math.abs(amount - credit) < 0.01;
+                return acctCode === l.account_code && Math.abs(amount - credit) < 0.01;
             });
             if (dedMatch) {
                 const idx = dedMatch.id.replace('vje-ded-row-', '');
@@ -880,18 +882,38 @@ function vje_addDeductionLine(d = null) {
             <option value="">— Select type —</option>
             ${VJE_DED.map(t => `<option value="${vr_esc(t.deduction_type_id)}">${vr_esc(t.name)}</option>`).join('')}
         </select></td>
+        <td><input type="text" class="vje-ded-acct" placeholder="Search GL account code (UACS)…" style="display:none;"></td>
         <td><input type="number" class="vje-ded-rate" min="0" step="0.01" placeholder="e.g. 10"></td>
         <td><input type="text" class="vje-ded-gross" readonly></td>
         <td><input type="number" class="vje-ded-amount" min="0" step="0.01" placeholder="Auto-computed"></td>
         <td><button type="button" class="vje-remove" title="Remove" onclick="vje_removeDeductionLine(${idx})">&times;</button></td>`;
     tr.querySelector('.vje-ded-type').value = d?.deduction_type_id != null ? String(d.deduction_type_id) : '';
+    tr.querySelector('.vje-ded-acct').value = d?.account_code ?? '';
     tr.querySelector('.vje-ded-rate').value = d?.rate ?? '';
     tr.querySelector('.vje-ded-amount').value = d ? Number(d.deduction_amount || 0).toFixed(2) : '';
-    tr.querySelector('.vje-ded-type').addEventListener('change', () => vje_recalcDeductionLine(idx));
+    nhaSearchableSelect(tr.querySelector('.vje-ded-acct'), VJE_COA.map(a => ({ value: a.account_code, label: a.account_title })));
+    tr.querySelector('.vje-ded-type').addEventListener('change', () => { vje_syncDeductionAcctCell(idx); vje_recalcDeductionLine(idx); });
+    tr.querySelector('.vje-ded-acct').addEventListener('input', () => vje_recalcDeductionLine(idx));
     tr.querySelector('.vje-ded-rate').addEventListener('input', () => vje_recalcDeductionLine(idx));
     tr.querySelector('.vje-ded-amount').addEventListener('input', () => vje_recalcDeductionLine(idx));
     $vr('vje-ded-tbody').appendChild(tr);
+    vje_syncDeductionAcctCell(idx);
     vje_recalcDeductionLine(idx);
+}
+
+/* Shows the Posting Account picker only when the selected deduction type has no default
+   posting account (deduction_types.account_code IS NULL — e.g. "OTHER"); hides (and clears) it
+   otherwise, since the type's own default always wins — see fetchDeductions()'s COALESCE. */
+function vje_syncDeductionAcctCell(idx) {
+    const tr = $vr(`vje-ded-row-${idx}`);
+    if (!tr) return;
+    const typeId = tr.querySelector('.vje-ded-type').value;
+    const type   = VJE_DED.find(t => String(t.deduction_type_id) === typeId);
+    const acctInput = tr.querySelector('.vje-ded-acct');
+    const needsAcct = !!typeId && !type?.account_code;
+    acctInput.style.display = needsAcct ? '' : 'none';
+    acctInput.placeholder = needsAcct ? 'Search GL account code (UACS)… *required' : '';
+    if (!needsAcct) acctInput.value = '';
 }
 
 function vje_removeDeductionLine(idx) {
@@ -926,6 +948,7 @@ function vje_collectDeductions() {
             rate             : tr.querySelector('.vje-ded-rate').value === '' ? null : parseFloat(tr.querySelector('.vje-ded-rate').value),
             gross_amount     : Number(vje_dv?.gross_amount) || 0,
             deduction_amount : amount,
+            account_code     : tr.querySelector('.vje-ded-acct')?.value.trim() || null,
         });
     });
     return out;
@@ -1119,14 +1142,15 @@ function vje_syncAutoLines() {
     const dedIds = new Set();
     let dedCreditTotal = 0;
     $vr('vje-ded-tbody').querySelectorAll('tr').forEach(tr => {
-        const idx    = tr.id.replace('vje-ded-row-', '');
-        const typeId = tr.querySelector('.vje-ded-type').value;
-        const amount = parseFloat(tr.querySelector('.vje-ded-amount').value) || 0;
-        const type   = VJE_DED.find(t => String(t.deduction_type_id) === typeId);
-        if (!typeId || !type?.account_code || amount <= 0) return;
+        const idx      = tr.id.replace('vje-ded-row-', '');
+        const typeId   = tr.querySelector('.vje-ded-type').value;
+        const amount   = parseFloat(tr.querySelector('.vje-ded-amount').value) || 0;
+        const type     = VJE_DED.find(t => String(t.deduction_type_id) === typeId);
+        const acctCode = type?.account_code || tr.querySelector('.vje-ded-acct')?.value.trim() || '';
+        if (!typeId || !acctCode || amount <= 0) return;
         dedIds.add(idx);
         dedCreditTotal += amount;
-        vje_upsertAutoLine(`ded:${idx}`, { account_code: type.account_code, debit: 0, credit: amount, description: type.name });
+        vje_upsertAutoLine(`ded:${idx}`, { account_code: acctCode, debit: 0, credit: amount, description: type.name });
     });
     vje_pruneAutoLines('ded:', id => dedIds.has(id));
 
@@ -1264,6 +1288,16 @@ async function vje_save() {
         return;
     }
     if (errBook) errBook.style.display = 'none';
+
+    const missingAcct = deductions.find(d => {
+        const type = VJE_DED.find(t => String(t.deduction_type_id) === String(d.deduction_type_id));
+        return !!d.deduction_type_id && !type?.account_code && !d.account_code;
+    });
+    if (missingAcct) {
+        const type = VJE_DED.find(t => String(t.deduction_type_id) === String(missingAcct.deduction_type_id));
+        alert(`"${type?.name || 'This deduction'}" has no default posting account — pick one before saving.`);
+        return;
+    }
 
     window.PagePreloader?.show();
     try {
