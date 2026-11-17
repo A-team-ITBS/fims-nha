@@ -1751,13 +1751,38 @@ function vf_numVal(v) {
 function vf_fmtMoneyVal(n) {
     return Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
+/* Re-inserts thousands commas on every keystroke (not just on blur), preserving the caret —
+   counts plain (non-comma) characters before the caret in the OLD value, reformats, then walks
+   the NEW value forward until that many non-comma characters have been consumed again. Same
+   technique as a typical money-input component (e.g. Stripe's). */
+function vf_liveFormatMoney(el) {
+    const cursor = el.selectionStart ?? el.value.length;
+    let digitsBeforeCursor = 0;
+    for (let i = 0; i < cursor; i++) {
+        if (el.value[i] !== ',') digitsBeforeCursor++;
+    }
+
+    let clean = el.value.replace(/[^0-9.]/g, '');
+    const firstDot = clean.indexOf('.');
+    if (firstDot !== -1) {
+        clean = clean.slice(0, firstDot + 1) + clean.slice(firstDot + 1).replace(/\./g, '');
+    }
+    let [intPart, decPart] = clean.split('.');
+    intPart = (intPart || '').replace(/^0+(?=\d)/, '');
+    const grouped = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    el.value = grouped + (decPart !== undefined ? '.' + decPart : '');
+
+    let pos = 0, seen = 0;
+    while (pos < el.value.length && seen < digitsBeforeCursor) {
+        if (el.value[pos] !== ',') seen++;
+        pos++;
+    }
+    el.setSelectionRange(pos, pos);
+}
 function vf_bindMoneyInput(el) {
     if (!el || el.dataset.vfMoneyBound) return;
     el.dataset.vfMoneyBound = '1';
-    el.addEventListener('focus', () => {
-        const n = vf_numVal(el.value);
-        el.value = n ? String(n) : '';
-    });
+    el.addEventListener('input', () => vf_liveFormatMoney(el));
     el.addEventListener('blur', () => {
         el.value = el.value.trim() === '' ? '' : vf_fmtMoneyVal(vf_numVal(el.value));
     });
