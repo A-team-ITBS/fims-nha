@@ -174,6 +174,20 @@ $_bpv_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
     border: 1px solid var(--afims-heading-fill, #000E3E);
 }
 .nha-root .nha-modal-foot .bpv-btn-approve:hover:not([disabled]) { opacity: .92; }
+/* Close: a real button (same size as Return / Approve), readable text on the surface colour */
+.nha-root .nha-modal-foot .bpv-btn-close {
+    padding: 8px 18px; color: var(--txt); background: var(--afims-surface, #FFFFFF); border: 1px solid var(--bdr);
+}
+.nha-root .nha-modal-foot .bpv-btn-close:hover { background: var(--surf2, #F4F7FA); }
+
+/* ── Dark mode ── */
+/* Code chips (program / sub-program / project codes): white text on the brand blue, like the Memo Request modal */
+html.afims-dark[data-bs-theme="dark"] .nha-root .bpv-chip { color: #FFFFFF; background: #3861BC; border-color: #5B7FCF; }
+html.afims-dark[data-bs-theme="dark"] .nha-root .nha-modal-foot .bpv-btn-close {
+    color: var(--afims-text, #E4ECF2); background: var(--afims-surface, #1A1F38); border-color: var(--afims-border-strong, #4A5270);
+}
+html.afims-dark[data-bs-theme="dark"] .nha-root .nha-modal-foot .bpv-btn-close:hover { background: var(--afims-surface-subtle, #22294A); }
+html.afims-dark[data-bs-theme="dark"] .nha-root .bpv-doc-open { color: var(--afims-primary-text, #94AADB); }
 
 @media (max-width: 640px) {
     .nha-root .bpv-info-row { grid-template-columns: 1fr; gap: 2px; }
@@ -209,7 +223,7 @@ $_bpv_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
             <div class="bpv-err" id="bpv-err" hidden></div>
         </div>
         <div class="nha-modal-foot">
-            <button type="button" class="nha-btn-ghost" id="bpv-cancel" hidden>Close</button>
+            <button type="button" class="nha-btn nha-btn-ghost bpv-btn-close" id="bpv-cancel" hidden>Close</button>
             <button type="button" class="nha-btn bpv-btn-return" id="bpv-return" hidden>Return</button>
             <button type="button" class="nha-btn bpv-btn-approve" id="bpv-approve" hidden>Approve</button>
         </div>

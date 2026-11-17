@@ -496,6 +496,18 @@ $_ftro_api = $apiBase ?? Config('API.FIMS_URL');
                         </div>
                     </div>
 
+                    <div class="ftro-box" id="ftro-source-box" style="display:none;">
+                        <div class="ftro-box-hdr">
+                            <div>
+                                <p class="ftro-box-title" id="ftro-source-title">Source / Debit Account(s)</p>
+                                <p class="ftro-box-sub" id="ftro-source-sub">Where the transferred funds are being debited from</p>
+                            </div>
+                        </div>
+                        <div class="ftro-box-body">
+                            <table class="ftro-att-table" style="width:100%;border-collapse:collapse;" id="ftro-source-table"></table>
+                        </div>
+                    </div>
+
                     <div class="ftro-sec">
                         <span>Purpose &amp; References</span>
                         <span class="ftro-sec-line"></span>
@@ -670,8 +682,20 @@ $_ftro_api = $apiBase ?? Config('API.FIMS_URL');
     const ftro_money = v => 'PHP ' + parseFloat(v || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
     const TYPE_LABEL = {
-        REGIONAL_FUND_TRANSFER: 'Regional Fund Transfer',
-        INTER_ACCOUNT:          'Inter-Account Transfer',
+        REGIONAL_FUND_TRANSFER:  'Regional Fund Transfer',
+        INTER_ACCOUNT:           'Inter-Account Transfer',
+        ERRONEOUS_CHARGEABILITY: 'Erroneous Chargeability',
+        ERRONEOUS_DEPOSIT:       'Erroneous Deposit',
+        REMITTANCE_ECHMLP:       'Remittance - ECHMLP',
+        REMITTANCE_HLA:          'Remittance - HLA',
+        SUBSIDY_TRANSFER:        'Subsidy Transfer',
+        REVERSAL:                'Reversal',
+        GENERAL_FUND:            'General Fund',
+        TEMPORARY:               'Temporary',
+        CROSS_ACCESS:            'Cross Access',
+        POOL_MOVEMENT:           'Pool Movement',
+        REVERSION:               'Reversion',
+        SETTLEMENT_TO_MAIN:      'Settlement to Main Depository',
     };
 
     const STATUS_MAP = {
@@ -779,6 +803,52 @@ $_ftro_api = $apiBase ?? Config('API.FIMS_URL');
         ftro_set('ftro-from-bank-name',    d.to_bank_name);
         ftro_set('ftro-from-acct-number',  d.to_account_number);
         ftro_set('ftro-from-acct-name',    d.to_account_name);
+
+        // Source/debit account(s) — empty for a legacy record with no declared source.
+        // Paired records (from_accounts[i] <-> to_accounts[i], Treasury's ftlafundtransfer.php
+        // "pairs" shape) get their own Credit (To) column instead of the single shared destination.
+        const srcBox   = ftro$('ftro-source-box');
+        const srcTable = ftro$('ftro-source-table');
+        const fromAccounts = Array.isArray(d.from_accounts) ? d.from_accounts : [];
+        const toAccounts   = Array.isArray(d.to_accounts) ? d.to_accounts : [];
+        const paired       = !!d.is_paired;
+        if (srcBox && srcTable) {
+            if (fromAccounts.length) {
+                srcBox.style.display = '';
+                ftro_set('ftro-source-title', paired ? 'Debit / Credit Account Pairs' : 'Source / Debit Account(s)');
+                ftro_set('ftro-source-sub', paired
+                    ? 'Each debit account is paired with its own credit account'
+                    : 'Where the transferred funds are being debited from');
+
+                const th = (label, align) => `<th style="text-align:${align || 'left'};padding:5px 8px;font-size:10px;font-weight:700;color:var(--afims-text-disabled, #A9AAB8);text-transform:uppercase;">${label}</th>`;
+                const head = paired
+                    ? '<thead><tr>' + th('Debit (From)') + th('Credit (To)') + th('Amount', 'right') + '</tr></thead>'
+                    : '<thead><tr>' + th('Bank / Account') + th('Account No.') + th('Amount', 'right') + '</tr></thead>';
+
+                const acctLabel = a => `${ftro_esc(a.bank_name || '—')}${a.account_name ? ' — ' + ftro_esc(a.account_name) : ''}`;
+                const rows = paired
+                    ? fromAccounts.map((fa, i) => {
+                        const ta = toAccounts[i] || {};
+                        return `<tr>
+                            <td style="padding:6px 8px;">${acctLabel(fa)}<div class="mono" style="font-size:10.5px;color:var(--afims-text-muted, #62657E);">${ftro_esc(fa.account_number || '—')}</div></td>
+                            <td style="padding:6px 8px;">${acctLabel(ta)}<div class="mono" style="font-size:10.5px;color:var(--afims-text-muted, #62657E);">${ftro_esc(ta.account_number || '—')}</div></td>
+                            <td style="padding:6px 8px;text-align:right;" class="mono">${ftro_money(fa.amount)}</td>
+                        </tr>`;
+                    }).join('')
+                    : fromAccounts.map(fa => `
+                        <tr>
+                            <td style="padding:6px 8px;">${acctLabel(fa)}</td>
+                            <td style="padding:6px 8px;" class="mono">${ftro_esc(fa.account_number || '—')}</td>
+                            <td style="padding:6px 8px;text-align:right;" class="mono">${ftro_money(fa.amount)}</td>
+                        </tr>
+                    `).join('');
+
+                srcTable.innerHTML = head + '<tbody>' + rows + '</tbody>';
+            } else {
+                srcBox.style.display = 'none';
+                srcTable.innerHTML = '';
+            }
+        }
 
         // Memorandum — for_name/for_title/thru_name/thru_title/subject are real
         // columns (see migration "16 - Alter fund_transfers_add_for_thru_subject.sql").

@@ -32,10 +32,12 @@
     #coa-header-info svg { width:18px;height:18px;stroke:var(--afims-text-disabled, #A9AAB8);stroke-width:1.8;flex-shrink:0; }
     .coa-hdr-tag { font-size:10px;color:var(--afims-text-disabled, #A9AAB8);margin:0 0 2px;letter-spacing:.06em;text-transform:uppercase; }
     .coa-hdr-title { font-size:14px;font-weight:700;color:var(--afims-pure-white, #FFFFFF);margin:0; }
-    #coa-close { border:none;background:color-mix(in srgb, var(--afims-surface, #FFFFFF) 12%, transparent);cursor:pointer;
-        width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;
-        color:var(--afims-text-disabled, #A9AAB8);font-size:18px;line-height:1;transition:background .15s; }
-    #coa-close:hover { background:color-mix(in srgb, var(--afims-surface, #FFFFFF) 22%, transparent);color:var(--afims-pure-white, #FFFFFF); }
+    /* (was #coa-close, which matched nothing — the button's id is coa-modal-close — so it showed as a bare grey browser button) */
+    #coa-modal-close { flex-shrink:0;width:30px;height:30px;padding:0;border-radius:8px;cursor:pointer;
+        display:flex;align-items:center;justify-content:center;font-size:20px;line-height:1;
+        color:var(--afims-pure-white, #FFFFFF);background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);
+        transition:background .15s; }
+    #coa-modal-close:hover { background:rgba(255,255,255,.22); }
 
     #coa-err { display:none;margin:18px 22px -4px;background:var(--afims-danger-soft, #FAE1E3);
         border:1px solid var(--afims-danger-soft, #FAE1E3);border-radius:8px;padding:10px 14px;
@@ -71,6 +73,23 @@
     #coa-footer .coa-btn-navy:hover:not(:disabled) { opacity:.92; }
 
     @media (max-width: 560px) { .coa-row { grid-template-columns:1fr; } }
+
+    /* ── Dark mode — the selects rendered with the browser's black native style; match the text inputs and the theme ── */
+    html.afims-dark[data-bs-theme="dark"] #coa-card { color-scheme:dark; }
+    html.afims-dark[data-bs-theme="dark"] #coa-card :is(.coa-input, .coa-select) {
+        background-color:var(--afims-surface, #1A1F38) !important;border-color:var(--afims-border-strong, #4A5270) !important;
+        color:var(--afims-text, #E4ECF2) !important; }
+    html.afims-dark[data-bs-theme="dark"] #coa-card .coa-select option { background-color:var(--afims-surface, #1A1F38);color:var(--afims-text, #E4ECF2); }
+    html.afims-dark[data-bs-theme="dark"] #coa-card .coa-input::placeholder { color:#9AA3B5;opacity:1; }
+    html.afims-dark[data-bs-theme="dark"] #coa-card :is(.coa-input, .coa-select):focus {
+        border-color:var(--afims-primary, #3861BC) !important;box-shadow:0 0 0 3px color-mix(in srgb, var(--afims-primary, #3861BC) 25%, transparent); }
+    html.afims-dark[data-bs-theme="dark"] #coa-card :is(.coa-input, .coa-select):disabled {
+        background-color:var(--afims-surface-subtle, #22294A) !important;color:var(--afims-text-muted, #AAAFBE) !important; }
+    html.afims-dark[data-bs-theme="dark"] #coa-card .coa-hint { color:#9AA3B5; }
+    html.afims-dark[data-bs-theme="dark"] #coa-footer .coa-btn-ghost { color:var(--afims-text, #E4ECF2);background:var(--afims-surface, #1A1F38);
+        border-color:var(--afims-border-strong, #4A5270); }
+    html.afims-dark[data-bs-theme="dark"] #coa-footer .coa-btn-navy { background:#3861BC;border-color:#3861BC; }
+    html.afims-dark[data-bs-theme="dark"] #coa-footer .coa-btn-navy:hover:not(:disabled) { background:#2E59B8;opacity:1; }
 </style>
 
 <div id="coa-overlay">

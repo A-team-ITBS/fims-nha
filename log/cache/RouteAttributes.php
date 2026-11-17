@@ -120,6 +120,7 @@
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone ($p['PHPMaker2024\\FIMS\\Attributes\\Get'] ?? \Symfony\Component\VarExporter\Internal\Registry::p('PHPMaker2024\\FIMS\\Attributes\\Get')),
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Get'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
@@ -213,6 +214,11 @@
     [
         'PHPMaker2024\\FIMS\\Attributes\\Map' => [
             'methods' => [
+                [
+                    'GET',
+                    'POST',
+                    'OPTIONS',
+                ],
                 [
                     'GET',
                     'POST',
@@ -1298,6 +1304,7 @@
                 '/CheckDisbursements[/{params:.*}]',
                 '/CheckRegistryPage[/{params:.*}]',
                 '/CobPage[/{params:.*}]',
+                '/CollectionsPage[/{params:.*}]',
                 '/DepartmentManagement[/{params:.*}]',
                 '/DepartmentsList[/{department_id}]',
                 '/DepartmentsAdd[/{department_id}]',
@@ -1508,6 +1515,7 @@
                 'PHPMaker2024\\FIMS\\CheckDisbursementsController:custom',
                 'PHPMaker2024\\FIMS\\CheckRegistryPageController:custom',
                 'PHPMaker2024\\FIMS\\CobPageController:custom',
+                'PHPMaker2024\\FIMS\\CollectionsPageController:custom',
                 'PHPMaker2024\\FIMS\\DepartmentManagementController:custom',
                 'PHPMaker2024\\FIMS\\DepartmentsController:list',
                 'PHPMaker2024\\FIMS\\DepartmentsController:add',
@@ -1671,6 +1679,9 @@
                 'PHPMaker2024\\FIMS\\WorkflowManagerController:custom',
             ],
             'middleware' => [
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
                 [
                     'PHPMaker2024\\FIMS\\PermissionMiddleware',
                 ],
@@ -2342,6 +2353,7 @@
                 'custom.CheckDisbursements',
                 'custom.check_registry_page',
                 'custom.cob_page',
+                'custom.collections_page',
                 'custom.DepartmentManagement',
                 'list.departments',
                 'add.departments',
@@ -2505,6 +2517,7 @@
                 'custom.WorkflowManager',
             ],
             'options' => [
+                [],
                 [],
                 [],
                 [],
@@ -2925,6 +2938,7 @@
         $o[205],
         $o[206],
         $o[207],
+        $o[208],
     ],
     []
 );

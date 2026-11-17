@@ -18,6 +18,18 @@ $ftlaUserId = static function ($request): int {
     return $userId !== null && $userId !== '' ? (int) $userId : 0;
 };
 
+$app->get('/ftla/transfer-types', function ($request, $response, $args) use ($FtlaService) {
+    try {
+        $result = $FtlaService->getTransferTypes();
+
+        return $response->withJson($result, $result['success'] ? 200 : 500);
+    } catch (\Exception $e) {
+        LogError('GET /ftla/transfer-types ' . $e->getMessage());
+
+        return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
+    }
+})->add($accessMiddleware)->add($jwtMiddleware);
+
 $app->get('/ftla/bank-accounts', function ($request, $response, $args) use ($FtlaService) {
     try {
         $all    = filter_var($request->getQueryParams()['all'] ?? false, FILTER_VALIDATE_BOOLEAN);
@@ -186,9 +198,9 @@ $app->get('/ftla/{id}/utilization', function ($request, $response, $args) use ($
 
 $app->post('/ftla/{id}/print-docx', function ($request, $response, $args) use ($FtlaService) {
     try {
-        $result = $FtlaService->printDocx((int) $args['id']);
+        $result = $FtlaService->printDocx((int) $args['id'], $request->getParsedBody() ?: []);
 
-        return $response->withJson($result, $result['success'] ? 200 : 501);
+        return $response->withJson($result, $result['success'] ? 200 : ($result['httpCode'] ?? 501));
     } catch (\Exception $e) {
         LogError('POST /ftla/{id}/print-docx ' . $e->getMessage());
 
@@ -198,9 +210,9 @@ $app->post('/ftla/{id}/print-docx', function ($request, $response, $args) use ($
 
 $app->post('/ftla/{id}/print-pdf', function ($request, $response, $args) use ($FtlaService) {
     try {
-        $result = $FtlaService->printPdf((int) $args['id']);
+        $result = $FtlaService->printPdf((int) $args['id'], $request->getParsedBody() ?: []);
 
-        return $response->withJson($result, $result['success'] ? 200 : 501);
+        return $response->withJson($result, $result['success'] ? 200 : ($result['httpCode'] ?? 501));
     } catch (\Exception $e) {
         LogError('POST /ftla/{id}/print-pdf ' . $e->getMessage());
 

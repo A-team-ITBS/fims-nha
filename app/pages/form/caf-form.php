@@ -136,6 +136,14 @@ html.afims-dark[data-bs-theme="dark"] #caf-overlay .form-select {
 #caf-overlay .btn-icon { flex-shrink:0;width:16px;height:16px; }
 #caf-overlay .btn-primary { color:var(--afims-pure-white, #FFFFFF);background:var(--afims-heading-fill, #000E3E);border-color:var(--afims-heading-fill, #000E3E); }
 #caf-overlay .btn-primary:hover:not(:disabled) { opacity:.9; }
+/* Dark mode: custom.css paints every .btn-primary with `var(--navy) !important`, and inside .nha-root nha-fims.css
+   redefines --navy as the (light) heading TEXT colour — Save CAF became white text on a near-white fill. */
+html.afims-dark[data-bs-theme="dark"] #caf-overlay button.btn.btn-primary,
+html.afims-dark[data-bs-theme="dark"] #caf-overlay button.btn.btn-primary:disabled {
+    color:var(--afims-pure-white, #FFFFFF) !important;background-color:#3861BC !important;border-color:#3861BC !important; }
+html.afims-dark[data-bs-theme="dark"] #caf-overlay button.btn.btn-primary:hover:not(:disabled),
+html.afims-dark[data-bs-theme="dark"] #caf-overlay button.btn.btn-primary:focus:not(:disabled) {
+    color:var(--afims-pure-white, #FFFFFF) !important;background-color:#2E59B8 !important;border-color:#2E59B8 !important; }
 #caf-overlay .btn-secondary { color:var(--afims-text, #1A1B21);background:var(--afims-surface, #FFFFFF);border-color:var(--afims-border, #E4ECF2); }
 #caf-overlay .btn-secondary:hover:not(:disabled) { background:var(--afims-surface-subtle, #F4F7FA); }
 #caf-overlay .form-actions { display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:4px;padding:16px 20px;

@@ -142,8 +142,6 @@ $USER_LEVEL_PRIVS = [["{FIMS}audit_logs","-2","0"],
     ["{FIMS}JournalEntryVoucher.php","0","0"],
     ["{FIMS}ChangePass.php","-2","0"],
     ["{FIMS}ChangePass.php","0","0"],
-    ["{FIMS}CheckDisbursements.php","-2","0"],
-    ["{FIMS}CheckDisbursements.php","0","0"],
     ["{FIMS}general-ledger-page.php","-2","0"],
     ["{FIMS}general-ledger-page.php","0","0"],
     ["{FIMS}subsidiary-ledger-page.php","-2","0"],
@@ -203,7 +201,9 @@ $USER_LEVEL_PRIVS = [["{FIMS}audit_logs","-2","0"],
     ["{FIMS}accountable_officer-page.php","-2","0"],
     ["{FIMS}accountable_officer-page.php","0","0"],
     ["{FIMS}rfa-laa-monitoring-page.php","-2","0"],
-    ["{FIMS}rfa-laa-monitoring-page.php","0","0"]];
+    ["{FIMS}rfa-laa-monitoring-page.php","0","0"],
+    ["{FIMS}collections-page.php","-2","0"],
+    ["{FIMS}collections-page.php","0","0"]];
 
 /**
  * Tables
@@ -276,7 +276,6 @@ $USER_LEVEL_TABLES = [["audit_logs","audit_logs","Audit Logs",false,"{FIMS}",""]
     ["Voucher.php","Voucher","Disbursement Voucher",true,"{FIMS}","Voucher"],
     ["JournalEntryVoucher.php","JournalEntryVoucher","Journal Entry Voucher",true,"{FIMS}","JournalEntryVoucher"],
     ["ChangePass.php","ChangePass","Change Password",true,"{FIMS}","ChangePass"],
-    ["CheckDisbursements.php","CheckDisbursements","Check Disbursements",true,"{FIMS}","CheckDisbursements"],
     ["general-ledger-page.php","general_ledger_page","General Ledger",true,"{FIMS}","GeneralLedgerPage"],
     ["subsidiary-ledger-page.php","subsidiary_ledger_page","Subsidiary Ledger",true,"{FIMS}","SubsidiaryLedgerPage"],
     ["journals-page.php","journals_page","Journals",true,"{FIMS}","JournalsPage"],
@@ -306,4 +305,5 @@ $USER_LEVEL_TABLES = [["audit_logs","audit_logs","Audit Logs",false,"{FIMS}",""]
     ["program-sources-page.php","program_sources_page","Program Source",true,"{FIMS}","ProgramSourcesPage"],
     ["ledger-page.php","ledger_page","Ledger",true,"{FIMS}","LedgerPage"],
     ["accountable_officer-page.php","accountable_officer_page","Accountable Officer",true,"{FIMS}","AccountableOfficerPage"],
-    ["rfa-laa-monitoring-page.php","rfa_laa_monitoring_page","RFA / LAA Monitoring",true,"{FIMS}","RfaLaaMonitoringPage"]];
+    ["rfa-laa-monitoring-page.php","rfa_laa_monitoring_page","RFA / LAA Monitoring",true,"{FIMS}","RfaLaaMonitoringPage"],
+    ["collections-page.php","collections_page","Collections",true,"{FIMS}","CollectionsPage"]];
