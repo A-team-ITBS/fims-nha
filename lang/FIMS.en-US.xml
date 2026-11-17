@@ -50,9 +50,6 @@
     <menu id="208">
       <phrase id="menutext" value="Journal Entry Voucher" />
     </menu>
-    <menu id="260">
-      <phrase id="menutext" value="Check Disbursements" />
-    </menu>
     <menu id="390">
       <phrase id="menutext" value="Inventory" />
     </menu>
@@ -1657,9 +1654,6 @@
     </table>
     <table id="changepass">
       <phrase id="tblcaption" value="Change Password" />
-    </table>
-    <table id="checkdisbursements">
-      <phrase id="tblcaption" value="Check Disbursements" />
     </table>
     <table id="general_ledger_page">
       <phrase id="tblcaption" value="General Ledger" />
