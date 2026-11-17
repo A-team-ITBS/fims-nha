@@ -60,6 +60,8 @@ class PrintService
         'IAR' => ['service' => IarPrintService::class, 'script' => 'gen_iar_docx.js', 'paper' => 'letter', 'font' => 'Times-Roman'],
         'LV'  => ['service' => LvPrintService::class, 'script' => 'gen_lv_docx.js', 'paper' => 'legal', 'font' => 'Times-Roman'],
         'JEV' => ['service' => JevPrintService::class, 'script' => 'gen_jev_docx.js', 'paper' => 'A4', 'orientation' => 'landscape', 'font' => 'Helvetica'],
+        'GL'  => ['service' => GeneralLedgerPrintService::class, 'script' => 'gen_gl_docx.js', 'paper' => 'letter', 'font' => 'Helvetica'],   // one account's ledger card, monthly summary
+        'SL'  => ['service' => SubsidiaryLedgerPrintService::class, 'script' => 'gen_sl_docx.js', 'paper' => 'letter', 'font' => 'Times-Roman'],   // one SL master's ledger card, every posting
         'FTLA' => ['service' => FtlaPrintService::class, 'script' => 'gen_ftla_docx.js', 'paper' => 'A4', 'font' => 'Helvetica'],
         'FTLAREQ' => ['service' => FtlaRequestPrintService::class, 'script' => 'gen_laareq_docx.js', 'paper' => 'letter', 'font' => 'Helvetica'],   // the LAA release request's memo layout
         'CFA' => ['service' => CfaPrintService::class, 'script' => 'gen_laareq_docx.js', 'paper' => 'A4', 'font' => 'Helvetica'],   // funding-request memo, the shared memo layout

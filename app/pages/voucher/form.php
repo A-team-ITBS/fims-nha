@@ -216,7 +216,7 @@ html.afims-dark[data-bs-theme="dark"] #vf-root :is(input, select, textarea):is(:
                             <div>
                                 <div class="vf-grid2" style="margin-bottom:12px;">
                                     <div class="nha-fg">
-                                        <label>Vendor (Supplier / Contractor) <span class="vf-hint" style="display:inline;">(optional)</span></label>
+                                        <label>Vendor (Supplier / Contractor) or Payroll <span class="vf-hint" style="display:inline;">(optional)</span></label>
                                         <select id="vf-vendor"><option value="">— None / type claimant manually —</option></select>
                                     </div>
                                     <div class="nha-fg">
@@ -488,6 +488,8 @@ let vf_slReady  = null;       // promise: SL masters (Accounting Entries SL Code
 let vf_bound   = false;
 let vf_paymentsPrior = 0;    // sum of net_amount other active vouchers already drew against the selected RFA(s)
 let vf_selectedRfaIds = [];  // allocation_id values picked in the RFA multi-select, in selection order
+let vf_payrollPeriodId = null; // imported payroll month (payroll_period_id) this DV pays — picked in the Vendor dropdown's Payroll group — or null
+let vf_payrollMonths = [];     // imported payroll months a DV can be prepared from (GET payroll-management/available)
 let vf_attachments = [];     // staged Supporting Documents: { document_name, link, size, uploading }
 let vf_attDirty = false;     // true once the attachments list has changed since open — avoids re-registering an unchanged batch on every save
 let vf_existingMultipleNodeId = null; // this voucher's current multiple_node_id (edit mode), reused as-is when attachments weren't touched
@@ -553,9 +555,10 @@ async function vf_open(id = 0) {
         // the form still opens with whatever did load, and the user sees the full picture.
         const results = await Promise.allSettled([
             vf_refReady, vf_booksReady, vf_dedTypesReady, vf_coaReady, vf_atcReady, vf_rcReady, vf_slReady,
-            vf_loadVendors(), vf_loadRfaOptions(),
+            vf_loadVendors(), vf_loadRfaOptions(), vf_loadPayrollMonths(),
         ]);
         const loadErrors = results.filter(r => r.status === 'rejected').map(r => r.reason?.message || String(r.reason));
+        vf_renderPayrollOptions(); // after vf_loadVendors() rebuilt the Vendor dropdown
 
         if (vf_id) {
             try {
@@ -604,6 +607,8 @@ function vf_reset() {
     $vf('vf-rfa-empty-hint').style.display = 'none';
     vf_selectedRfaIds = [];
     vf_renderRfaChips();
+
+    vf_payrollPeriodId = null;
 
     vf_attachments  = [];
     vf_attDirty     = false;
@@ -830,7 +835,7 @@ function vf_lockedRfaClass() {
     selection autofilling it (vf_onRfaSelectionChange()'s "withVendor" block). Two-way with Vendor:
     vf_onVendorChange() clears any selected RFA(s) that no longer match when the preparer changes it. */
 function vf_lockedRfaVendorId() {
-    return $vf('vf-vendor').value || null;
+    return vf_isPayrollValue($vf('vf-vendor').value) ? null : ($vf('vf-vendor').value || null); // a payroll month is not a vendor
 }
 
 function vf_renderRfaDropdown() {
@@ -931,7 +936,10 @@ async function vf_onRfaSelectionChange() {
         // was approved for; it isn't a free-typed figure). Still a normal, editable input afterward
         // (e.g. a partial draw), this just stops it from defaulting to blank/stale on every
         // selection change.
-        $vf('vf-gross').value = vf_fmtMoneyVal(details.filter(Boolean).reduce((s, r) => s + (Number(r.remaining_balance) || 0), 0));
+        // …except a payroll DV: its Amount is the imported payroll's gross (vf_applyPayroll()).
+        if (!vf_payrollPeriodId) {
+            $vf('vf-gross').value = vf_fmtMoneyVal(details.filter(Boolean).reduce((s, r) => s + (Number(r.remaining_balance) || 0), 0));
+        }
 
         // PO number / vendor / account code / particulars: first selected RFA that carries one wins —
         // best-effort autofill, never overwrites what the user already set.
@@ -966,7 +974,16 @@ async function vf_onRfaSelectionChange() {
     clearing it back to "None") drops any already-selected RFA(s) that no longer match it, since a
     voucher can't cite an RFA approved for a different vendor than who it's now paying. Re-renders
     the RFA dropdown too, so a still-open picker immediately reflects the new vendor lock. */
-function vf_onVendorChange() {
+async function vf_onVendorChange() {
+    // Payroll group of this dropdown: an imported payroll month fills the whole DV (vf_applyPayroll());
+    // leaving it (None or a vendor) clears everything it filled first.
+    const value = $vf('vf-vendor').value;
+    if (vf_isPayrollValue(value)) {
+        await vf_applyPayroll(value.slice(VF_PAYROLL_PREFIX.length));
+        return;
+    }
+    if (vf_payrollPeriodId) vf_clearPayrollFill();
+
     const v = vf_vendors[$vf('vf-vendor').value];
     const card = $vf('vf-vendor-card');
     if (!v) {
@@ -1013,6 +1030,13 @@ function vf_onVendorChange() {
  * hand (no data-auto-source) is never touched.
  */
 function vf_syncAutoJevLines() {
+    // A payroll DV's Accounting Entries come from the imported payroll (Dr each earnings account, Cr each
+    // deduction account, Cr Accounts Payable for the net pay — vf_applyPayroll()); no auto lines on top.
+    if (vf_payrollPeriodId) {
+        $vf('vf-jev-tbody').querySelectorAll('tr.vje-line[data-auto-source]').forEach(tr => tr.remove());
+        vf_recalcJev();
+        return;
+    }
     const gross = vf_numVal($vf('vf-gross').value);
     const code  = $vf('vf-account-code').value.trim();
 
@@ -1546,6 +1570,111 @@ function vf_recalc() {
     $vf('vf-balance').textContent        = vf_peso(balance);
 }
 
+/* ── Payroll DV ────────────────────────────────────────────────
+   No separate picker: the imported payroll months (Payroll Management) are listed in the Vendor dropdown's
+   "Payroll" group (value "payroll:{payroll_period_id}"), since a payroll month is who this DV pays.
+   GET payroll-management/available (months no other live DV uses, plus this DV's own) and
+   GET payroll-management/dv-data/{id} (claimant, particulars, account, gross, deductions, accounting entry).
+   Picking one fills the DV; picking None or a vendor afterwards clears everything it filled. */
+const VF_PAYROLL_PREFIX = 'payroll:';
+function vf_isPayrollValue(v) { return String(v || '').startsWith(VF_PAYROLL_PREFIX); }
+
+async function vf_loadPayrollMonths() {
+    const json = await vf_getJson('payroll-management/available' + (vf_id ? '?dv_id=' + vf_id : ''));
+    vf_payrollMonths = json.data ?? [];
+}
+
+function vf_renderPayrollOptions() {
+    const sel = $vf('vf-vendor');
+    sel.querySelector('optgroup[data-payroll]')?.remove();
+    if (!vf_payrollMonths.length) return;
+    sel.insertAdjacentHTML('beforeend', '<optgroup data-payroll label="Payroll (imported months)">' + vf_payrollMonths.map(p =>
+        `<option value="${VF_PAYROLL_PREFIX}${vf_esc(p.payroll_period_id)}">Payroll — ${vf_esc(p.label)} (${vf_esc(p.employee_count)} employees, gross ${vf_peso(p.total_gross)})</option>`).join('') + '</optgroup>');
+}
+
+/** Shows the payroll month in the vendor card (Name / Type / Address / TIN slots). */
+function vf_showPayrollCard(d) {
+    $vf('vf-vc-name').textContent    = d.claimant_name || 'Officers and Employees of NHA';
+    $vf('vf-vc-type').textContent    = `Payroll — ${d.label}`;
+    $vf('vf-vc-address').textContent = d.gross_amount !== undefined
+        ? `${d.employee_count} employees · gross ${vf_peso(d.gross_amount)} · deductions ${vf_peso(d.total_deductions)} · net ${vf_peso(d.net_amount)}`
+        : `${d.employee_count} employees · gross ${vf_peso(d.total_gross)} · net ${vf_peso(d.total_net)}`;
+    $vf('vf-vc-tin').textContent     = (d.warnings ?? []).join(' ') || '—';
+    $vf('vf-vendor-card').classList.add('visible');
+}
+
+async function vf_applyPayroll(id) {
+    window.PagePreloader?.show();
+    try {
+        // read the body on a 4xx too — its message says why (e.g. an item without an account)
+        const res = await vf_authFetch(VF_API + '/' + 'payroll-management/dv-data/' + id);
+        if (res.status === 401) throw new Error(VF_SESSION_EXPIRED_MSG);
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || !json.success) throw new Error(json.message || 'HTTP ' + res.status);
+        const d = json.data;
+        if (vf_payrollPeriodId) vf_clearPayrollFill(); // switching from one month to another
+        vf_payrollPeriodId = Number(d.payroll_period_id);
+
+        // payroll RFAs carry no vendor — drop RFAs picked for a vendor
+        if (vf_selectedRfaIds.some(rid => vf_rfas[rid]?.vendor_id)) {
+            vf_selectedRfaIds = [];
+            vf_renderRfaChips();
+        }
+        $vf('vf-claimant').value         = d.claimant_name;
+        $vf('vf-claimant-address').value = '';
+        $vf('vf-claimant-tin').value     = '';
+        $vf('vf-particulars').value      = d.particulars;
+        $vf('vf-account-code').value     = d.account_code || '';
+        $vf('vf-gross').value            = vf_fmtMoneyVal(d.gross_amount);
+        ['claimant', 'particulars', 'gross', 'account-code'].forEach(vf_clearFieldError);
+
+        $vf('vf-ded-container').innerHTML = '';
+        vf_dedSeq = 0;
+        $vf('vf-jev-tbody').innerHTML = '';
+        vf_jevSeq = 0;
+        (d.deductions ?? []).forEach(x => vf_addDeductionLine(x));
+        (d.lines ?? []).forEach(l => vf_addJevLine(l));
+        vf_renumberJev();
+        vf_recalc();
+        vf_refreshAllJevHints();
+        vf_showPayrollCard(d);
+        if ($vf('vf-rfa-dropdown').classList.contains('open')) vf_renderRfaDropdown();
+    } catch (e) {
+        if (vf_payrollPeriodId) vf_clearPayrollFill();
+        $vf('vf-vendor').value = '';
+        $vf('vf-vendor-card').classList.remove('visible');
+        vf_showErrors([e.message]);
+    } finally {
+        window.PagePreloader?.hide();
+    }
+}
+
+/** Payroll Management's "Create DV" (Voucher?payroll={id}): a new DV with that imported month already picked. */
+async function vf_openForPayroll(periodId) {
+    await vf_open(0);
+    const sel = $vf('vf-vendor');
+    const value = VF_PAYROLL_PREFIX + Number(periodId);
+    if (![...sel.options].some(o => o.value === value)) {
+        vf_showErrors(['That payroll month is not available for a new DV — it has no imported records or another Disbursement Voucher already uses it.']);
+        return;
+    }
+    sel.value = value;
+    await vf_onVendorChange();
+}
+
+/** Undo vf_applyPayroll(): empties every field the payroll month filled, then auto Accounting Entries resume. */
+function vf_clearPayrollFill() {
+    vf_payrollPeriodId = null;
+    ['vf-claimant', 'vf-claimant-address', 'vf-claimant-tin', 'vf-particulars', 'vf-account-code', 'vf-gross'].forEach(id => { $vf(id).value = ''; });
+    $vf('vf-ded-container').innerHTML = '';
+    vf_dedSeq = 0;
+    $vf('vf-jev-tbody').innerHTML = '';
+    vf_jevSeq = 0;
+    $vf('vf-vendor-card').classList.remove('visible');
+    vf_renumberJev();
+    vf_recalc();
+}
+
 /* ── Edit mode ─────────────────────────────────────────────── */
 async function vf_loadExisting() {
     const json = await vf_getJson('voucher/read/' + vf_id);
@@ -1580,6 +1709,13 @@ async function vf_loadExisting() {
     }
     $vf('vf-vendor').value = dv.vendor_id || '';
     vf_onVendorChange();
+    // A payroll DV: its month is shown in the Vendor dropdown's Payroll group (set after vf_onVendorChange(),
+    // so restoring it doesn't refill or clear what was saved).
+    if (dv.payroll) {
+        vf_payrollPeriodId = Number(dv.payroll.payroll_period_id);
+        $vf('vf-vendor').value = VF_PAYROLL_PREFIX + vf_payrollPeriodId;
+        vf_showPayrollCard({ ...dv.payroll, claimant_name: dv.claimant_name });
+    }
 
     $vf('vf-po-number').value        = dv.po_number || '';
     $vf('vf-claimant').value         = dv.claimant_name || '';
@@ -1605,16 +1741,9 @@ async function vf_loadExisting() {
     // readone.php's vje_init() uses). A DRAFT that never reached a saved Accounting Entry yet
     // keeps auto-syncing normally.
     vf_jevAutoMode = !(dv.jev?.lines ?? []).length;
-    {
-        let lastAcct = null, gid = null;
-        (dv.jev?.lines ?? []).forEach(l => {
-            if (l.account_code !== lastAcct) {
-                gid = vf_addJevGroup(l.account_code);
-                lastAcct = l.account_code;
-            }
-            vf_addJevGroupLine(gid, l);
-        });
-    }
+    // Accounting Entries is a flat list of lines now (vf_addJevLine()) — the old grouped-by-account
+    // helpers (vf_addJevGroup / vf_addJevGroupLine) no longer exist.
+    (dv.jev?.lines ?? []).forEach(l => vf_addJevLine(l));
     vf_renumberJev();
     vf_recalcJev();
 
@@ -1687,7 +1816,7 @@ async function vf_save(status) {
         budget_amount      : vf_numVal($vf('vf-budget').value),
         obligation_amount  : vf_numVal($vf('vf-obligation').value),
         remarks            : $vf('vf-remarks').value.trim(),
-        vendor_id          : $vf('vf-vendor').value || null,
+        vendor_id          : vf_isPayrollValue($vf('vf-vendor').value) ? null : ($vf('vf-vendor').value || null),
         claimant_name      : $vf('vf-claimant').value.trim(),
         claimant_address   : $vf('vf-claimant-address').value.trim(),
         employee_no_tin    : $vf('vf-claimant-tin').value.trim(),
@@ -1697,6 +1826,7 @@ async function vf_save(status) {
         deductions         : vf_collectDeductions(),
         atc_lines          : vf_collectAtcLines(),
         lines              : vf_collectJevLines(),
+        payroll_period_id  : vf_payrollPeriodId,
         status,
     };
 
@@ -1751,13 +1881,38 @@ function vf_numVal(v) {
 function vf_fmtMoneyVal(n) {
     return Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
+/* Re-inserts thousands commas on every keystroke (not just on blur), preserving the caret —
+   counts plain (non-comma) characters before the caret in the OLD value, reformats, then walks
+   the NEW value forward until that many non-comma characters have been consumed again. Same
+   technique as a typical money-input component (e.g. Stripe's). */
+function vf_liveFormatMoney(el) {
+    const cursor = el.selectionStart ?? el.value.length;
+    let digitsBeforeCursor = 0;
+    for (let i = 0; i < cursor; i++) {
+        if (el.value[i] !== ',') digitsBeforeCursor++;
+    }
+
+    let clean = el.value.replace(/[^0-9.]/g, '');
+    const firstDot = clean.indexOf('.');
+    if (firstDot !== -1) {
+        clean = clean.slice(0, firstDot + 1) + clean.slice(firstDot + 1).replace(/\./g, '');
+    }
+    let [intPart, decPart] = clean.split('.');
+    intPart = (intPart || '').replace(/^0+(?=\d)/, '');
+    const grouped = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    el.value = grouped + (decPart !== undefined ? '.' + decPart : '');
+
+    let pos = 0, seen = 0;
+    while (pos < el.value.length && seen < digitsBeforeCursor) {
+        if (el.value[pos] !== ',') seen++;
+        pos++;
+    }
+    el.setSelectionRange(pos, pos);
+}
 function vf_bindMoneyInput(el) {
     if (!el || el.dataset.vfMoneyBound) return;
     el.dataset.vfMoneyBound = '1';
-    el.addEventListener('focus', () => {
-        const n = vf_numVal(el.value);
-        el.value = n ? String(n) : '';
-    });
+    el.addEventListener('input', () => vf_liveFormatMoney(el));
     el.addEventListener('blur', () => {
         el.value = el.value.trim() === '' ? '' : vf_fmtMoneyVal(vf_numVal(el.value));
     });

@@ -12,6 +12,7 @@ routes/
 ├── department-management.php # Department Management page routes (create/update department)
 ├── position-management.php   # Position Management page routes (create/update category, position)
 ├── vendor.php          # Vendor + vendor type routes
+├── accountable_officer.php # Accountable Officer CRUD routes
 ├── payroll_setup.php   # Payroll Setup page API: items list / read / add / update + account list (the page's only API)
 ├── purchase-order.php  # Purchase order CRUD + status routes
 ├── voucher.php         # Disbursement Voucher CRUD + status + RFA lookup routes
@@ -71,6 +72,12 @@ with an `/api` prefix, e.g. `POST /user-access/users` below is actually `POST /a
 - `POST /vendors/add` - Create (`vendor_code` and `vendor_name` required, `vendor_code` unique)
 - `PUT /vendors/update/{id}` - Update
 
+### accountable_officer.php (`AccountableOfficerService`, table `fims.accountable_officers`)
+- `GET /accountable-officers/all` - All accountable officers, no pagination (dropdown). Optional: `search`
+- `GET /accountable-officers/list` - Paginated; also returns `summary` {active, inactive} for every row matching the filters. Optional: `page`, `limit`, `search`, `status` (ACTIVE / INACTIVE)
+- `GET /accountable-officers/read/{id}` - One accountable officer
+- `POST /accountable-officers/add` - Create (`officer_name` required). Optional `rc_id` (region, must exist in `fims.responsibility_code`) and `coa_account_id` (must exist in `fims.chart_of_accounts`) — the form's Region dropdown is populated from the existing `GET /responsibility-center/all?status=Active`, and its Account picker from the existing `GET /accounting/coa/search`
+- `PUT /accountable-officers/update/{id}` - Update
 ### payroll_setup.php (`PayrollSetupService`, table `fims.payroll_items`; page `app/pages/payroll-setup-page.php`, Accounts Set-up → "Payroll Setup")
 The Payroll Setup page calls **only** these routes (it does not call the chart-of-accounts routes).
 - `GET /payroll-setup/accounts` - Every ACTIVE chart account as `{account_code, account_title, posting_allowed}` (no pagination) — feeds the page's searchable Account dropdown (it lists the postable ones)

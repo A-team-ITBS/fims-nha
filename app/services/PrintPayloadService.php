@@ -112,7 +112,12 @@ class PrintPayloadService
         $type = strtoupper(trim((string) ($a['allocation_type'] ?? 'CBA')));
         $dept = self::deptType($a['requesting_rc_office_type'] ?? '');
         $regional = in_array($dept, ['REGIONAL', 'DISTRICT'], true);
-        $lines = self::lines($a['line_transaction'] ?? null);
+        // A request can now cover several project blocks (BudgetAllocationService::fetchById()'s `projects`) —
+        // the amount totals below are summed across ALL of them, so they stay correct even though the
+        // program/sub-program/project fields further down (program_code, project_name, ...) only ever show the
+        // FIRST block (mirrored onto $a by BudgetAllocationService::attachProjects()). Printing every block's own
+        // project label is a later fast-follow.
+        $lines = self::linesOfAllocation($a);
 
         $requested = array_sum(array_map(fn ($l) => self::num($l['requested_amount'] ?? 0), $lines));
         if ($requested <= 0) {
@@ -252,6 +257,25 @@ class PrintPayloadService
     // ═══════════════════════════════════════════════════════════════════════
     // Helpers
     // ═══════════════════════════════════════════════════════════════════════
+
+    /**
+     * All of an allocation's lines across every project block (`projects`, see
+     * BudgetAllocationService::attachProjects()) — falls back to the row's own mirrored line_transaction when
+     * `projects` isn't present (e.g. a CAF row, which has no project blocks of its own).
+     */
+    private static function linesOfAllocation(array $a): array
+    {
+        if (isset($a['projects']) && is_array($a['projects']) && $a['projects']) {
+            $lines = [];
+            foreach ($a['projects'] as $block) {
+                array_push($lines, ...self::lines($block['line_transaction'] ?? null));
+            }
+
+            return $lines;
+        }
+
+        return self::lines($a['line_transaction'] ?? null);
+    }
 
     /** line_transaction -> a list of line arrays (a single object counts as one line; anything else as none). */
     private static function lines(mixed $lt): array

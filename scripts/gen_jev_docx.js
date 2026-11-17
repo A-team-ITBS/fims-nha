@@ -101,7 +101,7 @@ const OUTER = { top: THICK, bottom: THICK, left: THICK, right: THICK, insideHori
 // ── Body ──────────────────────────────────────────────────────────────────────
 const body = [];
 
-// 1. Title box | office, JEV No., Date
+// 1. Title box | office, journal (GJ / CKDJ / ADADJ, when set), JEV No., Date
 const hw = pct(78, 22);
 body.push(table(hw, [row([
     cell([p([run('JOURNAL ENTRY VOUCHER', { bold: true, size: SZ_TITLE })], { align: C }),
@@ -109,7 +109,10 @@ body.push(table(hw, [row([
         hw[0], { borders: { top: THICK, bottom: THICK, left: THICK, right: THICK }, margins: { top: 100, bottom: 100, left: 120, right: 120 } }),
     cell([
         table([hw[1]], [
-            row([cell([p([run(m.office, { bold: true, size: 21 })], { align: C })], hw[1], { borders: { top: NONE, bottom: THICK, left: NONE, right: NONE } })], 330),
+            // with a journal: office / journal / No. run on without rule lines between them, as on the official form
+            row([cell([p([run(m.office, { bold: true, size: 21 })], { align: C })], hw[1], { borders: { top: NONE, bottom: m.journal ? NONE : THICK, left: NONE, right: NONE } })], 330),
+            // the journal (GJ / CKDJ / ADADJ), bold — only when the model has one
+            ...(m.journal ? [row([cell([p([run(m.journal, { bold: true, size: 21 })], { align: C })], hw[1], { borders: { top: NONE, bottom: NONE, left: NONE, right: NONE } })], 330)] : []),
             row([cell([p([run('JEV No. :  ' + (m.jev_number || ''), { size: 17 })])], hw[1], { borders: { top: NONE, bottom: THIN, left: NONE, right: NONE } })], 330),
             row([cell([p([run('Date :  ' + (m.date || ''), { size: 17 })])], hw[1], { borders: { top: NONE, bottom: NONE, left: NONE, right: NONE } })], 330),
         ]),
