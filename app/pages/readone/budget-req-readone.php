@@ -74,8 +74,9 @@
        Bold/white/mono against the navy header is the same restrained
        "callout" treatment the rest of this app uses for emphasis — no new
        color introduced. */
-    #bgrv-header-total { display:none;flex-direction:column;align-items:flex-end;margin-right:4px;flex-shrink:0; }
+    #bgrv-header-total { display:none;align-items:center;gap:16px;margin-right:4px;flex-shrink:0; }
     #bgrv-header-total.show { display:flex; }
+    .bgrv-header-total-item { display:flex;flex-direction:column;align-items:flex-end; }
     .bgrv-header-total-label { font-size:9px;color:var(--afims-text-disabled, #A9AAB8);
         text-transform:uppercase;letter-spacing:.06em;margin:0 0 1px; }
     .bgrv-header-total-val { font-size:19px;font-weight:700;color:var(--afims-pure-white, #FFFFFF);
@@ -139,12 +140,23 @@
         border-bottom:1px solid var(--afims-border, #E4ECF2); }
     .bgrv-cob-list .bgrv-cob-row:last-child { border-bottom:none; }
     .bgrv-cob-program { font-weight:700;font-size:13px;background:var(--afims-surface-subtle, #F4F7FA); }
+    .bgrv-cob-total { font-weight:700;font-size:13px;border-top:2px solid var(--afims-border, #E4ECF2);
+        background:color-mix(in srgb, var(--afims-heading-fill, #000E3E) 6%, var(--afims-surface, #fff));
+        color:var(--afims-heading-fill, #000E3E); }
     .bgrv-cob-subprogram { padding-left:28px;font-weight:600;background:color-mix(in srgb, var(--afims-surface-subtle, #F4F7FA) 50%, transparent); }
     .bgrv-cob-project { padding-left:52px;color:var(--afims-text-muted, #62657E); }
+    /* Three amount columns (Proposed / Adjustment / Revised) kept at a fixed width so they line up
+       across every row's indent level, and under the column-header row (.bgrv-cob-col-headers below). */
+    .bgrv-cob-amts { display:flex;align-items:center;gap:16px;flex-shrink:0; }
     .bgrv-cob-amt { font-family:'IBM Plex Mono',monospace;font-weight:700;color:var(--afims-text, #1A1B21);
-        white-space:nowrap;flex-shrink:0; }
+        white-space:nowrap;flex-shrink:0;min-width:96px;text-align:right; }
     .bgrv-cob-project .bgrv-cob-amt { font-weight:600;color:var(--afims-text-muted, #62657E); }
     .bgrv-cob-empty .bgrv-cob-amt { display:none; }
+
+    /* Column header row (Proposed Amount / Adjustment Amount / Revised Amount) above the outline. */
+    .bgrv-cob-col-headers { background:var(--afims-heading-fill, #000E3E);position:sticky;top:0;z-index:1; }
+    .bgrv-cob-amt-label { font-size:10px;font-weight:700;color:var(--afims-text-disabled, #A9AAB8);
+        text-transform:uppercase;letter-spacing:.04em;min-width:96px;text-align:right; }
 
     /* COB mode with options.showFund (the FMD's Budget Proposal page): the Type(s) of Fund of a Project, after its name. */
     .bgrv-cob-fund-wrap { display:inline-flex;align-items:center;flex-wrap:wrap;gap:4px;margin-left:10px;vertical-align:middle; }
@@ -176,10 +188,12 @@
     #bgrv-card.bgrv-wide .bgrv-sec-hd,
     #bgrv-card.bgrv-wide .bgrv-sec-hd-total { font-size:13px; }
     #bgrv-card.bgrv-wide .bgrv-cob-row { padding:8px 14px;font-size:14px; }
-    #bgrv-card.bgrv-wide .bgrv-cob-program { font-size:15px; }
+    #bgrv-card.bgrv-wide .bgrv-cob-program,
+    #bgrv-card.bgrv-wide .bgrv-cob-total { font-size:15px; }
     #bgrv-card.bgrv-wide .bgrv-cob-subprogram { padding-left:32px; }
     #bgrv-card.bgrv-wide .bgrv-cob-project { padding-left:58px; }
-    #bgrv-card.bgrv-wide .bgrv-cob-amt { font-size:14px; }
+    #bgrv-card.bgrv-wide .bgrv-cob-amt { font-size:14px;min-width:120px; }
+    #bgrv-card.bgrv-wide .bgrv-cob-amt-label { font-size:11px;min-width:120px; }
     .bgrv-cob-empty { font-style:italic; }
 </style>
 
@@ -196,8 +210,18 @@
                 </div>
             </div>
             <div id="bgrv-header-total">
-                <p class="bgrv-header-total-label">Total Proposed</p>
-                <p class="bgrv-header-total-val" id="bgrv-header-total-val">—</p>
+                <div class="bgrv-header-total-item">
+                    <p class="bgrv-header-total-label">Total Proposed</p>
+                    <p class="bgrv-header-total-val" id="bgrv-header-total-val">—</p>
+                </div>
+                <div class="bgrv-header-total-item">
+                    <p class="bgrv-header-total-label">Total Adjustment</p>
+                    <p class="bgrv-header-total-val" id="bgrv-header-total-adjustment-val">—</p>
+                </div>
+                <div class="bgrv-header-total-item">
+                    <p class="bgrv-header-total-label">Total Revised</p>
+                    <p class="bgrv-header-total-val" id="bgrv-header-total-revised-val">—</p>
+                </div>
             </div>
             <div id="bgrv-header-actions">
                 <button type="button" id="bgrv-close">&times;</button>
@@ -326,9 +350,11 @@ async function bgrv_openCobModal(fiscalYr = '', extraParams = {}, options = {}) 
     $bgrv('bgrv-hdr-tag').textContent = 'Corporate Operating Budget (COB)';
     const what = byUnit ? 'All Originating Units' : 'All Programs';
     $bgrv('bgrv-modal-title').textContent = fiscalYr ? `${what} — FY ${bgr_esc(fiscalYr)}` : `${what} — All Years`;
-    $bgrv('bgrv-sec-hd-label').textContent = byUnit ? 'Originating Units' : 'Programs';
+    $bgrv('bgrv-sec-hd-label').textContent = byUnit ? 'Originating Units' : 'CO';
     $bgrv('bgrv-sec-hd-total').textContent = '';
     $bgrv('bgrv-header-total-val').textContent = '—';
+    $bgrv('bgrv-header-total-adjustment-val').textContent = '—';
+    $bgrv('bgrv-header-total-revised-val').textContent = '—';
     $bgrv('bgrv-header-total').classList.add('show');
     bgrv_setSummary([]);
     $bgrv('bgrv-panels').innerHTML = '';
@@ -360,25 +386,35 @@ async function bgrv_openCobModal(fiscalYr = '', extraParams = {}, options = {}) 
                 }
                 return 0;
             });
-            let grandTotal = 0, programCount = 0, subProgramCount = 0, projectCount = 0;
+            let grandTotal = { proposed: 0, adjustment: 0, revised: 0 }, programCount = 0, subProgramCount = 0, projectCount = 0, coeLineItemCount = 0;
             const unitsHtml = units.map(h => {
                 const c = bgrv_cobCollect([h], showFund);
-                grandTotal += c.grandTotal; programCount += c.programs.length; subProgramCount += c.subProgramCount; projectCount += c.projectCount;
+                grandTotal.proposed += c.grandTotal.proposed;
+                grandTotal.adjustment += c.grandTotal.adjustment;
+                grandTotal.revised += c.grandTotal.revised;
+                programCount += c.programs.length; subProgramCount += c.subProgramCount; projectCount += c.projectCount; coeLineItemCount += c.coeLineItemCount;
                 const where = [h.rc_parent_name, h.budget_reference_number].filter(Boolean).map(bgr_esc).join(' · ');
                 return `<div class="bgrv-cob-row bgrv-cob-unit">
                             <span>${bgr_esc(h.rc_name || h.rc_id || '—')}${h.rc_code ? ` <code class="bgrv-cob-unit-code">${bgr_esc(h.rc_code)}</code>` : ''}
                                 ${where ? `<small>${where}</small>` : ''}</span>
                             <span class="bgrv-cob-unit-meta">${bgr_statusBadge(h.status_name, h.status_color)}
-                                <span class="bgrv-cob-amt">${bgr_fmtMoney(c.grandTotal)}</span></span>
+                                <span class="bgrv-cob-amts">
+                                    <span class="bgrv-cob-amt">${bgr_fmtMoney(c.grandTotal.proposed)}</span>
+                                    <span class="bgrv-cob-amt">${bgr_fmtMoney(c.grandTotal.adjustment)}</span>
+                                    <span class="bgrv-cob-amt">${bgr_fmtMoney(c.grandTotal.revised)}</span>
+                                </span></span>
                         </div>
-                        <div class="bgrv-cob-nest">${c.html || '<div class="bgrv-cob-row bgrv-cob-project bgrv-cob-empty">No programs added yet.</div>'}</div>`;
+                        <div class="bgrv-cob-nest">${(c.programsHtml + c.coeHtml) || '<div class="bgrv-cob-row bgrv-cob-project bgrv-cob-empty">No programs added yet.</div>'}</div>`;
             }).join('');
 
-            $bgrv('bgrv-header-total-val').textContent = bgr_fmtMoney(grandTotal);
-            $bgrv('bgrv-panels').innerHTML = unitsHtml ? `<div class="bgrv-cob-list">${unitsHtml}</div>` : '';
+            $bgrv('bgrv-header-total-val').textContent = bgr_fmtMoney(grandTotal.proposed);
+            $bgrv('bgrv-header-total-adjustment-val').textContent = bgr_fmtMoney(grandTotal.adjustment);
+            $bgrv('bgrv-header-total-revised-val').textContent = bgr_fmtMoney(grandTotal.revised);
+            $bgrv('bgrv-panels').innerHTML = unitsHtml ? `<div class="bgrv-cob-list">${bgrv_cobColumnHeaderHtml()}${unitsHtml}</div>` : '';
             $bgrv('bgrv-empty').style.display = units.length ? 'none' : '';
             $bgrv('bgrv-sec-hd-total').textContent =
-                `${units.length} originating unit(s) · ${programCount} program(s) · ${subProgramCount} sub-program(s) · ${projectCount} project(s)`;
+                `${units.length} originating unit(s) · ${programCount} program(s) · ${subProgramCount} sub-program(s) · ${projectCount} project(s)`
+                + (coeLineItemCount ? ` · ${coeLineItemCount} COE line item(s)` : '');
             return;
         }
 
@@ -386,16 +422,35 @@ async function bgrv_openCobModal(fiscalYr = '', extraParams = {}, options = {}) 
         // spans several descendant rc_ids for the same year. A Program (or Sub-Program) added more than once collapses to a single
         // row; its Projects and the grand total still count every occurrence.
         const c = bgrv_cobCollect(headers, showFund);
-        $bgrv('bgrv-header-total-val').textContent = bgr_fmtMoney(c.grandTotal);
-        $bgrv('bgrv-panels').innerHTML = c.html ? `<div class="bgrv-cob-list">${c.html}</div>` : '';
-        $bgrv('bgrv-empty').style.display = c.programs.length ? 'none' : '';
+        $bgrv('bgrv-header-total-val').textContent = bgr_fmtMoney(c.grandTotal.proposed);
+        $bgrv('bgrv-header-total-adjustment-val').textContent = bgr_fmtMoney(c.grandTotal.adjustment);
+        $bgrv('bgrv-header-total-revised-val').textContent = bgr_fmtMoney(c.grandTotal.revised);
+
+        // Two independent tables: "CO" (the static header above #bgrv-panels, renamed from
+        // "Programs") for the Program -> Sub-Program -> Project tree, and a separate "COE" section
+        // (its own header + table, built here since the static one above is CO's) for the PS/MOOE
+        // rows. Either can be empty on its own without affecting the other.
         $bgrv('bgrv-sec-hd-total').textContent =
             `${c.programs.length} program(s) · ${c.subProgramCount} sub-program(s) · ${c.projectCount} project(s)`;
+        const coTableHtml = c.programsHtml
+            ? `<div class="bgrv-cob-list">${bgrv_cobColumnHeaderHtml()}${c.programsHtml}${bgrv_cobTotalRowHtml(c.coTotal)}</div>`
+            : '';
+        const coeSectionHtml = c.coeLineItemCount
+            ? `<p class="bgrv-sec-hd" style="margin-top:22px;">
+                    <span>COE</span>
+                    <span class="bgrv-sec-hd-total">${c.coeLineItemCount} line item(s)</span>
+               </p>
+               <div class="bgrv-cob-list">${bgrv_cobColumnHeaderHtml()}${c.coeHtml}${bgrv_cobTotalRowHtml(c.coeTotal)}</div>`
+            : '';
+        $bgrv('bgrv-panels').innerHTML = coTableHtml + coeSectionHtml;
+        $bgrv('bgrv-empty').style.display = c.programs.length ? 'none' : '';
     } catch (e) {
         $bgrv('bgrv-panels').innerHTML = '';
         $bgrv('bgrv-empty').style.display = '';
         $bgrv('bgrv-sec-hd-total').textContent = '';
         $bgrv('bgrv-header-total-val').textContent = '—';
+        $bgrv('bgrv-header-total-adjustment-val').textContent = '—';
+        $bgrv('bgrv-header-total-revised-val').textContent = '—';
         bgr_toast(e.message, 'error');
     } finally {
         window.PagePreloader?.hide();
@@ -403,17 +458,62 @@ async function bgrv_openCobModal(fiscalYr = '', extraParams = {}, options = {}) 
 }
 
 // bgrv_openCobModal: folds the given budget requests (headers) into Program -> Sub-Program -> Project rows. Returns the rows' HTML
-// and the counts / total they add up to. A Program (or Sub-Program) that appears in more than one header collapses to a single row; its
-// Projects and the total still count every occurrence.
+// and the counts / totals they add up to. A Program (or Sub-Program) that appears in more than one header collapses to a single row; its
+// Projects and the totals still count every occurrence.
+// Each row/total carries THREE amounts: proposed (budget_line_items.proposed_amount, what the office asked for), adjustment
+// (budget_line_items.adjustment — the net adjustment applied by an approved Budget Revision; 0 until one is approved), and
+// revised (budget_line_items.revised_amount — a plain app-maintained figure, not derived from the other two).
 // showFund: each Project row also lists the Type(s) of Fund of its line items (set by Budget Processing; a Project can have several, and
 // none before it has been processed).
+// Same account_code-prefix rule DisbursementVoucherService::deriveExpenseClass() uses — chart_of_accounts
+// carries no stored expense-class column, so this is derived, not looked up, same as there. A COE line item
+// is always either PS or MOOE — null for anything else (excluded from the PS/MOOE breakdown, though still
+// counted in the COE bucket's own overall total).
+function bgrv_deriveExpenseClass(accountCode) {
+    const code = String(accountCode || '');
+    if (code.startsWith('5-01')) return 'PS';
+    if (code.startsWith('5-02')) return 'MOOE';
+    return null;
+}
+
 function bgrv_cobCollect(headers, showFund = false) {
     const programMap    = new Map(); // program_code -> { program_code, program_name }
     const subByProgram  = new Map(); // program_code -> Map(sub_program_code -> { sub_program_code, sub_program_name })
-    const projByProgram = new Map(); // program_code -> [{ project_code, project_name, sub_program_code, amount, funds }, ...]
-    const programTotals = new Map(); // program_code -> sum of its projects' amounts
-    let grandTotal   = 0;
+    const projByProgram = new Map(); // program_code -> [{ project_code, project_name, sub_program_code, proposed, adjustment, revised, funds }, ...]
+    const programTotals = new Map(); // program_code -> { proposed, adjustment, revised }
+    const grandTotal = { proposed: 0, adjustment: 0, revised: 0 };
+    // PS / MOOE sub-totals making up the COE table (bgrv_cobCoeClassRowsHtml) — there's no
+    // overall "COE total" row anymore (see bgrv_openCobModal), only these two.
+    const coeByClass = {
+        PS: { count: 0, proposed: 0, adjustment: 0, revised: 0 },
+        MOOE: { count: 0, proposed: 0, adjustment: 0, revised: 0 },
+    };
     let projectCount = 0;
+    let coeLineItemCount = 0;
+
+    // COE headers have no Program/Sub-Program/Project tree at all — folded into coeByClass
+    // instead of the Program map below, and still counted into grandTotal.
+    headers.forEach(h => {
+        (h.coe_line_items || []).forEach(li => {
+            const proposed   = Number(li.proposed_amount) || 0;
+            const adjustment = Number(li.adjustment) || 0;
+            const revised    = Number(li.revised_amount) || 0;
+            grandTotal.proposed += proposed;
+            grandTotal.adjustment += adjustment;
+            grandTotal.revised += revised;
+            coeLineItemCount++;
+
+            // null (neither PS nor MOOE) is still counted in coeTotal/grandTotal above — just not
+            // broken into its own sub-row, since bgrv_deriveExpenseClass() no longer has an "Other" bucket.
+            const cls = coeByClass[bgrv_deriveExpenseClass(li.account_code)];
+            if (cls) {
+                cls.count++;
+                cls.proposed += proposed;
+                cls.adjustment += adjustment;
+                cls.revised += revised;
+            }
+        });
+    });
 
     headers.forEach(h => {
         (h.programs || []).forEach(prog => {
@@ -421,7 +521,7 @@ function bgrv_cobCollect(headers, showFund = false) {
                 programMap.set(prog.program_code, { program_code: prog.program_code, program_name: prog.program_name });
                 subByProgram.set(prog.program_code, new Map());
                 projByProgram.set(prog.program_code, []);
-                programTotals.set(prog.program_code, 0);
+                programTotals.set(prog.program_code, { proposed: 0, adjustment: 0, revised: 0 });
             }
             if (prog.sub_program_code) {
                 subByProgram.get(prog.program_code).set(prog.sub_program_code, {
@@ -430,36 +530,108 @@ function bgrv_cobCollect(headers, showFund = false) {
                 });
             }
             (prog.projects || []).forEach(p => {
-                const amount = (p.line_items || []).reduce((sum, li) => sum + (Number(li.proposed_amount) || 0), 0);
+                const proposed   = (p.line_items || []).reduce((sum, li) => sum + (Number(li.proposed_amount) || 0), 0);
+                const adjustment = (p.line_items || []).reduce((sum, li) => sum + (Number(li.adjustment) || 0), 0);
+                const revised    = (p.line_items || []).reduce((sum, li) => sum + (Number(li.revised_amount) || 0), 0);
                 // distinct Types of Fund across the project's line items, in line-item order
                 const funds = [...new Set((p.line_items || []).map(li => String(li.type_of_fund_name ?? '').trim()).filter(Boolean))];
                 projByProgram.get(prog.program_code).push({
                     project_code: p.project_code,
                     project_name: p.project_name,
                     sub_program_code: prog.sub_program_code,
-                    amount,
+                    proposed,
+                    adjustment,
+                    revised,
                     funds,
                 });
-                programTotals.set(prog.program_code, programTotals.get(prog.program_code) + amount);
+                const totals = programTotals.get(prog.program_code);
+                totals.proposed += proposed;
+                totals.adjustment += adjustment;
+                totals.revised += revised;
                 projectCount++;
-                grandTotal += amount;
+                grandTotal.proposed += proposed;
+                grandTotal.adjustment += adjustment;
+                grandTotal.revised += revised;
             });
         });
     });
 
     const programs = Array.from(programMap.values());
     const subProgramCount = Array.from(subByProgram.values()).reduce((sum, m) => sum + m.size, 0);
-    const html = programs.map(prog => {
+    // CO (Program -> Sub-Program -> Project tree) and COE (flat PS/MOOE rows) are two separate
+    // tables now — see bgrv_openCobModal, which titles them "CO" and "COE" — so each gets its own
+    // HTML instead of one combined blob.
+    const programsHtml = programs.map(prog => {
         const progSubPrograms = Array.from(subByProgram.get(prog.program_code).values());
         const progProjects    = projByProgram.get(prog.program_code) || [];
+        const totals = programTotals.get(prog.program_code) || { proposed: 0, adjustment: 0, revised: 0 };
         return `<div class="bgrv-cob-row bgrv-cob-program">
                     <span>${bgr_esc(prog.program_code)} — ${bgr_esc(prog.program_name)}</span>
-                    <span class="bgrv-cob-amt">${bgr_fmtMoney(programTotals.get(prog.program_code) || 0)}</span>
+                    <span class="bgrv-cob-amts">
+                        <span class="bgrv-cob-amt">${bgr_fmtMoney(totals.proposed)}</span>
+                        <span class="bgrv-cob-amt">${bgr_fmtMoney(totals.adjustment)}</span>
+                        <span class="bgrv-cob-amt">${bgr_fmtMoney(totals.revised)}</span>
+                    </span>
                 </div>`
             + bgrv_cobRowsHtml(progSubPrograms, progProjects, showFund);
     }).join('');
+    const coeHtml = bgrv_cobCoeClassRowsHtml(coeByClass);
 
-    return { programs, subProgramCount, projectCount, grandTotal, html };
+    // CO's own total (every Program summed) and COE's own total (PS + MOOE summed) — each
+    // table's Total row (see bgrv_openCobModal) is scoped to just that table, not the combined
+    // grandTotal (which is the whole modal's header banner figure, CO + COE together).
+    const sumAmts = list => list.reduce((acc, t) => {
+        acc.proposed += t.proposed; acc.adjustment += t.adjustment; acc.revised += t.revised;
+        return acc;
+    }, { proposed: 0, adjustment: 0, revised: 0 });
+    const coTotal = sumAmts(Array.from(programTotals.values()));
+    const coeTotal = sumAmts(Object.values(coeByClass));
+
+    return { programs, subProgramCount, projectCount, coeLineItemCount, grandTotal, coTotal, coeTotal, programsHtml, coeHtml };
+}
+
+// COE's own table rows — PS and MOOE, each a top-level row (same style as a Program row, since
+// there's no higher grouping above them here) with its own Proposed/Adjustment/Revised. A class
+// with no line items in it is skipped rather than shown as ₱0.00.
+function bgrv_cobCoeClassRowsHtml(coeByClass) {
+    const labels = { PS: 'PS', MOOE: 'MOOE' };
+    return Object.keys(labels).map(key => {
+        const c = coeByClass[key];
+        if (!c.count) return '';
+        return `<div class="bgrv-cob-row bgrv-cob-program">
+                    <span>${bgr_esc(labels[key])} <span style="font-weight:500;font-size:11px;color:var(--afims-text-muted, #62657E);">(${c.count} line item(s))</span></span>
+                    <span class="bgrv-cob-amts">
+                        <span class="bgrv-cob-amt">${bgr_fmtMoney(c.proposed)}</span>
+                        <span class="bgrv-cob-amt">${bgr_fmtMoney(c.adjustment)}</span>
+                        <span class="bgrv-cob-amt">${bgr_fmtMoney(c.revised)}</span>
+                    </span>
+                </div>`;
+    }).join('');
+}
+
+// The closing "Total" row of one table (CO's or COE's own — see bgrv_openCobModal) — scoped to
+// just that table, not the modal's combined grand total (the header banner figure).
+function bgrv_cobTotalRowHtml(totals) {
+    return `<div class="bgrv-cob-row bgrv-cob-total">
+                <span>Total</span>
+                <span class="bgrv-cob-amts">
+                    <span class="bgrv-cob-amt">${bgr_fmtMoney(totals.proposed)}</span>
+                    <span class="bgrv-cob-amt">${bgr_fmtMoney(totals.adjustment)}</span>
+                    <span class="bgrv-cob-amt">${bgr_fmtMoney(totals.revised)}</span>
+                </span>
+            </div>`;
+}
+
+// bgrv_openCobModal: the "Proposed Amount" / "Adjustment Amount" / "Revised Amount" column-header row shown above the outline.
+function bgrv_cobColumnHeaderHtml() {
+    return `<div class="bgrv-cob-row bgrv-cob-col-headers">
+                <span></span>
+                <span class="bgrv-cob-amts">
+                    <span class="bgrv-cob-amt-label">Proposed Amount</span>
+                    <span class="bgrv-cob-amt-label">Adjustment Amount</span>
+                    <span class="bgrv-cob-amt-label">Revised Amount</span>
+                </span>
+            </div>`;
 }
 
 // bgrv_openModal only: groups the given Projects by sub_program_code — a
@@ -576,16 +748,29 @@ function bgrv_cobRowsHtml(subPrograms, projects, showFund = false) {
     }
 
     return groups.map(g => {
-        const subTotal = g.projects.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+        const subTotal = g.projects.reduce((acc, p) => {
+            acc.proposed += Number(p.proposed) || 0;
+            acc.adjustment += Number(p.adjustment) || 0;
+            acc.revised += Number(p.revised) || 0;
+            return acc;
+        }, { proposed: 0, adjustment: 0, revised: 0 });
         const projRows = g.projects.length
             ? g.projects.map(p => `<div class="bgrv-cob-row bgrv-cob-project">
                     <span>${bgr_esc(p.project_code)} — ${bgr_esc(p.project_name)}${showFund ? bgrv_cobFundHtml(p.funds) : ''}</span>
-                    <span class="bgrv-cob-amt">${bgr_fmtMoney(p.amount || 0)}</span>
+                    <span class="bgrv-cob-amts">
+                        <span class="bgrv-cob-amt">${bgr_fmtMoney(p.proposed || 0)}</span>
+                        <span class="bgrv-cob-amt">${bgr_fmtMoney(p.adjustment || 0)}</span>
+                        <span class="bgrv-cob-amt">${bgr_fmtMoney(p.revised || 0)}</span>
+                    </span>
                 </div>`).join('')
             : '<div class="bgrv-cob-row bgrv-cob-project bgrv-cob-empty">No projects yet.</div>';
         return `<div class="bgrv-cob-row bgrv-cob-subprogram">
                     <span>${g.label}</span>
-                    <span class="bgrv-cob-amt">${bgr_fmtMoney(subTotal)}</span>
+                    <span class="bgrv-cob-amts">
+                        <span class="bgrv-cob-amt">${bgr_fmtMoney(subTotal.proposed)}</span>
+                        <span class="bgrv-cob-amt">${bgr_fmtMoney(subTotal.adjustment)}</span>
+                        <span class="bgrv-cob-amt">${bgr_fmtMoney(subTotal.revised)}</span>
+                    </span>
                 </div>${projRows}`;
     }).join('');
 }

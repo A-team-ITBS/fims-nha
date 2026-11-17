@@ -52,8 +52,9 @@
  *             the request's status to "Returned" (back to the originating office — the Budget Officer is the first
  *             step of the review chain) and saves the remarks to fims.status_change_log (via
  *             GlobalService::logStatusChange()); the line items are left untouched.
- *   Endorse — PUT /budget_req/endorse/{id}: Type of Fund and Component are REQUIRED on every line item of
- *             EVERY Project (Suggested Amount is optional); saves them, and the
+ *   Endorse — PUT /budget_req/endorse/{id}: Type of Fund is REQUIRED on every line item of
+ *             EVERY Project (Suggested Amount, and Component — hidden in this form, see BPR_THEAD/
+ *             bpr_rowHtml below — are optional); saves them, and the
  *             Account Code, to fims.budget_line_items and
  *             sets the request's status to "Endorsed" — now with the Budget Head (one transaction). If something required is missing the
  *             first such field is focused and its Project section is outlined in red. The remarks box is not used.
@@ -373,8 +374,10 @@ async function bpr_loadOptions() {
     BPR_ACCOUNTS   = accounts.data ?? [];
 }
 
-// `programs` is one program or an array of them (see the header comment).
-async function bpr_openModal(requestContext, programs) {
+// `programs` is one program or an array of them (see the header comment). `coeLineItems`
+// is a COE request's own flat line items (no Program/Project at all) — mutually
+// exclusive with `programs` (a header is either REGULAR or COE, never both).
+async function bpr_openModal(requestContext, programs, coeLineItems = []) {
     window.PagePreloader?.show();
     try {
         await bpr_loadOptions();
@@ -386,7 +389,7 @@ async function bpr_openModal(requestContext, programs) {
     }
 
     bpr_ctx = requestContext;
-    bpr_render(requestContext, programs);
+    bpr_render(requestContext, programs, coeLineItems);
     bpr_hideErr();
 
     // A request the Budget Head sent back ("Returned to Budget Officer") shows the Head's remarks above the details.
@@ -644,17 +647,23 @@ function bpr_pickInit() {
 }
 
 /* ── Table ───────────────────────────────────────────────────── */
-// Column order: Type of Fund · Component · Account Code · Account Description · Amount · Suggested Amount
+// Column order: Type of Fund · Account Code · Account Description · Amount · Suggested Amount.
+// Component is hidden (commented out, not deleted, so it's a one-line revert to bring back) —
+// see bpr_rowHtml below and bpr_collectItems' commented component_id line. It's also no longer
+// required: BudgetLineItemService::applyProcessing()'s requireAll check now only requires Type of
+// Fund — that part IS a real logic change, not just hidden, since Endorse would otherwise reject
+// every item (component_id is never sent anymore).
 const BPR_THEAD = `<thead><tr>
     <th>Type of Fund<span class="bpr-req">*</span></th>
-    <th>Component<span class="bpr-req">*</span></th>
+    <!-- <th>Component<span class="bpr-req">*</span></th> -->
     <th>Account Code<span class="bpr-req">*</span></th>
     <th>Account Description</th>
     <th class="text-right">Amount</th>
     <th class="text-right">Suggested Amount</th>
 </tr></thead>`;
-// Column widths (they add up to 100%), the same for every table. The amounts need room for 16 characters ("1,402,000,000.00").
-const BPR_COLGROUP = '<colgroup>' + [16, 16, 14, 20, 16, 18].map(w => `<col style="width:${w}%">`).join('') + '</colgroup>';
+// Column widths (they add up to 100%), matching the columns actually rendered (5 — Component's
+// is commented out above). The amounts need room for 16 characters ("1,402,000,000.00").
+const BPR_COLGROUP = '<colgroup>' + [18, 18, 22, 20, 22].map(w => `<col style="width:${w}%">`).join('') + '</colgroup>';
 
 // The Suggested Amount is optional. It starts as a copy of the Amount (the proposed amount) — unless the line item
 // already has a saved suggested amount (above 0), which is kept. Either way it is an ordinary input: it can be
@@ -679,7 +688,7 @@ function bpr_pickCellHtml(kind, code, fallback) {
 function bpr_rowHtml(li) {
     return `<tr data-li-id="${Number(li.budget_line_item_id)}">
         <td><select class="nha-filter-select bpr-field bpr-fund">${bpr_optionsHtml(BPR_FUNDS, 'type_of_fund_id', li.type_of_fund_id)}</select></td>
-        <td><select class="nha-filter-select bpr-field bpr-component">${bpr_optionsHtml(BPR_COMPONENTS, 'component_type_id', li.component_id)}</select></td>
+        <!-- <td><select class="nha-filter-select bpr-field bpr-component">${bpr_optionsHtml(BPR_COMPONENTS, 'component_type_id', li.component_id)}</select></td> -->
         ${bpr_pickCellHtml('account', li.account_id, li.account_code)}
         <td><div class="bpr-ro"><span class="bpr-acct-title">${bgr_esc(li.account_title)}</span>${li.particulars ? `<span class="bpr-desc-sub">${bgr_esc(li.particulars)}</span>` : ''}</div></td>
         <td class="text-right bpr-proposed" data-amount="${bgr_escHtmlAttr(li.proposed_amount ?? 0)}"><div class="bpr-ro bpr-ro-amt">${bgr_fmtAmountInitial(li.proposed_amount ?? 0)}</div></td>
@@ -714,12 +723,12 @@ function bpr_tableHtml(project) {
     const lineItems = project.line_items ?? [];
     const rowsHtml  = lineItems.length
         ? lineItems.map(bpr_rowHtml).join('')
-        : '<tr><td colspan="6"><div class="bpr-empty">No line items have been added under this project.</div></td></tr>';
+        : '<tr><td colspan="5"><div class="bpr-empty">No line items have been added under this project.</div></td></tr>';
 
     return `<div class="bpr-tbl-wrap">
         <div class="nha-tbl-scroll">
             <table class="nha-tbl bpr-tbl">${BPR_COLGROUP}${BPR_THEAD}<tbody>${rowsHtml}</tbody>
-                <tfoot><tr><td colspan="4" class="text-right">Subtotal – Project${project.project_code ? ' ' + bgr_esc(project.project_code) : ''}</td><td class="text-right bpr-sub-p">${bgr_fmtMoney(0)}</td><td class="text-right bpr-sub-s">${bgr_fmtMoney(0)}</td></tr></tfoot>
+                <tfoot><tr><td colspan="3" class="text-right">Subtotal – Project${project.project_code ? ' ' + bgr_esc(project.project_code) : ''}</td><td class="text-right bpr-sub-p">${bgr_fmtMoney(0)}</td><td class="text-right bpr-sub-s">${bgr_fmtMoney(0)}</td></tr></tfoot>
             </table>
         </div>
     </div>`;
@@ -744,13 +753,15 @@ function bpr_unitHtml(ctx) {
     return `<strong title="${bgr_escHtmlAttr(ctx.rc_name ?? '')}">${bgr_esc(id || ctx.rc_name)}</strong>`;
 }
 
-function bpr_metaHtml(ctx, programs) {
+function bpr_metaHtml(ctx, programs, coeLineItems = []) {
     const projectCount = programs.reduce((n, p) => n + (p.projects ?? []).length, 0);
     const item = (label, valueHtml) => `<span><span class="bpr-meta-k">${label}</span> ${valueHtml}</span>`;
+    // A header can have Programs AND its own COE line items at once — show whichever apply.
+    const typeItems = (programs.length ? item('Programs:', programs.length) + item('Projects:', projectCount) : '')
+        + (coeLineItems.length ? item('COE Line Items:', coeLineItems.length) : '');
     return item('Originating Unit:', bpr_unitHtml(ctx))
          + item('Date Submitted:', bgr_esc(bpr_fmtDate(ctx.submitted_at)) || '<span class="bpr-muted">—</span>')
-         + item('Programs:', programs.length)
-         + item('Projects:', projectCount);
+         + typeItems;
 }
 
 // "<code chip> name"; the name is bold for the Program line. '—' when there is neither.
@@ -869,20 +880,57 @@ function bpr_programHtml(program, pi) {
     </section>`;
 }
 
-// `programArg`: one program or an array of them
-function bpr_render(requestContext, programArg) {
+// A COE request's own block — same line-item table every Project uses (BPR_THEAD/
+// BPR_COLGROUP/bpr_rowHtml are already Project-agnostic, operating per line item only),
+// just with no per-Project Supporting Documents panel (COE's own Supporting Documents are
+// request-level — see the COE form's own modal). Nested inside bpr_coeContainerHtml below,
+// the same way bpr_projectHtml nests inside a Program's own card.
+function bpr_coeBlockHtml(lineItems) {
+    const rowsHtml = lineItems.length
+        ? lineItems.map(bpr_rowHtml).join('')
+        : '<tr><td colspan="5"><div class="bpr-empty">No line items have been added yet.</div></td></tr>';
+
+    return `<section class="bpr-block" data-block="coe">
+        <div class="bpr-tbl-wrap">
+            <div class="nha-tbl-scroll">
+                <table class="nha-tbl bpr-tbl">${BPR_COLGROUP}${BPR_THEAD}<tbody>${rowsHtml}</tbody>
+                    <tfoot><tr><td colspan="3" class="text-right">Subtotal</td><td class="text-right bpr-sub-p">${bgr_fmtMoney(0)}</td><td class="text-right bpr-sub-s">${bgr_fmtMoney(0)}</td></tr></tfoot>
+                </table>
+            </div>
+        </div>
+    </section>`;
+}
+
+// COE's own card — same outer chrome as a Program's (bpr_programHtml: a .bpr-prog section with
+// a .bpr-prog-head info strip, then its line-items block), so it reads as a sibling container
+// alongside the Program cards rather than a bare, unframed table tacked on after them.
+function bpr_coeContainerHtml(lineItems) {
+    const row = (label, valueHtml) => `<div class="bpr-row"><span class="bpr-row-k">${label}</span><span class="bpr-row-v">${valueHtml}</span></div>`;
+    return `<section class="bpr-prog" data-prog="coe">
+        <div class="bpr-prog-head">
+            ${row('Type', '<strong>COE</strong>')}
+            ${row('Line Items', lineItems.length)}
+        </div>
+        ${bpr_coeBlockHtml(lineItems)}
+    </section>`;
+}
+
+// `programArg`: one program or an array of them. `coeLineItems`: the same header's own flat COE
+// line items, if it has any — a header can have Programs AND COE line items at once, rendered
+// as sibling cards (bpr_coeContainerHtml alongside every bpr_programHtml).
+function bpr_render(requestContext, programArg, coeLineItems = []) {
     const programs = Array.isArray(programArg) ? programArg : (programArg ? [programArg] : []);
     bpr_pickClose();   // a list left open over the old rows would point at inputs that are about to be replaced
-    bpr_rowCount = programs.flatMap(p => p.projects ?? []).reduce((n, pj) => n + (pj.line_items ?? []).length, 0);
+    bpr_rowCount = programs.flatMap(p => p.projects ?? []).reduce((n, pj) => n + (pj.line_items ?? []).length, 0)
+        + coeLineItems.length;
 
     $bpr('bpr-ref').textContent = requestContext.budget_reference_number ?? '';
-    $bpr('bpr-meta').innerHTML  = bpr_metaHtml(requestContext, programs);
-    $bpr('bpr-blocks').innerHTML = programs.length
-        ? programs.map(bpr_programHtml).join('')
-        : '<div class="bpr-noproj">No programs yet.</div>';
+    $bpr('bpr-meta').innerHTML  = bpr_metaHtml(requestContext, programs, coeLineItems);
+    const blocksHtml = programs.map(bpr_programHtml).join('') + (coeLineItems.length ? bpr_coeContainerHtml(coeLineItems) : '');
+    $bpr('bpr-blocks').innerHTML = blocksHtml || '<div class="bpr-noproj">No programs yet.</div>';
 
     bpr_updateTotals();   // the opening totals
-    bpr_loadDocs(++bpr_renderSeq);   // the Projects' Supporting Documents fill in as their answers arrive
+    bpr_loadDocs(++bpr_renderSeq);   // the Projects' Supporting Documents fill in as their answers arrive (none for a COE block)
 }
 
 /* ── Messages / buttons ──────────────────────────────────────── */
@@ -909,7 +957,9 @@ function bpr_isValidAmount(value) {
     return v === '' || (!isNaN(Number(v)) && Number(v) >= 0);
 }
 
-// Endorse needs a Type of Fund AND a Component on every line item, in every block.
+// Endorse needs a Type of Fund on every line item, in every block (Component used to be required
+// too — now hidden, see BPR_THEAD/bpr_rowHtml above — so .bpr-field only ever matches
+// .bpr-fund/.bpr-suggested here).
 // The first offender is focused (which scrolls it into view) and every block with a problem is outlined in red.
 function bpr_validate() {
     let firstInvalid = null;
@@ -917,7 +967,7 @@ function bpr_validate() {
 
     document.querySelectorAll('#bpr-blocks .bpr-field').forEach(field => {
         const invalid = field.matches('.bpr-suggested') ? !bpr_isValidAmount(field.value)
-                                                        : !field.value;   // Type of Fund, Component
+                                                        : !field.value;   // Type of Fund
         field.classList.toggle('is-invalid', invalid);
         if (invalid) {
             badBlocks.add(field.closest('.bpr-block'));
@@ -943,7 +993,7 @@ function bpr_validate() {
         firstInvalid.focus();
         bpr_showErr(firstInvalid.matches('.bpr-suggested') ? 'Suggested Amount must be a number, 0 or more.'
                   : firstInvalid.matches('.bpr-pick-input') ? 'Account Code is required for every line item.'
-                  : 'Type of Fund and Component are required for every line item.');
+                  : 'Type of Fund is required for every line item.');
         return false;
     }
     return true;
@@ -956,7 +1006,7 @@ function bpr_collectItems() {
         type_of_fund_id:     tr.querySelector('.bpr-fund').value || null,
         account_id:          tr.querySelector('.bpr-account').value,
         suggested_amount:   bgr_unformatAmount(tr.querySelector('.bpr-suggested').value).trim(),
-        component_id:        tr.querySelector('.bpr-component').value || null,
+        // component_id: tr.querySelector('.bpr-component').value || null, // hidden — see BPR_THEAD/bpr_rowHtml above
     }));
 }
 
@@ -964,7 +1014,7 @@ function bpr_collectItems() {
 async function bpr_endorse() {
     bpr_hideErr();
     if (!bpr_validate()) return;
-    if (!confirm(`Endorse budget request ${bpr_ctx.budget_reference_number} to the Budget Head? The Type of Fund, Component, Account Code and Suggested Amount will be saved to its line items and its status will change to Endorsed.`)) return;
+    if (!confirm(`Endorse budget request ${bpr_ctx.budget_reference_number} to the Budget Head? The Type of Fund, Account Code and Suggested Amount will be saved to its line items and its status will change to Endorsed.`)) return;
 
     await bpr_send('endorse', { items: bpr_collectItems() }, 'Failed to endorse the budget request.');
 }

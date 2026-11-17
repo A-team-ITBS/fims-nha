@@ -310,20 +310,6 @@ $cbaAllowedTypes = array_values(array_intersect(['CBA', 'RFA', 'LAA', 'CFA'], ar
 			}
 		}
 
-		/* CBA: the first Budget Allocation Amount line (COB + Requested Amount + Proposed Amount) sits beside
-		   Project instead of below in its own section — see baaRelocateFirstLine(). Rather than staying one grid
-		   item next to Project, the wrapper itself disappears (display:contents) so its children become direct
-		   items of #program_project_row's own grid, same as Project — each getting its own auto-fit track.
-		   Needs a positioned ancestor for the (usually hidden, single-line) remove button, since .baa-line no
-		   longer is one. */
-		.cba-form-container #program_project_row {
-			position: relative;
-		}
-
-		.cba-form-container #program_project_row > .baa-line {
-			display: contents;
-		}
-
 		/* a field that takes the whole row of a multi-column .form-row (the vendor's Address) */
 		.cba-form-container .form-row > .form-group-wide {
 			grid-column: 1 / -1;
@@ -1016,14 +1002,17 @@ $cbaAllowedTypes = array_values(array_intersect(['CBA', 'RFA', 'LAA', 'CFA'], ar
 				</div>
 			</div>
 
-			<div class="form-row">
+			<!-- Category — hidden for CBA / RFA / LAA (cbaApplyAllocationTypeVisibility() toggles #category_row
+			     and clears any stale pick); still shown for CFA. To bring it back everywhere, drop that toggle
+			     and restore `required` on #cat_search below. -->
+			<div class="form-row" id="category_row">
 				<!-- Category → GET /budget_category/all (searchable combobox) -->
 				<div class="form-group form-group-wide">
 					<label for="cat_search" class="form-label">Category <span class="required">*</span></label>
 					<div class="select-loading-wrapper is-loading" id="category_wrapper" style="overflow:visible;">
 						<div style="position:relative;overflow:visible;">
 							<input type="text" id="cat_search" class="form-input" placeholder="Search category&hellip;"
-								autocomplete="off" disabled required>
+								autocomplete="off" disabled>
 							<div id="cat_dropdown" class="pc-dropdown"></div>
 						</div>
 						<input type="hidden" id="category_id" name="category_id" value="">
@@ -1033,10 +1022,28 @@ $cbaAllowedTypes = array_values(array_intersect(['CBA', 'RFA', 'LAA', 'CFA'], ar
 			</div>
 		</div>
 
+		<!-- ── Purpose / Description — its own card, right after Allocation Type (moved out of the
+		     Program/Project card below: it applies to the whole request, not to any one project block). ── -->
+		<div class="form-section">
+			<h2 class="section-header">Purpose / Description</h2>
+
+			<div class="form-row full-width">
+				<div class="form-group">
+					<textarea id="project_description" name="project_description" class="form-textarea"
+						placeholder="Enter the purpose or description of this budget allocation..."></textarea>
+					<p class="input-hint">Provide details about the purpose and scope of this budget allocation</p>
+				</div>
+			</div>
+		</div>
+
 		<!-- ── Program and Project ────────────────────────────────────── -->
 		<div class="form-section" id="program_project_section">
 			<h2 class="section-header" id="program_project_section_title">Program, Sub-Program and Project Details</h2>
 
+			<!-- CFA (and "no type chosen yet") — the single Program / Sub-Program / Project chain, unchanged.
+			     Hidden for CBA / RFA / LAA, which use #project_blocks_section below instead — see
+			     cbaApplyAllocationTypeVisibility(). -->
+			<div id="single_project_block">
 			<div class="form-row cols-3" id="program_project_row">
 				<!-- Program → GET /program/all (searchable combobox). Hidden for CBA — see
 				     cbaApplyAllocationTypeVisibility(): the chosen Project carries its own Program / Sub-Program. -->
@@ -1070,8 +1077,7 @@ $cbaAllowedTypes = array_values(array_intersect(['CBA', 'RFA', 'LAA', 'CFA'], ar
 				</div>
 
 				<!-- Project → GET /project/all?program_code=…&sub_program_code=… (searchable combobox, needs a Sub-Program).
-				     For CBA its first Budget Allocation Amount line (COB + Requested Amount) is moved in beside it —
-				     see baaRelocateFirstLine(). -->
+				     CFA (and "no type chosen yet") only — CBA / RFA / LAA use #project_blocks_section instead. -->
 				<div class="form-group" id="project_group">
 					<label for="proj_search" class="form-label">Project <span class="required">*</span></label>
 					<div class="select-loading-wrapper" id="project_wrapper" style="overflow:visible;">
@@ -1089,19 +1095,23 @@ $cbaAllowedTypes = array_values(array_intersect(['CBA', 'RFA', 'LAA', 'CFA'], ar
 					<p class="input-hint" id="project_hint">Select a sub-program first.</p>
 				</div>
 			</div>
+			</div><!-- /#single_project_block -->
 
-			<div class="form-row full-width">
-				<div class="form-group">
-					<label for="project_description" class="form-label">Purpose / Description</label>
-					<textarea id="project_description" name="project_description" class="form-textarea"
-						placeholder="Enter the purpose or description of this budget allocation..."></textarea>
-					<p class="input-hint">Provide details about the purpose and scope of this budget allocation</p>
-				</div>
+			<!-- CBA / RFA / LAA — one or more independent project blocks, each with its own Project pick and its
+			     own COB / Available Amount / Requested Amount line(s). Shown instead of #single_project_block —
+			     see cbaApplyAllocationTypeVisibility(). -->
+			<div id="project_blocks_section" style="display:none;">
+				<div id="project_blocks_container"></div>
+				<button type="button" class="btn btn-secondary" id="add_project_block_btn" style="margin:4px 0 16px;"
+					onclick="addProjectBlock()">+ Add Project</button>
 			</div>
+
 			<!-- —— Budget Allocation Amount (same card as the Project details above) —————————— -->
 			<!-- Hidden for CBA while there's only the one (merged, next to Project) line — see
 			     baaApplyHeaderVisibility(): nothing left here needs its own heading. Reappears if an existing
-			     record being edited turns out to have more than one saved line. -->
+			     record being edited turns out to have more than one saved line. Always hidden in project-blocks
+			     mode (CBA / RFA / LAA): each block renders its own COB heading instead — see
+			     cbaApplyAllocationTypeVisibility(). -->
 			<div id="baa_header">
 				<h2 class="section-header">Budget Allocation Amount</h2>
 				<p class="input-hint" style="margin-top:-4px;margin-bottom:12px;">
@@ -1157,6 +1167,42 @@ $cbaAllowedTypes = array_values(array_intersect(['CBA', 'RFA', 'LAA', 'CFA'], ar
 					background: var(--afims-danger-soft, #FAE1E3);
 					color: var(--afims-danger, #DC3545);
 					border-color: var(--afims-danger-soft, #FAE1E3);
+				}
+
+				/* One independent project block (#project_blocks_container's children) — Project on its own
+				   row, then that block's own COB / Available / Requested Amount line(s) below it. */
+				.project-block {
+					position: relative;
+					border: 1px solid var(--afims-border, #E4ECF2);
+					border-radius: 8px;
+					padding: 16px 44px 4px 16px;
+					margin-bottom: 16px;
+				}
+
+				.project-block-remove {
+					position: absolute;
+					top: 12px;
+					right: 12px;
+					width: 24px;
+					height: 24px;
+					border: 1px solid var(--afims-border, #E4ECF2);
+					background: var(--afims-surface, #FFFFFF);
+					color: var(--afims-text-disabled, #A9AAB8);
+					border-radius: 6px;
+					font-size: 16px;
+					line-height: 1;
+					cursor: pointer;
+					transition: background .15s, color .15s, border-color .15s;
+				}
+
+				.project-block-remove:hover {
+					background: var(--afims-danger-soft, #FAE1E3);
+					color: var(--afims-danger, #DC3545);
+					border-color: var(--afims-danger-soft, #FAE1E3);
+				}
+
+				.project-block .baa-line {
+					margin-bottom: 0;
 				}
 
 				.baa-proposed-amount {
@@ -2270,32 +2316,45 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 			applyBudgetVersionVisibilityForDocType();
 		}
 
-		// 9. Program → Sub-Program → Project, selected by code — first, so every line's COB list is loaded once, for
-		//    this chain
-		await cbaSelectProgramChain(a.program_code, a.sub_program_code, a.project_code);
+		// 9. CFA (and "no type chosen yet"): select the single Program → Sub-Program → Project chain first, so
+		//    every line's COB list is loaded once, for that chain — CBA / RFA / LAA instead get one or more
+		//    independent project blocks, restored below (step 10) once cbaApplyAllocationTypeVisibility() has
+		//    seeded the first one.
+		if (!cbaUsesIndependentProject()) {
+			await cbaSelectProgramChain(a.program_code, a.sub_program_code, a.project_code);
+		}
 
-		// 9b. CBA hides Vendor / Is this for bidding? / Program / Sub-Program — applied now that the chain above
-		//     already holds Project's real value, so this won't trigger the "load every project" step too.
+		// 9b. CBA / RFA / LAA hide Vendor / Is this for bidding? / Program / Sub-Program, and switch into project
+		//     blocks mode (switchToBlockMode() seeds the first empty block) — applied now that, for CFA, the
+		//     chain above already holds Project's real value, so this won't trigger the "load every project"
+		//     step too.
 		cbaApplyAllocationTypeVisibility();
 
-		// 10. Budget Allocation Amount lines — one per saved line_transaction entry (row 0 already exists from boot),
-		//     each with the COB it drew from
-		var savedLines = Array.isArray(a.line_transaction) ? a.line_transaction : [];
-		if (savedLines.length) {
-			while (BAA_ROWS.length < savedLines.length) addBudgetAllocationLine();
-			for (var li = 0; li < savedLines.length; li++) {
-				var line = savedLines[li];
-				var idx = BAA_ROWS[li];
-				if (idx === undefined) continue;
-
-				baaSetAmount(idx, 'requested', line.requested_amount);
-				baaSetAmount(idx, 'allocated', line.allocated_amount);
-				await cobRestoreLine(idx, line);
-			}
+		// 10. Budget Allocation Amount lines.
+		if (cbaUsesIndependentProject()) {
+			EDIT_SINGLE_BLOCK_ID = null;
+			await restoreProjectBlocksFromSaved(a.projects);
 		} else {
-			// no itemized lines saved — the flat totals go into row 0
-			baaSetAmount(0, 'requested', a.requested_amount);
-			baaSetAmount(0, 'allocated', a.allocated_amount);
+			EDIT_SINGLE_BLOCK_ID = (a.projects && a.projects[0] && a.projects[0].budget_allocation_project_id != null) ?
+				parseInt(a.projects[0].budget_allocation_project_id, 10) : null;
+			// one per saved line_transaction entry (row 0 already exists from boot), each with the COB it drew from
+			var savedLines = Array.isArray(a.line_transaction) ? a.line_transaction : [];
+			if (savedLines.length) {
+				while (BAA_ROWS.length < savedLines.length) addBudgetAllocationLine();
+				for (var li = 0; li < savedLines.length; li++) {
+					var line = savedLines[li];
+					var idx = BAA_ROWS[li];
+					if (idx === undefined) continue;
+
+					baaSetAmount(idx, 'requested', line.requested_amount);
+					baaSetAmount(idx, 'allocated', line.allocated_amount);
+					await cobRestoreLine(idx, line);
+				}
+			} else {
+				// no itemized lines saved — the flat totals go into row 0
+				baaSetAmount(0, 'requested', a.requested_amount);
+				baaSetAmount(0, 'allocated', a.allocated_amount);
+			}
 		}
 		recomputeBaaTotals();
 
@@ -2411,26 +2470,28 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 	// is hidden. Neither the program/sub-program/project codes nor allocated_amount carry a `required` attribute,
 	// so hiding them just clears out any stale values so they aren't sent.
 	function applyProgramProjectVisibilityForDocType() {
-		var progProjRow = document.getElementById('program_project_row');
+		var docType = document.getElementById('document_type').value;
+		var singleBlock = document.getElementById('single_project_block');
 		var sectionTitle = document.getElementById('program_project_section_title');
-		// CBA / RFA / LAA's Project is independent of Category entirely (cbaUsesIndependentProject()) — only
-		// CFA (and no type chosen yet) still depends on Category = Infrastructure to show it at all.
-		var hideProgProj = !cbaUsesIndependentProject() && !isInfrastructureCategorySelected();
+		var usesBlocks = cbaUsesIndependentProject();
 
-		if (hideProgProj) {
-			if (progProjRow) progProjRow.style.display = 'none';
-			if (sectionTitle) sectionTitle.textContent = 'Purpose Details';
+		// CFA (and "no type chosen yet") ONLY: hidden for a COE document, or a CO document whose Category isn't
+		// Infrastructure. CBA / RFA / LAA never show #single_project_block at all — they use
+		// #project_blocks_section instead (cbaApplyAllocationTypeVisibility() owns that toggle).
+		var hideSingleBlock = usesBlocks || docType === 'COE' || (docType === 'CO' && !isInfrastructureCategorySelected());
 
-			cbaClearProgramChain();
-		} else {
-			if (progProjRow) progProjRow.style.display = '';
-			if (sectionTitle) sectionTitle.textContent = 'Program, Sub-Program and Project Details';
+		if (singleBlock) singleBlock.style.display = hideSingleBlock ? 'none' : '';
+		if (sectionTitle) {
+			sectionTitle.textContent = usesBlocks ? 'Project Allocations' :
+				(hideSingleBlock ? 'Purpose Details' : 'Program, Sub-Program and Project Details');
 		}
+
+		if (hideSingleBlock && !usesBlocks) cbaClearProgramChain();
 
 		// Project is required — but never while this whole row is hidden, or the [required] sweep in
 		// cbaOnSubmit would block submission over a field the user can't even see.
 		var projSearch = document.getElementById('proj_search');
-		if (projSearch) projSearch.required = !hideProgProj;
+		if (projSearch) projSearch.required = !hideSingleBlock;
 
 		baaApplyCashRequirementsVisibility();
 	}
@@ -2465,40 +2526,36 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 		baaApplyHeaderVisibility();
 	}
 
-	// Moves the first Budget Allocation Amount line (COB + Requested Amount) in next to Project — CBA / RFA /
-	// LAA only (cbaUsesIndependentProject()), and only while Program / Sub-Program / Project are actually
-	// showing (not a COE document, where that whole row is hidden). Moves it back down to its usual place in
-	// baa_lines_container otherwise. Only ever the first line: a 2nd / 3rd line added with "+" still appears as
-	// its own row below, same as before.
+	// Moves the first Budget Allocation Amount line (COB + Requested Amount) in next to Project — CFA (and "no
+	// type chosen yet") only, and only while Program / Sub-Program / Project are actually showing (not a COE
+	// document, where that whole row is hidden). Moves it back down to its usual place in baa_lines_container
+	// otherwise. CBA / RFA / LAA no longer use this splice at all: each of their project blocks already renders
+	// its Project and its own line(s) together natively (#project_blocks_container) — see
+	// cbaApplyAllocationTypeVisibility().
 	function baaRelocateFirstLine() {
 		var firstIdx = BAA_ROWS[0];
-		if (firstIdx === undefined) return;
+		if (firstIdx === undefined || BAA_ROW_BLOCK[firstIdx] != null) return;
 		var firstRow = document.querySelector('.baa-line[data-idx="' + firstIdx + '"]');
 		if (!firstRow) return;
 
-		var progProjRow = document.getElementById('program_project_row');
-		var rowVisible = !!progProjRow && progProjRow.style.display !== 'none';
 		var container = document.getElementById('baa_lines_container');
-
-		if (cbaUsesIndependentProject() && rowVisible) {
-			if (firstRow.parentNode !== progProjRow) progProjRow.appendChild(firstRow);
-		} else if (container && firstRow.parentNode !== container) {
+		if (container && firstRow.parentNode !== container) {
 			container.insertBefore(firstRow, container.firstChild);
 		}
 	}
 
-	// The "Budget Allocation Amount" heading, its hint text and the totals box only earn their keep once there's
-	// something below them that needs introducing — for CBA / RFA / LAA, with just the one line (merged next
-	// to Project — see baaRelocateFirstLine()), there's nothing left to show. Reappears the moment a 2nd line
-	// exists (not offered by any button today, but an existing record being edited can still have more than
-	// one saved line).
+	// The "Budget Allocation Amount" heading, its hint text and the totals box only earn their keep for CFA (and
+	// "no type chosen yet") once there's something below them that needs introducing — with just the one line,
+	// there's nothing left to show. CBA / RFA / LAA always hide the heading (each project block renders its own
+	// COB area instead) but keep the totals box (the combined total across every block).
 	function baaApplyHeaderVisibility() {
-		var hide = cbaUsesIndependentProject() && BAA_ROWS.length <= 1;
+		var blockMode = cbaUsesIndependentProject();
+		var hide = blockMode ? false : BAA_ROWS.length <= 1;
 
 		var header = document.getElementById('baa_header');
-		if (header) header.style.display = hide ? 'none' : '';
+		if (header) header.style.display = (blockMode || hide) ? 'none' : '';
 		var totals = document.getElementById('baa_totals');
-		if (totals) totals.style.display = hide ? 'none' : '';
+		if (totals) totals.style.display = (blockMode ? BAA_ROWS.length === 0 : hide) ? 'none' : '';
 	}
 
 	// ── 3. Program → Sub-Program → Project (cascading searchable comboboxes) ──────
@@ -2890,6 +2947,13 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 			if (biddingEl) biddingEl.checked = false;
 		}
 
+		// Category — hidden for CBA / RFA / LAA; only CFA (and "no type chosen yet") still shows it.
+		var categoryRow = document.getElementById('category_row');
+		if (categoryRow) categoryRow.style.display = usesIndependentProject ? 'none' : '';
+		var catSearchEl = document.getElementById('cat_search');
+		if (catSearchEl) catSearchEl.required = !usesIndependentProject;
+		if (usesIndependentProject) catClearSelection();
+
 		// Basic Information has nothing left in it for CBA / RFA / LAA (Fiscal Year / Document Type are hidden
 		// fields derived elsewhere, Parent CBA now lives in the Allocation Type row instead, and Is this for
 		// bidding? is hidden here too) — hide the section itself rather than leave an empty card with just a
@@ -2907,27 +2971,27 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 		baaRefreshAllCbaAmounts();
 		baaApplyEarmarksVisibilityAll(); // "Where this COB's balance is held" is a CBA / CFA concept only
 
-		var projSearch = pcEl('proj', 'search');
+		// Project — CBA / RFA / LAA get one-or-more independent project blocks (#project_blocks_section, each
+		// with its own Project pick + its own COB/Amount line(s)); CFA (and "no type chosen yet") keeps the
+		// single Program → Sub-Program → Project chain (#single_project_block) unchanged.
+		var singleBlock = document.getElementById('single_project_block');
+		var blocksSection = document.getElementById('project_blocks_section');
 		if (usesIndependentProject) {
-			// Project stands on its own here — searchable across every project, not just those under a chosen
-			// Program / Sub-Program (there is no longer one to choose from). Only (re)load it while it is still
-			// locked from the normal cascade — once it holds a value (picked here, or already set in edit mode),
-			// leave it alone.
-			if (projSearch && projSearch.disabled) {
-				pcHideError('proj');
-				setLoading(PCHAIN.proj.wrapper, false);
-				projSearch.disabled = false;
-				projSearch.placeholder = 'Search project…';
-				pcSetHint('proj', 'Search across every project.');
-				pcLoad('proj');
-			}
-		} else if (!pcValue('proj')) {
-			// Leaving CBA / RFA / LAA with no project picked: back to the normal locked cascade.
-			if (!pcValue('prog')) {
-				pcDisable('subprog');
-				pcDisable('proj');
-			} else if (!pcValue('subprog')) {
-				pcDisable('proj');
+			if (singleBlock) singleBlock.style.display = 'none';
+			if (blocksSection) blocksSection.style.display = '';
+			switchToBlockMode();
+		} else {
+			if (blocksSection) blocksSection.style.display = 'none';
+			switchToSingleMode();
+
+			if (!pcValue('proj')) {
+				// Leaving CBA / RFA / LAA with no project picked: back to the normal locked cascade.
+				if (!pcValue('prog')) {
+					pcDisable('subprog');
+					pcDisable('proj');
+				} else if (!pcValue('subprog')) {
+					pcDisable('proj');
+				}
 			}
 		}
 
@@ -2936,6 +3000,34 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 		if (BAA_ROWS[0] !== undefined) cobLoad(BAA_ROWS[0]);
 
 		cbaApplyParentCbaLock();
+	}
+
+	// Tears down every legacy (non-block) BAA line and rebuilds as one fresh project block — a no-op once
+	// already in block mode (PROJECT_BLOCKS already has at least one). Called whenever Allocation Type becomes
+	// CBA / RFA / LAA.
+	function switchToBlockMode() {
+		BAA_ROWS.slice().forEach(function(idx) {
+			if (BAA_ROW_BLOCK[idx] == null) baaHardRemoveLine(idx);
+		});
+		if (!PROJECT_BLOCKS.length) addProjectBlock();
+		updateBaaRemoveButtons();
+		recomputeBaaTotals();
+		baaApplyHeaderVisibility();
+	}
+
+	// Tears down every project block and rebuilds as one fresh legacy (non-block) BAA line — a no-op once
+	// already in single-chain mode (PROJECT_BLOCKS is empty). Called whenever Allocation Type becomes CFA or
+	// is cleared.
+	function switchToSingleMode() {
+		if (!PROJECT_BLOCKS.length) return;
+		PROJECT_BLOCKS.slice().forEach(function(b) {
+			removeProjectBlock(b.id, true);
+		});
+		if (!BAA_ROWS.length) addBudgetAllocationLine();
+		updateBaaRemoveButtons();
+		recomputeBaaTotals();
+		baaRelocateFirstLine();
+		baaApplyHeaderVisibility();
 	}
 
 	function cbaClearVendor() {
@@ -3415,6 +3507,7 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 	// requested_amount_raw / allocated_amount_raw.
 	var BAA_ROWS = []; // ordered array of live line idx values
 	var BAA_ROW_SEQ = -1;
+	var BAA_ROW_BLOCK = {}; // idx -> the project block (PROJECT_BLOCKS[].id) it belongs to; absent/null for CFA's own single chain
 	var COB_DATA = {}; // idx -> approved line items last loaded for that line
 	var COB_SIG = {}; // idx -> the program|sub-program|project that list was loaded for
 	var COB_SEQ = {}; // idx -> token of the newest request, so an answer that was overtaken is dropped
@@ -3430,18 +3523,340 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 	var COB_TOKEN_SEQ = 0;
 	var COB_LIST_MAX = 50; // rows rendered at once; typing narrows the rest
 
+	// ── 4b. Project Allocations (CBA / RFA / LAA only) — one or more independent project blocks, each with its
+	// own Project pick (searchable across every project, same "load once, filter client-side" shape as the
+	// Category / Vendor comboboxes elsewhere in this file) plus its own COB / Amount line(s)
+	// (addBudgetAllocationLine(blockId), reused as-is below). CFA (and "no type chosen yet") keeps the single
+	// Program → Sub-Program → Project chain above (PCHAIN) untouched — see switchToBlockMode() /
+	// switchToSingleMode() (cbaApplyAllocationTypeVisibility()).
+	var PROJECT_BLOCKS = []; // ordered array of { id, projectCode, projectName, programCode, programName, subProgramCode, subProgramName, budgetAllocationProjectId }
+	var PROJECT_BLOCK_SEQ = -1;
+	// CFA (and "no type chosen yet") in edit mode: the stored record's one project block's own
+	// budget_allocation_project_id, echoed back by buildPayload() so update() edits that block in place
+	// instead of soft-deleting it and inserting a new one. Null for a brand-new record.
+	var EDIT_SINGLE_BLOCK_ID = null;
+	var PROJ_ALL_DATA = [];
+	var PROJ_LOADED = false;
+	var PROJ_LOAD_PROMISE = null;
+
+	async function loadAllProjects() {
+		if (PROJ_LOADED) return;
+		if (PROJ_LOAD_PROMISE) return PROJ_LOAD_PROMISE;
+		PROJ_LOAD_PROMISE = (async function() {
+			try {
+				var json = await cba_apiFetch(API_BASE + '/project/all');
+				PROJ_ALL_DATA = (json && json.success && Array.isArray(json.data)) ? json.data : [];
+				PROJ_LOADED = true;
+			} catch (err) {
+				console.error('[loadAllProjects]', err);
+				PROJ_ALL_DATA = [];
+			}
+		})();
+		return PROJ_LOAD_PROMISE;
+	}
+
+	function projectBlockById(id) {
+		return PROJECT_BLOCKS.find(function(b) { return b.id === id; }) || null;
+	}
+
+	function projectBlockTemplate(blockId, label) {
+		return '' +
+			'<div class="project-block" data-block-id="' + blockId + '">' +
+			'<button type="button" class="project-block-remove" title="Remove this project">&times;</button>' +
+			'<div class="form-row full-width">' +
+			'<div class="form-group">' +
+			'<label for="proj_search_' + blockId + '" class="form-label">' + pcEsc(label) + ' <span class="required">*</span></label>' +
+			'<div style="position:relative;">' +
+			'<input type="text" id="proj_search_' + blockId + '" class="form-input" placeholder="Search project…" autocomplete="off" required>' +
+			'<div id="proj_dropdown_' + blockId + '" class="pc-dropdown"></div>' +
+			'</div>' +
+			'<input type="hidden" id="project_code_' + blockId + '" value="">' +
+			'</div>' +
+			'</div>' +
+			'<div id="baa_lines_' + blockId + '"></div>' +
+			'</div>';
+	}
+
+	// Re-labels every block "Project 1", "Project 2", … by its current position (removing one in the middle
+	// renumbers the rest) and shows/hides each block's own remove button (hidden while only one remains).
+	function renumberProjectBlocks() {
+		var onlyOne = PROJECT_BLOCKS.length <= 1;
+		PROJECT_BLOCKS.forEach(function(b, i) {
+			var blockEl = document.querySelector('.project-block[data-block-id="' + b.id + '"]');
+			if (!blockEl) return;
+			var label = blockEl.querySelector('.form-label');
+			if (label) label.innerHTML = 'Project ' + (i + 1) + ' <span class="required">*</span>';
+			var removeBtn = blockEl.querySelector('.project-block-remove');
+			if (removeBtn) removeBtn.style.visibility = onlyOne ? 'hidden' : 'visible';
+		});
+	}
+
+	async function addProjectBlock() {
+		var blockId = ++PROJECT_BLOCK_SEQ;
+		PROJECT_BLOCKS.push({
+			id: blockId, projectCode: null, projectName: null,
+			programCode: null, programName: null, subProgramCode: null, subProgramName: null,
+			budgetAllocationProjectId: null
+		});
+
+		var container = document.getElementById('project_blocks_container');
+		var holder = document.createElement('div');
+		holder.innerHTML = projectBlockTemplate(blockId, 'Project ' + PROJECT_BLOCKS.length);
+		var blockEl = holder.firstElementChild;
+		container.appendChild(blockEl);
+
+		blockEl.querySelector('.project-block-remove').addEventListener('click', function() {
+			removeProjectBlock(blockId);
+		});
+
+		await loadAllProjects();
+		blockProjSetupSearch(blockId);
+		addBudgetAllocationLine(blockId);
+		renumberProjectBlocks();
+		return blockId;
+	}
+
+	// $force bypasses the "always keep at least one project" guard — used when switching the whole form out of
+	// block mode (switchToSingleMode()), which removes every block deliberately.
+	function removeProjectBlock(blockId, force) {
+		if (!force && PROJECT_BLOCKS.length <= 1) return;
+		BAA_ROWS.filter(function(idx) { return BAA_ROW_BLOCK[idx] === blockId; }).slice().forEach(function(idx) {
+			baaHardRemoveLine(idx);
+		});
+		var blockEl = document.querySelector('.project-block[data-block-id="' + blockId + '"]');
+		if (blockEl) blockEl.remove();
+		PROJECT_BLOCKS = PROJECT_BLOCKS.filter(function(b) { return b.id !== blockId; });
+		renumberProjectBlocks();
+		recomputeBaaTotals();
+	}
+
+	function blockProjRenderDropdown(blockId, data) {
+		var dd = document.getElementById('proj_dropdown_' + blockId);
+		if (!dd) return;
+		if (!data.length) {
+			dd.innerHTML =
+				'<div style="padding:10px 14px;color:var(--afims-text-disabled, #A9AAB8);font-size:13px;">No results found</div>';
+			dd.style.display = 'block';
+			return;
+		}
+		var shown = data.slice(0, COB_LIST_MAX);
+		dd.innerHTML = shown.map(function(p) {
+			return '<div class="bv-item" data-id="' + pcEsc(p.project_code) + '">' +
+				'<div class="bv-item-name">' + pcEsc(p.project_name || p.project_code) + '</div>' +
+				(p.program_name ? '<div class="bv-item-sub">' + pcEsc(p.program_name) +
+					(p.sub_program_name ? ' / ' + pcEsc(p.sub_program_name) : '') + '</div>' : '') +
+				'</div>';
+		}).join('') + (data.length > shown.length ?
+			'<div style="padding:8px 14px;color:var(--afims-text-muted, #62657E);font-size:11px;">Showing the first ' +
+			shown.length + ' of ' + data.length + ' — type to narrow the list</div>' : '');
+		dd.style.display = 'block';
+
+		dd.querySelectorAll('.bv-item').forEach(function(item) {
+			item.addEventListener('mousedown', function(e) {
+				e.preventDefault();
+				var proj = data.find(function(p) { return String(p.project_code) === item.dataset.id; });
+				if (proj) blockProjSelect(blockId, proj);
+			});
+		});
+	}
+
+	function blockProjSelect(blockId, proj) {
+		var b = projectBlockById(blockId);
+		if (!b) return;
+		b.projectCode = proj.project_code;
+		b.projectName = proj.project_name || proj.project_code;
+		b.programCode = proj.program_code || null;
+		b.programName = proj.program_name || null;
+		b.subProgramCode = proj.sub_program_code || null;
+		b.subProgramName = proj.sub_program_name || null;
+
+		var hidden = document.getElementById('project_code_' + blockId);
+		if (hidden) hidden.value = proj.project_code;
+		var search = document.getElementById('proj_search_' + blockId);
+		if (search) search.value = b.projectName;
+		var dd = document.getElementById('proj_dropdown_' + blockId);
+		if (dd) dd.style.display = 'none';
+
+		// Fiscal year is still one record-level field — derived from the first block's project, same as the
+		// single-chain flow already did for CBA / RFA / LAA before this.
+		if (PROJECT_BLOCKS[0] && PROJECT_BLOCKS[0].id === blockId) pcDeriveFiscalYearFromProject(proj.project_code);
+
+		cobChainChangedForBlock(blockId).then(function() {
+			return autoExpandBlockCobLines(blockId);
+		});
+	}
+
+	function blockProjClearSelection(blockId) {
+		var b = projectBlockById(blockId);
+		if (b) {
+			b.projectCode = null; b.projectName = null;
+			b.programCode = null; b.programName = null;
+			b.subProgramCode = null; b.subProgramName = null;
+		}
+		var hidden = document.getElementById('project_code_' + blockId);
+		if (hidden) hidden.value = '';
+	}
+
+	// PROJ_ALL_DATA minus whatever project every OTHER block already picked — the same project can only be
+	// allocated to one block at a time. (This block's own current pick, if any, stays offered — so reopening
+	// the dropdown to change it still shows it.)
+	function blockProjAvailableData(blockId) {
+		var usedCodes = PROJECT_BLOCKS.filter(function(b) {
+			return b.id !== blockId && b.projectCode;
+		}).map(function(b) {
+			return b.projectCode;
+		});
+		if (!usedCodes.length) return PROJ_ALL_DATA;
+
+		return PROJ_ALL_DATA.filter(function(p) {
+			return usedCodes.indexOf(p.project_code) === -1;
+		});
+	}
+
+	function blockProjSetupSearch(blockId) {
+		var searchEl = document.getElementById('proj_search_' + blockId);
+		var dd = document.getElementById('proj_dropdown_' + blockId);
+		if (!searchEl || !dd) return;
+
+		searchEl.addEventListener('input', function() {
+			var q = this.value.trim().toLowerCase();
+			blockProjClearSelection(blockId);
+			cobChainChangedForBlock(blockId);
+
+			var available = blockProjAvailableData(blockId);
+			var filtered = !q ? available : available.filter(function(p) {
+				return String(p.project_name || '').toLowerCase().includes(q) ||
+					String(p.project_code || '').toLowerCase().includes(q);
+			});
+			blockProjRenderDropdown(blockId, filtered);
+		});
+
+		searchEl.addEventListener('focus', function() {
+			var hidden = document.getElementById('project_code_' + blockId);
+			if (!hidden || !hidden.value) blockProjRenderDropdown(blockId, blockProjAvailableData(blockId));
+		});
+
+		searchEl.addEventListener('blur', function() {
+			setTimeout(function() { dd.style.display = 'none'; }, 150);
+		});
+	}
+
+	// Select a saved project by code (edit mode). Skipped when the code is not in the list (e.g. the project
+	// was deleted since), in which case the field stays empty.
+	function blockProjSelectById(blockId, code) {
+		if (code == null || code === '') return;
+		var proj = PROJ_ALL_DATA.find(function(p) { return String(p.project_code) === String(code); });
+		if (proj) blockProjSelect(blockId, proj);
+	}
+
+	// Reloads only the COB lists of the lines belonging to this one block — a project pick in one block must
+	// never reload every other block's (or CFA's) lines. Returns a promise resolving once every one of them has
+	// (so callers can auto-expand once the real list is in, see autoExpandBlockCobLines()).
+	function cobChainChangedForBlock(blockId) {
+		var keep = COB_KEEP_SELECTION > 0;
+		return Promise.all(BAA_ROWS.filter(function(idx) {
+			return BAA_ROW_BLOCK[idx] === blockId;
+		}).map(function(idx) {
+			return cobLoad(idx, keep);
+		}));
+	}
+
+	// A freshly-added project block starts with exactly one (empty) COB line. The moment its Project is picked
+	// and that line's COB list comes back, this expands it to one line per approved COB available for that
+	// project — pre-selected — instead of leaving the office to search/add them one at a time: a project with 4
+	// approved COBs shows 4 rows right away. Never runs during edit-mode restore (COB_KEEP_SELECTION > 0 —
+	// restoreProjectBlocksFromSaved() builds the exact saved set of lines itself) or once the block already has
+	// more than its one starting line (the user has since added/removed lines by hand — leave their work alone).
+	async function autoExpandBlockCobLines(blockId) {
+		if (COB_KEEP_SELECTION > 0) return;
+		var idxs = BAA_ROWS.filter(function(i) { return BAA_ROW_BLOCK[i] === blockId; });
+		if (idxs.length !== 1) return;
+		var idx = idxs[0];
+		if (COB_SEL[idx]) return;
+		var data = COB_DATA[idx] || [];
+		if (data.length <= 1) return;
+
+		cobSelect(idx, data[0]);
+		for (var i = 1; i < data.length; i++) {
+			var newIdx = addBudgetAllocationLine(blockId);
+			await cobLoad(newIdx);
+			cobSelect(newIdx, data[i]);
+		}
+		updateBaaRemoveButtons();
+		recomputeBaaTotals();
+	}
+
+	// Edit mode (populateEditForm() / cbaAutofillFromParent()): rebuilds PROJECT_BLOCKS from a saved record's
+	// `projects` — cbaApplyAllocationTypeVisibility() (switchToBlockMode()) already seeded exactly one empty
+	// block before this runs, so it only needs to add more until there's one per saved block, then fill each
+	// one in (its Project pick + its own COB lines) in order.
+	async function restoreProjectBlocksFromSaved(savedBlocks) {
+		savedBlocks = Array.isArray(savedBlocks) ? savedBlocks : [];
+		if (!savedBlocks.length) return;
+
+		// The levels are filled in by code here, not chosen by the user: the COBs already picked belong to this
+		// block, so the reloads it triggers must not clear them (same precedent as cbaSelectProgramChain()).
+		COB_KEEP_SELECTION++;
+		try {
+			while (PROJECT_BLOCKS.length < savedBlocks.length) {
+				await addProjectBlock();
+			}
+			while (PROJECT_BLOCKS.length > savedBlocks.length) {
+				removeProjectBlock(PROJECT_BLOCKS[PROJECT_BLOCKS.length - 1].id, true);
+			}
+
+			for (var i = 0; i < savedBlocks.length; i++) {
+				var saved = savedBlocks[i];
+				var blockId = PROJECT_BLOCKS[i].id;
+				PROJECT_BLOCKS[i].budgetAllocationProjectId = saved.budget_allocation_project_id != null ?
+					parseInt(saved.budget_allocation_project_id, 10) : null;
+
+				await loadAllProjects();
+				blockProjSelectById(blockId, saved.project_code);
+
+				var savedLines = Array.isArray(saved.line_transaction) ? saved.line_transaction : [];
+				var blockLineIdxs = BAA_ROWS.filter(function(idx) { return BAA_ROW_BLOCK[idx] === blockId; });
+				while (blockLineIdxs.length < savedLines.length) {
+					blockLineIdxs.push(addBudgetAllocationLine(blockId));
+				}
+				for (var li = 0; li < savedLines.length; li++) {
+					var line = savedLines[li];
+					var idx = blockLineIdxs[li];
+					if (idx === undefined) continue;
+
+					baaSetAmount(idx, 'requested', line.requested_amount);
+					baaSetAmount(idx, 'allocated', line.allocated_amount);
+					await cobRestoreLine(idx, line);
+				}
+			}
+		} finally {
+			COB_KEEP_SELECTION--;
+		}
+
+		renumberProjectBlocks();
+		updateBaaRemoveButtons();
+		recomputeBaaTotals();
+	}
+
 	function cobEl(part, idx) {
 		return document.getElementById(part + '_' + idx);
 	}
 
-	// The Program / Sub-Program / Project chosen above.
+	// The Program / Sub-Program / Project chosen above (CFA's single shared chain).
 	function cobChainSignature() {
 		return [pcValue('prog'), pcValue('subprog'), pcValue('proj')].join('|');
 	}
 
-	// What a line's COB list depends on: the Program / Sub-Program / Project chain above — every line shares the
-	// same list, there being nothing else left to narrow it by.
+	// What a line's COB list depends on. A block-scoped line (BAA_ROW_BLOCK[idx] set — CBA / RFA / LAA) depends
+	// only on ITS OWN block's Project; every other line shares the single chain above (CFA), there being nothing
+	// else left to narrow it by.
 	function cobSignature(idx) {
+		var blockId = BAA_ROW_BLOCK[idx];
+		if (blockId != null) {
+			var b = projectBlockById(blockId);
+			return 'block:' + blockId + ':' + (b ? b.projectCode : null);
+		}
+
 		return cobChainSignature();
 	}
 
@@ -3536,11 +3951,16 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 			'</div>';
 	}
 
-	function addBudgetAllocationLine() {
+	// $blockId: the project block (PROJECT_BLOCKS[].id) this line belongs to — appended into that block's own
+	// #baa_lines_<id> container instead of the shared #baa_lines_container, and tagged in BAA_ROW_BLOCK so
+	// cobSignature() / cobQuery() / cobRequiresProjectFirst() resolve its own project instead of the single
+	// shared chain. Omitted (undefined) for CFA's own single-chain lines — unchanged.
+	function addBudgetAllocationLine(blockId) {
 		var idx = ++BAA_ROW_SEQ;
 		BAA_ROWS.push(idx);
+		if (blockId != null) BAA_ROW_BLOCK[idx] = blockId;
 
-		var container = document.getElementById('baa_lines_container');
+		var container = blockId != null ? document.getElementById('baa_lines_' + blockId) : document.getElementById('baa_lines_container');
 		var holder = document.createElement('div');
 		holder.innerHTML = baaRowTemplate(idx);
 		var rowEl = holder.firstElementChild;
@@ -3577,8 +3997,10 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 		return idx;
 	}
 
-	function removeBudgetAllocationLine(idx) {
-		if (BAA_ROWS.length <= 1) return; // always keep at least one line
+	// The actual teardown, no "keep at least one" guard — removeBudgetAllocationLine() below applies that guard
+	// (per-block when the line belongs to one); switchToBlockMode() / removeProjectBlock() call this directly
+	// when they are deliberately clearing every line of a block (or every legacy line) to rebuild from scratch.
+	function baaHardRemoveLine(idx) {
 		var rowEl = document.querySelector('.baa-line[data-idx="' + idx + '"]');
 		if (rowEl) rowEl.remove();
 		BAA_ROWS = BAA_ROWS.filter(function(i) {
@@ -3590,30 +4012,58 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 		delete COB_LOAD[idx];
 		delete COB_SEL[idx];
 		delete COB_WIRED[idx];
+		delete BAA_ROW_BLOCK[idx];
+	}
+
+	function removeBudgetAllocationLine(idx) {
+		var blockId = BAA_ROW_BLOCK[idx];
+		if (blockId != null) {
+			var siblings = BAA_ROWS.filter(function(i) { return BAA_ROW_BLOCK[i] === blockId; });
+			if (siblings.length <= 1) return; // always keep at least one line per project block
+		} else if (BAA_ROWS.length <= 1) {
+			return; // CFA's single chain: always keep at least one line
+		}
+		baaHardRemoveLine(idx);
 		updateBaaRemoveButtons();
 		recomputeBaaTotals();
 		baaRelocateFirstLine(); // the line removed may have been the one merged in beside Project
 		baaApplyHeaderVisibility();
 	}
 
+	// Each line's own remove ("×") button is hidden only while it is the LAST line of its own scope — its
+	// project block if it belongs to one, else the whole (CFA) form.
 	function updateBaaRemoveButtons() {
-		var onlyOne = BAA_ROWS.length <= 1;
-		document.querySelectorAll('.baa-remove-line').forEach(function(btn) {
-			btn.style.visibility = onlyOne ? 'hidden' : 'visible';
+		document.querySelectorAll('.baa-line').forEach(function(rowEl) {
+			var idx = parseInt(rowEl.getAttribute('data-idx'), 10);
+			var btn = rowEl.querySelector('.baa-remove-line');
+			if (!btn) return;
+			var blockId = BAA_ROW_BLOCK[idx];
+			var count = blockId != null ?
+				BAA_ROWS.filter(function(i) { return BAA_ROW_BLOCK[i] === blockId; }).length :
+				BAA_ROWS.length;
+			btn.style.visibility = count <= 1 ? 'hidden' : 'visible';
 		});
 	}
 
 	// ── COB  →  GET /budget_line_item/approved ───────────────────────────────────
 	// Filtered by the Program / Sub-Program / Project above: every level that has a value narrows the list.
+	// The Program / Sub-Program / Project this idx's COB list is narrowed by: its own project block's, when it
+	// belongs to one (CBA / RFA / LAA), else the single shared chain above (CFA).
+	function cobChainOf(idx) {
+		var blockId = BAA_ROW_BLOCK[idx];
+		if (blockId != null) {
+			var b = projectBlockById(blockId);
+			return { program: b ? b.programCode : null, subProgram: b ? b.subProgramCode : null, project: b ? b.projectCode : null };
+		}
+
+		return { program: pcValue('prog'), subProgram: pcValue('subprog'), project: pcValue('proj') };
+	}
+
 	function cobQuery(idx) {
+		var chain = cobChainOf(idx);
 		var parts = [];
-		[
-			['program_code', 'prog'],
-			['sub_program_code', 'subprog'],
-			['project_code', 'proj']
-		].forEach(function(p) {
-			var value = pcValue(p[1]);
-			if (value) parts.push(p[0] + '=' + encodeURIComponent(value));
+		[['program_code', chain.program], ['sub_program_code', chain.subProgram], ['project_code', chain.project]].forEach(function(p) {
+			if (p[1]) parts.push(p[0] + '=' + encodeURIComponent(p[1]));
 		});
 		return parts.length ? '?' + parts.join('&') : '';
 	}
@@ -3621,21 +4071,35 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 	function cobUpdateHint(idx) {
 		var hint = cobEl('cob_hint', idx);
 		if (!hint) return;
+		// A project block's lines already show one row per approved COB (autoExpandBlockCobLines()) — the
+		// "N approved COB(s) available" count is redundant there (and noisy, repeated on every row); CFA's
+		// single-chain lines keep it, since there it's the only hint of how many COBs match the chain.
+		if (BAA_ROW_BLOCK[idx] != null) {
+			hint.textContent = '';
+			return;
+		}
+		var chain = cobChainOf(idx);
 		var n = (COB_DATA[idx] || []).length;
-		var scope = pcValue('proj') ? ' for this project' : pcValue('subprog') ? ' for this sub-program' :
-			pcValue('prog') ? ' for this program' : '';
+		var scope = chain.project ? ' for this project' : chain.subProgram ? ' for this sub-program' :
+			chain.program ? ' for this program' : '';
 		hint.textContent = n ?
 			n + ' approved COB(s) available' + scope + '.' + (scope ? '' :
 				' Choose a program, sub-program or project to narrow the list.') :
 			'No approved COBs found' + scope + '.';
 	}
 
-	// CBA / RFA / LAA's merged first line (see baaRelocateFirstLine()) has no Program / Sub-Program of its own
-	// to narrow the COB list by — Project is the only thing that does, and it's what later fills Program /
-	// Sub-Program in too (cbaSyncProjectParents()). So for that one line, Project must be picked before COB is:
-	// picking a COB first would leave it possibly belonging to a different project than the one chosen
-	// afterwards.
+	// A project block's line has no Program / Sub-Program of its own to narrow the COB list by — Project is the
+	// only thing that does. So its FIRST line must have Project picked before COB is: picking a COB first would
+	// leave it possibly belonging to a different project than the one chosen afterwards. Every other line of the
+	// same block (a saved record can have more than one) is free to load immediately — the block's project
+	// doesn't change once it does.
 	function cobRequiresProjectFirst(idx) {
+		var blockId = BAA_ROW_BLOCK[idx];
+		if (blockId != null) {
+			var firstOfBlock = BAA_ROWS.find(function(i) { return BAA_ROW_BLOCK[i] === blockId; });
+			return idx === firstOfBlock;
+		}
+
 		return cbaUsesIndependentProject() && idx === BAA_ROWS[0];
 	}
 
@@ -3645,7 +4109,7 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 		var searchEl = cobEl('bv_search', idx);
 		if (!searchEl) return Promise.resolve(); // the line was removed
 
-		if (cobRequiresProjectFirst(idx) && !pcValue('proj')) {
+		if (cobRequiresProjectFirst(idx) && !cobChainOf(idx).project) {
 			// Invalidate any load already in flight (e.g. the unfiltered one from before CBA was chosen) so its
 			// success handler can't land afterwards and silently re-enable this box — see the COB_SEQ check
 			// inside the async function below.
@@ -4364,24 +4828,46 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 
 	// Collects every row into the itemized array sent as `line_transaction`. A line keeps the Type of Fund and
 	// Account Code of its COB next to the id, so the record still reads correctly if that line item changes later.
+	function baaLineObject(idx) {
+		var sel = COB_SEL[idx] || null;
+		return {
+			budget_line_item_id: sel ? String(sel.budget_line_item_id) : '',
+			type_of_fund_id: sel && sel.type_of_fund_id != null ? String(sel.type_of_fund_id) : '',
+			type_of_fund: sel ? (sel.type_of_fund || '') : '',
+			account_code: sel ? (sel.account_code || '') : '',
+			account_title: sel ? (sel.account_title || '') : '',
+			fiscal_yr: sel && sel.fiscal_yr != null ? String(sel.fiscal_yr) : '',
+			proposed_amount: sel && sel.proposed_amount != null ? String(sel.proposed_amount) : '',
+			suggested_amount: sel && sel.suggested_amount != null ? String(sel.suggested_amount) : '',
+			requested_amount: (document.getElementById('requested_amount_' + idx + '_raw') || {}).value || '',
+			allocated_amount: (document.getElementById('allocated_amount_' + idx + '_raw') || {}).value || '',
+		};
+	}
+
+	// Drop a fully-empty trailing row (e.g. one added then left untouched).
+	function baaLineIsMeaningful(line) {
+		return !!(line.budget_line_item_id || line.type_of_fund_id || line.requested_amount);
+	}
+
+	// CFA's own single chain — every line in BAA_ROWS that doesn't belong to a project block.
 	function collectBaaLines() {
-		return BAA_ROWS.map(function(idx) {
-			var sel = COB_SEL[idx] || null;
-			return {
-				budget_line_item_id: sel ? String(sel.budget_line_item_id) : '',
-				type_of_fund_id: sel && sel.type_of_fund_id != null ? String(sel.type_of_fund_id) : '',
-				type_of_fund: sel ? (sel.type_of_fund || '') : '',
-				account_code: sel ? (sel.account_code || '') : '',
-				account_title: sel ? (sel.account_title || '') : '',
-				fiscal_yr: sel && sel.fiscal_yr != null ? String(sel.fiscal_yr) : '',
-				proposed_amount: sel && sel.proposed_amount != null ? String(sel.proposed_amount) : '',
-				suggested_amount: sel && sel.suggested_amount != null ? String(sel.suggested_amount) : '',
-				requested_amount: (document.getElementById('requested_amount_' + idx + '_raw') || {}).value || '',
-				allocated_amount: (document.getElementById('allocated_amount_' + idx + '_raw') || {}).value || '',
-			};
-		}).filter(function(line) {
-			// Drop a fully-empty trailing row (e.g. one added then left untouched).
-			return line.budget_line_item_id || line.type_of_fund_id || line.requested_amount;
+		return BAA_ROWS.filter(function(idx) { return BAA_ROW_BLOCK[idx] == null; })
+			.map(baaLineObject).filter(baaLineIsMeaningful);
+	}
+
+	// CBA / RFA / LAA — one entry per project block: its own Program / Sub-Program / Project (picked code, or a
+	// typed new name) and its own itemized COB lines, in the shape buildPayload() sends as `projects`.
+	function collectProjectBlocks() {
+		return PROJECT_BLOCKS.map(function(b) {
+			var lines = BAA_ROWS.filter(function(idx) { return BAA_ROW_BLOCK[idx] === b.id; })
+				.map(baaLineObject).filter(baaLineIsMeaningful);
+			var block = { line_transaction: JSON.stringify(lines) };
+			if (b.budgetAllocationProjectId != null) block.budget_allocation_project_id = b.budgetAllocationProjectId;
+			if (b.projectCode) block.project_code = b.projectCode; else if (b.projectName) block.project_name = b.projectName;
+			if (b.programCode) block.program_code = b.programCode; else if (b.programName) block.program_name = b.programName;
+			if (b.subProgramCode) block.sub_program_code = b.subProgramCode; else if (b.subProgramName) block.sub_program_name = b.subProgramName;
+
+			return block;
 		});
 	}
 
@@ -4502,47 +4988,35 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 			applyBudgetVersionVisibilityForDocType();
 		}
 
-		// 8/9. Program → Sub-Program → Project, selected by code — BEFORE the lines below: CBA / RFA / LAA
-		// lock each line's COB until Project has a value (cobRequiresProjectFirst()), so restoring a line's
-		// COB first would just have it cleared again the moment Project is set afterwards.
-		await cbaSelectProgramChain(cba.program_code, cba.sub_program_code, cba.project_code);
-
-		// 3. Budget Allocation Amount lines — one row per line_transaction entry of the parent CBA (the
-		//    same shape populateEditForm() reads), so an RFA/LAA generated from a multi-line CBA starts with
-		//    the same COB lines instead of collapsing to one. A legacy single-line CBA with no
-		//    line_transaction falls back to its flat requested / allocated amounts (row 0).
-		// The parent list (/budget_allocation/all) leaves line_transaction out (it can be large), so the
-		// parent's full record is read for its lines.
-		var parentLines = Array.isArray(cba.line_transaction) ? cba.line_transaction : [];
-		if (!parentLines.length) {
+		// 8/9. Project blocks — this is always an RFA / LAA (the only types generated "from a parent CBA"), so
+		// cbaApplyAllocationTypeVisibility() already switched the form into project-blocks mode at boot
+		// (switchToBlockMode(), seeding one empty block). One block per parent CBA project block, each starting
+		// with that block's own COB lines (so an RFA/LAA generated from a multi-project CBA starts with all of
+		// them, not just the first) — same shape populateEditForm() reads via restoreProjectBlocksFromSaved().
+		// The parent list (/budget_allocation/all) is cheap only because attachProjects() batches its blocks in
+		// one query regardless — `projects` is there already; the read/{id} fallback below only guards the rare
+		// case it somehow isn't.
+		var parentBlocks = Array.isArray(cba.projects) ? cba.projects : [];
+		if (!parentBlocks.length) {
 			try {
 				var parentJson = await cba_apiFetch(`${API_BASE}/budget_allocation/read/${cba.allocation_id}`);
-				if (parentJson.success && parentJson.data && Array.isArray(parentJson.data.line_transaction)) {
-					parentLines = parentJson.data.line_transaction;
+				if (parentJson.success && parentJson.data && Array.isArray(parentJson.data.projects)) {
+					parentBlocks = parentJson.data.projects;
 				}
 			} catch (err) {
 				console.error('[cba autofill] Failed to read the parent record:', err);
 			}
 		}
-		var cbaLines = parentLines.length > 0 ?
-			parentLines : [{
-				requested_amount: cba.requested_amount,
-				allocated_amount: cba.allocated_amount,
+		if (!parentBlocks.length) {
+			// A legacy parent with no project blocks at all falls back to its flat totals, same as before.
+			parentBlocks = [{
+				project_code: cba.project_code, program_code: cba.program_code, sub_program_code: cba.sub_program_code,
+				line_transaction: Array.isArray(cba.line_transaction) && cba.line_transaction.length ? cba.line_transaction :
+					[{ requested_amount: cba.requested_amount, allocated_amount: cba.allocated_amount }],
 			}];
-
-		while (BAA_ROWS.length < cbaLines.length) addBudgetAllocationLine();
-
-		for (var cli = 0; cli < cbaLines.length; cli++) {
-			var cLine = cbaLines[cli];
-			var cIdx = BAA_ROWS[cli];
-			if (cIdx === undefined) continue;
-
-			baaSetAmount(cIdx, 'requested', cLine.requested_amount);
-			baaSetAmount(cIdx, 'allocated', cLine.allocated_amount);
-			// the COB the parent drew from (shown from the details saved with the line when it is no longer listed)
-			await cobRestoreLine(cIdx, cLine);
 		}
-		recomputeBaaTotals();
+		EDIT_SINGLE_BLOCK_ID = null;
+		await restoreProjectBlocksFromSaved(parentBlocks);
 
 		// 7. Amounts — already populated per-row in step 3 above (from
 		//    line_transaction, or the flat fallback).
@@ -5100,18 +5574,22 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 			// number it already has (PATCH only changes the fields sent).
 			fiscal_year: v('fiscal_year'),
 			document_type: v('document_type'),
-			program_code: v('program_code'),
-			sub_program_code: v('sub_program_code'),
-			project_code: v('project_code'),
-			// Typed instead of picked = a NEW program / sub-program / project: the server creates it (or reuses an
-			// existing one of the same name) together with this record. '' when the level was picked or left empty.
-			program_name: pcTyped('prog'),
-			sub_program_name: pcTyped('subprog'),
-			project_name: pcTyped('proj'),
+			// One or more independent project blocks (fims.budget_allocation_project) — CBA / RFA / LAA send
+			// PROJECT_BLOCKS as collected by collectProjectBlocks() (each with its own Program / Sub-Program /
+			// Project and its own itemized COB lines); CFA (and "no type chosen yet") still has just the single
+			// Program → Sub-Program → Project chain above, sent here as that chain's own one-entry equivalent —
+			// the server always expects `projects`, never the old flat program_code / line_transaction fields.
+			projects: cbaUsesIndependentProject() ? collectProjectBlocks() : [(function() {
+				var block = { line_transaction: JSON.stringify(collectBaaLines()) };
+				if (EDIT_SINGLE_BLOCK_ID != null) block.budget_allocation_project_id = EDIT_SINGLE_BLOCK_ID;
+				if (v('program_code')) block.program_code = v('program_code'); else if (pcTyped('prog')) block.program_name = pcTyped('prog');
+				if (v('sub_program_code')) block.sub_program_code = v('sub_program_code'); else if (pcTyped('subprog')) block.sub_program_name = pcTyped('subprog');
+				if (v('project_code')) block.project_code = v('project_code'); else if (pcTyped('proj')) block.project_name = pcTyped('proj');
+
+				return block;
+			})()],
 			requested_amount: v('requested_amount_raw'),
 			allocated_amount: v('allocated_amount_raw'),
-			// Itemized Budget Allocation Amount lines (fmd.budget_allocations.line_transaction, jsonb).
-			line_transaction: JSON.stringify(collectBaaLines()),
 			documents_complete: '1',
 			created_by: v('created_by'),
 			multiple_node_id: v('multiple_node_id'),
@@ -5140,12 +5618,6 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 		payload.vendor_id = vendEl('vendor_id').value;
 
 		var nullableFKFields = [
-			'program_code',
-			'sub_program_code',
-			'project_code',
-			'program_name',
-			'sub_program_name',
-			'project_name',
 			'category_id',
 			'vendor_id',
 			'multiple_node_id',
@@ -5499,12 +5971,30 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 			}[allocType] || 'CBA';
 			// The requesting office (the creator's RC): a Regional / District office prints the regional CBA / CAF.
 			var isRegionalOffice = ['REGIONAL', 'DISTRICT'].indexOf(cbaRcDeptType(CBA_REQ_RC.office_type)) >= 0;
+			// Every line currently entered — CBA / RFA / LAA's project blocks (collectBaaLines() alone only sees
+			// CFA's own single chain, since block-scoped lines are tagged in BAA_ROW_BLOCK).
+			var allLines = cbaUsesIndependentProject() ?
+				PROJECT_BLOCKS.reduce(function(acc, b) {
+					return acc.concat(BAA_ROWS.filter(function(idx) { return BAA_ROW_BLOCK[idx] === b.id; }).map(baaLineObject));
+				}, []).filter(baaLineIsMeaningful) :
+				collectBaaLines();
 			// "Sources of Fund" on the CO certificate: the Type of Fund of the first budget line that has one (each line's
-			// Type of Fund comes with its picked COB line item — collectBaaLines()).
+			// Type of Fund comes with its picked COB line item).
 			var fundSourceName = (function() {
-				var line = collectBaaLines().find(function(l) { return l.type_of_fund; });
+				var line = allLines.find(function(l) { return l.type_of_fund; });
 				return line ? String(line.type_of_fund).trim() : '';
 			})();
+			// Program / Sub-Program / Project printed on the memo — CBA / RFA / LAA's project blocks have no
+			// program_code / project_code hidden field at all (those only exist for CFA's single chain): the
+			// FIRST block's own picks are shown, same "first block represents the whole print" convention
+			// BudgetAllocationService::attachProjects() already uses server-side.
+			var firstBlock = cbaUsesIndependentProject() ? PROJECT_BLOCKS[0] : null;
+			var printProgramCode = firstBlock ? (firstBlock.programCode || '') : v('program_code');
+			var printProgramName = firstBlock ? (firstBlock.programName || '') : ((g('program_code') && g('program_code').dataset.label) || pcTyped('prog'));
+			var printSubCode = firstBlock ? (firstBlock.subProgramCode || '') : v('sub_program_code');
+			var printSubName = firstBlock ? (firstBlock.subProgramName || '') : ((g('sub_program_code') && g('sub_program_code').dataset.label) || pcTyped('subprog'));
+			var printProjectCode = firstBlock ? (firstBlock.projectCode || '') : v('project_code');
+			var printProjectName = firstBlock ? (firstBlock.projectName || '') : ((g('project_code') && g('project_code').dataset.label) || pcTyped('proj'));
 
 			// ── Base payload (fields common to all three types) ───────────────────
 			var payload = {
@@ -5517,12 +6007,12 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 				// below "Sources of Fund" on CO documents (see gen_cba_docx.js).
 				category_name: g('category_id') ? (g('category_id').dataset
 					.label || '') : '',
-				program_code: v('program_code'),
-				program_name: (g('program_code') && g('program_code').dataset.label) || pcTyped('prog'),
-				sub_program_code: v('sub_program_code'),
-				sub_program_name: (g('sub_program_code') && g('sub_program_code').dataset.label) || pcTyped('subprog'),
-				project_code: v('project_code'),
-				project_name: (g('project_code') && g('project_code').dataset.label) || pcTyped('proj'),
+				program_code: printProgramCode,
+				program_name: printProgramName,
+				sub_program_code: printSubCode,
+				sub_program_name: printSubName,
+				project_code: printProjectCode,
+				project_name: printProjectName,
 				project_description: v('project_description'),
 				requested_amount: v('requested_amount_raw'),
 				allocated_amount: v('allocated_amount_raw'),
@@ -5700,7 +6190,9 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 		clearTimeout(VEND_DEBOUNCE); VEND_DEBOUNCE = null; VEND_SEQ++;
 		VEND_ALL_DATA = [];
 		VEND_MODE = 'none';
-		BAA_ROWS = []; BAA_ROW_SEQ = -1;
+		BAA_ROWS = []; BAA_ROW_SEQ = -1; BAA_ROW_BLOCK = {};
+		PROJECT_BLOCKS = []; PROJECT_BLOCK_SEQ = -1; EDIT_SINGLE_BLOCK_ID = null;
+		PROJ_ALL_DATA = []; PROJ_LOADED = false; PROJ_LOAD_PROMISE = null; // same "refetch every open" precedent as CAT_ALL_DATA / VEND_ALL_DATA below
 		COB_EPOCH++; COB_DATA = {}; COB_SIG = {}; COB_SEQ = {}; COB_LOAD = {}; COB_SEL = {}; COB_WIRED = {};
 		COB_SYNC_QUEUED = false; COB_KEEP_SELECTION = 0;
 		// Earmarks against a COB can change between modal opens (an RFA/LAA approved elsewhere converts part
