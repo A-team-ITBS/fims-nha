@@ -5,14 +5,19 @@ namespace PHPMaker2024\FIMS\Service;
 use PHPMaker2024\FIMS as App;
 
 /**
- * Deductions & Remittances (page app/pages/deduction-remittance-page.php, routes app/routes/deduction_remittance.php).
+ * Deductions & Remittances (page app/pages/remittance-page.php, routes app/routes/deduction_remittance.php).
  *
  * One page for both: the deductions withheld in an imported payroll month (Payroll Management) ARE what has to be
- * remitted, so each month is shown per agency, and that same row is scheduled for Treasury and remitted.
+ * remitted, so each month is shown per agency, and that same row is scheduled and paid to the agency through its own
+ * REMITTANCE DV (the normal Disbursement Voucher flow — every peso paid out has an approved DV):
  *
  *   PENDING (computed, no row yet) ── Accounting "Schedule for Treasury" (due date) ──► SCHEDULED
- *   SCHEDULED ── Treasury "Record Remittance" (date, method, reference no.) ──► REMITTED ── "Confirm Receipt" (OR) ──► CONFIRMED
- *   SCHEDULED ── Accounting "Unschedule" ──► CANCELLED (the month/agency is PENDING again)
+ *   SCHEDULED ── "Create Remittance DV" (Voucher?remittance={id}; claimant = the agency, no RFA) ──► IN_DV
+ *   IN_DV: FMD → Accounting → FOR_TREASURY (its entry posts: Dr Due to … / Dr gov't share / Cr Accounts Payable)
+ *          → Treasury check / ADA (Disbursement Preparation) → DV RELEASED ──► REMITTED
+ *          (Accounting then prepares the DV's payment JEV, Dr Accounts Payable / Cr Cash, as for every DV)
+ *   REMITTED ── "Confirm Receipt" (agency OR) ──► CONFIRMED
+ *   SCHEDULED ── Accounting "Unschedule" ──► CANCELLED (PENDING again);  remittance DV cancelled / deleted → SCHEDULED again
  *
  * Amounts come from fims.payroll_record_items (the imported payroll), per agency by the item's account:
  *   employee share = DEDUCTION − REFUND on the agency's payable (Due to GSIS / BIR / PhilHealth / Pag-IBIG / other payables)
@@ -21,7 +26,9 @@ use PHPMaker2024\FIMS as App;
  * deductions on a receivable (1-…, e.g. NHA housing loan) are collected by NHA itself — shown as INTERNAL, not remitted.
  *
  * Stored in fims.payroll_remittances: one live (non-cancelled) row per month (payroll_period_id) per agency, created at
- * scheduling with the amount at that moment (total_amount). Status moves are logged in fims.status_change_log.
+ * scheduling with the amount at that moment (total_amount); its remittance DV is disbursement_voucher_id. Stored status
+ * is SCHEDULED / CONFIRMED / CANCELLED (REMITTED only on rows from before remittance DVs); IN_DV and REMITTED are read
+ * from the linked DV. Status moves are logged in fims.status_change_log.
  */
 class DeductionRemittanceService
 {
@@ -44,6 +51,14 @@ class DeductionRemittanceService
         'OTHERS'     => 'Other Payables',
         'INTERNAL'   => 'NHA Receivables (not remitted)',
     ];
+    // claimant of the remittance DV
+    private const AGENCY_PAYEE = [
+        'GSIS'       => 'Government Service Insurance System (GSIS)',
+        'BIR'        => 'Bureau of Internal Revenue (BIR)',
+        'PHILHEALTH' => 'Philippine Health Insurance Corporation (PhilHealth)',
+        'PAGIBIG'    => 'Home Development Mutual Fund (Pag-IBIG Fund)',
+        'OTHERS'     => 'Various payees — other payroll deductions (per attached schedule)',
+    ];
     // account prefix → agency (first match wins; employer-share expense accounts go with their agency)
     private const AGENCY_BY_PREFIX = [
         '2-02-01-020' => 'GSIS', '5-01-03-010' => 'GSIS', '5-01-03-040' => 'GSIS', // GSIS premiums & loans, gov't share, ECC
@@ -52,23 +67,20 @@ class DeductionRemittanceService
         '2-02-01-010' => 'BIR',
         '1-'          => 'INTERNAL',
     ];
+    private const AP_ACCOUNT    = '2-01-01-010'; // Accounts Payable — what the remittance DV credits (Treasury's payment JEV debits it)
     private const RC_ACCOUNTING = '012';
     private const RC_TREASURY   = '014';
-    private const RC_FMD        = '013';
     // Offices (uac.users.rc_id) allowed to do each step; a superadmin may do all.
-    // TEMPORARY: FMD (013) is added to every step for testing — remove RC_FMD from these three lists to restore
-    // Accounting schedules · Treasury remits · Treasury / Accounting confirm.
-    private const SCHEDULE_RCS = [self::RC_ACCOUNTING, self::RC_FMD];
-    private const REMIT_RCS    = [self::RC_TREASURY, self::RC_FMD];
-    private const CONFIRM_RCS  = [self::RC_TREASURY, self::RC_ACCOUNTING, self::RC_FMD];
-    private const METHODS = ['ONLINE', 'CHECK', 'BANK_TRANSFER', 'MANUAL'];
+    //   Accounting schedules / unschedules and prepares the remittance DV · Treasury or Accounting confirms the receipt.
+    private const SCHEDULE_RCS = [self::RC_ACCOUNTING];
+    private const CONFIRM_RCS  = [self::RC_TREASURY, self::RC_ACCOUNTING];
     private const STATUS_FOR = 'payroll_remittance'; // fims.status_change_log.status_for
 
     // ═══ List ════════════════════════════════════════════════════════════════════════════
 
     /**
      * One row per imported month per agency (newest month first), with its remittance status, plus KPIs and what the
-     * current user may do. Filters: year, month, agency, status (PENDING | SCHEDULED | REMITTED | CONFIRMED).
+     * current user may do. Filters: year, month, agency, status (PENDING | SCHEDULED | IN_DV | REMITTED | CONFIRMED).
      */
     public function fetchList(array $f = []): array
     {
@@ -82,7 +94,7 @@ class DeductionRemittanceService
             }
             $groups = $this->agencyTotals(implode(' AND ', $where));
 
-            // the month's payroll DV (non-cancelled) and the live remittance rows
+            // the month's payroll DV (non-cancelled) and the live remittance rows with their remittance DV
             $periodIds = array_unique(array_column($groups, 'payroll_period_id'));
             $dvs = $rems = [];
             if ($periodIds) {
@@ -101,26 +113,29 @@ class DeductionRemittanceService
                     "SELECT * FROM {$this->table} WHERE payroll_period_id IN ({$in}) AND remittance_status <> 'CANCELLED'",
                     'DB'
                 ) ?: [] as $r) {
+                    $r = $this->withDv($r);
                     $rems[(int) $r['payroll_period_id'] . '|' . $r['remittance_agency']] = $r;
                 }
             }
 
             $out = [];
             foreach ($groups as $g) {
-                $key = $g['payroll_period_id'] . '|' . $g['agency'];
-                $rem = $rems[$key] ?? null;
+                $rem = $rems[$g['payroll_period_id'] . '|' . $g['agency']] ?? null;
                 $dv  = $dvs[$g['payroll_period_id']] ?? null;
                 $row = $g + [
                     'payroll_dv_id'     => $dv ? (int) $dv['dv_id'] : null,
                     'payroll_dv_no'     => $dv['dv_no'] ?? null,
                     'payroll_dv_status' => $dv['dv_status'] ?? null,
-                    'status'            => $g['agency'] === 'INTERNAL' ? 'NOT_REMITTED' : ($rem['remittance_status'] ?? 'PENDING'),
+                    'status'            => $g['agency'] === 'INTERNAL' ? 'NOT_REMITTED' : ($rem['display_status'] ?? 'PENDING'),
                     'payroll_remittance_id' => $rem ? (int) $rem['payroll_remittance_id'] : null,
                     'scheduled_amount'  => $rem ? round((float) $rem['total_amount'], 2) : null,
                     'due_date'          => $rem['due_date'] ?? null,
-                    'remittance_date'   => $rem['remittance_date'] ?? null,
-                    'remittance_no'     => $rem['remittance_no'] ?? null,
-                    'remittance_method' => $rem['remittance_method'] ?? null,
+                    'remittance_dv_id'     => $rem['remittance_dv_id'] ?? null,
+                    'remittance_dv_no'     => $rem['remittance_dv_no'] ?? null,
+                    'remittance_dv_status' => $rem['remittance_dv_status'] ?? null,
+                    'remittance_date'   => $rem['paid_date'] ?? null,
+                    'remittance_no'     => $rem['paid_ref'] ?? null,
+                    'remittance_method' => $rem['paid_method'] ?? null,
                     'receipt_no'        => $rem['remittance_receipt_no'] ?? null,
                     'receipt_date'      => $rem['receipt_date'] ?? null,
                     'remarks'           => $rem['remarks'] ?? null,
@@ -135,7 +150,7 @@ class DeductionRemittanceService
             }
 
             $sum = fn (array $rows) => round(array_sum(array_map(fn ($r) => (float) $r['total'], $rows)), 2);
-            $byStatus = fn (string $s) => array_values(array_filter($out, fn ($r) => $r['status'] === $s));
+            $by  = fn (array $st) => array_values(array_filter($out, fn ($r) => in_array($r['status'], $st, true)));
             $years = array_map('intval', array_column(App\ExecuteRows(
                 "SELECT DISTINCT p.fiscal_yr FROM {$this->tPeriod} p WHERE EXISTS (SELECT 1 FROM {$this->tRecord} r WHERE r.payroll_period_id = p.payroll_period_id) ORDER BY 1 DESC",
                 'DB'
@@ -144,12 +159,12 @@ class DeductionRemittanceService
             return ['success' => true, 'data' => $out, 'years' => $years, 'agencies' => self::AGENCIES, 'can' => $this->permissions(),
                 'kpis' => [
                     'withheld'        => $sum(array_filter($out, fn ($r) => $r['agency'] !== 'INTERNAL')),
-                    'pending'         => $sum($byStatus('PENDING')),
-                    'pending_count'   => count($byStatus('PENDING')),
-                    'scheduled'       => $sum($byStatus('SCHEDULED')),
-                    'scheduled_count' => count($byStatus('SCHEDULED')),
-                    'remitted'        => $sum(array_merge($byStatus('REMITTED'), $byStatus('CONFIRMED'))),
-                    'remitted_count'  => count($byStatus('REMITTED')) + count($byStatus('CONFIRMED')),
+                    'pending'         => $sum($by(['PENDING'])),
+                    'pending_count'   => count($by(['PENDING'])),
+                    'scheduled'       => $sum($by(['SCHEDULED', 'IN_DV'])),
+                    'scheduled_count' => count($by(['SCHEDULED', 'IN_DV'])),
+                    'remitted'        => $sum($by(['REMITTED', 'CONFIRMED'])),
+                    'remitted_count'  => count($by(['REMITTED', 'CONFIRMED'])),
                 ]];
         } catch (\Throwable $e) {
             App\LogError('DeductionRemittanceService::fetchList ' . $e->getMessage());
@@ -219,7 +234,7 @@ class DeductionRemittanceService
 
     // ═══ Remittance steps ═══════════════════════════════════════════════════════════════
 
-    /** Accounting: schedule a month's agency remittance for Treasury (due date required). */
+    /** Accounting: schedule a month's agency remittance (due date required). Needs the month's payroll DV. */
     public function schedule(array $b, int $userId): array
     {
         try {
@@ -240,13 +255,7 @@ class DeductionRemittanceService
             if (!$g || $g['total'] <= 0) {
                 return ['success' => false, 'message' => 'This month has nothing to remit to ' . self::AGENCIES[$agency] . '.'];
             }
-            $dv = App\ExecuteScalar(
-                "SELECT COUNT(*) FROM {$this->tRecord} r JOIN {$this->tDv} dv ON dv.dv_id = r.disbursement_voucher_id
-                   LEFT JOIN {$this->tSt} st ON st.id = dv.status_id
-                  WHERE r.payroll_period_id = {$periodId} AND COALESCE(st.name, '') <> 'CANCELLED'",
-                'DB'
-            );
-            if (!(int) $dv) {
+            if (!$this->payrollDv($periodId)) {
                 return ['success' => false, 'message' => "Prepare the {$g['label']} payroll DV first — the deductions are remitted once the payroll is paid."];
             }
             if ((int) App\ExecuteScalar("SELECT COUNT(*) FROM {$this->table} WHERE payroll_period_id = {$periodId} AND remittance_agency = " . $this->str($agency) . " AND remittance_status <> 'CANCELLED'", 'DB')) {
@@ -263,7 +272,7 @@ class DeductionRemittanceService
             );
             GlobalService::logStatusChange(self::STATUS_FOR, $id, 'SCHEDULED', $userId ?: null);
 
-            return ['success' => true, 'httpCode' => 201, 'message' => "{$g['label']} " . self::AGENCIES[$agency] . ' remittance scheduled for Treasury (₱' . number_format($g['total'], 2) . ", due {$due}).", 'data' => ['payroll_remittance_id' => $id]];
+            return ['success' => true, 'httpCode' => 201, 'message' => "{$g['label']} " . self::AGENCIES[$agency] . ' remittance scheduled (₱' . number_format($g['total'], 2) . ", due {$due}). Next: Create Remittance DV.", 'data' => ['payroll_remittance_id' => $id]];
         } catch (\Throwable $e) {
             App\LogError('DeductionRemittanceService::schedule ' . $e->getMessage());
 
@@ -271,35 +280,39 @@ class DeductionRemittanceService
         }
     }
 
-    /** Accounting: take a SCHEDULED remittance back (it becomes PENDING again). */
+    /** Accounting: take a SCHEDULED remittance back (PENDING again) — only while it has no live remittance DV. */
     public function unschedule(int $id, int $userId): array
     {
-        return $this->move($id, ['SCHEDULED'], 'CANCELLED', self::SCHEDULE_RCS, 'Only Accounting Department staff can unschedule a remittance.', [], $userId, 'Remittance unscheduled — it is pending again.');
+        try {
+            if ($err = $this->authorize(self::SCHEDULE_RCS, 'Only Accounting Department staff can unschedule a remittance.')) {
+                return $err;
+            }
+            $rem = $this->find($id);
+            if (!$rem) {
+                return ['success' => false, 'httpCode' => 404, 'message' => 'Remittance not found.'];
+            }
+            if ($rem['display_status'] !== 'SCHEDULED') {
+                return ['success' => false, 'httpCode' => 409, 'message' => $rem['remittance_dv_no']
+                    ? "This remittance is paid through DV {$rem['remittance_dv_no']} — cancel or delete that DV first."
+                    : 'Only a scheduled remittance can be unscheduled.'];
+            }
+            $u = $this->userOrNull($userId);
+            App\Execute("UPDATE {$this->table} SET remittance_status = 'CANCELLED', updated_by = {$u}, updated_at = CURRENT_TIMESTAMP
+                          WHERE payroll_remittance_id = {$id} AND remittance_status = 'SCHEDULED'", 'DB');
+            GlobalService::logStatusChange(self::STATUS_FOR, $id, 'CANCELLED', $userId ?: null);
+
+            return ['success' => true, 'message' => 'Remittance unscheduled — it is pending again.'];
+        } catch (\Throwable $e) {
+            App\LogError('DeductionRemittanceService::unschedule ' . $e->getMessage());
+
+            return ['success' => false, 'message' => 'Failed to unschedule the remittance.'];
+        }
     }
 
-    /** Treasury: the remittance was paid to the agency (date, method, reference no.). */
-    public function remit(int $id, array $b, int $userId): array
-    {
-        $date   = trim((string) ($b['remittance_date'] ?? ''));
-        $method = strtoupper(trim((string) ($b['remittance_method'] ?? '')));
-        $ref    = trim((string) ($b['remittance_no'] ?? ''));
-        if (!$this->validDate($date)) {
-            return ['success' => false, 'message' => 'Remittance date is required (YYYY-MM-DD).'];
-        }
-        if (!in_array($method, self::METHODS, true)) {
-            return ['success' => false, 'message' => 'Choose how it was remitted: ' . implode(', ', self::METHODS) . '.'];
-        }
-        if ($ref === '') {
-            return ['success' => false, 'message' => 'Reference no. is required (payment / transaction / check no.).'];
-        }
-
-        return $this->move($id, ['SCHEDULED'], 'REMITTED', self::REMIT_RCS, 'Only Treasury Department staff can record a remittance.', [
-            'remittance_date = ' . $this->str($date), 'remittance_method = ' . $this->str($method), 'remittance_no = ' . $this->str($ref),
-            'amount_remitted = total_amount', 'amount_pending = 0',
-        ], $userId, 'Remittance recorded.');
-    }
-
-    /** Treasury / Accounting: the agency's official receipt / confirmation for a REMITTED remittance. */
+    /**
+     * Treasury / Accounting: the agency's official receipt / confirmation, once the remittance is REMITTED (its DV was
+     * released by Treasury). Records the DV's release date and check no. as the remittance date / reference.
+     */
     public function confirm(int $id, array $b, int $userId): array
     {
         $no   = trim((string) ($b['receipt_no'] ?? ''));
@@ -307,10 +320,160 @@ class DeductionRemittanceService
         if ($no === '' || !$this->validDate($date)) {
             return ['success' => false, 'message' => 'The agency\'s receipt / confirmation no. and its date are required.'];
         }
+        try {
+            if ($err = $this->authorize(self::CONFIRM_RCS, 'Only Treasury or Accounting staff can confirm a remittance.')) {
+                return $err;
+            }
+            $rem = $this->find($id);
+            if (!$rem) {
+                return ['success' => false, 'httpCode' => 404, 'message' => 'Remittance not found.'];
+            }
+            if ($rem['display_status'] !== 'REMITTED') {
+                return ['success' => false, 'httpCode' => 409, 'message' => $rem['remittance_dv_no']
+                    ? "The remittance DV {$rem['remittance_dv_no']} is {$rem['remittance_dv_status']} — confirm the agency's receipt once Treasury has released it."
+                    : 'Create and release the remittance DV first.'];
+            }
+            $u = $this->userOrNull($userId);
+            App\Execute(
+                "UPDATE {$this->table} SET remittance_status = 'CONFIRMED', remittance_receipt_no = " . $this->str($no) . ', receipt_date = ' . $this->str($date) . ',
+                        remittance_date = COALESCE(remittance_date, ' . $this->strOrNull($rem['paid_date'] ? substr((string) $rem['paid_date'], 0, 10) : '') . '),
+                        remittance_no = COALESCE(remittance_no, ' . $this->strOrNull($rem['paid_ref'] ?? '') . '),
+                        remittance_method = COALESCE(remittance_method, ' . $this->strOrNull($rem['paid_method'] ?? '') . "),
+                        amount_remitted = total_amount, amount_pending = 0, updated_by = {$u}, updated_at = CURRENT_TIMESTAMP
+                  WHERE payroll_remittance_id = {$id} AND remittance_status IN ('SCHEDULED', 'REMITTED')",
+                'DB'
+            );
+            GlobalService::logStatusChange(self::STATUS_FOR, $id, 'CONFIRMED', $userId ?: null);
 
-        return $this->move($id, ['REMITTED'], 'CONFIRMED', self::CONFIRM_RCS, 'Only Treasury or Accounting staff can confirm a remittance.', [
-            'remittance_receipt_no = ' . $this->str($no), 'receipt_date = ' . $this->str($date),
-        ], $userId, 'Remittance confirmed.');
+            return ['success' => true, 'message' => 'Remittance confirmed.'];
+        } catch (\Throwable $e) {
+            App\LogError('DeductionRemittanceService::confirm ' . $e->getMessage());
+
+            return ['success' => false, 'message' => 'Failed to confirm the remittance.'];
+        }
+    }
+
+    // ═══ Remittance DV (DV module: Voucher?remittance={id}, DisbursementVoucherService hooks) ═════
+
+    /**
+     * What the DV form fills from a SCHEDULED remittance: claimant = the agency, particulars, account (the agency's
+     * payable), amount = total to remit, no deductions, and the accounting entry — Dr each payable of the employee share
+     * (less refunds), Dr each government-share expense, Cr Accounts Payable for the total (Treasury's payment JEV then
+     * debits Accounts Payable / credits Cash, as for every DV). No RFA: the payroll DV already obligated it.
+     */
+    public function dvData(int $id): array
+    {
+        try {
+            $rem = $this->find($id);
+            if (!$rem) {
+                return ['success' => false, 'httpCode' => 404, 'message' => 'Remittance not found.'];
+            }
+            if ($err = $this->validateDvLink($id)) {
+                return ['success' => false, 'message' => $err];
+            }
+            $periodId = (int) $rem['payroll_period_id'];
+            $agency   = (string) $rem['remittance_agency'];
+            $p        = App\ExecuteRow("SELECT fiscal_yr, payroll_month FROM {$this->tPeriod} WHERE payroll_period_id = {$periodId}", 'DB');
+            $label    = (self::MONTHS[(int) $p['payroll_month']] ?? '') . ' ' . $p['fiscal_yr'];
+            $lines    = $this->remittanceLines($periodId, $agency);
+            $total    = round(array_sum(array_column($lines, 'debit')) - array_sum(array_column($lines, 'credit')), 2);
+            if (abs($total - (float) $rem['total_amount']) >= 0.005) {
+                return ['success' => false, 'message' => 'The payroll amounts changed since this remittance was scheduled (₱' . number_format((float) $rem['total_amount'], 2) . ' → ₱' . number_format($total, 2) . '). Unschedule it and schedule it again.'];
+            }
+            $emp = $gov = 0.0;
+            $mainAcct = null;
+            $mainAmt  = -1.0;
+            foreach ($lines as $l) {
+                $amt = $l['debit'] - $l['credit'];
+                if ($l['kind'] === 'EMPLOYER') {
+                    $gov += $amt;
+                } else {
+                    $emp += $amt;
+                    if ($amt > $mainAmt) {
+                        [$mainAcct, $mainAmt] = [$l['account_code'], $amt];
+                    }
+                }
+            }
+            $mainAcct ??= $lines[0]['account_code'] ?? null;
+            $lines[] = ['account_code' => self::AP_ACCOUNT, 'debit' => 0.0, 'credit' => $total, 'description' => 'Remittance payable — ' . (self::AGENCIES[$agency] ?? $agency) . " {$label}", 'kind' => 'AP'];
+            $payrollDv = $this->payrollDv($periodId);
+            $employees = (int) App\ExecuteScalar("SELECT COUNT(*) FROM {$this->tRecord} WHERE payroll_period_id = {$periodId}", 'DB');
+
+            return ['success' => true, 'data' => [
+                'payroll_remittance_id' => $id,
+                'label'          => $label,
+                'agency'         => $agency,
+                'agency_name'    => self::AGENCIES[$agency] ?? $agency,
+                'claimant_name'  => self::AGENCY_PAYEE[$agency] ?? (self::AGENCIES[$agency] ?? $agency),
+                'particulars'    => 'Remittance of the ' . (self::AGENCIES[$agency] ?? $agency) . " deductions and government share for the {$label} payroll"
+                    . ' (employee share ₱' . number_format($emp, 2) . ', government share ₱' . number_format($gov, 2) . ", {$employees} employees"
+                    . ($payrollDv ? "; payroll DV {$payrollDv['dv_no']}" : '') . ').',
+                'account_code'   => $mainAcct,
+                'gross_amount'   => $total,
+                'employee_share' => round($emp, 2),
+                'employer_share' => round($gov, 2),
+                'due_date'       => $rem['due_date'],
+                'lines'          => array_map(fn ($l) => array_diff_key($l, ['kind' => 1]), $lines),
+            ]];
+        } catch (\Throwable $e) {
+            App\LogError('DeductionRemittanceService::dvData ' . $e->getMessage());
+
+            return ['success' => false, 'message' => 'Failed to read the remittance for the DV.'];
+        }
+    }
+
+    /** DisbursementVoucherService::create()/update(): error text, or null when remittance $id may be paid by DV $dvId. */
+    public function validateDvLink(int $id, int $dvId = 0): ?string
+    {
+        $rem = $this->find($id);
+        if (!$rem) {
+            return "Payroll remittance #{$id} does not exist.";
+        }
+        $label = self::AGENCIES[$rem['remittance_agency']] ?? $rem['remittance_agency'];
+        if (!in_array($rem['remittance_status'], ['SCHEDULED'], true)) {
+            return "The {$label} remittance is {$rem['remittance_status']} — only a scheduled remittance gets a DV.";
+        }
+        if ($rem['remittance_dv_id'] && (int) $rem['remittance_dv_id'] !== $dvId) {
+            return "The {$label} remittance is already paid through DV {$rem['remittance_dv_no']}.";
+        }
+
+        return null;
+    }
+
+    /** Inside the DV's create()/update() transaction: point remittance $id (or none) at DV $dvId. */
+    public function syncDvLink(int $dvId, ?int $id): void
+    {
+        App\Execute("UPDATE {$this->table} SET disbursement_voucher_id = NULL, updated_at = CURRENT_TIMESTAMP
+                      WHERE disbursement_voucher_id = {$dvId}" . ($id ? " AND payroll_remittance_id <> {$id}" : ''), 'DB');
+        if ($id) {
+            App\Execute("UPDATE {$this->table} SET disbursement_voucher_id = {$dvId}, updated_at = CURRENT_TIMESTAMP
+                          WHERE payroll_remittance_id = {$id} AND remittance_status = 'SCHEDULED'", 'DB');
+        }
+    }
+
+    /** DV cancelled / deleted: its remittance is SCHEDULED again (a new remittance DV can be made). */
+    public function releaseDv(int $dvId): void
+    {
+        App\Execute("UPDATE {$this->table} SET disbursement_voucher_id = NULL, updated_at = CURRENT_TIMESTAMP
+                      WHERE disbursement_voucher_id = {$dvId} AND remittance_status = 'SCHEDULED'", 'DB');
+    }
+
+    /** DisbursementVoucherService::fetchById(): the remittance this DV pays, or null. */
+    public function forDv(int $dvId): ?array
+    {
+        $row = App\ExecuteRow(
+            "SELECT rm.payroll_remittance_id, rm.remittance_agency, rm.total_amount, rm.due_date, p.fiscal_yr, p.payroll_month
+               FROM {$this->table} rm JOIN {$this->tPeriod} p ON p.payroll_period_id = rm.payroll_period_id
+              WHERE rm.disbursement_voucher_id = {$dvId} AND rm.remittance_status <> 'CANCELLED' LIMIT 1",
+            'DB'
+        );
+        if (!$row) {
+            return null;
+        }
+        $row['agency_name'] = self::AGENCIES[$row['remittance_agency']] ?? $row['remittance_agency'];
+        $row['label'] = (self::MONTHS[(int) $row['payroll_month']] ?? '') . ' ' . $row['fiscal_yr'];
+
+        return $row;
     }
 
     /** PayrollManagementService: a month whose deductions are scheduled / remitted can no longer be replaced or deleted. */
@@ -323,6 +486,69 @@ class DeductionRemittanceService
     }
 
     // ═══ Helpers ═══════════════════════════════════════════════════════════════════════════
+
+    /** One remittance row with its remittance DV and the status shown on the page. */
+    private function find(int $id): ?array
+    {
+        $r = App\ExecuteRow("SELECT * FROM {$this->table} WHERE payroll_remittance_id = {$id}", 'DB');
+
+        return $r ? $this->withDv($r) : null;
+    }
+
+    /**
+     * Adds remittance_dv_* (the linked DV unless cancelled), the paid date / reference (DV release + its check) and
+     * display_status: SCHEDULED (no DV yet) · IN_DV (DV in process) · REMITTED (DV released) · CONFIRMED.
+     */
+    private function withDv(array $r): array
+    {
+        $dv = null;
+        if (!empty($r['disbursement_voucher_id'])) {
+            $dv = App\ExecuteRow(
+                "SELECT dv.dv_id, dv.dv_no, st.name AS status, dv.treasury_released_at FROM {$this->tDv} dv
+                   LEFT JOIN {$this->tSt} st ON st.id = dv.status_id WHERE dv.dv_id = " . (int) $r['disbursement_voucher_id'],
+                'DB'
+            );
+            if ($dv && $dv['status'] === 'CANCELLED') {
+                $dv = null;
+            }
+        }
+        $r['remittance_dv_id']     = $dv ? (int) $dv['dv_id'] : null;
+        $r['remittance_dv_no']     = $dv['dv_no'] ?? null;
+        $r['remittance_dv_status'] = $dv['status'] ?? null;
+        $r['paid_date']   = $r['remittance_date'] ?? null;
+        $r['paid_ref']    = $r['remittance_no'] ?? null;
+        $r['paid_method'] = $r['remittance_method'] ?? null;
+        if ($dv && $dv['status'] === 'RELEASED') {
+            $check = App\ExecuteRow("SELECT check_number FROM fims.checks WHERE dv_number = " . $this->str($dv['dv_no']) . " AND status <> 'CANCELLED' ORDER BY check_id DESC LIMIT 1", 'DB');
+            $r['paid_date']   ??= $dv['treasury_released_at'] ? substr((string) $dv['treasury_released_at'], 0, 10) : null;
+            $r['paid_ref']    ??= $check ? 'Check ' . $check['check_number'] : "DV {$dv['dv_no']}";
+            $r['paid_method'] ??= $check ? 'CHECK' : null;
+        }
+        $stored = $r['remittance_status'];
+        $r['display_status'] = match (true) {
+            $stored === 'CONFIRMED' => 'CONFIRMED',
+            $stored === 'REMITTED' => 'REMITTED', // rows recorded before remittance DVs
+            $stored === 'SCHEDULED' && $dv && $dv['status'] === 'RELEASED' => 'REMITTED',
+            $stored === 'SCHEDULED' && $dv !== null => 'IN_DV',
+            default => $stored,
+        };
+
+        return $r;
+    }
+
+    /** The month's live (non-cancelled) payroll DV, or null. */
+    private function payrollDv(int $periodId): ?array
+    {
+        $dv = App\ExecuteRow(
+            "SELECT dv.dv_id, dv.dv_no, st.name AS status FROM {$this->tRecord} r
+               JOIN {$this->tDv} dv ON dv.dv_id = r.disbursement_voucher_id
+               LEFT JOIN {$this->tSt} st ON st.id = dv.status_id
+              WHERE r.payroll_period_id = {$periodId} AND COALESCE(st.name, '') <> 'CANCELLED' LIMIT 1",
+            'DB'
+        );
+
+        return $dv ?: null;
+    }
 
     /**
      * Totals per month per agency for the months matching $periodWhere (alias p): employee share, employer share,
@@ -369,6 +595,45 @@ class DeductionRemittanceService
     }
 
     /**
+     * Debit lines of a month + agency's remittance entry, one per account: the payables of the employee share (DEDUCTION
+     * less REFUND) and the government-share expense accounts. A net credit (refunds larger than deductions) is a credit line.
+     */
+    private function remittanceLines(int $periodId, string $agency): array
+    {
+        $rows = App\ExecuteRows(
+            "SELECT i.category, ri.account_code, c.account_title, SUM(ri.amount) AS amount
+               FROM {$this->tLine} ri
+               JOIN {$this->tRecord} r ON r.payroll_record_id = ri.payroll_record_id
+               JOIN {$this->tItem} i ON i.payroll_item_id = ri.payroll_item_id
+               LEFT JOIN fims.chart_of_accounts c ON c.account_code = ri.account_code
+              WHERE r.payroll_period_id = {$periodId} AND i.category IN ('DEDUCTION', 'REFUND', 'EMPLOYER_SHARE')
+              GROUP BY i.category, ri.account_code, c.account_title",
+            'DB'
+        ) ?: [];
+        $by = [];
+        foreach ($rows as $r) {
+            [$ag, $kind, $signed] = $this->classify($r['category'], (string) $r['account_code'], (float) $r['amount']);
+            if ($ag !== $agency || $kind === null) {
+                continue;
+            }
+            $acct = (string) $r['account_code'];
+            $by[$acct] ??= ['amount' => 0.0, 'title' => $r['account_title'] ?: $acct, 'kind' => $kind];
+            $by[$acct]['amount'] += $signed;
+        }
+        $lines = [];
+        foreach ($by as $acct => $x) {
+            $amt = round($x['amount'], 2);
+            if (abs($amt) < 0.005) {
+                continue;
+            }
+            $desc = ($x['kind'] === 'EMPLOYER' ? "Government share — {$x['title']}" : $x['title']);
+            $lines[] = ['account_code' => $acct, 'debit' => $amt > 0 ? $amt : 0.0, 'credit' => $amt < 0 ? -$amt : 0.0, 'description' => $desc, 'kind' => $x['kind']];
+        }
+
+        return $lines;
+    }
+
+    /**
      * One payroll item amount → [agency, 'EMPLOYEE' | 'EMPLOYER' | null (not remitted), signed amount].
      * A DEDUCTION / REFUND on an expense account (5-…) changes salary, not a payable, so it is not remitted.
      */
@@ -391,42 +656,13 @@ class DeductionRemittanceService
         return [$agency, 'EMPLOYEE', $category === 'REFUND' ? -$amount : $amount];
     }
 
-    /** Status move with an RC check, guarded on the current status; logs the change. */
-    private function move(int $id, array $from, string $to, array $rcs, string $denied, array $set, int $userId, string $ok): array
-    {
-        try {
-            if ($err = $this->authorize($rcs, $denied)) {
-                return $err;
-            }
-            $cur = App\ExecuteRow("SELECT remittance_status FROM {$this->table} WHERE payroll_remittance_id = {$id}", 'DB');
-            if (!$cur) {
-                return ['success' => false, 'httpCode' => 404, 'message' => 'Remittance not found.'];
-            }
-            if (!in_array($cur['remittance_status'], $from, true)) {
-                return ['success' => false, 'httpCode' => 409, 'message' => "This remittance is {$cur['remittance_status']}, so it cannot be moved to {$to}."];
-            }
-            $u = $this->userOrNull($userId);
-            $set[] = 'remittance_status = ' . $this->str($to);
-            $set[] = "updated_by = {$u}";
-            $set[] = 'updated_at = CURRENT_TIMESTAMP';
-            App\Execute("UPDATE {$this->table} SET " . implode(', ', $set) . " WHERE payroll_remittance_id = {$id} AND remittance_status = " . $this->str($cur['remittance_status']), 'DB');
-            GlobalService::logStatusChange(self::STATUS_FOR, $id, $to, $userId ?: null);
-
-            return ['success' => true, 'message' => $ok];
-        } catch (\Throwable $e) {
-            App\LogError('DeductionRemittanceService::move ' . $e->getMessage());
-
-            return ['success' => false, 'message' => 'Failed to update the remittance.'];
-        }
-    }
-
     /** What the current user may do on this page (superadmin: everything). */
     private function permissions(): array
     {
         $s  = GlobalService::getUserRcScope();
         $rc = $s['rc_id'] ?? null;
 
-        return ['schedule' => $s['is_admin'] || in_array($rc, self::SCHEDULE_RCS, true), 'remit' => $s['is_admin'] || in_array($rc, self::REMIT_RCS, true),
+        return ['schedule' => $s['is_admin'] || in_array($rc, self::SCHEDULE_RCS, true), 'create_dv' => $s['is_admin'] || in_array($rc, self::SCHEDULE_RCS, true),
             'confirm' => $s['is_admin'] || in_array($rc, self::CONFIRM_RCS, true)];
     }
 

@@ -22,8 +22,8 @@ CREATE TABLE IF NOT EXISTS fims.payroll_remittances (
     amount_pending NUMERIC(18,2) DEFAULT 0,
 
     -- Status (Deductions & Remittances page, DeductionRemittanceService): a row is created when Accounting schedules a
-    -- month's agency remittance — SCHEDULED (for Treasury) → REMITTED (Treasury paid it) → CONFIRMED (agency receipt);
-    -- CANCELLED = unscheduled. PENDING (deductions not scheduled yet) is shown without a row.
+    -- month's agency remittance — SCHEDULED (its Remittance DV runs FMD → Accounting → Treasury; "Remitted" once the DV is
+    -- RELEASED) → CONFIRMED (agency receipt); CANCELLED = unscheduled. PENDING is shown without a row.
     remittance_status VARCHAR(20) DEFAULT 'PENDING',
 
     -- Proof & audit trail
@@ -38,7 +38,8 @@ CREATE TABLE IF NOT EXISTS fims.payroll_remittances (
     tax_return_form VARCHAR(50), -- 2307, 1601C, etc.
     tax_return_period VARCHAR(20), -- For 1601C (monthly) vs 2307 (annual)
 
-    -- Related DV (remittance voucher)
+    -- Related DV (remittance voucher) — Deductions & Remittances: the Remittance DV paying this agency
+    -- (claimant = the agency, no RFA; Dr payables / gov't share, Cr Accounts Payable)
     disbursement_voucher_id INTEGER,
 
     remarks TEXT,
@@ -50,11 +51,11 @@ CREATE TABLE IF NOT EXISTS fims.payroll_remittances (
 
 COMMENT ON TABLE fims.payroll_remittances IS 'Track withholdings remitted to BIR, SSS, PhilHealth, Pag-IBIG, and internal allocations';
 COMMENT ON COLUMN fims.payroll_remittances.remittance_agency IS 'GSIS | BIR | PHILHEALTH | PAGIBIG | OTHERS';
-COMMENT ON COLUMN fims.payroll_remittances.remittance_status IS 'SCHEDULED | REMITTED | CONFIRMED | CANCELLED (PENDING = not scheduled yet, no row)';
+COMMENT ON COLUMN fims.payroll_remittances.remittance_status IS 'SCHEDULED | CONFIRMED | CANCELLED (PENDING = no row; remitted = its DV released)';
 COMMENT ON COLUMN fims.payroll_remittances.due_date IS 'Due date Accounting set when scheduling the remittance for Treasury';
 COMMENT ON COLUMN fims.payroll_remittances.is_consolidated IS 'TRUE if this row consolidates multiple detail rows for the same period/agency';
 COMMENT ON COLUMN fims.payroll_remittances.tax_return_form IS 'BIR form reference (2307 for annual, 1601C for monthly, etc.)';
-COMMENT ON COLUMN fims.payroll_remittances.disbursement_voucher_id IS 'DV used for remittance payment (optional, for consolidation)';
+COMMENT ON COLUMN fims.payroll_remittances.disbursement_voucher_id IS 'Remittance DV paying this agency (claimant = the agency, no RFA)';
 
 CREATE INDEX IF NOT EXISTS idx_payroll_remittances_payroll_period_id ON fims.payroll_remittances (payroll_period_id);
 CREATE INDEX IF NOT EXISTS idx_payroll_remittances_agency ON fims.payroll_remittances (remittance_agency);
