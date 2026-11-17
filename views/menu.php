@@ -45,7 +45,6 @@ $sideMenu->addMenuItem(396, "mi_journals_page", $Language->menuPhrase("396", "Me
 $sideMenu->addMenuItem(397, "mi_trial_balance_page", $Language->menuPhrase("397", "MenuText"), "TrialBalancePage", 394, "", AllowListMenu('{FIMS}trial-balance-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(651, "mci_Accounts_Set-up", $Language->menuPhrase("651", "MenuText"), "", -1, "", true, false, true, "fas fa-user-cog", "", false, true);
 $sideMenu->addMenuItem(80, "mi_program_page", $Language->menuPhrase("80", "MenuText"), "ProgramPage", 651, "", AllowListMenu('{FIMS}program-page.php'), false, false, "", "", false, true);
-$sideMenu->addMenuItem(82, "mi_sub_program_page", $Language->menuPhrase("82", "MenuText"), "SubProgramPage", 651, "", AllowListMenu('{FIMS}sub-program-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(89, "mi_chart_of_accounts_page", $Language->menuPhrase("89", "MenuText"), "ChartOfAccountsPage", 651, "", AllowListMenu('{FIMS}chart-of-accounts-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(90, "mi_responsibility_center_page", $Language->menuPhrase("90", "MenuText"), "ResponsibilityCenterPage", 651, "", AllowListMenu('{FIMS}responsibility-center-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(332, "mi_bank_management_page", $Language->menuPhrase("332", "MenuText"), "BankManagementPage", 651, "", AllowListMenu('{FIMS}bank-management-page.php'), false, false, "", "", false, true);

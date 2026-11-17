@@ -1537,11 +1537,12 @@ class DisbursementVoucherService
             if (!$this->validDate($jevDate)) {
                 $errors[] = 'jev_date is required and must be a valid date (YYYY-MM-DD).';
             }
-            $fiscalYr = $body['fiscal_yr'] ?? '';
-            if ($fiscalYr === '' || $fiscalYr === null || !ctype_digit((string) $fiscalYr)) {
-                $errors[] = 'fiscal_yr is required.';
-            } elseif ((int) App\ExecuteScalar("SELECT COUNT(*) FROM {$this->tableFiscal} WHERE fiscal_yr = " . (int) $fiscalYr, 'DB') === 0) {
-                $errors[] = "Fiscal year {$fiscalYr} does not exist.";
+            // fiscal_yr is derived from jev_date's year, not taken from the client — fims.fiscal_year
+            // rows are plain calendar years (see "01 - table/02"), so the JEV's own date already
+            // determines it.
+            $fiscalYr = $jevDate !== '' ? (int) substr($jevDate, 0, 4) : 0;
+            if ($fiscalYr > 0 && (int) App\ExecuteScalar("SELECT COUNT(*) FROM {$this->tableFiscal} WHERE fiscal_yr = {$fiscalYr}", 'DB') === 0) {
+                $errors[] = "No fiscal year {$fiscalYr} is configured for this JEV date.";
             }
 
             $bookId = $body['book_id'] ?? null;
@@ -1552,13 +1553,7 @@ class DisbursementVoucherService
                 $errors[] = "Book #{$bookId} does not exist.";
             }
 
-            $jevClassification = strtoupper(trim((string) ($body['jev_classification'] ?? 'REGULAR')));
-            if ($jevClassification === '') {
-                $jevClassification = 'REGULAR';
-            }
-            if (!in_array($jevClassification, self::JEV_CLASSIFICATIONS, true)) {
-                $errors[] = 'jev_classification must be one of: ' . implode(', ', self::JEV_CLASSIFICATIONS) . '.';
-            }
+            $jevClassification = 'REGULAR';
 
             [$lineErrors, $clean, $totalDebit, $totalCredit] = $this->validateJevLines(is_array($body['lines'] ?? null) ? $body['lines'] : []);
             $errors = array_merge($errors, $lineErrors);
@@ -1651,11 +1646,11 @@ class DisbursementVoucherService
             if (!$this->validDate($jevDate)) {
                 $errors[] = 'jev_date is required and must be a valid date (YYYY-MM-DD).';
             }
-            $fiscalYr = $body['fiscal_yr'] ?? '';
-            if ($fiscalYr === '' || $fiscalYr === null || !ctype_digit((string) $fiscalYr)) {
-                $errors[] = 'fiscal_yr is required.';
-            } elseif ((int) App\ExecuteScalar("SELECT COUNT(*) FROM {$this->tableFiscal} WHERE fiscal_yr = " . (int) $fiscalYr, 'DB') === 0) {
-                $errors[] = "Fiscal year {$fiscalYr} does not exist.";
+            // fiscal_yr is derived from jev_date's year, not taken from the client — see
+            // createStandaloneJev().
+            $fiscalYr = $jevDate !== '' ? (int) substr($jevDate, 0, 4) : 0;
+            if ($fiscalYr > 0 && (int) App\ExecuteScalar("SELECT COUNT(*) FROM {$this->tableFiscal} WHERE fiscal_yr = {$fiscalYr}", 'DB') === 0) {
+                $errors[] = "No fiscal year {$fiscalYr} is configured for this JEV date.";
             }
 
             $bookId = $body['book_id'] ?? null;
@@ -1666,13 +1661,7 @@ class DisbursementVoucherService
                 $errors[] = "Book #{$bookId} does not exist.";
             }
 
-            $jevClassification = strtoupper(trim((string) ($body['jev_classification'] ?? 'REGULAR')));
-            if ($jevClassification === '') {
-                $jevClassification = 'REGULAR';
-            }
-            if (!in_array($jevClassification, self::JEV_CLASSIFICATIONS, true)) {
-                $errors[] = 'jev_classification must be one of: ' . implode(', ', self::JEV_CLASSIFICATIONS) . '.';
-            }
+            $jevClassification = 'REGULAR';
 
             [$lineErrors, $clean, $totalDebit, $totalCredit] = $this->validateJevLines(is_array($body['lines'] ?? null) ? $body['lines'] : []);
             $errors = array_merge($errors, $lineErrors);
