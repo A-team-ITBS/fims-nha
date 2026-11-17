@@ -15,6 +15,9 @@ namespace PHPMaker2024\FIMS;
  * A program that has sub-programs has no Delete (the API refuses it too: sub_program.program_code references it) — delete its
  * sub-programs first. A program a project still uses is refused by the API as before.
  *
+ * Two summary cards: Total Programs (the programs the search matches) and Total Sub-Programs (the sub-programs under all of them — the API's
+ * totals.sub_programs, so it is right across pages).
+ *
  * Search looks at the program's code and name AND at its sub-programs' codes and names; a program found through a sub-program opens by
  * itself so the match is in view.
  *
@@ -135,6 +138,15 @@ $_prg_api = Config('API.FIMS_URL');
             </div>
             <p class="nha-kpi-sub">Matches the search</p>
         </div>
+        <div class="nha-sc nha-sc-green">
+            <div class="nha-sc-top">
+                <div>
+                    <div class="nha-sc-label">Total Sub-Programs</div>
+                    <div class="nha-sc-val" id="prg-kpi-subs">—</div>
+                </div>
+            </div>
+            <p class="nha-kpi-sub">Under the matching programs</p>
+        </div>
     </div>
 
     <!-- ── FILTERS ────────────────────────────────────────── -->
@@ -203,6 +215,7 @@ const prg_esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '
 const prg = {
     page: 1, limit: PRG_PAGE_SIZE,
     total: 0,                 // programs matching the search
+    subTotal: null,           // sub-programs under ALL of those programs (the API's totals.sub_programs); null = not known
     rows: [],                 // this page's programs, each with its sub_programs[]
     loaded: false, error: null,
     req: 0,                   // bumped per request so a stale response never overwrites a newer one
@@ -289,6 +302,9 @@ async function prg_load() {
 
         prg.rows  = json.data ?? [];
         prg.total = Number(json.pagination?.total ?? prg.rows.length);
+        // the whole search's sub-program count from the API; failing that, what the rows hold — right only when every program is on this page
+        prg.subTotal = json.totals?.sub_programs != null ? Number(json.totals.sub_programs)
+            : (prg.total <= prg.rows.length ? prg.rows.reduce((n, r) => n + prg_kids(r).length, 0) : null);
         prg.error = null;
         // the page just emptied (its last program was deleted): step back to the last page that has rows
         if (!prg.rows.length && prg.page > 1 && prg.total > 0) {
@@ -298,7 +314,7 @@ async function prg_load() {
         prg_openMatches();
     } catch (e) {
         if (req !== prg.req) return;
-        prg.rows = []; prg.total = 0; prg.error = e.message;
+        prg.rows = []; prg.total = 0; prg.subTotal = null; prg.error = e.message;
         prg_toast(e.message, 'error');
     } finally {
         window.PagePreloader?.hide();
@@ -399,6 +415,7 @@ function prg_renderTable() {
         }).join('');
     }
     $prg('prg-kpi-total').textContent = prg.loaded && !prg.error ? prg.total : '—';
+    $prg('prg-kpi-subs').textContent = prg.loaded && !prg.error && prg.subTotal !== null ? prg.subTotal : '—';
     prg_renderPager();
 }
 
