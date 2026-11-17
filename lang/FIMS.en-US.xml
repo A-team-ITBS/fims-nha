@@ -1,4 +1,4 @@
-<ew-language date="2026/11/16" id="en-US" author="e.World Technology Limited">
+<ew-language date="2026/11/17" id="en-US" author="e.World Technology Limited">
   <project>
     <phrase id="bodytitle" value="UAC - User Access Control System" />
     <phrase id="footertext" value="&amp;copy;2024 ITBS Corporation. All rights reserved." />
@@ -50,8 +50,17 @@
     <menu id="208">
       <phrase id="menutext" value="Journal Entry Voucher" />
     </menu>
-    <menu id="260">
-      <phrase id="menutext" value="Check Disbursements" />
+    <menu id="758">
+      <phrase id="menutext" value="Check Disbursement" />
+    </menu>
+    <menu id="390">
+      <phrase id="menutext" value="Inventory" />
+    </menu>
+    <menu id="91">
+      <phrase id="menutext" value="IAR Module" />
+    </menu>
+    <menu id="333">
+      <phrase id="menutext" value="Property Record" />
     </menu>
     <menu id="755">
       <phrase id="menutext" value="Monitoring" />
@@ -62,6 +71,9 @@
     <menu id="756">
       <phrase id="menutext" value="RFA / LAA Monitoring" />
     </menu>
+    <menu id="331">
+      <phrase id="menutext" value="Cash Position" />
+    </menu>
     <menu id="551">
       <phrase id="menutext" value="Registry/NCA" />
     </menu>
@@ -71,8 +83,14 @@
     <menu id="560">
       <phrase id="menutext" value="Check Registry" />
     </menu>
+    <menu id="398">
+      <phrase id="menutext" value="Fund Transfer Letter of Advice" />
+    </menu>
     <menu id="561">
       <phrase id="menutext" value="Accountable Forms Registry" />
+    </menu>
+    <menu id="757">
+      <phrase id="menutext" value="Collections" />
     </menu>
     <menu id="552">
       <phrase id="menutext" value="Reports" />
@@ -128,6 +146,12 @@
     <menu id="658">
       <phrase id="menutext" value="Accountable Officer" />
     </menu>
+    <menu id="759">
+      <phrase id="menutext" value="Payroll Setup" />
+    </menu>
+    <menu id="760">
+      <phrase id="menutext" value="Fidelity Bond" />
+    </menu>
     <menu id="330">
       <phrase id="menutext" value="Fund Sourcing" />
     </menu>
@@ -149,23 +173,8 @@
     <menu id="79">
       <phrase id="menutext" value="Projects" />
     </menu>
-    <menu id="390">
-      <phrase id="menutext" value="Inventory" />
-    </menu>
-    <menu id="91">
-      <phrase id="menutext" value="IAR Module" />
-    </menu>
-    <menu id="333">
-      <phrase id="menutext" value="Property Record" />
-    </menu>
     <menu id="258">
       <phrase id="menutext" value="Vouchers" />
-    </menu>
-    <menu id="398">
-      <phrase id="menutext" value="Fund Transfer Letter of Advice" />
-    </menu>
-    <menu id="331">
-      <phrase id="menutext" value="Cash Position" />
     </menu>
     <menu id="206">
       <phrase id="menutext" value="Administration" />
@@ -1658,9 +1667,6 @@
     <table id="changepass">
       <phrase id="tblcaption" value="Change Password" />
     </table>
-    <table id="checkdisbursements">
-      <phrase id="tblcaption" value="Check Disbursements" />
-    </table>
     <table id="general_ledger_page">
       <phrase id="tblcaption" value="General Ledger" />
     </table>
@@ -1759,6 +1765,18 @@
     </table>
     <table id="rfa_laa_monitoring_page">
       <phrase id="tblcaption" value="RFA / LAA Monitoring" />
+    </table>
+    <table id="collections_page">
+      <phrase id="tblcaption" value="Collections" />
+    </table>
+    <table id="check_disbursement_voucher_page">
+      <phrase id="tblcaption" value="Check Disbursement" />
+    </table>
+    <table id="payroll_setup_page">
+      <phrase id="tblcaption" value="Payroll Setup" />
+    </table>
+    <table id="fidelity_bond_page">
+      <phrase id="tblcaption" value="Fidelity Bond" />
     </table>
   </project>
 </ew-language>

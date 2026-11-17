@@ -32,7 +32,7 @@ try {
    styled here, so the form looks the same wherever it is included. */
 
 /* a wide modal for the two budget-line cards and the arrow between them */
-.nha-root #brv-overlay .nha-modal.brv-modal-wide { max-width: 900px; }
+.nha-root #brv-overlay .nha-modal.brv-modal-wide { max-width: 1120px; }
 
 /* The modal is a flex column (header · scrolling body · footer) capped at 90vh, but this form's body and footer sit INSIDE a <form>.
    The form has to be the flex item that passes the height on; left as a plain block it just grows past the modal, which clips it —
@@ -211,6 +211,44 @@ try {
 .nha-root .brv-change.is-down { background: var(--red-bg, #FAE1E3);   color: var(--red-txt, #8F222D); }
 .nha-root .brv-change.is-move { background: var(--blue-bg, #E6EBF6);  color: var(--afims-primary-text, #0035A9); }
 .nha-root .brv-reason-fld { margin-top: 16px; }   /* not .brv-reason: the page's table uses that name for its truncated Reason cell */
+
+/* ── Dark mode — same palette as the Memo Request / Budget Preview modals ──
+   The secondary / subtle tokens are light-mode greys and the navy fill stays navy, so labels, hints and the step numbers
+   were too dim on the dark surface, and the disabled From Amount rendered near-black. */
+html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay { color-scheme: dark; }
+html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay :is(.brv-intro, .brv-summary-sub) { color: var(--afims-text, #E4ECF2); }
+html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay .brv-step-hd { color: #FFFFFF; }
+html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay .brv-step-n { color: #FFFFFF; background: #3861BC; }
+html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay :is(.brv-lbl, .brv-filterbar-label, .brv-money-sym) { color: var(--afims-text-muted, #AAAFBE); }
+html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay :is(.brv-step-sub, .brv-cob-role, .brv-optional, .brv-hint, .brv-opt-sub, .brv-opt-empty) { color: #9AA3B5; }
+html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay .brv-in {
+    color: var(--afims-text, #E4ECF2); background: var(--afims-surface, #1A1F38); border-color: var(--afims-border-strong, #4A5270);
+}
+html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay .brv-in::placeholder { color: #9AA3B5; }
+html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay .brv-in:focus {
+    border-color: var(--afims-primary, #3861BC); box-shadow: 0 0 0 3px color-mix(in srgb, var(--afims-primary, #3861BC) 25%, transparent);
+}
+html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay .brv-in:disabled {
+    color: var(--afims-text, #E4ECF2); background: var(--afims-surface-subtle, #22294A); opacity: 1;
+}
+html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay .brv-in:disabled::placeholder { color: #9AA3B5; }
+html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay .brv-flow { color: var(--afims-text, #E4ECF2); border-color: var(--afims-border-strong, #4A5270); }
+html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay .brv-combo-clear { color: #9AA3B5; }
+html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay .brv-combo-clear:hover { color: #FFFFFF; }
+html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay .brv-opt { color: var(--afims-text, #E4ECF2); }
+html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay :is(.brv-opt:hover, .brv-opt.is-active) { background: var(--afims-primary-soft, #0F2456); }
+html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay .brv-filter-reset { color: var(--afims-primary-text, #94AADB); }
+html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay .brv-summary {
+    color: var(--afims-text, #E4ECF2); background: var(--afims-primary-soft, #0F2456);
+    border-color: color-mix(in srgb, #3861BC 50%, transparent); border-left-color: #3861BC;
+}
+html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay .brv-change.is-move { color: var(--afims-primary-text, #94AADB); background: var(--afims-primary-soft, #0F2456); }
+/* footer: Cancel readable, Submit on the brand blue */
+html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-cancel {
+    color: var(--afims-text, #E4ECF2); background: var(--afims-surface, #1A1F38); border-color: var(--afims-border-strong, #4A5270);
+}
+html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save { color: #FFFFFF; background: #3861BC; border-color: #3861BC; }
+html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not([disabled]) { background: #2E59B8; }
 </style>
 
 <!-- The wrapper makes the modal styles apply wherever this form is included

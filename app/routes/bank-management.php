@@ -55,6 +55,12 @@ $app->post("/bank-management/{id}/status", function ($request, $response, $args)
     return $response->withHeader('Content-Type', 'application/json')->write($service->changeStatus($args['id'], $data));
 });
 
+$app->post("/bank-management/{id}/tag-account-code", function ($request, $response, $args) {
+    $data = $request->getParsedBody();
+    $service = new Service\BankManagementService();
+    return $response->withHeader('Content-Type', 'application/json')->write($service->tagAccountCode($args['id'], $data));
+});
+
 $app->get("/bank-management/{id}/documents", function ($request, $response, $args) {
     $service = new Service\BankManagementService();
     return $response->withHeader('Content-Type', 'application/json')->write($service->getDocuments($args['id']));

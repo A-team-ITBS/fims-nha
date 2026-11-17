@@ -26,6 +26,10 @@ namespace PHPMaker2024\FIMS;
 $bamCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
 ?>
 <link rel="stylesheet" href="/app/fims-css/fims.css?v=<?= $bamCssVer ?>" />
+<!-- nha-fims.css + searchable-select.js: used only for the GL Account Code "type to filter" combobox
+     (.nha-ss-dropdown/.nha-ss-opt rules aren't scoped to .nha-root, so they're safe to use standalone here). -->
+<link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
+<script src="/_shared/js/searchable-select.js?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/js/searchable-select.js') ?>"></script>
 
 <div class="fims-wrap" id="bamModule">
 
@@ -211,6 +215,10 @@ $bamCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
                                     <option value="">— Main Office —</option>
                                 </select>
                             </div>
+                            <div class="fims-form-group">
+                                <label class="fims-label">GL Account Code (Chart of Accounts)</label>
+                                <input type="text" class="fims-input" id="field-account-code" placeholder="Search GL account code or title…">
+                            </div>
                         </div>
                     </div>
 
@@ -319,6 +327,33 @@ $bamCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
                 </div>
                 <div class="fims-modal-footer">
                     <button type="button" class="fims-btn fims-btn-ghost" data-close="m-bam-docs">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════
+         MODAL: Quick Tag GL Account Code
+    ══════════════════════════════════════════════ -->
+    <div class="fims-modal-overlay" id="m-bam-tag-code" style="display:none;">
+        <div class="fims-modal-dialog" style="max-width:420px;width:95vw;">
+            <div class="fims-modal-content">
+                <div class="fims-modal-header">
+                    <div>
+                        <div class="fims-modal-title">Tag GL Account Code</div>
+                        <div style="font-size:12px;color:var(--fims-text-subtle)" id="tagCodeAccountName"></div>
+                    </div>
+                    <button class="fims-modal-close" data-close="m-bam-tag-code">&times;</button>
+                </div>
+                <div class="fims-modal-body">
+                    <div class="fims-form-group">
+                        <label class="fims-label">GL Account Code (Chart of Accounts)</label>
+                        <input type="text" class="fims-input" id="tagCodeSelect" placeholder="Search GL account code or title…">
+                    </div>
+                </div>
+                <div class="fims-modal-footer">
+                    <button type="button" class="fims-btn fims-btn-ghost" data-close="m-bam-tag-code">Cancel</button>
+                    <button type="button" class="fims-btn fims-btn-primary" id="tagCodeSaveBtn">Save</button>
                 </div>
             </div>
         </div>
@@ -478,6 +513,27 @@ $bamCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
     }
 
     // ── Lookups ──
+    let bamCoaRows = [];
+    function loadChartOfAccounts() {
+        return fetch('/api/chart_of_accounts/all?postable_only=1', { headers: authHeaders() })
+            .then(function (r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            })
+            .then(function (json) {
+                if (!json || !json.success) throw new Error((json && json.message) || 'Request failed.');
+                bamCoaRows = (json.data || []).filter(a => a.posting_allowed);
+                const coaOptions = bamCoaRows.map(a => ({ value: a.account_code, label: a.account_title }));
+                [document.getElementById('field-account-code'), document.getElementById('tagCodeSelect')].forEach(function (input) {
+                    if (!input) return;
+                    nhaSearchableSelect(input, coaOptions);
+                });
+            })
+            .catch(function (e) {
+                console.error('Could not load Chart of Accounts for GL code dropdown:', e);
+            });
+    }
+
     function loadResponsibilityCenters() {
         fetch(API + '/lookup/responsibility-centers', { headers: authHeaders() })
             .then(r => r.json())
@@ -571,12 +627,18 @@ $bamCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
                         '<td>' + escapeHtml(r.last_transaction_date || '—') + '</td>' +
                         '<td class="text-center">' +
                             '<button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-edit="' + r.bank_account_id + '" title="Edit"><i class="fas fa-pen"></i></button> ' +
+                            '<button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-tag-code="' + r.bank_account_id + '" data-tag-code-name="' + escapeHtml(r.account_name) + '" data-tag-code-current="' + escapeHtml(r.account_code || '') + '" title="Tag GL Account Code"><i class="fas fa-tag"></i></button> ' +
                             '<button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-docs="' + r.bank_account_id + '" data-docs-name="' + escapeHtml(r.account_name) + '" title="Documents"><i class="fas fa-file-alt"></i></button>' +
                         '</td>' +
                         '</tr>';
                 }).join('');
                 tbody.querySelectorAll('[data-edit]').forEach(function (btn) {
                     btn.addEventListener('click', function () { openAccountModal(this.dataset.edit); });
+                });
+                tbody.querySelectorAll('[data-tag-code]').forEach(function (btn) {
+                    btn.addEventListener('click', function () {
+                        openTagCodeModal(this.dataset.tagCode, this.dataset.tagCodeName, this.dataset.tagCodeCurrent);
+                    });
                 });
                 tbody.querySelectorAll('[data-docs]').forEach(function (btn) {
                     btn.addEventListener('click', function () { openDocsModal(this.dataset.docs, this.dataset.docsName); });
@@ -606,6 +668,7 @@ $bamCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
         document.getElementById('field-account-classification').value = '';
         document.getElementById('field-fund-source').value = '';
         document.getElementById('field-rc-id').value = '';
+        document.getElementById('field-account-code').value = '';
         bankSelect.value = '';
         bankInput.value = '';
         bankInput.style.display = 'none';
@@ -759,6 +822,7 @@ $bamCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
                 document.getElementById('field-account-classification').value = d.account_classification || '';
                 document.getElementById('field-fund-source').value = d.fund_source || '';
                 document.getElementById('field-rc-id').value = d.rc_id || '';
+                document.getElementById('field-account-code').value = d.account_code || '';
                 setBankNameValue(d.bank_name || '');
                 document.getElementById('field-bank-branch').value = d.bank_branch || '';
                 document.getElementById('field-status').value = d.status || 'ACTIVE';
@@ -790,6 +854,7 @@ $bamCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
             account_classification: document.getElementById('field-account-classification').value,
             fund_source: document.getElementById('field-fund-source').value.trim(),
             rc_id: document.getElementById('field-rc-id').value,
+            account_code: document.getElementById('field-account-code').value,
             bank_name: getBankNameValue(),
             bank_branch: document.getElementById('field-bank-branch').value.trim(),
             status: document.getElementById('field-status').value,
@@ -878,10 +943,39 @@ $bamCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
             .catch(() => toast('Could not reach the server.', true));
     }
 
+    // ── Quick tag GL account code modal ──
+    let tagCodeAccountId = null;
+    function openTagCodeModal(id, name, currentCode) {
+        tagCodeAccountId = id;
+        document.getElementById('tagCodeAccountName').textContent = name || '';
+        const sel = document.getElementById('tagCodeSelect');
+        if (!bamCoaRows.length) {
+            loadChartOfAccounts().then(function () { sel.value = currentCode || ''; });
+        } else {
+            sel.value = currentCode || '';
+        }
+        openModal('m-bam-tag-code');
+    }
+    document.getElementById('tagCodeSaveBtn').addEventListener('click', function () {
+        const accountCode = document.getElementById('tagCodeSelect').value;
+        this.disabled = true;
+        fetch(API + '/' + tagCodeAccountId + '/tag-account-code', { method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ account_code: accountCode }) })
+            .then(r => r.json())
+            .then(function (json) {
+                if (!json || !json.success) { toast((json && json.message) || 'Could not tag GL account code.', true); return; }
+                toast('GL account code updated.');
+                closeModal('m-bam-tag-code');
+                loadList();
+            })
+            .catch(() => toast('Could not reach the server.', true))
+            .finally(() => { document.getElementById('tagCodeSaveBtn').disabled = false; });
+    });
+
     // ── Boot ──
     loadStats();
     loadList();
     loadResponsibilityCenters();
+    loadChartOfAccounts();
     loadFundSources();
 })();
 </script>

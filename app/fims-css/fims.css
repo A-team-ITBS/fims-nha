@@ -1376,6 +1376,43 @@
     color: #6c757d;
 }
 
+/* ── Stepper highlight: the current step stands out (thicker bar + glow on its segment, accent label with a dot),
+   finished steps keep the accent bar and get a check mark ── */
+.add-user-stepper-seg {
+    height: 5px;
+    border-radius: 999px;
+    transition: background 0.2s ease, box-shadow 0.2s ease;
+}
+.add-user-stepper-seg.is-active {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--app-accent) 22%, transparent);
+}
+.add-user-stepper-seg.is-done {
+    opacity: 0.75;
+}
+.add-user-stepper-labels span.is-active {
+    color: var(--app-accent);
+    font-weight: 700;
+}
+.add-user-stepper-labels span.is-active::before {
+    content: "";
+    display: inline-block;
+    width: 0.45rem;
+    height: 0.45rem;
+    margin-right: 0.35rem;
+    border-radius: 50%;
+    background: var(--app-accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--app-accent) 22%, transparent);
+    vertical-align: 0.05rem;
+}
+.add-user-stepper-labels span.is-done::before {
+    content: "\2713";
+    margin-right: 0.3rem;
+    font-weight: 700;
+    color: var(--app-success-soft-fg);
+}
+html.afims-dark[data-bs-theme="dark"] .add-user-stepper-labels span.is-active { color: #94aadb; }
+html.afims-dark[data-bs-theme="dark"] .add-user-stepper-seg.is-active { box-shadow: 0 0 0 3px rgba(56, 97, 188, 0.35); }
+
 .searchable-select { position: relative; }
 .user-modal-overlay .searchable-select .form-control {
     padding-right: 1.85rem;
@@ -1423,6 +1460,142 @@
     color: #c3c8cd;
     cursor: default;
     font-style: italic;
+}
+
+/* ──────────────────────────────────────────────────────────────
+   user-access.php — DARK MODE
+   Everything above was written for light mode only: the cards, user rows, role list, permission matrix rows,
+   pager and the Add User modal were hard-coded white (#fff) while the theme turns the page text light, so the
+   text either vanished (dark text on the dark rows of the matrix) or sat on glaring white blocks. Re-point the
+   page's tokens at the dark palette and restate every hard-coded colour.
+   ────────────────────────────────────────────────────────────── */
+html.afims-dark[data-bs-theme="dark"] {
+    --app-accent: #3861bc;
+    --app-accent-hover: #2e59b8;
+    --app-success-soft-bg: rgba(17, 167, 82, 0.16);
+    --app-success-soft-fg: #4ade80;
+    --app-danger-soft-bg: rgba(220, 53, 69, 0.18);
+    --app-danger-soft-fg: #f87171;
+    --app-info-soft-bg: #0f2456;
+    --app-info-soft-fg: #94aadb;
+    --app-warning-soft-bg: rgba(245, 158, 11, 0.16);
+    --app-warning-soft-fg: #fbbf24;
+    --app-text: #e4ecf2;
+    --app-text-muted: #aaafbe;
+    --app-border: #2e3656;
+    --app-surface-sunken: #161b33;
+}
+html.afims-dark[data-bs-theme="dark"] .app-uac-page { color-scheme: dark; }
+
+/* surfaces that were hard-coded white */
+html.afims-dark[data-bs-theme="dark"] :is(.app-stat-card, .app-user-row, .app-role-list-item, .app-role-list-item.is-active,
+    .app-table thead th, .add-user-modal-shell, .user-modal-overlay .card-header, .user-modal-overlay .card-footer, .searchable-select-menu) {
+    background: var(--afims-surface, #1a1f38);
+    color: var(--app-text);
+}
+html.afims-dark[data-bs-theme="dark"] :is(.app-user-row:nth-child(even), .app-role-list-item:nth-child(even):not(.is-active)) {
+    background: var(--app-surface-sunken);
+}
+html.afims-dark[data-bs-theme="dark"] :is(.app-stat-card:hover, .app-user-row:hover) {
+    border-top-color: #4a5270; border-right-color: #4a5270; border-bottom-color: #4a5270; box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+}
+html.afims-dark[data-bs-theme="dark"] .app-user-row:hover { border-left-color: #4a5270; }
+html.afims-dark[data-bs-theme="dark"] .app-stat-ghost-icon { opacity: 0.08; }
+
+/* text that was hard-coded dark / pale grey */
+html.afims-dark[data-bs-theme="dark"] :is(.app-table-user-cell-name, .app-role-details-list dd, .app-uac-page .card-title,
+    .user-modal-overlay .card-header .card-title) { color: #ffffff; }
+html.afims-dark[data-bs-theme="dark"] :is(.app-table-user-cell-sub, .app-user-meta-field, .app-table-th-check span, .app-table-th-sublabel,
+    .app-table-toolbar-label, .app-checkbox-label, .app-table thead th, .user-modal-overlay label, .app-flat-form label,
+    .user-modal-overlay .add-user-step .step-heading, .add-user-stepper-labels span) { color: var(--app-text-muted); }
+html.afims-dark[data-bs-theme="dark"] .app-user-meta-icon { color: #6b7391; }
+html.afims-dark[data-bs-theme="dark"] .app-table-avatar { background: var(--app-info-soft-bg); color: #ffffff; }
+
+/* badges (status / access) */
+html.afims-dark[data-bs-theme="dark"] :is(.app-table, .app-user-list) .badge-success { background: var(--app-success-soft-bg); color: var(--app-success-soft-fg); }
+html.afims-dark[data-bs-theme="dark"] :is(.app-table, .app-user-list) .badge-danger { background: var(--app-danger-soft-bg); color: var(--app-danger-soft-fg); }
+html.afims-dark[data-bs-theme="dark"] :is(.app-table, .app-user-list) .badge-info { background: #3861bc; color: #ffffff; }
+html.afims-dark[data-bs-theme="dark"] :is(.app-table, .app-user-list) .badge-secondary { background: #2e3656; color: var(--app-text); }
+
+/* row action buttons (Edit / Manage Access / remove assignment) */
+html.afims-dark[data-bs-theme="dark"] .app-table-action-btn { background: #2e3656; color: var(--app-text); }
+html.afims-dark[data-bs-theme="dark"] .app-table-action-btn:hover { background: #3a4366; color: #ffffff; }
+html.afims-dark[data-bs-theme="dark"] .app-table-action-btn.edit-user-btn { background: #3861bc; color: #ffffff; }
+html.afims-dark[data-bs-theme="dark"] .app-table-action-btn.edit-user-btn:hover { background: #2e59b8; color: #ffffff; }
+html.afims-dark[data-bs-theme="dark"] :is(.app-table-action-btn.manage-access-btn, .app-role-access-list-item .app-table-action-btn) {
+    background: var(--app-danger-soft-bg); color: #fca5a5;
+}
+html.afims-dark[data-bs-theme="dark"] :is(.app-table-action-btn.manage-access-btn, .app-role-access-list-item .app-table-action-btn):hover {
+    background: rgba(220, 53, 69, 0.3); color: #ffffff;
+}
+
+/* search inputs, pager, toolbar buttons */
+html.afims-dark[data-bs-theme="dark"] .app-table-search .form-control,
+html.afims-dark[data-bs-theme="dark"] :is(.user-modal-overlay, .app-flat-form) .form-control {
+    background-color: var(--afims-surface, #1a1f38); border-color: #4a5270; color: var(--app-text);
+}
+html.afims-dark[data-bs-theme="dark"] .app-table-search .form-control:focus,
+html.afims-dark[data-bs-theme="dark"] :is(.user-modal-overlay, .app-flat-form) .form-control:focus {
+    background-color: var(--afims-surface, #1a1f38); border-color: var(--app-accent);
+}
+html.afims-dark[data-bs-theme="dark"] :is(.app-table-search .form-control, .user-modal-overlay .form-control, .app-flat-form .form-control)::placeholder { color: #9aa3b5; }
+html.afims-dark[data-bs-theme="dark"] .app-table-search-icon { color: #9aa3b5; }
+html.afims-dark[data-bs-theme="dark"] :is(.app-table-pager-btn, .app-table-page-btn, .app-table-toolbar-btn) {
+    background: var(--afims-surface, #1a1f38); border-color: #4a5270; color: var(--app-text);
+}
+html.afims-dark[data-bs-theme="dark"] :is(.app-table-pager-btn, .app-table-page-btn):hover,
+html.afims-dark[data-bs-theme="dark"] .app-table-toolbar-btn:hover:not(:disabled) { background: #2e3656; color: #ffffff; }
+html.afims-dark[data-bs-theme="dark"] .app-table-page-btn.is-active { background: #3861bc; border-color: #3861bc; color: #ffffff; }
+html.afims-dark[data-bs-theme="dark"] .app-table-toolbar-btn.is-success { color: #4ade80; border-color: rgba(74, 222, 128, 0.4); }
+html.afims-dark[data-bs-theme="dark"] .app-table-toolbar-btn.is-success:hover:not(:disabled) { background: rgba(17, 167, 82, 0.16); }
+html.afims-dark[data-bs-theme="dark"] .app-table-toolbar-btn.is-danger { color: #f87171; border-color: rgba(248, 113, 113, 0.4); }
+html.afims-dark[data-bs-theme="dark"] .app-table-toolbar-btn.is-danger:hover:not(:disabled) { background: rgba(220, 53, 69, 0.18); }
+
+/* permission matrix: every row on the dark surface (no more white / unreadable rows), light text, visible checkboxes */
+html.afims-dark[data-bs-theme="dark"] .app-table-permissions tbody tr,
+html.afims-dark[data-bs-theme="dark"] .app-table-permissions tbody tr > td {
+    background-color: var(--afims-surface, #1a1f38) !important; color: var(--app-text) !important; box-shadow: none !important;
+}
+html.afims-dark[data-bs-theme="dark"] .app-table-permissions tbody tr:nth-child(even):not(.text-muted) > td { background-color: var(--app-surface-sunken) !important; }
+html.afims-dark[data-bs-theme="dark"] .app-table-permissions tbody tr.text-muted > td { color: var(--app-text-muted) !important; font-style: italic; }
+html.afims-dark[data-bs-theme="dark"] .app-table-permissions tbody tr:hover > td { background-color: #232a4a !important; }
+html.afims-dark[data-bs-theme="dark"] .app-table tbody td { border-bottom-color: var(--app-border); }
+html.afims-dark[data-bs-theme="dark"] .app-table thead th { border-bottom-color: var(--app-border); }
+html.afims-dark[data-bs-theme="dark"] :is(.app-table-permissions-divider, .app-table-permissions-divider-left) { border-color: var(--app-border); }
+html.afims-dark[data-bs-theme="dark"] .app-table-permissions-toolbar { border-bottom-color: var(--app-border); }
+html.afims-dark[data-bs-theme="dark"] :is(.app-table-permissions input[type="checkbox"], .app-checkbox) {
+    background: var(--afims-surface, #1a1f38); border-color: #6b7391;
+}
+html.afims-dark[data-bs-theme="dark"] :is(.app-table-permissions input[type="checkbox"], .app-checkbox):disabled {
+    background: #22294a; border-color: #4a5270; opacity: 0.7;
+}
+html.afims-dark[data-bs-theme="dark"] :is(.app-table-permissions input[type="checkbox"], .app-checkbox):disabled:checked { background: #4a5a8f; border-color: #4a5a8f; }
+html.afims-dark[data-bs-theme="dark"] .app-table-permissions .edit-module-caption-btn { color: #9aa3b5 !important; }
+html.afims-dark[data-bs-theme="dark"] .app-table-permissions .edit-module-caption-btn:hover { background: #2e3656 !important; color: #ffffff !important; }
+html.afims-dark[data-bs-theme="dark"] .app-table-permissions .restore-module-btn { color: #4ade80 !important; }
+html.afims-dark[data-bs-theme="dark"] .app-table-permissions .restore-module-btn:hover { background: rgba(17, 167, 82, 0.16) !important; }
+
+/* role list scrollbar + Add User modal bits */
+html.afims-dark[data-bs-theme="dark"] .app-role-list { scrollbar-color: #4a5270 transparent; }
+html.afims-dark[data-bs-theme="dark"] .app-role-list::-webkit-scrollbar-thumb { background-color: #4a5270; }
+html.afims-dark[data-bs-theme="dark"] .user-modal-overlay .card-header .btn-tool { color: #9aa3b5; }
+html.afims-dark[data-bs-theme="dark"] .user-modal-overlay .card-header .btn-tool:hover { color: #ffffff; }
+html.afims-dark[data-bs-theme="dark"] :is(.user-modal-overlay, .app-flat-form) .btn-light { background: #2e3656; border-color: #2e3656; color: var(--app-text); }
+html.afims-dark[data-bs-theme="dark"] :is(.user-modal-overlay, .app-flat-form) .btn-light:hover { background: #3a4366; }
+html.afims-dark[data-bs-theme="dark"] .add-user-stepper-seg { background: #2e3656; }
+html.afims-dark[data-bs-theme="dark"] :is(.searchable-select-option:hover, .searchable-select-option.is-active) { background-color: #2e3656; }
+html.afims-dark[data-bs-theme="dark"] .searchable-select-option.is-selected { background-color: var(--app-info-soft-bg); }
+html.afims-dark[data-bs-theme="dark"] .searchable-select-option { color: var(--app-text); }
+
+/* the page banner keeps its navy gradient (--app-accent is the lighter brand blue in dark mode) */
+html.afims-dark[data-bs-theme="dark"] .app-page-header { background: linear-gradient(135deg, #000e3e 0%, #001a5e 100%); }
+
+/* Create / Edit User Level and Rename Module modals: their box is an inline style="background:#fff" */
+html.afims-dark[data-bs-theme="dark"] :is(#createUserLevelOverlay, #editUserLevelOverlay, #renameModuleOverlay) > div {
+    background: var(--afims-surface, #1a1f38) !important; color: var(--app-text);
+}
+html.afims-dark[data-bs-theme="dark"] :is(#createUserLevelOverlay, #editUserLevelOverlay, #renameModuleOverlay) :is(.form-control, select, textarea) {
+    background-color: var(--afims-surface, #1a1f38); border-color: #4a5270; color: var(--app-text);
 }
 
 /* ══════════════════════════════════════════════════════════════

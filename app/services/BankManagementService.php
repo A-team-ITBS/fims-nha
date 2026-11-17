@@ -39,6 +39,7 @@ class BankManagementService
     private string $tableDocuments        = 'fims.bank_account_documents';
     private string $tableAuditLog         = 'fims.bank_account_audit_log';
     private string $tableResponsibilityCode = 'fims.responsibility_code';
+    private string $tableChartOfAccounts    = 'fims.chart_of_accounts';
 
     // ── small SQL helpers (same shape as CheckProcessingService) ──
 
@@ -187,6 +188,18 @@ class BankManagementService
         );
     }
 
+    // Validates a submitted GL account code against fims.chart_of_accounts — this
+    // column IS a real FK (see migration "31 - jev_payment_entries_and_bank_account_code.sql"),
+    // so an invalid code would otherwise fail as an opaque DB constraint error. Empty is
+    // valid (no GL account tagged yet).
+    private function accountCodeExists(string $accountCode): bool
+    {
+        return $accountCode === '' || (bool) App\ExecuteRow(
+            "SELECT account_code FROM {$this->tableChartOfAccounts} WHERE account_code = " . $this->str($accountCode),
+            'DB'
+        );
+    }
+
     // ── Create ──
     public function store($data)
     {
@@ -209,6 +222,10 @@ class BankManagementService
         if (!$this->rcIdExists($rcId)) {
             return json_encode(["success" => false, "message" => "Select a valid Region/Office."]);
         }
+        $accountCode = trim((string) ($data['account_code'] ?? ''));
+        if (!$this->accountCodeExists($accountCode)) {
+            return json_encode(["success" => false, "message" => "Select a valid GL Account Code."]);
+        }
         if (App\ExecuteRow("SELECT bank_account_id FROM {$this->tableBankAccounts} WHERE account_number = " . $this->str($accountNumber), 'DB')) {
             return json_encode(["success" => false, "message" => "An account with this Account Number already exists."]);
         }
@@ -222,13 +239,13 @@ class BankManagementService
         $row = App\ExecuteRow(
             "INSERT INTO {$this->tableBankAccounts}
                 (account_name, account_number, bank_name, bank_branch, account_type, account_classification,
-                 fund_source, rc_id, is_main_depository, status, is_active, date_opened,
+                 fund_source, rc_id, account_code, is_main_depository, status, is_active, date_opened,
                  last_transaction_date, created_by)
              VALUES (
                 " . $this->str($accountName) . ', ' . $this->str($accountNumber) . ', ' . $this->str($bankName) . ', '
                 . $this->strOrNull($data['bank_branch'] ?? null) . ', ' . $this->strOrNull($accountType) . ', '
                 . $this->str($classification) . ', ' . $this->strOrNull($data['fund_source'] ?? null) . ', '
-                . $this->strOrNull($rcId) . ', ' . $this->bool($data['is_main_depository'] ?? false) . ', '
+                . $this->strOrNull($rcId) . ', ' . $this->strOrNull($accountCode) . ', ' . $this->bool($data['is_main_depository'] ?? false) . ', '
                 . $this->str($status) . ', ' . ($status === 'ACTIVE' ? 'TRUE' : 'FALSE') . ', '
                 . $this->dateOrNull($data['date_opened'] ?? null) . ', ' . $this->dateOrNull($data['last_transaction_date'] ?? null)
                 . ", {$userId})
@@ -270,6 +287,10 @@ class BankManagementService
         if (!$this->rcIdExists($rcId)) {
             return json_encode(["success" => false, "message" => "Select a valid Region/Office."]);
         }
+        $accountCode = trim((string) ($data['account_code'] ?? ''));
+        if (!$this->accountCodeExists($accountCode)) {
+            return json_encode(["success" => false, "message" => "Select a valid GL Account Code."]);
+        }
         $dupe = App\ExecuteRow(
             "SELECT bank_account_id FROM {$this->tableBankAccounts}
              WHERE account_number = " . $this->str($accountNumber) . " AND bank_account_id <> {$accountId}",
@@ -295,12 +316,40 @@ class BankManagementService
                 account_classification = " . $this->str($classification) . ",
                 fund_source = " . $this->strOrNull($data['fund_source'] ?? null) . ",
                 rc_id = " . $this->strOrNull($rcId) . ",
+                account_code = " . $this->strOrNull($accountCode) . ",
                 is_main_depository = " . $this->bool($data['is_main_depository'] ?? false) . ",
                 status = " . $this->str($status) . ",
                 is_active = " . ($status === 'ACTIVE' ? 'TRUE' : 'FALSE') . ",
                 date_opened = " . $this->dateOrNull($data['date_opened'] ?? null) . ",
                 last_transaction_date = " . $this->dateOrNull($data['last_transaction_date'] ?? null) . ",
                 updated_at = CURRENT_TIMESTAMP
+             WHERE bank_account_id = {$accountId}",
+            'DB'
+        );
+
+        $this->writeAuditLog($accountId, 'UPDATE', $before, $this->fetchAccount($accountId), $userId);
+
+        return $this->ok(['bank_account_id' => $accountId]);
+    }
+
+    // ── Quick GL account code tag ──
+    public function tagAccountCode($id, $data)
+    {
+        $accountId = (int) $id;
+        $accountCode = trim((string) ($data['account_code'] ?? ''));
+        if (!$this->accountCodeExists($accountCode)) {
+            return json_encode(["success" => false, "message" => "Select a valid GL Account Code."]);
+        }
+        $before = $this->fetchAccount($accountId);
+        if (!$before) {
+            return json_encode(["success" => false, "message" => "Bank account not found."]);
+        }
+
+        $userId = (int) App\CurrentUserID();
+        App\Execute(
+            "UPDATE {$this->tableBankAccounts}
+             SET account_code = " . $this->strOrNull($accountCode) . ",
+                 updated_at = CURRENT_TIMESTAMP
              WHERE bank_account_id = {$accountId}",
             'DB'
         );
