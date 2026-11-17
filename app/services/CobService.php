@@ -28,7 +28,9 @@ use PHPMaker2024\FIMS\DataType;
  *   approved_amount     budget_line_items.suggested_amount, as it stands — the amount FMD suggested in the Budget Proposal module
  *   revision_amount     budget_line_items.adjustment: the net of the approved Budget Revisions (Revision / Realignment)
  *   revised_amount      budget_line_items.revised_amount: a plain, app-maintained column (migration "43 - budget_line_items_add_revised_amount");
- *                       it is NOT computed from the two figures above, so it is only as current as whatever writes it (0 until then)
+ *                       it is NOT computed from the two figures above. Approving a Budget Revision writes it on each line it touches
+ *                       (BudgetRevisionService::approve(): the line's new current amount, proposed_amount + adjustment); a line no
+ *                       revision has touched keeps whatever the column holds, 0 by default
  *   cba_requested      what approved CBAs (and CFAs) took off the line: their earmark rows' original_amount, only those that
  *                       actually reduced the balance (balance_applied) and are not released
  *   available_amount    revised_amount - cba_requested   (Available for Earmarking)

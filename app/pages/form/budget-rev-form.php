@@ -116,7 +116,7 @@ try {
 /* the box: the filter bar on top, the search field below. No overflow:hidden — the dropdown lists open outside it. */
 .nha-root .brv-reqgroup { display: flex; flex-direction: column; background: var(--afims-surface, #FFFFFF); border: 1px solid var(--bdr, #E4ECF2); border-radius: 10px; }
 .nha-root .brv-filterbar {
-    position: relative;   /* the three filter lists anchor to the bar, not to their narrow inputs */
+    position: relative;   /* the filter lists anchor to the bar, not to their narrow inputs */
     display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
     padding: 8px 10px; background: var(--surf, #F4F7FA);
     border-bottom: 1px solid var(--bdr, #E4ECF2);
@@ -285,7 +285,7 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
 
                     <div class="brv-cobrow is-single" id="brv-cobrow">
 
-                        <!-- From budget line (budget_revision.from_budget_line_item_id): a filter bar (Fiscal Year · Program · Project) attached to the searchable field -->
+                        <!-- From budget line (budget_revision.from_budget_line_item_id): a filter bar (Fiscal Year · Originating Unit · Program · Project) attached to the searchable field -->
                         <div class="brv-cobcol">
                             <div class="brv-cob-hd">
                                 <label class="brv-lbl" for="brv-req-input">From Budget Line <span class="brv-req">*</span></label>
@@ -300,6 +300,15 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
                                     </span>
                                     <div class="brv-combo-fy">
                                         <select class="brv-in brv-fy-select" id="brv-fy-select" aria-label="Filter by fiscal year"><option value="">Year</option></select>
+                                    </div>
+                                    <div class="brv-combo">
+                                        <div class="brv-combo-field">
+                                            <input type="text" class="brv-in" id="brv-unit-input" placeholder="Originating Unit" aria-label="Filter by originating unit"
+                                                   autocomplete="off"
+                                                   role="combobox" aria-expanded="false" aria-controls="brv-unit-list" aria-autocomplete="list">
+                                            <button type="button" class="brv-combo-clear" id="brv-unit-clear" aria-label="Clear originating unit" hidden>&times;</button>
+                                        </div>
+                                        <ul class="brv-combo-list" id="brv-unit-list" role="listbox" hidden></ul>
                                     </div>
                                     <div class="brv-combo">
                                         <div class="brv-combo-field">
@@ -370,6 +379,15 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
                                     </span>
                                     <div class="brv-combo-fy">
                                         <select class="brv-in brv-fy-select" id="brv-to-fy-select" aria-label="Filter the To budget lines by fiscal year"><option value="">Year</option></select>
+                                    </div>
+                                    <div class="brv-combo">
+                                        <div class="brv-combo-field">
+                                            <input type="text" class="brv-in" id="brv-to-unit-input" placeholder="Originating Unit" aria-label="Filter the To budget lines by originating unit"
+                                                   autocomplete="off"
+                                                   role="combobox" aria-expanded="false" aria-controls="brv-to-unit-list" aria-autocomplete="list">
+                                            <button type="button" class="brv-combo-clear" id="brv-to-unit-clear" aria-label="Clear originating unit" hidden>&times;</button>
+                                        </div>
+                                        <ul class="brv-combo-list" id="brv-to-unit-list" role="listbox" hidden></ul>
                                     </div>
                                     <div class="brv-combo">
                                         <div class="brv-combo-field">
@@ -479,14 +497,16 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
      To budget line   — only on the Realignment tab, where it is required (budget_revision.to_budget_line_item_id): the line that
                         receives the funds the From line gives up. Its list never offers the From line. A Revision hides it.
 
-   Each picker is four searchable dropdowns that work together:
+   Each picker is five searchable dropdowns that work together:
      Fiscal Year  — a plain dropdown of the fiscal years (GET /fiscal_year/all, the host page's own list; the years that have a
                     budget line if that can't be read)
+     Originating Unit — the office that filed the request (budget_req.rc_id), by RC code. It narrows the lines, and Program / Project
+                    then offer only that office's. For FMD, who sees every office's approved lines, it is how to find one office's
      Program      — programs that have a budget line
      Project      — projects only. Pick a program first and it lists just that
                     program's projects; pick a project first and it fills in
                     its program.
-     the field    — the three filters form a compact bar attached to it (with a
+     the field    — the filters form a compact bar attached to it (with a
                     "Clear" link); the list is narrowed by them and by whatever
                     is typed into the field itself (account, particulars, reference
                     no., office, program, project or status)
@@ -561,6 +581,8 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
                     const suggested = Number(li.suggested_amount || 0);
                     out.push({
                         id: li.budget_line_item_id, ref: String(h.budget_reference_number), fy: h.fiscal_yr,
+                        // rcId / officeCode: the originating unit — the office that filed the request (budget_req.rc_id) — and its RC code, to order by
+                        rcId: h.rc_id === null || h.rc_id === undefined ? '' : String(h.rc_id), officeCode: h.rc_code || '',
                         office: h.rc_name || h.rc_code || '', parentOffice: h.rc_parent_name || '', status: h.status_name, statusColor: h.status_color,
                         programCode: pg.program_code || '', programName: pg.program_name || '', projectCode: pj.project_code || '', projectName: pj.project_name || '',
                         accountId: li.account_id || '', accountCode: li.account_code || '', accountTitle: li.account_title || '', particulars: li.particulars || '',
@@ -621,6 +643,7 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
     const FROM_IDS = {
         id: 'brv-line-id',
         fySel: 'brv-fy-select',
+        unIn: 'brv-unit-input', unClear: 'brv-unit-clear', unList: 'brv-unit-list',
         prIn: 'brv-program-input', prClear: 'brv-program-clear', prList: 'brv-program-list',
         pjIn: 'brv-project-input', pjClear: 'brv-project-clear', pjList: 'brv-project-list',
         reqIn: 'brv-req-input', reqClear: 'brv-req-clear', reqList: 'brv-req-list',
@@ -630,6 +653,7 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
     const TO_IDS = {
         id: 'brv-to-line-id',
         fySel: 'brv-to-fy-select',
+        unIn: 'brv-to-unit-input', unClear: 'brv-to-unit-clear', unList: 'brv-to-unit-list',
         prIn: 'brv-to-program-input', prClear: 'brv-to-program-clear', prList: 'brv-to-program-list',
         pjIn: 'brv-to-project-input', pjClear: 'brv-to-project-clear', pjList: 'brv-to-project-list',
         reqIn: 'brv-to-req-input', reqClear: 'brv-to-req-clear', reqList: 'brv-to-req-list',
@@ -755,9 +779,10 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
         const pe = {};
         Object.keys(ids).forEach(k => { pe[k] = $(ids[k]); });
 
-        // fy: '' or '2026' · program: null | { code, label, full } · project: null | { code, label, full, program }
+        // fy: '' or '2026' · unit: null | { key, label, full } (key = the originating office's rc_id) · program: null | { code, label, full }
+        // project: null | { code, label, full, program }
         // selected: the picked budget line or null
-        const P = { fy: '', program: null, project: null, selected: null };
+        const P = { fy: '', unit: null, program: null, project: null, selected: null };
 
         // every line this picker may offer
         const baseRows = () => {
@@ -768,15 +793,36 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
         /* ── filtering ── */
         // Lines that satisfy the active filters. Each dropdown switches off the
         // filter(s) it feeds, so its suggestions only react to the OTHER filters.
-        function matchRows({ fy = true, program = true, project = true, q = '' } = {}) {
+        function matchRows({ fy = true, unit = true, program = true, project = true, q = '' } = {}) {
             const needle = q.toLowerCase();
             return baseRows().filter(l => {
                 if (fy && P.fy && String(l.fy) !== P.fy) return false;
+                if (unit && P.unit && l.rcId !== P.unit.key) return false;
                 if (program && P.program && l.programCode !== P.program.code) return false;
                 if (project && P.project && l.projectCode !== P.project.code) return false;
                 if (!needle) return true;
                 return searchText(l).includes(needle);
             });
+        }
+
+        // The originating units — the offices that filed a request — that have a budget line, by RC code. Reacts to Year / Program / Project, not
+        // to itself. A District office says which office it sits under (its parent RC).
+        function unitItems(q) {
+            const units = new Map();   // rc_id → { name, code, parent, n }
+            matchRows({ unit: false }).forEach(l => {
+                if (!l.rcId) return;
+                const u = units.get(l.rcId) || { name: l.office || l.rcId, code: l.officeCode, parent: l.parentOffice, n: 0 };
+                u.n++;
+                units.set(l.rcId, u);
+            });
+            const needle = q.toLowerCase();
+            return [...units.entries()]
+                .sort(([, a], [, b]) => a.code.localeCompare(b.code, undefined, { numeric: true }) || a.name.localeCompare(b.name))
+                .filter(([key, u]) => !needle || `${key} ${u.name} ${u.parent}`.toLowerCase().includes(needle))
+                .map(([key, u]) => ({
+                    key, label: u.name, full: withName(key, u.name), main: u.name,
+                    sub: (u.parent ? `Under ${u.parent} · ` : '') + plural(u.n, 'budget line'),
+                }));
         }
 
         // The programs that have a budget line.
@@ -831,7 +877,7 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
         function refresh() {
             if (S.loaded) pe.hint.textContent = `Showing ${matchRows().length} of ${baseRows().length} budget lines`;
             // "Clear filters" shows only while a filter it can clear is on (a locked Year is not one of them)
-            pe.reset.hidden = !((P.fy && !pe.fySel.disabled) || P.program || P.project);
+            pe.reset.hidden = !((P.fy && !pe.fySel.disabled) || P.unit || P.program || P.project);
         }
 
         // The native "pick one" message while the field is required and nothing is picked; none otherwise (a hidden, optional field must
@@ -859,8 +905,10 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
         // A typed value is only a search; the applied filter changes on pick/clear,
         // and leaving the field restores the applied value.
         // The compact filter inputs show just the code (label); the full "code — name" is their tooltip.
+        const showUnit    = () => { pe.unIn.value = P.unit ? P.unit.label : ''; pe.unIn.title = P.unit ? P.unit.full : ''; };
         const showProgram = () => { pe.prIn.value = P.program ? P.program.label : ''; pe.prIn.title = P.program ? P.program.full : ''; };
         const showProject = () => { pe.pjIn.value = P.project ? P.project.label : ''; pe.pjIn.title = P.project ? P.project.full : ''; };
+        const unQuery = () => (P.unit && pe.unIn.value === P.unit.label ? '' : pe.unIn.value.trim());
         const prQuery = () => (P.program && pe.prIn.value === P.program.label ? '' : pe.prIn.value.trim());
         const pjQuery = () => (P.project && pe.pjIn.value === P.project.label ? '' : pe.pjIn.value.trim());
 
@@ -893,6 +941,15 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
         }
 
         const clearProject = () => { P.project = null; showProject(); pjCombo.syncClear(); };
+
+        // Originating Unit: narrows the list to that office's budget lines (and so what Program / Project offer). Independent of the others —
+        // it neither fills in nor clears Program or Project.
+        const unCombo = combo({
+            input: pe.unIn, list: pe.unList, clear: pe.unClear, items: unitItems, query: unQuery,
+            onPick: it => { P.unit = { key: it.key, label: it.label, full: it.full }; showUnit(); refresh(); },
+            onClear: () => { P.unit = null; showUnit(); refresh(); },
+            onBlur: () => showUnit(),
+        });
 
         const prCombo = combo({
             input: pe.prIn, list: pe.prList, clear: pe.prClear, items: programItems, query: prQuery,
@@ -935,10 +992,10 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
 
         // Drop every filter. The picked budget line, if any, is left alone.
         function clearFilters() {
-            P.program = null; P.project = null;
+            P.unit = null; P.program = null; P.project = null;
             if (!pe.fySel.disabled) { P.fy = ''; pe.fySel.value = ''; }   // a locked Year stays
-            showProgram(); showProject();
-            [prCombo, pjCombo].forEach(c => { c.close(); c.syncClear(); });
+            showUnit(); showProgram(); showProject();
+            [unCombo, prCombo, pjCombo].forEach(c => { c.close(); c.syncClear(); });
             refresh();
         }
         pe.reset.addEventListener('click', clearFilters);

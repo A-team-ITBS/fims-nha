@@ -36,7 +36,7 @@ Every row, group and total is the SUM of these per line item (`CobService::lineA
 |---|---|---|
 | **Approved Amount** | What FMD suggested in the Budget Proposal module | `budget_line_items.suggested_amount`, as it stands |
 | **Revision / Realignment** | Net of the approved Budget Revisions (an increase, or a decrease in brackets) | `budget_line_items.adjustment` |
-| **Revised Amount** | The revised amount recorded on the line item. A plain column the application maintains: it is **not** worked out from the two columns before it | `budget_line_items.revised_amount` (added by migration `43 - budget_line_items_add_revised_amount`; `0` until something writes it) |
+| **Revised Amount** | The revised amount recorded on the line item. A plain column the application maintains: it is **not** worked out from the two columns before it | `budget_line_items.revised_amount` (added by migration `43 - budget_line_items_add_revised_amount`). Approving a Budget Revision writes it on each line it touches: the line's new current amount, `proposed_amount + adjustment`. A line no revision has touched keeps `0` |
 | **CBA Requested** | What approved CBAs (and CFAs) took off the budget | earmark rows of CBA / CFA allocations: `original_amount`, only those that did take it off (`balance_applied`) and are not released |
 | **Available for Earmarking** | Revised Amount − CBA Requested: what a new CBA can still draw | `revised_amount − CBA Requested` |
 | **RFA Approved** | Drawn from the CBAs by approved RFAs | the `converted` earmark rows of RFA allocations |
@@ -46,9 +46,10 @@ Every row, group and total is the SUM of these per line item (`CobService::lineA
 Available and Remaining are worked from Revised Amount, so two identities hold on every row, group and total (the tests check them on every node):
 `Revised − CBA = Available` and `Revised − RFA − LAA = Remaining`. `Approved + Revision = Revised` is **not** guaranteed: Revised Amount is its own column, so it only equals that sum while whatever maintains it keeps it so.
 
-> **Revised Amount is only as current as what writes it.** `budget_line_items.revised_amount` is `NOT NULL DEFAULT 0` and carries no formula or trigger; the COB just reads it. Right after the
-> migration every existing line shows `0`, and so do Available for Earmarking and Remaining Balance (they start from it) until the column is filled in. A one-off backfill from the old
-> definition would be `UPDATE fims.budget_line_items SET revised_amount = suggested_amount + adjustment;` — not run by the migration.
+> **Revised Amount is only written when a Budget Revision is approved.** `budget_line_items.revised_amount` is `NOT NULL DEFAULT 0` and carries no formula or trigger; the COB just reads it, and
+> `BudgetRevisionService::approve()` is the one place that writes it (in the same statement that moves `adjustment` / `suggested_amount`): the From line gets To Amount, the To line of a
+> realignment gets its new current amount. So a line that has never been revised still shows `0`, and so do Available for Earmarking and Remaining Balance (they start from it) until the
+> column is filled in. A one-off backfill that matches what approval writes would be `UPDATE fims.budget_line_items SET revised_amount = proposed_amount + adjustment;` — not run by the migration.
 >
 > **`suggested_amount` is also the line's live balance.** An approved CBA/CFA takes its amount off `suggested_amount`, and an approved Budget Revision moves it by the same delta as
 > `adjustment`, so Approved Amount on a line that already has a CBA or a revision is what is left, not what was first suggested. If the sheet should show the amount as first suggested

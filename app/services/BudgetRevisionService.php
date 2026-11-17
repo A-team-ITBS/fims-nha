@@ -14,6 +14,9 @@ use PHPMaker2024\FIMS as App;
  *   From line  adjustment, suggested_amount += (to_amount − its current amount)       → its current amount becomes to_amount
  *   To line    adjustment, suggested_amount += (the From line's current amount − to_amount)   → it receives the difference
  * so a transfer deducts from one line and adds to the other by the same amount.
+ * Each line it touches also gets `revised_amount` (a plain column, 03 - alter_table/43) set to its NEW current amount, proposed_amount +
+ * adjustment: the From line's is To Amount, the To line's is what it holds after receiving the difference. It is written only here, so a
+ * line that has never been revised keeps whatever the column holds (0 by default) until it is backfilled. The COB reads Revised Amount from it.
  * (Because suggested_amount moves too, a line's Available Balance is suggested_amount alone — adding adjustment on top would
  * count every revision twice. See BudgetLineItemService::fetchApproved().)
  * A revision that would leave the From line's suggested_amount negative is refused — when it is filed, when it is edited and
@@ -292,7 +295,7 @@ class BudgetRevisionService
     }
 
     // A failed statement, as the response. A database that has not had the revision migrations yet fails in a recognisable way —
-    // the from_ / to_budget_line_item_id columns (23) or request_type (42) do not exist — and for that the message says what to run; the
+    // the from_ / to_budget_line_item_id columns (23), request_type (42) or budget_line_items.revised_amount (43) do not exist — and for that the message says what to run; the
     // database's own message is kept after it.
     private function failure(\Throwable $e): array
     {
@@ -301,6 +304,11 @@ class BudgetRevisionService
             $message = 'Budget revisions need a database update that has not been applied yet. Run '
                 . '"_assets/sql/01 - fims/03 - alter_table/42 - budget_revision_add_request_type_drop_legacy_req_ids.sql" on the database, then reload. '
                 . '(' . $message . ')';
+        } elseif (preg_match('/revised_amount.{0,80}does not exist/is', $message)) {
+            // approving records the lines' Revised Amount; the whole approval is one statement, so nothing was changed
+            $message = 'Approving a budget revision records the Revised Amount of the budget lines it changes, and the budget_line_items.revised_amount column '
+                . 'has not been added to this database yet (the "43 - budget_line_items_add_revised_amount" update). Nothing was changed — '
+                . 'add the column, then approve again. (' . $message . ')';
         } elseif (preg_match('/_budget_line_item_id.{0,80}does not exist/is', $message)) {
             $message = 'Budget revisions need a database update that has not been applied yet. Run '
                 . '"_assets/sql/01 - fims/03 - alter_table/23 - budget_revision_on_budget_reference_number.sql" on the database, then reload. '
@@ -621,7 +629,7 @@ class BudgetRevisionService
 
     // Approve = record the decision AND apply it to the budget line(s), as ONE statement so
     // either everything happens or nothing does. The lines' adjustment AND suggested_amount move, both by the same delta
-    // (never proposed_amount):
+    // (never proposed_amount), and each touched line's revised_amount is set to its NEW current amount (proposed_amount + adjustment):
     //   From line (from_budget_line_item_id) — always:
     //     adjustment, suggested_amount += (to_amount − the amount the line has right now)   → its current amount becomes to_amount
     //   To line (to_budget_line_item_id) — only when the revision has one: it receives what the From line gave up,
@@ -706,22 +714,26 @@ class BudgetRevisionService
              from_upd AS (
                  UPDATE {$this->tableLines} fl
                  SET adjustment       = fl.adjustment       + (approved.to_amount - (fl.proposed_amount + fl.adjustment)),
-                     suggested_amount = fl.suggested_amount + (approved.to_amount - (fl.proposed_amount + fl.adjustment))
+                     suggested_amount = fl.suggested_amount + (approved.to_amount - (fl.proposed_amount + fl.adjustment)),
+                     -- its new current amount (proposed_amount + the new adjustment), which is exactly To Amount
+                     revised_amount   = approved.to_amount
                  FROM approved
                  WHERE fl.budget_line_item_id = approved.from_budget_line_item_id
-                 RETURNING fl.budget_line_item_id, fl.adjustment, fl.suggested_amount
+                 RETURNING fl.budget_line_item_id, fl.adjustment, fl.suggested_amount, fl.revised_amount
              ),
              to_upd AS (
                  UPDATE {$this->tableLines} tl
                  SET adjustment       = tl.adjustment       + ((fr.proposed_amount + fr.adjustment) - approved.to_amount),
-                     suggested_amount = tl.suggested_amount + ((fr.proposed_amount + fr.adjustment) - approved.to_amount)
+                     suggested_amount = tl.suggested_amount + ((fr.proposed_amount + fr.adjustment) - approved.to_amount),
+                     -- its new current amount: its proposed_amount + its new adjustment
+                     revised_amount   = tl.proposed_amount + tl.adjustment + ((fr.proposed_amount + fr.adjustment) - approved.to_amount)
                  FROM approved
                  JOIN {$this->tableLines} fr ON fr.budget_line_item_id = approved.from_budget_line_item_id
                  WHERE tl.budget_line_item_id = approved.to_budget_line_item_id
-                 RETURNING tl.budget_line_item_id, tl.adjustment, tl.suggested_amount
+                 RETURNING tl.budget_line_item_id, tl.adjustment, tl.suggested_amount, tl.revised_amount
              )
-             SELECT f.budget_line_item_id AS from_id, f.adjustment AS from_adjustment, f.suggested_amount AS from_suggested,
-                    t.budget_line_item_id AS to_id,   t.adjustment AS to_adjustment,   t.suggested_amount AS to_suggested
+             SELECT f.budget_line_item_id AS from_id, f.adjustment AS from_adjustment, f.suggested_amount AS from_suggested, f.revised_amount AS from_revised,
+                    t.budget_line_item_id AS to_id,   t.adjustment AS to_adjustment,   t.suggested_amount AS to_suggested,   t.revised_amount AS to_revised
              FROM from_upd f
              LEFT JOIN to_upd t ON TRUE",
             'DB'
@@ -737,11 +749,11 @@ class BudgetRevisionService
                 ? "Budget revision request #{$id} approved and applied to the budget line."
                 : "Budget revision request #{$id} approved: " . number_format($moved, 2) . ' moved from the From budget line to the To budget line.',
             'status'      => 'APPROVED',
-            // the From line: its id, its new current amount, its new adjustment and suggested amount
-            'budget_line' => ['budget_line_item_id' => (int) $row['from_id'], 'amount' => $newAmt, 'adjustment' => $row['from_adjustment'], 'suggested_amount' => $row['from_suggested']],
+            // the From line: its id, its new current amount, its new adjustment, suggested amount and revised amount
+            'budget_line' => ['budget_line_item_id' => (int) $row['from_id'], 'amount' => $newAmt, 'adjustment' => $row['from_adjustment'], 'suggested_amount' => $row['from_suggested'], 'revised_amount' => $row['from_revised']],
         ];
         if ($row['to_id'] !== null) {
-            $result['to_budget_line'] = ['budget_line_item_id' => (int) $row['to_id'], 'amount' => round($toNow + $moved, 2), 'adjustment' => $row['to_adjustment'], 'suggested_amount' => $row['to_suggested']];
+            $result['to_budget_line'] = ['budget_line_item_id' => (int) $row['to_id'], 'amount' => round($toNow + $moved, 2), 'adjustment' => $row['to_adjustment'], 'suggested_amount' => $row['to_suggested'], 'revised_amount' => $row['to_revised']];
         }
 
         // the approval is committed: tell the offices whose budget just changed (can never fail it)
