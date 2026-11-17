@@ -915,7 +915,7 @@ $apiBase = Config('API.FIMS_URL');
 
     function populate(r) {
         selectValue('tf-year', r.fiscal_year);
-        $('tf-ref').value = r.reference_number || '';
+        $('tf-ref').value = r.saro_id || '';
 
         const agency = r.agency_name || (r.agency && r.agency.name) || '';
         S.origAgency = agency;                              // saved as it is unless the user changes it — never "created" afresh
@@ -1026,7 +1026,7 @@ $apiBase = Config('API.FIMS_URL');
                 tracking_type_id: S.typeId,
                 fiscal_year: parseInt($('tf-year').value, 10) || null,
                 agency_name: agency.name,
-                reference_number: v('tf-ref'),
+                saro_id: v('tf-ref'),
                 amount: parseMoney(v('tf-amount')),
                 remarks: v('tf-remarks'),
             };
@@ -1039,8 +1039,8 @@ $apiBase = Config('API.FIMS_URL');
                 payload.ors = ors.map(e => ({
                     fiscal_year: parseInt(e.year, 10) || null,
                     nature_of_fund_id: parseInt(e.nature, 10) || null,
-                    reference_number: e.ref,
-                    name: e.name,
+                    saro_id: e.ref,
+                    description: e.name,
                     amount: parseMoney(e.amount),
                     bank_account_no: e.bank,
                     remarks: e.remarks,

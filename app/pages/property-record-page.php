@@ -107,6 +107,21 @@ $_prp_api = Config('API.FIMS_URL');
     .prp-chk:disabled { cursor:not-allowed; }
     tr.prp-saved-row { background:color-mix(in srgb, var(--afims-success, #11A752) 6%, transparent); }
 
+    /* Items from the IAR module: an account row with an arrow that opens its items */
+    .prp-v-toggle { width:28px;height:28px;border:1px solid var(--afims-border, #E4ECF2);border-radius:6px;background:var(--afims-surface, #FFFFFF);color:var(--afims-text, #1A1B21);cursor:pointer;font-size:12px;line-height:1; }
+    .prp-v-toggle:hover { background:var(--afims-surface-subtle, #F4F7FA); }
+    .prp-v-pill { display:inline-block;margin-left:8px;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;color:#1D4ED8;background:color-mix(in srgb, #2563EB 12%, transparent); }
+    .prp-v-sub > td { background:var(--afims-surface-subtle, #F4F7FA);padding:12px 16px 16px; }
+    .prp-v-inner { background:var(--afims-surface, #FFFFFF);border:1px solid var(--afims-border, #E4ECF2);border-radius:8px;overflow:hidden; }
+    .prp-v-tbl { width:100%;border-collapse:collapse;font-size:13px; }
+    /* this table sits INSIDE .nha-tbl, whose header rules (white text) would apply to it too: override them with !important */
+    #prp-root .prp-v-inner .prp-v-tbl thead th { padding:9px 14px !important;text-align:left;font-size:11px !important;font-weight:700 !important;text-transform:uppercase;letter-spacing:.04em;
+        color:var(--afims-text, #1A1B21) !important;background:var(--afims-surface-subtle, #F4F7FA) !important;border-bottom:1px solid var(--afims-border, #E4ECF2) !important; }
+    #prp-root .prp-v-inner .prp-v-tbl thead th[style*="right"] { text-align:right; }
+    #prp-root .prp-v-inner .prp-v-tbl td { padding:9px 14px;color:var(--afims-text, #1A1B21);border-bottom:1px solid var(--afims-border, #E4ECF2); }
+    .prp-v-tbl tbody tr:last-child td { border-bottom:0; }
+    .prp-v-tbl tbody tr:hover td { background:var(--afims-surface-subtle, #F4F7FA); }
+
     /* details modal */
     .prp-grid { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px 20px;margin-bottom:18px; }
     .prp-grid .wide { grid-column:1 / -1; }
@@ -136,7 +151,7 @@ $_prp_api = Config('API.FIMS_URL');
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                 Refresh
             </button>
-            <button id="prp-add" type="button" class="nha-btn-hdr" style="background:var(--afims-success, #11A752);" title="Search a PO number in the Property Inventory System and add its items to the property records">
+            <button id="prp-add" type="button" class="nha-btn-hdr" style="display:none;background:var(--afims-success, #11A752);" title="Search a PO number in the Property Inventory System and add its items to the property records">
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
                 Add from PIS
             </button>
@@ -148,15 +163,7 @@ $_prp_api = Config('API.FIMS_URL');
     <!-- ═════════ THE LIST: the rows of fims.property_records (cards, then the table). Nothing here is read from PIS. ═════════ -->
     <div id="prp-view-saved">
 
-        <div id="prp-saved-empty" class="nha-table-wrap" style="display:none;">
-            <div class="prp-empty"><strong>No property records yet</strong>
-                Click <b>Add from PIS</b> to search a PO number in the Property Inventory System, select the items and save them here.
-                <br><br><button type="button" class="nha-btn nha-btn-primary" id="prp-go-search" style="font-size:12px;">Add from PIS</button></div>
-        </div>
-
         <div id="prp-saved-result" style="display:none;">
-            <div class="prp-sec-title">Property Record Breakdown by Category</div>
-            <div class="prp-cats" id="prp-cats"></div>
 
             <div class="nha-filters no-print">
                 <div class="nha-filter-row">
@@ -229,6 +236,26 @@ $_prp_api = Config('API.FIMS_URL');
                     <span class="nha-pag-info">Showing <strong><span id="prp-from">0</span>–<span id="prp-to">0</span></strong> of <strong><span id="prp-total">0</span></strong></span>
                     <div id="prp-pagination" class="nha-pag-btns"></div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═════════ ITEMS FROM THE IAR MODULE: the items entered for the property accounts (click one for its details) ═════════ -->
+    <div id="prp-iar-section">
+        <div class="prp-sec-title">Items from the IAR Module</div>
+        <div class="nha-table-wrap">
+            <div class="nha-tbl-scroll">
+                <table class="nha-tbl">
+                    <thead>
+                        <tr>
+                            <th style="width:56px;"></th>
+                            <th>Account</th>
+                            <th>Account Code</th>
+                            <th style="text-align:right;">Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody id="prp-iar-tbody"><tr><td colspan="4"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr></tbody>
+                </table>
             </div>
         </div>
     </div>
@@ -416,11 +443,10 @@ function prp_closeAdd() { $prp('prp-add-overlay').classList.remove('open'); }
 /* ── events ───────────────────────────────────────────────── */
 function prp_bind() {
     $prp('prp-add').addEventListener('click', prp_openAdd);
-    $prp('prp-go-search').addEventListener('click', prp_openAdd);
     $prp('prp-add-close').addEventListener('click', prp_closeAdd);
     $prp('prp-add-done').addEventListener('click', prp_closeAdd);
     $prp('prp-add-overlay').addEventListener('mousedown', e => { if (e.target === $prp('prp-add-overlay')) prp_closeAdd(); });
-    $prp('prp-refresh').addEventListener('click', prp_loadSaved);
+    $prp('prp-refresh').addEventListener('click', () => { prp_loadSaved(); prp_loadIar(); });
 
     // saved records: filters
     $prp('prp-f-status').addEventListener('change', e => { prp_flt.status = e.target.value; prp_apply(); });
@@ -466,10 +492,8 @@ async function prp_loadSaved() {
 
         if (!prp_items.length) {
             $prp('prp-saved-result').style.display = 'none';
-            $prp('prp-saved-empty').style.display = '';
             return;
         }
-        $prp('prp-saved-empty').style.display = 'none';
         $prp('prp-saved-result').style.display = '';
         // the responsibility-center filter: one entry per center that has saved items
         const rcs = [...new Map(prp_items.filter(it => it.rc_name).map(it => [it.rc_name, it.rc_name])).keys()].sort();
@@ -506,6 +530,7 @@ function prp_pickCat(i) {
 }
 
 function prp_renderCats() {
+    if (!$prp('prp-cats')) return;                          // the register's category cards were replaced by the account cards (IAR items)
     $prp('prp-cats').innerHTML = prp_cats.map((c, i) => `
         <div class="prp-cat${prp_flt.cat && prp_flt.cat === c.gl_code ? ' active' : ''}" onclick="prp_pickCat(${i})" title="Click to filter the table by this category">
             <div class="nm">${prp_esc(c.category || 'Uncategorized')}</div>
@@ -614,10 +639,78 @@ function prp_goTo(p) {
     prp_page = p; prp_renderTable();
 }
 
+/* ══════════════ ITEMS FROM THE IAR MODULE ══════════════
+   GET /property-record/iar-items: the items entered in the IAR module for the property accounts. A row opens the item's details. */
+let prp_iar = [];
+let prp_iarGl = '';
+const PRP_ACCOUNTS = [                                       // the property accounts: one row each, even with no item
+    ['1-06-05-020', 'Office Equipment'], ['1-06-05-030', 'Info. And Comm. Tech. Equip.'], ['1-06-05-070', 'Communication Equipment'],
+    ['1-06-05-080', 'Construction & Heavy Equip.'], ['1-06-05-110', 'Medical Equipment'], ['1-06-05-130', 'Sports Equipment'],
+    ['1-06-05-990', 'Other Machinery & Equipment'], ['1-06-06-010', 'Motor Vehicles'], ['1-06-07-010', 'Furniture & Fixtures'],
+    ['1-06-99-990', 'Other Property, Plant & Equipment'],
+];
+const prp_glOf = code => (String(code || '').match(/^(\d+-\d+-\d+-\d+)/) || [])[1] || '';
+async function prp_loadIar() {
+    try {
+        const res  = await fetch(PRP_API + '/iar-items', { credentials: 'same-origin', headers: prp_authHeaders() });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message || 'Failed to load the items of the IAR module.');
+        prp_iar = json.data.items || [];
+    } catch (e) {
+        prp_iar = [];
+        prp_toast(e.message, 'error');                         // the accounts are still listed (0.00)
+    }
+    prp_iarGl = '';
+    prp_renderIar();
+}
+function prp_renderIar() {
+    // the list: one row per account (Account | Account Code) with an arrow that opens its items, like the delivery receipts of the IAR module
+    // every property account is listed, with 0.00 when it has no item (an item posted to a sub-ledger counts under its GL account)
+    const list = PRP_ACCOUNTS.map(([code, title]) => {
+        const items = prp_iar.map((it, i) => [it, i]).filter(([it]) => prp_glOf(it.account_code) === code);
+        return [code, { title, items, total: items.reduce((s, [it]) => s + Number(it.amount || 0), 0) }];
+    });
+    $prp('prp-iar-tbody').innerHTML = list.map(([code, g]) => {
+        const has  = g.items.length > 0;
+        const open = has && prp_iarOpen.has(code);
+        return `<tr>
+            <td>${has ? `<button type="button" class="prp-v-toggle" onclick="prp_toggleIar('${prp_esc(code)}')" aria-expanded="${open}" title="${open ? 'Hide' : 'Show'} items">${open ? '&#9662;' : '&#9656;'}</button>` : ''}</td>
+            <td>${prp_dash(g.title)}${has ? ` <span class="prp-v-pill">${g.items.length} item${g.items.length === 1 ? '' : 's'}</span>` : ''}</td>
+            <td><code class="nha-code">${prp_esc(code)}</code></td>
+            <td style="text-align:right;white-space:nowrap;">${prp_money(g.total)}</td>
+        </tr>` + (open ? `<tr class="prp-v-sub"><td colspan="4"><div class="prp-v-inner"><table class="prp-v-tbl">
+            <thead><tr><th>Description - Item</th><th>Serial No.</th><th>Property No.</th><th>Responsibility Center</th><th>Date Acquired</th></tr></thead>
+            <tbody>${g.items.map(([it, i]) => `<tr style="cursor:pointer;" onclick="prp_openIar(${i})" title="Click to see the details of this item">
+                <td>${prp_dash(it.description)}</td><td>${prp_dash(it.serial_no)}</td><td>${prp_dash(it.property_no)}</td>
+                <td>${prp_dash(it.rc_name)}</td><td style="white-space:nowrap;">${prp_date(it.date_acquired)}</td></tr>`).join('')}</tbody></table></div></td></tr>` : '');
+    }).join('');
+}
+const prp_iarOpen = new Set();                                // the accounts whose items are shown
+function prp_toggleIar(code) { prp_iarOpen.has(code) ? prp_iarOpen.delete(code) : prp_iarOpen.add(code); prp_renderIar(); }
+
+function prp_openIar(i) {
+    const it = prp_iar[i];
+    if (!it) return;
+    const row  = (k, v) => `<div class="prp-md-row"><div class="prp-md-k">${k}</div><div class="prp-md-v">${v}</div></div>`;
+    $prp('prp-md-title').firstElementChild.textContent = 'Item Details';
+    $prp('prp-md-ref').textContent = it.account_code || '';
+    $prp('prp-md-status').innerHTML = '';
+    $prp('prp-modal-body').innerHTML = `<div class="prp-md-card">` +
+        row('Description - Item', prp_dash(it.description)) +
+        row('Responsibility Center', prp_dash(it.rc_name)) +
+        row('Date Acquired', prp_date(it.date_acquired)) +
+        row('Serial No.', prp_dash(it.serial_no)) +
+        row('Prop. No.', prp_dash(it.property_no)) +
+        row('Acquisition Cost', `<span class="prp-md-num">${prp_money(it.amount)}</span>`) +
+        `</div>`;
+    $prp('prp-overlay').classList.add('open');
+}
+
 /* details of a saved record (read-only) — the same design as the Memo Request details */
 function prp_open(i) {
     const it = prp_items[i];
     if (!it) return;
+    $prp('prp-md-title').firstElementChild.textContent = 'Property Record Details';
     const row  = (k, v) => `<div class="prp-md-row"><div class="prp-md-k">${k}</div><div class="prp-md-v">${v}</div></div>`;
     const card = (title, inner) => `<div class="prp-md-card"><h4 class="prp-md-card-title">${title}</h4>${inner}</div>`;
     const par  = it.row_type === 'PAR';
@@ -836,5 +929,6 @@ function prp_start() {
     $prp('prp-yr').textContent = new Date().getFullYear();
     prp_bind();
     prp_loadSaved();
+    prp_loadIar();
 }
 </script>

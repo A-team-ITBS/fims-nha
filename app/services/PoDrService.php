@@ -32,8 +32,14 @@ class PoDrService
 {
     private string $h = 'fims.inspection_acceptance_report';   // po_number, iar_number, si_number, si_date, line_transaction
 
-    /** DR total at or above which the optional items (description, serial, amount, property no. — one line each) apply. */
+    /** An account row of this amount or more needs items (description required, serial, amount, property no. — one line each). */
     private const ITEM_MIN_AMOUNT = 50000;
+
+    /** Property, plant & equipment accounts (the property record categories): offered first in the Account Code picker. */
+    private const PRIORITY_ACCOUNTS = [
+        '1-06-05-020', '1-06-05-030', '1-06-05-070', '1-06-05-080', '1-06-05-110',
+        '1-06-05-130', '1-06-05-990', '1-06-06-010', '1-06-07-010', '1-06-99-990',
+    ];
 
     /** Pro-forma JEV: the DR total is credited to Accounts Payable. */
     private const PAYABLE_ACCOUNT = '2-01-01-010';
@@ -210,10 +216,18 @@ class PoDrService
         }
         unset($en);
 
-        // The optional items only apply from ITEM_MIN_AMOUNT (below it there are none): one line per item, any number of lines.
-        // A line with nothing entered is skipped; every serial number must be different.
+        // Only the account rows of ITEM_MIN_AMOUNT or more need items (an account row below it has none). The items must be
+        // described (description required) and their amounts must add up to the total of those account rows
+        // (e.g. rows of 50,000 + 300,000 → items totalling 350,000). A line with nothing entered is skipped; every serial no. must differ.
+        $qualCents = 0;
+        foreach ($entries as $en) {
+            if ((float) $en['amount'] >= self::ITEM_MIN_AMOUNT) {
+                $qualCents += (int) round((float) $en['amount'] * 100);
+            }
+        }
         $items = [];
-        if ((float) $total >= self::ITEM_MIN_AMOUNT) {
+        if ($qualCents > 0) {
+            $itemCents = 0;
             $serials = [];
             foreach (array_values(is_array($d['items'] ?? null) ? $d['items'] : []) as $i => $it) {
                 if (!is_array($it)) {
@@ -226,6 +240,10 @@ class PoDrService
                     'amount'      => null,
                     'property_no' => $this->nullable($it['property_no'] ?? null),
                 ];
+                $acct = $this->nullable($it['account_code'] ?? null);   // the account row the item belongs to (kept to show it on the Property Records page)
+                if ($acct !== null && isset($titles[$acct])) {
+                    $row['account_code'] = $acct;
+                }
                 $amtRaw = trim((string) ($it['amount'] ?? ''));
                 if ($amtRaw !== '') {
                     $amt = $this->money($amtRaw);
@@ -243,6 +261,13 @@ class PoDrService
                 if (!$row) {
                     continue;
                 }
+                if (!isset($row['description'])) {
+                    return [null, null, "Item {$n}: description is required."];
+                }
+                if (!isset($row['amount'])) {
+                    return [null, null, "Item {$n}: amount is required."];
+                }
+                $itemCents += (int) round((float) $row['amount'] * 100);
                 if (isset($row['serial_no'])) {
                     $key = mb_strtolower($row['serial_no']);
                     if (isset($serials[$key])) {
@@ -251,6 +276,10 @@ class PoDrService
                     $serials[$key] = true;
                 }
                 $items[] = $row;
+            }
+            if ($itemCents !== $qualCents) {
+                return [null, null, 'The items total ' . number_format($itemCents / 100, 2) . ' but must equal ' . number_format($qualCents / 100, 2)
+                    . ' (the account rows of ' . number_format(self::ITEM_MIN_AMOUNT, 2) . ' or more).'];
             }
         }
 
@@ -333,13 +362,32 @@ class PoDrService
                                    THEN REPLACE(ln.value->>'requested_amount', ',', '')::numeric
                                  ELSE 0
                                END)
-                    FROM jsonb_array_elements(CASE jsonb_typeof(a.line_transaction)
-                                                WHEN 'array'  THEN a.line_transaction
-                                                WHEN 'object' THEN jsonb_build_array(a.line_transaction)
-                                                ELSE '[]'::jsonb
-                                              END) AS ln(value)
+                    FROM jsonb_array_elements(" . $this->allocationLinesSql() . ") AS ln(value)
                     WHERE jsonb_typeof(ln.value) = 'object'
                 ), 0)";
+    }
+
+    /**
+     * SQL (correlated to the outer alias `a` = fims.budget_allocation) for ALL the lines of an allocation as ONE jsonb array. Newer
+     * databases keep the lines on the project blocks (fims.budget_allocation_project.line_transaction — one row per block, the
+     * column was dropped from budget_allocation); an older database still has budget_allocation.line_transaction. Whichever exists is used.
+     */
+    private function allocationLinesSql(): string
+    {
+        static $blocks = null;
+        $blocks ??= (int) App\ExecuteScalar("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'fims' AND table_name = 'budget_allocation_project'", 'DB') > 0;
+        if ($blocks) {
+            return "(SELECT COALESCE(jsonb_agg(bl.value), '[]'::jsonb)
+                       FROM fims.budget_allocation_project bap
+                       CROSS JOIN LATERAL jsonb_array_elements(CASE jsonb_typeof(bap.line_transaction)
+                                                                 WHEN 'array'  THEN bap.line_transaction
+                                                                 WHEN 'object' THEN jsonb_build_array(bap.line_transaction)
+                                                                 ELSE '[]'::jsonb
+                                                               END) AS bl(value)
+                      WHERE bap.allocation_id = a.allocation_id AND bap.deleted_at IS NULL)";
+        }
+
+        return "(CASE jsonb_typeof(a.line_transaction) WHEN 'array' THEN a.line_transaction WHEN 'object' THEN jsonb_build_array(a.line_transaction) ELSE '[]'::jsonb END)";
     }
 
     /** The budget allocation's line_transaction → [ {account_code, account_title, amount (= requested_amount)} ] for pre-filling the form. */
@@ -393,13 +441,13 @@ class PoDrService
         $sql = "SELECT * FROM (
                     SELECT DISTINCT ON (a.po_number)
                            a.po_number, TO_CHAR(COALESCE(pom.po_date, a.created_at), 'YYYY-MM-DD') AS po_date, a.created_at,
-                           a.requesting_rc_id, rc.rc_name AS requesting_office,
+                           a.allocation_number AS rfa_number, a.requesting_rc_id, rc.rc_name AS requesting_office,
                            COALESCE(a.vendor_id, pom.vendor_id) AS vendor_id, COALESCE(v.vendor_name, pom.vendor_name) AS vendor_name,
                            " . $this->requestedTotalSql() . " AS po_amount,
                            (SELECT COALESCE(SUM((d.value ->> 'total_amount')::numeric), 0)
                               FROM {$this->h} i, jsonb_array_elements(i.line_transaction) AS d(value)
                              WHERE i.po_number = a.po_number) AS dr_total,
-                           a.line_transaction AS allocation_lines
+                           " . $this->allocationLinesSql() . " AS allocation_lines
                     FROM fims.budget_allocation a
                     LEFT JOIN fims.responsibility_code rc ON rc.rc_id = a.requesting_rc_id
                     LEFT JOIN fims.vendors v ON v.vendor_id = a.vendor_id
@@ -449,12 +497,21 @@ class PoDrService
                 $s      = $this->q('%' . trim($search) . '%');
                 $where .= " AND (c.account_code ILIKE {$s} OR c.account_title ILIKE {$s} OR p.account_code ILIKE {$s})";
             }
+            // With nothing typed, ONLY the property / equipment accounts (PRIORITY_ACCOUNTS and their sub-ledgers) are offered; once the
+            // user types, the whole chart of accounts is searched (the property accounts still come first).
+            $prio = implode(',', array_map(fn($c) => $this->q($c), self::PRIORITY_ACCOUNTS));
+            if (trim($search) === '') {
+                $where .= " AND (c.account_code IN ({$prio}) OR p.account_code IN ({$prio}))";
+            }
             $rows = App\ExecuteRows(
-                "SELECT DISTINCT ON (c.account_code) c.account_code, c.account_title
-                   FROM fims.chart_of_accounts c
-                   LEFT JOIN fims.chart_of_accounts p ON p.account_id = c.parent_account_id
-                  WHERE {$where}
-                  ORDER BY c.account_code LIMIT 30",
+                "SELECT account_code, account_title FROM (
+                    SELECT DISTINCT ON (c.account_code) c.account_code, c.account_title,
+                           CASE WHEN c.account_code IN ({$prio}) OR p.account_code IN ({$prio}) THEN 0 ELSE 1 END AS prio
+                      FROM fims.chart_of_accounts c
+                      LEFT JOIN fims.chart_of_accounts p ON p.account_id = c.parent_account_id
+                     WHERE {$where}
+                     ORDER BY c.account_code
+                 ) t ORDER BY prio, account_code LIMIT 30",
                 'DB'
             ) ?: [];
 
@@ -487,6 +544,7 @@ class PoDrService
             'requesting_office' => $info['requesting_office'] ?? null,
             'vendor_id'         => $info['vendor_id'] ?? null,
             'vendor_name'       => $info['vendor_name'] ?? null,
+            'rfa_number'        => $info['rfa_number'] ?? null,
             'po_amount'         => $poAmt,
             'dr_total'          => $drTotal,
             'balance'           => $poAmt === null ? null : round($poAmt - $drTotal, 2),

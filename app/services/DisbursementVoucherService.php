@@ -82,6 +82,7 @@ class DisbursementVoucherService
     private string $tableDvAtcLines      = 'fims.disbursement_voucher_atc_lines';
     private string $tableSettingsStatus  = 'fims.settings_status';
     private string $tableBudgetCategory  = 'fims.budget_category';
+    private string $tableRfaProjects     = 'fims.budget_allocation_project';
 
     // Classification tag only (reporting/filtering) — never changes which fields the voucher form
     // shows. NOT a manual/pickable field: it is derived server-side from the voucher's own
@@ -257,7 +258,12 @@ class DisbursementVoucherService
         )));
 
         $rfas = [];
-        if (!$rfaIdsRaw) {
+        // A payroll REMITTANCE DV (Deductions & Remittances → Create Remittance DV) pays withheld deductions already
+        // obligated by the payroll DV's RFA — it draws no new allotment, so it carries no RFA of its own.
+        $remittanceId = $body['payroll_remittance_id'] ?? null;
+        $fields['_remittanceId'] = ($remittanceId !== null && $remittanceId !== '' && ctype_digit((string) $remittanceId)) ? (int) $remittanceId : null;
+
+        if (!$rfaIdsRaw && !$fields['_remittanceId']) {
             $errors[] = 'At least one RFA is required.';
         } else {
             foreach ($rfaIdsRaw as $rfaId) {
@@ -440,7 +446,12 @@ class DisbursementVoucherService
      * Validates the `deductions` array from create()/update()'s body. Each row needs a known,
      * active deduction_type_id and a gross_amount; deduction_amount is either typed directly or
      * computed from rate (rate NULL means "typed directly", same optionality the paper form's
-     * blank Rate column allows). Returns [errors[], rows[]] — rows are ready to insert, in order.
+     * blank Rate column allows). When the chosen type has no default posting account
+     * (deduction_types.account_code IS NULL — e.g. "OTHER", see
+     * "08 - deduction_types_other_recoupment_penalty_vat.sql"), account_code is required here and
+     * validated against the chart of accounts — the Accounting Entries grid can no longer silently
+     * skip that line (see fetchDeductions()/the frontend's vf_/vje_ deduction-row rendering).
+     * Returns [errors[], rows[]] — rows are ready to insert, in order.
      */
     private function prepareDeductions(mixed $rows, float $dvGrossAmount): array
     {
@@ -462,7 +473,7 @@ class DisbursementVoucherService
                 continue;
             }
             $type = App\ExecuteRow(
-                "SELECT deduction_type_id FROM {$this->tableDeductionTypes} WHERE deduction_type_id = " . (int) $typeId . ' AND is_active = TRUE',
+                "SELECT deduction_type_id, name, account_code FROM {$this->tableDeductionTypes} WHERE deduction_type_id = " . (int) $typeId . ' AND is_active = TRUE',
                 'DB'
             );
             if (!$type) {
@@ -490,11 +501,30 @@ class DisbursementVoucherService
                 $errors[] = "Deduction line {$n}: deduction_amount cannot be negative.";
             }
 
+            $accountCode = null;
+            if (empty($type['account_code'])) {
+                $accountCode = trim((string) ($row['account_code'] ?? ''));
+                if ($accountCode === '') {
+                    $errors[] = "Deduction line {$n}: '{$type['name']}' has no default posting account — pick one.";
+                } else {
+                    $account = App\ExecuteRow(
+                        "SELECT posting_allowed FROM {$this->tableCoa} WHERE account_code = " . $this->str($accountCode),
+                        'DB'
+                    );
+                    if (!$account) {
+                        $errors[] = "Deduction line {$n}: account code '{$accountCode}' does not exist in the chart of accounts.";
+                    } elseif (!$account['posting_allowed']) {
+                        $errors[] = "Deduction line {$n}: account code '{$accountCode}' is not postable (it's a summary/header account).";
+                    }
+                }
+            }
+
             $out[] = [
                 'deduction_type_id' => (int) $typeId,
                 'rate'              => $rate,
                 'gross_amount'      => $gross,
                 'deduction_amount'  => $amount,
+                'account_code'      => $accountCode,
             ];
         }
 
@@ -507,9 +537,10 @@ class DisbursementVoucherService
         App\Execute("DELETE FROM {$this->tableDvDeductions} WHERE dv_id = {$dvId}", 'DB');
         foreach ($deductions as $idx => $d) {
             App\Execute(
-                "INSERT INTO {$this->tableDvDeductions} (dv_id, line_number, deduction_type_id, rate, gross_amount, deduction_amount)
+                "INSERT INTO {$this->tableDvDeductions} (dv_id, line_number, deduction_type_id, rate, gross_amount, deduction_amount, account_code)
                  VALUES ({$dvId}, " . ($idx + 1) . ', ' . (int) $d['deduction_type_id'] . ', '
-                . $this->numOrNull($d['rate']) . ', ' . (float) $d['gross_amount'] . ', ' . (float) $d['deduction_amount'] . ')',
+                . $this->numOrNull($d['rate']) . ', ' . (float) $d['gross_amount'] . ', ' . (float) $d['deduction_amount'] . ', '
+                . $this->strOrNull($d['account_code'] ?? null) . ')',
                 'DB'
             );
         }
@@ -736,6 +767,21 @@ class DisbursementVoucherService
      * linkRfas()'s own exclusivity check uses, so an RFA doesn't get stuck unavailable forever just
      * because nothing else explicitly clears budget_allocation.dv_id when a DV is cancelled).
      */
+    /**
+     * line_transaction moved off fims.budget_allocation onto its child fims.budget_allocation_project
+     * ("03 - alter_table/48 - budget_allocation_drop_project_columns.sql") — a memo request can now
+     * cover several Project blocks, each with its own itemized COB draws. This flattens every block's
+     * line_transaction array into one combined array per RFA, matching the single array withRfaBudget()
+     * and rfaFirstLineAccount() used to read directly off a.line_transaction.
+     */
+    private function rfaLineTransactionSql(): string
+    {
+        return "(SELECT COALESCE(jsonb_agg(elem), '[]'::jsonb)
+                  FROM {$this->tableRfaProjects} bap
+                  CROSS JOIN LATERAL jsonb_array_elements(COALESCE(bap.line_transaction, '[]'::jsonb)) elem
+                  WHERE bap.allocation_id = a.allocation_id AND bap.deleted_at IS NULL) AS line_transaction";
+    }
+
     private function rfaAvailableSql(?int $excludeDvId): string
     {
         $exclude = $excludeDvId !== null ? " OR a.dv_id = {$excludeDvId}" : '';
@@ -770,7 +816,7 @@ class DisbursementVoucherService
                 "SELECT a.allocation_id, a.allocation_number, a.request_referrence_no, a.fiscal_year,
                         a.requesting_rc_id, rc.rc_name AS department_name,
                         a.vendor_id, v.vendor_name, v.address AS vendor_address, v.tin AS vendor_tin,
-                        a.po_number, a.po_amount, a.line_transaction, a.dv_id,
+                        a.po_number, a.po_amount, {$this->rfaLineTransactionSql()}, a.dv_id,
                         a.category_id, bc.name AS category_name, a.description
                  FROM {$this->tableRfa} a
                  LEFT JOIN {$this->tableRc}             rc ON rc.rc_id = a.requesting_rc_id
@@ -800,7 +846,7 @@ class DisbursementVoucherService
                 "SELECT a.allocation_id, a.allocation_number, a.request_referrence_no, a.fiscal_year,
                         a.requesting_rc_id, rc.rc_name AS department_name,
                         a.vendor_id, v.vendor_name, v.address AS vendor_address, v.tin AS vendor_tin,
-                        a.po_number, a.po_amount, a.line_transaction,
+                        a.po_number, a.po_amount, {$this->rfaLineTransactionSql()},
                         a.category_id, bc.name AS category_name, a.description
                  FROM {$this->tableRfa} a
                  LEFT JOIN {$this->tableRc}             rc ON rc.rc_id = a.requesting_rc_id
@@ -928,6 +974,7 @@ class DisbursementVoucherService
             $row['deductions']         = $this->fetchDeductions($dvId);
             $row['atc_lines']          = $this->fetchAtcLines($dvId);
             $row['payroll']            = (new PayrollManagementService())->forDv($dvId); // imported payroll month this DV pays, or null
+            $row['remittance']         = (new DeductionRemittanceService())->forDv($dvId); // payroll remittance this DV pays (GSIS/BIR/…), or null
 
             // Every RFA currently linked to this DV — the link lives on the RFA side
             // (budget_allocation.dv_id, see linkRfas()), so this is a plain reverse lookup, not a
@@ -939,7 +986,7 @@ class DisbursementVoucherService
                     "SELECT a.allocation_id, a.allocation_number, a.request_referrence_no, a.fiscal_year,
                             a.requesting_rc_id, rc.rc_name AS department_name,
                             a.vendor_id, v.vendor_name, v.address AS vendor_address, v.tin AS vendor_tin,
-                            a.po_number, a.po_amount, a.line_transaction, a.dv_id,
+                            a.po_number, a.po_amount, {$this->rfaLineTransactionSql()}, a.dv_id,
                             a.category_id, bc.name AS category_name, a.description
                      FROM {$this->tableRfa} a
                      LEFT JOIN {$this->tableRc}             rc ON rc.rc_id = a.requesting_rc_id
@@ -982,13 +1029,19 @@ class DisbursementVoucherService
 
     /**
      * This DV's deduction lines (e.g. retention), set by Originating at creation. account_code is
-     * the deduction type's default posting account (fims.deduction_types.account_code), if any —
-     * what the Accounting Entries grid auto-fills a credit line from.
+     * the EFFECTIVE posting account the Accounting Entries grid auto-fills a credit line from:
+     * the deduction type's own default (fims.deduction_types.account_code) when it has one, else
+     * the per-line override the preparer picked (fims.disbursement_voucher_deductions.account_code
+     * — required by prepareDeductions() whenever the type has no default, e.g. "OTHER").
+     * type_account_code is the type's own default alone (null for "OTHER") — the frontend uses it
+     * to decide whether to show the account-code picker at all.
      */
     private function fetchDeductions(int $dvId): array
     {
         return App\ExecuteRows(
-            "SELECT dvd.dv_deduction_id, dvd.line_number, dvd.deduction_type_id, dt.code, dt.name, dt.account_code,
+            "SELECT dvd.dv_deduction_id, dvd.line_number, dvd.deduction_type_id, dt.code, dt.name,
+                    dt.account_code AS type_account_code,
+                    COALESCE(dt.account_code, dvd.account_code) AS account_code,
                     dvd.rate, dvd.gross_amount, dvd.deduction_amount
              FROM {$this->tableDvDeductions} dvd
              JOIN {$this->tableDeductionTypes} dt ON dt.deduction_type_id = dvd.deduction_type_id
@@ -1981,6 +2034,9 @@ class DisbursementVoucherService
             if ($f['_payrollPeriodId'] && ($payrollError = (new PayrollManagementService())->validateDvLink($f['_payrollPeriodId'])) !== null) {
                 $errors[] = $payrollError;
             }
+            if ($f['_remittanceId'] && ($remError = (new DeductionRemittanceService())->validateDvLink($f['_remittanceId'])) !== null) {
+                $errors[] = $remError;
+            }
             if ($errors) {
                 return ['success' => false, 'message' => 'Validation failed.', 'errors' => $errors];
             }
@@ -2026,6 +2082,9 @@ class DisbursementVoucherService
                 $this->replaceDeductions((int) $row['dv_id'], $f['deductions']);
                 if ($f['_payrollPeriodId']) {
                     (new PayrollManagementService())->syncDvLink((int) $row['dv_id'], $f['_payrollPeriodId']);
+                }
+                if ($f['_remittanceId']) {
+                    (new DeductionRemittanceService())->syncDvLink((int) $row['dv_id'], $f['_remittanceId']);
                 }
 
                 $rfaError = $this->linkRfas((int) $row['dv_id'], $f['_rfaRows']);
@@ -2087,6 +2146,9 @@ class DisbursementVoucherService
             if ($f['_payrollPeriodId'] && ($payrollError = (new PayrollManagementService())->validateDvLink($f['_payrollPeriodId'], $dvId)) !== null) {
                 $errors[] = $payrollError;
             }
+            if ($f['_remittanceId'] && ($remError = (new DeductionRemittanceService())->validateDvLink($f['_remittanceId'], $dvId)) !== null) {
+                $errors[] = $remError;
+            }
             if ($errors) {
                 return ['success' => false, 'message' => 'Validation failed.', 'errors' => $errors];
             }
@@ -2135,6 +2197,7 @@ class DisbursementVoucherService
 
                 $this->replaceDeductions($dvId, $f['deductions']);
                 (new PayrollManagementService())->syncDvLink($dvId, $f['_payrollPeriodId']); // also releases a month no longer picked
+                (new DeductionRemittanceService())->syncDvLink($dvId, $f['_remittanceId']);
 
                 $rfaError = $this->linkRfas($dvId, $f['_rfaRows']);
                 if ($rfaError !== null) {
@@ -2320,6 +2383,7 @@ class DisbursementVoucherService
                 }
                 if ($new === 'CANCELLED') {
                     (new PayrollManagementService())->releaseDv($dvId); // a payroll month this DV paid can get a new DV
+                    (new DeductionRemittanceService())->releaseDv($dvId); // a remittance this DV paid is Scheduled again
                 }
 
                 App\Execute('COMMIT', 'DB');
@@ -2376,6 +2440,7 @@ class DisbursementVoucherService
             // doesn't block the RFA" check can't match a dv_id whose row no longer exists at all.
             App\Execute("UPDATE {$this->tableRfa} SET dv_id = NULL WHERE dv_id = {$dvId}", 'DB');
             (new PayrollManagementService())->releaseDv($dvId); // same for a payroll month this DV paid
+            (new DeductionRemittanceService())->releaseDv($dvId); // and a payroll remittance it paid
             App\Execute("DELETE FROM {$this->table} WHERE dv_id = {$dvId}", 'DB');
 
             return ['success' => true, 'message' => "Disbursement Voucher {$cur['dv_no']} deleted successfully."];

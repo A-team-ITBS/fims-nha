@@ -489,6 +489,7 @@ let vf_bound   = false;
 let vf_paymentsPrior = 0;    // sum of net_amount other active vouchers already drew against the selected RFA(s)
 let vf_selectedRfaIds = [];  // allocation_id values picked in the RFA multi-select, in selection order
 let vf_payrollPeriodId = null; // imported payroll month (payroll_period_id) this DV pays — picked in the Vendor dropdown's Payroll group — or null
+let vf_remittanceId = null;    // payroll remittance (payroll_remittance_id) this DV pays to GSIS / BIR / … — Voucher?remittance={id} — or null (no RFA needed)
 let vf_payrollMonths = [];     // imported payroll months a DV can be prepared from (GET payroll-management/available)
 let vf_attachments = [];     // staged Supporting Documents: { document_name, link, size, uploading }
 let vf_attDirty = false;     // true once the attachments list has changed since open — avoids re-registering an unchanged batch on every save
@@ -609,6 +610,8 @@ function vf_reset() {
     vf_renderRfaChips();
 
     vf_payrollPeriodId = null;
+    vf_remittanceId = null;
+    $vf('vf-rfa-search').disabled = false;
 
     vf_attachments  = [];
     vf_attDirty     = false;
@@ -937,7 +940,7 @@ async function vf_onRfaSelectionChange() {
         // (e.g. a partial draw), this just stops it from defaulting to blank/stale on every
         // selection change.
         // …except a payroll DV: its Amount is the imported payroll's gross (vf_applyPayroll()).
-        if (!vf_payrollPeriodId) {
+        if (!vf_payrollPeriodId && !vf_remittanceId) {
             $vf('vf-gross').value = vf_fmtMoneyVal(details.filter(Boolean).reduce((s, r) => s + (Number(r.remaining_balance) || 0), 0));
         }
 
@@ -1031,8 +1034,9 @@ async function vf_onVendorChange() {
  */
 function vf_syncAutoJevLines() {
     // A payroll DV's Accounting Entries come from the imported payroll (Dr each earnings account, Cr each
-    // deduction account, Cr Accounts Payable for the net pay — vf_applyPayroll()); no auto lines on top.
-    if (vf_payrollPeriodId) {
+    // deduction account, Cr Accounts Payable for the net pay — vf_applyPayroll()); a remittance DV's from its
+    // remittance (Dr the payables / gov't share, Cr Accounts Payable — vf_openForRemittance()); no auto lines on top.
+    if (vf_payrollPeriodId || vf_remittanceId) {
         $vf('vf-jev-tbody').querySelectorAll('tr.vje-line[data-auto-source]').forEach(tr => tr.remove());
         vf_recalcJev();
         return;
@@ -1049,14 +1053,15 @@ function vf_syncAutoJevLines() {
     const dedIds = new Set();
     let dedCreditTotal = 0;
     $vf('vf-ded-container').querySelectorAll('.vf-ded-row').forEach(row => {
-        const idx    = row.id.replace('vf-ded-row-', '');
-        const typeId = row.dataset.typeId;
-        const amount = vf_numVal(row.querySelector('.vf-ded-amount').value);
-        const type   = vf_dedTypes.find(t => String(t.deduction_type_id) === String(typeId));
-        if (!typeId || !type?.account_code || amount <= 0) return;
+        const idx       = row.id.replace('vf-ded-row-', '');
+        const typeId    = row.dataset.typeId;
+        const amount    = vf_numVal(row.querySelector('.vf-ded-amount').value);
+        const type      = vf_dedTypes.find(t => String(t.deduction_type_id) === String(typeId));
+        const acctCode  = type?.account_code || row.querySelector('.vf-ded-acct')?.value.trim() || '';
+        if (!typeId || !acctCode || amount <= 0) return;
         dedIds.add(idx);
         dedCreditTotal += amount;
-        vf_upsertAutoLine(`ded:${idx}`, { account_code: type.account_code, debit: 0, credit: amount, description: type.name });
+        vf_upsertAutoLine(`ded:${idx}`, { account_code: acctCode, debit: 0, credit: amount, description: type.name });
     });
     vf_pruneAutoLines('ded:', id => dedIds.has(id));
 
@@ -1240,9 +1245,14 @@ async function vf_persistAttachments() {
 /* ── Deductions (optional — e.g. contractor retention) ─────────
    The type is picked once, up front, from its own "+ TYPE" pill (vf_renderDedTypeButtons) instead
    of a per-row <select> — each row is created already bound to one fixed deduction type. */
+// A deduction type with no default posting account (account_code NULL — e.g. "OTHER", see
+// "08 - deduction_types_other_recoupment_penalty_vat.sql") used to silently get no Accounting
+// Entries line at all. Now the preparer must pick one here — required, same searchable
+// chart-of-accounts picker the Accounting Entries grid itself uses (vf_coaOptions).
 function vf_addDeductionLine(d = null) {
     const idx = ++vf_dedSeq;
     const t = vf_dedTypes.find(t => String(t.deduction_type_id) === String(d?.deduction_type_id));
+    const needsAcct = !!t && !t.account_code;
     const div = document.createElement('div');
     div.className = 'vf-ded-row';
     div.id = `vf-ded-row-${idx}`;
@@ -1255,11 +1265,23 @@ function vf_addDeductionLine(d = null) {
             <div class="nha-fg"><label>Rate (%)</label><input type="number" class="vf-ded-rate" min="0" step="0.01" placeholder="e.g. 10"></div>
             <div class="nha-fg"><label>Gross Amount (₱)</label><input type="text" class="vf-ded-gross" readonly></div>
             <div class="nha-fg"><label>Deduction Amount (₱)</label><input type="text" inputmode="decimal" class="vf-ded-amount" placeholder="Auto-computed"></div>
-        </div>`;
+        </div>
+        ${needsAcct ? `<div class="nha-fg" style="margin-top:8px;">
+            <label>Posting Account <span class="nha-req">*</span></label>
+            <input type="text" class="vf-ded-acct" placeholder="Search GL account code (UACS)…">
+            <span class="vf-hint">No default account for "${vf_esc(t?.name)}" — required before this can post to the General Ledger.</span>
+        </div>` : ''}`;
     $vf('vf-ded-container').appendChild(div);
 
     div.querySelector('.vf-ded-rate').addEventListener('input', () => vf_recalcDeductionLine(idx));
     vf_bindMoneyInput(div.querySelector('.vf-ded-amount'));
+
+    if (needsAcct) {
+        const acctInput = div.querySelector('.vf-ded-acct');
+        acctInput.value = d?.account_code ?? '';
+        nhaSearchableSelect(acctInput, vf_coaOptions.map(a => ({ value: a.account_code, label: a.account_title })), () => vf_recalcDeductionLine(idx));
+        acctInput.addEventListener('input', () => vf_recalcDeductionLine(idx));
+    }
 
     if (d) {
         div.querySelector('.vf-ded-rate').value = d.rate ?? '';
@@ -1307,6 +1329,7 @@ function vf_collectDeductions() {
             rate             : row.querySelector('.vf-ded-rate').value === '' ? null : parseFloat(row.querySelector('.vf-ded-rate').value),
             gross_amount     : vf_numVal($vf('vf-gross').value),
             deduction_amount : amount,
+            account_code     : row.querySelector('.vf-ded-acct')?.value.trim() || null,
         });
     });
     return out;
@@ -1662,6 +1685,62 @@ async function vf_openForPayroll(periodId) {
     await vf_onVendorChange();
 }
 
+/**
+ * Deductions & Remittances' "Create Remittance DV" (Voucher?remittance={id}): a new DV paying a scheduled payroll
+ * remittance to its agency — GET deduction-remittance/dv-data/{id}: claimant = the agency, particulars, account, amount,
+ * and the entry (Dr the payables / gov't share, Cr Accounts Payable). No RFA: the payroll DV already obligated it.
+ */
+async function vf_openForRemittance(remittanceId) {
+    await vf_open(0);
+    window.PagePreloader?.show();
+    try {
+        const res = await vf_authFetch(VF_API + '/' + 'deduction-remittance/dv-data/' + Number(remittanceId));
+        if (res.status === 401) throw new Error(VF_SESSION_EXPIRED_MSG);
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || !json.success) throw new Error(json.message || 'HTTP ' + res.status);
+        vf_applyRemittance(json.data);
+    } catch (e) {
+        vf_showErrors([e.message]);
+    } finally {
+        window.PagePreloader?.hide();
+    }
+}
+
+function vf_applyRemittance(d) {
+    vf_remittanceId = Number(d.payroll_remittance_id);
+    vf_selectedRfaIds = [];
+    vf_renderRfaChips();
+    $vf('vf-rfa-search').disabled = true;
+    $vf('vf-vendor').value = '';
+    $vf('vf-claimant').value         = d.claimant_name;
+    $vf('vf-claimant-address').value = '';
+    $vf('vf-claimant-tin').value     = '';
+    $vf('vf-particulars').value      = d.particulars;
+    $vf('vf-account-code').value     = d.account_code || '';
+    $vf('vf-gross').value            = vf_fmtMoneyVal(d.gross_amount);
+    ['claimant', 'particulars', 'gross', 'account-code', 'rfa'].forEach(vf_clearFieldError);
+    $vf('vf-ded-container').innerHTML = '';
+    vf_dedSeq = 0;
+    $vf('vf-jev-tbody').innerHTML = '';
+    vf_jevSeq = 0;
+    (d.lines ?? []).forEach(l => vf_addJevLine(l));
+    vf_renumberJev();
+    vf_recalc();
+    vf_refreshAllJevHints();
+    vf_showRemittanceCard(d);
+}
+
+/** The vendor card shows the remittance (agency, payroll month, employee / government share, no RFA needed). */
+function vf_showRemittanceCard(d) {
+    $vf('vf-vc-name').textContent    = d.claimant_name || d.agency_name;
+    $vf('vf-vc-type').textContent    = `Payroll Remittance — ${d.agency_name} ${d.label}`;
+    $vf('vf-vc-address').textContent = d.employee_share !== undefined
+        ? `Employee share ${vf_peso(d.employee_share)} · Government share ${vf_peso(d.employer_share)} · Total ${vf_peso(d.gross_amount)}`
+        : `Total ${vf_peso(d.total_amount)}`;
+    $vf('vf-vc-tin').textContent     = 'No RFA needed — already obligated by the payroll DV';
+    $vf('vf-vendor-card').classList.add('visible');
+}
+
 /** Undo vf_applyPayroll(): empties every field the payroll month filled, then auto Accounting Entries resume. */
 function vf_clearPayrollFill() {
     vf_payrollPeriodId = null;
@@ -1715,6 +1794,12 @@ async function vf_loadExisting() {
         vf_payrollPeriodId = Number(dv.payroll.payroll_period_id);
         $vf('vf-vendor').value = VF_PAYROLL_PREFIX + vf_payrollPeriodId;
         vf_showPayrollCard({ ...dv.payroll, claimant_name: dv.claimant_name });
+    }
+    // A payroll remittance DV (GSIS / BIR / …): keeps its remittance, no RFA
+    if (dv.remittance) {
+        vf_remittanceId = Number(dv.remittance.payroll_remittance_id);
+        $vf('vf-rfa-search').disabled = true;
+        vf_showRemittanceCard({ ...dv.remittance, claimant_name: dv.claimant_name });
     }
 
     $vf('vf-po-number').value        = dv.po_number || '';
@@ -1778,11 +1863,19 @@ function vf_validate() {
     const vf_hasJevLines = vf_collectJevLines().length > 0;
     $vf('vf-book-req').style.display = vf_hasJevLines ? 'inline' : 'none';
     check(!vf_hasJevLines || !!$vf('vf-book').value, 'book', 'Book is required once Accounting Entries lines are filled in.');
-    check(vf_selectedRfaIds.length > 0, 'rfa',      'At least one RFA is required.');
+    // a remittance DV pays deductions the payroll DV's RFA already obligated — no RFA of its own
+    check(vf_remittanceId || vf_selectedRfaIds.length > 0, 'rfa', 'At least one RFA is required.');
     check(!!$vf('vf-claimant').value.trim(), 'claimant', 'Claimant Name is required.');
     check(!!$vf('vf-particulars').value.trim(), 'particulars', 'Particulars is required.');
     check((vf_numVal($vf('vf-gross').value)) > 0, 'gross', 'Amount must be greater than zero.');
     check(!!$vf('vf-account-code').value.trim(), 'account-code', 'Account Code is required.');
+
+    $vf('vf-ded-container').querySelectorAll('.vf-ded-row').forEach(row => {
+        const acctInput = row.querySelector('.vf-ded-acct');
+        if (!acctInput) return; // this deduction type already has a default posting account
+        const label = row.querySelector('.vf-ded-type-label')?.textContent || 'This deduction';
+        if (!acctInput.value.trim()) errors.push(`${label} has no default posting account — pick one before saving.`);
+    });
 
     return errors;
 }
@@ -1827,6 +1920,7 @@ async function vf_save(status) {
         atc_lines          : vf_collectAtcLines(),
         lines              : vf_collectJevLines(),
         payroll_period_id  : vf_payrollPeriodId,
+        payroll_remittance_id : vf_remittanceId,
         status,
     };
 

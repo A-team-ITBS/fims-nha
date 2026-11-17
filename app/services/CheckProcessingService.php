@@ -527,12 +527,15 @@ class CheckProcessingService
              JOIN {$this->tableSettingsStatus} st ON st.id = dv.status_id
              LEFT JOIN LATERAL (
                  -- A DV can cite more than one RFA (fims.budget_allocation.dv_id,
-                 -- allocation_type = 'RFA' — see DisbursementVoucherService::linkRfas()),
-                 -- each with its own program_code, so this is every DISTINCT program
+                 -- allocation_type = 'RFA' — see DisbursementVoucherService::linkRfas()), and each
+                 -- RFA can itself cover more than one Project block, each with its own program_code
+                 -- (fims.budget_allocation_project — see 03-alter_table/48-
+                 -- budget_allocation_drop_project_columns.sql), so this is every DISTINCT program
                  -- name across all of them, not a single value.
                  SELECT STRING_AGG(DISTINCT p.program_name, ', ' ORDER BY p.program_name) AS program_names
                  FROM fims.budget_allocation a
-                 JOIN fims.program p ON p.program_code = a.program_code
+                 JOIN fims.budget_allocation_project bap ON bap.allocation_id = a.allocation_id AND bap.deleted_at IS NULL
+                 JOIN fims.program p ON p.program_code = bap.program_code
                  WHERE a.dv_id = dv.dv_id AND a.allocation_type = 'RFA'
              ) prog ON TRUE
              WHERE st.status_for = 'disbursement_voucher' AND st.name = 'FOR_TREASURY'

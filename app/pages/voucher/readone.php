@@ -84,6 +84,26 @@ $_vr_rcId          = $_vr_isSysAdmin ? null : ($_vr_userRow['rc_id'] ?? null);
 #vr-root .vje-edit-table input { width: 100%; font-size: 12.5px; padding: 6px 8px; border: 1px solid var(--afims-border, #E4ECF2); border-radius: 6px; box-sizing: border-box; font-family: inherit; }
 #vr-root .vje-edit-table tr.vr-l-total td { border-top: 2px solid var(--afims-border, #E4ECF2); border-bottom: none; font-weight: 700; text-align: right; }
 
+/* "Document" layout — lettered sections (A/B/C/D) styled like a printed form, same convention as
+   app/pages/voucher/form.php's own vf-doc-* rules (this view is the read-only counterpart of that
+   form). Purely a presentation layer over the existing #vr-root markup — no id or JS binding
+   renamed. */
+#vr-root .vr-doc-section { margin-bottom: 22px; }
+#vr-root .vr-doc-section-hdr {
+    font-size: 15px; font-weight: 700; color: var(--afims-heading-fill, #000E3E);
+    margin: 0 0 12px; letter-spacing: .01em;
+}
+#vr-root .vr-doc-table { width: 100%; border-collapse: collapse; border: 1px solid var(--afims-border, #D7DCE6); margin-bottom: 14px; }
+#vr-root .vr-doc-table td { border: 1px solid var(--afims-border, #D7DCE6); padding: 10px 14px; vertical-align: top; width: 50%; }
+#vr-root .vr-doc-table td.vr-doc-full { width: 100%; }
+#vr-root .vr-doc-table .vr-doc-k { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--afims-text-muted, #62657E); margin: 0 0 6px; }
+#vr-root .vr-doc-summary-table { width: 100%; border-collapse: collapse; border: 1px solid var(--afims-border, #D7DCE6); margin-top: 14px; }
+#vr-root .vr-doc-summary-table td { border: 1px solid var(--afims-border, #D7DCE6); padding: 10px 14px; font-size: 13px; }
+#vr-root .vr-doc-summary-table td:first-child { font-weight: 600; color: var(--afims-text, #1C1E29); }
+#vr-root .vr-doc-summary-table td:last-child { text-align: right; font-family: "IBM Plex Mono", monospace; font-weight: 600; width: 220px; }
+#vr-root .vr-doc-summary-table tr.vr-doc-summary-final td { font-weight: 700; background: var(--afims-surface-subtle, #F4F7FA); text-transform: uppercase; font-size: 12.5px; }
+#vr-root .vr-doc-summary-table tr.vr-doc-summary-final td:last-child { text-transform: none; font-size: 14px; }
+
 @media print {
     body * { visibility: hidden; }
     #vr-overlay, #vr-overlay * { visibility: visible; }
@@ -189,22 +209,6 @@ function vr_render(dv) {
     const rejection = dv.status === 'REJECTED' && dv.rejection_reason
         ? `<div class="vr-rejection"><strong>Rejected:</strong> ${vr_esc(dv.rejection_reason)}</div>` : '';
 
-    const claimantSection = `
-        <div class="vr-card">
-            <p class="vr-card-title">Claimant &amp; Particulars</p>
-            <dl class="vr-dl">
-                <div><dt>Claimant</dt><dd>${vr_esc(dv.claimant_name) || '—'}</dd></div>
-                <div><dt>Address / Employee No. / TIN</dt><dd>${vr_esc(dv.claimant_address) || '—'}${dv.employee_no_tin ? ' / ' + vr_esc(dv.employee_no_tin) : ''}</dd></div>
-                <div><dt>PO Number</dt><dd>${vr_esc(dv.po_number) || '—'}</dd></div>
-                <div><dt>PO Amount</dt><dd>${dv.po_amount ? vr_peso(dv.po_amount) : '—'}</dd></div>
-            </dl>
-            <p class="vr-particulars" style="margin-top:12px;">${vr_esc(dv.particulars) || '—'}</p>
-            <dl class="vr-dl vr-dl3" style="margin-top:12px;">
-                <div><dt>Gross Amount</dt><dd>${vr_peso(dv.gross_amount)}</dd></div>
-                <div><dt>Net Amount</dt><dd>${vr_peso(dv.net_amount)}</dd></div>
-            </dl>
-        </div>`;
-
     // Read-only fallback for every stage OTHER than FOR_ACCOUNTING — while FOR_ACCOUNTING,
     // vje_deductionCard() (part of vje_section()) renders the SAME data as an editable grid instead
     // (Accounting can now add/change/remove Deduction rows, not just Originating at creation).
@@ -228,45 +232,99 @@ function vr_render(dv) {
             </table>
         </div>` : '';
 
+    const totalDeductions = (dv.deductions ?? []).reduce((s, d) => s + (Number(d.deduction_amount) || 0), 0);
+    const attachmentsHtml = vr_attachmentsSection(dv);
+
     $vr('vr-body').innerHTML = `
         ${rejection}
         <div class="vr-net">
             <div><small>Net Amount</small><strong>${vr_peso(dv.net_amount)}</strong></div>
             <div style="text-align:right;"><small>Status</small><span class="nha-bdg ${vr_statusClass(dv.status)}">${vr_esc(dv.status)}</span></div>
         </div>
-        <div class="vr-card">
-            <p class="vr-card-title">Document Identity</p>
-            <dl class="vr-dl vr-dl3">
-                <div><dt>DV No.</dt><dd class="nha-mono">${vr_esc(dv.dv_no)}</dd></div>
-                <div><dt>DV Date</dt><dd>${vr_fmtDate(dv.dv_date)}</dd></div>
-            </dl>
-        </div>
-        <div class="vr-card">
-            <p class="vr-card-title">Request for Allotment (RFA)</p>
-            ${vr_rfaSection(dv)}
-        </div>
-        ${claimantSection}
-        <div class="vr-card">
-            <p class="vr-card-title">Budget Reference</p>
-            <dl class="vr-dl vr-dl3" style="margin-bottom:12px;">
-                <div><dt>Dept. / Project</dt><dd>${vr_esc(dv.dept_project) || '—'}</dd></div>
-                <div><dt>Fund Source</dt><dd>${vr_esc(dv.fund_source) || '—'}</dd></div>
-                <div><dt>Account Code</dt><dd>${vr_accountCodeDisplay(dv)}</dd></div>
-            </dl>
-            <table class="vr-ledger">
-                <tr><td class="vr-l-label">Budget</td><td class="vr-l-val">${vr_peso(dv.budget_amount)}</td></tr>
-                <tr><td class="vr-l-label">Obligation</td><td class="vr-l-val">${vr_peso(dv.obligation_amount)}</td></tr>
-                <tr><td class="vr-l-label">Payments${(Number(dv.payments_prior_amount) || 0) > 0 ? ' <small>(prior draws on these RFAs)</small>' : ''}</td><td class="vr-l-val">${vr_peso(dv.payments_prior_amount)}</td></tr>
-                <tr><td class="vr-l-label">This Request</td><td class="vr-l-val">${vr_peso(dv.net_amount)}</td></tr>
-                <tr class="vr-l-total"><td class="vr-l-label">Total Payments</td><td class="vr-l-val">${vr_peso((Number(dv.payments_prior_amount) || 0) + (Number(dv.net_amount) || 0))}</td></tr>
-                <tr><td class="vr-l-label">Balance</td><td class="vr-l-val">${vr_peso(dv.balance_amount)}</td></tr>
+
+        <!-- ══ A. VOUCHER INFORMATION — same grouping as app/pages/voucher/form.php's own
+             section A: Claimant/RFA, DV No./Date, Particulars. ══ -->
+        <div class="vr-doc-section">
+            <p class="vr-doc-section-hdr">A. Voucher Information</p>
+            <div class="vr-card">
+                <p class="vr-card-title">Request for Allotment (RFA)</p>
+                ${vr_rfaSection(dv)}
+            </div>
+            <div class="vr-card">
+                <p class="vr-card-title">Claimant</p>
+                <dl class="vr-dl">
+                    <div><dt>Claimant</dt><dd>${vr_esc(dv.claimant_name) || '—'}</dd></div>
+                    <div><dt>Address / Employee No. / TIN</dt><dd>${vr_esc(dv.claimant_address) || '—'}${dv.employee_no_tin ? ' / ' + vr_esc(dv.employee_no_tin) : ''}</dd></div>
+                    <div><dt>PO Number</dt><dd>${vr_esc(dv.po_number) || '—'}</dd></div>
+                    <div><dt>PO Amount</dt><dd>${dv.po_amount ? vr_peso(dv.po_amount) : '—'}</dd></div>
+                </dl>
+            </div>
+            <table class="vr-doc-table">
+                <tr>
+                    <td><p class="vr-doc-k">DV No.</p><p class="nha-mono" style="margin:0;">${vr_esc(dv.dv_no)}</p></td>
+                    <td><p class="vr-doc-k">DV Date</p><p style="margin:0;">${vr_fmtDate(dv.dv_date)}</p></td>
+                </tr>
+                <tr>
+                    <td class="vr-doc-full" colspan="2">
+                        <p class="vr-doc-k">Particulars</p>
+                        <p class="vr-particulars" style="margin:0;">${vr_esc(dv.particulars) || '—'}</p>
+                    </td>
+                </tr>
             </table>
-            ${dv.remarks ? `<p class="vr-particulars" style="margin-top:12px;"><strong>Remarks:</strong> ${vr_esc(dv.remarks)}</p>` : ''}
         </div>
-        ${vr_attachmentsSection(dv)}
-        ${vje_visible(dv) ? '' : deductionSection}
-        ${vje_visible(dv) ? vje_section(dv) : vje_groupedEntriesCard(dv)}
-        ${vje_paymentEntriesCard(dv)}
+
+        <!-- ══ B. AMOUNT AND DEDUCTIONS — Gross Amount, Deduction, ATC (Withholding Tax),
+             Budget Reference, and the Gross/Less Deductions/Net Amount Payable summary. ══ -->
+        <div class="vr-doc-section">
+            <p class="vr-doc-section-hdr">B. Amount and Deductions</p>
+            <div class="vr-card">
+                <p class="vr-card-title">Amount</p>
+                <dl class="vr-dl">
+                    <div><dt>Gross Amount</dt><dd>${vr_peso(dv.gross_amount)}</dd></div>
+                    <div><dt>Net Amount</dt><dd>${vr_peso(dv.net_amount)}</dd></div>
+                </dl>
+            </div>
+            ${vje_visible(dv) ? '' : deductionSection}
+            ${vje_visible(dv) ? vje_deductionCard(dv) + vje_atcCard(dv) : ''}
+            <div class="vr-card">
+                <p class="vr-card-title">Budget Reference</p>
+                <dl class="vr-dl vr-dl3" style="margin-bottom:12px;">
+                    <div><dt>Dept. / Project</dt><dd>${vr_esc(dv.dept_project) || '—'}</dd></div>
+                    <div><dt>Fund Source</dt><dd>${vr_esc(dv.fund_source) || '—'}</dd></div>
+                    <div><dt>Account Code</dt><dd>${vr_accountCodeDisplay(dv)}</dd></div>
+                </dl>
+                <table class="vr-ledger">
+                    <tr><td class="vr-l-label">Budget</td><td class="vr-l-val">${vr_peso(dv.budget_amount)}</td></tr>
+                    <tr><td class="vr-l-label">Obligation</td><td class="vr-l-val">${vr_peso(dv.obligation_amount)}</td></tr>
+                    <tr><td class="vr-l-label">Payments${(Number(dv.payments_prior_amount) || 0) > 0 ? ' <small>(prior draws on these RFAs)</small>' : ''}</td><td class="vr-l-val">${vr_peso(dv.payments_prior_amount)}</td></tr>
+                    <tr><td class="vr-l-label">This Request</td><td class="vr-l-val">${vr_peso(dv.net_amount)}</td></tr>
+                    <tr class="vr-l-total"><td class="vr-l-label">Total Payments</td><td class="vr-l-val">${vr_peso((Number(dv.payments_prior_amount) || 0) + (Number(dv.net_amount) || 0))}</td></tr>
+                    <tr><td class="vr-l-label">Balance</td><td class="vr-l-val">${vr_peso(dv.balance_amount)}</td></tr>
+                </table>
+                ${dv.remarks ? `<p class="vr-particulars" style="margin-top:12px;"><strong>Remarks:</strong> ${vr_esc(dv.remarks)}</p>` : ''}
+            </div>
+            <table class="vr-doc-summary-table">
+                <tr><td>Gross Amount</td><td>${vr_peso(dv.gross_amount)}</td></tr>
+                <tr><td>Less: Total Deductions</td><td>${vr_peso(totalDeductions)}</td></tr>
+                <tr class="vr-doc-summary-final"><td>Net Amount Payable</td><td>${vr_peso(dv.net_amount)}</td></tr>
+            </table>
+        </div>
+
+        <!-- ══ C. SUPPORTING DOCUMENTS ══ -->
+        ${attachmentsHtml ? `
+        <div class="vr-doc-section">
+            <p class="vr-doc-section-hdr">C. Supporting Documents</p>
+            ${attachmentsHtml}
+        </div>` : ''}
+
+        <!-- ══ D. PRO FORMA JOURNAL ENTRY — the Accounting Entries grid (editable while Accounting
+             is actively preparing it, read-only/grouped otherwise), plus the Payment Entry. ══ -->
+        <div class="vr-doc-section" style="margin-bottom:0;">
+            <p class="vr-doc-section-hdr">D. Pro Forma Journal Entry</p>
+            ${vje_visible(dv) ? vje_entriesCard(dv) : vje_groupedEntriesCard(dv)}
+            ${vje_paymentEntriesCard(dv)}
+        </div>
+
         <div class="vr-card" style="margin-bottom:0;">
             <p class="vr-card-title">Workflow History</p>
             <dl class="vr-dl vr-dl3">
@@ -582,6 +640,7 @@ function vje_deductionCard(dv) {
                 <table class="vr-ledger" style="min-width:600px;">
                     <thead><tr>
                         <th style="text-align:left;">Type</th>
+                        <th style="text-align:left;width:180px;">Posting Account</th>
                         <th style="text-align:right;width:85px;">Rate (%)</th>
                         <th style="text-align:right;width:120px;">Gross (₱)</th>
                         <th style="text-align:right;width:130px;">Amount (₱)</th>
@@ -589,7 +648,7 @@ function vje_deductionCard(dv) {
                     </tr></thead>
                     <tbody id="vje-ded-tbody"></tbody>
                     <tfoot><tr class="vr-l-total">
-                        <td colspan="3" style="text-align:right;">Total Deductions</td>
+                        <td colspan="4" style="text-align:right;">Total Deductions</td>
                         <td class="vr-l-val" id="vje-ded-total">₱ 0.00</td>
                         <td></td>
                     </tr></tfoot>
@@ -767,8 +826,9 @@ async function vje_init(dv) {
                 const idx = dtr.id.replace('vje-ded-row-', '');
                 if (usedDed.has(idx)) return false;
                 const type = VJE_DED.find(t => String(t.deduction_type_id) === dtr.querySelector('.vje-ded-type').value);
+                const acctCode = type?.account_code || dtr.querySelector('.vje-ded-acct')?.value.trim() || '';
                 const amount = parseFloat(dtr.querySelector('.vje-ded-amount').value) || 0;
-                return type?.account_code === l.account_code && Math.abs(amount - credit) < 0.01;
+                return acctCode === l.account_code && Math.abs(amount - credit) < 0.01;
             });
             if (dedMatch) {
                 const idx = dedMatch.id.replace('vje-ded-row-', '');
@@ -822,18 +882,38 @@ function vje_addDeductionLine(d = null) {
             <option value="">— Select type —</option>
             ${VJE_DED.map(t => `<option value="${vr_esc(t.deduction_type_id)}">${vr_esc(t.name)}</option>`).join('')}
         </select></td>
+        <td><input type="text" class="vje-ded-acct" placeholder="Search GL account code (UACS)…" style="display:none;"></td>
         <td><input type="number" class="vje-ded-rate" min="0" step="0.01" placeholder="e.g. 10"></td>
         <td><input type="text" class="vje-ded-gross" readonly></td>
         <td><input type="number" class="vje-ded-amount" min="0" step="0.01" placeholder="Auto-computed"></td>
         <td><button type="button" class="vje-remove" title="Remove" onclick="vje_removeDeductionLine(${idx})">&times;</button></td>`;
     tr.querySelector('.vje-ded-type').value = d?.deduction_type_id != null ? String(d.deduction_type_id) : '';
+    tr.querySelector('.vje-ded-acct').value = d?.account_code ?? '';
     tr.querySelector('.vje-ded-rate').value = d?.rate ?? '';
     tr.querySelector('.vje-ded-amount').value = d ? Number(d.deduction_amount || 0).toFixed(2) : '';
-    tr.querySelector('.vje-ded-type').addEventListener('change', () => vje_recalcDeductionLine(idx));
+    nhaSearchableSelect(tr.querySelector('.vje-ded-acct'), VJE_COA.map(a => ({ value: a.account_code, label: a.account_title })));
+    tr.querySelector('.vje-ded-type').addEventListener('change', () => { vje_syncDeductionAcctCell(idx); vje_recalcDeductionLine(idx); });
+    tr.querySelector('.vje-ded-acct').addEventListener('input', () => vje_recalcDeductionLine(idx));
     tr.querySelector('.vje-ded-rate').addEventListener('input', () => vje_recalcDeductionLine(idx));
     tr.querySelector('.vje-ded-amount').addEventListener('input', () => vje_recalcDeductionLine(idx));
     $vr('vje-ded-tbody').appendChild(tr);
+    vje_syncDeductionAcctCell(idx);
     vje_recalcDeductionLine(idx);
+}
+
+/* Shows the Posting Account picker only when the selected deduction type has no default
+   posting account (deduction_types.account_code IS NULL — e.g. "OTHER"); hides (and clears) it
+   otherwise, since the type's own default always wins — see fetchDeductions()'s COALESCE. */
+function vje_syncDeductionAcctCell(idx) {
+    const tr = $vr(`vje-ded-row-${idx}`);
+    if (!tr) return;
+    const typeId = tr.querySelector('.vje-ded-type').value;
+    const type   = VJE_DED.find(t => String(t.deduction_type_id) === typeId);
+    const acctInput = tr.querySelector('.vje-ded-acct');
+    const needsAcct = !!typeId && !type?.account_code;
+    acctInput.style.display = needsAcct ? '' : 'none';
+    acctInput.placeholder = needsAcct ? 'Search GL account code (UACS)… *required' : '';
+    if (!needsAcct) acctInput.value = '';
 }
 
 function vje_removeDeductionLine(idx) {
@@ -868,6 +948,7 @@ function vje_collectDeductions() {
             rate             : tr.querySelector('.vje-ded-rate').value === '' ? null : parseFloat(tr.querySelector('.vje-ded-rate').value),
             gross_amount     : Number(vje_dv?.gross_amount) || 0,
             deduction_amount : amount,
+            account_code     : tr.querySelector('.vje-ded-acct')?.value.trim() || null,
         });
     });
     return out;
@@ -1061,14 +1142,15 @@ function vje_syncAutoLines() {
     const dedIds = new Set();
     let dedCreditTotal = 0;
     $vr('vje-ded-tbody').querySelectorAll('tr').forEach(tr => {
-        const idx    = tr.id.replace('vje-ded-row-', '');
-        const typeId = tr.querySelector('.vje-ded-type').value;
-        const amount = parseFloat(tr.querySelector('.vje-ded-amount').value) || 0;
-        const type   = VJE_DED.find(t => String(t.deduction_type_id) === typeId);
-        if (!typeId || !type?.account_code || amount <= 0) return;
+        const idx      = tr.id.replace('vje-ded-row-', '');
+        const typeId   = tr.querySelector('.vje-ded-type').value;
+        const amount   = parseFloat(tr.querySelector('.vje-ded-amount').value) || 0;
+        const type     = VJE_DED.find(t => String(t.deduction_type_id) === typeId);
+        const acctCode = type?.account_code || tr.querySelector('.vje-ded-acct')?.value.trim() || '';
+        if (!typeId || !acctCode || amount <= 0) return;
         dedIds.add(idx);
         dedCreditTotal += amount;
-        vje_upsertAutoLine(`ded:${idx}`, { account_code: type.account_code, debit: 0, credit: amount, description: type.name });
+        vje_upsertAutoLine(`ded:${idx}`, { account_code: acctCode, debit: 0, credit: amount, description: type.name });
     });
     vje_pruneAutoLines('ded:', id => dedIds.has(id));
 
@@ -1206,6 +1288,16 @@ async function vje_save() {
         return;
     }
     if (errBook) errBook.style.display = 'none';
+
+    const missingAcct = deductions.find(d => {
+        const type = VJE_DED.find(t => String(t.deduction_type_id) === String(d.deduction_type_id));
+        return !!d.deduction_type_id && !type?.account_code && !d.account_code;
+    });
+    if (missingAcct) {
+        const type = VJE_DED.find(t => String(t.deduction_type_id) === String(missingAcct.deduction_type_id));
+        alert(`"${type?.name || 'This deduction'}" has no default posting account — pick one before saving.`);
+        return;
+    }
 
     window.PagePreloader?.show();
     try {

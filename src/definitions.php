@@ -162,6 +162,8 @@ return [
     "payroll_setup_page" => \DI\create(PayrollSetupPage::class),
     "fidelity_bond_page" => \DI\create(FidelityBondPage::class),
     "payroll_page" => \DI\create(PayrollPage::class),
+    "remittance_page" => \DI\create(RemittancePage::class),
+    "far_report_page" => \DI\create(FarReportPage::class),
 
     // User table
     "usertable" => \DI\get("users"),
