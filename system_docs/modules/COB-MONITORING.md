@@ -72,17 +72,18 @@ so they are unaffected.
 |---|---|
 | `revised_computed` | `proposed_amount + adjustment` — the proposed amount net of the approved revisions / realignments (the adjustment is signed, so a decrease lowers it). **This page's Revised Amount**: worked out per line — a different formula from the COB page's `approved − revision` |
 | `rfa_laa_amount` | `rfa_approved + laa_issued` |
-| `disbursement` | `budget_line_items.disbursement`, as recorded |
+| `disbursement` | What the disbursement vouchers connected to the line's RFAs / LAAs (`budget_allocation.dv_id`) have disbursed: each voucher's `gross_amount` spread over the draws of the RFAs / LAAs that point at it, in proportion to what each drew, so it is never counted twice and adds back up to the voucher. Cancelled / rejected vouchers count for nothing. The stored `budget_line_items.disbursement` column, which nothing writes, is not used |
 | `unallocated_amount` | `revised_computed − rfa_approved − laa_issued` |
 | `account_payable` | `rfa_laa_amount − disbursement` — what the RFAs / LAAs have drawn that has not been disbursed yet. Worked out per line; the stored `budget_line_items.account_payable` column is not used |
 
-Caveat: as noted above, nothing writes `disbursement` yet (it is 0 on every line), so on this page Disbursement shows dashes and Account Payable equals the
-RFA / LAA Amount until something real feeds Disbursement.
+Disbursement therefore comes from the vouchers, and is part of every project row, the TOTAL and the cards; Account Payable (`RFA / LAA Amount − Disbursement`) follows it.
+Until an RFA / LAA has a voucher connected, its Disbursement is 0 and its Account Payable equals what it drew. A voucher shared by RFAs / LAAs of several projects is
+split between them by what each drew, so the voucher row under an RFA shows the voucher's whole `gross_amount` while the project rows carry only their share.
 
 **Under a project** (RFA / LAA Monitoring page only — `GET /cob/rollup?...&with_allocations=1`): the project row opens onto the RFAs and LAAs that drew against
 its budget lines — one row each, `RFA / LAA Amount` being the sum of that allocation's 'converted' earmark rows on the project's lines — and an RFA row opens onto
 its disbursement voucher (`budget_allocation.dv_id`; the voucher is fetched from `fims.disbursement_vouchers` by that `dv_id`; `Disbursement` = the voucher's `gross_amount`, with its status, date and claimant). Only RFAs are linked to a
-voucher, so an LAA row has nothing to open; a voucher that was cancelled or rejected is no longer connected and is left out. These rows are detail: they are added
+voucher, but the page does not depend on that: an RFA or LAA row with a `dv_id` drops down to its voucher (a `1 DV` tag marks it, `No DV` the rest). The voucher is shown whatever its status, a cancelled or rejected one too, with its status pill. These rows are detail: they are added
 after the totals, so no figure above them changes. If they cannot be read the tree is returned without them and the page says so.
 
 ## The page

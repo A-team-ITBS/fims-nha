@@ -509,7 +509,7 @@ class PayrollManagementService
 
             // DV deductions, grouped into the payroll deduction types (fallback: OTHER)
             $types = [];
-            foreach (App\ExecuteRows("SELECT deduction_type_id, code, name FROM fims.deduction_types WHERE is_active", 'DB') ?: [] as $t) {
+            foreach (App\ExecuteRows("SELECT deduction_type_id, code, name, account_code FROM fims.deduction_types WHERE is_active", 'DB') ?: [] as $t) {
                 $types[$t['code']] = $t;
             }
             $byType = [];
@@ -524,24 +524,39 @@ class PayrollManagementService
                 if (!isset($types[$code])) {
                     $code = isset($types[self::DV_DED_TYPE_OTHER]) ? self::DV_DED_TYPE_OTHER : 'OTHER';
                 }
-                $byType[$code] = ($byType[$code] ?? 0) + $amt;
+                // a type with no default account (the plain "OTHER" fallback) needs one line per account
+                $key = empty($types[$code]['account_code'] ?? null) ? "{$code}|{$acct}" : $code;
+                $byType[$key] = ($byType[$key] ?? 0) + $amt;
             }
             $warnings = [];
             if (array_filter($byType, fn ($a) => $a < -0.004)) {
                 // refunds larger than a type's deductions: show one combined line instead
-                $byType = [isset($types[self::DV_DED_TYPE_OTHER]) ? self::DV_DED_TYPE_OTHER : 'OTHER' => $dedTotal];
+                $code = isset($types[self::DV_DED_TYPE_OTHER]) ? self::DV_DED_TYPE_OTHER : 'OTHER';
+                if (empty($types[$code]['account_code'] ?? null)) {
+                    arsort($liability);
+                    $code .= '|' . array_key_first($liability);
+                }
+                $byType = [$code => $dedTotal];
                 $warnings[] = 'Refunds exceed some deductions — the deductions are shown as one combined line.';
             }
             if (!isset($types[self::DV_DED_TYPE_OTHER]) && !isset($types['PAYROLL_GSIS'])) {
                 $warnings[] = 'The payroll deduction types (GSIS, PhilHealth, Pag-IBIG, Withholding Tax) are not set up yet, so the deductions show as "Other" — run the deduction types seed (04 - seed_data/08).';
             }
             $deductions = [];
-            foreach ($byType as $code => $amt) {
+            foreach ($byType as $key => $amt) {
+                [$code, $acct] = array_pad(explode('|', (string) $key, 2), 2, null);
                 $amt = round($amt, 2);
                 if (abs($amt) < 0.005 || !isset($types[$code])) {
                     continue;
                 }
-                $deductions[] = ['deduction_type_id' => (int) $types[$code]['deduction_type_id'], 'code' => $code, 'name' => $types[$code]['name'], 'rate' => null, 'deduction_amount' => $amt];
+                $deductions[] = [
+                    'deduction_type_id' => (int) $types[$code]['deduction_type_id'],
+                    'code'              => $code,
+                    'name'              => $types[$code]['name'],
+                    'rate'              => null,
+                    'deduction_amount'  => $amt,
+                    'account_code'      => $acct, // only for a type without a default account; else the type's own
+                ];
             }
 
             // accounting entry: Dr expense, Cr payables / receivables, Cr Accounts Payable for the net pay
@@ -1078,6 +1093,8 @@ class PayrollManagementService
             $blocked = "The {$label} payroll period is {$p['status']}.";
         } elseif ($dvs) {
             $blocked = "The {$label} payroll is used by Disbursement Voucher {$dvs}. Cancel or delete that DV first.";
+        } elseif ($rem = (new DeductionRemittanceService())->liveRemittanceAgencies($id)) {
+            $blocked = "The {$label} deductions are already scheduled / remitted (" . implode(', ', $rem) . ') in Deductions & Remittances.';
         }
 
         return ['payroll_period_id' => $id, 'record_count' => $count, 'blocked' => $blocked];
