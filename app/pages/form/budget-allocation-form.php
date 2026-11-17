@@ -669,6 +669,23 @@ $cbaAllowedTypes = array_values(array_intersect(['CBA', 'RFA', 'LAA', 'CFA'], ar
 			opacity: .9;
 		}
 
+		/* Dark mode: custom.css paints every .btn-primary with `var(--navy) !important`, and inside the
+		   .nha-root modal nha-fims.css redefines --navy as the (light) heading TEXT colour — so the
+		   Submit button became white text on a near-white fill. Keep the navy fill used in light mode. */
+		html.afims-dark[data-bs-theme="dark"] .cba-form-container button.btn.btn-primary,
+		html.afims-dark[data-bs-theme="dark"] .cba-form-container button.btn.btn-primary:disabled {
+			color: var(--afims-pure-white, #FFFFFF) !important;
+			background-color: var(--afims-heading-fill, #22305E) !important;
+			border-color: var(--afims-heading-fill, #22305E) !important;
+		}
+
+		html.afims-dark[data-bs-theme="dark"] .cba-form-container button.btn.btn-primary:hover:not(:disabled),
+		html.afims-dark[data-bs-theme="dark"] .cba-form-container button.btn.btn-primary:focus:not(:disabled) {
+			color: var(--afims-pure-white, #FFFFFF) !important;
+			background-color: var(--afims-primary, #3861BC) !important;
+			border-color: var(--afims-primary, #3861BC) !important;
+		}
+
 		.cba-form-container .btn-secondary {
 			color: var(--afims-text, #1A1B21);
 			background: var(--afims-surface, #FFFFFF);

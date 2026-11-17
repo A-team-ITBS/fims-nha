@@ -164,8 +164,9 @@ $_ftlm_api = $apiBase ?? Config('API.FIMS_URL');
 
     /* ── Form panel ──────────────────────────────────────────── */
     #ftlm-form-panel {
-        flex: 1 1 auto;
+        flex: 1 1 380px;
         min-height: 0;
+        min-width: 0;
         overflow-y: auto;
         overflow-x: hidden;
         padding: 20px 22px;
@@ -177,8 +178,10 @@ $_ftlm_api = $apiBase ?? Config('API.FIMS_URL');
     }
 
     /* ── Preview panel ───────────────────────────────────────── */
+    /* Wider than the form panel — the letter is a fixed 794px-wide sheet, so it
+       needs the extra room to stay legibly scaled instead of shrinking to near-nothing. */
     #ftlm-preview-panel {
-        flex: 1;
+        flex: 1.6 1 420px;
         min-width: 0;
         display: flex;
         flex-direction: column;
@@ -199,7 +202,7 @@ $_ftlm_api = $apiBase ?? Config('API.FIMS_URL');
     #ftlm-preview-wrap {
         flex: 1;
         overflow-y: auto;
-        overflow-x: hidden;
+        overflow-x: auto;
         padding: 0 10px 10px;
         position: relative;
     }
@@ -472,7 +475,7 @@ $_ftlm_api = $apiBase ?? Config('API.FIMS_URL');
             </div>
             <div class="ftlm-step" id="ftlm-step-2">
                 <div class="ftlm-step-circle" id="ftlm-circle-2">3</div>
-                <span class="ftlm-step-label">Memo &amp; Signatory</span>
+                <span class="ftlm-step-label">Signatories</span>
                 <div class="ftlm-step-connector"></div>
             </div>
             <div class="ftlm-step" id="ftlm-step-3">
@@ -481,6 +484,7 @@ $_ftlm_api = $apiBase ?? Config('API.FIMS_URL');
             </div>
         </div>
 
+        <div id="ftlm-body-split">
         <div id="ftlm-form-panel">
 
                 <input type="hidden" id="ftlm_fund_transfer_id">
@@ -502,14 +506,15 @@ $_ftlm_api = $apiBase ?? Config('API.FIMS_URL');
                     <div class="ftlm-grid-2">
                         <div class="ftlm-fg" id="ftlm-fg-type">
                             <label class="ftlm-label req" for="ftlm_transfer_type">Transfer Type</label>
-                            <select class="form-control" id="ftlm_transfer_type" name="transfer_type" disabled>
-                                <option value="FTLA" selected>Regional Fund Transfer</option>
+                            <select class="form-control" id="ftlm_transfer_type" name="transfer_type" onchange="ftlm_schedulePreviewUpdate()">
+                                <option value="">Loading…</option>
                             </select>
                             <p class="ftlm-err-msg">Transfer Type is required.</p>
                         </div>
                         <div class="ftlm-fg" id="ftlm-fg-date">
                             <label class="ftlm-label req" for="ftlm_transfer_date">Transfer Date</label>
-                            <input type="date" class="form-control" id="ftlm_transfer_date" name="transfer_date">
+                            <input type="date" class="form-control" id="ftlm_transfer_date" name="transfer_date"
+                                   onchange="ftlm_schedulePreviewUpdate()">
                             <p class="ftlm-err-msg">Transfer Date is required.</p>
                         </div>
                     </div>
@@ -523,10 +528,11 @@ $_ftlm_api = $apiBase ?? Config('API.FIMS_URL');
                         Bank Accounts
                     </div>
 
-                    <div class="ftlm-grid-2">
+                    <div class="ftlm-grid-2" id="ftlm-destination-wrap">
                         <div class="ftlm-fg">
                             <label class="ftlm-label" for="ftlm_from_bank_account_id">Destination Bank</label>
-                            <select class="form-control" id="ftlm_from_bank_account_id" name="to_bank_account_id" disabled>
+                            <select class="form-control" id="ftlm_from_bank_account_id" name="to_bank_account_id" disabled
+                                    onchange="ftlm_updateFundSourceDisplay(); ftlm_schedulePreviewUpdate();">
                                 <option value="">Loading…</option>
                             </select>
                         </div>
@@ -535,6 +541,53 @@ $_ftlm_api = $apiBase ?? Config('API.FIMS_URL');
                             <input type="text" class="form-control" id="ftlm_from_fund_source_name"
                                    readonly placeholder="—" style="background:var(--afims-border, #E4ECF2);cursor:default;">
                         </div>
+                    </div>
+
+                    <div class="ftlm-fg" style="flex-direction:row;align-items:center;gap:8px;margin:2px 0 8px;">
+                        <label class="ftlm-tmp-row">
+                            <input type="checkbox" id="ftlm_multi_debit" onchange="ftlm_toggleMultiDebit()">
+                            <span>Multiple debit accounts (split the source across several accounts)</span>
+                        </label>
+                    </div>
+
+                    <div class="ftlm-grid-2" id="ftlm-single-debit-wrap">
+                        <div class="ftlm-fg">
+                            <label class="ftlm-label" for="ftlm_from_source_bank_account_id">Debit (Source) Bank Account</label>
+                            <select class="form-control" id="ftlm_from_source_bank_account_id" disabled onchange="ftlm_schedulePreviewUpdate()">
+                                <option value="">Loading…</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div id="ftlm-multi-debit-wrap" style="display:none;margin-bottom:10px;">
+                        <table style="width:100%;border-collapse:collapse;" id="ftlm-debit-table">
+                            <thead>
+                                <tr style="border-bottom:2px solid var(--afims-border, #E4ECF2);">
+                                    <th style="text-align:left;padding:5px 10px;font-size:10px;font-weight:700;color:var(--afims-text-disabled, #A9AAB8);text-transform:uppercase;letter-spacing:.06em;">Debit (From)</th>
+                                    <th style="text-align:left;padding:5px 10px;font-size:10px;font-weight:700;color:var(--afims-text-disabled, #A9AAB8);text-transform:uppercase;letter-spacing:.06em;">Credit (To)</th>
+                                    <th style="text-align:right;padding:5px 10px;font-size:10px;font-weight:700;color:var(--afims-text-disabled, #A9AAB8);text-transform:uppercase;letter-spacing:.06em;width:140px;">Amount</th>
+                                    <th style="width:28px;"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="ftlm-debit-tbody"></tbody>
+                            <tfoot>
+                                <tr>
+                                    <td colspan="2" style="padding:6px 10px;font-size:12px;font-weight:700;text-align:right;">Total</td>
+                                    <td style="padding:6px 10px;font-size:12px;font-weight:700;text-align:right;" id="ftlm-debit-total">₱0.00</td>
+                                    <td></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                        <button type="button" onclick="ftlm_addDebitRow()"
+                            style="margin-top:8px;display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:var(--afims-heading, #000E3E);background:none;border:1.5px dashed var(--afims-border, #E4ECF2);border-radius:8px;padding:6px 14px;cursor:pointer;">
+                            <svg fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" style="width:12px;height:12px;">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/>
+                            </svg>
+                            Add Account
+                        </button>
+                        <p style="margin:6px 0 0;font-size:11px;color:var(--afims-text-disabled, #A9AAB8);">
+                            Every row starts with the same credit account — change a row's "Credit (To)" to pair that debit with its own credit account instead.
+                        </p>
                     </div>
 
                     <div class="ftlm-sec-hd">
@@ -550,7 +603,7 @@ $_ftlm_api = $apiBase ?? Config('API.FIMS_URL');
                             <label class="ftlm-label req" for="ftlm_transfer_amount">Transfer Amount (PHP)</label>
                             <input type="text" class="form-control" id="ftlm_transfer_amount" name="transfer_amount"
                                    inputmode="decimal" placeholder="0.00" autocomplete="off"
-                                   oninput="ftlm_formatAmount(this)">
+                                   oninput="ftlm_formatAmount(this); ftlm_schedulePreviewUpdate();">
                             <p class="ftlm-err-msg">Transfer Amount must be greater than 0.</p>
                         </div>
                         <div class="ftlm-fg" style="justify-content:flex-end;padding-bottom:4px;">
@@ -569,7 +622,8 @@ $_ftlm_api = $apiBase ?? Config('API.FIMS_URL');
                     <div class="ftlm-fg" id="ftlm-fg-purpose">
                         <label class="ftlm-label req" for="ftlm_purpose">Purpose / Particulars</label>
                         <textarea class="form-control" id="ftlm_purpose" name="purpose" rows="3"
-                                  placeholder="Describe the reason for this fund transfer…"></textarea>
+                                  placeholder="Describe the reason for this fund transfer…"
+                                  oninput="ftlm_schedulePreviewUpdate()"></textarea>
                         <p class="ftlm-err-msg">Purpose / Particulars is required.</p>
                     </div>
 
@@ -613,54 +667,7 @@ $_ftlm_api = $apiBase ?? Config('API.FIMS_URL');
                         Add Document
                     </button>
 
-                </div><!-- /panel-1 -->
-
-                <!-- ═══════════════════════════════
-                     Step 3 — Signatories
-                ═══════════════════════════════ -->
-                <div class="ftlm-panel" id="ftlm-panel-2">
-
-                    <div class="ftlm-sec-hd">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12">
-                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                            <circle cx="12" cy="7" r="4"/>
-                        </svg>
-                        Memorandum Header
-                    </div>
-
-                    <div class="ftlm-grid-2">
-                        <div class="ftlm-fg">
-                            <label class="ftlm-label" for="ftlm_for_name">FOR — Name</label>
-                            <input type="text" class="form-control" id="ftlm_for_name"
-                                   placeholder="e.g. JOEBEN A. TAI">
-                        </div>
-                        <div class="ftlm-fg">
-                            <label class="ftlm-label" for="ftlm_for_title">FOR — Title</label>
-                            <input type="text" class="form-control" id="ftlm_for_title"
-                                   placeholder="e.g. General Manager">
-                        </div>
-                    </div>
-
-                    <div class="ftlm-grid-2">
-                        <div class="ftlm-fg">
-                            <label class="ftlm-label" for="ftlm_thru_name">THRU — Name</label>
-                            <input type="text" class="form-control" id="ftlm_thru_name"
-                                   placeholder="e.g. LEO CARMELO C. BONILLA">
-                        </div>
-                        <div class="ftlm-fg">
-                            <label class="ftlm-label" for="ftlm_thru_title">THRU — Title</label>
-                            <input type="text" class="form-control" id="ftlm_thru_title"
-                                   placeholder="e.g. Department Manager, Treasury Dept.">
-                        </div>
-                    </div>
-
-                    <div class="ftlm-fg">
-                        <label class="ftlm-label" for="ftlm_memo_subject">Subject</label>
-                        <textarea class="form-control" id="ftlm_memo_subject" rows="2"
-                                  placeholder="e.g. REQUEST FOR FUND TRANSFER TO REGION III's EMERGENCY HOUSING ASSISTANCE PROGRAM (EHAP) FUND TO FACILITATE THE RELEASE OF FINANCIAL ASSISTANCE IN THE AMOUNT OF ₱4,940,000.00."></textarea>
-                    </div>
-
-                    <div class="ftlm-sec-hd" style="margin-top:18px;">
+                    <div class="ftlm-sec-hd" style="margin-top:22px;">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12">
                             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
                             <polyline points="14 2 14 8 20 8"/>
@@ -705,25 +712,50 @@ $_ftlm_api = $apiBase ?? Config('API.FIMS_URL');
                     <input type="hidden" id="ftlm_laa_fiscal_year">
                     <input type="hidden" id="ftlm_rfa_date">
 
-                    <div class="ftlm-sec-hd" style="margin-top:18px;">
+                </div><!-- /panel-1 -->
+
+                <!-- ═══════════════════════════════
+                     Step 3 — Signatories
+                     The bank letter's own two signatories (sig1/sig2) — free-text
+                     name/title pairs, same pattern as every other form's signatory
+                     fields in this app (cba-form.php, check-disbursement-voucher-page.php):
+                     decorative on the printed document, not tied to a workflow actor.
+                     Saved into the signatories jsonb; FtlaService::_buildPrintPayload()
+                     already reads sig1_name/sig1_title/sig2_name/sig2_title from there.
+                ═══════════════════════════════ -->
+                <div class="ftlm-panel" id="ftlm-panel-2">
+
+                    <div class="ftlm-sec-hd">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12">
                             <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
                         </svg>
-                        Signatory
+                        Signatories
                     </div>
+                    <p style="font-size:11px;color:var(--afims-text-disabled, #A9AAB8);margin:0 0 14px;">
+                        Who signs the bank letter. Leave blank to use the default titles below.
+                    </p>
 
                     <div class="ftlm-grid-2">
                         <div class="ftlm-fg">
-                            <label class="ftlm-label" for="ftlm_signatory_name">Signatory Name</label>
-                            <input type="text" class="form-control" id="ftlm_signatory_name"
-                                   placeholder="e.g. MA. FATIMA T. DELA CRUZ">
+                            <label class="ftlm-label" for="ftlm_sig1_name">Signatory 1 — Name</label>
+                            <input type="text" class="form-control" id="ftlm_sig1_name" placeholder="e.g. MARIA C. SANTOS">
                         </div>
                         <div class="ftlm-fg">
-                            <label class="ftlm-label" for="ftlm_signatory_title">Signatory Title</label>
-                            <input type="text" class="form-control" id="ftlm_signatory_title"
-                                   placeholder="e.g. Regional Manager">
+                            <label class="ftlm-label" for="ftlm_sig1_title">Signatory 1 — Title</label>
+                            <input type="text" class="form-control" id="ftlm_sig1_title" placeholder="Officer-in-Charge, Treasury Department">
                         </div>
                     </div>
+                    <div class="ftlm-grid-2">
+                        <div class="ftlm-fg">
+                            <label class="ftlm-label" for="ftlm_sig2_name">Signatory 2 — Name</label>
+                            <input type="text" class="form-control" id="ftlm_sig2_name" placeholder="e.g. JOSE R. DELA CRUZ">
+                        </div>
+                        <div class="ftlm-fg">
+                            <label class="ftlm-label" for="ftlm_sig2_title">Signatory 2 — Title</label>
+                            <input type="text" class="form-control" id="ftlm_sig2_title" placeholder="Acting Group Manager, Financial Services Group">
+                        </div>
+                    </div>
+
                 </div><!-- /panel-2 -->
 
                 <!-- ═══════════════════════════════
@@ -739,58 +771,24 @@ $_ftlm_api = $apiBase ?? Config('API.FIMS_URL');
                         Review
                     </div>
                     <p style="font-size:11px;color:var(--afims-text-disabled, #A9AAB8);margin:0 0 14px;">
-                        Preview of the Request for Fund Transfer. Verify all details before submitting.
+                        Preview of the FTLA bank letter. Verify all details before submitting.
                     </p>
 
-                    <div class="ftlp-paper" id="ftlp-doc">
-
-                        <div class="ftlp-center ftlp-bold" style="margin-bottom:10px;">NATIONAL HOUSING AUTHORITY</div>
-                        <div id="ftlp-date">—</div>
-                        <div class="ftlp-bold" style="margin-top:10px;">MEMORANDUM</div>
-
-                        <div style="margin-top:10px;">
-                            <div class="ftlp-field-row">
-                                <span class="ftlp-bold ftlp-field-label">FOR</span><span>:</span>
-                                <div style="flex:1;">
-                                    <div class="ftlp-bold" id="ftlp-for-name">—</div>
-                                    <div id="ftlp-for-title"></div>
-                                </div>
-                            </div>
-                            <div class="ftlp-field-row" id="ftlp-thru-row" style="margin-top:6px;">
-                                <span class="ftlp-bold ftlp-field-label">THRU</span><span>:</span>
-                                <div style="flex:1;">
-                                    <div class="ftlp-bold" id="ftlp-thru-name">—</div>
-                                    <div id="ftlp-thru-title"></div>
-                                </div>
-                            </div>
-                            <div class="ftlp-field-row" style="margin-top:6px;">
-                                <span class="ftlp-bold ftlp-field-label">SUBJECT</span><span>:</span>
-                                <div class="ftlp-bold ftlp-justify" id="ftlp-subject" style="flex:1;">—</div>
-                            </div>
-                        </div>
-
-                        <hr class="ftlp-hr">
-
-                        <p class="ftlp-justify" id="ftlp-body-para1" style="margin:0;"></p>
-                        <p class="ftlp-justify" id="ftlp-body-para2" style="margin-top:10px;"></p>
-
-                        <p class="ftlp-justify" style="margin-top:14px;">Kindly inform us and provide us with a copy of Fund Transfer Letter Advice (FTLA) once it is approved.</p>
-                        <div style="margin-top:4px;">For your consideration.</div>
-
-                        <div class="ftlp-sig-block" style="margin-top:40px;text-align:left;">
-                            <div class="ftlp-bold" id="ftlp-sig-name">—</div>
-                            <div class="ftlp-xs" id="ftlp-sig-title"></div>
-                            <div class="ftlp-xs" id="ftlp-sig-office"></div>
-                        </div>
-
-                        <hr class="ftlp-hr">
-                        <div class="ftlp-bold" id="ftlp-doc-no" style="margin-top:6px;">FTLA No. Assigned on save</div>
-
-                    </div><!-- /ftlp-doc -->
+                    <div id="ftlm-review-doc"></div>
 
                 </div><!-- /panel-3 -->
 
         </div><!-- /ftlm-form-panel -->
+
+        <div id="ftlm-preview-panel">
+            <div id="ftlm-preview-label">Live Preview — FTLA Letter</div>
+            <div id="ftlm-preview-wrap">
+                <div id="ftlm-preview-inner">
+                    <div class="ftlm-preview-placeholder">Select a transfer type to see preview</div>
+                </div>
+            </div>
+        </div><!-- /ftlm-preview-panel -->
+        </div><!-- /ftlm-body-split -->
 
         <!-- Footer -->
         <div id="ftlm-footer">
@@ -823,13 +821,14 @@ let ftlm_currentStep = 0;
 let ftlm_currentId   = null;
 let ftlm_bankLoaded  = false;
 let ftlm_banks       = [];   // regional bank accounts (source)
+let ftlm_typesLoaded = false;
+let ftlm_debitRows   = [];   // "Multiple debit accounts" rows: [{bank_account_id, amount}]
 let ftlm_allocLoaded = false;
 let ftlm_laaOptions  = [];   // approved/terminal LAA records — Funding Reference picker
 let ftlm_rfaOptions  = [];   // approved/terminal RFA records — Funding Reference picker
 let ftlm_dvLoaded    = false;
 let ftlm_dvOptions   = [];   // approved DV vouchers — DV Number picker
 let ftlm_previewTimer = null;
-let ftlm_sigLoaded   = false;
 const FTLM_TOTAL_STEPS = 4;
 const FTLM_API_BASE    = '<?php echo rtrim($_ftlm_api, '/'); ?>';
 
@@ -907,25 +906,46 @@ function ftlm_hideError() {
 /* ── Preview ───────────────────────────────────────────── */
 function ftlm_buildPreviewData() {
     const v      = id => ftlm$(id)?.value || '';
-    const fromId = parseInt(v('ftlm_from_bank_account_id')) || null;
-    const fromBank = ftlm_banks.find(b => b.bank_account_id == fromId)    || {};
+    const bankById = id => ftlm_banks.find(b => b.bank_account_id === parseInt(id)) || {};
+
+    // ftlm_from_bank_account_id is the Destination (to) bank — see ftlm_fillForm()'s note.
+    const toBank = bankById(v('ftlm_from_bank_account_id'));
+
+    const multi = !!ftlm$('ftlm_multi_debit')?.checked;
+    let fromBank = {};
+    let debitAccounts = [];
+    let creditAccounts = [];
+    if (multi) {
+        debitAccounts  = ftlm_getDebitAccounts().map(r => {
+            const b = bankById(r.bank_account_id);
+            return { account_number: b.account_number || '', account_name: b.account_name || '', amount: r.amount };
+        });
+        creditAccounts = ftlm_getCreditAccounts().map(r => {
+            const b = bankById(r.bank_account_id);
+            return { account_number: b.account_number || '', account_name: b.account_name || '' };
+        });
+    } else {
+        fromBank = bankById(v('ftlm_from_source_bank_account_id'));
+    }
+
     return {
         transfer_type:       v('ftlm_transfer_type'),
         transfer_date:       v('ftlm_transfer_date'),
         transfer_amount:     ftlm_parseAmount(v('ftlm_transfer_amount')),
+        to_bank_name:        toBank.bank_name      || '',
+        to_account_number:   toBank.account_number || '',
+        to_account_name:     toBank.account_name   || '',
         from_bank_name:      fromBank.bank_name      || '',
         from_account_number: fromBank.account_number || '',
         from_account_name:   fromBank.account_name   || '',
+        debit_accounts:      debitAccounts,
+        credit_accounts:     creditAccounts,
         purpose:             v('ftlm_purpose'),
         ftla_number:         v('ftlm_ftla_number'),
-        debit_accounts:      [],
-        for_name:    (ftlm$('ftlm_for_name')?.value     || '').trim(),
-        for_title:   (ftlm$('ftlm_for_title')?.value    || '').trim(),
-        thru_name:   (ftlm$('ftlm_thru_name')?.value    || '').trim(),
-        thru_title:  (ftlm$('ftlm_thru_title')?.value   || '').trim(),
-        subject:     (ftlm$('ftlm_memo_subject')?.value || '').trim(),
-        signatory_name:  (ftlm$('ftlm_signatory_name')?.value  || '').trim(),
-        signatory_title: (ftlm$('ftlm_signatory_title')?.value || '').trim(),
+        sig_left_name:       v('ftlm_sig1_name'),
+        sig_left_title:      v('ftlm_sig1_title'),
+        sig_right_name:      v('ftlm_sig2_name'),
+        sig_right_title:     v('ftlm_sig2_title'),
     };
 }
 
@@ -950,7 +970,11 @@ function ftlm_updatePreview() {
     inner.innerHTML = app._renderPrintSummary(d);
     inner.style.cssText = 'transform-origin:top left;background:#fff;box-shadow:0 2px 12px rgba(0,0,0,.13);width:794px;opacity:1;transition:opacity .15s';
     requestAnimationFrame(() => {
-        const scale = Math.min(1, wrap.offsetWidth / 794);
+        // Never shrink past a readable floor — below that the letter stops being
+        // legible, so let it overflow and scroll horizontally instead (wrap has
+        // overflow-x:auto) rather than keep scaling down to fit.
+        const fitScale = wrap.offsetWidth / 794;
+        const scale = Math.max(0.72, Math.min(1, fitScale));
         inner.style.transform = `scale(${scale})`;
         wrap.style.height = Math.ceil(inner.scrollHeight * scale) + 'px';
     });
@@ -1005,86 +1029,12 @@ function ftlm_numberToWordsUpper(num) {
     return words + ' PESOS';
 }
 
+/** Full-width bank-letter preview for the Review step — same renderer as the side panel. */
 function ftlm_populateReviewDoc() {
-    const v        = id => ftlm$(id)?.value || '';
-    const fromId   = parseInt(v('ftlm_from_bank_account_id')) || null;
-    const fromBank = ftlm_banks.find(b => b.bank_account_id == fromId) || {};
-
-    const transferDate   = v('ftlm_transfer_date');
-    const transferAmount = ftlm_parseAmount(v('ftlm_transfer_amount'));
-    const particulars    = v('ftlm_purpose');
-    const transferType   = v('ftlm_transfer_type');
-    const ftlaNumber     = v('ftlm_ftla_number');
-
-    const accountName = fromBank.account_name   || '';
-    const accountNo   = fromBank.account_number || '';
-    const bankName    = fromBank.bank_name       || '';
-
-    const forName    = v('ftlm_for_name');
-    const forTitle   = v('ftlm_for_title');
-    const thruName   = v('ftlm_thru_name');
-    const thruTitle  = v('ftlm_thru_title');
-    const subject    = v('ftlm_memo_subject');
-
-    const laaNumber     = v('ftlm_laa_number');
-    const fiscalYear    = v('ftlm_laa_fiscal_year');
-    const rfaNumber     = v('ftlm_rfa_number');
-    const rfaDateRaw    = v('ftlm_rfa_date');
-
-    const sigName   = v('ftlm_signatory_name');
-    const sigTitle  = v('ftlm_signatory_title');
-    // The LAA parenthetical department and the signatory's office/region
-    // both reuse originating_unit, which is only known server-side (resolved
-    // from the preparer's department at save time) — so neither can show in
-    // this pre-save client preview; they appear once the record is saved.
-
-    // Date — long form, e.g. "September 18, 2026"
-    const longDate = raw => {
-        if (!raw) return '';
-        const d = new Date(raw);
-        return isNaN(d) ? '' : d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-    };
-    if (ftlm$('ftlp-date')) ftlm$('ftlp-date').textContent = longDate(transferDate) || '—';
-
-    if (ftlm$('ftlp-for-name'))   ftlm$('ftlp-for-name').textContent   = forName  || '—';
-    if (ftlm$('ftlp-for-title'))  ftlm$('ftlp-for-title').textContent  = forTitle;
-    const thruRow = ftlm$('ftlp-thru-row');
-    if (thruRow) thruRow.style.display = (thruName || thruTitle) ? '' : 'none';
-    if (ftlm$('ftlp-thru-name'))  ftlm$('ftlp-thru-name').textContent  = thruName || '—';
-    if (ftlm$('ftlp-thru-title')) ftlm$('ftlp-thru-title').textContent = thruTitle;
-    if (ftlm$('ftlp-subject'))    ftlm$('ftlp-subject').textContent    = subject  || '—';
-
-    // Paragraph 1 — request + particulars + DV + amount (mirrors gen_ftla_docx.js)
-    const para1 = ftlm$('ftlp-body-para1');
-    if (para1) {
-        const amountRun = `${ftlm_numberToWordsUpper(transferAmount)} (₱${ftlm_fmtPeso(transferAmount)}).`;
-        para1.innerHTML = `We humbly request the transfer of fund to cover the ${ftlmEsc(particulars)}`
-            + ` in the amount of <b>${ftlmEsc(amountRun)}</b>`;
-    }
-
-    // Paragraph 2 — funding reference + bank transfer instruction. LAA/RFA are
-    // both optional — degrade gracefully instead of leaving a dangling
-    // "LAA No. CY & RFA No. dated ." when neither (or only one) was picked.
-    const para2 = ftlm$('ftlp-body-para2');
-    if (para2) {
-        const bankLine = `${ftlmEsc(accountName)} ${ftlmEsc(bankName)} Account No.${ftlmEsc(accountNo)}.`;
-        const fundingParts = [];
-        if (laaNumber) fundingParts.push(`LAA No. <b>${ftlmEsc(laaNumber)}</b>` + (fiscalYear ? ` CY ${ftlmEsc(fiscalYear)}` : ''));
-        if (rfaNumber) {
-            const rfaDateStr = longDate(rfaDateRaw);
-            fundingParts.push(`RFA No. <b>${ftlmEsc(rfaNumber)}</b>` + (rfaDateStr ? ` dated ${ftlmEsc(rfaDateStr)}` : ''));
-        }
-        para2.innerHTML = fundingParts.length
-            ? `The above-mentioned amount is funded under the ${fundingParts.join(' &amp; ')}. Kindly transfer said amount to <b>${bankLine}</b>`
-            : `Kindly transfer said amount to <b>${bankLine}</b>`;
-    }
-
-    if (ftlm$('ftlp-sig-name'))   ftlm$('ftlp-sig-name').textContent   = sigName || '—';
-    if (ftlm$('ftlp-sig-title'))  ftlm$('ftlp-sig-title').textContent  = sigTitle;
-    if (ftlm$('ftlp-sig-office')) ftlm$('ftlp-sig-office').textContent = '';
-
-    const prefix = transferType === 'INTER_ACCOUNT' ? 'IATA No.' : 'FTLA No.';
-    if (ftlm$('ftlp-doc-no')) ftlm$('ftlp-doc-no').textContent = `${prefix} ${ftlaNumber || 'Assigned on save'}`;
+    const el = ftlm$('ftlm-review-doc');
+    const app = window._ftlaApp;
+    if (!el || !app) return;
+    el.innerHTML = app._renderPrintSummary(ftlm_buildPreviewData());
 }
 
 /* ── Stepper ───────────────────────────────────────────── */
@@ -1120,26 +1070,25 @@ function ftlm_goStep(n) {
     const panel = ftlm$('ftlm-form-panel');
     if (panel) panel.scrollTop = 0;
 
-    // Show preview only on Step 1 (Transfer Details)
+    // Side-by-side bank-letter preview stays up throughout the wizard — except the
+    // final Review step, which already gets its own full-width memo preview instead.
+    const isReviewStep = n === FTLM_TOTAL_STEPS - 1;
     const previewPanel = ftlm$('ftlm-preview-panel');
     const formPanel    = ftlm$('ftlm-form-panel');
-    if (previewPanel) previewPanel.style.display = n === 0 ? '' : 'none';
+    if (previewPanel) previewPanel.style.display = isReviewStep ? 'none' : '';
     if (formPanel) {
-        formPanel.style.flex        = n === 0 ? '' : '1';
-        formPanel.style.borderRight = n === 0 ? '' : 'none';
+        formPanel.style.flex        = isReviewStep ? '1' : '';
+        formPanel.style.borderRight = isReviewStep ? 'none' : '';
     }
+    if (!isReviewStep) ftlm_schedulePreviewUpdate();
 
-    // Paper-document Review step — populate the letter preview and widen the modal
+    // Paper-document Review step — populate the letter preview
     if (n === FTLM_TOTAL_STEPS - 1) ftlm_populateReviewDoc();
-    ftlm$('ftlm-card')?.classList.toggle('ftlm-wide', n === FTLM_TOTAL_STEPS - 1);
+    // Wide mode gives the side-by-side preview panel (steps 0-2) and the Review
+    // step's full-width memo both more room — keep it on throughout, not just Review.
+    ftlm$('ftlm-card')?.classList.add('ftlm-wide');
 
     ftlm_currentStep = n;
-
-    // Lazy-load default signatories when navigating to the Signatories step
-    if (n === 2 && !ftlm_sigLoaded) {
-        ftlm_sigLoaded = true;
-        ftlm_loadDefaultSignatories();
-    }
 }
 
 function ftlm_validateStep(n) {
@@ -1201,19 +1150,44 @@ function ftlm_prevStep() {
 }
 
 /* ── Bank accounts ─────────────────────────────────────── */
+function ftlm_bankOptsHtml(banks) {
+    return '<option value="">— Select —</option>' +
+        banks.map(b => `<option value="${b.bank_account_id}">${b.bank_name} — ${b.account_name} (${b.account_number})</option>`).join('');
+}
+
 async function ftlm_loadBankAccounts() {
-    const fromSel = ftlm$('ftlm_from_bank_account_id');
-    if (fromSel) { fromSel.disabled = true; fromSel.innerHTML = '<option value="">Loading…</option>'; }
+    const fromSel   = ftlm$('ftlm_from_bank_account_id');
+    const sourceSel = ftlm$('ftlm_from_source_bank_account_id');
+    if (fromSel)   { fromSel.disabled   = true; fromSel.innerHTML   = '<option value="">Loading…</option>'; }
+    if (sourceSel) { sourceSel.disabled = true; sourceSel.innerHTML = '<option value="">Loading…</option>'; }
     try {
         const resFrom = await ftlm_fetch('ftla/bank-accounts');
         ftlm_banks = resFrom.data || [];
-        const makeOpts = banks => '<option value="">— Select —</option>' +
-            banks.map(b => `<option value="${b.bank_account_id}">${b.bank_name} — ${b.account_name} (${b.account_number})</option>`).join('');
-        if (fromSel) { fromSel.innerHTML = makeOpts(ftlm_banks); fromSel.disabled = false; }
+        const opts = ftlm_bankOptsHtml(ftlm_banks);
+        if (fromSel)   { fromSel.innerHTML   = opts; fromSel.disabled   = false; }
+        if (sourceSel) { sourceSel.innerHTML = opts; sourceSel.disabled = false; }
         ftlm_updateFundSourceDisplay();
+        ftlm_renderDebitRows();   // re-render any rows added before banks finished loading
     } catch (e) {
-        if (fromSel) { fromSel.innerHTML = '<option value="">Failed to load</option>'; fromSel.disabled = false; }
+        const failMsg = '<option value="">Failed to load</option>';
+        if (fromSel)   { fromSel.innerHTML   = failMsg; fromSel.disabled   = false; }
+        if (sourceSel) { sourceSel.innerHTML = failMsg; sourceSel.disabled = false; }
         console.error('[FTLM] bank accounts:', e.message);
+    }
+}
+
+async function ftlm_loadTransferTypes() {
+    const sel = ftlm$('ftlm_transfer_type');
+    try {
+        const res = await ftlm_fetch('ftla/transfer-types');
+        const types = res.data || [];
+        if (sel) {
+            sel.innerHTML = '<option value="">— Select —</option>' +
+                types.map(t => `<option value="${t.value}">${ftlmEsc(t.label)}</option>`).join('');
+        }
+    } catch (e) {
+        if (sel) sel.innerHTML = '<option value="">Failed to load</option>';
+        console.error('[FTLM] transfer types:', e.message);
     }
 }
 
@@ -1223,6 +1197,127 @@ function ftlm_updateFundSourceDisplay() {
     const fromId = parseInt(ftlm$('ftlm_from_bank_account_id')?.value) || null;
     const bank   = ftlm_banks.find(b => b.bank_account_id == fromId);
     out.value = bank?.fund_source_name || '';
+}
+
+/* ── "Multiple debit accounts" (Treasury's ftla-preparation.php checkbox + multi-debit panel) ── */
+
+function ftlm_toggleMultiDebit() {
+    const on = !!ftlm$('ftlm_multi_debit')?.checked;
+    ftlm$('ftlm-destination-wrap').style.display  = on ? 'none' : '';
+    ftlm$('ftlm-single-debit-wrap').style.display = on ? 'none' : '';
+    ftlm$('ftlm-multi-debit-wrap').style.display  = on ? '' : 'none';
+    const amt = ftlm$('ftlm_transfer_amount');
+    if (amt) {
+        amt.readOnly = on;
+        amt.style.background = on ? 'var(--afims-border, #E4ECF2)' : '';
+    }
+    if (on && !ftlm_debitRows.length) ftlm_addDebitRow();
+    ftlm_recalcDebitTotal();
+    ftlm_schedulePreviewUpdate();
+}
+
+/** New rows default their Credit (To) to the current Destination Bank — stays a plain "many debits, one credit" letter until a row's To is changed. */
+function ftlm_defaultCreditAccountId() {
+    return ftlm$('ftlm_from_bank_account_id')?.value || '';
+}
+
+function ftlm_addDebitRow(bankAccountId = '', amount = '', toBankAccountId = '') {
+    ftlm_debitRows.push({ bank_account_id: bankAccountId, to_bank_account_id: toBankAccountId || ftlm_defaultCreditAccountId(), amount });
+    ftlm_renderDebitRows();
+}
+
+function ftlm_removeDebitRow(idx) {
+    ftlm_debitRows.splice(idx, 1);
+    ftlm_renderDebitRows();
+}
+
+function ftlm_onDebitRowChange(idx, field, value) {
+    if (!ftlm_debitRows[idx]) return;
+    ftlm_debitRows[idx][field] = value;
+    ftlm_recalcDebitTotal();
+    ftlm_schedulePreviewUpdate();
+}
+
+function ftlm_renderDebitRows() {
+    const tbody = ftlm$('ftlm-debit-tbody');
+    if (!tbody) return;
+    tbody.innerHTML = ftlm_debitRows.map((row, idx) => `
+        <tr>
+            <td style="padding:4px 10px;">
+                <select class="form-control" onchange="ftlm_onDebitRowChange(${idx}, 'bank_account_id', this.value)">
+                    ${ftlm_bankOptsHtml(ftlm_banks).replace(`value="${row.bank_account_id}"`, `value="${row.bank_account_id}" selected`)}
+                </select>
+            </td>
+            <td style="padding:4px 10px;">
+                <select class="form-control" onchange="ftlm_onDebitRowChange(${idx}, 'to_bank_account_id', this.value)">
+                    ${ftlm_bankOptsHtml(ftlm_banks).replace(`value="${row.to_bank_account_id}"`, `value="${row.to_bank_account_id}" selected`)}
+                </select>
+            </td>
+            <td style="padding:4px 10px;">
+                <input type="text" class="form-control" inputmode="decimal" placeholder="0.00"
+                       value="${row.amount || ''}" style="text-align:right;"
+                       oninput="ftlm_formatAmount(this); ftlm_onDebitRowChange(${idx}, 'amount', ftlm_parseAmount(this.value))">
+            </td>
+            <td style="padding:4px 6px;text-align:center;">
+                <button type="button" onclick="ftlm_removeDebitRow(${idx})"
+                        style="background:none;border:none;cursor:pointer;color:var(--afims-danger, #DC3545);font-size:16px;line-height:1;">&times;</button>
+            </td>
+        </tr>
+    `).join('');
+    ftlm_recalcDebitTotal();
+}
+
+function ftlm_recalcDebitTotal() {
+    const total = ftlm_debitRows.reduce((s, r) => s + (ftlm_parseAmount(String(r.amount || 0)) || 0), 0);
+    const totalEl = ftlm$('ftlm-debit-total');
+    if (totalEl) totalEl.textContent = '₱' + ftlm_fmtPeso(total);
+    if (ftlm$('ftlm_multi_debit')?.checked) ftlm_setAmount(total);
+}
+
+/** [{bank_account_id, amount}] for the submit payload — [] when not in multi-debit mode. */
+function ftlm_getDebitAccounts() {
+    if (!ftlm$('ftlm_multi_debit')?.checked) return [];
+
+    return ftlm_debitRows
+        .filter(r => r.bank_account_id && ftlm_parseAmount(String(r.amount || 0)) > 0)
+        .map(r => ({ bank_account_id: parseInt(r.bank_account_id), amount: ftlm_parseAmount(String(r.amount)) }));
+}
+
+/**
+ * [{bank_account_id}] index-paired with ftlm_getDebitAccounts() — Treasury's
+ * ftlafundtransfer.php "pairs" shape. A row left at the default Destination Bank
+ * still sends its id here; the backend only treats this as "paired" once more
+ * than one distinct credit account shows up (see FtlaService::update()/create()),
+ * so an untouched table still prints as the familiar "many debits, one credit" letter.
+ */
+function ftlm_getCreditAccounts() {
+    if (!ftlm$('ftlm_multi_debit')?.checked) return [];
+
+    return ftlm_debitRows
+        .filter(r => r.bank_account_id && ftlm_parseAmount(String(r.amount || 0)) > 0)
+        .map(r => ({ bank_account_id: parseInt(r.to_bank_account_id || ftlm_defaultCreditAccountId()) }));
+}
+
+function ftlm_setDebitAccounts(rows) {
+    ftlm_debitRows = (rows || []).map((r, idx) => ({
+        bank_account_id:    r.bank_account_id,
+        to_bank_account_id: r.to_bank_account_id || ftlm_defaultCreditAccountId(),
+        amount:             r.amount,
+    }));
+    const multi = ftlm_debitRows.length > 1;
+    const cb = ftlm$('ftlm_multi_debit');
+    if (cb) cb.checked = multi;
+    ftlm$('ftlm-destination-wrap').style.display  = multi ? 'none' : '';
+    ftlm$('ftlm-single-debit-wrap').style.display = multi ? 'none' : '';
+    ftlm$('ftlm-multi-debit-wrap').style.display  = multi ? '' : 'none';
+    const amt = ftlm$('ftlm_transfer_amount');
+    if (amt) { amt.readOnly = multi; amt.style.background = multi ? 'var(--afims-border, #E4ECF2)' : ''; }
+    if (!multi && ftlm_debitRows.length === 1) {
+        const sel = ftlm$('ftlm_from_source_bank_account_id');
+        if (sel) sel.value = ftlm_debitRows[0].bank_account_id;
+        ftlm_debitRows = [];
+    }
+    ftlm_renderDebitRows();
 }
 
 /* ── LAA / RFA pickers ─────────────────────────────────────
@@ -1510,16 +1605,14 @@ function ftlm_getDocLinks() {
 function ftlm_resetForm() {
     [
         'ftlm_transfer_type', 'ftlm_transfer_date', 'ftlm_ftla_number',
-        'ftlm_from_bank_account_id', 'ftlm_from_fund_source_name', 'ftlm_transfer_amount',
+        'ftlm_from_bank_account_id', 'ftlm_from_source_bank_account_id', 'ftlm_from_fund_source_name', 'ftlm_transfer_amount',
         'ftlm_repayment_due_date', 'ftlm_purpose',
-        'ftlm_for_name', 'ftlm_for_title',
-        'ftlm_thru_name', 'ftlm_thru_title',
-        'ftlm_memo_subject',
         'ftlm_laa_number', 'ftlm_laa_id', 'ftlm_laa_fiscal_year',
         'ftlm_rfa_number', 'ftlm_rfa_id', 'ftlm_rfa_date',
-        'ftlm_signatory_name', 'ftlm_signatory_title',
+        'ftlm_sig1_name', 'ftlm_sig1_title', 'ftlm_sig2_name', 'ftlm_sig2_title',
     ].forEach(id => { const el = ftlm$(id); if (el) el.value = ''; });
     ftlm_setDvSelected([]);
+    ftlm_setDebitAccounts([]);
 
     const isTmp = ftlm$('ftlm_is_temporary');
     if (isTmp) isTmp.checked = false;
@@ -1529,7 +1622,6 @@ function ftlm_resetForm() {
 
     ftlm$('ftlm_fund_transfer_id').value = '';
     ftlm$('ftlm-form-msg').textContent   = '';
-    ftlm_sigLoaded = false;
     ftlm_hideError();
     ftlm_buildDocTable();
 
@@ -1561,6 +1653,10 @@ function ftlm_fillForm(d) {
     set('ftlm_from_bank_account_id', d.to_bank_account_id);
     ftlm_updateFundSourceDisplay();
     ftlm_setAmount(d.transfer_amount);
+    ftlm_setDebitAccounts((d.from_accounts || []).map((r, idx) => ({
+        ...r,
+        to_bank_account_id: (d.to_accounts || [])[idx]?.bank_account_id || '',
+    })));
     set('ftlm_is_temporary',        d.is_temporary);
     set('ftlm_repayment_due_date',  d.repayment_due_date?.slice(0, 10));
     set('ftlm_purpose',             d.purpose);
@@ -1583,25 +1679,22 @@ function ftlm_fillForm(d) {
         }
     }
 
-    // FOR/THRU/SUBJECT live on real columns now (see migration "16 - Alter
-    // fund_transfers_add_for_thru_subject.sql") — everything else here still
-    // rides in the generic signatories jsonb blob.
+    // Funding reference (DV/LAA/RFA) still lives on this form — used by the bank
+    // letter's DV footer and the Create-JEV prefill. laa_number/rfa_number/fiscal_year/
+    // rfa_date ride in the generic signatories jsonb blob; laa_id/rfa_id are real columns.
     const sigsRaw = d.signatories || {};
     const sigs = typeof sigsRaw === 'string' ? (() => { try { return JSON.parse(sigsRaw); } catch(e) { return {}; } })() : sigsRaw;
     const setSig = (id, val) => { const el = ftlm$(id); if (el) el.value = val || ''; };
-    setSig('ftlm_for_name',          d.for_name              || '');
-    setSig('ftlm_for_title',         d.for_title             || '');
-    setSig('ftlm_thru_name',         d.thru_name             || '');
-    setSig('ftlm_thru_title',        d.thru_title            || '');
-    setSig('ftlm_memo_subject',      d.subject               || '');
     setSig('ftlm_laa_id',            d.laa_id                || '');
     setSig('ftlm_rfa_id',            d.rfa_id                || '');
     ftlm_ensureSelectOption('ftlm_laa_number', sigs.laa_number || '');
     setSig('ftlm_laa_fiscal_year',   sigs.fiscal_year        || '');
     ftlm_ensureSelectOption('ftlm_rfa_number', sigs.rfa_number || '');
     setSig('ftlm_rfa_date',          sigs.rfa_date           || '');
-    setSig('ftlm_signatory_name',    d.signatory_name_memo     || d.reviewed_by_name  || '');
-    setSig('ftlm_signatory_title',   d.signatory_position_memo || d.reviewed_by_title || '');
+    setSig('ftlm_sig1_name',         sigs.sig1_name          || '');
+    setSig('ftlm_sig1_title',        sigs.sig1_title         || '');
+    setSig('ftlm_sig2_name',         sigs.sig2_name          || '');
+    setSig('ftlm_sig2_title',        sigs.sig2_title         || '');
 
     ftlm_schedulePreviewUpdate();
 }
@@ -1618,6 +1711,10 @@ async function ftlm_open(id) {
     document.body.style.overflow = 'hidden';
     document.body.style.paddingRight = (window.innerWidth - document.documentElement.clientWidth) + 'px';
 
+    if (!ftlm_typesLoaded) {
+        ftlm_typesLoaded = true;
+        await ftlm_loadTransferTypes();
+    }
     if (!ftlm_bankLoaded) {
         ftlm_bankLoaded = true;
         await ftlm_loadBankAccounts();  // await so selects have options before fillForm runs
@@ -1642,21 +1739,11 @@ async function ftlm_open(id) {
         }
     } else {
         ftlm$('ftlm-title').textContent   = 'New FTLA';
-        ftlm$('ftlm_transfer_type').value = 'FTLA';
+        ftlm$('ftlm_transfer_type').value = 'REGIONAL_FUND_TRANSFER';
         ftlm$('ftlm_transfer_date').value = new Date().toISOString().slice(0, 10);
+        ftlm_setDebitAccounts([]);
         ftlm_updatePreview();
     }
-}
-
-async function ftlm_loadDefaultSignatories() {
-    try {
-        const res = await ftlm_fetch('ftla/default-signatories');
-        if (!res.success || !res.data) return;
-        const d = res.data;
-        const set = (id, val) => { const el = ftlm$(id); if (el && !el.value && val) el.value = val; };
-        set('ftlm_signatory_name',  d.sig1?.name);
-        set('ftlm_signatory_title', d.sig1?.title);
-    } catch (_) {}
 }
 
 function ftlm_close() {
@@ -1681,29 +1768,30 @@ async function ftlm_save(status) {
         transfer_date:      ftlm$('ftlm_transfer_date')?.value          || '',
         // Saved as to_bank_account_id, not from — see ftlm_fillForm()'s note.
         to_bank_account_id: ftlm$('ftlm_from_bank_account_id')?.value   || '',
+        from_bank_account_id: ftlm$('ftlm_multi_debit')?.checked
+            ? ''
+            : (ftlm$('ftlm_from_source_bank_account_id')?.value || ''),
+        from_accounts:      JSON.stringify(ftlm_getDebitAccounts()),
+        to_accounts:        JSON.stringify(ftlm_getCreditAccounts()),
         transfer_amount:    ftlm_parseAmount(ftlm$('ftlm_transfer_amount')?.value),
         is_temporary:       ftlm$('ftlm_is_temporary')?.checked ? '1' : '0',
         repayment_due_date: ftlm$('ftlm_repayment_due_date')?.value     || '',
         purpose:            (ftlm$('ftlm_purpose')?.value || '').trim(),
         dv_numbers:           ftlm_getDvNumbers(),
         supporting_documents: ftlm_getDocLinks(),
-        for_name:    (ftlm$('ftlm_for_name')?.value     || '').trim(),
-        for_title:   (ftlm$('ftlm_for_title')?.value    || '').trim(),
-        thru_name:   (ftlm$('ftlm_thru_name')?.value    || '').trim(),
-        thru_title:  (ftlm$('ftlm_thru_title')?.value   || '').trim(),
-        subject:     (ftlm$('ftlm_memo_subject')?.value || '').trim(),
         laa_id:      (ftlm$('ftlm_laa_id')?.value || '').trim(),
         rfa_id:      (ftlm$('ftlm_rfa_id')?.value || '').trim(),
-        // Column names, not the "signatory_title" the UI field/label uses —
-        // keeps the wire payload matching treasury.fund_transfers exactly, so
-        // both create() and update()'s generic $stringFields handling work.
-        signatory_name_memo:     (ftlm$('ftlm_signatory_name')?.value  || '').trim(),
-        signatory_position_memo: (ftlm$('ftlm_signatory_title')?.value || '').trim(),
         signatories: JSON.stringify({
             laa_number:       (ftlm$('ftlm_laa_number')?.value       || '').trim(),
             fiscal_year:      (ftlm$('ftlm_laa_fiscal_year')?.value  || '').trim(),
             rfa_number:       (ftlm$('ftlm_rfa_number')?.value       || '').trim(),
             rfa_date:         (ftlm$('ftlm_rfa_date')?.value         || '').trim(),
+            // Bank letter's own two signatories — FtlaService::_buildPrintPayload()
+            // reads these same keys straight from this jsonb column.
+            sig1_name:        (ftlm$('ftlm_sig1_name')?.value        || '').trim(),
+            sig1_title:       (ftlm$('ftlm_sig1_title')?.value       || '').trim(),
+            sig2_name:        (ftlm$('ftlm_sig2_name')?.value        || '').trim(),
+            sig2_title:       (ftlm$('ftlm_sig2_title')?.value       || '').trim(),
         }),
         ...(status ? { status } : {}),
     };

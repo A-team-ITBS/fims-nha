@@ -8,5 +8,5 @@ $CheckRegistryPage = &$Page;
 <?php
 $Page->showMessage();
 ?>
-<?php include(dirname(__DIR__, 1) . "/app/pages/check-registry-page.php"); ?>
+<?php include(dirname(__DIR__, 1) . "/app/pages/check-disbursement-voucher-page.php"); ?>
 <?= GetDebugMessage() ?>

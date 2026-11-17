@@ -127,7 +127,6 @@ return [
     "Voucher" => \DI\create(Voucher::class),
     "JournalEntryVoucher" => \DI\create(JournalEntryVoucher::class),
     "ChangePass" => \DI\create(ChangePass::class),
-    "CheckDisbursements" => \DI\create(CheckDisbursements::class),
     "general_ledger_page" => \DI\create(GeneralLedgerPage::class),
     "subsidiary_ledger_page" => \DI\create(SubsidiaryLedgerPage::class),
     "journals_page" => \DI\create(JournalsPage::class),
@@ -158,6 +157,7 @@ return [
     "ledger_page" => \DI\create(LedgerPage::class),
     "accountable_officer_page" => \DI\create(AccountableOfficerPage::class),
     "rfa_laa_monitoring_page" => \DI\create(RfaLaaMonitoringPage::class),
+    "collections_page" => \DI\create(CollectionsPage::class),
 
     // User table
     "usertable" => \DI\get("users"),
