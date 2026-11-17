@@ -154,7 +154,9 @@ $_pyr_api = Config('API.FIMS_URL');
    PAYROLL ITEMS   prefix: pyr_
    List + Add / Edit against the Payroll Setup API only (app/routes/payroll_setup.php):
      GET /payroll-setup/list · /read/{id} · /accounts      POST /payroll-setup/add      PUT /payroll-setup/update/{id}
-   A new sub-ledger is sent as `new_account` with the item; the server creates it (and removes it again if the item fails to save).
+   New sub-ledgers are sent as `new_accounts`, parent first, with the item; the server creates them (and removes them again if the
+   item fails to save). The account the item uses (the last part entered) is titled with the Item Name; a new 5th part that only
+   makes room for a new 6th part gets its own Account Title.
 ═══════════════════════════════════════════════════════════════ */
 
 const PYR_API = '<?php echo $_pyr_api; ?>' + '/payroll-setup';
@@ -195,7 +197,7 @@ let pyr_query  = '';               // text the dropdown is filtered by
 let pyr_list   = [];               // rows matching pyr_query
 let pyr_active = -1;               // highlighted row
 let pyr_nameTouched  = false;      // the user typed their own Item Name
-let pyr_titleTouched = false;      // the user typed their own new-sub-ledger title
+let pyr_sub2Open = false;          // the "+ Add 6th part" row is open (only from a 4-part account)
 let pyr_saving = false;
 
 /* ── Helpers ───────────────────────────────────────────────── */
@@ -262,8 +264,12 @@ function pyr_bind() {
         if (opt) pyr_pick(opt.dataset.code);
     });
     $pyr('pyr-sub-part')?.addEventListener('input', pyr_syncAccountUi);
-    $pyr('pyr-new-title')?.addEventListener('input', () => {
-        pyr_titleTouched = $pyr('pyr-new-title').value !== '' && $pyr('pyr-new-title').value !== $pyr('pyr-item-name').value.trim();
+    $pyr('pyr-sub-part2')?.addEventListener('input', pyr_syncAccountUi);
+    $pyr('pyr-sub-add6')?.addEventListener('click', () => { pyr_sub2Open = true; pyr_syncAccountUi(); $pyr('pyr-sub-part2').focus(); });
+    $pyr('pyr-sub2-remove')?.addEventListener('click', () => {
+        pyr_sub2Open = false;
+        $pyr('pyr-sub-part2').value = '';
+        pyr_syncAccountUi();
     });
     $pyr('pyr-body')?.addEventListener('scroll', pyr_positionPanel);
     window.addEventListener('resize', pyr_positionPanel);
@@ -384,16 +390,16 @@ function pyr_goTo(page) { if (page >= 1) { pyr_page = page; pyr_load(); } }
 /* ── Item Code → Item Name ─────────────────────────────────── */
 function pyr_onCode() {
     if (!pyr_nameTouched) $pyr('pyr-item-name').value = pyr_deriveName($pyr('pyr-item-code').value);
-    pyr_prefillTitle();
 }
 function pyr_onName() {
     const name = $pyr('pyr-item-name').value;
     pyr_nameTouched = name !== '' && name !== pyr_deriveName($pyr('pyr-item-code').value);   // emptied or matching again → follow the code again
-    pyr_prefillTitle();
 }
-/* The new sub-ledger's title starts as the item name (until the user edits it). */
-function pyr_prefillTitle() {
-    if (!$pyr('pyr-new').hidden && !pyr_titleTouched) $pyr('pyr-new-title').value = $pyr('pyr-item-name').value.trim();
+/* Forgets the next-part inputs, the title of a new 5th part and the 6th-part row (a different account was picked / the form was reset). */
+function pyr_clearParts() {
+    $pyr('pyr-sub-part').value = '';  $pyr('pyr-sub-part2').value = '';
+    $pyr('pyr-new-title').value = '';
+    pyr_sub2Open = false;
 }
 
 /* Tells the user which side the chosen category posts to. */
@@ -543,7 +549,7 @@ function pyr_onSearch() {
     pyr_sel = null;                                                  // typing replaces the picked account
     pyr_legacyAccount = null;
     pyr_query = $pyr('pyr-account-search').value;
-    $pyr('pyr-sub-part').value = '';
+    pyr_clearParts();
     pyr_syncAccountUi();
     pyr_openPanel();
 }
@@ -594,9 +600,7 @@ function pyr_pick(code, focusNext = true) {
     pyr_legacyAccount = null;
     pyr_query = '';
     $pyr('pyr-account-search').value = pyr_display(a);
-    $pyr('pyr-sub-part').value = '';
-    $pyr('pyr-new-title').value = '';
-    pyr_titleTouched = false;
+    pyr_clearParts();
     pyr_closePanel();
     pyr_syncAccountUi();
     if (focusNext && !$pyr('pyr-sub').hidden) $pyr('pyr-sub-part').focus();
@@ -605,26 +609,57 @@ function pyr_pick(code, focusNext = true) {
 function pyr_clearAccount() {
     pyr_sel = null; pyr_legacyAccount = null; pyr_query = '';
     $pyr('pyr-account-search').value = '';
-    $pyr('pyr-sub-part').value = '';
-    $pyr('pyr-new-title').value = '';
-    pyr_titleTouched = false;
+    pyr_clearParts();
     pyr_syncAccountUi();
     $pyr('pyr-account-search').focus();
 }
 
-/* ── Next part (5th / 6th) ─────────────────────────────────── */
-/* What the picked account + the typed next part amount to:
-   none | base (no next part) | invalid | exists | notpostable | new */
+/* ── Next parts (5th / 6th) ────────────────────────────────── */
+/* What the picked account + the typed next part(s) amount to. From a 4-part account the 5th part is one level and the
+   optional 6th part (after "+ Add 6th part") a second; from a 5-part account the single input is the 6th part.
+   state: none | base (no part typed) | invalid | exists | new | notpostable | parentblocked
+   levels: [{ code, acct, state: exists | notpostable | new }] in order (parent first) */
 function pyr_resolve() {
-    if (!pyr_sel) return { state: 'none' };
-    if (pyr_partCount(pyr_sel.code) >= 6) return { state: 'base', code: pyr_sel.code, acct: pyr_sel };
-    const raw = $pyr('pyr-sub-part').value.trim();
-    if (!raw) return { state: 'base', code: pyr_sel.code, acct: pyr_sel };
-    if (!/^\d{1,3}$/.test(raw)) return { state: 'invalid' };
-    const code = pyr_sel.code + '-' + raw.padStart(2, '0');
-    const acct = pyr_accounts.get(code);
-    if (!acct) return { state: 'new', code };
-    return { state: acct.postable ? 'exists' : 'notpostable', code, acct };
+    if (!pyr_sel) return { state: 'none', levels: [] };
+    const n = pyr_partCount(pyr_sel.code);
+    if (n >= 6) return { state: 'base', code: pyr_sel.code, acct: pyr_sel, levels: [] };
+    const raws = [$pyr('pyr-sub-part').value.trim()];
+    if (n === 4 && pyr_sub2Open) raws.push($pyr('pyr-sub-part2').value.trim());
+
+    const levels = [];
+    let cur = pyr_sel.code;
+    for (let i = 0; i < raws.length; i++) {
+        if (!raws[i]) break;
+        if (!/^\d{1,3}$/.test(raws[i])) return { state: 'invalid', level: i, levels };
+        cur += '-' + raws[i].padStart(2, '0');
+        const acct = pyr_accounts.get(cur);
+        levels.push({ code: cur, acct, state: !acct ? 'new' : (acct.postable ? 'exists' : 'notpostable') });
+    }
+    if (!levels.length) return { state: 'base', code: pyr_sel.code, acct: pyr_sel, levels };
+
+    const last = levels[levels.length - 1];
+    // a new account cannot hang under an existing account that does not allow posting
+    const blockedIdx = levels.findIndex((l, i) => i > 0 && l.state === 'new' && levels[i - 1].state === 'notpostable');
+    let state;
+    if (last.state === 'notpostable') state = 'notpostable';
+    else if (blockedIdx >= 0)         state = 'parentblocked';
+    else                              state = levels.some(l => l.state === 'new') ? 'new' : 'exists';
+    return { state, code: last.code, acct: last.acct, levels, blockedIdx };
+}
+
+function pyr_ordinal(n) { return n + 'th'; }
+
+/* Hint under one part row, from its resolved level. `last` = this is the account the item will use (it gets the Item Name as its
+   title); a new level that is NOT the last one is only created so that the next part can hang under it, and needs its own title. */
+function pyr_levelHint(el, level, whenEmpty, blockedBy, last) {
+    el.className = 'pyr-hint';
+    if (!level)                          { el.textContent = whenEmpty; return; }
+    if (blockedBy)                       { el.textContent = `${blockedBy.code} exists but does not allow posting, so ${level.code} cannot be added under it.`; el.classList.add('bad'); return; }
+    if (level.state === 'exists')        { el.textContent = `${level.code} — ${level.acct.title}`; el.classList.add('ok'); return; }
+    if (level.state === 'notpostable')   { el.textContent = `${level.code} exists but does not allow posting.`; el.classList.add('bad'); return; }
+    el.textContent = last
+        ? `${level.code} does not exist yet. It is added to the Chart of Accounts when you save, with the Item Name as its account title.`
+        : `${level.code} does not exist yet. It is added to the Chart of Accounts too, so the next part can sit under it — give it an Account Title below.`;
 }
 
 function pyr_syncAccountUi() {
@@ -638,36 +673,54 @@ function pyr_syncAccountUi() {
     else if (pyr_legacyAccount && !pyr_sel) { hint.textContent = `Current account ${pyr_legacyAccount} is no longer an active, postable account. It is kept unless you pick another.`; hint.classList.add('bad'); }
     else if (!pyr_sel)                   hint.textContent = `Search ${pyr_postable.length} postable accounts. Leave blank if none assigned yet.`;
     else                                 hint.textContent = pyr_partCount(pyr_sel.code) < 6
-        ? `Posts to this account. Add a ${pyr_partCount(pyr_sel.code) + 1}th part below to use a sub-ledger of it.`
+        ? `Posts to this account. Add a ${pyr_ordinal(pyr_partCount(pyr_sel.code) + 1)} part below to use a sub-ledger of it.`
         : 'Posts to this account.';
 
-    // next part
-    const sub = $pyr('pyr-sub'), subHint = $pyr('pyr-sub-hint');
-    const canExtend = !!pyr_sel && pyr_partCount(pyr_sel.code) < 6;
-    sub.hidden = !canExtend;
-    const r = pyr_resolve();
-    subHint.className = 'pyr-hint';
+    const n = pyr_sel ? pyr_partCount(pyr_sel.code) : 0;
+    const canExtend = !!pyr_sel && n < 6;
+
+    // the 6th-part row only exists under a valid 5th part, and only from a 4-part account
+    let r = pyr_resolve();
+    const level0Valid = r.levels.length >= 1;
+    if (pyr_sub2Open && !(n === 4 && level0Valid)) {
+        pyr_sub2Open = false;
+        $pyr('pyr-sub-part2').value = '';
+        r = pyr_resolve();
+    }
+    const [l0, l1] = r.levels;
+
+    // 1st row: the 5th part (or the 6th, from a 5-part account)
+    $pyr('pyr-sub').hidden = !canExtend;
     if (canExtend) {
-        const n = pyr_partCount(pyr_sel.code) + 1;
-        $pyr('pyr-sub-label').textContent = `${n}th part (sub-ledger)`;
+        $pyr('pyr-sub-label').textContent = `${pyr_ordinal(n + 1)} part (sub-ledger)`;
         $pyr('pyr-sub-prefix').innerHTML = pyr_chipHtml(pyr_sel.code);
-        if (r.state === 'base')             subHint.textContent = `Optional. Leave blank to post to ${pyr_sel.code}.`;
-        else if (r.state === 'invalid')     { subHint.textContent = 'Digits only, e.g. 37.'; subHint.classList.add('bad'); }
-        else if (r.state === 'exists')      { subHint.textContent = `${r.code} — ${r.acct.title}`; subHint.classList.add('ok'); }
-        else if (r.state === 'notpostable') { subHint.textContent = `${r.code} exists but does not allow posting.`; subHint.classList.add('bad'); }
-        else                                subHint.textContent = `${r.code} does not exist yet in the Chart of Accounts.`;
+        const subHint = $pyr('pyr-sub-hint');
+        if (r.state === 'invalid' && r.level === 0) { subHint.className = 'pyr-hint bad'; subHint.textContent = 'Digits only, e.g. 37.'; }
+        else pyr_levelHint(subHint, l0, `Optional. Leave blank to post to ${pyr_sel.code}.`, null, !l1);
     } else {
         $pyr('pyr-sub-part').value = '';
     }
 
-    // new sub-ledger box
+    // "+ Add 6th part" (from a 4-part account, once the 5th part is a valid number)
+    $pyr('pyr-sub-add6').hidden = !(n === 4 && level0Valid && !pyr_sub2Open);
+
+    // 2nd row: the 6th part
+    $pyr('pyr-sub2').hidden = !(n === 4 && pyr_sub2Open && level0Valid);
+    if (!$pyr('pyr-sub2').hidden) {
+        $pyr('pyr-sub2-prefix').innerHTML = pyr_chipHtml(l0.code);
+        const sub2Hint = $pyr('pyr-sub2-hint');
+        if (r.state === 'invalid' && r.level === 1) { sub2Hint.className = 'pyr-hint bad'; sub2Hint.textContent = 'Digits only, e.g. 01.'; }
+        else pyr_levelHint(sub2Hint, l1, `Enter the 6th part, or remove it to post to ${l0.code}.`, l1 && l1.state === 'new' && l0.state === 'notpostable' ? l0 : null, true);
+    }
+
+    // The account the item uses is the LAST part entered and takes the Item Name as its title (no box for it).
+    // Only a NEW 5th part that a 6th part hangs under is created just to make the hierarchy exist — that one needs its own title.
+    // (The box keeps what was typed while it is only hidden for a moment; it is cleared by pyr_clearParts.)
     const box = $pyr('pyr-new');
-    const wasHidden = box.hidden;
-    box.hidden = r.state !== 'new';
-    if (r.state === 'new') {
-        $pyr('pyr-new-heading').textContent = `New sub-ledger ${r.code}`;
-        if (wasHidden) pyr_titleTouched = false;
-        pyr_prefillTitle();
+    box.hidden = !(l0 && l0.state === 'new' && l1);
+    if (!box.hidden) {
+        $pyr('pyr-new-heading').textContent = `New ${pyr_ordinal(pyr_partCount(l0.code))}-part account ${l0.code}`;
+        $pyr('pyr-new-hint').textContent = `It does not exist yet. It is added to the Chart of Accounts under ${pyr_sel.code}, so that ${l1.code} can sit under it.`;
     }
 }
 
@@ -675,12 +728,11 @@ function pyr_syncAccountUi() {
 function pyr_resetState() {
     $pyr('pyr-form').reset();
     pyr_sel = null; pyr_legacyAccount = null; pyr_query = ''; pyr_list = []; pyr_active = -1;
-    pyr_nameTouched = false; pyr_titleTouched = false;
+    pyr_nameTouched = false;
     pyr_closePanel();
     $pyr('pyr-account-search').value = '';
     $pyr('pyr-account-search').placeholder = 'Search account code or title…';
-    $pyr('pyr-sub-part').value = '';
-    $pyr('pyr-new-title').value = '';
+    pyr_clearParts();
     pyr_syncAccountUi();
     pyr_syncSide();
 }
@@ -772,15 +824,20 @@ async function pyr_save(ev) {
     if (!v.category)  { pyr_showErr('Category is required.'); return; }
 
     const acc = pyr_resolve();
-    let newTitle = '';
+    const newAccounts = [];                                         // sub-ledgers to create, parent first
     if (pyr_sel) {
         if (pyr_coaState !== 'ready') { pyr_showErr('The chart of accounts is not loaded, so the account cannot be checked.'); return; }
-        const n = pyr_partCount(pyr_sel.code) + 1;
-        if (acc.state === 'invalid')     { pyr_showErr(`The ${n}th part must be digits only, e.g. 37.`); return; }
-        if (acc.state === 'notpostable') { pyr_showErr(`Account ${acc.code} exists but does not allow posting.`); return; }
-        if (acc.state === 'new') {
-            newTitle = $pyr('pyr-new-title').value.trim();
-            if (!newTitle) { pyr_showErr(`Enter an account title for the new sub-ledger ${acc.code}.`); return; }
+        const first = pyr_partCount(pyr_sel.code) + 1;
+        if (acc.state === 'invalid')       { pyr_showErr(`The ${pyr_ordinal(first + acc.level)} part must be digits only, e.g. 37.`); return; }
+        if (acc.state === 'notpostable')   { pyr_showErr(`Account ${acc.code} exists but does not allow posting.`); return; }
+        if (acc.state === 'parentblocked') { pyr_showErr(`Account ${acc.levels[acc.blockedIdx - 1].code} exists but does not allow posting, so ${acc.levels[acc.blockedIdx].code} cannot be added under it.`); return; }
+        for (let i = 0; i < acc.levels.length; i++) {
+            if (acc.levels[i].state !== 'new') continue;
+            const isLast = i === acc.levels.length - 1;
+            // the account the item uses is titled with the Item Name; a new 5th part that only makes room for the 6th has its own title
+            const title = isLast ? v.item_name : $pyr('pyr-new-title').value.trim();
+            if (!title) { pyr_showErr(`Enter an account title for the new sub-ledger ${acc.levels[i].code}.`); return; }
+            newAccounts.push({ account_code: acc.levels[i].code, account_title: title });
         }
     } else if ($pyr('pyr-account-search').value.trim()) {
         pyr_showErr('Pick an account from the list, or clear the account field.'); return;
@@ -796,8 +853,9 @@ async function pyr_save(ev) {
         account_code : accountCode,
     };
     if (mode !== 'edit') payload.item_code = v.item_code;          // the code is immutable once created
-    // A sub-ledger that is not in the chart yet: the server creates it together with the item (and takes it back out if the item fails)
-    if (acc.state === 'new') payload.new_account = { account_title: newTitle };
+    // Sub-ledgers that are not in the chart yet: the server creates them (parent first) together with the item,
+    // and takes them back out if the item fails to save
+    if (newAccounts.length) payload.new_accounts = newAccounts;
 
     pyr_saving = true;
     $pyr('pyr-save').disabled = true;
@@ -814,10 +872,10 @@ async function pyr_save(ev) {
             throw new Error((json && json.message) || `Failed to save the payroll item (HTTP ${res.status}).`);
         }
 
-        const created = json.data?.created_account;
-        if (created) {
-            pyr_toast(`Sub-ledger ${created} was added to the Chart of Accounts.`, 'success');
-            pyr_loadAccounts();                                     // pick up the new account for the next item
+        const created = json.data?.created_accounts ?? [];
+        if (created.length) {
+            pyr_toast(`Sub-ledger${created.length > 1 ? 's' : ''} ${created.join(' and ')} ${created.length > 1 ? 'were' : 'was'} added to the Chart of Accounts.`, 'success');
+            pyr_loadAccounts();                                     // pick up the new account(s) for the next item
         }
         pyr_toast(`Payroll item ${mode === 'edit' ? 'updated' : 'created'} successfully.`, 'success');
         pyr_closeModal();

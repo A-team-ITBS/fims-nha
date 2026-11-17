@@ -10,9 +10,12 @@
  *   - Item Name fills in from the Item Code (BASIC_SALARY → BASIC SALARY) until the user types their own.
  *   - Account is a searchable dropdown of the postable accounts (GET /payroll-setup/accounts, loaded by the page).
  *   - After an account is picked, its NEXT part (the 5th, or the 6th for a 5-part account) is editable.
- *     If that account does not exist yet, a Title box appears; the page sends it as `new_account` with the item and the
- *     server adds the sub-ledger to the Chart of Accounts (same as "Add Sub-Ledger" on chart-of-accounts-page.php),
- *     removing it again if the item then fails to save.
+ *     From a 4-part account a "+ Add 6th part" button adds a 6th-part input under the 5th part, which may itself be new.
+ *     The account the item uses is the LAST part entered; if it does not exist it is created in the Chart of Accounts
+ *     with the Item Name as its title. A 5th part that does not exist but has a 6th part under it is created too, only to
+ *     make the hierarchy exist, and that one gets its own Account Title box. The page sends them as `new_accounts`
+ *     (parent first) with the item and the server adds them (same as "Add Sub-Ledger" on chart-of-accounts-page.php),
+ *     removing them again if the item then fails to save.
  *   - There is no Debit/Credit field: the side follows from the Category
  *     (earning, refund, employer share = Debit; deduction = Credit).
  *
@@ -101,7 +104,14 @@
 
     /* ── Next part (5th / 6th) + new sub-ledger ── */
     .pyr-sub { margin-top:14px; }
-    .pyr-sub[hidden], .pyr-new[hidden] { display:none; }
+    .pyr-sub[hidden], .pyr-new[hidden], .pyr-link-btn[hidden] { display:none; }
+    .pyr-link-btn { align-self:flex-start;margin-top:14px;padding:6px 12px;border:1px dashed var(--afims-border-strong, #C9D3DD);border-radius:8px;
+        background:transparent;color:var(--afims-heading-fill, #000E3E);font:600 12px 'IBM Plex Sans',sans-serif;cursor:pointer; }
+    .pyr-link-btn:hover { background:var(--afims-surface-subtle, #F4F7FA);border-style:solid; }
+    .pyr-icon-btn { width:30px;height:30px;flex-shrink:0;border:1px solid var(--afims-border, #E4ECF2);border-radius:8px;background:var(--afims-surface, #FFFFFF);
+        color:var(--afims-text-muted, #62657E);font-size:18px;line-height:1;cursor:pointer; }
+    .pyr-icon-btn:hover { background:var(--afims-surface-subtle, #F4F7FA);color:var(--afims-danger, #DC3545); }
+    html.afims-dark[data-bs-theme="dark"] .pyr-link-btn { color:#FFFFFF; }
     .pyr-sub-row { display:flex;align-items:center;gap:8px;margin:5px 0; }
     .pyr-sub-row .pyr-input { width:120px; }
     .pyr-sub-dash { font:700 14px 'IBM Plex Mono',monospace;color:var(--afims-text-muted, #62657E); }
@@ -207,6 +217,7 @@
                     </div>
                     <p class="pyr-hint" id="pyr-account-hint">Loading chart of accounts…</p>
 
+                    <!-- 1st extra part: the 5th (or the 6th, when a 5-part account was picked above) -->
                     <div class="pyr-sub" id="pyr-sub" hidden>
                         <label class="pyr-label" for="pyr-sub-part" id="pyr-sub-label">5th part</label>
                         <div class="pyr-sub-row">
@@ -216,12 +227,27 @@
                         </div>
                         <p class="pyr-hint" id="pyr-sub-hint"></p>
                     </div>
-
+                    <!-- Only a NEW 5th part that a 6th part hangs under: it is created just to make the hierarchy exist, so it needs its own title.
+                         The account the item uses (the last part entered) is titled with the Item Name — no box for it. -->
                     <div class="pyr-new" id="pyr-new" hidden>
-                        <span class="pyr-new-title" id="pyr-new-heading">New sub-ledger</span>
+                        <span class="pyr-new-title" id="pyr-new-heading">New 5th-part account</span>
                         <label class="pyr-label" for="pyr-new-title">Account Title <span class="req">*</span></label>
-                        <input type="text" class="pyr-input" id="pyr-new-title" maxlength="255" autocomplete="off" placeholder="Title of the new sub-ledger account">
-                        <p class="pyr-hint">This account does not exist yet. It is added to the Chart of Accounts under the account above when you save.</p>
+                        <input type="text" class="pyr-input" id="pyr-new-title" maxlength="255" autocomplete="off" placeholder="Title of the 5th-part account">
+                        <p class="pyr-hint" id="pyr-new-hint"></p>
+                    </div>
+
+                    <button type="button" class="pyr-link-btn" id="pyr-sub-add6" hidden>+ Add 6th part</button>
+
+                    <!-- 2nd extra part: the 6th, under the 5th part above (which may itself be new) -->
+                    <div class="pyr-sub" id="pyr-sub2" hidden>
+                        <label class="pyr-label" for="pyr-sub-part2">6th part</label>
+                        <div class="pyr-sub-row">
+                            <span id="pyr-sub2-prefix"></span>
+                            <span class="pyr-sub-dash">-</span>
+                            <input type="text" class="pyr-input pyr-mono" id="pyr-sub-part2" maxlength="3" inputmode="numeric" autocomplete="off" placeholder="e.g. 01">
+                            <button type="button" class="pyr-icon-btn" id="pyr-sub2-remove" aria-label="Remove the 6th part" title="Remove the 6th part">&times;</button>
+                        </div>
+                        <p class="pyr-hint" id="pyr-sub2-hint"></p>
                     </div>
                 </div>
             </div>
