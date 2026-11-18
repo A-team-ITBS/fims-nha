@@ -1,6 +1,6 @@
 <?php
 /**
- * budget-preview-readone.php
+ * budget-preview-readone.php.
  *
  * Read-only "Budget Preview" modal for a budget request — the read-only counterpart of the Budget Processing
  * modal (form/budget-processing-form.php): the same columns, but laid out per Project (the Processing modal is
@@ -345,7 +345,7 @@ function bpv_value(text) {
     return text ? bgr_esc(text) : '<span class="nha-td-sub">—</span>';
 }
 
-// A line's adjustment (budget_line_items.adjustment — what approved budget revisions added to / deducted from the line):
+// A line's adjustment (budget_line_items.adjustment — the total of what approved budget revisions added to / deducted from the line):
 // "+ ₱ 50,000.00" in green, "− ₱ 50,000.00" in red, a dash when there is none. Plain text, never HTML from the data.
 function bpv_adjHtml(v) {
     const n = Number(v) || 0;

@@ -190,9 +190,9 @@ flowchart TD
 |---|---|---|---|---|
 | 1 | Budget office user | COB Preparation → Budget Revision | Add a revision: From budget line, new amount, reason — or, on the Realignment tab, From line, To line and the amount to transfer, reason | Status Saved — still editable (Actions → Edit) |
 | 1a | Budget office user | Budget Revision | Actions → Process on the saved request | Status Submitted — it can no longer be edited |
-| 2 | Reviewer | Budget Revision | Review → Approve (Submitted requests only) | Status Approved; the From and To lines' amounts change |
+| 2 | Reviewer | Budget Revision | Review → Approve (Submitted requests only) | Status Approved; a transaction is recorded for each line (From goes down, To goes up) — COB Monitoring's Revision / Realignment column adds them up (− in red on the budget that gave funds up, + in green on the one that received them) |
 | 2a | Reviewer (alternative) | Budget Revision | Review → Decline | Status Declined; no amounts change |
-| 3 | Any user | Monitoring → COB Monitoring | Open the revised lines | Revision / Realignment column shows the change |
+| 3 | Any user | Monitoring → COB Monitoring | Open the revised lines | Revision / Realignment column shows the change (red −, green +) |
 
 ```mermaid
 flowchart TD
@@ -201,7 +201,7 @@ flowchart TD
     SP --> S2["STEP 2 — REVIEW<br/>Reviewer — Budget Revision"]
     S2 --> D1{"Approved?"}
     D1 -->|"No"| X(["Declined — budget unchanged"])
-    D1 -->|"Yes"| S3["STEP 3 — APPLIED<br/>• From line adjusted<br/>• To line receives the difference<br/>• COB Monitoring: Revision / Realignment"]
+    D1 -->|"Yes"| S3["STEP 3 — APPLIED<br/>• A transaction is recorded for the From line<br/>• and one for the To line, which receives the difference<br/>• COB Monitoring: Revision / Realignment (red − / green +)"]
     S3 --> END(["Revision applied — go to Section 5"])
 ```
 

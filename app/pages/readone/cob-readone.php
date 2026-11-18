@@ -53,6 +53,11 @@
 #cobv-overlay .cobv-doc .cobv-na { color:var(--afims-text-disabled, #A9AAB8);font-size:12px; }
 #cobv-overlay .cobv-muted { color:var(--afims-text-muted, #62657E);font-size:12.5px; }
 #cobv-overlay .cobv-neg { color:#dc2626; }
+#cobv-overlay .cobv-pos { color:var(--green-txt, #0C7539); }
+#cobv-overlay .cobv-adj { min-width:190px; }
+#cobv-overlay .cobv-adj > div { display:flex;justify-content:space-between;align-items:baseline;gap:10px; }
+#cobv-overlay .cobv-adj > div + div { margin-top:2px; }
+#cobv-overlay .cobv-adj-k { font-size:10px;font-weight:500;letter-spacing:.03em;text-transform:uppercase;color:var(--afims-text-muted, #62657E); }
 #cobv-overlay .cobv-dash { color:var(--afims-text-disabled, #A9AAB8); }
 </style>
 
@@ -99,16 +104,36 @@
         if (Math.abs(n) < 0.005) return '<span class="cobv-dash">-</span>';
         return n < 0 ? `<span class="cobv-neg">(${plain(-n)})</span>` : plain(n);
     };
+    // The Revision / Realignment column is signed and coloured (a deduction - in red, an addition + in green); the other columns keep the sheet's brackets. Its cell shows, on a line,
+    // only the latest adjustment (a realignment is - on the budget that gave funds up and + on the one that received them); the Total row has nothing in it.
+    const signed = v => {
+        const n = Number(v || 0);
+        if (Math.abs(n) < 0.005) return '<span class="cobv-dash">-</span>';
+        return n < 0 ? `<span class="cobv-neg">−${plain(-n)}</span>` : `<span class="cobv-pos">+${plain(n)}</span>`;
+    };
+    // the Revision / Realignment cell. A line item shows only what the LATEST approved request changed on it (the server sends latest_revision_amount / latest_realignment_amount with every row),
+    // each part on a line of its own with its own sign and colour — a part that is nothing is left out; no adjustment at all is a dash. A project's / the request's Total row shows NOTHING in this
+    // column: there is no total of the revisions / realignments (Revised Amount is still worked out from all of them, per line, on the server).
+    const adjCell = (o, leaf) => {
+        if (!leaf) return '<td class="cobv-num"></td>';
+        const rev = Number(o.latest_revision_amount || 0), rea = Number(o.latest_realignment_amount || 0), net = Number(o.revision_amount || 0);
+        const line = (tag, n) => Math.abs(n) < 0.005 ? '' : `<div><span class="cobv-adj-k">${tag}</span>${signed(n)}</div>`;
+        const lines = line('Revision', rev) + line('Realignment', rea);
+        // a line whose latest request nets to nothing on it but that has earlier adjustments still shows its net
+        if (!lines) return Math.abs(net) < 0.005 ? '<td class="cobv-num cobv-adj"><span class="cobv-dash">-</span></td>' : `<td class="cobv-num">${signed(net)}</td>`;
+        const title = esc('Latest adjustment only. Net of all revisions and realignments to date: ' + (Math.abs(net) < 0.005 ? '—' : (net < 0 ? '−' : '+') + '₱ ' + plain(Math.abs(net))) + ' (Approved Amount + this net = Revised Amount)');
+        return `<td class="cobv-num cobv-adj" title="${title}">${lines}</td>`;
+    };
     // the eight columns, in the order of the COB sheet: [key, heading, tooltip]
     const COLS = [
         ['approved_amount', 'Approved Amount', 'What FMD suggested in the Budget Proposal module, before any revision or CBA'],
-        ['revision_amount', 'Revision / Realignment', 'Net of the approved Budget Revisions (a decrease in brackets)'],
+        ['revision_amount', 'Revision / Realignment', 'A line shows only its LATEST revision or realignment (+ green, − red); the Total row has no figure here'],
         ['revised_amount', 'Revised Amount', 'Approved Amount net of Revision / Realignment (a decrease lowers it)'],
         ['cba_requested', 'CBA Requested', 'Taken off the budget by approved CBAs'],
         ['available_amount', 'Available for Earmarking', 'Revised Amount less CBA Requested'],
         ['rfa_approved', 'RFA Approved', 'Drawn from the CBAs by approved RFAs'],
         ['laa_issued', 'LAA Issued', 'Drawn from the CBAs by issued LAAs'],
-        ['remaining_balance', 'Remaining Balance', 'Revised Amount less RFA Approved and LAA Issued'],
+        ['remaining_balance', 'Remaining Balance', 'Revised Amount less CBA Requested'],
     ];
 
     const state = { seq: 0, lastFocus: null };
@@ -118,13 +143,13 @@
 
     function lineTable(lines, totals) {
         if (!lines.length) return `<p class="cobv-muted">No line items.</p>`;
-        const cells = o => COLS.map(([k]) => `<td class="cobv-num">${num(o[k])}</td>`).join('');
+        const cells = (o, leaf) => COLS.map(([k]) => k === 'revision_amount' ? adjCell(o, leaf) : `<td class="cobv-num">${num(o[k])}</td>`).join('');
         const rows = lines.map(l => `<tr>
             <td>${esc(l.account_title || '—')}${l.account_code ? ` ${chip(l.account_code)}` : ''}${l.expense_class ? ` <span class="nha-bdg nha-bdg-gray nha-bdg-xs" title="Told apart by the account code: 1… CO, 5-01… PS, 5-02… MOOE">${esc(l.expense_class)}</span>` : ''}${l.particulars ? `<span class="cobv-sub" style="display:block;font-size:11.5px;color:var(--afims-text-muted,#62657E);">${esc(l.particulars)}</span>` : ''}</td>
-            <td>${esc(l.type_of_fund_name || '—')}</td><td>${esc(l.component_name || '—')}</td>${cells(l)}</tr>`).join('');
+            <td>${esc(l.type_of_fund_name || '—')}</td><td>${esc(l.component_name || '—')}</td>${cells(l, true)}</tr>`).join('');
         return `<div class="cobv-scroll"><table class="cobv-tbl"><thead><tr>
             <th>Account</th><th>Type of Fund</th><th>Component</th>${COLS.map(([k, label, hint]) => `<th class="cobv-num" title="${esc(hint)}">${esc(label)}</th>`).join('')}
-            </tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="3">Total</td>${cells(totals)}</tr></tfoot></table></div>`;
+            </tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="3">Total</td>${cells(totals, false)}</tr></tfoot></table></div>`;
     }
 
     function docsHtml(docs) {
@@ -164,7 +189,9 @@
         // (anything else a programless line might be booked to goes last, as "Other"). CobService::fetchById() calls them unassigned_line_items.
         const loose = r.unassigned_line_items || [];
         if (loose.length) {
-            const sum = ls => ls.reduce((a, l) => { for (const [k] of COLS) a[k] += Number(l[k] || 0); return a; }, Object.fromEntries(COLS.map(([k]) => [k, 0])));
+            // the two figures of the Revision / Realignment cell ride along with the columns
+            const SUMMED = [...COLS.map(([k]) => k), 'latest_revision_amount', 'latest_realignment_amount'];
+            const sum = ls => ls.reduce((a, l) => { for (const k of SUMMED) a[k] += Number(l[k] || 0); return a; }, Object.fromEntries(SUMMED.map(k => [k, 0])));
             const groups = [['PS', 'Personal Services'], ['MOOE', 'Maintenance and Other Operating Expenses']]
                 .map(([c, name]) => [c, name, loose.filter(l => l.expense_class === c)]);
             const other = loose.filter(l => l.expense_class !== 'PS' && l.expense_class !== 'MOOE');
