@@ -2126,10 +2126,13 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 
 		// ── Allocation Type limited by the page that hosts the form (CBA_ALLOWED_TYPES) ──
 		// The CBA page allows only CBA, the RFA/LAA page only those two: every other <option> is taken out, so a request
-		// can never be created on the wrong page. (Re-run on every open — the markup is rebuilt each time.)
+		// can never be created on the wrong page — including the blank "Select allocation type" placeholder itself,
+		// since a scoped page always has a real type to fall back on (single-type: locked to it; RFA/LAA: defaulted
+		// to RFA below) and never needs to let the field sit unselected. (Re-run on every open — the markup is
+		// rebuilt each time.)
 		if (CBA_ALLOWED_TYPES.length) {
 			Array.prototype.slice.call(document.getElementById('allocation_type').options).forEach(function(opt) {
-				if (opt.value && CBA_ALLOWED_TYPES.indexOf(opt.value) === -1) opt.remove();
+				if (!opt.value || CBA_ALLOWED_TYPES.indexOf(opt.value) === -1) opt.remove();
 			});
 		}
 
@@ -2150,6 +2153,15 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 			// user clicked "New ... Memo Request" from. (On the RFA/LAA page a ?type= preset locks it to that one.)
 			allocTypeEl.disabled = true;
 			allocTypeEl.title = 'Determined by the page this was opened from.';
+			generateCBANumber();
+			toggleCbaIdRow();
+		} else if (!_presetType && !CBA_EDIT_MODE &&
+			CBA_ALLOWED_TYPES.indexOf('RFA') !== -1 && CBA_ALLOWED_TYPES.indexOf('LAA') !== -1) {
+			// The RFA/LAA page (both types allowed, neither locked via a single-type page or a ?type= preset) —
+			// default the selection to RFA rather than leaving it blank, since that's the far more common of the
+			// two (LAA is only for the ≥₱50M case). Left enabled, unlike the lock above: the user can still
+			// switch it to LAA themselves.
+			document.getElementById('allocation_type').value = 'RFA';
 			generateCBANumber();
 			toggleCbaIdRow();
 		}
@@ -3860,21 +3872,28 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 		return cobChainSignature();
 	}
 
-	// The account code — what the search box shows once a COB is picked; its Type of Fund travels with it (see
-	// collectBaaLines()) rather than being chosen separately.
+	// The account code and title — what the search box shows once a COB is picked; its Type of Fund travels with it
+	// (see collectBaaLines()) rather than being chosen separately.
 	function cobLabel(r) {
-		return r.account_code || ('Line item #' + r.budget_line_item_id);
+		if (!r.account_code) return 'Line item #' + r.budget_line_item_id;
+		return r.account_title ? r.account_code + ' - ' + r.account_title : r.account_code;
 	}
 
 	function cobAmount(v) {
 		return (v == null || v === '') ? '—' : '₱' + baaFormatAmt(parseFloat(v) || 0);
 	}
 
-	// A COB's Available Amount IS its budget_line_items.suggested_amount (GET /budget_line_item/approved sends it as
-	// `suggested_amount`) — never proposed_amount, which is only what the office first asked for. '' when the record has none
-	// (a saved line whose COB has since left the approved list and was saved before the snapshot kept it).
-	function cobSuggested(rec) {
-		return rec && rec.suggested_amount != null && rec.suggested_amount !== '' ? rec.suggested_amount : '';
+	// A COB's Available Amount is the derived ceiling GET /budget_line_item/approved sends as `available_amount`
+	// (BudgetLineBalanceSql::availableExpr() — suggested_amount + adjustment, less what is still reserved and
+	// already drawn) — never proposed_amount (only what the office first asked for), and no longer suggested_amount
+	// itself (that column is now a stable, never-depleted figure — see BudgetLineItemService's Earmarks section
+	// header comment). Falls back to suggested_amount for a snapshot saved before this field existed, where
+	// suggested_amount WAS the live ceiling — a historical value, not a live one, but the best available.
+	// '' when the record has neither (a saved line whose COB has since left the approved list).
+	function cobAvailable(rec) {
+		if (!rec) return '';
+		if (rec.available_amount != null && rec.available_amount !== '') return rec.available_amount;
+		return rec.suggested_amount != null && rec.suggested_amount !== '' ? rec.suggested_amount : '';
 	}
 
 	function baaRowTemplate(idx) {
@@ -3882,7 +3901,7 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 			'<div class="baa-line form-row cols-baa" data-idx="' + idx + '">' +
 			'<div class="form-group baa-bv-group">' +
 			'<label for="bv_search_' + idx + '" class="form-label">' +
-			'<span id="bv_field_label_' + idx + '">COB</span>' +
+			'<span id="bv_field_label_' + idx + '">Account Code</span>' +
 			' <span class="required baa-bv-required" id="bv_required_mark_' + idx + '" style="display:none;">*</span>' +
 			'</label>' +
 			'<div style="position:relative;">' +
@@ -3944,7 +3963,7 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 			'<button type="button" class="baa-earmarks-toggle" id="baa_earmarks_toggle_' + idx + '">' +
 			'<svg class="baa-earmarks-caret" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">' +
 			'<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>' +
-			'<span>Where this COB&rsquo;s balance is held</span>' +
+			'<span>CBA Issued</span>' +
 			'</button>' +
 			'<div class="baa-earmarks-body" id="baa_earmarks_body_' + idx + '" style="display:none;"></div>' +
 			'</div>' +
@@ -4221,7 +4240,7 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 				'<div class="bv-item-name">' + pcEsc(r.account_code || 'No account code') + '</div>' +
 				(r.account_title ? '<div class="bv-item-sub">' + pcEsc(r.account_title) + '</div>' : '') +
 				'<div class="bv-item-sub">FY ' + pcEsc(r.fiscal_yr) + ' · Available ' +
-			pcEsc(cobAmount(cobSuggested(r))) +
+			pcEsc(cobAmount(cobAvailable(r))) +
 				(r.project_name ? ' · ' + pcEsc(r.project_name) : '') + '</div>' +
 				'</div>';
 		}).join('') + (rows.length > shown.length ?
@@ -4251,14 +4270,14 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 		if (dd) dd.style.display = 'none';
 		baaBvClearError(idx);
 
-		// The Available Amount is the line's suggested_amount (BudgetLineItemService::fetchApproved() sends it as `suggested_amount`)
-		// — the same figure the server checks the Requested Amount against (lockAndGetAvailable()), already reduced by every
-		// Approved CBA / CFA and moved by every approved Budget Revision. It is the real ceiling — what's actually still free to
-		// request against this COB right now. There is no fallback to proposed_amount.
-		// Only the real ceiling for CBA / CFA — RFA / LAA use CBA Available Balance instead (see baaRefreshCbaAmount()).
+		// The Available Amount is the derived ceiling BudgetLineItemService::fetchApproved() sends as `available_amount`
+		// (BudgetLineBalanceSql::availableExpr()) — the same figure the server checks the Requested Amount against
+		// (lockAndGetAvailable()): suggested_amount + adjustment, less what is still reserved and already drawn. It is
+		// the real ceiling — what's actually still free to request against this COB right now. There is no fallback to
+		// proposed_amount. Only the real ceiling for CBA / CFA — RFA / LAA use CBA Available Balance instead (see baaRefreshCbaAmount()).
 		var proposedEl = cobEl('proposed_amount', idx);
 		if (proposedEl) {
-			var availableAmt = cobSuggested(rec);
+			var availableAmt = cobAvailable(rec);
 			proposedEl.value = (availableAmt != null && availableAmt !== '') ?
 				baaFormatAmt(parseFloat(availableAmt) || 0) : '';
 		}
@@ -4312,7 +4331,7 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 	// ── "Where this COB's balance is held" (fims.budget_line_item_earmark) ──────────────────────
 	// Collapsed by default under the picked COB — GET /budget_line_item/{id}/earmarks on first expand, listing
 	// every Approved CBA/CFA reservation (active/released) and RFA/LAA conversion (converted) against it, so a
-	// user can see WHY the Available Amount is lower than suggested_amount without leaving this form.
+	// user can see WHY the Available Amount is lower than the line's suggested amount without leaving this form.
 
 	// Shown once a COB is picked (cobSelect()); a different COB drops any cached list so it reloads.
 	function baaShowEarmarksToggle(idx, budgetLineItemId) {
@@ -4502,7 +4521,7 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 			return;
 		}
 		body.innerHTML = rows.map(function(row) {
-			var ref = row.request_referrence_no || ('#' + row.allocation_id);
+			var ref = row.allocation_number || ('#' + row.allocation_id);
 			var type = row.allocation_type ? ' (' + pcEsc(row.allocation_type) + ')' : '';
 			return '<div class="baa-earmarks-row">' +
 				'<span><span class="baa-earmarks-ref">' + pcEsc(ref) + '</span>' + type +
@@ -4536,7 +4555,8 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 				account_title: snapshot.account_title || '',
 				fiscal_yr: snapshot.fiscal_yr || '',
 				proposed_amount: snapshot.proposed_amount,
-					suggested_amount: snapshot.suggested_amount
+				suggested_amount: snapshot.suggested_amount,
+				available_amount: snapshot.available_amount
 			};
 		}
 		if (rec) cobSelect(idx, rec);
@@ -4839,6 +4859,7 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 			fiscal_yr: sel && sel.fiscal_yr != null ? String(sel.fiscal_yr) : '',
 			proposed_amount: sel && sel.proposed_amount != null ? String(sel.proposed_amount) : '',
 			suggested_amount: sel && sel.suggested_amount != null ? String(sel.suggested_amount) : '',
+			available_amount: sel && sel.available_amount != null ? String(sel.available_amount) : '',
 			requested_amount: (document.getElementById('requested_amount_' + idx + '_raw') || {}).value || '',
 			allocated_amount: (document.getElementById('allocated_amount_' + idx + '_raw') || {}).value || '',
 		};

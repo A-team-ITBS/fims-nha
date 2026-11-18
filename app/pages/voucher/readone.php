@@ -235,6 +235,18 @@ function vr_render(dv) {
     const totalDeductions = (dv.deductions ?? []).reduce((s, d) => s + (Number(d.deduction_amount) || 0), 0);
     const attachmentsHtml = vr_attachmentsSection(dv);
 
+    // Section D is Accounting's. While Originating/FMD hold the voucher it isn't shown at all (any entries
+    // a payroll/remittance DV was pre-filled with stay stored, just not displayed until Accounting has it).
+    const dHiddenStage = ['DRAFT', 'FOR_FMD_REVIEW', 'REJECTED'].includes(dv.status);
+    const dEntriesHtml = dHiddenStage ? '' : (vje_visible(dv) ? vje_entriesCard(dv) : vje_groupedEntriesCard(dv));
+    const dPaymentHtml = dHiddenStage ? '' : vje_paymentEntriesCard(dv);
+    const dSection = (dEntriesHtml || dPaymentHtml) ? `
+        <div class="vr-doc-section" style="margin-bottom:0;">
+            <p class="vr-doc-section-hdr">D. Pro Forma Journal Entry</p>
+            ${dEntriesHtml}
+            ${dPaymentHtml}
+        </div>` : '';
+
     $vr('vr-body').innerHTML = `
         ${rejection}
         <div class="vr-net">
@@ -317,13 +329,11 @@ function vr_render(dv) {
             ${attachmentsHtml}
         </div>` : ''}
 
-        <!-- ══ D. PRO FORMA JOURNAL ENTRY — the Accounting Entries grid (editable while Accounting
-             is actively preparing it, read-only/grouped otherwise), plus the Payment Entry. ══ -->
-        <div class="vr-doc-section" style="margin-bottom:0;">
-            <p class="vr-doc-section-hdr">D. Pro Forma Journal Entry</p>
-            ${vje_visible(dv) ? vje_entriesCard(dv) : vje_groupedEntriesCard(dv)}
-            ${vje_paymentEntriesCard(dv)}
-        </div>
+        <!-- ══ D. PRO FORMA JOURNAL ENTRY — Accounting's section: the Accounting Entries grid (editable
+             while Accounting is actively preparing it, read-only/grouped afterwards), plus the Payment
+             Entry. Hidden while Originating/FMD hold the voucher (DRAFT / FOR_FMD_REVIEW / REJECTED)
+             and whenever there is nothing to show, so they never see an empty heading. ══ -->
+        ${dSection}
 
         <div class="vr-card" style="margin-bottom:0;">
             <p class="vr-card-title">Workflow History</p>
@@ -742,7 +752,6 @@ function vje_entriesCard(dv) {
             <button type="button" class="nha-btn nha-btn-ghost" style="margin-top:8px;" onclick="vje_addNewLine()">+ Add Line</button>
             <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;">
                 <span id="vje-balance-msg" style="font-weight:600;font-size:13px;"></span>
-                <button type="button" class="nha-btn nha-btn-primary" onclick="vje_save()">Save Journal Entry</button>
             </div>
         </div>`;
 }
@@ -1274,6 +1283,10 @@ function vje_recalc() {
     return balanced;
 }
 
+// Saves the Deductions / ATC / Accounting Entries grids. There's no separate "Save Journal Entry"
+// button anymore — vr_changeStatus() calls this automatically right before forwarding the voucher
+// to the Division Manager, and only forwards if it returns true. Resolves false (after alerting)
+// on a validation/server error; doesn't reload the modal — the status change that follows does.
 async function vje_save() {
     const lines = vje_collectLines();
     const atc_lines = vje_collectAtcLines();
@@ -1285,7 +1298,7 @@ async function vje_save() {
     if (lines.length && !book_id) {
         if (errBook) errBook.style.display = 'block';
         alert('Book is required once Accounting Entries lines are filled in.');
-        return;
+        return false;
     }
     if (errBook) errBook.style.display = 'none';
 
@@ -1296,7 +1309,7 @@ async function vje_save() {
     if (missingAcct) {
         const type = VJE_DED.find(t => String(t.deduction_type_id) === String(missingAcct.deduction_type_id));
         alert(`"${type?.name || 'This deduction'}" has no default posting account — pick one before saving.`);
-        return;
+        return false;
     }
 
     window.PagePreloader?.show();
@@ -1309,11 +1322,12 @@ async function vje_save() {
         const json = await res.json();
         if (!json.success) {
             alert((json.errors?.length ? json.errors.join('\n') : null) || json.message || 'Failed to save Journal Entry.');
-            return;
+            return false;
         }
-        await vr_open(vr_id); // reload — "Forward to Treasury" appears once the JEV is balanced
+        return true;
     } catch (e) {
         alert('Could not save: ' + e.message);
+        return false;
     } finally {
         window.PagePreloader?.hide();
     }
@@ -1327,6 +1341,11 @@ async function vr_changeStatus(status) {
         if (!notes.trim()) { alert('A reason is required when rejecting.'); return; }
     } else if (!confirm(`Change this disbursement voucher to ${status}?`)) {
         return;
+    }
+
+    // Accounting's Journal Entry grids are saved as part of forwarding — no separate Save step.
+    if (status === 'FOR_DIVISION_MANAGER' && vr_dv && vje_visible(vr_dv)) {
+        if (!(await vje_save())) return;
     }
 
     window.PagePreloader?.show();

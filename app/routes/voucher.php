@@ -315,7 +315,8 @@ $app->post('/voucher/journal-entry/{id}/jev-status', function ($request, $respon
         if ($status === '') {
             return $response->withJson(['success' => false, 'message' => 'status is required.'], 400);
         }
-        $result = $VoucherService->changeJevStatus((int) $args['id'], $status, (int) $request->getAttribute('user_id'));
+        $remarks = trim((string) ($body['remarks'] ?? ''));
+        $result = $VoucherService->changeJevStatus((int) $args['id'], $status, (int) $request->getAttribute('user_id'), $remarks !== '' ? $remarks : null);
 
         return $response->withJson($result, $result['httpCode'] ?? ($result['success'] ? 200 : 400));
     } catch (\Exception $e) {

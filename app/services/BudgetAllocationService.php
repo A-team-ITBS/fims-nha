@@ -493,9 +493,13 @@ class BudgetAllocationService
 
     // -----------------------------------------------------------------------
     // Delete (soft) — /budget_allocation/delete/{id}
-    // Blocked while other memo requests still have this one as their parent. Deleting an Approved CBA / CFA also gives
-    // back what its approval took from each line item (see BudgetLineItemService::releaseForAllocation()); the soft
-    // delete and that reversal are ONE transaction, so a failure part-way leaves both untouched.
+    // Blocked while other memo requests still have this one as their parent, and blocked for an Approved
+    // RFA/LAA that already has a non-cancelled/rejected disbursement voucher against it (see below).
+    // Deleting an Approved CBA/CFA releases its reservations (its approval never moved money on the line
+    // item itself — see BudgetLineItemService::createForApproval()); deleting an Approved RFA/LAA reverses
+    // its draw — obligation down, the parent CBA's earmark restored
+    // (BudgetLineItemService::releaseForAllocation() / reverseConversions()). Either way the soft delete
+    // and that reversal are ONE transaction, so a failure part-way leaves both untouched.
     // -----------------------------------------------------------------------
     public function delete(int|string $id): array
     {
@@ -515,6 +519,24 @@ class BudgetAllocationService
                 return $this->fail("Memo request #{$id} is the parent of {$children} other memo request(s) — delete or re-parent those first.");
             }
 
+            // An Approved RFA/LAA's delete reverses a real financial commitment (obligation, the parent
+            // CBA's earmark) — reversing one that has already been paid out is worse than refusing the
+            // delete, so it's blocked outright while a non-cancelled/rejected voucher still points at it.
+            $allocationType = strtoupper(trim((string) ($check['data']['allocation_type'] ?? '')));
+            $isApproved = strtolower(trim((string) ($check['data']['status_name'] ?? ''))) === 'approved';
+            $dvId = (int) ($check['data']['dv_id'] ?? 0);
+            if (($allocationType === 'RFA' || $allocationType === 'LAA') && $isApproved && $dvId > 0) {
+                $dvStatus = strtoupper(trim((string) App\ExecuteScalar(
+                    "SELECT s.name FROM fims.disbursement_vouchers dv
+                     LEFT JOIN {$this->tableStatus} s ON s.id = dv.status_id
+                     WHERE dv.dv_id = {$dvId}",
+                    'DB'
+                )));
+                if ($dvStatus !== '' && !in_array($dvStatus, ['CANCELLED', 'REJECTED'], true)) {
+                    return $this->fail("Memo request #{$id} has a disbursement voucher against it that is not cancelled or rejected — cancel or reject it first.");
+                }
+            }
+
             App\Execute('BEGIN', 'DB');
             $inTransaction = true;
 
@@ -523,8 +545,8 @@ class BudgetAllocationService
                 'DB'
             );
 
-            // Frees whatever this request was holding against its COB(s) and gives back what its approval took from
-            // them — a no-op if it was never Approved (nothing held, nothing applied).
+            // Frees whatever this request was holding against its COB(s) and reverses whatever its approval
+            // did to them — a no-op if it was never Approved (nothing held, nothing applied).
             (new BudgetLineItemService())->releaseForAllocation($id);
 
             App\Execute('COMMIT', 'DB');
@@ -694,14 +716,14 @@ class BudgetAllocationService
                 return $this->fail('This memo request was changed by someone else in the meantime. Reload the list and try again.');
             }
 
-            // The final approval moves money against each COB's own balance — ceiling is
-            // budget_line_items.suggested_amount, not proposed_amount. A CBA (or CFA) takes its requested_amount R
-            // off each COB's line item straight away: suggested_amount - R, account_payable + R, obligation + R
-            // (and keeps an earmark row, the ceiling its RFAs/LAAs draw against). An RFA/LAA instead DRAWS DOWN its
-            // parent CBA's earmark — it requires a parent CBA (parent_id), and adds nothing to the line item again
-            // (the CBA already did); approving one without a parent, or one that would draw more than its parent CBA
-            // still has actively earmarked for a COB, is refused. Either way, refusing here rolls back the status
-            // change too.
+            // The final approval moves money against each COB — the ceiling is a derived "available" figure
+            // (BudgetLineBalanceSql::availableExpr(), via BudgetLineItemService::lockAndGetAvailable()), never
+            // a single stored column. A CBA (or CFA) only RESERVES: it inserts an 'active' earmark row for its
+            // requested_amount R, nothing else (createForApproval()). An RFA/LAA instead DRAWS DOWN its parent
+            // CBA's earmark and is the ONLY thing that ever adds to budget_line_items.obligation — it requires
+            // a parent CBA (parent_id); approving one without a parent, or one that would draw more than its
+            // parent CBA still has actively earmarked for a COB, is refused. Either way, refusing here rolls
+            // back the status change too.
             if ($isFinal) {
                 $allocationType = strtoupper(trim((string) ($row['allocation_type'] ?? '')));
                 $lineItemService = new BudgetLineItemService();
