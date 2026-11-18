@@ -239,6 +239,16 @@ Plus the Budget Request pages' own `all` / `list` / `read` / `add` / `update` / 
 The `chart_of_accounts.php`, `responsibility_center.php`, `budget_allocation.php`, `budget_category.php` and (for `/budget_line_item/approved`) `budget_line_item.php` route files use `->add($accessMiddleware)->add($jwtMiddleware)`. `$accessMiddleware` is currently a
 pass-through stub, so these routes are authenticated but not permission-gated.
 
+### infra_iar.php (`InfraIarService`, table `fims.statement_work_accomplishments` — IAR module, Infrastructure tab)
+All routes `->add($jwtMiddleware)`. One record per approved Infrastructure RFA without a PO. The Account Code picker is `GET /po-dr/accounts?infra=1` (only 1-06-99-010 / -020 / -030 and 1-04-03-020).
+- `GET /infra-iar/list?page=&limit=&search=` - Paginated records (search: SWA no., RFA no., project, location, program, contractor, work items), each with `entries[]`, `items[]` (Statement of Work), `items_cost`, `accomplishment` (cost-weighted %) and the requesting office.
+- `GET /infra-iar/rfas?search=` - Approved Infrastructure RFAs with no PO, no active DV and no record yet, with the project details to load (project, location, program, contractor, contract cost, project cost, lines).
+- `GET /infra-iar/read?id=` - One record (404 when missing).
+- `GET /infra-iar/next-number` - `{swa_number}`: the number the next record will get (`SWA-YYYY-MM-0001`); preview only.
+- `POST /infra-iar/add` - `{allocation_id, project_cost?, date_started?, completion_date_revised?, contract_duration?, entries[{account_code, amount}], items[{description, cost, accomplishment_pct}]}`. The SWA number, location, project, program and contractor come from the server / RFA. Entries total may not exceed the contract cost; at least one work item; one record per RFA.
+- `PUT /infra-iar/update?id=` - Only `project_cost`, dates, `contract_duration` and `items`.
+- `GET /infra-iar/proforma?id=` - The pro-forma JEV: debit per account entry, total credited to the contractor's AP SL (default `2-01-01-010-01`), plus `rfa_number`, `location`, `jev_id` / `jev_no`.
+- `POST /infra-iar/proforma-submit` - `{id, jev_date, fiscal_yr, book_id, particulars?, lines[]}`: creates the standalone JEV, links `jev_id` / `jev_no` to the record and moves it to `FOR_SECTION_CHIEF` (409 when already submitted). The amount is not capped at the record's total.
 ### property_record.php (`PropertyRecordService`, table `fims.property_records` + the PIS API; page `app/pages/property-record-page.php`)
 All routes `->add($jwtMiddleware)`. PIS is called server-side only, with `PIS_API_TOKEN` from `.env` (Bearer).
 - `GET /property-record/list` - Every saved item (reads only `fims.property_records`), grouped into the register rows (same PO + category + sub category + item name combined, quantity / cost / depreciation computed), with the responsibility center, the IAR number and the numbers for the category cards
