@@ -350,12 +350,16 @@ function amp_viewAll(i) {
     const lines = r.receipts || [];
     const total = lines.reduce((s, ln) => s + Number(ln.total_amount || 0), 0);
     const vrow = (k, v) => `<div class="amp-vw-row"><div class="amp-vw-k">${k}</div><div class="amp-vw-v">${v}</div></div>`;
+    const grid = (n, ...cells) => `<div style="display:grid;grid-template-columns:repeat(${n},minmax(0,1fr));column-gap:24px;">${cells.join('')}</div>`;
     $amp('amp-view-body').innerHTML = `
         <div class="amp-vw-card"><h4 class="amp-vw-card-title">Inspection and Acceptance Report</h4>
-            ${vrow('IAR Number', r.iar_number ? '<span class="amp-vw-code">' + amp_esc(r.iar_number) + '</span>' : '—')}
-            ${vrow('Vendor', dash(r.vendor_name))}
-            ${vrow('Total Amount', '<span class="amp-vw-num">₱' + money(total) + '</span>')}
-            ${vrow('Delivery Receipts', lines.length)}
+            ${grid(2, vrow('IAR No.', r.iar_number ? '<span class="amp-vw-code">' + amp_esc(r.iar_number) + '</span>' : '—'),
+                      vrow('Total Amount', '<span class="amp-vw-num">₱' + money(total) + '</span>'),
+                      vrow('Supplier', dash(r.vendor_name)),
+                      vrow('RFA No.', dash(r.rfa_number)))}
+            ${grid(2, vrow('P.O. No.', dash(r.po_number)), vrow('P.O. Date', dash(r.po_date)),
+                      vrow('S.I. No.', dash(r.si_number)), vrow('S.I. Date', dash(r.si_date)))}
+            ${vrow('Requisitioning Office/Dept', dash(r.requesting_office))}
         </div>
         <div class="amp-vw-card"><h4 class="amp-vw-card-title">Delivery Receipts</h4><div class="amp-vw-tblwrap">
         <table class="amp-v-table">

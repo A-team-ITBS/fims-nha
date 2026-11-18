@@ -11,9 +11,10 @@ namespace PHPMaker2024\FIMS;
  * separate pages. What stays from the FMD page is the filters, summary cards, Amount Unit and Export around the table.
  *
  * One tree table: each SARO is a parent row that expands into the NCAs released under it (same columns, indented); an NCA with no SARO
- * is a top-level row of its own. The columns run Date → Amount → NCA Received → Unreleased (a SARO's amount less its NCAs). The
+ * is a top-level row of its own. The columns run Date → Amount → NCA Received → Unreleased (a SARO's amount less its NCAs): a SARO's
+ * amount is under Amount, an NCA's under NCA Received. The
  * Tracking Type filter (All Types / SARO / NCA) narrows the table — NCA lists the NCA records flat. There is no "New Entry" button: the
- * "+" in the Reference No. header opens the entry form for a new SARO, connected to nothing, and the "+" beside a SARO's NCA Received
+ * "+" in the SARO ID header opens the entry form for a new SARO, connected to nothing, and the "+" beside a SARO's NCA Received
  * amount opens it for a new NCA with that SARO already picked.
  * Data comes from the FIMS API only:
  *   /fund_tracking/list  /fund_tracking/read/{id}  /fund_tracking/fund_sourcing_determination   (fims.fund_tracking)
@@ -24,8 +25,11 @@ namespace PHPMaker2024\FIMS;
  * that (type=SARO&type=NCA, exclude_nature_of_fund=SUPPLEMENTAL), so totals and paging stay exact; a record with no
  * nature of fund still shows. The entry form is held to the same rule (see the include below).
  *
- * A record has no sub-program and no unreleased amount (both dropped from fims.fund_tracking), so the register has no Program filter,
- * no Program / Sub-Program column and no Unreleased figure; its Date is the day the record was created (the API stamps it).
+ * The register does not list a record's sub_program, so it has no Program filter and no Program / Sub-Program column. Its Unreleased figure is worked
+ * out here from a SARO's NCAs — fims.fund_tracking also has an `unreleased` column again ("03 - alter_table/47"), the same balance saved by the API on each SARO, which this page does not read.
+ * Its Date is typed in on the entry form (Fiscal Year too — both are manual).
+ * The SARO ID and Description columns are fims.fund_tracking.saro_id and .description (renamed from reference_number and name by
+ * "03 - alter_table/45").
  *
  * The entry / edit form is the "SARO processing form" modal in form/saro-processing-form.php (included below):
  * window.sarModal.open(id?, { type }). An NCA is its own entry (choose NCA, then the SARO it was released under). After a save
@@ -67,6 +71,9 @@ $_sr_api = Config('API.FIMS_URL');
     #sr-root .sr-tbl { min-width: 1180px; }
     #sr-root .sr-tbl .sr-num { font-family: 'IBM Plex Mono', monospace; text-align: right; white-space: nowrap; }
     #sr-root .sr-amt { font-size: calc(1em * var(--sr-amt-scale, 1)); white-space: nowrap; }
+    /* Description is long text: the table shows its first lines (the whole text is the tooltip and is in View Details) */
+    #sr-root .sr-desc { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; max-width: 340px;
+        font-size: 12px; white-space: normal; overflow-wrap: anywhere; }
     #sr-root .sr-empty { text-align: center; color: var(--afims-text-disabled, #A9AAB8); padding: 32px; font-size: 13px; }
 
     /* Each row sets --sr-row-bg; its cells paint it. The Actions cell is sticky (below), so it needs the same
@@ -153,7 +160,7 @@ $_sr_api = Config('API.FIMS_URL');
     #sr-root .sr-child-ref .sr-tags { padding-left: 0; }
     #sr-root .sr-child .sr-ref { font-size: 12px; font-weight: 600; }
 
-    /* the "+" in the Reference No. header: a new SARO, connected to nothing. The header is navy, so it is an outlined light circle that
+    /* the "+" in the SARO ID header: a new SARO, connected to nothing. The header is navy, so it is an outlined light circle that
        fills on hover. */
     #sr-root .sr-th-add { display: inline-flex; align-items: center; gap: 8px; }
     #sr-root .sr-th-plus { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 20px; height: 20px; padding: 0;
@@ -182,7 +189,7 @@ $_sr_api = Config('API.FIMS_URL');
     /* ── Modals (shared .nha-overlay / .nha-modal) ── */
     #sr-root .sr-hint { display: block; margin-top: 4px; font-size: 11px; color: var(--afims-text-disabled, #A9AAB8); }
 
-    /* ── View Details modal — the look of the Budget Preview modal (readone/budget-preview-readone.php): the reference in the
+    /* ── View Details modal — the look of the Budget Preview modal (readone/budget-preview-readone.php): the SARO ID in the
        title, bordered info cards of label / value rows ── */
     #sr-root .srv-ref { margin-left: 8px; font-family: var(--mono); font-weight: 600; letter-spacing: .02em;
         color: color-mix(in srgb, var(--afims-primary, #0035A9) 40%, #FFFFFF); }
@@ -265,10 +272,10 @@ $_sr_api = Config('API.FIMS_URL');
                 <select id="sr-type" class="nha-filter-select"><option value="">All Types</option></select>
             </div>
             <div class="nha-filter-group nha-filter-group-search">
-                <label class="nha-filter-label">SARO Reference</label>
+                <label class="nha-filter-label">SARO ID</label>
                 <div class="nha-filter-search-wrap">
                     <svg class="nha-filter-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                    <input type="text" id="sr-search" class="nha-filter-input" placeholder="Filter by SARO ref no…">
+                    <input type="text" id="sr-search" class="nha-filter-input" placeholder="Filter by SARO ID…">
                     <button class="nha-filter-clear-btn" id="sr-search-clear" hidden type="button">×</button>
                 </div>
             </div>
@@ -312,12 +319,12 @@ $_sr_api = Config('API.FIMS_URL');
                 <thead>
                     <tr>
                         <th style="min-width:210px;">
-                            <span class="sr-th-add">Reference No.
+                            <span class="sr-th-add">SARO ID
                                 <!-- icon only: a new SARO that is not connected to anything (sr_addSaro) -->
                                 <button type="button" id="sr-add-saro" class="sr-th-plus no-print" title="New SARO" aria-label="New SARO"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14M5 12h14"/></svg></button>
                             </span>
                         </th>
-                        <th style="min-width:170px;">Name / Title</th>
+                        <th style="min-width:240px;">Description</th>
                         <th>Nature of Fund</th>
                         <th>Fiscal Year</th>
                         <th>Date</th>
@@ -554,7 +561,7 @@ const sr_sum = list => list.reduce((s, c) => s + (parseFloat(c.amount) || 0), 0)
 /* ── Summary cards ───────────────────────────────────────────────
    From /fund_tracking/fund_sourcing_determination — an aggregate by tracking type, not the paginated table data, so
    the totals cover EVERY matching SARO / NCA record, not just the page on screen — except Supplemental ones
-   (exclude_nature_of_fund). It follows the Fiscal Year range; Tracking Type and the reference search narrow the table only. */
+   (exclude_nature_of_fund). It follows the Fiscal Year range; Tracking Type and the SARO ID search narrow the table only. */
 function sr_renderCards(gf) {
     gf = gf || {};
     const nSaro = gf.saro_record_count || 0, nNca = gf.nca_record_count || 0;
@@ -615,7 +622,17 @@ const sr_dash = '<span class="nha-text-muted">—</span>';
 // an NCA has no Nature of Fund (the form no longer asks for one), so its cell is always a dash
 const sr_natureCell = r => (r.nature_of_fund && sr_typeCode(r) !== 'NCA' ? `<span class="nha-bdg nha-bdg-navy">${sr_esc(r.nature_of_fund.name)}</span>` : sr_dash);
 const sr_yearCell = r => (r.fiscal_year ? `<span style="font-size:11px;">FY ${sr_esc(r.fiscal_year)}</span>` : sr_dash);
-const sr_nameCell = r => (r.name && String(r.name).trim() ? `<span style="font-size:12px;">${sr_esc(r.name)}</span>` : sr_dash);
+const sr_nameCell = r => (r.description && String(r.description).trim() ? `<span class="sr-desc" title="${sr_esc(r.description)}">${sr_esc(r.description)}</span>` : sr_dash);
+
+// The Date column: the date, with a tag under it saying whose date it is — "SARO date" on a SARO row, "NCA date" on an NCA row (the same
+// colours as the type tags in the SARO ID column). A row with no date shows a dash and no tag.
+function sr_dateCell(r) {
+    const has = r.date && sr_fmtDate(r.date) !== '—';
+    const isNca = sr_typeCode(r) === 'NCA';
+    return `<td class="nha-td-date" style="white-space:nowrap;">${sr_esc(sr_fmtDate(r.date))}`
+        + (has ? `<div style="margin-top:4px;"><span class="sr-tag ${isNca ? 'sr-tag-child' : 'sr-tag-parent'}">${isNca ? 'NCA' : 'SARO'} date</span></div>` : '')
+        + '</td>';
+}
 
 function sr_amountCell(v) {
     const val = parseFloat(v) || 0;
@@ -636,7 +653,7 @@ function sr_unreleasedCell(r, kids) {
 // SARO has nothing left to release (its amount less its NCAs is zero or less) — the form could not save an NCA against it anyway. It stops
 // the click from reaching the row, which would expand / collapse it.
 function sr_addNcaButton(r, kids) {
-    const ref = r.reference_number || '#' + r.id;
+    const ref = r.saro_id || '#' + r.id;
     const off = (parseFloat(r.amount) || 0) - sr_sum(kids) <= 0;
     const title = off ? `SARO ${ref} has nothing left to release` : `Add an NCA released under SARO ${ref}`;
     return `<button type="button" class="sr-add-nca" title="${sr_esc(title)}" aria-label="${sr_esc(title)}"${off ? ' disabled' : ''}
@@ -644,7 +661,7 @@ function sr_addNcaButton(r, kids) {
 }
 
 const sr_refLink = r =>
-    `<a href="#" class="nha-tbl-link nha-mono sr-ref" onclick="event.preventDefault();event.stopPropagation();sr_view(${Number(r.id)})">${sr_esc(r.reference_number || '—')}</a>`;
+    `<a href="#" class="nha-tbl-link nha-mono sr-ref" onclick="event.preventDefault();event.stopPropagation();sr_view(${Number(r.id)})">${sr_esc(r.saro_id || '—')}</a>`;
 
 /* ── Tree table ──────────────────────────────────────────────────
    GET /fund_tracking/list?type=SARO&type=NCA&roots_only=1 returns only top-level records (no parent), each with a
@@ -653,7 +670,7 @@ const sr_refLink = r =>
    and has nothing to expand.
      Tracking Type = SARO → root_type=SARO keeps the top-level rows to SAROs (their NCAs still come back).
      Tracking Type = NCA  → a flat list of NCA records (no tree); each shows the SARO it belongs to.
-   Search (reference no.) and Fiscal Year narrow the top-level rows only; a SARO that matches always shows all
+   Search (SARO ID) and Fiscal Year narrow the top-level rows only; a SARO that matches always shows all
    of its NCAs. */
 const SR_CARET = '<span class="sr-caret__CLS__" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg></span>';
 const SR_VIEW_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
@@ -721,7 +738,7 @@ function sr_parentTags(r, kids) {
     if (type === 'NCA') {
         const p = sr_parentOf(r);
         return p
-            ? `<span class="sr-tag sr-tag-child">NCA</span><span class="sr-tag sr-tag-none" title="The record this NCA belongs to">${sr_esc(sr_typeCode(p) || 'SARO')} ${sr_esc(p.reference_number || '#' + p.id)}</span>`
+            ? `<span class="sr-tag sr-tag-child">NCA</span><span class="sr-tag sr-tag-none" title="The record this NCA belongs to">${sr_esc(sr_typeCode(p) || 'SARO')} ${sr_esc(p.saro_id || '#' + p.id)}</span>`
             : `<span class="sr-tag sr-tag-child" title="This NCA has no parent SARO">NCA · no SARO</span>`;
     }
     return `<span class="sr-tag sr-tag-parent">${sr_esc(type || 'SARO')}</span>` + (kids.length
@@ -729,8 +746,9 @@ function sr_parentTags(r, kids) {
         : `<span class="sr-tag sr-tag-none">No NCA yet</span>`);
 }
 
-// Columns: Reference No. · Name / Title · Nature of Fund · Fiscal Year · Date · Amount · NCA Received · Unreleased · Actions.
-// NCA Received and Unreleased are a SARO's roll-ups (an NCA has neither: its own amount is in the Amount column).
+// Columns: SARO ID · Description · Nature of Fund · Fiscal Year · Date · Amount · NCA Received · Unreleased · Actions.
+// Amount is a SARO's own amount. An NCA's amount goes in the NCA Received column (a dash under Amount); a SARO's NCA Received is the sum of its NCAs, and
+// Unreleased (a SARO's amount less its NCAs) is a SARO-only figure.
 function sr_parentRow(r, expanded) {
     const kids = sr_kids(r);
     const hasKids = kids.length > 0;
@@ -745,18 +763,18 @@ function sr_parentRow(r, expanded) {
         <td>${sr_nameCell(r)}</td>
         <td>${sr_natureCell(r)}</td>
         <td>${sr_yearCell(r)}</td>
-        <td class="nha-td-date" style="white-space:nowrap;">${sr_esc(sr_fmtDate(r.date))}</td>
-        <td class="sr-num">${sr_amountCell(r.amount)}</td>
+        ${sr_dateCell(r)}
+        <td class="sr-num">${isSaro ? sr_amountCell(r.amount) : '—'}</td>
         <td class="sr-num">${isSaro
             ? `<span class="sr-nca-cell">${hasKids ? sr_amountCell(sr_sum(kids)) : '—'}${sr_addNcaButton(r, kids)}</span>`
-            : (hasKids ? sr_amountCell(sr_sum(kids)) : '—')}</td>
+            : sr_amountCell(r.amount)}</td>
         <td class="sr-num">${isSaro ? sr_unreleasedCell(r, kids) : '—'}</td>
         ${sr_toolsCell(r)}
     </tr>`;
 }
 
 // One NCA under its SARO — same columns, but a recessed row with a tree connector back to the parent's chevron.
-// NCA Received and Unreleased are SARO-level roll-ups, so they stay blank here (this NCA's own amount is in the Amount column).
+// This NCA's own amount is in the NCA Received column; Amount and Unreleased are SARO-level figures, so they stay blank here.
 function sr_childRow(c, isLast) {
     return `
     <tr class="sr-child${isLast ? ' last' : ''}">
@@ -769,9 +787,9 @@ function sr_childRow(c, isLast) {
         <td>${sr_nameCell(c)}</td>
         <td>${sr_natureCell(c)}</td>
         <td>${sr_yearCell(c)}</td>
-        <td class="nha-td-date" style="white-space:nowrap;">${sr_esc(sr_fmtDate(c.date))}</td>
-        <td class="sr-num">${sr_amountCell(c.amount)}</td>
+        ${sr_dateCell(c)}
         <td class="sr-num">—</td>
+        <td class="sr-num">${sr_amountCell(c.amount)}</td>
         <td class="sr-num">—</td>
         ${sr_toolsCell(c)}
     </tr>`;
@@ -939,8 +957,8 @@ async function sr_view(id) {
         const date = v => (has(v) ? sr_esc(sr_fmtDate(v)) : sr_dash);
         const money = v => (parseFloat(v) ? sr_esc(sr_pesoFull(v)) : sr_dash);
 
-        // title: "Reference No. <ref>" and the tracking type as a badge
-        $sr('sr-view-title').innerHTML = `Reference No. <span class="srv-ref">${sr_esc(d.reference_number || '#' + d.id)}</span>`
+        // title: "SARO ID <ref>" ("NCA ID <ref>" for an NCA) and the tracking type as a badge
+        $sr('sr-view-title').innerHTML = `${type === 'NCA' ? 'NCA ID' : 'SARO ID'} <span class="srv-ref">${sr_esc(d.saro_id || '#' + d.id)}</span>`
             + (type ? `<span class="srv-badge nha-bdg nha-bdg-navy">${sr_esc(type)}</span>` : '');
 
         // a SARO with NCAs under it: what it has left once they are deducted
@@ -954,13 +972,13 @@ async function sr_view(id) {
             sr_vrow('Fiscal Year', d.fiscal_year ? 'FY ' + sr_esc(d.fiscal_year) : sr_dash),
         ];
         if (parent) {
-            classification.push(sr_vrow(type === 'NCA' ? 'SARO' : 'Parent Fund', `<a href="#" class="nha-tbl-link nha-mono" onclick="event.preventDefault();sr_view(${Number(parent.id)})">${sr_esc(parent.reference_number || '#' + parent.id)}</a> `
+            classification.push(sr_vrow(type === 'NCA' ? 'SARO' : 'Parent Fund', `<a href="#" class="nha-tbl-link nha-mono" onclick="event.preventDefault();sr_view(${Number(parent.id)})">${sr_esc(parent.saro_id || '#' + parent.id)}</a> `
                 + `<span class="srv-muted">${sr_esc(parent.tracking_type?.fund_tracking_code || '')}</span>`));
         }
         html += sr_vsec('Classification', `<div class="srv-info">${classification.join('')}</div>`);
 
         const info = [sr_vrow('Date', date(d.date))];
-        if (has(d.name)) info.unshift(sr_vrow('Name / Title', sr_esc(d.name)));
+        if (has(d.description)) info.unshift(sr_vrow('Description', `<span style="white-space:pre-line;">${sr_esc(d.description)}</span>`));
         if (has(d.purpose)) info.push(sr_vrow('Purpose', sr_esc(d.purpose)));
         if (has(d.bank_account_no)) info.push(sr_vrow('Bank Account No.', sr_esc(d.bank_account_no)));
         if (d.agency && has(d.agency.name)) info.push(sr_vrow('Agency', sr_esc(d.agency.name)));
@@ -970,13 +988,13 @@ async function sr_view(id) {
         // the NCAs released under this SARO
         if (kids.length) {
             const rows = kids.map(c => `<tr>
-                <td><a href="#" class="nha-tbl-link nha-mono" onclick="event.preventDefault();sr_view(${Number(c.id)})">${sr_esc(c.reference_number || '#' + c.id)}</a></td>
+                <td><a href="#" class="nha-tbl-link nha-mono" onclick="event.preventDefault();sr_view(${Number(c.id)})">${sr_esc(c.saro_id || '#' + c.id)}</a></td>
                 <td>${c.fiscal_year ? 'FY ' + sr_esc(c.fiscal_year) : sr_dash}</td>
                 <td class="r">${sr_esc(sr_pesoFull(c.amount))}</td>
                 <td style="white-space:nowrap;">${sr_esc(sr_fmtDate(c.date))}</td>
             </tr>`).join('');
             html += sr_vsec(`NCA Releases (${kids.length})`, `<div class="srv-nca-wrap"><table class="srv-nca">
-                <thead><tr><th>Reference No.</th><th>Fiscal Year</th><th class="r">Amount</th><th>Date</th></tr></thead>
+                <thead><tr><th>NCA ID</th><th>Fiscal Year</th><th class="r">Amount</th><th>Date</th></tr></thead>
                 <tbody>${rows}</tbody></table></div>`);
         }
 
@@ -1041,7 +1059,7 @@ const sr_edit = id => {
     return sr_openForm({}, id);
 };
 
-// The "+" in the Reference No. header: a new SARO — a SARO has no parent and nothing is picked for it, so it is not connected to any row
+// The "+" in the SARO ID header: a new SARO — a SARO has no parent and nothing is picked for it, so it is not connected to any row
 const sr_addSaro = () => sr_openForm({ type: 'SARO' });
 
 // The "+" on a SARO's NCA Received amount: a new NCA with that SARO already picked (the form then shows what it has left)
@@ -1050,7 +1068,7 @@ function sr_addNca(id) {
     const saro = sr_findRecord(id);
     return sr_openForm({
         type: 'NCA',
-        parent: { id, reference_number: saro ? saro.reference_number : '', type: (saro && sr_typeCode(saro)) || 'SARO' },
+        parent: { id, saro_id: saro ? saro.saro_id : '', type: (saro && sr_typeCode(saro)) || 'SARO' },
     });
 }
 
@@ -1072,7 +1090,7 @@ async function sr_delete(id) {
     id = Number(id);
     const rec = sr_findRecord(id);
     const label = (rec && sr_typeCode(rec)) || 'SARO / NCA';
-    const ref = (rec && rec.reference_number) || '#' + id;
+    const ref = (rec && rec.saro_id) || '#' + id;
     if (!confirm(`Delete ${label} record ${ref}? This cannot be undone.`)) return;
 
     window.PagePreloader?.show();
@@ -1091,7 +1109,7 @@ async function sr_delete(id) {
 /* ── Export ──────────────────────────────────────────────────────
    Has its own Fiscal Year / Tracking Type / Amount Unit, independent of the Filters bar and of the table's
    paging — it walks /fund_tracking/list page by page and includes EVERY matching record, once each, as a flat list (a
-   NCA's SARO is in the Parent Reference No. column). Excel-compatible CSV, or a print-ready table for "Save as PDF"
+   NCA's SARO is in the Parent SARO ID column). Excel-compatible CSV, or a print-ready table for "Save as PDF"
    (no spreadsheet / PDF library is installed in this app). */
 function sr_exportOpen() {
     [['sr-xm-fy-from', 'sr-fy-from'], ['sr-xm-fy-to', 'sr-fy-to']].forEach(([to, from]) => {
@@ -1123,7 +1141,7 @@ async function sr_fetchAll(f) {
     return rows;
 }
 
-const SR_EXPORT_HEAD = ['Reference No.', 'Name / Title', 'Tracking Type', 'Nature of Fund', 'Fiscal Year', 'Amount', 'Date', 'Parent Reference No.'];
+const SR_EXPORT_HEAD = ['SARO ID', 'Description', 'Tracking Type', 'Nature of Fund', 'Fiscal Year', 'Amount', 'Date', 'Parent SARO ID'];
 const SR_EXPORT_AMOUNT_COLS = [5];
 
 // One flat line per record — the table's columns. Amount is divided by the chosen unit.
@@ -1133,14 +1151,14 @@ function sr_exportRows(records, unitKey) {
     return records.map(r => {
         const parent = sr_parentOf(r);
         return [
-            r.reference_number || '',
-            (r.name || '').trim(),
+            r.saro_id || '',
+            (r.description || '').trim(),
             sr_typeCode(r),
             r.nature_of_fund?.name || '',
             r.fiscal_year ? 'FY ' + r.fiscal_year : '',
             scale(r.amount),
             r.date ? sr_fmtDate(r.date) : '',
-            parent ? (parent.reference_number || '') : '',
+            parent ? (parent.saro_id || '') : '',
         ];
     });
 }

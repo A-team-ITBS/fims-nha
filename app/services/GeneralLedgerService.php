@@ -270,11 +270,20 @@ class GeneralLedgerService
             return ['success' => false, 'message' => "Disbursement Voucher #{$dvId} has no posted Journal Entry Voucher to settle."];
         }
 
+        // Matches the control account itself (self::AP_ACCOUNT_CODE) OR one of its SL sub-ledger
+        // children (e.g. a vendor's own fims.vendors.coa_account_id under it, see
+        // voucher/{form,readone}.php's "Net Amount Payable" line) — same single-level
+        // parent_account_id convention GeneralLedgerService::fetchSubsidiaryLedger() already uses.
         $apLine = App\ExecuteRow(
-            "SELECT sl_code, sl_detail_id, rc_id
-             FROM {$this->tableJevLines}
-             WHERE jev_id = " . (int) $setupJev['jev_id'] . ' AND account_code = ' . $this->str(self::AP_ACCOUNT_CODE) . ' AND credit > 0
-             ORDER BY line_number LIMIT 1',
+            "SELECT jl.account_code, jl.sl_code, jl.sl_detail_id, jl.rc_id
+             FROM {$this->tableJevLines} jl
+             JOIN {$this->tableCoa} c ON c.account_code = jl.account_code
+             LEFT JOIN {$this->tableCoa} p ON p.account_id = c.parent_account_id
+             WHERE jl.jev_id = " . (int) $setupJev['jev_id'] . '
+               AND jl.credit > 0
+               AND (jl.account_code = ' . $this->str(self::AP_ACCOUNT_CODE) . '
+                    OR p.account_code = ' . $this->str(self::AP_ACCOUNT_CODE) . ')
+             ORDER BY jl.line_number LIMIT 1',
             'DB'
         );
         if (!$apLine) {
@@ -312,9 +321,13 @@ class GeneralLedgerService
         );
         $jevId = (int) $row['jev_id'];
 
+        // Debits the SAME account the SETUP JEV actually credited — the control account itself, or
+        // a vendor's own SL sub-ledger account under it — never the hardcoded control code, or a
+        // vendor with its own SL account would settle against the wrong ledger (control account
+        // debited, vendor's SL balance left outstanding forever).
         App\Execute(
             "INSERT INTO {$this->tableJevLines} (jev_id, line_number, account_code, debit, credit, description, sl_code, sl_detail_id, rc_id)
-             VALUES ({$jevId}, 1, " . $this->str(self::AP_ACCOUNT_CODE) . ', ' . (float) $amount . ', 0, '
+             VALUES ({$jevId}, 1, " . $this->str($apLine['account_code']) . ', ' . (float) $amount . ', 0, '
                 . $this->str("Payment via {$docRefNo}") . ', '
                 . $this->strOrNull($apLine['sl_code']) . ', ' . $this->intOrNull($apLine['sl_detail_id']) . ', '
                 . $this->strOrNull($apLine['rc_id']) . ')',
@@ -589,16 +602,26 @@ class GeneralLedgerService
                      SELECT DISTINCT ON (leaf_id) leaf_id, account_id AS gl_account_id
                      FROM climb
                      ORDER BY leaf_id, depth DESC
+                 ),
+                 posted AS (
+                     SELECT gl_of.gl_account_id,
+                            SUM(v.total_debit)  AS total_debit,
+                            SUM(v.total_credit) AS total_credit
+                     FROM {$this->tableViewTrialBalance} v
+                     JOIN gl_of ON gl_of.leaf_id = v.account_id
+                     WHERE {$whereSql}
+                     GROUP BY gl_of.gl_account_id
                  )
                  SELECT gl.account_code, gl.account_id, gl.account_title, gl.account_type,
-                        SUM(v.total_debit)  AS total_debit,
-                        SUM(v.total_credit) AS total_credit,
-                        SUM(v.total_debit) - SUM(v.total_credit) AS balance
-                 FROM {$this->tableViewTrialBalance} v
-                 JOIN gl_of ON gl_of.leaf_id = v.account_id
-                 JOIN {$this->tableCoa} gl ON gl.account_id = gl_of.gl_account_id
-                 WHERE {$whereSql}
-                 GROUP BY gl.account_code, gl.account_id, gl.account_title, gl.account_type
+                        COALESCE(p.total_debit, 0)  AS total_debit,
+                        COALESCE(p.total_credit, 0) AS total_credit,
+                        COALESCE(p.total_debit, 0) - COALESCE(p.total_credit, 0) AS balance
+                 FROM {$this->tableCoa} gl
+                 LEFT JOIN posted p ON p.gl_account_id = gl.account_id
+                 WHERE p.gl_account_id IS NOT NULL
+                    OR (gl.posting_allowed = TRUE
+                        AND gl.status = 'Active'
+                        AND gl.account_id IN (SELECT leaf_id FROM gl_of WHERE leaf_id = gl_account_id))
                  ORDER BY gl.account_code",
                 'DB'
             ) ?: [];
@@ -633,27 +656,29 @@ class GeneralLedgerService
 
         $rows = App\ExecuteRows(
             "WITH RECURSIVE chain AS (
-                 SELECT account_id AS leaf_id, account_id, account_title, parent_account_id, 0 AS depth
+                 SELECT account_id AS leaf_id, account_id, account_code, account_title, parent_account_id, 0 AS depth
                  FROM {$this->tableCoa} WHERE account_id IN ({$idList})
                  UNION ALL
-                 SELECT chain.leaf_id, c.account_id, c.account_title, c.parent_account_id, chain.depth + 1
+                 SELECT chain.leaf_id, c.account_id, c.account_code, c.account_title, c.parent_account_id, chain.depth + 1
                  FROM {$this->tableCoa} c
                  JOIN chain ON c.account_id = chain.parent_account_id
              )
-             SELECT leaf_id, account_title, depth FROM chain ORDER BY leaf_id, depth",
+             SELECT leaf_id, account_code, account_title, depth FROM chain ORDER BY leaf_id, depth",
             'DB'
         ) ?: [];
 
         $chains = [];
         foreach ($rows as $r) {
-            $chains[$r['leaf_id']][] = $r['account_title']; // depth 0 (leaf) first, depth max (root) last
+            // depth 0 (leaf) first, depth max (root) last
+            $chains[$r['leaf_id']][] = ['code' => $r['account_code'], 'title' => $r['account_title']];
         }
 
         foreach ($data as &$row) {
-            $chain                = $chains[$row['account_id']] ?? [];
-            $count                = count($chain);
-            $row['major_group']   = $count >= 1 ? $chain[$count - 1] : null;
-            $row['account_group'] = $count >= 3 ? $chain[$count - 2] : null;
+            $chain                     = $chains[$row['account_id']] ?? [];
+            $count                     = count($chain);
+            $row['major_group']        = $count >= 1 ? $chain[$count - 1]['title'] : null;
+            $row['account_group']      = $count >= 3 ? $chain[$count - 2]['title'] : null;
+            $row['account_group_code'] = $count >= 3 ? $chain[$count - 2]['code'] : null;
             unset($row['account_id']);
         }
         unset($row);

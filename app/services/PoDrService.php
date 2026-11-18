@@ -32,8 +32,14 @@ class PoDrService
 {
     private string $h = 'fims.inspection_acceptance_report';   // po_number, iar_number, si_number, si_date, line_transaction
 
-    /** DR total at or above which the optional items (description, serial, amount, property no. — one line each) apply. */
+    /** An account row of this amount or more needs items (description required, serial, amount, property no. — one line each). */
     private const ITEM_MIN_AMOUNT = 50000;
+
+    /** Property, plant & equipment accounts (the property record categories): offered first in the Account Code picker. */
+    private const PRIORITY_ACCOUNTS = [
+        '1-06-05-020', '1-06-05-030', '1-06-05-070', '1-06-05-080', '1-06-05-110',
+        '1-06-05-130', '1-06-05-990', '1-06-06-010', '1-06-07-010', '1-06-99-990',
+    ];
 
     /** Pro-forma JEV: the DR total is credited to Accounts Payable. */
     private const PAYABLE_ACCOUNT = '2-01-01-010';
@@ -124,7 +130,7 @@ class PoDrService
      * Validate + normalise. Returns [po_number, dr[], errorMessage, header[]]:
      *   dr = { ref, dr_number, delivery_date, total, entries[{account_code, account_title, amount}], items[] }
      */
-    private function clean(array $body): array
+    private function clean(array $body, bool $withItems = true): array
     {
         $po = trim((string) ($body['po_number'] ?? ''));
         if ($po === '') {
@@ -210,10 +216,22 @@ class PoDrService
         }
         unset($en);
 
-        // The optional items only apply from ITEM_MIN_AMOUNT (below it there are none): one line per item, any number of lines.
-        // A line with nothing entered is skipped; every serial number must be different.
+        // Only the account rows of ITEM_MIN_AMOUNT or more need items (an account row below it has none). The items must be
+        // described (description required) and their amounts must add up to the total of those account rows
+        // (e.g. rows of 50,000 + 300,000 → items totalling 350,000). A line with nothing entered is skipped; every serial no. must differ.
+        $qualCents = 0;
+        $needBy    = [];   // account code => cents of its account rows that need items
+        foreach ($entries as $en) {
+            if ((float) $en['amount'] >= self::ITEM_MIN_AMOUNT) {
+                $c          = (int) round((float) $en['amount'] * 100);
+                $qualCents += $c;
+                $needBy[$en['account_code']] = ($needBy[$en['account_code']] ?? 0) + $c;
+            }
+        }
         $items = [];
-        if ((float) $total >= self::ITEM_MIN_AMOUNT) {
+        if ($withItems && $qualCents > 0) {   // (an edit keeps the stored items, so they are not checked again)
+            $itemCents = 0;
+            $haveBy    = [];   // account code => cents of the items assigned to it (the item's category)
             $serials = [];
             foreach (array_values(is_array($d['items'] ?? null) ? $d['items'] : []) as $i => $it) {
                 if (!is_array($it)) {
@@ -226,6 +244,10 @@ class PoDrService
                     'amount'      => null,
                     'property_no' => $this->nullable($it['property_no'] ?? null),
                 ];
+                $acct = $this->nullable($it['account_code'] ?? null);   // the account row the item belongs to (kept to show it on the Property Records page)
+                if ($acct !== null && isset($titles[$acct])) {
+                    $row['account_code'] = $acct;
+                }
                 $amtRaw = trim((string) ($it['amount'] ?? ''));
                 if ($amtRaw !== '') {
                     $amt = $this->money($amtRaw);
@@ -243,6 +265,19 @@ class PoDrService
                 if (!$row) {
                     continue;
                 }
+                if (!isset($row['description'])) {
+                    return [null, null, "Item {$n}: description is required."];
+                }
+                if (!isset($row['amount'])) {
+                    return [null, null, "Item {$n}: amount is required."];
+                }
+                $itemCents += (int) round((float) $row['amount'] * 100);
+                if (isset($row['account_code'])) {
+                    if (!isset($needBy[$row['account_code']])) {
+                        return [null, null, "Item {$n}: category {$row['account_code']} is not an account row of " . number_format(self::ITEM_MIN_AMOUNT, 2) . ' or more.'];
+                    }
+                    $haveBy[$row['account_code']] = ($haveBy[$row['account_code']] ?? 0) + (int) round((float) $row['amount'] * 100);
+                }
                 if (isset($row['serial_no'])) {
                     $key = mb_strtolower($row['serial_no']);
                     if (isset($serials[$key])) {
@@ -251,6 +286,19 @@ class PoDrService
                     $serials[$key] = true;
                 }
                 $items[] = $row;
+            }
+            // every item has a category: the items of each account must add up to that account's amount (a 600,000 account may be
+            // split into several items); otherwise (no categories sent) only the overall total is compared
+            if ($items && count(array_filter($items, fn($x) => isset($x['account_code']))) === count($items)) {
+                foreach ($needBy as $code => $cents) {
+                    if (($haveBy[$code] ?? 0) !== $cents) {
+                        return [null, null, "The items of {$code} total " . number_format(($haveBy[$code] ?? 0) / 100, 2) . ' but must equal ' . number_format($cents / 100, 2) . '.'];
+                    }
+                }
+            }
+            if ($itemCents !== $qualCents) {
+                return [null, null, 'The items total ' . number_format($itemCents / 100, 2) . ' but must equal ' . number_format($qualCents / 100, 2)
+                    . ' (the account rows of ' . number_format(self::ITEM_MIN_AMOUNT, 2) . ' or more).'];
             }
         }
 
@@ -333,13 +381,32 @@ class PoDrService
                                    THEN REPLACE(ln.value->>'requested_amount', ',', '')::numeric
                                  ELSE 0
                                END)
-                    FROM jsonb_array_elements(CASE jsonb_typeof(a.line_transaction)
-                                                WHEN 'array'  THEN a.line_transaction
-                                                WHEN 'object' THEN jsonb_build_array(a.line_transaction)
-                                                ELSE '[]'::jsonb
-                                              END) AS ln(value)
+                    FROM jsonb_array_elements(" . $this->allocationLinesSql() . ") AS ln(value)
                     WHERE jsonb_typeof(ln.value) = 'object'
                 ), 0)";
+    }
+
+    /**
+     * SQL (correlated to the outer alias `a` = fims.budget_allocation) for ALL the lines of an allocation as ONE jsonb array. Newer
+     * databases keep the lines on the project blocks (fims.budget_allocation_project.line_transaction — one row per block, the
+     * column was dropped from budget_allocation); an older database still has budget_allocation.line_transaction. Whichever exists is used.
+     */
+    private function allocationLinesSql(): string
+    {
+        static $blocks = null;
+        $blocks ??= (int) App\ExecuteScalar("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'fims' AND table_name = 'budget_allocation_project'", 'DB') > 0;
+        if ($blocks) {
+            return "(SELECT COALESCE(jsonb_agg(bl.value), '[]'::jsonb)
+                       FROM fims.budget_allocation_project bap
+                       CROSS JOIN LATERAL jsonb_array_elements(CASE jsonb_typeof(bap.line_transaction)
+                                                                 WHEN 'array'  THEN bap.line_transaction
+                                                                 WHEN 'object' THEN jsonb_build_array(bap.line_transaction)
+                                                                 ELSE '[]'::jsonb
+                                                               END) AS bl(value)
+                      WHERE bap.allocation_id = a.allocation_id AND bap.deleted_at IS NULL)";
+        }
+
+        return "(CASE jsonb_typeof(a.line_transaction) WHEN 'array' THEN a.line_transaction WHEN 'object' THEN jsonb_build_array(a.line_transaction) ELSE '[]'::jsonb END)";
     }
 
     /** The budget allocation's line_transaction → [ {account_code, account_title, amount (= requested_amount)} ] for pre-filling the form. */
@@ -390,16 +457,19 @@ class PoDrService
         if ($search !== '') {
             $where .= ' AND a.po_number ILIKE ' . $this->q('%' . $search . '%');
         }
+        if ($onlyWithBalance) {   // the PO picker (adding an IAR): a PO whose DV was already processed is not offered
+            $where .= ' AND NOT ' . $this->activeDvSql();
+        }
         $sql = "SELECT * FROM (
                     SELECT DISTINCT ON (a.po_number)
                            a.po_number, TO_CHAR(COALESCE(pom.po_date, a.created_at), 'YYYY-MM-DD') AS po_date, a.created_at,
-                           a.requesting_rc_id, rc.rc_name AS requesting_office,
+                           a.allocation_number AS rfa_number, a.requesting_rc_id, rc.rc_name AS requesting_office,
                            COALESCE(a.vendor_id, pom.vendor_id) AS vendor_id, COALESCE(v.vendor_name, pom.vendor_name) AS vendor_name,
                            " . $this->requestedTotalSql() . " AS po_amount,
                            (SELECT COALESCE(SUM((d.value ->> 'total_amount')::numeric), 0)
                               FROM {$this->h} i, jsonb_array_elements(i.line_transaction) AS d(value)
                              WHERE i.po_number = a.po_number) AS dr_total,
-                           a.line_transaction AS allocation_lines
+                           " . $this->allocationLinesSql() . " AS allocation_lines
                     FROM fims.budget_allocation a
                     LEFT JOIN fims.responsibility_code rc ON rc.rc_id = a.requesting_rc_id
                     LEFT JOIN fims.vendors v ON v.vendor_id = a.vendor_id
@@ -439,7 +509,7 @@ class PoDrService
      * 5-02-03-010-01 "Office Supplies" under 5-02-03-010 "Office Supplies Expenses"; when a GL account has postable SLs only its
      * SLs are offered. Typing the GL code (5-02-03-010) finds its SLs too.
      */
-    public function searchAccounts(string $search = ''): array
+    public function searchAccounts(string $search = '', bool $all = false): array
     {
         try {
             $where = "COALESCE(c.posting_allowed, TRUE) AND COALESCE(c.status, 'Active') ILIKE 'active'
@@ -449,12 +519,21 @@ class PoDrService
                 $s      = $this->q('%' . trim($search) . '%');
                 $where .= " AND (c.account_code ILIKE {$s} OR c.account_title ILIKE {$s} OR p.account_code ILIKE {$s})";
             }
+            // With nothing typed, ONLY the property / equipment accounts (PRIORITY_ACCOUNTS and their sub-ledgers) are offered; once the
+            // user types, the whole chart of accounts is searched (the property accounts still come first).
+            $prio = implode(',', array_map(fn($c) => $this->q($c), self::PRIORITY_ACCOUNTS));
+            if (trim($search) === '' && !$all) {   // $all: every account is offered even with nothing typed (the pro-forma of the Property Records page)
+                $where .= " AND (c.account_code IN ({$prio}) OR p.account_code IN ({$prio}))";
+            }
             $rows = App\ExecuteRows(
-                "SELECT DISTINCT ON (c.account_code) c.account_code, c.account_title
-                   FROM fims.chart_of_accounts c
-                   LEFT JOIN fims.chart_of_accounts p ON p.account_id = c.parent_account_id
-                  WHERE {$where}
-                  ORDER BY c.account_code LIMIT 30",
+                "SELECT account_code, account_title FROM (
+                    SELECT DISTINCT ON (c.account_code) c.account_code, c.account_title,
+                           CASE WHEN c.account_code IN ({$prio}) OR p.account_code IN ({$prio}) THEN 0 ELSE 1 END AS prio
+                      FROM fims.chart_of_accounts c
+                      LEFT JOIN fims.chart_of_accounts p ON p.account_id = c.parent_account_id
+                     WHERE {$where}
+                     ORDER BY c.account_code
+                 ) t ORDER BY prio, account_code LIMIT 30",
                 'DB'
             ) ?: [];
 
@@ -487,6 +566,7 @@ class PoDrService
             'requesting_office' => $info['requesting_office'] ?? null,
             'vendor_id'         => $info['vendor_id'] ?? null,
             'vendor_name'       => $info['vendor_name'] ?? null,
+            'rfa_number'        => $info['rfa_number'] ?? null,
             'po_amount'         => $poAmt,
             'dr_total'          => $drTotal,
             'balance'           => $poAmt === null ? null : round($poAmt - $drTotal, 2),
@@ -698,12 +778,41 @@ class PoDrService
     }
 
     /** Adds ONE delivery receipt to the PO (creating the PO's IAR row when the PO has none yet). */
+    /**
+     * SQL condition (alias `a` = fims.budget_allocation): the RFA is linked to a Disbursement Voucher that is still active,
+     * i.e. a DV was already processed for its PO (a CANCELLED / REJECTED DV frees the RFA again, as in the DV's RFA picker).
+     */
+    private function activeDvSql(): string
+    {
+        return "(a.dv_id IS NOT NULL AND a.dv_id NOT IN (
+                    SELECT dv.dv_id FROM fims.disbursement_vouchers dv
+                    LEFT JOIN fims.settings_status st ON st.id = dv.status_id
+                    WHERE st.name IN ('CANCELLED', 'REJECTED')))";
+    }
+
+    /** The DV number of the active Disbursement Voucher already processed for the PO, or null when there is none. */
+    public function dvOf(string $poNumber): ?string
+    {
+        $r = App\ExecuteRows(
+            "SELECT dv.dv_no FROM fims.budget_allocation a
+               JOIN fims.disbursement_vouchers dv ON dv.dv_id = a.dv_id
+              WHERE a.po_number = " . $this->q($poNumber) . " AND a.deleted_at IS NULL AND {$this->activeDvSql()}
+              LIMIT 1",
+            'DB'
+        );
+
+        return $r ? (string) ($r[0]['dv_no'] ?: 'DV') : null;
+    }
+
     public function create(array $body, ?int $userId = null): array
     {
         try {
             [$po, $dr, $err, $hdr] = $this->clean($body) + [null, null, null, null];   // an error result has only 3 items
             if ($err) {
                 return ['success' => false, 'message' => $err];
+            }
+            if ($dv = $this->dvOf($po)) {   // a DV was already processed for this PO: no more IAR / delivery receipts
+                return ['success' => false, 'message' => "A Disbursement Voucher ({$dv}) was already processed for PO '{$po}', so an IAR can no longer be added to it."];
             }
             // The PO must be picked from the Budget Allocation (an RFA's PO number), not typed freely.
             $poInfo = $this->poInfo([$po])[$po] ?? null;
@@ -761,11 +870,10 @@ class PoDrService
     }
 
     /**
-     * EDIT — deliberately limited. What can be changed: the IAR number, the Sales Invoice # / date, the DR number and delivery
-     * date of ONE delivery receipt (payload dr.dr_ref = the dr_number it had when loaded) and that DR's optional items (when
-     * its total is 50,000 or more; items can be added, changed and removed). What can NOT be changed here: the PO number, and the
-     * account rows / amounts / total of the DR (whatever is sent for them is ignored — the stored ones are kept), and no
-     * other DR can be added (that is the Add form). So the PO balance cannot be affected by an edit.
+     * EDIT — only the Sales Invoice # and the Sales Invoice date can be changed (the delivery receipt is picked with payload
+     * dr.dr_ref = its dr_number). Everything else — the PO number, the IAR number, the DR number / date, the account rows,
+     * the amounts and the items — is kept as stored, whatever is sent for it is ignored, and no other DR can be added (that is
+     * the Add form). So the PO balance cannot be affected by an edit.
      */
     public function update(string $oldPo, array $body, ?int $userId = null): array
     {
@@ -792,17 +900,19 @@ class PoDrService
             if ($stored === null) {
                 return ['success' => false, 'message' => 'Select the delivery receipt to edit.'];
             }
+            // Only the Sales Invoice # / date can be edited: the IAR number, the DR number / date, the account rows and the items
+            // are the stored ones, whatever is sent for them is ignored.
+            $oldIar = $check['data']['iar_number'];
+            $body['iar_number']           = $oldIar;
+            $body['dr']['dr_number']      = $stored['dr_number'];
+            $body['dr']['delivery_date']  = $stored['delivery_date'];
             $body['dr']['entries'] = array_map(fn($e) => ['account_code' => $e['account_code'], 'amount' => $e['amount']], $stored['entries']);
 
-            [$po, $dr, $err, $hdr] = $this->clean($body) + [null, null, null, null];   // an error result has only 3 items
+            [$po, $dr, $err, $hdr] = $this->clean($body, false) + [null, null, null, null];   // an error result has only 3 items
             if ($err) {
                 return ['success' => false, 'message' => $err];
             }
-            $oldIar = $check['data']['iar_number'];
-            $iar    = $hdr['iar_number'];                       // the IAR number can be changed by the user
-            if ($iar !== $oldIar && $this->iarTaken($iar, $oldPo)) {
-                return ['success' => false, 'message' => "IAR number '{$iar}' is already used by another PO."];
-            }
+            $iar        = $oldIar;
             $by         = $userId ? (int) $userId : 'NULL';
 
             App\Execute('BEGIN', 'DB');
@@ -820,21 +930,50 @@ class PoDrService
 
                     return ['success' => false, 'message' => 'Select the delivery receipt to edit.'];
                 }
+                // The items: only their description, serial no. and property no. can be changed (matched by position; the amount and the
+                // category stay as stored). The description is required, and a serial no. may not repeat.
+                $oldItems = array_values(array_filter(is_array($drs[$pos]['items'] ?? null) ? $drs[$pos]['items'] : [], 'is_array'));
+                if ($oldItems) {
+                    $posted = array_values(array_filter(is_array($body['dr']['items'] ?? null) ? $body['dr']['items'] : [], 'is_array'));
+                    if (count($posted) !== count($oldItems)) {
+                        App\Execute('ROLLBACK', 'DB');
+
+                        return ['success' => false, 'message' => 'The items of this delivery receipt cannot be added or removed here.'];
+                    }
+                    $newItems = [];
+                    $serials  = [];
+                    foreach ($oldItems as $k => $old) {
+                        $n    = $k + 1;
+                        $desc = $this->nullable($posted[$k]['description'] ?? null);
+                        $ser  = $this->nullable($posted[$k]['serial_no'] ?? null);
+                        $prop = $this->nullable($posted[$k]['property_no'] ?? null);
+                        $err  = $desc === null ? "Item {$n}: description is required."
+                            : (($ser !== null && mb_strlen($ser) > 100) ? "Item {$n}: Serial no. must be 100 characters or fewer."
+                            : (($prop !== null && mb_strlen($prop) > 100) ? "Item {$n}: Property no. must be 100 characters or fewer."
+                            : (($ser !== null && isset($serials[mb_strtolower($ser)])) ? "Serial no. '{$ser}' is entered more than once." : null)));
+                        if ($err) {
+                            App\Execute('ROLLBACK', 'DB');
+
+                            return ['success' => false, 'message' => $err];
+                        }
+                        if ($ser !== null) {
+                            $serials[mb_strtolower($ser)] = true;
+                        }
+                        unset($old['description'], $old['serial_no'], $old['property_no']);
+                        $newItems[] = ['description' => $desc] + ($ser !== null ? ['serial_no' => $ser] : []) + ($prop !== null ? ['property_no' => $prop] : []) + $old;
+                    }
+                    $dr['items'] = $newItems;
+                }
                 if ($msg = $this->drError($oldPo, $dr, $drs, $dr['ref'], null)) {     // DR number + serial checks; no balance check: the total is unchanged
                     App\Execute('ROLLBACK', 'DB');
 
                     return ['success' => false, 'message' => $msg];
                 }
-                // keep the stored DR as it is (its account rows, titles and total) and replace only what may be edited
-                $new                  = $drs[$pos];
-                $new['dr_number']     = $dr['dr_number'];
-                $new['delivery_date'] = $dr['delivery_date'];
-                unset($new['items']);
-                if ($dr['items']) {
-                    $new['items'] = $dr['items'];
+                // the stored delivery receipt is kept as it is (account rows, amounts, categories); only the items' description / serial no. /
+                // property no. and the invoice number / date of the IAR change
+                if ($oldItems) {
+                    $drs[$pos]['items'] = $dr['items'];
                 }
-                $drs[$pos] = $new;
-
                 App\Execute("UPDATE {$this->h} SET iar_number = " . $this->q($iar) . ', po_number = ' . $this->q($oldPo) . ', si_number = ' . $this->sqlOrNull($hdr['si_number'])
                     . ', si_date = ' . $this->sqlOrNull($hdr['si_date']) . ', line_transaction = ' . $this->jsonSql($drs)
                     . ", updated_by = {$by}, updated_at = CURRENT_TIMESTAMP WHERE po_number = " . $this->q($oldPo), 'DB');

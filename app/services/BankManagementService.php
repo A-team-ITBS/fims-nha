@@ -138,9 +138,13 @@ class BankManagementService
         $whereSql = implode(' AND ', $where);
 
         $rows = App\ExecuteRowsAssociative(
-            "SELECT ba.*, rc.rc_code, rc.rc_name
+            "SELECT ba.*, rc.rc_code, rc.rc_name,
+                    gl.account_code AS gl_account_code, gl.account_title AS gl_account_title,
+                    sl.account_code AS sl_account_code, sl.account_title AS sl_account_title
              FROM {$this->tableBankAccounts} ba
              LEFT JOIN {$this->tableResponsibilityCode} rc ON rc.rc_id = ba.rc_id
+             LEFT JOIN {$this->tableChartOfAccounts} gl ON gl.account_id = ba.coa_account_id
+             LEFT JOIN {$this->tableChartOfAccounts} sl ON sl.account_id = ba.sl_code
              WHERE {$whereSql}
              ORDER BY ba.account_name",
             'DB'
@@ -170,9 +174,13 @@ class BankManagementService
     private function fetchAccount(int $id): ?array
     {
         return App\ExecuteRow(
-            "SELECT ba.*, rc.rc_code, rc.rc_name
+            "SELECT ba.*, rc.rc_code, rc.rc_name,
+                    gl.account_code AS gl_account_code, gl.account_title AS gl_account_title,
+                    sl.account_code AS sl_account_code, sl.account_title AS sl_account_title
              FROM {$this->tableBankAccounts} ba
              LEFT JOIN {$this->tableResponsibilityCode} rc ON rc.rc_id = ba.rc_id
+             LEFT JOIN {$this->tableChartOfAccounts} gl ON gl.account_id = ba.coa_account_id
+             LEFT JOIN {$this->tableChartOfAccounts} sl ON sl.account_id = ba.sl_code
              WHERE ba.bank_account_id = {$id}",
             'DB'
         ) ?: null;
@@ -200,6 +208,36 @@ class BankManagementService
         );
     }
 
+    // coa_account_id/sl_code (GL/SL two-step picker) both reference
+    // chart_of_accounts.account_id — same convention as
+    // fims.vendors.coa_account_id/sl_code and
+    // fims.accountable_officers.coa_account_id/sl_code. Empty is valid (not
+    // yet tagged).
+    private function accountIdExists(string $accountId): bool
+    {
+        return $accountId === '' || (bool) App\ExecuteRow(
+            "SELECT account_id FROM {$this->tableChartOfAccounts} WHERE account_id = " . $this->str($accountId),
+            'DB'
+        );
+    }
+
+    // Resolves the GL account's own account_code from its account_id, so
+    // the legacy account_code column (still read by
+    // GeneralLedgerService::postPaymentJev()) stays in sync with whatever
+    // GL the two-step picker selects.
+    private function accountCodeForId(string $accountId): ?string
+    {
+        if ($accountId === '') {
+            return null;
+        }
+        $row = App\ExecuteRow(
+            "SELECT account_code FROM {$this->tableChartOfAccounts} WHERE account_id = " . $this->str($accountId),
+            'DB'
+        );
+
+        return $row['account_code'] ?? null;
+    }
+
     // ── Create ──
     public function store($data)
     {
@@ -222,7 +260,15 @@ class BankManagementService
         if (!$this->rcIdExists($rcId)) {
             return json_encode(["success" => false, "message" => "Select a valid Region/Office."]);
         }
-        $accountCode = trim((string) ($data['account_code'] ?? ''));
+        $coaAccountId = trim((string) ($data['coa_account_id'] ?? ''));
+        if (!$this->accountIdExists($coaAccountId)) {
+            return json_encode(["success" => false, "message" => "Select a valid GL Account."]);
+        }
+        $slCode = trim((string) ($data['sl_code'] ?? ''));
+        if (!$this->accountIdExists($slCode)) {
+            return json_encode(["success" => false, "message" => "Select a valid Sub-Ledger Account."]);
+        }
+        $accountCode = $coaAccountId !== '' ? ($this->accountCodeForId($coaAccountId) ?? '') : trim((string) ($data['account_code'] ?? ''));
         if (!$this->accountCodeExists($accountCode)) {
             return json_encode(["success" => false, "message" => "Select a valid GL Account Code."]);
         }
@@ -239,13 +285,14 @@ class BankManagementService
         $row = App\ExecuteRow(
             "INSERT INTO {$this->tableBankAccounts}
                 (account_name, account_number, bank_name, bank_branch, account_type, account_classification,
-                 fund_source, rc_id, account_code, is_main_depository, status, is_active, date_opened,
+                 fund_source, rc_id, account_code, coa_account_id, sl_code, is_main_depository, status, is_active, date_opened,
                  last_transaction_date, created_by)
              VALUES (
                 " . $this->str($accountName) . ', ' . $this->str($accountNumber) . ', ' . $this->str($bankName) . ', '
                 . $this->strOrNull($data['bank_branch'] ?? null) . ', ' . $this->strOrNull($accountType) . ', '
                 . $this->str($classification) . ', ' . $this->strOrNull($data['fund_source'] ?? null) . ', '
-                . $this->strOrNull($rcId) . ', ' . $this->strOrNull($accountCode) . ', ' . $this->bool($data['is_main_depository'] ?? false) . ', '
+                . $this->strOrNull($rcId) . ', ' . $this->strOrNull($accountCode) . ', ' . $this->strOrNull($coaAccountId) . ', '
+                . $this->strOrNull($slCode) . ', ' . $this->bool($data['is_main_depository'] ?? false) . ', '
                 . $this->str($status) . ', ' . ($status === 'ACTIVE' ? 'TRUE' : 'FALSE') . ', '
                 . $this->dateOrNull($data['date_opened'] ?? null) . ', ' . $this->dateOrNull($data['last_transaction_date'] ?? null)
                 . ", {$userId})
@@ -287,7 +334,15 @@ class BankManagementService
         if (!$this->rcIdExists($rcId)) {
             return json_encode(["success" => false, "message" => "Select a valid Region/Office."]);
         }
-        $accountCode = trim((string) ($data['account_code'] ?? ''));
+        $coaAccountId = trim((string) ($data['coa_account_id'] ?? ''));
+        if (!$this->accountIdExists($coaAccountId)) {
+            return json_encode(["success" => false, "message" => "Select a valid GL Account."]);
+        }
+        $slCode = trim((string) ($data['sl_code'] ?? ''));
+        if (!$this->accountIdExists($slCode)) {
+            return json_encode(["success" => false, "message" => "Select a valid Sub-Ledger Account."]);
+        }
+        $accountCode = $coaAccountId !== '' ? ($this->accountCodeForId($coaAccountId) ?? '') : trim((string) ($data['account_code'] ?? ''));
         if (!$this->accountCodeExists($accountCode)) {
             return json_encode(["success" => false, "message" => "Select a valid GL Account Code."]);
         }
@@ -317,6 +372,8 @@ class BankManagementService
                 fund_source = " . $this->strOrNull($data['fund_source'] ?? null) . ",
                 rc_id = " . $this->strOrNull($rcId) . ",
                 account_code = " . $this->strOrNull($accountCode) . ",
+                coa_account_id = " . $this->strOrNull($coaAccountId) . ",
+                sl_code = " . $this->strOrNull($slCode) . ",
                 is_main_depository = " . $this->bool($data['is_main_depository'] ?? false) . ",
                 status = " . $this->str($status) . ",
                 is_active = " . ($status === 'ACTIVE' ? 'TRUE' : 'FALSE') . ",
@@ -332,14 +389,19 @@ class BankManagementService
         return $this->ok(['bank_account_id' => $accountId]);
     }
 
-    // ── Quick GL account code tag ──
+    // ── Quick GL/SL account tag ──
     public function tagAccountCode($id, $data)
     {
         $accountId = (int) $id;
-        $accountCode = trim((string) ($data['account_code'] ?? ''));
-        if (!$this->accountCodeExists($accountCode)) {
-            return json_encode(["success" => false, "message" => "Select a valid GL Account Code."]);
+        $coaAccountId = trim((string) ($data['coa_account_id'] ?? ''));
+        if (!$this->accountIdExists($coaAccountId)) {
+            return json_encode(["success" => false, "message" => "Select a valid GL Account."]);
         }
+        $slCode = trim((string) ($data['sl_code'] ?? ''));
+        if (!$this->accountIdExists($slCode)) {
+            return json_encode(["success" => false, "message" => "Select a valid Sub-Ledger Account."]);
+        }
+        $accountCode = $coaAccountId !== '' ? ($this->accountCodeForId($coaAccountId) ?? '') : '';
         $before = $this->fetchAccount($accountId);
         if (!$before) {
             return json_encode(["success" => false, "message" => "Bank account not found."]);
@@ -349,6 +411,8 @@ class BankManagementService
         App\Execute(
             "UPDATE {$this->tableBankAccounts}
              SET account_code = " . $this->strOrNull($accountCode) . ",
+                 coa_account_id = " . $this->strOrNull($coaAccountId) . ",
+                 sl_code = " . $this->strOrNull($slCode) . ",
                  updated_at = CURRENT_TIMESTAMP
              WHERE bank_account_id = {$accountId}",
             'DB'

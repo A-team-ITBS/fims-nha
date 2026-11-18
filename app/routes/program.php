@@ -35,7 +35,8 @@ $app->get('/program/all', function ($request, $response, $args) use ($ProgramSer
 })->add($jwtMiddleware);
 
 // Fetch all (with pagination). ?with_sub_programs=1 is the Programs page's tree: every program also carries its sub_programs[] and
-// sub_program_count, and the search matches a sub-program's code / name as well.
+// sub_program_count, and the search matches a sub-program's code / name as well. The (paginated) answer then also carries
+// totals.sub_programs: how many sub-programs there are under ALL the programs the search matches, whatever page is asked for.
 $app->get('/program/list', function ($request, $response, $args) use ($ProgramService) {
     try {
         $params = $request->getQueryParams();

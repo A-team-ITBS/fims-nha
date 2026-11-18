@@ -67,6 +67,7 @@
 | Accounts Set-up | [Accountable Officer](#accountable-officer) | Empty placeholder (0-byte page) |
 | Accounts Set-up | [Payroll Setup](#payroll-setup) | Built |
 | Accounts Set-up | [Payroll Management](#payroll-management) | Built (import only) |
+| Accounts Set-up | [Remittance](#remittance) | Built |
 | Accounts Set-up | [Fidelity Bond](#fidelity-bond) | Empty placeholder (0-byte page) |
 | Fund Sourcing | [Fund Sourcing Dashboard](#fund-sourcing-dashboard) | Partial |
 | Fund Sourcing | [Supplemental Funds](#supplemental-funds) | Built |
@@ -364,7 +365,7 @@ erDiagram
 ```
 - **Table notes:**
   - `fims.budget_revision` — base `01 - table/05 - budget_rev.sql`; `budget_req_id`→`from_budget_req_id` + `to_budget_req_id` in `02 - alter_table/03` (note: a separate `02 - alter_table` folder); `from/to_budget_line_item_id` added and `from_budget_req_id` made nullable in `03 - alter_table/23 - budget_revision_on_budget_reference_number.sql` (no FK by design: Draft edits recreate lines); `status_id` FK added by `04 - seed_data/08`. Column is `update_at` (sic). `request_type` (`03 - alter_table/42`, `CHECK IN ('REVISION','REALIGNMENT')`, default REVISION): REVISION = no To line, REALIGNMENT = has a To line (the API keeps it in step); the same alter dropped the legacy `from_budget_req_id` / `to_budget_req_id`.
-  - `fims.budget_line_items` — approval: From line `adjustment, suggested_amount += to_amount − (proposed+adjustment)`; To line gets the opposite delta; `proposed_amount` never changes. Each touched line's `revised_amount` (plain column, migration "43 - budget_line_items_add_revised_amount" — not in the repo yet) is set to its new `proposed_amount + adjustment`; the COB reads its Revised Amount from it.
+  - `fims.budget_line_items` — approval: From line `adjustment, suggested_amount += to_amount − (proposed+adjustment)`; To line gets the opposite delta; `proposed_amount` never changes. Each touched line's `revised_amount` (plain column, `03 - alter_table/42 - budget_line_items_add_revised_amount`) is set to its new `proposed_amount + adjustment`; the COB reads its Revised Amount from it.
 
 ### Ledger
 
@@ -508,7 +509,7 @@ erDiagram
 
 - **Status:** Built — Full CRUD, the 9-status pipeline, the Accounting Entries (SETUP JEV) editor, ATC and deduction lines, RFA linking, and "Prepare Payment JEV" are all wired to real SQL.
 - **Code:** `views/Voucher.php` → `app/pages/voucher.php` (list) + `app/pages/voucher/form.php` (create/edit) + `app/pages/voucher/readone.php` (view, Accounting Entries, status actions). Route `app/routes/voucher.php`: `GET /voucher/list|all|fiscal-years|dv-number|atc-codes|deduction-types|sl-codes|sl-codes/{sl_code}/details|rfa/all|rfa/read/{id}|read/{id}`, `POST /voucher/add`, `PUT /voucher/update/{id}`, `POST /voucher/{id}/status`, `POST /voucher/{id}/journal-entry` (save the SETUP JEV, ATC lines, and deductions), `POST /voucher/{id}/prepare-payment-jev`, `POST /voucher/journal-entry/{id}/jev-status`, `DELETE /voucher/delete/{id}`. Service: `app/services/DisbursementVoucherService.php`, which calls `GeneralLedgerService::postJev()/reverseJev()/createPaymentJev()`. Print: `DvPrintService`/`JevPrintService` through `/print-preview-readone`.
-- **Tables written:** fims.disbursement_vouchers, fims.disbursement_voucher_deductions, fims.disbursement_voucher_atc_lines, fims.journal_entry_vouchers, fims.journal_entry_voucher_lines, fims.budget_allocation (only `dv_id`, in `linkRfas()`), fims.payroll_records (only `disbursement_voucher_id` — a payroll DV, see [Payroll Management](#payroll-management)), fims.general_ledger (indirectly, through postJev/reverseJev), fims.status_change_log (JEV status only, through `GlobalService::logStatusChange`). **Tables read:** fims.settings_status (`status_for='disbursement_voucher'` and `'journal_entry_voucher'`), fims.vendors (joins `vendors.sl_code` → `chart_of_accounts.account_id` for the vendor AP sub-ledger), fims.chart_of_accounts (also the source of the SL list: leaf accounts with `parent_account_id`), fims.responsibility_code, fims.fiscal_year, fims.books, fims.atc_codes, fims.deduction_types, fims.budget_allocation (`allocation_type='RFA'`), fims.budget_category, fims.budget_line_items (the account of the RFA's first line), fims.checks (the latest non-cancelled check by `dv_number`, for the payment JEV), fims.bank_accounts (`account_code`, the Cr Cash line), fims.file_attachments (by `multiple_node_id`), fims.v_journal_entry_vouchers, uac.users (`rc_id` for stage authorization).
+- **Tables written:** fims.disbursement_vouchers, fims.disbursement_voucher_deductions, fims.disbursement_voucher_atc_lines, fims.journal_entry_vouchers, fims.journal_entry_voucher_lines, fims.budget_allocation (only `dv_id`, in `linkRfas()`), fims.payroll_records (only `disbursement_voucher_id` — a payroll DV, see [Payroll Management](#payroll-management)), fims.payroll_remittances (only `disbursement_voucher_id` — a remittance DV, which needs no RFA, see [Remittance](#remittance)), fims.general_ledger (indirectly, through postJev/reverseJev), fims.status_change_log (JEV status only, through `GlobalService::logStatusChange`). **Tables read:** fims.settings_status (`status_for='disbursement_voucher'` and `'journal_entry_voucher'`), fims.vendors (joins `vendors.sl_code` → `chart_of_accounts.account_id` for the vendor AP sub-ledger), fims.chart_of_accounts (also the source of the SL list: leaf accounts with `parent_account_id`), fims.responsibility_code, fims.fiscal_year, fims.books, fims.atc_codes, fims.deduction_types, fims.budget_allocation (`allocation_type='RFA'`), fims.budget_category, fims.budget_line_items (the account of the RFA's first line), fims.checks (the latest non-cancelled check by `dv_number`, for the payment JEV), fims.bank_accounts (`account_code`, the Cr Cash line), fims.file_attachments (by `multiple_node_id`), fims.v_journal_entry_vouchers, uac.users (`rc_id` for stage authorization).
 - **Status workflow:** `DRAFT → FOR_FMD_REVIEW (RC 013) → FOR_ACCOUNTING (RC 012, Section Chief saves a balanced JEV) → FOR_DIVISION_MANAGER (012) → FOR_DEPARTMENT_MANAGER (012) → FOR_TREASURY (014; this step POSTS the SETUP JEV to the GL) → RELEASED` (set by Check Disbursements `saveCheck`). Any non-terminal status can go to `REJECTED` (reason required) or `CANCELLED`. `FOR_TREASURY→CANCELLED` reverses the GL entries. `REJECTED→CANCELLED` only. Source: `DisbursementVoucherService::TRANSITIONS` (l.100) and `STAGE_HOLDER_RC`. Seeds: `02 - sample_data/01 - fims_settings_status.sql`.
 
 ```mermaid
@@ -1023,7 +1024,7 @@ erDiagram
     }
 ```
 - **Table notes:**
-  - fims.fund_tracking (`01 - table/29`): one table holds SARO, NCA, Trust Fund and OR records, told apart by tracking_type_id. It has **no FOREIGN KEYs**, so the service checks references in code (`validateReferences`). Alter 41 dropped `unreleased` and `sub_program_code` and set `date` to default CURRENT_DATE. Other columns: `remarks`, `purpose`, `user_id`, `created_at/updated_at`.
+  - fims.fund_tracking (`01 - table/29`): one table holds SARO, NCA, Trust Fund and OR records, told apart by tracking_type_id. It has **no FOREIGN KEYs**, so the service checks references in code (`validateReferences`). Alter 41 dropped `unreleased` and `sub_program_code` and set `date` to default CURRENT_DATE; both came back: `unreleased` (NUMERIC 18,2, alter 47, backfilled by 48) is a SARO's balance (its amount less its NCAs), kept up to date by `fund_trackingServices::refreshSaroUnreleased()`, NULL on other records; `sub_program` (VARCHAR 225, alter 45) holds a `fims.sub_program.sub_program_code` with no DB FK. Alter 46 renamed `reference_number`/`name` to `saro_id`/`description` (TEXT). `date` is entered on the SARO / NCA / Supplemental form; without one it is the creation day. Other columns: `remarks`, `purpose`, `user_id`, `created_at/updated_at`.
   - fims.fund_tracking_type (`26`): seeded with SARO, NCA, TRUST FUND, OR. Soft delete.
   - fims.nature_of_fund (`27`): seeded with Insertions, Equity, GAAAO, Unprogrammed, SUPPLEMENTAL. The SUPPLEMENTAL value routes records to the Supplemental Funds page.
   - fims.agency (`28`): a pick-list only. fund_tracking stores the agency **name** as text, not agency_id.
@@ -1643,8 +1644,50 @@ erDiagram
 - **Table notes:**
   - fims.payroll_periods (`01 - table/44`), fims.payroll_employees (`42`), fims.payroll_records (`45`), fims.payroll_record_items (`49`); FKs from `03 - alter_table/36` and `/37`. `03 - alter_table/38` regenerates `gross_amount` / `net_amount` from the category totals (the old `regular_pay` … `other_income` columns stay, deprecated).
   - `03 - alter_table/36` also added `disbursement_vouchers.payroll_record_id` (FK → payroll_records); this module does not use it — a payroll DV covers a whole month, so the link is kept on the records side.
-  - fims.payroll_deduction_types (`43`, 12 seeded rows), fims.payroll_deductions (`46`) and fims.payroll_remittances (`47`) belong to the earlier payroll design; `payroll_record_items` replaces payroll_deductions (see alter 38's clean-up note). The routes in `app/routes/payroll.php` that read them are not registered (the file returns a closure that `app/api.php` never calls).
+  - fims.payroll_deduction_types (`43`, 12 seeded rows) and fims.payroll_deductions (`46`) belong to the earlier payroll design (fims.payroll_remittances, `47`, is used by [Remittance](#remittance)); `payroll_record_items` replaces payroll_deductions (see alter 38's clean-up note). The routes in `app/routes/payroll.php` that read them are not registered (the file returns a closure that `app/api.php` never calls).
   - The payroll DV's deductions use fims.deduction_types `PAYROLL_GSIS`, `PAYROLL_PHILHEALTH`, `PAYROLL_PAGIBIG`, `PAYROLL_WTAX`, `PAYROLL_OTHER` (`04 - seed_data/08`); until that seed is run they show under OTHER.
+
+### Remittance
+
+- **Status:** Built — one page for the payroll **deductions and their remittance** (menu "Remittance", page title "Deductions & Remittances"). Each imported payroll month is listed **per agency** (GSIS, BIR, PhilHealth, Pag-IBIG, Other Payables; NHA receivables such as the housing loan are shown but not remitted) with the employee share, government share and total to remit; the agency name opens its items and per-employee amounts. Every remittance is paid through its own **Remittance DV** (claimant = the agency) in the normal DV flow.
+- **Code:** `app/pages/remittance-page.php` (RemittancePage); `app/routes/deduction_remittance.php` (`GET /deduction-remittance/list|detail/{periodId}/{agency}|dv-data/{id}`, `POST /deduction-remittance/schedule`, `POST /deduction-remittance/{id}/unschedule|confirm`); `app/services/DeductionRemittanceService.php`. DV side: `app/pages/voucher.php` (`Voucher?remittance={id}`), `app/pages/voucher/form.php` (`vf_openForRemittance()`), `DisbursementVoucherService` (no RFA for a remittance DV; link / unlink on save, cancel, delete).
+- **Tables written:** fims.payroll_remittances (one live row per month per agency, created at scheduling), fims.status_change_log (`status_for` = payroll_remittance). The Remittance DV itself is a normal fims.disbursement_vouchers row (+ its JEV). **Tables read:** fims.payroll_periods, fims.payroll_records, fims.payroll_record_items, fims.payroll_items, fims.payroll_employees, fims.chart_of_accounts, fims.disbursement_vouchers + fims.settings_status, fims.checks (check no. of the released DV).
+- **Status workflow:** Pending (no row) → **Scheduled** (Accounting, due date; needs the month's payroll DV) → **DV in process** (Create Remittance DV: claimant = agency, amount = total to remit, **no RFA** — the payroll DV's RFA already obligated it; entry Dr the "Due to …" payables + Dr the government-share expense / Cr Accounts Payable) → FMD → Accounting → FOR_TREASURY (entry posts; the payables clear) → Treasury check in Disbursement Preparation → DV RELEASED = **Remitted** (shows the check no.) → Accounting payment JEV (Dr AP / Cr Cash) → **Confirm Receipt** (agency OR; Treasury or Accounting) = **Confirmed**. Unschedule (Accounting) returns a Scheduled row to Pending; cancelling / deleting the remittance DV returns it to Scheduled. Stored statuses are SCHEDULED / CONFIRMED / CANCELLED — "DV in process" and "Remitted" are read from the linked DV.
+- **Agency of an amount** (by the payroll item's account): 2-02-01-020 / 5-01-03-010 / 5-01-03-040 → GSIS (premiums, loans, government share, ECC) · 2-02-01-040 / 5-01-03-030 → PhilHealth · 2-02-01-030 / 5-01-03-020 → Pag-IBIG · 2-02-01-010 → BIR · 1-… → NHA receivable (not remitted) · everything else → Other Payables. Employee share = DEDUCTION − REFUND on the payable; a deduction on an expense account (5-…, e.g. leave without pay) only reduces salary and is not remitted.
+
+```mermaid
+erDiagram
+    payroll_periods ||--o{ payroll_remittances : "payroll_period_id"
+    disbursement_vouchers ||--o| payroll_remittances : "disbursement_voucher_id (remittance DV)"
+    payroll_periods ||--o{ payroll_records : "payroll_period_id"
+    payroll_records ||--o{ payroll_record_items : "amounts per item (agency by account)"
+    payroll_remittances {
+        serial payroll_remittance_id PK
+        int payroll_period_id FK
+        varchar30 remittance_agency "GSIS | BIR | PHILHEALTH | PAGIBIG | OTHERS"
+        numeric total_amount "employee + government share at scheduling"
+        date due_date
+        varchar20 remittance_status "SCHEDULED | CONFIRMED | CANCELLED"
+        int disbursement_voucher_id FK "remittance DV"
+        date remittance_date "DV release date"
+        varchar remittance_no "check no."
+        varchar remittance_receipt_no "agency OR"
+        date receipt_date
+        varchar tax_return_form "1601-C for BIR"
+    }
+    disbursement_vouchers {
+        serial dv_id PK
+        varchar dv_no UK
+        varchar claimant_name "the agency"
+    }
+    payroll_periods {
+        serial payroll_period_id PK
+        smallint fiscal_yr
+        smallint payroll_month
+    }
+```
+- **Table notes:**
+  - fims.payroll_remittances (`01 - table/47`): FKs from `03 - alter_table/36` (period, DV, users) and `/37` (payroll_item_id, not used — one row per agency). `due_date` was added for this page (structure file + ALTER). `deduction_type_id`, `is_consolidated` (always TRUE here), `amount_remitted` / `amount_pending` (set at confirmation) are the original columns.
 
 ### Fidelity Bond
 

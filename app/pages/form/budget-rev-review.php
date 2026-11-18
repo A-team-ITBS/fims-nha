@@ -108,7 +108,7 @@ namespace PHPMaker2024\FIMS;
                     <strong id="brv-view-title-req"></strong>
                 </div>
                 <div class="brv-v-card-sub" id="brv-view-req-sub"></div>
-                <div class="brv-v-card-amt">Current amount <strong id="brv-view-req-amount"></strong></div>
+                <div class="brv-v-card-amt"><span id="brv-view-req-amt-lbl">Revised amount</span> <strong id="brv-view-req-amount"></strong></div>
             </div>
 
             <!-- the To budget line (to_budget_line_item_id): the line that receives the funds; optional -->
@@ -119,7 +119,7 @@ namespace PHPMaker2024\FIMS;
                     <strong id="brv-view-to-title-req"></strong>
                 </div>
                 <div class="brv-v-card-sub" id="brv-view-to-req-sub"></div>
-                <div class="brv-v-card-amt">Current amount <strong id="brv-view-to-req-amount"></strong></div>
+                <div class="brv-v-card-amt"><span id="brv-view-to-req-amt-lbl">Revised amount</span> <strong id="brv-view-to-req-amount"></strong></div>
             </div>
             <div class="brv-v-reason is-empty" id="brv-view-to-none" hidden>No To budget line — only the From budget line's amount changes.</div>
 

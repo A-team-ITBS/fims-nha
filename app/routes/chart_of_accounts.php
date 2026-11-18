@@ -11,16 +11,24 @@ $ChartOfAccountsService = new ChartOfAccountsService();
 // returns all active+postable accounts regardless of branch — used by the
 // Budget Request form's Account Code picker. ?for_budget_proposal=1 (only
 // meaningful alongside postable_only=1) further narrows that to accounts
-// flagged for_budget_proposal = TRUE.
+// flagged for_budget_proposal = TRUE. ?sl_only=1 returns true Subsidiary
+// Ledger accounts (a leaf account with a parent — see fetchSlAccounts())
+// with account_id included, for pickers writing into a *_code column
+// that's joined by account_id (fims.accountable_officers.sl_code, fims.
+// vendors.sl_code) — NOT the same shape as /voucher/sl-codes, which
+// returns account_code for fims.journal_entry_voucher_lines.sl_code.
 $app->get('/chart_of_accounts/all', function ($request, $response, $args) use ($ChartOfAccountsService) {
     try {
         $params                = $request->getQueryParams();
         $prefix                = $params['prefix'] ?? '';
         $postableOnly          = ($params['postable_only'] ?? '') === '1';
         $forBudgetProposalOnly = ($params['for_budget_proposal'] ?? '') === '1';
+        $slOnly                = ($params['sl_only'] ?? '') === '1';
 
         if ($prefix !== '') {
             $result = $ChartOfAccountsService->fetchByPrefix($prefix);
+        } elseif ($slOnly) {
+            $result = $ChartOfAccountsService->fetchSlAccounts($params['search'] ?? '');
         } elseif ($postableOnly) {
             $result = $ChartOfAccountsService->fetchPostable($params['search'] ?? '', $forBudgetProposalOnly);
         } else {

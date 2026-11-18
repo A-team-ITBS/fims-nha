@@ -641,7 +641,7 @@ function fsd_pageList(cur, last) {
 
 const fsd_badge = (text, tone) => text ? `<span class="nha-bdg nha-bdg-${tone}">${fsd_esc(text)}</span>` : fsd_dash;
 const fsd_amtCell = v => { const n = parseFloat(v) || 0; return `<td class="num" title="${fsd_pesoFull(n)}">${n ? fsd_peso(n) : '—'}</td>`; };
-const fsd_parentRef = r => (Array.isArray(r.parent) ? r.parent[0] : null)?.reference_number || '';
+const fsd_parentRef = r => (Array.isArray(r.parent) ? r.parent[0] : null)?.saro_id || '';
 const fsd_refCell = ref => ref ? `<span class="nha-mono nha-td-bold">${fsd_esc(ref)}</span>` : fsd_dash;
 const fsd_yearCell = r => r.fiscal_year ? `<span style="font-size:11px;">FY ${fsd_esc(r.fiscal_year)}</span>` : fsd_dash;
 const fsd_transferTone = s => ({ completed: 'green', pending: 'amber', overdue: 'red', cancelled: 'gray' }[String(s || '').toLowerCase()] || 'gray');
@@ -650,8 +650,8 @@ const fsd_transferTone = s => ({ completed: 'green', pending: 'amber', overdue: 
 const FSD_COLS = {
     // SARO / NCA records (the SARO / NCA Tracking register's columns)
     tracking: {
-        head: [['Reference No.'], ['Name / Title'], ['Tracking Type'], ['Nature of Fund'], ['Fiscal Year'], ['Amount (₱)', 1], ['Date']],
-        row: r => `<td>${fsd_refCell(r.reference_number)}</td><td>${fsd_esc(r.name) || fsd_dash}</td>
+        head: [['SARO ID'], ['Description'], ['Tracking Type'], ['Nature of Fund'], ['Fiscal Year'], ['Amount (₱)', 1], ['Date']],
+        row: r => `<td>${fsd_refCell(r.saro_id)}</td><td>${fsd_esc(r.description) || fsd_dash}</td>
             <td>${fsd_badge(r.tracking_type?.fund_tracking_code, 'navy')}</td><td>${fsd_badge(r.nature_of_fund?.name, 'blue')}</td><td>${fsd_yearCell(r)}</td>
             ${fsd_amtCell(r.amount)}<td>${fsd_date(r.date)}</td>`,
     },
@@ -665,7 +665,7 @@ const FSD_COLS = {
     // Supplemental Funds — identified by `purpose` rather than a name
     supp: {
         head: [['Reference No.'], ['Purpose'], ['Nature of Fund'], ['Fiscal Year'], ['Amount (₱)', 1], ['Parent Reference'], ['Date']],
-        row: r => `<td>${fsd_refCell(r.reference_number)}</td><td style="font-size:12px;">${fsd_esc(r.purpose) || fsd_dash}</td>
+        row: r => `<td>${fsd_refCell(r.saro_id)}</td><td style="font-size:12px;">${fsd_esc(r.purpose) || fsd_dash}</td>
             <td>${fsd_badge(r.nature_of_fund?.name, 'amber')}</td><td>${fsd_yearCell(r)}</td>${fsd_amtCell(r.amount)}
             <td>${fsd_parentRef(r) ? `<span class="nha-mono" style="font-size:12px;">${fsd_esc(fsd_parentRef(r))}</span>` : fsd_dash}</td><td>${fsd_date(r.date)}</td>`,
     },
@@ -955,7 +955,7 @@ const fsd_mock = (() => {
     // SAROs: one per title per fiscal year, each released in 1–3 NCAs that cover 55–95% of it
     YEARS.forEach(fy => TITLES.forEach(title => {
         const saro = {
-            id: ++id, fiscal_year: fy, reference_number: `SARO-ROCS-${fy}-${pad(++saroSeq)}`, name: `${title} ${fy}`,
+            id: ++id, fiscal_year: fy, saro_id: `SARO-ROCS-${fy}-${pad(++saroSeq)}`, description: `${title} ${fy}`,
             amount: money(90e6, 850e6), date: iso(fy, 1 + Math.floor(rnd() * 5), 1 + Math.floor(rnd() * 27)),
             tracking_type: TYPE.SARO, nature_of_fund: { name: pick(['GAA', 'GAA', 'GAAAO', 'Continuing']) },
             agency: null, remarks: null, parent: [], children: [],
@@ -964,10 +964,10 @@ const fsd_mock = (() => {
         for (let i = 0; i < n; i++) {
             const amount = Math.round(released / n * 100) / 100;
             const nca = {
-                id: ++id, fiscal_year: fy, reference_number: `NCA-${fy}-${pad(++ncaSeq)}`, name: `${title} — release ${i + 1}`,
+                id: ++id, fiscal_year: fy, saro_id: `NCA-${fy}-${pad(++ncaSeq)}`, description: `${title} — release ${i + 1}`,
                 amount, date: iso(fy, 4 + i * 2, 1 + Math.floor(rnd() * 27)),
                 tracking_type: TYPE.NCA, nature_of_fund: saro.nature_of_fund, agency: null, remarks: null,
-                parent: [{ id: saro.id, reference_number: saro.reference_number, name: saro.name, amount: saro.amount }], children: [],
+                parent: [{ id: saro.id, saro_id: saro.saro_id, description: saro.description, amount: saro.amount }], children: [],
             };
             ncas.push(nca); saro.children.push(nca);
         }
@@ -979,10 +979,10 @@ const fsd_mock = (() => {
     for (let i = 0; i < 16; i++) {
         const fy = pick(YEARS), parentRef = pick(['OR', 'CA', 'SARO']);
         trusts.push({
-            id: ++id, fiscal_year: fy, reference_number: `TF-${fy}-${pad(++trustSeq)}`, name: null, amount: money(5e6, 120e6),
+            id: ++id, fiscal_year: fy, saro_id: `TF-${fy}-${pad(++trustSeq)}`, description: null, amount: money(5e6, 120e6),
             date: iso(fy, 1 + Math.floor(rnd() * 11), 1 + Math.floor(rnd() * 27)), tracking_type: TYPE.TRUST, nature_of_fund: { name: 'Trust Fund' },
             agency: { name: pick(AGENCIES) }, remarks: pick(REMARKS),
-            parent: [{ id: ++id, reference_number: `${parentRef}-${fy}-${pad(Math.floor(rnd() * 900) + 100)}`, amount: money(100e6, 400e6) }], children: [],
+            parent: [{ id: ++id, saro_id: `${parentRef}-${fy}-${pad(Math.floor(rnd() * 900) + 100)}`, amount: money(100e6, 400e6) }], children: [],
         });
     }
 
@@ -990,10 +990,10 @@ const fsd_mock = (() => {
     for (let i = 0; i < 9; i++) {
         const parent = pick(saros);
         supps.push({
-            id: ++id, fiscal_year: parent.fiscal_year, reference_number: `SUP-${parent.fiscal_year}-${pad(++suppSeq)}`, name: null, amount: money(8e6, 90e6),
+            id: ++id, fiscal_year: parent.fiscal_year, saro_id: `SUP-${parent.fiscal_year}-${pad(++suppSeq)}`, description: null, amount: money(8e6, 90e6),
             date: iso(parent.fiscal_year, 6 + Math.floor(rnd() * 6), 1 + Math.floor(rnd() * 27)), tracking_type: TYPE.SARO, nature_of_fund: { name: 'SUPPLEMENTAL' },
             agency: null, remarks: null, purpose: pick(PURPOSES),
-            parent: [{ id: parent.id, reference_number: parent.reference_number, amount: parent.amount }], children: [],
+            parent: [{ id: parent.id, saro_id: parent.saro_id, amount: parent.amount }], children: [],
         });
     }
 

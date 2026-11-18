@@ -40,15 +40,15 @@
  * API (app/routes/fund_tracking.php and friends — the user is the logged-in session, never sent):
  *   GET  /fund_tracking/read/{id}          POST /fund_tracking/add         PATCH /fund_tracking/update/{id}
  *   GET  /fund_tracking/all?search=&lean=1 (Parent Fund search)            GET   /fund_tracking/list?type=TRUST_FUND
- *   GET  /fund-tracking-type/all  /nature-of-fund/all  /fiscal_year/all
+ *   GET  /fund-tracking-type/all  /nature-of-fund/all  /fiscal_year/all  /sub_program/all (a SARO's Sub-Program)
  *   GET  /responsibility-center/all?office_type=Regional   (Supplemental Details → Region)
  *   POST /upload/file (multipart)          POST /upload/multi-upload       (Supporting Documents)
  *
  * What changed from the FMD version (the table is fims.fund_tracking now):
- *   Program (program_id)        → not on this form: a record has no sub-program (nor an unreleased amount) any more — both columns
- *                                 were dropped from fims.fund_tracking, and the form neither shows nor sends them
- *   Date                        → not on this form: a record's date is the day it is created, stamped by the API
- *   Fiscal Year (period id)     → fiscal_year, a plain year picked from fims.fiscal_year
+ *   Program (program_id)        → Sub-Program (a SARO only — not an NCA, which has no such field): a searchable list of fims.sub_program whose CODE is
+ *                                 saved in fims.fund_tracking.sub_program ("03 - alter_table/45"). There is no unreleased amount any more (dropped, "41")
+ *   Date                        → a required date picker: typed in, never filled in for the user (a request without one is dated the day it is created)
+ *   Fiscal Year (period id)     → fiscal_year, a plain 4-digit year TYPED in (1900–2200) — not picked from fims.fiscal_year any more
  *   Bank Account (a picker)     → Bank Account No. (text) — there is no bank-accounts table in FIMS
  *   NCA Releases                → no longer a part of the SARO's form. An NCA is its own entry: choose NCA first ($sarTypeFirst),
  *                                 then pick the SARO it was released under (the "SARO" field; a SARO itself has no parent)
@@ -100,19 +100,18 @@ $_sar_type_first = !empty($sarTypeFirst);
         .nha-root .sar-cols-3, .nha-root .sar-cols-4 { grid-template-columns: 1fr 1fr; }
     }
     .nha-root .sar-hint { display: block; margin-top: 4px; font-size: 11px; color: var(--afims-text-disabled, #A9AAB8); }
-    /* Reference Number's hint, with the GAAAO "Generate" link on its right */
+    /* SARO ID's hint, with the GAAAO "Generate" link on its right */
     .nha-root .sar-ref-hintrow { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
     .nha-root .sar-ref-hintrow .sar-hint:empty { display: none; }
     .nha-root .sar-ref-gen { flex-shrink: 0; margin-top: 4px; padding: 0; border: 0; background: transparent; cursor: pointer; white-space: nowrap;
         font-size: 11.5px; font-weight: 600; text-decoration: underline; color: var(--afims-primary-text, #0035A9); }
     .nha-root .sar-ref-gen:hover { color: var(--afims-heading, #000E3E); }
     .nha-root .sar-ref-gen[hidden] { display: none; }
-    /* NCA Details (syncNcaLayout): the NCA's fields in one two-column grid — the SARO, the Amount and the SARO's balance take the
-       full width, the Reference Number and Fiscal Year sit side by side. The fields keep their own margins out of it (the gap spaces them). */
+    /* NCA Details (syncNcaLayout): the NCA's fields in one two-column grid — the SARO and the SARO's balance take the full width; the
+       SARO ID and Fiscal Year sit side by side, and so do the Amount and the Date. The fields keep their own margins out of it (the gap spaces them). */
     .nha-root .sar-nca-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 12px; }
     .nha-root .sar-nca-grid > * { margin: 0 !important; min-width: 0; }
     .nha-root .sar-nca-grid > #sar-parent-group,
-    .nha-root .sar-nca-grid > #sar-amount-group,
     .nha-root .sar-nca-grid > #sar-saro-bal { grid-column: 1 / -1; }
     @media (max-width: 560px) { .nha-root .sar-nca-grid { grid-template-columns: 1fr; } }
     /* NCA under a SARO: the SARO's amount less the NCAs released under it (see syncSaroBalance) */
@@ -221,7 +220,7 @@ $_sar_type_first = !empty($sarTypeFirst);
                     </div>
                     <div class="nha-fg" id="sar-parent-group">
                         <label for="sar-parent" id="sar-parent-label">Parent Fund</label>
-                        <input type="text" id="sar-parent" placeholder="Search reference number…">
+                        <input type="text" id="sar-parent" placeholder="Search SARO ID…">
                         <input type="hidden" id="sar-parent-id" value="">
                         <span class="sar-hint" id="sar-parent-hint"></span>
                     </div>
@@ -232,19 +231,29 @@ $_sar_type_first = !empty($sarTypeFirst);
                         <select id="sar-nature"><option value="">Loading…</option></select>
                         <span class="sar-hint">Insertions, Equity, GAAAO, Unprogrammed or SUPPLEMENTAL</span>
                     </div>
-                    <div></div>
+                    <!-- SARO only (syncNature): a searchable list of fims.sub_program; the code picked is what is saved in fund_tracking.sub_program -->
+                    <div class="nha-fg" id="sar-sub-group" style="margin-bottom:0;display:none;">
+                        <label for="sar-sub">Sub-Program</label>
+                        <input type="text" id="sar-sub" placeholder="Search sub-program code, name or program…" autocomplete="off">
+                        <input type="hidden" id="sar-sub-code" value="">
+                        <span class="sar-hint">Link this SARO to a sub-program (optional)</span>
+                    </div>
                 </div>
             </div>
 
             <!-- ── Fiscal Year ───────────────────────────────────────── -->
             <div class="sar-sec" id="sar-sec-year">
-                <h4 class="sar-sec-hd">Fiscal Year</h4>
+                <h4 class="sar-sec-hd">Fiscal Year &amp; Date</h4>
                 <div class="nha-fg-row">
+                    <!-- both are typed in: the Fiscal Year as a 4-digit year, the Date with the date picker (neither is filled in for the user) -->
                     <div class="nha-fg" id="sar-year-group" style="margin-bottom:0;">
                         <label for="sar-year">Fiscal Year <span class="nha-req">*</span></label>
-                        <select id="sar-year"><option value="">Loading…</option></select>
+                        <input type="text" id="sar-year" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="e.g. 2026">
                     </div>
-                    <div></div>
+                    <div class="nha-fg" id="sar-date-group" style="margin-bottom:0;">
+                        <label for="sar-date">Date <span class="nha-req">*</span></label>
+                        <input type="date" id="sar-date">
+                    </div>
                 </div>
             </div>
 
@@ -253,18 +262,25 @@ $_sar_type_first = !empty($sarTypeFirst);
                 <h4 class="sar-sec-hd">Fund Information</h4>
                 <div class="nha-fg-row">
                     <div class="nha-fg" id="sar-ref-group">
-                        <label for="sar-ref" id="sar-ref-label">Reference Number <span class="nha-req">*</span></label>
-                        <input type="text" id="sar-ref" maxlength="225" placeholder="Enter reference number">
+                        <label for="sar-ref" id="sar-ref-label">SARO ID <span class="nha-req">*</span></label>
+                        <input type="text" id="sar-ref" maxlength="225" placeholder="Enter SARO ID">
                         <div class="sar-ref-hintrow">
                             <span class="sar-hint" id="sar-ref-hint"></span>
                             <!-- GAAAO only: fills the field in with the generated reference again (syncReference / refreshGenerated) -->
                             <button type="button" class="sar-ref-gen" id="sar-ref-gen" hidden title="Fill in the reference generated from the Nature of Fund and Fiscal Year">Generate</button>
                         </div>
                     </div>
-                    <div class="nha-fg" id="sar-name-group">
-                        <label for="sar-name">Name</label>
-                        <input type="text" id="sar-name" maxlength="225" placeholder="e.g. Name of this fund record">
+                    <div class="nha-fg" id="sar-amount-group">
+                        <label for="sar-amount">Amount <span class="nha-req">*</span></label>
+                        <div class="sar-money"><span>&#8369;</span><input type="text" inputmode="decimal" id="sar-amount" data-money placeholder="0.00"></div>
+                        <span class="sar-hint" id="sar-amount-hint">Total allotment amount</span>
                     </div>
+                </div>
+
+                <!-- Description: long text (fims.fund_tracking.description is TEXT), so a full-width box. A Supplemental record has Purpose instead. -->
+                <div class="nha-fg" id="sar-name-group">
+                    <label for="sar-name">Description</label>
+                    <textarea id="sar-name" rows="3" placeholder="e.g. Description of this fund record"></textarea>
                 </div>
 
                 <!-- Purpose is for SUPPLEMENTAL only (sar_syncNature); it stays in the DOM so an existing record's
@@ -275,16 +291,12 @@ $_sar_type_first = !empty($sarTypeFirst);
                 </div>
 
                 <div class="nha-fg-row">
-                    <div class="nha-fg" id="sar-amount-group" style="margin-bottom:0;">
-                        <label for="sar-amount">Amount <span class="nha-req">*</span></label>
-                        <div class="sar-money"><span>&#8369;</span><input type="text" inputmode="decimal" id="sar-amount" data-money placeholder="0.00"></div>
-                        <span class="sar-hint" id="sar-amount-hint">Total allotment amount</span>
-                    </div>
                     <div class="nha-fg" id="sar-bank-group" style="margin-bottom:0;">
                         <label for="sar-bank">Bank Account No.</label>
                         <input type="text" id="sar-bank" maxlength="225" placeholder="e.g. 0702-1068-34">
                         <span class="sar-hint">Optional</span>
                     </div>
+                    <div></div>
                 </div>
 
                 <!-- An NCA released under a SARO: what that SARO has left once this NCA is deducted (syncSaroBalance) -->
@@ -383,7 +395,7 @@ $_sar_type_first = !empty($sarTypeFirst);
                 <div>
                     <p>Important Reminders</p>
                     <ul>
-                        <li>Tracking Type, Fiscal Year and Amount are required; Nature of Fund is optional. The Reference Number is filled in for you (and can be edited, or generated again) only when the Nature of Fund is GAAAO — otherwise enter it yourself</li>
+                        <li>Tracking Type, Fiscal Year and Amount are required; Nature of Fund is optional. The SARO ID is filled in for you (and can be edited, or generated again) only when the Nature of Fund is GAAAO — otherwise enter it yourself</li>
                         <li>An NCA is its own entry: choose NCA above, then pick the SARO it was released under (required) — the NCA's amount is deducted from that SARO. A SARO has no parent</li>
                         <li>The record is dated the day it is saved — there is no date to enter</li>
                     </ul>
@@ -420,7 +432,7 @@ $_sar_type_first = !empty($sarTypeFirst);
         multi:   API + '/upload/multi-upload',
         types:   API + '/fund-tracking-type/all',
         natures: API + '/nature-of-fund/all',
-        years:   API + '/fiscal_year/all',
+        subs:    API + '/sub_program/all',
         regions: API + '/responsibility-center/all?office_type=Regional',
     };
     const MAX_BYTES = 25 * 1024 * 1024;
@@ -440,12 +452,14 @@ $_sar_type_first = !empty($sarTypeFirst);
         opening: false,
         loaded: {},            // which lookups have been read
         types: [],             // [{id, code, name}]
+        subs: [],              // sub-programs [{sub_program_code, sub_program_name, program_code, program_name}] — the SARO's Sub-Program list
         parentMode: 'search',  // 'search' (any record, by reference) | 'trust' (OR → pick a Trust Fund)
         parentKind: '',        // what the parent field is for: 'none' (hidden — a SARO) | 'saro' (an NCA's SARO) | 'search' | 'trust'
         trustPromise: null,    // the Trust Fund list, read once per open
         docsDirty: false,      // supporting documents were added / removed / replaced since the form opened
         docSeq: 0,
         hadSupp: false,        // the record being edited already has supplemental details
+        typeLocked: false,     // a NEW entry opened with a type (the registry's "+" buttons, SARO or NCA): the type is settled, so "What are you adding?" is hidden
         saroBal: { id: null, ref: '', amount: 0, released: 0 },   // the SARO an NCA is released under, as last read (syncSaroBalance)
         saroBalSeq: 0,         // guards that read against a newer pick
     };
@@ -655,12 +669,9 @@ $_sar_type_first = !empty($sarTypeFirst);
                     .map(n => opt(n.nature_of_fund_id, n.name, { name: n.name || '' })));
             },
         },
-        years: {
-            label: 'fiscal years', url: U.years,
-            apply(rows) {
-                const ys = rows.map(r => Number(r.fiscal_yr)).filter(Boolean).sort((a, b) => a - b);
-                fill('sar-year', 'Select fiscal year', ys.map(y => opt(y, String(y), { year: y })));
-            },
+        subs: {
+            label: 'sub-programs', url: U.subs,
+            apply(rows) { S.subs = rows; },
         },
         regions: {
             label: 'regions', url: U.regions,
@@ -707,9 +718,9 @@ $_sar_type_first = !empty($sarTypeFirst);
         return S.trustPromise;
     }
 
-    // a Trust Fund as the OR's parent shows by its agency and reference number
+    // a Trust Fund as the OR's parent shows by its agency and SARO ID
     const trustLabel = r => {
-        const ref = r.reference_number || '';
+        const ref = r.saro_id || '';
         const head = (r.agency && r.agency.name) || '';
         return head ? head + (ref ? ' — ' + ref : '') : (ref || 'Trust Fund #' + r.id);
     };
@@ -736,18 +747,33 @@ $_sar_type_first = !empty($sarTypeFirst);
             // and leave some natures of fund out (the OR → Trust Fund pick-list is exempt: a Trust Fund is what it needs)
             return rows.filter(r => Number(r.id) !== S.editId && (S.parentMode === 'trust' || parentAllowed(r)));
         },
-        match: r => [r.reference_number, r.agency && r.agency.name].join(' '),
+        match: r => [r.saro_id, r.agency && r.agency.name].join(' '),
         key: r => r.id,
-        label: r => (S.parentMode === 'trust' ? trustLabel(r) : (r.reference_number || '#' + r.id) + ' (' + typeCodeOf(r) + ')'),
+        label: r => (S.parentMode === 'trust' ? trustLabel(r) : (r.saro_id || '#' + r.id) + ' (' + typeCodeOf(r) + ')'),
         render: (r, q) => {
             if (S.parentMode === 'trust') {
-                return `<span class="nha-ss-opt-label" style="white-space:normal;"><strong>${r.agency && r.agency.name ? esc(r.agency.name) : '<em>No agency</em>'}</strong><br><span class="sar-opt-sub">${r.reference_number ? hl(r.reference_number, q) : '—'}</span></span>`;
+                return `<span class="nha-ss-opt-label" style="white-space:normal;"><strong>${r.agency && r.agency.name ? esc(r.agency.name) : '<em>No agency</em>'}</strong><br><span class="sar-opt-sub">${r.saro_id ? hl(r.saro_id, q) : '—'}</span></span>`;
             }
-            return `<span class="nha-ss-opt-code">${hl(r.reference_number || '#' + r.id, q)}</span><span class="nha-ss-opt-label">${esc(typeCodeOf(r))}${r.name ? ' · ' + esc(r.name) : ''}</span>`;
+            return `<span class="nha-ss-opt-code">${hl(r.saro_id || '#' + r.id, q)}</span><span class="nha-ss-opt-label">${esc(typeCodeOf(r))}${r.description ? ' · ' + esc(r.description) : ''}</span>`;
         },
-        empty: () => (S.parentMode === 'trust' ? 'No trust funds found' : ncaUnderSaro() ? 'Type to search SAROs by reference number' : 'Type to search reference numbers'),
+        empty: () => (S.parentMode === 'trust' ? 'No trust funds found' : ncaUnderSaro() ? 'Type to search SAROs by SARO ID' : 'Type to search SARO IDs'),
         noMatch: 'No matching fund tracking records',
         onChange: () => syncSaroBalance(),   // an NCA's SARO was picked / emptied
+    });
+
+    /* ── Sub-Program picker (SARO only) ─────────────────────────────
+       A searchable list over fims.sub_program (GET /sub_program/all, read once). What is stored in fims.fund_tracking.sub_program is the
+       sub-program CODE (e.g. 001-001); the box shows "code — name". */
+    const subLabel = s => s.sub_program_code + ' — ' + s.sub_program_name;
+    const subCombo = makeCombo({
+        input: 'sar-sub', hidden: 'sar-sub-code',
+        minChars: () => 0, local: () => true,
+        source: () => S.subs,
+        match: s => [s.sub_program_code, s.sub_program_name, s.program_code, s.program_name].join(' '),
+        key: s => s.sub_program_code,
+        label: subLabel,
+        render: (s, q) => `<span class="nha-ss-opt-code">${hl(s.sub_program_code, q)}</span><span class="nha-ss-opt-label">${hl(s.sub_program_name, q)}${s.program_name ? ' · ' + esc(s.program_name) : ''}</span>`,
+        empty: () => 'No sub-programs found', noMatch: 'No matching sub-programs',
     });
 
     /* ── Field logic ────────────────────────────────────────────── */
@@ -759,6 +785,8 @@ $_sar_type_first = !empty($sarTypeFirst);
     const isOr = () => ((selOpt('sar-type') || {}).dataset?.code || '').trim().toUpperCase() === 'OR';
     const isNca = () => ((selOpt('sar-type') || {}).dataset?.code || '').trim().toUpperCase() === 'NCA';
     const isSaro = () => ((selOpt('sar-type') || {}).dataset?.code || '').trim().toUpperCase() === 'SARO';
+    // what the record's number field is called: the SARO ID of a SARO, the NCA ID of an NCA, the OR No. of an OR
+    const idName = () => (isOr() ? 'OR No.' : isNca() ? 'NCA ID' : 'SARO ID');
     // On a host that asks "What are you adding?": a SARO has no parent at all (the field is not on the form), and an NCA's one
     // field is the SARO it was released under ("SARO", offering SAROs only). Any other host keeps the plain "Parent Fund" field.
     const parentHidden = () => typeChooserOn() && isSaro();
@@ -773,7 +801,7 @@ $_sar_type_first = !empty($sarTypeFirst);
     const typeChooserOn = () => TYPE_FIRST && S.types.length > 1;
     function renderTypeChooser() {
         const on = typeChooserOn();
-        $('sar-typefirst').style.display = on ? '' : 'none';
+        $('sar-typefirst').style.display = on && !S.typeLocked ? '' : 'none';
         $('sar-type-group').style.display = on ? 'none' : '';
         if (!on) return;
         $('sar-seg').innerHTML = S.types.map(t => `<button type="button" class="sar-seg-btn" role="radio" aria-checked="false" data-id="${esc(t.id)}">
@@ -795,13 +823,17 @@ $_sar_type_first = !empty($sarTypeFirst);
     // Supplemental Funds show Purpose and Supplemental Details instead of Name.
     // An NCA has no Nature of Fund, Name or Bank Account No.: those fields go, and so does whatever was entered in them (a SARO's
     // GAAAO or name must not ride along into an NCA). Returns true when it cleared a nature that had been chosen — the caller then
-    // re-syncs the Reference Number.
+    // re-syncs the SARO ID.
     function syncNature() {
         const hide = ncaFieldsHidden();
         const cleared = hide && $('sar-nature').value !== '';
         $('sar-nature-row').style.display = hide ? 'none' : '';
         $('sar-bank-group').style.display = hide ? 'none' : '';
         if (hide) { $('sar-nature').value = ''; $('sar-name').value = ''; $('sar-bank').value = ''; }
+        // Sub-Program belongs to a SARO only: any other type has no such field, and a choice made while it was a SARO goes with it
+        const sub = isSaro();
+        $('sar-sub-group').style.display = sub ? '' : 'none';
+        if (!sub) subCombo.reset();
         const supp = isSupplemental();
         $('sar-name-group').style.display = supp || hide ? 'none' : '';
         $('sar-purpose-group').style.display = supp ? '' : 'none';
@@ -811,10 +843,10 @@ $_sar_type_first = !empty($sarTypeFirst);
     }
 
     // An NCA has so few fields that, in the usual sections, each would stand alone in a half-width row. On the "What are you adding?"
-    // host they are gathered into one "NCA Details" section instead — SARO, Reference Number and Fiscal Year, Amount, and the SARO's
+    // host they are gathered into one "NCA Details" section instead — SARO, SARO ID and Fiscal Year, Amount, and the SARO's
     // balance — and the usual Tracking Classification / Fiscal Year / Fund Information sections step aside. The field groups are MOVED
     // (not copied), so their ids, values and listeners go with them; leaving NCA puts each back exactly where it was.
-    const NCA_FIELDS = ['sar-parent-group', 'sar-ref-group', 'sar-year-group', 'sar-amount-group', 'sar-saro-bal'];   // in section order
+    const NCA_FIELDS = ['sar-parent-group', 'sar-ref-group', 'sar-year-group', 'sar-amount-group', 'sar-date-group', 'sar-saro-bal'];   // in section order
     const NCA_STEP_ASIDE = ['sar-sec-class', 'sar-sec-year', 'sar-sec-fund'];
     const ncaHome = {};
     function syncNcaLayout() {
@@ -840,7 +872,7 @@ $_sar_type_first = !empty($sarTypeFirst);
     // (FundTrackingServices::generateReferenceNumber). '' until the nature of fund and the fiscal year are both picked.
     function referencePreview() {
         const name = ((selOpt('sar-nature') || {}).dataset?.name || '').toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-        const year = $('sar-year').value;
+        const year = /^\d{4}$/.test($('sar-year').value) ? $('sar-year').value : '';   // a complete year only (it is typed in)
         return name && year ? name + '-' + year : '';
     }
 
@@ -866,13 +898,13 @@ $_sar_type_first = !empty($sarTypeFirst);
         gen.hidden = !auto;
         if (auto) {
             input.placeholder = 'Generated (e.g. GAAAO-2026) — or type your own';
-            label.innerHTML = 'Reference Number';
+            label.innerHTML = idName();
             hint.textContent = 'Generated from the Nature of Fund and Fiscal Year — edit it freely, or leave it blank to generate on save';
             refreshGenerated(false);
         } else {
             const or = isOr();
-            input.placeholder = or ? 'Enter OR number' : 'Enter reference number';
-            label.innerHTML = (or ? 'OR No.' : 'Reference Number') + ' <span class="nha-req">*</span>';
+            input.placeholder = or ? 'Enter OR number' : 'Enter ' + idName();
+            label.innerHTML = idName() + ' <span class="nha-req">*</span>';
             hint.textContent = or ? 'Enter the actual OR number' : '';
             // leaving GAAAO takes the generated value with it, but a reference the user typed or edited stays
             if (changed && !keepValue && input.value === (input.dataset.auto || '')) input.value = '';
@@ -880,7 +912,7 @@ $_sar_type_first = !empty($sarTypeFirst);
         }
     }
 
-    // An OR is linked to a Trust Fund (a pick-list); anything else searches any record by reference number.
+    // An OR is linked to a Trust Fund (a pick-list); anything else searches any record by SARO ID.
     // On a "What are you adding?" host a SARO has no parent field at all, and an NCA's is "SARO" (see parentHidden / ncaUnderSaro).
     function syncParentMode(keepSelection) {
         const mode = isOr() ? 'trust' : 'search';
@@ -894,11 +926,11 @@ $_sar_type_first = !empty($sarTypeFirst);
         // a SARO has nothing in that row (the Tracking Type is the buttons above), so the row goes with the field — no empty gap
         $('sar-class-row').style.display = hidden ? 'none' : '';
         $('sar-parent-label').innerHTML = nca ? 'SARO <span class="nha-req">*</span>' : 'Parent Fund';   // an NCA must name its SARO
-        $('sar-parent').placeholder = mode === 'trust' ? 'Select a trust fund or search…' : nca ? 'Search the SARO\'s reference number…' : 'Search reference number…';
+        $('sar-parent').placeholder = mode === 'trust' ? 'Select a trust fund or search…' : nca ? 'Search the SARO ID…' : 'Search SARO ID…';
         $('sar-parent-hint').textContent = mode === 'trust'
             ? 'Select the Trust Fund this OR is linked to'
-            : nca ? 'The SARO this NCA was released under — search by reference number'
-                  : 'Link this record to its parent fund (optional) — search by reference number';
+            : nca ? 'The SARO this NCA was released under — search by SARO ID'
+                  : 'Link this record to its parent fund (optional) — search by SARO ID';
         if (mode === 'trust') loadTrustFunds().catch(() => {});
         // a parent picked for another kind of field isn't valid here (a SARO has none; an NCA's must be a SARO); a hidden field never keeps one
         if ((changed && !keepSelection) || hidden) parentCombo.reset();
@@ -930,7 +962,7 @@ $_sar_type_first = !empty($sarTypeFirst);
                 const others = (Array.isArray(d.children) ? d.children : []).filter(c => typeCodeOf(c) === 'NCA' && Number(c.id) !== S.editId);
                 S.saroBal = {
                     id: pid,
-                    ref: d.reference_number || '#' + pid,
+                    ref: d.saro_id || '#' + pid,
                     amount: parseFloat(d.amount) || 0,
                     released: others.reduce((s, c) => s + (parseFloat(c.amount) || 0), 0),
                 };
@@ -1218,8 +1250,9 @@ $_sar_type_first = !empty($sarTypeFirst);
             tracking_type_id: intOrNull('sar-type'),
             nature_of_fund_id: intOrNull('sar-nature'),
             fiscal_year: intOrNull('sar-year'),
+            date: v('sar-date'),                                            // typed in (YYYY-MM-DD) — nothing fills it in
             parent_id: parentHidden() ? null : intOrNull('sar-parent-id'),   // a SARO has no parent (null also clears one on update)
-            name: supp ? null : v('sar-name'),                       // a Supplemental record has no name — its Purpose is the text
+            description: supp ? null : v('sar-name'),                       // a Supplemental record has no description — its Purpose is the text
             amount: parseMoney(v('sar-amount')) || null,
             bank_account_no: v('sar-bank'),
         };
@@ -1227,7 +1260,10 @@ $_sar_type_first = !empty($sarTypeFirst);
         // not on the form at all, so the key is left out and a record's stored purpose is left exactly as it is.
         if (SUPP_FIELDS) payload.purpose = supp ? v('sar-purpose') : null;
         // always sent: for GAAAO it is the generated reference as the user left it (edited or not); blank = the API generates it
-        payload.reference_number = v('sar-ref');
+        payload.saro_id = v('sar-ref');
+        // Sub-Program: a SARO's pick (null clears it on update). Any other type has no such field on the form, so the key is left out
+        // and whatever the record already has stays exactly as it is.
+        if (isSaro()) payload.sub_program = subCombo.value() || null;
         if (supp && (suppTouched() || S.hadSupp)) payload.supplemental = buildSupplemental();
         return payload;
     }
@@ -1242,6 +1278,7 @@ $_sar_type_first = !empty($sarTypeFirst);
         $('sar-form').reset();
         showErr('');
         parentCombo.reset();
+        subCombo.reset();
         $('sar-docs').innerHTML = '';
         $('sar-form').querySelectorAll('.sar-invalid').forEach(el => el.classList.remove('sar-invalid'));
         delete $('sar-supp-status').dataset.manual;
@@ -1252,6 +1289,7 @@ $_sar_type_first = !empty($sarTypeFirst);
         S.trustPromise = null;
         S.parentMode = 'search';
         S.parentKind = '';
+        S.typeLocked = false;
         S.saroBal = { id: null, ref: '', amount: 0, released: 0 };   // read again for this open: its NCAs may have changed since
         S.saroBalSeq++;
         $('sar-saro-bal').style.display = 'none';
@@ -1272,7 +1310,7 @@ $_sar_type_first = !empty($sarTypeFirst);
 
         const par = (r.parent || [])[0];
         if (r.parent_id && par && !parentHidden()) {
-            parentCombo.set(par.id, (par.reference_number || '#' + par.id) + ' (' + String(par.tracking_type?.fund_tracking_code || 'N/A').toUpperCase() + ')');
+            parentCombo.set(par.id, (par.saro_id || '#' + par.id) + ' (' + String(par.tracking_type?.fund_tracking_code || 'N/A').toUpperCase() + ')');
             if (S.parentMode === 'trust') {
                 loadTrustFunds().then(list => {
                     const hit = list.find(t => Number(t.id) === Number(r.parent_id));
@@ -1282,12 +1320,19 @@ $_sar_type_first = !empty($sarTypeFirst);
         }
 
         $('sar-nature').value = r.nature_of_fund_id != null ? String(r.nature_of_fund_id) : '';
-        selectValue('sar-year', r.fiscal_year, r.fiscal_year != null ? String(r.fiscal_year) : null);
+        $('sar-year').value = r.fiscal_year != null ? String(r.fiscal_year) : '';
+        $('sar-date').value = r.date ? String(r.date).slice(0, 10) : '';
         syncNature();
         syncReference(true);
 
-        $('sar-ref').value = r.reference_number || '';
-        $('sar-name').value = r.name || '';
+        // the saved sub-program code, shown as "code — name" when it is on the list (a code that is not — retired since — shows as it is)
+        if (r.sub_program && isSaro()) {
+            const sp = S.subs.find(s => s.sub_program_code === r.sub_program);
+            subCombo.set(r.sub_program, sp ? subLabel(sp) : r.sub_program);
+        }
+
+        $('sar-ref').value = r.saro_id || '';
+        $('sar-name').value = r.description || '';
         $('sar-purpose').value = r.purpose || '';
         $('sar-amount').value = r.amount != null ? fmtMoney(r.amount) : '';
         $('sar-bank').value = r.bank_account_no || '';
@@ -1303,7 +1348,7 @@ $_sar_type_first = !empty($sarTypeFirst);
 
     // opts.nature — a new entry starts with this nature of fund (its name, e.g. 'SUPPLEMENTAL') already chosen; ignored when editing.
     // opts.type — a new entry starts with this tracking type (its code, e.g. 'NCA') instead of the first allowed one; ignored when editing.
-    // opts.parent — a new NCA starts with this record already picked as its SARO ({ id, reference_number, type }): the "+" on a SARO's
+    // opts.parent — a new NCA starts with this record already picked as its SARO ({ id, saro_id, type }): the "+" on a SARO's
     //               NCA Received cell in the registry. Only for an NCA (it has a parent field); ignored when editing.
     async function open(id, opts = {}) {
         if (S.opening) return;
@@ -1327,14 +1372,15 @@ $_sar_type_first = !empty($sarTypeFirst);
                     return;
                 }
             } else {
-                // a new entry starts as the first allowed type, in the current fiscal year if it is on the list
+                // a new entry starts as the first allowed type (the Fiscal Year and the Date are left for the user to type)
                 if (S.types[0]) $('sar-type').value = String(S.types[0].id);
                 if (opts && opts.type) {                                  // …or this one, when the caller says so (the SARO / NCA tab)
                     const want = S.types.find(t => t.code === String(opts.type).trim().toUpperCase());
                     if (want) $('sar-type').value = String(want.id);
+                    // opened with a type — a SARO from the "+" in the SARO ID header, an NCA from the "+" beside a SARO's NCA Received amount:
+                    // nothing is left to choose, so "What are you adding?" stays out of the way. (Edit keeps it.)
+                    S.typeLocked = !!want;
                 }
-                const thisYear = String(new Date().getFullYear());
-                if ([...$('sar-year').options].some(o => o.value === thisYear)) $('sar-year').value = thisYear;
                 if (opts && opts.nature) {
                     const want = String(opts.nature).trim().toUpperCase();
                     const hit = [...$('sar-nature').options].find(o => String(o.dataset.name || '').trim().toUpperCase() === want);
@@ -1344,7 +1390,7 @@ $_sar_type_first = !empty($sarTypeFirst);
                 // an NCA opened from a SARO's "+": that SARO is already picked (same label the search list gives it); the balance
                 // box below then reads it
                 if (opts && opts.parent && opts.parent.id && isNca() && !parentHidden()) {
-                    parentCombo.set(opts.parent.id, (opts.parent.reference_number || '#' + opts.parent.id)
+                    parentCombo.set(opts.parent.id, (opts.parent.saro_id || '#' + opts.parent.id)
                         + ' (' + String(opts.parent.type || 'SARO').toUpperCase() + ')');
                 }
                 syncNature();
@@ -1353,6 +1399,7 @@ $_sar_type_first = !empty($sarTypeFirst);
                 addDocRow();
             }
             syncTypeChooser();   // the buttons show the type the form opened with (set above, or by populate())
+            $('sar-typefirst').style.display = typeChooserOn() && !S.typeLocked ? '' : 'none';   // shown or hidden for THIS open
         } finally {
             S.opening = false;
             window.PagePreloader?.hide();
@@ -1362,6 +1409,7 @@ $_sar_type_first = !empty($sarTypeFirst);
     function close() {
         $('sar-overlay').classList.remove('open');
         parentCombo.hide();
+        subCombo.hide();
     }
 
     /* ── Save ───────────────────────────────────────────────────── */
@@ -1377,9 +1425,12 @@ $_sar_type_first = !empty($sarTypeFirst);
         need(typeChooserOn() ? 'sar-seg' : 'sar-type', typeChooserOn() ? 'What you are adding (SARO or NCA)' : 'Tracking Type', !$('sar-type').value);
         // an NCA must name the SARO it was released under, and release something from it (an amount above zero)
         need('sar-parent', 'SARO', ncaUnderSaro() && !$('sar-parent-id').value);
-        need('sar-year', 'Fiscal Year', !$('sar-year').value);
+        // Fiscal Year is typed: a 4-digit year in the range the API accepts. Date is picked: it must be filled in.
+        const yr = Number($('sar-year').value);
+        need('sar-year', 'Fiscal Year (a 4-digit year)', !/^\d{4}$/.test($('sar-year').value) || yr < 1900 || yr > 2200);
+        need('sar-date', 'Date', !$('sar-date').value);
         need('sar-amount', 'Amount', isNaN(parseMoney($('sar-amount').value)) || (ncaUnderSaro() && !(parseMoney($('sar-amount').value) > 0)));
-        if (!isGaaao()) need('sar-ref', isOr() ? 'OR No.' : 'Reference Number', $('sar-ref').value.trim() === '');
+        if (!isGaaao()) need('sar-ref', idName(), $('sar-ref').value.trim() === '');
         if (missing.length) return showErr('Please fill in the required fields: ' + missing.join(', ') + '.');
 
         // an NCA cannot release more than its SARO has left — the SARO would go negative (the API refuses it too)
@@ -1452,7 +1503,11 @@ $_sar_type_first = !empty($sarTypeFirst);
     // Nature of fund: GAAAO's generated reference, and the Supplemental-only fields
     $('sar-nature').addEventListener('change', () => { syncNature(); syncReference(false); });
     // a new Fiscal Year updates the generated GAAAO reference — unless the user has edited it
-    $('sar-year').addEventListener('change', () => { if (isGaaao()) refreshGenerated(false); });
+    $('sar-year').addEventListener('input', () => {
+        const y = $('sar-year');
+        y.value = y.value.replace(/\D/g, '').slice(0, 4);   // digits only, at most 4
+        if (isGaaao()) refreshGenerated(false);
+    });
     // Generate: fill the GAAAO reference in again, replacing whatever is typed
     $('sar-ref-gen').addEventListener('click', () => {
         if (!referencePreview()) { toast('Pick the Fiscal Year first — the reference is generated from it.', 'warning'); return; }

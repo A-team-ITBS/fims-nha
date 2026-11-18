@@ -4331,6 +4331,15 @@ textarea.fims-form-control   { resize: vertical; }
 .cp-status-tab[data-status="PREPARED"].active { background:var(--fims-amber); }
 .cp-status-tab[data-status="RELEASED"]        { background:var(--fims-green-bg);  color:var(--fims-green-text); }
 .cp-status-tab[data-status="RELEASED"].active { background:var(--fims-green); }
+/* RELEASED_PENDING/RELEASED_DONE: Check Preparation's "For Released" vs
+   "Released" pills — both are status=RELEASED underneath (see
+   CheckProcessingService::syncCheckStatusFromRelease()), split apart by the
+   associated release row's own status. Gray for still-pending, green
+   (same as the plain RELEASED rule above) for actually done. */
+.cp-status-tab[data-status="RELEASED_PENDING"]        { background:var(--fims-gray-bg);  color:var(--fims-gray-text); }
+.cp-status-tab[data-status="RELEASED_PENDING"].active { background:var(--fims-gray); }
+.cp-status-tab[data-status="RELEASED_DONE"]        { background:var(--fims-green-bg);  color:var(--fims-green-text); }
+.cp-status-tab[data-status="RELEASED_DONE"].active { background:var(--fims-green); }
 .cp-status-tab[data-status="ENCASHED"]        { background:var(--fims-blue-bg);   color:var(--afims-primary-strong-text, #002A87); }
 .cp-status-tab[data-status="ENCASHED"].active { background:var(--fims-blue); }
 .cp-status-tab[data-status="OUTSTANDING"]        { background:var(--fims-indigo-bg); color:var(--afims-primary-strong-text, #002A87); }

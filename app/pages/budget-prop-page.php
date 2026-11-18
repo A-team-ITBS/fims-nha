@@ -9,9 +9,8 @@ namespace PHPMaker2024\FIMS;
  *   Submission Ref No. | Region / Originating Unit | Submitted Date | Amount | Status | (row actions)
  *
  * The list comes from its own API route, GET /fmd/budget_req/list (app/routes/fmd_budget_req.php), which
- * decides the scope on the server — only users of the central review RC (FMD, by rc_code) get an answer, and it is
- * always every Regional / District office — so this page sends no RC parameters and does no RC lookup of its own.
- * Anyone else who opens the page gets that route's 403 message and an empty list.
+ * decides the scope on the server — it is always every Regional / District office, for any logged-in user (it is no longer limited to the
+ * Financial Management Department) — so this page sends no RC parameters and does no RC lookup of its own.
  *
  * Row actions act on the whole request: View (the request's details, read-only), Budget Processing (the Budget Officer, while
  * the request is waiting for them), Budget Preview (level 8 until it is Approved) and Delete of a Draft. A Budget Head's row on

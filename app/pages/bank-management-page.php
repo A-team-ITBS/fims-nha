@@ -26,10 +26,8 @@ namespace PHPMaker2024\FIMS;
 $bamCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
 ?>
 <link rel="stylesheet" href="/app/fims-css/fims.css?v=<?= $bamCssVer ?>" />
-<!-- nha-fims.css + searchable-select.js: used only for the GL Account Code "type to filter" combobox
-     (.nha-ss-dropdown/.nha-ss-opt rules aren't scoped to .nha-root, so they're safe to use standalone here). -->
+<!-- nha-fims.css: shared design tokens (--afims-*) used throughout this page's styles. -->
 <link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
-<script src="/_shared/js/searchable-select.js?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/js/searchable-select.js') ?>"></script>
 
 <div class="fims-wrap" id="bamModule">
 
@@ -215,9 +213,35 @@ $bamCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
                                     <option value="">— Main Office —</option>
                                 </select>
                             </div>
-                            <div class="fims-form-group">
-                                <label class="fims-label">GL Account Code (Chart of Accounts)</label>
-                                <input type="text" class="fims-input" id="field-account-code" placeholder="Search GL account code or title…">
+                        </div>
+
+                        <div class="fims-form-section-title" style="margin-top:14px;">1. Search GL Account</div>
+                        <div class="fims-form-group" style="position:relative;">
+                            <label class="fims-label">GL Account (Chart of Accounts)</label>
+                            <input type="hidden" id="field-gl-account-id" value="">
+                            <input type="text" class="fims-input" id="field-gl-search" maxlength="500" placeholder="Type GL account code or title…">
+                            <div id="field-gl-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;margin-top:4px;background:#fff;border:1px solid #E4ECF2;border-radius:8px;max-height:180px;overflow-y:auto;z-index:1001;box-shadow:0 4px 12px rgba(0,0,0,.1);"></div>
+                        </div>
+                        <div id="field-gl-selected" style="padding:10px;background:var(--fims-surface-subtle,#F4F7FA);border-radius:6px;display:none;margin-top:4px;"></div>
+
+                        <div id="field-sl-section" style="margin-top:14px;opacity:.5;pointer-events:none;">
+                            <div class="fims-form-section-title">2. Select or Create Sub-Ledger (Child Account)</div>
+                            <div class="fims-form-group" style="position:relative;">
+                                <label class="fims-label">Search Sub-Ledger</label>
+                                <input type="text" class="fims-input" id="field-sl-search" maxlength="500" placeholder="Select a GL account first…" disabled>
+                                <div id="field-sl-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;margin-top:4px;background:#fff;border:1px solid #E4ECF2;border-radius:8px;max-height:180px;overflow-y:auto;z-index:1000;box-shadow:0 4px 12px rgba(0,0,0,.1);"></div>
+                            </div>
+                            <p id="field-sl-empty-note" style="display:none;font-size:11px;color:var(--fims-danger,#DC3545);margin:4px 0 0;">No child accounts exist under this GL account yet. Create one below.</p>
+                            <div id="field-sl-selected-item" style="padding:8px;background:var(--fims-surface-subtle,#F4F7FA);border-radius:6px;display:none;margin-top:8px;">
+                                <strong>Selected:</strong> <span id="field-sl-selected-code"></span>
+                            </div>
+                            <input type="hidden" id="field-sl-selected-code-value">
+                            <div style="margin-top:10px;border-top:1px dashed var(--fims-border);padding-top:10px;display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">
+                                <div class="fims-form-group" style="flex:1;min-width:200px;margin-bottom:0;">
+                                    <label class="fims-label">New Sub-Ledger Title</label>
+                                    <input type="text" class="fims-input" id="field-sl-new-title" maxlength="255" placeholder="e.g., MDS Checking Account">
+                                </div>
+                                <button type="button" class="fims-btn fims-btn-outline fims-btn-sm" id="field-sl-create-btn" style="height:38px;">+ Create Sub-Ledger</button>
                             </div>
                         </div>
                     </div>
@@ -336,19 +360,44 @@ $bamCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
          MODAL: Quick Tag GL Account Code
     ══════════════════════════════════════════════ -->
     <div class="fims-modal-overlay" id="m-bam-tag-code" style="display:none;">
-        <div class="fims-modal-dialog" style="max-width:420px;width:95vw;">
+        <div class="fims-modal-dialog" style="max-width:480px;width:95vw;">
             <div class="fims-modal-content">
                 <div class="fims-modal-header">
                     <div>
-                        <div class="fims-modal-title">Tag GL Account Code</div>
+                        <div class="fims-modal-title">Tag GL / Sub-Ledger Account</div>
                         <div style="font-size:12px;color:var(--fims-text-subtle)" id="tagCodeAccountName"></div>
                     </div>
                     <button class="fims-modal-close" data-close="m-bam-tag-code">&times;</button>
                 </div>
                 <div class="fims-modal-body">
-                    <div class="fims-form-group">
-                        <label class="fims-label">GL Account Code (Chart of Accounts)</label>
-                        <input type="text" class="fims-input" id="tagCodeSelect" placeholder="Search GL account code or title…">
+                    <div class="fims-form-section-title">1. Search GL Account</div>
+                    <div class="fims-form-group" style="position:relative;">
+                        <label class="fims-label">GL Account (Chart of Accounts)</label>
+                        <input type="hidden" id="tag-gl-account-id" value="">
+                        <input type="text" class="fims-input" id="tag-gl-search" maxlength="500" placeholder="Type GL account code or title…">
+                        <div id="tag-gl-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;margin-top:4px;background:#fff;border:1px solid #E4ECF2;border-radius:8px;max-height:180px;overflow-y:auto;z-index:1001;box-shadow:0 4px 12px rgba(0,0,0,.1);"></div>
+                    </div>
+                    <div id="tag-gl-selected" style="padding:10px;background:var(--fims-surface-subtle,#F4F7FA);border-radius:6px;display:none;margin-top:4px;"></div>
+
+                    <div id="tag-sl-section" style="margin-top:14px;opacity:.5;pointer-events:none;">
+                        <div class="fims-form-section-title">2. Select or Create Sub-Ledger (Child Account)</div>
+                        <div class="fims-form-group" style="position:relative;">
+                            <label class="fims-label">Search Sub-Ledger</label>
+                            <input type="text" class="fims-input" id="tag-sl-search" maxlength="500" placeholder="Select a GL account first…" disabled>
+                            <div id="tag-sl-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;margin-top:4px;background:#fff;border:1px solid #E4ECF2;border-radius:8px;max-height:180px;overflow-y:auto;z-index:1000;box-shadow:0 4px 12px rgba(0,0,0,.1);"></div>
+                        </div>
+                        <p id="tag-sl-empty-note" style="display:none;font-size:11px;color:var(--fims-danger,#DC3545);margin:4px 0 0;">No child accounts exist under this GL account yet. Create one below.</p>
+                        <div id="tag-sl-selected-item" style="padding:8px;background:var(--fims-surface-subtle,#F4F7FA);border-radius:6px;display:none;margin-top:8px;">
+                            <strong>Selected:</strong> <span id="tag-sl-selected-code"></span>
+                        </div>
+                        <input type="hidden" id="tag-sl-selected-code-value">
+                        <div style="margin-top:10px;border-top:1px dashed var(--fims-border);padding-top:10px;display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">
+                            <div class="fims-form-group" style="flex:1;min-width:160px;margin-bottom:0;">
+                                <label class="fims-label">New Sub-Ledger Title</label>
+                                <input type="text" class="fims-input" id="tag-sl-new-title" maxlength="255">
+                            </div>
+                            <button type="button" class="fims-btn fims-btn-outline fims-btn-sm" id="tag-sl-create-btn" style="height:38px;">+ Create</button>
+                        </div>
                     </div>
                 </div>
                 <div class="fims-modal-footer">
@@ -377,6 +426,16 @@ $bamCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
 #bamModule .fims-btn-primary:hover { background:#000a2e; color:#fff; }
 #bamModule .fims-btn-outline { color:#000E3E; border-color:#000E3E; }
 #bamModule .fims-btn-outline:hover { background:#000E3E; color:#fff; }
+
+/* .fims-modal-content (shared fims.css) is a plain block, not a flex
+   container, so .fims-modal-body's flex:1/min-height:0/overflow-y:auto
+   (which assume a flex-column parent) never actually engage — content
+   just grows past .fims-modal-dialog's max-height and gets clipped by its
+   overflow:hidden instead of scrolling. The Register/Edit Account modal's
+   3-step wizard (now with the GL+SL two-step picker added to step 1) is
+   tall enough to hit this, so make this module's modal content a proper
+   flex column to let the body scroll as intended. */
+#bamModule .fims-modal-content { display:flex; flex-direction:column; min-height:0; overflow:hidden; }
 
 .fims-form-section-title { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--fims-text-subtle); margin-bottom:8px; }
 .bam-doc-row { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 10px; border:1px solid var(--fims-border); border-radius:6px; margin-bottom:6px; font-size:13px; }
@@ -552,27 +611,221 @@ html.afims-dark[data-bs-theme="dark"] #bamModule .bam-menu-item:hover { color:#f
             .catch(() => { tbody.innerHTML = '<tr class="fims-empty"><td colspan="5">Could not reach the server.</td></tr>'; });
     }
 
-    // ── Lookups ──
-    let bamCoaRows = [];
-    function loadChartOfAccounts() {
-        return fetch('/api/chart_of_accounts/all?postable_only=1', { headers: authHeaders() })
-            .then(function (r) {
-                if (!r.ok) throw new Error('HTTP ' + r.status);
-                return r.json();
-            })
-            .then(function (json) {
-                if (!json || !json.success) throw new Error((json && json.message) || 'Request failed.');
-                bamCoaRows = (json.data || []).filter(a => a.posting_allowed);
-                const coaOptions = bamCoaRows.map(a => ({ value: a.account_code, label: a.account_title }));
-                [document.getElementById('field-account-code'), document.getElementById('tagCodeSelect')].forEach(function (input) {
-                    if (!input) return;
-                    nhaSearchableSelect(input, coaOptions);
-                });
-            })
-            .catch(function (e) {
-                console.error('Could not load Chart of Accounts for GL code dropdown:', e);
-            });
+    // ── GL + Sub-Ledger two-step picker ──────────────────────────────
+    // Shared by the Register/Edit Account modal's step-1 fields (prefix
+    // 'field-') and the Tag GL/SL quick modal (prefix 'tag-') — same
+    // two-step shape as app/pages/accountable-officer-page.php's own
+    // GL+SL picker (step 1 searches /accounting/coa/search for the parent
+    // GL; step 2 searches/creates children of that GL via /accounting/sl/*).
+    function bamSlIds(prefix) {
+        return {
+            search       : prefix + 'sl-search',
+            dropdown     : prefix + 'sl-dropdown',
+            emptyNote    : prefix + 'sl-empty-note',
+            selectedItem : prefix + 'sl-selected-item',
+            selectedCode : prefix + 'sl-selected-code',
+            selectedValue: prefix + 'sl-selected-code-value',
+        };
     }
+
+    function bamSlReset(prefix) {
+        const ids = bamSlIds(prefix);
+        document.getElementById(ids.search).value = '';
+        document.getElementById(ids.selectedValue).value = '';
+        document.getElementById(ids.selectedItem).style.display = 'none';
+        document.getElementById(ids.dropdown).innerHTML = '';
+        document.getElementById(ids.dropdown).style.display = 'none';
+        document.getElementById(ids.emptyNote).style.display = 'none';
+        const newTitle = document.getElementById(prefix + 'sl-new-title');
+        if (newTitle) newTitle.value = '';
+    }
+
+    function bamSlEnable(prefix) {
+        const search = document.getElementById(bamSlIds(prefix).search);
+        search.disabled = false;
+        search.placeholder = 'Type account code or description...';
+        const section = document.getElementById(prefix + 'sl-section');
+        section.style.opacity = '1';
+        section.style.pointerEvents = 'auto';
+    }
+
+    function bamSlDisable(prefix) {
+        const search = document.getElementById(bamSlIds(prefix).search);
+        search.disabled = true;
+        search.placeholder = 'Select a GL account first…';
+        const section = document.getElementById(prefix + 'sl-section');
+        section.style.opacity = '.5';
+        section.style.pointerEvents = 'none';
+    }
+
+    // Load SL codes for a GL account_id; optionally pre-select a known current SL id.
+    function bamLoadSlCodesForAccount(prefix, accountId, preselectId) {
+        const ids = bamSlIds(prefix);
+        fetch('/api/accounting/sl/by-account?account_id=' + encodeURIComponent(accountId) + '&limit=50', { headers: authHeaders() })
+            .then(r => r.json())
+            .then(function (json) {
+                if (!json.success || !json.data?.length) {
+                    document.getElementById(ids.emptyNote).style.display = 'block';
+                    document.getElementById(ids.dropdown).style.display = 'none';
+                    return;
+                }
+                document.getElementById(ids.emptyNote).style.display = 'none';
+                bamRenderSlList(prefix, json.data);
+                document.getElementById(ids.dropdown).style.display = 'none';
+                if (preselectId) {
+                    const match = json.data.find(a => String(a.account_id) === String(preselectId));
+                    if (match) {
+                        document.getElementById(ids.search).value = match.account_code;
+                        document.getElementById(ids.selectedValue).value = match.account_id;
+                        document.getElementById(ids.selectedCode).textContent = match.account_code;
+                        document.getElementById(ids.selectedItem).style.display = 'block';
+                    }
+                }
+            })
+            .catch(e => toast('Failed to load sub-ledgers: ' + e.message, true));
+    }
+
+    function bamRenderSlList(prefix, items) {
+        const ids = bamSlIds(prefix);
+        const dropdown = document.getElementById(ids.dropdown);
+        dropdown.innerHTML = items.map(item =>
+            '<div class="bam-gl-sl-item" data-code="' + escapeHtml(item.account_id) + '" data-display="' + escapeHtml(item.account_code) + '" style="padding:10px 12px;border-bottom:1px solid #E4ECF2;cursor:pointer;font-size:13px;">' +
+                '<div style="font-weight:600;">' + escapeHtml(item.account_code) + '</div>' +
+                (item.account_title ? '<div style="font-size:11px;color:#999;margin-top:2px;">' + escapeHtml(item.account_title) + '</div>' : '') +
+            '</div>'
+        ).join('');
+        dropdown.style.display = 'block';
+        dropdown.querySelectorAll('.bam-gl-sl-item').forEach(function (item) {
+            item.addEventListener('mouseover', () => item.style.background = '#F4F7FA');
+            item.addEventListener('mouseout', () => item.style.background = 'transparent');
+            item.addEventListener('click', () => bamSelectSlCode(prefix, item));
+        });
+    }
+
+    function bamSelectSlCode(prefix, item) {
+        const ids = bamSlIds(prefix);
+        document.getElementById(ids.search).value = item.dataset.display;
+        document.getElementById(ids.selectedValue).value = item.dataset.code;
+        document.getElementById(ids.selectedCode).textContent = item.dataset.display;
+        document.getElementById(ids.selectedItem).style.display = 'block';
+        document.getElementById(ids.dropdown).style.display = 'none';
+    }
+
+    function bamBindSlSearch(prefix) {
+        const ids = bamSlIds(prefix);
+        let timer;
+        document.getElementById(ids.search).addEventListener('input', function (ev) {
+            const query = ev.target.value.trim();
+            clearTimeout(timer);
+            if (!query) { document.getElementById(ids.dropdown).style.display = 'none'; return; }
+            timer = setTimeout(function () {
+                const glAccountId = document.getElementById(prefix + 'gl-account-id').value;
+                if (!glAccountId) return;
+                fetch('/api/accounting/sl/search?account_id=' + encodeURIComponent(glAccountId) + '&q=' + encodeURIComponent(query) + '&limit=50', { headers: authHeaders() })
+                    .then(r => r.json())
+                    .then(function (json) {
+                        if (json.success && json.data?.length) {
+                            bamRenderSlList(prefix, json.data);
+                        } else {
+                            const dropdown = document.getElementById(ids.dropdown);
+                            dropdown.innerHTML = '<div style="padding:10px;color:#999;font-size:12px;">No matching sub-ledgers. Try creating one below.</div>';
+                            dropdown.style.display = 'block';
+                        }
+                    })
+                    .catch(e => toast('Search failed: ' + e.message, true));
+            }, 300);
+        });
+    }
+
+    function bamBindSlCreate(prefix) {
+        const ids = bamSlIds(prefix);
+        document.getElementById(prefix + 'sl-create-btn').addEventListener('click', function () {
+            const glAccountId = document.getElementById(prefix + 'gl-account-id').value;
+            const title = document.getElementById(prefix + 'sl-new-title').value.trim();
+            if (!glAccountId) { toast('Select a GL account first.', true); return; }
+            if (!title) { toast('Enter a title for the new sub-ledger.', true); return; }
+            fetch('/api/accounting/sl/create', { method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ parent_account_id: glAccountId, account_title: title }) })
+                .then(r => r.json())
+                .then(function (json) {
+                    if (!json.success) { toast(json.message || 'Failed to create sub-ledger.', true); return; }
+                    const created = json.data;
+                    document.getElementById(ids.search).value = created.account_code;
+                    document.getElementById(ids.selectedValue).value = created.account_id;
+                    document.getElementById(ids.selectedCode).textContent = created.account_code;
+                    document.getElementById(ids.selectedItem).style.display = 'block';
+                    document.getElementById(ids.emptyNote).style.display = 'none';
+                    document.getElementById(prefix + 'sl-new-title').value = '';
+                    toast('Sub-ledger account created.');
+                })
+                .catch(() => toast('Could not reach the server.', true));
+        });
+    }
+
+    // Step 1 of the two-step picker: search the parent GL account, wire its
+    // selection to reset+enable step 2 (changing the GL invalidates any
+    // previously-picked SL, same as the officer page's own picker).
+    function bamBindGlSearch(prefix) {
+        let timer;
+        const search = document.getElementById(prefix + 'gl-search');
+        const dropdown = document.getElementById(prefix + 'gl-dropdown');
+        search.addEventListener('input', function (ev) {
+            const query = ev.target.value.trim();
+            clearTimeout(timer);
+            if (!query) { dropdown.style.display = 'none'; return; }
+            timer = setTimeout(function () {
+                fetch('/api/accounting/coa/search?q=' + encodeURIComponent(query) + '&limit=20', { headers: authHeaders() })
+                    .then(r => r.json())
+                    .then(function (json) {
+                        if (json.success && json.data?.length) {
+                            dropdown.innerHTML = json.data.map(a =>
+                                '<div class="bam-gl-sl-item" data-id="' + escapeHtml(a.account_id) + '" data-code="' + escapeHtml(a.account_code) + '" data-name="' + escapeHtml(a.account_title) + '" style="padding:10px 12px;border-bottom:1px solid #E4ECF2;cursor:pointer;font-size:13px;">' +
+                                    '<div style="font-weight:600;">' + escapeHtml(a.account_code) + '</div>' +
+                                    '<div style="font-size:11px;color:#999;margin-top:2px;">' + escapeHtml(a.account_title) + '</div>' +
+                                '</div>'
+                            ).join('');
+                            dropdown.style.display = 'block';
+                            dropdown.querySelectorAll('.bam-gl-sl-item').forEach(function (item) {
+                                item.addEventListener('mouseover', () => item.style.background = '#F4F7FA');
+                                item.addEventListener('mouseout', () => item.style.background = 'transparent');
+                                item.addEventListener('click', function () {
+                                    document.getElementById(prefix + 'gl-account-id').value = this.dataset.id;
+                                    search.value = this.dataset.code + ' — ' + this.dataset.name;
+                                    dropdown.style.display = 'none';
+                                    const selected = document.getElementById(prefix + 'gl-selected');
+                                    selected.innerHTML = '<strong>' + escapeHtml(this.dataset.code) + '</strong> — ' + escapeHtml(this.dataset.name);
+                                    selected.style.display = 'block';
+
+                                    bamSlReset(prefix);
+                                    bamSlEnable(prefix);
+                                    bamLoadSlCodesForAccount(prefix, this.dataset.id);
+                                });
+                            });
+                        } else {
+                            dropdown.innerHTML = '<div style="padding:10px;color:#999;font-size:12px;">No accounts found.</div>';
+                            dropdown.style.display = 'block';
+                        }
+                    })
+                    .catch(e => toast('GL search failed: ' + e.message, true));
+            }, 300);
+        });
+    }
+
+    document.addEventListener('click', function (e) {
+        ['field-', 'tag-'].forEach(function (prefix) {
+            if (!e.target.closest('#' + prefix + 'gl-search') && !e.target.closest('#' + prefix + 'gl-dropdown')) {
+                document.getElementById(prefix + 'gl-dropdown').style.display = 'none';
+            }
+            if (!e.target.closest('#' + prefix + 'sl-search') && !e.target.closest('#' + prefix + 'sl-dropdown')) {
+                document.getElementById(prefix + 'sl-dropdown').style.display = 'none';
+            }
+        });
+    });
+
+    ['field-', 'tag-'].forEach(function (prefix) {
+        bamBindGlSearch(prefix);
+        bamBindSlSearch(prefix);
+        bamBindSlCreate(prefix);
+    });
 
     function loadResponsibilityCenters() {
         fetch(API + '/lookup/responsibility-centers', { headers: authHeaders() })
@@ -671,7 +924,7 @@ html.afims-dark[data-bs-theme="dark"] #bamModule .bam-menu-item:hover { color:#f
                                     '<i class="fas fa-ellipsis-v"></i> Actions</button>' +
                                 '<div class="bam-menu-drop">' +
                                     '<button type="button" class="bam-menu-item" data-edit="' + r.bank_account_id + '"><i class="fas fa-pen"></i> Edit</button>' +
-                                    '<button type="button" class="bam-menu-item" data-tag-code="' + r.bank_account_id + '" data-tag-code-name="' + escapeHtml(r.account_name) + '" data-tag-code-current="' + escapeHtml(r.account_code || '') + '"><i class="fas fa-tag"></i> Tag GL Account Code</button>' +
+                                    '<button type="button" class="bam-menu-item" data-tag-code="' + r.bank_account_id + '" data-tag-code-name="' + escapeHtml(r.account_name) + '" data-tag-code-gl-id="' + escapeHtml(r.coa_account_id || '') + '" data-tag-code-gl-code="' + escapeHtml(r.gl_account_code || '') + '" data-tag-code-gl-title="' + escapeHtml(r.gl_account_title || '') + '" data-tag-code-sl="' + escapeHtml(r.sl_code || '') + '"><i class="fas fa-tag"></i> Tag GL/SL Account</button>' +
                                     '<button type="button" class="bam-menu-item" data-docs="' + r.bank_account_id + '" data-docs-name="' + escapeHtml(r.account_name) + '"><i class="fas fa-file-alt"></i> Documents</button>' +
                                 '</div>' +
                             '</div>' +
@@ -689,7 +942,12 @@ html.afims-dark[data-bs-theme="dark"] #bamModule .bam-menu-item:hover { color:#f
                 });
                 tbody.querySelectorAll('[data-tag-code]').forEach(function (btn) {
                     btn.addEventListener('click', function () {
-                        openTagCodeModal(this.dataset.tagCode, this.dataset.tagCodeName, this.dataset.tagCodeCurrent);
+                        openTagCodeModal(this.dataset.tagCode, this.dataset.tagCodeName, {
+                            glAccountId: this.dataset.tagCodeGlId,
+                            glCode: this.dataset.tagCodeGlCode,
+                            glTitle: this.dataset.tagCodeGlTitle,
+                            slCode: this.dataset.tagCodeSl,
+                        });
                     });
                 });
                 tbody.querySelectorAll('[data-docs]').forEach(function (btn) {
@@ -740,7 +998,13 @@ html.afims-dark[data-bs-theme="dark"] #bamModule .bam-menu-item:hover { color:#f
         document.getElementById('field-account-classification').value = '';
         document.getElementById('field-fund-source').value = '';
         document.getElementById('field-rc-id').value = '';
-        document.getElementById('field-account-code').value = '';
+        document.getElementById('field-gl-account-id').value = '';
+        document.getElementById('field-gl-search').value = '';
+        document.getElementById('field-gl-dropdown').style.display = 'none';
+        document.getElementById('field-gl-dropdown').innerHTML = '';
+        document.getElementById('field-gl-selected').style.display = 'none';
+        bamSlReset('field-');
+        bamSlDisable('field-');
         bankSelect.value = '';
         bankInput.value = '';
         bankInput.style.display = 'none';
@@ -894,7 +1158,19 @@ html.afims-dark[data-bs-theme="dark"] #bamModule .bam-menu-item:hover { color:#f
                 document.getElementById('field-account-classification').value = d.account_classification || '';
                 document.getElementById('field-fund-source').value = d.fund_source || '';
                 document.getElementById('field-rc-id').value = d.rc_id || '';
-                document.getElementById('field-account-code').value = d.account_code || '';
+                if (d.coa_account_id) {
+                    document.getElementById('field-gl-account-id').value = d.coa_account_id;
+                    document.getElementById('field-gl-search').value = (d.gl_account_code || '') + ' — ' + (d.gl_account_title || '');
+                    document.getElementById('field-gl-selected').innerHTML = '<strong>' + escapeHtml(d.gl_account_code || '') + '</strong> — ' + escapeHtml(d.gl_account_title || '');
+                    document.getElementById('field-gl-selected').style.display = 'block';
+                    bamSlEnable('field-');
+                    bamLoadSlCodesForAccount('field-', d.coa_account_id, d.sl_code || null);
+                } else {
+                    document.getElementById('field-gl-account-id').value = '';
+                    document.getElementById('field-gl-search').value = '';
+                    document.getElementById('field-gl-selected').style.display = 'none';
+                    bamSlDisable('field-');
+                }
                 setBankNameValue(d.bank_name || '');
                 document.getElementById('field-bank-branch').value = d.bank_branch || '';
                 document.getElementById('field-status').value = d.status || 'ACTIVE';
@@ -926,7 +1202,8 @@ html.afims-dark[data-bs-theme="dark"] #bamModule .bam-menu-item:hover { color:#f
             account_classification: document.getElementById('field-account-classification').value,
             fund_source: document.getElementById('field-fund-source').value.trim(),
             rc_id: document.getElementById('field-rc-id').value,
-            account_code: document.getElementById('field-account-code').value,
+            coa_account_id: document.getElementById('field-gl-account-id').value,
+            sl_code: document.getElementById('field-sl-selected-code-value').value,
             bank_name: getBankNameValue(),
             bank_branch: document.getElementById('field-bank-branch').value.trim(),
             status: document.getElementById('field-status').value,
@@ -1015,27 +1292,43 @@ html.afims-dark[data-bs-theme="dark"] #bamModule .bam-menu-item:hover { color:#f
             .catch(() => toast('Could not reach the server.', true));
     }
 
-    // ── Quick tag GL account code modal ──
+    // ── Quick tag GL/SL account modal ──
     let tagCodeAccountId = null;
-    function openTagCodeModal(id, name, currentCode) {
+    function openTagCodeModal(id, name, current) {
         tagCodeAccountId = id;
         document.getElementById('tagCodeAccountName').textContent = name || '';
-        const sel = document.getElementById('tagCodeSelect');
-        if (!bamCoaRows.length) {
-            loadChartOfAccounts().then(function () { sel.value = currentCode || ''; });
-        } else {
-            sel.value = currentCode || '';
+
+        document.getElementById('tag-gl-account-id').value = '';
+        document.getElementById('tag-gl-search').value = '';
+        document.getElementById('tag-gl-dropdown').style.display = 'none';
+        document.getElementById('tag-gl-dropdown').innerHTML = '';
+        document.getElementById('tag-gl-selected').style.display = 'none';
+        bamSlReset('tag-');
+        bamSlDisable('tag-');
+
+        if (current && current.glAccountId) {
+            document.getElementById('tag-gl-account-id').value = current.glAccountId;
+            document.getElementById('tag-gl-search').value = (current.glCode || '') + ' — ' + (current.glTitle || '');
+            const selected = document.getElementById('tag-gl-selected');
+            selected.innerHTML = '<strong>' + escapeHtml(current.glCode || '') + '</strong> — ' + escapeHtml(current.glTitle || '');
+            selected.style.display = 'block';
+            bamSlEnable('tag-');
+            bamLoadSlCodesForAccount('tag-', current.glAccountId, current.slCode || null);
         }
+
         openModal('m-bam-tag-code');
     }
     document.getElementById('tagCodeSaveBtn').addEventListener('click', function () {
-        const accountCode = document.getElementById('tagCodeSelect').value;
+        const payload = {
+            coa_account_id: document.getElementById('tag-gl-account-id').value,
+            sl_code: document.getElementById('tag-sl-selected-code-value').value,
+        };
         this.disabled = true;
-        fetch(API + '/' + tagCodeAccountId + '/tag-account-code', { method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ account_code: accountCode }) })
+        fetch(API + '/' + tagCodeAccountId + '/tag-account-code', { method: 'POST', headers: jsonHeaders(), body: JSON.stringify(payload) })
             .then(r => r.json())
             .then(function (json) {
-                if (!json || !json.success) { toast((json && json.message) || 'Could not tag GL account code.', true); return; }
-                toast('GL account code updated.');
+                if (!json || !json.success) { toast((json && json.message) || 'Could not tag GL/SL account.', true); return; }
+                toast('GL/SL account updated.');
                 closeModal('m-bam-tag-code');
                 loadList();
             })
@@ -1047,7 +1340,6 @@ html.afims-dark[data-bs-theme="dark"] #bamModule .bam-menu-item:hover { color:#f
     loadStats();
     loadList();
     loadResponsibilityCenters();
-    loadChartOfAccounts();
     loadFundSources();
 })();
 </script>

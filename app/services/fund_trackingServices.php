@@ -22,10 +22,12 @@ use PHPMaker2024\FIMS as App;
 //  * Soft-deleted via deleted_at: every read filters it out, delete() stamps it.
 //  * user_id is the verified (JWT) user, passed in by the route — never read from
 //    the request body. created_at / updated_at / deleted_at are never writable.
-//  * A record has no unreleased amount and no sub-program (both columns were dropped,
-//    "03 - alter_table/41"): the API neither returns nor accepts them. `date` is the
-//    day the record was CREATED — create() stamps it (CURRENT_DATE) and no request can
-//    set it; the Excel importers alone keep the date their sheet carries.
+//  * `unreleased` (NUMERIC 18,2) and `sub_program` (VARCHAR 225, free text) were dropped ("03 - alter_table/41") and are back
+//    ("03 - alter_table/47" and "45"). `sub_program` is a plain column. `unreleased` is returned but never written by a request: it is the
+//    balance of a SARO — its amount less its NCAs — kept up to date by refreshSaroUnreleased(), and only SAROs have one. `date` is entered on
+//    the SARO / NCA / Supplemental form and accepted on add and update (YYYY-MM-DD); a request that sends none — the Trust Fund and
+//    OR forms have no Date field — is dated the day it is created (CURRENT_DATE), and so are the children saved with a SARO / Trust
+//    Fund. The Excel importers keep the date their sheet carries.
 //  * The Supplemental Fund details (fmd.supplemental_fund_details) and the regions
 //    view (shared.v_rc_regions) have no SQL in this repo yet. Those code paths
 //    only run when a request uses them, and a failed lookup never blocks the
@@ -68,14 +70,16 @@ class FundTrackingServices
     private array $decimalFields = ['amount'];
     private array $uuidFields = ['multiple_node_id'];
 
-    // Columns a request may write (user_id is added by the route, not the client). `date` is not one of them — it is the day the
-    // record is created, stamped by create() / insertRow().
+    // Columns a request may write (user_id is added by the route, not the client). `date` is entered on the SARO / NCA / Supplemental
+    // form; when a request sends none (the Trust Fund and OR forms have no Date field) create() / insertRow() stamp the day it is created.
     private array $allowedFields = [
         'fiscal_year',
         'tracking_type_id',
-        'reference_number',
+        'saro_id',
         'nature_of_fund_id',
-        'name',
+        'description',
+        'sub_program',         // free text, VARCHAR(225)
+        'date',                // the date the form enters; a request that sends none is dated the day it is created (create())
         'amount',
         'bank_account_no',
         'agency_name',          // agency name as text (see header)
@@ -106,9 +110,11 @@ class FundTrackingServices
                     ft_rec.id,
                     ft_rec.fiscal_year,
                     ft_rec.tracking_type_id,
-                    ft_rec.reference_number,
+                    ft_rec.saro_id,
                     ft_rec.nature_of_fund_id,
-                    ft_rec.name,
+                    ft_rec.description,
+                    ft_rec.sub_program,
+                    ft_rec.unreleased,
                     ft_rec.date,
                     ft_rec.amount,
                     ft_rec.bank_account_no,
@@ -128,8 +134,8 @@ class FundTrackingServices
                     par.id                 AS par_id,
                     par.fiscal_year        AS par_fiscal_year,
                     par.tracking_type_id   AS par_tracking_type_id,
-                    par.reference_number   AS par_reference_number,
-                    par.name               AS par_name,
+                    par.saro_id            AS par_saro_id,
+                    par.description        AS par_description,
                     par.amount             AS par_amount,
                     par.date               AS par_date,
                     par.parent_id          AS par_parent_id,
@@ -179,8 +185,8 @@ class FundTrackingServices
             'id' => $row['par_id'],
             'fiscal_year' => $row['par_fiscal_year'],
             'tracking_type_id' => $row['par_tracking_type_id'],
-            'reference_number' => $row['par_reference_number'],
-            'name' => $row['par_name'],
+            'saro_id' => $row['par_saro_id'],
+            'description' => $row['par_description'],
             'amount' => $row['par_amount'],
             'date' => $row['par_date'],
             'parent_id' => $row['par_parent_id'],
@@ -206,8 +212,8 @@ class FundTrackingServices
             $row['par_id'],
             $row['par_fiscal_year'],
             $row['par_tracking_type_id'],
-            $row['par_reference_number'],
-            $row['par_name'],
+            $row['par_saro_id'],
+            $row['par_description'],
             $row['par_amount'],
             $row['par_date'],
             $row['par_parent_id'],
@@ -522,7 +528,7 @@ class FundTrackingServices
 
     // -----------------------------------------------------------------------
     // Best-effort lookup used by the Trust Fund import: resolves an existing
-    // (non-deleted) fims.fund_tracking record by reference_number (e.g. an
+    // (non-deleted) fims.fund_tracking record by saro_id (e.g. an
     // already-imported SARO/NCA/OR entry sharing the same "Saro No./OR No./CA
     // No." value) so the new TRUST record's parent_id can link back to it.
     // Returns null (not an error) when nothing matches.
@@ -537,7 +543,7 @@ class FundTrackingServices
 
         $id = App\ExecuteScalar(
             "SELECT id FROM {$this->table}
-              WHERE UPPER(reference_number) = UPPER('{$safe}')
+              WHERE UPPER(saro_id) = UPPER('{$safe}')
                 AND deleted_at IS NULL
               ORDER BY id ASC
               LIMIT 1",
@@ -597,13 +603,20 @@ class FundTrackingServices
             return 'multiple_node_id must be a UUID.';
         }
 
+        if ($filled('date')) {
+            $day = date_create_from_format('Y-m-d', (string) $fields['date']);
+            if (!$day || $day->format('Y-m-d') !== (string) $fields['date']) {
+                return 'date must be a valid date (YYYY-MM-DD).';
+            }
+        }
+
         return null;
     }
 
     // -----------------------------------------------------------------------
     // Fetch all — no pagination (/fund_tracking/all)
     // Fetch with pagination (/fund_tracking/list) when $page is provided
-    // $search — optional, matched against reference_number (ILIKE, partial)
+    // $search — optional, matched against saro_id (ILIKE, partial)
     // $lean   — pickers that only need the record itself (id, reference, name,
     //           tracking type, agency, amount, date):
     //           skips the second query that batch-fetches every row's children
@@ -617,7 +630,7 @@ class FundTrackingServices
 
             $where = [self::LIVE];
             if (!empty($search)) {
-                $where[] = 'ft_rec.reference_number ILIKE '.$this->qs('%'.$search.'%');
+                $where[] = 'ft_rec.saro_id ILIKE '.$this->qs('%'.$search.'%');
             }
             $whereClause = 'WHERE '.implode(' AND ', $where);
 
@@ -706,8 +719,8 @@ class FundTrackingServices
     //           exclude_nature_of_fund (id or name — the records of that
     //           nature are left out, children included),
     //           status_id, parent_id, multiple_node_id, and a
-    //           reference_number filter (ILIKE, partial) accepted under any
-    //           of: reference_number, saro_reference_number (legacy), search
+    //           saro_id filter (ILIKE, partial) accepted under any
+    //           of: saro_id, reference_number (legacy), saro_reference_number (legacy), search
     //
     // root_type — see the `root_type` block below: with roots_only, narrows the
     // root rows to one tracking type while `type` still picks the children.
@@ -877,24 +890,24 @@ class FundTrackingServices
             }
 
             // Accept the current column name, the legacy query param name
-            // (saro_reference_number, still used by existing consumers), and
+            // (reference_number and saro_reference_number, still used by existing consumers), and
             // `search` (used by the SARO/NCA list page's filter + table
             // search inputs — matches /fund_tracking/all's `search` param).
-            $refFilter = $params['reference_number'] ?? $params['saro_reference_number'] ?? $params['search'] ?? null;
+            $refFilter = $params['saro_id'] ?? $params['reference_number'] ?? $params['saro_reference_number'] ?? $params['search'] ?? null;
             if (!empty($refFilter)) {
                 $val = $this->qs('%'.$refFilter.'%');
                 $where[] = $natureTree
-                    ? "(ft_rec.reference_number ILIKE {$val} OR EXISTS (SELECT 1 FROM {$this->table} sc WHERE sc.parent_id = ft_rec.id AND sc.deleted_at IS NULL AND sc.reference_number ILIKE {$val}))"
-                    : "ft_rec.reference_number ILIKE {$val}";
+                    ? "(ft_rec.saro_id ILIKE {$val} OR EXISTS (SELECT 1 FROM {$this->table} sc WHERE sc.parent_id = ft_rec.id AND sc.deleted_at IS NULL AND sc.saro_id ILIKE {$val}))"
+                    : "ft_rec.saro_id ILIKE {$val}";
             }
 
             // `agency_or_program_search` — free text matched against the agency
             // name (a record has no sub-program / program any more; the name of
             // the parameter is kept for the callers that already send it).
-            // Separate from `search` above (which stays reference_number-only,
+            // Separate from `search` above (which stays saro_id-only,
             // relied on by the SARO/NCA list page) — used by the Trust Fund list
             // page, whose records don't reliably carry a meaningful
-            // reference_number.
+            // saro_id.
             if (!empty($params['agency_or_program_search'])) {
                 $where[] = 'ft_rec.agency_name ILIKE '.$this->qs('%'.$params['agency_or_program_search'].'%');
             }
@@ -1403,7 +1416,7 @@ class FundTrackingServices
     }
 
     // -----------------------------------------------------------------------
-    // Generate reference_number — "<NATURE OF FUND>-<FISCAL YEAR>", e.g.
+    // Generate saro_id — "<NATURE OF FUND>-<FISCAL YEAR>", e.g.
     // "GAAAO-2026" or "INSERTIONS-2026". Nature of fund comes from
     // fims.nature_of_fund.name (non-alphanumerics → hyphens), the year is the
     // record's fiscal_year (falls back to the current year when none is given).
@@ -1442,8 +1455,8 @@ class FundTrackingServices
     // -----------------------------------------------------------------------
     // True when the nature of fund is GAAAO (exact, case-insensitive match on
     // fims.nature_of_fund.name). Only GAAAO records get a system-generated
-    // "<NATURE>-<YEAR>" reference_number; every other nature of fund carries
-    // a free-text reference_number entered by the user (e.g. the OR No. for
+    // "<NATURE>-<YEAR>" saro_id; every other nature of fund carries
+    // a free-text saro_id entered by the user (e.g. the OR No. for
     // OR records).
     // -----------------------------------------------------------------------
     private function isGaaaoNature(int|string|null $natureOfFundId): bool
@@ -1480,7 +1493,7 @@ class FundTrackingServices
         }
 
         $saro = App\ExecuteRow(
-            "SELECT reference_number, amount FROM {$this->table}
+            "SELECT saro_id, amount FROM {$this->table}
               WHERE id = {$parentId} AND tracking_type_id = {$saroTypeId} AND deleted_at IS NULL"
             .($lock ? ' FOR UPDATE' : ''),
             'DB'
@@ -1504,7 +1517,7 @@ class FundTrackingServices
 
         $peso = fn (float $v): string => '₱'.number_format($v, 2);
 
-        return 'This NCA ('.$peso($amount).') is more than SARO '.($saro['reference_number'] ?? '#'.$parentId).' has left ('
+        return 'This NCA ('.$peso($amount).') is more than SARO '.($saro['saro_id'] ?? '#'.$parentId).' has left ('
             .$peso(max($left, 0.0)).' of '.$peso($saroAmount).'; '.$peso($released).' already released under it).';
     }
 
@@ -1547,7 +1560,7 @@ class FundTrackingServices
     //   parentType / parentName — the tracking type the NEW record must have (a tracking-type code the resolver understands,
     //                             and how it is named in the message), child — the type the children get (and "NCA" / "OR"
     //                             in the messages), max — how many one request may add,
-    //   fields  — what an item may carry besides its reference_number (required),
+    //   fields  — what an item may carry besides its saro_id (required),
     //   inherit — what a child takes from the new record unless the item gives its own (a key left out inherits, a value
     //             overrides it and must exist, an explicit null / '' means none) — the same carry-forward the Excel import
     //             applies.
@@ -1586,18 +1599,18 @@ class FundTrackingServices
                 return [[], "{$label}: invalid entry."];
             }
 
-            $ref = trim((string) ($item['reference_number'] ?? ''));
+            $ref = trim((string) ($item['saro_id'] ?? ''));
             if ($ref === '') {
-                return [[], "{$label}: reference_number is required."];
+                return [[], "{$label}: saro_id is required."];
             }
 
             $key = strtoupper($ref);
             if (isset($seen[$key])) {
-                return [[], "{$label}: reference_number '{$ref}' is used more than once in this request."];
+                return [[], "{$label}: saro_id '{$ref}' is used more than once in this request."];
             }
             $seen[$key] = true;
 
-            $row = ['tracking_type_id' => $childTypeId, 'reference_number' => $ref];
+            $row = ['tracking_type_id' => $childTypeId, 'saro_id' => $ref];
 
             foreach ($kind['fields'] as $k) {
                 if (array_key_exists($k, $item) && $item[$k] !== null && $item[$k] !== '') {
@@ -1632,32 +1645,32 @@ class FundTrackingServices
         return [$rows, null];
     }
 
-    // NCA records created together with a new SARO (create()'s `ncas`). Each item: reference_number (required), name, amount,
+    // NCA records created together with a new SARO (create()'s `ncas`). Each item: saro_id (required), description, amount,
     // bank_account_no, and optionally its own fiscal_year and nature_of_fund_id. (A child's date is the day it is created.)
     private function prepareNcas(array $items, array $saro, ?int $userId): array
     {
         return $this->prepareChildRecords($items, $saro, $userId, [
             'parentType' => 'SARO', 'parentName' => 'SARO', 'child' => 'NCA', 'max' => self::MAX_NCAS,
-            'fields' => ['name', 'amount', 'bank_account_no'],
+            'fields' => ['description', 'amount', 'bank_account_no'],
             'inherit' => ['fiscal_year', 'nature_of_fund_id'],
         ]);
     }
 
-    // OR records created together with a new Trust Fund (create()'s `ors`). Each item: reference_number (required), name, amount,
+    // OR records created together with a new Trust Fund (create()'s `ors`). Each item: saro_id (required), description, amount,
     // bank_account_no, remarks, and optionally its own fiscal_year, nature_of_fund_id and agency_name — an OR takes the Trust
     // Fund's fiscal year, nature of fund and agency unless the item says otherwise. (A child's date is the day it is created.)
     private function prepareOrs(array $items, array $trust, ?int $userId): array
     {
         return $this->prepareChildRecords($items, $trust, $userId, [
             'parentType' => 'TRUST', 'parentName' => 'Trust Fund', 'child' => 'OR', 'max' => self::MAX_ORS,
-            'fields' => ['name', 'amount', 'bank_account_no', 'remarks'],
+            'fields' => ['description', 'amount', 'bank_account_no', 'remarks'],
             'inherit' => ['fiscal_year', 'nature_of_fund_id', 'agency_name'],
         ]);
     }
 
     // -----------------------------------------------------------------------
     // Create — /fund_tracking/add
-    // Required: tracking_type_id (nature_of_fund_id is optional). reference_number is
+    // Required: tracking_type_id (nature_of_fund_id is optional). saro_id is
     // generated from nature of fund + the fiscal year (see generateReferenceNumber())
     // when the nature of fund is GAAAO (see isGaaaoNature()) and none is sent (a reference
     // that is sent is kept, so it is optional there); for every other nature of fund it is
@@ -1670,11 +1683,47 @@ class FundTrackingServices
     // under a new Trust Fund; returns `or_ids`. A request carries one list or the
     // other — each is refused under any other tracking type.
     //
-    // The record's `date` is the day it is created (CURRENT_DATE, stamped below) — a `date` in the body is ignored, like the
-    // removed `unreleased` and `sub_program_code`.
+    // The record's `date` is the one the body sends (YYYY-MM-DD); without one it is the day it is created (CURRENT_DATE, below). An
+    // `sub_program_code` in the body is ignored — that column was removed — and so is `unreleased`, which the API works out itself
+    // (refreshSaroUnreleased()). `sub_program` is accepted.
     //
     // $userId — the verified (JWT) user, stored in user_id; never taken from $body.
     // -----------------------------------------------------------------------
+    // -----------------------------------------------------------------------
+    // A SARO's saved balance: fims.fund_tracking.unreleased = the SARO's amount less every live NCA released under it (the same set
+    // ncaOverSaroError() counts). It is kept ONLY on SAROs — an NCA, Trust Fund, OR… has none — and it is worked out here, never taken from
+    // a request. Called after anything that can change it: a SARO added / its amount edited, an NCA added / its amount, SARO or type
+    // changed / deleted. Pass every id that may be affected (the record itself, its old and its new parent): ids that are not a live SARO
+    // are simply skipped. It runs inside the caller's transaction, when there is one.
+    // -----------------------------------------------------------------------
+    private function refreshSaroUnreleased(int|string|null ...$ids): void
+    {
+        $saroTypeId = $this->resolveTrackingTypeId('SARO');
+        $ncaTypeId = $this->resolveTrackingTypeId('NCA');
+        if ($saroTypeId === null || $ncaTypeId === null) {
+            return;
+        }
+
+        $ids = array_unique(array_filter(array_map('intval', $ids), fn (int $v): bool => $v > 0));
+        foreach ($ids as $id) {
+            App\Execute(
+                "UPDATE {$this->table} s
+                    SET unreleased = COALESCE(s.amount, 0) - COALESCE((
+                            SELECT SUM(n.amount) FROM {$this->table} n
+                             WHERE n.parent_id = s.id AND n.tracking_type_id = {$ncaTypeId} AND n.deleted_at IS NULL
+                        ), 0)
+                  WHERE s.id = {$id} AND s.tracking_type_id = {$saroTypeId} AND s.deleted_at IS NULL",
+                'DB'
+            );
+            // only SAROs carry a balance: a record that stopped being one (its type was changed) loses it
+            App\Execute(
+                "UPDATE {$this->table} SET unreleased = NULL
+                  WHERE id = {$id} AND unreleased IS NOT NULL AND tracking_type_id IS DISTINCT FROM {$saroTypeId}",
+                'DB'
+            );
+        }
+    }
+
     public function create(array $body, ?int $userId = null): array
     {
         $inTransaction = false;
@@ -1701,7 +1750,7 @@ class FundTrackingServices
             }
 
             // An empty value means "not set" — leave the column NULL
-            foreach (['fiscal_year', 'parent_id', 'multiple_node_id', 'nature_of_fund_id', 'status_id'] as $optional) {
+            foreach (['fiscal_year', 'parent_id', 'multiple_node_id', 'nature_of_fund_id', 'status_id', 'date'] as $optional) {
                 if (array_key_exists($optional, $fields) && ($fields[$optional] === '' || $fields[$optional] === null)) {
                     unset($fields[$optional]);
                 }
@@ -1715,22 +1764,22 @@ class FundTrackingServices
             if ($this->isGaaaoNature($fields['nature_of_fund_id'] ?? null)) {
                 // GAAAO: the reference is generated from the nature of fund + fiscal year UNLESS the client sends one of its own (the
                 // form fills in the generated value and lets the user edit it) — blank means "generate it"
-                $given = trim((string) ($fields['reference_number'] ?? ''));
+                $given = trim((string) ($fields['saro_id'] ?? ''));
                 if ($given !== '') {
-                    $fields['reference_number'] = $given;
+                    $fields['saro_id'] = $given;
                 } else {
                     $reference = $this->generateReferenceNumber($fields['nature_of_fund_id'], $fields['fiscal_year'] ?? null);
                     if ($reference === null) {
                         return ['success' => false, 'message' => 'nature_of_fund_id does not match any nature of fund.'];
                     }
-                    $fields['reference_number'] = $reference;
+                    $fields['saro_id'] = $reference;
                 }
             } else {
-                $referenceNumber = trim((string) ($fields['reference_number'] ?? ''));
+                $referenceNumber = trim((string) ($fields['saro_id'] ?? ''));
                 if ($referenceNumber === '') {
-                    return ['success' => false, 'message' => 'reference_number is required unless the nature of fund is GAAAO.'];
+                    return ['success' => false, 'message' => 'saro_id is required unless the nature of fund is GAAAO.'];
                 }
-                $fields['reference_number'] = $referenceNumber;
+                $fields['saro_id'] = $referenceNumber;
             }
 
             if ($userId !== null && $userId > 0) {
@@ -1778,13 +1827,16 @@ class FundTrackingServices
             $values = [];
 
             foreach ($fields as $key => $value) {
+                if ($key === 'date') {
+                    continue;   // below
+                }
                 $columns[] = App\QuotedName($key, 'DB');
                 $values[] = $this->quoteValue($key, $value);
             }
 
-            // the day the record is created — never the client's
+            // the date the form entered, else the day the record is created (the forms with no Date field — Trust Fund, OR …)
             $columns[] = App\QuotedName('date', 'DB');
-            $values[] = 'CURRENT_DATE';
+            $values[] = isset($fields['date']) ? $this->quoteValue('date', $fields['date']) : 'CURRENT_DATE';
 
             $colList = implode(', ', $columns);
             $valList = implode(', ', $values);
@@ -1809,6 +1861,9 @@ class FundTrackingServices
             $sql = "INSERT INTO {$this->table} ({$colList}) VALUES ({$valList}) RETURNING id";
             $result = App\ExecuteRow($sql, 'DB');
             $newId = $result['id'] ?? null;
+
+            // a SARO saves its balance (its amount — the NCAs saved with it below refresh it again); an NCA refreshes its SARO's
+            $this->refreshSaroUnreleased($newId, $fields['parent_id'] ?? null);
 
             $childIds = [];
             foreach ($children as $i => $child) {
@@ -1869,8 +1924,7 @@ class FundTrackingServices
     // Update — /fund_tracking/update/{id}
     // Partial update: only the fields sent change. For the optional ids / codes
     // (fiscal_year, parent_id, multiple_node_id, nature_of_fund_id, status_id)
-    // '' leaves the value alone and null clears it. `date` (the day the record
-    // was created) is never changed.
+    // '' leaves the value alone and null clears it. `date` is changed when a valid one is sent (a blank or null one leaves it as it is).
     // user_id and the timestamps are never writable; updated_at is stamped.
     // $userId is only used to attribute a saved supplemental row.
     // -----------------------------------------------------------------------
@@ -1895,13 +1949,13 @@ class FundTrackingServices
             // An empty string for an optional id / code means "leave it as it is"
             // (forms send '' for an unselected dropdown); only an explicit null
             // clears it.
-            foreach (['fiscal_year', 'parent_id', 'multiple_node_id', 'nature_of_fund_id', 'status_id'] as $optional) {
+            foreach (['fiscal_year', 'parent_id', 'multiple_node_id', 'nature_of_fund_id', 'status_id', 'date'] as $optional) {
                 if (isset($body[$optional]) && $body[$optional] === '') {
                     unset($body[$optional]);
                 }
             }
 
-            // reference_number is generated only for GAAAO records, and only as a
+            // saro_id is generated only for GAAAO records, and only as a
             // default: a value the client sends is kept as sent; without one (or with a
             // blank one) it is generated — but, when none is sent, only when the
             // record has none yet or its nature of fund / fiscal year is
@@ -1917,6 +1971,10 @@ class FundTrackingServices
             $newNatureId = $natureSent ? $body['nature_of_fund_id'] : ($existing['nature_of_fund_id'] ?? null);
 
             $fields = array_intersect_key($body, array_flip($this->allowedFields));
+            // a record always has a date: a null one is "not sent" and leaves the saved date as it is
+            if (array_key_exists('date', $fields) && $fields['date'] === null) {
+                unset($fields['date']);
+            }
 
             // Reject bad values / dangling references before touching anything
             $error = $this->validateReferences($fields);
@@ -1928,27 +1986,27 @@ class FundTrackingServices
                 // A reference the client sends is kept as sent (the form shows the generated one and lets the user edit it). Without
                 // one — or with a blank one, which means "generate it" — it is generated, but only when the record has none yet or its
                 // nature of fund / fiscal year is being changed, so editing other fields never overwrites an existing reference.
-                $given = array_key_exists('reference_number', $fields) ? trim((string) $fields['reference_number']) : null;
+                $given = array_key_exists('saro_id', $fields) ? trim((string) $fields['saro_id']) : null;
                 if ($given !== null && $given !== '') {
-                    $fields['reference_number'] = $given;
+                    $fields['saro_id'] = $given;
                 } else {
-                    unset($fields['reference_number']);
+                    unset($fields['saro_id']);
                     $newYear = array_key_exists('fiscal_year', $fields) ? $fields['fiscal_year'] : ($existing['fiscal_year'] ?? null);
                     $natureChanged = $natureSent && (int) $newNatureId !== (int) ($existing['nature_of_fund_id'] ?? 0);
                     $yearChanged = isset($fields['fiscal_year']) && (int) $fields['fiscal_year'] !== (int) ($existing['fiscal_year'] ?? 0);
-                    if ($given === '' || empty($existing['reference_number']) || $natureChanged || $yearChanged) {
+                    if ($given === '' || empty($existing['saro_id']) || $natureChanged || $yearChanged) {
                         $reference = $this->generateReferenceNumber($newNatureId, $newYear);
                         if ($reference !== null) {
-                            $fields['reference_number'] = $reference;
+                            $fields['saro_id'] = $reference;
                         }
                     }
                 }
-            } elseif (array_key_exists('reference_number', $fields)) {
-                $referenceNumber = trim((string) $fields['reference_number']);
+            } elseif (array_key_exists('saro_id', $fields)) {
+                $referenceNumber = trim((string) $fields['saro_id']);
                 if ($referenceNumber === '') {
-                    return ['success' => false, 'message' => 'reference_number cannot be blank unless the nature of fund is GAAAO.'];
+                    return ['success' => false, 'message' => 'saro_id cannot be blank unless the nature of fund is GAAAO.'];
                 }
-                $fields['reference_number'] = $referenceNumber;
+                $fields['saro_id'] = $referenceNumber;
             }
 
             if (empty($fields) && $supplemental === null) {
@@ -2003,6 +2061,10 @@ class FundTrackingServices
 
                 $sql = "UPDATE {$this->table} SET {$setClause} WHERE id = {$id} AND deleted_at IS NULL";
                 App\Execute($sql, 'DB');
+
+                // the SARO's saved Unreleased follows: this record when it is a SARO (its amount may have changed) and the SARO this record
+                // was released under and the one it is released under now (a different amount, SARO or type of an NCA)
+                $this->refreshSaroUnreleased($id, $existing['parent_id'] ?? null, array_key_exists('parent_id', $fields) ? $fields['parent_id'] : ($existing['parent_id'] ?? null));
             }
 
             if ($supplemental !== null) {
@@ -2060,6 +2122,9 @@ class FundTrackingServices
                 'DB'
             );
 
+            // a deleted NCA no longer counts: the SARO it was released under gets that amount back
+            $this->refreshSaroUnreleased($check['data']['parent_id'] ?? null);
+
             return [
                 'success' => true,
                 'message' => "Fund tracking record with ID {$id} deleted successfully.",
@@ -2096,8 +2161,8 @@ class FundTrackingServices
     // Each Excel row can produce up to TWO fims.fund_tracking records — one
     // for the SARO side of the row, one for the NCA side.
     //
-    // A record has no sub-program and no unreleased amount any more: a sub_program /
-    // program / unreleased_saro / unreleased_nca column in the sheet is simply not read.
+    // The imports do not fill sub_program / unreleased: a sub_program / program / unreleased_saro / unreleased_nca column in the
+    // sheet is simply not read.
     //
     // Row keys expected (from the client-side column mapping page):
     //   fiscal_year                 — calendar year ("YEAR OF GAA"), stored as is.
@@ -2105,15 +2170,15 @@ class FundTrackingServices
     //   nature_of_fund               — optional, name or id, resolved against
     //                                 fims.nature_of_fund.
     //   saro_reference_number        — "SARO" column → SARO record's
-    //                                 reference_number.
+    //                                 saro_id.
     //   saro_name                    — "SARO ID (Coding) + Program" column →
-    //                                 SARO record's name.
+    //                                 SARO record's description.
     //   saro_date                    — "Date of SARO" → SARO record's date (a row
     //                                 without one is dated the day it is imported).
     //   amount                       — "Amount" → SARO record's amount.
     //   nca_release_reference        — "NCA Released (Reference)" → NCA
-    //                                 record's reference_number AND name
-    //                                 (NCA type reuses this as its name).
+    //                                 record's saro_id AND description
+    //                                 (NCA type reuses this as its description).
     //   nca_amount                   — "NCA Amount" → NCA record's amount.
     //   nca_date                     — "NCA Date" → NCA record's date (same rule).
     //   bank_account_no              — NCA record only, see extractBankAccountNo().
@@ -2155,7 +2220,7 @@ class FundTrackingServices
     //   2. Only if there's no parent SARO to inherit from at all does it fall
     //      back to the last value resolved from any earlier row.
     //
-    // Duplicate detection: reference_number already existing (non-deleted) in
+    // Duplicate detection: saro_id already existing (non-deleted) in
     // fims.fund_tracking causes that specific record (SARO or NCA) to be
     // skipped as a duplicate — the other side of the row is unaffected.
     //
@@ -2293,8 +2358,8 @@ class FundTrackingServices
                 $result = $this->insertTrackingRecord([
                     'fiscal_year' => $fiscalYear,
                     'tracking_type_id' => $saroTypeId,
-                    'reference_number' => $row['saro_reference_number'] ?? null,
-                    'name' => $row['saro_name'] ?? null,
+                    'saro_id' => $row['saro_reference_number'] ?? null,
+                    'description' => $row['saro_name'] ?? null,
                     'date' => $row['saro_date'] ?? null,
                     'amount' => $row['amount'] ?? null,
                     'parent_id' => null,
@@ -2341,8 +2406,8 @@ class FundTrackingServices
                 $result = $this->insertTrackingRecord([
                     'fiscal_year' => $fiscalYear,
                     'tracking_type_id' => $ncaTypeId,
-                    'reference_number' => $row['nca_release_reference'] ?? null,
-                    'name' => $row['nca_release_reference'] ?? null,
+                    'saro_id' => $row['nca_release_reference'] ?? null,
+                    'description' => $row['nca_release_reference'] ?? null,
                     'date' => $row['nca_date'] ?? null,
                     'amount' => $row['nca_amount'] ?? null,
                     'parent_id' => $ncaParentId,
@@ -2387,7 +2452,7 @@ class FundTrackingServices
     // missing/blank/null value is simply omitted from the INSERT (see
     // insertRow()).
     //
-    // Duplicate check: if reference_number is provided and already exists
+    // Duplicate check: if saro_id is provided and already exists
     // (case-insensitive, among non-deleted rows) in fims.fund_tracking,
     // returns status 'duplicate' without inserting.
     //
@@ -2396,10 +2461,10 @@ class FundTrackingServices
     // -----------------------------------------------------------------------
     private function insertTrackingRecord(array $fields): array
     {
-        if (!empty($fields['reference_number'])) {
+        if (!empty($fields['saro_id'])) {
             $exists = (int) App\ExecuteScalar(
                 "SELECT COUNT(*) FROM {$this->table}
-                  WHERE UPPER(reference_number) = UPPER(".$this->qs($fields['reference_number']).')
+                  WHERE UPPER(saro_id) = UPPER(".$this->qs($fields['saro_id']).')
                     AND deleted_at IS NULL',
                 'DB'
             );
@@ -2429,13 +2494,13 @@ class FundTrackingServices
     //                       blank on continuation rows (see CARRY-FORWARD
     //                       below).
     //   reference_number — "Saro No./OR No./CA No." column. REQUIRED to
-    //                       already exist as a reference_number somewhere in
+    //                       already exist as a saro_id somewhere in
     //                       fims.fund_tracking (typically an already-imported
     //                       SARO/NCA/OR record) — resolveParentFundTrackingId()
     //                       looks it up and its id becomes this new TRUST
     //                       record's parent_id. A Trust Fund entry only ever
     //                       exists as a release against an already-recorded
-    //                       SARO/OR/CA, so a reference_number with NO match
+    //                       SARO/OR/CA, so a saro_id with NO match
     //                       (including a blank one) means the row is skipped —
     //                       it is never created without a parent link.
     //   amount           — "AMOUNT" column → amount.
@@ -2456,15 +2521,15 @@ class FundTrackingServices
     // sub_program / program column in the sheet is not read: a record has no
     // sub-program any more.)
     //
-    // A row is skipped if it's fully blank, or if its reference_number has no
-    // match in fims.fund_tracking (see reference_number above — required, not
+    // A row is skipped if it's fully blank, or if its saro_id has no
+    // match in fims.fund_tracking (see saro_id above — required, not
     // best-effort). Failing to
     // resolve/auto-create an agency is a soft warning only — the row still
     // imports without agency_name.
     //
-    // Duplicate detection: scoped to TRUST records only — a reference_number
+    // Duplicate detection: scoped to TRUST records only — a saro_id
     // already used by an existing TRUST row is skipped as a duplicate (guards
-    // against re-running the same import twice). A reference_number already
+    // against re-running the same import twice). A saro_id already
     // used by a non-TRUST row (e.g. the SARO/OR record it's meant to link to
     // via parent_id) is expected and does NOT count as a duplicate.
     //
@@ -2521,7 +2586,7 @@ class FundTrackingServices
                 $agencyName = $lastAgencyName;
             }
 
-            // ── Required parent link via reference_number match ─────────────
+            // ── Required parent link via saro_id match ─────────────
             // A Trust Fund row only exists as a release against an
             // already-recorded SARO/NCA/OR reference — no match means no
             // record is created (see this method's doc comment).
@@ -2540,7 +2605,7 @@ class FundTrackingServices
 
             $result = $this->insertTrustFundRecord([
                 'tracking_type_id' => $trustTypeId,
-                'reference_number' => $row['reference_number'] ?? null,
+                'saro_id' => $row['reference_number'] ?? null,
                 'date' => $row['date'] ?? null,
                 'amount' => $row['amount'] ?? null,
                 'parent_id' => $parentId,
@@ -2588,11 +2653,11 @@ class FundTrackingServices
     // -----------------------------------------------------------------------
     private function insertTrustFundRecord(array $fields): array
     {
-        if (!empty($fields['reference_number']) && !empty($fields['tracking_type_id'])) {
+        if (!empty($fields['saro_id']) && !empty($fields['tracking_type_id'])) {
             $trustTypeId = (int) $fields['tracking_type_id'];
             $exists = (int) App\ExecuteScalar(
                 "SELECT COUNT(*) FROM {$this->table}
-                  WHERE UPPER(reference_number) = UPPER(".$this->qs($fields['reference_number']).")
+                  WHERE UPPER(saro_id) = UPPER(".$this->qs($fields['saro_id']).")
                     AND tracking_type_id = {$trustTypeId}
                     AND deleted_at IS NULL",
                 'DB'
@@ -2621,7 +2686,7 @@ class FundTrackingServices
         $columns = [];
         $values = [];
 
-        foreach (array_merge($this->allowedFields, ['user_id', 'date']) as $key) {
+        foreach (array_merge($this->allowedFields, ['user_id']) as $key) {   // `date` is already one of the allowed fields
             if (!array_key_exists($key, $fields)) {
                 continue;
             }
@@ -2661,9 +2726,13 @@ class FundTrackingServices
                 'DB'
             );
 
+            $newId = !empty($inserted['id']) ? (int) $inserted['id'] : null;
+            // a SARO saves its balance; an NCA refreshes the balance of the SARO it is released under
+            $this->refreshSaroUnreleased($newId, $fields['parent_id'] ?? null);
+
             return [
                 'status' => 'ok',
-                'id' => !empty($inserted['id']) ? (int) $inserted['id'] : null,
+                'id' => $newId,
                 'message' => null,
             ];
         } catch (\Exception $e) {

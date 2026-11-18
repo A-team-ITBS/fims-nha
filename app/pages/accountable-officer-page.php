@@ -324,6 +324,12 @@ function ao_bindEvents() {
             }
         });
     }
+
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('#ao-coa-sl-search') && !e.target.closest('#ao-coa-sl-dropdown')) {
+            $ao('ao-coa-sl-dropdown').style.display = 'none';
+        }
+    });
 }
 
 /* ── Load ──────────────────────────────────────────────────── */
@@ -475,6 +481,15 @@ function ao_openModal(mode, row = null) {
     $ao('ao-coa-dropdown').style.display = 'none';
     $ao('ao-coa-dropdown').innerHTML = '';
 
+    // Sub-ledger (step 2) — only meaningful once a GL account is set.
+    ao_coaSlReset();
+    if (row?.coa_account_id) {
+        ao_coaSlEnable();
+        ao_loadSlCodesForAccount('ao-coa-sl-', row.coa_account_id, row.sl_code || null, ao_showErr);
+    } else {
+        ao_coaSlDisable();
+    }
+
     $ao('ao-overlay').classList.add('open');
 }
 
@@ -522,10 +537,12 @@ async function ao_save(ev) {
         status      : $ao('ao-status').value,
     };
     const coaAccountId = $ao('ao-coa-account-id').value;
+    const slCode       = $ao('ao-coa-sl-selected-code-value').value;
 
     if (!payload.first_name || !payload.last_name) { ao_showErr('First name and last name are required.'); return; }
 
     if (coaAccountId) payload.coa_account_id = coaAccountId;
+    if (slCode)       payload.sl_code = slCode;
 
     window.PagePreloader?.show();
     try {
@@ -641,6 +658,11 @@ function ao_selectCoaAccount(item) {
     const selected = $ao('ao-coa-selected');
     selected.innerHTML = `<strong>${code}</strong><br><small>${name}</small>`;
     selected.style.display = 'block';
+
+    // Changing the GL invalidates any previously selected sub-ledger.
+    ao_coaSlReset();
+    ao_coaSlEnable();
+    ao_loadSlCodesForAccount('ao-coa-sl-', accountId);
 }
 
 /* ── SL Modal Functions ─────────────────────────────────────── */
@@ -690,7 +712,7 @@ async function ao_fetchAndSelectGl(accountId, currentSl) {
     }
 
     if (currentSl) {
-        ao_loadSlCodesForAccount(accountId, currentSl);
+        ao_loadSlCodesForAccount('ao-sl-', accountId, currentSl);
     }
 }
 
@@ -769,44 +791,60 @@ function ao_selectGlAccount(item) {
     $ao('ao-sl-section-2').style.opacity = '1';
     $ao('ao-sl-section-2').style.pointerEvents = 'auto';
 
-    ao_loadSlCodesForAccount(accountId);
+    ao_loadSlCodesForAccount('ao-sl-', accountId);
 }
 
-/* ── Step 2: Sub-Ledger (child account) picker ──────────────── */
+/* ── Step 2: Sub-Ledger (child account) picker ──────────────────────
+   Shared by the Link SL modal (prefix 'ao-sl-') and the Add/Edit form's
+   own GL+SL fields (prefix 'ao-coa-sl-') — same markup shape, same API
+   calls, just a different element-id prefix and error sink. ───────── */
+function ao_slIds(prefix) {
+    return {
+        search       : prefix + 'search',
+        dropdown     : prefix + 'dropdown',
+        emptyNote    : prefix + 'empty-note',
+        selectedItem : prefix + 'selected-item',
+        selectedCode : prefix + 'selected-code',
+        selectedValue: prefix + 'selected-code-value',
+    };
+}
+
 // Load SL codes for an account; optionally pre-select a known current SL id.
-async function ao_loadSlCodesForAccount(accountId, preselectId = null) {
+async function ao_loadSlCodesForAccount(prefix, accountId, preselectId = null, onError = ao_slShowErr) {
+    const ids = ao_slIds(prefix);
     try {
         const res = await fetch(`${AO_API}/../accounting/sl/by-account?account_id=${encodeURIComponent(accountId)}&limit=50`, { credentials: 'same-origin' });
         const json = await res.json();
 
         if (!json.success || !json.data?.length) {
             // Quiet inline note instead of an overlapping dropdown box.
-            $ao('ao-sl-empty-note').style.display = 'block';
-            $ao('ao-sl-dropdown').style.display = 'none';
+            $ao(ids.emptyNote).style.display = 'block';
+            $ao(ids.dropdown).style.display = 'none';
             return;
         }
 
-        $ao('ao-sl-empty-note').style.display = 'none';
-        ao_renderSlList(json.data);
-        $ao('ao-sl-dropdown').style.display = 'none'; // don't force it open — just cache for typing
+        $ao(ids.emptyNote).style.display = 'none';
+        ao_renderSlList(prefix, json.data);
+        $ao(ids.dropdown).style.display = 'none'; // don't force it open — just cache for typing
 
         if (preselectId) {
             const match = json.data.find(a => String(a.account_id) === String(preselectId));
             if (match) {
-                $ao('ao-sl-search').value = match.account_code;
-                $ao('ao-sl-selected-code-value').value = match.account_id;
-                $ao('ao-sl-selected-code').textContent = match.account_code;
-                $ao('ao-sl-selected-item').style.display = 'block';
+                $ao(ids.search).value = match.account_code;
+                $ao(ids.selectedValue).value = match.account_id;
+                $ao(ids.selectedCode).textContent = match.account_code;
+                $ao(ids.selectedItem).style.display = 'block';
             }
         }
     } catch (e) {
-        ao_slShowErr('Failed to load sub-ledgers: ' + e.message);
+        onError('Failed to load sub-ledgers: ' + e.message);
     }
 }
 
 // Render SL dropdown list
-function ao_renderSlList(items) {
-    const dropdown = $ao('ao-sl-dropdown');
+function ao_renderSlList(prefix, items) {
+    const ids = ao_slIds(prefix);
+    const dropdown = $ao(ids.dropdown);
     dropdown.innerHTML = items.map(item =>
         `<div class="ao-sl-item" data-code="${ao_escAttr(item.account_id)}" data-display="${ao_escAttr(item.account_code)}" style="padding:10px 12px;border-bottom:1px solid #E4ECF2;cursor:pointer;font-size:13px;transition:background .15s;">
             <div style="font-weight:600;">${ao_esc(item.account_code)}</div>
@@ -818,22 +856,23 @@ function ao_renderSlList(items) {
     dropdown.querySelectorAll('.ao-sl-item').forEach(item => {
         item.addEventListener('mouseover', () => item.style.background = '#F4F7FA');
         item.addEventListener('mouseout', () => item.style.background = 'transparent');
-        item.addEventListener('click', () => ao_selectSlCode(item));
+        item.addEventListener('click', () => ao_selectSlCode(prefix, item));
     });
 }
 
 // Select a SL code
-function ao_selectSlCode(item) {
+function ao_selectSlCode(prefix, item) {
+    const ids = ao_slIds(prefix);
     const slId = item.dataset.code;  // This is the account_id from COA
     const display = item.dataset.display;  // This is the account_code for display
-    $ao('ao-sl-search').value = display;
-    $ao('ao-sl-selected-code-value').value = slId;
-    $ao('ao-sl-selected-code').textContent = display;
-    $ao('ao-sl-selected-item').style.display = 'block';
-    $ao('ao-sl-dropdown').style.display = 'none';
+    $ao(ids.search).value = display;
+    $ao(ids.selectedValue).value = slId;
+    $ao(ids.selectedCode).textContent = display;
+    $ao(ids.selectedItem).style.display = 'block';
+    $ao(ids.dropdown).style.display = 'none';
 }
 
-// Handle SL search input
+// Handle SL search input (Link SL modal)
 let ao_slSearchTimer;
 $ao('ao-sl-search')?.addEventListener('input', (ev) => {
     const query = ev.target.value.trim();
@@ -851,7 +890,7 @@ $ao('ao-sl-search')?.addEventListener('input', (ev) => {
             .then(r => r.json())
             .then(json => {
                 if (json.success && json.data?.length) {
-                    ao_renderSlList(json.data);
+                    ao_renderSlList('ao-sl-', json.data);
                 } else {
                     const dropdown = $ao('ao-sl-dropdown');
                     dropdown.innerHTML = '<div style="padding:10px;color:#999;font-size:12px;">No matching sub-ledgers. Try creating one below.</div>';
@@ -860,6 +899,94 @@ $ao('ao-sl-search')?.addEventListener('input', (ev) => {
             })
             .catch(e => ao_slShowErr('Search failed: ' + e.message));
     }, 300);
+});
+
+/* ── Step 2 (Add/Edit form): Sub-Ledger picker on 'ao-coa-sl-' fields ── */
+function ao_coaSlReset() {
+    $ao('ao-coa-sl-search').value = '';
+    $ao('ao-coa-sl-selected-code-value').value = '';
+    $ao('ao-coa-sl-selected-item').style.display = 'none';
+    $ao('ao-coa-sl-dropdown').innerHTML = '';
+    $ao('ao-coa-sl-dropdown').style.display = 'none';
+    $ao('ao-coa-sl-empty-note').style.display = 'none';
+    $ao('ao-coa-sl-new-title').value = '';
+}
+
+function ao_coaSlEnable() {
+    $ao('ao-coa-sl-search').disabled = false;
+    $ao('ao-coa-sl-search').placeholder = 'Type account code or description...';
+    $ao('ao-coa-sl-section').style.opacity = '1';
+    $ao('ao-coa-sl-section').style.pointerEvents = 'auto';
+}
+
+function ao_coaSlDisable() {
+    $ao('ao-coa-sl-search').disabled = true;
+    $ao('ao-coa-sl-search').placeholder = 'Select a GL account first…';
+    $ao('ao-coa-sl-section').style.opacity = '.5';
+    $ao('ao-coa-sl-section').style.pointerEvents = 'none';
+}
+
+let ao_coaSlSearchTimer;
+$ao('ao-coa-sl-search')?.addEventListener('input', (ev) => {
+    const query = ev.target.value.trim();
+    clearTimeout(ao_coaSlSearchTimer);
+
+    if (!query) {
+        $ao('ao-coa-sl-dropdown').style.display = 'none';
+        return;
+    }
+
+    ao_coaSlSearchTimer = setTimeout(() => {
+        const accountId = $ao('ao-coa-account-id').value;
+        if (!accountId) return;
+        fetch(`${AO_API}/../accounting/sl/search?account_id=${encodeURIComponent(accountId)}&q=${encodeURIComponent(query)}&limit=50`, { credentials: 'same-origin' })
+            .then(r => r.json())
+            .then(json => {
+                if (json.success && json.data?.length) {
+                    ao_renderSlList('ao-coa-sl-', json.data);
+                } else {
+                    const dropdown = $ao('ao-coa-sl-dropdown');
+                    dropdown.innerHTML = '<div style="padding:10px;color:#999;font-size:12px;">No matching sub-ledgers. Try creating one below.</div>';
+                    dropdown.style.display = 'block';
+                }
+            })
+            .catch(e => ao_showErr('Search failed: ' + e.message));
+    }, 300);
+});
+
+$ao('ao-coa-sl-create-btn')?.addEventListener('click', async () => {
+    ao_hideErr();
+    const glAccountId = $ao('ao-coa-account-id').value;
+    const title = $ao('ao-coa-sl-new-title').value.trim();
+
+    if (!glAccountId) { ao_showErr('Select a GL account first.'); return; }
+    if (!title)        { ao_showErr('Enter a title for the new sub-ledger.'); return; }
+
+    try {
+        window.PagePreloader?.show();
+        const res = await fetch(`${AO_API}/../accounting/sl/create`, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ parent_account_id: glAccountId, account_title: title }),
+        });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message || 'Failed to create sub-ledger.');
+
+        const created = json.data;
+        $ao('ao-coa-sl-search').value = created.account_code;
+        $ao('ao-coa-sl-selected-code-value').value = created.account_id;
+        $ao('ao-coa-sl-selected-code').textContent = created.account_code;
+        $ao('ao-coa-sl-selected-item').style.display = 'block';
+        $ao('ao-coa-sl-empty-note').style.display = 'none';
+        $ao('ao-coa-sl-new-title').value = '';
+
+        ao_toast('Sub-ledger account created.', 'success');
+    } catch (e) {
+        ao_showErr(e.message);
+    } finally {
+        window.PagePreloader?.hide();
+    }
 });
 
 /* ── Step 2b: Create a new sub-ledger under the selected GL ───── */
