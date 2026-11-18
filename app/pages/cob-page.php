@@ -113,7 +113,7 @@ $_cob_showReport = false;
                 <div class="nha-sc-label">Revised Amount</div>
                 <div class="nha-sc-val" id="cob-kpi-revised">—</div>
             </div></div>
-            <p class="nha-kpi-sub" id="cob-kpi-revised-sub">Approved Amount less Revision / Realignment</p>
+            <p class="nha-kpi-sub" id="cob-kpi-revised-sub">Approved Amount net of Revision / Realignment</p>
         </div>
         <div class="nha-sc nha-sc-green">
             <div class="nha-sc-top"><div>
@@ -187,9 +187,9 @@ $_cob_showReport = false;
     <?php
     // The columns of the COB Monitoring sheet (key = what the API sends, in this order) — cob-page's JS carries the same list (COB_COLS).
     $_cob_cols = [
-        ['approved_amount', 'Approved Amount', 'The amount FMD suggested in the Budget Proposal module'],
+        ['approved_amount', 'Approved Amount', 'The amount FMD suggested in the Budget Proposal module, before any revision or CBA'],
         ['revision_amount', 'Revision / Realignment', 'Net of the approved Budget Revisions (an increase, or a decrease in brackets)'],
-        ['revised_amount', 'Revised Amount', 'Approved Amount less Revision / Realignment'],
+        ['revised_amount', 'Revised Amount', 'Approved Amount net of Revision / Realignment (a decrease lowers it)'],
         ['cba_requested', 'CBA Requested', 'Taken off the budget by approved CBAs (Certificates of Budget Availability)'],
         ['available_amount', 'Available for Earmarking', 'Revised Amount less CBA Requested — what a new CBA can still draw'],
         ['rfa_approved', 'RFA Approved', 'Drawn from the CBAs by approved RFAs'],
@@ -234,8 +234,8 @@ $_cob_showReport = false;
                     </tbody>
                 </table>
             </div>
-            <p class="cob-note">Only <strong>Approved</strong> budget requests are counted. <strong>Approved Amount</strong> is what FMD suggested in the Budget Proposal module;
-                <strong>Revision / Realignment</strong> is the net of its approved Budget Revisions, and <strong>Revised Amount</strong> is the Approved Amount less it. <strong>CBA Requested</strong> is what approved CBAs have taken off the
+            <p class="cob-note">Only <strong>Approved</strong> budget requests are counted. <strong>Approved Amount</strong> is what FMD suggested in the Budget Proposal module, as first suggested — before any revision or CBA;
+                <strong>Revision / Realignment</strong> is the net of its approved Budget Revisions (a decrease is in brackets), and <strong>Revised Amount</strong> is the Approved Amount net of it. <strong>CBA Requested</strong> is what approved CBAs have taken off the
                 budget, which leaves <strong>Available for Earmarking</strong>. A CBA only reserves money: <strong>RFA Approved</strong> and <strong>LAA Issued</strong> are what has
                 actually been drawn from those reservations, so <strong>Remaining Balance</strong> is the Revised Amount less both. A dash means zero; brackets mean negative.
                 The table is in two parts. <strong>CO</strong> (capital outlay, accounts starting with 1) is the budget of the programs and their projects. <strong>COE</strong> is the budget
@@ -271,9 +271,9 @@ if ($_cob_showReport) {
 
    What it shows: ONLY the Approved budget requests (fims.budget_req, status 'Approved') and what hangs off them — programs, sub-programs, projects,
    chart-of-accounts line items, supporting documents — in the eight columns of the COB Monitoring sheet (CobService has the exact definitions):
-     Approved Amount        what FMD suggested in the Budget Proposal module
-     Revision / Realignment net of the approved Budget Revisions
-     Revised Amount         = Approved Amount - Revision / Realignment (worked out per line)
+     Approved Amount        what FMD suggested in the Budget Proposal module, as first suggested (before any revision or CBA)
+     Revision / Realignment net of the approved Budget Revisions (signed: a decrease is negative)
+     Revised Amount         = Approved Amount + Revision / Realignment (worked out per line)
      CBA Requested          taken off the budget by approved CBAs
      Available for Earmarking = Revised Amount - CBA Requested (the line's live balance)
      RFA Approved / LAA Issued   drawn from the CBAs' reservations by approved RFAs / LAAs
