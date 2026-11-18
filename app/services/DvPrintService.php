@@ -3,6 +3,7 @@
 namespace PHPMaker2024\FIMS\Service;
 
 use PHPMaker2024\FIMS as App;
+use PHPMaker2024\FIMS\DataType;
 
 /**
  * DV (Disbursement Voucher — General Form No. 1, revised November 3, 1992)
@@ -61,6 +62,64 @@ class DvPrintService
      *   deductions > 12: rows 1–11, then row 12 "See attached" with the rest's sum (the total stays right);
      *   particulars longer than the box: its start + "... (see attached)".
      */
+    /**
+     * The form prints GL codes only, one row per GL: a line posted to an SL account (the UACS GL code plus an SL
+     * segment — e.g. 2-02-01-020-10 GSIS Consolidated Loan Payable, 2-99-99-992-12 NHA Housing Loan Payable)
+     * prints as its GL (2-02-01-020, 2-99-99-992), and the lines of one GL are summed. A GL is the first four
+     * segments of the code (x-xx-xx-xxx), used only when that account exists in the Chart of Accounts. Rows keep
+     * the order of their first line.
+     */
+    private static function rollUpToGl(array $entries): array
+    {
+        $glOf = [];   // SL code → its GL code
+        foreach ($entries as $e) {
+            $code  = is_array($e) ? trim((string) ($e['account_code'] ?? '')) : '';
+            $parts = explode('-', $code);
+            if (count($parts) > 4) {
+                $glOf[$code] = implode('-', array_slice($parts, 0, 4));
+            }
+        }
+        if ($glOf) {
+            try {
+                $list  = implode(', ', array_map(static fn ($c) => App\QuotedValue($c, DataType::STRING, 'DB'), array_unique($glOf)));
+                $found = array_column(App\ExecuteRows("SELECT account_code FROM fims.chart_of_accounts WHERE account_code IN ({$list})", 'DB') ?: [], 'account_code');
+                $glOf  = array_filter($glOf, static fn ($gl) => in_array($gl, $found, true));
+            } catch (\Throwable $e) {
+                App\LogError('DvPrintService::rollUpToGl ' . $e->getMessage());   // print the lines as they are
+                $glOf = [];
+            }
+        }
+        $parentOf = $glOf;
+
+        $rows = [];
+        foreach ($entries as $e) {
+            if (!is_array($e)) {
+                continue;
+            }
+            $code = trim((string) ($e['account_code'] ?? ''));
+            $gl   = $parentOf[$code] ?? $code;
+            $key  = $gl !== '' ? $gl : '#' . count($rows);   // a line without an account stays its own row
+            $dr   = PrintService::amount($e['debit'] ?? $e['debit_amount'] ?? null);
+            $cr   = PrintService::amount($e['credit'] ?? $e['credit_amount'] ?? null);
+            if (!isset($rows[$key])) {
+                $rows[$key] = ['obligation' => $e['obligation'] ?? '', 'fpa' => $e['fpa'] ?? '', 'object_code' => $e['object_code'] ?? '',
+                               'account_code' => $gl, 'debit' => 0.0, 'credit' => 0.0];
+            }
+            $rows[$key]['debit']  = round($rows[$key]['debit'] + $dr, 2);
+            $rows[$key]['credit'] = round($rows[$key]['credit'] + $cr, 2);
+        }
+
+        return array_values($rows);
+    }
+
+    /** "GSIS (Payroll)" → "GSIS", "Other Payroll Deductions" → "Other Deductions" — fits the form's deduction labels. */
+    private static function shortDeductionLabel(string $label): string
+    {
+        $label = trim((string) preg_replace('/\s*\(Payroll\)\s*/i', ' ', $label));
+
+        return preg_replace('/^Other Payroll Deductions\b/i', 'Other Deductions', $label);
+    }
+
     public function model(array $p): array
     {
         $t      = static fn (string $k) => PrintService::text($p[$k] ?? '');
@@ -97,7 +156,7 @@ class DvPrintService
             'SIGN_4' => $isMain ? '' : $t('approving_officer'), 'POS_4' => $isMain ? '' : $t('approver_title'),
         ];
 
-        $entries = array_values(is_array($p['accounting_entries'] ?? null) ? $p['accounting_entries'] : []);
+        $entries = self::rollUpToGl(array_values(is_array($p['accounting_entries'] ?? null) ? $p['accounting_entries'] : []));
         $allEntries = $entries;
         if (count($entries) > self::ENTRY_ROWS) {   // the last row carries the rest — "SEE ATTACHED", their sums
             $rest = array_slice($entries, self::ENTRY_ROWS - 1);
@@ -116,7 +175,8 @@ class DvPrintService
         }
 
         $deductions = array_values(array_filter(array_map(static fn ($d) => [
-            'label'  => PrintService::text($d['description'] ?? $d['label'] ?? '') ?: 'Other Deduction',
+            // the label column is narrow: the payroll deduction types print without their "(Payroll)" tag
+            'label'  => self::shortDeductionLabel(PrintService::text($d['description'] ?? $d['label'] ?? '')) ?: 'Other Deduction',
             'amount' => PrintService::amount($d['amount'] ?? null),
         ], is_array($p['deductions'] ?? null) ? $p['deductions'] : []), static fn ($d) => $d['amount'] > 0));
         $shown = $deductions;
