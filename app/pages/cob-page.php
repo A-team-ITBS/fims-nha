@@ -73,7 +73,8 @@ $_cob_showReport = false;
 #cob-root .cob-dash { color: var(--afims-text-disabled, #A9AAB8); }
 #cob-root .cob-clip { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; font-weight: 600; color: var(--afims-primary-text, #0035A9); }
 #cob-root .cob-clip svg { width: 12px; height: 12px; stroke: currentColor; }
-#cob-root .cob-total-row > td { font-weight: 700; background: var(--afims-surface-subtle, #F4F7FA); border-top: 2px solid var(--afims-border, #E4ECF2); }
+/* the TOTAL row sits at the top of the body, so its rule is underneath it */
+#cob-root .cob-total-row > td { font-weight: 700; background: var(--afims-surface-subtle, #F4F7FA); border-bottom: 2px solid var(--afims-border, #E4ECF2); }
 </style>
 
 <div id="cob-root" class="nha-root">
@@ -602,7 +603,8 @@ function cob_renderTree(tab) {
     }
     const rows = [];
     cob_collect(tab, nodes, 0, '', rows);
-    if (totals) rows.push(`<tr class="cob-total-row"><td colspan="2">TOTAL</td>${cob_amountCells(totals)}<td class="no-print"></td></tr>`);
+    // the TOTAL row goes first, right under the headings, not after the last row (as on the RFA / LAA Monitoring page)
+    if (totals) rows.unshift(`<tr class="cob-total-row"><td colspan="2">TOTAL</td>${cob_amountCells(totals)}<td class="no-print"></td></tr>`);
     body.innerHTML = rows.join('');
     const n = totals ? totals.line_count : 0;
     $cob('cob-info-' + tab).textContent = `${n} approved line item${n === 1 ? '' : 's'} — click a row to expand it`;

@@ -783,7 +783,8 @@ class AdvancedSecurity
     // Get all User Level settings from database
     public function setupUserLevelEx()
     {
-        global $Language, $Page, $USER_LEVELS, $USER_LEVEL_PRIVS, $USER_LEVEL_TABLES;
+        global $Page, $USER_LEVELS, $USER_LEVEL_PRIVS, $USER_LEVEL_TABLES;
+        $Language = Language();
 
         // Load user level from user level settings first
         $this->UserLevel = $USER_LEVELS;

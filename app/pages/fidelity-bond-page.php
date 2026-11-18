@@ -38,6 +38,12 @@
  * address the php container uploads to, DO_SPACES_PUBLIC_ENDPOINT is the
  * host-mapped port a browser can reach for presigned view URLs.
  *
+ * The CL scan's autofill (Tab 3) OCRs client-side via Tesseract.js/pdf.js,
+ * both loaded from CDN below — see fbClRunOcr() — so autofill works on any
+ * host without installing anything server-side; the server only pattern-
+ * matches the text the browser already recognized (FidelityBondService::
+ * extractClFromText()).
+ *
  * Markup/CSS classes (fims-page-header, fims-stat-grid, fims-table-panel,
  * fims-tabs-underline, fims-modal-overlay, etc.) match app/fims-css/fims.css,
  * same convention as check-disbursement-voucher-page.php.
@@ -48,6 +54,13 @@ namespace PHPMaker2024\FIMS;
 $fbCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
 ?>
 <link rel="stylesheet" href="/app/fims-css/fims.css?v=<?= $fbCssVer ?>" />
+<!-- CL scan autofill (Tab 3, fbClRunOcr()) — client-side OCR, no server
+     binary required. pdf.js only needed to rasterize a PDF's first page to
+     an image before handing it to Tesseract.js (which reads images only);
+     pdf.worker src is set lazily in fbClRunOcr() since GlobalWorkerOptions
+     isn't available until this deferred script has actually loaded. -->
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" defer></script>
 
 <div class="fims-wrap" id="fbModule">
 
@@ -611,11 +624,77 @@ $fbCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
     initFbUpload('fbAppProofInput', 'fbAppProofUrl', 'fbAppProofStatus');
     initFbUpload('fbAppOoFileInput', 'fbAppOoFileUrl', 'fbAppOoFileStatus');
     // Confirmation Letter scan dropzone — uploads the file to storage AND
-    // runs it through best-effort local-OCR autofill (no AI/API key
-    // involved, see FidelityBondService::extractClFromScan()'s own
+    // runs it through best-effort OCR autofill (no AI/API key involved; see
+    // fbClRunOcr() below and FidelityBondService::extractClFromText()'s own
     // docblock for why that can be wrong) in parallel, animating the
     // dropzone's icon/progress bar until BOTH finish. Every autofilled
     // field stays editable regardless of what the scan read.
+
+    // Rasterizes a PDF's first page (a Confirmation Letter is always one
+    // page) to a PNG blob via pdf.js, since Tesseract.js only reads images.
+    // PDF.js's viewport scale is relative to 72dpi, so scale 300/72 matches
+    // the 300dpi the old server-side `pdftoppm -r 300` used — anything
+    // lower starves OCR on the smaller text (the Transmittal No. near the
+    // letterhead seal, the Station column squeezed into the officer table)
+    // well before it visibly affects the large/bold table text, which is
+    // why those were the fields that came back blank at a lower scale.
+    function fbClRenderPdfFirstPageToBlob(file) {
+        return file.arrayBuffer()
+            .then(function (buf) { return pdfjsLib.getDocument({ data: buf }).promise; })
+            .then(function (pdf) { return pdf.getPage(1); })
+            .then(function (page) {
+                const viewport = page.getViewport({ scale: 300 / 72 });
+                const canvas = document.createElement('canvas');
+                canvas.width = viewport.width;
+                canvas.height = viewport.height;
+                return page.render({ canvasContext: canvas.getContext('2d'), viewport: viewport }).promise
+                    .then(function () { return new Promise(function (resolve) { canvas.toBlob(resolve, 'image/png'); }); });
+            });
+    }
+
+    // Runs OCR entirely in the browser (Tesseract.js, WASM — both it and
+    // pdf.js above load from CDN, see the <script> tags near the top of
+    // this page) so autofill works on any host: the server never shells
+    // out to a Tesseract/poppler binary, so there's nothing to install
+    // server-side regardless of OS. Resolves to the recognized text, or
+    // rejects if the libraries didn't load (e.g. CDN unreachable) or the
+    // file type isn't one OCR can read.
+    function fbClRunOcr(file) {
+        if (typeof Tesseract === 'undefined' || typeof pdfjsLib === 'undefined') {
+            return Promise.reject(new Error('OCR library did not load — check your internet connection.'));
+        }
+        // workerSrc can only be set once pdf.js itself has loaded (it's a
+        // deferred CDN script), so this is set lazily here on first use
+        // rather than at page load.
+        if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        }
+        const ext = (file.name.split('.').pop() || '').toLowerCase();
+        const imageSource = ext === 'pdf' ? fbClRenderPdfFirstPageToBlob(file)
+            : ['jpg', 'jpeg', 'png'].includes(ext) ? Promise.resolve(file)
+                : Promise.reject(new Error("Can't read a ." + ext + " file for autofill — upload a PDF, JPG, or PNG scan."));
+        // v5 API: no top-level Tesseract.recognize() — a worker must be
+        // created (downloads the WASM core + eng traineddata from CDN on
+        // first use, cached by the browser after) and torn down per call.
+        let worker;
+        return imageSource
+            .then(function (src) { return Tesseract.createWorker('eng').then(function (w) { worker = w; return w.recognize(src); }); })
+            .then(function (result) {
+                worker.terminate();
+                // Logged, not shown — if a field still comes out wrong,
+                // open devtools and compare this raw OCR text against what
+                // FidelityBondService::parseClTemplate() expects before
+                // assuming it's an OCR quality problem rather than a
+                // template-matching one.
+                console.log('Fidelity Bond CL scan raw OCR text:', result.data.text);
+                return result.data.text;
+            })
+            .catch(function (err) {
+                if (worker) worker.terminate();
+                throw err;
+            });
+    }
+
     function fbClFormatBytes(n) {
         if (n < 1024) return n + ' B';
         if (n < 1024 * 1024) return (n / 1024).toFixed(0) + ' KB';
@@ -686,9 +765,10 @@ $fbCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
                 checkBothDone();
             });
 
-        const extractFd = new FormData();
-        extractFd.append('file', file);
-        fetch(API + '/cl/extract', { method: 'POST', headers: authHeaders(), body: extractFd })
+        fbClRunOcr(file)
+            .then(function (text) {
+                return fetch(API + '/cl/extract', { method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ text: text }) });
+            })
             .then(r => r.json())
             .then(function (json) {
                 extractDone = true;
@@ -766,7 +846,11 @@ $fbCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
                 }
                 checkBothDone();
             })
-            .catch(function () { extractDone = true; checkBothDone(); });
+            .catch(function (err) {
+                extractDone = true;
+                console.log('Fidelity Bond CL scan OCR skipped:', err && err.message);
+                checkBothDone();
+            });
     }
     document.getElementById('fbClFileInput')?.addEventListener('change', function () {
         fbClHandleFile(this.files && this.files[0]);
