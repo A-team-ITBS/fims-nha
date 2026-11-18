@@ -685,9 +685,19 @@ function bpr_pickCellHtml(kind, code, fallback) {
         </div></td>`;
 }
 
-function bpr_rowHtml(li) {
+// COE line items have no Project/Fund-source tree of their own (fims.type_of_fund) to infer a Type of
+// Fund from, so bpr_rowHtml defaults a not-yet-set one to "CORPORATE RECEIPT" — COE is funded from the
+// agency's own corporate receipts, never Trust Fund/NG Support/NF. Still just the select's initial value,
+// not forced: the Budget Officer can change it before Endorse like any other row.
+function bpr_defaultCoeFundId() {
+    return BPR_FUNDS?.find(f => String(f.name).trim().toUpperCase() === 'CORPORATE RECEIPT')?.type_of_fund_id ?? null;
+}
+
+// isCoe: true for a COE line item's row (bpr_coeBlockHtml) — see bpr_defaultCoeFundId above.
+function bpr_rowHtml(li, isCoe = false) {
+    const fundId = li.type_of_fund_id ?? (isCoe ? bpr_defaultCoeFundId() : null);
     return `<tr data-li-id="${Number(li.budget_line_item_id)}">
-        <td><select class="nha-filter-select bpr-field bpr-fund">${bpr_optionsHtml(BPR_FUNDS, 'type_of_fund_id', li.type_of_fund_id)}</select></td>
+        <td><select class="nha-filter-select bpr-field bpr-fund">${bpr_optionsHtml(BPR_FUNDS, 'type_of_fund_id', fundId)}</select></td>
         <!-- <td><select class="nha-filter-select bpr-field bpr-component">${bpr_optionsHtml(BPR_COMPONENTS, 'component_type_id', li.component_id)}</select></td> -->
         ${bpr_pickCellHtml('account', li.account_id, li.account_code)}
         <td><div class="bpr-ro"><span class="bpr-acct-title">${bgr_esc(li.account_title)}</span>${li.particulars ? `<span class="bpr-desc-sub">${bgr_esc(li.particulars)}</span>` : ''}</div></td>
@@ -887,7 +897,7 @@ function bpr_programHtml(program, pi) {
 // the same way bpr_projectHtml nests inside a Program's own card.
 function bpr_coeBlockHtml(lineItems) {
     const rowsHtml = lineItems.length
-        ? lineItems.map(bpr_rowHtml).join('')
+        ? lineItems.map(li => bpr_rowHtml(li, true)).join('')
         : '<tr><td colspan="5"><div class="bpr-empty">No line items have been added yet.</div></td></tr>';
 
     return `<section class="bpr-block" data-block="coe">
