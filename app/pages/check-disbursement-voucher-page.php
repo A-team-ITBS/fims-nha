@@ -112,7 +112,7 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
         </div>
 
         <div class="cp-status-tabs" id="prepStatusTabs">
-            <?php foreach (["" => "All", "PREPARED" => "Prepared", "RELEASED_PENDING" => "For Released", "RELEASED_DONE" => "Released", "ENCASHED" => "Encashed", "OUTSTANDING" => "Outstanding", "STALE" => "Stale", "CANCELLED" => "Cancelled", "VOIDED" => "Voided"] as $val => $label): ?>
+            <?php foreach (["" => "All", "PREPARED" => "Prepared", "RELEASED_PENDING" => "For Release", "RELEASED_DONE" => "Released", "STALE" => "Stale", "CANCELLED" => "Cancelled"] as $val => $label): ?>
             <button type="button" class="fims-badge cp-status-tab<?= $val === "" ? " active" : "" ?>" data-status="<?= $val ?>"><?= $label ?></button>
             <?php endforeach; ?>
         </div>
@@ -217,9 +217,8 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
          directly from Check Preparation. The Released/Cancellation tabs
          keep this in sync automatically for the normal release/cancel
          flows (see CheckProcessingService::syncCheckStatusFromRelease() /
-         cancelCheck()); this is for everything else (ENCASHED/OUTSTANDING/
-         VOIDED, or a manual correction) that nothing else in this module
-         sets on its own.
+         cancelCheck()); this is for a manual correction that nothing else
+         in this module sets on its own.
     ══════════════════════════════════════════════ -->
     <div class="fims-modal-overlay" id="m-set-check-status" style="display:none;">
         <div class="fims-modal-dialog" style="max-width:420px;width:95vw;">
@@ -232,12 +231,9 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
                     <label class="fims-label">Status <span class="text-danger">*</span></label>
                     <select class="fims-select" id="setStatusSelect">
                         <option value="PREPARED">Prepared</option>
-                        <option value="RELEASED">For Released</option>
-                        <option value="ENCASHED">Encashed</option>
-                        <option value="OUTSTANDING">Outstanding</option>
+                        <option value="RELEASED">For Release</option>
                         <option value="STALE">Stale</option>
                         <option value="CANCELLED">Cancelled</option>
-                        <option value="VOIDED">Voided</option>
                     </select>
                     <div id="setStatusReasonGroup" style="display:none;margin-top:10px;">
                         <label class="fims-label">Cancellation Reason <span class="text-danger">*</span></label>
@@ -492,7 +488,7 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
 .cp-status-tab.active { opacity: 1; }
 
 /* Claimant/Reason columns are only meaningful for one status pill each
-   (Claimant: For Released/Released; Reason: Cancelled) — hidden everywhere
+   (Claimant: For Release/Released; Reason: Cancelled) — hidden everywhere
    else via a class toggled on #prepChecksTable in buildPrepParams()'s
    caller, instead of showing mostly-empty columns under "All". */
 #prepChecksTable:not(.show-claimant-col) .prep-col-claimant { display: none; }
@@ -578,12 +574,12 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
     // requires looking at its associated check_releases row's own status
     // too (see getChecksList()'s LATERAL join): RELEASED/ACKNOWLEDGED there
     // means truly handed over ("Released"); PENDING/NOTIFIED/UNCLAIMED (or
-    // no release row at all yet) means "For Released". releaseStatus is
+    // no release row at all yet) means "For Release". releaseStatus is
     // optional — callers without it (e.g. the Cancellation list, where
     // status is always CANCELLED anyway) just get the plain status code.
     function checkStatusLabel(status, releaseStatus) {
         if (status !== 'RELEASED') return status;
-        return ['RELEASED', 'ACKNOWLEDGED'].includes(releaseStatus) ? 'Released' : 'For Released';
+        return ['RELEASED', 'ACKNOWLEDGED'].includes(releaseStatus) ? 'Released' : 'For Release';
     }
 
     function checkStatusBadgeClass(status, releaseStatus) {
@@ -593,9 +589,9 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
 
     // Display label for a check_releases row's own status (PENDING/NOTIFIED/
     // RELEASED/ACKNOWLEDGED/UNCLAIMED) — PENDING (not yet handed over) reads as
-    // "For Released" here too, matching the KPI card and status filter above.
+    // "For Release" here too, matching the KPI card and status filter above.
     function releaseStatusLabel(status) {
-        return status === 'PENDING' ? 'For Released' : status;
+        return status === 'PENDING' ? 'For Release' : status;
     }
 
     // ── Modal open/close (real fims-modal-overlay pattern: display:flex/none) ──
@@ -734,10 +730,10 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
                 const isAllFilter = !(document.querySelector('#prepStatusTabs .cp-status-tab.active')?.dataset.status || '');
                 tbody.innerHTML = rows.map(function (r, i) {
                     const printedBadge = r.printed_at ? ' <span class="fims-badge fims-badge-blue" title="Printed ' + escapeHtml(r.printed_at) + '"><i class="fas fa-print"></i></span>' : '';
-                    // "For Released" (status RELEASED) with a release row still
+                    // "For Release" (status RELEASED) with a release row still
                     // short of RELEASED/ACKNOWLEDGED — Mark as Released confirms
                     // the hand-over in place. Send Notice is offered for any
-                    // "For Released" row regardless of release_type (not just
+                    // "For Release" row regardless of release_type (not just
                     // EMAIL_NOTICE) — the recipient email just comes pre-filled
                     // when the release already has one, and is typed in by hand
                     // otherwise (e.g. a DIRECT release created via Set Status).
@@ -817,7 +813,7 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
     // ── Mark as Released / Send Notice — per-row shortcuts for a "For
     // Released" check, acting on its associated check_releases row (see
     // getChecksList()'s LATERAL join). Mark as Released reuses the same
-    // generic update-status endpoint the For Released tab's own action
+    // generic update-status endpoint the For Release tab's own action
     // does; Send Notice opens the shared m-send-notice modal pre-filled for
     // this one release (that modal's Send Notice toolbar button in the For
     // Released tab was removed — this is now the only entry point). ──
