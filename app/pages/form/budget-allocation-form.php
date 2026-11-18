@@ -1325,13 +1325,15 @@ $cbaAllowedTypes = array_values(array_intersect(['CBA', 'RFA', 'LAA', 'CFA'], ar
 
 			<div class="form-row cols-vendor" id="vendor_row">
 				<!-- Vendor Name → GET /vendors/all?active=1 (dropdown pick only — see vendSetupSearch()); saved as
-				     vendor_id. Picking one shows its Code / Type / Address, read-only, below. -->
+				     vendor_id. Picking one shows its Code / Type / Address, read-only, below.
+				     required is toggled off in cbaApplyAllocationTypeVisibility() whenever #vendor_section itself
+				     is hidden (CBA) — a hidden field must never block submit, same reasoning as #proj_search. -->
 				<div class="form-group">
-					<label for="vendor_search" class="form-label">Vendor Name</label>
+					<label for="vendor_search" class="form-label">Vendor Name <span class="required">*</span></label>
 					<div class="select-loading-wrapper is-loading" id="vendor_wrapper" style="overflow:visible;">
 						<div style="position:relative;overflow:visible;">
 							<input type="text" id="vendor_search" class="form-input" placeholder="Search vendor&hellip;"
-								maxlength="500" autocomplete="off" disabled>
+								maxlength="500" autocomplete="off" disabled required>
 							<div id="vendor_dropdown" class="pc-dropdown"></div>
 						</div>
 						<input type="hidden" id="vendor_id" name="vendor_id" value="">
@@ -2950,6 +2952,8 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 
 		var vendorSection = document.getElementById('vendor_section');
 		if (vendorSection) vendorSection.style.display = isCBA ? 'none' : '';
+		var vendSearchEl = document.getElementById('vendor_search');
+		if (vendSearchEl) vendSearchEl.required = !isCBA;
 		if (isCBA) cbaClearVendor();
 
 		var biddingRow = document.getElementById('is_bidding_row');
