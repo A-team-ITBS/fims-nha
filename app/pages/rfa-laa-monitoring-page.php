@@ -10,8 +10,9 @@ namespace PHPMaker2024\FIMS;
  * Originating Unit rows above it — where a project sits is a muted line under its name) and its children are the RFAs / LAAs, then the voucher of an
  * RFA — with the columns
  *   Revised Amount · RFA / LAA Amount · Disbursement · Unallocated Amount · Account Payable
- * (CobService works the figures out per budget line; see its header comment for each definition). The Revised Amount is the proposed amount net
- * of its adjustments / realignments (proposed + adjustment, the adjustment being signed) — worked out per line, not the recorded revised_amount.
+ * (CobService works the figures out per budget line; see its header comment for each definition). The Revised Amount is the same figure as the COB
+ * page's: the Approved Amount (as FMD suggested it, before any revision or CBA) net of its revisions / realignments (the revision being signed) — worked
+ * out per line, not the recorded revised_amount.
  * Disbursement is what the disbursement vouchers connected to the RFAs / LAAs have disbursed (each voucher's gross_amount, a cancelled or rejected one
  * not counted), and it is part of every total — the project rows, the TOTAL and the cards. Account Payable is the RFA / LAA Amount less the Disbursement.
  *
@@ -141,7 +142,7 @@ $_rlm_api = Config('API.FIMS_URL');
                 <div class="nha-sc-label">Revised Amount</div>
                 <div class="nha-sc-val" id="rlm-kpi-revised">—</div>
             </div></div>
-            <p class="nha-kpi-sub">Proposed amount net of adjustments / realignments</p>
+            <p class="nha-kpi-sub">Approved budget net of revisions / realignments</p>
         </div>
         <div class="nha-sc nha-sc-blue">
             <div class="nha-sc-top"><div>
@@ -227,7 +228,7 @@ $_rlm_api = Config('API.FIMS_URL');
     <?php
     // The amount columns (key = what the API sends, in this order) — the page's JS carries the same list (RLM_COLS).
     $_rlm_cols = [
-        ['revised_computed', 'Revised Amount', 'The proposed amount net of its adjustments / realignments (a decrease lowers it): proposed + adjustment'],
+        ['revised_computed', 'Revised Amount', 'The approved budget (as FMD suggested it) net of its revisions / realignments (a decrease lowers it) — the same figure as the COB page'],
         ['rfa_laa_amount', 'RFA / LAA Amount', 'RFA Approved plus LAA Issued — what approved RFAs and issued LAAs have drawn from the CBAs'],
         ['disbursement', 'Disbursement', 'The gross amount of the disbursement vouchers connected to the RFAs / LAAs (a cancelled or rejected voucher is not counted)'],
         ['unallocated_amount', 'Unallocated Amount', 'Revised Amount less the RFA / LAA Amount — the revised budget no RFA or LAA has drawn yet'],
@@ -258,7 +259,7 @@ $_rlm_api = Config('API.FIMS_URL');
                 </tbody>
             </table>
         </div>
-        <p class="rlm-note">Each row is a project of an <strong>Approved</strong> budget request; under the project's name is where it sits (program › sub-program › originating unit). <strong>Revised Amount</strong> is the proposed amount net of its adjustments and realignments (a decrease lowers it).
+        <p class="rlm-note">Each row is a project of an <strong>Approved</strong> budget request; under the project's name is where it sits (program › sub-program › originating unit). <strong>Revised Amount</strong> is the approved budget (as FMD suggested it) net of its revisions and realignments (a decrease lowers it) — the same figure as on the COB page.
             <strong>RFA / LAA Amount</strong> is what approved RFAs and issued LAAs have drawn from the CBAs' reservations, and <strong>Unallocated Amount</strong> is the
             Revised Amount less it. <strong>Disbursement</strong> is the gross amount of the disbursement vouchers connected to the RFAs and LAAs (a cancelled or rejected voucher is not counted) and is included in every total, and <strong>Account Payable</strong> is the RFA / LAA Amount less it. Open a project to see
             the RFAs and LAAs drawn against it, and an RFA or LAA that has a disbursement voucher connected (a "1 DV" tag) to see it. A dash means zero; brackets mean negative.
@@ -290,7 +291,7 @@ include __DIR__.'/readone/cob-readone.php';
    (node type 'allocation') and, under an RFA, its disbursement voucher (node type 'dv'). Those two are detail rows: they show their own figure in one
    column (RFA / LAA Amount, Disbursement) and dashes elsewhere, and no total counts them.
    What it shows: ONLY the Approved budget requests, in five amount columns that start at the Revised Amount:
-     Revised Amount         budget_line_items.proposed_amount + adjustment (the adjustment is signed: a decrease / realignment out is negative), worked out per line
+     Revised Amount         the COB page's: the Approved Amount (as first suggested by FMD) + the adjustment (signed: a decrease / realignment out is negative), per line
      RFA / LAA Amount       RFA Approved + LAA Issued: what approved RFAs / LAAs drew from the CBAs' reservations
      Disbursement           the gross_amount of the vouchers connected to the RFAs / LAAs (cancelled / rejected not counted), in every total
      Unallocated Amount     = Revised Amount - RFA / LAA Amount

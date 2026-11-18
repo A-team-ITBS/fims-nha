@@ -81,7 +81,7 @@ Revised, Available and Remaining are all worked out, so three identities hold on
 > signed `adjustment` to it (`BudgetRevisionService`, the `from_upd` / `to_upd` statements). Reading it as the Approved Amount put a revised line's *new* amount under Approved, and
 > subtracting `adjustment` from it took the revision back out again — a line cut from 352,418 to 130,000 showed Approved 130,000 and Revised 352,418, and a line with a 150,000 CBA showed a
 > negative Available (the CBA was taken off twice). Adding the CBAs back and removing the adjustment gives the amount as first suggested: Approved 352,418, Revision (222,418), Revised 130,000.
-> The Revised Amount then equals the RFA / LAA Monitoring page's (`proposed_amount + adjustment`) whenever FMD suggested the proposed amount.
+> The RFA / LAA Monitoring page shows this same Revised Amount (see below), so the two pages always agree.
 
 Rules worth knowing:
 - A **deleted** memo request (`budget_allocation.deleted_at`) counts for nothing — the earmark rows of a deleted RFA / LAA survive in the ledger, so the allocation's `deleted_at` is what is filtered on.
@@ -97,7 +97,7 @@ so they are unaffected.
 
 | Key | Per budget line |
 |---|---|
-| `revised_computed` | `proposed_amount + adjustment` — the proposed amount net of the approved revisions / realignments (the adjustment is signed, so a decrease lowers it). **This page's Revised Amount**: worked out per line — worked out from the proposed amount, where the COB page's `approved + revision` starts from the suggested amount, so the two agree whenever FMD suggested the proposed amount |
+| `revised_computed` | The COB page's Revised Amount, unchanged (`Approved + adjustment` = `suggested_amount + CBA Requested`): the budget as FMD suggested it, net of the approved revisions / realignments (the adjustment is signed, so a decrease lowers it). **This page's Revised Amount** — one definition, so it can never differ from the COB page's |
 | `rfa_laa_amount` | `rfa_approved + laa_issued` |
 | `disbursement` | What the disbursement vouchers connected to the line's RFAs / LAAs (`budget_allocation.dv_id`) have disbursed: each voucher's `gross_amount` spread over the draws of the RFAs / LAAs that point at it, in proportion to what each drew, so it is never counted twice and adds back up to the voucher. Cancelled / rejected vouchers count for nothing. The stored `budget_line_items.disbursement` column, which nothing writes, is not used |
 | `unallocated_amount` | `revised_computed − rfa_approved − laa_issued` |
@@ -186,6 +186,8 @@ repo as `cob-page.old-design.php` next to the other old-COB reference files.
 - Second pass: the Approved Amount is `suggested_amount` as it stands (it had been rebuilt as the amount before CBAs and revisions), and the row / column colour coding was removed.
 - Third pass (revised amount fix): "as it stands" turned out wrong for any line with a Budget Revision or a CBA, because `suggested_amount` is the live balance — the revision was subtracted from a
   figure that already contained it, and a CBA was taken off twice. The Approved Amount is rebuilt again as the amount before revisions and CBAs (`suggested_amount + CBA Requested − adjustment`) and the
-  Revised Amount is `Approved + adjustment`. CO / COE highlighting is unrelated to this.
+  Revised Amount is `Approved + adjustment`. The RFA / LAA Monitoring page's Revised Amount (`revised_computed`, it had been `proposed_amount + adjustment`) is now that same figure: the proposed
+  amount ignores what FMD suggested below the proposal, so the two pages differed by exactly that (₱21,000,000 on the dev data: ₱1,000,000 in CO, ₱20,000,000 in COE) and the RFA / LAA page's
+  Unallocated Amount counted the cut as still drawable. CO / COE highlighting is unrelated to this.
 - CO / COE: the COB and RFA / LAA Monitoring pages separate **CO** (accounts `1…`, the programs' projects) from **COE** (no program; PS `5-01…` / MOOE `5-02…`), the way the
   Budget Proposal "View as COB" does; the "No program" / "No project" rows of those pages are gone.
