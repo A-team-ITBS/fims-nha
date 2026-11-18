@@ -63,7 +63,7 @@ html.afims-dark[data-bs-theme="dark"] #amp-root .nha-code { color:#FFFFFF;backgr
             </button>
             <button id="amp-add" type="button" class="nha-btn-hdr" style="background:var(--afims-success, #11A752);" title="Add a PO record">
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
-                Add PO Record
+                <span id="amp-add-label">Add PO Record</span>
             </button>
         </div>
     </div>
@@ -135,7 +135,7 @@ html.afims-dark[data-bs-theme="dark"] #amp-root .nha-code { color:#FFFFFF;backgr
                         <th>PO Number</th>
                         <th>PO Date</th>
                         <th>Requesting Office/Dept</th>
-                        <th>Vendor</th>
+                        <th>Supplier</th>
                         <th>Sales Invoice #</th>
                         <th style="text-align:right;">PO Amount</th>
                         <th style="text-align:right;">Total DR Amount</th>
@@ -158,12 +158,51 @@ html.afims-dark[data-bs-theme="dark"] #amp-root .nha-code { color:#FFFFFF;backgr
 
     <!-- ═════════ TAB 2: INFRASTRUCTURE ═════════ -->
     <div id="amp-pane-infrastructure" hidden>
-        <div class="nha-table-wrap">
-            <div class="nha-empty nha-empty-sm"><span class="nha-empty-title">Infrastructure — coming soon.</span></div>
+        <!-- approved Infrastructure RFAs without a PO → fims.statement_work_accomplishments (form/infra-iar-form.php) -->
+        <div class="nha-filters no-print">
+            <div class="nha-filter-row">
+                <div class="nha-filter-group nha-filter-group-search">
+                    <label class="nha-filter-label">Search</label>
+                    <div class="nha-filter-search-wrap">
+                        <svg class="nha-filter-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                        </svg>
+                        <input type="text" id="ifr-filter-search" class="nha-filter-input" placeholder="Search IAR no., RFA no., project, location, program, contractor, work item…">
+                        <button class="nha-filter-clear-btn" id="ifr-search-clear" hidden type="button">×</button>
+                    </div>
+                </div>
+            </div>
         </div>
-    </div>
+        <div class="nha-table-wrap">
+            <div class="nha-tbl-scroll">
+                <table class="nha-tbl">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>SWA Number</th>
+                            <th>RFA Number</th>
+                            <th>Project Name</th>
+                            <th>Contractor</th>
+                            <th>Requesting Office/Dept</th>
+                            <th style="text-align:right;">Contract Cost</th>
+                            <th>% Accomplishment</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ifr-tbody">
+                        <tr><td colspan="9"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="nha-pag-wrap">
+                <span class="nha-pag-info">Showing <strong><span id="ifr-from">0</span>–<span id="ifr-to">0</span></strong> of <strong><span id="ifr-total">0</span></strong></span>
+                <div id="ifr-pagination" class="nha-pag-btns"></div>
+            </div>
+        </div>
+    </div><!-- /#amp-pane-infrastructure -->
 
 <?php include __DIR__ . '/form/dr-module-form.php'; ?>
+<?php include __DIR__ . '/form/infra-iar-form.php'; ?>
 
 </div><!-- /#amp-root -->
 
@@ -191,8 +230,12 @@ let amp_activeTab = (() => {
 function amp_syncTab() {
     document.querySelectorAll('.nha-tabs .nha-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === amp_activeTab));
     AMP_TABS.forEach(t => { const p = $amp('amp-pane-' + t); if (p) p.hidden = t !== amp_activeTab; });
-    const add = $amp('amp-add');                                  // "Add PO Record" belongs to Deliveries only
-    if (add) add.style.display = amp_activeTab === 'deliveries' ? '' : 'none';
+    const infra = amp_activeTab === 'infrastructure';             // the header button adds a PO record (Deliveries) or an Infrastructure record
+    const label = $amp('amp-add-label');
+    if (label) label.textContent = infra ? 'Add Infrastructure Record' : 'Add PO Record';
+    const add = $amp('amp-add');
+    if (add) add.title = infra ? 'Add an Infrastructure record' : 'Add a PO record';
+    if (infra && typeof ifr_load === 'function' && !ifr_loaded) ifr_load();   // the Infrastructure list loads the first time its tab opens
     const url = new URL(window.location.href);
     url.searchParams.set('tab', amp_activeTab);
     window.history.replaceState(window.history.state, '', url);
@@ -216,8 +259,11 @@ if (document.readyState === 'loading') {
 }
 
 function amp_bindEvents() {
-    $amp('amp-refresh')?.addEventListener('click', () => { amp_page = 1; amp_load(); });
-    $amp('amp-add')?.addEventListener('click', () => amp_openModal('add'));
+    $amp('amp-refresh')?.addEventListener('click', () => {
+        if (amp_activeTab === 'infrastructure') { ifr_page = 1; ifr_load(); return; }
+        amp_page = 1; amp_load();
+    });
+    $amp('amp-add')?.addEventListener('click', () => amp_activeTab === 'infrastructure' ? ifr_openModal('add') : amp_openModal('add'));
     $amp('amp-modal-close')?.addEventListener('click', amp_closeModal);
     $amp('amp-cancel')?.addEventListener('click', amp_closeModal);
     $amp('amp-form')?.addEventListener('submit', amp_save);
@@ -403,7 +449,7 @@ function amp_toggleItems(btn) {
 }
 
 /* ── Pro-forma JEV: one tab per delivery receipt ───────────── */
-let amp_pf = { po: '', iar: '', rc: '', receipts: [] };
+let amp_pf = { po: '', iar: '', rc: '', receipts: [], kind: 'po', id: 0 };   // kind 'infra' = the Infrastructure tab's pro-forma (one receipt = the record; id = its swa_id)
 let amp_books = null;                                          // fims.books, loaded once (GET /books/all) for the pro-forma's Book picker
 
 async function amp_loadBooks() {
@@ -423,7 +469,7 @@ async function amp_proforma(poNumber) {
         const json = await res.json();
         if (!json.success) throw new Error(json.message || 'Failed to load the pro-forma.');
         await amp_loadBooks();
-        amp_pf = { po: json.data.po_number, iar: json.data.iar_number || '', rc: json.data.requesting_rc_id || '', receipts: json.data.receipts || [] };
+        amp_pf = { po: json.data.po_number, iar: json.data.iar_number || '', rc: json.data.requesting_rc_id || '', receipts: (json.data.receipts || []).map(r => ({ ...r, rfa_number: json.data.rfa_number || '' })), kind: 'po', id: 0 };
         // A delivery receipt whose pro-forma was already submitted is READ-ONLY and shows what was submitted (the JEV's own book,
         // particulars and lines), not the original pro-forma. If the JEV cannot be read, the pro-forma rows are shown (still locked).
         await Promise.all(amp_pf.receipts.filter(r => r.jev_id).map(async r => {
@@ -461,7 +507,7 @@ function amp_pfDraft(rc) {
             rows: rc.rows.map(r => ({ code: r.account_code, title: r.account_title || '', debit: Number(r.debit) || 0, credit: Number(r.credit) || 0 })),
             // fims.books.book_id, required to submit — defaults to Main Office (book 1) until the user picks another
             book: String((amp_books || []).find(b => String(b.book_id) === '1' || b.book_code === 'MAIN-OFFICE')?.book_id ?? ''),
-            particulars: 'To record the delivery of ' + rc.dr_number + ' (PO ' + amp_pf.po + ')',   // pre-filled sentence, editable
+            particulars: rc.particulars || ('To record the delivery of ' + rc.dr_number + ' (PO ' + amp_pf.po + ')'),   // pre-filled sentence, editable
         };
         if (!rc.draft.rows.length) rc.draft.rows.push({ code: '', title: '', debit: 0, credit: 0 });
     }
@@ -480,6 +526,7 @@ function amp_renderProforma(active) {
     const d   = amp_pfDraft(rc);
     const num = v => Number(v || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const lbl = r => r.code ? r.code + (r.title ? ' - ' + r.title : '') : '';
+    const infra = amp_pf.kind === 'infra';
     const rowHtml = (r, i) => `<div class="amp-jev-row amp-pf-row" data-i="${i}">
             <div class="amp-jev-c1">
                 <div class="amp-combo"><input type="text" class="amp-input amp-pf-acct" placeholder="Search account code or title" value="${amp_attrEsc(lbl(r))}"
@@ -492,13 +539,13 @@ function amp_renderProforma(active) {
     const tab = (r, i) => `<button type="button" class="amp-tab${i === active ? ' active' : ''}" onclick="amp_renderProforma(${i})">${amp_esc(r.dr_number || '—')}</button>`;
     const vrow = (k, v) => `<div class="amp-vw-row"><div class="amp-vw-k">${k}</div><div class="amp-vw-v">${v}</div></div>`;
     $amp('amp-view-body').innerHTML = `
-        <div class="amp-vw-card"><h4 class="amp-vw-card-title">Delivery Receipt</h4>
-            ${vrow('IAR Number', amp_pf.iar ? '<span class="amp-vw-code">' + amp_esc(amp_pf.iar) + '</span>' : '—')}
-            ${vrow('Delivery Receipt No.', amp_esc(rc.dr_number))}
-            ${vrow('Total Amount', '<span class="amp-vw-num">₱' + num(rc.total) + '</span>')}
+        <div class="amp-vw-card"><h4 class="amp-vw-card-title">${infra ? 'Infrastructure Record' : 'Delivery Receipt'}</h4>
+            ${vrow(infra ? 'SWA Number' : 'IAR Number',amp_pf.iar ? '<span class="amp-vw-code">' + amp_esc(amp_pf.iar) + '</span>' : '—')}
+            ${infra ? vrow('RFA Number', amp_esc(amp_pf.po)) + vrow('Project', amp_esc(rc.project || '—')) + vrow('Location', amp_esc(rc.location || '—')) : vrow('Delivery Receipt No.', amp_esc(rc.dr_number))}
+            ${infra ? '' : vrow('Total Amount', '<span class="amp-vw-num">₱' + num(rc.total) + '</span>')}
         </div>
         <div class="amp-vw-card"><h4 class="amp-vw-card-title">Pro-forma JEV</h4>
-        <div class="amp-tabs">${amp_pf.receipts.map(tab).join('')}</div>
+        ${infra ? '' : '<div class="amp-tabs">' + amp_pf.receipts.map(tab).join('') + '</div>'}
         <div style="margin-top:14px;">
             <div class="amp-row c2" style="margin-bottom:12px;">
                 <div class="amp-group">
@@ -565,9 +612,9 @@ function amp_pfError(rc) {
     const t = amp_pfTotals(rc);
     const cap = Math.round((Number(rc.total) || 0) * 100);
     if (d.rows.some(r => !r.code || !((Number(r.debit) > 0) || (Number(r.credit) > 0)))) return { text: 'Choose an account code and enter a debit or a credit amount for every row.', hard: false };
-    if (t.debit > cap || t.credit > cap) {
+    if (amp_pf.kind !== 'infra' && (t.debit > cap || t.credit > cap)) {   // an infrastructure pro-forma is not limited to the record's amount: the user enters it
         const f = c => (c / 100).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        return { text: 'The total (₱' + f(Math.max(t.debit, t.credit)) + ') exceeds the total amount of this delivery receipt (₱' + f(cap) + ').', hard: true, pill: '&#10006; Exceeds DR total' };
+        return { text: 'The total (₱' + f(Math.max(t.debit, t.credit)) + ') exceeds the total amount of this ' + (amp_pf.kind === 'infra' ? 'IAR' : 'delivery receipt') + ' (₱' + f(cap) + ').', hard: true, pill: amp_pf.kind === 'infra' ? '&#10006; Exceeds IAR total' : '&#10006; Exceeds DR total' };
     }
     if (t.debit !== t.credit) {                     // a journal entry must balance
         const f = c => (c / 100).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -638,21 +685,21 @@ async function amp_submitJev(active) {
     }
 
     const date = /^\d{4}-\d{2}-\d{2}$/.test(String(rc.delivery_date || '')) ? rc.delivery_date : new Date().toISOString().slice(0, 10);
+    const infra = amp_pf.kind === 'infra';
     const body = {
-        po_number         : amp_pf.po,
-        dr_number         : rc.dr_number,
+        ...(infra ? { id: amp_pf.id } : { po_number: amp_pf.po, dr_number: rc.dr_number }),
         jev_date          : date,
         fiscal_yr         : date.slice(0, 4),
         book_id           : d.book,
         jev_classification: 'REGULAR',
-        particulars       : (d.particulars || '').trim() || ('To record the delivery of ' + rc.dr_number + ' (PO ' + amp_pf.po + ')'),
+        particulars       : (d.particulars || '').trim() || rc.particulars || ('To record the delivery of ' + rc.dr_number + ' (PO ' + amp_pf.po + ')'),
         lines             : d.rows.map(r => ({ account_code: r.code, rc_id: amp_pf.rc || '', debit: Number(r.debit) || 0, credit: Number(r.credit) || 0 })),
     };
     const btn = $amp('amp-pf-submit');
     if (btn) btn.disabled = true;
     window.PagePreloader?.show();
     try {
-        const res  = await fetch(AMP_API + '/proforma-submit', {
+        const res  = await fetch((infra ? AMP_API.replace(/\/po-dr$/, '/infra-iar') : AMP_API) + '/proforma-submit', {
             method: 'POST', credentials: 'same-origin',
             headers: amp_authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(body),
         });
@@ -755,7 +802,7 @@ function amp_openModal(mode, row = null) {
     $amp('amp-mode').value = mode;
     $amp('amp-orig-po').value = row?.po_number || '';        // the PO is addressed by its current PO number
     $amp('amp-modal-title').textContent = mode === 'edit' ? 'Edit PO Record' : 'Add PO Record';
-    amp_setPoValue(row);                                     // PO picker + office / vendor / PO date / PO amount (form/dr-module-form.php)
+    amp_setPoValue(row);                                     // PO picker + office / supplier / PO date / PO amount (form/dr-module-form.php)
     // IAR number (typed by the user) and the Sales Invoice details live on the PO's IAR
     $amp('amp-iar-number').value = row?.iar_number || '';
     $amp('amp-si-number').value  = row?.si_number || '';
