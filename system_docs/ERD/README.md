@@ -333,7 +333,7 @@ erDiagram
 
 - **Status:** Built — file/edit/approve/decline revisions that move amounts between approved budget lines.
 - **Code:** `views/BudgetRevisionPage.php` → `app/pages/budget-revision-page.php` (+ `form/budget-rev-form.php`, `form/budget-rev-review.php`). Route `app/routes/budget_revision.php`: `GET /budget_revision/all|list|read/{id}`, `POST /budget_revision/add`, `PUT /budget_revision/update/{id}` (Saved only), `PUT /budget_revision/process/{id}` (Saved → Submitted), `PUT /budget_revision/review/{id}` (Submitted only), `DELETE /budget_revision/delete/{id}`; also `GET /budget_req/all` (line picker) and `/fiscal_year/all`. Service `app/services/BudgetRevisionService.php`.
-- **Tables written:** `fims.budget_revision`; `fims.budget_line_items` (on approval: `adjustment` and `suggested_amount` of the From and To lines). **Tables read:** `fims.budget_req`, `fims.budget_req_project`, `fims.budget_req_program`, `fims.program`, `fims.project`, `fims.chart_of_accounts`, `fims.responsibility_code`, `fims.settings_status`, `uac.users`.
+- **Tables written:** `fims.budget_revision`; `fims.budget_line_item_revision_transaction` (on approval: one ledger row per line the request changed — see below), `fims.budget_line_items` (on approval nothing is written to it directly: triggers on the ledger set `adjustment` = the total of the line's ledger rows; **`suggested_amount` is not touched**). **Tables read:** `fims.budget_req`, `fims.budget_req_project`, `fims.budget_req_program`, `fims.program`, `fims.project`, `fims.chart_of_accounts`, `fims.responsibility_code`, `fims.settings_status`, `uac.users`.
 - **Status workflow:** (`status_for='budget_revision'`, seed `04 - seed_data/08`) Saved → Submitted → Approved | Declined (soft delete via `deleted_at`). Filing saves a request as Saved (the only status that can be edited); **Process** submits it; only Submitted requests are reviewed. The seed renames the old `Pending` to `Submitted`.
 
 ```mermaid
@@ -354,18 +354,30 @@ erDiagram
         int budget_line_item_id PK
         varchar budget_reference_number FK
         numeric proposed_amount
-        numeric adjustment "net of approved revisions"
-        numeric suggested_amount "live balance"
-        numeric revised_amount "set on revision approval"
+        numeric adjustment "total of the ledger rows (trigger)"
+        numeric suggested_amount "as FMD suggested - stable, not changed by revisions or CBAs"
     }
+    budget_line_item_revision_transaction {
+        int transaction_id PK
+        int budget_revision_id FK "NULL for LEGACY rows"
+        int budget_line_item_id FK "ON DELETE CASCADE"
+        varchar transaction_type "REVISION | REALIGNMENT_OUT | REALIGNMENT_IN | LEGACY"
+        numeric previous_amount
+        numeric amount "signed change"
+        numeric new_amount "previous_amount + amount"
+        int created_by "approver; soft: uac.users"
+    }
+    budget_line_items ||--o{ budget_line_item_revision_transaction : "budget_line_item_id (CASCADE)"
+    budget_revision ||--o{ budget_line_item_revision_transaction : "budget_revision_id"
     budget_line_items ||--o{ budget_revision : "soft: from_budget_line_item_id"
     budget_line_items ||--o{ budget_revision : "soft: to_budget_line_item_id"
     settings_status ||--o{ budget_revision : "status_id (fk_budget_revision_status)"
     budget_req ||--o{ budget_line_items : "budget_reference_number"
 ```
 - **Table notes:**
-  - `fims.budget_revision` — base `01 - table/05 - budget_rev.sql`; `budget_req_id`→`from_budget_req_id` + `to_budget_req_id` in `02 - alter_table/03` (note: a separate `02 - alter_table` folder); `from/to_budget_line_item_id` added and `from_budget_req_id` made nullable in `03 - alter_table/23 - budget_revision_on_budget_reference_number.sql` (no FK by design: Draft edits recreate lines); `status_id` FK added by `04 - seed_data/08`. Column is `update_at` (sic). `request_type` (`03 - alter_table/42`, `CHECK IN ('REVISION','REALIGNMENT')`, default REVISION): REVISION = no To line, REALIGNMENT = has a To line (the API keeps it in step); the same alter dropped the legacy `from_budget_req_id` / `to_budget_req_id`.
-  - `fims.budget_line_items` — approval: From line `adjustment, suggested_amount += to_amount − (proposed+adjustment)`; To line gets the opposite delta; `proposed_amount` never changes. Each touched line's `revised_amount` (plain column, `03 - alter_table/42 - budget_line_items_add_revised_amount`) is set to its new `proposed_amount + adjustment`; the COB reads its Revised Amount from it.
+  - `fims.budget_revision` — base `01 - table/05 - budget_rev.sql`; `budget_req_id`→`from_budget_req_id` + `to_budget_req_id` in `02 - alter_table/03` (note: a separate `02 - alter_table` folder); `from/to_budget_line_item_id` added and `from_budget_req_id` made nullable in `03 - alter_table/23 - budget_revision_on_budget_reference_number.sql` (no FK by design: Draft edits recreate lines); `status_id` FK added by `04 - seed_data/08`. Column is `update_at` (sic). `request_type` (`03 - alter_table/42`, `CHECK IN ('REVISION','REALIGNMENT')`, default REVISION): REVISION = no To line, REALIGNMENT = has a To line (the API keeps it in step); the same alter dropped the legacy `from_budget_req_id` / `to_budget_req_id`. A Realignment's To line must be in the same fiscal year as the From line and be a different budget line **item**: two lines with the same account in the same project of the same budget request count as one item, so the form's To picker does not offer it and `BudgetRevisionService::transferError()` / `approve()` refuse it (`sameItemError()`).
+  - `fims.budget_line_item_revision_transaction` — the ledger of approved revisions (`01 - table/50 - fims_budget_line_item_revision_transaction.sql`; what an older approval had already put in `adjustment` is moved into it by `03 - alter_table/52 - budget_line_item_revision_transaction_backfill.sql`, idempotent, which never touches `suggested_amount`). One row per line a request changed: a Revision writes a `REVISION` row for its From line, a Realignment writes `REALIGNMENT_OUT` (From, negative) and `REALIGNMENT_IN` (To, positive); each row holds `previous_amount`, the signed `amount` and `new_amount` (`CHECK new = previous + amount`). Unique per (`budget_revision_id`, `budget_line_item_id`), so a request can't be applied twice. `LEGACY` rows (no `budget_revision_id`) carry what was approved before the table existed.
+  - `fims.budget_line_items` — a line's revised amount is `suggested_amount + SUM(ledger.amount)` (`BudgetLineBalanceSql::revisedExpr()`) and its current amount — the "Current balance" the form shows, the COB's Remaining Balance — is that minus what CBAs/CFAs hold and RFAs/LAAs drew (the earmark table; `BudgetLineBalanceSql::correlatedAvailableExpr()`). A revision's New Amount is the line's new current amount, so it can't go below zero (which keeps the revised amount from dropping below what is held). Approval writes the ledger and **leaves `suggested_amount` and `proposed_amount` alone**: From line `amount = to_amount − its current balance` (its balance becomes `to_amount`); To line gets the opposite; the ledger's `previous_amount` / `new_amount` are those balances. Each ledger row also has an `adjustment` — the line's running total after it (the earlier total + its `amount`) — set by a BEFORE INSERT trigger, and an AFTER trigger keeps `budget_line_items.adjustment` = the total of the line's ledger rows (`03 - alter_table/53 - budget_line_item_revision_transaction_adjustment.sql`), so approving only inserts the ledger row. `budget_line_items.revised_amount` is a **generated** column — `suggested_amount + adjustment` (`03 - alter_table/54 - budget_line_items_revised_amount_generated.sql`) — so the revised amount is always `suggested_amount` + the ledger total, and nothing writes it.
 
 ### Ledger
 
@@ -951,7 +963,7 @@ erDiagram
     type_of_fund ||--o{ budget_line_items : "soft: type_of_fund_id"
     component_type ||--o{ budget_line_items : "soft: component_id"
 ```
-- **Table notes:** no own tables. Per line: approved = `suggested_amount`; revision = `adjustment`; revised = `budget_line_items.revised_amount`; cba_requested = Σ`original_amount` of CBA/CFA earmarks with `balance_applied` and status active/converted; rfa_approved / laa_issued = Σ`amount` of 'converted' rows of RFA / LAA allocations; available = revised − cba; remaining = revised − rfa − laa (`CobService::earmarkSql()`/`lineAmountExprs()`). Attachments joined by (`budget_req_program_id`, `project_code`) for a count.
+- **Table notes:** no own tables. Per line: approved = `suggested_amount`; revision = Σ`amount` of the line's rows in the ledger `fims.budget_line_item_revision_transaction` (`BudgetLineBalanceSql::revisionExpr()`); revised = approved + revision; cba_requested = Σ`amount` of 'active' earmarks (CBA/CFA) + 'converted' RFA/LAA earmarks (`BudgetLineBalanceSql::earmarkAggregateSql()`); rfa_approved / laa_issued = Σ`amount` of 'converted' rows of RFA / LAA allocations; available = remaining = revised − cba (the RFA / LAA page's `unallocated_amount` is the same figure; `CobService::earmarkSql()`/`lineAmountExprs()`, both built on `BudgetLineBalanceSql`). Attachments joined by (`budget_req_program_id`, `project_code`) for a count.
 
 ### RFA / LAA Monitoring
 
