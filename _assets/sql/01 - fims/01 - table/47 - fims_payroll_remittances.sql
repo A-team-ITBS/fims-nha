@@ -49,6 +49,9 @@ CREATE TABLE IF NOT EXISTS fims.payroll_remittances (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Databases created before due_date existed: CREATE TABLE IF NOT EXISTS skips them, so add it here (safe to re-run)
+ALTER TABLE fims.payroll_remittances ADD COLUMN IF NOT EXISTS due_date DATE;
+
 COMMENT ON TABLE fims.payroll_remittances IS 'Track withholdings remitted to BIR, SSS, PhilHealth, Pag-IBIG, and internal allocations';
 COMMENT ON COLUMN fims.payroll_remittances.remittance_agency IS 'GSIS | BIR | PHILHEALTH | PAGIBIG | OTHERS';
 COMMENT ON COLUMN fims.payroll_remittances.remittance_status IS 'SCHEDULED | CONFIRMED | CANCELLED (PENDING = no row; remitted = its DV released)';

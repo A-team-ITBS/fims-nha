@@ -461,12 +461,19 @@ class DeductionRemittanceService
     /** DisbursementVoucherService::fetchById(): the remittance this DV pays, or null. */
     public function forDv(int $dvId): ?array
     {
-        $row = App\ExecuteRow(
-            "SELECT rm.payroll_remittance_id, rm.remittance_agency, rm.total_amount, rm.due_date, p.fiscal_yr, p.payroll_month
-               FROM {$this->table} rm JOIN {$this->tPeriod} p ON p.payroll_period_id = rm.payroll_period_id
-              WHERE rm.disbursement_voucher_id = {$dvId} AND rm.remittance_status <> 'CANCELLED' LIMIT 1",
-            'DB'
-        );
+        try {
+            $row = App\ExecuteRow(
+                "SELECT rm.payroll_remittance_id, rm.remittance_agency, rm.total_amount, rm.due_date, p.fiscal_yr, p.payroll_month
+                   FROM {$this->table} rm JOIN {$this->tPeriod} p ON p.payroll_period_id = rm.payroll_period_id
+                  WHERE rm.disbursement_voucher_id = {$dvId} AND rm.remittance_status <> 'CANCELLED' LIMIT 1",
+                'DB'
+            );
+        } catch (\Throwable $e) {
+            // never block viewing a DV over its remittance link (e.g. a database missing a payroll_remittances column)
+            App\LogError('DeductionRemittanceService::forDv ' . $e->getMessage());
+
+            return null;
+        }
         if (!$row) {
             return null;
         }

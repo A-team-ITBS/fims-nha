@@ -611,6 +611,7 @@ function vf_reset() {
 
     vf_payrollPeriodId = null;
     vf_remittanceId = null;
+    vf_renderDedTypeButtons();
     $vf('vf-rfa-search').disabled = false;
 
     vf_attachments  = [];
@@ -726,8 +727,10 @@ function vf_derivedFiscalYear() {
 /* One "+ TYPE" pill per fims.deduction_type row — clicking it adds a row already bound to that
    type (see vf_addDeductionLine), instead of a single "+ Add Deduction" control. */
 function vf_renderDedTypeButtons() {
-    $vf('vf-ded-types').innerHTML = vf_dedTypes.length
-        ? vf_dedTypes.map(t => `<button type="button" class="vf-ded-type-btn" onclick="vf_addDeductionLine({deduction_type_id:'${vf_esc(t.deduction_type_id)}'})">+ ${vf_esc(t.name).toUpperCase()}</button>`).join('')
+    // the payroll types (PAYROLL_GSIS, PAYROLL_WTAX, …) belong to payroll DVs only — the imported payroll fills them
+    const types = vf_dedTypes.filter(t => vf_payrollPeriodId || !String(t.code || '').startsWith('PAYROLL_'));
+    $vf('vf-ded-types').innerHTML = types.length
+        ? types.map(t => `<button type="button" class="vf-ded-type-btn" onclick="vf_addDeductionLine({deduction_type_id:'${vf_esc(t.deduction_type_id)}'})">+ ${vf_esc(t.name).toUpperCase()}</button>`).join('')
         : '<span class="vf-hint">No deduction types configured.</span>';
 }
 
@@ -1637,6 +1640,7 @@ async function vf_applyPayroll(id) {
         const d = json.data;
         if (vf_payrollPeriodId) vf_clearPayrollFill(); // switching from one month to another
         vf_payrollPeriodId = Number(d.payroll_period_id);
+        vf_renderDedTypeButtons();
 
         // payroll RFAs carry no vendor — drop RFAs picked for a vendor
         if (vf_selectedRfaIds.some(rid => vf_rfas[rid]?.vendor_id)) {
@@ -1744,6 +1748,7 @@ function vf_showRemittanceCard(d) {
 /** Undo vf_applyPayroll(): empties every field the payroll month filled, then auto Accounting Entries resume. */
 function vf_clearPayrollFill() {
     vf_payrollPeriodId = null;
+    vf_renderDedTypeButtons();
     ['vf-claimant', 'vf-claimant-address', 'vf-claimant-tin', 'vf-particulars', 'vf-account-code', 'vf-gross'].forEach(id => { $vf(id).value = ''; });
     $vf('vf-ded-container').innerHTML = '';
     vf_dedSeq = 0;
@@ -1792,6 +1797,7 @@ async function vf_loadExisting() {
     // so restoring it doesn't refill or clear what was saved).
     if (dv.payroll) {
         vf_payrollPeriodId = Number(dv.payroll.payroll_period_id);
+        vf_renderDedTypeButtons();
         $vf('vf-vendor').value = VF_PAYROLL_PREFIX + vf_payrollPeriodId;
         vf_showPayrollCard({ ...dv.payroll, claimant_name: dv.claimant_name });
     }
