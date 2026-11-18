@@ -151,23 +151,9 @@ class PropertyRecordService
                             'account_code' => $code, 'account_title' => $title !== '' ? $title : self::CATEGORIES[$gl],
                             'description' => (string) ($it['description'] ?? ''), 'serial_no' => $it['serial_no'] ?? null, 'property_no' => $it['property_no'] ?? null,
                             'date_acquired' => $dr['delivery_date'] ?? null, 'amount' => (float) ($it['amount'] ?? 0),
-                            // the JEV created for the DR's pro-forma (recorded on the DR by the IAR module's Submit)
-                            'jev_id' => $dr['jev_id'] ?? null, 'jev_no' => $dr['jev_no'] ?? null, 'jev_date' => null,
                         ];
                     }
                 }
-            }
-            // the date of each JEV (one query)
-            $jevIds = array_values(array_unique(array_filter(array_map(fn($x) => (int) $x['jev_id'], $out))));
-            if ($jevIds) {
-                $dates = [];
-                foreach (App\ExecuteRows("SELECT jev_id, TO_CHAR(jev_date, 'YYYY-MM-DD') AS jev_date FROM fims.journal_entry_vouchers WHERE jev_id IN (" . implode(',', $jevIds) . ')', 'DB') ?: [] as $j) {
-                    $dates[(int) $j['jev_id']] = $j['jev_date'];
-                }
-                foreach ($out as &$x) {
-                    $x['jev_date'] = $dates[(int) $x['jev_id']] ?? null;
-                }
-                unset($x);
             }
             usort($out, fn($a, $b) => strcmp((string) $b['date_acquired'], (string) $a['date_acquired']));
 
