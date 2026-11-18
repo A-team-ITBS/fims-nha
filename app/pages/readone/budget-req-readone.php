@@ -259,13 +259,18 @@
         color:var(--afims-pure-white, #FFFFFF);transition:background .15s; }
     #bgrv-print-btn:hover { background:color-mix(in srgb, var(--afims-surface, #FFFFFF) 22%, transparent); }
     #bgrv-print-btn svg { width:13px;height:13px;flex-shrink:0; }
-    #bgrv-print-menu { display:none;position:absolute;top:calc(100% + 6px);right:0;z-index:10;
-        min-width:170px;background:var(--afims-surface, #FFFFFF);border:1px solid var(--afims-border, #E4ECF2);
-        border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.14);overflow:hidden;padding:4px; }
-    #bgrv-print-menu.open { display:block; }
-    .bgrv-print-menu-item { display:block;width:100%;text-align:left;border:none;background:none;cursor:pointer;
-        padding:8px 10px;font-size:12.5px;font-weight:600;color:var(--afims-text, #1A1B21);border-radius:6px; }
-    .bgrv-print-menu-item:hover { background:var(--afims-surface-subtle, #F4F7FA);color:var(--afims-heading-fill, #000E3E); }
+
+    /* Print layout picker — a real modal (shares .nha-overlay/.nha-modal from nha-fims.css, same
+       convention as readone/cob-report-readone.php's #cobr-overlay), not an anchored dropdown: #bgrv-overlay
+       (z-index 9100) is already open behind it, so this needs a z-index above that to show on top. */
+    #bgrv-print-overlay.nha-overlay { z-index:9150; }
+    .bgrv-print-grid { display:grid;grid-template-columns:1fr 1fr;gap:12px; }
+    .bgrv-print-card { display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px;
+        padding:22px 14px;border:1px solid var(--afims-border, #E4ECF2);border-radius:10px;cursor:pointer;
+        background:var(--afims-surface, #FFFFFF);font-family:inherit;transition:border-color .15s,background .15s; }
+    .bgrv-print-card:hover { border-color:var(--afims-heading-fill, #000E3E);background:var(--afims-surface-subtle, #F4F7FA); }
+    .bgrv-print-card svg { width:26px;height:26px;stroke:var(--afims-heading-fill, #000E3E);stroke-width:1.6;flex-shrink:0; }
+    .bgrv-print-card span { font-size:12.5px;font-weight:700;color:var(--afims-text, #1A1B21); }
 </style>
 
 <div id="bgrv-overlay">
@@ -296,21 +301,15 @@
             </div>
             <div id="bgrv-header-actions">
                 <!-- COB mode only (#bgrv-card.bgrv-wide — see the CSS above); hidden for the Program View
-                     modal. A Regional / District user's own office_type skips the menu entirely and goes
-                     straight to "Per Program" — see bgrv_openPrintMenu(). -->
+                     modal. A Regional / District user's own office_type skips the picker entirely and goes
+                     straight to "Per Program" — see bgrv_openPrintModal(). -->
                 <div id="bgrv-print-wrap">
-                    <button type="button" id="bgrv-print-btn" onclick="bgrv_openPrintMenu()">
+                    <button type="button" id="bgrv-print-btn" onclick="bgrv_openPrintModal()">
                         <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0l.229 2.523a1.125 1.125 0 01-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0021 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 00-1.913-.247M6.34 18H5.25A2.25 2.25 0 013 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 011.913-.247m10.5 0a48.536 48.536 0 00-10.5 0m10.5 0V3.75A2.25 2.25 0 0015.75 1.5h-7.5A2.25 2.25 0 006 3.75v3.284" />
                         </svg>
                         Print COB
                     </button>
-                    <div id="bgrv-print-menu">
-                        <button type="button" class="bgrv-print-menu-item" onclick="bgrv_printCob('region')">Per Region</button>
-                        <button type="button" class="bgrv-print-menu-item" onclick="bgrv_printCob('program')">Per Program</button>
-                        <button type="button" class="bgrv-print-menu-item" onclick="bgrv_printCob('fund_source')">Per Fund Source</button>
-                        <button type="button" class="bgrv-print-menu-item" onclick="bgrv_printCob('detailed')">Detailed</button>
-                    </div>
                 </div>
                 <button type="button" id="bgrv-close">&times;</button>
             </div>
@@ -329,6 +328,48 @@
     </div>
 </div>
 
+<!-- Print layout picker — a 2x2 grid of the 4 layouts, opened by #bgrv-print-btn above
+     (bgrv_openPrintModal()). A separate top-level modal (not nested in #bgrv-card) since it must sit on
+     top of the already-open #bgrv-overlay, same "stack a second overlay on top" shape as
+     readone/cob-report-readone.php's #cobr-overlay over its own host page. -->
+<div id="bgrv-print-overlay" class="nha-overlay">
+    <div class="nha-modal nha-modal-sm" role="dialog" aria-modal="true" aria-labelledby="bgrv-print-modal-title">
+        <div class="nha-modal-hdr">
+            <h3 id="bgrv-print-modal-title">Print COB</h3>
+            <button type="button" class="nha-modal-close" id="bgrv-print-modal-close" aria-label="Close">&times;</button>
+        </div>
+        <div class="nha-modal-body">
+            <div class="bgrv-print-grid">
+                <button type="button" class="bgrv-print-card" onclick="bgrv_printCob('region')">
+                    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
+                    </svg>
+                    <span>Per Region</span>
+                </button>
+                <button type="button" class="bgrv-print-card" onclick="bgrv_printCob('program')">
+                    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-19.5 0v6a2.25 2.25 0 002.25 2.25h15a2.25 2.25 0 002.25-2.25v-6m-19.5 0h19.5M3 9.75v-2.25A2.25 2.25 0 015.25 5.25h3.129c.412 0 .81.158 1.11.44l1.613 1.527a1.5 1.5 0 001.11.44h4.138a2.25 2.25 0 012.25 2.25v.093" />
+                    </svg>
+                    <span>Per Program</span>
+                </button>
+                <button type="button" class="bgrv-print-card" onclick="bgrv_printCob('fund_source')">
+                    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zM21 10.5h.008v.008H21v-.008zM3 10.5h.008v.008H3V10.5z" />
+                    </svg>
+                    <span>Per Fund Source</span>
+                </button>
+                <button type="button" class="bgrv-print-card" onclick="bgrv_printCob('detailed')">
+                    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 16.5h7.5a2.25 2.25 0 002.25-2.25V11.25a9 9 0 00-9-9H6.75a2.25 2.25 0 00-2.25 2.25v15a2.25 2.25 0 002.25 2.25h1.5m2.25-12h1.5m-1.5 3.75h4.5m-4.5 3.75h4.5" />
+                    </svg>
+                    <span>Detailed</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 /* ══════════════════════════════════════════════════════════════
    PROGRAM / COB VIEW MODAL   prefix: bgrv_   — see docblock above for
@@ -339,16 +380,20 @@ const $bgrv = id => document.getElementById(id);
 
 document.addEventListener('DOMContentLoaded', () => {
     $bgrv('bgrv-close')?.addEventListener('click', bgrv_closeModal);
-    // Click outside the Print COB button/menu closes it — same "click elsewhere to dismiss" convention
-    // other dropdowns in this app use.
-    document.addEventListener('mousedown', (e) => {
-        if (!$bgrv('bgrv-print-wrap')?.contains(e.target)) bgrv_closePrintMenu();
+    $bgrv('bgrv-print-modal-close')?.addEventListener('click', bgrv_closePrintModal);
+    // Click the backdrop (not the modal card itself) closes it — same convention
+    // readone/cob-report-readone.php's #cobr-overlay uses.
+    $bgrv('bgrv-print-overlay')?.addEventListener('click', (e) => {
+        if (e.target === $bgrv('bgrv-print-overlay')) bgrv_closePrintModal();
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && $bgrv('bgrv-print-overlay')?.classList.contains('open')) bgrv_closePrintModal();
     });
 });
 
 function bgrv_closeModal() {
     $bgrv('bgrv-overlay').classList.remove('open');
-    bgrv_closePrintMenu();
+    bgrv_closePrintModal();
 }
 
 // ── "Print COB" (COB mode only) ──────────────────────────────────────────
@@ -361,27 +406,27 @@ function bgrv_rcDeptType(officeType) {
     return t ? 'MAIN' : '';
 }
 
-function bgrv_closePrintMenu() {
-    $bgrv('bgrv-print-menu')?.classList.remove('open');
+function bgrv_closePrintModal() {
+    $bgrv('bgrv-print-overlay')?.classList.remove('open');
 }
 
 // A Regional / District user only ever prints their own office's COB, so there's nothing to choose between
-// — this skips the menu and goes straight to "Per Program". Everyone else (FMD / other central offices)
-// gets the full choice. BGR_USER_OFFICE_TYPE is defined by whichever host page included this file
+// — this skips the picker and goes straight to "Per Program". Everyone else (FMD / other central offices)
+// gets the full 2x2 choice. BGR_USER_OFFICE_TYPE is defined by whichever host page included this file
 // (budget-req-page.php or budget-prop-page.php), from the logged-in user's own responsibility_code row.
-function bgrv_openPrintMenu() {
+function bgrv_openPrintModal() {
     const deptType = bgrv_rcDeptType(typeof BGR_USER_OFFICE_TYPE !== 'undefined' ? BGR_USER_OFFICE_TYPE : '');
     if (deptType === 'REGIONAL' || deptType === 'DISTRICT') {
         bgrv_printCob('program');
         return;
     }
-    $bgrv('bgrv-print-menu')?.classList.toggle('open');
+    $bgrv('bgrv-print-overlay')?.classList.add('open');
 }
 
-// TODO: wire up the actual print output per mode — this is a placeholder so the button/menu and the
+// TODO: wire up the actual print output per mode — this is a placeholder so the button/picker and the
 // Regional/District "skip straight to Per Program" routing are in place ahead of that.
 function bgrv_printCob(mode) {
-    bgrv_closePrintMenu();
+    bgrv_closePrintModal();
     bgr_toast(`Print COB (${mode}) is not yet implemented.`, 'info');
 }
 

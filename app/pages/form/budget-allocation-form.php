@@ -3464,6 +3464,15 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 	var PROJ_ALL_DATA = [];
 	var PROJ_LOADED = false;
 	var PROJ_LOAD_PROMISE = null;
+	// CBA only — the logged-in user's own-RC projects (GET /project/all?scope=mine, filtered server-side
+	// against fims.project.rc_id — the creator's RC, set in ProjectService::create()). Drives ONLY the live
+	// "Search project…" dropdown (blockProjAvailableData()) for picking a NEW project. Resolving an
+	// already-saved project_code (edit-mode restore, or an RFA/LAA block autofilling from a Parent CBA that
+	// may have been created under a different RC) still goes through the unscoped PROJ_ALL_DATA below —
+	// otherwise a cross-RC record would silently come up with an empty Project field.
+	var PROJ_MINE_DATA = [];
+	var PROJ_MINE_LOADED = false;
+	var PROJ_MINE_LOAD_PROMISE = null;
 
 	async function loadAllProjects() {
 		if (PROJ_LOADED) return;
@@ -3479,6 +3488,22 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 			}
 		})();
 		return PROJ_LOAD_PROMISE;
+	}
+
+	async function loadMyProjects() {
+		if (PROJ_MINE_LOADED) return;
+		if (PROJ_MINE_LOAD_PROMISE) return PROJ_MINE_LOAD_PROMISE;
+		PROJ_MINE_LOAD_PROMISE = (async function() {
+			try {
+				var json = await cba_apiFetch(API_BASE + '/project/all?scope=mine');
+				PROJ_MINE_DATA = (json && json.success && Array.isArray(json.data)) ? json.data : [];
+				PROJ_MINE_LOADED = true;
+			} catch (err) {
+				console.error('[loadMyProjects]', err);
+				PROJ_MINE_DATA = [];
+			}
+		})();
+		return PROJ_MINE_LOAD_PROMISE;
 	}
 
 	function projectBlockById(id) {
@@ -3570,7 +3595,7 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 		if (isRfaOrLaa()) {
 			await ensureCbaDataLoaded();
 		} else {
-			await loadAllProjects();
+			await loadMyProjects();
 		}
 		blockSetupSearch(blockId);
 		addBudgetAllocationLine(blockId);
@@ -3661,18 +3686,19 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 		if (hidden) hidden.value = '';
 	}
 
-	// PROJ_ALL_DATA minus whatever project every OTHER block already picked — the same project can only be
-	// allocated to one block at a time. (This block's own current pick, if any, stays offered — so reopening
-	// the dropdown to change it still shows it.)
+	// PROJ_MINE_DATA (the logged-in user's own-RC projects — see loadMyProjects()) minus whatever project
+	// every OTHER block already picked — the same project can only be allocated to one block at a time.
+	// (This block's own current pick, if any, stays offered — so reopening the dropdown to change it still
+	// shows it.)
 	function blockProjAvailableData(blockId) {
 		var usedCodes = PROJECT_BLOCKS.filter(function(b) {
 			return b.id !== blockId && b.projectCode;
 		}).map(function(b) {
 			return b.projectCode;
 		});
-		if (!usedCodes.length) return PROJ_ALL_DATA;
+		if (!usedCodes.length) return PROJ_MINE_DATA;
 
-		return PROJ_ALL_DATA.filter(function(p) {
+		return PROJ_MINE_DATA.filter(function(p) {
 			return usedCodes.indexOf(p.project_code) === -1;
 		});
 	}
@@ -6239,6 +6265,7 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 		BAA_ROWS = []; BAA_ROW_SEQ = -1; BAA_ROW_BLOCK = {};
 		PROJECT_BLOCKS = []; PROJECT_BLOCK_SEQ = -1; EDIT_SINGLE_BLOCK_ID = null;
 		PROJ_ALL_DATA = []; PROJ_LOADED = false; PROJ_LOAD_PROMISE = null; // same "refetch every open" precedent as CAT_ALL_DATA / VEND_ALL_DATA below
+		PROJ_MINE_DATA = []; PROJ_MINE_LOADED = false; PROJ_MINE_LOAD_PROMISE = null;
 		COB_EPOCH++; COB_DATA = {}; COB_SIG = {}; COB_SEQ = {}; COB_LOAD = {}; COB_SEL = {}; COB_WIRED = {};
 		COB_SYNC_QUEUED = false; COB_KEEP_SELECTION = 0;
 		// Earmarks against a COB can change between modal opens (an RFA/LAA approved elsewhere converts part

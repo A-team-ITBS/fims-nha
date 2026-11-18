@@ -8,18 +8,19 @@
 
 INSERT INTO uac.users (
     username, email, password_hash, first_name, last_name,
-    user_level_id, department_id, is_active
+    user_level_id, department_id, rc_id, is_active
 ) VALUES
-    ('fmd_fundsourcing',  'fmd.fundsourcing@nha.gov.ph',  '$2y$10$OzcU5YBDp7QspsUHFIC9XehdBZnif3zglhRpWF3WEeFkful7223Qm', 'Fe',     'Santos',   '1', (SELECT department_id FROM uac.departments WHERE department_code = 'FMD'), true),
-    ('budget_officer',    'budget.officer@nha.gov.ph',    '$2y$10$OzcU5YBDp7QspsUHFIC9XehdBZnif3zglhRpWF3WEeFkful7223Qm', 'Juan',    'Dela Cruz','2', (SELECT department_id FROM uac.departments WHERE department_code = 'FMD'), true),
-    ('fmd_divmanager',    'fmd.divmanager@nha.gov.ph',    '$2y$10$OzcU5YBDp7QspsUHFIC9XehdBZnif3zglhRpWF3WEeFkful7223Qm', 'Maria',   'Reyes',    '3', (SELECT department_id FROM uac.departments WHERE department_code = 'FMD'), true),
-    ('fmd_deptmanager',   'fmd.deptmanager@nha.gov.ph',   '$2y$10$OzcU5YBDp7QspsUHFIC9XehdBZnif3zglhRpWF3WEeFkful7223Qm', 'Ramon',   'Garcia',   '4', (SELECT department_id FROM uac.departments WHERE department_code = 'FMD'), true),
-    ('fsg_groupmanager',  'fsg.groupmanager@nha.gov.ph',  '$2y$10$OzcU5YBDp7QspsUHFIC9XehdBZnif3zglhRpWF3WEeFkful7223Qm', 'Carmela', 'Villanueva','5', NULL, true),
-    ('general_manager',   'general.manager@nha.gov.ph',   '$2y$10$OzcU5YBDp7QspsUHFIC9XehdBZnif3zglhRpWF3WEeFkful7223Qm', 'Roberto', 'Mendoza',  '6', NULL, true),
-    ('nha_board',         'nha.board@nha.gov.ph',         '$2y$10$OzcU5YBDp7QspsUHFIC9XehdBZnif3zglhRpWF3WEeFkful7223Qm', 'Board',   'Member',   '7', NULL, true),
-    ('budget_head',       'budget.head@nha.gov.ph',       '$2y$10$OzcU5YBDp7QspsUHFIC9XehdBZnif3zglhRpWF3WEeFkful7223Qm', 'Lourdes', 'Bautista', '8', (SELECT department_id FROM uac.departments WHERE department_code = 'FMD'), true)
+    ('fmd_fundsourcing',  'fmd.fundsourcing@nha.gov.ph',  '$2y$10$OzcU5YBDp7QspsUHFIC9XehdBZnif3zglhRpWF3WEeFkful7223Qm', 'Fe',     'Santos',   '1', (SELECT department_id FROM uac.departments WHERE department_code = 'FMD'), (SELECT rc_id FROM fims.responsibility_code WHERE rc_name = 'Financial Management Department (FMD)'), true),
+    ('budget_officer',    'budget.officer@nha.gov.ph',    '$2y$10$OzcU5YBDp7QspsUHFIC9XehdBZnif3zglhRpWF3WEeFkful7223Qm', 'Juan',    'Dela Cruz','2', (SELECT department_id FROM uac.departments WHERE department_code = 'FMD'), (SELECT rc_id FROM fims.responsibility_code WHERE rc_name = 'Financial Management Department (FMD)'), true),
+    ('fmd_divmanager',    'fmd.divmanager@nha.gov.ph',    '$2y$10$OzcU5YBDp7QspsUHFIC9XehdBZnif3zglhRpWF3WEeFkful7223Qm', 'Maria',   'Reyes',    '3', (SELECT department_id FROM uac.departments WHERE department_code = 'FMD'), (SELECT rc_id FROM fims.responsibility_code WHERE rc_name = 'Financial Management Department (FMD)'), true),
+    ('fmd_deptmanager',   'fmd.deptmanager@nha.gov.ph',   '$2y$10$OzcU5YBDp7QspsUHFIC9XehdBZnif3zglhRpWF3WEeFkful7223Qm', 'Ramon',   'Garcia',   '4', (SELECT department_id FROM uac.departments WHERE department_code = 'FMD'), (SELECT rc_id FROM fims.responsibility_code WHERE rc_name = 'Financial Management Department (FMD)'), true),
+    ('fsg_groupmanager',  'fsg.groupmanager@nha.gov.ph',  '$2y$10$OzcU5YBDp7QspsUHFIC9XehdBZnif3zglhRpWF3WEeFkful7223Qm', 'Carmela', 'Villanueva','5', NULL, NULL, true),
+    ('general_manager',   'general.manager@nha.gov.ph',   '$2y$10$OzcU5YBDp7QspsUHFIC9XehdBZnif3zglhRpWF3WEeFkful7223Qm', 'Roberto', 'Mendoza',  '6', NULL, NULL, true),
+    ('nha_board',         'nha.board@nha.gov.ph',         '$2y$10$OzcU5YBDp7QspsUHFIC9XehdBZnif3zglhRpWF3WEeFkful7223Qm', 'Board',   'Member',   '7', NULL, NULL, true),
+    ('budget_head',       'budget.head@nha.gov.ph',       '$2y$10$OzcU5YBDp7QspsUHFIC9XehdBZnif3zglhRpWF3WEeFkful7223Qm', 'Lourdes', 'Bautista', '8', (SELECT department_id FROM uac.departments WHERE department_code = 'FMD'), (SELECT rc_id FROM fims.responsibility_code WHERE rc_name = 'Financial Management Department (FMD)'), true)
 ON CONFLICT (username) DO UPDATE SET
     password_hash = EXCLUDED.password_hash,
     user_level_id = EXCLUDED.user_level_id,
     department_id = EXCLUDED.department_id,
+    rc_id = EXCLUDED.rc_id,
     is_active = true;
