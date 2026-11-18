@@ -14,7 +14,6 @@ $sideMenu->addMenuItem(541, "mci_COB_Preparation", $Language->menuPhrase("541", 
 $sideMenu->addMenuItem(261, "mi_budget_prop_page", $Language->menuPhrase("261", "MenuText"), "BudgetPropPage", 541, "", AllowListMenu('{FIMS}budget-prop-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(81, "mi_budget_req_page", $Language->menuPhrase("81", "MenuText"), "BudgetReqPage", 541, "", AllowListMenu('{FIMS}budget-req-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(85, "mi_budget_revision_page", $Language->menuPhrase("85", "MenuText"), "BudgetRevisionPage", 541, "", AllowListMenu('{FIMS}budget-revision-page.php'), false, false, "", "", false, true);
-$sideMenu->addMenuItem(657, "mi_ledger_page", $Language->menuPhrase("657", "MenuText"), "LedgerPage", 541, "", AllowListMenu('{FIMS}ledger-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(146, "mci_Budget_Process", $Language->menuPhrase("146", "MenuText"), "", -1, "", true, false, true, "fas fa-calculator", "", false, true);
 $sideMenu->addMenuItem(553, "mi_cba_memo_request_page", $Language->menuPhrase("553", "MenuText"), "CbaMemoRequestPage", 146, "", AllowListMenu('{FIMS}cba-memo-request-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(554, "mi_rfa_laa_memo_request_page", $Language->menuPhrase("554", "MenuText"), "RfaLaaMemoRequestPage", 146, "", AllowListMenu('{FIMS}rfa-laa-memo-request-page.php'), false, false, "", "", false, true);
