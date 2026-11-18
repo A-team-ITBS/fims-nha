@@ -427,6 +427,16 @@ $bamCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
 #bamModule .fims-btn-outline { color:#000E3E; border-color:#000E3E; }
 #bamModule .fims-btn-outline:hover { background:#000E3E; color:#fff; }
 
+/* .fims-modal-content (shared fims.css) is a plain block, not a flex
+   container, so .fims-modal-body's flex:1/min-height:0/overflow-y:auto
+   (which assume a flex-column parent) never actually engage — content
+   just grows past .fims-modal-dialog's max-height and gets clipped by its
+   overflow:hidden instead of scrolling. The Register/Edit Account modal's
+   3-step wizard (now with the GL+SL two-step picker added to step 1) is
+   tall enough to hit this, so make this module's modal content a proper
+   flex column to let the body scroll as intended. */
+#bamModule .fims-modal-content { display:flex; flex-direction:column; min-height:0; overflow:hidden; }
+
 .fims-form-section-title { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--fims-text-subtle); margin-bottom:8px; }
 .bam-doc-row { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 10px; border:1px solid var(--fims-border); border-radius:6px; margin-bottom:6px; font-size:13px; }
 .bam-doc-row a { color: #000E3E; text-decoration: underline; }
