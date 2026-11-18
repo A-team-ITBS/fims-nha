@@ -65,7 +65,7 @@ class FidelityBondService
             . " || COALESCE(' ' || NULLIF({$alias}.suffix, ''), ''))";
     }
 
-    // Re-ranks same-name candidates (from extractClFromScan's officer-match
+    // Re-ranks same-name candidates (from extractClFromText's officer-match
     // lookup) by how well each one's position title and station/region
     // text matches what was actually read off the scan for this officer,
     // on top of the plain name similarity already in match_score. Collapses
@@ -387,73 +387,27 @@ class FidelityBondService
 
     // ── D. CL Upload & Register ─────────────────────────────────────────
 
-    // Best-effort autofill from an uploaded scan of a BTr Confirmation
-    // Letter — no AI/OCR API key is configured for this app, so this runs
-    // local Tesseract OCR (installed in the Docker image — see Dockerfile)
-    // on the uploaded file and pattern-matches the known paper template
-    // (Transmittal No. / Date header, then one table row per officer:
-    // Name, (n) Position, Station, Risk No., Approved Amount, Bonding /
-    // Cancellation dates). This is plain text-pattern matching against a
-    // fixed template, not real document understanding — scan quality,
-    // skew, or a differently-formatted letter will degrade or break it.
-    // Every autofilled field stays fully editable in the form; nothing
-    // here writes to the database on its own.
-    public function extractClFromScan($uploadedFile)
+    // Best-effort autofill from OCR text read off an uploaded scan of a BTr
+    // Confirmation Letter. OCR itself runs client-side (Tesseract.js, WASM,
+    // loaded from CDN — see app/pages/fidelity-bond-page.php's fbClRunOcr())
+    // so this works on any host: the server never shells out to a Tesseract/
+    // poppler binary, so there's nothing to install here regardless of OS
+    // or whether this is running in this repo's Docker image. This method
+    // only pattern-matches the known paper template (Transmittal No. / Date
+    // header, then one table row per officer: Name, (n) Position, Station,
+    // Risk No., Approved Amount, Bonding / Cancellation dates) against
+    // whatever text the browser recognized — plain text-pattern matching
+    // against a fixed template, not real document understanding — scan
+    // quality, skew, or a differently-formatted letter will degrade or
+    // break it. Every autofilled field stays fully editable in the form;
+    // nothing here writes to the database on its own.
+    public function extractClFromText(?string $text)
     {
-        if (!$uploadedFile instanceof \Psr\Http\Message\UploadedFileInterface) {
-            return $this->fail('No file was received.');
-        }
-        if ($uploadedFile->getError() !== UPLOAD_ERR_OK) {
-            return $this->fail('Upload failed (error code ' . $uploadedFile->getError() . ').');
-        }
-        if ($uploadedFile->getSize() > 25 * 1024 * 1024) {
-            return $this->fail('File exceeds the 25MB size limit.');
+        if ($text === null || trim($text) === '') {
+            return $this->fail('Could not read any text from the scan.');
         }
 
-        $originalName = $uploadedFile->getClientFilename() ?: 'scan';
-        $ext = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
-        $tmpDir = sys_get_temp_dir();
-        $token = bin2hex(random_bytes(8));
-        $sourcePath = "{$tmpDir}/fb_cl_{$token}.{$ext}";
-        $imagePath = "{$tmpDir}/fb_cl_{$token}.png";
-
-        try {
-            $uploadedFile->moveTo($sourcePath);
-
-            if ($ext === 'pdf') {
-                // First page only — a Confirmation Letter is a single page.
-                $rc = 0;
-                exec('pdftoppm -png -r 300 -f 1 -l 1 ' . escapeshellarg($sourcePath) . ' ' . escapeshellarg("{$tmpDir}/fb_cl_{$token}") . ' 2>&1', $out, $rc);
-                $candidate = "{$tmpDir}/fb_cl_{$token}-1.png";
-                if ($rc !== 0 || !file_exists($candidate)) {
-                    return $this->fail('Could not read the uploaded PDF.');
-                }
-                rename($candidate, $imagePath);
-            } elseif (in_array($ext, ['jpg', 'jpeg', 'png'], true)) {
-                $imagePath = $sourcePath;
-            } else {
-                return $this->fail("Can't read a .{$ext} file for autofill — upload a PDF, JPG, or PNG scan.");
-            }
-
-            $rc = 0;
-            exec('tesseract ' . escapeshellarg($imagePath) . ' stdout --psm 6 2>' . escapeshellarg($tmpDir . '/fb_cl_' . $token . '.log'), $textLines, $rc);
-            $text = implode("\n", $textLines);
-            if ($rc !== 0 || trim($text) === '') {
-                return $this->fail('Could not read any text from the scan.');
-            }
-
-            return $this->ok($this->parseClTemplate($text));
-        } catch (\Throwable $e) {
-            App\LogError('FidelityBondService::extractClFromScan ' . $e->getMessage());
-
-            return $this->fail('Could not process the scan.');
-        } finally {
-            foreach ([$sourcePath, $imagePath, "{$tmpDir}/fb_cl_{$token}.log"] as $f) {
-                if (file_exists($f)) {
-                    @unlink($f);
-                }
-            }
-        }
+        return $this->ok($this->parseClTemplate($text));
     }
 
     // Pattern-matches the BTr Confirmation Letter template against raw OCR
