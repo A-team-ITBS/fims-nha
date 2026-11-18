@@ -25,11 +25,15 @@ use PHPMaker2024\FIMS\DataType;
  *
  * The eight columns of the COB Monitoring sheet, per budget line item (every row, group and total is a SUM of these):
  *
- *   approved_amount     budget_line_items.suggested_amount, as it stands — the amount FMD suggested in the Budget Proposal module
- *   revision_amount     budget_line_items.adjustment: the net of the approved Budget Revisions (Revision / Realignment)
- *   revised_amount      approved_amount - revision_amount: the Approved Amount less the Revision / Realignment, worked out per line — so a
- *                       line no revision has touched shows its Approved Amount. The stored budget_line_items.revised_amount column (written
- *                       only when a Budget Revision is approved, 0 otherwise) is no longer read here
+ *   approved_amount     the amount FMD suggested in the Budget Proposal module, as first suggested — before any Budget Revision or CBA touched
+ *                       the line: budget_line_items.suggested_amount + cba_requested - adjustment (suggested_amount is the line's live balance,
+ *                       see the NOTE below)
+ *   revision_amount     budget_line_items.adjustment: the net of the approved Budget Revisions (Revision / Realignment), signed — a decrease
+ *                       or a realignment out is negative
+ *   revised_amount      approved_amount + revision_amount (the adjustment is signed, so this is the Approved Amount less a decrease), worked
+ *                       out per line — so a line no revision has touched shows its Approved Amount. It equals suggested_amount + cba_requested.
+ *                       The stored budget_line_items.revised_amount column (written only when a Budget Revision is approved, 0 otherwise) is
+ *                       no longer read here
  *   cba_requested      what approved CBAs (and CFAs) took off the line: their earmark rows' original_amount, only those that
  *                       actually reduced the balance (balance_applied) and are not released
  *   available_amount    revised_amount - cba_requested   (Available for Earmarking)
@@ -41,7 +45,7 @@ use PHPMaker2024\FIMS\DataType;
  *
  *   revised_computed    budget_line_items.proposed_amount + adjustment — the proposed amount net of the approved revisions / realignments (the
  *                       adjustment is signed, so a decrease lowers it). This page's Revised Amount; it is a different formula from the COB
- *                       page's revised_amount (approved_amount - revision_amount)
+ *                       page's revised_amount (approved_amount + revision_amount). They agree whenever FMD suggested the proposed amount
  *   rfa_laa_amount      rfa_approved + laa_issued — what approved RFAs and issued LAAs have drawn from the CBAs
  *   disbursement        what the disbursement vouchers connected to the line's RFAs / LAAs (budget_allocation.dv_id) have disbursed: each voucher's
  *                       gross_amount spread over the draws of the RFAs / LAAs that point at it (disbursementSql()); cancelled / rejected vouchers
@@ -50,11 +54,12 @@ use PHPMaker2024\FIMS\DataType;
  *   account_payable     rfa_laa_amount - disbursement — what the RFAs / LAAs have drawn that has not been disbursed yet. Worked out per line, so
  *                       it takes the vouchers into account; the stored budget_line_items.account_payable column is not used
  *
- * Revised, Available and Remaining are all worked out, so the identities  Approved - Revision = Revised,  Revised - CBA = Available  and
- * Revised - RFA - LAA = Remaining  hold on every row, group and total.
+ * Revised, Available and Remaining are all worked out, so the identities  Approved + Revision = Revised (Revision is signed: a decrease is negative,
+ * i.e. Approved less the decrease),  Revised - CBA = Available  and  Revised - RFA - LAA = Remaining  hold on every row, group and total.
  * NOTE: suggested_amount is also the line's LIVE balance — an approved CBA takes its amount off it and an approved Budget Revision
- * moves it — so Approved Amount on a line that already has a CBA or a revision is what is left, not what was first suggested;
- * see COB-MONITORING.md.
+ * moves it by the adjustment (BudgetRevisionService::approve(), a private method of the review flow). Reading it as the Approved Amount therefore showed a revised line's NEW amount
+ * under Approved, and subtracting the adjustment from it took the revision back out of Revised. The Approved Amount is rebuilt as
+ * suggested_amount + cba_requested - adjustment instead; see COB-MONITORING.md.
  *
  * Deleted memo requests do not count. A CBA approved before the "charge the line on approval" rule never took anything off the
  * line, so it is not in CBA Requested either.
@@ -223,9 +228,16 @@ class CobService
         $cba = 'COALESCE(ear.cba_requested, 0)';
         $rfa = 'COALESCE(ear.rfa_approved, 0)';
         $laa = 'COALESCE(ear.laa_issued, 0)';
-        // The COB sheet's Revised Amount: the Approved Amount (suggested_amount) less the Revision / Realignment (adjustment), worked out per line.
+        // The COB sheet's Approved Amount: the amount as first suggested, BEFORE any Budget Revision or CBA touched the line. suggested_amount is the line's
+        // LIVE balance — an approved Budget Revision adds its signed adjustment to it and an approved CBA takes its amount off it — so the original is the live
+        // amount, plus what the CBAs took off (cba_requested), less the adjustment. (Reading suggested_amount as it stands put the revised figure under
+        // Approved and made Approved - Revision undo a revision that was already in it: a line cut from 352,418 to 130,000 showed 130,000 as Approved and
+        // 352,418 as Revised.)
+        $approved = "(COALESCE(li.suggested_amount, 0) + {$cba} - COALESCE(li.adjustment, 0))";
+        // The COB sheet's Revised Amount: the Approved Amount net of the Revision / Realignment. The adjustment is signed (a decrease is negative, shown in
+        // brackets), so "Approved less the revision" is Approved + adjustment — which is suggested_amount + cba_requested, the line as revised, before its CBAs.
         // One definition: Available and Remaining below start from it, so they follow it.
-        $revised = '(COALESCE(li.suggested_amount, 0) - COALESCE(li.adjustment, 0))';
+        $revised = "({$approved} + COALESCE(li.adjustment, 0))";
         // the RFA / LAA Monitoring page's Revised Amount: the proposed amount net of the adjustment (signed — a decrease / realignment out is
         // negative), worked out from the line itself. One definition, used by revised_computed and by unallocated_amount below.
         $revisedCalc = '(COALESCE(li.proposed_amount, 0) + COALESCE(li.adjustment, 0))';
@@ -235,7 +247,7 @@ class CobService
         $disb = 'COALESCE(dvl.dv_gross, 0)';
 
         return [
-            'approved_amount' => 'li.suggested_amount',
+            'approved_amount' => $approved,
             'revision_amount' => 'li.adjustment',
             'revised_amount' => $revised,
             'cba_requested' => $cba,
