@@ -43,9 +43,9 @@ use PHPMaker2024\FIMS\DataType;
  *
  * Five more figures per line item are for the RFA / LAA Monitoring page (rfa-laa-monitoring-page.php), which starts at the Revised Amount:
  *
- *   revised_computed    budget_line_items.proposed_amount + adjustment — the proposed amount net of the approved revisions / realignments (the
- *                       adjustment is signed, so a decrease lowers it). This page's Revised Amount; it is a different formula from the COB
- *                       page's revised_amount (approved_amount + revision_amount). They agree whenever FMD suggested the proposed amount
+ *   revised_computed    the same figure as the COB page's revised_amount (approved_amount + revision_amount = suggested_amount + cba_requested),
+ *                       so both pages show one Revised Amount. It started from budget_line_items.proposed_amount (proposed + adjustment) before,
+ *                       which ignored what FMD suggested below the proposal — see COB-MONITORING.md
  *   rfa_laa_amount      rfa_approved + laa_issued — what approved RFAs and issued LAAs have drawn from the CBAs
  *   disbursement        what the disbursement vouchers connected to the line's RFAs / LAAs (budget_allocation.dv_id) have disbursed: each voucher's
  *                       gross_amount spread over the draws of the RFAs / LAAs that point at it (disbursementSql()); cancelled / rejected vouchers
@@ -238,9 +238,11 @@ class CobService
         // brackets), so "Approved less the revision" is Approved + adjustment — which is suggested_amount + cba_requested, the line as revised, before its CBAs.
         // One definition: Available and Remaining below start from it, so they follow it.
         $revised = "({$approved} + COALESCE(li.adjustment, 0))";
-        // the RFA / LAA Monitoring page's Revised Amount: the proposed amount net of the adjustment (signed — a decrease / realignment out is
-        // negative), worked out from the line itself. One definition, used by revised_computed and by unallocated_amount below.
-        $revisedCalc = '(COALESCE(li.proposed_amount, 0) + COALESCE(li.adjustment, 0))';
+        // the RFA / LAA Monitoring page's Revised Amount: the SAME figure as the COB sheet's (above), so the two pages can never disagree. It used to be
+        // proposed_amount + adjustment, which starts from what the office proposed and so ignores what FMD suggested in Budget Processing — the approved
+        // budget, and what CBAs draw against; a line FMD cut showed its full proposed amount here and the cut as "unallocated". One definition, used by
+        // revised_computed and by unallocated_amount below.
+        $revisedCalc = $revised;
         $rfaLaa = "({$rfa} + {$laa})";
         // Disbursement = what the vouchers connected to the line's RFAs / LAAs have disbursed (disbursementSql()); the stored
         // budget_line_items.disbursement column, which nothing writes, is not used
@@ -255,8 +257,8 @@ class CobService
             'rfa_approved' => $rfa,
             'laa_issued' => $laa,
             'remaining_balance' => "({$revised} - {$rfa} - {$laa})",
-            // the RFA / LAA Monitoring page's own figures. Its Revised Amount is worked out from the line — the proposed amount net of the
-            // adjustment (a signed total: a decrease or a realignment out is negative) — not read from the recorded revised_amount column
+            // the RFA / LAA Monitoring page's own figures. Its Revised Amount is the COB sheet's (worked out per line, not read from the recorded
+            // revised_amount column); the rest is what that page adds
             'revised_computed' => $revisedCalc,
             'rfa_laa_amount' => $rfaLaa,
             'disbursement' => $disb,

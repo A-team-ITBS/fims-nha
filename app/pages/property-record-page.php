@@ -259,6 +259,7 @@ $_prp_api = Config('API.FIMS_URL');
 
     <!-- ═════════ ITEMS FROM THE IAR MODULE: the items entered for the property accounts (click one for its details) ═════════ -->
     <div id="prp-iar-section">
+        <div class="nha-summary" id="prp-iar-kpis" style="grid-template-columns:repeat(3,minmax(0,1fr));"></div>
         <div class="nha-filters no-print">
             <div class="nha-filter-row">
                 <div class="nha-filter-group">
@@ -791,7 +792,8 @@ function prp_depr(it) {
     const cost = Number(it.amount || 0), r2 = v => Math.round(v * 100) / 100;
     const monthly = r2(cost * 0.9 / prp_lifeMonths(it.account_code));
     const accum   = Math.min(r2(monthly * prp_monthsUsed(it.date_acquired, prp_asOf)), r2(cost * 0.9));
-    return { residual: r2(cost * 0.1), monthly, accum, nbv: r2(cost - accum) };
+    // fully depreciated: the whole 90% is depreciated (after the useful life, e.g. 60 months for equipment) → the item's Remarks say so
+    return { residual: r2(cost * 0.1), monthly, accum, nbv: r2(cost - accum), fully: cost > 0 && accum >= r2(cost * 0.9) };
 }
 /* ══════════════ PRO-FORMA JEV: depreciation of a quarter ══════════════
    Per property account (category): the depreciation of its items within the quarter is DEBITED to the depreciation expense account
@@ -1121,6 +1123,29 @@ function prp_renderIar() {
     // amount cell: the peso sign at the left of the cell, the number at the right; only the FIRST account and the TOTAL show the sign
     const numFmt = v => Number(v || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const amtCell = (v, peso, bold) => `<td style="text-align:right;white-space:nowrap;${bold ? 'font-weight:700;' : ''}">${peso ? '<span class="prp-pl">₱</span>' : ''}${numFmt(v)}</td>`;
+    // the cards (three to a row) — of the items in the list, as of today: depreciation of the current quarter and of the year to date,
+    // accumulated depreciation, and the fully depreciated items (their number and acquisition cost)
+    {
+        const today = prp_asOf, y = Number(today.slice(0, 4)), q = Math.floor((Number(today.slice(5, 7)) - 1) / 3);
+        const qPrev = prp_ymd(new Date(y, q * 3, 0)), yPrev = (y - 1) + '-12-31', r2 = v => Math.round(v * 100) / 100;
+        const all = list.flatMap(([, g]) => g.items.map(([it]) => it));
+        let quarterly = 0, ytd = 0, accum = 0, fullyN = 0;
+        all.forEach(it => {
+            const a = prp_accumAt(it, today), cost = Number(it.amount || 0);
+            quarterly += a - prp_accumAt(it, qPrev);
+            ytd       += a - prp_accumAt(it, yPrev);
+            accum     += a;
+            if (cost > 0 && a >= r2(cost * 0.9)) fullyN++;                             // the whole 90% is depreciated
+        });
+        const card = (cls, label, val, sub) => `<div class="nha-sc ${cls}"><div class="nha-sc-top"><div><div class="nha-sc-label">${label}</div><div class="nha-sc-val">${val}</div></div></div><p class="nha-kpi-sub">${sub}</p></div>`;
+        $prp('prp-iar-kpis').innerHTML =
+            card('nha-sc-navy',  'QUARTERLY DEPRECIATION', prp_money(r2(quarterly)), PRP_QUARTERS[q + 1][0] + ' Quarter (' + PRP_QUARTERS[q + 1][1] + ') ' + y + ', to date') +
+            card('nha-sc-teal',  'YEAR-TO-DATE DEPRECIATION', prp_money(r2(ytd)), 'January 1 – ' + prp_asOfLabel()) +
+            card('nha-sc-amber', 'ACCUMULATED DEPRECIATION', prp_money(r2(accum)), 'As of ' + prp_asOfLabel()) +
+            card('nha-sc-green', 'FULLY DEPRECIATED', fullyN, 'Fully depreciated items only') +
+            card('nha-sc-navy',  '# OF ITEMS', all.length, 'All the items listed') +
+            card('nha-sc-teal',  'AMOUNT', prp_money(r2(all.reduce((s, it) => s + Number(it.amount || 0), 0))), 'Total amount (acquisition cost) of the items');
+    }
     const grand = list.reduce((s, [, g]) => s + g.total, 0), grandAccum = list.reduce((s, [, g]) => s + g.accum, 0), grandNbv = list.reduce((s, [, g]) => s + g.nbv, 0);
     $prp('prp-iar-tbody').innerHTML = list.map(([code, g], idx) => {
         const has  = g.items.length > 0;
@@ -1128,21 +1153,25 @@ function prp_renderIar() {
         // the whole account row opens / closes its items (the arrow only shows the state)
         return `<tr${has ? ` style="cursor:pointer;" onclick="prp_toggleIar('${prp_esc(code)}')" title="Click to ${open ? 'hide' : 'show'} the items"` : ''}>
             <td>${has ? `<button type="button" class="prp-v-toggle" aria-expanded="${open}" tabindex="-1">${open ? '&#9662;' : '&#9656;'}</button>` : ''}</td>
-            <td style="font-weight:700;">${prp_dash(g.title)}${has ? ` <span class="prp-v-pill">${g.items.length} item${g.items.length === 1 ? '' : 's'}</span>` : ''}</td>
+            <td style="font-weight:700;">${prp_dash(g.title)}</td>
             <td style="text-align:center;"><code class="nha-code">${prp_esc(code)}</code></td>
             ${amtCell(g.total, idx === 0, false)}
             <td style="text-align:center;"><code class="nha-code">${prp_esc((PRP_JEV_CFG[code] || {}).c || '')}</code></td>
             ${amtCell(g.accum, idx === 0, false)}
             ${amtCell(g.nbv, idx === 0, false)}
         </tr>` + (open ? `<tr class="prp-v-sub"><td colspan="7"><div class="prp-v-inner"><table class="prp-v-tbl">
-            <thead><tr><th>Description - Item</th><th>Serial No.</th><th>Property No.</th><th>Responsibility Center</th><th>Acq. Date</th><th style="text-align:right;">Acq. Cost</th><th style="text-align:right;">Residual<br>Value</th><th style="text-align:right;">Monthly<br>Depr'n.</th><th style="text-align:right;">Accumulated<br>Depreciation</th><th style="text-align:right;">Net Book Value<br>as of ${prp_asOfLabel()}</th></tr></thead>
+            <thead><tr><th>Description - Item</th><th>Serial No.</th><th>Property No.</th><th>Responsibility Center</th><th>JEV Reference/Date **</th><th>Acq. Date</th><th style="text-align:right;">Acq. Cost</th><th style="text-align:right;">Residual<br>Value</th><th style="text-align:right;">Monthly<br>Depr'n.</th><th style="text-align:right;">Accumulated<br>Depreciation</th><th style="text-align:right;">Net Book Value<br>as of ${prp_asOfLabel()}</th><th>Remarks *****</th></tr></thead>
             <tbody>${g.items.map(([it, i]) => `<tr style="cursor:pointer;" onclick="prp_openIar(${i})" title="Click to see the details of this item">
                 <td>${prp_dash(it.description)}</td><td>${prp_dash(it.serial_no)}</td><td>${prp_dash(it.property_no)}</td>
-                <td>${prp_dash(it.rc_name)}</td><td style="white-space:nowrap;">${prp_date(it.date_acquired)}</td>
+                <td>${prp_dash(it.rc_name)}</td>
+                <td style="white-space:nowrap;"><div>${it.jev_no ? '<code class="nha-code">' + prp_esc(it.jev_no) + '</code>' : '—'}</div>
+                    <div class="prp-sub">PO# ${prp_dash(it.po_number)}</div></td>
+                <td style="white-space:nowrap;">${prp_date(it.date_acquired)}</td>
                 <td style="text-align:right;white-space:nowrap;">${prp_money(it.amount)}</td>` + (d => `<td style="text-align:right;white-space:nowrap;">${prp_money(d.residual)}</td>
                 <td style="text-align:right;white-space:nowrap;">${prp_money(d.monthly)}</td>
                 <td style="text-align:right;white-space:nowrap;">${prp_money(d.accum)}</td>
-                <td style="text-align:right;white-space:nowrap;">${prp_money(d.nbv)}</td></tr>`)(prp_depr(it))).join('')}</tbody></table></div></td></tr>` : '');
+                <td style="text-align:right;white-space:nowrap;">${prp_money(d.nbv)}</td>
+                <td style="white-space:nowrap;">${d.fully ? '<em>Fully Depreciated</em>' : ''}</td></tr>`)(prp_depr(it))).join('')}</tbody></table></div></td></tr>` : '');
     }).join('') + (list.length ? `<tr style="background:var(--afims-surface-subtle, #F4F7FA);"><td></td><td style="font-weight:700;">TOTAL</td><td></td>${amtCell(grand, true, true)}<td></td>${amtCell(grandAccum, true, true)}${amtCell(grandNbv, true, true)}</tr>` : '');
     // the button reads "Collapse All" once every account with items is open
     const withItems = list.filter(([, g]) => g.items.length);
