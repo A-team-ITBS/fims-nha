@@ -19,22 +19,6 @@ $app->get("/cash-position/lookup/bank-accounts", function ($request, $response) 
     return $response->withHeader('Content-Type', 'application/json')->write($service->getBankAccountsLookup());
 });
 
-// ── Dashboard ──
-$app->get("/cash-position/dashboard/kpis", function ($request, $response) {
-    $service = new Service\CashPositionService();
-    return $response->withHeader('Content-Type', 'application/json')->write($service->getDashboardKpis($request->getQueryParams()));
-});
-
-$app->get("/cash-position/dashboard/list", function ($request, $response) {
-    $service = new Service\CashPositionService();
-    return $response->withHeader('Content-Type', 'application/json')->write($service->getDashboardList($request->getQueryParams()));
-});
-
-$app->get("/cash-position/dashboard/account-detail/{id}", function ($request, $response, $args) {
-    $service = new Service\CashPositionService();
-    return $response->withHeader('Content-Type', 'application/json')->write($service->getAccountDetail($args['id'], $request->getQueryParams()));
-});
-
 // ── Position Updates ──
 $app->get("/cash-position/updates/kpis", function ($request, $response) {
     $service = new Service\CashPositionService();
