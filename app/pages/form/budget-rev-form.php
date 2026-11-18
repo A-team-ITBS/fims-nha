@@ -36,7 +36,7 @@ try {
 
 /* The modal is a flex column (header · scrolling body · footer) capped at 90vh, but this form's body and footer sit INSIDE a <form>.
    The form has to be the flex item that passes the height on; left as a plain block it just grows past the modal, which clips it —
-   the body would not scroll and the footer (Cancel / Submit Request) would be pushed out of sight. */
+   the body would not scroll and the footer (Cancel / Save Request) would be pushed out of sight. */
 .nha-root #brv-overlay .nha-modal > form { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
 .nha-root #brv-overlay .nha-modal-body { min-height: 0; }
 .nha-root #brv-overlay .nha-modal-foot { flex-shrink: 0; }
@@ -210,6 +210,7 @@ try {
 .nha-root .brv-change {
     margin-top: 12px; padding: 9px 12px; border-radius: 8px; font-size: 12.5px; font-weight: 600;
     background: var(--surf, #F4F7FA); color: var(--subtle, #62657E);
+    white-space: pre-line;   /* a realignment's note runs to a second line: what each budget line goes to */
 }
 .nha-root .brv-change.is-up   { background: var(--green-bg, #DBF2E5); color: var(--green-txt, #0C7539); }
 .nha-root .brv-change.is-down { background: var(--red-bg, #FAE1E3);   color: var(--red-txt, #8F222D); }
@@ -473,7 +474,8 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
             </div>
             <div class="nha-modal-foot">
                 <button type="button" class="nha-btn nha-btn-ghost" id="brv-cancel">Cancel</button>
-                <button type="submit" class="nha-btn nha-btn-primary" id="brv-save">Submit Request</button>
+                <!-- saving files the request as Saved (still editable); "Process" in its Actions menu is what submits it for review -->
+                <button type="submit" class="nha-btn nha-btn-primary" id="brv-save">Save Request</button>
             </div>
         </form>
     </div>
@@ -523,8 +525,10 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
    with its lines (setBudgetLine looks them up among ALL lines), and its To list follows that line's year. The server refuses a transfer
    between years too (BudgetRevisionService::sameYearError()).
 
-   With a To line the revision MOVES funds, so To Amount must be lower than From Amount:
-   the From line goes down to To Amount and the To line goes up by the difference.
+   With a To line the revision MOVES funds, and on the Realignment tab the Amount typed IS the amount that moves: the From line goes down by
+   it and the To line goes up by it. It is saved as to_amount = (the From line's amount) − Amount (amounts()), so the table, the details and
+   the approval keep reading from_amount → to_amount as "the From line's amount before → after"; the Change column is −Amount. A Revision's
+   Amount is the line's new amount, saved as typed.
 ══════════════════════════════════════════════════════════════════════════ */
 (function () {
     const $ = id => document.getElementById(id);
@@ -552,17 +556,18 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
     let type = 'REVISION';
     const TYPE_TEXT = {
         REVISION: {
-            intro: "Revise a budget line's amount. A revision only takes effect once it has been approved; then the line's adjustment and revised amount change by the difference.",
+            intro: "Revise a budget line's amount. Saving files it as Saved, and you can still edit it; choose Process in its Actions menu to submit it for review (after that it cannot be edited). A revision only takes effect once it has been approved; then the line's adjustment and revised amount change by the difference.",
             step1: 'Budget line', step1Sub: 'Pick the budget line to revise.',
             step2: 'Revision', from: 'Current Amount', to: 'New Amount',
             fromHint: "The budget line's current amount.", toHint: "What the budget line's amount becomes.",
             reasonPh: 'Explain why this budget needs to be revised',
         },
         REALIGNMENT: {
-            intro: "Move funds from one budget line to another. A realignment only takes effect once it has been approved; then the From line's adjustment and revised amount go down and the To line's go up.",
+            intro: "Move funds from one budget line to another. Saving files it as Saved, and you can still edit it; choose Process in its Actions menu to submit it for review (after that it cannot be edited). A realignment only takes effect once it has been approved; then the From line's adjustment and revised amount go down and the To line's go up.",
             step1: 'Budget lines', step1Sub: 'Pick the line to take funds from and the line that receives them.',
-            step2: 'Realignment', from: 'From Amount', to: 'Amount',
-            fromHint: "The From budget line's current amount.", toHint: "What the From budget line's amount becomes.",
+            // On this tab the amount typed is the amount that MOVES (saved as to_amount = the From line's amount − it, see amounts())
+            step2: 'Realignment', from: 'From Amount', to: 'Amount to Transfer',
+            fromHint: "The From budget line's current amount.", toHint: 'How much moves from the From budget line to the To budget line.',
             reasonPh: 'Explain why this budget needs to be realigned',
         },
     };
@@ -1094,50 +1099,73 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
         const l = fromPicker && fromPicker.selected();
         return l && !l.hasRevised ? 'approved' : 'revised';
     }
-    // The note for a Realignment whose Amount is not below the From line's amount ('' when it is fine). The From line goes DOWN to Amount and
-    // the To line gets the difference, so an Amount above it is refused — and so is one equal to it, which would move nothing.
+    const round2 = n => Math.round(n * 100) / 100;
+
+    // What a Realignment's Amount is checked against and taken from: the From line's current amount once it is picked (the server measures a
+    // transfer against the live line too), else whatever the (disabled) From Amount field holds. NaN when neither is known yet.
+    function moveBase() {
+        const line = fromPicker && fromPicker.selected();
+        return line ? amountOf(line) : Number(amtRaw(el.from.value) === '' ? NaN : amtRaw(el.from.value));
+    }
+
+    // The note for a Realignment Amount that cannot be transferred ('' when it is fine). The amount typed is the amount that MOVES, so it
+    // has to be more than zero and no more than the From line's amount (it cannot go below zero). Taking all of it is fine.
     function moveAmountError(amount, fromAmount) {
-        const d = Math.round((Number(amount) - Number(fromAmount)) * 100) / 100;
-        if (isNaN(d) || d < 0) return '';
-        const word = fromAmountWord();
-        return d > 0
-            ? `Amount must not exceed the From budget line's ${word} amount.`
-            : `Amount is the same as the From budget line's ${word} amount, so no funds would move to the To budget line.`;
+        const x = round2(Number(amount)), f = round2(Number(fromAmount));
+        if (amount === '' || amount === null || amount === undefined || isNaN(x)) return 'Enter the amount to transfer.';
+        if (x <= 0) return 'The amount to transfer must be more than zero.';
+        if (!isNaN(f) && x > f) return `The amount to transfer must not exceed the From budget line's ${fromAmountWord()} amount (${peso(f)}).`;
+        return '';
+    }
+
+    // The two amounts a request is SAVED with. A Revision stores what was typed (the line's new amount). A Realignment stores the From line's
+    // amount at filing and what it becomes once the typed Amount has moved to the To line: to_amount = from_amount − Amount. The amount
+    // typed is therefore the amount transferred, and the table / details (From, To, Change = −Amount) and the approval read it back unchanged.
+    function amounts() {
+        const f = amtRaw(el.from.value), t = amtRaw(el.to.value);
+        if (type !== 'REALIGNMENT') return { from_amount: f, to_amount: t };
+        const base = moveBase(), x = Number(t);
+        if (t === '' || isNaN(x) || isNaN(base)) return { from_amount: f, to_amount: '' };   // incomplete: the checks report it
+        return { from_amount: round2(base).toFixed(2), to_amount: round2(base - x).toFixed(2) };
     }
 
     function updateChange() {
         const f = amtRaw(el.from.value), t = amtRaw(el.to.value);   // without the thousands commas
         const from = fromPicker.selected(), to = toPicker.selected();
         el.to.setCustomValidity('');   // set again below when the amounts are invalid
+        const show = (cls, text, invalid) => {
+            el.change.hidden = false;
+            el.change.className = 'brv-change' + (cls ? ' ' + cls : '');
+            el.change.textContent = text;
+            if (invalid) el.to.setCustomValidity(text);
+        };
+
+        if (type === 'REALIGNMENT') {
+            // The Amount is what moves from the From line to the To line. Nothing to say until an amount is typed.
+            if (t === '' || isNaN(t)) { el.change.hidden = true; return; }
+            const base = moveBase(), x = round2(Number(t));
+            const bad = moveAmountError(t, base);
+            if (bad) { show('is-down', bad, true); return; }
+            // the From line may not be left with a negative balance (checked against what it will become)
+            const low = from ? fromBalanceError(from, round2(base - x)) : '';
+            if (low) { show('is-down', low, true); return; }
+            const fromName = from ? nameOf(from) : 'the From budget line', toName = to ? nameOf(to) : 'the To budget line';
+            // once both lines are picked, say what each one goes to
+            const lines = from && to
+                ? `\n${fromName}: ${peso(amountOf(from))} → ${peso(round2(amountOf(from) - x))}   ·   ${toName}: ${peso(amountOf(to))} → ${peso(round2(amountOf(to) + x))}`
+                : '';
+            show('is-move', `${peso(x)} moves from ${fromName} to ${toName}${lines}`);
+            return;
+        }
+
         if (f === '' || t === '' || isNaN(f) || isNaN(t)) { el.change.hidden = true; return; }
-        const d = Math.round((Number(t) - Number(f)) * 100) / 100;
-        el.change.hidden = false;
+        const d = round2(Number(t) - Number(f));
 
         // nothing is submitted that would leave the From line negative
         const low = fromBalanceError(from, t);
-        if (low) {
-            el.change.className = 'brv-change is-down';
-            el.change.textContent = low;
-            el.to.setCustomValidity(low);
-            return;
-        }
+        if (low) { show('is-down', low, true); return; }
 
-        if (to || type === 'REALIGNMENT') {
-            // A realignment (always, even before its To line is picked) moves funds: the From line must go DOWN, the To line gets the difference.
-            if (d < 0) {
-                el.change.className = 'brv-change is-move';
-                el.change.textContent = `${peso(-d)} moves from ${from ? nameOf(from) : 'the From budget line'} to ${to ? nameOf(to) : 'the To budget line'}`;
-            } else {
-                const msg = moveAmountError(t, f);
-                el.change.className = 'brv-change is-down';
-                el.change.textContent = msg;
-                el.to.setCustomValidity(msg);
-            }
-            return;
-        }
-
-        el.change.className = 'brv-change' + (d > 0 ? ' is-up' : d < 0 ? ' is-down' : '');
-        el.change.textContent = d === 0 ? 'No change' : `${d > 0 ? 'Increase' : 'Decrease'} of ${peso(Math.abs(d))}`;
+        show(d > 0 ? 'is-up' : d < 0 ? 'is-down' : '', d === 0 ? 'No change' : `${d > 0 ? 'Increase' : 'Decrease'} of ${peso(Math.abs(d))}`);
     }
     el.to.addEventListener('input', updateChange);
 
@@ -1173,7 +1201,11 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
     }
     $('brv-type-tabs').addEventListener('click', e => {
         const b = e.target.closest('.nha-tab');
-        if (b && b.dataset.type !== type) setType(b.dataset.type);
+        if (!b || b.dataset.type === type) return;
+        // The Amount means something else on each tab (a Revision's new amount, a Realignment's amount to transfer), so one typed on the
+        // other tab is dropped rather than quietly read as the wrong thing.
+        el.to.value = '';
+        setType(b.dataset.type);
     });
 
     function resetUI() {
@@ -1232,8 +1264,12 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
         // Pick the Revision or Realignment tab ('REVISION' | 'REALIGNMENT'); a Revision hides and empties the To budget line.
         setType,
         getType: () => type,
-        // The note for a Realignment Amount that is not below the From line's amount ('' when it is fine) — the page uses it when it saves.
+        // The note for a Realignment Amount that cannot be transferred — zero, or more than the From line's amount ('' when it is fine). The page
+        // uses it when it saves: moveAmountError(amount typed, From line's amount).
         moveAmountError,
+        // { from_amount, to_amount } to save the request with. A Realignment's typed Amount is the amount TRANSFERRED, saved as
+        // to_amount = from_amount − Amount; a Revision's is the line's new amount, saved as it is. Both are plain number strings.
+        amounts,
         // Preselect the From line and the To line by id (the latter may be omitted / '' / null for none; a line that is no longer on
         // the list — or a revision filed before budget lines were revised, which has none — leaves that picker empty). The host
         // page has already put the saved From/To Amount in the inputs, so refresh the chip too.

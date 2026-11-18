@@ -23,6 +23,11 @@ use PHPMaker2024\FIMS as App;
  * again when it is approved (fromBalanceError()); an increase is never refused.
  * See _assets/sql/01 - fims/03 - alter_table/23 - budget_revision_on_budget_reference_number.sql.
  *
+ * Status flow:  Saved  --process()-->  Submitted  --review()-->  Approved | Declined
+ *   create() files a request as SAVED; only a Saved request can be edited (update()). process() submits it — from then on it cannot be
+ *   edited — and only a Submitted request can be reviewed (approved or declined) by FMD. The same checks as at filing are made again when
+ *   it is processed and when it is approved, because the lines can change in between.
+ *
  * Two kinds of request, stored in fims.budget_revision.request_type (03 - alter_table/42):
  *   REVISION     — no To line: the From line's amount simply changes.
  *   REALIGNMENT  — a To line: funds MOVE from the From line to the To line, and both lines must be in the SAME FISCAL YEAR
@@ -35,12 +40,14 @@ use PHPMaker2024\FIMS as App;
 class BudgetRevisionService
 {
     // The statuses live in fims.settings_status (status_for = 'budget_revision'), looked up by NAME — their ids differ per
-    // install (see statusId()). status_id is NOT NULL and is not on the form, so a newly filed revision starts as Pending;
-    // review() then moves it to Approved or Declined. Seeded by "_assets/sql/01 - fims/04 - seed_data/08 - budget_revision_statuses.sql".
-    private const STATUS_FOR      = 'budget_revision';
-    private const STATUS_PENDING  = 'Pending';
-    private const STATUS_APPROVED = 'Approved';
-    private const STATUS_DECLINED = 'Declined';
+    // install (see statusId()). status_id is NOT NULL and is not on the form, so a newly filed revision starts as Saved (it can still
+    // be edited); process() then Submits it (no more editing — it is in front of FMD), and review() moves it to Approved or Declined.
+    // Seeded by "_assets/sql/01 - fims/04 - seed_data/08 - budget_revision_statuses.sql" (which also renames the old 'Pending' to 'Submitted').
+    private const STATUS_FOR       = 'budget_revision';
+    private const STATUS_SAVED     = 'Saved';
+    private const STATUS_SUBMITTED = 'Submitted';
+    private const STATUS_APPROVED  = 'Approved';
+    private const STATUS_DECLINED  = 'Declined';
 
     /** @var array<string, int> status name => id, read once per request */
     private array $statusIds = [];
@@ -103,7 +110,7 @@ class BudgetRevisionService
                 LEFT JOIN {$this->tableUser} us ON us.user_id = rv.user_id";
     }
 
-    // `status` is the readable form of the status — its name in capitals: PENDING / APPROVED / DECLINED, or UNKNOWN when status_id
+    // `status` is the readable form of the status — its name in capitals: SAVED / SUBMITTED / APPROVED / DECLINED, or UNKNOWN when status_id
     // matches no revision status — and status_name / status_color are the settings_status row itself (the page paints its badge
     // with that colour); requested_by_* is who filed it
     // (both NULL for the built-in administrator, whose user_id -1 has no users row).
@@ -121,7 +128,7 @@ class BudgetRevisionService
             . $this->joinSql();
     }
 
-    // The id of the revision status called $name (Pending / Approved / Declined), or null when it is not set up — the seed was not run.
+    // The id of the revision status called $name (Saved / Submitted / Approved / Declined), or null when it is not set up — the seed was not run.
     private function statusId(string $name): ?int
     {
         if (!array_key_exists($name, $this->statusIds)) {
@@ -432,10 +439,11 @@ class BudgetRevisionService
             if (!is_numeric($userId) || (int) $userId === 0) {
                 return ['success' => false, 'message' => 'Unable to determine the current user.'];
             }
-            // a new revision starts as Pending (looked up first: when the status is missing nothing is written)
-            $pendingId = $this->statusId(self::STATUS_PENDING);
-            if ($pendingId === null) {
-                return $this->missingStatus(self::STATUS_PENDING);
+            // a new revision starts as Saved — still editable, and not yet in front of the reviewers; process() submits it
+            // (looked up first: when the status is missing nothing is written)
+            $savedId = $this->statusId(self::STATUS_SAVED);
+            if ($savedId === null) {
+                return $this->missingStatus(self::STATUS_SAVED);
             }
 
             $sql = "INSERT INTO {$this->table} (request_type, from_budget_line_item_id, to_budget_line_item_id, from_amount, to_amount, reason, user_id, status_id)
@@ -447,15 +455,16 @@ class BudgetRevisionService
                 . App\QuotedValue($toAmount, App\DataType::NUMBER, 'DB') . ', '
                 . $this->reasonSql($body) . ', '
                 . App\QuotedValue((int) $userId, App\DataType::NUMBER, 'DB') . ', '
-                . $pendingId . ')
+                . $savedId . ')
                     RETURNING id';
 
             $row = App\ExecuteRow($sql, 'DB');
 
             return [
                 'success' => true,
-                'message' => 'Budget revision request created successfully.',
+                'message' => 'Budget revision request saved. Choose Process to submit it for review.',
                 'id'      => $row['id'] ?? null,
+                'status'  => 'SAVED',
             ];
         } catch (\Exception $e) {
             return $this->failure($e);
@@ -470,10 +479,13 @@ class BudgetRevisionService
                 return $check;
             }
 
-            // An approved revision has already been applied to its lines' adjustments, so
-            // changing it afterwards would leave the two out of step.
-            if (($check['data']['status'] ?? '') === 'APPROVED') {
-                return ['success' => false, 'message' => "Budget revision request #{$id} is already approved and can no longer be edited."];
+            // Only a SAVED request can be edited. Once it is processed (Submitted) it is in front of the reviewers, and an
+            // approved one has already been applied to its lines' adjustments — changing either afterwards would leave the
+            // request and what was reviewed / applied out of step. (A declined one is final too.)
+            if (($check['data']['status'] ?? '') !== 'SAVED') {
+                $current = strtolower((string) ($check['data']['status'] ?? ''));
+
+                return ['success' => false, 'message' => "Budget revision request #{$id} is {$current} and can no longer be edited — only a saved request can be."];
             }
 
             $setParts = [];
@@ -565,7 +577,72 @@ class BudgetRevisionService
         }
     }
 
-    // Approve or decline a PENDING revision. $status is 'APPROVED' or 'DECLINED'.
+    // Process a SAVED revision: submit it for review (Saved -> Submitted). From then on it can no longer be edited (update() refuses
+    // anything that is not Saved) and FMD can approve or decline it (review()). The lines can have changed since it was saved, so the
+    // same checks as when it is filed are made again against them as they are NOW — a request that no longer holds stays Saved, with the
+    // reason, and can be edited. The status_id guard makes the change atomic: a second click (or another user) finds no Saved row.
+    public function process(int|string $id): array
+    {
+        try {
+            // looked up first: when one is missing nothing has been read as saved or changed
+            $savedId = $this->statusId(self::STATUS_SAVED);
+            if ($savedId === null) {
+                return $this->missingStatus(self::STATUS_SAVED);
+            }
+            $submittedId = $this->statusId(self::STATUS_SUBMITTED);
+            if ($submittedId === null) {
+                return $this->missingStatus(self::STATUS_SUBMITTED);
+            }
+
+            $check = $this->fetchById($id);
+            if (!$check['success']) {
+                return $check;
+            }
+
+            $row = $check['data'];
+            if (($row['status'] ?? '') !== 'SAVED') {
+                $current = strtolower((string) ($row['status'] ?? ''));
+
+                return ['success' => false, 'message' => "Only saved requests can be processed — request #{$id} is already {$current}."];
+            }
+
+            $fromId = $row['from_budget_line_item_id'] === null ? null : (int) $row['from_budget_line_item_id'];
+            $toId   = $row['to_budget_line_item_id'] === null ? null : (int) $row['to_budget_line_item_id'];
+            if ($fromId === null || !$this->lineExists($fromId)) {
+                return ['success' => false, 'message' => "The From budget line for request #{$id} is missing — edit the request and pick it, then process it."];
+            }
+            if ($toId !== null) {
+                $error = $this->transferError($fromId, $toId, $row['from_amount'], $row['to_amount']);
+                if ($error !== null) {
+                    return ['success' => false, 'message' => $error];
+                }
+            }
+            $error = $this->fromBalanceError($fromId, $row['to_amount']);
+            if ($error !== null) {
+                return ['success' => false, 'message' => $error];
+            }
+
+            $affected = App\Execute(
+                "UPDATE {$this->table}
+                 SET status_id = {$submittedId}, update_at = NOW()
+                 WHERE id = " . (int) $id . " AND deleted_at IS NULL AND status_id = {$savedId}",
+                'DB'
+            );
+            if (!$affected) {
+                return ['success' => false, 'message' => "Request #{$id} was already processed or changed by someone else."];
+            }
+
+            return [
+                'success' => true,
+                'message' => "Budget revision request #{$id} processed — it is now submitted for review and can no longer be edited.",
+                'status'  => 'SUBMITTED',
+            ];
+        } catch (\Exception $e) {
+            return $this->failure($e);
+        }
+    }
+
+    // Approve or decline a SUBMITTED revision (one that has been processed). $status is 'APPROVED' or 'DECLINED'.
     // DECLINED only records the decision. APPROVED also applies the change to the budget line(s)
     // (their adjustment) — see approve().
     public function review(int|string $id, string $status): array
@@ -580,9 +657,9 @@ class BudgetRevisionService
                 return ['success' => false, 'message' => "status must be 'APPROVED' or 'DECLINED'."];
             }
 
-            // The statuses are looked up first: when one is missing nothing has been read as pending or changed.
-            if ($this->statusId(self::STATUS_PENDING) === null) {
-                return $this->missingStatus(self::STATUS_PENDING);
+            // The statuses are looked up first: when one is missing nothing has been read as submitted or changed.
+            if ($this->statusId(self::STATUS_SUBMITTED) === null) {
+                return $this->missingStatus(self::STATUS_SUBMITTED);
             }
             $targetId = $this->statusId($target);
             if ($targetId === null) {
@@ -594,10 +671,11 @@ class BudgetRevisionService
                 return $check;
             }
 
-            if (($check['data']['status'] ?? '') !== 'PENDING') {
+            if (($check['data']['status'] ?? '') !== 'SUBMITTED') {
                 $current = ucfirst(strtolower((string) $check['data']['status']));
 
-                return ['success' => false, 'message' => "Only pending requests can be reviewed — request #{$id} is already {$current}."];
+                return ['success' => false, 'message' => "Only submitted requests can be reviewed — request #{$id} is {$current}"
+                    . (($check['data']['status'] ?? '') === 'SAVED' ? ': it has to be processed first.' : '.')];
             }
 
             if ($target === self::STATUS_APPROVED) {
@@ -610,7 +688,7 @@ class BudgetRevisionService
             $affected = App\Execute(
                 "UPDATE {$this->table}
                  SET status_id = {$targetId}, update_at = NOW()
-                 WHERE id = " . (int) $id . ' AND deleted_at IS NULL AND status_id = ' . $this->statusId(self::STATUS_PENDING),
+                 WHERE id = " . (int) $id . ' AND deleted_at IS NULL AND status_id = ' . $this->statusId(self::STATUS_SUBMITTED),
                 'DB'
             );
             if (!$affected) {
@@ -643,10 +721,10 @@ class BudgetRevisionService
         $newAmt = round((float) $rev['to_amount'], 2);
 
         // the ids of the two statuses the approval moves the revision between (review() has already found them)
-        $pendingId  = $this->statusId(self::STATUS_PENDING);
-        $approvedId = $this->statusId(self::STATUS_APPROVED);
-        if ($pendingId === null) {
-            return $this->missingStatus(self::STATUS_PENDING);
+        $submittedId = $this->statusId(self::STATUS_SUBMITTED);
+        $approvedId  = $this->statusId(self::STATUS_APPROVED);
+        if ($submittedId === null) {
+            return $this->missingStatus(self::STATUS_SUBMITTED);
         }
         if ($approvedId === null) {
             return $this->missingStatus(self::STATUS_APPROVED);
@@ -699,7 +777,7 @@ class BudgetRevisionService
             "WITH approved AS (
                  UPDATE {$this->table} rv
                  SET status_id = {$approvedId}, update_at = NOW()
-                 WHERE rv.id = {$id} AND rv.deleted_at IS NULL AND rv.status_id = {$pendingId}
+                 WHERE rv.id = {$id} AND rv.deleted_at IS NULL AND rv.status_id = {$submittedId}
                    AND EXISTS (SELECT 1 FROM {$this->tableLines} x WHERE x.budget_line_item_id = rv.from_budget_line_item_id)
                    AND (SELECT rv.to_amount >= g.proposed_amount + g.adjustment
                                OR g.suggested_amount + (rv.to_amount - (g.proposed_amount + g.adjustment)) >= 0
