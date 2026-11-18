@@ -75,7 +75,7 @@
       <phrase id="menutext" value="Cash Position" />
     </menu>
     <menu id="551">
-      <phrase id="menutext" value="Registry/NCA" />
+      <phrase id="menutext" value="Registry" />
     </menu>
     <menu id="263">
       <phrase id="menutext" value="SARO Registry" />
@@ -126,7 +126,7 @@
       <phrase id="menutext" value="Accounts Set-up" />
     </menu>
     <menu id="80">
-      <phrase id="menutext" value="Program" />
+      <phrase id="menutext" value="Program / Sub Program" />
     </menu>
     <menu id="82">
       <phrase id="menutext" value="Sub Program" />
