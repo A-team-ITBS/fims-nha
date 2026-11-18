@@ -25,7 +25,7 @@ $_bgr_fmdRcCodeFrom = '35-074-0000001-000';   // the Regional / District offices
 $_bgr_userRc = null;
 try {
     $_bgr_userRc = ExecuteRow(
-        'SELECT rc.rc_id, rc.rc_code, rc.rc_name FROM uac.users u '
+        'SELECT rc.rc_id, rc.rc_code, rc.rc_name, rc.office_type FROM uac.users u '
         .'JOIN fims.responsibility_code rc ON rc.rc_id = u.rc_id WHERE u.user_id = '.(int) $userid,
         'DB'
     ) ?: null;
@@ -238,6 +238,10 @@ let bgr_flatRows = [];
 // Regional / District office (see the PHP at the top of this file and the FMD list section below).
 const BGR_FMD = <?php echo $_bgr_isFmd ? 'true' : 'false'; ?>;
 const BGR_FMD_RC_FROM = <?php echo json_encode($_bgr_fmdRcCodeFrom); ?>;
+// fims.responsibility_code.office_type of the logged-in user's own RC — same source "Print COB" (readone/
+// budget-req-readone.php, bgrv_openCobModal) reads via bgrv_rcDeptType() to decide whether a Regional /
+// District user skips straight to "Per Program" instead of being offered all four print layouts.
+const BGR_USER_OFFICE_TYPE = <?php echo json_encode((string) ($_bgr_userRc['office_type'] ?? '')); ?>;
 
 window.bgr_afterSave = () => bgr_load();
 

@@ -372,14 +372,19 @@ class BudgetLineItemService
     }
 
     /**
-     * Converts (part of) a parent CBA's earmark into a real obligation — called when an RFA/LAA
-     * referencing that CBA (its parent_id) reaches Approved. For each distinct COB in the RFA/LAA's own
+     * Converts (part of) a parent CBA's earmark into a real obligation — called when an RFA/LAA reaches
+     * Approved, once per THIS RFA/LAA's own project block, against THAT block's own parent CBA
+     * ($parentAllocationId — fims.budget_allocation_project.parent_allocation_id; an RFA/LAA can draw from
+     * several different parent CBAs at once, one per block). For each distinct COB in the block's own
      * line_transaction (lines against the same COB totalled together first):
      *   - the parent CBA's active earmark row for that COB is reduced by the drawn amount — fully drawn
      *     -> flips to 'converted' (amount zeroed); partially drawn -> stays 'active' with the smaller
      *     remaining amount, so a later RFA/LAA can still draw down what's left;
      *   - a new 'converted' row is inserted, attributed to this RFA/LAA's OWN allocation_id, so what
-     *     each RFA/LAA actually converted stays traceable independently of what the CBA still has left;
+     *     each RFA/LAA actually converted stays traceable independently of what the CBA still has left.
+     *     It also records source_earmark_id — the EXACT parent earmark row it just decremented — so a
+     *     later reversal (reverseConversions() / restoreParentEarmark()) restores that exact row instead
+     *     of re-matching project_code against a parent that may have several blocks drawing the same COB;
      *   - budget_line_items.obligation is increased by the same amount, UNCONDITIONALLY — an RFA/LAA's
      *     approval is the ONLY thing that ever writes this column (its sole counterpart is
      *     reverseConversions(), -R, when an Approved RFA/LAA is deleted). A CBA/CFA's own approval never
@@ -464,8 +469,8 @@ class BudgetLineItemService
 
             $amount = App\QuotedValue($requested, DataType::NUMBER, 'DB');
             App\Execute(
-                "INSERT INTO {$this->tableEarmark} (budget_line_item_id, allocation_id, budget_allocation_project_id, amount, original_amount, status, released_at)
-                 VALUES ({$lineItemId}, {$allocationId}, {$budgetAllocationProjectId}, {$amount}, {$amount}, 'converted', CURRENT_TIMESTAMP)",
+                "INSERT INTO {$this->tableEarmark} (budget_line_item_id, allocation_id, budget_allocation_project_id, amount, original_amount, status, released_at, source_earmark_id)
+                 VALUES ({$lineItemId}, {$allocationId}, {$budgetAllocationProjectId}, {$amount}, {$amount}, 'converted', CURRENT_TIMESTAMP, {$earmark['earmark_id']})",
                 'DB'
             );
 
@@ -543,12 +548,11 @@ class BudgetLineItemService
      * for a confirmed gap: an RFA/LAA's own 'converted' earmark rows never set balance_applied, so the
      * old releaseForAllocation() (keyed on that flag) never matched them and never gave anything back.
      * For each of this allocation's own 'converted' rows (already locked FOR UPDATE by the caller):
-     *   - re-resolves the parent CBA's earmark row the same way convertEarmarkForRfaApproval() found it
-     *     (by the PARENT's own project block matching this row's project's project_code) and restores
-     *     it: amount += R, status = 'active', released_at = NULL (always 'active' after a restore — the
-     *     amount necessarily becomes > 0, whether the row was 'active' with a smaller amount or fully
-     *     'converted'). When the parent row can't be found (the parent was itself deleted, or has no
-     *     matching block any more), the restore is skipped and logged — never silently invents money;
+     *   - restores the parent CBA's earmark row this draw came from — see restoreParentEarmark(): the
+     *     EXACT row by source_earmark_id when the row carries one, or (legacy rows converted before that
+     *     column existed) a re-match against the block's own parent_allocation_id. Each row's OWN block
+     *     may have its OWN parent (an RFA/LAA can draw from several CBAs at once), so this is resolved
+     *     per row, never once for the whole allocation;
      *   - decrements budget_line_items.obligation by the total R reversed for that line item (logged
      *     first, not silently clamped, if that would go negative — a sign of drift elsewhere);
      *   - retires this row itself (status = 'released'); amount/original_amount are left intact as an
@@ -556,15 +560,10 @@ class BudgetLineItemService
      * Runs inside the caller's transaction (releaseForAllocation() / BudgetAllocationService::delete()).
      *
      * $convertedRows: this allocation's own earmark rows with status = 'converted' — each needs
-     * earmark_id, budget_line_item_id, budget_allocation_project_id, amount.
+     * earmark_id, budget_line_item_id, budget_allocation_project_id, amount, source_earmark_id.
      */
     private function reverseConversions(int $allocationId, array $convertedRows): void
     {
-        $parentId = (int) App\ExecuteScalar(
-            "SELECT parent_id FROM {$this->tableBudgetAllocation} WHERE allocation_id = {$allocationId}",
-            'DB'
-        );
-
         $byLineItem = [];
         foreach ($convertedRows as $row) {
             $byLineItem[(int) $row['budget_line_item_id']][] = $row;
@@ -585,7 +584,9 @@ class BudgetLineItemService
                 $amount = round((float) $row['amount'], 2);
                 if ($amount > 0) {
                     $totalReversed += $amount;
-                    $this->restoreParentEarmark($allocationId, $parentId, $lineItemId, (int) $row['budget_allocation_project_id'], $amount);
+                    $sourceEarmarkId = isset($row['source_earmark_id']) && $row['source_earmark_id'] !== null
+                        ? (int) $row['source_earmark_id'] : null;
+                    $this->restoreParentEarmark($allocationId, $lineItemId, (int) $row['budget_allocation_project_id'], $amount, $sourceEarmarkId);
                 }
 
                 App\Execute(
@@ -613,34 +614,53 @@ class BudgetLineItemService
 
     /**
      * Restores $amount to the parent CBA's earmark row for one (line item, project block) of an
-     * RFA/LAA being reversed — see reverseConversions(). The parent's row is resolved exactly as
-     * convertEarmarkForRfaApproval() originally found it: $ownBlockId's own project_code, matched
-     * against the parent allocation's block of the same project_code.
+     * RFA/LAA being reversed — see reverseConversions(). Two paths:
+     *   - $sourceEarmarkId set (every row converted after this column was introduced): restore that
+     *     EXACT row by id — no re-matching, so it is correct regardless of how many parents this
+     *     RFA/LAA draws from, and immune to the parent/project of the own block having changed since
+     *     approval;
+     *   - $sourceEarmarkId null (a legacy row converted before the column existed): fall back to the
+     *     old re-match — $ownBlockId's own parent_allocation_id, then that parent's block of the same
+     *     project_code as $ownBlockId.
+     * Either way, when the parent row can't be found (the parent was itself deleted, its matching block
+     * no longer exists, or the source row id is stale), the restore is skipped and logged — never
+     * silently invents money.
      */
-    private function restoreParentEarmark(int $allocationId, int $parentId, int $lineItemId, int $ownBlockId, float $amount): void
+    private function restoreParentEarmark(int $allocationId, int $lineItemId, int $ownBlockId, float $amount, ?int $sourceEarmarkId): void
     {
-        $parentBlockId = 0;
-        if ($parentId > 0) {
-            $projectCode = (string) App\ExecuteScalar(
-                "SELECT project_code FROM {$this->tableAllocationProject} WHERE budget_allocation_project_id = {$ownBlockId}",
+        if ($sourceEarmarkId !== null && $sourceEarmarkId > 0) {
+            $parentEarmark = App\ExecuteRow(
+                "SELECT earmark_id FROM {$this->tableEarmark} WHERE earmark_id = {$sourceEarmarkId} FOR UPDATE",
                 'DB'
             );
-            if ($projectCode !== '') {
-                $parentBlockId = (int) App\ExecuteScalar(
-                    "SELECT budget_allocation_project_id FROM {$this->tableAllocationProject}
-                     WHERE allocation_id = {$parentId} AND project_code = ".$this->str($projectCode).' AND deleted_at IS NULL',
+        } else {
+            $parentId = (int) App\ExecuteScalar(
+                "SELECT parent_allocation_id FROM {$this->tableAllocationProject} WHERE budget_allocation_project_id = {$ownBlockId}",
+                'DB'
+            );
+            $parentBlockId = 0;
+            if ($parentId > 0) {
+                $projectCode = (string) App\ExecuteScalar(
+                    "SELECT project_code FROM {$this->tableAllocationProject} WHERE budget_allocation_project_id = {$ownBlockId}",
                     'DB'
                 );
+                if ($projectCode !== '') {
+                    $parentBlockId = (int) App\ExecuteScalar(
+                        "SELECT budget_allocation_project_id FROM {$this->tableAllocationProject}
+                         WHERE allocation_id = {$parentId} AND project_code = ".$this->str($projectCode).' AND deleted_at IS NULL',
+                        'DB'
+                    );
+                }
             }
-        }
 
-        $parentEarmark = $parentBlockId > 0 ? App\ExecuteRow(
-            "SELECT earmark_id FROM {$this->tableEarmark}
-             WHERE allocation_id = {$parentId} AND budget_line_item_id = {$lineItemId}
-               AND budget_allocation_project_id = {$parentBlockId} AND status IN ('active', 'converted')
-             FOR UPDATE",
-            'DB'
-        ) : null;
+            $parentEarmark = $parentBlockId > 0 ? App\ExecuteRow(
+                "SELECT earmark_id FROM {$this->tableEarmark}
+                 WHERE allocation_id = {$parentId} AND budget_line_item_id = {$lineItemId}
+                   AND budget_allocation_project_id = {$parentBlockId} AND status IN ('active', 'converted')
+                 FOR UPDATE",
+                'DB'
+            ) : null;
+        }
 
         if (!$parentEarmark) {
             App\LogError("BudgetLineItemService::reverseConversions — allocation #{$allocationId}'s parent earmark for line item #{$lineItemId} (amount ".round($amount, 2).') could not be found; its draw was not restored to the parent CBA.');
@@ -680,7 +700,7 @@ class BudgetLineItemService
 
         if ($type === 'RFA' || $type === 'LAA') {
             $converted = App\ExecuteRows(
-                "SELECT earmark_id, budget_line_item_id, budget_allocation_project_id, amount FROM {$this->tableEarmark}
+                "SELECT earmark_id, budget_line_item_id, budget_allocation_project_id, amount, source_earmark_id FROM {$this->tableEarmark}
                  WHERE allocation_id = {$allocationId} AND status = 'converted'
                  ORDER BY budget_line_item_id, earmark_id FOR UPDATE",
                 'DB'
@@ -1031,6 +1051,11 @@ class BudgetLineItemService
             ];
             if ($suggested !== null) {
                 $setParts[] = 'suggested_amount = ' . App\QuotedValue($suggested, DataType::NUMBER, 'DB');
+                // revised_amount is a plain, app-maintained column (no formula of its own — see
+                // "42 - budget_line_items_add_revised_amount.sql"). Budget Processing's endorsed
+                // Suggested Amount becomes its starting value; a later approved Budget Revision
+                // overwrites it with suggested_amount + adjustment (BudgetRevisionService::approve()).
+                $setParts[] = 'revised_amount = ' . App\QuotedValue($suggested, DataType::NUMBER, 'DB');
             }
             if ($accountId !== null) {
                 $setParts[] = 'account_id = ' . App\QuotedValue($accountId, DataType::STRING, 'DB');
