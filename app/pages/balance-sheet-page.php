@@ -159,14 +159,13 @@ $_bs_api = preg_match('~/api$~', $_bs_api) ? $_bs_api : $_bs_api . '/api';
                 <thead id="bs-thead">
                     <tr>
                         <th>Account Title</th>
-                        <th>Acct Code</th>
                         <th class="text-end" id="bs-th-cur">Current Year</th>
                         <th class="text-end" id="bs-th-prev">Prior Year</th>
                         <th class="text-end">Increase / (Decrease)</th>
                     </tr>
                 </thead>
                 <tbody id="bs-tbody">
-                    <tr><td colspan="5"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
+                    <tr><td colspan="4"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
                 </tbody>
             </table>
         </div>
@@ -349,7 +348,6 @@ function bs_renderTitle(fiscalYr, bookId, view) {
 function bs_renderSingleThead() {
     $bs('bs-thead').innerHTML = `<tr>
         <th>Account Title</th>
-        <th>Acct Code</th>
         <th class="text-end" id="bs-th-cur">Current Year</th>
         <th class="text-end" id="bs-th-prev">Prior Year</th>
         <th class="text-end">INCREASE (DECREASE)</th>
@@ -363,11 +361,10 @@ function bs_renderConsolidated(d, fallbackFy) {
     diff.style.display = 'none';
 
     const books = d ? d.books : [];
-    const colCount = 2 + books.length + 1; // Account Title, Acct Code, one per book, TOTAL
+    const colCount = 1 + books.length + 1; // Account Title, one per book, TOTAL
 
     $bs('bs-thead').innerHTML = `<tr>
         <th>Accounts</th>
-        <th>Acct. Code</th>
         ${books.map(b => `<th class="text-end">${bs_esc(b.name)}</th>`).join('')}
         <th class="text-end">TOTAL</th>
     </tr>`;
@@ -381,29 +378,29 @@ function bs_renderConsolidated(d, fallbackFy) {
 
     const html = [];
     const amounts = byBook => books.map(b => `<td class="text-end nha-mono">${bs_peso(byBook[b.book_id] ?? 0)}</td>`).join('');
-    const row = (cls, title, code, byBook, total) => {
+    const row = (cls, title, byBook, total) => {
         const isAccount = cls === 'bs-account-row';
         const netValue = isAccount && /^Net Value-/.test(String(title || ''));
         const contra = isAccount && !netValue && /^(Accumulated Depreciation|Allowance for Impairment)/i.test(String(title || ''));
         const extra = contra ? ' bs-contra-row' : (netValue ? ' bs-netvalue-row' : '');
-        return `<tr class="${cls}${extra}"><td>${bs_esc(title)}</td><td class="nha-mono">${bs_esc(code)}</td>${amounts(byBook)}<td class="text-end nha-mono">${bs_peso(total)}</td></tr>`;
+        return `<tr class="${cls}${extra}"><td>${bs_esc(title)}</td>${amounts(byBook)}<td class="text-end nha-mono">${bs_peso(total)}</td></tr>`;
     };
     const grand = (title, byBook, total) =>
-        `<tr class="bs-grand-row"><td colspan="2">${bs_esc(title)}</td>${amounts(byBook)}<td class="text-end nha-mono">${bs_peso(total)}</td></tr>`;
+        `<tr class="bs-grand-row"><td>${bs_esc(title)}</td>${amounts(byBook)}<td class="text-end nha-mono">${bs_peso(total)}</td></tr>`;
 
     d.sections.forEach(s => {
         html.push(`<tr class="bs-major-row"><td colspan="${colCount}">${bs_esc(s.label)}</td></tr>`);
         s.groups.forEach(g => {
-            html.push(row('bs-group-row', g.group_title, g.group_code, g.by_book, g.total));
+            html.push(row('bs-group-row', g.group_title, g.by_book, g.total));
             g.subgroups.forEach(sg => {
-                if (sg.group_title) html.push(row('bs-subgroup-row', sg.group_title, sg.group_code, sg.by_book, sg.total));
-                sg.accounts.forEach(a => html.push(row('bs-account-row', a.account_title, a.account_code, a.by_book, a.total)));
+                if (sg.group_title) html.push(row('bs-subgroup-row', sg.group_title, sg.by_book, sg.total));
+                sg.accounts.forEach(a => html.push(row('bs-account-row', a.account_title, a.by_book, a.total)));
             });
         });
         if (s.key === 'equity' && (d.net_surplus_deficit.total || Object.values(d.net_surplus_deficit.by_book).some(v => v))) {
-            html.push(row('bs-account-row', 'Net Surplus / (Deficit), not yet closed', '', d.net_surplus_deficit.by_book, d.net_surplus_deficit.total));
+            html.push(row('bs-account-row', 'Net Surplus / (Deficit), not yet closed', d.net_surplus_deficit.by_book, d.net_surplus_deficit.total));
         }
-        html.push(row('bs-subtotal-row', 'Total ' + s.label, '', s.subtotal_by_book, s.subtotal_total));
+        html.push(row('bs-subtotal-row', 'Total ' + s.label, s.subtotal_by_book, s.subtotal_total));
 
         if (s.key === 'non_current_assets')      html.push(grand('Total Assets', d.totals.total_assets_by_book, d.totals.total_assets));
         if (s.key === 'non_current_liabilities') html.push(grand('Total Liabilities', d.totals.total_liabilities_by_book, d.totals.total_liabilities));
@@ -441,7 +438,7 @@ function bs_render(d, fallbackFy) {
     // section is enough here — groups.length alone would wrongly read as empty in that mode.
     const hasData = d && d.sections && d.sections.length > 0;
     if (!d || !hasData) {
-        tbody.innerHTML = '<tr><td colspan="5"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">Nothing posted yet for this fiscal year.</span></div></td></tr>';
+        tbody.innerHTML = '<tr><td colspan="4"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">Nothing posted yet for this fiscal year.</span></div></td></tr>';
         badge.className = 'nha-bdg nha-bdg-gray';
         badge.textContent = '—';
         return;
@@ -452,29 +449,29 @@ function bs_render(d, fallbackFy) {
         <td class="text-end nha-mono">${bs_peso(cur)}</td>
         <td class="text-end nha-mono">${bs_peso(prev)}</td>
         <td class="text-end nha-mono">${bs_peso(cur - prev)}</td>`;
-    const row = (cls, title, code, cur, prev) => {
+    const row = (cls, title, cur, prev) => {
         const isAccount = cls === 'bs-account-row';
         const netValue = isAccount && /^Net Value-/.test(String(title || ''));
         const contra = isAccount && !netValue && /^(Accumulated Depreciation|Allowance for Impairment)/i.test(String(title || ''));
         const extra = contra ? ' bs-contra-row' : (netValue ? ' bs-netvalue-row' : '');
-        return `<tr class="${cls}${extra}"><td>${bs_esc(title)}</td><td class="nha-mono">${bs_esc(code)}</td>${amounts(cur, prev)}</tr>`;
+        return `<tr class="${cls}${extra}"><td>${bs_esc(title)}</td>${amounts(cur, prev)}</tr>`;
     };
     const grand = (title, cur, prev) =>
-        `<tr class="bs-grand-row"><td colspan="2">${bs_esc(title)}</td>${amounts(cur, prev)}</tr>`;
+        `<tr class="bs-grand-row"><td>${bs_esc(title)}</td>${amounts(cur, prev)}</tr>`;
 
     d.sections.forEach(s => {
-        html.push(`<tr class="bs-major-row"><td colspan="5">${bs_esc(s.label)}</td></tr>`);
+        html.push(`<tr class="bs-major-row"><td colspan="4">${bs_esc(s.label)}</td></tr>`);
         s.groups.forEach(g => {
-            html.push(row('bs-group-row', g.group_title, g.group_code, g.balance, g.prev_balance));
+            html.push(row('bs-group-row', g.group_title, g.balance, g.prev_balance));
             g.subgroups.forEach(sg => {
-                if (sg.group_title) html.push(row('bs-subgroup-row', sg.group_title, sg.group_code, sg.balance, sg.prev_balance));
-                sg.accounts.forEach(a => html.push(row('bs-account-row', a.account_title, a.account_code, a.balance, a.prev_balance)));
+                if (sg.group_title) html.push(row('bs-subgroup-row', sg.group_title, sg.balance, sg.prev_balance));
+                sg.accounts.forEach(a => html.push(row('bs-account-row', a.account_title, a.balance, a.prev_balance)));
             });
         });
         if (s.key === 'equity' && (d.net_surplus_deficit.balance || d.net_surplus_deficit.prev_balance)) {
-            html.push(row('bs-account-row', 'Net Surplus / (Deficit), not yet closed', '', d.net_surplus_deficit.balance, d.net_surplus_deficit.prev_balance));
+            html.push(row('bs-account-row', 'Net Surplus / (Deficit), not yet closed', d.net_surplus_deficit.balance, d.net_surplus_deficit.prev_balance));
         }
-        html.push(row('bs-subtotal-row', 'Total ' + s.label, '', s.subtotal, s.prev_subtotal));
+        html.push(row('bs-subtotal-row', 'Total ' + s.label, s.subtotal, s.prev_subtotal));
 
         if (s.key === 'non_current_assets')      html.push(grand('Total Assets', d.totals.total_assets, d.totals.prev_total_assets));
         if (s.key === 'non_current_liabilities') html.push(grand('Total Liabilities', d.totals.total_liabilities, d.totals.prev_total_liabilities));
