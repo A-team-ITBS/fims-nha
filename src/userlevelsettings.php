@@ -217,7 +217,9 @@ $USER_LEVEL_PRIVS = [["{FIMS}audit_logs","-2","0"],
     ["{FIMS}balance-sheet-page.php","-2","0"],
     ["{FIMS}balance-sheet-page.php","0","0"],
     ["{FIMS}income-statement-page.php","-2","0"],
-    ["{FIMS}income-statement-page.php","0","0"]];
+    ["{FIMS}income-statement-page.php","0","0"],
+    ["{FIMS}statement-of-changes-page.php","-2","0"],
+    ["{FIMS}statement-of-changes-page.php","0","0"]];
 
 /**
  * Tables
@@ -327,4 +329,5 @@ $USER_LEVEL_TABLES = [["audit_logs","audit_logs","Audit Logs",false,"{FIMS}",""]
     ["payroll-page.php","payroll_page","Payroll Management",true,"{FIMS}","PayrollPage"],
     ["remittance-page.php","remittance_page","Remittance",true,"{FIMS}","RemittancePage"],
     ["balance-sheet-page.php","balance_sheet_page","Balance Sheet",true,"{FIMS}","BalanceSheetPage"],
-    ["income-statement-page.php","income_statement_page","Income Statement",true,"{FIMS}","IncomeStatementPage"]];
+    ["income-statement-page.php","income_statement_page","Income Statement",true,"{FIMS}","IncomeStatementPage"],
+    ["statement-of-changes-page.php","statement_of_changes_page","Statement of Changes in Net Assets/Equity",true,"{FIMS}","StatementOfChangesPage"]];

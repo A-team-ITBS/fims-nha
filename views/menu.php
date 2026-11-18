@@ -40,6 +40,7 @@ $sideMenu->addMenuItem(653, "mi_remittance_list_page", $Language->menuPhrase("65
 $sideMenu->addMenuItem(397, "mi_trial_balance_page", $Language->menuPhrase("397", "MenuText"), "TrialBalancePage", 552, "", AllowListMenu('{FIMS}trial-balance-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(763, "mi_balance_sheet_page", $Language->menuPhrase("763", "MenuText"), "BalanceSheetPage", 552, "", AllowListMenu('{FIMS}balance-sheet-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(764, "mi_income_statement_page", $Language->menuPhrase("764", "MenuText"), "IncomeStatementPage", 552, "", AllowListMenu('{FIMS}income-statement-page.php'), false, false, "", "", false, true);
+$sideMenu->addMenuItem(765, "mi_statement_of_changes_page", $Language->menuPhrase("765", "MenuText"), "StatementOfChangesPage", 552, "", AllowListMenu('{FIMS}statement-of-changes-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(394, "mci_Ledgers", $Language->menuPhrase("394", "MenuText"), "", -1, "", true, false, true, "fas fa-scale-balanced", "", false, true);
 $sideMenu->addMenuItem(393, "mi_general_ledger_page", $Language->menuPhrase("393", "MenuText"), "GeneralLedgerPage", 394, "", AllowListMenu('{FIMS}general-ledger-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(395, "mi_subsidiary_ledger_page", $Language->menuPhrase("395", "MenuText"), "SubsidiaryLedgerPage", 394, "", AllowListMenu('{FIMS}subsidiary-ledger-page.php'), false, false, "", "", false, true);

@@ -217,6 +217,7 @@
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
     ],
     null,
     [
@@ -1303,6 +1304,11 @@
                     'POST',
                     'OPTIONS',
                 ],
+                [
+                    'GET',
+                    'POST',
+                    'OPTIONS',
+                ],
             ],
             'pattern' => [
                 '/AccountableFormsRegistryPage[/{params:.*}]',
@@ -1479,6 +1485,7 @@
                 '/RfaLaaReviewPage[/{params:.*}]',
                 '/SaroRegistryPage[/{params:.*}]',
                 '/SignatoryManagement[/{params:.*}]',
+                '/StatementOfChangesPage[/{params:.*}]',
                 '/SubProgramPage[/{params:.*}]',
                 '/SubsidiaryLedgerPage[/{params:.*}]',
                 '/SupplementalFundsPage[/{params:.*}]',
@@ -1698,6 +1705,7 @@
                 'PHPMaker2024\\FIMS\\RfaLaaReviewPageController:custom',
                 'PHPMaker2024\\FIMS\\SaroRegistryPageController:custom',
                 'PHPMaker2024\\FIMS\\SignatoryManagementController:custom',
+                'PHPMaker2024\\FIMS\\StatementOfChangesPageController:custom',
                 'PHPMaker2024\\FIMS\\SubProgramPageController:custom',
                 'PHPMaker2024\\FIMS\\SubsidiaryLedgerPageController:custom',
                 'PHPMaker2024\\FIMS\\SupplementalFundsPageController:custom',
@@ -2392,6 +2400,9 @@
                 [
                     'PHPMaker2024\\FIMS\\PermissionMiddleware',
                 ],
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
             ],
             'name' => [
                 'custom.accountable_forms_registry_page',
@@ -2568,6 +2579,7 @@
                 'custom.rfa_laa_review_page',
                 'custom.saro_registry_page',
                 'custom.SignatoryManagement',
+                'custom.statement_of_changes_page',
                 'custom.sub_program_page',
                 'custom.subsidiary_ledger_page',
                 'custom.supplemental_funds_page',
@@ -2613,6 +2625,7 @@
                 'custom.WorkflowManager',
             ],
             'options' => [
+                [],
                 [],
                 [],
                 [],
@@ -3051,6 +3064,7 @@
         $o[214],
         $o[215],
         $o[216],
+        $o[217],
     ],
     []
 );
