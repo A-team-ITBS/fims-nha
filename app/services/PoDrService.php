@@ -44,6 +44,9 @@ class PoDrService
     /** Pro-forma JEV: the DR total is credited to Accounts Payable. */
     private const PAYABLE_ACCOUNT = '2-01-01-010';
 
+    /** The default credit sub-ledger when the vendor has none: "Account Payable 1". */
+    private const DEFAULT_PAYABLE_SL = '2-01-01-010-01';
+
     private function q($value): string
     {
         return App\QuotedValue($value, DataType::STRING, 'DB');
@@ -371,7 +374,7 @@ class PoDrService
      * SQL for the sum of "requested_amount" over the lines of fims.budget_allocation.line_transaction (jsonb: an array of
      * lines, or one line object). A blank / non-numeric amount counts as 0. Constant SQL, no user input.
      */
-    private function requestedTotalSql(): string
+    public function requestedTotalSql(): string
     {
         return "COALESCE((
                     SELECT SUM(CASE
@@ -391,7 +394,7 @@ class PoDrService
      * databases keep the lines on the project blocks (fims.budget_allocation_project.line_transaction — one row per block, the
      * column was dropped from budget_allocation); an older database still has budget_allocation.line_transaction. Whichever exists is used.
      */
-    private function allocationLinesSql(): string
+    public function allocationLinesSql(): string
     {
         static $blocks = null;
         $blocks ??= (int) App\ExecuteScalar("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'fims' AND table_name = 'budget_allocation_project'", 'DB') > 0;
@@ -410,7 +413,7 @@ class PoDrService
     }
 
     /** The budget allocation's line_transaction → [ {account_code, account_title, amount (= requested_amount)} ] for pre-filling the form. */
-    private function allocationLines($raw): array
+    public function allocationLines($raw): array
     {
         $a = is_string($raw) ? json_decode($raw, true) : $raw;
         if (is_array($a) && $a && array_keys($a) !== range(0, count($a) - 1)) {
@@ -660,6 +663,38 @@ class PoDrService
     }
 
     /**
+     * The account a pro-forma JEV credits: the vendor's own Accounts Payable sub-ledger (fims.vendors.sl_code -> COA child row, e.g.
+     * 2-01-01-010-01), the same way the DV does. A vendor with none (or no vendor) gets the default "Account Payable 1" (2-01-01-010-01);
+     * when that is missing, the first active sub-ledger under 2-01-01-010, else the 2-01-01-010 control account. Returns [code, title].
+     */
+    public function payableAccount(string $vendorId = ''): array
+    {
+        $vendorId = trim($vendorId);
+        if ($vendorId !== '') {
+            $sl = App\ExecuteRows(
+                'SELECT c.account_code, c.account_title FROM fims.vendors v JOIN fims.chart_of_accounts c ON c.account_id = v.sl_code OR c.account_code = v.sl_code'
+                . ' WHERE v.vendor_id = ' . $this->q($vendorId) . ' LIMIT 1',
+                'DB'
+            );
+            if ($sl) {
+                return [(string) $sl[0]['account_code'], (string) $sl[0]['account_title']];
+            }
+        }
+        $first = App\ExecuteRows(
+            'SELECT c.account_code, c.account_title FROM fims.chart_of_accounts c JOIN fims.chart_of_accounts p ON p.account_id = c.parent_account_id'
+            . ' WHERE p.account_code = ' . $this->q(self::PAYABLE_ACCOUNT) . " AND c.status = 'Active'"
+            . ' ORDER BY (c.account_code = ' . $this->q(self::DEFAULT_PAYABLE_SL) . ') DESC, c.account_code LIMIT 1',
+            'DB'
+        );
+        if ($first) {
+            return [(string) $first[0]['account_code'], (string) $first[0]['account_title']];
+        }
+        $title = (string) (App\ExecuteScalar('SELECT account_title FROM fims.chart_of_accounts WHERE account_code = ' . $this->q(self::PAYABLE_ACCOUNT) . ' LIMIT 1', 'DB') ?: 'Accounts Payable');
+
+        return [self::PAYABLE_ACCOUNT, $title];
+    }
+
+    /**
      * Pro-forma JEV of every delivery receipt of a PO (one entry per DR): each stored account row is a debit, and the
      * DR total is credited to Accounts Payable (2-01-01-010). Titles are the ones stored with the rows.
      */
@@ -671,37 +706,7 @@ class PoDrService
                 return ['success' => false, 'message' => "No delivery receipts found for PO '{$poNumber}'."];
             }
 
-            // Credit the vendor's own Accounts Payable sub-ledger (fims.vendors.sl_code -> COA child row, e.g. 2-01-01-010-01),
-            // the same way the DV does; fall back to the 2-01-01-010 control account when the vendor has none.
-            $payableCode  = self::PAYABLE_ACCOUNT;
-            $payableTitle = '';
-            $vendorId     = trim((string) ($res['data']['vendor_id'] ?? ''));
-            if ($vendorId !== '') {
-                $sl = App\ExecuteRows(
-                    'SELECT c.account_code, c.account_title FROM fims.vendors v JOIN fims.chart_of_accounts c ON c.account_id = v.sl_code OR c.account_code = v.sl_code'
-                    . ' WHERE v.vendor_id = ' . $this->q($vendorId) . ' LIMIT 1',
-                    'DB'
-                );
-                if ($sl) {
-                    $payableCode  = (string) $sl[0]['account_code'];
-                    $payableTitle = (string) $sl[0]['account_title'];
-                }
-            }
-            if ($payableTitle === '') {
-                // no vendor sub-ledger: use the first active sub-ledger under Accounts Payable (e.g. 2-01-01-010-01), if any
-                $first = App\ExecuteRows(
-                    'SELECT c.account_code, c.account_title FROM fims.chart_of_accounts c JOIN fims.chart_of_accounts p ON p.account_id = c.parent_account_id'
-                    . ' WHERE p.account_code = ' . $this->q(self::PAYABLE_ACCOUNT) . " AND c.status = 'Active' ORDER BY c.account_code LIMIT 1",
-                    'DB'
-                );
-                if ($first) {
-                    $payableCode  = (string) $first[0]['account_code'];
-                    $payableTitle = (string) $first[0]['account_title'];
-                }
-            }
-            if ($payableTitle === '') {
-                $payableTitle = (string) (App\ExecuteScalar('SELECT account_title FROM fims.chart_of_accounts WHERE account_code = ' . $this->q($payableCode) . ' LIMIT 1', 'DB') ?: 'Accounts Payable');
-            }
+            [$payableCode, $payableTitle] = $this->payableAccount((string) ($res['data']['vendor_id'] ?? ''));
             $receipts = [];
             foreach ($res['data']['receipts'] as $dr) {
                 $rows = [];
@@ -726,7 +731,7 @@ class PoDrService
             }
 
             return ['success' => true, 'data' => [
-                'po_number' => $poNumber, 'iar_number' => $res['data']['iar_number'],
+                'po_number' => $poNumber, 'iar_number' => $res['data']['iar_number'], 'rfa_number' => $res['data']['rfa_number'] ?? null,
                 'requesting_rc_id' => $res['data']['requesting_rc_id'] ?? null,   // the JEV lines' Responsibility Center when it is submitted
                 'receipts' => $receipts,
             ]];
@@ -782,7 +787,7 @@ class PoDrService
      * SQL condition (alias `a` = fims.budget_allocation): the RFA is linked to a Disbursement Voucher that is still active,
      * i.e. a DV was already processed for its PO (a CANCELLED / REJECTED DV frees the RFA again, as in the DV's RFA picker).
      */
-    private function activeDvSql(): string
+    public function activeDvSql(): string
     {
         return "(a.dv_id IS NOT NULL AND a.dv_id NOT IN (
                     SELECT dv.dv_id FROM fims.disbursement_vouchers dv

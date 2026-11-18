@@ -126,8 +126,11 @@
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone ($p['PHPMaker2024\\FIMS\\Attributes\\Get'] ?? \Symfony\Component\VarExporter\Internal\Registry::p('PHPMaker2024\\FIMS\\Attributes\\Get')),
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Get'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
@@ -855,9 +858,24 @@
                 ],
                 [
                     'GET',
+                    'POST',
+                    'OPTIONS',
                 ],
                 [
                     'GET',
+                    'POST',
+                    'OPTIONS',
+                ],
+                [
+                    'GET',
+                ],
+                [
+                    'GET',
+                ],
+                [
+                    'GET',
+                    'POST',
+                    'OPTIONS',
                 ],
                 [
                     'GET',
@@ -1349,6 +1367,7 @@
                 '/BudgetRevisionPage[/{params:.*}]',
                 '/BudgetRevReview[/{params:.*}]',
                 '/BullMqManager[/{params:.*}]',
+                '/CashFlowPage[/{params:.*}]',
                 '/CashPositionPage[/{params:.*}]',
                 '/CbaMemoRequestPage[/{params:.*}]',
                 '/CbaReview[/{params:.*}]',
@@ -1431,6 +1450,7 @@
                 '/OfficesView[/{office_id}]',
                 '/OfficesEdit[/{office_id}]',
                 '/OfficesDelete[/{office_id}]',
+                '/OpeningBalancePage[/{params:.*}]',
                 '/personaldata',
                 '/login[/{provider}]',
                 '/resetpassword',
@@ -1529,6 +1549,7 @@
                 '/Voucher[/{params:.*}]',
                 '/VUserAccessSummaryList',
                 '/WorkflowManager[/{params:.*}]',
+                '/WorkInProcessPage[/{params:.*}]',
             ],
             'handler' => [
                 'PHPMaker2024\\FIMS\\AccountableFormsRegistryPageController:custom',
@@ -1569,6 +1590,7 @@
                 'PHPMaker2024\\FIMS\\BudgetRevisionPageController:custom',
                 'PHPMaker2024\\FIMS\\BudgetRevReviewController:custom',
                 'PHPMaker2024\\FIMS\\BullMqManagerController:custom',
+                'PHPMaker2024\\FIMS\\CashFlowPageController:custom',
                 'PHPMaker2024\\FIMS\\CashPositionPageController:custom',
                 'PHPMaker2024\\FIMS\\CbaMemoRequestPageController:custom',
                 'PHPMaker2024\\FIMS\\CbaReviewController:custom',
@@ -1651,6 +1673,7 @@
                 'PHPMaker2024\\FIMS\\OfficesController:view',
                 'PHPMaker2024\\FIMS\\OfficesController:edit',
                 'PHPMaker2024\\FIMS\\OfficesController:delete',
+                'PHPMaker2024\\FIMS\\OpeningBalancePageController:custom',
                 'PHPMaker2024\\FIMS\\OthersController:personaldata',
                 'PHPMaker2024\\FIMS\\OthersController:login',
                 'PHPMaker2024\\FIMS\\OthersController:resetpassword',
@@ -1749,8 +1772,15 @@
                 'PHPMaker2024\\FIMS\\VoucherController:custom',
                 'PHPMaker2024\\FIMS\\VUserAccessSummaryController:list',
                 'PHPMaker2024\\FIMS\\WorkflowManagerController:custom',
+                'PHPMaker2024\\FIMS\\WorkInProcessPageController:custom',
             ],
             'middleware' => [
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
                 [
                     'PHPMaker2024\\FIMS\\PermissionMiddleware',
                 ],
@@ -2403,6 +2433,9 @@
                 [
                     'PHPMaker2024\\FIMS\\PermissionMiddleware',
                 ],
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
             ],
             'name' => [
                 'custom.accountable_forms_registry_page',
@@ -2443,6 +2476,7 @@
                 'custom.budget_revision_page',
                 'custom.budget_rev_review',
                 'custom.BullMQManager',
+                'custom.cash_flow_page',
                 'custom.cash_position_page',
                 'custom.cba_memo_request_page',
                 'custom.cba_review',
@@ -2525,6 +2559,7 @@
                 'view.offices',
                 'edit.offices',
                 'delete.offices',
+                'custom.opening_balance_page',
                 'personaldata',
                 'login',
                 'resetpassword',
@@ -2623,8 +2658,12 @@
                 'custom.Voucher',
                 'list.v_user_access_summary',
                 'custom.WorkflowManager',
+                'custom.work_in_process_page',
             ],
             'options' => [
+                [],
+                [],
+                [],
                 [],
                 [],
                 [],
@@ -3065,6 +3104,9 @@
         $o[215],
         $o[216],
         $o[217],
+        $o[218],
+        $o[219],
+        $o[220],
     ],
     []
 );

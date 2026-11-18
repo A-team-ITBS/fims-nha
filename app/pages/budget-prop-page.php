@@ -41,6 +41,23 @@ $_bgr_canModify = !$_bgr_isBudgetOfficer;
 // The Regional / District offices: rc_code from here to the end. The "View as COB" outline asks for them all (with central=1,
 // which the API honours only for the central review RC). Mirrors GlobalService::CENTRAL_REVIEW_RC_CODE_FROM, like budget-req-page.php.
 $_bgr_fmdRcCodeFrom = '35-074-0000001-000';
+
+// This page's own list/route does no RC lookup of its own (see the class comment above — every logged-in
+// user sees every Regional / District office's requests, scoped server-side by GET /fmd/budget_req/list
+// instead). But "Print COB" (readone/budget-req-readone.php, bgrv_openCobModal) still needs to know THIS
+// user's own office_type, to decide whether a Regional / District user skips straight to "Per Program"
+// instead of being offered all four print layouts — same lookup budget-req-page.php does for the same reason.
+$_bgr_userOfficeType = '';
+try {
+    $_bgr_userOfficeType = (string) (ExecuteScalar(
+        'SELECT rc.office_type FROM uac.users u '
+        .'JOIN fims.responsibility_code rc ON rc.rc_id = u.rc_id WHERE u.user_id = '.(int) CurrentUserID(),
+        'DB'
+    ) ?? '');
+} catch (\Throwable $e) {
+    $_bgr_userOfficeType = '';   // can't tell who this is -> offer every print layout, never an error page
+    LogError('budget-prop-page: could not look up the current user\'s office_type — '.$e->getMessage());
+}
 ?>
 
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -198,6 +215,9 @@ const BGR_CAN_MODIFY = <?php echo $_bgr_canModify ? 'true' : 'false'; ?>;
 const BGR_IS_BUDGET_HEAD = <?php echo $_bgr_isBudgetHead ? 'true' : 'false'; ?>;
 let bgr_flatRows = [];   // [{ header, program }] of the rows on screen, for the row actions
 const BGR_FMD_RC_FROM = <?php echo json_encode($_bgr_fmdRcCodeFrom); ?>;
+// fims.responsibility_code.office_type of the logged-in user's own RC — see bgrv_rcDeptType() in
+// readone/budget-req-readone.php's "Print COB" button.
+const BGR_USER_OFFICE_TYPE = <?php echo json_encode($_bgr_userOfficeType); ?>;
 
 // "View as COB" (readone/budget-req-readone.php, bgrv_openCobModal): every budget request created for the Fiscal Year filter's current
 // value ('' = every year), one block per ORIGINATING UNIT — each Regional / District office with its own Programs / Sub-Programs /

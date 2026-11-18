@@ -415,7 +415,7 @@ The furthest-along business workflow in the repo — a Budget Request → Revisi
 
 - **Addressing.** A PO is addressed by its `po_number` passed as `?po_number=…` (numbers may contain `/`
   or `-`), not by an id. Routes (all `->add($jwtMiddleware)`): `GET /po-dr/list`, `GET /po-dr/pos`
-  (PO picker), `GET /po-dr/accounts` (Account Code picker; `?all=1` skips the ten-account limit), `GET /po-dr/read`, `GET /po-dr/proforma`,
+  (PO picker), `GET /po-dr/accounts` (Account Code picker; `?all=1` skips the ten-account limit, `?infra=1` = the four CIP/WIP accounts of the Infrastructure tab), `GET /po-dr/read`, `GET /po-dr/proforma`,
   `POST /po-dr/proforma-submit` (the Pro-forma's Submit), `POST /po-dr/add`, `PUT /po-dr/update`, `DELETE /po-dr/delete`.
 - **Budget allocation lines.** `fims.budget_allocation.line_transaction` was dropped (alter 48): the RFA's lines live on its project blocks
   (`fims.budget_allocation_project.line_transaction`, one row per block). `PoDrService::allocationLinesSql()` reads whichever layout the database has
@@ -481,7 +481,7 @@ The furthest-along business workflow in the repo — a Budget Request → Revisi
 - **Pro-forma JEV** (`GET /po-dr/proforma`, returns `po_number`, `iar_number` and one entry per DR): one tab per delivery receipt. The header shows
   the **IAR Number**, the **Delivery Receipt No.** and the DR's **Total Amount**. The list has three columns — `Account Code - Account Name`,
   `Debit`, `Credit` — and is built from the DR's stored `lines`: each line is a **debit**, and the DR total is **credited to `2-01-01-010`**
-  (Accounts Payable) — the **vendor's own AP sub-ledger** (`vendors.sl_code` → a chart-of-accounts child row, e.g. `2-01-01-010-01`) when it has one, else the first active SL under
+  (Accounts Payable) — the **vendor's own AP sub-ledger** (`vendors.sl_code` → a chart-of-accounts child row, e.g. `2-01-01-010-01`) when it has one, else the **default "Account Payable 1" `2-01-01-010-01`** (`PoDrService::payableAccount()`, shared with the Infrastructure tab), else the first active SL under
   `2-01-01-010`, else `2-01-01-010`. **Book** (defaults to Main Office, book 1) and **Particulars** (pre-filled "To record the delivery of {DR} (PO {PO})") sit inside each DR's tab.
   A **Total** row shows the debit and credit totals under their columns.
   The entries are **editable** in the modal: change a row's account (searchable over the chart of accounts) and its **debit or credit** amount (a row is
@@ -494,6 +494,24 @@ The furthest-along business workflow in the repo — a Budget Request → Revisi
   (`PoDrService::linkJev`), then moves it DRAFT → `FOR_SECTION_CHIEF` (`changeJevStatus`) and redirects to the Journal Entry Vouchers page (Accounting Dept /
   superadmin only). A DR with a JEV cannot be submitted again (409): its Pro-forma is **read-only** (saved rows, no Add row / Submit, "Submitted as … JEV"), and **Print JEV**
   prints with the JEV number and date. `PoDrService::shape()` must return `jev_id` / `jev_no` or the lock silently fails.
+- **Infrastructure tab** (second tab of the IAR page; `form/infra-iar-form.php` + `InfraIarService.php` + `app/routes/infra_iar.php`; table `fims.statement_work_accomplishments`,
+  `01 - table/50`, samples `02 - sample_data/12` (RFAs + project locations) and `13` (a contractor Accounts Payable SL)). One record per **approved Infrastructure RFA without a PO**
+  (`allocation_type='RFA'`, status Approved, category Infrastructure, no `po_number`, no active DV, no record yet). The header button reads **Add Infrastructure Record**.
+  - **Add**: pick the RFA (searchable) and the form loads Project Name, **Location** (read-only, from `budget_req_project.location`), Program, **Contractor** (the RFA's vendor),
+    **Contract Cost** (approved amount) and **Project Cost** (original: the sum of the project's budget line items' `proposed_amount`, falls back to the contract cost; editable).
+    The user adds **Date Started** and **Completion Date (Revised)**; **Contract Duration** is auto-computed ("N calendar days", start → end inclusive) or can be typed (typing stops
+    the auto value, clearing the box brings it back). **Account Entries** are pre-filled from the RFA lines (editable). The **SWA Number** is generated, not typed:
+    `SWA-YYYY-MM-0001`… (`InfraIarService::nextSwaNumber()`, stored in the `iar_number` column; previewed read-only in the form via `GET /infra-iar/next-number`, assigned again on save).
+  - **Account Code picker** (`GET /po-dr/accounts?infra=1`): only `1-06-99-010`, `1-06-99-020`, `1-06-99-030` (CIP) and `1-04-03-020` (WIP); typing filters them.
+    Entries total may not exceed the contract cost.
+  - **Statement of Work Accomplishments** (items): `Description | Cost | % Accomplishment` (no quantity). Description is a dropdown of the standard work items (`IFR_SWA_ITEMS` in the form)
+    that can still be typed freely; % is 0–100; the overall accomplishment is cost-weighted (Σ cost×% / Σ cost). At least one item.
+  - **Edit** changes only the project cost, dates, contract duration and items (RFA, SWA number, location and account entries are kept). No Delete.
+  - **Pro-forma JEV** (Actions → Pro-forma; the Deliveries window with `amp_pf.kind = 'infra'`, `GET /infra-iar/proforma`): no receipt tabs (one record per RFA), shows the SWA no.,
+    RFA, Project and **Location**; each account entry is a debit and the total is credited to the contractor's AP SL, else the default `2-01-01-010-01`. The amounts are entered by
+    the user — **not capped at the record's amount** (only debit = credit is required). Submit → `POST /infra-iar/proforma-submit`, same creation + auto-submit as Deliveries, and
+    `jev_id` / `jev_no` are stored on the record (409 on resubmit; the pro-forma then opens read-only).
+  - **Print JEV** (Deliveries and Infrastructure): prints the **RFA No.** and the **Particulars** text exactly as typed (the generic "Pro-forma JEV — …" line is only the fallback for an empty box).
 - **Screens.** The list's Actions column is one **Actions** dropdown (View · Pro-forma · Edit), the same menu as the Memo Requests list. The **View** (Actual Delivery) and **Pro-forma JEV** windows share one
   modal in the Memo Request details design (dark header with the IAR number, light body of white cards, Close in the footer); the Pro-forma opens wider (1500px). There is **no PAR # field**: the PIS property
   number is the PAR number (Property Records), so an item line is Description | Serial No. | Amount | Prop. No.

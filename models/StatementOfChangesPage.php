@@ -198,14 +198,31 @@ class StatementOfChangesPage
                 $ar = array_merge($this->getMessages(), $url ? ["url" => GetUrl($url)] : []);
                 WriteJson($ar);
             }
+            $this->clearMessages(); // Clear messages for API request
             return;
+        } else { // Check if response is JSON
+            if (WithJsonResponse()) { // With JSON response
+                $this->clearMessages();
+                return;
+            }
         }
-        // Redirect
-        if ($url) {
+
+        // Go to URL if specified
+        if ($url != "") {
+            if (!Config("DEBUG") && ob_get_length()) {
+                ob_end_clean();
+            }
+            SaveDebugMessage();
             Redirect(GetUrl($url));
         }
+        return; // Return to controller
     }
 
+    /**
+     * Page run
+     *
+     * @return void
+     */
     public function run()
     {
         global $ExportType, $Language, $Security, $CurrentForm;

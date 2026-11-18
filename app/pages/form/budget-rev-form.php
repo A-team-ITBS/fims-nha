@@ -489,8 +489,8 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
    A revision changes a BUDGET LINE: one chart-of-accounts line item (fims.budget_line_items) of a budget request. The request
    is a header (reference no. "BP-001", office, fiscal year, status) carrying programs[] > projects[] > line_items[]; the pickers
    flatten that into one list of lines — only the lines of an APPROVED request (a request still in review / draft / returned has
-   no budget to revise yet). A revision saved earlier against a line of another status still opens in Edit with that line shown. A line's CURRENT amount is its proposed amount plus its adjustment — what approving a
-   revision changes (the From line's adjustment goes down, the To line's goes up). The value a picker holds is the line's id.
+   no budget to revise yet). A revision saved earlier against a line of another status still opens in Edit with that line shown. A line's CURRENT amount is its suggested amount (its Current balance) — what approving a
+   revision changes (the From line's goes down, the To line's goes up). The value a picker holds is the line's id.
 
    Two pickers share one layout, and each has its OWN filters and selection:
      From budget line — required (budget_revision.from_budget_line_item_id)
@@ -577,22 +577,32 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
     const isApproved = l => String(l.status || '').trim().toLowerCase() === 'approved';
 
     // One line, as the pickers use it: its id, the request it belongs to (reference no., fiscal year, office, status), its program and
-    // project, its account, its particulars and its amounts. amount = proposed + adjustment, the line's CURRENT amount.
+    // project, its account, its particulars and its amounts. Its CURRENT amount (amountOf) is its remaining balance: suggested_amount + its Revision Amount (the ledger) less what CBAs hold.
     function toLines(requests) {
         const out = [];
         requests.forEach(h => (Array.isArray(h.programs) ? h.programs : []).forEach(pg =>
             (Array.isArray(pg.projects) ? pg.projects : []).forEach(pj =>
                 (Array.isArray(pj.line_items) ? pj.line_items : []).forEach(li => {
-                    const proposed = Number(li.proposed_amount || 0), adjustment = Number(li.adjustment || 0);
-                    // suggested: the line's live balance (suggested_amount) — what a revision that lowers the line may not exceed
+                    const proposed = Number(li.proposed_amount || 0);
+                    // revision: the line's Revision Amount — the net of its approved revisions / realignments, summed from the ledger
+                    // (fims.budget_line_item_revision_transaction; GET /budget_req/all sends it as revision_amount). Signed: a decrease is negative.
+                    const revision = Number(li.revision_amount || 0);
+                    // latest: the line's LATEST adjustment — the amount of its last ledger row (GET /budget_req/all sends it as latest_adjustment; negative on the From line of a
+                    // realignment, positive on the To line); the card shows it next to the approved amount, and the revised amount carries the net of all of them
+                    const latest = Number(li.latest_adjustment || 0);
+                    // approved: the amount the card calls "Approved amount" — the line's suggested_amount, NOT the office's proposed_amount. An approved revision no
+                    // longer changes it (it writes the ledger). Only a line that has no suggested_amount at all (NULL / not set yet) falls back to proposed_amount;
+                    // a real 0 stays 0.
                     const suggested = Number(li.suggested_amount || 0);
-                    // revised: budget_line_items.revised_amount — what approving a revision records (approved amount + adjustment). A line that has
-                    // never been revised has none recorded yet (or the column is not there), so it is worked out the same way.
-                    const recorded = li.revised_amount === null || li.revised_amount === undefined || li.revised_amount === '' ? NaN : Number(li.revised_amount);
-                    const revised = recorded > 0 ? recorded : proposed + adjustment;
-                    // hasRevised: the line has been revised at all — it has a recorded revised amount, or an approved revision moved its adjustment.
-                    // A line that has not shows its approved amount only (see renderCard).
-                    const hasRevised = recorded > 0 || adjustment !== 0;
+                    const approved = li.suggested_amount === null || li.suggested_amount === undefined || li.suggested_amount === '' ? proposed : suggested;
+                    // revised: the approved amount plus the Revision Amount (the ledger total) — what the line's budget now is, before anything is held against it.
+                    const revised = suggested + revision;
+                    // held: what approved CBAs / CFAs hold against the line and RFAs / LAAs have drawn from them — the deduction (GET /budget_req/all sends it as
+                    // held_amount, summed from the earmark table fims.budget_line_item_earmark).
+                    const held = Number(li.held_amount || 0);
+                    // current: the line's REMAINING balance = revised - held (= the COB's Remaining Balance). This is the "Current balance", the From Amount, and what a
+                    // revision lowers or a realignment draws on; the server measures against the same figure (BudgetLineBalanceSql::correlatedAvailableExpr()).
+                    const current = revised - held;
                     out.push({
                         id: li.budget_line_item_id, ref: String(h.budget_reference_number), fy: h.fiscal_yr,
                         // rcId / officeCode: the originating unit — the office that filed the request (budget_req.rc_id) — and its RC code, to order by
@@ -600,19 +610,26 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
                         office: h.rc_name || h.rc_code || '', parentOffice: h.rc_parent_name || '', status: h.status_name, statusColor: h.status_color,
                         programCode: pg.program_code || '', programName: pg.program_name || '', projectCode: pj.project_code || '', projectName: pj.project_name || '',
                         accountId: li.account_id || '', accountCode: li.account_code || '', accountTitle: li.account_title || '', particulars: li.particulars || '',
-                        proposed, adjustment, suggested, revised, hasRevised, amount: proposed + adjustment,
+                        proposed, revision, latest, approved, revised, held, current,
                     });
                 }))));
         return out;
     }
 
     const keyOf      = l => String(l.id);
-    const amountOf   = l => l.amount;
+    // A line's CURRENT amount is its remaining balance — suggested_amount plus its Revision Amount from the ledger, less what CBAs / CFAs hold and RFAs / LAAs have
+    // drawn — the same figure the card shows as "Current balance", the COB shows as Remaining Balance, and the one the server measures a revision against
+    // (BudgetRevisionService: currentAmountOf()). So a New Amount is the line's new remaining balance, and one equal to the Current balance is "No change".
+    const amountOf   = l => l.current;
     const withName   = (code, name) => (code ? code + (name ? ' — ' + name : '') : '');
     // "5-02-010 — Travelling Expenses"; a line with no account known shows its id
     const titleOf    = l => withName(l.accountCode, l.accountTitle) || l.accountTitle || `Budget line #${l.id}`;
     // "5-02-010 (BP-001)": short enough for a sentence
     const nameOf     = l => (l.accountCode || `line #${l.id}`) + ` (${l.ref})`;
+    // Whether two lines are the SAME budget line item: the same account in the same project of the same budget request (two rows that differ only in their particulars are
+    // still that one item), so funds cannot be moved between them. The same line is trivially the same item. The server refuses it too (BudgetRevisionService::sameItemError()).
+    const sameItem   = (a, b) => !!a && !!b && (keyOf(a) === keyOf(b)
+        || (a.ref === b.ref && a.programCode === b.programCode && a.projectCode === b.projectCode && a.accountId !== '' && a.accountId === b.accountId));
     const placeOf    = l => [l.programCode, l.projectCode].filter(Boolean).join(' / ') || 'No project yet';
     const shortLabel = l => `FY ${l.fy} — ${l.ref} — ${titleOf(l)}`;
     // What a picker's input shows once a line is picked: its account. The full shortLabel is the input's tooltip and the summary
@@ -790,8 +807,9 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
     }
 
     // The card under a picker (From and To share the same layout): the request's status, the line's account, then — one per line —
-    // its request / office / fiscal year, its program › project, its particulars, its approved amount and adjustment (when revisions changed it) and its revised amount (revised_amount);
-    // the bold amount is its current balance (suggested_amount).
+    // its request / office / fiscal year, its program › project, its particulars, its approved amount (its suggested_amount) and
+    // Revision Amount (when approved revisions changed it), its revised amount (approved + revision) and what CBAs hold against it; the bold amount is its current
+    // balance, the remaining balance (revised amount less CBA Requested).
     function renderCard(l, box, statusEl, titleEl, subEl, amountEl) {
         box.hidden = !l;
         if (!l) return;
@@ -802,16 +820,20 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
             `${l.ref}${l.office ? ' · ' + l.office : ''} · FY ${l.fy}`,
             place,
             l.particulars,
-            l.adjustment !== 0 ? `Approved amount ${peso(l.proposed)} · Adjustment ${signedPeso(l.adjustment)}` : '',
+            // the LATEST adjustment (a realignment is − on the From line and + on the To line); the revised amount is the approved amount net of ALL the adjustments, which
+            // is shown beside it when there has been more than one
+            l.revision !== 0 ? `Approved amount ${peso(l.approved)} · Latest adjustment ${signedPeso(l.latest)}` : '',
             // a line that has never been revised has no revised amount: it shows its approved amount instead
-            l.hasRevised ? `Revised amount ${peso(l.revised)}` : `Approved amount ${peso(l.proposed)}`,
+            l.revision !== 0 ? `Revised amount ${peso(l.revised)}${Math.abs(l.latest - l.revision) > 0.004 ? ` (net of all adjustments ${signedPeso(l.revision)})` : ''}` : `Approved amount ${peso(l.approved)}`,
+            // the deduction: what approved CBAs hold against the line and RFAs / LAAs have drawn (read from the earmark table)
+            l.held !== 0 ? `Less CBA Requested ${peso(l.held)}` : '',
         ].filter(Boolean).join('\n');
-        amountEl.textContent = peso(l.suggested);   // the line's current balance (suggested_amount)
+        amountEl.textContent = peso(l.current);   // the line's current balance = its remaining balance: revised amount less CBA Requested
     }
 
     /* ── one picker: filter bar + searchable field + summary card ──────────
        ids       the element ids (FROM_IDS / TO_IDS)
-       exclude   () => a line the list must not offer (the To picker excludes the From line)
+       exclude   () => a line the list must not offer — nor any line that is the same budget line item as it (the To picker excludes the From line's item)
        required  the field is mandatory — native validation until a line is picked. true / false, or a function that says so right now
                  (the To picker: only on the Realignment tab — call sync() when that changes)
        onSelect  (line, { autofill }) after the selection changed
@@ -827,10 +849,10 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
         // selected: the picked budget line or null
         const P = { unit: null, program: null, project: null, selected: null };
 
-        // every line this picker may offer: the approved lines of ITS year, less the one it must not offer
+        // every line this picker may offer: the approved lines of ITS year, less the one it must not offer (and what is the same budget line item as it)
         const baseRows = () => {
             const ex = exclude(), y = String(year());
-            return S.lines.filter(l => String(l.fy) === y && !(ex && keyOf(l) === keyOf(ex)));
+            return S.lines.filter(l => String(l.fy) === y && !(ex && sameItem(l, ex)));
         };
 
         /* ── filtering ── */
@@ -947,7 +969,7 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
         // filters), so the filters follow it — see syncFiltersTo().
         function select(line, opts = {}) {
             const ex = exclude();
-            if (line && ex && keyOf(line) === keyOf(ex)) line = null;   // never the same line as the other picker
+            if (line && ex && sameItem(line, ex)) line = null;   // never the same budget line item as the other picker
             P.selected = line || null;
             pe.id.value = line ? keyOf(line) : '';   // the budget line's id
             pe.reqIn.value = line ? inputLabel(line) : '';
@@ -1047,9 +1069,10 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
         required: true,
         requiredMsg: 'Please select a From budget line from the list.',
         onSelect: (line, { autofill = false } = {}) => {
-            // funds can't move from a line to itself, so picking the To line as the From line drops the To line
+            // funds can't move from a budget line item to itself (the same account in the same project of the same budget request), so picking a From line that is the
+            // same item as the To line drops the To line
             const to = toPicker && toPicker.selected();
-            if (line && to && keyOf(to) === keyOf(line)) toPicker.select(null);
+            if (line && to && sameItem(to, line)) toPicker.select(null);
             // autofill: true only when the USER picks a line. Preselecting one for Edit
             // must leave the saved From Amount alone.
             if (line && autofill) el.from.value = amtText(amountOf(line));   // From Amount (disabled) = its current amount
@@ -1083,22 +1106,16 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
         if (to && String(to.fy) !== toYear()) toPicker.select(null);   // a To line of another year cannot stay
     }
 
-    // The From line may not be left with a negative balance. Approving moves its suggested_amount by (To Amount − its current amount),
-    // so lowering the line by more than that suggested_amount would take it below zero. Returns the message, or '' when it is fine
+    // The From line may not be left with a negative balance. Its current amount is its remaining balance and approving sets it to To Amount, so it can go down as far as
+    // zero and no further (which also keeps the line's revised amount from going below what CBAs / RFAs / LAAs hold). Returns the message, or '' when it is fine
     // (an increase, or a decrease that fits). The server checks the same rule (BudgetRevisionService::fromBalanceError()).
     function fromBalanceError(line, toAmount) {
         if (!line) return '';
-        const change = Math.round((Number(toAmount) - amountOf(line)) * 100) / 100;   // negative = the line goes down
-        const left   = Math.round((line.suggested + change) * 100) / 100;
-        if (change >= 0 || left >= 0) return '';
-        return `The From budget line has only ${peso(line.suggested)} left (its balance), so it can't go down by ${peso(-change)} — that would leave it at −${peso(-left)}.`;
+        const left = Math.round(Number(toAmount) * 100) / 100;
+        if (isNaN(left) || left >= 0) return '';
+        return `The From budget line can't go below zero — that would leave its balance at −${peso(-left)}.`;
     }
 
-    // How the notes below name the From line's amount: its revised amount once the line has been revised, its approved amount while it has not.
-    function fromAmountWord() {
-        const l = fromPicker && fromPicker.selected();
-        return l && !l.hasRevised ? 'approved' : 'revised';
-    }
     const round2 = n => Math.round(n * 100) / 100;
 
     // What a Realignment's Amount is checked against and taken from: the From line's current amount once it is picked (the server measures a
@@ -1114,7 +1131,7 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
         const x = round2(Number(amount)), f = round2(Number(fromAmount));
         if (amount === '' || amount === null || amount === undefined || isNaN(x)) return 'Enter the amount to transfer.';
         if (x <= 0) return 'The amount to transfer must be more than zero.';
-        if (!isNaN(f) && x > f) return `The amount to transfer must not exceed the From budget line's ${fromAmountWord()} amount (${peso(f)}).`;
+        if (!isNaN(f) && x > f) return `The amount to transfer must not exceed the From budget line's current balance (${peso(f)}).`;
         return '';
     }
 

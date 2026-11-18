@@ -7,9 +7,9 @@ namespace PHPMaker2024\FIMS;
  * item of a budget request) and optionally move the difference to a second budget line. Originating offices file and edit
  * them; the Financial Management Department (FMD) reviews them — approves or declines. A request goes Saved -> Submitted -> Approved
  * (or Declined): filing it SAVES it, which leaves it editable; "Process" in its Actions menu submits it, after which it can no longer be
- * edited, and FMD reviews the Submitted ones. Approving changes the lines'
- * budget_line_items.adjustment AND budget_line_items.suggested_amount (by the same amount): the From line goes down, the To
- * line goes up.
+ * edited, and FMD reviews the Submitted ones. Approving does not change the budget lines in place: it writes a transaction row per line to the
+ * ledger fims.budget_line_item_revision_transaction (the amount, the previous amount and the new amount) — the From line goes down, the To line goes up — and
+ * the COB's Revision Amount is the sum of those rows.
  *
  * Who is looking decides what a row offers. There is no point-of-view switch: it follows the logged-in user's office.
  *
@@ -650,13 +650,12 @@ function brv_openView(r) {
     $brv('brv-view-title').textContent = `Budget ${BRV_TYPE[brv_typeOf(r)].label} Request #${r.id}`;
 
     // the budget line being revised: its request's status, its account, where it sits (request · office · fiscal year, program ›
-    // project, particulars) and its CURRENT amount (proposed + adjustment). One that no longer exists says so.
+    // project, particulars) and its CURRENT amount — its remaining balance, the "Current balance" the form shows. One that no longer exists says so.
     brv_paintStatus($brv('brv-view-type'), r.budget_req_status_name, r.budget_req_status_color);
     $brv('brv-view-title-req').textContent = brv_lineTitle(r, '');
     $brv('brv-view-req-sub').textContent = brv_lineSub(r, '');
     $brv('brv-view-req-amount').textContent = brv_fmtMoney(r.line_amount);
-    // a budget line that has never been revised (no adjustment) has no revised amount — its amount is its approved amount
-    $brv('brv-view-req-amt-lbl').textContent = Number(r.line_adjustment || 0) !== 0 ? 'Revised amount' : 'Approved amount';
+    $brv('brv-view-req-amt-lbl').textContent = 'Current balance';
 
     // the To line — a card when the revision has one, a one-line note when it doesn't
     const hasTo = !!r.to_budget_line_item_id;
@@ -667,7 +666,7 @@ function brv_openView(r) {
         $brv('brv-view-to-title-req').textContent = brv_lineTitle(r, 'to_');
         $brv('brv-view-to-req-sub').textContent = brv_lineSub(r, 'to_');
         $brv('brv-view-to-req-amount').textContent = brv_fmtMoney(r.to_line_amount);
-        $brv('brv-view-to-req-amt-lbl').textContent = Number(r.to_line_adjustment || 0) !== 0 ? 'Revised amount' : 'Approved amount';
+        $brv('brv-view-to-req-amt-lbl').textContent = 'Current balance';
     }
 
     // the revision
@@ -707,8 +706,8 @@ function brv_closeView() {
 }
 
 // What approving does to the two budget lines. Only shown when the revision has a To line: then it MOVES
-// funds — the From line goes down to To Amount (its adjustment is deducted) and the To line goes up by the difference
-// (its adjustment is added), measured against the From line's current amount, as the server does.
+// funds — the From line goes down to To Amount (a negative transaction is recorded for it) and the To line goes up by the difference
+// (a positive one), measured against the From line's current amount, as the server does.
 function brv_renderEffect(r) {
     const box = $brv('brv-view-effect');
     if (!r.to_budget_line_item_id) { box.hidden = true; return; }
@@ -755,13 +754,13 @@ async function brv_review(status) {
             const toCurrent = Number(v.to_line_amount || 0);
             const fromCode  = brv_lineName(v, '') || 'The From budget line';
             const toCode    = brv_lineName(v, 'to_') || 'The To budget line';
-            question += `\n\n${fromCode} (From budget line): its revised amount will change from ${brv_fmtMoney(current)} to ${brv_fmtMoney(target)}, `
-                      + `and ${brv_fmtChange(-moved)} will be added to its adjustment.`
-                      + `\n${toCode} (To budget line): its revised amount will change from ${brv_fmtMoney(toCurrent)} to ${brv_fmtMoney(toCurrent + moved)}, `
-                      + `and ${brv_fmtChange(moved)} will be added to its adjustment.`;
+            question += `\n\n${fromCode} (From budget line): its current balance will change from ${brv_fmtMoney(current)} to ${brv_fmtMoney(target)}, `
+                      + `and a transaction of ${brv_fmtChange(-moved)} will be recorded for it.`
+                      + `\n${toCode} (To budget line): its current balance will change from ${brv_fmtMoney(toCurrent)} to ${brv_fmtMoney(toCurrent + moved)}, `
+                      + `and a transaction of ${brv_fmtChange(moved)} will be recorded for it.`;
         } else if (!v.to_budget_line_item_id) {
-            question += `\n\nThe budget line's revised amount will change from ${brv_fmtMoney(current)} to ${brv_fmtMoney(target)}, `
-                      + `and ${brv_fmtChange(target - current)} will be added to its adjustment.`;
+            question += `\n\nThe budget line's current balance will change from ${brv_fmtMoney(current)} to ${brv_fmtMoney(target)}, `
+                      + `and a transaction of ${brv_fmtChange(target - current)} will be recorded for it.`;
         }
     }
     if (!id || !confirm(question)) return;
@@ -859,7 +858,7 @@ function brv_linePlace(r, pre) {
     return [r[pre + 'budget_reference_number'], [r[pre + 'program_code'], r[pre + 'project_code']].filter(Boolean).join(' / ')].filter(Boolean).join(' · ');
 }
 // The details card's text, one line each: "BP-001 · Region III Office · FY 2026", "P-100 — Core Shelter › PJ-1 — Resettlement", the
-// particulars, and — when approved revisions have changed it — "Approved amount ₱ … · Adjustment ±₱ …".
+// particulars, and — when approved revisions have changed it — "Approved amount ₱ … · Latest adjustment ±₱ …".
 function brv_lineSub(r, pre) {
     const id = r[(pre ? 'to' : 'from') + '_budget_line_item_id'];
     if (!id) return 'Filed before budget lines could be revised — pick its budget line when editing it';
@@ -868,11 +867,19 @@ function brv_lineSub(r, pre) {
     const withName = (code, name) => (code ? code + (name ? ' — ' + name : '') : '');
     const office = r[pre + 'rc_name'] || r[pre + 'rc_code'];
     const adj = Number(r[pre + 'line_adjustment'] || 0);
+    const latest = Number(r[pre + 'line_latest'] || 0);
+    const held = Number(r[pre + 'line_held'] || 0);
     return [
         `${r[pre + 'budget_reference_number']}${office ? ' · ' + office : ''} · FY ${fy}`,
         [withName(r[pre + 'program_code'], r[pre + 'program_name']), withName(r[pre + 'project_code'], r[pre + 'project_name'])].filter(Boolean).join(' › ') || 'No project yet',
         r[pre + 'particulars'] || '',
-        adj !== 0 ? `Approved amount ${brv_fmtMoney(r[pre + 'proposed_amount'])} · Adjustment ${brv_fmtChange(adj)}` : '',
+        // as on the form's card: the approved amount is the line's suggested_amount (a revision no longer changes it), the revision is its Revision Amount from the
+        // ledger (line_adjustment), the revised amount the two added together, and what CBAs hold against it (line_held, the earmark table) comes off to give its
+        // Current balance (line_amount) — the remaining balance
+        // the LATEST adjustment (line_latest = budget_line_items.adjustment: − on the From line of a realignment, + on the To line); the revised amount is net of ALL of them
+        adj !== 0 ? `Approved amount ${brv_fmtMoney(r[pre + 'suggested_amount'])} · Latest adjustment ${brv_fmtChange(latest)}` : '',
+        adj !== 0 ? `Revised amount ${brv_fmtMoney(r[pre + 'line_revised'])}${Math.abs(latest - adj) > 0.004 ? ` (net of all adjustments ${brv_fmtChange(adj)})` : ''}` : '',
+        held !== 0 ? `Less CBA Requested ${brv_fmtMoney(held)}` : '',
     ].filter(Boolean).join('\n');
 }
 // A budget request's status pill in the status's own colour (settings_status.color); only a plain #RRGGBB colour is put into a

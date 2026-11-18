@@ -18,6 +18,7 @@ use PHPMaker2024\FIMS\Service\GlobalService;
  *                                    Monitoring sheet: approved_amount, revision_amount, revised_amount, cba_requested, available_amount,
  *                                    rfa_approved, laa_issued, remaining_balance (and revised_computed, rfa_laa_amount, disbursement, unallocated_amount, account_payable).
  *                                    with_allocations=1 also hangs the RFAs / LAAs on each project node and the voucher on each RFA.
+ *                                    with_revisions=1 (the RFA / LAA Monitoring page) also hangs the approved Budget Revisions / Realignments (the ledger) on each project node.
  *                                    split_coe=1 cuts the tree into a CO node and a COE node (PS / MOOE > office > request) — see CobService.
  *   GET /cob/read/{budget_reference_number}   one approved request in full, attachments included
  *   GET /cob/report                  the Generate Report dialog: layout_by, depth (0-4), unit (full|thousand|million|billion), format =
@@ -73,10 +74,12 @@ $app->get('/cob/rollup', function ($request, $response, $args) use ($CobService,
 
     // with_allocations=1 (the RFA / LAA Monitoring page): the RFAs / LAAs under each project and the voucher under each RFA
     $withAllocations = in_array(strtolower((string) ($params['with_allocations'] ?? '')), ['1', 'true', 'yes'], true);
+    // with_revisions=1 (the RFA / LAA Monitoring page): the approved revisions / realignments under each project, one row per transaction
+    $withRevisions = in_array(strtolower((string) ($params['with_revisions'] ?? '')), ['1', 'true', 'yes'], true);
     // split_coe=1 (both monitoring pages): the tree starts with a CO node and a COE node (PS / MOOE > office > request) instead of one tree
     $splitCoe = in_array(strtolower((string) ($params['split_coe'] ?? '')), ['1', 'true', 'yes'], true);
 
-    return $cobRespond($response, fn () => $CobService->rollup($layoutBy, $params, $cobScopeRcId($request), $withAllocations, $splitCoe), '/cob/rollup');
+    return $cobRespond($response, fn () => $CobService->rollup($layoutBy, $params, $cobScopeRcId($request), $withAllocations, $splitCoe, $withRevisions), '/cob/rollup');
 })->add($accessMiddleware)->add($jwtMiddleware);
 
 $app->get('/cob/read/{id}', function ($request, $response, $args) use ($CobService, $cobScopeRcId, $cobRespond) {
