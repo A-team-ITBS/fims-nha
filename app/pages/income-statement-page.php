@@ -69,9 +69,6 @@ $_is_api = preg_match('~/api$~', $_is_api) ? $_is_api : $_is_api . '/api';
             </div>
         </div>
         <div class="nha-hdr-r">
-            <button id="is-sample-btn" type="button" class="nha-btn-hdr" title="Show example figures to review the layout">
-                Preview sample data
-            </button>
             <button id="is-refresh" type="button" class="nha-btn-hdr" title="Refresh">
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                 Refresh
@@ -184,7 +181,7 @@ const IS_CONS_API = IS_BASE + '/income_statement/consolidated';
 const IS_FY_API   = IS_BASE + '/fiscal_year/all';
 const IS_BOOK_API = IS_BASE + '/books/all';
 let is_books = [];        // [{book_id, name}] — labels the report title
-let is_useSample = false; // "Preview sample data" toggle
+let is_useSample = false; // sample-data preview, toggled from the console (see is_bindEvents)
 
 // Section order + the running "Surplus/(Deficit)" checkpoint grand row shown right after it.
 const IS_SECTION_META = {
@@ -219,11 +216,16 @@ function is_bindEvents() {
     $is('is-filter-book')?.addEventListener('change', is_load);
     $is('is-filter-view')?.addEventListener('change', () => { is_syncBookFilter(); is_load(); });
     is_syncBookFilter();
-    $is('is-sample-btn')?.addEventListener('click', () => {
-        is_useSample = !is_useSample;
-        $is('is-sample-btn').textContent = is_useSample ? 'Use live data' : 'Preview sample data';
-        $is('is-sample').style.display = is_useSample ? 'block' : 'none';
-        is_load();
+    /* Sample preview has no button: type `income_statement = true` in the browser console to show
+       made-up figures, `income_statement = false` to go back to live data. */
+    Object.defineProperty(window, 'income_statement', {
+        configurable: true,
+        get: () => is_useSample,
+        set: v => {
+            is_useSample = !!v;
+            $is('is-sample').style.display = is_useSample ? 'block' : 'none';
+            is_load();
+        },
     });
 }
 

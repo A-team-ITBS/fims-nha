@@ -74,9 +74,6 @@ $_bs_api = preg_match('~/api$~', $_bs_api) ? $_bs_api : $_bs_api . '/api';
             </div>
         </div>
         <div class="nha-hdr-r">
-            <button id="bs-sample-btn" type="button" class="nha-btn-hdr" title="Show example figures to review the layout">
-                Preview sample data
-            </button>
             <button id="bs-refresh" type="button" class="nha-btn-hdr" title="Refresh">
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                 Refresh
@@ -195,7 +192,7 @@ const BS_CONS_API = BS_BASE + '/balance_sheet/consolidated';
 const BS_FY_API   = BS_BASE + '/fiscal_year/all';
 const BS_BOOK_API = BS_BASE + '/books/all';
 let bs_books = [];        // [{book_id, name}] — labels the report title
-let bs_useSample = false; // "Preview sample data" toggle
+let bs_useSample = false; // sample-data preview, toggled from the console (see bs_bindEvents)
 
 const $bs = id => document.getElementById(id);
 
@@ -220,11 +217,16 @@ function bs_bindEvents() {
     $bs('bs-filter-book')?.addEventListener('change', bs_load);
     $bs('bs-filter-view')?.addEventListener('change', () => { bs_syncBookFilter(); bs_load(); });
     bs_syncBookFilter();
-    $bs('bs-sample-btn')?.addEventListener('click', () => {
-        bs_useSample = !bs_useSample;
-        $bs('bs-sample-btn').textContent = bs_useSample ? 'Use live data' : 'Preview sample data';
-        $bs('bs-sample').style.display = bs_useSample ? 'block' : 'none';
-        bs_load();
+    /* Sample preview has no button: type `balance_sheet = true` in the browser console to show
+       made-up figures, `balance_sheet = false` to go back to live data. */
+    Object.defineProperty(window, 'balance_sheet', {
+        configurable: true,
+        get: () => bs_useSample,
+        set: v => {
+            bs_useSample = !!v;
+            $bs('bs-sample').style.display = bs_useSample ? 'block' : 'none';
+            bs_load();
+        },
     });
 }
 

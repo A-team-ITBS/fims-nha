@@ -101,9 +101,9 @@
     };
     // the eight columns, in the order of the COB sheet: [key, heading, tooltip]
     const COLS = [
-        ['approved_amount', 'Approved Amount', 'What FMD suggested in the Budget Proposal module'],
-        ['revision_amount', 'Revision / Realignment', 'Net of the approved Budget Revisions'],
-        ['revised_amount', 'Revised Amount', 'Approved Amount less Revision / Realignment'],
+        ['approved_amount', 'Approved Amount', 'What FMD suggested in the Budget Proposal module, before any revision or CBA'],
+        ['revision_amount', 'Revision / Realignment', 'Net of the approved Budget Revisions (a decrease in brackets)'],
+        ['revised_amount', 'Revised Amount', 'Approved Amount net of Revision / Realignment (a decrease lowers it)'],
         ['cba_requested', 'CBA Requested', 'Taken off the budget by approved CBAs'],
         ['available_amount', 'Available for Earmarking', 'Revised Amount less CBA Requested'],
         ['rfa_approved', 'RFA Approved', 'Drawn from the CBAs by approved RFAs'],
