@@ -58,6 +58,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     pdftk \
     && rm -rf /var/lib/apt/lists/*
 
+# Install Tesseract OCR + poppler-utils (pdftoppm) — no-API-key local text
+# extraction for scanned documents (Fidelity Bond's Confirmation Letter
+# upload), invoked via exec()/shell_exec('tesseract ...' / 'pdftoppm ...'),
+# same convention as pdftk above. poppler-utils rasterizes a PDF page to
+# PNG before OCR (Tesseract itself only reads images); ImageMagick's own
+# PDF delegate needs Ghostscript + a permissive policy.xml, so this avoids
+# that entirely.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    tesseract-ocr \
+    tesseract-ocr-eng \
+    poppler-utils \
+    && rm -rf /var/lib/apt/lists/*
+
 # Set working directory
 WORKDIR /var/www/html
 

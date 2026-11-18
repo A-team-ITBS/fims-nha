@@ -258,7 +258,12 @@ class DisbursementVoucherService
         )));
 
         $rfas = [];
-        if (!$rfaIdsRaw) {
+        // A payroll REMITTANCE DV (Deductions & Remittances → Create Remittance DV) pays withheld deductions already
+        // obligated by the payroll DV's RFA — it draws no new allotment, so it carries no RFA of its own.
+        $remittanceId = $body['payroll_remittance_id'] ?? null;
+        $fields['_remittanceId'] = ($remittanceId !== null && $remittanceId !== '' && ctype_digit((string) $remittanceId)) ? (int) $remittanceId : null;
+
+        if (!$rfaIdsRaw && !$fields['_remittanceId']) {
             $errors[] = 'At least one RFA is required.';
         } else {
             foreach ($rfaIdsRaw as $rfaId) {
@@ -969,6 +974,7 @@ class DisbursementVoucherService
             $row['deductions']         = $this->fetchDeductions($dvId);
             $row['atc_lines']          = $this->fetchAtcLines($dvId);
             $row['payroll']            = (new PayrollManagementService())->forDv($dvId); // imported payroll month this DV pays, or null
+            $row['remittance']         = (new DeductionRemittanceService())->forDv($dvId); // payroll remittance this DV pays (GSIS/BIR/…), or null
 
             // Every RFA currently linked to this DV — the link lives on the RFA side
             // (budget_allocation.dv_id, see linkRfas()), so this is a plain reverse lookup, not a
@@ -2028,6 +2034,9 @@ class DisbursementVoucherService
             if ($f['_payrollPeriodId'] && ($payrollError = (new PayrollManagementService())->validateDvLink($f['_payrollPeriodId'])) !== null) {
                 $errors[] = $payrollError;
             }
+            if ($f['_remittanceId'] && ($remError = (new DeductionRemittanceService())->validateDvLink($f['_remittanceId'])) !== null) {
+                $errors[] = $remError;
+            }
             if ($errors) {
                 return ['success' => false, 'message' => 'Validation failed.', 'errors' => $errors];
             }
@@ -2073,6 +2082,9 @@ class DisbursementVoucherService
                 $this->replaceDeductions((int) $row['dv_id'], $f['deductions']);
                 if ($f['_payrollPeriodId']) {
                     (new PayrollManagementService())->syncDvLink((int) $row['dv_id'], $f['_payrollPeriodId']);
+                }
+                if ($f['_remittanceId']) {
+                    (new DeductionRemittanceService())->syncDvLink((int) $row['dv_id'], $f['_remittanceId']);
                 }
 
                 $rfaError = $this->linkRfas((int) $row['dv_id'], $f['_rfaRows']);
@@ -2134,6 +2146,9 @@ class DisbursementVoucherService
             if ($f['_payrollPeriodId'] && ($payrollError = (new PayrollManagementService())->validateDvLink($f['_payrollPeriodId'], $dvId)) !== null) {
                 $errors[] = $payrollError;
             }
+            if ($f['_remittanceId'] && ($remError = (new DeductionRemittanceService())->validateDvLink($f['_remittanceId'], $dvId)) !== null) {
+                $errors[] = $remError;
+            }
             if ($errors) {
                 return ['success' => false, 'message' => 'Validation failed.', 'errors' => $errors];
             }
@@ -2182,6 +2197,7 @@ class DisbursementVoucherService
 
                 $this->replaceDeductions($dvId, $f['deductions']);
                 (new PayrollManagementService())->syncDvLink($dvId, $f['_payrollPeriodId']); // also releases a month no longer picked
+                (new DeductionRemittanceService())->syncDvLink($dvId, $f['_remittanceId']);
 
                 $rfaError = $this->linkRfas($dvId, $f['_rfaRows']);
                 if ($rfaError !== null) {
@@ -2367,6 +2383,7 @@ class DisbursementVoucherService
                 }
                 if ($new === 'CANCELLED') {
                     (new PayrollManagementService())->releaseDv($dvId); // a payroll month this DV paid can get a new DV
+                    (new DeductionRemittanceService())->releaseDv($dvId); // a remittance this DV paid is Scheduled again
                 }
 
                 App\Execute('COMMIT', 'DB');
@@ -2423,6 +2440,7 @@ class DisbursementVoucherService
             // doesn't block the RFA" check can't match a dv_id whose row no longer exists at all.
             App\Execute("UPDATE {$this->tableRfa} SET dv_id = NULL WHERE dv_id = {$dvId}", 'DB');
             (new PayrollManagementService())->releaseDv($dvId); // same for a payroll month this DV paid
+            (new DeductionRemittanceService())->releaseDv($dvId); // and a payroll remittance it paid
             App\Execute("DELETE FROM {$this->table} WHERE dv_id = {$dvId}", 'DB');
 
             return ['success' => true, 'message' => "Disbursement Voucher {$cur['dv_no']} deleted successfully."];

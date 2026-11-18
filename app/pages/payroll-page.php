@@ -462,7 +462,8 @@ function pr_open() {
 function pr_close() { $pr('pr-overlay').classList.remove('open'); }
 function pr_resetPreview() {
     pr_previewed = false;
-    $pr('pr-save').disabled = true;
+    // clickable as soon as a file is chosen — Import previews first when that wasn't done (pr_import())
+    $pr('pr-save').disabled = !$pr('pr-file').files.length;
     $pr('pr-save').textContent = 'Import';
     $pr('pr-preview').classList.remove('visible');
     pr_msg('', '');
@@ -528,7 +529,11 @@ async function pr_preview() {
 }
 
 async function pr_import() {
-    if (!pr_previewed) return;
+    if (!pr_previewed) {
+        await pr_preview();            // shows the totals, or why the file cannot be imported
+        if (!pr_previewed) return;     // blocked — the message says why
+        if (pr_previewed.replace) return; // month already imported — the button now reads "Replace Import": click again to confirm
+    }
     $pr('pr-save').disabled = true;
     window.PagePreloader?.show();
     try {
@@ -783,7 +788,11 @@ function pr_boot() {
     $pr('pr-cancel').addEventListener('click', pr_close);
     $pr('pr-preview-btn').addEventListener('click', pr_preview);
     $pr('pr-save').addEventListener('click', pr_import);
-    ['pr-month', 'pr-year', 'pr-file'].forEach(id => $pr(id).addEventListener('change', pr_resetPreview));
+    // choosing the file / month / year previews right away (when a file is chosen)
+    ['pr-month', 'pr-year', 'pr-file'].forEach(id => $pr(id).addEventListener('change', () => {
+        pr_resetPreview();
+        if ($pr('pr-file').files.length) pr_preview();
+    }));
     document.addEventListener('keydown', e => {
         if (e.key !== 'Escape') return;
         const open = ['pr-items-overlay', 'pr-rec-overlay', 'pr-overlay'].find(id => $pr(id).classList.contains('open'));

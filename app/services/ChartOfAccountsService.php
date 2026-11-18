@@ -109,6 +109,32 @@ class ChartOfAccountsService
         }
     }
 
+    // True Subsidiary Ledger accounts — a child account (parent_account_id
+    // IS NOT NULL) that is itself a leaf (nothing else has it as a parent).
+    // Same definition DisbursementVoucherService::fetchSlCodes() uses for
+    // the Accounting Entries grid's SL picker, except this returns full
+    // rows (account_id included) since callers like fims.accountable_
+    // officers.sl_code / fims.vendors.sl_code store account_id, not the
+    // account_code string fetchSlCodes() returns.
+    public function fetchSlAccounts(string $search = ''): array
+    {
+        try {
+            $where = ["status = 'Active'", 'parent_account_id IS NOT NULL',
+                "NOT EXISTS (SELECT 1 FROM {$this->table} k WHERE k.parent_account_id = {$this->table}.account_id)"];
+            if ($search !== '') {
+                $s = App\QuotedValue('%' . $search . '%', DT::STRING, 'DB');
+                $where[] = "(account_code ILIKE {$s} OR account_title ILIKE {$s})";
+            }
+
+            $sql = "SELECT * FROM {$this->table} WHERE " . implode(' AND ', $where) . ' ORDER BY account_code ASC';
+            $data = App\ExecuteRows($sql, 'DB');
+
+            return ['success' => true, 'data' => $data ?: []];
+        } catch (\Exception $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
     public function fetchById(string $id): array
     {
         try {

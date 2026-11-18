@@ -2,18 +2,38 @@
 /**
  * Check Disbursement Voucher — Check Processing module.
  *
- * Consolidates the 6 check-processing workflow pages from the TREASURY
+ * Consolidates 3 of the 6 check-processing workflow pages from the TREASURY
  * reference project (_assets/TREASURY/app/pages/) into one tabbed page:
- *   1. Check Preparation           — issue checks against approved DVs
- *   2. Check Registry              — blank check stock (booklets) inventory
- *   3. Released to Claimants       — direct/email release to payees
- *   4. Released to Regions/Depts   — release to originating offices
- *   5. Cancellation & Replacements — cancel/replace issued checks
- *   6. Inventory (RAF)             — Report of Accountable Forms
+ *   1. Check Preparation     — issue checks against approved DVs
+ *   2. Released to Claimants — direct/email release to payees
+ *   3. Released to Regions/Depts — release to originating offices
  *
- * NOT ported: check_disbursement_ftla_dashboard.php — it's a combined
- * check+FTLA reporting dashboard, not a check-processing workflow page, and
- * half its widgets depend on the separate FTLA/fund-transfer module.
+ * A second top-level tab, "FTLA", is a full embed of app/pages/ftla-page.php
+ * (its own complete header/table/New FTLA wizard, not a re-port) — checks
+ * are often funded by an FTLA fund transfer, so Treasury can reach both
+ * without leaving this module. ftla-page.php is entirely self-contained
+ * (its own IIFE-free globals, all ftlm_/ftlreq_-prefixed, plus
+ * window._ftlaApp) and was already designed to be <?php include()?>'d
+ * as-is elsewhere (views/FtlaPage.php does the same), so it's included
+ * verbatim rather than copied — same convention as reusing
+ * readone/print-preview-readone.php.
+ *
+ * NOT here: Check Registry (blank check stock/booklets inventory) — split
+ * out into its own standalone page, app/pages/check-registry-page.php (see
+ * that file's docblock), reusing the same backend. Inventory (RAF, Report
+ * of Accountable Forms) tab was removed — its backend
+ * (CheckProcessingService::getRafSummary()/getRafList()/getRafYears(), routes
+ * under /api/check-processing/raf/*) is left in place but currently has no
+ * frontend caller. Cancellation & Replacements tab was also removed — its
+ * action (cancelCheck()) is now a per-row "Cancel" button in Check
+ * Preparation (see openCancelCheckModal()), and its own list view is gone
+ * entirely now that Check Preparation's "Cancelled" status pill shows the
+ * same checks with a Reason column (getChecksList()'s LEFT JOIN to
+ * fims.check_cancellations) — getCancellationKpis()/getCancellationList()
+ * are left in place but have no frontend caller either. Also NOT ported:
+ * check_disbursement_ftla_dashboard.php — it's a combined check+FTLA
+ * reporting dashboard, not a check-processing workflow page, and half its
+ * widgets depend on the separate FTLA/fund-transfer module.
  *
  * Markup/CSS classes (fims-page-header, fims-stat-grid, fims-table-panel,
  * fims-tabs-underline, fims-modal-overlay, etc.) match the real classes
@@ -45,6 +65,13 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
 <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js" defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" defer></script>
 <script src="/app/fims-js/fims-treasury.js?v=<?= $cpJsVer ?>" defer></script>
+<!-- Required by the embedded FTLA tab (app/pages/ftla-page.php) — its own
+     head assets, duplicated here since that file is included mid-page
+     rather than as a full standalone page render. -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
 
 <div class="fims-wrap" id="cpModule">
 
@@ -53,22 +80,16 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
         <div class="fims-page-header-left">
             <div class="fims-page-header-icon"><i class="fas fa-money-check-alt"></i></div>
             <h1>Check Disbursement Voucher</h1>
-            <p>Check preparation, registry, release, and cancellation — Disbursing Section</p>
+            <p>Check preparation, release, and cancellation — Disbursing Section</p>
         </div>
     </div>
 
     <div class="fims-tabs-underline mb-3" id="cpTabNav">
         <button class="fims-tab-underline active" data-cp-tab="prep">Check Preparation</button>
-        <button class="fims-tab-underline" data-cp-tab="registry">Check Registry</button>
-        <button class="fims-tab-underline" data-cp-tab="released">Released</button>
-        <button class="fims-tab-underline" data-cp-tab="cancel">Cancellation &amp; Replacements</button>
-        <button class="fims-tab-underline" data-cp-tab="raf">Inventory (RAF)</button>
+        <button class="fims-tab-underline" data-cp-tab="ftla">FTLA Preparation</button>
     </div>
 
-    <!-- ══════════════════════════════════════════════
-         TAB 1: CHECK PREPARATION
-    ══════════════════════════════════════════════ -->
-    <div class="fims-tab-underline-content active" id="cpPrep">
+    <div id="cpPrep">
         <div class="fims-alert fims-alert-warning" id="print-agent-warning" style="display:none;margin-bottom:10px;">
             <div class="fims-alert-body">Print agent not detected at <code>http://127.0.0.1:9123</code>. Checks can't be printed until it's running.
                 <button type="button" class="fims-btn fims-btn-primary fims-btn-sm" id="prepInstallAgentBtn" style="margin-left:8px;"><i class="fas fa-download mr-1"></i>Download &amp; Install Print Agent</button>
@@ -91,7 +112,7 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
         </div>
 
         <div class="cp-status-tabs" id="prepStatusTabs">
-            <?php foreach (["" => "All", "PREPARED" => "Prepared", "RELEASED" => "Released", "ENCASHED" => "Encashed", "OUTSTANDING" => "Outstanding", "STALE" => "Stale", "CANCELLED" => "Cancelled", "VOIDED" => "Voided"] as $val => $label): ?>
+            <?php foreach (["" => "All", "PREPARED" => "Prepared", "RELEASED_PENDING" => "For Release", "RELEASED_DONE" => "Released", "STALE" => "Stale", "CANCELLED" => "Cancelled"] as $val => $label): ?>
             <button type="button" class="fims-badge cp-status-tab<?= $val === "" ? " active" : "" ?>" data-status="<?= $val ?>"><?= $label ?></button>
             <?php endforeach; ?>
         </div>
@@ -115,321 +136,32 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
                             <th>Check Date</th>
                             <th>DV Number</th>
                             <th>Payee</th>
+                            <th class="prep-col-claimant">Claimant</th>
                             <th>Bank / Account</th>
                             <th class="text-right">Amount</th>
                             <th class="text-center">Status</th>
-                            <th class="text-center" style="width:260px">Actions</th>
+                            <th class="prep-col-reason">Reason</th>
+                            <th class="text-center" style="width:340px">Actions</th>
                         </tr>
                     </thead>
-                    <tbody><tr class="fims-empty"><td colspan="10">Loading…</td></tr></tbody>
+                    <tbody><tr class="fims-empty"><td colspan="12">Loading…</td></tr></tbody>
                 </table>
             </div>
         </div>
     </div>
 
     <!-- ══════════════════════════════════════════════
-         TAB 2: CHECK REGISTRY
+         TAB: FTLA — full embed of app/pages/ftla-page.php (see this file's
+         docblock). Its own #ftla-root/.nha-root wrapper, header, and New
+         FTLA wizard all come along as-is; only hidden/shown via display,
+         same as cpPrep.
     ══════════════════════════════════════════════ -->
-    <div class="fims-tab-underline-content" id="cpRegistry" style="display:none">
-        <div class="fims-stat-grid" id="registryKpiCards" style="grid-template-columns:repeat(3,1fr)">
-            <div class="fims-stat-card fims-card-blue">
-                <div class="fims-stat-top"><span class="fims-stat-label">Unused / Available</span></div>
-                <div class="fims-stat-value" data-kpi="UNUSED">0</div>
-            </div>
-            <div class="fims-stat-card fims-card-green">
-                <div class="fims-stat-top"><span class="fims-stat-label">Issued</span></div>
-                <div class="fims-stat-value" data-kpi="ISSUED">0</div>
-            </div>
-            <div class="fims-stat-card fims-card-red">
-                <div class="fims-stat-top"><span class="fims-stat-label">Cancelled</span></div>
-                <div class="fims-stat-value" data-kpi="CANCELLED">0</div>
-            </div>
-        </div>
-
-        <div class="fims-table-panel" style="border-radius:var(--fims-radius-lg) var(--fims-radius-lg) 0 0;border-bottom:none;margin-bottom:0">
-            <div class="fims-toolbar">
-                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-                    <select class="fims-select fims-input-sm" id="regFilterOfficeType" style="width:150px">
-                        <option value="">Office Type: All</option>
-                        <option value="MAIN_OFFICE">Main Office</option>
-                        <option value="REGION">Region</option>
-                    </select>
-                    <select class="fims-select fims-input-sm" id="regFilterBank" style="width:170px"><option value="">All Banks</option></select>
-                    <select class="fims-select fims-input-sm" id="regFilterSeries" style="width:150px"><option value="">All Series</option></select>
-                    <select class="fims-select fims-input-sm" id="regFilterStatus" style="width:150px">
-                        <option value="">Status: All</option>
-                        <option value="UNUSED">Unused</option>
-                        <option value="ISSUED">Issued</option>
-                        <option value="ENCASHED">Encashed</option>
-                        <option value="OUTSTANDING">Outstanding</option>
-                        <option value="CANCELLED">Cancelled</option>
-                        <option value="VOIDED">Voided</option>
-                        <option value="SPOILED">Spoiled</option>
-                        <option value="STALE">Stale</option>
-                    </select>
-                    <select class="fims-select fims-input-sm" id="regFilterEntryType" style="width:150px">
-                        <option value="">Entry Type: All</option>
-                        <option value="RECEIVED">Received</option>
-                        <option value="ISSUED">Issued</option>
-                        <option value="CANCELLED">Cancelled</option>
-                        <option value="VOIDED">Voided</option>
-                        <option value="SPOILED">Spoiled</option>
-                        <option value="STALE">Stale</option>
-                        <option value="REPLACED">Replaced</option>
-                    </select>
-                    <input type="date" class="fims-input fims-input-sm" id="regFilterDateFrom">
-                    <input type="date" class="fims-input fims-input-sm" id="regFilterDateTo">
-                    <div class="fims-search-wrap">
-                        <svg class="fims-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                        <input type="text" class="fims-input fims-input-sm" id="regFilterSearch" placeholder="Check # or Series or RAF" style="width:200px">
-                    </div>
-                    <button type="button" class="fims-btn fims-btn-primary fims-btn-sm" id="regSearchBtn"><i class="fas fa-search mr-1"></i>Search</button>
-                    <button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" id="regClearBtn">Clear</button>
-                </div>
-            </div>
-        </div>
-
-        <div class="fims-table-panel" style="border-radius:0 0 var(--fims-radius-lg) var(--fims-radius-lg)">
-            <div class="fims-panel-header">
-                <div class="fims-panel-title">Check Register</div>
-                <button type="button" class="fims-btn fims-btn-primary fims-btn-sm" id="regAddBatchBtn"><i class="fas fa-plus mr-1"></i>Add Batch</button>
-            </div>
-            <div class="fims-table-wrap">
-                <table class="fims-table" id="registryTable">
-                    <thead>
-                        <tr>
-                            <th>#</th><th>Booklet No.</th><th>Series</th><th>Bank / Account</th>
-                            <th>Dept. Type</th><th class="text-center">Checks</th><th>Status Summary</th>
-                        </tr>
-                    </thead>
-                    <tbody><tr class="fims-empty"><td colspan="7">No records.</td></tr></tbody>
-                </table>
-            </div>
-            <div class="fims-pagination" id="registryPagination"></div>
-        </div>
+    <div id="cpFtla" style="display:none">
+        <?php include __DIR__ . '/ftla-page.php'; ?>
     </div>
 
     <!-- ══════════════════════════════════════════════
-         TAB 3: RELEASED TO CLAIMANTS
-    ══════════════════════════════════════════════ -->
-    <div class="fims-tab-underline-content" id="cpReleased" style="display:none">
-        <div class="fims-stat-grid" id="releasedKpiCards" style="grid-template-columns:repeat(6,1fr)">
-            <div class="fims-stat-card fims-card-gray"><div class="fims-stat-top"><span class="fims-stat-label">Pending</span></div><div class="fims-stat-value" data-kpi="PENDING">0</div></div>
-            <div class="fims-stat-card fims-card-blue"><div class="fims-stat-top"><span class="fims-stat-label">Notified</span></div><div class="fims-stat-value" data-kpi="NOTIFIED">0</div></div>
-            <div class="fims-stat-card fims-card-green"><div class="fims-stat-top"><span class="fims-stat-label">Released</span></div><div class="fims-stat-value" data-kpi="RELEASED">0</div></div>
-            <div class="fims-stat-card fims-card-indigo"><div class="fims-stat-top"><span class="fims-stat-label">Acknowledged</span></div><div class="fims-stat-value" data-kpi="ACKNOWLEDGED">0</div></div>
-            <div class="fims-stat-card fims-card-red"><div class="fims-stat-top"><span class="fims-stat-label">Unclaimed</span></div><div class="fims-stat-value" data-kpi="UNCLAIMED">0</div></div>
-            <div class="fims-stat-card fims-card-violet"><div class="fims-stat-top"><span class="fims-stat-label">Return Paid DVs</span></div><div class="fims-stat-value" data-kpi="DV_RETURNED">0</div></div>
-        </div>
-
-        <div class="fims-table-panel" style="border-radius:var(--fims-radius-lg) var(--fims-radius-lg) 0 0;border-bottom:none;margin-bottom:0">
-            <div class="fims-toolbar">
-                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-                    <div class="fims-search-wrap">
-                        <svg class="fims-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                        <input type="text" class="fims-input fims-input-sm" id="relFilterSearch" placeholder="Check No. or Payee" style="width:190px">
-                    </div>
-                    <select class="fims-select fims-input-sm" id="relFilterStatus" style="width:160px">
-                        <option value="">Status: All</option>
-                        <option value="PENDING">Pending</option>
-                        <option value="NOTIFIED">Notified</option>
-                        <option value="RELEASED">Released</option>
-                        <option value="ACKNOWLEDGED">Acknowledged</option>
-                        <option value="UNCLAIMED">Unclaimed</option>
-                    </select>
-                    <select class="fims-select fims-input-sm" id="relFilterType" style="width:170px">
-                        <option value="">Type: All</option>
-                        <option value="DIRECT">Direct</option>
-                        <option value="EMAIL_NOTICE">Email Notice</option>
-                        <option value="REGION">Region/Dept</option>
-                    </select>
-                    <select class="fims-select fims-input-sm" id="relFilterDept" style="width:190px"><option value="">All Regions/Depts</option></select>
-                </div>
-                <div style="display:flex;gap:8px;">
-                    <button type="button" class="fims-btn fims-btn-primary fims-btn-sm" id="relRecordReleaseBtn"><i class="fas fa-plus mr-1"></i>Record Release</button>
-                    <button type="button" class="fims-btn fims-btn-outline fims-btn-sm" id="relSendNoticeBtn"><i class="fas fa-envelope mr-1"></i>Send Notice</button>
-                    <button type="button" class="fims-btn fims-btn-outline fims-btn-sm" id="relFollowUpBtn"><i class="fas fa-bell mr-1"></i>Follow-up Unclaimed</button>
-                </div>
-            </div>
-        </div>
-
-        <div class="fims-tabs-underline mb-0" id="relSubTabs" style="border-radius:0;border-top:none;">
-            <button class="fims-tab-underline active" data-sub-target="relListPane">Check Release List</button>
-            <button class="fims-tab-underline" data-sub-target="relUnclaimedPane">Unclaimed / Unreleased</button>
-            <button class="fims-tab-underline" data-sub-target="relAckPane">Acknowledgment</button>
-            <button class="fims-tab-underline" data-sub-target="relEmailLogPane">Email Log</button>
-            <button class="fims-tab-underline" data-sub-target="relDvPane">Return Paid DVs</button>
-        </div>
-
-        <div class="fims-table-panel" style="border-radius:0 0 var(--fims-radius-lg) var(--fims-radius-lg)">
-            <div class="fims-tab-underline-content active" id="relListPane">
-                <div class="fims-table-wrap">
-                    <table class="fims-table" id="releasesTable">
-                        <thead>
-                            <tr>
-                                <th>#</th><th>Check No.</th><th>Payee / Amount</th><th>Type</th><th>Claimant / Region</th>
-                                <th>ID / RDTF No.</th><th>Release Date</th>
-                                <th class="text-center">Status</th><th>Acknowledgment</th><th class="text-center" style="width:120px"></th>
-                            </tr>
-                        </thead>
-                        <tbody><tr class="fims-empty"><td colspan="10">No records.</td></tr></tbody>
-                    </table>
-                </div>
-            </div>
-            <div class="fims-tab-underline-content" id="relUnclaimedPane" style="display:none">
-                <div class="fims-table-wrap">
-                    <table class="fims-table" id="relUnclaimedTable">
-                        <thead>
-                            <tr>
-                                <th>#</th><th>Check No.</th><th>Payee / Amount</th><th>Type</th><th>Claimant / Region</th>
-                                <th class="text-center">Status</th><th>Days Since Prep.</th><th>Last Follow-up</th>
-                                <th>Follow-up Remarks</th>
-                            </tr>
-                        </thead>
-                        <tbody><tr class="fims-empty"><td colspan="9">No records.</td></tr></tbody>
-                    </table>
-                </div>
-            </div>
-            <div class="fims-tab-underline-content" id="relAckPane" style="display:none">
-                <div class="fims-table-wrap">
-                    <table class="fims-table" id="relAckTable">
-                        <thead>
-                            <tr>
-                                <th>#</th><th>Check No.</th><th>Payee</th><th class="text-right">Amount</th><th>Type</th><th>Claimant / Region</th>
-                                <th>Release Date</th><th>Acknowledgment Date</th><th>ID / Submitted</th>
-                            </tr>
-                        </thead>
-                        <tbody><tr class="fims-empty"><td colspan="9">No records.</td></tr></tbody>
-                    </table>
-                </div>
-            </div>
-            <div class="fims-tab-underline-content" id="relEmailLogPane" style="display:none">
-                <div class="fims-table-wrap">
-                    <table class="fims-table" id="relEmailLogTable">
-                        <thead>
-                            <tr><th>#</th><th>Check No. / Region</th><th>Recipient Email</th><th>Checks</th><th class="text-right">Total Amount</th><th>Sent At</th><th>Sent By</th><th class="text-center">Status</th></tr>
-                        </thead>
-                        <tbody><tr class="fims-empty"><td colspan="8">No records.</td></tr></tbody>
-                    </table>
-                </div>
-            </div>
-            <div class="fims-tab-underline-content" id="relDvPane" style="display:none">
-                <div class="fims-table-wrap">
-                    <table class="fims-table" id="relDvTable">
-                        <thead>
-                            <tr>
-                                <th>#</th><th>Check No.</th><th>DV Reference</th><th>Payee</th><th class="text-right">Amount</th>
-                                <th>Region/Dept</th><th>Release Date</th><th>DV Return Date</th><th>Days Pending</th><th class="text-center">Status</th>
-                            </tr>
-                        </thead>
-                        <tbody><tr class="fims-empty"><td colspan="10">No records.</td></tr></tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- ══════════════════════════════════════════════
-         TAB 5: CANCELLATION & REPLACEMENTS
-    ══════════════════════════════════════════════ -->
-    <div class="fims-tab-underline-content" id="cpCancel" style="display:none">
-        <div class="fims-stat-grid" id="cancelKpiCards" style="grid-template-columns:repeat(4,1fr)">
-            <div class="fims-stat-card fims-card-gray"><div class="fims-stat-top"><span class="fims-stat-label">Total Cancelled</span></div><div class="fims-stat-value" data-kpi="total_cancelled">0</div></div>
-            <div class="fims-stat-card fims-card-green"><div class="fims-stat-top"><span class="fims-stat-label">With Replacement</span></div><div class="fims-stat-value" data-kpi="with_replacement">0</div></div>
-            <div class="fims-stat-card fims-card-amber"><div class="fims-stat-top"><span class="fims-stat-label">Pending Replacement</span></div><div class="fims-stat-value" data-kpi="pending_replacement">0</div></div>
-            <div class="fims-stat-card fims-card-red"><div class="fims-stat-top"><span class="fims-stat-label">Cancelled Amount</span></div><div class="fims-stat-value" data-kpi="cancelled_amount">₱0.00</div></div>
-        </div>
-
-        <div class="fims-table-panel" style="border-radius:var(--fims-radius-lg) var(--fims-radius-lg) 0 0;border-bottom:none;margin-bottom:0">
-            <div class="fims-toolbar">
-                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-                    <div class="fims-search-wrap">
-                        <svg class="fims-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                        <input type="text" class="fims-input fims-input-sm" id="cancelFilterSearch" placeholder="Check no., payee…" style="width:186px">
-                    </div>
-                    <select class="fims-select fims-input-sm" id="cancelFilterBank" style="width:200px"><option value="">All Banks</option></select>
-                    <input type="date" class="fims-input fims-input-sm" id="cancelFilterDateFrom">
-                    <input type="date" class="fims-input fims-input-sm" id="cancelFilterDateTo">
-                    <button type="button" class="fims-btn fims-btn-primary fims-btn-sm" id="cancelSearchBtn"><i class="fas fa-search mr-1"></i>Search</button>
-                    <button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" id="cancelClearBtn" style="display:none">Clear</button>
-                </div>
-                <div id="cancelListMeta" style="font-size:11px;color:var(--fims-text-subtle)">No records.</div>
-            </div>
-        </div>
-
-        <div class="fims-table-panel" style="border-radius:0 0 var(--fims-radius-lg) var(--fims-radius-lg)">
-            <div class="fims-panel-header">
-                <div class="fims-panel-title">Cancelled Checks</div>
-            </div>
-            <div class="fims-table-wrap">
-                <table class="fims-table" id="cancelTable">
-                    <thead>
-                        <tr>
-                            <th>#</th><th>Check No.</th><th>Bank / Account</th><th>Payee</th><th class="text-right">Amount</th>
-                            <th>Check Date</th><th>Cancelled Date</th><th>Reason</th><th class="text-center">Status</th>
-                        </tr>
-                    </thead>
-                    <tbody><tr class="fims-empty"><td colspan="9">No records.</td></tr></tbody>
-                </table>
-            </div>
-            <div class="fims-pagination" id="cancelPagination"></div>
-        </div>
-    </div>
-
-    <!-- ══════════════════════════════════════════════
-         TAB 6: INVENTORY (RAF)
-    ══════════════════════════════════════════════ -->
-    <div class="fims-tab-underline-content" id="cpRaf" style="display:none">
-        <div class="fims-stat-grid" id="rafKpiCards" style="grid-template-columns:repeat(4,1fr)">
-            <div class="fims-stat-card fims-card-blue"><div class="fims-stat-top"><span class="fims-stat-label">Check Booklets</span></div><div class="fims-stat-value" data-kpi="booklets">0</div></div>
-            <div class="fims-stat-card fims-card-green"><div class="fims-stat-top"><span class="fims-stat-label">Remaining Checks</span></div><div class="fims-stat-value" data-kpi="remaining">0</div></div>
-            <div class="fims-stat-card fims-card-indigo"><div class="fims-stat-top"><span class="fims-stat-label">Checks Issued</span></div><div class="fims-stat-value" data-kpi="issued">0</div></div>
-            <div class="fims-stat-card fims-card-red"><div class="fims-stat-top"><span class="fims-stat-label">Low Stock Accounts</span></div><div class="fims-stat-value" data-kpi="low_stock">0</div></div>
-        </div>
-
-        <div class="fims-table-panel" style="border-radius:var(--fims-radius-lg) var(--fims-radius-lg) 0 0;border-bottom:none;margin-bottom:0">
-            <div class="fims-toolbar">
-                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-                    <select class="fims-select fims-input-sm" id="rafFilterYear" style="width:140px"><option value="">Fiscal Year: All</option></select>
-                    <select class="fims-select fims-input-sm" id="rafFilterBank" style="width:170px"><option value="">All Banks</option></select>
-                    <select class="fims-select fims-input-sm" id="rafFilterLowStock" style="width:140px">
-                        <option value="">All</option>
-                        <option value="1">Low Stock Only</option>
-                    </select>
-                    <div class="fims-search-wrap">
-                        <svg class="fims-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                        <input type="text" class="fims-input fims-input-sm" id="rafFilterSearch" placeholder="Check Series / Booklet No." style="width:200px">
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="fims-table-panel" style="border-radius:0 0 var(--fims-radius-lg) var(--fims-radius-lg)">
-            <div class="fims-panel-header">
-                <div class="fims-panel-title">Inventory of Checks for Issuance</div>
-                <div style="display:flex;gap:8px;">
-                    <button type="button" class="fims-btn fims-btn-outline fims-btn-sm" id="rafPreviewBtn"><i class="fas fa-eye mr-1"></i>Preview</button>
-                    <button type="button" class="fims-btn fims-btn-outline fims-btn-sm" id="rafPrintBtn"><i class="fas fa-print mr-1"></i>Print</button>
-                    <button type="button" class="fims-btn fims-btn-outline fims-btn-sm" id="rafDownloadBtn"><i class="fas fa-file-pdf mr-1"></i>Download PDF</button>
-                </div>
-            </div>
-            <div class="fims-table-wrap">
-                <table class="fims-table" id="rafTable">
-                    <thead>
-                        <tr>
-                            <th>Booklet No.</th><th>Series</th><th>Fiscal Year</th><th>Check Range</th>
-                            <th>Received</th><th>Issued</th><th>Cancelled</th><th>Remaining</th>
-                            <th>Last Entry</th><th class="text-center">Stock Status</th><th class="text-center" style="width:70px">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody><tr class="fims-empty"><td colspan="11">No records — check register has no booklets yet.</td></tr></tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-
-    <!-- ══════════════════════════════════════════════
-         MODAL: Prepare Check (tab 1 primary action)
+         MODAL: Prepare Check (primary action)
     ══════════════════════════════════════════════ -->
     <div class="fims-modal-overlay" id="m-prepare-check" style="display:none;">
         <div class="fims-modal-dialog" style="max-width:760px;width:95vw;">
@@ -444,6 +176,10 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
                     </div>
                     <div id="prepModalError" class="fims-alert fims-alert-danger" style="display:none;"><div class="fims-alert-body"></div></div>
                     <div id="prepCashCheck" class="fims-alert" style="display:none;"><div class="fims-alert-body"></div></div>
+                    <div id="prepLowStockAlert" class="fims-alert fims-alert-warning prep-low-stock-pulse" style="display:none;">
+                        <div class="fims-alert-icon"><i class="fas fa-exclamation-triangle"></i></div>
+                        <div class="fims-alert-body"><strong>Low check stock!</strong> Only <span id="prepLowStockCount">0</span> unused check(s) left for this bank account — register a new batch in Check Registry soon.</div>
+                    </div>
                     <div class="row g-2">
                         <div class="col-md-6"><label class="fims-label">DV Number <span class="text-danger">*</span></label>
                             <select class="fims-select" id="prepDvSelect"><option value="">Select a DV...</option></select>
@@ -481,9 +217,8 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
          directly from Check Preparation. The Released/Cancellation tabs
          keep this in sync automatically for the normal release/cancel
          flows (see CheckProcessingService::syncCheckStatusFromRelease() /
-         cancelCheck()); this is for everything else (ENCASHED/OUTSTANDING/
-         VOIDED, or a manual correction) that nothing else in this module
-         sets on its own.
+         cancelCheck()); this is for a manual correction that nothing else
+         in this module sets on its own.
     ══════════════════════════════════════════════ -->
     <div class="fims-modal-overlay" id="m-set-check-status" style="display:none;">
         <div class="fims-modal-dialog" style="max-width:420px;width:95vw;">
@@ -496,12 +231,9 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
                     <label class="fims-label">Status <span class="text-danger">*</span></label>
                     <select class="fims-select" id="setStatusSelect">
                         <option value="PREPARED">Prepared</option>
-                        <option value="RELEASED">Released</option>
-                        <option value="ENCASHED">Encashed</option>
-                        <option value="OUTSTANDING">Outstanding</option>
+                        <option value="RELEASED">For Release</option>
                         <option value="STALE">Stale</option>
                         <option value="CANCELLED">Cancelled</option>
-                        <option value="VOIDED">Voided</option>
                     </select>
                     <div id="setStatusReasonGroup" style="display:none;margin-top:10px;">
                         <label class="fims-label">Cancellation Reason <span class="text-danger">*</span></label>
@@ -529,83 +261,6 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
                 <div class="fims-modal-footer">
                     <button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-close="m-set-check-status">Cancel</button>
                     <button type="button" class="fims-btn fims-btn-primary fims-btn-sm" id="setStatusSaveBtn">Save</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- ══════════════════════════════════════════════
-         MODAL: Set Claimant — edits a release record's claimant name/type
-         after the fact. Mainly for releases created by Check Preparation's
-         "Set Status" shortcut, which has no claimant field of its own and
-         always inserts with claimant_name NULL.
-    ══════════════════════════════════════════════ -->
-    <div class="fims-modal-overlay" id="m-set-claimant" style="display:none;">
-        <div class="fims-modal-dialog" style="max-width:420px;width:95vw;">
-            <div class="fims-modal-content">
-                <div class="fims-modal-header">
-                    <div><div class="fims-modal-title">Set Claimant</div><p class="fims-modal-subtitle" id="setClaimantSubtitle" style="margin:0;font-size:12px;color:var(--fims-text-subtle);"></p></div>
-                    <button class="fims-modal-close" data-close="m-set-claimant">&times;</button>
-                </div>
-                <div class="fims-modal-body">
-                    <div class="row g-2">
-                        <div class="col-md-12" id="setClaimantTypeGroup"><label class="fims-label">Claimant Type</label>
-                            <select class="fims-select" id="setClaimantType">
-                                <option value="PAYEE">Payee</option>
-                                <option value="AUTHORIZED_REP">Authorized Representative</option>
-                                <option value="ORIGINATING_UNIT">Originating Unit</option>
-                            </select>
-                        </div>
-                        <div class="col-md-12">
-                            <label class="fims-label">Quick Pick</label>
-                            <select class="fims-select" id="setClaimantQuickPick"><option value="">Type manually…</option></select>
-                        </div>
-                        <div class="col-md-12"><label class="fims-label" id="setClaimantNameLabel">Claimant Name</label><input type="text" class="fims-input" id="setClaimantName"></div>
-                    </div>
-                </div>
-                <div class="fims-modal-footer">
-                    <button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-close="m-set-claimant">Cancel</button>
-                    <button type="button" class="fims-btn fims-btn-primary fims-btn-sm" id="setClaimantSaveBtn">Save</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- ══════════════════════════════════════════════
-         MODAL: Acknowledge Release — captures the ID presented at pickup
-         (type + number) and flips the release to ACKNOWLEDGED. Previously
-         had no UI entry point at all despite the backend already
-         supporting it.
-    ══════════════════════════════════════════════ -->
-    <div class="fims-modal-overlay" id="m-acknowledge-release" style="display:none;">
-        <div class="fims-modal-dialog" style="max-width:420px;width:95vw;">
-            <div class="fims-modal-content">
-                <div class="fims-modal-header">
-                    <div><div class="fims-modal-title">Acknowledge Release</div><p class="fims-modal-subtitle" id="ackSubtitle" style="margin:0;font-size:12px;color:var(--fims-text-subtle);"></p></div>
-                    <button class="fims-modal-close" data-close="m-acknowledge-release">&times;</button>
-                </div>
-                <div class="fims-modal-body">
-                    <div class="row g-2">
-                        <div class="col-md-12"><label class="fims-label">ID Type</label>
-                            <select class="fims-select" id="ackIdType">
-                                <option value="">Select...</option>
-                                <option value="DRIVERS_LICENSE">Driver's License</option>
-                                <option value="PASSPORT">Passport</option>
-                                <option value="UMID">UMID</option>
-                                <option value="SSS_ID">SSS ID</option>
-                                <option value="PHILHEALTH_ID">PhilHealth ID</option>
-                                <option value="VOTERS_ID">Voter's ID</option>
-                                <option value="POSTAL_ID">Postal ID</option>
-                                <option value="COMPANY_ID">Company ID</option>
-                                <option value="OTHER">Other</option>
-                            </select>
-                        </div>
-                        <div class="col-md-12"><label class="fims-label">ID Number</label><input type="text" class="fims-input" id="ackIdNumber"></div>
-                    </div>
-                </div>
-                <div class="fims-modal-footer">
-                    <button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-close="m-acknowledge-release">Cancel</button>
-                    <button type="button" class="fims-btn fims-btn-primary fims-btn-sm" id="ackSaveBtn">Acknowledge</button>
                 </div>
             </div>
         </div>
@@ -717,156 +372,14 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
         </div>
     </div>
 
-    <!-- ══════════════════════════════════════════════
-         MODAL: Add Check Batch (tab 2 primary action) — ported from
-         TREASURY's check-registry.php Range/Individual tabs.
-    ══════════════════════════════════════════════ -->
-    <div class="fims-modal-overlay" id="m-add-batch" style="display:none;">
-        <div class="fims-modal-dialog" style="max-width:680px;width:95vw;">
-            <div class="fims-modal-content">
-                <div class="fims-modal-header">
-                    <div><div class="fims-modal-title">Register Check Batch</div></div>
-                    <button class="fims-modal-close" data-close="m-add-batch">&times;</button>
-                </div>
-                <div class="fims-modal-body">
-                    <div class="row g-2">
-                        <div class="col-md-6"><label class="fims-label">Bank Account <span class="text-danger">*</span></label><select class="fims-select" id="batchBankAccount"><option value="">Select bank account...</option></select></div>
-                        <div class="col-md-6"><label class="fims-label">Batch Series <span class="text-danger">*</span></label><input type="text" class="fims-input" id="batchSeries" placeholder="e.g. CHK-A-2026"></div>
-                        <div class="col-md-12"><label class="fims-label">Department Type <span class="text-danger">*</span></label>
-                            <select class="fims-select" id="batchDeptType">
-                                <option value="MAIN_OFFICE">Main Office</option>
-                                <option value="REGION">Region</option>
-                                <option value="BRANCH">Branch</option>
-                                <option value="PROJECT">Project</option>
-                                <option value="OTHER">Other</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <div class="fims-tabs-underline mt-2 mb-2" id="batchTabNav">
-                        <button type="button" class="fims-tab-underline active" data-batch-tab="range">Range</button>
-                        <button type="button" class="fims-tab-underline" data-batch-tab="individual">Individual Checks</button>
-                    </div>
-
-                    <div id="batchRangePanel">
-                        <div class="row g-2">
-                            <div class="col-md-5"><label class="fims-label">Start Check No.</label><input type="text" class="fims-input" id="batchRangeStart" placeholder="e.g. 0010440"></div>
-                            <div class="col-md-5"><label class="fims-label">End Check No.</label><input type="text" class="fims-input" id="batchRangeEnd" placeholder="e.g. 0010490"></div>
-                            <div class="col-md-2"><label class="fims-label">Date</label><input type="date" class="fims-input" id="batchRangeDate"></div>
-                        </div>
-                        <div id="batchRangePreview" class="text-muted small mt-2"></div>
-                    </div>
-
-                    <div id="batchIndividualPanel" style="display:none">
-                        <table class="fims-table">
-                            <thead><tr><th>Check No.</th><th style="width:150px">Entry Date</th><th style="width:40px"></th></tr></thead>
-                            <tbody id="batchIndividualRows"></tbody>
-                        </table>
-                        <button type="button" class="fims-btn fims-btn-outline fims-btn-sm" id="batchAddRowBtn"><i class="fas fa-plus mr-1"></i>Add Row</button>
-                        <div id="batchIndividualPreview" class="text-muted small mt-2"></div>
-                    </div>
-                </div>
-                <div class="fims-modal-footer">
-                    <button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-close="m-add-batch">Cancel</button>
-                    <button type="button" class="fims-btn fims-btn-primary fims-btn-sm" id="batchSaveBtn">Save Batch</button>
-                </div>
-            </div>
-        </div>
-    </div>
 
     <!-- ══════════════════════════════════════════════
-         MODAL: Update Register Status — ported from TREASURY's
-         check-registry.php #modal-status-overlay.
-    ══════════════════════════════════════════════ -->
-    <div class="fims-modal-overlay" id="m-update-status" style="display:none;">
-        <div class="fims-modal-dialog" style="max-width:480px;width:95vw;">
-            <div class="fims-modal-content">
-                <div class="fims-modal-header">
-                    <div><div class="fims-modal-title">Update Status</div></div>
-                    <button class="fims-modal-close" data-close="m-update-status">&times;</button>
-                </div>
-                <div class="fims-modal-body">
-                    <input type="hidden" id="statusEntryId">
-                    <div class="row g-2">
-                        <div class="col-md-6"><label class="fims-label">Check No.</label><input type="text" class="fims-input" id="statusCheckNumber" readonly></div>
-                        <div class="col-md-6"><label class="fims-label">Current Status</label><input type="text" class="fims-input" id="statusCurrent" readonly></div>
-                        <div class="col-md-12"><label class="fims-label">New Status <span class="text-danger">*</span></label>
-                            <select class="fims-select" id="statusNew">
-                                <option value="">— Select —</option>
-                                <option value="ISSUED">Issued</option>
-                                <option value="ENCASHED">Encashed</option>
-                                <option value="OUTSTANDING">Outstanding</option>
-                                <option value="CANCELLED">Cancelled</option>
-                                <option value="VOIDED">Voided</option>
-                                <option value="SPOILED">Spoiled</option>
-                                <option value="STALE">Stale</option>
-                            </select>
-                        </div>
-                        <div class="col-md-12"><label class="fims-label" id="statusDateLabel">Date</label><input type="date" class="fims-input" id="statusDate"></div>
-                        <div class="col-md-12" id="statusReasonGroup" style="display:none"><label class="fims-label">Reason</label><textarea class="fims-input" id="statusReason" rows="2"></textarea></div>
-                        <div class="col-md-12" id="statusReplacementGroup" style="display:none"><label class="fims-label">Replacement Check No.</label><input type="text" class="fims-input" id="statusReplacement"></div>
-                    </div>
-                </div>
-                <div class="fims-modal-footer">
-                    <button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-close="m-update-status">Cancel</button>
-                    <button type="button" class="fims-btn fims-btn-primary fims-btn-sm" id="statusSaveBtn">Save Status</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- ══════════════════════════════════════════════
-         MODAL: Record Release (tab 3 primary action)
-    ══════════════════════════════════════════════ -->
-    <div class="fims-modal-overlay" id="m-record-release" style="display:none;">
-        <div class="fims-modal-dialog" style="max-width:720px;width:95vw;">
-            <div class="fims-modal-content">
-                <div class="fims-modal-header">
-                    <div><div class="fims-modal-title">Record Check Release</div></div>
-                    <button class="fims-modal-close" data-close="m-record-release">&times;</button>
-                </div>
-                <div class="fims-modal-body">
-                    <div class="row g-2">
-                        <div class="col-md-6"><label class="fims-label">Check Number <span class="text-danger">*</span></label><select class="fims-select" id="releaseCheckNumber"><option value="">Select check...</option></select></div>
-                        <div class="col-md-6"><label class="fims-label">Amount</label><input type="text" class="fims-input" id="releaseAmount" readonly></div>
-                        <div class="col-md-6"><label class="fims-label">Release Type <span class="text-danger">*</span></label>
-                            <select class="fims-select" id="releaseType">
-                                <option value="DIRECT">Direct (to claimant)</option>
-                                <option value="EMAIL_NOTICE">Email Notice (to claimant)</option>
-                                <option value="REGION">Region / Department</option>
-                            </select>
-                        </div>
-                        <div class="col-md-6" id="releaseClaimantTypeGroup"><label class="fims-label">Claimant Type</label>
-                            <select class="fims-select" id="releaseClaimantType">
-                                <option value="PAYEE">Payee</option>
-                                <option value="AUTHORIZED_REP">Authorized Representative</option>
-                                <option value="ORIGINATING_UNIT">Originating Unit</option>
-                            </select>
-                        </div>
-                        <div class="col-md-6" id="releaseDeptGroup" style="display:none;"><label class="fims-label">Region/Department <span class="text-danger">*</span></label>
-                            <select class="fims-select" id="releaseDept"><option value="">Select...</option></select>
-                        </div>
-                        <div class="col-md-6"><label class="fims-label" id="releaseClaimantNameLabel">Claimant Name</label><input type="text" class="fims-input" id="releaseClaimantName"></div>
-                        <div class="col-md-6" id="releaseEmailGroup" style="display:none;"><label class="fims-label">Recipient Email <span class="text-danger">*</span></label><input type="email" class="fims-input" id="releaseClaimantEmail" placeholder="claimant@example.com"></div>
-                        <div class="col-md-6" id="releaseRdtfGroup" style="display:none;"><label class="fims-label">RDTF No.</label><input type="text" class="fims-input" id="releaseRdtf"></div>
-                        <div class="col-md-6"><label class="fims-label">Release Date</label><input type="date" class="fims-input" id="releaseDate"></div>
-                        <div class="col-md-12"><label class="fims-label">Remarks</label><textarea class="fims-input" id="releaseRemarks" rows="2"></textarea></div>
-                    </div>
-                </div>
-                <div class="fims-modal-footer">
-                    <button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-close="m-record-release">Cancel</button>
-                    <button type="button" class="fims-btn fims-btn-primary fims-btn-sm" id="releaseSaveBtn">Save</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- ══════════════════════════════════════════════
-         MODAL: Send Notice (unified — Released tab's primary notice action).
-         Scope toggle swaps between a single pending Email-Notice release
-         (claimant case) and a bundled monthly notice to a region/department
-         (region case) — replaces the two separate modals that existed when
-         Tabs 3/4 were separate.
+         MODAL: Send Notice — opened from Check Preparation's per-row "Send
+         Notice" action (see openSendNoticeModal()), not from the For
+         Released tab (its own toolbar button was removed; Check Prep is now
+         the only entry point). Scope toggle swaps between a single
+         Email-Notice release (claimant case, pre-filled by the row that
+         opened it) and a bundled monthly notice to a region/department.
     ══════════════════════════════════════════════ -->
     <div class="fims-modal-overlay" id="m-send-notice" style="display:none;">
         <div class="fims-modal-dialog" style="max-width:720px;width:95vw;">
@@ -893,6 +406,7 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
                         </div>
                         <div class="col-md-6" id="noticeBulkPeriodGroup" style="display:none;"><label class="fims-label">Period</label><input type="text" class="fims-input" id="noticeBulkPeriod" placeholder="e.g. November 2026"></div>
                         <div class="col-md-6"><label class="fims-label">Recipient Email <span class="text-danger">*</span></label><input type="email" class="fims-input" id="noticeRecipient"></div>
+                        <div class="col-md-6"><label class="fims-label">Attach Annex <span class="text-muted" style="font-weight:400;">(optional, multiple allowed)</span></label><input type="file" class="fims-input" id="noticeAttachment" accept=".pdf,.jpg,.jpeg,.png,.xlsx,.xls,.doc,.docx" multiple></div>
                         <div class="col-md-12"><label class="fims-label">Additional Message</label><textarea class="fims-input" id="noticeMessage" rows="3" placeholder="Optional note to include in the email"></textarea></div>
                     </div>
                     <div id="noticeBulkPendingWrap" style="display:none;">
@@ -973,6 +487,13 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
 .cp-status-tab { cursor: pointer; opacity: .55; border: none; }
 .cp-status-tab.active { opacity: 1; }
 
+/* Claimant/Reason columns are only meaningful for one status pill each
+   (Claimant: For Release/Released; Reason: Cancelled) — hidden everywhere
+   else via a class toggled on #prepChecksTable in buildPrepParams()'s
+   caller, instead of showing mostly-empty columns under "All". */
+#prepChecksTable:not(.show-claimant-col) .prep-col-claimant { display: none; }
+#prepChecksTable:not(.show-reason-col) .prep-col-reason { display: none; }
+
 /* Dark-blue theme: this module's KPI cards reuse the shared .fims-card-*
    classes (which are red/green/amber/violet elsewhere in the app), but here
    they're just visual groupings, not meaningful status colors — so override
@@ -995,6 +516,23 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
 #cpModule .fims-btn-primary:hover { background:#000a2e; color:#fff; }
 #cpModule .fims-btn-outline { color:#000E3E; border-color:#000E3E; }
 #cpModule .fims-btn-outline:hover { background:#000E3E; color:#fff; }
+
+/* Low-stock alert in the Prepare Check modal — a looping pulse on the
+   border/shadow (not the layout, so neighboring fields never shift) to
+   stay noticeable without being distracting. Respects reduced-motion. */
+@keyframes prepLowStockPulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, .35); }
+    50%      { box-shadow: 0 0 0 7px rgba(220, 38, 38, 0); }
+}
+.prep-low-stock-pulse { animation: prepLowStockPulse 1.6s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+    .prep-low-stock-pulse { animation: none; }
+}
+
+/* Hides the "FTLA Request" button only within the embedded FTLA tab here —
+   the standalone FTLA page (ftla-page.php via views/FtlaPage.php) keeps it;
+   this is a scoped override, not an edit to that shared file. */
+#cpFtla #btn-new-ftla-request { display: none; }
 </style>
 
 <script>
@@ -1029,6 +567,33 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
             .replace(/'/g, '&#39;');
     }
 
+    // Display label for a check's own main status (PREPARED/RELEASED/ENCASHED/...).
+    // The check row's status code stays RELEASED for its entire life in that
+    // state — it doesn't flip to some other code once the hand-over is
+    // actually confirmed — so distinguishing "still waiting" from "done"
+    // requires looking at its associated check_releases row's own status
+    // too (see getChecksList()'s LATERAL join): RELEASED/ACKNOWLEDGED there
+    // means truly handed over ("Released"); PENDING/NOTIFIED/UNCLAIMED (or
+    // no release row at all yet) means "For Release". releaseStatus is
+    // optional — callers without it (e.g. the Cancellation list, where
+    // status is always CANCELLED anyway) just get the plain status code.
+    function checkStatusLabel(status, releaseStatus) {
+        if (status !== 'RELEASED') return status;
+        return ['RELEASED', 'ACKNOWLEDGED'].includes(releaseStatus) ? 'Released' : 'For Release';
+    }
+
+    function checkStatusBadgeClass(status, releaseStatus) {
+        if (status !== 'RELEASED') return '';
+        return ['RELEASED', 'ACKNOWLEDGED'].includes(releaseStatus) ? 'fims-badge-green' : 'fims-badge-gray';
+    }
+
+    // Display label for a check_releases row's own status (PENDING/NOTIFIED/
+    // RELEASED/ACKNOWLEDGED/UNCLAIMED) — PENDING (not yet handed over) reads as
+    // "For Release" here too, matching the KPI card and status filter above.
+    function releaseStatusLabel(status) {
+        return status === 'PENDING' ? 'For Release' : status;
+    }
+
     // ── Modal open/close (real fims-modal-overlay pattern: display:flex/none) ──
     function openModal(id) {
         const m = document.getElementById(id);
@@ -1047,46 +612,22 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
         });
     });
 
-    // ── Top-level module tabs ──
-    const initialized = {};
-    const tabPaneIds = { prep: 'cpPrep', registry: 'cpRegistry', released: 'cpReleased', cancel: 'cpCancel', raf: 'cpRaf' };
+    // ── Top-level module tabs: Check Preparation / FTLA. Just a visibility
+    // toggle between the two panes — the embedded FTLA tab (app/pages/
+    // ftla-page.php) already loads its own data immediately on page load
+    // regardless of which pane is visible, so there's no lazy-init to do
+    // here the way the old prep/released/cancel tabs needed. ──
+    const cpTabPaneIds = { prep: 'cpPrep', ftla: 'cpFtla' };
     document.querySelectorAll('#cpTabNav [data-cp-tab]').forEach(function (btn) {
         btn.addEventListener('click', function () {
             document.querySelectorAll('#cpTabNav .fims-tab-underline').forEach(b => b.classList.remove('active'));
-            Object.values(tabPaneIds).forEach(id => { document.getElementById(id).style.display = 'none'; document.getElementById(id).classList.remove('active'); });
             this.classList.add('active');
             const tab = this.dataset.cpTab;
-            const pane = document.getElementById(tabPaneIds[tab]);
-            pane.style.display = '';
-            pane.classList.add('active');
-            if (!initialized[tab]) { initialized[tab] = true; initTab(tab); }
-        });
-    });
-
-    // ── Sub-tabs (within Claimants / Regions tabs) ──
-    document.querySelectorAll('[id$="SubTabs"].fims-tabs-underline').forEach(function (nav) {
-        const panesContainer = nav.nextElementSibling; // the .fims-table-panel holding this nav's panes
-        nav.querySelectorAll('[data-sub-target]').forEach(function (btn) {
-            btn.addEventListener('click', function () {
-                nav.querySelectorAll('.fims-tab-underline').forEach(b => b.classList.remove('active'));
-                this.classList.add('active');
-                panesContainer.querySelectorAll('.fims-tab-underline-content').forEach(p => {
-                    p.style.display = 'none';
-                    p.classList.remove('active');
-                });
-                const target = document.getElementById(this.dataset.subTarget);
-                if (target) { target.style.display = ''; target.classList.add('active'); }
+            Object.entries(cpTabPaneIds).forEach(function ([key, id]) {
+                document.getElementById(id).style.display = key === tab ? '' : 'none';
             });
         });
     });
-
-    function initTab(tab) {
-        if (tab === 'prep') initPrep();
-        else if (tab === 'registry') initRegistry();
-        else if (tab === 'released') initReleased();
-        else if (tab === 'cancel') initCancel();
-        else if (tab === 'raf') initRaf();
-    }
 
     // Status tabs (Check Preparation) — defaults to "All" rather than
     // TREASURY's PREPARED default, so previously-made checks (anything that
@@ -1096,15 +637,26 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
         const btn = document.getElementById('prepBatchPrintBtn');
         if (btn) btn.style.display = status === 'PREPARED' ? '' : 'none';
     }
+    // Claimant only means anything under the two release-related pills;
+    // Reason only means anything under Cancelled — hide both elsewhere
+    // (including "All") rather than show mostly-empty columns.
+    function updatePrepColumnVisibility(status) {
+        const table = document.getElementById('prepChecksTable');
+        if (!table) return;
+        table.classList.toggle('show-claimant-col', status === 'RELEASED_PENDING' || status === 'RELEASED_DONE');
+        table.classList.toggle('show-reason-col', status === 'CANCELLED');
+    }
     document.querySelectorAll('#prepStatusTabs .cp-status-tab').forEach(function (btn) {
         btn.addEventListener('click', function () {
             document.querySelectorAll('#prepStatusTabs .cp-status-tab').forEach(b => b.classList.remove('active'));
             this.classList.add('active');
             updateBatchPrintVisibility(this.dataset.status);
+            updatePrepColumnVisibility(this.dataset.status);
             loadPrepChecks();
         });
     });
     updateBatchPrintVisibility('');
+    updatePrepColumnVisibility('');
     document.getElementById('prepFilterBtn')?.addEventListener('click', loadPrepChecks);
     document.getElementById('prepResetBtn')?.addEventListener('click', function () {
         ['prepFilterCheckNo', 'prepFilterDvNo', 'prepFilterPayee', 'prepFilterBank', 'prepFilterDateFrom', 'prepFilterDateTo'].forEach(id => {
@@ -1113,6 +665,7 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
         });
         document.querySelectorAll('#prepStatusTabs .cp-status-tab').forEach(b => b.classList.toggle('active', b.dataset.status === ''));
         updateBatchPrintVisibility('');
+        updatePrepColumnVisibility('');
         loadPrepChecks();
     });
     document.getElementById('prepPrepareBtn')?.addEventListener('click', function () {
@@ -1131,8 +684,20 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
     function buildPrepParams() {
         const params = new URLSearchParams();
         params.set('draw', '1');
+        // RELEASED_PENDING/RELEASED_DONE are UI-only pill keys, not real check
+        // status codes — both are status=RELEASED underneath (see
+        // syncCheckStatusFromRelease()'s comment), split apart server-side by
+        // the associated release row's own status via release_phase.
         const activeStatus = document.querySelector('#prepStatusTabs .cp-status-tab.active')?.dataset.status || '';
-        if (activeStatus) params.set('status', activeStatus);
+        if (activeStatus === 'RELEASED_PENDING') {
+            params.set('status', 'RELEASED');
+            params.set('release_phase', 'PENDING');
+        } else if (activeStatus === 'RELEASED_DONE') {
+            params.set('status', 'RELEASED');
+            params.set('release_phase', 'DONE');
+        } else if (activeStatus) {
+            params.set('status', activeStatus);
+        }
         const map = {
             prepFilterCheckNo: 'check_number', prepFilterDvNo: 'dv_number', prepFilterPayee: 'payee',
             prepFilterBank: 'bank_account_id', prepFilterDateFrom: 'date_from', prepFilterDateTo: 'date_to',
@@ -1155,11 +720,31 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
                 prepChecksById = {};
                 rows.forEach(function (r) { prepChecksById[r.check_id] = r; });
                 if (!rows.length) {
-                    tbody.innerHTML = '<tr class="fims-empty"><td colspan="10">No records.</td></tr>';
+                    tbody.innerHTML = '<tr class="fims-empty"><td colspan="12">No records.</td></tr>';
                     return;
                 }
+                // Under "All" (no status pill selected), Actions only shows
+                // View/Set Status — Print, Mark as Released, Send Notice, and
+                // Cancel are status-specific actions that only make sense once
+                // the list is actually narrowed to the pill they belong to.
+                const isAllFilter = !(document.querySelector('#prepStatusTabs .cp-status-tab.active')?.dataset.status || '');
                 tbody.innerHTML = rows.map(function (r, i) {
                     const printedBadge = r.printed_at ? ' <span class="fims-badge fims-badge-blue" title="Printed ' + escapeHtml(r.printed_at) + '"><i class="fas fa-print"></i></span>' : '';
+                    // "For Release" (status RELEASED) with a release row still
+                    // short of RELEASED/ACKNOWLEDGED — Mark as Released confirms
+                    // the hand-over in place. Send Notice is offered for any
+                    // "For Release" row regardless of release_type (not just
+                    // EMAIL_NOTICE) — the recipient email just comes pre-filled
+                    // when the release already has one, and is typed in by hand
+                    // otherwise (e.g. a DIRECT release created via Set Status).
+                    const notYetReleased = r.release_id && !['RELEASED', 'ACKNOWLEDGED'].includes(r.release_status);
+                    const canMarkReleased = !isAllFilter && notYetReleased;
+                    const canSendNotice = !isAllFilter && notYetReleased;
+                    const canCancel = !isAllFilter && !['CANCELLED', 'VOIDED'].includes(r.status);
+                    const canPrint = !isAllFilter && r.status === 'PREPARED';
+                    const reasonCell = r.cancel_reason
+                        ? escapeHtml(r.cancel_reason) + (r.replacement_check_number ? ' <span class="fims-badge fims-badge-blue" title="Replaced by check ' + escapeHtml(r.replacement_check_number) + '">Replaced</span>' : '')
+                        : '—';
                     return '<tr data-row-check-id="' + r.check_id + '">' +
                         '<td><input type="checkbox" class="prep-row-check" data-check-id="' + r.check_id + '"></td>' +
                         '<td>' + (i + 1) + '</td>' +
@@ -1167,13 +752,18 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
                         '<td>' + escapeHtml(r.check_date || '') + '</td>' +
                         '<td>' + escapeHtml(r.dv_number || '') + '</td>' +
                         '<td>' + escapeHtml(r.payee || '') + '</td>' +
+                        '<td class="prep-claimant-cell prep-col-claimant">' + escapeHtml(r.claimant_name || '—') + '</td>' +
                         '<td>' + escapeHtml(r.account_name || '') + '</td>' +
                         '<td class="text-right">' + peso(r.amount) + '</td>' +
-                        '<td class="text-center prep-status-cell"><span class="fims-badge">' + escapeHtml(r.status) + '</span></td>' +
+                        '<td class="text-center prep-status-cell"><span class="fims-badge ' + checkStatusBadgeClass(r.status, r.release_status) + '">' + escapeHtml(checkStatusLabel(r.status, r.release_status)) + '</span></td>' +
+                        '<td class="prep-reason-cell prep-col-reason" title="' + escapeHtml(r.cancel_reason_description || '') + '">' + reasonCell + '</td>' +
                         '<td class="text-center prep-actions-cell">' +
                             '<button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-view-check="' + r.check_id + '" title="View"><i class="fas fa-eye mr-1"></i>View</button> ' +
-                            (r.status === 'PREPARED' ? '<button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-view-check="' + r.check_id + '" title="Print"><i class="fas fa-print mr-1"></i>Print</button> ' : '') +
-                            '<button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-set-status="' + r.check_id + '" title="Set Status"><i class="fas fa-flag mr-1"></i>Set Status</button>' +
+                            (canPrint ? '<button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-view-check="' + r.check_id + '" title="Print"><i class="fas fa-print mr-1"></i>Print</button> ' : '') +
+                            (canMarkReleased ? '<button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-mark-released="' + r.release_id + '" title="Mark as Released"><i class="fas fa-hand-holding-usd mr-1"></i>Mark as Released</button> ' : '') +
+                            (canSendNotice ? '<button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-send-notice="' + r.release_id + '" title="Send Notice"><i class="fas fa-envelope mr-1"></i>Send Notice</button> ' : '') +
+                            '<button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-set-status="' + r.check_id + '" title="Set Status"><i class="fas fa-flag mr-1"></i>Set Status</button> ' +
+                            (canCancel ? '<button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-cancel-check="' + r.check_id + '" title="Cancel Check"><i class="fas fa-ban mr-1"></i>Cancel</button>' : '') +
                         '</td>' +
                         '</tr>';
                 }).join('');
@@ -1187,6 +777,20 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
                 tbody.querySelectorAll('[data-set-status]').forEach(function (btn) {
                     btn.addEventListener('click', function () { openSetStatusModal(this.dataset.setStatus); });
                 });
+                tbody.querySelectorAll('[data-mark-released]').forEach(function (btn) {
+                    btn.addEventListener('click', function () { markPrepCheckReleased(this.dataset.markReleased, this); });
+                });
+                tbody.querySelectorAll('[data-send-notice]').forEach(function (btn) {
+                    btn.addEventListener('click', function () {
+                        const row = btn.closest('tr');
+                        const checkId = row ? row.dataset.rowCheckId : null;
+                        const r = checkId ? prepChecksById[checkId] : null;
+                        openSendNoticeModal(this.dataset.sendNotice, r ? r.check_number : '', r ? r.claimant_name : '', r ? r.claimant_email : '');
+                    });
+                });
+                tbody.querySelectorAll('[data-cancel-check]').forEach(function (btn) {
+                    btn.addEventListener('click', function () { openCancelCheckModal(this.dataset.cancelCheck); });
+                });
                 tbody.querySelectorAll('.prep-row-check').forEach(function (cb) {
                     cb.checked = prepSelectedChecks.has(cb.dataset.checkId);
                     cb.addEventListener('change', function () {
@@ -1195,7 +799,7 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
                     });
                 });
             })
-            .catch(() => { tbody.innerHTML = '<tr class="fims-empty"><td colspan="10">Could not reach the server.</td></tr>'; });
+            .catch(() => { tbody.innerHTML = '<tr class="fims-empty"><td colspan="12">Could not reach the server.</td></tr>'; });
     }
     document.getElementById('prepSelectAll')?.addEventListener('change', function () {
         const checked = this.checked;
@@ -1205,6 +809,48 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
             else prepSelectedChecks.delete(cb.dataset.checkId);
         });
     });
+
+    // ── Mark as Released / Send Notice — per-row shortcuts for a "For
+    // Released" check, acting on its associated check_releases row (see
+    // getChecksList()'s LATERAL join). Mark as Released reuses the same
+    // generic update-status endpoint the For Release tab's own action
+    // does; Send Notice opens the shared m-send-notice modal pre-filled for
+    // this one release (that modal's Send Notice toolbar button in the For
+    // Released tab was removed — this is now the only entry point). ──
+    function markPrepCheckReleased(releaseId, btn) {
+        btn.disabled = true;
+        fetch(API + '/releases/' + releaseId + '/update-status', {
+            method: 'POST',
+            headers: authHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({ status: 'RELEASED' }),
+        })
+            .then(r => r.json())
+            .then(function (json) {
+                toast(json.message || (json.success ? 'Marked as Released.' : 'Could not update release.'), !json.success);
+                if (!json.success) { btn.disabled = false; return; }
+                loadPrepChecks();
+            })
+            .catch(function () { btn.disabled = false; toast('Could not reach the server.', true); });
+    }
+
+    function openSendNoticeModal(releaseId, checkNumber, claimantName, claimantEmail) {
+        const err = document.getElementById('noticeError');
+        if (err) err.style.display = 'none';
+        document.getElementById('noticeMessage').value = '';
+        document.getElementById('noticeAttachment').value = '';
+        document.getElementById('noticeBulkPeriod').value = '';
+        document.getElementById('noticeBulkPendingWrap').style.display = 'none';
+        document.getElementById('noticeBulkPendingBody').innerHTML = '';
+        document.getElementById('noticeScope').value = 'SINGLE';
+        document.getElementById('noticeScope').dispatchEvent(new Event('change'));
+        fillDepartmentSelect('#noticeBulkDept', 'Select...');
+        const sel = document.getElementById('noticeSingleRelease');
+        sel.innerHTML = '<option value="' + releaseId + '" data-email="' + escapeHtml(claimantEmail || '') + '">' +
+            escapeHtml(checkNumber || '') + ' — ' + escapeHtml(claimantName || '') + '</option>';
+        sel.value = releaseId;
+        document.getElementById('noticeRecipient').value = claimantEmail || '';
+        openModal('m-send-notice');
+    }
 
     // ── Set Check Status — manual override; see the modal's own comment. ──
     let setStatusCheckId = null;
@@ -1218,9 +864,7 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
         document.getElementById('setStatusClaimantName').value = '';
         const names = new Set();
         if (check && check.payee) names.add(check.payee);
-        if (typeof releasesById === 'object') {
-            Object.values(releasesById).forEach(function (r) { if (r.claimant_name) names.add(r.claimant_name); });
-        }
+        Object.values(prepChecksById).forEach(function (r) { if (r.claimant_name) names.add(r.claimant_name); });
         const quickPick = document.getElementById('setStatusClaimantQuickPick');
         quickPick.innerHTML = '<option value="">Type manually…</option>' +
             Array.from(names).map(function (n) { return '<option value="' + escapeHtml(n) + '">' + escapeHtml(n) + '</option>'; }).join('');
@@ -1670,7 +1314,7 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
         const checks = ids.map(id => prepChecksById[id]).filter(Boolean);
         document.getElementById('batchPrintReviewBody').innerHTML = checks.map(function (c) {
             return '<tr><td>' + escapeHtml(c.check_number) + '</td><td>' + escapeHtml(c.payee || '') + '</td>' +
-                '<td class="text-right">' + peso(c.amount) + '</td><td class="text-center"><span class="fims-badge">' + escapeHtml(c.status) + '</span></td></tr>';
+                '<td class="text-right">' + peso(c.amount) + '</td><td class="text-center"><span class="fims-badge ' + checkStatusBadgeClass(c.status, c.release_status) + '">' + escapeHtml(checkStatusLabel(c.status, c.release_status)) + '</span></td></tr>';
         }).join('');
         const total = checks.reduce((s, c) => s + Number(c.amount || 0), 0);
         document.getElementById('batchPrintTotal').textContent = peso(total);
@@ -1731,6 +1375,7 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
         const err = document.getElementById('prepModalError');
         if (err) err.style.display = 'none';
         document.getElementById('prepCashCheck').style.display = 'none';
+        document.getElementById('prepLowStockAlert').style.display = 'none';
         document.getElementById('prepPayee').value = '';
         document.getElementById('prepProgram').value = '';
         document.getElementById('prepNetAmount').value = '';
@@ -1773,11 +1418,20 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
         verifyPrepCash();
     });
 
+    // Mirrors REGISTRY_LOW_STOCK_THRESHOLD in check-registry-page.php /
+    // CheckProcessingService::RAF_LOW_STOCK_THRESHOLD — same "10 or fewer
+    // unused checks left" definition of low stock, applied here too so
+    // Treasury gets warned about it right where they're about to use one up,
+    // not just when they happen to visit the Registry.
+    const PREP_LOW_STOCK_THRESHOLD = 10;
+
     document.getElementById('prepBankAccount')?.addEventListener('change', function () {
         const checkNoSel = document.getElementById('prepCheckNumber');
+        const lowStockAlert = document.getElementById('prepLowStockAlert');
         const bankAccountId = this.value;
         verifyPrepCash();
         checkNoSel.value = '';
+        lowStockAlert.style.display = 'none';
         if (!bankAccountId) {
             checkNoSel.placeholder = 'Select bank account first...';
             checkNoSel.disabled = true;
@@ -1802,6 +1456,10 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
                 }
                 checkNoSel.value = numbers[0];
                 checkNoSel.disabled = true;
+                if (numbers.length <= PREP_LOW_STOCK_THRESHOLD) {
+                    document.getElementById('prepLowStockCount').textContent = numbers.length;
+                    lowStockAlert.style.display = '';
+                }
             })
             .catch(function () {
                 checkNoSel.placeholder = 'Could not load check numbers';
@@ -1874,757 +1532,11 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
             });
     });
 
-    // ── Registry — ported from TREASURY's check-registry.php ──
-    document.getElementById('regSearchBtn')?.addEventListener('click', loadRegistry);
-    document.getElementById('regClearBtn')?.addEventListener('click', function () {
-        ['regFilterOfficeType', 'regFilterBank', 'regFilterSeries', 'regFilterStatus', 'regFilterEntryType', 'regFilterDateFrom', 'regFilterDateTo', 'regFilterSearch'].forEach(id => {
-            const el = document.getElementById(id);
-            if (el) el.value = '';
-        });
-        loadRegistry();
-    });
-    document.getElementById('regAddBatchBtn')?.addEventListener('click', function () {
-        fetch(API + '/preparation/bank-accounts', { headers: authHeaders() })
-            .then(r => r.json()).then(json => fillSelect('#batchBankAccount', json.data, 'Select bank account...')).catch(() => {});
-        document.getElementById('batchSeries').value = '';
-        document.getElementById('batchRangeStart').value = '';
-        document.getElementById('batchRangeEnd').value = '';
-        document.getElementById('batchRangeDate').value = '';
-        document.getElementById('batchRangePreview').textContent = '';
-        document.getElementById('batchIndividualRows').innerHTML = '';
-        document.getElementById('batchIndividualPreview').textContent = '';
-        switchBatchTab('range');
-        addIndividualRow();
-        openModal('m-add-batch');
-    });
-
-    // ── Add Batch: Range / Individual tabs ──
-    function switchBatchTab(tab) {
-        document.querySelectorAll('#batchTabNav [data-batch-tab]').forEach(b => b.classList.toggle('active', b.dataset.batchTab === tab));
-        document.getElementById('batchRangePanel').style.display = tab === 'range' ? '' : 'none';
-        document.getElementById('batchIndividualPanel').style.display = tab === 'individual' ? '' : 'none';
-    }
-    document.querySelectorAll('#batchTabNav [data-batch-tab]').forEach(function (btn) {
-        btn.addEventListener('click', function () { switchBatchTab(this.dataset.batchTab); });
-    });
-
-    // Parses a check number string into {prefix, num, padLen} — e.g.
-    // "0010440" -> {prefix:'', num:10440, padLen:7}. Mirrors TREASURY's
-    // _parseCheckNumber() exactly: padLen comes from the literal digit
-    // count the user typed, not the numeric magnitude, so a correctly
-    // computed Math.max(start.padLen, end.padLen) never truncates when
-    // padding every number in the range (see the Postgres LPAD pitfall
-    // noted server-side in addRegisterBatch()'s docblock).
-    function parseCheckNumber(val) {
-        const m = String(val || '').match(/^(.*?)(\d+)$/);
-        if (!m) return null;
-        return { prefix: m[1], num: parseInt(m[2], 10), padLen: m[2].length };
-    }
-
-    function buildRangeChecks(startVal, endVal, date) {
-        const s = parseCheckNumber(startVal);
-        const e = parseCheckNumber(endVal);
-        if (!s || !e) return { error: 'Check numbers must end with digits (e.g. 0010440).' };
-        if (s.prefix !== e.prefix) return { error: 'Start and End check numbers have different prefixes.' };
-        if (e.num < s.num) return { error: 'End check number must be ≥ Start check number.' };
-        const count = e.num - s.num + 1;
-        if (count > 2000) return { error: 'Range of ' + count + ' exceeds the 2000-check limit per batch.' };
-        const padLen = Math.max(s.padLen, e.padLen);
-        const checks = [];
-        for (let n = s.num; n <= e.num; n++) {
-            checks.push({ check_number: s.prefix + String(n).padStart(padLen, '0'), entry_date: date });
-        }
-        return { checks, count };
-    }
-
-    document.getElementById('batchRangeStart')?.addEventListener('input', updateRangePreview);
-    document.getElementById('batchRangeEnd')?.addEventListener('input', updateRangePreview);
-    function updateRangePreview() {
-        const start = document.getElementById('batchRangeStart').value.trim();
-        const end = document.getElementById('batchRangeEnd').value.trim();
-        const preview = document.getElementById('batchRangePreview');
-        if (!start || !end) { preview.textContent = ''; return; }
-        const result = buildRangeChecks(start, end, '2026-01-01');
-        preview.textContent = result.error ? result.error : (result.count + ' check(s) will be registered.');
-        preview.style.color = result.error ? '#dc2626' : '';
-    }
-
-    function addIndividualRow() {
-        const tbody = document.getElementById('batchIndividualRows');
-        const tr = document.createElement('tr');
-        tr.innerHTML = '<td><input type="text" class="fims-input fims-input-sm ind-check-number"></td>' +
-            '<td><input type="date" class="fims-input fims-input-sm ind-entry-date"></td>' +
-            '<td><button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-remove-row><i class="fas fa-trash"></i></button></td>';
-        tr.querySelector('[data-remove-row]').addEventListener('click', function () { tr.remove(); });
-        tbody.appendChild(tr);
-    }
-    document.getElementById('batchAddRowBtn')?.addEventListener('click', addIndividualRow);
-
-    // Groups checks into "Booklet N" batches of 100 (by array index, not
-    // check-number value), continuing from whatever booklet numbers
-    // already exist for this bank account's check series — mirrors
-    // TREASURY's _assignBookletNames()/_nextBookletStart().
-    function assignBookletNames(checks, bankAccountId, series) {
-        return fetch(API + '/registry/booklets?bank_account_id=' + encodeURIComponent(bankAccountId), { headers: authHeaders() })
-            .then(r => r.json())
-            .then(function (json) {
-                let next = 1;
-                ((json && json.data) || []).forEach(function (b) {
-                    if (b.check_series !== series) return;
-                    const m = /^Booklet\s+(\d+)$/i.exec(b.booklet_no || '');
-                    if (m) next = Math.max(next, parseInt(m[1], 10) + 1);
-                });
-                checks.forEach(function (c, i) {
-                    c.booklet_no = 'Booklet ' + (next + Math.floor(i / 100));
-                });
-                return checks;
-            })
-            .catch(() => { checks.forEach(c => { c.booklet_no = ''; }); return checks; });
-    }
-
-    document.getElementById('batchSaveBtn')?.addEventListener('click', function () {
-        const bankAccountId = document.getElementById('batchBankAccount').value;
-        const series = document.getElementById('batchSeries').value.trim();
-        const deptType = document.getElementById('batchDeptType').value;
-        if (!bankAccountId) { toast('Select a bank account.', true); return; }
-        if (!series) { toast('Batch series is required.', true); return; }
-
-        const activeTab = document.querySelector('#batchTabNav [data-batch-tab].active')?.dataset.batchTab;
-        let checks = [];
-        if (activeTab === 'range') {
-            const start = document.getElementById('batchRangeStart').value.trim();
-            const end = document.getElementById('batchRangeEnd').value.trim();
-            const date = document.getElementById('batchRangeDate').value;
-            if (!date) { toast('Date is required.', true); return; }
-            const result = buildRangeChecks(start, end, date);
-            if (result.error) { toast(result.error, true); return; }
-            checks = result.checks;
-        } else {
-            document.querySelectorAll('#batchIndividualRows tr').forEach(function (tr) {
-                const checkNumber = tr.querySelector('.ind-check-number').value.trim();
-                const entryDate = tr.querySelector('.ind-entry-date').value;
-                if (checkNumber && entryDate) checks.push({ check_number: checkNumber, entry_date: entryDate });
-            });
-            if (!checks.length) { toast('Add at least one check.', true); return; }
-        }
-
-        const btn = this;
-        btn.disabled = true;
-        assignBookletNames(checks, bankAccountId, series).then(function (checksWithBooklets) {
-            const payload = { bank_account_id: bankAccountId, check_series: series, department_type: deptType, checks: checksWithBooklets };
-            return fetch(API + '/registry/add-batch', { method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(payload) })
-                .then(r => r.json())
-                .then(function (json) {
-                    toast(json.message || (json.success ? ('Registered ' + json.data.inserted + ' check(s).') : 'Could not save batch.'), !json.success);
-                    if (json.success) {
-                        closeModal('m-add-batch');
-                        loadRegistrySeries();
-                        loadRegistry();
-                    }
-                });
-        }).finally(() => { btn.disabled = false; });
-    });
-
-    function loadRegistryFilters() {
-        fetch(API + '/preparation/bank-accounts', { headers: authHeaders() })
-            .then(r => r.json()).then(json => fillSelect('#regFilterBank', json.data, 'All Banks')).catch(() => {});
-        loadRegistrySeries();
-    }
-
-    function loadRegistrySeries() {
-        fetch(API + '/registry/series-list', { headers: authHeaders() })
-            .then(r => r.json())
-            .then(function (json) {
-                const sel = document.getElementById('regFilterSeries');
-                const current = sel.value;
-                sel.innerHTML = '<option value="">All Series</option>';
-                ((json && json.data) || []).forEach(function (row) {
-                    const opt = document.createElement('option');
-                    opt.value = row.check_series;
-                    opt.textContent = row.check_series + ' (' + row.total_checks + ')';
-                    sel.appendChild(opt);
-                });
-                sel.value = current;
-            })
-            .catch(() => {});
-    }
-
-    function buildRegistryParams() {
-        const params = new URLSearchParams();
-        const map = {
-            regFilterOfficeType: 'office_type', regFilterBank: 'bank_account_id', regFilterSeries: 'check_series',
-            regFilterStatus: 'status', regFilterEntryType: 'entry_type',
-            regFilterDateFrom: 'date_from', regFilterDateTo: 'date_to', regFilterSearch: 'search',
-        };
-        Object.keys(map).forEach(function (id) {
-            const val = document.getElementById(id)?.value?.trim();
-            if (val) params.set(map[id], val);
-        });
-        return params;
-    }
-
-    const REGISTRY_STATUS_BADGE = {
-        UNUSED: 'fims-badge-blue', ISSUED: 'fims-badge-green', ENCASHED: 'fims-badge-indigo',
-        OUTSTANDING: 'fims-badge-amber', CANCELLED: 'fims-badge-red', VOIDED: 'fims-badge-gray',
-        SPOILED: 'fims-badge-gray', STALE: 'fims-badge-amber',
-    };
-
-    // Groups the flat register list by (bank account, booklet) — mirrors
-    // TREASURY's bank -> series -> booklet grouping, collapsed to one
-    // level since booklet_no already carries the series context. Rows with
-    // no booklet_no (individually-added checks) fall into their own
-    // "No Booklet" group per bank account rather than being hidden. This
-    // tab shows only these booklet/batch-level summaries — never the
-    // individual check rows within a booklet.
-    function groupRegistryRows(rows) {
-        const groups = [];
-        const index = {};
-        rows.forEach(function (r) {
-            const key = r.bank_account_id + '|' + (r.booklet_no || '');
-            if (!index[key]) {
-                index[key] = {
-                    id: groups.length, account_name: r.account_name, bank_name: r.bank_name,
-                    booklet_no: r.booklet_no || null, check_series: r.check_series,
-                    department_type: r.department_type, rows: [],
-                };
-                groups.push(index[key]);
-            }
-            index[key].rows.push(r);
-        });
-        return groups;
-    }
-
-    function registryGroupSummary(rows) {
-        const counts = {};
-        rows.forEach(function (r) { counts[r.current_status] = (counts[r.current_status] || 0) + 1; });
-        return Object.keys(counts).map(function (status) {
-            const label = status.charAt(0) + status.slice(1).toLowerCase();
-            const badgeClass = REGISTRY_STATUS_BADGE[status] || 'fims-badge-gray';
-            return '<span class="fims-badge ' + badgeClass + '" style="margin-right:4px;">' + counts[status] + ' ' + escapeHtml(label) + '</span>';
-        }).join(' ');
-    }
-
-    // Client-side pagination (no refetch) over the booklet/batch groups.
-    const REG_GROUPS_PER_PAGE = 20;
-    let regGroups = [];
-    let regPage = 1;
-
-    function loadRegistry() {
-        fetch(API + '/registry/summary', { headers: authHeaders() })
-            .then(r => r.json())
-            .then(json => {
-                const d = json.data || {};
-                document.querySelectorAll('#registryKpiCards [data-kpi]').forEach(el => { el.textContent = d[el.dataset.kpi] ?? 0; });
-            }).catch(() => {});
-
-        const tbody = document.querySelector('#registryTable tbody');
-        tbody.innerHTML = '<tr class="fims-empty"><td colspan="7">Loading…</td></tr>';
-        fetch(API + '/registry/list?' + buildRegistryParams().toString(), { headers: authHeaders() })
-            .then(r => r.json())
-            .then(function (json) {
-                const rows = (json && json.data) ? json.data : [];
-                regGroups = groupRegistryRows(rows);
-                regPage = 1;
-                renderRegistryPage();
-            })
-            .catch(() => { tbody.innerHTML = '<tr class="fims-empty"><td colspan="7">Could not reach the server.</td></tr>'; });
-    }
-
-    // Plain booklet/batch summary rows — no per-check list underneath
-    // (each row is just its booklet_no/series/bank/dept + a check count and
-    // a status breakdown, not expandable).
-    function renderRegistryPage() {
-        const tbody = document.querySelector('#registryTable tbody');
-        if (!regGroups.length) {
-            tbody.innerHTML = '<tr class="fims-empty"><td colspan="7">No records.</td></tr>';
-            renderRegistryPagination();
-            return;
-        }
-        const lastPage = Math.max(1, Math.ceil(regGroups.length / REG_GROUPS_PER_PAGE));
-        regPage = Math.min(Math.max(1, regPage), lastPage);
-        const start = (regPage - 1) * REG_GROUPS_PER_PAGE;
-        const pageGroups = regGroups.slice(start, start + REG_GROUPS_PER_PAGE);
-
-        tbody.innerHTML = pageGroups.map(function (g, i) {
-            const bankLabel = g.account_name
-                ? escapeHtml(g.account_name) + (g.bank_name ? ' — ' + escapeHtml(g.bank_name) : '')
-                : '—';
-            return '<tr>' +
-                '<td>' + (start + i + 1) + '</td>' +
-                '<td>' + escapeHtml(g.booklet_no || 'No Booklet') + '</td>' +
-                '<td><span class="fims-badge">' + escapeHtml(g.check_series || '—') + '</span></td>' +
-                '<td>' + bankLabel + '</td>' +
-                '<td>' + escapeHtml(g.department_type || '—') + '</td>' +
-                '<td class="text-center">' + g.rows.length + '</td>' +
-                '<td>' + (registryGroupSummary(g.rows) || '—') + '</td>' +
-                '</tr>';
-        }).join('');
-        renderRegistryPagination();
-    }
-
-    function renderRegistryPagination() {
-        const box = document.getElementById('registryPagination');
-        const totalChecks = regGroups.reduce((sum, g) => sum + g.rows.length, 0);
-        const lastPage = Math.max(1, Math.ceil(regGroups.length / REG_GROUPS_PER_PAGE));
-        if (!regGroups.length) { box.innerHTML = ''; return; }
-
-        const pages = [];
-        for (let i = Math.max(1, regPage - 2); i <= Math.min(lastPage, regPage + 2); i++) {
-            pages.push('<button type="button" class="fims-page-btn' + (i === regPage ? ' active' : '') + '" data-reg-page="' + i + '">' + i + '</button>');
-        }
-        box.innerHTML =
-            '<span style="font-size:12px;color:var(--fims-text-subtle);margin-right:10px;">' + regGroups.length + ' booklet(s), ' + totalChecks + ' check(s)</span>' +
-            '<button type="button" class="fims-page-btn" data-reg-page="' + (regPage - 1) + '"' + (regPage === 1 ? ' disabled' : '') + '>‹</button>' +
-            pages.join('') +
-            '<button type="button" class="fims-page-btn" data-reg-page="' + (regPage + 1) + '"' + (regPage === lastPage ? ' disabled' : '') + '>›</button>';
-        box.querySelectorAll('[data-reg-page]').forEach(function (btn) {
-            btn.addEventListener('click', function () {
-                regPage = parseInt(this.dataset.regPage, 10);
-                renderRegistryPage();
-            });
-        });
-    }
-    function initRegistry() { loadRegistryFilters(); loadRegistry(); }
-
-    // ── Update Status modal ──
-    const STATUS_DATE_LABELS = {
-        ISSUED: 'Issue Date', ENCASHED: 'Encashment Date', OUTSTANDING: 'Effective Date',
-        CANCELLED: 'Cancellation Date', VOIDED: 'Void Date', SPOILED: 'Spoiled Date', STALE: 'Stale Date',
-    };
-
-    function openUpdateStatusModal(entryId) {
-        fetch(API + '/registry/' + entryId, { headers: authHeaders() })
-            .then(r => r.json())
-            .then(function (json) {
-                if (!json || !json.success) { toast((json && json.message) || 'Could not load entry.', true); return; }
-                const d = json.data;
-                document.getElementById('statusEntryId').value = d.register_entry_id;
-                document.getElementById('statusCheckNumber').value = d.check_number;
-                document.getElementById('statusCurrent').value = d.current_status;
-                document.getElementById('statusNew').value = '';
-                document.getElementById('statusDate').value = '';
-                document.getElementById('statusReason').value = '';
-                document.getElementById('statusReplacement').value = '';
-                document.getElementById('statusReasonGroup').style.display = 'none';
-                document.getElementById('statusReplacementGroup').style.display = 'none';
-                document.getElementById('statusDateLabel').textContent = 'Date';
-                openModal('m-update-status');
-            })
-            .catch(() => toast('Could not reach the server.', true));
-    }
-
-    document.getElementById('statusNew')?.addEventListener('change', function () {
-        const status = this.value;
-        document.getElementById('statusDateLabel').textContent = STATUS_DATE_LABELS[status] || 'Date';
-        document.getElementById('statusReasonGroup').style.display = ['CANCELLED', 'VOIDED', 'SPOILED', 'STALE'].includes(status) ? '' : 'none';
-        document.getElementById('statusReplacementGroup').style.display = status === 'CANCELLED' ? '' : 'none';
-    });
-
-    document.getElementById('statusSaveBtn')?.addEventListener('click', function () {
-        const status = document.getElementById('statusNew').value;
-        if (!status) { toast('Select a new status.', true); return; }
-        const payload = {
-            register_entry_id: document.getElementById('statusEntryId').value,
-            status: status,
-            date: document.getElementById('statusDate').value,
-            reason: document.getElementById('statusReason').value,
-            replacement_check_number: document.getElementById('statusReplacement').value,
-        };
-        fetch(API + '/registry/update-status', { method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(payload) })
-            .then(r => r.json())
-            .then(function (json) {
-                toast(json.message || (json.success ? 'Status updated.' : 'Could not update status.'), !json.success);
-                if (json.success) {
-                    closeModal('m-update-status');
-                    loadRegistry();
-                }
-            })
-            .catch(() => toast('Could not reach the server.', true));
-    });
-
-    // ── Released (unified — was two separate tabs/tables, "Released to
-    // Claimants" and "Released to Regions/Departments"; see
-    // CheckProcessingService's docblock for the merge). ──
-    function fillCheckSelect(selector, placeholder) {
-        fetch(API + '/checks/lookup', { headers: authHeaders() })
-            .then(r => r.json())
-            .then(function (json) {
-                const rows = (json && json.data) ? json.data : [];
-                const sel = document.querySelector(selector);
-                if (!sel) return;
-                sel.innerHTML = '<option value="">' + placeholder + '</option>' +
-                    rows.map(c => '<option value="' + c.check_id + '" data-amount="' + c.amount + '">' +
-                        escapeHtml(c.check_number) + ' — ' + escapeHtml(c.payee || '') + '</option>').join('');
-            })
-            .catch(() => {});
-    }
-    function fillDepartmentSelect(selector, placeholder) {
-        fetch(API + '/releases/departments', { headers: authHeaders() })
-            .then(r => r.json())
-            .then(function (json) {
-                const rows = (json && json.data) ? json.data : [];
-                const sel = document.querySelector(selector);
-                if (!sel) return;
-                sel.innerHTML = '<option value="">' + placeholder + '</option>' +
-                    rows.map(d => '<option value="' + d.department_id + '">' +
-                        escapeHtml(d.department_acronym ? (d.department_acronym + ' - ' + d.department_name) : d.department_name) + '</option>').join('');
-            })
-            .catch(() => {});
-    }
-
-    // ── Record Release modal — release type drives which fields apply
-    // (Claimant Type/Email for DIRECT/EMAIL_NOTICE, Department/RDTF for
-    // REGION) — see CheckProcessingService::saveRelease(). ──
-    document.getElementById('relRecordReleaseBtn')?.addEventListener('click', function () {
-        document.getElementById('releaseAmount').value = '';
-        document.getElementById('releaseClaimantName').value = '';
-        document.getElementById('releaseClaimantEmail').value = '';
-        document.getElementById('releaseRdtf').value = '';
-        document.getElementById('releaseDate').value = '';
-        document.getElementById('releaseRemarks').value = '';
-        document.getElementById('releaseType').value = 'DIRECT';
-        document.getElementById('releaseType').dispatchEvent(new Event('change'));
-        fillCheckSelect('#releaseCheckNumber', 'Select check...');
-        fillDepartmentSelect('#releaseDept', 'Select...');
-        openModal('m-record-release');
-    });
-    document.getElementById('releaseCheckNumber')?.addEventListener('change', function () {
-        const opt = this.options[this.selectedIndex];
-        document.getElementById('releaseAmount').value = opt && opt.dataset.amount ? peso(opt.dataset.amount) : '';
-    });
-    document.getElementById('releaseType')?.addEventListener('change', function () {
-        const isRegion = this.value === 'REGION';
-        document.getElementById('releaseEmailGroup').style.display = this.value === 'EMAIL_NOTICE' ? '' : 'none';
-        document.getElementById('releaseClaimantTypeGroup').style.display = isRegion ? 'none' : '';
-        document.getElementById('releaseDeptGroup').style.display = isRegion ? '' : 'none';
-        document.getElementById('releaseRdtfGroup').style.display = isRegion ? '' : 'none';
-        document.getElementById('releaseClaimantNameLabel').textContent = isRegion ? 'Authorized Representative' : 'Claimant Name';
-    });
-    document.getElementById('releaseSaveBtn')?.addEventListener('click', function () {
-        const payload = {
-            check_number: document.getElementById('releaseCheckNumber').value,
-            release_type: document.getElementById('releaseType').value,
-            claimant_type: document.getElementById('releaseClaimantType').value,
-            claimant_name: document.getElementById('releaseClaimantName').value,
-            claimant_email: document.getElementById('releaseClaimantEmail').value,
-            department_id: document.getElementById('releaseDept').value,
-            rdtf_no: document.getElementById('releaseRdtf').value,
-            release_date: document.getElementById('releaseDate').value,
-            remarks: document.getElementById('releaseRemarks').value,
-        };
-        fetch(API + '/releases/save', { method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(payload) })
-            .then(r => r.json())
-            .then(json => { toast(json.message || (json.success ? 'Saved.' : 'Could not save.'), !json.success); if (json.success) { closeModal('m-record-release'); initReleased(); } });
-    });
-
-    const RELEASE_TYPE_LABELS = { DIRECT: 'Direct', EMAIL_NOTICE: 'Email Notice', REGION: 'Region/Dept' };
-    let releasesById = {};
-
-    function loadReleasesList() {
-        fetch(API + '/releases', { headers: authHeaders() })
-            .then(r => r.json())
-            .then(function (json) {
-                const rows = (json && json.data) ? json.data : [];
-                releasesById = {};
-                rows.forEach(function (r) { releasesById[r.release_id] = r; });
-                const tbody = document.querySelector('#releasesTable tbody');
-                if (!tbody) return;
-                if (!rows.length) {
-                    tbody.innerHTML = '<tr class="fims-empty"><td colspan="10">No records.</td></tr>';
-                    return;
-                }
-                tbody.innerHTML = rows.map(function (r, i) {
-                    const isRegion = r.release_type === 'REGION';
-                    return '<tr data-row-release-id="' + r.release_id + '">' +
-                        '<td>' + (i + 1) + '</td>' +
-                        '<td>' + escapeHtml(r.check_number) + '</td>' +
-                        '<td>' + escapeHtml(r.payee || '') + ' / ' + peso(r.amount) + '</td>' +
-                        '<td>' + escapeHtml(RELEASE_TYPE_LABELS[r.release_type] || r.release_type) + '</td>' +
-                        '<td class="rel-claimant-cell">' + escapeHtml(isRegion ? (r.region_dept || '') : (r.claimant_name || '')) + '</td>' +
-                        '<td class="rel-id-cell">' + escapeHtml(isRegion ? (r.rdtf_no || '') : ([r.id_type, r.id_number].filter(Boolean).join(' '))) + '</td>' +
-                        '<td>' + escapeHtml(r.release_date || '') + '</td>' +
-                        '<td class="text-center rel-status-cell"><span class="fims-badge">' + escapeHtml(r.status) + '</span></td>' +
-                        '<td class="rel-ack-cell">' + escapeHtml(r.acknowledgment_date || '') + '</td>' +
-                        '<td class="text-center rel-ack-actions">' + (r.status === 'ACKNOWLEDGED' ? '' : ('<button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-acknowledge="' + r.release_id + '" title="Acknowledge"><i class="fas fa-check-circle mr-1"></i>Acknowledge</button>')) + '</td>' +
-                        '</tr>';
-                }).join('');
-                tbody.querySelectorAll('[data-acknowledge]').forEach(function (btn) {
-                    btn.addEventListener('click', function () { openAcknowledgeModal(this.dataset.acknowledge); });
-                });
-            })
-            .catch(() => {});
-    }
-
-    // ── Set Claimant — edits a release's claimant name/type after the fact
-    // (mainly for releases created by Check Preparation's "Set Status"
-    // shortcut, which leaves claimant_name NULL). Updates in place, same
-    // reasoning as applyStatusInPlace(): don't make the row vanish or
-    // reorder just because one field changed. ──
-    let setClaimantReleaseId = null;
-    function openSetClaimantModal(releaseId) {
-        const release = releasesById[releaseId];
-        const isRegion = release && release.release_type === 'REGION';
-        setClaimantReleaseId = releaseId;
-        document.getElementById('setClaimantSubtitle').textContent = release ? ('Check #' + release.check_number) : '';
-        document.getElementById('setClaimantTypeGroup').style.display = isRegion ? 'none' : '';
-        document.getElementById('setClaimantNameLabel').textContent = isRegion ? 'Authorized Representative' : 'Claimant Name';
-        document.getElementById('setClaimantType').value = (release && release.claimant_type) ? release.claimant_type : 'PAYEE';
-        document.getElementById('setClaimantName').value = release ? (release.claimant_name || '') : '';
-
-        // Quick Pick: the check's own payee, plus any claimant names already
-        // used elsewhere (so a repeat claimant doesn't need re-typing).
-        const names = new Set();
-        if (release && release.payee) names.add(release.payee);
-        Object.values(releasesById).forEach(function (r) { if (r.claimant_name) names.add(r.claimant_name); });
-        const quickPick = document.getElementById('setClaimantQuickPick');
-        quickPick.innerHTML = '<option value="">Type manually…</option>' +
-            Array.from(names).map(function (n) { return '<option value="' + escapeHtml(n) + '">' + escapeHtml(n) + '</option>'; }).join('');
-        quickPick.value = '';
-        openModal('m-set-claimant');
-    }
-    document.getElementById('setClaimantQuickPick')?.addEventListener('change', function () {
-        if (this.value) document.getElementById('setClaimantName').value = this.value;
-    });
-    document.getElementById('setClaimantSaveBtn')?.addEventListener('click', function () {
-        const btn = this;
-        const releaseId = setClaimantReleaseId;
-        const release = releasesById[releaseId];
-        const isRegion = release && release.release_type === 'REGION';
-        const newName = document.getElementById('setClaimantName').value.trim();
-        const payload = { claimant_name: newName };
-        if (!isRegion) payload.claimant_type = document.getElementById('setClaimantType').value;
-        btn.disabled = true;
-        fetch(API + '/releases/' + releaseId + '/set-claimant', {
-            method: 'POST',
-            headers: authHeaders({ 'Content-Type': 'application/json' }),
-            body: JSON.stringify(payload),
-        })
-            .then(r => r.json())
-            .then(function (json) {
-                btn.disabled = false;
-                toast(json.message || (json.success ? 'Claimant updated.' : 'Could not update claimant.'), !json.success);
-                if (json.success) {
-                    closeModal('m-set-claimant');
-                    if (release) {
-                        release.claimant_name = newName;
-                        if (!isRegion) release.claimant_type = payload.claimant_type;
-                    }
-                    const row = document.querySelector('#releasesTable tbody tr[data-row-release-id="' + releaseId + '"]');
-                    const cell = row ? row.querySelector('.rel-claimant-cell') : null;
-                    if (cell) cell.textContent = isRegion ? (release.region_dept || '') : newName;
-                }
-            })
-            .catch(function () { btn.disabled = false; toast('Could not reach the server.', true); });
-    });
-
-    // ── Acknowledge Release — had no UI entry point at all before this;
-    // the backend (acknowledgeRelease()) and the Acknowledgment sub-tab's
-    // read-only list already existed, but nothing could actually put a
-    // release into that state. ──
-    let ackReleaseId = null;
-    function openAcknowledgeModal(releaseId) {
-        const release = releasesById[releaseId];
-        ackReleaseId = releaseId;
-        document.getElementById('ackSubtitle').textContent = release ? ('Check #' + release.check_number) : '';
-        document.getElementById('ackIdType').value = (release && release.id_type) ? release.id_type : '';
-        document.getElementById('ackIdNumber').value = release ? (release.id_number || '') : '';
-        openModal('m-acknowledge-release');
-    }
-    document.getElementById('ackSaveBtn')?.addEventListener('click', function () {
-        const btn = this;
-        const releaseId = ackReleaseId;
-        const release = releasesById[releaseId];
-        const idType = document.getElementById('ackIdType').value;
-        const idNumber = document.getElementById('ackIdNumber').value.trim();
-        btn.disabled = true;
-        fetch(API + '/releases/' + releaseId + '/acknowledge', {
-            method: 'POST',
-            headers: authHeaders({ 'Content-Type': 'application/json' }),
-            body: JSON.stringify({ id_type: idType, id_number: idNumber }),
-        })
-            .then(r => r.json())
-            .then(function (json) {
-                btn.disabled = false;
-                toast(json.message || (json.success ? 'Release acknowledged.' : 'Could not acknowledge release.'), !json.success);
-                if (json.success) {
-                    closeModal('m-acknowledge-release');
-                    const today = new Date().toISOString().slice(0, 10);
-                    if (release) {
-                        release.status = 'ACKNOWLEDGED';
-                        release.acknowledgment_date = today;
-                        if (idType) release.id_type = idType;
-                        if (idNumber) release.id_number = idNumber;
-                    }
-                    const row = document.querySelector('#releasesTable tbody tr[data-row-release-id="' + releaseId + '"]');
-                    if (row) {
-                        const statusCell = row.querySelector('.rel-status-cell');
-                        if (statusCell) statusCell.innerHTML = '<span class="fims-badge">ACKNOWLEDGED</span>';
-                        const ackCell = row.querySelector('.rel-ack-cell');
-                        if (ackCell) ackCell.textContent = today;
-                        const idCell = row.querySelector('.rel-id-cell');
-                        if (idCell && release && release.release_type !== 'REGION') {
-                            idCell.textContent = [release.id_type, release.id_number].filter(Boolean).join(' ');
-                        }
-                        const actionsCell = row.querySelector('.rel-ack-actions');
-                        if (actionsCell) actionsCell.innerHTML = '';
-                    }
-                    loadReleasesAck();
-                }
-            })
-            .catch(function () { btn.disabled = false; toast('Could not reach the server.', true); });
-    });
-
-    function loadReleasesUnclaimed() {
-        fetch(API + '/releases/unclaimed', { headers: authHeaders() })
-            .then(r => r.json())
-            .then(function (json) {
-                const rows = (json && json.data) ? json.data : [];
-                const tbody = document.querySelector('#relUnclaimedTable tbody');
-                if (!tbody) return;
-                if (!rows.length) {
-                    tbody.innerHTML = '<tr class="fims-empty"><td colspan="9">No records.</td></tr>';
-                    return;
-                }
-                tbody.innerHTML = rows.map(function (r, i) {
-                    const isRegion = r.release_type === 'REGION';
-                    return '<tr>' +
-                        '<td>' + (i + 1) + '</td>' +
-                        '<td>' + escapeHtml(r.check_number) + '</td>' +
-                        '<td>' + escapeHtml(r.payee || '') + ' / ' + peso(r.amount) + '</td>' +
-                        '<td>' + escapeHtml(RELEASE_TYPE_LABELS[r.release_type] || r.release_type) + '</td>' +
-                        '<td>' + escapeHtml(isRegion ? (r.region_dept || '') : (r.claimant_name || '')) + '</td>' +
-                        '<td class="text-center"><span class="fims-badge">' + escapeHtml(r.status) + '</span></td>' +
-                        '<td>' + (r.days_since_prep != null ? r.days_since_prep : '—') + '</td>' +
-                        '<td>' + escapeHtml(r.last_follow_up_date || '') + '</td>' +
-                        '<td>' + escapeHtml(r.follow_up_remarks || '') + '</td>' +
-                        '</tr>';
-                }).join('');
-            })
-            .catch(() => {});
-    }
-
-    function loadReleasesAck() {
-        fetch(API + '/releases/acknowledgment-list', { headers: authHeaders() })
-            .then(r => r.json())
-            .then(function (json) {
-                const rows = (json && json.data) ? json.data : [];
-                const tbody = document.querySelector('#relAckTable tbody');
-                if (!tbody) return;
-                if (!rows.length) {
-                    tbody.innerHTML = '<tr class="fims-empty"><td colspan="9">No records.</td></tr>';
-                    return;
-                }
-                tbody.innerHTML = rows.map(function (r, i) {
-                    const isRegion = r.release_type === 'REGION';
-                    return '<tr>' +
-                        '<td>' + (i + 1) + '</td>' +
-                        '<td>' + escapeHtml(r.check_number) + '</td>' +
-                        '<td>' + escapeHtml(r.payee || '') + '</td>' +
-                        '<td class="text-right">' + peso(r.amount) + '</td>' +
-                        '<td>' + escapeHtml(RELEASE_TYPE_LABELS[r.release_type] || r.release_type) + '</td>' +
-                        '<td>' + escapeHtml(isRegion ? (r.region_dept || '') : (r.claimant_name || '')) + '</td>' +
-                        '<td>' + escapeHtml(r.release_date || '') + '</td>' +
-                        '<td>' + escapeHtml(r.acknowledgment_date || '') + '</td>' +
-                        '<td>' + escapeHtml(r.id_number || '') + '</td>' +
-                        '</tr>';
-                }).join('');
-            })
-            .catch(() => {});
-    }
-
-    function loadReleasesEmailLog() {
-        fetch(API + '/releases/email-log', { headers: authHeaders() })
-            .then(r => r.json())
-            .then(function (json) {
-                const rows = (json && json.data) ? json.data : [];
-                const tbody = document.querySelector('#relEmailLogTable tbody');
-                if (!tbody) return;
-                if (!rows.length) {
-                    tbody.innerHTML = '<tr class="fims-empty"><td colspan="8">No records.</td></tr>';
-                    return;
-                }
-                tbody.innerHTML = rows.map(function (r, i) {
-                    const isBulk = r.check_number == null;
-                    return '<tr>' +
-                        '<td>' + (i + 1) + '</td>' +
-                        '<td>' + escapeHtml(isBulk ? (r.region_dept || '') : r.check_number) + '</td>' +
-                        '<td>' + escapeHtml(r.recipient_email || '') + '</td>' +
-                        '<td>' + (isBulk ? (r.checks_count ?? '—') : '—') + '</td>' +
-                        '<td class="text-right">' + (isBulk ? peso(r.total_amount) : '—') + '</td>' +
-                        '<td>' + escapeHtml(r.sent_at || '') + '</td>' +
-                        '<td>' + escapeHtml(r.sent_by || '') + '</td>' +
-                        '<td class="text-center"><span class="fims-badge">' + escapeHtml(r.status) + '</span></td>' +
-                        '</tr>';
-                }).join('');
-            })
-            .catch(() => {});
-    }
-
-    function loadReleasesDvMonitoring() {
-        fetch(API + '/releases/dv-monitoring', { headers: authHeaders() })
-            .then(r => r.json())
-            .then(function (json) {
-                const rows = (json && json.data) ? json.data : [];
-                const tbody = document.querySelector('#relDvTable tbody');
-                if (!tbody) return;
-                if (!rows.length) {
-                    tbody.innerHTML = '<tr class="fims-empty"><td colspan="10">No records.</td></tr>';
-                    return;
-                }
-                tbody.innerHTML = rows.map(function (r, i) {
-                    return '<tr>' +
-                        '<td>' + (i + 1) + '</td>' +
-                        '<td>' + escapeHtml(r.check_number) + '</td>' +
-                        '<td>' + escapeHtml(r.dv_reference || '') + '</td>' +
-                        '<td>' + escapeHtml(r.payee || '') + '</td>' +
-                        '<td class="text-right">' + peso(r.amount) + '</td>' +
-                        '<td>' + escapeHtml(r.region_dept || '') + '</td>' +
-                        '<td>' + escapeHtml(r.release_date || '') + '</td>' +
-                        '<td>' + escapeHtml(r.dv_return_date || '') + '</td>' +
-                        '<td>' + (r.days_pending != null ? r.days_pending : '—') + '</td>' +
-                        '<td class="text-center"><span class="fims-badge">' + escapeHtml(r.status) + '</span></td>' +
-                        '</tr>';
-                }).join('');
-            })
-            .catch(() => {});
-    }
-
-    function initReleased() {
-        loadReleasesList();
-        loadReleasesUnclaimed();
-        loadReleasesAck();
-        loadReleasesEmailLog();
-        loadReleasesDvMonitoring();
-        fillDepartmentSelect('#relFilterDept', 'All Regions/Depts');
-    }
-
-    // "Send Notice" — scope toggles between a single pending Email-Notice
-    // release (claimant case) and a bundled monthly notice to a department
-    // (region case) — see CheckProcessingService::sendReleaseNotice() /
-    // sendBulkReleaseNotice().
-    document.getElementById('relSendNoticeBtn')?.addEventListener('click', function () {
-        const err = document.getElementById('noticeError');
-        if (err) err.style.display = 'none';
-        document.getElementById('noticeMessage').value = '';
-        document.getElementById('noticeRecipient').value = '';
-        document.getElementById('noticeBulkPeriod').value = '';
-        document.getElementById('noticeBulkPendingWrap').style.display = 'none';
-        document.getElementById('noticeBulkPendingBody').innerHTML = '';
-        document.getElementById('noticeScope').value = 'SINGLE';
-        document.getElementById('noticeScope').dispatchEvent(new Event('change'));
-        fillDepartmentSelect('#noticeBulkDept', 'Select...');
-        fetch(API + '/releases', { headers: authHeaders() })
-            .then(r => r.json())
-            .then(function (json) {
-                const pending = ((json && json.data) ? json.data : []).filter(r => r.release_type === 'EMAIL_NOTICE' && r.status === 'PENDING');
-                const sel = document.getElementById('noticeSingleRelease');
-                sel.innerHTML = '<option value="">' + (pending.length ? 'Select a pending notice...' : 'No pending email notices') + '</option>' +
-                    pending.map(r => '<option value="' + r.release_id + '" data-email="' + escapeHtml(r.claimant_email || '') + '">' +
-                        escapeHtml(r.check_number) + ' — ' + escapeHtml(r.claimant_name || '') + '</option>').join('');
-            })
-            .catch(() => {});
-        openModal('m-send-notice');
-    });
+    // "Send Notice" modal — scope toggles between a single Email-Notice
+    // release (opened per-row from Check Preparation's "Send Notice" action,
+    // see openSendNoticeModal()) and a bundled monthly notice to a
+    // department (region case) — see CheckProcessingService::
+    // sendReleaseNotice() / sendBulkReleaseNotice().
     document.getElementById('noticeScope')?.addEventListener('change', function () {
         const isBulk = this.value === 'BULK';
         document.getElementById('noticeSingleGroup').style.display = isBulk ? 'none' : '';
@@ -2662,7 +1574,10 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
         const recipient = document.getElementById('noticeRecipient').value.trim();
         const message = document.getElementById('noticeMessage').value;
 
-        let url, payload;
+        // multipart/form-data (not JSON) so the optional annex file rides
+        // along in the same request — see buildEmailAttachment() server-side.
+        const formData = new FormData();
+        let url;
         if (isBulk) {
             const departmentId = document.getElementById('noticeBulkDept').value;
             if (!departmentId || !recipient) {
@@ -2670,7 +1585,10 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
                 return;
             }
             url = API + '/releases/bulk-send-notice';
-            payload = { department_id: departmentId, recipient_email: recipient, period: document.getElementById('noticeBulkPeriod').value, message: message };
+            formData.set('department_id', departmentId);
+            formData.set('recipient_email', recipient);
+            formData.set('period', document.getElementById('noticeBulkPeriod').value);
+            formData.set('message', message);
         } else {
             const releaseId = document.getElementById('noticeSingleRelease').value;
             if (!releaseId || !recipient) {
@@ -2678,18 +1596,22 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
                 return;
             }
             url = API + '/releases/' + releaseId + '/send-notice';
-            payload = { recipient_email: recipient, message: message };
+            formData.set('recipient_email', recipient);
+            formData.set('message', message);
         }
+        Array.from(document.getElementById('noticeAttachment').files).forEach(function (f) {
+            formData.append('attachment[]', f);
+        });
 
         btn.disabled = true;
-        fetch(url, { method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(payload) })
+        fetch(url, { method: 'POST', headers: authHeaders(), body: formData })
             .then(r => r.json())
             .then(function (json) {
                 btn.disabled = false;
                 if (json.success) {
                     toast(json.message || 'Notice sent.');
                     closeModal('m-send-notice');
-                    initReleased();
+                    loadPrepChecks();
                 } else if (err) {
                     err.querySelector('.fims-alert-body').textContent = json.message || 'Could not send email.';
                     err.style.display = '';
@@ -2701,8 +1623,13 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
             });
     });
 
-    // ── Cancellation ──
-    document.getElementById('cancelCheckBtn')?.addEventListener('click', function () {
+    // ── Cancellation — per-row "Cancel" action from Check Preparation (the
+    // Cancellation & Replacements tab was removed; this modal is now opened
+    // directly for a specific check rather than from a tab-level button
+    // with a free-standing check picker). The picker stays in the modal
+    // (still useful to redirect to a different check without re-opening),
+    // just pre-selected to the row that was clicked. ──
+    function openCancelCheckModal(checkId) {
         document.getElementById('cancelReason').value = '';
         document.getElementById('cancelDate').value = '';
         document.getElementById('cancelDescription').value = '';
@@ -2717,10 +1644,11 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
                 const sel = document.getElementById('cancelCheckSelect');
                 sel.innerHTML = '<option value="">Select a check to cancel...</option>' +
                     rows.map(c => '<option value="' + c.check_id + '">' + escapeHtml(c.check_number) + ' — ' + escapeHtml(c.payee || '') + ' (' + escapeHtml(c.status) + ')</option>').join('');
+                if (checkId) sel.value = checkId;
             })
             .catch(() => {});
         openModal('m-cancel-check');
-    });
+    }
     document.getElementById('cancelIssueReplacement')?.addEventListener('change', function () {
         document.getElementById('cancelReplacementBox').style.display = this.checked ? 'flex' : 'none';
     });
@@ -2736,137 +1664,9 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
         };
         fetch(API + '/cancellation/cancel', { method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(payload) })
             .then(r => r.json())
-            .then(json => { toast(json.message || (json.success ? 'Cancelled.' : 'Could not process.'), !json.success); if (json.success) { closeModal('m-cancel-check'); initCancel(); } });
+            .then(json => { toast(json.message || (json.success ? 'Cancelled.' : 'Could not process.'), !json.success); if (json.success) { closeModal('m-cancel-check'); loadPrepChecks(); } });
     });
 
-    function loadCancellationList() {
-        fetch(API + '/cancellation/list', { headers: authHeaders() })
-            .then(r => r.json())
-            .then(function (json) {
-                const rows = (json && json.data) ? json.data : [];
-                const tbody = document.querySelector('#cancelTable tbody');
-                document.getElementById('cancelListMeta').textContent = rows.length ? (rows.length + ' record(s).') : 'No records.';
-                if (!rows.length) {
-                    tbody.innerHTML = '<tr class="fims-empty"><td colspan="9">No records.</td></tr>';
-                    return;
-                }
-                tbody.innerHTML = rows.map(function (r, i) {
-                    const replacement = r.replacement_check_id ? (' <span class="fims-badge fims-badge-blue" title="Replaced by check ' + escapeHtml(r.replacement_check_number || r.replacement_check_id) + '">Replaced</span>') : '';
-                    return '<tr>' +
-                        '<td>' + (i + 1) + '</td>' +
-                        '<td>' + escapeHtml(r.check_number) + '</td>' +
-                        '<td>' + escapeHtml(r.bank_name || '') + ' — ' + escapeHtml(r.account_number || '') + '</td>' +
-                        '<td>' + escapeHtml(r.payee || '') + '</td>' +
-                        '<td class="text-right">' + peso(r.amount) + '</td>' +
-                        '<td>' + escapeHtml(r.check_date || '') + '</td>' +
-                        '<td>' + escapeHtml(r.cancelled_date || '') + '</td>' +
-                        '<td>' + escapeHtml(r.reason || '') + '</td>' +
-                        '<td class="text-center"><span class="fims-badge">' + escapeHtml(r.status) + '</span>' + replacement + '</td>' +
-                        '</tr>';
-                }).join('');
-            })
-            .catch(() => {});
-    }
-
-    function initCancel() {
-        fetch(API + '/cancellation/kpis', { headers: authHeaders() })
-            .then(r => r.json())
-            .then(json => {
-                const d = json.data || {};
-                document.querySelectorAll('#cancelKpiCards [data-kpi]').forEach(el => {
-                    const key = el.dataset.kpi;
-                    el.textContent = key === 'cancelled_amount' ? peso(d[key]) : (d[key] ?? 0);
-                });
-            }).catch(() => {});
-        fetch(API + '/cancellation/lookups', { headers: authHeaders() })
-            .then(r => r.json())
-            .then(json => fillSelect('#cancelFilterBank', json.data ? json.data.bank_accounts : [], 'All Banks'))
-            .catch(() => {});
-        loadCancellationList();
-    }
-
-    // ── Inventory (RAF) — computed from fims.check_register's own booklet
-    // groupings (same source as Check Registry's summary view), not a
-    // server-rendered static page like TREASURY's original — see
-    // CheckProcessingService::rafGroupsSql()'s comment for why this doesn't
-    // read fims.check_booklets (exists in the schema, but never actually
-    // populated by Add Batch). ──
-    const RAF_STOCK_BADGE = { NORMAL: 'fims-badge-green', LOW_STOCK: 'fims-badge-red' };
-
-    function buildRafParams() {
-        const params = new URLSearchParams();
-        const fiscalYear = document.getElementById('rafFilterYear')?.value;
-        const bankAccountId = document.getElementById('rafFilterBank')?.value;
-        const lowStock = document.getElementById('rafFilterLowStock')?.value;
-        const search = document.getElementById('rafFilterSearch')?.value?.trim();
-        if (fiscalYear) params.set('fiscal_year', fiscalYear);
-        if (bankAccountId) params.set('bank_account_id', bankAccountId);
-        if (lowStock) params.set('low_stock', lowStock);
-        if (search) params.set('search', search);
-        return params;
-    }
-
-    function loadRaf() {
-        fetch(API + '/raf/summary', { headers: authHeaders() })
-            .then(r => r.json())
-            .then(json => {
-                const d = json.data || {};
-                document.querySelectorAll('#rafKpiCards [data-kpi]').forEach(el => { el.textContent = d[el.dataset.kpi] ?? 0; });
-            }).catch(() => {});
-
-        const tbody = document.querySelector('#rafTable tbody');
-        tbody.innerHTML = '<tr class="fims-empty"><td colspan="11">Loading…</td></tr>';
-        fetch(API + '/raf/list?' + buildRafParams().toString(), { headers: authHeaders() })
-            .then(r => r.json())
-            .then(function (json) {
-                const rows = (json && json.data) ? json.data : [];
-                if (!rows.length) {
-                    tbody.innerHTML = '<tr class="fims-empty"><td colspan="11">No records — check register has no booklets yet.</td></tr>';
-                    return;
-                }
-                tbody.innerHTML = rows.map(function (r) {
-                    const badgeClass = RAF_STOCK_BADGE[r.stock_status] || 'fims-badge-gray';
-                    const bankLabel = r.account_name ? escapeHtml(r.account_name) + (r.bank_name ? ' — ' + escapeHtml(r.bank_name) : '') : '—';
-                    return '<tr>' +
-                        '<td>' + escapeHtml(r.booklet_no || 'No Booklet') + '</td>' +
-                        '<td><span class="fims-badge">' + escapeHtml(r.check_series || '—') + '</span></td>' +
-                        '<td>' + escapeHtml(r.fiscal_year || '—') + '</td>' +
-                        '<td>' + escapeHtml(r.start_check_no) + ' – ' + escapeHtml(r.end_check_no) + '</td>' +
-                        '<td class="text-center">' + r.received + '</td>' +
-                        '<td class="text-center">' + r.issued + '</td>' +
-                        '<td class="text-center">' + r.cancelled + '</td>' +
-                        '<td class="text-center">' + r.remaining + '</td>' +
-                        '<td>' + escapeHtml(r.last_entry || '—') + '</td>' +
-                        '<td class="text-center"><span class="fims-badge ' + badgeClass + '">' + escapeHtml(r.stock_status.replace('_', ' ')) + '</span></td>' +
-                        '<td class="text-center">—</td>' +
-                        '</tr>';
-                }).join('');
-            })
-            .catch(() => { tbody.innerHTML = '<tr class="fims-empty"><td colspan="11">Could not reach the server.</td></tr>'; });
-    }
-
-    function initRaf() {
-        fetch(API + '/raf/years', { headers: authHeaders() })
-            .then(r => r.json())
-            .then(function (json) {
-                const years = (json && json.data) ? json.data : [];
-                const sel = document.getElementById('rafFilterYear');
-                sel.innerHTML = '<option value="">Fiscal Year: All</option>' +
-                    years.map(y => '<option value="' + y + '">' + y + '</option>').join('');
-            })
-            .catch(() => {});
-        fetch(API + '/preparation/bank-accounts', { headers: authHeaders() })
-            .then(r => r.json()).then(json => fillSelect('#rafFilterBank', json.data, 'All Banks')).catch(() => {});
-        loadRaf();
-    }
-    ['rafFilterYear', 'rafFilterBank', 'rafFilterLowStock'].forEach(function (id) {
-        document.getElementById(id)?.addEventListener('change', loadRaf);
-    });
-    document.getElementById('rafFilterSearch')?.addEventListener('keyup', function (e) {
-        if (e.key === 'Enter') loadRaf();
-    });
-
-    // First tab is active by default on page load.
-    initTab('prep');
+    initPrep();
 })();
 </script>

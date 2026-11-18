@@ -18,6 +18,12 @@ namespace PHPMaker2024\FIMS;
  * The server still answers with its Program > Sub-Program > Originating Unit > Project tree (layout_by=program, so every filter and the totals work as
  * before); the page lifts the projects out of it, in that same order, so a program's projects stay together.
  *
+ * CO and COE: the tree is asked for with split_coe=1, so it comes in two halves and the page keeps them apart as two rows, each with its own figures.
+ * CO (capital outlay — chart-of-accounts codes starting with 1) holds the projects of the programs, as above. COE holds the budget of the requests that have
+ * NO program (a COE budget request has line items only, no Program / Sub-Program / Project — they used to be a "No project" row): PS (accounts 5-01) and
+ * MOOE (accounts 5-02) are the rows under it, and under each the requests (type 'request', named by their reference number, the originating unit on the
+ * muted line) — with their RFAs / LAAs and vouchers exactly like a project's. See CobService::splitCoe().
+ *
  * Open a project and the RFAs and LAAs drawn against its budget lines are listed under it (RFA / LAA Amount = what each drew there); open an RFA and
  * its disbursement voucher is listed under it — fetched by the budget_allocation's dv_id from fims.disbursement_vouchers (Disbursement = the voucher's
  * gross_amount). That goes for an RFA or an LAA alike: a row with a voucher connected shows a "1 DV" tag and drops down to it when clicked; one without shows
@@ -60,8 +66,18 @@ $_rlm_api = Config('API.FIMS_URL');
 /* tree rows */
 #rlm-root .rlm-row.rlm-has-kids { cursor: pointer; }
 #rlm-root .rlm-row.rlm-has-kids:focus-visible { outline: 2px solid var(--afims-heading-fill, #000E3E); outline-offset: -2px; }
-/* a project is the strong top-level row; an RFA / LAA under it and a voucher under an RFA are plain */
-#rlm-root .rlm-t-project > td { font-weight: 600; color: var(--afims-heading, #000E3E); }
+/* a project — or, in the COE half, a request — is the strong row; an RFA / LAA under it and a voucher under an RFA are plain */
+#rlm-root .rlm-t-project > td, #rlm-root .rlm-t-request > td { font-weight: 600; color: var(--afims-heading, #000E3E); }
+/* The two halves, CO and COE, each start on a row of their own (the PS / MOOE rows of the COE half sit between it and its requests) and each has a colour of
+   its own (CO blue, COE green): a tinted band across the row, a solid bar down its left edge, and the code as a solid pill. */
+#rlm-root .rlm-t-bucket { --b-accent: var(--afims-heading, #000E3E); --b-soft: var(--afims-surface-subtle, #F4F7FA); }
+#rlm-root .rlm-b-co  { --b-accent: var(--afims-primary, #0035A9); --b-soft: var(--afims-primary-soft, #E6EBF6); }
+#rlm-root .rlm-b-coe { --b-accent: var(--afims-success-hover, #0C7539); --b-soft: var(--afims-success-soft, #DBF2E5); }
+#rlm-root .rlm-t-bucket > td { font-weight: 700; color: var(--b-accent); background: var(--b-soft); border-top: 2px solid var(--b-accent); }
+#rlm-root .rlm-t-bucket > td:first-child { box-shadow: inset 5px 0 0 var(--b-accent); }
+#rlm-root .rlm-t-bucket:hover > td { background-image: linear-gradient(rgba(0, 0, 0, .05), rgba(0, 0, 0, .05)); }
+#rlm-root .rlm-bkt-badge { display: inline-block; min-width: 40px; padding: 2px 8px; border-radius: 4px; text-align: center; font-size: 11px; font-weight: 700; letter-spacing: .04em; color: #fff; background: var(--b-accent); }
+#rlm-root .rlm-t-class > td { font-weight: 600; color: var(--afims-heading, #000E3E); }
 #rlm-root .rlm-t-allocation > td, #rlm-root .rlm-t-dv > td { vertical-align: middle; }
 /* a voucher is the deepest, quietest row */
 #rlm-root .rlm-t-dv > td { font-size: 12px; background: var(--afims-surface-subtle, #F4F7FA); }
@@ -72,7 +88,7 @@ $_rlm_api = Config('API.FIMS_URL');
 /* a project row: the name (+ paperclip) on the first line, then ONE muted line under it with the fiscal year */
 #rlm-root .rlm-name > .rlm-sub { display: block; margin-top: 3px; line-height: 1.5; }
 #rlm-root .rlm-name > .rlm-sub .nha-bdg { margin-right: 6px; vertical-align: 1px; }
-#rlm-root .rlm-t-project > td { vertical-align: middle; }
+#rlm-root .rlm-t-project > td, #rlm-root .rlm-t-request > td { vertical-align: middle; }
 #rlm-root .rlm-where { margin-left: 6px; }
 #rlm-root .rlm-caret { position: absolute; left: calc(var(--d, 0) * 16px); top: 2px; width: 14px; height: 14px; transition: transform .15s; stroke: currentColor; }
 #rlm-root .rlm-caret.open { transform: rotate(90deg); }
@@ -220,7 +236,7 @@ $_rlm_api = Config('API.FIMS_URL');
     ?>
     <div class="nha-table-wrap">
         <div class="rlm-toolbar no-print">
-            <span class="rlm-hint"><span id="rlm-info">Project → RFA / LAA → DV</span> · <span class="rlm-unit-note">Amounts in ₱</span></span>
+            <span class="rlm-hint"><span id="rlm-info">CO: Project → RFA / LAA → DV · COE: PS / MOOE → Request → RFA / LAA → DV</span> · <span class="rlm-unit-note">Amounts in ₱</span></span>
             <span class="rlm-tool-btns">
                 <button type="button" class="nha-btn nha-btn-outline nha-btn-sm" id="rlm-expand">Expand all</button>
                 <button type="button" class="nha-btn nha-btn-outline nha-btn-sm" id="rlm-collapse">Collapse all</button>
@@ -245,7 +261,10 @@ $_rlm_api = Config('API.FIMS_URL');
         <p class="rlm-note">Each row is a project of an <strong>Approved</strong> budget request; under the project's name is where it sits (program › sub-program › originating unit). <strong>Revised Amount</strong> is the proposed amount net of its adjustments and realignments (a decrease lowers it).
             <strong>RFA / LAA Amount</strong> is what approved RFAs and issued LAAs have drawn from the CBAs' reservations, and <strong>Unallocated Amount</strong> is the
             Revised Amount less it. <strong>Disbursement</strong> is the gross amount of the disbursement vouchers connected to the RFAs and LAAs (a cancelled or rejected voucher is not counted) and is included in every total, and <strong>Account Payable</strong> is the RFA / LAA Amount less it. Open a project to see
-            the RFAs and LAAs drawn against it, and an RFA or LAA that has a disbursement voucher connected (a "1 DV" tag) to see it. A dash means zero; brackets mean negative.</p>
+            the RFAs and LAAs drawn against it, and an RFA or LAA that has a disbursement voucher connected (a "1 DV" tag) to see it. A dash means zero; brackets mean negative.
+            The table is in two parts. <strong>CO</strong> (capital outlay, accounts starting with 1) lists the projects of the programs. <strong>COE</strong> lists the budget that belongs to no program —
+            a COE budget request has only line items, no program or project — split into <strong>PS</strong> (accounts 5-01) and <strong>MOOE</strong> (accounts 5-02), each request
+            with its RFAs and LAAs under it.</p>
     </div>
 
 <?php
@@ -264,7 +283,10 @@ include __DIR__.'/readone/cob-readone.php';
      GET /cob/rollup?layout_by=program   the tree (Program > Sub-Program > Originating Unit > Project)
    and, for the View modal, GET /cob/read/{id} (readone/cob-readone.php → window.cobModal).
    The table STARTS AT THE PROJECT: rlm_projectsOf() lifts the projects out of that tree (same order, so a program's projects stay together) and they are
-   the top-level rows; the levels above them survive only as the muted line under a project's name. Under a project — asked for with with_allocations=1 — the RFAs / LAAs drawn against it
+   the rows under CO; the levels above them survive only as the muted line under a project's name. The tree is asked for with split_coe=1, so it has two
+   roots — CO (the projects of the programs) and COE (the budget of the requests with no program: PS / MOOE rows, then the requests, node type 'request') —
+   told apart by chart-of-accounts code (1… CO, 5-01… PS, 5-02… MOOE; CobService::costTypeOf()). rlm_regroup() puts the table together from them.
+   Under a project or a request — asked for with with_allocations=1 — the RFAs / LAAs drawn against it
    (node type 'allocation') and, under an RFA, its disbursement voucher (node type 'dv'). Those two are detail rows: they show their own figure in one
    column (RFA / LAA Amount, Disbursement) and dashes elsewhere, and no total counts them.
    What it shows: ONLY the Approved budget requests, in five amount columns that start at the Revised Amount:
@@ -299,6 +321,7 @@ const rlm = {
     data: null,                 // the tree
     totals: null,
     expanded: new Set(),        // paths of the rows that are open
+    rootsSeen: new Set(),       // the CO / COE / PS / MOOE rows already opened once — so one the user closes stays closed after a reload
     searchTimer: null,          // the typing pause before the Search box reloads
     loaded: '',                 // the query the tree was loaded with (it reloads only when that changes)
     seq: 0,                     // the newest tree request; an older response is dropped
@@ -478,11 +501,12 @@ async function rlm_loadTree() {
     const my = ++rlm.seq;
     rlm_busy(true);
     try {
-        const json = await rlm_request('rollup', rlm_params({ layout_by: RLM_LAYOUT, with_allocations: '1' }));
+        const json = await rlm_request('rollup', rlm_params({ layout_by: RLM_LAYOUT, with_allocations: '1', split_coe: '1' }));
         if (my !== rlm.seq) return;
-        rlm.data = rlm_projectsOf(json.data || []); rlm.totals = json.totals || null;
+        rlm.data = rlm_regroup(json.data || []); rlm.totals = json.totals || null;
         if (json.allocation_error) rlm_toast(json.allocation_error, 'warning');
         rlm.loaded = key;
+        rlm_openRoots();
         rlm_renderTree();
     } catch (e) {
         if (my !== rlm.seq) return;
@@ -526,6 +550,11 @@ function rlm_statusPill(name, color) {
 
 // the Project column's cell: the name, then what tells two of the same name apart. (There is no Code column: a project's code is not shown, an RFA / LAA row carries a badge.)
 function rlm_nodeLabel(n) {
+    if (n.type === 'bucket' || n.type === 'class') {
+        // CO / COE (the two halves) and PS / MOOE (the classes of COE): the identifier as a badge, then the name
+        // (CO / COE get a solid pill in their row's colour — .rlm-bkt-badge — PS / MOOE the quiet grey one)
+        return `${n.code ? `<span class="${n.type === 'bucket' ? 'rlm-bkt-badge' : 'nha-bdg nha-bdg-gray nha-bdg-xs'}">${rlm_esc(n.code)}</span>` : ''}<span>${rlm_esc(n.label)}</span>`;
+    }
     if (n.type === 'allocation') {
         // an RFA / LAA drawn against the project above it: a badge saying which, its number, then its description
         const desc = n.description && String(n.description).trim() ? `<span class="rlm-sub">${rlm_esc(String(n.description).trim())}</span>` : '';
@@ -543,8 +572,8 @@ function rlm_nodeLabel(n) {
         return `<span>${rlm_esc(n.label)}</span> ${rlm_statusPill(n.status_name, n.status_color)}${meta ? `<span class="rlm-sub">${meta}</span>` : ''}`;
     }
     let html = `<span>${n.unassigned ? `<span class="rlm-unassigned">${rlm_esc(n.label)}</span>` : rlm_esc(n.label)}</span>`;
-    if (n.type === 'project') {
-        // line 1: the project name and its supporting documents
+    if (n.type === 'project' || n.type === 'request') {
+        // line 1: the project name (a COE request: its reference number) and its supporting documents
         if (n.attachment_count > 0) html += ` <span class="rlm-clip" title="${n.attachment_count} supporting document${n.attachment_count === 1 ? '' : 's'}">${RLM_CLIP}${n.attachment_count}</span>`;
         // line 2 (muted): the fiscal year, then where the project sits — the levels this table no longer has rows for (program › sub-program › originating unit)
         const where = (n.trail || []).map(t => (t.type === 'program' || t.type === 'subprogram') && t.code ? `${t.code} — ${t.label}` : t.label).filter(Boolean).join(' › ');
@@ -559,10 +588,12 @@ function rlm_amountCells(o) {
 }
 
 function rlm_treeRow(n, depth, path, hasKids, open) {
-    const view = n.type === 'project' && n.budget_reference_number
+    const view = (n.type === 'project' || n.type === 'request') && n.budget_reference_number
         ? `<button type="button" class="nha-btn-act view" data-view="${rlm_esc(n.budget_reference_number)}" data-project="${rlm_esc(n.code || '')}" title="View the approved request ${rlm_esc(n.budget_reference_number)}">View</button>`
         : '';
-    return `<tr class="rlm-row rlm-d${Math.min(depth, 4)} rlm-t-${rlm_esc(n.type)}${hasKids ? ' rlm-has-kids' : ''}${open ? ' open' : ''}" data-path="${rlm_esc(path)}"${hasKids ? ` tabindex="0" role="button" aria-expanded="${open}"` : ''}>
+    // CO / COE: the row carries its own class (rlm-b-co / rlm-b-coe) so each half has its own colour
+    const bucketCls = n.type === 'bucket' ? ' rlm-b-' + String(n.key).toLowerCase().replace(/[^a-z0-9]/g, '') : '';
+    return `<tr class="rlm-row rlm-d${Math.min(depth, 4)} rlm-t-${rlm_esc(n.type)}${bucketCls}${hasKids ? ' rlm-has-kids' : ''}${open ? ' open' : ''}" data-path="${rlm_esc(path)}"${hasKids ? ` tabindex="0" role="button" aria-expanded="${open}"` : ''}>
         <td><div class="rlm-name" style="--d:${depth}">${hasKids ? RLM_CARET.replace('%OPEN%', open ? ' open' : '') : '<span class="rlm-caret-sp"></span>'}${rlm_nodeLabel(n)}</div></td>
         ${rlm_amountCells(n)}
         <td class="no-print">${view}</td></tr>`;
@@ -570,13 +601,33 @@ function rlm_treeRow(n, depth, path, hasKids, open) {
 
 // The server answers Program > Sub-Program > Originating Unit > Project. This table starts at the project, so the projects are lifted out — in the tree's
 // own order — each carrying the nodes it sat under (`trail`) for its muted "where" line. A project's children (its RFAs / LAAs) come along untouched.
+// A COE request (the leaf of the COE half — it has no project) is lifted the same way.
 function rlm_projectsOf(nodes, trail = []) {
     const out = [];
     for (const n of nodes) {
-        if (n.type === 'project') out.push({ ...n, trail });
+        if (n.type === 'project' || n.type === 'request') out.push({ ...n, trail });
         else out.push(...rlm_projectsOf(n.children || [], trail.concat(n)));
     }
     return out;
+}
+// With split_coe the server answers two roots: CO (Program > Sub-Program > Originating Unit > Project) and COE (PS / MOOE > Originating Unit > Request). Under each
+// root the leaves are lifted out as above; in the COE half the PS / MOOE rows stay, each holding its requests (their office on the muted line).
+function rlm_regroup(roots) {
+    return roots.map(root => ({
+        ...root,
+        children: (root.children || []).flatMap(c => c.type === 'class' ? [{ ...c, children: rlm_projectsOf(c.children || []) }] : rlm_projectsOf([c])),
+    }));
+}
+// The page opens with CO and COE unrolled, and PS / MOOE too (a COE request is one click below them) — each only the first time it is seen, so closing one
+// is remembered across a refresh or a filter change.
+function rlm_openRoots() {
+    const walk = (nodes, parentPath) => nodes.forEach(n => {
+        if (n.type !== 'bucket' && n.type !== 'class') return;
+        const path = `${parentPath}/${n.type}:${n.key}`;
+        if (!rlm.rootsSeen.has(path)) { rlm.rootsSeen.add(path); rlm.expanded.add(path); }
+        walk(n.children || [], path);
+    });
+    walk(rlm.data || [], '');
 }
 
 // Only the rows that are visible are built: a collapsed node's children never reach the DOM.

@@ -148,14 +148,36 @@
                     </div>
                 </div>
 
-                <p class="ao-section">Chart of Accounts Assignment</p>
+                <p class="ao-section">1. Select GL Account</p>
                 <div class="ao-group full" style="position:relative;">
-                    <label class="ao-label">Account</label>
+                    <label class="ao-label">Search GL Account</label>
                     <input type="hidden" id="ao-coa-account-id" value="">
                     <input type="text" class="ao-input" id="ao-coa-account-search" maxlength="500" placeholder="Search: account code or name (e.g., 01-01-010-01, Accounts Payable)">
-                    <p class="ao-hint">Start typing to search Chart of Accounts</p>
+                    <p class="ao-hint">This is the parent GL account for the officer.</p>
                     <div id="ao-coa-dropdown" style="display:none;position:absolute;background:#fff;border:1px solid #E4ECF2;border-radius:8px;max-height:200px;overflow-y:auto;width:100%;z-index:1000;box-shadow:0 4px 12px rgba(0,0,0,.1);"></div>
                     <div id="ao-coa-selected" style="margin-top:8px;padding:8px;background:#F4F7FA;border-radius:6px;display:none;"></div>
+                </div>
+
+                <div id="ao-coa-sl-section" style="margin-top:14px;opacity:.5;pointer-events:none;">
+                    <p class="ao-section" style="margin-top:0;">2. Select or Create Sub-Ledger (Child Account)</p>
+                    <div class="ao-group full" style="position:relative;">
+                        <label class="ao-label">Search Sub-Ledger</label>
+                        <input type="text" class="ao-input" id="ao-coa-sl-search" maxlength="500" placeholder="Select a GL account first…" disabled>
+                        <div id="ao-coa-sl-dropdown" style="display:none;position:absolute;background:#fff;border:1px solid #E4ECF2;border-radius:8px;max-height:200px;overflow-y:auto;width:100%;z-index:1000;box-shadow:0 4px 12px rgba(0,0,0,.1);"></div>
+                        <p class="ao-hint">Pick an existing child account under this GL, or create a new one below.</p>
+                        <p id="ao-coa-sl-empty-note" class="ao-hint" style="display:none;color:var(--afims-danger, #DC3545);">No child accounts exist under this GL account yet. Create one below.</p>
+                    </div>
+                    <div id="ao-coa-sl-selected-item" style="padding:8px;background:#F4F7FA;border-radius:6px;display:none;margin-top:8px;">
+                        <strong>Selected:</strong> <span id="ao-coa-sl-selected-code"></span>
+                    </div>
+                    <input type="hidden" id="ao-coa-sl-selected-code-value">
+
+                    <div class="ao-group full" style="margin-top:14px;border-top:1px dashed var(--afims-border, #E4ECF2);padding-top:14px;">
+                        <label class="ao-label">New Sub-Ledger Title</label>
+                        <input type="text" class="ao-input" id="ao-coa-sl-new-title" maxlength="255" placeholder="e.g., 0213 CONSTRUCTION AND SUPPLIES OPC">
+                        <p class="ao-hint">Not in the list above? Type a title and click Create.</p>
+                        <button type="button" class="ao-btn ao-btn-ghost" id="ao-coa-sl-create-btn" style="margin-top:8px;">+ Create Sub-Ledger Account</button>
+                    </div>
                 </div>
             </div>
             <div id="ao-footer">
