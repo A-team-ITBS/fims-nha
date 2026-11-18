@@ -206,7 +206,7 @@ $_ampf_api = $_amp_api ?? \PHPMaker2024\FIMS\Config('API.FIMS_URL');
                             <input type="text" class="amp-input" id="amp-po-office" readonly tabindex="-1" placeholder="Loaded from the PO">
                         </div>
                         <div class="amp-group">
-                            <label class="amp-label" for="amp-po-vendor">Vendor</label>
+                            <label class="amp-label" for="amp-po-vendor">Supplier</label>
                             <input type="text" class="amp-input" id="amp-po-vendor" readonly tabindex="-1" placeholder="Loaded from the PO">
                         </div>
                         <div class="amp-group">
@@ -463,7 +463,7 @@ function amp_today() {
 }
 
 /* ── PO picker: searches the Budget Allocation's RFA POs (po number + PO date shown) ──
-   Selecting one fills Requesting Office/Dept, Vendor, PO Date and PO Amount (requested_amount of the RFA). */
+   Selecting one fills Requesting Office/Dept, Supplier, PO Date and PO Amount (requested_amount of the RFA). */
 function amp_fillPo(po) {
     const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v ?? ''; };
     set('amp-po-rfa',    po?.rfa_number || '');
