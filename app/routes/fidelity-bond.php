@@ -52,15 +52,16 @@ $app->post("/fidelity-bond/cl/post-direct", function ($request, $response) {
     return $response->withHeader('Content-Type', 'application/json')->write($service->postNewCl($data));
 });
 
-// Best-effort autofill from an uploaded scan — multipart/form-data, field
-// name "file" (same convention as POST /upload/file). No AI/API key
-// involved; local Tesseract OCR + template pattern-matching, see
-// FidelityBondService::extractClFromScan()'s own docblock for why results
-// can be wrong and must stay editable.
+// Best-effort autofill from OCR text — JSON body { text }. OCR runs
+// client-side (Tesseract.js via CDN, see app/pages/fidelity-bond-page.php's
+// fbClRunOcr()) so no AI/API key and no server-side OCR binary is involved;
+// this just runs template pattern-matching against whatever text the
+// browser recognized, see FidelityBondService::extractClFromText()'s own
+// docblock for why results can be wrong and must stay editable.
 $app->post("/fidelity-bond/cl/extract", function ($request, $response) {
-    $uploadedFiles = $request->getUploadedFiles();
+    $data = $request->getParsedBody();
     $service = new Service\FidelityBondService();
-    return $response->withHeader('Content-Type', 'application/json')->write($service->extractClFromScan($uploadedFiles['file'] ?? null));
+    return $response->withHeader('Content-Type', 'application/json')->write($service->extractClFromText($data['text'] ?? null));
 });
 
 // Manually backfills a paper CL that predates this system straight into
