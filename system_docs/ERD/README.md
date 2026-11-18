@@ -332,9 +332,9 @@ erDiagram
 ### Budget Revision
 
 - **Status:** Built — file/edit/approve/decline revisions that move amounts between approved budget lines.
-- **Code:** `views/BudgetRevisionPage.php` → `app/pages/budget-revision-page.php` (+ `form/budget-rev-form.php`, `form/budget-rev-review.php`). Route `app/routes/budget_revision.php`: `GET /budget_revision/all|list|read/{id}`, `POST /budget_revision/add`, `PUT /budget_revision/update/{id}`, `PUT /budget_revision/review/{id}`, `DELETE /budget_revision/delete/{id}`; also `GET /budget_req/all` (line picker) and `/fiscal_year/all`. Service `app/services/BudgetRevisionService.php`.
+- **Code:** `views/BudgetRevisionPage.php` → `app/pages/budget-revision-page.php` (+ `form/budget-rev-form.php`, `form/budget-rev-review.php`). Route `app/routes/budget_revision.php`: `GET /budget_revision/all|list|read/{id}`, `POST /budget_revision/add`, `PUT /budget_revision/update/{id}` (Saved only), `PUT /budget_revision/process/{id}` (Saved → Submitted), `PUT /budget_revision/review/{id}` (Submitted only), `DELETE /budget_revision/delete/{id}`; also `GET /budget_req/all` (line picker) and `/fiscal_year/all`. Service `app/services/BudgetRevisionService.php`.
 - **Tables written:** `fims.budget_revision`; `fims.budget_line_items` (on approval: `adjustment` and `suggested_amount` of the From and To lines). **Tables read:** `fims.budget_req`, `fims.budget_req_project`, `fims.budget_req_program`, `fims.program`, `fims.project`, `fims.chart_of_accounts`, `fims.responsibility_code`, `fims.settings_status`, `uac.users`.
-- **Status workflow:** (`status_for='budget_revision'`, seed `04 - seed_data/08`) Pending → Approved | Declined (soft delete via `deleted_at`).
+- **Status workflow:** (`status_for='budget_revision'`, seed `04 - seed_data/08`) Saved → Submitted → Approved | Declined (soft delete via `deleted_at`). Filing saves a request as Saved (the only status that can be edited); **Process** submits it; only Submitted requests are reviewed. The seed renames the old `Pending` to `Submitted`.
 
 ```mermaid
 erDiagram
@@ -343,7 +343,7 @@ erDiagram
         int from_budget_line_item_id "soft: budget_line_items"
         int to_budget_line_item_id "soft: budget_line_items, nullable"
         numeric from_amount
-        numeric to_amount "new amount of the From line"
+        numeric to_amount "new amount of the From line (a Realignment saves from_amount minus the amount transferred)"
         text reason
         int user_id "soft: uac.users"
         int status_id FK
