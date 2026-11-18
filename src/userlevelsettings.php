@@ -214,8 +214,10 @@ $USER_LEVEL_PRIVS = [["{FIMS}audit_logs","-2","0"],
     ["{FIMS}payroll-page.php","0","0"],
     ["{FIMS}remittance-page.php","-2","0"],
     ["{FIMS}remittance-page.php","0","0"],
-    ["{FIMS}far-report-page.php","-2","0"],
-    ["{FIMS}far-report-page.php","0","0"]];
+    ["{FIMS}balance-sheet-page.php","-2","0"],
+    ["{FIMS}balance-sheet-page.php","0","0"],
+    ["{FIMS}income-statement-page.php","-2","0"],
+    ["{FIMS}income-statement-page.php","0","0"]];
 
 /**
  * Tables
@@ -324,4 +326,5 @@ $USER_LEVEL_TABLES = [["audit_logs","audit_logs","Audit Logs",false,"{FIMS}",""]
     ["fidelity-bond-page.php","fidelity_bond_page","Fidelity Bond",true,"{FIMS}","FidelityBondPage"],
     ["payroll-page.php","payroll_page","Payroll Management",true,"{FIMS}","PayrollPage"],
     ["remittance-page.php","remittance_page","Remittance",true,"{FIMS}","RemittancePage"],
-    ["far-report-page.php","far_report_page","FAR Report",true,"{FIMS}","FarReportPage"]];
+    ["balance-sheet-page.php","balance_sheet_page","Balance Sheet",true,"{FIMS}","BalanceSheetPage"],
+    ["income-statement-page.php","income_statement_page","Income Statement",true,"{FIMS}","IncomeStatementPage"]];

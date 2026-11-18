@@ -30,7 +30,7 @@ $app->get('/po-dr/pos', function ($request, $response, $args) use ($PoDrService)
 $app->get('/po-dr/accounts', function ($request, $response, $args) use ($PoDrService) {
     $params = $request->getQueryParams();
 
-    return $response->withJson($PoDrService->searchAccounts((string) ($params['search'] ?? '')));
+    return $response->withJson($PoDrService->searchAccounts((string) ($params['search'] ?? ''), !empty($params['all'])));
 })->add($jwtMiddleware);
 
 // Read one PO with its delivery receipts

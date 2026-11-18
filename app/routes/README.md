@@ -243,6 +243,10 @@ pass-through stub, so these routes are authenticated but not permission-gated.
 All routes `->add($jwtMiddleware)`. PIS is called server-side only, with `PIS_API_TOKEN` from `.env` (Bearer).
 - `GET /property-record/list` - Every saved item (reads only `fims.property_records`), grouped into the register rows (same PO + category + sub category + item name combined, quantity / cost / depreciation computed), with the responsibility center, the IAR number and the numbers for the category cards
 - `GET /property-record/search?po_number=` - Search one PO in PIS: its items with status 1-4 (items whose TYPENO is not 1 are flagged `is_property: false`), what is already saved and the PO's one responsibility center. Only a PO that is in the IAR module; otherwise "…is not in the IAR module"
+- `GET /property-record/iar-items` - The items entered in the IAR module (DR `items`) for the property accounts, with the PO's responsibility center, delivery date (acquisition date) and amount (acquisition cost)
+- `GET /property-record/account-titles?codes=a,b` - Chart-of-accounts titles of the given codes (`{code: title}`), for the depreciation pro-forma JEV
+- `GET /property-record/proforma-jev?book_id=&p[]=` - The JEV (`{jev_id, jev_no}` or null) a depreciation pro-forma was already submitted as (same book + one of the particulars)
+- `POST /property-record/proforma-submit` - `{jev_date, book_id, particulars, lines[]}` — creates the standalone JEV and sends it for approval (409 when the same book + particulars was already submitted)
 - `POST /property-record/save` - `{po_number, inv_ids[]}` — saves the selected PAR items (PIS is asked again; a TYPENO other than 1, a wrong status or an already saved `inv_id` is refused)
 
 ### fund_tracking.php (`FundTrackingServices` in `fund_trackingServices.php`, table `fims.fund_tracking`)

@@ -151,9 +151,23 @@ class PropertyRecordService
                             'account_code' => $code, 'account_title' => $title !== '' ? $title : self::CATEGORIES[$gl],
                             'description' => (string) ($it['description'] ?? ''), 'serial_no' => $it['serial_no'] ?? null, 'property_no' => $it['property_no'] ?? null,
                             'date_acquired' => $dr['delivery_date'] ?? null, 'amount' => (float) ($it['amount'] ?? 0),
+                            // the JEV created for the DR's pro-forma (recorded on the DR by the IAR module's Submit)
+                            'jev_id' => $dr['jev_id'] ?? null, 'jev_no' => $dr['jev_no'] ?? null, 'jev_date' => null,
                         ];
                     }
                 }
+            }
+            // the date of each JEV (one query)
+            $jevIds = array_values(array_unique(array_filter(array_map(fn($x) => (int) $x['jev_id'], $out))));
+            if ($jevIds) {
+                $dates = [];
+                foreach (App\ExecuteRows("SELECT jev_id, TO_CHAR(jev_date, 'YYYY-MM-DD') AS jev_date FROM fims.journal_entry_vouchers WHERE jev_id IN (" . implode(',', $jevIds) . ')', 'DB') ?: [] as $j) {
+                    $dates[(int) $j['jev_id']] = $j['jev_date'];
+                }
+                foreach ($out as &$x) {
+                    $x['jev_date'] = $dates[(int) $x['jev_id']] ?? null;
+                }
+                unset($x);
             }
             usort($out, fn($a, $b) => strcmp((string) $b['date_acquired'], (string) $a['date_acquired']));
 
@@ -162,6 +176,80 @@ class PropertyRecordService
             App\LogError('PropertyRecordService::iarItems ' . $e->getMessage());
 
             return ['success' => false, 'message' => 'Failed to load the items of the IAR module.'];
+        }
+    }
+
+    /**
+     * Submits the depreciation pro-forma as a Journal Entry Voucher — the same creation as the IAR module's pro-forma (a standalone
+     * JEV, then sent for approval: DRAFT → FOR_SECTION_CHIEF). body: { jev_date, book_id, particulars, lines[] }. The same
+     * particulars (= the same quarter) in the same book can only be submitted once: while that JEV exists a second one is refused.
+     */
+    public function submitProforma(array $body, int $userId): array
+    {
+        try {
+            $part = trim((string) ($body['particulars'] ?? ''));
+            $book = (int) ($body['book_id'] ?? 0);
+            if ($part === '' || $book <= 0) {
+                return ['success' => false, 'message' => 'Select a book and enter the particulars.'];
+            }
+            $dup = App\ExecuteRows('SELECT jev_no FROM fims.journal_entry_vouchers WHERE book_id = ' . $book . ' AND particulars = ' . $this->q($part) . ' LIMIT 1', 'DB');
+            if ($dup) {
+                return ['success' => false, 'message' => "This pro-forma was already submitted as Journal Entry Voucher {$dup[0]['jev_no']} (same book and particulars).", 'httpCode' => 409];
+            }
+            $voucher = new DisbursementVoucherService();
+            $result  = $voucher->createStandaloneJev($body, $userId);
+            if (!empty($result['success'])) {
+                $jevId = (int) $result['data']['jev_id'];
+                $sub   = $voucher->changeJevStatus($jevId, 'FOR_SECTION_CHIEF', $userId);
+                if (!empty($sub['success'])) {
+                    $result['data']['status'] = 'FOR_SECTION_CHIEF';
+                    $result['message']        = 'Journal Entry Voucher ' . $result['data']['jev_no'] . ' created and submitted for approval.';
+                } else {
+                    $result['message'] = 'Journal Entry Voucher ' . $result['data']['jev_no'] . ' was created as a draft, but could not be submitted for approval: ' . ($sub['message'] ?? 'unknown error');
+                }
+            }
+
+            return $result;
+        } catch (\Exception $e) {
+            App\LogError('PropertyRecordService::submitProforma ' . $e->getMessage());
+
+            return ['success' => false, 'message' => 'Failed to submit the pro-forma.'];
+        }
+    }
+
+    /**
+     * The JEV a depreciation pro-forma was already submitted as: the JEV of the book whose particulars are any of the given texts
+     * (the standard sentence of the quarter, or what the user typed). Returns { jev_id, jev_no } or null when none was submitted.
+     */
+    public function proformaJev(int $bookId, array $particulars): ?array
+    {
+        $texts = array_values(array_unique(array_filter(array_map(fn($t) => trim((string) $t), $particulars), fn($t) => $t !== '')));
+        if ($bookId <= 0 || !$texts) {
+            return null;
+        }
+        $r = App\ExecuteRows('SELECT jev_id, jev_no FROM fims.journal_entry_vouchers WHERE book_id = ' . $bookId . ' AND particulars IN (' . implode(',', array_map(fn($t) => $this->q($t), $texts)) . ') ORDER BY jev_id LIMIT 1', 'DB');
+
+        return $r ? ['jev_id' => (int) $r[0]['jev_id'], 'jev_no' => (string) $r[0]['jev_no']] : null;
+    }
+
+    /** Titles of chart-of-accounts codes (for the depreciation pro-forma JEV): code => title; a code that is not found is left out. */
+    public function accountTitles(array $codes): array
+    {
+        try {
+            $codes = array_values(array_unique(array_filter(array_map(fn($c) => trim((string) $c), $codes), fn($c) => $c !== '' && strlen($c) <= 40)));
+            if (!$codes) {
+                return ['success' => true, 'data' => new \stdClass()];
+            }
+            $titles = [];
+            foreach (App\ExecuteRows('SELECT account_code, account_title FROM fims.chart_of_accounts WHERE account_code IN (' . implode(',', array_map(fn($c) => $this->q($c), $codes)) . ')', 'DB') ?: [] as $r) {
+                $titles[$r['account_code']] = $r['account_title'];
+            }
+
+            return ['success' => true, 'data' => $titles ?: new \stdClass()];
+        } catch (\Exception $e) {
+            App\LogError('PropertyRecordService::accountTitles ' . $e->getMessage());
+
+            return ['success' => false, 'message' => 'Failed to load the account titles.'];
         }
     }
 
@@ -702,16 +790,17 @@ class PropertyRecordService
         return in_array($t, ['N A', 'NA', '0', 'NONE'], true) ? '' : $t;
     }
 
-    /** Whole months from the acquisition date to today. */
+    /** Months of depreciation up to $to (default today): it starts the month AFTER the acquisition date (acquired Jan 1 → first month is February). */
     private function monthsSince(string $date, string $to = 'today'): int
     {
         $d = substr($date, 0, 10);
         if ($d === '' || !strtotime($d)) {
             return 0;
         }
-        $diff = (new \DateTime($d))->diff(new \DateTime($to));
+        $a = new \DateTime($d);
+        $b = new \DateTime($to);
 
-        return $diff->invert ? 0 : $diff->y * 12 + $diff->m;
+        return max(0, ((int) $b->format('Y') - (int) $a->format('Y')) * 12 + ((int) $b->format('n') - (int) $a->format('n')));
     }
 
     /** Monthly / accumulated depreciation and book value of ONE unit. ICS: none. */

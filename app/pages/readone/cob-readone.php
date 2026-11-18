@@ -7,7 +7,8 @@
  * from GET /cob/read/{budget_reference_number} (CobService::fetchById): the request, then every Program block, every Project of
  * it, each Project's chart-of-accounts line items with the eight COB columns (Approved Amount, Revision / Realignment, Revised Amount,
  * CBA Requested, Available for Earmarking, RFA Approved, LAA Issued, Remaining Balance), and its supporting documents
- * (fims.budget_req_project_attachment).
+ * (fims.budget_req_project_attachment). A COE request has no program or project: its line items are shown as a COE card, split into PS / MOOE.
+ * Every line carries the identifier of its account code — CO (1…), PS (5-01…), MOOE (5-02…).
  *
  * Included INSIDE the page's .nha-root: every .nha-overlay / .nha-modal rule of _shared/css/nha-fims.css is scoped to it.
  *
@@ -100,9 +101,9 @@
     };
     // the eight columns, in the order of the COB sheet: [key, heading, tooltip]
     const COLS = [
-        ['approved_amount', 'Approved Amount', 'What FMD suggested in the Budget Proposal module'],
-        ['revision_amount', 'Revision / Realignment', 'Net of the approved Budget Revisions'],
-        ['revised_amount', 'Revised Amount', 'Approved Amount less Revision / Realignment'],
+        ['approved_amount', 'Approved Amount', 'What FMD suggested in the Budget Proposal module, before any revision or CBA'],
+        ['revision_amount', 'Revision / Realignment', 'Net of the approved Budget Revisions (a decrease in brackets)'],
+        ['revised_amount', 'Revised Amount', 'Approved Amount net of Revision / Realignment (a decrease lowers it)'],
         ['cba_requested', 'CBA Requested', 'Taken off the budget by approved CBAs'],
         ['available_amount', 'Available for Earmarking', 'Revised Amount less CBA Requested'],
         ['rfa_approved', 'RFA Approved', 'Drawn from the CBAs by approved RFAs'],
@@ -119,7 +120,7 @@
         if (!lines.length) return `<p class="cobv-muted">No line items.</p>`;
         const cells = o => COLS.map(([k]) => `<td class="cobv-num">${num(o[k])}</td>`).join('');
         const rows = lines.map(l => `<tr>
-            <td>${esc(l.account_title || '—')}${l.account_code ? ` ${chip(l.account_code)}` : ''}${l.particulars ? `<span class="cobv-sub" style="display:block;font-size:11.5px;color:var(--afims-text-muted,#62657E);">${esc(l.particulars)}</span>` : ''}</td>
+            <td>${esc(l.account_title || '—')}${l.account_code ? ` ${chip(l.account_code)}` : ''}${l.expense_class ? ` <span class="nha-bdg nha-bdg-gray nha-bdg-xs" title="Told apart by the account code: 1… CO, 5-01… PS, 5-02… MOOE">${esc(l.expense_class)}</span>` : ''}${l.particulars ? `<span class="cobv-sub" style="display:block;font-size:11.5px;color:var(--afims-text-muted,#62657E);">${esc(l.particulars)}</span>` : ''}</td>
             <td>${esc(l.type_of_fund_name || '—')}</td><td>${esc(l.component_name || '—')}</td>${cells(l)}</tr>`).join('');
         return `<div class="cobv-scroll"><table class="cobv-tbl"><thead><tr>
             <th>Account</th><th>Type of Fund</th><th>Component</th>${COLS.map(([k, label, hint]) => `<th class="cobv-num" title="${esc(hint)}">${esc(label)}</th>`).join('')}
@@ -159,11 +160,23 @@
                 <small>Revised ${money(g.totals.revised_amount)} · Remaining ${money(g.totals.remaining_balance)}</small></div>
             ${(g.projects || []).length ? g.projects.map(p => projectCard(p, focusCode)).join('') : '<p class="cobv-muted" style="margin-left:12px;">No projects under this program.</p>'}</div>`).join('');
 
+        // The line items that belong to no program or project are the request's COE: PS (accounts 5-01) and MOOE (accounts 5-02), each its own card
+        // (anything else a programless line might be booked to goes last, as "Other"). CobService::fetchById() calls them unassigned_line_items.
         const loose = r.unassigned_line_items || [];
         if (loose.length) {
-            const t = loose.reduce((a, l) => { for (const [k] of COLS) a[k] += Number(l[k] || 0); return a; }, Object.fromEntries(COLS.map(([k]) => [k, 0])));
-            html += `<div class="cobv-prog"><div class="cobv-prog-hdr"><span>No program / project</span><small>Line items of an older request with no program block</small></div>
-                <div class="cobv-proj">${lineTable(loose, t)}</div></div>`;
+            const sum = ls => ls.reduce((a, l) => { for (const [k] of COLS) a[k] += Number(l[k] || 0); return a; }, Object.fromEntries(COLS.map(([k]) => [k, 0])));
+            const groups = [['PS', 'Personal Services'], ['MOOE', 'Maintenance and Other Operating Expenses']]
+                .map(([c, name]) => [c, name, loose.filter(l => l.expense_class === c)]);
+            const other = loose.filter(l => l.expense_class !== 'PS' && l.expense_class !== 'MOOE');
+            if (other.length) groups.push(['', 'Other (not PS / MOOE)', other]);
+            const all = sum(loose);
+            html += `<div class="cobv-prog"><div class="cobv-prog-hdr"><span>COE ${chip('COE')}</span>
+                    <small>Line items of a COE budget request — no program or project · Revised ${money(all.revised_amount)} · Remaining ${money(all.remaining_balance)}</small></div>
+                ${groups.filter(g => g[2].length).map(([c, name, ls]) => {
+                    const t = sum(ls);
+                    return `<div class="cobv-proj"><div class="cobv-proj-hdr"><span>${esc(name)} ${chip(c)}</span>
+                        <small>Revised ${money(t.revised_amount)} · Remaining ${money(t.remaining_balance)}</small></div>${lineTable(ls, t)}</div>`;
+                }).join('')}</div>`;
         }
         if (!programs.length && !loose.length) html += '<p class="cobv-muted">This request has no line items.</p>';
         $('cobv-body').innerHTML = html;

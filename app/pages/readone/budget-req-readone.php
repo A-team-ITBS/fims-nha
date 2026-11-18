@@ -23,10 +23,11 @@
  *    page, budget-prop-page.php), passed that same filter's current value
  *    ('' = every fiscal year); extraParams are extra query parameters for the
  *    fetch (the FMD page widens it to every Regional / District office);
- *    options.byUnit groups the outline per originating unit; options.showFund
+ *    options.byUnit groups the outline per originating unit (each unit row is its own collapse/expand
+ *    accordion toggle, bgrv_toggleUnit — independent of the others); options.showFund
  *    adds each Project's Type(s) of Fund (the FMD page only). No row/request
- *    context, no summary cards, no accordion —
- *    a flat, always-visible indented outline (Program / Sub-Program /
+ *    context, no summary cards —
+ *    otherwise a flat, always-visible indented outline (Program / Sub-Program /
  *    Project), built by its own renderer (bgrv_cobRowsHtml), not the
  *    panel/card one bgrv_openModal uses below. Sourced from the actual
  *    budget requests for that year (BGR_API + '/all?fiscal_yr=...'), not
@@ -60,7 +61,7 @@
         max-height:92vh;display:flex;flex-direction:column;overflow:hidden;
         box-shadow:0 32px 80px rgba(0,0,0,.28);font-family:'IBM Plex Sans',sans-serif;
         transition:max-width .2s ease; }
-    #bgrv-card.bgrv-wide { max-width:1040px; }
+    #bgrv-card.bgrv-wide { max-width:75vw; }
 
     #bgrv-header { display:flex;align-items:center;justify-content:space-between;
         padding:14px 18px;background:var(--afims-heading-fill, #000E3E);flex-shrink:0; }
@@ -139,12 +140,25 @@
         padding:5px 10px;font-size:12px;color:var(--afims-text, #1A1B21);
         border-bottom:1px solid var(--afims-border, #E4ECF2); }
     .bgrv-cob-list .bgrv-cob-row:last-child { border-bottom:none; }
-    .bgrv-cob-program { font-weight:700;font-size:13px;background:var(--afims-surface-subtle, #F4F7FA); }
+    .bgrv-cob-program { font-weight:700;font-size:13px;background:var(--afims-surface-subtle, #F4F7FA);
+        cursor:pointer;user-select:none; }
     .bgrv-cob-total { font-weight:700;font-size:13px;border-top:2px solid var(--afims-border, #E4ECF2);
         background:color-mix(in srgb, var(--afims-heading-fill, #000E3E) 6%, var(--afims-surface, #fff));
         color:var(--afims-heading-fill, #000E3E); }
-    .bgrv-cob-subprogram { padding-left:28px;font-weight:600;background:color-mix(in srgb, var(--afims-surface-subtle, #F4F7FA) 50%, transparent); }
+    .bgrv-cob-subprogram { padding-left:28px;font-weight:600;background:color-mix(in srgb, var(--afims-surface-subtle, #F4F7FA) 50%, transparent);
+        cursor:pointer;user-select:none; }
     .bgrv-cob-project { padding-left:52px;color:var(--afims-text-muted, #62657E); }
+    /* Program/Sub-Program rows are collapse/expand toggles too (bgrv_toggleDisclosure), same mechanics as the
+       unit/group ones below — chevron prefixing the row's own label, rotating via .open on the row itself,
+       inheriting that row's text color (currentColor) rather than a fixed one like the unit/group chevrons,
+       since Program and Sub-Program rows don't share one text color between the folded and byUnit views. */
+    .bgrv-cob-row-label { display:flex;align-items:center;gap:6px;min-width:0; }
+    .bgrv-cob-disclosure-chevron { flex-shrink:0;width:11px;height:11px;color:currentColor;transition:transform .22s ease; }
+    .bgrv-cob-row.open .bgrv-cob-disclosure-chevron { transform:rotate(90deg); }
+    .bgrv-cob-program-body,
+    .bgrv-cob-subprogram-body { overflow:hidden;transition:max-height .22s ease; }
+    .bgrv-cob-program-body.bgrv-collapsed,
+    .bgrv-cob-subprogram-body.bgrv-collapsed { max-height:0; }
     /* Three amount columns (Proposed / Adjustment / Revised) kept at a fixed width so they line up
        across every row's indent level, and under the column-header row (.bgrv-cob-col-headers below). */
     .bgrv-cob-amts { display:flex;align-items:center;gap:16px;flex-shrink:0; }
@@ -157,6 +171,9 @@
     .bgrv-cob-col-headers { background:var(--afims-heading-fill, #000E3E);position:sticky;top:0;z-index:1; }
     .bgrv-cob-amt-label { font-size:10px;font-weight:700;color:var(--afims-text-disabled, #A9AAB8);
         text-transform:uppercase;letter-spacing:.04em;min-width:96px;text-align:right; }
+    /* The "CAPITAL OUTLAY" / "CORPORATE OPERATING EXPENDITURE" section label, moved into the same
+       blue bar as the amount column headers so it lines up with them on one row. */
+    .bgrv-cob-sec-label { font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:.05em; }
 
     /* COB mode with options.showFund (the FMD's Budget Proposal page): the Type(s) of Fund of a Project, after its name. */
     .bgrv-cob-fund-wrap { display:inline-flex;align-items:center;flex-wrap:wrap;gap:4px;margin-left:10px;vertical-align:middle; }
@@ -169,17 +186,38 @@
     #bgrv-card.bgrv-wide .bgrv-cob-fund-none { font-size:12px; }
 
     /* COB mode, one block per originating unit (options.byUnit): a unit row, then that unit's own Program / Sub-Program / Project rows,
-       indented one level further than in the folded outline. */
+       indented one level further than in the folded outline. The unit row is an accordion toggle (bgrv_toggleUnit) for its own
+       nested rows — collapsed by default so a long list of units is scannable; its chevron rotates to show the current state. */
     .bgrv-cob-unit { align-items:flex-start;font-weight:700;font-size:13px;border-top:2px solid var(--afims-border, #E4ECF2);
-        background:color-mix(in srgb, var(--afims-heading-fill, #000E3E) 7%, #fff); }
+        background:color-mix(in srgb, var(--afims-heading-fill, #000E3E) 7%, #fff);cursor:pointer;user-select:none; }
     .bgrv-cob-list > .bgrv-cob-unit:first-child { border-top:none; }
+    .bgrv-cob-unit-label { display:flex;align-items:flex-start;gap:6px; }
+    .bgrv-cob-unit-chevron { flex-shrink:0;width:12px;height:12px;margin-top:3px;color:var(--afims-heading-fill, #000E3E);transition:transform .22s ease; }
+    .bgrv-cob-unit.open .bgrv-cob-unit-chevron { transform:rotate(90deg); }
     .bgrv-cob-unit small { display:block;margin-top:2px;font-size:11px;font-weight:500;color:var(--afims-text-muted, #62657E); }
     .bgrv-cob-unit-code { font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600;padding:1px 6px;border-radius:5px;
         background:var(--afims-surface, #FFFFFF);color:var(--afims-text-muted, #62657E); }
     .bgrv-cob-unit-meta { display:flex;align-items:center;gap:10px;flex-shrink:0; }
-    #bgrv-card .bgrv-cob-nest .bgrv-cob-program { padding-left:28px; }
-    #bgrv-card .bgrv-cob-nest .bgrv-cob-subprogram { padding-left:52px; }
-    #bgrv-card .bgrv-cob-nest .bgrv-cob-project { padding-left:76px; }
+    /* Animated open/close (bgrv_toggleUnit sets an explicit pixel max-height to transition from/to,
+       then releases it back to the CSS default once the transition ends — see that function for why). */
+    .bgrv-cob-nest { overflow:hidden;transition:max-height .22s ease; }
+    .bgrv-cob-nest.bgrv-collapsed { max-height:0; }
+    /* Inside a unit's nest, Programs/COE are grouped under their own "CAPITAL OUTLAY" / "CORPORATE
+       OPERATING EXPENDITURE" label (bgrv-cob-group-label) one level up from Program, so Programs/PS/MOOE
+       read as children of that label rather than siblings of the unit row. The label is itself a collapse/
+       expand toggle (bgrv_toggleGroup) for just its own Program or PS/MOOE rows (bgrv-cob-group-body) —
+       collapsed by default, same animated max-height approach as the unit row's own bgrv-cob-nest.
+       Their padding-left overrides live further down (after #bgrv-card.bgrv-wide .bgrv-cob-row) — see the
+       comment there for why: the COB modal is always .bgrv-wide, and that rule's own padding-left would
+       otherwise win the specificity tie against these by coming later in the stylesheet. */
+    .bgrv-cob-group-label { font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.04em;
+        color:var(--afims-heading-fill, #000E3E);background:color-mix(in srgb, var(--afims-heading-fill, #000E3E) 5%, #fff);
+        cursor:pointer;user-select:none; }
+    .bgrv-cob-group-label-text { display:flex;align-items:center;gap:6px; }
+    .bgrv-cob-group-chevron { flex-shrink:0;width:11px;height:11px;color:var(--afims-heading-fill, #000E3E);transition:transform .22s ease; }
+    .bgrv-cob-group-label.open .bgrv-cob-group-chevron { transform:rotate(90deg); }
+    .bgrv-cob-group-body { overflow:hidden;transition:max-height .22s ease; }
+    .bgrv-cob-group-body.bgrv-collapsed { max-height:0; }
 
     /* COB mode only — larger text to match the wider modal (.bgrv-wide, see #bgrv-card above). */
     #bgrv-card.bgrv-wide .bgrv-hdr-title { font-size:17px; }
@@ -192,8 +230,24 @@
     #bgrv-card.bgrv-wide .bgrv-cob-total { font-size:15px; }
     #bgrv-card.bgrv-wide .bgrv-cob-subprogram { padding-left:32px; }
     #bgrv-card.bgrv-wide .bgrv-cob-project { padding-left:58px; }
+    /* These come LAST on purpose, after every rule above that also sets padding-left: the folded
+       (non-byUnit) view's .bgrv-wide subprogram/project overrides just above are tied in specificity
+       (one #id + two classes) with these nest-scoped ones for a row that's inside BOTH .bgrv-wide AND
+       .bgrv-cob-nest (i.e. every byUnit row) — so whichever is declared later wins that tie, and it must
+       be these, or byUnit's deeper indent would collapse back down to the folded view's shallower one.
+       Same tie, for the same reason, against #bgrv-card.bgrv-wide .bgrv-cob-row above (hence also after
+       that). The group-label selector is padded out to #id + two classes to match that specificity (plain
+       .bgrv-cob-group-label alone, with neither, would always lose regardless of order). */
+    #bgrv-card .bgrv-cob-list .bgrv-cob-group-label { padding-left:28px; }
+    #bgrv-card .bgrv-cob-nest .bgrv-cob-program { padding-left:72px; }
+    #bgrv-card .bgrv-cob-nest .bgrv-cob-subprogram { padding-left:96px; }
+    #bgrv-card .bgrv-cob-nest .bgrv-cob-project { padding-left:120px; }
     #bgrv-card.bgrv-wide .bgrv-cob-amt { font-size:14px;min-width:120px; }
     #bgrv-card.bgrv-wide .bgrv-cob-amt-label { font-size:11px;min-width:120px; }
+    #bgrv-card.bgrv-wide .bgrv-cob-sec-label { font-size:13px; }
+    #bgrv-card.bgrv-wide .bgrv-cob-group-label { font-size:12px; }
+    #bgrv-card.bgrv-wide .bgrv-cob-unit-chevron,
+    #bgrv-card.bgrv-wide .bgrv-cob-group-chevron { width:14px;height:14px; }
     .bgrv-cob-empty { font-style:italic; }
 </style>
 
@@ -350,7 +404,7 @@ async function bgrv_openCobModal(fiscalYr = '', extraParams = {}, options = {}) 
     $bgrv('bgrv-hdr-tag').textContent = 'Corporate Operating Budget (COB)';
     const what = byUnit ? 'All Originating Units' : 'All Programs';
     $bgrv('bgrv-modal-title').textContent = fiscalYr ? `${what} — FY ${bgr_esc(fiscalYr)}` : `${what} — All Years`;
-    $bgrv('bgrv-sec-hd-label').textContent = byUnit ? 'Originating Units' : 'CO';
+    $bgrv('bgrv-sec-hd-label').textContent = byUnit ? 'Originating Units' : 'CAPITAL OUTLAY';
     $bgrv('bgrv-sec-hd-total').textContent = '';
     $bgrv('bgrv-header-total-val').textContent = '—';
     $bgrv('bgrv-header-total-adjustment-val').textContent = '—';
@@ -394,9 +448,12 @@ async function bgrv_openCobModal(fiscalYr = '', extraParams = {}, options = {}) 
                 grandTotal.revised += c.grandTotal.revised;
                 programCount += c.programs.length; subProgramCount += c.subProgramCount; projectCount += c.projectCount; coeLineItemCount += c.coeLineItemCount;
                 const where = [h.rc_parent_name, h.budget_reference_number].filter(Boolean).map(bgr_esc).join(' · ');
-                return `<div class="bgrv-cob-row bgrv-cob-unit">
-                            <span>${bgr_esc(h.rc_name || h.rc_id || '—')}${h.rc_code ? ` <code class="bgrv-cob-unit-code">${bgr_esc(h.rc_code)}</code>` : ''}
-                                ${where ? `<small>${where}</small>` : ''}</span>
+                return `<div class="bgrv-cob-row bgrv-cob-unit" onclick="bgrv_toggleUnit(this)">
+                            <span class="bgrv-cob-unit-label">
+                                <svg class="bgrv-cob-unit-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+                                <span>${bgr_esc(h.rc_name || h.rc_id || '—')}${h.rc_code ? ` <code class="bgrv-cob-unit-code">${bgr_esc(h.rc_code)}</code>` : ''}
+                                    ${where ? `<small>${where}</small>` : ''}</span>
+                            </span>
                             <span class="bgrv-cob-unit-meta">${bgr_statusBadge(h.status_name, h.status_color)}
                                 <span class="bgrv-cob-amts">
                                     <span class="bgrv-cob-amt">${bgr_fmtMoney(c.grandTotal.proposed)}</span>
@@ -404,7 +461,7 @@ async function bgrv_openCobModal(fiscalYr = '', extraParams = {}, options = {}) 
                                     <span class="bgrv-cob-amt">${bgr_fmtMoney(c.grandTotal.revised)}</span>
                                 </span></span>
                         </div>
-                        <div class="bgrv-cob-nest">${(c.programsHtml + c.coeHtml) || '<div class="bgrv-cob-row bgrv-cob-project bgrv-cob-empty">No programs added yet.</div>'}</div>`;
+                        <div class="bgrv-cob-nest bgrv-collapsed">${bgrv_cobUnitNestHtml(c)}</div>`;
             }).join('');
 
             $bgrv('bgrv-header-total-val').textContent = bgr_fmtMoney(grandTotal.proposed);
@@ -426,21 +483,23 @@ async function bgrv_openCobModal(fiscalYr = '', extraParams = {}, options = {}) 
         $bgrv('bgrv-header-total-adjustment-val').textContent = bgr_fmtMoney(c.grandTotal.adjustment);
         $bgrv('bgrv-header-total-revised-val').textContent = bgr_fmtMoney(c.grandTotal.revised);
 
-        // Two independent tables: "CO" (the static header above #bgrv-panels, renamed from
-        // "Programs") for the Program -> Sub-Program -> Project tree, and a separate "COE" section
-        // (its own header + table, built here since the static one above is CO's) for the PS/MOOE
-        // rows. Either can be empty on its own without affecting the other.
+        // Two independent tables: "CAPITAL OUTLAY" (the Program -> Sub-Program -> Project tree) and
+        // "CORPORATE OPERATING EXPENDITURE" (the PS/MOOE rows). Either can be empty on its own without
+        // affecting the other. Their section labels sit inside each table's own blue column-header bar
+        // (bgrv_cobColumnHeaderHtml), aligned with the amount columns, rather than as a heading above it —
+        // the static #bgrv-sec-hd-label row above #bgrv-panels is left blank here, keeping just its counts.
+        $bgrv('bgrv-sec-hd-label').textContent = '';
         $bgrv('bgrv-sec-hd-total').textContent =
             `${c.programs.length} program(s) · ${c.subProgramCount} sub-program(s) · ${c.projectCount} project(s)`;
         const coTableHtml = c.programsHtml
-            ? `<div class="bgrv-cob-list">${bgrv_cobColumnHeaderHtml()}${c.programsHtml}${bgrv_cobTotalRowHtml(c.coTotal)}</div>`
+            ? `<div class="bgrv-cob-list">${bgrv_cobColumnHeaderHtml('CAPITAL OUTLAY')}${c.programsHtml}${bgrv_cobTotalRowHtml(c.coTotal)}</div>`
             : '';
         const coeSectionHtml = c.coeLineItemCount
             ? `<p class="bgrv-sec-hd" style="margin-top:22px;">
-                    <span>COE</span>
+                    <span></span>
                     <span class="bgrv-sec-hd-total">${c.coeLineItemCount} line item(s)</span>
                </p>
-               <div class="bgrv-cob-list">${bgrv_cobColumnHeaderHtml()}${c.coeHtml}${bgrv_cobTotalRowHtml(c.coeTotal)}</div>`
+               <div class="bgrv-cob-list">${bgrv_cobColumnHeaderHtml('CORPORATE OPERATING EXPENDITURE')}${c.coeHtml}${bgrv_cobTotalRowHtml(c.coeTotal)}</div>`
             : '';
         $bgrv('bgrv-panels').innerHTML = coTableHtml + coeSectionHtml;
         $bgrv('bgrv-empty').style.display = c.programs.length ? 'none' : '';
@@ -462,7 +521,9 @@ async function bgrv_openCobModal(fiscalYr = '', extraParams = {}, options = {}) 
 // Projects and the totals still count every occurrence.
 // Each row/total carries THREE amounts: proposed (budget_line_items.proposed_amount, what the office asked for), adjustment
 // (budget_line_items.adjustment — the net adjustment applied by an approved Budget Revision; 0 until one is approved), and
-// revised (budget_line_items.revised_amount — a plain app-maintained figure, not derived from the other two).
+// revised — proposed PLUS adjustment (adjustment already carries its own sign: negative for a cut, positive
+// for an increase), computed here rather than read from budget_line_items.revised_amount (that column is a
+// separately app-maintained figure used elsewhere, e.g. Budget Revision's own screens; this view derives its own).
 // showFund: each Project row also lists the Type(s) of Fund of its line items (set by Budget Processing; a Project can have several, and
 // none before it has been processed).
 // Same account_code-prefix rule DisbursementVoucherService::deriveExpenseClass() uses — chart_of_accounts
@@ -497,7 +558,7 @@ function bgrv_cobCollect(headers, showFund = false) {
         (h.coe_line_items || []).forEach(li => {
             const proposed   = Number(li.proposed_amount) || 0;
             const adjustment = Number(li.adjustment) || 0;
-            const revised    = Number(li.revised_amount) || 0;
+            const revised    = proposed + adjustment;
             grandTotal.proposed += proposed;
             grandTotal.adjustment += adjustment;
             grandTotal.revised += revised;
@@ -532,7 +593,7 @@ function bgrv_cobCollect(headers, showFund = false) {
             (prog.projects || []).forEach(p => {
                 const proposed   = (p.line_items || []).reduce((sum, li) => sum + (Number(li.proposed_amount) || 0), 0);
                 const adjustment = (p.line_items || []).reduce((sum, li) => sum + (Number(li.adjustment) || 0), 0);
-                const revised    = (p.line_items || []).reduce((sum, li) => sum + (Number(li.revised_amount) || 0), 0);
+                const revised    = proposed + adjustment;
                 // distinct Types of Fund across the project's line items, in line-item order
                 const funds = [...new Set((p.line_items || []).map(li => String(li.type_of_fund_name ?? '').trim()).filter(Boolean))];
                 projByProgram.get(prog.program_code).push({
@@ -565,15 +626,18 @@ function bgrv_cobCollect(headers, showFund = false) {
         const progSubPrograms = Array.from(subByProgram.get(prog.program_code).values());
         const progProjects    = projByProgram.get(prog.program_code) || [];
         const totals = programTotals.get(prog.program_code) || { proposed: 0, adjustment: 0, revised: 0 };
-        return `<div class="bgrv-cob-row bgrv-cob-program">
-                    <span>${bgr_esc(prog.program_code)} — ${bgr_esc(prog.program_name)}</span>
+        return `<div class="bgrv-cob-row bgrv-cob-program" onclick="bgrv_toggleDisclosure(this, 'bgrv-cob-program-body')">
+                    <span class="bgrv-cob-row-label">
+                        <svg class="bgrv-cob-disclosure-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+                        ${bgr_esc(prog.program_code)} — ${bgr_esc(prog.program_name)}
+                    </span>
                     <span class="bgrv-cob-amts">
                         <span class="bgrv-cob-amt">${bgr_fmtMoney(totals.proposed)}</span>
                         <span class="bgrv-cob-amt">${bgr_fmtMoney(totals.adjustment)}</span>
                         <span class="bgrv-cob-amt">${bgr_fmtMoney(totals.revised)}</span>
                     </span>
-                </div>`
-            + bgrv_cobRowsHtml(progSubPrograms, progProjects, showFund);
+                </div>
+                <div class="bgrv-cob-program-body bgrv-collapsed">${bgrv_cobRowsHtml(progSubPrograms, progProjects, showFund)}</div>`;
     }).join('');
     const coeHtml = bgrv_cobCoeClassRowsHtml(coeByClass);
 
@@ -588,6 +652,27 @@ function bgrv_cobCollect(headers, showFund = false) {
     const coeTotal = sumAmts(Object.values(coeByClass));
 
     return { programs, subProgramCount, projectCount, coeLineItemCount, grandTotal, coTotal, coeTotal, programsHtml, coeHtml };
+}
+
+// bgrv_openCobModal (options.byUnit only): one originating unit's nested content — its Programs grouped
+// under a "CAPITAL OUTLAY" label and its PS/MOOE rows grouped under a "CORPORATE OPERATING EXPENDITURE"
+// label (bgrv-cob-group-label; see that CSS rule for the deeper indent this gives their children), mirroring
+// the two separate CO/COE tables bgrv_openCobModal's folded (non-byUnit) view builds. Each label is its own
+// collapse/expand toggle (bgrv_toggleGroup) for just its own rows (bgrv-cob-group-body), collapsed by
+// default — opening the unit row reveals the labels, not the rows underneath them, until clicked. Either
+// label is skipped when that unit has nothing of its own kind; both skipped (header has neither) falls
+// back to the same "No programs added yet." placeholder the folded view's empty state uses.
+function bgrv_cobUnitNestHtml(c) {
+    const groupHtml = (label, bodyHtml) => `<div class="bgrv-cob-row bgrv-cob-group-label" onclick="bgrv_toggleGroup(this)">
+            <span class="bgrv-cob-group-label-text">
+                <svg class="bgrv-cob-group-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+                ${label}
+            </span>
+        </div>
+        <div class="bgrv-cob-group-body bgrv-collapsed">${bodyHtml}</div>`;
+    const coHtml  = c.programs.length      ? groupHtml('CAPITAL OUTLAY', c.programsHtml) : '';
+    const coeHtml = c.coeLineItemCount     ? groupHtml('CORPORATE OPERATING EXPENDITURE', c.coeHtml) : '';
+    return (coHtml + coeHtml) || '<div class="bgrv-cob-row bgrv-cob-project bgrv-cob-empty">No programs added yet.</div>';
 }
 
 // COE's own table rows — PS and MOOE, each a top-level row (same style as a Program row, since
@@ -622,12 +707,14 @@ function bgrv_cobTotalRowHtml(totals) {
             </div>`;
 }
 
-// bgrv_openCobModal: the "Proposed Amount" / "Adjustment Amount" / "Revised Amount" column-header row shown above the outline.
-function bgrv_cobColumnHeaderHtml() {
+// bgrv_openCobModal: the "Approved Amount" / "Adjustment Amount" / "Revised Amount" column-header row shown above the outline.
+// label: the table's own section label ("CAPITAL OUTLAY" / "CORPORATE OPERATING EXPENDITURE"), shown on the
+// same blue bar, aligned with those amount columns instead of as a separate heading above it.
+function bgrv_cobColumnHeaderHtml(label = '') {
     return `<div class="bgrv-cob-row bgrv-cob-col-headers">
-                <span></span>
+                <span class="bgrv-cob-sec-label">${bgr_esc(label)}</span>
                 <span class="bgrv-cob-amts">
-                    <span class="bgrv-cob-amt-label">Proposed Amount</span>
+                    <span class="bgrv-cob-amt-label">Approved Amount</span>
                     <span class="bgrv-cob-amt-label">Adjustment Amount</span>
                     <span class="bgrv-cob-amt-label">Revised Amount</span>
                 </span>
@@ -698,8 +785,7 @@ function bgrv_subProgramPanelHtml(label, projectsList, openByDefault, projectAmo
     </div>`;
 }
 
-// Exclusive accordion, scoped to the clicked panel's own immediate list
-// (bgrv_openModal only — bgrv_openCobModal has nothing collapsible).
+// Exclusive accordion, scoped to the clicked panel's own immediate list (bgrv_openModal only).
 function bgrv_togglePanel(headerEl) {
     const panel = headerEl.closest('.bgrv-panel');
     const list  = headerEl.closest('.bgrv-panel-list');
@@ -710,6 +796,81 @@ function bgrv_togglePanel(headerEl) {
             p.classList.remove('open');
         }
     });
+}
+
+// bgrv_openCobModal (options.byUnit only): expands rowEl's next sibling — its .bgrv-cob-nest (the unit
+// row) or .bgrv-cob-group-body (the "CAPITAL OUTLAY" / "CORPORATE OPERATING EXPENDITURE" group label
+// row) — identified by nestClass, since both are collapsible the same way. Animated via max-height: since
+// the sibling's natural height isn't known in CSS (a variable number of rows inside it), this pins an
+// explicit pixel value to transition from — 0 -> scrollHeight — then, once the transition ends, releases
+// max-height back to the CSS default so it isn't stuck at a stale pixel value if the content's own height
+// changes. The `e.target !== nest` check matters because a group-body nested inside a unit's own nest can
+// be animating at the same time — without it, a transitionend bubbling up from that inner element would be
+// mistaken for this element's own.
+function bgrv_expandDisclosure(rowEl, nestClass) {
+    const nest = rowEl.nextElementSibling;
+    if (!nest || !nest.classList.contains(nestClass) || !nest.classList.contains('bgrv-collapsed')) return;
+    rowEl.classList.add('open');
+    nest.classList.remove('bgrv-collapsed');
+    const target = nest.scrollHeight;
+    nest.style.maxHeight = '0px';
+    nest.offsetHeight;   // force reflow so the 0px start is applied before animating to target
+    nest.style.maxHeight = target + 'px';
+    nest.addEventListener('transitionend', function onEnd(e) {
+        if (e.target !== nest || e.propertyName !== 'max-height') return;
+        nest.style.maxHeight = '';
+        nest.removeEventListener('transitionend', onEnd);
+    });
+}
+
+// The reverse of bgrv_expandDisclosure — same pin-then-animate-to-0 approach, re-adding .bgrv-collapsed once done.
+function bgrv_collapseDisclosure(rowEl, nestClass) {
+    const nest = rowEl.nextElementSibling;
+    if (!nest || !nest.classList.contains(nestClass) || nest.classList.contains('bgrv-collapsed')) return;
+    rowEl.classList.remove('open');
+    const target = nest.scrollHeight;
+    nest.style.maxHeight = target + 'px';
+    nest.offsetHeight;   // force reflow so the pinned height is applied before animating to 0
+    nest.style.maxHeight = '0px';
+    nest.addEventListener('transitionend', function onEnd(e) {
+        if (e.target !== nest || e.propertyName !== 'max-height') return;
+        nest.classList.add('bgrv-collapsed');
+        nest.style.maxHeight = '';
+        nest.removeEventListener('transitionend', onEnd);
+    });
+}
+
+// Exclusive accordion across every originating unit in the same outline (like bgrv_togglePanel, but
+// scoped to the whole .bgrv-cob-list rather than one panel's immediate list): opening a unit collapses
+// whichever other unit was open, so only one originating unit's Programs/Projects are expanded at a time.
+function bgrv_toggleUnit(rowEl) {
+    if (rowEl.classList.contains('open')) {
+        bgrv_collapseDisclosure(rowEl, 'bgrv-cob-nest');
+        return;
+    }
+    rowEl.closest('.bgrv-cob-list')?.querySelectorAll('.bgrv-cob-unit.open').forEach(other => {
+        if (other !== rowEl) bgrv_collapseDisclosure(other, 'bgrv-cob-nest');
+    });
+    bgrv_expandDisclosure(rowEl, 'bgrv-cob-nest');
+}
+
+// Independent (non-exclusive) collapse/expand toggle for rowEl's own next-sibling disclosure, identified
+// by nestClass — used wherever opening one row has no business closing a sibling of the same kind: a
+// unit's "CAPITAL OUTLAY" / "CORPORATE OPERATING EXPENDITURE" group labels (bgrv-cob-group-body), a
+// Program row's own Sub-Programs (bgrv-cob-program-body), and a Sub-Program row's own Projects
+// (bgrv-cob-subprogram-body). Unlike bgrv_toggleUnit (exclusive across every unit in the outline), a
+// reviewer may want several Programs — or several Sub-Programs under different Programs — open at once.
+function bgrv_toggleDisclosure(rowEl, nestClass) {
+    if (rowEl.classList.contains('open')) {
+        bgrv_collapseDisclosure(rowEl, nestClass);
+    } else {
+        bgrv_expandDisclosure(rowEl, nestClass);
+    }
+}
+
+// A unit's own "CAPITAL OUTLAY" / "CORPORATE OPERATING EXPENDITURE" group label.
+function bgrv_toggleGroup(rowEl) {
+    bgrv_toggleDisclosure(rowEl, 'bgrv-cob-group-body');
 }
 
 // bgrv_openCobModal (showFund): "Type of Fund: [chip] [chip]" for a Project row; "—" while none of its line items has one yet.
@@ -764,14 +925,18 @@ function bgrv_cobRowsHtml(subPrograms, projects, showFund = false) {
                     </span>
                 </div>`).join('')
             : '<div class="bgrv-cob-row bgrv-cob-project bgrv-cob-empty">No projects yet.</div>';
-        return `<div class="bgrv-cob-row bgrv-cob-subprogram">
-                    <span>${g.label}</span>
+        return `<div class="bgrv-cob-row bgrv-cob-subprogram" onclick="bgrv_toggleDisclosure(this, 'bgrv-cob-subprogram-body')">
+                    <span class="bgrv-cob-row-label">
+                        <svg class="bgrv-cob-disclosure-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+                        ${g.label}
+                    </span>
                     <span class="bgrv-cob-amts">
                         <span class="bgrv-cob-amt">${bgr_fmtMoney(subTotal.proposed)}</span>
                         <span class="bgrv-cob-amt">${bgr_fmtMoney(subTotal.adjustment)}</span>
                         <span class="bgrv-cob-amt">${bgr_fmtMoney(subTotal.revised)}</span>
                     </span>
-                </div>${projRows}`;
+                </div>
+                <div class="bgrv-cob-subprogram-body bgrv-collapsed">${projRows}</div>`;
     }).join('');
 }
 </script>
