@@ -167,8 +167,8 @@ $_ampf_api = $_amp_api ?? \PHPMaker2024\FIMS\Config('API.FIMS_URL');
             <div id="amp-body">
                 <input type="hidden" id="amp-mode" value="add">
                 <input type="hidden" id="amp-orig-po" value="">
-                <div id="amp-edit-note"><strong>Editing:</strong> only the IAR number, the Sales Invoice details, the DR number and date, and the items can be changed.
-                    The PO and the account entries are locked — to record another delivery, add a new record.</div>
+                <div id="amp-edit-note"><strong>Editing:</strong> only the Sales Invoice # and date, and the items' description, serial no. and property no. can be changed.
+                    Everything else is locked — to record another delivery, add a new record.</div>
 
                 <!-- ── Purchase Order (picked from the Budget Allocation) ── -->
                 <div class="amp-section">
@@ -782,11 +782,13 @@ function amp_drError() {
     const itemRows = [...document.querySelectorAll('#amp-items .amp-itm')];
     for (let i = 0; i < itemRows.length; i++) {
         if (!itemRows[i].querySelector('.amp-i-desc').value.trim()) return 'Item ' + (i + 1) + ': the description is required.';
-        if (!((parseFloat(amp_unfmt(itemRows[i].querySelector('.amp-i-amount').value)) || 0) > 0)) return 'Item ' + (i + 1) + ': enter an amount greater than 0.';
+        if (!amp_isEdit() && !((parseFloat(amp_unfmt(itemRows[i].querySelector('.amp-i-amount').value)) || 0) > 0)) return 'Item ' + (i + 1) + ': enter an amount greater than 0.';
     }
-    if (itemRows.length) {
+    if (itemRows.length && !amp_isEdit()) {   // (an edit keeps the stored amounts and categories, so the totals are not compared again)
         const st = amp_itemsState();
-        if (st.have !== st.need) return 'The items total ' + amp_fmtMoney(st.have / 100) + ' but must equal ' + amp_fmtMoney(st.need / 100) + '.';
+        if (st.bad !== undefined) {
+            return 'Items of ' + (st.bad || '(no category)') + ' total ' + amp_fmtMoney((st.haveBy.get(st.bad) || 0) / 100) + ' but must equal ' + amp_fmtMoney((st.needBy.get(st.bad) || 0) / 100) + '.';
+        }
     }
     const avail = amp_availableBalance(), total = amp_totals().total;
     if (!amp_isEdit() && avail !== null && Math.round(total * 100) > Math.round(avail * 100)) {   // an edit never changes the total
@@ -824,7 +826,8 @@ function amp_loadDr(dr = {}) {
     const entries = dr.entries?.length ? dr.entries : [{}];            // a new DR starts with one account row
     entries.forEach(en => amp_addEntry(en));
     document.getElementById('amp-items').innerHTML = '';
-    amp_syncItems(dr.items || []);                           // the DR's saved items (description, serial, property no.) go to the qualifying account rows in order
+    document.querySelectorAll('#amp-entries .amp-ent').forEach(e => { e._hasItem = false; });   // the items are rebuilt below
+    amp_syncItems(dr.items || []);                           // the DR's saved items (description, category, serial, property no.) are shown as saved
     amp_refreshBalance();
 }
 
@@ -857,32 +860,73 @@ function amp_amtOf(entEl) { return parseFloat(amp_unfmt(entEl.querySelector('.am
 function amp_syncItems(saved) {
     const box = document.getElementById('amp-item-box'), wrap = document.getElementById('amp-items');
     if (!box || !wrap) return;
-    const ents = [...document.querySelectorAll('#amp-entries .amp-ent')].filter(r => amp_amtOf(r) >= AMP_ITEM_MIN_AMOUNT);
-    [...wrap.querySelectorAll('.amp-itm')].forEach(r => { if (!ents.includes(r._ent)) r.remove(); });
-    ents.forEach((ent, k) => {
-        let row = [...wrap.querySelectorAll('.amp-itm')].find(r => r._ent === ent);
-        if (!row) row = amp_addItem(saved && saved[k] ? saved[k] : {}, ent);
-        row.querySelector('.amp-i-acctlbl').textContent = ent.querySelector('.amp-f-acct').value || '(choose an account code)';
-        if (!row._edited) row.querySelector('.amp-i-amount').value = amp_fmtMoney(amp_amtOf(ent));   // the amount follows the account row until the user edits it
-        wrap.appendChild(row);                               // keep the lines in the order of the account rows
+    const all  = [...document.querySelectorAll('#amp-entries .amp-ent')];
+    const ents = all.filter(r => amp_amtOf(r) >= AMP_ITEM_MIN_AMOUNT);
+    // an account row that stopped qualifying (amount lowered / row removed) loses the item that was created for it
+    [...wrap.querySelectorAll('.amp-itm')].forEach(r => { if (r._ent && !ents.includes(r._ent)) r.remove(); });
+    all.forEach(e => { if (!ents.includes(e)) e._hasItem = false; });
+    if (saved && saved.length) {
+        // loading a saved DR: its items are shown as saved (each with its own category), not tied to the account rows
+        ents.forEach(e => { e._hasItem = true; });
+        saved.forEach((it, k) => amp_addItem({ ...it, account_code: it.account_code || (ents[k] ? ents[k].querySelector('.amp-f-acct').dataset.code : '') }, null));
+    } else {
+        // every qualifying account row gets ONE item, once (a removed or re-categorised item is not created again)
+        // (an edit never creates items: the stored ones are shown as they are)
+        if (!amp_isEdit()) ents.forEach(ent => { if (!ent._hasItem) { ent._hasItem = true; amp_addItem({}, ent); } });
+    }
+    if (amp_isEdit()) {                                      // editing: the items' description, serial no. and property no. can change; the amount and category are locked
+        wrap.querySelectorAll('.amp-itm .amp-i-amount').forEach(i => { i.readOnly = true; i.tabIndex = -1; });
+        wrap.querySelectorAll('.amp-itm select').forEach(s => { s.disabled = true; });
+        wrap.querySelectorAll('.amp-itm .amp-ent-remove').forEach(b => { b.style.visibility = 'hidden'; });
+    }
+    const addBtn = document.getElementById('amp-add-item');
+    if (addBtn) addBtn.style.display = amp_isEdit() ? 'none' : '';
+    [...wrap.querySelectorAll('.amp-itm')].forEach(row => {
+        amp_fillAcctOptions(row.querySelector('.amp-i-acct'), null);
+        if (row._ent && !row._edited) row.querySelector('.amp-i-amount').value = amp_fmtMoney(amp_amtOf(row._ent));   // the amount follows its account row until the user edits it
     });
-    // saved items beyond the account rows, and items the user added, come after them
-    if (saved) saved.slice(ents.length).forEach(it => amp_addItem(it, null));
-    [...wrap.querySelectorAll('.amp-itm')].filter(r => !r._ent).forEach(r => wrap.appendChild(r));
     box.style.display = ents.length ? '' : 'none';
     amp_itemsTotals();
 }
-/* items total vs the total of the account rows of 50,000 or more (cents) */
+/* The accounts that need items (the account rows of 50,000 or more): code → label. An additional item picks one of these as its category. */
+function amp_qualAccounts() {
+    const m = new Map();
+    document.querySelectorAll('#amp-entries .amp-ent').forEach(r => {
+        const code = r.querySelector('.amp-f-acct').dataset.code;
+        if (code && amp_amtOf(r) >= AMP_ITEM_MIN_AMOUNT && !m.has(code)) m.set(code, r.querySelector('.amp-f-acct').value);
+    });
+    return m;
+}
+function amp_fillAcctOptions(sel, pref) {
+    if (!sel) return;
+    const q = amp_qualAccounts(), sig = [...q.keys()].join('|'), cur = pref || sel.value;
+    if (sel.dataset.sig !== sig) {                            // only rebuilt when the accounts changed (keeps an open list stable)
+        sel.innerHTML = [...q.entries()].map(([c, l]) => `<option value="${amp_attrEsc(c)}">${amp_textEsc(l)}</option>`).join('');
+        sel.dataset.sig = sig;
+    }
+    sel.value = q.has(cur) ? cur : ([...q.keys()][0] || '');
+}
+/* the account (category) an item belongs to: its account row's, or the one picked on an additional item */
+function amp_itemAcct(r) { return r.querySelector('.amp-i-acct')?.value || ''; }
+/* items vs the account rows of 50,000 or more, in total and PER ACCOUNT (cents): the items of an account must add up to that account's amount */
 function amp_itemsState() {
-    const need = [...document.querySelectorAll('#amp-entries .amp-ent')].reduce((s, r) => s + (amp_amtOf(r) >= AMP_ITEM_MIN_AMOUNT ? Math.round(amp_amtOf(r) * 100) : 0), 0);
-    const have = [...document.querySelectorAll('#amp-items .amp-itm')].reduce((s, r) => s + Math.round((parseFloat(amp_unfmt(r.querySelector('.amp-i-amount').value)) || 0) * 100), 0);
-    return { need, have };
+    const need = new Map(), have = new Map();
+    document.querySelectorAll('#amp-entries .amp-ent').forEach(r => {
+        const code = r.querySelector('.amp-f-acct').dataset.code || '', c = Math.round(amp_amtOf(r) * 100);
+        if (amp_amtOf(r) >= AMP_ITEM_MIN_AMOUNT) need.set(code, (need.get(code) || 0) + c);
+    });
+    document.querySelectorAll('#amp-items .amp-itm').forEach(r => {
+        const code = amp_itemAcct(r), c = Math.round((parseFloat(amp_unfmt(r.querySelector('.amp-i-amount').value)) || 0) * 100);
+        have.set(code, (have.get(code) || 0) + c);
+    });
+    const sum = m => [...m.values()].reduce((s, v) => s + v, 0);
+    const bad = [...new Set([...need.keys(), ...have.keys()])].find(c => (need.get(c) || 0) !== (have.get(c) || 0));
+    return { need: sum(need), have: sum(have), needBy: need, haveBy: have, bad };
 }
 function amp_itemsTotals() {
-    const { need, have } = amp_itemsState();
-    const t = document.getElementById('amp-items-total'), n = document.getElementById('amp-items-need');
-    if (t) { t.textContent = amp_fmtMoney(have / 100) || '0.00'; t.style.color = have === need ? '' : '#DC3545'; }
-    if (n) n.textContent = amp_fmtMoney(need / 100) || '0.00';
+    const st = amp_itemsState();
+    const t = document.getElementById('amp-items-total');
+    if (t) { t.textContent = amp_fmtMoney(st.have / 100) || '0.00'; t.style.color = st.bad === undefined ? '' : '#DC3545'; }
 }
 function amp_addItem(it = {}, ent = null) {
     const el  = document.createElement('div');
@@ -891,23 +935,29 @@ function amp_addItem(it = {}, ent = null) {
     const a = Number(it.amount || 0);
     el._edited = a > 0;                                       // a saved amount is kept; a new one follows its account row
     el.innerHTML = `
-        <div class="c c-desc"><div class="amp-i-acctlbl" style="font-size:11px;font-weight:600;color:var(--afims-text-secondary, #5B5E73);margin-bottom:4px;">${ent ? '' : 'Additional item'}</div>
+        <div class="c c-desc"><select class="amp-input amp-i-acct" title="Item category (the account this item's amount belongs to)" style="margin-bottom:6px;"></select>
             <textarea class="amp-input amp-i-desc" rows="2" placeholder="Item description (required)" required>${amp_textEsc(it.description)}</textarea></div>
         <div class="c c-serial"><input type="text" class="amp-input amp-i-serial" maxlength="100" value="${amp_attrEsc(it.serial_no)}"></div>
         <div class="c c-amt"><input type="text" inputmode="decimal" class="amp-input amp-num amp-i-amount" placeholder="0.00" value="${a > 0 ? amp_attrEsc(amp_fmtMoney(a)) : ''}"></div>
         <div class="c c-prop"><input type="text" class="amp-input amp-i-prop" maxlength="100" value="${amp_attrEsc(it.property_no)}"></div>
-        <div class="c c-x">${ent ? '' : '<button type="button" class="amp-link-danger amp-ent-remove" title="Remove item">&times;</button>'}</div>`;
+        <div class="c c-x"><button type="button" class="amp-link-danger amp-ent-remove" title="Remove item">&times;</button></div>`;
     const refresh = () => { amp_itemsTotals(); const save = document.getElementById('amp-save'); if (save) save.disabled = !!amp_drError(); };
     const amt = el.querySelector('.amp-i-amount');
     amt.addEventListener('input', () => { amt.value = amp_liveFmt(amt.value, true); el._edited = true; refresh(); });
     amt.addEventListener('blur', () => { if (amt.value) amt.value = amp_fmtMoney(amp_unfmt(amt.value)); });
     el.querySelector('.amp-i-desc').addEventListener('input', refresh);
     el.querySelector('.amp-ent-remove')?.addEventListener('click', () => { el.remove(); refresh(); });
+    el.querySelector('.amp-i-acct').addEventListener('change', () => { el._ent = null; el._edited = true; refresh(); });   // re-categorised: no longer follows its account row
     document.getElementById('amp-items').appendChild(el);
+    // every item has a category: its account row's for an automatic item, the saved / chosen one otherwise
+    amp_fillAcctOptions(el.querySelector('.amp-i-acct'), (ent ? ent.querySelector('.amp-f-acct').dataset.code : it.account_code) || null);
     return el;
 }
 document.getElementById('amp-add-item')?.addEventListener('click', () => {
     const el = amp_addItem({}, null);
+    // start the new item with what is still unassigned on its category
+    const st = amp_itemsState(), code = amp_itemAcct(el), left = (st.needBy.get(code) || 0) - (st.haveBy.get(code) || 0);
+    if (left > 0) { el.querySelector('.amp-i-amount').value = amp_fmtMoney(left / 100); el._edited = true; }
     amp_itemsTotals();
     el.querySelector('.amp-i-desc').focus();
     const save = document.getElementById('amp-save'); if (save) save.disabled = !!amp_drError();
@@ -927,7 +977,7 @@ function amp_collectDr() {
     };
     if (document.getElementById('amp-item-box').style.display !== 'none') {       // only when the optional items are open
         dr.items = [...document.querySelectorAll('#amp-items .amp-itm')].map(r => ({
-            account_code: r._ent ? (r._ent.querySelector('.amp-f-acct').dataset.code || '') : '',   // the account row the item came from
+            account_code: amp_itemAcct(r),                                                           // the item's category: its account row, or the one picked
             description : r.querySelector('.amp-i-desc').value.trim(),
             serial_no   : r.querySelector('.amp-i-serial').value.trim(),
             amount      : amp_unfmt(r.querySelector('.amp-i-amount').value),
