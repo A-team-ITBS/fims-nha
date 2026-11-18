@@ -150,10 +150,6 @@ $USER_LEVEL_PRIVS = [["{FIMS}audit_logs","-2","0"],
     ["{FIMS}journals-page.php","0","0"],
     ["{FIMS}trial-balance-page.php","-2","0"],
     ["{FIMS}trial-balance-page.php","0","0"],
-    ["{FIMS}balance-sheet-page.php","-2","0"],
-    ["{FIMS}balance-sheet-page.php","0","0"],
-    ["{FIMS}income-statement-page.php","-2","0"],
-    ["{FIMS}income-statement-page.php","0","0"],
     ["{FIMS}budget-prop-page.php","-2","0"],
     ["{FIMS}budget-prop-page.php","0","0"],
     ["{FIMS}notification_reads","-2","0"],
@@ -218,8 +214,10 @@ $USER_LEVEL_PRIVS = [["{FIMS}audit_logs","-2","0"],
     ["{FIMS}payroll-page.php","0","0"],
     ["{FIMS}remittance-page.php","-2","0"],
     ["{FIMS}remittance-page.php","0","0"],
-    ["{FIMS}far-report-page.php","-2","0"],
-    ["{FIMS}far-report-page.php","0","0"]];
+    ["{FIMS}balance-sheet-page.php","-2","0"],
+    ["{FIMS}balance-sheet-page.php","0","0"],
+    ["{FIMS}income-statement-page.php","-2","0"],
+    ["{FIMS}income-statement-page.php","0","0"]];
 
 /**
  * Tables
@@ -296,8 +294,6 @@ $USER_LEVEL_TABLES = [["audit_logs","audit_logs","Audit Logs",false,"{FIMS}",""]
     ["subsidiary-ledger-page.php","subsidiary_ledger_page","Subsidiary Ledger",true,"{FIMS}","SubsidiaryLedgerPage"],
     ["journals-page.php","journals_page","Journals",true,"{FIMS}","JournalsPage"],
     ["trial-balance-page.php","trial_balance_page","Trial Balance",true,"{FIMS}","TrialBalancePage"],
-    ["balance-sheet-page.php","balance_sheet_page","Balance Sheet",true,"{FIMS}","BalanceSheetPage"],
-    ["income-statement-page.php","income_statement_page","Income Statement",true,"{FIMS}","IncomeStatementPage"],
     ["budget-prop-page.php","budget_prop_page","Budget Propose",true,"{FIMS}","BudgetPropPage"],
     ["notification_reads","notification_reads","notification reads",true,"{FIMS}","NotificationReadsList"],
     ["saro-registry-page.php","saro_registry_page","SARO Registry",true,"{FIMS}","SaroRegistryPage"],
@@ -330,4 +326,5 @@ $USER_LEVEL_TABLES = [["audit_logs","audit_logs","Audit Logs",false,"{FIMS}",""]
     ["fidelity-bond-page.php","fidelity_bond_page","Fidelity Bond",true,"{FIMS}","FidelityBondPage"],
     ["payroll-page.php","payroll_page","Payroll Management",true,"{FIMS}","PayrollPage"],
     ["remittance-page.php","remittance_page","Remittance",true,"{FIMS}","RemittancePage"],
-    ["far-report-page.php","far_report_page","FAR Report",true,"{FIMS}","FarReportPage"]];
+    ["balance-sheet-page.php","balance_sheet_page","Balance Sheet",true,"{FIMS}","BalanceSheetPage"],
+    ["income-statement-page.php","income_statement_page","Income Statement",true,"{FIMS}","IncomeStatementPage"]];

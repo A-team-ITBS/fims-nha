@@ -1,4 +1,4 @@
-<ew-language date="2026/11/17" id="en-US" author="e.World Technology Limited">
+<ew-language date="2026/11/18" id="en-US" author="e.World Technology Limited">
   <project>
     <phrase id="bodytitle" value="UAC - User Access Control System" />
     <phrase id="footertext" value="&amp;copy;2024 ITBS Corporation. All rights reserved." />
@@ -102,7 +102,10 @@
       <phrase id="menutext" value="Remittance List (Deductions)" />
     </menu>
     <menu id="763">
-      <phrase id="menutext" value="FAR Report" />
+      <phrase id="menutext" value="Balance Sheet" />
+    </menu>
+    <menu id="764">
+      <phrase id="menutext" value="Income Statement" />
     </menu>
     <menu id="394">
       <phrase id="menutext" value="Ledgers" />
@@ -118,12 +121,6 @@
     </menu>
     <menu id="397">
       <phrase id="menutext" value="Trial Balance" />
-    </menu>
-    <menu id="398">
-      <phrase id="menutext" value="Balance Sheet" />
-    </menu>
-    <menu id="764">
-      <phrase id="menutext" value="Income Statement" />
     </menu>
     <menu id="651">
       <phrase id="menutext" value="Accounts Set-up" />
@@ -1694,12 +1691,6 @@
     <table id="trial_balance_page">
       <phrase id="tblcaption" value="Trial Balance" />
     </table>
-    <table id="balance_sheet_page">
-      <phrase id="tblcaption" value="Balance Sheet" />
-    </table>
-    <table id="income_statement_page">
-      <phrase id="tblcaption" value="Income Statement" />
-    </table>
     <table id="budget_prop_page">
       <phrase id="tblcaption" value="Budget Propose" />
     </table>
@@ -1805,8 +1796,11 @@
     <table id="remittance_page">
       <phrase id="tblcaption" value="Remittance" />
     </table>
-    <table id="far_report_page">
-      <phrase id="tblcaption" value="FAR Report" />
+    <table id="balance_sheet_page">
+      <phrase id="tblcaption" value="Balance Sheet" />
+    </table>
+    <table id="income_statement_page">
+      <phrase id="tblcaption" value="Income Statement" />
     </table>
   </project>
 </ew-language>
