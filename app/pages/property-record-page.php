@@ -844,6 +844,11 @@ function prp_pfParticulars() {
    credits) and can then be edited like the IAR module's pro-forma (account, a debit OR a credit amount, add / remove a row).
    Changing the quarter or the year rebuilds them from the depreciation; changing the book only changes the particulars. */
 let prp_pfState = [], prp_pfAccounts = null;
+/* the depreciation accounts offered first: every expense (+ SL) and accumulated-depreciation code of PRP_JEV_CFG, expense accounts first */
+function prp_pfDepOptions() {
+    const codes = [...new Set([...Object.values(PRP_JEV_CFG).map(c => c.d + (c.sl ? '-' + c.sl : '')), ...Object.values(PRP_JEV_CFG).map(c => c.c)])];
+    return codes.map(code => ({ value: code, label: ((prp_pfAccounts || []).find(a => a.value === code) || {}).label || prp_pfTitles[code] || '' }));
+}
 const prp_num = v => Number(v || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const prp_unfmt = s => parseFloat(String(s || '').replace(/,/g, '')) || 0;
 function prp_pfBuild() {
@@ -864,8 +869,15 @@ function prp_pfRender() {
         const i = Number(el.dataset.i), row = prp_pfState[i], acct = el.querySelector('.prp-pf-acct');
         const d = el.querySelector('.prp-pf-d'), c = el.querySelector('.prp-pf-c');
         // account: type to filter the chart of accounts (loaded once), click one to pick it
-        nhaSearchableSelect(acct, prp_pfAccounts || [], opt => { if (opt) { row.code = opt.value; row.title = opt.label; } acct.value = lbl(row); prp_pfRefresh(); });
-        acct.addEventListener('focus', () => { acct.value = ''; acct.dispatchEvent(new Event('input')); });
+        // With nothing typed the list offers ONLY the depreciation accounts (the expense + accumulated depreciation accounts of PRP_JEV_CFG, like the IAR
+        // module's picker offers the property accounts); once the user types, the whole chart of accounts is searched. These two listeners are added
+        // BEFORE nhaSearchableSelect so the option list is switched before the dropdown draws it.
+        const allOpts = prp_pfAccounts || [];
+        const depOpts = prp_pfDepOptions();
+        const pickList = () => { acct._nhaOptions = acct.value.trim() ? allOpts : depOpts; };
+        acct.addEventListener('focus', () => { acct.value = ''; acct._nhaOptions = depOpts; });     // clicking into the field clears it to start a search
+        acct.addEventListener('input', pickList);
+        nhaSearchableSelect(acct, depOpts, opt => { if (opt) { row.code = opt.value; row.title = opt.label; } acct.value = lbl(row); prp_pfRefresh(); });
         acct.addEventListener('blur', () => setTimeout(() => { acct.value = lbl(row); }, 150));       // half-typed text goes back to the picked account
         // a row is either a debit or a credit: typing in one clears the other
         d.addEventListener('input', () => { row.debit = prp_unfmt(d.value); if (d.value) { c.value = ''; row.credit = 0; } prp_pfRefresh(); });
@@ -932,13 +944,13 @@ function prp_pfRefresh() {
     $prp('prp-pf-tc').textContent = prp_num(sum('credit'));
     if (prp_pfLock) {                                         // already submitted: read-only, it cannot be submitted again
         const b = $prp('prp-pf-submit');
-        b.disabled = true; b.textContent = 'Submitted';
+        b.disabled = true; b.style.display = 'none';           // no Submit button once submitted: only Print JEV is left
         $prp('prp-pf-print').disabled = false;
         $prp('prp-pf-msg').innerHTML = 'Submitted as Journal Entry Voucher <strong>' + prp_esc(prp_pfLock.jev_no) + '</strong>'
             + (prp_pfLock.status ? ' (' + prp_esc(String(prp_pfLock.status).replace(/_/g, ' ').toLowerCase()) + ')' : '') + ' — read-only. <a href="JournalEntryVoucher">Open Journal Entry Vouchers</a>';
         return;
     }
-    $prp('prp-pf-submit').textContent = 'Submit';
+    $prp('prp-pf-submit').style.display = '';
     const err = prp_pfError();
     $prp('prp-pf-msg').textContent = err;
     $prp('prp-pf-submit').disabled = !!err;
