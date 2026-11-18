@@ -521,7 +521,8 @@ async function bgrv_openCobModal(fiscalYr = '', extraParams = {}, options = {}) 
 // Projects and the totals still count every occurrence.
 // Each row/total carries THREE amounts: proposed (budget_line_items.proposed_amount, what the office asked for), adjustment
 // (budget_line_items.adjustment — the net adjustment applied by an approved Budget Revision; 0 until one is approved), and
-// revised (budget_line_items.revised_amount — a plain app-maintained figure, not derived from the other two).
+// revised — proposed minus adjustment, computed here rather than read from budget_line_items.revised_amount (that column
+// is a separately app-maintained figure used elsewhere, e.g. Budget Revision's own screens; this view derives its own).
 // showFund: each Project row also lists the Type(s) of Fund of its line items (set by Budget Processing; a Project can have several, and
 // none before it has been processed).
 // Same account_code-prefix rule DisbursementVoucherService::deriveExpenseClass() uses — chart_of_accounts
@@ -556,7 +557,7 @@ function bgrv_cobCollect(headers, showFund = false) {
         (h.coe_line_items || []).forEach(li => {
             const proposed   = Number(li.proposed_amount) || 0;
             const adjustment = Number(li.adjustment) || 0;
-            const revised    = Number(li.revised_amount) || 0;
+            const revised    = proposed - adjustment;
             grandTotal.proposed += proposed;
             grandTotal.adjustment += adjustment;
             grandTotal.revised += revised;
@@ -591,7 +592,7 @@ function bgrv_cobCollect(headers, showFund = false) {
             (prog.projects || []).forEach(p => {
                 const proposed   = (p.line_items || []).reduce((sum, li) => sum + (Number(li.proposed_amount) || 0), 0);
                 const adjustment = (p.line_items || []).reduce((sum, li) => sum + (Number(li.adjustment) || 0), 0);
-                const revised    = (p.line_items || []).reduce((sum, li) => sum + (Number(li.revised_amount) || 0), 0);
+                const revised    = proposed - adjustment;
                 // distinct Types of Fund across the project's line items, in line-item order
                 const funds = [...new Set((p.line_items || []).map(li => String(li.type_of_fund_name ?? '').trim()).filter(Boolean))];
                 projByProgram.get(prog.program_code).push({
