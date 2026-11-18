@@ -412,10 +412,13 @@ html.afims-dark[data-bs-theme="dark"] #vf-root :is(input, select, textarea):is(:
                     </div>
                 </div>
 
-                <!-- ══ D. PRO FORMA JOURNAL ENTRY — same GL-grouped Accounting Entries grid as
-                     readone.php's card, auto-filled from Vendor/RFA/Deductions/ATC above (see
-                     vf_syncAutoJevLines()); Accounting reviews/edits before their own save. ══ -->
-                <div class="vf-doc-section" style="margin-bottom:0;">
+                <!-- ══ D. PRO FORMA JOURNAL ENTRY — HIDDEN from Originating (regional users). Accounting
+                     fills it in at the FOR_ACCOUNTING stage (readone.php's editable grid, see
+                     vje_visible()). Kept in the DOM, not removed, because the payroll/remittance
+                     flows still pre-fill this grid silently (vf_applyPayroll()/vf_applyRemittance())
+                     and vf_save() sends whatever it holds; regular DVs no longer auto-fill it, see
+                     vf_syncAutoJevLines(). ══ -->
+                <div class="vf-doc-section" id="vf-sec-d" style="display:none;margin-bottom:0;">
                     <p class="vf-doc-section-hdr">D. Pro Forma Journal Entry</p>
                     <div class="vf-card" style="margin-bottom:0;">
                         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
@@ -674,7 +677,7 @@ function vf_bindEvents() {
     $vf('vf-gross').addEventListener('input', () => vf_recalc());
     $vf('vf-obligation').addEventListener('input', () => vf_recalc());
     // resync whenever either changes, same as every other input that feeds it — vf_recalc() itself
-    // now also resyncs Accounting Entries (7)'s auto-lines (vf_syncAutoJevLines()).
+    // now also refreshes the (hidden) Accounting Entries grid's totals (vf_syncAutoJevLines()).
     $vf('vf-account-code').addEventListener('input', () => vf_recalc());
     $vf('vf-claimant').addEventListener('input', () => vf_recalc());
     // Event delegation: deductions are added/removed dynamically, so bind once on their shared
@@ -971,7 +974,7 @@ async function vf_onRfaSelectionChange() {
         vf_showErrors([vf_isSessionExpiredMessage(e.message) ? e.message : 'Could not load RFA details: ' + e.message]);
     } finally {
         window.PagePreloader?.hide();
-        vf_recalc(); // also resyncs Accounting Entries (7)'s auto-lines — see vf_syncAutoJevLines()
+        vf_recalc(); // also refreshes the hidden Accounting Entries grid's totals — see vf_syncAutoJevLines()
     }
 }
 
@@ -1025,102 +1028,19 @@ async function vf_onVendorChange() {
 }
 
 /**
- * Keeps Accounting Entries (7) in sync with the DV's own numbers — Dr the Budget Reference (5)
- * Account Code (itself auto-filled from the Vendor's own RFA(s), see
- * vf_onRfaSelectionChange()'s "withAccount" block) for the full gross amount, Cr each Deduction/
- * ATC row that carries a mapped UACS account code, Cr Accounts Payable for whatever's left — same
- * convention as readone.php's vje_syncAutoLines() (Accounting's own view of this same grid), just
- * run earlier, at Originating's own save, instead of only once the DV reaches FOR_ACCOUNTING.
- * Each auto line is tracked via data-auto-source so repeat syncs (another deduction added, the
- * vendor changed, etc.) update it in place instead of duplicating it; a line the preparer added by
- * hand (no data-auto-source) is never touched.
+ * Called whenever gross/deductions/ATC/vendor change (it used to keep Accounting Entries auto-filled
+ * from them). Section D is hidden from Originating now, so a regular DV no longer generates entries
+ * here — Accounting builds them at the FOR_ACCOUNTING stage (readone.php's vje_syncAutoLines()).
+ * What this form's grid still holds is only what was put there deliberately:
+ *   - a payroll DV's entries (vf_applyPayroll()) or a remittance DV's (vf_applyRemittance()), which
+ *     come from those modules and are sent silently with the save, and
+ *   - lines already saved on this DV (edit mode), sent back as-is so editing a REJECTED DV never
+ *     wipes entries Accounting already prepared.
+ * So all that's left to do here is refresh the grid's totals/hints.
  */
 function vf_syncAutoJevLines() {
-    // A payroll DV's Accounting Entries come from the imported payroll (Dr each earnings account, Cr each
-    // deduction account, Cr Accounts Payable for the net pay — vf_applyPayroll()); a remittance DV's from its
-    // remittance (Dr the payables / gov't share, Cr Accounts Payable — vf_openForRemittance()); no auto lines on top.
-    if (vf_payrollPeriodId || vf_remittanceId) {
-        $vf('vf-jev-tbody').querySelectorAll('tr.vje-line[data-auto-source]').forEach(tr => tr.remove());
-        vf_recalcJev();
-        return;
-    }
-    const gross = vf_numVal($vf('vf-gross').value);
-    const code  = $vf('vf-account-code').value.trim();
-
-    if (code) {
-        vf_upsertAutoLine('dr', { account_code: code, debit: gross, credit: 0, description: $vf('vf-claimant').value.trim() || 'Claimant' });
-    } else {
-        $vf('vf-jev-tbody').querySelector('tr.vje-line[data-auto-source="dr"]')?.remove();
-    }
-
-    const dedIds = new Set();
-    let dedCreditTotal = 0;
-    $vf('vf-ded-container').querySelectorAll('.vf-ded-row').forEach(row => {
-        const idx       = row.id.replace('vf-ded-row-', '');
-        const typeId    = row.dataset.typeId;
-        const amount    = vf_numVal(row.querySelector('.vf-ded-amount').value);
-        const type      = vf_dedTypes.find(t => String(t.deduction_type_id) === String(typeId));
-        const acctCode  = type?.account_code || row.querySelector('.vf-ded-acct')?.value.trim() || '';
-        if (!typeId || !acctCode || amount <= 0) return;
-        dedIds.add(idx);
-        dedCreditTotal += amount;
-        vf_upsertAutoLine(`ded:${idx}`, { account_code: acctCode, debit: 0, credit: amount, description: type.name });
-    });
-    vf_pruneAutoLines('ded:', id => dedIds.has(id));
-
-    const atcIds = new Set();
-    let atcCreditTotal = 0;
-    $vf('vf-atc-tbody').querySelectorAll('tr').forEach(tr => {
-        const idx  = tr.id.replace('vf-atc-row-', '');
-        const code = tr.querySelector('.vf-atc-code').value;
-        const rate = parseFloat(tr.querySelector('.vf-atc-rate').value) || 0;
-        const base = vf_numVal(tr.querySelector('.vf-atc-base').value);
-        const atcDef = VF_ATC.find(c => c.atc_code === code);
-        if (!code || !atcDef?.account_code || base <= 0 || rate <= 0) return;
-        const credit = Math.round(base * rate) / 100;
-        atcIds.add(idx);
-        atcCreditTotal += credit;
-        vf_upsertAutoLine(`atc:${idx}`, { account_code: atcDef.account_code, debit: 0, credit, description: `${rate}% ${atcDef.description}` });
-    });
-    vf_pruneAutoLines('atc:', id => atcIds.has(id));
-
-    // Credits the vendor's own Accounts Payable sub-ledger account (vf_vendors[id].sl_account_code
-    // — see VendorService::fetchAlls()) when the claimant is a registered vendor with one set up,
-    // so the payable actually lands in that vendor's subsidiary ledger instead of just the bare AP
-    // control account.
-    const vendor = vf_vendors[$vf('vf-vendor').value];
-    const apAccountCode = vendor?.sl_account_code || '2-01-01-010';
-    const apRemainder = Math.round((gross - dedCreditTotal - atcCreditTotal) * 100) / 100;
-    if (apRemainder > 0.004) {
-        vf_upsertAutoLine('ap', { account_code: apAccountCode, debit: 0, credit: apRemainder, description: 'Net Amount Payable' });
-    } else {
-        $vf('vf-jev-tbody').querySelector('tr.vje-line[data-auto-source="ap"]')?.remove();
-    }
-
     vf_recalcJev();
     vf_refreshAllJevHints();
-}
-
-function vf_upsertAutoLine(sourceKey, d) {
-    let tr = $vf('vf-jev-tbody').querySelector(`tr.vje-line[data-auto-source="${sourceKey}"]`);
-    if (!tr) {
-        const lineId = vf_addJevLine(d);
-        tr = $vf(`vf-jev-row-${lineId}`);
-        tr.dataset.autoSource = sourceKey;
-        return;
-    }
-    tr.querySelector('.vje-acct-code').value = d.account_code || '';
-    tr.querySelector('.vje-line-desc').value = d.description || '';
-    tr.querySelector('.vje-debit').value  = d.debit  > 0 ? vf_fmtMoneyVal(d.debit)  : '';
-    tr.querySelector('.vje-credit').value = d.credit > 0 ? vf_fmtMoneyVal(d.credit) : '';
-}
-
-/** Removes auto-tracked lines whose source (a Deduction or live ATC row) no longer applies. */
-function vf_pruneAutoLines(prefix, keepFn) {
-    $vf('vf-jev-tbody').querySelectorAll(`tr.vje-line[data-auto-source^="${prefix}"]`).forEach(tr => {
-        if (keepFn(tr.dataset.autoSource.slice(prefix.length))) return;
-        tr.remove();
-    });
 }
 
 async function vf_refreshDvNumber() {
@@ -1434,7 +1354,7 @@ function vf_recalcAtc() {
     const lines = vf_collectAtcLines();
     const totalWh = lines.reduce((s, l) => s + (l.tax_base * l.rate / 100), 0);
     $vf('vf-atc-total').textContent = vf_peso(totalWh);
-    vf_syncAutoJevLines(); // an ATC row just changed — Accounting Entries (7) auto-lines follow
+    vf_syncAutoJevLines(); // an ATC row just changed — refresh the hidden Accounting Entries grid's totals
 }
 
 /* ── Accounting Entries (optional) — flat list of journal entry lines ──── */
@@ -1584,7 +1504,7 @@ function vf_recalc() {
     $vf('vf-doc-gross').textContent    = vf_peso(gross);
     $vf('vf-doc-less-ded').textContent = vf_peso(totalDeductions);
     $vf('vf-net').textContent = vf_peso(netAmount);
-    vf_syncAutoJevLines(); // gross/deductions just changed — Accounting Entries (7) auto-lines follow
+    vf_syncAutoJevLines(); // gross/deductions just changed — refresh the hidden Accounting Entries grid's totals
 
     const obligation    = vf_numVal($vf('vf-obligation').value);
     const totalPayments = vf_paymentsPrior + netAmount;
@@ -1863,12 +1783,10 @@ function vf_validate() {
     const check = (ok, field, msg) => { vf_setFieldError(field, !ok); if (!ok) errors.push(msg); };
 
     check(!!$vf('vf-dv-date').value,   'dv-date',   'DV Date is required.');
-    // Book is only required once Accounting Entries lines are actually filled in (vf_collectJevLines()
-    // mirrors this on the server in persistJournalEntry()) — the whole Accounting Entries section is
-    // optional at this stage, see its card's own doc comment.
-    const vf_hasJevLines = vf_collectJevLines().length > 0;
-    $vf('vf-book-req').style.display = vf_hasJevLines ? 'inline' : 'none';
-    check(!vf_hasJevLines || !!$vf('vf-book').value, 'book', 'Book is required once Accounting Entries lines are filled in.');
+    // No Book check here: section D (Book + Accounting Entries) is hidden from Originating, so Book
+    // can't be picked here. Payroll/remittance DVs still send their pre-filled lines without one
+    // (persistJournalEntry() allows that for this pre-fill path); Accounting picks the Book when it
+    // saves the Journal Entry at the FOR_ACCOUNTING stage, where it is required.
     // a remittance DV pays deductions the payroll DV's RFA already obligated — no RFA of its own
     check(vf_remittanceId || vf_selectedRfaIds.length > 0, 'rfa', 'At least one RFA is required.');
     check(!!$vf('vf-claimant').value.trim(), 'claimant', 'Claimant Name is required.');

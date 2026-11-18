@@ -1166,7 +1166,7 @@ class DisbursementVoucherService
             $select = "SELECT * FROM {$this->tableViewJev} WHERE {$whereSql} ORDER BY created_at DESC, jev_id DESC";
 
             if ($page === null) {
-                return ['success' => true, 'data' => App\ExecuteRows($select, 'DB') ?: []];
+                return ['success' => true, 'data' => $this->flagJevsActedByCurrentUser(App\ExecuteRows($select, 'DB') ?: [])];
             }
 
             $limit  = max(1, $limit);
@@ -1175,7 +1175,7 @@ class DisbursementVoucherService
 
             return [
                 'success'    => true,
-                'data'       => App\ExecuteRows($select . " LIMIT {$limit} OFFSET {$offset}", 'DB') ?: [],
+                'data'       => $this->flagJevsActedByCurrentUser(App\ExecuteRows($select . " LIMIT {$limit} OFFSET {$offset}", 'DB') ?: []),
                 'pagination' => [
                     'total'        => $total,
                     'per_page'     => $limit,
@@ -1188,6 +1188,47 @@ class DisbursementVoucherService
 
             return ['success' => false, 'message' => 'Failed to load journal entry vouchers.'];
         }
+    }
+
+    /** True if $userId already moved this JEV along its review chain (any row in its status_change_log). */
+    private function userAlreadyActedOnJev(int $jevId, int $userId): bool
+    {
+        if ($userId <= 0) {
+            return false;
+        }
+
+        return (int) App\ExecuteScalar(
+            "SELECT COUNT(*) FROM fims.status_change_log
+             WHERE status_for = 'journal_entry_voucher' AND record_id = '{$jevId}' AND changed_by = {$userId}",
+            'DB'
+        ) > 0;
+    }
+
+    /**
+     * Adds `acted_by_me` to each JEV register row — true when the current user already took a step on
+     * that JEV's review chain — so the register can hide the endorse/approve action from them.
+     * The same rule is enforced server-side in changeJevStatus().
+     */
+    private function flagJevsActedByCurrentUser(array $rows): array
+    {
+        $userId = (int) App\CurrentUserID();
+        $ids    = array_values(array_unique(array_map(fn ($r) => (int) $r['jev_id'], $rows)));
+        $acted  = [];
+        if ($userId > 0 && $ids) {
+            $list = implode(',', array_map(fn ($id) => "'" . $id . "'", $ids));
+            foreach (App\ExecuteRows(
+                "SELECT DISTINCT record_id FROM fims.status_change_log
+                 WHERE status_for = 'journal_entry_voucher' AND changed_by = {$userId} AND record_id IN ({$list})",
+                'DB'
+            ) ?: [] as $r) {
+                $acted[(string) $r['record_id']] = true;
+            }
+        }
+        foreach ($rows as &$row) {
+            $row['acted_by_me'] = isset($acted[(string) $row['jev_id']]);
+        }
+
+        return $rows;
     }
 
     /** Active ATC (BIR Alphanumeric Tax Code) options for the Accounting stage's dropdown. */
@@ -1341,10 +1382,11 @@ class DisbursementVoucherService
      * current set" convention atc_lines/lines already use, now that Accounting can edit Deductions
      * too (see app/pages/voucher/readone.php's vje_deductionCard()).
      *
-     * $bookId (fims.books — see "03 - alter_table/30") is required whenever $lines is non-empty —
-     * Book is an accounting classification chosen alongside the Accounting Entries themselves, not
-     * a DV-header field, so it's validated here rather than in prepare(). Moot when $lines is empty
-     * (no JEV being saved at all).
+     * $bookId (fims.books — see "03 - alter_table/30") is required whenever $lines is non-empty on
+     * Accounting's own save ($requireBalancedEntry) — Book is an accounting classification chosen
+     * alongside the Accounting Entries themselves, not a DV-header field, so it's validated here
+     * rather than in prepare(). Optional on the Originating pre-fill (see the check below). Moot when
+     * $lines is empty (no JEV being saved at all).
      */
     private const JEV_CLASSIFICATIONS = ['REGULAR', 'ACCRUAL', 'DEPRECIATION', 'PREPAYMENTS', 'CLOSING'];
 
@@ -1418,7 +1460,12 @@ class DisbursementVoucherService
         }
 
         $bookId = ($bookId !== null && $bookId !== '' && ctype_digit((string) $bookId)) ? (int) $bookId : null;
-        if ($lines && $bookId === null) {
+        // Only Accounting's own save ($requireBalancedEntry) must choose a Book. The Originating
+        // pre-fill (create()/update()) has no Book field anymore — section D is hidden from Originating
+        // — yet payroll/remittance DVs still pre-fill their entries from those modules, so those are
+        // stored with book_id NULL until Accounting picks one. changeStatus() blocks moving the DV past
+        // the Section Chief while it's still NULL.
+        if ($lines && $bookId === null && $requireBalancedEntry) {
             return ['success' => false, 'message' => 'Book (book_id) is required when Accounting Entries lines are provided.'];
         }
         if ($bookId !== null && (int) App\ExecuteScalar("SELECT COUNT(*) FROM {$this->tableBooks} WHERE book_id = {$bookId}", 'DB') === 0) {
@@ -1956,6 +2003,11 @@ class DisbursementVoucherService
             if (!in_array($new, $allowed, true)) {
                 return ['success' => false, 'message' => "Cannot move a {$jev['status']} Journal Entry to {$new}."];
             }
+            // Segregation of duties: each step needs a different person — whoever already submitted /
+            // endorsed this entry can't also take the next step on it.
+            if ($this->userAlreadyActedOnJev($jevId, $userId)) {
+                return ['success' => false, 'message' => 'You have already acted on this Journal Entry. The next step must be done by a different user.', 'httpCode' => 403];
+            }
 
             if ($new === 'POSTED') {
                 App\Execute('BEGIN', 'DB');
@@ -2323,12 +2375,20 @@ class DisbursementVoucherService
                 if (!$jev || (float) $jev['total_debit'] <= 0 || (float) $jev['total_debit'] !== (float) $jev['total_credit']) {
                     return ['success' => false, 'message' => 'Accounting must save a balanced Journal Entry (debits = credits) before this voucher can move to Division Manager review.'];
                 }
+                // A payroll/remittance DV's entries are pre-filled by Originating without a Book — see
+                // persistJournalEntry() — so it can only be missing here if Accounting never saved.
+                if (empty($jev['book_id'])) {
+                    return ['success' => false, 'message' => 'Accounting must choose a Book on the Journal Entry and save it before this voucher can move to Division Manager review.'];
+                }
             } elseif ($new === 'FOR_TREASURY') {
                 // Department Manager's final approval releases the voucher to Treasury and posts the
                 // JEV to the General Ledger (see the postJev() call below) — re-check it's still balanced.
                 $jev = $this->fetchJev($dvId);
                 if (!$jev || (float) $jev['total_debit'] <= 0 || (float) $jev['total_debit'] !== (float) $jev['total_credit']) {
                     return ['success' => false, 'message' => 'A balanced Journal Entry (debits = credits) is required before this voucher can go to Treasury.'];
+                }
+                if (empty($jev['book_id'])) {
+                    return ['success' => false, 'message' => 'The Journal Entry has no Book — Accounting must choose one before this voucher can go to Treasury.'];
                 }
             } elseif ($new === 'CANCELLED' && $cur['status'] === 'FOR_TREASURY') {
                 // Only this one path can cancel a DV whose JEV was already posted to the General

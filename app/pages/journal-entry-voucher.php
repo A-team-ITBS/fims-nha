@@ -424,7 +424,9 @@ function jel_actionButtons(r, isStandalone) {
             : `<a class="nha-menu-item" href="javascript:void(0);" onclick="jel_closeMenus(); jaf_openView(${r.jev_id});">${JEL_ICON_VIEW}View</a>`)
         : `<a class="nha-menu-item" href="javascript:void(0);" onclick="jel_closeMenus(); jel_viewDv(${r.dv_id});">${JEL_ICON_VIEW}View</a>`;
 
-    const canAdvance = isStandalone ? !!nextStep[r.jev_status] : (r.jev_type === 'PAYMENT' && !!nextStep[r.jev_status]);
+    // Hidden once the current user has already taken a step on this JEV (acted_by_me, from the list
+    // API) — a different user must do the next one. The server enforces the same rule.
+    const canAdvance = !r.acted_by_me && (isStandalone ? !!nextStep[r.jev_status] : (r.jev_type === 'PAYMENT' && !!nextStep[r.jev_status]));
     const advanceItem = canAdvance
         ? `<a class="nha-menu-item" href="javascript:void(0);" onclick="jel_closeMenus(); jaf_jevStatus(${r.jev_id}, '${nextStep[r.jev_status]}', null);">${JEL_ICON_ADVANCE}${nextLabel[r.jev_status]}</a>`
         : '';
