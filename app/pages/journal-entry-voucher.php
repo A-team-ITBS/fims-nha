@@ -853,13 +853,25 @@ function jaf_renderAttachments() {
 }
 
 // Review History — one row per status change from fims.status_change_log (status, who, when, remarks).
+// A log row's `status` is the status the JEV was moved TO, and `actor_name` is who made that move —
+// i.e. the officer of the PREVIOUS stage. Labelling the row with the target status next to that
+// officer's name reads as if they hold the target role (e.g. "For Division Manager — Carla" when Carla is
+// the Section Chief who endorsed it), so each row is labelled by the actor's role + the action instead.
+const JAF_HISTORY_STEP = {
+    FOR_SECTION_CHIEF:      { role: 'Prepared by',      action: 'Submitted to Section Chief' },
+    FOR_DIVISION_MANAGER:   { role: 'Section Chief',    action: 'Endorsed to Division Manager' },
+    FOR_DEPARTMENT_MANAGER: { role: 'Division Manager', action: 'Endorsed to Department Manager' },
+    POSTED:                 { role: 'Department Manager', action: 'Approved & Posted' },
+};
 function jaf_renderHistory(rows) {
     const card = $jel('jaf-history-card');
     if (!rows.length) { card.style.display = 'none'; $jel('jaf-history-list').innerHTML = ''; return; }
     $jel('jaf-history-list').innerHTML = rows.map(h => {
+        const step = JAF_HISTORY_STEP[h.status] || { role: '', action: h.status || '—' };
         return `<div class="jaf-att-row" style="align-items:flex-start;">
             <div style="flex:1;font-size:13px;">
-                <div>${jel_jevStatusBadge(h.status)} <span style="color:var(--afims-text-muted,#62657E);font-size:12px;">${jel_esc(h.actor_name) || '—'}</span></div>
+                <div><strong>${jel_esc(h.actor_name) || '—'}</strong>${step.role ? ` <span style="color:var(--afims-text-muted,#62657E);font-size:12px;">· ${jel_esc(step.role)}</span>` : ''}</div>
+                <div style="margin-top:2px;"><span style="color:var(--afims-text-muted,#62657E);font-size:12px;">${jel_esc(step.action)}</span></div>
                 <div style="margin-top:4px;white-space:pre-wrap;${h.remarks ? '' : 'color:var(--afims-text-muted,#62657E);font-style:italic;'}">${h.remarks ? jel_esc(h.remarks) : 'No remarks'}</div>
             </div>
         </div>`;
