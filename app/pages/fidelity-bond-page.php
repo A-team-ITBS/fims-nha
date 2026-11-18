@@ -632,14 +632,18 @@ $fbCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
 
     // Rasterizes a PDF's first page (a Confirmation Letter is always one
     // page) to a PNG blob via pdf.js, since Tesseract.js only reads images.
-    // Scale 3 ≈ 216dpi off a standard page — enough resolution for OCR
-    // without ballooning recognize() time on a large letter-sized scan.
+    // PDF.js's viewport scale is relative to 72dpi, so scale 300/72 matches
+    // the 300dpi the old server-side `pdftoppm -r 300` used — anything
+    // lower starves OCR on the smaller text (the Transmittal No. near the
+    // letterhead seal, the Station column squeezed into the officer table)
+    // well before it visibly affects the large/bold table text, which is
+    // why those were the fields that came back blank at a lower scale.
     function fbClRenderPdfFirstPageToBlob(file) {
         return file.arrayBuffer()
             .then(function (buf) { return pdfjsLib.getDocument({ data: buf }).promise; })
             .then(function (pdf) { return pdf.getPage(1); })
             .then(function (page) {
-                const viewport = page.getViewport({ scale: 3 });
+                const viewport = page.getViewport({ scale: 300 / 72 });
                 const canvas = document.createElement('canvas');
                 canvas.width = viewport.width;
                 canvas.height = viewport.height;
@@ -677,6 +681,12 @@ $fbCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
             .then(function (src) { return Tesseract.createWorker('eng').then(function (w) { worker = w; return w.recognize(src); }); })
             .then(function (result) {
                 worker.terminate();
+                // Logged, not shown — if a field still comes out wrong,
+                // open devtools and compare this raw OCR text against what
+                // FidelityBondService::parseClTemplate() expects before
+                // assuming it's an OCR quality problem rather than a
+                // template-matching one.
+                console.log('Fidelity Bond CL scan raw OCR text:', result.data.text);
                 return result.data.text;
             })
             .catch(function (err) {
