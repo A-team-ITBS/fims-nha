@@ -45,8 +45,16 @@ $_cob_showReport = false;
 /* group rows (everything above a project) are bold; a project — or, under COE, a request — is plain */
 #cob-root .cob-row:not(.cob-t-project):not(.cob-t-request) > td { font-weight: 600; color: var(--afims-heading, #000E3E); }
 #cob-root .cob-d0:not(.cob-t-project):not(.cob-t-request) > td { font-weight: 700; }
-/* the two halves of the sheet, CO and COE, each start on a row of their own */
-#cob-root .cob-t-bucket > td { background: var(--afims-surface-subtle, #F4F7FA); border-top: 2px solid var(--afims-border, #E4ECF2); }
+/* The two halves of the sheet, CO and COE, each start on a row of their own and each has a colour of its own (CO blue, COE green): a tinted band across the row,
+   a solid bar down its left edge, and the code as a solid pill. The rule below repeats the selector shape of the "group rows are bold" rule above so that
+   it beats it on colour (same specificity, and it comes later). */
+#cob-root .cob-t-bucket { --b-accent: var(--afims-heading, #000E3E); --b-soft: var(--afims-surface-subtle, #F4F7FA); }
+#cob-root .cob-b-co  { --b-accent: var(--afims-primary, #0035A9); --b-soft: var(--afims-primary-soft, #E6EBF6); }
+#cob-root .cob-b-coe { --b-accent: var(--afims-success-hover, #0C7539); --b-soft: var(--afims-success-soft, #DBF2E5); }
+#cob-root .cob-row.cob-t-bucket[class*="cob-b-"] > td { background: var(--b-soft); color: var(--b-accent); font-weight: 700; border-top: 2px solid var(--b-accent); }
+#cob-root .cob-t-bucket > td:first-child { box-shadow: inset 5px 0 0 var(--b-accent); }
+#cob-root .cob-t-bucket:hover > td { background-image: linear-gradient(rgba(0, 0, 0, .05), rgba(0, 0, 0, .05)); }
+#cob-root .cob-bkt-badge { display: inline-block; min-width: 40px; padding: 2px 8px; border-radius: 4px; text-align: center; font-weight: 700; letter-spacing: .04em; color: #fff; background: var(--b-accent); }
 /* The name flows as ordinary text (name, then FY / office / documents after it) and wraps inside its cell; the caret is pinned to the left of it, so it can never end
    up on a line of its own. Indented 16px per level. */
 #cob-root .cob-name { position: relative; line-height: 1.45; padding-left: calc(var(--d, 0) * 16px + 22px); }
@@ -562,8 +570,12 @@ function cob_treeRow(n, depth, path, hasKids, open, tab) {
     const view = (n.type === 'project' || n.type === 'request') && n.budget_reference_number
         ? `<button type="button" class="nha-btn-act view" data-view="${cob_esc(n.budget_reference_number)}" data-project="${cob_esc(n.code || '')}" title="View the approved request ${cob_esc(n.budget_reference_number)}">View</button>`
         : '';
-    return `<tr class="cob-row cob-d${Math.min(depth, 4)} cob-t-${cob_esc(n.type)}${hasKids ? ' cob-has-kids' : ''}${open ? ' open' : ''}" data-path="${cob_esc(path)}"${hasKids ? ` tabindex="0" role="button" aria-expanded="${open}"` : ''}>
-        <td class="cob-code">${cob_esc(n.code || '')}</td>
+    // CO / COE: the row carries its own class (cob-b-co / cob-b-coe) so each half has its own colour, and its code is drawn as a pill
+    const bucket = n.type === 'bucket';
+    const bucketCls = bucket ? ' cob-b-' + String(n.key).toLowerCase().replace(/[^a-z0-9]/g, '') : '';
+    const codeCell = bucket && n.code ? `<span class="cob-bkt-badge">${cob_esc(n.code)}</span>` : cob_esc(n.code || '');
+    return `<tr class="cob-row cob-d${Math.min(depth, 4)} cob-t-${cob_esc(n.type)}${bucketCls}${hasKids ? ' cob-has-kids' : ''}${open ? ' open' : ''}" data-path="${cob_esc(path)}"${hasKids ? ` tabindex="0" role="button" aria-expanded="${open}"` : ''}>
+        <td class="cob-code">${codeCell}</td>
         <td><div class="cob-name" style="--d:${depth}">${hasKids ? COB_CARET.replace('%OPEN%', open ? ' open' : '') : '<span class="cob-caret-sp"></span>'}${cob_nodeLabel(n, tab)}</div></td>
         ${cob_amountCells(n)}
         <td class="no-print">${view}</td></tr>`;

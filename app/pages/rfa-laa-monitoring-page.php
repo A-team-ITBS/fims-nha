@@ -68,8 +68,15 @@ $_rlm_api = Config('API.FIMS_URL');
 #rlm-root .rlm-row.rlm-has-kids:focus-visible { outline: 2px solid var(--afims-heading-fill, #000E3E); outline-offset: -2px; }
 /* a project — or, in the COE half, a request — is the strong row; an RFA / LAA under it and a voucher under an RFA are plain */
 #rlm-root .rlm-t-project > td, #rlm-root .rlm-t-request > td { font-weight: 600; color: var(--afims-heading, #000E3E); }
-/* the two halves, CO and COE, each start on a row of their own; the PS / MOOE rows of the COE half sit between it and its requests */
-#rlm-root .rlm-t-bucket > td { font-weight: 700; color: var(--afims-heading, #000E3E); background: var(--afims-surface-subtle, #F4F7FA); border-top: 2px solid var(--afims-border, #E4ECF2); }
+/* The two halves, CO and COE, each start on a row of their own (the PS / MOOE rows of the COE half sit between it and its requests) and each has a colour of
+   its own (CO blue, COE green): a tinted band across the row, a solid bar down its left edge, and the code as a solid pill. */
+#rlm-root .rlm-t-bucket { --b-accent: var(--afims-heading, #000E3E); --b-soft: var(--afims-surface-subtle, #F4F7FA); }
+#rlm-root .rlm-b-co  { --b-accent: var(--afims-primary, #0035A9); --b-soft: var(--afims-primary-soft, #E6EBF6); }
+#rlm-root .rlm-b-coe { --b-accent: var(--afims-success-hover, #0C7539); --b-soft: var(--afims-success-soft, #DBF2E5); }
+#rlm-root .rlm-t-bucket > td { font-weight: 700; color: var(--b-accent); background: var(--b-soft); border-top: 2px solid var(--b-accent); }
+#rlm-root .rlm-t-bucket > td:first-child { box-shadow: inset 5px 0 0 var(--b-accent); }
+#rlm-root .rlm-t-bucket:hover > td { background-image: linear-gradient(rgba(0, 0, 0, .05), rgba(0, 0, 0, .05)); }
+#rlm-root .rlm-bkt-badge { display: inline-block; min-width: 40px; padding: 2px 8px; border-radius: 4px; text-align: center; font-size: 11px; font-weight: 700; letter-spacing: .04em; color: #fff; background: var(--b-accent); }
 #rlm-root .rlm-t-class > td { font-weight: 600; color: var(--afims-heading, #000E3E); }
 #rlm-root .rlm-t-allocation > td, #rlm-root .rlm-t-dv > td { vertical-align: middle; }
 /* a voucher is the deepest, quietest row */
@@ -545,7 +552,8 @@ function rlm_statusPill(name, color) {
 function rlm_nodeLabel(n) {
     if (n.type === 'bucket' || n.type === 'class') {
         // CO / COE (the two halves) and PS / MOOE (the classes of COE): the identifier as a badge, then the name
-        return `${n.code ? `<span class="nha-bdg ${n.type === 'bucket' ? 'nha-bdg-navy' : 'nha-bdg-gray'} nha-bdg-xs">${rlm_esc(n.code)}</span>` : ''}<span>${rlm_esc(n.label)}</span>`;
+        // (CO / COE get a solid pill in their row's colour — .rlm-bkt-badge — PS / MOOE the quiet grey one)
+        return `${n.code ? `<span class="${n.type === 'bucket' ? 'rlm-bkt-badge' : 'nha-bdg nha-bdg-gray nha-bdg-xs'}">${rlm_esc(n.code)}</span>` : ''}<span>${rlm_esc(n.label)}</span>`;
     }
     if (n.type === 'allocation') {
         // an RFA / LAA drawn against the project above it: a badge saying which, its number, then its description
@@ -583,7 +591,9 @@ function rlm_treeRow(n, depth, path, hasKids, open) {
     const view = (n.type === 'project' || n.type === 'request') && n.budget_reference_number
         ? `<button type="button" class="nha-btn-act view" data-view="${rlm_esc(n.budget_reference_number)}" data-project="${rlm_esc(n.code || '')}" title="View the approved request ${rlm_esc(n.budget_reference_number)}">View</button>`
         : '';
-    return `<tr class="rlm-row rlm-d${Math.min(depth, 4)} rlm-t-${rlm_esc(n.type)}${hasKids ? ' rlm-has-kids' : ''}${open ? ' open' : ''}" data-path="${rlm_esc(path)}"${hasKids ? ` tabindex="0" role="button" aria-expanded="${open}"` : ''}>
+    // CO / COE: the row carries its own class (rlm-b-co / rlm-b-coe) so each half has its own colour
+    const bucketCls = n.type === 'bucket' ? ' rlm-b-' + String(n.key).toLowerCase().replace(/[^a-z0-9]/g, '') : '';
+    return `<tr class="rlm-row rlm-d${Math.min(depth, 4)} rlm-t-${rlm_esc(n.type)}${bucketCls}${hasKids ? ' rlm-has-kids' : ''}${open ? ' open' : ''}" data-path="${rlm_esc(path)}"${hasKids ? ` tabindex="0" role="button" aria-expanded="${open}"` : ''}>
         <td><div class="rlm-name" style="--d:${depth}">${hasKids ? RLM_CARET.replace('%OPEN%', open ? ' open' : '') : '<span class="rlm-caret-sp"></span>'}${rlm_nodeLabel(n)}</div></td>
         ${rlm_amountCells(n)}
         <td class="no-print">${view}</td></tr>`;
