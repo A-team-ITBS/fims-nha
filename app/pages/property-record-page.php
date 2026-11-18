@@ -290,12 +290,12 @@ $_prp_api = Config('API.FIMS_URL');
                     <thead>
                         <tr>
                             <th style="width:56px;"></th>
-                            <th>Account</th>
-                            <th>Account Code</th>
-                            <th style="text-align:right;">Amount</th>
-                            <th>Acct. Code</th>
-                            <th style="text-align:right;">Accu. Depr'n</th>
-                            <th style="text-align:right;">Net Book Value</th>
+                            <th style="text-align:center;">ITEM</th>
+                            <th style="text-align:center;">ACCT. CODE</th>
+                            <th style="text-align:center;">Amount</th>
+                            <th style="text-align:center;">Acct. Code</th>
+                            <th style="text-align:center;">Accu. Depr'n</th>
+                            <th style="text-align:center;">Net Book Value</th>
                         </tr>
                     </thead>
                     <tbody id="prp-iar-tbody"><tr><td colspan="7"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr></tbody>
@@ -1117,9 +1117,9 @@ function prp_renderIar() {
         return `<tr${has ? ` style="cursor:pointer;" onclick="prp_toggleIar('${prp_esc(code)}')" title="Click to ${open ? 'hide' : 'show'} the items"` : ''}>
             <td>${has ? `<button type="button" class="prp-v-toggle" aria-expanded="${open}" tabindex="-1">${open ? '&#9662;' : '&#9656;'}</button>` : ''}</td>
             <td style="font-weight:700;">${prp_dash(g.title)}${has ? ` <span class="prp-v-pill">${g.items.length} item${g.items.length === 1 ? '' : 's'}</span>` : ''}</td>
-            <td><code class="nha-code">${prp_esc(code)}</code></td>
+            <td style="text-align:center;"><code class="nha-code">${prp_esc(code)}</code></td>
             ${amtCell(g.total, idx === 0, false)}
-            <td><code class="nha-code">${prp_esc((PRP_JEV_CFG[code] || {}).c || '')}</code></td>
+            <td style="text-align:center;"><code class="nha-code">${prp_esc((PRP_JEV_CFG[code] || {}).c || '')}</code></td>
             ${amtCell(g.accum, idx === 0, false)}
             ${amtCell(g.nbv, idx === 0, false)}
         </tr>` + (open ? `<tr class="prp-v-sub"><td colspan="7"><div class="prp-v-inner"><table class="prp-v-tbl">

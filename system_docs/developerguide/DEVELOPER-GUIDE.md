@@ -415,8 +415,12 @@ The furthest-along business workflow in the repo — a Budget Request → Revisi
 
 - **Addressing.** A PO is addressed by its `po_number` passed as `?po_number=…` (numbers may contain `/`
   or `-`), not by an id. Routes (all `->add($jwtMiddleware)`): `GET /po-dr/list`, `GET /po-dr/pos`
-  (PO picker), `GET /po-dr/accounts` (Account Code picker), `GET /po-dr/read`, `GET /po-dr/proforma`,
-  `POST /po-dr/add`, `PUT /po-dr/update`, `DELETE /po-dr/delete`.
+  (PO picker), `GET /po-dr/accounts` (Account Code picker; `?all=1` skips the ten-account limit), `GET /po-dr/read`, `GET /po-dr/proforma`,
+  `POST /po-dr/proforma-submit` (the Pro-forma's Submit), `POST /po-dr/add`, `PUT /po-dr/update`, `DELETE /po-dr/delete`.
+- **Budget allocation lines.** `fims.budget_allocation.line_transaction` was dropped (alter 48): the RFA's lines live on its project blocks
+  (`fims.budget_allocation_project.line_transaction`, one row per block). `PoDrService::allocationLinesSql()` reads whichever layout the database has
+  — never reference `a.line_transaction` directly. A PO whose RFA is linked to an **active Disbursement Voucher** (`budget_allocation.dv_id`, DV not
+  CANCELLED / REJECTED) is left out of the PO picker and `create()` refuses it (`PoDrService::dvOf()`).
 - **One table, delivery receipts in JSONB.** `inspection_acceptance_report` has one row per PO: `po_number` (unique),
   the user-entered `iar_number` (required, unique, editable), the Sales Invoice # / date (once per PO) and
   `line_transaction` (JSONB **array**, one element per delivery receipt — the same idea as
@@ -432,12 +436,11 @@ The furthest-along business workflow in the repo — a Budget Request → Revisi
   amount?, property_no?}]}}`. **Add** appends the DR to the PO's `line_transaction` (creating the IAR row if the
   PO has none; if it has one, the IAR number sent must match it — the form pre-fills it when the PO is picked).
   The account titles are looked up in the chart of accounts and stored with the rows. There is no per-DR delete yet (only Delete PO).
-- **Edit is limited.** The edit modal (with a DR picker for POs with several DRs) can change only the **IAR number**, the **Sales Invoice # / date**,
-  the **DR number and delivery date** of the chosen DR, and its **items** (add / change / remove, when the DR total is 50,000 or more).
-  The **PO number** and the DR's **account entries / amounts** are locked (read-only, no "Add row"), and another DR cannot be added there
-  (that is the Add form). `PoDrService::update()` enforces this: a different `po_number` is refused (`The PO number cannot be changed`), and
-  whatever entries are sent are ignored — the stored rows, titles and total are kept — so an edit can never change the PO balance (no balance
-  check on edit). The DR number / serial uniqueness checks still apply.
+- **Edit is limited.** The edit modal (with a DR picker for POs with several DRs) can change only the **Sales Invoice # / date** and the chosen DR's
+  items' **description, serial no. and property no.** Everything else is locked (IAR number, DR number / date, PO, account rows, items' amounts and
+  categories; no Add row / Add item / remove). `PoDrService::update()` enforces this: a different `po_number` is refused (`The PO number cannot be
+  changed`); the IAR number, DR number / date, entries, amounts and categories sent are ignored (the stored ones are kept); the items are matched by
+  position (a different count is refused), the description is required, and serial numbers stay unique — so an edit can never change the PO balance.
 - **Pre-fill from the Budget Allocation.** Picking a PO on a new DR pre-fills the account rows from the RFA's
   `line_transaction` (`account_code` + `requested_amount`; `GET /po-dr/pos` returns them as `lines`). The rows are
   filled in order until the PO's available balance is used up, and the user can change the accounts and amounts.
@@ -446,9 +449,12 @@ The furthest-along business workflow in the repo — a Budget Request → Revisi
   at least one account row; each row has an account code that exists in `fims.chart_of_accounts` and an
   **amount** > 0. There is **no debit/credit to balance** — the user only enters account codes and amounts;
   the validation is the PO balance (next bullet). The DR **Amount** (`total_amount`) is the sum of the
-  row amounts, computed server-side. From **50,000** (`ITEM_MIN_AMOUNT`
-  in the service, `AMP_ITEM_MIN_AMOUNT` in the form) the optional items (any number, one line each) open; below it any entered items are
-  discarded. A serial number is unique across all items of all DRs; a DR number is unique within its PO.
+  row amounts, computed server-side. **Items are per account row**: every account row of **50,000 or more** (`ITEM_MIN_AMOUNT` in the service,
+  `AMP_ITEM_MIN_AMOUNT` in the form) needs items; rows below it have none. The form creates one item per qualifying row (amount pre-filled, **description
+  required**); every item has a **category** (one of the qualifying accounts, stored as `account_code` on the item), and amounts / categories are
+  editable, items can be added or removed — so one account amount can be split into several items. The items **of each account must add up to that
+  account's amount** (checked in the form and in `PoDrService::clean()`; items sent without categories are only compared in total). A serial number is
+  unique across all items of all DRs; a DR number is unique within its PO.
 - **PO balance limit.** A DR's total may not exceed the PO's **available balance** = PO amount − the totals of
   the PO's *other* DRs (the DR being edited isn't counted against itself). Enforced in
   `PoDrService::drError()` on add and update; the form shows the **Balance (after this DR)** field next to
@@ -456,9 +462,10 @@ The furthest-along business workflow in the repo — a Budget Request → Revisi
   an RFA PO (legacy data) has no limit. `GET /po-dr/pos` returns `dr_total` (already delivered) for the picker and
   **leaves out POs with no balance left** (`po_amount - dr_total <= 0`), so a fully delivered PO can't be picked for a new DR;
   an existing IAR of such a PO stays in the list and can still be viewed and edited.
-- **Account Code picker** searches the **whole chart of accounts** (active, `posting_allowed`; by code
-  or title, 30 hits) — not limited to a category list. Only the code is stored; the form shows
-  "code - title".
+- **Account Code picker** (`GET /po-dr/accounts`): with nothing typed it offers **only the ten property accounts** (`PoDrService::PRIORITY_ACCOUNTS`:
+  `1-06-05-020 … 1-06-99-990`, and their sub-ledgers); once the user types, the **whole chart of accounts** is searched (active, `posting_allowed`; by code
+  or title, 30 hits, the property accounts first). An SL is a child row of its GL account (`parent_account_id`, e.g. `5-02-03-010-01`); a GL account that has
+  postable SLs is not offered itself. Only the code is stored; the form shows "code - title". A new SL's `account_id` is generated as MAX(digits)+1.
 - **PO comes from the Budget Allocation.** The PO Number field is a search-and-pick combobox
   (`GET /po-dr/pos?search=`), not free text. It lists the `po_number` of `fims.budget_allocation` rows with
   `allocation_type = 'RFA'` (one per PO number, PO number + PO date shown). Picking one fills the read-only
@@ -474,17 +481,30 @@ The furthest-along business workflow in the repo — a Budget Request → Revisi
 - **Pro-forma JEV** (`GET /po-dr/proforma`, returns `po_number`, `iar_number` and one entry per DR): one tab per delivery receipt. The header shows
   the **IAR Number**, the **Delivery Receipt No.** and the DR's **Total Amount**. The list has three columns — `Account Code - Account Name`,
   `Debit`, `Credit` — and is built from the DR's stored `lines`: each line is a **debit**, and the DR total is **credited to `2-01-01-010`**
-  (Accounts Payable). A **Total** row shows the debit and credit totals under their columns.
+  (Accounts Payable) — the **vendor's own AP sub-ledger** (`vendors.sl_code` → a chart-of-accounts child row, e.g. `2-01-01-010-01`) when it has one, else the first active SL under
+  `2-01-01-010`, else `2-01-01-010`. **Book** (defaults to Main Office, book 1) and **Particulars** (pre-filled "To record the delivery of {DR} (PO {PO})") sit inside each DR's tab.
+  A **Total** row shows the debit and credit totals under their columns.
   The entries are **editable** in the modal: change a row's account (searchable over the chart of accounts) and its **debit or credit** amount (a row is
   one or the other), add a row (the **+ Add row** button is above the table) or remove one. The edits are a draft kept per DR tab (switching tabs keeps them;
   closing the modal drops them) — nothing is stored. **Submit** is disabled when a row is incomplete or when the **total debit or the total credit exceeds
   the DR's total amount** (red "Exceeds DR total" pill beside the Total). The entry must also **balance** (total debit = total credit), but that is only
   checked when **Submit is clicked**: a SweetAlert warning "Not balanced: total debit ₱X and total credit ₱Y are not equal (difference ₱Z)" is shown
-  and nothing is submitted — no pill or message is shown while editing. Submit is still a placeholder (no JEV endpoint yet): once the entry is valid it
-  only shows a notice.
+  and nothing is submitted — no pill or message is shown while editing. **Submit** (SweetAlert confirm) calls `POST /po-dr/proforma-submit`: it creates a standalone JEV
+  (`DisbursementVoucherService::createStandaloneJev`, date = the delivery date), records `jev_id` / `jev_no` on the DR inside `line_transaction`
+  (`PoDrService::linkJev`), then moves it DRAFT → `FOR_SECTION_CHIEF` (`changeJevStatus`) and redirects to the Journal Entry Vouchers page (Accounting Dept /
+  superadmin only). A DR with a JEV cannot be submitted again (409): its Pro-forma is **read-only** (saved rows, no Add row / Submit, "Submitted as … JEV"), and **Print JEV**
+  prints with the JEV number and date. `PoDrService::shape()` must return `jev_id` / `jev_no` or the lock silently fails.
 - **Screens.** The list's Actions column is one **Actions** dropdown (View · Pro-forma · Edit), the same menu as the Memo Requests list. The **View** (Actual Delivery) and **Pro-forma JEV** windows share one
   modal in the Memo Request details design (dark header with the IAR number, light body of white cards, Close in the footer); the Pro-forma opens wider (1500px). There is **no PAR # field**: the PIS property
   number is the PAR number (Property Records), so an item line is Description | Serial No. | Amount | Prop. No.
+- **View card** (Actions → View): `IAR No. | Total Amount`, `Supplier | RFA No.`, `P.O. No. | P.O. Date`, `S.I. No. | S.I. Date`, `Requisitioning Office/Dept`, then the delivery
+  receipts. The add / edit form also shows the read-only **RFA Number** (`budget_allocation.allocation_number`, returned as `rfa_number`).
+- **JEV print** (`JevPrintService`, used by every JEV print): lines are ordered **debit first, then credit, by GL code**; an account code with a 5th part
+  (`2-01-01-010-01`) prints as a bold GL row (the GL amount) with an indented SL row (SL code `01`, amount in the Subsidiary Ledger columns); a GL with no SL
+  also fills the Subsidiary Ledger columns, so both totals equal the voucher total. No separate "P" column: one ₱ at the left of the first debit in the SL and in
+  the GL columns (and in the TOTAL row); the TOTAL label sits in the Accounts column. `scripts/gen_jev_docx.js` (DOCX) was not updated.
+- **Sample data.** `02 - sample_data/12 - fims_iar_property_sample.sql` adds six RFA POs (`SAMPLE-PO-PPE-01…06`) with IARs and property items (Jan–Jul 2026, several
+  responsibility centers) for testing the Property Records page and the depreciation pro-forma; idempotent, works with either `budget_allocation` layout.
 - **Install.** `01 - table/25 - fims_inspection_acceptance_report.sql` creates the one table. If an earlier local
   version exists, drop `po_delivery_receipt_entry`, `po_delivery_receipt` and `iar_module` first (the script is
   `IF NOT EXISTS`; the table was renamed from `iar_module` and absorbed the delivery-receipt tables).
@@ -504,6 +524,24 @@ The furthest-along business workflow in the repo — a Budget Request → Revisi
   ("This is not a property record: only items with TYPENO 1 (PAR) can be saved…").
 - **One responsibility center per PO** (`fims.responsibility_code`), the first that matches: PIS `RCCODE` = `rc_code` → PIS department / district text equal to a center's name → the center of the PO in the IAR module (its budget allocation RFA).
   An existing PO row keeps its center. The user does not choose it.
+- **Page layout now.** The **Add from PIS** button is hidden (its code is kept); there is no empty-state box and no category cards. The page shows the **items entered in the IAR module**
+  for the property accounts: `GET /property-record/iar-items` (`PropertyRecordService::iarItems()`) returns the DR `items` whose account is one of the 10 property GL codes
+  (`CATEGORIES`, or a sub-ledger of one), with the PO's responsibility center (the RFA's `requesting_rc_id`), the DR's delivery date as the acquisition date and the item amount as the
+  acquisition cost. An item saved before the category existed is matched to the account row of the same amount.
+- **The list** (one row per property account, all ten even at 0.00): `ITEM | ACCT. CODE | Amount | Acct. Code (the accumulated-depreciation account, e.g. 1-06-05-021) | Accu. Depr'n | Net Book Value`,
+  a bold **TOTAL** row (₱ at the left of the amount, only on the first row and the total), filters (searchable Responsibility Center and Account Code, a text Search), **Expand All / Collapse All**,
+  and clicking a row opens its items (`Description - Item | Serial No. | Property No. | Responsibility Center | Acq. Date | Acq. Cost | Residual Value | Monthly Depr'n. | Accumulated Depreciation |
+  Net Book Value as of today`); clicking an item opens its details.
+- **Depreciation** (computed in the page, `prp_depr()`; `PropertyRecordService::monthsSince()` follows the same rule for the saved register): Monthly = cost × .9 ÷ life months (**360** buildings
+  `1-06-04…`, **120** land improvements `1-06-03…`, **60** everything else); Residual value = 10% of the cost; Accumulated = Monthly × months used, capped at 90%; Net Book Value = cost − accumulated.
+  **Depreciation starts the month after the acquisition (delivery) date** (delivered Jan 1 → first month February); the "as of" date is today.
+- **Pro-forma JEV** (header button beside Refresh): the depreciation of a quarter. Book (default Main Office), Quarter + Year (default the latest completed quarter) and Particulars ("To take up Depreciation
+  Cost of PPE for the 2nd Quarter (April - June) 2026 Main Office"). Per property category the quarter's depreciation (accumulated at quarter end − at the previous quarter end) is debited to the
+  depreciation expense account + SL and credited to the accumulated-depreciation account (`PRP_JEV_CFG` in the page: e.g. Office Equipment → Dr `5-05-01-050-02`, Cr `1-06-05-021`; the SLs come from
+  `02 - sample_data` / the SL seed `09 - fims_chart_of_accounts_sl.sql`). The rows are editable like the IAR pro-forma; **Submit** = `POST /property-record/proforma-submit`
+  (standalone JEV dated the last day of the quarter, sent for approval; refused when a JEV of that book with the same particulars exists — `proformaJev()` / `GET /property-record/proforma-jev` lock the
+  window read-only for a submitted quarter); **Print JEV** posts the lines to `POST /print/jev` (own preview + PDF download — the shared print preview can't be included here, it uses the same `prp_` names).
+  `GET /property-record/account-titles?codes=` supplies the account titles.
 - **Token.** `PIS_API_BASE_URL` / `PIS_API_TOKEN` are in `.env` (git-ignored; `.env.example` has the placeholders), read with `Env()` on the server only; PIS needs a `Bearer` token.
 - **One table, one row per PO, items as JSONB.** `fims.property_records`: `po_number` (unique), `rc_id` (FK → `responsibility_code.rc_id`) and `line_transaction` (JSONB array, one element per saved unit). Only these PIS fields are kept, under the PIS's own names:
   `inv_id, TYPENO, GL, accnt_desc, GLCODE_SUB, inv_glcode_sub, PROPNO, SNO, ITEMDESC, MODELNO, DATEACQD, COST, UNIT, SERV, RCCODE, dept_proj_desc, PO_NO, DEPTCD, District`. Saving more items of a PO appends to its row; `inv_id` uniqueness is checked in PHP.
