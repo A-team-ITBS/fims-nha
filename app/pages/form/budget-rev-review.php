@@ -141,14 +141,14 @@ namespace PHPMaker2024\FIMS;
             <div class="brv-v-label">Status</div>
             <div class="brv-v-decision">
                 <div class="brv-v-status">
-                    <span class="nha-bdg nha-bdg-amber" id="brv-view-status">Pending</span>
+                    <span class="nha-bdg nha-bdg-amber" id="brv-view-status">Submitted</span>
                     <span id="brv-view-status-note"></span>
                 </div>
             </div>
         </div>
         <div class="nha-modal-foot brv-v-foot">
             <button type="button" class="nha-btn nha-btn-ghost" id="brv-view-cancel">Close</button>
-            <!-- shown by brv_openView() only while the request is pending AND the user is FMD -->
+            <!-- shown by brv_openView() only while the request is Submitted AND the user is FMD -->
             <div class="brv-v-actions" id="brv-view-actions" hidden>
                 <button type="button" class="nha-btn brv-v-decline" id="brv-decline">
                     <svg viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>

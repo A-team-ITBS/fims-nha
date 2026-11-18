@@ -184,19 +184,21 @@ flowchart TD
 ## 4. Budget revision (optional)
 
 **Needs:** an approved COB (Section 3). **Sidebar:** COB Preparation → Budget Revision.
-**Statuses:** Pending, Approved, Declined.
+**Statuses:** Saved → Submitted → Approved (or Declined).
 
 | Step | Log in as | Where (sidebar → page) | Do this | Expected result |
 |---|---|---|---|---|
-| 1 | Budget office user | COB Preparation → Budget Revision | Add a revision: From budget line, To line (when moving money), new amount, reason | Status Pending — still editable |
-| 2 | Reviewer | Budget Revision | Review → Approve | Status Approved; the From and To lines' amounts change |
+| 1 | Budget office user | COB Preparation → Budget Revision | Add a revision: From budget line, new amount, reason — or, on the Realignment tab, From line, To line and the amount to transfer, reason | Status Saved — still editable (Actions → Edit) |
+| 1a | Budget office user | Budget Revision | Actions → Process on the saved request | Status Submitted — it can no longer be edited |
+| 2 | Reviewer | Budget Revision | Review → Approve (Submitted requests only) | Status Approved; the From and To lines' amounts change |
 | 2a | Reviewer (alternative) | Budget Revision | Review → Decline | Status Declined; no amounts change |
 | 3 | Any user | Monitoring → COB Monitoring | Open the revised lines | Revision / Realignment column shows the change |
 
 ```mermaid
 flowchart TD
-    START(["Start"]) --> S1["STEP 1 — FILE THE REVISION<br/>Budget office — Budget Revision<br/>• From line (and To line)<br/>• New amount and reason<br/>• Status: Pending"]
-    S1 --> S2["STEP 2 — REVIEW<br/>Reviewer — Budget Revision"]
+    START(["Start"]) --> S1["STEP 1 — FILE THE REVISION<br/>Budget office — Budget Revision<br/>• From line (and To line)<br/>• New amount (or amount to transfer) and reason<br/>• Status: Saved (can still be edited)"]
+    S1 --> SP["STEP 1a — PROCESS<br/>Budget office — Actions → Process<br/>• Status: Submitted (no more editing)"]
+    SP --> S2["STEP 2 — REVIEW<br/>Reviewer — Budget Revision"]
     S2 --> D1{"Approved?"}
     D1 -->|"No"| X(["Declined — budget unchanged"])
     D1 -->|"Yes"| S3["STEP 3 — APPLIED<br/>• From line adjusted<br/>• To line receives the difference<br/>• COB Monitoring: Revision / Realignment"]

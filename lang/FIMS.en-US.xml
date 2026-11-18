@@ -30,7 +30,7 @@
       <phrase id="menutext" value="Request for Allocation(CBA)" />
     </menu>
     <menu id="554">
-      <phrase id="menutext" value="Request for Allocation(RFA/LAA)" />
+      <phrase id="menutext" value="Request for Allotment(RFA/LAA)" />
     </menu>
     <menu id="399">
       <phrase id="menutext" value="Ledger of Budget Allocation" />
@@ -101,6 +101,9 @@
     <menu id="653">
       <phrase id="menutext" value="Remittance List (Deductions)" />
     </menu>
+    <menu id="397">
+      <phrase id="menutext" value="Trial Balance" />
+    </menu>
     <menu id="763">
       <phrase id="menutext" value="Balance Sheet" />
     </menu>
@@ -118,9 +121,6 @@
     </menu>
     <menu id="396">
       <phrase id="menutext" value="Journals" />
-    </menu>
-    <menu id="397">
-      <phrase id="menutext" value="Trial Balance" />
     </menu>
     <menu id="651">
       <phrase id="menutext" value="Accounts Set-up" />

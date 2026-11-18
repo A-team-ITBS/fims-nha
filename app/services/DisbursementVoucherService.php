@@ -1572,6 +1572,18 @@ class DisbursementVoucherService
             // DisbursementVoucherService::fetchById()'s file_attachments.
             $jev['file_attachments'] = (new FileUploadServices())->attachmentsFor($jev['multiple_node_id'] ?? null);
 
+            // Review-chain history (who moved it to which status, when, with what remarks) — written by
+            // changeJevStatus() via GlobalService::logStatusChange(), oldest first.
+            $jev['status_history'] = App\ExecuteRows(
+                "SELECT l.status, l.remarks, l.changed_at,
+                        TRIM(CONCAT_WS(' ', u.first_name, u.last_name)) AS actor_name
+                 FROM fims.status_change_log l
+                 LEFT JOIN {$this->tableUsers} u ON u.user_id = l.changed_by
+                 WHERE l.status_for = 'journal_entry_voucher' AND l.record_id = '{$jevId}'
+                 ORDER BY l.changed_at ASC, l.status_change_log_id ASC",
+                'DB'
+            ) ?: [];
+
             return ['success' => true, 'data' => $jev];
         } catch (\Exception $e) {
             App\LogError('DisbursementVoucherService::fetchStandaloneJev ' . $e->getMessage());
@@ -1915,7 +1927,7 @@ class DisbursementVoucherService
      *   FOR_DEPARTMENT_MANAGER -> POSTED                 (Department Manager approves & posts to the GL)
      * Every step is held by the Accounting Department (RC 012) or a superadmin.
      */
-    public function changeJevStatus(int $jevId, string $newStatus, int $userId): array
+    public function changeJevStatus(int $jevId, string $newStatus, int $userId, ?string $remarks = null): array
     {
         $transitions = [
             'DRAFT'                  => ['FOR_SECTION_CHIEF'],
@@ -1960,7 +1972,7 @@ class DisbursementVoucherService
                     throw $e;
                 }
 
-                GlobalService::logStatusChange('journal_entry_voucher', $jevId, 'POSTED', $userId);
+                GlobalService::logStatusChange('journal_entry_voucher', $jevId, 'POSTED', $userId, $remarks);
 
                 return ['success' => true, 'message' => 'Journal Entry approved and posted to the General Ledger.', 'data' => ['jev_id' => $jevId, 'status' => 'POSTED']];
             }
@@ -1970,7 +1982,7 @@ class DisbursementVoucherService
                 return ['success' => false, 'message' => "Status '{$new}' is not configured for journal entry vouchers."];
             }
             App\Execute("UPDATE {$this->tableJev} SET status_id = {$newId} WHERE jev_id = {$jevId}", 'DB');
-            GlobalService::logStatusChange('journal_entry_voucher', $jevId, $new, $userId);
+            GlobalService::logStatusChange('journal_entry_voucher', $jevId, $new, $userId, $remarks);
 
             return ['success' => true, 'message' => "Journal Entry is now {$new}.", 'data' => ['jev_id' => $jevId, 'status' => $new]];
         } catch (\Exception $e) {

@@ -68,7 +68,18 @@ $app->put('/budget_revision/update/{id}', function ($request, $response, $args) 
     }
 })->add($jwtMiddleware);
 
-// Review — body: { "status": "APPROVED" | "DECLINED" }
+// Process — submits a SAVED request for review (Saved -> Submitted); from then on it can no longer be edited. No body.
+$app->put('/budget_revision/process/{id}', function ($request, $response, $args) use ($BudgetRevisionService) {
+    try {
+        $result = $BudgetRevisionService->process($args['id']);
+
+        return $response->withJson($result, $result['success'] ? 200 : 400);
+    } catch (\Exception $e) {
+        return $response->withJson(['success' => false, 'message' => $e->getMessage()], 400);
+    }
+})->add($jwtMiddleware);
+
+// Review — a SUBMITTED request only. body: { "status": "APPROVED" | "DECLINED" }
 $app->put('/budget_revision/review/{id}', function ($request, $response, $args) use ($BudgetRevisionService) {
     try {
         $body   = $request->getParsedBody();
