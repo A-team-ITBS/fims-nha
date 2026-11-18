@@ -5,17 +5,14 @@ namespace PHPMaker2024\FIMS\Service;
 use PHPMaker2024\FIMS as App;
 
 /**
- * Backs the Cash Position module (app/pages/cash-position-page.php), a
- * consolidated port of three of TREASURY's four cash-position pages:
- * cashpositiondashboard.php, cashpositionupdates.php, and
- * availablecashbalancestracking.php (_assets/TREASURY/app/services/
- * CashPosDasboardServices.php / CashPosUpServices.php /
- * AvailableCashBalancesServices.php). TREASURY's fourth page,
- * cashposreports.php (18 report types), is intentionally NOT ported here —
- * it depends on ~10 tables this project has no equivalent for at all
- * (collections, fund_transfers/FTLA, investments, garnished_accounts,
- * expropriation_accounts, interest_earnings_memo_*, etc.) and would mean
- * designing a whole separate subsystem nobody has asked for yet.
+ * Backs the Cash Position module (app/pages/cash-position-page.php):
+ * cashpositionupdates.php and availablecashbalancestracking.php
+ * (_assets/TREASURY/app/services/CashPosUpServices.php /
+ * AvailableCashBalancesServices.php), plus a Reports tab. A fourth tab,
+ * Dashboard (cashpositiondashboard.php / CashPosDasboardServices.php), was
+ * ported here too but has since been removed — getDashboardKpis(),
+ * getDashboardList(), and getAccountDetail() went with it, along with their
+ * routes in app/routes/cash-position.php.
  *
  * Schema differences from TREASURY, all deliberate (matching this
  * project's existing Bank Account Management conventions, not TREASURY's):
@@ -58,8 +55,14 @@ class CashPositionService
     private string $tableResponsibilityCode = 'fims.responsibility_code';
     private string $tableActivityLog = 'fims.cash_position_activity_log';
     private string $tableBankTransactions = 'fims.bank_transactions';
+    private string $tableChartOfAccounts = 'fims.chart_of_accounts';
+    private string $tableViewJournals = 'fims.v_journals';
 
     private const UPDATE_TYPES = ['RECEIPT', 'DISBURSEMENT', 'TRANSFER', 'ADJUSTMENT', 'COLLECTION', 'SOA_UPLOAD'];
+    // Same normal-balance convention as GeneralLedgerService::DEBIT_NORMAL_TYPES —
+    // duplicated here (rather than instantiating that service) since this is
+    // the only GL read CashPositionService needs.
+    private const DEBIT_NORMAL_TYPES = ['Asset', 'Expense'];
 
     private function str(mixed $v): string
     {
@@ -171,107 +174,6 @@ class CashPositionService
         return $this->ok($rows);
     }
 
-    // ── Dashboard ──
-    public function getDashboardKpis($filters)
-    {
-        $asOfDate = trim((string) ($filters['position_date'] ?? ''));
-        $where = implode(' AND ', $this->accountWhere($filters));
-
-        $row = App\ExecuteRow(
-            "SELECT
-                COALESCE(SUM(cp.opening_balance), 0) AS total_opening,
-                COALESCE(SUM(cp.closing_balance), 0) AS total_closing,
-                COALESCE(SUM(cp.available_balance), 0) AS total_available,
-                COALESCE(SUM(cp.restricted_amount), 0) AS total_restricted,
-                COALESCE(SUM(cp.total_receipts), 0) AS total_receipts,
-                COALESCE(SUM(cp.total_disbursements), 0) AS total_disbursements,
-                COUNT(DISTINCT ba.bank_account_id) FILTER (WHERE cp.cash_position_id IS NOT NULL) AS active_accounts
-             FROM {$this->tableBankAccounts} ba
-             {$this->cashPositionJoin($asOfDate)}
-             WHERE {$where}",
-            'DB'
-        );
-
-        $opening = $this->num($row['total_opening'] ?? 0);
-        $closing = $this->num($row['total_closing'] ?? 0);
-
-        return $this->ok([
-            'total_opening' => $opening,
-            'total_closing' => $closing,
-            'total_available' => $this->num($row['total_available'] ?? 0),
-            'total_restricted' => $this->num($row['total_restricted'] ?? 0),
-            'total_receipts' => $this->num($row['total_receipts'] ?? 0),
-            'total_disbursements' => $this->num($row['total_disbursements'] ?? 0),
-            'net_change' => $closing - $opening,
-            'active_accounts' => (int) ($row['active_accounts'] ?? 0),
-        ]);
-    }
-
-    // Flat bank-account rows (each account's position as-of the filter
-    // date, or its own latest if none given) — the frontend groups these
-    // by fund_source client-side, same pattern as Check Registry's
-    // booklet grouping, instead of a separate grouped-query endpoint.
-    public function getDashboardList($filters)
-    {
-        $asOfDate = trim((string) ($filters['position_date'] ?? ''));
-        $where = implode(' AND ', $this->accountWhere($filters));
-
-        $rows = App\ExecuteRowsAssociative(
-            "SELECT ba.bank_account_id, ba.account_name, ba.account_number, ba.bank_name, ba.bank_branch,
-                    ba.account_type, ba.account_classification, ba.fund_source, ba.is_main_depository, ba.status,
-                    cp.position_date, COALESCE(cp.opening_balance,0) AS opening_balance,
-                    COALESCE(cp.total_receipts,0) AS total_receipts, COALESCE(cp.total_disbursements,0) AS total_disbursements,
-                    COALESCE(cp.closing_balance,0) AS closing_balance, cp.bank_statement_balance, cp.reconciled,
-                    COALESCE(cp.restricted_amount,0) AS restricted_amount, cp.restricted_breakdown,
-                    COALESCE(cp.available_balance,0) AS available_balance
-             FROM {$this->tableBankAccounts} ba
-             {$this->cashPositionJoin($asOfDate)}
-             WHERE {$where}
-             ORDER BY ba.fund_source, ba.account_name",
-            'DB'
-        );
-        foreach ($rows as &$row) {
-            if ($row['restricted_breakdown']) {
-                $row['restricted_breakdown'] = json_decode($row['restricted_breakdown'], true);
-            }
-        }
-
-        return $this->ok($rows);
-    }
-
-    // Full detail for one account (Dashboard's "Account Detail" modal) —
-    // same shape as getDashboardList()'s per-row fields, scoped to a
-    // single bank_account_id. TREASURY fetches this fresh from the server
-    // on click; this project's dashboard already holds the full filtered
-    // row set in memory client-side (no pagination to miss), so the page
-    // renders the modal straight from that in-memory row instead of
-    // re-fetching — this endpoint exists for API parity / direct linking.
-    public function getAccountDetail($bankAccountId, $filters)
-    {
-        $bankAccountId = (int) $bankAccountId;
-        if ($bankAccountId <= 0) {
-            return json_encode(["success" => false, "message" => "Invalid bank account ID."]);
-        }
-        $asOfDate = trim((string) ($filters['position_date'] ?? ''));
-        $row = App\ExecuteRow(
-            "SELECT ba.bank_account_id, ba.account_name, ba.account_number, ba.bank_name, ba.bank_branch,
-                    ba.account_type, ba.account_classification, ba.fund_source, ba.is_main_depository, ba.status,
-                    cp.position_date, COALESCE(cp.opening_balance,0) AS opening_balance,
-                    COALESCE(cp.total_receipts,0) AS total_receipts, COALESCE(cp.total_disbursements,0) AS total_disbursements,
-                    COALESCE(cp.closing_balance,0) AS closing_balance, cp.bank_statement_balance, cp.reconciled,
-                    COALESCE(cp.restricted_amount,0) AS restricted_amount, COALESCE(cp.available_balance,0) AS available_balance
-             FROM {$this->tableBankAccounts} ba
-             {$this->cashPositionJoin($asOfDate)}
-             WHERE ba.bank_account_id = {$bankAccountId}",
-            'DB'
-        );
-        if (!$row) {
-            return json_encode(["success" => false, "message" => "Account not found."]);
-        }
-
-        return $this->ok($row);
-    }
-
     // ── Position Updates ──
     public function getUpdatesKpis()
     {
@@ -349,12 +251,20 @@ class CashPositionService
     // getComputedBalance(). The Manual Entry form pre-fills and locks all
     // three fields from this (unless Update Type = COLLECTION, which
     // leaves Total Receipts editable).
+    //
+    // When there's no prior fims.cash_position row at all (this account's
+    // very first entry), Beginning Balance now falls back to this bank
+    // account's own tagged GL account's balance as of the day before
+    // position_date (glBalanceAsOf()) rather than asking for a blind
+    // manual guess — only genuinely untagged accounts (no coa_account_id
+    // tagged via Bank Account Management's GL/SL picker) still fall
+    // through to a manual entry.
     public function getComputedBalance($bankAccountId, $positionDate)
     {
         $bankAccountId = (int) $bankAccountId;
         $positionDate = trim((string) $positionDate);
         if ($bankAccountId <= 0 || $positionDate === '') {
-            return $this->ok(['opening_balance' => null, 'has_prior_balance' => false, 'total_receipts' => 0, 'total_disbursements' => 0]);
+            return $this->ok(['opening_balance' => null, 'opening_balance_source' => 'NONE', 'total_receipts' => 0, 'total_disbursements' => 0]);
         }
         $prior = App\ExecuteRow(
             "SELECT closing_balance FROM {$this->tableCashPosition}
@@ -362,6 +272,15 @@ class CashPositionService
              ORDER BY position_date DESC LIMIT 1",
             'DB'
         );
+
+        if ($prior) {
+            $openingBalance = (float) $prior['closing_balance'];
+            $source = 'PRIOR_CLOSING';
+        } else {
+            $openingBalance = $this->glBalanceAsOf($bankAccountId, $positionDate);
+            $source = $openingBalance !== null ? 'GENERAL_LEDGER' : 'NONE';
+        }
+
         $ledger = App\ExecuteRow(
             "SELECT COALESCE(SUM(amount) FILTER (WHERE direction = 'INFLOW'), 0) AS total_receipts,
                     COALESCE(SUM(amount) FILTER (WHERE direction != 'INFLOW'), 0) AS total_disbursements
@@ -371,11 +290,51 @@ class CashPositionService
         );
 
         return $this->ok([
-            'opening_balance' => $prior ? (float) $prior['closing_balance'] : null,
-            'has_prior_balance' => (bool) $prior,
+            'opening_balance' => $openingBalance,
+            'opening_balance_source' => $source,
             'total_receipts' => $this->num($ledger['total_receipts'] ?? 0),
             'total_disbursements' => $this->num($ledger['total_disbursements'] ?? 0),
         ]);
+    }
+
+    // This bank account's tagged GL account's balance as of the day before
+    // $positionDate (every posting strictly before it) — same normal-
+    // balance sign convention as GeneralLedgerService::fetchGeneralLedger()
+    // (Asset/Expense accounts are debit-normal; everything else is
+    // credit-normal). fims.bank_accounts.account_code is kept in sync with
+    // whatever GL account Bank Account Management's two-step picker tags
+    // (see BankManagementService::accountCodeForId()), so this is always
+    // the same account_code that module shows as "tagged." Returns null —
+    // not 0 — when the account isn't tagged to any GL account at all, so
+    // the caller can tell "genuinely untagged" apart from "tagged, zero
+    // balance so far."
+    private function glBalanceAsOf(int $bankAccountId, string $positionDate): ?float
+    {
+        $account = App\ExecuteRow(
+            "SELECT account_code FROM {$this->tableBankAccounts} WHERE bank_account_id = {$bankAccountId}",
+            'DB'
+        );
+        $accountCode = trim((string) ($account['account_code'] ?? ''));
+        if ($accountCode === '') {
+            return null;
+        }
+        $coa = App\ExecuteRow(
+            "SELECT account_type FROM {$this->tableChartOfAccounts} WHERE account_code = " . $this->str($accountCode),
+            'DB'
+        );
+        if (!$coa) {
+            return null;
+        }
+        $sign = in_array($coa['account_type'], self::DEBIT_NORMAL_TYPES, true) ? '(debit - credit)' : '(credit - debit)';
+
+        $row = App\ExecuteRow(
+            "SELECT COALESCE(SUM({$sign}), 0) AS balance
+             FROM {$this->tableViewJournals}
+             WHERE account_code = " . $this->str($accountCode) . ' AND posting_date < ' . $this->str($positionDate),
+            'DB'
+        );
+
+        return $this->num($row['balance'] ?? 0);
     }
 
     // Upsert keyed on (bank_account_id, position_date) — this project's
