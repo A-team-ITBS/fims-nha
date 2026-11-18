@@ -542,10 +542,10 @@ function amp_renderProforma(active) {
         <div class="amp-vw-card"><h4 class="amp-vw-card-title">${infra ? 'Infrastructure Record' : 'Delivery Receipt'}</h4>
             ${vrow(infra ? 'SWA Number' : 'IAR Number',amp_pf.iar ? '<span class="amp-vw-code">' + amp_esc(amp_pf.iar) + '</span>' : '—')}
             ${infra ? vrow('RFA Number', amp_esc(amp_pf.po)) + vrow('Project', amp_esc(rc.project || '—')) + vrow('Location', amp_esc(rc.location || '—')) : vrow('Delivery Receipt No.', amp_esc(rc.dr_number))}
-            ${vrow('Total Amount', '<span class="amp-vw-num">₱' + num(rc.total) + '</span>')}
+            ${infra ? '' : vrow('Total Amount', '<span class="amp-vw-num">₱' + num(rc.total) + '</span>')}
         </div>
         <div class="amp-vw-card"><h4 class="amp-vw-card-title">Pro-forma JEV</h4>
-        <div class="amp-tabs">${amp_pf.receipts.map(tab).join('')}</div>
+        ${infra ? '' : '<div class="amp-tabs">' + amp_pf.receipts.map(tab).join('') + '</div>'}
         <div style="margin-top:14px;">
             <div class="amp-row c2" style="margin-bottom:12px;">
                 <div class="amp-group">
@@ -612,7 +612,7 @@ function amp_pfError(rc) {
     const t = amp_pfTotals(rc);
     const cap = Math.round((Number(rc.total) || 0) * 100);
     if (d.rows.some(r => !r.code || !((Number(r.debit) > 0) || (Number(r.credit) > 0)))) return { text: 'Choose an account code and enter a debit or a credit amount for every row.', hard: false };
-    if (t.debit > cap || t.credit > cap) {
+    if (amp_pf.kind !== 'infra' && (t.debit > cap || t.credit > cap)) {   // an infrastructure pro-forma is not limited to the record's amount: the user enters it
         const f = c => (c / 100).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         return { text: 'The total (₱' + f(Math.max(t.debit, t.credit)) + ') exceeds the total amount of this ' + (amp_pf.kind === 'infra' ? 'IAR' : 'delivery receipt') + ' (₱' + f(cap) + ').', hard: true, pill: amp_pf.kind === 'infra' ? '&#10006; Exceeds IAR total' : '&#10006; Exceeds DR total' };
     }
