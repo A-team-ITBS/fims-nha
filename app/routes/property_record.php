@@ -38,6 +38,29 @@ $app->get('/property-record/iar-items', function ($request, $response, $args) us
     return $response->withJson($result, $result['success'] ? 200 : 400);
 })->add($jwtMiddleware);
 
+// Submit the depreciation pro-forma as a Journal Entry Voucher (sent for approval). body: { jev_date, book_id, particulars, lines[] }
+$app->post('/property-record/proforma-submit', function ($request, $response, $args) use ($PropertyRecordService) {
+    $result = $PropertyRecordService->submitProforma($request->getParsedBody() ?: [], (int) $request->getAttribute('user_id'));
+
+    return $response->withJson($result, $result['httpCode'] ?? ($result['success'] ? 200 : 400));
+})->add($jwtMiddleware);
+
+// The JEV a depreciation pro-forma was already submitted as (null when it was not): ?book_id=1&p[]=<particulars>&p[]=<standard particulars>
+$app->get('/property-record/proforma-jev', function ($request, $response, $args) use ($PropertyRecordService) {
+    $params = $request->getQueryParams();
+
+    return $response->withJson(['success' => true, 'data' => $PropertyRecordService->proformaJev((int) ($params['book_id'] ?? 0), (array) ($params['p'] ?? []))]);
+})->add($jwtMiddleware);
+
+// Titles of chart-of-accounts codes (the depreciation pro-forma JEV)
+// GET /property-record/account-titles?codes=5-05-01-050-02,1-06-05-021   → { success, data: { code: title } }
+$app->get('/property-record/account-titles', function ($request, $response, $args) use ($PropertyRecordService) {
+    $params = $request->getQueryParams();
+    $result = $PropertyRecordService->accountTitles(explode(',', (string) ($params['codes'] ?? '')));
+
+    return $response->withJson($result, $result['success'] ? 200 : 400);
+})->add($jwtMiddleware);
+
 // Everything that is saved (items of every PO, with the PO's responsibility center) + the numbers for the cards
 // GET /property-record/list   → { success, data: { items[], po_count, summary{} } }
 $app->get('/property-record/list', function ($request, $response, $args) use ($PropertyRecordService) {
