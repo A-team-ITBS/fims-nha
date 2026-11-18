@@ -521,13 +521,15 @@ async function bgrv_openCobModal(fiscalYr = '', extraParams = {}, options = {}) 
 // Projects and the totals still count every occurrence.
 // Each row/total carries THREE amounts: proposed (the "Approved Amount" column — budget_line_items.suggested_amount
 // once Budget Processing has set one, falling back to proposed_amount until then; same "suggested, else proposed"
-// rule budget-processing-form.php's bpr_initialSuggested() and budget-allocation-form.php's cobSuggested() use,
-// since suggested_amount is what Budget Processing may have revised the office's original ask down (or up) to —
-// see bgrv_approvedAmount), adjustment (budget_line_items.adjustment — the net adjustment applied by an approved
-// Budget Revision; 0 until one is approved), and revised — proposed PLUS adjustment (adjustment already carries
-// its own sign: negative for a cut, positive for an increase), computed here rather than read from
-// budget_line_items.revised_amount (that column is a separately app-maintained figure used elsewhere, e.g.
-// Budget Revision's own screens; this view derives its own).
+// rule budget-processing-form.php's bpr_initialSuggested() uses — see bgrv_approvedAmount below). suggested_amount
+// is now a STABLE figure (migration "51 - budget_line_items_stable_suggested_amount.sql" — no CBA/CFA/RFA/LAA
+// approval or deletion, and no Budget Revision, ever moves it again; see BudgetLineBalanceSql's class doc), so
+// reading it here needs no further adjustment — unlike budget-allocation-form.php's "Available Amount"
+// (cobAvailable()), which is a genuinely live, derived ceiling and is NOT what this column shows. adjustment
+// (budget_line_items.adjustment — the net adjustment applied by an approved Budget Revision; 0 until one is
+// approved), and revised — proposed PLUS adjustment (adjustment already carries its own sign: negative for a cut,
+// positive for an increase), computed here rather than read from budget_line_items.revised_amount (that column is
+// a separately app-maintained figure used elsewhere, e.g. Budget Revision's own screens; this view derives its own).
 // showFund: each Project row also lists the Type(s) of Fund of its line items (set by Budget Processing; a Project can have several, and
 // none before it has been processed).
 // Same account_code-prefix rule DisbursementVoucherService::deriveExpenseClass() uses — chart_of_accounts
