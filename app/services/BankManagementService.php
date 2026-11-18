@@ -20,10 +20,7 @@ use PHPMaker2024\FIMS as App;
  * already used by fims.budget_allocation.requesting_rc_id (see
  * "03 - alter_table/14 - budget_allocation_requesting_department_id_to_
  * requesting_rc_id.sql"). rc_id has no FK, like that column; this service
- * validates it exists before saving instead. Documents are Google-Drive
- * links (not uploads), matching the pattern already named but
- * unimplemented in CheckProcessingService::saveRegionDriveLink() — stored
- * in fims.bank_account_documents.
+ * validates it exists before saving instead.
  *
  * `status` (ACTIVE/DORMANT/CLOSED) is new and is kept in sync with the
  * pre-existing `is_active` boolean so CheckProcessingService::
@@ -36,7 +33,6 @@ use PHPMaker2024\FIMS as App;
 class BankManagementService
 {
     private string $tableBankAccounts     = 'fims.bank_accounts';
-    private string $tableDocuments        = 'fims.bank_account_documents';
     private string $tableAuditLog         = 'fims.bank_account_audit_log';
     private string $tableResponsibilityCode = 'fims.responsibility_code';
     private string $tableChartOfAccounts    = 'fims.chart_of_accounts';
@@ -83,7 +79,6 @@ class BankManagementService
     }
 
     private const ACCOUNT_TYPES = ['CURRENT', 'SAVINGS', 'NON_DRAWING_SAVINGS', 'TIME_DEPOSIT', 'TRUST'];
-    private const CLASSIFICATIONS = ['COLLECTION', 'DISBURSEMENT', 'COE_MOOE', 'CAPITAL_OUTLAY', 'EHAP', 'SPECIAL_PURPOSE', 'PROJECT', 'JOINT_VENTURE', 'TRUST'];
     private const STATUSES = ['ACTIVE', 'DORMANT', 'CLOSED'];
 
     // ── Stats (KPI cards) ──
@@ -122,14 +117,6 @@ class BankManagementService
         if (in_array($status, self::STATUSES, true)) {
             $where[] = "ba.status = " . $this->str($status);
         }
-        $classification = strtoupper(trim((string) ($params['classification'] ?? '')));
-        if (in_array($classification, self::CLASSIFICATIONS, true)) {
-            $where[] = "ba.account_classification = " . $this->str($classification);
-        }
-        $fundSource = trim((string) ($params['fund_source'] ?? ''));
-        if ($fundSource !== '') {
-            $where[] = "ba.fund_source = " . $this->str($fundSource);
-        }
         $search = trim((string) ($params['search'] ?? ''));
         if ($search !== '') {
             $needle = $this->str('%' . $search . '%');
@@ -153,20 +140,13 @@ class BankManagementService
         return $this->dataTable($params['draw'] ?? 1, $rows);
     }
 
-    // ── Single account (with documents) ──
+    // ── Single account ──
     public function getAccount($id)
     {
         $account = $this->fetchAccount((int) $id);
         if (!$account) {
             return json_encode(["success" => false, "message" => "Bank account not found."]);
         }
-        $account['documents'] = App\ExecuteRowsAssociative(
-            "SELECT document_id, link_name, gdrive_link, added_at
-             FROM {$this->tableDocuments}
-             WHERE bank_account_id = " . (int) $id . "
-             ORDER BY added_at DESC",
-            'DB'
-        );
 
         return $this->ok($account);
     }
@@ -243,15 +223,11 @@ class BankManagementService
     {
         $accountName = trim((string) ($data['account_name'] ?? ''));
         $accountNumber = trim((string) ($data['account_number'] ?? ''));
-        $classification = strtoupper(trim((string) ($data['account_classification'] ?? '')));
         $bankName = trim((string) ($data['bank_name'] ?? ''));
         $status = strtoupper(trim((string) ($data['status'] ?? 'ACTIVE')));
 
         if ($accountName === '' || $accountNumber === '' || $bankName === '') {
             return json_encode(["success" => false, "message" => "Account Name, Account Number, and Bank Name are required."]);
-        }
-        if (!in_array($classification, self::CLASSIFICATIONS, true)) {
-            return json_encode(["success" => false, "message" => "Select a valid Purpose."]);
         }
         if (!in_array($status, self::STATUSES, true)) {
             $status = 'ACTIVE';
@@ -284,13 +260,12 @@ class BankManagementService
 
         $row = App\ExecuteRow(
             "INSERT INTO {$this->tableBankAccounts}
-                (account_name, account_number, bank_name, bank_branch, account_type, account_classification,
-                 fund_source, rc_id, account_code, coa_account_id, sl_code, is_main_depository, status, is_active, date_opened,
+                (account_name, account_number, bank_name, bank_branch, account_type,
+                 rc_id, account_code, coa_account_id, sl_code, is_main_depository, status, is_active, date_opened,
                  last_transaction_date, created_by)
              VALUES (
                 " . $this->str($accountName) . ', ' . $this->str($accountNumber) . ', ' . $this->str($bankName) . ', '
                 . $this->strOrNull($data['bank_branch'] ?? null) . ', ' . $this->strOrNull($accountType) . ', '
-                . $this->str($classification) . ', ' . $this->strOrNull($data['fund_source'] ?? null) . ', '
                 . $this->strOrNull($rcId) . ', ' . $this->strOrNull($accountCode) . ', ' . $this->strOrNull($coaAccountId) . ', '
                 . $this->strOrNull($slCode) . ', ' . $this->bool($data['is_main_depository'] ?? false) . ', '
                 . $this->str($status) . ', ' . ($status === 'ACTIVE' ? 'TRUE' : 'FALSE') . ', '
@@ -317,15 +292,11 @@ class BankManagementService
 
         $accountName = trim((string) ($data['account_name'] ?? ''));
         $accountNumber = trim((string) ($data['account_number'] ?? ''));
-        $classification = strtoupper(trim((string) ($data['account_classification'] ?? '')));
         $bankName = trim((string) ($data['bank_name'] ?? ''));
         $status = strtoupper(trim((string) ($data['status'] ?? 'ACTIVE')));
 
         if ($accountName === '' || $accountNumber === '' || $bankName === '') {
             return json_encode(["success" => false, "message" => "Account Name, Account Number, and Bank Name are required."]);
-        }
-        if (!in_array($classification, self::CLASSIFICATIONS, true)) {
-            return json_encode(["success" => false, "message" => "Select a valid Purpose."]);
         }
         if (!in_array($status, self::STATUSES, true)) {
             $status = 'ACTIVE';
@@ -368,8 +339,6 @@ class BankManagementService
                 bank_name = " . $this->str($bankName) . ",
                 bank_branch = " . $this->strOrNull($data['bank_branch'] ?? null) . ",
                 account_type = " . $this->strOrNull($accountType) . ",
-                account_classification = " . $this->str($classification) . ",
-                fund_source = " . $this->strOrNull($data['fund_source'] ?? null) . ",
                 rc_id = " . $this->strOrNull($rcId) . ",
                 account_code = " . $this->strOrNull($accountCode) . ",
                 coa_account_id = " . $this->strOrNull($coaAccountId) . ",
@@ -480,58 +449,6 @@ class BankManagementService
         return $this->ok($rows);
     }
 
-    // ── Documents ──
-    public function getDocuments($id)
-    {
-        $rows = App\ExecuteRowsAssociative(
-            "SELECT document_id, link_name, gdrive_link, added_at
-             FROM {$this->tableDocuments}
-             WHERE bank_account_id = " . (int) $id . "
-             ORDER BY added_at DESC",
-            'DB'
-        );
-
-        return $this->ok($rows);
-    }
-
-    public function saveDocumentLink($id, $data)
-    {
-        $accountId = (int) $id;
-        $linkName = trim((string) ($data['link_name'] ?? ''));
-        $gdriveLink = trim((string) ($data['gdrive_link'] ?? ''));
-        if ($linkName === '' || $gdriveLink === '') {
-            return json_encode(["success" => false, "message" => "Link name and Google Drive URL are required."]);
-        }
-        if (!App\ExecuteRow("SELECT bank_account_id FROM {$this->tableBankAccounts} WHERE bank_account_id = {$accountId}", 'DB')) {
-            return json_encode(["success" => false, "message" => "Bank account not found."]);
-        }
-
-        $userId = (int) App\CurrentUserID();
-        $row = App\ExecuteRow(
-            "INSERT INTO {$this->tableDocuments} (bank_account_id, link_name, gdrive_link, added_by)
-             VALUES ({$accountId}, " . $this->str($linkName) . ', ' . $this->str($gdriveLink) . ", {$userId})
-             RETURNING document_id",
-            'DB'
-        );
-
-        return $this->ok(['document_id' => $row['document_id']]);
-    }
-
-    public function removeDocumentLink($id, $data)
-    {
-        $accountId = (int) $id;
-        $documentId = (int) ($data['document_id'] ?? 0);
-        if ($documentId <= 0) {
-            return json_encode(["success" => false, "message" => "Document not specified."]);
-        }
-        App\Execute(
-            "DELETE FROM {$this->tableDocuments} WHERE document_id = {$documentId} AND bank_account_id = {$accountId}",
-            'DB'
-        );
-
-        return $this->ok(['document_id' => $documentId]);
-    }
-
     // ── Lookups ──
     public function getResponsibilityCenters()
     {
@@ -546,16 +463,4 @@ class BankManagementService
         return $this->ok($rows);
     }
 
-    public function getFundSources()
-    {
-        $rows = App\ExecuteRowsAssociative(
-            "SELECT DISTINCT fund_source
-             FROM {$this->tableBankAccounts}
-             WHERE fund_source IS NOT NULL AND fund_source <> ''
-             ORDER BY fund_source",
-            'DB'
-        );
-
-        return $this->ok(array_map(fn ($r) => $r['fund_source'], $rows));
-    }
 }

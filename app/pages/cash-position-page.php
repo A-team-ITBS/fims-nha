@@ -2,18 +2,17 @@
 /**
  * Cash Position — Treasury module.
  *
- * Consolidates 3 of the 4 TREASURY reference project cash-position pages
- * into one tabbed page:
- *   1. Dashboard                  — cashpositiondashboard.php
- *   2. Position Updates           — cashpositionupdates.php
- *   3. Available Cash Balances    — availablecashbalancestracking.php
+ * Tabs:
+ *   1. Position Updates           — cashpositionupdates.php
+ *   2. Available Cash Balances    — availablecashbalancestracking.php
+ *   3. Reports                    — cashposreports.php
  *
- * NOT ported: cashposreports.php (18 report types) — it depends on ~10
- * tables this project has no equivalent for (collections, fund_transfers/
- * FTLA, investments, garnished_accounts, expropriation_accounts,
- * interest_earnings_memo_*, etc.); porting it would mean designing a whole
- * separate subsystem nobody has asked for. See
- * app/services/CashPositionService.php's docblock for the full schema
+ * (The Dashboard tab — cashpositiondashboard.php — was removed; its KPIs,
+ * breakdown chart, grouped balance table, and Working Paper summary are
+ * gone along with it. The account-detail modal, statusBadgeFor(), and
+ * every dash*-prefixed function/element existed only for that tab.)
+ *
+ * See app/services/CashPositionService.php's docblock for the schema
  * adaptation notes (no shared.fund_sources — fund_source is plain text on
  * fims.bank_accounts; "Region/Office" is fims.responsibility_code, not
  * uac.departments; no transaction ledger to auto-sum receipts/
@@ -43,112 +42,15 @@ $cpsCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
     </div>
 
     <div class="fims-tabs-underline mb-3" id="cpsTabNav">
-        <button class="fims-tab-underline active" data-cps-tab="dashboard">Dashboard</button>
-        <button class="fims-tab-underline" data-cps-tab="updates">Position Updates</button>
+        <button class="fims-tab-underline active" data-cps-tab="updates">Position Updates</button>
         <button class="fims-tab-underline" data-cps-tab="available">Available Cash Balances</button>
         <button class="fims-tab-underline" data-cps-tab="reports">Reports</button>
     </div>
 
     <!-- ══════════════════════════════════════════════
-         TAB 1: DASHBOARD
+         TAB 1: POSITION UPDATES
     ══════════════════════════════════════════════ -->
-    <div class="fims-tab-underline-content active" id="cpsDashboard">
-        <div class="fims-stat-grid" id="cpsDashKpis" style="grid-template-columns:repeat(6,1fr)">
-            <div class="fims-stat-card fims-card-blue">
-                <div class="fims-stat-top"><span class="fims-stat-label">Beginning Cash Balance</span></div>
-                <div class="fims-stat-value" data-kpi="total_opening">₱0.00</div>
-                <div class="fims-stat-sub">Beginning balance for period</div>
-            </div>
-            <div class="fims-stat-card fims-card-indigo">
-                <div class="fims-stat-top"><span class="fims-stat-label">Net Cash Change</span></div>
-                <div class="fims-stat-value" data-kpi="net_change">₱0.00</div>
-                <div class="fims-stat-sub" data-kpi-sub="net_change">No net movement</div>
-            </div>
-            <div class="fims-stat-card fims-card-green">
-                <div class="fims-stat-top"><span class="fims-stat-label">Ending Cash Balance</span></div>
-                <div class="fims-stat-value" data-kpi="total_closing">₱0.00</div>
-                <div class="fims-stat-sub">Ending balance for period</div>
-            </div>
-            <div class="fims-stat-card fims-card-amber">
-                <div class="fims-stat-top"><span class="fims-stat-label">Restricted Funds</span></div>
-                <div class="fims-stat-value" data-kpi="total_restricted">₱0.00</div>
-                <div class="fims-stat-sub">Not freely available</div>
-            </div>
-            <div class="fims-stat-card fims-card-green">
-                <div class="fims-stat-top"><span class="fims-stat-label">Total Available Cash</span></div>
-                <div class="fims-stat-value" data-kpi="total_available">₱0.00</div>
-                <div class="fims-stat-sub" data-kpi-sub="total_available">Excluding restricted</div>
-            </div>
-            <div class="fims-stat-card fims-card-gray">
-                <div class="fims-stat-top"><span class="fims-stat-label">Active Accounts</span></div>
-                <div class="fims-stat-value" data-kpi="active_accounts">0</div>
-                <div class="fims-stat-sub">Bank accounts on record</div>
-            </div>
-        </div>
-
-        <div class="fims-table-panel" style="border-radius:var(--fims-radius-lg) var(--fims-radius-lg) 0 0;border-bottom:none;margin-bottom:0">
-            <div class="fims-toolbar">
-                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-                    <input type="date" class="fims-input fims-input-sm" id="dashFilterDate" title="Position Date (blank = each account's latest)">
-                    <select class="fims-select fims-input-sm" id="dashFilterFundSource" style="width:170px"><option value="">All Fund Sources</option></select>
-                    <select class="fims-select fims-input-sm" id="dashFilterRegion" style="width:200px"><option value="">All Regions/Offices</option></select>
-                    <button type="button" class="fims-btn fims-btn-primary fims-btn-sm" id="dashFilterBtn"><i class="fas fa-filter mr-1"></i>Apply</button>
-                    <button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" id="dashResetBtn">Reset</button>
-                </div>
-            </div>
-        </div>
-
-        <div class="fims-table-panel" style="border-radius:0 0 var(--fims-radius-lg) var(--fims-radius-lg)">
-            <div class="fims-panel-header">
-                <div class="fims-panel-title" id="dashTableTitle">Cash Balance by Fund Source &amp; Bank Account</div>
-                <div style="display:flex;gap:8px;align-items:center;">
-                    <select class="fims-select fims-input-sm" id="dashGroupBy" style="width:150px">
-                        <option value="fund_source">Group: Fund Source</option>
-                        <option value="account_classification">Group: Classification</option>
-                    </select>
-                    <button type="button" class="fims-btn fims-btn-outline fims-btn-sm" id="dashExportBtn"><i class="fas fa-file-csv mr-1"></i>Export CSV</button>
-                    <button type="button" class="fims-btn fims-btn-outline fims-btn-sm" id="dashPrintBtn"><i class="fas fa-print mr-1"></i>Print</button>
-                </div>
-            </div>
-            <div class="fims-table-wrap">
-                <table class="fims-table" id="dashTable">
-                    <thead>
-                        <tr>
-                            <th>Account Name</th><th>Account No.</th><th>Bank / Branch</th>
-                            <th class="text-right">Ending Balance</th><th class="text-right">Restricted</th>
-                            <th class="text-right">Available</th><th class="text-center">Status</th>
-                        </tr>
-                    </thead>
-                    <tbody><tr class="fims-empty"><td colspan="7">Loading…</td></tr></tbody>
-                </table>
-            </div>
-        </div>
-
-        <div class="fims-table-panel" style="margin-top:14px;">
-            <div class="fims-panel-header" id="wpPanelHeader" style="cursor:pointer;">
-                <div class="fims-panel-title"><i class="fas fa-caret-right mr-1" id="wpCaret"></i>Cash Position Summary (Working Paper)</div>
-            </div>
-            <div class="fims-table-wrap" id="wpPanelBody" style="display:none;">
-                <table class="fims-table" id="wpTable">
-                    <thead>
-                        <tr>
-                            <th>Bank Account</th><th>Fund Source</th>
-                            <th class="text-right">Beginning</th><th class="text-right">+ Receipts</th><th class="text-right">− Disbursements</th>
-                            <th class="text-right">Ending</th><th class="text-right">Bank Balance</th><th class="text-center">Recon.</th>
-                            <th class="text-right">Restricted</th><th class="text-right">Available</th>
-                        </tr>
-                    </thead>
-                    <tbody><tr class="fims-empty"><td colspan="10">Expand to load…</td></tr></tbody>
-                    <tfoot id="wpTotalsRow"></tfoot>
-                </table>
-            </div>
-        </div>
-    </div>
-
-    <!-- ══════════════════════════════════════════════
-         TAB 2: POSITION UPDATES
-    ══════════════════════════════════════════════ -->
-    <div class="fims-tab-underline-content" id="cpsUpdates" style="display:none">
+    <div class="fims-tab-underline-content active" id="cpsUpdates">
         <div class="fims-stat-grid" id="updKpis" style="grid-template-columns:repeat(4,1fr)">
             <div class="fims-stat-card fims-card-blue"><div class="fims-stat-top"><span class="fims-stat-label">Total Ending Balance</span></div><div class="fims-stat-value" data-kpi="total_ending">₱0.00</div></div>
             <div class="fims-stat-card fims-card-amber"><div class="fims-stat-top"><span class="fims-stat-label">Total Restricted Funds</span></div><div class="fims-stat-value" data-kpi="total_restricted">₱0.00</div></div>
@@ -175,7 +77,6 @@ $cpsCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
                 <div style="display:flex;gap:8px;">
                     <button type="button" class="fims-btn fims-btn-outline fims-btn-sm" id="updUploadSoaBtn"><i class="fas fa-file-upload mr-1"></i>Upload SOA</button>
                     <button type="button" class="fims-btn fims-btn-outline fims-btn-sm" id="updBatchUploadBtn"><i class="fas fa-layer-group mr-1"></i>Batch Upload</button>
-                    <button type="button" class="fims-btn fims-btn-primary fims-btn-sm" id="updAddBtn"><i class="fas fa-plus mr-1"></i>Manual Entry</button>
                 </div>
             </div>
             <div class="fims-table-wrap">
@@ -185,7 +86,7 @@ $cpsCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
                             <th>Bank Account</th><th>Fund Source / Date</th>
                             <th class="text-right">Beginning</th><th class="text-right">+ Receipts</th><th class="text-right">− Disbursements</th>
                             <th class="text-right">Ending</th><th class="text-right">Restricted</th><th class="text-right">Available</th>
-                            <th class="text-center">Status</th><th class="text-center" style="width:70px">Actions</th>
+                            <th class="text-center">Status</th><th class="text-center" style="width:160px">Actions</th>
                         </tr>
                     </thead>
                     <tbody><tr class="fims-empty"><td colspan="10">Loading…</td></tr></tbody>
@@ -226,7 +127,7 @@ $cpsCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
     </div>
 
     <!-- ══════════════════════════════════════════════
-         TAB 3: AVAILABLE CASH BALANCES TRACKING
+         TAB 2: AVAILABLE CASH BALANCES TRACKING
     ══════════════════════════════════════════════ -->
     <div class="fims-tab-underline-content" id="cpsAvailable" style="display:none">
         <div class="fims-stat-grid" id="availKpis" style="grid-template-columns:repeat(4,1fr)">
@@ -273,7 +174,7 @@ $cpsCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
     </div>
 
     <!-- ══════════════════════════════════════════════
-         TAB 4: REPORTS — ported from TREASURY's cashposreports.php.
+         TAB 3: REPORTS — ported from TREASURY's cashposreports.php.
          Report types needing Collections/Investments/FTLA/Garnished/
          Expropriation Accounts (subsystems this project doesn't have)
          are structurally-correct stubs — see
@@ -453,154 +354,56 @@ $cpsCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
     </div>
 
     <!-- ══════════════════════════════════════════════
-         MODAL: Manual Cash Position Entry
+         MODAL: Cash Position Entry — two entry points:
+           - openAddEntryModal(bankAccountId): a bank account with NO entry
+             yet (Position Updates' "Add" action on a "No entry yet" row).
+             Position Date is editable (defaults to today) and Beginning
+             Balance is computed live as it changes.
+           - openManualEntryModal(entryId): an EXISTING entry (Position
+             Updates' "Edit" action). Position Date is locked to the
+             existing row and only Restricted Funds is actually editable.
     ══════════════════════════════════════════════ -->
     <div class="fims-modal-overlay" id="m-manual-entry" style="display:none;">
-        <div class="fims-modal-dialog" style="max-width:720px;width:95vw;">
+        <div class="fims-modal-dialog" style="max-width:480px;width:95vw;">
             <div class="fims-modal-content">
                 <div class="fims-modal-header">
-                    <div><div class="fims-modal-title" id="meModalTitle">Manual Cash Position Entry</div></div>
+                    <div><div class="fims-modal-title" id="meModalTitle">Cash Position Entry</div></div>
                     <button class="fims-modal-close" data-close="m-manual-entry">&times;</button>
                 </div>
                 <div class="fims-modal-body">
                     <input type="hidden" id="meCashPositionId">
 
-                    <div class="cps-step-indicator" id="meStepIndicator">
-                        <div class="cps-step-pill active" data-step-pill="1"><span class="cps-step-num">1</span>Account &amp; Period</div>
-                        <div class="cps-step-line"></div>
-                        <div class="cps-step-pill" data-step-pill="2"><span class="cps-step-num">2</span>Balances</div>
-                        <div class="cps-step-line"></div>
-                        <div class="cps-step-pill" data-step-pill="3"><span class="cps-step-num">3</span>Restricted Funds</div>
-                        <div class="cps-step-line"></div>
-                        <div class="cps-step-pill" data-step-pill="4"><span class="cps-step-num">4</span>Review</div>
+                    <!-- Position Date, Beginning Balance, Bank Statement Balance,
+                         Total Receipts, and Total Disbursements: all computed/
+                         defaulted automatically (today's date; prior closing
+                         balance or this account's GL balance; the posted
+                         transaction ledger; the latest SOA upload) and carried in
+                         the Save payload, but never shown or hand-typed — only
+                         Restricted Funds below is actually editable, for a
+                         brand-new entry and an existing one alike. -->
+                    <div style="display:none;">
+                        <input type="date" id="mePositionDate">
+                        <input type="number" step="0.01" id="meOpeningBalance">
+                        <span id="meOpeningHint"></span>
+                        <input type="number" step="0.01" id="meBankStatementBalance">
+                        <input type="number" step="0.01" id="meTotalReceipts" value="0">
+                        <input type="number" step="0.01" id="meTotalDisbursements" value="0">
                     </div>
 
-                    <div class="cps-me-step" data-step="1">
-                        <div class="fims-form-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-                            <div class="fims-form-group">
-                                <label class="fims-label">Bank Account *</label>
-                                <select class="fims-select" id="meBankAccount"><option value="">Select bank account...</option></select>
-                            </div>
-                            <div class="fims-form-group">
-                                <label class="fims-label">Position Date *</label>
-                                <input type="date" class="fims-input" id="mePositionDate">
-                            </div>
-                            <div class="fims-form-group" style="grid-column:span 2;">
-                                <label class="fims-label">Update Type *</label>
-                                <select class="fims-select" id="meUpdateType">
-                                    <option value="">— Select —</option>
-                                    <option value="RECEIPT">Receipt</option>
-                                    <option value="DISBURSEMENT">Disbursement</option>
-                                    <option value="TRANSFER">Transfer</option>
-                                    <option value="ADJUSTMENT">Adjustment</option>
-                                    <option value="COLLECTION">Collection</option>
-                                    <option value="SOA_UPLOAD">SOA Upload</option>
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="cps-me-step" data-step="2" style="display:none;">
-                        <div class="fims-form-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-                            <div class="fims-form-group">
-                                <label class="fims-label">Beginning Balance *</label>
-                                <input type="number" step="0.01" class="fims-input" id="meOpeningBalance">
-                                <span style="font-size:11px;color:var(--fims-text-subtle)" id="meOpeningHint"></span>
-                            </div>
-                            <div class="fims-form-group">
-                                <label class="fims-label">Bank Statement Balance</label>
-                                <input type="number" step="0.01" class="fims-input" id="meBankStatementBalance">
-                            </div>
-                            <div class="fims-form-group">
-                                <label class="fims-label">Total Receipts</label>
-                                <input type="number" step="0.01" class="fims-input" id="meTotalReceipts" value="0">
-                                <span style="font-size:11px;color:var(--fims-text-subtle)" id="meReceiptsHint"></span>
-                            </div>
-                            <div class="fims-form-group">
-                                <label class="fims-label">Total Disbursements</label>
-                                <input type="number" step="0.01" class="fims-input" id="meTotalDisbursements" value="0" readonly>
-                                <span style="font-size:11px;color:var(--fims-text-subtle)">Auto-computed from posted bank transactions for this date.</span>
-                            </div>
-                            <div class="fims-form-group">
-                                <label class="fims-label">Adjustment Direction</label>
-                                <select class="fims-select" id="meAdjustmentDirection">
-                                    <option value="">— None —</option>
-                                    <option value="ADDITION">Addition</option>
-                                    <option value="DEDUCTION">Deduction</option>
-                                </select>
-                            </div>
-                            <div class="fims-form-group">
-                                <label class="fims-label">Adjustment Amount</label>
-                                <input type="number" step="0.01" class="fims-input" id="meAdjustmentAmount" value="0">
-                            </div>
-                            <div class="fims-form-group" style="grid-column:span 2;">
-                                <label class="fims-label">Adjustment Details</label>
-                                <input type="text" class="fims-input" id="meAdjustmentDetails">
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="cps-me-step" data-step="3" style="display:none;">
-                        <div class="fims-form-section-title">Restricted Funds (itemized — leave empty to use a flat amount)</div>
-                        <table class="fims-table" id="meRestrictedTable">
-                            <thead><tr><th>Label</th><th style="width:150px">Amount</th><th style="width:40px"></th></tr></thead>
-                            <tbody id="meRestrictedBody"></tbody>
-                        </table>
-                        <button type="button" class="fims-btn fims-btn-outline fims-btn-sm" id="meAddRestrictedRowBtn"><i class="fas fa-plus mr-1"></i>Add Line</button>
-                        <div class="fims-form-group" style="margin-top:8px;max-width:240px;">
-                            <label class="fims-label">Flat Restricted Amount</label>
-                            <input type="number" step="0.01" class="fims-input" id="meRestrictedAmount" value="0">
-                        </div>
-                    </div>
-
-                    <div class="cps-me-step" data-step="4" style="display:none;">
-                        <div class="fims-form-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-                            <div class="fims-form-group">
-                                <label class="fims-label">Reference Number</label>
-                                <input type="text" class="fims-input" id="meReferenceNumber">
-                            </div>
-                            <div class="fims-form-group">
-                                <label style="display:flex;align-items:center;gap:6px;height:38px;margin-top:18px;">
-                                    <input type="checkbox" id="meReconciled"> Mark as Reconciled with bank statement
-                                </label>
-                            </div>
-                            <div class="fims-form-group" style="grid-column:span 2;">
-                                <label class="fims-label">Remarks</label>
-                                <textarea class="fims-input" id="meRemarks" rows="2"></textarea>
-                            </div>
-                        </div>
-
-                        <div class="fims-alert fims-alert-info" style="margin-top:14px;">
-                            <div class="fims-alert-body">
-                                Ending Balance = Beginning + Receipts − Disbursements ± Adjustment: <strong id="meComputedClosing">₱0.00</strong><br>
-                                Available Balance = Ending − Restricted: <strong id="meComputedAvailable">₱0.00</strong>
-                            </div>
-                        </div>
+                    <div class="fims-form-section-title">Restricted Funds (itemized — leave empty to use a flat amount)</div>
+                    <table class="fims-table" id="meRestrictedTable">
+                        <thead><tr><th>Label</th><th style="width:150px">Amount</th><th style="width:40px"></th></tr></thead>
+                        <tbody id="meRestrictedBody"></tbody>
+                    </table>
+                    <button type="button" class="fims-btn fims-btn-outline fims-btn-sm" id="meAddRestrictedRowBtn"><i class="fas fa-plus mr-1"></i>Add Line</button>
+                    <div class="fims-form-group" style="margin-top:8px;max-width:240px;">
+                        <label class="fims-label">Flat Restricted Amount</label>
+                        <input type="number" step="0.01" class="fims-input" id="meRestrictedAmount" value="0">
                     </div>
                 </div>
                 <div class="fims-modal-footer">
                     <button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-close="m-manual-entry">Cancel</button>
-                    <button type="button" class="fims-btn fims-btn-outline fims-btn-sm" id="meBackBtn" style="display:none;">Back</button>
-                    <button type="button" class="fims-btn fims-btn-primary fims-btn-sm" id="meNextBtn">Next</button>
-                    <button type="button" class="fims-btn fims-btn-primary fims-btn-sm" id="meSaveBtn" style="display:none;">Save</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- ══════════════════════════════════════════════
-         MODAL: Account Detail (Dashboard)
-    ══════════════════════════════════════════════ -->
-    <div class="fims-modal-overlay" id="m-account-detail" style="display:none;">
-        <div class="fims-modal-dialog" style="max-width:520px;width:95vw;">
-            <div class="fims-modal-content">
-                <div class="fims-modal-header">
-                    <div><div class="fims-modal-title" id="adAccountName">Account Detail</div></div>
-                    <button class="fims-modal-close" data-close="m-account-detail">&times;</button>
-                </div>
-                <div class="fims-modal-body" id="adBody"></div>
-                <div class="fims-modal-footer">
-                    <button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-close="m-account-detail">Close</button>
+                    <button type="button" class="fims-btn fims-btn-primary fims-btn-sm" id="meSaveBtn">Save</button>
                 </div>
             </div>
         </div>
@@ -653,15 +456,6 @@ $cpsCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
 .fims-form-section-title { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--fims-text-subtle); margin-bottom:8px; }
 .cps-group-header { cursor:pointer; background:var(--fims-table-head-bg, #f4f6fb); }
 
-/* Manual Cash Position Entry step indicator */
-.cps-step-indicator { display:flex; align-items:center; margin-bottom:18px; }
-.cps-step-pill { display:flex; align-items:center; gap:6px; font-size:12px; font-weight:600; color:var(--fims-text-subtle); white-space:nowrap; }
-.cps-step-pill .cps-step-num { display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:50%; background:var(--fims-border); color:var(--fims-text-subtle); font-size:12px; }
-.cps-step-pill.active { color:#000E3E; }
-.cps-step-pill.active .cps-step-num { background:#000E3E; color:#fff; }
-.cps-step-pill.done .cps-step-num { background:#000E3E; color:#fff; }
-.cps-step-line { flex:1; height:2px; background:var(--fims-border); margin:0 10px; }
-
 /* ── Dark mode ──
    The page hard-codes navy (#000E3E) for its primary / outline buttons and the active step (navy on dark), the fund-source
    group rows fall back to a light #f4f6fb (light text on near-white), and the selects use the browser's native grey. */
@@ -677,11 +471,6 @@ html.afims-dark[data-bs-theme="dark"] #cashPositionModule select.fims-select opt
 html.afims-dark[data-bs-theme="dark"] #cashPositionModule .cps-group-header,
 html.afims-dark[data-bs-theme="dark"] #cashPositionModule .cps-group-header > td { background:var(--afims-surface-subtle, #22294A) !important; color:var(--afims-text, #E4ECF2) !important; }
 html.afims-dark[data-bs-theme="dark"] #cashPositionModule .cps-group-header :is(span, strong, small, td *) { color:inherit; }
-html.afims-dark[data-bs-theme="dark"] .cps-step-pill { color:var(--afims-text-muted, #AAAFBE); }
-html.afims-dark[data-bs-theme="dark"] .cps-step-pill.active { color:#FFFFFF; }
-html.afims-dark[data-bs-theme="dark"] :is(.cps-step-pill.active, .cps-step-pill.done) .cps-step-num { background:#3861BC; color:#fff; }
-html.afims-dark[data-bs-theme="dark"] .cps-step-pill .cps-step-num { background:#2E3656; color:var(--afims-text, #E4ECF2); }
-html.afims-dark[data-bs-theme="dark"] .cps-step-line { background:#2E3656; }
 </style>
 
 <script>
@@ -733,7 +522,7 @@ html.afims-dark[data-bs-theme="dark"] .cps-step-line { background:#2E3656; }
 
     // ── Top-level module tabs ──
     const initialized = {};
-    const tabPaneIds = { dashboard: 'cpsDashboard', updates: 'cpsUpdates', available: 'cpsAvailable', reports: 'cpsReports' };
+    const tabPaneIds = { updates: 'cpsUpdates', available: 'cpsAvailable', reports: 'cpsReports' };
     document.querySelectorAll('#cpsTabNav [data-cps-tab]').forEach(function (btn) {
         btn.addEventListener('click', function () {
             document.querySelectorAll('#cpsTabNav .fims-tab-underline').forEach(b => b.classList.remove('active'));
@@ -747,8 +536,7 @@ html.afims-dark[data-bs-theme="dark"] .cps-step-line { background:#2E3656; }
         });
     });
     function initTab(tab) {
-        if (tab === 'dashboard') initDashboard();
-        else if (tab === 'updates') initUpdates();
+        if (tab === 'updates') initUpdates();
         else if (tab === 'available') initAvailable();
         else if (tab === 'reports') initReports();
     }
@@ -787,182 +575,6 @@ html.afims-dark[data-bs-theme="dark"] .cps-step-line { background:#2E3656; }
         a.click();
         URL.revokeObjectURL(a.href);
     }
-    function statusBadgeFor(status) {
-        if (status === 'ACTIVE') return '<span class="fims-badge fims-badge-green">Active</span>';
-        if (status === 'DORMANT') return '<span class="fims-badge fims-badge-amber">Dormant</span>';
-        if (status === 'CLOSED') return '<span class="fims-badge fims-badge-gray">Closed</span>';
-        return '<span class="fims-badge fims-badge-gray">' + escapeHtml(status || '—') + '</span>';
-    }
-
-    // ══════════════════════ DASHBOARD ══════════════════════
-    function loadDashboardFilters() {
-        fetch(API + '/lookup/fund-sources', { headers: authHeaders() })
-            .then(r => r.json()).then(json => fillSelect('#dashFilterFundSource', (json.data || []).map(f => ({ v: f })), 'All Fund Sources', 'v', i => i.v)).catch(() => {});
-        fetch(API + '/lookup/regions', { headers: authHeaders() })
-            .then(r => r.json()).then(json => fillSelect('#dashFilterRegion', json.data, 'All Regions/Offices', 'rc_id', i => i.rc_code + ' — ' + i.rc_name)).catch(() => {});
-    }
-    function buildDashParams() {
-        const params = new URLSearchParams();
-        const date = document.getElementById('dashFilterDate').value;
-        const fs = document.getElementById('dashFilterFundSource').value;
-        const rc = document.getElementById('dashFilterRegion').value;
-        if (date) params.set('position_date', date);
-        if (fs) params.set('fund_source', fs);
-        if (rc) params.set('rc_id', rc);
-        return params;
-    }
-    let dashRowsById = {};
-    function renderDashboardTable(rows) {
-        const tbody = document.querySelector('#dashTable tbody');
-        if (!rows.length) { tbody.innerHTML = '<tr class="fims-empty"><td colspan="7">No records.</td></tr>'; return; }
-        const groupKey = document.getElementById('dashGroupBy').value;
-        document.getElementById('dashTableTitle').textContent = groupKey === 'account_classification'
-            ? 'Cash Balance by Classification & Bank Account' : 'Cash Balance by Fund Source & Bank Account';
-        const groups = groupByFundSource(rows, groupKey);
-        tbody.innerHTML = groups.map(function (g, gi) {
-            const groupClass = 'dash-group-' + gi;
-            const totalEnding = g.rows.reduce((s, r) => s + Number(r.closing_balance || 0), 0);
-            const totalRestricted = g.rows.reduce((s, r) => s + Number(r.restricted_amount || 0), 0);
-            const totalAvailable = g.rows.reduce((s, r) => s + Number(r.available_balance || 0), 0);
-            const header = '<tr class="cps-group-header" data-group-toggle="' + groupClass + '">' +
-                '<td colspan="3"><i class="fas fa-caret-right mr-1"></i><strong>' + escapeHtml(g.fund_source) + '</strong> <span class="fims-badge">' + g.rows.length + ' account(s)</span></td>' +
-                '<td class="text-right"><strong>' + peso(totalEnding) + '</strong></td>' +
-                '<td class="text-right"><strong>' + peso(totalRestricted) + '</strong></td>' +
-                '<td class="text-right"><strong>' + peso(totalAvailable) + '</strong></td>' +
-                '<td></td></tr>';
-            const leaves = g.rows.map(function (r) {
-                return '<tr class="' + groupClass + '" style="display:none;">' +
-                    '<td style="padding-left:24px;"><a href="#" data-account-detail="' + r.bank_account_id + '">' + escapeHtml(r.account_name) + '</a>' + (r.is_main_depository ? ' <span class="fims-badge fims-badge-blue">Main</span>' : '') + '</td>' +
-                    '<td class="fims-col-mono">' + escapeHtml(r.account_number || '') + '</td>' +
-                    '<td>' + escapeHtml(r.bank_name || '') + (r.bank_branch ? '<br><span style="font-size:11px;color:var(--fims-text-subtle)">' + escapeHtml(r.bank_branch) + '</span>' : '') + '</td>' +
-                    '<td class="text-right">' + peso(r.closing_balance) + '</td>' +
-                    '<td class="text-right">' + peso(r.restricted_amount) + '</td>' +
-                    '<td class="text-right" style="color:#16a34a;font-weight:600;">' + peso(r.available_balance) + '</td>' +
-                    '<td class="text-center">' + statusBadgeFor(r.status) + '</td>' +
-                    '</tr>';
-            }).join('');
-            return header + leaves;
-        }).join('');
-        tbody.querySelectorAll('.cps-group-header').forEach(function (header) {
-            header.addEventListener('click', function () {
-                const cls = this.dataset.groupToggle;
-                const caret = this.querySelector('.fa-caret-right, .fa-caret-down');
-                const leaves = tbody.querySelectorAll('tr.' + cls);
-                const willShow = leaves.length && leaves[0].style.display === 'none';
-                leaves.forEach(function (tr) { tr.style.display = willShow ? '' : 'none'; });
-                if (caret) caret.className = 'fas ' + (willShow ? 'fa-caret-down' : 'fa-caret-right') + ' mr-1';
-            });
-        });
-        tbody.querySelectorAll('[data-account-detail]').forEach(function (link) {
-            link.addEventListener('click', function (e) {
-                e.preventDefault();
-                openAccountDetail(this.dataset.accountDetail);
-            });
-        });
-    }
-    function openAccountDetail(bankAccountId) {
-        const r = dashRowsById[bankAccountId];
-        if (!r) return;
-        document.getElementById('adAccountName').textContent = r.account_name;
-        document.getElementById('adBody').innerHTML =
-            '<p><strong>' + escapeHtml(r.account_number || '') + '</strong> · ' + escapeHtml(r.bank_name || '') + (r.bank_branch ? ' (' + escapeHtml(r.bank_branch) + ')' : '') + '<br>' +
-            'Classification: ' + escapeHtml(r.account_classification || '—') + ' · Fund Source: ' + escapeHtml(r.fund_source || '—') + (r.is_main_depository ? ' · <span class="fims-badge fims-badge-blue">Main Depository</span>' : '') + '</p>' +
-            '<table class="fims-table"><tbody>' +
-            '<tr><td>Beginning Balance</td><td class="text-right">' + peso(r.opening_balance) + '</td></tr>' +
-            '<tr><td>+ Total Receipts</td><td class="text-right">' + peso(r.total_receipts) + '</td></tr>' +
-            '<tr><td>− Total Disbursements</td><td class="text-right">' + peso(r.total_disbursements) + '</td></tr>' +
-            '<tr><td><strong>Ending Balance</strong></td><td class="text-right"><strong>' + peso(r.closing_balance) + '</strong></td></tr>' +
-            (r.bank_statement_balance != null ? '<tr><td>Bank Balance</td><td class="text-right">' + peso(r.bank_statement_balance) + '</td></tr>' : '') +
-            '<tr><td>Restricted Amount</td><td class="text-right">' + peso(r.restricted_amount) + '</td></tr>' +
-            '<tr><td style="color:#16a34a;"><strong>Available Balance</strong></td><td class="text-right" style="color:#16a34a;"><strong>' + peso(r.available_balance) + '</strong></td></tr>' +
-            '</tbody></table>' +
-            '<p style="font-size:11px;color:var(--fims-text-subtle);">As of ' + escapeHtml(r.position_date || '—') + '</p>';
-        openModal('m-account-detail');
-    }
-    function loadDashboard() {
-        fetch(API + '/dashboard/kpis?' + buildDashParams().toString(), { headers: authHeaders() })
-            .then(r => r.json())
-            .then(function (json) {
-                const d = json.data || {};
-                document.querySelectorAll('#cpsDashKpis [data-kpi]').forEach(function (el) {
-                    const key = el.dataset.kpi;
-                    el.textContent = key === 'active_accounts' ? (d[key] ?? 0) : peso(d[key] ?? 0);
-                });
-                const netEl = document.querySelector('[data-kpi="net_change"]');
-                const netSub = document.querySelector('[data-kpi-sub="net_change"]');
-                const net = d.net_change ?? 0;
-                netEl.style.color = net > 0 ? '#16a34a' : (net < 0 ? '#dc2626' : '');
-                netSub.textContent = net > 0 ? 'Cash inflows exceed outflows' : (net < 0 ? 'Cash outflows exceed inflows' : 'No net movement');
-                document.querySelector('[data-kpi-sub="total_available"]').textContent = 'Excluding ' + peso(d.total_restricted ?? 0) + ' restricted';
-            }).catch(() => {});
-
-        const tbody = document.querySelector('#dashTable tbody');
-        tbody.innerHTML = '<tr class="fims-empty"><td colspan="7">Loading…</td></tr>';
-        fetch(API + '/dashboard/list?' + buildDashParams().toString(), { headers: authHeaders() })
-            .then(r => r.json())
-            .then(function (json) {
-                const rows = (json && json.data) ? json.data : [];
-                dashRowsById = {};
-                rows.forEach(function (r) { dashRowsById[r.bank_account_id] = r; });
-                renderDashboardTable(rows);
-                renderWorkingPaper(rows);
-            })
-            .catch(() => { tbody.innerHTML = '<tr class="fims-empty"><td colspan="7">Could not reach the server.</td></tr>'; });
-    }
-    document.getElementById('dashFilterBtn')?.addEventListener('click', loadDashboard);
-    document.getElementById('dashResetBtn')?.addEventListener('click', function () {
-        document.getElementById('dashFilterDate').value = '';
-        document.getElementById('dashFilterFundSource').value = '';
-        document.getElementById('dashFilterRegion').value = '';
-        loadDashboard();
-    });
-    document.getElementById('dashGroupBy')?.addEventListener('change', function () { renderDashboardTable(Object.values(dashRowsById)); });
-    document.getElementById('dashExportBtn')?.addEventListener('click', function () { exportTableCSV('dashTable', 'cash-balance-by-fund-source'); });
-    document.getElementById('dashPrintBtn')?.addEventListener('click', function () { window.print(); });
-
-    // ── Working Paper (collapsed by default, same underlying rows as Table 1) ──
-    document.getElementById('wpPanelHeader')?.addEventListener('click', function () {
-        const body = document.getElementById('wpPanelBody');
-        const caret = document.getElementById('wpCaret');
-        const show = body.style.display === 'none';
-        body.style.display = show ? '' : 'none';
-        caret.className = 'fas ' + (show ? 'fa-caret-down' : 'fa-caret-right') + ' mr-1';
-    });
-    function renderWorkingPaper(rows) {
-        const tbody = document.querySelector('#wpTable tbody');
-        if (!rows.length) { tbody.innerHTML = '<tr class="fims-empty"><td colspan="10">No records.</td></tr>'; document.getElementById('wpTotalsRow').innerHTML = ''; return; }
-        tbody.innerHTML = rows.map(function (r) {
-            const recon = r.reconciled ? '<i class="fas fa-check" style="color:#16a34a"></i>' : '<i class="fas fa-times" style="color:#dc2626"></i>';
-            return '<tr>' +
-                '<td>' + escapeHtml(r.account_name) + '</td>' +
-                '<td>' + escapeHtml(r.fund_source || 'General') + '</td>' +
-                '<td class="text-right">' + peso(r.opening_balance) + '</td>' +
-                '<td class="text-right">' + peso(r.total_receipts) + '</td>' +
-                '<td class="text-right">' + peso(r.total_disbursements) + '</td>' +
-                '<td class="text-right"><strong>' + peso(r.closing_balance) + '</strong></td>' +
-                '<td class="text-right">' + (r.bank_statement_balance != null ? peso(r.bank_statement_balance) : '—') + '</td>' +
-                '<td class="text-center">' + recon + '</td>' +
-                '<td class="text-right">' + peso(r.restricted_amount) + '</td>' +
-                '<td class="text-right" style="color:#16a34a;">' + peso(r.available_balance) + '</td>' +
-                '</tr>';
-        }).join('');
-        const totals = rows.reduce(function (acc, r) {
-            acc.opening += Number(r.opening_balance || 0); acc.receipts += Number(r.total_receipts || 0);
-            acc.disbursements += Number(r.total_disbursements || 0); acc.closing += Number(r.closing_balance || 0);
-            acc.restricted += Number(r.restricted_amount || 0); acc.available += Number(r.available_balance || 0);
-            return acc;
-        }, { opening: 0, receipts: 0, disbursements: 0, closing: 0, restricted: 0, available: 0 });
-        document.getElementById('wpTotalsRow').innerHTML = '<tr><td colspan="2"><strong>TOTAL</strong></td>' +
-            '<td class="text-right"><strong>' + peso(totals.opening) + '</strong></td>' +
-            '<td class="text-right"><strong>' + peso(totals.receipts) + '</strong></td>' +
-            '<td class="text-right"><strong>' + peso(totals.disbursements) + '</strong></td>' +
-            '<td class="text-right"><strong>' + peso(totals.closing) + '</strong></td>' +
-            '<td></td><td></td>' +
-            '<td class="text-right"><strong>' + peso(totals.restricted) + '</strong></td>' +
-            '<td class="text-right"><strong>' + peso(totals.available) + '</strong></td></tr>';
-    }
-    function initDashboard() { loadDashboardFilters(); loadDashboard(); }
-
     // ══════════════════════ POSITION UPDATES ══════════════════════
     let bankAccountsById = {};
     function loadUpdatesFilters() {
@@ -971,7 +583,6 @@ html.afims-dark[data-bs-theme="dark"] .cps-step-line { background:#2E3656; }
             .then(function (json) {
                 (json.data || []).forEach(function (b) { bankAccountsById[b.bank_account_id] = b; });
                 fillSelect('#updFilterBank', json.data, 'All Banks', 'bank_account_id', i => i.account_name);
-                fillSelect('#meBankAccount', json.data, 'Select bank account...', 'bank_account_id', i => i.account_name + ' — ' + (i.bank_name || ''));
             }).catch(() => {});
         fetch(API + '/lookup/fund-sources', { headers: authHeaders() })
             .then(r => r.json()).then(json => fillSelect('#updFilterFundSource', (json.data || []).map(f => ({ v: f })), 'All Fund Sources', 'v', i => i.v)).catch(() => {});
@@ -1022,13 +633,20 @@ html.afims-dark[data-bs-theme="dark"] .cps-step-line { background:#2E3656; }
                         '<td class="text-right">' + peso(r.restricted_amount) + '</td>' +
                         '<td class="text-right" style="color:#16a34a;font-weight:600;">' + peso(r.available_balance) + '</td>' +
                         '<td class="text-center">' + statusBadge + '</td>' +
-                        '<td class="text-center"><button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-edit-entry="' + r.bank_account_id + '" data-position-date="' + (r.position_date || '') + '" data-entry-id="' + (r.cash_position_id || '') + '" title="Edit"><i class="fas fa-pen"></i></button></td>' +
+                        // No cash_position_id means this bank account has never had an
+                        // entry saved — "Add" (openAddEntryModal()) creates the first
+                        // one; "Edit" (openManualEntryModal()) only makes sense once
+                        // that first entry exists.
+                        '<td class="text-center">' + (r.cash_position_id
+                            ? '<button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-edit-entry="' + r.cash_position_id + '" title="Edit"><i class="fas fa-pen mr-1"></i>Edit</button>'
+                            : '<button type="button" class="fims-btn fims-btn-outline fims-btn-sm" data-add-entry="' + r.bank_account_id + '" title="Add Restricted Fund"><i class="fas fa-plus mr-1"></i>Add Restricted Fund</button>') + '</td>' +
                         '</tr>';
                 }).join('');
                 tbody.querySelectorAll('[data-edit-entry]').forEach(function (btn) {
-                    btn.addEventListener('click', function () {
-                        openManualEntryModal(this.dataset.editEntry, this.dataset.positionDate, this.dataset.entryId || null);
-                    });
+                    btn.addEventListener('click', function () { openManualEntryModal(this.dataset.editEntry); });
+                });
+                tbody.querySelectorAll('[data-add-entry]').forEach(function (btn) {
+                    btn.addEventListener('click', function () { openAddEntryModal(this.dataset.addEntry); });
                 });
             })
             .catch(() => { tbody.innerHTML = '<tr class="fims-empty"><td colspan="10">Could not reach the server.</td></tr>'; });
@@ -1041,7 +659,6 @@ html.afims-dark[data-bs-theme="dark"] .cps-step-line { background:#2E3656; }
         document.getElementById('updFilterSearch').value = '';
         loadUpdatesList();
     });
-    document.getElementById('updAddBtn')?.addEventListener('click', function () { openManualEntryModal(null, null, null); });
     function loadActivityLog() {
         const list = document.getElementById('updActivityList');
         fetch(API + '/updates/activity-log?limit=10', { headers: authHeaders() })
@@ -1381,7 +998,13 @@ html.afims-dark[data-bs-theme="dark"] .cps-step-line { background:#2E3656; }
 
     function initUpdates() { loadUpdatesFilters(); loadUpdatesKpis(); loadUpdatesList(); loadActivityLog(); loadSoaComparison(); loadSoaGroups(); }
 
-    // ── Manual Entry modal ──
+    // ── Cash Position Entry modal — shared by two entry points,
+    // openAddEntryModal() (a bank account with no entry yet) and
+    // openManualEntryModal() (editing an existing one). Bank Statement
+    // Balance/Total Receipts/Total Disbursements are always computed, never
+    // shown or hand-typed; Restricted Funds is the only field an existing
+    // entry's edit actually changes (Position Date/Beginning Balance are
+    // additionally live for a brand-new entry — see refreshComputedBalanceForAdd()). ──
     function renderRestrictedRows(rows) {
         const tbody = document.getElementById('meRestrictedBody');
         tbody.innerHTML = (rows || []).map(function (item, idx) {
@@ -1390,10 +1013,7 @@ html.afims-dark[data-bs-theme="dark"] .cps-step-line { background:#2E3656; }
                 '<td><button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-remove-rf="' + idx + '"><i class="fas fa-trash"></i></button></td></tr>';
         }).join('');
         tbody.querySelectorAll('[data-remove-rf]').forEach(function (btn) {
-            btn.addEventListener('click', function () { btn.closest('tr').remove(); recomputeManualEntry(); });
-        });
-        tbody.querySelectorAll('.me-rf-amount, .me-rf-label').forEach(function (inp) {
-            inp.addEventListener('input', recomputeManualEntry);
+            btn.addEventListener('click', function () { btn.closest('tr').remove(); });
         });
     }
     document.getElementById('meAddRestrictedRowBtn')?.addEventListener('click', function () {
@@ -1402,8 +1022,7 @@ html.afims-dark[data-bs-theme="dark"] .cps-step-line { background:#2E3656; }
         tr.innerHTML = '<td><input type="text" class="fims-input fims-input-sm me-rf-label"></td>' +
             '<td><input type="number" step="0.01" class="fims-input fims-input-sm me-rf-amount" value="0"></td>' +
             '<td><button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-remove-rf><i class="fas fa-trash"></i></button></td>';
-        tr.querySelector('[data-remove-rf]').addEventListener('click', function () { tr.remove(); recomputeManualEntry(); });
-        tr.querySelectorAll('.me-rf-amount, .me-rf-label').forEach(function (inp) { inp.addEventListener('input', recomputeManualEntry); });
+        tr.querySelector('[data-remove-rf]').addEventListener('click', function () { tr.remove(); });
         tbody.appendChild(tr);
     });
     function getRestrictedBreakdown() {
@@ -1411,229 +1030,151 @@ html.afims-dark[data-bs-theme="dark"] .cps-step-line { background:#2E3656; }
             return { label: tr.querySelector('.me-rf-label').value.trim(), amount: parseFloat(tr.querySelector('.me-rf-amount').value) || 0 };
         }).filter(item => item.amount > 0);
     }
-    function recomputeManualEntry() {
-        const opening = parseFloat(document.getElementById('meOpeningBalance').value) || 0;
-        const receipts = parseFloat(document.getElementById('meTotalReceipts').value) || 0;
-        const disbursements = parseFloat(document.getElementById('meTotalDisbursements').value) || 0;
-        const adjDirection = document.getElementById('meAdjustmentDirection').value;
-        const adjAmount = parseFloat(document.getElementById('meAdjustmentAmount').value) || 0;
-        const signedAdj = adjDirection === 'DEDUCTION' ? -adjAmount : adjAmount;
-        const closing = opening + receipts - disbursements + signedAdj;
-        const breakdown = getRestrictedBreakdown();
-        const restricted = breakdown.length ? breakdown.reduce((s, i) => s + i.amount, 0) : (parseFloat(document.getElementById('meRestrictedAmount').value) || 0);
-        document.getElementById('meComputedClosing').textContent = peso(closing);
-        document.getElementById('meComputedAvailable').textContent = peso(closing - restricted);
-    }
-    ['meOpeningBalance', 'meTotalReceipts', 'meTotalDisbursements', 'meAdjustmentDirection', 'meAdjustmentAmount', 'meRestrictedAmount'].forEach(function (id) {
-        document.getElementById(id)?.addEventListener('input', recomputeManualEntry);
-        document.getElementById(id)?.addEventListener('change', recomputeManualEntry);
-    });
+
+    // Which bank account this modal instance is scoped to — set by
+    // whichever of openAddEntryModal()/openManualEntryModal() opened it,
+    // since the account is never itself a visible/editable field (implied
+    // by which row's Add/Edit action was clicked).
+    let meBankAccountId = null;
+    // Set by refreshComputedBalanceForAdd() when a brand-new entry's
+    // account has neither a prior fims.cash_position row nor a GL account
+    // tagged to compute a Beginning Balance from — there's no reasonable
+    // value to save in that case, so this blocks Save rather than letting
+    // a fabricated number through.
+    let meOpeningBalanceBlocked = false;
 
     function clearManualEntryModal() {
+        meBankAccountId = null;
+        meOpeningBalanceBlocked = false;
         document.getElementById('meCashPositionId').value = '';
-        document.getElementById('meBankAccount').value = '';
         document.getElementById('mePositionDate').value = new Date().toISOString().slice(0, 10);
+        document.getElementById('mePositionDate').disabled = false;
         document.getElementById('meOpeningBalance').value = '';
-        document.getElementById('meOpeningBalance').readOnly = false;
         document.getElementById('meOpeningHint').textContent = '';
-        document.getElementById('meUpdateType').value = '';
+        document.getElementById('meOpeningHint').style.color = '';
         document.getElementById('meBankStatementBalance').value = '';
         document.getElementById('meTotalReceipts').value = 0;
-        document.getElementById('meTotalReceipts').readOnly = true;
-        document.getElementById('meReceiptsHint').textContent = 'Auto-computed from posted bank transactions for this date.';
         document.getElementById('meTotalDisbursements').value = 0;
-        document.getElementById('meAdjustmentDirection').value = '';
-        document.getElementById('meAdjustmentAmount').value = 0;
-        document.getElementById('meAdjustmentDetails').value = '';
         document.getElementById('meRestrictedAmount').value = 0;
-        document.getElementById('meReferenceNumber').value = '';
-        document.getElementById('meReconciled').checked = false;
-        document.getElementById('meRemarks').value = '';
         renderRestrictedRows([]);
-        recomputeManualEntry();
-        goToMeStep(1);
     }
 
-    // ── Manual Entry 4-step wizard (Account & Period -> Balances ->
-    // Restricted Funds -> Review) ──
-    const ME_TOTAL_STEPS = 4;
-    let meCurrentStep = 1;
-
-    function validateMeStep(step) {
-        if (step === 1) {
-            if (!document.getElementById('meBankAccount').value) return 'Select a bank account.';
-            if (!document.getElementById('mePositionDate').value) return 'Position date is required.';
-            if (!document.getElementById('meUpdateType').value) return 'Select an Update Type.';
-        } else if (step === 2) {
-            if (document.getElementById('meOpeningBalance').value === '') return 'Beginning balance is required.';
-        }
-        return null;
-    }
-
-    function goToMeStep(step) {
-        meCurrentStep = step;
-        document.querySelectorAll('#m-manual-entry .cps-me-step').forEach(function (el) {
-            el.style.display = (parseInt(el.dataset.step, 10) === step) ? '' : 'none';
-        });
-        document.querySelectorAll('#meStepIndicator .cps-step-pill').forEach(function (pill) {
-            const n = parseInt(pill.dataset.stepPill, 10);
-            pill.classList.toggle('active', n === step);
-            pill.classList.toggle('done', n < step);
-        });
-        document.getElementById('meBackBtn').style.display = step > 1 ? '' : 'none';
-        document.getElementById('meNextBtn').style.display = step < ME_TOTAL_STEPS ? '' : 'none';
-        document.getElementById('meSaveBtn').style.display = step === ME_TOTAL_STEPS ? '' : 'none';
-        if (step === ME_TOTAL_STEPS) recomputeManualEntry();
-    }
-
-    document.getElementById('meNextBtn')?.addEventListener('click', function () {
-        const err = validateMeStep(meCurrentStep);
-        if (err) { toast(err, true); return; }
-        goToMeStep(Math.min(meCurrentStep + 1, ME_TOTAL_STEPS));
-    });
-    document.getElementById('meBackBtn')?.addEventListener('click', function () {
-        goToMeStep(Math.max(meCurrentStep - 1, 1));
-    });
-    document.querySelectorAll('#meStepIndicator .cps-step-pill').forEach(function (pill) {
-        pill.style.cursor = 'pointer';
-        pill.addEventListener('click', function () {
-            const target = parseInt(this.dataset.stepPill, 10);
-            if (target <= meCurrentStep) { goToMeStep(target); return; }
-            for (let s = meCurrentStep; s < target; s++) {
-                const err = validateMeStep(s);
-                if (err) { toast(err, true); return; }
-            }
-            goToMeStep(target);
-        });
-    });
-
-    function refreshComputedBalance() {
-        const bankAccountId = document.getElementById('meBankAccount').value;
+    // Beginning Balance for a brand-new entry — pulled from the prior
+    // day's closing balance, or (this account's very first entry ever) its
+    // tagged GL account's balance, same convention CashPositionService::
+    // getComputedBalance() has always used. Re-runs whenever Position Date
+    // changes, since the computation is as-of that date.
+    function refreshComputedBalanceForAdd() {
         const positionDate = document.getElementById('mePositionDate').value;
         const hint = document.getElementById('meOpeningHint');
         const field = document.getElementById('meOpeningBalance');
-        if (!bankAccountId || !positionDate) return;
-        fetch(API + '/updates/computed-balance?bank_account_id=' + bankAccountId + '&position_date=' + positionDate, { headers: authHeaders() })
+        if (!meBankAccountId || !positionDate) return;
+        fetch(API + '/updates/computed-balance?bank_account_id=' + meBankAccountId + '&position_date=' + positionDate, { headers: authHeaders() })
             .then(r => r.json())
             .then(function (json) {
                 const d = json.data || {};
-                if (d.has_prior_balance) {
+                if (d.opening_balance_source === 'PRIOR_CLOSING') {
                     field.value = d.opening_balance;
-                    field.readOnly = true;
                     hint.textContent = 'Auto-pulled from the prior day\'s ending balance.';
+                    hint.style.color = '';
+                    meOpeningBalanceBlocked = false;
+                } else if (d.opening_balance_source === 'GENERAL_LEDGER') {
+                    field.value = d.opening_balance;
+                    hint.textContent = 'Auto-pulled from this account\'s General Ledger balance (first entry on record).';
+                    hint.style.color = '';
+                    meOpeningBalanceBlocked = false;
                 } else {
-                    field.readOnly = false;
-                    hint.textContent = 'No prior record found — enter the starting balance for this account.';
+                    field.value = '';
+                    hint.textContent = 'No prior entry and no GL account tagged — tag one in Bank Account Management first.';
+                    hint.style.color = '#dc2626';
+                    meOpeningBalanceBlocked = true;
                 }
-                // Total Disbursements always comes from the ledger. Total
-                // Receipts does too, UNLESS Update Type = COLLECTION, which
-                // leaves it editable (TREASURY's exact field-locking rule).
                 document.getElementById('meTotalDisbursements').value = d.total_disbursements || 0;
-                if (document.getElementById('meUpdateType').value !== 'COLLECTION') {
-                    document.getElementById('meTotalReceipts').value = d.total_receipts || 0;
-                }
-                recomputeManualEntry();
+                document.getElementById('meTotalReceipts').value = d.total_receipts || 0;
             })
             .catch(() => {});
 
-        // Auto-pull the bank statement balance from the latest uploaded
-        // SOA for this account (TREASURY's auto-pull behavior) — only
-        // when the field is still blank, so it never clobbers a value
-        // the user already typed or one loaded from an existing entry.
-        if (!document.getElementById('meBankStatementBalance').value) {
-            fetch(API + '/soa-balance/' + bankAccountId + '?as_of=' + positionDate, { headers: authHeaders() })
-                .then(r => r.json())
-                .then(function (json) {
-                    const soa = (json && json.data) ? json.data : {};
-                    if (soa.balance != null && !document.getElementById('meBankStatementBalance').value) {
-                        document.getElementById('meBankStatementBalance').value = soa.balance;
-                    }
-                })
-                .catch(() => {});
-        }
+        // Auto-pull the bank statement balance from the latest uploaded SOA
+        // for this account, same as the old wizard did.
+        fetch(API + '/soa-balance/' + meBankAccountId + '?as_of=' + positionDate, { headers: authHeaders() })
+            .then(r => r.json())
+            .then(function (json) {
+                const soa = (json && json.data) ? json.data : {};
+                if (soa.balance != null) document.getElementById('meBankStatementBalance').value = soa.balance;
+            })
+            .catch(() => {});
     }
-    document.getElementById('meBankAccount')?.addEventListener('change', refreshComputedBalance);
-    document.getElementById('mePositionDate')?.addEventListener('change', refreshComputedBalance);
-    document.getElementById('meUpdateType')?.addEventListener('change', function () {
-        const receipts = document.getElementById('meTotalReceipts');
-        const hint = document.getElementById('meReceiptsHint');
-        if (this.value === 'COLLECTION') {
-            receipts.readOnly = false;
-            hint.textContent = 'Editable for Collection entries.';
-        } else {
-            receipts.readOnly = true;
-            hint.textContent = 'Auto-computed from posted bank transactions for this date.';
-            refreshComputedBalance();
-        }
+    document.getElementById('mePositionDate')?.addEventListener('change', function () {
+        // Only a brand-new entry's date is actually editable (see
+        // openManualEntryModal(), which disables this field) — guard here
+        // too in case that ever changes.
+        if (!document.getElementById('meCashPositionId').value && !this.disabled) refreshComputedBalanceForAdd();
     });
 
-    function openManualEntryModal(bankAccountId, positionDate, entryId) {
+    // A bank account with no fims.cash_position row yet (Position Updates'
+    // "Add" action, only shown on "No entry yet" rows) — Position Date
+    // stays editable (defaults to today) since this is the one place it's
+    // actually meaningful to choose.
+    function openAddEntryModal(bankAccountId) {
         clearManualEntryModal();
-        if (!bankAccountId) {
-            document.getElementById('meModalTitle').textContent = 'Manual Cash Position Entry';
-            openModal('m-manual-entry');
-            return;
-        }
+        meBankAccountId = bankAccountId;
+        document.getElementById('meModalTitle').textContent = 'New Cash Position Entry';
+        refreshComputedBalanceForAdd();
+        openModal('m-manual-entry');
+    }
+
+    // An existing entry (Position Updates' "Edit" action). Position Date
+    // is locked to the entry's own date (changing it would really mean a
+    // different record); Beginning Balance/Bank Statement Balance/Total
+    // Receipts/Total Disbursements are carried over unchanged into the form
+    // fields purely so the Save payload still has them —
+    // CashPositionService::updateCashPosition() recomputes Closing Balance
+    // from whatever's in the payload, not from the DB row, so dropping them
+    // would zero out the balance on every restricted-funds-only edit.
+    function openManualEntryModal(entryId) {
+        clearManualEntryModal();
         document.getElementById('meModalTitle').textContent = 'Edit Cash Position Entry';
-        document.getElementById('meBankAccount').value = bankAccountId;
-        if (!entryId) {
-            document.getElementById('mePositionDate').value = positionDate || new Date().toISOString().slice(0, 10);
-            refreshComputedBalance();
-            openModal('m-manual-entry');
-            return;
-        }
         fetch(API + '/updates/' + entryId, { headers: authHeaders() })
             .then(r => r.json())
             .then(function (json) {
                 if (!json || !json.success) { toast((json && json.message) || 'Could not load entry.', true); return; }
                 const d = json.data;
+                meBankAccountId = d.bank_account_id;
                 document.getElementById('meCashPositionId').value = d.cash_position_id;
                 document.getElementById('mePositionDate').value = d.position_date;
+                document.getElementById('mePositionDate').disabled = true;
                 document.getElementById('meOpeningBalance').value = d.opening_balance;
-                document.getElementById('meOpeningBalance').readOnly = true;
                 document.getElementById('meBankStatementBalance').value = d.bank_statement_balance || '';
                 document.getElementById('meTotalReceipts').value = d.total_receipts;
                 document.getElementById('meTotalDisbursements').value = d.total_disbursements;
-                document.getElementById('meAdjustmentDirection').value = d.adjustment_direction || '';
-                document.getElementById('meAdjustmentAmount').value = d.adjustment_amount || 0;
-                document.getElementById('meAdjustmentDetails').value = d.adjustment_details || '';
                 document.getElementById('meRestrictedAmount').value = d.restricted_amount || 0;
-                document.getElementById('meReferenceNumber').value = d.reference_number || '';
-                document.getElementById('meReconciled').checked = !!d.reconciled;
-                document.getElementById('meRemarks').value = d.remarks || '';
                 renderRestrictedRows(d.restricted_breakdown || []);
-                recomputeManualEntry();
                 openModal('m-manual-entry');
             })
             .catch(() => toast('Could not reach the server.', true));
     }
 
     document.getElementById('meSaveBtn')?.addEventListener('click', function () {
-        const bankAccountId = document.getElementById('meBankAccount').value;
-        const positionDate = document.getElementById('mePositionDate').value;
-        const updateType = document.getElementById('meUpdateType').value;
-        if (!bankAccountId) { toast('Select a bank account.', true); return; }
-        if (!positionDate) { toast('Position date is required.', true); return; }
-        if (!updateType) { toast('Select an Update Type.', true); return; }
-        if (document.getElementById('meOpeningBalance').value === '') { toast('Beginning balance is required.', true); return; }
-
         const entryId = document.getElementById('meCashPositionId').value;
+        const positionDate = document.getElementById('mePositionDate').value;
+        if (!positionDate) { toast('Position date is required.', true); return; }
+        if (!entryId && meOpeningBalanceBlocked) { toast('No prior entry and no GL account tagged — tag one in Bank Account Management first.', true); return; }
+        if (!entryId && document.getElementById('meOpeningBalance').value === '') { toast('Beginning balance could not be determined for this date.', true); return; }
+
         const payload = {
-            bank_account_id: bankAccountId,
+            bank_account_id: meBankAccountId,
             position_date: positionDate,
-            update_type: updateType,
+            // Required by saveManualEntry()'s validation on a brand-new
+            // entry, but — same as the old wizard's Update Type field —
+            // never persisted as its own column; it only ever gated which
+            // fields were editable in the UI, which no longer applies here.
+            update_type: 'ADJUSTMENT',
             opening_balance: parseFloat(document.getElementById('meOpeningBalance').value) || 0,
             total_receipts: parseFloat(document.getElementById('meTotalReceipts').value) || 0,
             total_disbursements: parseFloat(document.getElementById('meTotalDisbursements').value) || 0,
             bank_statement_balance: document.getElementById('meBankStatementBalance').value,
             restricted_amount: parseFloat(document.getElementById('meRestrictedAmount').value) || 0,
             restricted_breakdown: getRestrictedBreakdown(),
-            adjustment_amount: parseFloat(document.getElementById('meAdjustmentAmount').value) || 0,
-            adjustment_direction: document.getElementById('meAdjustmentDirection').value,
-            adjustment_details: document.getElementById('meAdjustmentDetails').value.trim(),
-            reference_number: document.getElementById('meReferenceNumber').value.trim(),
-            reconciled: document.getElementById('meReconciled').checked,
-            remarks: document.getElementById('meRemarks').value.trim(),
         };
         const btn = this;
         btn.disabled = true;
@@ -1953,7 +1494,7 @@ html.afims-dark[data-bs-theme="dark"] .cps-step-line { background:#2E3656; }
     });
 
     // ── Boot ──
-    initDashboard();
-    initialized.dashboard = true;
+    initUpdates();
+    initialized.updates = true;
 })();
 </script>
