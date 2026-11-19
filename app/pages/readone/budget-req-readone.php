@@ -264,13 +264,14 @@
        convention as readone/cob-report-readone.php's #cobr-overlay), not an anchored dropdown: #bgrv-overlay
        (z-index 9100) is already open behind it, so this needs a z-index above that to show on top. */
     #bgrv-print-overlay.nha-overlay { z-index:9150; }
-    .bgrv-print-grid { display:grid;grid-template-columns:1fr 1fr;gap:12px; }
-    .bgrv-print-card { display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px;
-        padding:22px 14px;border:1px solid var(--afims-border, #E4ECF2);border-radius:10px;cursor:pointer;
-        background:var(--afims-surface, #FFFFFF);font-family:inherit;transition:border-color .15s,background .15s; }
-    .bgrv-print-card:hover { border-color:var(--afims-heading-fill, #000E3E);background:var(--afims-surface-subtle, #F4F7FA); }
-    .bgrv-print-card svg { width:26px;height:26px;stroke:var(--afims-heading-fill, #000E3E);stroke-width:1.6;flex-shrink:0; }
-    .bgrv-print-card span { font-size:12.5px;font-weight:700;color:var(--afims-text, #1A1B21); }
+    .bgrv-print-grid { display:grid;grid-template-columns:1fr 1fr;gap:16px; }
+    .bgrv-print-card { display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;
+        padding:32px 18px;border:2px solid var(--afims-border-strong, #C7D0DC);border-radius:12px;cursor:pointer;
+        background:var(--afims-surface, #FFFFFF);font-family:inherit;transition:border-color .15s,background .15s,box-shadow .15s; }
+    .bgrv-print-card:hover { border-color:var(--afims-heading-fill, #000E3E);background:var(--afims-surface-subtle, #F4F7FA);
+        box-shadow:0 2px 10px rgba(0,14,62,.1); }
+    .bgrv-print-card svg { width:32px;height:32px;stroke:var(--afims-heading-fill, #000E3E);stroke-width:1.6;flex-shrink:0; }
+    .bgrv-print-card span { font-size:14px;font-weight:700;color:var(--afims-text, #1A1B21); }
 </style>
 
 <div id="bgrv-overlay">
@@ -291,11 +292,11 @@
                     <p class="bgrv-header-total-val" id="bgrv-header-total-val">—</p>
                 </div>
                 <div class="bgrv-header-total-item">
-                    <p class="bgrv-header-total-label">Total Adjustment</p>
+                    <p class="bgrv-header-total-label">Total Amendment</p>
                     <p class="bgrv-header-total-val" id="bgrv-header-total-adjustment-val">—</p>
                 </div>
                 <div class="bgrv-header-total-item">
-                    <p class="bgrv-header-total-label">Total Revised</p>
+                    <p class="bgrv-header-total-label">Total Amended Amount</p>
                     <p class="bgrv-header-total-val" id="bgrv-header-total-revised-val">—</p>
                 </div>
             </div>
@@ -333,7 +334,7 @@
      top of the already-open #bgrv-overlay, same "stack a second overlay on top" shape as
      readone/cob-report-readone.php's #cobr-overlay over its own host page. -->
 <div id="bgrv-print-overlay" class="nha-overlay">
-    <div class="nha-modal nha-modal-sm" role="dialog" aria-modal="true" aria-labelledby="bgrv-print-modal-title">
+    <div class="nha-modal nha-modal-md" role="dialog" aria-modal="true" aria-labelledby="bgrv-print-modal-title">
         <div class="nha-modal-hdr">
             <h3 id="bgrv-print-modal-title">Print COB</h3>
             <button type="button" class="nha-modal-close" id="bgrv-print-modal-close" aria-label="Close">&times;</button>
@@ -377,6 +378,11 @@
 ═══════════════════════════════════════════════════════════════ */
 
 const $bgrv = id => document.getElementById(id);
+
+// The fiscal year / extra query params the COB modal is CURRENTLY showing (set by bgrv_openCobModal) — "Print COB"
+// has no filter bar of its own, so bgrv_printCob('region') reuses whatever the modal behind it is already filtered to.
+let bgrv_cobFiscalYr = '';
+let bgrv_cobExtraParams = {};
 
 document.addEventListener('DOMContentLoaded', () => {
     $bgrv('bgrv-close')?.addEventListener('click', bgrv_closeModal);
@@ -423,11 +429,42 @@ function bgrv_openPrintModal() {
     $bgrv('bgrv-print-overlay')?.classList.add('open');
 }
 
-// TODO: wire up the actual print output per mode — this is a placeholder so the button/picker and the
-// Regional/District "skip straight to Per Program" routing are in place ahead of that.
+// TODO: 'fund_source' / 'detailed' are still placeholders — only 'region' / 'program' are wired up (below).
 function bgrv_printCob(mode) {
     bgrv_closePrintModal();
+    if (mode === 'region' || mode === 'program') {
+        bgrv_downloadCobReport(mode, mode === 'region' ? 'Per Region' : 'Per Program');
+        return;
+    }
     bgr_toast(`Print COB (${mode}) is not yet implemented.`, 'info');
+}
+
+// Shared by every wired-up Print COB mode: GET BGR_API + '/cob-print?mode=…' -> { success, filename, mime, data:
+// base64 } -> a real file download. Same fiscal year / extra params (central, rc_code_from, …) the COB modal
+// behind this picker is currently showing (bgrv_cobFiscalYr / bgrv_cobExtraParams, set by bgrv_openCobModal) —
+// and the same base64 -> Blob -> anchor "download" pattern readone/cob-report-readone.php's own Excel export uses.
+async function bgrv_downloadCobReport(mode, label) {
+    window.PagePreloader?.show();
+    try {
+        const query = new URLSearchParams({ mode });
+        if (bgrv_cobFiscalYr) query.set('fiscal_yr', bgrv_cobFiscalYr);
+        Object.entries(bgrv_cobExtraParams || {}).forEach(([k, v]) => { if (v !== '' && v != null) query.set(k, v); });
+        const res  = await fetch(`${BGR_API}/cob-print?${query}`, { credentials: 'same-origin' });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message || `Failed to generate the ${label} report.`);
+
+        const bin = atob(json.data), bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        const url = URL.createObjectURL(new Blob([bytes], { type: json.mime }));
+        const a = document.createElement('a');
+        a.href = url; a.download = json.filename;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e) {
+        bgr_toast(e.message, 'error');
+    } finally {
+        window.PagePreloader?.hide();
+    }
 }
 
 // Replaces #bgrv-summary's cards wholesale — the two modes show entirely
@@ -517,6 +554,8 @@ async function bgrv_openModal(requestContext, program) {
 // Sub-Programs / Projects and total) instead of one outline folded across all of them. The FMD page uses it: it is the only view
 // that says which office a project belongs to, and it keeps a request that has no Program yet on the list.
 async function bgrv_openCobModal(fiscalYr = '', extraParams = {}, options = {}) {
+    bgrv_cobFiscalYr = fiscalYr || '';
+    bgrv_cobExtraParams = extraParams || {};
     const byUnit = !!(options && options.byUnit);
     const showFund = !!(options && options.showFund);
     $bgrv('bgrv-card').classList.add('bgrv-wide');
@@ -638,12 +677,11 @@ async function bgrv_openCobModal(fiscalYr = '', extraParams = {}, options = {}) 
 // bgrv_openCobModal: folds the given budget requests (headers) into Program -> Sub-Program -> Project rows. Returns the rows' HTML
 // and the counts / totals they add up to. A Program (or Sub-Program) that appears in more than one header collapses to a single row; its
 // Projects and the totals still count every occurrence.
-// Each row/total carries THREE amounts: proposed (the "Approved Amount" column — budget_line_items.suggested_amount
-// once Budget Processing has set one, falling back to proposed_amount until then; same "suggested, else proposed"
-// rule budget-processing-form.php's bpr_initialSuggested() uses — see bgrv_approvedAmount below). suggested_amount
-// is now a STABLE figure (migration "51 - budget_line_items_stable_suggested_amount.sql" — no CBA/CFA/RFA/LAA
-// approval or deletion, and no Budget Revision, ever moves it again; see BudgetLineBalanceSql's class doc), so
-// reading it here needs no further adjustment — unlike budget-allocation-form.php's "Available Amount"
+// Each row/total carries THREE amounts: proposed (the "Approved Amount" column — budget_line_items.suggested_amount,
+// 0 until Budget Processing sets one; see bgrv_approvedAmount below). suggested_amount is now a STABLE figure
+// (migration "51 - budget_line_items_stable_suggested_amount.sql" — no CBA/CFA/RFA/LAA approval or deletion, and no
+// Budget Revision, ever moves it again; see BudgetLineBalanceSql's class doc), so reading it here needs no further
+// adjustment — unlike budget-allocation-form.php's "Available Amount"
 // (cobAvailable()), which is a genuinely live, derived ceiling and is NOT what this column shows. adjustment
 // (budget_line_items.adjustment — the net adjustment applied by an approved Budget Revision; 0 until one is
 // approved), and revised — proposed PLUS adjustment (adjustment already carries its own sign: negative for a cut,
@@ -662,11 +700,12 @@ function bgrv_deriveExpenseClass(accountCode) {
     return null;
 }
 
-// The "Approved Amount" basis for one line item: its Budget-Processing suggested_amount once set (above 0),
-// else the office's own proposed_amount — see the bgrv_cobCollect doc comment above for why.
+// The "Approved Amount" of one line item: budget_line_items.suggested_amount, straight — 0 until Budget
+// Processing sets one. No fallback to proposed_amount (there used to be one; see the bgrv_cobCollect doc
+// comment above) — matches BudgetReqCobReportService's Print COB exports, which read the same column the
+// same way, so they no longer disagree on an unprocessed line.
 function bgrv_approvedAmount(li) {
-    const suggested = Number(li.suggested_amount) || 0;
-    return suggested > 0 ? suggested : (Number(li.proposed_amount) || 0);
+    return Number(li.suggested_amount) || 0;
 }
 
 function bgrv_cobCollect(headers, showFund = false) {
