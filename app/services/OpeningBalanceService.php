@@ -409,6 +409,29 @@ class OpeningBalanceService
 
                 App\Execute('COMMIT', 'DB');
 
+                // Refresh Cash Position's earliest entry for every bank
+                // account tagged to a debited GL code in this JEV — see
+                // CashPositionService::refreshEarliestOpeningBalanceForAccountCode()'s
+                // docblock. Best-effort: runs after COMMIT (the JEV is
+                // already correctly posted either way), and a failure here
+                // doesn't fail the whole save — Cash Position would just
+                // pick the new opening balance up next time
+                // getComputedBalance() runs for that account/year instead.
+                $debitByAccountCode = [];
+                foreach ($cleanLines as $line) {
+                    if ($line['debit'] > 0) {
+                        $debitByAccountCode[$line['account_code']] = ($debitByAccountCode[$line['account_code']] ?? 0) + $line['debit'];
+                    }
+                }
+                try {
+                    $cashPositionService = new CashPositionService();
+                    foreach ($debitByAccountCode as $accountCode => $debitTotal) {
+                        $cashPositionService->refreshEarliestOpeningBalanceForAccountCode($accountCode, $fy, $debitTotal);
+                    }
+                } catch (\Exception $e) {
+                    App\LogError('OpeningBalanceService::saveOpeningBalance cash position refresh: ' . $e->getMessage());
+                }
+
                 // Fetch the posted JEV for the response
                 $jev = App\ExecuteRow(
                     "SELECT jev.jev_id, jev.jev_no, st.name AS status
