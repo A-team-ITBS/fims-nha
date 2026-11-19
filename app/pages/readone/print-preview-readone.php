@@ -333,11 +333,12 @@ function prp_dvPayload(dv) {
  * The journal printed on the 2nd line of the JEV's top-right box (as on the official form). A PAYMENT JEV
  * (Treasury's Dr Accounts Payable / Cr Cash entry — GeneralLedgerService::createPaymentJev()) belongs to the
  * journal of its instrument, named in doc_ref_no: "CHECK NO. …" → CKDJ (Check Disbursements Journal),
- * "ADA …" → ADADJ (Advice to Debit Account Disbursement Journal); any other JEV (a DV's SETUP entry, a
- * standalone one) → GJ (General Journal) — the same split as the Journals page's tabs.
+ * "ADA …" → ADADJ (Advice to Debit Account Disbursement Journal). Any other JEV (a DV's SETUP entry, a
+ * standalone one) belongs to the General Journal, which is NOT printed: GJ is only the category it is filed
+ * under on the Journals page, so the box shows no journal line for it.
  */
 function prp_jevJournal(j) {
-    if (String(j.jev_type || '').toUpperCase() !== 'PAYMENT') return 'GJ';
+    if (String(j.jev_type || '').toUpperCase() !== 'PAYMENT') return '';
     const ref = String(j.doc_ref_no || '').trim().toUpperCase();
     if (ref.startsWith('CHECK')) return 'CKDJ';
     if (ref.startsWith('ADA')) return 'ADADJ';
