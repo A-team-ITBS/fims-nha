@@ -374,6 +374,9 @@ class DisbursementVoucherService
         $fields['deductions'] = $deductionLines;
         $totalDeductions   = array_sum(array_column($deductionLines, 'deduction_amount'));
         $fields['net_amount'] = round($gross - $totalDeductions, 2);
+        if ($gross > 0 && $fields['net_amount'] < 0) {
+            $errors[] = 'Total deductions (' . number_format($totalDeductions, 2) . ') cannot exceed the Amount (' . number_format($gross, 2) . ').';
+        }
 
         $fields['po_number'] = trim((string) ($body['po_number'] ?? ''));
         $fields['po_amount'] = is_numeric($body['po_amount'] ?? null) ? (float) $body['po_amount'] : null;
@@ -714,8 +717,56 @@ class DisbursementVoucherService
         $rfa['account_code']  = $account['account_code']  ?? null;
         $rfa['account_title'] = $account['account_title'] ?? null;
         $rfa['expense_class'] = $account ? $this->deriveExpenseClass($account['account_code']) : null;
+        $rfa['lines']         = $this->rfaLineItems($rfa);
 
         return $rfa;
+    }
+
+    /**
+     * Every itemized line of the RFA (its flattened line_transaction) with the Chart-of-Accounts account
+     * behind its budget_line_item_id and its requested amount — what the voucher form's RFA card lists
+     * so the preparer sees the account codes and amounts the RFA was approved for, not just the first one.
+     * Lines whose budget line item no longer exists keep their amount with a null account.
+     *
+     * @return array<int, array{account_code: ?string, account_title: ?string, amount: float, description: ?string}>
+     */
+    private function rfaLineItems(array $rfa): array
+    {
+        $lines = json_decode((string) ($rfa['line_transaction'] ?? '[]'), true) ?: [];
+        $ids   = [];
+        foreach ($lines as $line) {
+            if (isset($line['budget_line_item_id']) && ctype_digit((string) $line['budget_line_item_id'])) {
+                $ids[] = (int) $line['budget_line_item_id'];
+            }
+        }
+        $accounts = [];
+        if ($ids) {
+            $rows = App\ExecuteRows(
+                "SELECT bli.budget_line_item_id, coa.account_code, coa.account_title
+                 FROM fims.budget_line_items bli
+                 JOIN {$this->tableCoa} coa ON coa.account_id = bli.account_id
+                 WHERE bli.budget_line_item_id IN (" . implode(',', array_unique($ids)) . ')',
+                'DB'
+            ) ?: [];
+            foreach ($rows as $r) {
+                $accounts[(int) $r['budget_line_item_id']] = $r;
+            }
+        }
+
+        $out = [];
+        foreach ($lines as $line) {
+            $id    = isset($line['budget_line_item_id']) && ctype_digit((string) $line['budget_line_item_id']) ? (int) $line['budget_line_item_id'] : null;
+            $acct  = $id !== null ? ($accounts[$id] ?? null) : null;
+            $desc  = trim((string) ($line['description'] ?? $line['particulars'] ?? ''));
+            $out[] = [
+                'account_code'  => $acct['account_code']  ?? null,
+                'account_title' => $acct['account_title'] ?? null,
+                'amount'        => round((float) ($line['requested_amount'] ?? $line['allocated_amount'] ?? 0), 2),
+                'description'   => $desc !== '' ? $desc : null,
+            ];
+        }
+
+        return $out;
     }
 
     /**
@@ -865,6 +916,44 @@ class DisbursementVoucherService
 
             return ['success' => false, 'message' => 'Failed to load RFA.'];
         }
+    }
+
+    /**
+     * Server-side RFA ceiling for a manual DV (not payroll/remittance — those take their amount from their own
+     * import). Sums the selected RFAs' budget and remaining balance (withRfaBudget(); $excludeDvId keeps the DV
+     * being edited out of its own prior payments) and:
+     *   - errors if the DV's Amount is more than the RFAs' remaining balance, and
+     *   - returns the budget so budget_amount/obligation_amount come from the RFAs, not from whatever the
+     *     browser sent (the form no longer shows those fields).
+     * An RFA with no known ceiling (no PO amount and no itemized lines) is left out of the sum; if none of the
+     * selected RFAs has one, nothing is enforced and the client's figures are kept.
+     *
+     * @return array{0: array<int, string>, 1: ?float} [errors, budgetFromRfas]
+     */
+    private function checkAmountAgainstRfas(array $f, ?int $excludeDvId): array
+    {
+        if ($f['_payrollPeriodId'] || $f['_remittanceId'] || !$f['_rfaRows']) {
+            return [[], null];
+        }
+        $budget = 0.0;
+        $remaining = 0.0;
+        foreach ($f['_rfaRows'] as $row) {
+            $detail = $this->fetchRfaDetail((int) $row['allocation_id'], $excludeDvId);
+            if (!$detail['success'] || (float) $detail['data']['budget_amount'] <= 0) {
+                continue;
+            }
+            $budget    += (float) $detail['data']['budget_amount'];
+            $remaining += (float) $detail['data']['remaining_balance'];
+        }
+        if ($budget <= 0) {
+            return [[], null];
+        }
+        $errors = [];
+        if ((float) $f['gross_amount'] - $remaining > 0.005) {
+            $errors[] = 'Amount (' . number_format((float) $f['gross_amount'], 2) . ') cannot exceed the selected RFA(s)\' remaining balance (' . number_format($remaining, 2) . ').';
+        }
+
+        return [$errors, round($budget, 2)];
     }
 
     // ── queries ──
@@ -1388,7 +1477,7 @@ class DisbursementVoucherService
      * rather than in prepare(). Optional on the Originating pre-fill (see the check below). Moot when
      * $lines is empty (no JEV being saved at all).
      */
-    private const JEV_CLASSIFICATIONS = ['REGULAR', 'ACCRUAL', 'DEPRECIATION', 'PREPAYMENTS', 'CLOSING'];
+    private const JEV_CLASSIFICATIONS = ['OPENING', 'REGULAR', 'ACCRUAL', 'DEPRECIATION', 'PREPAYMENTS', 'CLOSING'];
 
     /**
      * Shared Dr/Cr line validation — used by both persistJournalEntry() (DV-driven JEVs) and
@@ -1511,6 +1600,9 @@ class DisbursementVoucherService
 
         $totalDeductions = (float) (App\ExecuteScalar("SELECT COALESCE(SUM(deduction_amount), 0) FROM {$this->tableDvDeductions} WHERE dv_id = {$dvId}", 'DB') ?? 0);
         $netAmount       = round((float) $dv['gross_amount'] - $totalDeductions - $totalWithholding, 2);
+        if ($netAmount < 0) {
+            return ['success' => false, 'message' => 'Validation failed.', 'errors' => ['Deductions (' . number_format($totalDeductions, 2) . ') plus withholding tax (' . number_format($totalWithholding, 2) . ') cannot exceed the Amount (' . number_format((float) $dv['gross_amount'], 2) . ').']];
+        }
         $balance         = round((float) $dv['obligation_amount'] - ((float) $dv['payments_prior_amount'] + $netAmount), 2);
 
         $uid = $userId > 0 ? (string) $userId : 'NULL';
@@ -2101,6 +2193,11 @@ class DisbursementVoucherService
             if ($f['_remittanceId'] && ($remError = (new DeductionRemittanceService())->validateDvLink($f['_remittanceId'])) !== null) {
                 $errors[] = $remError;
             }
+            [$rfaErrors, $rfaBudget] = $this->checkAmountAgainstRfas($f, null);
+            $errors = array_merge($errors, $rfaErrors);
+            if ($rfaBudget !== null) {
+                $f['budget_amount'] = $f['obligation_amount'] = $rfaBudget;
+            }
             if ($errors) {
                 return ['success' => false, 'message' => 'Validation failed.', 'errors' => $errors];
             }
@@ -2213,6 +2310,11 @@ class DisbursementVoucherService
             if ($f['_remittanceId'] && ($remError = (new DeductionRemittanceService())->validateDvLink($f['_remittanceId'], $dvId)) !== null) {
                 $errors[] = $remError;
             }
+            [$rfaErrors, $rfaBudget] = $this->checkAmountAgainstRfas($f, $dvId);
+            $errors = array_merge($errors, $rfaErrors);
+            if ($rfaBudget !== null) {
+                $f['budget_amount'] = $f['obligation_amount'] = $rfaBudget;
+            }
             if ($errors) {
                 return ['success' => false, 'message' => 'Validation failed.', 'errors' => $errors];
             }
@@ -2279,6 +2381,11 @@ class DisbursementVoucherService
 
                         return $jevResult;
                     }
+                } else {
+                    // The form was saved with every ATC row removed (and no entry lines to re-save): the full
+                    // replace must clear the ATC rows stored earlier, or they would linger and later reduce the
+                    // net again. net_amount/balance_amount above were already computed without any withholding.
+                    App\Execute("DELETE FROM {$this->tableDvAtcLines} WHERE dv_id = {$dvId}", 'DB');
                 }
 
                 App\Execute('COMMIT', 'DB');
@@ -2317,6 +2424,14 @@ class DisbursementVoucherService
      */
     private function authorizeTransition(array $cur, string $new): ?string
     {
+        // Whoever already approved/forwarded an earlier step of THIS voucher can't reject it later — not even an admin
+        // (the admin bypass below is for moving it forward; rejecting your own approved work isn't a review).
+        if ($new === 'REJECTED') {
+            $uid = (int) App\CurrentUserID();
+            if ($uid > 0 && in_array($uid, [(int) ($cur['fmd_approved_by'] ?? 0), (int) ($cur['accounting_processed_by'] ?? 0), (int) ($cur['division_reviewed_by'] ?? 0)], true)) {
+                return 'You already approved this voucher at an earlier step — it must be rejected by a different user.';
+            }
+        }
         if (GlobalService::getUserRcScope()['is_admin']) {
             return null;
         }
@@ -2334,8 +2449,24 @@ class DisbursementVoucherService
             return null; // DRAFT -> FOR_FMD_REVIEW: Originating submits, open to anyone authenticated.
         }
         $label = self::STAGE_RC_LABEL[$holderRc] ?? $holderRc;
+        if ($userRc !== $holderRc) {
+            return "Only {$label} staff can do that.";
+        }
 
-        return $userRc === $holderRc ? null : "Only {$label} staff can do that.";
+        // Separation of duties inside Accounting: the three steps (Section Chief -> Division Manager ->
+        // Department Manager) are all RC 012, so the office check above alone would let the same person
+        // push a voucher through every step. A user who already acted on an earlier Accounting step of
+        // THIS voucher can't take a later one (rejecting/cancelling is unaffected — handled above/below).
+        $uid = (int) App\CurrentUserID();
+        if ($new === 'FOR_DEPARTMENT_MANAGER' && $uid > 0 && (int) ($cur['accounting_processed_by'] ?? 0) === $uid) {
+            return 'You already processed this voucher as Section Chief — the Division Manager step must be done by a different user.';
+        }
+        if ($new === 'FOR_TREASURY' && $uid > 0
+            && in_array($uid, [(int) ($cur['accounting_processed_by'] ?? 0), (int) ($cur['division_reviewed_by'] ?? 0)], true)) {
+            return 'You already acted on this voucher at an earlier Accounting step — the Department Manager approval must be done by a different user.';
+        }
+
+        return null;
     }
 
     /** Moves a DV along TRANSITIONS. REJECTED needs a reason; $notes is stored as rejection_reason. */
@@ -2345,7 +2476,7 @@ class DisbursementVoucherService
             $dvId = (int) $id;
             $new  = strtoupper(trim($newStatus));
             $cur  = App\ExecuteRow(
-                "SELECT dv.dv_id, dv.status_id, st.name AS status, dv.created_by FROM {$this->table} dv
+                "SELECT dv.dv_id, dv.status_id, st.name AS status, dv.created_by, dv.fmd_approved_by, dv.accounting_processed_by, dv.division_reviewed_by FROM {$this->table} dv
                  LEFT JOIN {$this->tableSettingsStatus} st ON st.id = dv.status_id
                  WHERE dv.dv_id = {$dvId}",
                 'DB'
