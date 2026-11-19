@@ -11,9 +11,9 @@ class ProjectService
     private string $tableProgram    = 'fims.program';
     private string $tableSubProgram = 'fims.sub_program';
 
-    private array $allowedFields = ['project_code', 'project_name', 'program_code', 'sub_program_code'];
+    private array $allowedFields = ['project_code', 'project_name', 'program_code', 'sub_program_code', 'rc_id'];
 
-    public function fetchAlls(?int $page = null, int $limit = 10, string $search = '', string $programCode = '', string $subProgramCode = ''): array
+    public function fetchAlls(?int $page = null, int $limit = 10, string $search = '', string $programCode = '', string $subProgramCode = '', string $rcId = ''): array
     {
         try {
             $where = ['1=1'];
@@ -27,6 +27,9 @@ class ProjectService
             }
             if ($subProgramCode !== '') {
                 $where[] = 'p.sub_program_code = ' . App\QuotedValue($subProgramCode, App\DataType::STRING, 'DB');
+            }
+            if ($rcId !== '') {
+                $where[] = 'p.rc_id = ' . App\QuotedValue($rcId, App\DataType::STRING, 'DB');
             }
             $whereSql = implode(' AND ', $where);
 
@@ -129,7 +132,17 @@ class ProjectService
                 }
             }
 
-            $fields = array_intersect_key(array_merge($body, ['project_code' => $code]), array_flip($this->allowedFields));
+            // rc_id = the creating user's own Responsibility Center (uac.users.rc_id),
+            // same auto-detection GlobalService::generateProjectCode() already relies on
+            // for the code's own RC segment — never a manually-picked value.
+            $rcId = '';
+            try {
+                $rcId = (string) (GlobalService::getUserRcId() ?? '');
+            } catch (\InvalidArgumentException $e) {
+                // No logged-in user resolvable (e.g. a non-interactive caller) — leave rc_id unset.
+            }
+
+            $fields = array_intersect_key(array_merge($body, ['project_code' => $code, 'rc_id' => $rcId]), array_flip($this->allowedFields));
 
             $columns = [];
             $values  = [];

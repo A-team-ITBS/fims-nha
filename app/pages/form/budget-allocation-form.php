@@ -778,133 +778,6 @@ $cbaAllowedTypes = array_values(array_intersect(['CBA', 'RFA', 'LAA', 'CFA'], ar
 		}
 	</style>
 
-	<style>
-		/* The "Submit Request" decision pop-up (cbaAskDecision). It is appended to <body> — outside .cba-form-container
-		   and outside the memo list's modal, so the modal re-loading its form can't wipe it — and therefore carries its
-		   own, unscoped styles. z-index sits above the memo modal's overlay (9050). */
-		.cbadec-overlay {
-			position: fixed;
-			inset: 0;
-			z-index: 9200;
-			display: flex;
-			align-items: center;
-			justify-content: center;
-			padding: 16px;
-			box-sizing: border-box;
-			background: rgba(15, 32, 69, .45);
-			font-family: 'IBM Plex Sans', sans-serif;
-		}
-
-		.cbadec-box {
-			width: 100%;
-			max-width: 440px;
-			max-height: 100%;
-			overflow-y: auto;
-			background: var(--afims-surface, #FFFFFF);
-			color: var(--afims-text, #1A1B21);
-			border-radius: 12px;
-			box-shadow: 0 18px 48px rgba(0, 0, 0, .28);
-		}
-
-		.cbadec-hdr {
-			padding: 16px 20px;
-			border-bottom: 1px solid var(--afims-border, #E4ECF2);
-		}
-
-		.cbadec-title {
-			margin: 0;
-			font-size: 16px;
-			font-weight: 600;
-			color: var(--afims-heading, #000E3E);
-		}
-
-		.cbadec-body {
-			padding: 16px 20px 6px;
-		}
-
-		.cbadec-text {
-			margin: 0 0 12px;
-			font-size: 13px;
-			line-height: 1.5;
-		}
-
-		.cbadec-current {
-			margin: 0 0 12px;
-			font-size: 12px;
-			color: var(--afims-text-secondary, #475569);
-		}
-
-		.cbadec-opt {
-			display: block;
-			width: 100%;
-			margin: 0 0 10px;
-			padding: 12px 14px;
-			text-align: left;
-			font-family: inherit;
-			color: inherit;
-			cursor: pointer;
-			background: var(--afims-surface, #FFFFFF);
-			border: 1px solid var(--afims-border, #E4ECF2);
-			border-radius: 10px;
-			transition: border-color .15s, box-shadow .15s, background .15s;
-		}
-
-		.cbadec-opt:hover,
-		.cbadec-opt:focus-visible {
-			outline: none;
-			border-color: var(--afims-heading-fill, #000E3E);
-			box-shadow: 0 0 0 3px color-mix(in srgb, var(--afims-heading-fill, #000E3E) 12%, transparent);
-		}
-
-		.cbadec-opt-primary {
-			border-color: var(--afims-heading-fill, #000E3E);
-			background: color-mix(in srgb, var(--afims-heading-fill, #000E3E) 6%, var(--afims-surface, #FFFFFF));
-		}
-
-		.cbadec-opt-title {
-			display: block;
-			font-size: 14px;
-			font-weight: 600;
-			color: var(--afims-heading, #000E3E);
-		}
-
-		.cbadec-opt-desc {
-			display: block;
-			margin-top: 3px;
-			font-size: 12px;
-			line-height: 1.45;
-			color: var(--afims-text-secondary, #475569);
-		}
-
-		.cbadec-opt-desc strong {
-			white-space: nowrap; /* a status name ("For Review") never breaks across two lines */
-		}
-
-		.cbadec-ftr {
-			display: flex;
-			justify-content: flex-end;
-			padding: 10px 20px 16px;
-		}
-
-		.cbadec-cancel {
-			padding: 7px 16px;
-			font-family: inherit;
-			font-size: 13px;
-			font-weight: 600;
-			color: var(--afims-text, #1A1B21);
-			cursor: pointer;
-			background: var(--afims-surface, #FFFFFF);
-			border: 1px solid var(--afims-border, #E4ECF2);
-			border-radius: 8px;
-		}
-
-		.cbadec-cancel:hover,
-		.cbadec-cancel:focus-visible {
-			outline: none;
-			background: var(--afims-surface-subtle, #F4F7FA);
-		}
-	</style>
-
 	<!-- Form Header: the CBA number / date card. Hidden while creating — numbering is not in use yet, so
 	     nothing is shown or saved for it (see buildPayload). Still shown when editing a saved record. -->
 	<div class="form-header"<?php echo $allocationId ? '' : ' style="display:none;"'; ?>>
@@ -1077,6 +950,11 @@ $cbaAllowedTypes = array_values(array_intersect(['CBA', 'RFA', 'LAA', 'CFA'], ar
 			</div>
 
 			<div id="baa_lines_container"></div>
+
+			<!-- CFA's single chain has no project-block id of its own, so this one static button (instead of
+			     a per-block one) covers it — see baaRestoreRemovedLine(null) / updateRestoreButtonVisibility(). -->
+			<button type="button" class="btn btn-secondary" id="baa_restore_btn" style="margin:4px 0 16px;display:none;"
+				onclick="baaRestoreRemovedLine(null)">&#8634; Restore Removed Account Code</button>
 
 			<div id="baa_totals" class="baa-totals">
 				<div class="baa-totals-row">
@@ -1906,8 +1784,6 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 	// created_at of the allocation being edited (set by populateEditForm). Stays
 	// null in add mode — nothing is saved yet, so the RFA print date is today's.
 	var CBA_CREATED_AT = null;
-	// The status name of the allocation being edited (set by populateEditForm), shown in the Submit pop-up. '' in add mode.
-	var CBA_CURRENT_STATUS = '';
 
 	// ── Requesting office = a Responsibility Center, not a field on the form ───────
 	// Add mode: the logged-in user's own RC (CBA_CONFIG.requestingRc, resolved in PHP from uac.users.rc_id ->
@@ -2170,7 +2046,6 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 		};
 
 		CBA_CREATED_AT = a.created_at || null;
-		CBA_CURRENT_STATUS = a.status_name || '';
 		// the record's own requesting office (its creator's RC, joined by the API), not the editing user's
 		CBA_REQ_RC = {
 			rc_id: a.requesting_rc_id || '',
@@ -3448,6 +3323,11 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 	var COB_SYNC_QUEUED = false;
 	var COB_TOKEN_SEQ = 0;
 	var COB_LIST_MAX = 50; // rows rendered at once; typing narrows the rest
+	// A stack of account-code rows removed by mistake, per scope — a project block's own id, or BAA_CFA_KEY
+	// for CFA's single chain (which has no block id) — so "Restore Removed Account Code" (baaRestoreRemovedLine)
+	// can bring the most recent one back with its own COB and amounts. See baaStashRemovedLine().
+	var BAA_REMOVED = {};
+	var BAA_CFA_KEY = '__cfa__';
 
 	// ── 4b. Funding Allocations (CBA / RFA / LAA only) — one or more independent project blocks, each with its
 	// own Project pick (searchable across every project, same "load once, filter client-side" shape as the
@@ -3464,6 +3344,15 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 	var PROJ_ALL_DATA = [];
 	var PROJ_LOADED = false;
 	var PROJ_LOAD_PROMISE = null;
+	// CBA only — the logged-in user's own-RC projects (GET /project/all?scope=mine, filtered server-side
+	// against fims.project.rc_id — the creator's RC, set in ProjectService::create()). Drives ONLY the live
+	// "Search project…" dropdown (blockProjAvailableData()) for picking a NEW project. Resolving an
+	// already-saved project_code (edit-mode restore, or an RFA/LAA block autofilling from a Parent CBA that
+	// may have been created under a different RC) still goes through the unscoped PROJ_ALL_DATA below —
+	// otherwise a cross-RC record would silently come up with an empty Project field.
+	var PROJ_MINE_DATA = [];
+	var PROJ_MINE_LOADED = false;
+	var PROJ_MINE_LOAD_PROMISE = null;
 
 	async function loadAllProjects() {
 		if (PROJ_LOADED) return;
@@ -3479,6 +3368,22 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 			}
 		})();
 		return PROJ_LOAD_PROMISE;
+	}
+
+	async function loadMyProjects() {
+		if (PROJ_MINE_LOADED) return;
+		if (PROJ_MINE_LOAD_PROMISE) return PROJ_MINE_LOAD_PROMISE;
+		PROJ_MINE_LOAD_PROMISE = (async function() {
+			try {
+				var json = await cba_apiFetch(API_BASE + '/project/all?scope=mine');
+				PROJ_MINE_DATA = (json && json.success && Array.isArray(json.data)) ? json.data : [];
+				PROJ_MINE_LOADED = true;
+			} catch (err) {
+				console.error('[loadMyProjects]', err);
+				PROJ_MINE_DATA = [];
+			}
+		})();
+		return PROJ_MINE_LOAD_PROMISE;
 	}
 
 	function projectBlockById(id) {
@@ -3525,6 +3430,11 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 			projectChoiceField +
 			'</div>' +
 			'<div id="baa_lines_' + blockId + '"></div>' +
+			// Lets the office bring back an account-code row it removed from THIS block by mistake — same
+			// COB, same amounts. Hidden whenever there's nothing removed to restore — see
+			// updateRestoreButtonVisibility() / baaStashRemovedLine().
+			'<button type="button" class="btn btn-secondary baa-restore-line-btn" id="restore_line_btn_' + blockId +
+			'" style="margin:4px 0 16px;display:none;">&#8634; Restore Removed Account Code</button>' +
 			'</div>';
 	}
 
@@ -3566,11 +3476,14 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 		blockEl.querySelector('.project-block-remove').addEventListener('click', function() {
 			removeProjectBlock(blockId);
 		});
+		blockEl.querySelector('.baa-restore-line-btn').addEventListener('click', function() {
+			baaRestoreRemovedLine(blockId);
+		});
 
 		if (isRfaOrLaa()) {
 			await ensureCbaDataLoaded();
 		} else {
-			await loadAllProjects();
+			await loadMyProjects();
 		}
 		blockSetupSearch(blockId);
 		addBudgetAllocationLine(blockId);
@@ -3590,6 +3503,7 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 		var blockEl = document.querySelector('.project-block[data-block-id="' + blockId + '"]');
 		if (blockEl) blockEl.remove();
 		PROJECT_BLOCKS = PROJECT_BLOCKS.filter(function(b) { return b.id !== blockId; });
+		delete BAA_REMOVED[blockId]; // nothing left to restore into a block that no longer exists
 		renumberProjectBlocks();
 		recomputeBaaTotals();
 	}
@@ -3661,18 +3575,19 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 		if (hidden) hidden.value = '';
 	}
 
-	// PROJ_ALL_DATA minus whatever project every OTHER block already picked — the same project can only be
-	// allocated to one block at a time. (This block's own current pick, if any, stays offered — so reopening
-	// the dropdown to change it still shows it.)
+	// PROJ_MINE_DATA (the logged-in user's own-RC projects — see loadMyProjects()) minus whatever project
+	// every OTHER block already picked — the same project can only be allocated to one block at a time.
+	// (This block's own current pick, if any, stays offered — so reopening the dropdown to change it still
+	// shows it.)
 	function blockProjAvailableData(blockId) {
 		var usedCodes = PROJECT_BLOCKS.filter(function(b) {
 			return b.id !== blockId && b.projectCode;
 		}).map(function(b) {
 			return b.projectCode;
 		});
-		if (!usedCodes.length) return PROJ_ALL_DATA;
+		if (!usedCodes.length) return PROJ_MINE_DATA;
 
-		return PROJ_ALL_DATA.filter(function(p) {
+		return PROJ_MINE_DATA.filter(function(p) {
 			return usedCodes.indexOf(p.project_code) === -1;
 		});
 	}
@@ -4033,11 +3948,66 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 		} else if (BAA_ROWS.length <= 1) {
 			return; // CFA's single chain: always keep at least one line
 		}
+		baaStashRemovedLine(idx, blockId);
 		baaHardRemoveLine(idx);
 		updateBaaRemoveButtons();
 		recomputeBaaTotals();
 		baaRelocateFirstLine(); // the line removed may have been the one merged in beside Project
 		baaApplyHeaderVisibility();
+	}
+
+	// Snapshots a line's COB pick and amounts right before removeBudgetAllocationLine() tears it down, so
+	// "Restore Removed Account Code" (baaRestoreRemovedLine) can bring it back later. A blank row — nothing
+	// picked yet — isn't tracked: there'd be nothing worth restoring.
+	function baaStashRemovedLine(idx, blockId) {
+		var rec = COB_SEL[idx];
+		if (!rec) return;
+		var key = blockId == null ? BAA_CFA_KEY : blockId;
+		var reqEl = document.getElementById('requested_amount_' + idx + '_raw');
+		var allocEl = document.getElementById('allocated_amount_' + idx + '_raw');
+		(BAA_REMOVED[key] = BAA_REMOVED[key] || []).push({
+			cobId: rec.budget_line_item_id,
+			cobSnapshot: {
+				type_of_fund_id: rec.type_of_fund_id,
+				type_of_fund: rec.type_of_fund,
+				account_code: rec.account_code,
+				account_title: rec.account_title,
+				fiscal_yr: rec.fiscal_yr,
+				proposed_amount: rec.proposed_amount,
+				suggested_amount: rec.suggested_amount,
+				available_amount: rec.available_amount
+			},
+			requested: parseFloat(reqEl ? reqEl.value : '') || 0,
+			allocated: parseFloat(allocEl ? allocEl.value : '') || 0
+		});
+		updateRestoreButtonVisibility(key);
+	}
+
+	// Brings back the most recently removed account code for this scope (a project block's id, or null for
+	// CFA's single chain) as a new line — same COB re-selected (cobSelectById falls back to the snapshot if
+	// that COB has since left the approved list), same Requested/Cash amounts. Does nothing once the stack is
+	// empty — the button is hidden then anyway (updateRestoreButtonVisibility).
+	async function baaRestoreRemovedLine(blockId) {
+		var key = blockId == null ? BAA_CFA_KEY : blockId;
+		var stack = BAA_REMOVED[key];
+		if (!stack || !stack.length) return;
+		var snapshot = stack.pop();
+		var idx = addBudgetAllocationLine(blockId);
+		await cobSelectById(idx, snapshot.cobId, snapshot.cobSnapshot);
+		baaSetAmount(idx, 'requested', snapshot.requested);
+		baaSetAmount(idx, 'allocated', snapshot.allocated);
+		recomputeBaaTotals();
+		updateRestoreButtonVisibility(key);
+	}
+
+	// Shows "Restore Removed Account Code" only while there is something removed left to bring back for this
+	// scope — hidden the rest of the time, including once the stack is drained.
+	function updateRestoreButtonVisibility(key) {
+		var btn = key === BAA_CFA_KEY ? document.getElementById('baa_restore_btn') :
+			document.getElementById('restore_line_btn_' + key);
+		if (!btn) return;
+		var stack = BAA_REMOVED[key];
+		btn.style.display = (stack && stack.length) ? '' : 'none';
 	}
 
 	// Each line's own remove ("×") button is hidden only while it is the LAST line of its own scope — its
@@ -5321,6 +5291,13 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 		if (!invalid && field.classList.contains('baa-requested-amount')) {
 			invalid = baaRequestedExceedsProposed(field.dataset.idx);
 		}
+		// Vendor Name is pick-only (vendSetupSearch / vendOnType): typed text that never resolved to a real
+		// vendor_id is just as invalid as an empty box, even though the box itself isn't empty. Resolve an
+		// exact-name match first (vendResolveTyped) so finishing typing the full name still counts as a pick.
+		if (!invalid && field.id === 'vendor_search') {
+			vendResolveTyped();
+			invalid = !document.getElementById('vendor_id').value;
+		}
 		group.classList.toggle('has-error', invalid);
 		field.classList.toggle('error', invalid);
 		field.classList.toggle('success', !invalid);
@@ -5765,22 +5742,15 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 		});
 	}
 
-	// ── Submit decision pop-up ────────────────────────────────────────────────────
-	// What "Submit Request" can turn a request into. `status` is the NAME of a memo-request status
-	// (fims.settings_status, status_for = 'budget_allocation'); its id comes from the API (cbaStatusIdFor), so no
-	// install-specific id lives here. 'Draft' ships with the schema, 'For Review' with
-	// sample_data/06 - fims_settings_status_budget_allocation.sql.
-	var CBA_DECISIONS = {
-		preview: {
-			status: 'For Review',
-			done: 'submitted for review',
-			busy: 'Submitting'
-		},
-		draft: {
-			status: 'Draft',
-			done: 'saved as a draft',
-			busy: 'Saving'
-		},
+	// ── Submit decision ────────────────────────────────────────────────────────────
+	// What "Submit Request" / "Update" turns a request into — always 'For Review'; there is no Draft option on
+	// this form. `status` is the NAME of a memo-request status (fims.settings_status, status_for =
+	// 'budget_allocation'); its id comes from the API (cbaStatusIdFor), so no install-specific id lives here.
+	// Ships with sample_data/06 - fims_settings_status_budget_allocation.sql.
+	var CBA_SUBMIT_DECISION = {
+		status: 'For Review',
+		done: 'submitted for review',
+		busy: 'Submitting'
 	};
 
 	// Resolves with the id of the memo-request status called `name`. Throws — before anything is saved — when the
@@ -5801,86 +5771,21 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 		return parseInt(hit.id, 10);
 	}
 
-	// Asks what should happen to the request: resolves with 'preview' or 'draft', or null when it is cancelled (the
-	// Cancel button, Escape, or a click outside the box). Built here and appended to <body> rather than written into the
-	// page: it has to sit above the memo list's modal and survive that modal re-loading its form.
-	function cbaAskDecision(typeLabel) {
-		return new Promise(function(resolve) {
-			if (document.getElementById('cba-decision-overlay')) { // already asking
-				resolve(null);
-				return;
-			}
-			var opener = document.activeElement;
-			var overlay = document.createElement('div');
-			overlay.id = 'cba-decision-overlay';
-			overlay.className = 'cbadec-overlay';
-			overlay.innerHTML =
-				'<div class="cbadec-box" role="dialog" aria-modal="true" aria-labelledby="cbadec-title" aria-describedby="cbadec-text">' +
-				'<div class="cbadec-hdr"><h3 class="cbadec-title" id="cbadec-title"></h3></div>' +
-				'<div class="cbadec-body">' +
-				'<p class="cbadec-text" id="cbadec-text"></p>' +
-				'<p class="cbadec-current" id="cbadec-current" hidden></p>' +
-				'<button type="button" class="cbadec-opt cbadec-opt-primary" data-decision="preview">' +
-				'<span class="cbadec-opt-title">Submit for Review</span>' +
-				'<span class="cbadec-opt-desc">Sends the request on to be reviewed. Its status becomes <strong></strong>.</span>' +
-				'</button>' +
-				'<button type="button" class="cbadec-opt" data-decision="draft">' +
-				'<span class="cbadec-opt-title">Save as Draft</span>' +
-				'<span class="cbadec-opt-desc">Keeps the request as a draft you can still change. Its status becomes <strong></strong>.</span>' +
-				'</button>' +
-				'</div>' +
-				'<div class="cbadec-ftr"><button type="button" class="cbadec-cancel" data-decision="">Cancel</button></div>' +
-				'</div>';
-
-			// the words that vary are set as text, from CBA_DECISIONS, so they have a single source
-			overlay.querySelector('#cbadec-title').textContent = CBA_EDIT_MODE ? 'Save changes' : 'Submit this request?';
-			overlay.querySelector('#cbadec-text').textContent = CBA_EDIT_MODE ?
-				('Your changes to this ' + typeLabel.full + ' will be saved. What should its status be?') :
-				('What should happen to this ' + typeLabel.full + '?');
-			overlay.querySelector('[data-decision="preview"] strong').textContent = CBA_DECISIONS.preview.status;
-			overlay.querySelector('[data-decision="draft"] strong').textContent = CBA_DECISIONS.draft.status;
-			if (CBA_EDIT_MODE && CBA_CURRENT_STATUS) {
-				var cur = overlay.querySelector('#cbadec-current');
-				cur.textContent = 'Current status: ' + CBA_CURRENT_STATUS;
-				cur.hidden = false;
-			}
-
-			function finish(decision) {
-				document.removeEventListener('keydown', onKey, true);
-				overlay.remove();
-				if (opener && typeof opener.focus === 'function') opener.focus();
-				resolve(decision);
-			}
-
-			function onKey(e) {
-				if (e.key === 'Escape') {
-					e.preventDefault();
-					e.stopPropagation();
-					finish(null);
-				} else if (e.key === 'Tab') { // keep the focus inside the box
-					var btns = overlay.querySelectorAll('button');
-					var first = btns[0],
-						last = btns[btns.length - 1];
-					if (!overlay.contains(document.activeElement) || (e.shiftKey && document.activeElement === first)) {
-						e.preventDefault();
-						(e.shiftKey ? last : first).focus();
-					} else if (!e.shiftKey && document.activeElement === last) {
-						e.preventDefault();
-						first.focus();
-					}
-				}
-			}
-			overlay.addEventListener('mousedown', function(e) {
-				if (e.target === overlay) finish(null);
-			});
-			overlay.addEventListener('click', function(e) {
-				var b = e.target.closest('button[data-decision]');
-				if (b) finish(b.dataset.decision || null);
-			});
-			document.addEventListener('keydown', onKey, true);
-			document.body.appendChild(overlay);
-			overlay.querySelector('[data-decision="preview"]').focus();
+	// Asks for confirmation before submitting: resolves true when confirmed, false when cancelled. A plain
+	// SweetAlert2 confirm — there is no status choice any more, every submission goes to 'For Review'.
+	async function cbaAskDecision(typeLabel) {
+		var result = await Swal.fire({
+			title: CBA_EDIT_MODE ? 'Save changes?' : 'Submit this request?',
+			text: CBA_EDIT_MODE ?
+				('Your changes to this ' + typeLabel.full + ' will be saved and submitted for review.') :
+				('This ' + typeLabel.full + ' will be submitted for review.'),
+			icon: 'question',
+			showCancelButton: true,
+			confirmButtonText: CBA_EDIT_MODE ? 'Yes, save' : 'Yes, submit',
+			cancelButtonText: 'Cancel',
+			confirmButtonColor: '#0f2045',
 		});
+		return result.isConfirmed;
 	}
 
 	// ── Submit ────────────────────────────────────────────────────────────────────
@@ -5896,6 +5801,20 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 		});
 		if (!valid) {
 			await cbaNotify('Missing Information', 'Please fill in all required fields marked with *', 'warning');
+			return;
+		}
+
+		// Vendor Name is pick-only — a real vendor from the dropdown, typed to search. The generic required-
+		// fields loop above only rejects an EMPTY box, so a name typed but never actually picked (no exact
+		// match either) would otherwise sail through: vendor_id stays blank and postToApi() silently drops it
+		// from the payload, saving the record with no vendor at all. Caught here instead.
+		var vendorSearchEl = document.getElementById('vendor_search');
+		if (vendorSearchEl && vendorSearchEl.required) vendResolveTyped(); // settle an exact-name match before checking
+		if (vendorSearchEl && vendorSearchEl.required && !document.getElementById('vendor_id').value) {
+			validateField(vendorSearchEl);
+			await cbaNotify('Invalid Vendor', 'Type to search, then pick a vendor from the list — "' +
+				vendorSearchEl.value.trim() + '" does not match any vendor on file.', 'warning');
+			vendorSearchEl.focus();
 			return;
 		}
 
@@ -5947,11 +5866,10 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 		}
 		var typeLabel = getTypeLabel();
 
-		// Replaces the old "Are you sure?" confirm(): ask what should become of the request — submitted for review, or
-		// kept as a draft — and give it that status. Cancelled -> nothing is sent.
-		var choice = await cbaAskDecision(typeLabel);
-		if (!choice) return;
-		var decision = CBA_DECISIONS[choice];
+		// Confirm, then submit for review. Cancelled -> nothing is sent.
+		var confirmed = await cbaAskDecision(typeLabel);
+		if (!confirmed) return;
+		var decision = CBA_SUBMIT_DECISION;
 
 		var submitBtn = this.querySelector('button[type="submit"]');
 		submitBtn.disabled = true;
@@ -6228,7 +6146,6 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 	// search boxes would never get their listeners again on the second open.
 	function cbaResetState() {
 		CBA_CREATED_AT = null;
-		CBA_CURRENT_STATUS = '';   // the previous record's status must not show in the next one's Save pop-up
 		CBA_REQ_RC = Object.assign({ rc_id: '', rc_code: '', rc_name: '', office_type: '' }, CBA_CONFIG.requestingRc || {});   // back to the user's own RC
 		pcResetState();
 		clearTimeout(CAT_DEBOUNCE); CAT_DEBOUNCE = null;
@@ -6237,8 +6154,12 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 		VEND_ALL_DATA = [];
 		VEND_MODE = 'none';
 		BAA_ROWS = []; BAA_ROW_SEQ = -1; BAA_ROW_BLOCK = {};
+		BAA_REMOVED = {};
+		var cfaRestoreBtn = document.getElementById('baa_restore_btn');
+		if (cfaRestoreBtn) cfaRestoreBtn.style.display = 'none';
 		PROJECT_BLOCKS = []; PROJECT_BLOCK_SEQ = -1; EDIT_SINGLE_BLOCK_ID = null;
 		PROJ_ALL_DATA = []; PROJ_LOADED = false; PROJ_LOAD_PROMISE = null; // same "refetch every open" precedent as CAT_ALL_DATA / VEND_ALL_DATA below
+		PROJ_MINE_DATA = []; PROJ_MINE_LOADED = false; PROJ_MINE_LOAD_PROMISE = null;
 		COB_EPOCH++; COB_DATA = {}; COB_SIG = {}; COB_SEQ = {}; COB_LOAD = {}; COB_SEL = {}; COB_WIRED = {};
 		COB_SYNC_QUEUED = false; COB_KEEP_SELECTION = 0;
 		// Earmarks against a COB can change between modal opens (an RFA/LAA approved elsewhere converts part

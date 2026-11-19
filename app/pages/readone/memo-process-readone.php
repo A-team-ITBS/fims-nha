@@ -223,6 +223,12 @@ async function mpr_open(id, viewOnly = false) {
     mpr_$('mpr-overlay').classList.add('open');
     mpr_$('mpr-cancel').focus();
 
+    // The global page preloader (app/preloader.php) — its own fetch/XHR tracking only runs during the page's
+    // initial load, so a later open like this one needs the manual show()/hide() it exposes for exactly that.
+    // Sits well above this modal (z-index 999999 vs. .mpr-overlay's 9060), covering its own "Loading…"
+    // placeholder with the app's usual branded one while the request's details (and an RFA's CAFs) come in.
+    if (window.PagePreloader) window.PagePreloader.show();
+
     try {
         const json = await mrq_request(`${MRQ_API}/read/${encodeURIComponent(id)}`);
         if (seq !== mpr_seq) return;
@@ -234,6 +240,10 @@ async function mpr_open(id, viewOnly = false) {
     } catch (e) {
         if (seq !== mpr_seq) return;
         mpr_$('mpr-body').innerHTML = `<div class="mpr-err">${mrq_esc(e.message)}</div>`;
+    } finally {
+        // Only when this is still the most recent open() — a superseded call (another row opened right after)
+        // must leave the preloader for that newer call's own finally to hide.
+        if (seq === mpr_seq && window.PagePreloader) window.PagePreloader.hide();
     }
 }
 
@@ -253,6 +263,9 @@ async function mpr_loadCafs(row) {
 function mpr_close() {
     if (mpr_busy) return;                    // not while an Approve / Return is being saved
     mpr_seq++;
+    // In case this closes while mpr_open()'s own load is still in flight — that call's seq no longer matches
+    // after the increment above, so its finally will skip hiding and leave the preloader stuck otherwise.
+    if (window.PagePreloader) window.PagePreloader.hide();
     mpr_row = null;
     mpr_closePrintMenu();
     mpr_$('mpr-overlay').classList.remove('open');
