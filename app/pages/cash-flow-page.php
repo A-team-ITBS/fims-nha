@@ -16,29 +16,25 @@ $_cf_api = preg_match('~/api$~', $_cf_api) ? $_cf_api : $_cf_api . '/api';
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
 
+<link rel="stylesheet" href="/app/fims-css/fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css') ?>" />
+
 <style>
+    /* Table styling (.fims-report-table*) lives in app/fims-css/fims.css. Only page-specific, non-table rules remain here. */
     #cf-root .cf-report-title { text-align: center; margin: 0 0 18px; }
     #cf-root .cf-report-title div { font-weight: 700; font-size: 14px; line-height: 1.6; }
     #cf-root .cf-report-title .cf-report-date { font-weight: 400; }
-    #cf-root .cf-major-row td { background: #1B2B6B; color: #fff; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; }
-    #cf-root .cf-line-row td:first-child { padding-left: 20px; }
-    #cf-root .cf-indent-row td:first-child { padding-left: 32px; }
-    #cf-root .cf-subtotal-row td { font-weight: 600; border-top: 1px solid var(--afims-border, #DDE0EC); }
-    #cf-root .cf-grand-row td { font-weight: 700; background: var(--afims-bg-soft, #F5F6FA); border-top: 2px solid #1B2B6B; border-bottom: 2px solid #1B2B6B; }
-    #cf-root .cf-neg { color: #B42318; }
-    #cf-root .cf-nodata { color: var(--afims-text-muted, #9A9DB0); font-style: italic; }
     #cf-root .cf-sample { display: none; margin: 0 0 14px; padding: 10px 14px; border-radius: 6px; font-size: 13px; background: #FFF4D6; color: #6B4A00; border: 1px solid #F0D58A; }
 
-    #cf-root .nha-tbl-scroll { max-height: 70vh; overflow-y: auto; }
-    #cf-root .nha-tbl thead th { position: sticky; top: 0; z-index: 1; }
-    @media print {
-        #cf-root .nha-tbl-scroll { max-height: none; overflow-y: visible; }
-    }
+    /* Same page-level type scale as the other report pages. _shared/js/custom.js forces
+       `1em * scale !important` on inputs/selects/buttons, so those get the same direct rem + !important. */
+    #cf-root .nha-hdr-tag             { font-size: 0.75rem; }    /* 12px */
+    #cf-root .nha-hdr-title           { font-size: 1.25rem; }    /* 20px */
+    #cf-root .nha-btn-hdr             { font-size: calc(0.875rem * var(--button-scale, 1)) !important; } /* 14px  Refresh / Print */
+    #cf-root .nha-filter-label        { font-size: 0.75rem; }    /* 12px */
+    #cf-root .nha-filter-select       { font-size: calc(0.875rem * var(--input-scale, 1)) !important; }  /* 14px  dropdowns */
+    #cf-root .nha-error               { font-size: 0.875rem; }   /* 14px */
+    #cf-root .nha-hint                { font-size: 0.875rem; padding: 0 16px; margin: 0 0 14px; color: var(--afims-text-muted, #62657E); }   /* 14px; 16px side padding lines it up with the filter card */
 
-    html.afims-dark[data-bs-theme="dark"] #cf-root .cf-major-row td { background: #2E4A8F; color: #FFFFFF; }
-    html.afims-dark[data-bs-theme="dark"] #cf-root .cf-grand-row td { background: var(--afims-surface-subtle, #22294A); color: #FFFFFF; border-color: var(--afims-border-strong, #4A5270); }
-    html.afims-dark[data-bs-theme="dark"] #cf-root .cf-subtotal-row td { border-top-color: var(--afims-border-strong, #4A5270); }
-    html.afims-dark[data-bs-theme="dark"] #cf-root .cf-neg { color: #FF8A80; }
     html.afims-dark[data-bs-theme="dark"] #cf-root .cf-sample { background: #3A2F10; color: #F5D98A; border-color: #6B5A22; }
     @media print {
         #cf-root .cf-letterhead,
@@ -74,7 +70,7 @@ $_cf_api = preg_match('~/api$~', $_cf_api) ? $_cf_api : $_cf_api . '/api';
         </div>
     </div>
 
-    <p class="nha-hint no-print" style="margin:0 0 14px;color:var(--afims-text-muted,#62657E);font-size:13px;">
+    <p class="nha-hint no-print">
         Statement of Cash Flows for the selected fiscal year, by Operating, Investing and Financing
         Activities (Direct Method). A few printed lines (Bayanihan Act BTr refund, Expropriated
         Account closure, and most project-specific disbursement lines) have no dedicated account in
@@ -129,9 +125,9 @@ $_cf_api = preg_match('~/api$~', $_cf_api) ? $_cf_api : $_cf_api . '/api';
     </div>
 
     <!-- ── TABLE ──────────────────────────────────────────── -->
-    <div class="nha-table-wrap">
-        <div class="nha-tbl-scroll">
-            <table class="nha-tbl">
+    <div class="nha-table-wrap fims-report-table-wrap">
+        <div class="nha-tbl-scroll fims-report-table-scroll">
+            <table class="nha-tbl fims-report-table">
                 <thead>
                     <tr>
                         <th>Particulars</th>
@@ -290,9 +286,9 @@ function cf_render(d, fallbackFy) {
     }
 
     const html = [];
-    const line = l => `<tr class="cf-line-row ${l.indent ? 'cf-indent-row' : ''}"><td>${cf_esc(l.label)}</td><td></td>${cf_amt(l.cur)}${cf_amt(l.prev)}</tr>`;
-    const subtotal = (label, cur, prev) => `<tr class="cf-subtotal-row"><td colspan="2">${cf_esc(label)}</td>${cf_amt(cur)}${cf_amt(prev)}</tr>`;
-    const grand = (label, cur, prev) => `<tr class="cf-grand-row"><td colspan="2">${cf_esc(label)}</td>${cf_amt(cur)}${cf_amt(prev)}</tr>`;
+    const line = l => `<tr class="fims-report-table-row${l.indent ? ' fims-report-table-indent-row' : ''}"><td>${cf_esc(l.label)}</td><td></td>${cf_amt(l.cur)}${cf_amt(l.prev)}</tr>`;
+    const subtotal = (label, cur, prev) => `<tr class="fims-report-table-subtotal-row"><td colspan="2">${cf_esc(label)}</td>${cf_amt(cur)}${cf_amt(prev)}</tr>`;
+    const grand = (label, cur, prev) => `<tr class="fims-report-table-grand-row fims-report-table-normalcase"><td colspan="2">${cf_esc(label)}</td>${cf_amt(cur)}${cf_amt(prev)}</tr>`;
 
     const sectionSubtotalLabel = {
         operating: 'Net cash provided by (used in) operating activities',
@@ -301,11 +297,11 @@ function cf_render(d, fallbackFy) {
     };
 
     d.sections.forEach(s => {
-        html.push(`<tr class="cf-major-row"><td colspan="4">${cf_esc(s.label)}</td></tr>`);
+        html.push(`<tr class="fims-report-table-major-row"><td colspan="4">${cf_esc(s.label)}</td></tr>`);
         let disbHeaderShown = false;
         s.lines.forEach(l => {
             if (l.indent && !disbHeaderShown) {
-                html.push('<tr class="cf-line-row"><td colspan="4">Disbursements made for:</td></tr>');
+                html.push('<tr class="fims-report-table-row"><td colspan="4">Disbursements made for:</td></tr>');
                 disbHeaderShown = true;
             }
             html.push(line(l));
@@ -315,7 +311,7 @@ function cf_render(d, fallbackFy) {
 
     const t = d.totals;
     html.push(grand('Net Increase/(Decrease) in Cash and Cash Equivalents', t.net_increase_cur, t.net_increase_prev));
-    html.push(`<tr class="cf-line-row"><td colspan="2">Add: Cash and Cash Equivalents - Beginning</td>${cf_amt(t.beginning_cur)}${cf_amt(t.beginning_prev)}</tr>`);
+    html.push(`<tr class="fims-report-table-row"><td colspan="2">Add: Cash and Cash Equivalents - Beginning</td>${cf_amt(t.beginning_cur)}${cf_amt(t.beginning_prev)}</tr>`);
     html.push(grand('Cash and Cash Equivalents, Ending', t.ending_cur, t.ending_prev));
 
     tbody.innerHTML = html.join('');
@@ -376,13 +372,13 @@ function cf_sampleData(fy) {
 
 /* ── Formatters ────────────────────────────────────────────── */
 function cf_amt(v) {
-    return `<td class="text-end nha-mono">${cf_peso(v)}</td>`;
+    return `<td class="text-end nha-mono fims-report-table-num">${cf_peso(v)}</td>`;
 }
 function cf_peso(v) {
     const n = Number(v || 0);
     if (n === 0) return '-';
     const s = Math.abs(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    return n < -0.005 ? `<span class="cf-neg">(${s})</span>` : s;
+    return n < -0.005 ? `<span class="fims-report-table-neg">(${s})</span>` : s;
 }
 function cf_esc(text) {
     if (text === null || text === undefined) return '';

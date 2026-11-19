@@ -8755,3 +8755,152 @@ tr.comp-at-risk       td { background:rgba(245,158,11,.05)  !important; }
     .fims-page-header, .card:has(#rg-report-cards), .card:has(#rg-period-tabs),
     .rg-pagination-bar { display: none !important; }
 }
+
+
+/* ══════════════════════════════════════════════════════════════
+   REPORT TABLE  (.fims-report-table)  — generic, reusable
+   Compact financial-report table: filled column header, bold
+   major-group rows, sub-group rows, indented data rows, pinned
+   total row. First used by Trial Balance; reuse on any report
+   page (Balance Sheet, General Ledger, ...).
+
+   (.fims-table is a different, older component — don't mix.)
+
+   Markup:
+     <div class="nha-tbl-scroll fims-report-table-scroll">
+       <table class="nha-tbl fims-report-table">
+         <thead><tr><th>…</th><th class="text-end">…</th></tr></thead>
+         <tbody>
+           <tr class="fims-report-table-major-row"><td colspan="N">ASSETS</td></tr>
+           <tr class="fims-report-table-group-row"><td colspan="N">Cash …</td></tr>
+           <tr class="fims-report-table-row [fims-report-table-contra-row]">
+             <td>Title</td><td class="fims-report-table-num">code</td>…
+           </tr>
+         </tbody>
+         <tfoot><tr class="fims-report-table-total-row"><td>Total</td>…</tr></tfoot>
+       </table>
+     </div>
+   Needs an .nha-root ancestor (nha-fims.css supplies the base table look).
+
+   FONT SIZE: _shared/js/custom.js injects
+     td, th { font-size: calc(1em * var(--td-scale)) !important }
+   A normal declaration can never beat an !important one, whatever
+   its specificity, so sizes below are !important too. They win on
+   specificity (class-based, > the bare td/th selector) and keep the
+   `* var(--td-scale)` factor so the Theme Settings table-size
+   control still scales them.
+   Selectors start with `.nha-root table.fims-report-table` (0,2,x)
+   to out-rank nha-fims.css `.nha-root .nha-tbl td` (0,2,1) without
+   needing an ID.
+   ══════════════════════════════════════════════════════════════ */
+.nha-root table.fims-report-table thead th {
+  padding: 6px 12px;
+  font-size: calc(0.8125rem * var(--td-scale, 1)) !important;   /* 13px  column headers */
+  position: sticky; top: 0; z-index: 1;
+}
+.nha-root table.fims-report-table tbody td {
+  padding: 4px 12px;
+  line-height: 1.25;
+  font-size: calc(1rem * var(--td-scale, 1)) !important;        /* 16px  data rows */
+  overflow-wrap: anywhere;                                      /* long titles wrap, never overflow */
+}
+.nha-root table.fims-report-table tbody td.fims-report-table-num,
+.nha-root table.fims-report-table tfoot td.fims-report-table-num { white-space: nowrap; overflow-wrap: normal; }
+.nha-root table.fims-report-table tbody tr.fims-report-table-row td:first-child { padding-left: 28px; }
+.nha-root table.fims-report-table tbody tr.fims-report-table-contra-row td:first-child { font-style: italic; }
+
+/* Major classification row (ASSETS / LIABILITIES …). :hover repeated to out-rank nha-fims.css row-hover fill. */
+.nha-root table.fims-report-table tbody tr.fims-report-table-major-row td,
+.nha-root table.fims-report-table tbody tr.fims-report-table-major-row:hover td {
+  padding: 5px 12px;
+  background: #1B2B6B; color: #fff;
+  font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
+  font-size: calc(1rem * var(--td-scale, 1)) !important;        /* 16px */
+}
+/* Sub-group row (e.g. "Cash and Cash Equivalents") */
+.nha-root table.fims-report-table tbody tr.fims-report-table-group-row td,
+.nha-root table.fims-report-table tbody tr.fims-report-table-group-row:hover td {
+  background: var(--afims-bg-soft, #F5F6FA);
+  font-weight: 600; text-transform: uppercase;
+  font-size: calc(0.9375rem * var(--td-scale, 1)) !important;   /* 15px */
+}
+/* Sub-group row (indented one level under a group row) */
+.nha-root table.fims-report-table tbody tr.fims-report-table-subgroup-row td { font-weight: 600; }
+.nha-root table.fims-report-table tbody tr.fims-report-table-subgroup-row td:first-child { padding-left: 20px; }
+/* Computed "net" row under a contra account, and section subtotal rows: bold with a thin rule above */
+.nha-root table.fims-report-table tbody tr.fims-report-table-netvalue-row td,
+.nha-root table.fims-report-table tbody tr.fims-report-table-subtotal-row td {
+  font-weight: 600;
+  border-top: 1px solid var(--afims-border, #DDE0EC);
+}
+/* Grand-total row inside the body (e.g. "Total Assets"): shaded, ruled above and below, not sticky */
+.nha-root table.fims-report-table tbody tr.fims-report-table-grand-row td,
+.nha-root table.fims-report-table tbody tr.fims-report-table-grand-row:hover td {
+  font-weight: 700; text-transform: uppercase;
+  background: var(--afims-bg-soft, #F5F6FA);
+  border-top: 2px solid #1B2B6B; border-bottom: 2px solid #1B2B6B;
+}
+/* Negative amounts */
+.fims-report-table-neg { color: #B42318; }
+
+/* Modifiers: deeper indent for a line nested under a "Disbursements made for:"-style row; keep original case on a grand-total row */
+.nha-root table.fims-report-table tbody tr.fims-report-table-row.fims-report-table-indent-row td:first-child { padding-left: 44px; }
+.nha-root table.fims-report-table tbody tr.fims-report-table-grand-row.fims-report-table-normalcase td { text-transform: none; }
+
+/* Total row: pinned to the bottom of the scroll area, accounting-style double rule under it */
+.nha-root table.fims-report-table tfoot tr.fims-report-table-total-row td {
+  position: sticky; bottom: 0; z-index: 1;
+  padding: 8px 12px;
+  --fims-rt-rule: var(--afims-border-strong, #1B2B6B);
+  background: var(--afims-surface, #fff);
+  /* Rules are drawn as inset shadows, not borders: with border-collapse a border on each sticky cell left gaps
+     between the Debit and Credit cells (and doesn't travel with the sticky cell). Shadows are continuous across
+     adjacent cells: 2px top rule, then a double rule underneath (1px line, 1px gap, 1px line). */
+  border: 0;
+  box-shadow: inset 0 2px 0 var(--fims-rt-rule),
+              inset 0 -1px 0 var(--fims-rt-rule),
+              inset 0 -2px 0 var(--fims-rt-bg, var(--afims-surface, #fff)),
+              inset 0 -3px 0 var(--fims-rt-rule);
+  font-weight: 700;
+  font-size: calc(1.0625rem * var(--td-scale, 1)) !important;   /* 17px */
+}
+
+/* Wider side padding on right-aligned (amount) columns so adjacent Debit / Credit figures don't run together at the larger font */
+.nha-root table.fims-report-table thead th.text-end,
+.nha-root table.fims-report-table tbody td.text-end,
+.nha-root table.fims-report-table tfoot tr.fims-report-table-total-row td.text-end { padding-left: 24px; padding-right: 20px; }
+
+/* Outer card (.nha-table-wrap) padding: nha-fims.css gives it none, so the table sat flush against the border.
+   Opt-in modifier so other pages that use .nha-table-wrap are unaffected. */
+.fims-report-table-wrap { padding: 12px 16px; }
+
+/* Vertical scroll wrapper: body scrolls, header + total stay pinned */
+.fims-report-table-scroll { max-height: 70vh; overflow-y: auto; }
+
+/* Dark mode (--afims-bg-soft is not a theme token, so group rows need explicit colors) */
+html.afims-dark[data-bs-theme="dark"] .nha-root table.fims-report-table tbody tr.fims-report-table-group-row td,
+html.afims-dark[data-bs-theme="dark"] .nha-root table.fims-report-table tbody tr.fims-report-table-group-row:hover td {
+  background: var(--afims-surface-subtle, #22294A); color: #FFFFFF;
+  border-top: 1px solid var(--afims-border-strong, #4A5270);
+}
+html.afims-dark[data-bs-theme="dark"] .nha-root table.fims-report-table tbody tr.fims-report-table-major-row td,
+html.afims-dark[data-bs-theme="dark"] .nha-root table.fims-report-table tbody tr.fims-report-table-major-row:hover td {
+  background: #2E4A8F; color: #FFFFFF;
+}
+html.afims-dark[data-bs-theme="dark"] .nha-root table.fims-report-table tfoot tr.fims-report-table-total-row td {
+  --fims-rt-rule: var(--afims-border-strong, #4A5270);
+  --fims-rt-bg: var(--afims-surface-subtle, #22294A);
+  background: var(--afims-surface-subtle, #22294A); color: #FFFFFF;
+}
+
+html.afims-dark[data-bs-theme="dark"] .nha-root table.fims-report-table tbody tr.fims-report-table-grand-row td,
+html.afims-dark[data-bs-theme="dark"] .nha-root table.fims-report-table tbody tr.fims-report-table-grand-row:hover td {
+  background: var(--afims-surface-subtle, #22294A); color: #FFFFFF; border-color: var(--afims-border-strong, #4A5270);
+}
+html.afims-dark[data-bs-theme="dark"] .nha-root table.fims-report-table tbody tr.fims-report-table-subtotal-row td,
+html.afims-dark[data-bs-theme="dark"] .nha-root table.fims-report-table tbody tr.fims-report-table-netvalue-row td { border-top-color: var(--afims-border-strong, #4A5270); }
+html.afims-dark[data-bs-theme="dark"] .fims-report-table-neg { color: #FF8A80; }
+
+@media print {
+  .fims-report-table-scroll { max-height: none; overflow-y: visible; }
+}

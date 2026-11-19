@@ -17,38 +17,27 @@ $_bs_api = preg_match('~/api$~', $_bs_api) ? $_bs_api : $_bs_api . '/api';
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
 
+<link rel="stylesheet" href="/app/fims-css/fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css') ?>" />
+
 <style>
+    /* Table styling (.fims-report-table*) lives in app/fims-css/fims.css. Only page-specific, non-table rules remain here. */
     #bs-root .bs-report-title { text-align: center; margin: 0 0 18px; }
     #bs-root .bs-report-title div { font-weight: 700; font-size: 14px; line-height: 1.6; }
     #bs-root .bs-report-title .bs-report-date { font-weight: 400; }
-    #bs-root .bs-major-row td { background: #1B2B6B; color: #fff; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; }
-    #bs-root .bs-group-row td { background: var(--afims-bg-soft, #F5F6FA); font-weight: 600; text-transform: uppercase; font-size: 12px; }
-    #bs-root .bs-subgroup-row td { font-weight: 600; }
-    #bs-root .bs-subgroup-row td:first-child { padding-left: 20px; }
-    #bs-root .bs-account-row td:first-child { padding-left: 32px; }
-    #bs-root .bs-account-row.bs-contra-row td:first-child { font-style: italic; }
-    #bs-root .bs-account-row.bs-netvalue-row { font-weight: 600; }
-    #bs-root .bs-account-row.bs-netvalue-row td { border-top: 1px solid var(--afims-border, #DDE0EC); }
-    #bs-root .bs-subtotal-row td { font-weight: 600; border-top: 1px solid var(--afims-border, #DDE0EC); }
-    #bs-root .bs-grand-row td { font-weight: 700; background: var(--afims-bg-soft, #F5F6FA); border-top: 2px solid #1B2B6B; border-bottom: 2px solid #1B2B6B; text-transform: uppercase; }
-    #bs-root .bs-neg { color: #B42318; }
     #bs-root .bs-sample { display: none; margin: 0 0 14px; padding: 10px 14px; border-radius: 6px; font-size: 13px; background: #FFF4D6; color: #6B4A00; border: 1px solid #F0D58A; }
     #bs-root .bs-diff { display: none; margin: 0 0 14px; padding: 10px 14px; border-radius: 6px; font-size: 13px; background: #FDECEA; color: #8A1C12; border: 1px solid #F3B8B2; }
 
-    /* Scroll the body vertically instead of growing the page — header row stays pinned in view. */
-    #bs-root .nha-tbl-scroll { max-height: 70vh; overflow-y: auto; }
-    #bs-root .nha-tbl thead th { position: sticky; top: 0; z-index: 1; }
-    @media print {
-        #bs-root .nha-tbl-scroll { max-height: none; overflow-y: visible; }
-    }
+    /* Same page-level type scale as the Trial Balance page. _shared/js/custom.js forces `1em * scale !important`
+       on inputs/selects/buttons, so those get the same direct rem + !important. */
+    #bs-root .nha-hdr-tag             { font-size: 0.75rem; }    /* 12px */
+    #bs-root .nha-hdr-title           { font-size: 1.25rem; }    /* 20px */
+    #bs-root .nha-btn-hdr             { font-size: calc(0.875rem * var(--button-scale, 1)) !important; } /* 14px  Refresh */
+    #bs-root .nha-filter-label        { font-size: 0.75rem; }    /* 12px */
+    #bs-root .nha-filter-select       { font-size: calc(0.875rem * var(--input-scale, 1)) !important; }  /* 14px  dropdowns */
+    #bs-root .nha-bdg                 { font-size: 0.8125rem; }  /* 13px  status badge */
+    #bs-root .nha-error               { font-size: 0.875rem; }   /* 14px */
+    #bs-root .nha-hint                { font-size: 0.875rem; padding: 0 16px; margin: 0 0 14px; color: var(--afims-text-muted, #62657E); }   /* 14px; 16px side padding lines it up with the filter card */
 
-    /* Dark mode: same treatment as the Trial Balance page — --afims-bg-soft is not a theme token */
-    html.afims-dark[data-bs-theme="dark"] #bs-root .bs-group-row td { background: var(--afims-surface-subtle, #22294A); color: #FFFFFF; border-top: 1px solid var(--afims-border-strong, #4A5270); }
-    html.afims-dark[data-bs-theme="dark"] #bs-root .bs-major-row td { background: #2E4A8F; color: #FFFFFF; }
-    html.afims-dark[data-bs-theme="dark"] #bs-root .bs-grand-row td { background: var(--afims-surface-subtle, #22294A); color: #FFFFFF; border-color: var(--afims-border-strong, #4A5270); }
-    html.afims-dark[data-bs-theme="dark"] #bs-root .bs-subtotal-row td { border-top-color: var(--afims-border-strong, #4A5270); }
-    html.afims-dark[data-bs-theme="dark"] #bs-root .bs-account-row.bs-netvalue-row td { border-top-color: var(--afims-border-strong, #4A5270); }
-    html.afims-dark[data-bs-theme="dark"] #bs-root .bs-neg { color: #FF8A80; }
     html.afims-dark[data-bs-theme="dark"] #bs-root .bs-sample { background: #3A2F10; color: #F5D98A; border-color: #6B5A22; }
     html.afims-dark[data-bs-theme="dark"] #bs-root .bs-diff { background: #3B1A17; color: #FFB4AB; border-color: #7A332C; }
     @media print {
@@ -81,7 +70,7 @@ $_bs_api = preg_match('~/api$~', $_bs_api) ? $_bs_api : $_bs_api . '/api';
         </div>
     </div>
 
-    <p class="nha-hint no-print" style="margin:0 0 14px;color:var(--afims-text-muted,#62657E);font-size:13px;">
+    <p class="nha-hint no-print">
         Statement of Financial Position as of the end of the selected fiscal year. It adds up every
         Journal Entry Voucher that was approved and posted to the General Ledger, so a voucher still
         in review does not appear here.
@@ -150,9 +139,9 @@ $_bs_api = preg_match('~/api$~', $_bs_api) ? $_bs_api : $_bs_api . '/api';
     </div>
 
     <!-- ── TABLE ──────────────────────────────────────────── -->
-    <div class="nha-table-wrap">
-        <div class="nha-tbl-scroll">
-            <table class="nha-tbl">
+    <div class="nha-table-wrap fims-report-table-wrap">
+        <div class="nha-tbl-scroll fims-report-table-scroll">
+            <table class="nha-tbl fims-report-table">
                 <thead id="bs-thead">
                     <tr>
                         <th>Account Title</th>
@@ -379,30 +368,30 @@ function bs_renderConsolidated(d, fallbackFy) {
     }
 
     const html = [];
-    const amounts = byBook => books.map(b => `<td class="text-end nha-mono">${bs_peso(byBook[b.book_id] ?? 0)}</td>`).join('');
+    const amounts = byBook => books.map(b => `<td class="text-end nha-mono fims-report-table-num">${bs_peso(byBook[b.book_id] ?? 0)}</td>`).join('');
     const row = (cls, title, byBook, total) => {
-        const isAccount = cls === 'bs-account-row';
+        const isAccount = cls === 'fims-report-table-row';
         const netValue = isAccount && /^Net Value-/.test(String(title || ''));
         const contra = isAccount && !netValue && /^(Accumulated Depreciation|Allowance for Impairment)/i.test(String(title || ''));
-        const extra = contra ? ' bs-contra-row' : (netValue ? ' bs-netvalue-row' : '');
-        return `<tr class="${cls}${extra}"><td>${bs_esc(title)}</td>${amounts(byBook)}<td class="text-end nha-mono">${bs_peso(total)}</td></tr>`;
+        const extra = contra ? ' fims-report-table-contra-row' : (netValue ? ' fims-report-table-netvalue-row' : '');
+        return `<tr class="${cls}${extra}"><td>${bs_esc(title)}</td>${amounts(byBook)}<td class="text-end nha-mono fims-report-table-num">${bs_peso(total)}</td></tr>`;
     };
     const grand = (title, byBook, total) =>
-        `<tr class="bs-grand-row"><td>${bs_esc(title)}</td>${amounts(byBook)}<td class="text-end nha-mono">${bs_peso(total)}</td></tr>`;
+        `<tr class="fims-report-table-grand-row"><td>${bs_esc(title)}</td>${amounts(byBook)}<td class="text-end nha-mono fims-report-table-num">${bs_peso(total)}</td></tr>`;
 
     d.sections.forEach(s => {
-        html.push(`<tr class="bs-major-row"><td colspan="${colCount}">${bs_esc(s.label)}</td></tr>`);
+        html.push(`<tr class="fims-report-table-major-row"><td colspan="${colCount}">${bs_esc(s.label)}</td></tr>`);
         s.groups.forEach(g => {
-            html.push(row('bs-group-row', g.group_title, g.by_book, g.total));
+            html.push(row('fims-report-table-group-row', g.group_title, g.by_book, g.total));
             g.subgroups.forEach(sg => {
-                if (sg.group_title) html.push(row('bs-subgroup-row', sg.group_title, sg.by_book, sg.total));
-                sg.accounts.forEach(a => html.push(row('bs-account-row', a.account_title, a.by_book, a.total)));
+                if (sg.group_title) html.push(row('fims-report-table-subgroup-row', sg.group_title, sg.by_book, sg.total));
+                sg.accounts.forEach(a => html.push(row('fims-report-table-row', a.account_title, a.by_book, a.total)));
             });
         });
         if (s.key === 'equity' && (d.net_surplus_deficit.total || Object.values(d.net_surplus_deficit.by_book).some(v => v))) {
-            html.push(row('bs-account-row', 'Net Surplus / (Deficit), not yet closed', d.net_surplus_deficit.by_book, d.net_surplus_deficit.total));
+            html.push(row('fims-report-table-row', 'Net Surplus / (Deficit), not yet closed', d.net_surplus_deficit.by_book, d.net_surplus_deficit.total));
         }
-        html.push(row('bs-subtotal-row', 'Total ' + s.label, s.subtotal_by_book, s.subtotal_total));
+        html.push(row('fims-report-table-subtotal-row', 'Total ' + s.label, s.subtotal_by_book, s.subtotal_total));
 
         if (s.key === 'non_current_assets')      html.push(grand('Total Assets', d.totals.total_assets_by_book, d.totals.total_assets));
         if (s.key === 'non_current_liabilities') html.push(grand('Total Liabilities', d.totals.total_liabilities_by_book, d.totals.total_liabilities));
@@ -448,32 +437,32 @@ function bs_render(d, fallbackFy) {
 
     const html = [];
     const amounts = (cur, prev) => `
-        <td class="text-end nha-mono">${bs_peso(cur)}</td>
-        <td class="text-end nha-mono">${bs_peso(prev)}</td>
-        <td class="text-end nha-mono">${bs_peso(cur - prev)}</td>`;
+        <td class="text-end nha-mono fims-report-table-num">${bs_peso(cur)}</td>
+        <td class="text-end nha-mono fims-report-table-num">${bs_peso(prev)}</td>
+        <td class="text-end nha-mono fims-report-table-num">${bs_peso(cur - prev)}</td>`;
     const row = (cls, title, cur, prev) => {
-        const isAccount = cls === 'bs-account-row';
+        const isAccount = cls === 'fims-report-table-row';
         const netValue = isAccount && /^Net Value-/.test(String(title || ''));
         const contra = isAccount && !netValue && /^(Accumulated Depreciation|Allowance for Impairment)/i.test(String(title || ''));
-        const extra = contra ? ' bs-contra-row' : (netValue ? ' bs-netvalue-row' : '');
+        const extra = contra ? ' fims-report-table-contra-row' : (netValue ? ' fims-report-table-netvalue-row' : '');
         return `<tr class="${cls}${extra}"><td>${bs_esc(title)}</td>${amounts(cur, prev)}</tr>`;
     };
     const grand = (title, cur, prev) =>
-        `<tr class="bs-grand-row"><td>${bs_esc(title)}</td>${amounts(cur, prev)}</tr>`;
+        `<tr class="fims-report-table-grand-row"><td>${bs_esc(title)}</td>${amounts(cur, prev)}</tr>`;
 
     d.sections.forEach(s => {
-        html.push(`<tr class="bs-major-row"><td colspan="4">${bs_esc(s.label)}</td></tr>`);
+        html.push(`<tr class="fims-report-table-major-row"><td colspan="4">${bs_esc(s.label)}</td></tr>`);
         s.groups.forEach(g => {
-            html.push(row('bs-group-row', g.group_title, g.balance, g.prev_balance));
+            html.push(row('fims-report-table-group-row', g.group_title, g.balance, g.prev_balance));
             g.subgroups.forEach(sg => {
-                if (sg.group_title) html.push(row('bs-subgroup-row', sg.group_title, sg.balance, sg.prev_balance));
-                sg.accounts.forEach(a => html.push(row('bs-account-row', a.account_title, a.balance, a.prev_balance)));
+                if (sg.group_title) html.push(row('fims-report-table-subgroup-row', sg.group_title, sg.balance, sg.prev_balance));
+                sg.accounts.forEach(a => html.push(row('fims-report-table-row', a.account_title, a.balance, a.prev_balance)));
             });
         });
         if (s.key === 'equity' && (d.net_surplus_deficit.balance || d.net_surplus_deficit.prev_balance)) {
-            html.push(row('bs-account-row', 'Net Surplus / (Deficit), not yet closed', d.net_surplus_deficit.balance, d.net_surplus_deficit.prev_balance));
+            html.push(row('fims-report-table-row', 'Net Surplus / (Deficit), not yet closed', d.net_surplus_deficit.balance, d.net_surplus_deficit.prev_balance));
         }
-        html.push(row('bs-subtotal-row', 'Total ' + s.label, s.subtotal, s.prev_subtotal));
+        html.push(row('fims-report-table-subtotal-row', 'Total ' + s.label, s.subtotal, s.prev_subtotal));
 
         if (s.key === 'non_current_assets')      html.push(grand('Total Assets', d.totals.total_assets, d.totals.prev_total_assets));
         if (s.key === 'non_current_liabilities') html.push(grand('Total Liabilities', d.totals.total_liabilities, d.totals.prev_total_liabilities));
@@ -656,7 +645,7 @@ function bs_sampleData(fy) {
 function bs_peso(v) {
     const n = Number(v || 0);
     const s = '₱ ' + Math.abs(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    return n < -0.005 ? `<span class="bs-neg">(${s})</span>` : s;
+    return n < -0.005 ? `<span class="fims-report-table-neg">(${s})</span>` : s;
 }
 function bs_esc(text) {
     if (text === null || text === undefined) return '';
