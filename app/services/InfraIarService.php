@@ -132,12 +132,14 @@ class InfraIarService
      * $exactId: one allocation (ignores the "can still be recorded" rules — used to read a recorded RFA); $search: ILIKE on the RFA
      * number / project / contractor.
      */
-    private function rfaSource(?int $exactId = null, string $search = '', int $limit = 0): array
+    private function rfaSource(?int $exactId = null, string $search = '', int $limit = 0, array $ids = []): array
     {
         $lines = $this->po->allocationLinesSql();
         $where = "UPPER(COALESCE(a.allocation_type, '')) = 'RFA' AND a.deleted_at IS NULL";
         if ($exactId !== null) {
             $where .= ' AND a.allocation_id = ' . (int) $exactId;
+        } elseif ($ids) {   // several recorded RFAs (the list): no "can still be recorded" rules
+            $where .= ' AND a.allocation_id IN (' . implode(',', array_map('intval', $ids)) . ')';
         } else {
             $where .= " AND COALESCE(TRIM(a.po_number), '') = ''
                         AND a.status_id = (SELECT st.id FROM fims.settings_status st WHERE st.name = 'Approved' AND st.status_for = 'budget_allocation' ORDER BY st.id LIMIT 1)
@@ -346,38 +348,127 @@ class InfraIarService
 
     /* ─────────────────────────── read ─────────────────────────── */
 
-    private const COLS = "s.swa_id, s.iar_number, s.allocation_id, s.rfa_number, s.project_code, s.project_name, s.location, s.program_code, s.program_name,
-                          s.vendor_id, s.contractor, s.contract_cost, s.contract, s.original_contract_cost, s.variation_order,
+    private const COLS = "s.swa_id, s.swa_number, s.allocation_id, a.allocation_number AS rfa_number, a.vendor_id, s.contract,
                           TO_CHAR(s.date_started, 'YYYY-MM-DD') AS date_started, TO_CHAR(s.completion_date_revised, 'YYYY-MM-DD') AS completion_date_revised,
-                          s.contract_duration, s.account_entries, s.line_transaction, s.jev_id, s.jev_no, rc.rc_name AS requesting_office";
+                          s.contract_duration, s.line_transaction, rc.rc_name AS requesting_office";
+
+    /**
+     * The RFA number, project, program, contractor and location are NOT kept on the record (the columns were dropped): they are read live from the RFA / project / program /
+     * vendor / budget request (like the IAR reads its PO and supplier), so they are always accurate.
+     */
+    private function live(array $rows): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map(fn($r) => (int) $r['allocation_id'], $rows))));
+        if (!$ids) {
+            return $rows;
+        }
+        $by = [];
+        foreach ($this->rfaSource(null, '', 0, $ids) as $x) {
+            $by[(int) $x['allocation_id']] = $x;
+        }
+        foreach ($rows as &$r) {
+            $x = $by[(int) $r['allocation_id']] ?? null;
+            foreach (['rfa_number', 'project_code', 'project_name', 'program_code', 'program_name', 'location', 'vendor_id', 'contractor'] as $k) {
+                $r[$k] = $x[$k] ?? ($r[$k] ?? null);   // nothing is kept on the record: an RFA that no longer exists simply leaves them empty
+            }
+            // the cost figures are not kept either: original / variation / revised come from the RFA's budget line items, rfa_amount from its lines
+            foreach (['original_contract_cost', 'variation_order', 'contract_cost', 'rfa_amount'] as $k) {
+                $r[$k] = $x ? $x[$k] : 0.0;
+            }
+        }
+        unset($r);
+
+        return $rows;
+    }
 
     private function shape(array $r): array
     {
-        $items = $this->arrayFrom($r['line_transaction']);
+        $tx    = $this->txOf($r['line_transaction']);
+        $items = array_values(array_filter($tx['items'] ?? [], 'is_array'));
         $cost  = 0.0;
         foreach ($items as $it) {
             $cost += (float) ($it['cost'] ?? 0);
         }
-        $r['entries']          = $this->arrayFrom($r['account_entries']);
-        $r['items']            = $items;
-        $r['items_cost']       = round($cost, 2);
-        $r['accomplishment']   = self::overallPct($items);
-        $r['contract_cost']    = round((float) $r['contract_cost'], 2);
-        // a record saved before the breakdown existed: original = the contract cost, no variation order
-        $r['original_contract_cost'] = $r['original_contract_cost'] !== null ? round((float) $r['original_contract_cost'], 2) : $r['contract_cost'];
-        $r['variation_order']        = $r['variation_order'] !== null ? round((float) $r['variation_order'], 2) : round($r['contract_cost'] - $r['original_contract_cost'], 2);
-        unset($r['account_entries'], $r['line_transaction']);
+        $r['entries']        = array_values(array_filter($tx['lines'] ?? [], 'is_array'));
+        $r['items']          = $items;
+        $r['items_cost']     = round($cost, 2);
+        $r['accomplishment'] = self::overallPct($items);
+        $r['jev_id']         = !empty($tx['jev_id']) ? (int) $tx['jev_id'] : null;
+        $r['jev_no']         = !empty($tx['jev_no']) ? (string) $tx['jev_no'] : null;
+        unset($r['line_transaction']);
 
         return $r;
+    }
+
+    /** The one element of a record's line_transaction: { items[], lines[] (the account entries), jev_id, jev_no } — the same shape as a DR in the IAR module. */
+    private function txOf($json): array
+    {
+        $a = is_string($json) ? json_decode($json, true) : $json;
+
+        return is_array($a) && isset($a[0]) && is_array($a[0]) ? $a[0] : [];
     }
 
     private function from(): string
     {
         return "FROM {$this->t} s
                 LEFT JOIN fims.budget_allocation a ON a.allocation_id = s.allocation_id
-                LEFT JOIN fims.responsibility_code rc ON rc.rc_id = a.requesting_rc_id";
+                LEFT JOIN fims.responsibility_code rc ON rc.rc_id = a.requesting_rc_id
+                {$this->projectBlockSql()}";
     }
 
+    /** The list search ($s = the quoted '%text%'): SWA no., RFA no., contract, contractor, project code / name, location, work item descriptions — all read live. */
+    private function searchWhere(string $s): string
+    {
+        return "(s.swa_number ILIKE {$s} OR a.allocation_number ILIKE {$s} OR EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(s.line_transaction -> 0 -> 'items', '[]'::jsonb)) it WHERE it ->> 'description' ILIKE {$s})
+                           OR s.contract ILIKE {$s}
+                           OR EXISTS (SELECT 1 FROM fims.vendors v WHERE v.vendor_id = a.vendor_id AND v.vendor_name ILIKE {$s})
+                           OR EXISTS (SELECT 1 FROM fims.project pr WHERE pr.project_code = blk.project_code AND (pr.project_code ILIKE {$s} OR pr.project_name ILIKE {$s}))
+                           OR EXISTS (SELECT 1 FROM fims.budget_req_project brp WHERE brp.project_code = blk.project_code AND brp.location ILIKE {$s}))";
+    }
+
+    /** The items' Statement of Work description, project etc. are read live; see live(). */
+    private function liveNote(): void
+    {
+    }
+    /** The GL account of the Work in Process page: Work-in-Process (and its sub-ledgers). */
+    public const WIP_ACCOUNT = '1-04-03-020';
+
+    /**
+     * Work in Process page: the infrastructure records whose pro-forma was SUBMITTED as a JEV (the JEV is in the record's line_transaction) and whose JEV carries the
+     * Work-in-Process account (1-04-03-020, or one of its sub-ledgers). One row per project (one record per RFA): the JEV's book, the office, project, location, contractor, contract,
+     * the three contract costs (read live) and the physical accomplishment (the items' % added up).
+     */
+    public function workInProcess(int $page = 1, int $limit = 10, string $search = ''): array
+    {
+        try {
+            $code = $this->q(self::WIP_ACCOUNT);
+            $like = $this->q(self::WIP_ACCOUNT . '-%');
+            $join = "JOIN fims.journal_entry_vouchers j ON j.jev_id = NULLIF(s.line_transaction -> 0 ->> 'jev_id', '')::int
+                     LEFT JOIN fims.books bk ON bk.book_id = j.book_id
+                     LEFT JOIN fims.settings_status js ON js.id = j.status_id";
+            $where = "EXISTS (SELECT 1 FROM fims.journal_entry_voucher_lines l WHERE l.jev_id = j.jev_id AND (l.account_code = {$code} OR l.account_code LIKE {$like}))";
+            if ($search !== '') {
+                $s      = $this->q('%' . $search . '%');
+                $where .= " AND ({$this->searchWhere($s)} OR bk.name ILIKE {$s} OR j.jev_no ILIKE {$s})";
+            }
+            $limit  = max(1, $limit);
+            $page   = max(1, $page);
+            $offset = ($page - 1) * $limit;
+            $total  = (int) App\ExecuteScalar("SELECT COUNT(*) {$this->from()} {$join} WHERE {$where}", 'DB');
+            $rows   = App\ExecuteRows(
+                'SELECT ' . self::COLS . ", j.jev_date, bk.name AS book_name, js.name AS jev_status {$this->from()} {$join} WHERE {$where} ORDER BY s.swa_id DESC LIMIT {$limit} OFFSET {$offset}",
+                'DB'
+            ) ?: [];
+
+            return [
+                'success'    => true,
+                'data'       => array_map(fn($r) => $this->shape($r), $this->live($rows)),
+                'pagination' => ['total' => $total, 'per_page' => $limit, 'current_page' => $page, 'last_page' => (int) ceil($total / $limit)],
+            ];
+        } catch (\Exception $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
     /** Paginated list: one row per infrastructure IAR. */
     public function fetchAlls(int $page = 1, int $limit = 10, string $search = ''): array
     {
@@ -385,18 +476,17 @@ class InfraIarService
             $where = '1=1';
             if ($search !== '') {
                 $s     = $this->q('%' . $search . '%');
-                $where = "(s.iar_number ILIKE {$s} OR s.rfa_number ILIKE {$s} OR s.project_name ILIKE {$s} OR s.location ILIKE {$s}
-                           OR s.program_name ILIKE {$s} OR s.contractor ILIKE {$s} OR s.line_transaction::text ILIKE {$s})";
+                $where = $this->searchWhere($s);
             }
             $limit  = max(1, $limit);
             $page   = max(1, $page);
             $offset = ($page - 1) * $limit;
-            $total  = (int) App\ExecuteScalar("SELECT COUNT(*) FROM {$this->t} s WHERE {$where}", 'DB');
+            $total  = (int) App\ExecuteScalar("SELECT COUNT(*) FROM {$this->t} s LEFT JOIN fims.budget_allocation a ON a.allocation_id = s.allocation_id {$this->projectBlockSql()} WHERE {$where}", 'DB');
             $rows   = App\ExecuteRows('SELECT ' . self::COLS . " {$this->from()} WHERE {$where} ORDER BY s.swa_id DESC LIMIT {$limit} OFFSET {$offset}", 'DB') ?: [];
 
             return [
                 'success'    => true,
-                'data'       => array_map(fn($r) => $this->shape($r), $rows),
+                'data'       => array_map(fn($r) => $this->shape($r), $this->live($rows)),
                 'pagination' => ['total' => $total, 'per_page' => $limit, 'current_page' => $page, 'last_page' => (int) ceil($total / $limit)],
             ];
         } catch (\Exception $e) {
@@ -409,7 +499,7 @@ class InfraIarService
         try {
             $rows = App\ExecuteRows('SELECT ' . self::COLS . " {$this->from()} WHERE s.swa_id = " . (int) $id, 'DB');
 
-            return $rows ? ['success' => true, 'data' => $this->shape($rows[0])] : ['success' => false, 'message' => 'Infrastructure IAR not found.'];
+            return $rows ? ['success' => true, 'data' => $this->shape($this->live($rows)[0])] : ['success' => false, 'message' => 'Infrastructure IAR not found.'];
         } catch (\Exception $e) {
             return ['success' => false, 'message' => $e->getMessage()];
         }
@@ -435,8 +525,8 @@ class InfraIarService
                 }
             }
             if (!$rfa) {
-                if ($ex = App\ExecuteRows("SELECT iar_number FROM {$this->t} WHERE allocation_id = {$aid}", 'DB')) {
-                    return ['success' => false, 'message' => "This RFA already has an infrastructure record ({$ex[0]['iar_number']})."];
+                if ($ex = App\ExecuteRows("SELECT swa_number FROM {$this->t} WHERE allocation_id = {$aid}", 'DB')) {
+                    return ['success' => false, 'message' => "This RFA already has an infrastructure record ({$ex[0]['swa_number']})."];
                 }
                 $dv = App\ExecuteRows("SELECT dv.dv_no FROM fims.budget_allocation a JOIN fims.disbursement_vouchers dv ON dv.dv_id = a.dv_id WHERE a.allocation_id = {$aid} AND {$this->po->activeDvSql()} LIMIT 1", 'DB');
                 if ($dv) {
@@ -457,23 +547,21 @@ class InfraIarService
             if ($totalCents > (int) round($rfa['rfa_amount'] * 100)) {
                 return ['success' => false, 'message' => 'The account entries total ' . number_format($totalCents / 100, 2) . ', which exceeds the RFA amount (' . number_format($rfa['rfa_amount'], 2) . ').'];
             }
-            $d['iar_number'] = $this->nextSwaNumber();   // generated: SWA-YYYY-MM-0001 (the iar_number column holds the SWA number)
+            $d['swa_number'] = $this->nextSwaNumber();   // generated: SWA-YYYY-MM-0001 (the swa_number column holds the SWA number)
 
             $by = $userId ? (int) $userId : 'NULL';
             App\Execute(
-                "INSERT INTO {$this->t} (iar_number, allocation_id, rfa_number, project_code, project_name, location, program_code, program_name, vendor_id, contractor,
-                                         contract_cost, original_contract_cost, variation_order, contract, date_started, completion_date_revised, contract_duration, account_entries, line_transaction, created_by)
+                "INSERT INTO {$this->t} (swa_number, allocation_id,
+                                         contract, date_started, completion_date_revised, contract_duration, line_transaction, created_by)
                  VALUES (" . implode(', ', [
-                    $this->q($d['iar_number']), $aid, $this->sqlOrNull($this->nullable($rfa['rfa_number'])), $this->sqlOrNull($this->nullable($rfa['project_code'])),
-                    $this->sqlOrNull($this->nullable($rfa['project_name'])), $this->sqlOrNull($this->nullable($rfa['location'])), $this->sqlOrNull($this->nullable($rfa['program_code'])),
-                    $this->sqlOrNull($this->nullable($rfa['program_name'])), $rfa['vendor_id'] ? (int) $rfa['vendor_id'] : 'NULL', $this->sqlOrNull($this->nullable($rfa['contractor'])),
-                    number_format($rfa['contract_cost'], 2, '.', ''), number_format($rfa['original_contract_cost'], 2, '.', ''), number_format($rfa['variation_order'], 2, '.', ''), $this->sqlOrNull($d['contract']), $this->sqlOrNull($d['date_started']), $this->sqlOrNull($d['completion_date_revised']),
-                    $this->sqlOrNull($d['contract_duration']), $this->jsonSql($d['entries']), $this->jsonSql($d['items']), $by,
+                    $this->q($d['swa_number']), $aid,
+                    $this->sqlOrNull($d['contract']), $this->sqlOrNull($d['date_started']), $this->sqlOrNull($d['completion_date_revised']),
+                    $this->sqlOrNull($d['contract_duration']), $this->jsonSql([['items' => $d['items'], 'lines' => $d['entries'], 'jev_id' => null, 'jev_no' => null]]), $by,
                 ]) . ')',
                 'DB'
             );
 
-            return ['success' => true, 'message' => "Infrastructure record {$d['iar_number']} added for RFA {$rfa['rfa_number']}."];
+            return ['success' => true, 'message' => "Infrastructure record {$d['swa_number']} added for RFA {$rfa['rfa_number']}."];
         } catch (\Exception $e) {
             return ['success' => false, 'message' => $e->getMessage()];
         }
@@ -495,9 +583,9 @@ class InfraIarService
     {
         $prefix = 'SWA-' . date('Y-m') . '-';
         $max    = (int) App\ExecuteScalar(
-            "SELECT COALESCE(MAX(CAST(SUBSTRING(iar_number FROM '[0-9]+\$') AS INTEGER)), 0)
+            "SELECT COALESCE(MAX(CAST(SUBSTRING(swa_number FROM '[0-9]+\$') AS INTEGER)), 0)
              FROM {$this->t}
-             WHERE iar_number LIKE " . $this->q($prefix . '%') . " AND iar_number ~ '-[0-9]+\$'",
+             WHERE swa_number LIKE " . $this->q($prefix . '%') . " AND swa_number ~ '-[0-9]+\$'",
             'DB'
         );
 
@@ -508,7 +596,7 @@ class InfraIarService
     public function update(int $id, array $body, ?int $userId = null): array
     {
         try {
-            $cur = App\ExecuteRows("SELECT swa_id, iar_number, allocation_id, account_entries, jev_id FROM {$this->t} WHERE swa_id = " . (int) $id, 'DB');
+            $cur = App\ExecuteRows("SELECT swa_id, swa_number, allocation_id, line_transaction FROM {$this->t} WHERE swa_id = " . (int) $id, 'DB');
             if (!$cur) {
                 return ['success' => false, 'message' => 'Infrastructure IAR not found.'];
             }
@@ -516,8 +604,9 @@ class InfraIarService
             if ($err) {
                 return ['success' => false, 'message' => $err];
             }
+            $tx = $this->txOf($cur[0]['line_transaction']);
             $entryCents = 0;
-            foreach ($this->arrayFrom($cur[0]['account_entries']) as $en) {
+            foreach ($tx['lines'] ?? [] as $en) {
                 $entryCents += (int) round((float) ($en['amount'] ?? 0) * 100);
             }
             $itemCents = $this->itemsCents($d['items']);
@@ -528,12 +617,12 @@ class InfraIarService
             App\Execute(
                 "UPDATE {$this->t} SET contract = " . $this->sqlOrNull($d['contract'])
                 . ', date_started = ' . $this->sqlOrNull($d['date_started']) . ', completion_date_revised = ' . $this->sqlOrNull($d['completion_date_revised'])
-                . ', contract_duration = ' . $this->sqlOrNull($d['contract_duration']) . ', line_transaction = ' . $this->jsonSql($d['items'])
+                . ', contract_duration = ' . $this->sqlOrNull($d['contract_duration']) . ', line_transaction = ' . $this->jsonSql([['items' => $d['items'], 'lines' => $tx['lines'] ?? [], 'jev_id' => $tx['jev_id'] ?? null, 'jev_no' => $tx['jev_no'] ?? null]])
                 . ", updated_by = {$by}, updated_at = CURRENT_TIMESTAMP WHERE swa_id = " . (int) $id,
                 'DB'
             );
 
-            return ['success' => true, 'message' => "Infrastructure record {$cur[0]['iar_number']} updated."];
+            return ['success' => true, 'message' => "Infrastructure record {$cur[0]['swa_number']} updated."];
         } catch (\Exception $e) {
             return ['success' => false, 'message' => $e->getMessage()];
         }
@@ -544,7 +633,7 @@ class InfraIarService
     /**
      * The pro-forma JEV of an infrastructure IAR: each account entry is a debit, and the total is credited to the contractor's
      * Accounts Payable sub-ledger — or, when the contractor has none, to the default "Account Payable 1" (2-01-01-010-01).
-     * { id, iar_number, rfa_number, requesting_rc_id, project_name, contractor, rows[], total, jev_id, jev_no }.
+     * { id, swa_number, rfa_number, requesting_rc_id, project_name, contractor, rows[], total, jev_id, jev_no }.
      */
     public function proforma(int $id): array
     {
@@ -553,7 +642,7 @@ class InfraIarService
             if (!$rows) {
                 return ['success' => false, 'message' => 'Infrastructure IAR not found.'];
             }
-            $r = $this->shape($rows[0]);
+            $r = $this->shape($this->live($rows)[0]);
             [$code, $title] = $this->po->payableAccount((string) ($r['vendor_id'] ?? ''));
             $out   = [];
             $total = 0.0;
@@ -566,11 +655,11 @@ class InfraIarService
             $out[] = ['account_title' => $title, 'account_code' => $code, 'debit' => 0, 'credit' => $total];
 
             return ['success' => true, 'data' => [
-                'id' => (int) $r['swa_id'], 'iar_number' => $r['iar_number'], 'rfa_number' => $r['rfa_number'], 'requesting_rc_id' => $rows[0]['requesting_rc_id'] ?? null,
-                'project_code' => $r['project_code'], 'project_name' => $r['project_name'], 'location' => $r['location'], 'contractor' => $r['contractor'], 'rows' => $out, 'total' => $total,
+                'id' => (int) $r['swa_id'], 'swa_number' => $r['swa_number'], 'rfa_number' => $r['rfa_number'], 'requesting_rc_id' => $rows[0]['requesting_rc_id'] ?? null,
+                'requesting_office' => $r['requesting_office'] ?? null, 'program_name' => $r['program_name'] ?? null, 'project_code' => $r['project_code'], 'project_name' => $r['project_name'], 'location' => $r['location'], 'contractor' => $r['contractor'], 'rows' => $out, 'total' => $total,
                 'jev_id' => $r['jev_id'], 'jev_no' => $r['jev_no'],
             ]];
-        } catch (Exception $e) {
+        } catch (xception $e) {
             return ['success' => false, 'message' => $e->getMessage()];
         }
     }
@@ -578,15 +667,20 @@ class InfraIarService
     /** The JEV the record's pro-forma was submitted as ({jev_id, jev_no}), or null when it has not been submitted. */
     public function jevOf(int $id): ?array
     {
-        $r = App\ExecuteRows("SELECT jev_id, jev_no FROM {$this->t} WHERE swa_id = " . (int) $id . ' AND jev_id IS NOT NULL', 'DB');
+        $r = App\ExecuteRows("SELECT line_transaction FROM {$this->t} WHERE swa_id = " . (int) $id, 'DB');
+        $tx = $r ? $this->txOf($r[0]['line_transaction']) : [];
 
-        return $r ? ['jev_id' => (int) $r[0]['jev_id'], 'jev_no' => (string) ($r[0]['jev_no'] ?? '')] : null;
+        return !empty($tx['jev_id']) ? ['jev_id' => (int) $tx['jev_id'], 'jev_no' => (string) ($tx['jev_no'] ?? '')] : null;
     }
 
     /** Records the JEV its pro-forma was submitted as: the pro-forma cannot be submitted twice. */
     public function linkJev(int $id, int $jevId, string $jevNo): bool
     {
-        App\Execute("UPDATE {$this->t} SET jev_id = " . (int) $jevId . ', jev_no = ' . $this->q($jevNo) . ' WHERE swa_id = ' . (int) $id, 'DB');
+        // jev_id / jev_no are recorded inside the record's line_transaction (like the IAR records them on its DR)
+        App\Execute(
+            "UPDATE {$this->t} SET line_transaction = jsonb_set(jsonb_set(line_transaction, '{0,jev_id}', to_jsonb(" . (int) $jevId . "::int)), '{0,jev_no}', to_jsonb(" . $this->q($jevNo) . '::text)) WHERE swa_id = ' . (int) $id,
+            'DB'
+        );
 
         return true;
     }

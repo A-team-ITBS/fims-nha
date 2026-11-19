@@ -32,11 +32,31 @@ $app->get('/project/next-code', function ($request, $response, $args) {
     }
 })->add($jwtMiddleware);
 
+// Resolves the optional `scope=mine` query param into the calling user's own rc_id
+// (uac.users.rc_id) — opt-in, so only a caller that asks for it (the CBA Funding
+// Allocations project search in budget-allocation-form.php) is scoped; every other
+// /project/all or /project/list caller (the CFA Program/Sub-Program/Project chain,
+// the Purchase Order form's project picker, the Budget Request form's typeahead)
+// keeps seeing every project, unchanged. '' (no filter) when scope isn't "mine" or
+// the calling user has no resolvable rc_id.
+function project_resolveMineRcId($request, array $params): string
+{
+    if (($params['scope'] ?? '') !== 'mine') {
+        return '';
+    }
+    try {
+        return (string) (GlobalService::getUserRcId((int) $request->getAttribute('user_id')) ?? '');
+    } catch (\InvalidArgumentException $e) {
+        return '';
+    }
+}
+
 // Fetch all — no pagination (for dropdowns)
 $app->get('/project/all', function ($request, $response, $args) use ($ProjectService) {
     try {
         $params = $request->getQueryParams();
-        $result = $ProjectService->fetchAlls(null, 10, $params['search'] ?? '', $params['program_code'] ?? '', $params['sub_program_code'] ?? '');
+        $rcId   = project_resolveMineRcId($request, $params);
+        $result = $ProjectService->fetchAlls(null, 10, $params['search'] ?? '', $params['program_code'] ?? '', $params['sub_program_code'] ?? '', $rcId);
 
         return $response->withJson($result);
     } catch (\Exception $e) {
@@ -50,8 +70,9 @@ $app->get('/project/list', function ($request, $response, $args) use ($ProjectSe
         $params = $request->getQueryParams();
         $page   = isset($params['page']) ? (int) $params['page'] : 1;
         $limit  = isset($params['limit']) ? (int) $params['limit'] : 10;
+        $rcId   = project_resolveMineRcId($request, $params);
 
-        $result = $ProjectService->fetchAlls($page, $limit, $params['search'] ?? '', $params['program_code'] ?? '', $params['sub_program_code'] ?? '');
+        $result = $ProjectService->fetchAlls($page, $limit, $params['search'] ?? '', $params['program_code'] ?? '', $params['sub_program_code'] ?? '', $rcId);
 
         return $response->withJson($result);
     } catch (\Exception $e) {

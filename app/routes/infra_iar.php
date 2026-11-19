@@ -97,3 +97,14 @@ $app->post('/infra-iar/proforma-submit', function ($request, $response, $args) u
 $app->get('/infra-iar/next-number', function ($request, $response, $args) use ($InfraIarService) {
     return $response->withJson(['success' => true, 'data' => ['swa_number' => $InfraIarService->nextSwaNumber()]]);
 })->add($jwtMiddleware);
+
+// Work in Process page: the infrastructure records whose pro-forma JEV was submitted and carries the Work-in-Process account (1-04-03-020) — one row per project
+$app->get('/infra-iar/work-in-process', function ($request, $response, $args) use ($InfraIarService) {
+    $params = $request->getQueryParams();
+
+    return $response->withJson($InfraIarService->workInProcess(
+        isset($params['page']) ? (int) $params['page'] : 1,
+        isset($params['limit']) ? (int) $params['limit'] : 10,
+        (string) ($params['search'] ?? '')
+    ));
+})->add($jwtMiddleware);
