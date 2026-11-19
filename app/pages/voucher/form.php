@@ -1755,11 +1755,7 @@ function vf_markRemittanceFields(d) {
     show(sel.closest('.vf-grid2'));
     show($vf('vf-claimant-address').closest('.nha-fg'));
     show($vf('vf-rfa-search').closest('.nha-fg').parentElement);
-    show($vf('vf-ded-container').closest('.vf-card'));
-    const budgetCard = $vf('vf-budget').closest('.vf-card');
-    show(budgetCard.querySelector('.vf-card-title'));
-    show(budgetCard.querySelector('.vf-grid3'));
-    show($vf('vf-budget').closest('table'));
+    show($vf('vf-ded-section')); // the Deductions + ATC rows and pills (the RFA Breakdown box above them stays: it is empty without an RFA)
     $vf('vf-rfa-req').style.display = d ? 'none' : '';
     $vf('vf-rfa-note').textContent  = d ? '(not needed — payroll remittance, budgeted with the payroll)' : '(search and select one or more)';
     $vf('vf-rfa-search').placeholder = d ? 'Not needed for a payroll remittance' : 'Search RFA number or reference no…';
