@@ -62,6 +62,9 @@
     <menu id="333">
       <phrase id="menutext" value="Property Record" />
     </menu>
+    <menu id="766">
+      <phrase id="menutext" value="Work-In-Process" />
+    </menu>
     <menu id="755">
       <phrase id="menutext" value="Monitoring" />
     </menu>
@@ -115,9 +118,6 @@
     </menu>
     <menu id="768">
       <phrase id="menutext" value="Cash Flow" />
-    </menu>
-    <menu id="766">
-      <phrase id="menutext" value="Work-In-Process" />
     </menu>
     <menu id="394">
       <phrase id="menutext" value="Ledgers" />
