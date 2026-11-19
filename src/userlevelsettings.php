@@ -337,6 +337,6 @@ $USER_LEVEL_TABLES = [["audit_logs","audit_logs","Audit Logs",false,"{FIMS}",""]
     ["balance-sheet-page.php","balance_sheet_page","Balance Sheet",true,"{FIMS}","BalanceSheetPage"],
     ["income-statement-page.php","income_statement_page","Income Statement",true,"{FIMS}","IncomeStatementPage"],
     ["opening-balance-page.php","opening_balance_page","Opening Balance",true,"{FIMS}","OpeningBalancePage"],
-    ["work-in-process-page.php","work_in_process_page","Work-In-Process",true,"{FIMS}","WorkInProcessPage"],
+    ["work-in-process-page.php","work_in_process_page","Work-In-Process Inventory",true,"{FIMS}","WorkInProcessPage"],
     ["statement-of-changes-page.php","statement_of_changes_page","Changes in Net Assets/Equity",true,"{FIMS}","StatementOfChangesPage"],
     ["cash-flow-page.php","cash_flow_page","Cash Flow",true,"{FIMS}","CashFlowPage"]];
