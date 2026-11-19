@@ -165,21 +165,10 @@ return [
     "remittance_page" => \DI\create(RemittancePage::class),
     "balance_sheet_page" => \DI\create(BalanceSheetPage::class),
     "income_statement_page" => \DI\create(IncomeStatementPage::class),
-<<<<<<< HEAD
-<<<<<<< HEAD
-    "statement_of_changes_page" => \DI\create(StatementOfChangesPage::class),
-=======
-=======
->>>>>>> 4f28963b8167fffdfe27a5a70f4afe6f98ea610b
     "opening_balance_page" => \DI\create(OpeningBalancePage::class),
     "work_in_process_page" => \DI\create(WorkInProcessPage::class),
     "statement_of_changes_page" => \DI\create(StatementOfChangesPage::class),
     "cash_flow_page" => \DI\create(CashFlowPage::class),
-<<<<<<< HEAD
->>>>>>> 88a3c0110e94bc0c00a5633b8c8a1862c2cdf1c4
-=======
-    "bank_reconciliation_page" => \DI\create(BankReconciliationPage::class),
->>>>>>> 4f28963b8167fffdfe27a5a70f4afe6f98ea610b
 
     // User table
     "usertable" => \DI\get("users"),

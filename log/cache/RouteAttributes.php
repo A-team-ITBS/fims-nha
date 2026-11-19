@@ -222,10 +222,6 @@
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
-<<<<<<< HEAD
-        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
-=======
->>>>>>> 4f28963b8167fffdfe27a5a70f4afe6f98ea610b
     ],
     null,
     [
@@ -1517,7 +1513,6 @@
                 '/SaroRegistryPage[/{params:.*}]',
                 '/SignatoryManagement[/{params:.*}]',
                 '/StatementOfChangesPage[/{params:.*}]',
-                '/StatementOfChangesPage[/{params:.*}]',
                 '/SubProgramPage[/{params:.*}]',
                 '/SubsidiaryLedgerPage[/{params:.*}]',
                 '/SupplementalFundsPage[/{params:.*}]',
@@ -1741,7 +1736,6 @@
                 'PHPMaker2024\\FIMS\\RfaLaaReviewPageController:custom',
                 'PHPMaker2024\\FIMS\\SaroRegistryPageController:custom',
                 'PHPMaker2024\\FIMS\\SignatoryManagementController:custom',
-                'PHPMaker2024\\FIMS\\StatementOfChangesPageController:custom',
                 'PHPMaker2024\\FIMS\\StatementOfChangesPageController:custom',
                 'PHPMaker2024\\FIMS\\SubProgramPageController:custom',
                 'PHPMaker2024\\FIMS\\SubsidiaryLedgerPageController:custom',
@@ -2453,12 +2447,6 @@
                 [
                     'PHPMaker2024\\FIMS\\PermissionMiddleware',
                 ],
-<<<<<<< HEAD
-                [
-                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
-                ],
-=======
->>>>>>> 4f28963b8167fffdfe27a5a70f4afe6f98ea610b
             ],
             'name' => [
                 'custom.accountable_forms_registry_page',
@@ -2638,7 +2626,6 @@
                 'custom.rfa_laa_review_page',
                 'custom.saro_registry_page',
                 'custom.SignatoryManagement',
-                'custom.statement_of_changes_page',
                 'custom.statement_of_changes_page',
                 'custom.sub_program_page',
                 'custom.subsidiary_ledger_page',
@@ -3130,17 +3117,10 @@
         $o[215],
         $o[216],
         $o[217],
-<<<<<<< HEAD
-        $o[217],
-        $o[218],
-        $o[219],
-        $o[220],
-=======
         $o[218],
         $o[219],
         $o[220],
         $o[221],
->>>>>>> 4f28963b8167fffdfe27a5a70f4afe6f98ea610b
     ],
     []
 );
