@@ -319,6 +319,15 @@ class OpeningBalanceService
                 }
                 App\Execute('COMMIT', 'DB');
 
+                // Fetch the posted JEV for the response
+                $jev = App\ExecuteRow(
+                    "SELECT jev.jev_id, jev.jev_no, st.name AS status
+                     FROM {$this->tableJev} jev
+                     JOIN {$this->tableSettingsStatus} st ON st.id = jev.status_id
+                     WHERE jev.jev_id = {$jevId}",
+                    'DB'
+                );
+
                 return [
                     'success' => true,
                     'message' => 'Opening balance saved successfully.',
