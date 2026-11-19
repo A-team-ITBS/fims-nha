@@ -137,6 +137,96 @@ class OpeningBalanceService
     }
 
     /**
+     * GET /opening_balance/carry_forward?fiscal_yr=2027&book_id=1
+     * Computes each permanent (Asset/Liability/Equity) account's true cumulative ending
+     * balance through the end of the prior fiscal year (fiscal_yr - 1) for this book — i.e.
+     * ALL general_ledger activity up to and including that year, not just that year's own
+     * postings. This is what the new fiscal year's Opening Balance should equal.
+     *
+     * Note: if the prior year's Closing Entry hasn't been posted yet, that year's Revenue/
+     * Expense net income is still sitting in temporary accounts rather than swept into
+     * Government Equity — so Equity's carried-forward figure would be understated. We flag
+     * this via prior_year_closed rather than blocking, since Asset/Liability accounts are
+     * unaffected either way.
+     */
+    public function fetchCarryForward(int $fiscalYr, int $bookId): array
+    {
+        try {
+            $priorYear = $fiscalYr - 1;
+
+            if ($fiscalYr <= 0 || (int) App\ExecuteScalar("SELECT COUNT(*) FROM {$this->tableFiscal} WHERE fiscal_yr = {$fiscalYr}", 'DB') === 0) {
+                return ['success' => false, 'message' => 'Valid fiscal_yr is required.'];
+            }
+            if ($bookId <= 0 || (int) App\ExecuteScalar("SELECT COUNT(*) FROM {$this->tableBooks} WHERE book_id = {$bookId}", 'DB') === 0) {
+                return ['success' => false, 'message' => 'Valid book_id is required.'];
+            }
+            if ((int) App\ExecuteScalar("SELECT COUNT(*) FROM {$this->tableFiscal} WHERE fiscal_yr = {$priorYear}", 'DB') === 0) {
+                return ['success' => false, 'message' => "There is no prior fiscal year ({$priorYear}) configured to carry forward from."];
+            }
+
+            $rows = App\ExecuteRows(
+                "SELECT ac.account_code, ac.account_title,
+                        COALESCE(SUM(gl.debit), 0) AS total_debit,
+                        COALESCE(SUM(gl.credit), 0) AS total_credit
+                 FROM {$this->tableCoa} ac
+                 LEFT JOIN {$this->tableGl} gl
+                    ON gl.account_code = ac.account_code
+                    AND gl.book_id = {$bookId}
+                    AND gl.fiscal_yr <= {$priorYear}
+                 WHERE ac.posting_allowed = TRUE
+                   AND ac.status = 'Active'
+                   AND ac.account_type IN ('Asset', 'Liability', 'Equity')
+                 GROUP BY ac.account_code, ac.account_title
+                 HAVING COALESCE(SUM(gl.debit), 0) <> COALESCE(SUM(gl.credit), 0)
+                 ORDER BY ac.account_code",
+                'DB'
+            ) ?: [];
+
+            $lines = [];
+            $totalDebit = 0.0;
+            $totalCredit = 0.0;
+            foreach ($rows as $row) {
+                $net = round((float) $row['total_debit'] - (float) $row['total_credit'], 2);
+                $debit = $net > 0 ? $net : 0;
+                $credit = $net < 0 ? -$net : 0;
+                $lines[] = [
+                    'account_code' => $row['account_code'],
+                    'account_title' => $row['account_title'],
+                    'debit' => $debit,
+                    'credit' => $credit,
+                ];
+                $totalDebit += $debit;
+                $totalCredit += $credit;
+            }
+
+            $priorClosed = App\ExecuteRow(
+                "SELECT jev.jev_id FROM {$this->tableJev} jev
+                 JOIN {$this->tableSettingsStatus} st ON st.id = jev.status_id
+                 WHERE jev.fiscal_yr = {$priorYear}
+                   AND jev.book_id = {$bookId}
+                   AND jev.jev_classification = 'CLOSING'
+                   AND st.name = 'POSTED'",
+                'DB'
+            );
+
+            return [
+                'success' => true,
+                'data' => [
+                    'prior_fiscal_yr' => $priorYear,
+                    'prior_year_closed' => $priorClosed !== false,
+                    'lines' => $lines,
+                    'total_debit' => round($totalDebit, 2),
+                    'total_credit' => round($totalCredit, 2),
+                ],
+            ];
+        } catch (\Exception $e) {
+            App\LogError('OpeningBalanceService::fetchCarryForward ' . $e->getMessage());
+
+            return ['success' => false, 'message' => 'Failed to compute the carry-forward balances.'];
+        }
+    }
+
+    /**
      * POST /opening_balance
      * Save (or update) opening balance entries and post the JEV to GL.
      *
@@ -360,5 +450,55 @@ class OpeningBalanceService
         );
 
         return 'JEV-' . $fiscalYear . '-' . str_pad($count + 1, 3, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * POST /opening_balance/reverse
+     * Reverses the POSTED OPENING JEV for this fiscal_yr/book_id — the only way to unlock the
+     * form once it's been posted (editing a DRAFT in place is fine; a POSTED one must be undone
+     * through the GL, never edited/deleted directly). Superadmin only — same bar as reversing
+     * any other posted JEV elsewhere in the app.
+     */
+    public function reverseOpeningBalance(int $fiscalYr, int $bookId, int $userId): array
+    {
+        try {
+            if (!GlobalService::getUserRcScope()['is_admin']) {
+                return ['success' => false, 'message' => 'Only an administrator can reverse a posted Opening Balance.', 'httpCode' => 403];
+            }
+
+            $jev = App\ExecuteRow(
+                "SELECT jev.jev_id, jev.jev_no FROM {$this->tableJev} jev
+                 JOIN {$this->tableSettingsStatus} st ON st.id = jev.status_id
+                 WHERE jev.fiscal_yr = {$fiscalYr}
+                   AND jev.book_id = {$bookId}
+                   AND jev.jev_classification = 'OPENING'
+                   AND st.name = 'POSTED'",
+                'DB'
+            );
+            if (!$jev) {
+                return ['success' => false, 'message' => "No posted Opening Balance found for fiscal year {$fiscalYr}, this book."];
+            }
+
+            App\Execute('BEGIN', 'DB');
+            try {
+                $glService = new GeneralLedgerService();
+                $result = $glService->reverseJev((int) $jev['jev_id'], $userId);
+                if (!$result['success']) {
+                    App\Execute('ROLLBACK', 'DB');
+
+                    return $result;
+                }
+                App\Execute('COMMIT', 'DB');
+
+                return ['success' => true, 'message' => "Opening Balance {$jev['jev_no']} reversed — this fiscal year/book is unlocked again.", 'data' => $result['data']];
+            } catch (\Exception $e) {
+                App\Execute('ROLLBACK', 'DB');
+                throw $e;
+            }
+        } catch (\Exception $e) {
+            App\LogError('OpeningBalanceService::reverseOpeningBalance ' . $e->getMessage());
+
+            return ['success' => false, 'message' => 'Failed to reverse the Opening Balance.'];
+        }
     }
 }

@@ -129,6 +129,7 @@
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone ($p['PHPMaker2024\\FIMS\\Attributes\\Get'] ?? \Symfony\Component\VarExporter\Internal\Registry::p('PHPMaker2024\\FIMS\\Attributes\\Get')),
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Get'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
@@ -227,6 +228,11 @@
     [
         'PHPMaker2024\\FIMS\\Attributes\\Map' => [
             'methods' => [
+                [
+                    'GET',
+                    'POST',
+                    'OPTIONS',
+                ],
                 [
                     'GET',
                     'POST',
@@ -1385,6 +1391,7 @@
                 '/CheckDisbursements[/{params:.*}]',
                 '/CheckDisbursementVoucherPage[/{params:.*}]',
                 '/CheckRegistryPage[/{params:.*}]',
+                '/ClosingBalancePage[/{params:.*}]',
                 '/CobPage[/{params:.*}]',
                 '/CollectionsPage[/{params:.*}]',
                 '/DepartmentManagement[/{params:.*}]',
@@ -1609,6 +1616,7 @@
                 'PHPMaker2024\\FIMS\\CheckDisbursementsController:custom',
                 'PHPMaker2024\\FIMS\\CheckDisbursementVoucherPageController:custom',
                 'PHPMaker2024\\FIMS\\CheckRegistryPageController:custom',
+                'PHPMaker2024\\FIMS\\ClosingBalancePageController:custom',
                 'PHPMaker2024\\FIMS\\CobPageController:custom',
                 'PHPMaker2024\\FIMS\\CollectionsPageController:custom',
                 'PHPMaker2024\\FIMS\\DepartmentManagementController:custom',
@@ -1783,6 +1791,9 @@
                 'PHPMaker2024\\FIMS\\WorkInProcessPageController:custom',
             ],
             'middleware' => [
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
                 [
                     'PHPMaker2024\\FIMS\\PermissionMiddleware',
                 ],
@@ -2499,6 +2510,7 @@
                 'custom.CheckDisbursements',
                 'custom.check_disbursement_voucher_page',
                 'custom.check_registry_page',
+                'custom.closing_balance_page',
                 'custom.cob_page',
                 'custom.collections_page',
                 'custom.DepartmentManagement',
@@ -2673,6 +2685,7 @@
                 'custom.work_in_process_page',
             ],
             'options' => [
+                [],
                 [],
                 [],
                 [],
@@ -3121,6 +3134,7 @@
         $o[219],
         $o[220],
         $o[221],
+        $o[222],
     ],
     []
 );

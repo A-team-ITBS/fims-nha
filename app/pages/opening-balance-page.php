@@ -102,6 +102,7 @@ $_ob_api = preg_match('~/api$~', $_ob_api) ? $_ob_api : $_ob_api . '/api';
     <!-- STATUS LOCKED BANNER -->
     <div id="ob-locked-banner" style="display:none; background:#FEE5E5; border-left:4px solid #e74c3c; color:#c0392b; padding:12px; border-radius:4px; margin-bottom:15px; font-size:13px;">
         <strong>Locked:</strong> Opening balance for this fiscal year has already been posted. <span id="ob-locked-jev"></span> To edit, that entry must be reversed first.
+        <button type="button" id="ob-reverse-btn" style="margin-left:10px; padding:4px 12px; border:none; border-radius:4px; background:#c0392b; color:white; cursor:pointer; font-size:12px; font-weight:600;">Reverse →</button>
     </div>
 
     <!-- FILTERS -->
@@ -197,6 +198,7 @@ $_ob_api = preg_match('~/api$~', $_ob_api) ? $_ob_api : $_ob_api . '/api';
     const $errorMsg = document.getElementById('ob-error-msg');
     const $postBtn = document.getElementById('ob-post-btn');
     const $cancelBtn = document.getElementById('ob-cancel-btn');
+    const $reverseBtn = document.getElementById('ob-reverse-btn');
     const $totalDebit = document.getElementById('ob-total-debit');
     const $totalCredit = document.getElementById('ob-total-credit');
     const $difference = document.getElementById('ob-difference');
@@ -250,6 +252,8 @@ $_ob_api = preg_match('~/api$~', $_ob_api) ? $_ob_api : $_ob_api . '/api';
         $loading.style.display = 'block';
         $form.style.display = 'none';
         $error.classList.remove('show');
+        document.getElementById('ob-locked-banner').style.display = 'none';
+        $postBtn.disabled = false;
 
         try {
             const fy = $fy.value;
@@ -457,11 +461,39 @@ $_ob_api = preg_match('~/api$~', $_ob_api) ? $_ob_api : $_ob_api . '/api';
         $form.style.display = 'block';
     }
 
+    // Reverse the posted OPENING JEV, unlocking this fiscal year/book for re-entry.
+    async function reverseOpeningBalance() {
+        if (!confirm('Reverse the posted Opening Balance for this fiscal year? This cannot be undone and the entry will need to be re-entered.')) {
+            return;
+        }
+        try {
+            const resp = await fetch(`${API_URL}/opening_balance/reverse`, {
+                method: 'POST',
+                headers: {
+                    'X-Authorization': `Bearer ${JWT_TOKEN}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ fiscal_yr: parseInt($fy.value), book_id: parseInt($bid.value) })
+            });
+            const data = await resp.json();
+            if (data.success) {
+                alert(`✓ ${data.message}`);
+                loadForm();
+            } else {
+                showError(data.message || 'Failed to reverse the Opening Balance.');
+            }
+        } catch (e) {
+            console.error('Reverse error:', e);
+            showError('Failed to reverse the Opening Balance.');
+        }
+    }
+
     // Event listeners
     $reload.addEventListener('click', loadForm);
     $fy.addEventListener('change', loadForm);
     $bid.addEventListener('change', loadForm);
     $postBtn.addEventListener('click', postOpeningBalance);
+    $reverseBtn.addEventListener('click', reverseOpeningBalance);
     $cancelBtn.addEventListener('click', () => window.history.back());
 
     // Init
