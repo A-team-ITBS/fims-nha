@@ -52,7 +52,7 @@ $_ifr_api = $_amp_api ?? \PHPMaker2024\FIMS\Config('API.FIMS_URL');
     #ifr-edit-note { display:none;margin-bottom:18px;padding:10px 14px;border-radius:8px;font-size:13px;line-height:1.5;color:#92400E;background:#FEF3C7;border:1px solid #FDE68A; }
     .ifr-edit #ifr-edit-note { display:block; }
     .ifr-edit #ifr-entries-section { display:none; }   /* the Account Entries cannot be changed once the record exists: hidden while editing */
-    .ifr-edit #ifr-rfa, .ifr-edit #ifr-iar { background:var(--afims-surface-subtle, #F4F7FA);color:var(--afims-text-secondary, #5B5E73);cursor:not-allowed; }
+    .ifr-edit #ifr-rfa, .ifr-edit #ifr-swa { background:var(--afims-surface-subtle, #F4F7FA);color:var(--afims-text-secondary, #5B5E73);cursor:not-allowed; }
 
     /* Statement of Work rows: Description | Cost | % Accomplishment | remove */
     .ifr-itm { display:flex;align-items:flex-start;margin-bottom:12px; }
@@ -103,8 +103,8 @@ $_ifr_api = $_amp_api ?? \PHPMaker2024\FIMS\Config('API.FIMS_URL');
                             </div>
                         </div>
                         <div class="amp-group">
-                            <label class="amp-label" for="ifr-iar">SWA Number</label>
-                            <input type="text" class="amp-input" id="ifr-iar" readonly tabindex="-1" placeholder="Generating…" style="font-weight:600;">
+                            <label class="amp-label" for="ifr-swa">SWA Number</label>
+                            <input type="text" class="amp-input" id="ifr-swa" readonly tabindex="-1" placeholder="Generating…" style="font-weight:600;">
                         </div>
                         <div class="amp-group">
                             <label class="amp-label" for="ifr-office">Requesting Office/Dept</label>
@@ -247,7 +247,7 @@ function ifr_renderTable(rows) {
     const offset = (ifr_page - 1) * IFR_PAGE_SIZE;
     tbody.innerHTML = rows.map((r, i) => `<tr>
         <td class="nha-td-seq" style="vertical-align:top;">${offset + i + 1}</td>
-        <td style="vertical-align:top;white-space:nowrap;"><code class="nha-code">${amp_esc(r.iar_number)}</code></td>
+        <td style="vertical-align:top;white-space:nowrap;"><code class="nha-code">${amp_esc(r.swa_number)}</code></td>
         <td style="vertical-align:top;white-space:nowrap;">${ifr_dash(r.rfa_number)}</td>
         <td style="vertical-align:top;">${ifr_dash(r.project_name)}</td>
         <td style="vertical-align:top;">${ifr_dash(r.contractor)}</td>
@@ -311,7 +311,7 @@ function ifr_goTo(p) { if (p < 1) return; ifr_page = p; ifr_load(); }
         ifr_$('ifr-form')?.addEventListener('submit', ifr_save);
         ifr_$('ifr-add-entry')?.addEventListener('click', () => ifr_addEntry());
         ifr_$('ifr-add-item')?.addEventListener('click', () => { const r = ifr_addItem(); r.querySelector('.ifr-i-desc').focus(); });
-        ['ifr-iar', 'ifr-start', 'ifr-end'].forEach(id => ifr_$(id)?.addEventListener('input', ifr_refresh));
+        ['ifr-swa', 'ifr-start', 'ifr-end'].forEach(id => ifr_$(id)?.addEventListener('input', ifr_refresh));
         ['ifr-start', 'ifr-end'].forEach(id => ['input', 'change'].forEach(ev => ifr_$(id)?.addEventListener(ev, () => { ifr_autoDuration(); ifr_refresh(); })));
         // the duration can be typed; clearing it hands it back to the dates
         ifr_$('ifr-duration')?.addEventListener('input', () => { ifr_state.durManual = !!ifr_$('ifr-duration').value.trim(); if (!ifr_state.durManual) ifr_autoDuration(); });
@@ -328,9 +328,9 @@ function ifr_view(i) {
     const num  = v => '<span class="amp-vw-num">₱' + ifr_money(v) + '</span>';
     const entries = r.entries || [], items = r.items || [];
     const entTotal = entries.reduce((s, e) => s + Number(e.amount || 0), 0);
-    amp_view_set('Infrastructure Record',r.iar_number || '', `
+    amp_view_set('Infrastructure Record',r.swa_number || '', `
         <div class="amp-vw-card"><h4 class="amp-vw-card-title">Inspection and Acceptance Report</h4>
-            ${grid(2, vrow('SWA No.','<span class="amp-vw-code">' + amp_esc(r.iar_number) + '</span>'), vrow('RFA No.', ifr_dash(r.rfa_number)),
+            ${grid(2, vrow('SWA No.','<span class="amp-vw-code">' + amp_esc(r.swa_number) + '</span>'), vrow('RFA No.', ifr_dash(r.rfa_number)),
                       vrow('Requisitioning Office/Dept', ifr_dash(r.requesting_office)), vrow('Contractor', ifr_dash(r.contractor)))}
         </div>
         <div class="amp-vw-card"><h4 class="amp-vw-card-title">Project</h4>
@@ -374,12 +374,12 @@ async function ifr_proforma(id) {
         const d = json.data;
         await amp_loadBooks();
         const rc = {
-            dr_number: d.iar_number, delivery_date: '', rows: d.rows, total: d.total, rfa_number: d.rfa_number || '', project_code: d.project_code || '', project: d.project_name || '', location: d.location || '', contractor: d.contractor || '',
+            dr_number: d.swa_number, delivery_date: '', rows: d.rows, total: d.total, rfa_number: d.rfa_number || '', project_code: d.project_code || '', project: d.project_name || '', location: d.location || '', contractor: d.contractor || '',
             jev_id: d.jev_id, jev_no: d.jev_no,
-            particulars: 'To record the infrastructure SWA ' + d.iar_number + ' (RFA ' + d.rfa_number + ') — ' + (d.project_name || 'project') + (d.location ? ', ' + d.location : ''),
-            print_particulars: 'Pro-forma JEV — Infrastructure SWA No. ' + d.iar_number + ' of RFA No. ' + d.rfa_number,
+            particulars: 'To record the infrastructure SWA ' + d.swa_number + ' (RFA ' + d.rfa_number + ') — ' + (d.project_name || 'project') + (d.location ? ', ' + d.location : ''),
+            print_particulars: 'Pro-forma JEV — Infrastructure SWA No. ' + d.swa_number + ' of RFA No. ' + d.rfa_number,
         };
-        amp_pf = { po: d.rfa_number, iar: d.iar_number, rc: d.requesting_rc_id || '', receipts: [rc], kind: 'infra', id: d.id };
+        amp_pf = { po: d.rfa_number, iar: d.swa_number, rc: d.requesting_rc_id || '', receipts: [rc], kind: 'infra', id: d.id };
         if (rc.jev_id) {                                   // already submitted: read-only, showing the JEV's own book, particulars and lines
             try {
                 const jr = await fetch(IFR_API.replace(/\/infra-iar$/, '') + '/voucher/journal-entry/' + encodeURIComponent(rc.jev_id), { credentials: 'same-origin', headers: amp_authHeaders() });
@@ -397,7 +397,7 @@ async function ifr_proforma(id) {
         amp_renderProforma(0);
         ifr_$('amp-view-card').classList.add('amp-wide');
         ifr_$('amp-view-title').textContent = 'Pro-forma JEV';
-        ifr_$('amp-view-ref').textContent = d.iar_number || '';
+        ifr_$('amp-view-ref').textContent = d.swa_number || '';
         ifr_$('amp-view-overlay').classList.add('open');
     } catch (e) {
         amp_toast(e.message, 'error');
@@ -455,7 +455,7 @@ function ifr_openModal(mode, row = null) {
     ifr_$('ifr-modal-title').textContent = mode === 'edit' ? 'Edit Infrastructure Record' : 'Add Infrastructure Record';
     ifr_$('ifr-rfa').value = ifr_state.validLabel = row?.rfa_number || '';
     ifr_state.valid = row ? Number(row.allocation_id) : 0;
-    ifr_$('ifr-iar').value = row?.iar_number || '';
+    ifr_$('ifr-swa').value = row?.swa_number || '';
     if (mode === 'add') ifr_loadNextNumber();
     ifr_fillProject(row);
     if (mode === 'edit') ifr_state.contract = null;            // the RFA amount is checked by the server on a save
@@ -481,7 +481,7 @@ async function ifr_loadNextNumber() {
     try {
         const res = await fetch(`${IFR_API}/next-number`, { credentials: 'same-origin', headers: amp_authHeaders() });
         const json = await res.json();
-        if (json.success && ifr_$('ifr-mode').value === 'add') ifr_$('ifr-iar').value = json.data.swa_number || '';
+        if (json.success && ifr_$('ifr-mode').value === 'add') ifr_$('ifr-swa').value = json.data.swa_number || '';
     } catch (e) { /* the number is still generated on save */ }
 }
 
