@@ -271,7 +271,21 @@ function prp_showError(message) {
  * opts.type — a PRP_TYPES key: 'CBA' (default), 'RFA', 'LAA', 'CAF', 'LAAREQ', 'PO', 'PR',
  * 'IAR', 'LV', 'JEV', 'FTLA', 'FTLAREQ', 'CFA', 'MEMO' or 'DV'.
  */
+/* Prints paused until their layout is settled — every caller (list menu, memo form) goes through prp_open(), so this
+   one guard keeps them from printing. RFA / LAA: an RFA / LAA can now draw from several parent CBAs (one project
+   block each) and the form still prints only the first block's project — on hold until the multi-CBA layout is
+   decided with the budget team. Remove a type from here to print it again. */
+const PRP_PAUSED = {
+    RFA: 'Printing the RFA is paused for now: an RFA can draw from several CBAs and its printed form is being updated for that.',
+    LAA: 'Printing the LAA is paused for now: an LAA can draw from several CBAs and its printed form is being updated for that.',
+};
+function prp_isPaused(type) { return !!PRP_PAUSED[String(type || '').toUpperCase()]; }
+
 async function prp_open(payload, opts = {}) {
+    if (prp_isPaused(opts.type)) {
+        alert(PRP_PAUSED[String(opts.type).toUpperCase()]);
+        return;
+    }
     prp_type = PRP_TYPES[String(opts.type || '').toUpperCase()] ? String(opts.type).toUpperCase() : 'CBA';
     const coe = String(payload?.document_type || '').toUpperCase() === 'COE';             // CBA / LAA have a COE version
     const regional = String(payload?.issuing_office || '').toUpperCase() === 'REGIONAL';  // CBA / CAF have a regional version
