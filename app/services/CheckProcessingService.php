@@ -943,6 +943,31 @@ BAT;
                 'DB'
             );
 
+            // Preparing the check also creates AND posts the PAYMENT Journal Entry (Dr Accounts Payable /
+            // Cr Cash in Bank) in this same transaction — no separate Accounting "Prepare Payment JEV" step
+            // or JEV review chain. createPaymentJev() is a no-op (posted = false, no jev_id) when the DV's
+            // setup JEV never routed through Accounts Payable, so there's nothing to post in that case.
+            // This MUST run before changeStatus() below: changeStatus() opens and COMMITs its own
+            // transaction, which commits this outer one too, so a failure after it can no longer be
+            // rolled back (the check and the RELEASED DV would be left behind with no payment JEV).
+            $paymentJevId = 0;
+            $glService    = new GeneralLedgerService();
+            $paymentJev   = $glService->createPaymentJev($dvId, $bankAccountId, $required, 'CHECK NO. ' . $check['check_number'], $userId);
+            if (!$paymentJev['success']) {
+                App\Execute('ROLLBACK', 'DB');
+
+                return json_encode(["success" => false, "message" => $paymentJev['message']]);
+            }
+            if (!empty($paymentJev['data']['jev_id'])) {
+                $paymentJevId = (int) $paymentJev['data']['jev_id'];
+                $posted       = $glService->postJev($paymentJevId, $userId);
+                if (!$posted['success']) {
+                    App\Execute('ROLLBACK', 'DB');
+
+                    return json_encode(["success" => false, "message" => $posted['message']]);
+                }
+            }
+
             $dvService = new DisbursementVoucherService();
             $released  = $dvService->changeStatus($dvId, 'RELEASED', $userId);
             if (!$released['success']) {
@@ -950,12 +975,6 @@ BAT;
 
                 return json_encode(["success" => false, "message" => $released['message']]);
             }
-
-            // NOTE: Treasury does NOT create the payment Journal Entry here. Preparing the payment JEV
-            // (Dr Accounts Payable / Cr Cash) is Accounting's job — an Accounting preparer does it on the
-            // released DV via "Prepare Payment JEV" (DisbursementVoucherService::preparePaymentJev()),
-            // after which it runs the JEV review chain (Section Chief -> Division Manager -> Department
-            // Manager posts). Treasury only releases the DV and records the check.
 
             App\Execute(
                 "UPDATE {$this->tableCheckRegister}
@@ -1003,7 +1022,11 @@ BAT;
 
             App\Execute('COMMIT', 'DB');
 
-            return $this->ok(['check_id' => $check['check_id'], 'check_number' => $check['check_number']]);
+            if ($paymentJevId > 0) {
+                GlobalService::logStatusChange('journal_entry_voucher', $paymentJevId, 'POSTED', $userId, 'Posted on check preparation');
+            }
+
+            return $this->ok(['check_id' => $check['check_id'], 'check_number' => $check['check_number'], 'payment_jev_id' => $paymentJevId ?: null]);
         } catch (\Exception $e) {
             App\Execute('ROLLBACK', 'DB');
             App\LogError('CheckProcessingService::saveCheck ' . $e->getMessage());

@@ -166,6 +166,7 @@ return [
     "balance_sheet_page" => \DI\create(BalanceSheetPage::class),
     "income_statement_page" => \DI\create(IncomeStatementPage::class),
     "opening_balance_page" => \DI\create(OpeningBalancePage::class),
+    "closing_balance_page" => \DI\create(ClosingBalancePage::class),
     "work_in_process_page" => \DI\create(WorkInProcessPage::class),
     "statement_of_changes_page" => \DI\create(StatementOfChangesPage::class),
     "cash_flow_page" => \DI\create(CashFlowPage::class),
