@@ -62,23 +62,8 @@ $app->post('/opening_balance', function ($request, $response, $args) use ($Openi
     }
 })->add($accessMiddleware)->add($jwtMiddleware);
 
-// POST /opening_balance/reverse
-// Reverses the POSTED OPENING JEV for a fiscal_yr/book_id, unlocking the form again.
-// Body: {fiscal_yr, book_id}
-$app->post('/opening_balance/reverse', function ($request, $response, $args) use ($OpeningBalanceService) {
-    try {
-        $body = $request->getParsedBody() ?: [];
-        $userId = CurrentUserID() ?? 0;
-        $result = $OpeningBalanceService->reverseOpeningBalance(
-            (int) ($body['fiscal_yr'] ?? 0),
-            (int) ($body['book_id'] ?? 0),
-            $userId
-        );
-
-        return $response->withJson($result, $result['httpCode'] ?? ($result['success'] ? 200 : 400));
-    } catch (\Exception $e) {
-        LogError('POST /opening_balance/reverse ' . $e->getMessage());
-
-        return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
-    }
-})->add($accessMiddleware)->add($jwtMiddleware);
+// Note: there is intentionally no /opening_balance/reverse route. Once submitted, an Opening
+// Balance is fully locked — no edit, no reverse, no clear. The only way it's ever removed is
+// as a side effect of reversing the Closing that auto-carried it forward (see
+// ClosingBalanceService::reverseClosingBalance() -> OpeningBalanceService::deleteCarryForwardRows(),
+// an internal-only method with no route of its own).

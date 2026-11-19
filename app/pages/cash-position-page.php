@@ -397,6 +397,11 @@ html.afims-dark[data-bs-theme="dark"] #cashPositionModule .cps-group-header :is(
                     hint.textContent = 'Auto-pulled from the prior day\'s ending balance.';
                     hint.style.color = '';
                     meOpeningBalanceBlocked = false;
+                } else if (d.opening_balance_source === 'OPENING_BALANCE') {
+                    field.value = d.opening_balance;
+                    hint.textContent = 'Auto-pulled from this account\'s recorded Opening Balance (first entry on record).';
+                    hint.style.color = '';
+                    meOpeningBalanceBlocked = false;
                 } else if (d.opening_balance_source === 'GENERAL_LEDGER') {
                     field.value = d.opening_balance;
                     hint.textContent = 'Auto-pulled from this account\'s General Ledger balance (first entry on record).';
