@@ -249,6 +249,23 @@
     #bgrv-card.bgrv-wide .bgrv-cob-unit-chevron,
     #bgrv-card.bgrv-wide .bgrv-cob-group-chevron { width:14px;height:14px; }
     .bgrv-cob-empty { font-style:italic; }
+
+    /* ── "Print COB" (COB mode only — see bgrv_printCobOfficeType()) ── */
+    #bgrv-print-wrap { display:none;position:relative; }
+    #bgrv-card.bgrv-wide #bgrv-print-wrap { display:flex; }
+    #bgrv-print-btn { display:flex;align-items:center;gap:6px;border:none;cursor:pointer;
+        padding:0 12px;height:28px;border-radius:7px;font-size:12px;font-weight:700;white-space:nowrap;
+        background:color-mix(in srgb, var(--afims-surface, #FFFFFF) 12%, transparent);
+        color:var(--afims-pure-white, #FFFFFF);transition:background .15s; }
+    #bgrv-print-btn:hover { background:color-mix(in srgb, var(--afims-surface, #FFFFFF) 22%, transparent); }
+    #bgrv-print-btn svg { width:13px;height:13px;flex-shrink:0; }
+    #bgrv-print-menu { display:none;position:absolute;top:calc(100% + 6px);right:0;z-index:10;
+        min-width:170px;background:var(--afims-surface, #FFFFFF);border:1px solid var(--afims-border, #E4ECF2);
+        border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.14);overflow:hidden;padding:4px; }
+    #bgrv-print-menu.open { display:block; }
+    .bgrv-print-menu-item { display:block;width:100%;text-align:left;border:none;background:none;cursor:pointer;
+        padding:8px 10px;font-size:12.5px;font-weight:600;color:var(--afims-text, #1A1B21);border-radius:6px; }
+    .bgrv-print-menu-item:hover { background:var(--afims-surface-subtle, #F4F7FA);color:var(--afims-heading-fill, #000E3E); }
 </style>
 
 <div id="bgrv-overlay">
@@ -265,7 +282,7 @@
             </div>
             <div id="bgrv-header-total">
                 <div class="bgrv-header-total-item">
-                    <p class="bgrv-header-total-label">Total Proposed</p>
+                    <p class="bgrv-header-total-label">Total Approved</p>
                     <p class="bgrv-header-total-val" id="bgrv-header-total-val">—</p>
                 </div>
                 <div class="bgrv-header-total-item">
@@ -278,6 +295,23 @@
                 </div>
             </div>
             <div id="bgrv-header-actions">
+                <!-- COB mode only (#bgrv-card.bgrv-wide — see the CSS above); hidden for the Program View
+                     modal. A Regional / District user's own office_type skips the menu entirely and goes
+                     straight to "Per Program" — see bgrv_openPrintMenu(). -->
+                <div id="bgrv-print-wrap">
+                    <button type="button" id="bgrv-print-btn" onclick="bgrv_openPrintMenu()">
+                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0l.229 2.523a1.125 1.125 0 01-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0021 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 00-1.913-.247M6.34 18H5.25A2.25 2.25 0 013 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 011.913-.247m10.5 0a48.536 48.536 0 00-10.5 0m10.5 0V3.75A2.25 2.25 0 0015.75 1.5h-7.5A2.25 2.25 0 006 3.75v3.284" />
+                        </svg>
+                        Print COB
+                    </button>
+                    <div id="bgrv-print-menu">
+                        <button type="button" class="bgrv-print-menu-item" onclick="bgrv_printCob('region')">Per Region</button>
+                        <button type="button" class="bgrv-print-menu-item" onclick="bgrv_printCob('program')">Per Program</button>
+                        <button type="button" class="bgrv-print-menu-item" onclick="bgrv_printCob('fund_source')">Per Fund Source</button>
+                        <button type="button" class="bgrv-print-menu-item" onclick="bgrv_printCob('detailed')">Detailed</button>
+                    </div>
+                </div>
                 <button type="button" id="bgrv-close">&times;</button>
             </div>
         </div>
@@ -305,10 +339,50 @@ const $bgrv = id => document.getElementById(id);
 
 document.addEventListener('DOMContentLoaded', () => {
     $bgrv('bgrv-close')?.addEventListener('click', bgrv_closeModal);
+    // Click outside the Print COB button/menu closes it — same "click elsewhere to dismiss" convention
+    // other dropdowns in this app use.
+    document.addEventListener('mousedown', (e) => {
+        if (!$bgrv('bgrv-print-wrap')?.contains(e.target)) bgrv_closePrintMenu();
+    });
 });
 
 function bgrv_closeModal() {
     $bgrv('bgrv-overlay').classList.remove('open');
+    bgrv_closePrintMenu();
+}
+
+// ── "Print COB" (COB mode only) ──────────────────────────────────────────
+// fims.responsibility_code.office_type -> Regional / District / everything else — same mapping
+// budget-allocation-form.php's cbaRcDeptType() uses for the same office_type values.
+function bgrv_rcDeptType(officeType) {
+    const t = String(officeType || '');
+    if (t === 'Regional') return 'REGIONAL';
+    if (t === 'District') return 'DISTRICT';
+    return t ? 'MAIN' : '';
+}
+
+function bgrv_closePrintMenu() {
+    $bgrv('bgrv-print-menu')?.classList.remove('open');
+}
+
+// A Regional / District user only ever prints their own office's COB, so there's nothing to choose between
+// — this skips the menu and goes straight to "Per Program". Everyone else (FMD / other central offices)
+// gets the full choice. BGR_USER_OFFICE_TYPE is defined by whichever host page included this file
+// (budget-req-page.php or budget-prop-page.php), from the logged-in user's own responsibility_code row.
+function bgrv_openPrintMenu() {
+    const deptType = bgrv_rcDeptType(typeof BGR_USER_OFFICE_TYPE !== 'undefined' ? BGR_USER_OFFICE_TYPE : '');
+    if (deptType === 'REGIONAL' || deptType === 'DISTRICT') {
+        bgrv_printCob('program');
+        return;
+    }
+    $bgrv('bgrv-print-menu')?.classList.toggle('open');
+}
+
+// TODO: wire up the actual print output per mode — this is a placeholder so the button/menu and the
+// Regional/District "skip straight to Per Program" routing are in place ahead of that.
+function bgrv_printCob(mode) {
+    bgrv_closePrintMenu();
+    bgr_toast(`Print COB (${mode}) is not yet implemented.`, 'info');
 }
 
 // Replaces #bgrv-summary's cards wholesale — the two modes show entirely
@@ -528,8 +602,8 @@ async function bgrv_openCobModal(fiscalYr = '', extraParams = {}, options = {}) 
 // (cobAvailable()), which is a genuinely live, derived ceiling and is NOT what this column shows. adjustment
 // (budget_line_items.adjustment — the net adjustment applied by an approved Budget Revision; 0 until one is
 // approved), and revised — proposed PLUS adjustment (adjustment already carries its own sign: negative for a cut,
-// positive for an increase), computed here rather than read from budget_line_items.revised_amount (that column is
-// a separately app-maintained figure used elsewhere, e.g. Budget Revision's own screens; this view derives its own).
+// positive for an increase), computed here (budget_line_items.revised_amount, now generated by the table as suggested_amount + adjustment —
+// 03 - alter_table/54 — would give the same number).
 // showFund: each Project row also lists the Type(s) of Fund of its line items (set by Budget Processing; a Project can have several, and
 // none before it has been processed).
 // Same account_code-prefix rule DisbursementVoucherService::deriveExpenseClass() uses — chart_of_accounts
@@ -720,7 +794,7 @@ function bgrv_cobTotalRowHtml(totals) {
             </div>`;
 }
 
-// bgrv_openCobModal: the "Approved Amount" / "Adjustment Amount" / "Revised Amount" column-header row shown above the outline.
+// bgrv_openCobModal: the "Approved Amount" / "Amendment" / "Amended Amount" column-header row shown above the outline.
 // label: the table's own section label ("CAPITAL OUTLAY" / "CORPORATE OPERATING EXPENDITURE"), shown on the
 // same blue bar, aligned with those amount columns instead of as a separate heading above it.
 function bgrv_cobColumnHeaderHtml(label = '') {
@@ -728,8 +802,8 @@ function bgrv_cobColumnHeaderHtml(label = '') {
                 <span class="bgrv-cob-sec-label">${bgr_esc(label)}</span>
                 <span class="bgrv-cob-amts">
                     <span class="bgrv-cob-amt-label">Approved Amount</span>
-                    <span class="bgrv-cob-amt-label">Adjustment Amount</span>
-                    <span class="bgrv-cob-amt-label">Revised Amount</span>
+                    <span class="bgrv-cob-amt-label">Amendment</span>
+                    <span class="bgrv-cob-amt-label">Amended Amount</span>
                 </span>
             </div>`;
 }

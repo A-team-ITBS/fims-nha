@@ -1,6 +1,6 @@
 <?php
 /**
- * budget-preview-readone.php
+ * budget-preview-readone.php.
  *
  * Read-only "Budget Preview" modal for a budget request — the read-only counterpart of the Budget Processing
  * modal (form/budget-processing-form.php): the same columns, but laid out per Project (the Processing modal is
@@ -9,7 +9,7 @@
  *   - an info card: Originating Unit / Region (the requesting office), Program, Sub-Program, Project
  *     (each with its code as a chip), and
  *   - that Project's line items as a table, as plain text (nothing to fill in):
- *       Type of Fund · Component · Account Code · Description (the account name,
+ *       Type of Fund · Account Code · Description (the account name,
  *       the line's particulars under it) · Amount (proposed) · Adjustment (budget_line_items.adjustment, signed: green
  *       "+", red "−", a dash for none) · Suggested Amount, with a Total row under all three amount columns.
  *   - a Grand Total bar (Amount / Adjustment / Suggested Amount, every Project of every Program, under the last block)
@@ -345,7 +345,7 @@ function bpv_value(text) {
     return text ? bgr_esc(text) : '<span class="nha-td-sub">—</span>';
 }
 
-// A line's adjustment (budget_line_items.adjustment — what approved budget revisions added to / deducted from the line):
+// A line's adjustment (budget_line_items.adjustment — the total of what approved budget revisions added to / deducted from the line):
 // "+ ₱ 50,000.00" in green, "− ₱ 50,000.00" in red, a dash when there is none. Plain text, never HTML from the data.
 function bpv_adjHtml(v) {
     const n = Number(v) || 0;
@@ -355,10 +355,11 @@ function bpv_adjHtml(v) {
 }
 
 // Column order matches Budget Processing, with the line's Adjustment after its Amount:
-// Type of Fund · Component · Account Code · Description · Amount · Adjustment · Suggested Amount
+// Type of Fund · Account Code · Description · Amount · Adjustment · Suggested Amount
+// (Component is hidden — not deleted, see bpr_rowHtml in budget-processing-form.php for the same choice.)
 const BPV_THEAD = `<thead><tr>
     <th>Type of Fund</th>
-    <th>Component</th>
+    <!-- <th>Component</th> -->
     <th>Account Code</th>
     <th>Description</th>
     <th class="text-right">Amount</th>
@@ -369,7 +370,7 @@ const BPV_THEAD = `<thead><tr>
 function bpv_rowHtml(li) {
     return `<tr>
         <td>${bpv_value(li.type_of_fund_name)}</td>
-        <td>${bpv_value(li.component_name)}</td>
+        <!-- <td>${bpv_value(li.component_name)}</td> -->
         <td class="bpv-nowrap bpv-mono">${bgr_esc(li.account_code)}</td>
         <td><div>${bgr_esc(li.account_title)}</div>${li.particulars ? `<div class="bpv-desc-sub">${bgr_esc(li.particulars)}</div>` : ''}</td>
         <td class="text-right bpv-amt">${bgr_fmtMoney(li.proposed_amount)}</td>
@@ -383,12 +384,12 @@ function bpv_tableHtml(project) {
     const sum = key => lineItems.reduce((s, li) => s + (Number(li[key]) || 0), 0);
     const rowsHtml = lineItems.length
         ? lineItems.map(bpv_rowHtml).join('')
-        : '<tr><td colspan="7"><div class="bpv-empty">No line items have been added under this project.</div></td></tr>';
+        : '<tr><td colspan="6"><div class="bpv-empty">No line items have been added under this project.</div></td></tr>';
 
     return `<div class="bpv-tbl-wrap">
         <div class="nha-tbl-scroll">
             <table class="nha-tbl bpv-tbl">${BPV_THEAD}<tbody>${rowsHtml}</tbody>
-                <tfoot><tr><td colspan="4" class="text-right">Total</td><td class="text-right bpv-total-p">${bgr_fmtMoney(sum('proposed_amount'))}</td><td class="text-right bpv-total-a">${bpv_adjHtml(sum('adjustment'))}</td><td class="text-right bpv-total-s">${bgr_fmtMoney(sum('suggested_amount'))}</td></tr></tfoot>
+                <tfoot><tr><td colspan="3" class="text-right">Total</td><td class="text-right bpv-total-p">${bgr_fmtMoney(sum('proposed_amount'))}</td><td class="text-right bpv-total-a">${bpv_adjHtml(sum('adjustment'))}</td><td class="text-right bpv-total-s">${bgr_fmtMoney(sum('suggested_amount'))}</td></tr></tfoot>
             </table>
         </div>
     </div>`;

@@ -62,45 +62,49 @@ Every row, group and total is the SUM of these per line item (`CobService::lineA
 
 | Column | Meaning | From |
 |---|---|---|
-| **Approved Amount** | What FMD suggested in the Budget Proposal module, as first suggested — before any Budget Revision or CBA touched the line | `suggested_amount + CBA Requested − adjustment` (`suggested_amount` is the line's live balance, see the note below) |
-| **Revision / Realignment** | Net of the approved Budget Revisions (an increase, or a decrease in brackets) | `budget_line_items.adjustment` (signed: a decrease is negative) |
-| **Revised Amount** | The Approved Amount net of the Revision / Realignment — a decrease lowers it. Worked out per line, so a line no revision has touched shows its Approved Amount | `Approved Amount + adjustment`, which is `suggested_amount + CBA Requested`. The stored `budget_line_items.revised_amount` column (written only when a Budget Revision is approved, `0` otherwise) is no longer read by the COB |
-| **CBA Requested** | What approved CBAs (and CFAs) took off the budget | earmark rows of CBA / CFA allocations: `original_amount`, only those that did take it off (`balance_applied`) and are not released |
+| **Approved Amount** | What FMD suggested in the Budget Proposal module, as first suggested — before any Budget Revision or CBA touched the line | `budget_line_items.suggested_amount` — stable: no CBA, RFA, LAA or revision ever moves it (see the note below) |
+| **Revision / Realignment** | **A project** (or a COE request) shows **only the latest** approved revision or realignment on it (what the most recent approved request changed), each with its sign and colour: an addition is **+** (green), a deduction **−** (red). A realignment is **−** on the budget that gave funds up and **+** on the one that received them; earlier ones are not listed. **Parent rows** (bucket, program, sub-program, unit, class) **and the TOTAL have no figure in this column** — there is no total of the revisions / realignments (Revised Amount is still worked out from all of them). "The latest" is per project (per request and PS / MOOE class under COE): the request approved last among those that touched any of its lines, and what it did on that project's lines | a project's lines are the latest request's rows of the ledger `fims.budget_line_item_revision_transaction` (`latest_revision_amount` — a `REVISION` / `LEGACY` row; `latest_realignment_amount` — the `REALIGNMENT_IN` / `REALIGNMENT_OUT` rows), worked out after the SQL by `CobService::latestByLeaf()` / `latestByLine()`. The net of all of them is `revision_amount` = `BudgetLineBalanceSql::revisionExpr()`, which Revised Amount is built from but this column does not show |
+| **Revised Amount** | The Approved Amount net of the Revision / Realignment — a decrease lowers it. A line no revision has touched shows its Approved Amount | `budget_line_items.revised_amount` — a **generated** column, `suggested_amount + adjustment` (`03 - alter_table/54`), so it is always `Approved Amount + Revision / Realignment`. The Revision / Realignment total behind it is `budget_line_items.adjustment` (the ledger total, kept by a trigger — `03 - alter_table/53`); both are read straight from the table (`BudgetLineBalanceSql::revisedExpr()` / `revisionExpr()`) |
+| **CBA Requested** | What approved CBAs (and CFAs) hold against the budget, plus what RFAs / LAAs have since drawn from them | earmark rows of not-deleted allocations: `amount` of the `active` rows (CBA / CFA reservations) + the `converted` RFA / LAA rows (`BudgetLineBalanceSql::earmarkAggregateSql()`) |
 | **Available for Earmarking** | Revised Amount − CBA Requested: what a new CBA can still draw | `revised_amount − CBA Requested` |
 | **RFA Approved** | Drawn from the CBAs by approved RFAs | the `converted` earmark rows of RFA allocations |
 | **LAA Issued** | Drawn from the CBAs by issued LAAs | the `converted` earmark rows of LAA allocations |
-| **Remaining Balance** | Revised Amount − RFA Approved − LAA Issued | A CBA only *reserves* money; an RFA / LAA actually uses it, so only they reduce what remains |
+| **Remaining Balance** | Revised Amount − CBA Requested | What is left of the revised budget once the CBAs' reservations — and what RFAs / LAAs drew from them, which is already inside CBA Requested — are taken off. The same figure as Available for Earmarking, the RFA / LAA page's Unallocated Amount and the Budget Revision form's Current balance (`BudgetLineBalanceSql`) |
 
 Revised, Available and Remaining are all worked out, so three identities hold on every row, group and total:
-`Approved + Revision = Revised` (the Revision is signed, so this is the Approved Amount less a decrease), `Revised − CBA = Available` and `Revised − RFA − LAA = Remaining`.
+`Approved + Revision = Revised` (the Revision is signed, so this is the Approved Amount less a decrease), `Revised − CBA = Available` and `Revised − CBA = Remaining` (so Available and Remaining are one figure).
 
-> **Revised Amount is worked out, not read.** It used to be the stored `budget_line_items.revised_amount` column, which only a Budget Revision approval writes (`0` for every other line, so those
-> lines showed `0` Revised, Available and Remaining). The COB now computes it per line, so an untouched line shows its Approved Amount.
+> **Revised Amount is worked out, not read.** It used to be the stored `budget_line_items.revised_amount` column, which only a Budget Revision approval wrote (`0` for every other line, so those
+> lines showed `0` Revised, Available and Remaining). The COB now computes it per line, so an untouched line shows its Approved Amount; the column is back as a **generated** one (`suggested_amount + adjustment`, `03 - alter_table/54 - budget_line_items_revised_amount_generated.sql`), so it is always right and nothing writes it.
 >
-> **`suggested_amount` is the line's live balance, so Approved is rebuilt from it.** An approved CBA/CFA takes its amount off `suggested_amount`, and an approved Budget Revision adds its
-> signed `adjustment` to it (`BudgetRevisionService`, the `from_upd` / `to_upd` statements). Reading it as the Approved Amount put a revised line's *new* amount under Approved, and
-> subtracting `adjustment` from it took the revision back out again — a line cut from 352,418 to 130,000 showed Approved 130,000 and Revised 352,418, and a line with a 150,000 CBA showed a
-> negative Available (the CBA was taken off twice). Adding the CBAs back and removing the adjustment gives the amount as first suggested: Approved 352,418, Revision (222,418), Revised 130,000.
+> **`suggested_amount` is stable; revisions live in their own ledger.** Since the stable-`suggested_amount` model (`BudgetLineBalanceSql`) nothing moves `suggested_amount` after Budget Processing sets it: a CBA / CFA only
+> reserves (an `active` earmark row), an RFA / LAA draws that reservation, and an approved Budget Revision writes one row per budget line to `fims.budget_line_item_revision_transaction` (the signed amount, the previous
+> amount and the new amount — `BudgetRevisionService::approve()`). The Revision column is the sum of those rows. Approved = `suggested_amount`, Revised = Approved + Revision, Available = Revised − CBA Requested, and
+> the same figures are what the approval checks use, so the COB and the Memo Request balance can never disagree. A revision may not take a line below what is held against it (CBAs + RFAs + LAAs).
+> What an older approval had already done to `adjustment` is moved into the ledger by `03 - alter_table/52 - budget_line_item_revision_transaction_backfill.sql` (one `LEGACY` row per line); that script never
+> touches `suggested_amount`.
+> The ledger also keeps the line's **running adjustment**: each row's `adjustment` is the line's total after that transaction (the earlier total + its `amount`), and `budget_line_items.adjustment` is that total, written into the table by a trigger on the ledger
+> (`03 - alter_table/53 - budget_line_item_revision_transaction_adjustment.sql`) — approving only inserts the ledger row. The COB still reads the ledger sum (the same number) and shows only the **latest** adjustment on a project.
 > The RFA / LAA Monitoring page shows this same Revised Amount (see below), so the two pages always agree.
 
 Rules worth knowing:
 - A **deleted** memo request (`budget_allocation.deleted_at`) counts for nothing — the earmark rows of a deleted RFA / LAA survive in the ledger, so the allocation's `deleted_at` is what is filtered on.
-- A CBA approved **before** "charge the line on approval" (`balance_applied = FALSE`) never reduced the line, so it is not in CBA Requested either — which keeps `Available = Revised − CBA` true.
-- A CBA fully drawn by RFAs / LAAs still shows its original amount in CBA Requested (`original_amount`; the row's `amount` shrinks as it is drawn).
+- `balance_applied` no longer matters: every `active` / `converted` earmark row of a not-deleted allocation counts, which keeps `Available = Revised − CBA` true.
+- A CBA fully drawn by RFAs / LAAs still shows its original amount in CBA Requested (its reservation shrinks as it is drawn, the RFA / LAA rows that drew it add up to the rest).
 - Carry Over Obligation, Obligation and Disbursement are **not** part of the COB table any more: nothing writes `disbursement`, and `account_payable` is only filled by CBA / CFA approvals — it was a CBA figure under another name.
 
 ### Five more figures — for the RFA / LAA Monitoring page
 
-`CobService` also sends five figures per row, group and total (`AMOUNT_KEYS` goes on after the eight) for `rfa-laa-monitoring-page.php`, whose columns are
+`CobService` also sends five figures per row, group and total (`AMOUNT_KEYS` goes on after the eight — and then the two parts of Revision / Realignment, for its tooltip) for `rfa-laa-monitoring-page.php`, whose columns are
 Revised Amount · RFA / LAA Amount · Disbursement · Unallocated Amount · Account Payable. The COB page, its View modal and its report name the keys they show,
 so they are unaffected.
 
 | Key | Per budget line |
 |---|---|
-| `revised_computed` | The COB page's Revised Amount, unchanged (`Approved + adjustment` = `suggested_amount + CBA Requested`): the budget as FMD suggested it, net of the approved revisions / realignments (the adjustment is signed, so a decrease lowers it). **This page's Revised Amount** — one definition, so it can never differ from the COB page's |
+| `revised_computed` | The COB page's Revised Amount, unchanged (`Approved + Revision` = `suggested_amount + the ledger total`): the budget as FMD suggested it, net of the approved revisions / realignments (the revision is signed, so a decrease lowers it). **This page's Revised Amount** — one definition, so it can never differ from the COB page's |
 | `rfa_laa_amount` | `rfa_approved + laa_issued` |
 | `disbursement` | What the disbursement vouchers connected to the line's RFAs / LAAs (`budget_allocation.dv_id`) have disbursed: each voucher's `gross_amount` spread over the draws of the RFAs / LAAs that point at it, in proportion to what each drew, so it is never counted twice and adds back up to the voucher. Cancelled / rejected vouchers count for nothing. The stored `budget_line_items.disbursement` column, which nothing writes, is not used |
-| `unallocated_amount` | `revised_computed − rfa_approved − laa_issued` |
+| `unallocated_amount` | `revised_computed − cba_requested` — the remaining balance, the same figure as the COB page's Remaining Balance |
 | `account_payable` | `rfa_laa_amount − disbursement` — what the RFAs / LAAs have drawn that has not been disbursed yet. Worked out per line; the stored `budget_line_items.account_payable` column is not used |
 
 Disbursement therefore comes from the vouchers, and is part of every project row, the TOTAL and the cards; Account Payable (`RFA / LAA Amount − Disbursement`) follows it.
@@ -112,6 +116,14 @@ its budget lines — one row each, `RFA / LAA Amount` being the sum of that allo
 its disbursement voucher (`budget_allocation.dv_id`; the voucher is fetched from `fims.disbursement_vouchers` by that `dv_id`; `Disbursement` = the voucher's `gross_amount`, with its status, date and claimant). Only RFAs are linked to a
 voucher, but the page does not depend on that: an RFA or LAA row with a `dv_id` drops down to its voucher (a `1 DV` tag marks it, `No DV` the rest). The voucher is shown whatever its status, a cancelled or rejected one too, with its status pill. These rows are detail: they are added
 after the totals, so no figure above them changes. If they cannot be read the tree is returned without them and the page says so.
+
+**Revisions and realignments under a project** (RFA / LAA Monitoring page only — `GET /cob/rollup?...&with_revisions=1`; the COB page shows the totals in its Revision / Realignment column and lists nothing under a project): the project row (a COE request, for the COE half) also opens onto the approved Budget Revisions / Realignments
+recorded against its budget lines, one row per request, read from the ledger `fims.budget_line_item_revision_transaction`. A **revision** is one row (REV). A **realignment** is two: an *out* row (REA OUT, negative) on
+the line that gave funds up and an *in* row (REA IN, positive) on the line that received them — so when both lines are in the same project both rows show under it, although the project's own figures net to zero
+(−X + X); when they are in different projects the *out* row is under one and the *in* row under the other, and both projects' figures change. Each row names its budget line(s) and the reason. Its signed amount is in the
+**Revised Amount** column (it is the change that was made to it), dashes elsewhere. A row for what was approved before the ledger
+existed (the one `LEGACY` row per line) reads "Revisions / realignments approved before the ledger". Like the RFA / LAA rows these are detail rows added after the totals, so no figure changes, and the rows of a
+project add up to its Revision / Realignment figure. They come before the project's RFAs / LAAs. If they cannot be read the tree is returned without them and the page says so (`revision_error`).
 
 ## The page
 
@@ -189,5 +201,15 @@ repo as `cob-page.old-design.php` next to the other old-COB reference files.
   Revised Amount is `Approved + adjustment`. The RFA / LAA Monitoring page's Revised Amount (`revised_computed`, it had been `proposed_amount + adjustment`) is now that same figure: the proposed
   amount ignores what FMD suggested below the proposal, so the two pages differed by exactly that (₱21,000,000 on the dev data: ₱1,000,000 in CO, ₱20,000,000 in COE) and the RFA / LAA page's
   Unallocated Amount counted the cut as still drawable. CO / COE highlighting is unrelated to this.
+- Revision / Realignment: ONE column. A **project** shows only its **latest** approved adjustment, **signed and coloured** (**+** green / **−** red); **parent rows and the TOTAL show nothing** in it. A cumulative figure hid the realignment on the project —
+  one with earlier revisions (Project 1: +10,000,000) that then gave funds up (−5,000,000) read +5,000,000, so the budget that gave them up looked like it had received them — so the project rows show the latest (Project 1 *Realignment −5,000,000.00*, the budget
+  that received the funds *Realignment +5,000,000.00*) and no total is shown above them. Revised Amount is still Approved + the net of all the adjustments, worked out per line from the same ledger.
+- Revision ledger: approving a Budget Revision / Realignment records one transaction per line in `fims.budget_line_item_revision_transaction` — the amount, the previous amount and the new amount — and the COB's
+  Revision column is the sum of that table. Together with the stable-`suggested_amount` model (a CBA only reserves, `suggested_amount` is never moved) the COB now reads `BudgetLineBalanceSql::exprs()`: Approved =
+  `suggested_amount` (the `+ CBA Requested − adjustment` rebuild is gone), Revision = the ledger total, Revised = Approved + Revision, CBA Requested = reserved + committed earmarks. Older adjustments are moved
+  into the ledger by `03 - alter_table/52 - budget_line_item_revision_transaction_backfill.sql`.
+- Remaining Balance: it was Revised − RFA − LAA, so a CBA never lowered it (only Available). It is now **Revised − CBA Requested** (the earmark table's active + converted rows), the one remaining-balance
+  definition (`BudgetLineBalanceSql`) behind the COB, the RFA / LAA page's Unallocated Amount (`revised_computed − cba_requested`) and the Budget Revision form's Current balance — which now also takes off
+  what CBAs hold, so a revision's New Amount is the line's new remaining balance.
 - CO / COE: the COB and RFA / LAA Monitoring pages separate **CO** (accounts `1…`, the programs' projects) from **COE** (no program; PS `5-01…` / MOOE `5-02…`), the way the
   Budget Proposal "View as COB" does; the "No program" / "No project" rows of those pages are gone.

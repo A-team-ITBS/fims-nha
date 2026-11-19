@@ -693,9 +693,16 @@ function bpr_defaultCoeFundId() {
     return BPR_FUNDS?.find(f => String(f.name).trim().toUpperCase() === 'CORPORATE RECEIPT')?.type_of_fund_id ?? null;
 }
 
+// Program/Project line items (not COE) default a not-yet-set Type of Fund to "NG SUPPORT - GAA" —
+// same idea as bpr_defaultCoeFundId above, just the other request type's usual fund source. Still
+// just the select's initial value, not forced: the Budget Officer can change it before Endorse.
+function bpr_defaultRegularFundId() {
+    return BPR_FUNDS?.find(f => String(f.name).trim().toUpperCase() === 'NG SUPPORT - GAA')?.type_of_fund_id ?? null;
+}
+
 // isCoe: true for a COE line item's row (bpr_coeBlockHtml) — see bpr_defaultCoeFundId above.
 function bpr_rowHtml(li, isCoe = false) {
-    const fundId = li.type_of_fund_id ?? (isCoe ? bpr_defaultCoeFundId() : null);
+    const fundId = li.type_of_fund_id ?? (isCoe ? bpr_defaultCoeFundId() : bpr_defaultRegularFundId());
     return `<tr data-li-id="${Number(li.budget_line_item_id)}">
         <td><select class="nha-filter-select bpr-field bpr-fund">${bpr_optionsHtml(BPR_FUNDS, 'type_of_fund_id', fundId)}</select></td>
         <!-- <td><select class="nha-filter-select bpr-field bpr-component">${bpr_optionsHtml(BPR_COMPONENTS, 'component_type_id', li.component_id)}</select></td> -->
@@ -732,7 +739,7 @@ function bpr_updateTotals() {
 function bpr_tableHtml(project) {
     const lineItems = project.line_items ?? [];
     const rowsHtml  = lineItems.length
-        ? lineItems.map(bpr_rowHtml).join('')
+        ? lineItems.map(li => bpr_rowHtml(li)).join('')
         : '<tr><td colspan="5"><div class="bpr-empty">No line items have been added under this project.</div></td></tr>';
 
     return `<div class="bpr-tbl-wrap">

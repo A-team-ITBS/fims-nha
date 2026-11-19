@@ -70,6 +70,12 @@ $_cob_showReport = false;
 #cob-root .cob-unassigned { font-style: italic; color: #B45309; }
 #cob-root .cob-num { font-family: 'IBM Plex Mono', monospace; font-size: 12px; text-align: right; white-space: nowrap; }
 #cob-root .cob-neg { color: #dc2626; }
+#cob-root .cob-pos { color: var(--green-txt, #0C7539); }
+/* the Revision / Realignment cell: one line per part (Revision, Realignment), label on the left and the signed amount on the right */
+#cob-root .cob-tbl thead th[data-col="revision_amount"], #cob-root .cob-tbl td.cob-adj { min-width: 196px; }
+#cob-root .cob-adj > div { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+#cob-root .cob-adj > div + div { margin-top: 2px; }
+#cob-root .cob-adj-k { font-family: 'IBM Plex Sans', sans-serif; font-size: 10px; font-weight: 500; letter-spacing: .03em; text-transform: uppercase; color: var(--afims-text-muted, #62657E); }
 #cob-root .cob-dash { color: var(--afims-text-disabled, #A9AAB8); }
 #cob-root .cob-clip { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; font-weight: 600; color: var(--afims-primary-text, #0035A9); }
 #cob-root .cob-clip svg { width: 12px; height: 12px; stroke: currentColor; }
@@ -128,7 +134,7 @@ $_cob_showReport = false;
                 <div class="nha-sc-label">Remaining Balance</div>
                 <div class="nha-sc-val" id="cob-kpi-remaining">—</div>
             </div></div>
-            <p class="nha-kpi-sub">Revised Amount less RFA Approved and LAA Issued</p>
+            <p class="nha-kpi-sub">Revised Amount less CBA Requested</p>
         </div>
     </div>
 
@@ -189,13 +195,13 @@ $_cob_showReport = false;
     // The columns of the COB Monitoring sheet (key = what the API sends, in this order) — cob-page's JS carries the same list (COB_COLS).
     $_cob_cols = [
         ['approved_amount', 'Approved Amount', 'The amount FMD suggested in the Budget Proposal module, before any revision or CBA'],
-        ['revision_amount', 'Revision / Realignment', 'Net of the approved Budget Revisions (an increase, or a decrease in brackets)'],
+        ['revision_amount', 'Revision / Realignment', 'A project shows only its LATEST revision or realignment, with its sign: an addition is + (green), a deduction − (red); a realignment is − on the budget that gave funds up and + on the one that received them. Parent rows and the TOTAL have no figure here. Revised Amount is still worked out from all the revisions and realignments'],
         ['revised_amount', 'Revised Amount', 'Approved Amount net of Revision / Realignment (a decrease lowers it)'],
-        ['cba_requested', 'CBA Requested', 'Taken off the budget by approved CBAs (Certificates of Budget Availability)'],
+        ['cba_requested', 'CBA Requested', 'Held against the budget by approved CBAs (Certificates of Budget Availability) — read from the earmark table, including what RFAs / LAAs have since drawn from them'],
         ['available_amount', 'Available for Earmarking', 'Revised Amount less CBA Requested — what a new CBA can still draw'],
         ['rfa_approved', 'RFA Approved', 'Drawn from the CBAs by approved RFAs'],
         ['laa_issued', 'LAA Issued', 'Drawn from the CBAs by issued LAAs'],
-        ['remaining_balance', 'Remaining Balance', 'Revised Amount less RFA Approved and LAA Issued'],
+        ['remaining_balance', 'Remaining Balance', 'Revised Amount less CBA Requested — what is left of the revised budget once the CBAs (and what RFAs / LAAs drew from them) are taken off'],
     ];
     foreach ([
         'program'     => 'CO: Program → Sub-Program → Originating Unit → Project · COE: PS / MOOE → Originating Unit → Request',
@@ -236,9 +242,9 @@ $_cob_showReport = false;
                 </table>
             </div>
             <p class="cob-note">Only <strong>Approved</strong> budget requests are counted. <strong>Approved Amount</strong> is what FMD suggested in the Budget Proposal module, as first suggested — before any revision or CBA;
-                <strong>Revision / Realignment</strong> is the net of its approved Budget Revisions (a decrease is in brackets), and <strong>Revised Amount</strong> is the Approved Amount net of it. <strong>CBA Requested</strong> is what approved CBAs have taken off the
-                budget, which leaves <strong>Available for Earmarking</strong>. A CBA only reserves money: <strong>RFA Approved</strong> and <strong>LAA Issued</strong> are what has
-                actually been drawn from those reservations, so <strong>Remaining Balance</strong> is the Revised Amount less both. A dash means zero; brackets mean negative.
+                <strong>Revision / Realignment</strong> shows, on a project, only its <strong>latest</strong> approved revision or realignment — signed and coloured: a deduction <strong>−</strong> in red and an addition <strong>+</strong> in green, so the budget that gave funds up reads <strong>−</strong> and the one that received them <strong>+</strong>. Parent rows and the <strong>TOTAL</strong> have no figure in this column; <strong>Revised Amount</strong> is still worked out from all of a budget's approved revisions and realignments. <strong>CBA Requested</strong> is what approved CBAs hold against the
+                budget (their reservations plus what RFAs and LAAs have since drawn from them — all read from the earmark table), which leaves <strong>Available for Earmarking</strong>. A CBA reserves money: <strong>RFA Approved</strong> and <strong>LAA Issued</strong> are what has
+                actually been drawn from those reservations (already part of CBA Requested), and <strong>Remaining Balance</strong> is the Revised Amount less CBA Requested. A dash means zero; brackets mean negative.
                 The table is in two parts. <strong>CO</strong> (capital outlay, accounts starting with 1) is the budget of the programs and their projects. <strong>COE</strong> is the budget
                 that belongs to no program — a COE budget request has only line items, no program or project — and is split into <strong>PS</strong> (accounts 5-01) and
                 <strong>MOOE</strong> (accounts 5-02), then by originating unit.</p>
@@ -273,12 +279,15 @@ if ($_cob_showReport) {
    What it shows: ONLY the Approved budget requests (fims.budget_req, status 'Approved') and what hangs off them — programs, sub-programs, projects,
    chart-of-accounts line items, supporting documents — in the eight columns of the COB Monitoring sheet (CobService has the exact definitions):
      Approved Amount        what FMD suggested in the Budget Proposal module, as first suggested (before any revision or CBA)
-     Revision / Realignment net of the approved Budget Revisions (signed: a decrease is negative)
-     Revised Amount         = Approved Amount + Revision / Realignment (worked out per line)
-     CBA Requested          taken off the budget by approved CBAs
-     Available for Earmarking = Revised Amount - CBA Requested (the line's live balance)
+     Revision / Realignment on a project, only the LATEST approved one (signed: an addition is + in green, a deduction − in red; a realignment is − on the budget that
+                            gave funds up and + on the one that received them); nothing on a parent row or the TOTAL
+     Revised Amount         = Approved Amount + the net of all the revisions and realignments (worked out per line)
+     CBA Requested          held against the budget by approved CBAs: their active reservations plus what RFAs / LAAs have drawn from them
+     Available for Earmarking = Revised Amount - CBA Requested (what a new CBA can still draw)
      RFA Approved / LAA Issued   drawn from the CBAs' reservations by approved RFAs / LAAs
-     Remaining Balance      = Revised Amount - RFA Approved - LAA Issued
+     Remaining Balance      = Revised Amount - CBA Requested (the same figure as Available for Earmarking; what RFAs / LAAs drew is inside CBA Requested)
+   CBA Requested, RFA Approved and LAA Issued are all summed by the server from fims.budget_line_item_earmark (BudgetLineBalanceSql::earmarkAggregateSql()), so they —
+   and Available and Remaining, which are worked out from them — change as soon as a CBA / RFA / LAA is approved or deleted; this page only displays them.
    CO and COE: the Per Program tree is asked for with split_coe=1 and so starts with two rows — CO (capital outlay: Program > Sub-Program > Originating Unit >
    Project) and COE (the lines of a budget request that has no program, as PS / MOOE > Originating Unit > Request). A line is told apart by its account code:
    1… is CO, 5-01… is PS, 5-02… is MOOE; PS and MOOE are the COE (CobService::expenseClassSql() / costTypeOf()). Those are the 'bucket', 'class' and 'request' nodes.
@@ -563,8 +572,31 @@ function cob_nodeLabel(n, tab) {
     return html;
 }
 
-function cob_amountCells(o) {
-    return COB_COLS.map(k => `<td class="cob-num">${cob_num(o[k])}</td>`).join('');
+// The Revision / Realignment column is SIGNED and coloured: funds taken off a budget (a decrease, or what a realignment gave up) read - in red, funds added to it (an
+// increase, or what a realignment received) + in green. Every other column keeps the sheet's brackets.
+function cob_signed(v) {
+    const n = Number(v || 0);
+    if (Math.abs(n) < 0.005) return '<span class="cob-dash">-</span>';
+    return n < 0 ? `<span class="cob-neg">−${cob_scaled(-n)}</span>` : `<span class="cob-pos">+${cob_scaled(n)}</span>`;
+}
+// The Revision / Realignment cell. A project (or a COE request) shows only what the LATEST approved request changed on it — the server sends latest_revision_amount and
+// latest_realignment_amount: the budget that gave funds up by realignment reads "Realignment − (red)", the one that received them "Realignment + (green)"; an older revision is not in
+// those lines. A part that is nothing is left out; no adjustment at all is a dash. A parent row (bucket, program, sub-program, unit, class) and the grand TOTAL row show NOTHING in this column:
+// there is no total of the revisions / realignments (Revised Amount is still worked out from all of them, per line, on the server).
+const cob_peso = n => '₱ ' + Math.abs(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function cob_adjCell(o, leaf) {
+    if (!leaf) return '<td class="cob-num"></td>';
+    const rev = Number(o.latest_revision_amount || 0), rea = Number(o.latest_realignment_amount || 0), net = Number(o.revision_amount || 0);
+    const netText = Math.abs(net) < 0.005 ? '—' : (net < 0 ? '−' : '+') + cob_peso(net);
+    const line = (tag, n) => Math.abs(n) < 0.005 ? '' : `<div><span class="cob-adj-k">${tag}</span>${cob_signed(n)}</div>`;
+    const lines = line('Revision', rev) + line('Realignment', rea);
+    // a leaf whose latest request nets to nothing on it (e.g. a realignment between two of its own lines) but that has earlier adjustments still shows its net, so it is never blank while Revised differs from Approved
+    if (!lines) return Math.abs(net) < 0.005 ? '<td class="cob-num cob-adj"><span class="cob-dash">-</span></td>' : `<td class="cob-num">${cob_signed(net)}</td>`;
+    const title = `Latest adjustment only. Net of all revisions and realignments to date: ${netText} (Approved Amount + this net = Revised Amount)`;
+    return `<td class="cob-num cob-adj" title="${cob_esc(title)}">${lines}</td>`;
+}
+function cob_amountCells(o, leaf) {
+    return COB_COLS.map(k => k === 'revision_amount' ? cob_adjCell(o, !!leaf) : `<td class="cob-num">${cob_num(o[k])}</td>`).join('');
 }
 
 function cob_treeRow(n, depth, path, hasKids, open, tab) {
@@ -578,7 +610,7 @@ function cob_treeRow(n, depth, path, hasKids, open, tab) {
     return `<tr class="cob-row cob-d${Math.min(depth, 4)} cob-t-${cob_esc(n.type)}${bucketCls}${hasKids ? ' cob-has-kids' : ''}${open ? ' open' : ''}" data-path="${cob_esc(path)}"${hasKids ? ` tabindex="0" role="button" aria-expanded="${open}"` : ''}>
         <td class="cob-code">${codeCell}</td>
         <td><div class="cob-name" style="--d:${depth}">${hasKids ? COB_CARET.replace('%OPEN%', open ? ' open' : '') : '<span class="cob-caret-sp"></span>'}${cob_nodeLabel(n, tab)}</div></td>
-        ${cob_amountCells(n)}
+        ${cob_amountCells(n, n.type === 'project' || n.type === 'request')}
         <td class="no-print">${view}</td></tr>`;
 }
 

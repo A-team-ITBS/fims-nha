@@ -350,8 +350,14 @@ class BudgetReqService
         ) ?: [];
 
         $lineItemRows = App\ExecuteRows(
+            // revision_amount: the line's net of approved Budget Revisions / Realignments, summed from the ledger fims.budget_line_item_revision_transaction;
+            // latest_adjustment: the amount of its last ledger row (the card's "Latest adjustment"); held_amount: what approved CBAs / CFAs hold against the line and RFAs / LAAs have drawn (the earmark table). The Budget Revision form works out the
+            // line's current balance from them: suggested_amount + revision_amount - held_amount (approving a revision no longer changes suggested_amount)
             "SELECT li.*, coa.account_code, coa.account_title,
-                    tof.name AS type_of_fund_name, ct.name AS component_name
+                    tof.name AS type_of_fund_name, ct.name AS component_name,
+                    " . BudgetLineBalanceSql::revisionExpr('li') . " AS revision_amount,
+                    " . BudgetLineBalanceSql::latestExpr('li') . " AS latest_adjustment,
+                    " . BudgetLineBalanceSql::heldExpr('li') . " AS held_amount
              FROM {$this->tableLineItems} li
              LEFT JOIN {$this->tableChartOfAccounts} coa ON coa.account_id = li.account_id
              LEFT JOIN {$this->tableTypeOfFund} tof ON tof.type_of_fund_id = li.type_of_fund_id
