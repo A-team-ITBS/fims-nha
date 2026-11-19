@@ -30,14 +30,21 @@ class ChartOfAccountsService
         string $status = ''
     ): array {
         try {
-            $where = ["status = 'Active'"];
+            $where = [];
+            $status = trim($status);
+
+            if ($status === '' || strcasecmp($status, 'Active') === 0) {
+                $where[] = "status = 'Active'";
+            } elseif (strcasecmp($status, 'All') !== 0) {
+                $where[] = 'status = ' . App\QuotedValue($status, DT::STRING, 'DB');
+            }
 
             if ($search !== '') {
                 $s = App\QuotedValue('%' . $search . '%', DT::STRING, 'DB');
                 $where[] = "(account_code ILIKE {$s} OR account_title ILIKE {$s})";
             }
 
-            $whereSql = implode(' AND ', $where);
+            $whereSql = $where ? implode(' AND ', $where) : '1=1';
 
             $sql = "SELECT * FROM {$this->table} WHERE {$whereSql} ORDER BY account_code ASC";
 
