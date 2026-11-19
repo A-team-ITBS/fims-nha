@@ -39,6 +39,13 @@ namespace PHPMaker2024\FIMS;
  */
 @session_start();
 $_rlm_api = Config('API.FIMS_URL');
+
+// The REV / REA OUT / REA IN rows (the approved revisions and realignments recorded against a project) are not shown under a project: the server is not asked for them and
+// the table's note does not mention them. Set this to true to bring them back (the Revised Amount, the totals and the cards do not change either way — they already include them).
+$_rlm_showRevisions = false;
+
+// The explanatory note under the table ("Each row is a project of an Approved budget request; …") is not shown. Set this to true to bring it back.
+$_rlm_showNote = false;
 ?>
 
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -263,13 +270,15 @@ $_rlm_api = Config('API.FIMS_URL');
                 </tbody>
             </table>
         </div>
+        <?php if ($_rlm_showNote) { ?>
         <p class="rlm-note">Each row is a project of an <strong>Approved</strong> budget request; under the project's name is where it sits (program › sub-program › originating unit). <strong>Revised Amount</strong> is the approved budget (as FMD suggested it) net of its revisions and realignments (a decrease lowers it) — the same figure as on the COB page.
             <strong>RFA / LAA Amount</strong> is what approved RFAs and issued LAAs have drawn from the CBAs' reservations, and <strong>Unallocated Amount</strong> is the remaining balance: the
             Revised Amount less CBA Requested (what the CBAs hold, which already includes those draws) — the same figure as the COB page's Remaining Balance. <strong>Disbursement</strong> is the gross amount of the disbursement vouchers connected to the RFAs and LAAs (a cancelled or rejected voucher is not counted) and is included in every total, and <strong>Account Payable</strong> is the RFA / LAA Amount less it. Open a project to see
-            the approved <strong>revisions and realignments</strong> recorded against it (one row each, its signed amount in the Revised Amount column, − in red and + in green — a realignment has an <strong>out</strong> row and an <strong>in</strong> row, both under the project when they are in the same one) and the RFAs and LAAs drawn against it, and an RFA or LAA that has a disbursement voucher connected (a "1 DV" tag) to see it. A dash means zero; brackets mean negative.
+            <?php if ($_rlm_showRevisions) { ?>the approved <strong>revisions and realignments</strong> recorded against it (one row each, its signed amount in the Revised Amount column, − in red and + in green — a realignment has an <strong>out</strong> row and an <strong>in</strong> row, both under the project when they are in the same one) and <?php } ?>the RFAs and LAAs drawn against it, and an RFA or LAA that has a disbursement voucher connected (a "1 DV" tag) to see it. A dash means zero; brackets mean negative.
             The table is in two parts. <strong>CO</strong> (capital outlay, accounts starting with 1) lists the projects of the programs. <strong>COE</strong> lists the budget that belongs to no program —
             a COE budget request has only line items, no program or project — split into <strong>PS</strong> (accounts 5-01) and <strong>MOOE</strong> (accounts 5-02), each request
             with its RFAs and LAAs under it.</p>
+        <?php } ?>
     </div>
 
 <?php
@@ -308,6 +317,8 @@ include __DIR__.'/readone/cob-readone.php';
 // COB_API is the name the shared request viewer (readone/cob-readone.php) reads when a View is opened, so this page uses it for its own requests too
 const COB_API = '<?php echo $_rlm_api; ?>' + '/cob';
 const RLM_LAYOUT = 'program';
+// whether the approved revisions / realignments are listed under a project (REV / REA OUT / REA IN rows) — switched off, see $_rlm_showRevisions at the top of this file
+const RLM_SHOW_REVISIONS = <?php echo $_rlm_showRevisions ? 'true' : 'false'; ?>;
 const RLM_UNITS = {
     full: { div: 1, suffix: '', note: 'Amounts in ₱' },
     thousand: { div: 1e3, suffix: ' K', note: 'Amounts in ₱ thousands' },
@@ -508,9 +519,9 @@ async function rlm_loadTree() {
     const my = ++rlm.seq;
     rlm_busy(true);
     try {
-        // with_allocations=1: the RFAs / LAAs (and an RFA's voucher) under each project; with_revisions=1: the approved revisions / realignments recorded against it
-        const json = await rlm_request('rollup', rlm_params({ layout_by: RLM_LAYOUT, with_allocations: '1', with_revisions: '1', split_coe: '1' }));
-        if (json.revision_error) rlm_toast(json.revision_error, 'warning');
+        // with_allocations=1: the RFAs / LAAs (and an RFA's voucher) under each project; with_revisions=1 (only while RLM_SHOW_REVISIONS is on): the approved revisions / realignments recorded against it
+        const json = await rlm_request('rollup', rlm_params(Object.assign({ layout_by: RLM_LAYOUT, with_allocations: '1', split_coe: '1' }, RLM_SHOW_REVISIONS ? { with_revisions: '1' } : {})));
+        if (json.revision_error && RLM_SHOW_REVISIONS) rlm_toast(json.revision_error, 'warning');
         if (my !== rlm.seq) return;
         rlm.data = rlm_regroup(json.data || []); rlm.totals = json.totals || null;
         if (json.allocation_error) rlm_toast(json.allocation_error, 'warning');
