@@ -116,6 +116,9 @@
     <menu id="768">
       <phrase id="menutext" value="Cash Flow" />
     </menu>
+    <menu id="769">
+      <phrase id="menutext" value="Bank Reconciliation" />
+    </menu>
     <menu id="766">
       <phrase id="menutext" value="Work-In-Process" />
     </menu>
@@ -1825,6 +1828,9 @@
     </table>
     <table id="cash_flow_page">
       <phrase id="tblcaption" value="Cash Flow" />
+    </table>
+    <table id="bank_reconciliation_page">
+      <phrase id="tblcaption" value="Bank Reconciliation" />
     </table>
   </project>
 </ew-language>

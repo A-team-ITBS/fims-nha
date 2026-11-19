@@ -128,6 +128,7 @@
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone ($p['PHPMaker2024\\FIMS\\Attributes\\Get'] ?? \Symfony\Component\VarExporter\Internal\Registry::p('PHPMaker2024\\FIMS\\Attributes\\Get')),
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Get'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
@@ -226,6 +227,11 @@
     [
         'PHPMaker2024\\FIMS\\Attributes\\Map' => [
             'methods' => [
+                [
+                    'GET',
+                    'POST',
+                    'OPTIONS',
+                ],
                 [
                     'GET',
                     'POST',
@@ -1357,6 +1363,7 @@
                 '/BalanceSheetPage[/{params:.*}]',
                 '/BankAccountManagementPage[/{params:.*}]',
                 '/BankManagementPage[/{params:.*}]',
+                '/BankReconciliationPage[/{params:.*}]',
                 '/BudgetAllocationForm[/{params:.*}]',
                 '/BudgetProposalReview[/{params:.*}]',
                 '/BudgetProposalReviewPage[/{params:.*}]',
@@ -1580,6 +1587,7 @@
                 'PHPMaker2024\\FIMS\\BalanceSheetPageController:custom',
                 'PHPMaker2024\\FIMS\\BankAccountManagementPageController:custom',
                 'PHPMaker2024\\FIMS\\BankManagementPageController:custom',
+                'PHPMaker2024\\FIMS\\BankReconciliationPageController:custom',
                 'PHPMaker2024\\FIMS\\BudgetAllocationFormController:custom',
                 'PHPMaker2024\\FIMS\\BudgetProposalReviewController:custom',
                 'PHPMaker2024\\FIMS\\BudgetProposalReviewPageController:custom',
@@ -1775,6 +1783,9 @@
                 'PHPMaker2024\\FIMS\\WorkInProcessPageController:custom',
             ],
             'middleware' => [
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
                 [
                     'PHPMaker2024\\FIMS\\PermissionMiddleware',
                 ],
@@ -2466,6 +2477,7 @@
                 'custom.balance_sheet_page',
                 'custom.bank_account_management_page',
                 'custom.bank_management_page',
+                'custom.bank_reconciliation_page',
                 'custom.budget_allocation_form',
                 'custom.budget_proposal_review',
                 'custom.budget_proposal_review_page',
@@ -2661,6 +2673,7 @@
                 'custom.work_in_process_page',
             ],
             'options' => [
+                [],
                 [],
                 [],
                 [],
@@ -3107,6 +3120,7 @@
         $o[218],
         $o[219],
         $o[220],
+        $o[221],
     ],
     []
 );
