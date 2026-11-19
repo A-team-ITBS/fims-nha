@@ -1,7 +1,7 @@
 <ew-language date="2026/11/19" id="en-US" author="e.World Technology Limited">
   <project>
-    <phrase id="bodytitle" value="UAC - User Access Control System" />
-    <phrase id="footertext" value="&amp;copy;2024 ITBS Corporation. All rights reserved." />
+    <phrase id="bodytitle" value="NHA - FIMS" />
+    <phrase id="footertext" value="&amp;copy;2026 ITBS Corporation. All rights reserved." />
     <menu id="262">
       <phrase id="menutext" value="notification reads" />
     </menu>
