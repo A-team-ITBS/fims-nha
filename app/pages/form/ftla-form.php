@@ -1213,27 +1213,42 @@ function ftlm_prevStep() {
 }
 
 /* ── Bank accounts ─────────────────────────────────────── */
-function ftlm_bankOptsHtml(banks) {
+function ftlm_bankById(id) {
+    return ftlm_banks.find(b => String(b.bank_account_id) === String(id)) || null;
+}
+// excludeId drops an already-picked account from the OTHER side of the same
+// row (a debit row's own From can't also be its own To, and vice versa —
+// same rule FtlaService::create()/update() already enforce server-side).
+// matchBankName, once the other side has picked a bank, narrows this side
+// down to accounts at that SAME bank — a transfer's From and To are always
+// expected to be the same institution (e.g. both Landbank).
+function ftlm_bankOptsHtml(banks, { excludeId = '', matchBankName = '', currentValue = '' } = {}) {
+    const rows = banks.filter(b =>
+        String(b.bank_account_id) === String(currentValue || '') || (
+            String(b.bank_account_id) !== String(excludeId || '') &&
+            (!matchBankName || b.bank_name === matchBankName)
+        )
+    );
     return '<option value="">— Select —</option>' +
-        banks.map(b => `<option value="${b.bank_account_id}">${b.bank_name} — ${b.account_name} (${b.account_number})</option>`).join('');
+        rows.map(b => `<option value="${b.bank_account_id}">${b.bank_name} — ${b.account_name} (${b.account_number})</option>`).join('');
 }
 
 // "1 DV per account" — same ftlm_dvOptions list (loaded in full by
 // ftlm_loadDvOptions(), status=RELEASED) used for both the single-debit DV
 // select (#ftlm_dv_number) and each multi-debit row's own DV select below.
-// Once a DV is tagged to an FTLA, it's hidden from every OTHER select so
+// Once a DV is tagged to an FTLA, it's dropped from every OTHER select so
 // the same DV never gets tagged to two different FTLAs — see
 // ftlm_loadUsedDvNumbers()/ftlm_usedDvNumbers below (fetched fresh every
 // ftlm_open(), not cached like ftlm_dvOptions, since "used by someone
 // else" depends on which record — if any — is currently being edited).
-// currentValue is always kept selectable even if it's in the used set —
-// it's this exact select's own already-chosen value (excluded server-side
-// via exclude_id for the record being edited, but kept here too as a
-// belt-and-suspenders guard against it silently disappearing).
-function ftlm_dvOptsHtml(currentValue = '') {
+// The record being edited sees its OWN already-chosen DV(s) because the
+// server excludes that record's own usage from the used-set (exclude_id —
+// see FtlaService::getUsedDvNumbers()), not because of anything here: this
+// list only ever shows DVs that are actually still unused.
+function ftlm_dvOptsHtml(currentValue = '', excludeAlso = []) {
     return '<option value="">— Select DV —</option>' +
         ftlm_dvOptions
-            .filter(r => r.dv_no === currentValue || !ftlm_usedDvNumbers.includes(r.dv_no))
+            .filter(r => !ftlm_usedDvNumbers.includes(r.dv_no) && !excludeAlso.includes(r.dv_no))
             .map(r => {
                 const amt = r.net_amount ? ` — ₱${ftlm_fmtPeso(r.net_amount)}` : '';
                 const who = r.claimant_name ? ` (${ftlmEsc(r.claimant_name)})` : '';
@@ -1325,6 +1340,15 @@ function ftlm_removeDebitRow(idx) {
 function ftlm_onDebitRowChange(idx, field, value) {
     if (!ftlm_debitRows[idx]) return;
     ftlm_debitRows[idx][field] = value;
+    // From/To changing which bank is picked narrows the OTHER side's own
+    // options (same account can't be picked twice; the other side locks to
+    // the same bank — see ftlm_bankOptsHtml()) — re-render so that select's
+    // option list actually reflects the new constraint immediately.
+    if (field === 'bank_account_id' || field === 'to_bank_account_id') {
+        ftlm_renderDebitRows();
+        ftlm_schedulePreviewUpdate();
+        return;
+    }
     ftlm_recalcDebitTotal();
     ftlm_schedulePreviewUpdate();
 }
@@ -1354,17 +1378,26 @@ function ftlm_renderDebitRows() {
         <tr>
             <td style="padding:4px 10px;">
                 <select class="form-control" onchange="ftlm_onDebitRowChange(${idx}, 'bank_account_id', this.value)">
-                    ${ftlm_bankOptsHtml(ftlm_banks).replace(`value="${row.bank_account_id}"`, `value="${row.bank_account_id}" selected`)}
+                    ${ftlm_bankOptsHtml(ftlm_banks, {
+                        excludeId: row.to_bank_account_id,
+                        matchBankName: ftlm_bankById(row.to_bank_account_id)?.bank_name || '',
+                        currentValue: row.bank_account_id,
+                    }).replace(`value="${row.bank_account_id}"`, `value="${row.bank_account_id}" selected`)}
                 </select>
             </td>
             <td style="padding:4px 10px;">
                 <select class="form-control" onchange="ftlm_onDebitRowChange(${idx}, 'to_bank_account_id', this.value)">
-                    ${ftlm_bankOptsHtml(ftlm_banks).replace(`value="${row.to_bank_account_id}"`, `value="${row.to_bank_account_id}" selected`)}
+                    ${ftlm_bankOptsHtml(ftlm_banks, {
+                        excludeId: row.bank_account_id,
+                        matchBankName: ftlm_bankById(row.bank_account_id)?.bank_name || '',
+                        currentValue: row.to_bank_account_id,
+                    }).replace(`value="${row.to_bank_account_id}"`, `value="${row.to_bank_account_id}" selected`)}
                 </select>
             </td>
             <td style="padding:4px 10px;">
                 <select class="form-control" onchange="ftlm_onDebitDvChange(${idx}, this.value)">
-                    ${ftlm_dvOptsHtml(row.dv_no || '').replace(`value="${row.dv_no || ''}"`, `value="${row.dv_no || ''}" selected`)}
+                    ${ftlm_dvOptsHtml(row.dv_no || '', ftlm_debitRows.filter((r, i) => i !== idx).map(r => r.dv_no).filter(Boolean))
+                        .replace(`value="${row.dv_no || ''}"`, `value="${row.dv_no || ''}" selected`)}
                 </select>
             </td>
             <td style="padding:4px 10px;">
@@ -1504,8 +1537,8 @@ function ftlm_onRfaSelect() {
 }
 
 /* ── DV Number(s) — "1 DV per account" ─────────────────────
-   Reuses /voucher/list (the same route the Voucher pages already use)
-   filtered to approved DVs — same reuse-what-exists approach as the
+   Reuses /voucher/list (the same route the Voucher pages already use),
+   unfiltered by status — every DV, same reuse-what-exists approach as the
    LAA/RFA pickers above. DV numbers are data-only: saved for recordkeeping,
    never referenced in the generated memo/PDF/DOCX (same treatment as Bank
    Officers/Request Reference/Remarks). A single-debit transfer gets one
@@ -1515,10 +1548,12 @@ function ftlm_onRfaSelect() {
    ftlm_toggleMultiDebit(). */
 async function ftlm_loadDvOptions() {
     try {
-        // status=RELEASED — fims.disbursement_vouchers' terminal "money actually went out"
-        // status (see DisbursementVoucherService's summary query); no voucher_type filter
-        // exists on this route (fims-nha doesn't split DV/other types the way REGIONAL did).
-        const res  = await ftlm_fetch('voucher/list?status=RELEASED&limit=500');
+        // No status filter — show every DV regardless of where it is in its
+        // own workflow (DRAFT through RELEASED), not just the terminal
+        // "money actually went out" status. DV No. here is data-only
+        // recordkeeping (see this function's docblock above), so there's no
+        // correctness reason to withhold an in-progress DV from the picker.
+        const res  = await ftlm_fetch('voucher/list?limit=500');
         const rows = Array.isArray(res.data) ? res.data : (res.data?.rows || []);
         ftlm_dvOptions = rows;
         const sel = ftlm$('ftlm_dv_number');

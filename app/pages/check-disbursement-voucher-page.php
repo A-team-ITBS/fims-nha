@@ -833,6 +833,25 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
             .catch(function () { btn.disabled = false; toast('Could not reach the server.', true); });
     }
 
+    // Populates the Bulk scope's department picker from
+    // GET /check-processing/releases/departments — fetched fresh each time
+    // the modal opens rather than cached, same reasoning as the other
+    // lookups on this page.
+    function loadNoticeBulkDepartments() {
+        const sel = document.getElementById('noticeBulkDept');
+        if (!sel) return;
+        sel.innerHTML = '<option value="">Loading...</option>';
+        fetch(API + '/releases/departments', { headers: authHeaders() })
+            .then(r => r.json())
+            .then(function (json) {
+                const rows = (json && json.data) ? json.data : [];
+                sel.innerHTML = '<option value="">Select...</option>' +
+                    rows.map(d => '<option value="' + d.department_id + '">' + escapeHtml(d.department_name) +
+                        (d.department_acronym ? ' (' + escapeHtml(d.department_acronym) + ')' : '') + '</option>').join('');
+            })
+            .catch(() => { sel.innerHTML = '<option value="">Failed to load</option>'; });
+    }
+
     function openSendNoticeModal(releaseId, checkNumber, claimantName, claimantEmail) {
         const err = document.getElementById('noticeError');
         if (err) err.style.display = 'none';
@@ -843,7 +862,7 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
         document.getElementById('noticeBulkPendingBody').innerHTML = '';
         document.getElementById('noticeScope').value = 'SINGLE';
         document.getElementById('noticeScope').dispatchEvent(new Event('change'));
-        fillDepartmentSelect('#noticeBulkDept', 'Select...');
+        loadNoticeBulkDepartments();
         const sel = document.getElementById('noticeSingleRelease');
         sel.innerHTML = '<option value="' + releaseId + '" data-email="' + escapeHtml(claimantEmail || '') + '">' +
             escapeHtml(checkNumber || '') + ' — ' + escapeHtml(claimantName || '') + '</option>';
