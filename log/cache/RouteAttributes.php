@@ -129,7 +129,6 @@
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
-        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone ($p['PHPMaker2024\\FIMS\\Attributes\\Get'] ?? \Symfony\Component\VarExporter\Internal\Registry::p('PHPMaker2024\\FIMS\\Attributes\\Get')),
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Get'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
@@ -228,11 +227,6 @@
     [
         'PHPMaker2024\\FIMS\\Attributes\\Map' => [
             'methods' => [
-                [
-                    'GET',
-                    'POST',
-                    'OPTIONS',
-                ],
                 [
                     'GET',
                     'POST',
@@ -2178,9 +2172,6 @@
                 [
                     'PHPMaker2024\\FIMS\\PermissionMiddleware',
                 ],
-                [
-                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
-                ],
                 [],
                 [
                     'PHPMaker2024\\FIMS\\PermissionMiddleware',
@@ -2907,7 +2898,6 @@
                 [],
                 [],
                 [],
-                [],
             ],
         ],
     ],
@@ -3134,7 +3124,6 @@
         $o[219],
         $o[220],
         $o[221],
-        $o[222],
     ],
     []
 );

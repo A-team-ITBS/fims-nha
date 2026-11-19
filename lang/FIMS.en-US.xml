@@ -176,6 +176,9 @@
     <menu id="765">
       <phrase id="menutext" value="Opening Balance" />
     </menu>
+    <menu id="769">
+      <phrase id="menutext" value="Closing Balance" />
+    </menu>
     <menu id="330">
       <phrase id="menutext" value="Fund Sourcing" />
     </menu>
@@ -1825,6 +1828,9 @@
     </table>
     <table id="cash_flow_page">
       <phrase id="tblcaption" value="Cash Flow" />
+    </table>
+    <table id="closing_balance_page">
+      <phrase id="tblcaption" value="Closing Balance" />
     </table>
   </project>
 </ew-language>

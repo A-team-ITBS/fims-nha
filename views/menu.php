@@ -59,7 +59,11 @@ $sideMenu->addMenuItem(761, "mi_payroll_page", $Language->menuPhrase("761", "Men
 $sideMenu->addMenuItem(762, "mi_remittance_page", $Language->menuPhrase("762", "MenuText"), "RemittancePage", 651, "", AllowListMenu('{FIMS}remittance-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(760, "mi_fidelity_bond_page", $Language->menuPhrase("760", "MenuText"), "FidelityBondPage", 651, "", AllowListMenu('{FIMS}fidelity-bond-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(765, "mi_opening_balance_page", $Language->menuPhrase("765", "MenuText"), "OpeningBalancePage", 651, "", AllowListMenu('{FIMS}opening-balance-page.php'), false, false, "", "", false, true);
+<<<<<<< HEAD
 $sideMenu->addMenuItem(770, "mi_closing_balance_page", $Language->menuPhrase("770", "MenuText"), "ClosingBalancePage", 651, "", AllowListMenu('{FIMS}closing-balance-page.php'), false, false, "", "", false, true);
+=======
+$sideMenu->addMenuItem(769, "mi_closing_balance_page", $Language->menuPhrase("769", "MenuText"), "ClosingBalancePage", 651, "", AllowListMenu('{FIMS}closing-balance-page.php'), false, false, "", "", false, true);
+>>>>>>> 34e5062dc2f32d449c623a232c06e694c3ebf42d
 $sideMenu->addMenuItem(392, "mi_fund_sourcing_dashboard_page", $Language->menuPhrase("392", "MenuText"), "FundSourcingDashboardPage", 330, "", AllowListMenu('{FIMS}fund-sourcing-dashboard-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(264, "mi_supplemental_funds_page", $Language->menuPhrase("264", "MenuText"), "SupplementalFundsPage", 330, "", AllowListMenu('{FIMS}supplemental-funds-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(265, "mi_trust_funds_page", $Language->menuPhrase("265", "MenuText"), "TrustFundsPage", 330, "", AllowListMenu('{FIMS}trust-funds-page.php'), false, false, "", "", false, true);

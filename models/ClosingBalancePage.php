@@ -38,7 +38,7 @@ class ClosingBalancePage
     public $View = null;
 
     // Title
-    public $Title = null;
+    public $Title = null; // Title for <title> tag
 
     // Rendering View
     public $RenderingView = false;
@@ -198,14 +198,31 @@ class ClosingBalancePage
                 $ar = array_merge($this->getMessages(), $url ? ["url" => GetUrl($url)] : []);
                 WriteJson($ar);
             }
+            $this->clearMessages(); // Clear messages for API request
             return;
+        } else { // Check if response is JSON
+            if (WithJsonResponse()) { // With JSON response
+                $this->clearMessages();
+                return;
+            }
         }
-        // Redirect
-        if ($url) {
+
+        // Go to URL if specified
+        if ($url != "") {
+            if (!Config("DEBUG") && ob_get_length()) {
+                ob_end_clean();
+            }
+            SaveDebugMessage();
             Redirect(GetUrl($url));
         }
+        return; // Return to controller
     }
 
+    /**
+     * Page run
+     *
+     * @return void
+     */
     public function run()
     {
         global $ExportType, $Language, $Security, $CurrentForm;
@@ -221,10 +238,10 @@ class ClosingBalancePage
             Profile()->setUserName(CurrentUserName())->loadFromStorage();
         }
         if (Get("export") !== null) {
-            $ExportType = Get("export");
+            $ExportType = Get("export"); // Get export parameter, used in header
         }
 
-        // Global Page Loading event
+        // Global Page Loading event (in userfn*.php)
         DispatchEvent(new PageLoadingEvent($this), PageLoadingEvent::NAME);
 
         // Page Load event
@@ -243,7 +260,7 @@ class ClosingBalancePage
             // Pass login status to client side
             SetClientVar("login", LoginStatus());
 
-            // Global Page Rendering event
+            // Global Page Rendering event (in userfn*.php)
             DispatchEvent(new PageRenderingEvent($this), PageRenderingEvent::NAME);
 
             // Page Render event
