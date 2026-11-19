@@ -352,7 +352,7 @@ $USER_LEVEL_TABLES = [["audit_logs","audit_logs","Audit Logs",false,"{FIMS}",""]
     ["statement-of-changes-page.php","statement_of_changes_page","Statement of Changes in Net Assets/Equity",true,"{FIMS}","StatementOfChangesPage"]];
 =======
     ["opening-balance-page.php","opening_balance_page","Opening Balance",true,"{FIMS}","OpeningBalancePage"],
-    ["work-in-process-page.php","work_in_process_page","Work-In-Process",true,"{FIMS}","WorkInProcessPage"],
+    ["work-in-process-page.php","work_in_process_page","Work-In-Process Inventory",true,"{FIMS}","WorkInProcessPage"],
     ["statement-of-changes-page.php","statement_of_changes_page","Changes in Net Assets/Equity",true,"{FIMS}","StatementOfChangesPage"],
     ["cash-flow-page.php","cash_flow_page","Cash Flow",true,"{FIMS}","CashFlowPage"]];
 >>>>>>> 88a3c0110e94bc0c00a5633b8c8a1862c2cdf1c4

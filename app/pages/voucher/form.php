@@ -252,7 +252,7 @@ html.afims-dark[data-bs-theme="dark"] #vf-root :is(input, select, textarea):is(:
                             <!-- RIGHT: RFA Multi-Select -->
                             <div>
                                 <div class="nha-fg">
-                                    <label>RFA <span class="nha-req">*</span> <span class="vf-hint" style="display:inline;">(search and select one or more)</span></label>
+                                    <label>RFA <span class="nha-req" id="vf-rfa-req">*</span> <span class="vf-hint" style="display:inline;" id="vf-rfa-note">(search and select one or more)</span></label>
                                     <input type="text" id="vf-rfa-search" placeholder="Search RFA number or reference no…" autocomplete="off">
                                     <div id="vf-rfa-dropdown" class="vf-rfa-dropdown"></div>
                                     <span class="vf-hint" id="vf-rfa-empty-hint" style="display:none;color:var(--afims-warning-text,#8A6400);">No RFAs are available yet — an RFA (Request for Allotment) must exist before a Disbursement Voucher can be created. Contact Budget/FMD to set one up.</span>
@@ -456,7 +456,7 @@ let vf_bound   = false;
 let vf_paymentsPrior = 0;    // sum of net_amount other active vouchers already drew against the selected RFA(s)
 let vf_selectedRfaIds = [];  // allocation_id values picked in the RFA multi-select, in selection order
 let vf_payrollPeriodId = null; // imported payroll month (payroll_period_id) this DV pays — picked in the Vendor dropdown's Payroll group — or null
-let vf_remittanceId = null;    // payroll remittance (payroll_remittance_id) this DV pays to GSIS / BIR / … — Voucher?remittance={id} — or null (no RFA needed)
+let vf_remittanceId = null;    // payroll remittance this DV pays — the month's agencies (GSIS / BIR / …), one DV per month — Voucher?remittance={id} — or null (no RFA needed)
 let vf_payrollMonths = [];     // imported payroll months a DV can be prepared from (GET payroll-management/available)
 let vf_attachments = [];     // staged Supporting Documents: { document_name, link, size, uploading }
 let vf_attDirty = false;     // true once the attachments list has changed since open — avoids re-registering an unchanged batch on every save
@@ -580,6 +580,7 @@ function vf_reset() {
     vf_remittanceId = null;
     vf_renderDedTypeButtons();
     $vf('vf-rfa-search').disabled = false;
+    vf_markRemittanceFields(null);   // back to a normal DV: vendor dropdown and required RFA
 
     vf_attachments  = [];
     vf_attDirty     = false;
@@ -1729,6 +1730,39 @@ function vf_applyRemittance(d) {
     vf_recalc();
     vf_refreshAllJevHints();
     vf_showRemittanceCard(d);
+    vf_markRemittanceFields(d);
+}
+
+/**
+ * A remittance DV has no vendor (the claimant is the agency, filled in) and needs no RFA (budgeted with the payroll):
+ * say so in those two fields instead of leaving "— None —" and a required, empty RFA. null puts them back.
+ */
+function vf_markRemittanceFields(d) {
+    const sel = $vf('vf-vendor');
+    sel.querySelector('option[data-remittance]')?.remove();
+    if (d) {
+        const label = `Payroll Remittance — ${d.agency_name || ''} ${d.label || ''}`.trim();
+        sel.insertAdjacentHTML('afterbegin', `<option value="" data-remittance="1">${vf_esc(label)}</option>`);
+        sel.value = '';
+        sel.selectedIndex = 0;
+    }
+    sel.disabled = !!d;
+    // A remittance DV hides what it never uses (all filled in or not applicable):
+    //   Vendor / PO Number row · claimant Address / Employee No. / TIN (the claimant is the agency) · the RFA column ·
+    //   the Deductions + ATC card · the Budget Reference fields and figures (Dept./Project, Fund Source, Account Code —
+    //   set from the remittance —, Budget / Obligation / Payments / Balance, which come from an RFA). Remarks stays.
+    const show = el => { if (el) el.style.display = d ? 'none' : ''; };
+    show(sel.closest('.vf-grid2'));
+    show($vf('vf-claimant-address').closest('.nha-fg'));
+    show($vf('vf-rfa-search').closest('.nha-fg').parentElement);
+    show($vf('vf-ded-container').closest('.vf-card'));
+    const budgetCard = $vf('vf-budget').closest('.vf-card');
+    show(budgetCard.querySelector('.vf-card-title'));
+    show(budgetCard.querySelector('.vf-grid3'));
+    show($vf('vf-budget').closest('table'));
+    $vf('vf-rfa-req').style.display = d ? 'none' : '';
+    $vf('vf-rfa-note').textContent  = d ? '(not needed — payroll remittance, budgeted with the payroll)' : '(search and select one or more)';
+    $vf('vf-rfa-search').placeholder = d ? 'Not needed for a payroll remittance' : 'Search RFA number or reference no…';
 }
 
 /** The vendor card shows the remittance (agency, payroll month, employee / government share, no RFA needed). */
@@ -1738,7 +1772,9 @@ function vf_showRemittanceCard(d) {
     $vf('vf-vc-address').textContent = d.employee_share !== undefined
         ? `Employee share ${vf_peso(d.employee_share)} · Government share ${vf_peso(d.employer_share)} · Total ${vf_peso(d.gross_amount)}`
         : `Total ${vf_peso(d.total_amount)}`;
-    $vf('vf-vc-tin').textContent     = 'No RFA needed — already obligated by the payroll DV';
+    // for reference: the payroll DV / RFA this remittance belongs to (the remittance DV itself takes no RFA)
+    const ref = d.payroll_dv_no ? `Belongs to payroll DV ${d.payroll_dv_no}${(d.payroll_rfa_nos || []).length ? ' · RFA ' + d.payroll_rfa_nos.join(', ') : ''}` : 'Payroll DV not created yet';
+    $vf('vf-vc-tin').textContent     = `${ref} — no RFA needed on this DV`;
     $vf('vf-vendor-card').classList.add('visible');
 }
 
@@ -1803,6 +1839,7 @@ async function vf_loadExisting() {
         vf_remittanceId = Number(dv.remittance.payroll_remittance_id);
         $vf('vf-rfa-search').disabled = true;
         vf_showRemittanceCard({ ...dv.remittance, claimant_name: dv.claimant_name });
+        vf_markRemittanceFields(dv.remittance);
     }
 
     $vf('vf-po-number').value        = dv.po_number || '';

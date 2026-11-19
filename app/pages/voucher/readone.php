@@ -1054,6 +1054,17 @@ function vje_renumber() {
     update it in place instead of duplicating it; a line the preparer added by hand (no
     data-auto-source) is never touched. */
 function vje_syncAutoLines() {
+    // A payroll DV's / remittance DV's entries are built by their own module (Dr each earnings account,
+    // Cr each payroll item's payable, Cr Accounts Payable net — PayrollManagementService::dvData();
+    // Dr the agency's payables + government share, Cr Accounts Payable — DeductionRemittanceService::dvData())
+    // and arrive balanced. The vendor-DV auto lines below (Dr Account Code for the gross, Cr each deduction
+    // type, Cr AP) would take over / double those lines, so they are left exactly as saved.
+    if (vje_dv?.payroll || vje_dv?.remittance) {
+        $vr('vje-lines-tbody').querySelectorAll('tr.vje-line[data-auto-source]').forEach(tr => { delete tr.dataset.autoSource; });
+        vje_renumber();
+        vje_recalc();
+        return;
+    }
     const gross = Number(vje_dv?.gross_amount) || 0;
 
     vje_upsertAutoLine('dr', { account_code: vje_dv?.account_code || '', debit: gross, credit: 0, description: vje_dv?.claimant_name || '' });

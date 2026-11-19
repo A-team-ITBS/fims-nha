@@ -183,8 +183,8 @@ html.afims-dark[data-bs-theme="dark"] #amp-root .nha-code { color:#FFFFFF;backgr
                             <th>RFA Number</th>
                             <th>Project Name</th>
                             <th>Contractor</th>
-                            <th>Requesting Office/Dept</th>
-                            <th style="text-align:right;">Contract Cost</th>
+                            <th>Regional Office/District Office</th>
+                            <th style="text-align:right;">Revised Contract Cost</th>
                             <th>% Accomplishment</th>
                             <th>Actions</th>
                         </tr>
@@ -541,7 +541,7 @@ function amp_renderProforma(active) {
     $amp('amp-view-body').innerHTML = `
         <div class="amp-vw-card"><h4 class="amp-vw-card-title">${infra ? 'Infrastructure Record' : 'Delivery Receipt'}</h4>
             ${vrow(infra ? 'SWA Number' : 'IAR Number',amp_pf.iar ? '<span class="amp-vw-code">' + amp_esc(amp_pf.iar) + '</span>' : '—')}
-            ${infra ? vrow('RFA Number', amp_esc(amp_pf.po)) + vrow('Project', amp_esc(rc.project || '—')) + vrow('Location', amp_esc(rc.location || '—')) : vrow('Delivery Receipt No.', amp_esc(rc.dr_number))}
+            ${infra ? vrow('RFA Number', amp_esc(amp_pf.po)) + vrow('Regional Office/District Office', amp_esc(rc.office || '—')) + vrow('Project Code', amp_esc(rc.project_code || '—')) + vrow('Project Name', amp_esc(rc.project || '—')) + vrow('Program', amp_esc(rc.program || '—')) + vrow('Location', amp_esc(rc.location || '—')) + vrow('Contractor', amp_esc(rc.contractor || '—')) : vrow('Delivery Receipt No.', amp_esc(rc.dr_number))}
             ${infra ? '' : vrow('Total Amount', '<span class="amp-vw-num">₱' + num(rc.total) + '</span>')}
         </div>
         <div class="amp-vw-card"><h4 class="amp-vw-card-title">Pro-forma JEV</h4>

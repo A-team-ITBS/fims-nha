@@ -1827,7 +1827,7 @@
       <phrase id="tblcaption" value="Opening Balance" />
     </table>
     <table id="work_in_process_page">
-      <phrase id="tblcaption" value="Work-In-Process" />
+      <phrase id="tblcaption" value="Work-In-Process Inventory" />
     </table>
     <table id="statement_of_changes_page">
       <phrase id="tblcaption" value="Changes in Net Assets/Equity" />

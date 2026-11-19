@@ -2,10 +2,12 @@
 
 namespace PHPMaker2024\FIMS;
 
+use PHPMaker2024\FIMS\Service\BudgetReqCobReportService;
 use PHPMaker2024\FIMS\Service\BudgetReqService;
 use PHPMaker2024\FIMS\Service\GlobalService;
 
 $BudgetReqService = new BudgetReqService();
+$BudgetReqCobReportService = new BudgetReqCobReportService();
 
 // FormData submissions (new supporting-document files attached) send the
 // normal payload as a JSON string in the 'data' field, with the files
@@ -357,6 +359,30 @@ $app->delete('/budget_req_project_attachment/delete/{id}', function ($request, $
         $result = $BudgetReqService->deleteAttachment((int) $args['id']);
 
         return $response->withJson($result, $result['success'] ? 200 : 400);
+    } catch (\Exception $e) {
+        return $response->withJson(['success' => false, 'message' => $e->getMessage()], 400);
+    }
+})->add($jwtMiddleware);
+
+// "Print COB" -> "Per Region" / "Per Program" (readone/budget-req-readone.php, bgrv_printCob()): a real .xlsx —
+// Capital Outlay either broken down by Regional office (each row also rolling up its nested District offices) or
+// as the full Program -> Sub-Program -> Project tree, plus one combined Corporate Operating Expenditure total
+// (Personnel Services / MOOE) either way. Built from the SAME budget_req / budget_line_items tables the "View as
+// COB" modal reads (any status, not just Approved) — see BudgetReqCobReportService::report(). Same RC-scoping
+// convention as /budget_req/all (GlobalService::resolveBudgetReqRcFilter()): a Regional/District user only ever
+// sees their own office's, a central reviewer with central=1 sees every office's.
+// query: mode ('region' | 'program', required), fiscal_yr (optional, '' = every year)
+// response: { success: true, filename, mime, data: base64 } | { success: false, message }
+$app->get('/budget_req/cob-print', function ($request, $response, $args) use ($BudgetReqCobReportService) {
+    try {
+        $params = $request->getQueryParams();
+        $scope  = GlobalService::getUserRcScope((int) $request->getAttribute('user_id'));
+        $rcId   = GlobalService::resolveBudgetReqRcFilter($scope, $params);
+        $result = $BudgetReqCobReportService->report((string) ($params['mode'] ?? ''), (string) ($params['fiscal_yr'] ?? ''), $rcId);
+        $code   = $result['success'] ? 200 : ($result['httpCode'] ?? 400);
+        unset($result['httpCode']);
+
+        return $response->withJson($result, $code);
     } catch (\Exception $e) {
         return $response->withJson(['success' => false, 'message' => $e->getMessage()], 400);
     }
