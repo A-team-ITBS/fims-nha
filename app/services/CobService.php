@@ -23,50 +23,60 @@ use PHPMaker2024\FIMS\DataType;
  * method here goes through conditions(), which always starts from that, so a Draft / For Review / Endorsed / Returned
  * request never shows up in a table, a total or a filter option.
  *
- * The eight columns of the COB Monitoring sheet, per budget line item (every row, group and total is a SUM of these):
+ * The eight columns of the COB Monitoring sheet, per budget line item (every row, group and total is a SUM of these). Every one is
+ * BudgetLineBalanceSql::exprs() — the app's single definition, shared with the approval checks of BudgetLineItemService / BudgetRevisionService:
  *
- *   approved_amount     the amount FMD suggested in the Budget Proposal module, as first suggested — before any Budget Revision or CBA touched
- *                       the line: budget_line_items.suggested_amount + cba_requested - adjustment (suggested_amount is the line's live balance,
- *                       see the NOTE below)
- *   revision_amount     budget_line_items.adjustment: the net of the approved Budget Revisions (Revision / Realignment), signed — a decrease
- *                       or a realignment out is negative
- *   revised_amount      approved_amount + revision_amount (the adjustment is signed, so this is the Approved Amount less a decrease), worked
- *                       out per line — so a line no revision has touched shows its Approved Amount. It equals suggested_amount + cba_requested.
- *                       The stored budget_line_items.revised_amount column (written only when a Budget Revision is approved, 0 otherwise) is
- *                       no longer read here
- *   cba_requested      what approved CBAs (and CFAs) took off the line: their earmark rows' original_amount, only those that
- *                       actually reduced the balance (balance_applied) and are not released
+ *   approved_amount     the amount FMD suggested in the Budget Proposal module: budget_line_items.suggested_amount. It is STABLE — no CBA, RFA, LAA or
+ *                       Budget Revision ever moves it — so it is also the amount "as first suggested"
+ *   revision_amount     the net of ALL the approved Budget Revisions and Realignments to date, signed (a decrease, or funds a budget gave up by realignment, is negative), read
+ *                       straight from budget_line_items.adjustment (BudgetLineBalanceSql::revisionExpr()) — the total of the line's rows in the ledger
+ *                       fims.budget_line_item_revision_transaction, kept by a trigger on it (03 - alter_table/53). This is what revised_amount is worked out from, so it is what reconciles Approved to Revised. The COB page's Revision /
+ *                       Realignment column does NOT show it — not on a parent row, not in the TOTAL; a project shows only what the LATEST approved request changed (below)
+ *   latest_revision_amount / latest_realignment_amount   (not columns — the figures of that cell, worked out after the SQL by latestByLeaf(), not in the line rows) what the
+ *                       most recent approved request changed on the budget: its revision (signed) and its realignment (− on the budget that gave funds up, + on the one that
+ *                       received them). "The latest" is per project (per request and PS / MOOE class under COE): the request approved last among those that touched any of its
+ *                       lines, and what it did on THAT project's lines; a group's figure is the sum of its projects'. They do not add up to revision_amount — an earlier
+ *                       revision is not in them (so Approved + these is not Revised on a budget that has had more than one adjustment — Approved + revision_amount is)
+ *   revised_amount      budget_line_items.revised_amount — the table generates it as suggested_amount + adjustment (03 - alter_table/54), so it is approved_amount +
+ *                       revision_amount (the revision is signed: the Approved Amount less a decrease), and a line no revision has touched shows its Approved Amount.
+ *                       Nothing writes it; BudgetLineBalanceSql::revisedExpr() reads it.
+ *   cba_requested       what approved CBAs / CFAs hold against the line ('active' earmark rows) plus what RFAs / LAAs have drawn from them ('converted'
+ *                       rows) — a CBA's reservation and its later draws always add back up to what the CBA earmarked
  *   available_amount    revised_amount - cba_requested   (Available for Earmarking)
  *   rfa_approved        what approved RFAs drew down the CBAs' reservations (their 'converted' earmark rows)
  *   laa_issued          the same for LAAs
- *   remaining_balance   revised_amount - rfa_approved - laa_issued  (a CBA only RESERVES money; an RFA / LAA actually uses it)
+ *   remaining_balance   revised_amount - cba_requested  (the same figure as available_amount: what is left of the revised budget once the CBAs' reservations — and
+ *                       what RFAs / LAAs have drawn from them, which is part of cba_requested — are taken off)
  *
  * Five more figures per line item are for the RFA / LAA Monitoring page (rfa-laa-monitoring-page.php), which starts at the Revised Amount:
  *
- *   revised_computed    the same figure as the COB page's revised_amount (approved_amount + revision_amount = suggested_amount + cba_requested),
+ *   revised_computed    the same figure as the COB page's revised_amount (budget_line_items.revised_amount = suggested_amount + adjustment),
  *                       so both pages show one Revised Amount. It started from budget_line_items.proposed_amount (proposed + adjustment) before,
  *                       which ignored what FMD suggested below the proposal — see COB-MONITORING.md
  *   rfa_laa_amount      rfa_approved + laa_issued — what approved RFAs and issued LAAs have drawn from the CBAs
  *   disbursement        what the disbursement vouchers connected to the line's RFAs / LAAs (budget_allocation.dv_id) have disbursed: each voucher's
  *                       gross_amount spread over the draws of the RFAs / LAAs that point at it (disbursementSql()); cancelled / rejected vouchers
  *                       count for nothing. The stored budget_line_items.disbursement column, which nothing writes, is not used
- *   unallocated_amount  revised_computed - rfa_approved - laa_issued — the revised budget not yet drawn by an RFA or LAA
+ *   unallocated_amount  revised_computed - cba_requested — the remaining balance of the revised budget (the same figure as the COB's Remaining Balance)
  *   account_payable     rfa_laa_amount - disbursement — what the RFAs / LAAs have drawn that has not been disbursed yet. Worked out per line, so
  *                       it takes the vouchers into account; the stored budget_line_items.account_payable column is not used
  *
  * Revised, Available and Remaining are all worked out, so the identities  Approved + Revision = Revised (Revision is signed: a decrease is negative,
- * i.e. Approved less the decrease),  Revised - CBA = Available  and  Revised - RFA - LAA = Remaining  hold on every row, group and total.
- * NOTE: suggested_amount is also the line's LIVE balance — an approved CBA takes its amount off it and an approved Budget Revision
- * moves it by the adjustment (BudgetRevisionService::approve(), a private method of the review flow). Reading it as the Approved Amount therefore showed a revised line's NEW amount
- * under Approved, and subtracting the adjustment from it took the revision back out of Revised. The Approved Amount is rebuilt as
- * suggested_amount + cba_requested - adjustment instead; see COB-MONITORING.md.
+ * i.e. Approved less the decrease),  Revised - CBA = Available = Remaining  hold on every row, group and total.
+ * NOTE: suggested_amount is never changed after Budget Processing sets it. A CBA only reserves (an earmark row), an RFA / LAA draws that reservation, and an
+ * approved Budget Revision writes one row per budget line to the ledger fims.budget_line_item_revision_transaction (BudgetRevisionService::approve(), a private
+ * method of the review flow) — which is where Revision Amount comes from. So Approved is simply suggested_amount; see COB-MONITORING.md.
  *
- * Deleted memo requests do not count. A CBA approved before the "charge the line on approval" rule never took anything off the
- * line, so it is not in CBA Requested either.
+ * Deleted memo requests do not count.
  *
  * With rollup(..., $withAllocations = true) — only the RFA / LAA Monitoring page asks — every project node also carries, as children, the RFAs and
  * LAAs that drew against its budget lines (type 'allocation': RFA / LAA Amount = what it drew there) and, under each RFA, its disbursement voucher
  * (type 'dv': Disbursement = the voucher's gross_amount). They are detail rows: no total counts them.
+ * With rollup(..., $withRevisions = true) — only the RFA / LAA Monitoring page asks — every project node (or COE request node) also carries, as children, the approved Budget
+ * Revisions / Realignments recorded against its budget lines, read from the ledger fims.budget_line_item_revision_transaction (type 'revision': a REVISION is one row,
+ * a REALIGNMENT is an 'out' row on the line that gave funds up and an 'in' row on the line that received them — so a realignment between two lines of ONE project
+ * shows both rows although the project's own figures net to zero; one between two projects shows its out row under one and its in row under the other). The row's
+ * signed amount is in the Revision / Realignment column (revision_amount; the RFA / LAA page's Revised Amount column, revised_computed). Detail rows: no total counts them.
  *
  * CO and COE. A budget line is told apart by its chart-of-accounts code (expenseClassSql()): 1… is CO (capital outlay), 5-01… is PS and 5-02… is MOOE — and
  * PS and MOOE together are the COE. A line with no program is COE too: a COE budget request carries line items of its own, with no Program, Sub-Program or
@@ -90,11 +100,13 @@ class CobService
 {
     /**
      * The amount columns every row, group and total carries (see the header comment for what each is): the eight of the COB Monitoring sheet,
-     * then the five more the RFA / LAA Monitoring page shows (revised_computed, rfa_laa_amount, disbursement, unallocated_amount, account_payable). The COB
-     * page, its View modal and its report name the keys they show, so the extra four change nothing there.
+     * then the five more the RFA / LAA Monitoring page shows (revised_computed, rfa_laa_amount, disbursement, unallocated_amount, account_payable), then the two figures of the
+     * COB page's Revision / Realignment cell (latest_revision_amount, latest_realignment_amount — worked out after the SQL, see latestByLeaf(); the SQL rows do not carry them).
+     * The COB page, its View modal and its report name the keys they show, so the extras change nothing else there.
      */
     public const AMOUNT_KEYS = ['approved_amount', 'revision_amount', 'revised_amount', 'cba_requested', 'available_amount', 'rfa_approved', 'laa_issued', 'remaining_balance',
-        'revised_computed', 'rfa_laa_amount', 'disbursement', 'unallocated_amount', 'account_payable'];
+        'revised_computed', 'rfa_laa_amount', 'disbursement', 'unallocated_amount', 'account_payable',
+        'latest_revision_amount', 'latest_realignment_amount'];
 
     public const LAYOUTS = ['region', 'fund_source', 'component', 'program'];
 
@@ -110,28 +122,24 @@ class CobService
     private string $tableAttachment = 'fims.budget_req_project_attachment';
     private string $tableEarmark = 'fims.budget_line_item_earmark';
     private string $tableAllocation = 'fims.budget_allocation';
+    private string $tableRevision = 'fims.budget_revision';
 
     // -------------------------------------------------------------------------
     // Shared SQL
     // -------------------------------------------------------------------------
 
     /**
-     * What the memo requests have drawn against each line item, one row per line item (so joining it multiplies nothing):
-     *   cba_requested  CBA / CFA earmark rows that took their amount off the line (balance_applied) and are not released
-     *   rfa_approved   the 'converted' rows attributed to an RFA — what that RFA drew from its parent CBA
-     *   laa_issued     the same for an LAA
+     * What the memo requests hold against each line item, one row per line item (so joining it multiplies nothing) — the shared aggregate of
+     * BudgetLineBalanceSql::earmarkAggregateSql(), so the COB and the approval checks can never differ:
+     *   reserved_active  'active' earmark rows — what approved CBAs / CFAs still hold
+     *   committed        'converted' rows of RFAs / LAAs — what they have drawn from their parent CBAs
+     *   rfa_approved     the 'converted' rows attributed to an RFA — what that RFA drew from its parent CBA
+     *   laa_issued       the same for an LAA
      * A memo request that has been deleted (deleted_at) counts for nothing.
      */
     private function earmarkSql(): string
     {
-        return "SELECT e.budget_line_item_id,
-                       SUM(CASE WHEN UPPER(a.allocation_type) IN ('CBA', 'CFA') AND e.balance_applied AND e.status IN ('active', 'converted')
-                                THEN e.original_amount ELSE 0 END) AS cba_requested,
-                       SUM(CASE WHEN UPPER(a.allocation_type) = 'RFA' AND e.status = 'converted' THEN e.amount ELSE 0 END) AS rfa_approved,
-                       SUM(CASE WHEN UPPER(a.allocation_type) = 'LAA' AND e.status = 'converted' THEN e.amount ELSE 0 END) AS laa_issued
-                FROM {$this->tableEarmark} e
-                JOIN {$this->tableAllocation} a ON a.allocation_id = e.allocation_id AND a.deleted_at IS NULL
-                GROUP BY e.budget_line_item_id";
+        return BudgetLineBalanceSql::earmarkAggregateSql($this->tableEarmark, $this->tableAllocation);
     }
 
     /**
@@ -225,23 +233,16 @@ class CobService
     /** One line item's figures (see the header comment), aliased to AMOUNT_KEYS — the building block of every SUM. */
     private function lineAmountExprs(): array
     {
-        $cba = 'COALESCE(ear.cba_requested, 0)';
-        $rfa = 'COALESCE(ear.rfa_approved, 0)';
-        $laa = 'COALESCE(ear.laa_issued, 0)';
-        // The COB sheet's Approved Amount: the amount as first suggested, BEFORE any Budget Revision or CBA touched the line. suggested_amount is the line's
-        // LIVE balance — an approved Budget Revision adds its signed adjustment to it and an approved CBA takes its amount off it — so the original is the live
-        // amount, plus what the CBAs took off (cba_requested), less the adjustment. (Reading suggested_amount as it stands put the revised figure under
-        // Approved and made Approved - Revision undo a revision that was already in it: a line cut from 352,418 to 130,000 showed 130,000 as Approved and
-        // 352,418 as Revised.)
-        $approved = "(COALESCE(li.suggested_amount, 0) + {$cba} - COALESCE(li.adjustment, 0))";
-        // The COB sheet's Revised Amount: the Approved Amount net of the Revision / Realignment. The adjustment is signed (a decrease is negative, shown in
-        // brackets), so "Approved less the revision" is Approved + adjustment — which is suggested_amount + cba_requested, the line as revised, before its CBAs.
-        // One definition: Available and Remaining below start from it, so they follow it.
-        $revised = "({$approved} + COALESCE(li.adjustment, 0))";
-        // the RFA / LAA Monitoring page's Revised Amount: the SAME figure as the COB sheet's (above), so the two pages can never disagree. It used to be
-        // proposed_amount + adjustment, which starts from what the office proposed and so ignores what FMD suggested in Budget Processing — the approved
-        // budget, and what CBAs draw against; a line FMD cut showed its full proposed amount here and the cut as "unallocated". One definition, used by
-        // revised_computed and by unallocated_amount below.
+        // The first ten figures are BudgetLineBalanceSql::exprs() — the app's single definition, the same one the approval checks use. Approved Amount is
+        // suggested_amount (STABLE: no CBA and no revision ever moves it), Revision Amount is the line's ledger total
+        // (fims.budget_line_item_revision_transaction), Revised = Approved + Revision, CBA Requested = what approved CBAs / CFAs hold plus what RFAs / LAAs have
+        // drawn from them, Available = Remaining = Revised - CBA Requested.
+        $b = BudgetLineBalanceSql::exprs('li', 'ear');
+        $revised = $b['revised_amount'];
+        $rfa = $b['rfa_approved'];
+        $laa = $b['laa_issued'];
+        // the RFA / LAA Monitoring page's Revised Amount: the SAME figure as the COB sheet's (above), so the two pages can never disagree. One definition,
+        // used by revised_computed and by unallocated_amount below.
         $revisedCalc = $revised;
         $rfaLaa = "({$rfa} + {$laa})";
         // Disbursement = what the vouchers connected to the line's RFAs / LAAs have disbursed (disbursementSql()); the stored
@@ -249,21 +250,20 @@ class CobService
         $disb = 'COALESCE(dvl.dv_gross, 0)';
 
         return [
-            'approved_amount' => $approved,
-            'revision_amount' => 'li.adjustment',
+            'approved_amount' => $b['approved_amount'],
+            'revision_amount' => $b['revision_amount'],
             'revised_amount' => $revised,
-            'cba_requested' => $cba,
-            'available_amount' => "({$revised} - {$cba})",
+            'cba_requested' => $b['cba_requested'],
+            'available_amount' => $b['available_amount'],
             'rfa_approved' => $rfa,
             'laa_issued' => $laa,
-            'remaining_balance' => "({$revised} - {$rfa} - {$laa})",
-            // the RFA / LAA Monitoring page's own figures. Its Revised Amount is the COB sheet's (worked out per line, not read from the recorded
-            // revised_amount column); the rest is what that page adds
+            'remaining_balance' => $b['remaining_balance'],
+            // the RFA / LAA Monitoring page's own figures. Its Revised Amount is the COB sheet's; the rest is what that page adds
             'revised_computed' => $revisedCalc,
             'rfa_laa_amount' => $rfaLaa,
             'disbursement' => $disb,
-            // Unallocated Amount = Revised Amount - RFA / LAA Amount (so it foots on every row, group and total)
-            'unallocated_amount' => "({$revisedCalc} - {$rfaLaa})",
+            // Unallocated Amount = the remaining balance = Revised Amount - CBA Requested (so it foots on every row, group and total, and is the COB's Remaining Balance)
+            'unallocated_amount' => "({$revisedCalc} - {$b['cba_requested']})",
             // Account Payable = RFA / LAA Amount - Disbursement (it foots on every row, group and total)
             'account_payable' => "({$rfaLaa} - {$disb})",
         ];
@@ -452,7 +452,7 @@ class CobService
      *
      * @return array{success: bool, layout_by?: string, data?: array, totals?: array, message?: string}
      */
-    public function rollup(string $layoutBy, array $filters, string $scopeRcId = '', bool $withAllocations = false, bool $splitCoe = false): array
+    public function rollup(string $layoutBy, array $filters, string $scopeRcId = '', bool $withAllocations = false, bool $splitCoe = false, bool $withRevisions = false): array
     {
         if (!in_array($layoutBy, self::LAYOUTS, true)) {
             return ['success' => false, 'message' => 'Unknown layout_by: '.$layoutBy];
@@ -486,6 +486,8 @@ class CobService
             ) ?: [];
 
             $tree = $splitCoe ? $this->splitCoe($rows, $layoutBy) : $this->buildTree($rows, $this->levelsFor($layoutBy));
+            // The Revision / Realignment cell shows only what the LATEST approved request changed on each project (latestByLeaf()); a group's figure is the sum of its projects'
+            $tree = $this->withLatest($tree, $this->latestByLeaf($this->ledgerLeafRows($f, $scopeRcId), $splitCoe));
             $totals = $this->zeroAmounts();
             foreach ($tree as $node) {
                 $totals = $this->addTo($totals, $node);
@@ -495,9 +497,18 @@ class CobService
             // disbursement voucher. They are detail rows added AFTER the totals, so no figure above them changes; if they cannot be read
             // the tree is still returned, with a message.
             $extra = [];
+            // the Budget Revisions / Realignments recorded against each project (both monitoring pages). Added first, so a project lists them above its RFAs / LAAs.
+            if ($withRevisions) {
+                try {
+                    $tree = $this->attachDetail($tree, $this->revisionRows($f, $scopeRcId, $splitCoe));
+                } catch (\Throwable $e) {
+                    App\LogError('CobService::rollup (revisions) '.$e->getMessage());
+                    $extra['revision_error'] = 'The revisions / realignments under the projects could not be loaded.';
+                }
+            }
             if ($withAllocations) {
                 try {
-                    $tree = $this->attachAllocations($tree, $this->allocationRows($f, $scopeRcId, $splitCoe));
+                    $tree = $this->attachDetail($tree, $this->allocationRows($f, $scopeRcId, $splitCoe));
                 } catch (\Throwable $e) {
                     App\LogError('CobService::rollup (allocations) '.$e->getMessage());
                     $extra['allocation_error'] = 'The RFAs / LAAs under the projects could not be loaded.';
@@ -579,14 +590,179 @@ class CobService
         return $byProject;
     }
 
-    /** Hangs each project's allocations (allocationRows()) on its project node — or, in the COE tree, on its request node — wherever in the tree the node sits. */
-    private function attachAllocations(array $nodes, array $byProject): array
+    /**
+     * Hangs each project's detail rows (revisionRows() / allocationRows()) on its project node — or, in the COE tree, on its request node — wherever in the tree the node
+     * sits. They are ADDED after the children the node already has, so calling it twice lists the first call's rows first.
+     */
+    private function attachDetail(array $nodes, array $byProject): array
     {
         foreach ($nodes as &$node) {
             if (in_array($node['type'] ?? '', ['project', 'request'], true)) {
-                $node['children'] = $byProject[$node['key']] ?? [];
+                $node['children'] = array_merge($node['children'] ?? [], $byProject[$node['key']] ?? []);
             } elseif (!empty($node['children'])) {
-                $node['children'] = $this->attachAllocations($node['children'], $byProject);
+                $node['children'] = $this->attachDetail($node['children'], $byProject);
+            }
+        }
+        unset($node);
+
+        return $nodes;
+    }
+
+    /**
+     * The approved Budget Revisions / Realignments recorded against each project, keyed like the tree's project nodes (see allocationRows()): one row per (project, request,
+     * kind), read from the ledger fims.budget_line_item_revision_transaction. A REVISION is one row. A REALIGNMENT is two ledger rows — 'out' on the line that gave funds
+     * up, 'in' on the line that received them — kept apart here, so a realignment between two lines of the SAME project shows both rows (the project's own figures net to
+     * zero) and one between two projects shows 'out' under one and 'in' under the other. A ledger row with no request (budget_revision_id NULL) is what was approved
+     * before the ledger existed ('LEGACY'): one row per project. The signed amount is the sum of the ledger rows on THAT project's lines.
+     * The same filters and the same RC scope as the tree itself (a line outside them counts for nothing), and with $splitCoe the COE tree's keys (leafKey()).
+     *
+     * @return array<string, list<array>> project key => revision nodes
+     */
+    private function revisionRows(array $f, string $scopeRcId, bool $splitCoe = false): array
+    {
+        $rows = $this->ledgerLeafRows($f, $scopeRcId);
+
+        $ref = static fn (string $account, string $reference): string => trim($account.($reference !== '' ? ' ('.$reference.')' : ''));
+        $byProject = [];
+        foreach ($rows as $r) {
+            $key = $this->leafKey($r, $splitCoe && $this->costTypeOf($r)[0] === 'COE');
+            $type = (string) $r['transaction_type'];
+            $id = ($r['budget_revision_id'] ?? '') === '' ? null : (int) $r['budget_revision_id'];
+            $amount = $this->num($r['amount'] ?? 0);
+            $from = $ref((string) ($r['from_account'] ?? ''), (string) ($r['from_ref'] ?? ''));
+            $to = $ref((string) ($r['to_account'] ?? ''), (string) ($r['to_ref'] ?? ''));
+
+            if ($id === null) {
+                [$label, $code, $detail] = ['Revisions / realignments approved before the ledger', 'REV', ''];
+            } elseif ($type === 'REVISION') {
+                [$label, $code, $detail] = ['Revision #'.$id, 'REV', $from];
+            } elseif ($type === 'REALIGNMENT_OUT') {
+                [$label, $code, $detail] = ['Realignment #'.$id.' — out', 'REA OUT', trim($from.' → '.$to, ' →')];
+            } else {
+                [$label, $code, $detail] = ['Realignment #'.$id.' — in', 'REA IN', trim($from.' → '.$to, ' →')];
+            }
+            $reason = trim((string) ($r['reason'] ?? ''));
+
+            // a revision / realignment row: its signed amount on this project goes in the Revision / Realignment column (and the RFA / LAA page's Revised Amount column)
+            $byProject[$key][] = [
+                'type' => 'revision', 'key' => 'v'.($id ?? 'old').'-'.strtolower($type), 'label' => $label, 'code' => $code, 'unassigned' => false,
+                'revision_id' => $id, 'transaction_type' => $type, 'request_type' => $r['request_type'] ?? null,
+                'detail' => $detail, 'description' => $reason !== '' ? $reason : null, 'approved_at' => $r['approved_at'] ?? null,
+                'revision_amount' => $amount, 'revised_computed' => $amount,
+            ] + $this->zeroAmounts() + ['children' => []];
+        }
+
+        return $byProject;
+    }
+
+    /**
+     * The ledger rows behind the Revision / Realignment figures, one per (project, request, kind), with the columns leafKey() needs to key them like the tree's project nodes and
+     * the accounts of the request (for the detail rows). revisionRows() builds the RFA / LAA page's detail rows from them and latestByLeaf() the COB's "latest adjustment".
+     * The same filters and the same RC scope as the tree itself.
+     */
+    private function ledgerLeafRows(array $f, string $scopeRcId): array
+    {
+        $ledger = BudgetLineBalanceSql::REVISION_LEDGER_TABLE;
+
+        return App\ExecuteRows(
+            'SELECT br.budget_reference_number, brpg.budget_req_program_id, brpj.project_code, '.$this->expenseClassSql().' AS expense_class,
+                    lg.budget_revision_id, lg.transaction_type, rq.request_type, rq.reason,
+                    MIN(lg.created_at) AS approved_at, SUM(lg.amount) AS amount,
+                    fac.account_code AS from_account, fln.budget_reference_number AS from_ref,
+                    tac.account_code AS to_account, tln.budget_reference_number AS to_ref
+             '.$this->fromSql()."
+             JOIN {$ledger} lg ON lg.budget_line_item_id = li.budget_line_item_id
+             LEFT JOIN {$this->tableRevision} rq ON rq.id = lg.budget_revision_id
+             LEFT JOIN {$this->tableLineItems} fln ON fln.budget_line_item_id = rq.from_budget_line_item_id
+             LEFT JOIN fims.chart_of_accounts fac ON fac.account_id = fln.account_id
+             LEFT JOIN {$this->tableLineItems} tln ON tln.budget_line_item_id = rq.to_budget_line_item_id
+             LEFT JOIN fims.chart_of_accounts tac ON tac.account_id = tln.account_id
+             WHERE ".implode(' AND ', $this->conditions($f, $scopeRcId)).'
+             GROUP BY br.budget_reference_number, brpg.budget_req_program_id, brpj.project_code, '.$this->expenseClassSql().',
+                      lg.budget_revision_id, lg.transaction_type, rq.request_type, rq.reason,
+                      fac.account_code, fln.budget_reference_number, tac.account_code, tln.budget_reference_number
+             ORDER BY MIN(lg.created_at), lg.budget_revision_id, CASE lg.transaction_type WHEN \'REALIGNMENT_IN\' THEN 1 ELSE 0 END',
+            'DB'
+        ) ?: [];
+    }
+
+    /** Whether ledger entry $a (['id' => request id|null, 'at' => approval time]) is later than $b: a LEGACY entry (no request) is older than any request, then the later approval time, then the higher id. */
+    private function laterThan(array $a, ?array $b): bool
+    {
+        if ($b === null) {
+            return true;
+        }
+        if (($a['id'] !== null) !== ($b['id'] !== null)) {
+            return $a['id'] !== null;
+        }
+        $byTime = strcmp((string) $a['at'], (string) $b['at']);
+
+        return $byTime !== 0 ? $byTime > 0 : (int) $a['id'] > (int) $b['id'];
+    }
+
+    /**
+     * From ledger entries — each ['group' => the budget it belongs to, 'id' => request id|null, 'type', 'amount', 'at', and whatever else the caller carries] — only those of the MOST RECENT
+     * request of their group: the request approved last among those that touched any of the group's lines (laterThan()).
+     *
+     * @return list<array>
+     */
+    private function latestEntries(array $entries): array
+    {
+        $best = [];
+        foreach ($entries as $e) {
+            $cand = ['id' => $e['id'], 'at' => $e['at']];
+            if (!isset($best[$e['group']]) || $this->laterThan($cand, $best[$e['group']])) {
+                $best[$e['group']] = $cand;
+            }
+        }
+
+        return array_values(array_filter($entries, fn (array $e) => $e['id'] === $best[$e['group']]['id']));
+    }
+
+    /** Whether a ledger row is a realignment (a realignment out or in) rather than a revision (a REVISION, or LEGACY — what was approved before the ledger, whose kind was never recorded). */
+    private function isRealignment(string $type): bool
+    {
+        return in_array($type, ['REALIGNMENT_OUT', 'REALIGNMENT_IN'], true);
+    }
+
+    /**
+     * What the MOST RECENT approved request changed on each project (the 'project' / 'request' nodes, keyed like allocationRows()): leaf key => ['revision' => x, 'realignment' => y] —
+     * x the signed amount of a Budget Revision, y the signed net of a Realignment on THAT project's lines (− on the budget that gave funds up, + on the one that received them). The latest
+     * is the request approved last among those that touched any of the project's lines, so an older revision is not in it. A realignment between two lines of ONE project nets to zero there.
+     *
+     * @return array<string, array{revision: float, realignment: float}>
+     */
+    private function latestByLeaf(array $ledgerRows, bool $splitCoe): array
+    {
+        $entries = [];
+        foreach ($ledgerRows as $r) {
+            $entries[] = [
+                'group' => $this->leafKey($r, $splitCoe && $this->costTypeOf($r)[0] === 'COE'),
+                'id' => ($r['budget_revision_id'] ?? '') === '' ? null : (int) $r['budget_revision_id'],
+                'type' => (string) $r['transaction_type'], 'amount' => (float) $r['amount'], 'at' => (string) $r['approved_at'],
+            ];
+        }
+        $out = [];
+        foreach ($this->latestEntries($entries) as $e) {
+            $k = $this->isRealignment($e['type']) ? 'realignment' : 'revision';
+            $out[$e['group']] ??= ['revision' => 0.0, 'realignment' => 0.0];
+            $out[$e['group']][$k] = round($out[$e['group']][$k] + $e['amount'], 2);
+        }
+
+        return $out;
+    }
+
+    /** Puts latestByLeaf()'s figures on the project / request nodes (zero where there is no adjustment) and sums them up the tree, so a group shows the sum of its projects'. */
+    private function withLatest(array $nodes, array $byKey): array
+    {
+        foreach ($nodes as &$node) {
+            if (in_array($node['type'] ?? '', ['project', 'request'], true)) {
+                $node['latest_revision_amount'] = $byKey[$node['key']]['revision'] ?? 0.0;
+                $node['latest_realignment_amount'] = $byKey[$node['key']]['realignment'] ?? 0.0;
+            } elseif (!empty($node['children'])) {
+                $node['children'] = $this->withLatest($node['children'], $byKey);
+                $node['latest_revision_amount'] = round(array_sum(array_map(fn ($c) => (float) ($c['latest_revision_amount'] ?? 0), $node['children'])), 2);
+                $node['latest_realignment_amount'] = round(array_sum(array_map(fn ($c) => (float) ($c['latest_realignment_amount'] ?? 0), $node['children'])), 2);
             }
         }
         unset($node);
@@ -1009,12 +1185,18 @@ class CobService
                 'DB'
             ) ?: [];
 
+            // The Revision / Realignment cell shows only what the LATEST approved request changed (per project, per PS / MOOE class under COE — the same as the tree, latestByLeaf()),
+            // and each line what that request did on IT, so a project's lines add up to its figure
+            $latestOf = $this->latestByLine($brn, $lineRows);
+
             // line items by project row, attachments by (program row, project code)
             $linesByProject = [];
             $unassigned = [];
             $all = $this->zeroAmounts();
             foreach ($lineRows as $line) {
                 $line = $this->lineOut($line);
+                $line['latest_revision_amount'] = $latestOf[(int) $line['budget_line_item_id']]['revision'] ?? 0.0;
+                $line['latest_realignment_amount'] = $latestOf[(int) $line['budget_line_item_id']]['realignment'] ?? 0.0;
                 $all = $this->addTo($all, $line);
                 if (empty($line['budget_req_project_id'])) {
                     $unassigned[] = $line;
@@ -1065,6 +1247,43 @@ class CobService
         } catch (\Throwable $e) {
             return $this->failure('fetchById', 'Failed to load the budget request.', $e, ['httpCode' => 500]);
         }
+    }
+
+    /**
+     * For one request's lines: line id => ['revision' => x, 'realignment' => y] — what the LATEST approved request of the line's project (of its PS / MOOE class, for a COE line) did on that line.
+     *
+     * @param list<array> $lineRows the request's line rows (budget_line_item_id, budget_req_project_id, expense_class)
+     * @return array<int, array{revision: float, realignment: float}>
+     */
+    private function latestByLine(string $quotedBrn, array $lineRows): array
+    {
+        $groupOf = [];
+        foreach ($lineRows as $l) {
+            $groupOf[(int) $l['budget_line_item_id']] = empty($l['budget_req_project_id']) ? 'coe:'.($l['expense_class'] ?? '') : 'p:'.$l['budget_req_project_id'];
+        }
+        $rows = App\ExecuteRows(
+            'SELECT lg.budget_line_item_id, lg.budget_revision_id, lg.transaction_type, lg.amount, lg.created_at FROM '.BudgetLineBalanceSql::REVISION_LEDGER_TABLE." lg
+             JOIN {$this->tableLineItems} li ON li.budget_line_item_id = lg.budget_line_item_id
+             WHERE li.budget_reference_number = {$quotedBrn}",
+            'DB'
+        ) ?: [];
+
+        $entries = [];
+        foreach ($rows as $r) {
+            $entries[] = [
+                'group' => $groupOf[(int) $r['budget_line_item_id']] ?? 'p:?', 'line' => (int) $r['budget_line_item_id'],
+                'id' => ($r['budget_revision_id'] ?? '') === '' ? null : (int) $r['budget_revision_id'],
+                'type' => (string) $r['transaction_type'], 'amount' => (float) $r['amount'], 'at' => (string) $r['created_at'],
+            ];
+        }
+        $out = [];
+        foreach ($this->latestEntries($entries) as $e) {
+            $k = $this->isRealignment($e['type']) ? 'realignment' : 'revision';
+            $out[$e['line']] ??= ['revision' => 0.0, 'realignment' => 0.0];
+            $out[$e['line']][$k] = round($out[$e['line']][$k] + $e['amount'], 2);
+        }
+
+        return $out;
     }
 
     private function lineOut(array $line): array

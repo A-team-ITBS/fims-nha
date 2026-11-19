@@ -12,7 +12,10 @@ namespace PHPMaker2024\FIMS;
  *   Revised Amount · RFA / LAA Amount · Disbursement · Unallocated Amount · Account Payable
  * (CobService works the figures out per budget line; see its header comment for each definition). The Revised Amount is the same figure as the COB
  * page's: the Approved Amount (as FMD suggested it, before any revision or CBA) net of its revisions / realignments (the revision being signed) — worked
- * out per line, not the recorded revised_amount.
+ * out per line (there is no stored revised amount any more).
+ * RFA / LAA Amount is summed by the server from the RFA / LAA rows of fims.budget_line_item_earmark (the 'converted' rows), and the Unallocated Amount — the
+ * remaining balance, the Revised Amount less CBA Requested, the same figure as the COB's Remaining Balance — from all of that table's active and converted rows,
+ * so they and Account Payable change as soon as a CBA / RFA / LAA is approved or deleted — this page only displays them.
  * Disbursement is what the disbursement vouchers connected to the RFAs / LAAs have disbursed (each voucher's gross_amount, a cancelled or rejected one
  * not counted), and it is part of every total — the project rows, the TOTAL and the cards. Account Payable is the RFA / LAA Amount less the Disbursement.
  *
@@ -36,6 +39,13 @@ namespace PHPMaker2024\FIMS;
  */
 @session_start();
 $_rlm_api = Config('API.FIMS_URL');
+
+// The REV / REA OUT / REA IN rows (the approved revisions and realignments recorded against a project) are not shown under a project: the server is not asked for them and
+// the table's note does not mention them. Set this to true to bring them back (the Revised Amount, the totals and the cards do not change either way — they already include them).
+$_rlm_showRevisions = false;
+
+// The explanatory note under the table ("Each row is a project of an Approved budget request; …") is not shown. Set this to true to bring it back.
+$_rlm_showNote = false;
 ?>
 
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -79,7 +89,7 @@ $_rlm_api = Config('API.FIMS_URL');
 #rlm-root .rlm-t-bucket:hover > td { background-image: linear-gradient(rgba(0, 0, 0, .05), rgba(0, 0, 0, .05)); }
 #rlm-root .rlm-bkt-badge { display: inline-block; min-width: 40px; padding: 2px 8px; border-radius: 4px; text-align: center; font-size: 11px; font-weight: 700; letter-spacing: .04em; color: #fff; background: var(--b-accent); }
 #rlm-root .rlm-t-class > td { font-weight: 600; color: var(--afims-heading, #000E3E); }
-#rlm-root .rlm-t-allocation > td, #rlm-root .rlm-t-dv > td { vertical-align: middle; }
+#rlm-root .rlm-t-allocation > td, #rlm-root .rlm-t-dv > td, #rlm-root .rlm-t-revision > td { vertical-align: middle; }
 /* a voucher is the deepest, quietest row */
 #rlm-root .rlm-t-dv > td { font-size: 12px; background: var(--afims-surface-subtle, #F4F7FA); }
 /* The name flows as ordinary text (name, then FY / documents after it) and wraps inside its cell; the caret is pinned to the left of it, so it can never end
@@ -98,6 +108,7 @@ $_rlm_api = Config('API.FIMS_URL');
 #rlm-root .rlm-unassigned { font-style: italic; color: #B45309; }
 #rlm-root .rlm-num { font-family: 'IBM Plex Mono', monospace; font-size: 12px; text-align: right; white-space: nowrap; }
 #rlm-root .rlm-neg { color: #dc2626; }
+#rlm-root .rlm-pos { color: var(--green-txt, #0C7539); }
 #rlm-root .rlm-dash { color: var(--afims-text-disabled, #A9AAB8); }
 #rlm-root .rlm-clip { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; font-weight: 600; color: var(--afims-primary-text, #0035A9); }
 #rlm-root .rlm-clip svg { width: 12px; height: 12px; stroke: currentColor; }
@@ -163,7 +174,7 @@ $_rlm_api = Config('API.FIMS_URL');
                 <div class="nha-sc-label">Unallocated Amount</div>
                 <div class="nha-sc-val" id="rlm-kpi-unallocated">—</div>
             </div></div>
-            <p class="nha-kpi-sub">Revised Amount less the RFA / LAA Amount</p>
+            <p class="nha-kpi-sub">Remaining balance: Revised Amount less CBA Requested</p>
         </div>
         <div class="nha-sc nha-sc-red">
             <div class="nha-sc-top"><div>
@@ -231,7 +242,7 @@ $_rlm_api = Config('API.FIMS_URL');
         ['revised_computed', 'Revised Amount', 'The approved budget (as FMD suggested it) net of its revisions / realignments (a decrease lowers it) — the same figure as the COB page'],
         ['rfa_laa_amount', 'RFA / LAA Amount', 'RFA Approved plus LAA Issued — what approved RFAs and issued LAAs have drawn from the CBAs'],
         ['disbursement', 'Disbursement', 'The gross amount of the disbursement vouchers connected to the RFAs / LAAs (a cancelled or rejected voucher is not counted)'],
-        ['unallocated_amount', 'Unallocated Amount', 'Revised Amount less the RFA / LAA Amount — the revised budget no RFA or LAA has drawn yet'],
+        ['unallocated_amount', 'Unallocated Amount', 'The remaining balance — Revised Amount less CBA Requested (what CBAs hold against the budget, including what the RFAs / LAAs have drawn from them); the same figure as the COB page\'s Remaining Balance'],
         ['account_payable', 'Account Payable', 'RFA / LAA Amount less Disbursement — what the RFAs and LAAs have drawn that has not been disbursed yet'],
     ];
     ?>
@@ -259,13 +270,15 @@ $_rlm_api = Config('API.FIMS_URL');
                 </tbody>
             </table>
         </div>
+        <?php if ($_rlm_showNote) { ?>
         <p class="rlm-note">Each row is a project of an <strong>Approved</strong> budget request; under the project's name is where it sits (program › sub-program › originating unit). <strong>Revised Amount</strong> is the approved budget (as FMD suggested it) net of its revisions and realignments (a decrease lowers it) — the same figure as on the COB page.
-            <strong>RFA / LAA Amount</strong> is what approved RFAs and issued LAAs have drawn from the CBAs' reservations, and <strong>Unallocated Amount</strong> is the
-            Revised Amount less it. <strong>Disbursement</strong> is the gross amount of the disbursement vouchers connected to the RFAs and LAAs (a cancelled or rejected voucher is not counted) and is included in every total, and <strong>Account Payable</strong> is the RFA / LAA Amount less it. Open a project to see
-            the RFAs and LAAs drawn against it, and an RFA or LAA that has a disbursement voucher connected (a "1 DV" tag) to see it. A dash means zero; brackets mean negative.
+            <strong>RFA / LAA Amount</strong> is what approved RFAs and issued LAAs have drawn from the CBAs' reservations, and <strong>Unallocated Amount</strong> is the remaining balance: the
+            Revised Amount less CBA Requested (what the CBAs hold, which already includes those draws) — the same figure as the COB page's Remaining Balance. <strong>Disbursement</strong> is the gross amount of the disbursement vouchers connected to the RFAs and LAAs (a cancelled or rejected voucher is not counted) and is included in every total, and <strong>Account Payable</strong> is the RFA / LAA Amount less it. Open a project to see
+            <?php if ($_rlm_showRevisions) { ?>the approved <strong>revisions and realignments</strong> recorded against it (one row each, its signed amount in the Revised Amount column, − in red and + in green — a realignment has an <strong>out</strong> row and an <strong>in</strong> row, both under the project when they are in the same one) and <?php } ?>the RFAs and LAAs drawn against it, and an RFA or LAA that has a disbursement voucher connected (a "1 DV" tag) to see it. A dash means zero; brackets mean negative.
             The table is in two parts. <strong>CO</strong> (capital outlay, accounts starting with 1) lists the projects of the programs. <strong>COE</strong> lists the budget that belongs to no program —
             a COE budget request has only line items, no program or project — split into <strong>PS</strong> (accounts 5-01) and <strong>MOOE</strong> (accounts 5-02), each request
             with its RFAs and LAAs under it.</p>
+        <?php } ?>
     </div>
 
 <?php
@@ -287,14 +300,16 @@ include __DIR__.'/readone/cob-readone.php';
    the rows under CO; the levels above them survive only as the muted line under a project's name. The tree is asked for with split_coe=1, so it has two
    roots — CO (the projects of the programs) and COE (the budget of the requests with no program: PS / MOOE rows, then the requests, node type 'request') —
    told apart by chart-of-accounts code (1… CO, 5-01… PS, 5-02… MOOE; CobService::costTypeOf()). rlm_regroup() puts the table together from them.
-   Under a project or a request — asked for with with_allocations=1 — the RFAs / LAAs drawn against it
+   Under a project or a request — asked for with with_revisions=1 — the approved revisions / realignments recorded against it (node type 'revision', from the ledger
+   fims.budget_line_item_revision_transaction: one row per request, a realignment as an 'out' and an 'in' row; the signed amount is in the Revised Amount column) and — asked
+   for with with_allocations=1 — the RFAs / LAAs drawn against it
    (node type 'allocation') and, under an RFA, its disbursement voucher (node type 'dv'). Those two are detail rows: they show their own figure in one
    column (RFA / LAA Amount, Disbursement) and dashes elsewhere, and no total counts them.
    What it shows: ONLY the Approved budget requests, in five amount columns that start at the Revised Amount:
      Revised Amount         the COB page's: the Approved Amount (as first suggested by FMD) + the adjustment (signed: a decrease / realignment out is negative), per line
      RFA / LAA Amount       RFA Approved + LAA Issued: what approved RFAs / LAAs drew from the CBAs' reservations
      Disbursement           the gross_amount of the vouchers connected to the RFAs / LAAs (cancelled / rejected not counted), in every total
-     Unallocated Amount     = Revised Amount - RFA / LAA Amount
+     Unallocated Amount     = Revised Amount - CBA Requested (the remaining balance; the COB's Remaining Balance)
      Account Payable        = RFA / LAA Amount - Disbursement
    The server decides what each user may see (their RC and the RCs below it; FMD and administrators see all) — nothing here can widen it.
 ═══════════════════════════════════════════════════════════════ */
@@ -302,6 +317,8 @@ include __DIR__.'/readone/cob-readone.php';
 // COB_API is the name the shared request viewer (readone/cob-readone.php) reads when a View is opened, so this page uses it for its own requests too
 const COB_API = '<?php echo $_rlm_api; ?>' + '/cob';
 const RLM_LAYOUT = 'program';
+// whether the approved revisions / realignments are listed under a project (REV / REA OUT / REA IN rows) — switched off, see $_rlm_showRevisions at the top of this file
+const RLM_SHOW_REVISIONS = <?php echo $_rlm_showRevisions ? 'true' : 'false'; ?>;
 const RLM_UNITS = {
     full: { div: 1, suffix: '', note: 'Amounts in ₱' },
     thousand: { div: 1e3, suffix: ' K', note: 'Amounts in ₱ thousands' },
@@ -502,7 +519,9 @@ async function rlm_loadTree() {
     const my = ++rlm.seq;
     rlm_busy(true);
     try {
-        const json = await rlm_request('rollup', rlm_params({ layout_by: RLM_LAYOUT, with_allocations: '1', split_coe: '1' }));
+        // with_allocations=1: the RFAs / LAAs (and an RFA's voucher) under each project; with_revisions=1 (only while RLM_SHOW_REVISIONS is on): the approved revisions / realignments recorded against it
+        const json = await rlm_request('rollup', rlm_params(Object.assign({ layout_by: RLM_LAYOUT, with_allocations: '1', split_coe: '1' }, RLM_SHOW_REVISIONS ? { with_revisions: '1' } : {})));
+        if (json.revision_error && RLM_SHOW_REVISIONS) rlm_toast(json.revision_error, 'warning');
         if (my !== rlm.seq) return;
         rlm.data = rlm_regroup(json.data || []); rlm.totals = json.totals || null;
         if (json.allocation_error) rlm_toast(json.allocation_error, 'warning');
@@ -556,6 +575,13 @@ function rlm_nodeLabel(n) {
         // (CO / COE get a solid pill in their row's colour — .rlm-bkt-badge — PS / MOOE the quiet grey one)
         return `${n.code ? `<span class="${n.type === 'bucket' ? 'rlm-bkt-badge' : 'nha-bdg nha-bdg-gray nha-bdg-xs'}">${rlm_esc(n.code)}</span>` : ''}<span>${rlm_esc(n.label)}</span>`;
     }
+    if (n.type === 'revision') {
+        // an approved Budget Revision / Realignment recorded against the project above it: a badge (funds out red, funds in green, a revision amber), its number, then the budget
+        // line(s) and the reason. Its signed amount is in the Revised Amount column — it is the change that was made to it
+        const kind = n.code === 'REA OUT' ? 'nha-bdg-red' : n.code === 'REA IN' ? 'nha-bdg-green' : 'nha-bdg-amber';
+        const meta = [n.detail, n.description].filter(Boolean).map(rlm_esc).join(' · ');
+        return `<span class="nha-bdg ${kind} nha-bdg-xs">${rlm_esc(n.code)}</span><span>${rlm_esc(n.label)}</span>${meta ? `<span class="rlm-sub">${meta}</span>` : ''}`;
+    }
     if (n.type === 'allocation') {
         // an RFA / LAA drawn against the project above it: a badge saying which, its number, then its description
         const desc = n.description && String(n.description).trim() ? `<span class="rlm-sub">${rlm_esc(String(n.description).trim())}</span>` : '';
@@ -584,8 +610,15 @@ function rlm_nodeLabel(n) {
     return html;
 }
 
+// A revision / realignment detail row shows its amount SIGNED and coloured: what the budget gave up (a decrease, or a realignment out) reads − in red, what it received
+// (an increase, or a realignment in) + in green. Every other figure keeps the sheet's brackets.
+function rlm_signed(v) {
+    const n = Number(v || 0);
+    if (Math.abs(n) < 0.005) return '<span class="rlm-dash">-</span>';
+    return n < 0 ? `<span class="rlm-neg">−${rlm_scaled(-n)}</span>` : `<span class="rlm-pos">+${rlm_scaled(n)}</span>`;
+}
 function rlm_amountCells(o) {
-    return RLM_COLS.map(k => `<td class="rlm-num">${rlm_num(o[k])}</td>`).join('');
+    return RLM_COLS.map(k => `<td class="rlm-num">${o.type === 'revision' && k === 'revised_computed' ? rlm_signed(o[k]) : rlm_num(o[k])}</td>`).join('');
 }
 
 function rlm_treeRow(n, depth, path, hasKids, open) {

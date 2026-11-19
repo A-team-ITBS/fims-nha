@@ -6,10 +6,11 @@ use PHPMaker2024\FIMS\Service\DeductionRemittanceService;
 
 /**
  * Deductions & Remittances API — the page app/pages/remittance-page.php (Payroll menu "Remittance").
- *   GET  /deduction-remittance/list?year=&month=&agency=&status=   per month per agency + KPIs + what the user may do
+ *   GET  /deduction-remittance/list?year=&month=&status=           per month (agencies underneath) + KPIs + what the user may do
  *   GET  /deduction-remittance/detail/{periodId}/{agency}          items and employees of one month + agency
- *   POST /deduction-remittance/schedule                            {payroll_period_id, agency, due_date, remarks} (Accounting)
- *   POST /deduction-remittance/{id}/unschedule                     SCHEDULED → CANCELLED (Accounting; no live remittance DV)
+ *   POST /deduction-remittance/start-dv                            {payroll_period_id, agency} an agency's "Create DV" (Accounting)
+ *                                                                  → {payroll_remittance_id, …} to open Voucher?remittance={id}
+ *   POST /deduction-remittance/{id}/unschedule                     drop an agency row whose DV was never saved (Accounting)
  *   POST /deduction-remittance/{id}/confirm                        {receipt_no, receipt_date} once its DV is released (Treasury / Accounting)
  *   GET  /deduction-remittance/dv-data/{id}                        DV form fill (Voucher?remittance={id}): claimant = agency,
  *                                                                  amount, entry Dr payables / gov't share, Cr Accounts Payable
@@ -50,11 +51,13 @@ $app->get('/deduction-remittance/dv-data/{id:[0-9]+}', function ($request, $resp
     }
 })->add($accessMiddleware)->add($jwtMiddleware);
 
-$app->post('/deduction-remittance/schedule', function ($request, $response, $args) use ($DeductionRemittanceService, $dedRemJson) {
+$app->post('/deduction-remittance/start-dv', function ($request, $response, $args) use ($DeductionRemittanceService, $dedRemJson) {
     try {
-        return $dedRemJson($response, $DeductionRemittanceService->schedule($request->getParsedBody() ?: [], (int) $request->getAttribute('user_id')));
+        $body = $request->getParsedBody() ?: [];
+
+        return $dedRemJson($response, $DeductionRemittanceService->startDv((int) ($body['payroll_period_id'] ?? 0), (string) ($body['agency'] ?? ''), (int) $request->getAttribute('user_id')));
     } catch (\Exception $e) {
-        LogError('POST /deduction-remittance/schedule ' . $e->getMessage());
+        LogError('POST /deduction-remittance/start-dv ' . $e->getMessage());
 
         return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
     }

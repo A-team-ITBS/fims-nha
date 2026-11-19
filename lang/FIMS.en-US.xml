@@ -1,4 +1,4 @@
-<ew-language date="2026/11/18" id="en-US" author="e.World Technology Limited">
+<ew-language date="2026/11/19" id="en-US" author="e.World Technology Limited">
   <project>
     <phrase id="bodytitle" value="UAC - User Access Control System" />
     <phrase id="footertext" value="&amp;copy;2024 ITBS Corporation. All rights reserved." />
@@ -62,6 +62,9 @@
     <menu id="333">
       <phrase id="menutext" value="Property Record" />
     </menu>
+    <menu id="766">
+      <phrase id="menutext" value="Work-In-Process" />
+    </menu>
     <menu id="755">
       <phrase id="menutext" value="Monitoring" />
     </menu>
@@ -90,7 +93,7 @@
       <phrase id="menutext" value="Accountable Forms Registry" />
     </menu>
     <menu id="757">
-      <phrase id="menutext" value="Collections" />
+      <phrase id="menutext" value="Collections and Fund Sweeping" />
     </menu>
     <menu id="552">
       <phrase id="menutext" value="Reports" />
@@ -109,6 +112,12 @@
     </menu>
     <menu id="764">
       <phrase id="menutext" value="Income Statement" />
+    </menu>
+    <menu id="767">
+      <phrase id="menutext" value="Changes in Net Assets/Equity" />
+    </menu>
+    <menu id="768">
+      <phrase id="menutext" value="Cash Flow" />
     </menu>
     <menu id="394">
       <phrase id="menutext" value="Ledgers" />
@@ -163,6 +172,9 @@
     </menu>
     <menu id="760">
       <phrase id="menutext" value="Fidelity Bond" />
+    </menu>
+    <menu id="765">
+      <phrase id="menutext" value="Opening Balance" />
     </menu>
     <menu id="330">
       <phrase id="menutext" value="Fund Sourcing" />
@@ -1801,6 +1813,18 @@
     </table>
     <table id="income_statement_page">
       <phrase id="tblcaption" value="Income Statement" />
+    </table>
+    <table id="opening_balance_page">
+      <phrase id="tblcaption" value="Opening Balance" />
+    </table>
+    <table id="work_in_process_page">
+      <phrase id="tblcaption" value="Work-In-Process Inventory" />
+    </table>
+    <table id="statement_of_changes_page">
+      <phrase id="tblcaption" value="Changes in Net Assets/Equity" />
+    </table>
+    <table id="cash_flow_page">
+      <phrase id="tblcaption" value="Cash Flow" />
     </table>
   </project>
 </ew-language>
