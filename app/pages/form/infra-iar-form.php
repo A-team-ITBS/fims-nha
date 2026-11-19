@@ -107,7 +107,7 @@ $_ifr_api = $_amp_api ?? \PHPMaker2024\FIMS\Config('API.FIMS_URL');
                             <input type="text" class="amp-input" id="ifr-swa" readonly tabindex="-1" placeholder="Generating…" style="font-weight:600;">
                         </div>
                         <div class="amp-group">
-                            <label class="amp-label" for="ifr-office">Requesting Office/Dept</label>
+                            <label class="amp-label" for="ifr-office">Regional Office/District Office</label>
                             <input type="text" class="amp-input" id="ifr-office" readonly tabindex="-1" placeholder="Loaded from the RFA">
                         </div>
                     </div>
@@ -331,7 +331,7 @@ function ifr_view(i) {
     amp_view_set('Infrastructure Record',r.swa_number || '', `
         <div class="amp-vw-card"><h4 class="amp-vw-card-title">Inspection and Acceptance Report</h4>
             ${grid(2, vrow('SWA No.','<span class="amp-vw-code">' + amp_esc(r.swa_number) + '</span>'), vrow('RFA No.', ifr_dash(r.rfa_number)),
-                      vrow('Requisitioning Office/Dept', ifr_dash(r.requesting_office)), vrow('Contractor', ifr_dash(r.contractor)))}
+                      vrow('Regional Office/District Office', ifr_dash(r.requesting_office)), vrow('Contractor', ifr_dash(r.contractor)))}
         </div>
         <div class="amp-vw-card"><h4 class="amp-vw-card-title">Project</h4>
             ${vrow('Project Code', r.project_code ? '<span class="amp-vw-code">' + amp_esc(r.project_code) + '</span>' : ifr_dash(null))}
@@ -374,7 +374,7 @@ async function ifr_proforma(id) {
         const d = json.data;
         await amp_loadBooks();
         const rc = {
-            dr_number: d.swa_number, delivery_date: '', rows: d.rows, total: d.total, rfa_number: d.rfa_number || '', project_code: d.project_code || '', project: d.project_name || '', location: d.location || '', contractor: d.contractor || '',
+            dr_number: d.swa_number, delivery_date: '', rows: d.rows, total: d.total, rfa_number: d.rfa_number || '', office: d.requesting_office || '', program: d.program_name || '', project_code: d.project_code || '', project: d.project_name || '', location: d.location || '', contractor: d.contractor || '',
             jev_id: d.jev_id, jev_no: d.jev_no,
             particulars: 'To record the infrastructure SWA ' + d.swa_number + ' (RFA ' + d.rfa_number + ') — ' + (d.project_name || 'project') + (d.location ? ', ' + d.location : ''),
             print_particulars: 'Pro-forma JEV — Infrastructure SWA No. ' + d.swa_number + ' of RFA No. ' + d.rfa_number,

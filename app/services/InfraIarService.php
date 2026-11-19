@@ -416,6 +416,59 @@ class InfraIarService
                 {$this->projectBlockSql()}";
     }
 
+    /** The list search ($s = the quoted '%text%'): SWA no., RFA no., contract, contractor, project code / name, location, work item descriptions — all read live. */
+    private function searchWhere(string $s): string
+    {
+        return "(s.swa_number ILIKE {$s} OR a.allocation_number ILIKE {$s} OR EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(s.line_transaction -> 0 -> 'items', '[]'::jsonb)) it WHERE it ->> 'description' ILIKE {$s})
+                           OR s.contract ILIKE {$s}
+                           OR EXISTS (SELECT 1 FROM fims.vendors v WHERE v.vendor_id = a.vendor_id AND v.vendor_name ILIKE {$s})
+                           OR EXISTS (SELECT 1 FROM fims.project pr WHERE pr.project_code = blk.project_code AND (pr.project_code ILIKE {$s} OR pr.project_name ILIKE {$s}))
+                           OR EXISTS (SELECT 1 FROM fims.budget_req_project brp WHERE brp.project_code = blk.project_code AND brp.location ILIKE {$s}))";
+    }
+
+    /** The items' Statement of Work description, project etc. are read live; see live(). */
+    private function liveNote(): void
+    {
+    }
+    /** The GL account of the Work in Process page: Work-in-Process (and its sub-ledgers). */
+    public const WIP_ACCOUNT = '1-04-03-020';
+
+    /**
+     * Work in Process page: the infrastructure records whose pro-forma was SUBMITTED as a JEV (the JEV is in the record's line_transaction) and whose JEV carries the
+     * Work-in-Process account (1-04-03-020, or one of its sub-ledgers). One row per project (one record per RFA): the JEV's book, the office, project, location, contractor, contract,
+     * the three contract costs (read live) and the physical accomplishment (the items' % added up).
+     */
+    public function workInProcess(int $page = 1, int $limit = 10, string $search = ''): array
+    {
+        try {
+            $code = $this->q(self::WIP_ACCOUNT);
+            $like = $this->q(self::WIP_ACCOUNT . '-%');
+            $join = "JOIN fims.journal_entry_vouchers j ON j.jev_id = NULLIF(s.line_transaction -> 0 ->> 'jev_id', '')::int
+                     LEFT JOIN fims.books bk ON bk.book_id = j.book_id
+                     LEFT JOIN fims.settings_status js ON js.id = j.status_id";
+            $where = "EXISTS (SELECT 1 FROM fims.journal_entry_voucher_lines l WHERE l.jev_id = j.jev_id AND (l.account_code = {$code} OR l.account_code LIKE {$like}))";
+            if ($search !== '') {
+                $s      = $this->q('%' . $search . '%');
+                $where .= " AND ({$this->searchWhere($s)} OR bk.name ILIKE {$s} OR j.jev_no ILIKE {$s})";
+            }
+            $limit  = max(1, $limit);
+            $page   = max(1, $page);
+            $offset = ($page - 1) * $limit;
+            $total  = (int) App\ExecuteScalar("SELECT COUNT(*) {$this->from()} {$join} WHERE {$where}", 'DB');
+            $rows   = App\ExecuteRows(
+                'SELECT ' . self::COLS . ", j.jev_date, bk.name AS book_name, js.name AS jev_status {$this->from()} {$join} WHERE {$where} ORDER BY s.swa_id DESC LIMIT {$limit} OFFSET {$offset}",
+                'DB'
+            ) ?: [];
+
+            return [
+                'success'    => true,
+                'data'       => array_map(fn($r) => $this->shape($r), $this->live($rows)),
+                'pagination' => ['total' => $total, 'per_page' => $limit, 'current_page' => $page, 'last_page' => (int) ceil($total / $limit)],
+            ];
+        } catch (\Exception $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
     /** Paginated list: one row per infrastructure IAR. */
     public function fetchAlls(int $page = 1, int $limit = 10, string $search = ''): array
     {
@@ -423,10 +476,7 @@ class InfraIarService
             $where = '1=1';
             if ($search !== '') {
                 $s     = $this->q('%' . $search . '%');
-                $where = "(s.swa_number ILIKE {$s} OR a.allocation_number ILIKE {$s} OR EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(s.line_transaction -> 0 -> 'items', '[]'::jsonb)) it WHERE it ->> 'description' ILIKE {$s})
-                           OR EXISTS (SELECT 1 FROM fims.vendors v WHERE v.vendor_id = a.vendor_id AND v.vendor_name ILIKE {$s})
-                           OR EXISTS (SELECT 1 FROM fims.project pr WHERE pr.project_code = blk.project_code AND (pr.project_code ILIKE {$s} OR pr.project_name ILIKE {$s}))
-                           OR EXISTS (SELECT 1 FROM fims.budget_req_project brp WHERE brp.project_code = blk.project_code AND brp.location ILIKE {$s}))";
+                $where = $this->searchWhere($s);
             }
             $limit  = max(1, $limit);
             $page   = max(1, $page);
@@ -606,7 +656,7 @@ class InfraIarService
 
             return ['success' => true, 'data' => [
                 'id' => (int) $r['swa_id'], 'swa_number' => $r['swa_number'], 'rfa_number' => $r['rfa_number'], 'requesting_rc_id' => $rows[0]['requesting_rc_id'] ?? null,
-                'project_code' => $r['project_code'], 'project_name' => $r['project_name'], 'location' => $r['location'], 'contractor' => $r['contractor'], 'rows' => $out, 'total' => $total,
+                'requesting_office' => $r['requesting_office'] ?? null, 'program_name' => $r['program_name'] ?? null, 'project_code' => $r['project_code'], 'project_name' => $r['project_name'], 'location' => $r['location'], 'contractor' => $r['contractor'], 'rows' => $out, 'total' => $total,
                 'jev_id' => $r['jev_id'], 'jev_no' => $r['jev_no'],
             ]];
         } catch (xception $e) {
