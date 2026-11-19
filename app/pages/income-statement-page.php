@@ -18,33 +18,25 @@ $_is_api = preg_match('~/api$~', $_is_api) ? $_is_api : $_is_api . '/api';
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
 
+<link rel="stylesheet" href="/app/fims-css/fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css') ?>" />
+
 <style>
+    /* Table styling (.fims-report-table*) lives in app/fims-css/fims.css. Only page-specific, non-table rules remain here. */
     #is-root .is-report-title { text-align: center; margin: 0 0 18px; }
     #is-root .is-report-title div { font-weight: 700; font-size: 14px; line-height: 1.6; }
     #is-root .is-report-title .is-report-date { font-weight: 400; }
-    #is-root .is-major-row td { background: #1B2B6B; color: #fff; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; }
-    #is-root .is-group-row td { background: var(--afims-bg-soft, #F5F6FA); font-weight: 600; text-transform: uppercase; font-size: 12px; }
-    #is-root .is-subgroup-row td { font-weight: 600; }
-    #is-root .is-subgroup-row td:first-child { padding-left: 20px; }
-    #is-root .is-account-row td:first-child { padding-left: 32px; }
-    #is-root .is-subtotal-row td { font-weight: 600; border-top: 1px solid var(--afims-border, #DDE0EC); }
-    #is-root .is-grand-row td { font-weight: 700; background: var(--afims-bg-soft, #F5F6FA); border-top: 2px solid #1B2B6B; border-bottom: 2px solid #1B2B6B; text-transform: uppercase; }
-    #is-root .is-neg { color: #B42318; }
     #is-root .is-sample { display: none; margin: 0 0 14px; padding: 10px 14px; border-radius: 6px; font-size: 13px; background: #FFF4D6; color: #6B4A00; border: 1px solid #F0D58A; }
 
-    /* Scroll the body vertically instead of growing the page — header row stays pinned in view. */
-    #is-root .nha-tbl-scroll { max-height: 70vh; overflow-y: auto; }
-    #is-root .nha-tbl thead th { position: sticky; top: 0; z-index: 1; }
-    @media print {
-        #is-root .nha-tbl-scroll { max-height: none; overflow-y: visible; }
-    }
+    /* Same page-level type scale as the Trial Balance / Balance Sheet pages. _shared/js/custom.js forces
+       `1em * scale !important` on inputs/selects/buttons, so those get the same direct rem + !important. */
+    #is-root .nha-hdr-tag             { font-size: 0.75rem; }    /* 12px */
+    #is-root .nha-hdr-title           { font-size: 1.25rem; }    /* 20px */
+    #is-root .nha-btn-hdr             { font-size: calc(0.875rem * var(--button-scale, 1)) !important; } /* 14px  Refresh */
+    #is-root .nha-filter-label        { font-size: 0.75rem; }    /* 12px */
+    #is-root .nha-filter-select       { font-size: calc(0.875rem * var(--input-scale, 1)) !important; }  /* 14px  dropdowns */
+    #is-root .nha-error               { font-size: 0.875rem; }   /* 14px */
+    #is-root .nha-hint                { font-size: 0.875rem; padding: 0 16px; margin: 0 0 14px; color: var(--afims-text-muted, #62657E); }   /* 14px; 16px side padding lines it up with the filter card */
 
-    /* Dark mode: same treatment as the Balance Sheet page */
-    html.afims-dark[data-bs-theme="dark"] #is-root .is-group-row td { background: var(--afims-surface-subtle, #22294A); color: #FFFFFF; border-top: 1px solid var(--afims-border-strong, #4A5270); }
-    html.afims-dark[data-bs-theme="dark"] #is-root .is-major-row td { background: #2E4A8F; color: #FFFFFF; }
-    html.afims-dark[data-bs-theme="dark"] #is-root .is-grand-row td { background: var(--afims-surface-subtle, #22294A); color: #FFFFFF; border-color: var(--afims-border-strong, #4A5270); }
-    html.afims-dark[data-bs-theme="dark"] #is-root .is-subtotal-row td { border-top-color: var(--afims-border-strong, #4A5270); }
-    html.afims-dark[data-bs-theme="dark"] #is-root .is-neg { color: #FF8A80; }
     html.afims-dark[data-bs-theme="dark"] #is-root .is-sample { background: #3A2F10; color: #F5D98A; border-color: #6B5A22; }
     @media print {
         #is-root .is-letterhead,
@@ -76,7 +68,7 @@ $_is_api = preg_match('~/api$~', $_is_api) ? $_is_api : $_is_api . '/api';
         </div>
     </div>
 
-    <p class="nha-hint no-print" style="margin:0 0 14px;color:var(--afims-text-muted,#62657E);font-size:13px;">
+    <p class="nha-hint no-print">
         Statement of Financial Performance for the selected fiscal year. It adds up every Journal
         Entry Voucher that was approved and posted to the General Ledger, so a voucher still in
         review does not appear here.
@@ -139,9 +131,9 @@ $_is_api = preg_match('~/api$~', $_is_api) ? $_is_api : $_is_api . '/api';
     </div>
 
     <!-- ── TABLE ──────────────────────────────────────────── -->
-    <div class="nha-table-wrap">
-        <div class="nha-tbl-scroll">
-            <table class="nha-tbl">
+    <div class="nha-table-wrap fims-report-table-wrap">
+        <div class="nha-tbl-scroll fims-report-table-scroll">
+            <table class="nha-tbl fims-report-table">
                 <thead id="is-thead">
                     <tr>
                         <th>Particulars</th>
@@ -370,23 +362,23 @@ function is_renderConsolidated(d, fallbackFy) {
     }
 
     const html = [];
-    const amounts = byBook => books.map(b => `<td class="text-end nha-mono">${is_peso(byBook[b.book_id] ?? 0)}</td>`).join('');
+    const amounts = byBook => books.map(b => `<td class="text-end nha-mono fims-report-table-num">${is_peso(byBook[b.book_id] ?? 0)}</td>`).join('');
     const row = (cls, title, byBook, total) =>
-        `<tr class="${cls}"><td>${is_esc(title)}</td>${amounts(byBook)}<td class="text-end nha-mono">${is_peso(total)}</td></tr>`;
+        `<tr class="${cls}"><td>${is_esc(title)}</td>${amounts(byBook)}<td class="text-end nha-mono fims-report-table-num">${is_peso(total)}</td></tr>`;
     const grand = (title, byBook, total) =>
-        `<tr class="is-grand-row"><td>${is_esc(title)}</td>${amounts(byBook)}<td class="text-end nha-mono">${is_peso(total)}</td></tr>`;
+        `<tr class="fims-report-table-grand-row"><td>${is_esc(title)}</td>${amounts(byBook)}<td class="text-end nha-mono fims-report-table-num">${is_peso(total)}</td></tr>`;
 
     d.sections.forEach(s => {
         const meta = IS_SECTION_META[s.key] || {};
-        html.push(`<tr class="is-major-row"><td colspan="${colCount}">${is_esc(s.label)}</td></tr>`);
+        html.push(`<tr class="fims-report-table-major-row"><td colspan="${colCount}">${is_esc(s.label)}</td></tr>`);
         s.groups.forEach(g => {
-            html.push(row('is-group-row', g.group_title, g.by_book, g.total));
+            html.push(row('fims-report-table-group-row', g.group_title, g.by_book, g.total));
             g.subgroups.forEach(sg => {
-                if (sg.group_title) html.push(row('is-subgroup-row', sg.group_title, sg.by_book, sg.total));
-                sg.accounts.forEach(a => html.push(row('is-account-row', a.account_title, a.by_book, a.total)));
+                if (sg.group_title) html.push(row('fims-report-table-subgroup-row', sg.group_title, sg.by_book, sg.total));
+                sg.accounts.forEach(a => html.push(row('fims-report-table-row', a.account_title, a.by_book, a.total)));
             });
         });
-        html.push(row('is-subtotal-row', meta.subtotalLabel || ('Total ' + s.label), s.subtotal_by_book, s.subtotal_total));
+        html.push(row('fims-report-table-subtotal-row', meta.subtotalLabel || ('Total ' + s.label), s.subtotal_by_book, s.subtotal_total));
         if (meta.grandAfter) {
             html.push(grand(meta.grandAfter.label, d.totals[meta.grandAfter.key + '_by_book'], d.totals[meta.grandAfter.key]));
         }
@@ -409,25 +401,25 @@ function is_render(d, fallbackFy) {
 
     const html = [];
     const amounts = (cur, prev) => `
-        <td class="text-end nha-mono">${is_peso(cur)}</td>
-        <td class="text-end nha-mono">${is_peso(prev)}</td>
-        <td class="text-end nha-mono">${is_peso(cur - prev)}</td>`;
+        <td class="text-end nha-mono fims-report-table-num">${is_peso(cur)}</td>
+        <td class="text-end nha-mono fims-report-table-num">${is_peso(prev)}</td>
+        <td class="text-end nha-mono fims-report-table-num">${is_peso(cur - prev)}</td>`;
     const row = (cls, title, cur, prev) =>
         `<tr class="${cls}"><td>${is_esc(title)}</td>${amounts(cur, prev)}</tr>`;
     const grand = (title, cur, prev) =>
-        `<tr class="is-grand-row"><td>${is_esc(title)}</td>${amounts(cur, prev)}</tr>`;
+        `<tr class="fims-report-table-grand-row"><td>${is_esc(title)}</td>${amounts(cur, prev)}</tr>`;
 
     d.sections.forEach(s => {
         const meta = IS_SECTION_META[s.key] || {};
-        html.push(`<tr class="is-major-row"><td colspan="4">${is_esc(s.label)}</td></tr>`);
+        html.push(`<tr class="fims-report-table-major-row"><td colspan="4">${is_esc(s.label)}</td></tr>`);
         s.groups.forEach(g => {
-            html.push(row('is-group-row', g.group_title, g.balance, g.prev_balance));
+            html.push(row('fims-report-table-group-row', g.group_title, g.balance, g.prev_balance));
             g.subgroups.forEach(sg => {
-                if (sg.group_title) html.push(row('is-subgroup-row', sg.group_title, sg.balance, sg.prev_balance));
-                sg.accounts.forEach(a => html.push(row('is-account-row', a.account_title, a.balance, a.prev_balance)));
+                if (sg.group_title) html.push(row('fims-report-table-subgroup-row', sg.group_title, sg.balance, sg.prev_balance));
+                sg.accounts.forEach(a => html.push(row('fims-report-table-row', a.account_title, a.balance, a.prev_balance)));
             });
         });
-        html.push(row('is-subtotal-row', meta.subtotalLabel || ('Total ' + s.label), s.subtotal, s.prev_subtotal));
+        html.push(row('fims-report-table-subtotal-row', meta.subtotalLabel || ('Total ' + s.label), s.subtotal, s.prev_subtotal));
         if (meta.grandAfter) {
             html.push(grand(meta.grandAfter.label, d.totals[meta.grandAfter.key], d.totals['prev_' + meta.grandAfter.key]));
         }
@@ -582,7 +574,7 @@ function is_sampleConsolidatedData(fy) {
 function is_peso(v) {
     const n = Number(v || 0);
     const s = '₱ ' + Math.abs(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    return n < -0.005 ? `<span class="is-neg">(${s})</span>` : s;
+    return n < -0.005 ? `<span class="fims-report-table-neg">(${s})</span>` : s;
 }
 function is_esc(text) {
     if (text === null || text === undefined) return '';
