@@ -1,12 +1,6 @@
 <?php
-
-namespace PHPMaker2024\FIMS;
-
-// Page object
 $OpeningBalancePage = &$Page;
 ?>
-<?php
-$Page->showMessage();
-?>
+<?php $Page->showMessage(); ?>
 <?php include(dirname(__DIR__, 1) . "/app/pages/opening-balance-page.php"); ?>
-<?= GetDebugMessage() ?>
+<?php if (function_exists('GetDebugMessage')) { echo GetDebugMessage(); } ?>
