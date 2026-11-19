@@ -215,14 +215,126 @@ class BankManagementService
     {
         $rows = App\ExecuteRowsAssociative(
             "SELECT ba.bank_account_id, ba.account_name, ba.bank_name, ba.is_main_depository, ba.rc_id,
+                    ba.current_balance, ba.main_depository_account_id, md.account_name AS main_depository_account_name,
                     rc.rc_code, rc.rc_name
              FROM {$this->tableBankAccounts} ba
              LEFT JOIN {$this->tableResponsibilityCode} rc ON rc.rc_id = ba.rc_id
+             LEFT JOIN {$this->tableBankAccounts} md ON md.bank_account_id = ba.main_depository_account_id
              ORDER BY ba.account_name",
             'DB'
         );
 
         return $this->ok($rows ?: []);
+    }
+
+    // ── Fund Sweeping ──
+    // Bulk-prepares DRAFT FTLAs (fims.fund_transfers, via FtlaService —
+    // same create() the manual FTLA form posts to) that move each of a
+    // Region/Office's bank accounts' un-swept deposits into its
+    // already-assigned main_depository_account_id (see migration
+    // "55 - bank_accounts_add_main_depository_account_id.sql"). "Balance"
+    // here is the SUM of that account's fims.collection_report_deposits
+    // rows where is_swept = FALSE, NOT fims.bank_accounts.current_balance
+    // — nothing in this app ever keeps current_balance in sync, whereas
+    // Collection Reports' own Deposit section is the actual record of
+    // money going into these accounts. This does NOT move money itself —
+    // it only creates the paperwork; the normal FTLA approval workflow
+    // (DRAFT → … → COMPLETED) still has to run its course before anything
+    // is actually transferred. transfer_type = SETTLEMENT_TO_MAIN, the
+    // type FtlaService already defines for exactly this case.
+    //
+    // Accounts with no main_depository_account_id assigned, or no
+    // un-swept deposits, are skipped (not an error) — callers should check
+    // the "skipped" list. Once processFundSweep() creates a draft FTLA for
+    // an account, every un-swept deposit it just summed gets marked
+    // is_swept = TRUE (see migration "56 - collection_report_deposits_
+    // add_swept_tracking.sql") so the same money is never swept twice.
+    private function unsweptDepositBalanceSql(): string
+    {
+        return "(SELECT COALESCE(SUM(amount), 0) FROM fims.collection_report_deposits crd
+                 WHERE crd.bank_account_id = ba.bank_account_id AND crd.is_swept = FALSE)";
+    }
+
+    public function previewFundSweep($rcId)
+    {
+        $rcId = trim((string) $rcId);
+        $balanceSql = $this->unsweptDepositBalanceSql();
+        $rows = App\ExecuteRowsAssociative(
+            "SELECT ba.bank_account_id, ba.account_name, ba.bank_name,
+                    {$balanceSql} AS current_balance,
+                    ba.main_depository_account_id, md.account_name AS main_depository_account_name
+             FROM {$this->tableBankAccounts} ba
+             LEFT JOIN {$this->tableBankAccounts} md ON md.bank_account_id = ba.main_depository_account_id
+             WHERE " . ($rcId === '' ? 'ba.rc_id IS NULL' : 'ba.rc_id = ' . $this->str($rcId)) . "
+             ORDER BY ba.account_name",
+            'DB'
+        );
+
+        return $this->ok($rows ?: []);
+    }
+
+    // $accountIds, when non-empty, restricts the sweep to just those
+    // bank_account_id values (still scoped to $rcId too, so a request
+    // can't sweep an account outside the region it claims) — lets the
+    // Fund Sweeping tab's per-row checkboxes pick which eligible accounts
+    // actually get swept, instead of always sweeping every eligible
+    // account in the region.
+    public function processFundSweep($rcId, array $accountIds = [])
+    {
+        $userId = (int) App\CurrentUserID();
+        $rcId = trim((string) $rcId);
+        $balanceSql = $this->unsweptDepositBalanceSql();
+        $accountIds = array_values(array_filter(array_map('intval', $accountIds)));
+        $accountFilter = $accountIds ? ' AND ba.bank_account_id IN (' . implode(',', $accountIds) . ')' : '';
+        $rows = App\ExecuteRowsAssociative(
+            "SELECT ba.bank_account_id, ba.account_name, {$balanceSql} AS current_balance, ba.main_depository_account_id
+             FROM {$this->tableBankAccounts} ba
+             WHERE " . ($rcId === '' ? 'ba.rc_id IS NULL' : 'ba.rc_id = ' . $this->str($rcId)) . $accountFilter,
+            'DB'
+        ) ?: [];
+
+        $ftla = new FtlaService();
+        $created = [];
+        $skipped = [];
+        foreach ($rows as $row) {
+            $amount = (float) $row['current_balance'];
+            $toId = $row['main_depository_account_id'];
+            if ($amount <= 0 || !$toId || (int) $toId === (int) $row['bank_account_id']) {
+                $skipped[] = ['bank_account_id' => $row['bank_account_id'], 'account_name' => $row['account_name']];
+                continue;
+            }
+            $result = $ftla->create([
+                'transfer_type' => 'SETTLEMENT_TO_MAIN',
+                'transfer_date' => date('Y-m-d'),
+                'from_bank_account_id' => $row['bank_account_id'],
+                // Also pass from_accounts (not just the scalar
+                // from_bank_account_id) — the edit form's "Debit (Source)
+                // Bank Account" select is only ever populated from
+                // d.from_accounts (ftlm_setDebitAccounts() in
+                // ftla-form.php), never from the scalar column directly.
+                // Without this, from_accounts stays '[]' and the source
+                // account shows untagged/empty when editing the draft.
+                'from_accounts' => [['bank_account_id' => $row['bank_account_id'], 'amount' => $amount]],
+                'to_bank_account_id' => $toId,
+                'transfer_amount' => $amount,
+                'purpose' => 'Fund Sweep — ' . $row['account_name'] . ' to Main Depository',
+                'status' => 'DRAFT',
+            ], $userId);
+            if ($result['success'] ?? false) {
+                $fundTransferId = (int) ($result['data']['fund_transfer_id'] ?? 0);
+                App\Execute(
+                    "UPDATE fims.collection_report_deposits
+                     SET is_swept = TRUE, swept_fund_transfer_id = {$fundTransferId}
+                     WHERE bank_account_id = {$row['bank_account_id']} AND is_swept = FALSE",
+                    'DB'
+                );
+                $created[] = ['bank_account_id' => $row['bank_account_id'], 'account_name' => $row['account_name'], 'ftla_number' => $result['data']['ftla_number'] ?? null];
+            } else {
+                $skipped[] = ['bank_account_id' => $row['bank_account_id'], 'account_name' => $row['account_name'], 'reason' => $result['message'] ?? 'Could not create FTLA.'];
+            }
+        }
+
+        return $this->ok(['created' => $created, 'skipped' => $skipped]);
     }
 
     // Validates a submitted GL account code against fims.chart_of_accounts — this

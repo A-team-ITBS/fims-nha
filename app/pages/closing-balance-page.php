@@ -93,6 +93,11 @@ $_cb_api = preg_match('~/api$~', $_cb_api) ? $_cb_api : $_cb_api . '/api';
         ℹ️ This preview is computed live from posted General Ledger activity for the selected fiscal year/book — nothing here is typed in by hand. Click "Close Fiscal Year" to post it.
     </div>
 
+    <!-- SUCCESS BANNER — inline, not a JS alert() popup, which browsers can silently suppress -->
+    <div id="cb-success" class="cb-info-box no-print" style="background:#D4EDDA; border-left-color:#28a745; color:#155724; white-space:pre-line;">
+        <strong>✓ Success:</strong> <span id="cb-success-msg"></span>
+    </div>
+
     <!-- STATUS LOCKED BANNER -->
     <div id="cb-locked-banner" style="display:none; background:#FEE5E5; border-left:4px solid #e74c3c; color:#c0392b; padding:12px; border-radius:4px; margin-bottom:15px; font-size:13px;">
         <strong>Closed:</strong> This fiscal year has already been closed. <span id="cb-locked-jev"></span> To redo it, that entry must be reversed first.
@@ -251,6 +256,7 @@ $_cb_api = preg_match('~/api$~', $_cb_api) ? $_cb_api : $_cb_api . '/api';
         $loading.style.display = 'block';
         $form.style.display = 'none';
         $error.classList.remove('show');
+        document.getElementById('cb-success').classList.remove('show');
         document.getElementById('cb-locked-banner').style.display = 'none';
 
         try {
@@ -361,14 +367,14 @@ $_cb_api = preg_match('~/api$~', $_cb_api) ? $_cb_api : $_cb_api . '/api';
 
             if (data.success) {
                 const cf = data.data.carry_forward;
-                let msg = `✓ Fiscal year closed successfully! JEV: ${data.data.jev_no}`;
+                let msg = `Fiscal year closed successfully! JEV: ${data.data.jev_no}`;
                 if (cf?.status === 'posted') {
-                    msg += `\n\n✓ Fiscal year ${cf.fiscal_yr} automatically opened with the carried-forward balances — JEV: ${cf.jev_no}`;
+                    msg += `\n\n✓ Fiscal year ${cf.fiscal_yr} automatically opened with the carried-forward balances (${cf.lines_saved} account(s)).`;
                 } else if (cf?.status === 'skipped') {
                     msg += `\n\nNote: next fiscal year was not auto-opened (${cf.reason})`;
                 }
-                alert(msg);
-                loadForm();
+                await loadForm();
+                showSuccess(msg);
             } else {
                 showError(data.message || (data.errors?.join(', ') || 'Failed to close fiscal year.'));
             }
@@ -379,6 +385,7 @@ $_cb_api = preg_match('~/api$~', $_cb_api) ? $_cb_api : $_cb_api . '/api';
     }
 
     function showError(msg) {
+        document.getElementById('cb-success').classList.remove('show');
         $errorMsg.textContent = msg;
         $error.classList.add('show');
         $loading.style.display = 'none';
@@ -387,12 +394,36 @@ $_cb_api = preg_match('~/api$~', $_cb_api) ? $_cb_api : $_cb_api . '/api';
         $closeBtn.disabled = true;
     }
 
+    // Inline banner instead of alert() — browsers (and some extensions) can silently suppress
+    // repeated/unwanted JS dialogs, which made successful actions look like nothing happened.
+    function showSuccess(msg) {
+        $error.classList.remove('show');
+        document.getElementById('cb-success-msg').textContent = msg;
+        document.getElementById('cb-success').classList.add('show');
+    }
+
+    // Double-click-to-confirm instead of a native confirm() dialog — see showSuccess() comment;
+    // confirm() silently returning false when blocked made this button look completely dead.
     // Reverse the posted CLOSING JEV, unlocking this fiscal year/book for re-entry. The backend
     // refuses this if next year already has a posted Opening Balance carried forward from it.
-    async function reverseClosingBalance() {
-        if (!confirm('Reverse the posted Closing Entry for this fiscal year? This cannot be undone and the entry will need to be re-closed.')) {
+    let reversePending = false;
+    async function reverseClosingBalance(ev) {
+        const btn = ev.currentTarget;
+        if (!reversePending) {
+            reversePending = true;
+            const originalText = btn.textContent;
+            btn.textContent = 'Click again to confirm →';
+            setTimeout(() => {
+                if (reversePending) {
+                    reversePending = false;
+                    btn.textContent = originalText;
+                }
+            }, 4000);
             return;
         }
+        reversePending = false;
+        btn.textContent = 'Reverse →';
+
         try {
             const resp = await fetch(`${API_URL}/closing_balance/reverse`, {
                 method: 'POST',
@@ -404,8 +435,8 @@ $_cb_api = preg_match('~/api$~', $_cb_api) ? $_cb_api : $_cb_api . '/api';
             });
             const data = await resp.json();
             if (data.success) {
-                alert(`✓ ${data.message}`);
-                loadForm();
+                await loadForm();
+                showSuccess(data.message);
             } else {
                 showError(data.message || 'Failed to reverse the Closing Entry.');
             }
