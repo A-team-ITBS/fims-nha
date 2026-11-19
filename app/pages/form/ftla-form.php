@@ -548,7 +548,19 @@ $_ftlm_api = $apiBase ?? Config('API.FIMS_URL');
                         </div>
                     </div>
 
-                    <input type="hidden" id="ftlm_ftla_number" name="ftla_number">
+                    <!-- Normally auto-generated server-side (PREFIX-YYYY-MM-####,
+                         see FtlaService::nextFtlaNumber()) on Save — typing one in
+                         here instead (e.g. to match a paper FTLA number already
+                         issued before this system existed) overrides that, and
+                         FtlaService::create() checks it's not already taken. Left
+                         blank (the common case), auto-generation proceeds as
+                         before. Only meaningful for a brand-new FTLA — see
+                         ftlm_fillForm() below, which disables this once editing an
+                         existing one (its number is already fixed). -->
+                    <div class="ftlm-fg" id="ftlm-fg-ftla-number">
+                        <label class="ftlm-label" for="ftlm_ftla_number">FTLA Number <span style="font-size:10px;font-weight:400;color:var(--afims-text-disabled, #A9AAB8);">(optional — leave blank to auto-generate)</span></label>
+                        <input type="text" class="form-control" id="ftlm_ftla_number" name="ftla_number" placeholder="Auto-generated if left blank">
+                    </div>
 
                     <div class="ftlm-sec-hd">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12">
@@ -760,8 +772,24 @@ $_ftlm_api = $apiBase ?? Config('API.FIMS_URL');
                             <input type="text" class="form-control" id="ftlm_sig1_name" placeholder="e.g. MARIA C. SANTOS">
                         </div>
                         <div class="ftlm-fg">
-                            <label class="ftlm-label" for="ftlm_sig1_title">Signatory 1 — Title</label>
-                            <input type="text" class="form-control" id="ftlm_sig1_title" placeholder="Officer-in-Charge, Treasury Department">
+                            <!-- Same select+"Other…" convention as bank-management-page.php's
+                                 Bank Name field — ftlm_sig1_title (now hidden unless "Other…"
+                                 is picked) stays the actual value read everywhere else in this
+                                 file (ftlm_buildPreviewData(), the save payload, ftlm_fillForm()),
+                                 same role field-bank-name plays there. See
+                                 ftlm_bindTitleSelect()/ftlm_setTitleValue() below. -->
+                            <label class="ftlm-label" for="ftlm_sig1_title_select">Signatory 1 — Title</label>
+                            <select class="form-control" id="ftlm_sig1_title_select">
+                                <option value="">— Select Title —</option>
+                                <option>Officer-in-Charge, Treasury Department</option>
+                                <option>Acting Group Manager, Financial Services Group</option>
+                                <option>Department Manager, Treasury Department</option>
+                                <option>Division Manager, Treasury Department</option>
+                                <option>Section Chief, Treasury Department</option>
+                                <option>Group Manager, Financial Services Group</option>
+                                <option value="__other__">Other…</option>
+                            </select>
+                            <input type="text" class="form-control mt-1" id="ftlm_sig1_title" placeholder="Title, Department" style="display:none;">
                         </div>
                     </div>
                     <div class="ftlm-grid-2">
@@ -770,8 +798,56 @@ $_ftlm_api = $apiBase ?? Config('API.FIMS_URL');
                             <input type="text" class="form-control" id="ftlm_sig2_name" placeholder="e.g. JOSE R. DELA CRUZ">
                         </div>
                         <div class="ftlm-fg">
-                            <label class="ftlm-label" for="ftlm_sig2_title">Signatory 2 — Title</label>
-                            <input type="text" class="form-control" id="ftlm_sig2_title" placeholder="Acting Group Manager, Financial Services Group">
+                            <label class="ftlm-label" for="ftlm_sig2_title_select">Signatory 2 — Title</label>
+                            <select class="form-control" id="ftlm_sig2_title_select">
+                                <option value="">— Select Title —</option>
+                                <option>Officer-in-Charge, Treasury Department</option>
+                                <option>Acting Group Manager, Financial Services Group</option>
+                                <option>Department Manager, Treasury Department</option>
+                                <option>Division Manager, Treasury Department</option>
+                                <option>Section Chief, Treasury Department</option>
+                                <option>Group Manager, Financial Services Group</option>
+                                <option value="__other__">Other…</option>
+                            </select>
+                            <input type="text" class="form-control mt-1" id="ftlm_sig2_title" placeholder="Title, Department" style="display:none;">
+                        </div>
+                    </div>
+
+                    <!-- "FOR BANK USE ONLY" names — same jsonb column as sig1/sig2
+                         above (signatories.sig_verified/checked/approved/posted),
+                         read by FtlaService::_buildPrintPayload() and rendered by
+                         FtlaPrintService::html()'s own ".bank" block. Optional —
+                         left blank, the printed letter just shows blank signature
+                         lines (same as before this was added) for the bank to sign
+                         by hand; filled in here, the name prints underlined above
+                         the line instead. -->
+                    <div class="ftlm-sec-hd" style="margin-top:18px;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12">
+                            <rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/>
+                        </svg>
+                        For Bank Use Only
+                    </div>
+                    <p style="font-size:11px;color:var(--afims-text-disabled, #A9AAB8);margin:0 0 14px;">
+                        Optional — leave blank for the bank to sign by hand.
+                    </p>
+                    <div class="ftlm-grid-2">
+                        <div class="ftlm-fg">
+                            <label class="ftlm-label" for="ftlm_bank_sig_verified">Signature Verified by</label>
+                            <input type="text" class="form-control" id="ftlm_bank_sig_verified">
+                        </div>
+                        <div class="ftlm-fg">
+                            <label class="ftlm-label" for="ftlm_bank_checked">Checked by</label>
+                            <input type="text" class="form-control" id="ftlm_bank_checked">
+                        </div>
+                    </div>
+                    <div class="ftlm-grid-2">
+                        <div class="ftlm-fg">
+                            <label class="ftlm-label" for="ftlm_bank_approved">Approved by</label>
+                            <input type="text" class="form-control" id="ftlm_bank_approved">
+                        </div>
+                        <div class="ftlm-fg">
+                            <label class="ftlm-label" for="ftlm_bank_posted">Posted by</label>
+                            <input type="text" class="form-control" id="ftlm_bank_posted">
                         </div>
                     </div>
 
@@ -961,10 +1037,18 @@ function ftlm_buildPreviewData() {
         credit_accounts:     creditAccounts,
         purpose:             v('ftlm_purpose'),
         ftla_number:         v('ftlm_ftla_number'),
+        // Needed for the live preview's "* DV No.s: / COE/MOOE <number>"
+        // footer (see _renderPrintSummary() in ftla-page.php) — mirrors
+        // FtlaPrintService::model()'s own dv_numbers + fund_line.
+        dv_numbers:          ftlm_getDvNumbers().split('\n').filter(Boolean),
         sig_left_name:       v('ftlm_sig1_name'),
         sig_left_title:      v('ftlm_sig1_title'),
         sig_right_name:      v('ftlm_sig2_name'),
         sig_right_title:     v('ftlm_sig2_title'),
+        bank_sig_verified:   v('ftlm_bank_sig_verified'),
+        bank_checked:        v('ftlm_bank_checked'),
+        bank_approved:       v('ftlm_bank_approved'),
+        bank_posted:         v('ftlm_bank_posted'),
     };
 }
 
@@ -1645,6 +1729,53 @@ function ftlm_getDocLinks() {
     }, []);
 }
 
+/* ── Signatory Title select + "Other…" ────────────────────
+   Same convention as bank-management-page.php's Bank Name field:
+   ftlm_<prefix>_title (hidden unless "Other…" is picked) stays the
+   actual value — ftlm_buildPreviewData(), the save payload, and
+   ftlm_fillForm() all keep reading/writing that same id directly,
+   unchanged. The <select> is just a convenience picker in front of it. */
+function ftlm_bindTitleSelect(prefix) {
+    const select = ftlm$('ftlm_' + prefix + '_title_select');
+    const input  = ftlm$('ftlm_' + prefix + '_title');
+    if (!select || !input) return;
+    select.addEventListener('change', function () {
+        if (select.value === '__other__') {
+            input.style.display = '';
+            input.value = '';
+            input.focus();
+        } else {
+            input.style.display = 'none';
+            input.value = select.value;
+        }
+        ftlm_schedulePreviewUpdate();
+    });
+}
+
+// Syncs the select (and the hidden input's visibility) to whatever title
+// value is being loaded — a matching preset selects it and hides the free
+// text input; anything else (including '') falls through to "Other…"
+// with that value shown in the input, same as setBankNameValue() there.
+function ftlm_setTitleValue(prefix, value) {
+    const select = ftlm$('ftlm_' + prefix + '_title_select');
+    const input  = ftlm$('ftlm_' + prefix + '_title');
+    if (!select || !input) return;
+    const match = Array.from(select.options).find(o => o.value === value && o.value !== '' && o.value !== '__other__');
+    if (match) {
+        select.value = value;
+        input.style.display = 'none';
+        input.value = value;
+    } else if (value) {
+        select.value = '__other__';
+        input.style.display = '';
+        input.value = value;
+    } else {
+        select.value = '';
+        input.style.display = 'none';
+        input.value = '';
+    }
+}
+
 /* ── Reset form ────────────────────────────────────────── */
 function ftlm_resetForm() {
     [
@@ -1654,7 +1785,14 @@ function ftlm_resetForm() {
         'ftlm_laa_number', 'ftlm_laa_id', 'ftlm_laa_fiscal_year',
         'ftlm_rfa_number', 'ftlm_rfa_id', 'ftlm_rfa_date',
         'ftlm_sig1_name', 'ftlm_sig1_title', 'ftlm_sig2_name', 'ftlm_sig2_title',
+        'ftlm_bank_sig_verified', 'ftlm_bank_checked', 'ftlm_bank_approved', 'ftlm_bank_posted',
     ].forEach(id => { const el = ftlm$(id); if (el) el.value = ''; });
+    ftlm_setTitleValue('sig1', '');
+    ftlm_setTitleValue('sig2', '');
+    // Re-enable — ftlm_fillForm() disables it when editing; a fresh
+    // Register call needs it back for a brand-new FTLA.
+    const ftlaNumberEl = ftlm$('ftlm_ftla_number');
+    if (ftlaNumberEl) ftlaNumberEl.disabled = false;
     ftlm_setDvSelected([]);
     ftlm_setDebitAccounts([]);
 
@@ -1690,6 +1828,11 @@ function ftlm_fillForm(d) {
     set('ftlm_transfer_type',       d.transfer_type);
     set('ftlm_transfer_date',       d.transfer_date?.slice(0, 10));
     set('ftlm_ftla_number',           d.ftla_number);
+    // Only meaningful for a brand-new FTLA (FtlaService::create() is the
+    // only place that reads it) — an existing one's number is already
+    // fixed, so lock the field once editing.
+    const ftlaNumberEl = ftlm$('ftlm_ftla_number');
+    if (ftlaNumberEl) ftlaNumberEl.disabled = true;
     // The picked bank account is the request's destination (the region's own
     // account the funds should land in), so it's stored as to_bank_account_id
     // — Treasury fills in from_bank_account_id later when actually processing
@@ -1736,9 +1879,13 @@ function ftlm_fillForm(d) {
     ftlm_ensureSelectOption('ftlm_rfa_number', sigs.rfa_number || '');
     setSig('ftlm_rfa_date',          sigs.rfa_date           || '');
     setSig('ftlm_sig1_name',         sigs.sig1_name          || '');
-    setSig('ftlm_sig1_title',        sigs.sig1_title         || '');
+    ftlm_setTitleValue('sig1',       sigs.sig1_title         || '');
     setSig('ftlm_sig2_name',         sigs.sig2_name          || '');
-    setSig('ftlm_sig2_title',        sigs.sig2_title         || '');
+    ftlm_setTitleValue('sig2',       sigs.sig2_title         || '');
+    setSig('ftlm_bank_sig_verified', sigs.sig_verified       || '');
+    setSig('ftlm_bank_checked',      sigs.checked            || '');
+    setSig('ftlm_bank_approved',     sigs.approved           || '');
+    setSig('ftlm_bank_posted',       sigs.posted             || '');
 
     ftlm_schedulePreviewUpdate();
 }
@@ -1807,6 +1954,11 @@ async function ftlm_save(status) {
     if (msg) msg.textContent = 'Saving…';
 
     const body = {
+        // Blank unless the user typed one in — FtlaService::create() auto-
+        // generates it when blank, otherwise honors (and uniqueness-checks)
+        // whatever was typed. Harmless to include on update() too — it's
+        // not one of its editable fields, so it's simply ignored there.
+        ftla_number:        ftlm$('ftlm_ftla_number')?.value.trim()     || '',
         transfer_type:      ftlm$('ftlm_transfer_type')?.value          || '',
         section:            'regional',
         transfer_date:      ftlm$('ftlm_transfer_date')?.value          || '',
@@ -1836,6 +1988,16 @@ async function ftlm_save(status) {
             sig1_title:       (ftlm$('ftlm_sig1_title')?.value       || '').trim(),
             sig2_name:        (ftlm$('ftlm_sig2_name')?.value        || '').trim(),
             sig2_title:       (ftlm$('ftlm_sig2_title')?.value       || '').trim(),
+            // "FOR BANK USE ONLY" names — FtlaService::_buildPrintPayload()'s
+            // $pick() reads these under their SHORT keys (sig_verified/
+            // checked/approved/posted), not bank_-prefixed ones — it falls
+            // back to fims.fund_transfers.bank_officers (a separate, older
+            // jsonb column this form never writes to) only when these are
+            // absent.
+            sig_verified:     (ftlm$('ftlm_bank_sig_verified')?.value || '').trim(),
+            checked:          (ftlm$('ftlm_bank_checked')?.value      || '').trim(),
+            approved:         (ftlm$('ftlm_bank_approved')?.value     || '').trim(),
+            posted:           (ftlm$('ftlm_bank_posted')?.value       || '').trim(),
         }),
         ...(status ? { status } : {}),
     };
@@ -1889,6 +2051,10 @@ async function ftlm_save(status) {
     ftlm$('ftlm_from_bank_account_id')?.addEventListener('change', ftlm_updateFundSourceDisplay);
     ftlm$('ftlm_laa_number')?.addEventListener('change', ftlm_onLaaSelect);
     ftlm$('ftlm_rfa_number')?.addEventListener('change', ftlm_onRfaSelect);
+
+    // ── Signatory Title select + "Other…" (same convention as
+    //    bank-management-page.php's Bank Name field) ──
+    ['sig1', 'sig2'].forEach(ftlm_bindTitleSelect);
 
     // Wire all form fields to the live preview
     const formPanel = ftlm$('ftlm-form-panel');
