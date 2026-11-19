@@ -1213,9 +1213,24 @@ function ftlm_prevStep() {
 }
 
 /* ── Bank accounts ─────────────────────────────────────── */
-function ftlm_bankOptsHtml(banks) {
+function ftlm_bankById(id) {
+    return ftlm_banks.find(b => String(b.bank_account_id) === String(id)) || null;
+}
+// excludeId drops an already-picked account from the OTHER side of the same
+// row (a debit row's own From can't also be its own To, and vice versa —
+// same rule FtlaService::create()/update() already enforce server-side).
+// matchBankName, once the other side has picked a bank, narrows this side
+// down to accounts at that SAME bank — a transfer's From and To are always
+// expected to be the same institution (e.g. both Landbank).
+function ftlm_bankOptsHtml(banks, { excludeId = '', matchBankName = '', currentValue = '' } = {}) {
+    const rows = banks.filter(b =>
+        String(b.bank_account_id) === String(currentValue || '') || (
+            String(b.bank_account_id) !== String(excludeId || '') &&
+            (!matchBankName || b.bank_name === matchBankName)
+        )
+    );
     return '<option value="">— Select —</option>' +
-        banks.map(b => `<option value="${b.bank_account_id}">${b.bank_name} — ${b.account_name} (${b.account_number})</option>`).join('');
+        rows.map(b => `<option value="${b.bank_account_id}">${b.bank_name} — ${b.account_name} (${b.account_number})</option>`).join('');
 }
 
 // "1 DV per account" — same ftlm_dvOptions list (loaded in full by
@@ -1325,6 +1340,15 @@ function ftlm_removeDebitRow(idx) {
 function ftlm_onDebitRowChange(idx, field, value) {
     if (!ftlm_debitRows[idx]) return;
     ftlm_debitRows[idx][field] = value;
+    // From/To changing which bank is picked narrows the OTHER side's own
+    // options (same account can't be picked twice; the other side locks to
+    // the same bank — see ftlm_bankOptsHtml()) — re-render so that select's
+    // option list actually reflects the new constraint immediately.
+    if (field === 'bank_account_id' || field === 'to_bank_account_id') {
+        ftlm_renderDebitRows();
+        ftlm_schedulePreviewUpdate();
+        return;
+    }
     ftlm_recalcDebitTotal();
     ftlm_schedulePreviewUpdate();
 }
@@ -1354,12 +1378,20 @@ function ftlm_renderDebitRows() {
         <tr>
             <td style="padding:4px 10px;">
                 <select class="form-control" onchange="ftlm_onDebitRowChange(${idx}, 'bank_account_id', this.value)">
-                    ${ftlm_bankOptsHtml(ftlm_banks).replace(`value="${row.bank_account_id}"`, `value="${row.bank_account_id}" selected`)}
+                    ${ftlm_bankOptsHtml(ftlm_banks, {
+                        excludeId: row.to_bank_account_id,
+                        matchBankName: ftlm_bankById(row.to_bank_account_id)?.bank_name || '',
+                        currentValue: row.bank_account_id,
+                    }).replace(`value="${row.bank_account_id}"`, `value="${row.bank_account_id}" selected`)}
                 </select>
             </td>
             <td style="padding:4px 10px;">
                 <select class="form-control" onchange="ftlm_onDebitRowChange(${idx}, 'to_bank_account_id', this.value)">
-                    ${ftlm_bankOptsHtml(ftlm_banks).replace(`value="${row.to_bank_account_id}"`, `value="${row.to_bank_account_id}" selected`)}
+                    ${ftlm_bankOptsHtml(ftlm_banks, {
+                        excludeId: row.bank_account_id,
+                        matchBankName: ftlm_bankById(row.bank_account_id)?.bank_name || '',
+                        currentValue: row.to_bank_account_id,
+                    }).replace(`value="${row.to_bank_account_id}"`, `value="${row.to_bank_account_id}" selected`)}
                 </select>
             </td>
             <td style="padding:4px 10px;">
