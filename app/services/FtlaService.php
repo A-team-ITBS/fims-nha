@@ -499,7 +499,26 @@ class FtlaService
 
             $uid        = $userId > 0 ? (string) $userId : 'NULL';
             $preparedBy = !empty($body['prepared_by']) ? $this->intOrNull($body['prepared_by']) : $uid;
-            $ftlaNumber = $this->nextFtlaNumber($transferDate);
+
+            // ftla_number is normally auto-generated (PREFIX-YYYY-MM-####,
+            // same convention as PurchaseOrderService) — but a manually
+            // typed one is honored instead when given (e.g. to match a
+            // paper FTLA number already issued before this system existed).
+            // ftla_number has a UNIQUE constraint on the table, so a
+            // duplicate manual entry is checked here first for a clean
+            // error instead of an opaque DB constraint failure.
+            $ftlaNumber = trim((string) ($body['ftla_number'] ?? ''));
+            if ($ftlaNumber !== '') {
+                $dupe = App\ExecuteRow(
+                    "SELECT fund_transfer_id FROM {$this->table} WHERE ftla_number = " . $this->str($ftlaNumber),
+                    'DB'
+                );
+                if ($dupe) {
+                    return ['success' => false, 'message' => "FTLA number \"{$ftlaNumber}\" is already in use."];
+                }
+            } else {
+                $ftlaNumber = $this->nextFtlaNumber($transferDate);
+            }
 
             $timestampCol = self::STATUS_TIMESTAMP_COLUMN[$status] ?? null;
             $extraCol     = $timestampCol ? ", {$timestampCol}" : '';
