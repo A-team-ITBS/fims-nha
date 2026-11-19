@@ -53,3 +53,18 @@ ALTER TABLE fims.statement_work_accomplishments
     ADD COLUMN IF NOT EXISTS jev_id INTEGER,
     ADD COLUMN IF NOT EXISTS jev_no VARCHAR(50);
 COMMENT ON COLUMN fims.statement_work_accomplishments.jev_id IS 'The Journal Entry Voucher its pro-forma was submitted as (fims.journal_entry_vouchers.jev_id)';
+
+-- Contract cost breakdown (read-only on the form, taken from the RFA when the record is added):
+--   original_contract_cost = the regional's original amount (sum of the project's budget line items' proposed amounts)
+--   variation_order        = revised - original (positive = increase, negative = decrease; set when FMD / the CBA changes the amount)
+--   contract_cost          = the REVISED contract cost (the amount approved on the RFA)
+-- A record saved before these columns existed has NULL in both: it reads as original = contract_cost and variation order 0.
+ALTER TABLE fims.statement_work_accomplishments
+    ADD COLUMN IF NOT EXISTS original_contract_cost NUMERIC(18,2),
+    ADD COLUMN IF NOT EXISTS variation_order NUMERIC(18,2);
+COMMENT ON COLUMN fims.statement_work_accomplishments.original_contract_cost IS 'Original contract cost: the regional''s original amount (budget line items'' proposed amounts)';
+COMMENT ON COLUMN fims.statement_work_accomplishments.variation_order IS 'Variation order: revised contract cost - original contract cost (+ increase / - decrease)';
+
+-- Contract: typed by the user on the form (replaces the Project Cost input, which is no longer written; project_cost stays as an unused column).
+ALTER TABLE fims.statement_work_accomplishments ADD COLUMN IF NOT EXISTS contract VARCHAR(255);
+COMMENT ON COLUMN fims.statement_work_accomplishments.contract IS 'Contract: typed by the user';

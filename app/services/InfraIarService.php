@@ -16,7 +16,7 @@ use PHPMaker2024\FIMS\DataType;
  * the RFA) and the Statement of Work Accomplishments (description, cost, % accomplishment).
  *
  * Save payload:
- *   { allocation_id, location?, project_cost?, date_started?, completion_date_revised?, contract_duration?,
+ *   { allocation_id, location?, contract?, date_started?, completion_date_revised?, contract_duration?,
  *     entries: [ { account_code, amount } ],                 // the total may not exceed the contract cost
  *     items:   [ { description, cost, accomplishment_pct } ] }   // at least one
  * Edit: only location, project cost, the dates, the contract duration and the Statement of Work items can change.
@@ -84,24 +84,15 @@ class InfraIarService
         return is_array($a) ? array_values(array_filter($a, 'is_array')) : [];
     }
 
-    /** Overall % accomplishment of the Statement of Work items: cost-weighted (plain average when every cost is 0). */
+    /** Overall % accomplishment of the Statement of Work items: each item's % is its SHARE of the whole project, so the overall % is their sum (shown as is, even above 100, which a save refuses). */
     public static function overallPct(array $items): float
     {
-        $cost = 0.0;
-        $done = 0.0;
-        $sum  = 0.0;
+        $sum = 0.0;
         foreach ($items as $it) {
-            $c     = (float) ($it['cost'] ?? 0);
-            $p     = (float) ($it['accomplishment_pct'] ?? 0);
-            $cost += $c;
-            $done += $c * $p;
-            $sum  += $p;
-        }
-        if ($cost > 0) {
-            return round($done / $cost, 2);
+            $sum += (float) ($it['accomplishment_pct'] ?? 0);
         }
 
-        return $items ? round($sum / count($items), 2) : 0.0;
+        return round($sum, 2);
     }
 
     /* ─────────────────────────── the RFA picker ─────────────────────────── */
@@ -160,12 +151,15 @@ class InfraIarService
         }
         $hasProposed = $this->hasColumn('budget_line_items', 'proposed_amount');
         $costSql     = $hasProposed ? 'SUM(bli.proposed_amount)' : 'NULL::numeric';
+        $sugSql      = $this->hasColumn('budget_line_items', 'suggested_amount') ? 'SUM(bli.suggested_amount)' : 'NULL::numeric';
+        // the line's Revision Amount: the signed net of its APPROVED Budget Revisions / Realignments (budget_line_items.adjustment, kept by the revision ledger's triggers)
+        $adjSql      = $this->hasColumn('budget_line_items', 'adjustment') ? 'SUM(COALESCE(bli.adjustment, 0))' : 'NULL::numeric';
         $sql = "SELECT a.allocation_id, a.allocation_number AS rfa_number, a.fiscal_year, a.requesting_rc_id, rc.rc_name AS requesting_office,
                        a.vendor_id, v.vendor_name AS contractor,
                        blk.project_code, pr.project_name, COALESCE(NULLIF(blk.program_code, ''), pr.program_code) AS program_code, pg.program_name,
                        COALESCE(li.location, pl.location) AS location,
                        {$this->po->requestedTotalSql()} AS contract_cost,
-                       li.project_cost,
+                       li.project_cost, li.suggested_total, li.adjustment_total,
                        {$lines} AS allocation_lines
                 FROM fims.budget_allocation a
                 LEFT JOIN fims.responsibility_code rc ON rc.rc_id = a.requesting_rc_id
@@ -175,7 +169,7 @@ class InfraIarService
                 LEFT JOIN fims.program pg ON pg.program_code = COALESCE(NULLIF(blk.program_code, ''), pr.program_code)
                 LEFT JOIN LATERAL (
                     SELECT (array_agg(NULLIF(TRIM(brp.location), '')) FILTER (WHERE NULLIF(TRIM(brp.location), '') IS NOT NULL))[1] AS location,
-                           {$costSql} AS project_cost
+                           {$costSql} AS project_cost, {$sugSql} AS suggested_total, {$adjSql} AS adjustment_total
                       FROM jsonb_array_elements({$lines}) ln(value)
                       JOIN fims.budget_line_items bli
                         ON bli.budget_line_item_id = (CASE WHEN ln.value ->> 'budget_line_item_id' ~ '^[0-9]+\$' THEN (ln.value ->> 'budget_line_item_id')::int END)
@@ -197,9 +191,22 @@ class InfraIarService
         $rows = App\ExecuteRows($sql, 'DB') ?: [];
         foreach ($rows as &$r) {
             $r['lines']         = $this->po->allocationLines($r['allocation_lines']);
-            $r['contract_cost'] = round((float) $r['contract_cost'], 2);
-            $pc                 = $r['project_cost'] !== null ? round((float) $r['project_cost'], 2) : 0.0;
-            $r['project_cost']  = $pc > 0 ? $pc : $r['contract_cost'];   // no original cost on file: the contract cost
+            $rfaAmount = round((float) $r['contract_cost'], 2);   // what the RFA requests (the account entries are loaded from it and may not exceed it)
+            $sug = $r['suggested_total'] !== null ? round((float) $r['suggested_total'], 2) : 0.0;
+            $pro = $r['project_cost'] !== null ? round((float) $r['project_cost'], 2) : 0.0;
+            $orig = $sug > 0 ? $sug : ($pro > 0 ? $pro : null);   // the regional's original amount of the lines the RFA draws on
+            if ($orig !== null) {
+                $vo = $r['adjustment_total'] !== null ? round((float) $r['adjustment_total'], 2) : 0.0;   // only approved Budget Revisions / Realignments move it
+                $r['original_contract_cost'] = $orig;
+                $r['variation_order']        = $vo;
+                $r['contract_cost']          = round($orig + $vo, 2);   // revised contract cost
+            } else {                                                         // no budget line on file: nothing to compare with
+                $r['original_contract_cost'] = $rfaAmount;
+                $r['variation_order']        = 0.0;
+                $r['contract_cost']          = $rfaAmount;
+            }
+            $r['rfa_amount'] = $rfaAmount;
+            unset($r['project_cost'], $r['suggested_total'], $r['adjustment_total']);
             unset($r['allocation_lines']);
         }
         unset($r);
@@ -221,7 +228,7 @@ class InfraIarService
 
     /**
      * Validate + normalise the editable parts of a save payload. Returns [cleaned, errorMessage].
-     * cleaned = { location, project_cost, date_started, completion_date_revised, contract_duration, items[] } — plus, when
+     * cleaned = { location, contract, date_started, completion_date_revised, contract_duration, items[] } — plus, when
      * $withEntries, allocation_id and entries[{account_code, account_title, amount}] (a new record).
      */
     private function clean(array $body, bool $withEntries): array
@@ -273,9 +280,9 @@ class InfraIarService
         if ($loc !== null && mb_strlen($loc) > 255) {
             return [null, 'Location must be 255 characters or fewer.'];
         }
-        $pc = $this->num($body['project_cost'] ?? null);
-        if ($pc === null) {
-            return [null, 'Project cost must be a valid amount.'];
+        $con = $this->nullable($body['contract'] ?? null);   // the Contract: typed by the user
+        if ($con !== null && mb_strlen($con) > 255) {
+            return [null, 'Contract must be 255 characters or fewer.'];
         }
         $dur = $this->nullable($body['contract_duration'] ?? null);
         if ($dur !== null && mb_strlen($dur) > 100) {
@@ -293,7 +300,7 @@ class InfraIarService
             return [null, 'The completion date (revised) cannot be before the date started.'];
         }
         $out += [
-            'location' => $loc, 'project_cost' => $pc, 'contract_duration' => $dur,
+            'location' => $loc, 'contract' => $con, 'contract_duration' => $dur,
             'date_started' => $start, 'completion_date_revised' => $end,
         ];
 
@@ -325,6 +332,13 @@ class InfraIarService
         if (!$items) {
             return [null, 'Add at least one item to the Statement of Work Accomplishments.'];
         }
+        $pctHundredths = 0;
+        foreach ($items as $it) {
+            $pctHundredths += (int) round((float) $it['accomplishment_pct'] * 100);
+        }
+        if ($pctHundredths > 10000) {
+            return [null, 'The % Accomplishment of the items adds up to ' . number_format($pctHundredths / 100, 2) . '%, which may not exceed 100%.'];
+        }
         $out['items'] = $items;
 
         return [$out, null];
@@ -333,7 +347,7 @@ class InfraIarService
     /* ─────────────────────────── read ─────────────────────────── */
 
     private const COLS = "s.swa_id, s.iar_number, s.allocation_id, s.rfa_number, s.project_code, s.project_name, s.location, s.program_code, s.program_name,
-                          s.vendor_id, s.contractor, s.contract_cost, s.project_cost,
+                          s.vendor_id, s.contractor, s.contract_cost, s.contract, s.original_contract_cost, s.variation_order,
                           TO_CHAR(s.date_started, 'YYYY-MM-DD') AS date_started, TO_CHAR(s.completion_date_revised, 'YYYY-MM-DD') AS completion_date_revised,
                           s.contract_duration, s.account_entries, s.line_transaction, s.jev_id, s.jev_no, rc.rc_name AS requesting_office";
 
@@ -349,7 +363,9 @@ class InfraIarService
         $r['items_cost']       = round($cost, 2);
         $r['accomplishment']   = self::overallPct($items);
         $r['contract_cost']    = round((float) $r['contract_cost'], 2);
-        $r['project_cost']     = $r['project_cost'] !== null ? round((float) $r['project_cost'], 2) : null;
+        // a record saved before the breakdown existed: original = the contract cost, no variation order
+        $r['original_contract_cost'] = $r['original_contract_cost'] !== null ? round((float) $r['original_contract_cost'], 2) : $r['contract_cost'];
+        $r['variation_order']        = $r['variation_order'] !== null ? round((float) $r['variation_order'], 2) : round($r['contract_cost'] - $r['original_contract_cost'], 2);
         unset($r['account_entries'], $r['line_transaction']);
 
         return $r;
@@ -434,20 +450,24 @@ class InfraIarService
             foreach ($d['entries'] as $en) {
                 $totalCents += (int) round((float) $en['amount'] * 100);
             }
-            if ($totalCents > (int) round($rfa['contract_cost'] * 100)) {
-                return ['success' => false, 'message' => 'The account entries total ' . number_format($totalCents / 100, 2) . ', which exceeds the contract cost (' . number_format($rfa['contract_cost'], 2) . ').'];
+            $itemCents = $this->itemsCents($d['items']);
+            if ($itemCents > $totalCents) {
+                return ['success' => false, 'message' => 'The total cost of the Statement of Work Accomplishments (' . number_format($itemCents / 100, 2) . ') may not exceed the total of the Account Entries (' . number_format($totalCents / 100, 2) . ').'];
+            }
+            if ($totalCents > (int) round($rfa['rfa_amount'] * 100)) {
+                return ['success' => false, 'message' => 'The account entries total ' . number_format($totalCents / 100, 2) . ', which exceeds the RFA amount (' . number_format($rfa['rfa_amount'], 2) . ').'];
             }
             $d['iar_number'] = $this->nextSwaNumber();   // generated: SWA-YYYY-MM-0001 (the iar_number column holds the SWA number)
 
             $by = $userId ? (int) $userId : 'NULL';
             App\Execute(
                 "INSERT INTO {$this->t} (iar_number, allocation_id, rfa_number, project_code, project_name, location, program_code, program_name, vendor_id, contractor,
-                                         contract_cost, project_cost, date_started, completion_date_revised, contract_duration, account_entries, line_transaction, created_by)
+                                         contract_cost, original_contract_cost, variation_order, contract, date_started, completion_date_revised, contract_duration, account_entries, line_transaction, created_by)
                  VALUES (" . implode(', ', [
                     $this->q($d['iar_number']), $aid, $this->sqlOrNull($this->nullable($rfa['rfa_number'])), $this->sqlOrNull($this->nullable($rfa['project_code'])),
                     $this->sqlOrNull($this->nullable($rfa['project_name'])), $this->sqlOrNull($this->nullable($rfa['location'])), $this->sqlOrNull($this->nullable($rfa['program_code'])),
                     $this->sqlOrNull($this->nullable($rfa['program_name'])), $rfa['vendor_id'] ? (int) $rfa['vendor_id'] : 'NULL', $this->sqlOrNull($this->nullable($rfa['contractor'])),
-                    number_format($rfa['contract_cost'], 2, '.', ''), $d['project_cost'], $this->sqlOrNull($d['date_started']), $this->sqlOrNull($d['completion_date_revised']),
+                    number_format($rfa['contract_cost'], 2, '.', ''), number_format($rfa['original_contract_cost'], 2, '.', ''), number_format($rfa['variation_order'], 2, '.', ''), $this->sqlOrNull($d['contract']), $this->sqlOrNull($d['date_started']), $this->sqlOrNull($d['completion_date_revised']),
                     $this->sqlOrNull($d['contract_duration']), $this->jsonSql($d['entries']), $this->jsonSql($d['items']), $by,
                 ]) . ')',
                 'DB'
@@ -457,6 +477,17 @@ class InfraIarService
         } catch (\Exception $e) {
             return ['success' => false, 'message' => $e->getMessage()];
         }
+    }
+
+    /** The total cost of the Statement of Work items, in cents. */
+    private function itemsCents(array $items): int
+    {
+        $c = 0;
+        foreach ($items as $it) {
+            $c += (int) round((float) ($it['cost'] ?? 0) * 100);
+        }
+
+        return $c;
     }
 
     /** Next SWA number of the current month: SWA-YYYY-MM-0001, 0002, … (same pattern as the PO number). */
@@ -473,28 +504,36 @@ class InfraIarService
         return $prefix . str_pad((string) ($max + 1), 4, '0', STR_PAD_LEFT);
     }
 
-    /** EDIT — only the project cost, dates, contract duration and the Statement of Work items change; the IAR number, the RFA and the account entries are kept. */
+    /** EDIT — only the contract, dates, contract duration and the Statement of Work items change; the SWA number, the RFA and the account entries are kept. */
     public function update(int $id, array $body, ?int $userId = null): array
     {
         try {
-            $cur = App\ExecuteRows("SELECT swa_id, iar_number FROM {$this->t} WHERE swa_id = " . (int) $id, 'DB');
+            $cur = App\ExecuteRows("SELECT swa_id, iar_number, allocation_id, account_entries, jev_id FROM {$this->t} WHERE swa_id = " . (int) $id, 'DB');
             if (!$cur) {
                 return ['success' => false, 'message' => 'Infrastructure IAR not found.'];
             }
-            [$d, $err] = $this->clean($body, false);
+            [$d, $err] = $this->clean($body, false);   // the account entries are never changed here
             if ($err) {
                 return ['success' => false, 'message' => $err];
             }
+            $entryCents = 0;
+            foreach ($this->arrayFrom($cur[0]['account_entries']) as $en) {
+                $entryCents += (int) round((float) ($en['amount'] ?? 0) * 100);
+            }
+            $itemCents = $this->itemsCents($d['items']);
+            if ($itemCents > $entryCents) {
+                return ['success' => false, 'message' => 'The total cost of the Statement of Work Accomplishments (' . number_format($itemCents / 100, 2) . ') may not exceed the total of the Account Entries (' . number_format($entryCents / 100, 2) . ').'];
+            }
             $by = $userId ? (int) $userId : 'NULL';
             App\Execute(
-                "UPDATE {$this->t} SET project_cost = " . $d['project_cost']
+                "UPDATE {$this->t} SET contract = " . $this->sqlOrNull($d['contract'])
                 . ', date_started = ' . $this->sqlOrNull($d['date_started']) . ', completion_date_revised = ' . $this->sqlOrNull($d['completion_date_revised'])
                 . ', contract_duration = ' . $this->sqlOrNull($d['contract_duration']) . ', line_transaction = ' . $this->jsonSql($d['items'])
                 . ", updated_by = {$by}, updated_at = CURRENT_TIMESTAMP WHERE swa_id = " . (int) $id,
                 'DB'
             );
 
-            return ['success' => true, 'message' => "Infrastructure IAR {$cur[0]['iar_number']} updated."];
+            return ['success' => true, 'message' => "Infrastructure record {$cur[0]['iar_number']} updated."];
         } catch (\Exception $e) {
             return ['success' => false, 'message' => $e->getMessage()];
         }
@@ -528,7 +567,7 @@ class InfraIarService
 
             return ['success' => true, 'data' => [
                 'id' => (int) $r['swa_id'], 'iar_number' => $r['iar_number'], 'rfa_number' => $r['rfa_number'], 'requesting_rc_id' => $rows[0]['requesting_rc_id'] ?? null,
-                'project_name' => $r['project_name'], 'location' => $r['location'], 'contractor' => $r['contractor'], 'rows' => $out, 'total' => $total,
+                'project_code' => $r['project_code'], 'project_name' => $r['project_name'], 'location' => $r['location'], 'contractor' => $r['contractor'], 'rows' => $out, 'total' => $total,
                 'jev_id' => $r['jev_id'], 'jev_no' => $r['jev_no'],
             ]];
         } catch (Exception $e) {
