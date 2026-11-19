@@ -57,6 +57,7 @@ class CashPositionService
     private string $tableBankTransactions = 'fims.bank_transactions';
     private string $tableChartOfAccounts = 'fims.chart_of_accounts';
     private string $tableViewJournals = 'fims.v_journals';
+    private string $tableOpeningBalances = 'fims.opening_balances';
 
     private const UPDATE_TYPES = ['RECEIPT', 'DISBURSEMENT', 'TRANSFER', 'ADJUSTMENT', 'COLLECTION', 'SOA_UPLOAD'];
     // Same normal-balance convention as GeneralLedgerService::DEBIT_NORMAL_TYPES —
@@ -279,8 +280,13 @@ class CashPositionService
             $openingBalance = (float) $prior['closing_balance'];
             $source = 'PRIOR_CLOSING';
         } else {
-            $openingBalance = $this->glBalanceAsOf($bankAccountId, $positionDate);
-            $source = $openingBalance !== null ? 'GENERAL_LEDGER' : 'NONE';
+            $openingBalance = $this->openingBalanceFromTable($bankAccountId, $positionDate);
+            if ($openingBalance !== null) {
+                $source = 'OPENING_BALANCE';
+            } else {
+                $openingBalance = $this->glBalanceAsOf($bankAccountId, $positionDate);
+                $source = $openingBalance !== null ? 'GENERAL_LEDGER' : 'NONE';
+            }
         }
 
         $ledger = App\ExecuteRow(
@@ -297,6 +303,99 @@ class CashPositionService
             'total_receipts' => $this->num($ledger['total_receipts'] ?? 0),
             'total_disbursements' => $this->num($ledger['total_disbursements'] ?? 0),
         ]);
+    }
+
+    // First-tier fallback for a bank account's Beginning Balance when
+    // there's no prior day's closing_balance yet: fims.opening_balances'
+    // debit column for that account's tagged GL account code, summed
+    // across every book (fiscal_yr + book_id + account_code) for the
+    // position_date's fiscal year — this project's fiscal year is just the
+    // calendar year (fims.fiscal_year.fiscal_yr has no date-range columns),
+    // so no separate fiscal-year-lookup table is needed. Summed across all
+    // books rather than one specific book_id: fims.chart_of_accounts.books
+    // is a free-text, comma-separated tag (e.g. "MO, CISFA, NGC") that
+    // doesn't even match fims.books.code exactly, so there's no reliable
+    // single book_id to pick for a given bank account. Returns null — not
+    // 0 — when no opening_balances row exists at all for that account/year
+    // (as opposed to one existing with a legitimately zero debit), so
+    // getComputedBalance() can fall through to glBalanceAsOf() below.
+    private function openingBalanceFromTable(int $bankAccountId, string $positionDate): ?float
+    {
+        $account = App\ExecuteRow(
+            "SELECT account_code FROM {$this->tableBankAccounts} WHERE bank_account_id = {$bankAccountId}",
+            'DB'
+        );
+        $accountCode = trim((string) ($account['account_code'] ?? ''));
+        if ($accountCode === '') {
+            return null;
+        }
+        $fiscalYr = (int) substr($positionDate, 0, 4);
+
+        $row = App\ExecuteRow(
+            "SELECT COUNT(*) AS cnt, COALESCE(SUM(debit), 0) AS total_debit
+             FROM {$this->tableOpeningBalances}
+             WHERE account_code = " . $this->str($accountCode) . " AND fiscal_yr = {$fiscalYr}",
+            'DB'
+        );
+        if ((int) ($row['cnt'] ?? 0) === 0) {
+            return null;
+        }
+
+        return $this->num($row['total_debit'] ?? 0);
+    }
+
+    // Called by OpeningBalanceService::saveOpeningBalance() right after it
+    // posts a fiscal year's OPENING JEV — refreshes the opening_balance (and
+    // recomputed closing_balance) of every bank account tagged to this GL
+    // account_code's EARLIEST fims.cash_position row for that same fiscal
+    // year. Only that one row per account ever actually originates from an
+    // opening balance — every later day's "opening balance" is just the
+    // prior day's closing_balance (see getComputedBalance()), so there's
+    // nothing to cascade forward. A no-op (not an error) when the account
+    // isn't tagged to this code, or doesn't have a cash_position row for
+    // this fiscal year yet (getComputedBalance() will pick the new value up
+    // whenever that first row for the year does get created).
+    public function refreshEarliestOpeningBalanceForAccountCode(string $accountCode, int $fiscalYr, float $debitTotal): void
+    {
+        $accountCode = trim($accountCode);
+        if ($accountCode === '' || $fiscalYr <= 0) {
+            return;
+        }
+        $accounts = App\ExecuteRowsAssociative(
+            "SELECT bank_account_id FROM {$this->tableBankAccounts} WHERE account_code = " . $this->str($accountCode),
+            'DB'
+        ) ?: [];
+
+        foreach ($accounts as $acct) {
+            $bankAccountId = (int) $acct['bank_account_id'];
+            $earliest = App\ExecuteRow(
+                "SELECT cash_position_id, total_receipts, total_disbursements, adjustment_amount, adjustment_direction
+                 FROM {$this->tableCashPosition}
+                 WHERE bank_account_id = {$bankAccountId} AND EXTRACT(YEAR FROM position_date) = {$fiscalYr}
+                 ORDER BY position_date ASC LIMIT 1",
+                'DB'
+            );
+            if (!$earliest) {
+                continue;
+            }
+
+            // Same formula as computeManualEntryFields() — opening +
+            // receipts - disbursements, signed adjustment.
+            $adjAmount = $this->num($earliest['adjustment_amount'] ?? 0);
+            $adjDirection = strtoupper(trim((string) ($earliest['adjustment_direction'] ?? '')));
+            $signedAdj = $adjDirection === 'DEDUCTION' ? -$adjAmount : $adjAmount;
+            $receipts = $this->num($earliest['total_receipts'] ?? 0);
+            $disbursements = $this->num($earliest['total_disbursements'] ?? 0);
+            $closing = $debitTotal + $receipts - $disbursements + $signedAdj;
+
+            App\Execute(
+                "UPDATE {$this->tableCashPosition} SET
+                    opening_balance = " . $this->num($debitTotal) . ",
+                    closing_balance = " . $this->num($closing) . "
+                 WHERE cash_position_id = " . (int) $earliest['cash_position_id'],
+                'DB'
+            );
+        }
     }
 
     // This bank account's tagged GL account's balance as of the day before

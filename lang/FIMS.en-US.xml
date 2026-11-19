@@ -1,7 +1,7 @@
 <ew-language date="2026/11/20" id="en-US" author="e.World Technology Limited">
   <project>
-    <phrase id="bodytitle" value="UAC - User Access Control System" />
-    <phrase id="footertext" value="&amp;copy;2024 ITBS Corporation. All rights reserved." />
+    <phrase id="bodytitle" value="NHA - FIMS" />
+    <phrase id="footertext" value="&amp;copy;2026 ITBS Corporation. All rights reserved." />
     <menu id="262">
       <phrase id="menutext" value="notification reads" />
     </menu>
@@ -119,6 +119,9 @@
     <menu id="768">
       <phrase id="menutext" value="Cash Flow" />
     </menu>
+    <menu id="770">
+      <phrase id="menutext" value="Bank Reconciliation" />
+    </menu>
     <menu id="394">
       <phrase id="menutext" value="Ledgers" />
     </menu>
@@ -175,6 +178,9 @@
     </menu>
     <menu id="765">
       <phrase id="menutext" value="Opening Balance" />
+    </menu>
+    <menu id="769">
+      <phrase id="menutext" value="Closing Balance" />
     </menu>
     <menu id="330">
       <phrase id="menutext" value="Fund Sourcing" />
@@ -1825,6 +1831,12 @@
     </table>
     <table id="cash_flow_page">
       <phrase id="tblcaption" value="Cash Flow" />
+    </table>
+    <table id="closing_balance_page">
+      <phrase id="tblcaption" value="Closing Balance" />
+    </table>
+    <table id="bank_reconciliation_page">
+      <phrase id="tblcaption" value="Bank Reconciliation" />
     </table>
   </project>
 </ew-language>

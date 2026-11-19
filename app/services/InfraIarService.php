@@ -9,7 +9,7 @@ use PHPMaker2024\FIMS\DataType;
  * IAR Module — INFRASTRUCTURE tab. ONE table (see _assets/sql/01 - fims/01 - table/50 - fims_statement_work_accomplishments.sql):
  *   fims.statement_work_accomplishments   one row per approved Infrastructure RFA that has no purchase order.
  *
- * The RFA is picked from the Budget Allocation: allocation_type = 'RFA', status Approved, category Infrastructure, empty po_number,
+ * The RFA is picked from the Budget Allocation: allocation_type = 'RFA', status Approved, a line on one of INFRA_RFA_ACCOUNTS (RFAs have no category), empty po_number,
  * no active Disbursement Voucher, and not yet recorded here. Picking it loads the project's details (project, location, program,
  * contractor = the RFA's vendor, contract cost = the amount approved on the RFA, project cost = the original cost of the project).
  * The SWA number is generated on save; the user adds the dates (started / completion (revised) / contract duration), the account entries (pre-filled from
@@ -143,7 +143,10 @@ class InfraIarService
         } else {
             $where .= " AND COALESCE(TRIM(a.po_number), '') = ''
                         AND a.status_id = (SELECT st.id FROM fims.settings_status st WHERE st.name = 'Approved' AND st.status_for = 'budget_allocation' ORDER BY st.id LIMIT 1)
-                        AND EXISTS (SELECT 1 FROM fims.budget_category bc WHERE bc.budget_category_id = a.category_id AND bc.deleted_at IS NULL AND LOWER(TRIM(bc.name)) = 'infrastructure')
+                        AND EXISTS (SELECT 1 FROM jsonb_array_elements({$lines}) ln(value)
+                                     WHERE jsonb_typeof(ln.value) = 'object'
+                                       AND (ln.value ->> 'account_code' IN ({$this->infraCodesSql()})
+                                            OR ln.value ->> 'account_code' ~ ('^(' || {$this->infraCodesRegexSql()} || ')-')))
                         AND NOT {$this->po->activeDvSql()}
                         AND NOT EXISTS (SELECT 1 FROM {$this->t} s WHERE s.allocation_id = a.allocation_id)";
         }
@@ -416,6 +419,72 @@ class InfraIarService
                 {$this->projectBlockSql()}";
     }
 
+    /** The list search ($s = the quoted '%text%'): SWA no., RFA no., contract, contractor, project code / name, location, work item descriptions — all read live. */
+    private function searchWhere(string $s): string
+    {
+        return "(s.swa_number ILIKE {$s} OR a.allocation_number ILIKE {$s} OR EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(s.line_transaction -> 0 -> 'items', '[]'::jsonb)) it WHERE it ->> 'description' ILIKE {$s})
+                           OR s.contract ILIKE {$s}
+                           OR EXISTS (SELECT 1 FROM fims.vendors v WHERE v.vendor_id = a.vendor_id AND v.vendor_name ILIKE {$s})
+                           OR EXISTS (SELECT 1 FROM fims.project pr WHERE pr.project_code = blk.project_code AND (pr.project_code ILIKE {$s} OR pr.project_name ILIKE {$s}))
+                           OR EXISTS (SELECT 1 FROM fims.budget_req_project brp WHERE brp.project_code = blk.project_code AND brp.location ILIKE {$s}))";
+    }
+
+    /** The items' Statement of Work description, project etc. are read live; see live(). */
+    private function liveNote(): void
+    {
+    }
+    /** The GL account of the Work in Process page: Work-in-Process (and its sub-ledgers). */
+    public const WIP_ACCOUNT = '1-04-03-020';
+
+    /** An RFA is an infrastructure one when any of its lines uses one of these accounts (or a sub-ledger of them). */
+    public const INFRA_RFA_ACCOUNTS = ['1-04-03-020', '1-05-01-010', '1-05-01-020', '1-06-04-010', '1-06-09-020', '1-06-01-010', '1-06-04-990', '1-06-02-990'];
+
+    private function infraCodesSql(): string
+    {
+        return implode(', ', array_map(fn (string $c) => $this->q($c), self::INFRA_RFA_ACCOUNTS));
+    }
+
+    private function infraCodesRegexSql(): string
+    {
+        return $this->q(implode('|', self::INFRA_RFA_ACCOUNTS));
+    }
+
+    /**
+     * Work in Process page: the infrastructure records whose pro-forma was SUBMITTED as a JEV (the JEV is in the record's line_transaction) and whose JEV carries the
+     * Work-in-Process account (1-04-03-020, or one of its sub-ledgers). One row per project (one record per RFA): the JEV's book, the office, project, location, contractor, contract,
+     * the three contract costs (read live) and the physical accomplishment (the items' % added up).
+     */
+    public function workInProcess(int $page = 1, int $limit = 10, string $search = ''): array
+    {
+        try {
+            $code = $this->q(self::WIP_ACCOUNT);
+            $like = $this->q(self::WIP_ACCOUNT . '-%');
+            $join = "JOIN fims.journal_entry_vouchers j ON j.jev_id = NULLIF(s.line_transaction -> 0 ->> 'jev_id', '')::int
+                     LEFT JOIN fims.books bk ON bk.book_id = j.book_id
+                     LEFT JOIN fims.settings_status js ON js.id = j.status_id";
+            $where = "EXISTS (SELECT 1 FROM fims.journal_entry_voucher_lines l WHERE l.jev_id = j.jev_id AND (l.account_code = {$code} OR l.account_code LIKE {$like}))";
+            if ($search !== '') {
+                $s      = $this->q('%' . $search . '%');
+                $where .= " AND ({$this->searchWhere($s)} OR bk.name ILIKE {$s} OR j.jev_no ILIKE {$s})";
+            }
+            $limit  = max(1, $limit);
+            $page   = max(1, $page);
+            $offset = ($page - 1) * $limit;
+            $total  = (int) App\ExecuteScalar("SELECT COUNT(*) {$this->from()} {$join} WHERE {$where}", 'DB');
+            $rows   = App\ExecuteRows(
+                'SELECT ' . self::COLS . ", j.jev_date, bk.name AS book_name, js.name AS jev_status {$this->from()} {$join} WHERE {$where} ORDER BY s.swa_id DESC LIMIT {$limit} OFFSET {$offset}",
+                'DB'
+            ) ?: [];
+
+            return [
+                'success'    => true,
+                'data'       => array_map(fn($r) => $this->shape($r), $this->live($rows)),
+                'pagination' => ['total' => $total, 'per_page' => $limit, 'current_page' => $page, 'last_page' => (int) ceil($total / $limit)],
+            ];
+        } catch (\Exception $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
     /** Paginated list: one row per infrastructure IAR. */
     public function fetchAlls(int $page = 1, int $limit = 10, string $search = ''): array
     {
@@ -423,10 +492,7 @@ class InfraIarService
             $where = '1=1';
             if ($search !== '') {
                 $s     = $this->q('%' . $search . '%');
-                $where = "(s.swa_number ILIKE {$s} OR a.allocation_number ILIKE {$s} OR EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(s.line_transaction -> 0 -> 'items', '[]'::jsonb)) it WHERE it ->> 'description' ILIKE {$s})
-                           OR EXISTS (SELECT 1 FROM fims.vendors v WHERE v.vendor_id = a.vendor_id AND v.vendor_name ILIKE {$s})
-                           OR EXISTS (SELECT 1 FROM fims.project pr WHERE pr.project_code = blk.project_code AND (pr.project_code ILIKE {$s} OR pr.project_name ILIKE {$s}))
-                           OR EXISTS (SELECT 1 FROM fims.budget_req_project brp WHERE brp.project_code = blk.project_code AND brp.location ILIKE {$s}))";
+                $where = $this->searchWhere($s);
             }
             $limit  = max(1, $limit);
             $page   = max(1, $page);
@@ -606,7 +672,7 @@ class InfraIarService
 
             return ['success' => true, 'data' => [
                 'id' => (int) $r['swa_id'], 'swa_number' => $r['swa_number'], 'rfa_number' => $r['rfa_number'], 'requesting_rc_id' => $rows[0]['requesting_rc_id'] ?? null,
-                'project_code' => $r['project_code'], 'project_name' => $r['project_name'], 'location' => $r['location'], 'contractor' => $r['contractor'], 'rows' => $out, 'total' => $total,
+                'requesting_office' => $r['requesting_office'] ?? null, 'program_name' => $r['program_name'] ?? null, 'project_code' => $r['project_code'], 'project_name' => $r['project_name'], 'location' => $r['location'], 'contractor' => $r['contractor'], 'rows' => $out, 'total' => $total,
                 'jev_id' => $r['jev_id'], 'jev_no' => $r['jev_no'],
             ]];
         } catch (xception $e) {

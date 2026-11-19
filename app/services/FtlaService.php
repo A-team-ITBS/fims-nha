@@ -33,6 +33,7 @@ class FtlaService
     private string $tableUsers     = 'uac.users';
     private string $tableDv        = 'fims.disbursement_vouchers';
     private string $tableDvStatus  = 'fims.settings_status';
+    private string $tableChecks    = 'fims.checks';
 
     /** This module's row in fims.status_change_log.status_for — see GlobalService::logStatusChange(). */
     private const STATUS_LOG_FOR = 'fund_transfers';
@@ -195,9 +196,10 @@ class FtlaService
 
     /**
      * Normalizes the "multiple debit accounts" payload (Treasury's from_accounts
-     * shape, trimmed to {bank_account_id, amount}): drops rows missing either
-     * field, rounds amount to 2dp. Returns [] for a legacy single-account
-     * transfer that never declared a source account.
+     * shape, trimmed to {bank_account_id, amount, dv_no}): drops rows missing
+     * either bank_account_id or amount, rounds amount to 2dp. dv_no is "1 DV
+     * per account" — each row carries its own, optional. Returns [] for a
+     * legacy single-account transfer that never declared a source account.
      */
     private function normalizeFromAccounts(mixed $raw): array
     {
@@ -207,11 +209,61 @@ class FtlaService
             $bankId = (int) ($r['bank_account_id'] ?? 0);
             $amount = is_numeric($r['amount'] ?? null) ? round((float) $r['amount'], 2) : 0.0;
             if ($bankId > 0 && $amount > 0) {
-                $out[] = ['bank_account_id' => $bankId, 'amount' => $amount];
+                $out[] = ['bank_account_id' => $bankId, 'amount' => $amount, 'dv_no' => trim((string) ($r['dv_no'] ?? ''))];
             }
         }
 
         return $out;
+    }
+
+    /**
+     * dv_numbers (the plain newline-delimited column read by the print
+     * footer's "* DV No.s:" — see FtlaPrintService::model()) is derived from
+     * each debit row's own dv_no once there's more than one account ("1 DV
+     * per account" — the single shared DV picker only applies to a
+     * single-debit transfer, which has nothing to derive from and so keeps
+     * submitting dv_numbers directly).
+     */
+    private function dvNumbersFor(array $fromAccounts, array $body): string
+    {
+        if (!$fromAccounts) {
+            return trim((string) ($body['dv_numbers'] ?? ''));
+        }
+
+        return implode("\n", array_map(static fn (array $r) => $r['dv_no'] ?? '', $fromAccounts));
+    }
+
+    /**
+     * "1 DV per account" is pointless if the same DV can land on two rows of
+     * the SAME FTLA, or on a DV already tagged to a DIFFERENT FTLA — the
+     * client only hides those options from the dropdown (ftlm_dvOptsHtml() /
+     * ftlm_loadUsedDvNumbers() in ftla-form.php), which a direct API call
+     * bypasses entirely. Re-checks both here so the constraint actually
+     * holds server-side. $excludeId lets an update() see its own existing
+     * usage (same as getUsedDvNumbers()).
+     */
+    private function validateDvNumbers(array $fromAccounts, array $body, int $excludeId = 0): array
+    {
+        $dvNumbers = $fromAccounts
+            ? array_map(static fn (array $r) => trim((string) ($r['dv_no'] ?? '')), $fromAccounts)
+            : [trim((string) ($body['dv_numbers'] ?? ''))];
+        $dvNumbers = array_filter($dvNumbers, static fn ($n) => $n !== '');
+        if (!$dvNumbers) {
+            return [];
+        }
+
+        $errors = [];
+        $dupes  = array_unique(array_diff_assoc($dvNumbers, array_unique($dvNumbers)));
+        if ($dupes) {
+            $errors[] = 'DV No. "' . implode('", "', $dupes) . '" is selected on more than one row — each account needs its own DV.';
+        }
+
+        $usedElsewhere = array_intersect($dvNumbers, $this->getUsedDvNumbers($excludeId));
+        if ($usedElsewhere) {
+            $errors[] = 'DV No. "' . implode('", "', $usedElsewhere) . '" is already tagged to another FTLA.';
+        }
+
+        return $errors;
     }
 
     /**
@@ -328,6 +380,52 @@ class FtlaService
 
             return ['success' => false, 'message' => 'Failed to load FTLA records.'];
         }
+    }
+
+    // Every DV number that's already spoken for — either tagged to some
+    // OTHER existing FTLA (any status — once a DV is referenced anywhere,
+    // it shouldn't be offered again), or already pulled into a Check
+    // (fims.checks.dv_number — same "DV already committed" idea
+    // CheckProcessingService uses to decide which DVs are still available
+    // for check prep, excluding only CANCELLED checks). The Register/Edit
+    // form's DV picker (ftlm_loadUsedDvNumbers() in ftla-form.php) hides
+    // all of these so the same DV never gets tagged to two different FTLAs,
+    // or to an FTLA after a check has already been cut for it. dv_numbers
+    // is newline-delimited and, for a multi-debit transfer, positionally
+    // derived from each debit row's own dv_no (see dvNumbersFor()) — this
+    // flattens every row's value from every record into one set.
+    // $excludeId lets editing a record still see its OWN already-tagged
+    // DV(s) (not "used by someone else").
+    public function getUsedDvNumbers(int $excludeId = 0): array
+    {
+        $where = "dv_numbers IS NOT NULL AND dv_numbers <> ''";
+        if ($excludeId > 0) {
+            $where .= " AND fund_transfer_id <> {$excludeId}";
+        }
+        $rows = App\ExecuteRowsAssociative("SELECT dv_numbers FROM {$this->table} WHERE {$where}", 'DB') ?: [];
+
+        $used = [];
+        foreach ($rows as $row) {
+            foreach (preg_split('/\R/', (string) $row['dv_numbers']) as $num) {
+                $num = trim($num);
+                if ($num !== '') {
+                    $used[$num] = true;
+                }
+            }
+        }
+
+        $checked = App\ExecuteRowsAssociative(
+            "SELECT DISTINCT dv_number FROM {$this->tableChecks} WHERE dv_number IS NOT NULL AND dv_number <> '' AND status <> 'CANCELLED'",
+            'DB'
+        ) ?: [];
+        foreach ($checked as $row) {
+            $num = trim((string) $row['dv_number']);
+            if ($num !== '') {
+                $used[$num] = true;
+            }
+        }
+
+        return array_keys($used);
     }
 
     public function getRecord(int $id): array
@@ -487,6 +585,7 @@ class FtlaService
             if ($purpose === '') {
                 $errors[] = 'Purpose / Particulars is required.';
             }
+            $errors = array_merge($errors, $this->validateDvNumbers($fromAccounts, $body));
             if ($errors) {
                 return ['success' => false, 'message' => 'Validation failed.', 'errors' => $errors];
             }
@@ -499,7 +598,26 @@ class FtlaService
 
             $uid        = $userId > 0 ? (string) $userId : 'NULL';
             $preparedBy = !empty($body['prepared_by']) ? $this->intOrNull($body['prepared_by']) : $uid;
-            $ftlaNumber = $this->nextFtlaNumber($transferDate);
+
+            // ftla_number is normally auto-generated (PREFIX-YYYY-MM-####,
+            // same convention as PurchaseOrderService) — but a manually
+            // typed one is honored instead when given (e.g. to match a
+            // paper FTLA number already issued before this system existed).
+            // ftla_number has a UNIQUE constraint on the table, so a
+            // duplicate manual entry is checked here first for a clean
+            // error instead of an opaque DB constraint failure.
+            $ftlaNumber = trim((string) ($body['ftla_number'] ?? ''));
+            if ($ftlaNumber !== '') {
+                $dupe = App\ExecuteRow(
+                    "SELECT fund_transfer_id FROM {$this->table} WHERE ftla_number = " . $this->str($ftlaNumber),
+                    'DB'
+                );
+                if ($dupe) {
+                    return ['success' => false, 'message' => "FTLA number \"{$ftlaNumber}\" is already in use."];
+                }
+            } else {
+                $ftlaNumber = $this->nextFtlaNumber($transferDate);
+            }
 
             $timestampCol = self::STATUS_TIMESTAMP_COLUMN[$status] ?? null;
             $extraCol     = $timestampCol ? ", {$timestampCol}" : '';
@@ -521,7 +639,7 @@ class FtlaService
                     {$this->jsonb($fromAccounts, '[]')}, {$this->jsonb($toAccountIds, '[]')}, {$this->decimal($amount)},
                     {$this->bool($body['is_temporary'] ?? false)}, {$this->dateOrNull($body['repayment_due_date'] ?? null)},
                     {$this->str($purpose)}, {$this->strOrNull($body['request_reference'] ?? null)},
-                    {$this->strOrNull($body['dv_numbers'] ?? '')},
+                    {$this->strOrNull($this->dvNumbersFor($fromAccounts, $body))},
                     {$this->jsonb($body['supporting_documents'] ?? null, '[]')},
                     {$this->jsonb($body['signatories'] ?? null, '{}')},
                     {$this->jsonb($body['bank_officers'] ?? null, '{}')},
@@ -601,11 +719,6 @@ class FtlaService
                     $hasFieldEdit = true;
                 }
             }
-            if (array_key_exists('dv_numbers', $body)) {
-                $set[]        = 'dv_numbers = ' . $this->strOrNull($body['dv_numbers']);
-                $hasFieldEdit = true;
-            }
-
             // "Multiple debit accounts" and/or "multiple credit accounts" (paired FROM/TO
             // rows) — same shapes/precedence as create(). to_bank_account_id is handled
             // here too (not in the generic INT_FIELDS loop) since paired mode derives it
@@ -664,6 +777,22 @@ class FtlaService
                     $set[]        = 'from_bank_account_id = ' . $this->intOrNull($body['from_bank_account_id']);
                     $hasFieldEdit = true;
                 }
+            }
+
+            // dv_numbers is derived from the debit rows' own dv_no ("1 DV per
+            // account") whenever there's more than one account to derive it
+            // from — see dvNumbersFor()'s docblock. Must run after the
+            // $paired/$fromAccounts block above, not alongside the other
+            // PLAIN_STRING_FIELDS, since it needs $pairFrom/$fromAccounts
+            // settled first.
+            if ($paired || $fromAccountsProvided || array_key_exists('dv_numbers', $body)) {
+                $dvSource = $paired ? $pairFrom : ($fromAccountsProvided ? $fromAccounts : []);
+                $dvErrors = $this->validateDvNumbers($dvSource, $body, $ftId);
+                if ($dvErrors) {
+                    return ['success' => false, 'message' => 'Validation failed.', 'errors' => $dvErrors];
+                }
+                $set[]        = 'dv_numbers = ' . $this->strOrNull($this->dvNumbersFor($dvSource, $body));
+                $hasFieldEdit = true;
             }
 
             if (array_key_exists('transfer_amount', $body)) {

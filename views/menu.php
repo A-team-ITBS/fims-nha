@@ -43,6 +43,7 @@ $sideMenu->addMenuItem(763, "mi_balance_sheet_page", $Language->menuPhrase("763"
 $sideMenu->addMenuItem(764, "mi_income_statement_page", $Language->menuPhrase("764", "MenuText"), "IncomeStatementPage", 552, "", AllowListMenu('{FIMS}income-statement-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(767, "mi_statement_of_changes_page", $Language->menuPhrase("767", "MenuText"), "StatementOfChangesPage", 552, "", AllowListMenu('{FIMS}statement-of-changes-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(768, "mi_cash_flow_page", $Language->menuPhrase("768", "MenuText"), "CashFlowPage", 552, "", AllowListMenu('{FIMS}cash-flow-page.php'), false, false, "", "", false, true);
+$sideMenu->addMenuItem(770, "mi_bank_reconciliation_page", $Language->menuPhrase("770", "MenuText"), "BankReconciliationPage", 552, "", AllowListMenu('{FIMS}bank-reconciliation-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(394, "mci_Ledgers", $Language->menuPhrase("394", "MenuText"), "", -1, "", true, false, true, "fas fa-scale-balanced", "", false, true);
 $sideMenu->addMenuItem(393, "mi_general_ledger_page", $Language->menuPhrase("393", "MenuText"), "GeneralLedgerPage", 394, "", AllowListMenu('{FIMS}general-ledger-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(395, "mi_subsidiary_ledger_page", $Language->menuPhrase("395", "MenuText"), "SubsidiaryLedgerPage", 394, "", AllowListMenu('{FIMS}subsidiary-ledger-page.php'), false, false, "", "", false, true);
@@ -59,6 +60,7 @@ $sideMenu->addMenuItem(761, "mi_payroll_page", $Language->menuPhrase("761", "Men
 $sideMenu->addMenuItem(762, "mi_remittance_page", $Language->menuPhrase("762", "MenuText"), "RemittancePage", 651, "", AllowListMenu('{FIMS}remittance-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(760, "mi_fidelity_bond_page", $Language->menuPhrase("760", "MenuText"), "FidelityBondPage", 651, "", AllowListMenu('{FIMS}fidelity-bond-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(765, "mi_opening_balance_page", $Language->menuPhrase("765", "MenuText"), "OpeningBalancePage", 651, "", AllowListMenu('{FIMS}opening-balance-page.php'), false, false, "", "", false, true);
+$sideMenu->addMenuItem(769, "mi_closing_balance_page", $Language->menuPhrase("769", "MenuText"), "ClosingBalancePage", 651, "", AllowListMenu('{FIMS}closing-balance-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(392, "mi_fund_sourcing_dashboard_page", $Language->menuPhrase("392", "MenuText"), "FundSourcingDashboardPage", 330, "", AllowListMenu('{FIMS}fund-sourcing-dashboard-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(264, "mi_supplemental_funds_page", $Language->menuPhrase("264", "MenuText"), "SupplementalFundsPage", 330, "", AllowListMenu('{FIMS}supplemental-funds-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(265, "mi_trust_funds_page", $Language->menuPhrase("265", "MenuText"), "TrustFundsPage", 330, "", AllowListMenu('{FIMS}trust-funds-page.php'), false, false, "", "", false, true);

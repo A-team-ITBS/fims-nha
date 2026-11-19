@@ -311,52 +311,6 @@ $_ftlm_api = $apiBase ?? Config('API.FIMS_URL');
     }
     .ftlm-fg.has-err .ftlm-err-msg { display: block; }
 
-    /* ── DV Numbers — searchable multi-select tag picker (same pattern as
-       lv-form.php's CIBR picker: a fixed-position dropdown so results are
-       never clipped by #ftlm-form-panel's own overflow-y:auto ancestor). ── */
-    .ftlm-msel { position: relative; }
-    /* Border/radius/background intentionally left to the composed .form-control
-       class (see the HTML) so this picker's resting state matches every other
-       field on the step exactly, instead of redeclaring them here. */
-    .ftlm-tag-input {
-        display: flex; flex-wrap: wrap; align-items: center; gap: 5px;
-        padding: 6px 10px; min-height: 38px; cursor: text; transition: border-color .15s;
-    }
-    .ftlm-tag-input:focus-within { border-color: var(--afims-heading-fill, #000E3E); }
-    .ftlm-tag-input #ftlm-dv-search {
-        border: none; outline: none; font-size: 13px; font-family: inherit;
-        color: var(--afims-text, #1A1B21); background: transparent; flex: 1; min-width: 160px; padding: 3px 2px;
-    }
-    .ftlm-msel-dropdown {
-        position: fixed; z-index: 9999;
-        background: var(--afims-surface, #FFFFFF); border: 1.5px solid var(--afims-border, #E4ECF2); border-radius: 8px;
-        max-height: 220px; overflow-y: auto; box-shadow: 0 4px 16px rgba(0,0,0,.1);
-    }
-    .ftlm-msel-option {
-        display: flex; align-items: center; gap: 9px; padding: 9px 12px;
-        font-size: 13px; cursor: pointer; border-bottom: 1px solid var(--afims-surface-subtle, #F4F7FA);
-    }
-    .ftlm-msel-option:last-child { border-bottom: none; }
-    .ftlm-msel-option:hover { background: var(--afims-primary, #0035A9); color: var(--afims-pure-white, #FFFFFF); }
-    .ftlm-msel-option:hover .ftlm-msel-option-chk { border-color: rgba(255,255,255,.6); }
-    .ftlm-msel-option.selected { background: var(--afims-primary, #0035A9); color: var(--afims-pure-white, #FFFFFF); }
-    .ftlm-msel-option-chk {
-        width: 16px; height: 16px; border-radius: 4px; border: 1.5px solid var(--afims-border, #E4ECF2);
-        flex-shrink: 0; display: flex; align-items: center; justify-content: center;
-        font-size: 11px; color: var(--afims-pure-white, #FFFFFF); background: var(--afims-surface, #FFFFFF);
-    }
-    .ftlm-msel-option.selected .ftlm-msel-option-chk { background: var(--afims-surface, #FFFFFF); border-color: var(--afims-pure-white, #FFFFFF); color: var(--afims-primary-text, #0035A9); }
-    .ftlm-msel-option-empty { padding: 10px 12px; font-size: 12px; color: var(--muted); }
-    .ftlm-msel-tag {
-        display: inline-flex; align-items: center; gap: 6px; background: var(--afims-primary-soft, #E6EBF6);
-        color: var(--afims-primary-text, #0035A9); border-radius: 20px; padding: 4px 6px 4px 10px; font-size: 11.5px; font-weight: 600;
-    }
-    .ftlm-msel-tag button {
-        border: none; background: rgba(30,64,175,.12); cursor: pointer; color: var(--afims-primary-text, #0035A9);
-        font-size: 12px; line-height: 1; padding: 3px 5px; border-radius: 50%; display: flex;
-    }
-    .ftlm-msel-tag button:hover { background: rgba(30,64,175,.25); }
-
     /* ── Temporary toggle ────────────────────────────────────── */
     .ftlm-tmp-row {
         display: flex;
@@ -504,25 +458,23 @@ $_ftlm_api = $apiBase ?? Config('API.FIMS_URL');
                         Funding Reference
                     </div>
 
-                    <!-- Moved ahead of Transfer Details so the DV(s) backing this
-                         transfer are picked first — ftlm_toggleDv()/ftlm_removeDv()
-                         below now also call ftlm_recalcDvAmount(), which sums the
-                         selected DVs' net_amount (already fetched in full by
-                         ftlm_loadDvOptions(), status=RELEASED) into
-                         ftlm_transfer_amount via the same ftlm_setAmount() helper
-                         ftlm_recalcDebitTotal() uses for the multi-debit total. LAA/
-                         RFA stayed in Step 2 (Attachments) — see "Funding Reference"
-                         there — only the DV picker itself moved. -->
-                    <div class="ftlm-fg">
-                        <label class="ftlm-label">DV Numbers <span style="font-size:10px;font-weight:400;color:var(--afims-text-disabled, #A9AAB8);">(Search and select one or more — Transfer Amount auto-fills from the total)</span></label>
-                        <div class="ftlm-msel" id="ftlm-dv-msel">
-                            <div class="ftlm-tag-input form-control" id="ftlm-dv-tag-input"
-                                 onclick="document.getElementById('ftlm-dv-search').focus()">
-                                <input type="text" id="ftlm-dv-search"
-                                       placeholder="Search DV number or payee…" autocomplete="off">
-                            </div>
-                            <div class="ftlm-msel-dropdown" id="ftlm-dv-dropdown" style="display:none;"></div>
-                        </div>
+                    <!-- Moved ahead of Transfer Details so the DV backing this
+                         transfer is picked first. "1 DV per account" — this single
+                         select only applies to a single-debit transfer (one
+                         account, one DV); once "Multiple debit accounts" is
+                         checked below, this hides and each debit row gets its own
+                         DV select instead (see ftlm-debit-table) — toggled by
+                         ftlm_toggleMultiDebit(). Picking a DV here still
+                         auto-fills Transfer Amount from its net_amount, via
+                         ftlm_recalcDvAmount() below, same ftlm_setAmount() helper
+                         ftlm_recalcDebitTotal() uses for the multi-debit total.
+                         LAA/RFA stayed in Step 2 (Attachments) — see "Funding
+                         Reference" there — only the DV picker itself moved. -->
+                    <div class="ftlm-fg" id="ftlm-dv-single-wrap">
+                        <label class="ftlm-label" for="ftlm_dv_number">DV Number <span style="font-size:10px;font-weight:400;color:var(--afims-text-disabled, #A9AAB8);">(optional — Transfer Amount auto-fills from it)</span></label>
+                        <select class="form-control" id="ftlm_dv_number" onchange="ftlm_recalcDvAmount()">
+                            <option value="">— Select DV —</option>
+                        </select>
                     </div>
 
                     <div class="ftlm-sec-hd">
@@ -548,7 +500,19 @@ $_ftlm_api = $apiBase ?? Config('API.FIMS_URL');
                         </div>
                     </div>
 
-                    <input type="hidden" id="ftlm_ftla_number" name="ftla_number">
+                    <!-- Normally auto-generated server-side (PREFIX-YYYY-MM-####,
+                         see FtlaService::nextFtlaNumber()) on Save — typing one in
+                         here instead (e.g. to match a paper FTLA number already
+                         issued before this system existed) overrides that, and
+                         FtlaService::create() checks it's not already taken. Left
+                         blank (the common case), auto-generation proceeds as
+                         before. Only meaningful for a brand-new FTLA — see
+                         ftlm_fillForm() below, which disables this once editing an
+                         existing one (its number is already fixed). -->
+                    <div class="ftlm-fg" id="ftlm-fg-ftla-number">
+                        <label class="ftlm-label" for="ftlm_ftla_number">FTLA Number <span style="font-size:10px;font-weight:400;color:var(--afims-text-disabled, #A9AAB8);">(optional — leave blank to auto-generate)</span></label>
+                        <input type="text" class="form-control" id="ftlm_ftla_number" name="ftla_number" placeholder="Auto-generated if left blank">
+                    </div>
 
                     <div class="ftlm-sec-hd">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12">
@@ -594,6 +558,13 @@ $_ftlm_api = $apiBase ?? Config('API.FIMS_URL');
                                 <tr style="border-bottom:2px solid var(--afims-border, #E4ECF2);">
                                     <th style="text-align:left;padding:5px 10px;font-size:10px;font-weight:700;color:var(--afims-text-disabled, #A9AAB8);text-transform:uppercase;letter-spacing:.06em;">Debit (From)</th>
                                     <th style="text-align:left;padding:5px 10px;font-size:10px;font-weight:700;color:var(--afims-text-disabled, #A9AAB8);text-transform:uppercase;letter-spacing:.06em;">Credit (To)</th>
+                                    <!-- "1 DV per account" — one DV per debit row instead of a
+                                         single shared picker for the whole FTLA (see
+                                         ftlm-dv-single-wrap above, which only applies to
+                                         single-debit mode). Picking a row's DV auto-fills that
+                                         row's own Amount from its net_amount — see
+                                         ftlm_onDebitDvChange(). -->
+                                    <th style="text-align:left;padding:5px 10px;font-size:10px;font-weight:700;color:var(--afims-text-disabled, #A9AAB8);text-transform:uppercase;letter-spacing:.06em;width:160px;">DV No.</th>
                                     <th style="text-align:right;padding:5px 10px;font-size:10px;font-weight:700;color:var(--afims-text-disabled, #A9AAB8);text-transform:uppercase;letter-spacing:.06em;width:140px;">Amount</th>
                                     <th style="width:28px;"></th>
                                 </tr>
@@ -601,7 +572,7 @@ $_ftlm_api = $apiBase ?? Config('API.FIMS_URL');
                             <tbody id="ftlm-debit-tbody"></tbody>
                             <tfoot>
                                 <tr>
-                                    <td colspan="2" style="padding:6px 10px;font-size:12px;font-weight:700;text-align:right;">Total</td>
+                                    <td colspan="3" style="padding:6px 10px;font-size:12px;font-weight:700;text-align:right;">Total</td>
                                     <td style="padding:6px 10px;font-size:12px;font-weight:700;text-align:right;" id="ftlm-debit-total">₱0.00</td>
                                     <td></td>
                                 </tr>
@@ -760,8 +731,24 @@ $_ftlm_api = $apiBase ?? Config('API.FIMS_URL');
                             <input type="text" class="form-control" id="ftlm_sig1_name" placeholder="e.g. MARIA C. SANTOS">
                         </div>
                         <div class="ftlm-fg">
-                            <label class="ftlm-label" for="ftlm_sig1_title">Signatory 1 — Title</label>
-                            <input type="text" class="form-control" id="ftlm_sig1_title" placeholder="Officer-in-Charge, Treasury Department">
+                            <!-- Same select+"Other…" convention as bank-management-page.php's
+                                 Bank Name field — ftlm_sig1_title (now hidden unless "Other…"
+                                 is picked) stays the actual value read everywhere else in this
+                                 file (ftlm_buildPreviewData(), the save payload, ftlm_fillForm()),
+                                 same role field-bank-name plays there. See
+                                 ftlm_bindTitleSelect()/ftlm_setTitleValue() below. -->
+                            <label class="ftlm-label" for="ftlm_sig1_title_select">Signatory 1 — Title</label>
+                            <select class="form-control" id="ftlm_sig1_title_select">
+                                <option value="">— Select Title —</option>
+                                <option>Officer-in-Charge, Treasury Department</option>
+                                <option>Acting Group Manager, Financial Services Group</option>
+                                <option>Department Manager, Treasury Department</option>
+                                <option>Division Manager, Treasury Department</option>
+                                <option>Section Chief, Treasury Department</option>
+                                <option>Group Manager, Financial Services Group</option>
+                                <option value="__other__">Other…</option>
+                            </select>
+                            <input type="text" class="form-control mt-1" id="ftlm_sig1_title" placeholder="Title, Department" style="display:none;">
                         </div>
                     </div>
                     <div class="ftlm-grid-2">
@@ -770,8 +757,56 @@ $_ftlm_api = $apiBase ?? Config('API.FIMS_URL');
                             <input type="text" class="form-control" id="ftlm_sig2_name" placeholder="e.g. JOSE R. DELA CRUZ">
                         </div>
                         <div class="ftlm-fg">
-                            <label class="ftlm-label" for="ftlm_sig2_title">Signatory 2 — Title</label>
-                            <input type="text" class="form-control" id="ftlm_sig2_title" placeholder="Acting Group Manager, Financial Services Group">
+                            <label class="ftlm-label" for="ftlm_sig2_title_select">Signatory 2 — Title</label>
+                            <select class="form-control" id="ftlm_sig2_title_select">
+                                <option value="">— Select Title —</option>
+                                <option>Officer-in-Charge, Treasury Department</option>
+                                <option>Acting Group Manager, Financial Services Group</option>
+                                <option>Department Manager, Treasury Department</option>
+                                <option>Division Manager, Treasury Department</option>
+                                <option>Section Chief, Treasury Department</option>
+                                <option>Group Manager, Financial Services Group</option>
+                                <option value="__other__">Other…</option>
+                            </select>
+                            <input type="text" class="form-control mt-1" id="ftlm_sig2_title" placeholder="Title, Department" style="display:none;">
+                        </div>
+                    </div>
+
+                    <!-- "FOR BANK USE ONLY" names — same jsonb column as sig1/sig2
+                         above (signatories.sig_verified/checked/approved/posted),
+                         read by FtlaService::_buildPrintPayload() and rendered by
+                         FtlaPrintService::html()'s own ".bank" block. Optional —
+                         left blank, the printed letter just shows blank signature
+                         lines (same as before this was added) for the bank to sign
+                         by hand; filled in here, the name prints underlined above
+                         the line instead. -->
+                    <div class="ftlm-sec-hd" style="margin-top:18px;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12">
+                            <rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/>
+                        </svg>
+                        For Bank Use Only
+                    </div>
+                    <p style="font-size:11px;color:var(--afims-text-disabled, #A9AAB8);margin:0 0 14px;">
+                        Optional — leave blank for the bank to sign by hand.
+                    </p>
+                    <div class="ftlm-grid-2">
+                        <div class="ftlm-fg">
+                            <label class="ftlm-label" for="ftlm_bank_sig_verified">Signature Verified by</label>
+                            <input type="text" class="form-control" id="ftlm_bank_sig_verified">
+                        </div>
+                        <div class="ftlm-fg">
+                            <label class="ftlm-label" for="ftlm_bank_checked">Checked by</label>
+                            <input type="text" class="form-control" id="ftlm_bank_checked">
+                        </div>
+                    </div>
+                    <div class="ftlm-grid-2">
+                        <div class="ftlm-fg">
+                            <label class="ftlm-label" for="ftlm_bank_approved">Approved by</label>
+                            <input type="text" class="form-control" id="ftlm_bank_approved">
+                        </div>
+                        <div class="ftlm-fg">
+                            <label class="ftlm-label" for="ftlm_bank_posted">Posted by</label>
+                            <input type="text" class="form-control" id="ftlm_bank_posted">
                         </div>
                     </div>
 
@@ -847,6 +882,7 @@ let ftlm_laaOptions  = [];   // approved/terminal LAA records — Funding Refere
 let ftlm_rfaOptions  = [];   // approved/terminal RFA records — Funding Reference picker
 let ftlm_dvLoaded    = false;
 let ftlm_dvOptions   = [];   // approved DV vouchers — DV Number picker
+let ftlm_usedDvNumbers = []; // DV numbers already tagged to some OTHER FTLA — see ftlm_loadUsedDvNumbers()
 let ftlm_previewTimer = null;
 const FTLM_TOTAL_STEPS = 4;
 const FTLM_API_BASE    = '<?php echo rtrim($_ftlm_api, '/'); ?>';
@@ -961,10 +997,18 @@ function ftlm_buildPreviewData() {
         credit_accounts:     creditAccounts,
         purpose:             v('ftlm_purpose'),
         ftla_number:         v('ftlm_ftla_number'),
+        // Needed for the live preview's "* DV No.s: / COE/MOOE <number>"
+        // footer (see _renderPrintSummary() in ftla-page.php) — mirrors
+        // FtlaPrintService::model()'s own dv_numbers + fund_line.
+        dv_numbers:          ftlm_getDvNumbers().split('\n').filter(Boolean),
         sig_left_name:       v('ftlm_sig1_name'),
         sig_left_title:      v('ftlm_sig1_title'),
         sig_right_name:      v('ftlm_sig2_name'),
         sig_right_title:     v('ftlm_sig2_title'),
+        bank_sig_verified:   v('ftlm_bank_sig_verified'),
+        bank_checked:        v('ftlm_bank_checked'),
+        bank_approved:       v('ftlm_bank_approved'),
+        bank_posted:         v('ftlm_bank_posted'),
     };
 }
 
@@ -1169,9 +1213,47 @@ function ftlm_prevStep() {
 }
 
 /* ── Bank accounts ─────────────────────────────────────── */
-function ftlm_bankOptsHtml(banks) {
+function ftlm_bankById(id) {
+    return ftlm_banks.find(b => String(b.bank_account_id) === String(id)) || null;
+}
+// excludeId drops an already-picked account from the OTHER side of the same
+// row (a debit row's own From can't also be its own To, and vice versa —
+// same rule FtlaService::create()/update() already enforce server-side).
+// matchBankName, once the other side has picked a bank, narrows this side
+// down to accounts at that SAME bank — a transfer's From and To are always
+// expected to be the same institution (e.g. both Landbank).
+function ftlm_bankOptsHtml(banks, { excludeId = '', matchBankName = '', currentValue = '' } = {}) {
+    const rows = banks.filter(b =>
+        String(b.bank_account_id) === String(currentValue || '') || (
+            String(b.bank_account_id) !== String(excludeId || '') &&
+            (!matchBankName || b.bank_name === matchBankName)
+        )
+    );
     return '<option value="">— Select —</option>' +
-        banks.map(b => `<option value="${b.bank_account_id}">${b.bank_name} — ${b.account_name} (${b.account_number})</option>`).join('');
+        rows.map(b => `<option value="${b.bank_account_id}">${b.bank_name} — ${b.account_name} (${b.account_number})</option>`).join('');
+}
+
+// "1 DV per account" — same ftlm_dvOptions list (loaded in full by
+// ftlm_loadDvOptions(), status=RELEASED) used for both the single-debit DV
+// select (#ftlm_dv_number) and each multi-debit row's own DV select below.
+// Once a DV is tagged to an FTLA, it's dropped from every OTHER select so
+// the same DV never gets tagged to two different FTLAs — see
+// ftlm_loadUsedDvNumbers()/ftlm_usedDvNumbers below (fetched fresh every
+// ftlm_open(), not cached like ftlm_dvOptions, since "used by someone
+// else" depends on which record — if any — is currently being edited).
+// The record being edited sees its OWN already-chosen DV(s) because the
+// server excludes that record's own usage from the used-set (exclude_id —
+// see FtlaService::getUsedDvNumbers()), not because of anything here: this
+// list only ever shows DVs that are actually still unused.
+function ftlm_dvOptsHtml(currentValue = '', excludeAlso = []) {
+    return '<option value="">— Select DV —</option>' +
+        ftlm_dvOptions
+            .filter(r => !ftlm_usedDvNumbers.includes(r.dv_no) && !excludeAlso.includes(r.dv_no))
+            .map(r => {
+                const amt = r.net_amount ? ` — ₱${ftlm_fmtPeso(r.net_amount)}` : '';
+                const who = r.claimant_name ? ` (${ftlmEsc(r.claimant_name)})` : '';
+                return `<option value="${ftlmEsc(r.dv_no || '')}">${ftlmEsc(r.dv_no || '')}${who}${amt}</option>`;
+            }).join('');
 }
 
 async function ftlm_loadBankAccounts() {
@@ -1225,6 +1307,11 @@ function ftlm_toggleMultiDebit() {
     ftlm$('ftlm-destination-wrap').style.display  = on ? 'none' : '';
     ftlm$('ftlm-single-debit-wrap').style.display = on ? 'none' : '';
     ftlm$('ftlm-multi-debit-wrap').style.display  = on ? '' : 'none';
+    // "1 DV per account" — the shared single-debit DV select only makes
+    // sense for one account; once multi-debit is on, each row gets its own
+    // instead (see ftlm-debit-table).
+    const dvWrap = ftlm$('ftlm-dv-single-wrap');
+    if (dvWrap) dvWrap.style.display = on ? 'none' : '';
     const amt = ftlm$('ftlm_transfer_amount');
     if (amt) {
         amt.readOnly = on;
@@ -1240,8 +1327,8 @@ function ftlm_defaultCreditAccountId() {
     return ftlm$('ftlm_from_bank_account_id')?.value || '';
 }
 
-function ftlm_addDebitRow(bankAccountId = '', amount = '', toBankAccountId = '') {
-    ftlm_debitRows.push({ bank_account_id: bankAccountId, to_bank_account_id: toBankAccountId || ftlm_defaultCreditAccountId(), amount });
+function ftlm_addDebitRow(bankAccountId = '', amount = '', toBankAccountId = '', dvNo = '') {
+    ftlm_debitRows.push({ bank_account_id: bankAccountId, to_bank_account_id: toBankAccountId || ftlm_defaultCreditAccountId(), amount, dv_no: dvNo });
     ftlm_renderDebitRows();
 }
 
@@ -1253,7 +1340,34 @@ function ftlm_removeDebitRow(idx) {
 function ftlm_onDebitRowChange(idx, field, value) {
     if (!ftlm_debitRows[idx]) return;
     ftlm_debitRows[idx][field] = value;
+    // From/To changing which bank is picked narrows the OTHER side's own
+    // options (same account can't be picked twice; the other side locks to
+    // the same bank — see ftlm_bankOptsHtml()) — re-render so that select's
+    // option list actually reflects the new constraint immediately.
+    if (field === 'bank_account_id' || field === 'to_bank_account_id') {
+        ftlm_renderDebitRows();
+        ftlm_schedulePreviewUpdate();
+        return;
+    }
     ftlm_recalcDebitTotal();
+    ftlm_schedulePreviewUpdate();
+}
+
+// Picking a row's own DV auto-fills that row's own Amount from its
+// net_amount — same idea as the old shared-picker auto-fill, just scoped
+// to one row now ("1 DV per account"). Re-renders the whole table (instead
+// of just updating the amount input's value) so the Amount cell reflects
+// the new value immediately.
+function ftlm_onDebitDvChange(idx, dvNo) {
+    if (!ftlm_debitRows[idx]) return;
+    ftlm_debitRows[idx].dv_no = dvNo;
+    if (dvNo) {
+        const dv = ftlm_dvOptions.find(r => r.dv_no === dvNo);
+        if (dv && dv.net_amount) {
+            ftlm_debitRows[idx].amount = ftlm_parseAmount(String(dv.net_amount));
+        }
+    }
+    ftlm_renderDebitRows();
     ftlm_schedulePreviewUpdate();
 }
 
@@ -1264,12 +1378,26 @@ function ftlm_renderDebitRows() {
         <tr>
             <td style="padding:4px 10px;">
                 <select class="form-control" onchange="ftlm_onDebitRowChange(${idx}, 'bank_account_id', this.value)">
-                    ${ftlm_bankOptsHtml(ftlm_banks).replace(`value="${row.bank_account_id}"`, `value="${row.bank_account_id}" selected`)}
+                    ${ftlm_bankOptsHtml(ftlm_banks, {
+                        excludeId: row.to_bank_account_id,
+                        matchBankName: ftlm_bankById(row.to_bank_account_id)?.bank_name || '',
+                        currentValue: row.bank_account_id,
+                    }).replace(`value="${row.bank_account_id}"`, `value="${row.bank_account_id}" selected`)}
                 </select>
             </td>
             <td style="padding:4px 10px;">
                 <select class="form-control" onchange="ftlm_onDebitRowChange(${idx}, 'to_bank_account_id', this.value)">
-                    ${ftlm_bankOptsHtml(ftlm_banks).replace(`value="${row.to_bank_account_id}"`, `value="${row.to_bank_account_id}" selected`)}
+                    ${ftlm_bankOptsHtml(ftlm_banks, {
+                        excludeId: row.bank_account_id,
+                        matchBankName: ftlm_bankById(row.bank_account_id)?.bank_name || '',
+                        currentValue: row.to_bank_account_id,
+                    }).replace(`value="${row.to_bank_account_id}"`, `value="${row.to_bank_account_id}" selected`)}
+                </select>
+            </td>
+            <td style="padding:4px 10px;">
+                <select class="form-control" onchange="ftlm_onDebitDvChange(${idx}, this.value)">
+                    ${ftlm_dvOptsHtml(row.dv_no || '', ftlm_debitRows.filter((r, i) => i !== idx).map(r => r.dv_no).filter(Boolean))
+                        .replace(`value="${row.dv_no || ''}"`, `value="${row.dv_no || ''}" selected`)}
                 </select>
             </td>
             <td style="padding:4px 10px;">
@@ -1293,13 +1421,13 @@ function ftlm_recalcDebitTotal() {
     if (ftlm$('ftlm_multi_debit')?.checked) ftlm_setAmount(total);
 }
 
-/** [{bank_account_id, amount}] for the submit payload — [] when not in multi-debit mode. */
+/** [{bank_account_id, amount, dv_no}] for the submit payload — [] when not in multi-debit mode. */
 function ftlm_getDebitAccounts() {
     if (!ftlm$('ftlm_multi_debit')?.checked) return [];
 
     return ftlm_debitRows
         .filter(r => r.bank_account_id && ftlm_parseAmount(String(r.amount || 0)) > 0)
-        .map(r => ({ bank_account_id: parseInt(r.bank_account_id), amount: ftlm_parseAmount(String(r.amount)) }));
+        .map(r => ({ bank_account_id: parseInt(r.bank_account_id), amount: ftlm_parseAmount(String(r.amount)), dv_no: r.dv_no || '' }));
 }
 
 /**
@@ -1322,6 +1450,7 @@ function ftlm_setDebitAccounts(rows) {
         bank_account_id:    r.bank_account_id,
         to_bank_account_id: r.to_bank_account_id || ftlm_defaultCreditAccountId(),
         amount:             r.amount,
+        dv_no:              r.dv_no || '',
     }));
     const multi = ftlm_debitRows.length > 1;
     const cb = ftlm$('ftlm_multi_debit');
@@ -1329,6 +1458,8 @@ function ftlm_setDebitAccounts(rows) {
     ftlm$('ftlm-destination-wrap').style.display  = multi ? 'none' : '';
     ftlm$('ftlm-single-debit-wrap').style.display = multi ? 'none' : '';
     ftlm$('ftlm-multi-debit-wrap').style.display  = multi ? '' : 'none';
+    const dvWrap = ftlm$('ftlm-dv-single-wrap');
+    if (dvWrap) dvWrap.style.display = multi ? 'none' : '';
     const amt = ftlm$('ftlm_transfer_amount');
     if (amt) { amt.readOnly = multi; amt.style.background = multi ? 'var(--afims-border, #E4ECF2)' : ''; }
     if (!multi && ftlm_debitRows.length === 1) {
@@ -1405,161 +1536,103 @@ function ftlm_onRfaSelect() {
     ftlm_schedulePreviewUpdate();
 }
 
-/* ── DV Numbers (multiple) ─────────────────────────────────
-   Reuses /voucher/list (the same route the Voucher pages already use)
-   filtered to approved DVs — same reuse-what-exists approach as the
+/* ── DV Number(s) — "1 DV per account" ─────────────────────
+   Reuses /voucher/list (the same route the Voucher pages already use),
+   unfiltered by status — every DV, same reuse-what-exists approach as the
    LAA/RFA pickers above. DV numbers are data-only: saved for recordkeeping,
    never referenced in the generated memo/PDF/DOCX (same treatment as Bank
-   Officers/Request Reference/Remarks). Searchable multi-select tag picker —
-   mirrors lv-form.php's CIBR picker (lvpCibrSelect/lvpRenderCadvTags),
-   filtered client-side against the preloaded ftlm_dvOptions list instead of
-   a per-keystroke server search, since it's already fetched in full
-   (limit=500) before the picker can be used (see ftlm_open()). */
+   Officers/Request Reference/Remarks). A single-debit transfer gets one
+   plain <select> (#ftlm_dv_number); a multi-debit transfer gets one per
+   debit row instead (ftlm_dvOptsHtml(), ftlm_onDebitDvChange() in the
+   debit-row section above) — never both at once, toggled by
+   ftlm_toggleMultiDebit(). */
 async function ftlm_loadDvOptions() {
     try {
-        // status=RELEASED — fims.disbursement_vouchers' terminal "money actually went out"
-        // status (see DisbursementVoucherService's summary query); no voucher_type filter
-        // exists on this route (fims-nha doesn't split DV/other types the way REGIONAL did).
-        const res  = await ftlm_fetch('voucher/list?status=RELEASED&limit=500');
+        // No status filter — show every DV regardless of where it is in its
+        // own workflow (DRAFT through RELEASED), not just the terminal
+        // "money actually went out" status. DV No. here is data-only
+        // recordkeeping (see this function's docblock above), so there's no
+        // correctness reason to withhold an in-progress DV from the picker.
+        const res  = await ftlm_fetch('voucher/list?limit=500');
         const rows = Array.isArray(res.data) ? res.data : (res.data?.rows || []);
         ftlm_dvOptions = rows;
+        const sel = ftlm$('ftlm_dv_number');
+        if (sel) {
+            const current = sel.value;
+            sel.innerHTML = ftlm_dvOptsHtml(current);
+            if (current) sel.value = current;
+        }
     } catch (e) {
         console.error('[FTLM] DV options:', e.message);
     }
 }
 
-let ftlm_dvSelected = []; // array of dv_no strings, in selection order
-
-// Escapes a value for safe use inside a single-quoted JS string literal
-// embedded in a double-quoted HTML attribute (onclick="fn('...')") — unlike
-// lv-form.php's CIBR picker, DV numbers are strings, not numeric ids.
-function ftlm_jsAttr(s) {
-    return String(s ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
-}
-
-function ftlm_dvSearchText(r) {
-    return `${r.dv_no || ''} ${r.claimant_name || ''}`.toLowerCase();
-}
-
-function ftlm_renderDvDropdown(filterText = '') {
-    const dd = ftlm$('ftlm-dv-dropdown');
-    if (!dd) return;
-    const q    = filterText.trim().toLowerCase();
-    const rows = q ? ftlm_dvOptions.filter(r => ftlm_dvSearchText(r).includes(q)) : ftlm_dvOptions;
-    if (!rows.length) {
-        dd.innerHTML = '<div class="ftlm-msel-option-empty">No DVs found.</div>';
-        return;
+// Fetched fresh every ftlm_open() (never cached like ftlm_dvOptions) —
+// "used by someone else" depends on which record, if any, is currently
+// being edited (ftlm_currentId excludes that record's own usage
+// server-side — see FtlaService::getUsedDvNumbers()). Also rebuilds the
+// single-debit select's own options every time, since unlike the
+// multi-debit rows (rebuilt fresh on every ftlm_setDebitAccounts() call
+// during fillForm()/ftlm_resetForm() regardless), this select's markup
+// would otherwise stay stale from a previous open — ftlm_loadDvOptions()
+// itself only runs once per page load (ftlm_dvLoaded), so it won't
+// re-apply a newly-fetched used-list on its own.
+async function ftlm_loadUsedDvNumbers() {
+    try {
+        const res = await ftlm_fetch('ftla/used-dv-numbers?exclude_id=' + (ftlm_currentId || 0));
+        ftlm_usedDvNumbers = Array.isArray(res.data) ? res.data : [];
+    } catch (e) {
+        console.error('[FTLM] Used DV numbers:', e.message);
+        ftlm_usedDvNumbers = [];
     }
-    dd.innerHTML = rows.map(r => {
-        const num = r.dv_no || '';
-        const sel = ftlm_dvSelected.includes(num);
-        const amt = r.net_amount ? ` — ₱${ftlm_fmtPeso(r.net_amount)}` : '';
-        const who = r.claimant_name ? ` (${ftlmEsc(r.claimant_name)})` : '';
-        return `<div class="ftlm-msel-option ${sel ? 'selected' : ''}" onclick="ftlm_toggleDv('${ftlm_jsAttr(num)}')">
-            <span class="ftlm-msel-option-chk">${sel ? '✓' : ''}</span>
-            <span><span class="nha-mono">${ftlmEsc(num)}</span>${who}${amt}</span>
-        </div>`;
-    }).join('');
+    const sel = ftlm$('ftlm_dv_number');
+    if (sel) {
+        const current = sel.value;
+        sel.innerHTML = ftlm_dvOptsHtml(current);
+        if (current) sel.value = current;
+    }
 }
 
-function ftlm_renderDvTags() {
-    const container = ftlm$('ftlm-dv-tag-input');
-    const input     = ftlm$('ftlm-dv-search');
-    if (!container || !input) return;
-    Array.from(container.children).forEach(el => { if (el !== input) el.remove(); });
-    ftlm_dvSelected.forEach(num => {
-        const tag = document.createElement('span');
-        tag.className = 'ftlm-msel-tag';
-        tag.innerHTML = `${ftlmEsc(num)}<button type="button" onclick="ftlm_removeDv('${ftlm_jsAttr(num)}')">&times;</button>`;
-        container.insertBefore(tag, input);
-    });
-    input.placeholder = ftlm_dvSelected.length ? 'Search for more…' : 'Search DV number or payee…';
-}
-
-window.ftlm_toggleDv = function(num) {
-    const idx = ftlm_dvSelected.indexOf(num);
-    if (idx !== -1) ftlm_dvSelected.splice(idx, 1);
-    else ftlm_dvSelected.push(num);
-    ftlm_renderDvDropdown(ftlm$('ftlm-dv-search')?.value || '');
-    ftlm_renderDvTags();
-    ftlm_recalcDvAmount();
-};
-
-window.ftlm_removeDv = function(num) {
-    ftlm_dvSelected = ftlm_dvSelected.filter(n => n !== num);
-    ftlm_renderDvDropdown(ftlm$('ftlm-dv-search')?.value || '');
-    ftlm_renderDvTags();
-    ftlm_recalcDvAmount();
-};
-
-// Used both to restore an existing FTLA's DV selection on edit-load and
-// to clear the picker on ftlm_resetForm() — deliberately does NOT call
-// ftlm_recalcDvAmount(): the saved transfer_amount (already restored by
-// fillForm() just before this runs) shouldn't be silently overwritten by
-// a recomputed total on load. Auto-fill only fires from the user actually
-// toggling a DV below.
-function ftlm_setDvSelected(numbers) {
-    ftlm_dvSelected = (numbers || []).map(v => String(v).trim()).filter(Boolean);
-    ftlm_renderDvTags();
-    ftlm_renderDvDropdown('');
-}
-
-function ftlm_getDvNumbers() {
-    return ftlm_dvSelected.join('\n');
-}
-
-// Auto-fills Transfer Amount from the selected DVs' net_amount total —
-// same ftlm_setAmount() helper ftlm_recalcDebitTotal() uses for the
-// multi-debit total. ftlm_dvOptions is the full RELEASED-DV list already
-// fetched by ftlm_loadDvOptions() before the picker is usable, so no
-// extra request is needed here. Only overwrites the field while at least
-// one DV is selected — clearing all DVs leaves whatever amount is already
-// there (doesn't zero out a manually-entered one).
+// Auto-fills Transfer Amount from the single-debit DV's net_amount — same
+// ftlm_setAmount() helper ftlm_recalcDebitTotal() uses for the multi-debit
+// total. Only overwrites the field while a DV is actually selected —
+// clearing it leaves whatever amount is already there (doesn't zero out a
+// manually-entered one).
 function ftlm_recalcDvAmount() {
-    if (!ftlm_dvSelected.length) return;
-    const total = ftlm_dvSelected.reduce((sum, num) => {
-        const dv = ftlm_dvOptions.find(r => r.dv_no === num);
-        return sum + (dv ? ftlm_parseAmount(String(dv.net_amount || 0)) : 0);
-    }, 0);
-    ftlm_setAmount(total);
+    const dvNo = ftlm$('ftlm_dv_number')?.value || '';
+    if (!dvNo) return;
+    const dv = ftlm_dvOptions.find(r => r.dv_no === dvNo);
+    if (dv && dv.net_amount) {
+        ftlm_setAmount(ftlm_parseAmount(String(dv.net_amount)));
+    }
     ftlm_schedulePreviewUpdate();
 }
 
-// Search-as-you-type wiring for the DV picker — fixed-position dropdown
-// repositioned on open so it's never clipped by #ftlm-form-panel's own
-// overflow-y:auto ancestor (same approach as lv-form.php's lvpCadvWire()).
-function ftlm_wireDvPicker() {
-    const input = ftlm$('ftlm-dv-search');
-    const dd    = ftlm$('ftlm-dv-dropdown');
-    const wrap  = ftlm$('ftlm-dv-tag-input');
-    if (!input || !dd) return;
+// Restores an existing FTLA's DV(s) on edit-load — single-debit: the one
+// value goes straight into #ftlm_dv_number; multi-debit: positionally
+// paired with the already-built ftlm_debitRows (same row order dv_numbers
+// was derived from server-side — see FtlaService::dvNumbersFor()) —
+// deliberately does NOT call ftlm_recalcDvAmount()/re-derive row amounts:
+// the saved transfer_amount/per-row amounts (already restored by
+// fillForm()/ftlm_setDebitAccounts() before this runs) shouldn't be
+// silently overwritten on load. Auto-fill only fires from the user
+// actually picking a DV.
+function ftlm_setDvSelected(numbers) {
+    const list = (numbers || []).map(v => String(v).trim());
+    if (ftlm$('ftlm_multi_debit')?.checked) {
+        list.forEach((dvNo, i) => { if (ftlm_debitRows[i]) ftlm_debitRows[i].dv_no = dvNo; });
+        ftlm_renderDebitRows();
+    } else {
+        const sel = ftlm$('ftlm_dv_number');
+        if (sel) sel.value = list[0] || '';
+    }
+}
 
-    const positionDd = () => {
-        const r = (wrap || input).getBoundingClientRect();
-        dd.style.top   = (r.bottom + 2) + 'px';
-        dd.style.left  = r.left + 'px';
-        dd.style.width = r.width + 'px';
-    };
-
-    const isInside = (e) => {
-        const path = typeof e.composedPath === 'function' ? e.composedPath() : [];
-        return path.some(el => el === wrap || el === dd ||
-            (el.id && ['ftlm-dv-search', 'ftlm-dv-dropdown', 'ftlm-dv-tag-input', 'ftlm-dv-msel'].includes(el.id)));
-    };
-
-    const showDd = () => {
-        positionDd();
-        dd.style.display = 'block';
-        ftlm_renderDvDropdown(input.value);
-    };
-
-    input.addEventListener('mousedown', showDd);
-    input.addEventListener('focus',     showDd);
-    input.addEventListener('input',     () => { ftlm_renderDvDropdown(input.value); positionDd(); dd.style.display = 'block'; });
-
-    document.addEventListener('mousedown', (e) => {
-        if (!isInside(e)) dd.style.display = 'none';
-    });
+function ftlm_getDvNumbers() {
+    if (ftlm$('ftlm_multi_debit')?.checked) {
+        return ftlm_debitRows.map(r => r.dv_no || '').join('\n');
+    }
+    return ftlm$('ftlm_dv_number')?.value || '';
 }
 
 /* ── Supporting documents table ────────────────────────── */
@@ -1645,6 +1718,53 @@ function ftlm_getDocLinks() {
     }, []);
 }
 
+/* ── Signatory Title select + "Other…" ────────────────────
+   Same convention as bank-management-page.php's Bank Name field:
+   ftlm_<prefix>_title (hidden unless "Other…" is picked) stays the
+   actual value — ftlm_buildPreviewData(), the save payload, and
+   ftlm_fillForm() all keep reading/writing that same id directly,
+   unchanged. The <select> is just a convenience picker in front of it. */
+function ftlm_bindTitleSelect(prefix) {
+    const select = ftlm$('ftlm_' + prefix + '_title_select');
+    const input  = ftlm$('ftlm_' + prefix + '_title');
+    if (!select || !input) return;
+    select.addEventListener('change', function () {
+        if (select.value === '__other__') {
+            input.style.display = '';
+            input.value = '';
+            input.focus();
+        } else {
+            input.style.display = 'none';
+            input.value = select.value;
+        }
+        ftlm_schedulePreviewUpdate();
+    });
+}
+
+// Syncs the select (and the hidden input's visibility) to whatever title
+// value is being loaded — a matching preset selects it and hides the free
+// text input; anything else (including '') falls through to "Other…"
+// with that value shown in the input, same as setBankNameValue() there.
+function ftlm_setTitleValue(prefix, value) {
+    const select = ftlm$('ftlm_' + prefix + '_title_select');
+    const input  = ftlm$('ftlm_' + prefix + '_title');
+    if (!select || !input) return;
+    const match = Array.from(select.options).find(o => o.value === value && o.value !== '' && o.value !== '__other__');
+    if (match) {
+        select.value = value;
+        input.style.display = 'none';
+        input.value = value;
+    } else if (value) {
+        select.value = '__other__';
+        input.style.display = '';
+        input.value = value;
+    } else {
+        select.value = '';
+        input.style.display = 'none';
+        input.value = '';
+    }
+}
+
 /* ── Reset form ────────────────────────────────────────── */
 function ftlm_resetForm() {
     [
@@ -1654,7 +1774,14 @@ function ftlm_resetForm() {
         'ftlm_laa_number', 'ftlm_laa_id', 'ftlm_laa_fiscal_year',
         'ftlm_rfa_number', 'ftlm_rfa_id', 'ftlm_rfa_date',
         'ftlm_sig1_name', 'ftlm_sig1_title', 'ftlm_sig2_name', 'ftlm_sig2_title',
+        'ftlm_bank_sig_verified', 'ftlm_bank_checked', 'ftlm_bank_approved', 'ftlm_bank_posted',
     ].forEach(id => { const el = ftlm$(id); if (el) el.value = ''; });
+    ftlm_setTitleValue('sig1', '');
+    ftlm_setTitleValue('sig2', '');
+    // Re-enable — ftlm_fillForm() disables it when editing; a fresh
+    // Register call needs it back for a brand-new FTLA.
+    const ftlaNumberEl = ftlm$('ftlm_ftla_number');
+    if (ftlaNumberEl) ftlaNumberEl.disabled = false;
     ftlm_setDvSelected([]);
     ftlm_setDebitAccounts([]);
 
@@ -1690,6 +1817,11 @@ function ftlm_fillForm(d) {
     set('ftlm_transfer_type',       d.transfer_type);
     set('ftlm_transfer_date',       d.transfer_date?.slice(0, 10));
     set('ftlm_ftla_number',           d.ftla_number);
+    // Only meaningful for a brand-new FTLA (FtlaService::create() is the
+    // only place that reads it) — an existing one's number is already
+    // fixed, so lock the field once editing.
+    const ftlaNumberEl = ftlm$('ftlm_ftla_number');
+    if (ftlaNumberEl) ftlaNumberEl.disabled = true;
     // The picked bank account is the request's destination (the region's own
     // account the funds should land in), so it's stored as to_bank_account_id
     // — Treasury fills in from_bank_account_id later when actually processing
@@ -1736,9 +1868,13 @@ function ftlm_fillForm(d) {
     ftlm_ensureSelectOption('ftlm_rfa_number', sigs.rfa_number || '');
     setSig('ftlm_rfa_date',          sigs.rfa_date           || '');
     setSig('ftlm_sig1_name',         sigs.sig1_name          || '');
-    setSig('ftlm_sig1_title',        sigs.sig1_title         || '');
+    ftlm_setTitleValue('sig1',       sigs.sig1_title         || '');
     setSig('ftlm_sig2_name',         sigs.sig2_name          || '');
-    setSig('ftlm_sig2_title',        sigs.sig2_title         || '');
+    ftlm_setTitleValue('sig2',       sigs.sig2_title         || '');
+    setSig('ftlm_bank_sig_verified', sigs.sig_verified       || '');
+    setSig('ftlm_bank_checked',      sigs.checked            || '');
+    setSig('ftlm_bank_approved',     sigs.approved           || '');
+    setSig('ftlm_bank_posted',       sigs.posted             || '');
 
     ftlm_schedulePreviewUpdate();
 }
@@ -1771,6 +1907,11 @@ async function ftlm_open(id) {
         ftlm_dvLoaded = true;
         await ftlm_loadDvOptions();  // same reasoning — DV select before fillForm
     }
+    // Unlike the above, this one is NOT gated by a "loaded" flag — it has
+    // to refetch every open, since which DVs are "used by someone else"
+    // depends on ftlm_currentId (just set above), not something that can
+    // be cached across different records.
+    await ftlm_loadUsedDvNumbers();
 
     if (id) {
         ftlm$('ftlm-title').textContent = 'Edit FTLA';
@@ -1807,6 +1948,11 @@ async function ftlm_save(status) {
     if (msg) msg.textContent = 'Saving…';
 
     const body = {
+        // Blank unless the user typed one in — FtlaService::create() auto-
+        // generates it when blank, otherwise honors (and uniqueness-checks)
+        // whatever was typed. Harmless to include on update() too — it's
+        // not one of its editable fields, so it's simply ignored there.
+        ftla_number:        ftlm$('ftlm_ftla_number')?.value.trim()     || '',
         transfer_type:      ftlm$('ftlm_transfer_type')?.value          || '',
         section:            'regional',
         transfer_date:      ftlm$('ftlm_transfer_date')?.value          || '',
@@ -1836,6 +1982,16 @@ async function ftlm_save(status) {
             sig1_title:       (ftlm$('ftlm_sig1_title')?.value       || '').trim(),
             sig2_name:        (ftlm$('ftlm_sig2_name')?.value        || '').trim(),
             sig2_title:       (ftlm$('ftlm_sig2_title')?.value       || '').trim(),
+            // "FOR BANK USE ONLY" names — FtlaService::_buildPrintPayload()'s
+            // $pick() reads these under their SHORT keys (sig_verified/
+            // checked/approved/posted), not bank_-prefixed ones — it falls
+            // back to fims.fund_transfers.bank_officers (a separate, older
+            // jsonb column this form never writes to) only when these are
+            // absent.
+            sig_verified:     (ftlm$('ftlm_bank_sig_verified')?.value || '').trim(),
+            checked:          (ftlm$('ftlm_bank_checked')?.value      || '').trim(),
+            approved:         (ftlm$('ftlm_bank_approved')?.value     || '').trim(),
+            posted:           (ftlm$('ftlm_bank_posted')?.value       || '').trim(),
         }),
         ...(status ? { status } : {}),
     };
@@ -1876,7 +2032,6 @@ async function ftlm_save(status) {
     ftlm$('ftlm-close-btn')  ?.addEventListener('click', ftlm_close);
     ftlm$('ftlm-btn-back')   ?.addEventListener('click', ftlm_prevStep);
     ftlm$('ftlm-btn-next')   ?.addEventListener('click', ftlm_nextStep);
-    ftlm_wireDvPicker();
     ftlm$('ftlm-btn-draft')  ?.addEventListener('click', () => ftlm_save('DRAFT'));
     ftlm$('ftlm-btn-submit') ?.addEventListener('click', () => ftlm_save(null));
 
@@ -1889,6 +2044,10 @@ async function ftlm_save(status) {
     ftlm$('ftlm_from_bank_account_id')?.addEventListener('change', ftlm_updateFundSourceDisplay);
     ftlm$('ftlm_laa_number')?.addEventListener('change', ftlm_onLaaSelect);
     ftlm$('ftlm_rfa_number')?.addEventListener('change', ftlm_onRfaSelect);
+
+    // ── Signatory Title select + "Other…" (same convention as
+    //    bank-management-page.php's Bank Name field) ──
+    ['sig1', 'sig2'].forEach(ftlm_bindTitleSelect);
 
     // Wire all form fields to the live preview
     const formPanel = ftlm$('ftlm-form-panel');
