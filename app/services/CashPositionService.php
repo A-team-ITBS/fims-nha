@@ -179,6 +179,7 @@ class CashPositionService
     {
         $row = App\ExecuteRow(
             "SELECT
+                COALESCE(SUM(cp.opening_balance), 0) AS total_opening,
                 COALESCE(SUM(cp.closing_balance), 0) AS total_ending,
                 COALESCE(SUM(cp.restricted_amount), 0) AS total_restricted,
                 COALESCE(SUM(cp.available_balance), 0) AS total_available,
@@ -190,6 +191,7 @@ class CashPositionService
         );
 
         return $this->ok([
+            'total_opening' => $this->num($row['total_opening'] ?? 0),
             'total_ending' => $this->num($row['total_ending'] ?? 0),
             'total_restricted' => $this->num($row['total_restricted'] ?? 0),
             'total_available' => $this->num($row['total_available'] ?? 0),

@@ -8,6 +8,9 @@ $_cob_api = Config('API.FIMS_URL');
 // Generate Report (the PDF / Excel dialog on each table) is switched off: its button and its dialog are not rendered. Set this to true to bring both back.
 // (The dialog only knows the Per Region / Per Type of Fund / Per Component views — see readone/cob-report-readone.php — not the Per Program one.)
 $_cob_showReport = false;
+
+// The explanatory note under the table ("Only Approved budget requests are counted. …") is not shown. Set this to true to bring it back.
+$_cob_showNote = false;
 ?>
 
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -71,11 +74,11 @@ $_cob_showReport = false;
 #cob-root .cob-num { font-family: 'IBM Plex Mono', monospace; font-size: 12px; text-align: right; white-space: nowrap; }
 #cob-root .cob-neg { color: #dc2626; }
 #cob-root .cob-pos { color: var(--green-txt, #0C7539); }
-/* the Revision / Realignment cell: one line per part (Revision, Realignment), label on the left and the signed amount on the right */
-#cob-root .cob-tbl thead th[data-col="revision_amount"], #cob-root .cob-tbl td.cob-adj { min-width: 196px; }
-#cob-root .cob-adj > div { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+/* the Revision / Realignment cell: one line per part (Revision, Realignment), just the signed amount on the right. The "Revision" / "Realignment" label is not drawn
+   (it is visually hidden — still there for screen readers — and shows as a tooltip on the line), so the sign and colour carry the meaning. */
+#cob-root .cob-adj > div { display: flex; justify-content: flex-end; align-items: baseline; gap: 10px; }
 #cob-root .cob-adj > div + div { margin-top: 2px; }
-#cob-root .cob-adj-k { font-family: 'IBM Plex Sans', sans-serif; font-size: 10px; font-weight: 500; letter-spacing: .03em; text-transform: uppercase; color: var(--afims-text-muted, #62657E); }
+#cob-root .cob-adj-k { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 #cob-root .cob-dash { color: var(--afims-text-disabled, #A9AAB8); }
 #cob-root .cob-clip { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; font-weight: 600; color: var(--afims-primary-text, #0035A9); }
 #cob-root .cob-clip svg { width: 12px; height: 12px; stroke: currentColor; }
@@ -241,6 +244,7 @@ $_cob_showReport = false;
                     </tbody>
                 </table>
             </div>
+            <?php if ($_cob_showNote) { ?>
             <p class="cob-note">Only <strong>Approved</strong> budget requests are counted. <strong>Approved Amount</strong> is what FMD suggested in the Budget Proposal module, as first suggested — before any revision or CBA;
                 <strong>Revision / Realignment</strong> shows, on a project, only its <strong>latest</strong> approved revision or realignment — signed and coloured: a deduction <strong>−</strong> in red and an addition <strong>+</strong> in green, so the budget that gave funds up reads <strong>−</strong> and the one that received them <strong>+</strong>. Parent rows and the <strong>TOTAL</strong> have no figure in this column; <strong>Revised Amount</strong> is still worked out from all of a budget's approved revisions and realignments. <strong>CBA Requested</strong> is what approved CBAs hold against the
                 budget (their reservations plus what RFAs and LAAs have since drawn from them — all read from the earmark table), which leaves <strong>Available for Earmarking</strong>. A CBA reserves money: <strong>RFA Approved</strong> and <strong>LAA Issued</strong> are what has
@@ -248,6 +252,7 @@ $_cob_showReport = false;
                 The table is in two parts. <strong>CO</strong> (capital outlay, accounts starting with 1) is the budget of the programs and their projects. <strong>COE</strong> is the budget
                 that belongs to no program — a COE budget request has only line items, no program or project — and is split into <strong>PS</strong> (accounts 5-01) and
                 <strong>MOOE</strong> (accounts 5-02), then by originating unit.</p>
+            <?php } ?>
         </div>
     </div>
     <?php } ?>
@@ -588,7 +593,7 @@ function cob_adjCell(o, leaf) {
     if (!leaf) return '<td class="cob-num"></td>';
     const rev = Number(o.latest_revision_amount || 0), rea = Number(o.latest_realignment_amount || 0), net = Number(o.revision_amount || 0);
     const netText = Math.abs(net) < 0.005 ? '—' : (net < 0 ? '−' : '+') + cob_peso(net);
-    const line = (tag, n) => Math.abs(n) < 0.005 ? '' : `<div><span class="cob-adj-k">${tag}</span>${cob_signed(n)}</div>`;
+    const line = (tag, n) => Math.abs(n) < 0.005 ? '' : `<div title="${tag}"><span class="cob-adj-k">${tag}</span>${cob_signed(n)}</div>`;
     const lines = line('Revision', rev) + line('Realignment', rea);
     // a leaf whose latest request nets to nothing on it (e.g. a realignment between two of its own lines) but that has earlier adjustments still shows its net, so it is never blank while Revised differs from Approved
     if (!lines) return Math.abs(net) < 0.005 ? '<td class="cob-num cob-adj"><span class="cob-dash">-</span></td>' : `<td class="cob-num">${cob_signed(net)}</td>`;

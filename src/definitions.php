@@ -165,6 +165,10 @@ return [
     "remittance_page" => \DI\create(RemittancePage::class),
     "balance_sheet_page" => \DI\create(BalanceSheetPage::class),
     "income_statement_page" => \DI\create(IncomeStatementPage::class),
+    "opening_balance_page" => \DI\create(OpeningBalancePage::class),
+    "work_in_process_page" => \DI\create(WorkInProcessPage::class),
+    "statement_of_changes_page" => \DI\create(StatementOfChangesPage::class),
+    "cash_flow_page" => \DI\create(CashFlowPage::class),
 
     // User table
     "usertable" => \DI\get("users"),

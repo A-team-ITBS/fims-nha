@@ -2,15 +2,18 @@
 /**
  * Cash Position — Treasury module.
  *
- * Tabs:
- *   1. Position Updates           — cashpositionupdates.php
- *   2. Available Cash Balances    — availablecashbalancestracking.php
- *   3. Reports                    — cashposreports.php
- *
- * (The Dashboard tab — cashpositiondashboard.php — was removed; its KPIs,
- * breakdown chart, grouped balance table, and Working Paper summary are
- * gone along with it. The account-detail modal, statusBadgeFor(), and
- * every dash*-prefixed function/element existed only for that tab.)
+ * Single section now: Position Updates (cashpositionupdates.php). Three
+ * other tabs that originally shipped here were removed along the way:
+ *   - Dashboard (cashpositiondashboard.php) — its KPIs, breakdown chart,
+ *     grouped balance table, Working Paper summary, account-detail modal,
+ *     and every dash*-prefixed function/element went with it.
+ *   - Available Cash Balances (availablecashbalancestracking.php) — its
+ *     KPIs, Book→Available→Usable table, low-balance alerts banner, and
+ *     the Balance Trend modal went with it.
+ *   - Reports (cashposreports.php) — every report type, the report
+ *     filters, and the New FY Opening Balance modal went with it.
+ * With no tabs left to switch between, the #cpsTabNav switcher is gone
+ * too — Position Updates just renders directly.
  *
  * See app/services/CashPositionService.php's docblock for the schema
  * adaptation notes (no shared.fund_sources — fund_source is plain text on
@@ -37,25 +40,15 @@ $cpsCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
         <div class="fims-page-header-left">
             <div class="fims-page-header-icon"><i class="fas fa-wallet"></i></div>
             <h1>Cash Position</h1>
-            <p>Daily cash position, manual updates, and available-balance monitoring — Treasury Department</p>
+            <p>Daily cash position and manual updates — Treasury Department</p>
         </div>
     </div>
 
-    <div class="fims-tabs-underline mb-3" id="cpsTabNav">
-        <button class="fims-tab-underline active" data-cps-tab="updates">Position Updates</button>
-        <button class="fims-tab-underline" data-cps-tab="available">Available Cash Balances</button>
-        <button class="fims-tab-underline" data-cps-tab="reports">Reports</button>
-    </div>
-
-    <!-- ══════════════════════════════════════════════
-         TAB 1: POSITION UPDATES
-    ══════════════════════════════════════════════ -->
     <div class="fims-tab-underline-content active" id="cpsUpdates">
-        <div class="fims-stat-grid" id="updKpis" style="grid-template-columns:repeat(4,1fr)">
-            <div class="fims-stat-card fims-card-blue"><div class="fims-stat-top"><span class="fims-stat-label">Total Ending Balance</span></div><div class="fims-stat-value" data-kpi="total_ending">₱0.00</div></div>
-            <div class="fims-stat-card fims-card-amber"><div class="fims-stat-top"><span class="fims-stat-label">Total Restricted Funds</span></div><div class="fims-stat-value" data-kpi="total_restricted">₱0.00</div></div>
-            <div class="fims-stat-card fims-card-green"><div class="fims-stat-top"><span class="fims-stat-label">Total Available Balance</span></div><div class="fims-stat-value" data-kpi="total_available">₱0.00</div></div>
-            <div class="fims-stat-card fims-card-gray"><div class="fims-stat-top"><span class="fims-stat-label">Active Bank Accounts</span></div><div class="fims-stat-value" data-kpi="total_accounts">0</div></div>
+        <div class="fims-stat-grid" id="updKpis" style="grid-template-columns:repeat(3,1fr)">
+            <div class="fims-stat-card fims-card-gray"><div class="fims-stat-top"><span class="fims-stat-label">Active Accounts</span></div><div class="fims-stat-value" data-kpi="total_accounts">0</div></div>
+            <div class="fims-stat-card fims-card-green"><div class="fims-stat-top"><span class="fims-stat-label">Total Available Balance</span></div><div class="fims-stat-value" data-kpi="total_ending">₱0.00</div></div>
+            <div class="fims-stat-card fims-card-blue"><div class="fims-stat-top"><span class="fims-stat-label">Available Beginning Balance</span></div><div class="fims-stat-value" data-kpi="total_opening">₱0.00</div></div>
         </div>
 
         <div class="fims-table-panel" style="border-radius:var(--fims-radius-lg) var(--fims-radius-lg) 0 0;border-bottom:none;margin-bottom:0">
@@ -74,282 +67,27 @@ $cpsCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
         <div class="fims-table-panel" style="border-radius:0 0 var(--fims-radius-lg) var(--fims-radius-lg)">
             <div class="fims-panel-header">
                 <div class="fims-panel-title">Cash Position Records</div>
-                <div style="display:flex;gap:8px;">
-                    <button type="button" class="fims-btn fims-btn-outline fims-btn-sm" id="updUploadSoaBtn"><i class="fas fa-file-upload mr-1"></i>Upload SOA</button>
-                    <button type="button" class="fims-btn fims-btn-outline fims-btn-sm" id="updBatchUploadBtn"><i class="fas fa-layer-group mr-1"></i>Batch Upload</button>
-                </div>
             </div>
             <div class="fims-table-wrap">
                 <table class="fims-table" id="updTable">
                     <thead>
                         <tr>
-                            <th>Bank Account</th><th>Fund Source / Date</th>
-                            <th class="text-right">Beginning</th><th class="text-right">+ Receipts</th><th class="text-right">− Disbursements</th>
-                            <th class="text-right">Ending</th><th class="text-right">Restricted</th><th class="text-right">Available</th>
-                            <th class="text-center">Status</th><th class="text-center" style="width:160px">Actions</th>
+                            <th>Bank Account</th><th>Date</th>
+                            <th class="text-right">Available Beginning Balance</th><th class="text-right">+ Receipts</th><th class="text-right">− Disbursements</th>
+                            <th class="text-right">Available Balance</th>
+                            <th class="text-center">Status</th>
                         </tr>
                     </thead>
-                    <tbody><tr class="fims-empty"><td colspan="10">Loading…</td></tr></tbody>
+                    <tbody><tr class="fims-empty"><td colspan="7">Loading…</td></tr></tbody>
                 </table>
-            </div>
-        </div>
-
-        <div style="display:flex;gap:14px;margin-top:14px;align-items:stretch;">
-            <div class="fims-table-panel" style="flex:2 1 0;min-width:0;margin-top:0;display:flex;flex-direction:column;">
-                <div class="fims-panel-header">
-                    <div class="fims-panel-title">SOA vs Available Balance Comparison</div>
-                </div>
-                <div class="fims-table-wrap" style="flex:1;max-height:320px;overflow-y:auto;">
-                    <table class="fims-table" id="soaCmpTable">
-                        <thead>
-                            <tr><th>Account</th><th class="text-right">Latest SOA Balance</th><th class="text-right">Available Balance</th>
-                                <th class="text-right">Difference</th><th class="text-center">Status</th></tr>
-                        </thead>
-                        <tbody><tr class="fims-empty"><td colspan="5">Loading…</td></tr></tbody>
-                    </table>
-                </div>
-            </div>
-
-            <div class="fims-table-panel" style="flex:1 1 0;min-width:0;margin-top:0;display:flex;flex-direction:column;">
-                <div class="fims-panel-header">
-                    <div class="fims-panel-title">Recent Update Activity</div>
-                </div>
-                <ul id="updActivityList" style="list-style:none;padding:12px 16px;margin:0;font-size:13px;flex:1;max-height:320px;overflow-y:auto;"></ul>
             </div>
         </div>
 
         <div class="fims-table-panel" style="margin-top:14px;">
             <div class="fims-panel-header">
-                <div class="fims-panel-title">SOA Transactions (by Upload)</div>
+                <div class="fims-panel-title">Recent Update Activity</div>
             </div>
-            <div id="soaGroupsList" style="padding:0;"></div>
-        </div>
-    </div>
-
-    <!-- ══════════════════════════════════════════════
-         TAB 2: AVAILABLE CASH BALANCES TRACKING
-    ══════════════════════════════════════════════ -->
-    <div class="fims-tab-underline-content" id="cpsAvailable" style="display:none">
-        <div class="fims-stat-grid" id="availKpis" style="grid-template-columns:repeat(4,1fr)">
-            <div class="fims-stat-card fims-card-blue"><div class="fims-stat-top"><span class="fims-stat-label">Total Ending (Book) Balance</span></div><div class="fims-stat-value" data-kpi="book">₱0.00</div></div>
-            <div class="fims-stat-card fims-card-green"><div class="fims-stat-top"><span class="fims-stat-label">Total Available Balance</span></div><div class="fims-stat-value" data-kpi="available">₱0.00</div></div>
-            <div class="fims-stat-card fims-card-indigo"><div class="fims-stat-top"><span class="fims-stat-label">Total Usable Balance</span></div><div class="fims-stat-value" data-kpi="usable">₱0.00</div></div>
-            <div class="fims-stat-card fims-card-red"><div class="fims-stat-top"><span class="fims-stat-label">Low Balance Alerts</span></div><div class="fims-stat-value" data-kpi="alerts">0</div></div>
-        </div>
-
-        <div class="fims-table-panel" style="border-radius:var(--fims-radius-lg) var(--fims-radius-lg) 0 0;border-bottom:none;margin-bottom:0">
-            <div class="fims-toolbar">
-                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-                    <select class="fims-select fims-input-sm" id="availFilterFundSource" style="width:170px"><option value="">All Fund Sources</option></select>
-                    <label style="font-size:12px;color:var(--fims-text-subtle);display:flex;align-items:center;gap:4px;">Low-balance threshold
-                        <input type="number" class="fims-input fims-input-sm" id="availThreshold" value="500000" style="width:120px">
-                    </label>
-                    <button type="button" class="fims-btn fims-btn-primary fims-btn-sm" id="availFilterBtn"><i class="fas fa-filter mr-1"></i>Apply</button>
-                    <button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" id="availResetBtn">Reset</button>
-                </div>
-            </div>
-        </div>
-
-        <div id="availAlertsBanner" class="fims-alert fims-alert-danger" style="display:none;margin-bottom:10px;">
-            <div class="fims-alert-body"></div>
-        </div>
-
-        <div class="fims-table-panel" style="border-radius:0 0 var(--fims-radius-lg) var(--fims-radius-lg)">
-            <div class="fims-panel-header">
-                <div class="fims-panel-title">Book → Available → Usable, by Fund Source</div>
-            </div>
-            <div class="fims-table-wrap">
-                <table class="fims-table" id="availTable">
-                    <thead>
-                        <tr>
-                            <th>Account</th><th class="text-right">Ending (Book)</th><th class="text-right">Restricted</th>
-                            <th class="text-right">Available</th><th class="text-right">Outstanding Checks</th>
-                            <th class="text-right">Usable</th><th class="text-center">Status</th><th class="text-center">Position Date</th>
-                        </tr>
-                    </thead>
-                    <tbody><tr class="fims-empty"><td colspan="8">Loading…</td></tr></tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-
-    <!-- ══════════════════════════════════════════════
-         TAB 3: REPORTS — ported from TREASURY's cashposreports.php.
-         Report types needing Collections/Investments/FTLA/Garnished/
-         Expropriation Accounts (subsystems this project doesn't have)
-         are structurally-correct stubs — see
-         CashPositionReportsService's docblock.
-    ══════════════════════════════════════════════ -->
-    <div class="fims-tab-underline-content" id="cpsReports" style="display:none">
-        <div class="fims-table-panel" style="border-radius:var(--fims-radius-lg) var(--fims-radius-lg) 0 0;border-bottom:none;margin-bottom:0">
-            <div class="fims-toolbar">
-                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-                    <select class="fims-select fims-input-sm" id="repReportType" style="width:220px">
-                        <optgroup label="Period Reports">
-                            <option value="daily">Daily Cash Position</option>
-                            <option value="weekly">Weekly</option>
-                            <option value="monthly">Monthly</option>
-                            <option value="quarterly">Quarterly</option>
-                            <option value="annual">Annual</option>
-                        </optgroup>
-                        <optgroup label="By Classification">
-                            <option value="by_fund_source">By Fund Source</option>
-                            <option value="by_bank_account">By Bank Account</option>
-                            <option value="by_classification">By Classification</option>
-                        </optgroup>
-                        <optgroup label="Special Reports">
-                            <option value="working_paper">Working Paper</option>
-                            <option value="individual_ledger">Individual Accounts Ledger</option>
-                            <option value="cash_flow">Cash Flow Statement</option>
-                            <option value="investment">Cash Position + Investments</option>
-                            <option value="interest_earnings">Interest Earnings</option>
-                            <option value="garnished">Garnished Accounts</option>
-                            <option value="expropriation">Expropriation Accounts</option>
-                            <option value="investment_schedule">Schedule of Investments</option>
-                        </optgroup>
-                    </select>
-                    <input type="date" class="fims-input fims-input-sm" id="repDateFrom">
-                    <input type="date" class="fims-input fims-input-sm" id="repDateTo">
-                    <select class="fims-select fims-input-sm" id="repBankAccount" style="width:170px"><option value="">All Banks</option></select>
-                    <select class="fims-select fims-input-sm" id="repFundSource" style="width:150px"><option value="">All Fund Sources</option></select>
-                    <select class="fims-select fims-input-sm" id="repClassification" style="width:160px">
-                        <option value="">All Classifications</option>
-                        <option value="COLLECTION">Collection</option>
-                        <option value="DISBURSEMENT">Disbursement</option>
-                        <option value="COE_MOOE">COE / MOOE</option>
-                        <option value="CAPITAL_OUTLAY">Capital Outlay</option>
-                        <option value="EHAP">EHAP</option>
-                        <option value="SPECIAL_PURPOSE">Special Purpose</option>
-                        <option value="PROJECT">Project</option>
-                        <option value="JOINT_VENTURE">Joint Venture</option>
-                        <option value="TRUST">Trust</option>
-                    </select>
-                    <button type="button" class="fims-btn fims-btn-primary fims-btn-sm" id="repRunBtn"><i class="fas fa-play mr-1"></i>Run Report</button>
-                    <button type="button" class="fims-btn fims-btn-outline fims-btn-sm" id="repFyBtn"><i class="fas fa-calendar-plus mr-1"></i>New FY Opening Balance</button>
-                </div>
-            </div>
-        </div>
-
-        <div class="fims-table-panel" style="border-radius:0 0 var(--fims-radius-lg) var(--fims-radius-lg)">
-            <div class="fims-panel-header">
-                <div class="fims-panel-title" id="repResultTitle">Report Results</div>
-                <button type="button" class="fims-btn fims-btn-outline fims-btn-sm" id="repExportBtn"><i class="fas fa-file-csv mr-1"></i>Export CSV</button>
-            </div>
-            <div id="repResultArea" style="padding:14px;">
-                <div class="fims-empty" style="padding:30px;text-align:center;color:var(--fims-text-subtle);">Choose a report and click Run Report.</div>
-            </div>
-        </div>
-    </div>
-
-    <!-- ══════════════════════════════════════════════
-         MODAL: New FY Opening Balance
-    ══════════════════════════════════════════════ -->
-    <div class="fims-modal-overlay" id="m-fy-balance" style="display:none;">
-        <div class="fims-modal-dialog" style="max-width:520px;width:95vw;">
-            <div class="fims-modal-content">
-                <div class="fims-modal-header">
-                    <div><div class="fims-modal-title">New FY Opening Balance</div></div>
-                    <button class="fims-modal-close" data-close="m-fy-balance">&times;</button>
-                </div>
-                <div class="fims-modal-body">
-                    <div class="fims-form-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-                        <div class="fims-form-group"><label class="fims-label">From Fiscal Year *</label><input type="number" class="fims-input" id="fyFromYear"></div>
-                        <div class="fims-form-group"><label class="fims-label">New Fiscal Year *</label><input type="number" class="fims-input" id="fyNewYear"></div>
-                    </div>
-                    <div class="fims-form-section-title" style="margin-top:10px;">Bank Accounts</div>
-                    <div id="fyAccountList" style="max-height:220px;overflow-y:auto;border:1px solid var(--fims-border);border-radius:6px;padding:8px;"></div>
-                </div>
-                <div class="fims-modal-footer">
-                    <button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-close="m-fy-balance">Cancel</button>
-                    <button type="button" class="fims-btn fims-btn-primary fims-btn-sm" id="fySaveBtn">Roll Forward</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- ══════════════════════════════════════════════
-         MODAL: Upload SOA — ported from TREASURY's single-account
-         #modal-bulk-upload flow.
-    ══════════════════════════════════════════════ -->
-    <div class="fims-modal-overlay" id="m-upload-soa" style="display:none;">
-        <div class="fims-modal-dialog" style="max-width:800px;width:95vw;">
-            <div class="fims-modal-content">
-                <div class="fims-modal-header">
-                    <div><div class="fims-modal-title">Upload SOA (Bank Statement)</div></div>
-                    <button class="fims-modal-close" data-close="m-upload-soa">&times;</button>
-                </div>
-                <div class="fims-modal-body">
-                    <div class="fims-alert fims-alert-info"><div class="fims-alert-body">Upload an .xlsx export of the bank statement. Columns are detected from the header row (Date, Description, Debit, Credit, Balance, Branch, Check No., Other Details — any order).</div></div>
-                    <div class="fims-form-group" style="max-width:320px;">
-                        <label class="fims-label">Bank Account *</label>
-                        <select class="fims-select" id="soaBankAccount"><option value="">Select bank account...</option></select>
-                    </div>
-                    <div id="soaDropzone" style="border:2px dashed var(--fims-border);border-radius:8px;padding:24px;text-align:center;margin-top:10px;cursor:pointer;">
-                        <i class="fas fa-file-excel" style="font-size:28px;color:var(--fims-text-subtle);"></i>
-                        <p style="margin:8px 0 0;" id="soaDropzoneText">Click to choose an .xlsx file, or drag it here</p>
-                        <input type="file" id="soaFileInput" accept=".xlsx" style="display:none;">
-                    </div>
-                    <div id="soaPreviewArea" style="margin-top:14px;display:none;">
-                        <div class="fims-alert fims-alert-info" id="soaPreviewSummary"></div>
-                        <div class="fims-table-wrap" style="max-height:280px;overflow-y:auto;">
-                            <table class="fims-table">
-                                <thead><tr><th>Date</th><th>Description</th><th class="text-right">Debit</th><th class="text-right">Credit</th><th class="text-right">Balance</th><th>Check No.</th><th></th></tr></thead>
-                                <tbody id="soaPreviewBody"></tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-                <div class="fims-modal-footer">
-                    <button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-close="m-upload-soa">Cancel</button>
-                    <button type="button" class="fims-btn fims-btn-primary fims-btn-sm" id="soaParseBtn">Parse File</button>
-                    <button type="button" class="fims-btn fims-btn-primary fims-btn-sm" id="soaConfirmBtn" style="display:none;">Confirm &amp; Save</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- ══════════════════════════════════════════════
-         MODAL: Batch Upload SOA — ported from TREASURY's
-         #modal-batch-upload flow: one row per bank account, each parsed
-         and confirmed sequentially (not concurrently) through the same
-         /upload-soa and /confirm-upload endpoints the single-account
-         modal uses — there is no separate batch backend, by design (same
-         as TREASURY, where this is purely a client-side orchestration
-         layer over the per-account flow).
-    ══════════════════════════════════════════════ -->
-    <div class="fims-modal-overlay" id="m-batch-upload-soa" style="display:none;">
-        <div class="fims-modal-dialog" style="max-width:920px;width:95vw;">
-            <div class="fims-modal-content">
-                <div class="fims-modal-header">
-                    <div><div class="fims-modal-title">Batch Upload SOA</div></div>
-                    <button class="fims-modal-close" data-close="m-batch-upload-soa">&times;</button>
-                </div>
-                <div class="fims-modal-body">
-                    <div class="fims-alert fims-alert-info"><div class="fims-alert-body">Pre-select the bank accounts you're uploading statements for, or add blank rows and pick accounts one at a time. Rows are processed one at a time.</div></div>
-
-                    <div class="fims-form-section-title">Pre-select Bank Accounts</div>
-                    <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;">
-                        <input type="text" class="fims-input fims-input-sm" id="batchSoaAccountSearch" placeholder="Search accounts..." style="max-width:260px;">
-                        <button type="button" class="fims-btn fims-btn-outline fims-btn-sm" id="batchSoaAddSelectedBtn"><i class="fas fa-plus mr-1"></i>Add Selected</button>
-                    </div>
-                    <div id="batchSoaAccountPicker" style="max-height:140px;overflow-y:auto;border:1px solid var(--fims-border);border-radius:6px;padding:8px;margin-bottom:14px;"></div>
-
-                    <div class="fims-form-section-title">Upload Rows</div>
-                    <div class="fims-table-wrap">
-                        <table class="fims-table">
-                            <thead><tr><th style="width:220px">Bank Account</th><th>File</th><th style="width:220px">Status</th><th style="width:40px"></th></tr></thead>
-                            <tbody id="batchSoaRows"></tbody>
-                        </table>
-                    </div>
-                    <button type="button" class="fims-btn fims-btn-outline fims-btn-sm" id="batchSoaAddRowBtn" style="margin-top:8px;"><i class="fas fa-plus mr-1"></i>Add Blank Row</button>
-                    <div id="batchSoaSummary" class="fims-alert fims-alert-info" style="margin-top:12px;display:none;"></div>
-                </div>
-                <div class="fims-modal-footer">
-                    <button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-close="m-batch-upload-soa">Cancel</button>
-                    <button type="button" class="fims-btn fims-btn-primary fims-btn-sm" id="batchSoaParseAllBtn">Parse All</button>
-                    <button type="button" class="fims-btn fims-btn-primary fims-btn-sm" id="batchSoaConfirmAllBtn" disabled>Confirm &amp; Save All</button>
-                </div>
-            </div>
+            <ul id="updActivityList" style="list-style:none;padding:12px 16px;margin:0;font-size:13px;max-height:320px;overflow-y:auto;"></ul>
         </div>
     </div>
 
@@ -377,10 +115,10 @@ $cpsCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
                          Total Receipts, and Total Disbursements: all computed/
                          defaulted automatically (today's date; prior closing
                          balance or this account's GL balance; the posted
-                         transaction ledger; the latest SOA upload) and carried in
-                         the Save payload, but never shown or hand-typed — only
-                         Restricted Funds below is actually editable, for a
-                         brand-new entry and an existing one alike. -->
+                         transaction ledger) and carried in the Save payload,
+                         but never shown or hand-typed — only Restricted Funds
+                         below is actually editable, for a brand-new entry and
+                         an existing one alike. -->
                     <div style="display:none;">
                         <input type="date" id="mePositionDate">
                         <input type="number" step="0.01" id="meOpeningBalance">
@@ -409,33 +147,6 @@ $cpsCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
         </div>
     </div>
 
-    <!-- ══════════════════════════════════════════════
-         MODAL: Balance Trend (Available Cash Balances)
-    ══════════════════════════════════════════════ -->
-    <div class="fims-modal-overlay" id="m-balance-trend" style="display:none;">
-        <div class="fims-modal-dialog" style="max-width:640px;width:95vw;">
-            <div class="fims-modal-content">
-                <div class="fims-modal-header">
-                    <div><div class="fims-modal-title" id="trendFundSource">Balance Trend</div></div>
-                    <button class="fims-modal-close" data-close="m-balance-trend">&times;</button>
-                </div>
-                <div class="fims-modal-body">
-                    <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
-                        <input type="date" class="fims-input fims-input-sm" id="trendDateFrom">
-                        <input type="date" class="fims-input fims-input-sm" id="trendDateTo">
-                        <button type="button" class="fims-btn fims-btn-primary fims-btn-sm" id="trendApplyBtn">Apply</button>
-                    </div>
-                    <table class="fims-table">
-                        <thead><tr><th>Date</th><th class="text-right">Book</th><th class="text-right">Available</th><th class="text-right">Restricted</th></tr></thead>
-                        <tbody id="trendBody"><tr class="fims-empty"><td colspan="4">Loading…</td></tr></tbody>
-                    </table>
-                </div>
-                <div class="fims-modal-footer">
-                    <button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-close="m-balance-trend">Close</button>
-                </div>
-            </div>
-        </div>
-    </div>
 
     <div id="cpsToast" style="display:none;position:fixed;bottom:20px;right:20px;padding:12px 18px;border-radius:8px;color:#fff;font-size:14px;z-index:9999;"></div>
 </div>
@@ -520,61 +231,6 @@ html.afims-dark[data-bs-theme="dark"] #cashPositionModule .cps-group-header :is(
         sel.value = current;
     }
 
-    // ── Top-level module tabs ──
-    const initialized = {};
-    const tabPaneIds = { updates: 'cpsUpdates', available: 'cpsAvailable', reports: 'cpsReports' };
-    document.querySelectorAll('#cpsTabNav [data-cps-tab]').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-            document.querySelectorAll('#cpsTabNav .fims-tab-underline').forEach(b => b.classList.remove('active'));
-            Object.values(tabPaneIds).forEach(id => { document.getElementById(id).style.display = 'none'; document.getElementById(id).classList.remove('active'); });
-            this.classList.add('active');
-            const tab = this.dataset.cpsTab;
-            const pane = document.getElementById(tabPaneIds[tab]);
-            pane.style.display = '';
-            pane.classList.add('active');
-            if (!initialized[tab]) { initialized[tab] = true; initTab(tab); }
-        });
-    });
-    function initTab(tab) {
-        if (tab === 'updates') initUpdates();
-        else if (tab === 'available') initAvailable();
-        else if (tab === 'reports') initReports();
-    }
-
-    // Groups flat rows by fund_source — same client-side grouping pattern
-    // used for Check Registry's booklet grouping.
-    function groupByFundSource(rows, key) {
-        key = key || 'fund_source';
-        const groups = [];
-        const index = {};
-        rows.forEach(function (r) {
-            const k = r[key] || '';
-            if (!index[k]) {
-                index[k] = { fund_source: r[key] || 'Unassigned', rows: [] };
-                groups.push(index[k]);
-            }
-            index[k].rows.push(r);
-        });
-        return groups;
-    }
-    // Exports whatever is currently rendered in a <table> to a CSV file —
-    // same client-side-from-DOM technique TREASURY itself uses
-    // (exportTableCSV() in cashpositiondashboard.php/cashposreports.php).
-    function exportTableCSV(tableId, filename) {
-        const table = document.getElementById(tableId);
-        if (!table) return;
-        const rows = Array.from(table.querySelectorAll('tr')).map(function (tr) {
-            return Array.from(tr.querySelectorAll('th,td')).map(function (cell) {
-                return '"' + cell.innerText.replace(/"/g, '""').replace(/₱\s*/g, '') + '"';
-            }).join(',');
-        });
-        const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = filename + '_' + new Date().toISOString().slice(0, 10) + '.csv';
-        a.click();
-        URL.revokeObjectURL(a.href);
-    }
     // ══════════════════════ POSITION UPDATES ══════════════════════
     let bankAccountsById = {};
     function loadUpdatesFilters() {
@@ -613,43 +269,25 @@ html.afims-dark[data-bs-theme="dark"] #cashPositionModule .cps-group-header :is(
     }
     function loadUpdatesList() {
         const tbody = document.querySelector('#updTable tbody');
-        tbody.innerHTML = '<tr class="fims-empty"><td colspan="10">Loading…</td></tr>';
+        tbody.innerHTML = '<tr class="fims-empty"><td colspan="7">Loading…</td></tr>';
         fetch(API + '/updates/list?' + buildUpdParams().toString(), { headers: authHeaders() })
             .then(r => r.json())
             .then(function (json) {
                 const rows = (json && json.data) ? json.data : [];
-                if (!rows.length) { tbody.innerHTML = '<tr class="fims-empty"><td colspan="10">No records.</td></tr>'; return; }
+                if (!rows.length) { tbody.innerHTML = '<tr class="fims-empty"><td colspan="7">No records.</td></tr>'; return; }
                 tbody.innerHTML = rows.map(function (r) {
-                    const statusBadge = r.reconciled
-                        ? '<span class="fims-badge fims-badge-green">Reconciled</span>'
-                        : '<span class="fims-badge fims-badge-amber">Pending</span>';
                     return '<tr>' +
                         '<td>' + escapeHtml(r.account_name) + '<br><span style="font-size:11px;color:var(--fims-text-subtle)">' + escapeHtml(r.bank_name || '') + ' · ' + escapeHtml(r.account_number || '') + '</span></td>' +
-                        '<td>' + escapeHtml(r.fund_source || 'General') + '<br><span style="font-size:11px;color:var(--fims-text-subtle)">' + escapeHtml(r.position_date || '') + '</span></td>' +
+                        '<td>' + escapeHtml(r.position_date || '') + '</td>' +
                         '<td class="text-right">' + peso(r.opening_balance) + '</td>' +
                         '<td class="text-right">' + peso(r.total_receipts) + '</td>' +
                         '<td class="text-right">' + peso(r.total_disbursements) + '</td>' +
                         '<td class="text-right"><strong>' + peso(r.closing_balance) + '</strong></td>' +
-                        '<td class="text-right">' + peso(r.restricted_amount) + '</td>' +
-                        '<td class="text-right" style="color:#16a34a;font-weight:600;">' + peso(r.available_balance) + '</td>' +
-                        '<td class="text-center">' + statusBadge + '</td>' +
-                        // No cash_position_id means this bank account has never had an
-                        // entry saved — "Add" (openAddEntryModal()) creates the first
-                        // one; "Edit" (openManualEntryModal()) only makes sense once
-                        // that first entry exists.
-                        '<td class="text-center">' + (r.cash_position_id
-                            ? '<button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-edit-entry="' + r.cash_position_id + '" title="Edit"><i class="fas fa-pen mr-1"></i>Edit</button>'
-                            : '<button type="button" class="fims-btn fims-btn-outline fims-btn-sm" data-add-entry="' + r.bank_account_id + '" title="Add Restricted Fund"><i class="fas fa-plus mr-1"></i>Add Restricted Fund</button>') + '</td>' +
+                        '<td class="text-center"><span class="fims-badge fims-badge-green">Active</span></td>' +
                         '</tr>';
                 }).join('');
-                tbody.querySelectorAll('[data-edit-entry]').forEach(function (btn) {
-                    btn.addEventListener('click', function () { openManualEntryModal(this.dataset.editEntry); });
-                });
-                tbody.querySelectorAll('[data-add-entry]').forEach(function (btn) {
-                    btn.addEventListener('click', function () { openAddEntryModal(this.dataset.addEntry); });
-                });
             })
-            .catch(() => { tbody.innerHTML = '<tr class="fims-empty"><td colspan="10">Could not reach the server.</td></tr>'; });
+            .catch(() => { tbody.innerHTML = '<tr class="fims-empty"><td colspan="7">Could not reach the server.</td></tr>'; });
     }
     document.getElementById('updFilterBtn')?.addEventListener('click', loadUpdatesList);
     document.getElementById('updResetBtn')?.addEventListener('click', function () {
@@ -677,326 +315,7 @@ html.afims-dark[data-bs-theme="dark"] #cashPositionModule .cps-group-header :is(
             })
             .catch(() => { list.innerHTML = '<li>Could not reach the server.</li>'; });
     }
-    // ── SOA Comparison ──
-    function loadSoaComparison() {
-        const tbody = document.querySelector('#soaCmpTable tbody');
-        tbody.innerHTML = '<tr class="fims-empty"><td colspan="5">Loading…</td></tr>';
-        fetch(API + '/soa-comparison', { headers: authHeaders() })
-            .then(r => r.json())
-            .then(function (json) {
-                const rows = (json && json.data) ? json.data : [];
-                if (!rows.length) { tbody.innerHTML = '<tr class="fims-empty"><td colspan="5">No SOA data uploaded yet.</td></tr>'; return; }
-                tbody.innerHTML = rows.map(function (r) {
-                    const hasSoa = r.latest_soa_balance != null;
-                    const hasPos = r.available_balance != null;
-                    const matched = hasSoa && hasPos && Math.abs(Number(r.latest_soa_balance) - Number(r.available_balance)) < 0.01;
-                    const statusBadge = !hasSoa ? '<span class="fims-badge fims-badge-gray">No SOA</span>'
-                        : !hasPos ? '<span class="fims-badge fims-badge-gray">No Position</span>'
-                        : matched ? '<span class="fims-badge fims-badge-green">Matched</span>'
-                        : '<span class="fims-badge fims-badge-red">Mismatch</span>';
-                    return '<tr>' +
-                        '<td>' + escapeHtml(r.account_name) + '<br><span style="font-size:11px;color:var(--fims-text-subtle)">' + escapeHtml(r.bank_name || '') + '</span></td>' +
-                        '<td class="text-right">' + (hasSoa ? peso(r.latest_soa_balance) : '—') + '</td>' +
-                        '<td class="text-right">' + (hasPos ? peso(r.available_balance) : '—') + '</td>' +
-                        '<td class="text-right">' + (hasSoa && hasPos ? peso(r.difference) : '—') + '</td>' +
-                        '<td class="text-center">' + statusBadge + '</td>' +
-                        '</tr>';
-                }).join('');
-            })
-            .catch(() => { tbody.innerHTML = '<tr class="fims-empty"><td colspan="5">Could not reach the server.</td></tr>'; });
-    }
-
-    // ── SOA Transactions grouped-by-upload accordion ──
-    function loadSoaGroups() {
-        const list = document.getElementById('soaGroupsList');
-        list.innerHTML = '<div class="fims-empty" style="padding:16px;">Loading…</div>';
-        fetch(API + '/soa-groups?limit=10', { headers: authHeaders() })
-            .then(r => r.json())
-            .then(function (json) {
-                const groups = (json && json.data) ? json.data : [];
-                if (!groups.length) { list.innerHTML = '<div class="fims-empty" style="padding:16px;">No SOA uploads yet.</div>'; return; }
-                list.innerHTML = groups.map(function (g, gi) {
-                    return '<div style="border-bottom:1px solid var(--fims-border);">' +
-                        '<div class="cps-group-header" data-soa-toggle="soa-grp-' + gi + '" data-batch="' + escapeHtml(g.upload_batch_id) + '" data-bank="' + g.bank_account_id + '" data-loaded="0" style="padding:10px 14px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;">' +
-                        '<div><i class="fas fa-caret-right mr-1"></i><strong>' + escapeHtml(g.account_name) + '</strong> — ' + escapeHtml(g.bank_name || '') + ' <span class="fims-badge">' + g.transaction_count + ' line(s)</span></div>' +
-                        '<div style="font-size:12px;color:var(--fims-text-subtle);">Uploaded ' + escapeHtml(g.upload_datetime || '') + ' · Balance: <strong>' + peso(g.latest_balance) + '</strong></div>' +
-                        '</div>' +
-                        '<div id="soa-grp-' + gi + '" style="display:none;padding:0 14px 10px;"></div>' +
-                        '</div>';
-                }).join('');
-                list.querySelectorAll('[data-soa-toggle]').forEach(function (header) {
-                    header.addEventListener('click', function () {
-                        const targetId = this.dataset.soaToggle;
-                        const target = document.getElementById(targetId);
-                        const willShow = target.style.display === 'none';
-                        target.style.display = willShow ? '' : 'none';
-                        const caret = this.querySelector('.fa-caret-right, .fa-caret-down');
-                        if (caret) caret.className = 'fas ' + (willShow ? 'fa-caret-down' : 'fa-caret-right') + ' mr-1';
-                        if (willShow && this.dataset.loaded === '0') {
-                            this.dataset.loaded = '1';
-                            loadSoaGroupRows(target, this.dataset.bank, this.dataset.batch);
-                        }
-                    });
-                });
-            })
-            .catch(() => { list.innerHTML = '<div class="fims-empty" style="padding:16px;">Could not reach the server.</div>'; });
-    }
-    function loadSoaGroupRows(container, bankAccountId, batchId) {
-        container.innerHTML = '<div class="fims-empty" style="padding:10px;">Loading…</div>';
-        const params = new URLSearchParams({ bank_account_id: bankAccountId, upload_batch_id: batchId, limit: 500 });
-        fetch(API + '/soa-transactions?' + params.toString(), { headers: authHeaders() })
-            .then(r => r.json())
-            .then(function (json) {
-                const rows = (json && json.data) ? json.data : [];
-                if (!rows.length) { container.innerHTML = '<div class="fims-empty" style="padding:10px;">No lines.</div>'; return; }
-                container.innerHTML = '<table class="fims-table"><thead><tr><th>Date</th><th>Description</th><th class="text-right">Debit</th><th class="text-right">Credit</th><th class="text-right">Balance</th><th>Check No.</th></tr></thead><tbody>' +
-                    rows.map(function (r) {
-                        return '<tr><td>' + escapeHtml(r.transaction_date) + '</td><td>' + escapeHtml(r.description || '') + '</td>' +
-                            '<td class="text-right">' + (Number(r.debit_amount) ? peso(r.debit_amount) : '—') + '</td>' +
-                            '<td class="text-right">' + (Number(r.credit_amount) ? peso(r.credit_amount) : '—') + '</td>' +
-                            '<td class="text-right">' + (r.balance != null ? peso(r.balance) : '—') + '</td>' +
-                            '<td>' + escapeHtml(r.check_no || '') + '</td></tr>';
-                    }).join('') + '</tbody></table>';
-            })
-            .catch(() => { container.innerHTML = '<div class="fims-empty" style="padding:10px;">Could not reach the server.</div>'; });
-    }
-
-    // ── Upload SOA modal ──
-    let soaParsedRows = [];
-    document.getElementById('updUploadSoaBtn')?.addEventListener('click', function () {
-        fetch(API + '/lookup/bank-accounts', { headers: authHeaders() })
-            .then(r => r.json()).then(json => fillSelect('#soaBankAccount', json.data, 'Select bank account...', 'bank_account_id', i => i.account_name)).catch(() => {});
-        document.getElementById('soaFileInput').value = '';
-        document.getElementById('soaDropzoneText').textContent = 'Click to choose an .xlsx file, or drag it here';
-        document.getElementById('soaPreviewArea').style.display = 'none';
-        document.getElementById('soaConfirmBtn').style.display = 'none';
-        soaParsedRows = [];
-        openModal('m-upload-soa');
-    });
-    const soaDropzone = document.getElementById('soaDropzone');
-    const soaFileInput = document.getElementById('soaFileInput');
-    soaDropzone?.addEventListener('click', function () { soaFileInput.click(); });
-    soaDropzone?.addEventListener('dragover', function (e) { e.preventDefault(); soaDropzone.style.borderColor = '#000E3E'; });
-    soaDropzone?.addEventListener('dragleave', function () { soaDropzone.style.borderColor = ''; });
-    soaDropzone?.addEventListener('drop', function (e) {
-        e.preventDefault();
-        soaDropzone.style.borderColor = '';
-        if (e.dataTransfer.files.length) { soaFileInput.files = e.dataTransfer.files; updateSoaFileName(); }
-    });
-    soaFileInput?.addEventListener('change', updateSoaFileName);
-    function updateSoaFileName() {
-        document.getElementById('soaDropzoneText').textContent = soaFileInput.files.length ? soaFileInput.files[0].name : 'Click to choose an .xlsx file, or drag it here';
-    }
-
-    document.getElementById('soaParseBtn')?.addEventListener('click', function () {
-        const bankAccountId = document.getElementById('soaBankAccount').value;
-        if (!bankAccountId) { toast('Select a bank account.', true); return; }
-        if (!soaFileInput.files.length) { toast('Choose a file first.', true); return; }
-        const formData = new FormData();
-        formData.append('bank_account_id', bankAccountId);
-        formData.append('soa_file', soaFileInput.files[0]);
-        const btn = this;
-        btn.disabled = true;
-        fetch(API + '/upload-soa', { method: 'POST', headers: authHeaders(), body: formData })
-            .then(r => r.json())
-            .then(function (json) {
-                if (!json.success) { toast(json.message || 'Could not parse file.', true); return; }
-                soaParsedRows = json.parsed_rows || [];
-                document.getElementById('soaPreviewArea').style.display = '';
-                document.getElementById('soaPreviewSummary').innerHTML = escapeHtml(json.message);
-                document.getElementById('soaPreviewBody').innerHTML = soaParsedRows.map(function (r) {
-                    const style = r.is_duplicate ? 'opacity:.45;' : '';
-                    const badge = r.is_duplicate ? ' <span class="fims-badge fims-badge-gray">Exists</span>' : (r.is_processed ? ' <span class="fims-badge fims-badge-amber">Processed</span>' : ' <span class="fims-badge fims-badge-green">New</span>');
-                    return '<tr style="' + style + '"><td>' + escapeHtml(r.date) + '</td><td>' + escapeHtml(r.description) + '</td>' +
-                        '<td class="text-right">' + (r.debit ? peso(r.debit) : '—') + '</td><td class="text-right">' + (r.credit ? peso(r.credit) : '—') + '</td>' +
-                        '<td class="text-right">' + peso(r.balance) + '</td><td>' + escapeHtml(r.check_no || '') + '</td><td>' + badge + '</td></tr>';
-                }).join('');
-                document.getElementById('soaConfirmBtn').style.display = json.new_count > 0 ? '' : 'none';
-                document.getElementById('soaConfirmBtn').textContent = 'Confirm & Save (' + json.new_count + ' new)';
-            })
-            .catch(() => toast('Could not reach the server.', true))
-            .finally(() => { btn.disabled = false; });
-    });
-
-    document.getElementById('soaConfirmBtn')?.addEventListener('click', function () {
-        const bankAccountId = document.getElementById('soaBankAccount').value;
-        const btn = this;
-        btn.disabled = true;
-        fetch(API + '/confirm-upload', { method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify({ bank_account_id: bankAccountId, parsed_rows: soaParsedRows }) })
-            .then(r => r.json())
-            .then(function (json) {
-                toast(json.message || (json.success ? 'Saved.' : 'Could not save.'), !json.success);
-                if (json.success) {
-                    closeModal('m-upload-soa');
-                    loadUpdatesKpis();
-                    loadUpdatesList();
-                    loadActivityLog();
-                    loadSoaComparison();
-                    loadSoaGroups();
-                }
-            })
-            .catch(() => toast('Could not reach the server.', true))
-            .finally(() => { btn.disabled = false; });
-    });
-
-    // ── Batch Upload SOA modal ──
-    // Each row holds its own {bankAccountId, file, parsedRows, newCount, status} state,
-    // keyed by a row id. "Parse All"/"Confirm All" walk the rows sequentially
-    // (one fetch at a time, via Array.reduce chaining) — same as TREASURY,
-    // not concurrently, so the per-row status updates stay readable and any
-    // one row's failure doesn't race with the others.
-    let batchSoaRowId = 0;
-    const batchSoaJobs = {};
-    let batchSoaBankAccounts = [];
-
-    function addBatchSoaRow(preselectBankAccountId) {
-        const id = ++batchSoaRowId;
-        batchSoaJobs[id] = { bankAccountId: preselectBankAccountId || null, file: null, parsedRows: [], newCount: 0, status: 'pending' };
-        const tr = document.createElement('tr');
-        tr.dataset.rowId = id;
-        tr.innerHTML =
-            '<td><select class="fims-select fims-input-sm batch-soa-bank"><option value="">Select bank account...</option>' +
-                batchSoaBankAccounts.map(b => '<option value="' + b.bank_account_id + '">' + escapeHtml(b.account_name) + '</option>').join('') +
-            '</select></td>' +
-            '<td><input type="file" class="batch-soa-file" accept=".xlsx" style="font-size:12px;"></td>' +
-            '<td class="batch-soa-status" style="font-size:12px;color:var(--fims-text-subtle);">Not parsed</td>' +
-            '<td><button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-remove-batch-row><i class="fas fa-trash"></i></button></td>';
-        if (preselectBankAccountId) tr.querySelector('.batch-soa-bank').value = preselectBankAccountId;
-        tr.querySelector('.batch-soa-bank').addEventListener('change', function () { batchSoaJobs[id].bankAccountId = this.value; });
-        tr.querySelector('.batch-soa-file').addEventListener('change', function () { batchSoaJobs[id].file = this.files[0] || null; });
-        tr.querySelector('[data-remove-batch-row]').addEventListener('click', function () { delete batchSoaJobs[id]; tr.remove(); });
-        document.getElementById('batchSoaRows').appendChild(tr);
-        return id;
-    }
-
-    function renderBatchSoaAccountPicker(filterText) {
-        const picker = document.getElementById('batchSoaAccountPicker');
-        const needle = (filterText || '').toLowerCase().trim();
-        const list = batchSoaBankAccounts.filter(b => !needle || b.account_name.toLowerCase().includes(needle) || (b.bank_name || '').toLowerCase().includes(needle));
-        picker.innerHTML = list.length ? list.map(function (b) {
-            return '<label style="display:block;padding:3px 0;">' +
-                '<input type="checkbox" class="batch-soa-picker-cb" value="' + b.bank_account_id + '"> ' +
-                escapeHtml(b.account_name) + ' <span style="color:var(--fims-text-subtle);font-size:11px;">— ' + escapeHtml(b.bank_name || '') + '</span>' +
-                '</label>';
-        }).join('') : '<span style="color:var(--fims-text-subtle);font-size:12px;">No matching accounts.</span>';
-    }
-    document.getElementById('batchSoaAccountSearch')?.addEventListener('input', function () { renderBatchSoaAccountPicker(this.value); });
-
-    document.getElementById('batchSoaAddSelectedBtn')?.addEventListener('click', function () {
-        const checked = Array.from(document.querySelectorAll('.batch-soa-picker-cb:checked')).map(cb => cb.value);
-        if (!checked.length) { toast('Select at least one bank account.', true); return; }
-        const alreadyAdded = new Set(Object.values(batchSoaJobs).map(j => String(j.bankAccountId)));
-        let added = 0;
-        checked.forEach(function (bankAccountId) {
-            if (alreadyAdded.has(bankAccountId)) return;
-            addBatchSoaRow(bankAccountId);
-            alreadyAdded.add(bankAccountId);
-            added++;
-        });
-        document.querySelectorAll('.batch-soa-picker-cb:checked').forEach(cb => { cb.checked = false; });
-        if (added) toast('Added ' + added + ' row(s).');
-        else toast('Those accounts are already in the row list.', true);
-    });
-
-    document.getElementById('updBatchUploadBtn')?.addEventListener('click', function () {
-        document.getElementById('batchSoaRows').innerHTML = '';
-        document.getElementById('batchSoaSummary').style.display = 'none';
-        document.getElementById('batchSoaConfirmAllBtn').disabled = true;
-        document.getElementById('batchSoaAccountSearch').value = '';
-        Object.keys(batchSoaJobs).forEach(k => delete batchSoaJobs[k]);
-        fetch(API + '/lookup/bank-accounts', { headers: authHeaders() })
-            .then(r => r.json())
-            .then(function (json) {
-                batchSoaBankAccounts = json.data || [];
-                renderBatchSoaAccountPicker('');
-            })
-            .catch(() => { renderBatchSoaAccountPicker(''); });
-        openModal('m-batch-upload-soa');
-    });
-    document.getElementById('batchSoaAddRowBtn')?.addEventListener('click', function () { addBatchSoaRow(null); });
-
-    function parseOneBatchRow(id) {
-        const job = batchSoaJobs[id];
-        const tr = document.querySelector('#batchSoaRows tr[data-row-id="' + id + '"]');
-        const statusCell = tr.querySelector('.batch-soa-status');
-        if (!job.bankAccountId || !job.file) {
-            statusCell.textContent = 'Skipped (missing bank account or file)';
-            return Promise.resolve();
-        }
-        statusCell.textContent = 'Parsing…';
-        const formData = new FormData();
-        formData.append('bank_account_id', job.bankAccountId);
-        formData.append('soa_file', job.file);
-        return fetch(API + '/upload-soa', { method: 'POST', headers: authHeaders(), body: formData })
-            .then(r => r.json())
-            .then(function (json) {
-                if (!json.success) { statusCell.textContent = 'Parse failed: ' + (json.message || ''); job.status = 'failed'; return; }
-                job.parsedRows = json.parsed_rows || [];
-                job.newCount = json.new_count || 0;
-                job.status = 'parsed';
-                statusCell.textContent = job.newCount + ' new, ' + json.duplicate_count + ' duplicate(s)';
-            })
-            .catch(() => { statusCell.textContent = 'Could not reach the server.'; job.status = 'failed'; });
-    }
-
-    document.getElementById('batchSoaParseAllBtn')?.addEventListener('click', function () {
-        const btn = this;
-        btn.disabled = true;
-        const ids = Object.keys(batchSoaJobs);
-        ids.reduce(function (chain, id) { return chain.then(() => parseOneBatchRow(id)); }, Promise.resolve())
-            .then(function () {
-                const anyNew = ids.some(id => batchSoaJobs[id].newCount > 0);
-                document.getElementById('batchSoaConfirmAllBtn').disabled = !anyNew;
-            })
-            .finally(() => { btn.disabled = false; });
-    });
-
-    function confirmOneBatchRow(id) {
-        const job = batchSoaJobs[id];
-        const tr = document.querySelector('#batchSoaRows tr[data-row-id="' + id + '"]');
-        const statusCell = tr.querySelector('.batch-soa-status');
-        if (job.status !== 'parsed' || !job.parsedRows.length) {
-            return Promise.resolve({ saved: 0 });
-        }
-        statusCell.textContent = 'Saving…';
-        return fetch(API + '/confirm-upload', { method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify({ bank_account_id: job.bankAccountId, parsed_rows: job.parsedRows }) })
-            .then(r => r.json())
-            .then(function (json) {
-                statusCell.textContent = json.success ? ('Saved ' + json.saved + ' line(s)') : ('Failed: ' + (json.message || ''));
-                return json;
-            })
-            .catch(function () {
-                statusCell.textContent = 'Could not reach the server.';
-                return { saved: 0 };
-            });
-    }
-
-    document.getElementById('batchSoaConfirmAllBtn')?.addEventListener('click', function () {
-        const btn = this;
-        btn.disabled = true;
-        const ids = Object.keys(batchSoaJobs);
-        let totalSaved = 0;
-        let totalFailed = 0;
-        ids.reduce(function (chain, id) {
-            return chain.then(() => confirmOneBatchRow(id)).then(function (result) {
-                if (result && result.success) totalSaved += result.saved || 0;
-                else if (batchSoaJobs[id].status === 'parsed') totalFailed++;
-            });
-        }, Promise.resolve())
-            .then(function () {
-                const summary = document.getElementById('batchSoaSummary');
-                summary.style.display = '';
-                summary.innerHTML = '<div class="fims-alert-body">Batch complete — ' + totalSaved + ' line(s) saved across ' + ids.length + ' row(s), ' + totalFailed + ' failure(s).</div>';
-                loadUpdatesKpis();
-                loadUpdatesList();
-                loadActivityLog();
-                loadSoaComparison();
-                loadSoaGroups();
-            })
-            .finally(() => { btn.disabled = false; });
-    });
-
-    function initUpdates() { loadUpdatesFilters(); loadUpdatesKpis(); loadUpdatesList(); loadActivityLog(); loadSoaComparison(); loadSoaGroups(); }
+    function initUpdates() { loadUpdatesFilters(); loadUpdatesKpis(); loadUpdatesList(); loadActivityLog(); }
 
     // ── Cash Position Entry modal — shared by two entry points,
     // openAddEntryModal() (a bank account with no entry yet) and
@@ -1093,16 +412,6 @@ html.afims-dark[data-bs-theme="dark"] #cashPositionModule .cps-group-header :is(
                 document.getElementById('meTotalReceipts').value = d.total_receipts || 0;
             })
             .catch(() => {});
-
-        // Auto-pull the bank statement balance from the latest uploaded SOA
-        // for this account, same as the old wizard did.
-        fetch(API + '/soa-balance/' + meBankAccountId + '?as_of=' + positionDate, { headers: authHeaders() })
-            .then(r => r.json())
-            .then(function (json) {
-                const soa = (json && json.data) ? json.data : {};
-                if (soa.balance != null) document.getElementById('meBankStatementBalance').value = soa.balance;
-            })
-            .catch(() => {});
     }
     document.getElementById('mePositionDate')?.addEventListener('change', function () {
         // Only a brand-new entry's date is actually editable (see
@@ -1194,307 +503,7 @@ html.afims-dark[data-bs-theme="dark"] #cashPositionModule .cps-group-header :is(
             .finally(() => { btn.disabled = false; });
     });
 
-    // ══════════════════════ AVAILABLE CASH BALANCES ══════════════════════
-    function loadAvailableFilters() {
-        fetch(API + '/lookup/fund-sources', { headers: authHeaders() })
-            .then(r => r.json()).then(json => fillSelect('#availFilterFundSource', (json.data || []).map(f => ({ v: f })), 'All Fund Sources', 'v', i => i.v)).catch(() => {});
-    }
-    function loadAvailable() {
-        const tbody = document.querySelector('#availTable tbody');
-        tbody.innerHTML = '<tr class="fims-empty"><td colspan="8">Loading…</td></tr>';
-        const params = new URLSearchParams();
-        const fs = document.getElementById('availFilterFundSource').value;
-        if (fs) params.set('fund_source', fs);
-        fetch(API + '/available-balances/list?' + params.toString(), { headers: authHeaders() })
-            .then(r => r.json())
-            .then(function (json) {
-                const rows = (json && json.data) ? json.data : [];
-                const threshold = parseFloat(document.getElementById('availThreshold').value) || 500000;
-
-                let grandBook = 0, grandAvailable = 0, grandUsable = 0;
-                rows.forEach(r => { grandBook += r.closing_balance; grandAvailable += r.available_balance; grandUsable += r.usable_balance; });
-                document.querySelector('#availKpis [data-kpi="book"]').textContent = peso(grandBook);
-                document.querySelector('#availKpis [data-kpi="available"]').textContent = peso(grandAvailable);
-                document.querySelector('#availKpis [data-kpi="usable"]').textContent = peso(grandUsable);
-
-                if (!rows.length) { tbody.innerHTML = '<tr class="fims-empty"><td colspan="8">No records.</td></tr>'; document.querySelector('#availKpis [data-kpi="alerts"]').textContent = 0; return; }
-
-                const groups = groupByFundSource(rows);
-                let alertCount = 0;
-                tbody.innerHTML = groups.map(function (g, gi) {
-                    const groupClass = 'avail-group-' + gi;
-                    const totals = g.rows.reduce((acc, r) => {
-                        acc.book += r.closing_balance; acc.restricted += r.restricted_amount; acc.available += r.available_balance;
-                        acc.outstanding += r.outstanding_checks; acc.usable += r.usable_balance;
-                        return acc;
-                    }, { book: 0, restricted: 0, available: 0, outstanding: 0, usable: 0 });
-                    const groupLow = totals.usable < threshold;
-                    if (groupLow) alertCount++;
-                    const header = '<tr class="cps-group-header" data-group-toggle="' + groupClass + '">' +
-                        '<td><i class="fas fa-caret-right mr-1"></i><strong>' + escapeHtml(g.fund_source) + '</strong> <span class="fims-badge">' + g.rows.length + ' account(s)</span></td>' +
-                        '<td class="text-right"><strong>' + peso(totals.book) + '</strong></td>' +
-                        '<td class="text-right"><strong>' + peso(totals.restricted) + '</strong></td>' +
-                        '<td class="text-right"><strong>' + peso(totals.available) + '</strong></td>' +
-                        '<td class="text-right"><strong>' + peso(totals.outstanding) + '</strong></td>' +
-                        '<td class="text-right"><strong>' + peso(totals.usable) + '</strong></td>' +
-                        '<td class="text-center">' + (groupLow ? '<span class="fims-badge fims-badge-red">Low</span>' : '<span class="fims-badge fims-badge-green">Normal</span>') + '</td>' +
-                        '<td class="text-center"><button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-trend="' + escapeHtml(g.fund_source) + '" title="View Trend" onclick="event.stopPropagation()"><i class="fas fa-chart-line"></i></button></td></tr>';
-                    const leaves = g.rows.map(function (r) {
-                        const low = r.usable_balance < threshold;
-                        return '<tr class="' + groupClass + '" style="display:none;">' +
-                            '<td style="padding-left:24px;">' + escapeHtml(r.account_name) + '<br><span style="font-size:11px;color:var(--fims-text-subtle)">' + escapeHtml(r.bank_name || '') + ' · ' + escapeHtml(r.account_number || '') + '</span></td>' +
-                            '<td class="text-right">' + peso(r.closing_balance) + '</td>' +
-                            '<td class="text-right">' + peso(r.restricted_amount) + '</td>' +
-                            '<td class="text-right">' + peso(r.available_balance) + '</td>' +
-                            '<td class="text-right">' + peso(r.outstanding_checks) + '</td>' +
-                            '<td class="text-right" style="font-weight:600;">' + peso(r.usable_balance) + '</td>' +
-                            '<td class="text-center">' + (low ? '<span class="fims-badge fims-badge-red">Low</span>' : '<span class="fims-badge fims-badge-green">Normal</span>') + '</td>' +
-                            '<td class="text-center">' + escapeHtml(r.position_date || '—') + '</td>' +
-                            '</tr>';
-                    }).join('');
-                    return header + leaves;
-                }).join('');
-                document.querySelector('#availKpis [data-kpi="alerts"]').textContent = alertCount;
-                tbody.querySelectorAll('.cps-group-header').forEach(function (header) {
-                    header.addEventListener('click', function () {
-                        const cls = this.dataset.groupToggle;
-                        const caret = this.querySelector('.fa-caret-right, .fa-caret-down');
-                        const leaves = tbody.querySelectorAll('tr.' + cls);
-                        const willShow = leaves.length && leaves[0].style.display === 'none';
-                        leaves.forEach(function (tr) { tr.style.display = willShow ? '' : 'none'; });
-                        if (caret) caret.className = 'fas ' + (willShow ? 'fa-caret-down' : 'fa-caret-right') + ' mr-1';
-                    });
-                });
-                tbody.querySelectorAll('[data-trend]').forEach(function (btn) {
-                    btn.addEventListener('click', function () { openTrendModal(this.dataset.trend); });
-                });
-            })
-            .catch(() => { tbody.innerHTML = '<tr class="fims-empty"><td colspan="8">Could not reach the server.</td></tr>'; });
-    }
-    document.getElementById('availFilterBtn')?.addEventListener('click', function () { loadAvailable(); loadAlertsBanner(); });
-    document.getElementById('availResetBtn')?.addEventListener('click', function () {
-        document.getElementById('availFilterFundSource').value = '';
-        document.getElementById('availThreshold').value = 500000;
-        loadAvailable();
-        loadAlertsBanner();
-    });
-
-    // Real backend-driven alert banner (GET /available-balances/alerts),
-    // independent of the client-computed per-group "Low" badges above —
-    // gives the fund-source-level threshold check a dedicated source of
-    // truth matching TREASURY's getLowBalanceAlerts().
-    function loadAlertsBanner() {
-        const threshold = parseFloat(document.getElementById('availThreshold').value) || 500000;
-        fetch(API + '/available-balances/alerts?threshold=' + threshold, { headers: authHeaders() })
-            .then(r => r.json())
-            .then(function (json) {
-                const banner = document.getElementById('availAlertsBanner');
-                const d = json.data || {};
-                if (!d.count) { banner.style.display = 'none'; return; }
-                banner.style.display = '';
-                banner.querySelector('.fims-alert-body').innerHTML = '<strong>' + d.count + ' fund source(s) below the ' + peso(threshold) + ' threshold:</strong> ' +
-                    (d.alerts || []).map(a => escapeHtml(a.fund_source) + ' (' + peso(a.usable_balance) + ')').join(', ');
-            })
-            .catch(() => {});
-    }
-
-    // ── Balance Trend modal ──
-    function openTrendModal(fundSource) {
-        document.getElementById('trendFundSource').textContent = 'Balance Trend — ' + fundSource;
-        document.getElementById('trendDateTo').value = new Date().toISOString().slice(0, 10);
-        document.getElementById('trendDateFrom').value = new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10);
-        document.getElementById('m-balance-trend').dataset.fundSource = fundSource;
-        loadTrend(fundSource);
-        openModal('m-balance-trend');
-    }
-    function loadTrend(fundSource) {
-        const tbody = document.getElementById('trendBody');
-        tbody.innerHTML = '<tr class="fims-empty"><td colspan="4">Loading…</td></tr>';
-        const params = new URLSearchParams({
-            fund_source: fundSource,
-            date_from: document.getElementById('trendDateFrom').value,
-            date_to: document.getElementById('trendDateTo').value,
-        });
-        fetch(API + '/available-balances/history?' + params.toString(), { headers: authHeaders() })
-            .then(r => r.json())
-            .then(function (json) {
-                const rows = (json && json.data && json.data.history) ? json.data.history : [];
-                if (!rows.length) { tbody.innerHTML = '<tr class="fims-empty"><td colspan="4">No history in this range.</td></tr>'; return; }
-                tbody.innerHTML = rows.map(function (r) {
-                    return '<tr><td>' + escapeHtml(r.position_date) + '</td>' +
-                        '<td class="text-right">' + peso(r.book_balance) + '</td>' +
-                        '<td class="text-right">' + peso(r.available_balance) + '</td>' +
-                        '<td class="text-right">' + peso(r.restricted_amount) + '</td></tr>';
-                }).join('');
-            })
-            .catch(() => { tbody.innerHTML = '<tr class="fims-empty"><td colspan="4">Could not reach the server.</td></tr>'; });
-    }
-    document.getElementById('trendApplyBtn')?.addEventListener('click', function () {
-        loadTrend(document.getElementById('m-balance-trend').dataset.fundSource);
-    });
-
-    function initAvailable() { loadAvailableFilters(); loadAvailable(); loadAlertsBanner(); }
-
-    // ══════════════════════ REPORTS ══════════════════════
-    const REPORTS_API = API + '/reports';
-    let repFyAccounts = [];
-
-    function initReports() {
-        document.getElementById('repDateFrom').value = new Date().getFullYear() + '-01-01';
-        document.getElementById('repDateTo').value = new Date().toISOString().slice(0, 10);
-        fetch(REPORTS_API + '/lookup/bank-accounts', { headers: authHeaders() })
-            .then(r => r.json())
-            .then(function (json) {
-                repFyAccounts = json.data || [];
-                fillSelect('#repBankAccount', repFyAccounts, 'All Banks', 'bank_account_id', i => i.account_name);
-            }).catch(() => {});
-        fetch(REPORTS_API + '/lookup/fund-sources', { headers: authHeaders() })
-            .then(r => r.json()).then(json => fillSelect('#repFundSource', (json.data || []).map(f => ({ v: f })), 'All Fund Sources', 'v', i => i.v)).catch(() => {});
-    }
-
-    function buildReportParams() {
-        const params = new URLSearchParams();
-        params.set('report_type', document.getElementById('repReportType').value);
-        params.set('date_from', document.getElementById('repDateFrom').value);
-        params.set('date_to', document.getElementById('repDateTo').value);
-        const bank = document.getElementById('repBankAccount').value;
-        const fs = document.getElementById('repFundSource').value;
-        const cls = document.getElementById('repClassification').value;
-        if (bank) params.set('bank_account_id', bank);
-        if (fs) params.set('fund_source', fs);
-        if (cls) params.set('classification', cls);
-        return params;
-    }
-
-    document.getElementById('repRunBtn')?.addEventListener('click', function () {
-        const type = document.getElementById('repReportType').value;
-        const area = document.getElementById('repResultArea');
-        area.innerHTML = '<div class="fims-empty" style="padding:30px;text-align:center;">Loading…</div>';
-        fetch(REPORTS_API + '/data?' + buildReportParams().toString(), { headers: authHeaders() })
-            .then(r => r.json())
-            .then(function (json) {
-                renderReport(type, json);
-            })
-            .catch(() => { area.innerHTML = '<div class="fims-empty" style="padding:30px;text-align:center;">Could not reach the server.</div>'; });
-    });
-
-    function renderReport(type, json) {
-        const area = document.getElementById('repResultArea');
-        if (!json || !json.success) {
-            area.innerHTML = '<div class="fims-alert fims-alert-danger"><div class="fims-alert-body">' + escapeHtml((json && json.message) || 'Could not run this report.') + '</div></div>';
-            return;
-        }
-        if (json.records && !json.records.length && !json.data) {
-            area.innerHTML = '<div class="fims-alert fims-alert-info"><div class="fims-alert-body">' + escapeHtml(json.message || 'No data.') + '</div></div>';
-            return;
-        }
-        const d = json.data || {};
-
-        if (type === 'daily') {
-            const rows = d.records || [];
-            area.innerHTML = reportTable(
-                ['Account Name', 'Account No.', 'Beginning', 'Check Disb.', 'Cancelled/Stale', 'Ending', 'Restricted', 'Available'],
-                rows.map(r => [
-                    escapeHtml(r.account_name), escapeHtml(r.account_number || ''),
-                    peso(r.opening_balance), peso(r.disbursement_thru_check), peso(r.cancelled_staled_check),
-                    peso(r.balance), peso(r.restricted_amount), peso(r.available_balance),
-                ])
-            );
-            return;
-        }
-
-        if (['weekly', 'monthly', 'quarterly', 'annual', 'by_fund_source', 'by_bank_account', 'by_classification'].includes(type)) {
-            const rows = d.records || [];
-            const totals = d.totals || {};
-            let html = reportTable(
-                ['Date', 'Account', 'Bank', 'Fund Source', 'Beginning', '+ Receipts', '− Disbursements', 'Ending', 'Restricted', 'Available', 'Recon.'],
-                rows.map(r => [
-                    escapeHtml(r.position_date), escapeHtml(r.account_name), escapeHtml(r.bank_name || ''), escapeHtml(r.fund_source || 'General'),
-                    peso(r.opening_balance), peso(r.total_receipts), peso(r.total_disbursements), peso(r.closing_balance),
-                    peso(r.restricted_amount), peso(r.available_balance), r.reconciled ? 'Yes' : 'No',
-                ])
-            );
-            html += '<div class="fims-alert fims-alert-info" style="margin-top:10px;"><div class="fims-alert-body">' +
-                'TOTAL — Beginning: <strong>' + peso(totals.opening) + '</strong>, Receipts: <strong>' + peso(totals.receipts) + '</strong>, ' +
-                'Disbursements: <strong>' + peso(totals.disbursements) + '</strong>, Ending: <strong>' + peso(totals.closing) + '</strong>, ' +
-                'Restricted: <strong>' + peso(totals.restricted) + '</strong>, Available: <strong>' + peso(totals.available) + '</strong></div></div>';
-            area.innerHTML = html;
-            return;
-        }
-
-        if (type === 'working_paper') {
-            const rows = d.records || [];
-            let html = '';
-            if (d.summary) {
-                html += '<div class="fims-alert fims-alert-info"><div class="fims-alert-body">' +
-                    'Beginning: <strong>' + peso(d.summary.beginning_balance) + '</strong> · Ending: <strong>' + peso(d.summary.ending_balance) + '</strong> · ' +
-                    'Restricted: <strong>' + peso(d.summary.restricted_amount) + '</strong> · Available: <strong>' + peso(d.summary.available_balance) + '</strong></div></div>';
-            }
-            html += reportTable(
-                ['Date', 'Ref #', 'Type', 'Account', 'Payee', 'Debit', 'Credit'],
-                rows.map(r => [escapeHtml(r.txn_date), escapeHtml(r.reference || ''), escapeHtml(r.transaction_type), escapeHtml(r.account_name), escapeHtml(r.party_name || ''), r.debit != null ? peso(r.debit) : '—', r.credit != null ? peso(r.credit) : '—'])
-            );
-            area.innerHTML = html;
-            return;
-        }
-
-        if (type === 'individual_ledger') {
-            if (!d.account) { area.innerHTML = '<div class="fims-alert fims-alert-info"><div class="fims-alert-body">Select a bank account to view its ledger.</div></div>'; return; }
-            const rows = (d.days || []).map(function (day) {
-                if (day.is_balance) return [escapeHtml(day.date), 'Balance', '—', peso(day.soa_balance), peso(day.available_balance)];
-                return [escapeHtml(day.date), 'Checks', peso(day.checks.disbursed), peso(day.checks.encashed), peso(day.checks.cancelled)];
-            });
-            area.innerHTML = '<p><strong>' + escapeHtml(d.account.name) + '</strong> — ' + escapeHtml(d.account.bank_name) + ' · ' + escapeHtml(d.account.account_number) + '</p>' +
-                reportTable(['Date', 'Type', 'Disbursed/SOA', 'Encashed/Available', 'Cancelled'], rows);
-            return;
-        }
-
-        // Stubbed report types.
-        area.innerHTML = '<div class="fims-alert fims-alert-warning"><div class="fims-alert-body">' + escapeHtml(json.message || 'This report is not available yet.') + '</div></div>';
-    }
-
-    function reportTable(headers, rows) {
-        if (!rows.length) return '<div class="fims-empty" style="padding:20px;text-align:center;">No records.</div>';
-        return '<table class="fims-table" id="repResultTable"><thead><tr>' +
-            headers.map(h => '<th>' + h + '</th>').join('') + '</tr></thead><tbody>' +
-            rows.map(row => '<tr>' + row.map(c => '<td>' + c + '</td>').join('') + '</tr>').join('') +
-            '</tbody></table>';
-    }
-
-    document.getElementById('repExportBtn')?.addEventListener('click', function () {
-        if (!document.getElementById('repResultTable')) { toast('Run a report first.', true); return; }
-        exportTableCSV('repResultTable', document.getElementById('repReportType').value + '-report');
-    });
-
-    // ── New FY Opening Balance modal ──
-    document.getElementById('repFyBtn')?.addEventListener('click', function () {
-        const thisYear = new Date().getFullYear();
-        document.getElementById('fyFromYear').value = thisYear;
-        document.getElementById('fyNewYear').value = thisYear + 1;
-        document.getElementById('fyAccountList').innerHTML = repFyAccounts.map(function (a) {
-            return '<label style="display:block;padding:3px 0;"><input type="checkbox" class="fy-account-cb" value="' + a.bank_account_id + '"> ' + escapeHtml(a.account_name) + '</label>';
-        }).join('') || '<span style="color:var(--fims-text-subtle)">No active bank accounts.</span>';
-        openModal('m-fy-balance');
-    });
-    document.getElementById('fySaveBtn')?.addEventListener('click', function () {
-        const fromYear = parseInt(document.getElementById('fyFromYear').value, 10);
-        const newYear = parseInt(document.getElementById('fyNewYear').value, 10);
-        const accountIds = Array.from(document.querySelectorAll('.fy-account-cb:checked')).map(cb => parseInt(cb.value, 10));
-        if (!accountIds.length) { toast('Select at least one bank account.', true); return; }
-        const btn = this;
-        btn.disabled = true;
-        fetch(REPORTS_API + '/fy-opening-balance', { method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify({ from_year: fromYear, new_year: newYear, account_ids: accountIds }) })
-            .then(r => r.json())
-            .then(function (json) {
-                toast(json.message || (json.success ? ('Created ' + json.data.created.length + ', skipped ' + json.data.skipped.length + '.') : 'Could not roll forward.'), !json.success);
-                if (json.success) closeModal('m-fy-balance');
-            })
-            .catch(() => toast('Could not reach the server.', true))
-            .finally(() => { btn.disabled = false; });
-    });
-
     // ── Boot ──
     initUpdates();
-    initialized.updates = true;
 })();
 </script>

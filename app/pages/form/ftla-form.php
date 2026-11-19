@@ -498,6 +498,35 @@ $_ftlm_api = $apiBase ?? Config('API.FIMS_URL');
 
                     <div class="ftlm-sec-hd">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                            <polyline points="14 2 14 8 20 8"/>
+                        </svg>
+                        Funding Reference
+                    </div>
+
+                    <!-- Moved ahead of Transfer Details so the DV(s) backing this
+                         transfer are picked first — ftlm_toggleDv()/ftlm_removeDv()
+                         below now also call ftlm_recalcDvAmount(), which sums the
+                         selected DVs' net_amount (already fetched in full by
+                         ftlm_loadDvOptions(), status=RELEASED) into
+                         ftlm_transfer_amount via the same ftlm_setAmount() helper
+                         ftlm_recalcDebitTotal() uses for the multi-debit total. LAA/
+                         RFA stayed in Step 2 (Attachments) — see "Funding Reference"
+                         there — only the DV picker itself moved. -->
+                    <div class="ftlm-fg">
+                        <label class="ftlm-label">DV Numbers <span style="font-size:10px;font-weight:400;color:var(--afims-text-disabled, #A9AAB8);">(Search and select one or more — Transfer Amount auto-fills from the total)</span></label>
+                        <div class="ftlm-msel" id="ftlm-dv-msel">
+                            <div class="ftlm-tag-input form-control" id="ftlm-dv-tag-input"
+                                 onclick="document.getElementById('ftlm-dv-search').focus()">
+                                <input type="text" id="ftlm-dv-search"
+                                       placeholder="Search DV number or payee…" autocomplete="off">
+                            </div>
+                            <div class="ftlm-msel-dropdown" id="ftlm-dv-dropdown" style="display:none;"></div>
+                        </div>
+                    </div>
+
+                    <div class="ftlm-sec-hd">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12">
                             <path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/>
                         </svg>
                         Transfer Details
@@ -672,21 +701,11 @@ $_ftlm_api = $apiBase ?? Config('API.FIMS_URL');
                             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
                             <polyline points="14 2 14 8 20 8"/>
                         </svg>
-                        Funding Reference
+                        LAA / RFA
                     </div>
 
-                    <div class="ftlm-fg">
-                        <label class="ftlm-label">DV Numbers <span style="font-size:10px;font-weight:400;color:var(--afims-text-disabled, #A9AAB8);">(Search and select one or more)</span></label>
-                        <div class="ftlm-msel" id="ftlm-dv-msel">
-                            <div class="ftlm-tag-input form-control" id="ftlm-dv-tag-input"
-                                 onclick="document.getElementById('ftlm-dv-search').focus()">
-                                <input type="text" id="ftlm-dv-search"
-                                       placeholder="Search DV number or payee…" autocomplete="off">
-                            </div>
-                            <div class="ftlm-msel-dropdown" id="ftlm-dv-dropdown" style="display:none;"></div>
-                        </div>
-                    </div>
-
+                    <!-- DV Numbers moved to the top of Step 1 (Transfer Details) — see
+                         the "Funding Reference" section there. -->
                     <div class="ftlm-grid-2">
                         <div class="ftlm-fg">
                             <label class="ftlm-label" for="ftlm_laa_number">LAA Number</label>
@@ -1463,14 +1482,22 @@ window.ftlm_toggleDv = function(num) {
     else ftlm_dvSelected.push(num);
     ftlm_renderDvDropdown(ftlm$('ftlm-dv-search')?.value || '');
     ftlm_renderDvTags();
+    ftlm_recalcDvAmount();
 };
 
 window.ftlm_removeDv = function(num) {
     ftlm_dvSelected = ftlm_dvSelected.filter(n => n !== num);
     ftlm_renderDvDropdown(ftlm$('ftlm-dv-search')?.value || '');
     ftlm_renderDvTags();
+    ftlm_recalcDvAmount();
 };
 
+// Used both to restore an existing FTLA's DV selection on edit-load and
+// to clear the picker on ftlm_resetForm() — deliberately does NOT call
+// ftlm_recalcDvAmount(): the saved transfer_amount (already restored by
+// fillForm() just before this runs) shouldn't be silently overwritten by
+// a recomputed total on load. Auto-fill only fires from the user actually
+// toggling a DV below.
 function ftlm_setDvSelected(numbers) {
     ftlm_dvSelected = (numbers || []).map(v => String(v).trim()).filter(Boolean);
     ftlm_renderDvTags();
@@ -1479,6 +1506,23 @@ function ftlm_setDvSelected(numbers) {
 
 function ftlm_getDvNumbers() {
     return ftlm_dvSelected.join('\n');
+}
+
+// Auto-fills Transfer Amount from the selected DVs' net_amount total —
+// same ftlm_setAmount() helper ftlm_recalcDebitTotal() uses for the
+// multi-debit total. ftlm_dvOptions is the full RELEASED-DV list already
+// fetched by ftlm_loadDvOptions() before the picker is usable, so no
+// extra request is needed here. Only overwrites the field while at least
+// one DV is selected — clearing all DVs leaves whatever amount is already
+// there (doesn't zero out a manually-entered one).
+function ftlm_recalcDvAmount() {
+    if (!ftlm_dvSelected.length) return;
+    const total = ftlm_dvSelected.reduce((sum, num) => {
+        const dv = ftlm_dvOptions.find(r => r.dv_no === num);
+        return sum + (dv ? ftlm_parseAmount(String(dv.net_amount || 0)) : 0);
+    }, 0);
+    ftlm_setAmount(total);
+    ftlm_schedulePreviewUpdate();
 }
 
 // Search-as-you-type wiring for the DV picker — fixed-position dropdown
