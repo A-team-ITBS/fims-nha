@@ -2424,6 +2424,14 @@ class DisbursementVoucherService
      */
     private function authorizeTransition(array $cur, string $new): ?string
     {
+        // Whoever already approved/forwarded an earlier step of THIS voucher can't reject it later — not even an admin
+        // (the admin bypass below is for moving it forward; rejecting your own approved work isn't a review).
+        if ($new === 'REJECTED') {
+            $uid = (int) App\CurrentUserID();
+            if ($uid > 0 && in_array($uid, [(int) ($cur['fmd_approved_by'] ?? 0), (int) ($cur['accounting_processed_by'] ?? 0), (int) ($cur['division_reviewed_by'] ?? 0)], true)) {
+                return 'You already approved this voucher at an earlier step — it must be rejected by a different user.';
+            }
+        }
         if (GlobalService::getUserRcScope()['is_admin']) {
             return null;
         }
@@ -2468,7 +2476,7 @@ class DisbursementVoucherService
             $dvId = (int) $id;
             $new  = strtoupper(trim($newStatus));
             $cur  = App\ExecuteRow(
-                "SELECT dv.dv_id, dv.status_id, st.name AS status, dv.created_by, dv.accounting_processed_by, dv.division_reviewed_by FROM {$this->table} dv
+                "SELECT dv.dv_id, dv.status_id, st.name AS status, dv.created_by, dv.fmd_approved_by, dv.accounting_processed_by, dv.division_reviewed_by FROM {$this->table} dv
                  LEFT JOIN {$this->tableSettingsStatus} st ON st.id = dv.status_id
                  WHERE dv.dv_id = {$dvId}",
                 'DB'
