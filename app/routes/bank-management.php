@@ -33,6 +33,18 @@ $app->get("/bank-management/accounts-for-region", function ($request, $response)
     return $response->withHeader('Content-Type', 'application/json')->write($service->getAccountsForRegion($p['rc_id'] ?? ''));
 });
 
+$app->get("/bank-management/fund-sweep/preview", function ($request, $response) {
+    $p = $request->getQueryParams();
+    $service = new Service\BankManagementService();
+    return $response->withHeader('Content-Type', 'application/json')->write($service->previewFundSweep($p['rc_id'] ?? ''));
+});
+
+$app->post("/bank-management/fund-sweep/process", function ($request, $response) {
+    $data = $request->getParsedBody();
+    $service = new Service\BankManagementService();
+    return $response->withHeader('Content-Type', 'application/json')->write($service->processFundSweep($data['rc_id'] ?? '', (array) ($data['account_ids'] ?? [])));
+});
+
 $app->post("/bank-management/store", function ($request, $response) {
     $data = $request->getParsedBody();
     $service = new Service\BankManagementService();
