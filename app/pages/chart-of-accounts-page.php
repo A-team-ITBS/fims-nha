@@ -184,6 +184,14 @@ $_coa_api = Config('API.FIMS_URL');
                     <button class="nha-filter-clear-btn" id="coa-search-clear" hidden type="button">×</button>
                 </div>
             </div>
+            <div class="nha-filter-group">
+                <label class="nha-filter-label">Status</label>
+                <select id="coa-filter-status" class="nha-filter-input">
+                    <option value="Active" selected>Active</option>
+                    <option value="Inactive">Inactive</option>
+                    <option value="All">All</option>
+                </select>
+            </div>
         </div>
     </div>
 
@@ -301,6 +309,8 @@ function coa_bindEvents() {
         clearBtn.hidden = true;
         coa_load();
     });
+
+    $coa('coa-filter-status')?.addEventListener('change', () => coa_load());
 }
 
 /* ── Load ──────────────────────────────────────────────────── */
@@ -370,6 +380,7 @@ async function coa_load() {
     try {
         const params = new URLSearchParams({
             search: $coa('coa-filter-search')?.value || '',
+            status: $coa('coa-filter-status')?.value || 'Active',
         });
         const res = await fetch(`${COA_API}/all?${params}`, { credentials: 'same-origin' });
         if (!res.ok) throw new Error('HTTP ' + res.status);
