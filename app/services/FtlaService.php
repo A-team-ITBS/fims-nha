@@ -195,9 +195,10 @@ class FtlaService
 
     /**
      * Normalizes the "multiple debit accounts" payload (Treasury's from_accounts
-     * shape, trimmed to {bank_account_id, amount}): drops rows missing either
-     * field, rounds amount to 2dp. Returns [] for a legacy single-account
-     * transfer that never declared a source account.
+     * shape, trimmed to {bank_account_id, amount, dv_no}): drops rows missing
+     * either bank_account_id or amount, rounds amount to 2dp. dv_no is "1 DV
+     * per account" — each row carries its own, optional. Returns [] for a
+     * legacy single-account transfer that never declared a source account.
      */
     private function normalizeFromAccounts(mixed $raw): array
     {
@@ -207,11 +208,28 @@ class FtlaService
             $bankId = (int) ($r['bank_account_id'] ?? 0);
             $amount = is_numeric($r['amount'] ?? null) ? round((float) $r['amount'], 2) : 0.0;
             if ($bankId > 0 && $amount > 0) {
-                $out[] = ['bank_account_id' => $bankId, 'amount' => $amount];
+                $out[] = ['bank_account_id' => $bankId, 'amount' => $amount, 'dv_no' => trim((string) ($r['dv_no'] ?? ''))];
             }
         }
 
         return $out;
+    }
+
+    /**
+     * dv_numbers (the plain newline-delimited column read by the print
+     * footer's "* DV No.s:" — see FtlaPrintService::model()) is derived from
+     * each debit row's own dv_no once there's more than one account ("1 DV
+     * per account" — the single shared DV picker only applies to a
+     * single-debit transfer, which has nothing to derive from and so keeps
+     * submitting dv_numbers directly).
+     */
+    private function dvNumbersFor(array $fromAccounts, array $body): string
+    {
+        if (!$fromAccounts) {
+            return trim((string) ($body['dv_numbers'] ?? ''));
+        }
+
+        return implode("\n", array_map(static fn (array $r) => $r['dv_no'] ?? '', $fromAccounts));
     }
 
     /**
@@ -540,7 +558,7 @@ class FtlaService
                     {$this->jsonb($fromAccounts, '[]')}, {$this->jsonb($toAccountIds, '[]')}, {$this->decimal($amount)},
                     {$this->bool($body['is_temporary'] ?? false)}, {$this->dateOrNull($body['repayment_due_date'] ?? null)},
                     {$this->str($purpose)}, {$this->strOrNull($body['request_reference'] ?? null)},
-                    {$this->strOrNull($body['dv_numbers'] ?? '')},
+                    {$this->strOrNull($this->dvNumbersFor($fromAccounts, $body))},
                     {$this->jsonb($body['supporting_documents'] ?? null, '[]')},
                     {$this->jsonb($body['signatories'] ?? null, '{}')},
                     {$this->jsonb($body['bank_officers'] ?? null, '{}')},
@@ -620,11 +638,6 @@ class FtlaService
                     $hasFieldEdit = true;
                 }
             }
-            if (array_key_exists('dv_numbers', $body)) {
-                $set[]        = 'dv_numbers = ' . $this->strOrNull($body['dv_numbers']);
-                $hasFieldEdit = true;
-            }
-
             // "Multiple debit accounts" and/or "multiple credit accounts" (paired FROM/TO
             // rows) — same shapes/precedence as create(). to_bank_account_id is handled
             // here too (not in the generic INT_FIELDS loop) since paired mode derives it
@@ -683,6 +696,18 @@ class FtlaService
                     $set[]        = 'from_bank_account_id = ' . $this->intOrNull($body['from_bank_account_id']);
                     $hasFieldEdit = true;
                 }
+            }
+
+            // dv_numbers is derived from the debit rows' own dv_no ("1 DV per
+            // account") whenever there's more than one account to derive it
+            // from — see dvNumbersFor()'s docblock. Must run after the
+            // $paired/$fromAccounts block above, not alongside the other
+            // PLAIN_STRING_FIELDS, since it needs $pairFrom/$fromAccounts
+            // settled first.
+            if ($paired || $fromAccountsProvided || array_key_exists('dv_numbers', $body)) {
+                $dvSource     = $paired ? $pairFrom : ($fromAccountsProvided ? $fromAccounts : []);
+                $set[]        = 'dv_numbers = ' . $this->strOrNull($this->dvNumbersFor($dvSource, $body));
+                $hasFieldEdit = true;
             }
 
             if (array_key_exists('transfer_amount', $body)) {
