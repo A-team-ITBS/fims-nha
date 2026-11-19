@@ -27,6 +27,12 @@ $app->get("/bank-management/lookup/responsibility-centers", function ($request, 
     return $response->withHeader('Content-Type', 'application/json')->write($service->getResponsibilityCenters());
 });
 
+$app->get("/bank-management/accounts-for-region", function ($request, $response) {
+    $p = $request->getQueryParams();
+    $service = new Service\BankManagementService();
+    return $response->withHeader('Content-Type', 'application/json')->write($service->getAccountsForRegion($p['rc_id'] ?? ''));
+});
+
 $app->post("/bank-management/store", function ($request, $response) {
     $data = $request->getParsedBody();
     $service = new Service\BankManagementService();
@@ -55,3 +61,4 @@ $app->post("/bank-management/{id}/tag-account-code", function ($request, $respon
     $service = new Service\BankManagementService();
     return $response->withHeader('Content-Type', 'application/json')->write($service->tagAccountCode($args['id'], $data));
 });
+
