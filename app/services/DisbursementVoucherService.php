@@ -1477,7 +1477,7 @@ class DisbursementVoucherService
      * rather than in prepare(). Optional on the Originating pre-fill (see the check below). Moot when
      * $lines is empty (no JEV being saved at all).
      */
-    private const JEV_CLASSIFICATIONS = ['REGULAR', 'ACCRUAL', 'DEPRECIATION', 'PREPAYMENTS', 'CLOSING'];
+    private const JEV_CLASSIFICATIONS = ['OPENING', 'REGULAR', 'ACCRUAL', 'DEPRECIATION', 'PREPAYMENTS', 'CLOSING'];
 
     /**
      * Shared Dr/Cr line validation — used by both persistJournalEntry() (DV-driven JEVs) and

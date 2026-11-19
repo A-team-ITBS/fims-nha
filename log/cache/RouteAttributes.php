@@ -128,6 +128,7 @@
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone ($p['PHPMaker2024\\FIMS\\Attributes\\Get'] ?? \Symfony\Component\VarExporter\Internal\Registry::p('PHPMaker2024\\FIMS\\Attributes\\Get')),
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Get'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
@@ -221,7 +222,10 @@
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+<<<<<<< HEAD
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+=======
+>>>>>>> 4f28963b8167fffdfe27a5a70f4afe6f98ea610b
     ],
     null,
     [
@@ -869,14 +873,14 @@
                 ],
                 [
                     'GET',
-                ],
-                [
-                    'GET',
-                ],
-                [
-                    'GET',
                     'POST',
                     'OPTIONS',
+                ],
+                [
+                    'GET',
+                ],
+                [
+                    'GET',
                 ],
                 [
                     'GET',
@@ -1363,6 +1367,7 @@
                 '/BalanceSheetPage[/{params:.*}]',
                 '/BankAccountManagementPage[/{params:.*}]',
                 '/BankManagementPage[/{params:.*}]',
+                '/BankReconciliationPage[/{params:.*}]',
                 '/BudgetAllocationForm[/{params:.*}]',
                 '/BudgetProposalReview[/{params:.*}]',
                 '/BudgetProposalReviewPage[/{params:.*}]',
@@ -1587,6 +1592,7 @@
                 'PHPMaker2024\\FIMS\\BalanceSheetPageController:custom',
                 'PHPMaker2024\\FIMS\\BankAccountManagementPageController:custom',
                 'PHPMaker2024\\FIMS\\BankManagementPageController:custom',
+                'PHPMaker2024\\FIMS\\BankReconciliationPageController:custom',
                 'PHPMaker2024\\FIMS\\BudgetAllocationFormController:custom',
                 'PHPMaker2024\\FIMS\\BudgetProposalReviewController:custom',
                 'PHPMaker2024\\FIMS\\BudgetProposalReviewPageController:custom',
@@ -1783,6 +1789,9 @@
                 'PHPMaker2024\\FIMS\\WorkInProcessPageController:custom',
             ],
             'middleware' => [
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
                 [
                     'PHPMaker2024\\FIMS\\PermissionMiddleware',
                 ],
@@ -2444,9 +2453,12 @@
                 [
                     'PHPMaker2024\\FIMS\\PermissionMiddleware',
                 ],
+<<<<<<< HEAD
                 [
                     'PHPMaker2024\\FIMS\\PermissionMiddleware',
                 ],
+=======
+>>>>>>> 4f28963b8167fffdfe27a5a70f4afe6f98ea610b
             ],
             'name' => [
                 'custom.accountable_forms_registry_page',
@@ -2477,6 +2489,7 @@
                 'custom.balance_sheet_page',
                 'custom.bank_account_management_page',
                 'custom.bank_management_page',
+                'custom.bank_reconciliation_page',
                 'custom.budget_allocation_form',
                 'custom.budget_proposal_review',
                 'custom.budget_proposal_review_page',
@@ -3117,10 +3130,17 @@
         $o[215],
         $o[216],
         $o[217],
+<<<<<<< HEAD
         $o[217],
         $o[218],
         $o[219],
         $o[220],
+=======
+        $o[218],
+        $o[219],
+        $o[220],
+        $o[221],
+>>>>>>> 4f28963b8167fffdfe27a5a70f4afe6f98ea610b
     ],
     []
 );

@@ -219,9 +219,12 @@ $USER_LEVEL_PRIVS = [["{FIMS}audit_logs","-2","0"],
     ["{FIMS}income-statement-page.php","-2","0"],
     ["{FIMS}income-statement-page.php","0","0"],
 <<<<<<< HEAD
+<<<<<<< HEAD
     ["{FIMS}statement-of-changes-page.php","-2","0"],
     ["{FIMS}statement-of-changes-page.php","0","0"]];
 =======
+=======
+>>>>>>> 4f28963b8167fffdfe27a5a70f4afe6f98ea610b
     ["{FIMS}opening-balance-page.php","-2","0"],
     ["{FIMS}opening-balance-page.php","0","0"],
     ["{FIMS}work-in-process-page.php","-2","0"],
@@ -230,7 +233,10 @@ $USER_LEVEL_PRIVS = [["{FIMS}audit_logs","-2","0"],
     ["{FIMS}statement-of-changes-page.php","0","0"],
     ["{FIMS}cash-flow-page.php","-2","0"],
     ["{FIMS}cash-flow-page.php","0","0"]];
+<<<<<<< HEAD
 >>>>>>> 88a3c0110e94bc0c00a5633b8c8a1862c2cdf1c4
+=======
+>>>>>>> 4f28963b8167fffdfe27a5a70f4afe6f98ea610b
 
 /**
  * Tables
@@ -342,6 +348,7 @@ $USER_LEVEL_TABLES = [["audit_logs","audit_logs","Audit Logs",false,"{FIMS}",""]
     ["balance-sheet-page.php","balance_sheet_page","Balance Sheet",true,"{FIMS}","BalanceSheetPage"],
     ["income-statement-page.php","income_statement_page","Income Statement",true,"{FIMS}","IncomeStatementPage"],
 <<<<<<< HEAD
+<<<<<<< HEAD
     ["statement-of-changes-page.php","statement_of_changes_page","Statement of Changes in Net Assets/Equity",true,"{FIMS}","StatementOfChangesPage"]];
 =======
     ["opening-balance-page.php","opening_balance_page","Opening Balance",true,"{FIMS}","OpeningBalancePage"],
@@ -349,3 +356,10 @@ $USER_LEVEL_TABLES = [["audit_logs","audit_logs","Audit Logs",false,"{FIMS}",""]
     ["statement-of-changes-page.php","statement_of_changes_page","Changes in Net Assets/Equity",true,"{FIMS}","StatementOfChangesPage"],
     ["cash-flow-page.php","cash_flow_page","Cash Flow",true,"{FIMS}","CashFlowPage"]];
 >>>>>>> 88a3c0110e94bc0c00a5633b8c8a1862c2cdf1c4
+=======
+    ["opening-balance-page.php","opening_balance_page","Opening Balance",true,"{FIMS}","OpeningBalancePage"],
+    ["work-in-process-page.php","work_in_process_page","Work-In-Process",true,"{FIMS}","WorkInProcessPage"],
+    ["statement-of-changes-page.php","statement_of_changes_page","Changes in Net Assets/Equity",true,"{FIMS}","StatementOfChangesPage"],
+    ["cash-flow-page.php","cash_flow_page","Cash Flow",true,"{FIMS}","CashFlowPage"],
+    ["bank-reconciliation-page.php","bank_reconciliation_page","Bank Reconciliation",true,"{FIMS}","BankReconciliationPage"]];
+>>>>>>> 4f28963b8167fffdfe27a5a70f4afe6f98ea610b
