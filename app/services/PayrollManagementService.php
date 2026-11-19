@@ -175,8 +175,9 @@ class PayrollManagementService
     // ═══ Year-to-Date report ══════════════════════════════════════════════════════════════
 
     /**
-     * Per employee: the months paid and the totals of the imported payrolls of a year, up to an optional month.
-     * Filters: year (required), month (as of), department, status (payroll_employees.employment_status), search.
+     * Year-to-Date report: one row per imported month of the fiscal year (no employee details) — employees paid, gross,
+     * deductions, refunds, net, employer share — plus the totals. Filters: year (required); month (optional: that one
+     * month only, else the whole year).
      */
     public function fetchYtd(array $q): array
     {
@@ -188,57 +189,83 @@ class PayrollManagementService
             $where = ["p.fiscal_yr = {$year}"];
             $month = (int) ($q['month'] ?? 0);
             if ($month >= 1 && $month <= 12) {
-                $where[] = "p.payroll_month <= {$month}";
+                $where[] = "p.payroll_month = {$month}";
             }
-            if (trim((string) ($q['department'] ?? '')) !== '') {
-                $where[] = 'e.department = ' . $this->str(trim((string) $q['department']));
-            }
-            if (trim((string) ($q['status'] ?? '')) !== '') {
-                $where[] = 'e.employment_status = ' . $this->str(trim((string) $q['status']));
-            }
-            $search = trim((string) ($q['search'] ?? ''));
-            if ($search !== '') {
-                $s = $this->str('%' . $search . '%');
-                $where[] = "(e.employee_no ILIKE {$s} OR e.full_name ILIKE {$s})";
+            if (($q['detail'] ?? '') === 'employees') {
+                return $this->ytdEmployees($where);   // Export CSV: every employee of the same period
             }
             $rows = App\ExecuteRows(
-                "SELECT e.employee_no, e.last_name, e.first_name, e.middle_name, e.position, e.department, e.employment_status,
-                        e.tin, e.pagibig_no, e.philhealth_no,
-                        COUNT(DISTINCT p.payroll_period_id) AS months,
-                        SUM(r.gross_amount) AS ytd_gross, SUM(r.total_deductions) AS ytd_deductions,
-                        SUM(r.total_refunds) AS ytd_refunds, SUM(r.net_amount) AS ytd_net,
-                        SUM(r.total_employer_share) AS ytd_employer_share
+                "SELECT p.payroll_month, COUNT(DISTINCT r.employee_id) AS employees,
+                        SUM(r.gross_amount) AS gross, SUM(r.total_deductions) AS deductions,
+                        SUM(r.total_refunds) AS refunds, SUM(r.net_amount) AS net,
+                        SUM(r.total_employer_share) AS employer_share
                    FROM {$this->tRecord} r
                    JOIN {$this->tPeriod} p ON p.payroll_period_id = r.payroll_period_id
-                   JOIN {$this->tEmp} e ON e.employee_id = r.employee_id
                   WHERE " . implode(' AND ', $where) . '
-                  GROUP BY e.employee_id
-                  ORDER BY e.last_name, e.first_name, e.employee_no',
+                  GROUP BY p.payroll_month
+                  ORDER BY p.payroll_month',
                 'DB'
             ) ?: [];
-            $sum = fn (string $k) => round(array_sum(array_map('floatval', array_column($rows, $k))), 2);
-            $departments = array_column(App\ExecuteRows(
-                "SELECT DISTINCT e.department FROM {$this->tRecord} r
+            foreach ($rows as &$r) {
+                $r['payroll_month'] = (int) $r['payroll_month'];
+                $r['month_name']    = self::MONTHS[$r['payroll_month']];
+                $r['employees']     = (int) $r['employees'];
+                foreach (['gross', 'deductions', 'refunds', 'net', 'employer_share'] as $k) {
+                    $r[$k] = round((float) $r[$k], 2);
+                }
+            }
+            unset($r);
+            $sum = fn (string $k) => round(array_sum(array_column($rows, $k)), 2);
+            // employees paid in the period (one person counted once across the months)
+            $employees = (int) App\ExecuteScalar(
+                "SELECT COUNT(DISTINCT r.employee_id) FROM {$this->tRecord} r
                    JOIN {$this->tPeriod} p ON p.payroll_period_id = r.payroll_period_id
-                   JOIN {$this->tEmp} e ON e.employee_id = r.employee_id
-                  WHERE p.fiscal_yr = {$year} AND COALESCE(e.department, '') <> '' ORDER BY 1",
+                  WHERE " . implode(' AND ', $where),
                 'DB'
-            ) ?: [], 'department');
+            );
             $months = array_map('intval', array_column(App\ExecuteRows(
                 "SELECT DISTINCT p.payroll_month FROM {$this->tPeriod} p
                   WHERE p.fiscal_yr = {$year} AND EXISTS (SELECT 1 FROM {$this->tRecord} r WHERE r.payroll_period_id = p.payroll_period_id) ORDER BY 1",
                 'DB'
             ) ?: [], 'payroll_month'));
 
-            return ['success' => true, 'data' => $rows, 'departments' => $departments,
+            return ['success' => true, 'data' => $rows,
                 'months_imported' => array_map(fn ($m) => self::MONTHS[$m], $months),
-                'totals' => ['employees' => count($rows), 'ytd_gross' => $sum('ytd_gross'), 'ytd_deductions' => $sum('ytd_deductions'),
-                    'ytd_refunds' => $sum('ytd_refunds'), 'ytd_net' => $sum('ytd_net'), 'ytd_employer_share' => $sum('ytd_employer_share')]];
+                'totals' => ['months' => count($rows), 'employees' => $employees, 'gross' => $sum('gross'), 'deductions' => $sum('deductions'),
+                    'refunds' => $sum('refunds'), 'net' => $sum('net'), 'employer_share' => $sum('employer_share')]];
         } catch (\Throwable $e) {
             App\LogError('PayrollManagementService::fetchYtd ' . $e->getMessage());
 
             return ['success' => false, 'message' => 'Failed to build the Year-to-Date report.'];
         }
+    }
+
+    /**
+     * The Year-to-Date CSV: one row per employee paid in the period (the whole year or the one month) — employee details
+     * and their totals — plus the totals. $where is fetchYtd()'s period filter (alias p).
+     */
+    private function ytdEmployees(array $where): array
+    {
+        $rows = App\ExecuteRows(
+            "SELECT e.employee_no, e.last_name, e.first_name, e.middle_name, e.position, e.department, e.employment_status,
+                    e.tin, e.pagibig_no, e.philhealth_no,
+                    COUNT(DISTINCT p.payroll_period_id) AS months,
+                    SUM(r.gross_amount) AS ytd_gross, SUM(r.total_deductions) AS ytd_deductions,
+                    SUM(r.total_refunds) AS ytd_refunds, SUM(r.net_amount) AS ytd_net,
+                    SUM(r.total_employer_share) AS ytd_employer_share
+               FROM {$this->tRecord} r
+               JOIN {$this->tPeriod} p ON p.payroll_period_id = r.payroll_period_id
+               JOIN {$this->tEmp} e ON e.employee_id = r.employee_id
+              WHERE " . implode(' AND ', $where) . '
+              GROUP BY e.employee_id
+              ORDER BY e.last_name, e.first_name, e.employee_no',
+            'DB'
+        ) ?: [];
+        $sum = fn (string $k) => round(array_sum(array_map('floatval', array_column($rows, $k))), 2);
+
+        return ['success' => true, 'data' => $rows,
+            'totals' => ['employees' => count($rows), 'ytd_gross' => $sum('ytd_gross'), 'ytd_deductions' => $sum('ytd_deductions'),
+                'ytd_refunds' => $sum('ytd_refunds'), 'ytd_net' => $sum('ytd_net'), 'ytd_employer_share' => $sum('ytd_employer_share')]];
     }
 
     // ═══ File template ═══════════════════════════════════════════════════════════════════
@@ -1094,7 +1121,7 @@ class PayrollManagementService
         } elseif ($dvs) {
             $blocked = "The {$label} payroll is used by Disbursement Voucher {$dvs}. Cancel or delete that DV first.";
         } elseif ($rem = (new DeductionRemittanceService())->liveRemittanceAgencies($id)) {
-            $blocked = "The {$label} deductions are already scheduled / remitted (" . implode(', ', $rem) . ') in Deductions & Remittances.';
+            $blocked = "The {$label} deductions already have remittance DVs (" . implode(', ', $rem) . ') in Deductions & Remittances — cancel or delete them first.';
         }
 
         return ['payroll_period_id' => $id, 'record_count' => $count, 'blocked' => $blocked];
