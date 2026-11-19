@@ -1,4 +1,4 @@
-<ew-language date="2026/11/19" id="en-US" author="e.World Technology Limited">
+<ew-language date="2026/11/20" id="en-US" author="e.World Technology Limited">
   <project>
     <phrase id="bodytitle" value="UAC - User Access Control System" />
     <phrase id="footertext" value="&amp;copy;2024 ITBS Corporation. All rights reserved." />
@@ -15,7 +15,7 @@
       <phrase id="menutext" value="Budget Proposal" />
     </menu>
     <menu id="81">
-      <phrase id="menutext" value="Budget Request" />
+      <phrase id="menutext" value="Budget Proposal" />
     </menu>
     <menu id="85">
       <phrase id="menutext" value="Budget Revision" />
