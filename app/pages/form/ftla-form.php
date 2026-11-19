@@ -882,6 +882,7 @@ let ftlm_laaOptions  = [];   // approved/terminal LAA records — Funding Refere
 let ftlm_rfaOptions  = [];   // approved/terminal RFA records — Funding Reference picker
 let ftlm_dvLoaded    = false;
 let ftlm_dvOptions   = [];   // approved DV vouchers — DV Number picker
+let ftlm_usedDvNumbers = []; // DV numbers already tagged to some OTHER FTLA — see ftlm_loadUsedDvNumbers()
 let ftlm_previewTimer = null;
 const FTLM_TOTAL_STEPS = 4;
 const FTLM_API_BASE    = '<?php echo rtrim($_ftlm_api, '/'); ?>';
@@ -1220,13 +1221,24 @@ function ftlm_bankOptsHtml(banks) {
 // "1 DV per account" — same ftlm_dvOptions list (loaded in full by
 // ftlm_loadDvOptions(), status=RELEASED) used for both the single-debit DV
 // select (#ftlm_dv_number) and each multi-debit row's own DV select below.
-function ftlm_dvOptsHtml() {
+// Once a DV is tagged to an FTLA, it's hidden from every OTHER select so
+// the same DV never gets tagged to two different FTLAs — see
+// ftlm_loadUsedDvNumbers()/ftlm_usedDvNumbers below (fetched fresh every
+// ftlm_open(), not cached like ftlm_dvOptions, since "used by someone
+// else" depends on which record — if any — is currently being edited).
+// currentValue is always kept selectable even if it's in the used set —
+// it's this exact select's own already-chosen value (excluded server-side
+// via exclude_id for the record being edited, but kept here too as a
+// belt-and-suspenders guard against it silently disappearing).
+function ftlm_dvOptsHtml(currentValue = '') {
     return '<option value="">— Select DV —</option>' +
-        ftlm_dvOptions.map(r => {
-            const amt = r.net_amount ? ` — ₱${ftlm_fmtPeso(r.net_amount)}` : '';
-            const who = r.claimant_name ? ` (${ftlmEsc(r.claimant_name)})` : '';
-            return `<option value="${ftlmEsc(r.dv_no || '')}">${ftlmEsc(r.dv_no || '')}${who}${amt}</option>`;
-        }).join('');
+        ftlm_dvOptions
+            .filter(r => r.dv_no === currentValue || !ftlm_usedDvNumbers.includes(r.dv_no))
+            .map(r => {
+                const amt = r.net_amount ? ` — ₱${ftlm_fmtPeso(r.net_amount)}` : '';
+                const who = r.claimant_name ? ` (${ftlmEsc(r.claimant_name)})` : '';
+                return `<option value="${ftlmEsc(r.dv_no || '')}">${ftlmEsc(r.dv_no || '')}${who}${amt}</option>`;
+            }).join('');
 }
 
 async function ftlm_loadBankAccounts() {
@@ -1352,7 +1364,7 @@ function ftlm_renderDebitRows() {
             </td>
             <td style="padding:4px 10px;">
                 <select class="form-control" onchange="ftlm_onDebitDvChange(${idx}, this.value)">
-                    ${ftlm_dvOptsHtml().replace(`value="${row.dv_no || ''}"`, `value="${row.dv_no || ''}" selected`)}
+                    ${ftlm_dvOptsHtml(row.dv_no || '').replace(`value="${row.dv_no || ''}"`, `value="${row.dv_no || ''}" selected`)}
                 </select>
             </td>
             <td style="padding:4px 10px;">
@@ -1512,11 +1524,37 @@ async function ftlm_loadDvOptions() {
         const sel = ftlm$('ftlm_dv_number');
         if (sel) {
             const current = sel.value;
-            sel.innerHTML = ftlm_dvOptsHtml();
+            sel.innerHTML = ftlm_dvOptsHtml(current);
             if (current) sel.value = current;
         }
     } catch (e) {
         console.error('[FTLM] DV options:', e.message);
+    }
+}
+
+// Fetched fresh every ftlm_open() (never cached like ftlm_dvOptions) —
+// "used by someone else" depends on which record, if any, is currently
+// being edited (ftlm_currentId excludes that record's own usage
+// server-side — see FtlaService::getUsedDvNumbers()). Also rebuilds the
+// single-debit select's own options every time, since unlike the
+// multi-debit rows (rebuilt fresh on every ftlm_setDebitAccounts() call
+// during fillForm()/ftlm_resetForm() regardless), this select's markup
+// would otherwise stay stale from a previous open — ftlm_loadDvOptions()
+// itself only runs once per page load (ftlm_dvLoaded), so it won't
+// re-apply a newly-fetched used-list on its own.
+async function ftlm_loadUsedDvNumbers() {
+    try {
+        const res = await ftlm_fetch('ftla/used-dv-numbers?exclude_id=' + (ftlm_currentId || 0));
+        ftlm_usedDvNumbers = Array.isArray(res.data) ? res.data : [];
+    } catch (e) {
+        console.error('[FTLM] Used DV numbers:', e.message);
+        ftlm_usedDvNumbers = [];
+    }
+    const sel = ftlm$('ftlm_dv_number');
+    if (sel) {
+        const current = sel.value;
+        sel.innerHTML = ftlm_dvOptsHtml(current);
+        if (current) sel.value = current;
     }
 }
 
@@ -1834,6 +1872,11 @@ async function ftlm_open(id) {
         ftlm_dvLoaded = true;
         await ftlm_loadDvOptions();  // same reasoning — DV select before fillForm
     }
+    // Unlike the above, this one is NOT gated by a "loaded" flag — it has
+    // to refetch every open, since which DVs are "used by someone else"
+    // depends on ftlm_currentId (just set above), not something that can
+    // be cached across different records.
+    await ftlm_loadUsedDvNumbers();
 
     if (id) {
         ftlm$('ftlm-title').textContent = 'Edit FTLA';

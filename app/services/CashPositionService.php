@@ -344,6 +344,60 @@ class CashPositionService
         return $this->num($row['total_debit'] ?? 0);
     }
 
+    // Called by OpeningBalanceService::saveOpeningBalance() right after it
+    // posts a fiscal year's OPENING JEV — refreshes the opening_balance (and
+    // recomputed closing_balance) of every bank account tagged to this GL
+    // account_code's EARLIEST fims.cash_position row for that same fiscal
+    // year. Only that one row per account ever actually originates from an
+    // opening balance — every later day's "opening balance" is just the
+    // prior day's closing_balance (see getComputedBalance()), so there's
+    // nothing to cascade forward. A no-op (not an error) when the account
+    // isn't tagged to this code, or doesn't have a cash_position row for
+    // this fiscal year yet (getComputedBalance() will pick the new value up
+    // whenever that first row for the year does get created).
+    public function refreshEarliestOpeningBalanceForAccountCode(string $accountCode, int $fiscalYr, float $debitTotal): void
+    {
+        $accountCode = trim($accountCode);
+        if ($accountCode === '' || $fiscalYr <= 0) {
+            return;
+        }
+        $accounts = App\ExecuteRowsAssociative(
+            "SELECT bank_account_id FROM {$this->tableBankAccounts} WHERE account_code = " . $this->str($accountCode),
+            'DB'
+        ) ?: [];
+
+        foreach ($accounts as $acct) {
+            $bankAccountId = (int) $acct['bank_account_id'];
+            $earliest = App\ExecuteRow(
+                "SELECT cash_position_id, total_receipts, total_disbursements, adjustment_amount, adjustment_direction
+                 FROM {$this->tableCashPosition}
+                 WHERE bank_account_id = {$bankAccountId} AND EXTRACT(YEAR FROM position_date) = {$fiscalYr}
+                 ORDER BY position_date ASC LIMIT 1",
+                'DB'
+            );
+            if (!$earliest) {
+                continue;
+            }
+
+            // Same formula as computeManualEntryFields() — opening +
+            // receipts - disbursements, signed adjustment.
+            $adjAmount = $this->num($earliest['adjustment_amount'] ?? 0);
+            $adjDirection = strtoupper(trim((string) ($earliest['adjustment_direction'] ?? '')));
+            $signedAdj = $adjDirection === 'DEDUCTION' ? -$adjAmount : $adjAmount;
+            $receipts = $this->num($earliest['total_receipts'] ?? 0);
+            $disbursements = $this->num($earliest['total_disbursements'] ?? 0);
+            $closing = $debitTotal + $receipts - $disbursements + $signedAdj;
+
+            App\Execute(
+                "UPDATE {$this->tableCashPosition} SET
+                    opening_balance = " . $this->num($debitTotal) . ",
+                    closing_balance = " . $this->num($closing) . "
+                 WHERE cash_position_id = " . (int) $earliest['cash_position_id'],
+                'DB'
+            );
+        }
+    }
+
     // This bank account's tagged GL account's balance as of the day before
     // $positionDate (every posting strictly before it) — same normal-
     // balance sign convention as GeneralLedgerService::fetchGeneralLedger()

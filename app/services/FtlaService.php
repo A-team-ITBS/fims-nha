@@ -348,6 +348,36 @@ class FtlaService
         }
     }
 
+    // Every DV number already tagged to some OTHER existing FTLA (any
+    // status — once a DV is referenced anywhere, it shouldn't be offered
+    // again) — the Register/Edit form's DV picker (ftlm_loadUsedDvNumbers()
+    // in ftla-form.php) hides these so the same DV never gets tagged to two
+    // FTLAs. dv_numbers is newline-delimited and, for a multi-debit
+    // transfer, positionally derived from each debit row's own dv_no (see
+    // dvNumbersFor()) — this flattens every row's value from every record
+    // into one set. $excludeId lets editing a record still see its OWN
+    // already-tagged DV(s) (not "used by someone else").
+    public function getUsedDvNumbers(int $excludeId = 0): array
+    {
+        $where = "dv_numbers IS NOT NULL AND dv_numbers <> ''";
+        if ($excludeId > 0) {
+            $where .= " AND fund_transfer_id <> {$excludeId}";
+        }
+        $rows = App\ExecuteRowsAssociative("SELECT dv_numbers FROM {$this->table} WHERE {$where}", 'DB') ?: [];
+
+        $used = [];
+        foreach ($rows as $row) {
+            foreach (preg_split('/\R/', (string) $row['dv_numbers']) as $num) {
+                $num = trim($num);
+                if ($num !== '') {
+                    $used[$num] = true;
+                }
+            }
+        }
+
+        return array_keys($used);
+    }
+
     public function getRecord(int $id): array
     {
         $row = App\ExecuteRow(
