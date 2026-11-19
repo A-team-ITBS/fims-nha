@@ -169,6 +169,7 @@ return [
     "work_in_process_page" => \DI\create(WorkInProcessPage::class),
     "statement_of_changes_page" => \DI\create(StatementOfChangesPage::class),
     "cash_flow_page" => \DI\create(CashFlowPage::class),
+    "closing_balance_page" => \DI\create(ClosingBalancePage::class),
 
     // User table
     "usertable" => \DI\get("users"),
