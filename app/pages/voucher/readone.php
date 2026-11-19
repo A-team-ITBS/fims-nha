@@ -365,6 +365,9 @@ function vr_attachmentsSection(dv) {
 // Mirrors DisbursementVoucherService::authorizeTransition() — hiding a button is cosmetic only,
 // the API re-checks and is the real gate.
 function vr_mayTransition(dv, target) {
+    // Whoever already approved/forwarded an earlier step of this voucher can't reject it (same rule as the server).
+    if (target === 'REJECTED' && VR_CURRENT_USER_ID > 0
+        && [dv.fmd_approved_by, dv.accounting_processed_by, dv.division_reviewed_by].some(u => Number(u) === VR_CURRENT_USER_ID)) return false;
     if (VR_IS_SYSADMIN) return true;
     const holderRc = VR_STAGE_HOLDER_RC[dv.status] || null; // RC currently holding the voucher (null = DRAFT)
     if (target === 'CANCELLED') {
