@@ -185,7 +185,7 @@ class ChartOfAccountsService
             // Generate account_id (sequential) if not provided
             if (!array_key_exists('account_id', $fields) || trim((string) ($fields['account_id'] ?? '')) === '') {
                 $maxId = (int) App\ExecuteScalar(
-                    "SELECT COALESCE(MAX(CAST(account_id AS INTEGER)), 0) FROM {$this->table}",
+                    "SELECT COALESCE(MAX(CAST(account_id AS INTEGER)), 0) FROM {$this->table} WHERE account_id ~ '^[0-9]+$'",
                     'DB'
                 );
                 $fields['account_id'] = (string) ($maxId + 1);
