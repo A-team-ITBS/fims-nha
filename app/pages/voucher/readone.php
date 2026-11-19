@@ -49,18 +49,33 @@ $_vr_rcId          = $_vr_isSysAdmin ? null : ($_vr_userRow['rc_id'] ?? null);
 #vr-root .vr-rejection { padding: 10px 14px; background: var(--afims-danger-soft, #FAE1E3); border-left: 4px solid var(--afims-danger, #DC3545); border-radius: 8px; font-size: 13px; color: var(--afims-danger-text, #8F222D); margin-bottom: 14px; }
 #vr-root .vje-remove { background: none; border: none; cursor: pointer; color: var(--afims-danger, #DC3545); padding: 4px 6px; border-radius: 5px; font-size: 16px; line-height: 1; }
 #vr-root .vje-remove:hover { background: var(--afims-danger-soft, #FAE1E3); }
+/* Accounting's editable Deduction / ATC rows — same blocks and "+ TYPE" pills as the entry form (form.php). */
+#vr-root .vje-row { position: relative; margin-bottom: 10px; }
+#vr-root .vje-row .vje-remove { position: absolute; top: 0; right: 0; }
+#vr-root .vje-grid2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 6px; }
+#vr-root .vje-grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 6px; }
+#vr-root .vje-fg label { display: block; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--afims-text-muted, #62657E); margin-bottom: 3px; }
+#vr-root .vje-fg input, #vr-root .vje-fg select { width: 100%; font-size: 13px; padding: 8px 12px; border: 1px solid var(--afims-border, #E4ECF2); border-radius: 8px; box-sizing: border-box; font-family: inherit; background: var(--afims-surface, #fff); color: var(--afims-text, #1e293b); }
+#vr-root .vje-fg input[readonly] { background: var(--afims-surface-subtle, #F4F7FA); cursor: default; pointer-events: none; user-select: none; }
+#vr-root .vje-fg input[readonly]:focus { outline: none; box-shadow: none; border-color: var(--afims-border, #E4ECF2); }
+#vr-root .vr-ded-types { display: flex; flex-wrap: wrap; gap: 8px; }
+#vr-root .vr-ded-type-btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 20px; border: 1px solid var(--afims-border, #E4ECF2); background: var(--afims-surface, #FFFFFF);
+    color: var(--afims-heading-fill, #000E3E); font-size: 12px; font-weight: 600; letter-spacing: .02em; cursor: pointer; transition: background .15s, border-color .15s; }
+#vr-root .vr-ded-type-btn:hover { background: var(--afims-surface-subtle, #F4F7FA); border-color: var(--afims-heading-fill, #000E3E); }
 #vr-root .vr-ledger input, #vr-root .vr-ledger select { width: 100%; font-size: 12.5px; padding: 6px 8px; border: 1px solid var(--afims-border, #E4ECF2); border-radius: 6px; box-sizing: border-box; font-family: inherit; }
 #vr-root .vje-section-hdr { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
 #vr-root .vje-badge { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; padding: 3px 9px; border-radius: 999px;
     background: var(--afims-success-soft, #DBF2E5); color: var(--afims-success-hover, #0C7539); }
 #vr-root .vje-amt-badge { font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 8px; background: var(--afims-surface-subtle, #F4F7FA); color: var(--afims-text, #1e293b); }
-#vr-root .vje-tax-box { padding: 12px 16px; border-radius: 10px; border: 1px solid var(--afims-warning-soft, #FDF0D5); background: var(--afims-warning-soft, #FEF9EC); }
-#vr-root .vje-tax-box dl { display: grid; grid-template-columns: 1fr auto; gap: 6px 0; margin: 0; }
-#vr-root .vje-tax-box dt { font-size: 12.5px; color: var(--afims-warning-text, #8A6400); }
-#vr-root .vje-tax-box dd { margin: 0; text-align: right; font-family: "IBM Plex Mono", monospace; font-size: 12.5px; color: var(--afims-warning-text, #8A6400); }
-#vr-root .vje-tax-box dl.vje-tax-total dt, #vr-root .vje-tax-box dl.vje-tax-total dd { font-weight: 700; font-size: 13.5px; }
 #vr-root .vje-auto-tag { display: inline-block; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
     padding: 1px 6px; border-radius: 999px; background: var(--afims-primary-soft, #E6EBF6); color: var(--afims-primary-text, #0035A9); margin-left: 4px; }
+/* Section B mirrors the entry form: RFA Breakdown, then plain deduction / ATC rows (no borders), all in one box. */
+#vr-root .vr-ded-section { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--afims-border, #E4ECF2); }
+#vr-root .vr-card > .vr-ded-section:first-child { margin-top: 0; padding-top: 0; border-top: none; }
+#vr-root .vr-ded-section + .vr-ded-section { margin-top: 10px; padding-top: 0; border-top: none; } /* Deductions and ATC read as one list */
+#vr-root .vr-ded-row { margin-bottom: 10px; }
+#vr-root .vr-ded-row:last-child { margin-bottom: 0; }
+#vr-root .vr-ded-label { font-size: 13px; font-weight: 600; color: var(--afims-heading-fill, #000E3E); margin-bottom: 4px; }
 #vr-root .vr-rfa-list { display: flex; flex-direction: column; gap: 10px; }
 #vr-root .vr-rfa-item { border: 1px solid var(--afims-border, #E4ECF2); border-radius: 10px; padding: 10px 12px; }
 #vr-root .vr-att-list { display: flex; flex-direction: column; gap: 6px; }
@@ -209,31 +224,15 @@ function vr_render(dv) {
     const rejection = dv.status === 'REJECTED' && dv.rejection_reason
         ? `<div class="vr-rejection"><strong>Rejected:</strong> ${vr_esc(dv.rejection_reason)}</div>` : '';
 
-    // Read-only fallback for every stage OTHER than FOR_ACCOUNTING — while FOR_ACCOUNTING,
-    // vje_deductionCard() (part of vje_section()) renders the SAME data as an editable grid instead
-    // (Accounting can now add/change/remove Deduction rows, not just Originating at creation).
-    const deductionSection = (dv.deductions ?? []).length ? `
-        <div class="vr-card">
-            <p class="vr-card-title">Deduction</p>
-            <table class="vr-ledger">
-                <thead><tr>
-                    <th style="text-align:left;">Type</th>
-                    <th style="text-align:right;">Rate</th>
-                    <th style="text-align:right;">Gross</th>
-                    <th style="text-align:right;">Amount</th>
-                </tr></thead>
-                ${dv.deductions.map(d => `<tr>
-                    <td class="vr-l-label">${vr_esc(d.name)}</td>
-                    <td style="text-align:right;">${d.rate != null ? d.rate + '%' : '—'}</td>
-                    <td style="text-align:right;">${vr_peso(d.gross_amount)}</td>
-                    <td class="vr-l-val">${vr_peso(d.deduction_amount)}</td>
-                </tr>`).join('')}
-                <tr class="vr-l-total"><td colspan="3" style="text-align:right;">Total Deductions</td><td class="vr-l-val">${vr_peso(dv.deductions.reduce((s, d) => s + (Number(d.deduction_amount) || 0), 0))}</td></tr>
-            </table>
-        </div>` : '';
-
+    // Deductions / ATC are shown read-only (vr_dedAtcRowsHtml(), same look as the entry form) for every stage OTHER
+    // than FOR_ACCOUNTING — while FOR_ACCOUNTING, vje_dedAtcEditor() renders the SAME data as editable
+    // grids instead (Accounting can add/change/remove rows through the same pills as the entry form, not just Originating at creation).
     const totalDeductions = (dv.deductions ?? []).reduce((s, d) => s + (Number(d.deduction_amount) || 0), 0);
     const attachmentsHtml = vr_attachmentsSection(dv);
+    const breakdownHtml = vr_rfaBreakdownHtml(dv);
+    // Deductions + ATC live in the same box as the RFA Breakdown (like the entry form): editable grids for Accounting,
+    // plain read-only rows otherwise. Each one is its own .vr-ded-section block.
+    const dedAtcHtml = vje_visible(dv) ? vje_dedAtcEditor(dv) : vr_dedAtcRowsHtml(dv);
 
     // Section D is Accounting's. While Originating/FMD hold the voucher it isn't shown at all (any entries
     // a payroll/remittance DV was pre-filled with stay stored, just not displayed until Accounting has it).
@@ -285,49 +284,28 @@ function vr_render(dv) {
             </table>
         </div>
 
-        <!-- ══ B. AMOUNT AND DEDUCTIONS — Gross Amount, Deduction, ATC (Withholding Tax),
-             Budget Reference, and the Gross/Less Deductions/Net Amount Payable summary. ══ -->
+        <!-- ══ B. AMOUNT AND DEDUCTIONS — laid out like the entry form (form.php): the RFA Breakdown with the
+             deduction / ATC rows under it in one box, then the Gross / Less / Net summary. ══ -->
         <div class="vr-doc-section">
             <p class="vr-doc-section-hdr">B. Amount and Deductions</p>
-            <div class="vr-card">
-                <p class="vr-card-title">Amount</p>
-                <dl class="vr-dl">
-                    <div><dt>Gross Amount</dt><dd>${vr_peso(dv.gross_amount)}</dd></div>
-                    <div><dt>Net Amount</dt><dd>${vr_peso(dv.net_amount)}</dd></div>
-                </dl>
-            </div>
-            ${vje_visible(dv) ? '' : deductionSection}
-            ${vje_visible(dv) ? vje_deductionCard(dv) + vje_atcCard(dv) : ''}
-            <div class="vr-card">
-                <p class="vr-card-title">Budget Reference</p>
-                <dl class="vr-dl vr-dl3" style="margin-bottom:12px;">
-                    <div><dt>Dept. / Project</dt><dd>${vr_esc(dv.dept_project) || '—'}</dd></div>
-                    <div><dt>Fund Source</dt><dd>${vr_esc(dv.fund_source) || '—'}</dd></div>
-                    <div><dt>Account Code</dt><dd>${vr_accountCodeDisplay(dv)}</dd></div>
-                </dl>
-                <table class="vr-ledger">
-                    <tr><td class="vr-l-label">Budget</td><td class="vr-l-val">${vr_peso(dv.budget_amount)}</td></tr>
-                    <tr><td class="vr-l-label">Obligation</td><td class="vr-l-val">${vr_peso(dv.obligation_amount)}</td></tr>
-                    <tr><td class="vr-l-label">Payments${(Number(dv.payments_prior_amount) || 0) > 0 ? ' <small>(prior draws on these RFAs)</small>' : ''}</td><td class="vr-l-val">${vr_peso(dv.payments_prior_amount)}</td></tr>
-                    <tr><td class="vr-l-label">This Request</td><td class="vr-l-val">${vr_peso(dv.net_amount)}</td></tr>
-                    <tr class="vr-l-total"><td class="vr-l-label">Total Payments</td><td class="vr-l-val">${vr_peso((Number(dv.payments_prior_amount) || 0) + (Number(dv.net_amount) || 0))}</td></tr>
-                    <tr><td class="vr-l-label">Balance</td><td class="vr-l-val">${vr_peso(dv.balance_amount)}</td></tr>
-                </table>
-                ${dv.remarks ? `<p class="vr-particulars" style="margin-top:12px;"><strong>Remarks:</strong> ${vr_esc(dv.remarks)}</p>` : ''}
-            </div>
+            ${breakdownHtml || dedAtcHtml ? `<div class="vr-card">
+                ${breakdownHtml}
+                ${dedAtcHtml}
+            </div>` : ''}
             <table class="vr-doc-summary-table">
                 <tr><td>Gross Amount</td><td>${vr_peso(dv.gross_amount)}</td></tr>
                 <tr><td>Less: Total Deductions</td><td>${vr_peso(totalDeductions)}</td></tr>
+                <tr><td>Less: Withholding Tax (ATC)</td><td>${vr_peso((dv.atc_lines ?? []).reduce((s, a) => s + (Number(a.withholding_tax) || 0), 0))}</td></tr>
                 <tr class="vr-doc-summary-final"><td>Net Amount Payable</td><td>${vr_peso(dv.net_amount)}</td></tr>
             </table>
+            ${dv.remarks ? `<p class="vr-particulars" style="margin:14px 0 0;"><strong>Remarks:</strong> ${vr_esc(dv.remarks)}</p>` : ''}
         </div>
 
         <!-- ══ C. SUPPORTING DOCUMENTS ══ -->
-        ${attachmentsHtml ? `
         <div class="vr-doc-section">
             <p class="vr-doc-section-hdr">C. Supporting Documents</p>
-            ${attachmentsHtml}
-        </div>` : ''}
+            ${attachmentsHtml || '<p class="vr-hint" style="margin:0;">None — no supporting documents attached.</p>'}
+        </div>
 
         <!-- ══ D. PRO FORMA JOURNAL ENTRY — Accounting's section: the Accounting Entries grid (editable
              while Accounting is actively preparing it, read-only/grouped afterwards), plus the Payment
@@ -395,7 +373,15 @@ function vr_mayTransition(dv, target) {
         return isCreator || isHolder;
     }
     if (holderRc === null) return true; // DRAFT -> FOR_FMD_REVIEW: Originating submits, open to anyone.
-    return VR_RC_ID === holderRc;
+    if (VR_RC_ID !== holderRc) return false;
+    // Separation of duties inside Accounting — whoever already acted on an earlier Accounting step of this
+    // voucher can't take the next one (mirrors DisbursementVoucherService::authorizeTransition()).
+    const me = VR_CURRENT_USER_ID;
+    if (me > 0) {
+        if (target === 'FOR_DEPARTMENT_MANAGER' && Number(dv.accounting_processed_by) === me) return false;
+        if (target === 'FOR_TREASURY' && (Number(dv.accounting_processed_by) === me || Number(dv.division_reviewed_by) === me)) return false;
+    }
+    return true;
 }
 
 function vr_renderActions(dv) {
@@ -415,11 +401,10 @@ function vr_renderActions(dv) {
 
 /* ══════════════════════════════════════════════════════════════
    JOURNAL ENTRY (Accounting stage)   prefix: vje_
-   Four sub-sections, all saved together via one POST .../journal-entry:
+   Three sub-sections, all saved together via one POST .../journal-entry:
      - Deduction — 0+ rows, fims.disbursement_voucher_deductions (editable here; was a static
        read-only table set only by Originating until Accounting could edit it too)
      - Withholding Tax Classification (ATC) — 0+ rows, fims.disbursement_voucher_atc_lines
-     - Tax Computation — derived display only, nothing to save
      - Accounting Entries (DV) — the actual debit/credit JEV, with optional SL Code/SL Detail
 ═══════════════════════════════════════════════════════════════ */
 
@@ -442,7 +427,7 @@ function vje_visible(dv) {
 }
 
 function vje_section(dv) {
-    return vje_deductionCard(dv) + vje_atcCard(dv) + vje_entriesCard(dv);
+    return vje_dedAtcEditor(dv) + vje_entriesCard(dv);
 }
 
 /**
@@ -478,40 +463,33 @@ function vr_codeChip(code) {
     is no longer a separate sl_masters table, see "03 - alter_table/37") shows that child account's
     own code labeled "SL Code:" — the group header above already shows its PARENT control account. */
 function vje_groupSubLines(group, dv) {
-    if (dv?.account_code && group.account_code === dv.account_code) {
-        const name = dv.claimant_name || dv.vendor_name;
-        if (name) {
-            return `<tr style="border-bottom:1px solid var(--afims-surface-subtle, #F4F7FA);">
-                <td style="padding:2px 4px 10px;"></td>
-                <td colspan="4" style="padding:2px 4px 10px 22px;font-size:13px;color:#D32F2F;">${vr_esc(name)}</td>
-            </tr>`;
+    // One sub-row per line in the group, each with its OWN Debit / Credit (the group's header row carries the total),
+    // so every sub-account / withholding-tax breakdown is visible with its amount, not just the account's total.
+    const amt = (v, show) => `<td style="padding:2px 4px 10px;text-align:right;font-size:12.5px;color:var(--afims-text-muted, #62657E);font-family:'IBM Plex Mono',monospace;width:130px;">${show ? vr_peso(v) : ''}</td>`;
+    return group.items.map(it => {
+        const l      = it.line;
+        const debit  = Number(l.debit)  || 0;
+        const credit = Number(l.credit) || 0;
+        let label;
+        if (it.isChild) {
+            label = `<span style="font-size:12px;color:var(--afims-text-muted, #62657E);"><span style="margin-right:4px;">SL Code:</span>${vr_codeChip(l.account_code)}<span style="margin-left:6px;">${vr_esc(l.account_title || '—')}</span></span>`;
+        } else if (dv?.account_code && group.account_code === dv.account_code && debit > 0 && (dv.claimant_name || dv.vendor_name)) {
+            // General Form No. 1 convention: the claimant/vendor name prints in red (the filled-in variable).
+            label = `<span style="font-size:13px;color:#D32F2F;">${vr_esc(dv.claimant_name || dv.vendor_name)}</span>`;
+        } else {
+            const atc = (dv?.atc_lines ?? []).find(a => a.account_code === group.account_code && Math.abs((Number(a.withholding_tax) || 0) - credit) < 0.01);
+            label = atc
+                ? `<span style="font-size:13px;color:var(--afims-text, #1e293b);"><span style="display:inline-block;width:40px;">${vr_esc(atc.rate)}%</span>${vr_esc(atc.atc_description || atc.atc_code)}</span>`
+                : (l.description ? `<span style="font-size:13px;color:var(--afims-text-muted, #62657E);">${vr_esc(l.description)}</span>` : '');
         }
-    }
-    const atcMatches = (dv?.atc_lines ?? []).filter(a => a.account_code === group.account_code);
-    if (atcMatches.length) {
-        return atcMatches.map(a => `<tr style="border-bottom:1px solid var(--afims-surface-subtle, #F4F7FA);">
+        if (!label) return '';
+        return `<tr style="border-bottom:1px solid var(--afims-surface-subtle, #F4F7FA);">
                 <td style="padding:2px 4px 10px;"></td>
-                <td colspan="4" style="padding:2px 4px 10px 22px;font-size:13px;color:var(--afims-text, #1e293b);">
-                    <span style="display:inline-block;width:40px;">${vr_esc(a.rate)}%</span>${vr_esc(a.atc_description || a.atc_code)}
-                </td>
-            </tr>`).join('');
-    }
-    const childLines = group.items.filter(it => it.isChild);
-    if (childLines.length) {
-        return childLines.map(it => `<tr style="border-bottom:1px solid var(--afims-surface-subtle, #F4F7FA);">
-                <td style="padding:2px 4px 10px;"></td>
-                <td colspan="4" style="padding:2px 4px 10px 22px;font-size:12px;color:var(--afims-text-muted, #62657E);">
-                    <span style="margin-right:4px;">SL Code:</span>${vr_codeChip(it.line.account_code)}
-                    <span style="margin-left:6px;">${vr_esc(it.line.account_title || '—')}</span>
-                </td>
-            </tr>`).join('');
-    }
-    return group.items.filter(it => it.line.description).map(it => `<tr style="border-bottom:1px solid var(--afims-surface-subtle, #F4F7FA);">
-                <td style="padding:2px 4px 10px;"></td>
-                <td colspan="4" style="padding:2px 4px 10px 22px;font-size:13px;color:var(--afims-text-muted, #62657E);">${vr_esc(it.line.description)}</td>
-            </tr>`).join('');
+                <td colspan="2" style="padding:2px 4px 10px 22px;">${label}</td>
+                ${amt(debit, debit > 0)}${amt(credit, credit > 0)}
+            </tr>`;
+    }).join('');
 }
-
 /** GL-grouped, read-only rendering of a posted JEV's lines — shared by the SETUP JEV's read-only
     presentation (vje_groupedEntriesCard()) and each PAYMENT JEV's own card (vje_paymentEntriesCard()).
     A line posted directly to a chart_of_accounts child row (an SL/vendor sub-account) groups under
@@ -638,78 +616,14 @@ function vje_paymentEntriesCard(dv) {
 /** Editable at the Accounting stage — was a static read-only table set only by Originating at
     creation; Accounting can now add/change/remove rows here too, same as ATC below. Feeds
     vje_syncAutoLines()'s Cr lines the same way a loaded one from creation always did. */
-function vje_deductionCard(dv) {
+function vje_dedAtcEditor(dv) {
+    // Same as the entry form: deduction and ATC rows share one list (added in the order clicked, each new one below the
+    // previous), with one "+ TYPE" pill per deduction type and a "+ ATC ROW" pill under it. The pills are filled in by
+    // vje_renderDedTypeButtons() once the deduction types have loaded (vje_init()).
     return `
-        <div class="vr-card">
-            <div class="vje-section-hdr">
-                <p class="vr-card-title" style="margin:0;">Deduction</p>
-                <span class="vje-badge">Accounting Entry</span>
-            </div>
-            <p class="vr-hint" style="margin:0 0 8px;">Non-tax amounts withheld from gross (e.g. contractor retention) — separate from ATC withholding tax below.</p>
-            <div style="overflow-x:auto;">
-                <table class="vr-ledger" style="min-width:600px;">
-                    <thead><tr>
-                        <th style="text-align:left;">Type</th>
-                        <th style="text-align:left;width:180px;">Posting Account</th>
-                        <th style="text-align:right;width:85px;">Rate (%)</th>
-                        <th style="text-align:right;width:120px;">Gross (₱)</th>
-                        <th style="text-align:right;width:130px;">Amount (₱)</th>
-                        <th style="width:30px;"></th>
-                    </tr></thead>
-                    <tbody id="vje-ded-tbody"></tbody>
-                    <tfoot><tr class="vr-l-total">
-                        <td colspan="4" style="text-align:right;">Total Deductions</td>
-                        <td class="vr-l-val" id="vje-ded-total">₱ 0.00</td>
-                        <td></td>
-                    </tr></tfoot>
-                </table>
-            </div>
-            <button type="button" class="nha-btn nha-btn-ghost" style="margin-top:8px;" onclick="vje_addDeductionLine()">+ Add Deduction</button>
-        </div>`;
-}
-
-function vje_atcCard(dv) {
-    return `
-        <div class="vr-card">
-            <div class="vje-section-hdr">
-                <p class="vr-card-title" style="margin:0;">ATC</p>
-                <span class="vje-badge">Accounting Entry</span>
-            </div>
-            <p class="vr-hint" style="margin:0 0 8px;">Only add ATC rows if withholding tax applies to this transaction.</p>
-            <div style="overflow-x:auto;">
-                <table class="vr-ledger" style="min-width:760px;">
-                    <thead><tr>
-                        <th style="text-align:left;">ATC Code — Description</th>
-                        <th style="text-align:right;width:85px;">Rate (%)</th>
-                        <th style="text-align:right;width:130px;">Tax Base (₱)</th>
-                        <th style="text-align:right;width:130px;">Withholding Tax (₱)</th>
-                        <th style="text-align:left;width:170px;">Chargeability</th>
-                        <th style="width:30px;"></th>
-                    </tr></thead>
-                    <tbody id="vje-atc-tbody"></tbody>
-                    <tfoot><tr class="vr-l-total">
-                        <td colspan="3" style="text-align:right;">Total Withholding Tax</td>
-                        <td class="vr-l-val" id="vje-atc-total">₱ 0.00</td>
-                        <td colspan="2"></td>
-                    </tr></tfoot>
-                </table>
-            </div>
-            <button type="button" class="nha-btn nha-btn-ghost" style="margin-top:8px;" onclick="vje_addAtcLine()">+ Add ATC Row</button>
-
-            <div class="vje-tax-box" style="margin-top:18px;">
-                <div class="vje-section-hdr" style="margin-bottom:8px;">
-                    <p style="margin:0;font-weight:700;font-size:13px;">Tax Computation</p>
-                    <span class="vje-badge">Accounting Entry</span>
-                </div>
-                <dl>
-                    <dt>Gross Amount</dt><dd id="vje-tax-gross">₱ 0.00</dd>
-                    <dt>Tax Base</dt><dd id="vje-tax-base">₱ 0.00</dd>
-                    <dt>Withholding Tax</dt><dd id="vje-tax-wh">₱ 0.00</dd>
-                </dl>
-                <dl class="vje-tax-total" style="margin-top:6px;border-top:1px solid var(--afims-warning-soft,#FDF0D5);padding-top:6px;">
-                    <dt>Net Amount</dt><dd id="vje-tax-net">₱ 0.00</dd>
-                </dl>
-            </div>
+        <div class="vr-ded-section">
+            <div id="vje-ded-list"></div>
+            <div class="vr-ded-types" id="vje-ded-types"></div>
         </div>`;
 }
 
@@ -798,13 +712,14 @@ async function vje_init(dv) {
             VJE_BOOKS.map(b => `<option value="${b.book_id}">${vr_esc(b.name)}</option>`).join('');
         vjeBookSel.value = dv.jev?.book_id || '';
     }
+    vje_renderDedTypeButtons();
     vje_dedSeq = 0;
-    $vr('vje-ded-tbody').innerHTML = '';
+    vje_dedRows().forEach(r => r.remove());
     (dv.deductions ?? []).forEach(d => vje_addDeductionLine(d));
     vje_recalcDeductions();
 
     vje_atcSeq = 0;
-    $vr('vje-atc-tbody').innerHTML = '';
+    vje_atcRows().forEach(r => r.remove());
     (dv.atc_lines ?? []).forEach(a => vje_addAtcLine(a));
     vje_recalcAtc();
 
@@ -831,7 +746,7 @@ async function vje_init(dv) {
                 drUsed = true;
                 return;
             }
-            const dedMatch = [...$vr('vje-ded-tbody').querySelectorAll('tr')].find(dtr => {
+            const dedMatch = [...vje_dedRows()].find(dtr => {
                 const idx = dtr.id.replace('vje-ded-row-', '');
                 if (usedDed.has(idx)) return false;
                 const type = VJE_DED.find(t => String(t.deduction_type_id) === dtr.querySelector('.vje-ded-type').value);
@@ -845,7 +760,7 @@ async function vje_init(dv) {
                 tr.dataset.autoSource = `ded:${idx}`;
                 return;
             }
-            const atcMatch = [...$vr('vje-atc-tbody').querySelectorAll('tr')].find(atr => {
+            const atcMatch = [...vje_atcRows()].find(atr => {
                 const idx = atr.id.replace('vje-atc-row-', '');
                 if (usedAtc.has(idx)) return false;
                 const def  = VJE_ATC.find(c => c.atc_code === atr.querySelector('.vje-atc-code').value);
@@ -880,49 +795,51 @@ function vje_liveGrossLessDeductions() {
     return Math.max(0, (Number(vje_dv?.gross_amount) || 0) - vje_totalDeductions());
 }
 
-/* ── Deduction (editable — was Originating-only at creation; Accounting can now add/change/
-   remove rows here too) ──────────────────────────────────────── */
-function vje_addDeductionLine(d = null) {
-    const idx = ++vje_dedSeq;
-    const tr = document.createElement('tr');
-    tr.id = `vje-ded-row-${idx}`;
-    tr.innerHTML = `
-        <td><select class="vje-ded-type">
-            <option value="">— Select type —</option>
-            ${VJE_DED.map(t => `<option value="${vr_esc(t.deduction_type_id)}">${vr_esc(t.name)}</option>`).join('')}
-        </select></td>
-        <td><input type="text" class="vje-ded-acct" placeholder="Search GL account code (UACS)…" style="display:none;"></td>
-        <td><input type="number" class="vje-ded-rate" min="0" step="0.01" placeholder="e.g. 10"></td>
-        <td><input type="text" class="vje-ded-gross" readonly></td>
-        <td><input type="number" class="vje-ded-amount" min="0" step="0.01" placeholder="Auto-computed"></td>
-        <td><button type="button" class="vje-remove" title="Remove" onclick="vje_removeDeductionLine(${idx})">&times;</button></td>`;
-    tr.querySelector('.vje-ded-type').value = d?.deduction_type_id != null ? String(d.deduction_type_id) : '';
-    tr.querySelector('.vje-ded-acct').value = d?.account_code ?? '';
-    tr.querySelector('.vje-ded-rate').value = d?.rate ?? '';
-    tr.querySelector('.vje-ded-amount').value = d ? Number(d.deduction_amount || 0).toFixed(2) : '';
-    nhaSearchableSelect(tr.querySelector('.vje-ded-acct'), VJE_COA.map(a => ({ value: a.account_code, label: a.account_title })));
-    tr.querySelector('.vje-ded-type').addEventListener('change', () => { vje_syncDeductionAcctCell(idx); vje_recalcDeductionLine(idx); });
-    tr.querySelector('.vje-ded-acct').addEventListener('input', () => vje_recalcDeductionLine(idx));
-    tr.querySelector('.vje-ded-rate').addEventListener('input', () => vje_recalcDeductionLine(idx));
-    tr.querySelector('.vje-ded-amount').addEventListener('input', () => vje_recalcDeductionLine(idx));
-    $vr('vje-ded-tbody').appendChild(tr);
-    vje_syncDeductionAcctCell(idx);
-    vje_recalcDeductionLine(idx);
+/* ── Deduction + ATC rows (editable — Accounting can add/change/remove them here too, not just Originating at creation).
+   Same blocks as the entry form: one list (#vje-ded-list), each new row added below the previous one. ───────────── */
+function vje_dedRows() { return $vr('vje-ded-list').querySelectorAll('.vje-ded-row'); }
+function vje_atcRows() { return $vr('vje-ded-list').querySelectorAll('.vje-atc-row'); }
+
+/* One "+ TYPE" pill per deduction type (payroll-only types only on a payroll DV) plus "+ ATC ROW" — same as the form's. */
+function vje_renderDedTypeButtons() {
+    const box = $vr('vje-ded-types');
+    if (!box) return;
+    const types = VJE_DED.filter(t => vje_dv?.payroll || !String(t.code || '').startsWith('PAYROLL_'));
+    box.innerHTML = types.map(t => `<button type="button" class="vr-ded-type-btn" onclick="vje_addDeductionLine({deduction_type_id:'${vr_esc(t.deduction_type_id)}'})">+ ${vr_esc(t.name).toUpperCase()}</button>`).join('')
+        + '<button type="button" class="vr-ded-type-btn" onclick="vje_addAtcLine()">+ ATC ROW</button>';
 }
 
-/* Shows the Posting Account picker only when the selected deduction type has no default
-   posting account (deduction_types.account_code IS NULL — e.g. "OTHER"); hides (and clears) it
-   otherwise, since the type's own default always wins — see fetchDeductions()'s COALESCE. */
-function vje_syncDeductionAcctCell(idx) {
-    const tr = $vr(`vje-ded-row-${idx}`);
-    if (!tr) return;
-    const typeId = tr.querySelector('.vje-ded-type').value;
-    const type   = VJE_DED.find(t => String(t.deduction_type_id) === typeId);
-    const acctInput = tr.querySelector('.vje-ded-acct');
-    const needsAcct = !!typeId && !type?.account_code;
-    acctInput.style.display = needsAcct ? '' : 'none';
-    acctInput.placeholder = needsAcct ? 'Search GL account code (UACS)… *required' : '';
-    if (!needsAcct) acctInput.value = '';
+function vje_addDeductionLine(d = null) {
+    const idx = ++vje_dedSeq;
+    const typeId = d?.deduction_type_id != null ? String(d.deduction_type_id) : '';
+    const type = VJE_DED.find(t => String(t.deduction_type_id) === typeId);
+    // The posting-account picker shows only when the deduction type has no default posting account
+    // (deduction_types.account_code IS NULL — e.g. "OTHER"); the type's own default always wins — see fetchDeductions()'s COALESCE.
+    const needsAcct = !!type && !type.account_code;
+    const div = document.createElement('div');
+    div.className = 'vje-row vje-ded-row';
+    div.id = `vje-ded-row-${idx}`;
+    div.innerHTML = `
+        <button type="button" class="vje-remove" title="Remove" onclick="vje_removeDeductionLine(${idx})">&times;</button>
+        <div class="vr-ded-label">${vr_esc(type?.name || d?.name) || '—'}</div>
+        <input type="hidden" class="vje-ded-type" value="${vr_esc(typeId)}">
+        <div class="vje-grid2">
+            <div class="vje-fg"><label>Rate (%)</label><input type="number" class="vje-ded-rate" min="0" step="0.01" placeholder="e.g. 10"></div>
+            <div class="vje-fg"><label>Deduction Amount (₱)</label><input type="number" class="vje-ded-amount" min="0" step="0.01" placeholder="Auto-computed"></div>
+        </div>
+        ${needsAcct ? `<div class="vje-fg" style="margin-top:6px;"><label>Posting Account *</label><input type="text" class="vje-ded-acct" placeholder="Search GL account code (UACS)…"></div>` : ''}`;
+    div.querySelector('.vje-ded-rate').value = d?.rate ?? '';
+    div.querySelector('.vje-ded-amount').value = d?.deduction_amount != null ? Number(d.deduction_amount || 0).toFixed(2) : '';
+    div.querySelector('.vje-ded-rate').addEventListener('input', () => vje_recalcDeductionLine(idx));
+    div.querySelector('.vje-ded-amount').addEventListener('input', () => vje_recalcDeductionLine(idx));
+    $vr('vje-ded-list').appendChild(div);
+    const acct = div.querySelector('.vje-ded-acct');
+    if (acct) {
+        acct.value = d?.account_code ?? '';
+        nhaSearchableSelect(acct, VJE_COA.map(a => ({ value: a.account_code, label: a.account_title })));
+        acct.addEventListener('input', () => vje_recalcDeductionLine(idx));
+    }
+    vje_recalcDeductionLine(idx);
 }
 
 function vje_removeDeductionLine(idx) {
@@ -931,14 +848,13 @@ function vje_removeDeductionLine(idx) {
 }
 
 /* A deduction's gross_amount always mirrors this DV's own gross_amount (not separately editable —
-   see the "Gross" column's readonly styling); its deduction_amount is rate% of that unless the
+   see the RFA Breakdown / summary); its deduction_amount is rate% of that unless the
    preparer types an amount directly (no rate given = flat peso deduction). Same convention as
    app/pages/voucher/form.php's vf_recalcDeductionLine(). */
 function vje_recalcDeductionLine(idx) {
     const tr = $vr(`vje-ded-row-${idx}`);
     if (!tr) return;
     const gross = Number(vje_dv?.gross_amount) || 0;
-    tr.querySelector('.vje-ded-gross').value = vr_peso(gross);
     const rate = parseFloat(tr.querySelector('.vje-ded-rate').value);
     if (!isNaN(rate) && rate > 0) {
         tr.querySelector('.vje-ded-amount').value = (gross * rate / 100).toFixed(2);
@@ -948,7 +864,7 @@ function vje_recalcDeductionLine(idx) {
 
 function vje_collectDeductions() {
     const out = [];
-    $vr('vje-ded-tbody').querySelectorAll('tr').forEach(tr => {
+    vje_dedRows().forEach(tr => {
         const typeId = tr.querySelector('.vje-ded-type').value;
         const amount = parseFloat(tr.querySelector('.vje-ded-amount').value) || 0;
         if (!typeId && amount <= 0) return; // blank trailing row
@@ -968,7 +884,6 @@ function vje_totalDeductions() {
 }
 
 function vje_recalcDeductions() {
-    $vr('vje-ded-total').textContent = vr_peso(vje_totalDeductions());
     const badge = $vr('vje-badge-net-ded');
     if (badge) badge.textContent = vr_peso(vje_liveGrossLessDeductions());
     vje_syncAutoLines();
@@ -977,28 +892,34 @@ function vje_recalcDeductions() {
 /* ── Withholding Tax Classification (ATC) ────────────────────── */
 function vje_addAtcLine(a = null) {
     const idx = ++vje_atcSeq;
-    const tr = document.createElement('tr');
-    tr.id = `vje-atc-row-${idx}`;
-    tr.innerHTML = `
-        <td><input type="text" class="vje-atc-code" placeholder="Search ATC code…"></td>
-        <td><input type="number" class="vje-atc-rate" min="0" max="100" step="0.01" placeholder="0.00"></td>
-        <td><input type="number" class="vje-atc-base" min="0" step="0.01" placeholder="0.00"></td>
-        <td class="vr-l-val vje-atc-wh">₱ 0.00</td>
-        <td><select class="vje-atc-rc">
-            <option value="">— None —</option>
-            ${VJE_RC.map(r => `<option value="${vr_esc(r.rc_id)}">${vr_esc(r.rc_id)} — ${vr_esc(r.rc_name)}</option>`).join('')}
-        </select></td>
-        <td><button type="button" class="vje-remove" title="Remove" onclick="vje_removeAtcLine(${idx})">&times;</button></td>`;
-    tr.querySelector('.vje-atc-code').value = a?.atc_code ?? '';
-    tr.querySelector('.vje-atc-rate').value = a?.rate ?? '';
-    tr.querySelector('.vje-atc-base').value = a ? (Number(a.tax_base) || 0).toFixed(2) : vje_liveGrossLessDeductions().toFixed(2);
-    tr.querySelector('.vje-atc-rc').value   = a?.chargeability ?? '';
-    tr.querySelector('.vje-atc-code').addEventListener('change', () => vje_onAtcCodeSelect(idx));
-    tr.querySelectorAll('.vje-atc-rate, .vje-atc-base').forEach(el => el.addEventListener('input', () => vje_recalcAtcLine(idx)));
-    $vr('vje-atc-tbody').appendChild(tr);
+    const div = document.createElement('div');
+    div.className = 'vje-row vje-atc-row';
+    div.id = `vje-atc-row-${idx}`;
+    div.innerHTML = `
+        <button type="button" class="vje-remove" title="Remove" onclick="vje_removeAtcLine(${idx})">&times;</button>
+        <div class="vr-ded-label">ATC (Withholding Tax)</div>
+        <div class="vje-fg" style="margin-top:6px;"><label>ATC Code — Description</label><input type="text" class="vje-atc-code" placeholder="Search ATC code…"></div>
+        <div class="vje-grid3">
+            <div class="vje-fg"><label>Rate (%)</label><input type="number" class="vje-atc-rate" min="0" max="100" step="0.01" placeholder="0.00"></div>
+            <div class="vje-fg"><label>Tax Base (₱)</label><input type="number" class="vje-atc-base" min="0" step="0.01" placeholder="0.00"></div>
+            <div class="vje-fg"><label>Withholding Tax (₱)</label><input type="text" class="vje-atc-wh" readonly value="₱ 0.00"></div>
+        </div>
+        <div class="vje-fg" style="display:none;"><label>Chargeability</label>
+            <select class="vje-atc-rc">
+                <option value="">— None —</option>
+                ${VJE_RC.map(r => `<option value="${vr_esc(r.rc_id)}">${vr_esc(r.rc_id)} — ${vr_esc(r.rc_name)}</option>`).join('')}
+            </select>
+        </div>`;
+    div.querySelector('.vje-atc-code').value = a?.atc_code ?? '';
+    div.querySelector('.vje-atc-rate').value = a?.rate ?? '';
+    div.querySelector('.vje-atc-base').value = a ? (Number(a.tax_base) || 0).toFixed(2) : vje_liveGrossLessDeductions().toFixed(2);
+    div.querySelector('.vje-atc-rc').value   = a?.chargeability ?? '';
+    div.querySelector('.vje-atc-code').addEventListener('change', () => vje_onAtcCodeSelect(idx));
+    div.querySelectorAll('.vje-atc-rate, .vje-atc-base').forEach(el => el.addEventListener('input', () => vje_recalcAtcLine(idx)));
+    $vr('vje-ded-list').appendChild(div);
     // Bound after the row is attached to the DOM — nhaSearchableSelect reads the input's live
     // parentElement to anchor the dropdown, which is unreliable on a still-detached node.
-    nhaSearchableSelect(tr.querySelector('.vje-atc-code'), VJE_ATC.map(c => ({ value: c.atc_code, label: c.description })));
+    nhaSearchableSelect(div.querySelector('.vje-atc-code'), VJE_ATC.map(c => ({ value: c.atc_code, label: c.description })));
     vje_recalcAtcLine(idx);
 }
 
@@ -1039,35 +960,26 @@ function vje_recalcAtcLine(idx) {
     if (!tr) return;
     const rate = parseFloat(tr.querySelector('.vje-atc-rate').value) || 0;
     const base = parseFloat(tr.querySelector('.vje-atc-base').value) || 0;
-    tr.querySelector('.vje-atc-wh').textContent = vr_peso(base * rate / 100);
+    tr.querySelector('.vje-atc-wh').value = vr_peso(base * rate / 100);
     vje_recalcAtc();
     vje_syncAutoLines();
 }
 
 function vje_collectAtcLines() {
     const lines = [];
-    $vr('vje-atc-tbody').querySelectorAll('tr').forEach(tr => {
+    vje_atcRows().forEach(tr => {
         const atc_code = tr.querySelector('.vje-atc-code').value;
         const rate     = parseFloat(tr.querySelector('.vje-atc-rate').value) || 0;
         const tax_base = parseFloat(tr.querySelector('.vje-atc-base').value) || 0;
         if (!atc_code && tax_base <= 0) return; // blank trailing row
-        lines.push({ atc_code, rate, tax_base, chargeability: tr.querySelector('.vje-atc-rc').value || null });
+        // Chargeability isn't asked for any more — the system takes it from the first RFA this DV cites.
+        lines.push({ atc_code, rate, tax_base, chargeability: tr.querySelector('.vje-atc-rc').value || vje_dv?.rfas?.[0]?.requesting_rc_id || null });
     });
     return lines;
 }
 
 function vje_recalcAtc() {
-    const lines = vje_collectAtcLines();
-    const totalWh = lines.reduce((s, l) => s + (l.tax_base * l.rate / 100), 0);
-    $vr('vje-atc-total').textContent = vr_peso(totalWh);
-
-    const gross   = Number(vje_dv?.gross_amount) || 0;
-    const netPreWh = vje_liveGrossLessDeductions(); // live net of deductions, not the stale dv.net_amount snapshot
-    const totalBase = lines.reduce((s, l) => s + l.tax_base, 0);
-    $vr('vje-tax-gross').textContent = vr_peso(gross);
-    $vr('vje-tax-base').textContent  = vr_peso(totalBase);
-    $vr('vje-tax-wh').textContent    = vr_peso(totalWh);
-    $vr('vje-tax-net').textContent   = vr_peso(netPreWh - totalWh);
+    // Nothing to total here any more — the summary table under Section B shows Less: Withholding Tax (ATC).
 }
 
 /* ── Accounting Entries (DV) ──────────────────────────────────── */
@@ -1146,11 +1058,11 @@ function vje_syncAutoLines() {
 
     vje_upsertAutoLine('dr', { account_code: vje_dv?.account_code || '', debit: gross, credit: 0, description: vje_dv?.claimant_name || '' });
 
-    // Reads the LIVE Deduction grid (vje_deductionCard()), not a static vje_dv.deductions snapshot —
+    // Reads the LIVE Deduction grid (vje_dedAtcEditor()), not a static vje_dv.deductions snapshot —
     // Accounting can now add/change/remove rows here, see vje_addDeductionLine()'s doc comment.
     const dedIds = new Set();
     let dedCreditTotal = 0;
-    $vr('vje-ded-tbody').querySelectorAll('tr').forEach(tr => {
+    vje_dedRows().forEach(tr => {
         const idx      = tr.id.replace('vje-ded-row-', '');
         const typeId   = tr.querySelector('.vje-ded-type').value;
         const amount   = parseFloat(tr.querySelector('.vje-ded-amount').value) || 0;
@@ -1165,7 +1077,7 @@ function vje_syncAutoLines() {
 
     const atcIds = new Set();
     let atcCreditTotal = 0;
-    $vr('vje-atc-tbody').querySelectorAll('tr').forEach(tr => {
+    vje_atcRows().forEach(tr => {
         const idx  = tr.id.replace('vje-atc-row-', '');
         const code = tr.querySelector('.vje-atc-code').value;
         const rate = parseFloat(tr.querySelector('.vje-atc-rate').value) || 0;
@@ -1420,6 +1332,71 @@ function vr_peso(v) {
    pickers (nhaSearchableSelect, form.php / vje_addLine) show as their option labels — and flags it
    if this DV's own account isn't posting_allowed (shouldn't happen for a voucher saved since that
    check was added, but can for older/legacy data). */
+/* "RFA Breakdown" — same table as the entry form: one row per itemized RFA line ("account_code - description"),
+   the RFA it belongs to, that RFA's balance, and the Amount. The per-line split isn't stored (only gross_amount is),
+   so the gross is spread over the lines in order, each up to its own amount, any excess on the last line — exactly
+   what the form shows by default. No Gross Amount row here: the summary below has it. */
+function vr_rfaBreakdownHtml(dv) {
+    const gross = Number(dv.gross_amount) || 0;
+    const rows = [];
+    (dv.rfas ?? []).forEach(r => {
+        const lines = (r.lines || []).length
+            ? r.lines.map(l => ({ code: l.account_code, text: l.account_title || l.description, cap: Number(l.amount) || 0 }))
+            : [{ code: r.account_code, text: r.account_title || r.description, cap: Number(r.remaining_balance) || 0 }];
+        lines.forEach((l, i) => rows.push({ rfa: r, first: i === 0, span: lines.length, ...l }));
+    });
+    if (!rows.length) return '';
+    let left = gross;
+    rows.forEach((r, i) => {
+        const v = i === rows.length - 1 ? left : Math.min(r.cap, left);
+        r.amount = Math.max(0, Math.round(v * 100) / 100);
+        left -= r.amount;
+    });
+    const label = (code, text) => [code, text].filter(Boolean).map(vr_esc).join(' - ') || '—';
+    const body = rows.map(r => `<tr>
+        <td>${label(r.code, r.text)}</td>
+        ${r.first ? `<td rowspan="${r.span}" style="vertical-align:top;">${vr_esc(r.rfa.allocation_number)}</td>
+        <td rowspan="${r.span}" style="text-align:right;vertical-align:top;">${vr_peso(r.rfa.remaining_balance)}</td>` : ''}
+        <td style="text-align:right;width:150px;">${r.amount ? vr_peso(r.amount) : '—'}</td>
+    </tr>`).join('');
+    return `<p class="vr-card-title">RFA Breakdown</p>
+        <div style="overflow-x:auto;"><table class="vr-ledger">
+            <thead><tr>
+                <th style="text-align:left;">Account Code - Description</th>
+                <th style="text-align:left;">RFA</th>
+                <th style="text-align:right;">RFA Balance</th>
+                <th style="text-align:right;">Amount</th>
+            </tr></thead>
+            <tbody>${body}</tbody>
+        </table></div>`;
+}
+
+/* Read-only deduction + ATC rows — the SAME blocks Accounting sees (vje_addDeductionLine() / vje_addAtcLine()) and the entry
+   form shows, but view-only: read-only boxes that can't be clicked or focused (see .vje-fg input[readonly] — no caret, no focus
+   ring, no pointer), with no × remove mark and no "+ TYPE" pills. */
+function vr_dedAtcRowsHtml(dv) {
+    const ro = (label, value, extra = '') => `<div class="vje-fg"${extra}><label>${label}</label><input type="text" readonly tabindex="-1" value="${vr_esc(value)}"></div>`;
+    const ded = (dv.deductions ?? []).map(d => `<div class="vje-row">
+        <div class="vr-ded-label">${vr_esc(d.name) || '—'}</div>
+        <div class="vje-grid2">
+            ${ro('Rate (%)', d.rate != null ? d.rate : '')}
+            ${ro('Deduction Amount (₱)', vr_peso(d.deduction_amount))}
+        </div>
+        ${!d.type_account_code && d.account_code ? ro('Posting Account', d.account_code, ' style="margin-top:6px;"') : ''}
+    </div>`);
+    const atc = (dv.atc_lines ?? []).map(a => `<div class="vje-row">
+        <div class="vr-ded-label">ATC (Withholding Tax)</div>
+        ${ro('ATC Code — Description', [a.atc_code, a.atc_description].filter(Boolean).join(' — '), ' style="margin-top:6px;"')}
+        <div class="vje-grid3">
+            ${ro('Rate (%)', a.rate != null ? a.rate : '')}
+            ${ro('Tax Base (₱)', vr_peso(a.tax_base))}
+            ${ro('Withholding Tax (₱)', vr_peso(a.withholding_tax))}
+        </div>
+    </div>`);
+    const all = ded.concat(atc);
+    return all.length ? `<div class="vr-ded-section">${all.join('')}</div>` : '';
+}
+
 function vr_accountCodeDisplay(dv) {
     if (!dv.account_code) return '—';
     const code = vr_esc(dv.account_code);
