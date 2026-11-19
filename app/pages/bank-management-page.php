@@ -114,9 +114,9 @@ $bamCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
                         <th>Bank / Branch</th>
                         <th>Region / Office</th>
                         <th class="text-center">Main</th>
+                        <th>Assigned Main Depository</th>
                         <th class="text-center">Status</th>
                         <th>Date Opened</th>
-                        <th>Last Transaction</th>
                         <th class="text-center" style="width:110px">Actions</th>
                     </tr>
                 </thead>
@@ -138,7 +138,69 @@ $bamCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
                 <div class="fims-modal-body">
                     <input type="hidden" id="field-bank-account-id">
 
-                    <div class="fims-form-section-title">Account Information</div>
+                    <div class="fims-form-section-title">Bank Information</div>
+                    <div class="fims-form-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                        <div class="fims-form-group">
+                            <label class="fims-label">Bank Name *</label>
+                            <select class="fims-select" id="field-bank-name-select">
+                                <option value="">— Select Bank —</option>
+                                <option>Land Bank of the Philippines</option>
+                                <option>Development Bank of the Philippines</option>
+                                <option>Philippine National Bank</option>
+                                <option>Bangko Sentral ng Pilipinas</option>
+                                <option>Banco De Oro</option>
+                                <option>Metropolitan Bank and Trust Company</option>
+                                <option>Bank of the Philippine Islands</option>
+                                <option>Union Bank of the Philippines</option>
+                                <option>Philippine Veterans Bank</option>
+                                <option value="__other__">Other…</option>
+                            </select>
+                            <input type="text" class="fims-input mt-1" id="field-bank-name" placeholder="Bank name" style="display:none;">
+                        </div>
+                        <div class="fims-form-group">
+                            <label class="fims-label">Bank Branch</label>
+                            <input type="text" class="fims-input" id="field-bank-branch">
+                        </div>
+                        <div class="fims-form-group">
+                            <label class="fims-label">Status *</label>
+                            <select class="fims-select" id="field-status">
+                                <option value="ACTIVE">Active</option>
+                                <option value="DORMANT">Dormant</option>
+                                <option value="CLOSED">Closed</option>
+                            </select>
+                        </div>
+                        <div class="fims-form-group" style="display:flex;align-items:flex-end;">
+                            <!-- Tags THIS account as Main Depository on Save (payload field
+                                 read by BankManagementService::store()/update()). Just a
+                                 plain per-account flag — no exclusivity, doesn't touch any
+                                 other account's flag. -->
+                            <label style="display:flex;align-items:center;gap:6px;font-size:13px;">
+                                <input type="checkbox" id="field-is-main-depository">
+                                Main Depository Account
+                            </label>
+                        </div>
+                        <div class="fims-form-group">
+                            <label class="fims-label">Date Opened</label>
+                            <input type="date" class="fims-input" id="field-date-opened">
+                        </div>
+                        <div class="fims-form-group">
+                            <!-- A separate column from is_main_depository (above) —
+                                 self-referencing FK into fims.bank_accounts (see migration
+                                 "55 - bank_accounts_add_main_depository_account_id.sql").
+                                 is_main_depository flags THIS account AS a Main Depository;
+                                 this instead records WHICH other account is ASSIGNED as this
+                                 account's Main Depository. Populated by
+                                 refreshAssignedMainDepositorySelect() below — only lists
+                                 accounts actually tagged is_main_depository, minus whichever
+                                 account is open in this modal (can't assign itself). -->
+                            <label class="fims-label">Assigned Main Depository Account</label>
+                            <select class="fims-select" id="field-main-depository-account-id">
+                                <option value="">— None —</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="fims-form-section-title" style="margin-top:14px;">Account Information</div>
                     <div class="fims-form-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
                         <div class="fims-form-group">
                             <label class="fims-label">Account Name *</label>
@@ -197,51 +259,24 @@ $bamCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
                         </div>
                     </div>
 
-                    <div class="fims-form-section-title" style="margin-top:14px;">Bank Information</div>
-                    <div class="fims-form-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-                        <div class="fims-form-group">
-                            <label class="fims-label">Bank Name *</label>
-                            <select class="fims-select" id="field-bank-name-select">
-                                <option value="">— Select Bank —</option>
-                                <option>Land Bank of the Philippines</option>
-                                <option>Development Bank of the Philippines</option>
-                                <option>Philippine National Bank</option>
-                                <option>Bangko Sentral ng Pilipinas</option>
-                                <option>Banco De Oro</option>
-                                <option>Metropolitan Bank and Trust Company</option>
-                                <option>Bank of the Philippine Islands</option>
-                                <option>Union Bank of the Philippines</option>
-                                <option>Philippine Veterans Bank</option>
-                                <option value="__other__">Other…</option>
-                            </select>
-                            <input type="text" class="fims-input mt-1" id="field-bank-name" placeholder="Bank name" style="display:none;">
-                        </div>
-                        <div class="fims-form-group">
-                            <label class="fims-label">Bank Branch</label>
-                            <input type="text" class="fims-input" id="field-bank-branch">
-                        </div>
-                        <div class="fims-form-group">
-                            <label class="fims-label">Status *</label>
-                            <select class="fims-select" id="field-status">
-                                <option value="ACTIVE">Active</option>
-                                <option value="DORMANT">Dormant</option>
-                                <option value="CLOSED">Closed</option>
-                            </select>
-                        </div>
-                        <div class="fims-form-group">
-                            <label class="fims-label">&nbsp;</label>
-                            <label style="display:flex;align-items:center;gap:6px;height:38px;">
-                                <input type="checkbox" id="field-is-main-depository"> Main Depository
-                            </label>
-                        </div>
-                        <div class="fims-form-group">
-                            <label class="fims-label">Date Opened</label>
-                            <input type="date" class="fims-input" id="field-date-opened">
-                        </div>
-                        <div class="fims-form-group">
-                            <label class="fims-label">Date of Last Transaction</label>
-                            <input type="date" class="fims-input" id="field-last-transaction-date">
-                        </div>
+                    <!-- Restricted funds don't live on fims.bank_accounts itself —
+                         they're part of this account's today's fims.cash_position row
+                         (same table/shape as Cash Position's "Add Restricted Fund").
+                         Saving the account, when anything here is filled in, makes a
+                         second call to the Cash Position API right after
+                         (saveRestrictedFundsForAccount()) — same computed-balance +
+                         save sequence Cash Position's own Add flow uses, just reachable
+                         from here too so a newly-registered account doesn't need a
+                         separate trip to Cash Position just to set this. -->
+                    <div class="fims-form-section-title" style="margin-top:14px;">Restricted Funds (optional — itemized, or leave empty to use a flat amount)</div>
+                    <table class="fims-table" id="field-rf-table">
+                        <thead><tr><th>Label</th><th style="width:150px">Amount</th><th style="width:40px"></th></tr></thead>
+                        <tbody id="field-rf-body"></tbody>
+                    </table>
+                    <button type="button" class="fims-btn fims-btn-outline fims-btn-sm" id="field-rf-add-row-btn"><i class="fas fa-plus mr-1"></i>Add Line</button>
+                    <div class="fims-form-group" style="margin-top:8px;max-width:240px;">
+                        <label class="fims-label">Flat Restricted Amount</label>
+                        <input type="number" step="0.01" class="fims-input" id="field-restricted-amount" value="0">
                     </div>
                 </div>
                 <div class="fims-modal-footer">
@@ -373,6 +408,12 @@ html.afims-dark[data-bs-theme="dark"] #bamModule .bam-menu-item:hover { color:#f
 <script>
 (function () {
     const API = '/api/bank-management';
+    // Restricted Funds entered here is saved as this account's TODAY cash
+    // position entry via the Cash Position module's own API — see
+    // saveRestrictedFundsForAccount(), called right after a successful
+    // account save. There is no restricted_amount column on
+    // fims.bank_accounts itself.
+    const CASH_POSITION_API = '/api/cash-position';
     const JWT = (typeof ew !== 'undefined' && ew.API_JWT_TOKEN) ? ew.API_JWT_TOKEN : '';
 
     function authHeaders(extra) {
@@ -762,9 +803,9 @@ html.afims-dark[data-bs-theme="dark"] #bamModule .bam-menu-item:hover { color:#f
                         '<td>' + escapeHtml(r.bank_name || '') + (r.bank_branch ? '<br><span style="font-size:11px;color:var(--fims-text-subtle)">' + escapeHtml(r.bank_branch) + '</span>' : '') + '</td>' +
                         '<td>' + regionLabel + '</td>' +
                         '<td class="text-center">' + (r.is_main_depository ? '<i class="fas fa-check" style="color:#000E3E"></i>' : '—') + '</td>' +
+                        '<td>' + escapeHtml(r.main_depository_account_name || '—') + '</td>' +
                         '<td class="text-center">' + statusBadge(r.status) + '</td>' +
                         '<td>' + escapeHtml(r.date_opened || '—') + '</td>' +
-                        '<td>' + escapeHtml(r.last_transaction_date || '—') + '</td>' +
                         '<td class="text-center">' +
                             '<div class="bam-menu">' +
                                 '<button type="button" class="bam-menu-trigger" aria-haspopup="true" aria-expanded="false">' +
@@ -833,6 +874,106 @@ html.afims-dark[data-bs-theme="dark"] #bamModule .bam-menu-item:hover { color:#f
     // ── Register/Edit modal — single view, no step wizard; every field is
     // shown at once (Account Info, the GL+SL two-step picker, Bank Info),
     // all validated together by validateAccountModal() below. ──
+    // ── Restricted Funds (itemized rows + flat amount) — same shape/markup
+    // convention as Cash Position's own Restricted Funds editor, just
+    // field-prefixed ids since this lives inside Bank Management's modal. ──
+    function renderFieldRestrictedRows(rows) {
+        const tbody = document.getElementById('field-rf-body');
+        tbody.innerHTML = (rows || []).map(function (item, idx) {
+            return '<tr><td><input type="text" class="fims-input fims-input-sm field-rf-label" value="' + escapeHtml(item.label || '') + '"></td>' +
+                '<td><input type="number" step="0.01" class="fims-input fims-input-sm field-rf-amount" value="' + (item.amount || 0) + '"></td>' +
+                '<td><button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-remove-field-rf="' + idx + '"><i class="fas fa-trash"></i></button></td></tr>';
+        }).join('');
+        tbody.querySelectorAll('[data-remove-field-rf]').forEach(function (btn) {
+            btn.addEventListener('click', function () { btn.closest('tr').remove(); });
+        });
+    }
+    document.getElementById('field-rf-add-row-btn')?.addEventListener('click', function () {
+        const tbody = document.getElementById('field-rf-body');
+        const tr = document.createElement('tr');
+        tr.innerHTML = '<td><input type="text" class="fims-input fims-input-sm field-rf-label"></td>' +
+            '<td><input type="number" step="0.01" class="fims-input fims-input-sm field-rf-amount" value="0"></td>' +
+            '<td><button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-remove-field-rf><i class="fas fa-trash"></i></button></td>';
+        tr.querySelector('[data-remove-field-rf]').addEventListener('click', function () { tr.remove(); });
+        tbody.appendChild(tr);
+    });
+    function getFieldRestrictedBreakdown() {
+        return Array.from(document.querySelectorAll('#field-rf-body tr')).map(function (tr) {
+            return { label: tr.querySelector('.field-rf-label').value.trim(), amount: parseFloat(tr.querySelector('.field-rf-amount').value) || 0 };
+        }).filter(item => item.amount > 0);
+    }
+
+    // Saves whatever was entered in the Restricted Funds section as this
+    // account's TODAY fims.cash_position row, via the Cash Position
+    // module's own API — same computed-balance + save sequence Cash
+    // Position's "Add Restricted Fund" flow uses (getComputedBalance() for
+    // Beginning Balance/Receipts/Disbursements, since those still have to
+    // be correct even though this form never shows them). Skipped entirely
+    // when nothing was actually entered, so registering/editing an account
+    // without touching this section never creates a stray cash position
+    // row. Runs AFTER the account itself has already saved successfully.
+    function saveRestrictedFundsForAccount(bankAccountId) {
+        const restrictedAmount = parseFloat(document.getElementById('field-restricted-amount').value) || 0;
+        const restrictedBreakdown = getFieldRestrictedBreakdown();
+        if (restrictedAmount <= 0 && !restrictedBreakdown.length) {
+            return Promise.resolve();
+        }
+        const positionDate = new Date().toISOString().slice(0, 10);
+        return fetch(CASH_POSITION_API + '/updates/computed-balance?bank_account_id=' + bankAccountId + '&position_date=' + positionDate, { headers: authHeaders() })
+            .then(r => r.json())
+            .then(function (json) {
+                const d = (json && json.data) ? json.data : {};
+                return fetch(CASH_POSITION_API + '/updates/save', {
+                    method: 'POST',
+                    headers: jsonHeaders(),
+                    body: JSON.stringify({
+                        bank_account_id: bankAccountId,
+                        position_date: positionDate,
+                        update_type: 'ADJUSTMENT',
+                        opening_balance: d.opening_balance || 0,
+                        total_receipts: d.total_receipts || 0,
+                        total_disbursements: d.total_disbursements || 0,
+                        bank_statement_balance: '',
+                        restricted_amount: restrictedAmount,
+                        restricted_breakdown: restrictedBreakdown,
+                    }),
+                }).then(r => r.json());
+            })
+            .then(function (json) {
+                if (!json || !json.success) {
+                    toast((json && json.message) || 'Account saved, but restricted funds could not be recorded.', true);
+                }
+            })
+            .catch(() => toast('Account saved, but could not reach the server to record restricted funds.', true));
+    }
+
+    // field-main-depository-account-id: a separate field from
+    // field-is-main-depository — records WHICH other account is assigned
+    // as THIS account's Main Depository (main_depository_account_id,
+    // self-referencing FK — see BankManagementService). Only accounts
+    // actually tagged is_main_depository are valid candidates (assigning
+    // an account that isn't itself a Main Depository wouldn't make
+    // sense), minus whichever account is currently open in this modal
+    // (can't assign itself). Preselects whatever's already saved. Only
+    // takes effect on Save (read from doSaveAccount()'s payload below).
+    function refreshAssignedMainDepositorySelect(selectedId) {
+        const select = document.getElementById('field-main-depository-account-id');
+        const ownId = document.getElementById('field-bank-account-id').value;
+        fetch(API + '/accounts-for-region', { headers: authHeaders() })
+            .then(r => r.json())
+            .then(function (json) {
+                const rows = (json && json.success && Array.isArray(json.data)) ? json.data : [];
+                let html = '<option value="">— None —</option>';
+                html += rows.filter(row => row.is_main_depository && String(row.bank_account_id) !== String(ownId)).map(function (row) {
+                    const label = (row.account_name || '') + (row.bank_name ? ' (' + row.bank_name + ')' : '');
+                    return '<option value="' + row.bank_account_id + '">' + escapeHtml(label) + '</option>';
+                }).join('');
+                select.innerHTML = html;
+                select.value = selectedId || '';
+            })
+            .catch(function () { select.innerHTML = '<option value="">— None —</option>'; });
+    }
+
     function clearAccountModal() {
         document.getElementById('field-bank-account-id').value = '';
         document.getElementById('field-account-name').value = '';
@@ -853,7 +994,9 @@ html.afims-dark[data-bs-theme="dark"] #bamModule .bam-menu-item:hover { color:#f
         document.getElementById('field-status').value = 'ACTIVE';
         document.getElementById('field-is-main-depository').checked = false;
         document.getElementById('field-date-opened').value = '';
-        document.getElementById('field-last-transaction-date').value = '';
+        document.getElementById('field-restricted-amount').value = 0;
+        renderFieldRestrictedRows([]);
+        refreshAssignedMainDepositorySelect('');
     }
 
     function validateAccountModal() {
@@ -915,8 +1058,8 @@ html.afims-dark[data-bs-theme="dark"] #bamModule .bam-menu-item:hover { color:#f
                 document.getElementById('field-bank-branch').value = d.bank_branch || '';
                 document.getElementById('field-status').value = d.status || 'ACTIVE';
                 document.getElementById('field-is-main-depository').checked = !!d.is_main_depository;
+                refreshAssignedMainDepositorySelect(d.main_depository_account_id || '');
                 document.getElementById('field-date-opened').value = d.date_opened || '';
-                document.getElementById('field-last-transaction-date').value = d.last_transaction_date || '';
                 openModal('m-bam-account');
             })
             .catch(() => toast('Could not reach the server.', true));
@@ -924,10 +1067,11 @@ html.afims-dark[data-bs-theme="dark"] #bamModule .bam-menu-item:hover { color:#f
 
     document.getElementById('bamRegisterBtn').addEventListener('click', function () { openAccountModal(null); });
 
-    document.getElementById('bamSaveBtn').addEventListener('click', function () {
-        const err = validateAccountModal();
-        if (err) { toast(err, true); return; }
-
+    // Actually submits the account (and, if anything was entered,
+    // Restricted Funds). field-is-main-depository tags THIS account on
+    // Save; field-main-depository-account-id assigns which other account
+    // is its Main Depository, also only on Save.
+    function doSaveAccount() {
         const id = document.getElementById('field-bank-account-id').value;
         const payload = {
             account_name: document.getElementById('field-account-name').value.trim(),
@@ -940,22 +1084,32 @@ html.afims-dark[data-bs-theme="dark"] #bamModule .bam-menu-item:hover { color:#f
             bank_branch: document.getElementById('field-bank-branch').value.trim(),
             status: document.getElementById('field-status').value,
             is_main_depository: document.getElementById('field-is-main-depository').checked,
+            main_depository_account_id: document.getElementById('field-main-depository-account-id').value,
             date_opened: document.getElementById('field-date-opened').value,
-            last_transaction_date: document.getElementById('field-last-transaction-date').value,
         };
         const url = id ? (API + '/' + id + '/update') : (API + '/store');
-        this.disabled = true;
+        const btn = document.getElementById('bamSaveBtn');
+        btn.disabled = true;
         fetch(url, { method: 'POST', headers: jsonHeaders(), body: JSON.stringify(payload) })
             .then(r => r.json())
             .then(function (json) {
-                if (!json || !json.success) { toast((json && json.message) || 'Save failed.', true); return; }
-                toast('Bank account saved.');
-                closeModal('m-bam-account');
-                loadList();
-                loadStats();
+                if (!json || !json.success) { toast((json && json.message) || 'Save failed.', true); btn.disabled = false; return; }
+                const savedId = id || json.data.bank_account_id;
+                saveRestrictedFundsForAccount(savedId).finally(function () {
+                    toast('Bank account saved.');
+                    closeModal('m-bam-account');
+                    loadList();
+                    loadStats();
+                    btn.disabled = false;
+                });
             })
-            .catch(() => toast('Could not reach the server.', true))
-            .finally(() => { document.getElementById('bamSaveBtn').disabled = false; });
+            .catch(() => { toast('Could not reach the server.', true); btn.disabled = false; });
+    }
+
+    document.getElementById('bamSaveBtn').addEventListener('click', function () {
+        const err = validateAccountModal();
+        if (err) { toast(err, true); return; }
+        doSaveAccount();
     });
 
     // ── Quick tag GL/SL account modal ──

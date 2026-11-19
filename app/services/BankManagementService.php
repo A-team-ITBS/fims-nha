@@ -127,11 +127,13 @@ class BankManagementService
         $rows = App\ExecuteRowsAssociative(
             "SELECT ba.*, rc.rc_code, rc.rc_name,
                     gl.account_code AS gl_account_code, gl.account_title AS gl_account_title,
-                    sl.account_code AS sl_account_code, sl.account_title AS sl_account_title
+                    sl.account_code AS sl_account_code, sl.account_title AS sl_account_title,
+                    md.account_name AS main_depository_account_name
              FROM {$this->tableBankAccounts} ba
              LEFT JOIN {$this->tableResponsibilityCode} rc ON rc.rc_id = ba.rc_id
              LEFT JOIN {$this->tableChartOfAccounts} gl ON gl.account_id = ba.coa_account_id
              LEFT JOIN {$this->tableChartOfAccounts} sl ON sl.account_id = ba.sl_code
+             LEFT JOIN {$this->tableBankAccounts} md ON md.bank_account_id = ba.main_depository_account_id
              WHERE {$whereSql}
              ORDER BY ba.account_name",
             'DB'
@@ -156,14 +158,36 @@ class BankManagementService
         return App\ExecuteRow(
             "SELECT ba.*, rc.rc_code, rc.rc_name,
                     gl.account_code AS gl_account_code, gl.account_title AS gl_account_title,
-                    sl.account_code AS sl_account_code, sl.account_title AS sl_account_title
+                    sl.account_code AS sl_account_code, sl.account_title AS sl_account_title,
+                    md.account_name AS main_depository_account_name
              FROM {$this->tableBankAccounts} ba
              LEFT JOIN {$this->tableResponsibilityCode} rc ON rc.rc_id = ba.rc_id
              LEFT JOIN {$this->tableChartOfAccounts} gl ON gl.account_id = ba.coa_account_id
              LEFT JOIN {$this->tableChartOfAccounts} sl ON sl.account_id = ba.sl_code
+             LEFT JOIN {$this->tableBankAccounts} md ON md.bank_account_id = ba.main_depository_account_id
              WHERE ba.bank_account_id = {$id}",
             'DB'
         ) ?: null;
+    }
+
+    // Validates a submitted main_depository_account_id against
+    // fims.bank_accounts itself (self-referencing FK — see
+    // "55 - bank_accounts_add_main_depository_account_id.sql"). Empty is
+    // valid (no Main Depository account assigned). An account can't be
+    // assigned to itself.
+    private function mainDepositoryAccountIdExists(string $mainDepositoryAccountId, int $ownAccountId): bool
+    {
+        if ($mainDepositoryAccountId === '') {
+            return true;
+        }
+        if ((int) $mainDepositoryAccountId === $ownAccountId) {
+            return false;
+        }
+
+        return (bool) App\ExecuteRow(
+            "SELECT bank_account_id FROM {$this->tableBankAccounts} WHERE bank_account_id = " . $this->str($mainDepositoryAccountId),
+            'DB'
+        );
     }
 
     // Validates a submitted Region/Office value against fims.responsibility_code
@@ -174,6 +198,31 @@ class BankManagementService
             "SELECT rc_id FROM {$this->tableResponsibilityCode} WHERE rc_id = " . $this->str($rcId),
             'DB'
         );
+    }
+
+    // Every bank account already on file, so the Register/Edit Account
+    // modal can offer them as candidates for the Assigned Main Depository
+    // Account field (refreshAssignedMainDepositorySelect() in
+    // bank-management-page.php) — "any" account, not just the account
+    // currently being registered/edited (which, if brand new, can't
+    // appear here yet since it has no bank_account_id until saved). Main
+    // Depository (is_main_depository) is just a plain per-account flag,
+    // set/unset via store()/update() — no exclusivity, no grouping: any
+    // number of accounts can be tagged at once, independently of each
+    // other and of their Bank Name or Region/Office. rc_code/rc_name are
+    // joined in purely for display context.
+    public function getAccountsForRegion($rcId)
+    {
+        $rows = App\ExecuteRowsAssociative(
+            "SELECT ba.bank_account_id, ba.account_name, ba.bank_name, ba.is_main_depository, ba.rc_id,
+                    rc.rc_code, rc.rc_name
+             FROM {$this->tableBankAccounts} ba
+             LEFT JOIN {$this->tableResponsibilityCode} rc ON rc.rc_id = ba.rc_id
+             ORDER BY ba.account_name",
+            'DB'
+        );
+
+        return $this->ok($rows ?: []);
     }
 
     // Validates a submitted GL account code against fims.chart_of_accounts — this
@@ -251,6 +300,10 @@ class BankManagementService
         if (App\ExecuteRow("SELECT bank_account_id FROM {$this->tableBankAccounts} WHERE account_number = " . $this->str($accountNumber), 'DB')) {
             return json_encode(["success" => false, "message" => "An account with this Account Number already exists."]);
         }
+        $mainDepositoryAccountId = trim((string) ($data['main_depository_account_id'] ?? ''));
+        if (!$this->mainDepositoryAccountIdExists($mainDepositoryAccountId, 0)) {
+            return json_encode(["success" => false, "message" => "Select a valid Main Depository account."]);
+        }
 
         $accountType = strtoupper(trim((string) ($data['account_type'] ?? '')));
         if (!in_array($accountType, self::ACCOUNT_TYPES, true)) {
@@ -258,16 +311,20 @@ class BankManagementService
         }
         $userId = (int) App\CurrentUserID();
 
+        $isMainDepository = filter_var($data['is_main_depository'] ?? false, FILTER_VALIDATE_BOOLEAN);
+
         $row = App\ExecuteRow(
             "INSERT INTO {$this->tableBankAccounts}
                 (account_name, account_number, bank_name, bank_branch, account_type,
-                 rc_id, account_code, coa_account_id, sl_code, is_main_depository, status, is_active, date_opened,
+                 rc_id, account_code, coa_account_id, sl_code, is_main_depository,
+                 main_depository_account_id, status, is_active, date_opened,
                  last_transaction_date, created_by)
              VALUES (
                 " . $this->str($accountName) . ', ' . $this->str($accountNumber) . ', ' . $this->str($bankName) . ', '
                 . $this->strOrNull($data['bank_branch'] ?? null) . ', ' . $this->strOrNull($accountType) . ', '
                 . $this->strOrNull($rcId) . ', ' . $this->strOrNull($accountCode) . ', ' . $this->strOrNull($coaAccountId) . ', '
-                . $this->strOrNull($slCode) . ', ' . $this->bool($data['is_main_depository'] ?? false) . ', '
+                . $this->strOrNull($slCode) . ', ' . ($isMainDepository ? 'TRUE' : 'FALSE') . ', '
+                . $this->strOrNull($mainDepositoryAccountId) . ', '
                 . $this->str($status) . ', ' . ($status === 'ACTIVE' ? 'TRUE' : 'FALSE') . ', '
                 . $this->dateOrNull($data['date_opened'] ?? null) . ', ' . $this->dateOrNull($data['last_transaction_date'] ?? null)
                 . ", {$userId})
@@ -325,12 +382,17 @@ class BankManagementService
         if ($dupe) {
             return json_encode(["success" => false, "message" => "Another account already uses this Account Number."]);
         }
+        $mainDepositoryAccountId = trim((string) ($data['main_depository_account_id'] ?? ''));
+        if (!$this->mainDepositoryAccountIdExists($mainDepositoryAccountId, $accountId)) {
+            return json_encode(["success" => false, "message" => "Select a valid Main Depository account."]);
+        }
 
         $accountType = strtoupper(trim((string) ($data['account_type'] ?? '')));
         if (!in_array($accountType, self::ACCOUNT_TYPES, true)) {
             $accountType = null;
         }
         $userId = (int) App\CurrentUserID();
+        $isMainDepository = filter_var($data['is_main_depository'] ?? false, FILTER_VALIDATE_BOOLEAN);
 
         App\Execute(
             "UPDATE {$this->tableBankAccounts} SET
@@ -343,7 +405,8 @@ class BankManagementService
                 account_code = " . $this->strOrNull($accountCode) . ",
                 coa_account_id = " . $this->strOrNull($coaAccountId) . ",
                 sl_code = " . $this->strOrNull($slCode) . ",
-                is_main_depository = " . $this->bool($data['is_main_depository'] ?? false) . ",
+                is_main_depository = " . ($isMainDepository ? 'TRUE' : 'FALSE') . ",
+                main_depository_account_id = " . $this->strOrNull($mainDepositoryAccountId) . ",
                 status = " . $this->str($status) . ",
                 is_active = " . ($status === 'ACTIVE' ? 'TRUE' : 'FALSE') . ",
                 date_opened = " . $this->dateOrNull($data['date_opened'] ?? null) . ",
