@@ -495,18 +495,23 @@ The furthest-along business workflow in the repo — a Budget Request → Revisi
   superadmin only). A DR with a JEV cannot be submitted again (409): its Pro-forma is **read-only** (saved rows, no Add row / Submit, "Submitted as … JEV"), and **Print JEV**
   prints with the JEV number and date. `PoDrService::shape()` must return `jev_id` / `jev_no` or the lock silently fails.
 - **Infrastructure tab** (second tab of the IAR page; `form/infra-iar-form.php` + `InfraIarService.php` + `app/routes/infra_iar.php`; table `fims.statement_work_accomplishments`,
-  `01 - table/50`; sample RFAs/locations `02 - sample_data/12`). One record per **approved Infrastructure RFA without a PO** (`allocation_type='RFA'`, status Approved, category
-  Infrastructure, no `po_number`, no active DV, no record yet). The header button reads **Add Infrastructure Record**; the list shows SWA Number, RFA Number, Project Name,
-  Contractor, office, Revised Contract Cost and % Accomplishment.
-  - **Add**: pick the RFA (searchable) and the form loads, all read-only: **Project Name**, **Location** (`budget_req_project.location`), **Program**, **Contractor** (the RFA's vendor)
-    and the cost breakdown — **Original Contract Cost** (Σ `suggested_amount` of the budget line items the RFA draws on; `proposed_amount`, then the RFA amount, when there is none),
-    **Variation Order** (Σ of those lines' `budget_line_items.adjustment` = the net of their *approved* Budget Revisions / Realignments; + increase green, − decrease red; **0 until a
-    revision is approved** — a request that is only filed or in review does not move it) and **Revised Contract Cost** (original + variation; the RFA amount when no line is linked).
-    The three are saved as a snapshot (`original_contract_cost`, `variation_order`, `contract_cost`; an older record reads original = contract, variation 0). The user types
-    **Contract** (free text, `contract` column, up to 255 characters; it replaced the old Project Cost input), **Date Started** and **Completion Date (Revised)**; **Contract Duration**
-    is auto-computed ("N calendar days", start → end inclusive) or can be typed (typing stops the auto value, clearing the box brings it back).
-  - **SWA Number**: generated, never typed — `SWA-YYYY-MM-0001`… (`InfraIarService::nextSwaNumber()`, stored in the `iar_number` column). The Add form previews it read-only
-    (`GET /infra-iar/next-number`); the server assigns it again on save.
+  `01 - table/50`; sample RFAs / locations `02 - sample_data/12`). One record per **approved Infrastructure RFA without a PO** (`allocation_type='RFA'`, status Approved, category
+  Infrastructure, no `po_number`, no active DV, no record yet). The header button reads **Add Infrastructure Record**; the list shows SWA Number, RFA Number, Project Name, Contractor,
+  **Regional Office/District Office**, Revised Contract Cost and % Accomplishment.
+  - **What is stored**: only `swa_number`, `allocation_id`, **Contract**, the dates / duration and `line_transaction`. Everything the RFA already knows — RFA number, project code / name, program,
+    contractor, location, regional / district office **and the cost figures** (original contract cost, variation order, revised contract cost, `rfa_amount`) — is **read live** by
+    `InfraIarService::live()` through `allocation_id` (RFA → project / program / vendor / budget request / budget line items) every time (list, view, pro-forma, search), like the IAR reads its PO and
+    supplier; those columns were dropped (`01 - table/50` migrates an older table: `iar_number` → `swa_number`, drops the columns, converts `line_transaction`).
+  - **`line_transaction`** (same idea as a delivery receipt in the IAR module's `line_transaction`): one element `{ items[] (the work items), lines[] (the account entries), jev_id, jev_no }`.
+    `jev_id` / `jev_no` are written into it when the pro-forma is submitted (`linkJev()` / `jevOf()`).
+  - **Add**: pick the RFA (searchable) and the form loads, all read-only: Regional Office/District Office, **Project Name**, **Location** (`budget_req_project.location`), **Program**, **Contractor** (the
+    RFA's vendor) and the cost breakdown — **Original Contract Cost** (Σ `suggested_amount` of the budget line items the RFA draws on; `proposed_amount`, then the RFA amount, when there is none),
+    **Variation Order** (Σ of those lines' `budget_line_items.adjustment` = the net of their *approved* Budget Revisions / Realignments; + increase green, − decrease red; **0 until a revision is
+    approved** — a request that is only filed or in review does not move it) and **Revised Contract Cost** (original + variation; the RFA amount when no line is linked). The user types **Contract**
+    (free text, up to 255 characters), **Date Started** and **Completion Date (Revised)**; **Contract Duration** is auto-computed ("N calendar days", start → end inclusive) or can be typed (typing
+    stops the auto value, clearing the box brings it back).
+  - **SWA Number**: generated, never typed — `SWA-YYYY-MM-0001`… (`InfraIarService::nextSwaNumber()`, stored in `swa_number`). The Add form previews it read-only (`GET /infra-iar/next-number`);
+    the server assigns it again on save.
   - **Account Entries**: pre-filled from the RFA lines; the Account Code picker (`GET /po-dr/accounts?infra=1`) offers **only** `1-06-99-010`, `1-06-99-020`, `1-06-99-030` (CIP) and
     `1-04-03-020` (WIP). Their total may not exceed the **RFA amount** (`rfa_amount`). They are **not editable after the record exists and the whole section is hidden in the Edit window**.
   - **Statement of Work Accomplishments** (items): `Description | Cost | % Accomplishment` (no quantity). Description is a dropdown below the box with the standard work items
@@ -514,15 +519,20 @@ The furthest-along business workflow in the repo — a Budget Request → Revisi
     **the items' total cost may not exceed the total of the Account Entries** (from the item that takes the running total past it, its cost box turns red, as does the Total cost figure), and
     **each item's % is its share of the whole project, so the % column adds up to at most 100** (rows past 100 turn red; the overall accomplishment is the sum, shown uncapped, e.g. 60 + 50 = 110% in red).
     Save is disabled while either is broken. At least one item.
-  - **Edit** changes only the contract, dates, contract duration and items (RFA, SWA number, location and account entries stay). No Delete.
-  - **View** card: SWA No., RFA No., Project Code, Project Name, Location, Program, Contractor, Original Contract Cost, Variation Order, Revised Contract Cost, Contract, dates, duration,
-    the Account Entries and the Statement of Work items.
+  - **Edit** changes only the contract, dates, contract duration and items (RFA, SWA number and account entries stay). No Delete.
+  - **View** card: SWA No., RFA No., Location, Contractor / Regional Office/District Office, Project Code, Project Name, Program, Contract, Original Contract Cost, Variation Order, Revised Contract Cost,
+    dates, duration, the Account Entries and the Statement of Work items.
   - **Pro-forma JEV** (Actions → Pro-forma; the Deliveries window with `amp_pf.kind = 'infra'`, `GET /infra-iar/proforma`): no receipt tabs and no Total Amount card (one record per RFA);
-    the card shows the SWA no., RFA, **Project Code**, **Project Name**, **Location** and **Contractor**. Each account entry is a debit and the total is credited to the contractor's AP SL,
-    else the default `2-01-01-010-01`. The amounts are entered by the user — **not capped at the record's amount** (only debit = credit is required). Submit →
-    `POST /infra-iar/proforma-submit`, same creation + auto-submit as Deliveries, and `jev_id` / `jev_no` are stored on the record (409 on resubmit; the pro-forma then opens read-only).
+    the card shows the SWA no., RFA, **Regional Office/District Office**, **Project Code**, **Project Name**, **Program**, **Location** and **Contractor**. Each account entry is a debit and the total is
+    credited to the contractor's AP SL, else the default `2-01-01-010-01`. The amounts are entered by the user — **not capped at the record's amount** (only debit = credit is required). Submit →
+    `POST /infra-iar/proforma-submit`, same creation + auto-submit as Deliveries, and `jev_id` / `jev_no` are stored in the record's `line_transaction` (409 on resubmit; the pro-forma then opens read-only).
   - **Print JEV** (Deliveries and Infrastructure): prints the **RFA No.** and the **Particulars** text exactly as typed (the generic "Pro-forma JEV — …" line is only the fallback for an empty box).
-- **Screens.** The list's Actions column is one **Actions** dropdown (View · Pro-forma · Edit), the same menu as the Memo Requests list. The **View** (Actual Delivery) and **Pro-forma JEV** windows share one
+- **Work-In-Process Inventory page** (`app/pages/work-in-process-page.php`, PHPMaker page `WorkInProcessPage`, menu "Work-In-Process Inventory"): one row per infrastructure project whose pro-forma JEV was
+  **submitted** (the JEV is in the record's `line_transaction`) **and carries account `1-04-03-020`** (Work-in-Process, or one of its sub-ledgers) — a JEV without it (e.g. CIP only) does not show.
+  Columns: Book of Accounts (the JEV's book), Regional Office/District Office, Name of Project, Location, Contractor, Contract, Original Contract Cost, Variation Order, Revised Contract Cost,
+  Physical Accomplishment (all the work items' % combined = their sum) and Actions (View only). The View window shows RFA No., SWA No., Book of Accounts, Regional Office/District Office, Project Code,
+  Name of Project, Program, Location, Contractor, Contract, the three costs, Physical Accomplishment, Date Started, Completion Date (Revised), Contract Duration and the work items (no JEV details).
+  Data: `GET /infra-iar/work-in-process` (`InfraIarService::workInProcess()`); everything about the project is read live from the RFA, as on the Infrastructure tab.- **Screens.** The list's Actions column is one **Actions** dropdown (View · Pro-forma · Edit), the same menu as the Memo Requests list. The **View** (Actual Delivery) and **Pro-forma JEV** windows share one
   modal in the Memo Request details design (dark header with the IAR number, light body of white cards, Close in the footer); the Pro-forma opens wider (1500px). There is **no PAR # field**: the PIS property
   number is the PAR number (Property Records), so an item line is Description | Serial No. | Amount | Prop. No.
 - **View card** (Actions → View): `IAR No. | Total Amount`, `Supplier | RFA No.`, `P.O. No. | P.O. Date`, `S.I. No. | S.I. Date`, `Requisitioning Office/Dept`, then the delivery
