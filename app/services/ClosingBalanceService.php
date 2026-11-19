@@ -26,6 +26,7 @@ class ClosingBalanceService
     private string $tableFiscal    = 'fims.fiscal_year';
     private string $tableBooks     = 'fims.books';
     private string $tableSettingsStatus = 'fims.settings_status';
+    private string $tableOpeningBalances = 'fims.opening_balances';
 
     // Government Equity — the Closing counterpart to Opening Balance's own offsetting account.
     private const EQUITY_ACCOUNT_CODE = '3-01-01-020';
@@ -324,7 +325,7 @@ class ClosingBalanceService
      * Any reason it can't proceed (next year not configured, already locked, nothing to carry)
      * comes back as a 'skipped' status for the caller to show, not an exception.
      *
-     * @return array{status: string, jev_no?: string, reason?: string}
+     * @return array{status: string, lines_saved?: int, reason?: string}
      */
     private function carryForwardToNextYear(int $fiscalYr, int $bookId, int $userId): array
     {
@@ -335,17 +336,24 @@ class ClosingBalanceService
                 return ['status' => 'skipped', 'reason' => "Fiscal year {$nextYear} is not configured yet."];
             }
 
-            $alreadyLocked = App\ExecuteRow(
-                "SELECT jev.jev_id FROM {$this->tableJev} jev
-                 JOIN {$this->tableSettingsStatus} st ON st.id = jev.status_id
-                 WHERE jev.fiscal_yr = {$nextYear}
-                   AND jev.book_id = {$bookId}
-                   AND jev.jev_classification = 'OPENING'
-                   AND st.name = 'POSTED'",
+            $alreadyLocked = (int) App\ExecuteScalar(
+                "SELECT COUNT(*) FROM {$this->tableOpeningBalances} WHERE fiscal_yr = {$nextYear} AND book_id = {$bookId}",
                 'DB'
-            );
+            ) > 0;
+            if (!$alreadyLocked) {
+                $legacyJev = App\ExecuteRow(
+                    "SELECT jev.jev_id FROM {$this->tableJev} jev
+                     JOIN {$this->tableSettingsStatus} st ON st.id = jev.status_id
+                     WHERE jev.fiscal_yr = {$nextYear}
+                       AND jev.book_id = {$bookId}
+                       AND jev.jev_classification = 'OPENING'
+                       AND st.name = 'POSTED'",
+                    'DB'
+                );
+                $alreadyLocked = $legacyJev !== false;
+            }
             if ($alreadyLocked) {
-                return ['status' => 'skipped', 'reason' => "Fiscal year {$nextYear} already has a posted Opening Balance for this book."];
+                return ['status' => 'skipped', 'reason' => "Fiscal year {$nextYear} already has a saved Opening Balance for this book."];
             }
 
             $openingService = new OpeningBalanceService();
@@ -370,7 +378,7 @@ class ClosingBalanceService
                 return ['status' => 'skipped', 'reason' => $saveResult['message'] ?? 'Failed to post the carried-forward Opening Balance.'];
             }
 
-            return ['status' => 'posted', 'jev_no' => $saveResult['data']['jev_no'], 'fiscal_yr' => $nextYear];
+            return ['status' => 'posted', 'lines_saved' => $saveResult['data']['lines_saved'], 'fiscal_yr' => $nextYear];
         } catch (\Exception $e) {
             App\LogError('ClosingBalanceService::carryForwardToNextYear ' . $e->getMessage());
 
@@ -381,10 +389,13 @@ class ClosingBalanceService
     /**
      * POST /closing_balance/reverse
      * Reverses the POSTED CLOSING JEV for this fiscal_yr/book_id, unlocking the preview again.
-     * Refuses if the next fiscal year already has a POSTED Opening Balance for this book — that
-     * Opening was likely auto-carried-forward from this very Closing (see
-     * carryForwardToNextYear()), so undoing the Closing underneath it would leave next year's
-     * figures orphaned from where they came from. Reverse next year's Opening Balance first.
+     *
+     * An Opening Balance is otherwise fully locked once submitted (no edit/reverse/clear via
+     * its own page) — but a carried-forward one only exists because THIS Closing auto-created
+     * it, so undoing the Closing also undoes that side effect automatically (via
+     * OpeningBalanceService::deleteCarryForwardRows() — internal-only, no route of its own).
+     * A legacy JEV-based next-year Opening (saved before this design existed) is a real posted
+     * ledger transaction and is NOT auto-removed — that one still blocks, same as before.
      */
     public function reverseClosingBalance(int $fiscalYr, int $bookId, int $userId): array
     {
@@ -407,7 +418,12 @@ class ClosingBalanceService
             }
 
             $nextYear = $fiscalYr + 1;
-            $nextYearOpened = App\ExecuteRow(
+            $nextYearHasCarriedRows = (int) App\ExecuteScalar(
+                "SELECT COUNT(*) FROM {$this->tableOpeningBalances} WHERE fiscal_yr = {$nextYear} AND book_id = {$bookId}",
+                'DB'
+            ) > 0;
+
+            $legacyJev = App\ExecuteRow(
                 "SELECT jev.jev_no FROM {$this->tableJev} jev
                  JOIN {$this->tableSettingsStatus} st ON st.id = jev.status_id
                  WHERE jev.fiscal_yr = {$nextYear}
@@ -416,12 +432,16 @@ class ClosingBalanceService
                    AND st.name = 'POSTED'",
                 'DB'
             );
-            if ($nextYearOpened) {
-                return ['success' => false, 'message' => "Fiscal year {$nextYear} already has a posted Opening Balance ({$nextYearOpened['jev_no']}), likely carried forward from this Closing. Reverse that Opening Balance first."];
+            if ($legacyJev) {
+                return ['success' => false, 'message' => "Fiscal year {$nextYear} has a legacy Opening Balance JEV ({$legacyJev['jev_no']}) posted. Reverse that first — it's a real ledger transaction, not something this can clean up automatically."];
             }
 
             App\Execute('BEGIN', 'DB');
             try {
+                if ($nextYearHasCarriedRows) {
+                    (new OpeningBalanceService())->deleteCarryForwardRows($nextYear, $bookId);
+                }
+
                 $glService = new GeneralLedgerService();
                 $result = $glService->reverseJev((int) $jev['jev_id'], $userId);
                 if (!$result['success']) {
@@ -431,7 +451,12 @@ class ClosingBalanceService
                 }
                 App\Execute('COMMIT', 'DB');
 
-                return ['success' => true, 'message' => "Closing Entry {$jev['jev_no']} reversed — this fiscal year/book is unlocked again.", 'data' => $result['data']];
+                $msg = "Closing Entry {$jev['jev_no']} reversed — this fiscal year/book is unlocked again.";
+                if ($nextYearHasCarriedRows) {
+                    $msg .= " Fiscal year {$nextYear}'s carried-forward Opening Balance was removed along with it.";
+                }
+
+                return ['success' => true, 'message' => $msg, 'data' => $result['data']];
             } catch (\Exception $e) {
                 App\Execute('ROLLBACK', 'DB');
                 throw $e;
