@@ -1221,19 +1221,19 @@ function ftlm_bankOptsHtml(banks) {
 // "1 DV per account" — same ftlm_dvOptions list (loaded in full by
 // ftlm_loadDvOptions(), status=RELEASED) used for both the single-debit DV
 // select (#ftlm_dv_number) and each multi-debit row's own DV select below.
-// Once a DV is tagged to an FTLA, it's hidden from every OTHER select so
+// Once a DV is tagged to an FTLA, it's dropped from every OTHER select so
 // the same DV never gets tagged to two different FTLAs — see
 // ftlm_loadUsedDvNumbers()/ftlm_usedDvNumbers below (fetched fresh every
 // ftlm_open(), not cached like ftlm_dvOptions, since "used by someone
 // else" depends on which record — if any — is currently being edited).
-// currentValue is always kept selectable even if it's in the used set —
-// it's this exact select's own already-chosen value (excluded server-side
-// via exclude_id for the record being edited, but kept here too as a
-// belt-and-suspenders guard against it silently disappearing).
-function ftlm_dvOptsHtml(currentValue = '') {
+// The record being edited sees its OWN already-chosen DV(s) because the
+// server excludes that record's own usage from the used-set (exclude_id —
+// see FtlaService::getUsedDvNumbers()), not because of anything here: this
+// list only ever shows DVs that are actually still unused.
+function ftlm_dvOptsHtml(currentValue = '', excludeAlso = []) {
     return '<option value="">— Select DV —</option>' +
         ftlm_dvOptions
-            .filter(r => r.dv_no === currentValue || !ftlm_usedDvNumbers.includes(r.dv_no))
+            .filter(r => !ftlm_usedDvNumbers.includes(r.dv_no) && !excludeAlso.includes(r.dv_no))
             .map(r => {
                 const amt = r.net_amount ? ` — ₱${ftlm_fmtPeso(r.net_amount)}` : '';
                 const who = r.claimant_name ? ` (${ftlmEsc(r.claimant_name)})` : '';
@@ -1364,7 +1364,8 @@ function ftlm_renderDebitRows() {
             </td>
             <td style="padding:4px 10px;">
                 <select class="form-control" onchange="ftlm_onDebitDvChange(${idx}, this.value)">
-                    ${ftlm_dvOptsHtml(row.dv_no || '').replace(`value="${row.dv_no || ''}"`, `value="${row.dv_no || ''}" selected`)}
+                    ${ftlm_dvOptsHtml(row.dv_no || '', ftlm_debitRows.filter((r, i) => i !== idx).map(r => r.dv_no).filter(Boolean))
+                        .replace(`value="${row.dv_no || ''}"`, `value="${row.dv_no || ''}" selected`)}
                 </select>
             </td>
             <td style="padding:4px 10px;">
