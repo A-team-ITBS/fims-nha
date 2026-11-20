@@ -348,16 +348,18 @@ class CashPositionService
     // commits that fiscal year's lines directly into fims.opening_balances
     // (no JEV involved — see that service's own docblock) — refreshes the
     // opening_balance (and recomputed closing_balance) of every bank account
-    // tagged to this GL
-    // account_code's EARLIEST fims.cash_position row for that same fiscal
-    // year. Only that one row per account ever actually originates from an
-    // opening balance — every later day's "opening balance" is just the
-    // prior day's closing_balance (see getComputedBalance()), so there's
-    // nothing to cascade forward. A no-op (not an error) when the account
-    // isn't tagged to this code, or doesn't have a cash_position row for
-    // this fiscal year yet (getComputedBalance() will pick the new value up
-    // whenever that first row for the year does get created).
-    public function refreshEarliestOpeningBalanceForAccountCode(string $accountCode, int $fiscalYr, float $debitTotal): void
+    // tagged to this GL account_code's EARLIEST fims.cash_position row for
+    // that same fiscal year, CREATING one (dated fiscal_yr-01-01, the
+    // calendar-year fiscal year's own first day) if the account doesn't have
+    // any row for that year yet — a brand-new account/year otherwise has no
+    // row for this to update at all, so Cash Position would stay silently
+    // blank forever despite a real opening balance being on record. Only
+    // this one row per account ever actually originates from an opening
+    // balance — every later day's "opening balance" is just the prior day's
+    // closing_balance (see getComputedBalance()), so there's nothing to
+    // cascade forward. A no-op only when the account isn't tagged to this
+    // code at all.
+    public function refreshEarliestOpeningBalanceForAccountCode(string $accountCode, int $fiscalYr, float $debitTotal, ?int $createdBy = null): void
     {
         $accountCode = trim($accountCode);
         if ($accountCode === '' || $fiscalYr <= 0) {
@@ -377,7 +379,16 @@ class CashPositionService
                  ORDER BY position_date ASC LIMIT 1",
                 'DB'
             );
+
             if (!$earliest) {
+                App\Execute(
+                    "INSERT INTO {$this->tableCashPosition}
+                        (bank_account_id, position_date, opening_balance, total_receipts, total_disbursements, closing_balance, created_by)
+                     VALUES ({$bankAccountId}, " . $this->str("{$fiscalYr}-01-01") . ', '
+                        . $this->num($debitTotal) . ', 0, 0, ' . $this->num($debitTotal) . ', ' . ($createdBy ? (int) $createdBy : 'NULL') . ')
+                     ON CONFLICT (bank_account_id, position_date) DO NOTHING',
+                    'DB'
+                );
                 continue;
             }
 

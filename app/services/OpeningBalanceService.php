@@ -333,7 +333,7 @@ class OpeningBalanceService
                     }
                     $cashPositionService = new CashPositionService();
                     foreach ($debitByAccountCode as $accountCode => $debitTotal) {
-                        $cashPositionService->refreshEarliestOpeningBalanceForAccountCode($accountCode, $fy, $debitTotal);
+                        $cashPositionService->refreshEarliestOpeningBalanceForAccountCode($accountCode, $fy, $debitTotal, $userId > 0 ? $userId : null);
                     }
                 } catch (\Exception $e) {
                     App\LogError('OpeningBalanceService::saveOpeningBalance cash position refresh ' . $e->getMessage());
