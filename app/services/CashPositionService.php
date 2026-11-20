@@ -345,8 +345,10 @@ class CashPositionService
     }
 
     // Called by OpeningBalanceService::saveOpeningBalance() right after it
-    // posts a fiscal year's OPENING JEV — refreshes the opening_balance (and
-    // recomputed closing_balance) of every bank account tagged to this GL
+    // commits that fiscal year's lines directly into fims.opening_balances
+    // (no JEV involved — see that service's own docblock) — refreshes the
+    // opening_balance (and recomputed closing_balance) of every bank account
+    // tagged to this GL
     // account_code's EARLIEST fims.cash_position row for that same fiscal
     // year. Only that one row per account ever actually originates from an
     // opening balance — every later day's "opening balance" is just the
