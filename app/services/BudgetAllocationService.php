@@ -661,7 +661,8 @@ class BudgetAllocationService
     //              approval leaves them as they were.
     // Only an FMD user may do this (the central review RC, GlobalService::isCentralReviewRc — read with getUserRcId, which
     // fails closed), only to a request that is in one of the three review statuses, and only when the user holds the
-    // user level of that step. The status change and the number are written in ONE transaction, and the UPDATE itself
+    // user level of that step — EXCEPT a superadmin (isSuperAdmin), who needs neither the FMD office nor the step's user
+    // level and may approve or return at every step. The status change and the number are written in ONE transaction, and the UPDATE itself
     // re-checks the status, so two reviewers acting at once cannot both succeed.
     //
     // Returns { success, message, status_name, allocation_number }; a refusal for the caller's office or user level also
@@ -675,7 +676,9 @@ class BudgetAllocationService
             if (!in_array($decision, ['approve', 'return'], true)) {
                 return $this->fail("decision must be 'approve' or 'return'.");
             }
-            if (!$this->isReviewer($userId)) {
+            // A superadmin has no restriction here: not tied to the FMD office, and may act at every step of the chain.
+            $isSuperAdmin = $this->isSuperAdmin($userId);
+            if (!$isSuperAdmin && !$this->isReviewer($userId)) {
                 return $this->fail('Only the Financial Management Department can process memo requests.') + ['forbidden' => true];
             }
 
@@ -693,7 +696,7 @@ class BudgetAllocationService
                     .') can be approved or returned — this one is '
                     .(($row['status_name'] ?? '') !== '' ? $row['status_name'] : 'without a status').'.');
             }
-            if (!$this->hasUserLevel($userId, $step['actor'])) {
+            if (!$isSuperAdmin && !$this->hasUserLevel($userId, $step['actor'])) {
                 return $this->fail("This memo request is {$step['status']}: only the {$step['actor']} can approve or return it at this step.")
                     + ['forbidden' => true];
             }
@@ -866,7 +869,7 @@ class BudgetAllocationService
      * Where a request stands in the review chain, for the "Process" modal (GET /budget_allocation/read/{id} adds it as
      * data.review): in_review, the status it is in, who acts on it (actor, a user level name), the status an approval
      * gives (next_status), whether that is the final approval (is_final) and whether THIS user may decide it now
-     * (can_decide: an FMD user holding the step's user level). process() enforces the same rules again.
+     * (can_decide: an FMD user holding the step's user level, or a superadmin at any step). process() enforces the same rules again.
      */
     public function reviewInfo(array $row, ?int $userId): array
     {
@@ -885,7 +888,9 @@ class BudgetAllocationService
             'return_status' => $step['return'],
             'return_actor' => self::REVIEW_STEPS[$step['return']]['actor'] ?? null,
             'is_returned' => in_array($step['status'], [self::STATUS_RETURNED_TO_SECTION_CHIEF, self::STATUS_RETURNED_TO_DIVISION_MANAGER], true),
-            'can_decide' => $this->isReviewer($userId) && $this->hasUserLevel($userId, $step['actor']),
+            // a superadmin may decide it at any step; anyone else must be FMD AND hold the step's user level
+            'can_decide' => $this->isSuperAdmin($userId)
+                || ($this->isReviewer($userId) && $this->hasUserLevel($userId, $step['actor'])),
         ];
     }
 
@@ -932,6 +937,47 @@ class BudgetAllocationService
             ) > 0;
         } catch (\Throwable $e) {
             App\LogError('BudgetAllocationService::hasUserLevel '.$e->getMessage());
+
+            return false;
+        }
+    }
+
+    /**
+     * Is this user a superadmin (user level -1)? The built-in administrator (user_id -1, which has no uac.users row — or an id
+     * the API could not resolve, then the logged-in level is read instead), or a uac.users row whose user_level_id lists -1
+     * (a VARCHAR that may hold several ids, "-1,3"). Same people as
+     * GlobalService::getUserRcScope()['is_admin'], but this check FAILS CLOSED — a missing user, no level, or a lookup failure is
+     * "no", never "yes" — because it gates moving money (the final approval), where getUserRcScope() fails open for listing.
+     */
+    private function isSuperAdmin(?int $userId): bool
+    {
+        try {
+            $userId = (int) $userId;
+            if ($userId === -1) {
+                return true;
+            }
+            if ($userId <= 0) {
+                // The id could not be resolved: api.php turns a JWT user id <= 0 (PHPMaker's built-in administrator is -1) into the
+                // session's UAC id, or 0. The middleware has still logged the user in with the level from the signed JWT / session,
+                // so that level — the same one LetterheadLayoutService::canSave() reads — says whether this is the administrator.
+                foreach (explode(',', (string) App\CurrentUserLevel()) as $level) {
+                    if (trim($level) === '-1') {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+            $raw = (string) App\ExecuteScalar("SELECT user_level_id FROM {$this->tableUser} WHERE user_id = {$userId}", 'DB');
+            foreach (explode(',', $raw) as $part) {
+                if (trim($part) === '-1') {
+                    return true;
+                }
+            }
+
+            return false;
+        } catch (\Throwable $e) {
+            App\LogError('BudgetAllocationService::isSuperAdmin '.$e->getMessage());
 
             return false;
         }
