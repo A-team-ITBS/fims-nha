@@ -15,30 +15,26 @@ $_sc_api = preg_match('~/api$~', $_sc_api) ? $_sc_api : $_sc_api . '/api';
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
 
+<link rel="stylesheet" href="/app/fims-css/fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css') ?>" />
+
 <style>
+    /* Table styling (.fims-report-table*) lives in app/fims-css/fims.css. Only page-specific, non-table rules remain here. */
     #sc-root .sc-report-title { text-align: center; margin: 0 0 18px; }
     #sc-root .sc-report-title div { font-weight: 700; font-size: 14px; line-height: 1.6; }
     #sc-root .sc-report-title .sc-report-date { font-weight: 400; }
-    #sc-root .sc-major-row td { background: #1B2B6B; color: #fff; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; }
-    #sc-root .sc-section-row td { background: var(--afims-bg-soft, #F5F6FA); font-weight: 600; text-transform: uppercase; font-size: 12px; }
-    #sc-root .sc-line-row td:first-child { padding-left: 20px; }
-    #sc-root .sc-subtotal-row td { font-weight: 600; border-top: 1px solid var(--afims-border, #DDE0EC); }
-    #sc-root .sc-grand-row td { font-weight: 700; background: var(--afims-bg-soft, #F5F6FA); border-top: 2px solid #1B2B6B; border-bottom: 2px solid #1B2B6B; text-transform: uppercase; }
-    #sc-root .sc-neg { color: #B42318; }
     #sc-root .sc-sample { display: none; margin: 0 0 14px; padding: 10px 14px; border-radius: 6px; font-size: 13px; background: #FFF4D6; color: #6B4A00; border: 1px solid #F0D58A; }
 
-    /* Scroll the body vertically instead of growing the page — header row stays pinned in view. */
-    #sc-root .nha-tbl-scroll { max-height: 70vh; overflow-y: auto; }
-    #sc-root .nha-tbl thead th { position: sticky; top: 0; z-index: 1; }
-    @media print {
-        #sc-root .nha-tbl-scroll { max-height: none; overflow-y: visible; }
-    }
+    /* Same page-level type scale as the Trial Balance / Balance Sheet / Income Statement pages. _shared/js/custom.js forces
+       `1em * scale !important` on inputs/selects/buttons, so those get the same direct rem + !important. */
+    #sc-root .nha-hdr-tag             { font-size: 0.75rem; }    /* 12px */
+    #sc-root .nha-hdr-title           { font-size: 1.25rem; }    /* 20px */
+    #sc-root .nha-btn-hdr             { font-size: calc(0.875rem * var(--button-scale, 1)) !important; } /* 14px  Refresh */
+    #sc-root .nha-filter-label        { font-size: 0.75rem; }    /* 12px */
+    #sc-root .nha-filter-select       { font-size: calc(0.875rem * var(--input-scale, 1)) !important; }  /* 14px  dropdowns */
+    #sc-root .nha-bdg                 { font-size: 0.8125rem; }  /* 13px  status badge */
+    #sc-root .nha-error               { font-size: 0.875rem; }   /* 14px */
+    #sc-root .nha-hint                { font-size: 0.875rem; padding: 0 16px; margin: 0 0 14px; color: var(--afims-text-muted, #62657E); }   /* 14px; 16px side padding lines it up with the filter card */
 
-    html.afims-dark[data-bs-theme="dark"] #sc-root .sc-section-row td { background: var(--afims-surface-subtle, #22294A); color: #FFFFFF; border-top: 1px solid var(--afims-border-strong, #4A5270); }
-    html.afims-dark[data-bs-theme="dark"] #sc-root .sc-major-row td { background: #2E4A8F; color: #FFFFFF; }
-    html.afims-dark[data-bs-theme="dark"] #sc-root .sc-grand-row td { background: var(--afims-surface-subtle, #22294A); color: #FFFFFF; border-color: var(--afims-border-strong, #4A5270); }
-    html.afims-dark[data-bs-theme="dark"] #sc-root .sc-subtotal-row td { border-top-color: var(--afims-border-strong, #4A5270); }
-    html.afims-dark[data-bs-theme="dark"] #sc-root .sc-neg { color: #FF8A80; }
     html.afims-dark[data-bs-theme="dark"] #sc-root .sc-sample { background: #3A2F10; color: #F5D98A; border-color: #6B5A22; }
     @media print {
         #sc-root .sc-letterhead,
@@ -70,7 +66,7 @@ $_sc_api = preg_match('~/api$~', $_sc_api) ? $_sc_api : $_sc_api . '/api';
         </div>
     </div>
 
-    <p class="nha-hint no-print" style="margin:0 0 14px;color:var(--afims-text-muted,#62657E);font-size:13px;">
+    <p class="nha-hint no-print">
         Statement of Changes in Net Assets/Equity for the selected fiscal year. Shows opening balance,
         surplus/(deficit) for the period, and closing balance based on approved and posted Journal Entry Vouchers.
     </p>
@@ -128,9 +124,9 @@ $_sc_api = preg_match('~/api$~', $_sc_api) ? $_sc_api : $_sc_api . '/api';
     </div>
 
     <!-- ── TABLE ──────────────────────────────────────────── -->
-    <div class="nha-table-wrap">
-        <div class="nha-tbl-scroll">
-            <table class="nha-tbl">
+    <div class="nha-table-wrap fims-report-table-wrap">
+        <div class="nha-tbl-scroll fims-report-table-scroll">
+            <table class="nha-tbl fims-report-table">
                 <thead id="sc-thead">
                     <tr>
                         <th>Description</th>
@@ -338,31 +334,31 @@ function sc_renderTable(data, fy, book) {
     const rows = [];
 
     // Opening balance
-    rows.push({ description: 'BALANCE AT JANUARY 1, ' + fy, section: true, class: 'sc-section-row' });
-    rows.push({ description: '  Accumulated Surplus', amount: main.opening, nha: nha?.opening, class: 'sc-line-row' });
+    rows.push({ description: 'BALANCE AT JANUARY 1, ' + fy, section: true, class: 'fims-report-table-group-row' });
+    rows.push({ description: '  Accumulated Surplus', amount: main.opening, nha: nha?.opening, class: 'fims-report-table-row' });
 
     // Changes during period
-    rows.push({ description: 'CHANGES IN NET ASSETS/EQUITY FOR CY ' + fy, section: true, class: 'sc-section-row' });
-    rows.push({ description: '  Add/(Deduct): Surplus/(Deficit) for the period', amount: main.surplus, nha: nha?.surplus, class: 'sc-line-row' });
-    rows.push({ description: '  Adjustments (capital, dividends, impairment, prior-year — not yet broken out by type)', amount: main.adjustments, nha: nha?.adjustments, class: 'sc-line-row' });
+    rows.push({ description: 'CHANGES IN NET ASSETS/EQUITY FOR CY ' + fy, section: true, class: 'fims-report-table-group-row' });
+    rows.push({ description: '  Add/(Deduct): Surplus/(Deficit) for the period', amount: main.surplus, nha: nha?.surplus, class: 'fims-report-table-row' });
+    rows.push({ description: '  Adjustments (capital, dividends, impairment, prior-year — not yet broken out by type)', amount: main.adjustments, nha: nha?.adjustments, class: 'fims-report-table-row' });
 
     const totalChanges = round2(main.surplus + main.adjustments);
     const nhaTotalChanges = nha && round2(nha.surplus + nha.adjustments);
-    rows.push({ description: 'Net Changes in Net Assets/Equity', amount: totalChanges, nha: nhaTotalChanges, subtotal: true, class: 'sc-subtotal-row' });
+    rows.push({ description: 'Net Changes in Net Assets/Equity', amount: totalChanges, nha: nhaTotalChanges, subtotal: true, class: 'fims-report-table-subtotal-row' });
 
     // Closing balance
-    rows.push({ description: 'BALANCE AT DECEMBER 31, ' + fy, section: true, class: 'sc-section-row' });
-    rows.push({ description: '  Accumulated Surplus', amount: main.closing, nha: nha?.closing, grand: true, class: 'sc-grand-row' });
+    rows.push({ description: 'BALANCE AT DECEMBER 31, ' + fy, section: true, class: 'fims-report-table-group-row' });
+    rows.push({ description: '  Accumulated Surplus', amount: main.closing, nha: nha?.closing, grand: true, class: 'fims-report-table-grand-row' });
 
     tbody.innerHTML = rows.map(r => {
         if (r.section) {
             return `<tr class="${r.class}"><td colspan="4">${sc_esc(r.description)}</td></tr>`;
         }
-        const amtStr = formatNumber(r.amount);
-        const amtClass = r.amount < 0 ? 'sc-neg' : '';
-        const nhaStr = r.nha === null || r.nha === undefined ? '—' : formatNumber(r.nha);
-        const nhaClass = (r.nha ?? 0) < 0 ? 'sc-neg' : '';
-        return `<tr class="${r.class}"><td>${sc_esc(r.description)}</td><td class="text-end ${amtClass}">${amtStr}</td><td class="text-end ${nhaClass}">${nhaStr}</td><td class="text-end"></td></tr>`;
+        // Negative figures are wrapped in a span (not the <td>) so the shared red colour wins over the cell's own text colour.
+        const amt = (v, str) => v < 0 ? `<span class="fims-report-table-neg">${str}</span>` : str;
+        const amtStr = amt(r.amount, formatNumber(r.amount));
+        const nhaStr = r.nha === null || r.nha === undefined ? '—' : amt(r.nha, formatNumber(r.nha));
+        return `<tr class="${r.class}"><td>${sc_esc(r.description)}</td><td class="text-end fims-report-table-num">${amtStr}</td><td class="text-end fims-report-table-num">${nhaStr}</td><td class="text-end fims-report-table-num"></td></tr>`;
     }).join('');
 }
 

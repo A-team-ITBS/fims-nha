@@ -167,7 +167,7 @@ $colCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
                     <div class="fims-form-section-title" style="margin-top:14px;">Collection(s)</div>
                     <div style="overflow-x:auto;">
                         <table class="fims-table" id="col-lines-table" style="table-layout:fixed;width:100%;min-width:420px;">
-                            <thead><tr><th>GL Account</th><th style="width:160px">Amount</th><th style="width:56px"></th></tr></thead>
+                            <thead><tr><th>Account Code</th><th style="width:160px">Amount</th><th style="width:56px"></th></tr></thead>
                             <tbody id="col-lines-body"></tbody>
                         </table>
                     </div>
@@ -300,33 +300,142 @@ $colCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
     let bankAccounts = [];
     let regions = [];
 
-    function glOptionsHtml(selectedId) {
-        let html = '<option value="">— Select GL Account —</option>';
-        html += glAccounts.map(function (a) {
-            const sel = String(a.account_id) === String(selectedId) ? ' selected' : '';
-            return '<option value="' + a.account_id + '"' + sel + '>' + escapeHtml(a.account_code) + ' — ' + escapeHtml(a.account_title) + '</option>';
-        }).join('');
-        return html;
+    // ── "Collection(s)" dynamic rows (Account Code + Amount) ──
+    // The Account Code picker is a type-to-filter combobox, not a plain
+    // <select> — glAccounts is already loaded in full by loadLookups() (it's
+    // just the postable chart-of-accounts list, same one glOptionsHtml()
+    // used to render as <option>s), so filtering happens client-side
+    // against that in-memory array rather than a server round-trip.
+    // Every selectable account here is an SL (sub-ledger) code — a child of
+    // some non-postable GL grouping account (see CollectionsService::
+    // getGlAccounts()) — so the label leads with the SL code itself and
+    // shows its parent GL code/title for context, when there is one.
+    function colLineLabel(account) {
+        if (!account) return '';
+        const parent = account.parent_code ? (account.parent_code + ' ' + account.parent_title + ' › ') : '';
+        return parent + account.account_code + ' — ' + account.account_title;
     }
-
-    function bankOptionsHtml(selectedId) {
-        let html = '<option value="">— Select Bank —</option>';
-        html += bankAccounts.map(function (b) {
-            const sel = String(b.bank_account_id) === String(selectedId) ? ' selected' : '';
-            return '<option value="' + b.bank_account_id + '"' + sel + '>' + escapeHtml(b.account_name) + ' — ' + escapeHtml(b.bank_name || '') + '</option>';
-        }).join('');
-        return html;
-    }
-
-    // ── "Collection(s)" dynamic rows (GL Account + Amount) ──
     function renderColLineRow(coaAccountId, amount) {
         const tr = document.createElement('tr');
-        tr.innerHTML = '<td><select class="fims-select fims-input-sm col-line-coa">' + glOptionsHtml(coaAccountId || '') + '</select></td>' +
+        const account = glAccounts.find(a => String(a.account_id) === String(coaAccountId || ''));
+        tr.innerHTML =
+            '<td>' +
+                '<input type="hidden" class="col-line-coa" value="' + (coaAccountId || '') + '">' +
+                // position:relative here (wrapping just the input), not on the
+                // <td> itself — the input only fills the td's CONTENT box, so
+                // anchoring the chevron to the td instead left it sitting in
+                // the cell's own right padding, outside the visible input box.
+                '<div style="position:relative;">' +
+                    '<input type="text" class="fims-input fims-input-sm col-line-coa-search" autocomplete="off" ' +
+                        'style="padding-right:26px;" placeholder="Click or type to search…" value="' + escapeHtml(colLineLabel(account)) + '">' +
+                    '<i class="fas fa-chevron-down" style="position:absolute;right:9px;top:50%;transform:translateY(-50%);font-size:10px;color:var(--fims-text-subtle,#99A1B3);pointer-events:none;"></i>' +
+                '</div>' +
+            '</td>' +
             '<td><input type="number" step="0.01" class="fims-input fims-input-sm col-line-amount" value="' + (amount || 0) + '"></td>' +
             '<td><button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-remove-col-line><i class="fas fa-trash"></i></button></td>';
         tr.querySelector('.col-line-amount').addEventListener('input', recalcColLinesTotal);
-        tr.querySelector('[data-remove-col-line]').addEventListener('click', function () { tr.remove(); recalcColLinesTotal(); });
+        const dropdown = wireColLineCoaSearch(tr);
+        tr.querySelector('[data-remove-col-line]').addEventListener('click', function () {
+            dropdown.remove();
+            tr.remove();
+            recalcColLinesTotal();
+        });
         return tr;
+    }
+    // Filters glAccounts by code/title substring (case-insensitive) as the
+    // user types; picking a result fills the hidden id + the input's
+    // display text. Clearing the input also clears the picked id, so a
+    // half-typed search can't silently submit a stale selection.
+    //
+    // The dropdown panel is appended to <body> and positioned with
+    // position:fixed from the input's own bounding rect — NOT nested
+    // inside the <td> with position:absolute. #col-lines-table sits inside
+    // a plain `overflow-x:auto` wrapper div, and per the CSS overflow spec,
+    // setting overflow-x alone forces the browser to compute overflow-y as
+    // `auto` too (not `visible`) — so an absolutely-positioned child
+    // extending below the row was being silently clipped to the row's own
+    // height by that ancestor, making an otherwise correctly-populated
+    // dropdown look empty. Anchoring to <body> instead sidesteps that
+    // ancestor entirely.
+    function wireColLineCoaSearch(tr) {
+        const hidden   = tr.querySelector('.col-line-coa');
+        const search   = tr.querySelector('.col-line-coa-search');
+        const dropdown = document.createElement('div');
+        dropdown.className = 'col-line-coa-dropdown';
+        // z-index must clear .fims-modal-overlay's own 9000 (fims.css) — this
+        // panel lives on <body>, a sibling of the modal overlay, not a
+        // descendant of it, so a lower z-index here would render underneath
+        // the modal instead of on top of it.
+        dropdown.style.cssText = 'display:none;position:fixed;background:#fff;border:1px solid #E4ECF2;border-radius:6px;max-height:200px;overflow-y:auto;z-index:9500;box-shadow:0 4px 12px rgba(0,0,0,.15);';
+        document.body.appendChild(dropdown);
+
+        function positionDropdown() {
+            const rect = search.getBoundingClientRect();
+            dropdown.style.left  = rect.left + 'px';
+            dropdown.style.top   = rect.bottom + 2 + 'px';
+            dropdown.style.width = rect.width + 'px';
+        }
+        function renderDropdown(query) {
+            const q = query.trim().toLowerCase();
+            const matches = (q ? glAccounts.filter(a =>
+                a.account_code.toLowerCase().includes(q) || a.account_title.toLowerCase().includes(q) ||
+                (a.parent_code || '').toLowerCase().includes(q) || (a.parent_title || '').toLowerCase().includes(q)
+            ) : glAccounts).slice(0, 50);
+            if (!matches.length) {
+                dropdown.innerHTML = '<div style="padding:8px 12px;font-size:12px;color:var(--fims-text-subtle);">No matching accounts</div>';
+            } else {
+                // SL code (this account's own code) leads, bold, on its own
+                // line; the GL parent it rolls up to sits beneath it, small
+                // and muted — same "SL first, GL for context" emphasis as
+                // the label text itself (colLineLabel()).
+                dropdown.innerHTML = matches.map(a =>
+                    '<div class="col-line-coa-item" data-id="' + a.account_id + '" style="padding:7px 12px;cursor:pointer;font-size:12.5px;border-bottom:1px solid #F4F7FA;">' +
+                        '<div><strong>' + escapeHtml(a.account_code) + '</strong> — ' + escapeHtml(a.account_title) + '</div>' +
+                        (a.parent_code ? '<div style="font-size:11px;color:var(--fims-text-subtle,#99A1B3);margin-top:1px;">GL: ' + escapeHtml(a.parent_code) + ' — ' + escapeHtml(a.parent_title) + '</div>' : '') +
+                    '</div>'
+                ).join('');
+                dropdown.querySelectorAll('.col-line-coa-item').forEach(function (item) {
+                    item.addEventListener('mouseover', () => item.style.background = '#F4F7FA');
+                    item.addEventListener('mouseout', () => item.style.background = 'transparent');
+                    item.addEventListener('click', function () {
+                        const account = glAccounts.find(a => String(a.account_id) === this.dataset.id);
+                        hidden.value = this.dataset.id;
+                        search.value = colLineLabel(account);
+                        dropdown.style.display = 'none';
+                    });
+                });
+            }
+            positionDropdown();
+            dropdown.style.display = 'block';
+        }
+        // Clicking/focusing opens the FULL list (like a real dropdown), not
+        // the current field filtered by its own "CODE — Title" display text
+        // (which would otherwise match nothing and show "No matching
+        // accounts" every time an already-picked row is reopened). Typing
+        // afterward narrows it, same as a combobox.
+        search.addEventListener('focus', function () {
+            this.select();
+            renderDropdown('');
+        });
+        search.addEventListener('input', function () {
+            hidden.value = '';
+            renderDropdown(this.value);
+        });
+        // Capture-phase so a scroll on any ancestor (the modal body, the
+        // table's own overflow-x:auto wrapper, etc.) closes the dropdown —
+        // but it ALSO catches two scroll events that aren't an ancestor
+        // moving at all: the dropdown's own list scrolling (it has its own
+        // overflow-y:auto), and the native internal text-scroll an <input>
+        // fires once typed text outgrows its visible width. Either one was
+        // closing the dropdown mid-keystroke, making typing look broken.
+        window.addEventListener('scroll', function (e) {
+            if (e.target !== search && !dropdown.contains(e.target)) dropdown.style.display = 'none';
+        }, true);
+        window.addEventListener('resize', function () { dropdown.style.display = 'none'; });
+        document.addEventListener('click', function (e) {
+            if (e.target !== search && !dropdown.contains(e.target)) dropdown.style.display = 'none';
+        });
+        return dropdown;
     }
     function addColLineRow(coaAccountId, amount) {
         document.getElementById('col-lines-body').appendChild(renderColLineRow(coaAccountId, amount));
@@ -353,23 +462,107 @@ $colCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
     // from this deposit, it can no longer be edited or removed here —
     // see CollectionsService::update()'s docblock for why (resubmitting it
     // unmodified would otherwise risk losing its swept tracking).
+    // Same type-to-filter combobox as the Account Code field above, for the
+    // Bank picker — bankAccounts is already loaded in full by loadLookups(),
+    // so this is a second instance of the same generic pattern, just a
+    // plain <input>+hidden pair swapped in for the old <select>.
+    function colDepBankLabel(bank) {
+        return bank ? (bank.account_name + ' — ' + (bank.bank_name || '')) : '';
+    }
     function renderColDepositRow(bankAccountId, periodFrom, periodTo, amount, isSwept) {
         const tr = document.createElement('tr');
         const disabledAttr = isSwept ? ' disabled' : '';
-        tr.innerHTML = '<td><select class="fims-select fims-input-sm col-dep-bank"' + disabledAttr + '>' + bankOptionsHtml(bankAccountId || '') + '</select></td>' +
+        const bank = bankAccounts.find(b => String(b.bank_account_id) === String(bankAccountId || ''));
+        tr.innerHTML =
+            '<td>' +
+                '<input type="hidden" class="col-dep-bank" value="' + (bankAccountId || '') + '">' +
+                '<div style="position:relative;">' +
+                    '<input type="text" class="fims-input fims-input-sm col-dep-bank-search" autocomplete="off"' + disabledAttr +
+                        ' style="padding-right:26px;" placeholder="Click or type to search…" value="' + escapeHtml(colDepBankLabel(bank)) + '">' +
+                    (isSwept ? '' : '<i class="fas fa-chevron-down" style="position:absolute;right:9px;top:50%;transform:translateY(-50%);font-size:10px;color:var(--fims-text-subtle,#99A1B3);pointer-events:none;"></i>') +
+                '</div>' +
+            '</td>' +
             '<td><input type="date" class="fims-input fims-input-sm col-dep-from" value="' + (periodFrom || '') + '"' + disabledAttr + '></td>' +
             '<td><input type="date" class="fims-input fims-input-sm col-dep-to" value="' + (periodTo || '') + '"' + disabledAttr + '></td>' +
             '<td><input type="number" step="0.01" class="fims-input fims-input-sm col-dep-amount" value="' + (amount || 0) + '"' + disabledAttr + '></td>' +
             '<td>' + (isSwept ? '<span class="fims-badge fims-badge-green">Swept</span>' : '<span class="fims-badge fims-badge-gray">Not Swept</span>') + '</td>' +
             '<td>' + (isSwept ? '' : '<button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-remove-col-dep><i class="fas fa-trash"></i></button>') + '</td>';
         tr.dataset.swept = isSwept ? '1' : '0';
+        let dropdown = null;
         if (isSwept) {
             tr.style.opacity = '0.75';
         } else {
+            dropdown = wireColDepBankSearch(tr);
             tr.querySelector('.col-dep-amount').addEventListener('input', recalcColDepositsTotal);
-            tr.querySelector('[data-remove-col-dep]').addEventListener('click', function () { tr.remove(); recalcColDepositsTotal(); });
+            tr.querySelector('[data-remove-col-dep]').addEventListener('click', function () {
+                if (dropdown) dropdown.remove();
+                tr.remove();
+                recalcColDepositsTotal();
+            });
         }
         return tr;
+    }
+    // See wireColLineCoaSearch() above for why the dropdown lives on <body>
+    // with position:fixed (escaping #col-deposits-table's own
+    // overflow-x:auto ancestor) and why its z-index has to clear the modal
+    // overlay's own 9000.
+    function wireColDepBankSearch(tr) {
+        const hidden   = tr.querySelector('.col-dep-bank');
+        const search   = tr.querySelector('.col-dep-bank-search');
+        const dropdown = document.createElement('div');
+        dropdown.className = 'col-dep-bank-dropdown';
+        dropdown.style.cssText = 'display:none;position:fixed;background:#fff;border:1px solid #E4ECF2;border-radius:6px;max-height:200px;overflow-y:auto;z-index:9500;box-shadow:0 4px 12px rgba(0,0,0,.15);';
+        document.body.appendChild(dropdown);
+
+        function positionDropdown() {
+            const rect = search.getBoundingClientRect();
+            dropdown.style.left  = rect.left + 'px';
+            dropdown.style.top   = rect.bottom + 2 + 'px';
+            dropdown.style.width = rect.width + 'px';
+        }
+        function renderDropdown(query) {
+            const q = query.trim().toLowerCase();
+            const matches = (q ? bankAccounts.filter(b =>
+                b.account_name.toLowerCase().includes(q) || (b.bank_name || '').toLowerCase().includes(q)
+            ) : bankAccounts).slice(0, 50);
+            if (!matches.length) {
+                dropdown.innerHTML = '<div style="padding:8px 12px;font-size:12px;color:var(--fims-text-subtle);">No matching banks</div>';
+            } else {
+                dropdown.innerHTML = matches.map(b =>
+                    '<div class="col-dep-bank-item" data-id="' + b.bank_account_id + '" style="padding:7px 12px;cursor:pointer;font-size:12.5px;border-bottom:1px solid #F4F7FA;">' +
+                        '<strong>' + escapeHtml(b.account_name) + '</strong> — ' + escapeHtml(b.bank_name || '') +
+                    '</div>'
+                ).join('');
+                dropdown.querySelectorAll('.col-dep-bank-item').forEach(function (item) {
+                    item.addEventListener('mouseover', () => item.style.background = '#F4F7FA');
+                    item.addEventListener('mouseout', () => item.style.background = 'transparent');
+                    item.addEventListener('click', function () {
+                        const bank = bankAccounts.find(b => String(b.bank_account_id) === this.dataset.id);
+                        hidden.value = this.dataset.id;
+                        search.value = colDepBankLabel(bank);
+                        dropdown.style.display = 'none';
+                    });
+                });
+            }
+            positionDropdown();
+            dropdown.style.display = 'block';
+        }
+        search.addEventListener('focus', function () {
+            this.select();
+            renderDropdown('');
+        });
+        search.addEventListener('input', function () {
+            hidden.value = '';
+            renderDropdown(this.value);
+        });
+        window.addEventListener('scroll', function (e) {
+            if (e.target !== search && !dropdown.contains(e.target)) dropdown.style.display = 'none';
+        }, true);
+        window.addEventListener('resize', function () { dropdown.style.display = 'none'; });
+        document.addEventListener('click', function (e) {
+            if (e.target !== search && !dropdown.contains(e.target)) dropdown.style.display = 'none';
+        });
+        return dropdown;
     }
     function addColDepositRow(bankAccountId, periodFrom, periodTo, amount, isSwept) {
         document.getElementById('col-deposits-body').appendChild(renderColDepositRow(bankAccountId, periodFrom, periodTo, amount, isSwept));
@@ -487,6 +680,11 @@ $colCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
         document.getElementById('col_rc_id').value = '';
         document.getElementById('col_collecting_office').value = '';
         document.getElementById('col_report_date').value = '';
+        // Each row's Account Code / Bank dropdown lives on <body> (see
+        // wireColLineCoaSearch()'s comment), not inside col-lines-body /
+        // col-deposits-body — wiping those containers' innerHTML alone
+        // would orphan them.
+        document.querySelectorAll('body > .col-line-coa-dropdown, body > .col-dep-bank-dropdown').forEach(d => d.remove());
         document.getElementById('col-lines-body').innerHTML = '';
         document.getElementById('col-deposits-body').innerHTML = '';
         recalcColLinesTotal();

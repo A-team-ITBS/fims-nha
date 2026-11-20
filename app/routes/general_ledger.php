@@ -128,6 +128,30 @@ $app->get('/general_ledger/ledger', function ($request, $response, $args) use ($
     }
 })->add($accessMiddleware)->add($jwtMiddleware);
 
+// General Ledger drill-down — every SL account under ONE GL account (account_code, required), each with its
+// own JEV lines + running balance. Powers the "click a GL code" popup on the General Ledger page — see
+// GeneralLedgerService::fetchGlSubLedgers(). Optional: fiscal_yr, book_id.
+$app->get('/general_ledger/ledger-sl', function ($request, $response, $args) use ($GeneralLedgerService, $glIntOrNull) {
+    try {
+        $params      = $request->getQueryParams();
+        $accountCode = trim((string) ($params['account_code'] ?? ''));
+        if ($accountCode === '') {
+            return $response->withJson(['success' => false, 'message' => 'account_code is required.'], 400);
+        }
+        $result = $GeneralLedgerService->fetchGlSubLedgers(
+            $accountCode,
+            $glIntOrNull($params['fiscal_yr'] ?? null),
+            $glIntOrNull($params['book_id'] ?? null)
+        );
+
+        return $response->withJson($result, $result['success'] ? 200 : 400);
+    } catch (\Exception $e) {
+        LogError('GET /general_ledger/ledger-sl ' . $e->getMessage());
+
+        return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
+    }
+})->add($accessMiddleware)->add($jwtMiddleware);
+
 // Subsidiary Ledger — one SL account's ledger card with a running balance, or (sl_code omitted)
 // every SL account's ledger card at once — the page's default view before one is picked. An "SL
 // account" is a child fims.chart_of_accounts row (parent_account_id IS NOT NULL) under a control
