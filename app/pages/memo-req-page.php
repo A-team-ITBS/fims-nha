@@ -30,20 +30,36 @@ if (!$_mrq_types) {
 // (and Edit alone on one the FMD review Returned to them).
 // FMD is recognised by its rc_code, NOT its rc_id (the id's format differs between datasets: "013" vs "RC-013"). Mirrors
 // GlobalService::CENTRAL_REVIEW_RC_CODE, which the API checks again server-side (process() refuses anyone else).
+// A SUPERADMIN (user level -1) has no restriction on the approving process: they get the Process action on every row and may
+// endorse / approve / return at EVERY step of the chain, whatever their office and user level — while keeping Edit / Delete.
+// Same people the API lets through (BudgetAllocationService::isSuperAdmin): the built-in administrator (user_id -1, no uac.users
+// row) or a uac.users row whose user_level_id lists -1 ("-1,3"). NOT IsSysAdmin(), which only tracks PHPMaker's hardcoded admin
+// login and is never true for a DB-authenticated user. Hiding a button here is cosmetic — the API is what enforces it.
 $userid = CurrentUserID();
 $_mrq_fmdRcCode = '35-074-0000000-032';
 $_mrq_isFmd = false;
+$_mrq_isAdmin = (int) $userid === -1;
 try {
+    // LEFT JOIN: a superadmin may have no office (rc_id) — the user row is still needed for its user_level_id
     $_mrq_rc = ExecuteRow(
-        'SELECT rc.rc_id, rc.rc_code, rc.rc_name FROM uac.users u '
-        .'JOIN fims.responsibility_code rc ON rc.rc_id = u.rc_id WHERE u.user_id = '.(int) $userid,
+        'SELECT u.user_level_id, rc.rc_id, rc.rc_code, rc.rc_name FROM uac.users u '
+        .'LEFT JOIN fims.responsibility_code rc ON rc.rc_id = u.rc_id WHERE u.user_id = '.(int) $userid,
         'DB'
     ) ?: null;
     $_mrq_isFmd = $_mrq_rc !== null && trim((string) ($_mrq_rc['rc_code'] ?? '')) === $_mrq_fmdRcCode;
+    if ($_mrq_rc !== null) {
+        foreach (explode(',', (string) ($_mrq_rc['user_level_id'] ?? '')) as $_mrq_level) {
+            if (trim($_mrq_level) === '-1') {
+                $_mrq_isAdmin = true;
+            }
+        }
+    }
 } catch (\Throwable $e) {
     $_mrq_isFmd = false;   // can't tell who this is -> the ordinary view, never an error page
     LogError('memo-req-page: could not look up the current user\'s RC — '.$e->getMessage());
 }
+// Who is offered the "Process" action (details + Endorse / Approve / Return): FMD, and a superadmin without restriction.
+$_mrq_canProcess = $_mrq_isFmd || $_mrq_isAdmin;
 ?>
 
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -261,11 +277,12 @@ include_once __DIR__.'/readone/print-preview-readone.php';
    View    → (Actions menu, every row, every user) the request's details, read-only: the same modal as Process, opened
              without the decision buttons — mpr_open(id, true) in readone/memo-process-readone.php
    Submit for Review → (Actions menu, Draft requests only) PATCH status_id = the 'For Review' status
-   Process → (Actions menu, FMD only — instead of Edit / Delete) the details modal with Endorse / Approve / Return:
+   Process → (Actions menu, FMD — instead of Edit / Delete — and a superadmin — besides them) the details modal with
+             Endorse / Approve / Return:
              readone/memo-process-readone.php (mpr_*), PATCH /budget_allocation/process/{id}. The review is a chain:
              For Review (FMD Section Chief) -> For Division Manager (FMD Division Manager) -> For Department Manager
              (FMD Department Manager) -> Approved; Return at any step. The buttons show only for the user level whose
-             step it is. Every Return needs REMARKS (typed in the modal, saved on budget_allocation.remarks); a request
+             step it is — and for a superadmin at EVERY step, with no restriction (the API agrees). Every Return needs REMARKS (typed in the modal, saved on budget_allocation.remarks); a request
              that is back with someone shows the last return's remarks at the top of its View / Process modal.
 
    Create CAF → (Actions menu, RFA rows only) the CAF form modal with that RFA already selected: form/caf-form.php
@@ -284,6 +301,10 @@ const MRQ_BASE = '<?php echo $_mrq_api; ?>';
 const MRQ_API  = MRQ_BASE + '/budget_allocation';
 // true for the Financial Management Department (see the PHP at the top): the central list, no Edit / Delete, a Process action.
 const MRQ_IS_FMD = <?php echo $_mrq_isFmd ? 'true' : 'false'; ?>;
+// true for a superadmin (user level -1): no restriction on the approving process, and Edit / Delete are kept
+const MRQ_IS_ADMIN = <?php echo $_mrq_isAdmin ? 'true' : 'false'; ?>;
+// who is offered the Process action: FMD, or a superadmin
+const MRQ_CAN_PROCESS = <?php echo $_mrq_canProcess ? 'true' : 'false'; ?>;
 
 let mrq_page = 1;
 let mrq_rows = [];
@@ -554,7 +575,7 @@ function mrq_renderTable(rows) {
 //   Edit and Delete — only while the request is a Draft (once it has left Draft it can no longer be changed or removed
 //              by the requesting office); FMD never gets them;
 //   Edit     — also on a request that was Returned to the requesting office (Delete stays Draft-only);
-//   Process  — FMD only (in place of Edit and Delete), on every row.
+//   Process  — FMD (in place of Edit and Delete) and a superadmin (alongside them), on every row.
 // The menu is positioned with fixed coordinates, so the table's own scrolling never clips it.
 // `type` is the row's own allocation type (CBA / RFA / LAA): an RFA page lists RFAs and LAAs together, so what is offered
 // per row (CAF) follows the row, not the page.
@@ -609,7 +630,10 @@ function mrq_actionMenu(id, isDraft, isReturned = false, type = '') {
             </button>`;
 
     // the sections that apply to this row, a divider between each — so a row never ends (or starts) with a stray divider
-    const sections = [viewItem + printItem, previewItem, MRQ_IS_FMD ? processItem : (isDraft ? editAndDelete : (isReturned ? editItem : '')), cafItem + printCafItem]
+    // FMD gets Process instead of Edit / Delete; a superadmin gets Process AND keeps Edit / Delete (no restriction).
+    const processSection = MRQ_CAN_PROCESS ? processItem : '';
+    const editSection    = (MRQ_IS_ADMIN || !MRQ_IS_FMD) ? (isDraft ? editAndDelete : (isReturned ? editItem : '')) : '';
+    const sections = [viewItem + printItem, previewItem, processSection, editSection, cafItem + printCafItem]
         .filter(Boolean)
         .join('<div class="nha-menu-divider"></div>');
     return `<div class="nha-tools-menu">
