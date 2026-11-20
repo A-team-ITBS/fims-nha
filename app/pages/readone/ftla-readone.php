@@ -1205,9 +1205,19 @@ $_ftro_api = $apiBase ?? Config('API.FIMS_URL');
             });
             if (!j.success) throw new Error(j.message || 'Generation failed.');
 
-            const win = window.open(j.view_url, '_blank',
+            // FtlaService::printPdf() returns base64 PDF bytes in j.data, not
+            // a URL — same shape ftla-page.php's own _previewPdf() decodes
+            // into a Blob URL before opening it.
+            const bytes = atob(j.data);
+            const arr   = new Uint8Array(bytes.length);
+            for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+            const blob = new Blob([arr], { type: 'application/pdf' });
+            const url  = URL.createObjectURL(blob);
+
+            const win = window.open(url, '_blank',
                 `width=${Math.floor(screen.width/2)},height=${screen.height},left=0,top=0,menubar=no,toolbar=no,location=no,status=no`);
             if (!win) alert('Pop-up blocked. Please allow pop-ups for this site to print.');
+            setTimeout(() => URL.revokeObjectURL(url), 60000);
         } catch (e) {
             alert('Print error: ' + e.message);
         } finally {

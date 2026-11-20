@@ -9,7 +9,7 @@ use PHPMaker2024\FIMS\DataType;
  * IAR Module — INFRASTRUCTURE tab. ONE table (see _assets/sql/01 - fims/01 - table/50 - fims_statement_work_accomplishments.sql):
  *   fims.statement_work_accomplishments   one row per approved Infrastructure RFA that has no purchase order.
  *
- * The RFA is picked from the Budget Allocation: allocation_type = 'RFA', status Approved, category Infrastructure, empty po_number,
+ * The RFA is picked from the Budget Allocation: allocation_type = 'RFA', status Approved, a line on one of INFRA_RFA_ACCOUNTS (RFAs have no category), empty po_number,
  * no active Disbursement Voucher, and not yet recorded here. Picking it loads the project's details (project, location, program,
  * contractor = the RFA's vendor, contract cost = the amount approved on the RFA, project cost = the original cost of the project).
  * The SWA number is generated on save; the user adds the dates (started / completion (revised) / contract duration), the account entries (pre-filled from
@@ -143,7 +143,10 @@ class InfraIarService
         } else {
             $where .= " AND COALESCE(TRIM(a.po_number), '') = ''
                         AND a.status_id = (SELECT st.id FROM fims.settings_status st WHERE st.name = 'Approved' AND st.status_for = 'budget_allocation' ORDER BY st.id LIMIT 1)
-                        AND EXISTS (SELECT 1 FROM fims.budget_category bc WHERE bc.budget_category_id = a.category_id AND bc.deleted_at IS NULL AND LOWER(TRIM(bc.name)) = 'infrastructure')
+                        AND EXISTS (SELECT 1 FROM jsonb_array_elements({$lines}) ln(value)
+                                     WHERE jsonb_typeof(ln.value) = 'object'
+                                       AND (ln.value ->> 'account_code' IN ({$this->infraCodesSql()})
+                                            OR ln.value ->> 'account_code' ~ ('^(' || {$this->infraCodesRegexSql()} || ')-')))
                         AND NOT {$this->po->activeDvSql()}
                         AND NOT EXISTS (SELECT 1 FROM {$this->t} s WHERE s.allocation_id = a.allocation_id)";
         }
@@ -432,6 +435,19 @@ class InfraIarService
     }
     /** The GL account of the Work in Process page: Work-in-Process (and its sub-ledgers). */
     public const WIP_ACCOUNT = '1-04-03-020';
+
+    /** An RFA is an infrastructure one when any of its lines uses one of these accounts (or a sub-ledger of them). */
+    public const INFRA_RFA_ACCOUNTS = ['1-04-03-020', '1-05-01-010', '1-05-01-020', '1-06-04-010', '1-06-09-020', '1-06-01-010', '1-06-04-990', '1-06-02-990'];
+
+    private function infraCodesSql(): string
+    {
+        return implode(', ', array_map(fn (string $c) => $this->q($c), self::INFRA_RFA_ACCOUNTS));
+    }
+
+    private function infraCodesRegexSql(): string
+    {
+        return $this->q(implode('|', self::INFRA_RFA_ACCOUNTS));
+    }
 
     /**
      * Work in Process page: the infrastructure records whose pro-forma was SUBMITTED as a JEV (the JEV is in the record's line_transaction) and whose JEV carries the

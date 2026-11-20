@@ -8,7 +8,9 @@ use PHPMaker2024\FIMS\Service\OpeningBalanceService;
 $OpeningBalanceService = new OpeningBalanceService();
 
 // GET /opening_balance?fiscal_yr=2027&book_id=1
-// Fetch the form data: permanent accounts, SL details, and any existing DRAFT OPENING JEV.
+// Fetch the form data: permanent accounts, pre-filled from any existing fims.opening_balances
+// row for this fiscal_yr/book_id (or a legacy OPENING JEV, for years saved before this service
+// stopped posting those — see OpeningBalanceService's own docblock).
 $app->get('/opening_balance', function ($request, $response, $args) use ($OpeningBalanceService) {
     try {
         $params = $request->getQueryParams();
@@ -46,8 +48,11 @@ $app->get('/opening_balance/carry_forward', function ($request, $response, $args
 })->add($accessMiddleware)->add($jwtMiddleware);
 
 // POST /opening_balance
-// Save (or update) opening balance entries and post the JEV to GL.
-// Body: {fiscal_yr, book_id, lines: [{account_code, sl_detail_id?, debit, credit}]}
+// Saves the fiscal year's beginning balances directly into fims.opening_balances — no JEV, no
+// posting to fims.general_ledger (see OpeningBalanceService::saveOpeningBalance()'s own
+// docblock). Also refreshes Cash Position's earliest entry for this year for every bank account
+// tagged to one of the saved account codes.
+// Body: {fiscal_yr, book_id, lines: [{account_code, debit, credit}]}
 $app->post('/opening_balance', function ($request, $response, $args) use ($OpeningBalanceService) {
     try {
         $body = $request->getParsedBody();

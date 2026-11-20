@@ -403,12 +403,20 @@ class CollectionsService
     // a search-as-you-type picker, unlike bank-management's GL/SL
     // picker) — simpler widget, matches the sketch's "[select]" box, and
     // native <select> already supports type-ahead for ~1,000 options.
+    // Every postable account here is a child (SL) under some non-postable
+    // parent (GL) grouping account — same GL/SL split bank-management's own
+    // picker uses — so parent_code/parent_title are surfaced alongside each
+    // row's own account_code (the SL code) for display, even though only
+    // the SL-level account_id is what actually gets submitted.
     public function getGlAccounts()
     {
         $rows = App\ExecuteRowsAssociative(
-            "SELECT account_id, account_code, account_title FROM {$this->tableCoa}
-             WHERE status = 'Active' AND posting_allowed = TRUE
-             ORDER BY account_code",
+            "SELECT ac.account_id, ac.account_code, ac.account_title,
+                    parent.account_code AS parent_code, parent.account_title AS parent_title
+             FROM {$this->tableCoa} ac
+             LEFT JOIN {$this->tableCoa} parent ON parent.account_id = ac.parent_account_id
+             WHERE ac.status = 'Active' AND ac.posting_allowed = TRUE
+             ORDER BY ac.account_code",
             'DB'
         );
 
