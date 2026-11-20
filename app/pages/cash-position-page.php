@@ -74,11 +74,12 @@ $cpsCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
                         <tr>
                             <th>Bank Account</th><th>Date</th>
                             <th class="text-right">Available Beginning Balance</th><th class="text-right">+ Receipts</th><th class="text-right">− Disbursements</th>
+                            <th class="text-right">Closing Balance</th>
                             <th class="text-right">Available Balance</th>
                             <th class="text-center">Status</th>
                         </tr>
                     </thead>
-                    <tbody><tr class="fims-empty"><td colspan="7">Loading…</td></tr></tbody>
+                    <tbody><tr class="fims-empty"><td colspan="8">Loading…</td></tr></tbody>
                 </table>
             </div>
         </div>
@@ -274,20 +275,25 @@ html.afims-dark[data-bs-theme="dark"] #cashPositionModule .cps-group-header :is(
             .then(r => r.json())
             .then(function (json) {
                 const rows = (json && json.data) ? json.data : [];
-                if (!rows.length) { tbody.innerHTML = '<tr class="fims-empty"><td colspan="7">No records.</td></tr>'; return; }
+                if (!rows.length) { tbody.innerHTML = '<tr class="fims-empty"><td colspan="8">No records.</td></tr>'; return; }
                 tbody.innerHTML = rows.map(function (r) {
+                    // Closing Balance is the raw cp.closing_balance; Available
+                    // Balance is that minus restricted funds (cp.available_balance,
+                    // a DB-generated column) — both now shown since they
+                    // legitimately differ whenever any amount is restricted.
                     return '<tr>' +
                         '<td>' + escapeHtml(r.account_name) + '<br><span style="font-size:11px;color:var(--fims-text-subtle)">' + escapeHtml(r.bank_name || '') + ' · ' + escapeHtml(r.account_number || '') + '</span></td>' +
                         '<td>' + escapeHtml(r.position_date || '') + '</td>' +
                         '<td class="text-right">' + peso(r.opening_balance) + '</td>' +
                         '<td class="text-right">' + peso(r.total_receipts) + '</td>' +
                         '<td class="text-right">' + peso(r.total_disbursements) + '</td>' +
-                        '<td class="text-right"><strong>' + peso(r.closing_balance) + '</strong></td>' +
+                        '<td class="text-right">' + peso(r.closing_balance) + '</td>' +
+                        '<td class="text-right"><strong>' + peso(r.available_balance) + '</strong></td>' +
                         '<td class="text-center"><span class="fims-badge fims-badge-green">Active</span></td>' +
                         '</tr>';
                 }).join('');
             })
-            .catch(() => { tbody.innerHTML = '<tr class="fims-empty"><td colspan="7">Could not reach the server.</td></tr>'; });
+            .catch(() => { tbody.innerHTML = '<tr class="fims-empty"><td colspan="8">Could not reach the server.</td></tr>'; });
     }
     document.getElementById('updFilterBtn')?.addEventListener('click', loadUpdatesList);
     document.getElementById('updResetBtn')?.addEventListener('click', function () {
