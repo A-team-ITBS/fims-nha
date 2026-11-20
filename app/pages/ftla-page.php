@@ -202,6 +202,7 @@ $fileBaseUrl      = json_encode(rtrim(BasePath(), '/'));
                         <div class="fims-detail-item" id="st-date"><span class="fims-detail-label">Transfer Date</span><span class="fims-detail-value">—</span></div>
                         <div class="fims-detail-item" id="st-amount"><span class="fims-detail-label">Amount</span><span class="fims-detail-value">—</span></div>
                         <div class="fims-detail-item" id="st-status"><span class="fims-detail-label">Current Status</span><span class="fims-detail-value">—</span></div>
+                        <div class="fims-detail-item" id="st-jev" style="display:none"><span class="fims-detail-label">Payment JEV</span><span class="fims-detail-value">—</span></div>
                         <div class="fims-detail-item span-2" id="st-purpose"><span class="fims-detail-label">Purpose</span><span class="fims-detail-value">—</span></div>
                     </div>
                 </div>
@@ -1489,6 +1490,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 sv('st-date', this._date(d.transfer_date));
                 sv('st-amount', `<strong>${this._money(d.transfer_amount)}</strong>`);
                 sv('st-status', this._statusBadge(d.status));
+                const jevEl = document.getElementById('st-jev');
+                if (jevEl) {
+                    jevEl.style.display = d.jev_no ? '' : 'none';
+                    if (d.jev_no) sv('st-jev', `<span class="nha-mono">${this._esc(d.jev_no)}</span>`);
+                }
                 sv('st-purpose', this._esc(d.purpose || '—'));
                 const currentIdx = FTLAPreparation.STATUSES.findIndex(s => s.key === d.status);
                 const tl = document.getElementById('status-timeline');
