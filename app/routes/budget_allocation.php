@@ -158,8 +158,8 @@ $app->patch('/budget_allocation/update/{id}', function ($request, $response, $ar
 // (FMD Department Manager) -> Approved. Body: { "decision": "approve" | "return", "remarks"?: string }. "approve" moves it to
 // the next status; the last approval gives the request its allocation number (by allocation type and document type).
 // "return" goes ONE step back (the Section Chief's: 'Returned', the requesting office) and REQUIRES remarks (the reason,
-// saved on budget_allocation.remarks). Anyone outside FMD, or without the user level of the current step, gets 403 — see
-// BudgetAllocationService::process().
+// saved on budget_allocation.remarks). Anyone outside FMD, or without the user level of the current step, gets 403 — except a
+// superadmin (user level -1), who may decide at every step — see BudgetAllocationService::process().
 $app->patch('/budget_allocation/process/{id}', function ($request, $response, $args) use ($BudgetAllocationService) {
     try {
         $body = $request->getParsedBody();
