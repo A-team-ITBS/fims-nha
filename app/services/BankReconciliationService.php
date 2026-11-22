@@ -23,6 +23,7 @@ class BankReconciliationService
     private string $tableBankAccounts = 'fims.bank_accounts';
     private string $tableGl          = 'fims.general_ledger';
     private string $tableCleared     = 'fims.bank_reconciliation_cleared_items';
+    private string $tableCoa         = 'fims.chart_of_accounts';
 
     private function str(mixed $v): string
     {
@@ -134,6 +135,27 @@ class BankReconciliationService
     }
 
     /**
+     * A bank account is tagged with its GL control account's code (e.g. "1-01-02-010"), but
+     * postings land in fims.general_ledger under that account's SL child codes (e.g.
+     * "1-01-02-010-01" — see fims.chart_of_accounts.parent_account_id, same convention as
+     * GeneralLedgerService::fetchGlSubLedgers()). An exact account_code match therefore misses
+     * every posting; this resolves the control code plus all of its SL children so the ledger
+     * SQL can match on the whole set via IN (...).
+     */
+    private function resolveAccountCodes(string $accountCode): array
+    {
+        $children = App\ExecuteRowsAssociative(
+            "SELECT c.account_code
+             FROM {$this->tableCoa} c
+             JOIN {$this->tableCoa} parent ON parent.account_id = c.parent_account_id
+             WHERE parent.account_code = " . $this->str($accountCode),
+            'DB'
+        ) ?: [];
+
+        return array_merge([$accountCode], array_column($children, 'account_code'));
+    }
+
+    /**
      * Cumulative balance (debit - credit) of a bank account's tagged GL
      * account_code in the General Ledger, as of (and including) $asOfDate.
      * Same "Autofilled SL Balance" idea the sketch calls for. Returns null
@@ -155,10 +177,11 @@ class BankReconciliationService
         }
 
         $date = $this->str($asOfDate);
+        $codeList = implode(',', array_map(fn ($c) => $this->str($c), $this->resolveAccountCodes($bank['account_code'])));
         $row = App\ExecuteRow(
             "SELECT COALESCE(SUM(debit - credit), 0) AS bal
              FROM {$this->tableGl}
-             WHERE account_code = " . $this->str($bank['account_code']) . "
+             WHERE account_code IN ({$codeList})
                AND posting_date <= {$date}",
             'DB'
         );
@@ -188,13 +211,13 @@ class BankReconciliationService
             return $this->ok(['has_gl_account' => false, 'beginning_balance' => 0, 'rows' => [], 'ending_balance' => 0, 'outstanding_deposits' => [], 'outstanding_checks' => []]);
         }
 
-        $code = $this->str($bank['account_code']);
+        $codeList = implode(',', array_map(fn ($c) => $this->str($c), $this->resolveAccountCodes($bank['account_code'])));
         $date = $this->str($asOfDate);
 
         $beginRow = App\ExecuteRow(
             "SELECT COALESCE(SUM(debit - credit), 0) AS bal
              FROM {$this->tableGl}
-             WHERE account_code = {$code} AND posting_date < {$date}",
+             WHERE account_code IN ({$codeList}) AND posting_date < {$date}",
             'DB'
         );
         $beginningBalance = round((float) ($beginRow['bal'] ?? 0), 2);
@@ -204,7 +227,7 @@ class BankReconciliationService
                     (c.gl_id IS NOT NULL) AS cleared
              FROM {$this->tableGl} g
              LEFT JOIN {$this->tableCleared} c ON c.gl_id = g.gl_id AND c.bank_account_id = {$id}
-             WHERE g.account_code = {$code} AND g.posting_date <= {$date}
+             WHERE g.account_code IN ({$codeList}) AND g.posting_date <= {$date}
              ORDER BY g.posting_date, g.gl_id",
             'DB'
         ) ?: [];
