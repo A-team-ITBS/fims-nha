@@ -748,8 +748,16 @@ class FtlaService
         if ($bankAccountId <= 0) {
             return ['success' => false, 'message' => 'This FTLA has no destination bank account — set one before submitting to Accounting.'];
         }
+        // sl_account_code: the bank account's OWN Cash sub-ledger (fims.bank_accounts.sl_code -> a
+        // chart_of_accounts child row, e.g. "1-01-02-010-01" — set up via Bank Management's own
+        // GL/SL two-step picker, same convention as fims.vendors.sl_code) when one is configured,
+        // instead of the bare account_code — same reasoning GeneralLedgerService::createPaymentJev()
+        // uses for a check's own Cash credit line.
         $bank = App\ExecuteRow(
-            "SELECT account_code, account_name FROM {$this->tableBank} WHERE bank_account_id = {$bankAccountId}",
+            "SELECT ba.account_code, ba.account_name, sl_coa.account_code AS sl_account_code
+             FROM {$this->tableBank} ba
+             LEFT JOIN {$this->tableCoa} sl_coa ON sl_coa.account_id = ba.sl_code
+             WHERE ba.bank_account_id = {$bankAccountId}",
             'DB'
         );
         if (!$bank || !$bank['account_code']) {
@@ -757,6 +765,7 @@ class FtlaService
                 ? "Bank account '{$bank['account_name']}' has no Chart-of-Accounts Cash account mapped — configure it before submitting."
                 : "Bank account #{$bankAccountId} not found."];
         }
+        $bankCreditAccountCode = $bank['sl_account_code'] ?: $bank['account_code'];
 
         $dvs = App\ExecuteRowsAssociative(
             "SELECT dv.dv_id, dv.dv_no, dv.net_amount, st.name AS status
@@ -860,7 +869,7 @@ class FtlaService
             }
             App\Execute(
                 "INSERT INTO {$this->tableJevLines} (jev_id, line_number, account_code, debit, credit, description)
-                 VALUES ({$jevId}, {$lineNo}, " . $this->str($bank['account_code']) . ', 0, ' . (float) $total . ', '
+                 VALUES ({$jevId}, {$lineNo}, " . $this->str($bankCreditAccountCode) . ', 0, ' . (float) $total . ', '
                     . $this->str("Payment via {$cur['ftla_number']}") . ')',
                 'DB'
             );

@@ -9,10 +9,12 @@ use PHPMaker2024\FIMS as App;
  * Reports > Bank Reconciliation — see "01 - table/51 - fims_bank_reconciliations.sql"
  * for the table's docblock (book_balance snapshot caveat, one-per-account-per-month).
  *
- * Per Book:  Book Balance (snapshot from the GL) + unrecorded deposit + unreleased
- *            check + credit memo + interest income - debit memo = Adjusted Book Balance
+ * Per Book:  Book Balance (ending balance of the GL ledger register, see getLedger())
+ *            + credit memo + interest income - debit memo = Adjusted Book Balance
  * Per Bank:  Bank Balance (manual) + deposit in transit - outstanding check
- *            = Adjusted Bank Balance
+ *            = Adjusted Bank Balance, where deposit in transit / outstanding check are
+ *            itemized from the ledger's un-cleared lines (see getLedger()/setCleared()),
+ *            not manual entry.
  * Reconciled when both adjusted balances match (within a centavo, floating point).
  */
 class BankReconciliationService
@@ -20,6 +22,7 @@ class BankReconciliationService
     private string $tableRecon       = 'fims.bank_reconciliations';
     private string $tableBankAccounts = 'fims.bank_accounts';
     private string $tableGl          = 'fims.general_ledger';
+    private string $tableCleared     = 'fims.bank_reconciliation_cleared_items';
 
     private function str(mixed $v): string
     {
@@ -163,6 +166,103 @@ class BankReconciliationService
         return $this->ok(['book_balance' => round((float) ($row['bal'] ?? 0), 2)]);
     }
 
+    /**
+     * Ledger register for one bank account up to and including $asOfDate:
+     * a Beginning Balance, every posted GL line for the account's tagged GL
+     * account_code, a running balance, and whether each line has cleared the
+     * bank yet (fims.bank_reconciliation_cleared_items — default: not
+     * cleared). Mirrors the Date/Reference/Particulars/Debit/Credit/Balance
+     * register the worksheet is built from.
+     */
+    public function getLedger($bankAccountId, $asOfDate)
+    {
+        $id = (int) $bankAccountId;
+        $bank = App\ExecuteRow(
+            "SELECT bank_account_id, account_code, account_name FROM {$this->tableBankAccounts} WHERE bank_account_id = {$id}",
+            'DB'
+        );
+        if (!$bank) {
+            return $this->fail('Bank account not found.');
+        }
+        if (empty($bank['account_code'])) {
+            return $this->ok(['has_gl_account' => false, 'beginning_balance' => 0, 'rows' => [], 'ending_balance' => 0, 'outstanding_deposits' => [], 'outstanding_checks' => []]);
+        }
+
+        $code = $this->str($bank['account_code']);
+        $date = $this->str($asOfDate);
+
+        $beginRow = App\ExecuteRow(
+            "SELECT COALESCE(SUM(debit - credit), 0) AS bal
+             FROM {$this->tableGl}
+             WHERE account_code = {$code} AND posting_date < {$date}",
+            'DB'
+        );
+        $beginningBalance = round((float) ($beginRow['bal'] ?? 0), 2);
+
+        $rows = App\ExecuteRowsAssociative(
+            "SELECT g.gl_id, g.posting_date, g.reference_no, g.description, g.debit, g.credit,
+                    (c.gl_id IS NOT NULL) AS cleared
+             FROM {$this->tableGl} g
+             LEFT JOIN {$this->tableCleared} c ON c.gl_id = g.gl_id AND c.bank_account_id = {$id}
+             WHERE g.account_code = {$code} AND g.posting_date <= {$date}
+             ORDER BY g.posting_date, g.gl_id",
+            'DB'
+        ) ?: [];
+
+        $running = $beginningBalance;
+        $outstandingDeposits = [];
+        $outstandingChecks = [];
+        foreach ($rows as &$row) {
+            $debit = $this->num($row['debit']);
+            $credit = $this->num($row['credit']);
+            $running = round($running + $debit - $credit, 2);
+            $row['debit'] = $debit;
+            $row['credit'] = $credit;
+            $row['balance'] = $running;
+            $row['cleared'] = (bool) $row['cleared'];
+
+            if (!$row['cleared']) {
+                if ($debit > 0) {
+                    $outstandingDeposits[] = $row;
+                } elseif ($credit > 0) {
+                    $outstandingChecks[] = $row;
+                }
+            }
+        }
+        unset($row);
+
+        return $this->ok([
+            'has_gl_account' => true,
+            'beginning_balance' => $beginningBalance,
+            'rows' => $rows,
+            'ending_balance' => $running,
+            'outstanding_deposits' => $outstandingDeposits,
+            'outstanding_checks' => $outstandingChecks,
+        ]);
+    }
+
+    // ── Toggle whether one GL line has cleared the bank ──
+    public function setCleared($bankAccountId, $glId, bool $cleared)
+    {
+        $id = (int) $bankAccountId;
+        $gl = (int) $glId;
+        if ($cleared) {
+            App\Execute(
+                "INSERT INTO {$this->tableCleared} (bank_account_id, gl_id, cleared_by)
+                 VALUES ({$id}, {$gl}, " . (int) App\CurrentUserID() . ")
+                 ON CONFLICT (bank_account_id, gl_id) DO NOTHING",
+                'DB'
+            );
+        } else {
+            App\Execute(
+                "DELETE FROM {$this->tableCleared} WHERE bank_account_id = {$id} AND gl_id = {$gl}",
+                'DB'
+            );
+        }
+
+        return $this->ok(['gl_id' => $gl, 'cleared' => $cleared]);
+    }
+
     // ── Create / update (upsert by bank_account_id + period) ──
     public function save(array $data)
     {
@@ -187,16 +287,26 @@ class BankReconciliationService
         $asOfDate = date('Y-m-t', mktime(0, 0, 0, $periodMonth, 1, $periodYear));
 
         $bookBalance           = $this->num($data['book_balance'] ?? 0);
-        $addUnrecordedDeposit  = $this->num($data['add_unrecorded_deposit'] ?? 0);
-        $addUnreleasedCheck    = $this->num($data['add_unreleased_check'] ?? 0);
+        // add_unrecorded_deposit / add_unreleased_check: superseded by the ledger's own
+        // Deposits in Transit / Outstanding Checks (now itemized on the Per Bank side,
+        // see $addDepositInTransit/$lessOutstandingCheck below). Columns kept at 0 for
+        // reconciliations saved under the old lump-sum worksheet.
+        $addUnrecordedDeposit  = 0.0;
+        $addUnreleasedCheck    = 0.0;
         $addCreditMemo         = $this->num($data['add_credit_memo'] ?? 0);
         $addInterestIncome     = $this->num($data['add_interest_income'] ?? 0);
         $lessDebitMemo         = $this->num($data['less_debit_memo'] ?? 0);
-        $adjustedBookBalance   = round($bookBalance + $addUnrecordedDeposit + $addUnreleasedCheck + $addCreditMemo + $addInterestIncome - $lessDebitMemo, 2);
+        $adjustedBookBalance   = round($bookBalance + $addCreditMemo + $addInterestIncome - $lessDebitMemo, 2);
+
+        // Deposits in transit / outstanding checks come from the ledger's cleared
+        // markers, not the client — same "never trust the client for computed
+        // totals" rule as adjusted_book_balance/adjusted_bank_balance/status below.
+        $ledger = json_decode($this->getLedger($bankAccountId, $asOfDate), true);
+        $ledgerData = ($ledger['success'] ?? false) ? $ledger['data'] : ['outstanding_deposits' => [], 'outstanding_checks' => []];
+        $addDepositInTransit   = round(array_sum(array_column($ledgerData['outstanding_deposits'], 'debit')), 2);
+        $lessOutstandingCheck  = round(array_sum(array_column($ledgerData['outstanding_checks'], 'credit')), 2);
 
         $bankBalance           = $this->num($data['bank_balance'] ?? 0);
-        $addDepositInTransit   = $this->num($data['add_deposit_in_transit'] ?? 0);
-        $lessOutstandingCheck  = $this->num($data['less_outstanding_check'] ?? 0);
         $adjustedBankBalance   = round($bankBalance + $addDepositInTransit - $lessOutstandingCheck, 2);
 
         $status = abs($adjustedBookBalance - $adjustedBankBalance) < 0.01 ? 'RECONCILED' : 'UNRECONCILED';

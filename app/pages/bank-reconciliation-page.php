@@ -78,7 +78,7 @@ $brCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
          MODAL: Bank Reconciliation worksheet
     ══════════════════════════════════════════════ -->
     <div class="fims-modal-overlay" id="m-br-recon" style="display:none;">
-        <div class="fims-modal-dialog" style="max-width:920px;width:95vw;">
+        <div class="fims-modal-dialog" style="max-width:1080px;width:95vw;">
             <div class="fims-modal-content">
                 <div class="fims-modal-header">
                     <div><div class="fims-modal-title">Bank Reconciliation</div></div>
@@ -98,23 +98,43 @@ $brCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
                         </div>
                     </div>
 
+                    <!-- LEDGER: Date / Reference / Particulars / Debit / Credit / Balance / Cleared -->
+                    <div class="br-ledger-wrap">
+                        <div class="br-recon-col-title" id="brLedgerTitle">LEDGER</div>
+                        <div class="fims-table-wrap" style="max-height:260px;overflow-y:auto;">
+                            <table class="fims-table br-ledger-table">
+                                <thead>
+                                    <tr>
+                                        <th style="width:95px">Date</th>
+                                        <th style="width:110px">Reference No.</th>
+                                        <th>Particulars</th>
+                                        <th class="text-right" style="width:110px">Debit</th>
+                                        <th class="text-right" style="width:110px">Credit</th>
+                                        <th class="text-right" style="width:120px">Balance</th>
+                                        <th class="text-center" style="width:70px">Cleared</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="brLedgerBody"><tr class="fims-empty"><td colspan="7">Select a Bank and period above.</td></tr></tbody>
+                            </table>
+                        </div>
+                        <p class="br-hint" style="margin:6px 2px 0;">Tick <strong>Cleared</strong> once the bank has processed a line. Unticked lines fall into Deposits in Transit / Outstanding Checks below.</p>
+                    </div>
+
                     <div class="br-recon-grid">
                         <!-- PER BOOK -->
                         <div class="br-recon-col">
                             <div class="br-recon-col-title">PER BOOK</div>
                             <div class="fims-form-group">
-                                <label class="fims-label">Book Balance <span class="br-hint">(auto-filled, SL balance)</span></label>
+                                <label class="fims-label">Book Balance <span class="br-hint">(ending ledger balance)</span></label>
                                 <input type="text" class="fims-input br-mono" id="field-book-balance" readonly>
                             </div>
-                            <div class="br-recon-sub">Add:</div>
-                            <div class="fims-form-group"><label class="fims-label">Unrecorded Deposit</label><input type="number" step="0.01" class="fims-input br-mono" id="field-add-unrecorded-deposit" value="0"></div>
-                            <div class="fims-form-group"><label class="fims-label">Unreleased Check</label><input type="number" step="0.01" class="fims-input br-mono" id="field-add-unreleased-check" value="0"></div>
+                            <div class="br-recon-sub">Add: <span class="br-hint">(bank recorded, not yet in book)</span></div>
                             <div class="fims-form-group"><label class="fims-label">Credit Memo</label><input type="number" step="0.01" class="fims-input br-mono" id="field-add-credit-memo" value="0"></div>
                             <div class="fims-form-group"><label class="fims-label">Interest Income</label><input type="number" step="0.01" class="fims-input br-mono" id="field-add-interest-income" value="0"></div>
-                            <div class="br-recon-sub">Less:</div>
+                            <div class="br-recon-sub">Less: <span class="br-hint">(bank charged, not yet in book)</span></div>
                             <div class="fims-form-group"><label class="fims-label">Debit Memo</label><input type="number" step="0.01" class="fims-input br-mono" id="field-less-debit-memo" value="0"></div>
                             <div class="br-recon-total">
-                                <span>Adjusted Balance</span>
+                                <span>Adjusted Book Balance</span>
                                 <span class="br-mono" id="calc-adjusted-book">0.00</span>
                             </div>
                         </div>
@@ -123,15 +143,21 @@ $brCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
                         <div class="br-recon-col">
                             <div class="br-recon-col-title">PER BANK</div>
                             <div class="fims-form-group">
-                                <label class="fims-label">Bank Balance</label>
+                                <label class="fims-label">Bank Balance <span class="br-hint">(per bank statement)</span></label>
                                 <input type="number" step="0.01" class="fims-input br-mono" id="field-bank-balance" value="0">
                             </div>
-                            <div class="br-recon-sub">Add:</div>
-                            <div class="fims-form-group"><label class="fims-label">Deposit in Transit</label><input type="number" step="0.01" class="fims-input br-mono" id="field-add-deposit-in-transit" value="0"></div>
-                            <div class="br-recon-sub">Less:</div>
-                            <div class="fims-form-group"><label class="fims-label">Outstanding Check</label><input type="number" step="0.01" class="fims-input br-mono" id="field-less-outstanding-check" value="0"></div>
+                            <div class="br-recon-sub">Add: Deposits in Transit</div>
+                            <ul class="br-item-list" id="brDepositsInTransitList"><li class="br-item-empty">None</li></ul>
+                            <div class="fims-form-group">
+                                <input type="text" class="fims-input br-mono" id="field-add-deposit-in-transit" value="0.00" readonly>
+                            </div>
+                            <div class="br-recon-sub">Less: Outstanding Checks</div>
+                            <ul class="br-item-list" id="brOutstandingChecksList"><li class="br-item-empty">None</li></ul>
+                            <div class="fims-form-group">
+                                <input type="text" class="fims-input br-mono" id="field-less-outstanding-check" value="0.00" readonly>
+                            </div>
                             <div class="br-recon-total">
-                                <span>Adjusted Balance</span>
+                                <span>Adjusted Bank Balance</span>
                                 <span class="br-mono" id="calc-adjusted-bank">0.00</span>
                             </div>
                         </div>
@@ -162,6 +188,13 @@ $brCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
 #brModule .fims-btn-primary:hover { background:#000a2e; color:#fff; }
 #brModule .fims-modal-content { display:flex; flex-direction:column; min-height:0; overflow:hidden; }
 
+#brModule .br-ledger-wrap { margin-bottom:16px; border:1px solid var(--fims-border,#E4ECF2); border-radius:8px; padding:12px; }
+#brModule .br-ledger-table th, #brModule .br-ledger-table td { padding:6px 8px; font-size:12.5px; }
+#brModule .br-ledger-table tr.br-row-uncleared td { color:#B42318; }
+#brModule .br-ledger-table input[type="checkbox"] { width:16px; height:16px; cursor:pointer; }
+#brModule .br-item-list { list-style:none; margin:0 0 6px; padding:0; font-size:12px; }
+#brModule .br-item-list li { display:flex; justify-content:space-between; gap:8px; padding:2px 4px; border-bottom:1px dashed var(--fims-border,#E4ECF2); }
+#brModule .br-item-list .br-item-empty { color:var(--fims-text-subtle); justify-content:center; border-bottom:none; }
 #brModule .br-recon-grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
 #brModule .br-recon-col { border:1px solid var(--fims-border,#E4ECF2); border-radius:8px; padding:12px; }
 #brModule .br-recon-col-title { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--fims-text-subtle); margin-bottom:10px; text-align:center; }
@@ -178,7 +211,10 @@ html.afims-dark[data-bs-theme="dark"] #brModule .fims-btn-primary { background:#
 html.afims-dark[data-bs-theme="dark"] #brModule .fims-btn-primary:hover { background:#2E59B8; color:#fff; }
 html.afims-dark[data-bs-theme="dark"] #brModule :is(select.fims-select, .fims-input, textarea.fims-input) {
     background-color:var(--afims-surface, #1A1F38); color:var(--afims-text, #E4ECF2); border-color:var(--afims-border-strong, #4A5270); }
-html.afims-dark[data-bs-theme="dark"] #brModule .br-recon-col { border-color:var(--afims-border-strong, #4A5270); }
+html.afims-dark[data-bs-theme="dark"] #brModule .br-recon-col,
+html.afims-dark[data-bs-theme="dark"] #brModule .br-ledger-wrap { border-color:var(--afims-border-strong, #4A5270); }
+html.afims-dark[data-bs-theme="dark"] #brModule .br-item-list li { border-color:var(--afims-border-strong, #4A5270); }
+html.afims-dark[data-bs-theme="dark"] #brModule .br-ledger-table tr.br-row-uncleared td { color:#F5A3A3; }
 html.afims-dark[data-bs-theme="dark"] #brModule .br-status-banner.reconciled { background:#123524; color:#8FE3B3; border-color:#1F5A3B; }
 html.afims-dark[data-bs-theme="dark"] #brModule .br-status-banner.unreconciled { background:#3A1414; color:#F5A3A3; border-color:#6B2222; }
 </style>
@@ -295,26 +331,31 @@ html.afims-dark[data-bs-theme="dark"] #brModule .br-status-banner.unreconciled {
     document.getElementById('brSearch').addEventListener('keydown', function (e) { if (e.key === 'Enter') loadList(); });
 
     // ── Reconciliation modal ──
-    const ADD_FIELD_IDS = ['field-add-unrecorded-deposit', 'field-add-unreleased-check', 'field-add-credit-memo', 'field-add-interest-income', 'field-less-debit-memo', 'field-bank-balance', 'field-add-deposit-in-transit', 'field-less-outstanding-check'];
+    const ADD_FIELD_IDS = ['field-add-credit-memo', 'field-add-interest-income', 'field-less-debit-memo', 'field-bank-balance'];
+    let currentBankAccountId = null;
 
     function clearReconModal() {
         document.getElementById('field-bank-account-id').value = '';
         document.getElementById('field-period').value = '';
         document.getElementById('field-book-balance').value = '';
+        document.getElementById('field-add-deposit-in-transit').value = '0.00';
+        document.getElementById('field-less-outstanding-check').value = '0.00';
         ADD_FIELD_IDS.forEach(id => document.getElementById(id).value = '0');
         document.getElementById('field-remarks').value = '';
         document.getElementById('brStatusBanner').style.display = 'none';
+        document.getElementById('brLedgerBody').innerHTML = '<tr class="fims-empty"><td colspan="7">Select a Bank and period above.</td></tr>';
+        document.getElementById('brDepositsInTransitList').innerHTML = '<li class="br-item-empty">None</li>';
+        document.getElementById('brOutstandingChecksList').innerHTML = '<li class="br-item-empty">None</li>';
+        currentBankAccountId = null;
         recompute();
     }
 
     function recompute() {
         const bookBalance = Number(document.getElementById('field-book-balance').value) || 0;
-        const addDep = Number(document.getElementById('field-add-unrecorded-deposit').value) || 0;
-        const addChk = Number(document.getElementById('field-add-unreleased-check').value) || 0;
         const addCm = Number(document.getElementById('field-add-credit-memo').value) || 0;
         const addInt = Number(document.getElementById('field-add-interest-income').value) || 0;
         const lessDm = Number(document.getElementById('field-less-debit-memo').value) || 0;
-        const adjBook = bookBalance + addDep + addChk + addCm + addInt - lessDm;
+        const adjBook = bookBalance + addCm + addInt - lessDm;
 
         const bankBalance = Number(document.getElementById('field-bank-balance').value) || 0;
         const addDit = Number(document.getElementById('field-add-deposit-in-transit').value) || 0;
@@ -338,48 +379,101 @@ html.afims-dark[data-bs-theme="dark"] #brModule .br-status-banner.unreconciled {
         inp.addEventListener('input', recompute);
     });
 
-    function loadBookBalance(bankAccountId, period) {
+    function periodToAsOfDate(period) {
+        const d = new Date(period + '-01');
+        return new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().slice(0, 10);
+    }
+
+    function renderItemList(elId, rows, amountKey) {
+        const el = document.getElementById(elId);
+        if (!rows.length) { el.innerHTML = '<li class="br-item-empty">None</li>'; return; }
+        el.innerHTML = rows.map(r =>
+            '<li><span>' + escapeHtml(r.reference_no || '') + ' — ' + escapeHtml(r.description || '') + '</span><span class="br-mono">' + peso(r[amountKey]) + '</span></li>'
+        ).join('');
+    }
+
+    function loadLedger(bankAccountId, period) {
         if (!bankAccountId || !period) return;
-        const asOfDate = period + '-01';
-        const d = new Date(asOfDate);
-        const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().slice(0, 10);
-        fetch(API + '/book-balance?bank_account_id=' + encodeURIComponent(bankAccountId) + '&as_of_date=' + lastDay, { headers: authHeaders() })
+        currentBankAccountId = bankAccountId;
+        const asOfDate = periodToAsOfDate(period);
+        fetch(API + '/ledger?bank_account_id=' + encodeURIComponent(bankAccountId) + '&as_of_date=' + asOfDate, { headers: authHeaders() })
             .then(r => r.json())
             .then(function (json) {
-                if (json && json.success && json.data && json.data.book_balance !== null) {
-                    document.getElementById('field-book-balance').value = json.data.book_balance;
-                    document.getElementById('field-book-balance').readOnly = true;
-                } else {
+                if (!json || !json.success) { toast((json && json.message) || 'Could not load the ledger.', true); return; }
+                const d = json.data;
+                const tbody = document.getElementById('brLedgerBody');
+
+                if (!d.has_gl_account) {
                     document.getElementById('field-book-balance').value = '0';
                     document.getElementById('field-book-balance').readOnly = false;
-                    if (json && json.data && json.data.message) toast(json.data.message, false);
+                    tbody.innerHTML = '<tr class="fims-empty"><td colspan="7">This bank account has no GL account tagged yet — enter the Book Balance manually.</td></tr>';
+                    renderItemList('brDepositsInTransitList', [], 'debit');
+                    renderItemList('brOutstandingChecksList', [], 'credit');
+                    document.getElementById('field-add-deposit-in-transit').value = '0.00';
+                    document.getElementById('field-less-outstanding-check').value = '0.00';
+                    recompute();
+                    return;
                 }
+
+                document.getElementById('field-book-balance').value = d.ending_balance;
+                document.getElementById('field-book-balance').readOnly = true;
+
+                let rowsHtml = '<tr><td colspan="3"><strong>Beginning Balance</strong></td><td class="text-right br-mono"></td><td class="text-right br-mono"></td><td class="text-right br-mono"><strong>' + peso(d.beginning_balance) + '</strong></td><td></td></tr>';
+                if (!d.rows.length) {
+                    rowsHtml += '<tr class="fims-empty"><td colspan="7">No transactions posted for this period yet.</td></tr>';
+                } else {
+                    rowsHtml += d.rows.map(function (r) {
+                        return '<tr class="' + (r.cleared ? '' : 'br-row-uncleared') + '">' +
+                            '<td>' + escapeHtml(r.posting_date) + '</td>' +
+                            '<td class="fims-col-mono">' + escapeHtml(r.reference_no || '') + '</td>' +
+                            '<td>' + escapeHtml(r.description || '') + '</td>' +
+                            '<td class="text-right br-mono">' + (r.debit > 0 ? peso(r.debit) : '') + '</td>' +
+                            '<td class="text-right br-mono">' + (r.credit > 0 ? peso(r.credit) : '') + '</td>' +
+                            '<td class="text-right br-mono">' + peso(r.balance) + '</td>' +
+                            '<td class="text-center"><input type="checkbox" data-gl-id="' + r.gl_id + '" ' + (r.cleared ? 'checked' : '') + '></td>' +
+                            '</tr>';
+                    }).join('');
+                }
+                tbody.innerHTML = rowsHtml;
+                tbody.querySelectorAll('[data-gl-id]').forEach(function (cb) {
+                    cb.addEventListener('change', function () {
+                        const glId = this.dataset.glId;
+                        const cleared = this.checked;
+                        this.disabled = true;
+                        fetch(API + '/clear-item', { method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ bank_account_id: currentBankAccountId, gl_id: glId, cleared: cleared }) })
+                            .then(r => r.json())
+                            .then(function (json) {
+                                if (!json || !json.success) { toast('Could not update.', true); return; }
+                                loadLedger(currentBankAccountId, document.getElementById('field-period').value);
+                            })
+                            .catch(() => toast('Could not reach the server.', true));
+                    });
+                });
+
+                renderItemList('brDepositsInTransitList', d.outstanding_deposits, 'debit');
+                renderItemList('brOutstandingChecksList', d.outstanding_checks, 'credit');
+                document.getElementById('field-add-deposit-in-transit').value = d.outstanding_deposits.reduce((s, r) => s + r.debit, 0).toFixed(2);
+                document.getElementById('field-less-outstanding-check').value = d.outstanding_checks.reduce((s, r) => s + r.credit, 0).toFixed(2);
                 recompute();
             })
-            .catch(() => {});
+            .catch(() => toast('Could not reach the server.', true));
     }
     document.getElementById('field-bank-account-id').addEventListener('change', function () {
-        loadBookBalance(this.value, document.getElementById('field-period').value);
+        loadLedger(this.value, document.getElementById('field-period').value);
     });
     document.getElementById('field-period').addEventListener('change', function () {
-        loadBookBalance(document.getElementById('field-bank-account-id').value, this.value);
+        loadLedger(document.getElementById('field-bank-account-id').value, this.value);
     });
 
     function fillReconFields(d) {
         document.getElementById('field-bank-account-id').value = d.bank_account_id;
         document.getElementById('field-period').value = String(d.period_year) + '-' + String(d.period_month).padStart(2, '0');
-        document.getElementById('field-book-balance').value = d.book_balance;
-        document.getElementById('field-book-balance').readOnly = true;
-        document.getElementById('field-add-unrecorded-deposit').value = d.add_unrecorded_deposit;
-        document.getElementById('field-add-unreleased-check').value = d.add_unreleased_check;
         document.getElementById('field-add-credit-memo').value = d.add_credit_memo;
         document.getElementById('field-add-interest-income').value = d.add_interest_income;
         document.getElementById('field-less-debit-memo').value = d.less_debit_memo;
         document.getElementById('field-bank-balance').value = d.bank_balance;
-        document.getElementById('field-add-deposit-in-transit').value = d.add_deposit_in_transit;
-        document.getElementById('field-less-outstanding-check').value = d.less_outstanding_check;
         document.getElementById('field-remarks').value = d.remarks || '';
-        recompute();
+        loadLedger(d.bank_account_id, document.getElementById('field-period').value);
     }
 
     // bankAccountId: pre-select the Bank dropdown (new or edit alike).
@@ -403,7 +497,7 @@ html.afims-dark[data-bs-theme="dark"] #brModule .br-status-banner.unreconciled {
             document.getElementById('field-bank-account-id').value = bankAccountId;
             const now = new Date();
             document.getElementById('field-period').value = now.toISOString().slice(0, 7);
-            loadBookBalance(bankAccountId, document.getElementById('field-period').value);
+            loadLedger(bankAccountId, document.getElementById('field-period').value);
         }
         openModal('m-br-recon');
     }
@@ -421,14 +515,10 @@ html.afims-dark[data-bs-theme="dark"] #brModule .br-status-banner.unreconciled {
             period_year: year,
             period_month: month,
             book_balance: document.getElementById('field-book-balance').value,
-            add_unrecorded_deposit: document.getElementById('field-add-unrecorded-deposit').value,
-            add_unreleased_check: document.getElementById('field-add-unreleased-check').value,
             add_credit_memo: document.getElementById('field-add-credit-memo').value,
             add_interest_income: document.getElementById('field-add-interest-income').value,
             less_debit_memo: document.getElementById('field-less-debit-memo').value,
             bank_balance: document.getElementById('field-bank-balance').value,
-            add_deposit_in_transit: document.getElementById('field-add-deposit-in-transit').value,
-            less_outstanding_check: document.getElementById('field-less-outstanding-check').value,
             remarks: document.getElementById('field-remarks').value.trim(),
         };
 
