@@ -28,6 +28,19 @@ $app->get("/collections/lookup/bank-accounts", function ($request, $response) {
     return $response->withHeader('Content-Type', 'application/json')->write($service->getBankAccounts());
 });
 
+$app->get("/collections/{id}/jev-prefill/{leg}", function ($request, $response, $args) {
+    $service = new Service\CollectionsService();
+    $result  = $service->proformaJev((int) $args['id'], (string) $args['leg']);
+    return $response->withJson($result, $result['httpCode'] ?? ($result['success'] ? 200 : 400));
+});
+
+$app->post("/collections/{id}/jev-prefill/{leg}", function ($request, $response, $args) {
+    $data = $request->getParsedBody() ?: [];
+    $service = new Service\CollectionsService();
+    $result  = $service->submitJev((int) $args['id'], (string) $args['leg'], $data, (int) CurrentUserID());
+    return $response->withJson($result, $result['httpCode'] ?? ($result['success'] ? 200 : 400));
+});
+
 $app->post("/collections/store", function ($request, $response) {
     $data = $request->getParsedBody();
     $service = new Service\CollectionsService();

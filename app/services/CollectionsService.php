@@ -29,6 +29,13 @@ class CollectionsService
     private string $tableRc        = 'fims.responsibility_code';
     private string $tableCoa       = 'fims.chart_of_accounts';
     private string $tableBankAccounts = 'fims.bank_accounts';
+    private string $tableJev       = 'fims.journal_entry_vouchers';
+
+    // The clearing/"undeposited collections" account a Collecting Officer's cash sits in between
+    // being collected and being deposited — debited by the Collection leg JEV, credited by the
+    // Deposit leg JEV (see proformaJev()/submitJev() below). Already seeded (account_id '4',
+    // "02 - sample_data/03 - fims_chart_of_accounts.sql").
+    private const CASH_COLLECTING_OFFICER_CODE = '1-01-01-010';
 
     // ── small SQL helpers (same shape as BankManagementService) ──
 
@@ -432,5 +439,146 @@ class CollectionsService
         );
 
         return $this->ok($rows ?: []);
+    }
+
+    // ── Journal Entry Voucher prefill (Collection leg + Deposit leg) ──
+    //
+    // Collections has always been "record first, journalize later" (see this class's docblock) —
+    // saving a report never created an accounting entry at all. These two methods let Accounting
+    // turn a saved report's Collection(s)/Deposit sections into a standalone JEV for review, same
+    // mechanism (DisbursementVoucherService::createStandaloneJev()) and same "pro-forma" shape as
+    // the IAR/Property Record modules' own JEV submit — the user still picks a Book and reviews the
+    // lines before Save; nothing here posts automatically. $leg is 'collection' or 'deposit'.
+    //
+    // Collection leg:  Dr Cash-Collecting Officers (total) / Cr each Collection line's GL account.
+    // Deposit  leg:     Dr each Deposit line's bank account's GL account / Cr Cash-Collecting
+    //                    Officers (total) — the bank account must have a coa_account_id/account_code
+    //                    assigned (Bank Account Management) or it's left out with a warning.
+    private function jevLegColumn(string $leg): ?string
+    {
+        return match ($leg) {
+            'collection' => 'collection_jev_id',
+            'deposit'    => 'deposit_jev_id',
+            default      => null,
+        };
+    }
+
+    /** Prefill data for the Add JEV review modal, or the existing JEV if this leg was already prepared. */
+    public function proformaJev(int $id, string $leg): array
+    {
+        $column = $this->jevLegColumn($leg);
+        if ($column === null) {
+            return ['success' => false, 'message' => "Unknown leg '{$leg}' (expected 'collection' or 'deposit')."];
+        }
+        $report = $this->fetchReport($id);
+        if (!$report) {
+            return ['success' => false, 'message' => 'Collection report not found.', 'httpCode' => 404];
+        }
+
+        if (!empty($report[$column])) {
+            $jev = App\ExecuteRow(
+                "SELECT jev.jev_id, jev.jev_no, st.name AS jev_status
+                 FROM {$this->tableJev} jev
+                 LEFT JOIN fims.settings_status st ON st.id = jev.status_id
+                 WHERE jev.jev_id = " . (int) $report[$column],
+                'DB'
+            );
+
+            return ['success' => true, 'data' => ['already' => $jev]];
+        }
+
+        $particulars = 'Collection Report ' . ($leg === 'collection' ? '— Collections' : '— Deposits')
+            . ' (' . $report['report_date'] . ($report['collecting_office'] ? ', ' . $report['collecting_office'] : '') . ')';
+
+        if ($leg === 'collection') {
+            $lines = App\ExecuteRowsAssociative(
+                "SELECT coa.account_code, coa.account_title, crl.amount
+                 FROM {$this->tableLines} crl
+                 LEFT JOIN {$this->tableCoa} coa ON coa.account_id = crl.coa_account_id
+                 WHERE crl.collection_report_id = {$id} ORDER BY crl.line_number",
+                'DB'
+            ) ?: [];
+            if (!$lines) {
+                return ['success' => false, 'message' => 'This report has no Collection lines to journalize.'];
+            }
+            $total = array_sum(array_map(fn($l) => (float) $l['amount'], $lines));
+            $out = [['account_code' => self::CASH_COLLECTING_OFFICER_CODE, 'account_title' => 'Cash-Collecting Officers', 'debit' => $total, 'credit' => 0]];
+            foreach ($lines as $l) {
+                $out[] = ['account_code' => $l['account_code'], 'account_title' => $l['account_title'], 'debit' => 0, 'credit' => (float) $l['amount']];
+            }
+        } else {
+            $deposits = App\ExecuteRowsAssociative(
+                "SELECT ba.account_code, ba.account_name, crd.amount
+                 FROM {$this->tableDeposits} crd
+                 LEFT JOIN {$this->tableBankAccounts} ba ON ba.bank_account_id = crd.bank_account_id
+                 WHERE crd.collection_report_id = {$id} ORDER BY crd.line_number",
+                'DB'
+            ) ?: [];
+            if (!$deposits) {
+                return ['success' => false, 'message' => 'This report has no Deposit lines to journalize.'];
+            }
+            $warnings = [];
+            $out = [];
+            $total = 0.0;
+            foreach ($deposits as $d) {
+                if (empty($d['account_code'])) {
+                    $warnings[] = "Bank account '{$d['account_name']}' has no GL account assigned (Bank Account Management) — left out.";
+                    continue;
+                }
+                $out[] = ['account_code' => $d['account_code'], 'account_title' => $d['account_name'], 'debit' => (float) $d['amount'], 'credit' => 0];
+                $total += (float) $d['amount'];
+            }
+            if (!$out) {
+                return ['success' => false, 'message' => 'None of this report\'s Deposit bank accounts have a GL account assigned.'];
+            }
+            $out[] = ['account_code' => self::CASH_COLLECTING_OFFICER_CODE, 'account_title' => 'Cash-Collecting Officers', 'debit' => 0, 'credit' => $total];
+        }
+
+        return ['success' => true, 'data' => [
+            'jev_date' => $report['report_date'], 'rc_id' => $report['rc_id'], 'particulars' => $particulars,
+            'lines' => $out, 'warnings' => $warnings ?? [],
+        ]];
+    }
+
+    /**
+     * Creates the standalone JEV (DRAFT) from the server-computed lines above — the client only
+     * supplies book_id/particulars (and may not override amounts/accounts), same trust boundary as
+     * PropertyRecordService::submitProforma(). Links it back onto the report's collection_jev_id/
+     * deposit_jev_id so this leg can't be journalized twice.
+     */
+    public function submitJev(int $id, string $leg, array $body, int $userId): array
+    {
+        $column = $this->jevLegColumn($leg);
+        if ($column === null) {
+            return ['success' => false, 'message' => "Unknown leg '{$leg}' (expected 'collection' or 'deposit')."];
+        }
+        $bookId = $body['book_id'] ?? null;
+        if (!$bookId) {
+            return ['success' => false, 'message' => 'Select a Book before submitting.'];
+        }
+
+        $prefill = $this->proformaJev($id, $leg);
+        if (!($prefill['success'] ?? false)) {
+            return $prefill;
+        }
+        if (!empty($prefill['data']['already'])) {
+            return ['success' => false, 'message' => 'This leg was already journalized as ' . $prefill['data']['already']['jev_no'] . '.', 'httpCode' => 409];
+        }
+        $data = $prefill['data'];
+
+        $voucher = new DisbursementVoucherService();
+        $result  = $voucher->createStandaloneJev([
+            'jev_date'      => $data['jev_date'],
+            'book_id'       => $bookId,
+            'particulars'   => trim((string) ($body['particulars'] ?? '')) ?: $data['particulars'],
+            'lines'         => array_map(fn($l) => ['account_code' => $l['account_code'], 'rc_id' => $data['rc_id'] ?? '', 'debit' => $l['debit'], 'credit' => $l['credit']], $data['lines']),
+        ], $userId);
+
+        if ($result['success'] ?? false) {
+            $jevId = (int) $result['data']['jev_id'];
+            App\Execute("UPDATE {$this->tableReports} SET {$column} = {$jevId} WHERE collection_report_id = {$id}", 'DB');
+        }
+
+        return $result;
     }
 }
