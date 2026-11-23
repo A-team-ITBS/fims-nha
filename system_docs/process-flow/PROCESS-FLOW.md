@@ -2,7 +2,7 @@
 
 **Step-by-step walkthrough, from set-up to the posted ledgers — for SQA testing and CPA review**
 
-> **Status:** written 2026-11-17, updated 2026-11-19 (per-agency remittance DVs, automatic payment JEV, Payroll
+> **Status:** written 2026-11-17, updated 2026-11-23 (FTLA release, Collections journalizing, GL roll-up; earlier: per-agency remittance DVs, automatic payment JEV, Payroll
 > Management YTD / File Template, print notes) from the current code (`app/`) and the status chains in its services. Follows the
 > sidebar modules (`views/menu.php`). Tables behind each step: `system_docs/ERD/README.md`.
 > PDF version: `system_docs/process-flow/PROCESS-FLOW.pdf` — the flowcharts of this file, one process per page in
@@ -82,7 +82,7 @@ flowchart TD
     PR -.-> E
     PR -.-> RM["8B — REMITTANCE<br/>Accounting → FMD → Treasury<br/>• Deductions per agency<br/>• Remittance DV per agency, check, receipt"]
     IAR --> E["8 — DISBURSEMENT VOUCHER<br/>FMD → Accounting → Treasury<br/>• Voucher, journal entry, approvals<br/>• FOR_TREASURY posts the entry to the GL"]
-    E --> F["9 — CHECK RELEASE AND PAYMENT ENTRY<br/>Treasury<br/>• Check prepared and released<br/>• Payment JEV posted automatically"]
+    E --> F["9 — CHECK RELEASE AND PAYMENT ENTRY<br/>Treasury<br/>• Check prepared and released, or FTLA bank transfer<br/>• Payment JEV posted automatically"]
     F --> J["10 — ADJUSTING ENTRIES<br/>Accounting<br/>• Journal Entry Vouchers without a DV"]
     J --> V["11 — VERIFICATION<br/>Any user<br/>• General / Subsidiary Ledger, Journals,<br/>Trial Balance, COB Monitoring"]
     V --> END(["Cycle complete"])
@@ -436,18 +436,23 @@ flowchart TD
 ## 9. Check release and payment entry
 
 **Needs:** a DV at FOR_TREASURY (Section 8). **Sidebar:** DV Processing → Disbursement Preparation (Treasury),
-Disbursement Voucher and Journal Entry Voucher (Accounting). **Check:** PREPARED → RELEASED → ENCASHED /
+Disbursement Voucher and Journal Entry Voucher (Accounting); FTLA (page `FtlaPage`, not in the sidebar). A DV is released
+**either by check (steps 1–5) or by FTLA bank transfer (steps 6–8)** — never both. **Check:** PREPARED → RELEASED → ENCASHED /
 OUTSTANDING → STALE, or CANCELLED / VOIDED. **Release:** PENDING → NOTIFIED → RELEASED → ACKNOWLEDGED, or UNCLAIMED.
 
 | Step | Log in as | Where (sidebar → page) | Do this | Expected result |
 |---|---|---|---|---|
-| 1 | Treasury Officer (RC 014) | DV Processing → Disbursement Preparation | Prepare the check for the DV: bank account, check number | Check PREPARED; the DV becomes RELEASED; the **payment JEV is created and POSTED automatically** (Dr Accounts Payable / Cr Cash in Bank) — there is no separate Prepare Payment JEV step |
-| 1a | Treasury Officer (alternative) | Prepare Check | The bank's Cash account is not tagged | Refused — "no Cash account mapped". Tag it in Bank Management → Tag Account Code: pick the Cash in Bank GL account (e.g. 1-01-02-020) in the GL picker |
+| 1 | Treasury Officer (RC 014) | DV Processing → Disbursement Preparation | Prepare the check for the DV: bank account, check number | Check PREPARED; the DV becomes RELEASED; the **payment JEV is created and POSTED automatically** (Dr Accounts Payable / Cr Cash in Bank; the Cash line uses the bank's Cash SL account when one is tagged) — there is no separate Prepare Payment JEV step |
+| 1a | Treasury Officer (alternative) | Prepare Check | The bank's Cash account is not tagged | Refused — "no Cash account mapped". Tag it in Bank Management → Tag Account Code: pick the Cash in Bank GL account (e.g. 1-01-02-020) and, if used, its SL in the GL / SL picker |
 | 2 | Treasury Officer | Disbursement Preparation → releases | Create the release and notify the payee | Release PENDING → NOTIFIED (email sent) |
 | 3 | Treasury Officer | Disbursement Preparation → releases | Release the check to the payee; record the acknowledgment | RELEASED → ACKNOWLEDGED |
 | 3a | Treasury Officer (alternative) | releases | Mark it unclaimed | UNCLAIMED; the check becomes STALE |
-| 4 | Any user | DV Processing → Journal Entry Voucher | Find the DV's payment JEV; Print | Payment JEV POSTED; the print shows the journal (CKDJ) |
+| 4 | Any user | DV Processing → Journal Entry Voucher | Find the DV's payment JEV; **View** (opens the print preview) | Payment JEV POSTED; the print shows the journal (CKDJ) |
 | 5 | Any user | Ledgers → Journals (CKDJ tab) | Find the check | Check listed in the Check Disbursements Journal |
+| 6 | Treasury Officer (RC 014) | FTLA → Register | Bank-transfer release instead of a check: from / to bank accounts, and the DV no. on each debit row (only FOR_TREASURY DVs not already on a check or another FTLA are offered) | FTLA DRAFT |
+| 6a | Treasury Officer (alternative) | FTLA / Prepare Check | Use a DV already on an FTLA for a check, or the reverse | Not offered / refused — one release per DV |
+| 7 | Treasury | FTLA | Move it through For RM Approval → For Review → For Approval → Approved → Transmitted to Bank → Validated (bank confirmed) | Status Validated |
+| 8 | Treasury | FTLA | Submit to Accounting | **One combined payment JEV posted** for every DV on the FTLA (Dr Accounts Payable per DV / Cr Cash); every listed DV becomes RELEASED; the JEV print shows **ADADJ** |
 
 ```mermaid
 flowchart TD
@@ -460,6 +465,10 @@ flowchart TD
     S4 --> S5["STEP 5 — JOURNALS<br/>Any user — Ledgers, Journals<br/>• Check listed in the CKDJ journal"]
     S3 --> END(["Payment completed — go to Section 10"])
     S5 --> END
+    START -.->|"or by bank transfer"| F1["STEP 6 — FTLA<br/>Treasury — FTLA, Register<br/>• FOR_TREASURY DVs on the debit rows<br/>• One release per DV (no check)"]
+    F1 --> F2["STEP 7 — FTLA APPROVALS<br/>Treasury<br/>• RM approval → review → approval<br/>• Transmitted → Validated by the bank"]
+    F2 --> F3["STEP 8 — SUBMIT TO ACCOUNTING<br/>Treasury — FTLA<br/>• One payment JEV for all its DVs, POSTED<br/>• Every DV: RELEASED<br/>• JEV print: ADADJ"]
+    F3 --> END
 ```
 
 ## 10. Adjusting entries (Journal Entry Voucher)
@@ -475,7 +484,8 @@ FOR_DIVISION_MANAGER, FOR_DEPARTMENT_MANAGER, POSTED. Only Accounting can move i
 | 2 | Accounting Section Chief | Journal Entry Voucher | Move forward | Status FOR_SECTION_CHIEF → FOR_DIVISION_MANAGER |
 | 3 | Accounting Division Manager | Journal Entry Voucher | Move forward | Status FOR_DEPARTMENT_MANAGER |
 | 4 | Accounting Department Manager | Journal Entry Voucher | Post | Status POSTED |
-| 5 | Any user | Journal Entry Voucher → Print | Print the JEV | Printed JEV matches the entry. The journal box is blank for a General Journal entry ("GJ" is only the list category); payment JEVs show CKDJ / ADADJ |
+| 5 | Any user | Journal Entry Voucher → **View** | Opens the JEV in the print preview (there is no separate Print item); print it | Printed JEV matches the entry. The journal box is blank for a General Journal entry ("GJ" is only the list category); payment JEVs show CKDJ (check) or ADADJ (ADA / FTLA) |
+| 6 | Accounting Section Chief | Registry → Collections and Fund Sweeping → a report → **Journalize** (Collection or Deposit leg) | Check the pre-filled lines; submit | A DRAFT JEV is created for that leg (each leg only once) and follows steps 2–4 |
 
 ```mermaid
 flowchart TD
@@ -497,10 +507,10 @@ every approved amount from the earlier sections shows up correctly.
 
 | Step | Log in as | Where (sidebar → page) | Do this | Expected result |
 |---|---|---|---|---|
-| 1 | Any user | Ledgers → General Ledger | Pick an account used in Sections 8–10 and the fiscal year | Every posted entry listed with its JEV / DV, debit, credit and running balance; Print gives the General Ledger sheet |
+| 1 | Any user | Ledgers → General Ledger | Pick an account used in Sections 8–10 and the fiscal year | Every posted entry listed with its JEV / DV, debit, credit and running balance — an SL account's postings are included in its GL account (SL code shown on the line); click the GL code for each SL's own postings; Print gives the General Ledger sheet |
 | 2 | Any user | Ledgers → Subsidiary Ledger | Pick the SL (bottom-level) account used | Its postings and running balance; Print gives the Subsidiary Ledger sheet |
 | 3 | Any user | Ledgers → Journals | Open the GJ and CKDJ tabs | GJ: posted journal entries; CKDJ: the checks from Section 9 |
-| 4 | Any user | Ledgers → Trial Balance | Pick the fiscal year and book | Total debits = total credits |
+| 4 | Any user | Ledgers → Trial Balance | Pick the fiscal year and book | Total debits = total credits; the figures include the year's Opening Balances |
 | 5 | Any user | Monitoring → COB Monitoring | Open the office and fiscal year from Section 3 | Approved, Revision, CBA, RFA, LAA, Available and Remaining agree with Sections 3–6; PDF and Excel reports download |
 
 ```mermaid
@@ -524,17 +534,17 @@ flowchart TD
 |---|---|
 | COB Preparation | Ledger |
 | DV Processing | Liquidation Voucher |
-| Monitoring | RFA / LAA Monitoring |
-| Registry/NCA | Check Registry, Accountable Forms Registry |
+| Registry/NCA | Accountable Forms Registry |
 | Reports | FMR, Remittance List (Deductions) |
-| Accounts Set-up | Fund Source, Program Sources, Accountable Officer, Fidelity Bond |
+| Accounts Set-up | Fund Source, Program Sources |
 | Fund Sourcing | Pricing (the request form and API exist; the page is empty) |
 
 **Known limitations — expected behaviour today, not test failures:**
 
 - **CFA** (Certified Funds Available) cannot be created: both memo request pages offer only CBA or RFA / LAA.
-- **ADA and Cash Receipts journals** (Journals → ADADJ, CRDJ) are always empty: nothing records ADA releases or
-  official receipts yet.
+- **ADA and Cash Receipts journals** (Journals → ADADJ, CRDJ): an FTLA covering several DVs posts one payment JEV with
+  no single DV, so it may not resolve in the ADADJ tab; Collections JEVs (Section 10, step 6) are ordinary journal
+  entries — their print shows no CRDJ journal line yet.
 - **Fund Sourcing Dashboard** — the Fund Transfer / Borrowing card shows sample data.
 - **COB Monitoring** — the Approved Amount is also the live balance, so Revised and Available can count a CBA or a
   revision twice; confirm the figures by hand (see `system_docs/ERD/README.md`, Known gaps).
@@ -549,4 +559,4 @@ flowchart TD
   current sources.
 - **Payroll DV deductions** show as one "Other" line until the payroll deduction types are seeded
   (`04 - seed_data/08`); the accounting entry is right either way.
-- Pages that work but are **not in the sidebar**: Purchase Orders, Property Records, Cash Position, FTLA.
+- Pages that work but are **not in the sidebar**: Purchase Orders, FTLA.

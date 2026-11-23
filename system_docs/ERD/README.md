@@ -843,7 +843,7 @@ erDiagram
   - `fims.check_register` (`01 - table/34`) is the blank check stock ported from TREASURY. It has no FKs, and its unique key is `(bank_account_id, check_number, COALESCE(booklet_no,''))`. Preparing a check flips the matching UNUSED row to ISSUED and sets its `check_id`.
   - `fims.check_cancellations` (`01 - table/29`) is 1:1 with the cancelled check. `replacement_check_id` points to the new check. Both FKs were added by alter 21.
   - `fims.check_releases` and `fims.check_release_email_log` (`01 - table/38`) are the unified replacement for check_claimant_releases, check_region_releases, and their email logs, which alter 29 (`drop_old_split_release_tables`) drops. The only FK is `department_id` → uac.departments. `check_id`/`release_id` are soft.
-  - `fims.bank_accounts` (`01 - table/26`) is shared with Bank Management. Alter 23 added management fields plus bank_account_documents and bank_account_audit_log. Alter 24 renamed `department_id` to `rc_id` VARCHAR(50) with no FK. Alter 31 added `account_code`, an FK to COA (the Cash account for the payment JEV). Tagging now stores `coa_account_id` (+ optional `sl_code`) from the GL / SL picker (`POST /bank-management/{id}/tag-account-code` with `{coa_account_id, sl_code}`, same pattern as vendors and accountable officers); an untagged bank stops check preparation with "no Cash account mapped".
+  - `fims.bank_accounts` (`01 - table/26`) is shared with Bank Management. Alter 23 added management fields plus bank_account_documents and bank_account_audit_log. Alter 24 renamed `department_id` to `rc_id` VARCHAR(50) with no FK. Alter 31 added `account_code`, an FK to COA (the Cash account for the payment JEV). Tagging now stores `coa_account_id` (+ optional `sl_code`) from the GL / SL picker; `account_code` is set to the SL's code when an SL is picked (else the GL's), and the check and FTLA payment JEVs credit that Cash SL (`POST /bank-management/{id}/tag-account-code` with `{coa_account_id, sl_code}`, same pattern as vendors and accountable officers); an untagged bank stops check preparation with "no Cash account mapped".
   - `fims.cash_position` (`01 - table/35`) is owned by Cash Position. Here it is only read for sufficiency and written as a deduction. `available_balance` is a generated column (`closing_balance - restricted_amount`).
   - `fims.ada_releases` and `fims.official_receipts` are not touched by this module. They are read only by the Journals page (ADADJ/CRDJ).
 
@@ -1073,7 +1073,7 @@ erDiagram
 ### General Ledger
 
 - **Status:** Built — a read-only ledger card for one account, or all accounts, with a running balance. The GL table itself is written by DV/JEV posting.
-- **Code:** `views/GeneralLedgerPage.php` → `app/pages/general-ledger-page.php`. Route `app/routes/general_ledger.php`: `GET /general_ledger/ledger` (`fetchGeneralLedger`/`fetchAllGeneralLedgers`). It also uses `/books/all`, `/chart_of_accounts/all`, `/fiscal_year/all`, and print via `GeneralLedgerPrintService`. Service: `app/services/GeneralLedgerService.php`. Posting is `postJev()` (l.106) and `reverseJev()` (l.179).
+- **Code:** `views/GeneralLedgerPage.php` → `app/pages/general-ledger-page.php`. Route `app/routes/general_ledger.php`: `GET /general_ledger/ledger` (`fetchGeneralLedger`/`fetchAllGeneralLedgers`) — an SL (leaf child) account's postings now roll up into its GL account (`glRollupCte()`; each line carries `sl_account_code`), and `GET /general_ledger/ledger-sl?account_code=` (`fetchGlSubLedgers`) returns every SL under one GL account with its own postings and running balance, plus the GL account's direct postings (the page's click-a-GL-code popup, with expand / collapse). It also uses `/books/all`, `/chart_of_accounts/all`, `/fiscal_year/all`, and print via `GeneralLedgerPrintService`. Service: `app/services/GeneralLedgerService.php`. Posting is `postJev()` (l.106) and `reverseJev()` (l.179).
 - **Tables written:** none from this page. fims.general_ledger is written by `postJev`/`reverseJev`, called from DV `changeStatus` (→FOR_TREASURY / FOR_TREASURY→CANCELLED), `changeJevStatus` (→POSTED), and `postStandaloneJev`. **Tables read:** fims.v_journals (general_ledger + journal_entry_vouchers + disbursement_vouchers + chart_of_accounts + books), fims.chart_of_accounts (account_type for debit/credit-normal sign), fims.books, fims.fiscal_year.
 - **Status workflow:** none of its own. Rows are insert-only and are never updated. A reversal inserts swapped rows with `reversed_gl_id` set, and the JEV status moves POSTED → REVERSED.
 
@@ -1246,7 +1246,7 @@ erDiagram
 
 - **Status:** Built (read-only) — per-account debit / credit totals from the `fims.v_trial_balance` view.
 - **Code:** `views/TrialBalancePage.php` → `app/pages/trial-balance-page.php`. Route: `GET /general_ledger/trial-balance` (`GeneralLedgerService::fetchTrialBalance`, l.539, with `attachAccountGroups` doing a recursive CTE up `parent_account_id` for the major/sub group headers).
-- **Tables written:** none. **Tables read:** fims.v_trial_balance (general_ledger grouped by fiscal_yr, book_id, and account; balance = debit − credit), fims.chart_of_accounts (recursive), fims.books, fims.fiscal_year.
+- **Tables written:** none. **Tables read:** fims.v_trial_balance (general_ledger grouped by fiscal_yr, book_id, and account, FULL OUTER JOINed with fims.opening_balances so a year's beginning balances are included; balance = debit − credit — `05 - views/01`, kept in sync with `03 - alter_table/56`), fims.chart_of_accounts (recursive), fims.books, fims.fiscal_year.
 - **Status workflow:** none.
 
 ```mermaid
@@ -2250,6 +2250,10 @@ erDiagram
 ### Cash Position and FTLA
 Both are built but not in the sidebar (`views/CashPositionPage.php` → `cash-position-page.php`; `views/FtlaPage.php` → `ftla-page.php`). Their tables (`cash_position`, `cash_position_activity_log`, `soa_transactions`, `bank_transactions`; `fund_transfers`) are in [Shared reference tables](#shared-reference-tables).
 
+- **FTLA as a DV release:** an FTLA's debit rows can carry DV numbers — only DVs at FOR_TREASURY that are not on a non-cancelled check or another FTLA (`GET /ftla/used-dv-numbers`, re-checked server-side in `validateDvNumbers()`). FTLA statuses: DRAFT → FOR_RM_APPROVAL → FOR_REVIEW → FOR_APPROVAL → APPROVED → TRANSMITTED → VALIDATED → SUBMITTED_TO_ACCOUNTING → COMPLETED (or CANCELLED). On VALIDATED → SUBMITTED_TO_ACCOUNTING, `submitPaymentJev()` posts **one** PAYMENT JEV for all its DVs (Dr each DV's Accounts Payable / Cr the destination bank's Cash — its Cash SL when tagged; `doc_ref_no` = the FTLA number, `source_module` = TREASURY) and releases every DV (FOR_TREASURY → RELEASED). The JEV's `dv_id` is NULL when it covers more than one DV; `fund_transfers.jev_id` (`03 - alter_table/57`) records it. The JEV print shows ADADJ for an `FTLA-…` reference.
+- **Bank Reconciliation** (Reports → Bank Reconciliation; `app/routes/bank-reconciliation.php`, `BankReconciliationService`) marks book / bank items as cleared in `fims.bank_reconciliation_cleared_items` (`01 - table/53`).
+- **Opening Balance → Cash Position:** saving an opening balance refreshes the earliest `cash_position` row of that year for every bank account tagged to a saved account code (`CashPositionService::refreshEarliestOpeningBalanceForAccountCode()`, best-effort).
+
 ## Shared reference tables
 
 - **Status:** these are lookups used across modules. None of them has its own sidebar entry, except that Cash Position and FTLA have pages (`views/CashPositionPage.php` → `cash-position-page.php`, `views/FtlaPage.php` → `ftla-page.php`) that are **not in `views/menu.php`**.
@@ -2538,7 +2542,7 @@ Found while mapping the modules (2026-11-17). Grouped; each is verified in code 
 - `v_journals` returns `sl_name`, `sl_detail_name` as NULL; it is defined twice (alter 38 and `05 - views/01`), and the views file's comment says the SL fields are "populated from the Chart of Accounts".
 
 **Tables / columns with no writer**
-- `ada_releases`, `official_receipts`, `official_receipt_lines` — nothing in `app/` writes them, so the Journals page's ADADJ and CRDJ tabs are always empty.
+- `ada_releases`, `official_receipts`, `official_receipt_lines` — nothing in `app/` writes them. FTLA releases post a PAYMENT JEV but deliberately do not write `ada_releases`; Collections reports can be journalized (`GET|POST /collections/{id}/jev-prefill/{collection|deposit}` → a standalone DRAFT JEV through `DisbursementVoucherService::createStandaloneJev()`, linked back on `collection_reports.collection_jev_id` / `deposit_jev_id` — `03 - alter/57`), but those are ordinary journal entries, so the ADADJ / CRDJ tabs can still miss them.
 - `check_booklets` (and `checks.booklet_id`); `disbursement_vouchers.requesting_department_id` (always NULL); the seeded `APPROVED` JEV status (never set — DV-linked SETUP JEVs have a NULL status until posted); `uac.users.must_change_password` (nothing sets or enforces it).
 
 **Referenced but not created**
@@ -2558,14 +2562,15 @@ Found while mapping the modules (2026-11-17). Grouped; each is verified in code 
 
 **SQL housekeeping (affects anyone reading the SQL)**
 - Duplicate alter numbers: 21, 23, 29, 30, 36 (two `36`s: `budget_req_drop_remarks`, `chart_of_accounts_add_account_purpose`).
-- Extra folders beside the main ones: `01 - fims/02 - alter_table`, `02 - seed_data`, `03 - alter` (only `50 - add_gl_sl_to_vendors.sql`).
+- Extra folders beside the main ones: `01 - fims/02 - alter_table`, `02 - seed_data`, `03 - alter` (`50 - add_gl_sl_to_vendors.sql`, `57 - collection_reports_add_jev_links.sql` — easy to miss when running `03 - alter_table`).
+- Duplicate 57s across folders (`03 - alter/57`, `03 - alter_table/57`) and two `53`s in `03 - alter_table`.
 - `budget_req_project_attachment` is created twice (`01 - table/16` and `03 - alter_table/16`).
 - Misleading names/comments: `23 - budget_revision_on_budget_reference_number.sql` (changes budget lines), `30 - add_book_to_dv_jev_gl_or.sql`, the `41 - fims_books.sql` header, the `check_releases` header (cites the dropped `rfa_allocation_number`).
 - `_assets/sql/README.md` is out of date (file counts / next number).
 
 **Pages**
-- Empty (0-byte) placeholders in the sidebar: Ledger, Liquidation Voucher, RFA / LAA Monitoring, Check Registry, Accountable Forms Registry, FMR, Remittance List, Fund Source, Program Sources, Accountable Officer, Pricing (Pricing has a full backend: route, service, form and tables). `ledger-budget-allocation.php` is empty and not in the menu.
-- Built but **not in the sidebar**: Purchase Orders, Property Records, Cash Position, FTLA (see [Pages not in the sidebar](#pages-not-in-the-sidebar)).
+- Empty (0-byte) placeholders in the sidebar: Ledger, Liquidation Voucher, Accountable Forms Registry, FMR, Remittance List, Fund Source, Program Sources, Pricing (Pricing has a full backend: route, service, form and tables). `ledger-budget-allocation.php` is empty and not in the menu. RFA / LAA Monitoring, Check Registry, Accountable Officer, Fidelity Bond, Closing Balance and Bank Reconciliation are built.
+- Built but **not in the sidebar**: Purchase Orders, FTLA (Cash Position and Property Record are now in the sidebar; see [Pages not in the sidebar](#pages-not-in-the-sidebar)).
 - The Security Management quick link `UserLevelsList` has a controller route but no view/model *(may be broken)*.
 
 ## Related docs
