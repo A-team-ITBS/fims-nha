@@ -1913,6 +1913,15 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 		document.getElementById('allocation_type').addEventListener('change', toggleCbaIdRow);
 		document.getElementById('allocation_type').addEventListener('change', updateSubmitLabel);
 		document.getElementById('allocation_type').addEventListener('change', pcrApplyMode); // PR ↔ PO fields
+		// RFA / LAA printing is paused (PRP_PAUSED in readone/print-preview-readone.php): the Print button is disabled
+		// while the type is RFA or LAA. Also re-checked when the button is pointed at / focused, since edit mode sets the
+		// type without a change event.
+		document.getElementById('allocation_type').addEventListener('change', cbaSyncPrintPaused);
+		(function() {
+			var pb = document.querySelector('.btn-print');
+			if (pb) { pb.addEventListener('pointerenter', cbaSyncPrintPaused); pb.addEventListener('focus', cbaSyncPrintPaused); }
+			cbaSyncPrintPaused();
+		})();
 		document.getElementById('allocation_type').addEventListener('change', cfaApplyMode); // the CFA section
 		wireAmtInput(document.getElementById('pr_amount'));
 		wireAmtInput(document.getElementById('po_amount'));
@@ -5943,6 +5952,18 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 	//   CFA → CFA (Certified Funds Available — the funding-request memo FMD certifies)
 	// A Regional / District requesting office prints the regional CBA.
 	// Field names: system_docs/modules/PRINT-FORMS.md.
+	// Print paused for this type (RFA / LAA — see PRP_PAUSED in readone/print-preview-readone.php): button disabled.
+	function cbaSyncPrintPaused() {
+		var pb = document.querySelector('.btn-print');
+		if (!pb || pb.dataset.generating) return;
+		var t = (document.getElementById('allocation_type') || {}).value || '';
+		var paused = typeof prp_isPaused === 'function' && prp_isPaused(t);
+		pb.disabled = paused;
+		pb.style.opacity = paused ? '.45' : '';
+		pb.style.cursor = paused ? 'not-allowed' : '';
+		pb.title = paused ? 'Printing the ' + t + ' is paused for now' : '';
+	}
+
 	async function printCBA() {
 		var btn = document.querySelector('.btn-print');
 		if (!btn) return;
