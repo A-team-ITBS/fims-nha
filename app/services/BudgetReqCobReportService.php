@@ -6,10 +6,13 @@ use PHPMaker2024\FIMS as App;
 use PHPMaker2024\FIMS\DataType;
 
 /**
- * Budget Request "Print COB" -> "Per Region" / "Per Program": a real .xlsx for each, built from the budget_req /
+ * Budget Request "Export to Excel" / "Preview and Print" -> "Per Region" / "Per Program": a real .xlsx (report(),
+ * format='xlsx') or PDF (format='pdf', via GlobalService::renderPdf()) for each, built from the budget_req /
  * budget_line_items tables directly (the SAME source readone/budget-req-readone.php's "View as COB" modal reads
- * via BGR_API + '/all') — NOT CobService's Approved-only COB Monitoring data, since "Print COB" here runs from the
+ * via BGR_API + '/all') — NOT CobService's Approved-only COB Monitoring data, since this runs from the
  * Budget Request / Budget Proposal list on whatever requests exist, any status, same as the on-screen modal.
+ * Both formats share the same model (buildRegion()/buildProgram()) — the xlsx* / html* methods only differ in
+ * how that model is laid out (an XlsxWriter sheet vs. a plain HTML table), so they can never disagree on a number.
  *
  * Both reports share the SAME structural CO vs. COE split and the SAME three money columns; they differ only in
  * what the CAPITAL OUTLAY section groups by and how deep it goes:
@@ -215,19 +218,24 @@ class BudgetReqCobReportService
 
     /** The one "Print COB" entry point both report modes go through — see MODES below. */
     private const MODES = [
-        'region' => ['label' => 'Per Region', 'build' => 'buildRegion', 'xlsx' => 'xlsxRegion'],
-        'program' => ['label' => 'Per Program', 'build' => 'buildProgram', 'xlsx' => 'xlsxProgram'],
+        'region' => ['label' => 'Per Region', 'build' => 'buildRegion', 'xlsx' => 'xlsxRegion', 'html' => 'htmlRegion'],
+        'program' => ['label' => 'Per Program', 'build' => 'buildProgram', 'xlsx' => 'xlsxProgram', 'html' => 'htmlProgram'],
     ];
 
     /**
-     * @param string $mode 'region' or 'program' — see MODES above
+     * @param string $mode   'region' or 'program' — see MODES above
+     * @param string $format 'xlsx' (default — "Export to Excel") or 'pdf' ("Preview and Print": rendered via
+     *                       GlobalService::renderPdf(), same model/rows as the xlsx — see htmlRegion()/htmlProgram())
      *
      * @return array{success: bool, filename?: string, mime?: string, data?: string, httpCode?: int, message?: string}
      */
-    public function report(string $mode, string $fiscalYr = '', string $scopeRcId = ''): array
+    public function report(string $mode, string $fiscalYr = '', string $scopeRcId = '', string $format = 'xlsx'): array
     {
         if (!isset(self::MODES[$mode])) {
             return ['success' => false, 'httpCode' => 400, 'message' => 'mode must be one of: '.implode(', ', array_keys(self::MODES))];
+        }
+        if (!in_array($format, ['xlsx', 'pdf'], true)) {
+            return ['success' => false, 'httpCode' => 400, 'message' => 'format must be xlsx or pdf.'];
         }
         $cfg = self::MODES[$mode];
 
@@ -236,13 +244,22 @@ class BudgetReqCobReportService
             return $built;
         }
         $m = $built['data'];
-        $name = 'Budget_Req_'.str_replace(' ', '_', $cfg['label']).($m['fiscal_yr'] !== null ? '_FY'.$m['fiscal_yr'] : '').'_'.date('Ymd').'.xlsx';
+        $base = 'Budget_Req_'.str_replace(' ', '_', $cfg['label']).($m['fiscal_yr'] !== null ? '_FY'.$m['fiscal_yr'] : '').'_'.date('Ymd');
 
         try {
-            return ['success' => true, 'filename' => $name, 'mime' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            if ($format === 'pdf') {
+                $html = $this->{$cfg['html']}($m);
+                $bytes = GlobalService::renderPdf($html, 'Legal', 'Helvetica', 'landscape');
+
+                return $bytes === null
+                    ? ['success' => false, 'httpCode' => 500, 'message' => 'The '.$cfg['label'].' PDF could not be generated.']
+                    : ['success' => true, 'filename' => $base.'.pdf', 'mime' => 'application/pdf', 'data' => base64_encode($bytes)];
+            }
+
+            return ['success' => true, 'filename' => $base.'.xlsx', 'mime' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                 'data' => base64_encode($this->{$cfg['xlsx']}($m))];
         } catch (\Throwable $e) {
-            App\LogError('BudgetReqCobReportService::report '.$mode.' '.$e->getMessage());
+            App\LogError('BudgetReqCobReportService::report '.$mode.' '.$format.' '.$e->getMessage());
 
             return ['success' => false, 'httpCode' => 500, 'message' => 'The '.$cfg['label'].' report could not be generated.'];
         }
@@ -423,6 +440,105 @@ class BudgetReqCobReportService
         $this->xlsxColWidths($x, 60);
 
         return $x->render();
+    }
+
+    // -------------------------------------------------------------------------
+    // HTML ("Preview and Print" → PDF, via GlobalService::renderPdf()) — same
+    // models (buildRegion()/buildProgram()) and the same TOTAL / CAPITAL OUTLAY /
+    // CORPORATE OPERATING EXPENDITURE structure as the xlsx versions above, just
+    // laid out as a plain HTML table instead of an XlsxWriter sheet. Landscape
+    // Legal (report()) — the Region/Program/Project label column runs long.
+    // -------------------------------------------------------------------------
+
+    /** "-" for (near) zero, "1,234.56" / "(1,234.56)" otherwise — same shape as xlsxCommon()'s NUM_FMT. */
+    private static function fmtAmt(float $v): string
+    {
+        if (abs($v) < 0.005) {
+            return '-';
+        }
+        $s = number_format(abs($v), 2);
+
+        return $v < 0 ? "({$s})" : $s;
+    }
+
+    private static function esc(string $v): string
+    {
+        return htmlspecialchars($v, ENT_QUOTES, 'UTF-8');
+    }
+
+    /** One (label, proposed, approved, amended) row. $indent: 0 = TOTAL/section row, 1-3 = Region/Program → Sub-Program → Project depth. */
+    private static function htmlRow(string $label, array $a, int $indent = 0, bool $bold = false, bool $fill = false): string
+    {
+        $class = trim(($bold ? 'b ' : '') . ($fill ? 'fill' : ''));
+        $style = $indent > 0 ? ' style="padding-left:' . (8 + $indent * 16) . 'px"' : '';
+
+        return '<tr' . ($class !== '' ? ' class="' . $class . '"' : '') . '>'
+            . '<td' . $style . '>' . self::esc($label) . '</td>'
+            . '<td class="n">' . self::fmtAmt($a['proposed']) . '</td>'
+            . '<td class="n">' . self::fmtAmt($a['approved']) . '</td>'
+            . '<td class="n">' . self::fmtAmt($a['amended']) . '</td>'
+            . '</tr>';
+    }
+
+    /** Wraps $bodyRows (<tr>…) in a full HTML document — title, date, the three amount column headers, ready for Dompdf. */
+    private function htmlDoc(string $title, array $m, string $bodyRows): string
+    {
+        $dateLine = $m['fiscal_yr'] !== null ? 'FY ' . $m['fiscal_yr'] : 'All Fiscal Years';
+
+        return '<!doctype html><html><head><meta charset="utf-8"><title>' . self::esc($title) . '</title><style>'
+            . 'body{font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#1A1B21;margin:0}'
+            . 'h1{font-size:14pt;margin:0 0 2px;color:#1F497D}'
+            . 'p.meta{margin:0 0 12px;color:#62657E;font-size:9pt}'
+            . 'table{border-collapse:collapse;width:100%}'
+            . 'th{background:#1F497D;color:#fff;text-align:left;padding:5px 6px;font-size:8.5pt}'
+            . 'th.n{text-align:right;white-space:nowrap}'
+            . 'td{padding:4px 6px;border-bottom:1px solid #D9D9D9;vertical-align:top}'
+            . 'td.n{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}'
+            . 'tr.b td{font-weight:bold}'
+            . 'tr.fill td{background:#D9D9D9}'
+            . 'tr{page-break-inside:avoid}'
+            . 'thead{display:table-header-group}'
+            . '@page{margin:10mm}'
+            . '</style></head><body>'
+            . '<h1>' . self::esc($title) . ' — National Housing Authority</h1>'
+            . '<p class="meta">' . self::esc($dateLine) . ' &nbsp;|&nbsp; Generated ' . self::esc($m['generated']) . '</p>'
+            . '<table><thead><tr><th>Region/Program/Project</th><th class="n">Proposed Amount</th><th class="n">Approved Amount</th><th class="n">Amended Amount</th></tr></thead>'
+            . '<tbody>' . $bodyRows . '</tbody></table>'
+            . '</body></html>';
+    }
+
+    public function htmlRegion(array $m): string
+    {
+        $rows = self::htmlRow('TOTAL', $m['grand'], 0, true, true)
+            . self::htmlRow('CAPITAL OUTLAY', $m['co_total'], 0, true);
+        foreach ($m['regions'] as $rg) {
+            $rows .= self::htmlRow($rg['label'], $rg, 1);
+        }
+        $rows .= self::htmlRow('CORPORATE OPERATING EXPENDITURE', $m['coe_total'], 0, true)
+            . self::htmlRow('Personnel Services', $m['ps'], 1)
+            . self::htmlRow('MOOE', $m['mooe'], 1);
+
+        return $this->htmlDoc('Per Region', $m, $rows);
+    }
+
+    public function htmlProgram(array $m): string
+    {
+        $rows = self::htmlRow('TOTAL', $m['grand'], 0, true, true)
+            . self::htmlRow('CAPITAL OUTLAY', $m['co_total'], 0, true);
+        foreach ($m['programs'] as $prog) {
+            $rows .= self::htmlRow($prog['label'], $prog, 1);
+            foreach ($prog['subPrograms'] as $sub) {
+                $rows .= self::htmlRow($sub['label'], $sub, 2);
+                foreach ($sub['projects'] as $proj) {
+                    $rows .= self::htmlRow($proj['label'], $proj, 3);
+                }
+            }
+        }
+        $rows .= self::htmlRow('CORPORATE OPERATING EXPENDITURE', $m['coe_total'], 0, true)
+            . self::htmlRow('Personnel Services', $m['ps'], 2)
+            . self::htmlRow('MOOE', $m['mooe'], 2);
+
+        return $this->htmlDoc('Per Program', $m, $rows);
     }
 
     // -------------------------------------------------------------------------

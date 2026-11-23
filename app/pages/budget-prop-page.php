@@ -44,9 +44,10 @@ $_bgr_fmdRcCodeFrom = '35-074-0000001-000';
 
 // This page's own list/route does no RC lookup of its own (see the class comment above — every logged-in
 // user sees every Regional / District office's requests, scoped server-side by GET /fmd/budget_req/list
-// instead). But "Print COB" (readone/budget-req-readone.php, bgrv_openCobModal) still needs to know THIS
-// user's own office_type, to decide whether a Regional / District user skips straight to "Per Program"
-// instead of being offered all four print layouts — same lookup budget-req-page.php does for the same reason.
+// instead). But "Export to Excel" / "Preview and Print" (readone/budget-req-readone.php, bgrv_openCobModal)
+// still needs to know THIS user's own office_type, to decide whether a Regional / District user skips
+// straight to "Per Program" instead of being offered all four layouts — same lookup budget-req-page.php
+// does for the same reason.
 $_bgr_userOfficeType = '';
 try {
     $_bgr_userOfficeType = (string) (ExecuteScalar(
@@ -155,7 +156,7 @@ try {
             <div class="nha-filter-group-actions">
                 <button type="button" id="bgr-view-cob" class="nha-btn nha-btn-outline" onclick="bgr_viewAsCob()" title="Browse every Program, Sub-Program and Project">
                     <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.477 0 8.268 2.943 9.542 7-1.274 4.057-5.065 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-                    View as COB
+                    View Proposal
                 </button>
             </div>
         </div>
@@ -216,7 +217,7 @@ const BGR_IS_BUDGET_HEAD = <?php echo $_bgr_isBudgetHead ? 'true' : 'false'; ?>;
 let bgr_flatRows = [];   // [{ header, program }] of the rows on screen, for the row actions
 const BGR_FMD_RC_FROM = <?php echo json_encode($_bgr_fmdRcCodeFrom); ?>;
 // fims.responsibility_code.office_type of the logged-in user's own RC — see bgrv_rcDeptType() in
-// readone/budget-req-readone.php's "Print COB" button.
+// readone/budget-req-readone.php's "Export to Excel" / "Preview and Print" buttons.
 const BGR_USER_OFFICE_TYPE = <?php echo json_encode($_bgr_userOfficeType); ?>;
 
 // "View as COB" (readone/budget-req-readone.php, bgrv_openCobModal): every budget request created for the Fiscal Year filter's current

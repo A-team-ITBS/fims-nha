@@ -303,6 +303,77 @@ class NotificationService
         }
     }
 
+    /**
+     * Fan-out to a fims.settings_status row's `next_actors` JSONB — "who acts next on a record that has reached
+     * this status" (see that column's own comment). $nextActors is the decoded JSON, e.g.
+     * {"users": [], "userLevel": "Budget Officer", "department": "Financial Management Department (FMD)"} — a
+     * non-empty "users" list of literal ids is used as-is (it overrides/supplements the level+department
+     * lookup, per the column's own doc); otherwise every ACTIVE user holding that user level — uac.users.user_level_id
+     * (comma-separated), THE SAME column BudgetReqService::hasUserLevel() / BudgetAllocationService's equivalent
+     * read, so "who holds this level" never disagrees between the two — in that department (uac.users.department_id
+     * -> uac.departments.department_name) gets it. Same fan-out shape as toRc(): one ordinary 'user' notification
+     * per person, opts['sender_id'] excluded, opts['event_key'] made per recipient. $nextActors null/empty/missing
+     * both keys -> nobody. Never throws. @return int how many people were notified
+     */
+    public static function toNextActors(?array $nextActors, string $subject, ?string $body = null, ?string $link = null, array $opts = []): int
+    {
+        if (!$nextActors) {
+            return 0;
+        }
+
+        try {
+            $ids = array_values(array_filter(array_map('intval', (array) ($nextActors['users'] ?? []))));
+
+            $userLevel  = trim((string) ($nextActors['userLevel'] ?? ''));
+            $department = trim((string) ($nextActors['department'] ?? ''));
+            if ($userLevel !== '' && $department !== '') {
+                $rows = App\ExecuteRows(
+                    'SELECT DISTINCT u.user_id
+                     FROM uac.users u
+                     JOIN uac.departments d ON d.department_id = u.department_id
+                     WHERE COALESCE(u.is_active, TRUE)
+                       AND LOWER(TRIM(d.department_name)) = LOWER(' . App\QuotedValue($department, DataType::STRING, 'DB') . ')
+                       AND EXISTS (
+                         SELECT 1 FROM regexp_split_to_table(COALESCE(u.user_level_id, \'\'), \',\') AS part(id)
+                         JOIN uac.user_levels ul ON part.id ~ \'^\s*-?\d+\s*$\' AND ul.user_level_id = TRIM(part.id)::int
+                         WHERE LOWER(TRIM(ul.name)) = LOWER(' . App\QuotedValue($userLevel, DataType::STRING, 'DB') . ')
+                       )',
+                    'DB'
+                ) ?: [];
+                foreach ($rows as $row) {
+                    $ids[] = (int) ($row['user_id'] ?? 0);
+                }
+            }
+
+            $ids = array_values(array_unique(array_filter($ids, fn ($v) => $v > 0)));
+            if (!$ids) {
+                return 0;
+            }
+
+            $skip  = (int) ($opts['sender_id'] ?? 0);
+            $key   = isset($opts['event_key']) && $opts['event_key'] !== '' ? (string) $opts['event_key'] : null;
+            $count = 0;
+            foreach ($ids as $uid) {
+                if ($uid === $skip) {
+                    continue;
+                }
+                $o = $opts;
+                if ($key !== null) {
+                    $o['event_key'] = $key . ':' . $uid;
+                }
+                if (self::toUser($uid, $subject, $body, $link, $o) !== null) {
+                    ++$count;
+                }
+            }
+
+            return $count;
+        } catch (\Throwable $e) {
+            App\LogError('Notification toNextActors failed: ' . $e->getMessage());
+
+            return 0;
+        }
+    }
+
     // ── Internals ────────────────────────────────────────────────
 
     /** @return ?string new id, or null when de-duplicated by event_key */

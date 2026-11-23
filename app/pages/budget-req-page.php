@@ -146,7 +146,7 @@ $_bgr_canModify = !$_bgr_isBudgetOfficer;
             <div class="nha-filter-group-actions">
                 <button type="button" id="bgr-view-cob" class="nha-btn nha-btn-outline" onclick="bgrv_openCobModal($bgr('bgr-filter-fiscal-yr').value)" title="Browse every Program, Sub-Program and Project">
                     <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.477 0 8.268 2.943 9.542 7-1.274 4.057-5.065 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-                    View as COB
+                    View Proposal
                 </button>
                 <button type="button" id="bgr-view-remarks" class="nha-btn nha-btn-outline" hidden>
                     <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
@@ -238,9 +238,10 @@ let bgr_flatRows = [];
 // Regional / District office (see the PHP at the top of this file and the FMD list section below).
 const BGR_FMD = <?php echo $_bgr_isFmd ? 'true' : 'false'; ?>;
 const BGR_FMD_RC_FROM = <?php echo json_encode($_bgr_fmdRcCodeFrom); ?>;
-// fims.responsibility_code.office_type of the logged-in user's own RC — same source "Print COB" (readone/
-// budget-req-readone.php, bgrv_openCobModal) reads via bgrv_rcDeptType() to decide whether a Regional /
-// District user skips straight to "Per Program" instead of being offered all four print layouts.
+// fims.responsibility_code.office_type of the logged-in user's own RC — same source "Export to Excel" /
+// "Preview and Print" (readone/budget-req-readone.php, bgrv_openCobModal) reads via bgrv_rcDeptType() to
+// decide whether a Regional / District user skips straight to "Per Program" instead of being offered all
+// four layouts.
 const BGR_USER_OFFICE_TYPE = <?php echo json_encode((string) ($_bgr_userRc['office_type'] ?? '')); ?>;
 
 window.bgr_afterSave = () => bgr_load();
