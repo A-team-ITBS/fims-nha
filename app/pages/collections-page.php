@@ -76,7 +76,7 @@ $colCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
                             <th class="text-right">Total Collections</th>
                             <th class="text-right">Total Deposits</th>
                             <th class="text-center">Swept</th>
-                            <th class="text-center" style="width:90px">Actions</th>
+                            <th class="text-center" style="width:150px">Actions</th>
                         </tr>
                     </thead>
                     <tbody id="colTableBody"><tr class="fims-empty"><td colspan="8">Loading…</td></tr></tbody>
@@ -202,6 +202,52 @@ $colCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
                 <div class="fims-modal-footer">
                     <button type="button" class="fims-btn fims-btn-ghost" data-close="m-col-report">Cancel</button>
                     <button type="button" class="fims-btn fims-btn-primary" id="colSaveBtn">Save Report</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════
+         MODAL: Journal Entry Voucher prefill (Collection leg / Deposit leg) —
+         review-then-submit, same "pro-forma" shape as the IAR/Property Record
+         modules' own JEV submit (DisbursementVoucherService::createStandaloneJev()).
+         Nothing posts until Submit; lines/amounts are server-computed and read-only.
+    ══════════════════════════════════════════════ -->
+    <div class="fims-modal-overlay" id="m-col-jev" style="display:none;">
+        <div class="fims-modal-dialog" style="max-width:760px;width:95vw;">
+            <div class="fims-modal-content">
+                <div class="fims-modal-header">
+                    <div><div class="fims-modal-title" id="colJevTitle">Journal Entry Voucher</div></div>
+                    <button class="fims-modal-close" data-close="m-col-jev">&times;</button>
+                </div>
+                <div class="fims-modal-body">
+                    <div id="colJevAlready" style="display:none;padding:10px 14px;border-radius:8px;background:var(--fims-success-soft,#E4F6EC);color:var(--fims-success,#1D8A4C);font-size:13px;margin-bottom:12px;"></div>
+                    <div id="colJevWarnings" style="display:none;padding:10px 14px;border-radius:8px;background:var(--fims-warning-soft,#FDF3E0);color:var(--fims-warning,#B8860B);font-size:13px;margin-bottom:12px;"></div>
+                    <div id="colJevForm">
+                        <div class="fims-form-grid" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
+                            <div class="fims-form-group">
+                                <label class="fims-label">JEV Date</label>
+                                <input type="text" class="fims-input" id="colJevDate" disabled>
+                            </div>
+                            <div class="fims-form-group">
+                                <label class="fims-label">Book *</label>
+                                <select class="fims-select" id="colJevBook"><option value="">Select a book…</option></select>
+                            </div>
+                            <div class="fims-form-group" style="grid-column:span 1;">
+                                <label class="fims-label">Particulars</label>
+                                <input type="text" class="fims-input" id="colJevParticulars">
+                            </div>
+                        </div>
+                        <table class="fims-table" style="margin-top:12px;">
+                            <thead><tr><th>Account</th><th class="text-right" style="width:140px">Debit</th><th class="text-right" style="width:140px">Credit</th></tr></thead>
+                            <tbody id="colJevLinesBody"></tbody>
+                            <tfoot><tr style="font-weight:700;"><td>Total</td><td class="text-right" id="colJevTotalDebit">₱0.00</td><td class="text-right" id="colJevTotalCredit">₱0.00</td></tr></tfoot>
+                        </table>
+                    </div>
+                </div>
+                <div class="fims-modal-footer">
+                    <button type="button" class="fims-btn fims-btn-ghost" data-close="m-col-jev">Close</button>
+                    <button type="button" class="fims-btn fims-btn-primary" id="colJevSubmitBtn">Save as Draft JEV</button>
                 </div>
             </div>
         </div>
@@ -659,12 +705,17 @@ $colCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
                         '<td class="text-right">' + fmtPeso(r.total_deposits) + '</td>' +
                         '<td class="text-center">' + sweptBadge(r) + '</td>' +
                         '<td class="text-center">' +
-                            '<button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-edit="' + r.collection_report_id + '"><i class="fas fa-pen"></i></button>' +
+                            '<button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-edit="' + r.collection_report_id + '" title="Edit"><i class="fas fa-pen"></i></button>' +
+                            '<button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-jev="' + r.collection_report_id + '" data-leg="collection" title="' + (r.collection_jev_id ? 'View Collection JEV' : 'Create Collection JEV (Dr Cash-Collecting Officers / Cr Collection lines)') + '"><i class="fas ' + (r.collection_jev_id ? 'fa-check-circle text-success' : 'fa-file-invoice-dollar') + '"></i></button>' +
+                            '<button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-jev="' + r.collection_report_id + '" data-leg="deposit" title="' + (r.deposit_jev_id ? 'View Deposit JEV' : 'Create Deposit JEV (Dr bank GL accounts / Cr Cash-Collecting Officers)') + '"><i class="fas ' + (r.deposit_jev_id ? 'fa-check-circle text-success' : 'fa-university') + '"></i></button>' +
                         '</td>' +
                         '</tr>';
                 }).join('');
                 tbody.querySelectorAll('[data-edit]').forEach(function (btn) {
                     btn.addEventListener('click', function () { openReportModal(this.dataset.edit); });
+                });
+                tbody.querySelectorAll('[data-jev]').forEach(function (btn) {
+                    btn.addEventListener('click', function () { openJevModal(this.dataset.jev, this.dataset.leg); });
                 });
             })
             .catch(() => { tbody.innerHTML = '<tr class="fims-empty"><td colspan="8">Could not reach the server.</td></tr>'; });
@@ -861,6 +912,105 @@ $colCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
                 loadFundSweepPreview();
             })
             .catch(() => { document.getElementById('fsHint').textContent = ''; toast('Could not reach the server.', true); btn.disabled = false; });
+    });
+
+    // ── Journal Entry Voucher prefill modal (Collection leg / Deposit leg) ──
+    let colJevState = null; // { reportId, leg }
+    let colJevBooksLoaded = null;
+
+    function colJevLoadBooks() {
+        if (colJevBooksLoaded) return colJevBooksLoaded;
+        colJevBooksLoaded = fetch('/api/books/all', { headers: authHeaders() }).then(r => r.json()).then(function (json) {
+            const books = (json && json.data) ? json.data : [];
+            document.getElementById('colJevBook').innerHTML = '<option value="">Select a book…</option>' +
+                books.map(b => '<option value="' + b.book_id + '">' + escapeHtml(b.name) + '</option>').join('');
+        });
+        return colJevBooksLoaded;
+    }
+
+    function colJevRenderLines(lines) {
+        const tbody = document.getElementById('colJevLinesBody');
+        let totalDebit = 0, totalCredit = 0;
+        tbody.innerHTML = lines.map(function (l) {
+            totalDebit += parseFloat(l.debit) || 0;
+            totalCredit += parseFloat(l.credit) || 0;
+            return '<tr>' +
+                '<td>' + escapeHtml(l.account_code || '') + (l.account_title ? ' — ' + escapeHtml(l.account_title) : '') + '</td>' +
+                '<td class="text-right">' + (l.debit > 0 ? fmtPeso(l.debit) : '') + '</td>' +
+                '<td class="text-right">' + (l.credit > 0 ? fmtPeso(l.credit) : '') + '</td>' +
+                '</tr>';
+        }).join('');
+        document.getElementById('colJevTotalDebit').textContent = fmtPeso(totalDebit);
+        document.getElementById('colJevTotalCredit').textContent = fmtPeso(totalCredit);
+    }
+
+    window.openJevModal = function (reportId, leg) {
+        colJevState = { reportId: reportId, leg: leg };
+        document.getElementById('colJevTitle').textContent = (leg === 'collection' ? 'Collection' : 'Deposit') + ' Journal Entry Voucher';
+        document.getElementById('colJevAlready').style.display = 'none';
+        document.getElementById('colJevWarnings').style.display = 'none';
+        document.getElementById('colJevForm').style.display = '';
+        document.getElementById('colJevSubmitBtn').style.display = '';
+        document.getElementById('colJevSubmitBtn').disabled = true;
+        document.getElementById('colJevParticulars').value = '';
+        document.getElementById('colJevLinesBody').innerHTML = '';
+        openModal('m-col-jev');
+        colJevLoadBooks();
+        fetch(API + '/' + reportId + '/jev-prefill/' + leg, { headers: authHeaders() })
+            .then(r => r.json())
+            .then(function (json) {
+                if (!json.success) {
+                    document.getElementById('colJevForm').style.display = 'none';
+                    document.getElementById('colJevSubmitBtn').style.display = 'none';
+                    document.getElementById('colJevAlready').style.display = '';
+                    document.getElementById('colJevAlready').style.background = 'var(--fims-danger-soft,#FAE1E3)';
+                    document.getElementById('colJevAlready').style.color = 'var(--fims-danger,#C0392B)';
+                    document.getElementById('colJevAlready').textContent = json.message || 'Could not prepare this Journal Entry Voucher.';
+                    return;
+                }
+                const d = json.data;
+                if (d.already) {
+                    document.getElementById('colJevForm').style.display = 'none';
+                    document.getElementById('colJevSubmitBtn').style.display = 'none';
+                    document.getElementById('colJevAlready').style.display = '';
+                    document.getElementById('colJevAlready').textContent = 'Already journalized as ' + d.already.jev_no +
+                        (d.already.jev_status ? ' (' + String(d.already.jev_status).replace(/_/g, ' ').toLowerCase() + ')' : '') + '. See Journal Entry Vouchers.';
+                    return;
+                }
+                document.getElementById('colJevDate').value = d.jev_date || '';
+                document.getElementById('colJevParticulars').value = d.particulars || '';
+                colJevRenderLines(d.lines || []);
+                document.getElementById('colJevSubmitBtn').disabled = false;
+                if (d.warnings && d.warnings.length) {
+                    document.getElementById('colJevWarnings').style.display = '';
+                    document.getElementById('colJevWarnings').innerHTML = d.warnings.map(w => escapeHtml(w)).join('<br>');
+                }
+            })
+            .catch(function () {
+                document.getElementById('colJevForm').style.display = 'none';
+                document.getElementById('colJevAlready').style.display = '';
+                document.getElementById('colJevAlready').textContent = 'Could not reach the server.';
+            });
+    };
+
+    document.getElementById('colJevSubmitBtn').addEventListener('click', function () {
+        if (!colJevState) return;
+        const bookId = document.getElementById('colJevBook').value;
+        if (!bookId) { toast('Select a Book before submitting.', true); return; }
+        const btn = this;
+        btn.disabled = true;
+        fetch(API + '/' + colJevState.reportId + '/jev-prefill/' + colJevState.leg, {
+            method: 'POST', headers: jsonHeaders(),
+            body: JSON.stringify({ book_id: bookId, particulars: document.getElementById('colJevParticulars').value.trim() }),
+        })
+            .then(r => r.json())
+            .then(function (json) {
+                if (!json.success) { toast(json.message || 'Failed to save the Journal Entry Voucher.', true); btn.disabled = false; return; }
+                toast('Journal Entry Voucher ' + (json.data.jev_no || '') + ' saved as Draft.');
+                closeModal('m-col-jev');
+                loadList();
+            })
+            .catch(function () { toast('Could not reach the server.', true); btn.disabled = false; });
     });
 
     loadLookups().then(loadList);

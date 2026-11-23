@@ -48,21 +48,40 @@ COMMENT ON VIEW fims.v_journals IS 'General Journal — one row per posted fims.
 -- book_id) so a single book can be isolated with a plain WHERE; an "all books" total re-aggregates
 -- this view across book_id (see GeneralLedgerService::fetchTrialBalance()) rather than this view
 -- pre-summing books together, which would make per-book filtering impossible downstream.
+--
+-- Ending Balance (what this view reports) = Beginning Balance (from fims.opening_balances, if
+-- any) + net GL activity for that fiscal_yr/book. A fresh account with a beginning balance and no
+-- other postings still shows that same figure as both its beginning and ending balance.
+-- Backward compatible with years that used the old OPENING-classified-JEV method (no row in
+-- fims.opening_balances — COALESCEs to 0, and that JEV's effect is already included in the GL
+-- aggregate instead).
+--
+-- NOTE: this definition must stay in sync with "03 - alter_table/56 -
+-- v_trial_balance_include_opening_balances.sql", which runs earlier in folder order and would
+-- otherwise be silently overwritten by this one.
 CREATE OR REPLACE VIEW fims.v_trial_balance AS
+WITH gl_agg AS (
+    SELECT fiscal_yr, book_id, account_code,
+           SUM(debit) AS debit,
+           SUM(credit) AS credit
+    FROM fims.general_ledger
+    GROUP BY fiscal_yr, book_id, account_code
+)
 SELECT
-    g.fiscal_yr,
-    g.book_id,
+    COALESCE(g.fiscal_yr, ob.fiscal_yr) AS fiscal_yr,
+    COALESCE(g.book_id, ob.book_id) AS book_id,
     b.name AS book_name,
-    g.account_code,
+    COALESCE(g.account_code, ob.account_code) AS account_code,
     c.account_id,
     c.account_title,
     c.account_type,
-    SUM(g.debit)  AS total_debit,
-    SUM(g.credit) AS total_credit,
-    SUM(g.debit) - SUM(g.credit) AS balance
-FROM fims.general_ledger g
-JOIN fims.chart_of_accounts c ON c.account_code = g.account_code
-LEFT JOIN fims.books b ON b.book_id = g.book_id
-GROUP BY g.fiscal_yr, g.book_id, b.name, g.account_code, c.account_id, c.account_title, c.account_type;
+    COALESCE(g.debit, 0) + COALESCE(ob.debit, 0) AS total_debit,
+    COALESCE(g.credit, 0) + COALESCE(ob.credit, 0) AS total_credit,
+    (COALESCE(g.debit, 0) + COALESCE(ob.debit, 0)) - (COALESCE(g.credit, 0) + COALESCE(ob.credit, 0)) AS balance
+FROM gl_agg g
+FULL OUTER JOIN fims.opening_balances ob
+    ON ob.fiscal_yr = g.fiscal_yr AND ob.book_id = g.book_id AND ob.account_code = g.account_code
+JOIN fims.chart_of_accounts c ON c.account_code = COALESCE(g.account_code, ob.account_code)
+LEFT JOIN fims.books b ON b.book_id = COALESCE(g.book_id, ob.book_id);
 
-COMMENT ON VIEW fims.v_trial_balance IS 'Trial Balance — fims.general_ledger grouped by fiscal year + book + account. balance = debit - credit; a balanced ledger sums to 0 across every account for a given fiscal year/book.';
+COMMENT ON VIEW fims.v_trial_balance IS 'Trial Balance — fims.general_ledger grouped by fiscal year + book + account, folded with fims.opening_balances beginning balances. balance = debit - credit; a balanced ledger sums to 0 across every account for a given fiscal year/book.';
