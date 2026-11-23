@@ -35,7 +35,7 @@
 | Dashboard & notifications | [Dashboard](#dashboard) | Built |
 | Dashboard & notifications | [Notification reads](#notification-reads) | PHPMaker-generated |
 | COB Preparation | [Budget Proposal](#budget-request) (page `BudgetReqPage`; offices and FMD) | Built |
-| COB Preparation | [Budget Revision](#budget-revision) | Built |
+| COB Preparation | [Budget Revision](#budget-revision) — menu label **Budget Amendment** | Built |
 | Budget Process | [Request for Allocation (CBA)](#request-for-allocation-cba) | Built |
 | Budget Process | [Request for Allocation (RFA/LAA)](#request-for-allocation-rfalaa) | Built |
 | DV Processing | [Disbursement Voucher](#disbursement-voucher) | Built |
@@ -46,14 +46,15 @@
 | Inventory | [IAR Module](#iar-module) | Partial |
 | Inventory | [Property Record](#property-records) | Built |
 | Inventory | Work-In-Process | Built |
+| Inventory | Construction In Progress, Property and Equipment for Distribution, Merchandise Inventory, Fixed Assets | Empty placeholders (0-byte pages; controller / model / view generated) |
 | Monitoring | [COB Monitoring](#cob-monitoring) | Built |
 | Monitoring | [RFA / LAA Monitoring](#rfa--laa-monitoring) | Built |
 | Monitoring | [Cash Position](#cash-position-and-ftla) | Built |
 | Registry/NCA | [SARO Registry](#saro-registry) | Built |
 | Registry/NCA | [Check Registry](#check-registry) | Built |
 | Registry/NCA | [Accountable Forms Registry](#accountable-forms-registry) | Empty placeholder (0-byte page) |
-| Registry/NCA | Collections and Deposits (was "Collections and Fund Sweeping") | Built — reports can be journalized (see [Known gaps](#known-gaps--open-questions)) |
-| Registry/NCA | Fund Sweeping | Empty placeholder (0-byte page; controller / model / view generated) |
+| Registry/NCA | Collections and Deposits (was "Collections and Fund Sweeping") | Built — reports can be journalized (see [Known gaps](#known-gaps--open-questions)); each report names its **Collecting Officer** (`collection_reports.collecting_officer_id`), whose own GL / SL tag is used on the JEV line; deposit slips can be attached (`collection_report_deposits` slip url) |
+| Registry/NCA | Fund Sweeping | Built — unswept deposit balances per bank account and the sweep cut-off settings (`BankManagementService` fund-sweep methods, `fims.app_settings`) |
 | Payroll | [Payroll Management](#payroll-management) | Built (import only) |
 | Payroll | [Remittance](#remittance) | Built |
 | Reports | [FMR](#fmr) | Empty placeholder (0-byte page) |
@@ -62,13 +63,13 @@
 | Reports | Bank Reconciliation | Built |
 | Ledgers | [General Ledger](#general-ledger) | Built — SL postings roll up; click a GL code for its SLs |
 | Ledgers | [Journals](#journals) | Built (read-only) |
-| *(not in the sidebar)* | [Subsidiary Ledger](#subsidiary-ledger) | Built (read-only) — removed from the menu; the Subsidiary Ledger sheet print is only on this page |
+| *(not in the sidebar)* | [Subsidiary Ledger](#subsidiary-ledger) | Built (read-only) — removed from the menu; the General Ledger's SL popup (with Print SL) covers it |
 | Accounts Set-up | [Program / Sub Program](#program) | Built |
 | Accounts Set-up | [Chart of Accounts](#chart-of-accounts) | Built |
 | Accounts Set-up | [Responsibility Center](#responsibility-center) | Built |
 | Accounts Set-up | [Banks Accounts](#banks-accounts) | Built |
 | Accounts Set-up | [Vendors](#vendors) | Built |
-| Accounts Set-up | [Accountable Officer](#accountable-officer) | Built |
+| Accounts Set-up | [Accountable Officer](#accountable-officer) | Built — also a **Collecting Officers** tab (`fims.collecting_officers`, `app/routes/collecting_officer.php`: `/collecting-officers/all|list|read/{id}|add|update/{id}`) |
 | Accounts Set-up | [Payroll Setup](#payroll-setup) | Built |
 | Accounts Set-up | [Fidelity Bond](#fidelity-bond) | Built |
 | Accounts Set-up | Opening Balance, Closing Balance | Built |
@@ -1076,7 +1077,7 @@ erDiagram
 ### General Ledger
 
 - **Status:** Built — a read-only ledger card for one account, or all accounts, with a running balance. The GL table itself is written by DV/JEV posting.
-- **Code:** `views/GeneralLedgerPage.php` → `app/pages/general-ledger-page.php`. Route `app/routes/general_ledger.php`: `GET /general_ledger/ledger` (`fetchGeneralLedger`/`fetchAllGeneralLedgers`) — an SL (leaf child) account's postings now roll up into its GL account (`glRollupCte()`; each line carries `sl_account_code`), and `GET /general_ledger/ledger-sl?account_code=` (`fetchGlSubLedgers`) returns every SL under one GL account with its own postings and running balance, plus the GL account's direct postings (the page's click-a-GL-code popup, with expand / collapse). It also uses `/books/all`, `/chart_of_accounts/all`, `/fiscal_year/all`, and print via `GeneralLedgerPrintService`. Service: `app/services/GeneralLedgerService.php`. Posting is `postJev()` (l.106) and `reverseJev()` (l.179).
+- **Code:** `views/GeneralLedgerPage.php` → `app/pages/general-ledger-page.php`. Route `app/routes/general_ledger.php`: `GET /general_ledger/ledger` (`fetchGeneralLedger`/`fetchAllGeneralLedgers`) — an SL (leaf child) account's postings now roll up into its GL account (`glRollupCte()`; each line carries `sl_account_code`), and `GET /general_ledger/ledger-sl?account_code=` (`fetchGlSubLedgers`) returns every SL under one GL account with its own postings and running balance, plus the GL account's direct postings (the page's click-a-GL-code popup, with expand / collapse). It also uses `/books/all`, `/chart_of_accounts/all`, `/fiscal_year/all`, and print via `GeneralLedgerPrintService` (type GL — NHA Form No. 11, one account / book / year: Beginning Balance from `fims.opening_balances`, monthly lines per journal CKDJ / CRDJ / ADADJ / GJ resolved from each JEV, Closing Entry, Ending Balance) — the SL popup's Print SL uses `SubsidiaryLedgerPrintService` (type SL). Service: `app/services/GeneralLedgerService.php`. Posting is `postJev()` (l.106) and `reverseJev()` (l.179).
 - **Tables written:** none from this page. fims.general_ledger is written by `postJev`/`reverseJev`, called from DV `changeStatus` (→FOR_TREASURY / FOR_TREASURY→CANCELLED), `changeJevStatus` (→POSTED), and `postStandaloneJev`. **Tables read:** fims.v_journals (general_ledger + journal_entry_vouchers + disbursement_vouchers + chart_of_accounts + books), fims.chart_of_accounts (account_type for debit/credit-normal sign), fims.books, fims.fiscal_year.
 - **Status workflow:** none of its own. Rows are insert-only and are never updated. A reversal inserts swapped rows with `reversed_gl_id` set, and the JEV status moves POSTED → REVERSED.
 
@@ -2572,7 +2573,7 @@ Found while mapping the modules (2026-11-17). Grouped; each is verified in code 
 - `_assets/sql/README.md` is out of date (file counts / next number).
 
 **Pages**
-- Empty (0-byte) placeholders in the sidebar: Ledger *(no longer in the menu)*, Liquidation Voucher, Remittance List (now under DV Processing), Accountable Forms Registry, Fund Sweeping, FMR, Pricing (Pricing has a full backend: route, service, form and tables). Fund Source and Program Sources pages are empty and not in the menu. `ledger-budget-allocation.php` is empty and not in the menu.
+- Empty (0-byte) placeholders in the sidebar: Ledger *(no longer in the menu)*, Liquidation Voucher, Remittance List (now under DV Processing), Accountable Forms Registry, FMR, Pricing, and the 4 Inventory pages (Construction In Progress, Property and Equipment for Distribution, Merchandise Inventory, Fixed Assets) (Pricing has a full backend: route, service, form and tables). Fund Source and Program Sources pages are empty and not in the menu. `ledger-budget-allocation.php` is empty and not in the menu.
 - Built but **not in the sidebar**: Purchase Orders, FTLA, Subsidiary Ledger (removed from the menu in `329c525`; Cash Position and Property Record are now in the sidebar; see [Pages not in the sidebar](#pages-not-in-the-sidebar)).
 - The Security Management quick link `UserLevelsList` has a controller route but no view/model *(may be broken)*.
 
