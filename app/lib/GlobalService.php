@@ -60,6 +60,11 @@ use PHPMaker2024\FIMS as App;
  *   'budget_allocation'), and DisbursementVoucherService::changeJevStatus()
  *   ('journal_entry_voucher'). Never throws — a logging failure must not
  *   fail the status change itself.
+ * - renderPdf()  HTML -> PDF bytes, via Dompdf. Generic — any module can hand it a
+ *   server-built HTML report and get back a previewable/downloadable PDF, without going
+ *   through PrintService's form-specific pipeline (PrintService::DOCS, letterhead, …).
+ *   Moved here from PrintService (its only caller until now); PrintService::print() calls
+ *   this one now. Used by BudgetReqCobReportService's "Preview and Print".
  */
 class GlobalService
 {
@@ -469,6 +474,70 @@ class GlobalService
     }
 
     /**
+     * Is this user (uac.users.user_id) of the central review RC — the Financial Management Department? The user's
+     * uac.users.rc_id is joined to fims.responsibility_code and its rc_code compared (isCentralReviewRc), never the rc_id
+     * itself. FAILS CLOSED: no user, no RC, a built-in administrator (an id <= 0, no uac.users row) or a lookup failure is
+     * "no". For what only FMD may do server-side — e.g. printing the CBA certificate (routes/print.php).
+     */
+    public static function isFmdUser(?int $userId): bool
+    {
+        try {
+            $userId = (int) $userId;
+
+            return $userId > 0 && self::isCentralReviewRc(self::getUserRcId($userId));
+        } catch (\Throwable $e) {
+            App\LogError('GlobalService::isFmdUser ' . $e->getMessage());
+
+            return false;
+        }
+    }
+
+    /**
+     * Is this user a superadmin (user level -1)? The built-in administrator (user_id -1, no uac.users row — or an id the API
+     * could not resolve, then the logged-in level is read instead), or a uac.users row whose user_level_id lists -1 (a VARCHAR
+     * that may hold several ids, "-1,3"). Same people as BudgetAllocationService::isSuperAdmin(); FAILS CLOSED like
+     * isFmdUser(): no user, no level or a lookup failure is "no".
+     */
+    public static function isSuperAdminUser(?int $userId): bool
+    {
+        try {
+            $userId = (int) $userId;
+            if ($userId === -1) {
+                return true;
+            }
+            if ($userId <= 0) {
+                // api.php turns a JWT user id <= 0 into the session's UAC id, or 0; the middleware has still logged the user in
+                // with the level from the signed JWT / session, so that level says whether this is the administrator.
+                foreach (explode(',', (string) App\CurrentUserLevel()) as $level) {
+                    if (trim($level) === '-1') {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+            $raw = (string) App\ExecuteScalar('SELECT user_level_id FROM uac.users WHERE user_id = ' . $userId, 'DB');
+            foreach (explode(',', $raw) as $part) {
+                if (trim($part) === '-1') {
+                    return true;
+                }
+            }
+
+            return false;
+        } catch (\Throwable $e) {
+            App\LogError('GlobalService::isSuperAdminUser ' . $e->getMessage());
+
+            return false;
+        }
+    }
+
+    /** Who may print the memo request forms — CBA, RFA and LAA (routes/print.php): a user of the FMD, or a superadmin. */
+    public static function canPrintAllocationForm(?int $userId): bool
+    {
+        return self::isFmdUser($userId) || self::isSuperAdminUser($userId);
+    }
+
+    /**
      * The rc_id to filter a fims.budget_req LIST by ('' = every RC).
      *
      *  - a user with an RC is limited to it (and its descendants) — a client-supplied rc_id is ignored;
@@ -544,5 +613,62 @@ class GlobalService
         );
 
         return $row['remarks'] ?? null;
+    }
+
+    /**
+     * Renders HTML to a PDF file (bytes), via Dompdf. Moved here (from PrintService, its only caller
+     * until now) so any module can turn a server-built HTML report into a downloadable/previewable PDF
+     * without going through PrintService's form-specific pipeline (PrintService::DOCS, letterhead, …) —
+     * e.g. BudgetReqCobReportService's "Preview and Print" (the COB outline, not a registered print form).
+     *
+     * $runningHeader (optional): { lines: [text, …], from_page (default 2), right_pt (the right text edge,
+     * default 72pt in), page_first (default false), italic (default true) } — lines at the top right of
+     * each page from from_page on, followed by "Page X of Y". Drawn after layout (Dompdf page_script)
+     * because the page count is only known then.
+     *
+     * @return string|null the PDF bytes, or null if rendering failed (logged, never thrown)
+     */
+    public static function renderPdf(string $html, string $paper = 'A4', string $font = 'Times-Roman', string $orientation = 'portrait',
+        ?array $runningHeader = null): ?string
+    {
+        try {
+            $options = new \Dompdf\Options();
+            $options->set('isRemoteEnabled', false);   // images are inline data URIs
+            $options->set('defaultMediaType', 'print');
+            $options->set('defaultFont', $font);
+
+            $dompdf = new \Dompdf\Dompdf($options);
+            $dompdf->loadHtml($html, 'UTF-8');
+            $dompdf->setPaper($paper, $orientation);
+            $dompdf->render();
+
+            if (is_array($runningHeader)) {   // "Page X of Y" prints even when there are no title lines
+                $fromPage = (int) ($runningHeader['from_page'] ?? 2);
+                $rightPt  = (float) ($runningHeader['right_pt'] ?? 72);
+                $lines    = array_values($runningHeader['lines'] ?? []);
+                $pageFirst = !empty($runningHeader['page_first']);
+                $style    = ($runningHeader['italic'] ?? true) ? 'italic' : 'normal';
+                $dompdf->getCanvas()->page_script(static function (int $page, int $pages, $canvas, $fontMetrics) use ($fromPage, $rightPt, $lines, $pageFirst, $style) {
+                    if ($page < $fromPage) {
+                        return;
+                    }
+                    $font = $fontMetrics->getFont('Helvetica', $style);
+                    $size = 9;
+                    $y    = 30;
+                    $no   = ['Page ' . $page . ' of ' . $pages];
+                    foreach ($pageFirst ? array_merge($no, $lines) : array_merge($lines, $no) as $text) {
+                        $width = $fontMetrics->getTextWidth($text, $font, $size);
+                        $canvas->text($canvas->get_width() - $rightPt - $width, $y, $text, $font, $size);
+                        $y += $size + 2;
+                    }
+                });
+            }
+
+            return $dompdf->output();
+        } catch (\Throwable $e) {
+            App\LogError('GlobalService::renderPdf ' . $e->getMessage());
+
+            return null;
+        }
     }
 }

@@ -15,7 +15,7 @@ require_once dirname(__DIR__, 2) . '/_shared/DocumentBranding.php';
  * runs them and renders the result, so the preview, PDF and DOCX can never drift:
  *   html → <Form>PrintService::html()              shown in the print preview
  *                                                   (app/pages/readone/print-preview-readone.php)
- *   pdf  → the same HTML rendered by Dompdf
+ *   pdf  → the same HTML rendered by Dompdf (GlobalService::renderPdf(), generic — not form-specific)
  *   docx → scripts/gen_<form>_docx.js (Node + the docx npm package), from the model
  *
  * The letterhead (header items + footer line) comes from LetterheadLayoutService
@@ -126,7 +126,7 @@ class PrintService
         }
 
         $bytes = $format === 'pdf'
-            ? self::renderPdf($this->html($doc, $model, 'print'), $cfg['paper'], $cfg['font'], $cfg['orientation'] ?? 'portrait',
+            ? GlobalService::renderPdf($this->html($doc, $model, 'print'), $cfg['paper'], $cfg['font'], $cfg['orientation'] ?? 'portrait',
                 $model['pdf_running_header'] ?? null)
             : self::renderDocx($cfg['script'], $model);
         if ($bytes === null) {
@@ -220,8 +220,11 @@ class PrintService
         return $d && $d->format('Y-m-d') === substr($v, 0, 10) ? $d->format('F j, Y') : $v;
     }
 
-    /** ['name', 'title_lines'[]] — "NAME — Title" / "NAME - Title", else the FMD Department Manager. */
-    public static function signatory(mixed $raw): array
+    /**
+     * ['name', 'title_lines'[]] — "NAME — Title" / "NAME - Title", else the FMD Department Manager
+     * (with $firstLastOnly: "FIRST LAST", see resolveSignatoryName()).
+     */
+    public static function signatory(mixed $raw, bool $firstLastOnly = false): array
     {
         $raw   = trim((string) $raw);
         $name  = '';
@@ -242,7 +245,7 @@ class PrintService
         }
 
         if ($name === '') {
-            $name = self::resolveSignatoryName('FMD Department Manager') ?? self::DEFAULT_SIGNATORY_NAME;
+            $name = self::resolveSignatoryName('FMD Department Manager', $firstLastOnly) ?? self::DEFAULT_SIGNATORY_NAME;
         }
 
         return ['name' => $name, 'title_lines' => preg_split('/\R/', $title)];
@@ -307,11 +310,13 @@ class PrintService
 
     /**
      * First user (lowest user_id) holding the uac.user_levels role $roleName, as
-     * "FIRST M. LAST[, SUFFIX]" in uppercase. Null when the role or a holder
-     * can't be found. uac.users.user_level_id is a PHPMaker comma-separated
-     * VARCHAR, so the id is matched as a whole token ('4' never matches '14').
+     * "FIRST M. LAST[, SUFFIX]" in uppercase — or, with $firstLastOnly, just
+     * "FIRST LAST" (no middle initial, no suffix; the CBA's Department Manager).
+     * Null when the role or a holder can't be found. uac.users.user_level_id is a
+     * PHPMaker comma-separated VARCHAR, so the id is matched as a whole token
+     * ('4' never matches '14').
      */
-    public static function resolveSignatoryName(string $roleName): ?string
+    public static function resolveSignatoryName(string $roleName, bool $firstLastOnly = false): ?string
     {
         try {
             $levelId = App\ExecuteScalar(
@@ -339,7 +344,7 @@ class PrintService
             if (trim((string) $user['first_name']) !== '') {
                 $parts[] = trim($user['first_name']);
             }
-            if (trim((string) $user['middle_name']) !== '') {
+            if (!$firstLastOnly && trim((string) $user['middle_name']) !== '') {
                 $parts[] = mb_substr(trim($user['middle_name']), 0, 1) . '.';
             }
             if (trim((string) $user['last_name']) !== '') {
@@ -349,7 +354,7 @@ class PrintService
             if ($name === '') {
                 return null;
             }
-            if (trim((string) $user['suffix']) !== '') {
+            if (!$firstLastOnly && trim((string) $user['suffix']) !== '') {
                 $name .= ', ' . trim($user['suffix']);
             }
 
@@ -456,58 +461,6 @@ class PrintService
     public static function bodyClose(string $media, string $ftrDiv): string
     {
         return ($media === 'print' ? '' : $ftrDiv) . '</div></body></html>';
-    }
-
-    /**
-     * $runningHeader (a model's pdf_running_header, optional): { lines: [text, …],
-     * from_page (default 2), right_pt (the right text edge, default 72pt in),
-     * page_first (default false), italic (default true) } — lines at the top right of
-     * each page from from_page on, followed by "Page X of Y" (the CFA memo's page-2
-     * header) — or led by it with page_first (the memo request's). Drawn after layout
-     * (Dompdf page_script) because the page count is only known then.
-     */
-    private static function renderPdf(string $html, string $paper = 'A4', string $font = 'Times-Roman', string $orientation = 'portrait',
-        ?array $runningHeader = null): ?string
-    {
-        try {
-            $options = new \Dompdf\Options();
-            $options->set('isRemoteEnabled', false);   // images are inline data URIs
-            $options->set('defaultMediaType', 'print');
-            $options->set('defaultFont', $font);
-
-            $dompdf = new \Dompdf\Dompdf($options);
-            $dompdf->loadHtml($html, 'UTF-8');
-            $dompdf->setPaper($paper, $orientation);
-            $dompdf->render();
-
-            if (is_array($runningHeader)) {   // "Page X of Y" prints even when there are no title lines
-                $fromPage = (int) ($runningHeader['from_page'] ?? 2);
-                $rightPt  = (float) ($runningHeader['right_pt'] ?? 72);
-                $lines    = array_values($runningHeader['lines'] ?? []);
-                $pageFirst = !empty($runningHeader['page_first']);
-                $style    = ($runningHeader['italic'] ?? true) ? 'italic' : 'normal';
-                $dompdf->getCanvas()->page_script(static function (int $page, int $pages, $canvas, $fontMetrics) use ($fromPage, $rightPt, $lines, $pageFirst, $style) {
-                    if ($page < $fromPage) {
-                        return;
-                    }
-                    $font = $fontMetrics->getFont('Helvetica', $style);
-                    $size = 9;
-                    $y    = 30;
-                    $no   = ['Page ' . $page . ' of ' . $pages];
-                    foreach ($pageFirst ? array_merge($no, $lines) : array_merge($lines, $no) as $text) {
-                        $width = $fontMetrics->getTextWidth($text, $font, $size);
-                        $canvas->text($canvas->get_width() - $rightPt - $width, $y, $text, $font, $size);
-                        $y += $size + 2;
-                    }
-                });
-            }
-
-            return $dompdf->output();
-        } catch (\Throwable $e) {
-            App\LogError('PrintService::renderPdf ' . $e->getMessage());
-
-            return null;
-        }
     }
 
     private static function nodeBin(): string

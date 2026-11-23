@@ -34,42 +34,45 @@
 |---|---|---|
 | Dashboard & notifications | [Dashboard](#dashboard) | Built |
 | Dashboard & notifications | [Notification reads](#notification-reads) | PHPMaker-generated |
-| COB Preparation | [Budget Proposal](#budget-proposal) | Built |
-| COB Preparation | [Budget Request](#budget-request) | Built |
+| COB Preparation | [Budget Proposal](#budget-request) (page `BudgetReqPage`; offices and FMD) | Built |
 | COB Preparation | [Budget Revision](#budget-revision) | Built |
-| COB Preparation | [Ledger](#ledger) | Empty placeholder (0-byte page) |
 | Budget Process | [Request for Allocation (CBA)](#request-for-allocation-cba) | Built |
 | Budget Process | [Request for Allocation (RFA/LAA)](#request-for-allocation-rfalaa) | Built |
 | DV Processing | [Disbursement Voucher](#disbursement-voucher) | Built |
+| DV Processing | [Remittance List (Deductions)](#remittance-list-deductions) | Empty placeholder (0-byte page) |
 | DV Processing | [Liquidation Voucher](#liquidation-voucher) | Empty placeholder (0-byte page) |
 | DV Processing | [Journal Entry Voucher](#journal-entry-voucher) | Built |
 | DV Processing | [Disbursement Preparation](#disbursement-preparation) | Built, with stubs |
 | Inventory | [IAR Module](#iar-module) | Partial |
+| Inventory | [Property Record](#property-records) | Built |
+| Inventory | Work-In-Process | Built |
 | Monitoring | [COB Monitoring](#cob-monitoring) | Built |
-| Monitoring | [RFA / LAA Monitoring](#rfa--laa-monitoring) | Empty placeholder (0-byte page) |
+| Monitoring | [RFA / LAA Monitoring](#rfa--laa-monitoring) | Built |
+| Monitoring | [Cash Position](#cash-position-and-ftla) | Built |
 | Registry/NCA | [SARO Registry](#saro-registry) | Built |
-| Registry/NCA | [Check Registry](#check-registry) | Empty placeholder (0-byte page) |
+| Registry/NCA | [Check Registry](#check-registry) | Built |
 | Registry/NCA | [Accountable Forms Registry](#accountable-forms-registry) | Empty placeholder (0-byte page) |
+| Registry/NCA | Collections and Deposits (was "Collections and Fund Sweeping") | Built — reports can be journalized (see [Known gaps](#known-gaps--open-questions)) |
+| Registry/NCA | Fund Sweeping | Empty placeholder (0-byte page; controller / model / view generated) |
+| Payroll | [Payroll Management](#payroll-management) | Built (import only) |
+| Payroll | [Remittance](#remittance) | Built |
 | Reports | [FMR](#fmr) | Empty placeholder (0-byte page) |
-| Reports | [Remittance List (Deductions)](#remittance-list-deductions) | Empty placeholder (0-byte page) |
-| Ledgers | [General Ledger](#general-ledger) | Built |
-| Ledgers | [Subsidiary Ledger](#subsidiary-ledger) | Built (read-only) |
+| Reports | [Trial Balance](#trial-balance) | Built (read-only) |
+| Reports | Balance Sheet, Income Statement, Changes in Net Assets/Equity, Cash Flow | Built |
+| Reports | Bank Reconciliation | Built |
+| Ledgers | [General Ledger](#general-ledger) | Built — SL postings roll up; click a GL code for its SLs |
 | Ledgers | [Journals](#journals) | Built (read-only) |
-| Ledgers | [Trial Balance](#trial-balance) | Built (read-only) |
-| Accounts Set-up | [Program](#program) | Built |
-| Accounts Set-up | [Sub Program](#sub-program) | Built |
+| *(not in the sidebar)* | [Subsidiary Ledger](#subsidiary-ledger) | Built (read-only) — removed from the menu; the Subsidiary Ledger sheet print is only on this page |
+| Accounts Set-up | [Program / Sub Program](#program) | Built |
 | Accounts Set-up | [Chart of Accounts](#chart-of-accounts) | Built |
 | Accounts Set-up | [Responsibility Center](#responsibility-center) | Built |
 | Accounts Set-up | [Banks Accounts](#banks-accounts) | Built |
 | Accounts Set-up | [Vendors](#vendors) | Built |
-| Accounts Set-up | [Fund Source](#fund-source) | Empty placeholder (0-byte page) |
-| Accounts Set-up | [Program Sources](#program-sources) | Empty placeholder (0-byte page) |
-| Accounts Set-up | [Accountable Officer](#accountable-officer) | Empty placeholder (0-byte page) |
+| Accounts Set-up | [Accountable Officer](#accountable-officer) | Built |
 | Accounts Set-up | [Payroll Setup](#payroll-setup) | Built |
-| Accounts Set-up | [Payroll Management](#payroll-management) | Built (import only) |
-| Accounts Set-up | [Remittance](#remittance) | Built |
-| Accounts Set-up | [Fidelity Bond](#fidelity-bond) | Empty placeholder (0-byte page) |
-| Fund Sourcing | [Fund Sourcing Dashboard](#fund-sourcing-dashboard) | Partial |
+| Accounts Set-up | [Fidelity Bond](#fidelity-bond) | Built |
+| Accounts Set-up | Opening Balance, Closing Balance | Built |
+| Fund Sourcing | [Fund Sourcing Dashboard](#fund-sourcing-dashboard) | Partial — the "Fund Sourcing" group (330) is not defined in `views/menu.php`, so these four items may not show |
 | Fund Sourcing | [Supplemental Funds](#supplemental-funds) | Built |
 | Fund Sourcing | [Trust Funds](#trust-funds) | Built |
 | Fund Sourcing | [Pricing](#pricing) | Partial |
@@ -190,8 +193,8 @@ erDiagram
 
 ### Budget Proposal
 
-- **Status:** Built — FMD-side review list of every Regional/District office's budget request (Budget Processing = endorse, Budget Preview = approve/return).
-- **Code:** `views/BudgetPropPage.php` → `app/pages/budget-prop-page.php` (+ `readone/budget-req-readone.php`, `form/budget-req-form.php` [helpers only], `form/budget-processing-form.php`, `readone/budget-preview-readone.php`). Routes: `app/routes/fmd_budget_req.php` (`GET /fmd/budget_req/list` — central-review RC only), `app/routes/budget_req.php` (`GET /budget_req/all`, `/budget_req/grand-total`, `/budget_req/read/{id}`, `PUT /budget_req/endorse/{id}`, `PUT /budget_req/approve/{id}`, `PUT /budget_req/return/{id}`, `DELETE /budget_req/delete/{id}`, `GET /budget_req_project_attachment/list`), plus lookups `/type_of_fund/all`, `/component_type/all`, `/chart_of_accounts/all`. Services: `app/services/BudgetReqService.php` (both routes use it), `app/services/BudgetLineItemService.php::applyProcessing()`, `app/lib/GlobalService.php::logStatusChange()`.
+- **Status:** Built — the FMD review of every Regional/District office's budget request. **Since 2026-11-23 there is no separate page:** `budget-prop-page.php` was deleted and the review lives on the one COB Preparation page (`BudgetReqPage`, sidebar label "Budget Proposal") — FMD users get one row per request with Actions → View / **Budget Processing** (Budget Officer: endorse / return) / **Budget Review** (Budget Head: approve / return; no Actions once Approved), plus a **View Proposal** toolbar button (every request for the fiscal year, by originating unit). `views/BudgetPropPage.php`, `controllers/BudgetPropPageController.php` and `models/BudgetPropPage.php` are left over and still include the deleted file.
+- **Code (FMD side):** `app/pages/budget-req-page.php` (`$_bgr_isFmd`, `bgr_fmdActionButtons()`) (+ `readone/budget-req-readone.php`, `form/budget-req-form.php` [helpers only], `form/budget-processing-form.php`, `readone/budget-preview-readone.php`). Routes: `app/routes/fmd_budget_req.php` (`GET /fmd/budget_req/list` — central-review RC only), `app/routes/budget_req.php` (`GET /budget_req/all`, `/budget_req/grand-total`, `/budget_req/read/{id}`, `PUT /budget_req/endorse/{id}`, `PUT /budget_req/approve/{id}`, `PUT /budget_req/return/{id}`, `DELETE /budget_req/delete/{id}`, `GET /budget_req_project_attachment/list`), plus lookups `/type_of_fund/all`, `/component_type/all`, `/chart_of_accounts/all`. Services: `app/services/BudgetReqService.php` (both routes use it), `app/services/BudgetLineItemService.php::applyProcessing()`, `app/lib/GlobalService.php::logStatusChange()`.
 - **Tables written:** `fims.budget_req` (status_id), `fims.budget_line_items` (endorse: `type_of_fund_id`, `component_id`, `suggested_amount`, `account_id`), `fims.status_change_log`; delete cascades the whole tree. **Tables read:** `fims.budget_req_program`, `fims.budget_req_project`, `fims.budget_req_project_attachment`, `fims.settings_status`, `fims.responsibility_code`, `fims.program`, `fims.sub_program`, `fims.project`, `fims.chart_of_accounts`, `fims.type_of_fund`, `fims.component_type`, `fims.fiscal_year`, `uac.users`, `uac.user_levels`.
 - **Status workflow:** (`settings_status.status_for='budget_req'`, `BudgetReqService::REVIEW_STEPS`) For Review →(Budget Officer endorses)→ Endorsed →(Budget Head approves)→ Approved; returns go one step back: Endorsed → Returned to Budget Officer, For Review/Returned to Budget Officer → Returned (to the office).
 
@@ -272,7 +275,7 @@ erDiagram
 
 ### Budget Request
 
-- **Status:** Built — originating office's (RC-scoped) create/edit/submit page over the same tables as Budget Proposal.
+- **Status:** Built — sidebar label **"Budget Proposal"**. The originating office's (RC-scoped) create/edit/submit page, and (for FMD) the review list described above. Preview and Print / Export of the COB per layout: `BudgetReqCobReportService` (xlsx, or PDF via `GlobalService::renderPdf()`).
 - **Code:** `views/BudgetReqPage.php` → `app/pages/budget-req-page.php` (+ `readone/budget-req-readone.php`, `form/budget-req-form.php`, `form/budget-processing-form.php`, `readone/budget-preview-readone.php`). Route `app/routes/budget_req.php`: `GET /budget_req/list`, `/budget_req/all`, `/budget_req/read/{id}`, `POST /budget_req/add` (creates header or appends a Program to a Draft), `PUT|POST /budget_req/program/update/{budget_req_program_id}`, `PUT /budget_req/submit-for-review/{id}`, `DELETE /budget_req/delete/{id}`, `DELETE /budget_req/program/delete/{id}`, `GET /budget_req_project_attachment/list`, `DELETE /budget_req_project_attachment/delete/{id}`; lookups `/program/all`, `/sub_program/all`, `/project/all`, `/project/next-code`, `/fiscal_year/all`, `/chart_of_accounts/all?for_budget_proposal=1`. Services: `BudgetReqService`, `BudgetLineItemService::create()`, `ProjectService::findOrCreateByName()`, `GlobalService`.
 - **Tables written:** `fims.budget_req`, `fims.budget_req_program`, `fims.budget_req_project`, `fims.budget_line_items` (account_id, proposed_amount, particulars), `fims.budget_req_project_attachment` (+ S3 upload), `fims.project` (typed new project via ProjectService), `fims.status_change_log`. **Tables read:** `fims.settings_status`, `fims.fiscal_year`, `fims.responsibility_code`, `fims.program`, `fims.sub_program`, `fims.project`, `fims.chart_of_accounts`, `uac.users`.
 - **Status workflow:** Draft (default on create) → For Review (submit-for-review; locks the request) → then the FMD chain described under Budget Proposal; Returned brings it back to the office.
@@ -519,7 +522,7 @@ erDiagram
 
 ### Disbursement Voucher
 
-- **Status:** Built — Full CRUD, the 9-status pipeline, the Accounting Entries (SETUP JEV) editor, ATC and deduction lines, RFA linking, and "Prepare Payment JEV" are all wired to real SQL.
+- **Status:** Built — Full CRUD, the 9-status pipeline, the Accounting Entries (SETUP JEV) editor, ATC and deduction lines, RFA linking, and the payment JEV are all wired to real SQL. The payment JEV is now created **and posted** automatically when Treasury prepares the check (`CheckProcessingService` → `GeneralLedgerService::createPaymentJev()`, same transaction); the old `POST /voucher/{id}/prepare-payment-jev` route remains but the UI no longer needs it. Rules: the Section Chief must choose the Book before forwarding (the grid is saved on forward); each Accounting level must be a different user; a DV cannot exceed the linked RFA's remaining balance and deductions cannot exceed the amount (payroll and remittance DVs are exempt from the RFA check). The DV print rolls account codes up to 4-part GL codes; the JEV print leaves the journal box blank for GJ.
 - **Code:** `views/Voucher.php` → `app/pages/voucher.php` (list) + `app/pages/voucher/form.php` (create/edit) + `app/pages/voucher/readone.php` (view, Accounting Entries, status actions). Route `app/routes/voucher.php`: `GET /voucher/list|all|fiscal-years|dv-number|atc-codes|deduction-types|sl-codes|sl-codes/{sl_code}/details|rfa/all|rfa/read/{id}|read/{id}`, `POST /voucher/add`, `PUT /voucher/update/{id}`, `POST /voucher/{id}/status`, `POST /voucher/{id}/journal-entry` (save the SETUP JEV, ATC lines, and deductions), `POST /voucher/{id}/prepare-payment-jev`, `POST /voucher/journal-entry/{id}/jev-status`, `DELETE /voucher/delete/{id}`. Service: `app/services/DisbursementVoucherService.php`, which calls `GeneralLedgerService::postJev()/reverseJev()/createPaymentJev()`. Print: `DvPrintService`/`JevPrintService` through `/print-preview-readone`.
 - **Tables written:** fims.disbursement_vouchers, fims.disbursement_voucher_deductions, fims.disbursement_voucher_atc_lines, fims.journal_entry_vouchers, fims.journal_entry_voucher_lines, fims.budget_allocation (only `dv_id`, in `linkRfas()`), fims.payroll_records (only `disbursement_voucher_id` — a payroll DV, see [Payroll Management](#payroll-management)), fims.payroll_remittances (only `disbursement_voucher_id` — a remittance DV, which needs no RFA, see [Remittance](#remittance)), fims.general_ledger (indirectly, through postJev/reverseJev), fims.status_change_log (JEV status only, through `GlobalService::logStatusChange`). **Tables read:** fims.settings_status (`status_for='disbursement_voucher'` and `'journal_entry_voucher'`), fims.vendors (joins `vendors.sl_code` → `chart_of_accounts.account_id` for the vendor AP sub-ledger), fims.chart_of_accounts (also the source of the SL list: leaf accounts with `parent_account_id`), fims.responsibility_code, fims.fiscal_year, fims.books, fims.atc_codes, fims.deduction_types, fims.budget_allocation (`allocation_type='RFA'`), fims.budget_category, fims.budget_line_items (the account of the RFA's first line), fims.checks (the latest non-cancelled check by `dv_number`, for the payment JEV), fims.bank_accounts (`account_code`, the Cr Cash line), fims.file_attachments (by `multiple_node_id`), fims.v_journal_entry_vouchers, uac.users (`rc_id` for stage authorization).
 - **Status workflow:** `DRAFT → FOR_FMD_REVIEW (RC 013) → FOR_ACCOUNTING (RC 012, Section Chief saves a balanced JEV) → FOR_DIVISION_MANAGER (012) → FOR_DEPARTMENT_MANAGER (012) → FOR_TREASURY (014; this step POSTS the SETUP JEV to the GL) → RELEASED` (set by Check Disbursements `saveCheck`). Any non-terminal status can go to `REJECTED` (reason required) or `CANCELLED`. `FOR_TREASURY→CANCELLED` reverses the GL entries. `REJECTED→CANCELLED` only. Source: `DisbursementVoucherService::TRANSITIONS` (l.100) and `STAGE_HOLDER_RC`. Seeds: `02 - sample_data/01 - fims_settings_status.sql`.
@@ -843,7 +846,7 @@ erDiagram
   - `fims.check_register` (`01 - table/34`) is the blank check stock ported from TREASURY. It has no FKs, and its unique key is `(bank_account_id, check_number, COALESCE(booklet_no,''))`. Preparing a check flips the matching UNUSED row to ISSUED and sets its `check_id`.
   - `fims.check_cancellations` (`01 - table/29`) is 1:1 with the cancelled check. `replacement_check_id` points to the new check. Both FKs were added by alter 21.
   - `fims.check_releases` and `fims.check_release_email_log` (`01 - table/38`) are the unified replacement for check_claimant_releases, check_region_releases, and their email logs, which alter 29 (`drop_old_split_release_tables`) drops. The only FK is `department_id` → uac.departments. `check_id`/`release_id` are soft.
-  - `fims.bank_accounts` (`01 - table/26`) is shared with Bank Management. Alter 23 added management fields plus bank_account_documents and bank_account_audit_log. Alter 24 renamed `department_id` to `rc_id` VARCHAR(50) with no FK. Alter 31 added `account_code`, an FK to COA (the Cash account for the payment JEV).
+  - `fims.bank_accounts` (`01 - table/26`) is shared with Bank Management. Alter 23 added management fields plus bank_account_documents and bank_account_audit_log. Alter 24 renamed `department_id` to `rc_id` VARCHAR(50) with no FK. Alter 31 added `account_code`, an FK to COA (the Cash account for the payment JEV). Tagging now stores `coa_account_id` (+ optional `sl_code`) from the GL / SL picker; `account_code` is set to the SL's code when an SL is picked (else the GL's), and the check and FTLA payment JEVs credit that Cash SL (`POST /bank-management/{id}/tag-account-code` with `{coa_account_id, sl_code}`, same pattern as vendors and accountable officers); an untagged bank stops check preparation with "no Cash account mapped".
   - `fims.cash_position` (`01 - table/35`) is owned by Cash Position. Here it is only read for sufficiency and written as a deduction. `available_balance` is a generated column (`closing_balance - restricted_amount`).
   - `fims.ada_releases` and `fims.official_receipts` are not touched by this module. They are read only by the Journals page (ADADJ/CRDJ).
 
@@ -1073,7 +1076,7 @@ erDiagram
 ### General Ledger
 
 - **Status:** Built — a read-only ledger card for one account, or all accounts, with a running balance. The GL table itself is written by DV/JEV posting.
-- **Code:** `views/GeneralLedgerPage.php` → `app/pages/general-ledger-page.php`. Route `app/routes/general_ledger.php`: `GET /general_ledger/ledger` (`fetchGeneralLedger`/`fetchAllGeneralLedgers`). It also uses `/books/all`, `/chart_of_accounts/all`, `/fiscal_year/all`, and print via `GeneralLedgerPrintService`. Service: `app/services/GeneralLedgerService.php`. Posting is `postJev()` (l.106) and `reverseJev()` (l.179).
+- **Code:** `views/GeneralLedgerPage.php` → `app/pages/general-ledger-page.php`. Route `app/routes/general_ledger.php`: `GET /general_ledger/ledger` (`fetchGeneralLedger`/`fetchAllGeneralLedgers`) — an SL (leaf child) account's postings now roll up into its GL account (`glRollupCte()`; each line carries `sl_account_code`), and `GET /general_ledger/ledger-sl?account_code=` (`fetchGlSubLedgers`) returns every SL under one GL account with its own postings and running balance, plus the GL account's direct postings (the page's click-a-GL-code popup, with expand / collapse). It also uses `/books/all`, `/chart_of_accounts/all`, `/fiscal_year/all`, and print via `GeneralLedgerPrintService`. Service: `app/services/GeneralLedgerService.php`. Posting is `postJev()` (l.106) and `reverseJev()` (l.179).
 - **Tables written:** none from this page. fims.general_ledger is written by `postJev`/`reverseJev`, called from DV `changeStatus` (→FOR_TREASURY / FOR_TREASURY→CANCELLED), `changeJevStatus` (→POSTED), and `postStandaloneJev`. **Tables read:** fims.v_journals (general_ledger + journal_entry_vouchers + disbursement_vouchers + chart_of_accounts + books), fims.chart_of_accounts (account_type for debit/credit-normal sign), fims.books, fims.fiscal_year.
 - **Status workflow:** none of its own. Rows are insert-only and are never updated. A reversal inserts swapped rows with `reversed_gl_id` set, and the JEV status moves POSTED → REVERSED.
 
@@ -1246,7 +1249,7 @@ erDiagram
 
 - **Status:** Built (read-only) — per-account debit / credit totals from the `fims.v_trial_balance` view.
 - **Code:** `views/TrialBalancePage.php` → `app/pages/trial-balance-page.php`. Route: `GET /general_ledger/trial-balance` (`GeneralLedgerService::fetchTrialBalance`, l.539, with `attachAccountGroups` doing a recursive CTE up `parent_account_id` for the major/sub group headers).
-- **Tables written:** none. **Tables read:** fims.v_trial_balance (general_ledger grouped by fiscal_yr, book_id, and account; balance = debit − credit), fims.chart_of_accounts (recursive), fims.books, fims.fiscal_year.
+- **Tables written:** none. **Tables read:** fims.v_trial_balance (general_ledger grouped by fiscal_yr, book_id, and account, FULL OUTER JOINed with fims.opening_balances so a year's beginning balances are included; balance = debit − credit — `05 - views/01`, kept in sync with `03 - alter_table/56`), fims.chart_of_accounts (recursive), fims.books, fims.fiscal_year.
 - **Status workflow:** none.
 
 ```mermaid
@@ -1583,7 +1586,7 @@ erDiagram
 
 ### Payroll Management
 
-- **Status:** Built (import only) — imports the monthly employee payroll (the payroll office's form `_shared/template/MONTHLY-PAYROLL-TEMPLATE.xlsx`) and keeps one summary row per month. Tabs: **Payroll Imports** (preview → import / replace, list with Month, Year, Import Date, Status, Total Payroll Amount = gross and one action — **Create DV** / **View DV**; the month name opens its employee records → items, with Delete Import while no DV uses it), **Year-to-Date Report** (per employee, filters, CSV export), **File Template** (download the blank form; its columns vs Payroll Setup). No DV is created here.
+- **Status:** Built (import only) — imports the monthly employee payroll (the payroll office's form `_shared/template/MONTHLY-PAYROLL-TEMPLATE.xlsx`) and keeps one summary row per month. Tabs: **Payroll Imports** (preview → import / replace, list with Month, Year, Import Date, Status, Total Payroll Amount = gross and one action — **Create DV** / **View DV**; the month name is plain text — the records window and Delete Import were removed from the page, though the `records`, `record-items` and `delete` routes remain), **Year-to-Date Report** (Fiscal Year + Month / Whole Year, loads on filter change; one row per month — employees, gross, deductions, refunds, net, employer share; **Export CSV** calls `ytd?detail=employees` for one row per employee with a TOTAL row), **File Template** (steps card, readiness banner, employee-details and searchable amount-columns tables vs Payroll Setup, download the blank form). No DV is created here.
 - **Code:** `app/pages/payroll-page.php` (PayrollPage); `app/routes/payroll_management.php` (`GET /payroll-management/list|records/{periodId}|record-items/{id}|ytd|template-columns|template|available|dv-data/{periodId}`, `POST /payroll-management/preview|import`, `DELETE /payroll-management/delete/{periodId}`); `app/services/PayrollManagementService.php`.
 - **Tables written:** fims.payroll_periods (one per month, created when missing; `prepared_at` / `prepared_by` = import date / user), fims.payroll_employees (employees not in the directory yet; existing ones unchanged), fims.payroll_records (one per employee per month, category totals), fims.payroll_record_items (one per employee per item with an amount). **Tables read:** fims.payroll_items, fims.chart_of_accounts, fims.disbursement_vouchers + fims.settings_status (DV link), uac.users.
 - **Import rules:** each amount column must match an ACTIVE Payroll Setup item code (quotes from the HRIS export ignored); a column with amounts and no item, a repeated employee no. or a non-numeric value stops the import. Inactive items are skipped. A month already imported is replaced only on request, and never while a live DV uses it or the period is LOCKED / CLOSED.
@@ -1661,10 +1664,10 @@ erDiagram
 
 ### Remittance
 
-- **Status:** Built — one page for the payroll **deductions and their remittance** (menu "Remittance", page title "Deductions & Remittances"). Each imported payroll month is listed **per agency** (GSIS, BIR, PhilHealth, Pag-IBIG, Other Payables; NHA receivables such as the housing loan are shown but not remitted) with the employee share, government share and total to remit; the agency name opens its items and per-employee amounts. Every remittance is paid through its own **Remittance DV** (claimant = the agency) in the normal DV flow.
-- **Code:** `app/pages/remittance-page.php` (RemittancePage); `app/routes/deduction_remittance.php` (`GET /deduction-remittance/list|detail/{periodId}/{agency}|dv-data/{id}`, `POST /deduction-remittance/schedule`, `POST /deduction-remittance/{id}/unschedule|confirm`); `app/services/DeductionRemittanceService.php`. DV side: `app/pages/voucher.php` (`Voucher?remittance={id}`), `app/pages/voucher/form.php` (`vf_openForRemittance()`), `DisbursementVoucherService` (no RFA for a remittance DV; link / unlink on save, cancel, delete).
-- **Tables written:** fims.payroll_remittances (one live row per month per agency, created at scheduling), fims.status_change_log (`status_for` = payroll_remittance). The Remittance DV itself is a normal fims.disbursement_vouchers row (+ its JEV). **Tables read:** fims.payroll_periods, fims.payroll_records, fims.payroll_record_items, fims.payroll_items, fims.payroll_employees, fims.chart_of_accounts, fims.disbursement_vouchers + fims.settings_status, fims.checks (check no. of the released DV).
-- **Status workflow:** Pending (no row) → **Scheduled** (Accounting, due date; needs the month's payroll DV) → **DV in process** (Create Remittance DV: claimant = agency, amount = total to remit, **no RFA** — the payroll DV's RFA already obligated it; entry Dr the "Due to …" payables + Dr the government-share expense / Cr Accounts Payable) → FMD → Accounting → FOR_TREASURY (entry posts; the payables clear) → Treasury check in Disbursement Preparation → DV RELEASED = **Remitted** (shows the check no.) → Accounting payment JEV (Dr AP / Cr Cash) → **Confirm Receipt** (agency OR; Treasury or Accounting) = **Confirmed**. Unschedule (Accounting) returns a Scheduled row to Pending; cancelling / deleting the remittance DV returns it to Scheduled. Stored statuses are SCHEDULED / CONFIRMED / CANCELLED — "DV in process" and "Remitted" are read from the linked DV.
+- **Status:** Built — one page for the payroll **deductions and their remittance** (menu "Remittance", page title "Deductions & Remittances"). Each imported payroll month is listed **per agency** (GSIS, BIR, PhilHealth, Pag-IBIG, Other Payables; NHA receivables such as the housing loan are shown but not remitted) with the employee share, government share and total to remit; the agency name opens its items and per-employee amounts. Months are listed one row each (expandable, one open at a time; hint shows the payroll DV / RFA for reference) with the agencies inside. Every agency is paid through its own **Remittance DV** (claimant = the agency) in the normal DV flow — no Schedule step, no RFA, and no dependency on the payroll DV.
+- **Code:** `app/pages/remittance-page.php` (RemittancePage); `app/routes/deduction_remittance.php` (`GET /deduction-remittance/list|detail/{periodId}/{agency}|dv-data/{id}`, `POST /deduction-remittance/start-dv` (`{payroll_period_id, agency}` — creates or reuses the agency row and returns its id for `Voucher?remittance={id}`), `POST /deduction-remittance/{id}/unschedule|confirm`); `app/services/DeductionRemittanceService.php`. DV side: `app/pages/voucher.php` (`Voucher?remittance={id}`), `app/pages/voucher/form.php` (`vf_openForRemittance()`), `DisbursementVoucherService` (no RFA for a remittance DV; link / unlink on save, cancel, delete).
+- **Tables written:** fims.payroll_remittances (one live row per month per agency, created when Accounting clicks Create DV), fims.status_change_log (`status_for` = payroll_remittance). The Remittance DV itself is a normal fims.disbursement_vouchers row (+ its JEV). **Tables read:** fims.payroll_periods, fims.payroll_records, fims.payroll_record_items, fims.payroll_items, fims.payroll_employees, fims.chart_of_accounts, fims.disbursement_vouchers + fims.settings_status, fims.checks (check no. of the released DV).
+- **Status workflow:** per agency — **Pending** (no row, or a row without a live DV) → Create DV (Accounting only; `start-dv` stores the row as SCHEDULED, meaning "has / gets a DV") → **DV in process** (claimant = agency, amount = total to remit, **no RFA** — the government share is budgeted with the payroll's RFA; vendor / PO, address, RFA and deductions are hidden on the form; entry Dr the "Due to …" payables + Dr the government-share expense / Cr Accounts Payable) → FMD → Accounting → FOR_TREASURY (entry posts; the payables clear) → Treasury check = DV RELEASED + payment JEV posted automatically = **Remitted** (shows the check no.) → **Confirm Receipt** (agency OR; Treasury or Accounting) = **Confirmed**. Cancelling / deleting the remittance DV returns the agency to Pending. Per month (derived): Pending (no agency has a DV) → In process → Remitted (all agencies) → Confirmed (all agencies). Stored statuses are SCHEDULED / CONFIRMED / CANCELLED — "DV in process" and "Remitted" are read from the linked DV.
 - **Agency of an amount** (by the payroll item's account): 2-02-01-020 / 5-01-03-010 / 5-01-03-040 → GSIS (premiums, loans, government share, ECC) · 2-02-01-040 / 5-01-03-030 → PhilHealth · 2-02-01-030 / 5-01-03-020 → Pag-IBIG · 2-02-01-010 → BIR · 1-… → NHA receivable (not remitted) · everything else → Other Payables. Employee share = DEDUCTION − REFUND on the payable; a deduction on an expense account (5-…, e.g. leave without pay) only reduces salary and is not remitted.
 
 ```mermaid
@@ -2250,6 +2253,10 @@ erDiagram
 ### Cash Position and FTLA
 Both are built but not in the sidebar (`views/CashPositionPage.php` → `cash-position-page.php`; `views/FtlaPage.php` → `ftla-page.php`). Their tables (`cash_position`, `cash_position_activity_log`, `soa_transactions`, `bank_transactions`; `fund_transfers`) are in [Shared reference tables](#shared-reference-tables).
 
+- **FTLA as a DV release:** an FTLA's debit rows can carry DV numbers — only DVs at FOR_TREASURY that are not on a non-cancelled check or another FTLA (`GET /ftla/used-dv-numbers`, re-checked server-side in `validateDvNumbers()`). FTLA statuses: DRAFT → FOR_RM_APPROVAL → FOR_REVIEW → FOR_APPROVAL → APPROVED → TRANSMITTED → VALIDATED → SUBMITTED_TO_ACCOUNTING → COMPLETED (or CANCELLED). On VALIDATED → SUBMITTED_TO_ACCOUNTING, `submitPaymentJev()` posts **one** PAYMENT JEV for all its DVs (Dr each DV's Accounts Payable / Cr the destination bank's Cash — its Cash SL when tagged; `doc_ref_no` = the FTLA number, `source_module` = TREASURY) and releases every DV (FOR_TREASURY → RELEASED). The JEV's `dv_id` is NULL when it covers more than one DV; `fund_transfers.jev_id` (`03 - alter_table/57`) records it. The JEV print shows ADADJ for an `FTLA-…` reference.
+- **Bank Reconciliation** (Reports → Bank Reconciliation; `app/routes/bank-reconciliation.php`, `BankReconciliationService`) marks book / bank items as cleared in `fims.bank_reconciliation_cleared_items` (`01 - table/53`).
+- **Opening Balance → Cash Position:** saving an opening balance refreshes the earliest `cash_position` row of that year for every bank account tagged to a saved account code (`CashPositionService::refreshEarliestOpeningBalanceForAccountCode()`, best-effort).
+
 ## Shared reference tables
 
 - **Status:** these are lookups used across modules. None of them has its own sidebar entry, except that Cash Position and FTLA have pages (`views/CashPositionPage.php` → `cash-position-page.php`, `views/FtlaPage.php` → `ftla-page.php`) that are **not in `views/menu.php`**.
@@ -2538,7 +2545,7 @@ Found while mapping the modules (2026-11-17). Grouped; each is verified in code 
 - `v_journals` returns `sl_name`, `sl_detail_name` as NULL; it is defined twice (alter 38 and `05 - views/01`), and the views file's comment says the SL fields are "populated from the Chart of Accounts".
 
 **Tables / columns with no writer**
-- `ada_releases`, `official_receipts`, `official_receipt_lines` — nothing in `app/` writes them, so the Journals page's ADADJ and CRDJ tabs are always empty.
+- `ada_releases`, `official_receipts`, `official_receipt_lines` — nothing in `app/` writes them. FTLA releases post a PAYMENT JEV but deliberately do not write `ada_releases`; Collections reports can be journalized (`GET|POST /collections/{id}/jev-prefill/{collection|deposit}` → a standalone DRAFT JEV through `DisbursementVoucherService::createStandaloneJev()`, linked back on `collection_reports.collection_jev_id` / `deposit_jev_id` — `03 - alter/57`), but those are ordinary journal entries, so the ADADJ / CRDJ tabs can still miss them.
 - `check_booklets` (and `checks.booklet_id`); `disbursement_vouchers.requesting_department_id` (always NULL); the seeded `APPROVED` JEV status (never set — DV-linked SETUP JEVs have a NULL status until posted); `uac.users.must_change_password` (nothing sets or enforces it).
 
 **Referenced but not created**
@@ -2558,14 +2565,15 @@ Found while mapping the modules (2026-11-17). Grouped; each is verified in code 
 
 **SQL housekeeping (affects anyone reading the SQL)**
 - Duplicate alter numbers: 21, 23, 29, 30, 36 (two `36`s: `budget_req_drop_remarks`, `chart_of_accounts_add_account_purpose`).
-- Extra folders beside the main ones: `01 - fims/02 - alter_table`, `02 - seed_data`, `03 - alter` (only `50 - add_gl_sl_to_vendors.sql`).
+- Extra folders beside the main ones: `01 - fims/02 - alter_table`, `02 - seed_data`, `03 - alter` (`50 - add_gl_sl_to_vendors.sql`, `57 - collection_reports_add_jev_links.sql` — easy to miss when running `03 - alter_table`).
+- Duplicate 57s across folders (`03 - alter/57`, `03 - alter_table/57`) and two `53`s in `03 - alter_table`.
 - `budget_req_project_attachment` is created twice (`01 - table/16` and `03 - alter_table/16`).
 - Misleading names/comments: `23 - budget_revision_on_budget_reference_number.sql` (changes budget lines), `30 - add_book_to_dv_jev_gl_or.sql`, the `41 - fims_books.sql` header, the `check_releases` header (cites the dropped `rfa_allocation_number`).
 - `_assets/sql/README.md` is out of date (file counts / next number).
 
 **Pages**
-- Empty (0-byte) placeholders in the sidebar: Ledger, Liquidation Voucher, RFA / LAA Monitoring, Check Registry, Accountable Forms Registry, FMR, Remittance List, Fund Source, Program Sources, Accountable Officer, Pricing (Pricing has a full backend: route, service, form and tables). `ledger-budget-allocation.php` is empty and not in the menu.
-- Built but **not in the sidebar**: Purchase Orders, Property Records, Cash Position, FTLA (see [Pages not in the sidebar](#pages-not-in-the-sidebar)).
+- Empty (0-byte) placeholders in the sidebar: Ledger *(no longer in the menu)*, Liquidation Voucher, Remittance List (now under DV Processing), Accountable Forms Registry, Fund Sweeping, FMR, Pricing (Pricing has a full backend: route, service, form and tables). Fund Source and Program Sources pages are empty and not in the menu. `ledger-budget-allocation.php` is empty and not in the menu.
+- Built but **not in the sidebar**: Purchase Orders, FTLA, Subsidiary Ledger (removed from the menu in `329c525`; Cash Position and Property Record are now in the sidebar; see [Pages not in the sidebar](#pages-not-in-the-sidebar)).
 - The Security Management quick link `UserLevelsList` has a controller route but no view/model *(may be broken)*.
 
 ## Related docs

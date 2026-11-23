@@ -271,7 +271,21 @@ function prp_showError(message) {
  * opts.type — a PRP_TYPES key: 'CBA' (default), 'RFA', 'LAA', 'CAF', 'LAAREQ', 'PO', 'PR',
  * 'IAR', 'LV', 'JEV', 'FTLA', 'FTLAREQ', 'CFA', 'MEMO' or 'DV'.
  */
+/* Prints paused until their layout is settled — every caller (list menu, memo form) goes through prp_open(), so this
+   one guard keeps them from printing. RFA / LAA: an RFA / LAA can now draw from several parent CBAs (one project
+   block each) and the form still prints only the first block's project — on hold until the multi-CBA layout is
+   decided with the budget team. Remove a type from here to print it again. */
+const PRP_PAUSED = {
+    RFA: 'Printing the RFA is paused for now: an RFA can draw from several CBAs and its printed form is being updated for that.',
+    LAA: 'Printing the LAA is paused for now: an LAA can draw from several CBAs and its printed form is being updated for that.',
+};
+function prp_isPaused(type) { return !!PRP_PAUSED[String(type || '').toUpperCase()]; }
+
 async function prp_open(payload, opts = {}) {
+    if (prp_isPaused(opts.type)) {
+        alert(PRP_PAUSED[String(opts.type).toUpperCase()]);
+        return;
+    }
     prp_type = PRP_TYPES[String(opts.type || '').toUpperCase()] ? String(opts.type).toUpperCase() : 'CBA';
     const coe = String(payload?.document_type || '').toUpperCase() === 'COE';             // CBA / LAA have a COE version
     const regional = String(payload?.issuing_office || '').toUpperCase() === 'REGIONAL';  // CBA / CAF have a regional version
@@ -319,14 +333,16 @@ function prp_dvPayload(dv) {
  * The journal printed on the 2nd line of the JEV's top-right box (as on the official form). A PAYMENT JEV
  * (Treasury's Dr Accounts Payable / Cr Cash entry — GeneralLedgerService::createPaymentJev()) belongs to the
  * journal of its instrument, named in doc_ref_no: "CHECK NO. …" → CKDJ (Check Disbursements Journal),
- * "ADA …" → ADADJ (Advice to Debit Account Disbursement Journal); any other JEV (a DV's SETUP entry, a
- * standalone one) → GJ (General Journal) — the same split as the Journals page's tabs.
+ * "ADA …" or an FTLA number "FTLA-…" (FtlaService::submitPaymentJev() — Treasury's bank-transfer release, the
+ * ADA side) → ADADJ (Advice to Debit Account Disbursement Journal). Any other JEV (a DV's SETUP entry, a
+ * standalone one) belongs to the General Journal, which is NOT printed: GJ is only the category it is filed
+ * under on the Journals page, so the box shows no journal line for it.
  */
 function prp_jevJournal(j) {
-    if (String(j.jev_type || '').toUpperCase() !== 'PAYMENT') return 'GJ';
+    if (String(j.jev_type || '').toUpperCase() !== 'PAYMENT') return '';
     const ref = String(j.doc_ref_no || '').trim().toUpperCase();
     if (ref.startsWith('CHECK')) return 'CKDJ';
-    if (ref.startsWith('ADA')) return 'ADADJ';
+    if (ref.startsWith('ADA') || ref.startsWith('FTLA')) return 'ADADJ';
     return '';
 }
 
