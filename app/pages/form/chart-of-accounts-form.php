@@ -20,7 +20,7 @@
     #coa-overlay { display:none;position:fixed;inset:0;z-index:9100;
         background:rgba(15,32,69,.6);align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(3px); }
     #coa-overlay.open { display:flex; }
-    #coa-card { background:var(--afims-surface, #FFFFFF);border-radius:16px;width:100%;max-width:640px;
+    #coa-card { background:var(--afims-surface, #FFFFFF);border-radius:16px;width:100%;max-width:70%;
         max-height:92vh;display:flex;flex-direction:column;overflow:hidden;
         box-shadow:0 32px 80px rgba(0,0,0,.28);font-family:'IBM Plex Sans',sans-serif;
         animation:coaIn .2s ease; }
@@ -73,6 +73,8 @@
     #coa-footer .coa-btn-navy:hover:not(:disabled) { opacity:.92; }
 
     @media (max-width: 560px) { .coa-row { grid-template-columns:1fr; } }
+    /* 70% is too narrow on tablets/phones — use the full width there. */
+    @media (max-width: 991.98px) { #coa-card { max-width:100%; } }
 
     /* ── Dark mode — the selects rendered with the browser's black native style; match the text inputs and the theme ── */
     html.afims-dark[data-bs-theme="dark"] #coa-card { color-scheme:dark; }

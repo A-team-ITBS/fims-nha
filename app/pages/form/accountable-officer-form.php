@@ -29,7 +29,7 @@
 
     #ao-card {
         display:inline-block;text-align:left;vertical-align:middle;
-        width:100%;max-width:560px;box-sizing:border-box;
+        width:100%;max-width:70%;box-sizing:border-box;
         background:var(--afims-surface, #FFFFFF);border-radius:16px;
         box-shadow:0 32px 80px rgba(0,0,0,.28);font-family:'IBM Plex Sans',sans-serif;
     }
@@ -78,6 +78,43 @@
     #ao-footer .ao-btn-navy:hover:not(:disabled) { opacity:.92; }
 
     @media (max-width:560px) { .ao-row { grid-template-columns:1fr; } }
+    /* 70% is too narrow on tablets/phones — use the full width there. */
+    @media (max-width:991.98px) { #ao-card { max-width:100%; } }
+
+    /* "+ Create Sub-Ledger Account" sits in the body, so the #ao-footer button rules never reached it
+       (it showed as a bare grey browser button stretched across the whole row). */
+    #ao-body .ao-btn { align-self:flex-start;height:34px;padding:0 16px;border-radius:8px;border:1px solid #3861BC;
+        font-size:13px;font-weight:600;font-family:'IBM Plex Sans',sans-serif;cursor:pointer;
+        display:inline-flex;align-items:center;gap:6px;background:#3861BC;color:#FFFFFF;transition:background .15s,border-color .15s; }
+    #ao-body .ao-btn:hover:not(:disabled) { background:#2E59B8;border-color:#2E59B8; }
+    #ao-body .ao-btn:disabled { opacity:.5;cursor:not-allowed; }
+
+    /* ── Dark mode — the selects rendered with the browser's native grey; match the text inputs ── */
+    html.afims-dark[data-bs-theme="dark"] #ao-card { color-scheme:dark;border:1px solid var(--afims-border, #2E3656); }
+    html.afims-dark[data-bs-theme="dark"] #ao-card .ao-input {
+        background-color:var(--afims-surface, #1A1F38) !important;border-color:var(--afims-border-strong, #4A5270) !important;
+        color:var(--afims-text, #E4ECF2) !important; }
+    html.afims-dark[data-bs-theme="dark"] #ao-card select.ao-input option { background-color:var(--afims-surface, #1A1F38);color:var(--afims-text, #E4ECF2); }
+    html.afims-dark[data-bs-theme="dark"] #ao-card .ao-input::placeholder { color:#9AA3B5;opacity:1; }
+    html.afims-dark[data-bs-theme="dark"] #ao-card .ao-input:focus {
+        border-color:#3861BC !important;box-shadow:0 0 0 3px rgba(56,97,188,.25); }
+    html.afims-dark[data-bs-theme="dark"] #ao-card .ao-input:disabled {
+        background-color:var(--afims-surface-subtle, #22294A) !important;color:var(--afims-text-muted, #AAAFBE) !important; }
+    html.afims-dark[data-bs-theme="dark"] #ao-card .ao-hint { color:#9AA3B5; }
+    /* GL / Sub-Ledger search lists and the "Selected" boxes have their colours inline (style="…" and set from JS). */
+    html.afims-dark[data-bs-theme="dark"] :is(#ao-coa-dropdown, #ao-coa-sl-dropdown) {
+        background:#1A1F38 !important;border-color:#4A5270 !important;box-shadow:0 8px 20px rgba(0,0,0,.45) !important; }
+    html.afims-dark[data-bs-theme="dark"] :is(#ao-coa-dropdown, #ao-coa-sl-dropdown) > div {
+        color:#E4ECF2;border-bottom-color:#2E3656 !important;background:transparent !important; }
+    html.afims-dark[data-bs-theme="dark"] :is(#ao-coa-dropdown, #ao-coa-sl-dropdown) > div:hover { background:#22294A !important; }
+    html.afims-dark[data-bs-theme="dark"] :is(#ao-coa-dropdown, #ao-coa-sl-dropdown) > div div { color:#9AA3B5 !important; }
+    html.afims-dark[data-bs-theme="dark"] :is(#ao-coa-selected, #ao-coa-sl-selected-item) {
+        background:#0F2456 !important;color:#E4ECF2;border:1px solid #2E3656; }
+    html.afims-dark[data-bs-theme="dark"] #ao-footer .ao-btn-ghost { color:#E4ECF2;background:var(--afims-surface, #1A1F38);
+        border-color:var(--afims-border-strong, #4A5270); }
+    html.afims-dark[data-bs-theme="dark"] #ao-footer .ao-btn-ghost:hover:not(:disabled) { background:#22294A; }
+    html.afims-dark[data-bs-theme="dark"] #ao-footer .ao-btn-navy { background:#3861BC;border-color:#3861BC; }
+    html.afims-dark[data-bs-theme="dark"] #ao-footer .ao-btn-navy:hover:not(:disabled) { background:#2E59B8;opacity:1; }
 </style>
 
 <div id="ao-overlay">

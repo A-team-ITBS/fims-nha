@@ -319,14 +319,25 @@ class OpeningBalanceService
                 }
                 App\Execute('COMMIT', 'DB');
 
-                // Fetch the posted JEV for the response
-                $jev = App\ExecuteRow(
-                    "SELECT jev.jev_id, jev.jev_no, st.name AS status
-                     FROM {$this->tableJev} jev
-                     JOIN {$this->tableSettingsStatus} st ON st.id = jev.status_id
-                     WHERE jev.jev_id = {$jevId}",
-                    'DB'
-                );
+                // Best-effort, non-fatal: refreshes each tagged bank account's
+                // EARLIEST fims.cash_position row for this fiscal year (the only
+                // row that actually originates from an opening balance — see
+                // CashPositionService::refreshEarliestOpeningBalanceForAccountCode()'s
+                // own docblock) so Cash Position doesn't keep showing a stale
+                // GENERAL_LEDGER-derived figure after this save. Summed per
+                // account_code in case the same code appears on more than one line.
+                try {
+                    $debitByAccountCode = [];
+                    foreach ($cleanLines as $line) {
+                        $debitByAccountCode[$line['account_code']] = ($debitByAccountCode[$line['account_code']] ?? 0) + $line['debit'];
+                    }
+                    $cashPositionService = new CashPositionService();
+                    foreach ($debitByAccountCode as $accountCode => $debitTotal) {
+                        $cashPositionService->refreshEarliestOpeningBalanceForAccountCode($accountCode, $fy, $debitTotal, $userId > 0 ? $userId : null);
+                    }
+                } catch (\Exception $e) {
+                    App\LogError('OpeningBalanceService::saveOpeningBalance cash position refresh ' . $e->getMessage());
+                }
 
                 return [
                     'success' => true,

@@ -362,10 +362,13 @@ class BankManagementService
         );
     }
 
-    // Resolves the GL account's own account_code from its account_id, so
-    // the legacy account_code column (still read by
-    // GeneralLedgerService::postPaymentJev()) stays in sync with whatever
-    // GL the two-step picker selects.
+    // Resolves a chart_of_accounts account_code from its account_id — used
+    // for either the GL (coa_account_id) or SL (sl_code) side of the
+    // two-step picker, so the legacy account_code column (still read by
+    // GeneralLedgerService::postPaymentJev(), Cash Position's opening-
+    // balance match, Collections' account picker, etc.) stays in sync with
+    // whichever one is actually the more specific code (see store()'s own
+    // comment).
     private function accountCodeForId(string $accountId): ?string
     {
         if ($accountId === '') {
@@ -405,7 +408,14 @@ class BankManagementService
         if (!$this->accountIdExists($slCode)) {
             return json_encode(["success" => false, "message" => "Select a valid Sub-Ledger Account."]);
         }
-        $accountCode = $coaAccountId !== '' ? ($this->accountCodeForId($coaAccountId) ?? '') : trim((string) ($data['account_code'] ?? ''));
+        // SL, when chosen, is the more specific/leaf code this bank account
+        // actually represents — account_code must reflect THAT, not the GL
+        // parent it rolls up to, or every lookup keyed on account_code
+        // (Cash Position's opening-balance match, Collections' picker, etc.)
+        // matches the wrong, broader account.
+        $accountCode = $slCode !== ''
+            ? ($this->accountCodeForId($slCode) ?? '')
+            : ($coaAccountId !== '' ? ($this->accountCodeForId($coaAccountId) ?? '') : trim((string) ($data['account_code'] ?? '')));
         if (!$this->accountCodeExists($accountCode)) {
             return json_encode(["success" => false, "message" => "Select a valid GL Account Code."]);
         }
@@ -482,7 +492,11 @@ class BankManagementService
         if (!$this->accountIdExists($slCode)) {
             return json_encode(["success" => false, "message" => "Select a valid Sub-Ledger Account."]);
         }
-        $accountCode = $coaAccountId !== '' ? ($this->accountCodeForId($coaAccountId) ?? '') : trim((string) ($data['account_code'] ?? ''));
+        // See store()'s own comment — SL (when chosen) is the specific code,
+        // not the GL parent it rolls up to.
+        $accountCode = $slCode !== ''
+            ? ($this->accountCodeForId($slCode) ?? '')
+            : ($coaAccountId !== '' ? ($this->accountCodeForId($coaAccountId) ?? '') : trim((string) ($data['account_code'] ?? '')));
         if (!$this->accountCodeExists($accountCode)) {
             return json_encode(["success" => false, "message" => "Select a valid GL Account Code."]);
         }
@@ -545,7 +559,9 @@ class BankManagementService
         if (!$this->accountIdExists($slCode)) {
             return json_encode(["success" => false, "message" => "Select a valid Sub-Ledger Account."]);
         }
-        $accountCode = $coaAccountId !== '' ? ($this->accountCodeForId($coaAccountId) ?? '') : '';
+        // See store()'s own comment — SL (when chosen) is the specific code,
+        // not the GL parent it rolls up to.
+        $accountCode = $slCode !== '' ? ($this->accountCodeForId($slCode) ?? '') : ($coaAccountId !== '' ? ($this->accountCodeForId($coaAccountId) ?? '') : '');
         $before = $this->fetchAccount($accountId);
         if (!$before) {
             return json_encode(["success" => false, "message" => "Bank account not found."]);

@@ -130,6 +130,7 @@
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone ($p['PHPMaker2024\\FIMS\\Attributes\\Get'] ?? \Symfony\Component\VarExporter\Internal\Registry::p('PHPMaker2024\\FIMS\\Attributes\\Get')),
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Get'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
@@ -228,6 +229,11 @@
     [
         'PHPMaker2024\\FIMS\\Attributes\\Map' => [
             'methods' => [
+                [
+                    'GET',
+                    'POST',
+                    'OPTIONS',
+                ],
                 [
                     'GET',
                     'POST',
@@ -1431,6 +1437,7 @@
                 '/FtlaPage[/{params:.*}]',
                 '/FundSourcePage[/{params:.*}]',
                 '/FundSourcingDashboardPage[/{params:.*}]',
+                '/FundSweepingPage[/{params:.*}]',
                 '/GeneralLedgerPage[/{params:.*}]',
                 '/IarModule[/{params:.*}]',
                 '/IdGenerator[/{params:.*}]',
@@ -1656,6 +1663,7 @@
                 'PHPMaker2024\\FIMS\\FtlaPageController:custom',
                 'PHPMaker2024\\FIMS\\FundSourcePageController:custom',
                 'PHPMaker2024\\FIMS\\FundSourcingDashboardPageController:custom',
+                'PHPMaker2024\\FIMS\\FundSweepingPageController:custom',
                 'PHPMaker2024\\FIMS\\GeneralLedgerPageController:custom',
                 'PHPMaker2024\\FIMS\\IarModuleController:custom',
                 'PHPMaker2024\\FIMS\\IdGeneratorController:custom',
@@ -1791,6 +1799,9 @@
                 'PHPMaker2024\\FIMS\\WorkInProcessPageController:custom',
             ],
             'middleware' => [
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
                 [
                     'PHPMaker2024\\FIMS\\PermissionMiddleware',
                 ],
@@ -2550,6 +2561,7 @@
                 'custom.ftla_page',
                 'custom.fund_source_page',
                 'custom.fund_sourcing_dashboard_page',
+                'custom.fund_sweeping_page',
                 'custom.general_ledger_page',
                 'custom.IARModule',
                 'custom.IDGenerator',
@@ -2685,6 +2697,7 @@
                 'custom.work_in_process_page',
             ],
             'options' => [
+                [],
                 [],
                 [],
                 [],
@@ -3135,6 +3148,7 @@
         $o[220],
         $o[221],
         $o[222],
+        $o[223],
     ],
     []
 );

@@ -3,9 +3,9 @@
  * The details modal of the Memo Request list (memo-req-page.php), in two modes — the page includes it for every user:
  *   View     mpr_open(id, true)  — the "View" action of a row's Actions menu, for everybody: the details only, read-only,
  *            never any Return / Endorse / Approve button (not even for an FMD user who could decide the request).
- *   Process  mpr_open(id)        — the "Process" action, Financial Management Department (FMD) users only (the page only
- *            offers it to them, and the API refuses anyone else: PATCH /budget_allocation/process/{id} answers 403): the
- *            same details plus the decision buttons described below.
+ *   Process  mpr_open(id)        — the "Process" action, Financial Management Department (FMD) users and superadmins only (the
+ *            page only offers it to them, and the API refuses anyone else: PATCH /budget_allocation/process/{id} answers 403):
+ *            the same details plus the decision buttons described below.
  *
  * It reads the request (GET /budget_allocation/read/{id}) and shows its
  * details read-only: the request itself, Program / Sub-Program / Project, PR / PO, the purpose, the budget

@@ -34,6 +34,12 @@ class FtlaService
     private string $tableDv        = 'fims.disbursement_vouchers';
     private string $tableDvStatus  = 'fims.settings_status';
     private string $tableChecks    = 'fims.checks';
+    private string $tableJev       = 'fims.journal_entry_vouchers';
+    private string $tableJevLines  = 'fims.journal_entry_voucher_lines';
+    private string $tableCoa       = 'fims.chart_of_accounts';
+
+    /** Same control account GeneralLedgerService::createPaymentJev() settles against. */
+    private const AP_ACCOUNT_CODE = '2-01-01-010';
 
     /** This module's row in fims.status_change_log.status_for — see GlobalService::logStatusChange(). */
     private const STATUS_LOG_FOR = 'fund_transfers';
@@ -241,6 +247,14 @@ class FtlaService
      * bypasses entirely. Re-checks both here so the constraint actually
      * holds server-side. $excludeId lets an update() see its own existing
      * usage (same as getUsedDvNumbers()).
+     *
+     * Also enforces the same "only a DV Treasury is currently holding" rule
+     * CheckProcessingService::getDvsForPrep() uses for check preparation: an
+     * FTLA is Treasury's own release of the DV (see update()'s VALIDATED ->
+     * SUBMITTED_TO_ACCOUNTING transition, which posts the payment JEV and
+     * releases every DV listed here), so a DV that doesn't exist, or isn't
+     * status FOR_TREASURY, can't be tagged to one — same as the client's own
+     * DV picker (ftlm_loadDvOptions()) now only offers FOR_TREASURY DVs.
      */
     private function validateDvNumbers(array $fromAccounts, array $body, int $excludeId = 0): array
     {
@@ -261,6 +275,25 @@ class FtlaService
         $usedElsewhere = array_intersect($dvNumbers, $this->getUsedDvNumbers($excludeId));
         if ($usedElsewhere) {
             $errors[] = 'DV No. "' . implode('", "', $usedElsewhere) . '" is already tagged to another FTLA.';
+        }
+
+        $found = App\ExecuteRowsAssociative(
+            "SELECT dv.dv_no, st.name AS status
+             FROM {$this->tableDv} dv
+             LEFT JOIN {$this->tableDvStatus} st ON st.id = dv.status_id
+             WHERE dv.dv_no IN (" . implode(',', array_map(fn ($n) => $this->str($n), $dvNumbers)) . ')',
+            'DB'
+        ) ?: [];
+        $byNo = [];
+        foreach ($found as $row) {
+            $byNo[$row['dv_no']] = $row['status'];
+        }
+        foreach ($dvNumbers as $num) {
+            if (!array_key_exists($num, $byNo)) {
+                $errors[] = "DV No. \"{$num}\" was not found.";
+            } elseif ($byNo[$num] !== 'FOR_TREASURY') {
+                $errors[] = "DV No. \"{$num}\" is {$byNo[$num]}, not FOR_TREASURY — Treasury isn't holding it yet.";
+            }
         }
 
         return $errors;
@@ -436,13 +469,15 @@ class FtlaService
                     fb.bank_name AS from_bank_name, fb.account_number AS from_account_number, fb.account_name AS from_account_name,
                     TRIM(CONCAT_WS(' ', pu.first_name, pu.last_name)) AS prepared_by_name,
                     TRIM(CONCAT_WS(' ', ru.first_name, ru.last_name)) AS reviewed_by_name,
-                    TRIM(CONCAT_WS(' ', au.first_name, au.last_name)) AS approved_by_name
+                    TRIM(CONCAT_WS(' ', au.first_name, au.last_name)) AS approved_by_name,
+                    jev.jev_no
              FROM {$this->table} ft
              LEFT JOIN {$this->tableBank}  b  ON b.bank_account_id = ft.to_bank_account_id
              LEFT JOIN {$this->tableBank}  fb ON fb.bank_account_id = ft.from_bank_account_id
              LEFT JOIN {$this->tableUsers} pu ON pu.user_id = ft.prepared_by
              LEFT JOIN {$this->tableUsers} ru ON ru.user_id = ft.reviewed_by
              LEFT JOIN {$this->tableUsers} au ON au.user_id = ft.approved_by
+             LEFT JOIN {$this->tableJev}   jev ON jev.jev_id = ft.jev_id
              WHERE ft.fund_transfer_id = {$id}",
             'DB'
         );
@@ -673,6 +708,240 @@ class FtlaService
     }
 
     /**
+     * Builds and immediately posts ONE combined payment Journal Entry Voucher for every DV this
+     * FTLA lists — the "same journal entries as the check" piece: Dr Accounts Payable / Cr Cash,
+     * posted straight to the General Ledger with no Section Chief -> Division Manager ->
+     * Department Manager review chain, same as CheckProcessingService::saveCheck() does when it
+     * prepares a check. The one difference from a check (1 check = 1 DV = 1 JEV) is this JEV
+     * covers every DV the FTLA lists at once — one Dr Accounts Payable line per DV that actually
+     * has something to settle (createPaymentJev()'s own "no-op if the DV's SETUP JEV never routed
+     * through AP" rule applies per DV here too), one Cr Cash line for the FTLA's destination bank
+     * account, for the combined total.
+     *
+     * Re-validates every DV is still FOR_TREASURY at this exact moment, not just when it was
+     * tagged (validateDvNumbers() already checked that, but a DV can move on — or get cancelled —
+     * in the meantime). Every listed DV is released (FOR_TREASURY -> RELEASED) once the JEV is
+     * posted, even one with nothing to settle — same as a check never skips the release just
+     * because there was nothing left on Accounts Payable.
+     *
+     * NOTE: unlike a check, this JEV's dv_id is NULL once it covers more than one DV — fims.
+     * journal_entry_vouchers has room for only one. The ADADJ journal's DV -> JEV join
+     * (GeneralLedgerService::disbursementJevJoin(), keyed by dv_id) won't resolve a jev_no for a
+     * DV released this way; this deliberately does NOT write to fims.ada_releases to avoid
+     * implying otherwise. fund_transfers.jev_id (returned here, and set by update()) is this
+     * FTLA's own record of which JEV it posted.
+     *
+     * Returns ['success' => true, 'jev_id' => int|null] on success (null only when nothing on any
+     * linked DV needed settling), or ['success' => false, 'message' => ...] — update() returns
+     * that message straight through and leaves the FTLA's status untouched.
+     */
+    private function submitPaymentJev(array $cur, int $userId): array
+    {
+        $dvNumbers = array_values(array_unique(array_filter(
+            array_map('trim', preg_split('/\R/', (string) ($cur['dv_numbers'] ?? '')))
+        )));
+        if (!$dvNumbers) {
+            return ['success' => false, 'message' => 'This FTLA has no DV linked to it — add one before submitting to Accounting.'];
+        }
+
+        $bankAccountId = (int) ($cur['to_bank_account_id'] ?? 0);
+        if ($bankAccountId <= 0) {
+            return ['success' => false, 'message' => 'This FTLA has no destination bank account — set one before submitting to Accounting.'];
+        }
+        // sl_account_code: the bank account's OWN Cash sub-ledger (fims.bank_accounts.sl_code -> a
+        // chart_of_accounts child row, e.g. "1-01-02-010-01" — set up via Bank Management's own
+        // GL/SL two-step picker, same convention as fims.vendors.sl_code) when one is configured,
+        // instead of the bare account_code — same reasoning GeneralLedgerService::createPaymentJev()
+        // uses for a check's own Cash credit line.
+        $bank = App\ExecuteRow(
+            "SELECT ba.account_code, ba.account_name, sl_coa.account_code AS sl_account_code
+             FROM {$this->tableBank} ba
+             LEFT JOIN {$this->tableCoa} sl_coa ON sl_coa.account_id = ba.sl_code
+             WHERE ba.bank_account_id = {$bankAccountId}",
+            'DB'
+        );
+        if (!$bank || !$bank['account_code']) {
+            return ['success' => false, 'message' => $bank
+                ? "Bank account '{$bank['account_name']}' has no Chart-of-Accounts Cash account mapped — configure it before submitting."
+                : "Bank account #{$bankAccountId} not found."];
+        }
+        $bankCreditAccountCode = $bank['sl_account_code'] ?: $bank['account_code'];
+
+        $dvs = App\ExecuteRowsAssociative(
+            "SELECT dv.dv_id, dv.dv_no, dv.net_amount, st.name AS status
+             FROM {$this->tableDv} dv
+             LEFT JOIN {$this->tableDvStatus} st ON st.id = dv.status_id
+             WHERE dv.dv_no IN (" . implode(',', array_map(fn ($n) => $this->str($n), $dvNumbers)) . ')',
+            'DB'
+        ) ?: [];
+        $byNo = [];
+        foreach ($dvs as $row) {
+            $byNo[$row['dv_no']] = $row;
+        }
+        foreach ($dvNumbers as $num) {
+            if (!isset($byNo[$num])) {
+                return ['success' => false, 'message' => "DV No. \"{$num}\" was not found."];
+            }
+            if ($byNo[$num]['status'] !== 'FOR_TREASURY') {
+                return ['success' => false, 'message' => "DV No. \"{$num}\" is {$byNo[$num]['status']}, not FOR_TREASURY — it isn't ready for release."];
+            }
+        }
+
+        // Each DV's own SETUP JEV AP line — same lookup GeneralLedgerService::createPaymentJev()
+        // uses, duplicated here (not reused) since that method is hardwired to a single dv_id/JEV.
+        $debitLines = [];
+        $fiscalYr   = null;
+        $bookId     = null;
+        foreach ($dvNumbers as $num) {
+            $dvId   = (int) $byNo[$num]['dv_id'];
+            $amount = (float) $byNo[$num]['net_amount'];
+
+            $setupJev = App\ExecuteRow(
+                "SELECT jev_id, fiscal_yr, book_id FROM {$this->tableJev} WHERE dv_id = {$dvId} AND jev_type = 'SETUP'",
+                'DB'
+            );
+            if (!$setupJev) {
+                return ['success' => false, 'message' => "DV {$num} has no posted Journal Entry Voucher to settle."];
+            }
+            $fiscalYr ??= $setupJev['fiscal_yr'];
+            $bookId   ??= $setupJev['book_id'];
+
+            $apLine = App\ExecuteRow(
+                "SELECT jl.account_code, jl.sl_code, jl.sl_detail_id, jl.rc_id
+                 FROM {$this->tableJevLines} jl
+                 JOIN {$this->tableCoa} c ON c.account_code = jl.account_code
+                 LEFT JOIN {$this->tableCoa} p ON p.account_id = c.parent_account_id
+                 WHERE jl.jev_id = " . (int) $setupJev['jev_id'] . '
+                   AND jl.credit > 0
+                   AND (jl.account_code = ' . $this->str(self::AP_ACCOUNT_CODE) . '
+                        OR p.account_code = ' . $this->str(self::AP_ACCOUNT_CODE) . ')
+                 ORDER BY jl.line_number LIMIT 1',
+                'DB'
+            );
+            if ($apLine) {
+                $debitLines[] = ['dv_no' => $num, 'amount' => $amount] + $apLine;
+            }
+        }
+
+        if (!$debitLines) {
+            // Nothing on any linked DV routed through Accounts Payable — e.g. all were already
+            // paid straight out of Cash at setup time. Not an error; still release every DV.
+            $released = $this->releaseLinkedDvs($dvNumbers, $byNo, $userId);
+            if (!$released['success']) {
+                return $released;
+            }
+
+            return ['success' => true, 'jev_id' => null];
+        }
+
+        $total     = array_sum(array_column($debitLines, 'amount'));
+        $glService = new GeneralLedgerService();
+        $startId   = $this->getJevStatusIdByName('FOR_SECTION_CHIEF');
+        if ($startId === null) {
+            return ['success' => false, 'message' => "Status 'FOR_SECTION_CHIEF' is not configured in fims.settings_status for journal entry vouchers."];
+        }
+        $jevNo = $this->nextPaymentJevNumber();
+        $uid   = $userId > 0 ? (string) $userId : 'NULL';
+
+        App\Execute('BEGIN', 'DB');
+        try {
+            $jevRow = App\ExecuteRow(
+                "INSERT INTO {$this->tableJev}
+                    (jev_no, dv_id, fiscal_yr, book_id, jev_type, source_module, doc_ref_no, total_debit, total_credit, status_id, created_by)
+                 VALUES (" . $this->str($jevNo) . ', NULL, ' . $this->intOrNull($fiscalYr) . ', ' . $this->intOrNull($bookId)
+                    . ", 'PAYMENT', 'TREASURY', " . $this->str($cur['ftla_number']) . ', '
+                    . (float) $total . ', ' . (float) $total . ", {$startId}, {$uid})
+                 RETURNING jev_id",
+                'DB'
+            );
+            $jevId = (int) $jevRow['jev_id'];
+
+            $lineNo = 1;
+            foreach ($debitLines as $d) {
+                App\Execute(
+                    "INSERT INTO {$this->tableJevLines} (jev_id, line_number, account_code, debit, credit, description, sl_code, sl_detail_id, rc_id)
+                     VALUES ({$jevId}, " . $lineNo++ . ', ' . $this->str($d['account_code']) . ', ' . (float) $d['amount'] . ', 0, '
+                        . $this->str("Payment via {$cur['ftla_number']} — DV {$d['dv_no']}") . ', '
+                        . $this->strOrNull($d['sl_code']) . ', ' . $this->intOrNull($d['sl_detail_id']) . ', '
+                        . $this->strOrNull($d['rc_id']) . ')',
+                    'DB'
+                );
+            }
+            App\Execute(
+                "INSERT INTO {$this->tableJevLines} (jev_id, line_number, account_code, debit, credit, description)
+                 VALUES ({$jevId}, {$lineNo}, " . $this->str($bankCreditAccountCode) . ', 0, ' . (float) $total . ', '
+                    . $this->str("Payment via {$cur['ftla_number']}") . ')',
+                'DB'
+            );
+
+            $posted = $glService->postJev($jevId, $userId);
+            if (!$posted['success']) {
+                App\Execute('ROLLBACK', 'DB');
+
+                return ['success' => false, 'message' => $posted['message']];
+            }
+
+            App\Execute('COMMIT', 'DB');
+        } catch (\Exception $e) {
+            App\Execute('ROLLBACK', 'DB');
+            App\LogError('FtlaService::submitPaymentJev ' . $e->getMessage());
+
+            return ['success' => false, 'message' => 'Failed to create the payment Journal Entry Voucher.'];
+        }
+
+        // Released AFTER the JEV above is committed, same ordering CheckProcessingService::
+        // saveCheck() uses and for the same reason: DisbursementVoucherService::changeStatus()
+        // opens and commits its own transaction, so anything that still needs to be atomic with
+        // the JEV must happen first.
+        $released = $this->releaseLinkedDvs($dvNumbers, $byNo, $userId);
+        if (!$released['success']) {
+            return $released;
+        }
+
+        return ['success' => true, 'jev_id' => $jevId];
+    }
+
+    /** FOR_TREASURY -> RELEASED for every DV listed, via DisbursementVoucherService's own authorized transition. */
+    private function releaseLinkedDvs(array $dvNumbers, array $byNo, int $userId): array
+    {
+        $dvService = new DisbursementVoucherService();
+        foreach ($dvNumbers as $num) {
+            $released = $dvService->changeStatus((int) $byNo[$num]['dv_id'], 'RELEASED', $userId);
+            if (!$released['success']) {
+                return ['success' => false, 'message' => "DV {$num}: {$released['message']}"];
+            }
+        }
+
+        return ['success' => true];
+    }
+
+    /** Duplicated per-service copy — same convention as GeneralLedgerService's own private getStatusIdByName(). */
+    private function getJevStatusIdByName(string $name): ?int
+    {
+        $row = App\ExecuteRow(
+            "SELECT id FROM {$this->tableDvStatus} WHERE status_for = 'journal_entry_voucher' AND name = " . $this->str($name),
+            'DB'
+        );
+
+        return isset($row['id']) ? (int) $row['id'] : null;
+    }
+
+    /** Same JEV-YY-MM-#### sequence as GeneralLedgerService::nextJevNumber() / DisbursementVoucherService::nextJevNumber(). */
+    private function nextPaymentJevNumber(): string
+    {
+        $jevDate = date('Y-m-d');
+        $prefix  = 'JEV-' . substr($jevDate, 2, 2) . '-' . substr($jevDate, 5, 2) . '-';
+        $max     = (int) App\ExecuteScalar(
+            "SELECT COALESCE(MAX(CAST(SUBSTRING(jev_no FROM '[0-9]+$') AS INTEGER)), 0)
+             FROM {$this->tableJev}
+             WHERE jev_no LIKE " . $this->str($prefix . '%') . " AND jev_no ~ '-[0-9]+$'",
+            'DB'
+        );
+
+        return $prefix . str_pad((string) ($max + 1), 4, '0', STR_PAD_LEFT);
+    }
+
+    /**
      * Builds its SET clause only from whatever keys are present in the body — a bare
      * {status: 'X'} call (from the list page's row actions / the status-tracking modal)
      * touches only status-related columns; a full edit from the form modal touches
@@ -682,7 +951,10 @@ class FtlaService
     {
         try {
             $ftId = (int) $id;
-            $cur  = App\ExecuteRow("SELECT fund_transfer_id, status, ftla_number, to_bank_account_id FROM {$this->table} WHERE fund_transfer_id = {$ftId}", 'DB');
+            $cur  = App\ExecuteRow(
+                "SELECT fund_transfer_id, status, ftla_number, to_bank_account_id, dv_numbers FROM {$this->table} WHERE fund_transfer_id = {$ftId}",
+                'DB'
+            );
             if (!$cur) {
                 return ['success' => false, 'message' => "FTLA #{$ftId} not found.", 'httpCode' => 404];
             }
@@ -834,6 +1106,20 @@ class FtlaService
                 $remarks       = trim((string) $remarks);
                 if (in_array($transitionKey, self::REMARKS_REQUIRED, true) && $remarks === '') {
                     return ['success' => false, 'message' => 'A reason is required for this action.'];
+                }
+
+                // Submitting to Accounting IS the release — same moment a check prepared against
+                // a FOR_TREASURY DV posts its own payment JEV and releases it (see
+                // CheckProcessingService::saveCheck()). Must succeed before status flips below: a
+                // failure here leaves the FTLA exactly where it was, nothing half-done.
+                if ($newStatus === 'SUBMITTED_TO_ACCOUNTING') {
+                    $jevResult = $this->submitPaymentJev($cur, $userId);
+                    if (!$jevResult['success']) {
+                        return $jevResult;
+                    }
+                    if ($jevResult['jev_id'] !== null) {
+                        $set[] = 'jev_id = ' . (int) $jevResult['jev_id'];
+                    }
                 }
 
                 $set[] = 'status = ' . $this->str($newStatus);

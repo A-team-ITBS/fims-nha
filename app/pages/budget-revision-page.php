@@ -33,22 +33,34 @@ $_brv_api = Config('API.FIMS_URL');
 //       Edit is switched off once the request has been processed (Submitted), approved or declined — a processed request is in
 //       front of the reviewers, an approved one has been applied to its budget lines.
 // FMD is recognised by its rc_code, NOT its rc_id (the id's format differs between datasets: "013" vs "RC-013"). Mirrors
-// GlobalService::CENTRAL_REVIEW_RC_CODE. A user whose office can't be found (no users row — e.g. the built-in
-// administrator —, no rc_id, or a failed lookup) gets the originating view, never an error page and never the review actions.
+// GlobalService::CENTRAL_REVIEW_RC_CODE. A user whose office can't be found (no users row, no rc_id, or a failed lookup) gets the
+// originating view, never an error page and never the review actions — unless they are an administrator (see below).
+//   Administrator (user level -1) -> no restriction: can review (Approve / Decline) any Submitted request, whatever office it
+//       belongs to, and keeps Edit + Process on every Saved one. Same rule as the rest of the app (DisbursementVoucherService,
+//       voucher/readone.php): the built-in administrator (user_id -1, no uac.users row) or a uac.users row whose user_level_id
+//       is '-1'. NOT IsSysAdmin(), which only tracks PHPMaker's hardcoded admin login and is never true for a DB-authenticated user.
 $userid = CurrentUserID();
 $_brv_fmdRcCode = '35-074-0000000-032';
 $_brv_isFmd = false;
+$_brv_isAdmin = (int) $userid === -1
+    || in_array(-1, array_map('intval', explode(',', (string) CurrentUserLevel())), true);
 try {
+    // LEFT JOIN: an administrator may have no office (rc_id) — the user row is still needed for its user_level_id
     $_brv_rc = ExecuteRow(
-        'SELECT rc.rc_id, rc.rc_code, rc.rc_name FROM uac.users u '
-        .'JOIN fims.responsibility_code rc ON rc.rc_id = u.rc_id WHERE u.user_id = '.(int) $userid,
+        'SELECT u.user_level_id, rc.rc_id, rc.rc_code, rc.rc_name FROM uac.users u '
+        .'LEFT JOIN fims.responsibility_code rc ON rc.rc_id = u.rc_id WHERE u.user_id = '.(int) $userid,
         'DB'
     ) ?: null;
     $_brv_isFmd = $_brv_rc !== null && trim((string) ($_brv_rc['rc_code'] ?? '')) === $_brv_fmdRcCode;
+    if ($_brv_rc !== null && trim((string) ($_brv_rc['user_level_id'] ?? '')) === '-1') {
+        $_brv_isAdmin = true;
+    }
 } catch (\Throwable $e) {
     $_brv_isFmd = false;
     LogError('budget-revision-page: could not look up the current user\'s RC — '.$e->getMessage());
 }
+// Who gets the review actions (details + Approve / Decline on a Submitted request): FMD, and the administrator without restriction.
+$_brv_canReview = $_brv_isFmd || $_brv_isAdmin;
 ?>
 
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -109,7 +121,7 @@ try {
             </div>
             <div>
                 <div class="nha-hdr-title">Budget Revision Requests</div>
-                <p class="nha-hdr-sub" id="brv-hdr-sub"><?php echo $_brv_isFmd
+                <p class="nha-hdr-sub" id="brv-hdr-sub"><?php echo $_brv_canReview
                     ? 'Review the revision and realignment requests the offices have submitted — approve or decline them.'
                     : 'File a revision or realignment request and save it, then Process it to submit it for review — and follow its status.'; ?></p>
             </div>
@@ -208,9 +220,10 @@ try {
    the budget line's request under it), the Budget Line being revised (its account, and where it sits; + the To line when
    funds move to another one), From / To / Change amounts, Reason, Status, and when it was requested and by whom.
    A request is filed as SAVED; Process (Saved -> Submitted) hands it to FMD and ends editing; FMD then approves or declines it.
-   Row actions depend on who is looking (BRV_IS_FMD, set by the PHP at the top of this file) and on the request's status:
+   Row actions depend on who is looking (BRV_CAN_REVIEW / BRV_IS_ADMIN, set by the PHP at the top of this file) and on the request's status:
      FMD         -> Review Request (Submitted) / View Details (any other): the details modal with Approve / Decline;
                     and Edit + Process on a Saved request that FMD itself filed
+     Admin       -> the same review actions as FMD, with no restriction; plus Edit + Process on ANY Saved request
      anyone else -> Edit + Process on a Saved request; Edit is off from then on (Submitted, Approved, Declined)
    Delete is not offered to either. The API enforces what can be edited / processed / reviewed by status (Saved / Saved / Submitted),
    but not who does it — that split only decides what the page offers.
@@ -220,6 +233,10 @@ const BRV_BASE = '<?php echo $_brv_api; ?>';
 const BRV_API  = BRV_BASE + '/budget_revision';
 // true when the logged-in user belongs to the Financial Management Department (see the PHP at the top).
 const BRV_IS_FMD = <?php echo $_brv_isFmd ? 'true' : 'false'; ?>;
+// true when the logged-in user is an administrator (user level -1): no restriction on reviewing or editing
+const BRV_IS_ADMIN = <?php echo $_brv_isAdmin ? 'true' : 'false'; ?>;
+// who is offered Review Request / Approve / Decline: FMD, or the administrator
+const BRV_CAN_REVIEW = <?php echo $_brv_canReview ? 'true' : 'false'; ?>;
 // the logged-in user's id (the built-in administrator is -1): a request's user_id is who filed it
 const BRV_USER_ID = <?php echo (int) $userid; ?>;
 
@@ -405,11 +422,11 @@ const BRV_ICON_EDIT  = '<svg width="13" height="13" fill="none" viewBox="0 0 24 
 
 const BRV_ICON_PROCESS = '<svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>';
 
-// The menu a row gets depends on the request's status and on who is looking (BRV_IS_FMD):
+// The menu a row gets depends on the request's status and on who is looking (BRV_CAN_REVIEW, BRV_IS_ADMIN):
 //   Saved      -> Edit and Process (Process submits it; it can't be edited after that). FMD gets them only on a request it filed itself,
-//                 and "View Details" besides — FMD does not touch the offices' drafts.
-//   Submitted  -> FMD: Review Request (Approve / Decline). Anyone else: Edit, switched off.
-//   Approved / Declined -> FMD: View Details. Anyone else: Edit, switched off (an approved request has been applied to its budget lines).
+//                 and "View Details" besides — FMD does not touch the offices' drafts. An administrator gets them on any request.
+//   Submitted  -> FMD / administrator: Review Request (Approve / Decline). Anyone else: Edit, switched off.
+//   Approved / Declined -> FMD / administrator: View Details. Anyone else: Edit, switched off (an approved request has been applied to its budget lines).
 function brv_rowActions(r) {
     const id = Number(r.id);
     const saved = r.status === 'SAVED';
@@ -426,13 +443,13 @@ function brv_rowActions(r) {
         </button>`,
     ];
 
-    if (BRV_IS_FMD) {
+    if (BRV_CAN_REVIEW) {
         const review = r.status === 'SUBMITTED';
         items.push(`<button type="button" class="nha-menu-item" onclick="brv_closeMenus();brv_view(${id});">
             ${review ? BRV_ICON_REVIEW : BRV_ICON_VIEW}
             ${review ? 'Review Request' : 'View Details'}
         </button>`);
-        if (saved && own) items.push(...editAndProcess());
+        if (saved && (own || BRV_IS_ADMIN)) items.push(...editAndProcess());
     } else if (saved) {
         items.push(...editAndProcess());
     } else {
@@ -682,7 +699,7 @@ function brv_openView(r) {
     reason.classList.toggle('is-empty', !r.reason);
     $brv('brv-view-meta').textContent = `Requested by ${brv_requestedBy(r)} on ${brv_fmtDateTime(r.created_at)}`;
 
-    // status — Decline / Approve only while the request is Submitted (processed, waiting for a decision), and only for FMD (the reviewers)
+    // status — Decline / Approve only while the request is Submitted (processed, waiting for a decision), and only for the reviewers (FMD, or the administrator)
     const known     = BRV_STATUS[r.status];
     const s         = known || { label: r.status || 'Unknown', cls: 'nha-bdg-gray' };
     const submitted = r.status === 'SUBMITTED';
@@ -695,7 +712,7 @@ function brv_openView(r) {
     $brv('brv-view-status-note').textContent = submitted ? 'Waiting for a decision'
         : r.status === 'SAVED' ? 'Saved — not submitted for review yet (Process it first)'
         : known ? `${label} on ${brv_fmtDateTime(r.update_at)}` : 'Unrecognised status';
-    $brv('brv-view-actions').hidden = !(submitted && BRV_IS_FMD);
+    $brv('brv-view-actions').hidden = !(submitted && BRV_CAN_REVIEW);
     brv_setReviewBusy(false);
 
     $brv('brv-view-overlay').classList.add('open');

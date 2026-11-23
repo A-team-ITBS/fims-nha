@@ -73,6 +73,8 @@ class BudgetReqService
     /** Per request: does user N hold user level X? / is user N of the central review RC? (see hasUserLevel() / isReviewer()) */
     private array $levelCache = [];
     private array $reviewerCache = [];
+    /** Per request: is user N a superadmin (user level -1)? (see isSuperAdmin()) — reviewInfo() asks once per list row */
+    private array $superAdminCache = [];
 
     private string $table = 'fims.budget_req';
     private string $tableBudgetReqProgram = 'fims.budget_req_program';
@@ -1340,13 +1342,18 @@ class BudgetReqService
      * Draft, Returned or Approved), the user must be of the central review RC (FMD) AND hold the user level of THAT step,
      * and — when $expectedNext is given — the step must be the one that leads there: endorse() only works on a step whose
      * approval gives "Endorsed" (the Budget Officer's), approve() only on the one that gives "Approved" (the Budget Head's).
+     * A superadmin (isSuperAdmin) needs neither the FMD office nor the step's user level — only the status checks above apply.
      * Returns { success: true, step } (the REVIEW_STEPS entry + 'status') or the refusal.
      */
     private function guardReviewStep(array $row, ?int $userId, ?string $expectedNext): array
     {
         $fail = fn (string $message): array => ['success' => false, 'message' => $message];
 
-        if (!$this->isReviewer($userId)) {
+        // A superadmin has no restriction here: not tied to the FMD office, and may act at every step of the chain
+        // (the request must still be under review, and endorse() / approve() still need the step that leads to their status).
+        $isSuperAdmin = $this->isSuperAdmin($userId);
+
+        if (!$isSuperAdmin && !$this->isReviewer($userId)) {
             return $fail('Only the Financial Management Department can endorse, approve or return budget requests.') + ['forbidden' => true];
         }
 
@@ -1362,7 +1369,7 @@ class BudgetReqService
 
             return $fail("Budget request {$id} is '{$step['status']}' and cannot be {$verb} at this step — it is waiting for the {$step['actor']}.");
         }
-        if (!$this->hasUserLevel($userId, $step['actor'])) {
+        if (!$isSuperAdmin && !$this->hasUserLevel($userId, $step['actor'])) {
             return $fail("This budget request is {$step['status']}: only the {$step['actor']} can act on it at this step.") + ['forbidden' => true];
         }
 
@@ -1374,7 +1381,7 @@ class BudgetReqService
      * withReview()): in_review, the status it is in, who acts on it (actor, a user level name), the status an approval
      * gives (next_status), whether that is the final approval (is_final), where a Return sends it and whom (return_status,
      * return_actor — null = back to the originating office), is_returned (it came back from the Budget Head) and
-     * whether THIS user may decide it now (can_decide: an FMD user holding the step's user level). The endorse /
+     * whether THIS user may decide it now (can_decide: an FMD user holding the step's user level, or a superadmin at any step). The endorse /
      * approve / return calls enforce the same rules again.
      */
     public function reviewInfo(array $row, ?int $userId): array
@@ -1393,7 +1400,9 @@ class BudgetReqService
             'return_status' => $step['return'],
             'return_actor' => self::REVIEW_STEPS[$step['return']]['actor'] ?? null,
             'is_returned' => $step['status'] === self::STATUS_RETURNED_TO_BUDGET_OFFICER,
-            'can_decide' => $this->isReviewer($userId) && $this->hasUserLevel($userId, $step['actor']),
+            // a superadmin may decide it at any step; anyone else must be FMD AND hold the step's user level
+            'can_decide' => $this->isSuperAdmin($userId)
+                || ($this->isReviewer($userId) && $this->hasUserLevel($userId, $step['actor'])),
         ];
     }
 
@@ -1456,6 +1465,51 @@ class BudgetReqService
             ) > 0;
         } catch (\Throwable $e) {
             App\LogError('BudgetReqService::hasUserLevel '.$e->getMessage());
+
+            return false;   // (not cached: a failed lookup is retried)
+        }
+    }
+
+    /**
+     * Is this user a superadmin (user level -1)? The built-in administrator (user_id -1, which has no uac.users row — or an id
+     * the API could not resolve, then the logged-in level is read instead), or a uac.users row whose user_level_id lists -1
+     * (a VARCHAR that may hold several ids, "-1,3"). Same people as GlobalService::getUserRcScope()['is_admin'], but this check
+     * FAILS CLOSED — a missing user, no level, or a lookup failure is "no", never "yes" — because it gates the review chain, where
+     * getUserRcScope() fails open for listing. Same rule as BudgetAllocationService::isSuperAdmin().
+     */
+    private function isSuperAdmin(?int $userId): bool
+    {
+        $userId = (int) $userId;
+        if (array_key_exists($userId, $this->superAdminCache)) {
+            return $this->superAdminCache[$userId];
+        }
+
+        try {
+            if ($userId === -1) {
+                return $this->superAdminCache[$userId] = true;
+            }
+            if ($userId <= 0) {
+                // The id could not be resolved: api.php turns a JWT user id <= 0 (PHPMaker's built-in administrator is -1) into the
+                // session's UAC id, or 0. The middleware has still logged the user in with the level from the signed JWT / session,
+                // so that level says whether this is the administrator.
+                foreach (explode(',', (string) App\CurrentUserLevel()) as $level) {
+                    if (trim($level) === '-1') {
+                        return $this->superAdminCache[$userId] = true;
+                    }
+                }
+
+                return $this->superAdminCache[$userId] = false;
+            }
+            $raw = (string) App\ExecuteScalar("SELECT user_level_id FROM uac.users WHERE user_id = {$userId}", 'DB');
+            foreach (explode(',', $raw) as $part) {
+                if (trim($part) === '-1') {
+                    return $this->superAdminCache[$userId] = true;
+                }
+            }
+
+            return $this->superAdminCache[$userId] = false;
+        } catch (\Throwable $e) {
+            App\LogError('BudgetReqService::isSuperAdmin '.$e->getMessage());
 
             return false;   // (not cached: a failed lookup is retried)
         }

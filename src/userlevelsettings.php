@@ -229,7 +229,9 @@ $USER_LEVEL_PRIVS = [["{FIMS}audit_logs","-2","0"],
     ["{FIMS}closing-balance-page.php","-2","0"],
     ["{FIMS}closing-balance-page.php","0","0"],
     ["{FIMS}bank-reconciliation-page.php","-2","0"],
-    ["{FIMS}bank-reconciliation-page.php","0","0"]];
+    ["{FIMS}bank-reconciliation-page.php","0","0"],
+    ["{FIMS}fund-sweeping-page.php","-2","0"],
+    ["{FIMS}fund-sweeping-page.php","0","0"]];
 
 /**
  * Tables
@@ -306,7 +308,7 @@ $USER_LEVEL_TABLES = [["audit_logs","audit_logs","Audit Logs",false,"{FIMS}",""]
     ["subsidiary-ledger-page.php","subsidiary_ledger_page","Subsidiary Ledger",true,"{FIMS}","SubsidiaryLedgerPage"],
     ["journals-page.php","journals_page","Journals",true,"{FIMS}","JournalsPage"],
     ["trial-balance-page.php","trial_balance_page","Trial Balance",true,"{FIMS}","TrialBalancePage"],
-    ["budget-prop-page.php","budget_prop_page","Budget Propose",true,"{FIMS}","BudgetPropPage"],
+    ["budget-prop-page.php","budget_prop_page","Budget Propose",true,"{FIMS}",""],
     ["notification_reads","notification_reads","notification reads",true,"{FIMS}","NotificationReadsList"],
     ["saro-registry-page.php","saro_registry_page","SARO Registry",true,"{FIMS}","SaroRegistryPage"],
     ["supplemental-funds-page.php","supplemental_funds_page","Supplemental Funds",true,"{FIMS}","SupplementalFundsPage"],
@@ -345,4 +347,5 @@ $USER_LEVEL_TABLES = [["audit_logs","audit_logs","Audit Logs",false,"{FIMS}",""]
     ["statement-of-changes-page.php","statement_of_changes_page","Changes in Net Assets/Equity",true,"{FIMS}","StatementOfChangesPage"],
     ["cash-flow-page.php","cash_flow_page","Cash Flow",true,"{FIMS}","CashFlowPage"],
     ["closing-balance-page.php","closing_balance_page","Closing Balance",true,"{FIMS}","ClosingBalancePage"],
-    ["bank-reconciliation-page.php","bank_reconciliation_page","Bank Reconciliation",true,"{FIMS}","BankReconciliationPage"]];
+    ["bank-reconciliation-page.php","bank_reconciliation_page","Bank Reconciliation",true,"{FIMS}","BankReconciliationPage"],
+    ["fund-sweeping-page.php","fund_sweeping_page","Fund Sweeping",true,"{FIMS}","FundSweepingPage"]];

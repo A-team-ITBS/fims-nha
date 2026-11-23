@@ -24,6 +24,20 @@ $app->get("/bank-reconciliation/history/{bank_account_id}", function ($request, 
     return $response->withHeader('Content-Type', 'application/json')->write($service->getHistory($args['bank_account_id']));
 });
 
+$app->get("/bank-reconciliation/ledger", function ($request, $response) {
+    $params = $request->getQueryParams();
+    $service = new Service\BankReconciliationService();
+    return $response->withHeader('Content-Type', 'application/json')->write($service->getLedger($params['bank_account_id'] ?? 0, $params['as_of_date'] ?? date('Y-m-d')));
+});
+
+$app->post("/bank-reconciliation/clear-item", function ($request, $response) {
+    $data = $request->getParsedBody();
+    $service = new Service\BankReconciliationService();
+    return $response->withHeader('Content-Type', 'application/json')->write(
+        $service->setCleared($data['bank_account_id'] ?? 0, $data['gl_id'] ?? 0, !empty($data['cleared']))
+    );
+});
+
 $app->post("/bank-reconciliation/save", function ($request, $response) {
     $data = $request->getParsedBody();
     $service = new Service\BankReconciliationService();

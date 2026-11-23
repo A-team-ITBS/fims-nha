@@ -122,10 +122,6 @@ $_jel_voucherView = 'Voucher';
         </div>
     </div>
 
-    <p class="nha-hint no-print" style="margin:0 0 14px;color:var(--afims-text-muted,#62657E);font-size:13px;">
-        Most Journal Entries are prepared by Accounting while processing a Disbursement Voucher — click a row with a DV Number to open its voucher. Use <strong>+ Add JEV</strong> for a standalone entry with no DV (period-end Accrual/Depreciation/Prepayments/Closing adjustments).
-    </p>
-
     <!-- Error banner -->
     <div id="jel-error" class="nha-error" style="display:none;">
         <svg fill="none" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
@@ -189,7 +185,6 @@ $_jel_voucherView = 'Voucher';
                     <svg fill="none" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
                     <span id="jaf-error-msg"></span>
                 </div>
-                <p class="nha-hint" style="margin:0 0 10px;">No Disbursement Voucher — for period-end Accrual/Depreciation/Prepayments/Closing entries (or any other direct General Journal entry) Accounting books without a disbursement.</p>
                 <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:10px;">
                     <div class="nha-fg" style="max-width:180px;">
                         <label>JEV Date <span class="nha-req">*</span></label>
@@ -375,8 +370,8 @@ function jel_renderTable(rows) {
     tbody.innerHTML = rows.map(r => {
         const isStandalone = !r.dv_id;
         const rowClick = isStandalone
-            ? (r.jev_status === 'DRAFT' ? `jaf_openEdit(${r.jev_id})` : `jaf_openView(${r.jev_id})`)
-            : `jel_viewDv(${r.dv_id})`;
+            ? (r.jev_status === 'DRAFT' ? `jaf_openEdit(${r.jev_id})` : `jaf_viewPrint(${r.jev_id})`)
+            : `jel_print(${r.dv_id}, null, ${r.jev_id})`;
         const actions = jel_actionButtons(r, isStandalone);
         return `<tr style="cursor:pointer;" onclick="${rowClick}">
         <td class="nha-mono">${jel_esc(r.jev_no) || '—'}</td>
@@ -398,17 +393,12 @@ function jel_renderTable(rows) {
     }).join('');
 }
 
-function jel_viewDv(dvId) {
-    window.location.href = `${JEL_VOUCHER_VIEW}?dv=${dvId}`;
-}
-
 /* ── Actions dropdown menu (same "nha-tools-menu" convention as budget-req-page.php's
    bgr_actionButtons) — one "Actions" trigger per row holding View + the review-chain action +
    Print/Edit/Delete, instead of a row of separate buttons. ──────────────────────────────── */
 const JEL_ICON_VIEW    = `<svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.477 0 8.268 2.943 9.542 7-1.274 4.057-5.065 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>`;
 const JEL_ICON_EDIT    = `<svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>`;
 const JEL_ICON_ADVANCE = `<svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>`;
-const JEL_ICON_PRINT   = `<svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a1 1 0 001-1v-4a1 1 0 00-1-1H9a1 1 0 00-1 1v4a1 1 0 001 1zm8-12V5a1 1 0 00-1-1H8a1 1 0 00-1 1v4h10z"/></svg>`;
 const JEL_ICON_DELETE  = `<svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>`;
 
 function jel_actionButtons(r, isStandalone) {
@@ -421,8 +411,8 @@ function jel_actionButtons(r, isStandalone) {
     const viewItem = isStandalone
         ? (r.jev_status === 'DRAFT'
             ? `<a class="nha-menu-item" href="javascript:void(0);" onclick="jel_closeMenus(); jaf_openEdit(${r.jev_id});">${JEL_ICON_EDIT}Edit</a>`
-            : `<a class="nha-menu-item" href="javascript:void(0);" onclick="jel_closeMenus(); jaf_openView(${r.jev_id});">${JEL_ICON_VIEW}View</a>`)
-        : `<a class="nha-menu-item" href="javascript:void(0);" onclick="jel_closeMenus(); jel_viewDv(${r.dv_id});">${JEL_ICON_VIEW}View</a>`;
+            : `<a class="nha-menu-item" href="javascript:void(0);" onclick="jel_closeMenus(); jaf_viewPrint(${r.jev_id});">${JEL_ICON_VIEW}View</a>`)
+        : `<a class="nha-menu-item" href="javascript:void(0);" onclick="jel_closeMenus(); jel_print(${r.dv_id}, null, ${r.jev_id});">${JEL_ICON_VIEW}View</a>`;
 
     // Hidden once the current user has already taken a step on this JEV (acted_by_me, from the list
     // API) — a different user must do the next one. The server enforces the same rule.
@@ -431,15 +421,11 @@ function jel_actionButtons(r, isStandalone) {
         ? `<a class="nha-menu-item" href="javascript:void(0);" onclick="jel_closeMenus(); jaf_jevStatus(${r.jev_id}, '${nextStep[r.jev_status]}', null);">${JEL_ICON_ADVANCE}${nextLabel[r.jev_status]}</a>`
         : '';
 
-    const printItem = !isStandalone
-        ? `<a class="nha-menu-item" href="javascript:void(0);" onclick="jel_closeMenus(); jel_print(${r.dv_id}, null, ${r.jev_id});">${JEL_ICON_PRINT}Print</a>`
-        : '';
-
     const deleteItem = (isStandalone && r.jev_status === 'DRAFT')
         ? `<a class="nha-menu-item danger" href="javascript:void(0);" onclick="jel_closeMenus(); jaf_delete(${r.jev_id}, null);">${JEL_ICON_DELETE}Delete</a>`
         : '';
 
-    const items = [viewItem, advanceItem, printItem].filter(Boolean).join('');
+    const items = [viewItem, advanceItem].filter(Boolean).join('');
     const deleteSection = deleteItem ? `<div class="nha-menu-divider"></div>${deleteItem}` : '';
 
     return `<div class="nha-tools-menu">
@@ -641,8 +627,21 @@ async function jaf_openAdd() {
 async function jaf_openEdit(jevId) {
     await jaf_loadForEdit(jevId, false);
 }
-async function jaf_openView(jevId) {
-    await jaf_loadForEdit(jevId, true);
+// A non-DRAFT standalone JEV is already posted/under review — "View" shows it the same way it
+// would print (shared print preview, prp_open + prp_jevFromDv) instead of the disabled Add/Edit
+// form, so what the user sees matches the document they'd actually print or file.
+async function jaf_viewPrint(jevId) {
+    window.PagePreloader?.show();
+    try {
+        const res  = await jel_authFetch(`${JEL_API}/journal-entry/${jevId}`);
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message || 'Failed to load the Journal Entry Voucher.');
+        await prp_open(prp_jevFromDv({}, json.data), { type: 'JEV' });
+    } catch (e) {
+        jel_showError(e.message);
+    } finally {
+        window.PagePreloader?.hide();
+    }
 }
 async function jaf_loadForEdit(jevId, readOnly) {
     await jaf_ensureLookups();
@@ -691,23 +690,11 @@ function jaf_close() {
     $jel('jaf-overlay').classList.remove('open');
 }
 
-// Print this standalone JEV via the shared print preview (prp_open + prp_jevFromDv — passing an
-// empty {} as the "dv" lets its fallbacks (reference_no/payee_name/rfa_number) naturally come out
-// blank, which is correct here since a standalone JEV has no DV at all). Re-fetches rather than
-// reusing in-memory form state, so Print always reflects what was actually saved.
+// Print this standalone JEV via the shared print preview — re-fetches rather than reusing
+// in-memory form state, so Print always reflects what was actually saved (see jaf_viewPrint).
 async function jaf_print() {
     if (!jaf_editId) return;
-    window.PagePreloader?.show();
-    try {
-        const res  = await jel_authFetch(`${JEL_API}/journal-entry/${jaf_editId}`);
-        const json = await res.json();
-        if (!json.success) throw new Error(json.message || 'Failed to load the Journal Entry Voucher.');
-        await prp_open(prp_jevFromDv({}, json.data), { type: 'JEV' });
-    } catch (e) {
-        jaf_showError(e.message);
-    } finally {
-        window.PagePreloader?.hide();
-    }
+    await jaf_viewPrint(jaf_editId);
 }
 
 function jaf_addLine(line) {

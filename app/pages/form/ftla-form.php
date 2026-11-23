@@ -1234,7 +1234,7 @@ function ftlm_bankOptsHtml(banks, { excludeId = '', matchBankName = '', currentV
 }
 
 // "1 DV per account" — same ftlm_dvOptions list (loaded in full by
-// ftlm_loadDvOptions(), status=RELEASED) used for both the single-debit DV
+// ftlm_loadDvOptions(), status=FOR_TREASURY) used for both the single-debit DV
 // select (#ftlm_dv_number) and each multi-debit row's own DV select below.
 // Once a DV is tagged to an FTLA, it's dropped from every OTHER select so
 // the same DV never gets tagged to two different FTLAs — see
@@ -1538,22 +1538,17 @@ function ftlm_onRfaSelect() {
 
 /* ── DV Number(s) — "1 DV per account" ─────────────────────
    Reuses /voucher/list (the same route the Voucher pages already use),
-   unfiltered by status — every DV, same reuse-what-exists approach as the
-   LAA/RFA pickers above. DV numbers are data-only: saved for recordkeeping,
-   never referenced in the generated memo/PDF/DOCX (same treatment as Bank
-   Officers/Request Reference/Remarks). A single-debit transfer gets one
-   plain <select> (#ftlm_dv_number); a multi-debit transfer gets one per
-   debit row instead (ftlm_dvOptsHtml(), ftlm_onDebitDvChange() in the
-   debit-row section above) — never both at once, toggled by
-   ftlm_toggleMultiDebit(). */
+   filtered to status=FOR_TREASURY — an FTLA is Treasury's own release of the
+   DV (submitting it to Accounting posts the payment JEV and releases every
+   DV listed — see FtlaService::submitPaymentJev()), same "only a DV Treasury
+   is currently holding" rule CheckProcessingService::getDvsForPrep() uses
+   for check preparation. A single-debit transfer gets one plain <select>
+   (#ftlm_dv_number); a multi-debit transfer gets one per debit row instead
+   (ftlm_dvOptsHtml(), ftlm_onDebitDvChange() in the debit-row section
+   above) — never both at once, toggled by ftlm_toggleMultiDebit(). */
 async function ftlm_loadDvOptions() {
     try {
-        // No status filter — show every DV regardless of where it is in its
-        // own workflow (DRAFT through RELEASED), not just the terminal
-        // "money actually went out" status. DV No. here is data-only
-        // recordkeeping (see this function's docblock above), so there's no
-        // correctness reason to withhold an in-progress DV from the picker.
-        const res  = await ftlm_fetch('voucher/list?limit=500');
+        const res  = await ftlm_fetch('voucher/list?limit=500&status=FOR_TREASURY');
         const rows = Array.isArray(res.data) ? res.data : (res.data?.rows || []);
         ftlm_dvOptions = rows;
         const sel = ftlm$('ftlm_dv_number');
