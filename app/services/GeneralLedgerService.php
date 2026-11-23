@@ -292,8 +292,16 @@ class GeneralLedgerService
             return ['success' => true, 'message' => 'Nothing to settle — the Journal Entry did not route through Accounts Payable.', 'data' => ['posted' => false]];
         }
 
+        // sl_coa.account_code: the bank account's OWN Cash sub-ledger (fims.bank_accounts.sl_code ->
+        // a chart_of_accounts child row, e.g. "1-01-02-010-01" — set up via Bank Management's own
+        // GL/SL two-step picker, same convention as fims.vendors.sl_code) when one is configured,
+        // instead of the bare account_code — same "credit the account that actually has a
+        // subsidiary ledger" reasoning the Accounts Payable debit line above already follows.
         $bank = App\ExecuteRow(
-            "SELECT account_code, account_name FROM {$this->tableBankAccounts} WHERE bank_account_id = {$bankAccountId}",
+            "SELECT ba.account_code, ba.account_name, sl_coa.account_code AS sl_account_code
+             FROM {$this->tableBankAccounts} ba
+             LEFT JOIN {$this->tableCoa} sl_coa ON sl_coa.account_id = ba.sl_code
+             WHERE ba.bank_account_id = {$bankAccountId}",
             'DB'
         );
         if (!$bank || !$bank['account_code']) {
@@ -301,6 +309,7 @@ class GeneralLedgerService
                 ? "Bank account '{$bank['account_name']}' has no Chart-of-Accounts Cash account mapped — configure it before releasing checks against it."
                 : "Bank account #{$bankAccountId} not found."];
         }
+        $bankCreditAccountCode = $bank['sl_account_code'] ?: $bank['account_code'];
 
         // Created at FOR_SECTION_CHIEF: Accounting has prepared it, it now awaits Section Chief review.
         $startId = $this->getStatusIdByName('FOR_SECTION_CHIEF');
@@ -335,7 +344,7 @@ class GeneralLedgerService
         );
         App\Execute(
             "INSERT INTO {$this->tableJevLines} (jev_id, line_number, account_code, debit, credit, description)
-             VALUES ({$jevId}, 2, " . $this->str($bank['account_code']) . ', 0, ' . (float) $amount . ', '
+             VALUES ({$jevId}, 2, " . $this->str($bankCreditAccountCode) . ', 0, ' . (float) $amount . ', '
                 . $this->str("Payment via {$docRefNo}") . ')',
             'DB'
         );
