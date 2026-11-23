@@ -371,14 +371,20 @@ $app->delete('/budget_req_project_attachment/delete/{id}', function ($request, $
 // COB" modal reads (any status, not just Approved) — see BudgetReqCobReportService::report(). Same RC-scoping
 // convention as /budget_req/all (GlobalService::resolveBudgetReqRcFilter()): a Regional/District user only ever
 // sees their own office's, a central reviewer with central=1 sees every office's.
-// query: mode ('region' | 'program', required), fiscal_yr (optional, '' = every year)
+// query: mode ('region' | 'program', required), fiscal_yr (optional, '' = every year),
+//        format ('xlsx' default — "Export to Excel", or 'pdf' — "Preview and Print")
 // response: { success: true, filename, mime, data: base64 } | { success: false, message }
 $app->get('/budget_req/cob-print', function ($request, $response, $args) use ($BudgetReqCobReportService) {
     try {
         $params = $request->getQueryParams();
         $scope  = GlobalService::getUserRcScope((int) $request->getAttribute('user_id'));
         $rcId   = GlobalService::resolveBudgetReqRcFilter($scope, $params);
-        $result = $BudgetReqCobReportService->report((string) ($params['mode'] ?? ''), (string) ($params['fiscal_yr'] ?? ''), $rcId);
+        $result = $BudgetReqCobReportService->report(
+            (string) ($params['mode'] ?? ''),
+            (string) ($params['fiscal_yr'] ?? ''),
+            $rcId,
+            (string) ($params['format'] ?? 'xlsx')
+        );
         $code   = $result['success'] ? 200 : ($result['httpCode'] ?? 400);
         unset($result['httpCode']);
 
