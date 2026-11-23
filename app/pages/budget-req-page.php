@@ -78,23 +78,39 @@ $_bgr_canModify = !$_bgr_isBudgetOfficer;
 .nha-menu-item.danger:hover { background:#fdecec;color:#c0392b; }
 .nha-menu-item svg { width:13px;height:13px;flex-shrink:0;opacity:.7; }
 .nha-menu-divider { border-top:1px solid var(--afims-border, #E4ECF2);margin:3px 0; }
+
+/* ── Page header: copied from User Access (.app-page-header in app/fims-css/fims.css — that file is not loaded here,
+      so the rules are repeated, scoped to this page). Stays navy in dark mode too, like User Access. ── */
+#bgr-root .app-page-header { position:relative;display:flex;align-items:center;gap:1rem;flex-wrap:wrap;overflow:hidden;
+    background:linear-gradient(135deg, #000E3E 0%, #001A5E 100%);border-radius:.75rem;padding:1.5rem 1.75rem;margin-bottom:1.5rem; }
+#bgr-root .app-page-header::before,
+#bgr-root .app-page-header::after { content:"";position:absolute;border-radius:50%;background:rgba(255,255,255,.05);pointer-events:none; }
+#bgr-root .app-page-header::before { width:180px;height:180px;top:-90px;right:80px; }
+#bgr-root .app-page-header::after { width:120px;height:120px;bottom:-70px;right:-20px;background:rgba(255,255,255,.06); }
+#bgr-root .app-page-header-icon { position:relative;z-index:1;flex:0 0 auto;width:3rem;height:3rem;border-radius:.5rem;
+    display:flex;align-items:center;justify-content:center;font-size:1.25rem;
+    background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);color:#FFFFFF; }
+#bgr-root .app-page-title { position:relative;z-index:1;font-size:1.6rem;font-weight:800;letter-spacing:-.01em;color:#FFFFFF;margin:0 0 .25rem; }
+#bgr-root .app-page-subtitle { position:relative;z-index:1;font-size:.9rem;color:rgba(255,255,255,.75);margin:0;max-width:640px; }
+/* the Refresh / Add buttons stay on the right of the banner, above its decorative circles */
+#bgr-root .app-page-header-actions { position:relative;z-index:1;margin-left:auto;display:flex;flex-wrap:wrap;gap:8px; }
 </style>
 
 <div id="bgr-root" class="nha-root">
 
     <!-- ── HEADER ─────────────────────────────────────────── -->
-    <div class="nha-hdr no-print">
-        <div class="nha-hdr-l">
-            <div class="nha-hdr-ico">
-                <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="#fff" stroke-width="1.8">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 7h6m-6 4h6m-6 4h3M5 3h14a1 1 0 011 1v16a1 1 0 01-1 1H5a1 1 0 01-1-1V4a1 1 0 011-1z"/>
-                </svg>
-            </div>
-            <div>
-                <div class="nha-hdr-title">Budget Requirements</div>
-            </div>
+    <!-- same banner as User Access (app-page-header in app/fims-css/fims.css) -->
+    <div class="app-page-header no-print">
+        <div class="app-page-header-icon">
+            <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="#fff" stroke-width="1.8">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 7h6m-6 4h6m-6 4h3M5 3h14a1 1 0 011 1v16a1 1 0 01-1 1H5a1 1 0 01-1-1V4a1 1 0 011-1z"/>
+            </svg>
         </div>
-        <div class="nha-hdr-r">
+        <div>
+            <h1 class="app-page-title">Budget Requirements</h1>
+            <p class="app-page-subtitle">Prepare budget requests by program, project and line item, then send them for review.</p>
+        </div>
+        <div class="app-page-header-actions">
             <button id="bgr-refresh" type="button" class="nha-btn-hdr" title="Refresh">
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                 Refresh
@@ -550,14 +566,13 @@ function bgr_fmdActionButtons(flatRow, idx) {
     const { header, program } = flatRow;
     const isDraft = header.status_name === 'Draft';
 
-    // Budget Head (level 8) on an Approved request: nothing left for them to do, so the row has no
-    // Actions button at all. This is the ONE place that rule lives — drop `headIsDone` from viewItem
-    // below to let the Budget Head open the details of Approved requests as well.
+    // Budget Head (level 8) on an Approved request: nothing left to DECIDE, so Budget Review drops off
+    // (headIsDone below) — but View stays, so they can still look at what they approved.
     const headIsDone = BGR_IS_BUDGET_HEAD && header.status_name === 'Approved';
 
-    // The request's details, read-only: every Program, Project and line item. Offered on every
-    // request — including ones that can no longer be processed or decided — except as above.
-    const viewItem = headIsDone ? '' : `<a class="nha-menu-item" href="javascript:void(0);" onclick="bgr_viewRequest(${idx});bgr_closeMenus();">
+    // The request's details, read-only: every Program, Project and line item. Offered on every request,
+    // whatever its status or who is looking.
+    const viewItem = `<a class="nha-menu-item" href="javascript:void(0);" onclick="bgr_viewRequest(${idx});bgr_closeMenus();">
             <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.477 0 8.268 2.943 9.542 7-1.274 4.057-5.065 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
             View
         </a>`;

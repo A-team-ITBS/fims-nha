@@ -31,12 +31,12 @@ $fsCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
 
 <div class="fims-wrap" id="fsModule">
 
-    <div class="fims-page-header">
-        <div class="fims-page-header-bubbles"><span></span><span></span><span></span><span></span><span></span></div>
-        <div class="fims-page-header-left">
-            <div class="fims-page-header-icon"><i class="fas fa-broom"></i></div>
-            <h1>Fund Sweeping</h1>
-            <p>Bulk-prepare draft FTLAs from a Region/Office's un-swept Deposits</p>
+    <!-- same banner as User Access: app-page-header (styled by app/fims-css/fims.css, already loaded above) -->
+    <div class="app-page-header">
+        <div class="app-page-header-icon"><i class="fas fa-broom"></i></div>
+        <div>
+            <h1 class="app-page-title">Fund Sweeping</h1>
+            <p class="app-page-subtitle">Bulk-prepare draft FTLAs from a Region/Office's un-swept Deposits</p>
         </div>
     </div>
 

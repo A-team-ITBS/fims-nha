@@ -22,14 +22,14 @@ $brCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
 
 <div class="fims-wrap" id="brModule">
 
-    <div class="fims-page-header">
-        <div class="fims-page-header-bubbles"><span></span><span></span><span></span><span></span><span></span></div>
-        <div class="fims-page-header-left">
-            <div class="fims-page-header-icon"><i class="fas fa-money-check-dollar"></i></div>
-            <h1>Bank Reconciliation</h1>
-            <p>Reconcile each bank account's book balance against the bank balance, month by month</p>
+    <!-- same banner as User Access: app-page-header (styled by app/fims-css/fims.css, already loaded above) -->
+    <div class="app-page-header">
+        <div class="app-page-header-icon"><i class="fas fa-money-check-dollar"></i></div>
+        <div>
+            <h1 class="app-page-title">Bank Reconciliation</h1>
+            <p class="app-page-subtitle">Reconcile each bank account's book balance against the bank balance, month by month</p>
         </div>
-        <div class="fims-page-header-right">
+        <div class="app-page-header-actions">
             <button type="button" class="fims-btn fims-btn-primary fims-btn-sm" id="brAddBtn">
                 <i class="fas fa-plus mr-1"></i>Bank Recon
             </button>
@@ -210,6 +210,15 @@ $brCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
 #brModule .fims-btn-primary { background:#000E3E; color:#fff; }
 #brModule .fims-btn-primary:hover { background:#000a2e; color:#fff; }
 #brModule .fims-modal-content { display:flex; flex-direction:column; min-height:0; overflow:hidden; }
+
+/* page header: the "+ Bank Recon" button sits on the right of the banner, above its decorative circles, in the
+   green the other pages use for their Add buttons (the page's navy primary would vanish on the navy banner) */
+#brModule .app-page-header { flex-wrap:wrap; }
+#brModule .app-page-header-actions { position:relative; z-index:1; margin-left:auto; display:flex; flex-wrap:wrap; gap:8px; }
+#brModule .app-page-header-actions .fims-btn-primary,
+html.afims-dark[data-bs-theme="dark"] #brModule .app-page-header-actions .fims-btn-primary { background:#11A752; border-color:#11A752; color:#fff; }
+#brModule .app-page-header-actions .fims-btn-primary:hover,
+html.afims-dark[data-bs-theme="dark"] #brModule .app-page-header-actions .fims-btn-primary:hover { background:#0E8F46; border-color:#0E8F46; color:#fff; }
 
 #brModule .br-ledger-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px; }
 #brModule .br-ledger-wrap { border:1px solid var(--fims-border,#E4ECF2); border-radius:8px; padding:12px; }

@@ -28,14 +28,14 @@ $bamCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
 
 <div class="fims-wrap" id="bamModule">
 
-    <div class="fims-page-header">
-        <div class="fims-page-header-bubbles"><span></span><span></span><span></span><span></span><span></span></div>
-        <div class="fims-page-header-left">
-            <div class="fims-page-header-icon"><i class="fas fa-landmark"></i></div>
-            <h1>Bank Account Management</h1>
-            <p>Register, update, and monitor all treasury bank accounts</p>
+    <!-- same banner as User Access: app-page-header (styled by app/fims-css/fims.css, already loaded above) -->
+    <div class="app-page-header">
+        <div class="app-page-header-icon"><i class="fas fa-landmark"></i></div>
+        <div>
+            <h1 class="app-page-title">Bank Account Management</h1>
+            <p class="app-page-subtitle">Register, update, and monitor all treasury bank accounts</p>
         </div>
-        <div class="fims-page-header-right" style="display:flex;gap:8px;align-items:flex-start;">
+        <div class="app-page-header-actions">
             <button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" id="bamDormancyBtn">
                 <i class="fas fa-bell mr-1"></i>Dormancy Alerts
                 <span class="fims-badge fims-badge-red" id="bamDormancyBadge" style="display:none;margin-left:6px;">0</span>
@@ -391,8 +391,19 @@ html.afims-dark[data-bs-theme="dark"] #bamModule .fims-btn-primary:hover { backg
 html.afims-dark[data-bs-theme="dark"] #bamModule .fims-btn-outline { color:#94AADB; border-color:#5B7FCF; background:transparent; }
 html.afims-dark[data-bs-theme="dark"] #bamModule .fims-btn-outline:hover { background:#3861BC; border-color:#3861BC; color:#fff; }
 html.afims-dark[data-bs-theme="dark"] #bamModule .fims-btn-ghost { color:var(--afims-text, #E4ECF2); }
-html.afims-dark[data-bs-theme="dark"] #bamModule .fims-page-header .fims-btn-ghost { background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.25); color:#fff; }
-html.afims-dark[data-bs-theme="dark"] #bamModule .fims-page-header .fims-btn-ghost:hover { background:rgba(255,255,255,.22); }
+/* page header: the Dormancy Alerts / Register Account buttons sit on the right of the navy banner, above its decorative
+   circles — Dormancy Alerts as a translucent white button, Register Account in the green the other pages use for Add
+   (the page's navy primary would vanish on the navy banner); the same in light and dark mode */
+#bamModule .app-page-header { flex-wrap:wrap; }
+#bamModule .app-page-header-actions { position:relative; z-index:1; margin-left:auto; display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+#bamModule .app-page-header-actions .fims-btn-ghost,
+html.afims-dark[data-bs-theme="dark"] #bamModule .app-page-header-actions .fims-btn-ghost { background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.25); color:#fff; }
+#bamModule .app-page-header-actions .fims-btn-ghost:hover,
+html.afims-dark[data-bs-theme="dark"] #bamModule .app-page-header-actions .fims-btn-ghost:hover { background:rgba(255,255,255,.22); color:#fff; }
+#bamModule .app-page-header-actions .fims-btn-primary,
+html.afims-dark[data-bs-theme="dark"] #bamModule .app-page-header-actions .fims-btn-primary { background:#11A752; border-color:#11A752; color:#fff; }
+#bamModule .app-page-header-actions .fims-btn-primary:hover,
+html.afims-dark[data-bs-theme="dark"] #bamModule .app-page-header-actions .fims-btn-primary:hover { background:#0E8F46; border-color:#0E8F46; color:#fff; }
 html.afims-dark[data-bs-theme="dark"] #bamModule :is(select.fims-select, .fims-input) {
     background-color:var(--afims-surface, #1A1F38); color:var(--afims-text, #E4ECF2); border-color:var(--afims-border-strong, #4A5270); }
 html.afims-dark[data-bs-theme="dark"] #bamModule select.fims-select option { background-color:var(--afims-surface, #1A1F38); color:var(--afims-text, #E4ECF2); }

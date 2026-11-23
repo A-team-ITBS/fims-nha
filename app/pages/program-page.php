@@ -102,24 +102,39 @@ $_prg_api = Config('API.FIMS_URL');
     #prg-root .prg-add-sub svg { width: 12px; height: 12px; }
     #prg-root .prg-add-sub:hover, #prg-root .prg-add-sub:focus-visible {
         background: var(--afims-success, #11A752); color: var(--afims-pure-white, #FFFFFF); outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--afims-success, #11A752) 22%, transparent); }
+
+    /* ── Page header: copied from User Access (.app-page-header in app/fims-css/fims.css — that file is not loaded here,
+          so the rules are repeated, scoped to this page). Stays navy in dark mode too, like User Access. ── */
+    #prg-root .app-page-header { position:relative;display:flex;align-items:center;gap:1rem;flex-wrap:wrap;overflow:hidden;
+        background:linear-gradient(135deg, #000E3E 0%, #001A5E 100%);border-radius:.75rem;padding:1.5rem 1.75rem;margin-bottom:1.5rem; }
+    #prg-root .app-page-header::before,
+    #prg-root .app-page-header::after { content:"";position:absolute;border-radius:50%;background:rgba(255,255,255,.05);pointer-events:none; }
+    #prg-root .app-page-header::before { width:180px;height:180px;top:-90px;right:80px; }
+    #prg-root .app-page-header::after { width:120px;height:120px;bottom:-70px;right:-20px;background:rgba(255,255,255,.06); }
+    #prg-root .app-page-header-icon { position:relative;z-index:1;flex:0 0 auto;width:3rem;height:3rem;border-radius:.5rem;
+        display:flex;align-items:center;justify-content:center;font-size:1.25rem;
+        background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);color:#FFFFFF; }
+    #prg-root .app-page-title { position:relative;z-index:1;font-size:1.6rem;font-weight:800;letter-spacing:-.01em;color:#FFFFFF;margin:0 0 .25rem; }
+    #prg-root .app-page-subtitle { position:relative;z-index:1;font-size:.9rem;color:rgba(255,255,255,.75);margin:0;max-width:640px; }
+    /* the Refresh button stays on the right of the banner, above its decorative circles */
+    #prg-root .app-page-header-actions { position:relative;z-index:1;margin-left:auto;display:flex;flex-wrap:wrap;gap:8px; }
 </style>
 
 <div id="prg-root" class="nha-root">
 
     <!-- ── HEADER ─────────────────────────────────────────── -->
-    <div class="nha-hdr no-print">
-        <div class="nha-hdr-l">
-            <div class="nha-hdr-ico">
-                <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="#fff" stroke-width="1.8">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-                </svg>
-            </div>
-            <div>
-                <div class="nha-hdr-title">Programs</div>
-                <div class="nha-hdr-sub">Programs and their sub-programs</div>
-            </div>
+    <!-- same banner as User Access (app-page-header in app/fims-css/fims.css) -->
+    <div class="app-page-header no-print">
+        <div class="app-page-header-icon">
+            <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="#fff" stroke-width="1.8">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+            </svg>
         </div>
-        <div class="nha-hdr-r">
+        <div>
+            <h1 class="app-page-title">Programs</h1>
+            <p class="app-page-subtitle">Programs and their sub-programs</p>
+        </div>
+        <div class="app-page-header-actions">
             <button id="prg-refresh" type="button" class="nha-btn-hdr" title="Refresh">
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                 Refresh

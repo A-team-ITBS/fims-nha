@@ -104,23 +104,39 @@ $_coa_api = Config('API.FIMS_URL');
     html.afims-dark[data-bs-theme="dark"] .coa-menu-item.danger:hover { background:rgba(220,53,69,.18); }
     html.afims-dark[data-bs-theme="dark"] .coa-action-btn { color:#FFFFFF;background:#3861BC; }
     html.afims-dark[data-bs-theme="dark"] .coa-action-btn:hover { background:#2E59B8; }
+
+    /* ── Page header: copied from User Access (.app-page-header in app/fims-css/fims.css — that file is not loaded here,
+          so the rules are repeated, scoped to this page). Stays navy in dark mode too, like User Access. ── */
+    #coa-root .app-page-header { position:relative;display:flex;align-items:center;gap:1rem;flex-wrap:wrap;overflow:hidden;
+        background:linear-gradient(135deg, #000E3E 0%, #001A5E 100%);border-radius:.75rem;padding:1.5rem 1.75rem;margin-bottom:1.5rem; }
+    #coa-root .app-page-header::before,
+    #coa-root .app-page-header::after { content:"";position:absolute;border-radius:50%;background:rgba(255,255,255,.05);pointer-events:none; }
+    #coa-root .app-page-header::before { width:180px;height:180px;top:-90px;right:80px; }
+    #coa-root .app-page-header::after { width:120px;height:120px;bottom:-70px;right:-20px;background:rgba(255,255,255,.06); }
+    #coa-root .app-page-header-icon { position:relative;z-index:1;flex:0 0 auto;width:3rem;height:3rem;border-radius:.5rem;
+        display:flex;align-items:center;justify-content:center;font-size:1.25rem;
+        background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);color:#FFFFFF; }
+    #coa-root .app-page-title { position:relative;z-index:1;font-size:1.6rem;font-weight:800;letter-spacing:-.01em;color:#FFFFFF;margin:0 0 .25rem; }
+    #coa-root .app-page-subtitle { position:relative;z-index:1;font-size:.9rem;color:rgba(255,255,255,.75);margin:0;max-width:640px; }
+    /* the Expand / Collapse / Refresh / Add Account buttons stay on the right of the banner, above its decorative circles */
+    #coa-root .app-page-header-actions { position:relative;z-index:1;margin-left:auto;display:flex;flex-wrap:wrap;gap:8px; }
 </style>
 
 <div id="coa-root" class="nha-root">
 
     <!-- ── HEADER ─────────────────────────────────────────── -->
-    <div class="nha-hdr no-print">
-        <div class="nha-hdr-l">
-            <div class="nha-hdr-ico">
-                <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="#fff" stroke-width="1.8">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 7h6m-6 4h6m-6 4h4M5 3h14a1 1 0 011 1v16a1 1 0 01-1 1H5a1 1 0 01-1-1V4a1 1 0 011-1z"/>
-                </svg>
-            </div>
-            <div>
-                <div class="nha-hdr-title">Chart of Accounts</div>
-            </div>
+    <!-- same banner as User Access (app-page-header in app/fims-css/fims.css) -->
+    <div class="app-page-header no-print">
+        <div class="app-page-header-icon">
+            <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="#fff" stroke-width="1.8">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 7h6m-6 4h6m-6 4h4M5 3h14a1 1 0 011 1v16a1 1 0 01-1 1H5a1 1 0 01-1-1V4a1 1 0 011-1z"/>
+            </svg>
         </div>
-        <div class="nha-hdr-r">
+        <div>
+            <h1 class="app-page-title">Chart of Accounts</h1>
+            <p class="app-page-subtitle">The accounts and their sub-ledgers, as a tree by account code.</p>
+        </div>
+        <div class="app-page-header-actions">
             <button id="coa-expand-all" type="button" class="nha-btn-hdr" title="Expand all accounts">
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 8V4h4M20 8V4h-4M4 16v4h4M20 16v4h-4"/></svg>
                 Expand All
