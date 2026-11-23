@@ -36,40 +36,44 @@
 | Dashboard & notifications | [Notification reads](#notification-reads) | PHPMaker-generated |
 | COB Preparation | [Budget Proposal](#budget-proposal) | Built |
 | COB Preparation | [Budget Request](#budget-request) | Built |
-| COB Preparation | [Budget Revision](#budget-revision) | Built |
-| COB Preparation | [Ledger](#ledger) | Empty placeholder (0-byte page) |
+| COB Preparation | [Budget Revision](#budget-revision) — menu label currently reads "Budget Proposal" | Built |
 | Budget Process | [Request for Allocation (CBA)](#request-for-allocation-cba) | Built |
 | Budget Process | [Request for Allocation (RFA/LAA)](#request-for-allocation-rfalaa) | Built |
 | DV Processing | [Disbursement Voucher](#disbursement-voucher) | Built |
+| DV Processing | [Remittance List (Deductions)](#remittance-list-deductions) | Empty placeholder (0-byte page) |
 | DV Processing | [Liquidation Voucher](#liquidation-voucher) | Empty placeholder (0-byte page) |
 | DV Processing | [Journal Entry Voucher](#journal-entry-voucher) | Built |
 | DV Processing | [Disbursement Preparation](#disbursement-preparation) | Built, with stubs |
 | Inventory | [IAR Module](#iar-module) | Partial |
+| Inventory | [Property Record](#property-records) | Built |
+| Inventory | Work-In-Process | Built |
 | Monitoring | [COB Monitoring](#cob-monitoring) | Built |
-| Monitoring | [RFA / LAA Monitoring](#rfa--laa-monitoring) | Empty placeholder (0-byte page) |
+| Monitoring | [RFA / LAA Monitoring](#rfa--laa-monitoring) | Built |
+| Monitoring | [Cash Position](#cash-position-and-ftla) | Built |
 | Registry/NCA | [SARO Registry](#saro-registry) | Built |
-| Registry/NCA | [Check Registry](#check-registry) | Empty placeholder (0-byte page) |
+| Registry/NCA | [Check Registry](#check-registry) | Built |
 | Registry/NCA | [Accountable Forms Registry](#accountable-forms-registry) | Empty placeholder (0-byte page) |
+| Registry/NCA | Collections and Deposits (was "Collections and Fund Sweeping") | Built — reports can be journalized (see [Known gaps](#known-gaps--open-questions)) |
+| Registry/NCA | Fund Sweeping | Empty placeholder (0-byte page; controller / model / view generated) |
+| Payroll | [Payroll Management](#payroll-management) | Built (import only) |
+| Payroll | [Remittance](#remittance) | Built |
 | Reports | [FMR](#fmr) | Empty placeholder (0-byte page) |
-| Reports | [Remittance List (Deductions)](#remittance-list-deductions) | Empty placeholder (0-byte page) |
-| Ledgers | [General Ledger](#general-ledger) | Built |
-| Ledgers | [Subsidiary Ledger](#subsidiary-ledger) | Built (read-only) |
+| Reports | [Trial Balance](#trial-balance) | Built (read-only) |
+| Reports | Balance Sheet, Income Statement, Changes in Net Assets/Equity, Cash Flow | Built |
+| Reports | Bank Reconciliation | Built |
+| Ledgers | [General Ledger](#general-ledger) | Built — SL postings roll up; click a GL code for its SLs |
 | Ledgers | [Journals](#journals) | Built (read-only) |
-| Ledgers | [Trial Balance](#trial-balance) | Built (read-only) |
-| Accounts Set-up | [Program](#program) | Built |
-| Accounts Set-up | [Sub Program](#sub-program) | Built |
+| *(not in the sidebar)* | [Subsidiary Ledger](#subsidiary-ledger) | Built (read-only) — removed from the menu; the Subsidiary Ledger sheet print is only on this page |
+| Accounts Set-up | [Program / Sub Program](#program) | Built |
 | Accounts Set-up | [Chart of Accounts](#chart-of-accounts) | Built |
 | Accounts Set-up | [Responsibility Center](#responsibility-center) | Built |
 | Accounts Set-up | [Banks Accounts](#banks-accounts) | Built |
 | Accounts Set-up | [Vendors](#vendors) | Built |
-| Accounts Set-up | [Fund Source](#fund-source) | Empty placeholder (0-byte page) |
-| Accounts Set-up | [Program Sources](#program-sources) | Empty placeholder (0-byte page) |
-| Accounts Set-up | [Accountable Officer](#accountable-officer) | Empty placeholder (0-byte page) |
+| Accounts Set-up | [Accountable Officer](#accountable-officer) | Built |
 | Accounts Set-up | [Payroll Setup](#payroll-setup) | Built |
-| Accounts Set-up | [Payroll Management](#payroll-management) | Built (import only) |
-| Accounts Set-up | [Remittance](#remittance) | Built |
-| Accounts Set-up | [Fidelity Bond](#fidelity-bond) | Empty placeholder (0-byte page) |
-| Fund Sourcing | [Fund Sourcing Dashboard](#fund-sourcing-dashboard) | Partial |
+| Accounts Set-up | [Fidelity Bond](#fidelity-bond) | Built |
+| Accounts Set-up | Opening Balance, Closing Balance | Built |
+| Fund Sourcing | [Fund Sourcing Dashboard](#fund-sourcing-dashboard) | Partial — the "Fund Sourcing" group (330) is not defined in `views/menu.php`, so these four items may not show |
 | Fund Sourcing | [Supplemental Funds](#supplemental-funds) | Built |
 | Fund Sourcing | [Trust Funds](#trust-funds) | Built |
 | Fund Sourcing | [Pricing](#pricing) | Partial |
@@ -2569,8 +2573,8 @@ Found while mapping the modules (2026-11-17). Grouped; each is verified in code 
 - `_assets/sql/README.md` is out of date (file counts / next number).
 
 **Pages**
-- Empty (0-byte) placeholders in the sidebar: Ledger, Liquidation Voucher, Accountable Forms Registry, FMR, Remittance List, Fund Source, Program Sources, Pricing (Pricing has a full backend: route, service, form and tables). `ledger-budget-allocation.php` is empty and not in the menu. RFA / LAA Monitoring, Check Registry, Accountable Officer, Fidelity Bond, Closing Balance and Bank Reconciliation are built.
-- Built but **not in the sidebar**: Purchase Orders, FTLA (Cash Position and Property Record are now in the sidebar; see [Pages not in the sidebar](#pages-not-in-the-sidebar)).
+- Empty (0-byte) placeholders in the sidebar: Ledger *(no longer in the menu)*, Liquidation Voucher, Remittance List (now under DV Processing), Accountable Forms Registry, Fund Sweeping, FMR, Pricing (Pricing has a full backend: route, service, form and tables). Fund Source and Program Sources pages are empty and not in the menu. `ledger-budget-allocation.php` is empty and not in the menu.
+- Built but **not in the sidebar**: Purchase Orders, FTLA, Subsidiary Ledger (removed from the menu in `329c525`; Cash Position and Property Record are now in the sidebar; see [Pages not in the sidebar](#pages-not-in-the-sidebar)).
 - The Security Management quick link `UserLevelsList` has a controller route but no view/model *(may be broken)*.
 
 ## Related docs

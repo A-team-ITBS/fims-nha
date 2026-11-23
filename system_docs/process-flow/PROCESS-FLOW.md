@@ -2,7 +2,7 @@
 
 **Step-by-step walkthrough, from set-up to the posted ledgers — for SQA testing and CPA review**
 
-> **Status:** written 2026-11-17, updated 2026-11-23 (FTLA release, Collections journalizing, GL roll-up; earlier: per-agency remittance DVs, automatic payment JEV, Payroll
+> **Status:** written 2026-11-17, updated 2026-11-23 (Payroll sidebar group, FTLA release, Collections journalizing, GL roll-up; earlier: per-agency remittance DVs, automatic payment JEV, Payroll
 > Management YTD / File Template, print notes) from the current code (`app/`) and the status chains in its services. Follows the
 > sidebar modules (`views/menu.php`). Tables behind each step: `system_docs/ERD/README.md`.
 > PDF version: `system_docs/process-flow/PROCESS-FLOW.pdf` — the flowcharts of this file, one process per page in
@@ -44,7 +44,7 @@ account needs both set correctly (Section 1, step 2).
 | Accounting Division Manager | Accounting Department (RC 012) — a different account from the Section Chief | 8, 10 |
 | Accounting Department Manager | Accounting Department (RC 012) — a different account from the two above | 8, 10 |
 | Treasury Officer | Treasury Department (RC 014) | 8B, 9 |
-| Payroll officer | any office given access to Payroll Setup / Payroll Management | 1, 8A |
+| Payroll officer | any office given access to Payroll Setup (Accounts Set-up) and the Payroll group (Payroll Management, Remittance) | 1, 8A |
 | Any user (read-only checks) | any | 11 |
 
 ## Contents
@@ -350,8 +350,8 @@ flowchart TD
 
 ## 8A. Payroll — import and payroll DV
 
-**Needs:** Section 1 (payroll items in Payroll Setup) and an RFA for the payroll (Section 6). **Sidebar:** Accounts
-Set-up → Payroll Management, DV Processing → Disbursement Voucher. **Payroll month status:** Imported → DV Created
+**Needs:** Section 1 (payroll items in Payroll Setup) and an RFA for the payroll (Section 6). **Sidebar:** Payroll →
+Payroll Management, DV Processing → Disbursement Voucher. **Payroll month status:** Imported → DV Created
 (back to Imported when the DV is cancelled or deleted). The payroll DV then follows Section 8 from step 2.
 
 | Step | Log in as | Where (sidebar → page) | Do this | Expected result |
@@ -396,7 +396,7 @@ flowchart TD
 
 **Needs:** Section 8A (an imported payroll month). The payroll DV does **not** have to exist first — the remittance DVs
 are separate DVs. For the check: Section 9's set-up — blank checks registered and cash recorded for the bank (Cash
-Position). **Sidebar:** Accounts Set-up → Remittance; DV Processing → Disbursement Voucher, Disbursement Preparation.
+Position). **Sidebar:** Payroll → Remittance; DV Processing → Disbursement Voucher, Disbursement Preparation.
 **Month status:** Pending (no agency has a DV) → In process → Remitted (every agency paid) → Confirmed (every agency
 confirmed). **Agency status:** Pending → DV in process → Remitted → Confirmed. There is **no Schedule step**. Each
 agency is paid through **its own remittance DV** (claimant = the agency) and needs **no RFA** — the government share is
@@ -404,7 +404,7 @@ budgeted with the payroll; the payroll DV and its RFA are only shown for referen
 
 | Step | Log in as | Where (sidebar → page) | Do this | Expected result |
 |---|---|---|---|---|
-| 1 | Any user with access | Accounts Set-up → Remittance | Filter by year / month / status; click a month row to expand it | One row per month with its status and the hint "N employees · Payroll DV … · RFA …". Only one month is open at a time — opening another closes the first |
+| 1 | Any user with access | Payroll → Remittance | Filter by year / month / status; click a month row to expand it | One row per month with its status and the hint "N employees · Payroll DV … · RFA …". Only one month is open at a time — opening another closes the first |
 | 2 | Any user with access | Remittance → open month → click an agency name | Check the agency's detail | One row per agency (GSIS, BIR, PhilHealth, Pag-IBIG, Other Payables): employee share, government share, total to remit; the detail lists the items and each employee's amounts. NHA receivables show "Collected by NHA" and have no button |
 | 3 | Accounting Section Chief (RC 012) | Remittance → open month → **Create DV** on an agency | The New DV opens filled for that agency only: claimant = the agency, amount = total to remit, particulars naming the payroll DV / RFA; the card reads "Belongs to payroll DV … · RFA … — no RFA needed on this DV". Vendor / PO, address, RFA and deductions are hidden. Save | DV DRAFT; the agency row shows **DV in process** with the DV no.; the month becomes **In process** |
 | 3a | Non-Accounting user (alternative) | Remittance | Look for Create DV | Not shown — "Only Accounting Department staff can create remittance DVs" |
@@ -485,7 +485,7 @@ FOR_DIVISION_MANAGER, FOR_DEPARTMENT_MANAGER, POSTED. Only Accounting can move i
 | 3 | Accounting Division Manager | Journal Entry Voucher | Move forward | Status FOR_DEPARTMENT_MANAGER |
 | 4 | Accounting Department Manager | Journal Entry Voucher | Post | Status POSTED |
 | 5 | Any user | Journal Entry Voucher → **View** | Opens the JEV in the print preview (there is no separate Print item); print it | Printed JEV matches the entry. The journal box is blank for a General Journal entry ("GJ" is only the list category); payment JEVs show CKDJ (check) or ADADJ (ADA / FTLA) |
-| 6 | Accounting Section Chief | Registry → Collections and Fund Sweeping → a report → **Journalize** (Collection or Deposit leg) | Check the pre-filled lines; submit | A DRAFT JEV is created for that leg (each leg only once) and follows steps 2–4 |
+| 6 | Accounting Section Chief | Registry → Collections and Deposits → a report → **Journalize** (Collection or Deposit leg) | Check the pre-filled lines; submit | A DRAFT JEV is created for that leg (each leg only once) and follows steps 2–4 |
 
 ```mermaid
 flowchart TD
@@ -508,7 +508,7 @@ every approved amount from the earlier sections shows up correctly.
 | Step | Log in as | Where (sidebar → page) | Do this | Expected result |
 |---|---|---|---|---|
 | 1 | Any user | Ledgers → General Ledger | Pick an account used in Sections 8–10 and the fiscal year | Every posted entry listed with its JEV / DV, debit, credit and running balance — an SL account's postings are included in its GL account (SL code shown on the line); click the GL code for each SL's own postings; Print gives the General Ledger sheet |
-| 2 | Any user | Ledgers → Subsidiary Ledger | Pick the SL (bottom-level) account used | Its postings and running balance; Print gives the Subsidiary Ledger sheet |
+| 2 | Any user | Ledgers → General Ledger → click the GL code | Find the SL (bottom-level) account used | Its postings and running balance in the SL popup. The Subsidiary Ledger page (and its Print — the Subsidiary Ledger sheet) is no longer in the sidebar; it still opens at `SubsidiaryLedgerPage` |
 | 3 | Any user | Ledgers → Journals | Open the GJ and CKDJ tabs | GJ: posted journal entries; CKDJ: the checks from Section 9 |
 | 4 | Any user | Ledgers → Trial Balance | Pick the fiscal year and book | Total debits = total credits; the figures include the year's Opening Balances |
 | 5 | Any user | Monitoring → COB Monitoring | Open the office and fiscal year from Section 3 | Approved, Revision, CBA, RFA, LAA, Available and Remaining agree with Sections 3–6; PDF and Excel reports download |
@@ -518,7 +518,7 @@ flowchart TD
     DV["Section 8 — DV at FOR_TREASURY<br/>(journal entry posted)"] --> GL["STEP 1 — GENERAL LEDGER<br/>Any user — Ledgers, General Ledger<br/>• Postings per account, running balance<br/>• Print the General Ledger sheet"]
     PAY["Section 9 — Payment JEV POSTED"] --> GL
     ADJ["Section 10 — Adjusting JEV POSTED"] --> GL
-    GL --> SL["STEP 2 — SUBSIDIARY LEDGER<br/>Any user — Ledgers, Subsidiary Ledger<br/>• Postings per SL account<br/>• Print the Subsidiary Ledger sheet"]
+    GL --> SL["STEP 2 — SUBSIDIARY LEDGERS<br/>Any user — General Ledger, click the GL code<br/>• Postings per SL account (popup)<br/>• SL sheet print: Subsidiary Ledger page<br/>(not in the sidebar)"]
     SL --> JR["STEP 3 — JOURNALS<br/>Any user — Ledgers, Journals<br/>• General Journal (GJ)<br/>• Check Disbursements Journal (CKDJ)"]
     JR --> TB["STEP 4 — TRIAL BALANCE<br/>Any user — Ledgers, Trial Balance<br/>• Total debits = total credits"]
     COB["Sections 3 to 6 — approved COB,<br/>CBA, RFA / LAA"] --> MON["STEP 5 — COB MONITORING<br/>Any user — Monitoring, COB Monitoring<br/>• Approved, revised, CBA, RFA, LAA,<br/>available and remaining per line<br/>• PDF / Excel report"]
@@ -532,11 +532,9 @@ flowchart TD
 
 | Sidebar group | Menu item |
 |---|---|
-| COB Preparation | Ledger |
-| DV Processing | Liquidation Voucher |
-| Registry/NCA | Accountable Forms Registry |
-| Reports | FMR, Remittance List (Deductions) |
-| Accounts Set-up | Fund Source, Program Sources |
+| DV Processing | Liquidation Voucher, Remittance List (Deductions) |
+| Registry/NCA | Accountable Forms Registry, Fund Sweeping |
+| Reports | FMR |
 | Fund Sourcing | Pricing (the request form and API exist; the page is empty) |
 
 **Known limitations — expected behaviour today, not test failures:**
@@ -559,4 +557,6 @@ flowchart TD
   current sources.
 - **Payroll DV deductions** show as one "Other" line until the payroll deduction types are seeded
   (`04 - seed_data/08`); the accounting entry is right either way.
-- Pages that work but are **not in the sidebar**: Purchase Orders, FTLA.
+- Pages that work but are **not in the sidebar**: Purchase Orders, FTLA, Subsidiary Ledger (its postings show in the
+  General Ledger's SL popup; the Subsidiary Ledger sheet print is only on that page).
+- **Sidebar label:** Budget Revision currently shows as "Budget Proposal" (same as the Budget Proposal item).
