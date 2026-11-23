@@ -196,7 +196,8 @@ class CashPositionSoaService
             $iCredit = $colMap['credit'] ?? $colMap['deposit'] ?? 3;
             $iBalance = $colMap['balance'] ?? $colMap['running balance'] ?? 4;
             $iBranch = $colMap['branch'] ?? $colMap['branch name'] ?? 5;
-            $iCheckNo = $colMap['check no'] ?? $colMap['check number'] ?? $colMap['check no.'] ?? $colMap['chk no'] ?? 6;
+            $iCheckNo = $colMap['check no'] ?? $colMap['check number'] ?? $colMap['check no.'] ?? $colMap['chk no']
+                ?? $colMap['cheque no'] ?? $colMap['cheque number'] ?? $colMap['cheque no.'] ?? 6;
             $iOther = $colMap['other details'] ?? $colMap['remarks'] ?? $colMap['reference'] ?? 7;
 
             $rawDate = $cells[$iDate] ?? '';
