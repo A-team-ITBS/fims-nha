@@ -2,11 +2,18 @@
 
 const fs = require('fs-extra');
 const path = require('path');
+const os = require('os');
 const inquirer = require('inquirer');
 const chalk = require('chalk');
 
 function parseArgs(argv) {
-    const flags = new Set(argv.slice(2));
+    const rest = argv.slice(2);
+    const flags = new Set(rest);
+    const getValue = (name) => {
+        const prefix = `--${name}=`;
+        const found = rest.find((a) => a.startsWith(prefix));
+        return found ? found.slice(prefix.length).trim() : null;
+    };
     return {
         skipSql: flags.has('--skip-sql'),
         skipComposer: flags.has('--skip-composer'),
@@ -14,7 +21,10 @@ function parseArgs(argv) {
         composerOnly: flags.has('--composer-only'),
         consolidated: flags.has('--consolidated'),
         resetOnly: flags.has('--reset-only'),
-        truncateOnly: flags.has('--truncate-only')
+        truncateOnly: flags.has('--truncate-only'),
+        restoreSchemaOnly: flags.has('--restore-schema-only'),
+        restoreSchemaFrom: getValue('restore-schema-from'),
+        restoreSchemaName: getValue('restore-schema')
     };
 }
 
@@ -243,6 +253,38 @@ async function resolvePsqlCommand() {
     return trimmed;
 }
 
+async function resolvePgDumpCommand(psqlCommand) {
+    if (process.env.PG_DUMP_PATH && await fs.pathExists(process.env.PG_DUMP_PATH)) {
+        return process.env.PG_DUMP_PATH;
+    }
+
+    // pg_dump ships right next to psql in the same bin/ folder — if we already
+    // resolved an explicit psql path, try its sibling before anything else.
+    if (psqlCommand !== 'psql' && await fs.pathExists(psqlCommand)) {
+        const dir = path.dirname(psqlCommand);
+        const ext = path.extname(psqlCommand);
+        const candidate = path.join(dir, `pg_dump${ext}`);
+        if (await fs.pathExists(candidate)) return candidate;
+    }
+
+    if (await canRunCommand('pg_dump')) return 'pg_dump';
+
+    const { customPath } = await inquirer.prompt([
+        {
+            type: 'input',
+            name: 'customPath',
+            message: 'pg_dump was not found. Enter full path to pg_dump/pg_dump.exe (leave blank to try `pg_dump`):'
+        }
+    ]);
+
+    const trimmed = (customPath || '').trim();
+    if (!trimmed) return 'pg_dump';
+    if (!await fs.pathExists(trimmed)) {
+        throw new Error(`pg_dump not found at: ${trimmed}`);
+    }
+    return trimmed;
+}
+
 async function promptPostgresConfig() {
     const answers = await inquirer.prompt([
         {
@@ -447,6 +489,100 @@ async function runPsqlCommand(psqlCommand, pg, database, sql) {
     });
 
     return { code, stdout, stderr };
+}
+
+async function listSchemaTables(psqlCommand, pg, database, schema) {
+    const sql = `SELECT tablename FROM pg_tables WHERE schemaname = '${escapeSqlLiteral(schema)}' ORDER BY tablename;`;
+    const args = [
+        '--no-psqlrc',
+        '--tuples-only',
+        '--no-align',
+        '--set',
+        'ON_ERROR_STOP=1',
+        '--host',
+        pg.host,
+        '--port',
+        String(pg.port),
+        '--username',
+        pg.user,
+        '--dbname',
+        database,
+        '--command',
+        sql
+    ];
+
+    const { code, stdout, stderr } = await spawnAsync(psqlCommand, args, {
+        env: { ...process.env, PGPASSWORD: pg.password, PGCLIENTENCODING: "UTF8" },
+        stdio: ['ignore', 'pipe', 'pipe']
+    });
+
+    if (code !== 0) {
+        throw new Error((stderr || '').trim() || `Failed listing tables in schema "${schema}".`);
+    }
+
+    return (stdout || '').split('\n').map((s) => s.trim()).filter(Boolean);
+}
+
+// Tables OUTSIDE `schema` can hold a foreign key into it (e.g. a treasury
+// table referencing uac.departments); plain TRUNCATE refuses to run rather
+// than silently violate referential integrity. This walks pg_constraint the
+// same way TRUNCATE ... CASCADE would, so the full blast radius can be shown
+// to the user before they decide to add CASCADE.
+async function getCascadeTruncateClosure(psqlCommand, pg, database, schema) {
+    const sql = `
+        WITH RECURSIVE dep(oid) AS (
+            SELECT (quote_ident(schemaname) || '.' || quote_ident(tablename))::regclass::oid
+            FROM pg_tables WHERE schemaname = '${escapeSqlLiteral(schema)}'
+            UNION
+            SELECT c.conrelid
+            FROM pg_constraint c
+            JOIN dep d ON c.confrelid = d.oid
+            WHERE c.contype = 'f'
+        )
+        SELECT DISTINCT n.nspname || '.' || t.relname
+        FROM dep
+        JOIN pg_class t ON t.oid = dep.oid
+        JOIN pg_namespace n ON n.oid = t.relnamespace
+        ORDER BY 1;
+    `;
+    const args = [
+        '--no-psqlrc',
+        '--tuples-only',
+        '--no-align',
+        '--set',
+        'ON_ERROR_STOP=1',
+        '--host',
+        pg.host,
+        '--port',
+        String(pg.port),
+        '--username',
+        pg.user,
+        '--dbname',
+        database,
+        '--command',
+        sql
+    ];
+
+    const { code, stdout, stderr } = await spawnAsync(psqlCommand, args, {
+        env: { ...process.env, PGPASSWORD: pg.password, PGCLIENTENCODING: "UTF8" },
+        stdio: ['ignore', 'pipe', 'pipe']
+    });
+
+    if (code !== 0) {
+        throw new Error((stderr || '').trim() || `Failed computing cascade-truncate closure for schema "${schema}".`);
+    }
+
+    return (stdout || '').split('\n').map((s) => s.trim()).filter(Boolean);
+}
+
+async function truncateSchemaTables(psqlCommand, pg, schema, tables, { cascade = false } = {}) {
+    if (tables.length === 0) return;
+    const list = tables.map((t) => `${quotePgIdent(schema)}.${quotePgIdent(t)}`).join(', ');
+    const sql = `TRUNCATE TABLE ${list} RESTART IDENTITY${cascade ? ' CASCADE' : ''};`;
+    const { code, stderr } = await runPsqlCommand(psqlCommand, pg, pg.database, sql);
+    if (code !== 0) {
+        throw new Error((stderr || '').trim() || `Failed to truncate schema "${schema}" tables.`);
+    }
 }
 
 async function resolveMaintenanceDatabase(psqlCommand, pg) {
@@ -728,6 +864,198 @@ async function runTruncateTransactions(pg, psqlCommand) {
     await runSqlFilesWithNotices([TRUNCATE_TRANSACTIONS_SQL], pg, psqlCommand);
 }
 
+// pg_dump's boilerplate preamble (SET statement_timeout, etc.) is version-gated
+// to whatever pg_dump binary produced it, not to the server being restored
+// into — e.g. `SET transaction_timeout = 0;` was added in PG17's pg_dump and
+// breaks a restore against an older server with "unrecognized configuration
+// parameter". None of these session settings affect the data being loaded, so
+// drop them rather than requiring an exact-version-matched pg_dump/psql pair.
+const DUMP_PREAMBLE_SET_RE = /^SET\s+(statement_timeout|lock_timeout|idle_in_transaction_session_timeout|transaction_timeout|client_encoding|standard_conforming_strings|check_function_bodies|xmloption|client_min_messages|row_security|default_table_access_method)\b.*;\s*$/i;
+const DUMP_PREAMBLE_SEARCH_PATH_RE = /^SELECT pg_catalog\.set_config\('search_path',.*;\s*$/i;
+
+async function stripUnsupportedDumpPreamble(sqlFilePath) {
+    const original = await fs.readFile(sqlFilePath, 'utf8');
+    const filtered = original
+        .split('\n')
+        .filter((line) => !DUMP_PREAMBLE_SET_RE.test(line) && !DUMP_PREAMBLE_SEARCH_PATH_RE.test(line))
+        .join('\n');
+
+    if (filtered !== original) {
+        await fs.writeFile(sqlFilePath, filtered, 'utf8');
+    }
+}
+
+// Copies DATA ONLY for one schema from another database on the same server
+// into pg.database (e.g. fims_back.uac -> fims.uac after a reset). Schema
+// structure is assumed identical between source and target; this does not
+// touch DDL, roles, or sequences.
+async function runSchemaDataRestore(pg, psqlCommand, pgDumpCommand, { sourceDatabase, schema } = {}) {
+    const maintenanceDb = await resolveMaintenanceDatabase(psqlCommand, pg);
+
+    const targetExists = await databaseExists(psqlCommand, pg, maintenanceDb, pg.database);
+    if (!targetExists) {
+        throw new Error(`Target database "${pg.database}" does not exist. Run the full installer first.`);
+    }
+
+    let sourceDb = sourceDatabase;
+    if (!sourceDb) {
+        const answer = await inquirer.prompt([
+            {
+                type: 'input',
+                name: 'sourceDb',
+                message: 'Source database to copy data FROM (e.g. fims_back):',
+                validate: (input) => (String(input || '').trim() ? true : 'Required')
+            }
+        ]);
+        sourceDb = answer.sourceDb.trim();
+    }
+
+    if (sourceDb === pg.database) {
+        throw new Error('Source and target database are the same — nothing to restore.');
+    }
+
+    const sourceExists = await databaseExists(psqlCommand, pg, maintenanceDb, sourceDb);
+    if (!sourceExists) {
+        throw new Error(`Source database "${sourceDb}" does not exist.`);
+    }
+
+    let schemaName = schema;
+    if (!schemaName) {
+        const answer = await inquirer.prompt([
+            {
+                type: 'input',
+                name: 'schemaName',
+                message: 'Schema to copy data for:',
+                default: 'uac',
+                validate: (input) => (String(input || '').trim() ? true : 'Required')
+            }
+        ]);
+        schemaName = answer.schemaName;
+    }
+    schemaName = schemaName.trim();
+
+    console.log(chalk.white(`This will load DATA ONLY for schema "${schemaName}" from "${sourceDb}" into "${pg.database}".`));
+    console.log(chalk.gray('Assumes target tables are empty (e.g. right after a reset/recreate) and the schema'));
+    console.log(chalk.gray('structure matches on both sides — existing rows may cause duplicate-key errors.'));
+
+    const { confirmRestore } = await inquirer.prompt([
+        {
+            type: 'confirm',
+            name: 'confirmRestore',
+            message: `Proceed copying ${sourceDb}.${schemaName} -> ${pg.database}.${schemaName}?`,
+            default: false
+        }
+    ]);
+    if (!confirmRestore) {
+        console.log(chalk.yellow('Cancelled. Nothing was copied.'));
+        return;
+    }
+
+    const { truncateFirst } = await inquirer.prompt([
+        {
+            type: 'confirm',
+            name: 'truncateFirst',
+            message: `Truncate existing rows in ${pg.database}.${schemaName} first? (recommended — avoids duplicate-key errors against existing seed/master data)`,
+            default: true
+        }
+    ]);
+
+    if (truncateFirst) {
+        const targetTables = await listSchemaTables(psqlCommand, pg, pg.database, schemaName);
+        if (targetTables.length > 0) {
+            console.log(chalk.cyan(`Truncating ${targetTables.length} table(s) in ${pg.database}.${schemaName}...`));
+            try {
+                await truncateSchemaTables(psqlCommand, pg, schemaName, targetTables);
+            } catch (error) {
+                if (!/foreign key constraint/i.test(error.message)) throw error;
+
+                console.log(chalk.yellow(`A table outside "${schemaName}" references it via foreign key, so a plain TRUNCATE is blocked:`));
+                console.log(chalk.gray(error.message));
+
+                const closure = await getCascadeTruncateClosure(psqlCommand, pg, pg.database, schemaName);
+                const inSchema = new Set(targetTables.map((t) => `${schemaName}.${t}`));
+                const outside = closure.filter((q) => !inSchema.has(q));
+
+                console.log(chalk.red.bold(`TRUNCATE ... CASCADE would ALSO empty ${outside.length} table(s) outside "${schemaName}":`));
+                for (const q of outside) console.log('  ' + chalk.red(q));
+
+                const { confirmCascade } = await inquirer.prompt([
+                    {
+                        type: 'confirm',
+                        name: 'confirmCascade',
+                        message: 'Proceed with TRUNCATE ... CASCADE (this empties the tables listed above too)?',
+                        default: false
+                    }
+                ]);
+
+                if (!confirmCascade) {
+                    throw new Error(
+                        `Cancelled: truncate of "${schemaName}" is blocked by foreign key references and CASCADE was declined. ` +
+                        `Empty the referencing table(s) manually first, or re-run and answer "No" to skip truncation.`
+                    );
+                }
+
+                await truncateSchemaTables(psqlCommand, pg, schemaName, targetTables, { cascade: true });
+            }
+        }
+    }
+
+    const tmpFile = path.join(os.tmpdir(), `restore-${schemaName}-${Date.now()}.sql`);
+
+    try {
+        console.log(chalk.cyan(`Dumping "${schemaName}" data from ${sourceDb}...`));
+        const dumpArgs = [
+            '--no-owner',
+            '--no-privileges',
+            '--data-only',
+            '--disable-triggers',
+            '--schema', schemaName,
+            '--host', pg.host,
+            '--port', String(pg.port),
+            '--username', pg.user,
+            '--dbname', sourceDb,
+            '--file', tmpFile
+        ];
+        const { code: dumpCode, stderr: dumpErr } = await spawnAsync(pgDumpCommand, dumpArgs, {
+            env: { ...process.env, PGPASSWORD: pg.password, PGCLIENTENCODING: 'UTF8' },
+            stdio: ['ignore', 'ignore', 'pipe']
+        });
+        if (dumpCode !== 0) {
+            throw new Error((dumpErr || '').trim() || `pg_dump exited with code ${dumpCode}`);
+        }
+
+        await stripUnsupportedDumpPreamble(tmpFile);
+
+        console.log(chalk.cyan(`Loading "${schemaName}" data into ${pg.database}...`));
+        const loadArgs = [
+            '--no-psqlrc',
+            '--set', 'ON_ERROR_STOP=1',
+            '--host', pg.host,
+            '--port', String(pg.port),
+            '--username', pg.user,
+            '--dbname', pg.database,
+            '--file', tmpFile
+        ];
+        const { code: loadCode } = await spawnAsync(psqlCommand, loadArgs, {
+            env: { ...process.env, PGPASSWORD: pg.password, PGCLIENTENCODING: 'UTF8' },
+            stdio: ['ignore', 'inherit', 'inherit']
+        });
+        if (loadCode !== 0) {
+            throw new Error(`psql exited with code ${loadCode} while loading "${schemaName}" data.`);
+        }
+    } catch (error) {
+        if (error && error.code === 'ENOENT') {
+            throw new Error("pg_dump or psql not found. Install PostgreSQL client tools, or set `PG_DUMP_PATH`/`PSQL_PATH`.");
+        }
+        throw error;
+    } finally {
+        await fs.remove(tmpFile).catch(() => {});
+    }
+
+    console.log(chalk.green(`Restored "${schemaName}" data from ${sourceDb} into ${pg.database}.`));
+    console.log(chalk.gray('Tip: run `node install_system.js --reset-only` afterwards to resync sequences.'));
+}
+
 async function runSqlFilesWithNotices(sqlFiles, pg, psqlCommand) {
     for (let i = 0; i < sqlFiles.length; i++) {
         const filePath = sqlFiles[i];
@@ -898,7 +1226,8 @@ async function runComposerInstall(projectDirs, { pgConfig } = {}) {
 }
 
 function hasExplicitStepFlags(args) {
-    return args.skipSql || args.skipComposer || args.sqlOnly || args.composerOnly || args.resetOnly || args.truncateOnly;
+    return args.skipSql || args.skipComposer || args.sqlOnly || args.composerOnly || args.resetOnly || args.truncateOnly
+        || args.restoreSchemaOnly || !!args.restoreSchemaFrom;
 }
 
 async function promptRunMode() {
@@ -912,6 +1241,7 @@ async function promptRunMode() {
                 { name: 'Run Composer install only', value: 'composer-only' },
                 { name: 'Run both SQL and Composer install', value: 'both' },
                 { name: 'Truncate transaction data (keeps master/config data)', value: 'truncate-only' },
+                { name: 'Restore schema data from another DB (e.g. fims_back.uac -> this DB)', value: 'restore-schema-only' },
                 { name: 'Cancel', value: 'cancel' }
             ]
         }
@@ -922,8 +1252,9 @@ async function promptRunMode() {
 async function main() {
     const args = parseArgs(process.argv);
     let skipSql = args.skipSql || args.composerOnly;
-    let skipComposer = args.skipComposer || args.sqlOnly || args.resetOnly || args.truncateOnly;
+    let skipComposer = args.skipComposer || args.sqlOnly || args.resetOnly || args.truncateOnly || args.restoreSchemaOnly;
     let truncateOnly = args.truncateOnly;
+    let restoreSchemaOnly = args.restoreSchemaOnly || !!args.restoreSchemaFrom;
 
     console.log(chalk.bold('Install System'));
     console.log(chalk.gray(`Workspace: ${process.cwd()}`));
@@ -935,14 +1266,27 @@ async function main() {
             return;
         }
         skipSql = runMode === 'composer-only';
-        skipComposer = runMode === 'sql-only' || runMode === 'truncate-only';
+        skipComposer = runMode === 'sql-only' || runMode === 'truncate-only' || runMode === 'restore-schema-only';
         truncateOnly = runMode === 'truncate-only';
+        restoreSchemaOnly = runMode === 'restore-schema-only';
     }
 
     if (truncateOnly) {
         const psqlCommand = await resolvePsqlCommand();
         const pgConfig = await promptPostgresConfig();
         await runTruncateTransactions(pgConfig, psqlCommand);
+        console.log(chalk.green('Done.'));
+        return;
+    }
+
+    if (restoreSchemaOnly) {
+        const psqlCommand = await resolvePsqlCommand();
+        const pgDumpCommand = await resolvePgDumpCommand(psqlCommand);
+        const pgConfig = await promptPostgresConfig(); // target DB (the one being restored INTO)
+        await runSchemaDataRestore(pgConfig, psqlCommand, pgDumpCommand, {
+            sourceDatabase: args.restoreSchemaFrom,
+            schema: args.restoreSchemaName
+        });
         console.log(chalk.green('Done.'));
         return;
     }
