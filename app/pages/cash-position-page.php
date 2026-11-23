@@ -148,6 +148,40 @@ $cpsCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
         </div>
     </div>
 
+    <!-- ══════════════════════════════════════════════
+         MODAL: Disbursement Transactions (row-click drill-down from the
+         Position Updates list — see cpsOpenTransactions())
+    ══════════════════════════════════════════════ -->
+    <div class="fims-modal-overlay" id="m-disbursement-transactions" style="display:none;">
+        <div class="fims-modal-dialog" style="max-width:900px;width:95vw;">
+            <div class="fims-modal-content">
+                <div class="fims-modal-header">
+                    <div><div class="fims-modal-title">Disbursement Transactions</div><div id="dtxSubtitle" style="font-size:12px;color:var(--fims-text-subtle);"></div></div>
+                    <button class="fims-modal-close" data-close="m-disbursement-transactions">&times;</button>
+                </div>
+                <div class="fims-modal-body">
+                    <div class="fims-table-wrap">
+                        <table class="fims-table">
+                            <thead>
+                                <tr>
+                                    <th>Transaction ID</th><th>Reference No.</th><th>Type</th>
+                                    <th>Description</th><th>Counterpart</th>
+                                    <th class="text-right">Amount</th><th class="text-center">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="dtxTableBody"><tr class="fims-empty"><td colspan="7">Loading…</td></tr></tbody>
+                        </table>
+                    </div>
+                    <div style="text-align:right;font-size:13px;font-weight:700;margin-top:10px;">
+                        Total: <span id="dtxTotal">₱0.00</span>
+                    </div>
+                </div>
+                <div class="fims-modal-footer">
+                    <button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-close="m-disbursement-transactions">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <div id="cpsToast" style="display:none;position:fixed;bottom:20px;right:20px;padding:12px 18px;border-radius:8px;color:#fff;font-size:14px;z-index:9999;"></div>
 </div>
@@ -270,7 +304,7 @@ html.afims-dark[data-bs-theme="dark"] #cashPositionModule .cps-group-header :is(
     }
     function loadUpdatesList() {
         const tbody = document.querySelector('#updTable tbody');
-        tbody.innerHTML = '<tr class="fims-empty"><td colspan="7">Loading…</td></tr>';
+        tbody.innerHTML = '<tr class="fims-empty"><td colspan="8">Loading…</td></tr>';
         fetch(API + '/updates/list?' + buildUpdParams().toString(), { headers: authHeaders() })
             .then(r => r.json())
             .then(function (json) {
@@ -281,7 +315,11 @@ html.afims-dark[data-bs-theme="dark"] #cashPositionModule .cps-group-header :is(
                     // Balance is that minus restricted funds (cp.available_balance,
                     // a DB-generated column) — both now shown since they
                     // legitimately differ whenever any amount is restricted.
-                    return '<tr>' +
+                    // Row itself is clickable (not just a dedicated Actions
+                    // column) — opens the disbursement-transactions drill-down
+                    // for this exact account/date (cpsOpenTransactions()).
+                    return '<tr class="cps-upd-row" style="cursor:pointer;" data-bank-account-id="' + r.bank_account_id + '" data-position-date="' + escapeHtml(r.position_date || '') +
+                            '" data-account-name="' + escapeHtml(r.account_name || '') + '" title="Click to view disbursement transactions">' +
                         '<td>' + escapeHtml(r.account_name) + '<br><span style="font-size:11px;color:var(--fims-text-subtle)">' + escapeHtml(r.bank_name || '') + ' · ' + escapeHtml(r.account_number || '') + '</span></td>' +
                         '<td>' + escapeHtml(r.position_date || '') + '</td>' +
                         '<td class="text-right">' + peso(r.opening_balance) + '</td>' +
@@ -292,8 +330,45 @@ html.afims-dark[data-bs-theme="dark"] #cashPositionModule .cps-group-header :is(
                         '<td class="text-center"><span class="fims-badge fims-badge-green">Active</span></td>' +
                         '</tr>';
                 }).join('');
+                tbody.querySelectorAll('.cps-upd-row').forEach(function (tr) {
+                    tr.addEventListener('click', function () {
+                        cpsOpenTransactions(this.dataset.bankAccountId, this.dataset.positionDate, this.dataset.accountName);
+                    });
+                });
             })
             .catch(() => { tbody.innerHTML = '<tr class="fims-empty"><td colspan="8">Could not reach the server.</td></tr>'; });
+    }
+
+    // ── Disbursement Transactions drill-down (row-click from the list above) ──
+    function cpsOpenTransactions(bankAccountId, positionDate, accountName) {
+        const tbody = document.getElementById('dtxTableBody');
+        const subtitle = document.getElementById('dtxSubtitle');
+        const totalEl = document.getElementById('dtxTotal');
+        if (subtitle) subtitle.textContent = accountName + '  ·  ' + positionDate;
+        if (totalEl) totalEl.textContent = peso(0);
+        tbody.innerHTML = '<tr class="fims-empty"><td colspan="7">Loading…</td></tr>';
+        openModal('m-disbursement-transactions');
+        fetch(API + '/updates/transactions?bank_account_id=' + encodeURIComponent(bankAccountId) + '&position_date=' + encodeURIComponent(positionDate), { headers: authHeaders() })
+            .then(r => r.json())
+            .then(function (json) {
+                const rows = (json && json.data) ? json.data : [];
+                if (!rows.length) { tbody.innerHTML = '<tr class="fims-empty"><td colspan="7">No disbursement transactions for this date.</td></tr>'; return; }
+                let total = 0;
+                tbody.innerHTML = rows.map(function (t) {
+                    total += parseFloat(t.amount) || 0;
+                    return '<tr>' +
+                        '<td>' + escapeHtml(t.transaction_id || '') + '</td>' +
+                        '<td>' + escapeHtml(t.reference_number || '—') + '</td>' +
+                        '<td>' + escapeHtml(t.transaction_type || '') + '</td>' +
+                        '<td>' + escapeHtml(t.description || '—') + '</td>' +
+                        '<td>' + escapeHtml(t.counterpart || '—') + '</td>' +
+                        '<td class="text-right">' + peso(t.amount) + '</td>' +
+                        '<td class="text-center">' + escapeHtml(t.status || '') + '</td>' +
+                        '</tr>';
+                }).join('');
+                if (totalEl) totalEl.textContent = peso(total);
+            })
+            .catch(() => { tbody.innerHTML = '<tr class="fims-empty"><td colspan="7">Could not reach the server.</td></tr>'; });
     }
     document.getElementById('updFilterBtn')?.addEventListener('click', loadUpdatesList);
     document.getElementById('updResetBtn')?.addEventListener('click', function () {

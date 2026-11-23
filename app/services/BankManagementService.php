@@ -249,24 +249,138 @@ class BankManagementService
     // an account, every un-swept deposit it just summed gets marked
     // is_swept = TRUE (see migration "56 - collection_report_deposits_
     // add_swept_tracking.sql") so the same money is never swept twice.
-    private function unsweptDepositBalanceSql(): string
+    // $asOf, when given, restricts the sum to deposits whose own date (own
+    // period_from, falling back to the parent Collection Report's
+    // report_date when blank — see below) is on or before $asOf AND isn't a
+    // Saturday/Sunday (EXTRACT(DOW) 0/6, the office doesn't collect on
+    // weekends so a weekend date is almost certainly a data-entry slip).
+    // Deliberately NO lower bound: an earlier version also required the
+    // date to be within a trailing N-day window, which meant any un-swept
+    // deposit older than that window silently vanished from every sweep
+    // forever — real, still-un-deposited money just disappearing is worse
+    // than showing a stale-looking balance. previewFundSweep()/
+    // processFundSweep() both pass $asOf = yesterday (see
+    // sweepCutoffDate()) so today's own deposit isn't swept same-day; the
+    // params stay optional in case something else needs the plain
+    // per-account balance later.
+    private function unsweptDepositBalanceSql(?string $asOf = null): string
     {
-        return "(SELECT COALESCE(SUM(amount), 0) FROM fims.collection_report_deposits crd
-                 WHERE crd.bank_account_id = ba.bank_account_id AND crd.is_swept = FALSE)";
+        $periodFilter = '';
+        if ($asOf !== null) {
+            // Period From/To is left blank by default on a Deposit row (see
+            // collections-page.php's renderColDepositRow()) — a deposit with
+            // no period set would otherwise vanish from every sweep (NULL
+            // comparisons are never true in SQL), so fall back to the
+            // deposit's own parent Collection Report's report_date here.
+            $periodFilter = ' AND COALESCE(crd.period_from, cr.report_date) <= ' . $this->str($asOf) . '
+                              AND EXTRACT(DOW FROM COALESCE(crd.period_from, cr.report_date)) NOT IN (0, 6)';
+        }
+
+        return "(SELECT COALESCE(SUM(crd.amount), 0) FROM fims.collection_report_deposits crd
+                 JOIN fims.collection_reports cr ON cr.collection_report_id = crd.collection_report_id
+                 WHERE crd.bank_account_id = ba.bank_account_id AND crd.is_swept = FALSE{$periodFilter})";
+    }
+
+    // Just "yesterday" — today's own deposit isn't included yet (same-day
+    // money shouldn't be swept out from under whoever just entered it), but
+    // everything un-swept before that is fair game, no matter how old.
+    // An earlier version bounded this to a fixed trailing window (6 days
+    // back), meant to approximate "Friday through Wednesday, excluding
+    // weekends" — but a FIXED-length window that only resets when swept
+    // means any un-swept deposit older than the window silently stops being
+    // counted, forever, the moment a sweep gets missed for a stretch — real
+    // money disappearing from view is worse than an occasional backlog.
+    // Weekends are still excluded, just at the SQL level instead
+    // (unsweptDepositBalanceSql()'s own DOW filter on each deposit's own
+    // date), so there's no need for this to bound the start of the range.
+    private function sweepCutoffDate(): string
+    {
+        return date('Y-m-d', strtotime('-1 day'));
+    }
+
+    // ── Fund Sweep settings (fims.app_settings) ──
+    // Only one setting exists today: which day of the week (ISO-8601,
+    // 1=Monday..7=Sunday) the "Process Fund Sweep" button is allowed to
+    // run on — see app/pages/fund-sweeping-page.php's own Settings control.
+    private const FUND_SWEEP_DAY_SETTING_KEY = 'fund_sweep_day_of_week';
+    private const FUND_SWEEP_DAY_DEFAULT = 4; // Thursday
+
+    public function getFundSweepSettings()
+    {
+        $value = App\ExecuteScalar(
+            "SELECT setting_value FROM fims.app_settings WHERE setting_key = " . $this->str(self::FUND_SWEEP_DAY_SETTING_KEY),
+            'DB'
+        );
+        $dayOfWeek = ctype_digit((string) $value) && (int) $value >= 1 && (int) $value <= 7
+            ? (int) $value
+            : self::FUND_SWEEP_DAY_DEFAULT;
+
+        return $this->ok(['sweep_day_of_week' => $dayOfWeek]);
+    }
+
+    public function updateFundSweepSettings(array $data)
+    {
+        $dayOfWeek = (int) ($data['sweep_day_of_week'] ?? 0);
+        if ($dayOfWeek < 1 || $dayOfWeek > 7) {
+            return json_encode(['success' => false, 'message' => 'Sweep day must be a valid day of the week.']);
+        }
+        $userId = (int) App\CurrentUserID();
+        App\Execute(
+            "INSERT INTO fims.app_settings (setting_key, setting_value, updated_by, updated_at)
+             VALUES (" . $this->str(self::FUND_SWEEP_DAY_SETTING_KEY) . ", " . $this->str((string) $dayOfWeek) . ", "
+                . ($userId > 0 ? $userId : 'NULL') . ", CURRENT_TIMESTAMP)
+             ON CONFLICT (setting_key) DO UPDATE SET
+                 setting_value = EXCLUDED.setting_value,
+                 updated_by = EXCLUDED.updated_by,
+                 updated_at = EXCLUDED.updated_at",
+            'DB'
+        );
+
+        return $this->ok(['sweep_day_of_week' => $dayOfWeek]);
     }
 
     public function previewFundSweep($rcId)
     {
         $rcId = trim((string) $rcId);
-        $balanceSql = $this->unsweptDepositBalanceSql();
+        $asOf = $this->sweepCutoffDate();
+        $balanceSql = $this->unsweptDepositBalanceSql($asOf);
         $rows = App\ExecuteRowsAssociative(
             "SELECT ba.bank_account_id, ba.account_name, ba.bank_name,
                     {$balanceSql} AS current_balance,
-                    ba.main_depository_account_id, md.account_name AS main_depository_account_name
+                    ba.main_depository_account_id, md.account_name AS main_depository_account_name,
+                    gl.account_code AS gl_account_code, gl.account_title AS gl_account_title,
+                    sl.account_code AS sl_account_code, sl.account_title AS sl_account_title
              FROM {$this->tableBankAccounts} ba
              LEFT JOIN {$this->tableBankAccounts} md ON md.bank_account_id = ba.main_depository_account_id
+             LEFT JOIN {$this->tableChartOfAccounts} gl ON gl.account_id = ba.coa_account_id
+             LEFT JOIN {$this->tableChartOfAccounts} sl ON sl.account_id = ba.sl_code
              WHERE " . ($rcId === '' ? 'ba.rc_id IS NULL' : 'ba.rc_id = ' . $this->str($rcId)) . "
              ORDER BY ba.account_name",
+            'DB'
+        );
+
+        return $this->ok($rows ?: []);
+    }
+
+    // The individual Deposit rows that make up one account's "Balance" in
+    // previewFundSweep() above — same WHERE clause as
+    // unsweptDepositBalanceSql()'s own filtered form, just returning rows
+    // instead of a SUM, so the Fund Sweeping tab can show what it's about to
+    // sweep instead of just the one total.
+    public function getFundSweepDepositBreakdown($bankAccountId)
+    {
+        $bankAccountId = (int) $bankAccountId;
+        $asOf = $this->sweepCutoffDate();
+        $rows = App\ExecuteRowsAssociative(
+            "SELECT crd.deposit_id, crd.amount, COALESCE(crd.period_from, cr.report_date) AS deposit_date,
+                    cr.collection_report_id, cr.collecting_office, rc.rc_code, rc.rc_name
+             FROM fims.collection_report_deposits crd
+             JOIN fims.collection_reports cr ON cr.collection_report_id = crd.collection_report_id
+             LEFT JOIN {$this->tableResponsibilityCode} rc ON rc.rc_id = cr.rc_id
+             WHERE crd.bank_account_id = {$bankAccountId} AND crd.is_swept = FALSE
+               AND COALESCE(crd.period_from, cr.report_date) <= " . $this->str($asOf) . "
+               AND EXTRACT(DOW FROM COALESCE(crd.period_from, cr.report_date)) NOT IN (0, 6)
+             ORDER BY deposit_date, crd.deposit_id",
             'DB'
         );
 
@@ -278,12 +392,27 @@ class BankManagementService
     // can't sweep an account outside the region it claims) — lets the
     // Fund Sweeping tab's per-row checkboxes pick which eligible accounts
     // actually get swept, instead of always sweeping every eligible
-    // account in the region.
+    // account in the region. No automatic/scheduled trigger exists — this
+    // is only ever called by a logged-in user clicking "Process Fund
+    // Sweep" (app/pages/fund-sweeping-page.php), gated to whichever day
+    // getFundSweepSettings() currently has configured (default Thursday) —
+    // enforced here too (not just disabling the button client-side) since
+    // this is the one place that actually creates the draft FTLAs. Deposits
+    // dated up through yesterday are swept (see sweepCutoffDate()), weekends
+    // excluded, with NO lower bound — same cutoff previewFundSweep() above
+    // sums, so what's shown is what actually gets processed.
     public function processFundSweep($rcId, array $accountIds = [])
     {
+        $settings = json_decode($this->getFundSweepSettings(), true);
+        $allowedDay = $settings['data']['sweep_day_of_week'] ?? self::FUND_SWEEP_DAY_DEFAULT;
+        if ((int) date('N') !== (int) $allowedDay) {
+            $dayNames = [1 => 'Mondays', 2 => 'Tuesdays', 3 => 'Wednesdays', 4 => 'Thursdays', 5 => 'Fridays', 6 => 'Saturdays', 7 => 'Sundays'];
+            return json_encode(['success' => false, 'message' => 'Fund Sweep can only be processed on ' . ($dayNames[(int) $allowedDay] ?? 'the configured day') . '.']);
+        }
         $userId = (int) App\CurrentUserID();
         $rcId = trim((string) $rcId);
-        $balanceSql = $this->unsweptDepositBalanceSql();
+        $asOf = $this->sweepCutoffDate();
+        $balanceSql = $this->unsweptDepositBalanceSql($asOf);
         $accountIds = array_values(array_filter(array_map('intval', $accountIds)));
         $accountFilter = $accountIds ? ' AND ba.bank_account_id IN (' . implode(',', $accountIds) . ')' : '';
         $rows = App\ExecuteRowsAssociative(
@@ -317,15 +446,19 @@ class BankManagementService
                 'from_accounts' => [['bank_account_id' => $row['bank_account_id'], 'amount' => $amount]],
                 'to_bank_account_id' => $toId,
                 'transfer_amount' => $amount,
-                'purpose' => 'Fund Sweep — ' . $row['account_name'] . ' to Main Depository',
+                'purpose' => 'Fund Sweep — ' . $row['account_name'] . ' to Main Depository (as of ' . $asOf . ')',
                 'status' => 'DRAFT',
             ], $userId);
             if ($result['success'] ?? false) {
                 $fundTransferId = (int) ($result['data']['fund_transfer_id'] ?? 0);
                 App\Execute(
-                    "UPDATE fims.collection_report_deposits
+                    "UPDATE fims.collection_report_deposits crd
                      SET is_swept = TRUE, swept_fund_transfer_id = {$fundTransferId}
-                     WHERE bank_account_id = {$row['bank_account_id']} AND is_swept = FALSE",
+                     FROM fims.collection_reports cr
+                     WHERE crd.collection_report_id = cr.collection_report_id
+                       AND crd.bank_account_id = {$row['bank_account_id']} AND crd.is_swept = FALSE
+                       AND COALESCE(crd.period_from, cr.report_date) <= " . $this->str($asOf) . "
+                       AND EXTRACT(DOW FROM COALESCE(crd.period_from, cr.report_date)) NOT IN (0, 6)",
                     'DB'
                 );
                 $created[] = ['bank_account_id' => $row['bank_account_id'], 'account_name' => $row['account_name'], 'ftla_number' => $result['data']['ftla_number'] ?? null];

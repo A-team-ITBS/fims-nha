@@ -39,7 +39,7 @@ $_ao_api = Config('API.FIMS_URL');
                 </svg>
             </div>
             <div>
-                <div class="nha-hdr-title">Accountable Officers</div>
+                <div class="nha-hdr-title" id="ao-hdr-title">Accountable Officers</div>
             </div>
         </div>
         <div class="nha-hdr-r">
@@ -47,18 +47,27 @@ $_ao_api = Config('API.FIMS_URL');
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                 Refresh
             </button>
-            <button id="ao-add" type="button" class="nha-btn-hdr" style="background:var(--afims-success, #11A752);" title="Add an accountable officer">
+            <button id="ao-add" type="button" class="nha-btn-hdr" style="background:var(--afims-success, #11A752);" title="Add an officer">
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
-                Add Accountable Officer
+                <span id="ao-add-label">Add Accountable Officer</span>
             </button>
         </div>
+    </div>
+
+    <!-- ── TYPE TABS — Accountable Officers / Collecting Officers both live in
+         fims.accountable_officers, discriminated by officer_type (see
+         AccountableOfficerService's own docblock). Same list/modal/GL+SL
+         tagging logic either way, just filtered+tagged by ao_activeType. ── -->
+    <div class="nha-tabs no-print">
+        <button type="button" class="nha-tab active" data-type="ACCOUNTABLE_OFFICER" onclick="ao_switchType('ACCOUNTABLE_OFFICER')">Accountable Officers</button>
+        <button type="button" class="nha-tab" data-type="COLLECTING_OFFICER" onclick="ao_switchType('COLLECTING_OFFICER')">Collecting Officers</button>
     </div>
 
     <!-- ── KPI CARDS (cover every row matching the filters, not just this page) ── -->
     <div class="nha-summary">
         <div class="nha-sc nha-sc-navy">
             <div class="nha-sc-top"><div>
-                <div class="nha-sc-label">Total Accountable Officers</div>
+                <div class="nha-sc-label" id="ao-kpi-total-label">Total Accountable Officers</div>
                 <div class="nha-sc-val" id="ao-kpi-total">—</div>
             </div></div>
             <p class="nha-kpi-sub">Matches current filters</p>
@@ -252,11 +261,40 @@ $_ao_api = Config('API.FIMS_URL');
 ═══════════════════════════════════════════════════════════════ */
 
 const AO_API = '<?php echo $_ao_api; ?>' + '/accountable-officers';
+const CO_API = '<?php echo $_ao_api; ?>' + '/collecting-officers';
 
 let ao_page = 1;
 const AO_PAGE_SIZE = 15;
+let ao_activeType = 'ACCOUNTABLE_OFFICER';
+// Which API base the list/read/add/update calls hit — Accountable and
+// Collecting Officers are two entirely separate tables/services now (see
+// CollectingOfficerService's docblock), each with their own id column, but
+// CollectingOfficerService aliases its PK AS accountable_officer_id so this
+// same page/table/modal JS (ao_actionMenu()/ao_openModal(), both written
+// against that field name) works unchanged for either tab — only the API
+// base actually needs to switch. The shared lookup endpoints built off
+// `${AO_API}/../accounting/...` etc. deliberately stay pinned to AO_API
+// regardless of tab — they're unrelated to officer type and resolve to the
+// same absolute path either way (`/api/accountable-officers/..` and
+// `/api/collecting-officers/..` both pop back up to the same `/api/`).
+let ao_activeApi = AO_API;
+const AO_TYPE_LABELS = { ACCOUNTABLE_OFFICER: 'Accountable Officer', COLLECTING_OFFICER: 'Collecting Officer' };
 
 const $ao = id => document.getElementById(id);
+
+function ao_switchType(type) {
+    if (type === ao_activeType) return;
+    ao_activeType = type;
+    ao_activeApi = type === 'COLLECTING_OFFICER' ? CO_API : AO_API;
+    document.querySelectorAll('#ao-root .nha-tabs .nha-tab').forEach(b => b.classList.toggle('active', b.dataset.type === type));
+    const label = AO_TYPE_LABELS[type] || 'Officer';
+    $ao('ao-hdr-title').textContent = label + 's';
+    $ao('ao-add-label').textContent = 'Add ' + label;
+    $ao('ao-add').title = 'Add an ' + label.toLowerCase();
+    $ao('ao-kpi-total-label').textContent = 'Total ' + label + 's';
+    ao_page = 1;
+    ao_load();
+}
 
 async function ao_bootstrapLoad() {
     await Promise.all([ao_load(), ao_loadRegions()]);
@@ -339,10 +377,11 @@ async function ao_load() {
         const params = new URLSearchParams({
             search : $ao('ao-filter-search')?.value || '',
             status : $ao('ao-filter-status')?.value || '',
+            type   : ao_activeType,
             page   : ao_page,
             limit  : AO_PAGE_SIZE,
         });
-        const res  = await fetch(`${AO_API}/list?${params}`, { credentials: 'same-origin' });
+        const res  = await fetch(`${ao_activeApi}/list?${params}`, { credentials: 'same-origin' });
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const json = await res.json();
         if (!json.success) throw new Error(json.message || 'Failed to load.');
@@ -371,7 +410,7 @@ function ao_statusBadge(s) {
 function ao_renderTable(rows) {
     const tbody = $ao('ao-tbody');
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="7"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No accountable officers found.</span></div></td></tr>';
+        tbody.innerHTML = `<tr><td colspan="7"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No ${ao_esc((AO_TYPE_LABELS[ao_activeType] || 'officer').toLowerCase())}s found.</span></div></td></tr>`;
         return;
     }
     const offset = (ao_page - 1) * AO_PAGE_SIZE;
@@ -459,7 +498,10 @@ function ao_openModal(mode, row = null) {
     ao_hideErr();
     $ao('ao-mode').value = mode;
     $ao('ao-id').value   = row?.accountable_officer_id || '';
-    $ao('ao-modal-title').textContent = mode === 'edit' ? 'Edit Accountable Officer' : 'Add Accountable Officer';
+    const typeLabel = AO_TYPE_LABELS[ao_activeType] || 'Officer';
+    $ao('ao-modal-tag').textContent   = typeLabel + ' Master Data';
+    $ao('ao-modal-title').textContent = (mode === 'edit' ? 'Edit ' : 'Add ') + typeLabel;
+    $ao('ao-save-label').textContent  = 'Save ' + typeLabel;
 
     $ao('ao-first-name').value  = row?.first_name ?? '';
     $ao('ao-middle-name').value = row?.middle_name ?? '';
@@ -511,7 +553,7 @@ function ao_hideErr() {
 async function ao_edit(id) {
     window.PagePreloader?.show();
     try {
-        const res  = await fetch(`${AO_API}/read/${encodeURIComponent(id)}`, { credentials: 'same-origin' });
+        const res  = await fetch(`${ao_activeApi}/read/${encodeURIComponent(id)}`, { credentials: 'same-origin' });
         const json = await res.json();
         if (!json.success) throw new Error(json.message || 'Failed to load accountable officer.');
         ao_openModal('edit', json.data);
@@ -546,7 +588,7 @@ async function ao_save(ev) {
 
     window.PagePreloader?.show();
     try {
-        const url    = mode === 'edit' ? `${AO_API}/update/${encodeURIComponent(id)}` : `${AO_API}/add`;
+        const url    = mode === 'edit' ? `${ao_activeApi}/update/${encodeURIComponent(id)}` : `${ao_activeApi}/add`;
         const method = mode === 'edit' ? 'PUT' : 'POST';
         const res    = await fetch(url, {
             method,
@@ -1039,7 +1081,7 @@ $ao('ao-sl-form')?.addEventListener('submit', async (ev) => {
 
     try {
         window.PagePreloader?.show();
-        const res = await fetch(`${AO_API}/update/${encodeURIComponent(officerId)}`, {
+        const res = await fetch(`${ao_activeApi}/update/${encodeURIComponent(officerId)}`, {
             method: 'PUT',
             credentials: 'same-origin',
             headers: { 'Content-Type': 'application/json' },

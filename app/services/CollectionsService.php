@@ -30,6 +30,7 @@ class CollectionsService
     private string $tableCoa       = 'fims.chart_of_accounts';
     private string $tableBankAccounts = 'fims.bank_accounts';
     private string $tableJev       = 'fims.journal_entry_vouchers';
+    private string $tableCollectingOfficers = 'fims.collecting_officers';
 
     // The clearing/"undeposited collections" account a Collecting Officer's cash sits in between
     // being collected and being deposited — debited by the Collection leg JEV, credited by the
@@ -115,6 +116,88 @@ class CollectionsService
         return $this->dataTable($params['draw'] ?? 1, $rows);
     }
 
+    // ── Collections tab: every Collection line across every report,
+    // flattened with its parent report's own date/region/office context —
+    // the Collections list used to only ever show up bundled into a
+    // report's own total_collections figure; this is the line-level
+    // breakdown by GL account that total hides. Read-only here — editing a
+    // line still happens through its parent report's Register/Edit modal
+    // (see collections-page.php's row click), since a line isn't an
+    // independently addressable record of its own.
+    public function getCollectionsList($params)
+    {
+        $where = ['1=1'];
+        // Lets the Register Deposit form (collections-page.php's
+        // colLoadCollectedForRegion()) show just this region's own already-
+        // collected lines as reference while entering a Deposit.
+        $rcId = trim((string) ($params['rc_id'] ?? ''));
+        if ($rcId !== '') {
+            $where[] = 'cr.rc_id = ' . $this->str($rcId);
+        }
+        $search = trim((string) ($params['search'] ?? ''));
+        if ($search !== '') {
+            $needle = $this->str('%' . $search . '%');
+            $where[] = "(cr.collecting_office ILIKE {$needle} OR rc.rc_code ILIKE {$needle} OR rc.rc_name ILIKE {$needle}
+                         OR coa.account_code ILIKE {$needle} OR coa.account_title ILIKE {$needle})";
+        }
+        $whereSql = implode(' AND ', $where);
+
+        $rows = App\ExecuteRowsAssociative(
+            "SELECT crl.line_id, crl.collection_report_id, crl.amount,
+                    coa.account_code, coa.account_title,
+                    cr.report_date, cr.collecting_office, rc.rc_code, rc.rc_name
+             FROM {$this->tableLines} crl
+             JOIN {$this->tableReports} cr ON cr.collection_report_id = crl.collection_report_id
+             LEFT JOIN {$this->tableRc} rc ON rc.rc_id = cr.rc_id
+             LEFT JOIN {$this->tableCoa} coa ON coa.account_id = crl.coa_account_id
+             WHERE {$whereSql}
+             ORDER BY cr.report_date DESC, cr.collection_report_id DESC, crl.line_number",
+            'DB'
+        );
+
+        return $this->dataTable($params['draw'] ?? 1, $rows);
+    }
+
+    // ── Deposits tab: every Deposit line across every report, same
+    // flattening as getCollectionsList() above, plus is_swept (Fund
+    // Sweeping's own tracking — see app/pages/fund-sweeping-page.php) since
+    // that status only ever made sense at this per-deposit granularity.
+    public function getDepositsList($params)
+    {
+        $where = ['1=1'];
+        // Same purpose as getCollectionsList()'s own rc_id filter — lets
+        // colLoadCollectedForRegion() in collections-page.php fetch just
+        // this region's own Deposit totals (to net against its Collected
+        // totals) instead of every deposit on file.
+        $rcId = trim((string) ($params['rc_id'] ?? ''));
+        if ($rcId !== '') {
+            $where[] = 'cr.rc_id = ' . $this->str($rcId);
+        }
+        $search = trim((string) ($params['search'] ?? ''));
+        if ($search !== '') {
+            $needle = $this->str('%' . $search . '%');
+            $where[] = "(cr.collecting_office ILIKE {$needle} OR rc.rc_code ILIKE {$needle} OR rc.rc_name ILIKE {$needle}
+                         OR ba.account_name ILIKE {$needle} OR ba.bank_name ILIKE {$needle})";
+        }
+        $whereSql = implode(' AND ', $where);
+
+        $rows = App\ExecuteRowsAssociative(
+            "SELECT crd.deposit_id, crd.collection_report_id, crd.amount,
+                    crd.period_from, crd.period_to, crd.is_swept, crd.deposit_slip_url,
+                    ba.account_name, ba.bank_name,
+                    cr.report_date, cr.collecting_office, rc.rc_code, rc.rc_name
+             FROM {$this->tableDeposits} crd
+             JOIN {$this->tableReports} cr ON cr.collection_report_id = crd.collection_report_id
+             LEFT JOIN {$this->tableRc} rc ON rc.rc_id = cr.rc_id
+             LEFT JOIN {$this->tableBankAccounts} ba ON ba.bank_account_id = crd.bank_account_id
+             WHERE {$whereSql}
+             ORDER BY cr.report_date DESC, cr.collection_report_id DESC, crd.line_number",
+            'DB'
+        );
+
+        return $this->dataTable($params['draw'] ?? 1, $this->withDepositSlipViewUrls($rows ?: []));
+    }
+
     // ── Single report (header + both line sections) ──
     public function getReport($id)
     {
@@ -130,14 +213,14 @@ class CollectionsService
              ORDER BY crl.line_number",
             'DB'
         ) ?: [];
-        $report['deposits'] = App\ExecuteRowsAssociative(
+        $report['deposits'] = $this->withDepositSlipViewUrls(App\ExecuteRowsAssociative(
             "SELECT crd.*, ba.account_name, ba.bank_name
              FROM {$this->tableDeposits} crd
              LEFT JOIN {$this->tableBankAccounts} ba ON ba.bank_account_id = crd.bank_account_id
              WHERE crd.collection_report_id = {$report['collection_report_id']}
              ORDER BY crd.line_number",
             'DB'
-        ) ?: [];
+        ) ?: []);
 
         return $this->ok($report);
     }
@@ -145,12 +228,50 @@ class CollectionsService
     private function fetchReport(int $id): ?array
     {
         return App\ExecuteRow(
-            "SELECT cr.*, rc.rc_code, rc.rc_name
+            "SELECT cr.*, rc.rc_code, rc.rc_name,
+                    trim(both ', ' from concat_ws(', ', nullif(trim(co.last_name), ''),
+                        trim(concat_ws(' ', nullif(trim(co.first_name), ''), nullif(trim(co.middle_name), ''), nullif(trim(co.suffix), ''))))
+                    ) AS collecting_officer_name,
+                    co.sl_code AS collecting_officer_sl_code
              FROM {$this->tableReports} cr
              LEFT JOIN {$this->tableRc} rc ON rc.rc_id = cr.rc_id
+             LEFT JOIN {$this->tableCollectingOfficers} co ON co.collecting_officer_id = cr.collecting_officer_id
              WHERE cr.collection_report_id = {$id}",
             'DB'
         ) ?: null;
+    }
+
+    // deposit_slip_url stores a stable reference — either an object-storage
+    // key (POST /upload/file — see FileUploadServices::uploadFileToStorage())
+    // or a plain http(s) link typed in by hand — never a browsable URL by
+    // itself (an object key isn't public, and a presigned view URL expires
+    // after an hour, so one can't just be stored once and reused). Each
+    // read resolves a fresh deposit_slip_view_url via
+    // FileUploadServices::viewUrlFor(), same "resolve on read" precedent as
+    // FTLA's _resolveAttachmentUrls().
+    private function withDepositSlipViewUrls(array $rows): array
+    {
+        if (!$rows) {
+            return $rows;
+        }
+        $fileUploads = new FileUploadServices();
+
+        return array_map(static function (array $row) use ($fileUploads) {
+            $row['deposit_slip_view_url'] = $fileUploads->viewUrlFor($row['deposit_slip_url'] ?? null);
+
+            return $row;
+        }, $rows);
+    }
+
+    // Validates a submitted Collecting Officer id against
+    // fims.collecting_officers — same "clean message instead of an opaque
+    // DB constraint error" reasoning as rcIdExists() below.
+    private function collectingOfficerIdExists(string $id): bool
+    {
+        return (bool) App\ExecuteRow(
+            "SELECT collecting_officer_id FROM {$this->tableCollectingOfficers} WHERE collecting_officer_id = " . (int) $id,
+            'DB'
+        );
     }
 
     // Validates a submitted Region/Office against fims.responsibility_code
@@ -183,7 +304,11 @@ class CollectionsService
 
     // Validates and totals the "Collection(s)" lines submitted in $data —
     // shared by store()/update() so both reject the same bad input the
-    // same way before anything is written.
+    // same way before anything is written. Does NOT itself require at
+    // least one line — a dedicated "Register Deposit" form (see
+    // collections-page.php's colSetFormMode()) submits this section empty
+    // on purpose; store()/update() enforce "at least one of Collection OR
+    // Deposit" instead, not "both".
     private function validateLines(array $lines): array
     {
         $clean = [];
@@ -199,9 +324,6 @@ class CollectionsService
             }
             $clean[] = ['coa_account_id' => $coaAccountId, 'amount' => $amount];
             $total += $amount;
-        }
-        if (!$clean) {
-            return ['error' => 'At least one Collection line is required.'];
         }
 
         return ['lines' => $clean, 'total' => $total];
@@ -234,6 +356,7 @@ class CollectionsService
                 'period_from' => trim((string) ($dep['period_from'] ?? '')),
                 'period_to' => trim((string) ($dep['period_to'] ?? '')),
                 'amount' => $amount,
+                'deposit_slip_url' => trim((string) ($dep['deposit_slip_url'] ?? '')),
             ];
             $total += $amount;
         }
@@ -260,9 +383,10 @@ class CollectionsService
     {
         foreach ($deposits as $i => $dep) {
             App\Execute(
-                "INSERT INTO {$this->tableDeposits} (collection_report_id, line_number, bank_account_id, period_from, period_to, amount)
+                "INSERT INTO {$this->tableDeposits} (collection_report_id, line_number, bank_account_id, period_from, period_to, amount, deposit_slip_url)
                  VALUES ({$reportId}, " . ($startingLineNumber + $i) . ', ' . $this->str($dep['bank_account_id']) . ', '
-                    . $this->dateOrNull($dep['period_from']) . ', ' . $this->dateOrNull($dep['period_to']) . ', ' . $this->num($dep['amount']) . ')',
+                    . $this->dateOrNull($dep['period_from']) . ', ' . $this->dateOrNull($dep['period_to']) . ', ' . $this->num($dep['amount']) . ', '
+                    . $this->strOrNull($dep['deposit_slip_url'] ?? null) . ')',
                 'DB'
             );
         }
@@ -288,8 +412,18 @@ class CollectionsService
         if (isset($depositResult['error'])) {
             return json_encode(["success" => false, "message" => $depositResult['error']]);
         }
-        if (!$depositResult['deposits']) {
-            return json_encode(["success" => false, "message" => "At least one Deposit line is required."]);
+        // A dedicated "Register Collection" or "Register Deposit" form only
+        // ever submits its own section — see collections-page.php's
+        // colSetFormMode() — so only ONE of the two is required here, not
+        // both (the old combined "Register Collection Report" flow still
+        // works fine either way, since it always submits both).
+        if (!$lineResult['lines'] && !$depositResult['deposits']) {
+            return json_encode(["success" => false, "message" => "At least one Collection line or Deposit line is required."]);
+        }
+
+        $collectingOfficerId = trim((string) ($data['collecting_officer_id'] ?? ''));
+        if ($collectingOfficerId !== '' && !$this->collectingOfficerIdExists($collectingOfficerId)) {
+            return json_encode(["success" => false, "message" => "Select a valid Collecting Officer."]);
         }
 
         $userId = (int) App\CurrentUserID();
@@ -297,8 +431,9 @@ class CollectionsService
 
         $row = App\ExecuteRow(
             "INSERT INTO {$this->tableReports}
-                (report_date, rc_id, collecting_office, total_collections, total_deposits, created_by)
+                (report_date, rc_id, collecting_office, collecting_officer_id, total_collections, total_deposits, created_by)
              VALUES (" . $this->str($reportDate) . ', ' . $this->str($rcId) . ', ' . $this->strOrNull($collectingOffice) . ', '
+                . ($collectingOfficerId !== '' ? (int) $collectingOfficerId : 'NULL') . ', '
                 . $this->num($lineResult['total']) . ', ' . $this->num($depositResult['total']) . ", {$userId})
              RETURNING collection_report_id",
             'DB'
@@ -353,8 +488,16 @@ class CollectionsService
         );
         $sweptTotal = (float) ($sweptRow['total'] ?? 0);
         $sweptMaxLine = (int) ($sweptRow['max_line'] ?? 0);
-        if (!$depositResult['deposits'] && $sweptTotal <= 0) {
-            return json_encode(["success" => false, "message" => "At least one Deposit line is required."]);
+        // Same relaxation as store() — at least one of Collection OR
+        // Deposit (existing swept deposits count as "having" a deposit,
+        // same as before this change).
+        if (!$lineResult['lines'] && !$depositResult['deposits'] && $sweptTotal <= 0) {
+            return json_encode(["success" => false, "message" => "At least one Collection line or Deposit line is required."]);
+        }
+
+        $collectingOfficerId = trim((string) ($data['collecting_officer_id'] ?? ''));
+        if ($collectingOfficerId !== '' && !$this->collectingOfficerIdExists($collectingOfficerId)) {
+            return json_encode(["success" => false, "message" => "Select a valid Collecting Officer."]);
         }
 
         $collectingOffice = trim((string) ($data['collecting_office'] ?? ''));
@@ -365,6 +508,7 @@ class CollectionsService
                 report_date = " . $this->str($reportDate) . ",
                 rc_id = " . $this->str($rcId) . ",
                 collecting_office = " . $this->strOrNull($collectingOffice) . ",
+                collecting_officer_id = " . ($collectingOfficerId !== '' ? (int) $collectingOfficerId : 'NULL') . ",
                 total_collections = " . $this->num($lineResult['total']) . ",
                 total_deposits = " . $this->num($totalDeposits) . ",
                 updated_at = CURRENT_TIMESTAMP
@@ -490,6 +634,12 @@ class CollectionsService
         $particulars = 'Collection Report ' . ($leg === 'collection' ? '— Collections' : '— Deposits')
             . ' (' . $report['report_date'] . ($report['collecting_office'] ? ', ' . $report['collecting_office'] : '') . ')';
 
+        // Tags the Cash-Collecting Officers line (both legs book it, under the same
+        // control account) with the specific officer's SL code — same pairing as
+        // Collecting Officer Master Data's own GL/SL tagging — so the JEV line is
+        // traceable to the officer, not just the control account.
+        $collectingOfficerSlCode = trim((string) ($report['collecting_officer_sl_code'] ?? '')) ?: null;
+
         if ($leg === 'collection') {
             $lines = App\ExecuteRowsAssociative(
                 "SELECT coa.account_code, coa.account_title, crl.amount
@@ -502,7 +652,7 @@ class CollectionsService
                 return ['success' => false, 'message' => 'This report has no Collection lines to journalize.'];
             }
             $total = array_sum(array_map(fn($l) => (float) $l['amount'], $lines));
-            $out = [['account_code' => self::CASH_COLLECTING_OFFICER_CODE, 'account_title' => 'Cash-Collecting Officers', 'debit' => $total, 'credit' => 0]];
+            $out = [['account_code' => self::CASH_COLLECTING_OFFICER_CODE, 'account_title' => 'Cash-Collecting Officers', 'debit' => $total, 'credit' => 0, 'sl_code' => $collectingOfficerSlCode]];
             foreach ($lines as $l) {
                 $out[] = ['account_code' => $l['account_code'], 'account_title' => $l['account_title'], 'debit' => 0, 'credit' => (float) $l['amount']];
             }
@@ -531,7 +681,7 @@ class CollectionsService
             if (!$out) {
                 return ['success' => false, 'message' => 'None of this report\'s Deposit bank accounts have a GL account assigned.'];
             }
-            $out[] = ['account_code' => self::CASH_COLLECTING_OFFICER_CODE, 'account_title' => 'Cash-Collecting Officers', 'debit' => 0, 'credit' => $total];
+            $out[] = ['account_code' => self::CASH_COLLECTING_OFFICER_CODE, 'account_title' => 'Cash-Collecting Officers', 'debit' => 0, 'credit' => $total, 'sl_code' => $collectingOfficerSlCode];
         }
 
         return ['success' => true, 'data' => [
@@ -571,7 +721,7 @@ class CollectionsService
             'jev_date'      => $data['jev_date'],
             'book_id'       => $bookId,
             'particulars'   => trim((string) ($body['particulars'] ?? '')) ?: $data['particulars'],
-            'lines'         => array_map(fn($l) => ['account_code' => $l['account_code'], 'rc_id' => $data['rc_id'] ?? '', 'debit' => $l['debit'], 'credit' => $l['credit']], $data['lines']),
+            'lines'         => array_map(fn($l) => ['account_code' => $l['account_code'], 'rc_id' => $data['rc_id'] ?? '', 'debit' => $l['debit'], 'credit' => $l['credit'], 'sl_code' => $l['sl_code'] ?? null], $data['lines']),
         ], $userId);
 
         if ($result['success'] ?? false) {
