@@ -2226,7 +2226,7 @@ body {
 }
 
 .fims-wrap {
-  max-width: 1400px;
+  /* max-width: 1400px; */
   margin: 0 auto;
   padding: 24px 20px;
   font-family: var(--fims-font);
