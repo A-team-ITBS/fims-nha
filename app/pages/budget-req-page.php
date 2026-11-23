@@ -550,14 +550,13 @@ function bgr_fmdActionButtons(flatRow, idx) {
     const { header, program } = flatRow;
     const isDraft = header.status_name === 'Draft';
 
-    // Budget Head (level 8) on an Approved request: nothing left for them to do, so the row has no
-    // Actions button at all. This is the ONE place that rule lives — drop `headIsDone` from viewItem
-    // below to let the Budget Head open the details of Approved requests as well.
+    // Budget Head (level 8) on an Approved request: nothing left to DECIDE, so Budget Review drops off
+    // (headIsDone below) — but View stays, so they can still look at what they approved.
     const headIsDone = BGR_IS_BUDGET_HEAD && header.status_name === 'Approved';
 
-    // The request's details, read-only: every Program, Project and line item. Offered on every
-    // request — including ones that can no longer be processed or decided — except as above.
-    const viewItem = headIsDone ? '' : `<a class="nha-menu-item" href="javascript:void(0);" onclick="bgr_viewRequest(${idx});bgr_closeMenus();">
+    // The request's details, read-only: every Program, Project and line item. Offered on every request,
+    // whatever its status or who is looking.
+    const viewItem = `<a class="nha-menu-item" href="javascript:void(0);" onclick="bgr_viewRequest(${idx});bgr_closeMenus();">
             <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.477 0 8.268 2.943 9.542 7-1.274 4.057-5.065 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
             View
         </a>`;
