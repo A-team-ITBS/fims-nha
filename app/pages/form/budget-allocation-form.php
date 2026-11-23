@@ -931,6 +931,11 @@ $cbaAllowedTypes = array_values(array_intersect(['CBA', 'RFA', 'LAA', 'CFA'], ar
 				<div id="project_blocks_container"></div>
 				<button type="button" class="btn btn-secondary" id="add_project_block_btn" style="margin:4px 0 16px;display:none;"
 					onclick="addProjectBlock()">+ Add New CBA</button>
+				<!-- RFA/LAA only (cbaBlocksAreParentDriven(), same as the button above) — a COE allocation has no
+				     Project/CBA to anchor against, so this block skips the Parent CBA pick entirely and draws
+				     directly against a COE account code — see blockIsDirectDraw(). -->
+				<button type="button" class="btn btn-secondary" id="add_direct_cob_block_btn" style="margin:4px 0 16px;display:none;"
+					onclick="addProjectBlock(true)">+ Add Direct COE Account</button>
 			</div>
 
 			<!-- —— Budget Allocation Amount (same card as the Project details above) —————————— -->
@@ -2811,6 +2816,8 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 		if (!PROJECT_BLOCKS.length) addProjectBlock();
 		var addBtn = document.getElementById('add_project_block_btn');
 		if (addBtn) addBtn.style.display = cbaBlocksAreParentDriven() ? '' : 'none';
+		var addDirectBtn = document.getElementById('add_direct_cob_block_btn');
+		if (addDirectBtn) addDirectBtn.style.display = cbaBlocksAreParentDriven() ? '' : 'none';
 		updateBaaRemoveButtons();
 		recomputeBaaTotals();
 		baaApplyHeaderVisibility();
@@ -3391,7 +3398,9 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 	}
 
 	// What a project block's own search field picks, by type — CBA searches a Project directly; RFA/LAA
-	// searches an approved CBA instead (which then resolves to ITS project) — see blockSetupSearch().
+	// searches an approved CBA instead (which then resolves to ITS project) — see blockSetupSearch(). A
+	// direct COE draw (RFA/LAA only — see blockIsDirectDraw()) has no search field of its own at all, so
+	// this is never consulted for one (projectBlockTemplate()/blockSetupSearch() branch on directCob first).
 	function blockFieldNoun() {
 		return isRfaOrLaa() ? 'Parent CBA' : 'Project';
 	}
@@ -3400,7 +3409,36 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 		return isRfaOrLaa() ? 'Search approved CBA by ref no. or program…' : 'Search project…';
 	}
 
-	function projectBlockTemplate(blockId, label, placeholder) {
+	// Whether one project block is a direct COE draw (no Parent CBA, no Project — see
+	// BudgetLineItemService::createDirectEarmarkForRfaApproval()'s own doc comment).
+	function blockIsDirectDraw(blockId) {
+		var b = projectBlockById(blockId);
+		return !!(b && b.directCob);
+	}
+
+	// Whether one Budget Allocation Amount line belongs to a direct-draw block — used wherever a line
+	// would otherwise assume it has a Parent CBA (its ceiling, ancestor's lock, error text).
+	function lineIsDirectDraw(idx) {
+		var blockId = BAA_ROW_BLOCK[idx];
+		return blockId != null && blockIsDirectDraw(blockId);
+	}
+
+	function projectBlockTemplate(blockId, label, placeholder, directCob) {
+		if (directCob) {
+			return '' +
+				'<div class="project-block" data-block-id="' + blockId + '" data-direct="1">' +
+				'<button type="button" class="project-block-remove" title="Remove this project">&times;</button>' +
+				'<div class="form-group">' +
+				'<label class="form-label">' + pcEsc(label) + '</label>' +
+				'<p class="input-hint">A COE account code picked directly below — no Parent CBA, no Project.</p>' +
+				'</div>' +
+				'<input type="hidden" id="project_code_' + blockId + '" value="">' +
+				'<div id="baa_lines_' + blockId + '"></div>' +
+				'<button type="button" class="btn btn-secondary baa-restore-line-btn" id="restore_line_btn_' + blockId +
+				'" style="margin:4px 0 16px;display:none;">&#8634; Restore Removed Account Code</button>' +
+				'</div>';
+		}
+
 		var parentCbaField = '' +
 			'<div class="form-group">' +
 			'<label for="proj_search_' + blockId + '" class="form-label">' + pcEsc(label) + ' <span class="required">*</span></label>' +
@@ -3439,37 +3477,51 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 	}
 
 	// Re-labels every block "Project 1" / "Parent CBA 1", … by its current position (removing one in the
-	// middle renumbers the rest) and shows/hides each block's own remove button (hidden while only one
-	// remains — CBA always has exactly one, so its button never shows).
+	// middle renumbers the rest) and shows/hides each block's own remove button. CBA always keeps exactly
+	// one block (cbaBlocksAreParentDriven() is false for it) — its button never shows. RFA/LAA blocks
+	// (Parent-CBA-driven or direct — see blockIsDirectDraw()) may be freely removed, even down to the last
+	// one: there's no "always keep at least one" invariant for them the way there is for CBA — an empty
+	// result is simply caught by cbaOnSubmit()'s own "Parent CBA Required" check at submit time.
 	function renumberProjectBlocks() {
-		var onlyOne = PROJECT_BLOCKS.length <= 1;
+		var hideRemove = !cbaBlocksAreParentDriven() && PROJECT_BLOCKS.length <= 1;
 		var noun = blockFieldNoun();
 		PROJECT_BLOCKS.forEach(function(b, i) {
 			var blockEl = document.querySelector('.project-block[data-block-id="' + b.id + '"]');
 			if (!blockEl) return;
 			var label = blockEl.querySelector('.form-label');
-			if (label) label.innerHTML = noun + ' ' + (i + 1) + ' <span class="required">*</span>';
+			if (label) {
+				label.innerHTML = b.directCob ?
+					('Direct COE Account ' + (i + 1)) :
+					(noun + ' ' + (i + 1) + ' <span class="required">*</span>');
+			}
 			var removeBtn = blockEl.querySelector('.project-block-remove');
-			if (removeBtn) removeBtn.style.visibility = onlyOne ? 'hidden' : 'visible';
+			if (removeBtn) removeBtn.style.visibility = hideRemove ? 'hidden' : 'visible';
 		});
 	}
 
-	// Dispatches a block's search field wiring by type — see blockFieldNoun()'s own comment.
+	// Dispatches a block's search field wiring by type — see blockFieldNoun()'s own comment. A direct draw
+	// has no search field at all (projectBlockTemplate()) — nothing to wire.
 	function blockSetupSearch(blockId) {
+		if (blockIsDirectDraw(blockId)) return;
 		if (isRfaOrLaa()) blockCbaSetupSearch(blockId); else blockProjSetupSearch(blockId);
 	}
 
-	async function addProjectBlock() {
+	// $directCob (RFA/LAA only — see blockIsDirectDraw()): a direct COE draw block, with no Parent CBA /
+	// Project search at all — just straight to its own COB line(s) (addBudgetAllocationLine() below).
+	async function addProjectBlock(directCob) {
+		directCob = !!directCob;
 		var blockId = ++PROJECT_BLOCK_SEQ;
 		PROJECT_BLOCKS.push({
 			id: blockId, projectCode: null, projectName: null,
 			programCode: null, programName: null, subProgramCode: null, subProgramName: null,
-			budgetAllocationProjectId: null, parentAllocationId: null
+			budgetAllocationProjectId: null, parentAllocationId: null, directCob: directCob
 		});
 
 		var container = document.getElementById('project_blocks_container');
 		var holder = document.createElement('div');
-		holder.innerHTML = projectBlockTemplate(blockId, blockFieldNoun() + ' ' + PROJECT_BLOCKS.length, blockFieldPlaceholder());
+		holder.innerHTML = projectBlockTemplate(blockId,
+			directCob ? ('Direct COE Account ' + PROJECT_BLOCKS.length) : (blockFieldNoun() + ' ' + PROJECT_BLOCKS.length),
+			blockFieldPlaceholder(), directCob);
 		var blockEl = holder.firstElementChild;
 		container.appendChild(blockEl);
 
@@ -3480,7 +3532,9 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 			baaRestoreRemovedLine(blockId);
 		});
 
-		if (isRfaOrLaa()) {
+		if (directCob) {
+			// Nothing to load — no Parent CBA / Project list for a direct draw.
+		} else if (isRfaOrLaa()) {
 			await ensureCbaDataLoaded();
 		} else {
 			await loadMyProjects();
@@ -3491,12 +3545,13 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 		return blockId;
 	}
 
-	// $force bypasses the "always keep at least one project" guard — used only when switching the whole form
-	// out of block mode (switchToSingleMode()), which removes every block deliberately. The visible "×"
-	// button itself never passes it (renumberProjectBlocks() hides that button while only one block remains,
-	// so the guard is its real backstop).
+	// $force bypasses the "CBA always keeps exactly one project" guard — used only when switching the whole
+	// form out of block mode (switchToSingleMode()), which removes every block deliberately. RFA/LAA has no
+	// such guard at all (see renumberProjectBlocks()) — its visible "×" button is never hidden just for
+	// being the last one, so this check never even applies to it in practice (cbaBlocksAreParentDriven()
+	// is false only for CBA, the one type that must always keep its one block).
 	function removeProjectBlock(blockId, force) {
-		if (!force && PROJECT_BLOCKS.length <= 1) return;
+		if (!force && !cbaBlocksAreParentDriven() && PROJECT_BLOCKS.length <= 1) return;
 		BAA_ROWS.filter(function(idx) { return BAA_ROW_BLOCK[idx] === blockId; }).slice().forEach(function(idx) {
 			baaHardRemoveLine(idx);
 		});
@@ -3679,11 +3734,13 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 		// block, so the reloads it triggers must not clear them (same precedent as cbaSelectProgramChain()).
 		COB_KEEP_SELECTION++;
 		try {
-			while (PROJECT_BLOCKS.length < savedBlocks.length) {
-				await addProjectBlock();
-			}
-			while (PROJECT_BLOCKS.length > savedBlocks.length) {
-				removeProjectBlock(PROJECT_BLOCKS[PROJECT_BLOCKS.length - 1].id, true);
+			// A direct-draw block's template has no Parent CBA / Project search field at all (see
+			// projectBlockTemplate()) — rebuilding from scratch, rather than reusing whatever
+			// switchToBlockMode() auto-seeded (always a non-direct block) or a stale prior block, guarantees
+			// every index gets the template that matches its saved is_direct_draw, with no mismatch to patch up.
+			PROJECT_BLOCKS.slice().forEach(function(b) { removeProjectBlock(b.id, true); });
+			for (var bi = 0; bi < savedBlocks.length; bi++) {
+				await addProjectBlock(!!savedBlocks[bi].is_direct_draw);
 			}
 
 			for (var i = 0; i < savedBlocks.length; i++) {
@@ -3691,6 +3748,7 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 				var blockId = PROJECT_BLOCKS[i].id;
 				PROJECT_BLOCKS[i].budgetAllocationProjectId = saved.budget_allocation_project_id != null ?
 					parseInt(saved.budget_allocation_project_id, 10) : null;
+				PROJECT_BLOCKS[i].directCob = !!saved.is_direct_draw;
 				// RFA / LAA only — which Parent CBA this block draws from (restoreBlockParentLabels(), called
 				// right after this function returns, uses it plus the record's own `parents` array to show
 				// each block's own Parent CBA label in its search field).
@@ -4076,6 +4134,7 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 	function cobRequiresProjectFirst(idx) {
 		var blockId = BAA_ROW_BLOCK[idx];
 		if (blockId != null) {
+			if (blockIsDirectDraw(blockId)) return false; // no Project to wait on — picks straight from the full COE list
 			var firstOfBlock = BAA_ROWS.find(function(i) { return BAA_ROW_BLOCK[i] === blockId; });
 			return idx === firstOfBlock;
 		}
@@ -4179,7 +4238,9 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 	}
 
 	function cobMatches(idx, q) {
+		var directOnly = lineIsDirectDraw(idx); // a direct draw is COE-only — see createDirectEarmarkForRfaApproval()
 		return (COB_DATA[idx] || []).filter(function(r) {
+			if (directOnly && String(r.account_code || '').trim().charAt(0) === '1') return false;
 			return !q || String(r.account_code || '').toLowerCase().includes(q) ||
 				String(r.account_title || '').toLowerCase().includes(q) ||
 				String(r.particulars || '').toLowerCase().includes(q);
@@ -4415,7 +4476,9 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 	// Shows CBA Available Balance / hides Available Amount for RFA / LAA (and back for CBA / CFA), on every current line —
 	// call whenever Allocation Type changes, and once for a freshly added line.
 	function baaApplyCbaAmountVisibility(idx) {
-		var showCba = isRfaOrLaa();
+		// A direct draw has no Parent CBA, so no CBA Available Balance to show — it uses the COB's own
+		// Available Amount instead, same as CBA/CFA (see baaRequestedExceedsProposed()).
+		var showCba = isRfaOrLaa() && !lineIsDirectDraw(idx);
 		var proposedGroup = document.getElementById('proposed_amount_group_' + idx);
 		var cbaGroup = document.getElementById('cba_amount_group_' + idx);
 		if (proposedGroup) proposedGroup.style.display = showCba ? 'none' : '';
@@ -4566,6 +4629,23 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 		return true;
 	}
 
+	// Every project block (CBA/CFA/RFA/LAA block-mode) must have at least one line with a real account code
+	// AND a positive Requested Amount — a block saved with nothing actually picked (e.g. every row removed
+	// down to one that was never filled in) would reach Approved with nothing earmarked against it. Mirrors
+	// BudgetAllocationService::validateReferences()'s own universal check (parseLineTransaction()'s same
+	// "blank entries don't count" rule), so client and server can never disagree on what counts as empty.
+	// A no-op outside block mode (CFA's single chain has its own line(s), never project blocks).
+	function validateProjectBlocksHaveAccountCodes() {
+		if (!cbaUsesBlockProjectUI()) return true;
+		return PROJECT_BLOCKS.every(function(b) {
+			return BAA_ROWS.some(function(idx) {
+				if (BAA_ROW_BLOCK[idx] !== b.id || !COB_SEL[idx]) return false;
+				var reqEl = document.getElementById('requested_amount_' + idx + '_raw');
+				return baaParseAmt(reqEl ? reqEl.value : '') > 0;
+			});
+		});
+	}
+
 	// Clears the red error state set by validateBudgetVersionsRequired() on a row.
 	function baaBvClearError(idx) {
 		var searchEl = document.getElementById('bv_search_' + idx);
@@ -4613,9 +4693,10 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 	// Amount, not be read as "unknown, let it through").
 	function baaRequestedExceedsProposed(idx) {
 		if (!COB_SEL[idx]) return false; // no COB picked for this line yet
-		if (isRfaOrLaa() && !cbaParentIdForLine(idx)) return false; // this line's own block has no Parent CBA picked yet
+		var direct = lineIsDirectDraw(idx);
+		if (isRfaOrLaa() && !direct && !cbaParentIdForLine(idx)) return false; // this line's own block has no Parent CBA picked yet
 
-		var ceilEl = document.getElementById((isRfaOrLaa() ? 'cba_amount_' : 'proposed_amount_') + idx);
+		var ceilEl = document.getElementById((isRfaOrLaa() && !direct ? 'cba_amount_' : 'proposed_amount_') + idx);
 		var ceiling = ceilEl ? baaParseAmt(ceilEl.value) : 0;
 		var requested = baaParseAmt((document.getElementById('requested_amount_' + idx) || {}).value);
 		return requested > ceiling;
@@ -4632,7 +4713,7 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 		reqEl.classList.toggle('error', exceeds);
 		var errorEl = document.getElementById('requested_amount_' + idx + '_error');
 		if (errorEl) {
-			errorEl.textContent = isRfaOrLaa() ?
+			errorEl.textContent = (isRfaOrLaa() && !lineIsDirectDraw(idx)) ?
 				'Requested Amount must not exceed the CBA Available Balance.' :
 				'Requested Amount must not exceed the Available Amount.';
 			errorEl.classList.toggle('visible', exceeds);
@@ -4859,6 +4940,12 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 				.map(baaLineObject).filter(baaLineIsMeaningful);
 			var block = { line_transaction: JSON.stringify(lines) };
 			if (b.budgetAllocationProjectId != null) block.budget_allocation_project_id = b.budgetAllocationProjectId;
+			if (b.directCob) {
+				// No Parent CBA, no Project — see BudgetAllocationService::validateReferences()'s own
+				// direct-draw branch, which rejects this block carrying any of those fields.
+				block.is_direct_draw = true;
+				return block;
+			}
 			if (b.parentAllocationId != null) block.parent_allocation_id = b.parentAllocationId;
 			if (b.projectCode) block.project_code = b.projectCode; else if (b.projectName) block.project_name = b.projectName;
 			if (b.programCode) block.program_code = b.programCode; else if (b.programName) block.program_name = b.programName;
@@ -5818,12 +5905,24 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 			return;
 		}
 
-		// Every project block must have a Parent CBA picked for RFA / LAA — the backend refuses to save
-		// otherwise (BudgetAllocationService::validateReferences()), but checked here too so the user sees a
-		// clear message instead of a generic save error.
-		if (isRfaOrLaa() && (PROJECT_BLOCKS.length === 0 || PROJECT_BLOCKS.some(function(b) { return !b.parentAllocationId; }))) {
+		// Every project block must have EITHER a Parent CBA picked, OR be a direct COE draw (directCob — no
+		// Parent CBA, no Project) for RFA / LAA — the backend refuses to save otherwise
+		// (BudgetAllocationService::validateReferences()), but checked here too so the user sees a clear
+		// message instead of a generic save error.
+		if (isRfaOrLaa() && (PROJECT_BLOCKS.length === 0 ||
+				PROJECT_BLOCKS.some(function(b) { return !b.parentAllocationId && !b.directCob; }))) {
 			await cbaNotify('Parent CBA Required',
-				'Select at least one approved Parent CBA to fund this ' + getTypeLabel().short + '.', 'warning');
+				'Select an approved Parent CBA, or add a Direct COE Account, to fund every Funding Allocation in this ' +
+				getTypeLabel().short + '.', 'warning');
+			return;
+		}
+
+		// Every project block (CBA/CFA/RFA/LAA block-mode) needs at least one account code with a positive
+		// Requested Amount — mirrors BudgetAllocationService::validateReferences()'s own universal check, so
+		// a block saved with nothing actually picked can never slip through on either side.
+		if (!validateProjectBlocksHaveAccountCodes()) {
+			await cbaNotify('Account Code Required',
+				'Every Funding Allocation must have at least one account code with a Requested Amount.', 'warning');
 			return;
 		}
 
