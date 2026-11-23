@@ -6,7 +6,7 @@
  * projectCode?) — projectCode, when given, scrolls to and highlights that project. It shows what the request is made of, straight
  * from GET /cob/read/{budget_reference_number} (CobService::fetchById): the request, then every Program block, every Project of
  * it, each Project's chart-of-accounts line items with the eight COB columns (Approved Amount, Revision / Realignment, Revised Amount,
- * CBA Requested, Available for Earmarking, RFA Approved, LAA Issued, Remaining Balance), and its supporting documents
+ * RFA Approved, LAA Issued, Budget Balance, Outstanding CBA, Budget Balance Available for Earmarking), and its supporting documents
  * (fims.budget_req_project_attachment). A COE request has no program or project: its line items are shown as a COE card, split into PS / MOOE.
  * Every line carries the identifier of its account code — CO (1…), PS (5-01…), MOOE (5-02…).
  *
@@ -129,11 +129,11 @@
         ['approved_amount', 'Approved Amount', 'What FMD suggested in the Budget Proposal module, before any revision or CBA'],
         ['revision_amount', 'Revision / Realignment', 'A line shows only its LATEST revision or realignment (+ green, − red); the Total row has no figure here'],
         ['revised_amount', 'Revised Amount', 'Approved Amount net of Revision / Realignment (a decrease lowers it)'],
-        ['cba_requested', 'CBA Requested', 'Taken off the budget by approved CBAs'],
-        ['available_amount', 'Available for Earmarking', 'Revised Amount less CBA Requested'],
         ['rfa_approved', 'RFA Approved', 'Drawn from the CBAs by approved RFAs'],
         ['laa_issued', 'LAA Issued', 'Drawn from the CBAs by issued LAAs'],
-        ['remaining_balance', 'Remaining Balance', 'Revised Amount less CBA Requested'],
+        ['remaining_balance', 'Budget Balance', 'Revised Amount less Outstanding CBA, RFA Approved and LAA Issued'],
+        ['cba_requested', 'Outstanding CBA', 'Still held against the budget by approved CBAs (what approved RFAs / LAAs have drawn comes off it)'],
+        ['available_amount', 'Budget Balance Available for Earmarking', 'Revised Amount less Outstanding CBA, RFA Approved and LAA Issued'],
     ];
 
     const state = { seq: 0, lastFocus: null };

@@ -40,13 +40,13 @@ use PHPMaker2024\FIMS\DataType;
  *   revised_amount      budget_line_items.revised_amount — the table generates it as suggested_amount + adjustment (03 - alter_table/54), so it is approved_amount +
  *                       revision_amount (the revision is signed: the Approved Amount less a decrease), and a line no revision has touched shows its Approved Amount.
  *                       Nothing writes it; BudgetLineBalanceSql::revisedExpr() reads it.
- *   cba_requested       what approved CBAs / CFAs hold against the line ('active' earmark rows) plus what RFAs / LAAs have drawn from them ('converted'
- *                       rows) — a CBA's reservation and its later draws always add back up to what the CBA earmarked
- *   available_amount    revised_amount - cba_requested   (Available for Earmarking)
+ *   cba_requested       what approved CBAs / CFAs STILL hold against the line ('active' earmark rows). What an approved RFA / LAA has drawn from a CBA ('converted'
+ *                       rows) comes OFF this column and is shown as rfa_approved / laa_issued instead (a CBA's reservation and its later draws add back up to what it earmarked)
+ *   available_amount    revised_amount - cba_requested - rfa_approved - laa_issued   (Available for Earmarking)
  *   rfa_approved        what approved RFAs drew down the CBAs' reservations (their 'converted' earmark rows)
  *   laa_issued          the same for LAAs
- *   remaining_balance   revised_amount - cba_requested  (the same figure as available_amount: what is left of the revised budget once the CBAs' reservations — and
- *                       what RFAs / LAAs have drawn from them, which is part of cba_requested — are taken off)
+ *   remaining_balance   revised_amount - cba_requested - rfa_approved - laa_issued  (the same figure as available_amount: what is left of the revised budget once the
+ *                       CBAs' reservations — and what RFAs / LAAs have drawn from them — are taken off)
  *
  * Five more figures per line item are for the RFA / LAA Monitoring page (rfa-laa-monitoring-page.php), which starts at the Revised Amount:
  *
@@ -57,12 +57,12 @@ use PHPMaker2024\FIMS\DataType;
  *   disbursement        what the disbursement vouchers connected to the line's RFAs / LAAs (budget_allocation.dv_id) have disbursed: each voucher's
  *                       gross_amount spread over the draws of the RFAs / LAAs that point at it (disbursementSql()); cancelled / rejected vouchers
  *                       count for nothing. The stored budget_line_items.disbursement column, which nothing writes, is not used
- *   unallocated_amount  revised_computed - cba_requested — the remaining balance of the revised budget (the same figure as the COB's Remaining Balance)
+ *   unallocated_amount  revised_computed - cba_requested - rfa_laa_amount — the remaining balance of the revised budget (the same figure as the COB's Remaining Balance)
  *   account_payable     rfa_laa_amount - disbursement — what the RFAs / LAAs have drawn that has not been disbursed yet. Worked out per line, so
  *                       it takes the vouchers into account; the stored budget_line_items.account_payable column is not used
  *
  * Revised, Available and Remaining are all worked out, so the identities  Approved + Revision = Revised (Revision is signed: a decrease is negative,
- * i.e. Approved less the decrease),  Revised - CBA = Available = Remaining  hold on every row, group and total.
+ * i.e. Approved less the decrease),  Revised - CBA - RFA - LAA = Available = Remaining  hold on every row, group and total.
  * NOTE: suggested_amount is never changed after Budget Processing sets it. A CBA only reserves (an earmark row), an RFA / LAA draws that reservation, and an
  * approved Budget Revision writes one row per budget line to the ledger fims.budget_line_item_revision_transaction (BudgetRevisionService::approve(), a private
  * method of the review flow) — which is where Revision Amount comes from. So Approved is simply suggested_amount; see COB-MONITORING.md.
@@ -253,7 +253,10 @@ class CobService
             'approved_amount' => $b['approved_amount'],
             'revision_amount' => $b['revision_amount'],
             'revised_amount' => $revised,
-            'cba_requested' => $b['cba_requested'],
+            // CBA Requested = what approved CBAs / CFAs STILL hold ('active' rows). Once an RFA / LAA is approved it converts part of that reservation, and the converted
+            // part comes OFF CBA Requested (it is then shown under RFA Approved / LAA Issued). Available and Remaining are unchanged — they still take off both the
+            // reservation and what was drawn from it — so the sheet foots as Available = Remaining = Revised - CBA Requested - RFA Approved - LAA Issued.
+            'cba_requested' => $b['reserved_amount'],
             'available_amount' => $b['available_amount'],
             'rfa_approved' => $rfa,
             'laa_issued' => $laa,
@@ -263,7 +266,8 @@ class CobService
             'rfa_laa_amount' => $rfaLaa,
             'disbursement' => $disb,
             // Unallocated Amount = the remaining balance = Revised Amount - CBA Requested (so it foots on every row, group and total, and is the COB's Remaining Balance)
-            'unallocated_amount' => "({$revisedCalc} - {$b['cba_requested']})",
+            // (cba_requested above no longer includes what RFAs / LAAs drew, so this is worked out from the full amount held — the figure itself is unchanged)
+            'unallocated_amount' => $b['remaining_balance'],
             // Account Payable = RFA / LAA Amount - Disbursement (it foots on every row, group and total)
             'account_payable' => "({$rfaLaa} - {$disb})",
         ];
