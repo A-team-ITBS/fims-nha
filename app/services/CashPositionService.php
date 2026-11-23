@@ -227,6 +227,30 @@ class CashPositionService
         return $this->dataTable($params['draw'] ?? 1, $rows);
     }
 
+    // Row-click drill-down from the Position Updates list: every disbursement
+    // (direction <> 'INFLOW' — same convention getComputedBalance()'s own
+    // ledger sum uses) posted to fims.bank_transactions for this account on
+    // this exact date — i.e. the transactions that make up that row's own
+    // "− Disbursements" figure.
+    public function getDisbursementTransactions(int $bankAccountId, string $positionDate): string
+    {
+        if ($bankAccountId <= 0 || $positionDate === '') {
+            return $this->ok([]);
+        }
+        $rows = App\ExecuteRowsAssociative(
+            "SELECT bank_transaction_id, transaction_type, transaction_id, reference_number,
+                    transaction_date, amount, description, status, counterpart, direction
+             FROM {$this->tableBankTransactions}
+             WHERE bank_account_id = {$bankAccountId}
+               AND transaction_date = " . $this->str($positionDate) . "
+               AND direction != 'INFLOW'
+             ORDER BY bank_transaction_id",
+            'DB'
+        ) ?: [];
+
+        return $this->ok($rows);
+    }
+
     public function getCashPositionById($id)
     {
         $row = App\ExecuteRow(

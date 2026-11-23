@@ -13,6 +13,21 @@ $app->get("/collections/list", function ($request, $response) {
     return $response->withHeader('Content-Type', 'application/json')->write($service->getList($request->getQueryParams()));
 });
 
+// Collections/Deposits tabs — every line flattened across every report,
+// with its parent report's own date/region/office context (see
+// CollectionsService::getCollectionsList()/getDepositsList()'s own
+// comments). Read-only; editing still happens via the parent report's
+// Register/Edit modal.
+$app->get("/collections/collections-list", function ($request, $response) {
+    $service = new Service\CollectionsService();
+    return $response->withHeader('Content-Type', 'application/json')->write($service->getCollectionsList($request->getQueryParams()));
+});
+
+$app->get("/collections/deposits-list", function ($request, $response) {
+    $service = new Service\CollectionsService();
+    return $response->withHeader('Content-Type', 'application/json')->write($service->getDepositsList($request->getQueryParams()));
+});
+
 $app->get("/collections/lookup/responsibility-centers", function ($request, $response) {
     $service = new Service\CollectionsService();
     return $response->withHeader('Content-Type', 'application/json')->write($service->getResponsibilityCenters());

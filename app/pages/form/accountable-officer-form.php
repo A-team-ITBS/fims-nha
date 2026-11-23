@@ -126,7 +126,7 @@
                     <path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
                 </svg>
                 <div>
-                    <p class="ao-hdr-tag">Accountable Officer Master Data</p>
+                    <p class="ao-hdr-tag" id="ao-modal-tag">Accountable Officer Master Data</p>
                     <p class="ao-hdr-title" id="ao-modal-title">Add Accountable Officer</p>
                 </div>
             </div>
@@ -219,7 +219,7 @@
             </div>
             <div id="ao-footer">
                 <button type="button" class="ao-btn ao-btn-ghost" id="ao-cancel">Cancel</button>
-                <button type="submit" class="ao-btn ao-btn-navy" id="ao-save">Save Accountable Officer</button>
+                <button type="submit" class="ao-btn ao-btn-navy" id="ao-save"><span id="ao-save-label">Save Accountable Officer</span></button>
             </div>
         </form>
     </div>
