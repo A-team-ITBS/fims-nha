@@ -27,9 +27,22 @@ $app->get("/bank-management/lookup/responsibility-centers", function ($request, 
     return $response->withHeader('Content-Type', 'application/json')->write($service->getResponsibilityCenters());
 });
 
-$app->get("/bank-management/lookup/fund-sources", function ($request, $response) {
+$app->get("/bank-management/accounts-for-region", function ($request, $response) {
+    $p = $request->getQueryParams();
     $service = new Service\BankManagementService();
-    return $response->withHeader('Content-Type', 'application/json')->write($service->getFundSources());
+    return $response->withHeader('Content-Type', 'application/json')->write($service->getAccountsForRegion($p['rc_id'] ?? ''));
+});
+
+$app->get("/bank-management/fund-sweep/preview", function ($request, $response) {
+    $p = $request->getQueryParams();
+    $service = new Service\BankManagementService();
+    return $response->withHeader('Content-Type', 'application/json')->write($service->previewFundSweep($p['rc_id'] ?? ''));
+});
+
+$app->post("/bank-management/fund-sweep/process", function ($request, $response) {
+    $data = $request->getParsedBody();
+    $service = new Service\BankManagementService();
+    return $response->withHeader('Content-Type', 'application/json')->write($service->processFundSweep($data['rc_id'] ?? '', (array) ($data['account_ids'] ?? [])));
 });
 
 $app->post("/bank-management/store", function ($request, $response) {
@@ -61,19 +74,3 @@ $app->post("/bank-management/{id}/tag-account-code", function ($request, $respon
     return $response->withHeader('Content-Type', 'application/json')->write($service->tagAccountCode($args['id'], $data));
 });
 
-$app->get("/bank-management/{id}/documents", function ($request, $response, $args) {
-    $service = new Service\BankManagementService();
-    return $response->withHeader('Content-Type', 'application/json')->write($service->getDocuments($args['id']));
-});
-
-$app->post("/bank-management/{id}/documents/link", function ($request, $response, $args) {
-    $data = $request->getParsedBody();
-    $service = new Service\BankManagementService();
-    return $response->withHeader('Content-Type', 'application/json')->write($service->saveDocumentLink($args['id'], $data));
-});
-
-$app->post("/bank-management/{id}/documents/remove", function ($request, $response, $args) {
-    $data = $request->getParsedBody();
-    $service = new Service\BankManagementService();
-    return $response->withHeader('Content-Type', 'application/json')->write($service->removeDocumentLink($args['id'], $data));
-});

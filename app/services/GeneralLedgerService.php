@@ -270,11 +270,20 @@ class GeneralLedgerService
             return ['success' => false, 'message' => "Disbursement Voucher #{$dvId} has no posted Journal Entry Voucher to settle."];
         }
 
+        // Matches the control account itself (self::AP_ACCOUNT_CODE) OR one of its SL sub-ledger
+        // children (e.g. a vendor's own fims.vendors.coa_account_id under it, see
+        // voucher/{form,readone}.php's "Net Amount Payable" line) — same single-level
+        // parent_account_id convention GeneralLedgerService::fetchSubsidiaryLedger() already uses.
         $apLine = App\ExecuteRow(
-            "SELECT sl_code, sl_detail_id, rc_id
-             FROM {$this->tableJevLines}
-             WHERE jev_id = " . (int) $setupJev['jev_id'] . ' AND account_code = ' . $this->str(self::AP_ACCOUNT_CODE) . ' AND credit > 0
-             ORDER BY line_number LIMIT 1',
+            "SELECT jl.account_code, jl.sl_code, jl.sl_detail_id, jl.rc_id
+             FROM {$this->tableJevLines} jl
+             JOIN {$this->tableCoa} c ON c.account_code = jl.account_code
+             LEFT JOIN {$this->tableCoa} p ON p.account_id = c.parent_account_id
+             WHERE jl.jev_id = " . (int) $setupJev['jev_id'] . '
+               AND jl.credit > 0
+               AND (jl.account_code = ' . $this->str(self::AP_ACCOUNT_CODE) . '
+                    OR p.account_code = ' . $this->str(self::AP_ACCOUNT_CODE) . ')
+             ORDER BY jl.line_number LIMIT 1',
             'DB'
         );
         if (!$apLine) {
@@ -283,8 +292,16 @@ class GeneralLedgerService
             return ['success' => true, 'message' => 'Nothing to settle — the Journal Entry did not route through Accounts Payable.', 'data' => ['posted' => false]];
         }
 
+        // sl_coa.account_code: the bank account's OWN Cash sub-ledger (fims.bank_accounts.sl_code ->
+        // a chart_of_accounts child row, e.g. "1-01-02-010-01" — set up via Bank Management's own
+        // GL/SL two-step picker, same convention as fims.vendors.sl_code) when one is configured,
+        // instead of the bare account_code — same "credit the account that actually has a
+        // subsidiary ledger" reasoning the Accounts Payable debit line above already follows.
         $bank = App\ExecuteRow(
-            "SELECT account_code, account_name FROM {$this->tableBankAccounts} WHERE bank_account_id = {$bankAccountId}",
+            "SELECT ba.account_code, ba.account_name, sl_coa.account_code AS sl_account_code
+             FROM {$this->tableBankAccounts} ba
+             LEFT JOIN {$this->tableCoa} sl_coa ON sl_coa.account_id = ba.sl_code
+             WHERE ba.bank_account_id = {$bankAccountId}",
             'DB'
         );
         if (!$bank || !$bank['account_code']) {
@@ -292,6 +309,7 @@ class GeneralLedgerService
                 ? "Bank account '{$bank['account_name']}' has no Chart-of-Accounts Cash account mapped — configure it before releasing checks against it."
                 : "Bank account #{$bankAccountId} not found."];
         }
+        $bankCreditAccountCode = $bank['sl_account_code'] ?: $bank['account_code'];
 
         // Created at FOR_SECTION_CHIEF: Accounting has prepared it, it now awaits Section Chief review.
         $startId = $this->getStatusIdByName('FOR_SECTION_CHIEF');
@@ -312,9 +330,13 @@ class GeneralLedgerService
         );
         $jevId = (int) $row['jev_id'];
 
+        // Debits the SAME account the SETUP JEV actually credited — the control account itself, or
+        // a vendor's own SL sub-ledger account under it — never the hardcoded control code, or a
+        // vendor with its own SL account would settle against the wrong ledger (control account
+        // debited, vendor's SL balance left outstanding forever).
         App\Execute(
             "INSERT INTO {$this->tableJevLines} (jev_id, line_number, account_code, debit, credit, description, sl_code, sl_detail_id, rc_id)
-             VALUES ({$jevId}, 1, " . $this->str(self::AP_ACCOUNT_CODE) . ', ' . (float) $amount . ', 0, '
+             VALUES ({$jevId}, 1, " . $this->str($apLine['account_code']) . ', ' . (float) $amount . ', 0, '
                 . $this->str("Payment via {$docRefNo}") . ', '
                 . $this->strOrNull($apLine['sl_code']) . ', ' . $this->intOrNull($apLine['sl_detail_id']) . ', '
                 . $this->strOrNull($apLine['rc_id']) . ')',
@@ -322,7 +344,7 @@ class GeneralLedgerService
         );
         App\Execute(
             "INSERT INTO {$this->tableJevLines} (jev_id, line_number, account_code, debit, credit, description)
-             VALUES ({$jevId}, 2, " . $this->str($bank['account_code']) . ', 0, ' . (float) $amount . ', '
+             VALUES ({$jevId}, 2, " . $this->str($bankCreditAccountCode) . ', 0, ' . (float) $amount . ', '
                 . $this->str("Payment via {$docRefNo}") . ')',
             'DB'
         );
@@ -589,16 +611,26 @@ class GeneralLedgerService
                      SELECT DISTINCT ON (leaf_id) leaf_id, account_id AS gl_account_id
                      FROM climb
                      ORDER BY leaf_id, depth DESC
+                 ),
+                 posted AS (
+                     SELECT gl_of.gl_account_id,
+                            SUM(v.total_debit)  AS total_debit,
+                            SUM(v.total_credit) AS total_credit
+                     FROM {$this->tableViewTrialBalance} v
+                     JOIN gl_of ON gl_of.leaf_id = v.account_id
+                     WHERE {$whereSql}
+                     GROUP BY gl_of.gl_account_id
                  )
                  SELECT gl.account_code, gl.account_id, gl.account_title, gl.account_type,
-                        SUM(v.total_debit)  AS total_debit,
-                        SUM(v.total_credit) AS total_credit,
-                        SUM(v.total_debit) - SUM(v.total_credit) AS balance
-                 FROM {$this->tableViewTrialBalance} v
-                 JOIN gl_of ON gl_of.leaf_id = v.account_id
-                 JOIN {$this->tableCoa} gl ON gl.account_id = gl_of.gl_account_id
-                 WHERE {$whereSql}
-                 GROUP BY gl.account_code, gl.account_id, gl.account_title, gl.account_type
+                        COALESCE(p.total_debit, 0)  AS total_debit,
+                        COALESCE(p.total_credit, 0) AS total_credit,
+                        COALESCE(p.total_debit, 0) - COALESCE(p.total_credit, 0) AS balance
+                 FROM {$this->tableCoa} gl
+                 LEFT JOIN posted p ON p.gl_account_id = gl.account_id
+                 WHERE p.gl_account_id IS NOT NULL
+                    OR (gl.posting_allowed = TRUE
+                        AND gl.status = 'Active'
+                        AND gl.account_id IN (SELECT leaf_id FROM gl_of WHERE leaf_id = gl_account_id))
                  ORDER BY gl.account_code",
                 'DB'
             ) ?: [];
@@ -633,27 +665,29 @@ class GeneralLedgerService
 
         $rows = App\ExecuteRows(
             "WITH RECURSIVE chain AS (
-                 SELECT account_id AS leaf_id, account_id, account_title, parent_account_id, 0 AS depth
+                 SELECT account_id AS leaf_id, account_id, account_code, account_title, parent_account_id, 0 AS depth
                  FROM {$this->tableCoa} WHERE account_id IN ({$idList})
                  UNION ALL
-                 SELECT chain.leaf_id, c.account_id, c.account_title, c.parent_account_id, chain.depth + 1
+                 SELECT chain.leaf_id, c.account_id, c.account_code, c.account_title, c.parent_account_id, chain.depth + 1
                  FROM {$this->tableCoa} c
                  JOIN chain ON c.account_id = chain.parent_account_id
              )
-             SELECT leaf_id, account_title, depth FROM chain ORDER BY leaf_id, depth",
+             SELECT leaf_id, account_code, account_title, depth FROM chain ORDER BY leaf_id, depth",
             'DB'
         ) ?: [];
 
         $chains = [];
         foreach ($rows as $r) {
-            $chains[$r['leaf_id']][] = $r['account_title']; // depth 0 (leaf) first, depth max (root) last
+            // depth 0 (leaf) first, depth max (root) last
+            $chains[$r['leaf_id']][] = ['code' => $r['account_code'], 'title' => $r['account_title']];
         }
 
         foreach ($data as &$row) {
-            $chain                = $chains[$row['account_id']] ?? [];
-            $count                = count($chain);
-            $row['major_group']   = $count >= 1 ? $chain[$count - 1] : null;
-            $row['account_group'] = $count >= 3 ? $chain[$count - 2] : null;
+            $chain                     = $chains[$row['account_id']] ?? [];
+            $count                     = count($chain);
+            $row['major_group']        = $count >= 1 ? $chain[$count - 1]['title'] : null;
+            $row['account_group']      = $count >= 3 ? $chain[$count - 2]['title'] : null;
+            $row['account_group_code'] = $count >= 3 ? $chain[$count - 2]['code'] : null;
             unset($row['account_id']);
         }
         unset($row);
@@ -684,19 +718,28 @@ class GeneralLedgerService
             $debitNormal = in_array($account['account_type'], self::DEBIT_NORMAL_TYPES, true);
             $sign        = $debitNormal ? '(debit - credit)' : '(credit - debit)';
 
-            $where = ['account_code = ' . $this->str($accountCode)];
+            // The GL account's ledger includes its SL accounts' postings (rolled up, see glRollupCte()) —
+            // a picked SL account itself still shows just its own lines.
+            $code  = $this->str($accountCode);
+            $where = ["(g.account_code = {$code} OR v.account_code = {$code})"];
             if ($fiscalYr !== null) {
-                $where[] = 'fiscal_yr = ' . (int) $fiscalYr;
+                $where[] = 'v.fiscal_yr = ' . (int) $fiscalYr;
             }
             if ($bookId !== null) {
-                $where[] = 'book_id = ' . (int) $bookId;
+                $where[] = 'v.book_id = ' . (int) $bookId;
             }
+            $signV = $debitNormal ? '(v.debit - v.credit)' : '(v.credit - v.debit)';
             $data = App\ExecuteRows(
-                "SELECT gl_id, posting_date, jev_no, dv_no, doc_ref_no, sl_code, sl_name, debit, credit, reference_no, description, reversed_gl_id,
-                        SUM({$sign}) OVER (ORDER BY posting_date, gl_id) AS running_balance
-                 FROM {$this->tableViewJournals}
+                $this->glRollupCte() . "
+                 SELECT v.gl_id, v.posting_date, v.jev_no, v.dv_no, v.doc_ref_no, v.sl_code, v.sl_name, v.debit, v.credit, v.reference_no, v.description, v.reversed_gl_id,
+                        CASE WHEN v.account_code <> g.account_code THEN v.account_code END AS sl_account_code,
+                        SUM({$signV}) OVER (ORDER BY v.posting_date, v.gl_id) AS running_balance
+                 FROM {$this->tableViewJournals} v
+                 JOIN {$this->tableCoa} lc ON lc.account_code = v.account_code
+                 JOIN gl_of ON gl_of.leaf_id = lc.account_id
+                 JOIN {$this->tableCoa} g ON g.account_id = gl_of.gl_account_id
                  WHERE " . implode(' AND ', $where) . '
-                 ORDER BY posting_date, gl_id',
+                 ORDER BY v.posting_date, v.gl_id',
                 'DB'
             ) ?: [];
 
@@ -722,6 +765,140 @@ class GeneralLedgerService
     }
 
     /**
+     * `WITH gl_of(leaf_id, gl_account_id)` — maps every chart_of_accounts row to its GL account, using the
+     * same definition the Subsidiary Ledger page uses for an SL: a LEAF account with a parent is an SL, and
+     * its parent is the GL account (e.g. SL 1-01-01-010 → GL 1-01-01). An account that has children of its
+     * own (a control account such as 2-01-01-010 with vendor SLs under it), or has no parent, is its own GL
+     * account. Callers append their own SELECT.
+     */
+    private function glRollupCte(): string
+    {
+        return "WITH gl_of AS (
+                    SELECT c.account_id AS leaf_id,
+                           CASE WHEN c.parent_account_id IS NULL
+                                  OR EXISTS (SELECT 1 FROM {$this->tableCoa} k WHERE k.parent_account_id = c.account_id)
+                                THEN c.account_id ELSE c.parent_account_id END AS gl_account_id
+                    FROM {$this->tableCoa} c
+                )";
+    }
+
+    /**
+     * General Ledger drill-down — the SL (subsidiary ledger) accounts under ONE GL account, each with
+     * its own posted JEV lines and running balance. An SL account is a leaf child of the GL account in
+     * fims.chart_of_accounts (same definition fetchSubsidiaryLedger() uses), and its normal-balance side
+     * follows the GL account's account_type. Every SL under the account is returned, including ones with
+     * no postings yet (empty `data`), so the popup shows the full SL list. $accountCode that has no SL
+     * children (e.g. an account with no sub-ledgers) simply returns an empty `sub_ledgers`.
+     * Used by the General Ledger page's "click a GL code" popup.
+     */
+    public function fetchGlSubLedgers(string $accountCode, ?int $fiscalYr = null, ?int $bookId = null): array
+    {
+        try {
+            $account = App\ExecuteRow(
+                "SELECT account_id, account_code, account_title, account_type FROM {$this->tableCoa} WHERE account_code = " . $this->str($accountCode),
+                'DB'
+            );
+            if (!$account) {
+                return ['success' => false, 'message' => "Account code '{$accountCode}' does not exist in the chart of accounts."];
+            }
+            $debitNormal = in_array($account['account_type'], self::DEBIT_NORMAL_TYPES, true);
+
+            $sls = App\ExecuteRows(
+                "SELECT c.account_code, c.account_title
+                 FROM {$this->tableCoa} c
+                 WHERE c.parent_account_id = " . $this->str($account['account_id']) . "
+                   AND NOT EXISTS (SELECT 1 FROM {$this->tableCoa} k WHERE k.parent_account_id = c.account_id)
+                 ORDER BY c.account_code",
+                'DB'
+            ) ?: [];
+
+            $subLedgers = [];
+            foreach ($sls as $sl) {
+                $subLedgers[$sl['account_code']] = [
+                    'sl'           => ['account_code' => $sl['account_code'], 'account_title' => $sl['account_title']],
+                    'data'         => [],
+                    'total_debit'  => 0.0,
+                    'total_credit' => 0.0,
+                ];
+            }
+
+            if ($subLedgers) {
+                $where = '';
+                if ($fiscalYr !== null) {
+                    $where .= ' AND v.fiscal_yr = ' . (int) $fiscalYr;
+                }
+                if ($bookId !== null) {
+                    $where .= ' AND v.book_id = ' . (int) $bookId;
+                }
+                $codeList = implode(',', array_map(fn ($code) => $this->str($code), array_keys($subLedgers)));
+                $sign     = $debitNormal ? '(v.debit - v.credit)' : '(v.credit - v.debit)';
+                $rows     = App\ExecuteRows(
+                    "SELECT v.gl_id, v.posting_date, v.jev_no, v.dv_no, v.doc_ref_no, v.account_code, v.debit, v.credit,
+                            v.reference_no, v.description, v.reversed_gl_id,
+                            SUM({$sign}) OVER (PARTITION BY v.account_code ORDER BY v.posting_date, v.gl_id) AS running_balance
+                     FROM {$this->tableViewJournals} v
+                     WHERE v.account_code IN ({$codeList}) {$where}
+                     ORDER BY v.account_code, v.posting_date, v.gl_id",
+                    'DB'
+                ) ?: [];
+
+                foreach ($rows as $row) {
+                    $code = $row['account_code'];
+                    unset($row['account_code']);
+                    $subLedgers[$code]['data'][]        = $row;
+                    $subLedgers[$code]['total_debit']  += (float) $row['debit'];
+                    $subLedgers[$code]['total_credit'] += (float) $row['credit'];
+                }
+            }
+
+            foreach ($subLedgers as &$s) {
+                $s['total_debit']    = round($s['total_debit'], 2);
+                $s['total_credit']   = round($s['total_credit'], 2);
+                $s['ending_balance'] = $s['data'] ? (float) end($s['data'])['running_balance'] : 0.0;
+            }
+            unset($s);
+
+            // Postings made straight to the GL account itself (not through one of its SL accounts) — shown
+            // ahead of the SLs so the popup is never empty for an account that has postings but no SL children.
+            $directWhere = '';
+            if ($fiscalYr !== null) {
+                $directWhere .= ' AND fiscal_yr = ' . (int) $fiscalYr;
+            }
+            if ($bookId !== null) {
+                $directWhere .= ' AND book_id = ' . (int) $bookId;
+            }
+            $directSign = $debitNormal ? '(debit - credit)' : '(credit - debit)';
+            $directRows = App\ExecuteRows(
+                "SELECT gl_id, posting_date, jev_no, dv_no, doc_ref_no, debit, credit, reference_no, description, reversed_gl_id,
+                        SUM({$directSign}) OVER (ORDER BY posting_date, gl_id) AS running_balance
+                 FROM {$this->tableViewJournals}
+                 WHERE account_code = " . $this->str($accountCode) . " {$directWhere}
+                 ORDER BY posting_date, gl_id",
+                'DB'
+            ) ?: [];
+            $direct = [
+                'data'           => $directRows,
+                'total_debit'    => round(array_sum(array_column($directRows, 'debit')), 2),
+                'total_credit'   => round(array_sum(array_column($directRows, 'credit')), 2),
+                'ending_balance' => $directRows ? (float) end($directRows)['running_balance'] : 0.0,
+            ];
+
+            return [
+                'success'        => true,
+                'account'        => ['account_code' => $account['account_code'], 'account_title' => $account['account_title'], 'account_type' => $account['account_type']],
+                'debit_normal'   => $debitNormal,
+                'normal_balance' => $debitNormal ? 'DEBIT' : 'CREDIT',
+                'direct'         => $direct,
+                'sub_ledgers'    => array_values($subLedgers),
+            ];
+        } catch (\Exception $e) {
+            App\LogError('GeneralLedgerService::fetchGlSubLedgers ' . $e->getMessage());
+
+            return ['success' => false, 'message' => 'Failed to fetch the sub-ledgers of this account.'];
+        }
+    }
+
+    /**
      * Every posted account's ledger card at once — same running-balance shape as
      * fetchGeneralLedger(), just partitioned by account_code (window function, one pass) instead
      * of filtered to a single account. Used for the General Ledger page's default view, before one
@@ -731,15 +908,21 @@ class GeneralLedgerService
     {
         $where = $fiscalYr !== null ? 'AND v.fiscal_yr = ' . (int) $fiscalYr : '';
         $where .= $bookId !== null ? ' AND v.book_id = ' . (int) $bookId : '';
+        // Grouped by GL account: an SL account's postings roll up into its GL account (glRollupCte()) rather
+        // than listing as a separate "account" — the SLs are drilled into from the GL row.
         $rows  = App\ExecuteRows(
-            "SELECT v.gl_id, v.posting_date, v.jev_no, v.dv_no, v.doc_ref_no, v.account_code, v.account_title, c.account_type,
+            $this->glRollupCte() . "
+             SELECT v.gl_id, v.posting_date, v.jev_no, v.dv_no, v.doc_ref_no, g.account_code, g.account_title, g.account_type,
                     v.sl_code, v.sl_name, v.debit, v.credit, v.reference_no, v.description, v.reversed_gl_id,
-                    SUM(CASE WHEN c.account_type IN ('Asset', 'Expense') THEN (v.debit - v.credit) ELSE (v.credit - v.debit) END)
-                        OVER (PARTITION BY v.account_code ORDER BY v.posting_date, v.gl_id) AS running_balance
+                    CASE WHEN v.account_code <> g.account_code THEN v.account_code END AS sl_account_code,
+                    SUM(CASE WHEN g.account_type IN ('Asset', 'Expense') THEN (v.debit - v.credit) ELSE (v.credit - v.debit) END)
+                        OVER (PARTITION BY g.account_code ORDER BY v.posting_date, v.gl_id) AS running_balance
              FROM {$this->tableViewJournals} v
-             JOIN {$this->tableCoa} c ON c.account_code = v.account_code
+             JOIN {$this->tableCoa} lc ON lc.account_code = v.account_code
+             JOIN gl_of ON gl_of.leaf_id = lc.account_id
+             JOIN {$this->tableCoa} g ON g.account_id = gl_of.gl_account_id
              WHERE 1 = 1 {$where}
-             ORDER BY v.account_code, v.posting_date, v.gl_id",
+             ORDER BY g.account_code, v.posting_date, v.gl_id",
             'DB'
         ) ?: [];
 

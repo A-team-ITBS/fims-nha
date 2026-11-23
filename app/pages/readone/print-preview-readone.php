@@ -471,8 +471,10 @@ function prp_jevFromProforma(poNumber, receipt) {
     // once submitted, the printout carries the real JEV number and date (and the submitted particulars)
     const submitted = !!receipt.jev_no;
     return {
+        rfa_number: receipt.rfa_number || '',                                  // printed as "RFA No." on the JEV form
         lines: rows.map(r => ({ account_title: r.account_title, account_code: r.account_code, debit: r.debit, credit: r.credit })),
-        particulars: submitted && receipt.draft?.particulars ? receipt.draft.particulars : `Pro-forma JEV — Delivery Receipt No. ${receipt.dr_number} of PO No. ${poNumber}`,
+        // what the user typed in the Particulars box (the draft's value, edited or pre-filled); the generic line only when there is none
+        particulars: (receipt.draft?.particulars || '').trim() || receipt.print_particulars || `Pro-forma JEV — Delivery Receipt No. ${receipt.dr_number} of PO No. ${poNumber}`,
         ...(submitted ? { jev_number: receipt.jev_no, jev_date: receipt.jev_date || '' } : {}),
     };
 }

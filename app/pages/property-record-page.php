@@ -8,6 +8,7 @@ $_prp_api = Config('API.FIMS_URL');
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
+<script src="/_shared/js/searchable-select.js?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/js/searchable-select.js') ?>"></script>
 
 <style>
 
@@ -107,6 +108,57 @@ $_prp_api = Config('API.FIMS_URL');
     .prp-chk:disabled { cursor:not-allowed; }
     tr.prp-saved-row { background:color-mix(in srgb, var(--afims-success, #11A752) 6%, transparent); }
 
+    .prp-pl { float:left; }                                  /* the peso sign sits at the left of an amount cell */
+    /* pro-forma account rows (account | debit | credit | remove) */
+    .prp-jev { border:1px solid var(--afims-border, #E4ECF2);border-radius:12px;background:var(--afims-surface-subtle, #F4F7FA);font-size:13px; }
+    .prp-jev-row { display:grid;grid-template-columns:minmax(0,4fr) minmax(0,1.3fr) minmax(0,1.3fr) 34px;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--afims-border, #E4ECF2);background:var(--afims-surface, #FFFFFF); }
+    .prp-jev-head { background:var(--afims-surface-subtle, #F4F7FA);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--afims-text, #1A1B21); }
+    .prp-jev-total { background:var(--afims-surface-subtle, #F4F7FA);border-bottom:0;border-radius:0 0 12px 12px; }
+    .prp-jev-amt { text-align:right;white-space:nowrap; }
+    .prp-jev-row .nha-filter-input { width:100%;height:36px; }
+    .prp-jev-row input.prp-jev-num { text-align:right; }
+    .prp-jev-del { border:0;background:none;color:#DC3545;font-size:18px;cursor:pointer;line-height:1; }
+    .prp-pf-grid { display:grid;grid-template-columns:minmax(0,2fr) minmax(0,2fr) minmax(0,1fr);gap:14px; }
+    @media (max-width:760px) { .prp-pf-grid { grid-template-columns:minmax(0,1fr); } }
+    /* Pro-forma JEV modal: buttons (close, + Add row, remove row, Print JEV, Submit) */
+    #prp-pf-overlay .nha-modal-close { width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;padding:0;font-size:20px;line-height:1;cursor:pointer;
+        border-radius:8px;color:#fff;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25); }
+    #prp-pf-overlay .nha-modal-close:hover { background:rgba(255,255,255,.24); }
+    #prp-pf-overlay #prp-pf-add { display:inline-flex;align-items:center;gap:4px;height:34px;padding:0 16px;font-size:12px;font-weight:600;cursor:pointer;
+        border-radius:8px;color:#fff;background:var(--afims-primary, #0035A9);border:1px solid var(--afims-primary, #0035A9); }
+    #prp-pf-overlay #prp-pf-add:hover { filter:brightness(1.12); }
+    #prp-pf-overlay .prp-jev-del { width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;padding:0;font-size:18px;font-weight:600;line-height:1;cursor:pointer;
+        border-radius:6px;color:#DC3545;background:transparent;border:1px solid color-mix(in srgb, #DC3545 35%, transparent); }
+    #prp-pf-overlay .prp-jev-del:hover { color:#fff;background:#DC3545;border-color:#DC3545; }
+    #prp-pf-overlay .nha-modal-foot .nha-btn { height:36px;padding:0 20px;font-size:13px !important;font-weight:600;border-radius:8px;cursor:pointer; }
+    #prp-pf-overlay #prp-pf-print { color:var(--afims-text, #1A1B21);background:var(--afims-surface, #FFFFFF);border:1px solid var(--afims-border, #E4ECF2); }
+    #prp-pf-overlay #prp-pf-print:hover { background:var(--afims-surface-subtle, #F4F7FA); }
+    #prp-pf-overlay #prp-pf-submit { color:#fff;background:var(--afims-primary, #0035A9);border:1px solid var(--afims-primary, #0035A9); }
+    #prp-pf-overlay #prp-pf-submit:hover { filter:brightness(1.12); }
+    html.afims-dark[data-bs-theme="dark"] #prp-pf-overlay #prp-pf-add,
+    html.afims-dark[data-bs-theme="dark"] #prp-pf-overlay #prp-pf-submit { background:#3861BC;border-color:#3861BC; }
+    html.afims-dark[data-bs-theme="dark"] #prp-pf-overlay #prp-pf-add:hover,
+    html.afims-dark[data-bs-theme="dark"] #prp-pf-overlay #prp-pf-submit:hover { background:#2E59B8;border-color:#2E59B8;filter:none; }
+    html.afims-dark[data-bs-theme="dark"] #prp-pf-overlay #prp-pf-print { color:#E4ECF2;background:#22294A;border-color:#4A5270; }
+    html.afims-dark[data-bs-theme="dark"] #prp-pf-overlay #prp-pf-print:hover { background:#2E3656; }
+    html.afims-dark[data-bs-theme="dark"] #prp-pf-overlay .prp-jev-del { color:#F87171;border-color:rgba(248,113,113,.4); }
+    html.afims-dark[data-bs-theme="dark"] #prp-pf-overlay .prp-jev-del:hover { color:#fff;background:#DC3545;border-color:#DC3545; }
+    #prp-pf-overlay button:disabled { opacity:.5;cursor:not-allowed; }
+    /* Items from the IAR module: an account row with an arrow that opens its items */
+    .prp-v-toggle { width:28px;height:28px;border:1px solid var(--afims-border, #E4ECF2);border-radius:6px;background:var(--afims-surface, #FFFFFF);color:var(--afims-text, #1A1B21);cursor:pointer;font-size:12px;line-height:1; }
+    .prp-v-toggle:hover { background:var(--afims-surface-subtle, #F4F7FA); }
+    .prp-v-pill { display:inline-block;margin-left:8px;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;color:#1D4ED8;background:color-mix(in srgb, #2563EB 12%, transparent); }
+    .prp-v-sub > td { background:var(--afims-surface-subtle, #F4F7FA);padding:12px 16px 16px; }
+    .prp-v-inner { background:var(--afims-surface, #FFFFFF);border:1px solid var(--afims-border, #E4ECF2);border-radius:8px;overflow:hidden; }
+    .prp-v-tbl { width:100%;border-collapse:collapse;font-size:13px; }
+    /* this table sits INSIDE .nha-tbl, whose header rules (white text) would apply to it too: override them with !important */
+    #prp-root .prp-v-inner .prp-v-tbl thead th { padding:9px 14px !important;text-align:left;font-size:11px !important;font-weight:700 !important;text-transform:uppercase;letter-spacing:.04em;
+        color:var(--afims-text, #1A1B21) !important;background:var(--afims-surface-subtle, #F4F7FA) !important;border-bottom:1px solid var(--afims-border, #E4ECF2) !important; }
+    #prp-root .prp-v-inner .prp-v-tbl thead th[style*="right"] { text-align:right; }
+    #prp-root .prp-v-inner .prp-v-tbl td { padding:9px 14px;color:var(--afims-text, #1A1B21);border-bottom:1px solid var(--afims-border, #E4ECF2); }
+    .prp-v-tbl tbody tr:last-child td { border-bottom:0; }
+    .prp-v-tbl tbody tr:hover td { background:var(--afims-surface-subtle, #F4F7FA); }
+
     /* details modal */
     .prp-grid { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px 20px;margin-bottom:18px; }
     .prp-grid .wide { grid-column:1 / -1; }
@@ -136,7 +188,11 @@ $_prp_api = Config('API.FIMS_URL');
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                 Refresh
             </button>
-            <button id="prp-add" type="button" class="nha-btn-hdr" style="background:var(--afims-success, #11A752);" title="Search a PO number in the Property Inventory System and add its items to the property records">
+            <button id="prp-pf" type="button" class="nha-btn-hdr" title="Pro-forma JEV: the depreciation of the quarter">
+                <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                Pro-forma JEV
+            </button>
+            <button id="prp-add" type="button" class="nha-btn-hdr" style="display:none;background:var(--afims-success, #11A752);" title="Search a PO number in the Property Inventory System and add its items to the property records">
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
                 Add from PIS
             </button>
@@ -148,15 +204,7 @@ $_prp_api = Config('API.FIMS_URL');
     <!-- ═════════ THE LIST: the rows of fims.property_records (cards, then the table). Nothing here is read from PIS. ═════════ -->
     <div id="prp-view-saved">
 
-        <div id="prp-saved-empty" class="nha-table-wrap" style="display:none;">
-            <div class="prp-empty"><strong>No property records yet</strong>
-                Click <b>Add from PIS</b> to search a PO number in the Property Inventory System, select the items and save them here.
-                <br><br><button type="button" class="nha-btn nha-btn-primary" id="prp-go-search" style="font-size:12px;">Add from PIS</button></div>
-        </div>
-
         <div id="prp-saved-result" style="display:none;">
-            <div class="prp-sec-title">Property Record Breakdown by Category</div>
-            <div class="prp-cats" id="prp-cats"></div>
 
             <div class="nha-filters no-print">
                 <div class="nha-filter-row">
@@ -229,6 +277,113 @@ $_prp_api = Config('API.FIMS_URL');
                     <span class="nha-pag-info">Showing <strong><span id="prp-from">0</span>–<span id="prp-to">0</span></strong> of <strong><span id="prp-total">0</span></strong></span>
                     <div id="prp-pagination" class="nha-pag-btns"></div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═════════ ITEMS FROM THE IAR MODULE: the items entered for the property accounts (click one for its details) ═════════ -->
+    <div id="prp-iar-section">
+        <div class="nha-summary" id="prp-iar-kpis" style="grid-template-columns:repeat(3,minmax(0,1fr));"></div>
+        <div class="nha-filters no-print">
+            <div class="nha-filter-row">
+                <div class="nha-filter-group">
+                    <label class="nha-filter-label">Responsibility Center</label>
+                    <input type="text" id="prp-i-rc" class="nha-filter-input" placeholder="All Centers — type to search" style="width:100%;">
+                </div>
+                <div class="nha-filter-group">
+                    <label class="nha-filter-label">Account Code</label>
+                    <input type="text" id="prp-i-gl" class="nha-filter-input" placeholder="All Accounts — type to search" style="width:100%;">
+                </div>
+                <div class="nha-filter-group nha-filter-group-search">
+                    <label class="nha-filter-label">Search</label>
+                    <div class="nha-filter-search-wrap">
+                        <svg class="nha-filter-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                        </svg>
+                        <input type="text" id="prp-i-q" class="nha-filter-input" placeholder="Responsibility center, account code / name, item, serial or property no…">
+                        <button class="nha-filter-clear-btn" id="prp-i-clear" hidden type="button">×</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
+            <button type="button" id="prp-i-expand" class="nha-btn nha-btn-secondary" style="font-size:12px;">Expand All</button>
+        </div>
+        <div class="nha-table-wrap">
+            <div class="nha-tbl-scroll">
+                <table class="nha-tbl">
+                    <thead>
+                        <tr>
+                            <th style="width:56px;"></th>
+                            <th style="text-align:center;">ITEM</th>
+                            <th style="text-align:center;">ACCT. CODE</th>
+                            <th style="text-align:center;">Amount</th>
+                            <th style="text-align:center;">Acct. Code</th>
+                            <th style="text-align:center;">Accu. Depr'n</th>
+                            <th style="text-align:center;">Net Book Value</th>
+                        </tr>
+                    </thead>
+                    <tbody id="prp-iar-tbody"><tr><td colspan="7"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═════════ PRO-FORMA JEV: the depreciation of a quarter, by category (Book, Quarter, Particulars, account rows) ═════════ -->
+    <div id="prp-pf-overlay" class="nha-overlay">
+        <div class="nha-modal" style="max-width:1500px;width:96vw;">
+            <div class="nha-modal-hdr">
+                <h3 class="nha-modal-title">Pro-forma JEV — Depreciation of PPE</h3>
+                <button type="button" class="nha-modal-close" id="prp-pf-close" aria-label="Close">&times;</button>
+            </div>
+            <div class="nha-modal-body">
+                <div class="prp-pf-grid">
+                    <div class="nha-filter-group"><label class="nha-filter-label">Book <span style="color:#DC3545;">*</span></label>
+                        <select id="prp-pf-book" class="nha-filter-select"><option value="">Select a book…</option></select></div>
+                    <div class="nha-filter-group"><label class="nha-filter-label">Quarter</label>
+                        <select id="prp-pf-q" class="nha-filter-select">
+                            <option value="1">1st Quarter (January - March)</option><option value="2">2nd Quarter (April - June)</option>
+                            <option value="3">3rd Quarter (July - September)</option><option value="4">4th Quarter (October - December)</option>
+                        </select></div>
+                    <div class="nha-filter-group"><label class="nha-filter-label">Year</label>
+                        <input type="number" id="prp-pf-y" class="nha-filter-input" min="2000" max="2100" style="width:100%;"></div>
+                </div>
+                <div class="nha-filter-group" style="margin-top:12px;"><label class="nha-filter-label">Particulars</label>
+                    <textarea id="prp-pf-part" class="nha-filter-input" rows="2" style="width:100%;height:auto;padding:8px 10px;"></textarea></div>
+                <div style="display:flex;justify-content:flex-end;margin:14px 0 8px;">
+                    <button type="button" class="nha-btn nha-btn-secondary" id="prp-pf-add" style="font-size:12px;">+ Add row</button>
+                </div>
+                <!-- the account rows: editable (account, debit or credit), like the IAR module's pro-forma -->
+                <div class="prp-jev">
+                    <div class="prp-jev-row prp-jev-head"><div>Account Code - Account Name</div><div style="text-align:center;">Debit (₱)</div><div style="text-align:center;">Credit (₱)</div><div></div></div>
+                    <div id="prp-pf-rows"></div>
+                    <div class="prp-jev-row prp-jev-total"><div style="text-align:right;">TOTAL</div>
+                        <div class="prp-jev-amt"><span class="prp-pl">₱</span><b id="prp-pf-td">0.00</b></div>
+                        <div class="prp-jev-amt"><span class="prp-pl">₱</span><b id="prp-pf-tc">0.00</b></div><div></div></div>
+                </div>
+                <div id="prp-pf-msg" style="margin-top:10px;font-size:13px;color:var(--afims-text-muted, #62657E);min-height:18px;"></div>
+            </div>
+            <div class="nha-modal-foot">
+                <button type="button" class="nha-btn nha-btn-secondary" id="prp-pf-print" style="font-size:12px;">Print JEV</button>
+                <button type="button" class="nha-btn nha-btn-primary" id="prp-pf-submit" style="font-size:12px;">Submit</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── print preview of the pro-forma JEV (the JEV form from POST /print/jev) ── -->
+    <div id="prp-pv-overlay" class="nha-overlay" style="z-index:100001;">
+        <div class="nha-modal" style="max-width:1300px;width:96vw;height:92vh;display:flex;flex-direction:column;">
+            <div class="nha-modal-hdr">
+                <h3 class="nha-modal-title">Journal Entry Voucher — Print Preview</h3>
+                <button type="button" class="nha-modal-close" id="prp-pv-close" aria-label="Close">&times;</button>
+            </div>
+            <div class="nha-modal-body" style="flex:1;padding:0;min-height:0;">
+                <div id="prp-pv-msg" style="padding:16px;font-size:13px;">Loading preview…</div>
+                <iframe id="prp-pv-frame" title="JEV preview" style="display:none;width:100%;height:100%;border:0;" sandbox="allow-same-origin"></iframe>
+            </div>
+            <div class="nha-modal-foot">
+                <button type="button" class="nha-btn nha-btn-secondary" id="prp-pv-done" style="font-size:12px;">Close</button>
+                <button type="button" class="nha-btn nha-btn-primary" id="prp-pv-pdf" style="font-size:12px;" disabled>Download PDF</button>
             </div>
         </div>
     </div>
@@ -416,11 +571,10 @@ function prp_closeAdd() { $prp('prp-add-overlay').classList.remove('open'); }
 /* ── events ───────────────────────────────────────────────── */
 function prp_bind() {
     $prp('prp-add').addEventListener('click', prp_openAdd);
-    $prp('prp-go-search').addEventListener('click', prp_openAdd);
     $prp('prp-add-close').addEventListener('click', prp_closeAdd);
     $prp('prp-add-done').addEventListener('click', prp_closeAdd);
     $prp('prp-add-overlay').addEventListener('mousedown', e => { if (e.target === $prp('prp-add-overlay')) prp_closeAdd(); });
-    $prp('prp-refresh').addEventListener('click', prp_loadSaved);
+    $prp('prp-refresh').addEventListener('click', () => { prp_loadSaved(); prp_loadIar(); });
 
     // saved records: filters
     $prp('prp-f-status').addEventListener('change', e => { prp_flt.status = e.target.value; prp_apply(); });
@@ -466,10 +620,8 @@ async function prp_loadSaved() {
 
         if (!prp_items.length) {
             $prp('prp-saved-result').style.display = 'none';
-            $prp('prp-saved-empty').style.display = '';
             return;
         }
-        $prp('prp-saved-empty').style.display = 'none';
         $prp('prp-saved-result').style.display = '';
         // the responsibility-center filter: one entry per center that has saved items
         const rcs = [...new Map(prp_items.filter(it => it.rc_name).map(it => [it.rc_name, it.rc_name])).keys()].sort();
@@ -506,6 +658,7 @@ function prp_pickCat(i) {
 }
 
 function prp_renderCats() {
+    if (!$prp('prp-cats')) return;                          // the register's category cards were replaced by the account cards (IAR items)
     $prp('prp-cats').innerHTML = prp_cats.map((c, i) => `
         <div class="prp-cat${prp_flt.cat && prp_flt.cat === c.gl_code ? ' active' : ''}" onclick="prp_pickCat(${i})" title="Click to filter the table by this category">
             <div class="nm">${prp_esc(c.category || 'Uncategorized')}</div>
@@ -614,10 +767,475 @@ function prp_goTo(p) {
     prp_page = p; prp_renderTable();
 }
 
+/* ══════════════ ITEMS FROM THE IAR MODULE ══════════════
+   GET /property-record/iar-items: the items entered in the IAR module for the property accounts. A row opens the item's details. */
+let prp_iar = [];
+let prp_iarGl = '';
+const PRP_ACCOUNTS = [                                       // the property accounts: one row each, even with no item
+    ['1-06-05-020', 'Office Equipment'], ['1-06-05-030', 'Info. And Comm. Tech. Equip.'], ['1-06-05-070', 'Communication Equipment'],
+    ['1-06-05-080', 'Construction & Heavy Equip.'], ['1-06-05-110', 'Medical Equipment'], ['1-06-05-130', 'Sports Equipment'],
+    ['1-06-05-990', 'Other Machinery & Equipment'], ['1-06-06-010', 'Motor Vehicles'], ['1-06-07-010', 'Furniture & Fixtures'],
+    ['1-06-99-990', 'Other Property, Plant & Equipment'],
+];
+const prp_glOf = code => (String(code || '').match(/^(\d+-\d+-\d+-\d+)/) || [])[1] || '';
+async function prp_loadIar() {
+    try {
+        const res  = await fetch(PRP_API + '/iar-items', { credentials: 'same-origin', headers: prp_authHeaders() });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message || 'Failed to load the items of the IAR module.');
+        prp_iar = json.data.items || [];
+    } catch (e) {
+        prp_iar = [];
+        prp_toast(e.message, 'error');                         // the accounts are still listed (0.00)
+    }
+    // the searchable center list: the centers of the items (re-read on every load)
+    const rcs = new Map(prp_iar.filter(it => it.rc_name).map(it => [it.rc_name, it.rc_id || it.rc_name]));
+    nhaSearchableSelect($prp('prp-i-rc'), [...rcs.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([name, id]) => ({ value: String(id), label: name })),
+        opt => { $prp('prp-i-rc').value = opt ? opt.label : ''; prp_iarF.rc = opt ? opt.label : ''; prp_renderIar(); });
+    if (prp_iarF.rc && !rcs.has(prp_iarF.rc)) { prp_iarF.rc = ''; $prp('prp-i-rc').value = ''; }
+    prp_renderIar();
+}
+/* Depreciation of an item (straight line; the register's convention: whole months used, 10% residual value):
+     Monthly Depreciation     = Acquisition Cost x .9 / useful life in months   (360 building, 120 land improvement, 60 equipment)
+     Accumulated Depreciation = Monthly Depreciation x number of months used (acquisition date → the "as of" date), never above 90% of the cost
+     Net Book Value           = Acquisition Cost - Accumulated Depreciation
+   The property accounts are equipment (60 months); the GL code decides the life, so a building / land improvement account would too. */
+function prp_lifeMonths(code) { return /^1-06-04/.test(code) ? 360 : /^1-06-03/.test(code) ? 120 : 60; }
+const prp_pad = n => String(n).padStart(2, '0');
+// "as of": the current date (the net book value is always as of today)
+const prp_asOf = (() => { const n = new Date(); return n.getFullYear() + '-' + prp_pad(n.getMonth() + 1) + '-' + prp_pad(n.getDate()); })();
+function prp_asOfLabel() { const [y, m, d] = prp_asOf.split('-').map(Number); return m + '/' + d + '/' + y; }
+// Depreciation starts the MONTH AFTER the acquisition (delivery) date: acquired Jan 1, 2026 → the first month is February 2026.
+// So the months used are the calendar months after the acquisition month, up to and including the month of the "as of" date.
+function prp_monthsUsed(from, to) {
+    const a = String(from || '').slice(0, 10).split('-').map(Number), b = String(to).split('-').map(Number);
+    if (a.length < 3 || a.some(isNaN)) return 0;
+    return Math.max(0, (b[0] - a[0]) * 12 + (b[1] - a[1]));
+}
+function prp_depr(it) {
+    const cost = Number(it.amount || 0), r2 = v => Math.round(v * 100) / 100;
+    const monthly = r2(cost * 0.9 / prp_lifeMonths(it.account_code));
+    const accum   = Math.min(r2(monthly * prp_monthsUsed(it.date_acquired, prp_asOf)), r2(cost * 0.9));
+    // fully depreciated: the whole 90% is depreciated (after the useful life, e.g. 60 months for equipment) → the item's Remarks say so
+    return { residual: r2(cost * 0.1), monthly, accum, nbv: r2(cost - accum), fully: cost > 0 && accum >= r2(cost * 0.9) };
+}
+/* ══════════════ PRO-FORMA JEV: depreciation of a quarter ══════════════
+   Per property account (category): the depreciation of its items within the quarter is DEBITED to the depreciation expense account
+   (+ its SL) and CREDITED to the accumulated depreciation account. Depreciation of an item within a quarter = its accumulated
+   depreciation at the end of the quarter - at the end of the previous quarter (same formula as the item table above). */
+const PRP_JEV_CFG = {                                        // GL code of the category → debit (expense) account + SL, credit (accumulated depreciation) account
+    '1-06-05-020': { d: '5-05-01-050', sl: '02', c: '1-06-05-021' },
+    '1-06-05-030': { d: '5-05-01-050', sl: '03', c: '1-06-05-031' },
+    '1-06-05-070': { d: '5-05-01-050', sl: '07', c: '1-06-05-071' },
+    '1-06-05-080': { d: '5-05-01-050', sl: '08', c: '1-06-05-081' },
+    '1-06-05-110': { d: '5-05-01-050', sl: '11', c: '1-06-05-111' },
+    '1-06-05-130': { d: '5-05-01-050', sl: '13', c: '1-06-05-131' },
+    '1-06-05-990': { d: '5-05-01-050', sl: '99', c: '1-06-05-991' },
+    '1-06-06-010': { d: '5-05-01-060', sl: '01', c: '1-06-06-011' },
+    '1-06-07-010': { d: '5-05-01-070', sl: '',   c: '1-06-07-011' },
+    '1-06-99-990': { d: '5-05-01-990', sl: '',   c: '1-06-99-991' },
+};
+const PRP_QUARTERS = { 1: ['1st', 'January - March'], 2: ['2nd', 'April - June'], 3: ['3rd', 'July - September'], 4: ['4th', 'October - December'] };
+let prp_pfBooks = null, prp_pfTitles = {}, prp_pfPartEdited = false;
+const prp_ymd = d => d.getFullYear() + '-' + prp_pad(d.getMonth() + 1) + '-' + prp_pad(d.getDate());
+function prp_accumAt(it, date) {                             // accumulated depreciation of an item at a date
+    const cost = Number(it.amount || 0), r2 = v => Math.round(v * 100) / 100, monthly = r2(cost * 0.9 / prp_lifeMonths(it.account_code));
+    return Math.min(r2(monthly * prp_monthsUsed(it.date_acquired, date)), r2(cost * 0.9));
+}
+function prp_pfRows() {
+    const q = Number($prp('prp-pf-q').value), y = Number($prp('prp-pf-y').value);
+    const end = prp_ymd(new Date(y, q * 3, 0)), prev = prp_ymd(new Date(y, (q - 1) * 3, 0));   // last day of the quarter / of the previous quarter
+    const byGl = new Map();
+    prp_iar.forEach(it => {
+        const gl = prp_glOf(it.account_code);
+        if (!PRP_JEV_CFG[gl]) return;
+        byGl.set(gl, Math.round(((byGl.get(gl) || 0) + prp_accumAt(it, end) - prp_accumAt(it, prev)) * 100) / 100);
+    });
+    const debits = new Map(), credits = new Map();
+    PRP_ACCOUNTS.forEach(([gl]) => {
+        const amt = byGl.get(gl) || 0, c = PRP_JEV_CFG[gl];
+        if (amt <= 0) return;
+        const dCode = c.d + (c.sl ? '-' + c.sl : '');
+        debits.set(dCode, Math.round(((debits.get(dCode) || 0) + amt) * 100) / 100);
+        credits.set(c.c, Math.round(((credits.get(c.c) || 0) + amt) * 100) / 100);
+    });
+    return { debits: [...debits.entries()], credits: [...credits.entries()] };
+}
+function prp_pfParticulars() {
+    const q = Number($prp('prp-pf-q').value), y = $prp('prp-pf-y').value, b = $prp('prp-pf-book');
+    const book = b.value ? b.options[b.selectedIndex].text : '';
+    return `To take up Depreciation Cost of PPE for the ${PRP_QUARTERS[q][0]} Quarter (${PRP_QUARTERS[q][1]}) ${y}${book ? ' ' + book : ''}`;
+}
+/* The pro-forma rows are kept in prp_pfState = [{ code, title, debit, credit }]: they start from the quarter's depreciation (debits, then
+   credits) and can then be edited like the IAR module's pro-forma (account, a debit OR a credit amount, add / remove a row).
+   Changing the quarter or the year rebuilds them from the depreciation; changing the book only changes the particulars. */
+let prp_pfState = [], prp_pfAccounts = null;
+/* the depreciation accounts offered first: every expense (+ SL) and accumulated-depreciation code of PRP_JEV_CFG, expense accounts first */
+function prp_pfDepOptions() {
+    const codes = [...new Set([...Object.values(PRP_JEV_CFG).map(c => c.d + (c.sl ? '-' + c.sl : '')), ...Object.values(PRP_JEV_CFG).map(c => c.c)])];
+    return codes.map(code => ({ value: code, label: ((prp_pfAccounts || []).find(a => a.value === code) || {}).label || prp_pfTitles[code] || '' }));
+}
+const prp_num = v => Number(v || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const prp_unfmt = s => parseFloat(String(s || '').replace(/,/g, '')) || 0;
+function prp_pfBuild() {
+    const { debits, credits } = prp_pfRows();
+    prp_pfState = [...debits.map(([c, v]) => ({ code: c, title: prp_pfTitles[c] || '', debit: v, credit: 0 })),
+                   ...credits.map(([c, v]) => ({ code: c, title: prp_pfTitles[c] || '', debit: 0, credit: v }))];
+}
+function prp_pfRender() {
+    if (!prp_pfPartEdited) $prp('prp-pf-part').value = prp_pfParticulars();
+    const lbl = r => r.code ? r.code + (r.title ? ' - ' + r.title : '') : '';
+    $prp('prp-pf-rows').innerHTML = prp_pfState.length ? prp_pfState.map((r, i) => `<div class="prp-jev-row" data-i="${i}">
+            <input type="text" class="nha-filter-input prp-pf-acct" placeholder="Search account code or title" value="${prp_esc(lbl(r))}" autocomplete="off">
+            <input type="text" inputmode="decimal" class="nha-filter-input prp-jev-num prp-pf-d" placeholder="0.00" value="${r.debit > 0 ? prp_num(r.debit) : ''}">
+            <input type="text" inputmode="decimal" class="nha-filter-input prp-jev-num prp-pf-c" placeholder="0.00" value="${r.credit > 0 ? prp_num(r.credit) : ''}">
+            <button type="button" class="prp-jev-del" title="Remove row">&times;</button></div>`).join('')
+        : '<div class="prp-jev-row" style="display:block;"><div class="prp-empty" style="padding:14px;"><strong>No depreciation</strong>None of the items has depreciation in this quarter. Add rows to enter an entry manually.</div></div>';
+    document.querySelectorAll('#prp-pf-rows .prp-jev-row[data-i]').forEach(el => {
+        const i = Number(el.dataset.i), row = prp_pfState[i], acct = el.querySelector('.prp-pf-acct');
+        const d = el.querySelector('.prp-pf-d'), c = el.querySelector('.prp-pf-c');
+        // account: type to filter the chart of accounts (loaded once), click one to pick it
+        // With nothing typed the list offers ONLY the depreciation accounts (the expense + accumulated depreciation accounts of PRP_JEV_CFG, like the IAR
+        // module's picker offers the property accounts); once the user types, the whole chart of accounts is searched. These two listeners are added
+        // BEFORE nhaSearchableSelect so the option list is switched before the dropdown draws it.
+        const allOpts = prp_pfAccounts || [];
+        const depOpts = prp_pfDepOptions();
+        const pickList = () => { acct._nhaOptions = acct.value.trim() ? allOpts : depOpts; };
+        acct.addEventListener('focus', () => { acct.value = ''; acct._nhaOptions = depOpts; });     // clicking into the field clears it to start a search
+        acct.addEventListener('input', pickList);
+        nhaSearchableSelect(acct, depOpts, opt => { if (opt) { row.code = opt.value; row.title = opt.label; } acct.value = lbl(row); prp_pfRefresh(); });
+        acct.addEventListener('blur', () => setTimeout(() => { acct.value = lbl(row); }, 150));       // half-typed text goes back to the picked account
+        // a row is either a debit or a credit: typing in one clears the other
+        d.addEventListener('input', () => { row.debit = prp_unfmt(d.value); if (d.value) { c.value = ''; row.credit = 0; } prp_pfRefresh(); });
+        c.addEventListener('input', () => { row.credit = prp_unfmt(c.value); if (c.value) { d.value = ''; row.debit = 0; } prp_pfRefresh(); });
+        d.addEventListener('blur', () => { if (d.value) d.value = prp_num(prp_unfmt(d.value)); });
+        c.addEventListener('blur', () => { if (c.value) c.value = prp_num(prp_unfmt(c.value)); });
+        el.querySelector('.prp-jev-del').addEventListener('click', () => { prp_pfState.splice(i, 1); prp_pfRender(); });
+    });
+    // already submitted as a JEV: read-only — no editing, no Add row, no remove, and it cannot be submitted again
+    const locked = !!prp_pfLock;
+    document.querySelectorAll('#prp-pf-rows input').forEach(i => { i.disabled = locked; });
+    document.querySelectorAll('#prp-pf-rows .prp-jev-del').forEach(b => { b.style.display = locked ? 'none' : ''; });
+    $prp('prp-pf-add').style.display = locked ? 'none' : '';
+    $prp('prp-pf-part').disabled = locked;
+    prp_pfRefresh();
+}
+/* The JEV this quarter's pro-forma was already submitted as (same book + the standard particulars, or the typed ones). When there is one the
+   pro-forma shows what was submitted, read-only, like the IAR module's pro-forma; changing the quarter / year / book looks again. */
+let prp_pfLock = null, prp_pfSeq = 0, prp_pfTimer = null;
+async function prp_pfCheck() {
+    const seq = ++prp_pfSeq, book = $prp('prp-pf-book').value, base = PRP_API.replace(/\/property-record$/, '');
+    let found = null;
+    if (book) {
+        const qs = new URLSearchParams({ book_id: book });
+        [prp_pfParticulars(), $prp('prp-pf-part').value.trim()].forEach(t => { if (t) qs.append('p[]', t); });
+        try {
+            const res = await fetch(PRP_API + '/proforma-jev?' + qs.toString(), { credentials: 'same-origin', headers: prp_authHeaders() });
+            const json = await res.json();
+            found = json.success ? json.data : null;
+        } catch (e) { found = null; }
+    }
+    if (seq !== prp_pfSeq) return;                            // a newer check is on its way
+    if (!found) {
+        const was = !!prp_pfLock;
+        prp_pfLock = null;
+        if (was) { prp_pfPartEdited = false; prp_pfBuild(); prp_pfRender(); } else prp_pfRefresh();
+        return;
+    }
+    let lock = { ...found, status: '', jev_date: '' };
+    try {                                                     // what was submitted: its own lines, particulars and date
+        const jr = await fetch(base + '/voucher/journal-entry/' + encodeURIComponent(found.jev_id), { credentials: 'same-origin', headers: prp_authHeaders() });
+        const jj = await jr.json();
+        if (jj.success) {
+            lock.status = jj.data.jev_status || ''; lock.jev_date = jj.data.jev_date || '';
+            prp_pfState = (jj.data.lines || []).map(l => ({ code: l.account_code, title: l.account_title || '', debit: Number(l.debit) || 0, credit: Number(l.credit) || 0 }));
+            if (jj.data.particulars) { $prp('prp-pf-part').value = jj.data.particulars; }
+        }
+    } catch (e) { /* the pro-forma rows stay (locked) */ }
+    if (seq !== prp_pfSeq) return;
+    prp_pfLock = lock; prp_pfPartEdited = true;               // keep the submitted particulars on screen
+    prp_pfRender();
+}
+/* totals + the message under the rows + the Submit / Print buttons */
+function prp_pfError() {
+    const cents = k => Math.round(prp_pfState.reduce((s, r) => s + (Number(r[k]) || 0), 0) * 100);
+    if (prp_pfState.length < 2) return 'A journal entry needs at least two rows (a debit and a credit).';
+    if (prp_pfState.some(r => !r.code || !((Number(r.debit) > 0) || (Number(r.credit) > 0)))) return 'Choose an account code and enter a debit or a credit amount for every row.';
+    if (cents('debit') !== cents('credit')) return 'Not balanced: total debit ₱' + prp_num(cents('debit') / 100) + ' and total credit ₱' + prp_num(cents('credit') / 100) + ' are not equal.';
+    return '';
+}
+function prp_pfRefresh() {
+    const sum = k => prp_pfState.reduce((s, r) => s + (Number(r[k]) || 0), 0);
+    $prp('prp-pf-td').textContent = prp_num(sum('debit'));
+    $prp('prp-pf-tc').textContent = prp_num(sum('credit'));
+    if (prp_pfLock) {                                         // already submitted: read-only, it cannot be submitted again
+        const b = $prp('prp-pf-submit');
+        b.disabled = true; b.style.display = 'none';           // no Submit button once submitted: only Print JEV is left
+        $prp('prp-pf-print').disabled = false;
+        $prp('prp-pf-msg').innerHTML = 'Submitted as Journal Entry Voucher <strong>' + prp_esc(prp_pfLock.jev_no) + '</strong>'
+            + (prp_pfLock.status ? ' (' + prp_esc(String(prp_pfLock.status).replace(/_/g, ' ').toLowerCase()) + ')' : '') + ' — read-only. <a href="JournalEntryVoucher">Open Journal Entry Vouchers</a>';
+        return;
+    }
+    $prp('prp-pf-submit').style.display = '';
+    const err = prp_pfError();
+    $prp('prp-pf-msg').textContent = err;
+    $prp('prp-pf-submit').disabled = !!err;
+    $prp('prp-pf-print').disabled = !!err;
+}
+/* the JEV lines / header as the print form and the submit call take them */
+function prp_pfPayload() {
+    const q = Number($prp('prp-pf-q').value), y = Number($prp('prp-pf-y').value), b = $prp('prp-pf-book');
+    return {
+        jev_date: prp_ymd(new Date(y, q * 3, 0)),            // the last day of the quarter
+        book_id: b.value, office: b.value ? b.options[b.selectedIndex].text : '',
+        particulars: $prp('prp-pf-part').value.trim(),
+        lines: prp_pfState.map(r => ({ account_code: r.code, account_title: r.title, debit: Number(r.debit) || 0, credit: Number(r.credit) || 0 })),
+    };
+}
+async function prp_pfSubmit() {
+    const err = prp_pfError(), p = prp_pfPayload();
+    if (err) { prp_toast(err, 'warning'); return; }
+    if (!p.book_id) { prp_toast('Select a Book before submitting.', 'warning'); $prp('prp-pf-book').focus(); return; }
+    const text = 'It is submitted for approval right away (Section Chief review).';
+    if (window.Swal) {
+        const ok = await window.Swal.fire({ icon: 'question', title: 'Submit this Journal Entry Voucher?', text, showCancelButton: true,
+            confirmButtonText: 'Submit', cancelButtonText: 'Cancel', confirmButtonColor: '#0f2045' });
+        if (!ok.isConfirmed) return;
+    } else if (!confirm('Submit this Journal Entry Voucher? ' + text)) return;
+    const btn = $prp('prp-pf-submit'); btn.disabled = true;
+    window.PagePreloader?.show();
+    try {
+        const res  = await fetch(PRP_API + '/proforma-submit', { method: 'POST', credentials: 'same-origin', headers: prp_authHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({ jev_date: p.jev_date, book_id: p.book_id, particulars: p.particulars, jev_classification: 'REGULAR',
+                lines: prp_pfState.map(r => ({ account_code: r.code, rc_id: '', debit: Number(r.debit) || 0, credit: Number(r.credit) || 0 })) }) });
+        const json = await res.json();
+        if (!json.success) throw new Error((json.errors && json.errors.length ? json.errors.join('\n') : null) || json.message || 'Failed to submit the Journal Entry Voucher.');
+        prp_toast(json.message || 'Journal Entry Voucher submitted for approval.', 'success');
+        $prp('prp-pf-overlay').classList.remove('open');
+        window.location.href = 'JournalEntryVoucher';          // continue on the Journal Entry Vouchers page
+    } catch (e) {
+        prp_toast(e.message, 'error');
+        prp_pfRefresh();
+    } finally {
+        window.PagePreloader?.hide();
+    }
+}
+/* Print JEV: the JEV form rendered by POST {api}/print/jev (the same call as the print preview of the other modules) */
+let prp_pvPayload = null;
+const prp_pvUrl = () => PRP_API.replace(/\/property-record$/, '') + '/print/jev';
+async function prp_pfPrint() {
+    const p = prp_pfPayload();
+    prp_pvPayload = { office: p.office, jev_date: p.jev_date, particulars: p.particulars, lines: p.lines,
+        ...(prp_pfLock ? { jev_number: prp_pfLock.jev_no, jev_date: prp_pfLock.jev_date || p.jev_date } : {}) };   // a submitted JEV prints with its number and date
+    $prp('prp-pv-overlay').classList.add('open');
+    $prp('prp-pv-frame').style.display = 'none';
+    $prp('prp-pv-msg').style.display = ''; $prp('prp-pv-msg').textContent = 'Loading preview…';
+    $prp('prp-pv-pdf').disabled = true;
+    try {
+        const res  = await fetch(prp_pvUrl(), { method: 'POST', credentials: 'same-origin', headers: prp_authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify({ ...prp_pvPayload, format: 'html' }) });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message || 'The preview could not be loaded.');
+        const frame = $prp('prp-pv-frame');
+        frame.srcdoc = json.html; frame.style.display = ''; $prp('prp-pv-msg').style.display = 'none';
+        $prp('prp-pv-pdf').disabled = false;
+    } catch (e) { $prp('prp-pv-msg').textContent = e.message; }
+}
+async function prp_pfPdf() {
+    const btn = $prp('prp-pv-pdf'), label = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Generating…';
+    try {
+        const res  = await fetch(prp_pvUrl(), { method: 'POST', credentials: 'same-origin', headers: prp_authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify({ ...prp_pvPayload, format: 'pdf' }) });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message || 'The PDF could not be generated.');
+        const bin = atob(json.data), bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob([bytes], { type: json.mime })); a.download = json.filename;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    } catch (e) { prp_toast(e.message, 'error'); }
+    finally { btn.textContent = label; btn.disabled = false; }
+}
+async function prp_pfOpen() {
+    $prp('prp-pf-overlay').classList.add('open');
+    if (!$prp('prp-pf-y').value) {                           // default: the latest completed quarter
+        const n = new Date(), q = Math.floor(n.getMonth() / 3);
+        $prp('prp-pf-q').value = q === 0 ? 4 : q;
+        $prp('prp-pf-y').value = q === 0 ? n.getFullYear() - 1 : n.getFullYear();
+    }
+    if (prp_pfBooks === null) {                              // fims.books, once (the same list as the IAR module's pro-forma)
+        try {
+            const res = await fetch(PRP_API.replace(/\/property-record$/, '') + '/books/all', { credentials: 'same-origin', headers: prp_authHeaders() });
+            const json = await res.json();
+            prp_pfBooks = json.success ? (json.data || []) : [];
+        } catch (e) { prp_pfBooks = []; }
+        const main = prp_pfBooks.find(b => String(b.book_id) === '1' || b.book_code === 'MAIN-OFFICE');
+        $prp('prp-pf-book').innerHTML = '<option value="">Select a book…</option>' + prp_pfBooks.map(b => `<option value="${prp_esc(b.book_id)}">${prp_esc(b.name)}</option>`).join('');
+        if (main) $prp('prp-pf-book').value = String(main.book_id);      // Main Office unless the user picks another
+    }
+    // account titles of every code the pro-forma can use
+    const codes = Object.values(PRP_JEV_CFG).flatMap(c => [c.d + (c.sl ? '-' + c.sl : ''), c.c]);
+    try {
+        const res = await fetch(PRP_API + '/account-titles?codes=' + encodeURIComponent(codes.join(',')), { credentials: 'same-origin', headers: prp_authHeaders() });
+        const json = await res.json();
+        if (json.success) prp_pfTitles = json.data || {};
+    } catch (e) { /* the codes alone are shown */ }
+    if (prp_pfAccounts === null) {                           // the accounts the rows can pick: active, postable, and a GL that has sub-ledgers is replaced by them
+        try {
+            const res = await fetch(PRP_API.replace(/\/property-record$/, '') + '/chart-of-accounts/all', { credentials: 'same-origin', headers: prp_authHeaders() });
+            const json = await res.json();
+            const on  = v => v === true || v === 't' || v === 'true' || v === 1;
+            const act = (json.success ? json.data || [] : []).filter(a => on(a.posting_allowed) && String(a.status || 'Active').toLowerCase() === 'active');
+            const parents = new Set(act.map(a => a.parent_account_id).filter(Boolean));
+            prp_pfAccounts = act.filter(a => !parents.has(a.account_id)).map(a => ({ value: a.account_code, label: a.account_title }));
+        } catch (e) { prp_pfAccounts = []; }
+    }
+    prp_pfPartEdited = false;
+    prp_pfLock = null;
+    prp_pfBuild();
+    prp_pfRender();
+    prp_pfCheck();                                           // locks it when this quarter was already submitted
+}
+function prp_bindPf() {
+    $prp('prp-pf').addEventListener('click', prp_pfOpen);
+    $prp('prp-pf-close').addEventListener('click', () => $prp('prp-pf-overlay').classList.remove('open'));
+    $prp('prp-pf-overlay').addEventListener('mousedown', e => { if (e.target === $prp('prp-pf-overlay')) $prp('prp-pf-overlay').classList.remove('open'); });
+    // the book only changes the particulars; the quarter / year rebuild the rows from that quarter's depreciation
+    $prp('prp-pf-book').addEventListener('change', () => { prp_pfRender(); prp_pfCheck(); });
+    ['prp-pf-q', 'prp-pf-y'].forEach(id => $prp(id).addEventListener('change', () => { prp_pfLock = null; prp_pfPartEdited = false; prp_pfBuild(); prp_pfRender(); prp_pfCheck(); }));
+    $prp('prp-pf-part').addEventListener('input', () => {                                  // a typed particulars is kept (and checked against the submitted JEVs)
+        prp_pfPartEdited = true; clearTimeout(prp_pfTimer); prp_pfTimer = setTimeout(prp_pfCheck, 500);
+    });
+    $prp('prp-pf-add').addEventListener('click', () => { prp_pfState.push({ code: '', title: '', debit: 0, credit: 0 }); prp_pfRender(); const a = document.querySelectorAll('#prp-pf-rows .prp-pf-acct'); a[a.length - 1]?.focus(); });
+    $prp('prp-pf-submit').addEventListener('click', prp_pfSubmit);
+    $prp('prp-pf-print').addEventListener('click', prp_pfPrint);
+    $prp('prp-pv-close').addEventListener('click', () => $prp('prp-pv-overlay').classList.remove('open'));
+    $prp('prp-pv-done').addEventListener('click', () => $prp('prp-pv-overlay').classList.remove('open'));
+    $prp('prp-pv-pdf').addEventListener('click', prp_pfPdf);
+}
+const prp_iarF = { rc: '', gl: '', q: '' };                  // filters of the list: responsibility center, account code, search text
+function prp_bindIar() {
+    // Responsibility Center / Account Code: type to filter the list, click one to pick it; emptying the box shows all again
+    nhaSearchableSelect($prp('prp-i-gl'), PRP_ACCOUNTS.map(([c, n]) => ({ value: c, label: n })),
+        opt => { $prp('prp-i-gl').value = opt ? opt.value + ' — ' + opt.label : ''; prp_iarF.gl = opt ? opt.value : ''; prp_renderIar(); });
+    [['prp-i-rc', 'rc'], ['prp-i-gl', 'gl']].forEach(([id, key]) => $prp(id).addEventListener('input', e => {
+        if (!e.target.value.trim() && prp_iarF[key]) { prp_iarF[key] = ''; prp_renderIar(); }
+    }));
+    $prp('prp-i-expand').addEventListener('click', prp_expandAllIar);
+    let timer;
+    $prp('prp-i-q').addEventListener('input', e => {
+        $prp('prp-i-clear').hidden = !e.target.value;
+        clearTimeout(timer);
+        timer = setTimeout(() => { prp_iarF.q = e.target.value.trim().toLowerCase(); prp_renderIar(); }, 250);
+    });
+    $prp('prp-i-clear').addEventListener('click', () => { $prp('prp-i-q').value = ''; $prp('prp-i-clear').hidden = true; prp_iarF.q = ''; prp_renderIar(); });
+}
+function prp_renderIar() {
+    // the list: one row per account (Account | Account Code | Amount) with an arrow that opens its items, like the delivery receipts of the IAR module
+    // every property account is listed, with 0.00 when it has no item (an item posted to a sub-ledger counts under its GL account);
+    // the filters narrow the items, and the Account Code filter narrows the accounts. While a center / search filter is on, accounts without a match are left out.
+    const f = prp_iarF, narrowing = !!(f.rc || f.q);
+    const match = it => (!f.rc || it.rc_name === f.rc)
+        && (!f.q || [it.rc_name, it.account_code, it.account_title, it.description, it.serial_no, it.property_no, it.po_number, it.iar_number].some(v => String(v || '').toLowerCase().includes(f.q)));
+    const list = PRP_ACCOUNTS.filter(([code]) => !f.gl || code === f.gl).map(([code, title]) => {
+        const items = prp_iar.map((it, i) => [it, i]).filter(([it]) => prp_glOf(it.account_code) === code && match(it));
+        // total cost, accumulated depreciation and net book value (as of today) of the account's items
+        const dep = items.map(([it]) => prp_depr(it));
+        return [code, { title, items, total: items.reduce((s, [it]) => s + Number(it.amount || 0), 0),
+            accum: dep.reduce((s, d) => s + d.accum, 0), nbv: dep.reduce((s, d) => s + d.nbv, 0) }];
+    }).filter(([, g]) => !narrowing || g.items.length);
+    // amount cell: the peso sign at the left of the cell, the number at the right; only the FIRST account and the TOTAL show the sign
+    const numFmt = v => Number(v || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const amtCell = (v, peso, bold) => `<td style="text-align:right;white-space:nowrap;${bold ? 'font-weight:700;' : ''}">${peso ? '<span class="prp-pl">₱</span>' : ''}${numFmt(v)}</td>`;
+    // the cards (three to a row) — of the items in the list, as of today: depreciation of the current quarter and of the year to date,
+    // accumulated depreciation, and the fully depreciated items (their number and acquisition cost)
+    {
+        const today = prp_asOf, y = Number(today.slice(0, 4)), q = Math.floor((Number(today.slice(5, 7)) - 1) / 3);
+        const qPrev = prp_ymd(new Date(y, q * 3, 0)), yPrev = (y - 1) + '-12-31', r2 = v => Math.round(v * 100) / 100;
+        const all = list.flatMap(([, g]) => g.items.map(([it]) => it));
+        let quarterly = 0, ytd = 0, accum = 0, fullyN = 0;
+        all.forEach(it => {
+            const a = prp_accumAt(it, today), cost = Number(it.amount || 0);
+            quarterly += a - prp_accumAt(it, qPrev);
+            ytd       += a - prp_accumAt(it, yPrev);
+            accum     += a;
+            if (cost > 0 && a >= r2(cost * 0.9)) fullyN++;                             // the whole 90% is depreciated
+        });
+        const card = (cls, label, val, sub) => `<div class="nha-sc ${cls}"><div class="nha-sc-top"><div><div class="nha-sc-label">${label}</div><div class="nha-sc-val">${val}</div></div></div><p class="nha-kpi-sub">${sub}</p></div>`;
+        $prp('prp-iar-kpis').innerHTML =
+            card('nha-sc-navy',  'QUARTERLY DEPRECIATION', prp_money(r2(quarterly)), PRP_QUARTERS[q + 1][0] + ' Quarter (' + PRP_QUARTERS[q + 1][1] + ') ' + y + ', to date') +
+            card('nha-sc-teal',  'YEAR-TO-DATE DEPRECIATION', prp_money(r2(ytd)), 'January 1 – ' + prp_asOfLabel()) +
+            card('nha-sc-amber', 'ACCUMULATED DEPRECIATION', prp_money(r2(accum)), 'As of ' + prp_asOfLabel()) +
+            card('nha-sc-green', 'FULLY DEPRECIATED', fullyN, 'Fully depreciated items only') +
+            card('nha-sc-navy',  '# OF ITEMS', all.length, 'All the items listed') +
+            card('nha-sc-teal',  'AMOUNT', prp_money(r2(all.reduce((s, it) => s + Number(it.amount || 0), 0))), 'Total amount (acquisition cost) of the items');
+    }
+    const grand = list.reduce((s, [, g]) => s + g.total, 0), grandAccum = list.reduce((s, [, g]) => s + g.accum, 0), grandNbv = list.reduce((s, [, g]) => s + g.nbv, 0);
+    $prp('prp-iar-tbody').innerHTML = list.map(([code, g], idx) => {
+        const has  = g.items.length > 0;
+        const open = has && prp_iarOpen.has(code);
+        // the whole account row opens / closes its items (the arrow only shows the state)
+        return `<tr${has ? ` style="cursor:pointer;" onclick="prp_toggleIar('${prp_esc(code)}')" title="Click to ${open ? 'hide' : 'show'} the items"` : ''}>
+            <td>${has ? `<button type="button" class="prp-v-toggle" aria-expanded="${open}" tabindex="-1">${open ? '&#9662;' : '&#9656;'}</button>` : ''}</td>
+            <td style="font-weight:700;">${prp_dash(g.title)}</td>
+            <td style="text-align:center;"><code class="nha-code">${prp_esc(code)}</code></td>
+            ${amtCell(g.total, idx === 0, false)}
+            <td style="text-align:center;"><code class="nha-code">${prp_esc((PRP_JEV_CFG[code] || {}).c || '')}</code></td>
+            ${amtCell(g.accum, idx === 0, false)}
+            ${amtCell(g.nbv, idx === 0, false)}
+        </tr>` + (open ? `<tr class="prp-v-sub"><td colspan="7"><div class="prp-v-inner"><table class="prp-v-tbl">
+            <thead><tr><th>Description - Item</th><th>Serial No.</th><th>Property No.</th><th>Responsibility Center</th><th>JEV Reference/Date **</th><th>Acq. Date</th><th style="text-align:right;">Acq. Cost</th><th style="text-align:right;">Residual<br>Value</th><th style="text-align:right;">Monthly<br>Depr'n.</th><th style="text-align:right;">Accumulated<br>Depreciation</th><th style="text-align:right;">Net Book Value<br>as of ${prp_asOfLabel()}</th><th>Remarks *****</th></tr></thead>
+            <tbody>${g.items.map(([it, i]) => `<tr style="cursor:pointer;" onclick="prp_openIar(${i})" title="Click to see the details of this item">
+                <td>${prp_dash(it.description)}</td><td>${prp_dash(it.serial_no)}</td><td>${prp_dash(it.property_no)}</td>
+                <td>${prp_dash(it.rc_name)}</td>
+                <td style="white-space:nowrap;"><div>${it.jev_no ? '<code class="nha-code">' + prp_esc(it.jev_no) + '</code>' : '—'}</div>
+                    <div class="prp-sub">PO# ${prp_dash(it.po_number)}</div></td>
+                <td style="white-space:nowrap;">${prp_date(it.date_acquired)}</td>
+                <td style="text-align:right;white-space:nowrap;">${prp_money(it.amount)}</td>` + (d => `<td style="text-align:right;white-space:nowrap;">${prp_money(d.residual)}</td>
+                <td style="text-align:right;white-space:nowrap;">${prp_money(d.monthly)}</td>
+                <td style="text-align:right;white-space:nowrap;">${prp_money(d.accum)}</td>
+                <td style="text-align:right;white-space:nowrap;">${prp_money(d.nbv)}</td>
+                <td style="white-space:nowrap;">${d.fully ? '<em>Fully Depreciated</em>' : ''}</td></tr>`)(prp_depr(it))).join('')}</tbody></table></div></td></tr>` : '');
+    }).join('') + (list.length ? `<tr style="background:var(--afims-surface-subtle, #F4F7FA);"><td></td><td style="font-weight:700;">TOTAL</td><td></td>${amtCell(grand, true, true)}<td></td>${amtCell(grandAccum, true, true)}${amtCell(grandNbv, true, true)}</tr>` : '');
+    // the button reads "Collapse All" once every account with items is open
+    const withItems = list.filter(([, g]) => g.items.length);
+    const btn = $prp('prp-i-expand');
+    btn.textContent = withItems.length && withItems.every(([c]) => prp_iarOpen.has(c)) ? 'Collapse All' : 'Expand All';
+    btn.disabled = !withItems.length;
+}
+const prp_iarOpen = new Set();                                // the accounts whose items are shown
+// Expand All / Collapse All: opens the items of every account in the list (that has items), or closes them all
+function prp_expandAllIar() {
+    const codes = [...document.querySelectorAll('#prp-iar-tbody tr[onclick]')].map(tr => (tr.getAttribute('onclick').match(/'([^']+)'/) || [])[1]).filter(Boolean);
+    const allOpen = codes.length && codes.every(c => prp_iarOpen.has(c));
+    codes.forEach(c => allOpen ? prp_iarOpen.delete(c) : prp_iarOpen.add(c));
+    prp_renderIar();
+}
+function prp_toggleIar(code) { prp_iarOpen.has(code) ? prp_iarOpen.delete(code) : prp_iarOpen.add(code); prp_renderIar(); }
+
+function prp_openIar(i) {
+    const it = prp_iar[i];
+    if (!it) return;
+    const row  = (k, v) => `<div class="prp-md-row"><div class="prp-md-k">${k}</div><div class="prp-md-v">${v}</div></div>`;
+    $prp('prp-md-title').firstElementChild.textContent = 'Item Details';
+    $prp('prp-md-ref').textContent = it.account_code || '';
+    $prp('prp-md-status').innerHTML = '';
+    $prp('prp-modal-body').innerHTML = `<div class="prp-md-card">` +
+        row('Description - Item', prp_dash(it.description)) +
+        row('Responsibility Center', prp_dash(it.rc_name)) +
+        row('Acq. Date', prp_date(it.date_acquired)) +
+        row('Serial No.', prp_dash(it.serial_no)) +
+        row('Prop. No.', prp_dash(it.property_no)) +
+        row('Acquisition Cost', `<span class="prp-md-num">${prp_money(it.amount)}</span>`) +
+        `</div>`;
+    $prp('prp-overlay').classList.add('open');
+}
+
 /* details of a saved record (read-only) — the same design as the Memo Request details */
 function prp_open(i) {
     const it = prp_items[i];
     if (!it) return;
+    $prp('prp-md-title').firstElementChild.textContent = 'Property Record Details';
     const row  = (k, v) => `<div class="prp-md-row"><div class="prp-md-k">${k}</div><div class="prp-md-v">${v}</div></div>`;
     const card = (title, inner) => `<div class="prp-md-card"><h4 class="prp-md-card-title">${title}</h4>${inner}</div>`;
     const par  = it.row_type === 'PAR';
@@ -836,5 +1454,8 @@ function prp_start() {
     $prp('prp-yr').textContent = new Date().getFullYear();
     prp_bind();
     prp_loadSaved();
+    prp_bindIar();
+    prp_bindPf();
+    prp_loadIar();
 }
 </script>

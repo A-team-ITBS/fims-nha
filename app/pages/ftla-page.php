@@ -202,6 +202,7 @@ $fileBaseUrl      = json_encode(rtrim(BasePath(), '/'));
                         <div class="fims-detail-item" id="st-date"><span class="fims-detail-label">Transfer Date</span><span class="fims-detail-value">—</span></div>
                         <div class="fims-detail-item" id="st-amount"><span class="fims-detail-label">Amount</span><span class="fims-detail-value">—</span></div>
                         <div class="fims-detail-item" id="st-status"><span class="fims-detail-label">Current Status</span><span class="fims-detail-value">—</span></div>
+                        <div class="fims-detail-item" id="st-jev" style="display:none"><span class="fims-detail-label">Payment JEV</span><span class="fims-detail-value">—</span></div>
                         <div class="fims-detail-item span-2" id="st-purpose"><span class="fims-detail-label">Purpose</span><span class="fims-detail-value">—</span></div>
                     </div>
                 </div>
@@ -1489,6 +1490,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 sv('st-date', this._date(d.transfer_date));
                 sv('st-amount', `<strong>${this._money(d.transfer_amount)}</strong>`);
                 sv('st-status', this._statusBadge(d.status));
+                const jevEl = document.getElementById('st-jev');
+                if (jevEl) {
+                    jevEl.style.display = d.jev_no ? '' : 'none';
+                    if (d.jev_no) sv('st-jev', `<span class="nha-mono">${this._esc(d.jev_no)}</span>`);
+                }
                 sv('st-purpose', this._esc(d.purpose || '—'));
                 const currentIdx = FTLAPreparation.STATUSES.findIndex(s => s.key === d.status);
                 const tl = document.getElementById('status-timeline');
@@ -1906,24 +1912,76 @@ document.addEventListener('DOMContentLoaded', () => {
                         <td style="white-space:nowrap;${vb}padding:0 0 5px 8px;">representing</td></tr>
                     <tr><td colspan="3" style="${ul}${vb}${pad}padding-top:2px;">${nb(d.purpose || '')}</td></tr>
                 </table>`;
-            } else {
+            } else if (layout === 'debit_list') {
                 const rows = debits.map(a => `
                     <tr><td style="border:1px solid #000;padding:3pt 6pt;text-align:center;">${nb(a.account_number)}</td>
                         <td style="border:1px solid #000;padding:3pt 6pt;">${nb(a.account_name)}</td>
                         <td style="border:1px solid #000;padding:3pt 6pt;text-align:right;">P ${e(fmt(a.amount))}</td></tr>`).join('');
+                // Two blank filler rows before TOTAL — mirrors FtlaPrintService::
+                // html()'s own debit_list layout (same approved reference).
+                const blankRow = `
+                    <tr><td style="border:1px solid #000;padding:3pt 6pt;">&nbsp;</td>
+                        <td style="border:1px solid #000;padding:3pt 6pt;">&nbsp;</td>
+                        <td style="border:1px solid #000;padding:3pt 6pt;text-align:right;">-</td></tr>`;
                 body = `<p style="margin:0 0 6px;font-size:9.5pt;">Please <u><b>debit</b></u> the following depository/disbursing accounts:</p>
                     <table style="width:100%;border-collapse:collapse;font-size:9pt;margin-bottom:10px;">
                         <tr><th colspan="3" style="border:1px solid #000;padding:3pt 6pt;">BANK ACCOUNT</th></tr>
                         <tr><th style="border:1px solid #000;padding:3pt 6pt;width:26%;">NUMBER</th>
                             <th style="border:1px solid #000;padding:3pt 6pt;width:48%;">NAME</th>
                             <th style="border:1px solid #000;padding:3pt 6pt;width:26%;">AMOUNT</th></tr>
-                        ${rows}
+                        ${rows}${blankRow}${blankRow}
                         <tr><td colspan="2" style="border:1px solid #000;padding:3pt 6pt;font-weight:700;">TOTAL</td>
                             <td style="border:1px solid #000;padding:3pt 6pt;text-align:right;font-weight:700;">P ${e(fmt(total))}</td></tr>
                     </table>
                     <p style="margin:0 0 10px;font-size:9.5pt;text-align:justify;">and <u><b>credit</b></u> the account of
                         <u>(${nb(d.to_account_number || '')}) (${nb(d.to_account_name || '')})</u> in the total amount of
                         <u>${nb(words(total))} (Php ${e(fmt(total))})</u>.</p>`;
+            } else {
+                // "pairs": more than one distinct credit account — each debit
+                // row keeps its own index-paired credit row (debits[i] /
+                // credits[i], set by ftlm_getDebitAccounts()/
+                // ftlm_getCreditAccounts() in ftla-form.php). Grouped by FROM
+                // account, same as FtlaPrintService::html()'s own "pairs"
+                // layout — a shared FROM account spans its group's rows via
+                // rowspan instead of repeating.
+                const groups = [];
+                const groupIndex = {};
+                debits.forEach((dAcc, i) => {
+                    const cAcc = credits[i] || {};
+                    const key = (dAcc.account_number || '') + '|' + (dAcc.account_name || '');
+                    if (!(key in groupIndex)) {
+                        groupIndex[key] = groups.length;
+                        groups.push({ from: dAcc, rows: [] });
+                    }
+                    groups[groupIndex[key]].rows.push({ to: cAcc, amount: dAcc.amount });
+                });
+                let rowsHtml = '';
+                groups.forEach(g => {
+                    g.rows.forEach((r, i) => {
+                        rowsHtml += '<tr>';
+                        if (i === 0) {
+                            const span = g.rows.length > 1 ? ` rowspan="${g.rows.length}"` : '';
+                            rowsHtml += `<td style="border:1px solid #000;padding:3pt 6pt;text-align:center;"${span}>${nb(g.from.account_number)}</td>`;
+                            rowsHtml += `<td style="border:1px solid #000;padding:3pt 6pt;"${span}>${nb(g.from.account_name)}</td>`;
+                        }
+                        rowsHtml += `<td style="border:1px solid #000;padding:3pt 6pt;text-align:center;">${nb(r.to.account_number)}</td>`;
+                        rowsHtml += `<td style="border:1px solid #000;padding:3pt 6pt;">${nb(r.to.account_name)}</td>`;
+                        rowsHtml += `<td style="border:1px solid #000;padding:3pt 6pt;text-align:right;">P ${e(fmt(r.amount))}</td></tr>`;
+                    });
+                });
+                body = `<p style="margin:0 0 6px;font-size:9.5pt;">Please effect the fund transfer as follows:</p>
+                    <table style="width:100%;border-collapse:collapse;font-size:9pt;margin-bottom:10px;">
+                        <tr><th colspan="2" style="border:1px solid #000;padding:3pt 6pt;">FROM</th>
+                            <th colspan="2" style="border:1px solid #000;padding:3pt 6pt;">TO</th>
+                            <th rowspan="2" style="border:1px solid #000;padding:3pt 6pt;">AMOUNT</th></tr>
+                        <tr><th style="border:1px solid #000;padding:3pt 6pt;">Account No.</th>
+                            <th style="border:1px solid #000;padding:3pt 6pt;">Account Name</th>
+                            <th style="border:1px solid #000;padding:3pt 6pt;">Account No.</th>
+                            <th style="border:1px solid #000;padding:3pt 6pt;">Account Name</th></tr>
+                        ${rowsHtml}
+                        <tr><td colspan="4" style="border:1px solid #000;padding:3pt 6pt;text-align:right;font-weight:700;">TOTAL</td>
+                            <td style="border:1px solid #000;padding:3pt 6pt;text-align:right;font-weight:700;">P ${e(fmt(total))}</td></tr>
+                    </table>`;
             }
 
             // Same letterhead markup/proportions as Treasury's _letterhead() (58px logo column,
@@ -1963,13 +2021,52 @@ document.addEventListener('DOMContentLoaded', () => {
                     </td>
                 </tr></table>`;
 
+            // "FOR BANK USE ONLY" — mirrors FtlaPrintService::html()'s own
+            // ".bank" block (the actual print/PDF template), kept here too
+            // so the live modal preview matches what printing/exporting
+            // actually produces. A typed name (from the "For Bank Use Only"
+            // fields on the Signatories step) prints underlined above its
+            // line; left blank, it's just a blank signature line for the
+            // bank to sign by hand — same fallback FtlaPrintService uses.
+            const bankFields = [
+                ['Signature Verified by:', d.bank_sig_verified],
+                ['Checked by:',            d.bank_checked],
+                ['Approved by:',           d.bank_approved],
+                ['Posted by:',             d.bank_posted],
+            ];
+            const bankUse = `
+                <div style="border-top:1.2pt solid #000;margin-top:16px;padding-top:8px;font-size:10.5pt;">
+                    <p style="font-weight:700;margin:0 0 2px;">FOR BANK&#39;S USE ONLY</p>
+                    <p style="margin:0 0 14px;">We have debited/credited above accounts as instructed:</p>
+                    <table style="width:100%;border-collapse:collapse;font-size:9pt;"><tr>
+                        ${bankFields.map(([label]) => `<td style="padding:0 12px 4px 0;white-space:nowrap;">${e(label)}</td>`).join('')}
+                    </tr><tr>
+                        ${bankFields.map(([, name]) => `<td style="border-top:.75pt solid #000;padding:4px 12px 0 0;font-size:9.5pt;">${name ? '<u>' + e(name) + '</u>' : '&nbsp;'}</td>`).join('')}
+                    </tr></table>
+                </div>`;
+
+            // "* DV No.s:" + "COE/MOOE <ftla_number>" — mirrors
+            // FtlaPrintService::model()'s own dv_numbers/fund_line (no
+            // fund_classification override wired into this form, so the
+            // "COE/MOOE" prefix is always the default here, same as there).
+            const dvNumbers = Array.isArray(d.dv_numbers) ? d.dv_numbers.filter(Boolean) : [];
+            const fundLine = dvNumbers.length && d.ftla_number ? ('COE/MOOE ' + d.ftla_number) : '';
+            const footer = (dvNumbers.length || fundLine) ? `
+                <div style="margin-top:10px;font-size:9pt;">
+                    ${dvNumbers.length ? '<div>* DV No.s:</div>' + dvNumbers.map(dv => `<div style="padding-left:2pt;line-height:1.6;">${e(dv)}</div>`).join('') : ''}
+                    ${fundLine ? `<div style="font-weight:700;margin-top:6px;">${e(fundLine)}</div>` : ''}
+                </div>` : '';
+
             return `<div style="font-family:Arial,Helvetica,sans-serif;font-size:9.5pt;color:#1A1B21;padding:24px 30px;background:#fff;line-height:1.35;">
                 ${letterhead}
                 <p style="margin:0 0 8px;">${this._date(d.transfer_date) || '—'}</p>
                 ${toHeader}
                 ${body}
                 <p style="margin:0 0 6px;text-align:justify;font-size:9.5pt;">We declare under penalty of perjury that our co-depositors are still living. This also authorizes you to debit our account for the corresponding service charge.</p>
+                <p style="margin:0 0 20px;text-align:justify;font-size:9.5pt;">Kindly provide us with a certified true copy of duly validated Fund Transfer Letter Advice for our record purposes.</p>
                 ${signatories}
+                ${footer}
+                ${bankUse}
             </div>`;
         }
     }

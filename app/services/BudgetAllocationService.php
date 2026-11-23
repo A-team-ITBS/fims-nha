@@ -315,6 +315,9 @@ class BudgetAllocationService
             if ($err) {
                 return $this->fail($err);
             }
+            // parent_id is never client-authoritative — see firstParentIdOf(), called below once this
+            // record's blocks (and their own parent_allocation_id) are resolved and validated.
+            unset($clean['parent_id']);
             [$rawBlocks, $err] = $this->normalizeProjectBlocksShape($body);
             if ($err) {
                 return $this->fail($err);
@@ -348,6 +351,12 @@ class BudgetAllocationService
 
                 return $this->fail($err);
             }
+
+            // parent_id stays a maintained LEGACY DISPLAY MIRROR of the first block's own parent_allocation_id
+            // (RFA/LAA only) — see migration 53. Nothing that moves money may read it; the authoritative,
+            // per-draw parent is each block's own parent_allocation_id (validateReferences() above, process()
+            // below). Kept for the list/read join and the Ledger page, which still group by one parent.
+            $clean['parent_id'] = $this->firstParentIdOf($blocks, (string) ($clean['allocation_type'] ?? ''));
 
             if (($clean['status_id'] ?? null) === null && ($draft = $this->getStatusIdByName('Draft')) !== null) {
                 $clean['status_id'] = $draft;
@@ -424,6 +433,10 @@ class BudgetAllocationService
             if ($err) {
                 return $this->fail($err);
             }
+            // parent_id is never client-authoritative — see firstParentIdOf(), re-derived below only when
+            // the body actually touches `projects`. A body that sent ONLY parent_id (no other field, no
+            // `projects`) is therefore the same as an empty update, below.
+            unset($clean['parent_id']);
             [$rawBlocks, $err] = $this->normalizeProjectBlocksShape($body);
             if ($err) {
                 return $this->fail($err);
@@ -457,6 +470,14 @@ class BudgetAllocationService
                 App\Execute('ROLLBACK', 'DB');
 
                 return $this->fail($err);
+            }
+
+            // Re-derive the parent_id legacy mirror (see firstParentIdOf()) only when the body actually
+            // touched `projects` — otherwise the stored blocks (and whatever parent_id already mirrors
+            // them) are left exactly as they are.
+            if ($blocks !== null) {
+                $effectiveType = array_key_exists('allocation_type', $clean) ? $clean['allocation_type'] : ($check['data']['allocation_type'] ?? '');
+                $clean['parent_id'] = $this->firstParentIdOf($blocks, (string) $effectiveType);
             }
 
             if ($clean) {
@@ -493,9 +514,13 @@ class BudgetAllocationService
 
     // -----------------------------------------------------------------------
     // Delete (soft) — /budget_allocation/delete/{id}
-    // Blocked while other memo requests still have this one as their parent. Deleting an Approved CBA / CFA also gives
-    // back what its approval took from each line item (see BudgetLineItemService::releaseForAllocation()); the soft
-    // delete and that reversal are ONE transaction, so a failure part-way leaves both untouched.
+    // Blocked while other memo requests still have this one as their parent, and blocked for an Approved
+    // RFA/LAA that already has a non-cancelled/rejected disbursement voucher against it (see below).
+    // Deleting an Approved CBA/CFA releases its reservations (its approval never moved money on the line
+    // item itself — see BudgetLineItemService::createForApproval()); deleting an Approved RFA/LAA reverses
+    // its draw — obligation down, the parent CBA's earmark restored
+    // (BudgetLineItemService::releaseForAllocation() / reverseConversions()). Either way the soft delete
+    // and that reversal are ONE transaction, so a failure part-way leaves both untouched.
     // -----------------------------------------------------------------------
     public function delete(int|string $id): array
     {
@@ -507,12 +532,37 @@ class BudgetAllocationService
                 return $check;
             }
 
+            // "Still a parent" is now a BLOCK-level question (parent_allocation_id — a CBA can be funding
+            // several different RFA/LAA blocks, not just the one request that happens to mirror it as its
+            // "first" parent_id) — the old header-only `WHERE parent_id = {$id}` check would miss a CBA
+            // that is someone's SECOND or later parent, which is exactly the case this feature adds.
             $children = (int) App\ExecuteScalar(
-                "SELECT COUNT(*) FROM {$this->table} WHERE parent_id = {$id} AND deleted_at IS NULL",
+                "SELECT COUNT(DISTINCT c.allocation_id)
+                 FROM {$this->tableAllocationProject} p
+                 JOIN {$this->table} c ON c.allocation_id = p.allocation_id AND c.deleted_at IS NULL
+                 WHERE p.parent_allocation_id = {$id} AND p.deleted_at IS NULL",
                 'DB'
             );
             if ($children > 0) {
                 return $this->fail("Memo request #{$id} is the parent of {$children} other memo request(s) — delete or re-parent those first.");
+            }
+
+            // An Approved RFA/LAA's delete reverses a real financial commitment (obligation, the parent
+            // CBA's earmark) — reversing one that has already been paid out is worse than refusing the
+            // delete, so it's blocked outright while a non-cancelled/rejected voucher still points at it.
+            $allocationType = strtoupper(trim((string) ($check['data']['allocation_type'] ?? '')));
+            $isApproved = strtolower(trim((string) ($check['data']['status_name'] ?? ''))) === 'approved';
+            $dvId = (int) ($check['data']['dv_id'] ?? 0);
+            if (($allocationType === 'RFA' || $allocationType === 'LAA') && $isApproved && $dvId > 0) {
+                $dvStatus = strtoupper(trim((string) App\ExecuteScalar(
+                    "SELECT s.name FROM fims.disbursement_vouchers dv
+                     LEFT JOIN {$this->tableStatus} s ON s.id = dv.status_id
+                     WHERE dv.dv_id = {$dvId}",
+                    'DB'
+                )));
+                if ($dvStatus !== '' && !in_array($dvStatus, ['CANCELLED', 'REJECTED'], true)) {
+                    return $this->fail("Memo request #{$id} has a disbursement voucher against it that is not cancelled or rejected — cancel or reject it first.");
+                }
             }
 
             App\Execute('BEGIN', 'DB');
@@ -523,8 +573,8 @@ class BudgetAllocationService
                 'DB'
             );
 
-            // Frees whatever this request was holding against its COB(s) and gives back what its approval took from
-            // them — a no-op if it was never Approved (nothing held, nothing applied).
+            // Frees whatever this request was holding against its COB(s) and reverses whatever its approval
+            // did to them — a no-op if it was never Approved (nothing held, nothing applied).
             (new BudgetLineItemService())->releaseForAllocation($id);
 
             App\Execute('COMMIT', 'DB');
@@ -611,7 +661,8 @@ class BudgetAllocationService
     //              approval leaves them as they were.
     // Only an FMD user may do this (the central review RC, GlobalService::isCentralReviewRc — read with getUserRcId, which
     // fails closed), only to a request that is in one of the three review statuses, and only when the user holds the
-    // user level of that step. The status change and the number are written in ONE transaction, and the UPDATE itself
+    // user level of that step — EXCEPT a superadmin (isSuperAdmin), who needs neither the FMD office nor the step's user
+    // level and may approve or return at every step. The status change and the number are written in ONE transaction, and the UPDATE itself
     // re-checks the status, so two reviewers acting at once cannot both succeed.
     //
     // Returns { success, message, status_name, allocation_number }; a refusal for the caller's office or user level also
@@ -625,7 +676,9 @@ class BudgetAllocationService
             if (!in_array($decision, ['approve', 'return'], true)) {
                 return $this->fail("decision must be 'approve' or 'return'.");
             }
-            if (!$this->isReviewer($userId)) {
+            // A superadmin has no restriction here: not tied to the FMD office, and may act at every step of the chain.
+            $isSuperAdmin = $this->isSuperAdmin($userId);
+            if (!$isSuperAdmin && !$this->isReviewer($userId)) {
                 return $this->fail('Only the Financial Management Department can process memo requests.') + ['forbidden' => true];
             }
 
@@ -643,7 +696,7 @@ class BudgetAllocationService
                     .') can be approved or returned — this one is '
                     .(($row['status_name'] ?? '') !== '' ? $row['status_name'] : 'without a status').'.');
             }
-            if (!$this->hasUserLevel($userId, $step['actor'])) {
+            if (!$isSuperAdmin && !$this->hasUserLevel($userId, $step['actor'])) {
                 return $this->fail("This memo request is {$step['status']}: only the {$step['actor']} can approve or return it at this step.")
                     + ['forbidden' => true];
             }
@@ -694,34 +747,65 @@ class BudgetAllocationService
                 return $this->fail('This memo request was changed by someone else in the meantime. Reload the list and try again.');
             }
 
-            // The final approval moves money against each COB's own balance — ceiling is
-            // budget_line_items.suggested_amount, not proposed_amount. A CBA (or CFA) takes its requested_amount R
-            // off each COB's line item straight away: suggested_amount - R, account_payable + R, obligation + R
-            // (and keeps an earmark row, the ceiling its RFAs/LAAs draw against). An RFA/LAA instead DRAWS DOWN its
-            // parent CBA's earmark — it requires a parent CBA (parent_id), and adds nothing to the line item again
-            // (the CBA already did); approving one without a parent, or one that would draw more than its parent CBA
-            // still has actively earmarked for a COB, is refused. Either way, refusing here rolls back the status
-            // change too.
+            // The final approval moves money against each COB — the ceiling is a derived "available" figure
+            // (BudgetLineBalanceSql::availableExpr(), via BudgetLineItemService::lockAndGetAvailable()), never
+            // a single stored column. A CBA (or CFA) only RESERVES: it inserts an 'active' earmark row for its
+            // requested_amount R, nothing else (createForApproval()). An RFA/LAA instead DRAWS DOWN its OWN
+            // parent CBA's earmark PER BLOCK (parent_allocation_id — it can draw from several different CBAs
+            // at once) and is the ONLY thing that ever adds to budget_line_items.obligation; approving one
+            // with any block missing a parent, or one that would draw more than its own parent CBA still has
+            // actively earmarked for a COB, is refused. Either way, refusing here rolls
+            // back the status change too.
             if ($isFinal) {
                 $allocationType = strtoupper(trim((string) ($row['allocation_type'] ?? '')));
                 $lineItemService = new BudgetLineItemService();
                 $blocks = $row['projects'] ?? [];
 
-                if ($allocationType === 'RFA' || $allocationType === 'LAA') {
-                    $parentId = (int) ($row['parent_id'] ?? 0);
-                    if ($parentId <= 0) {
-                        App\Execute('ROLLBACK', 'DB');
-                        $inTransaction = false;
-
-                        return $this->fail("A Parent CBA is required before this {$allocationType} can be approved.");
+                // Lock every budget_line_item this approval touches, across EVERY block, in one ascending-id
+                // pass before the per-block loop below — BudgetLineBalanceSql's locking contract requires a
+                // consistent lock order across everything one call touches; a block-by-block loop alone only
+                // honors that within each individual convertEarmarkForRfaApproval()/createForApproval() call,
+                // not across the whole approval, which matters more now that a request can draw from several
+                // parent CBAs (more line items touched per approval than before).
+                $lineItemIds = [];
+                foreach ($blocks as $block) {
+                    $lt = $block['line_transaction'] ?? null;
+                    if (!is_array($lt)) {
+                        continue;
                     }
-                    // Each of THIS request's own project blocks draws against the matching project block on the
-                    // parent CBA (resolved by project_code — see convertEarmarkForRfaApproval()).
-                    foreach ($blocks as $block) {
+                    foreach (array_is_list($lt) ? $lt : [$lt] as $line) {
+                        if (is_array($line) && isset($line['budget_line_item_id']) && is_numeric($line['budget_line_item_id'])) {
+                            $lineItemIds[(int) $line['budget_line_item_id']] = true;
+                        }
+                    }
+                }
+                if ($lineItemIds) {
+                    $sortedIds = array_keys($lineItemIds);
+                    sort($sortedIds, SORT_NUMERIC);
+                    App\ExecuteRows(
+                        'SELECT 1 FROM fims.budget_line_items WHERE budget_line_item_id IN ('.implode(', ', $sortedIds).') ORDER BY budget_line_item_id FOR UPDATE',
+                        'DB'
+                    );
+                }
+
+                if ($allocationType === 'RFA' || $allocationType === 'LAA') {
+                    // Each of THIS request's own project blocks draws against ITS OWN parent CBA
+                    // (parent_allocation_id — an RFA/LAA can draw from several different CBAs at once, one
+                    // per block; validateReferences() already required every block to have one, even at
+                    // Draft save, but this is checked again here as the last line of defense before money
+                    // actually moves).
+                    foreach ($blocks as $i => $block) {
+                        $blockParentId = (int) ($block['parent_allocation_id'] ?? 0);
+                        if ($blockParentId <= 0) {
+                            App\Execute('ROLLBACK', 'DB');
+                            $inTransaction = false;
+
+                            return $this->fail('Project block '.($i + 1)." has no Parent CBA — a {$allocationType} can only be approved once every project block draws from one.");
+                        }
                         $earmark = $lineItemService->convertEarmarkForRfaApproval(
                             $id,
                             (int) $block['budget_allocation_project_id'],
-                            $parentId,
+                            $blockParentId,
                             (string) ($block['project_code'] ?? ''),
                             $block['line_transaction'] ?? null
                         );
@@ -785,7 +869,7 @@ class BudgetAllocationService
      * Where a request stands in the review chain, for the "Process" modal (GET /budget_allocation/read/{id} adds it as
      * data.review): in_review, the status it is in, who acts on it (actor, a user level name), the status an approval
      * gives (next_status), whether that is the final approval (is_final) and whether THIS user may decide it now
-     * (can_decide: an FMD user holding the step's user level). process() enforces the same rules again.
+     * (can_decide: an FMD user holding the step's user level, or a superadmin at any step). process() enforces the same rules again.
      */
     public function reviewInfo(array $row, ?int $userId): array
     {
@@ -804,7 +888,9 @@ class BudgetAllocationService
             'return_status' => $step['return'],
             'return_actor' => self::REVIEW_STEPS[$step['return']]['actor'] ?? null,
             'is_returned' => in_array($step['status'], [self::STATUS_RETURNED_TO_SECTION_CHIEF, self::STATUS_RETURNED_TO_DIVISION_MANAGER], true),
-            'can_decide' => $this->isReviewer($userId) && $this->hasUserLevel($userId, $step['actor']),
+            // a superadmin may decide it at any step; anyone else must be FMD AND hold the step's user level
+            'can_decide' => $this->isSuperAdmin($userId)
+                || ($this->isReviewer($userId) && $this->hasUserLevel($userId, $step['actor'])),
         ];
     }
 
@@ -851,6 +937,47 @@ class BudgetAllocationService
             ) > 0;
         } catch (\Throwable $e) {
             App\LogError('BudgetAllocationService::hasUserLevel '.$e->getMessage());
+
+            return false;
+        }
+    }
+
+    /**
+     * Is this user a superadmin (user level -1)? The built-in administrator (user_id -1, which has no uac.users row — or an id
+     * the API could not resolve, then the logged-in level is read instead), or a uac.users row whose user_level_id lists -1
+     * (a VARCHAR that may hold several ids, "-1,3"). Same people as
+     * GlobalService::getUserRcScope()['is_admin'], but this check FAILS CLOSED — a missing user, no level, or a lookup failure is
+     * "no", never "yes" — because it gates moving money (the final approval), where getUserRcScope() fails open for listing.
+     */
+    private function isSuperAdmin(?int $userId): bool
+    {
+        try {
+            $userId = (int) $userId;
+            if ($userId === -1) {
+                return true;
+            }
+            if ($userId <= 0) {
+                // The id could not be resolved: api.php turns a JWT user id <= 0 (PHPMaker's built-in administrator is -1) into the
+                // session's UAC id, or 0. The middleware has still logged the user in with the level from the signed JWT / session,
+                // so that level — the same one LetterheadLayoutService::canSave() reads — says whether this is the administrator.
+                foreach (explode(',', (string) App\CurrentUserLevel()) as $level) {
+                    if (trim($level) === '-1') {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+            $raw = (string) App\ExecuteScalar("SELECT user_level_id FROM {$this->tableUser} WHERE user_id = {$userId}", 'DB');
+            foreach (explode(',', $raw) as $part) {
+                if (trim($part) === '-1') {
+                    return true;
+                }
+            }
+
+            return false;
+        } catch (\Throwable $e) {
+            App\LogError('BudgetAllocationService::isSuperAdmin '.$e->getMessage());
 
             return false;
         }
@@ -985,6 +1112,9 @@ class BudgetAllocationService
                        rc.rc_name     AS requesting_rc_name,
                        rc.office_type AS requesting_rc_office_type,
                        dd.department_name AS requesting_district_name,
+                       -- FIRST parent only (a.parent_id is a maintained legacy mirror — see firstParentIdOf(),
+                       -- migration 53); a caller that needs every parent CBA an RFA/LAA draws from reads the
+                       -- `parents` array attachProjects() attaches instead.
                        pa.request_referrence_no AS parent_request_referrence_no,
                        {$this->requestedTotalSql()} AS requested_total
                 FROM {$this->table} a
@@ -1005,6 +1135,12 @@ class BudgetAllocationService
      * single-value fields, is MERGED across every block (in block order) rather than taken from the first one
      * alone — a caller summing/listing lines off this field must see every one of them.
      *
+     * Also attaches `parents` — the distinct parent CBAs across this row's own blocks, in block order, each
+     * {allocation_id, request_referrence_no, allocation_number} — for RFA/LAA, which can now draw from
+     * several at once. The row's own `parent_id` column (and baseSelect()'s `parent_request_referrence_no`)
+     * stays a mirror of only the FIRST one — see firstParentIdOf(); a caller that needs the full set reads
+     * `parents` instead.
+     *
      * @param array<int,array<string,mixed>> &$rows rows from baseSelect(), modified in place
      */
     private function attachProjects(array &$rows): void
@@ -1021,13 +1157,23 @@ class BudgetAllocationService
                 $row[$field] = $first[$field] ?? null;
             }
             $lines = [];
+            $parents = [];
             foreach ($blocks as $block) {
                 $blockLines = $block['line_transaction'] ?? null;
                 if (is_array($blockLines)) {
                     array_push($lines, ...(array_is_list($blockLines) ? $blockLines : [$blockLines]));
                 }
+                $pid = $block['parent_allocation_id'] ?? null;
+                if ($pid !== null && !isset($parents[$pid])) {
+                    $parents[$pid] = [
+                        'allocation_id' => (int) $pid,
+                        'request_referrence_no' => $block['parent_request_referrence_no'] ?? null,
+                        'allocation_number' => $block['parent_allocation_number'] ?? null,
+                    ];
+                }
             }
             $row['line_transaction'] = $lines ?: null;
+            $row['parents'] = array_values($parents);
         }
         unset($row);
     }
@@ -1052,11 +1198,15 @@ class BudgetAllocationService
         $rows = App\ExecuteRows(
             "SELECT p.budget_allocation_project_id, p.allocation_id, p.sort_order,
                     p.program_code, p.sub_program_code, p.project_code, p.line_transaction,
-                    pg.program_name, sp.sub_program_name, pj.project_name
+                    p.parent_allocation_id,
+                    pg.program_name, sp.sub_program_name, pj.project_name,
+                    pa.request_referrence_no AS parent_request_referrence_no,
+                    pa.allocation_number     AS parent_allocation_number
              FROM {$this->tableAllocationProject} p
              LEFT JOIN {$this->tableProgram} pg    ON pg.program_code = p.program_code
              LEFT JOIN {$this->tableSubProgram} sp ON sp.sub_program_code = p.sub_program_code
              LEFT JOIN {$this->tableProject} pj    ON pj.project_code = p.project_code
+             LEFT JOIN {$this->table} pa           ON pa.allocation_id = p.parent_allocation_id
              WHERE p.deleted_at IS NULL AND p.allocation_id IN (".implode(', ', $allocationIds).')
              ORDER BY p.allocation_id, p.sort_order, p.budget_allocation_project_id',
             'DB'
@@ -1068,6 +1218,7 @@ class BudgetAllocationService
                 $row['line_transaction'] = json_decode($row['line_transaction'], true);
             }
             $row['budget_allocation_project_id'] = (int) $row['budget_allocation_project_id'];
+            $row['parent_allocation_id'] = isset($row['parent_allocation_id']) ? (int) $row['parent_allocation_id'] : null;
             $byAllocation[(int) $row['allocation_id']][] = $row;
         }
 
@@ -1131,6 +1282,21 @@ class BudgetAllocationService
                     return [null, "Project block {$n}: budget_allocation_project_id must be a whole number."];
                 }
                 $clean['budget_allocation_project_id'] = (int) $block['budget_allocation_project_id'];
+            }
+
+            // The parent CBA THIS block draws its budget from (RFA/LAA only — see validateReferences(),
+            // which rejects it on any other allocation_type and requires it on every RFA/LAA block, even
+            // on a Draft save). array_key_exists (not isset) so an explicit null can clear a previously
+            // picked parent on update().
+            if (array_key_exists('parent_allocation_id', $block)) {
+                $v = trim((string) ($block['parent_allocation_id'] ?? ''));
+                if ($v === '') {
+                    $clean['parent_allocation_id'] = null;
+                } elseif (!preg_match('/^\d+$/', $v) || (int) $v > 2147483647) {
+                    return [null, "Project block {$n}: parent_allocation_id must be a whole number."];
+                } else {
+                    $clean['parent_allocation_id'] = (int) $v;
+                }
             }
 
             foreach (self::BLOCK_STRING_FIELDS as $field => $max) {
@@ -1257,6 +1423,7 @@ class BudgetAllocationService
                 'sub_program_code' => $sub,
                 'project_code' => $project,
                 'line_transaction' => $block['line_transaction'] ?? null,
+                'parent_allocation_id' => $block['parent_allocation_id'] ?? null,
             ];
         }
 
@@ -1267,6 +1434,30 @@ class BudgetAllocationService
     private function blockStringLiteral(?string $value): string
     {
         return $value === null ? 'NULL' : App\QuotedValue($value, DataType::STRING, 'DB');
+    }
+
+    /** SQL literal for a nullable INTEGER block field (e.g. parent_allocation_id) — already a validated int by the time it gets here. */
+    private function blockIntLiteral(?int $value): string
+    {
+        return $value === null ? 'NULL' : (string) $value;
+    }
+
+    /**
+     * budget_allocation.parent_id's value as a maintained LEGACY DISPLAY MIRROR of the FIRST (lowest
+     * sort_order) block's own parent_allocation_id — RFA/LAA only; CBA/CFA never have one. See migration
+     * 53: nothing that moves money may read this column — the authoritative per-draw parent is each
+     * block's own parent_allocation_id (validateReferences(), process()). Called from create()/update()
+     * right after blocks are resolved and validated, so create and update can never derive it differently.
+     */
+    private function firstParentIdOf(array $blocks, string $allocationType): ?int
+    {
+        $allocationType = strtoupper(trim($allocationType));
+        if ($allocationType !== 'RFA' && $allocationType !== 'LAA') {
+            return null;
+        }
+        $parentId = ($blocks[0] ?? null)['parent_allocation_id'] ?? null;
+
+        return $parentId !== null ? (int) $parentId : null;
     }
 
     /** SQL literal (::jsonb) for a block's line_transaction. */
@@ -1281,12 +1472,13 @@ class BudgetAllocationService
     {
         foreach ($blocks as $i => $block) {
             App\Execute(
-                "INSERT INTO {$this->tableAllocationProject} (allocation_id, sort_order, program_code, sub_program_code, project_code, line_transaction)
+                "INSERT INTO {$this->tableAllocationProject} (allocation_id, sort_order, program_code, sub_program_code, project_code, line_transaction, parent_allocation_id)
                  VALUES ({$allocationId}, {$i}, "
                     .$this->blockStringLiteral($block['program_code']).', '
                     .$this->blockStringLiteral($block['sub_program_code']).', '
                     .$this->blockStringLiteral($block['project_code']).', '
-                    .$this->blockLineTransactionLiteral($block['line_transaction']).')',
+                    .$this->blockLineTransactionLiteral($block['line_transaction']).', '
+                    .$this->blockIntLiteral($block['parent_allocation_id'] ?? null).')',
                 'DB'
             );
         }
@@ -1316,6 +1508,7 @@ class BudgetAllocationService
             $subLit = $this->blockStringLiteral($block['sub_program_code']);
             $projectLit = $this->blockStringLiteral($block['project_code']);
             $ltLit = $this->blockLineTransactionLiteral($block['line_transaction']);
+            $parentLit = $this->blockIntLiteral($block['parent_allocation_id'] ?? null);
 
             $blockId = $block['budget_allocation_project_id'] ?? null;
             if ($blockId !== null && in_array((int) $blockId, $existingIds, true)) {
@@ -1324,14 +1517,14 @@ class BudgetAllocationService
                 App\Execute(
                     "UPDATE {$this->tableAllocationProject}
                      SET sort_order = {$i}, program_code = {$programLit}, sub_program_code = {$subLit},
-                         project_code = {$projectLit}, line_transaction = {$ltLit}, updated_at = CURRENT_TIMESTAMP
+                         project_code = {$projectLit}, line_transaction = {$ltLit}, parent_allocation_id = {$parentLit}, updated_at = CURRENT_TIMESTAMP
                      WHERE budget_allocation_project_id = {$blockId} AND allocation_id = {$allocationId}",
                     'DB'
                 );
             } else {
                 App\Execute(
-                    "INSERT INTO {$this->tableAllocationProject} (allocation_id, sort_order, program_code, sub_program_code, project_code, line_transaction)
-                     VALUES ({$allocationId}, {$i}, {$programLit}, {$subLit}, {$projectLit}, {$ltLit})",
+                    "INSERT INTO {$this->tableAllocationProject} (allocation_id, sort_order, program_code, sub_program_code, project_code, line_transaction, parent_allocation_id)
+                     VALUES ({$allocationId}, {$i}, {$programLit}, {$subLit}, {$projectLit}, {$ltLit}, {$parentLit})",
                     'DB'
                 );
             }
@@ -1570,47 +1763,127 @@ class BudgetAllocationService
             }
         }
 
-        // ── Parent memo request ──────────────────────────────────────────────
-        $parentId = $clean['parent_id'] ?? null;
-        if ($parentId !== null) {
-            if ($id !== null && $parentId === $id) {
-                return 'A memo request cannot be its own parent.';
-            }
-            if (!$this->exists($this->table, 'allocation_id', $parentId, ' AND deleted_at IS NULL')) {
-                return "Parent memo request #{$parentId} does not exist.";
-            }
-            if ($id !== null) {
-                $cursor = $parentId;
-                for ($guard = 0; $cursor !== null && $guard < 50; ++$guard) {
-                    $row = App\ExecuteRow("SELECT parent_id FROM {$this->table} WHERE allocation_id = {$cursor}", 'DB');
-                    $cursor = isset($row['parent_id']) ? (int) $row['parent_id'] : null;
-                    if ($cursor === $id) {
-                        return 'That parent would create a loop — it already descends from this memo request.';
-                    }
-                }
-            }
-        }
-
+        // ── Parent CBA(s) ─────────────────────────────────────────────────────
+        // The parent now lives PER BLOCK (fims.budget_allocation_project.parent_allocation_id) — an RFA/LAA
+        // can draw from several different CBAs at once, one per block; budget_allocation.parent_id is only
+        // a maintained legacy display mirror of the first one (see firstParentIdOf(), migration 53) and is
+        // never itself validated or read here. A top-level body `parent_id` is simply ignored/overwritten
+        // by create()/update() — the authoritative input is each block's own parent_allocation_id.
         $effective = static fn (string $f) => array_key_exists($f, $clean) ? $clean[$f] : ($current[$f] ?? null);
         $effectiveType = strtoupper(trim((string) ($effective('allocation_type') ?? '')));
-        $effectiveParentId = $effective('parent_id');
+        $isRfaOrLaa = $effectiveType === 'RFA' || $effectiveType === 'LAA';
 
         if (!$blocks) {
             return 'At least one project is required.';
         }
 
-        // RFA / LAA: every project block must be one the parent CBA itself has a block for — the parent-earmark
-        // lookup (convertEarmarkForRfaApproval() / validateRfaAmounts()) matches by project_code, so a project
-        // that isn't one of the parent's own blocks could otherwise never resolve an earmark at all.
-        $parentProjectCodes = null;
-        if (($effectiveType === 'RFA' || $effectiveType === 'LAA') && $effectiveParentId !== null) {
-            $parentProjectCodes = array_column(
-                App\ExecuteRows(
-                    "SELECT project_code FROM {$this->tableAllocationProject} WHERE allocation_id = ".(int) $effectiveParentId.' AND deleted_at IS NULL',
+        // One pass to collect/validate every distinct parent CBA referenced across this record's blocks,
+        // batched into a couple of queries rather than one per block.
+        //   - CBA / CFA never draw from a parent: a parent_allocation_id on one of their blocks is rejected.
+        //   - RFA / LAA requires a parent on EVERY block, even on a Draft save (not just at Approval) — a
+        //     block can never be saved half-configured.
+        //   - The same parent CBA may not be selected on two blocks of the same record (each parent funds
+        //     exactly one block — ambiguous otherwise).
+        //   - Each parent must exist, be a CBA, be Approved, and not be this row itself. Cycles are
+        //     structurally impossible once a CBA can never itself have a parent — a strictly stronger
+        //     guarantee than the old hop-limited parent_id chain walk this replaces, so no walk is needed.
+        $parentIds = [];
+        foreach ($blocks as $i => $block) {
+            $n = $i + 1;
+            $blockParentId = $block['parent_allocation_id'] ?? null;
+
+            if (!$isRfaOrLaa) {
+                if ($blockParentId !== null) {
+                    return "Project block {$n}: a {$effectiveType} does not draw from a parent CBA.";
+                }
+                continue;
+            }
+
+            if ($blockParentId === null) {
+                return "Project block {$n}: a Parent CBA is required.";
+            }
+            if (isset($parentIds[$blockParentId])) {
+                return "Project block {$n}: parent CBA #{$blockParentId} is already selected on another project block — each parent CBA funds one block.";
+            }
+            $parentIds[$blockParentId] = true;
+        }
+
+        $parentProjectCodesByParent = [];
+        if ($parentIds) {
+            $parentIdList = array_map('intval', array_keys($parentIds));
+            $approvedStatusId = $this->getStatusIdByName(self::STATUS_APPROVED);
+            $parentById = [];
+            foreach (App\ExecuteRows(
+                "SELECT allocation_id, allocation_type, status_id FROM {$this->table}
+                 WHERE allocation_id IN (".implode(', ', $parentIdList).') AND deleted_at IS NULL',
+                'DB'
+            ) ?: [] as $pr) {
+                $parentById[(int) $pr['allocation_id']] = $pr;
+            }
+            foreach ($parentIdList as $pid) {
+                if ($id !== null && $pid === $id) {
+                    return "Parent CBA #{$pid}: a memo request cannot be its own parent.";
+                }
+                $pr = $parentById[$pid] ?? null;
+                if (!$pr) {
+                    return "Parent CBA #{$pid} does not exist.";
+                }
+                if (strtoupper(trim((string) $pr['allocation_type'])) !== 'CBA') {
+                    return "Parent CBA #{$pid} is not a CBA.";
+                }
+                if ($approvedStatusId === null || (int) $pr['status_id'] !== $approvedStatusId) {
+                    return "Parent CBA #{$pid} is not Approved.";
+                }
+            }
+
+            // RFA / LAA: every project block must be one the parent CBA itself has a block for — the
+            // parent-earmark lookup (convertEarmarkForRfaApproval() / validateRfaAmounts()) matches by
+            // project_code, so a project that isn't one of the parent's own blocks could otherwise never
+            // resolve an earmark at all.
+            foreach (App\ExecuteRows(
+                "SELECT allocation_id, project_code FROM {$this->tableAllocationProject}
+                 WHERE allocation_id IN (".implode(', ', $parentIdList).') AND deleted_at IS NULL',
+                'DB'
+            ) ?: [] as $cr) {
+                $parentProjectCodesByParent[(int) $cr['allocation_id']][] = $cr['project_code'];
+            }
+        }
+
+        // ── Edit-lock: a block that already has money earmarked against it (its Approved RFA/LAA already
+        // drew, or it is a CBA/CFA block already reserved) can no longer change its parent, project, or
+        // line items — those are exactly what that earmark is keyed to. Only meaningful on update(), for
+        // an EXISTING block (one carrying its own budget_allocation_project_id) whose parent/project/lines
+        // actually changed from what is currently stored.
+        if ($id !== null && $current !== null) {
+            $oldBlocksById = [];
+            foreach (($current['projects'] ?? []) as $ob) {
+                if (isset($ob['budget_allocation_project_id'])) {
+                    $oldBlocksById[(int) $ob['budget_allocation_project_id']] = $ob;
+                }
+            }
+            foreach ($blocks as $i => $block) {
+                $blockId = $block['budget_allocation_project_id'] ?? null;
+                if ($blockId === null || !isset($oldBlocksById[(int) $blockId])) {
+                    continue; // a brand-new block — nothing to protect yet
+                }
+                $old = $oldBlocksById[(int) $blockId];
+                $changed = (($block['parent_allocation_id'] ?? null) !== ($old['parent_allocation_id'] ?? null))
+                    || (($block['project_code'] ?? null) !== ($old['project_code'] ?? null))
+                    || (json_encode($block['line_transaction'] ?? null) !== json_encode($old['line_transaction'] ?? null));
+                if (!$changed) {
+                    continue;
+                }
+                $hasEarmark = (int) App\ExecuteScalar(
+                    "SELECT COUNT(*) FROM fims.budget_line_item_earmark
+                     WHERE budget_allocation_project_id = ".(int) $blockId." AND status IN ('active', 'converted')",
                     'DB'
-                ) ?: [],
-                'project_code'
-            );
+                ) > 0;
+                if ($hasEarmark) {
+                    $n = $i + 1;
+
+                    return "Project block {$n}: this block already has money earmarked against it — its Parent CBA, Project, or line items can no longer be changed.";
+                }
+            }
         }
 
         foreach ($blocks as $i => $block) {
@@ -1658,18 +1931,21 @@ class BudgetAllocationService
                 return "Project block {$n}: project '{$project}' belongs to sub-program '{$row['sub_program_code']}', not '{$sub}'.";
             }
 
-            if ($parentProjectCodes !== null && !in_array($project, $parentProjectCodes, true)) {
-                return "Project block {$n}: project '{$project}' is not one of parent CBA #{$effectiveParentId}'s project blocks.";
-            }
+            if ($isRfaOrLaa) {
+                $blockParentId = (int) ($block['parent_allocation_id'] ?? 0);
+                if (!in_array($project, $parentProjectCodesByParent[$blockParentId] ?? [], true)) {
+                    return "Project block {$n}: project '{$project}' is not one of parent CBA #{$blockParentId}'s project blocks.";
+                }
 
-            // RFA / LAA: this block's Requested Amount per COB must not exceed what the matching parent-CBA block
-            // still has actively earmarked there — the same ceiling convertEarmarkForRfaApproval() enforces at
-            // Approval time, checked here too (create and update) so a request isn't accepted only to be rejected
-            // later purely over an amount that was already wrong when it was submitted.
-            if (($effectiveType === 'RFA' || $effectiveType === 'LAA') && $effectiveParentId !== null && ($block['line_transaction'] ?? null) !== null) {
-                $check = (new BudgetLineItemService())->validateRfaAmounts((int) $effectiveParentId, (string) $project, $block['line_transaction']);
-                if (!$check['success']) {
-                    return $check['message'];
+                // This block's Requested Amount per COB must not exceed what its OWN parent CBA still has
+                // actively earmarked there — the same ceiling convertEarmarkForRfaApproval() enforces at
+                // Approval time, checked here too (create and update) so a request isn't accepted only to
+                // be rejected later purely over an amount that was already wrong when it was submitted.
+                if (($block['line_transaction'] ?? null) !== null) {
+                    $check = (new BudgetLineItemService())->validateRfaAmounts($blockParentId, (string) $project, $block['line_transaction']);
+                    if (!$check['success']) {
+                        return "Project block {$n}: ".$check['message'];
+                    }
                 }
             }
         }

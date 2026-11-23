@@ -41,6 +41,16 @@ $_gl_api = preg_match('~/api$~', $_gl_api) ? $_gl_api : $_gl_api . '/api';
     #gl-root .gl-group-row td { background: var(--afims-bg-soft, #F5F6FA); font-weight: 600; }
     #gl-root .gl-ending-balance { text-align: right; padding: 8px 4px; font-size: 13px; color: var(--afims-text-muted,#62657E); }
     #gl-root .gl-ending-balance strong { color: inherit; font-weight: 700; }
+    /* Clickable GL account header rows (open the SL popup) */
+    #gl-root .gl-group-row.gl-clickable { cursor: pointer; }
+    #gl-root .gl-group-row.gl-clickable:hover td { filter: brightness(.96); }
+    #gl-root .gl-group-row .gl-drill { font-weight: 400; font-size: 11px; margin-left: 6px; color: var(--afims-primary, #1D4ED8); }
+    /* SL popup */
+    #gl-root .gl-sl-modal-sub { font-size: 12px; opacity: .8; margin-top: 2px; font-weight: 400; }
+    #gl-root .gl-sl-sub-row td { background: var(--afims-bg-soft, #F5F6FA); font-weight: 600; }
+    #gl-root .gl-sl-sub-row.gl-clickable { cursor: pointer; }
+    #gl-root .gl-sl-sub-row.gl-clickable:hover td { filter: brightness(.96); }
+    #gl-root .gl-sl-toggle { display: inline-block; width: 12px; margin-right: 2px; color: var(--afims-text-muted, #62657E); }
 
     /* Dark mode: --afims-bg-soft is not a theme token, so the account group rows fell back to a near-white #F5F6FA (light text on
        it = unreadable); the account search results and the summary cards were hard-coded white */
@@ -49,6 +59,9 @@ $_gl_api = preg_match('~/api$~', $_gl_api) ? $_gl_api : $_gl_api . '/api';
     html.afims-dark[data-bs-theme="dark"] #gl-root :is(.gl-combo-results, .gl-summary-card) { background: var(--afims-surface, #1A1F38); border-color: var(--afims-border-strong, #4A5270); color: var(--afims-text, #E4ECF2); }
     html.afims-dark[data-bs-theme="dark"] #gl-root .gl-combo-item:hover { background: var(--afims-primary-soft, #0F2456); color: #FFFFFF; }
     html.afims-dark[data-bs-theme="dark"] #gl-root :is(.gl-summary-label, .gl-combo-empty, .gl-ending-balance) { color: var(--afims-text-muted, #AAAFBE); }
+    html.afims-dark[data-bs-theme="dark"] #gl-root .gl-sl-sub-row td { background: var(--afims-surface-subtle, #22294A); color: #FFFFFF; border-top: 1px solid var(--afims-border-strong, #4A5270); }
+    html.afims-dark[data-bs-theme="dark"] #gl-root .gl-sl-sub-row td span { color: var(--afims-text-muted, #AAAFBE) !important; }
+    html.afims-dark[data-bs-theme="dark"] #gl-root .gl-group-row .gl-drill { color: #8FB4FF; }
 </style>
 
 <div id="gl-root" class="nha-root">
@@ -138,6 +151,19 @@ $_gl_api = preg_match('~/api$~', $_gl_api) ? $_gl_api : $_gl_api . '/api';
         </div>
     </div>
 
+    <!-- Expand/Collapse All — only meaningful for the grouped (no-account-picked) view, where each
+         account row is collapsed by default (see gl_toggleGlRows); hidden once one account is picked. -->
+    <div id="gl-expand-toolbar" class="no-print" style="display:none;justify-content:flex-end;gap:8px;margin:0 0 10px;">
+        <button id="gl-expand-all" type="button" class="nha-btn-hdr">
+            <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 8V4h4M20 8V4h-4M4 16v4h4m12-4v4h-4"/></svg>
+            Expand All
+        </button>
+        <button id="gl-collapse-all" type="button" class="nha-btn-hdr">
+            <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 4v4H5m10-4v4h4M9 20v-4H5m10 4v-4h4"/></svg>
+            Collapse All
+        </button>
+    </div>
+
     <!-- ── TABLE ──────────────────────────────────────────── -->
     <div class="nha-table-wrap">
         <div class="nha-tbl-scroll">
@@ -162,6 +188,40 @@ $_gl_api = preg_match('~/api$~', $_gl_api) ? $_gl_api : $_gl_api . '/api';
     </div>
     <div id="gl-ending" class="gl-ending-balance no-print" style="display:none;"></div>
 
+    <!-- ── SL POPUP (click a GL account header row → its SL accounts, each with its JEVs) ── -->
+    <div id="gl-sl-overlay" class="nha-overlay no-print">
+        <div class="nha-modal nha-modal-xl" role="dialog" aria-modal="true" aria-labelledby="gl-sl-title">
+            <div class="nha-modal-hdr">
+                <div>
+                    <h3 class="nha-modal-title" id="gl-sl-title">Subsidiary Ledgers</h3>
+                    <div class="gl-sl-modal-sub" id="gl-sl-subtitle"></div>
+                </div>
+                <button type="button" class="nha-modal-close" id="gl-sl-close" aria-label="Close">&times;</button>
+            </div>
+            <div class="nha-modal-body">
+                <div class="nha-table-wrap">
+                    <div class="nha-tbl-scroll">
+                        <table class="nha-tbl">
+                            <thead>
+                                <tr>
+                                    <th>Posting Date</th>
+                                    <th>JEV No.</th>
+                                    <th>Doc Ref No.</th>
+                                    <th>DV Number</th>
+                                    <th>Particulars</th>
+                                    <th class="text-end">Debit</th>
+                                    <th class="text-end">Credit</th>
+                                    <th class="text-end">Balance</th>
+                                </tr>
+                            </thead>
+                            <tbody id="gl-sl-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
 </div><!-- /#gl-root -->
 
 <script>
@@ -177,6 +237,7 @@ const GL_BOOK_API = GL_BASE + '/books/all';
 
 let gl_selectedAccount = null; // { account_code, account_title }
 let gl_searchTimer = null;
+let gl_slReq = 0;              // guards the SL popup against out-of-order responses
 let gl_ledger = null;          // the last single-account ledger loaded (what Print prints); null in the all-accounts view
 
 const $gl = id => document.getElementById(id);
@@ -201,6 +262,20 @@ function gl_bindEvents() {
     $gl('gl-print')?.addEventListener('click', () => gl_print());
     $gl('gl-filter-fy')?.addEventListener('change', () => gl_load());
     $gl('gl-filter-book')?.addEventListener('change', () => gl_load());
+
+    // Grouped (no-account-picked) view: click "View SLs" to open the SL drill-down popup;
+    // click anywhere else on the header row to toggle its own transactions open/closed.
+    $gl('gl-tbody')?.addEventListener('click', e => {
+        const row = e.target.closest('tr.gl-clickable');
+        if (!row) return;
+        if (e.target.closest('.gl-drill')) gl_openSlPopup(row.dataset.code, row.dataset.title);
+        else gl_toggleGlRows(row);
+    });
+    $gl('gl-expand-all')?.addEventListener('click', () => gl_setAllGlRows(true));
+    $gl('gl-collapse-all')?.addEventListener('click', () => gl_setAllGlRows(false));
+    $gl('gl-sl-close')?.addEventListener('click', gl_closeSlPopup);
+    $gl('gl-sl-overlay')?.addEventListener('click', e => { if (e.target.id === 'gl-sl-overlay') gl_closeSlPopup(); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') gl_closeSlPopup(); });
 
     const input = $gl('gl-account-search');
     input.addEventListener('input', () => {
@@ -247,11 +322,12 @@ async function gl_loadBooks() {
     }
 }
 
-/* Account combobox — postable (posting_allowed, Active) accounts only, GET /chart_of_accounts/all?postable_only=1 */
+/* Account combobox — any chart-of-accounts account (GL headers like 1-01-01 as well as postable ones),
+   GET /chart_of_accounts/all?search=… — a GL account's ledger includes its SLs' postings. */
 async function gl_searchAccounts(search) {
     const box = $gl('gl-account-results');
     try {
-        const params = new URLSearchParams({ postable_only: '1', search });
+        const params = new URLSearchParams({ search });
         const res  = await gl_authFetch(`${GL_COA_API}?${params}`);
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const json = await res.json();
@@ -296,14 +372,17 @@ async function gl_load() {
         if (json.grouped) {
             $gl('gl-summary').style.display = 'none';
             $gl('gl-ending').style.display = 'none';
+            $gl('gl-expand-toolbar').style.display = 'flex';
             gl_renderGroupedTable(json.accounts ?? []);
         } else {
+            $gl('gl-expand-toolbar').style.display = 'none';
             gl_renderSummary(json);
             gl_renderTable(json.data ?? [], json.debit_normal);
             gl_renderEnding(json.ending_balance, json.debit_normal);
         }
     } catch (e) {
         gl_setPrintable(null);
+        $gl('gl-expand-toolbar').style.display = 'none';
         gl_renderTable([]);
         gl_showError('Could not load data: ' + e.message);
     } finally {
@@ -363,31 +442,153 @@ function gl_renderTable(rows, debitNormal) {
     tbody.innerHTML = rows.map(r => gl_rowHtml(r, debitNormal)).join('');
 }
 
-/* Default view (no account picked): every account's ledger, one sub-header + its lines each. */
+/* Default view (no account picked): every account's ledger, one sub-header + its lines each.
+   Collapsed by default — only the account header (with its totals/balance) shows; clicking it
+   toggles its transaction rows open/closed (accordion, same convention as the SL popup's
+   gl_toggleSlRows). Clicking "View SLs" instead opens the SL drill-down popup — gl_bindEvents
+   checks for that target first so it doesn't also toggle the row. */
 function gl_renderGroupedTable(accounts) {
     const tbody = $gl('gl-tbody');
     if (!accounts.length) {
         tbody.innerHTML = '<tr><td colspan="8"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">Nothing posted yet.</span></div></td></tr>';
         return;
     }
-    tbody.innerHTML = accounts.map(a => `
-        <tr class="gl-group-row">
-            <td colspan="5">${gl_esc(a.account.account_code)} — ${gl_esc(a.account.account_title)} <span style="font-weight:400;color:var(--afims-text-muted,#62657E);">(${gl_esc(a.normal_balance)}-normal, ${gl_esc(a.account.account_type)})</span></td>
+    tbody.innerHTML = accounts.map((a, idx) => {
+        const gid = `gl-grp-${idx}`;
+        return `
+        <tr class="gl-group-row gl-clickable" data-code="${gl_esc(a.account.account_code)}" data-title="${gl_esc(a.account.account_title)}" data-group="${gid}" title="Click to see this account's transactions">
+            <td colspan="5"><span class="gl-sl-toggle">&#9656;</span>${gl_esc(a.account.account_code)} — ${gl_esc(a.account.account_title)} <span style="font-weight:400;color:var(--afims-text-muted,#62657E);">(${gl_esc(a.normal_balance)}-normal, ${gl_esc(a.account.account_type)})</span><span class="gl-drill">View SLs ›</span></td>
             <td class="text-end nha-mono">${gl_peso(a.total_debit)}</td>
             <td class="text-end nha-mono">${gl_peso(a.total_credit)}</td>
             <td class="text-end nha-mono">${gl_peso(Math.abs(a.ending_balance))}${gl_balSide(a.ending_balance, a.debit_normal)}</td>
         </tr>
-        ${a.data.map(r => gl_rowHtml(r, a.debit_normal)).join('')}
-    `).join('');
+        ${a.data.length
+            ? a.data.map(r => gl_rowHtml(r, a.debit_normal, gid)).join('')
+            : `<tr class="gl-sl-rows" data-group="${gid}" style="display:none;"><td colspan="8" style="color:var(--afims-text-muted,#62657E);font-size:12px;">No postings.</td></tr>`}
+    `;
+    }).join('');
 }
 
-function gl_rowHtml(r, debitNormal) {
-    return `<tr${r.reversed_gl_id ? ' style="opacity:.7;"' : ''}>
+/* ── SL popup — a GL account's SL accounts (GET /general_ledger/ledger-sl), each with its JEV lines ──
+   Same per-SL header + JEV rows + running balance as the Subsidiary Ledger page, scoped to one GL account
+   and the page's current Fiscal Year / Book filters. */
+async function gl_openSlPopup(code, title) {
+    const req = ++gl_slReq;
+    const tbody = $gl('gl-sl-tbody');
+    $gl('gl-sl-title').textContent = `${code} — ${title}`;
+    $gl('gl-sl-subtitle').textContent = 'Subsidiary ledgers';
+    tbody.innerHTML = '<tr><td colspan="8"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>';
+    $gl('gl-sl-overlay').classList.add('open');
+    try {
+        const params = new URLSearchParams({ account_code: code });
+        const fy = $gl('gl-filter-fy').value;
+        if (fy) params.set('fiscal_yr', fy);
+        const book = $gl('gl-filter-book').value;
+        if (book) params.set('book_id', book);
+
+        const res  = await gl_authFetch(`${GL_API}/ledger-sl?${params}`);
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const json = await res.json();
+        if (req !== gl_slReq) return; // a newer popup request superseded this one
+        if (!json.success) throw new Error(json.message || 'Failed to load the sub-ledgers.');
+        gl_renderSlPopup(json);
+    } catch (e) {
+        if (req !== gl_slReq) return;
+        tbody.innerHTML = `<tr><td colspan="8"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">Could not load sub-ledgers: ${gl_esc(e.message)}</span></div></td></tr>`;
+    }
+}
+
+// Collapsed by default — only the SL (and "direct postings") summary rows show, each with its own
+// totals/balance. Its transaction rows stay in the DOM (already fetched, no second request) but
+// hidden via gl_rowHtml's groupId param, and only reveal when that row is clicked (gl_toggleSlRows).
+function gl_renderSlPopup(json) {
+    const tbody = $gl('gl-sl-tbody');
+    const sls = json.sub_ledgers ?? [];
+    const direct = json.direct && (json.direct.data ?? []).length ? json.direct : null;
+    $gl('gl-sl-subtitle').textContent = `${sls.length} subsidiary ledger${sls.length === 1 ? '' : 's'} · ${json.normal_balance}-normal, ${json.account.account_type} · click a sub-ledger to see its transactions`;
+    if (!sls.length && !direct) {
+        tbody.innerHTML = '<tr><td colspan="8"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">This account has no subsidiary ledgers and no postings.</span></div></td></tr>';
+        return;
+    }
+    let gl_slGroupSeq = 0;
+    const directHtml = direct ? (() => {
+        const gid = `gl-slg-${++gl_slGroupSeq}`;
+        return `
+        <tr class="gl-sl-sub-row gl-clickable" onclick="gl_toggleSlRows(this, '${gid}')">
+            <td colspan="5"><span class="gl-sl-toggle">&#9656;</span> Direct postings to ${gl_esc(json.account.account_code)} <span style="font-weight:400;color:var(--afims-text-muted,#62657E);">(not under a subsidiary ledger)</span></td>
+            <td class="text-end nha-mono">${gl_peso(direct.total_debit)}</td>
+            <td class="text-end nha-mono">${gl_peso(direct.total_credit)}</td>
+            <td class="text-end nha-mono">${gl_peso(Math.abs(direct.ending_balance))}${gl_balSide(direct.ending_balance, json.debit_normal)}</td>
+        </tr>
+        ${direct.data.map(r => gl_rowHtml(r, json.debit_normal, gid)).join('')}`;
+    })() : '';
+    const noSlNote = !sls.length ? '<tr><td colspan="8" style="color:var(--afims-text-muted,#62657E);font-size:12px;">This account has no subsidiary ledgers.</td></tr>' : '';
+    tbody.innerHTML = directHtml + noSlNote + sls.map(s => {
+        const gid = `gl-slg-${++gl_slGroupSeq}`;
+        return `
+        <tr class="gl-sl-sub-row gl-clickable" onclick="gl_toggleSlRows(this, '${gid}')">
+            <td colspan="5"><span class="gl-sl-toggle">&#9656;</span> ${gl_esc(s.sl.account_code)} — ${gl_esc(s.sl.account_title)}</td>
+            <td class="text-end nha-mono">${gl_peso(s.total_debit)}</td>
+            <td class="text-end nha-mono">${gl_peso(s.total_credit)}</td>
+            <td class="text-end nha-mono">${gl_peso(Math.abs(s.ending_balance))}${gl_balSide(s.ending_balance, json.debit_normal)}</td>
+        </tr>
+        ${s.data.length
+            ? s.data.map(r => gl_rowHtml(r, json.debit_normal, gid)).join('')
+            : `<tr class="gl-sl-rows" data-group="${gid}" style="display:none;"><td colspan="8" style="color:var(--afims-text-muted,#62657E);font-size:12px;">No postings.</td></tr>`}
+    `;
+    }).join('');
+}
+
+// Toggles just ONE account's transaction rows open/closed — not an accordion (unlike
+// gl_toggleSlRows), since Expand All (gl_setAllGlRows) needs every account open at once.
+function gl_toggleGlRows(headerRow) {
+    gl_setGlRowOpen(headerRow, headerRow.dataset.open !== '1');
+}
+function gl_setGlRowOpen(headerRow, open) {
+    const gid = headerRow.dataset.group;
+    headerRow.dataset.open = open ? '1' : '0';
+    headerRow.querySelector('.gl-sl-toggle').innerHTML = open ? '&#9662;' : '&#9656;';
+    $gl('gl-tbody').querySelectorAll(`.gl-sl-rows[data-group="${gid}"]`).forEach(row => {
+        row.style.display = open ? '' : 'none';
+    });
+}
+function gl_setAllGlRows(open) {
+    $gl('gl-tbody').querySelectorAll('.gl-group-row').forEach(row => gl_setGlRowOpen(row, open));
+}
+
+// Toggles one SL's (or "direct postings") transaction rows open/closed — accordion-style, so only
+// one group is expanded at a time, matching how a paper subsidiary ledger is paged through.
+function gl_toggleSlRows(headerRow, gid) {
+    const opening = headerRow.dataset.open !== '1';
+    $gl('gl-sl-tbody').querySelectorAll('.gl-sl-sub-row').forEach(row => {
+        row.dataset.open = '0';
+        row.querySelector('.gl-sl-toggle').innerHTML = '&#9656;';
+    });
+    $gl('gl-sl-tbody').querySelectorAll('.gl-sl-rows').forEach(row => {
+        row.style.display = (opening && row.dataset.group === gid) ? '' : 'none';
+    });
+    if (opening) {
+        headerRow.dataset.open = '1';
+        headerRow.querySelector('.gl-sl-toggle').innerHTML = '&#9662;';
+    }
+}
+
+function gl_closeSlPopup() {
+    gl_slReq++; // drop any in-flight response
+    $gl('gl-sl-overlay')?.classList.remove('open');
+}
+
+function gl_rowHtml(r, debitNormal, groupId) {
+    const styles = [];
+    if (groupId) styles.push('display:none');
+    if (r.reversed_gl_id) styles.push('opacity:.7');
+    const attrs = (groupId ? ` class="gl-sl-rows" data-group="${groupId}"` : '') + (styles.length ? ` style="${styles.join(';')}"` : '');
+    return `<tr${attrs}>
         <td class="nha-td-date">${gl_fmtDate(r.posting_date)}</td>
         <td class="nha-mono">${gl_esc(r.jev_no) || '—'}${r.reference_no && r.reference_no.endsWith('-REV') ? ' <span class="nha-bdg nha-bdg-orange" style="margin-left:4px;">Reversal</span>' : ''}</td>
         <td class="nha-mono">${gl_esc(r.doc_ref_no) || '—'}</td>
         <td class="nha-mono">${gl_esc(r.dv_no) || '—'}</td>
-        <td>${gl_esc(r.description) || gl_esc(r.sl_name) || '—'}</td>
+        <td>${r.sl_account_code ? `<span class="nha-mono" style="font-size:11px;color:var(--afims-text-muted,#62657E);margin-right:6px;" title="Posted to this subsidiary ledger">${gl_esc(r.sl_account_code)}</span>` : ''}${gl_esc(r.description) || gl_esc(r.sl_name) || '—'}</td>
         <td class="text-end nha-mono">${Number(r.debit) > 0 ? gl_peso(r.debit) : ''}</td>
         <td class="text-end nha-mono">${Number(r.credit) > 0 ? gl_peso(r.credit) : ''}</td>
         <td class="text-end nha-mono">${gl_peso(Math.abs(r.running_balance))}${gl_balSide(r.running_balance, debitNormal)}</td>

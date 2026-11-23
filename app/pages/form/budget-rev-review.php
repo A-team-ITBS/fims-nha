@@ -108,7 +108,7 @@ namespace PHPMaker2024\FIMS;
                     <strong id="brv-view-title-req"></strong>
                 </div>
                 <div class="brv-v-card-sub" id="brv-view-req-sub"></div>
-                <div class="brv-v-card-amt">Current amount <strong id="brv-view-req-amount"></strong></div>
+                <div class="brv-v-card-amt"><span id="brv-view-req-amt-lbl">Current balance</span> <strong id="brv-view-req-amount"></strong></div>
             </div>
 
             <!-- the To budget line (to_budget_line_item_id): the line that receives the funds; optional -->
@@ -119,7 +119,7 @@ namespace PHPMaker2024\FIMS;
                     <strong id="brv-view-to-title-req"></strong>
                 </div>
                 <div class="brv-v-card-sub" id="brv-view-to-req-sub"></div>
-                <div class="brv-v-card-amt">Current amount <strong id="brv-view-to-req-amount"></strong></div>
+                <div class="brv-v-card-amt"><span id="brv-view-to-req-amt-lbl">Current balance</span> <strong id="brv-view-to-req-amount"></strong></div>
             </div>
             <div class="brv-v-reason is-empty" id="brv-view-to-none" hidden>No To budget line — only the From budget line's amount changes.</div>
 
@@ -141,14 +141,14 @@ namespace PHPMaker2024\FIMS;
             <div class="brv-v-label">Status</div>
             <div class="brv-v-decision">
                 <div class="brv-v-status">
-                    <span class="nha-bdg nha-bdg-amber" id="brv-view-status">Pending</span>
+                    <span class="nha-bdg nha-bdg-amber" id="brv-view-status">Submitted</span>
                     <span id="brv-view-status-note"></span>
                 </div>
             </div>
         </div>
         <div class="nha-modal-foot brv-v-foot">
             <button type="button" class="nha-btn nha-btn-ghost" id="brv-view-cancel">Close</button>
-            <!-- shown by brv_openView() only while the request is pending AND the user is FMD -->
+            <!-- shown by brv_openView() only while the request is Submitted AND the user is FMD -->
             <div class="brv-v-actions" id="brv-view-actions" hidden>
                 <button type="button" class="nha-btn brv-v-decline" id="brv-decline">
                     <svg viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>

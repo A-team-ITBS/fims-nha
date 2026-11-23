@@ -5,11 +5,8 @@
  * Ported from the TREASURY reference project's
  * _assets/TREASURY/app/pages/bankaccmanagement.php, adapted to this
  * project's schema (see app/services/BankManagementService.php's docblock
- * for the field-level mapping: no shared.fund_sources lookup table here —
- * fund_source is plain text; region/office is always keyed by
- * Responsibility Center (fims.responsibility_code), not uac.departments;
- * documents are Google-Drive links stored in fims.bank_account_documents,
- * not file uploads).
+ * for the field-level mapping: region/office is always keyed by
+ * Responsibility Center (fims.responsibility_code), not uac.departments).
  *
  * Unlike TREASURY's version (jQuery DataTables, server-side processing),
  * this page follows the same lightweight fetch + manual render + client
@@ -26,10 +23,8 @@ namespace PHPMaker2024\FIMS;
 $bamCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
 ?>
 <link rel="stylesheet" href="/app/fims-css/fims.css?v=<?= $bamCssVer ?>" />
-<!-- nha-fims.css + searchable-select.js: used only for the GL Account Code "type to filter" combobox
-     (.nha-ss-dropdown/.nha-ss-opt rules aren't scoped to .nha-root, so they're safe to use standalone here). -->
+<!-- nha-fims.css: shared design tokens (--afims-*) used throughout this page's styles. -->
 <link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
-<script src="/_shared/js/searchable-select.js?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/js/searchable-select.js') ?>"></script>
 
 <div class="fims-wrap" id="bamModule">
 
@@ -98,21 +93,6 @@ $bamCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
                     <option value="DORMANT">Dormant</option>
                     <option value="CLOSED">Closed</option>
                 </select>
-                <select class="fims-select fims-input-sm" id="bamFilterClassification" style="width:190px">
-                    <option value="">All Classifications</option>
-                    <option value="COLLECTION">Collection</option>
-                    <option value="DISBURSEMENT">Disbursement</option>
-                    <option value="COE_MOOE">COE / MOOE</option>
-                    <option value="CAPITAL_OUTLAY">Capital Outlay</option>
-                    <option value="EHAP">EHAP</option>
-                    <option value="SPECIAL_PURPOSE">Special Purpose</option>
-                    <option value="PROJECT">Project</option>
-                    <option value="JOINT_VENTURE">Joint Venture</option>
-                    <option value="TRUST">Trust</option>
-                </select>
-                <select class="fims-select fims-input-sm" id="bamFilterFundSource" style="width:160px">
-                    <option value="">All Fund Sources</option>
-                </select>
                 <input type="text" class="fims-input fims-input-sm" id="bamSearch" placeholder="Search name, number, bank…" style="width:220px">
                 <button type="button" class="fims-btn fims-btn-primary fims-btn-sm" id="bamFilterBtn"><i class="fas fa-filter mr-1"></i>Filter</button>
                 <button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" id="bamResetBtn">Reset</button>
@@ -132,17 +112,15 @@ $bamCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
                         <th>Account Name</th>
                         <th>Account Number</th>
                         <th>Bank / Branch</th>
-                        <th>Purpose</th>
-                        <th>Fund Source</th>
                         <th>Region / Office</th>
                         <th class="text-center">Main</th>
+                        <th>Assigned Main Depository</th>
                         <th class="text-center">Status</th>
                         <th>Date Opened</th>
-                        <th>Last Transaction</th>
                         <th class="text-center" style="width:110px">Actions</th>
                     </tr>
                 </thead>
-                <tbody id="bamTableBody"><tr class="fims-empty"><td colspan="12">Loading…</td></tr></tbody>
+                <tbody id="bamTableBody"><tr class="fims-empty"><td colspan="10">Loading…</td></tr></tbody>
             </table>
         </div>
     </div>
@@ -151,7 +129,7 @@ $bamCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
          MODAL: Register / Edit Account
     ══════════════════════════════════════════════ -->
     <div class="fims-modal-overlay" id="m-bam-account" style="display:none;">
-        <div class="fims-modal-dialog" style="max-width:760px;width:95vw;">
+        <div class="fims-modal-dialog" style="max-width:960px;width:95vw;">
             <div class="fims-modal-content">
                 <div class="fims-modal-header">
                     <div><div class="fims-modal-title" id="bamModalTitle">Register Account</div></div>
@@ -160,173 +138,150 @@ $bamCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
                 <div class="fims-modal-body">
                     <input type="hidden" id="field-bank-account-id">
 
-                    <div class="bam-step-indicator" id="bamStepIndicator">
-                        <div class="bam-step-pill active" data-step-pill="1"><span class="bam-step-num">1</span>Account Info</div>
-                        <div class="bam-step-line"></div>
-                        <div class="bam-step-pill" data-step-pill="2"><span class="bam-step-num">2</span>Bank Info</div>
-                        <div class="bam-step-line"></div>
-                        <div class="bam-step-pill" data-step-pill="3"><span class="bam-step-num">3</span>Documents</div>
-                    </div>
-
-                    <div class="bam-step" data-step="1">
-                        <div class="fims-form-section-title">Account Information</div>
-                        <div class="fims-form-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-                            <div class="fims-form-group">
-                                <label class="fims-label">Account Name *</label>
-                                <input type="text" class="fims-input" id="field-account-name">
-                            </div>
-                            <div class="fims-form-group">
-                                <label class="fims-label">Account Number *</label>
-                                <input type="text" class="fims-input" id="field-account-number">
-                            </div>
-                            <div class="fims-form-group">
-                                <label class="fims-label">Account Type</label>
-                                <select class="fims-select" id="field-account-type">
-                                    <option value="">— Select —</option>
-                                    <option value="CURRENT">Current</option>
-                                    <option value="SAVINGS">Savings</option>
-                                    <option value="NON_DRAWING_SAVINGS">Non-Drawing Savings</option>
-                                    <option value="TIME_DEPOSIT">Time Deposit</option>
-                                    <option value="TRUST">Trust</option>
-                                </select>
-                            </div>
-                            <div class="fims-form-group">
-                                <label class="fims-label">Purpose *</label>
-                                <select class="fims-select" id="field-account-classification">
-                                    <option value="">— Select —</option>
-                                    <option value="COLLECTION">Collection</option>
-                                    <option value="DISBURSEMENT">Disbursement</option>
-                                    <option value="COE_MOOE">COE / MOOE</option>
-                                    <option value="CAPITAL_OUTLAY">Capital Outlay</option>
-                                    <option value="EHAP">EHAP</option>
-                                    <option value="SPECIAL_PURPOSE">Special Purpose</option>
-                                    <option value="PROJECT">Project</option>
-                                    <option value="JOINT_VENTURE">Joint Venture</option>
-                                    <option value="TRUST">Trust</option>
-                                </select>
-                            </div>
-                            <div class="fims-form-group">
-                                <label class="fims-label">Fund Source</label>
-                                <input type="text" class="fims-input" id="field-fund-source" placeholder="e.g. General Fund">
-                            </div>
-                            <div class="fims-form-group">
-                                <label class="fims-label">Region / Office (Responsibility Center)</label>
-                                <select class="fims-select" id="field-rc-id">
-                                    <option value="">— Main Office —</option>
-                                </select>
-                            </div>
-                            <div class="fims-form-group">
-                                <label class="fims-label">GL Account Code (Chart of Accounts)</label>
-                                <input type="text" class="fims-input" id="field-account-code" placeholder="Search GL account code or title…">
-                            </div>
+                    <div class="fims-form-section-title">Bank Information</div>
+                    <div class="fims-form-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                        <div class="fims-form-group">
+                            <label class="fims-label">Bank Name *</label>
+                            <select class="fims-select" id="field-bank-name-select">
+                                <option value="">— Select Bank —</option>
+                                <option>Land Bank of the Philippines</option>
+                                <option>Development Bank of the Philippines</option>
+                                <option>Philippine National Bank</option>
+                                <option>Bangko Sentral ng Pilipinas</option>
+                                <option>Banco De Oro</option>
+                                <option>Metropolitan Bank and Trust Company</option>
+                                <option>Bank of the Philippine Islands</option>
+                                <option>Union Bank of the Philippines</option>
+                                <option>Philippine Veterans Bank</option>
+                                <option value="__other__">Other…</option>
+                            </select>
+                            <input type="text" class="fims-input mt-1" id="field-bank-name" placeholder="Bank name" style="display:none;">
+                        </div>
+                        <div class="fims-form-group">
+                            <label class="fims-label">Bank Branch</label>
+                            <input type="text" class="fims-input" id="field-bank-branch">
+                        </div>
+                        <div class="fims-form-group">
+                            <label class="fims-label">Status *</label>
+                            <select class="fims-select" id="field-status">
+                                <option value="ACTIVE">Active</option>
+                                <option value="DORMANT">Dormant</option>
+                                <option value="CLOSED">Closed</option>
+                            </select>
+                        </div>
+                        <div class="fims-form-group" style="display:flex;align-items:flex-end;">
+                            <!-- Tags THIS account as Main Depository on Save (payload field
+                                 read by BankManagementService::store()/update()). Just a
+                                 plain per-account flag — no exclusivity, doesn't touch any
+                                 other account's flag. -->
+                            <label style="display:flex;align-items:center;gap:6px;font-size:13px;">
+                                <input type="checkbox" id="field-is-main-depository">
+                                Main Depository Account
+                            </label>
+                        </div>
+                        <div class="fims-form-group">
+                            <label class="fims-label">Date Opened</label>
+                            <input type="date" class="fims-input" id="field-date-opened">
+                        </div>
+                        <div class="fims-form-group">
+                            <!-- A separate column from is_main_depository (above) —
+                                 self-referencing FK into fims.bank_accounts (see migration
+                                 "55 - bank_accounts_add_main_depository_account_id.sql").
+                                 is_main_depository flags THIS account AS a Main Depository;
+                                 this instead records WHICH other account is ASSIGNED as this
+                                 account's Main Depository. Populated by
+                                 refreshAssignedMainDepositorySelect() below — only lists
+                                 accounts actually tagged is_main_depository, minus whichever
+                                 account is open in this modal (can't assign itself). -->
+                            <label class="fims-label">Assigned Main Depository Account</label>
+                            <select class="fims-select" id="field-main-depository-account-id">
+                                <option value="">— None —</option>
+                            </select>
                         </div>
                     </div>
 
-                    <div class="bam-step" data-step="2" style="display:none;">
-                        <div class="fims-form-section-title">Bank Information</div>
-                        <div class="fims-form-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-                            <div class="fims-form-group">
-                                <label class="fims-label">Bank Name *</label>
-                                <select class="fims-select" id="field-bank-name-select">
-                                    <option value="">— Select Bank —</option>
-                                    <option>Land Bank of the Philippines</option>
-                                    <option>Development Bank of the Philippines</option>
-                                    <option>Philippine National Bank</option>
-                                    <option>Bangko Sentral ng Pilipinas</option>
-                                    <option>Banco De Oro</option>
-                                    <option>Metropolitan Bank and Trust Company</option>
-                                    <option>Bank of the Philippine Islands</option>
-                                    <option>Union Bank of the Philippines</option>
-                                    <option>Philippine Veterans Bank</option>
-                                    <option value="__other__">Other…</option>
-                                </select>
-                                <input type="text" class="fims-input mt-1" id="field-bank-name" placeholder="Bank name" style="display:none;">
-                            </div>
-                            <div class="fims-form-group">
-                                <label class="fims-label">Bank Branch</label>
-                                <input type="text" class="fims-input" id="field-bank-branch">
-                            </div>
-                            <div class="fims-form-group">
-                                <label class="fims-label">Status *</label>
-                                <select class="fims-select" id="field-status">
-                                    <option value="ACTIVE">Active</option>
-                                    <option value="DORMANT">Dormant</option>
-                                    <option value="CLOSED">Closed</option>
-                                </select>
-                            </div>
-                            <div class="fims-form-group">
-                                <label class="fims-label">&nbsp;</label>
-                                <label style="display:flex;align-items:center;gap:6px;height:38px;">
-                                    <input type="checkbox" id="field-is-main-depository"> Main Depository
-                                </label>
-                            </div>
-                            <div class="fims-form-group">
-                                <label class="fims-label">Date Opened</label>
-                                <input type="date" class="fims-input" id="field-date-opened">
-                            </div>
-                            <div class="fims-form-group">
-                                <label class="fims-label">Date of Last Transaction</label>
-                                <input type="date" class="fims-input" id="field-last-transaction-date">
-                            </div>
+                    <div class="fims-form-section-title" style="margin-top:14px;">Account Information</div>
+                    <div class="fims-form-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                        <div class="fims-form-group">
+                            <label class="fims-label">Account Name *</label>
+                            <input type="text" class="fims-input" id="field-account-name">
+                        </div>
+                        <div class="fims-form-group">
+                            <label class="fims-label">Account Number *</label>
+                            <input type="text" class="fims-input" id="field-account-number">
+                        </div>
+                        <div class="fims-form-group">
+                            <label class="fims-label">Account Type</label>
+                            <select class="fims-select" id="field-account-type">
+                                <option value="">— Select —</option>
+                                <option value="CURRENT">Current</option>
+                                <option value="SAVINGS">Savings</option>
+                                <option value="NON_DRAWING_SAVINGS">Non-Drawing Savings</option>
+                                <option value="TIME_DEPOSIT">Time Deposit</option>
+                                <option value="TRUST">Trust</option>
+                            </select>
+                        </div>
+                        <div class="fims-form-group">
+                            <label class="fims-label">Region / Office (Responsibility Center)</label>
+                            <select class="fims-select" id="field-rc-id">
+                                <option value="">— Main Office —</option>
+                            </select>
                         </div>
                     </div>
 
-                    <div class="bam-step" data-step="3" style="display:none;">
-                        <div class="fims-form-section-title">Bank Documents</div>
-                        <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">
-                            <div class="fims-form-group" style="flex:1;min-width:160px;">
-                                <label class="fims-label">Link Name</label>
-                                <input type="text" class="fims-input" id="field-doc-link-name" placeholder="e.g. Signature Card">
-                            </div>
-                            <div class="fims-form-group" style="flex:2;min-width:220px;">
-                                <label class="fims-label">Google Drive URL</label>
-                                <input type="text" class="fims-input" id="field-doc-link-url" placeholder="https://drive.google.com/…">
-                            </div>
-                            <button type="button" class="fims-btn fims-btn-outline fims-btn-sm" id="bamAddLinkBtn" style="height:38px;">Add</button>
+                    <div class="fims-form-section-title" style="margin-top:14px;">1. Search GL Account</div>
+                    <div class="fims-form-group" style="position:relative;">
+                        <label class="fims-label">GL Account (Chart of Accounts)</label>
+                        <input type="hidden" id="field-gl-account-id" value="">
+                        <input type="text" class="fims-input" id="field-gl-search" maxlength="500" placeholder="Type GL account code or title…">
+                        <div id="field-gl-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;margin-top:4px;background:#fff;border:1px solid #E4ECF2;border-radius:8px;max-height:180px;overflow-y:auto;z-index:1001;box-shadow:0 4px 12px rgba(0,0,0,.1);"></div>
+                    </div>
+                    <div id="field-gl-selected" style="padding:10px;background:var(--fims-surface-subtle,#F4F7FA);border-radius:6px;display:none;margin-top:4px;"></div>
+
+                    <div id="field-sl-section" style="margin-top:14px;opacity:.5;pointer-events:none;">
+                        <div class="fims-form-section-title">2. Select or Create Sub-Ledger (Child Account)</div>
+                        <div class="fims-form-group" style="position:relative;">
+                            <label class="fims-label">Search Sub-Ledger</label>
+                            <input type="text" class="fims-input" id="field-sl-search" maxlength="500" placeholder="Select a GL account first…" disabled>
+                            <div id="field-sl-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;margin-top:4px;background:#fff;border:1px solid #E4ECF2;border-radius:8px;max-height:180px;overflow-y:auto;z-index:1000;box-shadow:0 4px 12px rgba(0,0,0,.1);"></div>
                         </div>
-                        <ul id="bamModalDocList" style="list-style:none;padding:0;margin:10px 0 0;"></ul>
+                        <p id="field-sl-empty-note" style="display:none;font-size:11px;color:var(--fims-danger,#DC3545);margin:4px 0 0;">No child accounts exist under this GL account yet. Create one below.</p>
+                        <div id="field-sl-selected-item" style="padding:8px;background:var(--fims-surface-subtle,#F4F7FA);border-radius:6px;display:none;margin-top:8px;">
+                            <strong>Selected:</strong> <span id="field-sl-selected-code"></span>
+                        </div>
+                        <input type="hidden" id="field-sl-selected-code-value">
+                        <div style="margin-top:10px;border-top:1px dashed var(--fims-border);padding-top:10px;display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">
+                            <div class="fims-form-group" style="flex:1;min-width:200px;margin-bottom:0;">
+                                <label class="fims-label">New Sub-Ledger Title</label>
+                                <input type="text" class="fims-input" id="field-sl-new-title" maxlength="255" placeholder="e.g., MDS Checking Account">
+                            </div>
+                            <button type="button" class="fims-btn fims-btn-outline fims-btn-sm" id="field-sl-create-btn" style="height:38px;">+ Create Sub-Ledger</button>
+                        </div>
+                    </div>
+
+                    <!-- Restricted funds don't live on fims.bank_accounts itself —
+                         they're part of this account's today's fims.cash_position row
+                         (same table/shape as Cash Position's "Add Restricted Fund").
+                         Saving the account, when anything here is filled in, makes a
+                         second call to the Cash Position API right after
+                         (saveRestrictedFundsForAccount()) — same computed-balance +
+                         save sequence Cash Position's own Add flow uses, just reachable
+                         from here too so a newly-registered account doesn't need a
+                         separate trip to Cash Position just to set this. -->
+                    <div class="fims-form-section-title" style="margin-top:14px;">Restricted Funds (optional — itemized, or leave empty to use a flat amount)</div>
+                    <table class="fims-table" id="field-rf-table">
+                        <thead><tr><th>Label</th><th style="width:150px">Amount</th><th style="width:40px"></th></tr></thead>
+                        <tbody id="field-rf-body"></tbody>
+                    </table>
+                    <button type="button" class="fims-btn fims-btn-outline fims-btn-sm" id="field-rf-add-row-btn"><i class="fas fa-plus mr-1"></i>Add Line</button>
+                    <div class="fims-form-group" style="margin-top:8px;max-width:240px;">
+                        <label class="fims-label">Flat Restricted Amount</label>
+                        <input type="number" step="0.01" class="fims-input" id="field-restricted-amount" value="0">
                     </div>
                 </div>
                 <div class="fims-modal-footer">
                     <button type="button" class="fims-btn fims-btn-ghost" data-close="m-bam-account">Cancel</button>
-                    <button type="button" class="fims-btn fims-btn-outline" id="bamBackBtn" style="display:none;">Back</button>
-                    <button type="button" class="fims-btn fims-btn-primary" id="bamNextBtn">Next</button>
-                    <button type="button" class="fims-btn fims-btn-primary" id="bamSaveBtn" style="display:none;">Save Account</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- ══════════════════════════════════════════════
-         MODAL: View Documents
-    ══════════════════════════════════════════════ -->
-    <div class="fims-modal-overlay" id="m-bam-docs" style="display:none;">
-        <div class="fims-modal-dialog" style="max-width:560px;width:95vw;">
-            <div class="fims-modal-content">
-                <div class="fims-modal-header">
-                    <div>
-                        <div class="fims-modal-title">Bank Documents</div>
-                        <div style="font-size:12px;color:var(--fims-text-subtle)" id="bamDocsAccountName"></div>
-                    </div>
-                    <button class="fims-modal-close" data-close="m-bam-docs">&times;</button>
-                </div>
-                <div class="fims-modal-body">
-                    <ul id="bamDocsList" style="list-style:none;padding:0;margin:0 0 14px;"></ul>
-                    <div class="fims-form-section-title">Add Google Drive Link</div>
-                    <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">
-                        <div class="fims-form-group" style="flex:1;min-width:140px;">
-                            <label class="fims-label">Link Name</label>
-                            <input type="text" class="fims-input" id="bamDocsLinkName">
-                        </div>
-                        <div class="fims-form-group" style="flex:2;min-width:200px;">
-                            <label class="fims-label">Google Drive URL</label>
-                            <input type="text" class="fims-input" id="bamDocsLinkUrl">
-                        </div>
-                        <button type="button" class="fims-btn fims-btn-outline fims-btn-sm" id="bamDocsAddBtn" style="height:38px;">Add</button>
-                    </div>
-                </div>
-                <div class="fims-modal-footer">
-                    <button type="button" class="fims-btn fims-btn-ghost" data-close="m-bam-docs">Close</button>
+                    <button type="button" class="fims-btn fims-btn-primary" id="bamSaveBtn">Save Account</button>
                 </div>
             </div>
         </div>
@@ -336,19 +291,44 @@ $bamCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
          MODAL: Quick Tag GL Account Code
     ══════════════════════════════════════════════ -->
     <div class="fims-modal-overlay" id="m-bam-tag-code" style="display:none;">
-        <div class="fims-modal-dialog" style="max-width:420px;width:95vw;">
+        <div class="fims-modal-dialog" style="max-width:480px;width:95vw;">
             <div class="fims-modal-content">
                 <div class="fims-modal-header">
                     <div>
-                        <div class="fims-modal-title">Tag GL Account Code</div>
+                        <div class="fims-modal-title">Tag GL / Sub-Ledger Account</div>
                         <div style="font-size:12px;color:var(--fims-text-subtle)" id="tagCodeAccountName"></div>
                     </div>
                     <button class="fims-modal-close" data-close="m-bam-tag-code">&times;</button>
                 </div>
                 <div class="fims-modal-body">
-                    <div class="fims-form-group">
-                        <label class="fims-label">GL Account Code (Chart of Accounts)</label>
-                        <input type="text" class="fims-input" id="tagCodeSelect" placeholder="Search GL account code or title…">
+                    <div class="fims-form-section-title">1. Search GL Account</div>
+                    <div class="fims-form-group" style="position:relative;">
+                        <label class="fims-label">GL Account (Chart of Accounts)</label>
+                        <input type="hidden" id="tag-gl-account-id" value="">
+                        <input type="text" class="fims-input" id="tag-gl-search" maxlength="500" placeholder="Type GL account code or title…">
+                        <div id="tag-gl-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;margin-top:4px;background:#fff;border:1px solid #E4ECF2;border-radius:8px;max-height:180px;overflow-y:auto;z-index:1001;box-shadow:0 4px 12px rgba(0,0,0,.1);"></div>
+                    </div>
+                    <div id="tag-gl-selected" style="padding:10px;background:var(--fims-surface-subtle,#F4F7FA);border-radius:6px;display:none;margin-top:4px;"></div>
+
+                    <div id="tag-sl-section" style="margin-top:14px;opacity:.5;pointer-events:none;">
+                        <div class="fims-form-section-title">2. Select or Create Sub-Ledger (Child Account)</div>
+                        <div class="fims-form-group" style="position:relative;">
+                            <label class="fims-label">Search Sub-Ledger</label>
+                            <input type="text" class="fims-input" id="tag-sl-search" maxlength="500" placeholder="Select a GL account first…" disabled>
+                            <div id="tag-sl-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;margin-top:4px;background:#fff;border:1px solid #E4ECF2;border-radius:8px;max-height:180px;overflow-y:auto;z-index:1000;box-shadow:0 4px 12px rgba(0,0,0,.1);"></div>
+                        </div>
+                        <p id="tag-sl-empty-note" style="display:none;font-size:11px;color:var(--fims-danger,#DC3545);margin:4px 0 0;">No child accounts exist under this GL account yet. Create one below.</p>
+                        <div id="tag-sl-selected-item" style="padding:8px;background:var(--fims-surface-subtle,#F4F7FA);border-radius:6px;display:none;margin-top:8px;">
+                            <strong>Selected:</strong> <span id="tag-sl-selected-code"></span>
+                        </div>
+                        <input type="hidden" id="tag-sl-selected-code-value">
+                        <div style="margin-top:10px;border-top:1px dashed var(--fims-border);padding-top:10px;display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">
+                            <div class="fims-form-group" style="flex:1;min-width:160px;margin-bottom:0;">
+                                <label class="fims-label">New Sub-Ledger Title</label>
+                                <input type="text" class="fims-input" id="tag-sl-new-title" maxlength="255">
+                            </div>
+                            <button type="button" class="fims-btn fims-btn-outline fims-btn-sm" id="tag-sl-create-btn" style="height:38px;">+ Create</button>
+                        </div>
                     </div>
                 </div>
                 <div class="fims-modal-footer">
@@ -378,18 +358,17 @@ $bamCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
 #bamModule .fims-btn-outline { color:#000E3E; border-color:#000E3E; }
 #bamModule .fims-btn-outline:hover { background:#000E3E; color:#fff; }
 
-.fims-form-section-title { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--fims-text-subtle); margin-bottom:8px; }
-.bam-doc-row { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 10px; border:1px solid var(--fims-border); border-radius:6px; margin-bottom:6px; font-size:13px; }
-.bam-doc-row a { color: #000E3E; text-decoration: underline; }
+/* .fims-modal-content (shared fims.css) is a plain block, not a flex
+   container, so .fims-modal-body's flex:1/min-height:0/overflow-y:auto
+   (which assume a flex-column parent) never actually engage — content
+   just grows past .fims-modal-dialog's max-height and gets clipped by its
+   overflow:hidden instead of scrolling. The Register/Edit Account modal
+   (Account Info + the GL+SL two-step picker + Bank Info, all shown at
+   once, no step wizard) is tall enough to hit this, so make this module's
+   modal content a proper flex column to let the body scroll as intended. */
+#bamModule .fims-modal-content { display:flex; flex-direction:column; min-height:0; overflow:hidden; }
 
-/* Register/Edit Account step indicator */
-.bam-step-indicator { display:flex; align-items:center; margin-bottom:18px; }
-.bam-step-pill { display:flex; align-items:center; gap:6px; font-size:12px; font-weight:600; color:var(--fims-text-subtle); white-space:nowrap; }
-.bam-step-pill .bam-step-num { display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:50%; background:var(--fims-border); color:var(--fims-text-subtle); font-size:12px; }
-.bam-step-pill.active { color:#000E3E; }
-.bam-step-pill.active .bam-step-num { background:#000E3E; color:#fff; }
-.bam-step-pill.done .bam-step-num { background:#000E3E; color:#fff; }
-.bam-step-line { flex:1; height:2px; background:var(--fims-border); margin:0 10px; }
+.fims-form-section-title { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--fims-text-subtle); margin-bottom:8px; }
 
 /* ── Row Actions dropdown (same menu as the Memo Requests / Responsibility Center lists) ── */
 #bamModule .bam-menu { position:relative; display:inline-block; }
@@ -418,12 +397,6 @@ html.afims-dark[data-bs-theme="dark"] #bamModule :is(select.fims-select, .fims-i
     background-color:var(--afims-surface, #1A1F38); color:var(--afims-text, #E4ECF2); border-color:var(--afims-border-strong, #4A5270); }
 html.afims-dark[data-bs-theme="dark"] #bamModule select.fims-select option { background-color:var(--afims-surface, #1A1F38); color:var(--afims-text, #E4ECF2); }
 html.afims-dark[data-bs-theme="dark"] #bamModule .fims-input::placeholder { color:#9AA3B5; }
-html.afims-dark[data-bs-theme="dark"] .bam-doc-row a { color:#94AADB; }
-html.afims-dark[data-bs-theme="dark"] .bam-step-pill { color:var(--afims-text-muted, #AAAFBE); }
-html.afims-dark[data-bs-theme="dark"] .bam-step-pill.active { color:#fff; }
-html.afims-dark[data-bs-theme="dark"] .bam-step-pill .bam-step-num { background:#2E3656; color:var(--afims-text, #E4ECF2); }
-html.afims-dark[data-bs-theme="dark"] :is(.bam-step-pill.active, .bam-step-pill.done) .bam-step-num { background:#3861BC; color:#fff; }
-html.afims-dark[data-bs-theme="dark"] .bam-step-line { background:#2E3656; }
 html.afims-dark[data-bs-theme="dark"] #bamModule .bam-menu-trigger { color:#fff; background:#3861BC; border-color:#3861BC; }
 html.afims-dark[data-bs-theme="dark"] #bamModule .bam-menu-trigger:hover { background:#2E59B8; }
 html.afims-dark[data-bs-theme="dark"] #bamModule .bam-menu-drop { background:var(--afims-surface, #1A1F38); border-color:var(--afims-border-strong, #4A5270); box-shadow:0 8px 24px rgba(0,0,0,.45); }
@@ -435,6 +408,12 @@ html.afims-dark[data-bs-theme="dark"] #bamModule .bam-menu-item:hover { color:#f
 <script>
 (function () {
     const API = '/api/bank-management';
+    // Restricted Funds entered here is saved as this account's TODAY cash
+    // position entry via the Cash Position module's own API — see
+    // saveRestrictedFundsForAccount(), called right after a successful
+    // account save. There is no restricted_amount column on
+    // fims.bank_accounts itself.
+    const CASH_POSITION_API = '/api/cash-position';
     const JWT = (typeof ew !== 'undefined' && ew.API_JWT_TOKEN) ? ew.API_JWT_TOKEN : '';
 
     function authHeaders(extra) {
@@ -479,13 +458,6 @@ html.afims-dark[data-bs-theme="dark"] #bamModule .bam-menu-item:hover { color:#f
         });
     });
 
-    const CLASS_LABELS = {
-        COLLECTION: 'Collection', DISBURSEMENT: 'Disbursement', COE_MOOE: 'COE / MOOE',
-        CAPITAL_OUTLAY: 'Capital Outlay', EHAP: 'EHAP', SPECIAL_PURPOSE: 'Special Purpose',
-        PROJECT: 'Project', JOINT_VENTURE: 'Joint Venture', TRUST: 'Trust',
-    };
-    function classLabel(c) { return CLASS_LABELS[c] || (c || '—'); }
-
     function statusBadge(status) {
         if (status === 'ACTIVE') return '<span class="fims-badge fims-badge-green">Active</span>';
         if (status === 'DORMANT') return '<span class="fims-badge fims-badge-amber">Dormant</span>';
@@ -493,8 +465,6 @@ html.afims-dark[data-bs-theme="dark"] #bamModule .bam-menu-item:hover { color:#f
         return '<span class="fims-badge fims-badge-gray">' + escapeHtml(status || '—') + '</span>';
     }
 
-    let pendingLinks = []; // {link_name, gdrive_link} added before the account itself is saved
-    let existingDocs = []; // documents already saved against the account being edited ({document_id, link_name, gdrive_link})
     let responsibilityCentersById = {};
 
     // ── Stats ──
@@ -552,27 +522,221 @@ html.afims-dark[data-bs-theme="dark"] #bamModule .bam-menu-item:hover { color:#f
             .catch(() => { tbody.innerHTML = '<tr class="fims-empty"><td colspan="5">Could not reach the server.</td></tr>'; });
     }
 
-    // ── Lookups ──
-    let bamCoaRows = [];
-    function loadChartOfAccounts() {
-        return fetch('/api/chart_of_accounts/all?postable_only=1', { headers: authHeaders() })
-            .then(function (r) {
-                if (!r.ok) throw new Error('HTTP ' + r.status);
-                return r.json();
-            })
-            .then(function (json) {
-                if (!json || !json.success) throw new Error((json && json.message) || 'Request failed.');
-                bamCoaRows = (json.data || []).filter(a => a.posting_allowed);
-                const coaOptions = bamCoaRows.map(a => ({ value: a.account_code, label: a.account_title }));
-                [document.getElementById('field-account-code'), document.getElementById('tagCodeSelect')].forEach(function (input) {
-                    if (!input) return;
-                    nhaSearchableSelect(input, coaOptions);
-                });
-            })
-            .catch(function (e) {
-                console.error('Could not load Chart of Accounts for GL code dropdown:', e);
-            });
+    // ── GL + Sub-Ledger two-step picker ──────────────────────────────
+    // Shared by the Register/Edit Account modal's step-1 fields (prefix
+    // 'field-') and the Tag GL/SL quick modal (prefix 'tag-') — same
+    // two-step shape as app/pages/accountable-officer-page.php's own
+    // GL+SL picker (step 1 searches /accounting/coa/search for the parent
+    // GL; step 2 searches/creates children of that GL via /accounting/sl/*).
+    function bamSlIds(prefix) {
+        return {
+            search       : prefix + 'sl-search',
+            dropdown     : prefix + 'sl-dropdown',
+            emptyNote    : prefix + 'sl-empty-note',
+            selectedItem : prefix + 'sl-selected-item',
+            selectedCode : prefix + 'sl-selected-code',
+            selectedValue: prefix + 'sl-selected-code-value',
+        };
     }
+
+    function bamSlReset(prefix) {
+        const ids = bamSlIds(prefix);
+        document.getElementById(ids.search).value = '';
+        document.getElementById(ids.selectedValue).value = '';
+        document.getElementById(ids.selectedItem).style.display = 'none';
+        document.getElementById(ids.dropdown).innerHTML = '';
+        document.getElementById(ids.dropdown).style.display = 'none';
+        document.getElementById(ids.emptyNote).style.display = 'none';
+        const newTitle = document.getElementById(prefix + 'sl-new-title');
+        if (newTitle) newTitle.value = '';
+    }
+
+    function bamSlEnable(prefix) {
+        const search = document.getElementById(bamSlIds(prefix).search);
+        search.disabled = false;
+        search.placeholder = 'Type account code or description...';
+        const section = document.getElementById(prefix + 'sl-section');
+        section.style.opacity = '1';
+        section.style.pointerEvents = 'auto';
+    }
+
+    function bamSlDisable(prefix) {
+        const search = document.getElementById(bamSlIds(prefix).search);
+        search.disabled = true;
+        search.placeholder = 'Select a GL account first…';
+        const section = document.getElementById(prefix + 'sl-section');
+        section.style.opacity = '.5';
+        section.style.pointerEvents = 'none';
+    }
+
+    // Load SL codes for a GL account_id; optionally pre-select a known current SL id.
+    function bamLoadSlCodesForAccount(prefix, accountId, preselectId) {
+        const ids = bamSlIds(prefix);
+        fetch('/api/accounting/sl/by-account?account_id=' + encodeURIComponent(accountId) + '&limit=50', { headers: authHeaders() })
+            .then(r => r.json())
+            .then(function (json) {
+                if (!json.success || !json.data?.length) {
+                    document.getElementById(ids.emptyNote).style.display = 'block';
+                    document.getElementById(ids.dropdown).style.display = 'none';
+                    return;
+                }
+                document.getElementById(ids.emptyNote).style.display = 'none';
+                bamRenderSlList(prefix, json.data);
+                document.getElementById(ids.dropdown).style.display = 'none';
+                if (preselectId) {
+                    const match = json.data.find(a => String(a.account_id) === String(preselectId));
+                    if (match) {
+                        document.getElementById(ids.search).value = match.account_code;
+                        document.getElementById(ids.selectedValue).value = match.account_id;
+                        document.getElementById(ids.selectedCode).textContent = match.account_code;
+                        document.getElementById(ids.selectedItem).style.display = 'block';
+                    }
+                }
+            })
+            .catch(e => toast('Failed to load sub-ledgers: ' + e.message, true));
+    }
+
+    function bamRenderSlList(prefix, items) {
+        const ids = bamSlIds(prefix);
+        const dropdown = document.getElementById(ids.dropdown);
+        dropdown.innerHTML = items.map(item =>
+            '<div class="bam-gl-sl-item" data-code="' + escapeHtml(item.account_id) + '" data-display="' + escapeHtml(item.account_code) + '" style="padding:10px 12px;border-bottom:1px solid #E4ECF2;cursor:pointer;font-size:13px;">' +
+                '<div style="font-weight:600;">' + escapeHtml(item.account_code) + '</div>' +
+                (item.account_title ? '<div style="font-size:11px;color:#999;margin-top:2px;">' + escapeHtml(item.account_title) + '</div>' : '') +
+            '</div>'
+        ).join('');
+        dropdown.style.display = 'block';
+        dropdown.querySelectorAll('.bam-gl-sl-item').forEach(function (item) {
+            item.addEventListener('mouseover', () => item.style.background = '#F4F7FA');
+            item.addEventListener('mouseout', () => item.style.background = 'transparent');
+            item.addEventListener('click', () => bamSelectSlCode(prefix, item));
+        });
+    }
+
+    function bamSelectSlCode(prefix, item) {
+        const ids = bamSlIds(prefix);
+        document.getElementById(ids.search).value = item.dataset.display;
+        document.getElementById(ids.selectedValue).value = item.dataset.code;
+        document.getElementById(ids.selectedCode).textContent = item.dataset.display;
+        document.getElementById(ids.selectedItem).style.display = 'block';
+        document.getElementById(ids.dropdown).style.display = 'none';
+    }
+
+    function bamBindSlSearch(prefix) {
+        const ids = bamSlIds(prefix);
+        let timer;
+        document.getElementById(ids.search).addEventListener('input', function (ev) {
+            const query = ev.target.value.trim();
+            clearTimeout(timer);
+            if (!query) { document.getElementById(ids.dropdown).style.display = 'none'; return; }
+            timer = setTimeout(function () {
+                const glAccountId = document.getElementById(prefix + 'gl-account-id').value;
+                if (!glAccountId) return;
+                fetch('/api/accounting/sl/search?account_id=' + encodeURIComponent(glAccountId) + '&q=' + encodeURIComponent(query) + '&limit=50', { headers: authHeaders() })
+                    .then(r => r.json())
+                    .then(function (json) {
+                        if (json.success && json.data?.length) {
+                            bamRenderSlList(prefix, json.data);
+                        } else {
+                            const dropdown = document.getElementById(ids.dropdown);
+                            dropdown.innerHTML = '<div style="padding:10px;color:#999;font-size:12px;">No matching sub-ledgers. Try creating one below.</div>';
+                            dropdown.style.display = 'block';
+                        }
+                    })
+                    .catch(e => toast('Search failed: ' + e.message, true));
+            }, 300);
+        });
+    }
+
+    function bamBindSlCreate(prefix) {
+        const ids = bamSlIds(prefix);
+        document.getElementById(prefix + 'sl-create-btn').addEventListener('click', function () {
+            const glAccountId = document.getElementById(prefix + 'gl-account-id').value;
+            const title = document.getElementById(prefix + 'sl-new-title').value.trim();
+            if (!glAccountId) { toast('Select a GL account first.', true); return; }
+            if (!title) { toast('Enter a title for the new sub-ledger.', true); return; }
+            fetch('/api/accounting/sl/create', { method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ parent_account_id: glAccountId, account_title: title }) })
+                .then(r => r.json())
+                .then(function (json) {
+                    if (!json.success) { toast(json.message || 'Failed to create sub-ledger.', true); return; }
+                    const created = json.data;
+                    document.getElementById(ids.search).value = created.account_code;
+                    document.getElementById(ids.selectedValue).value = created.account_id;
+                    document.getElementById(ids.selectedCode).textContent = created.account_code;
+                    document.getElementById(ids.selectedItem).style.display = 'block';
+                    document.getElementById(ids.emptyNote).style.display = 'none';
+                    document.getElementById(prefix + 'sl-new-title').value = '';
+                    toast('Sub-ledger account created.');
+                })
+                .catch(() => toast('Could not reach the server.', true));
+        });
+    }
+
+    // Step 1 of the two-step picker: search the parent GL account, wire its
+    // selection to reset+enable step 2 (changing the GL invalidates any
+    // previously-picked SL, same as the officer page's own picker).
+    function bamBindGlSearch(prefix) {
+        let timer;
+        const search = document.getElementById(prefix + 'gl-search');
+        const dropdown = document.getElementById(prefix + 'gl-dropdown');
+        search.addEventListener('input', function (ev) {
+            const query = ev.target.value.trim();
+            clearTimeout(timer);
+            if (!query) { dropdown.style.display = 'none'; return; }
+            timer = setTimeout(function () {
+                fetch('/api/accounting/coa/search?q=' + encodeURIComponent(query) + '&limit=20', { headers: authHeaders() })
+                    .then(r => r.json())
+                    .then(function (json) {
+                        if (json.success && json.data?.length) {
+                            dropdown.innerHTML = json.data.map(a =>
+                                '<div class="bam-gl-sl-item" data-id="' + escapeHtml(a.account_id) + '" data-code="' + escapeHtml(a.account_code) + '" data-name="' + escapeHtml(a.account_title) + '" style="padding:10px 12px;border-bottom:1px solid #E4ECF2;cursor:pointer;font-size:13px;">' +
+                                    '<div style="font-weight:600;">' + escapeHtml(a.account_code) + '</div>' +
+                                    '<div style="font-size:11px;color:#999;margin-top:2px;">' + escapeHtml(a.account_title) + '</div>' +
+                                '</div>'
+                            ).join('');
+                            dropdown.style.display = 'block';
+                            dropdown.querySelectorAll('.bam-gl-sl-item').forEach(function (item) {
+                                item.addEventListener('mouseover', () => item.style.background = '#F4F7FA');
+                                item.addEventListener('mouseout', () => item.style.background = 'transparent');
+                                item.addEventListener('click', function () {
+                                    document.getElementById(prefix + 'gl-account-id').value = this.dataset.id;
+                                    search.value = this.dataset.code + ' — ' + this.dataset.name;
+                                    dropdown.style.display = 'none';
+                                    const selected = document.getElementById(prefix + 'gl-selected');
+                                    selected.innerHTML = '<strong>' + escapeHtml(this.dataset.code) + '</strong> — ' + escapeHtml(this.dataset.name);
+                                    selected.style.display = 'block';
+
+                                    bamSlReset(prefix);
+                                    bamSlEnable(prefix);
+                                    bamLoadSlCodesForAccount(prefix, this.dataset.id);
+                                });
+                            });
+                        } else {
+                            dropdown.innerHTML = '<div style="padding:10px;color:#999;font-size:12px;">No accounts found.</div>';
+                            dropdown.style.display = 'block';
+                        }
+                    })
+                    .catch(e => toast('GL search failed: ' + e.message, true));
+            }, 300);
+        });
+    }
+
+    document.addEventListener('click', function (e) {
+        ['field-', 'tag-'].forEach(function (prefix) {
+            if (!e.target.closest('#' + prefix + 'gl-search') && !e.target.closest('#' + prefix + 'gl-dropdown')) {
+                document.getElementById(prefix + 'gl-dropdown').style.display = 'none';
+            }
+            if (!e.target.closest('#' + prefix + 'sl-search') && !e.target.closest('#' + prefix + 'sl-dropdown')) {
+                document.getElementById(prefix + 'sl-dropdown').style.display = 'none';
+            }
+        });
+    });
+
+    ['field-', 'tag-'].forEach(function (prefix) {
+        bamBindGlSearch(prefix);
+        bamBindSlSearch(prefix);
+        bamBindSlCreate(prefix);
+    });
 
     function loadResponsibilityCenters() {
         fetch(API + '/lookup/responsibility-centers', { headers: authHeaders() })
@@ -586,23 +750,6 @@ html.afims-dark[data-bs-theme="dark"] #bamModule .bam-menu-item:hover { color:#f
                     const opt = document.createElement('option');
                     opt.value = rc.rc_id;
                     opt.textContent = rc.rc_code + ' — ' + rc.rc_name;
-                    sel.appendChild(opt);
-                });
-            })
-            .catch(() => {});
-    }
-
-    function loadFundSources() {
-        fetch(API + '/lookup/fund-sources', { headers: authHeaders() })
-            .then(r => r.json())
-            .then(function (json) {
-                const rows = (json && json.data) ? json.data : [];
-                const sel = document.getElementById('bamFilterFundSource');
-                sel.innerHTML = '<option value="">All Fund Sources</option>';
-                rows.forEach(function (fs) {
-                    const opt = document.createElement('option');
-                    opt.value = fs;
-                    opt.textContent = fs;
                     sel.appendChild(opt);
                 });
             })
@@ -627,26 +774,22 @@ html.afims-dark[data-bs-theme="dark"] #bamModule .bam-menu-item:hover { color:#f
     function buildListParams() {
         const params = new URLSearchParams();
         const status = document.getElementById('bamFilterStatus').value;
-        const classification = document.getElementById('bamFilterClassification').value;
-        const fundSource = document.getElementById('bamFilterFundSource').value;
         const search = document.getElementById('bamSearch').value.trim();
         if (status) params.set('status', status);
-        if (classification) params.set('classification', classification);
-        if (fundSource) params.set('fund_source', fundSource);
         if (search) params.set('search', search);
         return params;
     }
 
     function loadList() {
         const tbody = document.getElementById('bamTableBody');
-        tbody.innerHTML = '<tr class="fims-empty"><td colspan="12">Loading…</td></tr>';
+        tbody.innerHTML = '<tr class="fims-empty"><td colspan="10">Loading…</td></tr>';
         fetch(API + '/list?' + buildListParams().toString(), { headers: authHeaders() })
             .then(r => r.json())
             .then(function (json) {
                 const rows = (json && json.data) ? json.data : [];
                 document.getElementById('bamTableSubtitle').textContent = 'Bank Accounts (' + rows.length + ')';
                 if (!rows.length) {
-                    tbody.innerHTML = '<tr class="fims-empty"><td colspan="12">No records.</td></tr>';
+                    tbody.innerHTML = '<tr class="fims-empty"><td colspan="10">No records.</td></tr>';
                     return;
                 }
                 tbody.innerHTML = rows.map(function (r, i) {
@@ -658,21 +801,18 @@ html.afims-dark[data-bs-theme="dark"] #bamModule .bam-menu-item:hover { color:#f
                         '<td>' + escapeHtml(r.account_name) + (r.is_main_depository ? ' <span class="fims-badge fims-badge-blue">Main Depository</span>' : '') + '</td>' +
                         '<td class="fims-col-mono">' + escapeHtml(r.account_number || '') + '</td>' +
                         '<td>' + escapeHtml(r.bank_name || '') + (r.bank_branch ? '<br><span style="font-size:11px;color:var(--fims-text-subtle)">' + escapeHtml(r.bank_branch) + '</span>' : '') + '</td>' +
-                        '<td>' + classLabel(r.account_classification) + '</td>' +
-                        '<td>' + escapeHtml(r.fund_source || '—') + '</td>' +
                         '<td>' + regionLabel + '</td>' +
                         '<td class="text-center">' + (r.is_main_depository ? '<i class="fas fa-check" style="color:#000E3E"></i>' : '—') + '</td>' +
+                        '<td>' + escapeHtml(r.main_depository_account_name || '—') + '</td>' +
                         '<td class="text-center">' + statusBadge(r.status) + '</td>' +
                         '<td>' + escapeHtml(r.date_opened || '—') + '</td>' +
-                        '<td>' + escapeHtml(r.last_transaction_date || '—') + '</td>' +
                         '<td class="text-center">' +
                             '<div class="bam-menu">' +
                                 '<button type="button" class="bam-menu-trigger" aria-haspopup="true" aria-expanded="false">' +
                                     '<i class="fas fa-ellipsis-v"></i> Actions</button>' +
                                 '<div class="bam-menu-drop">' +
                                     '<button type="button" class="bam-menu-item" data-edit="' + r.bank_account_id + '"><i class="fas fa-pen"></i> Edit</button>' +
-                                    '<button type="button" class="bam-menu-item" data-tag-code="' + r.bank_account_id + '" data-tag-code-name="' + escapeHtml(r.account_name) + '" data-tag-code-current="' + escapeHtml(r.account_code || '') + '"><i class="fas fa-tag"></i> Tag GL Account Code</button>' +
-                                    '<button type="button" class="bam-menu-item" data-docs="' + r.bank_account_id + '" data-docs-name="' + escapeHtml(r.account_name) + '"><i class="fas fa-file-alt"></i> Documents</button>' +
+                                    '<button type="button" class="bam-menu-item" data-tag-code="' + r.bank_account_id + '" data-tag-code-name="' + escapeHtml(r.account_name) + '" data-tag-code-gl-id="' + escapeHtml(r.coa_account_id || '') + '" data-tag-code-gl-code="' + escapeHtml(r.gl_account_code || '') + '" data-tag-code-gl-title="' + escapeHtml(r.gl_account_title || '') + '" data-tag-code-sl="' + escapeHtml(r.sl_code || '') + '"><i class="fas fa-tag"></i> Tag GL/SL Account</button>' +
                                 '</div>' +
                             '</div>' +
                         '</td>' +
@@ -689,14 +829,16 @@ html.afims-dark[data-bs-theme="dark"] #bamModule .bam-menu-item:hover { color:#f
                 });
                 tbody.querySelectorAll('[data-tag-code]').forEach(function (btn) {
                     btn.addEventListener('click', function () {
-                        openTagCodeModal(this.dataset.tagCode, this.dataset.tagCodeName, this.dataset.tagCodeCurrent);
+                        openTagCodeModal(this.dataset.tagCode, this.dataset.tagCodeName, {
+                            glAccountId: this.dataset.tagCodeGlId,
+                            glCode: this.dataset.tagCodeGlCode,
+                            glTitle: this.dataset.tagCodeGlTitle,
+                            slCode: this.dataset.tagCodeSl,
+                        });
                     });
                 });
-                tbody.querySelectorAll('[data-docs]').forEach(function (btn) {
-                    btn.addEventListener('click', function () { openDocsModal(this.dataset.docs, this.dataset.docsName); });
-                });
             })
-            .catch(() => { tbody.innerHTML = '<tr class="fims-empty"><td colspan="12">Could not reach the server.</td></tr>'; });
+            .catch(() => { tbody.innerHTML = '<tr class="fims-empty"><td colspan="10">Could not reach the server.</td></tr>'; });
     }
 
     // ── Row Actions dropdown — fixed position below its button, so the table's overflow never clips it ──
@@ -722,8 +864,6 @@ html.afims-dark[data-bs-theme="dark"] #bamModule .bam-menu-item:hover { color:#f
     document.getElementById('bamFilterBtn').addEventListener('click', loadList);
     document.getElementById('bamResetBtn').addEventListener('click', function () {
         document.getElementById('bamFilterStatus').value = '';
-        document.getElementById('bamFilterClassification').value = '';
-        document.getElementById('bamFilterFundSource').value = '';
         document.getElementById('bamSearch').value = '';
         loadList();
     });
@@ -731,16 +871,122 @@ html.afims-dark[data-bs-theme="dark"] #bamModule .bam-menu-item:hover { color:#f
         if (e.key === 'Enter') loadList();
     });
 
-    // ── Register/Edit modal ──
+    // ── Register/Edit modal — single view, no step wizard; every field is
+    // shown at once (Account Info, the GL+SL two-step picker, Bank Info),
+    // all validated together by validateAccountModal() below. ──
+    // ── Restricted Funds (itemized rows + flat amount) — same shape/markup
+    // convention as Cash Position's own Restricted Funds editor, just
+    // field-prefixed ids since this lives inside Bank Management's modal. ──
+    function renderFieldRestrictedRows(rows) {
+        const tbody = document.getElementById('field-rf-body');
+        tbody.innerHTML = (rows || []).map(function (item, idx) {
+            return '<tr><td><input type="text" class="fims-input fims-input-sm field-rf-label" value="' + escapeHtml(item.label || '') + '"></td>' +
+                '<td><input type="number" step="0.01" class="fims-input fims-input-sm field-rf-amount" value="' + (item.amount || 0) + '"></td>' +
+                '<td><button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-remove-field-rf="' + idx + '"><i class="fas fa-trash"></i></button></td></tr>';
+        }).join('');
+        tbody.querySelectorAll('[data-remove-field-rf]').forEach(function (btn) {
+            btn.addEventListener('click', function () { btn.closest('tr').remove(); });
+        });
+    }
+    document.getElementById('field-rf-add-row-btn')?.addEventListener('click', function () {
+        const tbody = document.getElementById('field-rf-body');
+        const tr = document.createElement('tr');
+        tr.innerHTML = '<td><input type="text" class="fims-input fims-input-sm field-rf-label"></td>' +
+            '<td><input type="number" step="0.01" class="fims-input fims-input-sm field-rf-amount" value="0"></td>' +
+            '<td><button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-remove-field-rf><i class="fas fa-trash"></i></button></td>';
+        tr.querySelector('[data-remove-field-rf]').addEventListener('click', function () { tr.remove(); });
+        tbody.appendChild(tr);
+    });
+    function getFieldRestrictedBreakdown() {
+        return Array.from(document.querySelectorAll('#field-rf-body tr')).map(function (tr) {
+            return { label: tr.querySelector('.field-rf-label').value.trim(), amount: parseFloat(tr.querySelector('.field-rf-amount').value) || 0 };
+        }).filter(item => item.amount > 0);
+    }
+
+    // Saves whatever was entered in the Restricted Funds section as this
+    // account's TODAY fims.cash_position row, via the Cash Position
+    // module's own API — same computed-balance + save sequence Cash
+    // Position's "Add Restricted Fund" flow uses (getComputedBalance() for
+    // Beginning Balance/Receipts/Disbursements, since those still have to
+    // be correct even though this form never shows them). Skipped entirely
+    // when nothing was actually entered, so registering/editing an account
+    // without touching this section never creates a stray cash position
+    // row. Runs AFTER the account itself has already saved successfully.
+    function saveRestrictedFundsForAccount(bankAccountId) {
+        const restrictedAmount = parseFloat(document.getElementById('field-restricted-amount').value) || 0;
+        const restrictedBreakdown = getFieldRestrictedBreakdown();
+        if (restrictedAmount <= 0 && !restrictedBreakdown.length) {
+            return Promise.resolve();
+        }
+        const positionDate = new Date().toISOString().slice(0, 10);
+        return fetch(CASH_POSITION_API + '/updates/computed-balance?bank_account_id=' + bankAccountId + '&position_date=' + positionDate, { headers: authHeaders() })
+            .then(r => r.json())
+            .then(function (json) {
+                const d = (json && json.data) ? json.data : {};
+                return fetch(CASH_POSITION_API + '/updates/save', {
+                    method: 'POST',
+                    headers: jsonHeaders(),
+                    body: JSON.stringify({
+                        bank_account_id: bankAccountId,
+                        position_date: positionDate,
+                        update_type: 'ADJUSTMENT',
+                        opening_balance: d.opening_balance || 0,
+                        total_receipts: d.total_receipts || 0,
+                        total_disbursements: d.total_disbursements || 0,
+                        bank_statement_balance: '',
+                        restricted_amount: restrictedAmount,
+                        restricted_breakdown: restrictedBreakdown,
+                    }),
+                }).then(r => r.json());
+            })
+            .then(function (json) {
+                if (!json || !json.success) {
+                    toast((json && json.message) || 'Account saved, but restricted funds could not be recorded.', true);
+                }
+            })
+            .catch(() => toast('Account saved, but could not reach the server to record restricted funds.', true));
+    }
+
+    // field-main-depository-account-id: a separate field from
+    // field-is-main-depository — records WHICH other account is assigned
+    // as THIS account's Main Depository (main_depository_account_id,
+    // self-referencing FK — see BankManagementService). Only accounts
+    // actually tagged is_main_depository are valid candidates (assigning
+    // an account that isn't itself a Main Depository wouldn't make
+    // sense), minus whichever account is currently open in this modal
+    // (can't assign itself). Preselects whatever's already saved. Only
+    // takes effect on Save (read from doSaveAccount()'s payload below).
+    function refreshAssignedMainDepositorySelect(selectedId) {
+        const select = document.getElementById('field-main-depository-account-id');
+        const ownId = document.getElementById('field-bank-account-id').value;
+        fetch(API + '/accounts-for-region', { headers: authHeaders() })
+            .then(r => r.json())
+            .then(function (json) {
+                const rows = (json && json.success && Array.isArray(json.data)) ? json.data : [];
+                let html = '<option value="">— None —</option>';
+                html += rows.filter(row => row.is_main_depository && String(row.bank_account_id) !== String(ownId)).map(function (row) {
+                    const label = (row.account_name || '') + (row.bank_name ? ' (' + row.bank_name + ')' : '');
+                    return '<option value="' + row.bank_account_id + '">' + escapeHtml(label) + '</option>';
+                }).join('');
+                select.innerHTML = html;
+                select.value = selectedId || '';
+            })
+            .catch(function () { select.innerHTML = '<option value="">— None —</option>'; });
+    }
+
     function clearAccountModal() {
         document.getElementById('field-bank-account-id').value = '';
         document.getElementById('field-account-name').value = '';
         document.getElementById('field-account-number').value = '';
         document.getElementById('field-account-type').value = '';
-        document.getElementById('field-account-classification').value = '';
-        document.getElementById('field-fund-source').value = '';
         document.getElementById('field-rc-id').value = '';
-        document.getElementById('field-account-code').value = '';
+        document.getElementById('field-gl-account-id').value = '';
+        document.getElementById('field-gl-search').value = '';
+        document.getElementById('field-gl-dropdown').style.display = 'none';
+        document.getElementById('field-gl-dropdown').innerHTML = '';
+        document.getElementById('field-gl-selected').style.display = 'none';
+        bamSlReset('field-');
+        bamSlDisable('field-');
         bankSelect.value = '';
         bankInput.value = '';
         bankInput.style.display = 'none';
@@ -748,65 +994,17 @@ html.afims-dark[data-bs-theme="dark"] #bamModule .bam-menu-item:hover { color:#f
         document.getElementById('field-status').value = 'ACTIVE';
         document.getElementById('field-is-main-depository').checked = false;
         document.getElementById('field-date-opened').value = '';
-        document.getElementById('field-last-transaction-date').value = '';
-        document.getElementById('field-doc-link-name').value = '';
-        document.getElementById('field-doc-link-url').value = '';
-        pendingLinks = [];
-        existingDocs = [];
-        renderModalDocs();
-        goToStep(1);
+        document.getElementById('field-restricted-amount').value = 0;
+        renderFieldRestrictedRows([]);
+        refreshAssignedMainDepositorySelect('');
     }
 
-    // ── 3-step wizard (Account Info -> Bank Info -> Documents) ──
-    const BAM_TOTAL_STEPS = 3;
-    let bamCurrentStep = 1;
-
-    function validateStep(step) {
-        if (step === 1) {
-            if (!document.getElementById('field-account-name').value.trim()) return 'Account Name is required.';
-            if (!document.getElementById('field-account-number').value.trim()) return 'Account Number is required.';
-            if (!document.getElementById('field-account-classification').value) return 'Purpose is required.';
-        } else if (step === 2) {
-            if (!getBankNameValue()) return 'Bank Name is required.';
-        }
+    function validateAccountModal() {
+        if (!document.getElementById('field-account-name').value.trim()) return 'Account Name is required.';
+        if (!document.getElementById('field-account-number').value.trim()) return 'Account Number is required.';
+        if (!getBankNameValue()) return 'Bank Name is required.';
         return null;
     }
-
-    function goToStep(step) {
-        bamCurrentStep = step;
-        document.querySelectorAll('#m-bam-account .bam-step').forEach(function (el) {
-            el.style.display = (parseInt(el.dataset.step, 10) === step) ? '' : 'none';
-        });
-        document.querySelectorAll('#bamStepIndicator .bam-step-pill').forEach(function (pill) {
-            const n = parseInt(pill.dataset.stepPill, 10);
-            pill.classList.toggle('active', n === step);
-            pill.classList.toggle('done', n < step);
-        });
-        document.getElementById('bamBackBtn').style.display = step > 1 ? '' : 'none';
-        document.getElementById('bamNextBtn').style.display = step < BAM_TOTAL_STEPS ? '' : 'none';
-        document.getElementById('bamSaveBtn').style.display = step === BAM_TOTAL_STEPS ? '' : 'none';
-    }
-
-    document.getElementById('bamNextBtn').addEventListener('click', function () {
-        const err = validateStep(bamCurrentStep);
-        if (err) { toast(err, true); return; }
-        goToStep(Math.min(bamCurrentStep + 1, BAM_TOTAL_STEPS));
-    });
-    document.getElementById('bamBackBtn').addEventListener('click', function () {
-        goToStep(Math.max(bamCurrentStep - 1, 1));
-    });
-    document.querySelectorAll('#bamStepIndicator .bam-step-pill').forEach(function (pill) {
-        pill.style.cursor = 'pointer';
-        pill.addEventListener('click', function () {
-            const target = parseInt(this.dataset.stepPill, 10);
-            if (target <= bamCurrentStep) { goToStep(target); return; }
-            for (let s = bamCurrentStep; s < target; s++) {
-                const err = validateStep(s);
-                if (err) { toast(err, true); return; }
-            }
-            goToStep(target);
-        });
-    });
 
     function setBankNameValue(name) {
         const match = Array.from(bankSelect.options).find(o => o.value === name);
@@ -825,55 +1023,6 @@ html.afims-dark[data-bs-theme="dark"] #bamModule .bam-menu-item:hover { color:#f
         return bankSelect.value === '__other__' ? bankInput.value.trim() : bankSelect.value;
     }
 
-    // Renders both already-saved documents (existingDocs — fetched when
-    // editing, removed immediately via the real API) and not-yet-saved
-    // links (pendingLinks — only uploaded once the account itself is saved,
-    // since a brand-new account has no bank_account_id yet to attach to).
-    function renderModalDocs() {
-        const ul = document.getElementById('bamModalDocList');
-        const savedRows = existingDocs.map(function (d) {
-            return '<li class="bam-doc-row">' +
-                '<a href="' + escapeHtml(d.gdrive_link) + '" target="_blank" rel="noopener"><i class="fas fa-external-link-alt mr-1"></i>' + escapeHtml(d.link_name) + '</a>' +
-                '<button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-remove-existing="' + d.document_id + '"><i class="fas fa-trash"></i></button></li>';
-        });
-        const pendingRows = pendingLinks.map(function (l, idx) {
-            return '<li class="bam-doc-row"><span><i class="fas fa-link mr-1"></i>' + escapeHtml(l.link_name) + ' <em style="color:var(--fims-text-subtle)">(unsaved)</em></span>' +
-                '<button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-remove-pending="' + idx + '"><i class="fas fa-trash"></i></button></li>';
-        });
-        const rows = savedRows.concat(pendingRows);
-        ul.innerHTML = rows.length ? rows.join('') : '<li style="color:var(--fims-text-subtle);font-size:13px;">No documents yet.</li>';
-        ul.querySelectorAll('[data-remove-pending]').forEach(function (btn) {
-            btn.addEventListener('click', function () {
-                pendingLinks.splice(parseInt(this.dataset.removePending, 10), 1);
-                renderModalDocs();
-            });
-        });
-        ul.querySelectorAll('[data-remove-existing]').forEach(function (btn) {
-            btn.addEventListener('click', function () {
-                const documentId = this.dataset.removeExisting;
-                const accountId = document.getElementById('field-bank-account-id').value;
-                fetch(API + '/' + accountId + '/documents/remove', { method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ document_id: documentId }) })
-                    .then(r => r.json())
-                    .then(function (json) {
-                        if (!json || !json.success) { toast((json && json.message) || 'Could not remove link.', true); return; }
-                        existingDocs = existingDocs.filter(d => String(d.document_id) !== String(documentId));
-                        renderModalDocs();
-                    })
-                    .catch(() => toast('Could not reach the server.', true));
-            });
-        });
-    }
-
-    document.getElementById('bamAddLinkBtn').addEventListener('click', function () {
-        const name = document.getElementById('field-doc-link-name').value.trim();
-        const url = document.getElementById('field-doc-link-url').value.trim();
-        if (!name || !url) { toast('Link name and URL are required.', true); return; }
-        pendingLinks.push({ link_name: name, gdrive_link: url });
-        document.getElementById('field-doc-link-name').value = '';
-        document.getElementById('field-doc-link-url').value = '';
-        renderModalDocs();
-    });
-
     function openAccountModal(id) {
         clearAccountModal();
         if (!id) {
@@ -891,18 +1040,26 @@ html.afims-dark[data-bs-theme="dark"] #bamModule .bam-menu-item:hover { color:#f
                 document.getElementById('field-account-name').value = d.account_name || '';
                 document.getElementById('field-account-number').value = d.account_number || '';
                 document.getElementById('field-account-type').value = d.account_type || '';
-                document.getElementById('field-account-classification').value = d.account_classification || '';
-                document.getElementById('field-fund-source').value = d.fund_source || '';
                 document.getElementById('field-rc-id').value = d.rc_id || '';
-                document.getElementById('field-account-code').value = d.account_code || '';
+                if (d.coa_account_id) {
+                    document.getElementById('field-gl-account-id').value = d.coa_account_id;
+                    document.getElementById('field-gl-search').value = (d.gl_account_code || '') + ' — ' + (d.gl_account_title || '');
+                    document.getElementById('field-gl-selected').innerHTML = '<strong>' + escapeHtml(d.gl_account_code || '') + '</strong> — ' + escapeHtml(d.gl_account_title || '');
+                    document.getElementById('field-gl-selected').style.display = 'block';
+                    bamSlEnable('field-');
+                    bamLoadSlCodesForAccount('field-', d.coa_account_id, d.sl_code || null);
+                } else {
+                    document.getElementById('field-gl-account-id').value = '';
+                    document.getElementById('field-gl-search').value = '';
+                    document.getElementById('field-gl-selected').style.display = 'none';
+                    bamSlDisable('field-');
+                }
                 setBankNameValue(d.bank_name || '');
                 document.getElementById('field-bank-branch').value = d.bank_branch || '';
                 document.getElementById('field-status').value = d.status || 'ACTIVE';
                 document.getElementById('field-is-main-depository').checked = !!d.is_main_depository;
+                refreshAssignedMainDepositorySelect(d.main_depository_account_id || '');
                 document.getElementById('field-date-opened').value = d.date_opened || '';
-                document.getElementById('field-last-transaction-date').value = d.last_transaction_date || '';
-                existingDocs = d.documents || [];
-                renderModalDocs();
                 openModal('m-bam-account');
             })
             .catch(() => toast('Could not reach the server.', true));
@@ -910,132 +1067,88 @@ html.afims-dark[data-bs-theme="dark"] #bamModule .bam-menu-item:hover { color:#f
 
     document.getElementById('bamRegisterBtn').addEventListener('click', function () { openAccountModal(null); });
 
-    function validateAccountModal() {
-        return validateStep(1) || validateStep(2);
-    }
-
-    document.getElementById('bamSaveBtn').addEventListener('click', function () {
-        const err = validateAccountModal();
-        if (err) { toast(err, true); return; }
-
+    // Actually submits the account (and, if anything was entered,
+    // Restricted Funds). field-is-main-depository tags THIS account on
+    // Save; field-main-depository-account-id assigns which other account
+    // is its Main Depository, also only on Save.
+    function doSaveAccount() {
         const id = document.getElementById('field-bank-account-id').value;
         const payload = {
             account_name: document.getElementById('field-account-name').value.trim(),
             account_number: document.getElementById('field-account-number').value.trim(),
             account_type: document.getElementById('field-account-type').value,
-            account_classification: document.getElementById('field-account-classification').value,
-            fund_source: document.getElementById('field-fund-source').value.trim(),
             rc_id: document.getElementById('field-rc-id').value,
-            account_code: document.getElementById('field-account-code').value,
+            coa_account_id: document.getElementById('field-gl-account-id').value,
+            sl_code: document.getElementById('field-sl-selected-code-value').value,
             bank_name: getBankNameValue(),
             bank_branch: document.getElementById('field-bank-branch').value.trim(),
             status: document.getElementById('field-status').value,
             is_main_depository: document.getElementById('field-is-main-depository').checked,
+            main_depository_account_id: document.getElementById('field-main-depository-account-id').value,
             date_opened: document.getElementById('field-date-opened').value,
-            last_transaction_date: document.getElementById('field-last-transaction-date').value,
         };
         const url = id ? (API + '/' + id + '/update') : (API + '/store');
-        this.disabled = true;
+        const btn = document.getElementById('bamSaveBtn');
+        btn.disabled = true;
         fetch(url, { method: 'POST', headers: jsonHeaders(), body: JSON.stringify(payload) })
             .then(r => r.json())
             .then(function (json) {
-                if (!json || !json.success) { toast((json && json.message) || 'Save failed.', true); return; }
+                if (!json || !json.success) { toast((json && json.message) || 'Save failed.', true); btn.disabled = false; return; }
                 const savedId = id || json.data.bank_account_id;
-                const linkCalls = pendingLinks.map(function (l) {
-                    return fetch(API + '/' + savedId + '/documents/link', { method: 'POST', headers: jsonHeaders(), body: JSON.stringify(l) });
-                });
-                Promise.all(linkCalls).finally(function () {
+                saveRestrictedFundsForAccount(savedId).finally(function () {
                     toast('Bank account saved.');
                     closeModal('m-bam-account');
                     loadList();
                     loadStats();
-                    loadFundSources();
+                    btn.disabled = false;
                 });
             })
-            .catch(() => toast('Could not reach the server.', true))
-            .finally(() => { document.getElementById('bamSaveBtn').disabled = false; });
+            .catch(() => { toast('Could not reach the server.', true); btn.disabled = false; });
+    }
+
+    document.getElementById('bamSaveBtn').addEventListener('click', function () {
+        const err = validateAccountModal();
+        if (err) { toast(err, true); return; }
+        doSaveAccount();
     });
 
-    // ── Documents modal ──
-    let docsAccountId = null;
-    function openDocsModal(id, name) {
-        docsAccountId = id;
-        document.getElementById('bamDocsAccountName').textContent = name || '';
-        document.getElementById('bamDocsLinkName').value = '';
-        document.getElementById('bamDocsLinkUrl').value = '';
-        loadDocsList();
-        openModal('m-bam-docs');
-    }
-
-    function renderDocsList(rows) {
-        const ul = document.getElementById('bamDocsList');
-        if (!rows.length) {
-            ul.innerHTML = '<li style="color:var(--fims-text-subtle);font-size:13px;">No documents yet.</li>';
-            return;
-        }
-        ul.innerHTML = rows.map(function (d) {
-            return '<li class="bam-doc-row">' +
-                '<a href="' + escapeHtml(d.gdrive_link) + '" target="_blank" rel="noopener"><i class="fas fa-external-link-alt mr-1"></i>' + escapeHtml(d.link_name) + '</a>' +
-                '<button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-remove-doc="' + d.document_id + '"><i class="fas fa-trash"></i></button></li>';
-        }).join('');
-        ul.querySelectorAll('[data-remove-doc]').forEach(function (btn) {
-            btn.addEventListener('click', function () { removeDoc(this.dataset.removeDoc); });
-        });
-    }
-
-    function loadDocsList() {
-        fetch(API + '/' + docsAccountId + '/documents', { headers: authHeaders() })
-            .then(r => r.json())
-            .then(json => renderDocsList((json && json.data) || []))
-            .catch(() => { document.getElementById('bamDocsList').innerHTML = '<li>Could not reach the server.</li>'; });
-    }
-
-    document.getElementById('bamDocsAddBtn').addEventListener('click', function () {
-        const name = document.getElementById('bamDocsLinkName').value.trim();
-        const url = document.getElementById('bamDocsLinkUrl').value.trim();
-        if (!name || !url) { toast('Link name and URL are required.', true); return; }
-        fetch(API + '/' + docsAccountId + '/documents/link', { method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ link_name: name, gdrive_link: url }) })
-            .then(r => r.json())
-            .then(function (json) {
-                if (!json || !json.success) { toast((json && json.message) || 'Could not add link.', true); return; }
-                document.getElementById('bamDocsLinkName').value = '';
-                document.getElementById('bamDocsLinkUrl').value = '';
-                loadDocsList();
-            })
-            .catch(() => toast('Could not reach the server.', true));
-    });
-
-    function removeDoc(documentId) {
-        fetch(API + '/' + docsAccountId + '/documents/remove', { method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ document_id: documentId }) })
-            .then(r => r.json())
-            .then(function (json) {
-                if (!json || !json.success) { toast((json && json.message) || 'Could not remove link.', true); return; }
-                loadDocsList();
-            })
-            .catch(() => toast('Could not reach the server.', true));
-    }
-
-    // ── Quick tag GL account code modal ──
+    // ── Quick tag GL/SL account modal ──
     let tagCodeAccountId = null;
-    function openTagCodeModal(id, name, currentCode) {
+    function openTagCodeModal(id, name, current) {
         tagCodeAccountId = id;
         document.getElementById('tagCodeAccountName').textContent = name || '';
-        const sel = document.getElementById('tagCodeSelect');
-        if (!bamCoaRows.length) {
-            loadChartOfAccounts().then(function () { sel.value = currentCode || ''; });
-        } else {
-            sel.value = currentCode || '';
+
+        document.getElementById('tag-gl-account-id').value = '';
+        document.getElementById('tag-gl-search').value = '';
+        document.getElementById('tag-gl-dropdown').style.display = 'none';
+        document.getElementById('tag-gl-dropdown').innerHTML = '';
+        document.getElementById('tag-gl-selected').style.display = 'none';
+        bamSlReset('tag-');
+        bamSlDisable('tag-');
+
+        if (current && current.glAccountId) {
+            document.getElementById('tag-gl-account-id').value = current.glAccountId;
+            document.getElementById('tag-gl-search').value = (current.glCode || '') + ' — ' + (current.glTitle || '');
+            const selected = document.getElementById('tag-gl-selected');
+            selected.innerHTML = '<strong>' + escapeHtml(current.glCode || '') + '</strong> — ' + escapeHtml(current.glTitle || '');
+            selected.style.display = 'block';
+            bamSlEnable('tag-');
+            bamLoadSlCodesForAccount('tag-', current.glAccountId, current.slCode || null);
         }
+
         openModal('m-bam-tag-code');
     }
     document.getElementById('tagCodeSaveBtn').addEventListener('click', function () {
-        const accountCode = document.getElementById('tagCodeSelect').value;
+        const payload = {
+            coa_account_id: document.getElementById('tag-gl-account-id').value,
+            sl_code: document.getElementById('tag-sl-selected-code-value').value,
+        };
         this.disabled = true;
-        fetch(API + '/' + tagCodeAccountId + '/tag-account-code', { method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ account_code: accountCode }) })
+        fetch(API + '/' + tagCodeAccountId + '/tag-account-code', { method: 'POST', headers: jsonHeaders(), body: JSON.stringify(payload) })
             .then(r => r.json())
             .then(function (json) {
-                if (!json || !json.success) { toast((json && json.message) || 'Could not tag GL account code.', true); return; }
-                toast('GL account code updated.');
+                if (!json || !json.success) { toast((json && json.message) || 'Could not tag GL/SL account.', true); return; }
+                toast('GL/SL account updated.');
                 closeModal('m-bam-tag-code');
                 loadList();
             })
@@ -1047,7 +1160,5 @@ html.afims-dark[data-bs-theme="dark"] #bamModule .bam-menu-item:hover { color:#f
     loadStats();
     loadList();
     loadResponsibilityCenters();
-    loadChartOfAccounts();
-    loadFundSources();
 })();
 </script>

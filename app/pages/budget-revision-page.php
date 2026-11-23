@@ -5,15 +5,21 @@ namespace PHPMaker2024\FIMS;
 /**
  * budget-revision-page.php — "Budget Revision Requests": the requests to change a BUDGET LINE's amount (a chart-of-accounts line
  * item of a budget request) and optionally move the difference to a second budget line. Originating offices file and edit
- * them; the Financial Management Department (FMD) reviews them — approves or declines. Approving changes the lines'
- * budget_line_items.adjustment AND budget_line_items.suggested_amount (by the same amount): the From line goes down, the To
- * line goes up.
+ * them; the Financial Management Department (FMD) reviews them — approves or declines. A request goes Saved -> Submitted -> Approved
+ * (or Declined): filing it SAVES it, which leaves it editable; "Process" in its Actions menu submits it, after which it can no longer be
+ * edited, and FMD reviews the Submitted ones. Approving does not change the budget lines in place: it writes a transaction row per line to the
+ * ledger fims.budget_line_item_revision_transaction (the amount, the previous amount and the new amount) — the From line goes down, the To line goes up — and
+ * the COB's Revision Amount is the sum of those rows.
  *
  * Who is looking decides what a row offers. There is no point-of-view switch: it follows the logged-in user's office.
  *
  * Two kinds of request, chosen with the Revision / Realignment tabs of the Add / Edit form (form/budget-rev-form.php): a REVISION
  * changes one budget line's amount (no To budget line); a REALIGNMENT moves funds from the From line to a To line. The table's Type
  * column says which one each request was filed as (fims.budget_revision.request_type, kept in step with the To line by the API).
+ *
+ * The Amount field means something different on each tab: a Revision's is the line's NEW amount, a Realignment's is the amount TRANSFERRED to
+ * the To line. Either way the request is stored as the From line's amount before → after (from_amount → to_amount; a Realignment saves
+ * to_amount = from_amount − the amount transferred), so the table's From / To / Change columns and the approval work the same for both.
  */
 @session_start();
 $_brv_api = Config('API.FIMS_URL');
@@ -21,27 +27,40 @@ $_brv_api = Config('API.FIMS_URL');
 // Who is looking: the logged-in user's office. uac.users gives the rc_id (that column only) and is joined to
 // fims.responsibility_code for the RC itself — the same lookup as budget-req-page.php and memo-req-page.php.
 //   FMD (the Financial Management Department: rc_code 35-074-0000000-032, rc_id 013 in this data) -> the FMD point of
-//       view: every row gets a "Review Request" action (details + Approve / Decline), or "View Details" once it has been
-//       decided. FMD does not edit the offices' requests.
-//   Anyone else -> the originating point of view: they file revision requests and get an Edit action on each row
-//       (switched off once the request is approved, because it has then been applied to its budget request).
+//       view: a Submitted row gets a "Review Request" action (details + Approve / Decline), every other one "View Details".
+//       FMD does not edit the offices' requests — only the Saved ones it filed itself get Edit and Process.
+//   Anyone else -> the originating point of view: they file revision requests, and a Saved row gets Edit and Process actions.
+//       Edit is switched off once the request has been processed (Submitted), approved or declined — a processed request is in
+//       front of the reviewers, an approved one has been applied to its budget lines.
 // FMD is recognised by its rc_code, NOT its rc_id (the id's format differs between datasets: "013" vs "RC-013"). Mirrors
-// GlobalService::CENTRAL_REVIEW_RC_CODE. A user whose office can't be found (no users row — e.g. the built-in
-// administrator —, no rc_id, or a failed lookup) gets the originating view, never an error page and never the review actions.
+// GlobalService::CENTRAL_REVIEW_RC_CODE. A user whose office can't be found (no users row, no rc_id, or a failed lookup) gets the
+// originating view, never an error page and never the review actions — unless they are an administrator (see below).
+//   Administrator (user level -1) -> no restriction: can review (Approve / Decline) any Submitted request, whatever office it
+//       belongs to, and keeps Edit + Process on every Saved one. Same rule as the rest of the app (DisbursementVoucherService,
+//       voucher/readone.php): the built-in administrator (user_id -1, no uac.users row) or a uac.users row whose user_level_id
+//       is '-1'. NOT IsSysAdmin(), which only tracks PHPMaker's hardcoded admin login and is never true for a DB-authenticated user.
 $userid = CurrentUserID();
 $_brv_fmdRcCode = '35-074-0000000-032';
 $_brv_isFmd = false;
+$_brv_isAdmin = (int) $userid === -1
+    || in_array(-1, array_map('intval', explode(',', (string) CurrentUserLevel())), true);
 try {
+    // LEFT JOIN: an administrator may have no office (rc_id) — the user row is still needed for its user_level_id
     $_brv_rc = ExecuteRow(
-        'SELECT rc.rc_id, rc.rc_code, rc.rc_name FROM uac.users u '
-        .'JOIN fims.responsibility_code rc ON rc.rc_id = u.rc_id WHERE u.user_id = '.(int) $userid,
+        'SELECT u.user_level_id, rc.rc_id, rc.rc_code, rc.rc_name FROM uac.users u '
+        .'LEFT JOIN fims.responsibility_code rc ON rc.rc_id = u.rc_id WHERE u.user_id = '.(int) $userid,
         'DB'
     ) ?: null;
     $_brv_isFmd = $_brv_rc !== null && trim((string) ($_brv_rc['rc_code'] ?? '')) === $_brv_fmdRcCode;
+    if ($_brv_rc !== null && trim((string) ($_brv_rc['user_level_id'] ?? '')) === '-1') {
+        $_brv_isAdmin = true;
+    }
 } catch (\Throwable $e) {
     $_brv_isFmd = false;
     LogError('budget-revision-page: could not look up the current user\'s RC — '.$e->getMessage());
 }
+// Who gets the review actions (details + Approve / Decline on a Submitted request): FMD, and the administrator without restriction.
+$_brv_canReview = $_brv_isFmd || $_brv_isAdmin;
 ?>
 
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -102,9 +121,9 @@ try {
             </div>
             <div>
                 <div class="nha-hdr-title">Budget Revision Requests</div>
-                <p class="nha-hdr-sub" id="brv-hdr-sub"><?php echo $_brv_isFmd
-                    ? 'Review the revision and realignment requests filed by the offices — approve or decline them.'
-                    : 'File a revision or realignment request for a budget request and follow its status.'; ?></p>
+                <p class="nha-hdr-sub" id="brv-hdr-sub"><?php echo $_brv_canReview
+                    ? 'Review the revision and realignment requests the offices have submitted — approve or decline them.'
+                    : 'File a revision or realignment request and save it, then Process it to submit it for review — and follow its status.'; ?></p>
             </div>
         </div>
         <div class="nha-hdr-r">
@@ -200,16 +219,26 @@ try {
    One row per revision request: Request No. (its id — the number the details modal is titled with, the fiscal year of
    the budget line's request under it), the Budget Line being revised (its account, and where it sits; + the To line when
    funds move to another one), From / To / Change amounts, Reason, Status, and when it was requested and by whom.
-   Row actions depend on who is looking (BRV_IS_FMD, set by the PHP at the top of this file):
-     FMD         -> Review Request (pending) / View Details (decided): the details modal with Approve / Decline
-     anyone else -> Edit (off once the request is approved)
-   Delete is not offered to either. The API does not enforce this split — it only decides what the page offers.
+   A request is filed as SAVED; Process (Saved -> Submitted) hands it to FMD and ends editing; FMD then approves or declines it.
+   Row actions depend on who is looking (BRV_CAN_REVIEW / BRV_IS_ADMIN, set by the PHP at the top of this file) and on the request's status:
+     FMD         -> Review Request (Submitted) / View Details (any other): the details modal with Approve / Decline;
+                    and Edit + Process on a Saved request that FMD itself filed
+     Admin       -> the same review actions as FMD, with no restriction; plus Edit + Process on ANY Saved request
+     anyone else -> Edit + Process on a Saved request; Edit is off from then on (Submitted, Approved, Declined)
+   Delete is not offered to either. The API enforces what can be edited / processed / reviewed by status (Saved / Saved / Submitted),
+   but not who does it — that split only decides what the page offers.
 ═══════════════════════════════════════════════════════════════ */
 
 const BRV_BASE = '<?php echo $_brv_api; ?>';
 const BRV_API  = BRV_BASE + '/budget_revision';
 // true when the logged-in user belongs to the Financial Management Department (see the PHP at the top).
 const BRV_IS_FMD = <?php echo $_brv_isFmd ? 'true' : 'false'; ?>;
+// true when the logged-in user is an administrator (user level -1): no restriction on reviewing or editing
+const BRV_IS_ADMIN = <?php echo $_brv_isAdmin ? 'true' : 'false'; ?>;
+// who is offered Review Request / Approve / Decline: FMD, or the administrator
+const BRV_CAN_REVIEW = <?php echo $_brv_canReview ? 'true' : 'false'; ?>;
+// the logged-in user's id (the built-in administrator is -1): a request's user_id is who filed it
+const BRV_USER_ID = <?php echo (int) $userid; ?>;
 
 let brv_page = 1;
 let brv_viewRow = null;   // the revision currently open in the details modal
@@ -219,9 +248,10 @@ const BRV_PAGE_SIZE = 15;
 // status_for = 'budget_revision') → label + badge class. A FALLBACK only: the badge is painted with the status row's own
 // colour (status_color) and name (status_name) whenever the API sends them — see brv_statusBadge().
 const BRV_STATUS = {
-    PENDING : { label: 'Pending',  cls: 'nha-bdg-amber' },
-    APPROVED: { label: 'Approved', cls: 'nha-bdg-green' },
-    DECLINED: { label: 'Declined', cls: 'nha-bdg-red'   },
+    SAVED    : { label: 'Saved',     cls: 'nha-bdg-gray'  },   // filed, still editable
+    SUBMITTED: { label: 'Submitted', cls: 'nha-bdg-amber' },   // processed: waiting for FMD, no more editing
+    APPROVED : { label: 'Approved',  cls: 'nha-bdg-green' },
+    DECLINED : { label: 'Declined',  cls: 'nha-bdg-red'   },
 };
 
 // What kind of request a row is: a REALIGNMENT moves funds to a To budget line, a REVISION only changes the From line's amount. The API
@@ -390,27 +420,43 @@ const BRV_ICON_VIEW  = '<svg width="13" height="13" fill="none" viewBox="0 0 24 
 const BRV_ICON_REVIEW = '<svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>';
 const BRV_ICON_EDIT  = '<svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>';
 
-// The menu a row gets depends on who is looking (BRV_IS_FMD) and, for the originating view, on the request's status:
-// an APPROVED request has already been applied to its budget request, so Edit is switched off.
+const BRV_ICON_PROCESS = '<svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>';
+
+// The menu a row gets depends on the request's status and on who is looking (BRV_CAN_REVIEW, BRV_IS_ADMIN):
+//   Saved      -> Edit and Process (Process submits it; it can't be edited after that). FMD gets them only on a request it filed itself,
+//                 and "View Details" besides — FMD does not touch the offices' drafts. An administrator gets them on any request.
+//   Submitted  -> FMD / administrator: Review Request (Approve / Decline). Anyone else: Edit, switched off.
+//   Approved / Declined -> FMD / administrator: View Details. Anyone else: Edit, switched off (an approved request has been applied to its budget lines).
 function brv_rowActions(r) {
     const id = Number(r.id);
-    let item;
-    if (BRV_IS_FMD) {
-        const pending = r.status === 'PENDING';
-        item = `<button type="button" class="nha-menu-item" onclick="brv_closeMenus();brv_view(${id});">
-            ${pending ? BRV_ICON_REVIEW : BRV_ICON_VIEW}
-            ${pending ? 'Review Request' : 'View Details'}
-        </button>`;
-    } else if (r.status === 'APPROVED') {
-        item = `<button type="button" class="nha-menu-item" disabled title="Approved requests can't be edited">
+    const saved = r.status === 'SAVED';
+    const own   = Number(r.user_id) === BRV_USER_ID;
+    const items = [];
+    const editAndProcess = () => [
+        `<button type="button" class="nha-menu-item" onclick="brv_closeMenus();brv_edit(${id});">
             ${BRV_ICON_EDIT}
             Edit
-        </button>`;
+        </button>`,
+        `<button type="button" class="nha-menu-item" onclick="brv_closeMenus();brv_process(${id});">
+            ${BRV_ICON_PROCESS}
+            Process
+        </button>`,
+    ];
+
+    if (BRV_CAN_REVIEW) {
+        const review = r.status === 'SUBMITTED';
+        items.push(`<button type="button" class="nha-menu-item" onclick="brv_closeMenus();brv_view(${id});">
+            ${review ? BRV_ICON_REVIEW : BRV_ICON_VIEW}
+            ${review ? 'Review Request' : 'View Details'}
+        </button>`);
+        if (saved && (own || BRV_IS_ADMIN)) items.push(...editAndProcess());
+    } else if (saved) {
+        items.push(...editAndProcess());
     } else {
-        item = `<button type="button" class="nha-menu-item" onclick="brv_closeMenus();brv_edit(${id});">
+        items.push(`<button type="button" class="nha-menu-item" disabled title="Only a saved request can be edited — this one is ${brv_esc((BRV_STATUS[r.status]?.label || r.status_name || 'no longer saved').toLowerCase())}">
             ${BRV_ICON_EDIT}
             Edit
-        </button>`;
+        </button>`);
     }
 
     return `<div class="nha-tools-menu">
@@ -418,7 +464,7 @@ function brv_rowActions(r) {
             <svg fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
             Actions
         </button>
-        <div class="nha-tools-dropdown">${item}</div>
+        <div class="nha-tools-dropdown">${items.join('')}</div>
     </div>`;
 }
 
@@ -485,8 +531,13 @@ function brv_openModal(mode, row = null) {
         $brv('brv-line-id').value = row?.from_budget_line_item_id || '';
         $brv('brv-to-line-id').value = row?.to_budget_line_item_id || '';
     }
-    $brv('brv-from-amount').value = row?.from_amount ?? '';
-    $brv('brv-to-amount').value = row?.to_amount ?? '';
+    $brv('brv-from-amount').value = brv_amtText(row?.from_amount);
+    // A Realignment's Amount field is the amount TRANSFERRED, which is stored as the From line's amount before → after (from_amount →
+    // to_amount): show the difference. A Revision's is the line's new amount, shown as stored.
+    const transferred = row && brv_typeOf(row) === 'REALIGNMENT'
+        ? Math.max(0, Math.round((Number(row.from_amount || 0) - Number(row.to_amount || 0)) * 100) / 100)
+        : null;
+    $brv('brv-to-amount').value = brv_amtText(transferred !== null ? transferred : row?.to_amount);
     $brv('brv-reason').value = row?.reason || '';
 
     $brv('brv-overlay').classList.add('open');
@@ -503,8 +554,8 @@ async function brv_edit(id) {
         const res  = await fetch(`${BRV_API}/read/${id}`, { credentials: 'same-origin', headers: brv_apiHeaders() });
         const json = await res.json();
         if (!json.success) throw new Error(json.message || 'Failed to load budget revision request.');
-        if (json.data.status === 'APPROVED') {   // approved after this page was loaded
-            brv_toast("This request is already approved, so it can't be edited.", 'warning');
+        if (json.data.status !== 'SAVED') {   // processed (or decided) after this page was loaded
+            brv_toast(`This request is already ${(BRV_STATUS[json.data.status]?.label || json.data.status_name || 'processed').toLowerCase()}, so it can't be edited — only a saved request can be.`, 'warning');
             brv_load();
             return;
         }
@@ -522,21 +573,27 @@ async function brv_save(ev) {
     const id   = $brv('brv-id').value;
 
     const type = $brv('brv-type').value === 'REALIGNMENT' ? 'REALIGNMENT' : 'REVISION';   // the tab the form is on
+    // What was typed in the Amount field: a Revision's new amount, or the amount a Realignment TRANSFERS. The form turns it into the
+    // two amounts that are stored (a Realignment: to_amount = the From line's amount − the amount transferred — see brvForm.amounts()).
+    const typedAmount = brv_amtRaw('brv-to-amount');
+    const amounts = window.brvForm?.amounts?.() ?? { from_amount: brv_amtRaw('brv-from-amount'), to_amount: typedAmount };
     const payload = {
         request_type             : type,
         from_budget_line_item_id : $brv('brv-line-id').value,
         // a Revision has no To line ('' also clears one on edit); a Realignment must name it
         to_budget_line_item_id   : type === 'REALIGNMENT' ? $brv('brv-to-line-id').value : '',
-        from_amount              : $brv('brv-from-amount').value,
-        to_amount                : $brv('brv-to-amount').value,
+        from_amount              : amounts.from_amount,
+        to_amount                : amounts.to_amount,
         reason                   : $brv('brv-reason').value.trim(),
     };
 
     if (!payload.from_budget_line_item_id) { brv_toast('Please select a From budget line.', 'error'); return; }
     if (type === 'REALIGNMENT' && !payload.to_budget_line_item_id) { brv_toast('Please select a To budget line to move the funds to.', 'error'); return; }
-    if (payload.to_budget_line_item_id && Number(payload.to_amount) >= Number(payload.from_amount)) {
-        brv_toast('To Amount must be lower than From Amount to move funds to the To budget line.', 'error');
-        return;
+    if (type === 'REALIGNMENT') {
+        // more than zero, and no more than the From line holds
+        const msg = window.brvForm?.moveAmountError?.(typedAmount, payload.from_amount)
+            || (Number(typedAmount) > 0 ? '' : 'The amount to transfer must be more than zero.');
+        if (msg) { brv_toast(msg, 'error'); return; }
     }
 
     window.PagePreloader?.show();
@@ -552,11 +609,35 @@ async function brv_save(ev) {
         const json = await res.json();
         if (!json.success) throw new Error(json.message || 'Failed to save budget revision request.');
 
-        brv_toast(`Budget revision request ${mode === 'edit' ? 'updated' : 'created'} successfully.`, 'success');
+        brv_toast(mode === 'edit'
+            ? 'Budget revision request updated. Choose Process to submit it for review.'
+            : 'Budget revision request saved. Choose Process in its Actions menu to submit it for review.', 'success');
         brv_closeModal();
         brv_load();
     } catch (e) {
         brv_toast(e.message, 'error');
+    } finally {
+        window.PagePreloader?.hide();
+    }
+}
+
+/* ── Process: submit a saved request for review ────────────── */
+// Saved -> Submitted. Nothing is applied to the budget lines yet — that happens when FMD approves it. A processed request can no longer
+// be edited, so ask first.
+async function brv_process(id) {
+    if (!id || !confirm(`Process budget revision request #${id}?\n\nIt will be submitted for review and can no longer be edited.`)) return;
+
+    window.PagePreloader?.show();
+    try {
+        const res  = await fetch(`${BRV_API}/process/${id}`, { method: 'PUT', credentials: 'same-origin', headers: brv_apiHeaders() });
+        const json = await res.json().catch(() => null);
+        if (!res.ok || !json || !json.success) throw new Error(json?.message || 'Failed to process budget revision request.');
+
+        brv_toast(json.message || `Budget revision request #${id} processed.`, 'success');
+        brv_load();
+    } catch (e) {
+        brv_toast(e.message, 'error');
+        brv_load();   // it may have been processed (or changed) by someone else: show what it is now
     } finally {
         window.PagePreloader?.hide();
     }
@@ -586,11 +667,12 @@ function brv_openView(r) {
     $brv('brv-view-title').textContent = `Budget ${BRV_TYPE[brv_typeOf(r)].label} Request #${r.id}`;
 
     // the budget line being revised: its request's status, its account, where it sits (request · office · fiscal year, program ›
-    // project, particulars) and its CURRENT amount (proposed + adjustment). One that no longer exists says so.
+    // project, particulars) and its CURRENT amount — its remaining balance, the "Current balance" the form shows. One that no longer exists says so.
     brv_paintStatus($brv('brv-view-type'), r.budget_req_status_name, r.budget_req_status_color);
     $brv('brv-view-title-req').textContent = brv_lineTitle(r, '');
     $brv('brv-view-req-sub').textContent = brv_lineSub(r, '');
     $brv('brv-view-req-amount').textContent = brv_fmtMoney(r.line_amount);
+    $brv('brv-view-req-amt-lbl').textContent = 'Current balance';
 
     // the To line — a card when the revision has one, a one-line note when it doesn't
     const hasTo = !!r.to_budget_line_item_id;
@@ -601,6 +683,7 @@ function brv_openView(r) {
         $brv('brv-view-to-title-req').textContent = brv_lineTitle(r, 'to_');
         $brv('brv-view-to-req-sub').textContent = brv_lineSub(r, 'to_');
         $brv('brv-view-to-req-amount').textContent = brv_fmtMoney(r.to_line_amount);
+        $brv('brv-view-to-req-amt-lbl').textContent = 'Current balance';
     }
 
     // the revision
@@ -616,19 +699,20 @@ function brv_openView(r) {
     reason.classList.toggle('is-empty', !r.reason);
     $brv('brv-view-meta').textContent = `Requested by ${brv_requestedBy(r)} on ${brv_fmtDateTime(r.created_at)}`;
 
-    // status — Decline / Approve only while the request is still pending, and only for FMD (the reviewers)
-    const known   = BRV_STATUS[r.status];
-    const s       = known || { label: r.status || 'Unknown', cls: 'nha-bdg-gray' };
-    const pending = r.status === 'PENDING';
-    const label   = r.status_name || s.label;   // the settings_status name, else the fallback label
-    const style   = brv_statusStyle(r.status_color);
-    const badge   = $brv('brv-view-status');
+    // status — Decline / Approve only while the request is Submitted (processed, waiting for a decision), and only for the reviewers (FMD, or the administrator)
+    const known     = BRV_STATUS[r.status];
+    const s         = known || { label: r.status || 'Unknown', cls: 'nha-bdg-gray' };
+    const submitted = r.status === 'SUBMITTED';
+    const label     = r.status_name || s.label;   // the settings_status name, else the fallback label
+    const style     = brv_statusStyle(r.status_color);
+    const badge     = $brv('brv-view-status');
     badge.textContent = label;
     badge.className   = style ? 'nha-bdg' : 'nha-bdg ' + s.cls;
     badge.style.cssText = style;   // '' clears a colour left by the previously opened request
-    $brv('brv-view-status-note').textContent = pending ? 'Waiting for a decision'
+    $brv('brv-view-status-note').textContent = submitted ? 'Waiting for a decision'
+        : r.status === 'SAVED' ? 'Saved — not submitted for review yet (Process it first)'
         : known ? `${label} on ${brv_fmtDateTime(r.update_at)}` : 'Unrecognised status';
-    $brv('brv-view-actions').hidden = !(pending && BRV_IS_FMD);
+    $brv('brv-view-actions').hidden = !(submitted && BRV_CAN_REVIEW);
     brv_setReviewBusy(false);
 
     $brv('brv-view-overlay').classList.add('open');
@@ -639,8 +723,8 @@ function brv_closeView() {
 }
 
 // What approving does to the two budget lines. Only shown when the revision has a To line: then it MOVES
-// funds — the From line goes down to To Amount (its adjustment is deducted) and the To line goes up by the difference
-// (its adjustment is added), measured against the From line's current amount, as the server does.
+// funds — the From line goes down to To Amount (a negative transaction is recorded for it) and the To line goes up by the difference
+// (a positive one), measured against the From line's current amount, as the server does.
 function brv_renderEffect(r) {
     const box = $brv('brv-view-effect');
     if (!r.to_budget_line_item_id) { box.hidden = true; return; }
@@ -687,13 +771,13 @@ async function brv_review(status) {
             const toCurrent = Number(v.to_line_amount || 0);
             const fromCode  = brv_lineName(v, '') || 'The From budget line';
             const toCode    = brv_lineName(v, 'to_') || 'The To budget line';
-            question += `\n\n${fromCode} (From budget line) will change from ${brv_fmtMoney(current)} to ${brv_fmtMoney(target)}, `
-                      + `and ${brv_fmtChange(-moved)} will be added to its adjustment and its suggested amount.`
-                      + `\n${toCode} (To budget line) will change from ${brv_fmtMoney(toCurrent)} to ${brv_fmtMoney(toCurrent + moved)}, `
-                      + `and ${brv_fmtChange(moved)} will be added to its adjustment and its suggested amount.`;
+            question += `\n\n${fromCode} (From budget line): its current balance will change from ${brv_fmtMoney(current)} to ${brv_fmtMoney(target)}, `
+                      + `and a transaction of ${brv_fmtChange(-moved)} will be recorded for it.`
+                      + `\n${toCode} (To budget line): its current balance will change from ${brv_fmtMoney(toCurrent)} to ${brv_fmtMoney(toCurrent + moved)}, `
+                      + `and a transaction of ${brv_fmtChange(moved)} will be recorded for it.`;
         } else if (!v.to_budget_line_item_id) {
-            question += `\n\nThe budget line amount will change from ${brv_fmtMoney(current)} to ${brv_fmtMoney(target)}, `
-                      + `and ${brv_fmtChange(target - current)} will be added to its adjustment and its suggested amount.`;
+            question += `\n\nThe budget line's current balance will change from ${brv_fmtMoney(current)} to ${brv_fmtMoney(target)}, `
+                      + `and a transaction of ${brv_fmtChange(target - current)} will be recorded for it.`;
         }
     }
     if (!id || !confirm(question)) return;
@@ -735,6 +819,14 @@ function brv_apiHeaders(extra = {}) {
 }
 function brv_fmtMoney(v) {
     return '₱ ' + Number(v || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+// The form's From / To Amount inputs show thousands commas ("1,000.00", see form/budget-rev-form.php): brv_amtText puts an amount into
+// one ('' when there is none), brv_amtRaw reads one back as the plain number string the API takes ("1000.00").
+function brv_amtText(v) {
+    return v === '' || v === null || v === undefined || isNaN(Number(v)) ? '' : Number(v).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function brv_amtRaw(id) {
+    return String($brv(id).value ?? '').replace(/,/g, '').trim();
 }
 // Signed amount: +₱ 1,000.00 / −₱ 500.00 / ₱ 0.00
 function brv_fmtChange(v) {
@@ -783,7 +875,7 @@ function brv_linePlace(r, pre) {
     return [r[pre + 'budget_reference_number'], [r[pre + 'program_code'], r[pre + 'project_code']].filter(Boolean).join(' / ')].filter(Boolean).join(' · ');
 }
 // The details card's text, one line each: "BP-001 · Region III Office · FY 2026", "P-100 — Core Shelter › PJ-1 — Resettlement", the
-// particulars, and — when approved revisions have changed it — "Proposed ₱ … · adjusted ±₱ …".
+// particulars, and — when approved revisions have changed it — "Approved amount ₱ … · Latest adjustment ±₱ …".
 function brv_lineSub(r, pre) {
     const id = r[(pre ? 'to' : 'from') + '_budget_line_item_id'];
     if (!id) return 'Filed before budget lines could be revised — pick its budget line when editing it';
@@ -792,11 +884,19 @@ function brv_lineSub(r, pre) {
     const withName = (code, name) => (code ? code + (name ? ' — ' + name : '') : '');
     const office = r[pre + 'rc_name'] || r[pre + 'rc_code'];
     const adj = Number(r[pre + 'line_adjustment'] || 0);
+    const latest = Number(r[pre + 'line_latest'] || 0);
+    const held = Number(r[pre + 'line_held'] || 0);
     return [
         `${r[pre + 'budget_reference_number']}${office ? ' · ' + office : ''} · FY ${fy}`,
         [withName(r[pre + 'program_code'], r[pre + 'program_name']), withName(r[pre + 'project_code'], r[pre + 'project_name'])].filter(Boolean).join(' › ') || 'No project yet',
         r[pre + 'particulars'] || '',
-        adj !== 0 ? `Proposed ${brv_fmtMoney(r[pre + 'proposed_amount'])} · adjusted ${brv_fmtChange(adj)}` : '',
+        // as on the form's card: the approved amount is the line's suggested_amount (a revision no longer changes it), the revision is its Revision Amount from the
+        // ledger (line_adjustment), the revised amount the two added together, and what CBAs hold against it (line_held, the earmark table) comes off to give its
+        // Current balance (line_amount) — the remaining balance
+        // the LATEST adjustment (line_latest = budget_line_items.adjustment: − on the From line of a realignment, + on the To line); the revised amount is net of ALL of them
+        adj !== 0 ? `Approved amount ${brv_fmtMoney(r[pre + 'suggested_amount'])} · Latest adjustment ${brv_fmtChange(latest)}` : '',
+        adj !== 0 ? `Revised amount ${brv_fmtMoney(r[pre + 'line_revised'])}${Math.abs(latest - adj) > 0.004 ? ` (net of all adjustments ${brv_fmtChange(adj)})` : ''}` : '',
+        held !== 0 ? `Less CBA Requested ${brv_fmtMoney(held)}` : '',
     ].filter(Boolean).join('\n');
 }
 // A budget request's status pill in the status's own colour (settings_status.color); only a plain #RRGGBB colour is put into a

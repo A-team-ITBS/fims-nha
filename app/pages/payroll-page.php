@@ -37,8 +37,6 @@ $_pr_api = preg_match('~/api$~', $_pr_api) ? $_pr_api : $_pr_api . '/api';
 #pr-root .pr-msg.warn { display: block; background: var(--amber-bg, #FFF6E5); color: var(--amber-txt, #92400E); }
 #pr-root .pr-msg ul { margin: 6px 0 0 18px; padding: 0; }
 @media (max-width: 900px) { #pr-root .nha-summary { grid-template-columns: repeat(2, 1fr); } }
-#pr-root .pr-month-link { color: inherit; text-decoration: none; border-bottom: 1px dashed currentColor; }
-#pr-root .pr-month-link:hover { color: var(--afims-primary, #0035A9); }
 #pr-root .pr-pane { display: none; }
 #pr-root .pr-pane.active { display: block; }
 #pr-root .pr-modal-xl { max-width: 1200px; width: 96%; }
@@ -52,6 +50,37 @@ $_pr_api = preg_match('~/api$~', $_pr_api) ? $_pr_api : $_pr_api . '/api';
 #pr-root .pr-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 #pr-root .pr-chip { font-size: 11.5px; padding: 3px 8px; border-radius: 12px; background: var(--afims-surface-subtle, #F4F7FA); border: 1px solid var(--afims-border, #E2E4ED); font-family: 'IBM Plex Mono', monospace; }
 #pr-root .pr-chip small { font-family: 'IBM Plex Sans', sans-serif; color: var(--afims-text-muted, #62657E); margin-left: 4px; }
+/* File Template tab */
+#pr-root .pr-steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+#pr-root .pr-step { display: flex; gap: 12px; align-items: flex-start; padding: 12px; border-radius: 8px; background: var(--afims-surface-subtle, #F4F7FA); }
+#pr-root .pr-step-no { flex: 0 0 28px; height: 28px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; background: var(--afims-primary, #0035A9); color: #fff; }
+#pr-root .pr-step-title { font-weight: 600; font-size: 13.5px; margin-bottom: 3px; color: var(--afims-heading, #000E3E); }
+#pr-root .pr-step .pr-sub { font-size: 12px; }
+#pr-root .pr-ready { display: flex; gap: 8px; align-items: flex-start; padding: 9px 12px; border-radius: 6px; font-size: 12.5px; }
+#pr-root .pr-ready.ok { background: var(--green-bg, #E8F6EE); color: var(--green-txt, #0E7A3D); }
+#pr-root .pr-ready.warn { background: var(--amber-bg, #FFF6E5); color: var(--amber-txt, #92400E); }
+#pr-root .pr-t-tbl td { vertical-align: top; font-size: 12.5px; }
+#pr-root .pr-t-tbl .nha-mono { font-size: 12px; }
+#pr-root .pr-t-scroll { max-height: 460px; overflow: auto; }
+#pr-root .pr-t-scroll thead th { position: sticky; top: 0; z-index: 1; }   /* keeps the table's own header colour */
+#pr-root #pr-t-search { min-width: 300px; }
+#pr-root .pr-t-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+#pr-root .pr-t-pills { display: flex; gap: 6px; flex-wrap: wrap; }
+#pr-root .pr-t-pill { font: inherit; font-size: 12px; padding: 5px 11px; border-radius: 14px; border: 1px solid var(--afims-border, #E2E4ED); background: var(--afims-surface, #fff); color: inherit; cursor: pointer; }
+#pr-root .pr-t-pill.active { background: var(--afims-primary, #0035A9); border-color: var(--afims-primary, #0035A9); color: #fff; }
+#pr-root .pr-badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
+#pr-root .pr-badge.EARNING { background: var(--green-bg, #E8F6EE); color: var(--green-txt, #0E7A3D); }
+#pr-root .pr-badge.DEDUCTION { background: var(--amber-bg, #FFF6E5); color: var(--amber-txt, #92400E); }
+#pr-root .pr-badge.REFUND { background: var(--blue-bg, #EAF1FE); color: var(--blue-txt, #1D4ED8); }
+#pr-root .pr-badge.EMPLOYER_SHARE { background: var(--red-bg, #FDECEC); color: var(--red-txt, #B42318); }
+#pr-root .pr-badge.st-ACTIVE { background: var(--green-bg, #E8F6EE); color: var(--green-txt, #0E7A3D); }
+#pr-root .pr-badge.st-INACTIVE { background: var(--afims-surface-subtle, #F4F7FA); color: var(--afims-text-muted, #62657E); }
+#pr-root .pr-badge.st-MISSING { background: var(--amber-bg, #FFF6E5); color: var(--amber-txt, #92400E); }
+#pr-root .pr-badge.req { background: var(--red-bg, #FDECEC); color: var(--red-txt, #B42318); }
+#pr-root .pr-badge.opt { background: var(--afims-surface-subtle, #F4F7FA); color: var(--afims-text-muted, #62657E); }
+#pr-root .pr-t-more summary { cursor: pointer; font-weight: 700; font-size: 13px; color: var(--afims-heading, #000E3E); }
+#pr-root .pr-t-more ul { margin: 10px 0 0 18px; padding: 0; font-size: 12.5px; color: var(--afims-text-muted, #62657E); }
+#pr-root .pr-t-more li { margin-bottom: 4px; }
 #pr-root .pr-cat-EARNING { border-left: 3px solid var(--afims-success, #11A752); }
 #pr-root .pr-cat-REFUND { border-left: 3px solid var(--afims-primary, #0035A9); }
 #pr-root .pr-cat-DEDUCTION { border-left: 3px solid var(--afims-warning, #E0A100); }
@@ -152,152 +181,116 @@ $_pr_api = preg_match('~/api$~', $_pr_api) ? $_pr_api : $_pr_api . '/api';
                     <select id="pr-y-year" class="nha-filter-select"></select>
                 </div>
                 <div class="nha-filter-group">
-                    <label class="nha-filter-label" for="pr-y-month">As of Month</label>
-                    <select id="pr-y-month" class="nha-filter-select"><option value="">Full Year</option></select>
-                </div>
-                <div class="nha-filter-group">
-                    <label class="nha-filter-label" for="pr-y-dept">Department</label>
-                    <select id="pr-y-dept" class="nha-filter-select"><option value="">All Departments</option></select>
-                </div>
-                <div class="nha-filter-group">
-                    <label class="nha-filter-label" for="pr-y-status">Employment Status</label>
-                    <select id="pr-y-status" class="nha-filter-select">
-                        <option value="">All Statuses</option>
-                        <option value="ACTIVE">Active</option>
-                        <option value="ON_LEAVE">On Leave</option>
-                        <option value="SEPARATED">Separated</option>
-                        <option value="RETIRED">Retired</option>
-                    </select>
-                </div>
-                <div class="nha-filter-group">
-                    <label class="nha-filter-label" for="pr-y-search">Search</label>
-                    <input type="text" id="pr-y-search" class="pr-search" placeholder="Employee no. or name…">
+                    <label class="nha-filter-label" for="pr-y-month">Month</label>
+                    <select id="pr-y-month" class="nha-filter-select"><option value="">Whole Year</option></select>
                 </div>
                 <div class="nha-filter-group nha-filter-group-actions">
-                    <button type="button" id="pr-y-load" class="nha-btn nha-btn-primary">Generate Report</button>
                     <button type="button" id="pr-y-export" class="nha-btn nha-btn-outline" disabled>Export CSV</button>
                 </div>
             </div>
+            <p class="pr-hint" id="pr-y-note" style="margin:6px 0 0;display:none;"></p>
         </div>
         <div class="nha-summary" id="pr-y-kpis" style="display:none;">
-            <div class="nha-sc nha-sc-navy"><div class="nha-sc-top"><div><div class="nha-sc-label">Employees</div><div class="nha-sc-val" id="pr-y-k-emp">—</div></div></div><p class="nha-kpi-sub" id="pr-y-k-months">—</p></div>
-            <div class="nha-sc nha-sc-teal"><div class="nha-sc-top"><div><div class="nha-sc-label">YTD Gross Pay</div><div class="nha-sc-val" id="pr-y-k-gross">—</div></div></div><p class="nha-kpi-sub">Total earnings, year-to-date</p></div>
-            <div class="nha-sc nha-sc-amber"><div class="nha-sc-top"><div><div class="nha-sc-label">YTD Deductions</div><div class="nha-sc-val" id="pr-y-k-ded">—</div></div></div><p class="nha-kpi-sub">Withheld from pay (net of refunds below)</p></div>
-            <div class="nha-sc nha-sc-green"><div class="nha-sc-top"><div><div class="nha-sc-label">YTD Net Pay</div><div class="nha-sc-val" id="pr-y-k-net">—</div></div></div><p class="nha-kpi-sub" id="pr-y-k-ref">—</p></div>
+            <div class="nha-sc nha-sc-navy"><div class="nha-sc-top"><div><div class="nha-sc-label">Employees Paid</div><div class="nha-sc-val" id="pr-y-k-emp">—</div></div></div><p class="nha-kpi-sub" id="pr-y-k-months">—</p></div>
+            <div class="nha-sc nha-sc-teal"><div class="nha-sc-top"><div><div class="nha-sc-label">Gross Pay</div><div class="nha-sc-val" id="pr-y-k-gross">—</div></div></div><p class="nha-kpi-sub" id="pr-y-k-gross-sub">Total earnings</p></div>
+            <div class="nha-sc nha-sc-amber"><div class="nha-sc-top"><div><div class="nha-sc-label">Deductions</div><div class="nha-sc-val" id="pr-y-k-ded">—</div></div></div><p class="nha-kpi-sub">Withheld from pay (net of refunds below)</p></div>
+            <div class="nha-sc nha-sc-green"><div class="nha-sc-top"><div><div class="nha-sc-label">Net Pay</div><div class="nha-sc-val" id="pr-y-k-net">—</div></div></div><p class="nha-kpi-sub" id="pr-y-k-ref">—</p></div>
         </div>
         <div class="nha-table-wrap">
             <div class="nha-tbl-scroll">
                 <table class="nha-tbl">
                     <thead>
                         <tr>
-                            <th>Emp No.</th>
-                            <th>Employee Name</th>
-                            <th>Position / Department</th>
-                            <th>Status</th>
-                            <th>TIN</th>
-                            <th>Pag-IBIG</th>
-                            <th>PhilHealth</th>
-                            <th class="text-end">Months</th>
-                            <th class="text-end">YTD Gross Pay</th>
-                            <th class="text-end">YTD Deductions</th>
-                            <th class="text-end">YTD Refunds</th>
-                            <th class="text-end">YTD Net Pay</th>
-                            <th class="text-end">YTD Employer Share</th>
-                        </tr>
-                    </thead>
-                    <tbody id="pr-y-tbody">
-                        <tr><td colspan="13"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">Choose the filters and click Generate Report.</span></div></td></tr>
-                    </tbody>
-                    <tfoot id="pr-y-tfoot" class="pr-tfoot"></tfoot>
-                </table>
-            </div>
-            <div class="nha-pag-wrap" id="pr-y-pag" style="display:none;">
-                <span class="nha-pag-info" id="pr-y-pag-info"></span>
-                <div class="nha-pag-btns" id="pr-y-pag-btns"></div>
-            </div>
-        </div>
-    </div>
-
-    <!-- ═══ TAB 3 — FILE TEMPLATE ═══ -->
-    <div class="pr-pane" id="pr-pane-template">
-        <div class="pr-card">
-            <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
-                <div>
-                    <h4 style="margin-bottom:4px;">FIMS Monthly Payroll import form</h4>
-                    <div class="pr-sub">The download is the actual import form (<span class="nha-mono" id="pr-t-file">MONTHLY-PAYROLL-TEMPLATE.xlsx</span>, sheet "MONTHLY PAYROLL") with no employee rows. Fill one row per employee from row 2 (a row of account codes under the headers is also accepted). Each column is recognised by its name, so the order does not matter. There is no Gross / Net column: they are computed from the items.</div>
-                </div>
-                <button type="button" id="pr-t-download" class="nha-btn nha-btn-primary">Download Import Form</button>
-            </div>
-        </div>
-        <div class="pr-card">
-            <h4>Required on every employee row</h4>
-            <div class="pr-chips" id="pr-t-identity"></div>
-        </div>
-        <div class="pr-card">
-            <h4>Columns of the import form vs Payroll Setup</h4>
-            <div class="pr-sub" style="margin-bottom:10px;">Every amount column of the form. A column <strong>not set up</strong> can stay blank; once it has amounts in a file, the import stops until it is added in <a href="<?= htmlspecialchars(GetUrl('PayrollSetupPage')) ?>" target="_blank" rel="noopener">Payroll Setup</a>.</div>
-            <div id="pr-t-form"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></div>
-        </div>
-        <div class="pr-card">
-            <h4>Amount columns the import recognises</h4>
-            <div class="pr-sub" style="margin-bottom:10px;">These are the <strong>active items in <a href="<?= htmlspecialchars(GetUrl('PayrollSetupPage')) ?>" target="_blank" rel="noopener">Payroll Setup</a></strong> — each item's code is the column name and its account is what the imported amounts post to. A column name in the file must equal the item code (the quotes the HRIS export puts around it are ignored). A column that has amounts but is not here stops the import — add it in Payroll Setup first. Inactive items are skipped.</div>
-            <div id="pr-t-items"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></div>
-        </div>
-    </div>
-
-    <!-- Employee records of an imported month -->
-    <div id="pr-rec-overlay" class="nha-overlay">
-        <div class="nha-modal pr-modal-xl" role="dialog" aria-modal="true" aria-labelledby="pr-rec-title">
-            <div class="nha-modal-hdr">
-                <h3 class="nha-modal-title" id="pr-rec-title">Employee Records</h3>
-                <button type="button" class="nha-modal-close" onclick="pr_closeOverlay('pr-rec-overlay')" aria-label="Close">&times;</button>
-            </div>
-            <div class="nha-modal-body pr-modal-body-scroll">
-                <div style="display:flex;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
-                    <input type="text" id="pr-rec-search" class="pr-search" placeholder="Search employee no., name, department…">
-                    <span style="display:flex;align-items:center;gap:10px;">
-                        <span class="pr-sub" id="pr-rec-info"></span>
-                        <button type="button" id="pr-rec-delete" class="nha-btn nha-btn-outline" style="display:none;color:var(--afims-danger, #DC3545);" title="Delete this month's imported payroll">Delete Import</button>
-                    </span>
-                </div>
-                <table class="nha-tbl">
-                    <thead>
-                        <tr>
-                            <th>Emp No.</th>
-                            <th>Employee Name</th>
-                            <th>Department</th>
+                            <th>Payroll Month</th>
+                            <th class="text-end">Employees</th>
                             <th class="text-end">Gross Pay</th>
                             <th class="text-end">Deductions</th>
                             <th class="text-end">Refunds</th>
                             <th class="text-end">Net Pay</th>
                             <th class="text-end">Employer Share</th>
-                            <th></th>
                         </tr>
                     </thead>
-                    <tbody id="pr-rec-tbody"></tbody>
+                    <tbody id="pr-y-tbody">
+                        <tr><td colspan="7"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">Open this tab to load the report.</span></div></td></tr>
+                    </tbody>
+                    <tfoot id="pr-y-tfoot" class="pr-tfoot"></tfoot>
                 </table>
-                <div class="nha-pag-wrap" id="pr-rec-pag" style="display:none;">
-                    <span class="nha-pag-info" id="pr-rec-pag-info"></span>
-                    <div class="nha-pag-btns" id="pr-rec-pag-btns"></div>
-                </div>
             </div>
         </div>
     </div>
 
-    <!-- One employee's payroll items -->
-    <div id="pr-items-overlay" class="nha-overlay">
-        <div class="nha-modal pr-modal-md" role="dialog" aria-modal="true" aria-labelledby="pr-items-title">
-            <div class="nha-modal-hdr">
-                <h3 class="nha-modal-title" id="pr-items-title">Payroll Items</h3>
-                <button type="button" class="nha-modal-close" onclick="pr_closeOverlay('pr-items-overlay')" aria-label="Close">&times;</button>
+    <div class="pr-pane" id="pr-pane-template">
+        <!-- 1. How to import: three steps, the download first -->
+        <div class="pr-card">
+            <h4>How to import a monthly payroll</h4>
+            <div class="pr-steps">
+                <div class="pr-step">
+                    <span class="pr-step-no">1</span>
+                    <div>
+                        <div class="pr-step-title">Download the import form</div>
+                        <div class="pr-sub">An empty copy of the monthly payroll Excel form (<span class="nha-mono" id="pr-t-file">MONTHLY-PAYROLL-TEMPLATE.xlsx</span>).</div>
+                        <button type="button" id="pr-t-download" class="nha-btn nha-btn-primary" style="margin-top:10px;">Download Import Form</button>
+                    </div>
+                </div>
+                <div class="pr-step">
+                    <span class="pr-step-no">2</span>
+                    <div>
+                        <div class="pr-step-title">Fill in one row per employee</div>
+                        <div class="pr-sub">Employee number and name are required. Type each amount under its column below; leave the columns that don't apply blank. Gross and net pay are computed for you.</div>
+                    </div>
+                </div>
+                <div class="pr-step">
+                    <span class="pr-step-no">3</span>
+                    <div>
+                        <div class="pr-step-title">Upload it in Payroll Imports</div>
+                        <div class="pr-sub">Pick the month and year, check the preview, then click Import.</div>
+                        <button type="button" class="nha-btn nha-btn-outline" style="margin-top:10px;" onclick="pr_switchTab('imports');pr_open();">Go to Import</button>
+                    </div>
+                </div>
             </div>
-            <div class="nha-modal-body pr-modal-body-scroll">
-                <table class="nha-tbl">
-                    <thead><tr><th>Category</th><th>Item</th><th>Account</th><th class="text-end">Amount</th></tr></thead>
-                    <tbody id="pr-items-tbody"></tbody>
+            <div id="pr-t-ready" style="margin-top:14px;"></div>
+        </div>
+
+        <!-- 2. Employee details -->
+        <div class="pr-card">
+            <h4>Employee details</h4>
+            <div class="pr-sub" style="margin-bottom:10px;">The first columns of the form identify the employee.</div>
+            <div class="nha-tbl-scroll">
+                <table class="nha-tbl pr-t-tbl">
+                    <thead><tr><th>Column in the form</th><th>What to enter</th><th>Needed?</th></tr></thead>
+                    <tbody id="pr-t-identity"><tr><td colspan="3"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr></tbody>
                 </table>
             </div>
         </div>
+
+        <!-- 3. Amount columns: one table, filter by type, search -->
+        <div class="pr-card">
+            <h4>Amount columns</h4>
+            <div class="pr-sub" style="margin-bottom:10px;">Each amount column of the form, what it is, and the account it is recorded in. To add or change one, use <a href="<?= htmlspecialchars(GetUrl('PayrollSetupPage')) ?>" target="_blank" rel="noopener">Payroll Setup</a>.</div>
+            <div class="pr-t-toolbar">
+                <div class="pr-t-pills" id="pr-t-pills"></div>
+                <input type="search" id="pr-t-search" class="pr-search" placeholder="Search column, description or account…">
+            </div>
+            <div class="nha-tbl-scroll pr-t-scroll">
+                <table class="nha-tbl pr-t-tbl">
+                    <thead><tr><th>Column in the form</th><th>Description</th><th>Type</th><th>Recorded in account</th><th>Status</th></tr></thead>
+                    <tbody id="pr-t-items"><tr><td colspan="5"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr></tbody>
+                </table>
+            </div>
+            <div class="pr-sub" id="pr-t-count" style="margin-top:8px;"></div>
+        </div>
+
+        <!-- 4. The rules, for whoever prepares the file -->
+        <details class="pr-card pr-t-more">
+            <summary>Good to know</summary>
+            <ul>
+                <li>Columns are recognised by their name, so their order in the file doesn't matter. Quotes around a column name (as the HRIS export writes them) are ignored.</li>
+                <li>Fill employees from row 2. A row of account codes just under the column names is allowed.</li>
+                <li>Don't add Gross or Net Pay columns: they are computed from the amounts.</li>
+                <li>A column marked <strong>Not set up</strong> can stay blank. If it has amounts, the import stops until it is added in Payroll Setup.</li>
+                <li><strong>Inactive</strong> columns are skipped when importing.</li>
+            </ul>
+        </details>
     </div>
 
     <!-- Import modal -->
@@ -386,7 +379,9 @@ async function pr_load() {
         if (!pr_ytdYearTouched && json.years?.length) {
             const yy = String(json.years[0]), ySel = $pr('pr-y-year');
             if (![...ySel.options].some(o => o.value === yy)) ySel.insertAdjacentHTML('beforeend', `<option value="${yy}">${yy}</option>`);
+            const changed = ySel.value !== yy;
             ySel.value = yy;
+            if (changed && $pr('pr-pane-ytd').classList.contains('active')) pr_loadYtd();   // the report tab is open: follow the new default year
         }
         const k = json.kpis || {};
         $pr('pr-kpi-imports').textContent = k.imports ?? 0;
@@ -409,7 +404,7 @@ async function pr_load() {
                 ? `<button type="button" class="nha-btn-act" title="Open DV ${pr_esc(r.dv_nos || '')}" onclick="pr_goDv('dv', ${Number(r.dv_id)})">View DV</button>`
                 : `<button type="button" class="nha-btn-act" style="background:var(--afims-success, #11A752);color:#fff;border-color:transparent;" title="Prepare the payroll Disbursement Voucher for this month" onclick="pr_goDv('payroll', ${Number(r.payroll_period_id)})">Create DV</button>`;
             return `<tr>
-                <td><a href="#" class="pr-month-link" title="View the employee records" onclick="pr_openRecords(${Number(r.payroll_period_id)}); return false;"><strong>${pr_esc(r.month_name)}</strong></a></td>
+                <td><strong>${pr_esc(r.month_name)}</strong></td>
                 <td>${pr_esc(r.fiscal_yr)}</td>
                 <td>${pr_esc(pr_date(r.imported_at))}${r.imported_by_name ? `<div class="pr-hint">by ${pr_esc(r.imported_by_name)}</div>` : ''}</td>
                 <td>${status}</td>
@@ -438,15 +433,6 @@ function pr_goDv(param, id) {
     window.location.href = PR_VOUCHER_URL + '?' + param + '=' + encodeURIComponent(id);
 }
 
-/** Delete — from the employee records window (only while no DV uses the month and the period is open). */
-async function pr_delete(id, label) {
-    if (!confirm(`Delete the imported ${label} payroll (all its employee records)? It can be imported again afterwards.`)) return;
-    const json = await pr_json(await pr_authFetch('payroll-management/delete/' + id, { method: 'DELETE' }));
-    if (!json.success) { alert(json.message || 'Failed to delete.'); return; }
-    pr_closeOverlay('pr-rec-overlay');
-    pr_load();
-}
-
 /* ── Import modal ───────────────────────────────────────────── */
 function pr_open() {
     const now = new Date();
@@ -462,7 +448,8 @@ function pr_open() {
 function pr_close() { $pr('pr-overlay').classList.remove('open'); }
 function pr_resetPreview() {
     pr_previewed = false;
-    $pr('pr-save').disabled = true;
+    // clickable as soon as a file is chosen — Import previews first when that wasn't done (pr_import())
+    $pr('pr-save').disabled = !$pr('pr-file').files.length;
     $pr('pr-save').textContent = 'Import';
     $pr('pr-preview').classList.remove('visible');
     pr_msg('', '');
@@ -528,7 +515,11 @@ async function pr_preview() {
 }
 
 async function pr_import() {
-    if (!pr_previewed) return;
+    if (!pr_previewed) {
+        await pr_preview();            // shows the totals, or why the file cannot be imported
+        if (!pr_previewed) return;     // blocked — the message says why
+        if (pr_previewed.replace) return; // month already imported — the button now reads "Replace Import": click again to confirm
+    }
     $pr('pr-save').disabled = true;
     window.PagePreloader?.show();
     try {
@@ -556,6 +547,7 @@ function pr_switchTab(tab) {
     $pr('pr-import-btn').style.display = onImports ? '' : 'none';
     $pr('pr-refresh').style.display = onImports ? '' : 'none';
     if (tab === 'template') pr_loadTemplate();   // always fresh: items may have changed in Payroll Setup
+    if (tab === 'ytd') pr_loadYtd();             // the report follows the filters — no Generate button
 }
 function pr_closeOverlay(id) { $pr(id).classList.remove('open'); }
 const pr_name = r => [r.last_name, [r.first_name, r.middle_name].filter(Boolean).join(' ')].filter(Boolean).join(', ');
@@ -575,180 +567,198 @@ function pr_pager(infoEl, btnsEl, wrapEl, page, last, total, perPage, go) {
     }));
 }
 
-/* ── Employee records of an imported month ──────────────────── */
-let pr_recPeriod = 0, pr_recTimer = null;
-function pr_openRecords(periodId) {
-    pr_recPeriod = periodId;
-    $pr('pr-rec-search').value = '';
-    // Delete Import: only while no DV uses the month and its period is still open (the server checks again)
-    const r = pr_rowsById[periodId];
-    const locked = ['LOCKED', 'CLOSED'].includes(String(r?.period_status || '').toUpperCase());
-    const del = $pr('pr-rec-delete');
-    del.style.display = r && !r.dv_id && !locked ? '' : 'none';
-    del.onclick = () => pr_delete(periodId, `${r?.month_name || ''} ${r?.fiscal_yr || ''}`.trim());
-    $pr('pr-rec-overlay').classList.add('open');
-    pr_loadRecords(1);
-}
-async function pr_loadRecords(page) {
-    const body = $pr('pr-rec-tbody');
-    body.innerHTML = '<tr><td colspan="9"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>';
-    const params = new URLSearchParams({ page, limit: 25 });
-    if ($pr('pr-rec-search').value.trim()) params.set('search', $pr('pr-rec-search').value.trim());
-    try {
-        const json = await pr_json(await pr_authFetch(`payroll-management/records/${pr_recPeriod}?${params}`));
-        if (!json.success) throw new Error(json.message || 'Failed to load.');
-        $pr('pr-rec-title').textContent = 'Employee Records — ' + (json.period?.label || '');
-        const pg = json.pagination || {};
-        $pr('pr-rec-info').textContent = `${pg.total || 0} employee(s)`;
-        const rows = json.data || [];
-        body.innerHTML = rows.length ? rows.map(r => `<tr>
-                <td class="nha-mono">${pr_esc(r.employee_no)}</td>
-                <td><strong>${pr_esc(pr_name(r))}</strong>${r.dv_no ? `<div class="pr-hint">DV ${pr_esc(r.dv_no)}</div>` : ''}</td>
-                <td>${pr_esc(r.department || '—')}</td>
-                ${pr_amt(r.gross_amount)}${pr_amt(r.total_deductions)}${pr_amt(r.total_refunds)}${pr_amt(r.net_amount)}${pr_amt(r.total_employer_share)}
-                <td><button type="button" class="nha-btn-act" onclick="pr_openItems(${Number(r.payroll_record_id)}, '${pr_esc(String(r.employee_no)).replace(/'/g, '&#39;')}')">Items</button></td>
-            </tr>`).join('')
-            : '<tr><td colspan="9"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No employees match.</span></div></td></tr>';
-        pr_pager($pr('pr-rec-pag-info'), $pr('pr-rec-pag-btns'), $pr('pr-rec-pag'), pg.current_page || 1, pg.last_page || 1, pg.total || 0, pg.per_page || 25, pr_loadRecords);
-    } catch (e) {
-        body.innerHTML = `<tr><td colspan="9"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">${pr_esc(e.message)}</span></div></td></tr>`;
-    }
-}
 const PR_CAT = { EARNING: 'Earning', REFUND: 'Refund', DEDUCTION: 'Deduction', EMPLOYER_SHARE: 'Employer Share' };
-async function pr_openItems(recordId, empNo) {
-    $pr('pr-items-title').textContent = 'Payroll Items — Employee ' + empNo;
-    const body = $pr('pr-items-tbody');
-    body.innerHTML = '<tr><td colspan="4"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>';
-    $pr('pr-items-overlay').classList.add('open');
-    try {
-        const json = await pr_json(await pr_authFetch('payroll-management/record-items/' + recordId));
-        if (!json.success) throw new Error(json.message || 'Failed to load.');
-        const rows = json.data || [];
-        body.innerHTML = rows.length ? rows.map(r => `<tr class="pr-cat-${pr_esc(r.category)}">
-                <td>${pr_esc(PR_CAT[r.category] || r.category)}</td>
-                <td><span class="nha-mono">${pr_esc(r.item_code)}</span><div class="pr-hint">${pr_esc(r.item_name)}</div></td>
-                <td>${r.account_code ? `<span class="nha-mono">${pr_esc(r.account_code)}</span><div class="pr-hint">${pr_esc(r.account_title || '')}</div>` : '<span class="pr-hint">No account</span>'}</td>
-                ${pr_amt(r.amount)}
-            </tr>`).join('')
-            : '<tr><td colspan="4"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No amounts.</span></div></td></tr>';
-    } catch (e) {
-        body.innerHTML = `<tr><td colspan="4"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">${pr_esc(e.message)}</span></div></td></tr>`;
-    }
+/* ── Year-to-Date report: one row per imported month (no employee details) ── */
+let pr_ytdRows = [], pr_ytdMeta = null, pr_ytdYearTouched = false;
+let pr_ytdSeq = 0;   // only the latest request may fill the table (fast filter changes can't show an older answer)
+function pr_ytdNote(text) {
+    const n = $pr('pr-y-note');
+    n.textContent = text || '';
+    n.style.display = text ? '' : 'none';
 }
-
-/* ── Year-to-Date report ────────────────────────────────────── */
-let pr_ytdRows = [], pr_ytdPage = 1, pr_ytdMeta = null, pr_ytdYearTouched = false;
-const PR_YTD_PER_PAGE = 25;
 function pr_initYtdFilters() {
     const y = new Date().getFullYear();
     $pr('pr-y-year').innerHTML = [y + 1, y, y - 1, y - 2, y - 3, y - 4].map(v => `<option value="${v}">${v}</option>`).join('');
     $pr('pr-y-year').value = String(y);
-    $pr('pr-y-month').innerHTML = '<option value="">Full Year</option>' + PR_MONTHS.map((m, i) => `<option value="${i + 1}">${m}</option>`).join('');
+    $pr('pr-y-month').innerHTML = '<option value="">Whole Year</option>' + PR_MONTHS.map((m, i) => `<option value="${i + 1}">${m}</option>`).join('');
 }
 async function pr_loadYtd() {
-    const params = new URLSearchParams({ year: $pr('pr-y-year').value });
-    if ($pr('pr-y-month').value) params.set('month', $pr('pr-y-month').value);
-    if ($pr('pr-y-dept').value) params.set('department', $pr('pr-y-dept').value);
-    if ($pr('pr-y-status').value) params.set('status', $pr('pr-y-status').value);
-    if ($pr('pr-y-search').value.trim()) params.set('search', $pr('pr-y-search').value.trim());
+    const f = { year: $pr('pr-y-year').value, month: $pr('pr-y-month').value };
+    if (!/^\d{4}$/.test(f.year)) { pr_ytdNote('Choose the fiscal year first.'); return; }
+    const params = new URLSearchParams({ year: f.year });
+    if (f.month) params.set('month', f.month);
+    const seq = ++pr_ytdSeq;
     const body = $pr('pr-y-tbody');
-    body.innerHTML = '<tr><td colspan="13"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>';
+    body.innerHTML = '<tr><td colspan="7"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>';
     $pr('pr-y-tfoot').innerHTML = '';
     $pr('pr-y-export').disabled = true;
+    pr_ytdNote('');
     try {
         const json = await pr_json(await pr_authFetch('payroll-management/ytd?' + params));
+        if (seq !== pr_ytdSeq) return;
         if (!json.success) throw new Error(json.message || 'Failed to build the report.');
-        const dSel = $pr('pr-y-dept'), dCur = dSel.value;
-        dSel.innerHTML = '<option value="">All Departments</option>' + (json.departments || []).map(d => `<option value="${pr_esc(d)}">${pr_esc(d)}</option>`).join('');
-        dSel.value = dCur;
         pr_ytdRows = json.data || [];
-        pr_ytdMeta = { totals: json.totals || {}, months: json.months_imported || [], label: $pr('pr-y-year').value + ($pr('pr-y-month').value ? ' as of ' + PR_MONTHS[$pr('pr-y-month').value - 1] : '') };
+        pr_ytdMeta = { filters: f, totals: json.totals || {}, months: json.months_imported || [],
+                       label: f.month ? `${PR_MONTHS[f.month - 1]} ${f.year}` : `Whole Year ${f.year}` };
         const t = pr_ytdMeta.totals;
         $pr('pr-y-kpis').style.display = '';
         $pr('pr-y-k-emp').textContent = t.employees ?? 0;
-        $pr('pr-y-k-months').textContent = pr_ytdMeta.months.length ? 'Imported: ' + pr_ytdMeta.months.join(', ') : 'No month imported for this year';
-        $pr('pr-y-k-gross').textContent = pr_peso(t.ytd_gross);
-        $pr('pr-y-k-ded').textContent = pr_peso(t.ytd_deductions);
-        $pr('pr-y-k-net').textContent = pr_peso(t.ytd_net);
-        $pr('pr-y-k-ref').textContent = 'Refunds included: ' + pr_peso(t.ytd_refunds);
+        $pr('pr-y-k-months').textContent = pr_ytdMeta.months.length ? 'Imported: ' + pr_ytdMeta.months.join(', ') : 'No month imported for ' + f.year;
+        $pr('pr-y-k-gross').textContent = pr_peso(t.gross);
+        $pr('pr-y-k-gross-sub').textContent = f.month ? `Total earnings, ${PR_MONTHS[f.month - 1]}` : 'Total earnings, year-to-date';
+        $pr('pr-y-k-ded').textContent = pr_peso(t.deductions);
+        $pr('pr-y-k-net').textContent = pr_peso(t.net);
+        $pr('pr-y-k-ref').textContent = 'Refunds included: ' + pr_peso(t.refunds);
         $pr('pr-y-export').disabled = !pr_ytdRows.length;
-        pr_renderYtd(1);
+        pr_renderYtd();
     } catch (e) {
-        body.innerHTML = `<tr><td colspan="13"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">${pr_esc(e.message)}</span></div></td></tr>`;
-        $pr('pr-y-pag').style.display = 'none';
+        if (seq !== pr_ytdSeq) return;
+        pr_ytdRows = [];
+        pr_ytdMeta = null;
+        $pr('pr-y-kpis').style.display = 'none';
+        body.innerHTML = `<tr><td colspan="7"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">${pr_esc(e.message)}</span></div></td></tr>`;
     }
 }
-function pr_renderYtd(page) {
-    pr_ytdPage = page;
-    const body = $pr('pr-y-tbody'), total = pr_ytdRows.length, last = Math.max(1, Math.ceil(total / PR_YTD_PER_PAGE));
-    if (!total) {
-        body.innerHTML = '<tr><td colspan="13"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No imported payroll for these filters.</span></div></td></tr>';
+function pr_renderYtd() {
+    const body = $pr('pr-y-tbody'), m = pr_ytdMeta, t = m.totals;
+    if (!pr_ytdRows.length) {
+        const msg = !m.months.length
+            ? `No payroll has been imported for ${m.filters.year} yet. Import a month in Payroll Imports, or choose another fiscal year.`
+            : `No payroll imported for ${m.label}. Imported months: ${m.months.join(', ')}.`;
+        body.innerHTML = `<tr><td colspan="7"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">${pr_esc(msg)}</span></div></td></tr>`;
         $pr('pr-y-tfoot').innerHTML = '';
-        $pr('pr-y-pag').style.display = 'none';
         return;
     }
-    body.innerHTML = pr_ytdRows.slice((page - 1) * PR_YTD_PER_PAGE, page * PR_YTD_PER_PAGE).map(r => `<tr>
-            <td class="nha-mono">${pr_esc(r.employee_no)}</td>
-            <td><strong>${pr_esc(pr_name(r))}</strong></td>
-            <td>${pr_esc(r.position || '—')}<div class="pr-hint">${pr_esc(r.department || '')}</div></td>
-            <td>${pr_esc(r.employment_status || '—')}</td>
-            <td class="nha-mono">${pr_esc(r.tin || '—')}</td>
-            <td class="nha-mono">${pr_esc(r.pagibig_no || '—')}</td>
-            <td class="nha-mono">${pr_esc(r.philhealth_no || '—')}</td>
-            <td class="pr-num">${pr_esc(r.months)}</td>
-            ${pr_amt(r.ytd_gross)}${pr_amt(r.ytd_deductions)}${pr_amt(r.ytd_refunds)}${pr_amt(r.ytd_net)}${pr_amt(r.ytd_employer_share)}
+    body.innerHTML = pr_ytdRows.map(r => `<tr>
+            <td><strong>${pr_esc(r.month_name)}</strong> ${pr_esc(m.filters.year)}</td>
+            <td class="pr-num">${pr_esc(r.employees)}</td>
+            ${pr_amt(r.gross)}${pr_amt(r.deductions)}${pr_amt(r.refunds)}${pr_amt(r.net)}${pr_amt(r.employer_share)}
         </tr>`).join('');
-    const t = pr_ytdMeta.totals;
-    $pr('pr-y-tfoot').innerHTML = `<tr><td colspan="8">TOTAL — ${pr_esc(String(t.employees))} employee(s)</td>${pr_amt(t.ytd_gross)}${pr_amt(t.ytd_deductions)}${pr_amt(t.ytd_refunds)}${pr_amt(t.ytd_net)}${pr_amt(t.ytd_employer_share)}</tr>`;
-    pr_pager($pr('pr-y-pag-info'), $pr('pr-y-pag-btns'), $pr('pr-y-pag'), page, last, total, PR_YTD_PER_PAGE, pr_renderYtd);
+    $pr('pr-y-tfoot').innerHTML = pr_ytdRows.length > 1
+        ? `<tr><td>TOTAL — ${pr_esc(String(t.months))} month(s)</td><td class="pr-num">${pr_esc(String(t.employees))}</td>${pr_amt(t.gross)}${pr_amt(t.deductions)}${pr_amt(t.refunds)}${pr_amt(t.net)}${pr_amt(t.employer_share)}</tr>`
+        : '';
 }
-function pr_exportYtd() {
-    if (!pr_ytdRows.length) return;
-    const cols = [['employee_no', 'Emp No.'], ['last_name', 'Last Name'], ['first_name', 'First Name'], ['middle_name', 'Middle Name'], ['position', 'Position'],
-        ['department', 'Department'], ['employment_status', 'Employment Status'], ['tin', 'TIN'], ['pagibig_no', 'Pag-IBIG'], ['philhealth_no', 'PhilHealth'],
-        ['months', 'Months'], ['ytd_gross', 'YTD Gross Pay'], ['ytd_deductions', 'YTD Deductions'], ['ytd_refunds', 'YTD Refunds'], ['ytd_net', 'YTD Net Pay'], ['ytd_employer_share', 'YTD Employer Share']];
-    const q = v => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
-    const lines = [cols.map(c => q(c[1])).join(',')].concat(pr_ytdRows.map(r => cols.map(c => q(r[c[0]])).join(',')));
-    const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'Payroll-YTD-' + pr_ytdMeta.label.replace(/\s+/g, '-') + '.csv';
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+/* Export CSV: the employee details behind the report on screen (same year / month) — one row per employee with their
+   details and totals for the period, then the TOTAL row. The screen itself shows only the per-month summary. */
+async function pr_exportYtd() {
+    if (!pr_ytdMeta || !pr_ytdRows.length) { pr_ytdNote('Nothing to export — choose a year or month that has an imported payroll.'); return; }
+    const m = pr_ytdMeta, btn = $pr('pr-y-export');
+    const params = new URLSearchParams({ year: m.filters.year, detail: 'employees' });
+    if (m.filters.month) params.set('month', m.filters.month);
+    btn.disabled = true;
+    try {
+        const json = await pr_json(await pr_authFetch('payroll-management/ytd?' + params));
+        if (!json.success) throw new Error(json.message || 'Failed to export.');
+        const rows = json.data || [], t = json.totals || {};
+        if (!rows.length) { pr_ytdNote('Nothing to export for ' + m.label + '.'); return; }
+        // Only what the import fills: position, employment status, TIN, Pag-IBIG and PhilHealth numbers are not in the
+        // monthly payroll file (always blank / always ACTIVE), so they are left out.
+        const cols = [['employee_no', 'Emp No.'], ['last_name', 'Last Name'], ['first_name', 'First Name'], ['middle_name', 'Middle Name'],
+            ['department', 'Department'], ['months', 'Months'],
+            ['ytd_gross', 'Gross Pay'], ['ytd_deductions', 'Deductions'], ['ytd_refunds', 'Refunds'], ['ytd_net', 'Net Pay'], ['ytd_employer_share', 'Employer Share']];
+        const money = new Set(['ytd_gross', 'ytd_deductions', 'ytd_refunds', 'ytd_net', 'ytd_employer_share']);
+        // a text cell starting with = + - @ would run as a formula in Excel — prefix it with ' (amounts stay numbers)
+        const q = (v, isNum) => {
+            let s = v == null ? '' : String(v);
+            if (!isNum && /^[=+\-@]/.test(s)) s = "'" + s;
+            return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+        };
+        const cell = (r, k) => money.has(k) ? Number(r[k] || 0).toFixed(2) : q(r[k], k === 'months');
+        const total = cols.map(([k]) => k === 'employee_no' ? 'TOTAL' : k === 'last_name' ? q(`${t.employees} employee(s)`) : money.has(k) ? Number(t[k] || 0).toFixed(2) : '').join(',');
+        const lines = [q(`Payroll Year-to-Date Report — ${m.label}`), cols.map(c => q(c[1])).join(','),
+            ...rows.map(r => cols.map(([k]) => cell(r, k)).join(',')), total];
+        const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'Payroll-YTD-' + m.label.replace(/\s+/g, '-') + '.csv';
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    } catch (e) {
+        pr_ytdNote(e.message);
+    } finally {
+        btn.disabled = !pr_ytdRows.length;
+    }
 }
 
 /* ── File template ──────────────────────────────────────────── */
+let pr_tCols = [], pr_tCat = '';
+// what to type in each employee-detail column (by the label the server gives it)
+const PR_T_HINT = {
+    'Employee Number': 'The employee number, e.g. 10251',
+    'Department Code': 'The department code, e.g. ACC',
+    'Last Name': 'Surname',
+    'First Name': 'Given name',
+    'Middle Initial': 'Middle initial, e.g. B',
+};
+const PR_T_STATUS = { ACTIVE: 'Ready', INACTIVE: 'Inactive — skipped', MISSING: 'Not set up', EXTRA: 'Ready — not in the form' };
 async function pr_loadTemplate() {
     const box = $pr('pr-t-items');
     try {
         const json = await pr_json(await pr_authFetch('payroll-management/template-columns'));
         if (!json.success) throw new Error(json.message || 'Failed to load.');
         if (json.form_file) $pr('pr-t-file').textContent = json.form_file;
-        const fc = json.form_columns || [];
-        const fcSet = fc.filter(c => c.status === 'ACTIVE').length, fcOff = fc.filter(c => c.status === 'INACTIVE').length;
-        $pr('pr-t-form').innerHTML = !fc.length ? '<div class="pr-msg err" style="display:block;">The import form file was not found.</div>'
-            : `<div class="pr-sub" style="margin-bottom:8px;"><strong>${fc.length}</strong> amount columns — <strong>${fcSet}</strong> set up, ${fcOff} inactive, <strong>${fc.length - fcSet - fcOff}</strong> not set up yet.</div><div class="pr-chips">`
-              + fc.map(c => {
-                  const st = c.status === 'ACTIVE' ? `${PR_CAT[c.category] || c.category}${c.account_code ? ' · ' + c.account_code : ''}` : c.status === 'INACTIVE' ? 'inactive' : 'not set up';
-                  const bg = c.status === 'ACTIVE' ? '' : c.status === 'INACTIVE' ? 'opacity:.6;' : 'border-style:dashed;opacity:.75;';
-                  return `<span class="pr-chip" style="${bg}" title="${pr_esc(c.item_name || '')}">${pr_esc(c.column)}<small>${pr_esc(st)}</small></span>`;
-              }).join('') + '</div>';
-        $pr('pr-t-identity').innerHTML = (json.identity || []).map(c => `<span class="pr-chip">${pr_esc(c.column)}<small>${pr_esc(c.label)}${c.required ? '' : ' (optional)'}</small></span>`).join('');
-        const items = json.items || [];
-        if (!items.length) {
-            box.innerHTML = `<div class="pr-msg warn" style="display:block;">No active items in Payroll Setup yet — nothing can be imported until the payroll items are set up in <a href="${PR_SETUP_URL}" target="_blank" rel="noopener">Payroll Setup</a>.</div>`;
-            return;
+
+        // Employee details
+        $pr('pr-t-identity').innerHTML = (json.identity || []).map(c => `<tr>
+                <td class="nha-mono">${pr_esc(c.column)}</td>
+                <td>${pr_esc(PR_T_HINT[c.label] || c.label)}</td>
+                <td>${c.required ? '<span class="pr-badge req">Required</span>' : '<span class="pr-badge opt">Optional</span>'}</td>
+            </tr>`).join('');
+
+        // One list of amount columns: the form's columns (with their Payroll Setup status) plus any active item the
+        // downloaded form doesn't have yet. The account title comes from the active items.
+        const items = json.items || [], byCode = new Map(items.map(i => [String(i.item_code).toUpperCase(), i]));
+        const seen = new Set();
+        pr_tCols = (json.form_columns || []).map(c => {
+            const key = String(c.column).toUpperCase(), it = byCode.get(key);
+            seen.add(key);
+            const st = c.status === 'ACTIVE' || c.status === 'INACTIVE' ? c.status : 'MISSING';
+            return { code: c.column, name: c.item_name || it?.item_name || '', category: c.category || it?.category || '',
+                     account: c.account_code || it?.account_code || '', title: it?.account_title || '', status: st };
+        });
+        items.filter(i => !seen.has(String(i.item_code).toUpperCase())).forEach(i => pr_tCols.push({
+            code: i.item_code, name: i.item_name, category: i.category, account: i.account_code || '', title: i.account_title || '', status: 'EXTRA',
+        }));
+
+        // Readiness: can a file filled on this form be imported as it is?
+        const missing = pr_tCols.filter(c => c.status === 'MISSING');
+        const ready = $pr('pr-t-ready');
+        if (!pr_tCols.length) {
+            ready.innerHTML = `<div class="pr-ready warn">⚠ No payroll items are set up yet, so nothing can be imported. Add them in <a href="${PR_SETUP_URL}" target="_blank" rel="noopener">Payroll Setup</a> first.</div>`;
+        } else if (missing.length) {
+            ready.innerHTML = `<div class="pr-ready warn">⚠ ${missing.length} column(s) of the form are not set up yet: ${missing.slice(0, 8).map(c => pr_esc(c.code)).join(', ')}${missing.length > 8 ? '…' : ''}. Leave them blank, or add them in <a href="${PR_SETUP_URL}" target="_blank" rel="noopener">Payroll Setup</a> before importing amounts in them.</div>`;
+        } else {
+            const n = pr_tCols.filter(c => c.status === 'ACTIVE' || c.status === 'EXTRA').length;
+            ready.innerHTML = `<div class="pr-ready ok">✓ The form is ready: all ${n} amount columns are set up in Payroll Setup.</div>`;
         }
-        box.innerHTML = Object.keys(PR_CAT).map(cat => {
-            const list = items.filter(i => i.category === cat);
-            if (!list.length) return '';
-            return `<div class="pr-card pr-cat-${cat}" style="margin-bottom:10px;"><h4>${PR_CAT[cat]} (${list.length})</h4><div class="pr-chips">`
-                + list.map(i => `<span class="pr-chip" title="${pr_esc(i.item_name)}">${pr_esc(i.item_code)}<small>${i.account_code ? pr_esc(i.account_code) : 'no account'}</small></span>`).join('')
-                + '</div></div>';
-        }).join('');
+
+        // Type filter pills with counts
+        const count = cat => pr_tCols.filter(c => !cat || c.category === cat).length;
+        $pr('pr-t-pills').innerHTML = [['', 'All'], ...Object.entries(PR_CAT)].filter(([cat]) => !cat || count(cat))
+            .map(([cat, label]) => `<button type="button" class="pr-t-pill${cat === pr_tCat ? ' active' : ''}" data-cat="${cat}">${pr_esc(label)} <strong>${count(cat)}</strong></button>`).join('');
+        $pr('pr-t-pills').querySelectorAll('.pr-t-pill').forEach(b => b.addEventListener('click', () => {
+            pr_tCat = b.dataset.cat;
+            $pr('pr-t-pills').querySelectorAll('.pr-t-pill').forEach(x => x.classList.toggle('active', x === b));
+            pr_renderTemplateCols();
+        }));
+        pr_renderTemplateCols();
     } catch (e) {
-        box.innerHTML = `<div class="pr-msg err" style="display:block;">${pr_esc(e.message)}</div>`;
+        box.innerHTML = `<tr><td colspan="5"><div class="pr-msg err" style="display:block;">${pr_esc(e.message)}</div></td></tr>`;
     }
+}
+function pr_renderTemplateCols() {
+    const q = $pr('pr-t-search').value.trim().toLowerCase();
+    const list = pr_tCols.filter(c => (!pr_tCat || c.category === pr_tCat)
+        && (!q || [c.code, c.name, c.account, c.title].some(v => String(v || '').toLowerCase().includes(q))));
+    $pr('pr-t-items').innerHTML = list.length ? list.map(c => `<tr>
+            <td class="nha-mono">${pr_esc(c.code)}</td>
+            <td>${pr_esc(c.name || '—')}</td>
+            <td>${c.category ? `<span class="pr-badge ${pr_esc(c.category)}">${pr_esc(PR_CAT[c.category] || c.category)}</span>` : '—'}</td>
+            <td>${c.account ? `<span class="nha-mono">${pr_esc(c.account)}</span>${c.title ? `<div class="pr-hint" style="margin-top:2px;">${pr_esc(c.title)}</div>` : ''}` : '<span class="pr-hint">No account</span>'}</td>
+            <td><span class="pr-badge st-${c.status === 'EXTRA' ? 'ACTIVE' : c.status}">${PR_T_STATUS[c.status]}</span></td>
+        </tr>`).join('')
+        : '<tr><td colspan="5"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No column matches the search.</span></div></td></tr>';
+    $pr('pr-t-count').textContent = `Showing ${list.length} of ${pr_tCols.length} amount columns.`;
 }
 async function pr_downloadTemplate() {
     try {
@@ -768,12 +778,11 @@ async function pr_downloadTemplate() {
 /* ── Boot ───────────────────────────────────────────────────── */
 function pr_boot() {
     pr_initYtdFilters();
-    $pr('pr-y-load').addEventListener('click', pr_loadYtd);
-    $pr('pr-y-year').addEventListener('change', () => { pr_ytdYearTouched = true; });
+    $pr('pr-y-year').addEventListener('change', () => { pr_ytdYearTouched = true; pr_loadYtd(); });
+    $pr('pr-y-month').addEventListener('change', pr_loadYtd);
     $pr('pr-y-export').addEventListener('click', pr_exportYtd);
-    $pr('pr-y-search').addEventListener('keydown', e => { if (e.key === 'Enter') pr_loadYtd(); });
     $pr('pr-t-download').addEventListener('click', pr_downloadTemplate);
-    $pr('pr-rec-search').addEventListener('input', () => { clearTimeout(pr_recTimer); pr_recTimer = setTimeout(() => pr_loadRecords(1), 350); });
+    $pr('pr-t-search').addEventListener('input', pr_renderTemplateCols);
     $pr('pr-refresh').addEventListener('click', pr_load);
     $pr('pr-f-year').addEventListener('change', pr_load);
     $pr('pr-f-status').addEventListener('change', pr_load);
@@ -783,10 +792,14 @@ function pr_boot() {
     $pr('pr-cancel').addEventListener('click', pr_close);
     $pr('pr-preview-btn').addEventListener('click', pr_preview);
     $pr('pr-save').addEventListener('click', pr_import);
-    ['pr-month', 'pr-year', 'pr-file'].forEach(id => $pr(id).addEventListener('change', pr_resetPreview));
+    // choosing the file / month / year previews right away (when a file is chosen)
+    ['pr-month', 'pr-year', 'pr-file'].forEach(id => $pr(id).addEventListener('change', () => {
+        pr_resetPreview();
+        if ($pr('pr-file').files.length) pr_preview();
+    }));
     document.addEventListener('keydown', e => {
         if (e.key !== 'Escape') return;
-        const open = ['pr-items-overlay', 'pr-rec-overlay', 'pr-overlay'].find(id => $pr(id).classList.contains('open'));
+        const open = ['pr-overlay'].find(id => $pr(id).classList.contains('open'));
         if (open) pr_closeOverlay(open);
     });
     pr_load();

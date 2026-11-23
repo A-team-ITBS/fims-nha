@@ -19,21 +19,31 @@ $_tb_api = preg_match('~/api$~', $_tb_api) ? $_tb_api : $_tb_api . '/api';
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
 
-<style>
-    #tb-root .tb-report-title { text-align: center; margin: 0 0 18px; }
-    #tb-root .tb-report-title div { font-weight: 700; font-size: 14px; line-height: 1.6; }
-    #tb-root .tb-report-title .tb-report-date { font-weight: 400; }
-    #tb-root .tb-major-row td { background: #1B2B6B; color: #fff; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; }
-    #tb-root .tb-group-row td { background: var(--afims-bg-soft, #F5F6FA); font-weight: 600; text-transform: uppercase; font-size: 12px; }
-    #tb-root .tb-account-row td:first-child { padding-left: 28px; }
+<link rel="stylesheet" href="/app/fims-css/fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css') ?>" />
 
-    /* Dark mode: --afims-bg-soft is not a theme token, so the account-group rows (e.g. "Cash and Cash Equivalents") fell back to a
-       near-white #F5F6FA with light text on it; the major classification rows get the brand blue so they stand out from the table */
-    html.afims-dark[data-bs-theme="dark"] #tb-root .tb-group-row td { background: var(--afims-surface-subtle, #22294A); color: #FFFFFF; border-top: 1px solid var(--afims-border-strong, #4A5270); }
-    html.afims-dark[data-bs-theme="dark"] #tb-root .tb-major-row td { background: #2E4A8F; color: #FFFFFF; }
-    html.afims-dark[data-bs-theme="dark"] #tb-root .nha-tbl tfoot td { background: var(--afims-surface-subtle, #22294A); color: #FFFFFF; border-top: 2px solid var(--afims-border-strong, #4A5270); }
+<style>
+    /* Table styling (.fims-report-table*) lives in app/fims-css/fims.css. Only page-specific, non-table rules remain here. */
+    #tb-root .tb-report-title { text-align: center; margin: 0 0 18px; }
+    #tb-root .tb-report-title div { font-weight: 700; line-height: 1.6; font-size: 1rem; }
+    #tb-root .tb-report-title .tb-report-date { font-weight: 400; }
+
+    /* The rest of the page used 10-13px (shared nha-fims.css), tiny next to the table. Raised here so the page reads as one scale.
+       _shared/js/custom.js forces `1em * scale !important` on inputs/selects/buttons, so those get the same direct rem + !important. */
+    #tb-root .nha-hdr-tag             { font-size: 0.75rem; }    /* 12px  (was 10) */
+    #tb-root .nha-hdr-title           { font-size: 1.25rem; }    /* 20px  (was 17) */
+    #tb-root .nha-btn-hdr             { font-size: calc(0.875rem * var(--button-scale, 1)) !important; } /* 14px  Refresh */
+    #tb-root .nha-filter-label        { font-size: 0.75rem; }    /* 12px  (was 10) */
+    #tb-root .nha-filter-select       { font-size: calc(0.875rem * var(--input-scale, 1)) !important; }  /* 14px  dropdowns (was 13) */
+    #tb-root .nha-bdg                 { font-size: 0.8125rem; }  /* 13px  status badge (was 11) */
+    /* The filter group is a flex column, which stretched the badge across the whole column — keep it pill-sized,
+       lined up with the dropdowns beside it. */
+    #tb-root #tb-badge { align-self: flex-start; display: inline-flex; align-items: center; min-height: 34px; padding: 0 14px; margin-top: auto; }
+    #tb-root .nha-error               { font-size: 0.875rem; }   /* 14px  (was 13) */
+    #tb-root .nha-hint                { font-size: 0.875rem; padding: 0 16px; margin: 0 0 14px; color: var(--afims-text-muted, #62657E); }   /* 14px  (was 13); 16px side padding lines it up with the filter card's content */
+
     @media print {
-        #tb-root .tb-report-title { display: block !important; }
+        #tb-root .tb-letterhead,
+        #tb-root .tb-cert { display: block !important; }
     }
 </style>
 
@@ -60,7 +70,7 @@ $_tb_api = preg_match('~/api$~', $_tb_api) ? $_tb_api : $_tb_api . '/api';
         </div>
     </div>
 
-    <p class="nha-hint no-print" style="margin:0 0 14px;color:var(--afims-text-muted,#62657E);font-size:13px;">
+    <p class="nha-hint no-print">
         Showing the total debit and credit posted to every account, grouped under its major
         classification (Assets, Liabilities, Equity, Revenue, Expenses) — e.g. a snapshot of all
         General Ledger balances as of today.
@@ -95,35 +105,60 @@ $_tb_api = preg_match('~/api$~', $_tb_api) ? $_tb_api : $_tb_api . '/api';
     </div>
 
     <!-- ── REPORT TITLE (shown only on print) ────────────── -->
-    <div class="tb-report-title d-print-block" style="display:none;">
-        <div>NATIONAL HOUSING AUTHORITY</div>
-        <div>TRIAL BALANCE<span id="tb-report-book"></span></div>
-        <div class="tb-report-date">As of <span id="tb-report-date">—</span></div>
+    <div class="tb-letterhead" style="display:none;border:1px solid #000;padding:8px 10px;margin-bottom:0;">
+        <table style="width:100%;border-collapse:collapse;"><tr>
+            <td style="width:14%;vertical-align:middle;">
+                <img src="/_shared/images/letterhead/nha-logo.png" alt="NHA" style="height:54px;display:block;margin:0 auto;object-fit:contain;">
+            </td>
+            <td class="tb-report-title" style="width:51%;text-align:center;vertical-align:middle;">
+                <div style="font-weight:700;">NATIONAL HOUSING AUTHORITY</div>
+                <div style="font-weight:700;">TRIAL BALANCE<span id="tb-report-book"></span></div>
+                <div style="font-weight:700;">MAIN OFFICE</div>
+                <div class="tb-report-date"><span id="tb-report-date">—</span></div>
+            </td>
+            <td style="width:35%;text-align:center;vertical-align:middle;white-space:nowrap;">
+                <img src="/_shared/images/letterhead/pambansang-pabahay.png" alt="Pambansang Pabahay"
+                     style="height:46px;margin-right:5px;vertical-align:middle;object-fit:contain;">
+                <img src="/_shared/images/letterhead/bagong-pilipinas.png" alt="Bagong Pilipinas"
+                     style="height:46px;vertical-align:middle;object-fit:contain;">
+            </td>
+        </tr></table>
     </div>
 
     <!-- ── TABLE ──────────────────────────────────────────── -->
-    <div class="nha-table-wrap">
-        <div class="nha-tbl-scroll">
-            <table class="nha-tbl">
+    <div class="nha-table-wrap fims-report-table-wrap">
+        <div class="nha-tbl-scroll fims-report-table-scroll">
+            <table class="nha-tbl fims-report-table">
                 <thead>
                     <tr>
-                        <th>Account Title</th>
-                        <th>Acct Code</th>
-                        <th class="text-end">Debit</th>
-                        <th class="text-end">Credit</th>
+                        <th>Accounts</th>
+                        <th>Acct. Code</th>
+                        <th class="text-end">Debit Balances</th>
+                        <th class="text-end">Credit Balances</th>
                     </tr>
                 </thead>
                 <tbody id="tb-tbody">
                     <tr><td colspan="4"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
                 </tbody>
                 <tfoot>
-                    <tr style="font-weight:600;">
+                    <tr class="fims-report-table-total-row">
                         <td colspan="2">Total</td>
-                        <td class="text-end nha-mono" id="tb-total-debit">₱ 0.00</td>
-                        <td class="text-end nha-mono" id="tb-total-credit">₱ 0.00</td>
+                        <td class="text-end nha-mono fims-report-table-num" id="tb-total-debit">₱ 0.00</td>
+                        <td class="text-end nha-mono fims-report-table-num" id="tb-total-credit">₱ 0.00</td>
                     </tr>
                 </tfoot>
             </table>
+        </div>
+    </div>
+
+    <!-- ── CERTIFICATION (shown only on print) ───────────── -->
+    <div class="tb-cert" style="display:none;margin-top:28px;font-size:9.5pt;">
+        <p style="margin:0 0 30px;">I HEREBY CERTIFY that the trial balance is a true and complete statement of all
+            accounts as shown in the ledger prepared and presented in conformity with International Public Sector
+            Accounting Standards (IPSAS).</p>
+        <div style="width:260px;text-align:center;">
+            <div style="border-top:1px solid #000;padding-top:4px;">Signature Over Printed Name</div>
+            <div>Head of Accounting Department</div>
         </div>
     </div>
 
@@ -245,20 +280,32 @@ function tb_render(json) {
         tbody.innerHTML = rows.map(r => {
             let header = '';
             if (r.major_group !== lastMajor) {
-                header += `<tr class="tb-major-row"><td colspan="4">${tb_esc(r.major_group)}</td></tr>`;
+                header += `<tr class="fims-report-table-major-row"><td colspan="4">${tb_esc(r.major_group)}</td></tr>`;
                 lastGroup = null; // a new major group always restarts its own sub-groups
             }
             if (r.account_group && r.account_group !== lastGroup) {
-                header += `<tr class="tb-group-row"><td colspan="4">${tb_esc(r.account_group)}</td></tr>`;
+                // Assets keep the filled sub-header (e.g. "Cash and Cash Equivalents"). Every other class —
+                // Liabilities especially — lists its group (e.g. "Financial Liabilities" 2-01, "Inter-Agency
+                // Payables" 2-02) as a plain row at the same level as the accounts, like the NHA reference.
+                if (/^assets$/i.test(String(r.major_group).trim())) {
+                    header += `<tr class="fims-report-table-group-row"><td colspan="4">${tb_esc(r.account_group)}</td></tr>`;
+                } else {
+                    header += `<tr class="fims-report-table-row">
+                        <td>${tb_esc(r.account_group)}</td>
+                        <td class="nha-mono fims-report-table-num">${tb_esc(r.account_group_code)}</td>
+                        <td></td><td></td>
+                    </tr>`;
+                }
             }
             lastMajor = r.major_group;
             lastGroup = r.account_group;
 
-            return header + `<tr class="tb-account-row">
+            const contra = /^(Accumulated Depreciation|Allowance for Impairment)/i.test(String(r.account_title || ''));
+            return header + `<tr class="fims-report-table-row${contra ? ' fims-report-table-contra-row' : ''}">
                 <td>${tb_esc(r.account_title) || '—'}</td>
-                <td class="nha-mono">${tb_esc(r.account_code)}</td>
-                <td class="text-end nha-mono">${Number(r.total_debit) > 0 ? tb_peso(r.total_debit) : ''}</td>
-                <td class="text-end nha-mono">${Number(r.total_credit) > 0 ? tb_peso(r.total_credit) : ''}</td>
+                <td class="nha-mono fims-report-table-num">${tb_esc(r.account_code)}</td>
+                <td class="text-end nha-mono fims-report-table-num">${tb_peso(r.total_debit)}</td>
+                <td class="text-end nha-mono fims-report-table-num">${tb_peso(r.total_credit)}</td>
             </tr>`;
         }).join('');
     }

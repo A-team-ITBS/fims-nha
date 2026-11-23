@@ -14,22 +14,17 @@ use PHPMaker2024\FIMS\Service\GlobalService;
  *                            (Budget Processing / Budget Preview) can use the rows as they are.
  *   Query: fiscal_yr, program_code (filters), page (default 1), limit (default 15, 1–100).
  *
- * Unlike /budget_req/list, the SCOPE is decided here, not by the client: the caller must be a user of the
- * central review RC (FMD, recognised by rc_code: GlobalService::isCentralReviewRc()) — anyone else gets 403 — and the list is
- * always every Regional / District office (GlobalService::CENTRAL_REVIEW_RC_CODE_FROM). The `central`,
- * `rc_id` and `rc_code_from` query parameters are not read, so they can't widen or narrow it. The RC is read
- * with getUserRcId() — a missing user, no RC, or any other RC is a 403 — and NOT getUserRcScope(), whose
- * "unknown user = administrator" answer fails open, the wrong way for an access check.
+ * Unlike /budget_req/list, the SCOPE is decided here, not by the client: the list is always every Regional / District office
+ * (GlobalService::CENTRAL_REVIEW_RC_CODE_FROM), and the `central`, `rc_id` and `rc_code_from` query parameters are not read, so they
+ * can't widen or narrow it. Any logged-in user (the JWT) gets the list — it is no longer limited to the Financial Management Department
+ * (it used to answer 403 to every other RC). What a user may DO with a row is still decided per row by `review` (withReview(): its
+ * can_decide, from the user's level), so Budget Processing and Return / Approve stay with the Budget Officer / Budget Head.
  */
 $FmdBudgetReqService = new BudgetReqService();
 
 $app->get('/fmd/budget_req/list', function ($request, $response, $args) use ($FmdBudgetReqService) {
     try {
         $userId = (int) $request->getAttribute('user_id');
-        $rcId   = $userId > 0 ? GlobalService::getUserRcId($userId) : null;
-        if (!GlobalService::isCentralReviewRc($rcId)) {
-            return $response->withJson(['success' => false, 'message' => 'Only the Financial Management Department can view this list.'], 403);
-        }
 
         $params = $request->getQueryParams();
         $text   = fn (string $key): string => is_scalar($params[$key] ?? null) ? trim((string) $params[$key]) : '';   // ?x[]=… is ignored

@@ -163,7 +163,15 @@ return [
     "fidelity_bond_page" => \DI\create(FidelityBondPage::class),
     "payroll_page" => \DI\create(PayrollPage::class),
     "remittance_page" => \DI\create(RemittancePage::class),
-    "far_report_page" => \DI\create(FarReportPage::class),
+    "balance_sheet_page" => \DI\create(BalanceSheetPage::class),
+    "income_statement_page" => \DI\create(IncomeStatementPage::class),
+    "opening_balance_page" => \DI\create(OpeningBalancePage::class),
+    "work_in_process_page" => \DI\create(WorkInProcessPage::class),
+    "statement_of_changes_page" => \DI\create(StatementOfChangesPage::class),
+    "cash_flow_page" => \DI\create(CashFlowPage::class),
+    "closing_balance_page" => \DI\create(ClosingBalancePage::class),
+    "bank_reconciliation_page" => \DI\create(BankReconciliationPage::class),
+    "fund_sweeping_page" => \DI\create(FundSweepingPage::class),
 
     // User table
     "usertable" => \DI\get("users"),

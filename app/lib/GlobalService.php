@@ -93,7 +93,7 @@ class GlobalService
 
     /**
      * Builds the next project code:
-     * "<year>-<rc_id>-<prog3>-<subprog4>-<series4>", e.g. 2026-RC-000-001-0001-0001.
+     * "<year>-<rc_id>-<prog3>-<subprog3>-<series4>", e.g. 2026-R03-101-001-0001.
      *
      *  - year     : the current year, or $year when given.
      *  - rc_id    : the logged-in user's uac.users.rc_id ($userId, else the current
@@ -101,10 +101,12 @@ class GlobalService
      *               digit extraction like the other two segments.
      *  - prog3    : last 3 digits of the trailing numeric run in $programCode
      *               (the Program this project belongs to) — e.g. "PROG-001" -> "001".
-     *  - subprog4 : last 4 digits of the trailing numeric run in $subProgramCode
-     *               (the Sub-Program this project belongs to).
+     *  - subprog3 : last 3 digits of the trailing numeric run in $subProgramCode
+     *               (the Sub-Program this project belongs to) — "101-001" -> "001".
+     *               (Projects filed before this was 3 digits have a 4-digit segment, "…-101-0001-…";
+     *               "03 - alter_table/44" renumbered the original ones.)
      *  - series4  : 4-digit sequence — the Nth project under that exact
-     *               "<year>-<rc_id>-<prog3>-<subprog4>-" combination, not a
+     *               "<year>-<rc_id>-<prog3>-<subprog3>-" combination, not a
      *               table-wide counter (mirrors generateProgramCode()'s
      *               "number is a suggestion, nothing reserved" caveat).
      *
@@ -194,7 +196,7 @@ class GlobalService
     /**
      * Where sub-program codes for a program start: ['prefix' => '101', 'next' => 3].
      *
-     *  - prefix : the selected program code itself (program "100" -> sub-programs "100-001", "100-002", …).
+     *  - prefix : the selected program code itself (program "101" -> sub-programs "101-001", "101-002", …).
      *  - next   : highest existing fims.sub_program.sub_program_code of the form "<prefix>-NNN", plus one
      *             (1 when there is none, so every program starts again at 001). sub_program_code is the
      *             table's primary key and is built from the program code, so looking up by prefix also

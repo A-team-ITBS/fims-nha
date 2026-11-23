@@ -39,10 +39,10 @@ account needs both set correctly (Section 1, step 2).
 | FMD Division Manager | FMD (RC 013) | 5, 6 |
 | FMD Department Manager | FMD (RC 013) | 5, 6 |
 | FMD user (Fund Sourcing) | FMD (RC 013) | 2, 8 (FMD review of the DV) |
-| Accounting Section Chief | Accounting Department (RC 012) | 8, 9, 10 |
+| Accounting Section Chief | Accounting Department (RC 012) | 8, 8B, 9, 10 |
 | Accounting Division Manager | Accounting Department (RC 012) | 8, 9, 10 |
 | Accounting Department Manager | Accounting Department (RC 012) | 8, 9, 10 |
-| Treasury Officer | Treasury Department (RC 014) | 9 |
+| Treasury Officer | Treasury Department (RC 014) | 8B, 9 |
 | Payroll officer | any office given access to Payroll Setup / Payroll Management | 1, 8A |
 | Any user (read-only checks) | any | 11 |
 
@@ -58,6 +58,7 @@ account needs both set correctly (Section 1, step 2).
 7. [Deliveries and IAR](#7-deliveries-and-iar)
 8. [Disbursement Voucher](#8-disbursement-voucher)
 8A. [Payroll — import and payroll DV](#8a-payroll--import-and-payroll-dv)
+8B. [Payroll deductions — remittance](#8b-payroll-deductions--remittance)
 9. [Check release and payment entry](#9-check-release-and-payment-entry)
 10. [Adjusting entries (Journal Entry Voucher)](#10-adjusting-entries-journal-entry-voucher)
 11. [Verification — ledgers and monitoring](#11-verification--ledgers-and-monitoring)
@@ -78,6 +79,7 @@ flowchart TD
     D --> IAR["7 — DELIVERIES AND IAR<br/>Inventory<br/>• Deliveries against the RFA's PO"]
     A -.-> PR["8A — PAYROLL<br/>Payroll officer<br/>• Import the monthly payroll<br/>• Payroll DV from the imported month"]
     PR -.-> E
+    PR -.-> RM["8B — REMITTANCE<br/>Accounting → FMD → Treasury<br/>• Deductions per agency<br/>• Remittance DV per agency, check, receipt"]
     IAR --> E["8 — DISBURSEMENT VOUCHER<br/>FMD → Accounting → Treasury<br/>• Voucher, journal entry, approvals<br/>• FOR_TREASURY posts the entry to the GL"]
     E --> F["9 — CHECK RELEASE AND PAYMENT ENTRY<br/>Treasury → Accounting<br/>• Check prepared and released<br/>• Payment JEV posted to the GL"]
     F --> J["10 — ADJUSTING ENTRIES<br/>Accounting<br/>• Journal Entry Vouchers without a DV"]
@@ -98,7 +100,7 @@ flowchart TD
 | 5 | System Administrator | Accounts Set-up → Program, then Sub Program | Add a program and its sub-programs | Listed under the program |
 | 6 | System Administrator | Accounts Set-up → Chart of Accounts | Check the GL accounts and their bottom-level (SL) accounts are Active; set their Books | Accounts show as Active |
 | 7 | System Administrator | Accounts Set-up → Responsibility Center | Check FMD (013), Accounting (012), Treasury (014) and the requesting offices are Active | Listed as Active |
-| 8 | System Administrator | Accounts Set-up → Banks Accounts | Add the disbursing bank account | Status ACTIVE |
+| 8 | System Administrator | Accounts Set-up → Banks Accounts | Add the disbursing bank account and tag its Cash account (GL account code, e.g. 1-01-02-020) | Status ACTIVE; Cash account shown |
 | 9 | System Administrator | Accounts Set-up → Vendors | Add a vendor with its assigned Chart of Accounts account | Vendor is ACTIVE and can be picked in an RFA |
 | 10 | Payroll officer | Accounts Set-up → Payroll Setup | Add one payroll item per amount column of the payroll import form: item code = the column name (e.g. BASIC_SALARY), category (Earning / Deduction / Refund / Employer Share) and its account | Items ACTIVE; Payroll Management → File Template shows those columns as set up |
 | 11 | Each new user | Change Password | Change the initial password | Password updated |
@@ -182,22 +184,24 @@ flowchart TD
 ## 4. Budget revision (optional)
 
 **Needs:** an approved COB (Section 3). **Sidebar:** COB Preparation → Budget Revision.
-**Statuses:** Pending, Approved, Declined.
+**Statuses:** Saved → Submitted → Approved (or Declined).
 
 | Step | Log in as | Where (sidebar → page) | Do this | Expected result |
 |---|---|---|---|---|
-| 1 | Budget office user | COB Preparation → Budget Revision | Add a revision: From budget line, To line (when moving money), new amount, reason | Status Pending — still editable |
-| 2 | Reviewer | Budget Revision | Review → Approve | Status Approved; the From and To lines' amounts change |
+| 1 | Budget office user | COB Preparation → Budget Revision | Add a revision: From budget line, new amount, reason — or, on the Realignment tab, From line, To line and the amount to transfer, reason | Status Saved — still editable (Actions → Edit) |
+| 1a | Budget office user | Budget Revision | Actions → Process on the saved request | Status Submitted — it can no longer be edited |
+| 2 | Reviewer | Budget Revision | Review → Approve (Submitted requests only) | Status Approved; a transaction is recorded for each line (From goes down, To goes up) — COB Monitoring's Revision / Realignment column adds them up (− in red on the budget that gave funds up, + in green on the one that received them) |
 | 2a | Reviewer (alternative) | Budget Revision | Review → Decline | Status Declined; no amounts change |
-| 3 | Any user | Monitoring → COB Monitoring | Open the revised lines | Revision / Realignment column shows the change |
+| 3 | Any user | Monitoring → COB Monitoring | Open the revised lines | Revision / Realignment column shows the change (red −, green +) |
 
 ```mermaid
 flowchart TD
-    START(["Start"]) --> S1["STEP 1 — FILE THE REVISION<br/>Budget office — Budget Revision<br/>• From line (and To line)<br/>• New amount and reason<br/>• Status: Pending"]
-    S1 --> S2["STEP 2 — REVIEW<br/>Reviewer — Budget Revision"]
+    START(["Start"]) --> S1["STEP 1 — FILE THE REVISION<br/>Budget office — Budget Revision<br/>• From line (and To line)<br/>• New amount (or amount to transfer) and reason<br/>• Status: Saved (can still be edited)"]
+    S1 --> SP["STEP 1a — PROCESS<br/>Budget office — Actions → Process<br/>• Status: Submitted (no more editing)"]
+    SP --> S2["STEP 2 — REVIEW<br/>Reviewer — Budget Revision"]
     S2 --> D1{"Approved?"}
     D1 -->|"No"| X(["Declined — budget unchanged"])
-    D1 -->|"Yes"| S3["STEP 3 — APPLIED<br/>• From line adjusted<br/>• To line receives the difference<br/>• COB Monitoring: Revision / Realignment"]
+    D1 -->|"Yes"| S3["STEP 3 — APPLIED<br/>• A transaction is recorded for the From line<br/>• and one for the To line, which receives the difference<br/>• COB Monitoring: Revision / Realignment (red − / green +)"]
     S3 --> END(["Revision applied — go to Section 5"])
 ```
 
@@ -380,6 +384,42 @@ flowchart TD
     D2 -->|"Yes"| X["Month back to Imported<br/>• A new DV can use it"]
     X --> S5
     D2 -->|"No"| END(["Go to Section 9"])
+```
+
+## 8B. Payroll deductions — remittance
+
+**Needs:** Section 8A (an imported month with its payroll DV). For the check: Section 9's set-up — blank checks registered
+and cash recorded for the bank (Cash Position). **Sidebar:** Accounts Set-up → Remittance; DV Processing → Disbursement
+Voucher, Disbursement Preparation, Journal Entry Voucher. **Remittance status:** Pending → Scheduled → DV in process →
+Remitted → Confirmed. Each agency's remittance is paid through its own DV (claimant = the agency) and needs **no RFA**.
+
+| Step | Log in as | Where (sidebar → page) | Do this | Expected result |
+|---|---|---|---|---|
+| 1 | Any user with access | Accounts Set-up → Remittance | Find the month; click an agency name | One row per agency (GSIS, BIR, PhilHealth, Pag-IBIG, Other Payables): employee share, government share, total to remit; the detail lists the items and each employee's amounts. NHA receivables show "Collected by NHA" |
+| 2 | Accounting Section Chief (RC 012) | Remittance | Schedule an agency: due date (defaults to the 10th of next month), remarks | Status Scheduled |
+| 2a | Accounting (alternative) | Remittance | Schedule a month that has no payroll DV | Refused — "Prepare the … payroll DV first" |
+| 3 | Accounting Section Chief | Remittance → **Create Remittance DV** | The New DV opens filled: claimant = the agency, amount = total to remit, entry Dr the "Due to …" payables + Dr government share / Cr Accounts Payable; RFA not needed; pick the Book; save | DV DRAFT; the row shows "DV in process" with the DV no. |
+| 3a | Accounting (alternative) | Remittance | Unschedule a row that has a DV | Refused — cancel / delete the DV first; deleting the DV puts the row back to Scheduled |
+| 4 | (Section 8) | Disbursement Voucher | Submit; FMD approves; Accounting Section Chief → Division Manager → Department Manager | FOR_TREASURY; its entry posts and the agency's "Due to …" account clears in the General Ledger |
+| 5 | Treasury Officer (RC 014) | DV Processing → Disbursement Preparation → Prepare Check | Pick the remittance DV and the bank (the next blank check fills in) | Check PREPARED; the DV becomes RELEASED; the Remittance row shows **Remitted** with the check no. |
+| 5a | Treasury (alternative) | Prepare Check | The bank has no cash recorded | Refused — "Insufficient cash"; record it in Cash Position first |
+| 6 | Accounting (RC 012) | Disbursement Voucher → view → Prepare Payment JEV; Journal Entry Voucher | Prepare the payment entry; move it to POSTED | Dr Accounts Payable / Cr Cash in Bank posted |
+| 7 | Treasury or Accounting | Remittance → **Confirm Receipt** | Agency receipt / confirmation no. and date | Status Confirmed |
+| 7a | Treasury or Accounting (alternative) | Remittance | Confirm before the DV is released | Refused |
+
+```mermaid
+flowchart TD
+    START(["Imported month with its payroll DV"]) --> S1["STEP 1 — DEDUCTIONS<br/>Any user — Remittance<br/>• Per agency: employee share,<br/>government share, total"]
+    S1 --> S2["STEP 2 — SCHEDULE<br/>Accounting (RC 012) — Remittance<br/>• Due date<br/>• Status: Scheduled"]
+    S2 --> S3["STEP 3 — REMITTANCE DV<br/>Accounting — Create Remittance DV<br/>• Claimant = the agency, no RFA<br/>• Dr Due to … + gov't share / Cr AP<br/>• Status: DV in process"]
+    S3 --> S4["STEP 4 — DV APPROVALS<br/>FMD → Accounting (Section 8)<br/>• FOR_TREASURY, entry posted<br/>• Due to … cleared"]
+    S4 --> D1{"Cash recorded<br/>for the bank?"}
+    D1 -->|"No"| R1["Record it in Cash Position"]
+    R1 --> D1
+    D1 -->|"Yes"| S5["STEP 5 — CHECK<br/>Treasury (RC 014) — Disbursement Preparation<br/>• Check prepared, DV RELEASED<br/>• Status: Remitted"]
+    S5 --> S6["STEP 6 — PAYMENT JEV<br/>Accounting — Prepare Payment JEV<br/>• Dr AP / Cr Cash, POSTED"]
+    S6 --> S7["STEP 7 — CONFIRM RECEIPT<br/>Treasury or Accounting — Remittance<br/>• Agency OR<br/>• Status: Confirmed"]
+    S7 --> END(["Remittance complete"])
 ```
 
 ## 9. Check release and payment entry

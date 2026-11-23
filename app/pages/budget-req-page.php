@@ -10,8 +10,14 @@ $_bgr_api = Config('API.FIMS_URL');
 // User level 8 = Budget Head: "Add Budget Request" is hidden, and only this
 // level sees the "Budget Preview" action (whose modal has Return / Approve
 // buttons on an Endorsed request).
+// User level -1 = System Administrator (superadmin): no restriction on the review chain — Budget Processing (the Budget Officer's
+// step) and Budget Review with Return / Approve (the Budget Head's step) at EVERY step, whatever their office. Same people the API
+// lets through (BudgetReqService::isSuperAdmin): the built-in administrator (user_id -1) or a level list that includes -1 ("-1,3").
+// Hiding a button here is cosmetic — the API decides, and tells each row so in review.can_decide.
 $userid = CurrentUserID();
 $userLevel = CurrentUserLevel();
+$_bgr_isAdmin = (int) $userid === -1
+    || in_array(-1, array_map('intval', explode(',', (string) $userLevel)), true);
 
 // The user's Responsibility Center: the current user id -> uac.users (only its rc_id is used) ->
 // joined to fims.responsibility_code for that RC. The Financial Management Department (rc_code
@@ -25,7 +31,7 @@ $_bgr_fmdRcCodeFrom = '35-074-0000001-000';   // the Regional / District offices
 $_bgr_userRc = null;
 try {
     $_bgr_userRc = ExecuteRow(
-        'SELECT rc.rc_id, rc.rc_code, rc.rc_name FROM uac.users u '
+        'SELECT rc.rc_id, rc.rc_code, rc.rc_name, rc.office_type FROM uac.users u '
         .'JOIN fims.responsibility_code rc ON rc.rc_id = u.rc_id WHERE u.user_id = '.(int) $userid,
         'DB'
     ) ?: null;
@@ -36,6 +42,8 @@ try {
 $_bgr_isFmd = $_bgr_userRc !== null && trim((string) ($_bgr_userRc['rc_code'] ?? '')) === $_bgr_fmdRcCode;
 $_bgr_isBudgetOfficer = ((int) $userLevel === 2);
 $_bgr_isBudgetHead = ((int) $userLevel === 8);
+// who is offered the "Budget Review" action: the Budget Head, and the superadmin (who may decide at the Budget Head's step too)
+$_bgr_canPreview = $_bgr_isBudgetHead || $_bgr_isAdmin;
 $_bgr_canAdd = !$_bgr_isBudgetOfficer && !$_bgr_isBudgetHead && !$_bgr_isFmd;
 $_bgr_canModify = !$_bgr_isBudgetOfficer;
 ?>
@@ -233,11 +241,19 @@ const BGR_CAN_MODIFY = <?php echo $_bgr_canModify ? 'true' : 'false'; ?>;
 // additionally need the row's review.can_decide, see bgr_budgetPreview()). "Budget Processing" has no flag of its own:
 // it is driven by the row's review (see bgr_actionButtons()).
 const BGR_IS_BUDGET_HEAD = <?php echo $_bgr_isBudgetHead ? 'true' : 'false'; ?>;
+// true for a superadmin (user level -1): no restriction on the review chain (see the PHP at the top)
+const BGR_IS_ADMIN = <?php echo $_bgr_isAdmin ? 'true' : 'false'; ?>;
+// who is offered the row "Budget Review" action: the Budget Head, or a superadmin
+const BGR_CAN_PREVIEW = <?php echo $_bgr_canPreview ? 'true' : 'false'; ?>;
 let bgr_flatRows = [];
 // true for the Financial Management Department (FMD): the list is one row per request over every
 // Regional / District office (see the PHP at the top of this file and the FMD list section below).
 const BGR_FMD = <?php echo $_bgr_isFmd ? 'true' : 'false'; ?>;
 const BGR_FMD_RC_FROM = <?php echo json_encode($_bgr_fmdRcCodeFrom); ?>;
+// fims.responsibility_code.office_type of the logged-in user's own RC — same source "Print COB" (readone/
+// budget-req-readone.php, bgrv_openCobModal) reads via bgrv_rcDeptType() to decide whether a Regional /
+// District user skips straight to "Per Program" instead of being offered all four print layouts.
+const BGR_USER_OFFICE_TYPE = <?php echo json_encode((string) ($_bgr_userRc['office_type'] ?? '')); ?>;
 
 window.bgr_afterSave = () => bgr_load();
 
@@ -454,8 +470,8 @@ function bgr_actionButtons(flatRow, idx) {
         </a>`
         : '';
     // Step 1 of the review chain (BudgetReqService::REVIEW_STEPS): only when the request is waiting for the Budget Officer
-    // ("For Review", or "Returned to Budget Officer" after the Budget Head sent it back) AND this user is that Budget Officer —
-    // the row's review says so (review.can_decide, decided on the server). Once it is Endorsed it is the Budget Head's turn.
+    // ("For Review", or "Returned to Budget Officer" after the Budget Head sent it back) AND this user is that Budget Officer (or a
+    // superadmin) — the row's review says so (review.can_decide, decided on the server). Once it is Endorsed it is the Budget Head's turn.
     const budgetProcessingItem = (header.review?.can_decide && header.review.actor === 'Budget Officer')
         ? `<a class="nha-menu-item" href="javascript:void(0);" onclick="bgr_budgetProcessing(${idx});bgr_closeMenus();">
             <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
@@ -464,11 +480,12 @@ function bgr_actionButtons(flatRow, idx) {
         : '';
     // Read-only counterpart of Budget Processing — every line item with its
     // Type of Fund, Suggested Amount and Component, nothing to fill in.
-    // Budget Head (level 8) only.
-    const budgetPreviewItem = (BGR_IS_BUDGET_HEAD && (program || isCoe))
+    // Budget Head (level 8) and superadmin (level -1) only. The Return / Approve buttons inside need the row's review.can_decide on
+    // the Budget Head's step (see bgr_budgetPreview()).
+    const budgetPreviewItem = (BGR_CAN_PREVIEW && (program || isCoe))
         ? `<a class="nha-menu-item" href="javascript:void(0);" onclick="bgr_budgetPreview(${idx});bgr_closeMenus();">
             <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-            Budget Preview
+            Budget Review
         </a>`
         : '';
     // A flat-list Program row's Delete removes just that Program (bgr_deleteProgram); the
@@ -574,7 +591,10 @@ function bgr_viewCoe(idx) {
    are included (one, not every sibling Program under the same header) — only COE is unconditional. */
 function bgr_budgetProcessing(idx) {
     const { header, program } = bgr_flatRows[idx];
-    const programs = BGR_FMD ? (header.programs ?? []) : (program ? [program] : []);
+    // endorsing / returning acts on the WHOLE request: FMD's rows are whole requests already; a superadmin sees the flat list but
+    // decides the whole request too, so the modal gets every Program (not only the clicked row's) — else the other Programs' line
+    // items would never get their Type of Fund
+    const programs = (BGR_FMD || BGR_IS_ADMIN) ? (header.programs ?? []) : (program ? [program] : []);
     const coeLineItems = header.coe_line_items ?? [];
     if (!programs.length && !coeLineItems.length) {
         bgr_toast('This budget request has no programs yet.', 'warning');
@@ -602,7 +622,8 @@ function bgr_budgetProcessing(idx) {
    any, ALWAYS come along too as their own sibling block — see bgr_budgetProcessing above for why. */
 function bgr_budgetPreview(idx) {
     const { header, program } = bgr_flatRows[idx];
-    const programs = BGR_FMD ? (header.programs ?? []) : (program ? [program] : []);
+    // the whole request, for FMD and for a superadmin — see bgr_budgetProcessing above
+    const programs = (BGR_FMD || BGR_IS_ADMIN) ? (header.programs ?? []) : (program ? [program] : []);
     const coeLineItems = header.coe_line_items ?? [];
     if (!programs.length && !coeLineItems.length) return;
     bpv_openModal({

@@ -20,10 +20,7 @@ use PHPMaker2024\FIMS as App;
  * already used by fims.budget_allocation.requesting_rc_id (see
  * "03 - alter_table/14 - budget_allocation_requesting_department_id_to_
  * requesting_rc_id.sql"). rc_id has no FK, like that column; this service
- * validates it exists before saving instead. Documents are Google-Drive
- * links (not uploads), matching the pattern already named but
- * unimplemented in CheckProcessingService::saveRegionDriveLink() — stored
- * in fims.bank_account_documents.
+ * validates it exists before saving instead.
  *
  * `status` (ACTIVE/DORMANT/CLOSED) is new and is kept in sync with the
  * pre-existing `is_active` boolean so CheckProcessingService::
@@ -36,7 +33,6 @@ use PHPMaker2024\FIMS as App;
 class BankManagementService
 {
     private string $tableBankAccounts     = 'fims.bank_accounts';
-    private string $tableDocuments        = 'fims.bank_account_documents';
     private string $tableAuditLog         = 'fims.bank_account_audit_log';
     private string $tableResponsibilityCode = 'fims.responsibility_code';
     private string $tableChartOfAccounts    = 'fims.chart_of_accounts';
@@ -83,7 +79,6 @@ class BankManagementService
     }
 
     private const ACCOUNT_TYPES = ['CURRENT', 'SAVINGS', 'NON_DRAWING_SAVINGS', 'TIME_DEPOSIT', 'TRUST'];
-    private const CLASSIFICATIONS = ['COLLECTION', 'DISBURSEMENT', 'COE_MOOE', 'CAPITAL_OUTLAY', 'EHAP', 'SPECIAL_PURPOSE', 'PROJECT', 'JOINT_VENTURE', 'TRUST'];
     private const STATUSES = ['ACTIVE', 'DORMANT', 'CLOSED'];
 
     // ── Stats (KPI cards) ──
@@ -122,14 +117,6 @@ class BankManagementService
         if (in_array($status, self::STATUSES, true)) {
             $where[] = "ba.status = " . $this->str($status);
         }
-        $classification = strtoupper(trim((string) ($params['classification'] ?? '')));
-        if (in_array($classification, self::CLASSIFICATIONS, true)) {
-            $where[] = "ba.account_classification = " . $this->str($classification);
-        }
-        $fundSource = trim((string) ($params['fund_source'] ?? ''));
-        if ($fundSource !== '') {
-            $where[] = "ba.fund_source = " . $this->str($fundSource);
-        }
         $search = trim((string) ($params['search'] ?? ''));
         if ($search !== '') {
             $needle = $this->str('%' . $search . '%');
@@ -138,9 +125,15 @@ class BankManagementService
         $whereSql = implode(' AND ', $where);
 
         $rows = App\ExecuteRowsAssociative(
-            "SELECT ba.*, rc.rc_code, rc.rc_name
+            "SELECT ba.*, rc.rc_code, rc.rc_name,
+                    gl.account_code AS gl_account_code, gl.account_title AS gl_account_title,
+                    sl.account_code AS sl_account_code, sl.account_title AS sl_account_title,
+                    md.account_name AS main_depository_account_name
              FROM {$this->tableBankAccounts} ba
              LEFT JOIN {$this->tableResponsibilityCode} rc ON rc.rc_id = ba.rc_id
+             LEFT JOIN {$this->tableChartOfAccounts} gl ON gl.account_id = ba.coa_account_id
+             LEFT JOIN {$this->tableChartOfAccounts} sl ON sl.account_id = ba.sl_code
+             LEFT JOIN {$this->tableBankAccounts} md ON md.bank_account_id = ba.main_depository_account_id
              WHERE {$whereSql}
              ORDER BY ba.account_name",
             'DB'
@@ -149,20 +142,13 @@ class BankManagementService
         return $this->dataTable($params['draw'] ?? 1, $rows);
     }
 
-    // ── Single account (with documents) ──
+    // ── Single account ──
     public function getAccount($id)
     {
         $account = $this->fetchAccount((int) $id);
         if (!$account) {
             return json_encode(["success" => false, "message" => "Bank account not found."]);
         }
-        $account['documents'] = App\ExecuteRowsAssociative(
-            "SELECT document_id, link_name, gdrive_link, added_at
-             FROM {$this->tableDocuments}
-             WHERE bank_account_id = " . (int) $id . "
-             ORDER BY added_at DESC",
-            'DB'
-        );
 
         return $this->ok($account);
     }
@@ -170,12 +156,38 @@ class BankManagementService
     private function fetchAccount(int $id): ?array
     {
         return App\ExecuteRow(
-            "SELECT ba.*, rc.rc_code, rc.rc_name
+            "SELECT ba.*, rc.rc_code, rc.rc_name,
+                    gl.account_code AS gl_account_code, gl.account_title AS gl_account_title,
+                    sl.account_code AS sl_account_code, sl.account_title AS sl_account_title,
+                    md.account_name AS main_depository_account_name
              FROM {$this->tableBankAccounts} ba
              LEFT JOIN {$this->tableResponsibilityCode} rc ON rc.rc_id = ba.rc_id
+             LEFT JOIN {$this->tableChartOfAccounts} gl ON gl.account_id = ba.coa_account_id
+             LEFT JOIN {$this->tableChartOfAccounts} sl ON sl.account_id = ba.sl_code
+             LEFT JOIN {$this->tableBankAccounts} md ON md.bank_account_id = ba.main_depository_account_id
              WHERE ba.bank_account_id = {$id}",
             'DB'
         ) ?: null;
+    }
+
+    // Validates a submitted main_depository_account_id against
+    // fims.bank_accounts itself (self-referencing FK — see
+    // "55 - bank_accounts_add_main_depository_account_id.sql"). Empty is
+    // valid (no Main Depository account assigned). An account can't be
+    // assigned to itself.
+    private function mainDepositoryAccountIdExists(string $mainDepositoryAccountId, int $ownAccountId): bool
+    {
+        if ($mainDepositoryAccountId === '') {
+            return true;
+        }
+        if ((int) $mainDepositoryAccountId === $ownAccountId) {
+            return false;
+        }
+
+        return (bool) App\ExecuteRow(
+            "SELECT bank_account_id FROM {$this->tableBankAccounts} WHERE bank_account_id = " . $this->str($mainDepositoryAccountId),
+            'DB'
+        );
     }
 
     // Validates a submitted Region/Office value against fims.responsibility_code
@@ -186,6 +198,143 @@ class BankManagementService
             "SELECT rc_id FROM {$this->tableResponsibilityCode} WHERE rc_id = " . $this->str($rcId),
             'DB'
         );
+    }
+
+    // Every bank account already on file, so the Register/Edit Account
+    // modal can offer them as candidates for the Assigned Main Depository
+    // Account field (refreshAssignedMainDepositorySelect() in
+    // bank-management-page.php) — "any" account, not just the account
+    // currently being registered/edited (which, if brand new, can't
+    // appear here yet since it has no bank_account_id until saved). Main
+    // Depository (is_main_depository) is just a plain per-account flag,
+    // set/unset via store()/update() — no exclusivity, no grouping: any
+    // number of accounts can be tagged at once, independently of each
+    // other and of their Bank Name or Region/Office. rc_code/rc_name are
+    // joined in purely for display context.
+    public function getAccountsForRegion($rcId)
+    {
+        $rows = App\ExecuteRowsAssociative(
+            "SELECT ba.bank_account_id, ba.account_name, ba.bank_name, ba.is_main_depository, ba.rc_id,
+                    ba.current_balance, ba.main_depository_account_id, md.account_name AS main_depository_account_name,
+                    rc.rc_code, rc.rc_name
+             FROM {$this->tableBankAccounts} ba
+             LEFT JOIN {$this->tableResponsibilityCode} rc ON rc.rc_id = ba.rc_id
+             LEFT JOIN {$this->tableBankAccounts} md ON md.bank_account_id = ba.main_depository_account_id
+             ORDER BY ba.account_name",
+            'DB'
+        );
+
+        return $this->ok($rows ?: []);
+    }
+
+    // ── Fund Sweeping ──
+    // Bulk-prepares DRAFT FTLAs (fims.fund_transfers, via FtlaService —
+    // same create() the manual FTLA form posts to) that move each of a
+    // Region/Office's bank accounts' un-swept deposits into its
+    // already-assigned main_depository_account_id (see migration
+    // "55 - bank_accounts_add_main_depository_account_id.sql"). "Balance"
+    // here is the SUM of that account's fims.collection_report_deposits
+    // rows where is_swept = FALSE, NOT fims.bank_accounts.current_balance
+    // — nothing in this app ever keeps current_balance in sync, whereas
+    // Collection Reports' own Deposit section is the actual record of
+    // money going into these accounts. This does NOT move money itself —
+    // it only creates the paperwork; the normal FTLA approval workflow
+    // (DRAFT → … → COMPLETED) still has to run its course before anything
+    // is actually transferred. transfer_type = SETTLEMENT_TO_MAIN, the
+    // type FtlaService already defines for exactly this case.
+    //
+    // Accounts with no main_depository_account_id assigned, or no
+    // un-swept deposits, are skipped (not an error) — callers should check
+    // the "skipped" list. Once processFundSweep() creates a draft FTLA for
+    // an account, every un-swept deposit it just summed gets marked
+    // is_swept = TRUE (see migration "56 - collection_report_deposits_
+    // add_swept_tracking.sql") so the same money is never swept twice.
+    private function unsweptDepositBalanceSql(): string
+    {
+        return "(SELECT COALESCE(SUM(amount), 0) FROM fims.collection_report_deposits crd
+                 WHERE crd.bank_account_id = ba.bank_account_id AND crd.is_swept = FALSE)";
+    }
+
+    public function previewFundSweep($rcId)
+    {
+        $rcId = trim((string) $rcId);
+        $balanceSql = $this->unsweptDepositBalanceSql();
+        $rows = App\ExecuteRowsAssociative(
+            "SELECT ba.bank_account_id, ba.account_name, ba.bank_name,
+                    {$balanceSql} AS current_balance,
+                    ba.main_depository_account_id, md.account_name AS main_depository_account_name
+             FROM {$this->tableBankAccounts} ba
+             LEFT JOIN {$this->tableBankAccounts} md ON md.bank_account_id = ba.main_depository_account_id
+             WHERE " . ($rcId === '' ? 'ba.rc_id IS NULL' : 'ba.rc_id = ' . $this->str($rcId)) . "
+             ORDER BY ba.account_name",
+            'DB'
+        );
+
+        return $this->ok($rows ?: []);
+    }
+
+    // $accountIds, when non-empty, restricts the sweep to just those
+    // bank_account_id values (still scoped to $rcId too, so a request
+    // can't sweep an account outside the region it claims) — lets the
+    // Fund Sweeping tab's per-row checkboxes pick which eligible accounts
+    // actually get swept, instead of always sweeping every eligible
+    // account in the region.
+    public function processFundSweep($rcId, array $accountIds = [])
+    {
+        $userId = (int) App\CurrentUserID();
+        $rcId = trim((string) $rcId);
+        $balanceSql = $this->unsweptDepositBalanceSql();
+        $accountIds = array_values(array_filter(array_map('intval', $accountIds)));
+        $accountFilter = $accountIds ? ' AND ba.bank_account_id IN (' . implode(',', $accountIds) . ')' : '';
+        $rows = App\ExecuteRowsAssociative(
+            "SELECT ba.bank_account_id, ba.account_name, {$balanceSql} AS current_balance, ba.main_depository_account_id
+             FROM {$this->tableBankAccounts} ba
+             WHERE " . ($rcId === '' ? 'ba.rc_id IS NULL' : 'ba.rc_id = ' . $this->str($rcId)) . $accountFilter,
+            'DB'
+        ) ?: [];
+
+        $ftla = new FtlaService();
+        $created = [];
+        $skipped = [];
+        foreach ($rows as $row) {
+            $amount = (float) $row['current_balance'];
+            $toId = $row['main_depository_account_id'];
+            if ($amount <= 0 || !$toId || (int) $toId === (int) $row['bank_account_id']) {
+                $skipped[] = ['bank_account_id' => $row['bank_account_id'], 'account_name' => $row['account_name']];
+                continue;
+            }
+            $result = $ftla->create([
+                'transfer_type' => 'SETTLEMENT_TO_MAIN',
+                'transfer_date' => date('Y-m-d'),
+                'from_bank_account_id' => $row['bank_account_id'],
+                // Also pass from_accounts (not just the scalar
+                // from_bank_account_id) — the edit form's "Debit (Source)
+                // Bank Account" select is only ever populated from
+                // d.from_accounts (ftlm_setDebitAccounts() in
+                // ftla-form.php), never from the scalar column directly.
+                // Without this, from_accounts stays '[]' and the source
+                // account shows untagged/empty when editing the draft.
+                'from_accounts' => [['bank_account_id' => $row['bank_account_id'], 'amount' => $amount]],
+                'to_bank_account_id' => $toId,
+                'transfer_amount' => $amount,
+                'purpose' => 'Fund Sweep — ' . $row['account_name'] . ' to Main Depository',
+                'status' => 'DRAFT',
+            ], $userId);
+            if ($result['success'] ?? false) {
+                $fundTransferId = (int) ($result['data']['fund_transfer_id'] ?? 0);
+                App\Execute(
+                    "UPDATE fims.collection_report_deposits
+                     SET is_swept = TRUE, swept_fund_transfer_id = {$fundTransferId}
+                     WHERE bank_account_id = {$row['bank_account_id']} AND is_swept = FALSE",
+                    'DB'
+                );
+                $created[] = ['bank_account_id' => $row['bank_account_id'], 'account_name' => $row['account_name'], 'ftla_number' => $result['data']['ftla_number'] ?? null];
+            } else {
+                $skipped[] = ['bank_account_id' => $row['bank_account_id'], 'account_name' => $row['account_name'], 'reason' => $result['message'] ?? 'Could not create FTLA.'];
+            }
+        }
+
+        return $this->ok(['created' => $created, 'skipped' => $skipped]);
     }
 
     // Validates a submitted GL account code against fims.chart_of_accounts — this
@@ -200,20 +349,49 @@ class BankManagementService
         );
     }
 
+    // coa_account_id/sl_code (GL/SL two-step picker) both reference
+    // chart_of_accounts.account_id — same convention as
+    // fims.vendors.coa_account_id/sl_code and
+    // fims.accountable_officers.coa_account_id/sl_code. Empty is valid (not
+    // yet tagged).
+    private function accountIdExists(string $accountId): bool
+    {
+        return $accountId === '' || (bool) App\ExecuteRow(
+            "SELECT account_id FROM {$this->tableChartOfAccounts} WHERE account_id = " . $this->str($accountId),
+            'DB'
+        );
+    }
+
+    // Resolves a chart_of_accounts account_code from its account_id — used
+    // for either the GL (coa_account_id) or SL (sl_code) side of the
+    // two-step picker, so the legacy account_code column (still read by
+    // GeneralLedgerService::postPaymentJev(), Cash Position's opening-
+    // balance match, Collections' account picker, etc.) stays in sync with
+    // whichever one is actually the more specific code (see store()'s own
+    // comment).
+    private function accountCodeForId(string $accountId): ?string
+    {
+        if ($accountId === '') {
+            return null;
+        }
+        $row = App\ExecuteRow(
+            "SELECT account_code FROM {$this->tableChartOfAccounts} WHERE account_id = " . $this->str($accountId),
+            'DB'
+        );
+
+        return $row['account_code'] ?? null;
+    }
+
     // ── Create ──
     public function store($data)
     {
         $accountName = trim((string) ($data['account_name'] ?? ''));
         $accountNumber = trim((string) ($data['account_number'] ?? ''));
-        $classification = strtoupper(trim((string) ($data['account_classification'] ?? '')));
         $bankName = trim((string) ($data['bank_name'] ?? ''));
         $status = strtoupper(trim((string) ($data['status'] ?? 'ACTIVE')));
 
         if ($accountName === '' || $accountNumber === '' || $bankName === '') {
             return json_encode(["success" => false, "message" => "Account Name, Account Number, and Bank Name are required."]);
-        }
-        if (!in_array($classification, self::CLASSIFICATIONS, true)) {
-            return json_encode(["success" => false, "message" => "Select a valid Purpose."]);
         }
         if (!in_array($status, self::STATUSES, true)) {
             $status = 'ACTIVE';
@@ -222,12 +400,31 @@ class BankManagementService
         if (!$this->rcIdExists($rcId)) {
             return json_encode(["success" => false, "message" => "Select a valid Region/Office."]);
         }
-        $accountCode = trim((string) ($data['account_code'] ?? ''));
+        $coaAccountId = trim((string) ($data['coa_account_id'] ?? ''));
+        if (!$this->accountIdExists($coaAccountId)) {
+            return json_encode(["success" => false, "message" => "Select a valid GL Account."]);
+        }
+        $slCode = trim((string) ($data['sl_code'] ?? ''));
+        if (!$this->accountIdExists($slCode)) {
+            return json_encode(["success" => false, "message" => "Select a valid Sub-Ledger Account."]);
+        }
+        // SL, when chosen, is the more specific/leaf code this bank account
+        // actually represents — account_code must reflect THAT, not the GL
+        // parent it rolls up to, or every lookup keyed on account_code
+        // (Cash Position's opening-balance match, Collections' picker, etc.)
+        // matches the wrong, broader account.
+        $accountCode = $slCode !== ''
+            ? ($this->accountCodeForId($slCode) ?? '')
+            : ($coaAccountId !== '' ? ($this->accountCodeForId($coaAccountId) ?? '') : trim((string) ($data['account_code'] ?? '')));
         if (!$this->accountCodeExists($accountCode)) {
             return json_encode(["success" => false, "message" => "Select a valid GL Account Code."]);
         }
         if (App\ExecuteRow("SELECT bank_account_id FROM {$this->tableBankAccounts} WHERE account_number = " . $this->str($accountNumber), 'DB')) {
             return json_encode(["success" => false, "message" => "An account with this Account Number already exists."]);
+        }
+        $mainDepositoryAccountId = trim((string) ($data['main_depository_account_id'] ?? ''));
+        if (!$this->mainDepositoryAccountIdExists($mainDepositoryAccountId, 0)) {
+            return json_encode(["success" => false, "message" => "Select a valid Main Depository account."]);
         }
 
         $accountType = strtoupper(trim((string) ($data['account_type'] ?? '')));
@@ -236,16 +433,20 @@ class BankManagementService
         }
         $userId = (int) App\CurrentUserID();
 
+        $isMainDepository = filter_var($data['is_main_depository'] ?? false, FILTER_VALIDATE_BOOLEAN);
+
         $row = App\ExecuteRow(
             "INSERT INTO {$this->tableBankAccounts}
-                (account_name, account_number, bank_name, bank_branch, account_type, account_classification,
-                 fund_source, rc_id, account_code, is_main_depository, status, is_active, date_opened,
+                (account_name, account_number, bank_name, bank_branch, account_type,
+                 rc_id, account_code, coa_account_id, sl_code, is_main_depository,
+                 main_depository_account_id, status, is_active, date_opened,
                  last_transaction_date, created_by)
              VALUES (
                 " . $this->str($accountName) . ', ' . $this->str($accountNumber) . ', ' . $this->str($bankName) . ', '
                 . $this->strOrNull($data['bank_branch'] ?? null) . ', ' . $this->strOrNull($accountType) . ', '
-                . $this->str($classification) . ', ' . $this->strOrNull($data['fund_source'] ?? null) . ', '
-                . $this->strOrNull($rcId) . ', ' . $this->strOrNull($accountCode) . ', ' . $this->bool($data['is_main_depository'] ?? false) . ', '
+                . $this->strOrNull($rcId) . ', ' . $this->strOrNull($accountCode) . ', ' . $this->strOrNull($coaAccountId) . ', '
+                . $this->strOrNull($slCode) . ', ' . ($isMainDepository ? 'TRUE' : 'FALSE') . ', '
+                . $this->strOrNull($mainDepositoryAccountId) . ', '
                 . $this->str($status) . ', ' . ($status === 'ACTIVE' ? 'TRUE' : 'FALSE') . ', '
                 . $this->dateOrNull($data['date_opened'] ?? null) . ', ' . $this->dateOrNull($data['last_transaction_date'] ?? null)
                 . ", {$userId})
@@ -270,15 +471,11 @@ class BankManagementService
 
         $accountName = trim((string) ($data['account_name'] ?? ''));
         $accountNumber = trim((string) ($data['account_number'] ?? ''));
-        $classification = strtoupper(trim((string) ($data['account_classification'] ?? '')));
         $bankName = trim((string) ($data['bank_name'] ?? ''));
         $status = strtoupper(trim((string) ($data['status'] ?? 'ACTIVE')));
 
         if ($accountName === '' || $accountNumber === '' || $bankName === '') {
             return json_encode(["success" => false, "message" => "Account Name, Account Number, and Bank Name are required."]);
-        }
-        if (!in_array($classification, self::CLASSIFICATIONS, true)) {
-            return json_encode(["success" => false, "message" => "Select a valid Purpose."]);
         }
         if (!in_array($status, self::STATUSES, true)) {
             $status = 'ACTIVE';
@@ -287,7 +484,19 @@ class BankManagementService
         if (!$this->rcIdExists($rcId)) {
             return json_encode(["success" => false, "message" => "Select a valid Region/Office."]);
         }
-        $accountCode = trim((string) ($data['account_code'] ?? ''));
+        $coaAccountId = trim((string) ($data['coa_account_id'] ?? ''));
+        if (!$this->accountIdExists($coaAccountId)) {
+            return json_encode(["success" => false, "message" => "Select a valid GL Account."]);
+        }
+        $slCode = trim((string) ($data['sl_code'] ?? ''));
+        if (!$this->accountIdExists($slCode)) {
+            return json_encode(["success" => false, "message" => "Select a valid Sub-Ledger Account."]);
+        }
+        // See store()'s own comment — SL (when chosen) is the specific code,
+        // not the GL parent it rolls up to.
+        $accountCode = $slCode !== ''
+            ? ($this->accountCodeForId($slCode) ?? '')
+            : ($coaAccountId !== '' ? ($this->accountCodeForId($coaAccountId) ?? '') : trim((string) ($data['account_code'] ?? '')));
         if (!$this->accountCodeExists($accountCode)) {
             return json_encode(["success" => false, "message" => "Select a valid GL Account Code."]);
         }
@@ -299,12 +508,17 @@ class BankManagementService
         if ($dupe) {
             return json_encode(["success" => false, "message" => "Another account already uses this Account Number."]);
         }
+        $mainDepositoryAccountId = trim((string) ($data['main_depository_account_id'] ?? ''));
+        if (!$this->mainDepositoryAccountIdExists($mainDepositoryAccountId, $accountId)) {
+            return json_encode(["success" => false, "message" => "Select a valid Main Depository account."]);
+        }
 
         $accountType = strtoupper(trim((string) ($data['account_type'] ?? '')));
         if (!in_array($accountType, self::ACCOUNT_TYPES, true)) {
             $accountType = null;
         }
         $userId = (int) App\CurrentUserID();
+        $isMainDepository = filter_var($data['is_main_depository'] ?? false, FILTER_VALIDATE_BOOLEAN);
 
         App\Execute(
             "UPDATE {$this->tableBankAccounts} SET
@@ -313,11 +527,12 @@ class BankManagementService
                 bank_name = " . $this->str($bankName) . ",
                 bank_branch = " . $this->strOrNull($data['bank_branch'] ?? null) . ",
                 account_type = " . $this->strOrNull($accountType) . ",
-                account_classification = " . $this->str($classification) . ",
-                fund_source = " . $this->strOrNull($data['fund_source'] ?? null) . ",
                 rc_id = " . $this->strOrNull($rcId) . ",
                 account_code = " . $this->strOrNull($accountCode) . ",
-                is_main_depository = " . $this->bool($data['is_main_depository'] ?? false) . ",
+                coa_account_id = " . $this->strOrNull($coaAccountId) . ",
+                sl_code = " . $this->strOrNull($slCode) . ",
+                is_main_depository = " . ($isMainDepository ? 'TRUE' : 'FALSE') . ",
+                main_depository_account_id = " . $this->strOrNull($mainDepositoryAccountId) . ",
                 status = " . $this->str($status) . ",
                 is_active = " . ($status === 'ACTIVE' ? 'TRUE' : 'FALSE') . ",
                 date_opened = " . $this->dateOrNull($data['date_opened'] ?? null) . ",
@@ -332,14 +547,21 @@ class BankManagementService
         return $this->ok(['bank_account_id' => $accountId]);
     }
 
-    // ── Quick GL account code tag ──
+    // ── Quick GL/SL account tag ──
     public function tagAccountCode($id, $data)
     {
         $accountId = (int) $id;
-        $accountCode = trim((string) ($data['account_code'] ?? ''));
-        if (!$this->accountCodeExists($accountCode)) {
-            return json_encode(["success" => false, "message" => "Select a valid GL Account Code."]);
+        $coaAccountId = trim((string) ($data['coa_account_id'] ?? ''));
+        if (!$this->accountIdExists($coaAccountId)) {
+            return json_encode(["success" => false, "message" => "Select a valid GL Account."]);
         }
+        $slCode = trim((string) ($data['sl_code'] ?? ''));
+        if (!$this->accountIdExists($slCode)) {
+            return json_encode(["success" => false, "message" => "Select a valid Sub-Ledger Account."]);
+        }
+        // See store()'s own comment — SL (when chosen) is the specific code,
+        // not the GL parent it rolls up to.
+        $accountCode = $slCode !== '' ? ($this->accountCodeForId($slCode) ?? '') : ($coaAccountId !== '' ? ($this->accountCodeForId($coaAccountId) ?? '') : '');
         $before = $this->fetchAccount($accountId);
         if (!$before) {
             return json_encode(["success" => false, "message" => "Bank account not found."]);
@@ -349,6 +571,8 @@ class BankManagementService
         App\Execute(
             "UPDATE {$this->tableBankAccounts}
              SET account_code = " . $this->strOrNull($accountCode) . ",
+                 coa_account_id = " . $this->strOrNull($coaAccountId) . ",
+                 sl_code = " . $this->strOrNull($slCode) . ",
                  updated_at = CURRENT_TIMESTAMP
              WHERE bank_account_id = {$accountId}",
             'DB'
@@ -416,58 +640,6 @@ class BankManagementService
         return $this->ok($rows);
     }
 
-    // ── Documents ──
-    public function getDocuments($id)
-    {
-        $rows = App\ExecuteRowsAssociative(
-            "SELECT document_id, link_name, gdrive_link, added_at
-             FROM {$this->tableDocuments}
-             WHERE bank_account_id = " . (int) $id . "
-             ORDER BY added_at DESC",
-            'DB'
-        );
-
-        return $this->ok($rows);
-    }
-
-    public function saveDocumentLink($id, $data)
-    {
-        $accountId = (int) $id;
-        $linkName = trim((string) ($data['link_name'] ?? ''));
-        $gdriveLink = trim((string) ($data['gdrive_link'] ?? ''));
-        if ($linkName === '' || $gdriveLink === '') {
-            return json_encode(["success" => false, "message" => "Link name and Google Drive URL are required."]);
-        }
-        if (!App\ExecuteRow("SELECT bank_account_id FROM {$this->tableBankAccounts} WHERE bank_account_id = {$accountId}", 'DB')) {
-            return json_encode(["success" => false, "message" => "Bank account not found."]);
-        }
-
-        $userId = (int) App\CurrentUserID();
-        $row = App\ExecuteRow(
-            "INSERT INTO {$this->tableDocuments} (bank_account_id, link_name, gdrive_link, added_by)
-             VALUES ({$accountId}, " . $this->str($linkName) . ', ' . $this->str($gdriveLink) . ", {$userId})
-             RETURNING document_id",
-            'DB'
-        );
-
-        return $this->ok(['document_id' => $row['document_id']]);
-    }
-
-    public function removeDocumentLink($id, $data)
-    {
-        $accountId = (int) $id;
-        $documentId = (int) ($data['document_id'] ?? 0);
-        if ($documentId <= 0) {
-            return json_encode(["success" => false, "message" => "Document not specified."]);
-        }
-        App\Execute(
-            "DELETE FROM {$this->tableDocuments} WHERE document_id = {$documentId} AND bank_account_id = {$accountId}",
-            'DB'
-        );
-
-        return $this->ok(['document_id' => $documentId]);
-    }
-
     // ── Lookups ──
     public function getResponsibilityCenters()
     {
@@ -482,16 +654,4 @@ class BankManagementService
         return $this->ok($rows);
     }
 
-    public function getFundSources()
-    {
-        $rows = App\ExecuteRowsAssociative(
-            "SELECT DISTINCT fund_source
-             FROM {$this->tableBankAccounts}
-             WHERE fund_source IS NOT NULL AND fund_source <> ''
-             ORDER BY fund_source",
-            'DB'
-        );
-
-        return $this->ok(array_map(fn ($r) => $r['fund_source'], $rows));
-    }
 }

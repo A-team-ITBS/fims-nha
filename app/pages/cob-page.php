@@ -8,6 +8,9 @@ $_cob_api = Config('API.FIMS_URL');
 // Generate Report (the PDF / Excel dialog on each table) is switched off: its button and its dialog are not rendered. Set this to true to bring both back.
 // (The dialog only knows the Per Region / Per Type of Fund / Per Component views — see readone/cob-report-readone.php — not the Per Program one.)
 $_cob_showReport = false;
+
+// The explanatory note under the table ("Only Approved budget requests are counted. …") is not shown. Set this to true to bring it back.
+$_cob_showNote = false;
 ?>
 
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -42,9 +45,19 @@ $_cob_showReport = false;
 /* tree rows */
 #cob-root .cob-row.cob-has-kids { cursor: pointer; }
 #cob-root .cob-row.cob-has-kids:focus-visible { outline: 2px solid var(--afims-heading-fill, #000E3E); outline-offset: -2px; }
-/* group rows (everything above a project) are bold; a project is plain */
-#cob-root .cob-row:not(.cob-t-project) > td { font-weight: 600; color: var(--afims-heading, #000E3E); }
-#cob-root .cob-d0:not(.cob-t-project) > td { font-weight: 700; }
+/* group rows (everything above a project) are bold; a project — or, under COE, a request — is plain */
+#cob-root .cob-row:not(.cob-t-project):not(.cob-t-request) > td { font-weight: 600; color: var(--afims-heading, #000E3E); }
+#cob-root .cob-d0:not(.cob-t-project):not(.cob-t-request) > td { font-weight: 700; }
+/* The two halves of the sheet, CO and COE, each start on a row of their own and each has a colour of its own (CO blue, COE green): a tinted band across the row,
+   a solid bar down its left edge, and the code as a solid pill. The rule below repeats the selector shape of the "group rows are bold" rule above so that
+   it beats it on colour (same specificity, and it comes later). */
+#cob-root .cob-t-bucket { --b-accent: var(--afims-heading, #000E3E); --b-soft: var(--afims-surface-subtle, #F4F7FA); }
+#cob-root .cob-b-co  { --b-accent: var(--afims-primary, #0035A9); --b-soft: var(--afims-primary-soft, #E6EBF6); }
+#cob-root .cob-b-coe { --b-accent: var(--afims-success-hover, #0C7539); --b-soft: var(--afims-success-soft, #DBF2E5); }
+#cob-root .cob-row.cob-t-bucket[class*="cob-b-"] > td { background: var(--b-soft); color: var(--b-accent); font-weight: 700; border-top: 2px solid var(--b-accent); }
+#cob-root .cob-t-bucket > td:first-child { box-shadow: inset 5px 0 0 var(--b-accent); }
+#cob-root .cob-t-bucket:hover > td { background-image: linear-gradient(rgba(0, 0, 0, .05), rgba(0, 0, 0, .05)); }
+#cob-root .cob-bkt-badge { display: inline-block; min-width: 40px; padding: 2px 8px; border-radius: 4px; text-align: center; font-weight: 700; letter-spacing: .04em; color: #fff; background: var(--b-accent); }
 /* The name flows as ordinary text (name, then FY / office / documents after it) and wraps inside its cell; the caret is pinned to the left of it, so it can never end
    up on a line of its own. Indented 16px per level. */
 #cob-root .cob-name { position: relative; line-height: 1.45; padding-left: calc(var(--d, 0) * 16px + 22px); }
@@ -52,7 +65,7 @@ $_cob_showReport = false;
 /* a project row: the name (+ paperclip) on the first line, then ONE muted line under it with the fiscal year and the requesting office */
 #cob-root .cob-name > .cob-sub { display: block; margin-top: 3px; line-height: 1.5; }
 #cob-root .cob-name > .cob-sub .nha-bdg { margin-right: 6px; vertical-align: 1px; }
-#cob-root .cob-t-project > td { vertical-align: middle; }
+#cob-root .cob-t-project > td, #cob-root .cob-t-request > td { vertical-align: middle; }
 #cob-root .cob-caret { position: absolute; left: calc(var(--d, 0) * 16px); top: 2px; width: 14px; height: 14px; transition: transform .15s; stroke: currentColor; }
 #cob-root .cob-caret.open { transform: rotate(90deg); }
 #cob-root .cob-caret-sp { display: none; }
@@ -60,10 +73,17 @@ $_cob_showReport = false;
 #cob-root .cob-unassigned { font-style: italic; color: #B45309; }
 #cob-root .cob-num { font-family: 'IBM Plex Mono', monospace; font-size: 12px; text-align: right; white-space: nowrap; }
 #cob-root .cob-neg { color: #dc2626; }
+#cob-root .cob-pos { color: var(--green-txt, #0C7539); }
+/* the Revision / Realignment cell: one line per part (Revision, Realignment), just the signed amount on the right. The "Revision" / "Realignment" label is not drawn
+   (it is visually hidden — still there for screen readers — and shows as a tooltip on the line), so the sign and colour carry the meaning. */
+#cob-root .cob-adj > div { display: flex; justify-content: flex-end; align-items: baseline; gap: 10px; }
+#cob-root .cob-adj > div + div { margin-top: 2px; }
+#cob-root .cob-adj-k { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 #cob-root .cob-dash { color: var(--afims-text-disabled, #A9AAB8); }
 #cob-root .cob-clip { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; font-weight: 600; color: var(--afims-primary-text, #0035A9); }
 #cob-root .cob-clip svg { width: 12px; height: 12px; stroke: currentColor; }
-#cob-root .cob-total-row > td { font-weight: 700; background: var(--afims-surface-subtle, #F4F7FA); border-top: 2px solid var(--afims-border, #E4ECF2); }
+/* the TOTAL row sits at the top of the body, so its rule is underneath it */
+#cob-root .cob-total-row > td { font-weight: 700; background: var(--afims-surface-subtle, #F4F7FA); border-bottom: 2px solid var(--afims-border, #E4ECF2); }
 </style>
 
 <div id="cob-root" class="nha-root">
@@ -103,7 +123,7 @@ $_cob_showReport = false;
                 <div class="nha-sc-label">Revised Amount</div>
                 <div class="nha-sc-val" id="cob-kpi-revised">—</div>
             </div></div>
-            <p class="nha-kpi-sub" id="cob-kpi-revised-sub">As recorded on the budget line items</p>
+            <p class="nha-kpi-sub" id="cob-kpi-revised-sub">Approved Amount net of Revision / Realignment</p>
         </div>
         <div class="nha-sc nha-sc-green">
             <div class="nha-sc-top"><div>
@@ -117,7 +137,7 @@ $_cob_showReport = false;
                 <div class="nha-sc-label">Remaining Balance</div>
                 <div class="nha-sc-val" id="cob-kpi-remaining">—</div>
             </div></div>
-            <p class="nha-kpi-sub">Revised Amount less RFA Approved and LAA Issued</p>
+            <p class="nha-kpi-sub">Revised Amount less CBA Requested</p>
         </div>
     </div>
 
@@ -177,17 +197,17 @@ $_cob_showReport = false;
     <?php
     // The columns of the COB Monitoring sheet (key = what the API sends, in this order) — cob-page's JS carries the same list (COB_COLS).
     $_cob_cols = [
-        ['approved_amount', 'Approved Amount', 'The amount FMD suggested in the Budget Proposal module'],
-        ['revision_amount', 'Revision / Realignment', 'Net of the approved Budget Revisions (an increase, or a decrease in brackets)'],
-        ['revised_amount', 'Revised Amount', 'The revised amount recorded on each budget line item'],
-        ['cba_requested', 'CBA Requested', 'Taken off the budget by approved CBAs (Certificates of Budget Availability)'],
+        ['approved_amount', 'Approved Amount', 'The amount FMD suggested in the Budget Proposal module, before any revision or CBA'],
+        ['revision_amount', 'Revision / Realignment', 'A project shows only its LATEST revision or realignment, with its sign: an addition is + (green), a deduction − (red); a realignment is − on the budget that gave funds up and + on the one that received them. Parent rows and the TOTAL have no figure here. Revised Amount is still worked out from all the revisions and realignments'],
+        ['revised_amount', 'Revised Amount', 'Approved Amount net of Revision / Realignment (a decrease lowers it)'],
+        ['cba_requested', 'CBA Requested', 'Held against the budget by approved CBAs (Certificates of Budget Availability) — read from the earmark table, including what RFAs / LAAs have since drawn from them'],
         ['available_amount', 'Available for Earmarking', 'Revised Amount less CBA Requested — what a new CBA can still draw'],
         ['rfa_approved', 'RFA Approved', 'Drawn from the CBAs by approved RFAs'],
         ['laa_issued', 'LAA Issued', 'Drawn from the CBAs by issued LAAs'],
-        ['remaining_balance', 'Remaining Balance', 'Revised Amount less RFA Approved and LAA Issued'],
+        ['remaining_balance', 'Remaining Balance', 'Revised Amount less CBA Requested — what is left of the revised budget once the CBAs (and what RFAs / LAAs drew from them) are taken off'],
     ];
     foreach ([
-        'program'     => 'Program → Sub-Program → Originating Unit → Project',
+        'program'     => 'CO: Program → Sub-Program → Originating Unit → Project · COE: PS / MOOE → Originating Unit → Request',
         'region'      => 'Region → Program → Sub-Program → Project',
         'fund_source' => 'Type of Fund → Component → Program → Sub-Program → Project',
         'component'   => 'Component → Type of Fund → Program → Sub-Program → Project',
@@ -224,10 +244,15 @@ $_cob_showReport = false;
                     </tbody>
                 </table>
             </div>
-            <p class="cob-note">Only <strong>Approved</strong> budget requests are counted. <strong>Approved Amount</strong> is what FMD suggested in the Budget Proposal module;
-                <strong>Revision / Realignment</strong> is the net of its approved Budget Revisions. <strong>CBA Requested</strong> is what approved CBAs have taken off the
-                budget, which leaves <strong>Available for Earmarking</strong>. A CBA only reserves money: <strong>RFA Approved</strong> and <strong>LAA Issued</strong> are what has
-                actually been drawn from those reservations, so <strong>Remaining Balance</strong> is the Revised Amount less both. A dash means zero; brackets mean negative.</p>
+            <?php if ($_cob_showNote) { ?>
+            <p class="cob-note">Only <strong>Approved</strong> budget requests are counted. <strong>Approved Amount</strong> is what FMD suggested in the Budget Proposal module, as first suggested — before any revision or CBA;
+                <strong>Revision / Realignment</strong> shows, on a project, only its <strong>latest</strong> approved revision or realignment — signed and coloured: a deduction <strong>−</strong> in red and an addition <strong>+</strong> in green, so the budget that gave funds up reads <strong>−</strong> and the one that received them <strong>+</strong>. Parent rows and the <strong>TOTAL</strong> have no figure in this column; <strong>Revised Amount</strong> is still worked out from all of a budget's approved revisions and realignments. <strong>CBA Requested</strong> is what approved CBAs hold against the
+                budget (their reservations plus what RFAs and LAAs have since drawn from them — all read from the earmark table), which leaves <strong>Available for Earmarking</strong>. A CBA reserves money: <strong>RFA Approved</strong> and <strong>LAA Issued</strong> are what has
+                actually been drawn from those reservations (already part of CBA Requested), and <strong>Remaining Balance</strong> is the Revised Amount less CBA Requested. A dash means zero; brackets mean negative.
+                The table is in two parts. <strong>CO</strong> (capital outlay, accounts starting with 1) is the budget of the programs and their projects. <strong>COE</strong> is the budget
+                that belongs to no program — a COE budget request has only line items, no program or project — and is split into <strong>PS</strong> (accounts 5-01) and
+                <strong>MOOE</strong> (accounts 5-02), then by originating unit.</p>
+            <?php } ?>
         </div>
     </div>
     <?php } ?>
@@ -258,13 +283,19 @@ if ($_cob_showReport) {
 
    What it shows: ONLY the Approved budget requests (fims.budget_req, status 'Approved') and what hangs off them — programs, sub-programs, projects,
    chart-of-accounts line items, supporting documents — in the eight columns of the COB Monitoring sheet (CobService has the exact definitions):
-     Approved Amount        what FMD suggested in the Budget Proposal module
-     Revision / Realignment net of the approved Budget Revisions
-     Revised Amount         budget_line_items.revised_amount (recorded on each line item, not worked out here)
-     CBA Requested          taken off the budget by approved CBAs
-     Available for Earmarking = Revised Amount - CBA Requested (the line's live balance)
+     Approved Amount        what FMD suggested in the Budget Proposal module, as first suggested (before any revision or CBA)
+     Revision / Realignment on a project, only the LATEST approved one (signed: an addition is + in green, a deduction − in red; a realignment is − on the budget that
+                            gave funds up and + on the one that received them); nothing on a parent row or the TOTAL
+     Revised Amount         = Approved Amount + the net of all the revisions and realignments (worked out per line)
+     CBA Requested          held against the budget by approved CBAs: their active reservations plus what RFAs / LAAs have drawn from them
+     Available for Earmarking = Revised Amount - CBA Requested (what a new CBA can still draw)
      RFA Approved / LAA Issued   drawn from the CBAs' reservations by approved RFAs / LAAs
-     Remaining Balance      = Revised Amount - RFA Approved - LAA Issued
+     Remaining Balance      = Revised Amount - CBA Requested (the same figure as Available for Earmarking; what RFAs / LAAs drew is inside CBA Requested)
+   CBA Requested, RFA Approved and LAA Issued are all summed by the server from fims.budget_line_item_earmark (BudgetLineBalanceSql::earmarkAggregateSql()), so they —
+   and Available and Remaining, which are worked out from them — change as soon as a CBA / RFA / LAA is approved or deleted; this page only displays them.
+   CO and COE: the Per Program tree is asked for with split_coe=1 and so starts with two rows — CO (capital outlay: Program > Sub-Program > Originating Unit >
+   Project) and COE (the lines of a budget request that has no program, as PS / MOOE > Originating Unit > Request). A line is told apart by its account code:
+   1… is CO, 5-01… is PS, 5-02… is MOOE; PS and MOOE are the COE (CobService::expenseClassSql() / costTypeOf()). Those are the 'bucket', 'class' and 'request' nodes.
    The server decides what each user may see (their RC and the RCs below it; FMD and administrators see all) — nothing here can widen it.
 ═══════════════════════════════════════════════════════════════ */
 
@@ -293,6 +324,7 @@ const cob_state = {
     data: Object.fromEntries(COB_TABS.map(t => [t, null])),             // the last tree of each tab
     totals: Object.fromEntries(COB_TABS.map(t => [t, null])),
     expanded: Object.fromEntries(COB_TABS.map(t => [t, new Set()])),
+    rootsSeen: Object.fromEntries(COB_TABS.map(t => [t, new Set()])),    // the CO / COE rows already opened once — so one the user closes stays closed after a reload
     searchTimer: null,   // the typing pause before the Search box reloads
     loaded: {},    // tab -> the query it was loaded with (a tab reloads only when that changes)
     seq: {},       // tab -> the newest request number; an older response is dropped
@@ -330,9 +362,12 @@ function cob_busy(on) {
     if (on && cob_state.busy === 1) window.PagePreloader?.show();
     if (!on && cob_state.busy === 0) window.PagePreloader?.hide();
 }
+// `path` is given WITHOUT a leading slash ('filters', 'summary', 'rollup') and joined with '/' here. A standalone '/filters' string would be
+// rewritten to '/fims-nha/filters' by _shared/subfolder-prefix.php on a sub-folder deployment (the live site), giving /api/cob/fims-nha/filters — which
+// matches no route, falls into the API catch-all and comes back 401. A '/' after a '+' is left alone, like every other page's base + '/path'.
 async function cob_request(path, params) {
     const qs = params ? '?' + new URLSearchParams(params) : '';
-    const res = await fetch(COB_API + path + qs, { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+    const res = await fetch(COB_API + '/' + path + qs, { credentials: 'same-origin', headers: { Accept: 'application/json' } });
     let json = null;
     try { json = await res.json(); } catch (e) { /* not JSON */ }
     if (!res.ok || !json || json.success === false) throw new Error((json && json.message) || ('HTTP ' + res.status));
@@ -416,7 +451,7 @@ function cob_fillSelect(id, allLabel, items, valueOf, labelOf) {
     sel.value = [...sel.options].some(o => o.value === keep) ? keep : '';     // a choice that no longer exists falls back to "all"
 }
 async function cob_loadFilterOptions(first) {
-    const { data } = await cob_request('/filters', { central: '1' });
+    const { data } = await cob_request('filters', { central: '1' });
     cob_fillSelect('cob-f-fy', 'All Years', data.fiscal_years || [], y => y, y => y);
     cob_fillSelect('cob-f-fund', 'All Types of Fund', data.types_of_fund || [], f => f.type_of_fund_id, f => f.name);
     cob_fillSelect('cob-f-component', 'All Components', data.components || [], c => c.component_id, c => c.name);
@@ -458,7 +493,7 @@ async function cob_loadSummary() {
     const my = cob_state.seq.summary = (cob_state.seq.summary || 0) + 1;
     cob_busy(true);                                  // the preloader covers the KPI cards too, not only the table
     try {
-        const json = await cob_request('/summary', cob_params());
+        const json = await cob_request('summary', cob_params());
         if (my !== cob_state.seq.summary) return;
         cob_state.summary = json.data;
         cob_renderSummary();
@@ -477,10 +512,12 @@ async function cob_loadTab(tab) {
     const my = cob_state.seq[tab] = (cob_state.seq[tab] || 0) + 1;
     cob_busy(true);
     try {
-        const json = await cob_request('/rollup', cob_params({ layout_by: tab }));
+        // Per Program is cut into CO and COE (split_coe) — a budget request with no program is COE, told apart into PS and MOOE by account code
+        const json = await cob_request('rollup', cob_params(Object.assign({ layout_by: tab }, tab === 'program' ? { split_coe: '1' } : {})));
         if (my !== cob_state.seq[tab]) return;
         cob_state.data[tab] = json.data || []; cob_state.totals[tab] = json.totals || null;
         cob_state.loaded[tab] = key;
+        cob_openRoots(tab);
         cob_renderTree(tab);
     } catch (e) {
         if (my !== cob_state.seq[tab]) return;
@@ -516,10 +553,21 @@ function cob_renderSummary() {
 const COB_CARET = '<svg class="cob-caret%OPEN%" viewBox="0 0 24 24" fill="none" stroke-width="2.4"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>';
 const COB_CLIP = '<svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/></svg>';
 
+// The page opens with its two halves, CO and COE, already unrolled (the programs / the PS and MOOE rows are what people come for) — each only the
+// first time it is seen, so closing one is remembered across a refresh or a filter change.
+function cob_openRoots(tab) {
+    for (const n of cob_state.data[tab] || []) {
+        if (n.type !== 'bucket' || cob_state.rootsSeen[tab].has(n.key)) continue;
+        cob_state.rootsSeen[tab].add(n.key);
+        cob_state.expanded[tab].add(`/${n.type}:${n.key}`);
+    }
+}
+
 // the Name cell: the name, then what tells two of the same name apart. A node's code has a column of its own.
+// A request (the leaf of the COE half — a COE budget request has no project) is drawn like a project: its reference number, then its fiscal year.
 function cob_nodeLabel(n, tab) {
     let html = `<span>${n.unassigned ? `<span class="cob-unassigned">${cob_esc(n.label)}</span>` : cob_esc(n.label)}</span>`;
-    if (n.type === 'project') {
+    if (n.type === 'project' || n.type === 'request') {
         // line 1: the project name and its supporting documents; line 2 (muted): the fiscal year and the requesting office — except in the Per Program
         // view, where the office is the row just above the project and saying it again would only repeat it
         if (n.attachment_count > 0) html += ` <span class="cob-clip" title="${n.attachment_count} supporting document${n.attachment_count === 1 ? '' : 's'}">${COB_CLIP}${n.attachment_count}</span>`;
@@ -529,18 +577,45 @@ function cob_nodeLabel(n, tab) {
     return html;
 }
 
-function cob_amountCells(o) {
-    return COB_COLS.map(k => `<td class="cob-num">${cob_num(o[k])}</td>`).join('');
+// The Revision / Realignment column is SIGNED and coloured: funds taken off a budget (a decrease, or what a realignment gave up) read - in red, funds added to it (an
+// increase, or what a realignment received) + in green. Every other column keeps the sheet's brackets.
+function cob_signed(v) {
+    const n = Number(v || 0);
+    if (Math.abs(n) < 0.005) return '<span class="cob-dash">-</span>';
+    return n < 0 ? `<span class="cob-neg">−${cob_scaled(-n)}</span>` : `<span class="cob-pos">+${cob_scaled(n)}</span>`;
+}
+// The Revision / Realignment cell. A project (or a COE request) shows only what the LATEST approved request changed on it — the server sends latest_revision_amount and
+// latest_realignment_amount: the budget that gave funds up by realignment reads "Realignment − (red)", the one that received them "Realignment + (green)"; an older revision is not in
+// those lines. A part that is nothing is left out; no adjustment at all is a dash. A parent row (bucket, program, sub-program, unit, class) and the grand TOTAL row show NOTHING in this column:
+// there is no total of the revisions / realignments (Revised Amount is still worked out from all of them, per line, on the server).
+const cob_peso = n => '₱ ' + Math.abs(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function cob_adjCell(o, leaf) {
+    if (!leaf) return '<td class="cob-num"></td>';
+    const rev = Number(o.latest_revision_amount || 0), rea = Number(o.latest_realignment_amount || 0), net = Number(o.revision_amount || 0);
+    const netText = Math.abs(net) < 0.005 ? '—' : (net < 0 ? '−' : '+') + cob_peso(net);
+    const line = (tag, n) => Math.abs(n) < 0.005 ? '' : `<div title="${tag}"><span class="cob-adj-k">${tag}</span>${cob_signed(n)}</div>`;
+    const lines = line('Revision', rev) + line('Realignment', rea);
+    // a leaf whose latest request nets to nothing on it (e.g. a realignment between two of its own lines) but that has earlier adjustments still shows its net, so it is never blank while Revised differs from Approved
+    if (!lines) return Math.abs(net) < 0.005 ? '<td class="cob-num cob-adj"><span class="cob-dash">-</span></td>' : `<td class="cob-num">${cob_signed(net)}</td>`;
+    const title = `Latest adjustment only. Net of all revisions and realignments to date: ${netText} (Approved Amount + this net = Revised Amount)`;
+    return `<td class="cob-num cob-adj" title="${cob_esc(title)}">${lines}</td>`;
+}
+function cob_amountCells(o, leaf) {
+    return COB_COLS.map(k => k === 'revision_amount' ? cob_adjCell(o, !!leaf) : `<td class="cob-num">${cob_num(o[k])}</td>`).join('');
 }
 
 function cob_treeRow(n, depth, path, hasKids, open, tab) {
-    const view = n.type === 'project' && n.budget_reference_number
+    const view = (n.type === 'project' || n.type === 'request') && n.budget_reference_number
         ? `<button type="button" class="nha-btn-act view" data-view="${cob_esc(n.budget_reference_number)}" data-project="${cob_esc(n.code || '')}" title="View the approved request ${cob_esc(n.budget_reference_number)}">View</button>`
         : '';
-    return `<tr class="cob-row cob-d${Math.min(depth, 4)} cob-t-${cob_esc(n.type)}${hasKids ? ' cob-has-kids' : ''}${open ? ' open' : ''}" data-path="${cob_esc(path)}"${hasKids ? ` tabindex="0" role="button" aria-expanded="${open}"` : ''}>
-        <td class="cob-code">${cob_esc(n.code || '')}</td>
+    // CO / COE: the row carries its own class (cob-b-co / cob-b-coe) so each half has its own colour, and its code is drawn as a pill
+    const bucket = n.type === 'bucket';
+    const bucketCls = bucket ? ' cob-b-' + String(n.key).toLowerCase().replace(/[^a-z0-9]/g, '') : '';
+    const codeCell = bucket && n.code ? `<span class="cob-bkt-badge">${cob_esc(n.code)}</span>` : cob_esc(n.code || '');
+    return `<tr class="cob-row cob-d${Math.min(depth, 4)} cob-t-${cob_esc(n.type)}${bucketCls}${hasKids ? ' cob-has-kids' : ''}${open ? ' open' : ''}" data-path="${cob_esc(path)}"${hasKids ? ` tabindex="0" role="button" aria-expanded="${open}"` : ''}>
+        <td class="cob-code">${codeCell}</td>
         <td><div class="cob-name" style="--d:${depth}">${hasKids ? COB_CARET.replace('%OPEN%', open ? ' open' : '') : '<span class="cob-caret-sp"></span>'}${cob_nodeLabel(n, tab)}</div></td>
-        ${cob_amountCells(n)}
+        ${cob_amountCells(n, n.type === 'project' || n.type === 'request')}
         <td class="no-print">${view}</td></tr>`;
 }
 
@@ -565,7 +640,8 @@ function cob_renderTree(tab) {
     }
     const rows = [];
     cob_collect(tab, nodes, 0, '', rows);
-    if (totals) rows.push(`<tr class="cob-total-row"><td colspan="2">TOTAL</td>${cob_amountCells(totals)}<td class="no-print"></td></tr>`);
+    // the TOTAL row goes first, right under the headings, not after the last row (as on the RFA / LAA Monitoring page)
+    if (totals) rows.unshift(`<tr class="cob-total-row"><td colspan="2">TOTAL</td>${cob_amountCells(totals)}<td class="no-print"></td></tr>`);
     body.innerHTML = rows.join('');
     const n = totals ? totals.line_count : 0;
     $cob('cob-info-' + tab).textContent = `${n} approved line item${n === 1 ? '' : 's'} — click a row to expand it`;

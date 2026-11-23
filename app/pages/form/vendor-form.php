@@ -76,6 +76,43 @@
     #vnd-footer .vnd-btn-navy { background:var(--afims-heading-fill, #000E3E);border-color:var(--afims-heading-fill, #000E3E);color:var(--afims-pure-white, #FFFFFF); }
     #vnd-footer .vnd-btn-navy:hover:not(:disabled) { opacity:.92; }
 
+    /* "+ Create Sub-Ledger Account" sits in the body, not the footer, so the #vnd-footer button rules above
+       never reached it and it showed as a bare grey browser button. */
+    #vnd-body .vnd-btn { height:34px;padding:0 16px;border-radius:8px;border:1px solid #3861BC;
+        font-size:13px;font-weight:600;font-family:'IBM Plex Sans',sans-serif;cursor:pointer;
+        display:inline-flex;align-items:center;gap:6px;background:#3861BC;color:#FFFFFF;transition:background .15s,border-color .15s; }
+    #vnd-body .vnd-btn:hover:not(:disabled) { background:#2E59B8;border-color:#2E59B8; }
+    #vnd-body .vnd-btn:disabled { opacity:.5;cursor:not-allowed; }
+
+    /* ── Dark mode ── */
+    html.afims-dark[data-bs-theme="dark"] #vnd-card { color-scheme:dark;border:1px solid var(--afims-border, #2E3656); }
+    html.afims-dark[data-bs-theme="dark"] #vnd-modal-close { background:rgba(255,255,255,.10);color:#C3CCE0; }
+    html.afims-dark[data-bs-theme="dark"] #vnd-modal-close:hover { background:rgba(255,255,255,.22);color:#FFFFFF; }
+    html.afims-dark[data-bs-theme="dark"] #vnd-card .vnd-input {
+        background-color:var(--afims-surface, #1A1F38) !important;border-color:var(--afims-border-strong, #4A5270) !important;
+        color:var(--afims-text, #E4ECF2) !important; }
+    html.afims-dark[data-bs-theme="dark"] #vnd-card .vnd-input::placeholder { color:#9AA3B5;opacity:1; }
+    html.afims-dark[data-bs-theme="dark"] #vnd-card .vnd-input:focus {
+        border-color:#3861BC !important;box-shadow:0 0 0 3px rgba(56,97,188,.25); }
+    html.afims-dark[data-bs-theme="dark"] #vnd-card .vnd-input:disabled {
+        background-color:var(--afims-surface-subtle, #22294A) !important;color:var(--afims-text-muted, #AAAFBE) !important; }
+    html.afims-dark[data-bs-theme="dark"] #vnd-card .vnd-hint { color:#9AA3B5; }
+    html.afims-dark[data-bs-theme="dark"] #vnd-card .vnd-check input { accent-color:#3861BC; }
+    /* GL / Sub-Ledger search lists and the "Selected" boxes have their colours inline (style="…" and set from JS). */
+    html.afims-dark[data-bs-theme="dark"] :is(#vnd-form-gl-dropdown, #vnd-form-sl-dropdown) {
+        background:#1A1F38 !important;border-color:#4A5270 !important;box-shadow:0 8px 20px rgba(0,0,0,.45) !important; }
+    html.afims-dark[data-bs-theme="dark"] :is(#vnd-form-gl-dropdown, #vnd-form-sl-dropdown) > div {
+        color:#E4ECF2;border-bottom-color:#2E3656 !important;background:transparent !important; }
+    html.afims-dark[data-bs-theme="dark"] :is(#vnd-form-gl-dropdown, #vnd-form-sl-dropdown) > div:hover { background:#22294A !important; }
+    html.afims-dark[data-bs-theme="dark"] :is(#vnd-form-gl-dropdown, #vnd-form-sl-dropdown) > div div { color:#9AA3B5 !important; }
+    html.afims-dark[data-bs-theme="dark"] :is(#vnd-form-gl-selected, #vnd-form-sl-selected-item) {
+        background:#0F2456 !important;color:#E4ECF2;border:1px solid #2E3656; }
+    html.afims-dark[data-bs-theme="dark"] #vnd-footer .vnd-btn-ghost { color:#E4ECF2;background:var(--afims-surface, #1A1F38);
+        border-color:var(--afims-border-strong, #4A5270); }
+    html.afims-dark[data-bs-theme="dark"] #vnd-footer .vnd-btn-ghost:hover:not(:disabled) { background:#22294A; }
+    html.afims-dark[data-bs-theme="dark"] #vnd-footer .vnd-btn-navy { background:#3861BC;border-color:#3861BC; }
+    html.afims-dark[data-bs-theme="dark"] #vnd-footer .vnd-btn-navy:hover:not(:disabled) { background:#2E59B8;opacity:1; }
+
     @media (max-width:640px) { .vnd-row { grid-template-columns:1fr; } }
 </style>
 
@@ -182,13 +219,39 @@
 
                 <p class="vnd-section">Chart of Accounts Assignment</p>
                 <p style="font-size:12px;color:var(--afims-text-muted, #62657E);margin:-8px 0 14px;">Optional. GL and Sub-Ledger can also be linked later via "Link SL" on the vendor list.</p>
+
+                <p class="vnd-hint" style="font-weight:700;color:var(--afims-text, #1A1B21);text-transform:uppercase;letter-spacing:.06em;font-size:11px;margin-bottom:12px;">1. Select GL Account</p>
                 <div class="vnd-group full" style="position:relative;">
-                    <label class="vnd-label">Account</label>
-                    <input type="hidden" id="vnd-coa-account-id" value="">
-                    <input type="text" class="vnd-input" id="vnd-coa-account-search" maxlength="500" placeholder="Search: account code or name (e.g., 01-01-010-01, Accounts Payable)">
-                    <p class="vnd-hint">Start typing to search Chart of Accounts</p>
-                    <div id="vnd-coa-dropdown" style="display:none;position:absolute;background:#fff;border:1px solid #E4ECF2;border-radius:8px;max-height:200px;overflow-y:auto;width:100%;z-index:1000;box-shadow:0 4px 12px rgba(0,0,0,.1);"></div>
-                    <div id="vnd-coa-selected" style="margin-top:8px;padding:8px;background:#F4F7FA;border-radius:6px;display:none;"></div>
+                    <label class="vnd-label">Search GL Account</label>
+                    <input type="hidden" id="vnd-form-gl-account-id" value="">
+                    <input type="text" class="vnd-input" id="vnd-form-gl-search" maxlength="500" placeholder="Type GL account code or name...">
+                    <div id="vnd-form-gl-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;margin-top:4px;background:#fff;border:1px solid #E4ECF2;border-radius:8px;max-height:200px;overflow-y:auto;z-index:1000;box-shadow:0 4px 12px rgba(0,0,0,.1);"></div>
+                    <p class="vnd-hint">This is the parent payables account for the vendor.</p>
+                </div>
+                <div id="vnd-form-gl-selected" style="padding:10px;background:#F4F7FA;border-radius:6px;display:none;margin:-4px 0 14px;">
+                    <strong>GL:</strong> <span id="vnd-form-gl-selected-text"></span>
+                </div>
+
+                <div id="vnd-form-sl-section" style="margin-top:18px;opacity:.5;pointer-events:none;">
+                    <p class="vnd-hint" style="font-weight:700;color:var(--afims-text, #1A1B21);text-transform:uppercase;letter-spacing:.06em;font-size:11px;margin-bottom:12px;">2. Select or Create Sub-Ledger (Child Account)</p>
+                    <div class="vnd-group full" style="position:relative;">
+                        <label class="vnd-label">Search Sub-Ledger</label>
+                        <input type="text" class="vnd-input" id="vnd-form-sl-search" maxlength="500" placeholder="Select a GL account first…" disabled>
+                        <div id="vnd-form-sl-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;margin-top:4px;background:#fff;border:1px solid #E4ECF2;border-radius:8px;max-height:200px;overflow-y:auto;z-index:999;box-shadow:0 4px 12px rgba(0,0,0,.1);"></div>
+                        <p class="vnd-hint">Pick an existing child account under this GL, or create a new one below.</p>
+                        <p id="vnd-form-sl-empty-note" class="vnd-hint" style="display:none;color:var(--afims-danger, #DC3545);">No child accounts exist under this GL account yet. Create one below.</p>
+                    </div>
+                    <div id="vnd-form-sl-selected-item" style="padding:10px;background:#F4F7FA;border-radius:6px;display:none;margin-top:8px;">
+                        <strong>Selected:</strong> <span id="vnd-form-sl-selected-code"></span>
+                    </div>
+                    <input type="hidden" id="vnd-form-sl-selected-code-value">
+
+                    <div class="vnd-group full" style="margin-top:14px;border-top:1px dashed var(--afims-border, #E4ECF2);padding-top:14px;">
+                        <label class="vnd-label">New Sub-Ledger Title</label>
+                        <input type="text" class="vnd-input" id="vnd-form-sl-new-title" maxlength="255" placeholder="e.g., 0213 CONSTRUCTION AND SUPPLIES OPC">
+                        <p class="vnd-hint">Not in the list above? Type a title and click Create.</p>
+                        <button type="button" class="vnd-btn vnd-btn-ghost" id="vnd-form-sl-create-btn" style="margin-top:8px;align-self:flex-start;">+ Create Sub-Ledger Account</button>
+                    </div>
                 </div>
             </div>
             <div id="vnd-footer">

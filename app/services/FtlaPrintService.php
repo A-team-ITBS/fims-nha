@@ -86,7 +86,7 @@ class FtlaPrintService
      *   sig_left_name / _title, sig_right_name / _title (titles: "\n" for a new
      *   line), dv_numbers (list or one per line) + fund_classification (e.g.
      *   "COE/MOOE", "EHAP") — the DRFTLA footer, bank_sig_verified,
-     *   bank_checked, bank_approved, bank_posted ("FOR BANK USE ONLY").
+     *   bank_checked, bank_approved, bank_posted ("FOR BANK'S USE ONLY").
      */
     public function model(array $p): array
     {
@@ -199,6 +199,11 @@ class FtlaPrintService
             foreach ($m['debits'] as $d) {
                 $rows .= '<tr><td class="c">' . $nb($d['no']) . '</td><td>' . $nb($d['name']) . '</td>' . $amt($e($d['amount'])) . '</tr>';
             }
+            // Two blank filler rows between the real debit accounts and the
+            // TOTAL row — matches the approved reference layout (room to add
+            // accounts by hand on a printed copy, same convention a few other
+            // grid-based print templates in this app use).
+            $rows .= str_repeat('<tr><td class="c">&nbsp;</td><td>&nbsp;</td><td class="amt" style="text-align:right;">-</td></tr>', 2);
             $body = '<p class="lead">Please <u><b>debit</b></u> the following depository/disbursing accounts:</p>'
                 . '<table class="grid">' . $widths([26, 48, 26])
                 . '<tr><th colspan="3">BANK ACCOUNT</th></tr><tr><th>NUMBER</th><th>NAME</th><th>AMOUNT</th></tr>'
@@ -233,7 +238,7 @@ class FtlaPrintService
 
         $footer = '';
         if ($m['dv_numbers'] || $m['fund_line'] !== '') {
-            $footer = '<div class="dvs">' . ($m['dv_numbers'] ? '<div>* DV NO.s:</div>'
+            $footer = '<div class="dvs">' . ($m['dv_numbers'] ? '<div>* DV No.s:</div>'
                 . implode('', array_map(static fn ($d) => '<div class="dv">' . htmlspecialchars($d, ENT_QUOTES, 'UTF-8') . '</div>', $m['dv_numbers'])) : '')
                 . ($m['fund_line'] !== '' ? '<div class="b" style="margin-top:6pt;">' . $e($m['fund_line']) . '</div>' : '') . '</div>';
         }
@@ -282,7 +287,7 @@ class FtlaPrintService
             . '<p class="copy">Kindly provide us with a certified true copy of duly validated Fund Transfer Letter Advice for our record purposes.</p>'
             . '<table class="sigs"><tr>' . $sigs . '</tr></table>'
             . $footer
-            . '<div class="bank"><p class="b" style="margin-bottom:2pt;">FOR BANK USE ONLY</p>'
+            . '<div class="bank"><p class="b" style="margin-bottom:2pt;">FOR BANK&#39;S USE ONLY</p>'
             . '<p style="margin-bottom:14pt;">We have debited/credited above accounts as instructed:</p>'
             . '<table><tr>' . $bankLabels . '</tr><tr>' . $bankNames . '</tr></table></div>'
             . PrintService::bodyClose($media, '');

@@ -30,6 +30,19 @@ $app->get('/ftla/transfer-types', function ($request, $response, $args) use ($Ft
     }
 })->add($accessMiddleware)->add($jwtMiddleware);
 
+$app->get('/ftla/used-dv-numbers', function ($request, $response, $args) use ($FtlaService) {
+    try {
+        $excludeId = (int) ($request->getQueryParams()['exclude_id'] ?? 0);
+        $result    = ['success' => true, 'data' => $FtlaService->getUsedDvNumbers($excludeId)];
+
+        return $response->withJson($result, 200);
+    } catch (\Exception $e) {
+        LogError('GET /ftla/used-dv-numbers ' . $e->getMessage());
+
+        return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
+    }
+})->add($accessMiddleware)->add($jwtMiddleware);
+
 $app->get('/ftla/bank-accounts', function ($request, $response, $args) use ($FtlaService) {
     try {
         $all    = filter_var($request->getQueryParams()['all'] ?? false, FILTER_VALIDATE_BOOLEAN);

@@ -1,6 +1,6 @@
 <?php
 /**
- * budget-preview-readone.php
+ * budget-preview-readone.php.
  *
  * Read-only "Budget Preview" modal for a budget request — the read-only counterpart of the Budget Processing
  * modal (form/budget-processing-form.php): the same columns, but laid out per Project (the Processing modal is
@@ -9,10 +9,9 @@
  *   - an info card: Originating Unit / Region (the requesting office), Program, Sub-Program, Project
  *     (each with its code as a chip), and
  *   - that Project's line items as a table, as plain text (nothing to fill in):
- *       Type of Fund · Component · Account Code · Description (the account name,
- *       the line's particulars under it) · Amount (proposed) · Adjustment (budget_line_items.adjustment, signed: green
- *       "+", red "−", a dash for none) · Suggested Amount, with a Total row under all three amount columns.
- *   - a Grand Total bar (Amount / Adjustment / Suggested Amount, every Project of every Program, under the last block)
+ *       Type of Fund · Account Code · Description (the account name,
+ *       the line's particulars under it) · Amount (proposed) · Suggested Amount, with a Total row under both amount columns.
+ *   - a Grand Total bar (Amount / Suggested Amount, every Project of every Program, under the last block)
  *   - under that table, the Project's Supporting Documents — the same read-only section as the Budget Processing modal:
  *     the documents the originating office attached to THAT Project (fims.budget_req_project_attachment: an uploaded file or a
  *     pasted link, keyed by the Program and the project code), one line each: the name (a link that opens the document),
@@ -85,14 +84,12 @@ $_bpv_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
 .nha-root .bpv-tbl td.bpv-nowrap { white-space: nowrap; }
 .nha-root .bpv-tbl td.bpv-mono { font-family: var(--mono); font-size: 12px; }
 .nha-root .bpv-tbl td.bpv-amt { white-space: nowrap; font-weight: 700; font-variant-numeric: tabular-nums; }
-.nha-root .bpv-tbl .bpv-adj-up   { color: var(--green-txt, #16A34A); }
-.nha-root .bpv-tbl .bpv-adj-down { color: var(--red-txt, #DC2626); }
 .nha-root .bpv-desc-sub { margin-top: 2px; font-size: 11.5px; color: var(--subtle); }
 .nha-root .bpv-tbl tfoot td { padding: 11px 12px; font-weight: 700; background: var(--surf); border-top: 1px solid var(--bdr); }
 .nha-root .bpv-empty, .nha-root .bpv-noproj { padding: 18px 12px; text-align: center; font-size: 12.5px; color: var(--subtle); }
 .nha-root .bpv-noproj { margin-top: 14px; border: 1px solid var(--bdr); border-radius: 12px; font-style: italic; }
 
-/* ── Grand Total (every Project of every Program): Amount / Adjustment / Suggested Amount ── */
+/* ── Grand Total (every Project of every Program): Amount / Suggested Amount ── */
 .nha-root .bpv-grand {
     display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: baseline; gap: 6px 30px; font-weight: 700;
     margin-bottom: 20px; padding: 16px 22px; border-radius: 12px; font-size: 16px;
@@ -100,10 +97,6 @@ $_bpv_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
 }
 .nha-root .bpv-grand[hidden] { display: none; }
 .nha-root .bpv-foot-v small { margin-right: 2px; font-size: 10.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: rgba(255, 255, 255, .7); }
-/* the per-table Adjustment colors (bpv-adj-up/down/muted) read fine on a light row, but this bar's background is dark */
-.nha-root .bpv-grand .bpv-muted { color: rgba(255, 255, 255, .7); }
-.nha-root .bpv-grand .bpv-adj-up { color: #4ADE80; }
-.nha-root .bpv-grand .bpv-adj-down { color: #F87171; }
 
 /* ── Supporting Documents of a Project (under its table): one line per document ── */
 .nha-root .bpv-docs { margin-top: 14px; }
@@ -210,7 +203,6 @@ html.afims-dark[data-bs-theme="dark"] .nha-root .bpv-doc-open { color: var(--afi
             <div class="bpv-grand" id="bpv-grand" hidden>
                 <span>Grand Total</span>
                 <span class="bpv-foot-v"><small>Amount</small> <span id="bpv-grand-p">₱ 0.00</span></span>
-                <span class="bpv-foot-v"><small>Adjustment</small> <span id="bpv-grand-a">—</span></span>
                 <span class="bpv-foot-v"><small>Suggested</small> <span id="bpv-grand-s">₱ 0.00</span></span>
             </div>
 
@@ -345,35 +337,25 @@ function bpv_value(text) {
     return text ? bgr_esc(text) : '<span class="nha-td-sub">—</span>';
 }
 
-// A line's adjustment (budget_line_items.adjustment — what approved budget revisions added to / deducted from the line):
-// "+ ₱ 50,000.00" in green, "− ₱ 50,000.00" in red, a dash when there is none. Plain text, never HTML from the data.
-function bpv_adjHtml(v) {
-    const n = Number(v) || 0;
-    if (!n) return '<span class="bpv-muted">—</span>';
-    const abs = Math.abs(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    return `<span class="${n > 0 ? 'bpv-adj-up' : 'bpv-adj-down'}">${n > 0 ? '+' : '−'} ₱ ${abs}</span>`;
-}
-
-// Column order matches Budget Processing, with the line's Adjustment after its Amount:
-// Type of Fund · Component · Account Code · Description · Amount · Adjustment · Suggested Amount
+// Column order matches Budget Processing:
+// Type of Fund · Account Code · Description · Amount · Suggested Amount
+// (Component is hidden — not deleted, see bpr_rowHtml in budget-processing-form.php for the same choice.)
 const BPV_THEAD = `<thead><tr>
     <th>Type of Fund</th>
-    <th>Component</th>
+    <!-- <th>Component</th> -->
     <th>Account Code</th>
     <th>Description</th>
     <th class="text-right">Amount</th>
-    <th class="text-right">Adjustment</th>
     <th class="text-right">Suggested Amount</th>
 </tr></thead>`;
 
 function bpv_rowHtml(li) {
     return `<tr>
         <td>${bpv_value(li.type_of_fund_name)}</td>
-        <td>${bpv_value(li.component_name)}</td>
+        <!-- <td>${bpv_value(li.component_name)}</td> -->
         <td class="bpv-nowrap bpv-mono">${bgr_esc(li.account_code)}</td>
         <td><div>${bgr_esc(li.account_title)}</div>${li.particulars ? `<div class="bpv-desc-sub">${bgr_esc(li.particulars)}</div>` : ''}</td>
         <td class="text-right bpv-amt">${bgr_fmtMoney(li.proposed_amount)}</td>
-        <td class="text-right bpv-amt bpv-adj">${bpv_adjHtml(li.adjustment)}</td>
         <td class="text-right bpv-amt">${bgr_fmtMoney(li.suggested_amount)}</td>
     </tr>`;
 }
@@ -383,12 +365,12 @@ function bpv_tableHtml(project) {
     const sum = key => lineItems.reduce((s, li) => s + (Number(li[key]) || 0), 0);
     const rowsHtml = lineItems.length
         ? lineItems.map(bpv_rowHtml).join('')
-        : '<tr><td colspan="7"><div class="bpv-empty">No line items have been added under this project.</div></td></tr>';
+        : '<tr><td colspan="5"><div class="bpv-empty">No line items have been added under this project.</div></td></tr>';
 
     return `<div class="bpv-tbl-wrap">
         <div class="nha-tbl-scroll">
             <table class="nha-tbl bpv-tbl">${BPV_THEAD}<tbody>${rowsHtml}</tbody>
-                <tfoot><tr><td colspan="4" class="text-right">Total</td><td class="text-right bpv-total-p">${bgr_fmtMoney(sum('proposed_amount'))}</td><td class="text-right bpv-total-a">${bpv_adjHtml(sum('adjustment'))}</td><td class="text-right bpv-total-s">${bgr_fmtMoney(sum('suggested_amount'))}</td></tr></tfoot>
+                <tfoot><tr><td colspan="3" class="text-right">Total</td><td class="text-right bpv-total-p">${bgr_fmtMoney(sum('proposed_amount'))}</td><td class="text-right bpv-total-s">${bgr_fmtMoney(sum('suggested_amount'))}</td></tr></tfoot>
             </table>
         </div>
     </div>`;
@@ -539,7 +521,6 @@ function bpv_renderGrandTotal(programs, coeLineItems = []) {
 
     $bpv('bpv-grand').hidden = lineItems.length === 0;
     $bpv('bpv-grand-p').textContent = bgr_fmtMoney(sum('proposed_amount'));
-    $bpv('bpv-grand-a').innerHTML   = bpv_adjHtml(sum('adjustment'));
     $bpv('bpv-grand-s').textContent = bgr_fmtMoney(sum('suggested_amount'));
 }
 

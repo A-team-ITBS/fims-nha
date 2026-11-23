@@ -214,8 +214,24 @@ $USER_LEVEL_PRIVS = [["{FIMS}audit_logs","-2","0"],
     ["{FIMS}payroll-page.php","0","0"],
     ["{FIMS}remittance-page.php","-2","0"],
     ["{FIMS}remittance-page.php","0","0"],
-    ["{FIMS}far-report-page.php","-2","0"],
-    ["{FIMS}far-report-page.php","0","0"]];
+    ["{FIMS}balance-sheet-page.php","-2","0"],
+    ["{FIMS}balance-sheet-page.php","0","0"],
+    ["{FIMS}income-statement-page.php","-2","0"],
+    ["{FIMS}income-statement-page.php","0","0"],
+    ["{FIMS}opening-balance-page.php","-2","0"],
+    ["{FIMS}opening-balance-page.php","0","0"],
+    ["{FIMS}work-in-process-page.php","-2","0"],
+    ["{FIMS}work-in-process-page.php","0","0"],
+    ["{FIMS}statement-of-changes-page.php","-2","0"],
+    ["{FIMS}statement-of-changes-page.php","0","0"],
+    ["{FIMS}cash-flow-page.php","-2","0"],
+    ["{FIMS}cash-flow-page.php","0","0"],
+    ["{FIMS}closing-balance-page.php","-2","0"],
+    ["{FIMS}closing-balance-page.php","0","0"],
+    ["{FIMS}bank-reconciliation-page.php","-2","0"],
+    ["{FIMS}bank-reconciliation-page.php","0","0"],
+    ["{FIMS}fund-sweeping-page.php","-2","0"],
+    ["{FIMS}fund-sweeping-page.php","0","0"]];
 
 /**
  * Tables
@@ -324,4 +340,12 @@ $USER_LEVEL_TABLES = [["audit_logs","audit_logs","Audit Logs",false,"{FIMS}",""]
     ["fidelity-bond-page.php","fidelity_bond_page","Fidelity Bond",true,"{FIMS}","FidelityBondPage"],
     ["payroll-page.php","payroll_page","Payroll Management",true,"{FIMS}","PayrollPage"],
     ["remittance-page.php","remittance_page","Remittance",true,"{FIMS}","RemittancePage"],
-    ["far-report-page.php","far_report_page","FAR Report",true,"{FIMS}","FarReportPage"]];
+    ["balance-sheet-page.php","balance_sheet_page","Balance Sheet",true,"{FIMS}","BalanceSheetPage"],
+    ["income-statement-page.php","income_statement_page","Income Statement",true,"{FIMS}","IncomeStatementPage"],
+    ["opening-balance-page.php","opening_balance_page","Opening Balance",true,"{FIMS}","OpeningBalancePage"],
+    ["work-in-process-page.php","work_in_process_page","Work-In-Process Inventory",true,"{FIMS}","WorkInProcessPage"],
+    ["statement-of-changes-page.php","statement_of_changes_page","Changes in Net Assets/Equity",true,"{FIMS}","StatementOfChangesPage"],
+    ["cash-flow-page.php","cash_flow_page","Cash Flow",true,"{FIMS}","CashFlowPage"],
+    ["closing-balance-page.php","closing_balance_page","Closing Balance",true,"{FIMS}","ClosingBalancePage"],
+    ["bank-reconciliation-page.php","bank_reconciliation_page","Bank Reconciliation",true,"{FIMS}","BankReconciliationPage"],
+    ["fund-sweeping-page.php","fund_sweeping_page","Fund Sweeping",true,"{FIMS}","FundSweepingPage"]];

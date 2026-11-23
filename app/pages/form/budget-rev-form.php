@@ -36,7 +36,7 @@ try {
 
 /* The modal is a flex column (header · scrolling body · footer) capped at 90vh, but this form's body and footer sit INSIDE a <form>.
    The form has to be the flex item that passes the height on; left as a plain block it just grows past the modal, which clips it —
-   the body would not scroll and the footer (Cancel / Submit Request) would be pushed out of sight. */
+   the body would not scroll and the footer (Cancel / Save Request) would be pushed out of sight. */
 .nha-root #brv-overlay .nha-modal > form { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
 .nha-root #brv-overlay .nha-modal-body { min-height: 0; }
 .nha-root #brv-overlay .nha-modal-foot { flex-shrink: 0; }
@@ -116,8 +116,9 @@ try {
 /* the box: the filter bar on top, the search field below. No overflow:hidden — the dropdown lists open outside it. */
 .nha-root .brv-reqgroup { display: flex; flex-direction: column; background: var(--afims-surface, #FFFFFF); border: 1px solid var(--bdr, #E4ECF2); border-radius: 10px; }
 .nha-root .brv-filterbar {
-    position: relative;   /* the filter lists anchor to the bar, not to their narrow inputs */
-    display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+    position: relative;
+    /* one filter per row: the "Filter" heading, then Originating Unit, Program and Project each on a line of its own */
+    display: flex; flex-direction: column; align-items: stretch; gap: 8px;
     padding: 8px 10px; background: var(--surf, #F4F7FA);
     border-bottom: 1px solid var(--bdr, #E4ECF2);
     border-radius: 9px 9px 0 0;
@@ -127,14 +128,11 @@ try {
     font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
     color: var(--sec, #62657E);
 }
-.nha-root .brv-filterbar .brv-combo { position: static; flex: 1 1 90px; min-width: 0; }
+.nha-root .brv-filterbar .brv-combo { position: relative; min-width: 0; }   /* each row's list opens right under that row */
 .nha-root .brv-combo-field { position: relative; }   /* holds the input + its clear (×) button */
-/* the Year filter is a plain dropdown of the fiscal years (GET /fiscal_year/all), not a type-ahead like the others */
-.nha-root .brv-filterbar .brv-combo-fy { flex: 0 1 92px; min-width: 0; }
-.nha-root .brv-filterbar .brv-fy-select { min-width: 0 !important; cursor: pointer; text-overflow: ellipsis; }
 .nha-root .brv-filterbar .brv-in { height: 30px; padding: 3px 26px 3px 10px; font-size: 12.5px; }
 .nha-root .brv-filterbar .brv-combo-clear { right: 3px; font-size: 16px; }
-/* the filter lists span the whole bar (positioned against the bar), so they never overflow the modal */
+/* a filter list is as wide as its row (the row spans the bar), so it never overflows the modal */
 .nha-root .brv-filterbar .brv-combo-list { left: 0; right: 0; top: calc(100% + 4px); }
 .nha-root .brv-filter-reset {
     margin-left: auto; border: 0; background: transparent; padding: 2px 4px; cursor: pointer;
@@ -196,6 +194,12 @@ try {
 }
 @media (max-width: 639px) { .nha-root .brv-rev > .brv-flow svg { transform: rotate(90deg); } }   /* stacked: the arrow points down */
 .nha-root .brv-fld { min-width: 0; }
+/* Only the amount to enter is shown: the From / Current Amount field (disabled, it only follows the picked budget line — the card above
+   already shows the line's amounts) and the arrow to the other field are hidden. The hidden input still holds the value the form's checks
+   and the save read. */
+.nha-root .brv-rev.is-single { grid-template-columns: minmax(0, 1fr); }
+.nha-root .brv-rev.is-single > .brv-fld:first-child,
+.nha-root .brv-rev.is-single > .brv-flow { display: none; }
 .nha-root .brv-money { position: relative; }
 .nha-root .brv-money-sym { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-size: 13px; color: var(--sec, #62657E); pointer-events: none; }
 .nha-root .brv-money .brv-in { padding-left: 28px; text-align: right; font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; -moz-appearance: textfield; }
@@ -206,6 +210,7 @@ try {
 .nha-root .brv-change {
     margin-top: 12px; padding: 9px 12px; border-radius: 8px; font-size: 12.5px; font-weight: 600;
     background: var(--surf, #F4F7FA); color: var(--subtle, #62657E);
+    white-space: pre-line;   /* a realignment's note runs to a second line: what each budget line goes to */
 }
 .nha-root .brv-change.is-up   { background: var(--green-bg, #DBF2E5); color: var(--green-txt, #0C7539); }
 .nha-root .brv-change.is-down { background: var(--red-bg, #FAE1E3);   color: var(--red-txt, #8F222D); }
@@ -285,7 +290,7 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
 
                     <div class="brv-cobrow is-single" id="brv-cobrow">
 
-                        <!-- From budget line (budget_revision.from_budget_line_item_id): a filter bar (Fiscal Year · Originating Unit · Program · Project) attached to the searchable field -->
+                        <!-- From budget line (budget_revision.from_budget_line_item_id): a filter bar (Originating Unit · Program · Project) attached to the searchable field -->
                         <div class="brv-cobcol">
                             <div class="brv-cob-hd">
                                 <label class="brv-lbl" for="brv-req-input">From Budget Line <span class="brv-req">*</span></label>
@@ -298,9 +303,6 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
                                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
                                         Filter
                                     </span>
-                                    <div class="brv-combo-fy">
-                                        <select class="brv-in brv-fy-select" id="brv-fy-select" aria-label="Filter by fiscal year"><option value="">Year</option></select>
-                                    </div>
                                     <div class="brv-combo">
                                         <div class="brv-combo-field">
                                             <input type="text" class="brv-in" id="brv-unit-input" placeholder="Originating Unit" aria-label="Filter by originating unit"
@@ -352,7 +354,7 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
                                 </div>
                                 <div class="brv-summary-sub" id="brv-sum-sub"></div>
                                 <div class="brv-summary-amt">
-                                    <span>Current amount <strong id="brv-sum-amount"></strong></span>
+                                    <span>Current balance <strong id="brv-sum-amount"></strong></span>
                                 </div>
                             </div>
                         </div>
@@ -377,9 +379,6 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
                                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
                                         Filter
                                     </span>
-                                    <div class="brv-combo-fy">
-                                        <select class="brv-in brv-fy-select" id="brv-to-fy-select" aria-label="Filter the To budget lines by fiscal year"><option value="">Year</option></select>
-                                    </div>
                                     <div class="brv-combo">
                                         <div class="brv-combo-field">
                                             <input type="text" class="brv-in" id="brv-to-unit-input" placeholder="Originating Unit" aria-label="Filter the To budget lines by originating unit"
@@ -431,7 +430,7 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
                                 </div>
                                 <div class="brv-summary-sub" id="brv-to-sum-sub"></div>
                                 <div class="brv-summary-amt">
-                                    <span>Current amount <strong id="brv-to-sum-amount"></strong></span>
+                                    <span>Current balance <strong id="brv-to-sum-amount"></strong></span>
                                 </div>
                             </div>
                         </div>
@@ -443,12 +442,12 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
                 <section class="brv-step">
                     <h4 class="brv-step-hd"><span class="brv-step-n">2</span> <span id="brv-step2-title">Revision</span></h4>
 
-                    <div class="brv-rev">
+                    <div class="brv-rev is-single">
                         <div class="brv-fld">
                             <label class="brv-lbl" for="brv-from-amount"><span id="brv-from-lbl">Current Amount</span> <span class="brv-req">*</span></label>
                             <div class="brv-money">
                                 <span class="brv-money-sym">&#8369;</span>
-                                <input type="number" class="brv-in" id="brv-from-amount" step="0.01" min="0" placeholder="Auto-filled" disabled>
+                                <input type="text" inputmode="decimal" autocomplete="off" class="brv-in" id="brv-from-amount" placeholder="Auto-filled" disabled>
                             </div>
                             <div class="brv-hint" id="brv-from-hint">The budget line's current amount.</div>
                         </div>
@@ -459,7 +458,7 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
                             <label class="brv-lbl" for="brv-to-amount"><span id="brv-to-lbl">New Amount</span> <span class="brv-req">*</span></label>
                             <div class="brv-money">
                                 <span class="brv-money-sym">&#8369;</span>
-                                <input type="number" class="brv-in" id="brv-to-amount" step="0.01" min="0" placeholder="0.00" required>
+                                <input type="text" inputmode="decimal" autocomplete="off" class="brv-in" id="brv-to-amount" placeholder="0.00" required>
                             </div>
                             <div class="brv-hint" id="brv-to-hint">What the budget line's amount becomes.</div>
                         </div>
@@ -475,7 +474,8 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
             </div>
             <div class="nha-modal-foot">
                 <button type="button" class="nha-btn nha-btn-ghost" id="brv-cancel">Cancel</button>
-                <button type="submit" class="nha-btn nha-btn-primary" id="brv-save">Submit Request</button>
+                <!-- saving files the request as Saved (still editable); "Process" in its Actions menu is what submits it for review -->
+                <button type="submit" class="nha-btn nha-btn-primary" id="brv-save">Save Request</button>
             </div>
         </form>
     </div>
@@ -489,17 +489,15 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
    A revision changes a BUDGET LINE: one chart-of-accounts line item (fims.budget_line_items) of a budget request. The request
    is a header (reference no. "BP-001", office, fiscal year, status) carrying programs[] > projects[] > line_items[]; the pickers
    flatten that into one list of lines — only the lines of an APPROVED request (a request still in review / draft / returned has
-   no budget to revise yet). A revision saved earlier against a line of another status still opens in Edit with that line shown. A line's CURRENT amount is its proposed amount plus its adjustment — what approving a
-   revision changes (the From line's adjustment goes down, the To line's goes up). The value a picker holds is the line's id.
+   no budget to revise yet). A revision saved earlier against a line of another status still opens in Edit with that line shown. A line's CURRENT amount is its suggested amount (its Current balance) — what approving a
+   revision changes (the From line's goes down, the To line's goes up). The value a picker holds is the line's id.
 
    Two pickers share one layout, and each has its OWN filters and selection:
      From budget line — required (budget_revision.from_budget_line_item_id)
      To budget line   — only on the Realignment tab, where it is required (budget_revision.to_budget_line_item_id): the line that
                         receives the funds the From line gives up. Its list never offers the From line. A Revision hides it.
 
-   Each picker is five searchable dropdowns that work together:
-     Fiscal Year  — a plain dropdown of the fiscal years (GET /fiscal_year/all, the host page's own list; the years that have a
-                    budget line if that can't be read)
+   Each picker is four searchable dropdowns that work together:
      Originating Unit — the office that filed the request (budget_req.rc_id), by RC code. It narrows the lines, and Program / Project
                     then offer only that office's. For FMD, who sees every office's approved lines, it is how to find one office's
      Program      — programs that have a budget line
@@ -521,12 +519,16 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
    From line fills it with that line's current amount; clearing the line
    clears it.
 
-   Year filters: a new request starts with both on next year (when that year is on the fiscal-year list); an existing one shows its From
-   line's year. A Realignment's To line must be in the From line's fiscal year, so its To Year filter follows the From line's year and
-   is locked (see syncToYear()).
+   Year: there is no Year filter. The From picker offers the budget lines of the CURRENT year only (CURRENT_YEAR, the server's date). A
+   Realignment moves funds only within one fiscal year, so the To picker offers the From line's year — the current year until a From line
+   is picked, which for a new request is the same thing (see toYear()). A request filed earlier against another year's line still opens
+   with its lines (setBudgetLine looks them up among ALL lines), and its To list follows that line's year. The server refuses a transfer
+   between years too (BudgetRevisionService::sameYearError()).
 
-   With a To line the revision MOVES funds, so To Amount must be lower than From Amount:
-   the From line goes down to To Amount and the To line goes up by the difference.
+   With a To line the revision MOVES funds, and on the Realignment tab the Amount typed IS the amount that moves: the From line goes down by
+   it and the To line goes up by it. It is saved as to_amount = (the From line's amount) − Amount (amounts()), so the table, the details and
+   the approval keep reading from_amount → to_amount as "the From line's amount before → after"; the Change column is −Amount. A Revision's
+   Amount is the line's new amount, saved as typed.
 ══════════════════════════════════════════════════════════════════════════ */
 (function () {
     const $ = id => document.getElementById(id);
@@ -536,7 +538,9 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
     // honours it only for the central review RC — for anyone else it changes nothing and they keep their own office's). The pickers
     // themselves only ever list the lines of APPROVED requests (isApproved), so FMD sees every approved budget line of every office.
     const API = '<?php echo $_brv_form_api; ?>' + '/budget_req/all' + (IS_FMD ? '?central=1' : '');
-    const FY_API = '<?php echo $_brv_form_api; ?>' + '/fiscal_year/all';   // the fiscal years the Year filters list
+    // The year whose budget lines the pickers offer (there is no Year filter): this year, by the server's date — the same default the
+    // Budget Requirements page uses for its Fiscal Year filter.
+    const CURRENT_YEAR = '<?php echo date('Y'); ?>';
     const peso = v => '₱ ' + Number(v || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const signedPeso = v => (v < 0 ? '−' : '+') + peso(Math.abs(v));
     const LIST_MAX = 100;   // most lines listed at once; typing narrows the rest down
@@ -545,23 +549,26 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
     // (both pickers read these) · allLines: every budget line whatever its request's status, only used to look up a line by id (a
     // revision filed earlier may point at a line of a request that is not Approved, and Edit must still be able to show it) ·
     // loaded: the first fetch has finished
-    const S = { reqs: [], lines: [], allLines: [], loaded: false, years: [] };   // years: the fiscal years from GET /fiscal_year/all, newest first
+    const S = { reqs: [], lines: [], allLines: [], loaded: false };
 
     // What is being filed — the tab the form is on (setType): 'REVISION' changes one budget line's amount, 'REALIGNMENT' moves funds to a
     // To budget line. Only a Realignment has (and requires) the To line.
     let type = 'REVISION';
     const TYPE_TEXT = {
         REVISION: {
-            intro: "Revise a budget line's amount. A revision only takes effect once it has been approved; then the line's adjustment and suggested amount change by the difference.",
+            intro: "Revise a budget line's amount. Saving files it as Saved, and you can still edit it; choose Process in its Actions menu to submit it for review (after that it cannot be edited). A revision only takes effect once it has been approved; then the line's adjustment and revised amount change by the difference.",
             step1: 'Budget line', step1Sub: 'Pick the budget line to revise.',
             step2: 'Revision', from: 'Current Amount', to: 'New Amount',
             fromHint: "The budget line's current amount.", toHint: "What the budget line's amount becomes.",
+            reasonPh: 'Explain why this budget needs to be revised',
         },
         REALIGNMENT: {
-            intro: "Move funds from one budget line to another. A realignment only takes effect once it has been approved; then the From line's adjustment and suggested amount go down and the To line's go up.",
+            intro: "Move funds from one budget line to another. Saving files it as Saved, and you can still edit it; choose Process in its Actions menu to submit it for review (after that it cannot be edited). A realignment only takes effect once it has been approved; then the From line's adjustment and revised amount go down and the To line's go up.",
             step1: 'Budget lines', step1Sub: 'Pick the line to take funds from and the line that receives them.',
-            step2: 'Realignment', from: 'From Amount', to: 'To Amount',
-            fromHint: "The From budget line's current amount.", toHint: "What the From budget line's amount becomes.",
+            // On this tab the amount typed is the amount that MOVES (saved as to_amount = the From line's amount − it, see amounts())
+            step2: 'Realignment', from: 'From Amount', to: 'Amount to Transfer',
+            fromHint: "The From budget line's current amount.", toHint: 'How much moves from the From budget line to the To budget line.',
+            reasonPh: 'Explain why this budget needs to be realigned',
         },
     };
 
@@ -570,15 +577,32 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
     const isApproved = l => String(l.status || '').trim().toLowerCase() === 'approved';
 
     // One line, as the pickers use it: its id, the request it belongs to (reference no., fiscal year, office, status), its program and
-    // project, its account, its particulars and its amounts. amount = proposed + adjustment, the line's CURRENT amount.
+    // project, its account, its particulars and its amounts. Its CURRENT amount (amountOf) is its remaining balance: suggested_amount + its Revision Amount (the ledger) less what CBAs hold.
     function toLines(requests) {
         const out = [];
         requests.forEach(h => (Array.isArray(h.programs) ? h.programs : []).forEach(pg =>
             (Array.isArray(pg.projects) ? pg.projects : []).forEach(pj =>
                 (Array.isArray(pj.line_items) ? pj.line_items : []).forEach(li => {
-                    const proposed = Number(li.proposed_amount || 0), adjustment = Number(li.adjustment || 0);
-                    // suggested: the line's live balance (suggested_amount) — what a revision that lowers the line may not exceed
+                    const proposed = Number(li.proposed_amount || 0);
+                    // revision: the line's Revision Amount — the net of its approved revisions / realignments, summed from the ledger
+                    // (fims.budget_line_item_revision_transaction; GET /budget_req/all sends it as revision_amount). Signed: a decrease is negative.
+                    const revision = Number(li.revision_amount || 0);
+                    // latest: the line's LATEST adjustment — the amount of its last ledger row (GET /budget_req/all sends it as latest_adjustment; negative on the From line of a
+                    // realignment, positive on the To line); the card shows it next to the approved amount, and the revised amount carries the net of all of them
+                    const latest = Number(li.latest_adjustment || 0);
+                    // approved: the amount the card calls "Approved amount" — the line's suggested_amount, NOT the office's proposed_amount. An approved revision no
+                    // longer changes it (it writes the ledger). Only a line that has no suggested_amount at all (NULL / not set yet) falls back to proposed_amount;
+                    // a real 0 stays 0.
                     const suggested = Number(li.suggested_amount || 0);
+                    const approved = li.suggested_amount === null || li.suggested_amount === undefined || li.suggested_amount === '' ? proposed : suggested;
+                    // revised: the approved amount plus the Revision Amount (the ledger total) — what the line's budget now is, before anything is held against it.
+                    const revised = suggested + revision;
+                    // held: what approved CBAs / CFAs hold against the line and RFAs / LAAs have drawn from them — the deduction (GET /budget_req/all sends it as
+                    // held_amount, summed from the earmark table fims.budget_line_item_earmark).
+                    const held = Number(li.held_amount || 0);
+                    // current: the line's REMAINING balance = revised - held (= the COB's Remaining Balance). This is the "Current balance", the From Amount, and what a
+                    // revision lowers or a realignment draws on; the server measures against the same figure (BudgetLineBalanceSql::correlatedAvailableExpr()).
+                    const current = revised - held;
                     out.push({
                         id: li.budget_line_item_id, ref: String(h.budget_reference_number), fy: h.fiscal_yr,
                         // rcId / officeCode: the originating unit — the office that filed the request (budget_req.rc_id) — and its RC code, to order by
@@ -586,19 +610,26 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
                         office: h.rc_name || h.rc_code || '', parentOffice: h.rc_parent_name || '', status: h.status_name, statusColor: h.status_color,
                         programCode: pg.program_code || '', programName: pg.program_name || '', projectCode: pj.project_code || '', projectName: pj.project_name || '',
                         accountId: li.account_id || '', accountCode: li.account_code || '', accountTitle: li.account_title || '', particulars: li.particulars || '',
-                        proposed, adjustment, suggested, amount: proposed + adjustment,
+                        proposed, revision, latest, approved, revised, held, current,
                     });
                 }))));
         return out;
     }
 
     const keyOf      = l => String(l.id);
-    const amountOf   = l => l.amount;
+    // A line's CURRENT amount is its remaining balance — suggested_amount plus its Revision Amount from the ledger, less what CBAs / CFAs hold and RFAs / LAAs have
+    // drawn — the same figure the card shows as "Current balance", the COB shows as Remaining Balance, and the one the server measures a revision against
+    // (BudgetRevisionService: currentAmountOf()). So a New Amount is the line's new remaining balance, and one equal to the Current balance is "No change".
+    const amountOf   = l => l.current;
     const withName   = (code, name) => (code ? code + (name ? ' — ' + name : '') : '');
     // "5-02-010 — Travelling Expenses"; a line with no account known shows its id
     const titleOf    = l => withName(l.accountCode, l.accountTitle) || l.accountTitle || `Budget line #${l.id}`;
     // "5-02-010 (BP-001)": short enough for a sentence
     const nameOf     = l => (l.accountCode || `line #${l.id}`) + ` (${l.ref})`;
+    // Whether two lines are the SAME budget line item: the same account in the same project of the same budget request (two rows that differ only in their particulars are
+    // still that one item), so funds cannot be moved between them. The same line is trivially the same item. The server refuses it too (BudgetRevisionService::sameItemError()).
+    const sameItem   = (a, b) => !!a && !!b && (keyOf(a) === keyOf(b)
+        || (a.ref === b.ref && a.programCode === b.programCode && a.projectCode === b.projectCode && a.accountId !== '' && a.accountId === b.accountId));
     const placeOf    = l => [l.programCode, l.projectCode].filter(Boolean).join(' / ') || 'No project yet';
     const shortLabel = l => `FY ${l.fy} — ${l.ref} — ${titleOf(l)}`;
     // What a picker's input shows once a line is picked: its account. The full shortLabel is the input's tooltip and the summary
@@ -639,10 +670,38 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
     // the form-level fields (not part of either picker)
     const el = { form: $('brv-form'), from: $('brv-from-amount'), to: $('brv-to-amount'), change: $('brv-change') };
 
+    /* ── Amount inputs: shown with thousands separators (1,000.00), read back without them ─────────────
+       They are text inputs (a number input cannot show commas). What is typed is regrouped as it goes — digits and one dot only, at
+       most two decimals, the caret kept where it was — and the amount is padded to two decimals when the field is left. Anything that
+       READS an amount strips the commas first (amtRaw); the host page does the same when it saves. */
+    const amtRaw  = s => String(s ?? '').replace(/,/g, '').trim();   // "1,000.50" → "1000.50"
+    const amtText = v => (v === '' || v === null || v === undefined || isNaN(Number(v)) ? '' : Number(v).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+    function amtGroup(str) {
+        const s = String(str).replace(/[^\d.]/g, '');
+        const dot = s.indexOf('.');
+        const int = (dot === -1 ? s : s.slice(0, dot)).replace(/^0+(?=\d)/, '').replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+        const dec = dot === -1 ? null : s.slice(dot + 1).replace(/\./g, '').slice(0, 2);
+        return dec === null ? int : (int || '0') + '.' + dec;
+    }
+    function wireAmount(input) {
+        input.addEventListener('input', () => {
+            const before = input.value, caret = input.selectionStart;
+            const sig = before.slice(0, caret).replace(/[^\d.]/g, '').length;   // digits / dots left of the caret
+            const next = amtGroup(before);
+            if (next === before) return;
+            input.value = next;
+            let pos = 0, seen = 0;
+            while (pos < next.length && seen < sig) { if (/[\d.]/.test(next.charAt(pos))) seen++; pos++; }
+            input.setSelectionRange(pos, pos);
+        });
+        input.addEventListener('blur', () => { input.value = amtText(amtRaw(input.value)); });
+    }
+    wireAmount(el.to);
+    wireAmount(el.from);   // disabled and filled in for the user, but kept in the same shape
+
     // element ids of each picker (the From picker keeps the original ids)
     const FROM_IDS = {
         id: 'brv-line-id',
-        fySel: 'brv-fy-select',
         unIn: 'brv-unit-input', unClear: 'brv-unit-clear', unList: 'brv-unit-list',
         prIn: 'brv-program-input', prClear: 'brv-program-clear', prList: 'brv-program-list',
         pjIn: 'brv-project-input', pjClear: 'brv-project-clear', pjList: 'brv-project-list',
@@ -652,7 +711,6 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
     };
     const TO_IDS = {
         id: 'brv-to-line-id',
-        fySel: 'brv-to-fy-select',
         unIn: 'brv-to-unit-input', unClear: 'brv-to-unit-clear', unList: 'brv-to-unit-list',
         prIn: 'brv-to-program-input', prClear: 'brv-to-program-clear', prList: 'brv-to-program-list',
         pjIn: 'brv-to-project-input', pjClear: 'brv-to-project-clear', pjList: 'brv-to-project-list',
@@ -749,8 +807,9 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
     }
 
     // The card under a picker (From and To share the same layout): the request's status, the line's account, then — one per line —
-    // its request / office / fiscal year, its program › project, its particulars and (when revisions changed it) proposed vs adjusted,
-    // and its current amount.
+    // its request / office / fiscal year, its program › project, its particulars, its approved amount (its suggested_amount) and
+    // Revision Amount (when approved revisions changed it), its revised amount (approved + revision) and what CBAs hold against it; the bold amount is its current
+    // balance, the remaining balance (revised amount less CBA Requested).
     function renderCard(l, box, statusEl, titleEl, subEl, amountEl) {
         box.hidden = !l;
         if (!l) return;
@@ -761,42 +820,47 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
             `${l.ref}${l.office ? ' · ' + l.office : ''} · FY ${l.fy}`,
             place,
             l.particulars,
-            l.adjustment !== 0 ? `Proposed ${peso(l.proposed)} · adjusted ${signedPeso(l.adjustment)}` : '',
-            `Suggested amount (balance) ${peso(l.suggested)}`,
+            // the LATEST adjustment (a realignment is − on the From line and + on the To line); the revised amount is the approved amount net of ALL the adjustments, which
+            // is shown beside it when there has been more than one
+            l.revision !== 0 ? `Approved amount ${peso(l.approved)} · Latest adjustment ${signedPeso(l.latest)}` : '',
+            // a line that has never been revised has no revised amount: it shows its approved amount instead
+            l.revision !== 0 ? `Revised amount ${peso(l.revised)}${Math.abs(l.latest - l.revision) > 0.004 ? ` (net of all adjustments ${signedPeso(l.revision)})` : ''}` : `Approved amount ${peso(l.approved)}`,
+            // the deduction: what approved CBAs hold against the line and RFAs / LAAs have drawn (read from the earmark table)
+            l.held !== 0 ? `Less CBA Requested ${peso(l.held)}` : '',
         ].filter(Boolean).join('\n');
-        amountEl.textContent = peso(amountOf(l));
+        amountEl.textContent = peso(l.current);   // the line's current balance = its remaining balance: revised amount less CBA Requested
     }
 
     /* ── one picker: filter bar + searchable field + summary card ──────────
        ids       the element ids (FROM_IDS / TO_IDS)
-       exclude   () => a line the list must not offer (the To picker excludes the From line)
+       exclude   () => a line the list must not offer — nor any line that is the same budget line item as it (the To picker excludes the From line's item)
        required  the field is mandatory — native validation until a line is picked. true / false, or a function that says so right now
                  (the To picker: only on the Realignment tab — call sync() when that changes)
        onSelect  (line, { autofill }) after the selection changed
-       onClear   the user pressed × on the field (runs just before the selection is cleared) */
-    function makePicker(ids, { exclude = () => null, required = false, requiredMsg = '', onSelect = () => {}, onClear = () => {}, onYear = () => {} } = {}) {
+       onClear   the user pressed × on the field (runs just before the selection is cleared)
+       year      () => the fiscal year whose budget lines this picker offers (the current year unless told otherwise) */
+    function makePicker(ids, { exclude = () => null, required = false, requiredMsg = '', onSelect = () => {}, onClear = () => {}, year = () => CURRENT_YEAR } = {}) {
         const isRequired = typeof required === 'function' ? required : () => required;
         const pe = {};
         Object.keys(ids).forEach(k => { pe[k] = $(ids[k]); });
 
-        // fy: '' or '2026' · unit: null | { key, label, full } (key = the originating office's rc_id) · program: null | { code, label, full }
+        // unit: null | { key, label, full } (key = the originating office's rc_id) · program: null | { code, label, full }
         // project: null | { code, label, full, program }
         // selected: the picked budget line or null
-        const P = { fy: '', unit: null, program: null, project: null, selected: null };
+        const P = { unit: null, program: null, project: null, selected: null };
 
-        // every line this picker may offer
+        // every line this picker may offer: the approved lines of ITS year, less the one it must not offer (and what is the same budget line item as it)
         const baseRows = () => {
-            const ex = exclude();
-            return ex ? S.lines.filter(l => keyOf(l) !== keyOf(ex)) : S.lines;
+            const ex = exclude(), y = String(year());
+            return S.lines.filter(l => String(l.fy) === y && !(ex && sameItem(l, ex)));
         };
 
         /* ── filtering ── */
         // Lines that satisfy the active filters. Each dropdown switches off the
         // filter(s) it feeds, so its suggestions only react to the OTHER filters.
-        function matchRows({ fy = true, unit = true, program = true, project = true, q = '' } = {}) {
+        function matchRows({ unit = true, program = true, project = true, q = '' } = {}) {
             const needle = q.toLowerCase();
             return baseRows().filter(l => {
-                if (fy && P.fy && String(l.fy) !== P.fy) return false;
                 if (unit && P.unit && l.rcId !== P.unit.key) return false;
                 if (program && P.program && l.programCode !== P.program.code) return false;
                 if (project && P.project && l.projectCode !== P.project.code) return false;
@@ -805,7 +869,7 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
             });
         }
 
-        // The originating units — the offices that filed a request — that have a budget line, by RC code. Reacts to Year / Program / Project, not
+        // The originating units — the offices that filed a request — that have a budget line, by RC code. Reacts to Program / Project, not
         // to itself. A District office says which office it sits under (its parent RC).
         function unitItems(q) {
             const units = new Map();   // rc_id → { name, code, parent, n }
@@ -875,9 +939,12 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
 
         /* ── state → UI ── */
         function refresh() {
-            if (S.loaded) pe.hint.textContent = `Showing ${matchRows().length} of ${baseRows().length} budget lines`;
-            // "Clear filters" shows only while a filter it can clear is on (a locked Year is not one of them)
-            pe.reset.hidden = !((P.fy && !pe.fySel.disabled) || P.unit || P.program || P.project);
+            if (S.loaded) {
+                const all = baseRows().length;
+                pe.hint.textContent = all ? `Showing ${matchRows().length} of ${all} budget lines` : `No approved budget lines for ${year()}`;
+            }
+            // "Clear filters" shows only while a filter is on
+            pe.reset.hidden = !(P.unit || P.program || P.project);
         }
 
         // The native "pick one" message while the field is required and nothing is picked; none otherwise (a hidden, optional field must
@@ -886,15 +953,29 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
             pe.reqIn.setCustomValidity(isRequired() && !P.selected ? requiredMsg : '');
         }
 
-        // Set (or clear) the picked budget line.
+        // Sets the three filters to where a budget line sits: its originating unit (the office that filed its request), its program and its
+        // project — shown exactly as picking them in the filter bar would, and applied the same way (they narrow the list; "Clear filters"
+        // drops them). A line with no program / project leaves that filter empty.
+        function syncFiltersTo(l) {
+            P.unit    = l.rcId ? { key: l.rcId, label: l.office || l.rcId, full: withName(l.rcId, l.office) } : null;
+            P.program = l.programCode ? { code: l.programCode, label: withName(l.programCode, l.programName), full: withName(l.programCode, l.programName) } : null;
+            P.project = l.projectCode ? { code: l.projectCode, label: l.projectCode, full: withName(l.projectCode, l.projectName), program: l.programCode } : null;
+            showUnit(); showProgram(); showProject();
+            [unCombo, prCombo, pjCombo].forEach(c => c.syncClear());
+            refresh();
+        }
+
+        // Set (or clear) the picked budget line. opts.syncFilters: the user picked this line directly (by its account code, not through the
+        // filters), so the filters follow it — see syncFiltersTo().
         function select(line, opts = {}) {
             const ex = exclude();
-            if (line && ex && keyOf(line) === keyOf(ex)) line = null;   // never the same line as the other picker
+            if (line && ex && sameItem(line, ex)) line = null;   // never the same budget line item as the other picker
             P.selected = line || null;
             pe.id.value = line ? keyOf(line) : '';   // the budget line's id
             pe.reqIn.value = line ? inputLabel(line) : '';
             pe.reqIn.title = line ? shortLabel(line) : '';
             pe.reqClear.hidden = !line;
+            if (line && opts.syncFilters) syncFiltersTo(line);
             // native validation message when submitting without a pick
             syncRequired();
             renderCard(P.selected, pe.summary, pe.sumType, pe.sumTitle, pe.sumSub, pe.sumAmount);
@@ -904,41 +985,13 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
         /* ── wire the dropdowns ── */
         // A typed value is only a search; the applied filter changes on pick/clear,
         // and leaving the field restores the applied value.
-        // The compact filter inputs show just the code (label); the full "code — name" is their tooltip.
+        // The Program filter shows "code — name" (label); the Project filter shows just the code, with its full "code — name" as the tooltip.
         const showUnit    = () => { pe.unIn.value = P.unit ? P.unit.label : ''; pe.unIn.title = P.unit ? P.unit.full : ''; };
         const showProgram = () => { pe.prIn.value = P.program ? P.program.label : ''; pe.prIn.title = P.program ? P.program.full : ''; };
         const showProject = () => { pe.pjIn.value = P.project ? P.project.label : ''; pe.pjIn.title = P.project ? P.project.full : ''; };
         const unQuery = () => (P.unit && pe.unIn.value === P.unit.label ? '' : pe.unIn.value.trim());
         const prQuery = () => (P.program && pe.prIn.value === P.program.label ? '' : pe.prIn.value.trim());
         const pjQuery = () => (P.project && pe.pjIn.value === P.project.label ? '' : pe.pjIn.value.trim());
-
-        // Fiscal Year: a dropdown of the fiscal years (fillYearSelects); the empty first option ("Year") is no filter
-        pe.fySel.addEventListener('change', () => { P.fy = pe.fySel.value; refresh(); onYear(P.fy); });
-
-        // Set the Year filter from code (the default year, or the To picker following the From line). The year is added to the dropdown
-        // if it is not there yet (the fiscal years may still be loading), so what the dropdown shows is always what filters. Does not
-        // call onYear: only a change by the user does.
-        function setYear(y) {
-            y = String(y ?? '');
-            if (y && ![...pe.fySel.options].some(o => o.value === y)) {
-                const o = document.createElement('option');
-                o.value = y;
-                o.textContent = y;
-                pe.fySel.appendChild(o);
-            }
-            pe.fySel.value = y;
-            P.fy = y;
-            refresh();
-        }
-
-        // Lock the Year filter to year y ('' = no year) — it shows y, cannot be changed, and `why` is its tooltip — or, with null, unlock it.
-        function lockYear(y, why = '') {
-            const lock = y !== null;
-            if (lock) setYear(y);
-            pe.fySel.disabled = lock;
-            pe.fySel.title = lock ? why : '';
-            refresh();
-        }
 
         const clearProject = () => { P.project = null; showProject(); pjCombo.syncClear(); };
 
@@ -954,7 +1007,7 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
         const prCombo = combo({
             input: pe.prIn, list: pe.prList, clear: pe.prClear, items: programItems, query: prQuery,
             onPick: it => {
-                P.program = { code: it.code, label: it.code, full: it.label };
+                P.program = { code: it.code, label: it.label, full: it.label };   // the box reads "101 — Resettlement", not just "101"
                 showProgram();
                 // a project only makes sense under its own program
                 if (P.project && P.project.program !== it.code) clearProject();
@@ -972,7 +1025,7 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
                 showProject();
                 // picking a project fills in the program it belongs to
                 if (!P.program || P.program.code !== it.program) {
-                    P.program = { code: it.program, label: it.program, full: programLabel(it.program) };
+                    P.program = { code: it.program, label: programLabel(it.program), full: programLabel(it.program) };
                     showProgram();
                     prCombo.syncClear();
                 }
@@ -985,7 +1038,7 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
         const reqCombo = combo({
             input: pe.reqIn, list: pe.reqList, clear: pe.reqClear, items: reqItems,
             query: () => (P.selected && pe.reqIn.value === inputLabel(P.selected) ? '' : pe.reqIn.value.trim()),
-            onPick: it => select(it.row, { autofill: true }),
+            onPick: it => select(it.row, { autofill: true, syncFilters: true }),   // picked directly: the filters follow the line
             onClear: () => { onClear(); select(null); },
             onBlur: () => { pe.reqIn.value = P.selected ? inputLabel(P.selected) : ''; },
         });
@@ -993,7 +1046,6 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
         // Drop every filter. The picked budget line, if any, is left alone.
         function clearFilters() {
             P.unit = null; P.program = null; P.project = null;
-            if (!pe.fySel.disabled) { P.fy = ''; pe.fySel.value = ''; }   // a locked Year stays
             showUnit(); showProgram(); showProject();
             [unCombo, prCombo, pjCombo].forEach(c => { c.close(); c.syncClear(); });
             refresh();
@@ -1007,7 +1059,7 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
             select(null);
         }
 
-        return { select, selected: () => P.selected, refresh, reset, sync: syncRequired, year: () => P.fy, setYear, lockYear };
+        return { select, selected: () => P.selected, refresh, reset, sync: syncRequired };
     }
 
     /* ── the two pickers ───────────────────────────────────────────────── */
@@ -1017,97 +1069,120 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
         required: true,
         requiredMsg: 'Please select a From budget line from the list.',
         onSelect: (line, { autofill = false } = {}) => {
-            // funds can't move from a line to itself, so picking the To line as the From line drops the To line
+            // funds can't move from a budget line item to itself (the same account in the same project of the same budget request), so picking a From line that is the
+            // same item as the To line drops the To line
             const to = toPicker && toPicker.selected();
-            if (line && to && keyOf(to) === keyOf(line)) toPicker.select(null);
+            if (line && to && sameItem(to, line)) toPicker.select(null);
             // autofill: true only when the USER picks a line. Preselecting one for Edit
             // must leave the saved From Amount alone.
-            if (line && autofill) el.from.value = amountOf(line).toFixed(2);   // From Amount (disabled) = its current amount
-            if (toPicker) toPicker.refresh();   // the To list no longer offers the From line
-            syncToYear();                       // a Realignment's To line has to be in the From line's fiscal year
+            if (line && autofill) el.from.value = amtText(amountOf(line));   // From Amount (disabled) = its current amount
+            if (toPicker) toPicker.refresh();   // the To list no longer offers the From line, and follows its year
+            dropToIfOtherYear();                // a Realignment's To line has to be in the From line's fiscal year
             updateChange();
         },
         // From Amount follows the From line, so clearing the line clears it too
         onClear: () => { el.from.value = ''; },
-        // the user picked another Year in the From filter: a Realignment's To filter follows it
-        onYear: () => syncToYear(),
     });
     toPicker = makePicker(TO_IDS, {
         exclude: () => fromPicker && fromPicker.selected(),
         required: () => type === 'REALIGNMENT',   // a Realignment moves funds to it; a Revision has no To line at all
         requiredMsg: 'Please select a To budget line from the list.',
+        year: () => toYear(),   // funds only move within one fiscal year: the From line's
         onSelect: () => updateChange(),
     });
 
-    /* ── fiscal years: what the Year filters start on, and the Realignment lock ───────────────────────────────────────────────
-       A new request starts with both Year filters on NEXT year (the year budgets are being prepared for) — when that year is on the
-       list. A Realignment moves funds only within one fiscal year, so its To line has to be in the From line's year: the To picker's
-       Year filter shows the From line's year (or, until a From line is picked, the year the From filter is on) and is LOCKED; its list
-       only offers that year's lines, and a To line of another year is dropped. A Revision has no To line, so nothing is locked. The
-       server refuses a transfer between years too (BudgetRevisionService::sameYearError()). */
-    function syncToYear() {
-        if (type !== 'REALIGNMENT') { toPicker.lockYear(null); return; }
-        const from = fromPicker.selected();
-        const y = from ? String(from.fy) : fromPicker.year();
-        toPicker.lockYear(y, y
-            ? `Locked to the From budget line's fiscal year (FY ${y}) — funds only move within one fiscal year.`
-            : "Follows the From budget line's fiscal year — funds only move within one fiscal year.");
+    /* ── which year's lines ─────────────────────────────────────────────────────────────────────────────────────────────────────
+       There is no Year filter: the From picker offers the CURRENT year's lines. A Realignment moves funds only within one fiscal year, so
+       the To picker offers the From line's year — the current year until a From line is picked (for a new request, the same thing).
+       A request filed earlier against another year's line still opens, and its To list follows that line's year. The server refuses a
+       transfer between years too (BudgetRevisionService::sameYearError()). */
+    function toYear() {
+        const from = fromPicker && fromPicker.selected();
+        return from ? String(from.fy) : CURRENT_YEAR;
+    }
+
+    function dropToIfOtherYear() {
         const to = toPicker.selected();
-        if (to && y && String(to.fy) !== y) toPicker.select(null);   // a To line of another year cannot stay
+        if (to && String(to.fy) !== toYear()) toPicker.select(null);   // a To line of another year cannot stay
     }
 
-    function applyDefaultYear() {
-        const next = String(new Date().getFullYear() + 1);
-        const y = yearList().includes(next) ? next : '';
-        fromPicker.setYear(y);
-        if (type !== 'REALIGNMENT') toPicker.setYear(y);   // (a Realignment's To filter follows the From one — syncToYear)
-        syncToYear();
-    }
-
-    // The From line may not be left with a negative balance. Approving moves its suggested_amount by (To Amount − its current amount),
-    // so lowering the line by more than that suggested_amount would take it below zero. Returns the message, or '' when it is fine
+    // The From line may not be left with a negative balance. Its current amount is its remaining balance and approving sets it to To Amount, so it can go down as far as
+    // zero and no further (which also keeps the line's revised amount from going below what CBAs / RFAs / LAAs hold). Returns the message, or '' when it is fine
     // (an increase, or a decrease that fits). The server checks the same rule (BudgetRevisionService::fromBalanceError()).
     function fromBalanceError(line, toAmount) {
         if (!line) return '';
-        const change = Math.round((Number(toAmount) - amountOf(line)) * 100) / 100;   // negative = the line goes down
-        const left   = Math.round((line.suggested + change) * 100) / 100;
-        if (change >= 0 || left >= 0) return '';
-        return `The From budget line has only ${peso(line.suggested)} left (its suggested amount), so it can't go down by ${peso(-change)} — that would leave it at −${peso(-left)}.`;
+        const left = Math.round(Number(toAmount) * 100) / 100;
+        if (isNaN(left) || left >= 0) return '';
+        return `The From budget line can't go below zero — that would leave its balance at −${peso(-left)}.`;
+    }
+
+    const round2 = n => Math.round(n * 100) / 100;
+
+    // What a Realignment's Amount is checked against and taken from: the From line's current amount once it is picked (the server measures a
+    // transfer against the live line too), else whatever the (disabled) From Amount field holds. NaN when neither is known yet.
+    function moveBase() {
+        const line = fromPicker && fromPicker.selected();
+        return line ? amountOf(line) : Number(amtRaw(el.from.value) === '' ? NaN : amtRaw(el.from.value));
+    }
+
+    // The note for a Realignment Amount that cannot be transferred ('' when it is fine). The amount typed is the amount that MOVES, so it
+    // has to be more than zero and no more than the From line's amount (it cannot go below zero). Taking all of it is fine.
+    function moveAmountError(amount, fromAmount) {
+        const x = round2(Number(amount)), f = round2(Number(fromAmount));
+        if (amount === '' || amount === null || amount === undefined || isNaN(x)) return 'Enter the amount to transfer.';
+        if (x <= 0) return 'The amount to transfer must be more than zero.';
+        if (!isNaN(f) && x > f) return `The amount to transfer must not exceed the From budget line's current balance (${peso(f)}).`;
+        return '';
+    }
+
+    // The two amounts a request is SAVED with. A Revision stores what was typed (the line's new amount). A Realignment stores the From line's
+    // amount at filing and what it becomes once the typed Amount has moved to the To line: to_amount = from_amount − Amount. The amount
+    // typed is therefore the amount transferred, and the table / details (From, To, Change = −Amount) and the approval read it back unchanged.
+    function amounts() {
+        const f = amtRaw(el.from.value), t = amtRaw(el.to.value);
+        if (type !== 'REALIGNMENT') return { from_amount: f, to_amount: t };
+        const base = moveBase(), x = Number(t);
+        if (t === '' || isNaN(x) || isNaN(base)) return { from_amount: f, to_amount: '' };   // incomplete: the checks report it
+        return { from_amount: round2(base).toFixed(2), to_amount: round2(base - x).toFixed(2) };
     }
 
     function updateChange() {
-        const f = el.from.value, t = el.to.value;
+        const f = amtRaw(el.from.value), t = amtRaw(el.to.value);   // without the thousands commas
         const from = fromPicker.selected(), to = toPicker.selected();
         el.to.setCustomValidity('');   // set again below when the amounts are invalid
+        const show = (cls, text, invalid) => {
+            el.change.hidden = false;
+            el.change.className = 'brv-change' + (cls ? ' ' + cls : '');
+            el.change.textContent = text;
+            if (invalid) el.to.setCustomValidity(text);
+        };
+
+        if (type === 'REALIGNMENT') {
+            // The Amount is what moves from the From line to the To line. Nothing to say until an amount is typed.
+            if (t === '' || isNaN(t)) { el.change.hidden = true; return; }
+            const base = moveBase(), x = round2(Number(t));
+            const bad = moveAmountError(t, base);
+            if (bad) { show('is-down', bad, true); return; }
+            // the From line may not be left with a negative balance (checked against what it will become)
+            const low = from ? fromBalanceError(from, round2(base - x)) : '';
+            if (low) { show('is-down', low, true); return; }
+            const fromName = from ? nameOf(from) : 'the From budget line', toName = to ? nameOf(to) : 'the To budget line';
+            // once both lines are picked, say what each one goes to
+            const lines = from && to
+                ? `\n${fromName}: ${peso(amountOf(from))} → ${peso(round2(amountOf(from) - x))}   ·   ${toName}: ${peso(amountOf(to))} → ${peso(round2(amountOf(to) + x))}`
+                : '';
+            show('is-move', `${peso(x)} moves from ${fromName} to ${toName}${lines}`);
+            return;
+        }
+
         if (f === '' || t === '' || isNaN(f) || isNaN(t)) { el.change.hidden = true; return; }
-        const d = Math.round((Number(t) - Number(f)) * 100) / 100;
-        el.change.hidden = false;
+        const d = round2(Number(t) - Number(f));
 
         // nothing is submitted that would leave the From line negative
         const low = fromBalanceError(from, t);
-        if (low) {
-            el.change.className = 'brv-change is-down';
-            el.change.textContent = low;
-            el.to.setCustomValidity(low);
-            return;
-        }
+        if (low) { show('is-down', low, true); return; }
 
-        if (to || type === 'REALIGNMENT') {
-            // A realignment (always, even before its To line is picked) moves funds: the From line must go DOWN, the To line gets the difference.
-            if (d < 0) {
-                el.change.className = 'brv-change is-move';
-                el.change.textContent = `${peso(-d)} moves from ${from ? nameOf(from) : 'the From budget line'} to ${to ? nameOf(to) : 'the To budget line'}`;
-            } else {
-                const msg = 'To Amount must be lower than From Amount to move funds to the To budget line.';
-                el.change.className = 'brv-change is-down';
-                el.change.textContent = msg;
-                el.to.setCustomValidity(msg);
-            }
-            return;
-        }
-
-        el.change.className = 'brv-change' + (d > 0 ? ' is-up' : d < 0 ? ' is-down' : '');
-        el.change.textContent = d === 0 ? 'No change' : `${d > 0 ? 'Increase' : 'Decrease'} of ${peso(Math.abs(d))}`;
+        show(d > 0 ? 'is-up' : d < 0 ? 'is-down' : '', d === 0 ? 'No change' : `${d > 0 ? 'Increase' : 'Decrease'} of ${peso(Math.abs(d))}`);
     }
     el.to.addEventListener('input', updateChange);
 
@@ -1138,17 +1213,20 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
         $('brv-to-lbl').textContent = t.to;
         $('brv-from-hint').textContent = t.fromHint;
         $('brv-to-hint').textContent = t.toHint;
-        syncToYear();   // a Realignment locks the To Year to the From line's; a Revision unlocks it
+        $('brv-reason').placeholder = t.reasonPh;
         updateChange();
     }
     $('brv-type-tabs').addEventListener('click', e => {
         const b = e.target.closest('.nha-tab');
-        if (b && b.dataset.type !== type) setType(b.dataset.type);
+        if (!b || b.dataset.type === type) return;
+        // The Amount means something else on each tab (a Revision's new amount, a Realignment's amount to transfer), so one typed on the
+        // other tab is dropped rather than quietly read as the wrong thing.
+        el.to.value = '';
+        setType(b.dataset.type);
     });
 
     function resetUI() {
         fromPicker.reset();
-        toPicker.lockYear(null);   // (a locked Year filter is not cleared by reset)
         toPicker.reset();
         setType('REVISION');   // back to the default tab (also refreshes the change chip)
     }
@@ -1157,49 +1235,6 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
     fromPicker.select(null);
     toPicker.select(null);
     setType('REVISION');
-
-    /* ── fiscal years for the Year filters ─────────────────────────────── */
-    // The Year filter of each picker is a dropdown of the fiscal years from GET /fiscal_year/all — the same list the host page's own
-    // Fiscal Year filter uses — newest first. If that can't be read, the years that have a budget line are listed instead, so the
-    // filter still works.
-    const yearList = () => (S.years.length
-        ? S.years
-        : [...new Set(S.lines.map(l => String(l.fy)).filter(Boolean))].sort((a, b) => b - a));
-
-    function fillYearSelects() {
-        const years = yearList();
-        [FROM_IDS.fySel, TO_IDS.fySel].forEach(id => {
-            const sel = $(id), keep = sel.value;
-            sel.textContent = '';
-            const first = document.createElement('option');
-            first.value = '';
-            first.textContent = 'Year';
-            sel.appendChild(first);
-            years.forEach(y => {
-                const o = document.createElement('option');
-                o.value = y;
-                o.textContent = y;
-                sel.appendChild(o);
-            });
-            const next = years.includes(keep) ? keep : '';
-            sel.value = next;
-            if (next !== keep) sel.dispatchEvent(new Event('change'));   // the picked year is no longer on the list: drop that filter
-        });
-    }
-
-    async function loadYears() {
-        try {
-            const headers = typeof window.brv_apiHeaders === 'function' ? window.brv_apiHeaders() : {};
-            const res = await fetch(FY_API, { credentials: 'same-origin', headers });
-            const json = await res.json().catch(() => null);
-            if (!res.ok || !json || !json.success) throw new Error((json && json.message) || 'HTTP ' + res.status);
-            S.years = [...new Set((json.data ?? []).map(r => String(r.fiscal_yr ?? '').trim()).filter(Boolean))].sort((a, b) => b - a);
-        } catch (e) {
-            console.error('[budget-rev-form] fiscal years', e);
-            if (typeof window.brv_toast === 'function') window.brv_toast('Could not load the fiscal years: ' + e.message, 'warning');
-        }
-        fillYearSelects();
-    }
 
     /* ── load data ─────────────────────────────────────────────────────── */
     // Fetch /budget_req/all (every originating unit's for FMD — see IS_FMD) into S.reqs + S.lines; resolves to the [{ value, label }] list of
@@ -1223,13 +1258,11 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
             || a.l.accountCode.localeCompare(b.l.accountCode, undefined, { numeric: true }) || a.i - b.i).map(x => x.l);
         S.lines = S.allLines.filter(isApproved);   // what the From / To pickers list
         S.loaded = true;
-        fillYearSelects();   // (only matters when the fiscal years could not be read: then the lines' own years are listed)
         fromPicker.refresh();
         toPicker.refresh();
         return S.reqs.map(h => ({ value: String(h.budget_reference_number), label: reqLabel(h) }));
     }
 
-    const yearsReady = loadYears();   // fills the Year dropdowns; independent of the budget lines below (never rejects)
     const ready = (async function () {
         try {
             return await loadRows();
@@ -1248,17 +1281,21 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
         // Pick the Revision or Realignment tab ('REVISION' | 'REALIGNMENT'); a Revision hides and empties the To budget line.
         setType,
         getType: () => type,
+        // The note for a Realignment Amount that cannot be transferred — zero, or more than the From line's amount ('' when it is fine). The page
+        // uses it when it saves: moveAmountError(amount typed, From line's amount).
+        moveAmountError,
+        // { from_amount, to_amount } to save the request with. A Realignment's typed Amount is the amount TRANSFERRED, saved as
+        // to_amount = from_amount − Amount; a Revision's is the line's new amount, saved as it is. Both are plain number strings.
+        amounts,
         // Preselect the From line and the To line by id (the latter may be omitted / '' / null for none; a line that is no longer on
         // the list — or a revision filed before budget lines were revised, which has none — leaves that picker empty). The host
         // page has already put the saved From/To Amount in the inputs, so refresh the chip too.
-        // Also sets the Year filters: a new request (no From line) starts on next year; an existing one shows its From line's year.
-        setBudgetLine: (fromId, toId) => Promise.all([ready, yearsReady]).then(() => {
+        // A saved line is looked up among ALL lines, so a request filed against another year's line still opens with it.
+        setBudgetLine: (fromId, toId) => ready.then(() => {
             const find = v => (v === '' || v == null ? null : (S.allLines.find(l => keyOf(l) === String(v)) || null));
-            const from = find(fromId);
-            if (from) fromPicker.setYear(String(from.fy)); else applyDefaultYear();
-            fromPicker.select(from);
+            fromPicker.select(find(fromId));
             toPicker.select(find(toId));
-            syncToYear();   // a saved Realignment across two years (filed before the rule) loses its To line here — it must be picked again
+            dropToIfOtherYear();   // a saved Realignment across two years (filed before the same-year rule) loses its To line here — it must be picked again
             updateChange();
         }),
         // Re-fetch the budget requests — a line's amount changes when a revision is approved.

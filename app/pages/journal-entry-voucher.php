@@ -122,10 +122,6 @@ $_jel_voucherView = 'Voucher';
         </div>
     </div>
 
-    <p class="nha-hint no-print" style="margin:0 0 14px;color:var(--afims-text-muted,#62657E);font-size:13px;">
-        Most Journal Entries are prepared by Accounting while processing a Disbursement Voucher — click a row with a DV Number to open its voucher. Use <strong>+ Add JEV</strong> for a standalone entry with no DV (period-end Accrual/Depreciation/Prepayments/Closing adjustments).
-    </p>
-
     <!-- Error banner -->
     <div id="jel-error" class="nha-error" style="display:none;">
         <svg fill="none" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
@@ -189,7 +185,6 @@ $_jel_voucherView = 'Voucher';
                     <svg fill="none" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
                     <span id="jaf-error-msg"></span>
                 </div>
-                <p class="nha-hint" style="margin:0 0 10px;">No Disbursement Voucher — for period-end Accrual/Depreciation/Prepayments/Closing entries (or any other direct General Journal entry) Accounting books without a disbursement.</p>
                 <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:10px;">
                     <div class="nha-fg" style="max-width:180px;">
                         <label>JEV Date <span class="nha-req">*</span></label>
@@ -257,11 +252,42 @@ $_jel_voucherView = 'Voucher';
                 <div style="margin-top:12px;">
                     <span id="jaf-balance-msg" style="font-weight:600;font-size:13px;"></span>
                 </div>
+
+                <!-- Review history — each endorse/approve step with its remarks (read-only; filled by jaf_loadForEdit). -->
+                <div class="jaf-card" id="jaf-history-card" style="display:none;margin-top:14px;">
+                    <p class="jaf-card-title">Review History &amp; Remarks</p>
+                    <div id="jaf-history-list"></div>
+                </div>
             </div>
             <div class="nha-modal-foot">
                 <button type="button" class="nha-btn nha-btn-ghost" id="jaf-btn-print" style="display:none;margin-right:auto;" onclick="jaf_print()">Print</button>
                 <button type="button" class="nha-btn nha-btn-ghost" onclick="jaf_close()">Cancel</button>
                 <button type="button" class="nha-btn nha-btn-primary" id="jaf-btn-save" onclick="jaf_save()">Save as Draft</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── REVIEW-CHAIN CONFIRM MODAL (remarks, then Proceed / Cancel — prefix: jrm_) ──────── -->
+    <div id="jrm-overlay" class="nha-overlay no-print">
+        <div class="nha-modal nha-modal-sm" role="dialog" aria-modal="true" aria-labelledby="jrm-title">
+            <div class="nha-modal-hdr">
+                <h3 class="nha-modal-title" id="jrm-title">Confirm</h3>
+                <button type="button" class="nha-modal-close" onclick="jrm_close()" aria-label="Close">&times;</button>
+            </div>
+            <div class="nha-modal-body">
+                <div id="jrm-error" class="nha-error" style="display:none;">
+                    <svg fill="none" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                    <span id="jrm-error-msg"></span>
+                </div>
+                <p id="jrm-msg" style="margin:0 0 12px;font-size:13px;"></p>
+                <div class="nha-fg">
+                    <label for="jrm-remarks">Remarks</label>
+                    <textarea id="jrm-remarks" rows="3" style="width:100%;" placeholder="Add remarks (optional)…"></textarea>
+                </div>
+            </div>
+            <div class="nha-modal-foot">
+                <button type="button" class="nha-btn nha-btn-ghost" onclick="jrm_close()">Cancel</button>
+                <button type="button" class="nha-btn nha-btn-primary" id="jrm-proceed" onclick="jrm_proceed()">Proceed</button>
             </div>
         </div>
     </div>
@@ -344,8 +370,8 @@ function jel_renderTable(rows) {
     tbody.innerHTML = rows.map(r => {
         const isStandalone = !r.dv_id;
         const rowClick = isStandalone
-            ? (r.jev_status === 'DRAFT' ? `jaf_openEdit(${r.jev_id})` : `jaf_openView(${r.jev_id})`)
-            : `jel_viewDv(${r.dv_id})`;
+            ? (r.jev_status === 'DRAFT' ? `jaf_openEdit(${r.jev_id})` : `jaf_viewPrint(${r.jev_id})`)
+            : `jel_print(${r.dv_id}, null, ${r.jev_id})`;
         const actions = jel_actionButtons(r, isStandalone);
         return `<tr style="cursor:pointer;" onclick="${rowClick}">
         <td class="nha-mono">${jel_esc(r.jev_no) || '—'}</td>
@@ -367,17 +393,12 @@ function jel_renderTable(rows) {
     }).join('');
 }
 
-function jel_viewDv(dvId) {
-    window.location.href = `${JEL_VOUCHER_VIEW}?dv=${dvId}`;
-}
-
 /* ── Actions dropdown menu (same "nha-tools-menu" convention as budget-req-page.php's
    bgr_actionButtons) — one "Actions" trigger per row holding View + the review-chain action +
    Print/Edit/Delete, instead of a row of separate buttons. ──────────────────────────────── */
 const JEL_ICON_VIEW    = `<svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.477 0 8.268 2.943 9.542 7-1.274 4.057-5.065 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>`;
 const JEL_ICON_EDIT    = `<svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>`;
 const JEL_ICON_ADVANCE = `<svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>`;
-const JEL_ICON_PRINT   = `<svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a1 1 0 001-1v-4a1 1 0 00-1-1H9a1 1 0 00-1 1v4a1 1 0 001 1zm8-12V5a1 1 0 00-1-1H8a1 1 0 00-1 1v4h10z"/></svg>`;
 const JEL_ICON_DELETE  = `<svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>`;
 
 function jel_actionButtons(r, isStandalone) {
@@ -390,23 +411,21 @@ function jel_actionButtons(r, isStandalone) {
     const viewItem = isStandalone
         ? (r.jev_status === 'DRAFT'
             ? `<a class="nha-menu-item" href="javascript:void(0);" onclick="jel_closeMenus(); jaf_openEdit(${r.jev_id});">${JEL_ICON_EDIT}Edit</a>`
-            : `<a class="nha-menu-item" href="javascript:void(0);" onclick="jel_closeMenus(); jaf_openView(${r.jev_id});">${JEL_ICON_VIEW}View</a>`)
-        : `<a class="nha-menu-item" href="javascript:void(0);" onclick="jel_closeMenus(); jel_viewDv(${r.dv_id});">${JEL_ICON_VIEW}View</a>`;
+            : `<a class="nha-menu-item" href="javascript:void(0);" onclick="jel_closeMenus(); jaf_viewPrint(${r.jev_id});">${JEL_ICON_VIEW}View</a>`)
+        : `<a class="nha-menu-item" href="javascript:void(0);" onclick="jel_closeMenus(); jel_print(${r.dv_id}, null, ${r.jev_id});">${JEL_ICON_VIEW}View</a>`;
 
-    const canAdvance = isStandalone ? !!nextStep[r.jev_status] : (r.jev_type === 'PAYMENT' && !!nextStep[r.jev_status]);
+    // Hidden once the current user has already taken a step on this JEV (acted_by_me, from the list
+    // API) — a different user must do the next one. The server enforces the same rule.
+    const canAdvance = !r.acted_by_me && (isStandalone ? !!nextStep[r.jev_status] : (r.jev_type === 'PAYMENT' && !!nextStep[r.jev_status]));
     const advanceItem = canAdvance
         ? `<a class="nha-menu-item" href="javascript:void(0);" onclick="jel_closeMenus(); jaf_jevStatus(${r.jev_id}, '${nextStep[r.jev_status]}', null);">${JEL_ICON_ADVANCE}${nextLabel[r.jev_status]}</a>`
-        : '';
-
-    const printItem = !isStandalone
-        ? `<a class="nha-menu-item" href="javascript:void(0);" onclick="jel_closeMenus(); jel_print(${r.dv_id}, null, ${r.jev_id});">${JEL_ICON_PRINT}Print</a>`
         : '';
 
     const deleteItem = (isStandalone && r.jev_status === 'DRAFT')
         ? `<a class="nha-menu-item danger" href="javascript:void(0);" onclick="jel_closeMenus(); jaf_delete(${r.jev_id}, null);">${JEL_ICON_DELETE}Delete</a>`
         : '';
 
-    const items = [viewItem, advanceItem, printItem].filter(Boolean).join('');
+    const items = [viewItem, advanceItem].filter(Boolean).join('');
     const deleteSection = deleteItem ? `<div class="nha-menu-divider"></div>${deleteItem}` : '';
 
     return `<div class="nha-tools-menu">
@@ -599,6 +618,7 @@ async function jaf_openAdd() {
     jaf_attDirty = false;
     jaf_existingMultipleNodeId = null;
     jaf_renderAttachments();
+    jaf_renderHistory([]); // nothing saved yet — no review history
     jaf_setFieldsDisabled(false);
     $jel('jaf-btn-print').style.display = 'none'; // nothing saved yet — no jev_no to print
     $jel('jaf-overlay').classList.add('open');
@@ -607,8 +627,21 @@ async function jaf_openAdd() {
 async function jaf_openEdit(jevId) {
     await jaf_loadForEdit(jevId, false);
 }
-async function jaf_openView(jevId) {
-    await jaf_loadForEdit(jevId, true);
+// A non-DRAFT standalone JEV is already posted/under review — "View" shows it the same way it
+// would print (shared print preview, prp_open + prp_jevFromDv) instead of the disabled Add/Edit
+// form, so what the user sees matches the document they'd actually print or file.
+async function jaf_viewPrint(jevId) {
+    window.PagePreloader?.show();
+    try {
+        const res  = await jel_authFetch(`${JEL_API}/journal-entry/${jevId}`);
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message || 'Failed to load the Journal Entry Voucher.');
+        await prp_open(prp_jevFromDv({}, json.data), { type: 'JEV' });
+    } catch (e) {
+        jel_showError(e.message);
+    } finally {
+        window.PagePreloader?.hide();
+    }
 }
 async function jaf_loadForEdit(jevId, readOnly) {
     await jaf_ensureLookups();
@@ -641,6 +674,7 @@ async function jaf_loadForEdit(jevId, readOnly) {
         jaf_attDirty = false;
         jaf_existingMultipleNodeId = jev.multiple_node_id || null;
         jaf_renderAttachments();
+        jaf_renderHistory(jev.status_history ?? []);
 
         jaf_setFieldsDisabled(readOnly);
         $jel('jaf-btn-print').style.display = ''; // a saved JEV always has a jev_no to print
@@ -656,23 +690,11 @@ function jaf_close() {
     $jel('jaf-overlay').classList.remove('open');
 }
 
-// Print this standalone JEV via the shared print preview (prp_open + prp_jevFromDv — passing an
-// empty {} as the "dv" lets its fallbacks (reference_no/payee_name/rfa_number) naturally come out
-// blank, which is correct here since a standalone JEV has no DV at all). Re-fetches rather than
-// reusing in-memory form state, so Print always reflects what was actually saved.
+// Print this standalone JEV via the shared print preview — re-fetches rather than reusing
+// in-memory form state, so Print always reflects what was actually saved (see jaf_viewPrint).
 async function jaf_print() {
     if (!jaf_editId) return;
-    window.PagePreloader?.show();
-    try {
-        const res  = await jel_authFetch(`${JEL_API}/journal-entry/${jaf_editId}`);
-        const json = await res.json();
-        if (!json.success) throw new Error(json.message || 'Failed to load the Journal Entry Voucher.');
-        await prp_open(prp_jevFromDv({}, json.data), { type: 'JEV' });
-    } catch (e) {
-        jaf_showError(e.message);
-    } finally {
-        window.PagePreloader?.hide();
-    }
+    await jaf_viewPrint(jaf_editId);
 }
 
 function jaf_addLine(line) {
@@ -819,6 +841,33 @@ function jaf_renderAttachments() {
     }).join('');
 }
 
+// Review History — one row per status change from fims.status_change_log (status, who, when, remarks).
+// A log row's `status` is the status the JEV was moved TO, and `actor_name` is who made that move —
+// i.e. the officer of the PREVIOUS stage. Labelling the row with the target status next to that
+// officer's name reads as if they hold the target role (e.g. "For Division Manager — Carla" when Carla is
+// the Section Chief who endorsed it), so each row is labelled by the actor's role + the action instead.
+const JAF_HISTORY_STEP = {
+    FOR_SECTION_CHIEF:      { role: 'Prepared by',      action: 'Submitted to Section Chief' },
+    FOR_DIVISION_MANAGER:   { role: 'Section Chief',    action: 'Endorsed to Division Manager' },
+    FOR_DEPARTMENT_MANAGER: { role: 'Division Manager', action: 'Endorsed to Department Manager' },
+    POSTED:                 { role: 'Department Manager', action: 'Approved & Posted' },
+};
+function jaf_renderHistory(rows) {
+    const card = $jel('jaf-history-card');
+    if (!rows.length) { card.style.display = 'none'; $jel('jaf-history-list').innerHTML = ''; return; }
+    $jel('jaf-history-list').innerHTML = rows.map(h => {
+        const step = JAF_HISTORY_STEP[h.status] || { role: '', action: h.status || '—' };
+        return `<div class="jaf-att-row" style="align-items:flex-start;">
+            <div style="flex:1;font-size:13px;">
+                <div><strong>${jel_esc(h.actor_name) || '—'}</strong>${step.role ? ` <span style="color:var(--afims-text-muted,#62657E);font-size:12px;">· ${jel_esc(step.role)}</span>` : ''}</div>
+                <div style="margin-top:2px;"><span style="color:var(--afims-text-muted,#62657E);font-size:12px;">${jel_esc(step.action)}</span></div>
+                <div style="margin-top:4px;white-space:pre-wrap;${h.remarks ? '' : 'color:var(--afims-text-muted,#62657E);font-style:italic;'}">${h.remarks ? jel_esc(h.remarks) : 'No remarks'}</div>
+            </div>
+        </div>`;
+    }).join('');
+    card.style.display = '';
+}
+
 function jaf_fmtSize(bytes) {
     return bytes >= 1024 * 1024 ? (bytes / (1024 * 1024)).toFixed(1) + ' MB' : Math.ceil(bytes / 1024) + ' KB';
 }
@@ -874,21 +923,47 @@ async function jaf_save() {
 
 // Advance a standalone JEV one step along the review chain (and post it on the final step). Mirrors the
 // payment-JEV chain — server re-checks RC-012/sysadmin and the allowed transition (changeJevStatus()).
-async function jaf_jevStatus(jevId, status, btn) {
-    if (!confirm(`Move this Journal Entry to ${status.replace(/_/g, ' ')}?${status === 'POSTED' ? ' This posts it to the General Ledger.' : ''}`)) return;
-    if (btn) btn.disabled = true;
+// Nothing executes on click: this just opens the remarks confirmation modal (jrm_). The status change
+// itself only runs from jrm_proceed(); Cancel / X / Esc / backdrop click just close it.
+let jrm_pending = null; // { jevId, status } awaiting Proceed
+
+function jaf_jevStatus(jevId, status, btn) {
+    jrm_pending = { jevId, status };
+    $jel('jrm-title').textContent = 'Confirm — ' + status.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+    $jel('jrm-msg').textContent = `Move this Journal Entry to ${status.replace(/_/g, ' ')}?${status === 'POSTED' ? ' This posts it to the General Ledger.' : ''}`;
+    $jel('jrm-remarks').value = '';
+    $jel('jrm-error').style.display = 'none';
+    $jel('jrm-proceed').disabled = false;
+    $jel('jrm-overlay').classList.add('open');
+    setTimeout(() => $jel('jrm-remarks').focus(), 50);
+}
+
+function jrm_close() {
+    $jel('jrm-overlay').classList.remove('open');
+    jrm_pending = null;
+}
+
+async function jrm_proceed() {
+    if (!jrm_pending) return;
+    const { jevId, status } = jrm_pending;
+    const remarks = $jel('jrm-remarks').value.trim();
+    $jel('jrm-error').style.display = 'none';
+    $jel('jrm-proceed').disabled = true;
     window.PagePreloader?.show();
     try {
         const res  = await jel_authFetch(`${JEL_API}/journal-entry/${jevId}/jev-status`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }),
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status, remarks }),
         });
         const json = await res.json();
         if (!json.success) throw new Error(json.message || 'Failed to update the Journal Entry.');
+        jrm_close();
         jel_load();
     } catch (e) {
-        jel_showError(e.message);
+        // Keep the modal open so the remarks aren't lost; show the failure inside it.
+        $jel('jrm-error-msg').textContent = e.message;
+        $jel('jrm-error').style.display = 'flex';
+        $jel('jrm-proceed').disabled = false;
     } finally {
-        if (btn) btn.disabled = false;
         window.PagePreloader?.hide();
     }
 }
@@ -913,8 +988,11 @@ async function jaf_delete(jevId, btn) {
 function jaf_showError(msg) { $jel('jaf-error').style.display = 'flex'; $jel('jaf-error-msg').textContent = msg; }
 function jaf_hideError()    { $jel('jaf-error').style.display = 'none'; }
 document.addEventListener('keydown', e => {
-    if (e.key === 'Escape' && $jel('jaf-overlay')?.classList.contains('open')) jaf_close();
+    if (e.key !== 'Escape') return;
+    if ($jel('jrm-overlay')?.classList.contains('open')) jrm_close();       // topmost first
+    else if ($jel('jaf-overlay')?.classList.contains('open')) jaf_close();
 });
+$jel('jrm-overlay')?.addEventListener('mousedown', e => { if (e.target === e.currentTarget) jrm_close(); });
 </script>
 <?php
 // Print → the shared print preview (prp_open + prp_jevFromDv).

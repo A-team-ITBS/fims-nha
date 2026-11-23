@@ -1,7 +1,7 @@
-<ew-language date="2026/11/17" id="en-US" author="e.World Technology Limited">
+<ew-language date="2026/11/23" id="en-US" author="e.World Technology Limited">
   <project>
-    <phrase id="bodytitle" value="UAC - User Access Control System" />
-    <phrase id="footertext" value="&amp;copy;2024 ITBS Corporation. All rights reserved." />
+    <phrase id="bodytitle" value="NHA - FIMS" />
+    <phrase id="footertext" value="&amp;copy;2026 ITBS Corporation. All rights reserved." />
     <menu id="262">
       <phrase id="menutext" value="notification reads" />
     </menu>
@@ -18,7 +18,7 @@
       <phrase id="menutext" value="Budget Request" />
     </menu>
     <menu id="85">
-      <phrase id="menutext" value="Budget Revision" />
+      <phrase id="menutext" value="Budget Proposal" />
     </menu>
     <menu id="657">
       <phrase id="menutext" value="Ledger" />
@@ -30,7 +30,7 @@
       <phrase id="menutext" value="Request for Allocation(CBA)" />
     </menu>
     <menu id="554">
-      <phrase id="menutext" value="Request for Allocation(RFA/LAA)" />
+      <phrase id="menutext" value="Request for Allotment(RFA/LAA)" />
     </menu>
     <menu id="399">
       <phrase id="menutext" value="Ledger of Budget Allocation" />
@@ -43,6 +43,9 @@
     </menu>
     <menu id="207">
       <phrase id="menutext" value="Disbursement Voucher" />
+    </menu>
+    <menu id="653">
+      <phrase id="menutext" value="Remittance List (Deductions)" />
     </menu>
     <menu id="559">
       <phrase id="menutext" value="Liquidation Voucher" />
@@ -62,6 +65,9 @@
     <menu id="333">
       <phrase id="menutext" value="Property Record" />
     </menu>
+    <menu id="766">
+      <phrase id="menutext" value="Work-In-Process" />
+    </menu>
     <menu id="755">
       <phrase id="menutext" value="Monitoring" />
     </menu>
@@ -75,7 +81,7 @@
       <phrase id="menutext" value="Cash Position" />
     </menu>
     <menu id="551">
-      <phrase id="menutext" value="Registry/NCA" />
+      <phrase id="menutext" value="Registry" />
     </menu>
     <menu id="263">
       <phrase id="menutext" value="SARO Registry" />
@@ -90,7 +96,19 @@
       <phrase id="menutext" value="Accountable Forms Registry" />
     </menu>
     <menu id="757">
-      <phrase id="menutext" value="Collections" />
+      <phrase id="menutext" value="Collections and Deposits" />
+    </menu>
+    <menu id="866">
+      <phrase id="menutext" value="Fund Sweeping" />
+    </menu>
+    <menu id="865">
+      <phrase id="menutext" value="Payroll" />
+    </menu>
+    <menu id="761">
+      <phrase id="menutext" value="Payroll Management" />
+    </menu>
+    <menu id="762">
+      <phrase id="menutext" value="Remittance" />
     </menu>
     <menu id="552">
       <phrase id="menutext" value="Reports" />
@@ -98,11 +116,23 @@
     <menu id="652">
       <phrase id="menutext" value="FMR" />
     </menu>
-    <menu id="653">
-      <phrase id="menutext" value="Remittance List (Deductions)" />
+    <menu id="397">
+      <phrase id="menutext" value="Trial Balance" />
     </menu>
     <menu id="763">
-      <phrase id="menutext" value="FAR Report" />
+      <phrase id="menutext" value="Balance Sheet" />
+    </menu>
+    <menu id="764">
+      <phrase id="menutext" value="Income Statement" />
+    </menu>
+    <menu id="767">
+      <phrase id="menutext" value="Changes in Net Assets/Equity" />
+    </menu>
+    <menu id="768">
+      <phrase id="menutext" value="Cash Flow" />
+    </menu>
+    <menu id="770">
+      <phrase id="menutext" value="Bank Reconciliation" />
     </menu>
     <menu id="394">
       <phrase id="menutext" value="Ledgers" />
@@ -116,14 +146,11 @@
     <menu id="396">
       <phrase id="menutext" value="Journals" />
     </menu>
-    <menu id="397">
-      <phrase id="menutext" value="Trial Balance" />
-    </menu>
     <menu id="651">
       <phrase id="menutext" value="Accounts Set-up" />
     </menu>
     <menu id="80">
-      <phrase id="menutext" value="Program" />
+      <phrase id="menutext" value="Program / Sub Program" />
     </menu>
     <menu id="82">
       <phrase id="menutext" value="Sub Program" />
@@ -152,14 +179,14 @@
     <menu id="759">
       <phrase id="menutext" value="Payroll Setup" />
     </menu>
-    <menu id="761">
-      <phrase id="menutext" value="Payroll Management" />
-    </menu>
-    <menu id="762">
-      <phrase id="menutext" value="Remittance" />
-    </menu>
     <menu id="760">
       <phrase id="menutext" value="Fidelity Bond" />
+    </menu>
+    <menu id="765">
+      <phrase id="menutext" value="Opening Balance" />
+    </menu>
+    <menu id="769">
+      <phrase id="menutext" value="Closing Balance" />
     </menu>
     <menu id="330">
       <phrase id="menutext" value="Fund Sourcing" />
@@ -1793,8 +1820,32 @@
     <table id="remittance_page">
       <phrase id="tblcaption" value="Remittance" />
     </table>
-    <table id="far_report_page">
-      <phrase id="tblcaption" value="FAR Report" />
+    <table id="balance_sheet_page">
+      <phrase id="tblcaption" value="Balance Sheet" />
+    </table>
+    <table id="income_statement_page">
+      <phrase id="tblcaption" value="Income Statement" />
+    </table>
+    <table id="opening_balance_page">
+      <phrase id="tblcaption" value="Opening Balance" />
+    </table>
+    <table id="work_in_process_page">
+      <phrase id="tblcaption" value="Work-In-Process Inventory" />
+    </table>
+    <table id="statement_of_changes_page">
+      <phrase id="tblcaption" value="Changes in Net Assets/Equity" />
+    </table>
+    <table id="cash_flow_page">
+      <phrase id="tblcaption" value="Cash Flow" />
+    </table>
+    <table id="closing_balance_page">
+      <phrase id="tblcaption" value="Closing Balance" />
+    </table>
+    <table id="bank_reconciliation_page">
+      <phrase id="tblcaption" value="Bank Reconciliation" />
+    </table>
+    <table id="fund_sweeping_page">
+      <phrase id="tblcaption" value="Fund Sweeping" />
     </table>
   </project>
 </ew-language>

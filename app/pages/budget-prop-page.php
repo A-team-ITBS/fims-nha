@@ -9,13 +9,13 @@ namespace PHPMaker2024\FIMS;
  *   Submission Ref No. | Region / Originating Unit | Submitted Date | Amount | Status | (row actions)
  *
  * The list comes from its own API route, GET /fmd/budget_req/list (app/routes/fmd_budget_req.php), which
- * decides the scope on the server — only users of the central review RC (FMD, by rc_code) get an answer, and it is
- * always every Regional / District office — so this page sends no RC parameters and does no RC lookup of its own.
- * Anyone else who opens the page gets that route's 403 message and an empty list.
+ * decides the scope on the server — it is always every Regional / District office, for any logged-in user (it is no longer limited to the
+ * Financial Management Department) — so this page sends no RC parameters and does no RC lookup of its own.
  *
  * Row actions act on the whole request: View (the request's details, read-only), Budget Processing (the Budget Officer, while
  * the request is waiting for them), Budget Preview (level 8 until it is Approved) and Delete of a Draft. A Budget Head's row on
- * an Approved request has no Actions button at all.
+ * an Approved request has no Actions button at all. A superadmin (user level -1) is not restricted: they get Budget Processing
+ * while the request waits for the Budget Officer and Budget Review (Return / Approve) while it waits for the Budget Head.
  *
  * The review is a step-by-step chain, like the Memo Request's (BudgetReqService::REVIEW_STEPS), and each row carries the
  * server's view of it (`review`: the step, who acts on it, can_decide for the logged-in user):
@@ -34,14 +34,39 @@ $_bgr_api = Config('API.FIMS_URL');
 // shown only to this level.
 // User level 8 = Budget Head: only this level sees the "Budget Preview" action (whose modal has Return / Approve
 // buttons on an Endorsed request).
+// User level -1 = System Administrator (superadmin): no restriction on the review chain — Budget Processing (the Budget Officer's
+// step) and Budget Review with Return / Approve (the Budget Head's step) at EVERY step, whatever their office. Same people the API
+// lets through (BudgetReqService::isSuperAdmin): the built-in administrator (user_id -1) or a level list that includes -1 ("-1,3").
+// Hiding a button here is cosmetic — the API decides, and tells each row so in review.can_decide.
 $userLevel = CurrentUserLevel();
+$_bgr_isAdmin = (int) CurrentUserID() === -1
+    || in_array(-1, array_map('intval', explode(',', (string) $userLevel)), true);
 $_bgr_isBudgetOfficer = ((int) $userLevel === 2);
 $_bgr_isBudgetHead = ((int) $userLevel === 8);
+// who is offered the "Budget Review" action: the Budget Head, and the superadmin (who may decide at the Budget Head's step too)
+$_bgr_canPreview = $_bgr_isBudgetHead || $_bgr_isAdmin;
 $_bgr_canModify = !$_bgr_isBudgetOfficer;
 
 // The Regional / District offices: rc_code from here to the end. The "View as COB" outline asks for them all (with central=1,
 // which the API honours only for the central review RC). Mirrors GlobalService::CENTRAL_REVIEW_RC_CODE_FROM, like budget-req-page.php.
 $_bgr_fmdRcCodeFrom = '35-074-0000001-000';
+
+// This page's own list/route does no RC lookup of its own (see the class comment above — every logged-in
+// user sees every Regional / District office's requests, scoped server-side by GET /fmd/budget_req/list
+// instead). But "Print COB" (readone/budget-req-readone.php, bgrv_openCobModal) still needs to know THIS
+// user's own office_type, to decide whether a Regional / District user skips straight to "Per Program"
+// instead of being offered all four print layouts — same lookup budget-req-page.php does for the same reason.
+$_bgr_userOfficeType = '';
+try {
+    $_bgr_userOfficeType = (string) (ExecuteScalar(
+        'SELECT rc.office_type FROM uac.users u '
+        .'JOIN fims.responsibility_code rc ON rc.rc_id = u.rc_id WHERE u.user_id = '.(int) CurrentUserID(),
+        'DB'
+    ) ?? '');
+} catch (\Throwable $e) {
+    $_bgr_userOfficeType = '';   // can't tell who this is -> offer every print layout, never an error page
+    LogError('budget-prop-page: could not look up the current user\'s office_type — '.$e->getMessage());
+}
 ?>
 
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -197,8 +222,15 @@ const BGR_CAN_MODIFY = <?php echo $_bgr_canModify ? 'true' : 'false'; ?>;
 // additionally need the row's review.can_decide, see bgr_budgetPreview()). "Budget Processing" has no flag of its own:
 // it is driven by the row's review (see bgr_actionButtons()).
 const BGR_IS_BUDGET_HEAD = <?php echo $_bgr_isBudgetHead ? 'true' : 'false'; ?>;
+// true for a superadmin (user level -1): no restriction on the review chain (see the PHP at the top)
+const BGR_IS_ADMIN = <?php echo $_bgr_isAdmin ? 'true' : 'false'; ?>;
+// who is offered the row "Budget Review" action: the Budget Head, or a superadmin
+const BGR_CAN_PREVIEW = <?php echo $_bgr_canPreview ? 'true' : 'false'; ?>;
 let bgr_flatRows = [];   // [{ header, program }] of the rows on screen, for the row actions
 const BGR_FMD_RC_FROM = <?php echo json_encode($_bgr_fmdRcCodeFrom); ?>;
+// fims.responsibility_code.office_type of the logged-in user's own RC — see bgrv_rcDeptType() in
+// readone/budget-req-readone.php's "Print COB" button.
+const BGR_USER_OFFICE_TYPE = <?php echo json_encode($_bgr_userOfficeType); ?>;
 
 // "View as COB" (readone/budget-req-readone.php, bgrv_openCobModal): every budget request created for the Fiscal Year filter's current
 // value ('' = every year), one block per ORIGINATING UNIT — each Regional / District office with its own Programs / Sub-Programs /
@@ -320,8 +352,8 @@ function bgr_actionButtons(flatRow, idx) {
         </a>`;
 
     // Step 1 of the review chain (BudgetReqService::REVIEW_STEPS): only when the request is waiting for the Budget Officer
-    // ("For Review", or "Returned to Budget Officer" after the Budget Head sent it back) AND this user is that Budget Officer —
-    // the row's review says so (review.can_decide, decided on the server). Once it is Endorsed it is the Budget Head's turn.
+    // ("For Review", or "Returned to Budget Officer" after the Budget Head sent it back) AND this user is that Budget Officer (or a
+    // superadmin) — the row's review says so (review.can_decide, decided on the server). Once it is Endorsed it is the Budget Head's turn.
     const budgetProcessingItem = (header.review?.can_decide && header.review.actor === 'Budget Officer')
         ? `<a class="nha-menu-item" href="javascript:void(0);" onclick="bgr_budgetProcessing(${idx});bgr_closeMenus();">
             <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
@@ -330,12 +362,14 @@ function bgr_actionButtons(flatRow, idx) {
         : '';
     // Read-only counterpart of Budget Processing — every line item with its
     // Type of Fund, Suggested Amount and Component, nothing to fill in.
-    // Budget Head (level 8) only. Hidden once the request is Approved: the Budget Head has nothing left to decide.
+    // Budget Head (level 8) and superadmin (level -1) only. Hidden once the request is Approved: nothing is left to decide.
+    // (The superadmin keeps "View" on an Approved request — only the Budget Head's row loses its Actions button, see headIsDone.)
+    // The Return / Approve buttons inside need the row's review.can_decide on the Budget Head's step (see bgr_budgetPreview()).
     // `program` alone would miss a header that has ONLY headless COE line items and no Program at all.
-    const budgetPreviewItem = (BGR_IS_BUDGET_HEAD && (program || (header.coe_line_items ?? []).length) && !headIsDone)
+    const budgetPreviewItem = (BGR_CAN_PREVIEW && (program || (header.coe_line_items ?? []).length) && header.status_name !== 'Approved')
         ? `<a class="nha-menu-item" href="javascript:void(0);" onclick="bgr_budgetPreview(${idx});bgr_closeMenus();">
             <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-            Budget Preview
+            Budget Review
         </a>`
         : '';
     const deleteItem = (BGR_CAN_MODIFY && isDraft)

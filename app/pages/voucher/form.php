@@ -61,7 +61,16 @@ if (!isset($_vf_api)) {
 #vf-root .vje-grp-edit-table .vje-grp-add-btn { font-size: 11.5px; padding: 4px 10px; }
 
 #vf-root .vje-sl-hint { margin-top: 4px; font-size: 11px; color: var(--afims-text-muted, #62657E); line-height: 1.6; min-height: 1px; }
-#vf-root .vf-ded-row { border: 1px solid var(--afims-border, #E4ECF2); border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; position: relative; }
+/* Deduction / ATC rows are plain blocks inside the RFA Breakdown box — no card border or padding of their own. */
+#vf-root .vf-ded-row { margin-bottom: 14px; position: relative; }
+/* Deductions sit inside the RFA Breakdown box, under its table — a rule separates them from it once a breakdown is shown. */
+#vf-root #vf-rfa-breakdown-body:not(:empty) + .vf-err + .vf-ded-section { border-top: 1px solid var(--afims-border, #E4ECF2); margin-top: 16px; padding-top: 14px; }
+#vf-root .vf-atc-row { margin-bottom: 14px; position: relative; }
+/* Tight spacing inside deduction / ATC rows: .nha-fg's own 14px bottom margin is dropped, rows are separated by a small gap instead. */
+#vf-root .vf-ded-row, #vf-root .vf-atc-row { margin-bottom: 10px; }
+#vf-root .vf-ded-row .nha-fg, #vf-root .vf-atc-row .nha-fg { margin-bottom: 0; }
+#vf-root .vf-ded-row .nha-fg label, #vf-root .vf-atc-row .nha-fg label { margin-bottom: 3px; }
+#vf-root .vf-ded-row .vf-grid2, #vf-root .vf-atc-row .vf-grid3 { gap: 8px; }
 #vf-root .vf-ded-remove { position: absolute; top: 8px; right: 10px; background: none; border: none; cursor: pointer; color: var(--afims-danger, #DC3545); font-size: 16px; line-height: 1; padding: 4px 6px; border-radius: 5px; }
 #vf-root .vf-ded-remove:hover { background: var(--afims-danger-soft, #FAE1E3); }
 #vf-root .vf-ded-type-label { font-weight: 600; font-size: 13px; color: var(--afims-heading-fill, #000E3E); padding-right: 24px; }
@@ -75,8 +84,6 @@ if (!isset($_vf_api)) {
     cursor: pointer; transition: background .15s, border-color .15s;
 }
 #vf-root .vf-ded-type-btn:hover { background: var(--afims-surface-subtle, #F4F7FA); border-color: var(--afims-heading-fill, #000E3E); }
-/* Separates the Deductions pills/rows above from the ATC grid below, now that both share one card. */
-#vf-root .vf-ded-section-divider { border-top: 1px solid var(--afims-border, #E4ECF2); margin: 18px 0 14px; }
 /* Table-cell remove buttons (ATC / Accounting Entries rows) — same look as .vf-ded-remove but
    WITHOUT position:absolute, which inside a <td> (no positioned ancestor of its own) escaped to
    the nearest positioned ancestor up the DOM tree — the modal itself — landing as a stray red ×
@@ -245,7 +252,7 @@ html.afims-dark[data-bs-theme="dark"] #vf-root :is(input, select, textarea):is(:
                             <!-- RIGHT: RFA Multi-Select -->
                             <div>
                                 <div class="nha-fg">
-                                    <label>RFA <span class="nha-req">*</span> <span class="vf-hint" style="display:inline;">(search and select one or more)</span></label>
+                                    <label>RFA <span class="nha-req" id="vf-rfa-req">*</span> <span class="vf-hint" style="display:inline;" id="vf-rfa-note">(search and select one or more)</span></label>
                                     <input type="text" id="vf-rfa-search" placeholder="Search RFA number or reference no…" autocomplete="off">
                                     <div id="vf-rfa-dropdown" class="vf-rfa-dropdown"></div>
                                     <span class="vf-hint" id="vf-rfa-empty-hint" style="display:none;color:var(--afims-warning-text,#8A6400);">No RFAs are available yet — an RFA (Request for Allotment) must exist before a Disbursement Voucher can be created. Contact Budget/FMD to set one up.</span>
@@ -293,88 +300,24 @@ html.afims-dark[data-bs-theme="dark"] #vf-root :is(input, select, textarea):is(:
                 <div class="vf-doc-section">
                     <p class="vf-doc-section-hdr">B. Amount and Deductions</p>
 
-                    <div class="vf-card">
-                        <div class="nha-fg" style="max-width:260px;">
-                            <label>Amount <span class="nha-req">*</span></label>
-                            <input type="text" inputmode="decimal" id="vf-gross" placeholder="0.00">
-                            <span class="vf-err" id="err-gross">Amount must be greater than zero.</span>
-                        </div>
-                    </div>
+                    <!-- No standalone Amount input any more: the read-only Amount column of the RFA Breakdown below
+                         shows how Gross Amount (the selected RFA(s)' remaining balance) is spread over their lines. #vf-gross stays as a hidden input — the rest of the form
+                         (deductions, ATC, net, validation, save payload) reads it, and payroll/remittance DVs set it. -->
+                    <input type="hidden" id="vf-gross">
 
-                    <!-- Deductions ("Less:" on the paper form — non-tax amounts withheld from
-                         gross, e.g. contractor retention) and ATC (withholding tax) share one
-                         card: both are "amounts taken off the DV's gross before it's paid", just
-                         one taxable and one not — Accounting can add/change either later
-                         regardless of what Originating pre-fills here. Same ATC fields/behavior
-                         as readone.php's ATC card. -->
-                    <div class="vf-card">
-                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-                            <p class="vf-card-title" style="margin:0;">Deductions</p>
-                            <span class="vf-hint" style="display:inline;">Optional — add only what applies to this DV</span>
-                        </div>
-                        <div id="vf-ded-container"></div>
-                        <div class="vf-ded-types" id="vf-ded-types"></div>
+                    <!-- One box: the RFA Breakdown (filled by vf_renderRfaBreakdown() from the selected RFA(s); empty until
+                         one is picked) with the Deductions below it. Deductions ("Less:" on the paper form — non-tax
+                         amounts withheld from gross, e.g. contractor retention) and ATC (withholding tax) rows share one
+                         list: clicking a "+ TYPE" / "+ ATC ROW" pill adds a new card below the previous ones. Each ATC
+                         row is its own card (not one combined table). Accounting can add/change either later regardless
+                         of what Originating pre-fills here. Same ATC fields/behavior as readone.php's ATC card. -->
+                    <div class="vf-card" id="vf-rfa-breakdown">
+                        <div id="vf-rfa-breakdown-body"></div>
+                        <span class="vf-err" id="err-gross">Amount must be greater than zero.</span>
 
-                        <div class="vf-ded-section-divider"></div>
-                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-                            <p class="vf-card-title" style="margin:0;">ATC (Withholding Tax)</p>
-                            <span class="vf-hint" style="display:inline;">Optional — only if withholding tax applies</span>
-                        </div>
-                        <div style="overflow-x:auto;">
-                            <table class="vf-ledger" style="min-width:760px;">
-                                <thead><tr>
-                                    <th style="text-align:left;">ATC Code — Description</th>
-                                    <th style="text-align:right;width:85px;">Rate (%)</th>
-                                    <th style="text-align:right;width:130px;">Tax Base (₱)</th>
-                                    <th style="text-align:right;width:130px;">Withholding Tax (₱)</th>
-                                    <th style="text-align:left;width:170px;">Chargeability</th>
-                                    <th style="width:30px;"></th>
-                                </tr></thead>
-                                <tbody id="vf-atc-tbody"></tbody>
-                                <tfoot><tr class="vf-l-total">
-                                    <td colspan="3" style="text-align:right;">Total Withholding Tax</td>
-                                    <td class="vf-l-val" id="vf-atc-total">₱ 0.00</td>
-                                    <td colspan="2"></td>
-                                </tr></tfoot>
-                            </table>
-                        </div>
-                        <button type="button" class="nha-btn nha-btn-ghost" style="margin-top:8px;" onclick="vf_addAtcLine()">+ Add ATC Row</button>
-                    </div>
-
-                    <div class="vf-card">
-                        <p class="vf-card-title">Budget Reference</p>
-                        <div class="vf-grid3">
-                            <div class="nha-fg">
-                                <label>Dept. / Project</label>
-                                <input type="text" id="vf-dept-project" placeholder="e.g. GSD / RM-Motor Vehicle">
-                            </div>
-                            <div class="nha-fg">
-                                <label>Fund Source</label>
-                                <input type="text" id="vf-fund-source" placeholder="e.g. Corporate Receipts">
-                            </div>
-                            <div class="nha-fg">
-                                <label>Account Code <span class="nha-req">*</span></label>
-                                <input type="text" id="vf-account-code" placeholder="Search Chart of Accounts…">
-                                <span class="vf-err" id="err-account-code">Account Code is required.</span>
-                            </div>
-                        </div>
-                        <table class="vf-ledger" style="margin-top:10px;">
-                            <tr>
-                                <td class="vf-l-label">Budget</td>
-                                <td><input type="text" inputmode="decimal" id="vf-budget" placeholder="0.00"></td>
-                            </tr>
-                            <tr>
-                                <td class="vf-l-label">Obligation</td>
-                                <td><input type="text" inputmode="decimal" id="vf-obligation" placeholder="0.00"></td>
-                            </tr>
-                            <tr><td class="vf-l-label">Payments<span id="vf-payments-hint" style="font-weight:400;"></span></td><td class="vf-l-val" id="vf-payments">₱ 0.00</td></tr>
-                            <tr><td class="vf-l-label">This Request</td><td class="vf-l-val" id="vf-this-request">₱ 0.00</td></tr>
-                            <tr class="vf-l-total"><td class="vf-l-label">Total Payments</td><td class="vf-l-val" id="vf-total-payments">₱ 0.00</td></tr>
-                            <tr><td class="vf-l-label">Balance</td><td class="vf-l-val" id="vf-balance">₱ 0.00</td></tr>
-                        </table>
-                        <div class="nha-fg" style="margin-top:12px;">
-                            <label>Remarks</label>
-                            <textarea id="vf-remarks" rows="2" placeholder="Optional remarks…"></textarea>
+                        <div class="vf-ded-section" id="vf-ded-section">
+                            <div id="vf-ded-container"></div>
+                            <div class="vf-ded-types" id="vf-ded-types"></div>
                         </div>
                     </div>
 
@@ -383,8 +326,29 @@ html.afims-dark[data-bs-theme="dark"] #vf-root :is(input, select, textarea):is(:
                     <table class="vf-doc-summary-table">
                         <tr><td>Gross Amount</td><td id="vf-doc-gross">₱ 0.00</td></tr>
                         <tr><td>Less: Total Deductions</td><td id="vf-doc-less-ded">₱ 0.00</td></tr>
+                        <tr><td>Less: Withholding Tax (ATC)</td><td id="vf-doc-less-wh">₱ 0.00</td></tr>
                         <tr class="vf-doc-summary-final"><td>Net Amount Payable</td><td id="vf-net">₱ 0.00</td></tr>
                     </table>
+
+                    <!-- The "Budget Reference" card is no longer shown. Its inputs stay in the DOM, hidden, because
+                         the form's JS and the save payload still read them (Dept/Project and Budget/Obligation
+                         autofill from the selected RFA(s); the ledger rows are recomputed by vf_recalc()).
+                         Account Code is required by the server but is no longer shown: it autofills from the selected RFA(s) / vendor.
+                         Remarks is hidden too (kept so a saved DV's remarks aren't wiped on edit). -->
+                    <div id="vf-budget-ref-hidden" style="display:none;">
+                        <input type="text" id="vf-account-code">
+                        <span class="vf-err" id="err-account-code">Account Code is required.</span>
+                        <textarea id="vf-remarks"></textarea>
+                        <input type="text" id="vf-dept-project">
+                        <input type="text" id="vf-fund-source">
+                        <input type="text" inputmode="decimal" id="vf-budget">
+                        <input type="text" inputmode="decimal" id="vf-obligation">
+                        <span id="vf-payments-hint"></span>
+                        <span id="vf-payments"></span>
+                        <span id="vf-this-request"></span>
+                        <span id="vf-total-payments"></span>
+                        <span id="vf-balance"></span>
+                    </div>
                 </div>
 
                 <!-- ══ C. SUPPORTING DOCUMENTS — same fims.file_attachments / multiple_node_id
@@ -412,10 +376,13 @@ html.afims-dark[data-bs-theme="dark"] #vf-root :is(input, select, textarea):is(:
                     </div>
                 </div>
 
-                <!-- ══ D. PRO FORMA JOURNAL ENTRY — same GL-grouped Accounting Entries grid as
-                     readone.php's card, auto-filled from Vendor/RFA/Deductions/ATC above (see
-                     vf_syncAutoJevLines()); Accounting reviews/edits before their own save. ══ -->
-                <div class="vf-doc-section" style="margin-bottom:0;">
+                <!-- ══ D. PRO FORMA JOURNAL ENTRY — HIDDEN from Originating (regional users). Accounting
+                     fills it in at the FOR_ACCOUNTING stage (readone.php's editable grid, see
+                     vje_visible()). Kept in the DOM, not removed, because the payroll/remittance
+                     flows still pre-fill this grid silently (vf_applyPayroll()/vf_applyRemittance())
+                     and vf_save() sends whatever it holds; regular DVs no longer auto-fill it, see
+                     vf_syncAutoJevLines(). ══ -->
+                <div class="vf-doc-section" id="vf-sec-d" style="display:none;margin-bottom:0;">
                     <p class="vf-doc-section-hdr">D. Pro Forma Journal Entry</p>
                     <div class="vf-card" style="margin-bottom:0;">
                         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
@@ -489,6 +456,7 @@ let vf_bound   = false;
 let vf_paymentsPrior = 0;    // sum of net_amount other active vouchers already drew against the selected RFA(s)
 let vf_selectedRfaIds = [];  // allocation_id values picked in the RFA multi-select, in selection order
 let vf_payrollPeriodId = null; // imported payroll month (payroll_period_id) this DV pays — picked in the Vendor dropdown's Payroll group — or null
+let vf_remittanceId = null;    // payroll remittance this DV pays — the month's agencies (GSIS / BIR / …), one DV per month — Voucher?remittance={id} — or null (no RFA needed)
 let vf_payrollMonths = [];     // imported payroll months a DV can be prepared from (GET payroll-management/available)
 let vf_attachments = [];     // staged Supporting Documents: { document_name, link, size, uploading }
 let vf_attDirty = false;     // true once the attachments list has changed since open — avoids re-registering an unchanged batch on every save
@@ -609,6 +577,10 @@ function vf_reset() {
     vf_renderRfaChips();
 
     vf_payrollPeriodId = null;
+    vf_remittanceId = null;
+    vf_renderDedTypeButtons();
+    $vf('vf-rfa-search').disabled = false;
+    vf_markRemittanceFields(null);   // back to a normal DV: vendor dropdown and required RFA
 
     vf_attachments  = [];
     vf_attDirty     = false;
@@ -626,11 +598,13 @@ function vf_reset() {
     $vf('vf-claimant-tin').value = '';
     $vf('vf-particulars').value = '';
     $vf('vf-gross').value = '';
+    vf_lineAmounts = null;
+    vf_renderRfaBreakdown();
 
-    $vf('vf-ded-container').innerHTML = '';
+    vf_clearDeductionRows();
     vf_dedSeq = 0;
 
-    $vf('vf-atc-tbody').innerHTML = '';
+    vf_clearAtcRows();
     vf_atcSeq = 0;
     vf_recalcAtc();
 
@@ -670,13 +644,24 @@ function vf_bindEvents() {
     $vf('vf-gross').addEventListener('input', () => vf_recalc());
     $vf('vf-obligation').addEventListener('input', () => vf_recalc());
     // resync whenever either changes, same as every other input that feeds it — vf_recalc() itself
-    // now also resyncs Accounting Entries (7)'s auto-lines (vf_syncAutoJevLines()).
+    // now also refreshes the (hidden) Accounting Entries grid's totals (vf_syncAutoJevLines()).
     $vf('vf-account-code').addEventListener('input', () => vf_recalc());
     $vf('vf-claimant').addEventListener('input', () => vf_recalc());
     // Event delegation: deductions are added/removed dynamically, so bind once on their shared
     // container rather than per-row — a typed-in-directly flat amount (no Rate given) had no
     // listener at all before, so Accounting Entries (and Net Amount) never resynced from it.
     $vf('vf-ded-container').addEventListener('input', e => { if (e.target.classList.contains('vf-ded-amount')) vf_recalc(); });
+    // RFA Breakdown's Amount cells are re-rendered with the table, so delegate from its static body too.
+    const bdBody = $vf('vf-rfa-breakdown-body');
+    bdBody.addEventListener('input', e => {
+        if (!e.target.classList.contains('vf-rfa-line-amt')) return;
+        vf_liveFormatMoney(e.target);
+        vf_onLineAmountInput();
+    });
+    bdBody.addEventListener('focusout', e => {
+        if (!e.target.classList.contains('vf-rfa-line-amt')) return;
+        e.target.value = e.target.value.trim() === '' ? '' : vf_fmtMoneyVal(vf_numVal(e.target.value));
+    });
 }
 
 /* ── Reference data ────────────────────────────────────────── */
@@ -723,9 +708,11 @@ function vf_derivedFiscalYear() {
 /* One "+ TYPE" pill per fims.deduction_type row — clicking it adds a row already bound to that
    type (see vf_addDeductionLine), instead of a single "+ Add Deduction" control. */
 function vf_renderDedTypeButtons() {
-    $vf('vf-ded-types').innerHTML = vf_dedTypes.length
-        ? vf_dedTypes.map(t => `<button type="button" class="vf-ded-type-btn" onclick="vf_addDeductionLine({deduction_type_id:'${vf_esc(t.deduction_type_id)}'})">+ ${vf_esc(t.name).toUpperCase()}</button>`).join('')
-        : '<span class="vf-hint">No deduction types configured.</span>';
+    // the payroll types (PAYROLL_GSIS, PAYROLL_WTAX, …) belong to payroll DVs only — the imported payroll fills them
+    const types = vf_dedTypes.filter(t => vf_payrollPeriodId || !String(t.code || '').startsWith('PAYROLL_'));
+    // The "+ ATC ROW" pill sits with the deduction-type pills (it adds a row to the ATC table above), so it's always shown.
+    $vf('vf-ded-types').innerHTML = types.map(t => `<button type="button" class="vf-ded-type-btn" onclick="vf_addDeductionLine({deduction_type_id:'${vf_esc(t.deduction_type_id)}'})">+ ${vf_esc(t.name).toUpperCase()}</button>`).join('')
+        + '<button type="button" class="vf-ded-type-btn" onclick="vf_addAtcLine()">+ ATC ROW</button>';
 }
 
 async function vf_loadDeductionTypes() {
@@ -883,6 +870,7 @@ function vf_removeRfa(id) {
 
 function vf_renderRfaChips() {
     const box = $vf('vf-rfa-chips');
+    vf_renderRfaBreakdown();
     if (!vf_selectedRfaIds.length) { box.innerHTML = ''; return; }
     box.innerHTML = vf_selectedRfaIds.map(id => {
         const r = vf_rfas[id];
@@ -900,6 +888,87 @@ function vf_renderRfaChips() {
             </dl>
         </div>`;
     }).join('');
+}
+
+/* "RFA Breakdown" (section B) — replaces the old standalone Amount input. One row per itemized RFA line as
+   "account_code - description", with the RFA it belongs to, that RFA's remaining balance, and a READ-ONLY
+   Amount (spread from Gross, which comes from the selected RFA(s)). Gross Amount sits under the whole table and is the sum of those amounts; the hidden #vf-gross
+   input is kept in step with it because the rest of the form (deductions, ATC, net, save payload) reads it.
+   An RFA with no itemized lines gets one row built from its own account/description.
+   The per-line split isn't stored — only the gross is saved (gross_amount). */
+let vf_lineAmounts   = null; // "allocation_id:lineIndex" -> amount the user typed; null until a line amount is edited
+let vf_lineAmountsSig = '';  // selected RFA ids the typed amounts belong to — a different selection discards them
+let vf_renderedGross = 0;    // gross the table was last rendered/summed to; vf_recalc() re-renders when #vf-gross drifts from it
+
+function vf_rfaBreakdownRows() {
+    const rows = [];
+    vf_selectedRfaIds.map(id => vf_rfas[id]).filter(Boolean).forEach(r => {
+        const lines = (r.lines || []).length
+            ? r.lines.map(l => ({ code: l.account_code, text: l.account_title || l.description, cap: Number(l.amount) || 0 }))
+            : [{ code: r.account_code, text: r.account_title || r.description, cap: Number(r.remaining_balance) || 0 }];
+        lines.forEach((l, i) => rows.push({ key: `${r.allocation_id}:${i}`, rfa: r, first: i === 0, span: lines.length, ...l }));
+    });
+    return rows;
+}
+
+function vf_renderRfaBreakdown() {
+    const box = $vf('vf-rfa-breakdown-body');
+    const card = $vf('vf-rfa-breakdown');
+    if (!box || !card) return;
+    const rows  = vf_rfaBreakdownRows();
+    const gross = vf_numVal($vf('vf-gross').value);
+    if (!rows.length && gross <= 0) { box.innerHTML = ''; vf_renderedGross = 0; return; }
+
+    // Amounts: what the user typed if it still matches the gross and the same RFAs are selected; otherwise
+    // the gross is spread over the lines in order (each up to its own amount, any excess on the last line).
+    const sig = vf_selectedRfaIds.join(',');
+    const typed = vf_lineAmounts && vf_lineAmountsSig === sig
+        && Math.abs(rows.reduce((s, r) => s + (Number(vf_lineAmounts[r.key]) || 0), 0) - gross) < 0.005;
+    let left = gross;
+    const amounts = {};
+    rows.forEach((r, i) => {
+        if (typed) { amounts[r.key] = Number(vf_lineAmounts[r.key]) || 0; return; }
+        const v = i === rows.length - 1 ? left : Math.min(r.cap, left);
+        amounts[r.key] = Math.max(0, Math.round(v * 100) / 100);
+        left -= amounts[r.key];
+    });
+    vf_renderedGross = gross;
+
+    const label = (code, text) => [code, text].filter(Boolean).map(vf_esc).join(' - ') || '—';
+    const body = rows.map(r => `<tr>
+        <td>${label(r.code, r.text)}</td>
+        ${r.first ? `<td rowspan="${r.span}" style="vertical-align:top;">${vf_esc(r.rfa.allocation_number)}</td>
+        <td rowspan="${r.span}" style="text-align:right;vertical-align:top;">${vf_peso(r.rfa.remaining_balance)}</td>` : ''}
+        <td style="width:150px;text-align:right;">${amounts[r.key] ? vf_peso(amounts[r.key]) : '—'}</td>
+    </tr>`).join('');
+    box.innerHTML = `<p class="vf-card-title">RFA Breakdown</p>
+        <div style="overflow-x:auto;"><table class="vf-ledger" style="width:100%;font-size:12.5px;">
+            <thead><tr>
+                <th style="text-align:left;">Account Code - Description</th>
+                <th style="text-align:left;">RFA</th>
+                <th style="text-align:right;">RFA Balance</th>
+                <th style="text-align:right;">Amount</th>
+            </tr></thead>
+            <tbody>${body}</tbody>
+        </table></div>`;
+}
+
+/** An Amount cell was edited: remember the split, set Gross Amount to their sum, and let the rest of the form follow. */
+function vf_onLineAmountInput() {
+    const inputs = $vf('vf-rfa-breakdown-body').querySelectorAll('.vf-rfa-line-amt');
+    vf_lineAmounts = {};
+    let sum = 0;
+    inputs.forEach(inp => {
+        const v = vf_numVal(inp.value);
+        vf_lineAmounts[inp.dataset.key] = v;
+        sum += v;
+    });
+    sum = Math.round(sum * 100) / 100;
+    vf_lineAmountsSig = vf_selectedRfaIds.join(',');
+    $vf('vf-gross').value = sum > 0 ? vf_fmtMoneyVal(sum) : '';
+    vf_renderedGross = sum;
+    vf_clearFieldError('gross');
+    vf_recalc();
 }
 
 /** Re-fetches each selected RFA's live detail, re-autofills dept/fund/vendor/expense class, and
@@ -937,7 +1006,7 @@ async function vf_onRfaSelectionChange() {
         // (e.g. a partial draw), this just stops it from defaulting to blank/stale on every
         // selection change.
         // …except a payroll DV: its Amount is the imported payroll's gross (vf_applyPayroll()).
-        if (!vf_payrollPeriodId) {
+        if (!vf_payrollPeriodId && !vf_remittanceId) {
             $vf('vf-gross').value = vf_fmtMoneyVal(details.filter(Boolean).reduce((s, r) => s + (Number(r.remaining_balance) || 0), 0));
         }
 
@@ -965,7 +1034,7 @@ async function vf_onRfaSelectionChange() {
         vf_showErrors([vf_isSessionExpiredMessage(e.message) ? e.message : 'Could not load RFA details: ' + e.message]);
     } finally {
         window.PagePreloader?.hide();
-        vf_recalc(); // also resyncs Accounting Entries (7)'s auto-lines — see vf_syncAutoJevLines()
+        vf_recalc(); // also refreshes the hidden Accounting Entries grid's totals — see vf_syncAutoJevLines()
     }
 }
 
@@ -1019,100 +1088,19 @@ async function vf_onVendorChange() {
 }
 
 /**
- * Keeps Accounting Entries (7) in sync with the DV's own numbers — Dr the Budget Reference (5)
- * Account Code (itself auto-filled from the Vendor's own RFA(s), see
- * vf_onRfaSelectionChange()'s "withAccount" block) for the full gross amount, Cr each Deduction/
- * ATC row that carries a mapped UACS account code, Cr Accounts Payable for whatever's left — same
- * convention as readone.php's vje_syncAutoLines() (Accounting's own view of this same grid), just
- * run earlier, at Originating's own save, instead of only once the DV reaches FOR_ACCOUNTING.
- * Each auto line is tracked via data-auto-source so repeat syncs (another deduction added, the
- * vendor changed, etc.) update it in place instead of duplicating it; a line the preparer added by
- * hand (no data-auto-source) is never touched.
+ * Called whenever gross/deductions/ATC/vendor change (it used to keep Accounting Entries auto-filled
+ * from them). Section D is hidden from Originating now, so a regular DV no longer generates entries
+ * here — Accounting builds them at the FOR_ACCOUNTING stage (readone.php's vje_syncAutoLines()).
+ * What this form's grid still holds is only what was put there deliberately:
+ *   - a payroll DV's entries (vf_applyPayroll()) or a remittance DV's (vf_applyRemittance()), which
+ *     come from those modules and are sent silently with the save, and
+ *   - lines already saved on this DV (edit mode), sent back as-is so editing a REJECTED DV never
+ *     wipes entries Accounting already prepared.
+ * So all that's left to do here is refresh the grid's totals/hints.
  */
 function vf_syncAutoJevLines() {
-    // A payroll DV's Accounting Entries come from the imported payroll (Dr each earnings account, Cr each
-    // deduction account, Cr Accounts Payable for the net pay — vf_applyPayroll()); no auto lines on top.
-    if (vf_payrollPeriodId) {
-        $vf('vf-jev-tbody').querySelectorAll('tr.vje-line[data-auto-source]').forEach(tr => tr.remove());
-        vf_recalcJev();
-        return;
-    }
-    const gross = vf_numVal($vf('vf-gross').value);
-    const code  = $vf('vf-account-code').value.trim();
-
-    if (code) {
-        vf_upsertAutoLine('dr', { account_code: code, debit: gross, credit: 0, description: $vf('vf-claimant').value.trim() || 'Claimant' });
-    } else {
-        $vf('vf-jev-tbody').querySelector('tr.vje-line[data-auto-source="dr"]')?.remove();
-    }
-
-    const dedIds = new Set();
-    let dedCreditTotal = 0;
-    $vf('vf-ded-container').querySelectorAll('.vf-ded-row').forEach(row => {
-        const idx    = row.id.replace('vf-ded-row-', '');
-        const typeId = row.dataset.typeId;
-        const amount = vf_numVal(row.querySelector('.vf-ded-amount').value);
-        const type   = vf_dedTypes.find(t => String(t.deduction_type_id) === String(typeId));
-        if (!typeId || !type?.account_code || amount <= 0) return;
-        dedIds.add(idx);
-        dedCreditTotal += amount;
-        vf_upsertAutoLine(`ded:${idx}`, { account_code: type.account_code, debit: 0, credit: amount, description: type.name });
-    });
-    vf_pruneAutoLines('ded:', id => dedIds.has(id));
-
-    const atcIds = new Set();
-    let atcCreditTotal = 0;
-    $vf('vf-atc-tbody').querySelectorAll('tr').forEach(tr => {
-        const idx  = tr.id.replace('vf-atc-row-', '');
-        const code = tr.querySelector('.vf-atc-code').value;
-        const rate = parseFloat(tr.querySelector('.vf-atc-rate').value) || 0;
-        const base = vf_numVal(tr.querySelector('.vf-atc-base').value);
-        const atcDef = VF_ATC.find(c => c.atc_code === code);
-        if (!code || !atcDef?.account_code || base <= 0 || rate <= 0) return;
-        const credit = Math.round(base * rate) / 100;
-        atcIds.add(idx);
-        atcCreditTotal += credit;
-        vf_upsertAutoLine(`atc:${idx}`, { account_code: atcDef.account_code, debit: 0, credit, description: `${rate}% ${atcDef.description}` });
-    });
-    vf_pruneAutoLines('atc:', id => atcIds.has(id));
-
-    // Credits the vendor's own Accounts Payable sub-ledger account (vf_vendors[id].sl_account_code
-    // — see VendorService::fetchAlls()) when the claimant is a registered vendor with one set up,
-    // so the payable actually lands in that vendor's subsidiary ledger instead of just the bare AP
-    // control account.
-    const vendor = vf_vendors[$vf('vf-vendor').value];
-    const apAccountCode = vendor?.sl_account_code || '2-01-01-010';
-    const apRemainder = Math.round((gross - dedCreditTotal - atcCreditTotal) * 100) / 100;
-    if (apRemainder > 0.004) {
-        vf_upsertAutoLine('ap', { account_code: apAccountCode, debit: 0, credit: apRemainder, description: 'Net Amount Payable' });
-    } else {
-        $vf('vf-jev-tbody').querySelector('tr.vje-line[data-auto-source="ap"]')?.remove();
-    }
-
     vf_recalcJev();
     vf_refreshAllJevHints();
-}
-
-function vf_upsertAutoLine(sourceKey, d) {
-    let tr = $vf('vf-jev-tbody').querySelector(`tr.vje-line[data-auto-source="${sourceKey}"]`);
-    if (!tr) {
-        const lineId = vf_addJevLine(d);
-        tr = $vf(`vf-jev-row-${lineId}`);
-        tr.dataset.autoSource = sourceKey;
-        return;
-    }
-    tr.querySelector('.vje-acct-code').value = d.account_code || '';
-    tr.querySelector('.vje-line-desc').value = d.description || '';
-    tr.querySelector('.vje-debit').value  = d.debit  > 0 ? vf_fmtMoneyVal(d.debit)  : '';
-    tr.querySelector('.vje-credit').value = d.credit > 0 ? vf_fmtMoneyVal(d.credit) : '';
-}
-
-/** Removes auto-tracked lines whose source (a Deduction or live ATC row) no longer applies. */
-function vf_pruneAutoLines(prefix, keepFn) {
-    $vf('vf-jev-tbody').querySelectorAll(`tr.vje-line[data-auto-source^="${prefix}"]`).forEach(tr => {
-        if (keepFn(tr.dataset.autoSource.slice(prefix.length))) return;
-        tr.remove();
-    });
 }
 
 async function vf_refreshDvNumber() {
@@ -1240,9 +1228,14 @@ async function vf_persistAttachments() {
 /* ── Deductions (optional — e.g. contractor retention) ─────────
    The type is picked once, up front, from its own "+ TYPE" pill (vf_renderDedTypeButtons) instead
    of a per-row <select> — each row is created already bound to one fixed deduction type. */
+// A deduction type with no default posting account (account_code NULL — e.g. "OTHER", see
+// "08 - deduction_types_other_recoupment_penalty_vat.sql") used to silently get no Accounting
+// Entries line at all. Now the preparer must pick one here — required, same searchable
+// chart-of-accounts picker the Accounting Entries grid itself uses (vf_coaOptions).
 function vf_addDeductionLine(d = null) {
     const idx = ++vf_dedSeq;
     const t = vf_dedTypes.find(t => String(t.deduction_type_id) === String(d?.deduction_type_id));
+    const needsAcct = !!t && !t.account_code;
     const div = document.createElement('div');
     div.className = 'vf-ded-row';
     div.id = `vf-ded-row-${idx}`;
@@ -1250,16 +1243,26 @@ function vf_addDeductionLine(d = null) {
     div.innerHTML = `
         <button type="button" class="vf-ded-remove" title="Remove" onclick="vf_removeDeductionLine(${idx})">&times;</button>
         <div class="vf-ded-type-label">${vf_esc(t?.name) || '—'}</div>
-        <span class="vf-hint vf-ded-desc" style="display:block;">${vf_esc(t?.description) || ''}</span>
-        <div class="vf-grid3" style="margin-top:8px;">
+        <div class="vf-grid2" style="margin-top:6px;">
             <div class="nha-fg"><label>Rate (%)</label><input type="number" class="vf-ded-rate" min="0" step="0.01" placeholder="e.g. 10"></div>
-            <div class="nha-fg"><label>Gross Amount (₱)</label><input type="text" class="vf-ded-gross" readonly></div>
             <div class="nha-fg"><label>Deduction Amount (₱)</label><input type="text" inputmode="decimal" class="vf-ded-amount" placeholder="Auto-computed"></div>
-        </div>`;
-    $vf('vf-ded-container').appendChild(div);
+        </div>
+        ${needsAcct ? `<div class="nha-fg" style="margin-top:8px;">
+            <label>Posting Account <span class="nha-req">*</span></label>
+            <input type="text" class="vf-ded-acct" placeholder="Search GL account code (UACS)…">
+            <span class="vf-hint">No default account for "${vf_esc(t?.name)}" — required before this can post to the General Ledger.</span>
+        </div>` : ''}`;
+    $vf('vf-ded-container').appendChild(div); // new rows go below the previous ones
 
     div.querySelector('.vf-ded-rate').addEventListener('input', () => vf_recalcDeductionLine(idx));
     vf_bindMoneyInput(div.querySelector('.vf-ded-amount'));
+
+    if (needsAcct) {
+        const acctInput = div.querySelector('.vf-ded-acct');
+        acctInput.value = d?.account_code ?? '';
+        nhaSearchableSelect(acctInput, vf_coaOptions.map(a => ({ value: a.account_code, label: a.account_title })), () => vf_recalcDeductionLine(idx));
+        acctInput.addEventListener('input', () => vf_recalcDeductionLine(idx));
+    }
 
     if (d) {
         div.querySelector('.vf-ded-rate').value = d.rate ?? '';
@@ -1274,13 +1277,12 @@ function vf_removeDeductionLine(idx) {
 }
 
 /* A deduction's gross_amount always mirrors the DV's own Amount (not separately editable — see
-   the "Gross Amount" field's readonly styling); its deduction_amount is rate% of that unless the
+   the RFA Breakdown / summary); its deduction_amount is rate% of that unless the
    user types an amount directly (no rate given = flat peso deduction). */
 function vf_recalcDeductionLine(idx) {
     const row = $vf(`vf-ded-row-${idx}`);
     if (!row) return;
     const gross = vf_numVal($vf('vf-gross').value);
-    row.querySelector('.vf-ded-gross').value = vf_peso(gross);
     const rate = parseFloat(row.querySelector('.vf-ded-rate').value);
     if (!isNaN(rate) && rate > 0) {
         row.querySelector('.vf-ded-amount').value = vf_fmtMoneyVal(gross * rate / 100);
@@ -1307,6 +1309,7 @@ function vf_collectDeductions() {
             rate             : row.querySelector('.vf-ded-rate').value === '' ? null : parseFloat(row.querySelector('.vf-ded-rate').value),
             gross_amount     : vf_numVal($vf('vf-gross').value),
             deduction_amount : amount,
+            account_code     : row.querySelector('.vf-ded-acct')?.value.trim() || null,
         });
     });
     return out;
@@ -1315,33 +1318,44 @@ function vf_collectDeductions() {
 /* ── ATC (optional — see card 5's doc comment) — same fields/behavior as readone.php's vje_ ATC
    grid, minus the auto-sync-into-Accounting-Entries wiring (that's Accounting's job once the DV
    reaches FOR_ACCOUNTING; here it's just a plain add/remove grid, saved as-is). ───────────────── */
+/* Each ATC row is its own card in the same list as the deductions (#vf-ded-container), added below the previous one. */
+function vf_clearDeductionRows() { $vf('vf-ded-container').querySelectorAll('.vf-ded-row').forEach(r => r.remove()); }
+function vf_clearAtcRows()       { $vf('vf-ded-container').querySelectorAll('.vf-atc-row').forEach(r => r.remove()); }
+function vf_atcRows()            { return $vf('vf-ded-container').querySelectorAll('.vf-atc-row'); }
+
 function vf_addAtcLine(a = null) {
     const idx = ++vf_atcSeq;
-    const tr = document.createElement('tr');
-    tr.id = `vf-atc-row-${idx}`;
-    tr.innerHTML = `
-        <td><input type="text" class="vf-atc-code" placeholder="Search ATC code…"></td>
-        <td><input type="number" class="vf-atc-rate" min="0" max="100" step="0.01" placeholder="0.00"></td>
-        <td><input type="text" inputmode="decimal" class="vf-atc-base" placeholder="0.00"></td>
-        <td class="vf-l-val vf-atc-wh">₱ 0.00</td>
-        <td><select class="vf-atc-rc">
-            <option value="">— None —</option>
-            ${VF_RC.map(r => `<option value="${vf_esc(r.rc_id)}">${vf_esc(r.rc_id)} — ${vf_esc(r.rc_name)}</option>`).join('')}
-        </select></td>
-        <td><button type="button" class="vf-table-remove" title="Remove" onclick="vf_removeAtcLine(${idx})">&times;</button></td>`;
-    tr.querySelector('.vf-atc-code').value = a?.atc_code ?? '';
-    tr.querySelector('.vf-atc-rate').value = a?.rate ?? '';
-    tr.querySelector('.vf-atc-base').value = a ? vf_fmtMoneyVal(a.tax_base) : '';
-    tr.querySelector('.vf-atc-rc').value   = a?.chargeability ?? '';
-    tr.querySelector('.vf-atc-code').addEventListener('change', () => vf_onAtcCodeSelect(idx));
-    vf_bindMoneyInput(tr.querySelector('.vf-atc-base'));
-    tr.querySelectorAll('.vf-atc-rate, .vf-atc-base').forEach(el => {
+    const div = document.createElement('div');
+    div.className = 'vf-atc-row';
+    div.id = `vf-atc-row-${idx}`;
+    div.innerHTML = `
+        <button type="button" class="vf-ded-remove" title="Remove" onclick="vf_removeAtcLine(${idx})">&times;</button>
+        <div class="vf-ded-type-label">ATC (Withholding Tax)</div>
+        <div class="nha-fg" style="margin-top:8px;"><label>ATC Code — Description</label><input type="text" class="vf-atc-code" placeholder="Search ATC code…"></div>
+        <div class="vf-grid3" style="margin-top:8px;">
+            <div class="nha-fg"><label>Rate (%)</label><input type="number" class="vf-atc-rate" min="0" max="100" step="0.01" placeholder="0.00"></div>
+            <div class="nha-fg"><label>Tax Base (₱)</label><input type="text" inputmode="decimal" class="vf-atc-base" placeholder="0.00"></div>
+            <div class="nha-fg"><label>Withholding Tax (₱)</label><input type="text" class="vf-atc-wh" readonly value="₱ 0.00"></div>
+        </div>
+        <div class="nha-fg" style="display:none;"><label>Chargeability</label>
+            <select class="vf-atc-rc">
+                <option value="">— None —</option>
+                ${VF_RC.map(r => `<option value="${vf_esc(r.rc_id)}">${vf_esc(r.rc_id)} — ${vf_esc(r.rc_name)}</option>`).join('')}
+            </select>
+        </div>`;
+    div.querySelector('.vf-atc-code').value = a?.atc_code ?? '';
+    div.querySelector('.vf-atc-rate').value = a?.rate ?? '';
+    div.querySelector('.vf-atc-base').value = a ? vf_fmtMoneyVal(a.tax_base) : '';
+    div.querySelector('.vf-atc-rc').value   = a?.chargeability ?? '';
+    div.querySelector('.vf-atc-code').addEventListener('change', () => vf_onAtcCodeSelect(idx));
+    vf_bindMoneyInput(div.querySelector('.vf-atc-base'));
+    div.querySelectorAll('.vf-atc-rate, .vf-atc-base').forEach(el => {
         el.addEventListener('input', () => vf_recalcAtcLine(idx));
     });
-    $vf('vf-atc-tbody').appendChild(tr);
+    $vf('vf-ded-container').appendChild(div);
     // Bound after the row is attached to the DOM — nhaSearchableSelect reads the input's live
     // parentElement to anchor the dropdown, which is unreliable on a still-detached node.
-    nhaSearchableSelect(tr.querySelector('.vf-atc-code'), VF_ATC.map(c => ({ value: c.atc_code, label: c.description })));
+    nhaSearchableSelect(div.querySelector('.vf-atc-code'), VF_ATC.map(c => ({ value: c.atc_code, label: c.description })));
     vf_recalcAtcLine(idx);
 }
 
@@ -1388,27 +1402,26 @@ function vf_recalcAtcLine(idx) {
     if (!tr) return;
     const rate = parseFloat(tr.querySelector('.vf-atc-rate').value) || 0;
     const base = vf_numVal(tr.querySelector('.vf-atc-base').value);
-    tr.querySelector('.vf-atc-wh').textContent = vf_peso(base * rate / 100);
+    tr.querySelector('.vf-atc-wh').value = vf_peso(base * rate / 100);
     vf_recalcAtc();
 }
 
 function vf_collectAtcLines() {
     const lines = [];
-    $vf('vf-atc-tbody').querySelectorAll('tr').forEach(tr => {
+    vf_atcRows().forEach(tr => {
         const atc_code = tr.querySelector('.vf-atc-code').value;
         const rate     = parseFloat(tr.querySelector('.vf-atc-rate').value) || 0;
         const tax_base = vf_numVal(tr.querySelector('.vf-atc-base').value);
         if (!atc_code && tax_base <= 0) return; // blank trailing row
-        lines.push({ atc_code, rate, tax_base, chargeability: tr.querySelector('.vf-atc-rc').value || null });
+        // Chargeability isn't asked for any more — the system takes it from the first selected RFA's Responsibility Center.
+        lines.push({ atc_code, rate, tax_base, chargeability: tr.querySelector('.vf-atc-rc').value || vf_rfas[vf_selectedRfaIds[0]]?.requesting_rc_id || null });
     });
     return lines;
 }
 
 function vf_recalcAtc() {
-    const lines = vf_collectAtcLines();
-    const totalWh = lines.reduce((s, l) => s + (l.tax_base * l.rate / 100), 0);
-    $vf('vf-atc-total').textContent = vf_peso(totalWh);
-    vf_syncAutoJevLines(); // an ATC row just changed — Accounting Entries (7) auto-lines follow
+    vf_syncAutoJevLines(); // an ATC row just changed — refresh the hidden Accounting Entries grid's totals
+    vf_recalc();           // withholding feeds Net Amount Payable
 }
 
 /* ── Accounting Entries (optional) — flat list of journal entry lines ──── */
@@ -1462,7 +1475,7 @@ function vf_renderAcctHint(tr) {
     }
 
     const atcMatches = [];
-    $vf('vf-atc-tbody').querySelectorAll('tr').forEach(atcTr => {
+    vf_atcRows().forEach(atcTr => {
         const def = VF_ATC.find(c => c.atc_code === atcTr.querySelector('.vf-atc-code').value);
         if (def && def.account_code === code) {
             const rate = atcTr.querySelector('.vf-atc-rate').value || def.tax_rate || 0;
@@ -1549,16 +1562,27 @@ function vf_recalcJev() {
 /* ── Live computation ──────────────────────────────────────── */
 function vf_recalc() {
     const gross = vf_numVal($vf('vf-gross').value);
+    // Gross was set by something other than the Amount cells (RFA picked, payroll/remittance fill, saved DV
+    // loaded) — rebuild the breakdown so its rows follow it.
+    if (Math.abs(gross - vf_renderedGross) > 0.005) vf_renderRfaBreakdown();
     $vf('vf-ded-container').querySelectorAll('.vf-ded-row').forEach(row => {
-        row.querySelector('.vf-ded-gross').value = vf_peso(gross);
+        // A rate-based deduction follows Gross (the server recomputes rate% x gross on save, so the form must too);
+        // a flat peso deduction (no rate) is left as typed.
+        const rate = parseFloat(row.querySelector('.vf-ded-rate').value);
+        if (!isNaN(rate) && rate > 0) {
+            row.querySelector('.vf-ded-amount').value = vf_fmtMoneyVal(Math.round(gross * rate) / 100);
+        }
     });
 
     const totalDeductions = vf_totalDeductions();
-    const netAmount = Math.max(0, gross - totalDeductions);
+    // Withholding tax (ATC) is taken off too — same Gross - Deductions - Withholding the server stores as net_amount.
+    const totalWithholding = vf_collectAtcLines().reduce((s, l) => s + Math.round(l.tax_base * l.rate) / 100, 0);
+    const netAmount = Math.max(0, gross - totalDeductions - totalWithholding);
     $vf('vf-doc-gross').textContent    = vf_peso(gross);
     $vf('vf-doc-less-ded').textContent = vf_peso(totalDeductions);
+    $vf('vf-doc-less-wh').textContent  = vf_peso(totalWithholding);
     $vf('vf-net').textContent = vf_peso(netAmount);
-    vf_syncAutoJevLines(); // gross/deductions just changed — Accounting Entries (7) auto-lines follow
+    vf_syncAutoJevLines(); // gross/deductions just changed — refresh the hidden Accounting Entries grid's totals
 
     const obligation    = vf_numVal($vf('vf-obligation').value);
     const totalPayments = vf_paymentsPrior + netAmount;
@@ -1614,6 +1638,7 @@ async function vf_applyPayroll(id) {
         const d = json.data;
         if (vf_payrollPeriodId) vf_clearPayrollFill(); // switching from one month to another
         vf_payrollPeriodId = Number(d.payroll_period_id);
+        vf_renderDedTypeButtons();
 
         // payroll RFAs carry no vendor — drop RFAs picked for a vendor
         if (vf_selectedRfaIds.some(rid => vf_rfas[rid]?.vendor_id)) {
@@ -1628,7 +1653,7 @@ async function vf_applyPayroll(id) {
         $vf('vf-gross').value            = vf_fmtMoneyVal(d.gross_amount);
         ['claimant', 'particulars', 'gross', 'account-code'].forEach(vf_clearFieldError);
 
-        $vf('vf-ded-container').innerHTML = '';
+        vf_clearDeductionRows();
         vf_dedSeq = 0;
         $vf('vf-jev-tbody').innerHTML = '';
         vf_jevSeq = 0;
@@ -1662,11 +1687,99 @@ async function vf_openForPayroll(periodId) {
     await vf_onVendorChange();
 }
 
+/**
+ * Deductions & Remittances' "Create Remittance DV" (Voucher?remittance={id}): a new DV paying a scheduled payroll
+ * remittance to its agency — GET deduction-remittance/dv-data/{id}: claimant = the agency, particulars, account, amount,
+ * and the entry (Dr the payables / gov't share, Cr Accounts Payable). No RFA: the payroll DV already obligated it.
+ */
+async function vf_openForRemittance(remittanceId) {
+    await vf_open(0);
+    window.PagePreloader?.show();
+    try {
+        const res = await vf_authFetch(VF_API + '/' + 'deduction-remittance/dv-data/' + Number(remittanceId));
+        if (res.status === 401) throw new Error(VF_SESSION_EXPIRED_MSG);
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || !json.success) throw new Error(json.message || 'HTTP ' + res.status);
+        vf_applyRemittance(json.data);
+    } catch (e) {
+        vf_showErrors([e.message]);
+    } finally {
+        window.PagePreloader?.hide();
+    }
+}
+
+function vf_applyRemittance(d) {
+    vf_remittanceId = Number(d.payroll_remittance_id);
+    vf_selectedRfaIds = [];
+    vf_renderRfaChips();
+    $vf('vf-rfa-search').disabled = true;
+    $vf('vf-vendor').value = '';
+    $vf('vf-claimant').value         = d.claimant_name;
+    $vf('vf-claimant-address').value = '';
+    $vf('vf-claimant-tin').value     = '';
+    $vf('vf-particulars').value      = d.particulars;
+    $vf('vf-account-code').value     = d.account_code || '';
+    $vf('vf-gross').value            = vf_fmtMoneyVal(d.gross_amount);
+    ['claimant', 'particulars', 'gross', 'account-code', 'rfa'].forEach(vf_clearFieldError);
+    vf_clearDeductionRows();
+    vf_dedSeq = 0;
+    $vf('vf-jev-tbody').innerHTML = '';
+    vf_jevSeq = 0;
+    (d.lines ?? []).forEach(l => vf_addJevLine(l));
+    vf_renumberJev();
+    vf_recalc();
+    vf_refreshAllJevHints();
+    vf_showRemittanceCard(d);
+    vf_markRemittanceFields(d);
+}
+
+/**
+ * A remittance DV has no vendor (the claimant is the agency, filled in) and needs no RFA (budgeted with the payroll):
+ * say so in those two fields instead of leaving "— None —" and a required, empty RFA. null puts them back.
+ */
+function vf_markRemittanceFields(d) {
+    const sel = $vf('vf-vendor');
+    sel.querySelector('option[data-remittance]')?.remove();
+    if (d) {
+        const label = `Payroll Remittance — ${d.agency_name || ''} ${d.label || ''}`.trim();
+        sel.insertAdjacentHTML('afterbegin', `<option value="" data-remittance="1">${vf_esc(label)}</option>`);
+        sel.value = '';
+        sel.selectedIndex = 0;
+    }
+    sel.disabled = !!d;
+    // A remittance DV hides what it never uses (all filled in or not applicable):
+    //   Vendor / PO Number row · claimant Address / Employee No. / TIN (the claimant is the agency) · the RFA column ·
+    //   the Deductions + ATC card · the Budget Reference fields and figures (Dept./Project, Fund Source, Account Code —
+    //   set from the remittance —, Budget / Obligation / Payments / Balance, which come from an RFA). Remarks stays.
+    const show = el => { if (el) el.style.display = d ? 'none' : ''; };
+    show(sel.closest('.vf-grid2'));
+    show($vf('vf-claimant-address').closest('.nha-fg'));
+    show($vf('vf-rfa-search').closest('.nha-fg').parentElement);
+    show($vf('vf-ded-section')); // the Deductions + ATC rows and pills (the RFA Breakdown box above them stays: it is empty without an RFA)
+    $vf('vf-rfa-req').style.display = d ? 'none' : '';
+    $vf('vf-rfa-note').textContent  = d ? '(not needed — payroll remittance, budgeted with the payroll)' : '(search and select one or more)';
+    $vf('vf-rfa-search').placeholder = d ? 'Not needed for a payroll remittance' : 'Search RFA number or reference no…';
+}
+
+/** The vendor card shows the remittance (agency, payroll month, employee / government share, no RFA needed). */
+function vf_showRemittanceCard(d) {
+    $vf('vf-vc-name').textContent    = d.claimant_name || d.agency_name;
+    $vf('vf-vc-type').textContent    = `Payroll Remittance — ${d.agency_name} ${d.label}`;
+    $vf('vf-vc-address').textContent = d.employee_share !== undefined
+        ? `Employee share ${vf_peso(d.employee_share)} · Government share ${vf_peso(d.employer_share)} · Total ${vf_peso(d.gross_amount)}`
+        : `Total ${vf_peso(d.total_amount)}`;
+    // for reference: the payroll DV / RFA this remittance belongs to (the remittance DV itself takes no RFA)
+    const ref = d.payroll_dv_no ? `Belongs to payroll DV ${d.payroll_dv_no}${(d.payroll_rfa_nos || []).length ? ' · RFA ' + d.payroll_rfa_nos.join(', ') : ''}` : 'Payroll DV not created yet';
+    $vf('vf-vc-tin').textContent     = `${ref} — no RFA needed on this DV`;
+    $vf('vf-vendor-card').classList.add('visible');
+}
+
 /** Undo vf_applyPayroll(): empties every field the payroll month filled, then auto Accounting Entries resume. */
 function vf_clearPayrollFill() {
     vf_payrollPeriodId = null;
+    vf_renderDedTypeButtons();
     ['vf-claimant', 'vf-claimant-address', 'vf-claimant-tin', 'vf-particulars', 'vf-account-code', 'vf-gross'].forEach(id => { $vf(id).value = ''; });
-    $vf('vf-ded-container').innerHTML = '';
+    vf_clearDeductionRows();
     vf_dedSeq = 0;
     $vf('vf-jev-tbody').innerHTML = '';
     vf_jevSeq = 0;
@@ -1713,8 +1826,16 @@ async function vf_loadExisting() {
     // so restoring it doesn't refill or clear what was saved).
     if (dv.payroll) {
         vf_payrollPeriodId = Number(dv.payroll.payroll_period_id);
+        vf_renderDedTypeButtons();
         $vf('vf-vendor').value = VF_PAYROLL_PREFIX + vf_payrollPeriodId;
         vf_showPayrollCard({ ...dv.payroll, claimant_name: dv.claimant_name });
+    }
+    // A payroll remittance DV (GSIS / BIR / …): keeps its remittance, no RFA
+    if (dv.remittance) {
+        vf_remittanceId = Number(dv.remittance.payroll_remittance_id);
+        $vf('vf-rfa-search').disabled = true;
+        vf_showRemittanceCard({ ...dv.remittance, claimant_name: dv.claimant_name });
+        vf_markRemittanceFields(dv.remittance);
     }
 
     $vf('vf-po-number').value        = dv.po_number || '';
@@ -1724,11 +1845,11 @@ async function vf_loadExisting() {
     $vf('vf-particulars').value      = dv.particulars || '';
     $vf('vf-gross').value            = dv.gross_amount ? vf_fmtMoneyVal(dv.gross_amount) : '';
 
-    $vf('vf-ded-container').innerHTML = '';
+    vf_clearDeductionRows();
     vf_dedSeq = 0;
     (dv.deductions ?? []).forEach(d => vf_addDeductionLine(d));
 
-    $vf('vf-atc-tbody').innerHTML = '';
+    vf_clearAtcRows();
     vf_atcSeq = 0;
     (dv.atc_lines ?? []).forEach(a => vf_addAtcLine(a));
     vf_recalcAtc();
@@ -1772,17 +1893,32 @@ function vf_validate() {
     const check = (ok, field, msg) => { vf_setFieldError(field, !ok); if (!ok) errors.push(msg); };
 
     check(!!$vf('vf-dv-date').value,   'dv-date',   'DV Date is required.');
-    // Book is only required once Accounting Entries lines are actually filled in (vf_collectJevLines()
-    // mirrors this on the server in persistJournalEntry()) — the whole Accounting Entries section is
-    // optional at this stage, see its card's own doc comment.
-    const vf_hasJevLines = vf_collectJevLines().length > 0;
-    $vf('vf-book-req').style.display = vf_hasJevLines ? 'inline' : 'none';
-    check(!vf_hasJevLines || !!$vf('vf-book').value, 'book', 'Book is required once Accounting Entries lines are filled in.');
-    check(vf_selectedRfaIds.length > 0, 'rfa',      'At least one RFA is required.');
+    // No Book check here: section D (Book + Accounting Entries) is hidden from Originating, so Book
+    // can't be picked here. Payroll/remittance DVs still send their pre-filled lines without one
+    // (persistJournalEntry() allows that for this pre-fill path); Accounting picks the Book when it
+    // saves the Journal Entry at the FOR_ACCOUNTING stage, where it is required.
+    // a remittance DV pays deductions the payroll DV's RFA already obligated — no RFA of its own
+    check(vf_remittanceId || vf_selectedRfaIds.length > 0, 'rfa', 'At least one RFA is required.');
     check(!!$vf('vf-claimant').value.trim(), 'claimant', 'Claimant Name is required.');
     check(!!$vf('vf-particulars').value.trim(), 'particulars', 'Particulars is required.');
     check((vf_numVal($vf('vf-gross').value)) > 0, 'gross', 'Amount must be greater than zero.');
-    check(!!$vf('vf-account-code').value.trim(), 'account-code', 'Account Code is required.');
+    // Same ceiling the server enforces: a manual DV can't draw more than its RFA(s) have left (RFAs with no
+    // known budget are ignored; payroll/remittance DVs take their amount from their own import).
+    if (!vf_payrollPeriodId && !vf_remittanceId) {
+        const known = vf_selectedRfaIds.map(id => vf_rfas[id]).filter(r => r && Number(r.budget_amount) > 0);
+        const remaining = known.reduce((s, r) => s + (Number(r.remaining_balance) || 0), 0);
+        if (known.length && vf_numVal($vf('vf-gross').value) - remaining > 0.005) {
+            errors.push(`Amount (${vf_peso(vf_numVal($vf('vf-gross').value))}) cannot exceed the selected RFA(s)' remaining balance (${vf_peso(remaining)}).`);
+        }
+    }
+    check(!!$vf('vf-account-code').value.trim(), 'account-code', 'Account Code could not be determined from the selected RFA(s) or vendor — pick an RFA that has an account.');
+
+    $vf('vf-ded-container').querySelectorAll('.vf-ded-row').forEach(row => {
+        const acctInput = row.querySelector('.vf-ded-acct');
+        if (!acctInput) return; // this deduction type already has a default posting account
+        const label = row.querySelector('.vf-ded-type-label')?.textContent || 'This deduction';
+        if (!acctInput.value.trim()) errors.push(`${label} has no default posting account — pick one before saving.`);
+    });
 
     return errors;
 }
@@ -1827,6 +1963,7 @@ async function vf_save(status) {
         atc_lines          : vf_collectAtcLines(),
         lines              : vf_collectJevLines(),
         payroll_period_id  : vf_payrollPeriodId,
+        payroll_remittance_id : vf_remittanceId,
         status,
     };
 

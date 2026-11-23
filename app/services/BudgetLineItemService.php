@@ -13,26 +13,26 @@ use PHPMaker2024\FIMS\DataType;
  */
 class BudgetLineItemService
 {
-    private string $table                 = 'fims.budget_line_items';
-    private string $tableBudgetReq        = 'fims.budget_req';
+    private string $table = 'fims.budget_line_items';
+    private string $tableBudgetReq = 'fims.budget_req';
     private string $tableBudgetReqProject = 'fims.budget_req_project';
-    private string $tableChartOfAccounts  = 'fims.chart_of_accounts';
-    private string $tableProject          = 'fims.project';
-    private string $tableTypeOfFund       = 'fims.type_of_fund';
-    private string $tableComponentType    = 'fims.component_type';
+    private string $tableChartOfAccounts = 'fims.chart_of_accounts';
+    private string $tableProject = 'fims.project';
+    private string $tableTypeOfFund = 'fims.type_of_fund';
+    private string $tableComponentType = 'fims.component_type';
     private string $tableBudgetReqProgram = 'fims.budget_req_program';
-    private string $tableStatus           = 'fims.settings_status';
-    private string $tableEarmark          = 'fims.budget_line_item_earmark';
+    private string $tableStatus = 'fims.settings_status';
+    private string $tableEarmark = 'fims.budget_line_item_earmark';
     private string $tableBudgetAllocation = 'fims.budget_allocation';
     private string $tableAllocationProject = 'fims.budget_allocation_project';
-    private string $tableRc               = 'fims.responsibility_code';
+    private string $tableRc = 'fims.responsibility_code';
 
     public function fetchAlls(?int $page = null, int $limit = 10, string $fiscalYr = ''): array
     {
         try {
             $where = ['1=1'];
             if ($fiscalYr !== '') {
-                $where[] = 'br.fiscal_yr = ' . (int) $fiscalYr;
+                $where[] = 'br.fiscal_yr = '.(int) $fiscalYr;
             }
             $whereSql = implode(' AND ', $where);
 
@@ -49,7 +49,7 @@ class BudgetLineItemService
                         WHERE {$whereSql}";
 
             if ($page === null) {
-                $data = App\ExecuteRows($joinSql . ' ORDER BY br.fiscal_yr DESC, li.budget_line_item_id DESC', 'DB');
+                $data = App\ExecuteRows($joinSql.' ORDER BY br.fiscal_yr DESC, li.budget_line_item_id DESC', 'DB');
 
                 return ['success' => true, 'data' => $data ?: []];
             }
@@ -60,7 +60,7 @@ class BudgetLineItemService
                          JOIN {$this->tableBudgetReq} br ON br.budget_reference_number = li.budget_reference_number
                          WHERE {$whereSql}";
             $total = (int) App\ExecuteScalar($countSql, 'DB');
-            $data  = App\ExecuteRows($joinSql . " ORDER BY br.fiscal_yr DESC, li.budget_line_item_id DESC LIMIT {$limit} OFFSET {$offset}", 'DB');
+            $data = App\ExecuteRows($joinSql." ORDER BY br.fiscal_yr DESC, li.budget_line_item_id DESC LIMIT {$limit} OFFSET {$offset}", 'DB');
 
             $sumSql = "SELECT COALESCE(SUM(li.proposed_amount), 0) FROM {$this->table} li
                        JOIN {$this->tableBudgetReq} br ON br.budget_reference_number = li.budget_reference_number
@@ -68,14 +68,14 @@ class BudgetLineItemService
             $totalAmount = (float) App\ExecuteScalar($sumSql, 'DB');
 
             return [
-                'success'      => true,
-                'data'         => $data ?: [],
+                'success' => true,
+                'data' => $data ?: [],
                 'total_amount' => $totalAmount,
-                'pagination'   => [
-                    'total'        => $total,
-                    'per_page'     => $limit,
+                'pagination' => [
+                    'total' => $total,
+                    'per_page' => $limit,
                     'current_page' => $page,
-                    'last_page'    => (int) ceil($total / $limit),
+                    'last_page' => (int) ceil($total / $limit),
                 ],
             ];
         } catch (\Exception $e) {
@@ -96,18 +96,22 @@ class BudgetLineItemService
      * Only a budget_req whose status is 'Approved' (fims.settings_status, status_for = 'budget_req') qualifies.
      * Line items of an older request that never got its program block (budget_req_program_id IS NULL) have no
      * program to match, so they appear only while no program / sub-program is chosen.
+     *
+     * available_amount is the real derived ceiling (BudgetLineBalanceSql::availableExpr()) — the exact figure
+     * lockAndGetAvailable() re-checks at approval time — NOT suggested_amount itself, which is now a stable,
+     * never-depleted figure (see this class's Earmarks section header comment).
      */
     public function fetchApproved(string $programCode = '', string $subProgramCode = '', string $projectCode = '', string $fiscalYr = '', string $typeOfFundId = ''): array
     {
         try {
             $where = $this->approvedConditions($programCode, $subProgramCode, $projectCode, $fiscalYr, $typeOfFundId);
 
-            $sql = "SELECT li.budget_line_item_id, li.budget_reference_number, br.fiscal_yr,
+            $sql = 'SELECT li.budget_line_item_id, li.budget_reference_number, br.fiscal_yr,
                            brpr.program_code, brpr.sub_program_code, brp.project_code, pj.project_name,
                            li.type_of_fund_id, tf.name AS type_of_fund,
                            li.account_id, coa.account_code, coa.account_title,
                            li.proposed_amount, li.suggested_amount, li.adjustment, li.obligation,
-                           li.suggested_amount AS available_amount,
+                           '.BudgetLineBalanceSql::availableExpr('li', 'ear')." AS available_amount,
                            li.particulars, st.name AS status_name
                     FROM {$this->table} li
                     JOIN {$this->tableBudgetReq} br ON br.budget_reference_number = li.budget_reference_number
@@ -117,12 +121,14 @@ class BudgetLineItemService
                     LEFT JOIN {$this->tableProject} pj ON pj.project_code = brp.project_code
                     LEFT JOIN {$this->tableTypeOfFund} tf ON tf.type_of_fund_id = li.type_of_fund_id
                     LEFT JOIN {$this->tableChartOfAccounts} coa ON coa.account_id = li.account_id
-                    WHERE " . implode(' AND ', $where) . '
+                    LEFT JOIN (".BudgetLineBalanceSql::earmarkAggregateSql($this->tableEarmark, $this->tableBudgetAllocation).') ear
+                           ON ear.budget_line_item_id = li.budget_line_item_id
+                    WHERE '.implode(' AND ', $where).'
                     ORDER BY coa.account_code ASC NULLS LAST, li.budget_line_item_id ASC';
 
             return ['success' => true, 'data' => App\ExecuteRows($sql, 'DB') ?: []];
         } catch (\Exception $e) {
-            App\LogError('BudgetLineItemService::fetchApproved ' . $e->getMessage());
+            App\LogError('BudgetLineItemService::fetchApproved '.$e->getMessage());
 
             return ['success' => false, 'message' => 'Failed to load line items.'];
         }
@@ -138,19 +144,19 @@ class BudgetLineItemService
     {
         $where = ["st.status_for = 'budget_req'", "LOWER(st.name) = 'approved'"];
         if (trim($programCode) !== '') {
-            $where[] = 'brpr.program_code = ' . $this->str($programCode);
+            $where[] = 'brpr.program_code = '.$this->str($programCode);
         }
         if (trim($subProgramCode) !== '') {
-            $where[] = 'brpr.sub_program_code = ' . $this->str($subProgramCode);
+            $where[] = 'brpr.sub_program_code = '.$this->str($subProgramCode);
         }
         if (trim($projectCode) !== '') {
-            $where[] = 'brp.project_code = ' . $this->str($projectCode);
+            $where[] = 'brp.project_code = '.$this->str($projectCode);
         }
         if (trim($fiscalYr) !== '') {
-            $where[] = 'br.fiscal_yr = ' . (int) $fiscalYr;
+            $where[] = 'br.fiscal_yr = '.(int) $fiscalYr;
         }
         if (trim($typeOfFundId) !== '') {
-            $where[] = 'li.type_of_fund_id = ' . (int) $typeOfFundId;
+            $where[] = 'li.type_of_fund_id = '.(int) $typeOfFundId;
         }
 
         return $where;
@@ -175,12 +181,12 @@ class BudgetLineItemService
                     JOIN {$this->tableTypeOfFund} tf ON tf.type_of_fund_id = li.type_of_fund_id
                     LEFT JOIN {$this->tableBudgetReqProject} brp ON brp.budget_req_project_id = li.budget_req_project_id
                     LEFT JOIN {$this->tableBudgetReqProgram} brpr ON brpr.budget_req_program_id = brp.budget_req_program_id
-                    WHERE " . implode(' AND ', $where) . '
+                    WHERE ".implode(' AND ', $where).'
                     ORDER BY tf.name ASC, tf.type_of_fund_id ASC';
 
             return ['success' => true, 'data' => App\ExecuteRows($sql, 'DB') ?: []];
         } catch (\Exception $e) {
-            App\LogError('BudgetLineItemService::fetchApprovedTypesOfFund ' . $e->getMessage());
+            App\LogError('BudgetLineItemService::fetchApprovedTypesOfFund '.$e->getMessage());
 
             return ['success' => false, 'message' => 'Failed to load types of fund.'];
         }
@@ -188,26 +194,27 @@ class BudgetLineItemService
 
     // -----------------------------------------------------------------------
     // Earmarks — fims.budget_line_item_earmark. One row per Approved budget_allocation (CBA / RFA / LAA /
-    // CFA) line reserving an amount against a line item's balance — ceiling is suggested_amount (what
-    // FMD actually approved for this line item during Budget Processing), NOT proposed_amount (what the
-    // requesting office originally asked for). Created by createForApproval() — called from
-    // BudgetAllocationService::process() the moment a request reaches Approved — and released by
-    // releaseForAllocation() — called from BudgetAllocationService::delete(). Every method here runs
-    // INSIDE the caller's own open transaction (BudgetAllocationService already wraps its status change
-    // in BEGIN/COMMIT); none of these open, commit or roll one back themselves. See the table's own SQL
-    // file for the full column/lifecycle comment: "_assets/sql/01 - fims/01 - table/26 -
-    // fims_budget_line_item_earmark.sql".
+    // CFA) line reserving an amount against a line item's balance. Created by createForApproval() (CBA/CFA)
+    // or convertEarmarkForRfaApproval() (RFA/LAA) — both called from BudgetAllocationService::process() the
+    // moment a request reaches Approved — and released/reversed by releaseForAllocation() — called from
+    // BudgetAllocationService::delete(). Every method here runs INSIDE the caller's own open transaction
+    // (BudgetAllocationService already wraps its status change in BEGIN/COMMIT); none of these open, commit
+    // or roll one back themselves. See the table's own SQL file for the full column/lifecycle comment:
+    // "_assets/sql/01 - fims/01 - table/26 - fims_budget_line_item_earmark.sql".
     //
-    // The final approval of a CBA / CFA also MOVES the money on the line item itself (createForApproval()):
-    //   suggested_amount - R, account_payable + R, obligation + R    (R = that request's requested_amount for the line)
-    // and marks its earmark row balance_applied. So the line item's own suggested_amount is what is still free to request:
-    // available = suggested_amount — the earmark no longer subtracts again, it only remains as the ceiling an
-    // RFA / LAA draws against (and that draw adds nothing to obligation: the CBA already did). An approved Budget Revision
-    // moves suggested_amount too (BudgetRevisionService::approve(), together with adjustment), so adjustment is NOT added here:
-    // that would count every revision twice. Deleting an Approved
-    // CBA / CFA reverses the three updates (releaseForAllocation()). An earmark row from before this rule
-    // (balance_applied = FALSE) never had the three updates, so it is neither reversed nor spared the old obligation
-    // increase at RFA / LAA approval.
+    // THE MODEL (since migration "51 - budget_line_items_stable_suggested_amount.sql" — see
+    // BudgetLineBalanceSql's class doc for the full formula): suggested_amount is Budget Processing's
+    // approved figure and STAYS stable forever — no approval, deletion or revision ever moves it again.
+    // A CBA/CFA's final approval only RESERVES (inserts an 'active' earmark row; createForApproval() does
+    // NOT touch suggested_amount, obligation, or anything else on the line item — it still bumps
+    // account_payable, which is intentionally out of scope for this model, see createForApproval()'s own
+    // comment). An RFA/LAA's final approval draws down its parent CBA's earmark AND is the ONLY thing that
+    // ever increases budget_line_items.obligation (convertEarmarkForRfaApproval()) — the real financial
+    // commitment. What's still available to request against a line is computed on the fly
+    // (BudgetLineBalanceSql::availableExpr() / lockAndGetAvailable() below), never stored. Deleting an
+    // Approved CBA/CFA just releases its still-active earmark row(s) (releaseForAllocation()); deleting an
+    // Approved RFA/LAA reverses its draw — obligation down, the parent CBA's earmark restored
+    // (reverseConversions()).
     // -----------------------------------------------------------------------
 
     /**
@@ -264,24 +271,34 @@ class BudgetLineItemService
     }
 
     /**
-     * The balance still available to request against one line item: its suggested_amount (already reduced by every
-     * Approved CBA / CFA — see createForApproval() — and moved by every approved Budget Revision). Locks the row
-     * (SELECT ... FOR UPDATE) so two concurrent approvals against the same line item can't both pass the check
-     * before either commits — the caller must already be inside an open transaction. Returns null when the line
-     * item no longer exists.
+     * The balance still available to request against one line item: suggested_amount + adjustment, less
+     * what is still actively reserved (CBA/CFA 'active' earmarks) and what has already been drawn
+     * (RFA/LAA 'converted' earmarks) — see BudgetLineBalanceSql for the full formula. Locks the
+     * budget_line_items row (SELECT ... FOR UPDATE) FIRST, then derives the figure in a second statement
+     * — the lock is what makes this a safe mutex (see BudgetLineBalanceSql's locking contract); the
+     * caller must already be inside an open transaction. Returns null when the line item no longer exists.
      */
     public function lockAndGetAvailable(int $budgetLineItemId): ?float
     {
-        $row = App\ExecuteRow(
-            "SELECT suggested_amount FROM {$this->table}
+        $locked = App\ExecuteRow(
+            "SELECT budget_line_item_id FROM {$this->table}
              WHERE budget_line_item_id = {$budgetLineItemId} FOR UPDATE",
             'DB'
         );
-        if (!$row) {
+        if (!$locked) {
             return null;
         }
 
-        return (float) $row['suggested_amount'];
+        $row = App\ExecuteRow(
+            'SELECT '.BudgetLineBalanceSql::availableExpr('li', 'ear')." AS available_amount
+             FROM {$this->table} li
+             LEFT JOIN (".BudgetLineBalanceSql::earmarkAggregateSql($this->tableEarmark, $this->tableBudgetAllocation).") ear
+                    ON ear.budget_line_item_id = li.budget_line_item_id
+             WHERE li.budget_line_item_id = {$budgetLineItemId}",
+            'DB'
+        );
+
+        return $row ? (float) $row['available_amount'] : null;
     }
 
     /**
@@ -292,11 +309,11 @@ class BudgetLineItemService
      * row). That keeps exactly one active row per (allocation, COB) pair, which
      * convertEarmarkForRfaApproval() below relies on to shrink cleanly as RFAs/LAAs draw it down.
      *
-     * Each COB's line item is also charged with the combined requested amount R, in the same pass:
-     *   suggested_amount = suggested_amount - R
-     *   account_payable  = account_payable  + R
-     *   obligation       = obligation       + R
-     * and its earmark row is created with balance_applied = TRUE, so a later delete knows to reverse exactly this.
+     * Each COB's line item also gets its account_payable bumped by the combined requested amount R
+     * (account_payable is out of scope for the stable-suggested_amount model — it keeps its
+     * pre-existing behavior as a CBA/CFA reservation marker, reversed the same way by
+     * releaseForAllocation()). suggested_amount and obligation are untouched: a CBA/CFA only
+     * RESERVES — see "THE MODEL" in this class's Earmarks section header comment, above.
      *
      * Returns ['success' => true] (including when there is nothing to reserve) or
      * ['success' => false, 'message' => ...]; on failure nothing is written — the caller
@@ -319,6 +336,9 @@ class BudgetLineItemService
             $id = $line['budget_line_item_id'];
             $totals[$id] = ($totals[$id] ?? 0) + $line['requested_amount'];
         }
+        // Lock every line item this call touches in a consistent order (BudgetLineBalanceSql's locking
+        // contract) so two concurrent multi-line approvals can never deadlock against each other.
+        ksort($totals, SORT_NUMERIC);
 
         foreach ($totals as $lineItemId => $requested) {
             $available = $this->lockAndGetAvailable($lineItemId);
@@ -326,8 +346,7 @@ class BudgetLineItemService
                 return ['success' => false, 'message' => "Budget line item #{$lineItemId} no longer exists."];
             }
             if ($requested > $available) {
-                return ['success' => false, 'message' =>
-                    'Requested amount ('.number_format($requested, 2).
+                return ['success' => false, 'message' => 'Requested amount ('.number_format($requested, 2).
                     ') exceeds the remaining available balance ('.number_format($available, 2).
                     ") for budget line item #{$lineItemId}."];
             }
@@ -337,14 +356,12 @@ class BudgetLineItemService
             $amount = App\QuotedValue(round($requested, 2), DataType::NUMBER, 'DB');
             App\Execute(
                 "INSERT INTO {$this->tableEarmark} (budget_line_item_id, allocation_id, budget_allocation_project_id, amount, original_amount, status, balance_applied)
-                 VALUES ({$lineItemId}, {$allocationId}, {$budgetAllocationProjectId}, {$amount}, {$amount}, 'active', TRUE)",
+                 VALUES ({$lineItemId}, {$allocationId}, {$budgetAllocationProjectId}, {$amount}, {$amount}, 'active', FALSE)",
                 'DB'
             );
             App\Execute(
                 "UPDATE {$this->table}
-                 SET suggested_amount = suggested_amount - {$amount},
-                     account_payable  = account_payable  + {$amount},
-                     obligation       = obligation       + {$amount}
+                 SET account_payable = account_payable + {$amount}
                  WHERE budget_line_item_id = {$lineItemId}",
                 'DB'
             );
@@ -354,18 +371,23 @@ class BudgetLineItemService
     }
 
     /**
-     * Converts (part of) a parent CBA's earmark into a real obligation — called when an RFA/LAA
-     * referencing that CBA (its parent_id) reaches Approved. For each distinct COB in the RFA/LAA's own
+     * Converts (part of) a parent CBA's earmark into a real obligation — called when an RFA/LAA reaches
+     * Approved, once per THIS RFA/LAA's own project block, against THAT block's own parent CBA
+     * ($parentAllocationId — fims.budget_allocation_project.parent_allocation_id; an RFA/LAA can draw from
+     * several different parent CBAs at once, one per block). For each distinct COB in the block's own
      * line_transaction (lines against the same COB totalled together first):
      *   - the parent CBA's active earmark row for that COB is reduced by the drawn amount — fully drawn
      *     -> flips to 'converted' (amount zeroed); partially drawn -> stays 'active' with the smaller
      *     remaining amount, so a later RFA/LAA can still draw down what's left;
      *   - a new 'converted' row is inserted, attributed to this RFA/LAA's OWN allocation_id, so what
-     *     each RFA/LAA actually converted stays traceable independently of what the CBA still has left;
-     *   - budget_line_items.obligation is increased by the same amount — ONLY when the parent's earmark row predates
-     *     createForApproval()'s own line-item update (balance_applied = FALSE). A CBA approved under the current rule
-     *     already added its whole amount to obligation (and account_payable) when it was approved, so its RFA/LAA draws
-     *     change nothing on the line item — adding it again would count the same money twice.
+     *     each RFA/LAA actually converted stays traceable independently of what the CBA still has left.
+     *     It also records source_earmark_id — the EXACT parent earmark row it just decremented — so a
+     *     later reversal (reverseConversions() / restoreParentEarmark()) restores that exact row instead
+     *     of re-matching project_code against a parent that may have several blocks drawing the same COB;
+     *   - budget_line_items.obligation is increased by the same amount, UNCONDITIONALLY — an RFA/LAA's
+     *     approval is the ONLY thing that ever writes this column (its sole counterpart is
+     *     reverseConversions(), -R, when an Approved RFA/LAA is deleted). A CBA/CFA's own approval never
+     *     touches obligation at all (createForApproval()) — it only reserves.
      * Refuses (nothing written, caller should roll back) if the CBA has no active earmark for a COB at
      * all, or if the drawn amount for any COB exceeds what's still actively earmarked there.
      *
@@ -387,8 +409,7 @@ class BudgetLineItemService
             'DB'
         );
         if ($parentBlockId <= 0) {
-            return ['success' => false, 'message' =>
-                "Parent CBA #{$parentAllocationId} has no project block matching '{$parentProjectCode}'."];
+            return ['success' => false, 'message' => "Parent CBA #{$parentAllocationId} has no project block matching '{$parentProjectCode}'."];
         }
 
         $totals = [];
@@ -396,6 +417,9 @@ class BudgetLineItemService
             $id = $line['budget_line_item_id'];
             $totals[$id] = ($totals[$id] ?? 0) + $line['requested_amount'];
         }
+        // Lock every line item this call touches in a consistent order (BudgetLineBalanceSql's locking
+        // contract) so two concurrent multi-line approvals can never deadlock against each other.
+        ksort($totals, SORT_NUMERIC);
 
         // Validate every COB first (locking its budget_line_items row and the parent's earmark row for it) —
         // nothing is written until every COB in this request has enough still actively earmarked.
@@ -404,19 +428,17 @@ class BudgetLineItemService
             App\ExecuteRow("SELECT 1 FROM {$this->table} WHERE budget_line_item_id = {$lineItemId} FOR UPDATE", 'DB');
 
             $earmark = App\ExecuteRow(
-                "SELECT earmark_id, amount, balance_applied FROM {$this->tableEarmark}
+                "SELECT earmark_id, amount FROM {$this->tableEarmark}
                  WHERE allocation_id = {$parentAllocationId} AND budget_line_item_id = {$lineItemId} AND status = 'active'
                    AND budget_allocation_project_id = {$parentBlockId}
                  FOR UPDATE",
                 'DB'
             );
             if (!$earmark) {
-                return ['success' => false, 'message' =>
-                    "Parent CBA #{$parentAllocationId}'s project '{$parentProjectCode}' has no active earmark for budget line item #{$lineItemId}."];
+                return ['success' => false, 'message' => "Parent CBA #{$parentAllocationId}'s project '{$parentProjectCode}' has no active earmark for budget line item #{$lineItemId}."];
             }
             if ($requested > (float) $earmark['amount']) {
-                return ['success' => false, 'message' =>
-                    'Requested amount ('.number_format($requested, 2).
+                return ['success' => false, 'message' => 'Requested amount ('.number_format($requested, 2).
                     ') exceeds what the parent CBA still has actively earmarked ('.number_format((float) $earmark['amount'], 2).
                     ") for budget line item #{$lineItemId}."];
             }
@@ -443,28 +465,22 @@ class BudgetLineItemService
 
             $amount = App\QuotedValue($requested, DataType::NUMBER, 'DB');
             App\Execute(
-                "INSERT INTO {$this->tableEarmark} (budget_line_item_id, allocation_id, budget_allocation_project_id, amount, original_amount, status, released_at)
-                 VALUES ({$lineItemId}, {$allocationId}, {$budgetAllocationProjectId}, {$amount}, {$amount}, 'converted', CURRENT_TIMESTAMP)",
+                "INSERT INTO {$this->tableEarmark} (budget_line_item_id, allocation_id, budget_allocation_project_id, amount, original_amount, status, released_at, source_earmark_id)
+                 VALUES ({$lineItemId}, {$allocationId}, {$budgetAllocationProjectId}, {$amount}, {$amount}, 'converted', CURRENT_TIMESTAMP, {$earmark['earmark_id']})",
                 'DB'
             );
 
-            // A parent CBA/CFA whose line item was already charged at its own approval has nothing left to add here.
-            if (!$this->isTrue($earmark['balance_applied'] ?? false)) {
-                App\Execute(
-                    "UPDATE {$this->table} SET obligation = obligation + ".App\QuotedValue($requested, DataType::NUMBER, 'DB')."
-                     WHERE budget_line_item_id = {$lineItemId}",
-                    'DB'
-                );
-            }
+            // The real financial commitment — see this method's doc comment: obligation has exactly one
+            // other writer, reverseConversions(), which undoes this same amount if this RFA/LAA is later
+            // deleted while Approved.
+            App\Execute(
+                "UPDATE {$this->table} SET obligation = obligation + ".App\QuotedValue($requested, DataType::NUMBER, 'DB')."
+                 WHERE budget_line_item_id = {$lineItemId}",
+                'DB'
+            );
         }
 
         return ['success' => true];
-    }
-
-    /** A Postgres boolean as the driver hands it back: true / 't' / 'true' / '1' / 1. */
-    private function isTrue(mixed $v): bool
-    {
-        return $v === true || $v === 1 || $v === '1' || $v === 't' || $v === 'true';
     }
 
     /**
@@ -491,8 +507,7 @@ class BudgetLineItemService
             'DB'
         );
         if ($parentBlockId <= 0) {
-            return ['success' => false, 'message' =>
-                "Parent CBA #{$parentAllocationId} has no project block matching '{$parentProjectCode}'."];
+            return ['success' => false, 'message' => "Parent CBA #{$parentAllocationId} has no project block matching '{$parentProjectCode}'."];
         }
 
         $totals = [];
@@ -509,12 +524,10 @@ class BudgetLineItemService
                 'DB'
             );
             if (!$earmark) {
-                return ['success' => false, 'message' =>
-                    "Parent CBA #{$parentAllocationId}'s project '{$parentProjectCode}' has no active earmark for budget line item #{$lineItemId}."];
+                return ['success' => false, 'message' => "Parent CBA #{$parentAllocationId}'s project '{$parentProjectCode}' has no active earmark for budget line item #{$lineItemId}."];
             }
             if ($requested > (float) $earmark['amount']) {
-                return ['success' => false, 'message' =>
-                    'Requested amount ('.number_format($requested, 2).
+                return ['success' => false, 'message' => 'Requested amount ('.number_format($requested, 2).
                     ') exceeds the parent CBA\'s available balance ('.number_format((float) $earmark['amount'], 2).
                     ") for budget line item #{$lineItemId}."];
             }
@@ -524,41 +537,191 @@ class BudgetLineItemService
     }
 
     /**
-     * Frees whatever an allocation is holding (e.g. it was deleted after being Approved):
-     *   1. gives back what createForApproval() took from each line item — suggested_amount + original_amount,
-     *      account_payable - original_amount, obligation - original_amount — for every one of its earmark rows
-     *      that is balance_applied and not yet released ('active', or 'converted' = fully drawn by RFAs/LAAs, which
-     *      add nothing to the line item themselves; original_amount is the figure that was charged). A row from
-     *      before that rule (balance_applied = FALSE) never took anything, so nothing is given back for it;
-     *   2. marks those rows, and every other still-active one, 'released' — which also makes a second call a no-op.
-     * An RFA/LAA's own 'converted' rows (balance_applied = FALSE) are left exactly as they are.
-     * Runs inside the caller's transaction (BudgetAllocationService::delete() opens one).
+     * Reverses what convertEarmarkForRfaApproval() did, for one Approved RFA/LAA being deleted — the fix
+     * for a confirmed gap: an RFA/LAA's own 'converted' earmark rows never set balance_applied, so the
+     * old releaseForAllocation() (keyed on that flag) never matched them and never gave anything back.
+     * For each of this allocation's own 'converted' rows (already locked FOR UPDATE by the caller):
+     *   - restores the parent CBA's earmark row this draw came from — see restoreParentEarmark(): the
+     *     EXACT row by source_earmark_id when the row carries one, or (legacy rows converted before that
+     *     column existed) a re-match against the block's own parent_allocation_id. Each row's OWN block
+     *     may have its OWN parent (an RFA/LAA can draw from several CBAs at once), so this is resolved
+     *     per row, never once for the whole allocation;
+     *   - decrements budget_line_items.obligation by the total R reversed for that line item (logged
+     *     first, not silently clamped, if that would go negative — a sign of drift elsewhere);
+     *   - retires this row itself (status = 'released'); amount/original_amount are left intact as an
+     *     audit trail of what this RFA/LAA once drew.
+     * Runs inside the caller's transaction (releaseForAllocation() / BudgetAllocationService::delete()).
+     *
+     * $convertedRows: this allocation's own earmark rows with status = 'converted' — each needs
+     * earmark_id, budget_line_item_id, budget_allocation_project_id, amount, source_earmark_id.
+     */
+    private function reverseConversions(int $allocationId, array $convertedRows): void
+    {
+        $byLineItem = [];
+        foreach ($convertedRows as $row) {
+            $byLineItem[(int) $row['budget_line_item_id']][] = $row;
+        }
+        // Lock every affected line item in ascending id order before touching its earmark rows
+        // (BudgetLineBalanceSql's locking contract) — consistent order across every writer, so two
+        // concurrent deletions can never deadlock against each other.
+        ksort($byLineItem, SORT_NUMERIC);
+
+        foreach ($byLineItem as $lineItemId => $rowsForItem) {
+            $current = (float) (App\ExecuteRow(
+                "SELECT obligation FROM {$this->table} WHERE budget_line_item_id = {$lineItemId} FOR UPDATE",
+                'DB'
+            )['obligation'] ?? 0);
+
+            $totalReversed = 0.0;
+            foreach ($rowsForItem as $row) {
+                $amount = round((float) $row['amount'], 2);
+                if ($amount > 0) {
+                    $totalReversed += $amount;
+                    $sourceEarmarkId = isset($row['source_earmark_id']) && $row['source_earmark_id'] !== null
+                        ? (int) $row['source_earmark_id'] : null;
+                    $this->restoreParentEarmark($allocationId, $lineItemId, (int) $row['budget_allocation_project_id'], $amount, $sourceEarmarkId);
+                }
+
+                App\Execute(
+                    "UPDATE {$this->tableEarmark}
+                     SET status = 'released', released_at = COALESCE(released_at, CURRENT_TIMESTAMP)
+                     WHERE earmark_id = ".(int) $row['earmark_id'],
+                    'DB'
+                );
+            }
+
+            if ($totalReversed <= 0) {
+                continue;
+            }
+            if ($current < $totalReversed) {
+                App\LogError("BudgetLineItemService::reverseConversions — allocation #{$allocationId}: line item #{$lineItemId}'s obligation ({$current}) is less than the amount being reversed ({$totalReversed}).");
+            }
+            App\Execute(
+                'UPDATE '.$this->table.' SET obligation = GREATEST(0, obligation - '
+                    .App\QuotedValue(round($totalReversed, 2), DataType::NUMBER, 'DB')
+                    ." ) WHERE budget_line_item_id = {$lineItemId}",
+                'DB'
+            );
+        }
+    }
+
+    /**
+     * Restores $amount to the parent CBA's earmark row for one (line item, project block) of an
+     * RFA/LAA being reversed — see reverseConversions(). Two paths:
+     *   - $sourceEarmarkId set (every row converted after this column was introduced): restore that
+     *     EXACT row by id — no re-matching, so it is correct regardless of how many parents this
+     *     RFA/LAA draws from, and immune to the parent/project of the own block having changed since
+     *     approval;
+     *   - $sourceEarmarkId null (a legacy row converted before the column existed): fall back to the
+     *     old re-match — $ownBlockId's own parent_allocation_id, then that parent's block of the same
+     *     project_code as $ownBlockId.
+     * Either way, when the parent row can't be found (the parent was itself deleted, its matching block
+     * no longer exists, or the source row id is stale), the restore is skipped and logged — never
+     * silently invents money.
+     */
+    private function restoreParentEarmark(int $allocationId, int $lineItemId, int $ownBlockId, float $amount, ?int $sourceEarmarkId): void
+    {
+        if ($sourceEarmarkId !== null && $sourceEarmarkId > 0) {
+            $parentEarmark = App\ExecuteRow(
+                "SELECT earmark_id FROM {$this->tableEarmark} WHERE earmark_id = {$sourceEarmarkId} FOR UPDATE",
+                'DB'
+            );
+        } else {
+            $parentId = (int) App\ExecuteScalar(
+                "SELECT parent_allocation_id FROM {$this->tableAllocationProject} WHERE budget_allocation_project_id = {$ownBlockId}",
+                'DB'
+            );
+            $parentBlockId = 0;
+            if ($parentId > 0) {
+                $projectCode = (string) App\ExecuteScalar(
+                    "SELECT project_code FROM {$this->tableAllocationProject} WHERE budget_allocation_project_id = {$ownBlockId}",
+                    'DB'
+                );
+                if ($projectCode !== '') {
+                    $parentBlockId = (int) App\ExecuteScalar(
+                        "SELECT budget_allocation_project_id FROM {$this->tableAllocationProject}
+                         WHERE allocation_id = {$parentId} AND project_code = ".$this->str($projectCode).' AND deleted_at IS NULL',
+                        'DB'
+                    );
+                }
+            }
+
+            $parentEarmark = $parentBlockId > 0 ? App\ExecuteRow(
+                "SELECT earmark_id FROM {$this->tableEarmark}
+                 WHERE allocation_id = {$parentId} AND budget_line_item_id = {$lineItemId}
+                   AND budget_allocation_project_id = {$parentBlockId} AND status IN ('active', 'converted')
+                 FOR UPDATE",
+                'DB'
+            ) : null;
+        }
+
+        if (!$parentEarmark) {
+            App\LogError("BudgetLineItemService::reverseConversions — allocation #{$allocationId}'s parent earmark for line item #{$lineItemId} (amount ".round($amount, 2).') could not be found; its draw was not restored to the parent CBA.');
+
+            return;
+        }
+
+        App\Execute(
+            "UPDATE {$this->tableEarmark}
+             SET amount = amount + ".App\QuotedValue(round($amount, 2), DataType::NUMBER, 'DB').", status = 'active', released_at = NULL
+             WHERE earmark_id = {$parentEarmark['earmark_id']}",
+            'DB'
+        );
+    }
+
+    /**
+     * Frees whatever an allocation is holding (e.g. it was deleted after being Approved). Dispatches on
+     * the allocation's own type:
+     *   - CBA / CFA: reverses its account_payable charge — createForApproval()'s only remaining
+     *     line-item write under the stable-suggested_amount model — for every earmark row that
+     *     actually carried one (balance_applied = TRUE; kept exactly as this column's pre-existing,
+     *     out-of-scope behavior already worked, same rows and same original_amount basis as before).
+     *     suggested_amount / obligation are never touched by a CBA/CFA's approval any more, so there is
+     *     nothing else to give back.
+     *   - RFA / LAA: reverseConversions() — the fix for the confirmed gap: reverses obligation and
+     *     restores the parent CBA's earmark for every one of this allocation's own 'converted' rows.
+     * Either way, every remaining 'active'/'converted' row of this allocation is swept to 'released' at
+     * the end — which also makes a second call a no-op. Runs inside the caller's transaction
+     * (BudgetAllocationService::delete() opens one).
      */
     public function releaseForAllocation(int $allocationId): void
     {
-        $held = App\ExecuteRows(
-            "SELECT earmark_id, budget_line_item_id, original_amount FROM {$this->tableEarmark}
-             WHERE allocation_id = {$allocationId} AND balance_applied = TRUE AND status IN ('active', 'converted')
-             ORDER BY earmark_id FOR UPDATE",
+        $type = strtoupper(trim((string) App\ExecuteScalar(
+            "SELECT allocation_type FROM {$this->tableBudgetAllocation} WHERE allocation_id = {$allocationId}",
             'DB'
-        ) ?: [];
+        )));
 
-        foreach ($held as $row) {
-            $lineItemId = (int) $row['budget_line_item_id'];
-            $amount     = App\QuotedValue(round((float) $row['original_amount'], 2), DataType::NUMBER, 'DB');
-            App\Execute(
-                "UPDATE {$this->table}
-                 SET suggested_amount = suggested_amount + {$amount},
-                     account_payable  = account_payable  - {$amount},
-                     obligation       = obligation       - {$amount}
-                 WHERE budget_line_item_id = {$lineItemId}",
+        if ($type === 'RFA' || $type === 'LAA') {
+            $converted = App\ExecuteRows(
+                "SELECT earmark_id, budget_line_item_id, budget_allocation_project_id, amount, source_earmark_id FROM {$this->tableEarmark}
+                 WHERE allocation_id = {$allocationId} AND status = 'converted'
+                 ORDER BY budget_line_item_id, earmark_id FOR UPDATE",
                 'DB'
-            );
+            ) ?: [];
+            if ($converted) {
+                $this->reverseConversions($allocationId, $converted);
+            }
+        } else {
+            $held = App\ExecuteRows(
+                "SELECT earmark_id, budget_line_item_id, original_amount FROM {$this->tableEarmark}
+                 WHERE allocation_id = {$allocationId} AND balance_applied = TRUE AND status IN ('active', 'converted')
+                 ORDER BY earmark_id FOR UPDATE",
+                'DB'
+            ) ?: [];
+
+            foreach ($held as $row) {
+                $amount = App\QuotedValue(round((float) $row['original_amount'], 2), DataType::NUMBER, 'DB');
+                App\Execute(
+                    "UPDATE {$this->table} SET account_payable = account_payable - {$amount}
+                     WHERE budget_line_item_id = ".(int) $row['budget_line_item_id'],
+                    'DB'
+                );
+            }
         }
 
         App\Execute(
             "UPDATE {$this->tableEarmark} SET status = 'released', released_at = COALESCE(released_at, CURRENT_TIMESTAMP)
-             WHERE allocation_id = {$allocationId} AND (status = 'active' OR (status = 'converted' AND balance_applied = TRUE))",
+             WHERE allocation_id = {$allocationId} AND status IN ('active', 'converted')",
             'DB'
         );
     }
@@ -594,13 +757,13 @@ class BudgetLineItemService
                     LEFT JOIN {$this->tableStatus} st ON st.id = a.status_id
                     LEFT JOIN {$this->tableRc} rc ON rc.rc_id = a.requesting_rc_id
                     LEFT JOIN {$this->tableAllocationProject} bap ON bap.budget_allocation_project_id = e.budget_allocation_project_id
-                    WHERE e.budget_line_item_id = " . (int) $budgetLineItemId . "
+                    WHERE e.budget_line_item_id = ".(int) $budgetLineItemId."
                       AND UPPER(a.allocation_type) IN ('CBA', 'CFA')
                     ORDER BY e.created_at ASC, e.earmark_id ASC";
 
             return ['success' => true, 'data' => App\ExecuteRows($sql, 'DB') ?: []];
         } catch (\Exception $e) {
-            App\LogError('BudgetLineItemService::fetchEarmarks ' . $e->getMessage());
+            App\LogError('BudgetLineItemService::fetchEarmarks '.$e->getMessage());
 
             return ['success' => false, 'message' => 'Failed to load earmarks.'];
         }
@@ -619,7 +782,7 @@ class BudgetLineItemService
                     LEFT JOIN {$this->tableProject} pj ON pj.project_code = brp.project_code
                     LEFT JOIN {$this->tableChartOfAccounts} coa ON coa.account_id = li.account_id
                     LEFT JOIN fims.settings_status st ON st.id = br.status_id
-                    WHERE li.budget_line_item_id = " . (int) $id;
+                    WHERE li.budget_line_item_id = ".(int) $id;
 
             $data = App\ExecuteRow($sql, 'DB');
 
@@ -635,24 +798,24 @@ class BudgetLineItemService
 
     /**
      * @param array $body budget_reference_number, account_id, proposed_amount, particulars, and OPTIONALLY
-     *                     budget_req_project_id — absent/blank for a COE request's line item (no Project at
-     *                     all; the column is nullable precisely for this — see migration 03's own comment).
+     *                    budget_req_project_id — absent/blank for a COE request's line item (no Project at
+     *                    all; the column is nullable precisely for this — see migration 03's own comment)
      */
     public function create(array $body): array
     {
         try {
             $budgetReferenceNumber = trim((string) ($body['budget_reference_number'] ?? ''));
-            $budgetReqProjectId    = trim((string) ($body['budget_req_project_id'] ?? ''));
-            $accountId             = trim((string) ($body['account_id'] ?? ''));
-            $amount                = $body['proposed_amount'] ?? $body['amount'] ?? '';
-            $particulars           = trim((string) ($body['particulars'] ?? ''));
+            $budgetReqProjectId = trim((string) ($body['budget_req_project_id'] ?? ''));
+            $accountId = trim((string) ($body['account_id'] ?? ''));
+            $amount = $body['proposed_amount'] ?? $body['amount'] ?? '';
+            $particulars = trim((string) ($body['particulars'] ?? ''));
 
             if ($budgetReferenceNumber === '' || $accountId === '' || $amount === '' || !is_numeric($amount) || $particulars === '') {
                 return ['success' => false, 'message' => 'budget_reference_number, account_id, a numeric proposed_amount, and particulars are required.'];
             }
 
             $header = App\ExecuteRow(
-                "SELECT budget_reference_number FROM {$this->tableBudgetReq} WHERE budget_reference_number = " . App\QuotedValue($budgetReferenceNumber, DataType::STRING, 'DB'),
+                "SELECT budget_reference_number FROM {$this->tableBudgetReq} WHERE budget_reference_number = ".App\QuotedValue($budgetReferenceNumber, DataType::STRING, 'DB'),
                 'DB'
             );
             if (!$header) {
@@ -661,7 +824,7 @@ class BudgetLineItemService
 
             if ($budgetReqProjectId !== '') {
                 $project = App\ExecuteRow(
-                    "SELECT budget_req_project_id FROM {$this->tableBudgetReqProject} WHERE budget_req_project_id = " . (int) $budgetReqProjectId,
+                    "SELECT budget_req_project_id FROM {$this->tableBudgetReqProject} WHERE budget_req_project_id = ".(int) $budgetReqProjectId,
                     'DB'
                 );
                 if (!$project) {
@@ -671,7 +834,7 @@ class BudgetLineItemService
 
             $account = App\ExecuteRow(
                 "SELECT account_id FROM {$this->tableChartOfAccounts}
-                 WHERE account_id = " . App\QuotedValue($accountId, DataType::STRING, 'DB') . "
+                 WHERE account_id = ".App\QuotedValue($accountId, DataType::STRING, 'DB')."
                    AND status = 'Active' AND posting_allowed = TRUE",
                 'DB'
             );
@@ -680,18 +843,18 @@ class BudgetLineItemService
             }
 
             $sql = "INSERT INTO {$this->table} (budget_reference_number, budget_req_project_id, account_id, proposed_amount, particulars)
-                    VALUES (" . App\QuotedValue($budgetReferenceNumber, DataType::STRING, 'DB') . ', '
-                        . ($budgetReqProjectId !== '' ? (int) $budgetReqProjectId : 'NULL') . ', '
-                        . App\QuotedValue($accountId, DataType::STRING, 'DB') . ', '
-                        . App\QuotedValue($amount, DataType::NUMBER, 'DB') . ', '
-                        . App\QuotedValue($particulars, DataType::STRING, 'DB') . ')
+                    VALUES (".App\QuotedValue($budgetReferenceNumber, DataType::STRING, 'DB').', '
+                        .($budgetReqProjectId !== '' ? (int) $budgetReqProjectId : 'NULL').', '
+                        .App\QuotedValue($accountId, DataType::STRING, 'DB').', '
+                        .App\QuotedValue($amount, DataType::NUMBER, 'DB').', '
+                        .App\QuotedValue($particulars, DataType::STRING, 'DB').')
                     RETURNING budget_line_item_id';
 
             $row = App\ExecuteRow($sql, 'DB');
 
             return [
-                'success'             => true,
-                'message'             => 'Line item created successfully.',
+                'success' => true,
+                'message' => 'Line item created successfully.',
                 'budget_line_item_id' => $row['budget_line_item_id'] ?? null,
             ];
         } catch (\Exception $e) {
@@ -707,8 +870,8 @@ class BudgetLineItemService
                 return $check;
             }
 
-            $accountId   = trim((string) ($body['account_id'] ?? ''));
-            $amount      = $body['proposed_amount'] ?? $body['amount'] ?? null;
+            $accountId = trim((string) ($body['account_id'] ?? ''));
+            $amount = $body['proposed_amount'] ?? $body['amount'] ?? null;
             $particulars = trim((string) ($body['particulars'] ?? ''));
 
             $setParts = [];
@@ -716,20 +879,20 @@ class BudgetLineItemService
             if ($accountId !== '') {
                 $account = App\ExecuteRow(
                     "SELECT account_id FROM {$this->tableChartOfAccounts}
-                     WHERE account_id = " . App\QuotedValue($accountId, DataType::STRING, 'DB') . "
+                     WHERE account_id = ".App\QuotedValue($accountId, DataType::STRING, 'DB')."
                        AND status = 'Active' AND posting_allowed = TRUE",
                     'DB'
                 );
                 if (!$account) {
                     return ['success' => false, 'message' => "Chart of accounts entry '{$accountId}' does not exist or is not postable."];
                 }
-                $setParts[] = 'account_id = ' . App\QuotedValue($accountId, DataType::STRING, 'DB');
+                $setParts[] = 'account_id = '.App\QuotedValue($accountId, DataType::STRING, 'DB');
             }
             if ($amount !== null && $amount !== '' && is_numeric($amount)) {
-                $setParts[] = 'proposed_amount = ' . App\QuotedValue($amount, DataType::NUMBER, 'DB');
+                $setParts[] = 'proposed_amount = '.App\QuotedValue($amount, DataType::NUMBER, 'DB');
             }
             if ($particulars !== '') {
-                $setParts[] = 'particulars = ' . App\QuotedValue($particulars, DataType::STRING, 'DB');
+                $setParts[] = 'particulars = '.App\QuotedValue($particulars, DataType::STRING, 'DB');
             }
 
             if (empty($setParts)) {
@@ -737,7 +900,7 @@ class BudgetLineItemService
             }
 
             App\Execute(
-                "UPDATE {$this->table} SET " . implode(', ', $setParts) . ' WHERE budget_line_item_id = ' . (int) $id,
+                "UPDATE {$this->table} SET ".implode(', ', $setParts).' WHERE budget_line_item_id = '.(int) $id,
                 'DB'
             );
 
@@ -759,7 +922,7 @@ class BudgetLineItemService
      *   key present, same as the line's current account -> left unchanged (nothing to check)
      *   key present, other id  -> must be an Active, postable fims.chart_of_accounts entry (same rule as update())
      *
-     * @param array $items [['budget_line_item_id' => .., 'type_of_fund_id' => .., 'component_id' => .., 'suggested_amount' => .., 'account_id' => ..], ...]
+     * @param array $items      [['budget_line_item_id' => .., 'type_of_fund_id' => .., 'component_id' => .., 'suggested_amount' => .., 'account_id' => ..], ...]
      * @param bool  $requireAll when true, every item must carry a type of fund (suggested_amount, account_id, and
      *                          component_id all stay optional — component_id is hidden in Budget Processing's own
      *                          form and no longer required even when this is true, see the check below)
@@ -771,12 +934,12 @@ class BudgetLineItemService
         }
 
         // Each distinct lookup id is verified once (and must not be soft-deleted).
-        $validFunds      = [];
+        $validFunds = [];
         $validComponents = [];
-        $validAccounts   = [];
+        $validAccounts = [];
 
         foreach ($items as $i => $item) {
-            $n  = $i + 1;
+            $n = $i + 1;
             $id = (int) ($item['budget_line_item_id'] ?? 0);
 
             if ($id <= 0) {
@@ -786,7 +949,7 @@ class BudgetLineItemService
             // Must be a line item of THIS budget request, not someone else's.
             $exists = App\ExecuteRow(
                 "SELECT budget_line_item_id, account_id FROM {$this->table}
-                 WHERE budget_line_item_id = {$id} AND budget_reference_number = " . App\QuotedValue($budgetReferenceNumber, DataType::STRING, 'DB'),
+                 WHERE budget_line_item_id = {$id} AND budget_reference_number = ".App\QuotedValue($budgetReferenceNumber, DataType::STRING, 'DB'),
                 'DB'
             );
             if (!$exists) {
@@ -796,7 +959,7 @@ class BudgetLineItemService
             // account_id (see the method comment): null = leave the line's account as it is.
             $accountId = null;
             if (array_key_exists('account_id', $item)) {
-                $value     = $item['account_id'];
+                $value = $item['account_id'];
                 $accountId = is_scalar($value) ? trim((string) $value) : '';
                 if ($accountId === '') {
                     return "Line item #{$id}: account_id cannot be blank.";
@@ -807,7 +970,7 @@ class BudgetLineItemService
                     if (!isset($validAccounts[$accountId])) {
                         $validAccounts[$accountId] = (bool) App\ExecuteRow(
                             "SELECT account_id FROM {$this->tableChartOfAccounts}
-                             WHERE account_id = " . App\QuotedValue($accountId, DataType::STRING, 'DB') . "
+                             WHERE account_id = ".App\QuotedValue($accountId, DataType::STRING, 'DB')."
                                AND status = 'Active' AND posting_allowed = TRUE",
                             'DB'
                         );
@@ -818,7 +981,7 @@ class BudgetLineItemService
                 }
             }
 
-            $fundId      = $item['type_of_fund_id'] ?? null;
+            $fundId = $item['type_of_fund_id'] ?? null;
             $componentId = $item['component_id'] ?? null;
 
             if ($fundId !== null && $fundId !== '') {
@@ -876,18 +1039,22 @@ class BudgetLineItemService
             }
 
             $setParts = [
-                'type_of_fund_id = ' . ($fundId ?? 'NULL'),
-                'component_id = ' . ($componentId ?? 'NULL'),
+                'type_of_fund_id = '.($fundId ?? 'NULL'),
+                'component_id = '.($componentId ?? 'NULL'),
             ];
             if ($suggested !== null) {
-                $setParts[] = 'suggested_amount = ' . App\QuotedValue($suggested, DataType::NUMBER, 'DB');
+                $setParts[] = 'suggested_amount = '.App\QuotedValue($suggested, DataType::NUMBER, 'DB');
+                // revised_amount is NOT written here: the table generates it (suggested_amount + adjustment —
+                // "54 - budget_line_items_revised_amount_generated.sql"), so it follows the Suggested Amount by itself
+                // (a line Budget Processing endorses has no adjustment yet, so it starts out equal to it) and a later
+                // approved Budget Revision moves it through the line's adjustment. Writing it is an error.
             }
             if ($accountId !== null) {
-                $setParts[] = 'account_id = ' . App\QuotedValue($accountId, DataType::STRING, 'DB');
+                $setParts[] = 'account_id = '.App\QuotedValue($accountId, DataType::STRING, 'DB');
             }
 
             App\Execute(
-                "UPDATE {$this->table} SET " . implode(', ', $setParts) . " WHERE budget_line_item_id = {$id}",
+                "UPDATE {$this->table} SET ".implode(', ', $setParts)." WHERE budget_line_item_id = {$id}",
                 'DB'
             );
         }
@@ -903,7 +1070,7 @@ class BudgetLineItemService
                 return $check;
             }
 
-            App\Execute("DELETE FROM {$this->table} WHERE budget_line_item_id = " . (int) $id, 'DB');
+            App\Execute("DELETE FROM {$this->table} WHERE budget_line_item_id = ".(int) $id, 'DB');
 
             return ['success' => true, 'message' => "Line item #{$id} deleted successfully."];
         } catch (\Exception $e) {
