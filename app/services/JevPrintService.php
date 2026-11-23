@@ -151,7 +151,8 @@ class JevPrintService
             'temp_number'  => $temp ? $number : '',
             'date'         => $t('jev_date') === '' ? '' : PrintService::longDate($t('jev_date')),
             'office'       => mb_strtoupper($t('office') ?: 'MAIN OFFICE'),
-            'journal'      => mb_strtoupper($t('journal')),   // GJ / CKDJ / ADADJ — the box's 2nd line ('' = none)
+            // CKDJ / ADADJ — the box's 2nd line ('' = none). GJ (General Journal) is only a category, never printed.
+            'journal'      => mb_strtoupper($t('journal')) === 'GJ' ? '' : mb_strtoupper($t('journal')),
             'rows'         => $rows,
             'min_rows'     => self::MIN_ENTRY_ROWS,
             'reference_no' => $t('reference_no'),

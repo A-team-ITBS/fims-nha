@@ -51,6 +51,14 @@ $app->get("/cash-position/updates/activity-log", function ($request, $response) 
     return $response->withHeader('Content-Type', 'application/json')->write($service->getActivityLog($limit));
 });
 
+// Row-click drill-down on the Position Updates list — every disbursement
+// transaction behind that row's own bank_account_id/position_date.
+$app->get("/cash-position/updates/transactions", function ($request, $response) {
+    $service = new Service\CashPositionService();
+    $p = $request->getQueryParams();
+    return $response->withHeader('Content-Type', 'application/json')->write($service->getDisbursementTransactions((int) ($p['bank_account_id'] ?? 0), $p['position_date'] ?? ''));
+});
+
 $app->get("/cash-position/updates/{id}", function ($request, $response, $args) {
     $service = new Service\CashPositionService();
     return $response->withHeader('Content-Type', 'application/json')->write($service->getCashPositionById($args['id']));
@@ -149,8 +157,3 @@ $app->get("/cash-position/soa-transactions", function ($request, $response) {
     return $response->withHeader('Content-Type', 'application/json')->write($service->getSoaTransactions($request->getQueryParams()));
 });
 
-$app->get("/cash-position/soa-balance/{bankAccountId}", function ($request, $response, $args) {
-    $service = new Service\CashPositionSoaService();
-    $asOf = $request->getQueryParams()['as_of'] ?? null;
-    return $response->withHeader('Content-Type', 'application/json')->write($service->getLatestSoaBalance($args['bankAccountId'], $asOf));
-});

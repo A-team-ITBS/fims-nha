@@ -227,6 +227,38 @@ class CashPositionService
         return $this->dataTable($params['draw'] ?? 1, $rows);
     }
 
+    // Row-click drill-down from the Position Updates list: every disbursement
+    // (direction <> 'INFLOW' — same convention getComputedBalance()'s own
+    // ledger sum uses) posted to fims.bank_transactions for this account on
+    // this exact date — i.e. the transactions that make up that row's own
+    // "− Disbursements" figure. Excludes transaction_id LIKE 'SOA-%' — an
+    // older version of CashPositionSoaService::confirmUpload() auto-posted
+    // one of these per SOA line (bankTxnId()'s own "SOA-" prefix); that's
+    // been removed (SOA upload only records the statement now, it doesn't
+    // touch this ledger), but rows it already created before the fix are
+    // still sitting in the table — this filter keeps them out of the
+    // drill-down list going forward, in addition to physically deleting the
+    // pre-existing stray rows.
+    public function getDisbursementTransactions(int $bankAccountId, string $positionDate): string
+    {
+        if ($bankAccountId <= 0 || $positionDate === '') {
+            return $this->ok([]);
+        }
+        $rows = App\ExecuteRowsAssociative(
+            "SELECT bank_transaction_id, transaction_type, transaction_id, reference_number,
+                    transaction_date, amount, description, status, counterpart, direction
+             FROM {$this->tableBankTransactions}
+             WHERE bank_account_id = {$bankAccountId}
+               AND transaction_date = " . $this->str($positionDate) . "
+               AND direction != 'INFLOW'
+               AND transaction_id NOT LIKE 'SOA-%'
+             ORDER BY bank_transaction_id",
+            'DB'
+        ) ?: [];
+
+        return $this->ok($rows);
+    }
+
     public function getCashPositionById($id)
     {
         $row = App\ExecuteRow(

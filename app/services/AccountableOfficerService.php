@@ -8,6 +8,13 @@ use PHPMaker2024\FIMS as App;
  * Accountable officers (fims.accountable_officers) — custodians of cash/property
  * per region, each optionally linked to a GL account. Name columns follow
  * uac.users' convention (first_name/middle_name/last_name/suffix).
+ *
+ * Collecting Officers used to share this same table (discriminated by an
+ * officer_type column) but now have their own, separate
+ * fims.collecting_officers table/CollectingOfficerService — this table is
+ * exclusively Accountable Officers again, which is why Fidelity Bond's
+ * bond_listings/confirmation_letter_officers/office_order_requests (FK'd to
+ * accountable_officer_id) only ever cover this kind.
  */
 class AccountableOfficerService
 {
@@ -187,6 +194,16 @@ class AccountableOfficerService
             if ($accountId !== '') {
                 $columns[] = 'coa_account_id';
                 $values[]  = $this->str($accountId);
+            }
+            // The Add form's GL/SL section lets a Sub-Ledger be picked before
+            // the officer even exists yet — create() used to silently drop
+            // it (only update() ever wrote this column), so picking GL+SL
+            // and saving in one go looked like it worked but never actually
+            // tagged the SL.
+            $slCode = trim((string) ($body['sl_code'] ?? ''));
+            if ($slCode !== '') {
+                $columns[] = 'sl_code';
+                $values[]  = $this->str($slCode);
             }
             if (array_key_exists('status', $body) && trim((string) $body['status']) !== '') {
                 $columns[] = 'status';

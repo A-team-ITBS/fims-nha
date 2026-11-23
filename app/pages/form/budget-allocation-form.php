@@ -36,6 +36,24 @@ try {
     // can't tell which RC this user belongs to: the print preview just has no requesting office, never an error page
 }
 
+// The CBA, RFA and LAA forms are printed by the Financial Management Department and by administrators: the logged-in user's RC
+// (uac.users.rc_id joined to fims.responsibility_code, $requestingRc above) must be FMD — recognised by its rc_code, NOT its
+// rc_id (the id's format differs between datasets: "013" vs "RC-013"), mirrors GlobalService::CENTRAL_REVIEW_RC_CODE — or
+// the user is a superadmin (level -1), the same people as memo-req-page.php's $_mrq_isAdmin: the built-in administrator
+// (user_id -1, no uac.users row) or a uac.users row whose user_level_id lists -1 ("-1,3"). No RC / a failed lookup is "not FMD".
+// Hiding the Print Preview button of a CBA / RFA / LAA is cosmetic: POST /print/{cba,rfa,laa} refuse everyone else (routes/print.php).
+$cbaIsAdmin = (int) $user_id === -1;
+try {
+    foreach (explode(',', (string) ExecuteScalar('SELECT user_level_id FROM uac.users WHERE user_id = ' . (int) $user_id, 'DB')) as $cbaLevel) {
+        if (trim($cbaLevel) === '-1') {
+            $cbaIsAdmin = true;
+        }
+    }
+} catch (\Throwable $e) {
+    // can't read the user's level: not an administrator, never an error page
+}
+$cbaCanPrintForm = $cbaIsAdmin || $requestingRc['rc_code'] === '35-074-0000000-032';
+
 // Generate CBA Number (placeholder — regenerated client-side unless editing)
 $cba_number = 'CBA#'.date('Y-m-d').'-'.str_pad(rand(1, 999), 3, '0', STR_PAD_LEFT);
 
@@ -1786,6 +1804,10 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 	const CBA_AS_MODAL = <?php echo $cbaAsModal ? 'true' : 'false'; ?>;
 	// the Allocation Types the including page limits this form to ([] = no limit) — see the PHP header
 	const CBA_ALLOWED_TYPES = <?php echo json_encode($cbaAllowedTypes); ?>;
+	// true when the logged-in user is of the Financial Management Department or an administrator — the only ones who print the
+	// CBA / RFA / LAA forms (the allocation types in CBA_PRINT_RESTRICTED_TYPES; a CFA is not restricted)
+	const CBA_CAN_PRINT_FORM = <?php echo $cbaCanPrintForm ? 'true' : 'false'; ?>;
+	const CBA_PRINT_RESTRICTED_TYPES = ['CBA', 'RFA', 'LAA'];
 	// created_at of the allocation being edited (set by populateEditForm). Stays
 	// null in add mode — nothing is saved yet, so the RFA print date is today's.
 	var CBA_CREATED_AT = null;
@@ -1896,6 +1918,15 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 		document.getElementById('allocation_type').addEventListener('change', toggleCbaIdRow);
 		document.getElementById('allocation_type').addEventListener('change', updateSubmitLabel);
 		document.getElementById('allocation_type').addEventListener('change', pcrApplyMode); // PR ↔ PO fields
+		// RFA / LAA printing is paused (PRP_PAUSED in readone/print-preview-readone.php): the Print button is disabled
+		// while the type is RFA or LAA. Also re-checked when the button is pointed at / focused, since edit mode sets the
+		// type without a change event.
+		document.getElementById('allocation_type').addEventListener('change', cbaSyncPrintPaused);
+		(function() {
+			var pb = document.querySelector('.btn-print');
+			if (pb) { pb.addEventListener('pointerenter', cbaSyncPrintPaused); pb.addEventListener('focus', cbaSyncPrintPaused); }
+			cbaSyncPrintPaused();
+		})();
 		document.getElementById('allocation_type').addEventListener('change', cfaApplyMode); // the CFA section
 		wireAmtInput(document.getElementById('pr_amount'));
 		wireAmtInput(document.getElementById('po_amount'));
@@ -2062,6 +2093,7 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 		// 1. Allocation type — set first since it drives visibility of several
 		//    other fields (CBA parent row, category, doc type).
 		g('allocation_type').value = a.allocation_type || 'CBA';
+		cbaSyncPrintButton();
 		toggleCbaIdRow();
 		updateSubmitLabel();
 		pcrApplyMode();
@@ -2731,7 +2763,17 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 		return type === 'RFA' || type === 'LAA';
 	}
 
+	// The CBA / RFA / LAA forms are printed by FMD users and administrators only (CBA_CAN_PRINT_FORM): on those types the Print
+	// Preview button is hidden for anyone else. CFA keeps it. Runs whenever the allocation type is set or changes.
+	function cbaSyncPrintButton() {
+		var printBtn = document.querySelector('.btn-print');
+		var typeEl = document.getElementById('allocation_type');
+		if (!printBtn || !typeEl) return;
+		printBtn.style.display = (CBA_PRINT_RESTRICTED_TYPES.indexOf(typeEl.value) >= 0 && !CBA_CAN_PRINT_FORM) ? 'none' : '';
+	}
+
 	function cbaApplyAllocationTypeVisibility() {
+		cbaSyncPrintButton();
 		var isCBA = document.getElementById('allocation_type').value === 'CBA';
 		var usesIndependentProject = cbaUsesIndependentProject();
 
@@ -6009,9 +6051,28 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 	//   CFA → CFA (Certified Funds Available — the funding-request memo FMD certifies)
 	// A Regional / District requesting office prints the regional CBA.
 	// Field names: system_docs/modules/PRINT-FORMS.md.
+	// Print paused for this type (RFA / LAA — see PRP_PAUSED in readone/print-preview-readone.php): button disabled.
+	function cbaSyncPrintPaused() {
+		var pb = document.querySelector('.btn-print');
+		if (!pb || pb.dataset.generating) return;
+		var t = (document.getElementById('allocation_type') || {}).value || '';
+		var paused = typeof prp_isPaused === 'function' && prp_isPaused(t);
+		pb.disabled = paused;
+		pb.style.opacity = paused ? '.45' : '';
+		pb.style.cursor = paused ? 'not-allowed' : '';
+		pb.title = paused ? 'Printing the ' + t + ' is paused for now' : '';
+	}
+
 	async function printCBA() {
 		var btn = document.querySelector('.btn-print');
 		if (!btn) return;
+		// The CBA / RFA / LAA forms are for FMD users and administrators to print (the button is hidden for anyone else; this and
+		// the API are the real checks).
+		var printGateType = (document.getElementById('allocation_type') || {}).value || 'CBA';
+		if (CBA_PRINT_RESTRICTED_TYPES.indexOf(printGateType) >= 0 && !CBA_CAN_PRINT_FORM) {
+			cbaNotify('Not allowed', 'Only the Financial Management Department or an administrator can print the ' + printGateType + '.', 'error');
+			return;
+		}
 		btn.disabled = true;
 		btn.innerHTML = '<span>Generating&hellip;</span>';
 
@@ -6088,6 +6149,10 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 				date: CBA_CREATED_AT ? new Date(CBA_CREATED_AT).toLocaleDateString('en-US', { month: 'long', day: allocType === 'LAA' ? 'numeric' : '2-digit', year: 'numeric' }) : null,
 			};
 			if (isRegionalOffice) payload.issuing_office = 'REGIONAL';
+			// A CBA prints ONE amount: the Total Requested Amount (requested_amount_raw mirrors it), else the allocated one.
+			// The regional CBA reads `amount ?? allocated_amount ?? requested_amount`, and an EMPTY allocated_amount ('') would
+			// win over the requested one and print P0.00 — so say the amount outright, as PrintPayloadService does for a saved CBA.
+			if (allocType === 'CBA') payload.amount = v('requested_amount_raw') || v('allocated_amount_raw');
 
 			// ── CFA → the CAF print form (Certificate as to Availability of Funds) ─
 			// ── CFA → the CFA funding-request memo (CfaPrintService) ──────────────

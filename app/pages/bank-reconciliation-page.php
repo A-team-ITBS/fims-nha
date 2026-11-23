@@ -78,7 +78,7 @@ $brCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
          MODAL: Bank Reconciliation worksheet
     ══════════════════════════════════════════════ -->
     <div class="fims-modal-overlay" id="m-br-recon" style="display:none;">
-        <div class="fims-modal-dialog" style="max-width:1080px;width:95vw;">
+        <div class="fims-modal-dialog" style="max-width:2000px;width:96vw;">
             <div class="fims-modal-content">
                 <div class="fims-modal-header">
                     <div><div class="fims-modal-title">Bank Reconciliation</div></div>
@@ -98,26 +98,48 @@ $brCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
                         </div>
                     </div>
 
-                    <!-- LEDGER: Date / Reference / Particulars / Debit / Credit / Balance / Cleared -->
-                    <div class="br-ledger-wrap">
-                        <div class="br-recon-col-title" id="brLedgerTitle">LEDGER</div>
-                        <div class="fims-table-wrap" style="max-height:260px;overflow-y:auto;">
-                            <table class="fims-table br-ledger-table">
-                                <thead>
-                                    <tr>
-                                        <th style="width:95px">Date</th>
-                                        <th style="width:110px">Reference No.</th>
-                                        <th>Particulars</th>
-                                        <th class="text-right" style="width:110px">Debit</th>
-                                        <th class="text-right" style="width:110px">Credit</th>
-                                        <th class="text-right" style="width:120px">Balance</th>
-                                        <th class="text-center" style="width:70px">Cleared</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="brLedgerBody"><tr class="fims-empty"><td colspan="7">Select a Bank and period above.</td></tr></tbody>
-                            </table>
+                    <!-- BOOK LEDGER (left) vs BANK STATEMENT (right), side by side for visual matching -->
+                    <div class="br-ledger-grid">
+                        <div class="br-ledger-wrap">
+                            <div class="br-recon-col-title">BOOK LEDGER (General Ledger)</div>
+                            <div class="fims-table-wrap" style="max-height:220px;overflow-y:auto;overflow-x:auto;">
+                                <table class="fims-table br-ledger-table">
+                                    <thead>
+                                        <tr>
+                                            <th style="width:10%">Date</th>
+                                            <th style="width:13%">Ref. No.</th>
+                                            <th style="width:19%">Particulars</th>
+                                            <th class="text-right" style="width:15%">Debit</th>
+                                            <th class="text-right" style="width:15%">Credit</th>
+                                            <th class="text-right" style="width:14%">Balance</th>
+                                            <th class="text-center" style="width:14%">Cleared</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="brLedgerBody"><tr class="fims-empty"><td colspan="7">Select a Bank and period above.</td></tr></tbody>
+                                </table>
+                            </div>
+                            <p class="br-hint" style="margin:6px 2px 0;">Tick <strong>Cleared</strong> once the bank has processed a line. Unticked lines fall into Deposits in Transit / Outstanding Checks below.</p>
                         </div>
-                        <p class="br-hint" style="margin:6px 2px 0;">Tick <strong>Cleared</strong> once the bank has processed a line. Unticked lines fall into Deposits in Transit / Outstanding Checks below.</p>
+
+                        <div class="br-ledger-wrap">
+                            <div class="br-recon-col-title">BANK STATEMENT (Uploaded SOA)</div>
+                            <div class="fims-table-wrap" style="max-height:220px;overflow-y:auto;overflow-x:auto;">
+                                <table class="fims-table br-ledger-table">
+                                    <thead>
+                                        <tr>
+                                            <th style="width:10%">Date</th>
+                                            <th style="width:13%">Chq. No.</th>
+                                            <th style="width:22%">Particulars</th>
+                                            <th class="text-right" style="width:16%">Debit</th>
+                                            <th class="text-right" style="width:16%">Credit</th>
+                                            <th class="text-center" style="width:23%">Matched</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="brSoaLedgerBody"><tr class="fims-empty"><td colspan="6">No SOA uploaded for this account/period yet.</td></tr></tbody>
+                                </table>
+                            </div>
+                            <p class="br-hint" style="margin:6px 2px 0;">A line tagged <strong>Unmatched</strong> is on the bank statement but not yet in the book (e.g. a bank charge or interest) — book it via the Add/Less fields below.</p>
+                        </div>
                     </div>
 
                     <div class="br-recon-grid">
@@ -145,6 +167,7 @@ $brCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
                             <div class="fims-form-group">
                                 <label class="fims-label">Bank Balance <span class="br-hint">(per bank statement)</span></label>
                                 <input type="number" step="0.01" class="fims-input br-mono" id="field-bank-balance" value="0">
+                                <p class="br-hint" id="brSoaBalanceHint" style="margin:4px 2px 0;">No SOA uploaded for this account yet.</p>
                             </div>
                             <div class="br-recon-sub">Add: Deposits in Transit</div>
                             <ul class="br-item-list" id="brDepositsInTransitList"><li class="br-item-empty">None</li></ul>
@@ -188,10 +211,22 @@ $brCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
 #brModule .fims-btn-primary:hover { background:#000a2e; color:#fff; }
 #brModule .fims-modal-content { display:flex; flex-direction:column; min-height:0; overflow:hidden; }
 
-#brModule .br-ledger-wrap { margin-bottom:16px; border:1px solid var(--fims-border,#E4ECF2); border-radius:8px; padding:12px; }
-#brModule .br-ledger-table th, #brModule .br-ledger-table td { padding:6px 8px; font-size:12.5px; }
+#brModule .br-ledger-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px; }
+#brModule .br-ledger-wrap { border:1px solid var(--fims-border,#E4ECF2); border-radius:8px; padding:12px; }
+@media (max-width:900px) { #brModule .br-ledger-grid { grid-template-columns:1fr; } }
+#brModule .br-ledger-table { table-layout:fixed; width:100%; box-sizing:border-box; }
+#brModule .br-ledger-table th, #brModule .br-ledger-table td { padding:6px 8px; font-size:12.5px; overflow-wrap:break-word; word-break:break-word; box-sizing:border-box; }
+#brModule .br-ledger-table th { font-size:10.5px; white-space:normal; line-height:1.25; vertical-align:bottom; }
+#brModule .br-ledger-table td { white-space:normal; }
+#brModule .br-ledger-table td.text-right, #brModule .br-ledger-table td.fims-col-mono { white-space:nowrap; }
 #brModule .br-ledger-table tr.br-row-uncleared td { color:#B42318; }
-#brModule .br-ledger-table input[type="checkbox"] { width:16px; height:16px; cursor:pointer; }
+#brModule .br-ledger-table input[type="checkbox"] { width:16px; height:16px; cursor:pointer; vertical-align:middle; }
+#brModule .br-ledger-table .fims-badge { white-space:nowrap; }
+#brModule .br-match-cell { line-height:1.5; }
+#brModule .br-match-ref { display:block; font-size:10px; font-family:var(--afims-mono, ui-monospace, 'IBM Plex Mono', monospace); color:var(--fims-text-subtle); margin-top:2px; }
+#brModule .br-soa-tag { display:inline-block; margin-left:4px; padding:1px 5px; border-radius:4px; font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; vertical-align:middle; white-space:nowrap; }
+#brModule .br-soa-tag-soa { background:#E6F0FD; color:#0B5FFF; }
+#brModule .br-soa-tag-manual { background:#FFF4E0; color:#B2690A; }
 #brModule .br-item-list { list-style:none; margin:0 0 6px; padding:0; font-size:12px; }
 #brModule .br-item-list li { display:flex; justify-content:space-between; gap:8px; padding:2px 4px; border-bottom:1px dashed var(--fims-border,#E4ECF2); }
 #brModule .br-item-list .br-item-empty { color:var(--fims-text-subtle); justify-content:center; border-bottom:none; }
@@ -215,6 +250,8 @@ html.afims-dark[data-bs-theme="dark"] #brModule .br-recon-col,
 html.afims-dark[data-bs-theme="dark"] #brModule .br-ledger-wrap { border-color:var(--afims-border-strong, #4A5270); }
 html.afims-dark[data-bs-theme="dark"] #brModule .br-item-list li { border-color:var(--afims-border-strong, #4A5270); }
 html.afims-dark[data-bs-theme="dark"] #brModule .br-ledger-table tr.br-row-uncleared td { color:#F5A3A3; }
+html.afims-dark[data-bs-theme="dark"] #brModule .br-soa-tag-soa { background:#15294D; color:#8FB8FF; }
+html.afims-dark[data-bs-theme="dark"] #brModule .br-soa-tag-manual { background:#3A2A10; color:#F0B35E; }
 html.afims-dark[data-bs-theme="dark"] #brModule .br-status-banner.reconciled { background:#123524; color:#8FE3B3; border-color:#1F5A3B; }
 html.afims-dark[data-bs-theme="dark"] #brModule .br-status-banner.unreconciled { background:#3A1414; color:#F5A3A3; border-color:#6B2222; }
 </style>
@@ -336,14 +373,18 @@ html.afims-dark[data-bs-theme="dark"] #brModule .br-status-banner.unreconciled {
 
     function clearReconModal() {
         document.getElementById('field-bank-account-id').value = '';
+        document.getElementById('field-bank-account-id').disabled = false;
         document.getElementById('field-period').value = '';
         document.getElementById('field-book-balance').value = '';
         document.getElementById('field-add-deposit-in-transit').value = '0.00';
         document.getElementById('field-less-outstanding-check').value = '0.00';
         ADD_FIELD_IDS.forEach(id => document.getElementById(id).value = '0');
+        delete document.getElementById('field-bank-balance').dataset.touched;
+        document.getElementById('brSoaBalanceHint').textContent = 'No SOA uploaded for this account yet.';
         document.getElementById('field-remarks').value = '';
         document.getElementById('brStatusBanner').style.display = 'none';
         document.getElementById('brLedgerBody').innerHTML = '<tr class="fims-empty"><td colspan="7">Select a Bank and period above.</td></tr>';
+        document.getElementById('brSoaLedgerBody').innerHTML = '<tr class="fims-empty"><td colspan="6">No SOA uploaded for this account/period yet.</td></tr>';
         document.getElementById('brDepositsInTransitList').innerHTML = '<li class="br-item-empty">None</li>';
         document.getElementById('brOutstandingChecksList').innerHTML = '<li class="br-item-empty">None</li>';
         currentBankAccountId = null;
@@ -378,6 +419,7 @@ html.afims-dark[data-bs-theme="dark"] #brModule .br-status-banner.unreconciled {
     document.querySelectorAll('#brModule .br-recon-col input[type="number"]').forEach(function (inp) {
         inp.addEventListener('input', recompute);
     });
+    document.getElementById('field-bank-balance').addEventListener('input', function () { this.dataset.touched = '1'; });
 
     function periodToAsOfDate(period) {
         const d = new Date(period + '-01');
@@ -392,11 +434,33 @@ html.afims-dark[data-bs-theme="dark"] #brModule .br-status-banner.unreconciled {
         ).join('');
     }
 
+    function renderSoaLedger(soaRows) {
+        const tbody = document.getElementById('brSoaLedgerBody');
+        if (!soaRows || !soaRows.length) {
+            tbody.innerHTML = '<tr class="fims-empty"><td colspan="6">No SOA uploaded for this account/period yet.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = soaRows.map(function (r) {
+            const matchCell = r.matched
+                ? '<span class="fims-badge fims-badge-green">Matched</span><span class="br-match-ref">' + escapeHtml(r.matched_reference_no || '') + '</span>'
+                : '<span class="fims-badge fims-badge-gray">Unmatched</span>';
+            return '<tr class="' + (r.matched ? '' : 'br-row-uncleared') + '">' +
+                '<td>' + escapeHtml(r.transaction_date) + '</td>' +
+                '<td class="fims-col-mono">' + escapeHtml(r.check_no || '') + '</td>' +
+                '<td>' + escapeHtml(r.description || '') + '</td>' +
+                '<td class="text-right br-mono">' + (r.debit_amount > 0 ? peso(r.debit_amount) : '') + '</td>' +
+                '<td class="text-right br-mono">' + (r.credit_amount > 0 ? peso(r.credit_amount) : '') + '</td>' +
+                '<td class="text-center br-match-cell">' + matchCell + '</td>' +
+                '</tr>';
+        }).join('');
+    }
+
     function loadLedger(bankAccountId, period) {
         if (!bankAccountId || !period) return;
         currentBankAccountId = bankAccountId;
         const asOfDate = periodToAsOfDate(period);
-        fetch(API + '/ledger?bank_account_id=' + encodeURIComponent(bankAccountId) + '&as_of_date=' + asOfDate, { headers: authHeaders() })
+        const periodStart = period + '-01';
+        fetch(API + '/ledger?bank_account_id=' + encodeURIComponent(bankAccountId) + '&period_start=' + periodStart + '&as_of_date=' + asOfDate, { headers: authHeaders() })
             .then(r => r.json())
             .then(function (json) {
                 if (!json || !json.success) { toast((json && json.message) || 'Could not load the ledger.', true); return; }
@@ -407,6 +471,7 @@ html.afims-dark[data-bs-theme="dark"] #brModule .br-status-banner.unreconciled {
                     document.getElementById('field-book-balance').value = '0';
                     document.getElementById('field-book-balance').readOnly = false;
                     tbody.innerHTML = '<tr class="fims-empty"><td colspan="7">This bank account has no GL account tagged yet — enter the Book Balance manually.</td></tr>';
+                    renderSoaLedger(d.soa_rows);
                     renderItemList('brDepositsInTransitList', [], 'debit');
                     renderItemList('brOutstandingChecksList', [], 'credit');
                     document.getElementById('field-add-deposit-in-transit').value = '0.00';
@@ -423,6 +488,12 @@ html.afims-dark[data-bs-theme="dark"] #brModule .br-status-banner.unreconciled {
                     rowsHtml += '<tr class="fims-empty"><td colspan="7">No transactions posted for this period yet.</td></tr>';
                 } else {
                     rowsHtml += d.rows.map(function (r) {
+                        let badge = '';
+                        if (r.overridden) {
+                            badge = '<span class="br-soa-tag br-soa-tag-manual" title="Manually overridden">manual</span>';
+                        } else if (r.soa_matched) {
+                            badge = '<span class="br-soa-tag br-soa-tag-soa" title="Matched to an uploaded SOA line">SOA</span>';
+                        }
                         return '<tr class="' + (r.cleared ? '' : 'br-row-uncleared') + '">' +
                             '<td>' + escapeHtml(r.posting_date) + '</td>' +
                             '<td class="fims-col-mono">' + escapeHtml(r.reference_no || '') + '</td>' +
@@ -430,7 +501,7 @@ html.afims-dark[data-bs-theme="dark"] #brModule .br-status-banner.unreconciled {
                             '<td class="text-right br-mono">' + (r.debit > 0 ? peso(r.debit) : '') + '</td>' +
                             '<td class="text-right br-mono">' + (r.credit > 0 ? peso(r.credit) : '') + '</td>' +
                             '<td class="text-right br-mono">' + peso(r.balance) + '</td>' +
-                            '<td class="text-center"><input type="checkbox" data-gl-id="' + r.gl_id + '" ' + (r.cleared ? 'checked' : '') + '></td>' +
+                            '<td class="text-center"><input type="checkbox" data-gl-id="' + r.gl_id + '" ' + (r.cleared ? 'checked' : '') + '>' + badge + '</td>' +
                             '</tr>';
                     }).join('');
                 }
@@ -450,10 +521,20 @@ html.afims-dark[data-bs-theme="dark"] #brModule .br-status-banner.unreconciled {
                     });
                 });
 
+                renderSoaLedger(d.soa_rows);
                 renderItemList('brDepositsInTransitList', d.outstanding_deposits, 'debit');
                 renderItemList('brOutstandingChecksList', d.outstanding_checks, 'credit');
                 document.getElementById('field-add-deposit-in-transit').value = d.outstanding_deposits.reduce((s, r) => s + r.debit, 0).toFixed(2);
                 document.getElementById('field-less-outstanding-check').value = d.outstanding_checks.reduce((s, r) => s + r.credit, 0).toFixed(2);
+
+                const soaHint = document.getElementById('brSoaBalanceHint');
+                const bankBalanceField = document.getElementById('field-bank-balance');
+                if (d.soa_bank_balance !== null) {
+                    soaHint.textContent = 'Per uploaded SOA: ' + peso(d.soa_bank_balance) + ' as of ' + d.soa_as_of_date + '.';
+                    if (!bankBalanceField.dataset.touched) { bankBalanceField.value = d.soa_bank_balance; }
+                } else {
+                    soaHint.textContent = 'No SOA uploaded for this account yet — enter the Bank Balance manually.';
+                }
                 recompute();
             })
             .catch(() => toast('Could not reach the server.', true));
@@ -467,11 +548,13 @@ html.afims-dark[data-bs-theme="dark"] #brModule .br-status-banner.unreconciled {
 
     function fillReconFields(d) {
         document.getElementById('field-bank-account-id').value = d.bank_account_id;
+        document.getElementById('field-bank-account-id').disabled = true; // editing an existing reconciliation — the bank account is fixed, changing it would silently start a different record
         document.getElementById('field-period').value = String(d.period_year) + '-' + String(d.period_month).padStart(2, '0');
         document.getElementById('field-add-credit-memo').value = d.add_credit_memo;
         document.getElementById('field-add-interest-income').value = d.add_interest_income;
         document.getElementById('field-less-debit-memo').value = d.less_debit_memo;
         document.getElementById('field-bank-balance').value = d.bank_balance;
+        document.getElementById('field-bank-balance').dataset.touched = '1'; // preserve the saved figure — don't let loadLedger() overwrite it with the live SOA balance
         document.getElementById('field-remarks').value = d.remarks || '';
         loadLedger(d.bank_account_id, document.getElementById('field-period').value);
     }
@@ -495,6 +578,7 @@ html.afims-dark[data-bs-theme="dark"] #brModule .br-status-banner.unreconciled {
         }
         if (bankAccountId) {
             document.getElementById('field-bank-account-id').value = bankAccountId;
+            document.getElementById('field-bank-account-id').disabled = true; // opened against a specific row (Reconcile) — bank is fixed, same as Edit
             const now = new Date();
             document.getElementById('field-period').value = now.toISOString().slice(0, 7);
             loadLedger(bankAccountId, document.getElementById('field-period').value);

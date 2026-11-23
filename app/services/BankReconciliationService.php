@@ -24,6 +24,7 @@ class BankReconciliationService
     private string $tableGl          = 'fims.general_ledger';
     private string $tableCleared     = 'fims.bank_reconciliation_cleared_items';
     private string $tableCoa         = 'fims.chart_of_accounts';
+    private string $tableSoa         = 'fims.soa_transactions';
 
     private function str(mixed $v): string
     {
@@ -189,15 +190,107 @@ class BankReconciliationService
         return $this->ok(['book_balance' => round((float) ($row['bal'] ?? 0), 2)]);
     }
 
+    // Balance of the most recent uploaded SOA line on/before $asOfDate — the
+    // actual bank-statement balance, same "latest" convention as
+    // CashPositionSoaService::getLatestSoaBalance(). Null when nothing has
+    // been uploaded yet for this account.
+    private function getLatestSoaBalance(int $bankAccountId, string $asOfDate): array
+    {
+        $row = App\ExecuteRow(
+            "SELECT balance, transaction_date FROM {$this->tableSoa}
+             WHERE bank_account_id = {$bankAccountId} AND balance IS NOT NULL
+               AND transaction_date <= " . $this->str($asOfDate) . '
+             ORDER BY transaction_date DESC, soa_transaction_id DESC LIMIT 1',
+            'DB'
+        );
+
+        return [
+            'balance' => $row ? round((float) $row['balance'], 2) : null,
+            'as_of_date' => $row['transaction_date'] ?? null,
+        ];
+    }
+
     /**
-     * Ledger register for one bank account up to and including $asOfDate:
-     * a Beginning Balance, every posted GL line for the account's tagged GL
-     * account_code, a running balance, and whether each line has cleared the
-     * bank yet (fims.bank_reconciliation_cleared_items — default: not
-     * cleared). Mirrors the Date/Reference/Particulars/Debit/Credit/Balance
-     * register the worksheet is built from.
+     * Greedy match of GL ledger lines against uploaded SOA (bank statement)
+     * lines — a GL debit (book-side deposit) matches an SOA credit_amount
+     * (bank-side deposit) of the same amount, a GL credit (book-side check/
+     * payment) matches an SOA debit_amount (bank-side withdrawal); same
+     * sign-flip the Per Bank adjustments already use. Each SOA line can only
+     * satisfy one GL line. Within $toleranceDays, closest date wins — good
+     * enough for statement lines that post a few days after the book entry
+     * (the usual "outstanding check" gap), without needing exact-day matches.
+     * Returns gl_id => soa_transaction_id for every line that matched.
      */
-    public function getLedger($bankAccountId, $asOfDate)
+    private function matchSoaLines(int $bankAccountId, string $asOfDate, array $glRows): array
+    {
+        $soaRows = App\ExecuteRowsAssociative(
+            "SELECT soa_transaction_id, transaction_date, debit_amount, credit_amount
+             FROM {$this->tableSoa}
+             WHERE bank_account_id = {$bankAccountId} AND transaction_date <= " . $this->str($asOfDate) . '
+             ORDER BY transaction_date, soa_transaction_id',
+            'DB'
+        ) ?: [];
+        if (!$soaRows) {
+            return [];
+        }
+
+        $toleranceDays = 15;
+        $used = [];
+        $matched = [];
+
+        foreach ($glRows as $gl) {
+            $debit = $this->num($gl['debit']);
+            $credit = $this->num($gl['credit']);
+            $isDeposit = $debit > 0;
+            $amount = $isDeposit ? $debit : $credit;
+            if ($amount <= 0) {
+                continue;
+            }
+            $glTime = strtotime($gl['posting_date']);
+
+            $bestId = null;
+            $bestDiff = null;
+            foreach ($soaRows as $soa) {
+                $soaId = $soa['soa_transaction_id'];
+                if (isset($used[$soaId])) {
+                    continue;
+                }
+                $soaAmount = (float) ($isDeposit ? $soa['credit_amount'] : $soa['debit_amount']);
+                if (abs($soaAmount - $amount) >= 0.01) {
+                    continue;
+                }
+                $diffDays = abs((strtotime($soa['transaction_date']) - $glTime)) / 86400;
+                if ($diffDays > $toleranceDays) {
+                    continue;
+                }
+                if ($bestDiff === null || $diffDays < $bestDiff) {
+                    $bestDiff = $diffDays;
+                    $bestId = $soaId;
+                }
+            }
+            if ($bestId !== null) {
+                $used[$bestId] = true;
+                $matched[$gl['gl_id']] = $bestId;
+            }
+        }
+
+        return $matched;
+    }
+
+    /**
+     * Ledger register for one bank account, period $periodStart through
+     * $asOfDate inclusive: a Beginning Balance (everything strictly BEFORE
+     * $periodStart — never re-listed as a row, so nothing is double-counted
+     * between the aggregate and the line items), every posted GL line for
+     * the account's tagged GL account_code within the period, a running
+     * balance, and whether each line has cleared the bank yet. "Cleared" is
+     * auto-matched against the uploaded SOA (bank statement, see
+     * matchSoaLines()) unless the user has explicitly overridden it
+     * (fims.bank_reconciliation_cleared_items.forced_cleared — see
+     * setCleared()). Mirrors the Date/Reference/Particulars/Debit/Credit/
+     * Balance register the worksheet is built from.
+     */
+    public function getLedger($bankAccountId, $periodStart, $asOfDate)
     {
         $id = (int) $bankAccountId;
         $bank = App\ExecuteRow(
@@ -208,51 +301,86 @@ class BankReconciliationService
             return $this->fail('Bank account not found.');
         }
         if (empty($bank['account_code'])) {
-            return $this->ok(['has_gl_account' => false, 'beginning_balance' => 0, 'rows' => [], 'ending_balance' => 0, 'outstanding_deposits' => [], 'outstanding_checks' => []]);
+            return $this->ok(['has_gl_account' => false, 'beginning_balance' => 0, 'rows' => [], 'ending_balance' => 0, 'outstanding_deposits' => [], 'outstanding_checks' => [], 'soa_rows' => []]);
         }
 
         $codeList = implode(',', array_map(fn ($c) => $this->str($c), $this->resolveAccountCodes($bank['account_code'])));
+        $start = $this->str($periodStart);
         $date = $this->str($asOfDate);
 
         $beginRow = App\ExecuteRow(
             "SELECT COALESCE(SUM(debit - credit), 0) AS bal
              FROM {$this->tableGl}
-             WHERE account_code IN ({$codeList}) AND posting_date < {$date}",
+             WHERE account_code IN ({$codeList}) AND posting_date < {$start}",
             'DB'
         );
         $beginningBalance = round((float) ($beginRow['bal'] ?? 0), 2);
 
         $rows = App\ExecuteRowsAssociative(
             "SELECT g.gl_id, g.posting_date, g.reference_no, g.description, g.debit, g.credit,
-                    (c.gl_id IS NOT NULL) AS cleared
+                    c.forced_cleared
              FROM {$this->tableGl} g
              LEFT JOIN {$this->tableCleared} c ON c.gl_id = g.gl_id AND c.bank_account_id = {$id}
-             WHERE g.account_code IN ({$codeList}) AND g.posting_date <= {$date}
+             WHERE g.account_code IN ({$codeList}) AND g.posting_date >= {$start} AND g.posting_date <= {$date}
              ORDER BY g.posting_date, g.gl_id",
             'DB'
         ) ?: [];
+
+        foreach ($rows as &$row) {
+            $row['debit'] = $this->num($row['debit']);
+            $row['credit'] = $this->num($row['credit']);
+        }
+        unset($row);
+
+        $soaMatches = $this->matchSoaLines($id, $asOfDate, $rows);
+        $soaBalance = $this->getLatestSoaBalance($id, $asOfDate);
+        $glById = [];
+        foreach ($rows as $r) {
+            $glById[$r['gl_id']] = $r;
+        }
 
         $running = $beginningBalance;
         $outstandingDeposits = [];
         $outstandingChecks = [];
         foreach ($rows as &$row) {
-            $debit = $this->num($row['debit']);
-            $credit = $this->num($row['credit']);
-            $running = round($running + $debit - $credit, 2);
-            $row['debit'] = $debit;
-            $row['credit'] = $credit;
+            $running = round($running + $row['debit'] - $row['credit'], 2);
             $row['balance'] = $running;
-            $row['cleared'] = (bool) $row['cleared'];
+            $row['soa_matched'] = isset($soaMatches[$row['gl_id']]);
+            $row['overridden'] = $row['forced_cleared'] !== null;
+            $row['cleared'] = $row['forced_cleared'] !== null ? (bool) $row['forced_cleared'] : $row['soa_matched'];
+            unset($row['forced_cleared']);
 
             if (!$row['cleared']) {
-                if ($debit > 0) {
+                if ($row['debit'] > 0) {
                     $outstandingDeposits[] = $row;
-                } elseif ($credit > 0) {
+                } elseif ($row['credit'] > 0) {
                     $outstandingChecks[] = $row;
                 }
             }
         }
         unset($row);
+
+        // Bank side of the same period, for the user to visually match against the
+        // book-side rows above — each line flagged with which (if any) GL line it
+        // satisfied in matchSoaLines(), or left unmatched (a bank-only item, e.g. a
+        // charge/interest the book hasn't recorded yet — see Per Book's Credit
+        // Memo/Interest Income/Debit Memo fields).
+        $soaIdToGl = array_flip($soaMatches);
+        $soaRows = App\ExecuteRowsAssociative(
+            "SELECT soa_transaction_id, transaction_date, description, debit_amount, credit_amount, check_no
+             FROM {$this->tableSoa}
+             WHERE bank_account_id = {$id} AND transaction_date >= {$start} AND transaction_date <= {$date}
+             ORDER BY transaction_date, soa_transaction_id",
+            'DB'
+        ) ?: [];
+        foreach ($soaRows as &$soaRow) {
+            $soaRow['debit_amount'] = $this->num($soaRow['debit_amount']);
+            $soaRow['credit_amount'] = $this->num($soaRow['credit_amount']);
+            $matchedGlId = $soaIdToGl[$soaRow['soa_transaction_id']] ?? null;
+            $soaRow['matched'] = $matchedGlId !== null;
+            $soaRow['matched_reference_no'] = $matchedGlId !== null ? ($glById[$matchedGlId]['reference_no'] ?? null) : null;
+        }
+        unset($soaRow);
 
         return $this->ok([
             'has_gl_account' => true,
@@ -261,27 +389,27 @@ class BankReconciliationService
             'ending_balance' => $running,
             'outstanding_deposits' => $outstandingDeposits,
             'outstanding_checks' => $outstandingChecks,
+            'soa_bank_balance' => $soaBalance['balance'],
+            'soa_as_of_date' => $soaBalance['as_of_date'],
+            'soa_rows' => $soaRows,
         ]);
     }
 
-    // ── Toggle whether one GL line has cleared the bank ──
+    // ── Toggle whether one GL line has cleared the bank — always an explicit
+    // override (TRUE forces cleared, FALSE forces NOT cleared even if the SOA
+    // auto-match says otherwise). See getLedger()'s forced_cleared handling. ──
     public function setCleared($bankAccountId, $glId, bool $cleared)
     {
         $id = (int) $bankAccountId;
         $gl = (int) $glId;
-        if ($cleared) {
-            App\Execute(
-                "INSERT INTO {$this->tableCleared} (bank_account_id, gl_id, cleared_by)
-                 VALUES ({$id}, {$gl}, " . (int) App\CurrentUserID() . ")
-                 ON CONFLICT (bank_account_id, gl_id) DO NOTHING",
-                'DB'
-            );
-        } else {
-            App\Execute(
-                "DELETE FROM {$this->tableCleared} WHERE bank_account_id = {$id} AND gl_id = {$gl}",
-                'DB'
-            );
-        }
+        $userId = (int) App\CurrentUserID();
+        App\Execute(
+            "INSERT INTO {$this->tableCleared} (bank_account_id, gl_id, forced_cleared, cleared_by)
+             VALUES ({$id}, {$gl}, " . ($cleared ? 'TRUE' : 'FALSE') . ", {$userId})
+             ON CONFLICT (bank_account_id, gl_id) DO UPDATE SET
+                 forced_cleared = EXCLUDED.forced_cleared, cleared_by = EXCLUDED.cleared_by, cleared_at = CURRENT_TIMESTAMP",
+            'DB'
+        );
 
         return $this->ok(['gl_id' => $gl, 'cleared' => $cleared]);
     }
@@ -307,6 +435,7 @@ class BankReconciliationService
             return $this->fail('Bank account not found.');
         }
 
+        $periodStart = date('Y-m-d', mktime(0, 0, 0, $periodMonth, 1, $periodYear));
         $asOfDate = date('Y-m-t', mktime(0, 0, 0, $periodMonth, 1, $periodYear));
 
         $bookBalance           = $this->num($data['book_balance'] ?? 0);
@@ -324,7 +453,7 @@ class BankReconciliationService
         // Deposits in transit / outstanding checks come from the ledger's cleared
         // markers, not the client — same "never trust the client for computed
         // totals" rule as adjusted_book_balance/adjusted_bank_balance/status below.
-        $ledger = json_decode($this->getLedger($bankAccountId, $asOfDate), true);
+        $ledger = json_decode($this->getLedger($bankAccountId, $periodStart, $asOfDate), true);
         $ledgerData = ($ledger['success'] ?? false) ? $ledger['data'] : ['outstanding_deposits' => [], 'outstanding_checks' => []];
         $addDepositInTransit   = round(array_sum(array_column($ledgerData['outstanding_deposits'], 'debit')), 2);
         $lessOutstandingCheck  = round(array_sum(array_column($ledgerData['outstanding_checks'], 'credit')), 2);

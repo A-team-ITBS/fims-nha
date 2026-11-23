@@ -7,11 +7,19 @@ use PHPMaker2024\FIMS as App;
 /**
  * Backs the Cash Position Updates tab's SOA (bank Statement of Account)
  * upload flow — a faithful port of TREASURY's CashPosUpServices.php SOA
- * methods (uploadSOA/confirmUpload/_parseXlsx/getSoaComparison/
- * getSoaGroups/getSoaTransactions/getLatestSoaBalance), including its
- * pure-PHP xlsx parser (ZipArchive + SimpleXML, no PhpSpreadsheet —
- * ported verbatim since this project has no Excel library installed
- * either).
+ * methods (uploadSOA/confirmUpload/getSoaComparison/getSoaGroups/
+ * getSoaTransactions), including its pure-PHP xlsx parser (ZipArchive +
+ * SimpleXML, no PhpSpreadsheet — ported verbatim since this project has no
+ * Excel library installed either).
+ *
+ * An uploaded SOA's balance is READ (getSoaComparison()'s own "Latest SOA
+ * Balance" column, purely a cross-check against Cash Position's own
+ * Available Balance) but never WRITTEN anywhere — confirmUpload() only
+ * records what's in the statement into fims.soa_transactions; it does not
+ * auto-post to fims.bank_transactions or sync fims.cash_position off the
+ * back of an upload (see confirmUpload()'s own comment). A "Mismatch"
+ * Status is just two independent records disagreeing, not evidence one
+ * caused the other.
  *
  * Deliberately NOT ported (TREASURY itself never implemented these, or
  * they depend on subsystems out of scope — see CashPositionService's
@@ -37,6 +45,12 @@ class CashPositionSoaService
     private string $tableBankTransactions = 'fims.bank_transactions';
     private string $tableCashPosition = 'fims.cash_position';
     private string $tableBankAccounts = 'fims.bank_accounts';
+    // Same table CashPositionService::getActivityLog() reads for the
+    // "Recent Update Activity" panel — a separate service class, so its own
+    // writeActivityLog() isn't reachable from here; duplicated rather than
+    // shared, same convention as this file's other CashPositionService-
+    // mirrored helpers (str()/strOrNull()/num()/ok()).
+    private string $tableActivityLog = 'fims.cash_position_activity_log';
 
     private function str(mixed $v): string
     {
@@ -151,7 +165,32 @@ class CashPositionSoaService
             }
         }
 
-        $sheetXml = $zip->getFromName('xl/worksheets/sheet1.xml');
+        // The first sheet isn't reliably "sheet1.xml" — a workbook that's
+        // been re-saved, reordered, or has multiple tabs can have its first
+        // visible sheet stored as sheet2.xml, sheet3.xml, etc. Resolve it
+        // properly via workbook.xml (sheet order) + the rels part (sheet ID
+        // → actual file name) instead of assuming; falls back to sheet1.xml
+        // if either part is missing (shouldn't happen in a valid .xlsx, but
+        // cheap to keep as a safety net).
+        $sheetPath = 'xl/worksheets/sheet1.xml';
+        $workbookXml = $zip->getFromName('xl/workbook.xml');
+        $relsXml = $zip->getFromName('xl/_rels/workbook.xml.rels');
+        if ($workbookXml && $relsXml) {
+            $wb = simplexml_load_string($workbookXml);
+            $firstSheet = $wb->sheets->sheet[0] ?? null;
+            if ($firstSheet) {
+                $rId = (string) $firstSheet->attributes('http://schemas.openxmlformats.org/officeDocument/2006/relationships')['id'];
+                $rels = simplexml_load_string($relsXml);
+                foreach ($rels->Relationship as $rel) {
+                    if ((string) $rel['Id'] === $rId) {
+                        $sheetPath = 'xl/' . ltrim((string) $rel['Target'], '/');
+                        break;
+                    }
+                }
+            }
+        }
+
+        $sheetXml = $zip->getFromName($sheetPath);
         $zip->close();
         if (!$sheetXml) {
             throw new \Exception('Cannot read worksheet. The file may be corrupted or use an unsupported format.');
@@ -196,7 +235,8 @@ class CashPositionSoaService
             $iCredit = $colMap['credit'] ?? $colMap['deposit'] ?? 3;
             $iBalance = $colMap['balance'] ?? $colMap['running balance'] ?? 4;
             $iBranch = $colMap['branch'] ?? $colMap['branch name'] ?? 5;
-            $iCheckNo = $colMap['check no'] ?? $colMap['check number'] ?? $colMap['check no.'] ?? $colMap['chk no'] ?? 6;
+            $iCheckNo = $colMap['check no'] ?? $colMap['check number'] ?? $colMap['check no.'] ?? $colMap['chk no']
+                ?? $colMap['cheque no'] ?? $colMap['cheque number'] ?? $colMap['cheque no.'] ?? 6;
             $iOther = $colMap['other details'] ?? $colMap['remarks'] ?? $colMap['reference'] ?? 7;
 
             $rawDate = $cells[$iDate] ?? '';
@@ -440,126 +480,51 @@ class CashPositionSoaService
                 $lineCount++;
             }
 
-            $bankTxnSaved = 0;
-            $bankTxnProcessed = 0;
-            foreach ($newRows as $row) {
-                if (empty($row['date'])) {
-                    continue;
-                }
-                $mapped = $this->mapBankTxnType($row);
-                if ($mapped['amount'] <= 0) {
-                    continue;
-                }
-                $txnId = $this->bankTxnId($row, $mapped);
-                $checkNo = trim($row['check_no'] ?? '');
-                $referenceNumber = $checkNo !== '' ? $checkNo : null;
-                $sourceTs = trim(($row['date'] ?? '') . ' ' . ($row['time'] ?? ''));
-                $inserted = App\ExecuteRow(
-                    "INSERT INTO {$this->tableBankTransactions}
-                        (transaction_type, transaction_id, reference_number, transaction_date, bank_account_id,
-                         amount, description, status, counterpart, direction, source_created_at)
-                     VALUES (" . $this->str($mapped['type']) . ', ' . $this->str($txnId) . ', ' . $this->strOrNull($referenceNumber) . ', '
-                        . $this->str($row['date']) . ", {$bankAccountId}, " . $mapped['amount'] . ', '
-                        . $this->strOrNull($row['description'] ?? null) . ", 'VALIDATED', " . $this->strOrNull($row['branch'] ?? null) . ', '
-                        . $this->str($mapped['direction']) . ', ' . $this->str($sourceTs) . "::timestamp)
-                     ON CONFLICT (transaction_id) DO NOTHING
-                     RETURNING transaction_id",
-                    'DB'
-                );
-                if ($inserted) {
-                    $bankTxnSaved++;
-                } else {
-                    $bankTxnProcessed++;
-                }
-            }
+            // Deliberately NOT posting to fims.bank_transactions or syncing
+            // fims.cash_position here anymore — confirmUpload() only RECORDS
+            // what's in the statement (fims.soa_transactions); it no longer
+            // auto-creates ledger entries or rewrites a day's Receipts/
+            // Disbursements/Closing Balance off the back of an upload. Cash
+            // Position stays whatever Manual Entry has it as; the "Latest
+            // SOA Balance"/Receipts/Disbursements columns in the Comparison
+            // table simply reflect that — SOA is a reference to check
+            // against, not an automatic input. mapBankTxnType()/bankTxnId()
+            // are kept (still used by findProcessedBankTxnIds() for the
+            // "already processed" badge in the upload preview) even though
+            // nothing writes through them here anymore.
 
-            $positionsUpdated = $this->syncCashPositionFromSoa($newRows, $bankAccountId, $userId);
+            if ($lineCount > 0) {
+                $dates = array_values(array_unique(array_filter(array_column($newRows, 'date'))));
+                sort($dates);
+                $this->writeActivityLog(
+                    $bankAccountId,
+                    $dates ? end($dates) : date('Y-m-d'),
+                    'SOA_UPLOAD',
+                    "Uploaded {$lineCount} SOA line(s)" . ($dates ? (' covering ' . reset($dates) . ' to ' . end($dates)) : '') . " (batch {$batchId})",
+                    $userId
+                );
+            }
 
             return json_encode([
                 "success" => true,
-                "message" => "Saved {$lineCount} SOA line(s), skipped {$skipped} duplicate(s). Posted {$bankTxnSaved} ledger entries ({$bankTxnProcessed} already existed). Synced {$positionsUpdated} day(s) of cash position.",
+                "message" => "Saved {$lineCount} SOA line(s), skipped {$skipped} duplicate(s).",
                 "saved" => $lineCount,
                 "skipped" => $skipped,
-                "bank_txn_saved" => $bankTxnSaved,
-                "bank_txn_processed" => $bankTxnProcessed,
-                "positions_synced" => $positionsUpdated,
             ]);
         } catch (\Exception $e) {
             return json_encode(["success" => false, "message" => $e->getMessage()]);
         }
     }
 
-    // Recomputes each touched date's cash_position snapshot from the real
-    // fims.bank_transactions ledger (not just this batch), same as
-    // TREASURY's _syncCashPositionFromSoa().
-    private function syncCashPositionFromSoa(array $rows, int $bankAccountId, int $userId): int
+    // Same table/shape as CashPositionService::writeActivityLog() — kept in
+    // sync manually since the two don't share a base class.
+    private function writeActivityLog(int $bankAccountId, string $positionDate, string $action, string $details, int $userId): void
     {
-        $dates = array_unique(array_filter(array_column($rows, 'date')));
-        sort($dates);
-        $updated = 0;
-
-        foreach ($dates as $date) {
-            $prior = App\ExecuteRow(
-                "SELECT closing_balance FROM {$this->tableCashPosition}
-                 WHERE bank_account_id = {$bankAccountId} AND position_date < " . $this->str($date) . '
-                 ORDER BY position_date DESC LIMIT 1',
-                'DB'
-            );
-            $dayRows = array_values(array_filter($rows, fn ($r) => ($r['date'] ?? null) === $date));
-            if ($prior) {
-                $opening = (float) $prior['closing_balance'];
-            } else {
-                $first = $dayRows[0] ?? null;
-                $opening = $first ? ($this->num($first['balance'] ?? 0) - $this->num($first['credit'] ?? 0) + $this->num($first['debit'] ?? 0)) : 0.0;
-            }
-
-            $sums = App\ExecuteRow(
-                "SELECT COALESCE(SUM(amount) FILTER (WHERE direction = 'INFLOW'), 0) AS receipts,
-                        COALESCE(SUM(amount) FILTER (WHERE direction != 'INFLOW'), 0) AS disbursements
-                 FROM {$this->tableBankTransactions}
-                 WHERE bank_account_id = {$bankAccountId} AND transaction_date = " . $this->str($date),
-                'DB'
-            );
-            $receipts = $this->num($sums['receipts'] ?? 0);
-            $disbursements = $this->num($sums['disbursements'] ?? 0);
-            $closing = $opening + $receipts - $disbursements;
-
-            $lastBalance = null;
-            foreach ($dayRows as $row) {
-                if (isset($row['balance']) && $row['balance'] !== '' && $row['balance'] !== null) {
-                    $lastBalance = $this->num($row['balance']);
-                }
-            }
-            $reconciled = $lastBalance !== null && abs($closing - $lastBalance) < 0.01;
-
-            $existing = App\ExecuteRow(
-                "SELECT cash_position_id FROM {$this->tableCashPosition} WHERE bank_account_id = {$bankAccountId} AND position_date = " . $this->str($date),
-                'DB'
-            );
-            if ($existing) {
-                App\Execute(
-                    "UPDATE {$this->tableCashPosition} SET
-                        opening_balance = {$opening}, total_receipts = {$receipts}, total_disbursements = {$disbursements},
-                        closing_balance = {$closing},
-                        bank_statement_balance = " . ($lastBalance !== null ? $lastBalance : 'NULL') . ",
-                        reconciled = " . ($reconciled ? 'TRUE' : 'FALSE') . "
-                     WHERE cash_position_id = {$existing['cash_position_id']}",
-                    'DB'
-                );
-            } else {
-                App\Execute(
-                    "INSERT INTO {$this->tableCashPosition}
-                        (bank_account_id, position_date, opening_balance, total_receipts, total_disbursements, closing_balance,
-                         bank_statement_balance, reconciled, restricted_amount, created_by)
-                     VALUES ({$bankAccountId}, " . $this->str($date) . ", {$opening}, {$receipts}, {$disbursements}, {$closing}, "
-                        . ($lastBalance !== null ? $lastBalance : 'NULL') . ', ' . ($reconciled ? 'TRUE' : 'FALSE') . ", 0, {$userId})",
-                    'DB'
-                );
-            }
-            $updated++;
-        }
-
-        return $updated;
+        App\Execute(
+            "INSERT INTO {$this->tableActivityLog} (bank_account_id, position_date, action, details, performed_by)
+             VALUES ({$bankAccountId}, " . $this->str($positionDate) . ', ' . $this->str($action) . ', ' . $this->str($details) . ", {$userId})",
+            'DB'
+        );
     }
 
     // ══════════════════════════════════════════════
@@ -569,30 +534,13 @@ class CashPositionSoaService
     // "Latest" = the first-inserted row of the most-recently-created
     // upload batch — same convention TREASURY uses everywhere it surfaces
     // "the" SOA balance for an account.
-    public function getLatestSoaBalance($bankAccountId, $asOf = null)
-    {
-        $bankAccountId = (int) $bankAccountId;
-        $asOfFilter = trim((string) $asOf) !== '' ? ('AND transaction_date <= ' . $this->str($asOf)) : '';
-
-        $row = App\ExecuteRow(
-            "SELECT st.balance, st.transaction_date
-             FROM {$this->tableSoaTransactions} st
-             WHERE st.bank_account_id = {$bankAccountId} AND st.balance IS NOT NULL {$asOfFilter}
-               AND st.upload_batch_id = (
-                   SELECT s2.upload_batch_id FROM {$this->tableSoaTransactions} s2
-                   WHERE s2.bank_account_id = {$bankAccountId} AND s2.upload_batch_id IS NOT NULL {$asOfFilter}
-                   ORDER BY s2.soa_transaction_id DESC LIMIT 1
-               )
-             ORDER BY st.soa_transaction_id ASC LIMIT 1",
-            'DB'
-        );
-
-        return $this->ok(['data' => ['balance' => $row ? (float) $row['balance'] : null, 'as_of' => $row['transaction_date'] ?? null]]);
-    }
-
     // Match = the account's latest SOA balance vs. its latest cash_position
-    // available_balance, within a ±0.01 tolerance (no date-matching —
-    // same as TREASURY's getSoaComparison()).
+    // available_balance, within a ±0.01 tolerance (no date-matching — same
+    // as TREASURY's getSoaComparison()). Purely a read-side cross-check —
+    // confirmUpload() no longer writes available_balance/total_receipts/
+    // total_disbursements FROM the SOA upload (see its own comment), so a
+    // "Mismatch" here just means the two independent records disagree, not
+    // that one caused the other.
     public function getSoaComparison($params)
     {
         $status = trim((string) ($params['status'] ?? ''));
@@ -607,6 +555,7 @@ class CashPositionSoaService
             "SELECT ba.bank_account_id, ba.account_name, ba.account_number, ba.bank_name,
                     soa.latest_soa_balance, soa.latest_soa_date,
                     cp.available_balance, cp.closing_balance, cp.position_date,
+                    cp.total_receipts, cp.total_disbursements,
                     ROUND(COALESCE(soa.latest_soa_balance, 0) - COALESCE(cp.available_balance, 0), 2) AS difference
              FROM {$this->tableBankAccounts} ba
              LEFT JOIN LATERAL (
@@ -621,7 +570,7 @@ class CashPositionSoaService
                  ORDER BY st.soa_transaction_id ASC LIMIT 1
              ) soa ON TRUE
              LEFT JOIN LATERAL (
-                 SELECT available_balance, closing_balance, position_date FROM {$this->tableCashPosition} cp2
+                 SELECT available_balance, closing_balance, position_date, total_receipts, total_disbursements FROM {$this->tableCashPosition} cp2
                  WHERE cp2.bank_account_id = ba.bank_account_id ORDER BY cp2.position_date DESC LIMIT 1
              ) cp ON TRUE
              WHERE {$whereSql} AND (soa.latest_soa_balance IS NOT NULL OR cp.available_balance IS NOT NULL)
@@ -629,7 +578,7 @@ class CashPositionSoaService
             'DB'
         );
 
-        $filtered = array_filter($rows, function ($r) use ($status) {
+        $rows = array_filter($rows, function ($r) use ($status) {
             $hasSoa = $r['latest_soa_balance'] !== null;
             $hasPos = $r['available_balance'] !== null;
             $matched = $hasSoa && $hasPos && abs($this->num($r['latest_soa_balance']) - $this->num($r['available_balance'])) < 0.01;
@@ -641,8 +590,9 @@ class CashPositionSoaService
                 default: return true;
             }
         });
+        $rows = array_values($rows);
 
-        return $this->ok(['data' => array_values($filtered)]);
+        return $this->ok(['data' => $rows ?: []]);
     }
 
     // One row per upload_batch_id — backs the SOA Transactions accordion.

@@ -229,7 +229,15 @@ $USER_LEVEL_PRIVS = [["{FIMS}audit_logs","-2","0"],
     ["{FIMS}bank-reconciliation-page.php","-2","0"],
     ["{FIMS}bank-reconciliation-page.php","0","0"],
     ["{FIMS}fund-sweeping-page.php","-2","0"],
-    ["{FIMS}fund-sweeping-page.php","0","0"]];
+    ["{FIMS}fund-sweeping-page.php","0","0"],
+    ["{FIMS}construction-in-progress-page.php","-2","0"],
+    ["{FIMS}construction-in-progress-page.php","0","0"],
+    ["{FIMS}property-and-equipment-for-distribution-page.php","-2","0"],
+    ["{FIMS}property-and-equipment-for-distribution-page.php","0","0"],
+    ["{FIMS}fixed-assets-page.php","-2","0"],
+    ["{FIMS}fixed-assets-page.php","0","0"],
+    ["{FIMS}merchandise-inventory-page.php","-2","0"],
+    ["{FIMS}merchandise-inventory-page.php","0","0"]];
 
 /**
  * Tables
@@ -345,4 +353,8 @@ $USER_LEVEL_TABLES = [["audit_logs","audit_logs","Audit Logs",false,"{FIMS}",""]
     ["cash-flow-page.php","cash_flow_page","Cash Flow",true,"{FIMS}","CashFlowPage"],
     ["closing-balance-page.php","closing_balance_page","Closing Balance",true,"{FIMS}","ClosingBalancePage"],
     ["bank-reconciliation-page.php","bank_reconciliation_page","Bank Reconciliation",true,"{FIMS}","BankReconciliationPage"],
-    ["fund-sweeping-page.php","fund_sweeping_page","Fund Sweeping",true,"{FIMS}","FundSweepingPage"]];
+    ["fund-sweeping-page.php","fund_sweeping_page","Fund Sweeping",true,"{FIMS}","FundSweepingPage"],
+    ["construction-in-progress-page.php","construction_in_progress_page","Construction In Progress",true,"{FIMS}","ConstructionInProgressPage"],
+    ["property-and-equipment-for-distribution-page.php","property_and_equipment_for_distribution_page","Property and equipment for Distribution",true,"{FIMS}","PropertyAndEquipmentForDistributionPage"],
+    ["fixed-assets-page.php","fixed_assets_page","Fixed Assets",true,"{FIMS}","FixedAssetsPage"],
+    ["merchandise-inventory-page.php","merchandise_inventory_page","Merchandise Inventory",true,"{FIMS}","MerchandiseInventoryPage"]];
