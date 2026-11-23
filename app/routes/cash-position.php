@@ -157,8 +157,3 @@ $app->get("/cash-position/soa-transactions", function ($request, $response) {
     return $response->withHeader('Content-Type', 'application/json')->write($service->getSoaTransactions($request->getQueryParams()));
 });
 
-$app->get("/cash-position/soa-balance/{bankAccountId}", function ($request, $response, $args) {
-    $service = new Service\CashPositionSoaService();
-    $asOf = $request->getQueryParams()['as_of'] ?? null;
-    return $response->withHeader('Content-Type', 'application/json')->write($service->getLatestSoaBalance($args['bankAccountId'], $asOf));
-});
