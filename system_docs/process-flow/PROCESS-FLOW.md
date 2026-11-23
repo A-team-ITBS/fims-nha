@@ -2,7 +2,7 @@
 
 **Step-by-step walkthrough, from set-up to the posted ledgers — for SQA testing and CPA review**
 
-> **Status:** written 2026-11-17, updated 2026-11-23 (Payroll sidebar group, FTLA release, Collections journalizing, GL roll-up; earlier: per-agency remittance DVs, automatic payment JEV, Payroll
+> **Status:** written 2026-11-17, updated 2026-11-23 (one Budget Proposal page for offices and FMD, Payroll sidebar group, FTLA release, Collections journalizing, GL roll-up; earlier: per-agency remittance DVs, automatic payment JEV, Payroll
 > Management YTD / File Template, print notes) from the current code (`app/`) and the status chains in its services. Follows the
 > sidebar modules (`views/menu.php`). Tables behind each step: `system_docs/ERD/README.md`.
 > PDF version: `system_docs/process-flow/PROCESS-FLOW.pdf` — the flowcharts of this file, one process per page in
@@ -111,7 +111,7 @@ flowchart TD
     START(["Start"]) --> S1["STEP 1 — POSITIONS<br/>System Administrator — Position Management<br/>• Position categories and positions"]
     S1 --> S2["STEP 2 — USERS<br/>System Administrator — User Access Management<br/>• Create the user account<br/>• Assign user level (role), position<br/>and Responsibility Center (office)"]
     S2 --> S3["STEP 3 — ROLES AND DEPARTMENTS<br/>System Administrator<br/>• User Level Management: permissions<br/>• Department Management: org hierarchy"]
-    S3 --> S4["STEP 4 — PROGRAM STRUCTURE<br/>Accounts Set-up — Program, Sub Program<br/>• Programs and sub-programs<br/>(projects are added in Budget Request)"]
+    S3 --> S4["STEP 4 — PROGRAM STRUCTURE<br/>Accounts Set-up — Program, Sub Program<br/>• Programs and sub-programs<br/>(projects are added in Budget Proposal)"]
     S4 --> S5["STEP 5 — CHART OF ACCOUNTS<br/>Accounts Set-up — Chart of Accounts<br/>• GL accounts and their bottom-level SL accounts<br/>• Books, Active / Inactive"]
     S5 --> S6["STEP 6 — OFFICES, BANKS, VENDORS<br/>Accounts Set-up<br/>• Responsibility Centers<br/>• Bank accounts (ACTIVE)<br/>• Vendors with their COA account"]
     S6 --> SP["STEP 7 — PAYROLL ITEMS<br/>Payroll officer — Payroll Setup<br/>• One item per payroll column:<br/>code, category, account"]
@@ -153,28 +153,30 @@ flowchart TD
 
 ## 3. Budget preparation (COB)
 
-**Needs:** Section 1. **Sidebar:** COB Preparation → Budget Request (office), Budget Proposal (FMD).
+**Needs:** Section 1. **Sidebar:** COB Preparation → Budget Proposal — one page for both: each office sees and edits its
+own request; FMD sees every office's request (one row per request, plus **View Proposal** for the whole fiscal year).
+The separate FMD Budget Proposal page was removed.
 **Statuses:** Draft, For Review, Endorsed, Approved, Returned, Returned to Budget Officer.
 
 | Step | Log in as | Where (sidebar → page) | Do this | Expected result |
 |---|---|---|---|---|
-| 1 | Requesting office user | COB Preparation → Budget Request | Create the request for the fiscal year; add a Program, its Projects, and budget lines (Chart of Accounts account + proposed amount); attach documents; save | Status Draft — still editable |
-| 2 | Requesting office user | Budget Request | Submit for Review | Status For Review — request locked |
-| 3 | Budget Officer (FMD) | COB Preparation → Budget Proposal | Open the request → Processing: set the suggested amount, type of fund and component per line → Endorse | Status Endorsed |
+| 1 | Requesting office user | COB Preparation → Budget Proposal | Create the request for the fiscal year; add a Program, its Projects, and budget lines (Chart of Accounts account + proposed amount); attach documents; save | Status Draft — still editable |
+| 2 | Requesting office user | Budget Proposal | Submit for Review | Status For Review — request locked |
+| 3 | Budget Officer (FMD) | COB Preparation → Budget Proposal → row Actions → **Budget Processing** | Open the request: set the suggested amount, type of fund and component per line → Endorse | Status Endorsed |
 | 3a | Budget Officer (alternative) | Budget Proposal | Return with remarks | Status Returned — office edits and repeats step 2 |
-| 4 | Budget Head (FMD) | Budget Proposal → Budget Preview | Approve | Status Approved |
+| 4 | Budget Head (FMD) | Budget Proposal → row Actions → **Budget Review** | Approve | Status Approved; the row then has no Actions for the Budget Head |
 | 4a | Budget Head (alternative) | Budget Preview | Return with remarks | Status Returned to Budget Officer — repeat step 3 |
 | 5 | Any user | Monitoring → COB Monitoring | Find the office and fiscal year | Lines shown; Approved Amount = the suggested amount |
 
 ```mermaid
 flowchart TD
-    START(["Start"]) --> S1["STEP 1 — BUDGET REQUEST<br/>Requesting office — Budget Request<br/>• One request per office per fiscal year<br/>• Programs → Projects → budget lines<br/>(Chart of Accounts + proposed amount)<br/>• Supporting documents<br/>• Status: Draft"]
-    S1 --> S2["STEP 2 — SUBMIT FOR REVIEW<br/>Requesting office — Budget Request<br/>• Status: For Review (locked)"]
-    S2 --> S3["STEP 3 — PROCESSING (ENDORSEMENT)<br/>Budget Officer — Budget Proposal<br/>• Suggested amount, type of fund,<br/>component per line<br/>• Endorse"]
+    START(["Start"]) --> S1["STEP 1 — BUDGET REQUEST<br/>Requesting office — Budget Proposal page<br/>• One request per office per fiscal year<br/>• Programs → Projects → budget lines<br/>(Chart of Accounts + proposed amount)<br/>• Supporting documents<br/>• Status: Draft"]
+    S1 --> S2["STEP 2 — SUBMIT FOR REVIEW<br/>Requesting office — Budget Proposal page<br/>• Status: For Review (locked)"]
+    S2 --> S3["STEP 3 — PROCESSING (ENDORSEMENT)<br/>Budget Officer — Budget Proposal, Budget Processing<br/>• Suggested amount, type of fund,<br/>component per line<br/>• Endorse"]
     S3 --> D1{"Endorsed?"}
     D1 -->|"No — Return"| R1["Office informed — Returned<br/>• Return remarks logged<br/>• Office corrects the request"]
     R1 --> S2
-    D1 -->|"Yes"| S4["STEP 4 — APPROVAL<br/>Budget Head — Budget Preview<br/>• Status: Endorsed<br/>• Review and approve"]
+    D1 -->|"Yes"| S4["STEP 4 — APPROVAL<br/>Budget Head — Budget Proposal, Budget Review<br/>• Status: Endorsed<br/>• Review and approve"]
     S4 --> D2{"Approved?"}
     D2 -->|"No — Return"| R2["Returned to Budget Officer<br/>• Remarks logged"]
     R2 --> S3
@@ -559,4 +561,3 @@ flowchart TD
   (`04 - seed_data/08`); the accounting entry is right either way.
 - Pages that work but are **not in the sidebar**: Purchase Orders, FTLA, Subsidiary Ledger (its postings show in the
   General Ledger's SL popup; the Subsidiary Ledger sheet print is only on that page).
-- **Sidebar label:** Budget Revision currently shows as "Budget Proposal" (same as the Budget Proposal item).
