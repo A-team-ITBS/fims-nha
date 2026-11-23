@@ -308,7 +308,7 @@ $USER_LEVEL_TABLES = [["audit_logs","audit_logs","Audit Logs",false,"{FIMS}",""]
     ["subsidiary-ledger-page.php","subsidiary_ledger_page","Subsidiary Ledger",true,"{FIMS}","SubsidiaryLedgerPage"],
     ["journals-page.php","journals_page","Journals",true,"{FIMS}","JournalsPage"],
     ["trial-balance-page.php","trial_balance_page","Trial Balance",true,"{FIMS}","TrialBalancePage"],
-    ["budget-prop-page.php","budget_prop_page","Budget Propose",true,"{FIMS}","BudgetPropPage"],
+    ["budget-prop-page.php","budget_prop_page","Budget Propose",true,"{FIMS}",""],
     ["notification_reads","notification_reads","notification reads",true,"{FIMS}","NotificationReadsList"],
     ["saro-registry-page.php","saro_registry_page","SARO Registry",true,"{FIMS}","SaroRegistryPage"],
     ["supplemental-funds-page.php","supplemental_funds_page","Supplemental Funds",true,"{FIMS}","SupplementalFundsPage"],

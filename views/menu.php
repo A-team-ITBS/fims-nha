@@ -11,7 +11,6 @@ $sideMenu = new Menu("menu", true, false);
 $sideMenu->addMenuItem(262, "mi_notification_reads", $Language->menuPhrase("262", "MenuText"), "NotificationReadsList", -1, "", AllowListMenu('{FIMS}notification_reads'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(9, "mi_MainDashboard", $Language->menuPhrase("9", "MenuText"), "MainDashboard", -1, "", AllowListMenu('{FIMS}MainDashboard.php'), false, false, "fas fa-chart-line", "", false, true);
 $sideMenu->addMenuItem(541, "mci_COB_Preparation", $Language->menuPhrase("541", "MenuText"), "", -1, "", true, false, true, "fas fa-file-circle-plus", "", false, true);
-$sideMenu->addMenuItem(261, "mi_budget_prop_page", $Language->menuPhrase("261", "MenuText"), "BudgetPropPage", 541, "", AllowListMenu('{FIMS}budget-prop-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(81, "mi_budget_req_page", $Language->menuPhrase("81", "MenuText"), "BudgetReqPage", 541, "", AllowListMenu('{FIMS}budget-req-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(85, "mi_budget_revision_page", $Language->menuPhrase("85", "MenuText"), "BudgetRevisionPage", 541, "", AllowListMenu('{FIMS}budget-revision-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(146, "mci_Budget_Process", $Language->menuPhrase("146", "MenuText"), "", -1, "", true, false, true, "fas fa-calculator", "", false, true);
