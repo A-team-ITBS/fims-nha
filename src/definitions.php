@@ -131,7 +131,6 @@ return [
     "subsidiary_ledger_page" => \DI\create(SubsidiaryLedgerPage::class),
     "journals_page" => \DI\create(JournalsPage::class),
     "trial_balance_page" => \DI\create(TrialBalancePage::class),
-    "budget_prop_page" => \DI\create(BudgetPropPage::class),
     "notification_reads" => \DI\create(NotificationReads::class),
     "saro_registry_page" => \DI\create(SaroRegistryPage::class),
     "supplemental_funds_page" => \DI\create(SupplementalFundsPage::class),
@@ -171,6 +170,7 @@ return [
     "cash_flow_page" => \DI\create(CashFlowPage::class),
     "closing_balance_page" => \DI\create(ClosingBalancePage::class),
     "bank_reconciliation_page" => \DI\create(BankReconciliationPage::class),
+    "fund_sweeping_page" => \DI\create(FundSweepingPage::class),
 
     // User table
     "usertable" => \DI\get("users"),
