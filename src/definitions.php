@@ -171,6 +171,7 @@ return [
     "cash_flow_page" => \DI\create(CashFlowPage::class),
     "closing_balance_page" => \DI\create(ClosingBalancePage::class),
     "bank_reconciliation_page" => \DI\create(BankReconciliationPage::class),
+    "fund_sweeping_page" => \DI\create(FundSweepingPage::class),
 
     // User table
     "usertable" => \DI\get("users"),
