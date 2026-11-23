@@ -171,6 +171,10 @@ return [
     "closing_balance_page" => \DI\create(ClosingBalancePage::class),
     "bank_reconciliation_page" => \DI\create(BankReconciliationPage::class),
     "fund_sweeping_page" => \DI\create(FundSweepingPage::class),
+    "construction_in_progress_page" => \DI\create(ConstructionInProgressPage::class),
+    "property_and_equipment_for_distribution_page" => \DI\create(PropertyAndEquipmentForDistributionPage::class),
+    "fixed_assets_page" => \DI\create(FixedAssetsPage::class),
+    "merchandise_inventory_page" => \DI\create(MerchandiseInventoryPage::class),
 
     // User table
     "usertable" => \DI\get("users"),

@@ -482,6 +482,10 @@
     <Table TblName="closing-balance-page.php" TblType="REPORT" TblGen="1" TblGenList="reportcontroller=1,custom=1,custom|class=1" TblList="1" TblCaption="Closing Balance" TblSrchType="NONE" TblBasicSearch="1" TblExtendedBasicSearch="1" TblSecurity="0,&quot;Default&quot;,0" TblLoaded="1" TblReportType="custom" TblShowEmptyRows="0" TblUseGlobal="1" TblRecPerPage="20" TblRecPerPageList="10,20,50,ALL" TblGrpPerPage="3" TblGrpPerPageList="1,2,3,5,ALL" TblPagerStyle="2" TblUseButtonsForLinks="1" TblUseDropDownForAction="1" TblUseDropDownForListOptions="1" TblUseDropDownForExport="1" />
     <Table TblName="bank-reconciliation-page.php" TblType="REPORT" TblGen="1" TblGenList="reportcontroller=1,custom=1,custom|class=1" TblList="1" TblCaption="Bank Reconciliation" TblSrchType="NONE" TblBasicSearch="1" TblExtendedBasicSearch="1" TblSecurity="0,&quot;Default&quot;,0" TblLoaded="1" TblReportType="custom" TblShowEmptyRows="0" TblUseGlobal="1" TblRecPerPage="20" TblRecPerPageList="10,20,50,ALL" TblGrpPerPage="3" TblGrpPerPageList="1,2,3,5,ALL" TblPagerStyle="2" TblUseButtonsForLinks="1" TblUseDropDownForAction="1" TblUseDropDownForListOptions="1" TblUseDropDownForExport="1" />
     <Table TblName="fund-sweeping-page.php" TblType="REPORT" TblGen="1" TblGenList="reportcontroller=1,custom=1,custom|class=1" TblList="1" TblCaption="Fund Sweeping" TblSrchType="NONE" TblBasicSearch="1" TblExtendedBasicSearch="1" TblSecurity="0,&quot;Default&quot;,0" TblLoaded="1" TblReportType="custom" TblShowEmptyRows="0" TblUseGlobal="1" TblRecPerPage="20" TblRecPerPageList="10,20,50,ALL" TblGrpPerPage="3" TblGrpPerPageList="1,2,3,5,ALL" TblPagerStyle="2" TblUseButtonsForLinks="1" TblUseDropDownForAction="1" TblUseDropDownForListOptions="1" TblUseDropDownForExport="1" />
+    <Table TblName="construction-in-progress-page.php" TblType="REPORT" TblGen="1" TblGenList="reportcontroller=1,custom=1,custom|class=1" TblList="1" TblCaption="Construction In Progress" TblSrchType="NONE" TblBasicSearch="1" TblExtendedBasicSearch="1" TblSecurity="0,&quot;Default&quot;,0" TblLoaded="1" TblReportType="custom" TblShowEmptyRows="0" TblUseGlobal="1" TblRecPerPage="20" TblRecPerPageList="10,20,50,ALL" TblGrpPerPage="3" TblGrpPerPageList="1,2,3,5,ALL" TblPagerStyle="2" TblUseButtonsForLinks="1" TblUseDropDownForAction="1" TblUseDropDownForListOptions="1" TblUseDropDownForExport="1" />
+    <Table TblName="property-and-equipment-for-distribution-page.php" TblType="REPORT" TblGen="1" TblGenList="reportcontroller=1,custom=1,custom|class=1" TblList="1" TblCaption="Property and equipment for Distribution" TblSrchType="NONE" TblBasicSearch="1" TblExtendedBasicSearch="1" TblSecurity="0,&quot;Default&quot;,0" TblLoaded="1" TblReportType="custom" TblShowEmptyRows="0" TblUseGlobal="1" TblRecPerPage="20" TblRecPerPageList="10,20,50,ALL" TblGrpPerPage="3" TblGrpPerPageList="1,2,3,5,ALL" TblPagerStyle="2" TblUseButtonsForLinks="1" TblUseDropDownForAction="1" TblUseDropDownForListOptions="1" TblUseDropDownForExport="1" />
+    <Table TblName="fixed-assets-page.php" TblType="REPORT" TblGen="1" TblGenList="reportcontroller=1,custom=1,custom|class=1" TblList="1" TblCaption="Fixed Assets" TblSrchType="NONE" TblBasicSearch="1" TblExtendedBasicSearch="1" TblSecurity="0,&quot;Default&quot;,0" TblLoaded="1" TblReportType="custom" TblShowEmptyRows="0" TblUseGlobal="1" TblRecPerPage="20" TblRecPerPageList="10,20,50,ALL" TblGrpPerPage="3" TblGrpPerPageList="1,2,3,5,ALL" TblPagerStyle="2" TblUseButtonsForLinks="1" TblUseDropDownForAction="1" TblUseDropDownForListOptions="1" TblUseDropDownForExport="1" />
+    <Table TblName="merchandise-inventory-page.php" TblType="REPORT" TblGen="1" TblGenList="reportcontroller=1,custom=1,custom|class=1" TblList="1" TblCaption="Merchandise Inventory" TblSrchType="NONE" TblBasicSearch="1" TblExtendedBasicSearch="1" TblSecurity="0,&quot;Default&quot;,0" TblLoaded="1" TblReportType="custom" TblShowEmptyRows="0" TblUseGlobal="1" TblRecPerPage="20" TblRecPerPageList="10,20,50,ALL" TblGrpPerPage="3" TblGrpPerPageList="1,2,3,5,ALL" TblPagerStyle="2" TblUseButtonsForLinks="1" TblUseDropDownForAction="1" TblUseDropDownForListOptions="1" TblUseDropDownForExport="1" />
   </Database>
   <Extension Name="@phpmaker/dompdf" Template="@phpmaker/dompdf" XmlFile="dompdf.xml" Enabled="1">
     <ExtProject>
@@ -784,6 +788,18 @@
           <Properties><![CDATA[[{"Id":"ExportList","Type":"Boolean","Value":"0"},{"Id":"ExportView","Type":"Boolean","Value":"1"},{"Id":"PageBreakRecordCount","Type":"Integer","Value":0},{"Id":"PageOrientation","Type":"String","Value":"portrait"},{"Id":"PageSize","Type":"String","Value":"a4"}]]]></Properties>
         </ExtTable>
         <ExtTable TblName="fund-sweeping-page.php">
+          <Properties><![CDATA[[{"Id":"ExportList","Type":"Boolean","Value":"0"},{"Id":"ExportView","Type":"Boolean","Value":"1"},{"Id":"PageBreakRecordCount","Type":"Integer","Value":0},{"Id":"PageOrientation","Type":"String","Value":"portrait"},{"Id":"PageSize","Type":"String","Value":"a4"}]]]></Properties>
+        </ExtTable>
+        <ExtTable TblName="construction-in-progress-page.php">
+          <Properties><![CDATA[[{"Id":"ExportList","Type":"Boolean","Value":"0"},{"Id":"ExportView","Type":"Boolean","Value":"1"},{"Id":"PageBreakRecordCount","Type":"Integer","Value":0},{"Id":"PageOrientation","Type":"String","Value":"portrait"},{"Id":"PageSize","Type":"String","Value":"a4"}]]]></Properties>
+        </ExtTable>
+        <ExtTable TblName="property-and-equipment-for-distribution-page.php">
+          <Properties><![CDATA[[{"Id":"ExportList","Type":"Boolean","Value":"0"},{"Id":"ExportView","Type":"Boolean","Value":"1"},{"Id":"PageBreakRecordCount","Type":"Integer","Value":0},{"Id":"PageOrientation","Type":"String","Value":"portrait"},{"Id":"PageSize","Type":"String","Value":"a4"}]]]></Properties>
+        </ExtTable>
+        <ExtTable TblName="fixed-assets-page.php">
+          <Properties><![CDATA[[{"Id":"ExportList","Type":"Boolean","Value":"0"},{"Id":"ExportView","Type":"Boolean","Value":"1"},{"Id":"PageBreakRecordCount","Type":"Integer","Value":0},{"Id":"PageOrientation","Type":"String","Value":"portrait"},{"Id":"PageSize","Type":"String","Value":"a4"}]]]></Properties>
+        </ExtTable>
+        <ExtTable TblName="merchandise-inventory-page.php">
           <Properties><![CDATA[[{"Id":"ExportList","Type":"Boolean","Value":"0"},{"Id":"ExportView","Type":"Boolean","Value":"1"},{"Id":"PageBreakRecordCount","Type":"Integer","Value":0},{"Id":"PageOrientation","Type":"String","Value":"portrait"},{"Id":"PageSize","Type":"String","Value":"a4"}]]]></Properties>
         </ExtTable>
         <Properties><![CDATA[[]]]></Properties>
@@ -1313,6 +1329,18 @@
         <ExtTable TblName="fund-sweeping-page.php">
           <Properties><![CDATA[[]]]></Properties>
         </ExtTable>
+        <ExtTable TblName="construction-in-progress-page.php">
+          <Properties><![CDATA[[]]]></Properties>
+        </ExtTable>
+        <ExtTable TblName="property-and-equipment-for-distribution-page.php">
+          <Properties><![CDATA[[]]]></Properties>
+        </ExtTable>
+        <ExtTable TblName="fixed-assets-page.php">
+          <Properties><![CDATA[[]]]></Properties>
+        </ExtTable>
+        <ExtTable TblName="merchandise-inventory-page.php">
+          <Properties><![CDATA[[]]]></Properties>
+        </ExtTable>
         <Properties><![CDATA[[]]]></Properties>
       </ExtDatabase>
       <Properties><![CDATA[[{"Id":"InputGroup","Type":"Boolean","Value":"1"},{"Id":"Options","Type":"String","Value":""}]]]></Properties>
@@ -1609,6 +1637,18 @@
           <Properties><![CDATA[[]]]></Properties>
         </ExtTable>
         <ExtTable TblName="fund-sweeping-page.php">
+          <Properties><![CDATA[[]]]></Properties>
+        </ExtTable>
+        <ExtTable TblName="construction-in-progress-page.php">
+          <Properties><![CDATA[[]]]></Properties>
+        </ExtTable>
+        <ExtTable TblName="property-and-equipment-for-distribution-page.php">
+          <Properties><![CDATA[[]]]></Properties>
+        </ExtTable>
+        <ExtTable TblName="fixed-assets-page.php">
+          <Properties><![CDATA[[]]]></Properties>
+        </ExtTable>
+        <ExtTable TblName="merchandise-inventory-page.php">
           <Properties><![CDATA[[]]]></Properties>
         </ExtTable>
         <Properties><![CDATA[[]]]></Properties>
@@ -2138,6 +2178,18 @@
         <ExtTable TblName="fund-sweeping-page.php">
           <Properties><![CDATA[[]]]></Properties>
         </ExtTable>
+        <ExtTable TblName="construction-in-progress-page.php">
+          <Properties><![CDATA[[]]]></Properties>
+        </ExtTable>
+        <ExtTable TblName="property-and-equipment-for-distribution-page.php">
+          <Properties><![CDATA[[]]]></Properties>
+        </ExtTable>
+        <ExtTable TblName="fixed-assets-page.php">
+          <Properties><![CDATA[[]]]></Properties>
+        </ExtTable>
+        <ExtTable TblName="merchandise-inventory-page.php">
+          <Properties><![CDATA[[]]]></Properties>
+        </ExtTable>
         <Properties><![CDATA[[]]]></Properties>
       </ExtDatabase>
       <Properties><![CDATA[[{"Id":"Config","Type":"String","Value":""}]]]></Properties>
@@ -2477,11 +2529,15 @@ function Page_Load()
   <CustomScript ScriptType="Template" ScriptCodeType="Table" ScriptName="Content" ScriptCtrlID="custom" ScriptL1Key="closing-balance-page.php"><![CDATA[<?php include(dirname(__DIR__, 1) . "/app/pages/closing-balance-page.php"); ?>]]></CustomScript>
   <CustomScript ScriptType="Template" ScriptCodeType="Table" ScriptName="Content" ScriptCtrlID="custom" ScriptL1Key="bank-reconciliation-page.php"><![CDATA[<?php include(dirname(__DIR__, 1) . "/app/pages/bank-reconciliation-page.php"); ?>]]></CustomScript>
   <CustomScript ScriptType="Template" ScriptCodeType="Table" ScriptName="Content" ScriptCtrlID="custom" ScriptL1Key="fund-sweeping-page.php"><![CDATA[<?php include(dirname(__DIR__, 1) . "/app/pages/fund-sweeping-page.php"); ?>]]></CustomScript>
+  <CustomScript ScriptType="Template" ScriptCodeType="Table" ScriptName="Content" ScriptCtrlID="custom" ScriptL1Key="construction-in-progress-page.php"><![CDATA[<?php include(dirname(__DIR__, 1) . "/app/pages/construction-in-progress-page.php"); ?>]]></CustomScript>
+  <CustomScript ScriptType="Template" ScriptCodeType="Table" ScriptName="Content" ScriptCtrlID="custom" ScriptL1Key="property-and-equipment-for-distribution-page.php"><![CDATA[<?php include(dirname(__DIR__, 1) . "/app/pages/property-and-equipment-for-distribution-page.php"); ?>]]></CustomScript>
+  <CustomScript ScriptType="Template" ScriptCodeType="Table" ScriptName="Content" ScriptCtrlID="custom" ScriptL1Key="merchandise-inventory-page.php"><![CDATA[<?php include(dirname(__DIR__, 1) . "/app/pages/merchandise-inventory-page.php"); ?>]]></CustomScript>
+  <CustomScript ScriptType="Template" ScriptCodeType="Table" ScriptName="Content" ScriptCtrlID="custom" ScriptL1Key="fixed-assets-page.php"><![CDATA[<?php include(dirname(__DIR__, 1) . "/app/pages/fixed-assets-page.php"); ?>]]></CustomScript>
   <Menu MenuID="262" MenuText="notification reads" MenuParentID="-1" MenuGroup="0" MenuSource="" MenuExtUrl="" MenuAnonymous="0" MenuSecurity="" MenuUrl="notification_reads" MenuType="" MenuCustomUrl="0" MenuLevel="0" MenuShow="1" MenuDisplayOrder="100" MenuIconClass="" MenuNavbar="0" />
   <Menu MenuID="9" MenuText="Dashboard" MenuParentID="-1" MenuGroup="0" MenuSource="" MenuExtUrl="" MenuAnonymous="0" MenuSecurity="" MenuUrl="MainDashboard.php" MenuType="" MenuCustomUrl="0" MenuLevel="0" MenuShow="1" MenuDisplayOrder="200" MenuIconClass="fas fa-chart-line" MenuNavbar="0" />
   <Menu MenuID="541" MenuText="COB Preparation" MenuParentID="-1" MenuGroup="0" MenuSource="" MenuExtUrl="" MenuAnonymous="8" MenuSecurity="" MenuUrl="" MenuType="" MenuCustomUrl="1" MenuLevel="0" MenuShow="1" MenuDisplayOrder="300" MenuIconClass="fas fa-file-circle-plus" MenuNavbar="0" />
   <Menu MenuID="81" MenuText="Budget Proposal" MenuParentID="541" MenuGroup="0" MenuSource="" MenuExtUrl="" MenuAnonymous="0" MenuSecurity="" MenuUrl="budget-req-page.php" MenuType="" MenuCustomUrl="0" MenuLevel="1" MenuShow="1" MenuDisplayOrder="100" MenuIconClass="" MenuNavbar="0" />
-  <Menu MenuID="85" MenuText="Budget Revision" MenuParentID="541" MenuGroup="0" MenuSource="" MenuExtUrl="" MenuAnonymous="0" MenuSecurity="" MenuUrl="budget-revision-page.php" MenuType="" MenuCustomUrl="0" MenuLevel="1" MenuShow="1" MenuDisplayOrder="200" MenuIconClass="" MenuNavbar="0" />
+  <Menu MenuID="85" MenuText="Budget Amendment" MenuParentID="541" MenuGroup="0" MenuSource="" MenuExtUrl="" MenuAnonymous="0" MenuSecurity="" MenuUrl="budget-revision-page.php" MenuType="" MenuCustomUrl="0" MenuLevel="1" MenuShow="1" MenuDisplayOrder="200" MenuIconClass="" MenuNavbar="0" />
   <Menu MenuID="657" MenuText="Ledger" MenuParentID="541" MenuGroup="0" MenuSource="" MenuExtUrl="" MenuAnonymous="0" MenuSecurity="" MenuUrl="ledger-page.php" MenuType="" MenuCustomUrl="0" MenuLevel="1" MenuShow="0" MenuDisplayOrder="300" MenuIconClass="" MenuNavbar="0" />
   <Menu MenuID="146" MenuText="Budget Process" MenuParentID="-1" MenuGroup="0" MenuSource="" MenuExtUrl="" MenuAnonymous="8" MenuSecurity="" MenuUrl="" MenuType="" MenuCustomUrl="1" MenuLevel="0" MenuShow="1" MenuDisplayOrder="400" MenuIconClass="fas fa-calculator" MenuNavbar="0" />
   <Menu MenuID="553" MenuText="Request for Allocation(CBA)" MenuParentID="146" MenuGroup="0" MenuSource="" MenuExtUrl="" MenuAnonymous="0" MenuSecurity="" MenuUrl="cba-memo-request-page.php" MenuType="" MenuCustomUrl="0" MenuLevel="1" MenuShow="1" MenuDisplayOrder="100" MenuIconClass="" MenuNavbar="0" />
@@ -2498,6 +2554,10 @@ function Page_Load()
   <Menu MenuID="91" MenuText="IAR Module" MenuParentID="390" MenuGroup="0" MenuSource="" MenuExtUrl="" MenuAnonymous="0" MenuSecurity="" MenuUrl="IARModule.php" MenuType="" MenuCustomUrl="0" MenuLevel="1" MenuShow="1" MenuDisplayOrder="100" MenuIconClass="" MenuNavbar="0" />
   <Menu MenuID="333" MenuText="Property Record" MenuParentID="390" MenuGroup="0" MenuSource="" MenuExtUrl="" MenuAnonymous="0" MenuSecurity="" MenuUrl="property-record-page.php" MenuType="" MenuCustomUrl="0" MenuLevel="1" MenuShow="1" MenuDisplayOrder="200" MenuIconClass="" MenuNavbar="0" />
   <Menu MenuID="766" MenuText="Work-In-Process" MenuParentID="390" MenuGroup="0" MenuSource="" MenuExtUrl="" MenuAnonymous="0" MenuSecurity="" MenuUrl="work-in-process-page.php" MenuType="" MenuCustomUrl="0" MenuLevel="1" MenuShow="1" MenuDisplayOrder="300" MenuIconClass="" MenuNavbar="0" />
+  <Menu MenuID="867" MenuText="Construction In Progress" MenuParentID="390" MenuGroup="0" MenuSource="" MenuExtUrl="" MenuAnonymous="0" MenuSecurity="" MenuUrl="construction-in-progress-page.php" MenuType="" MenuCustomUrl="0" MenuLevel="1" MenuShow="1" MenuDisplayOrder="400" MenuIconClass="" MenuNavbar="0" />
+  <Menu MenuID="868" MenuText="Property and equipment for Distribution" MenuParentID="390" MenuGroup="0" MenuSource="" MenuExtUrl="" MenuAnonymous="0" MenuSecurity="" MenuUrl="property-and-equipment-for-distribution-page.php" MenuType="" MenuCustomUrl="0" MenuLevel="1" MenuShow="1" MenuDisplayOrder="500" MenuIconClass="" MenuNavbar="0" />
+  <Menu MenuID="870" MenuText="Merchandise Inventory" MenuParentID="390" MenuGroup="0" MenuSource="" MenuExtUrl="" MenuAnonymous="0" MenuSecurity="" MenuUrl="merchandise-inventory-page.php" MenuType="" MenuCustomUrl="0" MenuLevel="1" MenuShow="1" MenuDisplayOrder="600" MenuIconClass="" MenuNavbar="0" />
+  <Menu MenuID="869" MenuText="Fixed Assets" MenuParentID="390" MenuGroup="0" MenuSource="" MenuExtUrl="" MenuAnonymous="0" MenuSecurity="" MenuUrl="fixed-assets-page.php" MenuType="" MenuCustomUrl="0" MenuLevel="1" MenuShow="1" MenuDisplayOrder="700" MenuIconClass="" MenuNavbar="0" />
   <Menu MenuID="755" MenuText="Monitoring" MenuParentID="-1" MenuGroup="0" MenuSource="" MenuExtUrl="" MenuAnonymous="8" MenuSecurity="" MenuUrl="" MenuType="" MenuCustomUrl="1" MenuLevel="0" MenuShow="1" MenuDisplayOrder="700" MenuIconClass="fas fa-chart-bar" MenuNavbar="0" />
   <Menu MenuID="400" MenuText="COB Monitoring" MenuParentID="755" MenuGroup="0" MenuSource="" MenuExtUrl="" MenuAnonymous="0" MenuSecurity="" MenuUrl="cob-page.php" MenuType="" MenuCustomUrl="0" MenuLevel="1" MenuShow="1" MenuDisplayOrder="100" MenuIconClass="" MenuNavbar="0" />
   <Menu MenuID="756" MenuText="RFA / LAA Monitoring" MenuParentID="755" MenuGroup="0" MenuSource="" MenuExtUrl="" MenuAnonymous="0" MenuSecurity="" MenuUrl="rfa-laa-monitoring-page.php" MenuType="" MenuCustomUrl="0" MenuLevel="1" MenuShow="1" MenuDisplayOrder="200" MenuIconClass="" MenuNavbar="0" />

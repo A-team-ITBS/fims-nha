@@ -65,6 +65,18 @@
     <menu id="766">
       <phrase id="menutext" value="Work-In-Process" />
     </menu>
+    <menu id="867">
+      <phrase id="menutext" value="Construction In Progress" />
+    </menu>
+    <menu id="868">
+      <phrase id="menutext" value="Property and equipment for Distribution" />
+    </menu>
+    <menu id="870">
+      <phrase id="menutext" value="Merchandise Inventory" />
+    </menu>
+    <menu id="869">
+      <phrase id="menutext" value="Fixed Assets" />
+    </menu>
     <menu id="755">
       <phrase id="menutext" value="Monitoring" />
     </menu>
@@ -1840,6 +1852,18 @@
     </table>
     <table id="fund_sweeping_page">
       <phrase id="tblcaption" value="Fund Sweeping" />
+    </table>
+    <table id="construction_in_progress_page">
+      <phrase id="tblcaption" value="Construction In Progress" />
+    </table>
+    <table id="property_and_equipment_for_distribution_page">
+      <phrase id="tblcaption" value="Property and equipment for Distribution" />
+    </table>
+    <table id="fixed_assets_page">
+      <phrase id="tblcaption" value="Fixed Assets" />
+    </table>
+    <table id="merchandise_inventory_page">
+      <phrase id="tblcaption" value="Merchandise Inventory" />
     </table>
   </project>
 </ew-language>
