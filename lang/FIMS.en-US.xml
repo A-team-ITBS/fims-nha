@@ -15,7 +15,7 @@
       <phrase id="menutext" value="Budget Proposal" />
     </menu>
     <menu id="85">
-      <phrase id="menutext" value="Budget Revision" />
+      <phrase id="menutext" value="Budget Amendment" />
     </menu>
     <menu id="657">
       <phrase id="menutext" value="Ledger" />
