@@ -120,6 +120,30 @@ $_prp_api = Config('API.FIMS_URL');
     .prp-jev-del { border:0;background:none;color:#DC3545;font-size:18px;cursor:pointer;line-height:1; }
     .prp-pf-grid { display:grid;grid-template-columns:minmax(0,2fr) minmax(0,2fr) minmax(0,1fr);gap:14px; }
     @media (max-width:760px) { .prp-pf-grid { grid-template-columns:minmax(0,1fr); } }
+    /* Pro-forma JEV modal: buttons (close, + Add row, remove row, Print JEV, Submit) */
+    #prp-pf-overlay .nha-modal-close { width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;padding:0;font-size:20px;line-height:1;cursor:pointer;
+        border-radius:8px;color:#fff;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25); }
+    #prp-pf-overlay .nha-modal-close:hover { background:rgba(255,255,255,.24); }
+    #prp-pf-overlay #prp-pf-add { display:inline-flex;align-items:center;gap:4px;height:34px;padding:0 16px;font-size:12px;font-weight:600;cursor:pointer;
+        border-radius:8px;color:#fff;background:var(--afims-primary, #0035A9);border:1px solid var(--afims-primary, #0035A9); }
+    #prp-pf-overlay #prp-pf-add:hover { filter:brightness(1.12); }
+    #prp-pf-overlay .prp-jev-del { width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;padding:0;font-size:18px;font-weight:600;line-height:1;cursor:pointer;
+        border-radius:6px;color:#DC3545;background:transparent;border:1px solid color-mix(in srgb, #DC3545 35%, transparent); }
+    #prp-pf-overlay .prp-jev-del:hover { color:#fff;background:#DC3545;border-color:#DC3545; }
+    #prp-pf-overlay .nha-modal-foot .nha-btn { height:36px;padding:0 20px;font-size:13px !important;font-weight:600;border-radius:8px;cursor:pointer; }
+    #prp-pf-overlay #prp-pf-print { color:var(--afims-text, #1A1B21);background:var(--afims-surface, #FFFFFF);border:1px solid var(--afims-border, #E4ECF2); }
+    #prp-pf-overlay #prp-pf-print:hover { background:var(--afims-surface-subtle, #F4F7FA); }
+    #prp-pf-overlay #prp-pf-submit { color:#fff;background:var(--afims-primary, #0035A9);border:1px solid var(--afims-primary, #0035A9); }
+    #prp-pf-overlay #prp-pf-submit:hover { filter:brightness(1.12); }
+    html.afims-dark[data-bs-theme="dark"] #prp-pf-overlay #prp-pf-add,
+    html.afims-dark[data-bs-theme="dark"] #prp-pf-overlay #prp-pf-submit { background:#3861BC;border-color:#3861BC; }
+    html.afims-dark[data-bs-theme="dark"] #prp-pf-overlay #prp-pf-add:hover,
+    html.afims-dark[data-bs-theme="dark"] #prp-pf-overlay #prp-pf-submit:hover { background:#2E59B8;border-color:#2E59B8;filter:none; }
+    html.afims-dark[data-bs-theme="dark"] #prp-pf-overlay #prp-pf-print { color:#E4ECF2;background:#22294A;border-color:#4A5270; }
+    html.afims-dark[data-bs-theme="dark"] #prp-pf-overlay #prp-pf-print:hover { background:#2E3656; }
+    html.afims-dark[data-bs-theme="dark"] #prp-pf-overlay .prp-jev-del { color:#F87171;border-color:rgba(248,113,113,.4); }
+    html.afims-dark[data-bs-theme="dark"] #prp-pf-overlay .prp-jev-del:hover { color:#fff;background:#DC3545;border-color:#DC3545; }
+    #prp-pf-overlay button:disabled { opacity:.5;cursor:not-allowed; }
     /* Items from the IAR module: an account row with an arrow that opens its items */
     .prp-v-toggle { width:28px;height:28px;border:1px solid var(--afims-border, #E4ECF2);border-radius:6px;background:var(--afims-surface, #FFFFFF);color:var(--afims-text, #1A1B21);cursor:pointer;font-size:12px;line-height:1; }
     .prp-v-toggle:hover { background:var(--afims-surface-subtle, #F4F7FA); }

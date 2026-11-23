@@ -227,6 +227,26 @@ $crCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
 #crModule #registryTable tr.reg-low-stock-row td { background: #FFFBEB; }
 #crModule #registryTable tr.reg-low-stock-row:hover td { background: #FFF3CD; }
 #crModule #registryTable tr.reg-low-stock-row td:nth-child(6) { color: #dc2626; font-weight: 700; }
+
+/* Dark mode: native <select>s rendered grey — match them to the text inputs
+   (filter bar + Register Check Batch modal). */
+html.afims-dark[data-bs-theme="dark"] #crModule select.fims-select {
+    color-scheme: dark;
+    background-color: #1A1F38 !important;
+    color: #E4ECF2 !important;
+    border: 1px solid #2E3656 !important;
+}
+html.afims-dark[data-bs-theme="dark"] #crModule select.fims-select:hover { border-color: #4A5270 !important; }
+html.afims-dark[data-bs-theme="dark"] #crModule select.fims-select:focus {
+    border-color: #3861BC !important;
+    box-shadow: 0 0 0 3px rgba(56,97,188,.25) !important;
+    outline: none;
+}
+html.afims-dark[data-bs-theme="dark"] #crModule select.fims-select option {
+    background-color: #1A1F38;
+    color: #E4ECF2;
+}
+html.afims-dark[data-bs-theme="dark"] #crModule input.fims-input[type="date"] { color-scheme: dark; }
 </style>
 
 <script>

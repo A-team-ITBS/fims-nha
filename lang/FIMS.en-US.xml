@@ -1,4 +1,4 @@
-<ew-language date="2026/11/20" id="en-US" author="e.World Technology Limited">
+<ew-language date="2026/11/23" id="en-US" author="e.World Technology Limited">
   <project>
     <phrase id="bodytitle" value="NHA - FIMS" />
     <phrase id="footertext" value="&amp;copy;2026 ITBS Corporation. All rights reserved." />
@@ -15,10 +15,10 @@
       <phrase id="menutext" value="Budget Proposal" />
     </menu>
     <menu id="81">
-      <phrase id="menutext" value="Budget Proposal" />
+      <phrase id="menutext" value="Budget Request" />
     </menu>
     <menu id="85">
-      <phrase id="menutext" value="Budget Revision" />
+      <phrase id="menutext" value="Budget Proposal" />
     </menu>
     <menu id="657">
       <phrase id="menutext" value="Ledger" />
@@ -43,6 +43,9 @@
     </menu>
     <menu id="207">
       <phrase id="menutext" value="Disbursement Voucher" />
+    </menu>
+    <menu id="653">
+      <phrase id="menutext" value="Remittance List (Deductions)" />
     </menu>
     <menu id="559">
       <phrase id="menutext" value="Liquidation Voucher" />
@@ -93,16 +96,25 @@
       <phrase id="menutext" value="Accountable Forms Registry" />
     </menu>
     <menu id="757">
-      <phrase id="menutext" value="Collections and Fund Sweeping" />
+      <phrase id="menutext" value="Collections and Deposits" />
+    </menu>
+    <menu id="866">
+      <phrase id="menutext" value="Fund Sweeping" />
+    </menu>
+    <menu id="865">
+      <phrase id="menutext" value="Payroll" />
+    </menu>
+    <menu id="761">
+      <phrase id="menutext" value="Payroll Management" />
+    </menu>
+    <menu id="762">
+      <phrase id="menutext" value="Remittance" />
     </menu>
     <menu id="552">
       <phrase id="menutext" value="Reports" />
     </menu>
     <menu id="652">
       <phrase id="menutext" value="FMR" />
-    </menu>
-    <menu id="653">
-      <phrase id="menutext" value="Remittance List (Deductions)" />
     </menu>
     <menu id="397">
       <phrase id="menutext" value="Trial Balance" />
@@ -166,12 +178,6 @@
     </menu>
     <menu id="759">
       <phrase id="menutext" value="Payroll Setup" />
-    </menu>
-    <menu id="761">
-      <phrase id="menutext" value="Payroll Management" />
-    </menu>
-    <menu id="762">
-      <phrase id="menutext" value="Remittance" />
     </menu>
     <menu id="760">
       <phrase id="menutext" value="Fidelity Bond" />
@@ -1837,6 +1843,9 @@
     </table>
     <table id="bank_reconciliation_page">
       <phrase id="tblcaption" value="Bank Reconciliation" />
+    </table>
+    <table id="fund_sweeping_page">
+      <phrase id="tblcaption" value="Fund Sweeping" />
     </table>
   </project>
 </ew-language>

@@ -35,6 +35,9 @@ $_tb_api = preg_match('~/api$~', $_tb_api) ? $_tb_api : $_tb_api . '/api';
     #tb-root .nha-filter-label        { font-size: 0.75rem; }    /* 12px  (was 10) */
     #tb-root .nha-filter-select       { font-size: calc(0.875rem * var(--input-scale, 1)) !important; }  /* 14px  dropdowns (was 13) */
     #tb-root .nha-bdg                 { font-size: 0.8125rem; }  /* 13px  status badge (was 11) */
+    /* The filter group is a flex column, which stretched the badge across the whole column — keep it pill-sized,
+       lined up with the dropdowns beside it. */
+    #tb-root #tb-badge { align-self: flex-start; display: inline-flex; align-items: center; min-height: 34px; padding: 0 14px; margin-top: auto; }
     #tb-root .nha-error               { font-size: 0.875rem; }   /* 14px  (was 13) */
     #tb-root .nha-hint                { font-size: 0.875rem; padding: 0 16px; margin: 0 0 14px; color: var(--afims-text-muted, #62657E); }   /* 14px  (was 13); 16px side padding lines it up with the filter card's content */
 

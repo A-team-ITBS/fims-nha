@@ -302,7 +302,7 @@ function coa_bindEvents() {
     searchEl?.addEventListener('input', () => {
         if (clearBtn) clearBtn.hidden = !searchEl.value;
         clearTimeout(searchTimer);
-        searchTimer = setTimeout(() => coa_load(), 300);
+        searchTimer = setTimeout(() => coa_load(), 500);
     });
     clearBtn?.addEventListener('click', () => {
         if (searchEl) { searchEl.value = ''; searchEl.focus(); }
