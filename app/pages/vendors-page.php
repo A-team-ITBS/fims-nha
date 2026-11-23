@@ -195,6 +195,42 @@ $_vnd_api = Config('API.FIMS_URL');
     #vnd-sl-footer .vnd-sl-btn-ghost:hover:not(:disabled) { background:var(--afims-surface-subtle, #F4F7FA); }
     #vnd-sl-footer .vnd-sl-btn-navy { background:var(--afims-heading-fill, #000E3E);border-color:var(--afims-heading-fill, #000E3E);color:var(--afims-pure-white, #FFFFFF); }
     #vnd-sl-footer .vnd-sl-btn-navy:hover:not(:disabled) { opacity:.92; }
+
+    /* "+ Create Sub-Ledger Account" sits in the body, so the #vnd-sl-footer button rules never reached it. */
+    #vnd-sl-body .vnd-sl-btn { height:34px;padding:0 16px;border-radius:8px;border:1px solid #3861BC;
+        font-size:13px;font-weight:600;font-family:'IBM Plex Sans',sans-serif;cursor:pointer;
+        display:inline-flex;align-items:center;gap:6px;background:#3861BC;color:#FFFFFF;transition:background .15s,border-color .15s; }
+    #vnd-sl-body .vnd-sl-btn:hover:not(:disabled) { background:#2E59B8;border-color:#2E59B8; }
+    #vnd-sl-body .vnd-sl-btn:disabled { opacity:.5;cursor:not-allowed; }
+
+    /* ── Dark mode ── */
+    html.afims-dark[data-bs-theme="dark"] #vnd-sl-card { color-scheme:dark;border:1px solid var(--afims-border, #2E3656); }
+    html.afims-dark[data-bs-theme="dark"] #vnd-sl-close { background:rgba(255,255,255,.10);color:#C3CCE0; }
+    html.afims-dark[data-bs-theme="dark"] #vnd-sl-close:hover { background:rgba(255,255,255,.22);color:#FFFFFF; }
+    html.afims-dark[data-bs-theme="dark"] #vnd-sl-card .vnd-sl-input {
+        background-color:var(--afims-surface, #1A1F38) !important;border-color:var(--afims-border-strong, #4A5270) !important;
+        color:var(--afims-text, #E4ECF2) !important; }
+    html.afims-dark[data-bs-theme="dark"] #vnd-sl-card .vnd-sl-input::placeholder { color:#9AA3B5;opacity:1; }
+    html.afims-dark[data-bs-theme="dark"] #vnd-sl-card .vnd-sl-input:focus {
+        border-color:#3861BC !important;box-shadow:0 0 0 3px rgba(56,97,188,.25); }
+    html.afims-dark[data-bs-theme="dark"] #vnd-sl-card .vnd-sl-input:disabled {
+        background-color:var(--afims-surface-subtle, #22294A) !important;color:var(--afims-text-muted, #AAAFBE) !important; }
+    html.afims-dark[data-bs-theme="dark"] #vnd-sl-card .vnd-sl-hint { color:#9AA3B5; }
+    html.afims-dark[data-bs-theme="dark"] #vnd-sl-card .vnd-sl-radio:hover { background:#22294A; }
+    html.afims-dark[data-bs-theme="dark"] #vnd-sl-card .vnd-sl-radio input[type="radio"] { accent-color:#3861BC; }
+    html.afims-dark[data-bs-theme="dark"] :is(#vnd-sl-gl-dropdown, #vnd-sl-dropdown) {
+        background:#1A1F38 !important;border-color:#4A5270 !important;box-shadow:0 8px 20px rgba(0,0,0,.45) !important; }
+    html.afims-dark[data-bs-theme="dark"] :is(#vnd-sl-gl-dropdown, #vnd-sl-dropdown) > div {
+        color:#E4ECF2;border-bottom-color:#2E3656 !important;background:transparent !important; }
+    html.afims-dark[data-bs-theme="dark"] :is(#vnd-sl-gl-dropdown, #vnd-sl-dropdown) > div:hover { background:#22294A !important; }
+    html.afims-dark[data-bs-theme="dark"] :is(#vnd-sl-gl-dropdown, #vnd-sl-dropdown) > div div { color:#9AA3B5 !important; }
+    html.afims-dark[data-bs-theme="dark"] :is(#vnd-sl-gl-selected, #vnd-sl-selected-item) {
+        background:#0F2456 !important;color:#E4ECF2;border:1px solid #2E3656; }
+    html.afims-dark[data-bs-theme="dark"] #vnd-sl-footer .vnd-sl-btn-ghost { color:#E4ECF2;background:var(--afims-surface, #1A1F38);
+        border-color:var(--afims-border-strong, #4A5270); }
+    html.afims-dark[data-bs-theme="dark"] #vnd-sl-footer .vnd-sl-btn-ghost:hover:not(:disabled) { background:#22294A; }
+    html.afims-dark[data-bs-theme="dark"] #vnd-sl-footer .vnd-sl-btn-navy { background:#3861BC;border-color:#3861BC; }
+    html.afims-dark[data-bs-theme="dark"] #vnd-sl-footer .vnd-sl-btn-navy:hover:not(:disabled) { background:#2E59B8;opacity:1; }
 </style>
 
 <div id="vnd-sl-overlay">

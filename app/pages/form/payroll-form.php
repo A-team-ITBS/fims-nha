@@ -134,6 +134,13 @@
     html.afims-dark[data-bs-theme="dark"] .pyr-chip { border-color:#5B7FCF; }
     html.afims-dark[data-bs-theme="dark"] .pyr-chip-seg { color:#FFFFFF;background:#3861BC;border-left-color:rgba(255,255,255,.25); }
     html.afims-dark[data-bs-theme="dark"] .pyr-chip-seg.is-root { color:#FFFFFF;background:#22305E; }
+    /* The selects (Category, Status) rendered with the browser's native grey; match the text inputs. */
+    html.afims-dark[data-bs-theme="dark"] #pyr-card select.pyr-input {
+        color-scheme:dark;background-color:var(--afims-surface, #1A1F38) !important;
+        border-color:var(--afims-border, #2E3656) !important;color:var(--afims-text, #E4ECF2) !important; }
+    html.afims-dark[data-bs-theme="dark"] #pyr-card select.pyr-input option { background-color:var(--afims-surface, #1A1F38);color:var(--afims-text, #E4ECF2); }
+    html.afims-dark[data-bs-theme="dark"] #pyr-card select.pyr-input:focus {
+        border-color:#3861BC !important;box-shadow:0 0 0 3px rgba(56,97,188,.25); }
 
     @media (max-width:640px) { .pyr-row { grid-template-columns:1fr; } }
 </style>
