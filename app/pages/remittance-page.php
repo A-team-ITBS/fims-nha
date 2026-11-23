@@ -46,22 +46,36 @@ $_dr_api = preg_match('~/api$~', $_dr_api) ? $_dr_api : $_dr_api . '/api';
 #dr-root .dr-sub td:first-child { padding-left: 34px; }
 #dr-root .dr-progress { font-size: 11.5px; color: var(--afims-text-muted, #62657E); }
 @media (max-width: 900px) { #dr-root .nha-summary { grid-template-columns: repeat(2, 1fr); } }
+
+/* ── Page header: copied from User Access (.app-page-header in app/fims-css/fims.css — that file is not loaded here,
+      so the rules are repeated, scoped to this page). Stays navy in dark mode too, like User Access. ── */
+#dr-root .app-page-header { position:relative;display:flex;align-items:center;gap:1rem;flex-wrap:wrap;overflow:hidden;
+    background:linear-gradient(135deg, #000E3E 0%, #001A5E 100%);border-radius:.75rem;padding:1.5rem 1.75rem;margin-bottom:1.5rem; }
+#dr-root .app-page-header::before,
+#dr-root .app-page-header::after { content:"";position:absolute;border-radius:50%;background:rgba(255,255,255,.05);pointer-events:none; }
+#dr-root .app-page-header::before { width:180px;height:180px;top:-90px;right:80px; }
+#dr-root .app-page-header::after { width:120px;height:120px;bottom:-70px;right:-20px;background:rgba(255,255,255,.06); }
+#dr-root .app-page-header-icon { position:relative;z-index:1;flex:0 0 auto;width:3rem;height:3rem;border-radius:.5rem;
+    display:flex;align-items:center;justify-content:center;font-size:1.25rem;
+    background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);color:#FFFFFF; }
+#dr-root .app-page-title { position:relative;z-index:1;font-size:1.6rem;font-weight:800;letter-spacing:-.01em;color:#FFFFFF;margin:0 0 .25rem; }
+#dr-root .app-page-subtitle { position:relative;z-index:1;font-size:.9rem;color:rgba(255,255,255,.75);margin:0;max-width:640px; }
+/* the Refresh button stays on the right of the banner, above its decorative circles */
+#dr-root .app-page-header-actions { position:relative;z-index:1;margin-left:auto;display:flex;flex-wrap:wrap;gap:8px; }
 </style>
 
 <div id="dr-root" class="nha-root">
 
-    <div class="nha-hdr no-print">
-        <div class="nha-hdr-l">
-            <div class="nha-hdr-ico">
-                <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="#fff" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z"/></svg>
-            </div>
-            <div>
-                <div class="nha-hdr-tag">National Housing Authority · FIMS</div>
-                <div class="nha-hdr-title">Deductions &amp; Remittances</div>
-                <div class="nha-hdr-sub">Deductions withheld in each imported payroll month — paid to each agency through its own remittance DV.</div>
-            </div>
+    <!-- same banner as User Access (app-page-header in app/fims-css/fims.css) -->
+    <div class="app-page-header no-print">
+        <div class="app-page-header-icon">
+            <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="#fff" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z"/></svg>
         </div>
-        <div class="nha-hdr-r">
+        <div>
+            <h1 class="app-page-title">Deductions &amp; Remittances</h1>
+            <p class="app-page-subtitle">Deductions withheld in each imported payroll month — paid to each agency through its own remittance DV.</p>
+        </div>
+        <div class="app-page-header-actions">
             <button id="dr-refresh" type="button" class="nha-btn-hdr" title="Refresh">
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                 Refresh

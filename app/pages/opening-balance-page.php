@@ -14,79 +14,105 @@ $_ob_api = preg_match('~/api$~', $_ob_api) ? $_ob_api : $_ob_api . '/api';
 <link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
 
 <style>
+    /* All colours come from the shared theme tokens (_shared/css/custom.css), which switch by themselves in dark mode,
+       so this page matches the other report pages in both themes. */
+    /* Page header: copied from User Access (.app-page-header in app/fims-css/fims.css — that file is not loaded here,
+       so the rules are repeated, scoped to this page). The banner stays navy in dark mode too, like User Access. */
+    #ob-root .app-page-header { position: relative; display: flex; align-items: center; gap: 1rem; overflow: hidden;
+        background: linear-gradient(135deg, #000E3E 0%, #001A5E 100%); border-radius: .75rem; padding: 1.5rem 1.75rem; margin-bottom: 1.5rem; }
+    #ob-root .app-page-header::before,
+    #ob-root .app-page-header::after { content: ""; position: absolute; border-radius: 50%; background: rgba(255, 255, 255, .05); pointer-events: none; }
+    #ob-root .app-page-header::before { width: 180px; height: 180px; top: -90px; right: 80px; }
+    #ob-root .app-page-header::after { width: 120px; height: 120px; bottom: -70px; right: -20px; background: rgba(255, 255, 255, .06); }
+    #ob-root .app-page-header-icon { position: relative; z-index: 1; flex: 0 0 auto; width: 3rem; height: 3rem; border-radius: .5rem;
+        display: flex; align-items: center; justify-content: center; font-size: 1.25rem;
+        background: rgba(255, 255, 255, .15); border: 1px solid rgba(255, 255, 255, .25); color: #FFFFFF; }
+    #ob-root .app-page-title { position: relative; z-index: 1; font-size: 1.6rem; font-weight: 800; letter-spacing: -.01em; color: #FFFFFF; margin: 0 0 .25rem; }
+    #ob-root .app-page-subtitle { position: relative; z-index: 1; font-size: .9rem; color: rgba(255, 255, 255, .75); margin: 0; max-width: 640px; }
+
     #ob-root .ob-header { text-align: center; margin: 0 0 15px; }
-    #ob-root .ob-header .ob-title { font-weight: 700; font-size: 16px; color: var(--afims-text-primary, #1B2B6B); }
+    #ob-root .ob-header .ob-title { font-weight: 700; font-size: 16px; color: var(--afims-heading, #000E3E); }
     #ob-root .ob-header .ob-subtitle { font-size: 13px; color: var(--afims-text-muted, #62657E); margin-top: 4px; }
 
     #ob-root .ob-status-bar { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 20px; }
-    #ob-root .ob-status-item { background: var(--afims-bg-soft, #F5F6FA); padding: 15px; border-radius: 6px; border-left: 4px solid #3498db; }
-    #ob-root .ob-status-label { font-size: 12px; color: var(--afims-text-muted, #62657E); font-weight: 600; margin-bottom: 5px; }
-    #ob-root .ob-status-value { font-size: 16px; color: var(--afims-text-primary, #1B2B6B); font-weight: 700; font-family: 'IBM Plex Mono', monospace; }
-    #ob-root .ob-status-value.balanced { color: #27ae60; }
-    #ob-root .ob-status-value.unbalanced { color: #e74c3c; }
+    @media (max-width: 760px) { #ob-root .ob-status-bar { grid-template-columns: 1fr; } }
+    #ob-root .ob-status-item { background: var(--afims-surface, #FFFFFF); padding: 15px; border-radius: 10px; border: 1px solid var(--afims-border, #E4ECF2);
+        border-left: 4px solid var(--afims-primary, #0035A9); }
+    #ob-root .ob-status-label { font-size: 11px; color: var(--afims-text-muted, #62657E); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 5px; }
+    #ob-root .ob-status-value { font-size: 16px; color: var(--afims-heading, #000E3E); font-weight: 700; font-family: 'IBM Plex Mono', monospace; }
+    #ob-root .ob-status-value.balanced { color: var(--afims-success-hover, #0C7539); }
+    #ob-root .ob-status-value.unbalanced { color: var(--afims-danger-text, #8F2230); }
 
-    #ob-root .ob-tbl-wrapper { overflow-x: auto; margin-bottom: 20px; border: 1px solid var(--afims-border, #DDE0EC); border-radius: 6px; }
+    #ob-root .ob-tbl-wrapper { overflow-x: auto; margin-bottom: 20px; background: var(--afims-surface, #FFFFFF); border: 1px solid var(--afims-border, #E4ECF2); border-radius: 10px; }
     #ob-root .ob-tbl-scroll { max-height: 70vh; overflow-y: auto; }
-    #ob-root .ob-tbl { width: 100%; border-collapse: collapse; }
-    #ob-root .ob-tbl thead th { background: var(--afims-bg-dark, #34495e); color: white; padding: 12px; text-align: left; font-weight: 600; font-size: 13px; position: sticky; top: 0; z-index: 2; }
-    #ob-root .ob-tbl tbody tr:hover { background: var(--afims-bg-hover, #f9f9f9); }
-    #ob-root .ob-tbl td { padding: 12px; border-bottom: 1px solid var(--afims-border, #DDE0EC); font-size: 13px; }
-    #ob-root .ob-tbl .ob-account-row { background: var(--afims-bg-soft, #E8F3FF); font-weight: 600; }
-    #ob-root .ob-tbl .ob-sl-row { background: white; padding-left: 30px; }
-    #ob-root .ob-tbl .ob-subtotal-row { background: var(--afims-bg-soft, #F5F6FA); font-weight: 600; border-top: 2px solid var(--afims-border, #DDE0EC); }
-    #ob-root .ob-tbl .ob-total-row { background: var(--afims-bg-dark, #34495e); color: white; font-weight: 700; border-top: 2px solid var(--afims-bg-dark, #34495e); border-bottom: 2px solid var(--afims-bg-dark, #34495e); position: sticky; bottom: 0; z-index: 1; }
+    #ob-root .ob-tbl { width: 100%; border-collapse: collapse; color: var(--afims-text, #1A1B21); }
+    #ob-root .ob-tbl thead th { background: var(--afims-heading-fill, #000E3E); color: var(--afims-pure-white, #FFFFFF); padding: 11px 12px; text-align: left; font-weight: 700;
+        font-size: 11px; text-transform: uppercase; letter-spacing: .4px; position: sticky; top: 0; z-index: 2; }
+    #ob-root .ob-tbl td { padding: 10px 12px; border-bottom: 1px solid var(--afims-border, #E4ECF2); font-size: 13px; }
+    #ob-root .ob-tbl .ob-account-row td { background: var(--afims-surface-subtle, #F4F7FA); color: var(--afims-heading, #000E3E); font-weight: 600; }
+    #ob-root .ob-tbl .ob-sl-row td { background: var(--afims-surface, #FFFFFF); }
+    #ob-root .ob-tbl .ob-sl-row:hover td { background: var(--afims-primary-soft, #E6EBF6); }
+    #ob-root .ob-tbl .ob-subtotal-row td { background: var(--afims-surface-subtle, #F4F7FA); color: var(--afims-text, #1A1B21); font-weight: 600; border-top: 2px solid var(--afims-border-strong, #A9AAB8); }
+    #ob-root .ob-tbl .ob-total-row td { background: var(--afims-heading-fill, #000E3E); color: var(--afims-pure-white, #FFFFFF); font-weight: 700; border-bottom: 0; }
+    #ob-root .ob-tbl .ob-total-row { position: sticky; bottom: 0; z-index: 1; }
 
     @media print { #ob-root .ob-tbl-scroll { max-height: none; overflow-y: visible; } }
 
     #ob-root .ob-amount { text-align: right; font-family: 'IBM Plex Mono', monospace; }
-    #ob-root input[type="number"] { width: 140px; padding: 6px 8px; border: 1px solid var(--afims-border, #DDE0EC); border-radius: 4px; text-align: right; font-family: 'IBM Plex Mono', monospace; }
-    #ob-root input[type="number"]:disabled { background: var(--afims-bg-soft, #F5F6FA); color: var(--afims-text-muted, #62657E); }
+    #ob-root input[type="number"] { width: 140px; padding: 6px 8px; border: 1px solid var(--afims-border, #E4ECF2); border-radius: 6px; text-align: right; font-family: 'IBM Plex Mono', monospace;
+        background: var(--afims-surface, #FFFFFF); color: var(--afims-text, #1A1B21); }
+    #ob-root input[type="number"]:focus { outline: none; border-color: var(--afims-primary, #0035A9); box-shadow: 0 0 0 3px color-mix(in srgb, var(--afims-primary, #0035A9) 20%, transparent); }
+    #ob-root input[type="number"]:disabled { background: var(--afims-surface-subtle, #F4F7FA); color: var(--afims-text-disabled, #A9AAB8); cursor: not-allowed; }
+    html.afims-dark[data-bs-theme="dark"] #ob-root input[type="number"] { color-scheme: dark; }
 
-    #ob-root .ob-error { background: #FEE5E5; border-left: 4px solid #e74c3c; color: #c0392b; padding: 12px; border-radius: 4px; margin-bottom: 15px; font-size: 13px; display: none; }
+    #ob-root .ob-error { background: var(--afims-danger-soft, #FAE1E3); border-left: 4px solid var(--afims-danger, #DC3545); color: var(--afims-danger-text, #8F2230); padding: 12px; border-radius: 6px; margin-bottom: 15px; font-size: 13px; display: none; }
     #ob-root .ob-error.show { display: block; }
+    #ob-root .ob-locked { background: var(--afims-danger-soft, #FAE1E3); border-left: 4px solid var(--afims-danger, #DC3545); color: var(--afims-danger-text, #8F2230); padding: 12px; border-radius: 6px; margin-bottom: 15px; font-size: 13px; }
 
     #ob-root .ob-buttons { display: flex; gap: 10px; margin-top: 20px; }
-    #ob-root button { padding: 10px 20px; border: none; border-radius: 4px; font-weight: 600; cursor: pointer; font-size: 13px; }
-    #ob-root .ob-btn-primary { background: #27ae60; color: white; }
-    #ob-root .ob-btn-primary:hover { background: #229954; }
-    #ob-root .ob-btn-primary:disabled { background: #bdc3c7; cursor: not-allowed; }
-    #ob-root .ob-btn-secondary { background: #95a5a6; color: white; }
-    #ob-root .ob-btn-secondary:hover { background: #7f8c8d; }
+    #ob-root .ob-buttons button { height: 38px; padding: 0 20px; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 13px; font-family: 'IBM Plex Sans', sans-serif; }
+    #ob-root .ob-btn-primary { background: var(--afims-heading-fill, #000E3E); color: var(--afims-pure-white, #FFFFFF); border: 1px solid var(--afims-heading-fill, #000E3E); }
+    #ob-root .ob-btn-primary:hover:not(:disabled) { filter: brightness(1.15); }
+    #ob-root .ob-btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+    #ob-root .ob-btn-secondary { background: var(--afims-surface, #FFFFFF); color: var(--afims-text, #1A1B21); border: 1px solid var(--afims-border, #E4ECF2); }
+    #ob-root .ob-btn-secondary:hover { background: var(--afims-surface-subtle, #F4F7FA); }
+    html.afims-dark[data-bs-theme="dark"] #ob-root .ob-btn-primary { background: #3861BC; border-color: #3861BC; }
+    html.afims-dark[data-bs-theme="dark"] #ob-root .ob-btn-primary:hover:not(:disabled) { background: #2E59B8; border-color: #2E59B8; filter: none; }
+    html.afims-dark[data-bs-theme="dark"] #ob-root .ob-btn-secondary { background: #22294A; border-color: #4A5270; }
+    html.afims-dark[data-bs-theme="dark"] #ob-root .ob-btn-secondary:hover { background: #2E3656; }
 
-    #ob-root .ob-info-box { background: #D4EDDA; border-left: 4px solid #28a745; color: #155724; padding: 12px; border-radius: 4px; margin-bottom: 15px; font-size: 13px; display: none; }
+    #ob-root .ob-info-box { background: var(--afims-primary-soft, #E6EBF6); border-left: 4px solid var(--afims-primary, #0035A9); color: var(--afims-text, #1A1B21); padding: 12px; border-radius: 6px; margin-bottom: 15px; font-size: 13px; display: none; }
     #ob-root .ob-info-box.show { display: block; }
+    #ob-root .ob-info-box.ob-success { background: var(--afims-success-soft, #DBF2E5); border-left-color: var(--afims-success, #11A752); color: var(--afims-success-hover, #0C7539); }
 
-    #ob-root .ob-loading { text-align: center; padding: 60px 20px; }
-    #ob-root .ob-spinner { border: 4px solid var(--afims-bg-soft, #E8F3FF); border-top-color: #3498db; border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; margin: 0 auto 20px; }
+    #ob-root .ob-loading { text-align: center; padding: 60px 20px; color: var(--afims-text-muted, #62657E); }
+    #ob-root .ob-spinner { border: 4px solid var(--afims-primary-soft, #E6EBF6); border-top-color: var(--afims-primary, #0035A9); border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; margin: 0 auto 20px; }
     @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
-    #ob-root .ob-status-badge { display: inline-block; padding: 4px 10px; border-radius: 3px; font-size: 11px; font-weight: 600; background: #FFF4D6; color: #6B4A00; }
-    #ob-root .ob-status-badge.locked { background: #FEE5E5; color: #c0392b; }
+    #ob-root .ob-status-badge { display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; background: var(--afims-warning-soft, #FEF8D9); color: var(--afims-warning-text, #7E6908); }
+    #ob-root .ob-status-badge.locked { background: var(--afims-danger-soft, #FAE1E3); color: var(--afims-danger-text, #8F2230); }
 
     @media print { #ob-root .no-print { display: none !important; } }
 </style>
 
 <div id="ob-root" class="nha-root">
 
-    <!-- HEADER -->
-    <div class="nha-hdr no-print">
-        <div class="nha-hdr-l">
-            <div class="nha-hdr-ico">
-                <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v18M5 11h14M5 11L2.5 5a3 3 0 015 0L5 11zm14 0l2.5-6a3 3 0 00-5 0l2.5 6z"/>
-                </svg>
-            </div>
-            <div>
-                <div class="nha-hdr-tag">National Housing Authority · FIMS</div>
-                <div class="nha-hdr-title">Opening Balance Entry</div>
-            </div>
+    <!-- HEADER (same banner as User Access: app-page-header in app/fims-css/fims.css) -->
+    <div class="app-page-header no-print">
+        <div class="app-page-header-icon">
+            <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v18M5 11h14M5 11L2.5 5a3 3 0 015 0L5 11zm14 0l2.5-6a3 3 0 00-5 0l2.5 6z"/>
+            </svg>
+        </div>
+        <div>
+            <h1 class="app-page-title">Opening Balance Entry</h1>
+            <p class="app-page-subtitle">Set beginning balances for all accounts at the start of the fiscal year.</p>
         </div>
     </div>
 
     <!-- INFO & STATUS -->
     <div class="ob-header no-print" style="margin-bottom: 20px;">
         <div class="ob-title">Opening Balance Entry for Fiscal Year <span id="ob-fy">2027</span></div>
-        <div class="ob-subtitle">Set beginning balances for all accounts at the start of the fiscal year</div>
     </div>
 
     <!-- ERROR BANNER -->
@@ -100,12 +126,12 @@ $_ob_api = preg_match('~/api$~', $_ob_api) ? $_ob_api : $_ob_api . '/api';
     </div>
 
     <!-- SUCCESS BANNER — inline, not a JS alert() popup, which browsers can silently suppress -->
-    <div id="ob-success" class="ob-info-box no-print" style="background:#D4EDDA; border-left-color:#28a745; color:#155724;">
+    <div id="ob-success" class="ob-info-box ob-success no-print">
         <strong>✓ Success:</strong> <span id="ob-success-msg"></span>
     </div>
 
     <!-- STATUS LOCKED BANNER — fully locked once submitted: no edit, no reverse, no clear -->
-    <div id="ob-locked-banner" style="display:none; background:#FEE5E5; border-left:4px solid #e74c3c; color:#c0392b; padding:12px; border-radius:4px; margin-bottom:15px; font-size:13px;">
+    <div id="ob-locked-banner" class="ob-locked" style="display:none;">
         <strong>Locked:</strong> Opening balance for this fiscal year has already been submitted. <span id="ob-locked-jev"></span> It is permanent and cannot be edited, reversed, or cleared.
     </div>
 
@@ -123,7 +149,7 @@ $_ob_api = preg_match('~/api$~', $_ob_api) ? $_ob_api : $_ob_api . '/api';
                 </select>
             </div>
             <div class="nha-filter-group" style="align-self: flex-end;">
-                <button type="button" id="ob-reload" class="nha-btn-primary" style="padding:8px 16px;">Reload</button>
+                <button type="button" id="ob-reload" class="nha-btn nha-btn-primary">Reload</button>
             </div>
         </div>
     </div>
@@ -147,7 +173,7 @@ $_ob_api = preg_match('~/api$~', $_ob_api) ? $_ob_api : $_ob_api . '/api';
     <!-- LOADING STATE -->
     <div id="ob-loading" class="ob-loading" style="display:none;">
         <div class="ob-spinner"></div>
-        <div style="color:var(--afims-text-muted, #62657E); font-size:14px;">Loading form data...</div>
+        <div style="font-size:14px;">Loading form data...</div>
     </div>
 
     <!-- FORM TABLE -->

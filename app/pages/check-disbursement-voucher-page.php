@@ -75,12 +75,12 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
 
 <div class="fims-wrap" id="cpModule">
 
-    <div class="fims-page-header">
-        <div class="fims-page-header-bubbles"><span></span><span></span><span></span><span></span><span></span></div>
-        <div class="fims-page-header-left">
-            <div class="fims-page-header-icon"><i class="fas fa-money-check-alt"></i></div>
-            <h1>Check Disbursement Voucher</h1>
-            <p>Check preparation, release, and cancellation — Disbursing Section</p>
+    <!-- same banner as User Access: app-page-header (styled by app/fims-css/fims.css, already loaded above) -->
+    <div class="app-page-header">
+        <div class="app-page-header-icon"><i class="fas fa-money-check-alt"></i></div>
+        <div>
+            <h1 class="app-page-title">Check Disbursement Voucher</h1>
+            <p class="app-page-subtitle">Check preparation, release, and cancellation — Disbursing Section</p>
         </div>
     </div>
 
