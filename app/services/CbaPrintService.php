@@ -31,6 +31,10 @@ class CbaPrintService
         'date_align'    => 'right', 'sig_layout'  => 'right',
     ];
 
+    // The CBA's reminders (the CO prints both, the COE only the RFA one) — shared by the main-office and the regional CBA.
+    private const REMINDER_MOA = 'If the project is not bid out or a MOA (with developer and Community Association for CBIA Project or with LGU for LGU - implemented project) is not entered into during the year, this CBA shall be deemed null and void and a new CBA should be secured from FMD.';
+    private const REMINDER_RFA = 'If an RFA is not secured during the budget year, the project must again be included in your Proposed Work Program and Budget for the ensuing year.';
+
     /** self::STYLE with the given keys changed. */
     public static function style(array $changes = []): array
     {
@@ -57,7 +61,7 @@ class CbaPrintService
      *   allocation_number, document_type (CO | COE), project_description,
      *   requested_amount, allocated_amount, fiscal_year, fiscal_year_label,
      *   fund_source_name, program_of_cob, category_name, is_bidding, date,
-     *   approved_by_name ("NAME" or "NAME — Title"; blank → the FMD Department Manager),
+     *   approved_by_name ("NAME" or "NAME — Title"; blank → the FMD Department Manager, first and last name only),
      *   issuing_office ('REGIONAL' → the regional office's CBA, see regionalModel())
      */
     public function model(array $p): array
@@ -115,13 +119,9 @@ class CbaPrintService
             $footnote[] = ['label' => 'Program: ', 'value' => $category];
         }
 
-        $rfaReminder = 'If an RFA is not secured during the budget year, the project must again be included in your Proposed Work Program and Budget for the ensuing year.';
         $reminders = $isCoe
-            ? ['heading' => 'Reminder:', 'items' => [$rfaReminder]]
-            : ['heading' => 'Reminders:', 'items' => [
-                'If the project is not bid out or a MOA (with developer and Community Association for CBIA Project or with LGU for LGU - implemented project) is not entered into during the year, this CBA shall be deemed null and void and a new CBA should be secured from FMD.',
-                $rfaReminder,
-            ]];
+            ? ['heading' => 'Reminder:', 'items' => [self::REMINDER_RFA]]
+            : ['heading' => 'Reminders:', 'items' => [self::REMINDER_MOA, self::REMINDER_RFA]];
 
         return [
             'kind'              => 'CBA',     // html() / gen_cba_docx.js also lay out the CAF
@@ -134,7 +134,8 @@ class CbaPrintService
             'style'             => self::style(['title_bold' => !$isCoe, 'indent_pt' => $isCoe ? 22 : 0]),
             'body'              => $body,
             'validity'          => $validity,
-            'signatory'         => PrintService::signatory($p['approved_by_name'] ?? ''),
+            // Signed by the FMD Department Manager: the user holding that uac.user_levels role, first and last name only.
+            'signatory'         => PrintService::signatory($p['approved_by_name'] ?? '', true),
             'footnote'          => $footnote,
             'reminders'         => $reminders,
             'footer_text'       => LetterheadLayoutService::DEFAULT_FOOTER_TEXT,   // set by PrintService::model()
@@ -146,14 +147,15 @@ class CbaPrintService
     /**
      * The regional office's CBA (issuing_office REGIONAL) — ported from the old
      * REGIONAL gen_cba_docx.js / BudgetAllocationPdfService::buildCbaHtml(): one
-     * italic paragraph "budgetary requirement … is provided for", always "whatever
-     * legal purpose", the regional signatory (name, title, office), "Source of
-     * Funds:", no reminders; 12pt at 1.5 lines, title 15pt.
+     * italic paragraph "budgetary requirement … is provided for" (the amount in
+     * bold), always "whatever legal purpose", the regional signatory (name, title,
+     * office), "Source of Funds:" and the CO's two Reminders; 12pt at 1.5 lines,
+     * title 15pt.
      * Payload: allocation_number (or cba_no), date, project_description (or
      * description), amount (else allocated_amount / requested_amount),
      * fiscal_year_label (or a 4-digit fiscal_year), fund_source_name (or
      * source_of_funds), signatory_name (or approved_by_name), signatory_title,
-     * signatory_office.
+     * signatory_office (all blank → the FMD Department Manager, first and last name only).
      */
     private function regionalModel(array $p): array
     {
@@ -163,14 +165,18 @@ class CbaPrintService
         $year   = preg_match('/\b(\d{4})\b/', PrintService::text($p['fiscal_year_label'] ?? $p['fiscal_year'] ?? ''), $y) ? $y[1] : '';
         $fund   = PrintService::text($p['fund_source_name'] ?? $p['source_of_funds'] ?? '');
 
-        // "One Thousand and 00/100 Pesos" — the regional form always writes the centavos.
+        // "One Million One Hundred Thousand Pesos" / "One Thousand and 50/100 Pesos" — the centavos are written only when
+        // there are some (a whole-peso total has none, so no "and 00/100").
         $cents = (int) round(abs($amount) * 100);
         $words = preg_replace('/\s+Pesos$/', '', PrintService::amountInWords((float) intdiv($cents, 100)))
-            . sprintf(' and %02d/100 Pesos', $cents % 100);
+            . ($cents % 100 > 0 ? sprintf(' and %02d/100', $cents % 100) : '') . ' Pesos';
 
-        $body = [['text' => 'This is to certify that budgetary requirement' . self::coverPhrase($desc)
-            . ' in the amount of ' . $words . ' (P' . PrintService::money($amount) . ')'
-            . ' is provided for in the Approved Corporate Operating Budget' . ($year !== '' ? ' for CY ' . $year : '') . '.', 'bold' => false]];
+        // The amount (in words + figure) is bold, as on the main-office CBA.
+        $body = [
+            ['text' => 'This is to certify that budgetary requirement' . self::coverPhrase($desc) . ' in the amount of ', 'bold' => false],
+            ['text' => $words . ' (P' . PrintService::money($amount) . ')', 'bold' => true],
+            ['text' => ' is provided for in the Approved Corporate Operating Budget' . ($year !== '' ? ' for CY ' . $year : '') . '.', 'bold' => false],
+        ];
 
         $signatory = [
             'name'        => PrintService::text($p['signatory_name'] ?? $p['approved_by_name'] ?? ''),
@@ -179,6 +185,11 @@ class CbaPrintService
                 PrintService::text($p['signatory_office'] ?? ''),
             ], fn ($l) => $l !== '')),
         ];
+        // Nobody named (the form sends no signatory): it is signed by the FMD Department Manager, as the main-office CBA is —
+        // the user holding that role, first and last name, over "Department Manager / Financial Management Department".
+        if ($signatory['name'] === '' && !$signatory['title_lines']) {
+            $signatory = PrintService::signatory('', true);
+        }
 
         return [
             'kind'              => 'CBA',
@@ -189,14 +200,14 @@ class CbaPrintService
             'title'             => 'CERTIFICATE OF BUDGET ALLOCATION',
             'style'             => self::style([
                 'size' => 12, 'title_size' => 15, 'indent_pt' => 72, 'line_height' => 1.5, 'name_italic' => true,
-                'foot_size' => 12, 'foot_italic' => true, 'foot_bold' => 'none', 'allocnum_bold' => false,
+                'foot_size' => 12, 'foot_italic' => true, 'foot_bold' => 'label', 'allocnum_bold' => true,
             ]),
             'body'              => $body,
             'validity'          => 'This certification is being issued for whatever legal purpose it may serve'
                 . ($year !== '' ? ' and valid up to December 31, ' . $year : '') . '.',
             'signatory'         => $signatory,
             'footnote'          => $fund !== '' ? [['label' => 'Source of Funds: ', 'value' => $fund]] : [],
-            'reminders'         => ['heading' => '', 'items' => []],
+            'reminders'         => ['heading' => 'Reminders:', 'items' => [self::REMINDER_MOA, self::REMINDER_RFA]],
             'footer_text'       => LetterheadLayoutService::DEFAULT_FOOTER_TEXT,
             'header_parts'      => null,
             'file_base'         => preg_replace('/[^A-Za-z0-9\-]/', '_', $allocationNumber) ?: 'CBA',

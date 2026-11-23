@@ -600,7 +600,13 @@ function mpr_printEntries() {
     if (!mpr_row) return [];
     const type = String(mpr_row.allocation_type || '').toUpperCase();
     if (!['CBA', 'RFA', 'LAA'].includes(type)) return [];
-    const entries = [{ label: `Print ${type}`, sub: '', run: () => mrq_printAllocation(mpr_row.allocation_id) }];
+    // The CBA / RFA / LAA forms are for FMD users and administrators to print (the API refuses everyone else too): for anyone
+    // else there is no "Print <type>" entry. An RFA's CAFs below stay printable, so for them the button remains with the CAFs
+    // alone; a CBA / LAA has nothing else to print, so there is no button.
+    const entries = [];
+    if (MRQ_IS_FMD || MRQ_IS_ADMIN) {
+        entries.push({ label: `Print ${type}`, sub: '', run: () => mrq_printAllocation(mpr_row.allocation_id) });
+    }
     if (type === 'RFA') {
         const many = mpr_cafs.length > 1;
         mpr_cafs.forEach((c, i) => entries.push({
@@ -627,7 +633,8 @@ function mpr_renderPrint() {
     btn.textContent = choose ? 'Print' : entries[0].label;
     btn.classList.toggle('has-menu', choose);
     btn.setAttribute('aria-haspopup', choose ? 'menu' : 'false');
-    btn.title = choose ? 'Print this RFA or its CAF' : `Print this ${String(mpr_row.allocation_type).toUpperCase()}`;
+    btn.title = choose ? 'Print this RFA or its CAF'
+        : (entries[0].label.startsWith('Print CAF') ? 'Print the CAF of this RFA' : `Print this ${String(mpr_row.allocation_type).toUpperCase()}`);
 }
 
 // The menu's buttons exist only while it is open (so a closed menu leaves nothing for the Tab key to land on).

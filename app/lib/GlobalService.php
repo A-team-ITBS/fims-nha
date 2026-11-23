@@ -474,6 +474,70 @@ class GlobalService
     }
 
     /**
+     * Is this user (uac.users.user_id) of the central review RC — the Financial Management Department? The user's
+     * uac.users.rc_id is joined to fims.responsibility_code and its rc_code compared (isCentralReviewRc), never the rc_id
+     * itself. FAILS CLOSED: no user, no RC, a built-in administrator (an id <= 0, no uac.users row) or a lookup failure is
+     * "no". For what only FMD may do server-side — e.g. printing the CBA certificate (routes/print.php).
+     */
+    public static function isFmdUser(?int $userId): bool
+    {
+        try {
+            $userId = (int) $userId;
+
+            return $userId > 0 && self::isCentralReviewRc(self::getUserRcId($userId));
+        } catch (\Throwable $e) {
+            App\LogError('GlobalService::isFmdUser ' . $e->getMessage());
+
+            return false;
+        }
+    }
+
+    /**
+     * Is this user a superadmin (user level -1)? The built-in administrator (user_id -1, no uac.users row — or an id the API
+     * could not resolve, then the logged-in level is read instead), or a uac.users row whose user_level_id lists -1 (a VARCHAR
+     * that may hold several ids, "-1,3"). Same people as BudgetAllocationService::isSuperAdmin(); FAILS CLOSED like
+     * isFmdUser(): no user, no level or a lookup failure is "no".
+     */
+    public static function isSuperAdminUser(?int $userId): bool
+    {
+        try {
+            $userId = (int) $userId;
+            if ($userId === -1) {
+                return true;
+            }
+            if ($userId <= 0) {
+                // api.php turns a JWT user id <= 0 into the session's UAC id, or 0; the middleware has still logged the user in
+                // with the level from the signed JWT / session, so that level says whether this is the administrator.
+                foreach (explode(',', (string) App\CurrentUserLevel()) as $level) {
+                    if (trim($level) === '-1') {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+            $raw = (string) App\ExecuteScalar('SELECT user_level_id FROM uac.users WHERE user_id = ' . $userId, 'DB');
+            foreach (explode(',', $raw) as $part) {
+                if (trim($part) === '-1') {
+                    return true;
+                }
+            }
+
+            return false;
+        } catch (\Throwable $e) {
+            App\LogError('GlobalService::isSuperAdminUser ' . $e->getMessage());
+
+            return false;
+        }
+    }
+
+    /** Who may print the memo request forms — CBA, RFA and LAA (routes/print.php): a user of the FMD, or a superadmin. */
+    public static function canPrintAllocationForm(?int $userId): bool
+    {
+        return self::isFmdUser($userId) || self::isSuperAdminUser($userId);
+    }
+
+    /**
      * The rc_id to filter a fims.budget_req LIST by ('' = every RC).
      *
      *  - a user with an RC is limited to it (and its descendants) — a client-supplied rc_id is ignored;

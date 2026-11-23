@@ -220,8 +220,11 @@ class PrintService
         return $d && $d->format('Y-m-d') === substr($v, 0, 10) ? $d->format('F j, Y') : $v;
     }
 
-    /** ['name', 'title_lines'[]] — "NAME — Title" / "NAME - Title", else the FMD Department Manager. */
-    public static function signatory(mixed $raw): array
+    /**
+     * ['name', 'title_lines'[]] — "NAME — Title" / "NAME - Title", else the FMD Department Manager
+     * (with $firstLastOnly: "FIRST LAST", see resolveSignatoryName()).
+     */
+    public static function signatory(mixed $raw, bool $firstLastOnly = false): array
     {
         $raw   = trim((string) $raw);
         $name  = '';
@@ -242,7 +245,7 @@ class PrintService
         }
 
         if ($name === '') {
-            $name = self::resolveSignatoryName('FMD Department Manager') ?? self::DEFAULT_SIGNATORY_NAME;
+            $name = self::resolveSignatoryName('FMD Department Manager', $firstLastOnly) ?? self::DEFAULT_SIGNATORY_NAME;
         }
 
         return ['name' => $name, 'title_lines' => preg_split('/\R/', $title)];
@@ -307,11 +310,13 @@ class PrintService
 
     /**
      * First user (lowest user_id) holding the uac.user_levels role $roleName, as
-     * "FIRST M. LAST[, SUFFIX]" in uppercase. Null when the role or a holder
-     * can't be found. uac.users.user_level_id is a PHPMaker comma-separated
-     * VARCHAR, so the id is matched as a whole token ('4' never matches '14').
+     * "FIRST M. LAST[, SUFFIX]" in uppercase — or, with $firstLastOnly, just
+     * "FIRST LAST" (no middle initial, no suffix; the CBA's Department Manager).
+     * Null when the role or a holder can't be found. uac.users.user_level_id is a
+     * PHPMaker comma-separated VARCHAR, so the id is matched as a whole token
+     * ('4' never matches '14').
      */
-    public static function resolveSignatoryName(string $roleName): ?string
+    public static function resolveSignatoryName(string $roleName, bool $firstLastOnly = false): ?string
     {
         try {
             $levelId = App\ExecuteScalar(
@@ -339,7 +344,7 @@ class PrintService
             if (trim((string) $user['first_name']) !== '') {
                 $parts[] = trim($user['first_name']);
             }
-            if (trim((string) $user['middle_name']) !== '') {
+            if (!$firstLastOnly && trim((string) $user['middle_name']) !== '') {
                 $parts[] = mb_substr(trim($user['middle_name']), 0, 1) . '.';
             }
             if (trim((string) $user['last_name']) !== '') {
@@ -349,7 +354,7 @@ class PrintService
             if ($name === '') {
                 return null;
             }
-            if (trim((string) $user['suffix']) !== '') {
+            if (!$firstLastOnly && trim((string) $user['suffix']) !== '') {
                 $name .= ', ' . trim($user['suffix']);
             }
 

@@ -26,10 +26,22 @@ class PrintPayloadService
     /** allocation_type -> the PrintService::DOCS key of its form. The list's tabs: CBA / RFA / LAA. */
     private const ALLOCATION_DOCS = ['CBA' => 'CBA', 'RFA' => 'RFA', 'LAA' => 'LAA'];
 
+    /**
+     * The memo request forms are for FMD and administrators to print — the PrintService::DOCS keys of ALLOCATION_DOCS.
+     * routes/print.php refuses POST /print/{doc} for these to anyone else (403, PRINT_DENIED); so does forAllocation() below.
+     */
+    public const FMD_ONLY_DOCS = ['CBA', 'RFA', 'LAA'];
+
+    /** The answer (403) for anyone who may not print a memo request form. */
+    public const PRINT_DENIED = 'Only the Financial Management Department or an administrator can print the CBA, RFA or LAA.';
+
     // -----------------------------------------------------------------------
     // A memo request — GET /print/payload/allocation/{id}
+    // $userId = the logged-in user (the route's JWT): a memo request's form is only handed to an FMD user or a superadmin
+    // (GlobalService::canPrintAllocationForm), so a missing user id is refused too. Every allocation type that has a form is
+    // gated, so a form added to ALLOCATION_DOCS later is restricted by default.
     // -----------------------------------------------------------------------
-    public function forAllocation(int|string $id): array
+    public function forAllocation(int|string $id, ?int $userId = null): array
     {
         try {
             $res = (new BudgetAllocationService())->fetchById($id);
@@ -40,6 +52,9 @@ class PrintPayloadService
             $type = strtoupper(trim((string) ($a['allocation_type'] ?? '')));
             if (!isset(self::ALLOCATION_DOCS[$type])) {
                 return ['success' => false, 'httpCode' => 400, 'message' => ($type !== '' ? "A {$type} request" : 'This request') . ' has no printed form.'];
+            }
+            if (!GlobalService::canPrintAllocationForm($userId)) {
+                return ['success' => false, 'httpCode' => 403, 'message' => self::PRINT_DENIED];
             }
 
             return [
