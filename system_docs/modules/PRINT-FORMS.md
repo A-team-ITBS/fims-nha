@@ -154,6 +154,18 @@ Ported from the old FMD module (`FMD/scripts/gen_cba_docx.js` +
 `gen_coe_cba_docx.js`, `_shared/FMD/budget-allocation-print/js/print-preview.js`),
 rebuilt on this repo's components.
 
+**Who may print it:** the Financial Management Department and administrators — and the same
+goes for the **RFA** and **LAA** (the three memo request forms). The user's `uac.users.rc_id` is
+joined to `fims.responsibility_code` and its `rc_code` must be FMD's
+(`GlobalService::CENTRAL_REVIEW_RC_CODE`, `35-074-0000000-032` — recognised by rc_code, not by
+rc_id, whose format differs between datasets) — or the user is a superadmin (user level -1, the
+built-in administrator included; `GlobalService::canPrintAllocationForm()`). The API enforces it —
+`POST /print/cba`, `/print/rfa`, `/print/laa` (`PrintPayloadService::FMD_ONLY_DOCS`) and
+`GET /print/payload/allocation/{id}` answer 403 for anyone else, so the preview, PDF and DOCX are
+all closed — and those forms' Print / Print Preview buttons are hidden for everyone else (the memo
+request pages' row menu, the request details modal, and the memo form). The CAF, CFA, LAA release
+request and the other forms are not restricted; an RFA's CAF stays printable from the memo request pages.
+
 ## Pieces
 
 | File | Role |
@@ -190,25 +202,36 @@ One model renders all three outputs, so the preview, PDF and DOCX always match.
 - **COE**: plain title, first-line indent, "for whatever legal purpose it may serve",
   fund source printed as sent, one reminder.
 - Signatory: `approved_by_name`, else the first user (lowest `user_id`) holding the
-  `uac.user_levels` role **FMD Department Manager**, else the old FMD default name.
+  `uac.user_levels` role **FMD Department Manager** — printed as **first and last name
+  only** (no middle initial / suffix) over "Department Manager / Financial Management
+  Department" — else the old FMD default name.
 
 ### Regional CBA (`issuing_office: 'REGIONAL'`)
 
 From the old REGIONAL `gen_cba_docx.js` / `BudgetAllocationPdfService::buildCbaHtml()`
 (`CbaPrintService::regionalModel()`):
 
-- One italic paragraph, nothing bold: "This is to certify that **budgetary
-  requirement** necessary to cover the <description> in the amount of <One
-  Thousand and 00/100 Pesos> (P<amount>) **is** provided for in the Approved
-  Corporate Operating Budget for CY <year>." (centavos always written; no year →
-  "… Operating Budget.")
+- One italic paragraph: "This is to certify that **budgetary
+  requirement** necessary to cover the <description> in the amount of **<One
+  Thousand Pesos> (P<amount>)** **is** provided for in the Approved
+  Corporate Operating Budget for CY <year>." (no year → "… Operating Budget.")
+  The amount — in words and figure — is **bold** (as on the main-office CBA).
+  Centavos are written only when there are some ("One Thousand and 50/100 Pesos");
+  a whole-peso total reads "One Thousand Pesos", with no "and 00/100".
 - Validity always "for whatever legal purpose it may serve and valid up to
   December 31, <year>." (no "bidding purposes", no "only").
 - Signatory from the payload — `signatory_name` (or `approved_by_name`),
   `signatory_title`, `signatory_office` — name bold italic, title and office
-  italic. Not looked up: the regional signatory isn't the FMD Department Manager.
-- Footnote: the CBA number and "Source of Funds: <fund>" in plain italic. No
-  "Program:" line, no reminders.
+  italic. When the payload names nobody (name, title and office all blank — which is
+  what the memo form's Print Preview and `PrintPayloadService` send), it is signed by
+  the **FMD Department Manager** exactly like the main-office CBA: first and last name
+  of the `uac.user_levels` role holder over "Department Manager / Financial Management
+  Department". A signatory that IS sent is printed as sent.
+- Footnote: the CBA number (**bold**) and "**Source of Funds:** <fund>" (label bold,
+  fund plain), italic, as on the main-office CBA. No
+  "Program:" line. Below it, the CO's two **Reminders** (the MOA / null-and-void one
+  and the RFA one — `CbaPrintService::REMINDER_MOA` / `REMINDER_RFA`, shared with the
+  main-office CBA).
 - 12pt at 1.5 lines, title 15pt bold, paragraphs indented 1in.
 - Payload: `allocation_number` (or `cba_no`), `date`, `project_description` (or
   `description`), `amount` (else `allocated_amount` / `requested_amount` — the

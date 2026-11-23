@@ -130,14 +130,14 @@ $_cob_showNote = false;
                 <div class="nha-sc-label">Available for Earmarking</div>
                 <div class="nha-sc-val" id="cob-kpi-available">—</div>
             </div></div>
-            <p class="nha-kpi-sub">Revised Amount less CBA Requested</p>
+            <p class="nha-kpi-sub">Revised Amount less Outstanding CBA, RFA Approved and LAA Issued</p>
         </div>
         <div class="nha-sc nha-sc-amber">
             <div class="nha-sc-top"><div>
                 <div class="nha-sc-label">Remaining Balance</div>
                 <div class="nha-sc-val" id="cob-kpi-remaining">—</div>
             </div></div>
-            <p class="nha-kpi-sub">Revised Amount less CBA Requested</p>
+            <p class="nha-kpi-sub">Revised Amount less Outstanding CBA, RFA Approved and LAA Issued</p>
         </div>
     </div>
 
@@ -200,11 +200,11 @@ $_cob_showNote = false;
         ['approved_amount', 'Approved Amount', 'The amount FMD suggested in the Budget Proposal module, before any revision or CBA'],
         ['revision_amount', 'Revision / Realignment', 'A project shows only its LATEST revision or realignment, with its sign: an addition is + (green), a deduction − (red); a realignment is − on the budget that gave funds up and + on the one that received them. Parent rows and the TOTAL have no figure here. Revised Amount is still worked out from all the revisions and realignments'],
         ['revised_amount', 'Revised Amount', 'Approved Amount net of Revision / Realignment (a decrease lowers it)'],
-        ['cba_requested', 'CBA Requested', 'Held against the budget by approved CBAs (Certificates of Budget Availability) — read from the earmark table, including what RFAs / LAAs have since drawn from them'],
-        ['available_amount', 'Available for Earmarking', 'Revised Amount less CBA Requested — what a new CBA can still draw'],
         ['rfa_approved', 'RFA Approved', 'Drawn from the CBAs by approved RFAs'],
         ['laa_issued', 'LAA Issued', 'Drawn from the CBAs by issued LAAs'],
-        ['remaining_balance', 'Remaining Balance', 'Revised Amount less CBA Requested — what is left of the revised budget once the CBAs (and what RFAs / LAAs drew from them) are taken off'],
+        ['remaining_balance', 'Budget Balance', 'Revised Amount less Outstanding CBA, RFA Approved and LAA Issued — what is left of the revised budget once the CBAs (and what RFAs / LAAs drew from them) are taken off'],
+        ['cba_requested', 'Outstanding CBA', 'Still held against the budget by approved CBAs (Certificates of Budget Availability) — read from the earmark table. Once an RFA / LAA is approved, the amount it drew comes off this column and shows under RFA Approved / LAA Issued'],
+        ['available_amount', 'Budget Balance Available for Earmarking', 'Revised Amount less Outstanding CBA, RFA Approved and LAA Issued — what a new CBA can still draw'],
     ];
     foreach ([
         'program'     => 'CO: Program → Sub-Program → Originating Unit → Project · COE: PS / MOOE → Originating Unit → Request',
@@ -246,9 +246,8 @@ $_cob_showNote = false;
             </div>
             <?php if ($_cob_showNote) { ?>
             <p class="cob-note">Only <strong>Approved</strong> budget requests are counted. <strong>Approved Amount</strong> is what FMD suggested in the Budget Proposal module, as first suggested — before any revision or CBA;
-                <strong>Revision / Realignment</strong> shows, on a project, only its <strong>latest</strong> approved revision or realignment — signed and coloured: a deduction <strong>−</strong> in red and an addition <strong>+</strong> in green, so the budget that gave funds up reads <strong>−</strong> and the one that received them <strong>+</strong>. Parent rows and the <strong>TOTAL</strong> have no figure in this column; <strong>Revised Amount</strong> is still worked out from all of a budget's approved revisions and realignments. <strong>CBA Requested</strong> is what approved CBAs hold against the
-                budget (their reservations plus what RFAs and LAAs have since drawn from them — all read from the earmark table), which leaves <strong>Available for Earmarking</strong>. A CBA reserves money: <strong>RFA Approved</strong> and <strong>LAA Issued</strong> are what has
-                actually been drawn from those reservations (already part of CBA Requested), and <strong>Remaining Balance</strong> is the Revised Amount less CBA Requested. A dash means zero; brackets mean negative.
+                <strong>Revision / Realignment</strong> shows, on a project, only its <strong>latest</strong> approved revision or realignment — signed and coloured: a deduction <strong>−</strong> in red and an addition <strong>+</strong> in green, so the budget that gave funds up reads <strong>−</strong> and the one that received them <strong>+</strong>. Parent rows and the <strong>TOTAL</strong> have no figure in this column; <strong>Revised Amount</strong> is still worked out from all of a budget's approved revisions and realignments. <strong>Outstanding CBA</strong> is what approved CBAs still hold against the
+                budget (their active reservations, read from the earmark table). A CBA reserves money: once an RFA or LAA is approved, the amount it draws comes off Outstanding CBA and shows under <strong>RFA Approved</strong> / <strong>LAA Issued</strong> instead. <strong>Budget Balance</strong> and <strong>Budget Balance Available for Earmarking</strong> are the Revised Amount less Outstanding CBA, RFA Approved and LAA Issued. A dash means zero; brackets mean negative.
                 The table is in two parts. <strong>CO</strong> (capital outlay, accounts starting with 1) is the budget of the programs and their projects. <strong>COE</strong> is the budget
                 that belongs to no program — a COE budget request has only line items, no program or project — and is split into <strong>PS</strong> (accounts 5-01) and
                 <strong>MOOE</strong> (accounts 5-02), then by originating unit.</p>
@@ -287,12 +286,13 @@ if ($_cob_showReport) {
      Revision / Realignment on a project, only the LATEST approved one (signed: an addition is + in green, a deduction − in red; a realignment is − on the budget that
                             gave funds up and + on the one that received them); nothing on a parent row or the TOTAL
      Revised Amount         = Approved Amount + the net of all the revisions and realignments (worked out per line)
-     CBA Requested          held against the budget by approved CBAs: their active reservations plus what RFAs / LAAs have drawn from them
-     Available for Earmarking = Revised Amount - CBA Requested (what a new CBA can still draw)
      RFA Approved / LAA Issued   drawn from the CBAs' reservations by approved RFAs / LAAs
-     Remaining Balance      = Revised Amount - CBA Requested (the same figure as Available for Earmarking; what RFAs / LAAs drew is inside CBA Requested)
-   CBA Requested, RFA Approved and LAA Issued are all summed by the server from fims.budget_line_item_earmark (BudgetLineBalanceSql::earmarkAggregateSql()), so they —
-   and Available and Remaining, which are worked out from them — change as soon as a CBA / RFA / LAA is approved or deleted; this page only displays them.
+     Budget Balance         = Revised Amount - Outstanding CBA - RFA Approved - LAA Issued (the server's remaining_balance)
+     Outstanding CBA        still held against the budget by approved CBAs: their active reservations only — what an approved RFA / LAA has drawn comes OFF it (the server's cba_requested)
+     Budget Balance Available for Earmarking = Revised Amount - Outstanding CBA - RFA Approved - LAA Issued (what a new CBA can still draw; the server's available_amount)
+   The columns are shown in that order (COB_COLS / $_cob_cols), after Approved Amount and Revision / Realignment; the keys the API sends keep their old names.
+   Outstanding CBA, RFA Approved and LAA Issued are all summed by the server from fims.budget_line_item_earmark (BudgetLineBalanceSql::earmarkAggregateSql()), so they —
+   and Budget Balance and Budget Balance Available for Earmarking, which are worked out from them — change as soon as a CBA / RFA / LAA is approved or deleted; this page only displays them.
    CO and COE: the Per Program tree is asked for with split_coe=1 and so starts with two rows — CO (capital outlay: Program > Sub-Program > Originating Unit >
    Project) and COE (the lines of a budget request that has no program, as PS / MOOE > Originating Unit > Request). A line is told apart by its account code:
    1… is CO, 5-01… is PS, 5-02… is MOOE; PS and MOOE are the COE (CobService::expenseClassSql() / costTypeOf()). Those are the 'bucket', 'class' and 'request' nodes.
@@ -310,7 +310,7 @@ const COB_UNITS = {
     billion: { div: 1e9, suffix: ' B', note: 'Amounts in ₱ billions' },
 };
 // the eight amount columns, in table order (the header in this file's markup lists the same keys)
-const COB_COLS = ['approved_amount', 'revision_amount', 'revised_amount', 'cba_requested', 'available_amount', 'rfa_approved', 'laa_issued', 'remaining_balance'];
+const COB_COLS = ['approved_amount', 'revision_amount', 'revised_amount', 'rfa_approved', 'laa_issued', 'remaining_balance', 'cba_requested', 'available_amount'];
 const COB_UNIT_STORE = 'cob.amountUnit';
 // the id of each filter control -> the query-string key the API reads
 const COB_FILTER_IDS = { 'cob-f-fy': 'fiscal_yr', 'cob-f-fund': 'type_of_fund_id', 'cob-f-component': 'component_id', 'cob-f-region': 'region_id', 'cob-f-program': 'program_code' };
