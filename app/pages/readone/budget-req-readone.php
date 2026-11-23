@@ -63,19 +63,24 @@
         transition:max-width .2s ease; }
     #bgrv-card.bgrv-wide { max-width:75vw; }
 
-    #bgrv-header { display:flex;align-items:center;justify-content:space-between;
+    /* Two rows: #bgrv-header-top (icon+title, left — export/print/close, right) always on its own
+       line, so the title never has to fight the amount totals for room (see #bgrv-header-total below,
+       the COB-mode-only second row) — adding the "Preview and Print" button alongside "Export to Excel"
+       made that a real contest on one shared row, truncating the title down to a few characters. */
+    #bgrv-header { display:flex;flex-direction:column;gap:10px;
         padding:14px 18px;background:var(--afims-heading-fill, #000E3E);flex-shrink:0; }
-    #bgrv-header-info { display:flex;align-items:center;gap:9px;min-width:0; }
+    #bgrv-header-top { display:flex;align-items:center;justify-content:space-between;gap:12px; }
+    #bgrv-header-info { display:flex;align-items:center;gap:9px;min-width:0;flex:1 1 auto; }
     #bgrv-header-info svg { width:15px;height:15px;stroke:var(--afims-text-disabled, #A9AAB8);stroke-width:1.8;flex-shrink:0; }
     .bgrv-hdr-tag { font-size:10px;color:var(--afims-text-disabled, #A9AAB8);margin:0 0 2px;letter-spacing:.06em;text-transform:uppercase; }
     .bgrv-hdr-title { font-size:15px;font-weight:700;color:var(--afims-pure-white, #FFFFFF);margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
-    /* COB mode's headline figure — the one number meant to grab attention,
-       so it lives in the header bar itself (always visible, even once the
-       list below scrolls) rather than buried in the small counts line.
-       Bold/white/mono against the navy header is the same restrained
-       "callout" treatment the rest of this app uses for emphasis — no new
-       color introduced. */
-    #bgrv-header-total { display:none;align-items:center;gap:16px;margin-right:4px;flex-shrink:0; }
+    /* COB mode's headline figure — the one number meant to grab attention, so it lives in the header bar
+       itself (always visible, even once the list below scrolls) rather than buried in the small counts
+       line. Its own row, right-aligned under the export/print buttons it describes, so it can wrap
+       on narrow widths without squeezing the title above it. Bold/white/mono against the navy header is
+       the same restrained "callout" treatment the rest of this app uses for emphasis — no new color
+       introduced. */
+    #bgrv-header-total { display:none;align-items:center;justify-content:flex-end;gap:20px;flex-wrap:wrap; }
     #bgrv-header-total.show { display:flex; }
     .bgrv-header-total-item { display:flex;flex-direction:column;align-items:flex-end; }
     .bgrv-header-total-label { font-size:9px;color:var(--afims-text-disabled, #A9AAB8);
@@ -159,7 +164,7 @@
     .bgrv-cob-subprogram-body { overflow:hidden;transition:max-height .22s ease; }
     .bgrv-cob-program-body.bgrv-collapsed,
     .bgrv-cob-subprogram-body.bgrv-collapsed { max-height:0; }
-    /* Three amount columns (Proposed / Adjustment / Revised) kept at a fixed width so they line up
+    /* Four amount columns (Proposed / Approved / Amendment / Amended) kept at a fixed width so they line up
        across every row's indent level, and under the column-header row (.bgrv-cob-col-headers below). */
     .bgrv-cob-amts { display:flex;align-items:center;gap:16px;flex-shrink:0; }
     .bgrv-cob-amt { font-family:'IBM Plex Mono',monospace;font-weight:700;color:var(--afims-text, #1A1B21);
@@ -167,7 +172,7 @@
     .bgrv-cob-project .bgrv-cob-amt { font-weight:600;color:var(--afims-text-muted, #62657E); }
     .bgrv-cob-empty .bgrv-cob-amt { display:none; }
 
-    /* Column header row (Proposed Amount / Adjustment Amount / Revised Amount) above the outline. */
+    /* Column header row (Proposed Amount / Approved Amount / Amendment / Amended Amount) above the outline. */
     .bgrv-cob-col-headers { background:var(--afims-heading-fill, #000E3E);position:sticky;top:0;z-index:1; }
     .bgrv-cob-amt-label { font-size:10px;font-weight:700;color:var(--afims-text-disabled, #A9AAB8);
         text-transform:uppercase;letter-spacing:.04em;min-width:96px;text-align:right; }
@@ -250,15 +255,15 @@
     #bgrv-card.bgrv-wide .bgrv-cob-group-chevron { width:14px;height:14px; }
     .bgrv-cob-empty { font-style:italic; }
 
-    /* ── "Print COB" (COB mode only — see bgrv_printCobOfficeType()) ── */
-    #bgrv-print-wrap { display:none;position:relative; }
+    /* ── "Export to Excel" / "Preview and Print" (COB mode only — see bgrv_printCobOfficeType()) ── */
+    #bgrv-print-wrap { display:none;position:relative;gap:8px; }
     #bgrv-card.bgrv-wide #bgrv-print-wrap { display:flex; }
-    #bgrv-print-btn { display:flex;align-items:center;gap:6px;border:none;cursor:pointer;
+    #bgrv-export-excel-btn, #bgrv-print-btn { display:flex;align-items:center;gap:6px;border:none;cursor:pointer;
         padding:0 12px;height:28px;border-radius:7px;font-size:12px;font-weight:700;white-space:nowrap;
         background:color-mix(in srgb, var(--afims-surface, #FFFFFF) 12%, transparent);
         color:var(--afims-pure-white, #FFFFFF);transition:background .15s; }
-    #bgrv-print-btn:hover { background:color-mix(in srgb, var(--afims-surface, #FFFFFF) 22%, transparent); }
-    #bgrv-print-btn svg { width:13px;height:13px;flex-shrink:0; }
+    #bgrv-export-excel-btn:hover, #bgrv-print-btn:hover { background:color-mix(in srgb, var(--afims-surface, #FFFFFF) 22%, transparent); }
+    #bgrv-export-excel-btn svg, #bgrv-print-btn svg { width:13px;height:13px;flex-shrink:0; }
 
     /* Print layout picker — a real modal (shares .nha-overlay/.nha-modal from nha-fims.css, same
        convention as readone/cob-report-readone.php's #cobr-overlay), not an anchored dropdown: #bgrv-overlay
@@ -277,16 +282,45 @@
 <div id="bgrv-overlay">
     <div id="bgrv-card">
         <div id="bgrv-header">
-            <div id="bgrv-header-info">
-                <svg fill="none" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.477 0 8.268 2.943 9.542 7-1.274 4.057-5.065 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-                </svg>
-                <div style="min-width:0;">
-                    <p class="bgrv-hdr-tag" id="bgrv-hdr-tag">Program</p>
-                    <p class="bgrv-hdr-title" id="bgrv-modal-title">Program</p>
+            <div id="bgrv-header-top">
+                <div id="bgrv-header-info">
+                    <svg fill="none" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.477 0 8.268 2.943 9.542 7-1.274 4.057-5.065 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                    </svg>
+                    <div style="min-width:0;">
+                        <p class="bgrv-hdr-tag" id="bgrv-hdr-tag">Program</p>
+                        <p class="bgrv-hdr-title" id="bgrv-modal-title">Program</p>
+                    </div>
                 </div>
+                <div id="bgrv-header-actions">
+                    <!-- COB mode only (#bgrv-card.bgrv-wide — see the CSS above); hidden for the Program View
+                         modal. Both buttons share the same layout picker (Per Region / Per Program / Per Fund
+                         Source / Detailed) — which format it ends up producing (xlsx vs. pdf) is set by
+                         bgrv_openPrintModal()'s argument, stored in bgrv_printFormat and read by bgrv_printCob().
+                         A Regional / District user's own office_type skips the picker entirely and goes straight
+                         to "Per Program" — see bgrv_openPrintModal(). -->
+                    <div id="bgrv-print-wrap">
+                        <button type="button" id="bgrv-export-excel-btn" onclick="bgrv_openPrintModal('xlsx')" title="Export this COB to an Excel file">
+                            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                            </svg>
+                            Export to Excel
+                        </button>
+                        <button type="button" id="bgrv-print-btn" onclick="bgrv_openPrintModal('pdf')" title="Preview this COB, then print it as a PDF">
+                            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0l.229 2.523a1.125 1.125 0 01-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0021 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 00-1.913-.247M6.34 18H5.25A2.25 2.25 0 013 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 011.913-.247m10.5 0a48.536 48.536 0 00-10.5 0m10.5 0V3.75A2.25 2.25 0 0015.75 1.5h-7.5A2.25 2.25 0 006 3.75v3.284" />
+                        </svg>
+                        Preview and Print
+                    </button>
+                </div>
+                <button type="button" id="bgrv-close">&times;</button>
+            </div>
             </div>
             <div id="bgrv-header-total">
+                <div class="bgrv-header-total-item">
+                    <p class="bgrv-header-total-label">Total Proposed</p>
+                    <p class="bgrv-header-total-val" id="bgrv-header-total-proposed-val">—</p>
+                </div>
                 <div class="bgrv-header-total-item">
                     <p class="bgrv-header-total-label">Total Approved</p>
                     <p class="bgrv-header-total-val" id="bgrv-header-total-val">—</p>
@@ -299,20 +333,6 @@
                     <p class="bgrv-header-total-label">Total Amended Amount</p>
                     <p class="bgrv-header-total-val" id="bgrv-header-total-revised-val">—</p>
                 </div>
-            </div>
-            <div id="bgrv-header-actions">
-                <!-- COB mode only (#bgrv-card.bgrv-wide — see the CSS above); hidden for the Program View
-                     modal. A Regional / District user's own office_type skips the picker entirely and goes
-                     straight to "Per Program" — see bgrv_openPrintModal(). -->
-                <div id="bgrv-print-wrap">
-                    <button type="button" id="bgrv-print-btn" onclick="bgrv_openPrintModal()">
-                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0l.229 2.523a1.125 1.125 0 01-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0021 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 00-1.913-.247M6.34 18H5.25A2.25 2.25 0 013 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 011.913-.247m10.5 0a48.536 48.536 0 00-10.5 0m10.5 0V3.75A2.25 2.25 0 0015.75 1.5h-7.5A2.25 2.25 0 006 3.75v3.284" />
-                        </svg>
-                        Print COB
-                    </button>
-                </div>
-                <button type="button" id="bgrv-close">&times;</button>
             </div>
         </div>
 
@@ -329,14 +349,14 @@
     </div>
 </div>
 
-<!-- Print layout picker — a 2x2 grid of the 4 layouts, opened by #bgrv-print-btn above
+<!-- Layout picker — a 2x2 grid of the 4 layouts, opened by #bgrv-export-excel-btn / #bgrv-print-btn above
      (bgrv_openPrintModal()). A separate top-level modal (not nested in #bgrv-card) since it must sit on
      top of the already-open #bgrv-overlay, same "stack a second overlay on top" shape as
      readone/cob-report-readone.php's #cobr-overlay over its own host page. -->
 <div id="bgrv-print-overlay" class="nha-overlay">
     <div class="nha-modal nha-modal-md" role="dialog" aria-modal="true" aria-labelledby="bgrv-print-modal-title">
         <div class="nha-modal-hdr">
-            <h3 id="bgrv-print-modal-title">Print COB</h3>
+            <h3 id="bgrv-print-modal-title">Choose a Layout</h3>
             <button type="button" class="nha-modal-close" id="bgrv-print-modal-close" aria-label="Close">&times;</button>
         </div>
         <div class="nha-modal-body">
@@ -379,10 +399,14 @@
 
 const $bgrv = id => document.getElementById(id);
 
-// The fiscal year / extra query params the COB modal is CURRENTLY showing (set by bgrv_openCobModal) — "Print COB"
-// has no filter bar of its own, so bgrv_printCob('region') reuses whatever the modal behind it is already filtered to.
+// The fiscal year / extra query params the COB modal is CURRENTLY showing (set by bgrv_openCobModal) — the
+// layout picker has no filter bar of its own, so bgrv_printCob('region') reuses whatever the modal behind it
+// is already filtered to.
 let bgrv_cobFiscalYr = '';
 let bgrv_cobExtraParams = {};
+// Which format the layout picker is currently working towards — set by bgrv_openPrintModal()'s argument,
+// read by bgrv_printCob() to decide bgrv_downloadCobReport() (xlsx) vs. bgrv_previewCobReport() (pdf).
+let bgrv_printFormat = 'xlsx';
 
 document.addEventListener('DOMContentLoaded', () => {
     $bgrv('bgrv-close')?.addEventListener('click', bgrv_closeModal);
@@ -402,7 +426,7 @@ function bgrv_closeModal() {
     bgrv_closePrintModal();
 }
 
-// ── "Print COB" (COB mode only) ──────────────────────────────────────────
+// ── "Export to Excel" / "Preview and Print" (COB mode only) ──────────────────────────────
 // fims.responsibility_code.office_type -> Regional / District / everything else — same mapping
 // budget-allocation-form.php's cbaRcDeptType() uses for the same office_type values.
 function bgrv_rcDeptType(officeType) {
@@ -416,11 +440,14 @@ function bgrv_closePrintModal() {
     $bgrv('bgrv-print-overlay')?.classList.remove('open');
 }
 
-// A Regional / District user only ever prints their own office's COB, so there's nothing to choose between
-// — this skips the picker and goes straight to "Per Program". Everyone else (FMD / other central offices)
-// gets the full 2x2 choice. BGR_USER_OFFICE_TYPE is defined by whichever host page included this file
-// (budget-req-page.php or budget-prop-page.php), from the logged-in user's own responsibility_code row.
-function bgrv_openPrintModal() {
+// A Regional / District user only ever works with their own office's COB, so there's nothing to choose
+// between — this skips the layout picker and goes straight to "Per Program". Everyone else (FMD / other
+// central offices) gets the full 2x2 choice. BGR_USER_OFFICE_TYPE is defined by whichever host page included
+// this file (budget-req-page.php or budget-prop-page.php), from the logged-in user's own responsibility_code
+// row. format: 'xlsx' ("Export to Excel") or 'pdf' ("Preview and Print") — which button was clicked.
+function bgrv_openPrintModal(format) {
+    bgrv_printFormat = format === 'pdf' ? 'pdf' : 'xlsx';
+    $bgrv('bgrv-print-modal-title').textContent = bgrv_printFormat === 'pdf' ? 'Preview and Print' : 'Export to Excel';
     const deptType = bgrv_rcDeptType(typeof BGR_USER_OFFICE_TYPE !== 'undefined' ? BGR_USER_OFFICE_TYPE : '');
     if (deptType === 'REGIONAL' || deptType === 'DISTRICT') {
         bgrv_printCob('program');
@@ -433,26 +460,35 @@ function bgrv_openPrintModal() {
 function bgrv_printCob(mode) {
     bgrv_closePrintModal();
     if (mode === 'region' || mode === 'program') {
-        bgrv_downloadCobReport(mode, mode === 'region' ? 'Per Region' : 'Per Program');
+        const label = mode === 'region' ? 'Per Region' : 'Per Program';
+        if (bgrv_printFormat === 'pdf') {
+            bgrv_previewCobReport(mode, label);
+        } else {
+            bgrv_downloadCobReport(mode, label);
+        }
         return;
     }
-    bgr_toast(`Print COB (${mode}) is not yet implemented.`, 'info');
+    bgr_toast(`${bgrv_printFormat === 'pdf' ? 'Preview and Print' : 'Export to Excel'} (${mode}) is not yet implemented.`, 'info');
 }
 
-// Shared by every wired-up Print COB mode: GET BGR_API + '/cob-print?mode=…' -> { success, filename, mime, data:
-// base64 } -> a real file download. Same fiscal year / extra params (central, rc_code_from, …) the COB modal
-// behind this picker is currently showing (bgrv_cobFiscalYr / bgrv_cobExtraParams, set by bgrv_openCobModal) —
-// and the same base64 -> Blob -> anchor "download" pattern readone/cob-report-readone.php's own Excel export uses.
+// Shared by both formats: GET BGR_API + '/cob-print?mode=…&format=…' -> { success, filename, mime, data: base64 }.
+// Same fiscal year / extra params (central, rc_code_from, …) the COB modal behind this picker is currently
+// showing (bgrv_cobFiscalYr / bgrv_cobExtraParams, set by bgrv_openCobModal).
+async function bgrv_fetchCobReport(mode, format) {
+    const query = new URLSearchParams({ mode, format });
+    if (bgrv_cobFiscalYr) query.set('fiscal_yr', bgrv_cobFiscalYr);
+    Object.entries(bgrv_cobExtraParams || {}).forEach(([k, v]) => { if (v !== '' && v != null) query.set(k, v); });
+    const res  = await fetch(`${BGR_API}/cob-print?${query}`, { credentials: 'same-origin' });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.message || 'Failed to generate the report.');
+    return json;
+}
+
+// "Export to Excel" — the base64 -> Blob -> anchor "download" pattern readone/cob-report-readone.php's own Excel export uses.
 async function bgrv_downloadCobReport(mode, label) {
     window.PagePreloader?.show();
     try {
-        const query = new URLSearchParams({ mode });
-        if (bgrv_cobFiscalYr) query.set('fiscal_yr', bgrv_cobFiscalYr);
-        Object.entries(bgrv_cobExtraParams || {}).forEach(([k, v]) => { if (v !== '' && v != null) query.set(k, v); });
-        const res  = await fetch(`${BGR_API}/cob-print?${query}`, { credentials: 'same-origin' });
-        const json = await res.json();
-        if (!json.success) throw new Error(json.message || `Failed to generate the ${label} report.`);
-
+        const json = await bgrv_fetchCobReport(mode, 'xlsx');
         const bin = atob(json.data), bytes = new Uint8Array(bin.length);
         for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
         const url = URL.createObjectURL(new Blob([bytes], { type: json.mime }));
@@ -460,6 +496,77 @@ async function bgrv_downloadCobReport(mode, label) {
         a.href = url; a.download = json.filename;
         document.body.appendChild(a); a.click(); a.remove();
         setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e) {
+        bgr_toast(e.message, 'error');
+    } finally {
+        window.PagePreloader?.hide();
+    }
+}
+
+// "Preview and Print" — same report, rendered server-side as a PDF (BudgetReqCobReportService::report(),
+// format='pdf', via GlobalService::renderPdf()) instead of an xlsx. Same look as the REGIONAL app's budget
+// allocation "Preview & Print" (app/routes/fmd/budget_allocation.php's /pdf-view/{filename}): a sized popup
+// window (not a full blank tab) with an iframe filling it (toolbar hidden, #toolbar=0) showing the PDF in
+// the browser's own viewer — that IS the preview — which then auto-triggers the native print dialog once
+// loaded (with a timeout fallback for a slow viewer). Built entirely client-side (document.write into the
+// popup) since the PDF here is already in hand as a blob: URL, with no need for that route's server-side
+// temp-file + token round trip.
+async function bgrv_previewCobReport(mode, label) {
+    window.PagePreloader?.show();
+    try {
+        const json = await bgrv_fetchCobReport(mode, 'pdf');
+        const bin = atob(json.data), bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        const url = URL.createObjectURL(new Blob([bytes], { type: json.mime }));
+
+        const win = window.open('', '_blank',
+            `width=${Math.floor(screen.width / 2)},height=${screen.height},left=0,top=0,menubar=no,toolbar=no,location=no,status=no`);
+        if (!win) {
+            bgr_toast('Pop-up blocked. Please allow pop-ups for this site to preview the PDF.', 'warning');
+            URL.revokeObjectURL(url);
+            return;
+        }
+        // Deliberately no inline script tag in this markup: this template literal is itself inside the
+        // tag this whole page's JS runs in, and the HTML parser has no notion of JS string nesting — it
+        // just scans raw bytes for that tag's closing sequence to end it. Writing that sequence literally
+        // here (even spelled out in a comment, which bit us once already) cuts this page's own script short
+        // right there, dumping everything after it onto the page as plain text. The print-triggering logic
+        // below is attached straight onto the popup's own DOM instead (frame.addEventListener(...)) —
+        // nothing of that shape for the parser to misread.
+        // #toolbar=0 hides the PDF viewer's own toolbar (so it reads as a clean preview, not a bare PDF
+        // tab) — which also hides ITS print icon, so the only way back to the print dialog after the
+        // auto-triggered one below is dismissed would otherwise be Ctrl+P. A small bar with its own Print
+        // button sits above the iframe for that.
+        win.document.open();
+        win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${bgr_esc(json.filename || label)}</title>
+<style>*{margin:0;padding:0;box-sizing:border-box}html,body{height:100%;width:100%;overflow:hidden;background:#525659}
+body{display:flex;flex-direction:column;font-family:Arial,Helvetica,sans-serif}
+#pf-bar{flex:0 0 auto;display:flex;align-items:center;justify-content:flex-end;padding:8px 14px;background:#323639;}
+#pf-print{display:flex;align-items:center;gap:6px;border:none;cursor:pointer;padding:0 16px;height:32px;border-radius:6px;
+    font-size:13px;font-weight:600;font-family:inherit;background:#1a73e8;color:#fff;}
+#pf-print:hover{background:#1765cc}
+#pf-print svg{width:15px;height:15px;flex-shrink:0;}
+#pf{flex:1 1 auto;display:block;width:100%;border:none;}</style>
+</head><body>
+<div id="pf-bar"><button type="button" id="pf-print"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0l.229 2.523a1.125 1.125 0 01-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0021 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 00-1.913-.247M6.34 18H5.25A2.25 2.25 0 013 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 011.913-.247m10.5 0a48.536 48.536 0 00-10.5 0m10.5 0V3.75A2.25 2.25 0 0015.75 1.5h-7.5A2.25 2.25 0 006 3.75v3.284" /></svg>Print</button></div>
+<iframe id="pf" src="${url}#toolbar=0"></iframe>
+</body></html>`);
+        win.document.close();
+
+        const frame = win.document.getElementById('pf');
+        const doPrint = () => {
+            try { frame.contentWindow.focus(); frame.contentWindow.print(); } catch (e) { /* popup may already be closing */ }
+        };
+        let autoPrinted = false;
+        const autoPrint = () => {
+            if (autoPrinted) return;
+            autoPrinted = true;
+            doPrint();
+        };
+        frame.addEventListener('load', () => setTimeout(autoPrint, 500));
+        setTimeout(autoPrint, 3500);   // fallback in case the load event is slow/missed
+        win.document.getElementById('pf-print')?.addEventListener('click', doPrint);
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch (e) {
         bgr_toast(e.message, 'error');
     } finally {
@@ -564,6 +671,7 @@ async function bgrv_openCobModal(fiscalYr = '', extraParams = {}, options = {}) 
     $bgrv('bgrv-modal-title').textContent = fiscalYr ? `${what} — FY ${bgr_esc(fiscalYr)}` : `${what} — All Years`;
     $bgrv('bgrv-sec-hd-label').textContent = byUnit ? 'Originating Units' : 'CAPITAL OUTLAY';
     $bgrv('bgrv-sec-hd-total').textContent = '';
+    $bgrv('bgrv-header-total-proposed-val').textContent = '—';
     $bgrv('bgrv-header-total-val').textContent = '—';
     $bgrv('bgrv-header-total-adjustment-val').textContent = '—';
     $bgrv('bgrv-header-total-revised-val').textContent = '—';
@@ -598,10 +706,11 @@ async function bgrv_openCobModal(fiscalYr = '', extraParams = {}, options = {}) 
                 }
                 return 0;
             });
-            let grandTotal = { proposed: 0, adjustment: 0, revised: 0 }, programCount = 0, subProgramCount = 0, projectCount = 0, coeLineItemCount = 0;
+            let grandTotal = { proposed: 0, approved: 0, adjustment: 0, revised: 0 }, programCount = 0, subProgramCount = 0, projectCount = 0, coeLineItemCount = 0;
             const unitsHtml = units.map(h => {
                 const c = bgrv_cobCollect([h], showFund);
                 grandTotal.proposed += c.grandTotal.proposed;
+                grandTotal.approved += c.grandTotal.approved;
                 grandTotal.adjustment += c.grandTotal.adjustment;
                 grandTotal.revised += c.grandTotal.revised;
                 programCount += c.programs.length; subProgramCount += c.subProgramCount; projectCount += c.projectCount; coeLineItemCount += c.coeLineItemCount;
@@ -615,6 +724,7 @@ async function bgrv_openCobModal(fiscalYr = '', extraParams = {}, options = {}) 
                             <span class="bgrv-cob-unit-meta">${bgr_statusBadge(h.status_name, h.status_color)}
                                 <span class="bgrv-cob-amts">
                                     <span class="bgrv-cob-amt">${bgr_fmtMoney(c.grandTotal.proposed)}</span>
+                                    <span class="bgrv-cob-amt">${bgr_fmtMoney(c.grandTotal.approved)}</span>
                                     <span class="bgrv-cob-amt">${bgr_fmtMoney(c.grandTotal.adjustment)}</span>
                                     <span class="bgrv-cob-amt">${bgr_fmtMoney(c.grandTotal.revised)}</span>
                                 </span></span>
@@ -622,7 +732,8 @@ async function bgrv_openCobModal(fiscalYr = '', extraParams = {}, options = {}) 
                         <div class="bgrv-cob-nest bgrv-collapsed">${bgrv_cobUnitNestHtml(c)}</div>`;
             }).join('');
 
-            $bgrv('bgrv-header-total-val').textContent = bgr_fmtMoney(grandTotal.proposed);
+            $bgrv('bgrv-header-total-proposed-val').textContent = bgr_fmtMoney(grandTotal.proposed);
+            $bgrv('bgrv-header-total-val').textContent = bgr_fmtMoney(grandTotal.approved);
             $bgrv('bgrv-header-total-adjustment-val').textContent = bgr_fmtMoney(grandTotal.adjustment);
             $bgrv('bgrv-header-total-revised-val').textContent = bgr_fmtMoney(grandTotal.revised);
             $bgrv('bgrv-panels').innerHTML = unitsHtml ? `<div class="bgrv-cob-list">${bgrv_cobColumnHeaderHtml()}${unitsHtml}</div>` : '';
@@ -637,7 +748,8 @@ async function bgrv_openCobModal(fiscalYr = '', extraParams = {}, options = {}) 
         // spans several descendant rc_ids for the same year. A Program (or Sub-Program) added more than once collapses to a single
         // row; its Projects and the grand total still count every occurrence.
         const c = bgrv_cobCollect(headers, showFund);
-        $bgrv('bgrv-header-total-val').textContent = bgr_fmtMoney(c.grandTotal.proposed);
+        $bgrv('bgrv-header-total-proposed-val').textContent = bgr_fmtMoney(c.grandTotal.proposed);
+        $bgrv('bgrv-header-total-val').textContent = bgr_fmtMoney(c.grandTotal.approved);
         $bgrv('bgrv-header-total-adjustment-val').textContent = bgr_fmtMoney(c.grandTotal.adjustment);
         $bgrv('bgrv-header-total-revised-val').textContent = bgr_fmtMoney(c.grandTotal.revised);
 
@@ -665,6 +777,7 @@ async function bgrv_openCobModal(fiscalYr = '', extraParams = {}, options = {}) 
         $bgrv('bgrv-panels').innerHTML = '';
         $bgrv('bgrv-empty').style.display = '';
         $bgrv('bgrv-sec-hd-total').textContent = '';
+        $bgrv('bgrv-header-total-proposed-val').textContent = '—';
         $bgrv('bgrv-header-total-val').textContent = '—';
         $bgrv('bgrv-header-total-adjustment-val').textContent = '—';
         $bgrv('bgrv-header-total-revised-val').textContent = '—';
@@ -677,16 +790,18 @@ async function bgrv_openCobModal(fiscalYr = '', extraParams = {}, options = {}) 
 // bgrv_openCobModal: folds the given budget requests (headers) into Program -> Sub-Program -> Project rows. Returns the rows' HTML
 // and the counts / totals they add up to. A Program (or Sub-Program) that appears in more than one header collapses to a single row; its
 // Projects and the totals still count every occurrence.
-// Each row/total carries THREE amounts: proposed (the "Approved Amount" column — budget_line_items.suggested_amount,
-// 0 until Budget Processing sets one; see bgrv_approvedAmount below). suggested_amount is now a STABLE figure
-// (migration "51 - budget_line_items_stable_suggested_amount.sql" — no CBA/CFA/RFA/LAA approval or deletion, and no
-// Budget Revision, ever moves it again; see BudgetLineBalanceSql's class doc), so reading it here needs no further
-// adjustment — unlike budget-allocation-form.php's "Available Amount"
+// Each row/total carries FOUR amounts: proposed (the "Proposed Amount" column — budget_line_items.proposed_amount, the
+// office's own original ask, set when the request is submitted) and approved (the "Approved Amount" column —
+// budget_line_items.suggested_amount, 0 until Budget Processing sets one; see bgrv_approvedAmount below). suggested_amount
+// is now a STABLE figure (migration "51 - budget_line_items_stable_suggested_amount.sql" — no CBA/CFA/RFA/LAA approval or
+// deletion, and no Budget Revision, ever moves it again; see BudgetLineBalanceSql's class doc), so reading it here needs no
+// further adjustment — unlike budget-allocation-form.php's "Available Amount"
 // (cobAvailable()), which is a genuinely live, derived ceiling and is NOT what this column shows. adjustment
 // (budget_line_items.adjustment — the net adjustment applied by an approved Budget Revision; 0 until one is
-// approved), and revised — proposed PLUS adjustment (adjustment already carries its own sign: negative for a cut,
+// approved), and revised — approved PLUS adjustment (adjustment already carries its own sign: negative for a cut,
 // positive for an increase), computed here (budget_line_items.revised_amount, now generated by the table as suggested_amount + adjustment —
-// 03 - alter_table/54 — would give the same number).
+// 03 - alter_table/54 — would give the same number). Same three figures BudgetReqCobReportService's Print COB exports read
+// (proposed/approved/amended), just with the net adjustment also broken out as its own column here.
 // showFund: each Project row also lists the Type(s) of Fund of its line items (set by Budget Processing; a Project can have several, and
 // none before it has been processed).
 // Same account_code-prefix rule DisbursementVoucherService::deriveExpenseClass() uses — chart_of_accounts
@@ -708,17 +823,25 @@ function bgrv_approvedAmount(li) {
     return Number(li.suggested_amount) || 0;
 }
 
+// The "Proposed Amount" of one line item: budget_line_items.proposed_amount — the office's own original
+// ask, set when the request is submitted and never touched by Budget Processing, CBA/RFA/LAA or Budget
+// Revision (those only ever move suggested_amount / adjustment). Same column BudgetReqCobReportService's
+// Print COB exports read for their own "Proposed Amount" column.
+function bgrv_proposedAmount(li) {
+    return Number(li.proposed_amount) || 0;
+}
+
 function bgrv_cobCollect(headers, showFund = false) {
     const programMap    = new Map(); // program_code -> { program_code, program_name }
     const subByProgram  = new Map(); // program_code -> Map(sub_program_code -> { sub_program_code, sub_program_name })
-    const projByProgram = new Map(); // program_code -> [{ project_code, project_name, sub_program_code, proposed, adjustment, revised, funds }, ...]
-    const programTotals = new Map(); // program_code -> { proposed, adjustment, revised }
-    const grandTotal = { proposed: 0, adjustment: 0, revised: 0 };
+    const projByProgram = new Map(); // program_code -> [{ project_code, project_name, sub_program_code, proposed, approved, adjustment, revised, funds }, ...]
+    const programTotals = new Map(); // program_code -> { proposed, approved, adjustment, revised }
+    const grandTotal = { proposed: 0, approved: 0, adjustment: 0, revised: 0 };
     // PS / MOOE sub-totals making up the COE table (bgrv_cobCoeClassRowsHtml) — there's no
     // overall "COE total" row anymore (see bgrv_openCobModal), only these two.
     const coeByClass = {
-        PS: { count: 0, proposed: 0, adjustment: 0, revised: 0 },
-        MOOE: { count: 0, proposed: 0, adjustment: 0, revised: 0 },
+        PS: { count: 0, proposed: 0, approved: 0, adjustment: 0, revised: 0 },
+        MOOE: { count: 0, proposed: 0, approved: 0, adjustment: 0, revised: 0 },
     };
     let projectCount = 0;
     let coeLineItemCount = 0;
@@ -727,10 +850,12 @@ function bgrv_cobCollect(headers, showFund = false) {
     // instead of the Program map below, and still counted into grandTotal.
     headers.forEach(h => {
         (h.coe_line_items || []).forEach(li => {
-            const proposed   = bgrv_approvedAmount(li);
+            const proposed   = bgrv_proposedAmount(li);
+            const approved   = bgrv_approvedAmount(li);
             const adjustment = Number(li.adjustment) || 0;
-            const revised    = proposed + adjustment;
+            const revised    = approved + adjustment;
             grandTotal.proposed += proposed;
+            grandTotal.approved += approved;
             grandTotal.adjustment += adjustment;
             grandTotal.revised += revised;
             coeLineItemCount++;
@@ -741,6 +866,7 @@ function bgrv_cobCollect(headers, showFund = false) {
             if (cls) {
                 cls.count++;
                 cls.proposed += proposed;
+                cls.approved += approved;
                 cls.adjustment += adjustment;
                 cls.revised += revised;
             }
@@ -753,7 +879,7 @@ function bgrv_cobCollect(headers, showFund = false) {
                 programMap.set(prog.program_code, { program_code: prog.program_code, program_name: prog.program_name });
                 subByProgram.set(prog.program_code, new Map());
                 projByProgram.set(prog.program_code, []);
-                programTotals.set(prog.program_code, { proposed: 0, adjustment: 0, revised: 0 });
+                programTotals.set(prog.program_code, { proposed: 0, approved: 0, adjustment: 0, revised: 0 });
             }
             if (prog.sub_program_code) {
                 subByProgram.get(prog.program_code).set(prog.sub_program_code, {
@@ -762,9 +888,10 @@ function bgrv_cobCollect(headers, showFund = false) {
                 });
             }
             (prog.projects || []).forEach(p => {
-                const proposed   = (p.line_items || []).reduce((sum, li) => sum + bgrv_approvedAmount(li), 0);
+                const proposed   = (p.line_items || []).reduce((sum, li) => sum + bgrv_proposedAmount(li), 0);
+                const approved   = (p.line_items || []).reduce((sum, li) => sum + bgrv_approvedAmount(li), 0);
                 const adjustment = (p.line_items || []).reduce((sum, li) => sum + (Number(li.adjustment) || 0), 0);
-                const revised    = proposed + adjustment;
+                const revised    = approved + adjustment;
                 // distinct Types of Fund across the project's line items, in line-item order
                 const funds = [...new Set((p.line_items || []).map(li => String(li.type_of_fund_name ?? '').trim()).filter(Boolean))];
                 projByProgram.get(prog.program_code).push({
@@ -772,16 +899,19 @@ function bgrv_cobCollect(headers, showFund = false) {
                     project_name: p.project_name,
                     sub_program_code: prog.sub_program_code,
                     proposed,
+                    approved,
                     adjustment,
                     revised,
                     funds,
                 });
                 const totals = programTotals.get(prog.program_code);
                 totals.proposed += proposed;
+                totals.approved += approved;
                 totals.adjustment += adjustment;
                 totals.revised += revised;
                 projectCount++;
                 grandTotal.proposed += proposed;
+                grandTotal.approved += approved;
                 grandTotal.adjustment += adjustment;
                 grandTotal.revised += revised;
             });
@@ -796,7 +926,7 @@ function bgrv_cobCollect(headers, showFund = false) {
     const programsHtml = programs.map(prog => {
         const progSubPrograms = Array.from(subByProgram.get(prog.program_code).values());
         const progProjects    = projByProgram.get(prog.program_code) || [];
-        const totals = programTotals.get(prog.program_code) || { proposed: 0, adjustment: 0, revised: 0 };
+        const totals = programTotals.get(prog.program_code) || { proposed: 0, approved: 0, adjustment: 0, revised: 0 };
         return `<div class="bgrv-cob-row bgrv-cob-program" onclick="bgrv_toggleDisclosure(this, 'bgrv-cob-program-body')">
                     <span class="bgrv-cob-row-label">
                         <svg class="bgrv-cob-disclosure-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
@@ -804,6 +934,7 @@ function bgrv_cobCollect(headers, showFund = false) {
                     </span>
                     <span class="bgrv-cob-amts">
                         <span class="bgrv-cob-amt">${bgr_fmtMoney(totals.proposed)}</span>
+                        <span class="bgrv-cob-amt">${bgr_fmtMoney(totals.approved)}</span>
                         <span class="bgrv-cob-amt">${bgr_fmtMoney(totals.adjustment)}</span>
                         <span class="bgrv-cob-amt">${bgr_fmtMoney(totals.revised)}</span>
                     </span>
@@ -816,9 +947,9 @@ function bgrv_cobCollect(headers, showFund = false) {
     // table's Total row (see bgrv_openCobModal) is scoped to just that table, not the combined
     // grandTotal (which is the whole modal's header banner figure, CO + COE together).
     const sumAmts = list => list.reduce((acc, t) => {
-        acc.proposed += t.proposed; acc.adjustment += t.adjustment; acc.revised += t.revised;
+        acc.proposed += t.proposed; acc.approved += t.approved; acc.adjustment += t.adjustment; acc.revised += t.revised;
         return acc;
-    }, { proposed: 0, adjustment: 0, revised: 0 });
+    }, { proposed: 0, approved: 0, adjustment: 0, revised: 0 });
     const coTotal = sumAmts(Array.from(programTotals.values()));
     const coeTotal = sumAmts(Object.values(coeByClass));
 
@@ -847,7 +978,7 @@ function bgrv_cobUnitNestHtml(c) {
 }
 
 // COE's own table rows — PS and MOOE, each a top-level row (same style as a Program row, since
-// there's no higher grouping above them here) with its own Proposed/Adjustment/Revised. A class
+// there's no higher grouping above them here) with its own Proposed/Approved/Adjustment/Revised. A class
 // with no line items in it is skipped rather than shown as ₱0.00.
 function bgrv_cobCoeClassRowsHtml(coeByClass) {
     const labels = { PS: 'PS', MOOE: 'MOOE' };
@@ -858,6 +989,7 @@ function bgrv_cobCoeClassRowsHtml(coeByClass) {
                     <span>${bgr_esc(labels[key])} <span style="font-weight:500;font-size:11px;color:var(--afims-text-muted, #62657E);">(${c.count} line item(s))</span></span>
                     <span class="bgrv-cob-amts">
                         <span class="bgrv-cob-amt">${bgr_fmtMoney(c.proposed)}</span>
+                        <span class="bgrv-cob-amt">${bgr_fmtMoney(c.approved)}</span>
                         <span class="bgrv-cob-amt">${bgr_fmtMoney(c.adjustment)}</span>
                         <span class="bgrv-cob-amt">${bgr_fmtMoney(c.revised)}</span>
                     </span>
@@ -872,19 +1004,21 @@ function bgrv_cobTotalRowHtml(totals) {
                 <span>Total</span>
                 <span class="bgrv-cob-amts">
                     <span class="bgrv-cob-amt">${bgr_fmtMoney(totals.proposed)}</span>
+                    <span class="bgrv-cob-amt">${bgr_fmtMoney(totals.approved)}</span>
                     <span class="bgrv-cob-amt">${bgr_fmtMoney(totals.adjustment)}</span>
                     <span class="bgrv-cob-amt">${bgr_fmtMoney(totals.revised)}</span>
                 </span>
             </div>`;
 }
 
-// bgrv_openCobModal: the "Approved Amount" / "Amendment" / "Amended Amount" column-header row shown above the outline.
+// bgrv_openCobModal: the "Proposed Amount" / "Approved Amount" / "Amendment" / "Amended Amount" column-header row shown above the outline.
 // label: the table's own section label ("CAPITAL OUTLAY" / "CORPORATE OPERATING EXPENDITURE"), shown on the
 // same blue bar, aligned with those amount columns instead of as a separate heading above it.
 function bgrv_cobColumnHeaderHtml(label = '') {
     return `<div class="bgrv-cob-row bgrv-cob-col-headers">
                 <span class="bgrv-cob-sec-label">${bgr_esc(label)}</span>
                 <span class="bgrv-cob-amts">
+                    <span class="bgrv-cob-amt-label">Proposed Amount</span>
                     <span class="bgrv-cob-amt-label">Approved Amount</span>
                     <span class="bgrv-cob-amt-label">Amendment</span>
                     <span class="bgrv-cob-amt-label">Amended Amount</span>
@@ -1082,15 +1216,17 @@ function bgrv_cobRowsHtml(subPrograms, projects, showFund = false) {
     return groups.map(g => {
         const subTotal = g.projects.reduce((acc, p) => {
             acc.proposed += Number(p.proposed) || 0;
+            acc.approved += Number(p.approved) || 0;
             acc.adjustment += Number(p.adjustment) || 0;
             acc.revised += Number(p.revised) || 0;
             return acc;
-        }, { proposed: 0, adjustment: 0, revised: 0 });
+        }, { proposed: 0, approved: 0, adjustment: 0, revised: 0 });
         const projRows = g.projects.length
             ? g.projects.map(p => `<div class="bgrv-cob-row bgrv-cob-project">
                     <span>${bgr_esc(p.project_code)} — ${bgr_esc(p.project_name)}${showFund ? bgrv_cobFundHtml(p.funds) : ''}</span>
                     <span class="bgrv-cob-amts">
                         <span class="bgrv-cob-amt">${bgr_fmtMoney(p.proposed || 0)}</span>
+                        <span class="bgrv-cob-amt">${bgr_fmtMoney(p.approved || 0)}</span>
                         <span class="bgrv-cob-amt">${bgr_fmtMoney(p.adjustment || 0)}</span>
                         <span class="bgrv-cob-amt">${bgr_fmtMoney(p.revised || 0)}</span>
                     </span>
@@ -1103,6 +1239,7 @@ function bgrv_cobRowsHtml(subPrograms, projects, showFund = false) {
                     </span>
                     <span class="bgrv-cob-amts">
                         <span class="bgrv-cob-amt">${bgr_fmtMoney(subTotal.proposed)}</span>
+                        <span class="bgrv-cob-amt">${bgr_fmtMoney(subTotal.approved)}</span>
                         <span class="bgrv-cob-amt">${bgr_fmtMoney(subTotal.adjustment)}</span>
                         <span class="bgrv-cob-amt">${bgr_fmtMoney(subTotal.revised)}</span>
                     </span>

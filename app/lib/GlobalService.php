@@ -60,6 +60,11 @@ use PHPMaker2024\FIMS as App;
  *   'budget_allocation'), and DisbursementVoucherService::changeJevStatus()
  *   ('journal_entry_voucher'). Never throws — a logging failure must not
  *   fail the status change itself.
+ * - renderPdf()  HTML -> PDF bytes, via Dompdf. Generic — any module can hand it a
+ *   server-built HTML report and get back a previewable/downloadable PDF, without going
+ *   through PrintService's form-specific pipeline (PrintService::DOCS, letterhead, …).
+ *   Moved here from PrintService (its only caller until now); PrintService::print() calls
+ *   this one now. Used by BudgetReqCobReportService's "Preview and Print".
  */
 class GlobalService
 {
@@ -544,5 +549,62 @@ class GlobalService
         );
 
         return $row['remarks'] ?? null;
+    }
+
+    /**
+     * Renders HTML to a PDF file (bytes), via Dompdf. Moved here (from PrintService, its only caller
+     * until now) so any module can turn a server-built HTML report into a downloadable/previewable PDF
+     * without going through PrintService's form-specific pipeline (PrintService::DOCS, letterhead, …) —
+     * e.g. BudgetReqCobReportService's "Preview and Print" (the COB outline, not a registered print form).
+     *
+     * $runningHeader (optional): { lines: [text, …], from_page (default 2), right_pt (the right text edge,
+     * default 72pt in), page_first (default false), italic (default true) } — lines at the top right of
+     * each page from from_page on, followed by "Page X of Y". Drawn after layout (Dompdf page_script)
+     * because the page count is only known then.
+     *
+     * @return string|null the PDF bytes, or null if rendering failed (logged, never thrown)
+     */
+    public static function renderPdf(string $html, string $paper = 'A4', string $font = 'Times-Roman', string $orientation = 'portrait',
+        ?array $runningHeader = null): ?string
+    {
+        try {
+            $options = new \Dompdf\Options();
+            $options->set('isRemoteEnabled', false);   // images are inline data URIs
+            $options->set('defaultMediaType', 'print');
+            $options->set('defaultFont', $font);
+
+            $dompdf = new \Dompdf\Dompdf($options);
+            $dompdf->loadHtml($html, 'UTF-8');
+            $dompdf->setPaper($paper, $orientation);
+            $dompdf->render();
+
+            if (is_array($runningHeader)) {   // "Page X of Y" prints even when there are no title lines
+                $fromPage = (int) ($runningHeader['from_page'] ?? 2);
+                $rightPt  = (float) ($runningHeader['right_pt'] ?? 72);
+                $lines    = array_values($runningHeader['lines'] ?? []);
+                $pageFirst = !empty($runningHeader['page_first']);
+                $style    = ($runningHeader['italic'] ?? true) ? 'italic' : 'normal';
+                $dompdf->getCanvas()->page_script(static function (int $page, int $pages, $canvas, $fontMetrics) use ($fromPage, $rightPt, $lines, $pageFirst, $style) {
+                    if ($page < $fromPage) {
+                        return;
+                    }
+                    $font = $fontMetrics->getFont('Helvetica', $style);
+                    $size = 9;
+                    $y    = 30;
+                    $no   = ['Page ' . $page . ' of ' . $pages];
+                    foreach ($pageFirst ? array_merge($no, $lines) : array_merge($lines, $no) as $text) {
+                        $width = $fontMetrics->getTextWidth($text, $font, $size);
+                        $canvas->text($canvas->get_width() - $rightPt - $width, $y, $text, $font, $size);
+                        $y += $size + 2;
+                    }
+                });
+            }
+
+            return $dompdf->output();
+        } catch (\Throwable $e) {
+            App\LogError('GlobalService::renderPdf ' . $e->getMessage());
+
+            return null;
+        }
     }
 }

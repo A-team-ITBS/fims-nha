@@ -1075,6 +1075,11 @@ class BudgetReqService
         App\Execute("UPDATE {$this->table} SET status_id = {$forReviewId}, submitted_at = NOW() WHERE budget_reference_number = ".App\QuotedValue($id, DataType::STRING, 'DB'), 'DB');
         GlobalService::logStatusChange('budget_req', $id, 'For Review', $userId);
 
+        $fy = $check['data']['fiscal_yr'] ?? '';
+        $this->notifyNextActors($id, self::STATUS_FOR_REVIEW, $userId,
+            'Budget request submitted for review',
+            "Budget request {$id}".($fy !== '' ? " (FY {$fy})" : '').' was submitted and is now For Review.');
+
         return ['success' => true, 'message' => 'Budget request submitted for review.'];
     }
 
@@ -1139,6 +1144,11 @@ class BudgetReqService
             $inTransaction = false;
 
             GlobalService::logStatusChange('budget_req', $id, self::STATUS_ENDORSED, $userId);
+
+            $fy = $check['data']['fiscal_yr'] ?? '';
+            $this->notifyNextActors($id, self::STATUS_ENDORSED, $userId,
+                'Budget request endorsed',
+                "Budget request {$id}".($fy !== '' ? " (FY {$fy})" : '').' was endorsed and needs your approval.');
 
             return [
                 'success' => true,
@@ -1209,6 +1219,14 @@ class BudgetReqService
 
         $backTo = self::REVIEW_STEPS[$targetName]['actor'] ?? null;
 
+        // next_actors only exists for 'Returned to Budget Officer' (the Budget Head's return) — 'Returned' (the
+        // Budget Officer's, back to the originating office) has none, since there is no single FMD role to
+        // resolve an arbitrary requesting office to; notifyNextActors() just no-ops for it.
+        $fy = $check['data']['fiscal_yr'] ?? '';
+        $this->notifyNextActors($id, $targetName, $userId,
+            'Budget request returned',
+            "Budget request {$id}".($fy !== '' ? " (FY {$fy})" : '')." was returned: {$remarks}");
+
         return [
             'success' => true,
             'message' => $backTo !== null
@@ -1266,6 +1284,56 @@ class BudgetReqService
     {
         return ['success' => false, 'message' => "The status \"{$name}\" is not set up in the database yet, so nothing was changed. "
             .'Ask an administrator to run the SQL installer (node install_system.js --sql-only).'];
+    }
+
+    /**
+     * Tells whoever the review chain's next step belongs to (fims.settings_status.next_actors, for status_for =
+     * 'budget_req' and $statusName — seeded by "04 - seed_data/07 - budget_req_review_chain_statuses.sql") that a
+     * request now needs them, via NotificationService::toNextActors(). Called right after submitForReview() /
+     * endorse() / returnRequest() commit the new status. A status with no next_actors (Draft, Returned, Approved —
+     * there is no single FMD role to resolve a request's own originating office to) just notifies nobody; never
+     * throws. Not keyed by event_key: each call already corresponds to exactly one real transition — endorse() /
+     * approve() / returnRequest()'s own optimistic-concurrency UPDATE (status_id = the row's CURRENT id) means a
+     * second, stale attempt never reaches this far — so re-notifying every time the SAME status is reached again
+     * later (e.g. Endorsed, Returned, Endorsed again) is the correct behaviour, not a duplicate to suppress.
+     */
+    private function notifyNextActors(string $id, string $statusName, ?int $userId, string $subject, string $body): int
+    {
+        try {
+            $raw = App\ExecuteScalar(
+                "SELECT next_actors FROM fims.settings_status WHERE status_for = 'budget_req' AND name = "
+                .App\QuotedValue($statusName, DataType::STRING, 'DB'),
+                'DB'
+            );
+            if ($raw === null || $raw === false || trim((string) $raw) === '') {
+                return 0;
+            }
+            $nextActors = json_decode((string) $raw, true);
+            if (!is_array($nextActors)) {
+                return 0;
+            }
+
+            return NotificationService::toNextActors($nextActors, $subject, $body, $this->budgetReqPageLink(), [
+                'sender_id' => $userId,
+            ]);
+        } catch (\Throwable $e) {
+            App\LogError("BudgetReqService: could not notify next actors for {$id} -> {$statusName} - ".$e->getMessage());
+
+            return 0;
+        }
+    }
+
+    /** Where the notification's link goes: the Budget Requirements / Budget Proposal list (route BudgetReqPage) —
+     *  the FMD's own list shows every office's requests, so there is nothing more specific to deep-link to. */
+    private function budgetReqPageLink(): string
+    {
+        try {
+            $link = (string) App\GetUrl('BudgetReqPage');
+        } catch (\Throwable $e) {
+            $link = 'BudgetReqPage';
+        }
+
+        return '/'.ltrim($link, '/');
     }
 
     /**
