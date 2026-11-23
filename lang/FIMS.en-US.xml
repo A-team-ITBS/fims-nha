@@ -11,14 +11,11 @@
     <menu id="541">
       <phrase id="menutext" value="COB Preparation" />
     </menu>
-    <menu id="261">
-      <phrase id="menutext" value="Budget Proposal" />
-    </menu>
     <menu id="81">
-      <phrase id="menutext" value="Budget Request" />
+      <phrase id="menutext" value="Budget Proposal" />
     </menu>
     <menu id="85">
-      <phrase id="menutext" value="Budget Proposal" />
+      <phrase id="menutext" value="Budget Revision" />
     </menu>
     <menu id="657">
       <phrase id="menutext" value="Ledger" />
@@ -1714,9 +1711,6 @@
     </table>
     <table id="trial_balance_page">
       <phrase id="tblcaption" value="Trial Balance" />
-    </table>
-    <table id="budget_prop_page">
-      <phrase id="tblcaption" value="Budget Propose" />
     </table>
     <table id="notification_reads">
       <phrase id="tblcaption" value="notification reads" />
