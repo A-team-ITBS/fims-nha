@@ -80,6 +80,8 @@ const ST = Object.assign({
     date_italic: true, indent_pt: 0, line_height: null, name_italic: false,
     foot_size: 10, foot_italic: false, foot_bold: 'label', allocnum_bold: true,
     date_align: 'right', sig_layout: 'right',
+    // The main-office CAF template's spacing (CbaPrintService::STYLE documents each key) — off for the CBA / regional CAF
+    blank_top: 0, blank_date: null, title_after: null, blank_title: null, cert_align: 'justify', allocnum_after: 0,
 }, m.style || {});
 const FONT = 'Times New Roman';
 const SZ = ST.size * 2;          // docx sizes are half-points
@@ -111,15 +113,22 @@ const certIndent = ST.indent_pt ? { firstLine: ST.indent_pt * 20 } : undefined;
 // ── Body ──────────────────────────────────────────────────────────────────────
 const children = [];
 
-// 1. Date — right-aligned (regional CAF: left)
-children.push(para([run(m.date, { italics: ST.date_italic })], {
-    align: ST.date_align === 'left' ? AlignmentType.LEFT : AlignmentType.RIGHT, after: 320,
-}));
+// An empty line (the CAF template's spacers); $afterPt = the gap under it, in pt.
+const blank = function (afterPt) { return para([run('')], { after: Math.round((afterPt || 0) * 20) }); };
+for (let i = 0; i < ST.blank_top; i++) children.push(blank(0));
+
+// 1. Date — right-aligned (regional CAF: left; main-office CAF template: 'block' — centred over the right-hand part,
+//    a 4in left indent with the first line a further 0.5in in)
+children.push(para([run(m.date, { italics: ST.date_italic })], ST.date_align === 'block'
+    ? { align: AlignmentType.CENTER, indent: { left: 5760, firstLine: 720 }, after: 320 }
+    : { align: ST.date_align === 'left' ? AlignmentType.LEFT : AlignmentType.RIGHT, after: 320 }));
+if (ST.blank_date !== null) children.push(blank(ST.blank_date));
 
 // 2. Title — centered
 children.push(para([run(m.title, {
     bold: ST.title_bold, italics: ST.title_italic, size: ST.title_size !== ST.size ? ST.title_size * 2 : undefined,
-})], { align: AlignmentType.CENTER, after: 300 }));
+})], { align: AlignmentType.CENTER, after: ST.title_after !== null ? Math.round(ST.title_after * 20) : 300 }));
+if (ST.blank_title !== null) children.push(blank(ST.blank_title));
 
 // 3. Certify paragraph — italic, justified, amount phrases bold (ordinal suffixes
 //    superscript). Without a validity paragraph (CAF) it takes the gap before
@@ -127,7 +136,7 @@ children.push(para([run(m.title, {
 const hasValidity = !!m.validity;
 children.push(new Paragraph({
     children: (m.body || []).map(function (r) { return run(r.text, { italics: true, bold: r.bold, sup: r.sup }); }),
-    alignment: AlignmentType.JUSTIFY,
+    alignment: ST.cert_align === 'left' ? AlignmentType.LEFT : AlignmentType.JUSTIFY,
     spacing: Object.assign({ before: 0, after: hasValidity ? 260 : 900 },
         ST.line_height ? { line: Math.round(240 * ST.line_height), lineRule: 'auto' } : {}),
     indent: certIndent,
@@ -180,7 +189,7 @@ if (ST.sig_layout === 'certified') {
 // 6. Footnote — allocation number + Sources of Fund / Program
 children.push(para([run('')], { after: 800 }));
 if (m.allocation_number) {
-    children.push(para([run(m.allocation_number, { bold: ST.allocnum_bold, italics: true, size: SZ_SM })], { after: 0 }));
+    children.push(para([run(m.allocation_number, { bold: ST.allocnum_bold, italics: true, size: SZ_SM })], { after: Math.round(ST.allocnum_after * 20) }));
 }
 (m.footnote || []).forEach(function (l) {
     // foot_bold: which part is bold — 'label' (CBA), 'value' (CAF) or 'none' (regional CBA)

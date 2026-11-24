@@ -12,6 +12,8 @@ use PHPMaker2024\FIMS\DataType;
  *
  * Writable fields: caf_number, document_type, allocation_id, fiscal_year, line_transaction (jsonb).
  * user_id is the creator — it comes from the verified JWT (see create()), never from the body.
+ * Creating a CAF is restricted (create()): FMD users only, only for an Approved RFA, and only while that RFA has no CAF — a
+ * superadmin is exempt.
  */
 class CafService
 {
@@ -95,10 +97,18 @@ class CafService
 
     // -----------------------------------------------------------------------
     // Create — /caf/add   ($userId = the creator, from the verified JWT)
+    //
+    // WHO and FOR WHAT (createRefusal()): only a user of the FMD may create a CAF, only for an RFA whose status is Approved,
+    // and only while that RFA has no CAF yet. A superadmin is exempt from all three. The CAF form and the "Create CAF" action
+    // only mirror this — the refusal here is what enforces it (a 403, or a 409 for an RFA that already has a CAF).
     // -----------------------------------------------------------------------
     public function create(array $body, ?int $userId = null): array
     {
         try {
+            if ($refusal = $this->createRefusal($body, $userId)) {
+                return ['success' => false, 'message' => $refusal[1], 'httpCode' => $refusal[0]];
+            }
+
             [$clean, $err] = $this->normalize($body);
             if ($err) {
                 return ['success' => false, 'message' => $err];
@@ -206,6 +216,54 @@ class CafService
     // -----------------------------------------------------------------------
     // Internals
     // -----------------------------------------------------------------------
+
+    /**
+     * Why this user may not create this CAF, as [HTTP status, message], or null when they may. A superadmin
+     * (GlobalService::isSuperAdminUser) is never refused. Everybody else must be of the FMD (GlobalService::isFmdUser — fails
+     * closed, so a user we can't place is refused) and the CAF must be for an existing, not deleted RFA — an allocation of type
+     * RFA — whose status is Approved and that has no CAF yet (a deleted CAF does not count).
+     *
+     * @return array{0: int, 1: string}|null
+     */
+    private function createRefusal(array $body, ?int $userId): ?array
+    {
+        if (GlobalService::isSuperAdminUser($userId)) {
+            return null;
+        }
+        if (!GlobalService::isFmdUser($userId)) {
+            return [403, 'Only the Financial Management Department (FMD) can create a CAF.'];
+        }
+
+        $raw = $body['allocation_id'] ?? null;
+        $id  = is_scalar($raw) ? filter_var(trim((string) $raw), FILTER_VALIDATE_INT) : false;
+        if ($id === false || $id < 1) {
+            return [403, 'A CAF can only be created for an Approved RFA — no RFA was given.'];
+        }
+
+        $rfa = App\ExecuteRow(
+            'SELECT a.allocation_type, st.name AS status_name FROM fims.budget_allocation a
+             LEFT JOIN fims.settings_status st ON st.id = a.status_id
+             WHERE a.allocation_id = '.$id.' AND a.deleted_at IS NULL',
+            'DB'
+        );
+        if (!$rfa) {
+            return [403, "Budget allocation #{$id} does not exist."];
+        }
+        if (strtoupper(trim((string) ($rfa['allocation_type'] ?? ''))) !== 'RFA') {
+            return [403, 'Only an RFA can have a CAF — this request is not an RFA.'];
+        }
+        $status = trim((string) ($rfa['status_name'] ?? ''));
+        if (strtolower($status) !== 'approved') {
+            return [403, 'A CAF can only be created for an Approved RFA — this RFA is '.($status !== '' ? $status : 'without a status').'.'];
+        }
+        // one CAF per RFA: it already has one
+        $existing = (int) App\ExecuteScalar("SELECT COUNT(*) FROM {$this->table} WHERE allocation_id = {$id} AND deleted_at IS NULL", 'DB');
+        if ($existing > 0) {
+            return [409, 'This RFA already has a CAF — an RFA can only have one.'];
+        }
+
+        return null;
+    }
 
     /** WHERE clause for the list: active rows + the optional filters. Every value is quoted or cast. */
     private function listWhere(array $filters): string

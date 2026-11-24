@@ -27,13 +27,14 @@ class PrintPayloadService
     private const ALLOCATION_DOCS = ['CBA' => 'CBA', 'RFA' => 'RFA', 'LAA' => 'LAA'];
 
     /**
-     * The memo request forms are for FMD and administrators to print — the PrintService::DOCS keys of ALLOCATION_DOCS.
-     * routes/print.php refuses POST /print/{doc} for these to anyone else (403, PRINT_DENIED); so does forAllocation() below.
+     * The memo request forms (the PrintService::DOCS keys of ALLOCATION_DOCS) and the CAF are for FMD and administrators to
+     * print. routes/print.php refuses POST /print/{doc} for these to anyone else (403, PRINT_DENIED); so do forAllocation() and
+     * forCaf() below — the preview, the PDF and the DOCX all come through those, so none of them can be reached.
      */
-    public const FMD_ONLY_DOCS = ['CBA', 'RFA', 'LAA'];
+    public const FMD_ONLY_DOCS = ['CBA', 'RFA', 'LAA', 'CAF'];
 
-    /** The answer (403) for anyone who may not print a memo request form. */
-    public const PRINT_DENIED = 'Only the Financial Management Department or an administrator can print the CBA, RFA or LAA.';
+    /** The answer (403) for anyone who may not print a memo request form or a CAF. */
+    public const PRINT_DENIED = 'Only the Financial Management Department or an administrator can print the CBA, RFA, LAA or CAF.';
 
     // -----------------------------------------------------------------------
     // A memo request — GET /print/payload/allocation/{id}
@@ -71,10 +72,16 @@ class PrintPayloadService
 
     // -----------------------------------------------------------------------
     // A CAF — GET /print/payload/caf/{id}
+    // $userId = the logged-in user (the route's JWT): a CAF is only handed to an FMD user or a superadmin
+    // (GlobalService::canPrintAllocationForm), so a missing user id is refused too — before anything is read.
     // -----------------------------------------------------------------------
-    public function forCaf(int|string $id): array
+    public function forCaf(int|string $id, ?int $userId = null): array
     {
         try {
+            if (!GlobalService::canPrintAllocationForm($userId)) {
+                return ['success' => false, 'httpCode' => 403, 'message' => self::PRINT_DENIED];
+            }
+
             $res = (new CafService())->fetchById($id);
             if (!$res['success']) {
                 return $res + ['httpCode' => 404];
@@ -230,9 +237,10 @@ class PrintPayloadService
      * print payload. The CAF carries its RFA's number, which prints "per RFA# …". Purpose = the RFA's description; the amount
      * = the sum of the CAF Amount of its lines; the fund = the Type of Fund of its first line.
      *
-     * An FMD (main office) CAF names the RFA's vendor as the payee, when there is one. A Regional / District requesting
-     * office prints the regional CAF: "… entered into with <VENDOR> with principal office at <address> …", or, when the RFA
-     * has no vendor, "… in favor of <the requesting office> …".
+     * Every CAF is laid out like the CAF template (CafPrintService::templateStyle()). An FMD (main office) CAF names the RFA's
+     * vendor as the payee, when there is one. A Regional / District requesting office words the payee the regional way:
+     * "… entered into with <VENDOR> with principal office at <address> …", or, when the RFA has no vendor, "… in favor of
+     * <the requesting office> …".
      */
     public static function cafPayload(array $caf, array $rfa = [], string $vendorAddress = ''): array
     {

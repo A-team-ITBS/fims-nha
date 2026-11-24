@@ -258,6 +258,8 @@ chain and statuses as the CBA.
 | 2 | Requesting office user | Request for Allocation (RFA/LAA) | Submit for Review | Status For Review |
 | 3–5 | FMD Section Chief → Division Manager → Department Manager | Process | Approve at each step (returns work as in Section 5) | Status Approved; RFA / LAA number assigned |
 | 5b | FMD Department Manager (alternative) | Process | Approve an amount larger than the CBA's remaining reserved balance | Approval blocked — lower the amount or link another CBA |
+| 6 | FMD user (a superadmin is exempt from the restrictions) | Approved RFA row → Actions → Create CAF | Create the Certificate as to Availability of Funds — only an FMD user can, only for an RFA whose status is Approved, and only while that RFA has no CAF yet (the action disappears once it has one) | CAF saved; Print CAF available |
+| 7 | Any user | Print; Monitoring → COB Monitoring | Print the RFA / LAA and the CAF; open the COB lines | RFA / LAA column increased; Remaining reduced |
 | 6 | Requesting office or FMD user | RFA row → Actions → Create CAF | Create the Certificate as to Availability of Funds | CAF saved; Print CAF available |
 | 7 | FMD user or administrator (print); any user (COB Monitoring) | Print; Monitoring → COB Monitoring | Print the CAF (the RFA / LAA print is paused, and is FMD / administrators only); open the COB lines | RFA / LAA column increased; Remaining reduced |
 
