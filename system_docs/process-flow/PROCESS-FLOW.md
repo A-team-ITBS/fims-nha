@@ -259,9 +259,7 @@ chain and statuses as the CBA.
 | 3–5 | FMD Section Chief → Division Manager → Department Manager | Process | Approve at each step (returns work as in Section 5) | Status Approved; RFA / LAA number assigned |
 | 5b | FMD Department Manager (alternative) | Process | Approve an amount larger than the CBA's remaining reserved balance | Approval blocked — lower the amount or link another CBA |
 | 6 | FMD user (a superadmin is exempt from the restrictions) | Approved RFA row → Actions → Create CAF | Create the Certificate as to Availability of Funds — only an FMD user can, only for an RFA whose status is Approved, and only while that RFA has no CAF yet (the action disappears once it has one) | CAF saved; Print CAF available |
-| 7 | Any user | Print; Monitoring → COB Monitoring | Print the RFA / LAA and the CAF; open the COB lines | RFA / LAA column increased; Remaining reduced |
-| 6 | Requesting office or FMD user | RFA row → Actions → Create CAF | Create the Certificate as to Availability of Funds | CAF saved; Print CAF available |
-| 7 | FMD user or administrator (print); any user (COB Monitoring) | Print; Monitoring → COB Monitoring | Print the CAF (the RFA / LAA print is paused, and is FMD / administrators only); open the COB lines | RFA / LAA column increased; Remaining reduced |
+| 7 | FMD user or administrator (print); any user (COB Monitoring) | Print; Monitoring → COB Monitoring | Print the RFA / LAA (FMD and administrators only) and the CAF; open the COB lines. An RFA / LAA drawing from several CBAs prints the summed amounts — an RFA shows the first block's project, an LAA no project | RFA / LAA column increased; Remaining reduced |
 
 ```mermaid
 flowchart TD
@@ -317,17 +315,17 @@ FOR_DEPARTMENT_MANAGER, FOR_TREASURY, RELEASED, REJECTED, CANCELLED. Only the of
 
 | Step | Log in as | Where (sidebar → page) | Do this | Expected result |
 |---|---|---|---|---|
-| 1 | Requesting office user | DV Processing → Disbursement Voucher | New DV: claimant / payee, particulars, gross amount; link the approved RFA(s); deductions and withholding taxes (ATC); attach documents; save. The accounting entries (Section D) are not on the create form — Accounting enters them in step 4 | Status DRAFT |
+| 1 | Requesting office user | DV Processing → Disbursement Voucher | New DV: claimant / payee, particulars, gross amount; link the approved RFA(s); optionally the **SARO** its bank account comes from (one per DV — Check Preparation then fills that bank account in); a PO number without an IAR shows a warning; deductions and withholding taxes (ATC); attach documents; save. The accounting entries (Section D) are not on the create form — Accounting enters them in step 4 | Status DRAFT |
 | 1a | Requesting office user (alternative) | New DV | Enter an amount above the RFA's remaining balance, or deductions above the amount | Not saved — the reason is shown. Only an **Approved** RFA can be picked or saved on any DV. Remittance DVs carry no RFA (Section 8B); payroll DVs have their own RFA check (Section 8A step 5d) |
 | 2 | Requesting office user | Disbursement Voucher | Submit to FMD | Status FOR_FMD_REVIEW |
 | 3 | FMD user (RC 013) | Disbursement Voucher → view | Move to the next stage | Status FOR_ACCOUNTING |
-| 3a | FMD user (alternative) | view | Reject with a reason | Status REJECTED — it can only be cancelled; a new DV is needed |
+| 3a | FMD user (alternative) | view | **Return** with a reason (the button was "Reject") | Status REJECTED (shown as RETURNED) — it can only be cancelled; a new DV is needed |
 | 4 | Accounting Section Chief (RC 012) | Disbursement Voucher → Accounting Entries | **Choose the Book** (required); enter the balanced journal entry: accounts, SL accounts, responsibility centers; move to the next stage (the entries are saved automatically on forward) | Status FOR_DIVISION_MANAGER |
 | 4a | Accounting Section Chief (alternative) | Accounting Entries | Forward with no Book chosen, or debits ≠ credits | Refused — choose the Book / balance the entry first |
 | 5 | Accounting Division Manager (RC 012) — **a different user** from step 4 | view | Move to the next stage | Status FOR_DIVISION_MANAGER → FOR_DEPARTMENT_MANAGER |
 | 5a | (alternative) | view | The same user who acted in step 4 tries to forward again | Refused — each Accounting level must be a different user |
 | 6 | Accounting Department Manager (RC 012) — a different user from steps 4 and 5 | view | Approve | Status FOR_TREASURY; its journal entry is POSTED |
-| 7 | Any user | Disbursement Voucher → Print; DV Processing → Journal Entry Voucher | Print the DV; find its journal entry | The SETUP JEV shows POSTED. The DV print shows the accounts rolled up to their **4-part GL codes** (e.g. 5-01-01-010), not the SL codes — so its lines can differ from the Trial Balance detail; the totals agree |
+| 7 | Any user | Disbursement Voucher → Print; DV Processing → Journal Entry Voucher | Print the DV; find its journal entry | The SETUP JEV shows POSTED. The DV print's Accounting Entries show **GL codes only** — SL lines summed into their 4-part GL (e.g. 2-02-01-020-10 → 2-02-01-020), one row per GL; OBLIGATION = the RFA number on the debit lines; the last row is the TOTAL of debits and credits; over 10 lines the grid is redrawn with smaller rows so up to 18 lines fit on the form (past 18, the last row reads SEE ATTACHED and the attachment page lists them all) |
 
 ```mermaid
 flowchart TD
@@ -341,9 +339,9 @@ flowchart TD
     S5 --> D3{"OK?"}
     D3 -->|"Yes"| S6["STEP 6 — DEPARTMENT MANAGER<br/>Accounting Department Manager (RC 012)<br/>• A different user from steps 4 and 5<br/>• Status: FOR_DEPARTMENT_MANAGER"]
     S6 --> D4{"Approved?"}
-    D4 -->|"Yes"| S7["STEP 7 — FOR TREASURY<br/>• Status: FOR_TREASURY<br/>• Journal entry POSTED to the General Ledger<br/>• Print the DV (4-part GL codes)"]
+    D4 -->|"Yes"| S7["STEP 7 — FOR TREASURY<br/>• Status: FOR_TREASURY<br/>• Journal entry POSTED to the General Ledger<br/>• Print the DV (GL codes)"]
     S7 --> END(["Go to Section 9"])
-    D1 -->|"No"| X["REJECTED<br/>• Reason required<br/>• Can only be cancelled —<br/>prepare a new DV"]
+    D1 -->|"No"| X["RETURNED (status REJECTED)<br/>• Reason required<br/>• Can only be cancelled —<br/>prepare a new DV"]
     D2 -->|"No"| X
     D3 -->|"No"| X
     D4 -->|"No"| X
@@ -368,7 +366,7 @@ Payroll Management, DV Processing → Disbursement Voucher. **Payroll month stat
 | 3a | Payroll officer (alternative) | Import Payroll | Import the same month again | Asked to replace it; Replace Import replaces the month |
 | 4 | Payroll officer | Payroll Management → Year-to-Date Report | Pick the Fiscal Year and Month (Whole Year or one month) — the report loads by itself (no Generate button) | One row per month: employees, gross, deductions, refunds, net pay, employer share, with totals; they agree with the file. The month name in Payroll Imports is plain text (no records window) |
 | 4a | Payroll officer | Year-to-Date Report → **Export CSV** | Export for the same filter | CSV with one row per employee: Emp No., Last / First / Middle name, Department, Months, Gross Pay, Deductions, Refunds, Net Pay, Employer Share, and a TOTAL row |
-| 5 | Requesting office user | Payroll Management → Payroll Imports → **Create DV** on the month | Disbursement Voucher opens a New DV for the month (Vendor or Payroll = "Payroll — month"); pick the RFA; save | Claimant, particulars, amount, deductions and the balanced accounting entry were filled; DV DRAFT; the month shows **DV Created** and its button becomes **View DV**. On save the server re-reads the Amount and deductions from the imported month (edits to them are ignored) |
+| 5 | Requesting office user | Payroll Management → Payroll Imports → **Create DV** on the month | Disbursement Voucher opens a New DV for the month (Vendor or Payroll = "Payroll — month"); pick the RFA; save | Claimant, particulars, amount, deductions and the balanced accounting entry were filled; DV DRAFT; the month shows **DV Created** and its button becomes **View DV**. On save the server re-reads the Amount and deductions from the imported month (edits to them are ignored). On the payroll DV (form, view and at Accounting) each deduction shows its name and amount only — no Rate box (the import has none), no remove / "+ TYPE" buttons |
 | 5d | Requesting office user (alternative) | New DV (payroll) | Pick an RFA that is not Approved, is for another fiscal year than the payroll month, has no Personnel Services line (5-01-…), or whose remaining balance is below the payroll's **gross + employer share** | Not saved — the reason is shown (e.g. "The January 2026 payroll needs 96,850.36 (gross 84,568.00 + employer share 12,282.36) but the selected RFA(s) have only 50,000.00 remaining.") |
 | 5a | Requesting office user (alternative) | New DV | Change Vendor or Payroll back to None | Every field the payroll filled is cleared |
 | 5b | Payroll officer (alternative) | Payroll Imports | Replace the month while it has a DV | Refused — "used by Disbursement Voucher …". An import cannot be deleted from the page |
@@ -556,10 +554,13 @@ flowchart TD
   revision twice; confirm the figures by hand (see `system_docs/ERD/README.md`, Known gaps).
 - **Journals CKDJ** can list a check twice once its Payment JEV exists.
 - **Journal Entry Vouchers** have no return step; a **rejected DV** can only be cancelled.
-- **RFA / LAA print is paused**: the Print button shows a notice instead of the form until the layout for an RFA
-  covering several CBAs / projects is agreed. CBA, DV and JEV prints work.
-- **DV print** shows 4-part GL codes, not the SL accounts — its lines can differ from the Trial Balance detail
-  (accepted).
+- **RFA / LAA print, several CBAs**: printing is back on (no longer paused); an RFA / LAA that draws from several
+  CBAs prints the summed amounts, with only the first block's project on an RFA (none on an LAA) — a per-project
+  layout is still to be agreed with the budget team.
+- **DV print**: the form's Accounting Entries hold up to 18 lines plus the TOTAL row (past 10 the grid is
+  redrawn with smaller rows); a DV with more than 18 lines prints "SEE ATTACHED" on the last row and lists every
+  line on the attachment page. FPA and
+  OBJECT CODE are not filled yet.
 - **DV / JEV print signatories** (prepared / reviewed / approved by) are not filled in yet.
 - **Remittance List (Deductions)** report for the agencies is not built; the Remittance page and the YTD CSV are the
   current sources.

@@ -33,10 +33,25 @@ class DvPrintService
     private const BACKGROUND      = 'dv_background.pdf';   // page 1 = front, page 2 = back
 
     // How many rows the form has.
-    private const ENTRY_ROWS     = 11;
+    private const ENTRY_ROWS     = 11;   // the Accounting Entries grid's rows (fields …_1 … …_11)
+    private const ENTRY_LINES    = 10;   // rows for the entry's lines — row 11 is the TOTAL
+    // Plain paper: more lines than ENTRY_LINES redraw the grid (gridOverlayPdf()) in the same space, a row per line + the
+    // TOTAL, up to GRID_MAX_LINES lines (text ≥ 5.5 pt). The space, measured on dv_background.pdf in PDF points
+    // (origin bottom-left): the column headers' bottom line → the grid's bottom line, the outer border's insides, and the
+    // column lines between OBLIGATION | FPA | OBJECT CODE | ACCOUNT CODE | DEBIT | CREDIT.
+    private const GRID_MAX_LINES = 18;
+    private const GRID_TOP       = 503.0;   // the column headers' bottom line
+    private const GRID_BOTTOM    = 349.1;   // the upper line of the grid's double bottom line
+    private const GRID_LEFT      = 20.4;
+    private const GRID_RIGHT     = 582.7;
+    private const GRID_COLUMNS   = [141.0, 183.3, 280.2, 377.1, 486.2];
     private const DEDUCTION_ROWS = 12;
-    // What the Particulars box holds (≈ 3 lines above the deductions list).
-    private const PARTICULARS_MAX = 270;
+    // What the Particulars box holds (dv_form.pdf's PARTICULARS field: 460 × 50 pt, Helvetica 10 pt) — 4 lines above
+    // the deductions list, measured by wrapParticulars(); PARTICULARS_MAX only bounds how much text is measured.
+    private const PARTICULARS_MAX      = 600;   // > the most 4 lines can hold, so the line measure decides
+    private const PARTICULARS_LINES    = 4;
+    private const PARTICULARS_FONT_PT  = 10;
+    private const PARTICULARS_WIDTH_PT = 452;   // the field's 460 pt less its padding
 
     /**
      * DV model. Payload (all optional):
@@ -46,7 +61,7 @@ class DvPrintService
      *   payee_tin, particulars, gross_amount (or amount), deductions [{ description,
      *   amount }] (up to 12 lines + the total), total_deductions (default their sum),
      *   accounting_entries [{ obligation, fpa, object_code, account_code, debit,
-     *   credit }] (up to 11 rows),
+     *   credit }] (up to 10 rows; row 11 is the TOTAL of the debits / credits),
      *   Box A: cert_officer1_name / _title (one signer), + cert_officer2_name /
      *          _title (a second co-signer, e.g. the Regional Manager),
      *   Box B (accountant's certification): MAIN — fmd_officer_name / _title
@@ -57,19 +72,20 @@ class DvPrintService
      *
      * More than the form holds (the voucher module allows any number of lines and any length): the box keeps what fits
      * and says "see attached", and an attachment page (after the front) lists everything —
-     *   accounting entries > 11: rows 1–10, then row 11 "SEE ATTACHED" carrying the sum of the remaining debits / credits
-     *     (the columns still add up);
+     *   accounting entries > 10: rows 1–9, then row 10 "SEE ATTACHED" carrying the sum of the remaining debits / credits
+     *     (the columns still add up to row 11's TOTAL);
      *   deductions > 12: rows 1–11, then row 12 "See attached" with the rest's sum (the total stays right);
      *   particulars longer than the box: its start + "... (see attached)".
      */
     /**
-     * The form prints GL codes only, one row per GL: a line posted to an SL account (the UACS GL code plus an SL
-     * segment — e.g. 2-02-01-020-10 GSIS Consolidated Loan Payable, 2-99-99-992-12 NHA Housing Loan Payable)
-     * prints as its GL (2-02-01-020, 2-99-99-992), and the lines of one GL are summed. A GL is the first four
-     * segments of the code (x-xx-xx-xxx), used only when that account exists in the Chart of Accounts. Rows keep
-     * the order of their first line.
+     * The form's Accounting Entries rows: GL codes only, one row per GL — a line posted to an SL account (the GL code
+     * plus SL segments, e.g. 2-02-01-020-10 GSIS Consolidated Loan Payable, 2-99-99-992-12 NHA Housing Loan Payable)
+     * prints as its GL (2-02-01-020, 2-99-99-992), and the lines of one GL are summed. A GL is the first four segments
+     * of the code (x-xx-xx-xxx), used only when that account exists in the Chart of Accounts. Rows keep the order of
+     * their first line (and that line's obligation). The form fits ENTRY_LINES of them, or GRID_MAX_LINES with the
+     * redrawn grid (model()).
      */
-    private static function rollUpToGl(array $entries): array
+    private static function entryRows(array $entries): array
     {
         $glOf = [];   // SL code → its GL code
         foreach ($entries as $e) {
@@ -84,12 +100,11 @@ class DvPrintService
                 $list  = implode(', ', array_map(static fn ($c) => App\QuotedValue($c, DataType::STRING, 'DB'), array_unique($glOf)));
                 $found = array_column(App\ExecuteRows("SELECT account_code FROM fims.chart_of_accounts WHERE account_code IN ({$list})", 'DB') ?: [], 'account_code');
                 $glOf  = array_filter($glOf, static fn ($gl) => in_array($gl, $found, true));
-            } catch (\Throwable $e) {
-                App\LogError('DvPrintService::rollUpToGl ' . $e->getMessage());   // print the lines as they are
+            } catch (\Throwable $ex) {
+                App\LogError('DvPrintService::entryRows ' . $ex->getMessage());   // print the lines as they are
                 $glOf = [];
             }
         }
-        $parentOf = $glOf;
 
         $rows = [];
         foreach ($entries as $e) {
@@ -97,16 +112,17 @@ class DvPrintService
                 continue;
             }
             $code = trim((string) ($e['account_code'] ?? ''));
-            $gl   = $parentOf[$code] ?? $code;
+            $gl   = $glOf[$code] ?? $code;
             $key  = $gl !== '' ? $gl : '#' . count($rows);   // a line without an account stays its own row
-            $dr   = PrintService::amount($e['debit'] ?? $e['debit_amount'] ?? null);
-            $cr   = PrintService::amount($e['credit'] ?? $e['credit_amount'] ?? null);
             if (!isset($rows[$key])) {
                 $rows[$key] = ['obligation' => $e['obligation'] ?? '', 'fpa' => $e['fpa'] ?? '', 'object_code' => $e['object_code'] ?? '',
                                'account_code' => $gl, 'debit' => 0.0, 'credit' => 0.0];
             }
-            $rows[$key]['debit']  = round($rows[$key]['debit'] + $dr, 2);
-            $rows[$key]['credit'] = round($rows[$key]['credit'] + $cr, 2);
+            if (($rows[$key]['obligation'] ?? '') === '' && ($e['obligation'] ?? '') !== '') {
+                $rows[$key]['obligation'] = $e['obligation'];
+            }
+            $rows[$key]['debit']  = round($rows[$key]['debit'] + PrintService::amount($e['debit'] ?? $e['debit_amount'] ?? null), 2);
+            $rows[$key]['credit'] = round($rows[$key]['credit'] + PrintService::amount($e['credit'] ?? $e['credit_amount'] ?? null), 2);
         }
 
         return array_values($rows);
@@ -156,12 +172,32 @@ class DvPrintService
             'SIGN_4' => $isMain ? '' : $t('approving_officer'), 'POS_4' => $isMain ? '' : $t('approver_title'),
         ];
 
-        $entries = self::rollUpToGl(array_values(is_array($p['accounting_entries'] ?? null) ? $p['accounting_entries'] : []));
+        $paper      = strtolower($t('paper')) === 'preprinted' ? 'preprinted' : 'plain';
+        $entries    = self::entryRows(array_values(is_array($p['accounting_entries'] ?? null) ? $p['accounting_entries'] : []));
         $allEntries = $entries;
-        if (count($entries) > self::ENTRY_ROWS) {   // the last row carries the rest — "SEE ATTACHED", their sums
-            $rest = array_slice($entries, self::ENTRY_ROWS - 1);
-            $sum  = static fn (string $k) => array_sum(array_map(static fn ($e) => PrintService::amount($e[$k] ?? $e[$k . '_amount'] ?? null), $rest));
-            $entries = array_merge(array_slice($entries, 0, self::ENTRY_ROWS - 1), [['account_code' => 'SEE ATTACHED', 'debit' => $sum('debit'), 'credit' => $sum('credit')]]);
+        $sumOf = static fn (array $rows, string $k) => round(array_sum(array_map(static fn ($e) => PrintService::amount($e[$k] ?? null), $rows)), 2);
+        $seeAttached = static fn (array $rows, int $keep) => array_merge(array_slice($rows, 0, $keep - 1), [[
+            'account_code' => 'SEE ATTACHED', 'debit' => $sumOf(array_slice($rows, $keep - 1), 'debit'), 'credit' => $sumOf(array_slice($rows, $keep - 1), 'credit'),
+        ]]);
+        $total = static fn () => ['account_code' => 'TOTAL', 'debit' => $sumOf($allEntries, 'debit'), 'credit' => $sumOf($allEntries, 'credit')];
+
+        // Plain paper, more lines than the form's rows: the grid is redrawn with a row per line (gridOverlayPdf()) —
+        // up to GRID_MAX_LINES + the TOTAL, past which the last row carries the rest ("SEE ATTACHED"). The row fields
+        // stay empty. Pre-printed stock can't be redrawn, so it keeps the form's rows.
+        $grid = null;
+        if ($paper === 'plain' && count($allEntries) > self::ENTRY_LINES) {
+            $grid    = count($allEntries) > self::GRID_MAX_LINES ? $seeAttached($allEntries, self::GRID_MAX_LINES) : $allEntries;
+            $grid[]  = $total();
+            $entries = [];
+        }
+        // Otherwise row 11 (the grid's last line) is the TOTAL, so the lines get ENTRY_LINES rows; more → the last of
+        // those carries the rest — "SEE ATTACHED", their sums — and the attachment page lists every line.
+        if ($grid === null && count($entries) > self::ENTRY_LINES) {
+            $entries = $seeAttached($entries, self::ENTRY_LINES);
+        }
+        if ($grid === null && $allEntries) {
+            $entries   = array_pad($entries, self::ENTRY_LINES, []);
+            $entries[] = $total();
         }
         for ($i = 0; $i < self::ENTRY_ROWS; $i++) {
             $n = $i + 1;
@@ -197,14 +233,15 @@ class DvPrintService
             $fields['DEDUC_TOTAL'] = $fmt($total);
         }
 
-        $paper  = strtolower($t('paper')) === 'preprinted' ? 'preprinted' : 'plain';
         $number = $t('voucher_number');
 
         // the attachment page — only when something did not fit on the form
-        $particulars = trim((string) ($p['particulars'] ?? ''));
+        $particulars     = trim(str_replace(["\r\n", "\r"], "\n", (string) ($p['particulars'] ?? '')));   // as fitParticulars() reads it
+        $entriesOverflow = count($allEntries) > ($paper === 'plain' ? self::GRID_MAX_LINES : self::ENTRY_LINES);
         $annex = null;
-        if (count($allEntries) > self::ENTRY_ROWS || count($deductions) > self::DEDUCTION_ROWS || $fields['PARTICULARS'] !== $particulars) {
+        if ($entriesOverflow || count($deductions) > self::DEDUCTION_ROWS || $fields['PARTICULARS'] !== $particulars) {
             $annex = [
+                'entries_overflow' => $entriesOverflow,
                 'voucher_number' => $number,
                 'payee'          => $payee,
                 'particulars'    => $particulars,
@@ -222,6 +259,7 @@ class DvPrintService
 
         return [
             'annex'     => $annex,
+            'grid'      => $grid,
             'fields'    => $fields,
             'paper'     => $paper,
             'back_page' => $paper === 'plain' && !in_array($p['back_page'] ?? true, [false, 'false', 0, '0'], true),
@@ -242,7 +280,8 @@ class DvPrintService
 
         $tmp   = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'dv_' . bin2hex(random_bytes(8));
         $files = ['fdf' => $tmp . '.fdf', 'filled' => $tmp . '_filled.pdf', 'front' => $tmp . '_front.pdf', 'out' => $tmp . '_out.pdf',
-                  'form' => $tmp . '_form.pdf', 'background' => $tmp . '_bg.pdf', 'annex' => $tmp . '_annex.pdf'];
+                  'form' => $tmp . '_form.pdf', 'background' => $tmp . '_bg.pdf', 'annex' => $tmp . '_annex.pdf',
+                  'grid' => $tmp . '_grid.pdf', 'gridded' => $tmp . '_gridded.pdf'];
         try {
             // pdftk reads its inputs in many small reads — painfully slow on a mounted
             // folder (20 s+ per call in the Docker dev setup); local temp copies take < 1 s.
@@ -263,6 +302,16 @@ class DvPrintService
                     return null;
                 }
                 $result = $files['front'];
+
+                // more entry lines than the form's rows: the redrawn grid stamped over the form's own
+                if (!empty($m['grid'])) {
+                    $grid = $this->gridOverlayPdf($m['grid']);
+                    if ($grid === null || file_put_contents($files['grid'], $grid) === false
+                        || !$this->pdftk([$files['front'], 'stamp', $files['grid'], 'output', $files['gridded']])) {
+                        return null;
+                    }
+                    $result = $files['gridded'];
+                }
             }
 
             // the pages: the front, the attachment (only when something did not fit), the back (plain paper, optional)
@@ -297,16 +346,136 @@ class DvPrintService
         }
     }
 
-    /** The Particulars box's text: as typed when it fits, else its start (cut at a word) + "... (see attached)". */
+    /**
+     * The Particulars box's text: as typed when it fits, else its start (cut at a word) + "... (see attached)" — the full
+     * text then prints on the attachment page. "Fits" is measured, not counted: the box (dv_form.pdf's PARTICULARS field,
+     * 460 pt wide, Helvetica 10 pt) shows PARTICULARS_LINES lines, so the text is word-wrapped with Helvetica's widths and
+     * every typed line break starts a new line. Anything past the last line would be clipped silently when the form is
+     * flattened — e.g. six short typed lines, far under any character limit.
+     */
     private static function fitParticulars(string $text): string
     {
-        if (mb_strlen($text) <= self::PARTICULARS_MAX) {
+        $text = trim(str_replace(["\r\n", "\r"], "\n", $text));
+        $more = '... (see attached)';   // ASCII dots: the form's font has no "…"
+        if (mb_strlen($text) <= self::PARTICULARS_MAX && self::wrapParticulars($text) !== null) {
             return $text;
         }
-        $cut = mb_substr($text, 0, self::PARTICULARS_MAX - 20);
-        $cut = preg_replace('/\s+\S*$/u', '', $cut) ?: $cut;   // end on a whole word
+        // the longest start (at a word) that still fits with the "see attached" note after it
+        $words = preg_split('/(?<=\s)/u', mb_substr($text, 0, self::PARTICULARS_MAX), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        while ($words) {
+            array_pop($words);
+            $cut = rtrim(implode('', $words), " \n,;:-");
+            if ($cut !== '' && self::wrapParticulars($cut . $more) !== null) {
+                return $cut . $more;
+            }
+        }
 
-        return rtrim($cut, " ,;:-") . '... (see attached)';   // ASCII dots: the form's font has no "…"
+        return $more;
+    }
+
+    /**
+     * Word-wraps $text the way the Particulars box does; returns its lines, or null when they are more than the box shows.
+     * Widths are Helvetica's (1/1000 em) at the field's 10 pt, against its width less the field's padding.
+     */
+    private static function wrapParticulars(string $text): ?array
+    {
+        $maxWidth = self::PARTICULARS_WIDTH_PT;
+        $width    = static function (string $s): float {
+            static $w = [' ' => 278, '!' => 278, '"' => 355, '#' => 556, '$' => 556, '%' => 889, '&' => 667, "'" => 191, '(' => 333,
+                ')' => 333, '*' => 389, '+' => 584, ',' => 278, '-' => 333, '.' => 278, '/' => 278, ':' => 278, ';' => 278, '<' => 584,
+                '=' => 584, '>' => 584, '?' => 556, '@' => 1015, 'A' => 667, 'B' => 667, 'C' => 722, 'D' => 722, 'E' => 667, 'F' => 611,
+                'G' => 778, 'H' => 722, 'I' => 278, 'J' => 500, 'K' => 667, 'L' => 556, 'M' => 833, 'N' => 722, 'O' => 778, 'P' => 667,
+                'Q' => 778, 'R' => 722, 'S' => 667, 'T' => 611, 'U' => 722, 'V' => 667, 'W' => 944, 'X' => 667, 'Y' => 667, 'Z' => 611,
+                '[' => 278, '\\' => 278, ']' => 278, '_' => 556, 'a' => 556, 'b' => 556, 'c' => 500, 'd' => 556, 'e' => 556, 'f' => 278,
+                'g' => 556, 'h' => 556, 'i' => 222, 'j' => 222, 'k' => 500, 'l' => 222, 'm' => 833, 'n' => 556, 'o' => 556, 'p' => 556,
+                'q' => 556, 'r' => 333, 's' => 500, 't' => 278, 'u' => 556, 'v' => 500, 'w' => 722, 'x' => 500, 'y' => 500, 'z' => 500];
+            $sum = 0;
+            foreach (mb_str_split($s) as $ch) {
+                $sum += $w[$ch] ?? 556;   // digits and anything else: Helvetica's figure width
+            }
+
+            return $sum * self::PARTICULARS_FONT_PT / 1000;
+        };
+
+        $lines = [];
+        foreach (explode("\n", $text) as $para) {
+            $line = '';
+            foreach (preg_split('/ +/', trim($para)) ?: [''] as $word) {
+                $try = $line === '' ? $word : $line . ' ' . $word;
+                if ($line !== '' && $width($try) > $maxWidth) {
+                    $lines[] = $line;
+                    $line    = $word;
+                } else {
+                    $line = $try;
+                }
+            }
+            $lines[] = $line;
+            if (count($lines) > self::PARTICULARS_LINES) {
+                return null;
+            }
+        }
+
+        return $lines;
+    }
+
+    /**
+     * The Accounting Entries grid redrawn for more lines than the form's rows (legal page, Dompdf, stamped over the
+     * filled form): the scanned grid's insides are blanked — its column headers and outer border stay — and the same
+     * space is ruled into one row per line plus the TOTAL, with the form's column lines, the text sized to the rows.
+     */
+    private function gridOverlayPdf(array $rows): ?string
+    {
+        $e      = static fn ($v) => htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8');
+        $money  = static fn ($v) => (float) $v != 0.0 ? number_format((float) $v, 2) : '';
+        $pageH  = 1008.0;                                  // legal, in points
+        $top    = $pageH - self::GRID_TOP;                 // CSS top of the grid (from the page's top edge)
+        $height = self::GRID_TOP - self::GRID_BOTTOM;
+        $rowH   = $height / count($rows);
+        $font   = max(5.5, min(8.0, $rowH * 0.68));
+        $edges  = array_merge([self::GRID_LEFT], self::GRID_COLUMNS, [self::GRID_RIGHT]);
+        $align  = ['center', 'center', 'center', 'center', 'right', 'right'];
+        $box    = static fn (float $l, float $t, float $w, float $h, string $extra = '') =>
+            sprintf('<div style="position:absolute;left:%.2fpt;top:%.2fpt;width:%.2fpt;height:%.2fpt;%s"></div>', $l, $t, $w, $h, $extra);
+
+        // blank the scanned rows (keep the header line above and the bottom line below), then rule the new grid
+        $html = $box(self::GRID_LEFT, $top + 0.3, self::GRID_RIGHT - self::GRID_LEFT, $height - 0.9, 'background:#fff;');
+        for ($k = 1; $k < count($rows); $k++) {
+            $html .= $box(self::GRID_LEFT, $top + $k * $rowH - 0.3, self::GRID_RIGHT - self::GRID_LEFT, 0.6, 'background:#000;');
+        }
+        foreach (self::GRID_COLUMNS as $x) {
+            $html .= $box($x - 0.35, $top, 0.7, $height, 'background:#000;');
+        }
+        foreach (array_values($rows) as $i => $r) {
+            $cells = [$r['obligation'] ?? '', $r['fpa'] ?? '', $r['object_code'] ?? '', $r['account_code'] ?? '',
+                      $money($r['debit'] ?? 0), $money($r['credit'] ?? 0)];
+            $bold  = ($r['account_code'] ?? '') === 'TOTAL' ? 'font-weight:bold;' : '';
+            foreach ($cells as $c => $text) {
+                if ((string) $text === '') {
+                    continue;
+                }
+                $html .= sprintf(
+                    '<div style="position:absolute;left:%.2fpt;top:%.2fpt;width:%.2fpt;height:%.2fpt;line-height:%.2fpt;font-size:%.2fpt;'
+                    . 'text-align:%s;white-space:nowrap;overflow:hidden;%s">%s</div>',
+                    $edges[$c] + 2, $top + $i * $rowH, $edges[$c + 1] - $edges[$c] - 4, $rowH, $rowH, $font, $align[$c], $bold, $e($text)
+                );
+            }
+        }
+        $doc = '<!doctype html><html><head><meta charset="utf-8"><style>@page{size:legal portrait;margin:0;}'
+            . 'body{margin:0;font-family:Helvetica,Arial,sans-serif;color:#000;}</style></head><body>' . $html . '</body></html>';
+        try {
+            $options = new \Dompdf\Options();
+            $options->set('isRemoteEnabled', false);
+            $dompdf = new \Dompdf\Dompdf($options);
+            $dompdf->loadHtml($doc, 'UTF-8');
+            $dompdf->setPaper('legal', 'portrait');
+            $dompdf->render();
+
+            return $dompdf->output();
+        } catch (\Throwable $ex) {
+            App\LogError('DvPrintService::gridOverlayPdf ' . $ex->getMessage());
+
+            return null;
+        }
     }
 
     /**
@@ -323,7 +492,7 @@ class DvPrintService
         if ($a['particulars'] !== '') {
             $html .= '<p class="s">PARTICULARS OF PAYMENT</p><p class="part">' . nl2br($e($a['particulars']), false) . '</p>';
         }
-        if (count($a['entries']) > self::ENTRY_ROWS) {
+        if (!empty($a['entries_overflow'])) {
             $rows = '';
             $dr = $cr = 0.0;
             foreach ($a['entries'] as $x) {

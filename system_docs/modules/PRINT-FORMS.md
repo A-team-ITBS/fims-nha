@@ -1042,10 +1042,20 @@ repo yet, so it prints from the payload.
 any length): the box keeps what fits and says so, and an **attachment page** —
 inserted after the front, before the back page, only when something overflowed —
 lists everything with totals:
-- accounting entries > 11 → rows 1–10, then row 11 **SEE ATTACHED** carrying the
-  sum of the remaining debits / credits (the columns still add up);
+- accounting entries: **GL codes only**, one row per GL — a line posted to an SL account prints as its 4-part GL
+  (2-02-01-020-10 → 2-02-01-020) and the lines of one GL are summed (`entryRows()`) — and a last row with the
+  **TOTAL** of the debits and credits. Up to 10 GL rows use the form's own rows (row 11 = TOTAL). **More than 10
+  (plain paper):** the grid is **redrawn** in the same space (`gridOverlayPdf()`, Dompdf, stamped over the form with
+  pdftk): the scanned rows are blanked inside the border — the column headers and the outer frame stay — and ruled
+  into one row per line + the TOTAL on the form's column lines, the text sized to the rows (8 pt down to 5.5 pt). Up
+  to **18 lines** fit; past that the 18th row carries the rest — **SEE ATTACHED** with their sums — and the
+  attachment page lists every line. Pre-printed stock (`paper: 'preprinted'`) can't be redrawn: it keeps rows 1–10
+  + TOTAL, with SEE ATTACHED on row 10 past 10 lines. The grid's position (`GRID_TOP` 503.0 / `GRID_BOTTOM` 349.1 /
+  column lines, in PDF points) was measured on `dv_background.pdf` — re-measure it if the background is replaced;
 - deductions > 12 → rows 1–11, then row 12 **See attached** with the rest's sum;
-- particulars longer than ≈ 3 lines → their start + "... (see attached)".
+- particulars that don't fit the box's 4 lines → their start (cut at a word) + "... (see attached)". "Fit" is
+  measured (`wrapParticulars()`: Helvetica 10 pt widths word-wrapped to the field's width, each typed line break a new
+  line), not counted — six short typed lines are cut too, where the old character limit let them be clipped silently.
 
 | | |
 |---|---|
@@ -1083,7 +1093,12 @@ overrides it), `payee_name`, `payee_address`, `payee_tin`, `particulars`,
 Box C with the amount in words), `deductions` [{ `description`, `amount` }] (up
 to 12 lines, listed under the particulars, then "Total Deductions" —
 `total_deductions` or their sum), `accounting_entries` [{ `obligation`, `fpa`,
-`object_code`, `account_code`, `debit`, `credit` }] (up to 11 rows);
+`object_code`, `account_code`, `debit`, `credit` }] (up to 18 rows + the TOTAL row on plain paper) — from the
+voucher page, `prp_dvPayload()` fills **OBLIGATION** with the linked RFA's number
+(`prp_dvEntriesWithObligation()`): on every debit line, the RFA whose lines carry
+that account (or an SL under it), else all of the DV's RFAs (e.g. PERA on a payroll
+DV whose RFA lists only Salaries); credit lines stay blank; with no entries yet the
+RFA number prints on a row of its own. FPA and OBJECT CODE are not sent yet;
 Box A — `cert_officer1_name` / `_title` (centred), with `cert_officer2_name` /
 `_title` the two print side by side; Box B — MAIN: `fmd_officer_name` / `_title`
 (blank → the current FMD Department Manager, "Department Manager, FMD") and
@@ -1238,8 +1253,8 @@ delivered amount reaches the PO total.
   action on the list rows (the list's records keep their amounts in
   `line_transaction`).
 - **Done — PO, DV, JEV, IAR:** see "Module integration" above. Not printed by
-  those modules yet: the DV's obligation / budget ledger (no DV form fields for
-  it), the IAR's inspector / signatories and inspection status (no data —
+  those modules yet: the DV's FPA / OBJECT CODE columns and its budget ledger
+  (OBLIGATION prints the RFA number), the IAR's inspector / signatories and inspection status (no data —
   prints blank / complete-by-amount), the PO readone (no PHPMaker route serves
   `po/readone.php`, so its Print isn't reachable until one does).
 - Call `prp_open(..., { type: 'LV' })` from the LV module once it exists.
