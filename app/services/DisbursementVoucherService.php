@@ -399,6 +399,10 @@ class DisbursementVoucherService
 
         $fields['po_number'] = trim((string) ($body['po_number'] ?? ''));
         $fields['po_amount'] = is_numeric($body['po_amount'] ?? null) ? (float) $body['po_amount'] : null;
+        // No IAR, no DV: a PO must have been inspected and accepted before a voucher can be prepared against it.
+        if ($fields['po_number'] !== '' && $this->iarOfPo($fields['po_number']) === null) {
+            $errors[] = "PO '{$fields['po_number']}' has no IAR (Inspection and Acceptance Report) yet. Record the IAR for this PO before preparing a disbursement voucher.";
+        }
 
         // ATC Code and Accounting Entries (both optional) — normally Accounting's job during
         // FOR_ACCOUNTING via saveJournalEntry(), but Originating can pre-fill either here too; full
@@ -1162,6 +1166,43 @@ class DisbursementVoucherService
             App\LogError('DisbursementVoucherService::fetchFiscalYears ' . $e->getMessage());
 
             return ['success' => false, 'message' => 'Failed to load fiscal years.'];
+        }
+    }
+
+    /**
+     * The IAR (Inspection and Acceptance Report, fims.inspection_acceptance_report — one row per PO) recorded for a PO number,
+     * or null when the PO has none yet. A DV may only be prepared against a PO that has been inspected and accepted.
+     */
+    private function iarOfPo(string $poNumber): ?array
+    {
+        $row = App\ExecuteRow(
+            'SELECT iar_number, si_number FROM fims.inspection_acceptance_report WHERE po_number = ' . $this->str($poNumber)
+            . " AND COALESCE(TRIM(iar_number), '') <> '' LIMIT 1",
+            'DB'
+        );
+
+        return $row ?: null;
+    }
+
+    /** GET /voucher/po-iar?po_number= — does this PO have an IAR? Drives the DV form's warning. */
+    public function checkPoIar(string $poNumber): array
+    {
+        try {
+            $poNumber = trim($poNumber);
+            if ($poNumber === '') {
+                return ['success' => true, 'data' => ['po_number' => '', 'has_iar' => true, 'iar_number' => null]];
+            }
+            $iar = $this->iarOfPo($poNumber);
+
+            return ['success' => true, 'data' => [
+                'po_number'  => $poNumber,
+                'has_iar'    => $iar !== null,
+                'iar_number' => $iar['iar_number'] ?? null,
+            ]];
+        } catch (\Exception $e) {
+            App\LogError('DisbursementVoucherService::checkPoIar ' . $e->getMessage());
+
+            return ['success' => false, 'message' => 'Failed to check the PO\'s IAR.'];
         }
     }
 

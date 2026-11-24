@@ -275,6 +275,8 @@ html.afims-dark[data-bs-theme="dark"] #vf-root :is(input, select, textarea):is(:
                                     <div class="nha-fg">
                                         <label>PO Number <span class="vf-hint" style="display:inline;">(optional)</span></label>
                                         <input type="text" id="vf-po-number" placeholder="e.g. GSD-2025-09-103">
+                                        <!-- shown when the PO has no IAR (Inspection and Acceptance Report) — checked via GET /voucher/po-iar -->
+                                        <span id="vf-po-warn" role="alert" style="display:none;margin-top:4px;font-size:12px;color:var(--afims-danger-text,#8F222D);"></span>
                                     </div>
                                 </div>
                                 <div class="vf-vendor-card" id="vf-vendor-card" style="margin-bottom:12px;">
@@ -651,6 +653,7 @@ function vf_reset() {
     $vf('vf-vendor').value = '';
     $vf('vf-vendor-card').classList.remove('visible');
     $vf('vf-po-number').value = '';
+    $vf('vf-po-warn').style.display = 'none';
     $vf('vf-claimant').value = '';
     $vf('vf-claimant-address').value = '';
     $vf('vf-claimant-tin').value = '';
@@ -696,6 +699,8 @@ function vf_bindEvents() {
         }
     });
     $vf('vf-vendor').addEventListener('change', vf_onVendorChange);
+    $vf('vf-po-number').addEventListener('change', () => vf_checkPoIar());
+    $vf('vf-po-number').addEventListener('input', () => { $vf('vf-po-warn').style.display = 'none'; }); // stale until re-checked on change
     vf_bindMoneyInput($vf('vf-gross'));
     vf_bindMoneyInput($vf('vf-budget'));
     vf_bindMoneyInput($vf('vf-obligation'));
@@ -1080,7 +1085,7 @@ async function vf_onRfaSelectionChange() {
         const withVendor  = details.find(r => r?.vendor_id);
         const withAccount = details.find(r => r?.account_code);
         const withDescription = details.find(r => r?.description);
-        if (withPo && !$vf('vf-po-number').value) $vf('vf-po-number').value = withPo.po_number;
+        if (withPo && !$vf('vf-po-number').value) { $vf('vf-po-number').value = withPo.po_number; vf_checkPoIar(); }
         if (withAccount && !$vf('vf-account-code').value) $vf('vf-account-code').value = withAccount.account_code;
         if (withDescription && !$vf('vf-particulars').value) $vf('vf-particulars').value = withDescription.description;
         if (withVendor) {
@@ -2245,6 +2250,7 @@ async function vf_loadExisting() {
     }
 
     $vf('vf-po-number').value        = dv.po_number || '';
+    vf_checkPoIar();
     $vf('vf-claimant').value         = dv.claimant_name || '';
     $vf('vf-claimant-address').value = dv.claimant_address || '';
     $vf('vf-claimant-tin').value     = dv.employee_no_tin || '';
@@ -2365,12 +2371,39 @@ function vf_showErrors(list) {
     if (list.length) $vf('vf-errors').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
+/* ── PO → IAR check ────────────────────────────────────────── */
+/* Asks GET /voucher/po-iar whether the typed PO number has an IAR. Shows / hides the warning under the field and
+   resolves true when the DV may proceed (blank PO, PO with an IAR, or the check itself failed — the server is the real
+   gate, so a network hiccup here never blocks the form). */
+async function vf_checkPoIar() {
+    const warn = $vf('vf-po-warn');
+    const po   = $vf('vf-po-number').value.trim();
+    if (!po) { warn.style.display = 'none'; return true; }
+    try {
+        const res = await vf_authFetch(`${VF_API}/voucher/po-iar?po_number=${encodeURIComponent(po)}`);
+        if (!res.ok) return true;
+        const json = await res.json();
+        if (!json.success) return true;
+        if ($vf('vf-po-number').value.trim() !== po) return true; // typed on while waiting — a newer check is coming
+        if (json.data.has_iar) { warn.style.display = 'none'; return true; }
+        warn.textContent = `⚠ PO ${po} has no IAR yet. A disbursement voucher can't proceed until the IAR is recorded.`;
+        warn.style.display = 'block';
+        return false;
+    } catch (e) {
+        return true;
+    }
+}
+
 /* ── Save ──────────────────────────────────────────────────── */
 async function vf_save(status) {
     if (vf_saving) return;
     vf_showErrors([]);
 
     const errors = vf_validate();
+    // A PO must have an IAR before a voucher can be prepared against it (the server refuses it too).
+    if (!(await vf_checkPoIar())) {
+        errors.push(`PO '${$vf('vf-po-number').value.trim()}' has no IAR (Inspection and Acceptance Report) yet — record the IAR first, or clear the PO Number.`);
+    }
     if (errors.length) { vf_showErrors(errors); return; }
 
     const dvNumber = $vf('vf-dv-number').textContent.trim();

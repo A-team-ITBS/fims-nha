@@ -238,7 +238,7 @@ function vr_render(dv) {
     $vr('vr-modal-title').textContent = `Disbursement Voucher — ${dv.dv_no}`;
 
     const rejection = dv.status === 'REJECTED' && dv.rejection_reason
-        ? `<div class="vr-rejection"><strong>Rejected:</strong> ${vr_esc(dv.rejection_reason)}</div>` : '';
+        ? `<div class="vr-rejection"><strong>Returned:</strong> ${vr_esc(dv.rejection_reason)}</div>` : '';
 
     // Deductions / ATC are shown read-only (vr_dedAtcRowsHtml(), same look as the entry form) for every stage OTHER
     // than FOR_ACCOUNTING — while FOR_ACCOUNTING, vje_dedAtcEditor() renders the SAME data as editable
@@ -273,7 +273,7 @@ function vr_render(dv) {
         ${rejection}
         <div class="vr-net">
             <div><small>Net Amount</small><strong id="vr-top-net">${vr_peso(dv.net_amount)}</strong></div>
-            <div style="text-align:right;"><small>Status</small><span class="nha-bdg ${vr_statusClass(dv.status)}">${vr_esc(dv.status)}</span></div>
+            <div style="text-align:right;"><small>Status</small><span class="nha-bdg ${vr_statusClass(dv.status)}">${vr_esc(dv.status === 'REJECTED' ? 'RETURNED' : dv.status)}</span></div>
         </div>
 
         <!-- ══ A. VOUCHER INFORMATION — same grouping as app/pages/voucher/form.php's own
@@ -418,7 +418,7 @@ function vr_renderActions(dv) {
     if (allowed.includes('FOR_DEPARTMENT_MANAGER')) html += btn('Forward to Department Manager', 'FOR_DEPARTMENT_MANAGER', 'nha-btn-primary');
     if (allowed.includes('FOR_TREASURY'))   html += btn('Approve &amp; Forward to Treasury', 'FOR_TREASURY', 'nha-btn-primary');
     if (allowed.includes('RELEASED'))       html += btn('Release Payment', 'RELEASED', 'nha-btn-primary');
-    if (allowed.includes('REJECTED'))       html += btn('Reject', 'REJECTED', 'nha-btn-outline');
+    if (allowed.includes('REJECTED'))       html += btn('Return', 'REJECTED', 'nha-btn-outline'); // status code stays REJECTED (API / DB); only the label says "Return"
     if (allowed.includes('CANCELLED'))      html += btn('Cancel', 'CANCELLED', 'nha-btn-ghost');
     // Separation of duties hides the next Accounting step from whoever already took an earlier one — say so, otherwise the approve button just isn't there.
     const me = VR_CURRENT_USER_ID;
@@ -1546,9 +1546,9 @@ async function vje_save() {
 async function vr_changeStatus(status) {
     let notes = null;
     if (status === 'REJECTED') {
-        notes = prompt('Reason for rejecting this disbursement voucher:');
+        notes = prompt('Reason for returning this disbursement voucher:');
         if (notes === null) return;
-        if (!notes.trim()) { alert('A reason is required when rejecting.'); return; }
+        if (!notes.trim()) { alert('A reason is required when returning.'); return; }
     } else if (!confirm(`Change this disbursement voucher to ${status}?`)) {
         return;
     }

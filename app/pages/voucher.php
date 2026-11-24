@@ -94,7 +94,7 @@ $_vl_remit_type = preg_match('/^[A-Za-z_]{1,20}$/', (string) ($_GET['remit_type'
                     <option value="FOR_DEPARTMENT_MANAGER">For Department Manager</option>
                     <option value="FOR_TREASURY">For Treasury</option>
                     <option value="RELEASED">Released</option>
-                    <option value="REJECTED">Rejected</option>
+                    <option value="REJECTED">Returned</option>
                     <option value="CANCELLED">Cancelled</option>
                 </select>
             </div>
@@ -368,7 +368,7 @@ function vl_statusBadge(s) {
         FOR_DEPARTMENT_MANAGER: ['nha-bdg-navy', 'For Department Manager'],
         FOR_TREASURY: ['nha-bdg-teal', 'For Treasury'],
         RELEASED: ['nha-bdg-green', 'Released'],
-        REJECTED: ['nha-bdg-red', 'Rejected'],
+        REJECTED: ['nha-bdg-red', 'Returned'],
         CANCELLED: ['nha-bdg-orange', 'Cancelled'],
     };
     const [cls, label] = map[s] || ['nha-bdg-gray', s || '—'];
