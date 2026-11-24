@@ -2,7 +2,7 @@
 
 **Step-by-step walkthrough, from set-up to the posted ledgers — for SQA testing and CPA review**
 
-> **Status:** written 2026-11-17, updated 2026-11-24 (payroll DV checked against its RFA: gross + employer share, Approved RFA, same fiscal year, Personnel Services line; Budget Amendment, CBA / RFA / LAA printing for FMD only, GL and SL prints, one Budget Proposal page for offices and FMD, Payroll sidebar group, FTLA release, Collections journalizing, GL roll-up; earlier: per-agency remittance DVs, automatic payment JEV, Payroll
+> **Status:** written 2026-11-17, updated 2026-11-24 (DV: optional SARO, PO→IAR warning, "Return" label, DV print in GL codes with RFA obligation / TOTAL / up to 18 rows, payroll deductions amount-only; RFA / LAA printing resumed; payroll DV checked against its RFA: gross + employer share, Approved RFA, same fiscal year, Personnel Services line; Budget Amendment, CBA / RFA / LAA printing for FMD only, GL and SL prints, one Budget Proposal page for offices and FMD, Payroll sidebar group, FTLA release, Collections journalizing, GL roll-up; earlier: per-agency remittance DVs, automatic payment JEV, Payroll
 > Management YTD / File Template, print notes) from the current code (`app/`) and the status chains in its services. Follows the
 > sidebar modules (`views/menu.php`). Tables behind each step: `system_docs/ERD/README.md`.
 > PDF version: `system_docs/process-flow/PROCESS-FLOW.pdf` — the flowcharts of this file, one process per page in
