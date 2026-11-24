@@ -189,6 +189,7 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
                         <div class="col-md-6"><label class="fims-label">Bank Account <span class="text-danger">*</span></label>
                             <select class="fims-select" id="prepBankAccount"><option value="">Select bank account...</option></select>
                         </div>
+                        <div class="col-md-6"><label class="fims-label">SARO Reference</label><input type="text" class="fims-input" id="prepSaro" disabled placeholder="— (no SARO linked to this DV)"></div>
                         <div class="col-md-6"><label class="fims-label">Check Date <span class="text-danger">*</span></label><input type="date" class="fims-input" id="prepCheckDate"></div>
                         <div class="col-md-6"><label class="fims-label">Check Number <span class="text-danger">*</span></label>
                             <input type="text" class="fims-input" id="prepCheckNumber" placeholder="Select bank account first..." disabled>
@@ -1398,6 +1399,7 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
         document.getElementById('prepPayee').value = '';
         document.getElementById('prepProgram').value = '';
         document.getElementById('prepNetAmount').value = '';
+        document.getElementById('prepSaro').value = '';
         const checkNoSel = document.getElementById('prepCheckNumber');
         checkNoSel.value = '';
         checkNoSel.placeholder = 'Select bank account first...';
@@ -1438,24 +1440,30 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
         prepAutoFillBankFromSaro(dv ? dv.dv_no : null);
     });
 
-    // Auto-fills the Bank Account select from the DV's linked SARO (fims.fund_tracking.dv_id — see
-    // DisbursementVoucherService::linkSaro() / CheckProcessingService::getSaroForDv()), the same
-    // "auto-fill, not lock" convention ftlm_autoFillRfaFromDv() uses in ftla-form.php: only sets the
-    // field when it's still empty (openPrepareCheckModal() always resets it, so this only ever wins
-    // on a fresh pick, never stomping an account the preparer already chose for this session) and
-    // only when the select actually carries that option. Labels the select with the SARO reference
-    // number (title attribute) so the picked account's source is visible without a new UI field.
+    // Shows the DV's linked SARO (fims.fund_tracking.dv_id — see DisbursementVoucherService::
+    // linkSaro() / CheckProcessingService::getSaroForDv()) and auto-fills the Bank Account select
+    // from its bank_account_id, same "auto-fill, not lock" convention ftlm_autoFillRfaFromDv() uses
+    // in ftla-form.php: only sets the Bank Account when it's still empty (openPrepareCheckModal()
+    // always resets it, so this only ever wins on a fresh pick, never stomping an account the
+    // preparer already chose for this session) and only when the select actually carries that
+    // option. The SARO Reference field itself is always refreshed/cleared regardless.
     function prepAutoFillBankFromSaro(dvNo) {
         const sel = document.getElementById('prepBankAccount');
-        if (!sel) return;
-        sel.title = '';
+        const saroField = document.getElementById('prepSaro');
+        if (saroField) saroField.value = '';
+        if (sel) sel.title = '';
         if (!dvNo) return;
         fetch(API + '/dv-saro?dv_no=' + encodeURIComponent(dvNo), { headers: authHeaders() })
             .then(r => r.json())
             .then(function (json) {
                 const saro = (json && json.success) ? json.data : null;
-                if (!saro || !saro.bank_account_id) return;
-                sel.title = 'From linked SARO ' + (saro.saro_id || '#' + saro.id);
+                if (!saro) return;
+                const ref = saro.saro_id || ('#' + saro.id);
+                if (saroField) {
+                    saroField.value = ref + (saro.bank_name ? ' — ' + saro.bank_name : '') + (saro.account_number ? ' (' + saro.account_number + ')' : '');
+                }
+                if (!saro.bank_account_id || !sel) return;
+                sel.title = 'From linked SARO ' + ref;
                 if (!sel.value && [...sel.options].some(o => o.value === String(saro.bank_account_id))) {
                     sel.value = String(saro.bank_account_id);
                     sel.dispatchEvent(new Event('change'));

@@ -824,18 +824,30 @@ $colCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
         }
         tbody.innerHTML = '<tr class="fims-empty"><td colspan="3">Loading…</td></tr>';
         summary.textContent = 'Loading…';
-        fetch(API + '/collections-list?rc_id=' + encodeURIComponent(rcId), { headers: authHeaders() })
-            .then(r => r.json())
-            .then(function (json) {
+        Promise.all([
+            fetch(API + '/collections-list?rc_id=' + encodeURIComponent(rcId), { headers: authHeaders() }).then(r => r.json()),
+            fetch(API + '/undeposited-summary?rc_id=' + encodeURIComponent(rcId), { headers: authHeaders() }).then(r => r.json()),
+        ])
+            .then(function (results) {
+                const json = results[0];
+                const summaryJson = results[1];
                 const rows = (json && json.data) ? json.data : [];
                 colCollectedForRegion = rows;
+                // "Already deposited" nets against every Deposit ever recorded for this Region/Office
+                // regardless of is_swept — see getUndepositedSummary()'s own comment for why the full
+                // collected-lines list below is still shown as-is (never hidden), only this summary
+                // line nets the two totals.
+                const balance = (summaryJson && summaryJson.data) ? summaryJson.data : null;
+                const balanceLine = balance
+                    ? ' — Already deposited: ' + fmtPeso(balance.total_deposited) + ' — Undeposited balance: ' + fmtPeso(balance.undeposited_balance)
+                    : '';
                 if (!rows.length) {
                     tbody.innerHTML = '<tr class="fims-empty"><td colspan="3">No collections on record for this Region/Office.</td></tr>';
-                    summary.textContent = 'No collections on record for this Region/Office.';
+                    summary.textContent = 'No collections on record for this Region/Office.' + balanceLine;
                     return;
                 }
                 const total = rows.reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
-                summary.textContent = rows.length + ' collection' + (rows.length === 1 ? '' : 's') + ' found — Total: ' + fmtPeso(total);
+                summary.textContent = rows.length + ' collection' + (rows.length === 1 ? '' : 's') + ' found — Total: ' + fmtPeso(total) + balanceLine;
                 tbody.innerHTML = rows.map(function (r) {
                     const glLabel = r.account_code ? escapeHtml(r.account_code + ' — ' + (r.account_title || '')) : '—';
                     return '<tr>' +

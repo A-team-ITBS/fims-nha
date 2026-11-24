@@ -28,6 +28,11 @@ $app->get("/collections/deposits-list", function ($request, $response) {
     return $response->withHeader('Content-Type', 'application/json')->write($service->getDepositsList($request->getQueryParams()));
 });
 
+$app->get("/collections/undeposited-summary", function ($request, $response) {
+    $service = new Service\CollectionsService();
+    return $response->withHeader('Content-Type', 'application/json')->write($service->getUndepositedSummary($request->getQueryParams()['rc_id'] ?? ''));
+});
+
 $app->get("/collections/lookup/responsibility-centers", function ($request, $response) {
     $service = new Service\CollectionsService();
     return $response->withHeader('Content-Type', 'application/json')->write($service->getResponsibilityCenters());

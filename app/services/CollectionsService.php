@@ -158,6 +158,42 @@ class CollectionsService
         return $this->dataTable($params['draw'] ?? 1, $rows);
     }
 
+    // Net "undeposited" balance for a Region/Office — total collected (every Collection(s) line
+    // ever recorded for it) minus total deposited (every Deposit line ever recorded for it,
+    // regardless of is_swept — a deposit stops being "available to deposit again" the moment it's
+    // banked, not when Fund Sweeping later moves it on to the Main Depository). Backs the "Collected
+    // Collections in this Region" panel's summary line in the Register Deposit modal — shown
+    // alongside the full collected-lines list (not instead of it), since there's no real per-line
+    // link between a Collection and the Deposit that covers it (see colLoadCollectedForRegion()'s
+    // own comment for why this app deliberately doesn't try to infer and hide specific "covered"
+    // lines — that was tried once and reverted for hiding genuinely undeposited money).
+    public function getUndepositedSummary($rcId)
+    {
+        $rcId = trim((string) $rcId);
+        if ($rcId === '') {
+            return $this->ok(['total_collected' => 0.0, 'total_deposited' => 0.0, 'undeposited_balance' => 0.0]);
+        }
+
+        $collected = (float) (App\ExecuteScalar(
+            "SELECT COALESCE(SUM(crl.amount), 0) FROM {$this->tableLines} crl
+             JOIN {$this->tableReports} cr ON cr.collection_report_id = crl.collection_report_id
+             WHERE cr.rc_id = " . $this->str($rcId),
+            'DB'
+        ) ?? 0);
+        $deposited = (float) (App\ExecuteScalar(
+            "SELECT COALESCE(SUM(crd.amount), 0) FROM {$this->tableDeposits} crd
+             JOIN {$this->tableReports} cr ON cr.collection_report_id = crd.collection_report_id
+             WHERE cr.rc_id = " . $this->str($rcId),
+            'DB'
+        ) ?? 0);
+
+        return $this->ok([
+            'total_collected' => round($collected, 2),
+            'total_deposited' => round($deposited, 2),
+            'undeposited_balance' => round($collected - $deposited, 2),
+        ]);
+    }
+
     // ── Deposits tab: every Deposit line across every report, same
     // flattening as getCollectionsList() above, plus is_swept (Fund
     // Sweeping's own tracking — see app/pages/fund-sweeping-page.php) since
@@ -302,6 +338,28 @@ class CollectionsService
         );
     }
 
+    /**
+     * A Deposit line's Bank Account must be a sweepable operating account: one with a Main
+     * Depository already assigned (see "55 - bank_accounts_add_main_depository_account_id.sql"),
+     * and not itself flagged as a Main Depository — depositing straight into the account Fund
+     * Sweeping would otherwise sweep TO defeats the point of the sweep step entirely. Returns the
+     * account row (so the caller can name it in an error message) or null if it's not eligible /
+     * doesn't exist.
+     */
+    private function depositableBankAccount(string $bankAccountId): ?array
+    {
+        $row = App\ExecuteRow(
+            "SELECT bank_account_id, account_name, is_main_depository, main_depository_account_id
+             FROM {$this->tableBankAccounts} WHERE bank_account_id = " . $this->str($bankAccountId),
+            'DB'
+        );
+        if (!$row || $row['is_main_depository'] === 't' || $row['is_main_depository'] === true || !$row['main_depository_account_id']) {
+            return null;
+        }
+
+        return $row;
+    }
+
     // Validates and totals the "Collection(s)" lines submitted in $data —
     // shared by store()/update() so both reject the same bad input the
     // same way before anything is written. Does NOT itself require at
@@ -350,6 +408,10 @@ class CollectionsService
             }
             if (!$this->bankAccountIdExists($bankAccountId)) {
                 return ['error' => 'One of the Deposit lines has an invalid Bank Account.'];
+            }
+            $account = $this->depositableBankAccount($bankAccountId);
+            if (!$account) {
+                return ['error' => 'One of the Deposit lines uses a Bank Account that cannot receive deposits — it has no Main Depository account assigned, or it is itself a Main Depository. Assign a Main Depository in Bank Management first, or pick a different account.'];
             }
             $clean[] = [
                 'bank_account_id' => $bankAccountId,
@@ -574,11 +636,16 @@ class CollectionsService
         return $this->ok($rows ?: []);
     }
 
+    // Only sweepable operating accounts are offered for a Deposit line — see
+    // depositableBankAccount()'s own comment for why an account with no Main Depository
+    // assigned, or one that IS a Main Depository, is excluded here rather than merely
+    // rejected on save.
     public function getBankAccounts()
     {
         $rows = App\ExecuteRowsAssociative(
             "SELECT bank_account_id, account_name, bank_name FROM {$this->tableBankAccounts}
-             WHERE status = 'ACTIVE' ORDER BY account_name",
+             WHERE status = 'ACTIVE' AND is_main_depository = FALSE AND main_depository_account_id IS NOT NULL
+             ORDER BY account_name",
             'DB'
         );
 
