@@ -27,7 +27,7 @@ try {
 }
 ?>
 <style>
-/* ── Budget revision form ──────────────────────────────────────────────────
+/* ── Budget amendment form ──────────────────────────────────────────────────
    Scoped to .nha-root so it picks up the nha-fims.css tokens. It does not rely on Bootstrap's form classes: every control is
    styled here, so the form looks the same wherever it is included. */
 
@@ -265,7 +265,7 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
 <div id="brv-overlay" class="nha-overlay">
     <div class="nha-modal nha-modal-md brv-modal-wide">
         <div class="nha-modal-hdr">
-            <h3 class="nha-modal-title" id="brv-modal-title">Add Budget Revision Request</h3>
+            <h3 class="nha-modal-title" id="brv-modal-title">Add Budget Amendment Request</h3>
             <button type="button" class="nha-modal-close" id="brv-modal-close" aria-label="Close">&times;</button>
         </div>
         <form id="brv-form">
@@ -278,7 +278,7 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
 
                 <!-- what is being filed: a Revision changes one line's amount; a Realignment moves funds to a second line (setType) -->
                 <div class="nha-tabs brv-type-tabs" id="brv-type-tabs" role="tablist" aria-label="What are you filing?">
-                    <button type="button" class="nha-tab active" role="tab" aria-selected="true" data-type="REVISION">Revision</button>
+                    <button type="button" class="nha-tab active" role="tab" aria-selected="true" data-type="REVISION">Amendment</button>
                     <button type="button" class="nha-tab" role="tab" aria-selected="false" data-type="REALIGNMENT">Realignment</button>
                 </div>
 
@@ -294,7 +294,7 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
                         <div class="brv-cobcol">
                             <div class="brv-cob-hd">
                                 <label class="brv-lbl" for="brv-req-input">From Budget Line <span class="brv-req">*</span></label>
-                                <span class="brv-cob-role">The line being revised</span>
+                                <span class="brv-cob-role">The line being amended</span>
                             </div>
 
                             <div class="brv-reqgroup">
@@ -440,7 +440,7 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
 
                 <!-- ── 2 · the revision: amounts and reason ── -->
                 <section class="brv-step">
-                    <h4 class="brv-step-hd"><span class="brv-step-n">2</span> <span id="brv-step2-title">Revision</span></h4>
+                    <h4 class="brv-step-hd"><span class="brv-step-n">2</span> <span id="brv-step2-title">Amendment</span></h4>
 
                     <div class="brv-rev is-single">
                         <div class="brv-fld">
@@ -468,7 +468,7 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
 
                     <div class="brv-fld brv-reason-fld">
                         <label class="brv-lbl" for="brv-reason">Reason</label>
-                        <textarea class="brv-in" id="brv-reason" rows="3" placeholder="Explain why this budget needs to be revised"></textarea>
+                        <textarea class="brv-in" id="brv-reason" rows="3" placeholder="Explain why this budget needs to be amended"></textarea>
                     </div>
                 </section>
             </div>
@@ -556,11 +556,11 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
     let type = 'REVISION';
     const TYPE_TEXT = {
         REVISION: {
-            intro: "Revise a budget line's amount. Saving files it as Saved, and you can still edit it; choose Process in its Actions menu to submit it for review (after that it cannot be edited). A revision only takes effect once it has been approved; then the line's adjustment and revised amount change by the difference.",
-            step1: 'Budget line', step1Sub: 'Pick the budget line to revise.',
-            step2: 'Revision', from: 'Current Amount', to: 'New Amount',
+            intro: "Amend a budget line's amount. Saving files it as Saved, and you can still edit it; choose Process in its Actions menu to submit it for review (after that it cannot be edited). An amendment only takes effect once it has been approved; then the line's adjustment and revised amount change by the difference.",
+            step1: 'Budget line', step1Sub: 'Pick the budget line to amend.',
+            step2: 'Amendment', from: 'Current Amount', to: 'New Amount',
             fromHint: "The budget line's current amount.", toHint: "What the budget line's amount becomes.",
-            reasonPh: 'Explain why this budget needs to be revised',
+            reasonPh: 'Explain why this budget needs to be amended',
         },
         REALIGNMENT: {
             intro: "Move funds from one budget line to another. Saving files it as Saved, and you can still edit it; choose Process in its Actions menu to submit it for review (after that it cannot be edited). A realignment only takes effect once it has been approved; then the From line's adjustment and revised amount go down and the To line's go up.",
