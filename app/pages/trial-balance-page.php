@@ -71,6 +71,14 @@ $_tb_api = preg_match('~/api$~', $_tb_api) ? $_tb_api : $_tb_api . '/api';
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                 Refresh
             </button>
+            <button id="tb-print" type="button" class="nha-btn-hdr" title="Print">
+                <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6v-8z"/></svg>
+                Print
+            </button>
+            <button id="tb-excel" type="button" class="nha-btn-hdr" title="Export to Excel">
+                <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
+                Excel
+            </button>
         </div>
     </div>
 
@@ -162,6 +170,7 @@ $_tb_api = preg_match('~/api$~', $_tb_api) ? $_tb_api : $_tb_api . '/api';
 
 </div><!-- /#tb-root -->
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <script>
 /* ══════════════════════════════════════════════════════════════
    TRIAL BALANCE   prefix: tb_
@@ -192,6 +201,8 @@ else tb_boot();
 
 function tb_bindEvents() {
     $tb('tb-refresh')?.addEventListener('click', tb_load);
+    $tb('tb-print')?.addEventListener('click', () => window.print());
+    $tb('tb-excel')?.addEventListener('click', tb_exportExcel);
     $tb('tb-filter-fy')?.addEventListener('change', tb_load);
     $tb('tb-filter-book')?.addEventListener('change', tb_load);
 }
@@ -268,7 +279,10 @@ function tb_renderBookLabel(bookId) {
 }
 
 /* ── Table ─────────────────────────────────────────────────── */
+let tb_last = { data: [], total_debit: 0, total_credit: 0 }; // last rendered result, reused by the Excel export
+
 function tb_render(json) {
+    tb_last = json;
     const rows  = json.data ?? [];
     const tbody = $tb('tb-tbody');
     if (!rows.length) {
@@ -318,6 +332,100 @@ function tb_render(json) {
         badge.className = 'nha-bdg nha-bdg-red';
         badge.textContent = 'Out of balance';
     }
+}
+
+/* ── Excel export ──────────────────────────────────────────── */
+/* Mirrors the on-screen/print layout: title block, then Major group → account group → accounts, then Total + certification. */
+async function tb_exportExcel() {
+    if (!window.ExcelJS) { tb_showError('Excel library failed to load. Check your internet connection and reload.'); return; }
+    const rows = tb_last.data ?? [];
+    if (!rows.length) { tb_showError('Nothing to export — no postings yet.'); return; }
+
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Trial Balance', {
+        pageSetup: { paperSize: 9, orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
+    });
+    ws.columns = [{ width: 58 }, { width: 18 }, { width: 22 }, { width: 22 }];
+    const NUM = '#,##0.00;(#,##0.00);"-"';
+    const thin = { style: 'thin' };
+
+    const title = (text, bold = true) => {
+        const r = ws.addRow([text]);
+        ws.mergeCells(r.number, 1, r.number, 4);
+        r.getCell(1).alignment = { horizontal: 'center' };
+        r.getCell(1).font = { bold, size: 11 };
+    };
+    title('NATIONAL HOUSING AUTHORITY');
+    title($tb('tb-report-book').textContent ? 'TRIAL BALANCE' + $tb('tb-report-book').textContent : 'TRIAL BALANCE');
+    title('MAIN OFFICE');
+    title($tb('tb-report-date').textContent, false);
+    ws.addRow([]);
+
+    const head = ws.addRow(['Accounts', 'Acct. Code', 'Debit Balances', 'Credit Balances']);
+    head.eachCell((c, i) => {
+        c.font = { bold: true };
+        c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } };
+        c.border = { top: thin, bottom: thin, left: thin, right: thin };
+        c.alignment = { horizontal: i > 2 ? 'right' : 'center' };
+    });
+
+    let lastMajor = null, lastGroup = null;
+    rows.forEach(r => {
+        if (r.major_group !== lastMajor) {
+            const m = ws.addRow([r.major_group]);
+            ws.mergeCells(m.number, 1, m.number, 4);
+            m.getCell(1).font = { bold: true };
+            m.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEDEDED' } };
+            lastGroup = null;
+        }
+        if (r.account_group && r.account_group !== lastGroup) {
+            if (/^assets$/i.test(String(r.major_group).trim())) {
+                const g = ws.addRow([r.account_group]);
+                ws.mergeCells(g.number, 1, g.number, 4);
+                g.getCell(1).font = { bold: true };
+            } else {
+                ws.addRow([r.account_group, r.account_group_code ?? '']);
+            }
+        }
+        lastMajor = r.major_group;
+        lastGroup = r.account_group;
+
+        const row = ws.addRow([r.account_title || '—', r.account_code ?? '', Number(r.total_debit || 0), Number(r.total_credit || 0)]);
+        row.getCell(1).alignment = { indent: 1 };
+        row.getCell(3).numFmt = NUM;
+        row.getCell(4).numFmt = NUM;
+    });
+
+    const tot = ws.addRow(['Total', '', Number(tb_last.total_debit || 0), Number(tb_last.total_credit || 0)]);
+    ws.mergeCells(tot.number, 1, tot.number, 2);
+    tot.eachCell(c => { c.font = { bold: true }; c.border = { top: thin, bottom: { style: 'double' } }; });
+    tot.getCell(3).numFmt = NUM;
+    tot.getCell(4).numFmt = NUM;
+
+    ws.addRow([]);
+    const cert = ws.addRow(['I HEREBY CERTIFY that the trial balance is a true and complete statement of all accounts as shown in the ledger prepared and presented in conformity with International Public Sector Accounting Standards (IPSAS).']);
+    ws.mergeCells(cert.number, 1, cert.number, 4);
+    cert.getCell(1).alignment = { wrapText: true, vertical: 'top' };
+    cert.height = 48;
+    ws.addRow([]);
+    ws.addRow([]);
+    const sig = ws.addRow(['Signature Over Printed Name']);
+    sig.getCell(1).border = { top: thin };
+    sig.getCell(1).alignment = { horizontal: 'center' };
+    ws.addRow(['Head of Accounting Department']).getCell(1).alignment = { horizontal: 'center' };
+
+    ws.views = [{ state: 'frozen', ySplit: head.number }];
+
+    const fy = $tb('tb-filter-fy').value || 'all-years';
+    const buf  = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `Trial-Balance_${fy}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
 /* ── Formatters ────────────────────────────────────────────── */
