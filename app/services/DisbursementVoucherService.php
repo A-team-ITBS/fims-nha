@@ -95,6 +95,9 @@ class DisbursementVoucherService
     // module was NOT changed here; only this one's concept of expense_class moved to COA-derived.
     private const EXPENSE_CLASSES = ['MOOE', 'PS', 'CAPITAL_OUTLAY', 'EQUIPMENT_OUTLAY', 'OTHER'];
 
+    // Deduction types a voucher may carry only once (fims.deduction_types.code) — see prepareDeductions().
+    private const SINGLE_DEDUCTION_TYPES = ['RETENTION', 'RECOUPMENT', 'PENALTY_TAX', 'VAT'];
+
     private const EDITABLE      = ['DRAFT', 'REJECTED'];
     private const DELETABLE     = ['DRAFT', 'CANCELLED'];
     private const SAVE_STATUSES = ['DRAFT', 'FOR_FMD_REVIEW'];
@@ -263,7 +266,14 @@ class DisbursementVoucherService
         $remittanceId = $body['payroll_remittance_id'] ?? null;
         $fields['_remittanceId'] = ($remittanceId !== null && $remittanceId !== '' && ctype_digit((string) $remittanceId)) ? (int) $remittanceId : null;
 
-        if (!$rfaIdsRaw && !$fields['_remittanceId']) {
+        // Likewise a Remittance DV from the Remittance List page (Remit button): it pays what the month's approved vouchers withheld
+        // (EWT / Withholding VAT / Penalty Tax → BIR). Validated / linked in create()/update() (RemittanceListService).
+        $remitPeriod = trim((string) ($body['remit_period'] ?? ''));
+        $remitType   = strtoupper(trim((string) ($body['remit_type'] ?? '')));
+        $remitVendor = trim((string) ($body['remit_vendor'] ?? '')); // the one vendor whose withheld tax this Remittance DV pays
+        $fields['_dvRemit'] = ($remitPeriod !== '' && $remitType !== '') ? ['period' => $remitPeriod, 'type' => $remitType, 'vendor' => $remitVendor] : null;
+
+        if (!$rfaIdsRaw && !$fields['_remittanceId'] && !$fields['_dvRemit']) {
             $errors[] = 'At least one RFA is required.';
         } else {
             foreach ($rfaIdsRaw as $rfaId) {
@@ -463,6 +473,7 @@ class DisbursementVoucherService
         if (!is_array($rows)) {
             return [$errors, $out];
         }
+        $seenSingle = []; // codes of the one-per-voucher types already seen in this submission
 
         foreach ($rows as $i => $row) {
             if (!is_array($row)) {
@@ -476,12 +487,21 @@ class DisbursementVoucherService
                 continue;
             }
             $type = App\ExecuteRow(
-                "SELECT deduction_type_id, name, account_code FROM {$this->tableDeductionTypes} WHERE deduction_type_id = " . (int) $typeId . ' AND is_active = TRUE',
+                "SELECT deduction_type_id, code, name, account_code FROM {$this->tableDeductionTypes} WHERE deduction_type_id = " . (int) $typeId . ' AND is_active = TRUE',
                 'DB'
             );
             if (!$type) {
                 $errors[] = "Deduction line {$n}: deduction type #{$typeId} does not exist or is inactive.";
                 continue;
+            }
+            // Retention, recoupment, penalty and VAT are a single figure per voucher; a second line of the same type is
+            // almost always a double click that deducts the amount twice. "Other" (and the payroll types) can repeat.
+            if (in_array($type['code'], self::SINGLE_DEDUCTION_TYPES, true)) {
+                if (isset($seenSingle[$type['code']])) {
+                    $errors[] = "Deduction line {$n}: '{$type['name']}' can only be added once per voucher — remove the duplicate line.";
+                    continue;
+                }
+                $seenSingle[$type['code']] = true;
             }
 
             $gross = is_numeric($row['gross_amount'] ?? null) ? (float) $row['gross_amount'] : $dvGrossAmount;
@@ -932,7 +952,7 @@ class DisbursementVoucherService
      */
     private function checkAmountAgainstRfas(array $f, ?int $excludeDvId): array
     {
-        if ($f['_payrollPeriodId'] || $f['_remittanceId'] || !$f['_rfaRows']) {
+        if ($f['_payrollPeriodId'] || $f['_remittanceId'] || $f['_dvRemit'] || !$f['_rfaRows']) {
             return [[], null];
         }
         $budget = 0.0;
@@ -1064,6 +1084,7 @@ class DisbursementVoucherService
             $row['atc_lines']          = $this->fetchAtcLines($dvId);
             $row['payroll']            = (new PayrollManagementService())->forDv($dvId); // imported payroll month this DV pays, or null
             $row['remittance']         = (new DeductionRemittanceService())->forDv($dvId); // payroll remittance this DV pays (GSIS/BIR/…), or null
+            $row['dv_remit']           = (new RemittanceListService())->forDv($dvId); // what this Remittance DV pays to BIR (a voucher's EWT / VAT / Penalty Tax), or null
 
             // Every RFA currently linked to this DV — the link lives on the RFA side
             // (budget_allocation.dv_id, see linkRfas()), so this is a plain reverse lookup, not a
@@ -1357,11 +1378,12 @@ class DisbursementVoucherService
      * withholding_tax is always server-computed from tax_base/rate, never trusted from the client,
      * same convention as deduction_amount. Returns [errors[], rows[], totalWithholding].
      */
-    private function prepareAtcLines(mixed $rows): array
+    private function prepareAtcLines(mixed $rows, ?float $dvGross = null): array
     {
-        $errors = [];
-        $out    = [];
-        $total  = 0.0;
+        $errors    = [];
+        $out       = [];
+        $total     = 0.0;
+        $baseTotal = 0.0;
         if (!is_array($rows)) {
             return [$errors, $out, $total];
         }
@@ -1392,6 +1414,7 @@ class DisbursementVoucherService
 
             $withholdingTax = round($taxBase * $rate / 100, 2);
             $total += $withholdingTax;
+            $baseTotal += $taxBase;
             $out[] = [
                 'atc_code'        => $atcCode,
                 'rate'            => $rate,
@@ -1399,6 +1422,12 @@ class DisbursementVoucherService
                 'withholding_tax' => $withholdingTax,
                 'chargeability'   => $chargeability !== '' ? $chargeability : null,
             ];
+        }
+
+        // The ATC lines split ONE base between them (e.g. 60k at 2% + 40k at 5%): their Tax Bases adding up to more
+        // than the DV's Amount means the same money is being withheld on twice (a second line left at the whole base).
+        if ($dvGross !== null && round($baseTotal, 2) - round($dvGross, 2) > 0.005) {
+            $errors[] = 'ATC tax bases total ' . number_format($baseTotal, 2) . ', which is more than the Amount (' . number_format($dvGross, 2) . ') — split the base between the ATC lines.';
         }
 
         return [$errors, $out, round($total, 2)];
@@ -1576,7 +1605,7 @@ class DisbursementVoucherService
             $errors = array_merge($errors, $dedErrors);
         }
 
-        [$atcErrors, $cleanAtc, $totalWithholding] = $this->prepareAtcLines($atcLines);
+        [$atcErrors, $cleanAtc, $totalWithholding] = $this->prepareAtcLines($atcLines, (float) $dv['gross_amount']);
         $errors = array_merge($errors, $atcErrors);
 
         [$lineErrors, $clean, $totalDebit, $totalCredit] = $this->validateJevLines($lines);
@@ -2193,6 +2222,9 @@ class DisbursementVoucherService
             if ($f['_remittanceId'] && ($remError = (new DeductionRemittanceService())->validateDvLink($f['_remittanceId'])) !== null) {
                 $errors[] = $remError;
             }
+            if ($f['_dvRemit'] && ($dvRemitError = (new RemittanceListService())->validateLink($f['_dvRemit']['period'], $f['_dvRemit']['type'], 0, (float) $f['gross_amount'], $f['_dvRemit']['vendor'])) !== null) {
+                $errors[] = $dvRemitError;
+            }
             [$rfaErrors, $rfaBudget] = $this->checkAmountAgainstRfas($f, null);
             $errors = array_merge($errors, $rfaErrors);
             if ($rfaBudget !== null) {
@@ -2246,6 +2278,9 @@ class DisbursementVoucherService
                 }
                 if ($f['_remittanceId']) {
                     (new DeductionRemittanceService())->syncDvLink((int) $row['dv_id'], $f['_remittanceId']);
+                }
+                if ($f['_dvRemit']) {
+                    (new RemittanceListService())->syncLink((int) $row['dv_id'], $f['_dvRemit']['period'], $f['_dvRemit']['type'], $userId, $f['_dvRemit']['vendor']);
                 }
 
                 $rfaError = $this->linkRfas((int) $row['dv_id'], $f['_rfaRows']);
@@ -2310,6 +2345,9 @@ class DisbursementVoucherService
             if ($f['_remittanceId'] && ($remError = (new DeductionRemittanceService())->validateDvLink($f['_remittanceId'], $dvId)) !== null) {
                 $errors[] = $remError;
             }
+            if ($f['_dvRemit'] && ($dvRemitError = (new RemittanceListService())->validateLink($f['_dvRemit']['period'], $f['_dvRemit']['type'], $dvId, (float) $f['gross_amount'], $f['_dvRemit']['vendor'])) !== null) {
+                $errors[] = $dvRemitError;
+            }
             [$rfaErrors, $rfaBudget] = $this->checkAmountAgainstRfas($f, $dvId);
             $errors = array_merge($errors, $rfaErrors);
             if ($rfaBudget !== null) {
@@ -2364,6 +2402,7 @@ class DisbursementVoucherService
                 $this->replaceDeductions($dvId, $f['deductions']);
                 (new PayrollManagementService())->syncDvLink($dvId, $f['_payrollPeriodId']); // also releases a month no longer picked
                 (new DeductionRemittanceService())->syncDvLink($dvId, $f['_remittanceId']);
+                (new RemittanceListService())->syncLink($dvId, $f['_dvRemit']['period'] ?? null, $f['_dvRemit']['type'] ?? null, $userId, $f['_dvRemit']['vendor'] ?? null);
 
                 $rfaError = $this->linkRfas($dvId, $f['_rfaRows']);
                 if ($rfaError !== null) {
@@ -2587,6 +2626,7 @@ class DisbursementVoucherService
                 if ($new === 'CANCELLED') {
                     (new PayrollManagementService())->releaseDv($dvId); // a payroll month this DV paid can get a new DV
                     (new DeductionRemittanceService())->releaseDv($dvId); // a remittance this DV paid is Scheduled again
+                    (new RemittanceListService())->releaseDv($dvId); // a voucher's EWT / VAT / Penalty Tax this DV paid is "Ready to remit" again
                 }
 
                 App\Execute('COMMIT', 'DB');
@@ -2644,6 +2684,7 @@ class DisbursementVoucherService
             App\Execute("UPDATE {$this->tableRfa} SET dv_id = NULL WHERE dv_id = {$dvId}", 'DB');
             (new PayrollManagementService())->releaseDv($dvId); // same for a payroll month this DV paid
             (new DeductionRemittanceService())->releaseDv($dvId); // and a payroll remittance it paid
+            (new RemittanceListService())->releaseDv($dvId); // and the voucher deductions it remitted
             App\Execute("DELETE FROM {$this->table} WHERE dv_id = {$dvId}", 'DB');
 
             return ['success' => true, 'message' => "Disbursement Voucher {$cur['dv_no']} deleted successfully."];
