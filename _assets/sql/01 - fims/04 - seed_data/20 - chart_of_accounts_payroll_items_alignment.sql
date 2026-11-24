@@ -67,7 +67,11 @@ FROM (VALUES
     ('PYR047', '2-99-99-993',    'Other Employee Deductions Payable',             '2-99-99', FALSE)
 ) AS v(account_id, account_code, account_title, parent_code, posting_allowed)
 JOIN fims.chart_of_accounts p ON p.account_code = v.parent_code
-ON CONFLICT (account_code) DO NOTHING;
+ON CONFLICT (account_code) DO UPDATE SET
+    account_title     = EXCLUDED.account_title,
+    parent_account_id = EXCLUDED.parent_account_id,
+    posting_allowed   = EXCLUDED.posting_allowed,
+    status            = EXCLUDED.status;
 
 -- ── Step 2: sub-ledgers whose parent is one of the new accounts from Step 1 ──
 INSERT INTO fims.chart_of_accounts (account_id, account_code, account_title, account_type, parent_account_id, posting_allowed, status, source_document)
@@ -114,7 +118,11 @@ FROM (VALUES
     ('PYR061', '2-99-99-993-23', 'Overpayment - Additional Compensation Recoupment', '2-99-99-993')
 ) AS v(account_id, account_code, account_title, parent_code)
 JOIN fims.chart_of_accounts p ON p.account_code = v.parent_code
-ON CONFLICT (account_code) DO NOTHING;
+ON CONFLICT (account_code) DO UPDATE SET
+    account_title     = EXCLUDED.account_title,
+    parent_account_id = EXCLUDED.parent_account_id,
+    posting_allowed   = EXCLUDED.posting_allowed,
+    status            = EXCLUDED.status;
 
 -- ── Step 3: point every payroll item at its account_code ──
 UPDATE fims.payroll_items pi

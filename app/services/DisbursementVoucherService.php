@@ -282,12 +282,21 @@ class DisbursementVoucherService
                     continue;
                 }
                 $rfa = App\ExecuteRow(
-                    "SELECT allocation_id, allocation_number, requesting_rc_id, dv_id
-                     FROM {$this->tableRfa} WHERE allocation_id = " . (int) $rfaId . " AND allocation_type = 'RFA'",
+                    "SELECT a.allocation_id, a.allocation_number, a.request_referrence_no, a.requesting_rc_id, a.dv_id, a.fiscal_year,
+                            st.name AS status_name
+                     FROM {$this->tableRfa} a
+                     LEFT JOIN {$this->tableSettingsStatus} st ON st.id = a.status_id
+                     WHERE a.allocation_id = " . (int) $rfaId . " AND a.allocation_type = 'RFA'",
                     'DB'
                 );
                 if (!$rfa) {
                     $errors[] = "RFA #{$rfaId} does not exist.";
+                    continue;
+                }
+                // Only an Approved RFA carries an allotment a DV can draw from.
+                if (($rfa['status_name'] ?? '') !== 'Approved') {
+                    $label = $rfa['allocation_number'] ?: ($rfa['request_referrence_no'] ?: "#{$rfaId}");
+                    $errors[] = "RFA {$label} is " . ($rfa['status_name'] ?: 'not approved') . ' — only an Approved RFA can fund a Disbursement Voucher.';
                     continue;
                 }
                 $rfas[] = $rfa;
@@ -645,8 +654,13 @@ class DisbursementVoucherService
         if (!$linkedDvId || $linkedDvId === $excludeDvId) {
             return 0.0;
         }
+        // What the DV draws from the RFA is its GROSS amount (the deductions are part of the expense, paid out later
+        // through the remittance DVs) — plus, for a payroll DV, the employer (government) share its month carries,
+        // which the payroll's RFA also funds (the remittance DVs that pay it carry no RFA of their own).
         $row = App\ExecuteRow(
-            "SELECT dv.net_amount, st.name AS status FROM {$this->table} dv
+            "SELECT dv.gross_amount, st.name AS status,
+                    (SELECT COALESCE(SUM(r.total_employer_share), 0) FROM fims.payroll_records r WHERE r.disbursement_voucher_id = dv.dv_id) AS employer_share
+             FROM {$this->table} dv
              LEFT JOIN {$this->tableSettingsStatus} st ON st.id = dv.status_id
              WHERE dv.dv_id = {$linkedDvId}",
             'DB'
@@ -655,7 +669,7 @@ class DisbursementVoucherService
             return 0.0;
         }
 
-        return (float) $row['net_amount'];
+        return (float) $row['gross_amount'] + (float) $row['employer_share'];
     }
 
     /** Same as priorPaymentsForRfa(), summed across every RFA a DV cites. */
@@ -873,7 +887,11 @@ class DisbursementVoucherService
     public function fetchRfaOptions(array $filters = [], ?int $excludeDvId = null): array
     {
         try {
-            $where = ["a.allocation_type = 'RFA'", $this->rfaAvailableSql($excludeDvId)];
+            // Only Approved RFAs can fund a DV (a Draft / For Review / Returned one has no allotment yet) — except an
+            // RFA the DV being edited already cites, so its chip still shows.
+            $approved = "a.status_id = (SELECT id FROM {$this->tableSettingsStatus} WHERE status_for = 'budget_allocation' AND name = 'Approved' LIMIT 1)";
+            $where = ["a.allocation_type = 'RFA'", $this->rfaAvailableSql($excludeDvId),
+                $excludeDvId !== null ? "({$approved} OR a.dv_id = {$excludeDvId})" : $approved];
             if (!empty($filters['fiscal_yr'])) {
                 $where[] = 'a.fiscal_year = ' . (int) $filters['fiscal_yr'];
             }
@@ -952,6 +970,9 @@ class DisbursementVoucherService
      */
     private function checkAmountAgainstRfas(array $f, ?int $excludeDvId): array
     {
+        if ($f['_payrollPeriodId'] && $f['_rfaRows']) {
+            return $this->checkPayrollAgainstRfas($f, $excludeDvId);
+        }
         if ($f['_payrollPeriodId'] || $f['_remittanceId'] || $f['_dvRemit'] || !$f['_rfaRows']) {
             return [[], null];
         }
@@ -974,6 +995,98 @@ class DisbursementVoucherService
         }
 
         return [$errors, round($budget, 2)];
+    }
+
+    /**
+     * The RFA rules for a PAYROLL DV (Payroll Management → Create DV), on top of "the RFA is Approved" (prepare()):
+     *   - the payroll month's fiscal year must be the RFA's fiscal year;
+     *   - every RFA must have a Personnel Services line (account 5-01-…) — a payroll is never MOOE / Capital Outlay;
+     *   - the RFAs' remaining balance must cover the payroll's GROSS plus its EMPLOYER (government) share: the
+     *     employer share is paid later by the remittance DVs, which carry no RFA of their own, so the payroll's
+     *     RFA is what funds it.
+     * Returns the RFAs' budget like checkAmountAgainstRfas() does, so budget/obligation come from the RFAs.
+     *
+     * @return array{0: array<int, string>, 1: ?float} [errors, budgetFromRfas]
+     */
+    private function checkPayrollAgainstRfas(array $f, ?int $excludeDvId): array
+    {
+        $periodId = (int) $f['_payrollPeriodId'];
+        $payroll  = App\ExecuteRow(
+            "SELECT p.fiscal_yr, p.payroll_month,
+                    COALESCE(SUM(r.gross_amount), 0) AS gross, COALESCE(SUM(r.total_employer_share), 0) AS employer_share
+             FROM fims.payroll_periods p
+             LEFT JOIN fims.payroll_records r ON r.payroll_period_id = p.payroll_period_id
+             WHERE p.payroll_period_id = {$periodId}
+             GROUP BY p.fiscal_yr, p.payroll_month",
+            'DB'
+        );
+        if (!$payroll) {
+            return [[], null];   // validateDvLink() reports a missing month
+        }
+        $months = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+        $label  = ($months[(int) $payroll['payroll_month']] ?? 'Month ' . $payroll['payroll_month']) . ' ' . $payroll['fiscal_yr'];
+
+        $errors    = [];
+        $budget    = 0.0;
+        $remaining = 0.0;
+        foreach ($f['_rfaRows'] as $row) {
+            $rfaLabel = $row['allocation_number'] ?: ('#' . $row['allocation_id']);
+            if ((int) ($row['fiscal_year'] ?? 0) !== (int) $payroll['fiscal_yr']) {
+                $errors[] = "RFA {$rfaLabel} is for FY {$row['fiscal_year']} — the {$label} payroll needs an FY {$payroll['fiscal_yr']} RFA.";
+            }
+            $detail = $this->fetchRfaDetail((int) $row['allocation_id'], $excludeDvId);
+            if (!$detail['success']) {
+                continue;
+            }
+            $hasPs = false;
+            foreach ($detail['data']['lines'] ?? [] as $line) {
+                if (str_starts_with((string) ($line['account_code'] ?? ''), '5-01-')) {
+                    $hasPs = true;
+                    break;
+                }
+            }
+            if (!$hasPs) {
+                $errors[] = "RFA {$rfaLabel} has no Personnel Services line (account 5-01-…) — a payroll can't be charged to it.";
+            }
+            $budget    += (float) $detail['data']['budget_amount'];
+            $remaining += (float) $detail['data']['remaining_balance'];
+        }
+
+        $gross    = round((float) $payroll['gross'], 2);
+        $employer = round((float) $payroll['employer_share'], 2);
+        $required = round($gross + $employer, 2);
+        if ($required - $remaining > 0.005) {
+            $errors[] = 'The ' . $label . ' payroll needs ' . number_format($required, 2) . ' (gross ' . number_format($gross, 2)
+                . ' + employer share ' . number_format($employer, 2) . ') but the selected RFA(s) have only '
+                . number_format($remaining, 2) . ' remaining.';
+        }
+
+        return [$errors, $budget > 0 ? round($budget, 2) : null];
+    }
+
+    /**
+     * A payroll DV's Amount and deductions are the imported month's, never what the form sent: they are replaced
+     * here from Payroll Management (dvData()) before the DV is validated and saved. Any other body is returned as is;
+     * so is a payroll body whose month can't be read (validateDvLink() then reports why).
+     */
+    private function withPayrollAmounts(array $body): array
+    {
+        $periodId = $body['payroll_period_id'] ?? null;
+        if ($periodId === null || $periodId === '' || !ctype_digit((string) $periodId)) {
+            return $body;
+        }
+        $data = (new PayrollManagementService())->dvData((int) $periodId);
+        if (!($data['success'] ?? false)) {
+            return $body;
+        }
+        $d = $data['data'];
+        $body['gross_amount'] = $d['gross_amount'];
+        $body['deductions']   = array_map(static fn (array $x) => [
+            'deduction_type_id' => $x['deduction_type_id'] ?? null,
+            'deduction_amount'  => $x['deduction_amount'] ?? 0,
+        ], is_array($d['deductions'] ?? null) ? $d['deductions'] : []);
+
+        return $body;
     }
 
     // ── queries ──
@@ -2210,6 +2323,7 @@ class DisbursementVoucherService
     public function create(array $body, int $userId): array
     {
         try {
+            $body = $this->withPayrollAmounts($body);   // a payroll DV's Amount / deductions are the import's
             [$errors, $f] = $this->prepare($body);
 
             $dvNo = trim((string) ($body['dv_no'] ?? ''));
@@ -2338,6 +2452,7 @@ class DisbursementVoucherService
                 return ['success' => false, 'message' => "Only DRAFT or REJECTED disbursement vouchers can be edited (current status: {$cur['status']})."];
             }
 
+            $body = $this->withPayrollAmounts($body);   // a payroll DV's Amount / deductions are the import's
             [$errors, $f] = $this->prepare($body);
             if ($f['_payrollPeriodId'] && ($payrollError = (new PayrollManagementService())->validateDvLink($f['_payrollPeriodId'], $dvId)) !== null) {
                 $errors[] = $payrollError;

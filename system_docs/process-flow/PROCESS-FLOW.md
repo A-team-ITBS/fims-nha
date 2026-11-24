@@ -2,7 +2,7 @@
 
 **Step-by-step walkthrough, from set-up to the posted ledgers — for SQA testing and CPA review**
 
-> **Status:** written 2026-11-17, updated 2026-11-23 (Budget Amendment, CBA / RFA / LAA printing for FMD only, GL and SL prints, one Budget Proposal page for offices and FMD, Payroll sidebar group, FTLA release, Collections journalizing, GL roll-up; earlier: per-agency remittance DVs, automatic payment JEV, Payroll
+> **Status:** written 2026-11-17, updated 2026-11-24 (payroll DV checked against its RFA: gross + employer share, Approved RFA, same fiscal year, Personnel Services line; Budget Amendment, CBA / RFA / LAA printing for FMD only, GL and SL prints, one Budget Proposal page for offices and FMD, Payroll sidebar group, FTLA release, Collections journalizing, GL roll-up; earlier: per-agency remittance DVs, automatic payment JEV, Payroll
 > Management YTD / File Template, print notes) from the current code (`app/`) and the status chains in its services. Follows the
 > sidebar modules (`views/menu.php`). Tables behind each step: `system_docs/ERD/README.md`.
 > PDF version: `system_docs/process-flow/PROCESS-FLOW.pdf` — the flowcharts of this file, one process per page in
@@ -316,7 +316,7 @@ FOR_DEPARTMENT_MANAGER, FOR_TREASURY, RELEASED, REJECTED, CANCELLED. Only the of
 | Step | Log in as | Where (sidebar → page) | Do this | Expected result |
 |---|---|---|---|---|
 | 1 | Requesting office user | DV Processing → Disbursement Voucher | New DV: claimant / payee, particulars, gross amount; link the approved RFA(s); deductions and withholding taxes (ATC); attach documents; save. The accounting entries (Section D) are not on the create form — Accounting enters them in step 4 | Status DRAFT |
-| 1a | Requesting office user (alternative) | New DV | Enter an amount above the RFA's remaining balance, or deductions above the amount | Not saved — the reason is shown. Payroll and remittance DVs are exempt from the RFA check (Sections 8A, 8B) |
+| 1a | Requesting office user (alternative) | New DV | Enter an amount above the RFA's remaining balance, or deductions above the amount | Not saved — the reason is shown. Only an **Approved** RFA can be picked or saved on any DV. Remittance DVs carry no RFA (Section 8B); payroll DVs have their own RFA check (Section 8A step 5d) |
 | 2 | Requesting office user | Disbursement Voucher | Submit to FMD | Status FOR_FMD_REVIEW |
 | 3 | FMD user (RC 013) | Disbursement Voucher → view | Move to the next stage | Status FOR_ACCOUNTING |
 | 3a | FMD user (alternative) | view | Reject with a reason | Status REJECTED — it can only be cancelled; a new DV is needed |
@@ -366,7 +366,8 @@ Payroll Management, DV Processing → Disbursement Voucher. **Payroll month stat
 | 3a | Payroll officer (alternative) | Import Payroll | Import the same month again | Asked to replace it; Replace Import replaces the month |
 | 4 | Payroll officer | Payroll Management → Year-to-Date Report | Pick the Fiscal Year and Month (Whole Year or one month) — the report loads by itself (no Generate button) | One row per month: employees, gross, deductions, refunds, net pay, employer share, with totals; they agree with the file. The month name in Payroll Imports is plain text (no records window) |
 | 4a | Payroll officer | Year-to-Date Report → **Export CSV** | Export for the same filter | CSV with one row per employee: Emp No., Last / First / Middle name, Department, Months, Gross Pay, Deductions, Refunds, Net Pay, Employer Share, and a TOTAL row |
-| 5 | Requesting office user | Payroll Management → Payroll Imports → **Create DV** on the month | Disbursement Voucher opens a New DV for the month (Vendor or Payroll = "Payroll — month"); pick the RFA; save | Claimant, particulars, amount, deductions and the balanced accounting entry were filled; DV DRAFT; the month shows **DV Created** and its button becomes **View DV**. The payroll DV is not limited by the RFA's remaining balance |
+| 5 | Requesting office user | Payroll Management → Payroll Imports → **Create DV** on the month | Disbursement Voucher opens a New DV for the month (Vendor or Payroll = "Payroll — month"); pick the RFA; save | Claimant, particulars, amount, deductions and the balanced accounting entry were filled; DV DRAFT; the month shows **DV Created** and its button becomes **View DV**. On save the server re-reads the Amount and deductions from the imported month (edits to them are ignored) |
+| 5d | Requesting office user (alternative) | New DV (payroll) | Pick an RFA that is not Approved, is for another fiscal year than the payroll month, has no Personnel Services line (5-01-…), or whose remaining balance is below the payroll's **gross + employer share** | Not saved — the reason is shown (e.g. "The January 2026 payroll needs 96,850.36 (gross 84,568.00 + employer share 12,282.36) but the selected RFA(s) have only 50,000.00 remaining.") |
 | 5a | Requesting office user (alternative) | New DV | Change Vendor or Payroll back to None | Every field the payroll filled is cleared |
 | 5b | Payroll officer (alternative) | Payroll Imports | Replace the month while it has a DV | Refused — "used by Disbursement Voucher …". An import cannot be deleted from the page |
 | 5c | Any user | Payroll Imports → **View DV** | Open the month's DV | The DV's view opens in Disbursement Voucher |
@@ -376,7 +377,8 @@ Payroll Management, DV Processing → Disbursement Voucher. **Payroll month stat
 The payroll DV's accounting entry: Dr each earnings account (e.g. Salaries and Wages, PERA), Cr each deduction
 account (Due to BIR, GSIS, Pag-IBIG, PhilHealth, other payables), Cr Accounts Payable for the net pay. The
 employer share is not on the payroll DV. The payroll's RFA also covers the government share: the remittance DVs
-(Section 8B) need no RFA of their own.
+(Section 8B) need no RFA of their own — so the RFA's "paid" for a payroll DV is its gross + employer share (for any
+other DV, its gross amount).
 
 ```mermaid
 flowchart TD
