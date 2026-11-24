@@ -2083,10 +2083,10 @@ function vf_renderRemitSchedule(d) {
 
     box.innerHTML = `<div class="vf-remit-total"><span>Total to remit — ${vf_esc(d.type_name)}, ${vf_esc(d.period_label)}</span><strong>${vf_peso(d.gross_amount)}</strong></div>
         <table class="vf-rs-tbl"><thead><tr><th>Rate</th>${oneVendor ? '' : '<th>Contractors/Suppliers</th>'}<th class="r">Amount</th></tr></thead><tbody>${rows}</tbody></table>
-        <details><summary>Accounting entry — Dr ${vf_esc(names('debit'))} / Cr ${vf_esc(names('credit'))}</summary>
-        <div style="overflow-x:auto;"><table class="vf-rs-tbl"><thead><tr><th>Account code</th><th>Account title</th><th class="r">Debit</th><th class="r">Credit</th></tr></thead><tbody>${ent}</tbody></table></div></details>
         <details><summary>Vouchers included — ${nv} voucher${nv === 1 ? '' : 's'}, ${nl} line${nl === 1 ? '' : 's'}</summary>
-        <div style="overflow-x:auto;"><table class="vf-rs-tbl"><thead><tr><th>DV No. / ATC</th><th>Date</th>${oneVendor ? '' : '<th>Vendor</th>'}<th class="r">Rate</th><th class="r">Tax Base</th><th class="r">Withheld</th></tr></thead><tbody>${sched}</tbody></table></div></details>`;
+        <div style="overflow-x:auto;"><table class="vf-rs-tbl"><thead><tr><th>DV No. / ATC</th><th>Date</th>${oneVendor ? '' : '<th>Vendor</th>'}<th class="r">Rate</th><th class="r">Tax Base</th><th class="r">Withheld</th></tr></thead><tbody>${sched}</tbody></table></div></details>
+        <details><summary>Accounting entry — Dr ${vf_esc(names('debit'))} / Cr ${vf_esc(names('credit'))}</summary>
+        <div style="overflow-x:auto;"><table class="vf-rs-tbl"><thead><tr><th>Account code</th><th>Account title</th><th class="r">Debit</th><th class="r">Credit</th></tr></thead><tbody>${ent}</tbody></table></div></details>`;
     box.classList.add('vf-remit-main');
     box.style.display = '';
 }
