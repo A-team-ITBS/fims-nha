@@ -321,9 +321,10 @@ class GeneralLedgerService
         $uid   = $userId > 0 ? (string) $userId : 'NULL';
         $row   = App\ExecuteRow(
             "INSERT INTO {$this->tableJev}
-                (jev_no, dv_id, fiscal_yr, book_id, jev_type, source_module, doc_ref_no, total_debit, total_credit, status_id, created_by)
+                (jev_no, dv_id, fiscal_yr, book_id, jev_type, source_module, doc_ref_no, particulars, total_debit, total_credit, status_id, created_by)
              VALUES (" . $this->str($jevNo) . ", {$dvId}, " . $this->intOrNull($setupJev['fiscal_yr']) . ', '
                 . $this->intOrNull($setupJev['book_id']) . ", 'PAYMENT', 'TREASURY', " . $this->str($docRefNo) . ', '
+                . $this->str("Payment via {$docRefNo}") . ', '
                 . (float) $amount . ', ' . (float) $amount . ", {$startId}, {$uid})
              RETURNING jev_id",
             'DB'
