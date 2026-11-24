@@ -1,4 +1,4 @@
-<ew-language date="2026/11/23" id="en-US" author="e.World Technology Limited">
+<ew-language date="2026/11/24" id="en-US" author="e.World Technology Limited">
   <project>
     <phrase id="bodytitle" value="NHA - FIMS" />
     <phrase id="footertext" value="&amp;copy;2026 ITBS Corporation. All rights reserved." />
@@ -142,6 +142,9 @@
     </menu>
     <menu id="770">
       <phrase id="menutext" value="Bank Reconciliation" />
+    </menu>
+    <menu id="871">
+      <phrase id="menutext" value="Budget Utilization Report" />
     </menu>
     <menu id="394">
       <phrase id="menutext" value="Ledgers" />
@@ -1864,6 +1867,9 @@
     </table>
     <table id="merchandise_inventory_page">
       <phrase id="tblcaption" value="Merchandise Inventory" />
+    </table>
+    <table id="bur_page">
+      <phrase id="tblcaption" value="Budget Utilization Report" />
     </table>
   </project>
 </ew-language>

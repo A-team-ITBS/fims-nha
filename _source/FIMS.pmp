@@ -486,6 +486,7 @@
     <Table TblName="property-and-equipment-for-distribution-page.php" TblType="REPORT" TblGen="1" TblGenList="reportcontroller=1,custom=1,custom|class=1" TblList="1" TblCaption="Property and equipment for Distribution" TblSrchType="NONE" TblBasicSearch="1" TblExtendedBasicSearch="1" TblSecurity="0,&quot;Default&quot;,0" TblLoaded="1" TblReportType="custom" TblShowEmptyRows="0" TblUseGlobal="1" TblRecPerPage="20" TblRecPerPageList="10,20,50,ALL" TblGrpPerPage="3" TblGrpPerPageList="1,2,3,5,ALL" TblPagerStyle="2" TblUseButtonsForLinks="1" TblUseDropDownForAction="1" TblUseDropDownForListOptions="1" TblUseDropDownForExport="1" />
     <Table TblName="fixed-assets-page.php" TblType="REPORT" TblGen="1" TblGenList="reportcontroller=1,custom=1,custom|class=1" TblList="1" TblCaption="Fixed Assets" TblSrchType="NONE" TblBasicSearch="1" TblExtendedBasicSearch="1" TblSecurity="0,&quot;Default&quot;,0" TblLoaded="1" TblReportType="custom" TblShowEmptyRows="0" TblUseGlobal="1" TblRecPerPage="20" TblRecPerPageList="10,20,50,ALL" TblGrpPerPage="3" TblGrpPerPageList="1,2,3,5,ALL" TblPagerStyle="2" TblUseButtonsForLinks="1" TblUseDropDownForAction="1" TblUseDropDownForListOptions="1" TblUseDropDownForExport="1" />
     <Table TblName="merchandise-inventory-page.php" TblType="REPORT" TblGen="1" TblGenList="reportcontroller=1,custom=1,custom|class=1" TblList="1" TblCaption="Merchandise Inventory" TblSrchType="NONE" TblBasicSearch="1" TblExtendedBasicSearch="1" TblSecurity="0,&quot;Default&quot;,0" TblLoaded="1" TblReportType="custom" TblShowEmptyRows="0" TblUseGlobal="1" TblRecPerPage="20" TblRecPerPageList="10,20,50,ALL" TblGrpPerPage="3" TblGrpPerPageList="1,2,3,5,ALL" TblPagerStyle="2" TblUseButtonsForLinks="1" TblUseDropDownForAction="1" TblUseDropDownForListOptions="1" TblUseDropDownForExport="1" />
+    <Table TblName="bur-page.php" TblType="REPORT" TblGen="1" TblGenList="reportcontroller=1,custom=1,custom|class=1" TblList="1" TblCaption="Budget Utilization Report" TblSrchType="NONE" TblBasicSearch="1" TblExtendedBasicSearch="1" TblSecurity="0,&quot;Default&quot;,0" TblLoaded="1" TblReportType="custom" TblShowEmptyRows="0" TblUseGlobal="1" TblRecPerPage="20" TblRecPerPageList="10,20,50,ALL" TblGrpPerPage="3" TblGrpPerPageList="1,2,3,5,ALL" TblPagerStyle="2" TblUseButtonsForLinks="1" TblUseDropDownForAction="1" TblUseDropDownForListOptions="1" TblUseDropDownForExport="1" />
   </Database>
   <Extension Name="@phpmaker/dompdf" Template="@phpmaker/dompdf" XmlFile="dompdf.xml" Enabled="1">
     <ExtProject>
@@ -800,6 +801,9 @@
           <Properties><![CDATA[[{"Id":"ExportList","Type":"Boolean","Value":"0"},{"Id":"ExportView","Type":"Boolean","Value":"1"},{"Id":"PageBreakRecordCount","Type":"Integer","Value":0},{"Id":"PageOrientation","Type":"String","Value":"portrait"},{"Id":"PageSize","Type":"String","Value":"a4"}]]]></Properties>
         </ExtTable>
         <ExtTable TblName="merchandise-inventory-page.php">
+          <Properties><![CDATA[[{"Id":"ExportList","Type":"Boolean","Value":"0"},{"Id":"ExportView","Type":"Boolean","Value":"1"},{"Id":"PageBreakRecordCount","Type":"Integer","Value":0},{"Id":"PageOrientation","Type":"String","Value":"portrait"},{"Id":"PageSize","Type":"String","Value":"a4"}]]]></Properties>
+        </ExtTable>
+        <ExtTable TblName="bur-page.php">
           <Properties><![CDATA[[{"Id":"ExportList","Type":"Boolean","Value":"0"},{"Id":"ExportView","Type":"Boolean","Value":"1"},{"Id":"PageBreakRecordCount","Type":"Integer","Value":0},{"Id":"PageOrientation","Type":"String","Value":"portrait"},{"Id":"PageSize","Type":"String","Value":"a4"}]]]></Properties>
         </ExtTable>
         <Properties><![CDATA[[]]]></Properties>
@@ -1341,6 +1345,9 @@
         <ExtTable TblName="merchandise-inventory-page.php">
           <Properties><![CDATA[[]]]></Properties>
         </ExtTable>
+        <ExtTable TblName="bur-page.php">
+          <Properties><![CDATA[[]]]></Properties>
+        </ExtTable>
         <Properties><![CDATA[[]]]></Properties>
       </ExtDatabase>
       <Properties><![CDATA[[{"Id":"InputGroup","Type":"Boolean","Value":"1"},{"Id":"Options","Type":"String","Value":""}]]]></Properties>
@@ -1649,6 +1656,9 @@
           <Properties><![CDATA[[]]]></Properties>
         </ExtTable>
         <ExtTable TblName="merchandise-inventory-page.php">
+          <Properties><![CDATA[[]]]></Properties>
+        </ExtTable>
+        <ExtTable TblName="bur-page.php">
           <Properties><![CDATA[[]]]></Properties>
         </ExtTable>
         <Properties><![CDATA[[]]]></Properties>
@@ -2190,6 +2200,9 @@
         <ExtTable TblName="merchandise-inventory-page.php">
           <Properties><![CDATA[[]]]></Properties>
         </ExtTable>
+        <ExtTable TblName="bur-page.php">
+          <Properties><![CDATA[[]]]></Properties>
+        </ExtTable>
         <Properties><![CDATA[[]]]></Properties>
       </ExtDatabase>
       <Properties><![CDATA[[{"Id":"Config","Type":"String","Value":""}]]]></Properties>
@@ -2533,6 +2546,7 @@ function Page_Load()
   <CustomScript ScriptType="Template" ScriptCodeType="Table" ScriptName="Content" ScriptCtrlID="custom" ScriptL1Key="property-and-equipment-for-distribution-page.php"><![CDATA[<?php include(dirname(__DIR__, 1) . "/app/pages/property-and-equipment-for-distribution-page.php"); ?>]]></CustomScript>
   <CustomScript ScriptType="Template" ScriptCodeType="Table" ScriptName="Content" ScriptCtrlID="custom" ScriptL1Key="merchandise-inventory-page.php"><![CDATA[<?php include(dirname(__DIR__, 1) . "/app/pages/merchandise-inventory-page.php"); ?>]]></CustomScript>
   <CustomScript ScriptType="Template" ScriptCodeType="Table" ScriptName="Content" ScriptCtrlID="custom" ScriptL1Key="fixed-assets-page.php"><![CDATA[<?php include(dirname(__DIR__, 1) . "/app/pages/fixed-assets-page.php"); ?>]]></CustomScript>
+  <CustomScript ScriptType="Template" ScriptCodeType="Table" ScriptName="Content" ScriptCtrlID="custom" ScriptL1Key="bur-page.php"><![CDATA[<?php include(dirname(__DIR__, 1) . "/app/pages/bur-page.php"); ?>]]></CustomScript>
   <Menu MenuID="262" MenuText="notification reads" MenuParentID="-1" MenuGroup="0" MenuSource="" MenuExtUrl="" MenuAnonymous="0" MenuSecurity="" MenuUrl="notification_reads" MenuType="" MenuCustomUrl="0" MenuLevel="0" MenuShow="1" MenuDisplayOrder="100" MenuIconClass="" MenuNavbar="0" />
   <Menu MenuID="9" MenuText="Dashboard" MenuParentID="-1" MenuGroup="0" MenuSource="" MenuExtUrl="" MenuAnonymous="0" MenuSecurity="" MenuUrl="MainDashboard.php" MenuType="" MenuCustomUrl="0" MenuLevel="0" MenuShow="1" MenuDisplayOrder="200" MenuIconClass="fas fa-chart-line" MenuNavbar="0" />
   <Menu MenuID="541" MenuText="COB Preparation" MenuParentID="-1" MenuGroup="0" MenuSource="" MenuExtUrl="" MenuAnonymous="8" MenuSecurity="" MenuUrl="" MenuType="" MenuCustomUrl="1" MenuLevel="0" MenuShow="1" MenuDisplayOrder="300" MenuIconClass="fas fa-file-circle-plus" MenuNavbar="0" />
@@ -2580,6 +2594,7 @@ function Page_Load()
   <Menu MenuID="767" MenuText="Changes in Net Assets/Equity" MenuParentID="552" MenuGroup="0" MenuSource="" MenuExtUrl="" MenuAnonymous="0" MenuSecurity="" MenuUrl="statement-of-changes-page.php" MenuType="" MenuCustomUrl="0" MenuLevel="1" MenuShow="1" MenuDisplayOrder="500" MenuIconClass="" MenuNavbar="0" />
   <Menu MenuID="768" MenuText="Cash Flow" MenuParentID="552" MenuGroup="0" MenuSource="" MenuExtUrl="" MenuAnonymous="0" MenuSecurity="" MenuUrl="cash-flow-page.php" MenuType="" MenuCustomUrl="0" MenuLevel="1" MenuShow="1" MenuDisplayOrder="600" MenuIconClass="" MenuNavbar="0" />
   <Menu MenuID="770" MenuText="Bank Reconciliation" MenuParentID="552" MenuGroup="0" MenuSource="" MenuExtUrl="" MenuAnonymous="0" MenuSecurity="" MenuUrl="bank-reconciliation-page.php" MenuType="" MenuCustomUrl="0" MenuLevel="1" MenuShow="1" MenuDisplayOrder="700" MenuIconClass="" MenuNavbar="0" />
+  <Menu MenuID="871" MenuText="Budget Utilization Report" MenuParentID="552" MenuGroup="0" MenuSource="" MenuExtUrl="" MenuAnonymous="0" MenuSecurity="" MenuUrl="bur-page.php" MenuType="" MenuCustomUrl="0" MenuLevel="1" MenuShow="1" MenuDisplayOrder="800" MenuIconClass="" MenuNavbar="0" />
   <Menu MenuID="394" MenuText="Ledgers" MenuParentID="-1" MenuGroup="0" MenuSource="" MenuExtUrl="" MenuAnonymous="8" MenuSecurity="" MenuUrl="" MenuType="" MenuCustomUrl="1" MenuLevel="0" MenuShow="1" MenuDisplayOrder="1100" MenuIconClass="fas fa-scale-balanced" MenuNavbar="0" />
   <Menu MenuID="393" MenuText="General Ledger" MenuParentID="394" MenuGroup="0" MenuSource="" MenuExtUrl="" MenuAnonymous="0" MenuSecurity="" MenuUrl="general-ledger-page.php" MenuType="" MenuCustomUrl="0" MenuLevel="1" MenuShow="1" MenuDisplayOrder="100" MenuIconClass="" MenuNavbar="0" />
   <Menu MenuID="395" MenuText="Subsidiary Ledger" MenuParentID="394" MenuGroup="0" MenuSource="" MenuExtUrl="" MenuAnonymous="0" MenuSecurity="" MenuUrl="subsidiary-ledger-page.php" MenuType="" MenuCustomUrl="0" MenuLevel="1" MenuShow="0" MenuDisplayOrder="200" MenuIconClass="" MenuNavbar="0" />
