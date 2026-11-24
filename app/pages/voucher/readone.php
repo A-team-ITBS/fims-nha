@@ -1279,17 +1279,12 @@ function vje_renumber() {
 }
 
 /**
- * A Remittance DV from the Remittance List (dv.dv_remit): the month's rate rows (1% … 15% Withholding Tax, each with the Contractors/Suppliers — the vendors — it was
- * withheld from and their amounts) and the voucher-by-voucher schedule of what it pays. '' for any other DV.
+ * A Remittance DV from the Remittance List (dv.dv_remit): the vendor and the voucher-by-voucher schedule of what it pays. '' for any other DV.
  */
 function vr_remitScheduleHtml(dv) {
     const d = dv.dv_remit;
     if (!d) return '';
-    const money = v => Number(v || 0) > 0 ? vr_peso(v) : '-';
-    // one row per rate (its total), then the vendors that rate was withheld from, each with their own amount
-    const rows = (d.breakdown || []).map(b => `<tr style="font-weight:600;"><td>${vr_esc(b.label)}</td><td></td><td style="text-align:right;">${money(b.amount)}</td></tr>` +
-        (b.vendors || []).map(v => `<tr><td></td><td>${vr_esc(v.vendor)}</td><td style="text-align:right;">${vr_peso(v.amount)}</td></tr>`).join('')).join('');
-    // the vouchers this DV pays: each source DV as a row, its ATC lines as its children
+    // the vouchers this DV pays: each source DV with its ATC lines under it
     const groups = [];
     (d.schedule || []).forEach(s => {
         let g = groups.find(x => x.dv_id === s.dv_id);
@@ -1297,14 +1292,31 @@ function vr_remitScheduleHtml(dv) {
         g.total += Number(s.amount || 0);
         g.lines.push(s);
     });
-    const sched = groups.map(g => `<tr style="font-weight:600;"><td class="nha-mono">${vr_esc(g.dv_no)}</td><td>${vr_fmtDate(g.dv_date)}</td><td>${vr_esc(g.vendor)}</td><td></td><td></td><td style="text-align:right;">${vr_peso(g.total)}</td></tr>` +
-        g.lines.map(s => `<tr style="color:var(--afims-text-muted,#62657E);"><td class="nha-mono" style="padding-left:18px;">↳ ${vr_esc(s.atc_code || d.type_name)}</td><td></td><td></td><td style="text-align:right;">${s.rate === null || s.rate === undefined ? '' : vr_esc(Number(s.rate) + '%')}</td><td style="text-align:right;">${vr_peso(s.base)}</td><td style="text-align:right;">${vr_peso(s.amount)}</td></tr>`).join('')).join('');
+    // A Remittance DV is for one vendor: its name is shown once at the top (per voucher only if they ever differ)
+    const oneVendor = groups.length > 0 && groups.every(g => g.vendor === groups[0].vendor);
+    const border = '1px solid var(--afims-border,#E4ECF2)';
+    const th = 'padding:9px 14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--afims-text-muted,#62657E);background:var(--afims-surface-subtle,#F4F7FA);border-bottom:' + border + ';';
+    const td = 'padding:11px 14px;font-size:13px;border-bottom:' + border + ';';
+    const num = "text-align:right;white-space:nowrap;font-family:'IBM Plex Mono',monospace;";
+    const sched = groups.map(g => `<div style="margin-top:14px;">
+            <div style="display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 18px;margin-bottom:8px;">
+                <span><span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--afims-text-muted,#62657E);">DV No.</span> <strong class="nha-mono" style="font-size:14px;">${vr_esc(g.dv_no)}</strong></span>
+                <span><span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--afims-text-muted,#62657E);">Date</span> <strong style="font-size:14px;">${vr_fmtDate(g.dv_date)}</strong></span>
+                ${oneVendor ? '' : `<span style="font-weight:600;">${vr_esc(g.vendor)}</span>`}
+            </div>
+            <div style="overflow-x:auto;border:${border};border-radius:8px;"><table style="width:100%;border-collapse:collapse;">
+                <thead><tr><th style="${th}text-align:left;">ATC</th><th style="${th}text-align:right;">Rate</th><th style="${th}text-align:right;">Tax Base</th><th style="${th}text-align:right;">Withheld</th></tr></thead>
+                <tbody>${g.lines.map(s => `<tr><td style="${td}" class="nha-mono">${vr_esc(s.atc_code || d.type_name)}</td><td style="${td}${num}">${s.rate === null || s.rate === undefined ? '' : vr_esc(Number(s.rate) + '%')}</td><td style="${td}${num}">${vr_peso(s.base)}</td><td style="${td}${num}">${vr_peso(s.amount)}</td></tr>`).join('')}
+                <tr><td colspan="3" style="${td}border-bottom:0;font-weight:700;">Total</td><td style="${td}${num}border-bottom:0;font-weight:700;">${vr_peso(g.total)}</td></tr></tbody>
+            </table></div>
+        </div>`).join('');
     return `<div class="vr-card">
-        <p class="vr-card-title">Remittance of ${vr_esc(d.type_name)} — ${vr_esc(d.period_label)}</p>
-        <table class="vr-doc-table" style="margin-bottom:10px;"><thead><tr><th>Withholding tax</th><th>Contractors/Suppliers</th><th style="text-align:right;">Amount</th></tr></thead><tbody>${rows}
-            <tr style="font-weight:700;"><td>Total</td><td></td><td style="text-align:right;">${vr_peso(d.gross_amount)}</td></tr></tbody></table>
-        <p class="vr-doc-k" style="margin:0 0 4px;">Vouchers paid — ${Number(d.vouchers) || 0} DV(s), ${(d.schedule || []).length} ATC line(s)</p>
-        <div style="overflow-x:auto;"><table class="vr-doc-table"><thead><tr><th>DV No. / ATC</th><th>Date</th><th>Vendor</th><th style="text-align:right;">Rate</th><th style="text-align:right;">Tax Base</th><th style="text-align:right;">Withheld</th></tr></thead><tbody>${sched}</tbody></table></div>
+        ${oneVendor ? `<div style="padding-bottom:14px;border-bottom:${border};">
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--afims-text-muted,#62657E);margin-bottom:4px;">Vendor</div>
+            <div style="font-size:20px;font-weight:700;line-height:1.25;color:var(--afims-heading,#000E3E);">${vr_esc(groups[0].vendor)}</div>
+        </div>` : ''}
+        <p class="vr-card-title" style="margin:14px 0 0;">Vouchers paid — ${Number(d.vouchers) || 0} DV(s), ${(d.schedule || []).length} ATC line(s)</p>
+        ${sched}
     </div>`;
 }
 
