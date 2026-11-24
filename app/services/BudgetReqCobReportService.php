@@ -6,26 +6,34 @@ use PHPMaker2024\FIMS as App;
 use PHPMaker2024\FIMS\DataType;
 
 /**
- * Budget Request "Export to Excel" / "Preview and Print" -> "Per Region" / "Per Program": a real .xlsx (report(),
- * format='xlsx') or PDF (format='pdf', via GlobalService::renderPdf()) for each, built from the budget_req /
- * budget_line_items tables directly (the SAME source readone/budget-req-readone.php's "View as COB" modal reads
- * via BGR_API + '/all') — NOT CobService's Approved-only COB Monitoring data, since this runs from the
- * Budget Request / Budget Proposal list on whatever requests exist, any status, same as the on-screen modal.
- * Both formats share the same model (buildRegion()/buildProgram()) — the xlsx* / html* methods only differ in
- * how that model is laid out (an XlsxWriter sheet vs. a plain HTML table), so they can never disagree on a number.
+ * Budget Request "Export to Excel" / "Preview and Print" -> the layout picker's four modes (self::MODES):
+ * a real .xlsx (report(), format='xlsx') or PDF (format='pdf', via GlobalService::renderPdf()) for each, built
+ * from the budget_req / budget_line_items tables directly (the SAME source readone/budget-req-readone.php's
+ * "View as COB" modal reads via BGR_API + '/all') — NOT CobService's Approved-only COB Monitoring data, since
+ * this runs from the Budget Request / Budget Proposal list on whatever requests exist, any status, same as the
+ * on-screen modal. Both formats share the same model per mode (buildRegion()/buildProgram()/
+ * buildProgramSummary()/buildDetailed()) — the xlsx* / html* methods only differ in how that model is laid out
+ * (an XlsxWriter sheet vs. a plain HTML table), so they can never disagree on a number.
  *
- * Both reports share the SAME structural CO vs. COE split and the SAME three money columns; they differ only in
- * what the CAPITAL OUTLAY section groups by and how deep it goes:
+ * All four reports share the SAME structural CO vs. COE split and the SAME three money columns; they differ only
+ * in what the CAPITAL OUTLAY section groups by and how deep it goes:
  *
  *   "Per Region" (buildRegion/xlsxRegion) — one rolled-up TOTAL row per Region, not a nested tree. Matches the
  *     supplied "per region.xlsx" template; its own huge Program/Sub-Program/Project breakdown per region is NOT
  *     reproduced — see buildRegion()'s own doc comment.
- *   "Per Program" (buildProgram/xlsxProgram) — the full tree: one row per Program, one per Sub-Program under it,
+ *   "Program" (buildProgramSummary/xlsxProgramSummary) — one rolled-up TOTAL row per Program, no Sub-Program/
+ *     Project drill-down. Reached from the picker's "Per Program" card, as the shallower of its two choices.
+ *   "Project" (buildProgram/xlsxProgram) — the full tree: one row per Program, one per Sub-Program under it,
  *     one per Project under that, each indented one level deeper. Matches the supplied "per project.xlsx"
  *     template's row order/labels — its own "AVAILABLE BUDGET" column and its PROGRAM/SUB-PROGRAM/PROJECT rows'
  *     literal text are NOT reproduced: those three rows are read as a style guide for the indentation the real,
  *     dynamic rows below them should use, not as data of their own. No region axis at all — scoped directly by
- *     $scopeRcId, same as everything else here.
+ *     $scopeRcId, same as everything else here. Reached from the picker's "Per Program" card, as the deeper of
+ *     its two choices (these build/xlsx/html method names predate the Project/Program split and kept their
+ *     original names — only the mode key/label changed).
+ *   "Detailed" (buildDetailed/xlsxDetailed) — one level deeper than "Project": each Project's own chart-of-
+ *     accounts line items, and the CORPORATE OPERATING EXPENDITURE section itemized by PS/MOOE/Other group
+ *     instead of just its subtotal.
  *
  * CO vs. COE: budget_line_items.budget_req_project_id IS NOT NULL (tied to a Project) = CO, IS NULL (headless) =
  * COE — the SAME structural rule BudgetReqService itself uses to split a header's lines into its programs/projects
@@ -216,14 +224,23 @@ class BudgetReqCobReportService
         }
     }
 
-    /** The one "Print COB" entry point both report modes go through — see MODES below. */
+    /** The one "Print COB" entry point every report mode goes through — see MODES below. */
     private const MODES = [
         'region' => ['label' => 'Per Region', 'build' => 'buildRegion', 'xlsx' => 'xlsxRegion', 'html' => 'htmlRegion'],
-        'program' => ['label' => 'Per Program', 'build' => 'buildProgram', 'xlsx' => 'xlsxProgram', 'html' => 'htmlProgram'],
+        // 'Project' — Program -> Sub-Program -> Project tree, stopping at the project total. Reuses
+        // buildProgram()/xlsxProgram()/htmlProgram() as-is (these predate the Project/Program split and were
+        // originally labelled "Per Program" — the method names stayed, only this mode key/label changed).
+        'project' => ['label' => 'Project', 'build' => 'buildProgram', 'xlsx' => 'xlsxProgram', 'html' => 'htmlProgram'],
+        // 'Program' — one rolled-up total row per Program, no Sub-Program/Project drill-down.
+        'program' => ['label' => 'Program', 'build' => 'buildProgramSummary', 'xlsx' => 'xlsxProgramSummary', 'html' => 'htmlProgramSummary'],
+        // 'Detailed' — one level deeper than 'project': each Project's own chart-of-accounts line items, and
+        // the CORPORATE OPERATING EXPENDITURE section itemized (PS/MOOE/Other groups of line items) instead of
+        // just their subtotal.
+        'detailed' => ['label' => 'Detailed', 'build' => 'buildDetailed', 'xlsx' => 'xlsxDetailed', 'html' => 'htmlDetailed'],
     ];
 
     /**
-     * @param string $mode   'region' or 'program' — see MODES above
+     * @param string $mode   one of self::MODES ('region', 'project', 'program', 'detailed')
      * @param string $format 'xlsx' (default — "Export to Excel") or 'pdf' ("Preview and Print": rendered via
      *                       GlobalService::renderPdf(), same model/rows as the xlsx — see htmlRegion()/htmlProgram())
      *
@@ -443,6 +460,310 @@ class BudgetReqCobReportService
     }
 
     // -------------------------------------------------------------------------
+    // Program (program-level totals only) — model
+    // -------------------------------------------------------------------------
+
+    /**
+     * Same CAPITAL OUTLAY / CORPORATE OPERATING EXPENDITURE split as buildRegion()/buildProgram(), but the
+     * CAPITAL OUTLAY section rolls each Program up to a single total row — no Sub-Program/Project drill-down
+     * (that's 'project' mode, buildProgram() above, reused as-is under its own mode key).
+     *
+     * @param string $fiscalYr '' = every fiscal year
+     * @param string $scopeRcId the RC the caller is limited to ('' = every RC) — same convention as buildRegion()
+     *
+     * @return array{success: bool, data?: array, httpCode?: int, message?: string}
+     */
+    public function buildProgramSummary(string $fiscalYr = '', string $scopeRcId = ''): array
+    {
+        try {
+            $fy = trim($fiscalYr) !== '' ? (int) $fiscalYr : null;
+            $scopeIds = trim($scopeRcId) !== '' ? (GlobalService::getRcIdsInScope($scopeRcId) ?: [$scopeRcId]) : null;
+
+            $fyWhere = $fy !== null ? ' AND br.fiscal_yr = '.$fy : '';
+            $scopeWhere = $scopeIds !== null ? ' AND br.rc_id IN ('.self::inList($scopeIds).')' : '';
+
+            $rows = App\ExecuteRows(
+                "SELECT brp.program_code, pg.program_name,
+                        COALESCE(SUM(li.proposed_amount), 0) AS proposed,
+                        COALESCE(SUM(li.suggested_amount), 0) AS approved,
+                        COALESCE(SUM(li.revised_amount), 0) AS amended
+                 FROM {$this->tableLineItems} li
+                 JOIN {$this->tableBudgetReqProject} bprj ON bprj.budget_req_project_id = li.budget_req_project_id
+                 JOIN {$this->tableBudgetReqProgram} brp ON brp.budget_req_program_id = bprj.budget_req_program_id
+                 JOIN {$this->tableBudgetReq} br ON br.budget_reference_number = brp.budget_reference_number
+                 LEFT JOIN {$this->tableProgram} pg ON pg.program_code = brp.program_code
+                 WHERE li.budget_req_project_id IS NOT NULL{$fyWhere}{$scopeWhere}
+                 GROUP BY brp.program_code, pg.program_name
+                 ORDER BY brp.program_code ASC NULLS LAST",
+                'DB'
+            ) ?: [];
+
+            $programRows = [];
+            $coTotal = self::zero();
+            foreach ($rows as $row) {
+                $progCode = (string) ($row['program_code'] ?? '');
+                $a = self::amt($row);
+                $programRows[] = ['label' => (string) ($row['program_name'] ?: ($progCode !== '' ? $progCode : 'No Program'))] + $a;
+                foreach (['proposed', 'approved', 'amended'] as $k) {
+                    $coTotal[$k] += $a[$k];
+                }
+            }
+
+            $coe = $this->coeBreakdown($fyWhere, $scopeWhere);
+            $grand = [
+                'proposed' => $coTotal['proposed'] + $coe['total']['proposed'],
+                'approved' => $coTotal['approved'] + $coe['total']['approved'],
+                'amended' => $coTotal['amended'] + $coe['total']['amended'],
+            ];
+
+            return ['success' => true, 'data' => [
+                'fiscal_yr' => $fy,
+                'generated' => date('F j, Y'),
+                'grand' => $grand,
+                'co_total' => $coTotal,
+                'coe_total' => $coe['total'],
+                'programs' => $programRows,
+                'ps' => $coe['ps'],
+                'mooe' => $coe['mooe'],
+            ]];
+        } catch (\Throwable $e) {
+            App\LogError('BudgetReqCobReportService::buildProgramSummary '.$e->getMessage());
+
+            return ['success' => false, 'httpCode' => 500, 'message' => 'Failed to build the Program report.'];
+        }
+    }
+
+    /** Same shape as xlsxRegion() — one row per Program instead of per Region. */
+    public function xlsxProgramSummary(array $m): string
+    {
+        $x = new XlsxWriter('Program');
+        [$s, $amountRow] = $this->xlsxCommon($x);
+
+        $s['label'] = $x->style(['font' => $this->font(), 'border' => self::LINE, 'align' => ['h' => 'left', 'v' => 'center', 'indent' => 1]]);
+        $s['labelChild'] = $x->style(['font' => $this->font(), 'border' => self::LINE, 'align' => ['h' => 'left', 'v' => 'center', 'indent' => 2]]);
+        $s['num'] = $x->style(['font' => $this->font(), 'border' => self::LINE, 'align' => ['h' => 'right', 'v' => 'center'], 'numFmt' => self::NUM_FMT]);
+
+        $r = $this->xlsxHeader($x, $m, $s);
+
+        $amountRow($r, 'TOTAL', $m['grand'], $s['totalLabel'], $s['totalNum']);
+        $amountRow($r, 'CAPITAL OUTLAY', $m['co_total'], $s['labelBold'], $s['numBold']);
+        foreach ($m['programs'] as $prog) {
+            $amountRow($r, $prog['label'], $prog, $s['label'], $s['num']);
+        }
+        $amountRow($r, 'CORPORATE OPERATING EXPENDITURE', $m['coe_total'], $s['labelBold'], $s['numBold']);
+        $amountRow($r, 'Personnel Services', $m['ps'], $s['labelChild'], $s['num']);
+        $amountRow($r, 'MOOE', $m['mooe'], $s['labelChild'], $s['num']);
+
+        $this->xlsxColWidths($x, 48);
+
+        return $x->render();
+    }
+
+    // -------------------------------------------------------------------------
+    // Detailed (full line items / chart of accounts) — model
+    // -------------------------------------------------------------------------
+
+    /**
+     * Same Program -> Sub-Program -> Project tree as buildProgram(), one level deeper: each Project's own
+     * line items (chart-of-accounts code + title, and its three amounts), not just the Project's rolled-up
+     * total. The CORPORATE OPERATING EXPENDITURE section is itemized the same way — every headless line,
+     * under its own Personnel Services / MOOE / Other group — instead of just the PS/MOOE subtotal
+     * buildRegion()/buildProgram() show.
+     *
+     * @param string $fiscalYr '' = every fiscal year
+     * @param string $scopeRcId the RC the caller is limited to ('' = every RC) — same convention as buildRegion()
+     *
+     * @return array{success: bool, data?: array, httpCode?: int, message?: string}
+     */
+    public function buildDetailed(string $fiscalYr = '', string $scopeRcId = ''): array
+    {
+        try {
+            $fy = trim($fiscalYr) !== '' ? (int) $fiscalYr : null;
+            $scopeIds = trim($scopeRcId) !== '' ? (GlobalService::getRcIdsInScope($scopeRcId) ?: [$scopeRcId]) : null;
+
+            $fyWhere = $fy !== null ? ' AND br.fiscal_yr = '.$fy : '';
+            $scopeWhere = $scopeIds !== null ? ' AND br.rc_id IN ('.self::inList($scopeIds).')' : '';
+
+            // CO: one row per line item, carrying its Program/Sub-Program/Project AND its own account code/title.
+            $rows = App\ExecuteRows(
+                "SELECT brp.program_code, pg.program_name,
+                        brp.sub_program_code, sp.sub_program_name,
+                        bprj.project_code, pj.project_name,
+                        coa.account_code, coa.account_title,
+                        li.proposed_amount, li.suggested_amount, li.revised_amount
+                 FROM {$this->tableLineItems} li
+                 JOIN {$this->tableBudgetReqProject} bprj ON bprj.budget_req_project_id = li.budget_req_project_id
+                 JOIN {$this->tableBudgetReqProgram} brp ON brp.budget_req_program_id = bprj.budget_req_program_id
+                 JOIN {$this->tableBudgetReq} br ON br.budget_reference_number = brp.budget_reference_number
+                 LEFT JOIN {$this->tableProgram} pg ON pg.program_code = brp.program_code
+                 LEFT JOIN {$this->tableSubProgram} sp ON sp.sub_program_code = brp.sub_program_code
+                 LEFT JOIN {$this->tableProject} pj ON pj.project_code = bprj.project_code
+                 LEFT JOIN fims.chart_of_accounts coa ON coa.account_id = li.account_id
+                 WHERE li.budget_req_project_id IS NOT NULL{$fyWhere}{$scopeWhere}
+                 ORDER BY brp.program_code ASC NULLS LAST, brp.sub_program_code ASC NULLS LAST,
+                          bprj.project_code ASC NULLS LAST, coa.account_code ASC NULLS LAST",
+                'DB'
+            ) ?: [];
+
+            $programs = [];
+            foreach ($rows as $row) {
+                $progCode = (string) ($row['program_code'] ?? '');
+                $subCode = (string) ($row['sub_program_code'] ?? '');
+                $projCode = (string) ($row['project_code'] ?? '');
+                $amt = [
+                    'proposed' => (float) $row['proposed_amount'],
+                    'approved' => (float) $row['suggested_amount'],
+                    'amended' => (float) $row['revised_amount'],
+                ];
+
+                if (!isset($programs[$progCode])) {
+                    $programs[$progCode] = [
+                        'label' => (string) ($row['program_name'] ?: ($progCode !== '' ? $progCode : 'No Program')),
+                    ] + self::zero() + ['subPrograms' => []];
+                }
+                if (!isset($programs[$progCode]['subPrograms'][$subCode])) {
+                    $programs[$progCode]['subPrograms'][$subCode] = [
+                        'label' => (string) ($row['sub_program_name'] ?: ($subCode !== '' ? $subCode : 'No Sub-Program')),
+                    ] + self::zero() + ['projects' => []];
+                }
+                if (!isset($programs[$progCode]['subPrograms'][$subCode]['projects'][$projCode])) {
+                    $programs[$progCode]['subPrograms'][$subCode]['projects'][$projCode] = [
+                        'label' => (string) ($row['project_name'] ?: ($projCode !== '' ? $projCode : 'Untitled Project')),
+                    ] + self::zero() + ['lineItems' => []];
+                }
+
+                $accountCode = (string) ($row['account_code'] ?? '');
+                $accountTitle = (string) ($row['account_title'] ?? '');
+                $lineLabel = trim($accountCode.' '.$accountTitle) !== '' ? trim($accountCode.' — '.$accountTitle) : 'Unassigned Account';
+                $programs[$progCode]['subPrograms'][$subCode]['projects'][$projCode]['lineItems'][] = ['label' => $lineLabel] + $amt;
+
+                foreach (['proposed', 'approved', 'amended'] as $k) {
+                    $programs[$progCode][$k] += $amt[$k];
+                    $programs[$progCode]['subPrograms'][$subCode][$k] += $amt[$k];
+                    $programs[$progCode]['subPrograms'][$subCode]['projects'][$projCode][$k] += $amt[$k];
+                }
+            }
+
+            $programRows = [];
+            $coTotal = self::zero();
+            foreach ($programs as $p) {
+                $subPrograms = [];
+                foreach ($p['subPrograms'] as $sub) {
+                    $sub['projects'] = array_values($sub['projects']);
+                    $subPrograms[] = $sub;
+                }
+                $p['subPrograms'] = $subPrograms;
+                $programRows[] = $p;
+                foreach (['proposed', 'approved', 'amended'] as $k) {
+                    $coTotal[$k] += $p[$k];
+                }
+            }
+
+            // COE: every headless line, itemized, grouped PS / MOOE / Other (same account-code prefix rule as coeBreakdown()).
+            $coeRows = App\ExecuteRows(
+                "SELECT CASE WHEN coa.account_code LIKE '5-01%' THEN 'PS' WHEN coa.account_code LIKE '5-02%' THEN 'MOOE' ELSE 'OTHER' END AS cls,
+                        coa.account_code, coa.account_title,
+                        li.proposed_amount, li.suggested_amount, li.revised_amount
+                 FROM {$this->tableLineItems} li
+                 JOIN {$this->tableBudgetReq} br ON br.budget_reference_number = li.budget_reference_number
+                 LEFT JOIN fims.chart_of_accounts coa ON coa.account_id = li.account_id
+                 WHERE li.budget_req_project_id IS NULL{$fyWhere}{$scopeWhere}
+                 ORDER BY cls ASC, coa.account_code ASC NULLS LAST",
+                'DB'
+            ) ?: [];
+
+            $coeGroups = ['PS' => self::zero() + ['items' => []], 'MOOE' => self::zero() + ['items' => []], 'OTHER' => self::zero() + ['items' => []]];
+            $coeTotal = self::zero();
+            foreach ($coeRows as $row) {
+                $cls = (string) ($row['cls'] ?? 'OTHER');
+                if (!isset($coeGroups[$cls])) {
+                    $cls = 'OTHER';
+                }
+                $amt = [
+                    'proposed' => (float) $row['proposed_amount'],
+                    'approved' => (float) $row['suggested_amount'],
+                    'amended' => (float) $row['revised_amount'],
+                ];
+                $accountCode = (string) ($row['account_code'] ?? '');
+                $accountTitle = (string) ($row['account_title'] ?? '');
+                $lineLabel = trim($accountCode.' '.$accountTitle) !== '' ? trim($accountCode.' — '.$accountTitle) : 'Unassigned Account';
+                $coeGroups[$cls]['items'][] = ['label' => $lineLabel] + $amt;
+                foreach (['proposed', 'approved', 'amended'] as $k) {
+                    $coeGroups[$cls][$k] += $amt[$k];
+                    $coeTotal[$k] += $amt[$k];
+                }
+            }
+
+            $grand = [
+                'proposed' => $coTotal['proposed'] + $coeTotal['proposed'],
+                'approved' => $coTotal['approved'] + $coeTotal['approved'],
+                'amended' => $coTotal['amended'] + $coeTotal['amended'],
+            ];
+
+            return ['success' => true, 'data' => [
+                'fiscal_yr' => $fy,
+                'generated' => date('F j, Y'),
+                'grand' => $grand,
+                'co_total' => $coTotal,
+                'coe_total' => $coeTotal,
+                'programs' => $programRows,
+                'coe_groups' => $coeGroups,
+            ]];
+        } catch (\Throwable $e) {
+            App\LogError('BudgetReqCobReportService::buildDetailed '.$e->getMessage());
+
+            return ['success' => false, 'httpCode' => 500, 'message' => 'Failed to build the Detailed report.'];
+        }
+    }
+
+    /** One level deeper than xlsxProgram() — a 4th indent level for each Project's own line items, and the
+     *  CORPORATE OPERATING EXPENDITURE section itemized (PS/MOOE/Other groups, each followed by its own lines)
+     *  instead of just a PS/MOOE subtotal row. A group with no lines is skipped entirely. */
+    public function xlsxDetailed(array $m): string
+    {
+        $x = new XlsxWriter('Detailed');
+        [$s, $amountRow] = $this->xlsxCommon($x);
+
+        $sLabelLvl = [];
+        foreach ([1, 2, 3, 4] as $lvl) {
+            $sLabelLvl[$lvl] = $x->style(['font' => $this->font(), 'border' => self::LINE, 'align' => ['h' => 'left', 'v' => 'center', 'indent' => $lvl]]);
+        }
+        $sNum = $x->style(['font' => $this->font(), 'border' => self::LINE, 'align' => ['h' => 'right', 'v' => 'center'], 'numFmt' => self::NUM_FMT]);
+
+        $r = $this->xlsxHeader($x, $m, $s);
+
+        $amountRow($r, 'TOTAL', $m['grand'], $s['totalLabel'], $s['totalNum']);
+        $amountRow($r, 'CAPITAL OUTLAY', $m['co_total'], $s['labelBold'], $s['numBold']);
+        foreach ($m['programs'] as $prog) {
+            $amountRow($r, $prog['label'], $prog, $sLabelLvl[1], $sNum);
+            foreach ($prog['subPrograms'] as $sub) {
+                $amountRow($r, $sub['label'], $sub, $sLabelLvl[2], $sNum);
+                foreach ($sub['projects'] as $proj) {
+                    $amountRow($r, $proj['label'], $proj, $sLabelLvl[3], $sNum);
+                    foreach ($proj['lineItems'] as $li) {
+                        $amountRow($r, $li['label'], $li, $sLabelLvl[4], $sNum);
+                    }
+                }
+            }
+        }
+        $amountRow($r, 'CORPORATE OPERATING EXPENDITURE', $m['coe_total'], $s['labelBold'], $s['numBold']);
+        foreach (['PS' => 'Personnel Services', 'MOOE' => 'MOOE', 'OTHER' => 'Other'] as $key => $groupLabel) {
+            $group = $m['coe_groups'][$key] ?? null;
+            if (!$group || !$group['items']) {
+                continue;
+            }
+            $amountRow($r, $groupLabel, $group, $sLabelLvl[2], $sNum);
+            foreach ($group['items'] as $li) {
+                $amountRow($r, $li['label'], $li, $sLabelLvl[3], $sNum);
+            }
+        }
+
+        $this->xlsxColWidths($x, 60);
+
+        return $x->render();
+    }
+
+    // -------------------------------------------------------------------------
     // HTML ("Preview and Print" → PDF, via GlobalService::renderPdf()) — same
     // models (buildRegion()/buildProgram()) and the same TOTAL / CAPITAL OUTLAY /
     // CORPORATE OPERATING EXPENDITURE structure as the xlsx versions above, just
@@ -476,7 +797,9 @@ class BudgetReqCobReportService
             . '<td' . $style . '>' . self::esc($label) . '</td>'
             . '<td class="n">' . self::fmtAmt($a['proposed']) . '</td>'
             . '<td class="n">' . self::fmtAmt($a['approved']) . '</td>'
-            . '<td class="n">' . self::fmtAmt($a['amended']) . '</td>'
+            // TEMP: Amended Amount column hidden for now — uncomment this line (together with the
+            // "Amended Amount" <th> in htmlDoc()) to restore it.
+            // . '<td class="n">' . self::fmtAmt($a['amended']) . '</td>'
             . '</tr>';
     }
 
@@ -502,7 +825,11 @@ class BudgetReqCobReportService
             . '</style></head><body>'
             . '<h1>' . self::esc($title) . ' — National Housing Authority</h1>'
             . '<p class="meta">' . self::esc($dateLine) . ' &nbsp;|&nbsp; Generated ' . self::esc($m['generated']) . '</p>'
-            . '<table><thead><tr><th>Region/Program/Project</th><th class="n">Proposed Amount</th><th class="n">Approved Amount</th><th class="n">Amended Amount</th></tr></thead>'
+            . '<table><thead><tr><th>Region/Program/Project</th><th class="n">Proposed Amount</th><th class="n">Approved Amount</th>'
+            // TEMP: Amended Amount column hidden for now — uncomment the next line (together with the
+            // amended <td> in htmlRow()) to restore it.
+            // . '<th class="n">Amended Amount</th>'
+            . '</tr></thead>'
             . '<tbody>' . $bodyRows . '</tbody></table>'
             . '</body></html>';
     }
@@ -541,6 +868,54 @@ class BudgetReqCobReportService
         return $this->htmlDoc('Per Program', $m, $rows);
     }
 
+    /** Same shape as htmlRegion() — one row per Program instead of per Region. */
+    public function htmlProgramSummary(array $m): string
+    {
+        $rows = self::htmlRow('TOTAL', $m['grand'], 0, true, true)
+            . self::htmlRow('CAPITAL OUTLAY', $m['co_total'], 0, true);
+        foreach ($m['programs'] as $prog) {
+            $rows .= self::htmlRow($prog['label'], $prog, 1);
+        }
+        $rows .= self::htmlRow('CORPORATE OPERATING EXPENDITURE', $m['coe_total'], 0, true)
+            . self::htmlRow('Personnel Services', $m['ps'], 1)
+            . self::htmlRow('MOOE', $m['mooe'], 1);
+
+        return $this->htmlDoc('Program', $m, $rows);
+    }
+
+    /** Same tree as htmlProgram(), one level deeper (each Project's own line items), and the CORPORATE
+     *  OPERATING EXPENDITURE section itemized by PS/MOOE/Other group instead of just its subtotal. */
+    public function htmlDetailed(array $m): string
+    {
+        $rows = self::htmlRow('TOTAL', $m['grand'], 0, true, true)
+            . self::htmlRow('CAPITAL OUTLAY', $m['co_total'], 0, true);
+        foreach ($m['programs'] as $prog) {
+            $rows .= self::htmlRow($prog['label'], $prog, 1);
+            foreach ($prog['subPrograms'] as $sub) {
+                $rows .= self::htmlRow($sub['label'], $sub, 2);
+                foreach ($sub['projects'] as $proj) {
+                    $rows .= self::htmlRow($proj['label'], $proj, 3);
+                    foreach ($proj['lineItems'] as $li) {
+                        $rows .= self::htmlRow($li['label'], $li, 4);
+                    }
+                }
+            }
+        }
+        $rows .= self::htmlRow('CORPORATE OPERATING EXPENDITURE', $m['coe_total'], 0, true);
+        foreach (['PS' => 'Personnel Services', 'MOOE' => 'MOOE', 'OTHER' => 'Other'] as $key => $groupLabel) {
+            $group = $m['coe_groups'][$key] ?? null;
+            if (!$group || !$group['items']) {
+                continue;
+            }
+            $rows .= self::htmlRow($groupLabel, $group, 2);
+            foreach ($group['items'] as $li) {
+                $rows .= self::htmlRow($li['label'], $li, 3);
+            }
+        }
+
+        return $this->htmlDoc('Detailed', $m, $rows);
+    }
+
     // -------------------------------------------------------------------------
     // Shared xlsx() plumbing
     // -------------------------------------------------------------------------
@@ -574,7 +949,9 @@ class BudgetReqCobReportService
             $x->set($r, 0, $label, $labelStyle);
             $x->set($r, 1, $a['proposed'], $numStyle);
             $x->set($r, 2, $a['approved'], $numStyle);
-            $x->set($r, 3, $a['amended'], $numStyle);
+            // TEMP: Amended Amount column hidden for now — uncomment this line (together with the
+            // "AMENDED AMOUNT" header in xlsxHeader()) to restore it.
+            // $x->set($r, 3, $a['amended'], $numStyle);
             $r++;
         };
 
@@ -588,10 +965,12 @@ class BudgetReqCobReportService
         $x->set($r, 0, $m['fiscal_yr'] !== null ? 'FY '.$m['fiscal_yr'].'   |   '.$m['generated'] : 'All Fiscal Years   |   '.$m['generated'], $s['date']);
         $x->set($r, 1, 'PROPOSED AMOUNT', $s['th']);
         $x->set($r, 2, 'APPROVED AMOUNT', $s['th']);
-        $x->set($r, 3, 'AMENDED AMOUNT', $s['th']);
+        // TEMP: Amended Amount column hidden for now — uncomment these two lines (together with the
+        // amountRow() closure's $a['amended'] write in xlsxCommon()) to restore it.
+        // $x->set($r, 3, 'AMENDED AMOUNT', $s['th']);
+        // $x->merge($r, 3, $r + 1, 3);
         $x->merge($r, 1, $r + 1, 1);
         $x->merge($r, 2, $r + 1, 2);
-        $x->merge($r, 3, $r + 1, 3);
         $x->rowHeight($r, 20);
         $r++;
 
@@ -610,6 +989,8 @@ class BudgetReqCobReportService
         $x->colWidth(0, $labelWidth);
         $x->colWidth(1, 20);
         $x->colWidth(2, 20);
-        $x->colWidth(3, 20);
+        // TEMP: Amended Amount column hidden for now — uncomment together with the rest of the
+        // "Amended Amount" column (see xlsxHeader()/xlsxCommon()'s amountRow()) to restore it.
+        // $x->colWidth(3, 20);
     }
 }

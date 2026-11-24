@@ -3,12 +3,18 @@
 namespace PHPMaker2024\FIMS;
 
 /**
- * bur-page.php — Budget Utilization Report (BUR): UI-only first pass.
+ * bur-page.php — Budget Utilization Report (BUR).
  *
- * Rows are the real Chart of Accounts tree (account_code / account_title / parent_account_id), fetched the same way
- * chart-of-accounts-page.php does (GET /chart-of-accounts/all). Every money column (Approved Budget, Realigned Budget,
- * Increase (Decrease), Utilization, Balance, Payment, Accounts Payable) is a hardcoded 0 — no computation yet. Those
- * get wired up once the budget-utilization figures are available.
+ * Personal Services (chart-of-accounts '5-01') and Maintenance and Other Operating Expenses ('5-02'),
+ * rolled up from every APPROVED budget request's line items — GET /bur/rollup (BurService.php, routed
+ * in app/routes/bur.php). Only chart-of-accounts codes that actually carry approved budget (directly or
+ * through a descendant) come back — a code with none is filtered out server-side, never fetched by this
+ * page. The two roots, "5-01 Personal Services" and "5-02 Maintenance and Other Operating Expenses",
+ * come back with no parent of their own, so they render as the tree's top-level rows (same account_id /
+ * account_code / account_title / parent_account_id shape chart-of-accounts-page.php's tree uses).
+ *
+ * Fiscal Year is the one filter (GET /bur/filters for its options), same pattern as cob-page.php: the
+ * page opens on the newest year that has approved data.
  */
 @session_start();
 $_bur_api = Config('API.FIMS_URL');
@@ -19,6 +25,9 @@ $_bur_api = Config('API.FIMS_URL');
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="<?php echo GetUrl('_shared/css/nha-fims.css'); ?>?v=<?php echo @filemtime(dirname(__DIR__, 2).'/_shared/css/nha-fims.css'); ?>" />
 <style>
+#bur-root #bur-table { table-layout: fixed; }
+#bur-root #bur-table .bur-name span { overflow-wrap: break-word; }
+
 #bur-root .nha-summary { grid-template-columns: repeat(4, 1fr); }
 @media (max-width: 900px) { #bur-root .nha-summary { grid-template-columns: repeat(2, 1fr); } }
 
@@ -35,6 +44,7 @@ $_bur_api = Config('API.FIMS_URL');
 #bur-root .bur-toggle svg { pointer-events: none; transition: transform .15s; }
 #bur-root .bur-toggle-spacer { display: inline-block; width: 20px; flex-shrink: 0; }
 #bur-root .bur-d0 > td { background: var(--afims-surface-subtle, #F4F7FA); font-weight: 700; }
+#bur-root .bur-neg { color: #dc2626; }
 </style>
 
 <div id="bur-root" class="nha-root">
@@ -50,7 +60,7 @@ $_bur_api = Config('API.FIMS_URL');
             </div>
             <div>
                 <div class="nha-hdr-title">Budget Utilization Report (BUR)</div>
-                <p class="nha-hdr-sub">Expense classification against the Chart of Accounts — figures pending.</p>
+                <p class="nha-hdr-sub">Personal Services and Maintenance and Other Operating Expenses — approved budget and how much of it has been used.</p>
             </div>
         </div>
         <div class="nha-hdr-r">
@@ -61,41 +71,45 @@ $_bur_api = Config('API.FIMS_URL');
         </div>
     </div>
 
-    <!-- ── KPI CARDS (placeholders — no figures computed yet) ── -->
+    <!-- ── KPI CARDS (the grand totals — the two roots' figures) ── -->
     <div class="nha-summary">
         <div class="nha-sc nha-sc-navy">
             <div class="nha-sc-top"><div>
                 <div class="nha-sc-label">Approved Budget</div>
-                <div class="nha-sc-val">₱ 0.00</div>
+                <div class="nha-sc-val" id="bur-kpi-approved">—</div>
             </div></div>
-            <p class="nha-kpi-sub">Not yet computed</p>
+            <p class="nha-kpi-sub">Matches current filters</p>
         </div>
         <div class="nha-sc nha-sc-teal">
             <div class="nha-sc-top"><div>
                 <div class="nha-sc-label">Realigned Budget</div>
-                <div class="nha-sc-val">₱ 0.00</div>
+                <div class="nha-sc-val" id="bur-kpi-realigned">—</div>
             </div></div>
-            <p class="nha-kpi-sub">Not yet computed</p>
+            <p class="nha-kpi-sub">Approved Budget net of Increase (Decrease)</p>
         </div>
         <div class="nha-sc nha-sc-green">
             <div class="nha-sc-top"><div>
                 <div class="nha-sc-label">Utilization</div>
-                <div class="nha-sc-val">₱ 0.00</div>
+                <div class="nha-sc-val" id="bur-kpi-utilization">—</div>
             </div></div>
-            <p class="nha-kpi-sub">Not yet computed</p>
+            <p class="nha-kpi-sub">What approved RFAs / LAAs have drawn</p>
         </div>
         <div class="nha-sc nha-sc-amber">
             <div class="nha-sc-top"><div>
                 <div class="nha-sc-label">Balance</div>
-                <div class="nha-sc-val">₱ 0.00</div>
+                <div class="nha-sc-val" id="bur-kpi-balance">—</div>
             </div></div>
-            <p class="nha-kpi-sub">Not yet computed</p>
+            <p class="nha-kpi-sub">Realigned Budget less what is held and drawn</p>
         </div>
     </div>
 
     <!-- ── FILTERS ────────────────────────────────────────── -->
     <div class="nha-filters no-print">
         <div class="nha-filter-row">
+            <div class="nha-filter-group">
+                <label class="nha-filter-label" for="bur-f-fy">Fiscal Year</label>
+                <select id="bur-f-fy" class="nha-filter-select"><option value="">All Years</option></select>
+            </div>
             <div class="nha-filter-group nha-filter-group-search">
                 <label class="nha-filter-label">Search</label>
                 <div class="nha-filter-search-wrap">
@@ -122,8 +136,8 @@ $_bur_api = Config('API.FIMS_URL');
             <table class="nha-tbl" id="bur-table">
                 <thead>
                     <tr>
-                        <th style="min-width:280px;">Expense Classification (NGAS)</th>
-                        <th>Acct. Code</th>
+                        <th style="width:280px;">Expense Classification (NGAS)</th>
+                        <th style="width:110px;">Acct. Code</th>
                         <th class="text-right">Approved Budget</th>
                         <th class="text-right">Realigned Budget</th>
                         <th class="text-right">Increase (Decrease)</th>
@@ -144,46 +158,101 @@ $_bur_api = Config('API.FIMS_URL');
 
 <script>
 /* ══════════════════════════════════════════════════════════════
-   BUDGET UTILIZATION REPORT (BUR)   prefix: bur_   (UI-only pass)
+   BUDGET UTILIZATION REPORT (BUR)   prefix: bur_   (read-only)
+   Backed by BurService → app/routes/bur.php:
+     GET /bur/filters   the Fiscal Year drop-down's options (years that have approved PS / MOOE budget)
+     GET /bur/rollup?fiscal_yr=   the report: one row per chart-of-accounts code that carries approved
+                                  budget, plus the grand totals (the KPI cards) — fiscal_yr omitted = every year.
 
-   Rows: the real Chart of Accounts tree (GET /chart-of-accounts/all — same endpoint and account_id / account_code /
-   account_title / parent_account_id shape as chart-of-accounts-page.php). Every money column below is hardcoded to 0
-   — Approved Budget, Realigned Budget, Increase (Decrease), Utilization, Balance, Payment, Accounts Payable all need
-   their own computation, wired up later.
+   Rows: a chart-of-accounts tree (account_id / account_code / account_title / parent_account_id, same
+   shape chart-of-accounts-page.php uses), but only the codes that actually carry approved PS (5-01) /
+   MOOE (5-02) budget — BurService filters that server-side, so a code with none is never in bur_rows.
+   The seven amount columns per row (see BurService's class doc for what each means):
+     approved_amount   -> Approved Budget         revision_amount -> Increase (Decrease)
+     revised_amount    -> Realigned Budget         utilization     -> Utilization
+     balance           -> Balance                 payment         -> Payment
+     account_payable   -> Accounts Payable
 ═══════════════════════════════════════════════════════════════ */
 
-const BUR_API = '<?php echo $_bur_api; ?>' + '/chart-of-accounts';
+const BUR_API = '<?php echo $_bur_api; ?>' + '/bur';
 const $bur = id => document.getElementById(id);
+// the table's amount columns, in the order the header lists them (left to right)
+const BUR_COLS = ['approved_amount', 'revised_amount', 'revision_amount', 'utilization', 'balance', 'payment', 'account_payable'];
+const BUR_FY_STORE = 'bur.fiscalYr';
 
 let bur_rows = [];
+let bur_totals = null;
 let bur_collapsed = new Set();
 let bur_search = '';
+let bur_fiscalYr = '';
+let bur_defaultFiscalYr = '';
 
 function bur_esc(s) {
     return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 function bur_fmtPeso(v) {
-    return '₱ ' + (Number(v) || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const n = Number(v) || 0;
+    const sign = n < 0 ? '-' : '';
+    return `${sign}₱ ${Math.abs(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+function bur_cell(v) {
+    const n = Number(v) || 0;
+    return Math.abs(n) < 0.005 ? bur_fmtPeso(0) : `<span class="${n < 0 ? 'bur-neg' : ''}">${bur_fmtPeso(n)}</span>`;
+}
+function bur_amountCells(o) {
+    return BUR_COLS.map(k => `<td class="nha-mono text-right">${bur_cell(o?.[k])}</td>`).join('');
 }
 
-/* ── Load (real accounts; the money columns next to them are always 0) ── */
+/* ── Fiscal Year filter ── */
+async function bur_loadFilterOptions(first) {
+    const res = await fetch(`${BUR_API}/filters`, { credentials: 'same-origin' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const json = await res.json();
+    if (!json.success) throw new Error(json.message || 'Failed to load filters.');
+
+    const years = json.data?.fiscal_years ?? [];
+    const sel = $bur('bur-f-fy'), keep = sel.value;
+    sel.innerHTML = '<option value="">All Years</option>' + years.map(y => `<option value="${y}">${y}</option>`).join('');
+    bur_defaultFiscalYr = years.length ? String(years[0]) : '';
+    if (first) {
+        let stored = '';
+        try { stored = localStorage.getItem(BUR_FY_STORE) || ''; } catch (e) { /* storage may be blocked */ }
+        sel.value = stored && years.some(y => String(y) === stored) ? stored : bur_defaultFiscalYr;
+    } else {
+        sel.value = [...sel.options].some(o => o.value === keep) ? keep : '';
+    }
+    bur_fiscalYr = sel.value;
+}
+
+/* ── Load ── */
 async function bur_load() {
     window.PagePreloader?.show();
     $bur('bur-tbody').innerHTML = '<tr><td colspan="9"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>';
     try {
-        const res = await fetch(`${BUR_API}/all`, { credentials: 'same-origin' });
+        const qs = bur_fiscalYr ? `?${new URLSearchParams({ fiscal_yr: bur_fiscalYr })}` : '';
+        const res = await fetch(`${BUR_API}/rollup${qs}`, { credentials: 'same-origin' });
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const json = await res.json();
-        if (!json.success) throw new Error(json.message || 'Failed to load accounts.');
+        if (!json.success) throw new Error(json.message || 'Failed to load the report.');
 
         bur_rows = json.data ?? [];
+        bur_totals = json.totals ?? null;
+        bur_renderSummary();
         bur_render();
     } catch (e) {
-        bur_rows = [];
+        bur_rows = []; bur_totals = null;
+        bur_renderSummary();
         $bur('bur-tbody').innerHTML = `<tr><td colspan="9"><div class="nha-error">${bur_esc(e.message)}</div></td></tr>`;
     } finally {
         window.PagePreloader?.hide();
     }
+}
+function bur_renderSummary() {
+    const t = bur_totals;
+    $bur('bur-kpi-approved').textContent = t ? bur_fmtPeso(t.approved_amount) : '—';
+    $bur('bur-kpi-realigned').textContent = t ? bur_fmtPeso(t.revised_amount) : '—';
+    $bur('bur-kpi-utilization').textContent = t ? bur_fmtPeso(t.utilization) : '—';
+    $bur('bur-kpi-balance').textContent = t ? bur_fmtPeso(t.balance) : '—';
 }
 
 /* ── Tree (same shape as chart-of-accounts-page.php: account_id / parent_account_id) ── */
@@ -239,19 +308,11 @@ function bur_render() {
     const rows = bur_visibleRows();
     const tbody = $bur('bur-tbody');
 
-    const totalRow = `<tr class="bur-row-total">
-        <td>TOTAL</td><td></td>
-        <td class="nha-mono text-right">${bur_fmtPeso(0)}</td>
-        <td class="nha-mono text-right">${bur_fmtPeso(0)}</td>
-        <td class="nha-mono text-right">${bur_fmtPeso(0)}</td>
-        <td class="nha-mono text-right">${bur_fmtPeso(0)}</td>
-        <td class="nha-mono text-right">${bur_fmtPeso(0)}</td>
-        <td class="nha-mono text-right">${bur_fmtPeso(0)}</td>
-        <td class="nha-mono text-right">${bur_fmtPeso(0)}</td>
-    </tr>`;
+    const totalRow = `<tr class="bur-row-total"><td>TOTAL</td><td></td>${bur_amountCells(bur_totals)}</tr>`;
 
     if (!rows.length) {
-        tbody.innerHTML = totalRow + `<tr><td colspan="9"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No accounts match your search.</span></div></td></tr>`;
+        tbody.innerHTML = totalRow + `<tr><td colspan="9"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No approved budget found.</span>
+            <div class="nha-empty-text">Only Approved budget requests are part of the BUR. Try a different fiscal year or clear the search.</div></div></td></tr>`;
         return;
     }
 
@@ -278,13 +339,7 @@ function bur_render() {
                 </div>
             </td>
             <td class="nha-mono nha-td-sub">${bur_esc(r.account_code || '—')}</td>
-            <td class="nha-mono text-right">${bur_fmtPeso(0)}</td>
-            <td class="nha-mono text-right">${bur_fmtPeso(0)}</td>
-            <td class="nha-mono text-right">${bur_fmtPeso(0)}</td>
-            <td class="nha-mono text-right">${bur_fmtPeso(0)}</td>
-            <td class="nha-mono text-right">${bur_fmtPeso(0)}</td>
-            <td class="nha-mono text-right">${bur_fmtPeso(0)}</td>
-            <td class="nha-mono text-right">${bur_fmtPeso(0)}</td>
+            ${bur_amountCells(r)}
         </tr>`;
     }).join('');
 
@@ -296,9 +351,14 @@ function bur_collapseAll() { bur_collapsed = new Set(bur_rows.map(r => r.parent_
 
 /* ── Events ──────────────────────────────────────────────── */
 function bur_bindEvents() {
-    $bur('bur-refresh')?.addEventListener('click', bur_load);
+    $bur('bur-refresh')?.addEventListener('click', bur_refresh);
     $bur('bur-expand-all')?.addEventListener('click', bur_expandAll);
     $bur('bur-collapse-all')?.addEventListener('click', bur_collapseAll);
+    $bur('bur-f-fy')?.addEventListener('change', e => {
+        bur_fiscalYr = e.target.value;
+        try { localStorage.setItem(BUR_FY_STORE, bur_fiscalYr); } catch (err) { /* convenience only */ }
+        bur_load();
+    });
 
     let searchTimer;
     const searchEl = $bur('bur-filter-search');
@@ -315,10 +375,19 @@ function bur_bindEvents() {
         bur_render();
     });
 }
+async function bur_refresh() {
+    window.PagePreloader?.show();
+    try { await bur_loadFilterOptions(false); } catch (e) { /* keep showing the last-known years */ }
+    finally { window.PagePreloader?.hide(); }
+    bur_load();
+}
 
 /* ── Init ────────────────────────────────────────────────── */
-function bur_bootstrapLoad() {
+async function bur_bootstrapLoad() {
     bur_bindEvents();
+    window.PagePreloader?.show();
+    try { await bur_loadFilterOptions(true); } catch (e) { /* the Fiscal Year filter just stays empty */ }
+    finally { window.PagePreloader?.hide(); }
     bur_load();
 }
 if (document.readyState === 'loading') {

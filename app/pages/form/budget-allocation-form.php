@@ -1181,10 +1181,18 @@ $cbaAllowedTypes = array_values(array_intersect(['CBA', 'RFA', 'LAA', 'CFA'], ar
 			<div class="form-row cols-vendor" id="vendor_row">
 				<!-- Vendor Name → GET /vendors/all?active=1 (dropdown pick only — see vendSetupSearch()); saved as
 				     vendor_id. Picking one shows its Code / Type / Address, read-only, below.
-				     required is toggled off in cbaApplyAllocationTypeVisibility() whenever #vendor_section itself
-				     is hidden (CBA) — a hidden field must never block submit, same reasoning as #proj_search. -->
-				<div class="form-group">
-					<label for="vendor_search" class="form-label">Vendor Name <span class="required">*</span></label>
+				     The group itself is hidden in cbaApplyAllocationTypeVisibility() for CBA (which has no
+				     vendor to pick — only its #pr_number_group sibling below applies there) — a hidden field
+				     must never block submit, same reasoning as #proj_search, so `required` is toggled off right
+				     alongside it. Also toggled off (group kept visible) whenever every Funding Allocation block
+				     is a Direct COE Account (no Parent CBA, no project-backed procurement to name a vendor for)
+				     — see cbaApplyVendorRequirement(). The "*"/"(Optional)" markers next to the label follow
+				     that same toggle. -->
+				<div class="form-group" id="vendor_name_group">
+					<label for="vendor_search" class="form-label">Vendor Name
+						<span class="required" id="vendor_required_mark">*</span>
+						<span class="input-hint" id="vendor_optional_hint" style="display:none;">(Optional)</span>
+					</label>
 					<div class="select-loading-wrapper is-loading" id="vendor_wrapper" style="overflow:visible;">
 						<div style="position:relative;overflow:visible;">
 							<input type="text" id="vendor_search" class="form-input" placeholder="Search vendor&hellip;"
@@ -1199,14 +1207,16 @@ $cbaAllowedTypes = array_values(array_intersect(['CBA', 'RFA', 'LAA', 'CFA'], ar
 				<!-- Purchase Request / Purchase Order Number — CBA (and CFA / no type chosen yet) → Purchase
 				     Request; RFA / LAA → Purchase Order (see pcrApplyMode()). Only one of the two groups below
 				     shows at a time; their Amount counterparts (pr_amount / po_amount) stay in the DOM, hidden,
-				     so pcrPayloadFields() / pcrPopulate() keep working unchanged. -->
+				     so pcrPayloadFields() / pcrPopulate() keep working unchanged. Neither is ever required —
+				     #pr_number_group is #vendor_section's one field CBA still shows (#vendor_name_group hides
+				     for it instead, just above). -->
 				<div class="form-group" id="pr_number_group">
 					<label for="pr_number" class="form-label">Purchase Request Number <span class="input-hint" style="display:inline;">(Optional)</span></label>
 					<input type="text" id="pr_number" class="form-input" maxlength="50" autocomplete="off"
 						placeholder="Enter the purchase request number">
 				</div>
 				<div class="form-group" id="po_number_group" style="display:none;">
-					<label for="po_number" class="form-label">Purchase Order Number</label>
+					<label for="po_number" class="form-label">Purchase Order Number <span class="input-hint" style="display:inline;">(Optional)</span></label>
 					<input type="text" id="po_number" class="form-input" maxlength="50" autocomplete="off"
 						placeholder="Enter the purchase order number">
 				</div>
@@ -2027,10 +2037,12 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 		});
 
 		if ((_presetType === 'RFA' || _presetType === 'LAA') && _presetCbaId) {
-			// cbaApplyAllocationTypeVisibility() above already switched into block mode and auto-seeded the
-			// first (empty) block — load the CBA list and the other dropdowns in parallel, then pre-select
-			// this one parent on that first block (the user can still add more afterward via "+ Add New CBA"
-			// — this preset just seeds the first).
+			// cbaApplyAllocationTypeVisibility() above left block mode empty (RFA/LAA now waits for the user to
+			// pick "+ Add New CBA" or "+ Add Direct COE Account" — see cbaUpdateAddBlockButtonsVisibility()), but
+			// a preset Parent CBA means the choice is already made for them: seed one parent-driven block here,
+			// then load the CBA list and the other dropdowns in parallel, and pre-select this one parent on it
+			// (the user can still add more afterward via "+ Add New CBA" — this preset just seeds the first).
+			if (!PROJECT_BLOCKS.length) addProjectBlock();
 			Promise.all([
 				ensureCbaDataLoaded(),
 				_dropdownLoaders,
@@ -2763,6 +2775,52 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 		return type === 'RFA' || type === 'LAA';
 	}
 
+	// Whether every current Funding Allocation block is a Direct COE Account draw (directCob — no Parent CBA,
+	// no Project). False when there are no blocks at all (nothing to call "all direct" yet) or when at least
+	// one block still needs a Parent CBA — see cbaApplyVendorRequirement(), the one thing this gates.
+	function cbaAllProjectBlocksAreDirect() {
+		return PROJECT_BLOCKS.length > 0 && PROJECT_BLOCKS.every(function(b) { return !!b.directCob; });
+	}
+
+	// Vendor Name is required for every RFA/LAA/CFA EXCEPT when the whole request draws directly from COE
+	// account(s) with no Parent CBA / Project behind it — there is no procurement to name a vendor for. Hidden
+	// outright for CBA already (cbaApplyAllocationTypeVisibility()); here only the required-ness and the
+	// "*"/"(Optional)" marker change, so re-run this whenever the set of blocks changes (addProjectBlock() /
+	// removeProjectBlock()), not just on allocation-type change.
+	function cbaApplyVendorRequirement() {
+		var isCBA = document.getElementById('allocation_type').value === 'CBA';
+		var optional = isCBA || cbaAllProjectBlocksAreDirect();
+
+		var vendSearchEl = document.getElementById('vendor_search');
+		if (vendSearchEl) vendSearchEl.required = !optional;
+
+		var mark = document.getElementById('vendor_required_mark');
+		var hint = document.getElementById('vendor_optional_hint');
+		if (mark) mark.style.display = optional ? 'none' : '';
+		if (hint) hint.style.display = optional ? 'inline' : 'none';
+	}
+
+	// RFA/LAA only: with no blocks yet, the user must choose which kind to add first — both buttons show as a
+	// choice. Once a block of one kind exists, its own button stays (so more of the same kind can still be
+	// added) but the OTHER kind's button hides, so the form doesn't look like you can freely mix the two from
+	// the start. Both reappear once every block of a kind has been removed. A record edited back in that
+	// already mixes both kinds (restoreProjectBlocksFromSaved(), old data saved before this rule) shows both
+	// buttons too — nothing here forces it back to one kind.
+	function cbaUpdateAddBlockButtonsVisibility() {
+		var addBtn = document.getElementById('add_project_block_btn');
+		var addDirectBtn = document.getElementById('add_direct_cob_block_btn');
+		if (!addBtn || !addDirectBtn) return;
+		if (!cbaBlocksAreParentDriven()) {
+			addBtn.style.display = 'none';
+			addDirectBtn.style.display = 'none';
+			return;
+		}
+		var hasParentDriven = PROJECT_BLOCKS.some(function(b) { return !b.directCob; });
+		var hasDirect = PROJECT_BLOCKS.some(function(b) { return b.directCob; });
+		addBtn.style.display = (!PROJECT_BLOCKS.length || hasParentDriven) ? '' : 'none';
+		addDirectBtn.style.display = (!PROJECT_BLOCKS.length || hasDirect) ? '' : 'none';
+	}
+
 	// The CBA / RFA / LAA forms are printed by FMD users and administrators only (CBA_CAN_PRINT_FORM): on those types the Print
 	// Preview button is hidden for anyone else. CFA keeps it. Runs whenever the allocation type is set or changes.
 	function cbaSyncPrintButton() {
@@ -2777,10 +2835,13 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 		var isCBA = document.getElementById('allocation_type').value === 'CBA';
 		var usesIndependentProject = cbaUsesIndependentProject();
 
-		var vendorSection = document.getElementById('vendor_section');
-		if (vendorSection) vendorSection.style.display = isCBA ? 'none' : '';
-		var vendSearchEl = document.getElementById('vendor_search');
-		if (vendSearchEl) vendSearchEl.required = !isCBA;
+		// #vendor_section itself stays visible for every type — CBA keeps it open for its #pr_number_group
+		// field (Purchase Request Number, optional); only #vendor_name_group (and the vendor_id it carries)
+		// is CBA-specific and hides. Vendor Code/Type/Address stay hidden regardless — they only ever show once
+		// a vendor is actually picked (vendSetMode()), which cbaClearVendor() below prevents for CBA.
+		var vendorNameGroup = document.getElementById('vendor_name_group');
+		if (vendorNameGroup) vendorNameGroup.style.display = isCBA ? 'none' : '';
+		cbaApplyVendorRequirement();
 		if (isCBA) cbaClearVendor();
 
 		var biddingRow = document.getElementById('is_bidding_row');
@@ -2855,11 +2916,11 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 		BAA_ROWS.slice().forEach(function(idx) {
 			if (BAA_ROW_BLOCK[idx] == null) baaHardRemoveLine(idx);
 		});
-		if (!PROJECT_BLOCKS.length) addProjectBlock();
-		var addBtn = document.getElementById('add_project_block_btn');
-		if (addBtn) addBtn.style.display = cbaBlocksAreParentDriven() ? '' : 'none';
-		var addDirectBtn = document.getElementById('add_direct_cob_block_btn');
-		if (addDirectBtn) addDirectBtn.style.display = cbaBlocksAreParentDriven() ? '' : 'none';
+		// CBA has no "+ Add" buttons to choose from (cbaBlocksAreParentDriven() is false for it) — it must
+		// always auto-seed its one block itself. RFA/LAA instead starts empty and waits for the user to pick
+		// "+ Add New CBA" or "+ Add Direct COE Account" — see cbaUpdateAddBlockButtonsVisibility().
+		if (!PROJECT_BLOCKS.length && !cbaBlocksAreParentDriven()) addProjectBlock();
+		cbaUpdateAddBlockButtonsVisibility();
 		updateBaaRemoveButtons();
 		recomputeBaaTotals();
 		baaApplyHeaderVisibility();
@@ -3584,6 +3645,8 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 		blockSetupSearch(blockId);
 		addBudgetAllocationLine(blockId);
 		renumberProjectBlocks();
+		cbaUpdateAddBlockButtonsVisibility();
+		cbaApplyVendorRequirement();
 		return blockId;
 	}
 
@@ -3603,6 +3666,8 @@ include_once __DIR__ . '/../readone/print-preview-readone.php';
 		delete BAA_REMOVED[blockId]; // nothing left to restore into a block that no longer exists
 		renumberProjectBlocks();
 		recomputeBaaTotals();
+		cbaUpdateAddBlockButtonsVisibility();
+		cbaApplyVendorRequirement();
 	}
 
 	function blockProjRenderDropdown(blockId, data) {
