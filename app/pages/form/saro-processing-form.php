@@ -886,7 +886,9 @@ $_sar_type_first = !empty($sarTypeFirst);
         const cleared = hide && $('sar-nature').value !== '';
         $('sar-nature-row').style.display = hide ? 'none' : '';
         $('sar-bank-group').style.display = hide ? 'none' : '';
-        if (hide) { $('sar-nature').value = ''; $('sar-name').value = ''; bankCombo.reset(); }
+        // bankCombo.reset() clears the account NUMBER only: the hidden sar-bank-id must go with it, or an NCA would be saved
+        // with the bank_account_id of an account picked while the form was still a SARO (and no number to go with it)
+        if (hide) { $('sar-nature').value = ''; $('sar-name').value = ''; bankCombo.reset(); $('sar-bank-id').value = ''; }
         // Sub-Program belongs to a SARO only: any other type has no such field, and a choice made while it was a SARO goes with it
         const sub = isSaro();
         $('sar-sub-group').style.display = sub ? '' : 'none';
