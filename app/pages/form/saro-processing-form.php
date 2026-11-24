@@ -42,6 +42,7 @@
  *   GET  /fund_tracking/all?search=&lean=1 (Parent Fund search)            GET   /fund_tracking/list?type=TRUST_FUND
  *   GET  /fund-tracking-type/all  /nature-of-fund/all  /fiscal_year/all  /sub_program/all (a SARO's Sub-Program)
  *   GET  /responsibility-center/all?office_type=Regional   (Supplemental Details → Region)
+ *   GET  /bank-management/all                              (Bank Account No.)
  *   POST /upload/file (multipart)          POST /upload/multi-upload       (Supporting Documents)
  *
  * What changed from the FMD version (the table is fims.fund_tracking now):
@@ -49,7 +50,9 @@
  *                                 saved in fims.fund_tracking.sub_program ("03 - alter_table/45"). There is no unreleased amount any more (dropped, "41")
  *   Date                        → a required date picker: typed in, never filled in for the user (a request without one is dated the day it is created)
  *   Fiscal Year (period id)     → fiscal_year, a plain 4-digit year TYPED in (1900–2200) — not picked from fims.fiscal_year any more
- *   Bank Account (a picker)     → Bank Account No. (text) — there is no bank-accounts table in FIMS
+ *   Bank Account (a picker)     → Bank Account No.: a searchable list (like the Sub-Program) of every fims.bank_accounts row (GET /bank-management/all).
+ *                                 The saved value is the account NUMBER as text in fims.fund_tracking.bank_account_no (no FK), so a record whose
+ *                                 stored number is not on that list — free-hand or imported — still shows it when edited (setBank)
  *   NCA Releases                → no longer a part of the SARO's form. An NCA is its own entry: choose NCA first ($sarTypeFirst),
  *                                 then pick the SARO it was released under (the "SARO" field; a SARO itself has no parent)
  *   Agency and Remarks          → not on this form. Saving never sends them, so a record's existing
@@ -293,7 +296,8 @@ $_sar_type_first = !empty($sarTypeFirst);
                 <div class="nha-fg-row">
                     <div class="nha-fg" id="sar-bank-group" style="margin-bottom:0;">
                         <label for="sar-bank">Bank Account No.</label>
-                        <input type="text" id="sar-bank" maxlength="225" placeholder="e.g. 0702-1068-34">
+                        <input type="text" id="sar-bank" placeholder="Search account number…" autocomplete="off">
+                        <input type="hidden" id="sar-bank-no" value="">
                         <span class="sar-hint">Optional</span>
                     </div>
                     <div></div>
@@ -434,6 +438,7 @@ $_sar_type_first = !empty($sarTypeFirst);
         natures: API + '/nature-of-fund/all',
         subs:    API + '/sub_program/all',
         regions: API + '/responsibility-center/all?office_type=Regional',
+        banks:   API + '/bank-management/all',
     };
     const MAX_BYTES = 25 * 1024 * 1024;
 
@@ -453,6 +458,7 @@ $_sar_type_first = !empty($sarTypeFirst);
         loaded: {},            // which lookups have been read
         types: [],             // [{id, code, name}]
         subs: [],              // sub-programs [{sub_program_code, sub_program_name, program_code, program_name}] — the SARO's Sub-Program list
+        banks: [],             // bank accounts [{account_number, account_name, bank_name, status, …}] — the Bank Account No. list
         parentMode: 'search',  // 'search' (any record, by reference) | 'trust' (OR → pick a Trust Fund)
         parentKind: '',        // what the parent field is for: 'none' (hidden — a SARO) | 'saro' (an NCA's SARO) | 'search' | 'trust'
         trustPromise: null,    // the Trust Fund list, read once per open
@@ -682,6 +688,12 @@ $_sar_type_first = !empty($sarTypeFirst);
                     .map(r => opt(r.rc_name, r.rc_name)));
             },
         },
+        // Bank Account No.: every row of fims.bank_accounts (GET /bank-management/all). An account with no number has nothing to save, so it
+        // is left out. See the Bank Account picker (bankCombo) below.
+        banks: {
+            label: 'bank accounts', url: U.banks,
+            apply(rows) { S.banks = rows.filter(b => String(b.account_number || '').trim() !== ''); },
+        },
     };
 
     async function ensureLookups() {
@@ -776,6 +788,28 @@ $_sar_type_first = !empty($sarTypeFirst);
         empty: () => 'No sub-programs found', noMatch: 'No matching sub-programs',
     });
 
+    /* ── Bank Account No. picker ────────────────────────────────────
+       A searchable list over fims.bank_accounts (GET /bank-management/all, read once), the same idea as the Sub-Program picker. What is
+       stored in fims.fund_tracking.bank_account_no is the account NUMBER, as text (no FK), and the number is all that is shown — in the list
+       and in the box — and all that is searched. Closed and dormant accounts are listed too. */
+    const bankNo = b => String(b.account_number).trim();
+    const bankCombo = makeCombo({
+        input: 'sar-bank', hidden: 'sar-bank-no',
+        minChars: () => 0, local: () => true,
+        source: () => S.banks,
+        match: bankNo,
+        key: bankNo,
+        label: bankNo,
+        render: (b, q) => `<span class="nha-ss-opt-code">${hl(bankNo(b), q)}</span>`,
+        empty: () => 'No bank accounts found', noMatch: 'No matching bank accounts',
+    });
+    // Show the record's saved Bank Account No. A number that is not on the list (typed in free-hand when this was a text box, or imported
+    // from a spreadsheet) is shown and saved again exactly as it is, so editing the record never wipes it.
+    function setBank(value) {
+        const v = String(value ?? '').trim();
+        if (v) bankCombo.set(v, v); else bankCombo.reset();
+    }
+
     /* ── Field logic ────────────────────────────────────────────── */
     const selOpt = id => { const el = $(id); return el.options[el.selectedIndex] || null; };
     // Everything Supplemental-specific on this form (Purpose instead of Name, Supplemental Details, what is
@@ -829,7 +863,7 @@ $_sar_type_first = !empty($sarTypeFirst);
         const cleared = hide && $('sar-nature').value !== '';
         $('sar-nature-row').style.display = hide ? 'none' : '';
         $('sar-bank-group').style.display = hide ? 'none' : '';
-        if (hide) { $('sar-nature').value = ''; $('sar-name').value = ''; $('sar-bank').value = ''; }
+        if (hide) { $('sar-nature').value = ''; $('sar-name').value = ''; bankCombo.reset(); }
         // Sub-Program belongs to a SARO only: any other type has no such field, and a choice made while it was a SARO goes with it
         const sub = isSaro();
         $('sar-sub-group').style.display = sub ? '' : 'none';
@@ -1254,7 +1288,7 @@ $_sar_type_first = !empty($sarTypeFirst);
             parent_id: parentHidden() ? null : intOrNull('sar-parent-id'),   // a SARO has no parent (null also clears one on update)
             description: supp ? null : v('sar-name'),                       // a Supplemental record has no description — its Purpose is the text
             amount: parseMoney(v('sar-amount')) || null,
-            bank_account_no: v('sar-bank'),
+            bank_account_no: v('sar-bank-no'),
         };
         // Purpose: the typed text for a Supplemental record, null (clears it) for any other. With SUPP_FIELDS off the field is
         // not on the form at all, so the key is left out and a record's stored purpose is left exactly as it is.
@@ -1279,6 +1313,7 @@ $_sar_type_first = !empty($sarTypeFirst);
         showErr('');
         parentCombo.reset();
         subCombo.reset();
+        bankCombo.reset();
         $('sar-docs').innerHTML = '';
         $('sar-form').querySelectorAll('.sar-invalid').forEach(el => el.classList.remove('sar-invalid'));
         delete $('sar-supp-status').dataset.manual;
@@ -1335,7 +1370,7 @@ $_sar_type_first = !empty($sarTypeFirst);
         $('sar-name').value = r.description || '';
         $('sar-purpose').value = r.purpose || '';
         $('sar-amount').value = r.amount != null ? fmtMoney(r.amount) : '';
-        $('sar-bank').value = r.bank_account_no || '';
+        setBank(r.bank_account_no);
         syncSaroBalance();   // an NCA being edited: its SARO's amount, with this NCA's amount deducted
 
         S.hadSupp = !!r.supplemental;
@@ -1410,6 +1445,7 @@ $_sar_type_first = !empty($sarTypeFirst);
         $('sar-overlay').classList.remove('open');
         parentCombo.hide();
         subCombo.hide();
+        bankCombo.hide();
     }
 
     /* ── Save ───────────────────────────────────────────────────── */

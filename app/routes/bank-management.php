@@ -17,6 +17,11 @@ $app->get("/bank-management/list", function ($request, $response) {
     return $response->withHeader('Content-Type', 'application/json')->write($service->getList($request->getQueryParams()));
 });
 
+$app->get("/bank-management/all", function ($request, $response) {
+    $service = new Service\BankManagementService();
+    return $response->withHeader('Content-Type', 'application/json')->write($service->getAll());
+});
+
 $app->get("/bank-management/dormancy-alerts", function ($request, $response) {
     $service = new Service\BankManagementService();
     return $response->withHeader('Content-Type', 'application/json')->write($service->getDormancyAlerts());
