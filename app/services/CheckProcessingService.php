@@ -522,7 +522,7 @@ class CheckProcessingService
     public function getDvsForPrep($params)
     {
         $rows = App\ExecuteRowsAssociative(
-            "SELECT dv.dv_id, dv.dv_no, dv.dv_date, dv.claimant_name, dv.net_amount, prog.program_names
+            "SELECT dv.dv_id, dv.dv_no, dv.dv_date, dv.claimant_name, dv.net_amount, prog.program_names, rfa.rfa_numbers
              FROM {$this->tableDv} dv
              JOIN {$this->tableSettingsStatus} st ON st.id = dv.status_id
              LEFT JOIN LATERAL (
@@ -538,6 +538,18 @@ class CheckProcessingService
                  JOIN fims.program p ON p.program_code = bap.program_code
                  WHERE a.dv_id = dv.dv_id AND a.allocation_type = 'RFA'
              ) prog ON TRUE
+             LEFT JOIN LATERAL (
+                 -- Same a-DV-can-cite-more-than-one-RFA fan-out as prog above, but aggregated
+                 -- straight off fims.budget_allocation itself (no project-block join) so a DV with
+                 -- several project blocks under the same RFA doesn't repeat that RFA own number --
+                 -- backs the Prepare Check modal read-only RFA field (auto-filled alongside
+                 -- Program/Payee/Net Amount when a DV is picked; there is no equivalent for LAA --
+                 -- see FtlaService::getRfaForDv() own comment for why: RFA and LAA are sibling
+                 -- allocation types with no link between them).
+                 SELECT STRING_AGG(DISTINCT a2.allocation_number, ', ' ORDER BY a2.allocation_number) AS rfa_numbers
+                 FROM fims.budget_allocation a2
+                 WHERE a2.dv_id = dv.dv_id AND a2.allocation_type = 'RFA' AND a2.deleted_at IS NULL
+             ) rfa ON TRUE
              WHERE st.status_for = 'disbursement_voucher' AND st.name = 'FOR_TREASURY'
                AND NOT EXISTS (SELECT 1 FROM {$this->tableChecks} c WHERE c.dv_number = dv.dv_no AND c.status <> 'CANCELLED')
              ORDER BY dv.dv_date",

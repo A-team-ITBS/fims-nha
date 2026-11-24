@@ -43,6 +43,19 @@ $app->get('/ftla/used-dv-numbers', function ($request, $response, $args) use ($F
     }
 })->add($accessMiddleware)->add($jwtMiddleware);
 
+$app->get('/ftla/dv-rfa', function ($request, $response, $args) use ($FtlaService) {
+    try {
+        $dvNo   = (string) ($request->getQueryParams()['dv_no'] ?? '');
+        $result = ['success' => true, 'data' => $FtlaService->getRfaForDv($dvNo)];
+
+        return $response->withJson($result, 200);
+    } catch (\Exception $e) {
+        LogError('GET /ftla/dv-rfa ' . $e->getMessage());
+
+        return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
+    }
+})->add($accessMiddleware)->add($jwtMiddleware);
+
 $app->get('/ftla/bank-accounts', function ($request, $response, $args) use ($FtlaService) {
     try {
         $all    = filter_var($request->getQueryParams()['all'] ?? false, FILTER_VALIDATE_BOOLEAN);
