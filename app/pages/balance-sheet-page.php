@@ -71,6 +71,14 @@ $_bs_api = preg_match('~/api$~', $_bs_api) ? $_bs_api : $_bs_api . '/api';
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                 Refresh
             </button>
+            <button id="bs-print" type="button" class="nha-btn-hdr" title="Print">
+                <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6v-8z"/></svg>
+                Print
+            </button>
+            <button id="bs-excel" type="button" class="nha-btn-hdr" title="Export to Excel">
+                <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
+                Excel
+            </button>
         </div>
     </div>
 
@@ -168,6 +176,7 @@ $_bs_api = preg_match('~/api$~', $_bs_api) ? $_bs_api : $_bs_api . '/api';
 
 </div><!-- /#bs-root -->
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <script>
 /* ══════════════════════════════════════════════════════════════
    BALANCE SHEET   prefix: bs_
@@ -200,6 +209,8 @@ else bs_boot();
 
 function bs_bindEvents() {
     $bs('bs-refresh')?.addEventListener('click', bs_load);
+    $bs('bs-print')?.addEventListener('click', () => window.print());
+    $bs('bs-excel')?.addEventListener('click', bs_exportExcel);
     $bs('bs-filter-fy')?.addEventListener('change', bs_load);
     $bs('bs-filter-book')?.addEventListener('change', bs_load);
     $bs('bs-filter-view')?.addEventListener('change', () => { bs_syncBookFilter(); bs_load(); });
@@ -636,6 +647,107 @@ function bs_sampleData(fy) {
         },
         balanced: Math.abs(a - (l + e)) < 0.005, difference: a - (l + e),
     };
+}
+
+/* ── Excel export ──────────────────────────────────────────── */
+/* Built from the table currently on screen, so it matches whichever View (Consolidated / Detailed / Condensed)
+   is showing, including the one-column-per-book layout. Row classes decide the styling; amounts are parsed
+   back from the "₱ 1,234.00" / "(₱ 1,234.00)" text into real numbers. */
+function bs_parseAmount(text) {
+    const t = String(text || '').trim();
+    if (!/\d/.test(t)) return null;
+    const n = Number(t.replace(/[^0-9.]/g, ''));
+    return /^\(/.test(t) ? -n : n;
+}
+
+async function bs_exportExcel() {
+    if (!window.ExcelJS) { bs_showError('Excel library failed to load. Check your internet connection and reload.'); return; }
+    const trs = [...document.querySelectorAll('#bs-tbody tr')];
+    if (!trs.length || document.querySelector('#bs-tbody .nha-empty') || document.querySelector('#bs-tbody .nha-loader')) {
+        bs_showError('Nothing to export — no postings for this fiscal year.');
+        return;
+    }
+    const headCells = [...document.querySelectorAll('#bs-thead th')].map(th => th.textContent.trim());
+    const nCols = headCells.length;
+
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Balance Sheet', {
+        pageSetup: { paperSize: 9, orientation: nCols > 4 ? 'landscape' : 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
+    });
+    ws.columns = headCells.map((_, i) => ({ width: i === 0 ? 58 : 20 }));
+    const NUM = '#,##0.00;(#,##0.00);"-"';
+    const thin = { style: 'thin' };
+    const fill = argb => ({ type: 'pattern', pattern: 'solid', fgColor: { argb } });
+
+    const title = (text, bold = true) => {
+        if (!text) return;
+        const r = ws.addRow([text]);
+        ws.mergeCells(r.number, 1, r.number, nCols);
+        r.getCell(1).alignment = { horizontal: 'center' };
+        r.getCell(1).font = { bold, size: 11 };
+    };
+    title('NATIONAL HOUSING AUTHORITY');
+    title($bs('bs-title-line2').textContent);
+    if ($bs('bs-title-line3').style.display !== 'none') title($bs('bs-title-line3').textContent);
+    title($bs('bs-report-date').textContent, false);
+    if ($bs('bs-title-peso').style.display !== 'none') title($bs('bs-title-peso').textContent, false);
+    ws.addRow([]);
+
+    const head = ws.addRow(headCells);
+    head.eachCell((c, i) => {
+        c.font = { bold: true };
+        c.fill = fill('FFD9E1F2');
+        c.border = { top: thin, bottom: thin, left: thin, right: thin };
+        c.alignment = { horizontal: i > 1 ? 'right' : 'center', wrapText: true };
+    });
+
+    trs.forEach(tr => {
+        const cls = tr.className;
+        const cells = [...tr.cells];
+        if (cells.length === 1) { // major section header (colspan)
+            const m = ws.addRow([cells[0].textContent.trim()]);
+            ws.mergeCells(m.number, 1, m.number, nCols);
+            m.getCell(1).font = { bold: true };
+            m.getCell(1).fill = fill('FFEDEDED');
+            return;
+        }
+        const vals = cells.map((c, i) => i === 0 ? c.textContent.trim() : bs_parseAmount(c.textContent));
+        const r = ws.addRow(vals);
+        for (let i = 2; i <= nCols; i++) r.getCell(i).numFmt = NUM;
+
+        const isGrand = /grand-row/.test(cls), isSub = /subtotal-row/.test(cls);
+        if (/group-row/.test(cls) && !/subgroup/.test(cls)) r.getCell(1).font = { bold: true };
+        if (/subgroup-row/.test(cls)) r.getCell(1).alignment = { indent: 1 };
+        if (/^fims-report-table-row/.test(cls)) r.getCell(1).alignment = { indent: /subgroup/.test(cls) ? 2 : 1 };
+        if (/netvalue-row/.test(cls)) r.font = { italic: true };
+        if (isSub || isGrand) {
+            r.eachCell(c => { c.font = { bold: true }; c.border = { top: thin, bottom: isGrand ? { style: 'double' } : undefined }; });
+        }
+    });
+
+    ws.addRow([]);
+    const cert = ws.addRow(['I HEREBY CERTIFY that the foregoing Statement of Financial Position is a true and complete statement of the assets, liabilities and equity as shown in the books of accounts, prepared and presented in conformity with International Public Sector Accounting Standards (IPSAS).']);
+    ws.mergeCells(cert.number, 1, cert.number, nCols);
+    cert.getCell(1).alignment = { wrapText: true, vertical: 'top' };
+    cert.height = 48;
+    ws.addRow([]);
+    ws.addRow([]);
+    const sig = ws.addRow(['Signature Over Printed Name']);
+    sig.getCell(1).border = { top: thin };
+    sig.getCell(1).alignment = { horizontal: 'center' };
+    ws.addRow(['Head of Accounting Department']).getCell(1).alignment = { horizontal: 'center' };
+
+    ws.views = [{ state: 'frozen', ySplit: head.number }];
+
+    const buf  = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `Balance-Sheet_${$bs('bs-filter-fy').value}_${$bs('bs-filter-view').value}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
 /* ── Formatters ────────────────────────────────────────────── */
