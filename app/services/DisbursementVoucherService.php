@@ -1479,14 +1479,15 @@ class DisbursementVoucherService
     /**
      * Adds `acted_by_me` to each JEV register row — true when the current user already took a step on
      * that JEV's review chain — so the register can hide the endorse/approve action from them.
-     * The same rule is enforced server-side in changeJevStatus().
+     * The same rule is enforced server-side in changeJevStatus(). Never true for a superadmin (user id -1 or user level -1),
+     * who bypasses it there — so the register keeps showing them the advance action.
      */
     private function flagJevsActedByCurrentUser(array $rows): array
     {
         $userId = (int) App\CurrentUserID();
         $ids    = array_values(array_unique(array_map(fn ($r) => (int) $r['jev_id'], $rows)));
         $acted  = [];
-        if ($userId > 0 && $ids) {
+        if ($userId > 0 && $ids && !GlobalService::getUserRcScope()['is_admin']) {
             $list = implode(',', array_map(fn ($id) => "'" . $id . "'", $ids));
             foreach (App\ExecuteRows(
                 "SELECT DISTINCT record_id FROM fims.status_change_log
@@ -2287,8 +2288,9 @@ class DisbursementVoucherService
                 return ['success' => false, 'message' => "Cannot move a {$jev['status']} Journal Entry to {$new}."];
             }
             // Segregation of duties: each step needs a different person — whoever already submitted /
-            // endorsed this entry can't also take the next step on it.
-            if ($this->userAlreadyActedOnJev($jevId, $userId)) {
+            // endorsed this entry can't also take the next step on it. A superadmin bypasses it (same as the DV chain's
+            // authorizeTransition()), so one admin account can walk an entry through every step.
+            if (!GlobalService::getUserRcScope()['is_admin'] && $this->userAlreadyActedOnJev($jevId, $userId)) {
                 return ['success' => false, 'message' => 'You have already acted on this Journal Entry. The next step must be done by a different user.', 'httpCode' => 403];
             }
 
