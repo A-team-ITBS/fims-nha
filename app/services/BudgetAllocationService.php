@@ -32,6 +32,7 @@ class BudgetAllocationService
     private string $tableDepartment = 'uac.departments';
     private string $tableUser = 'uac.users';
     private string $tableRc = 'fims.responsibility_code';
+    private string $tableCaf = 'fims.caf';
 
     /** settings_status.status_for value that scopes this table's statuses. */
     private const STATUS_FOR = 'budget_allocation';
@@ -1134,7 +1135,11 @@ class BudgetAllocationService
                        -- migration 53); a caller that needs every parent CBA an RFA/LAA draws from reads the
                        -- `parents` array attachProjects() attaches instead.
                        pa.request_referrence_no AS parent_request_referrence_no,
-                       {$this->requestedTotalSql()} AS requested_total
+                       {$this->requestedTotalSql()} AS requested_total,
+                       -- how many CAFs (not deleted) certify this request: an RFA that has one gets no more - the memo request
+                       -- list hides its Create CAF action and the CAF service refuses it (a superadmin is exempt)
+                       (SELECT COUNT(*) FROM {$this->tableCaf} cf
+                         WHERE cf.allocation_id = a.allocation_id AND cf.deleted_at IS NULL) AS caf_count
                 FROM {$this->table} a
                 LEFT JOIN {$this->tableStatus} st     ON st.id = a.status_id
                 LEFT JOIN {$this->tableVendor} v      ON v.vendor_id = a.vendor_id

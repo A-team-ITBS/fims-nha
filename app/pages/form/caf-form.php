@@ -1,7 +1,10 @@
 <?php
 /**
  * CAF (Certificate as to Availability of Funds) form — a modal, opened from the RFA tab of the Memo Request list
- * (memo-req-page.php) by the "Create CAF" action of a row: window.cafModal.open(allocationId).
+ * (memo-req-page.php) by the "Create CAF" action of a row: window.cafModal.open(allocationId). Only an FMD user may create a CAF,
+ * only for an RFA whose status is Approved, and only while that RFA has no CAF yet — a superadmin is exempt from all three
+ * (applyRfa() says so on open; the API, CafService::create(), is what enforces it). After a save the page's row loses its
+ * Create CAF action (mrq_onCafCreated()).
  *
  * The same modal as the memo request form (form/budget-allocation-form.php in modal mode): the same shell (.nha-overlay /
  * .nha-modal-xl / .nha-modal-hdr / .nha-modal-body), the same number card, form sections, fields, tinted amount-line cards
@@ -424,6 +427,19 @@ html.afims-dark[data-bs-theme="dark"] #caf-overlay button.btn.btn-primary:focus:
         if (String(r.allocation_type || '').toUpperCase() !== ALLOCATION_TYPE) {
             throw new Error(`Only an RFA can have a CAF — this request is ${r.allocation_type ? 'a ' + r.allocation_type : 'not an RFA'}.`);
         }
+        // Only an FMD user may create a CAF, and only for an Approved RFA — a superadmin is exempt from both. This is the
+        // same message the API answers with (CafService::create() refuses the rest), shown before anything is filled in.
+        if (!MRQ_IS_ADMIN) {
+            if (!MRQ_IS_FMD) {
+                throw new Error('Only the Financial Management Department (FMD) can create a CAF.');
+            }
+            if (!mrq_isApproved(r)) {
+                throw new Error(`A CAF can only be created for an Approved RFA — this RFA is ${r.status_name || 'without a status'}.`);
+            }
+            if (mrq_hasCaf(r)) {
+                throw new Error('This RFA already has a CAF — an RFA can only have one.');
+            }
+        }
         rfa   = r;
         // each line's CAF Amount is its requested amount; none usable (blank / not a number) counts as 0.00 — it is locked, so
         // it must never be a value that cannot be saved
@@ -549,6 +565,8 @@ html.afims-dark[data-bs-theme="dark"] #caf-overlay button.btn.btn-primary:focus:
             setBusy(false);
             mrq_toast(json.message || 'CAF created successfully.', 'success');
             close();
+            // the RFA now has its CAF: its row in the list loses Create CAF
+            if (typeof mrq_onCafCreated === 'function') mrq_onCafCreated(payload.allocation_id);
         } catch (e) {
             setBusy(false);
             if (my === seq) showErr(e.message);   // stays open: the reason is shown above the form

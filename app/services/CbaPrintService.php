@@ -23,12 +23,24 @@ class CbaPrintService
      * sig_layout = 'right' (name / title lines centred in the right half) or
      * 'certified' ("Certified:", then the name and title on one line, the office
      * below — the regional CAF).
+     *
+     * The main-office (Department Manager) CAF's template spacing — all off by default:
+     *   date_align     'right' | 'left' | 'block' (the CAF template: centred over the right-hand part of the page —
+     *                  a 4in left indent, the first line a further 0.5in in)
+     *   blank_top      empty lines above the date
+     *   blank_date     pt gap after an EMPTY line placed between the date and the title (null = no such line)
+     *   title_after    pt gap under the title (null = the CBA's own 15pt)
+     *   blank_title    pt gap after an EMPTY line placed between the title and the certify paragraph (null = none)
+     *   cert_align     'justify' | 'left' — the certify paragraph (the CAF template is left-aligned)
+     *   allocnum_after pt gap under the allocation-number line of the footnote (DOCX)
      */
     public const STYLE = [
         'size'          => 11,      'title_size'  => 11,    'title_bold' => true,  'title_italic' => false,
         'date_italic'   => true,    'indent_pt'   => 0,     'line_height' => null, 'name_italic'  => false,
         'foot_size'     => 10,      'foot_italic' => false, 'foot_bold'  => 'label', 'allocnum_bold' => true,
         'date_align'    => 'right', 'sig_layout'  => 'right',
+        'blank_top'     => 0,       'blank_date'  => null,  'title_after' => null, 'blank_title'  => null,
+        'cert_align'    => 'justify', 'allocnum_after' => 0,
     ];
 
     // The CBA's reminders (the CO prints both, the COE only the RFA one) — shared by the main-office and the regional CBA.
@@ -263,7 +275,11 @@ class CbaPrintService
                 : '')
             . ($s['foot_italic'] ? '.foot div{margin-bottom:4pt;}' : '')
             . (!$s['allocnum_bold'] ? '.allocnum{font-weight:normal;}' : '')
-            . ($s['date_align'] !== $d['date_align'] ? '.date{text-align:' . $s['date_align'] . ';}' : '')
+            . ($s['date_align'] === 'block'
+                ? '.date{text-align:center;margin-left:288pt;text-indent:36pt;}'
+                : ($s['date_align'] !== $d['date_align'] ? '.date{text-align:' . $s['date_align'] . ';}' : ''))
+            . ($s['title_after'] !== null ? '.title{margin-bottom:' . (float) $s['title_after'] . 'pt;}' : '')
+            . ($s['cert_align'] !== $d['cert_align'] ? '.cert{text-align:' . $s['cert_align'] . ';}' : '')
             // "Certified:" block: name at 1in, title at the 225pt tab (the template's tab stops).
             . ($s['sig_layout'] === 'certified'
                 ? '.sig-lbl{font-style:italic;margin:24pt 0 54pt;}.sig-c{border-collapse:collapse;margin-left:72pt;}'
@@ -286,6 +302,12 @@ class CbaPrintService
 
         $indent = $s['indent_pt'] ? 'text-indent:' . $s['indent_pt'] . 'pt;' : '';
         $title  = $s['title_bold'] ? '<b>' . $e($m['title']) . '</b>' : $e($m['title']);
+
+        // The CAF template's empty lines: above the date, and between date / title and title / certify paragraph.
+        $blank      = static fn (float $after = 0): string => '<p class="blank" style="margin:0 0 ' . $after . 'pt;">&nbsp;</p>';
+        $blankTop   = str_repeat($blank(), max(0, (int) $s['blank_top']));
+        $blankDate  = $s['blank_date'] !== null ? $blank((float) $s['blank_date']) : '';
+        $blankTitle = $s['blank_title'] !== null ? $blank((float) $s['blank_title']) : '';
 
         // Page box: A4 (595 × 842pt) with the DOCX's 1in side margins (468pt content).
         [$top, $hdrCss] = PrintService::repeatingHeaderCss($m, 468, 90, 36, 14);
@@ -327,8 +349,11 @@ class CbaPrintService
             . $styleCss
             . '</style></head>'
             . PrintService::bodyOpen($media, 'sheet', '<div class="hdr">' . $header . '</div>', '<div class="ftr">' . $footer . '</div>')
+            . $blankTop
             . '<p class="date">' . $e($m['date']) . '</p>'
+            . $blankDate
             . '<p class="title">' . $title . '</p>'
+            . $blankTitle
             . $certs
             . ($s['sig_layout'] === 'certified'
                 ? '<p class="sig-lbl">Certified:</p><table class="sig-c"><tr><td class="n">' . $e($m['signatory']['name']) . '</td>'

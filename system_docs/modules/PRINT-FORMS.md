@@ -21,7 +21,7 @@ Disbursement Voucher").
 | Form | FMD (default) | REGIONAL (`issuing_office: 'REGIONAL'`) | GLOBAL |
 |---|---|---|---|
 | CBA | CO / COE (`document_type`) | regional wording + signatory — see "Regional CBA" | used FMD's generators — nothing to add |
-| CAF | FMD wording | 3 wordings (`body_variant`), "Certified:" block — see "Regional CAF" | — |
+| CAF | FMD wording | 3 payee wordings (`body_variant`), same template layout — see "Regional CAF" | — |
 | RFA | forms 1a–2d (`form_variant`) | "RFA Form No." label, "Request for Fund Allotment" + bold "Re:" particulars — see RFA | used FMD's generators |
 | LAA | CO / COE | the region's "LAA" is a different document → the **LAA release request** form (`LAAREQ`) | used FMD's generators |
 | PO | FMD printed the screen only | same form as GSD (REGIONAL's DOCX + HTML merged) | printed the screen only |
@@ -155,16 +155,16 @@ Ported from the old FMD module (`FMD/scripts/gen_cba_docx.js` +
 rebuilt on this repo's components.
 
 **Who may print it:** the Financial Management Department and administrators — and the same
-goes for the **RFA** and **LAA** (the three memo request forms). The user's `uac.users.rc_id` is
+goes for the **RFA**, the **LAA** (the three memo request forms) and the **CAF**. The user's `uac.users.rc_id` is
 joined to `fims.responsibility_code` and its `rc_code` must be FMD's
 (`GlobalService::CENTRAL_REVIEW_RC_CODE`, `35-074-0000000-032` — recognised by rc_code, not by
 rc_id, whose format differs between datasets) — or the user is a superadmin (user level -1, the
 built-in administrator included; `GlobalService::canPrintAllocationForm()`). The API enforces it —
-`POST /print/cba`, `/print/rfa`, `/print/laa` (`PrintPayloadService::FMD_ONLY_DOCS`) and
-`GET /print/payload/allocation/{id}` answer 403 for anyone else, so the preview, PDF and DOCX are
-all closed — and those forms' Print / Print Preview buttons are hidden for everyone else (the memo
-request pages' row menu, the request details modal, and the memo form). The CAF, CFA, LAA release
-request and the other forms are not restricted; an RFA's CAF stays printable from the memo request pages.
+`POST /print/cba`, `/print/rfa`, `/print/laa`, `/print/caf` (`PrintPayloadService::FMD_ONLY_DOCS`),
+`GET /print/payload/allocation/{id}` and `GET /print/payload/caf/{id}` answer 403 for anyone else, so the preview, PDF and DOCX are
+all closed — and those forms' Print / Print Preview buttons (and the row's **Print CAF**, which an FMD user only gets once the RFA has a CAF — a superadmin always gets it) are hidden for everyone else (the memo
+request pages' row menu, the request details modal, and the memo form). The CFA, LAA release
+request and the other forms are not restricted.
 
 ## Pieces
 
@@ -462,23 +462,24 @@ Ported from the old FMD `gen_caf_docx.js` / `print-preview.js` `buildCafHtml()`
 | Letterhead | Same designer, saved default under `CAF`; has a footer line |
 | File name | `CAF-<caf number>` (no double prefix; blank → `CAF-DRAFT`) |
 
-**Content:** date (upright, right-aligned); title "*CERTIFICATE AS TO
-AVAILABILITY OF FUNDS*" (bold italic); one italic certify paragraph at 1.5
-lines with a 0.5in first-line indent:
+**Layout — the CAF template** (`CAF-2641-87-01.docx`, signed by the Department Manager; `CafPrintService::templateStyle()`, used by
+**every** CAF, main office or regional): two empty lines, then the date (upright, centred over the right-hand part of the page — a 4in
+left indent, first line a further 0.5in in), an empty line, the title "*CERTIFICATE AS TO AVAILABILITY OF FUNDS*" (14pt bold italic),
+an empty line, then one italic, **left-aligned** certify paragraph at 1.5 lines with a 0.5in first-line indent:
 
 > This is to certify that the amount of **<WORDS & nn/100 PESOS> (<amount>)**
 > necessary to cover <purpose> to be released to **<payee> <payee_title>**, with
 > principal office at <address> is available from <fund> per RFA# <rfa>.
 
 (payee / title / address parts only when given; no fund → "the appropriate fund
-source"; ordinals in the purpose — "1st", "2nd" — get a superscript suffix);
-signatory centred in the right half (name bold italic); footnote "**RFA# <rfa>**"
-and "Source of Fund: **<fund>**" (italic). No validity paragraph, no reminders.
+source"; the purpose is printed **as typed** — no "the" is added, and a blank purpose leaves the phrase out; ordinals in the purpose —
+"1st", "2nd" — get a superscript suffix); signatory centred in the right half (name bold italic); footnote "**RFA# <rfa>**"
+and "Source of Fund: **<fund>**" (italic, 12pt). No validity paragraph, no reminders, and no CAF number on the page.
 
 **Data:** `caf_number`, `allocation_number` (or `rfa_number`, the linked RFA),
 `caf_amount` (or `amount`), `purpose`, `payee_name`, `payee_title`,
-`payee_office_address`, `fund_source_name`, `date`, `approved_by_name`. A
-trailing code like " (CR)" / " (GSD)" is dropped from the fund and payee names.
+`payee_office_address`, `fund_source_name`, `date`, `approved_by_name`. The fund is printed **as given, code included**
+("NG Support - GAA (NG-GAA)"); a trailing code like " (CR)" / " (GSD)" is dropped only from the main-office payee name.
 
 **Signatory:** `approved_by_name`, else the current **FMD Department Manager**
 (same as the CBA). The old CAF's placeholder name (used only when nobody holds
@@ -486,23 +487,19 @@ the role) differed from the CBA's; the CBA's default is used for both.
 
 ### Regional CAF (`issuing_office: 'REGIONAL'`)
 
-From the old REGIONAL `gen_caf_docx.js` / `cafServices::buildPrintPayload()`
-(`CafPrintService::regionalModel()`). Same certificate layout with its own style:
-date top-left italic, title bold italic 12pt, paragraph indented 1in, a
-**"Certified:"** block (name bold and title italic on one line, office below),
-no footnote lines.
-
-The amount: "**<WORDS> PESOS ONLY (P 1,000.00)**", with centavos "**… PESOS & 50/100
-ONLY**" (whole tens) or "**… PESOS AND TWENTY-FIVE CENTAVOS ONLY**"; the payee in
-capitals. Wording by `body_variant`:
+From the old REGIONAL `gen_caf_docx.js` / `cafServices::buildPrintPayload()`. A Regional / District requesting office uses **the same
+template layout as every CAF** (above) — it no longer has a layout of its own (it used to print the date top-left, a justified
+paragraph and a "Certified:" block with a blank name and no `RFA#` / `Source of Fund` lines). What is regional is the **payee wording**
+(the payee in capitals), chosen by `body_variant`. The signatory is the Department Manager unless the payload names `certified_name`
+(then that name, `certified_title` — default "Chief Corporate Accountant A" — and `certified_office` are printed in the same block).
 
 | `body_variant` | Wording |
 |---|---|
-| `entered_into_with` (default) | "… necessary to cover the <purpose> entered into with **<PAYEE>** with principal office at <address> is available from <fund> per RFA# <no>." |
-| `in_favor_of` (e.g. EHAP) | "… in favor of **<PAYEE>** necessary to cover the <purpose> is available from <fund> per RFA# <no>." |
+| `entered_into_with` (default) | "… necessary to cover <purpose> entered into with **<PAYEE>** with principal office at <address> is available from <fund> per RFA# <no>." |
+| `in_favor_of` (e.g. EHAP) | "… in favor of **<PAYEE>** necessary to cover <purpose> is available from <fund> per RFA# <no>." |
 | `in_favor_of_petty` | "… in favor of **<PAYEE>**, <purpose> is available from <fund>." — title "… AVAILABILITY OF **FUND**" |
 
-`ref_type: 'LAA'` prints "LAA#" instead of "RFA#". The old module guessed the
+`ref_type: 'LAA'` prints "LAA#" instead of "RFA#" (in the sentence and in the footnote). The old module guessed the
 variant (and the payee) from the purpose text; here the caller sends
 `body_variant`.
 
