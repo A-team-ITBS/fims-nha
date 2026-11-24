@@ -40,6 +40,30 @@ if (!isset($_vf_api)) {
 #vf-root .vf-vendor-card { display: none; margin-top: 10px; padding: 12px 16px; gap: 20px; flex-wrap: wrap;
     background: var(--afims-success-soft, #DBF2E5); border: 1px solid var(--afims-success-soft-hover, #C4E9D4); border-radius: 10px; }
 #vf-root .vf-vendor-card.visible { display: flex; }
+#vf-root .vf-remit-sched { margin-bottom: 12px; border: 1px solid var(--afims-border, #E4ECF2); border-radius: 8px; padding: 10px 12px; font-size: 12.5px; }
+#vf-root .vf-rs-hdr { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--afims-text-muted, #62657E); margin-bottom: 6px; }
+#vf-root .vf-rs-tbl { width: 100%; border-collapse: collapse; margin: 4px 0 8px; }
+#vf-root .vf-rs-tbl th { text-align: left; font-size: 10.5px; font-weight: 700; color: var(--afims-text-muted, #62657E); padding: 4px 6px; border-bottom: 1px solid var(--afims-border, #E4ECF2); }
+#vf-root .vf-rs-tbl td { padding: 4px 6px; border-bottom: 1px dashed var(--afims-border, #E4ECF2); }
+#vf-root .vf-rs-tbl .r { text-align: right; font-variant-numeric: tabular-nums; }
+#vf-root .vf-rs-tbl .m { font-family: "IBM Plex Mono", monospace; }
+#vf-root .vf-rs-tbl tr.rate td { font-weight: 600; background: var(--afims-surface-alt, #F6F8FB); }
+#vf-root .vf-rs-tbl tr.ven td { color: var(--afims-text, #1e293b); }
+#vf-root .vf-rs-tbl tr.dv td { font-weight: 600; background: var(--afims-surface-alt, #F6F8FB); }
+#vf-root .vf-rs-tbl tr.atc td { color: var(--afims-text-muted, #62657E); border-bottom-style: dotted; }
+#vf-root .vf-rs-tbl tr.atc td:first-child { padding-left: 18px; }
+#vf-root .vf-rs-tbl tr.tot td { font-weight: 700; border-top: 2px solid var(--afims-border, #E4ECF2); border-bottom: 0; }
+#vf-root .vf-remit-sched summary { cursor: pointer; font-weight: 600; margin: 4px 0; }
+/* Remittance DV: section A spans the whole card (no RFA column) with the vendor and claimant side by side; section B is just the amount */
+#vf-root #vf-claimant-grid.vf-remit-on { grid-template-columns: 1fr; margin-bottom: 0; }
+#vf-root #vf-claimant-grid.vf-remit-on > div:first-child { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 20px; align-items: start; }
+#vf-root #vf-claimant-grid.vf-remit-on .nha-fg { margin-top: 0 !important; }
+#vf-root .vf-remit-sched.vf-remit-main { border: 0; padding: 0; margin: 0; font-size: 13px; }
+#vf-root .vf-remit-total { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 12px 14px; margin: 4px 0 12px; border-radius: 8px; background: var(--afims-surface-subtle, #F4F7FA); }
+#vf-root .vf-remit-total span { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--afims-text-muted, #62657E); }
+#vf-root .vf-remit-total strong { font-family: "IBM Plex Mono", monospace; font-size: 18px; }
+#vf-root .vf-remit-sched details { border: 1px solid var(--afims-border, #E4ECF2); border-radius: 8px; padding: 6px 12px; margin-top: 8px; }
+@media (max-width: 768px) { #vf-root #vf-claimant-grid.vf-remit-on > div:first-child { grid-template-columns: 1fr; } }
 #vf-root .vf-vendor-card label { display: block; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--afims-success-hover, #0C7539); }
 #vf-root .vf-vendor-card span { font-size: 13px; font-weight: 600; color: var(--afims-success-hover, #0C7539); }
 
@@ -74,6 +98,28 @@ if (!isset($_vf_api)) {
 #vf-root .vf-ded-remove { position: absolute; top: 8px; right: 10px; background: none; border: none; cursor: pointer; color: var(--afims-danger, #DC3545); font-size: 16px; line-height: 1; padding: 4px 6px; border-radius: 5px; }
 #vf-root .vf-ded-remove:hover { background: var(--afims-danger-soft, #FAE1E3); }
 #vf-root .vf-ded-type-label { font-weight: 600; font-size: 13px; color: var(--afims-heading-fill, #000E3E); padding-right: 24px; }
+/* VAT deduction row — Inclusive/Exclusive toggle, an informational VAT Computation block and the Withholding VAT block
+   (see vf_addVatLine()). Same two-block layout as the Accounting DV Processing page's VAT tab. */
+#vf-root .vf-vat-types { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+#vf-root .vf-vat-opt { display: flex; align-items: center; gap: 6px; cursor: pointer; padding: 7px 14px; border-radius: 6px; font-size: 12px; font-weight: 600; border: 1px solid var(--afims-border, #E4ECF2); background: var(--afims-surface-subtle, #F4F7FA); color: var(--afims-text-muted, #62657E); }
+#vf-root .vf-vat-opt.active { border-color: var(--afims-primary, #0035A9); color: var(--afims-primary-text, #0035A9); }
+#vf-root .vf-vat-opt small { font-size: 10px; font-weight: 400; }
+#vf-root .vf-vat-block { margin-top: 8px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--afims-border, #E4ECF2); background: var(--afims-surface-subtle, #F4F7FA); }
+#vf-root .vf-vat-block-title { font-size: 10.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; margin-bottom: 6px; }
+#vf-root .vf-vat-block-title span { font-weight: 400; text-transform: none; letter-spacing: 0; }
+#vf-root .vf-vat-block.info .vf-vat-block-title { color: var(--afims-primary-text, #0035A9); }
+#vf-root .vf-vat-block.real .vf-vat-block-title { color: var(--afims-danger, #DC3545); }
+#vf-root .vf-vat-block input[readonly] { background: var(--afims-surface, #FFFFFF); }
+/* RFA Breakdown: the editable Amount cell of each line. */
+#vf-root .vf-rfa-line-amt {
+    width: 100%; padding: 6px 8px; text-align: right; border: 1px solid var(--afims-border, #E4ECF2); border-radius: 6px;
+    font-size: 12.5px; font-family: var(--font); color: var(--afims-text, #1C1E29);
+    background: var(--afims-surface, #FFFFFF); box-sizing: border-box; transition: border-color .15s, box-shadow .15s;
+}
+#vf-root .vf-rfa-line-amt:focus { outline: none; border-color: var(--afims-heading-fill, #000E3E); box-shadow: 0 0 0 3px rgba(15,32,69,.1); }
+/* One line under the ATC rows: how much of the base the ATC rows' Tax Bases add up to (red when they exceed it). */
+#vf-root .vf-atc-summary { margin: 4px 0 10px; font-size: 11.5px; line-height: 1.5; color: var(--afims-text-muted, #62657E); }
+#vf-root .vf-atc-summary.over { padding: 6px 10px; border-radius: 6px; color: var(--afims-danger-text, #8F222D); background: var(--afims-danger-soft, #FAE1E3); }
 /* One pill button per deduction type (Retention, Advance Recoupment, etc.) — clicking a pill adds
    a row already bound to that type, instead of a single "+ Add Deduction" control. */
 #vf-root .vf-ded-types { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -216,8 +262,8 @@ html.afims-dark[data-bs-theme="dark"] #vf-root :is(input, select, textarea):is(:
                     <p class="vf-doc-section-hdr">A. Voucher Information</p>
 
                     <div class="vf-card">
-                        <p class="vf-card-title">Claimant &amp; RFA</p>
-                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:12px;">
+                        <p class="vf-card-title" id="vf-claimant-title">Claimant &amp; RFA</p>
+                        <div id="vf-claimant-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:12px;">
 
                             <!-- LEFT: Vendor Details & Claimant -->
                             <div>
@@ -229,6 +275,8 @@ html.afims-dark[data-bs-theme="dark"] #vf-root :is(input, select, textarea):is(:
                                     <div class="nha-fg">
                                         <label>PO Number <span class="vf-hint" style="display:inline;">(optional)</span></label>
                                         <input type="text" id="vf-po-number" placeholder="e.g. GSD-2025-09-103">
+                                        <!-- shown when the PO has no IAR (Inspection and Acceptance Report) — checked via GET /voucher/po-iar -->
+                                        <span id="vf-po-warn" role="alert" style="display:none;margin-top:4px;font-size:12px;color:var(--afims-danger-text,#8F222D);"></span>
                                     </div>
                                 </div>
                                 <div class="vf-vendor-card" id="vf-vendor-card" style="margin-bottom:12px;">
@@ -237,6 +285,7 @@ html.afims-dark[data-bs-theme="dark"] #vf-root :is(input, select, textarea):is(:
                                     <div><label>Address</label><span id="vf-vc-address">—</span></div>
                                     <div><label>TIN</label><span id="vf-vc-tin">—</span></div>
                                 </div>
+                                <div id="vf-remit-vendor-box" style="display:none;"></div>
                                 <div class="nha-fg">
                                     <label>Claimant Name <span class="nha-req">*</span></label>
                                     <input type="text" id="vf-claimant" placeholder="e.g. Jackson Auto Services, or Abelar, Reena E. et al.">
@@ -269,14 +318,14 @@ html.afims-dark[data-bs-theme="dark"] #vf-root :is(input, select, textarea):is(:
                          own Particulars box). -->
                     <table class="vf-doc-table">
                         <tr>
-                            <td>
+                            <td id="vf-doc-date-td">
                                 <p class="vf-doc-k">DV Date <span class="nha-req">*</span></p>
                                 <div class="nha-fg">
                                     <input type="date" id="vf-dv-date">
                                     <span class="vf-err" id="err-dv-date">DV Date is required.</span>
                                 </div>
                             </td>
-                            <td>
+                            <td id="vf-doc-status-td">
                                 <p class="vf-doc-k">Status</p>
                                 <span class="nha-bdg nha-bdg-gray" id="vf-status-doc">DRAFT</span>
                             </td>
@@ -298,7 +347,11 @@ html.afims-dark[data-bs-theme="dark"] #vf-root :is(input, select, textarea):is(:
                      box/Box B — Dept./Project/Fund Source/Budget/Obligation, filled in by the
                      RFA(s) above), and the Gross/Less Deductions/Net Amount Payable summary. ══ -->
                 <div class="vf-doc-section">
-                    <p class="vf-doc-section-hdr">B. Amount and Deductions</p>
+                    <p class="vf-doc-section-hdr" id="vf-sec-b-hdr">B. Amount and Deductions</p>
+
+                    <!-- A Remittance DV's amount: the total and the rate table, with the accounting entry and the vouchers it pays folded away
+                         underneath (vf_renderRemitSchedule()). Hidden for every other DV. -->
+                    <div class="vf-remit-sched" id="vf-remit-sched" style="display:none;"></div>
 
                     <!-- No standalone Amount input any more: the read-only Amount column of the RFA Breakdown below
                          shows how Gross Amount (the selected RFA(s)' remaining balance) is spread over their lines. #vf-gross stays as a hidden input — the rest of the form
@@ -317,13 +370,14 @@ html.afims-dark[data-bs-theme="dark"] #vf-root :is(input, select, textarea):is(:
 
                         <div class="vf-ded-section" id="vf-ded-section">
                             <div id="vf-ded-container"></div>
+                            <div class="vf-atc-summary" id="vf-atc-summary" style="display:none;"></div>
                             <div class="vf-ded-types" id="vf-ded-types"></div>
                         </div>
                     </div>
 
                     <!-- Gross Amount / Less: Total Deductions / NET AMOUNT PAYABLE — vf-doc-gross
                          and vf-doc-less-ded are set alongside vf-net in vf_recalc(). -->
-                    <table class="vf-doc-summary-table">
+                    <table class="vf-doc-summary-table" id="vf-doc-summary">
                         <tr><td>Gross Amount</td><td id="vf-doc-gross">₱ 0.00</td></tr>
                         <tr><td>Less: Total Deductions</td><td id="vf-doc-less-ded">₱ 0.00</td></tr>
                         <tr><td>Less: Withholding Tax (ATC)</td><td id="vf-doc-less-wh">₱ 0.00</td></tr>
@@ -457,6 +511,8 @@ let vf_paymentsPrior = 0;    // sum of net_amount other active vouchers already 
 let vf_selectedRfaIds = [];  // allocation_id values picked in the RFA multi-select, in selection order
 let vf_payrollPeriodId = null; // imported payroll month (payroll_period_id) this DV pays — picked in the Vendor dropdown's Payroll group — or null
 let vf_remittanceId = null;    // payroll remittance this DV pays — the month's agencies (GSIS / BIR / …), one DV per month — Voucher?remittance={id} — or null (no RFA needed)
+let vf_dvRemitVendors = [];   // the vendors the month's open withholding came from (new Remittance DV only) — the select under the claimant
+let vf_dvRemit = null;       // {period, type}: a month's EWT / Withholding VAT / Penalty Tax this DV pays to BIR — Remittance List "Remit" → Voucher?remit_period=YYYY-MM&remit_type={type} — or null (no RFA needed)
 let vf_payrollMonths = [];     // imported payroll months a DV can be prepared from (GET payroll-management/available)
 let vf_attachments = [];     // staged Supporting Documents: { document_name, link, size, uploading }
 let vf_attDirty = false;     // true once the attachments list has changed since open — avoids re-registering an unchanged batch on every save
@@ -468,6 +524,7 @@ let VF_ATC = [];              // active ATC codes — see the ATC subsection of 
 let VF_RC  = [];              // responsibility centers, for ATC "Chargeability"
 let VF_SL  = [];              // SL masters, for the Accounting Entries grid's SL Code picker
 let vf_atcSeq = 0;            // row-id counter for the ATC grid
+let vf_atcFull = null;        // the "full base" the ATC rows' bases were last split against (see vf_syncAtcBases()); null = not measured yet
 let vf_jevSeq = 0;            // row-id counter for the Accounting Entries grid
 let vf_jevGroupSeq = 0;       // GL account-group id counter for the Accounting Entries grid (see vf_addJevGroup())
 
@@ -578,6 +635,9 @@ function vf_reset() {
 
     vf_payrollPeriodId = null;
     vf_remittanceId = null;
+    vf_dvRemit = null;
+    vf_dvRemitVendors = [];
+    vf_renderRemitSchedule(null);
     vf_renderDedTypeButtons();
     $vf('vf-rfa-search').disabled = false;
     vf_markRemittanceFields(null);   // back to a normal DV: vendor dropdown and required RFA
@@ -593,6 +653,7 @@ function vf_reset() {
     $vf('vf-vendor').value = '';
     $vf('vf-vendor-card').classList.remove('visible');
     $vf('vf-po-number').value = '';
+    $vf('vf-po-warn').style.display = 'none';
     $vf('vf-claimant').value = '';
     $vf('vf-claimant-address').value = '';
     $vf('vf-claimant-tin').value = '';
@@ -638,6 +699,8 @@ function vf_bindEvents() {
         }
     });
     $vf('vf-vendor').addEventListener('change', vf_onVendorChange);
+    $vf('vf-po-number').addEventListener('change', () => vf_checkPoIar());
+    $vf('vf-po-number').addEventListener('input', () => { $vf('vf-po-warn').style.display = 'none'; }); // stale until re-checked on change
     vf_bindMoneyInput($vf('vf-gross'));
     vf_bindMoneyInput($vf('vf-budget'));
     vf_bindMoneyInput($vf('vf-obligation'));
@@ -891,8 +954,9 @@ function vf_renderRfaChips() {
 }
 
 /* "RFA Breakdown" (section B) — replaces the old standalone Amount input. One row per itemized RFA line as
-   "account_code - description", with the RFA it belongs to, that RFA's remaining balance, and a READ-ONLY
-   Amount (spread from Gross, which comes from the selected RFA(s)). Gross Amount sits under the whole table and is the sum of those amounts; the hidden #vf-gross
+   "account_code - description", with the RFA it belongs to, that RFA's remaining balance, and an EDITABLE
+   Amount per line (it starts as Gross spread over the lines, Gross coming from the selected RFA(s); typing in a
+   cell re-sums Gross — see vf_onLineAmountInput()). Gross Amount sits under the whole table and is the sum of those amounts; the hidden #vf-gross
    input is kept in step with it because the rest of the form (deductions, ATC, net, save payload) reads it.
    An RFA with no itemized lines gets one row built from its own account/description.
    The per-line split isn't stored — only the gross is saved (gross_amount). */
@@ -926,11 +990,16 @@ function vf_renderRfaBreakdown() {
         && Math.abs(rows.reduce((s, r) => s + (Number(vf_lineAmounts[r.key]) || 0), 0) - gross) < 0.005;
     let left = gross;
     const amounts = {};
+    // Each RFA can only give what it has left (an RFA with no known budget is unbounded), so one RFA's lines can't
+    // soak up the share that belongs to the next one — the per-RFA check in vf_validate() would otherwise flag a fresh selection.
+    const rfaRoom = {};
+    rows.forEach(r => { if (!(r.rfa.allocation_id in rfaRoom)) rfaRoom[r.rfa.allocation_id] = Number(r.rfa.budget_amount) > 0 ? (Number(r.rfa.remaining_balance) || 0) : Infinity; });
     rows.forEach((r, i) => {
         if (typed) { amounts[r.key] = Number(vf_lineAmounts[r.key]) || 0; return; }
-        const v = i === rows.length - 1 ? left : Math.min(r.cap, left);
+        const v = i === rows.length - 1 ? left : Math.min(r.cap, left, rfaRoom[r.rfa.allocation_id]);
         amounts[r.key] = Math.max(0, Math.round(v * 100) / 100);
         left -= amounts[r.key];
+        rfaRoom[r.rfa.allocation_id] -= amounts[r.key];
     });
     vf_renderedGross = gross;
 
@@ -939,7 +1008,7 @@ function vf_renderRfaBreakdown() {
         <td>${label(r.code, r.text)}</td>
         ${r.first ? `<td rowspan="${r.span}" style="vertical-align:top;">${vf_esc(r.rfa.allocation_number)}</td>
         <td rowspan="${r.span}" style="text-align:right;vertical-align:top;">${vf_peso(r.rfa.remaining_balance)}</td>` : ''}
-        <td style="width:150px;text-align:right;">${amounts[r.key] ? vf_peso(amounts[r.key]) : '—'}</td>
+        <td style="width:150px;text-align:right;"><input type="text" inputmode="decimal" class="vf-rfa-line-amt" data-key="${vf_esc(r.key)}" placeholder="0.00" value="${amounts[r.key] ? vf_fmtMoneyVal(amounts[r.key]) : ''}" aria-label="Amount for ${vf_esc(label(r.code, r.text))}"></td>
     </tr>`).join('');
     box.innerHTML = `<p class="vf-card-title">RFA Breakdown</p>
         <div style="overflow-x:auto;"><table class="vf-ledger" style="width:100%;font-size:12.5px;">
@@ -1006,7 +1075,7 @@ async function vf_onRfaSelectionChange() {
         // (e.g. a partial draw), this just stops it from defaulting to blank/stale on every
         // selection change.
         // …except a payroll DV: its Amount is the imported payroll's gross (vf_applyPayroll()).
-        if (!vf_payrollPeriodId && !vf_remittanceId) {
+        if (!vf_payrollPeriodId && !vf_remittanceId && !vf_dvRemit) {
             $vf('vf-gross').value = vf_fmtMoneyVal(details.filter(Boolean).reduce((s, r) => s + (Number(r.remaining_balance) || 0), 0));
         }
 
@@ -1016,7 +1085,7 @@ async function vf_onRfaSelectionChange() {
         const withVendor  = details.find(r => r?.vendor_id);
         const withAccount = details.find(r => r?.account_code);
         const withDescription = details.find(r => r?.description);
-        if (withPo && !$vf('vf-po-number').value) $vf('vf-po-number').value = withPo.po_number;
+        if (withPo && !$vf('vf-po-number').value) { $vf('vf-po-number').value = withPo.po_number; vf_checkPoIar(); }
         if (withAccount && !$vf('vf-account-code').value) $vf('vf-account-code').value = withAccount.account_code;
         if (withDescription && !$vf('vf-particulars').value) $vf('vf-particulars').value = withDescription.description;
         if (withVendor) {
@@ -1232,9 +1301,30 @@ async function vf_persistAttachments() {
 // "08 - deduction_types_other_recoupment_penalty_vat.sql") used to silently get no Accounting
 // Entries line at all. Now the preparer must pick one here — required, same searchable
 // chart-of-accounts picker the Accounting Entries grid itself uses (vf_coaOptions).
+/* Retention, Advance Recoupment and Penalty Tax are one figure per voucher (VAT too — see vf_addVatLine()); a second line of
+   the same type is almost always an accidental double click that deducts the amount twice. "Other" can repeat. The server enforces
+   the same rule (DisbursementVoucherService::SINGLE_DEDUCTION_TYPES). A line already SAVED twice (older data) still loads. */
+const VF_SINGLE_DED = ['RETENTION', 'RECOUPMENT', 'PENALTY_TAX'];
+
 function vf_addDeductionLine(d = null) {
     const idx = ++vf_dedSeq;
     const t = vf_dedTypes.find(t => String(t.deduction_type_id) === String(d?.deduction_type_id));
+    if (t && VF_SINGLE_DED.includes(t.code) && !(d?.gross_amount != null)) {
+        const already = [...$vf('vf-ded-container').querySelectorAll('.vf-ded-row')].some(r => r.dataset.typeId === String(t.deduction_type_id));
+        if (already) { vl_toastOrAlert(`"${t.name}" is already added — edit that line instead (it can only be added once).`); return; }
+    }
+    // VAT gets its own row layout (Inclusive/Exclusive, VAT Computation, Withholding VAT) — a singleton.
+    // A pill click passes only {deduction_type_id}; a saved line also carries gross_amount (its tax base).
+    // A legacy saved VAT line with a flat peso amount and no rate can't be expressed as Withholding VAT %,
+    // so it falls through to the plain Rate/Amount row below instead of losing its amount.
+    if (t?.code === 'VAT') {
+        const saved = d?.gross_amount !== undefined && d?.gross_amount !== null;
+        const flatLegacy = saved && (d.rate === null || d.rate === undefined || d.rate === '') && Number(d.deduction_amount) > 0;
+        if (!flatLegacy) {
+            if (!vf_vatRow()) return vf_addVatLine(idx, d, saved);
+            if (!saved) { vl_toastOrAlert('A VAT line is already added — edit it instead.'); return; }
+        }
+    }
     const needsAcct = !!t && !t.account_code;
     const div = document.createElement('div');
     div.className = 'vf-ded-row';
@@ -1276,16 +1366,107 @@ function vf_removeDeductionLine(idx) {
     vf_recalc();
 }
 
+/* ── VAT deduction (Inclusive/Exclusive + Withholding VAT) ─────
+   Same model as the Accounting DV Processing page's VAT tab (ACCOUNTING-DCD dv-processing.php calcVAT()):
+     1. Statutory VAT, fixed 12% — INFORMATIONAL, never subtracted from the Net Amount:
+          Inclusive: Tax Base = Gross / 1.12, VAT = Gross - Tax Base
+          Exclusive: Tax Base = Gross,        VAT = Gross x 12%
+     2. Withholding VAT, rate typed by the preparer — the real cash deduction: Tax Base x rate.
+   The row reuses .vf-ded-rate / .vf-ded-amount for the Withholding VAT so vf_totalDeductions() and
+   vf_collectDeductions() need no special case, except gross_amount: it is the Tax Base (row.dataset.base),
+   which makes the server's gross_amount x rate / 100 land on the same peso amount. Inclusive vs. exclusive
+   isn't stored — on load it's inferred from that base (below the DV's gross => inclusive).
+   The ATC grid's Tax Base follows the same VAT-exclusive base (vf_rebaseAtcToVat()). */
+const VF_VAT_RATE = 12;
+
+function vf_vatRow() { return $vf('vf-ded-container').querySelector('.vf-ded-row[data-vat="1"]'); }
+
+function vf_vatSplit(gross, vatType) {
+    const r2 = n => Math.round((n + Number.EPSILON) * 100) / 100;
+    const vat  = r2(vatType === 'exclusive' ? gross * VF_VAT_RATE / 100 : gross - gross / (1 + VF_VAT_RATE / 100));
+    const base = r2(vatType === 'exclusive' ? gross : gross - vat);
+    return { vat, base };
+}
+
+function vf_addVatLine(idx, d, saved) {
+    const gross   = vf_numVal($vf('vf-gross').value);
+    const savedBase = saved ? Number(d.gross_amount) : 0;
+    const vatType = saved && savedBase > 0 && savedBase < gross - 0.005 ? 'inclusive' : (saved ? 'exclusive' : 'inclusive');
+    const div = document.createElement('div');
+    div.className = 'vf-ded-row';
+    div.id = `vf-ded-row-${idx}`;
+    div.dataset.typeId = d.deduction_type_id;
+    div.dataset.vat = '1';
+    div.dataset.vatType = vatType;
+    div.innerHTML = `
+        <button type="button" class="vf-ded-remove" title="Remove" onclick="vf_removeDeductionLine(${idx})">&times;</button>
+        <div class="vf-ded-type-label">VAT</div>
+        <div class="vf-vat-types">
+            <label class="vf-vat-opt"><input type="radio" name="vf-vat-type-${idx}" value="inclusive"> VAT Inclusive <small>Gross already includes VAT</small></label>
+            <label class="vf-vat-opt"><input type="radio" name="vf-vat-type-${idx}" value="exclusive"> VAT Exclusive <small>VAT is added on top of gross</small></label>
+        </div>
+        <div class="vf-vat-block info">
+            <div class="vf-vat-block-title">VAT Computation <span>— informational, not deducted</span></div>
+            <div class="vf-grid3">
+                <div class="nha-fg"><label>Statutory VAT Rate (%)</label><input type="text" readonly value="${VF_VAT_RATE}"></div>
+                <div class="nha-fg"><label>VAT Amount (₱)</label><input type="text" class="vf-vat-amt" readonly></div>
+                <div class="nha-fg"><label>Tax Base (₱)</label><input type="text" class="vf-vat-base" readonly></div>
+            </div>
+        </div>
+        <div class="vf-vat-block real">
+            <div class="vf-vat-block-title">Withholding VAT <span>— deducted from Net Amount Payable</span></div>
+            <div class="vf-grid2">
+                <div class="nha-fg"><label>Withholding VAT Rate (%)</label><input type="number" class="vf-ded-rate" min="0" max="100" step="0.01" placeholder="e.g. 5"></div>
+                <div class="nha-fg"><label>Withholding VAT Amount (₱)</label><input type="text" class="vf-ded-amount" readonly placeholder="Auto-computed"></div>
+            </div>
+        </div>
+        <span class="vf-hint vf-vat-hint"></span>`;
+    $vf('vf-ded-container').appendChild(div);
+
+    div.querySelector('.vf-ded-rate').value = saved ? (d.rate ?? '') : '';
+    div.querySelector('.vf-ded-rate').addEventListener('input', () => vf_recalc());
+    div.querySelectorAll('input[type="radio"]').forEach(r => r.addEventListener('change', () => {
+        div.dataset.vatType = r.value;
+        vf_recalc(); // vf_syncVat() + vf_syncAtcBases(): the ATC rows follow the new base, keeping their split
+    }));
+    vf_recalc();
+}
+
+/* Refreshes a VAT row's VAT Amount / Tax Base / Withholding VAT from the DV's Gross. The ATC rows are NOT
+   touched here: vf_syncAtcBases() moves them when the base they split changes, without losing their split. */
+function vf_syncVat(row) {
+    const gross = vf_numVal($vf('vf-gross').value);
+    const vatType = row.dataset.vatType === 'exclusive' ? 'exclusive' : 'inclusive';
+
+    const { vat, base } = vf_vatSplit(gross, vatType);
+    row.dataset.base = base;
+    row.querySelector('.vf-vat-amt').value  = vf_fmtMoneyVal(vat);
+    row.querySelector('.vf-vat-base').value = vf_fmtMoneyVal(base);
+    row.querySelectorAll('.vf-vat-opt').forEach(l => {
+        const input = l.querySelector('input');
+        input.checked = input.value === vatType;
+        l.classList.toggle('active', input.checked);
+    });
+
+    const rate = parseFloat(row.querySelector('.vf-ded-rate').value);
+    const wvat = rate > 0 ? vf_pctOf(base, rate) : 0;
+    row.querySelector('.vf-ded-amount').value = wvat > 0 ? vf_fmtMoneyVal(wvat) : '';
+    row.querySelector('.vf-vat-hint').textContent =
+        (vatType === 'inclusive' ? `Tax Base = Gross ÷ ${(1 + VF_VAT_RATE / 100).toFixed(2)}` : 'Tax Base = Gross (VAT is added on top)')
+        + (rate > 0 ? ` · Withholding VAT = Tax Base × ${rate}%` : ' · enter a Withholding VAT rate to deduct it');
+}
+
 /* A deduction's gross_amount always mirrors the DV's own Amount (not separately editable — see
    the RFA Breakdown / summary); its deduction_amount is rate% of that unless the
    user types an amount directly (no rate given = flat peso deduction). */
 function vf_recalcDeductionLine(idx) {
     const row = $vf(`vf-ded-row-${idx}`);
     if (!row) return;
+    if (row.dataset.vat === '1') { vf_recalc(); return; } // VAT row: vf_recalc() -> vf_syncVat() owns its figures
     const gross = vf_numVal($vf('vf-gross').value);
     const rate = parseFloat(row.querySelector('.vf-ded-rate').value);
     if (!isNaN(rate) && rate > 0) {
-        row.querySelector('.vf-ded-amount').value = vf_fmtMoneyVal(gross * rate / 100);
+        row.querySelector('.vf-ded-amount').value = vf_fmtMoneyVal(vf_pctOf(gross, rate));
     }
     vf_recalc();
 }
@@ -1307,7 +1488,8 @@ function vf_collectDeductions() {
         out.push({
             deduction_type_id: typeId || null,
             rate             : row.querySelector('.vf-ded-rate').value === '' ? null : parseFloat(row.querySelector('.vf-ded-rate').value),
-            gross_amount     : vf_numVal($vf('vf-gross').value),
+            // VAT line: the Tax Base its Withholding VAT rate applies to (see vf_syncVat()), not the DV's Gross.
+            gross_amount     : row.dataset.vat === '1' ? (Number(row.dataset.base) || 0) : vf_numVal($vf('vf-gross').value),
             deduction_amount : amount,
             account_code     : row.querySelector('.vf-ded-acct')?.value.trim() || null,
         });
@@ -1320,8 +1502,76 @@ function vf_collectDeductions() {
    reaches FOR_ACCOUNTING; here it's just a plain add/remove grid, saved as-is). ───────────────── */
 /* Each ATC row is its own card in the same list as the deductions (#vf-ded-container), added below the previous one. */
 function vf_clearDeductionRows() { $vf('vf-ded-container').querySelectorAll('.vf-ded-row').forEach(r => r.remove()); }
-function vf_clearAtcRows()       { $vf('vf-ded-container').querySelectorAll('.vf-atc-row').forEach(r => r.remove()); }
+function vf_clearAtcRows()       { $vf('vf-ded-container').querySelectorAll('.vf-atc-row').forEach(r => r.remove()); vf_atcFull = null; }
 function vf_atcRows()            { return $vf('vf-ded-container').querySelectorAll('.vf-atc-row'); }
+
+/* ── What the ATC rows split ────────────────────────────────────
+   The withholding is computed on the VAT-exclusive Tax Base when the DV has a VAT line, otherwise on Gross less
+   the deductions (what vf_onAtcCodeSelect() has always defaulted to). The ATC rows' Tax Bases are meant to SPLIT
+   that base between them (e.g. 60k at 2% + 40k at 5%), so:
+     - a new row defaults to the part not yet allocated to the other rows (never the whole base again, which made two
+       rows withhold on the same money);
+     - when the base itself moves (Gross edited, VAT type toggled, a deduction added/removed) the rows follow it in
+       proportion, so the split survives — but only while the rows add up to the whole base, so a deliberately
+       partial base is never overwritten;
+     - the rows' total is shown under them, and a total above the base is flagged (blocked on save above Gross). */
+function vf_fullBase() {
+    const vatRow = vf_vatRow();
+    if (vatRow) return Number(vatRow.dataset.base) || 0;
+    return Math.max(0, vf_numVal($vf('vf-gross').value) - vf_totalDeductions());
+}
+
+function vf_atcBaseTotal(exceptRow = null) {
+    let sum = 0;
+    vf_atcRows().forEach(tr => { if (tr !== exceptRow) sum += vf_numVal(tr.querySelector('.vf-atc-base').value); });
+    return Math.round(sum * 100) / 100;
+}
+
+/* A row's share of the base (base / full base): remembered so a later move of the base re-splits without rounding drift. */
+function vf_setAtcShare(tr) {
+    const full = vf_fullBase();
+    tr.dataset.share = full > 0 ? vf_numVal(tr.querySelector('.vf-atc-base').value) / full : 0;
+}
+
+function vf_syncAtcBases() {
+    const full = vf_fullBase();
+    const prev = vf_atcFull;
+    vf_atcFull = full;
+    const rows = [...vf_atcRows()];
+    if (prev !== null && prev > 0 && rows.length && Math.abs(full - prev) > 0.004) {
+        const bases = rows.map(tr => vf_numVal(tr.querySelector('.vf-atc-base').value));
+        const fullyAllocated = Math.abs(bases.reduce((s, b) => s + b, 0) - prev) <= 0.01 * rows.length;
+        if (fullyAllocated) {
+            const next = rows.map((tr, i) => {
+                const share = tr.dataset.share !== undefined ? Number(tr.dataset.share) : bases[i] / prev;
+                return Math.round(share * full * 100) / 100;
+            });
+            // The split keeps adding up to the base exactly: the few centavos lost to rounding go to the largest row
+            // (never to a row that holds no base — that would hand it a stray 0.01).
+            const big = next.indexOf(Math.max(...next));
+            next[big] = Math.round((next[big] + (full - next.reduce((s, b) => s + b, 0))) * 100) / 100;
+            rows.forEach((tr, i) => {
+                tr.querySelector('.vf-atc-base').value = next[i] > 0 ? vf_fmtMoneyVal(next[i]) : '';
+                vf_refreshAtcWh(tr);
+            });
+        }
+    }
+    vf_renderAtcSummary(full);
+}
+
+function vf_renderAtcSummary(full) {
+    const el = $vf('vf-atc-summary');
+    const rows = vf_atcRows();
+    if (!rows.length) { el.style.display = 'none'; return; }
+    const total = vf_atcBaseTotal();
+    const over  = total - full > 0.005;
+    const what  = vf_vatRow() ? 'the VAT-exclusive Tax Base' : 'the amount net of deductions';
+    el.className = 'vf-atc-summary' + (over ? ' over' : '');
+    el.textContent = over
+        ? `ATC Tax Bases total ${vf_peso(total)}, which is more than ${what} (${vf_peso(full)}) — the withholding would be taken on the same amount twice. Split the base between the rows.`
+        : `ATC Tax Bases total ${vf_peso(total)} of ${what} (${vf_peso(full)})${full - total > 0.005 ? ` · ${vf_peso(full - total)} not allocated to an ATC row` : ''}.`;
+    el.style.display = '';
+}
 
 function vf_addAtcLine(a = null) {
     const idx = ++vf_atcSeq;
@@ -1349,10 +1599,12 @@ function vf_addAtcLine(a = null) {
     div.querySelector('.vf-atc-rc').value   = a?.chargeability ?? '';
     div.querySelector('.vf-atc-code').addEventListener('change', () => vf_onAtcCodeSelect(idx));
     vf_bindMoneyInput(div.querySelector('.vf-atc-base'));
+    div.querySelector('.vf-atc-base').addEventListener('input', () => vf_setAtcShare(div)); // typed by hand: its share of the base changes
     div.querySelectorAll('.vf-atc-rate, .vf-atc-base').forEach(el => {
         el.addEventListener('input', () => vf_recalcAtcLine(idx));
     });
     $vf('vf-ded-container').appendChild(div);
+    vf_setAtcShare(div);
     // Bound after the row is attached to the DOM — nhaSearchableSelect reads the input's live
     // parentElement to anchor the dropdown, which is unreliable on a still-detached node.
     nhaSearchableSelect(div.querySelector('.vf-atc-code'), VF_ATC.map(c => ({ value: c.atc_code, label: c.description })));
@@ -1385,8 +1637,11 @@ function vf_onAtcCodeSelect(idx) {
     if (atcDef && isFinite(Number(atcDef.tax_rate))) rateEl.value = Number(atcDef.tax_rate).toFixed(2);
 
     if (!baseEl.value) {
-        const gross = vf_numVal($vf('vf-gross').value);
-        baseEl.value = vf_fmtMoneyVal(Math.max(0, gross - vf_totalDeductions()));
+        // Only the part of the base the other ATC rows haven't taken yet — a second row defaulting to the whole base
+        // made the rows' total exceed it at once. With a VAT line the base is the VAT-exclusive Tax Base (see vf_fullBase()).
+        const free = Math.max(0, Math.round((vf_fullBase() - vf_atcBaseTotal(tr)) * 100) / 100);
+        baseEl.value = vf_fmtMoneyVal(free);
+        vf_setAtcShare(tr);
     }
 
     if (!rcEl.value) {
@@ -1397,12 +1652,17 @@ function vf_onAtcCodeSelect(idx) {
     vf_recalcAtcLine(idx);
 }
 
+/* Withholding Tax cell of one ATC row = Tax Base x Rate%, centavo-exact (vf_pctOf()). */
+function vf_refreshAtcWh(tr) {
+    const rate = parseFloat(tr.querySelector('.vf-atc-rate').value) || 0;
+    const base = vf_numVal(tr.querySelector('.vf-atc-base').value);
+    tr.querySelector('.vf-atc-wh').value = vf_peso(vf_pctOf(base, rate));
+}
+
 function vf_recalcAtcLine(idx) {
     const tr = $vf(`vf-atc-row-${idx}`);
     if (!tr) return;
-    const rate = parseFloat(tr.querySelector('.vf-atc-rate').value) || 0;
-    const base = vf_numVal(tr.querySelector('.vf-atc-base').value);
-    tr.querySelector('.vf-atc-wh').value = vf_peso(base * rate / 100);
+    vf_refreshAtcWh(tr);
     vf_recalcAtc();
 }
 
@@ -1565,18 +1825,23 @@ function vf_recalc() {
     // Gross was set by something other than the Amount cells (RFA picked, payroll/remittance fill, saved DV
     // loaded) — rebuild the breakdown so its rows follow it.
     if (Math.abs(gross - vf_renderedGross) > 0.005) vf_renderRfaBreakdown();
+    const vatRow = vf_vatRow();
+    if (vatRow) vf_syncVat(vatRow); // VAT / Tax Base / Withholding VAT follow Gross (and re-base the ATC rows if Gross changed)
     $vf('vf-ded-container').querySelectorAll('.vf-ded-row').forEach(row => {
+        if (row.dataset.vat === '1') return; // handled by vf_syncVat() above — its rate applies to the Tax Base, not Gross
         // A rate-based deduction follows Gross (the server recomputes rate% x gross on save, so the form must too);
         // a flat peso deduction (no rate) is left as typed.
         const rate = parseFloat(row.querySelector('.vf-ded-rate').value);
         if (!isNaN(rate) && rate > 0) {
-            row.querySelector('.vf-ded-amount').value = vf_fmtMoneyVal(Math.round(gross * rate) / 100);
+            row.querySelector('.vf-ded-amount').value = vf_fmtMoneyVal(vf_pctOf(gross, rate));
         }
     });
 
     const totalDeductions = vf_totalDeductions();
+    vf_syncAtcBases(); // the base the ATC rows split may just have moved (Gross, VAT type, a deduction) — before their withholding is summed
     // Withholding tax (ATC) is taken off too — same Gross - Deductions - Withholding the server stores as net_amount.
-    const totalWithholding = vf_collectAtcLines().reduce((s, l) => s + Math.round(l.tax_base * l.rate) / 100, 0);
+    // Summed in centavos: adding the per-row floats directly can leave a stray 0.0000000001 that shows up as a cent.
+    const totalWithholding = vf_collectAtcLines().reduce((s, l) => s + Math.round(vf_pctOf(l.tax_base, l.rate) * 100), 0) / 100;
     const netAmount = Math.max(0, gross - totalDeductions - totalWithholding);
     $vf('vf-doc-gross').textContent    = vf_peso(gross);
     $vf('vf-doc-less-ded').textContent = vf_peso(totalDeductions);
@@ -1708,8 +1973,131 @@ async function vf_openForRemittance(remittanceId) {
     }
 }
 
+/**
+ * Remittance List's "Remit" (Voucher?remit_period=YYYY-MM&remit_type={EWT|VAT|PENALTY_TAX}): a new DV paying to BIR what the month's released
+ * vouchers withheld — GET remittance-list/dv-data/{period}/{type}: claimant = BIR, the particulars ("Remittance of Expanded Withholding Taxes
+ * withheld for the month of …" + the rate breakdown), account, amount (= the month's total) and the entry (Dr Due to BIR / VAT Payable, Cr Cash
+ * in Bank). No RFA: the vouchers already obligated it. The rate rows and the voucher-by-voucher schedule are listed under the claimant.
+ */
+async function vf_openForDvRemit(period, type) {
+    await vf_open(0);
+    await vf_loadDvRemit(period, type, '');
+}
+
+/** The vendor select of a new Remittance DV: refills the form for another vendor of the month (one vendor per DV). */
+function vf_remitVendorChanged(idx) {
+    const v = vf_dvRemitVendors[Number(idx)];
+    if (v && vf_dvRemit) vf_loadDvRemit(vf_dvRemit.period, vf_dvRemit.type, v.vendor);
+}
+
+/** Fills the (already open) new-DV form with a month's remittance for one vendor ('' = the vendor with the most withheld). */
+async function vf_loadDvRemit(period, type, vendor) {
+    window.PagePreloader?.show();
+    try {
+        const res = await vf_authFetch(VF_API + '/' + 'remittance-list/dv-data/' + encodeURIComponent(period) + '/' + encodeURIComponent(type) + (vendor ? '?vendor=' + encodeURIComponent(vendor) : ''));
+        if (res.status === 401) throw new Error(VF_SESSION_EXPIRED_MSG);
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || !json.success) throw new Error(json.message || 'HTTP ' + res.status);
+        vf_applyDvRemit(json.data);
+    } catch (e) {
+        vf_showErrors([e.message]);
+    } finally {
+        window.PagePreloader?.hide();
+    }
+}
+
+/** Card / field wording of a month's remittance DV, in the shape vf_fillRemittance() reads. */
+function vf_dvRemitView(d) {
+    const n = Number(d.vouchers) || 0;
+    return {
+        ...d,
+        dvRemit: true,
+        label: `${d.type_name} — ${d.period_label}`,
+        card_type: `Remittance to BIR — ${d.type_name}`,
+        card_detail: `For the month of ${d.period_label}${d.remit_vendor ? ' · ' + d.remit_vendor : ''} · ${n} voucher${n === 1 ? '' : 's'} · Total ${vf_peso(d.gross_amount)}`,
+        card_ref: 'Pays what the released vouchers of the month withheld — no RFA needed on this DV',
+        option_label: `Remittance to BIR — ${d.type_name}, ${d.period_label}`,
+        rfa_note: `(not needed — remitting what the ${d.period_label} vouchers withheld)`,
+        rfa_placeholder: 'Not needed for a remittance of withheld tax',
+    };
+}
+
+function vf_applyDvRemit(d) {
+    vf_dvRemit = { period: d.remit_period, type: d.remit_type, vendor: d.remit_vendor || '' };
+    vf_dvRemitVendors = d.vendors || [];
+    vf_fillRemittance(vf_dvRemitView(d));
+    vf_renderRemitSchedule(d);
+    $vf('vf-particulars').rows = Math.min(10, Math.max(3, String(d.particulars || '').split('\n').length));
+}
+
+/**
+ * Under the claimant of a monthly remittance DV: the paper form's rate rows (1% … 15% Withholding Tax, each with the Contractors/Suppliers — the
+ * vendors — it was withheld from and their amounts) and the voucher-by-voucher schedule behind them. null hides it.
+ */
+function vf_renderRemitSchedule(d) {
+    const box = $vf('vf-remit-sched');
+    const vbox = $vf('vf-remit-vendor-box');
+    if (!box) return;
+    if (!d) {
+        box.style.display = 'none'; box.innerHTML = '';
+        if (vbox) { vbox.style.display = 'none'; vbox.innerHTML = ''; }
+        return;
+    }
+    const oneVendor = !!d.remit_vendor;   // a DV pays one vendor, so naming that vendor on every row would only repeat it
+    // the vendor lives in section A (who this DV is for): pick it on a new DV, read-only once saved
+    if (vbox) {
+        if ((d.vendors || []).length) {
+            const cur = Math.max(0, vf_dvRemitVendors.findIndex(v => v.vendor === d.remit_vendor));
+            vbox.innerHTML = `<div class="nha-fg"><label>Vendor the tax was withheld from <span class="nha-req">*</span></label>
+                <select id="vf-remit-vendor" onchange="vf_remitVendorChanged(this.value)">${vf_dvRemitVendors.map((v, i) =>
+                    `<option value="${i}"${i === cur ? ' selected' : ''}>${vf_esc(v.vendor)} — ${vf_peso(v.amount)} (${Number(v.vouchers) || 0} voucher${Number(v.vouchers) === 1 ? '' : 's'})</option>`).join('')}</select>
+                <span class="vf-hint">One vendor per remittance DV. The other vendors stay ready to remit.</span></div>`;
+        } else if (d.remit_vendor) {
+            vbox.innerHTML = `<div class="nha-fg"><label>Vendor the tax was withheld from</label><div style="padding:8px 0;font-weight:600;">${vf_esc(d.remit_vendor)}</div></div>`;
+        } else {
+            vbox.innerHTML = '';
+        }
+        vbox.style.display = vbox.innerHTML ? '' : 'none';
+    }
+
+    const money = v => Number(v || 0) > 0 ? vf_peso(v) : '-';
+    // 1) the amount: one row per rate that has something (empty rates are left out), the vendors only when they are not all the same one
+    const rows = (d.breakdown || []).filter(b => Number(b.amount) > 0).map(b => `<tr class="rate"><td>${vf_esc(b.label)}</td>${oneVendor ? '' : '<td></td>'}<td class="r">${money(b.amount)}</td></tr>` +
+        (oneVendor ? '' : (b.vendors || []).map(v => `<tr class="ven"><td></td><td>${vf_esc(v.vendor)}</td><td class="r">${vf_peso(v.amount)}</td></tr>`).join(''))).join('');
+    // 2) the accounting entry the DV posts (Dr the liability, Cr Cash in Bank) — section D is Accounting's, so it is only shown here, folded
+    const lines = d.lines || [];
+    const ent = lines.map(l => `<tr><td class="m">${vf_esc(l.account_code)}</td><td>${vf_esc(l.account_title || '')}</td>
+        <td class="r">${Number(l.debit) > 0 ? vf_peso(l.debit) : ''}</td><td class="r">${Number(l.credit) > 0 ? vf_peso(l.credit) : ''}</td></tr>`).join('');
+    const names = side => lines.filter(l => Number(l[side]) > 0).map(l => l.account_title || l.account_code).join(', ');
+    // 3) the vouchers this DV pays: each source DV as a row, its ATC lines as its children — folded too
+    const groups = [];
+    (d.schedule || []).forEach(sc => {
+        let g = groups.find(x => x.dv_id === sc.dv_id);
+        if (!g) { g = { dv_id: sc.dv_id, dv_no: sc.dv_no, dv_date: sc.dv_date, vendor: sc.claimant_name, total: 0, lines: [] }; groups.push(g); }
+        g.total += Number(sc.amount || 0);
+        g.lines.push(sc);
+    });
+    const sched = groups.map(g => `<tr class="dv"><td class="m">${vf_esc(g.dv_no)}</td><td>${vf_esc(String(g.dv_date || '').slice(0, 10))}</td>${oneVendor ? '' : `<td>${vf_esc(g.vendor)}</td>`}<td></td><td></td><td class="r">${vf_peso(g.total)}</td></tr>` +
+        g.lines.map(sc => `<tr class="atc"><td class="m">↳ ${vf_esc(sc.atc_code || d.type_name)}</td><td></td>${oneVendor ? '' : '<td></td>'}<td class="r">${sc.rate === null || sc.rate === undefined ? '' : vf_esc(Number(sc.rate) + '%')}</td><td class="r">${vf_peso(sc.base)}</td><td class="r">${vf_peso(sc.amount)}</td></tr>`).join('')).join('');
+    const nv = Number(d.vouchers) || 0, nl = (d.schedule || []).length;
+
+    box.innerHTML = `<div class="vf-remit-total"><span>Total to remit — ${vf_esc(d.type_name)}, ${vf_esc(d.period_label)}</span><strong>${vf_peso(d.gross_amount)}</strong></div>
+        <table class="vf-rs-tbl"><thead><tr><th>Rate</th>${oneVendor ? '' : '<th>Contractors/Suppliers</th>'}<th class="r">Amount</th></tr></thead><tbody>${rows}</tbody></table>
+        <details><summary>Vouchers included — ${nv} voucher${nv === 1 ? '' : 's'}, ${nl} line${nl === 1 ? '' : 's'}</summary>
+        <div style="overflow-x:auto;"><table class="vf-rs-tbl"><thead><tr><th>DV No. / ATC</th><th>Date</th>${oneVendor ? '' : '<th>Vendor</th>'}<th class="r">Rate</th><th class="r">Tax Base</th><th class="r">Withheld</th></tr></thead><tbody>${sched}</tbody></table></div></details>
+        <details><summary>Accounting entry — Dr ${vf_esc(names('debit'))} / Cr ${vf_esc(names('credit'))}</summary>
+        <div style="overflow-x:auto;"><table class="vf-rs-tbl"><thead><tr><th>Account code</th><th>Account title</th><th class="r">Debit</th><th class="r">Credit</th></tr></thead><tbody>${ent}</tbody></table></div></details>`;
+    box.classList.add('vf-remit-main');
+    box.style.display = '';
+}
+
 function vf_applyRemittance(d) {
     vf_remittanceId = Number(d.payroll_remittance_id);
+    vf_fillRemittance(d);
+}
+
+/** Fills the form from a remittance (payroll month or a voucher's withheld tax): claimant, particulars, amount, entry; no RFA. */
+function vf_fillRemittance(d) {
     vf_selectedRfaIds = [];
     vf_renderRfaChips();
     $vf('vf-rfa-search').disabled = true;
@@ -1741,7 +2129,7 @@ function vf_markRemittanceFields(d) {
     const sel = $vf('vf-vendor');
     sel.querySelector('option[data-remittance]')?.remove();
     if (d) {
-        const label = `Payroll Remittance — ${d.agency_name || ''} ${d.label || ''}`.trim();
+        const label = d.option_label || `Payroll Remittance — ${d.agency_name || ''} ${d.label || ''}`.trim();
         sel.insertAdjacentHTML('afterbegin', `<option value="" data-remittance="1">${vf_esc(label)}</option>`);
         sel.value = '';
         sel.selectedIndex = 0;
@@ -1756,21 +2144,34 @@ function vf_markRemittanceFields(d) {
     show($vf('vf-claimant-address').closest('.nha-fg'));
     show($vf('vf-rfa-search').closest('.nha-fg').parentElement);
     show($vf('vf-ded-section')); // the Deductions + ATC rows and pills (the RFA Breakdown box above them stays: it is empty without an RFA)
+    // layout: no RFA column, so section A spans the whole card; a month's remittance DV (dvRemit) also drops what only repeats the figures
+    // (the vendor card, the second Status cell, the empty RFA breakdown box and the Gross / Less / Net table — the amount is shown once, in section B)
+    $vf('vf-claimant-grid').classList.toggle('vf-remit-on', !!d);
+    const dr = !!(d && d.dvRemit);
+    $vf('vf-claimant-title').textContent = d ? 'Claimant' : 'Claimant & RFA';
+    $vf('vf-doc-status-td').style.display = dr ? 'none' : '';
+    $vf('vf-doc-date-td').colSpan = dr ? 2 : 1;
+    $vf('vf-dv-date').style.maxWidth = dr ? '260px' : '';
+    $vf('vf-sec-b-hdr').textContent = dr ? 'B. Amount to Remit' : 'B. Amount and Deductions';
+    $vf('vf-rfa-breakdown').style.display = dr ? 'none' : '';
+    $vf('vf-doc-summary').style.display = dr ? 'none' : '';
+    if (dr) $vf('vf-vendor-card').classList.remove('visible');
+    if (!d) $vf('vf-remit-sched').classList.remove('vf-remit-main');
     $vf('vf-rfa-req').style.display = d ? 'none' : '';
-    $vf('vf-rfa-note').textContent  = d ? '(not needed — payroll remittance, budgeted with the payroll)' : '(search and select one or more)';
-    $vf('vf-rfa-search').placeholder = d ? 'Not needed for a payroll remittance' : 'Search RFA number or reference no…';
+    $vf('vf-rfa-note').textContent  = d ? (d.rfa_note || '(not needed — payroll remittance, budgeted with the payroll)') : '(search and select one or more)';
+    $vf('vf-rfa-search').placeholder = d ? (d.rfa_placeholder || 'Not needed for a payroll remittance') : 'Search RFA number or reference no…';
 }
 
 /** The vendor card shows the remittance (agency, payroll month, employee / government share, no RFA needed). */
 function vf_showRemittanceCard(d) {
     $vf('vf-vc-name').textContent    = d.claimant_name || d.agency_name;
-    $vf('vf-vc-type').textContent    = `Payroll Remittance — ${d.agency_name} ${d.label}`;
-    $vf('vf-vc-address').textContent = d.employee_share !== undefined
+    $vf('vf-vc-type').textContent    = d.card_type || `Payroll Remittance — ${d.agency_name} ${d.label}`;
+    $vf('vf-vc-address').textContent = d.card_detail ?? (d.employee_share !== undefined
         ? `Employee share ${vf_peso(d.employee_share)} · Government share ${vf_peso(d.employer_share)} · Total ${vf_peso(d.gross_amount)}`
-        : `Total ${vf_peso(d.total_amount)}`;
+        : `Total ${vf_peso(d.total_amount)}`);
     // for reference: the payroll DV / RFA this remittance belongs to (the remittance DV itself takes no RFA)
     const ref = d.payroll_dv_no ? `Belongs to payroll DV ${d.payroll_dv_no}${(d.payroll_rfa_nos || []).length ? ' · RFA ' + d.payroll_rfa_nos.join(', ') : ''}` : 'Payroll DV not created yet';
-    $vf('vf-vc-tin').textContent     = `${ref} — no RFA needed on this DV`;
+    $vf('vf-vc-tin').textContent     = d.card_ref ?? `${ref} — no RFA needed on this DV`;
     $vf('vf-vendor-card').classList.add('visible');
 }
 
@@ -1837,8 +2238,19 @@ async function vf_loadExisting() {
         vf_showRemittanceCard({ ...dv.remittance, claimant_name: dv.claimant_name });
         vf_markRemittanceFields(dv.remittance);
     }
+    // A Remittance DV for a month's withheld EWT / VAT / Penalty Tax (Remittance List): keeps its month and tax, no RFA
+    if (dv.dv_remit) {
+        vf_dvRemit = { period: dv.dv_remit.remit_period, type: dv.dv_remit.remit_type, vendor: dv.dv_remit.remit_vendor || '' };
+        vf_dvRemitVendors = [];
+        $vf('vf-rfa-search').disabled = true;
+        const view = vf_dvRemitView({ ...dv.dv_remit, claimant_name: dv.claimant_name });
+        vf_showRemittanceCard(view);
+        vf_markRemittanceFields(view);
+        vf_renderRemitSchedule(dv.dv_remit);
+    }
 
     $vf('vf-po-number').value        = dv.po_number || '';
+    vf_checkPoIar();
     $vf('vf-claimant').value         = dv.claimant_name || '';
     $vf('vf-claimant-address').value = dv.claimant_address || '';
     $vf('vf-claimant-tin').value     = dv.employee_no_tin || '';
@@ -1898,20 +2310,48 @@ function vf_validate() {
     // (persistJournalEntry() allows that for this pre-fill path); Accounting picks the Book when it
     // saves the Journal Entry at the FOR_ACCOUNTING stage, where it is required.
     // a remittance DV pays deductions the payroll DV's RFA already obligated — no RFA of its own
-    check(vf_remittanceId || vf_selectedRfaIds.length > 0, 'rfa', 'At least one RFA is required.');
+    check(vf_remittanceId || vf_dvRemit || vf_selectedRfaIds.length > 0, 'rfa', 'At least one RFA is required.');
     check(!!$vf('vf-claimant').value.trim(), 'claimant', 'Claimant Name is required.');
     check(!!$vf('vf-particulars').value.trim(), 'particulars', 'Particulars is required.');
     check((vf_numVal($vf('vf-gross').value)) > 0, 'gross', 'Amount must be greater than zero.');
     // Same ceiling the server enforces: a manual DV can't draw more than its RFA(s) have left (RFAs with no
     // known budget are ignored; payroll/remittance DVs take their amount from their own import).
-    if (!vf_payrollPeriodId && !vf_remittanceId) {
+    if (!vf_payrollPeriodId && !vf_remittanceId && !vf_dvRemit) {
         const known = vf_selectedRfaIds.map(id => vf_rfas[id]).filter(r => r && Number(r.budget_amount) > 0);
         const remaining = known.reduce((s, r) => s + (Number(r.remaining_balance) || 0), 0);
         if (known.length && vf_numVal($vf('vf-gross').value) - remaining > 0.005) {
             errors.push(`Amount (${vf_peso(vf_numVal($vf('vf-gross').value))}) cannot exceed the selected RFA(s)' remaining balance (${vf_peso(remaining)}).`);
         }
+        // The Amount cells are editable per line, so one RFA could be overdrawn while the total still fits (the
+        // other RFA's cells lowered to compensate). The per-line split isn't stored, so only the form can catch that.
+        const perRfa = {};
+        $vf('vf-rfa-breakdown-body').querySelectorAll('.vf-rfa-line-amt').forEach(inp => {
+            const id = inp.dataset.key.split(':')[0];
+            perRfa[id] = (perRfa[id] || 0) + vf_numVal(inp.value);
+        });
+        Object.entries(perRfa).forEach(([id, amt]) => {
+            const r = vf_rfas[id];
+            if (r && Number(r.budget_amount) > 0 && amt - (Number(r.remaining_balance) || 0) > 0.005) {
+                errors.push(`${r.allocation_number}: its Amount lines total ${vf_peso(amt)}, more than its remaining balance (${vf_peso(r.remaining_balance)}).`);
+            }
+        });
     }
     check(!!$vf('vf-account-code').value.trim(), 'account-code', 'Account Code could not be determined from the selected RFA(s) or vendor — pick an RFA that has an account.');
+
+    // ATC Tax Bases are a split of one base: with a VAT line they may not exceed the VAT-exclusive Tax Base,
+    // otherwise not the DV's Amount (the server enforces the Amount ceiling too). Going above the net-of-deductions
+    // default but staying within the Amount is flagged under the rows (vf_renderAtcSummary()) but allowed.
+    if (vf_atcRows().length) {
+        // A row with a code but no base left (e.g. a second row added once the first already holds the whole base).
+        vf_collectAtcLines().forEach((l, i) => {
+            if (l.atc_code && l.tax_base <= 0) errors.push(`ATC row ${i + 1} (${l.atc_code}) has no Tax Base — give it its share of the base, or remove the row.`);
+        });
+        const atcTotal = vf_atcBaseTotal();
+        const ceiling  = vf_vatRow() ? vf_fullBase() : vf_numVal($vf('vf-gross').value);
+        if (atcTotal - ceiling > 0.005) {
+            errors.push(`ATC Tax Bases total ${vf_peso(atcTotal)}, more than the ${vf_vatRow() ? 'VAT-exclusive Tax Base' : 'Amount'} (${vf_peso(ceiling)}) — split the base between the ATC rows.`);
+        }
+    }
 
     $vf('vf-ded-container').querySelectorAll('.vf-ded-row').forEach(row => {
         const acctInput = row.querySelector('.vf-ded-acct');
@@ -1931,12 +2371,39 @@ function vf_showErrors(list) {
     if (list.length) $vf('vf-errors').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
+/* ── PO → IAR check ────────────────────────────────────────── */
+/* Asks GET /voucher/po-iar whether the typed PO number has an IAR. Shows / hides the warning under the field and
+   resolves true when the DV may proceed (blank PO, PO with an IAR, or the check itself failed — the server is the real
+   gate, so a network hiccup here never blocks the form). */
+async function vf_checkPoIar() {
+    const warn = $vf('vf-po-warn');
+    const po   = $vf('vf-po-number').value.trim();
+    if (!po) { warn.style.display = 'none'; return true; }
+    try {
+        const res = await vf_authFetch(`${VF_API}/voucher/po-iar?po_number=${encodeURIComponent(po)}`);
+        if (!res.ok) return true;
+        const json = await res.json();
+        if (!json.success) return true;
+        if ($vf('vf-po-number').value.trim() !== po) return true; // typed on while waiting — a newer check is coming
+        if (json.data.has_iar) { warn.style.display = 'none'; return true; }
+        warn.textContent = `⚠ PO ${po} has no IAR yet. A disbursement voucher can't proceed until the IAR is recorded.`;
+        warn.style.display = 'block';
+        return false;
+    } catch (e) {
+        return true;
+    }
+}
+
 /* ── Save ──────────────────────────────────────────────────── */
 async function vf_save(status) {
     if (vf_saving) return;
     vf_showErrors([]);
 
     const errors = vf_validate();
+    // A PO must have an IAR before a voucher can be prepared against it (the server refuses it too).
+    if (!(await vf_checkPoIar())) {
+        errors.push(`PO '${$vf('vf-po-number').value.trim()}' has no IAR (Inspection and Acceptance Report) yet — record the IAR first, or clear the PO Number.`);
+    }
     if (errors.length) { vf_showErrors(errors); return; }
 
     const dvNumber = $vf('vf-dv-number').textContent.trim();
@@ -1964,6 +2431,9 @@ async function vf_save(status) {
         lines              : vf_collectJevLines(),
         payroll_period_id  : vf_payrollPeriodId,
         payroll_remittance_id : vf_remittanceId,
+        remit_period          : vf_dvRemit ? vf_dvRemit.period : null,
+        remit_type            : vf_dvRemit ? vf_dvRemit.type : null,
+        remit_vendor          : vf_dvRemit ? (vf_dvRemit.vendor || null) : null,
         status,
     };
 
@@ -2017,6 +2487,14 @@ function vf_numVal(v) {
 }
 function vf_fmtMoneyVal(n) {
     return Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+/* rate% of an amount, rounded to the centavo exactly like the server's round($base * $rate / 100, 2).
+   Plain float math (Math.round(base * rate) / 100) lands a centavo off on exact half-centavo products
+   (e.g. 83,680.05 x 10% -> 8,368.005): it ran ~0.1% of the time, so the on-screen net could differ from the saved
+   one. Done in integer centavos x hundredths-of-a-percent instead, which is exact. */
+function vf_pctOf(base, rate) {
+    const cents = Math.round((Number(base) || 0) * 100), hundredths = Math.round((Number(rate) || 0) * 100);
+    return Math.floor((cents * hundredths + 5000) / 10000) / 100;
 }
 /* Re-inserts thousands commas on every keystroke (not just on blur), preserving the caret —
    counts plain (non-comma) characters before the caret in the OLD value, reformats, then walks

@@ -16,6 +16,8 @@ $_vl_api = preg_match('~/api$~', $_vl_api) ? $_vl_api : $_vl_api . '/api';
 $_vl_view = (int) ($_GET['dv'] ?? 0);
 $_vl_payroll = (int) ($_GET['payroll'] ?? 0); // Payroll Management "Create DV": payroll_period_id to open a new DV for
 $_vl_remittance = (int) ($_GET['remittance'] ?? 0); // Deductions & Remittances "Create Remittance DV": payroll_remittance_id
+$_vl_remit_period = preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', (string) ($_GET['remit_period'] ?? '')) ? (string) $_GET['remit_period'] : ''; // Remittance List "Remit": the month (YYYY-MM) whose withheld EWT / VAT / Penalty Tax to pay to BIR
+$_vl_remit_type = preg_match('/^[A-Za-z_]{1,20}$/', (string) ($_GET['remit_type'] ?? '')) ? strtoupper((string) $_GET['remit_type']) : ''; // EWT | VAT | PENALTY_TAX
 ?>
 
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -92,7 +94,7 @@ $_vl_remittance = (int) ($_GET['remittance'] ?? 0); // Deductions & Remittances 
                     <option value="FOR_DEPARTMENT_MANAGER">For Department Manager</option>
                     <option value="FOR_TREASURY">For Treasury</option>
                     <option value="RELEASED">Released</option>
-                    <option value="REJECTED">Rejected</option>
+                    <option value="REJECTED">Returned</option>
                     <option value="CANCELLED">Cancelled</option>
                 </select>
             </div>
@@ -170,6 +172,8 @@ const VL_API  = VL_BASE + '/voucher';
 const VL_VIEW = <?= (int) $_vl_view ?>; // dv_id to open in the view modal on load (0 = none)
 const VL_PAYROLL = <?= (int) $_vl_payroll ?>; // imported payroll month to open a new DV for on load (0 = none) — see vf_openForPayroll()
 const VL_REMITTANCE = <?= (int) $_vl_remittance ?>; // payroll remittance to open a new remittance DV for on load (0 = none) — see vf_openForRemittance()
+const VL_REMIT_PERIOD = <?= json_encode($_vl_remit_period) ?>; // month (YYYY-MM) whose withheld tax to remit to BIR on load ("" = none) — see vf_openForDvRemit()
+const VL_REMIT_TYPE = <?= json_encode($_vl_remit_type) ?>; // EWT | VAT | PENALTY_TAX
 
 const VL_PAGE_SIZE = 15;
 let vl_page = 1;
@@ -196,6 +200,9 @@ async function vl_boot() {
     } else if (VL_REMITTANCE > 0) {
         history.replaceState(null, '', location.pathname);
         vf_openForRemittance(VL_REMITTANCE);
+    } else if (VL_REMIT_PERIOD && VL_REMIT_TYPE) {
+        history.replaceState(null, '', location.pathname); // a refresh after saving must not open another remittance DV
+        vf_openForDvRemit(VL_REMIT_PERIOD, VL_REMIT_TYPE);
     }
 }
 
@@ -361,7 +368,7 @@ function vl_statusBadge(s) {
         FOR_DEPARTMENT_MANAGER: ['nha-bdg-navy', 'For Department Manager'],
         FOR_TREASURY: ['nha-bdg-teal', 'For Treasury'],
         RELEASED: ['nha-bdg-green', 'Released'],
-        REJECTED: ['nha-bdg-red', 'Rejected'],
+        REJECTED: ['nha-bdg-red', 'Returned'],
         CANCELLED: ['nha-bdg-orange', 'Cancelled'],
     };
     const [cls, label] = map[s] || ['nha-bdg-gray', s || '—'];

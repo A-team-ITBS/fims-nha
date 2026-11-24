@@ -5,9 +5,10 @@
 --
 -- item_code below matches the import form's column header EXACTLY (including
 -- apostrophes and slashes) because the importer matches columns by that code.
--- account_code is left NULL on every row — per fims.payroll_items' own design
--- (01 - table/48), the GL account is assigned later by Accounting from the
--- Payroll setup page; the item is usable for import as soon as it exists here.
+-- account_code is not set here: 20 - chart_of_accounts_payroll_items_alignment.sql
+-- (run right after this file) adds the sub-ledger accounts and points every item
+-- at its account. Accounting can still change it from the Payroll Setup page.
+-- Re-running refreshes name / category / order / status (ON CONFLICT DO UPDATE).
 --
 -- category assignment is a first-pass best guess based on the item's name:
 --   EARNING         -> adds to gross pay (basic pay, allowances, bonuses)
@@ -137,7 +138,12 @@ VALUES
     ('O/P_ADDL_COMPENSATION',        'Overpayment — Additional Compensation',          'DEDUCTION', 1200, 'ACTIVE'),
     ('PFAI_LRI_PREMIUM',             'PFAI LRI Premium',                               'DEDUCTION', 1210, 'ACTIVE'),
     ('GSIS_SOCIAL_INS_CONS',         'GSIS Social Insurance Consolidated',             'DEDUCTION', 1220, 'ACTIVE')
-ON CONFLICT (item_code) DO NOTHING;
+ON CONFLICT (item_code) DO UPDATE SET
+    item_name  = EXCLUDED.item_name,
+    category   = EXCLUDED.category,
+    sort_order = EXCLUDED.sort_order,
+    status     = EXCLUDED.status,
+    updated_at = CURRENT_TIMESTAMP;
 
 -- Sanity check: should return 108 rows affected across all categories.
 -- SELECT category, COUNT(*) FROM fims.payroll_items GROUP BY category ORDER BY category;

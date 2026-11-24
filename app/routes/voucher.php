@@ -56,6 +56,19 @@ $app->get('/voucher/fiscal-years', function ($request, $response, $args) use ($V
     }
 })->add($accessMiddleware)->add($jwtMiddleware);
 
+// Does a PO have an IAR? ?po_number= → {data:{po_number, has_iar, iar_number}}. The DV form warns / refuses without one.
+$app->get('/voucher/po-iar', function ($request, $response, $args) use ($VoucherService) {
+    try {
+        $result = $VoucherService->checkPoIar((string) ($request->getQueryParams()['po_number'] ?? ''));
+
+        return $response->withJson($result, $result['success'] ? 200 : 500);
+    } catch (\Exception $e) {
+        LogError('GET /voucher/po-iar ' . $e->getMessage());
+
+        return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
+    }
+})->add($accessMiddleware)->add($jwtMiddleware);
+
 // Next free DV number for a date: ?dv_date=YYYY-MM-DD (defaults to today)
 $app->get('/voucher/dv-number', function ($request, $response, $args) use ($VoucherService) {
     try {

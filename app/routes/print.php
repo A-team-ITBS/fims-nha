@@ -72,6 +72,26 @@ $app->post('/print/{doc:[A-Za-z]+}', function ($request, $response, $args) use (
     }
 })->add($accessMiddleware)->add($jwtMiddleware);
 
+// The General Ledger sheets an account can print — every (book, fiscal year) it has postings or an Opening Balance in
+// (GeneralLedgerPrintService::availableSheets): ?account_code=…[&fiscal_yr=…] → { success, data: [{ book_id, book_name,
+// fiscal_yr, postings }] }. The General Ledger page's Print menu lists these, so the user only picks what exists.
+$app->get('/print/gl-sheets', function ($request, $response, $args) {
+    try {
+        $params = $request->getQueryParams();
+        $code   = trim((string) ($params['account_code'] ?? ''));
+        if ($code === '') {
+            return $response->withJson(['success' => false, 'message' => 'account_code is required.'], 400);
+        }
+        $fy = isset($params['fiscal_yr']) && ctype_digit((string) $params['fiscal_yr']) ? (int) $params['fiscal_yr'] : null;
+
+        return $response->withJson(['success' => true, 'data' => Service\GeneralLedgerPrintService::availableSheets($code, $fy)]);
+    } catch (\Throwable $e) {
+        LogError('GET /print/gl-sheets ' . $e->getMessage());
+
+        return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
+    }
+})->add($accessMiddleware)->add($jwtMiddleware);
+
 // Current holder of a signatory role: ?role=FMD%20Department%20Manager → { success, name|null }
 // name is "FIRST M. LAST[, SUFFIX]"; add &format=first_last for just "FIRST LAST" (what the CBA prints for the
 // FMD Department Manager — the user holding that uac.user_levels role, first_name + last_name of uac.users).

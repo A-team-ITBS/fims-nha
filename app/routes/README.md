@@ -21,6 +21,8 @@ routes/
 ├── responsibility_center.php # Responsibility Center CRUD + status routes
 ├── budget_allocation.php     # Memo Request (budget allocation) CRUD + lookups
 ├── budget_category.php       # Budget category CRUD (Infrastructure, Goods and Services, Consultancy)
+├── cob.php                   # Corporate Operating Budget (COB) monitoring — read-only roll-ups
+├── bur.php                   # Budget Utilization Report (BUR) — read-only PS / MOOE roll-up
 └── README.md                 # This documentation
 ```
 
@@ -105,6 +107,7 @@ One generic voucher shape for any claimant/payment type (vendor payment, payroll
 - `GET /voucher/all` - All DVs, no pagination. Optional filters: `status`, `fiscal_yr`, `expense_class` (MOOE/PS/CAPITAL_OUTLAY/OTHER — classification tag only, same set `fims.purchase_orders.expense_class` uses), `search`
 - `GET /voucher/list` - Paginated (`page`, `limit` + same filters); also returns `summary` (totals / counts for every row matching the filters)
 - `GET /voucher/fiscal-years` - Fiscal years for dropdowns
+- `GET /voucher/po-iar?po_number=` - `{po_number, has_iar, iar_number}`: whether the PO has an IAR (`fims.inspection_acceptance_report`). `POST /voucher/add` and `PUT /voucher/update/{id}` refuse a non-empty `po_number` that has no IAR
 - `GET /voucher/dv-number?dv_date=YYYY-MM-DD` - Next free `{YY}-{MM}-{NNNN}` DV number
 - `GET /voucher/rfa/all` - RFA picker options: `fims.budget_allocation` rows where `allocation_type = 'RFA'` (that table has no CRUD backend of its own — this is a read-only lookup added for the DV form). Several DVs can be drawn against the same RFA over time (progress payments, matching the paper General Form No. 1's Box B "Payments / This Request / Total Payments" lines) — each option includes `budget_amount` (ceiling), `paid_amount` (sum of `net_amount` already drawn against it by other non-cancelled/rejected vouchers), and `remaining_balance`. Optional: `fiscal_yr`, `search`, `exclude_dv_id` (editing — excludes this voucher's own amount from `paid_amount`)
 - `GET /voucher/rfa/read/{allocation_id}` - One RFA + its `budget_amount`/`paid_amount`/`remaining_balance`. Optional: `exclude_dv_id` when editing an existing DV so its own prior amount isn't double-counted
@@ -209,6 +212,16 @@ Read-only monitoring of the **Approved** budget requests (`fims.budget_req` + it
 - There is no `GET /cob/list` any more (it served the Records tab, which was removed)
 - Filters on summary / rollup / list / report: `fiscal_yr`, `type_of_fund_id`, `component_id`, `program_code`, `project_code`, `account_id`, `region_id` (`central` = the non-regional offices), `search`. Anything malformed is ignored
 - RC scope: same as the Budget Request list — a user with an RC sees it plus its descendants; a superadmin / user without an RC sees all; `central=1` widens to all only for the central review RC (FMD)
+
+### bur.php (`BurService`; page `app/pages/bur-page.php` under the Monitoring menu)
+Read-only Budget Utilization Report: Personal Services (chart-of-accounts codes starting `5-01`) and Maintenance and
+Other Operating Expenses (`5-02`), rolled up from every **Approved** budget request's line items — regardless of
+whether a line has a Program / Project (PS / MOOE lines are always COE, same rule `CobService::expenseClassSql()`
+uses). A chart-of-accounts code with zero approved line items under it is never in the result. Seven amount columns
+per row: `approved_amount`, `revision_amount`, `revised_amount`, `utilization`, `payment`, `account_payable`, `balance`.
+- `GET /bur/filters` - The Fiscal Year filter's options: years that have at least one approved PS / MOOE budget line, newest first
+- `GET /bur/rollup?fiscal_yr=` - One row per chart-of-accounts code that carries approved budget (directly or through a descendant), each with the seven amount columns and the same `account_id` / `account_code` / `account_title` / `parent_account_id` shape `chart-of-accounts-page.php`'s tree uses. The two roots ("5-01 Personal Services", "5-02 ... MOOE") come back with no `parent_account_id` of their own, so the page's tree builder renders them as top-level rows. `totals` is the grand total (the two roots added together — the KPI cards). `fiscal_yr` omitted = every year combined
+- RC scope: same as the COB — a user with an RC sees it plus its descendants; a superadmin / user without an RC sees all
 
 ### budget_req.php (`BudgetReqService`, table `fims.budget_req`; page `app/pages/budget-req-page.php`)
 Only the list routes' RC handling is described here. `GET /budget_req/all` (no paging) and `GET /budget_req/list` (`page`, `limit`) return one header per fiscal year + RC, each with `programs[]` > `projects[]` > `line_items[]`, plus its RC (`rc_code`, `rc_name`, `rc_office_type`) and that RC's parent (`rc_parent_id`, `rc_parent_code`, `rc_parent_name`), its total proposed amount (`li_total`) and `submitted_at` (stamped with `NOW()` whenever the request's content is saved — `POST /budget_req/add` creating it or adding a Program to it, `PUT /budget_req/program/update/{id}` editing a Program — and again by `PUT /budget_req/submit-for-review/{id}`, so it is the date of the latest save / submission; `null` only for requests that existed before the column did). Filters: `fiscal_yr`, `program_code`, and:

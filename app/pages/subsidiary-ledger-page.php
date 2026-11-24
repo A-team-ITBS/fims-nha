@@ -323,13 +323,22 @@ async function sl_load() {
 function sl_setPrintable(json) {
     sl_ledger = json;
     const btn = $sl('sl-print');
-    if (btn) btn.style.display = json ? '' : 'none';
+    if (!btn) return;
+    btn.style.display = json ? '' : 'none';
+    // the Subsidiary Ledger print is paused (PRP_PAUSED.SL in readone/print-preview-readone.php)
+    if (typeof prp_isPaused === 'function' && prp_isPaused('SL')) {
+        btn.disabled = true;
+        btn.title = 'Not yet available';
+        btn.style.opacity = '.55';
+        btn.style.cursor = 'not-allowed';
+    }
 }
 async function sl_print() {
     if (!sl_ledger || typeof prp_open !== 'function') return;
     const opt = id => { const s = $sl(id); return s && s.value ? (s.options[s.selectedIndex]?.text || '') : ''; };
     await prp_open(prp_slPayload(sl_ledger, {
         fund: opt('sl-filter-book'),
+        book_id: $sl('sl-filter-book')?.value || '',
         fiscal_year: $sl('sl-filter-fy').value,
     }), { type: 'SL' });
 }

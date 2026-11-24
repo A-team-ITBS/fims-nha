@@ -1094,76 +1094,102 @@ Not on the form's fields (filled by hand, as on the old print): Journalized /
 Indexed, the CHECK and OFFICIAL RECEIPT boxes, Received From / releasing
 officer, and For COA Use Only.
 
-## GL — General Ledger
+## GL — General Ledger (NHA Form No. 11)
 
-`GeneralLedgerPrintService` + `scripts/gen_gl_docx.js`. Letter portrait, Arial 9pt, no
-letterhead (the sheet has its own title). One account's ledger card, printed as the
-official sheet's **monthly summary**, not every posting:
+`GeneralLedgerPrintService` + `scripts/gen_gl_docx.js` (print type `GL`). Letter portrait, Arial 9pt, no letterhead.
+The layout of the books' own GENERAL LEDGER sheets (Main Office, CISFA, NGC, MPLC / PPMO workbooks — one sheet per
+4-part GL account, per book):
 
-- Header (repeats on every page): GENERAL LEDGER, Entity Name / Account Code,
-  Account Title / Sheet No., then Date (month | day) · Particulars · Ref. · Amount
-  (Debit · Credit · Balance).
-- The year row, then an optional "Jan 1 Balance" line (`opening_balance`; the system
-  has no brought-forward balance, so there is none unless the caller passes one).
-- Per month, one line per journal, in the order CKDJ, ADADJ, CRDJ, GJ, each with the
-  journal's debit and credit for the month:
-  - CKDJ and ADADJ print as "Disbursements".
-  - CRDJ prints as "Collections & Deposits".
-  - GJ prints as "Various Adjustments".
-- Each line is dated the month's last day. The month name is on the first line only,
-  and the balance on the last. A blank row separates months.
-- Blank filler rows up to `MIN_ROWS`, then "Dec 31 Balance" with the total debit and
-  credit (the opening balance counted on its normal side) and the ending balance.
+- **Header** (repeats on every page): "NHA Form No. 11"; GENERAL LEDGER; NATIONAL HOUSING AUTHORITY (Agency);
+  **Fund:** the book · **Account Code:**; **Account Title:** · **Sheet No.** (blank — filled in by hand); then
+  Date (month | day) · Particulars · Reference · Debit · Credit · Balance.
+- **Rows — the monthly summary, not every posting:**
+  - the year, then **Jan 1 Beginning Balance** — the book's Opening Balance for the year (`fims.opening_balances` of
+    the account and the SL accounts under it), on its normal side (0.00 when none);
+  - per month, one line per journal, dated the month's last day, in this order, with the journal's debit and credit
+    totals; the balance on the month's last line:
 
-**Journal of a posting:** from its `doc_ref_no` (the JEV's, copied to the GL line):
-"CHECK…" → CKDJ, "ADA…" → ADADJ, "OR…" → CRDJ, anything else → GJ. A payload line
-may override this with `journal`. CRDJ does not occur yet, because official receipts
-are not posted to the GL.
+    | Reference | Particulars | Postings |
+    |---|---|---|
+    | CKDJ | Disbursements | PAYMENT JEVs from a check ("CHECK NO. …") |
+    | CRDJ | Collections and Deposits (Main Office: Collections & Deposits) | JEVs journalized from a Collections report (`collection_reports.collection_jev_id` / `deposit_jev_id`) |
+    | ADADJ | Various Fund Transfer (Main Office: Advice to Debit Account Disb.) | PAYMENT JEVs from an ADA / FTLA ("ADA…", "FTLA-…") |
+    | GJ | Various Adjustments | every other JEV (DV setup entries, standalone JEVs) |
 
-**Balance:** `debit_normal` (default true) gives debit − credit; false gives
-credit − debit.
+  - **Dec 31 Closing Entry** (GJ) — the year-end closing JEV (`jev_classification = 'CLOSING'`) on its own line; a
+    legacy OPENING JEV adds to the Beginning Balance instead;
+  - blank filler rows, then **"<year> Dec 31 Ending Balance"**: total debit, total credit (the Beginning Balance on its
+    side) and the ending balance — the Trial Balance figure for the account and book.
+- **Balance:** `debit_normal` (Asset / Expense) gives debit − credit; otherwise credit − debit. A balance against the
+  normal side prints in brackets, e.g. (15,000.00).
+- **Month and year of a posting = its JEV's date and fiscal year** (the accounting period), not the ledger's posting date — the ledger stamps the day the JEV was posted, so a JEV dated in March but posted in November still prints under March.
+- The journal of each posting is worked out server-side from its JEV (looked up by `jev_no`); a payload line may set
+  `journal` (CKDJ | CRDJ | ADADJ | GJ | CLOSING | OPENING).
 
-**Payload:**
-- `account_code`, `account_title`, `fiscal_year`, `debit_normal`, `opening_balance`
-- `entity_name`, `sheet_no` (both blank by default: filled in by hand)
-- `lines [{ posting_date, debit, credit, doc_ref_no, journal? }]`
+**Payload:** `account_code`, `account_title`, `fund`, `book_id`, `fiscal_year`, `debit_normal`, `sheet_no`,
+`opening_balance` (optional — overrides the Opening Balance lookup), `lines [{ posting_date, jev_no, doc_ref_no, debit,
+credit, journal? }]`.
 
-**Data:** the General Ledger page's `GET /general_ledger/ledger?account_code=&fiscal_yr=&book_id=`
-response is mapped by `prp_glPayload(resp, { fiscal_year, opening_balance })` and
-printed with `prp_open(payload, { type: 'GL' })` — the page's header **Print** button
-(`general-ledger-page.php`, see "Module integration").
+**Data:** the General Ledger page's `GET /general_ledger/ledger?account_code=&fiscal_yr=&book_id=` (the GL account with
+its SL accounts' postings rolled in) mapped by `prp_glPayload(resp, { fiscal_year, book_id, fund })`, printed with
+`prp_open(payload, { type: 'GL' })` from the header **Print ▾** menu (shown once one account is picked in the Account search) → General Ledger; the same menu's Subsidiary Ledger lists the SL sheets (see SL). **One book and one fiscal
+year per sheet:** Print asks for a Book when "All Books" is selected, and for a Fiscal Year when the postings span
+several.
+
+**Books' sheets vs this form:** the wording follows the book (Main Office vs the other books, as above); the books list
+the journals in varying order — this form uses the order above. An account with only an Opening Balance (no postings)
+has no row in the list: pick it in the Account search, and the header Print lists its sheet ("Beginning balance only"). The books' off-form check
+columns (H/I — the Trial Balance figure and the difference) are not printed.
 
 ## SL — Subsidiary Ledger
 
-`SubsidiaryLedgerPrintService` + `scripts/gen_sl_docx.js`. Letter portrait, Times 10pt, no letterhead.
+`SubsidiaryLedgerPrintService` + `scripts/gen_sl_docx.js` (print type `SL`). Letter portrait, Arial 9pt, no letterhead.
+The layout of the books' own SUBSIDIARY LEDGER sheets (e.g. Main Office's "SL-MO-SAVINGS-PNB-LBP" workbook: one sheet
+per bank savings account under 1-01-02-030 Cash in Bank – Savings, plus a TOP SHEET schedule):
+
+```
+<BOOK> - <GL ACCOUNT TITLE> <YEAR>                                 <Fund>   <GL code>
+SUBSIDIARY LEDGER                                     <BANK  account no.>  (or the SL code)
+                                                      <account name>       (or the SL title)
+DATE | PARTICULARS | FOLIO | JEV# | DEBITS | CREDITS | BALANCE
+<year>
+JAN  | Beginning balance |       |       |        |         | <beginning>
+<MON>| <explanation>     | <journal> | <JEV no.> | <debit> | <credit> |      (no running balance on the lines)
+DEC  | Ending balance    |       |       | <total debits> | <total credits> | <ending>
+```
+
+- **One sheet per SL account** (a bottom-level child of the GL account in the Chart of Accounts) with postings or a
+  beginning balance in the book and year; SLs with nothing are left out. The GL account's own postings (not through
+  an SL) are not an SL — they are on the General Ledger sheet. Nothing at all → one blank sheet.
+- **Header:** when the SL account is a bank account's sub-ledger (`fims.bank_accounts.sl_code` = the SL's account_id,
+  or `account_code` = its code — set with Bank Management's GL / SL picker), the bank name + account number and the
+  account name, as on the books' sheets; otherwise the SL code and title.
+- **Lines:** one per posting — DATE = the month of its JEV date; PARTICULARS = the JEV's particulars, else its DV's,
+  else the posting's own description; FOLIO = the journal (CKDJ check, CRDJ collections, ADADJ ADA / FTLA, GJ the
+  rest — the same rule as the General Ledger form); JEV# = the JEV no. The year is the JEV's fiscal year.
+- **Beginning balance** = the SL account's Opening Balance for the book and year (`fims.opening_balances`); a legacy
+  OPENING JEV adds to it. **Ending balance:** total debits and credits of the lines (the beginning **not** included,
+  as on the books' sheets) and beginning + the year's net. Balances against the normal side print in brackets.
+- Not printed: the books' off-form check columns (bank / account no. / balance vs the TOP SHEET). The TOP SHEET
+  schedule (every SL with its balance) is not built.
+
+**Payload:** `gl_account_code`, `gl_account_title` (looked up from the first SL's parent when blank), `fund`,
+`book_id`, `fiscal_year`, `debit_normal`, `ledgers [{ sl_code, sl_name, opening_balance?, lines }]` (or, for one SL:
+`sl_code`, `sl_name`, `opening_balance`, `lines`); `lines [{ posting_date, jev_no, doc_ref_no, particulars, debit,
+credit, journal? }]`.
+
+**Data:**
+- **General Ledger page** — the header **Print ▾** (one account picked) → *Subsidiary Ledger* lists only the book + fiscal year
+  sheets where an SL under the account has postings or a beginning balance (`GET /print/gl-sheets`: `sl_postings`,
+  `sl_opening`); clicking one fetches `GET /general_ledger/ledger-sl?account_code=&fiscal_yr=&book_id=` →
+  `prp_glSlPayload`. The SL popup's **Print SL** prints the data it loaded.
+- **Subsidiary Ledger page** (not in the sidebar): `GET /general_ledger/subsidiary-ledger` → `prp_slPayload` — one SL.
 
 - **What an SL is:** a **bottom-level** account in `fims.chart_of_accounts` (it has a parent and no children; the
   SL tables `sl_masters` / `sl_details` were dropped). Its GL account is its parent. The SL search
   (`DisbursementVoucherService::fetchSlCodes`) and the SL ledger (`GeneralLedgerService::fetchSubsidiaryLedger` /
   `fetchAllSubsidiaryLedgers`) only take bottom-level accounts, so group accounts (e.g. "2-01-01 Payables")
   are not SLs.
-- **Header** (repeats on every page): SUBSIDIARY LEDGER; Entity Name / Fund; the SL Account Name box (the SL
-  account's title and code) beside GL Account Name / Account Code (its parent account) / Bank Account No.;
-  then Date · Particulars · Ref · Amount (Debit · Credit · Balance).
-- **Rows:** unlike the GL sheet, **one line per posting**: date (mm/dd/yyyy), particulars (the posting's
-  description), Ref (the JEV no.), debit, credit and the running balance on every line. An optional
-  "Balance forwarded" first line (`opening_balance`).
-- **Filler and totals:** blank rows fill the sheet (wrapped Particulars count as several lines), then
-  **Totals**: total debit, total credit, ending balance.
-- **Balance:** `debit_normal` follows the parent account's type; payables are credit-normal.
-
-**Payload:**
-- `sl_code`, `sl_name` (the SL account's code and title); `sl_detail_name` (optional suffix, no longer used)
-- `gl_account_code`, `gl_account_title` (optional: when blank, `SubsidiaryLedgerPrintService` looks up the SL
-  account's parent in `fims.chart_of_accounts`)
-- `bank_account_no`, `entity_name` (both blank: filled in by hand)
-- `fund`, `fiscal_year`, `debit_normal`, `opening_balance`
-- `lines [{ posting_date, particulars, ref, debit, credit }]`
-
-**Data:** the Subsidiary Ledger page's `GET /general_ledger/subsidiary-ledger` response is mapped by
-`prp_slPayload(resp, opts)`: `master { account_code, account_title, account_type }` is the SL account (the
-older `{ sl_code, sl_name, account_code }` master is still read). The page's header **Print** button passes
-the Book filter (→ Fund) and the Fiscal Year.
 
 **JEV:** the SL line of a JEV now carries only `sl_code` (an account code). `JevPrintService` fills its title
 from `fims.chart_of_accounts`, together with the account titles.
@@ -1188,8 +1214,9 @@ calls the same helper.
 | Purchase Orders — `po/page.php` (row) and `po/readone.php` | Print | PO | `{ po_id }` — PurchaseOrderPrintService loads the PO |
 | Disbursement Vouchers — `voucher/readone.php` (`voucher.php`'s view modal) | Print | DV | `GET /voucher/read/{id}` → `prp_dvPayload` (its JEVs print from the Journal Entry Voucher register) |
 | Journal Entry Vouchers — `journal-entry-voucher.php` (row) | Print | JEV | the row's DV (`/voucher/read/{dv_id}`) → `prp_jevFromDv` |
-| General Ledger — `general-ledger-page.php` (header; shown once one account is picked) | Print | GL | the loaded ledger (`GET /general_ledger/ledger`) → `prp_glPayload`; fiscal year = the Fiscal Year filter, else the postings' year (several years → asks to pick one) |
-| Subsidiary Ledger — `subsidiary-ledger-page.php` (header; shown once one SL code is picked) | Print | SL | the loaded ledger (`GET /general_ledger/subsidiary-ledger`) → `prp_slPayload`; Book → Fund; GL account = the SL account's parent (looked up) |
+| General Ledger — `general-ledger-page.php` (header **Print ▾**, shown once one account is picked in the Account search) | Print ▾ → **General Ledger** | GL (NHA Form No. 11) | the menu lists only the **book + fiscal year sheets that have data** for that account (`GET /print/gl-sheets` → `GeneralLedgerPrintService::availableSheets`: postings or an Opening Balance, honouring the Fiscal Year filter); clicking one prints it — that account's ledger for that book and year (`GET /general_ledger/ledger`) → `prp_glPayload`; needs one Book (→ Fund) and one Fiscal Year; Beginning Balance = the book's Opening Balance |
+| General Ledger — `general-ledger-page.php` (header Print ▾ → **Subsidiary Ledger** — lists the book + year sheets with SL data; or the SL popup's Print SL) | Subsidiary Ledger / Print SL | SL | `GET /general_ledger/ledger-sl` (that book and year) → `prp_glSlPayload`: a sheet per SL with postings, plus the GL account's own postings; Book → Fund |
+| Subsidiary Ledger — `subsidiary-ledger-page.php` (not in the sidebar; header, shown once one SL code is picked) | Print | SL | the loaded ledger (`GET /general_ledger/subsidiary-ledger`) → `prp_slPayload`: one SL, one sheet; Book → Fund; GL account = the SL account's parent (looked up) |
 | IAR Module — `iar-module.php` (row; pro-forma view) | Print IAR; Print JEV | IAR; JEV | the row (IAR header + delivery lines) + its PO (`/purchase-order/all?search=`) → `prp_iarPayload`; the delivery receipt's pro-forma → `prp_jevFromProforma` |
 
 DV deductions print with the withholding taxes (ATC lines) under the

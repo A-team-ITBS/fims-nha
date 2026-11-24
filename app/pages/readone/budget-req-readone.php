@@ -277,6 +277,14 @@
         box-shadow:0 2px 10px rgba(0,14,62,.1); }
     .bgrv-print-card svg { width:32px;height:32px;stroke:var(--afims-heading-fill, #000E3E);stroke-width:1.6;flex-shrink:0; }
     .bgrv-print-card span { font-size:14px;font-weight:700;color:var(--afims-text, #1A1B21); }
+
+    /* Step 2 (the "Per Program" drill-down, Project vs Program) "Back" link — above its own 2-card grid, not
+       part of it (see bgrv_showPrintStep1()/bgrv_showPrintStep2()). */
+    .bgrv-print-back { display:flex;align-items:center;gap:6px;border:none;background:none;cursor:pointer;
+        padding:4px 0;margin-bottom:12px;font-size:13px;font-weight:600;color:var(--afims-text-muted, #62657E);
+        font-family:inherit;transition:color .15s; }
+    .bgrv-print-back:hover { color:var(--afims-heading-fill, #000E3E); }
+    .bgrv-print-back svg { width:14px;height:14px;flex-shrink:0; }
 </style>
 
 <div id="bgrv-overlay">
@@ -294,11 +302,12 @@
                 </div>
                 <div id="bgrv-header-actions">
                     <!-- COB mode only (#bgrv-card.bgrv-wide — see the CSS above); hidden for the Program View
-                         modal. Both buttons share the same layout picker (Per Region / Per Program / Per Fund
-                         Source / Detailed) — which format it ends up producing (xlsx vs. pdf) is set by
+                         modal. Both buttons share the same layout picker — step 1: Per Region / Per Program /
+                         Per Fund Source / Detailed; "Per Program" drills into step 2: Project / Program (see the
+                         markup below) — which format it ends up producing (xlsx vs. pdf) is set by
                          bgrv_openPrintModal()'s argument, stored in bgrv_printFormat and read by bgrv_printCob().
                          A Regional / District user's own office_type skips the picker entirely and goes straight
-                         to "Per Program" — see bgrv_openPrintModal(). -->
+                         to "Project" — see bgrv_openPrintModal(). -->
                     <div id="bgrv-print-wrap">
                         <button type="button" id="bgrv-export-excel-btn" onclick="bgrv_openPrintModal('xlsx')" title="Export this COB to an Excel file">
                             <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -349,7 +358,7 @@
     </div>
 </div>
 
-<!-- Layout picker — a 2x2 grid of the 4 layouts, opened by #bgrv-export-excel-btn / #bgrv-print-btn above
+<!-- Layout picker — two steps (#bgrv-print-step1 / #bgrv-print-step2 below), opened by #bgrv-export-excel-btn / #bgrv-print-btn above
      (bgrv_openPrintModal()). A separate top-level modal (not nested in #bgrv-card) since it must sit on
      top of the already-open #bgrv-overlay, same "stack a second overlay on top" shape as
      readone/cob-report-readone.php's #cobr-overlay over its own host page. -->
@@ -360,21 +369,28 @@
             <button type="button" class="nha-modal-close" id="bgrv-print-modal-close" aria-label="Close">&times;</button>
         </div>
         <div class="nha-modal-body">
-            <div class="bgrv-print-grid">
-                <button type="button" class="bgrv-print-card" onclick="bgrv_printCob('region')">
+            <!-- Step 1: Per Region / Per Program / Per Fund Source / Detailed. "Per Program" doesn't print by
+                 itself — it drills into step 2 (bgrv_showPrintStep2) to ask Project vs Program granularity
+                 first. "Per Fund Source" is a placeholder (bgrv_printCob() below just toasts "not yet
+                 implemented") — kept visible on purpose, functionality deferred. "Per Region" / "Per Fund
+                 Source" are tagged .bgrv-print-central-only: a Regional/District user only ever works with
+                 their own single office/region, so those two are hidden for them (see bgrv_openPrintModal()) —
+                 they still get "Per Program" (-> Project Level / Program Level) and "Detailed". -->
+            <div id="bgrv-print-step1" class="bgrv-print-grid">
+                <button type="button" class="bgrv-print-card bgrv-print-central-only" onclick="bgrv_printCob('region')">
                     <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
                         <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
                     </svg>
                     <span>Per Region</span>
                 </button>
-                <button type="button" class="bgrv-print-card" onclick="bgrv_printCob('program')">
+                <button type="button" class="bgrv-print-card" onclick="bgrv_showPrintStep2()">
                     <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-19.5 0v6a2.25 2.25 0 002.25 2.25h15a2.25 2.25 0 002.25-2.25v-6m-19.5 0h19.5M3 9.75v-2.25A2.25 2.25 0 015.25 5.25h3.129c.412 0 .81.158 1.11.44l1.613 1.527a1.5 1.5 0 001.11.44h4.138a2.25 2.25 0 012.25 2.25v.093" />
                     </svg>
                     <span>Per Program</span>
                 </button>
-                <button type="button" class="bgrv-print-card" onclick="bgrv_printCob('fund_source')">
+                <button type="button" class="bgrv-print-card bgrv-print-central-only" onclick="bgrv_printCob('fund_source')">
                     <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zM21 10.5h.008v.008H21v-.008zM3 10.5h.008v.008H3V10.5z" />
                     </svg>
@@ -386,6 +402,29 @@
                     </svg>
                     <span>Detailed</span>
                 </button>
+            </div>
+
+            <!-- Step 2 (the "Per Program" drill-down): Project (Program -> Sub-Program -> Project tree) or
+                 Program (one rolled-up total per Program, no Sub-Program/Project breakdown). -->
+            <div id="bgrv-print-step2" style="display:none;">
+                <button type="button" class="bgrv-print-back" onclick="bgrv_showPrintStep1()">
+                    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
+                    Back
+                </button>
+                <div class="bgrv-print-grid">
+                    <button type="button" class="bgrv-print-card" onclick="bgrv_printCob('project')">
+                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-19.5 0v6a2.25 2.25 0 002.25 2.25h15a2.25 2.25 0 002.25-2.25v-6m-19.5 0h19.5M3 9.75v-2.25A2.25 2.25 0 015.25 5.25h3.129c.412 0 .81.158 1.11.44l1.613 1.527a1.5 1.5 0 001.11.44h4.138a2.25 2.25 0 012.25 2.25v.093" />
+                        </svg>
+                        <span>Project Level</span>
+                    </button>
+                    <button type="button" class="bgrv-print-card" onclick="bgrv_printCob('program')">
+                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 21h16.5M4.5 3h15M5.25 3v18m13.5-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21" />
+                        </svg>
+                        <span>Program Level</span>
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -440,35 +479,47 @@ function bgrv_closePrintModal() {
     $bgrv('bgrv-print-overlay')?.classList.remove('open');
 }
 
-// A Regional / District user only ever works with their own office's COB, so there's nothing to choose
-// between — this skips the layout picker and goes straight to "Per Program". Everyone else (FMD / other
-// central offices) gets the full 2x2 choice. BGR_USER_OFFICE_TYPE is defined by whichever host page included
-// this file (budget-req-page.php or budget-prop-page.php), from the logged-in user's own responsibility_code
-// row. format: 'xlsx' ("Export to Excel") or 'pdf' ("Preview and Print") — which button was clicked.
+// A Regional / District user only ever works with their own single office/region, so "Per Region" (which
+// groups by Region) and "Per Fund Source" are hidden for them (.bgrv-print-central-only, see the markup above)
+// — but they still get the full "Per Program" (-> Project Level / Program Level) / "Detailed" choice, same as
+// everyone else; nothing is auto-skipped anymore. BGR_USER_OFFICE_TYPE is defined by whichever host page
+// included this file (budget-req-page.php or budget-prop-page.php), from the logged-in user's own
+// responsibility_code row. format: 'xlsx' ("Export to Excel") or 'pdf' ("Preview and Print") — which button was clicked.
 function bgrv_openPrintModal(format) {
     bgrv_printFormat = format === 'pdf' ? 'pdf' : 'xlsx';
     $bgrv('bgrv-print-modal-title').textContent = bgrv_printFormat === 'pdf' ? 'Preview and Print' : 'Export to Excel';
+    bgrv_showPrintStep1();
     const deptType = bgrv_rcDeptType(typeof BGR_USER_OFFICE_TYPE !== 'undefined' ? BGR_USER_OFFICE_TYPE : '');
-    if (deptType === 'REGIONAL' || deptType === 'DISTRICT') {
-        bgrv_printCob('program');
-        return;
-    }
+    const centralOnly = deptType !== 'REGIONAL' && deptType !== 'DISTRICT';
+    document.querySelectorAll('.bgrv-print-central-only').forEach(el => { el.style.display = centralOnly ? '' : 'none'; });
     $bgrv('bgrv-print-overlay')?.classList.add('open');
 }
 
-// TODO: 'fund_source' / 'detailed' are still placeholders — only 'region' / 'program' are wired up (below).
+// Step 1 <-> step 2 (the "Per Program" drill-down: Project vs Program) — see the markup above.
+function bgrv_showPrintStep1() {
+    $bgrv('bgrv-print-step2').style.display = 'none';
+    $bgrv('bgrv-print-step1').style.display = '';
+}
+function bgrv_showPrintStep2() {
+    $bgrv('bgrv-print-step1').style.display = 'none';
+    $bgrv('bgrv-print-step2').style.display = '';
+}
+
+// mode: 'region', 'project', 'program' or 'detailed' — one of BudgetReqCobReportService::MODES. 'fund_source'
+// is still a placeholder card (kept visible on purpose; no backend mode behind it yet) — falls through to the toast below.
 function bgrv_printCob(mode) {
     bgrv_closePrintModal();
-    if (mode === 'region' || mode === 'program') {
-        const label = mode === 'region' ? 'Per Region' : 'Per Program';
-        if (bgrv_printFormat === 'pdf') {
-            bgrv_previewCobReport(mode, label);
-        } else {
-            bgrv_downloadCobReport(mode, label);
-        }
+    const labels = { region: 'Per Region', project: 'Project', program: 'Program', detailed: 'Detailed' };
+    const label = labels[mode];
+    if (!label) {
+        bgr_toast(`${bgrv_printFormat === 'pdf' ? 'Preview and Print' : 'Export to Excel'} (${mode}) is not yet implemented.`, 'info');
         return;
     }
-    bgr_toast(`${bgrv_printFormat === 'pdf' ? 'Preview and Print' : 'Export to Excel'} (${mode}) is not yet implemented.`, 'info');
+    if (bgrv_printFormat === 'pdf') {
+        bgrv_previewCobReport(mode, label);
+    } else {
+        bgrv_downloadCobReport(mode, label);
+    }
 }
 
 // Shared by both formats: GET BGR_API + '/cob-print?mode=…&format=…' -> { success, filename, mime, data: base64 }.

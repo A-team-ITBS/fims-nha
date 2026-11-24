@@ -212,15 +212,6 @@ $fileBaseUrl      = json_encode(rtrim(BasePath(), '/'));
 
         </div>
         <div class="nha-modal-foot">
-            <button type="button" class="nha-btn nha-btn-primary" id="btn-create-jev" style="display:none">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                    <polyline points="14 2 14 8 20 8"/>
-                    <line x1="12" y1="18" x2="12" y2="12"/>
-                    <line x1="9" y1="15" x2="15" y2="15"/>
-                </svg>
-                Create JEV
-            </button>
             <button type="button" class="nha-btn nha-btn-ghost" id="modal-status-cancel">Close</button>
 
         </div>
@@ -824,7 +815,6 @@ document.addEventListener('DOMContentLoaded', () => {
             this.currentId = null;
             this.attachments = [];
             this._currentStep = 0;
-            this._currentFtlaData = null; // holds data for Create JEV action
 
             this._bindEvents();
             this._populateSelects(); // async — bank accounts load in background
@@ -1001,7 +991,6 @@ document.addEventListener('DOMContentLoaded', () => {
             on('modal-status-close', 'click', () => this._closeModal('modal-status-track'));
             on('modal-status-cancel', 'click', () => this._closeModal('modal-status-track'));
             on('btn-advance-status', 'click', () => this._advanceStatus());
-            on('btn-create-jev', 'click', () => this._createJevFromFtla());
             on('modal-print-close', 'click', () => this._closeModal('modal-print'));
             on('modal-print-cancel', 'click', () => this._closeModal('modal-print'));
             on('btn-download-docx', 'click', () => this._downloadDocx());
@@ -1181,13 +1170,6 @@ document.addEventListener('DOMContentLoaded', () => {
                                style="color:var(--afims-primary-text, #0035A9)">
                                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                                 Download Validated FTLA
-                            </a>` : ''}
-                            ${r.status === 'VALIDATED' ? `
-                            <a class="nha-menu-item" href="javascript:void(0);"
-                               onclick="window._ftlaApp._openStatusTrack(${r.fund_transfer_id});ftl_closeMenus();"
-                               style="color:var(--afims-success-hover, #0C7539)">
-                                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
-                                Prepare JEV
                             </a>` : ''}
                         </div>
                     </div>
@@ -1518,12 +1500,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 }
 
-                // Show "Create JEV" button only when FTLA is finished (submitted to accounting or completed)
-                const JEV_ELIGIBLE = ['VALIDATED'];
-                const jevBtn = document.getElementById('btn-create-jev');
-                if (jevBtn) jevBtn.style.display = JEV_ELIGIBLE.includes(d.status) ? '' : 'none';
-                this._currentFtlaData = d;
-
                 this._openModal('modal-status-track');
             } catch (err) {
                 this._toast('Failed to load tracking: ' + err.message, 'error');
@@ -1567,20 +1543,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
 
-
-        _createJevFromFtla() {
-            if (typeof jevc === 'undefined' || typeof jevc.openPrefilled !== 'function') {
-                this._toast('JEV form is not available on this page.', 'error');
-                return;
-            }
-            const d = this._currentFtlaData;
-            if (!d) return;
-            this._closeModal('modal-status-track');
-            jevc.openPrefilled({
-                particulars:    d.purpose   || '',
-                fund_source_id: d.fund_source_id || null,
-            });
-        }
 
         /* ══════════════════════════════════════════════════
            ATTACHMENTS
@@ -2301,6 +2263,3 @@ function nha_confirm(title, msg, actionLabel, actionStyle, onConfirm) {
 
 <?php include __DIR__ . '/form/ftla-form.php'; ?>
 <?php include __DIR__ . '/readone/ftla-readone.php'; ?>
-<?php /* The "Create JEV" button in the status-tracking modal degrades gracefully (see
-         _createJevFromFtla() above) when the Journal Entry Voucher form isn't on the page —
-         form/jev-form.php isn't part of this port, so its include is intentionally omitted. */ ?>
