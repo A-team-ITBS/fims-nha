@@ -227,6 +227,24 @@ class BankManagementService
         return $this->ok($rows ?: []);
     }
 
+    // Every bank account on file, whatever its status — the option list for a
+    // "Bank Account No." dropdown outside this page (the SARO / NCA form,
+    // form/saro-processing-form.php, stores account_number as text in
+    // fims.fund_tracking.bank_account_no). Deliberately NOT filtered on
+    // status/is_active the way CheckProcessingService::getBankAccounts() is:
+    // a SARO may sit on an account that has since gone dormant or closed.
+    public function getAll()
+    {
+        $rows = App\ExecuteRowsAssociative(
+            "SELECT bank_account_id, account_name, account_number, bank_name, status, is_active
+             FROM {$this->tableBankAccounts}
+             ORDER BY account_name",
+            'DB'
+        );
+
+        return $this->ok($rows ?: []);
+    }
+
     // ── Fund Sweeping ──
     // Bulk-prepares DRAFT FTLAs (fims.fund_transfers, via FtlaService —
     // same create() the manual FTLA form posts to) that move each of a
