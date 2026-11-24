@@ -185,6 +185,7 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
                             <select class="fims-select" id="prepDvSelect"><option value="">Select a DV...</option></select>
                         </div>
                         <div class="col-md-6"><label class="fims-label">Program</label><input type="text" class="fims-input" id="prepProgram" disabled placeholder="—"></div>
+                        <div class="col-md-6"><label class="fims-label">RFA</label><input type="text" class="fims-input" id="prepRfa" disabled placeholder="—"></div>
                         <div class="col-md-6"><label class="fims-label">Payee</label><input type="text" class="fims-input" id="prepPayee" disabled></div>
                         <div class="col-md-6"><label class="fims-label">Bank Account <span class="text-danger">*</span></label>
                             <select class="fims-select" id="prepBankAccount"><option value="">Select bank account...</option></select>
@@ -1397,6 +1398,7 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
         document.getElementById('prepLowStockAlert').style.display = 'none';
         document.getElementById('prepPayee').value = '';
         document.getElementById('prepProgram').value = '';
+        document.getElementById('prepRfa').value = '';
         document.getElementById('prepNetAmount').value = '';
         const checkNoSel = document.getElementById('prepCheckNumber');
         checkNoSel.value = '';
@@ -1433,6 +1435,12 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
         const dv = prepDvsById[this.value];
         document.getElementById('prepPayee').value = dv ? (dv.claimant_name || '') : '';
         document.getElementById('prepProgram').value = dv ? (dv.program_names || '') : '';
+        // Read-only reference, auto-filled from this DV's own linked RFA
+        // (fims.budget_allocation.dv_id — see CheckProcessingService::
+        // getDvsForPrep()'s own rfa_numbers lateral). No equivalent LAA field
+        // here — there's no link from a DV to an LAA anywhere in the schema
+        // (same reasoning as FtlaService::getRfaForDv()'s own comment).
+        document.getElementById('prepRfa').value = dv ? (dv.rfa_numbers || '') : '';
         document.getElementById('prepNetAmount').value = dv ? peso(dv.net_amount) : '';
         verifyPrepCash();
     });

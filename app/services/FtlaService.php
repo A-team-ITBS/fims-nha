@@ -429,6 +429,35 @@ class FtlaService
     // flattens every row's value from every record into one set.
     // $excludeId lets editing a record still see its OWN already-tagged
     // DV(s) (not "used by someone else").
+    // Resolves the RFA (fims.budget_allocation, allocation_type = 'RFA')
+    // currently linked to a given DV number via budget_allocation.dv_id —
+    // the same linkage DisbursementVoucherService::linkRfas() maintains (one
+    // RFA points at one DV at a time, see migration "23 - budget_allocation_
+    // add_dv_id.sql"). Used by form/ftla-form.php to auto-fill the FTLA's
+    // own RFA Number field once a DV is picked. LAA has no equivalent: RFA
+    // and LAA are sibling allocation_types that each draw from their own
+    // parent CBA independently (BudgetAllocationService::validateReferences()
+    // — a parent must be a CBA, never an LAA), so nothing connects a
+    // specific RFA to a specific LAA — LAA stays a manual pick, not guessed.
+    public function getRfaForDv(string $dvNo): ?array
+    {
+        $dvNo = trim($dvNo);
+        if ($dvNo === '') {
+            return null;
+        }
+
+        return App\ExecuteRow(
+            "SELECT a.allocation_id, a.allocation_number, a.fiscal_year, a.created_at
+             FROM fims.budget_allocation a
+             JOIN {$this->tableDv} dv ON dv.dv_id = a.dv_id
+             WHERE dv.dv_no = " . $this->str($dvNo) . "
+               AND a.allocation_type = 'RFA'
+               AND a.deleted_at IS NULL
+             LIMIT 1",
+            'DB'
+        ) ?: null;
+    }
+
     public function getUsedDvNumbers(int $excludeId = 0): array
     {
         $where = "dv_numbers IS NOT NULL AND dv_numbers <> ''";
@@ -1151,9 +1180,19 @@ class FtlaService
                 GlobalService::logStatusChange(self::STATUS_LOG_FOR, $ftId, $newStatus, $userId, $remarks ?: null);
             }
 
+            // Tell the user the Payment JEV actually got posted here, rather
+            // than the generic status message alone — this transition IS
+            // what triggers submitPaymentJev() above, with no separate
+            // "Create JEV" step anywhere else in this module anymore.
+            $message = $newStatus ? "FTLA is now {$newStatus}." : "FTLA {$cur['ftla_number']} updated successfully.";
+            if ($newStatus === 'SUBMITTED_TO_ACCOUNTING' && !empty($jevResult['jev_id'])) {
+                $jevNo = App\ExecuteScalar("SELECT jev_no FROM {$this->tableJev} WHERE jev_id = " . (int) $jevResult['jev_id'], 'DB');
+                $message .= $jevNo ? " Payment JEV {$jevNo} posted." : ' Payment JEV posted.';
+            }
+
             return [
                 'success' => true,
-                'message' => $newStatus ? "FTLA is now {$newStatus}." : "FTLA {$cur['ftla_number']} updated successfully.",
+                'message' => $message,
                 'data'    => ['fund_transfer_id' => $ftId, 'ftla_number' => $cur['ftla_number'], 'status' => $nowStatus],
             ];
         } catch (\Exception $e) {
