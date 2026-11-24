@@ -26,23 +26,39 @@ $_vnd_api = Config('API.FIMS_URL');
     border:none;background:none;width:100%;text-align:left;transition:background .1s; }
 .nha-menu-item:hover { background:var(--afims-surface-subtle, #F4F7FA);color:var(--afims-heading-fill, #000E3E); }
 .nha-menu-item svg { width:13px;height:13px;flex-shrink:0;opacity:.7; }
+
+/* ── Page header: copied from User Access (.app-page-header in app/fims-css/fims.css — that file is not loaded here,
+      so the rules are repeated, scoped to this page). Stays navy in dark mode too, like User Access. ── */
+#vnd-root .app-page-header { position:relative;display:flex;align-items:center;gap:1rem;flex-wrap:wrap;overflow:hidden;
+    background:linear-gradient(135deg, #000E3E 0%, #001A5E 100%);border-radius:.75rem;padding:1.5rem 1.75rem;margin-bottom:1.5rem; }
+#vnd-root .app-page-header::before,
+#vnd-root .app-page-header::after { content:"";position:absolute;border-radius:50%;background:rgba(255,255,255,.05);pointer-events:none; }
+#vnd-root .app-page-header::before { width:180px;height:180px;top:-90px;right:80px; }
+#vnd-root .app-page-header::after { width:120px;height:120px;bottom:-70px;right:-20px;background:rgba(255,255,255,.06); }
+#vnd-root .app-page-header-icon { position:relative;z-index:1;flex:0 0 auto;width:3rem;height:3rem;border-radius:.5rem;
+    display:flex;align-items:center;justify-content:center;font-size:1.25rem;
+    background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);color:#FFFFFF; }
+#vnd-root .app-page-title { position:relative;z-index:1;font-size:1.6rem;font-weight:800;letter-spacing:-.01em;color:#FFFFFF;margin:0 0 .25rem; }
+#vnd-root .app-page-subtitle { position:relative;z-index:1;font-size:.9rem;color:rgba(255,255,255,.75);margin:0;max-width:640px; }
+/* the Refresh / Add Vendor buttons stay on the right of the banner, above its decorative circles */
+#vnd-root .app-page-header-actions { position:relative;z-index:1;margin-left:auto;display:flex;flex-wrap:wrap;gap:8px; }
 </style>
 
 <div id="vnd-root" class="nha-root">
 
     <!-- ── HEADER ─────────────────────────────────────────── -->
-    <div class="nha-hdr no-print">
-        <div class="nha-hdr-l">
-            <div class="nha-hdr-ico">
-                <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="#fff" stroke-width="1.8">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
-                </svg>
-            </div>
-            <div>
-                <div class="nha-hdr-title">Vendors</div>
-            </div>
+    <!-- same banner as User Access (app-page-header in app/fims-css/fims.css) -->
+    <div class="app-page-header no-print">
+        <div class="app-page-header-icon">
+            <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="#fff" stroke-width="1.8">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
+            </svg>
         </div>
-        <div class="nha-hdr-r">
+        <div>
+            <h1 class="app-page-title">Vendors</h1>
+            <p class="app-page-subtitle">The suppliers, contractors and other payees, with their GL and sub-ledger accounts.</p>
+        </div>
+        <div class="app-page-header-actions">
             <button id="vnd-refresh" type="button" class="nha-btn-hdr" title="Refresh">
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                 Refresh

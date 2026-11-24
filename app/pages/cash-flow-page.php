@@ -35,6 +35,10 @@ $_cf_api = preg_match('~/api$~', $_cf_api) ? $_cf_api : $_cf_api . '/api';
     #cf-root .nha-error               { font-size: 0.875rem; }   /* 14px */
     #cf-root .nha-hint                { font-size: 0.875rem; padding: 0 16px; margin: 0 0 14px; color: var(--afims-text-muted, #62657E); }   /* 14px; 16px side padding lines it up with the filter card */
 
+    /* the page header's Refresh / Print buttons sit on the right of the banner, above its decorative circles (fims.css has no rule for it) */
+    #cf-root .app-page-header { flex-wrap: wrap; }
+    #cf-root .app-page-header-actions { position: relative; z-index: 1; margin-left: auto; display: flex; flex-wrap: wrap; gap: 8px; }
+
     html.afims-dark[data-bs-theme="dark"] #cf-root .cf-sample { background: #3A2F10; color: #F5D98A; border-color: #6B5A22; }
     @media print {
         #cf-root .cf-letterhead,
@@ -46,19 +50,20 @@ $_cf_api = preg_match('~/api$~', $_cf_api) ? $_cf_api : $_cf_api . '/api';
 <div id="cf-root" class="nha-root">
 
     <!-- ── HEADER ─────────────────────────────────────────── -->
-    <div class="nha-hdr no-print">
-        <div class="nha-hdr-l">
-            <div class="nha-hdr-ico">
-                <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="#fff" stroke-width="1.8">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 19V5m4 14v-8m4 8V9m4 10V7m4 12V3"/>
-                </svg>
-            </div>
-            <div>
-                <div class="nha-hdr-tag">National Housing Authority · FIMS</div>
-                <div class="nha-hdr-title">Statement of Cashflow</div>
-            </div>
+    <!-- same banner as User Access: app-page-header (styled by app/fims-css/fims.css, already loaded above) -->
+    <div class="app-page-header no-print">
+        <div class="app-page-header-icon">
+            <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="#fff" stroke-width="1.8">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4 19V5m4 14v-8m4 8V9m4 10V7m4 12V3"/>
+            </svg>
         </div>
-        <div class="nha-hdr-r">
+        <div>
+            <h1 class="app-page-title">Statement of Cashflow</h1>
+            <p class="app-page-subtitle">Statement of Cash Flows for the selected fiscal year, by Operating, Investing and Financing Activities
+                (Direct Method). A few printed lines (Bayanihan Act BTr refund, Expropriated Account closure, and most project-specific
+                disbursement lines) have no dedicated account in the chart of accounts yet and print at 0 rather than being dropped.</p>
+        </div>
+        <div class="app-page-header-actions">
             <button id="cf-refresh" type="button" class="nha-btn-hdr" title="Refresh">
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                 Refresh
@@ -69,13 +74,6 @@ $_cf_api = preg_match('~/api$~', $_cf_api) ? $_cf_api : $_cf_api . '/api';
             </button>
         </div>
     </div>
-
-    <p class="nha-hint no-print">
-        Statement of Cash Flows for the selected fiscal year, by Operating, Investing and Financing
-        Activities (Direct Method). A few printed lines (Bayanihan Act BTr refund, Expropriated
-        Account closure, and most project-specific disbursement lines) have no dedicated account in
-        the chart of accounts yet and print at 0 rather than being dropped.
-    </p>
 
     <div id="cf-sample" class="cf-sample no-print">
         <strong>Sample data.</strong> These figures are made up to show the layout. They are not from the General Ledger.

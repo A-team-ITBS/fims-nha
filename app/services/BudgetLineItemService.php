@@ -289,6 +289,16 @@ class BudgetLineItemService
             return null;
         }
 
+        return $this->getAvailable($budgetLineItemId);
+    }
+
+    /**
+     * The same figure as lockAndGetAvailable(), with no row lock — for a read-only pre-check outside a
+     * transaction (validateDirectDrawAmounts()). Not a safe mutex on its own; only lockAndGetAvailable()
+     * (called from inside the caller's open transaction, after locking the row) is.
+     */
+    private function getAvailable(int $budgetLineItemId): ?float
+    {
         $row = App\ExecuteRow(
             'SELECT '.BudgetLineBalanceSql::availableExpr('li', 'ear')." AS available_amount
              FROM {$this->table} li
@@ -478,6 +488,148 @@ class BudgetLineItemService
                  WHERE budget_line_item_id = {$lineItemId}",
                 'DB'
             );
+        }
+
+        return ['success' => true];
+    }
+
+    /**
+     * A COE (Corporate Operating Expenditure) account code, by the same convention the rest of the app
+     * uses (CobService::expenseClassSql(): account_code prefix '1' = CO/Capital Outlay, everything else =
+     * COE). Used to keep a direct draw (no Parent CBA, no Project — see createDirectEarmarkForRfaApproval())
+     * from being used to sneak a CO line around the normal CBA flow.
+     */
+    private function isCoeAccountCode(?string $accountCode): bool
+    {
+        return trim((string) $accountCode) !== '' && !str_starts_with(trim((string) $accountCode), '1');
+    }
+
+    /**
+     * Every distinct budget_line_item_id in a line_transaction that is NOT a COE account — [] when every
+     * line is COE (including when there is nothing to check). Used by both the create/update-time
+     * validation (BudgetAllocationService::validateReferences()) and the approval-time re-check below, so
+     * the two can never silently disagree on what counts as COE.
+     */
+    public function nonCoeLineItemIds(mixed $lineTransaction): array
+    {
+        $lines = $this->parseLineTransaction($lineTransaction);
+        if (!$lines) {
+            return [];
+        }
+        $ids = array_values(array_unique(array_column($lines, 'budget_line_item_id')));
+        $rows = App\ExecuteRows(
+            "SELECT li.budget_line_item_id, coa.account_code FROM {$this->table} li
+             LEFT JOIN {$this->tableChartOfAccounts} coa ON coa.account_id = li.account_id
+             WHERE li.budget_line_item_id IN (".implode(', ', array_map('intval', $ids)).')',
+            'DB'
+        ) ?: [];
+
+        $bad = [];
+        foreach ($rows as $row) {
+            if (!$this->isCoeAccountCode($row['account_code'] ?? null)) {
+                $bad[] = (int) $row['budget_line_item_id'];
+            }
+        }
+
+        return $bad;
+    }
+
+    /**
+     * A direct COE draw's final approval — called once per RFA/LAA project block that has NO Parent CBA
+     * (budget_allocation_project.is_direct_draw — see that column's own migration comment), in place of
+     * convertEarmarkForRfaApproval() above. There is no parent earmark to find and shrink: this block IS
+     * the first-order reservation, same shape as a CBA's own createForApproval() but inserted straight as
+     * 'converted' (source_earmark_id NULL — nothing to trace back to) and immediately counted toward
+     * budget_line_items.obligation, since an RFA/LAA's approval is what that column means (see
+     * convertEarmarkForRfaApproval()'s own doc comment — "THE MODEL"). Refuses (nothing written) if any
+     * COB isn't COE, or if the requested amount for any COB exceeds its own general available balance.
+     *
+     * $budgetAllocationProjectId is THIS block's own id (stamped on the earmark row it inserts, exactly as
+     * createForApproval() stamps it for a CBA/CFA block).
+     */
+    public function createDirectEarmarkForRfaApproval(int $allocationId, int $budgetAllocationProjectId, mixed $lineTransaction): array
+    {
+        $lines = $this->parseLineTransaction($lineTransaction);
+        if (!$lines) {
+            return ['success' => true];
+        }
+
+        $totals = [];
+        foreach ($lines as $line) {
+            $id = $line['budget_line_item_id'];
+            $totals[$id] = ($totals[$id] ?? 0) + $line['requested_amount'];
+        }
+        // Lock every line item this call touches in a consistent order (BudgetLineBalanceSql's locking
+        // contract) so two concurrent approvals can never deadlock against each other.
+        ksort($totals, SORT_NUMERIC);
+
+        $nonCoe = $this->nonCoeLineItemIds($lineTransaction);
+        if ($nonCoe) {
+            return ['success' => false, 'message' => 'Budget line item #'.$nonCoe[0].' is not a COE account — a direct draw (no Parent CBA) is only for COE allocations.'];
+        }
+
+        foreach ($totals as $lineItemId => $requested) {
+            $available = $this->lockAndGetAvailable($lineItemId);
+            if ($available === null) {
+                return ['success' => false, 'message' => "Budget line item #{$lineItemId} no longer exists."];
+            }
+            if ($requested > $available) {
+                return ['success' => false, 'message' => 'Requested amount ('.number_format($requested, 2).
+                    ') exceeds the remaining available balance ('.number_format($available, 2).
+                    ") for budget line item #{$lineItemId}."];
+            }
+        }
+
+        foreach ($totals as $lineItemId => $requested) {
+            $amount = App\QuotedValue(round($requested, 2), DataType::NUMBER, 'DB');
+            App\Execute(
+                "INSERT INTO {$this->tableEarmark} (budget_line_item_id, allocation_id, budget_allocation_project_id, amount, original_amount, status, released_at, source_earmark_id)
+                 VALUES ({$lineItemId}, {$allocationId}, {$budgetAllocationProjectId}, {$amount}, {$amount}, 'converted', CURRENT_TIMESTAMP, NULL)",
+                'DB'
+            );
+
+            // Same real financial commitment as convertEarmarkForRfaApproval() — see its own doc comment.
+            App\Execute(
+                "UPDATE {$this->table} SET obligation = obligation + {$amount}
+                 WHERE budget_line_item_id = {$lineItemId}",
+                'DB'
+            );
+        }
+
+        return ['success' => true];
+    }
+
+    /**
+     * Read-only sanity check for a direct-draw RFA/LAA block (no Parent CBA — see
+     * createDirectEarmarkForRfaApproval()'s own doc comment): is each COB's Requested Amount within its
+     * OWN general available balance (BudgetLineBalanceSql::availableExpr(), via getAvailable()) — the
+     * same ceiling a CBA's own createForApproval() checks? No locking here (not yet Approved), same as
+     * validateRfaAmounts() below. Returns ['success' => true] (including when there is nothing to check)
+     * or ['success' => false, 'message' => ...].
+     */
+    public function validateDirectDrawAmounts(mixed $lineTransaction): array
+    {
+        $lines = $this->parseLineTransaction($lineTransaction);
+        if (!$lines) {
+            return ['success' => true];
+        }
+
+        $totals = [];
+        foreach ($lines as $line) {
+            $id = $line['budget_line_item_id'];
+            $totals[$id] = ($totals[$id] ?? 0) + $line['requested_amount'];
+        }
+
+        foreach ($totals as $lineItemId => $requested) {
+            $available = $this->getAvailable($lineItemId);
+            if ($available === null) {
+                return ['success' => false, 'message' => "Budget line item #{$lineItemId} no longer exists."];
+            }
+            if ($requested > $available) {
+                return ['success' => false, 'message' => 'Requested amount ('.number_format($requested, 2).
+                    ') exceeds the remaining available balance ('.number_format($available, 2).
+                    ") for budget line item #{$lineItemId}."];
+            }
         }
 
         return ['success' => true];

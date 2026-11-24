@@ -33,12 +33,12 @@ $crCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
 
 <div class="fims-wrap" id="crModule">
 
-    <div class="fims-page-header">
-        <div class="fims-page-header-bubbles"><span></span><span></span><span></span><span></span><span></span></div>
-        <div class="fims-page-header-left">
-            <div class="fims-page-header-icon"><i class="fas fa-book"></i></div>
-            <h1>Check Registry</h1>
-            <p>Blank check stock (booklets) inventory — Disbursing Section</p>
+    <!-- same banner as User Access: app-page-header (styled by app/fims-css/fims.css, already loaded above) -->
+    <div class="app-page-header">
+        <div class="app-page-header-icon"><i class="fas fa-book"></i></div>
+        <div>
+            <h1 class="app-page-title">Check Registry</h1>
+            <p class="app-page-subtitle">Blank check stock (booklets) inventory — Disbursing Section</p>
         </div>
     </div>
 

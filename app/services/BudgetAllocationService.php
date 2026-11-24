@@ -793,14 +793,32 @@ class BudgetAllocationService
                     // (parent_allocation_id — an RFA/LAA can draw from several different CBAs at once, one
                     // per block; validateReferences() already required every block to have one, even at
                     // Draft save, but this is checked again here as the last line of defense before money
-                    // actually moves).
+                    // actually moves) — UNLESS the block is a direct COE draw (is_direct_draw, no parent at
+                    // all — see createDirectEarmarkForRfaApproval()'s own doc comment), validated the same
+                    // way at Draft save.
                     foreach ($blocks as $i => $block) {
+                        if (!empty($block['is_direct_draw'])) {
+                            $earmark = $lineItemService->createDirectEarmarkForRfaApproval(
+                                $id,
+                                (int) $block['budget_allocation_project_id'],
+                                $block['line_transaction'] ?? null
+                            );
+                            if (!$earmark['success']) {
+                                App\Execute('ROLLBACK', 'DB');
+                                $inTransaction = false;
+
+                                return $this->fail($earmark['message']);
+                            }
+
+                            continue;
+                        }
+
                         $blockParentId = (int) ($block['parent_allocation_id'] ?? 0);
                         if ($blockParentId <= 0) {
                             App\Execute('ROLLBACK', 'DB');
                             $inTransaction = false;
 
-                            return $this->fail('Project block '.($i + 1)." has no Parent CBA — a {$allocationType} can only be approved once every project block draws from one.");
+                            return $this->fail('Project block '.($i + 1)." has no Parent CBA — a {$allocationType} can only be approved once every project block draws from one (or is a direct COE draw).");
                         }
                         $earmark = $lineItemService->convertEarmarkForRfaApproval(
                             $id,
@@ -1198,7 +1216,7 @@ class BudgetAllocationService
         $rows = App\ExecuteRows(
             "SELECT p.budget_allocation_project_id, p.allocation_id, p.sort_order,
                     p.program_code, p.sub_program_code, p.project_code, p.line_transaction,
-                    p.parent_allocation_id,
+                    p.parent_allocation_id, p.is_direct_draw,
                     pg.program_name, sp.sub_program_name, pj.project_name,
                     pa.request_referrence_no AS parent_request_referrence_no,
                     pa.allocation_number     AS parent_allocation_number
@@ -1219,6 +1237,7 @@ class BudgetAllocationService
             }
             $row['budget_allocation_project_id'] = (int) $row['budget_allocation_project_id'];
             $row['parent_allocation_id'] = isset($row['parent_allocation_id']) ? (int) $row['parent_allocation_id'] : null;
+            $row['is_direct_draw'] = filter_var($row['is_direct_draw'] ?? false, FILTER_VALIDATE_BOOLEAN);
             $byAllocation[(int) $row['allocation_id']][] = $row;
         }
 
@@ -1286,8 +1305,8 @@ class BudgetAllocationService
 
             // The parent CBA THIS block draws its budget from (RFA/LAA only — see validateReferences(),
             // which rejects it on any other allocation_type and requires it on every RFA/LAA block, even
-            // on a Draft save). array_key_exists (not isset) so an explicit null can clear a previously
-            // picked parent on update().
+            // on a Draft save, UNLESS the block is a direct draw — see is_direct_draw below). array_key_exists
+            // (not isset) so an explicit null can clear a previously picked parent on update().
             if (array_key_exists('parent_allocation_id', $block)) {
                 $v = trim((string) ($block['parent_allocation_id'] ?? ''));
                 if ($v === '') {
@@ -1298,6 +1317,12 @@ class BudgetAllocationService
                     $clean['parent_allocation_id'] = (int) $v;
                 }
             }
+
+            // A direct COE draw (RFA/LAA only — see validateReferences()): no Parent CBA, no Project, just
+            // this block's own line_transaction against a COE account code. Defaults to false — absent/blank
+            // means a normal (CBA/CFA, or Parent-CBA-driven RFA/LAA) block, same as every block before this
+            // flag existed.
+            $clean['is_direct_draw'] = filter_var($block['is_direct_draw'] ?? false, FILTER_VALIDATE_BOOLEAN);
 
             foreach (self::BLOCK_STRING_FIELDS as $field => $max) {
                 if (!array_key_exists($field, $block)) {
@@ -1383,6 +1408,22 @@ class BudgetAllocationService
             $sub = $block['sub_program_code'] ?? null;
             $project = $block['project_code'] ?? null;
 
+            // A direct COE draw has no Program/Sub-Program/Project to resolve or create — it only ever
+            // carries codes the body picked directly (never typed names), so skip the find-or-create chain
+            // entirely. validateReferences() is what actually enforces this block stays empty of them.
+            if (!empty($block['is_direct_draw'])) {
+                $resolved[] = [
+                    'budget_allocation_project_id' => $block['budget_allocation_project_id'] ?? null,
+                    'program_code' => null,
+                    'sub_program_code' => null,
+                    'project_code' => null,
+                    'line_transaction' => $block['line_transaction'] ?? null,
+                    'parent_allocation_id' => null,
+                    'is_direct_draw' => true,
+                ];
+                continue;
+            }
+
             if ($program === null && isset($block['program_name'])) {
                 [$program, $isNew, $err] = $this->findOrCreateProgram($block['program_name'], $userId);
                 if ($err) {
@@ -1424,6 +1465,7 @@ class BudgetAllocationService
                 'project_code' => $project,
                 'line_transaction' => $block['line_transaction'] ?? null,
                 'parent_allocation_id' => $block['parent_allocation_id'] ?? null,
+                'is_direct_draw' => false,
             ];
         }
 
@@ -1472,13 +1514,14 @@ class BudgetAllocationService
     {
         foreach ($blocks as $i => $block) {
             App\Execute(
-                "INSERT INTO {$this->tableAllocationProject} (allocation_id, sort_order, program_code, sub_program_code, project_code, line_transaction, parent_allocation_id)
+                "INSERT INTO {$this->tableAllocationProject} (allocation_id, sort_order, program_code, sub_program_code, project_code, line_transaction, parent_allocation_id, is_direct_draw)
                  VALUES ({$allocationId}, {$i}, "
                     .$this->blockStringLiteral($block['program_code']).', '
                     .$this->blockStringLiteral($block['sub_program_code']).', '
                     .$this->blockStringLiteral($block['project_code']).', '
                     .$this->blockLineTransactionLiteral($block['line_transaction']).', '
-                    .$this->blockIntLiteral($block['parent_allocation_id'] ?? null).')',
+                    .$this->blockIntLiteral($block['parent_allocation_id'] ?? null).', '
+                    .(!empty($block['is_direct_draw']) ? 'TRUE' : 'FALSE').')',
                 'DB'
             );
         }
@@ -1509,6 +1552,7 @@ class BudgetAllocationService
             $projectLit = $this->blockStringLiteral($block['project_code']);
             $ltLit = $this->blockLineTransactionLiteral($block['line_transaction']);
             $parentLit = $this->blockIntLiteral($block['parent_allocation_id'] ?? null);
+            $directLit = !empty($block['is_direct_draw']) ? 'TRUE' : 'FALSE';
 
             $blockId = $block['budget_allocation_project_id'] ?? null;
             if ($blockId !== null && in_array((int) $blockId, $existingIds, true)) {
@@ -1517,14 +1561,15 @@ class BudgetAllocationService
                 App\Execute(
                     "UPDATE {$this->tableAllocationProject}
                      SET sort_order = {$i}, program_code = {$programLit}, sub_program_code = {$subLit},
-                         project_code = {$projectLit}, line_transaction = {$ltLit}, parent_allocation_id = {$parentLit}, updated_at = CURRENT_TIMESTAMP
+                         project_code = {$projectLit}, line_transaction = {$ltLit}, parent_allocation_id = {$parentLit},
+                         is_direct_draw = {$directLit}, updated_at = CURRENT_TIMESTAMP
                      WHERE budget_allocation_project_id = {$blockId} AND allocation_id = {$allocationId}",
                     'DB'
                 );
             } else {
                 App\Execute(
-                    "INSERT INTO {$this->tableAllocationProject} (allocation_id, sort_order, program_code, sub_program_code, project_code, line_transaction, parent_allocation_id)
-                     VALUES ({$allocationId}, {$i}, {$programLit}, {$subLit}, {$projectLit}, {$ltLit}, {$parentLit})",
+                    "INSERT INTO {$this->tableAllocationProject} (allocation_id, sort_order, program_code, sub_program_code, project_code, line_transaction, parent_allocation_id, is_direct_draw)
+                     VALUES ({$allocationId}, {$i}, {$programLit}, {$subLit}, {$projectLit}, {$ltLit}, {$parentLit}, {$directLit})",
                     'DB'
                 );
             }
@@ -1780,8 +1825,11 @@ class BudgetAllocationService
         // One pass to collect/validate every distinct parent CBA referenced across this record's blocks,
         // batched into a couple of queries rather than one per block.
         //   - CBA / CFA never draw from a parent: a parent_allocation_id on one of their blocks is rejected.
-        //   - RFA / LAA requires a parent on EVERY block, even on a Draft save (not just at Approval) — a
-        //     block can never be saved half-configured.
+        //     A direct draw (is_direct_draw) is RFA/LAA-only for the same reason — CBA/CFA already draw
+        //     directly against a COB with no parent, so the flag would be meaningless for them.
+        //   - RFA / LAA requires EITHER a parent on every block, OR that block to be a direct draw (COE,
+        //     no Project — see the loop below), even on a Draft save (not just at Approval) — a block can
+        //     never be saved half-configured.
         //   - The same parent CBA may not be selected on two blocks of the same record (each parent funds
         //     exactly one block — ambiguous otherwise).
         //   - Each parent must exist, be a CBA, be Approved, and not be this row itself. Cycles are
@@ -1791,10 +1839,21 @@ class BudgetAllocationService
         foreach ($blocks as $i => $block) {
             $n = $i + 1;
             $blockParentId = $block['parent_allocation_id'] ?? null;
+            $isDirect = !empty($block['is_direct_draw']);
 
             if (!$isRfaOrLaa) {
                 if ($blockParentId !== null) {
                     return "Project block {$n}: a {$effectiveType} does not draw from a parent CBA.";
+                }
+                if ($isDirect) {
+                    return "Project block {$n}: a {$effectiveType} cannot be a direct COE draw — that's an RFA/LAA concept.";
+                }
+                continue;
+            }
+
+            if ($isDirect) {
+                if ($blockParentId !== null) {
+                    return "Project block {$n}: a direct COE draw cannot also have a Parent CBA.";
                 }
                 continue;
             }
@@ -1869,6 +1928,7 @@ class BudgetAllocationService
                 $old = $oldBlocksById[(int) $blockId];
                 $changed = (($block['parent_allocation_id'] ?? null) !== ($old['parent_allocation_id'] ?? null))
                     || (($block['project_code'] ?? null) !== ($old['project_code'] ?? null))
+                    || (!empty($block['is_direct_draw']) !== !empty($old['is_direct_draw']))
                     || (json_encode($block['line_transaction'] ?? null) !== json_encode($old['line_transaction'] ?? null));
                 if (!$changed) {
                     continue;
@@ -1886,8 +1946,40 @@ class BudgetAllocationService
             }
         }
 
+        $lineItemService = new BudgetLineItemService();
         foreach ($blocks as $i => $block) {
             $n = $i + 1;
+
+            // ── Every project block needs at least one real account code (COB) ───────────────
+            // A block with no line_transaction at all, or one whose entries are all blank (no
+            // budget_line_item_id, or a zero/blank requested_amount — parseLineTransaction()'s own
+            // filter), is not a usable allocation — it would save, then sail through to Approved with
+            // nothing actually earmarked. Checked here, before the type-specific checks below, so every
+            // allocation type (CBA/CFA and RFA/LAA alike) is held to the same minimum.
+            if (!$lineItemService->parseLineTransaction($block['line_transaction'] ?? null)) {
+                return "Project block {$n}: at least one account code (COB) with a Requested Amount is required.";
+            }
+
+            // ── Direct COE draw (RFA/LAA only, already confirmed above): no Program/Sub-Program/Project at
+            // all — just its own COB line(s), each required to be a COE account, within its own general
+            // available balance (not a parent's earmark — there is none). Skips the Program/Project
+            // belong-together checks below entirely; they don't apply to a block with no Project.
+            if (!empty($block['is_direct_draw'])) {
+                if (($block['program_code'] ?? null) !== null || ($block['sub_program_code'] ?? null) !== null || ($block['project_code'] ?? null) !== null) {
+                    return "Project block {$n}: a direct COE draw cannot also carry a Program, Sub-Program, or Project.";
+                }
+                $lt = $block['line_transaction'] ?? null;
+                $nonCoe = $lineItemService->nonCoeLineItemIds($lt);
+                if ($nonCoe) {
+                    return "Project block {$n}: budget line item #{$nonCoe[0]} is not a COE account — a direct draw is only for COE allocations.";
+                }
+                $check = $lineItemService->validateDirectDrawAmounts($lt);
+                if (!$check['success']) {
+                    return "Project block {$n}: ".$check['message'];
+                }
+                continue;
+            }
+
             $program = $block['program_code'] ?? null;
             $sub = $block['sub_program_code'] ?? null;
             $project = $block['project_code'] ?? null;
@@ -1941,11 +2033,10 @@ class BudgetAllocationService
                 // actively earmarked there — the same ceiling convertEarmarkForRfaApproval() enforces at
                 // Approval time, checked here too (create and update) so a request isn't accepted only to
                 // be rejected later purely over an amount that was already wrong when it was submitted.
-                if (($block['line_transaction'] ?? null) !== null) {
-                    $check = (new BudgetLineItemService())->validateRfaAmounts($blockParentId, (string) $project, $block['line_transaction']);
-                    if (!$check['success']) {
-                        return "Project block {$n}: ".$check['message'];
-                    }
+                // (line_transaction is already known non-empty — the universal account-code check above.)
+                $check = $lineItemService->validateRfaAmounts($blockParentId, (string) $project, $block['line_transaction']);
+                if (!$check['success']) {
+                    return "Project block {$n}: ".$check['message'];
                 }
             }
         }

@@ -175,6 +175,7 @@ return [
     "property_and_equipment_for_distribution_page" => \DI\create(PropertyAndEquipmentForDistributionPage::class),
     "fixed_assets_page" => \DI\create(FixedAssetsPage::class),
     "merchandise_inventory_page" => \DI\create(MerchandiseInventoryPage::class),
+    "bur_page" => \DI\create(BurPage::class),
 
     // User table
     "usertable" => \DI\get("users"),

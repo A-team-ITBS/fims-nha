@@ -134,6 +134,7 @@
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone ($p['PHPMaker2024\\FIMS\\Attributes\\Get'] ?? \Symfony\Component\VarExporter\Internal\Registry::p('PHPMaker2024\\FIMS\\Attributes\\Get')),
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Get'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
@@ -233,6 +234,11 @@
     [
         'PHPMaker2024\\FIMS\\Attributes\\Map' => [
             'methods' => [
+                [
+                    'GET',
+                    'POST',
+                    'OPTIONS',
+                ],
                 [
                     'GET',
                     'POST',
@@ -1410,6 +1416,7 @@
                 '/BudgetRevisionPage[/{params:.*}]',
                 '/BudgetRevReview[/{params:.*}]',
                 '/BullMqManager[/{params:.*}]',
+                '/BurPage[/{params:.*}]',
                 '/CashFlowPage[/{params:.*}]',
                 '/CashPositionPage[/{params:.*}]',
                 '/CbaMemoRequestPage[/{params:.*}]',
@@ -1640,6 +1647,7 @@
                 'PHPMaker2024\\FIMS\\BudgetRevisionPageController:custom',
                 'PHPMaker2024\\FIMS\\BudgetRevReviewController:custom',
                 'PHPMaker2024\\FIMS\\BullMqManagerController:custom',
+                'PHPMaker2024\\FIMS\\BurPageController:custom',
                 'PHPMaker2024\\FIMS\\CashFlowPageController:custom',
                 'PHPMaker2024\\FIMS\\CashPositionPageController:custom',
                 'PHPMaker2024\\FIMS\\CbaMemoRequestPageController:custom',
@@ -1831,6 +1839,9 @@
                 'PHPMaker2024\\FIMS\\WorkInProcessPageController:custom',
             ],
             'middleware' => [
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
                 [
                     'PHPMaker2024\\FIMS\\PermissionMiddleware',
                 ],
@@ -2554,6 +2565,7 @@
                 'custom.budget_revision_page',
                 'custom.budget_rev_review',
                 'custom.BullMQManager',
+                'custom.bur_page',
                 'custom.cash_flow_page',
                 'custom.cash_position_page',
                 'custom.cba_memo_request_page',
@@ -2745,6 +2757,7 @@
                 'custom.work_in_process_page',
             ],
             'options' => [
+                [],
                 [],
                 [],
                 [],
@@ -3205,6 +3218,7 @@
         $o[225],
         $o[226],
         $o[227],
+        $o[228],
     ],
     []
 );
