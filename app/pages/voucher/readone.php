@@ -248,7 +248,14 @@ function vr_render(dv) {
     const breakdownHtml = vr_rfaBreakdownHtml(dv);
     // Deductions + ATC live in the same box as the RFA Breakdown (like the entry form): editable grids for Accounting,
     // plain read-only rows otherwise. Each one is its own .vr-ded-section block.
-    const dedAtcHtml = vje_visible(dv) ? vje_dedAtcEditor(dv) : vr_dedAtcRowsHtml(dv);
+    // A PAYROLL DV (made from an imported payroll month, dv.payroll): its deductions are the import's — entered once in
+    // Payroll Management, re-read from it whenever the DV is saved — so at every stage they show read-only, each one's
+    // name and amount without the (always empty) Rate (vr_dedAtcRowsHtml()). Accounting's editor is still RENDERED,
+    // hidden, for it: vje_init() loads the deduction rows into it before the Accounting Entries lines (without
+    // #vje-ded-list it throws and the entries grid stays empty) and vje_save() sends them back.
+    const dedAtcHtml = vje_visible(dv)
+        ? (dv.payroll ? vr_dedAtcRowsHtml(dv) + `<div style="display:none;">${vje_dedAtcEditor(dv)}</div>` : vje_dedAtcEditor(dv))
+        : vr_dedAtcRowsHtml(dv);
 
     // Section D is Accounting's. While Originating/FMD hold the voucher it isn't shown at all (any entries
     // a payroll/remittance DV was pre-filled with stay stored, just not displayed until Accounting has it).
@@ -1694,12 +1701,13 @@ function vr_dedAtcRowsHtml(dv) {
             </div>
         </div>`;
     };
+    // a payroll DV's deductions come from the import, which has amounts only — no Rate box for them
     const ded = (dv.deductions ?? []).map(d => d.code === 'VAT' && !vje_isFlatVat(d) ? vatBlock(d) : `<div class="vje-row">
         <div class="vr-ded-label">${vr_esc(d.name) || '—'}</div>
-        <div class="vje-grid2">
+        ${dv.payroll ? ro('Deduction Amount (₱)', vr_peso(d.deduction_amount)) : `<div class="vje-grid2">
             ${ro('Rate (%)', d.rate != null ? d.rate : '')}
             ${ro('Deduction Amount (₱)', vr_peso(d.deduction_amount))}
-        </div>
+        </div>`}
         ${!d.type_account_code && d.account_code ? ro('Posting Account', d.account_code, ' style="margin-top:6px;"') : ''}
     </div>`);
     const atc = (dv.atc_lines ?? []).map(a => `<div class="vje-row">
