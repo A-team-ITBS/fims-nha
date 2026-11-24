@@ -1822,6 +1822,20 @@ class BudgetAllocationService
             return 'At least one project is required.';
         }
 
+        // ── Vendor ────────────────────────────────────────────────────────────
+        // Required for every allocation type except CBA (the form hides Vendor Details for CBA entirely) —
+        // UNLESS this is an RFA/LAA whose every block is a Direct COE draw (is_direct_draw: no Parent CBA, no
+        // Project), which has no procurement behind it to name a vendor for. Mirrors the client's
+        // cbaApplyVendorRequirement() (budget-allocation-form.php) so a request built by calling the API
+        // directly (bypassing the form's own `required` attribute) can't skip Vendor where the UI wouldn't
+        // have let it.
+        if ($effectiveType !== 'CBA') {
+            $allBlocksDirect = $isRfaOrLaa && !array_filter($blocks, static fn (array $b) => empty($b['is_direct_draw']));
+            if (!$allBlocksDirect && $effective('vendor_id') === null) {
+                return 'Vendor is required.';
+            }
+        }
+
         // One pass to collect/validate every distinct parent CBA referenced across this record's blocks,
         // batched into a couple of queries rather than one per block.
         //   - CBA / CFA never draw from a parent: a parent_allocation_id on one of their blocks is rejected.
