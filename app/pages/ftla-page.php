@@ -1484,7 +1484,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const done = i < currentIdx,
                         cur = i === currentIdx;
                     const icon = done ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="12" height="12"><polyline points="20 6 9 17 4 12"/></svg>` : cur ? `<svg viewBox="0 0 24 24" fill="currentColor" width="8" height="8"><circle cx="12" cy="12" r="6"/></svg>` : '';
-                    return `<div class="fims-timeline-step ${done?'done':''} ${cur?'current':''}"><div class="fims-timeline-dot">${icon}</div><div class="fims-timeline-content"><div class="fims-timeline-label">${this._esc(s.label)}</div><div class="fims-timeline-date">${this._timelineDate(d,s.key)}</div></div></div>`;
+                    return `<div class="fims-timeline-step ${done?'done':''} ${cur?'current':''}"><div class="fims-timeline-dot">${icon}</div><div class="fims-timeline-content"><div class="fims-timeline-label">${this._esc(ftla_wfMetaData[s.key]?.name || s.label)}</div><div class="fims-timeline-date">${this._timelineDate(d,s.key)}</div></div></div>`;
                 }).join('');
                 const advBtn = document.getElementById('btn-advance-status'),
                     next = FTLAPreparation.STATUSES[currentIdx + 1];
@@ -1757,6 +1757,10 @@ document.addEventListener('DOMContentLoaded', () => {
         _statusBadge(s) {
             const meta = s ? ftla_wfMetaData[s] : null;
             const COLOR_MAP = { secondary: 'gray', primary: 'navy', info: 'teal', success: 'green', danger: 'red', warning: 'amber' };
+            // Color comes from fims.settings_status (hex); a legacy color name still maps to a badge class.
+            if (meta && /^#[0-9a-f]{6}$/i.test(meta.color || '')) {
+                return `<span class="nha-bdg" style="background:${meta.color}1F;color:${meta.color};">${meta.name || s}</span>`;
+            }
             const cls = meta ? (COLOR_MAP[meta.color] || 'gray') : 'gray';
             return `<span class="nha-bdg nha-bdg-${cls}">${meta?.name || s || '—'}</span>`;
         }
@@ -2077,6 +2081,13 @@ async function ftla_loadWorkflowMeta() {
                 ftla_wfMetaData[s.value] = s;
                 if (s.is_editable) ftla_editableStatuses.add(s.value);
             });
+            const fsel = document.getElementById('filter-status');
+            if (fsel) {
+                const keep = fsel.value;
+                fsel.innerHTML = '<option value="">All Statuses</option>' + j.data.statuses.map(s =>
+                    `<option value="${String(s.value).replace(/"/g,'&quot;')}">${String(s.name).replace(/&/g,'&amp;').replace(/</g,'&lt;')}</option>`).join('');
+                fsel.value = keep;
+            }
         }
     } catch (_) {}
 }
@@ -2116,7 +2127,7 @@ function ftla_rowActionItems(r) {
     const COLOR_STYLE = { success: 'color:#059669', primary: 'color:#0f2045', warning: 'color:#b45309', danger: 'color:#dc2626', info: 'color:#0284c7' };
     const esc = s => { const d = document.createElement('span'); d.textContent = String(s ?? ''); return d.innerHTML; };
     const items = stepData.statuses.map(st => {
-        const style = COLOR_STYLE[st.color] || '';
+        const style = /^#[0-9a-f]{6}$/i.test(st.color || '') ? `color:${st.color}` : (COLOR_STYLE[st.color] || '');
         return `<a class="nha-menu-item" href="javascript:void(0);" style="${style}"
                    data-id="${r.fund_transfer_id}"
                    data-status="${esc(st.value)}"

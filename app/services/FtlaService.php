@@ -44,6 +44,8 @@ class FtlaService
     /** This module's row in fims.status_change_log.status_for — see GlobalService::logStatusChange(). */
     private const STATUS_LOG_FOR = 'fund_transfers';
 
+    private ?array $statusDefsCache = null;
+
     /**
      * value => label — the full Treasury vocabulary (ftla-preparation.php,
      * ftlafundtransfer.php, ftlasettlement.php combined), since this module merges
@@ -1373,12 +1375,52 @@ class FtlaService
         return ['success' => true, 'message' => 'Uploaded.', 'data' => $entry];
     }
 
+    /**
+     * STATUSES with each status's label and color overridden by its fims.settings_status row
+     * (status_for = 'fund_transfers'; status_code = the status value, name = display label —
+     * see "03 - alter/62 - settings_status_add_status_code_ftla_labels.sql"). Order and
+     * transition rules stay in code. A status with no row (or an unreachable table / missing
+     * column) keeps its built-in label and color, so the page works before the SQL is run.
+     *
+     * @return array<string, array{0:string,1:string}>
+     */
+    private function statusDefs(): array
+    {
+        if ($this->statusDefsCache !== null) {
+            return $this->statusDefsCache;
+        }
+        $defs = self::STATUSES;
+        try {
+            $rows = App\ExecuteRows(
+                "SELECT status_code, name, color FROM {$this->tableDvStatus}
+                 WHERE status_for = " . $this->str(self::STATUS_LOG_FOR) . " AND status_code IS NOT NULL",
+                'DB'
+            ) ?: [];
+            foreach ($rows as $r) {
+                $key = strtoupper((string) ($r['status_code'] ?? ''));
+                if (!isset($defs[$key])) {
+                    continue;
+                }
+                if (trim((string) ($r['name'] ?? '')) !== '') {
+                    $defs[$key][0] = trim((string) $r['name']);
+                }
+                if (preg_match('/^#[0-9A-Fa-f]{6}$/', (string) ($r['color'] ?? ''))) {
+                    $defs[$key][1] = $r['color'];
+                }
+            }
+        } catch (\Throwable $e) {
+            // fall back to the built-in labels/colors
+        }
+
+        return $this->statusDefsCache = $defs;
+    }
+
     // ── workflow (no engine — see class doc comment) ──
 
     public function fetchWorkflowMeta(): array
     {
         $statuses = [];
-        foreach (self::STATUSES as $value => [$name, $color]) {
+        foreach ($this->statusDefs() as $value => [$name, $color]) {
             $statuses[] = [
                 'value'            => $value,
                 'name'             => $name,
@@ -1394,7 +1436,7 @@ class FtlaService
 
     public function fetchWorkflowSteps(): array
     {
-        $order = array_values(array_filter(array_keys(self::STATUSES), fn ($s) => $s !== 'CANCELLED'));
+        $order = array_values(array_filter(array_keys($this->statusDefs()), fn ($s) => $s !== 'CANCELLED'));
         $steps = [];
         $statusActorOrderMap = [];
 
@@ -1408,12 +1450,12 @@ class FtlaService
 
             $statuses = [];
             foreach ($nextList as $next) {
-                [$name, $color]  = self::STATUSES[$next];
+                [$name, $color]  = $this->statusDefs()[$next];
                 $isReturn        = in_array("{$status}->{$next}", self::REMARKS_REQUIRED, true);
                 $statuses[] = [
                     'value'            => $next,
                     'name'             => $isReturn ? "Return to {$name}" : "Move to {$name}",
-                    'color'            => $next === 'CANCELLED' ? 'danger' : $color,
+                    'color'            => $color,
                     'confirm_message'  => ($isReturn ? "Return this FTLA to \"{$name}\"?" : "Move this FTLA to \"{$name}\"?"),
                     'requires_remarks' => $isReturn,
                 ];
@@ -1445,7 +1487,7 @@ class FtlaService
             return ['success' => false, 'message' => "FTLA #{$id} not found."];
         }
 
-        $order      = array_keys(self::STATUSES);
+        $order      = array_keys($this->statusDefs());
         $currentIdx = array_search($row['status'], $order, true);
         $timestamps = ['DRAFT' => $row['created_at']];
         foreach (self::STATUS_TIMESTAMP_COLUMN as $status => $col) {
@@ -1457,7 +1499,7 @@ class FtlaService
             if ($status === 'CANCELLED' && $row['status'] !== 'CANCELLED') {
                 continue; // only show the cancelled row when it actually happened
             }
-            [$name, $color] = self::STATUSES[$status];
+            [$name, $color] = $this->statusDefs()[$status];
             $steps[] = [
                 'step_order'  => $i + 1,
                 'step_label'  => $name,
@@ -1484,7 +1526,7 @@ class FtlaService
         ) ?: [];
 
         $rows = array_map(function ($r) {
-            [$name, $color] = self::STATUSES[$r['status']] ?? [$r['status'], 'secondary'];
+            [$name, $color] = $this->statusDefs()[$r['status']] ?? [$r['status'], 'secondary'];
 
             return $r + ['status_name' => $name, 'status_color' => $color, 'action_at' => $r['changed_at']];
         }, $rows);
