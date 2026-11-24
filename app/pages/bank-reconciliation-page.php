@@ -143,20 +143,25 @@ $brCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
                     </div>
 
                     <div class="br-recon-grid">
-                        <!-- PER BOOK -->
+                        <!-- PER BOOKS -->
                         <div class="br-recon-col">
-                            <div class="br-recon-col-title">PER BOOK</div>
+                            <div class="br-recon-col-title">PER BOOKS</div>
                             <div class="fims-form-group">
-                                <label class="fims-label">Book Balance <span class="br-hint">(ending ledger balance)</span></label>
+                                <label class="fims-label">Unreconciled Balance <span class="br-hint">(ending ledger balance)</span></label>
                                 <input type="text" class="fims-input br-mono" id="field-book-balance" readonly>
                             </div>
-                            <div class="br-recon-sub">Add: <span class="br-hint">(bank recorded, not yet in book)</span></div>
-                            <div class="fims-form-group"><label class="fims-label">Credit Memo</label><input type="number" step="0.01" class="fims-input br-mono" id="field-add-credit-memo" value="0"></div>
-                            <div class="fims-form-group"><label class="fims-label">Interest Income</label><input type="number" step="0.01" class="fims-input br-mono" id="field-add-interest-income" value="0"></div>
-                            <div class="br-recon-sub">Less: <span class="br-hint">(bank charged, not yet in book)</span></div>
-                            <div class="fims-form-group"><label class="fims-label">Debit Memo</label><input type="number" step="0.01" class="fims-input br-mono" id="field-less-debit-memo" value="0"></div>
+                            <div class="br-recon-sub">Add:</div>
+                            <div class="fims-form-group"><label class="fims-label">Unrecorded Deposits</label><input type="number" step="0.01" class="fims-input br-mono" id="field-add-unrecorded-deposit" value="0"></div>
+                            <div class="fims-form-group"><label class="fims-label">Unrecorded Credit Memo</label><input type="number" step="0.01" class="fims-input br-mono" id="field-add-credit-memo" value="0"></div>
+                            <div class="fims-form-group"><label class="fims-label">Unrecorded Interest Income</label><input type="number" step="0.01" class="fims-input br-mono" id="field-add-interest-income" value="0"></div>
+                            <div class="fims-form-group"><label class="fims-label">Book Error <span class="br-hint">(under recording of deposits / misposting)</span></label><input type="number" step="0.01" class="fims-input br-mono" id="field-add-book-error-under" value="0"></div>
+                            <div class="br-recon-sub">Less:</div>
+                            <div class="fims-form-group"><label class="fims-label">Unrecorded Debit Memo</label><input type="number" step="0.01" class="fims-input br-mono" id="field-less-debit-memo" value="0"></div>
+                            <div class="fims-form-group"><label class="fims-label">Unrecorded Withholding Tax</label><input type="number" step="0.01" class="fims-input br-mono" id="field-less-withholding-tax" value="0"></div>
+                            <div class="fims-form-group"><label class="fims-label">Unrecorded Bank Charges/Cost of Checkbooks</label><input type="number" step="0.01" class="fims-input br-mono" id="field-less-bank-charges" value="0"></div>
+                            <div class="fims-form-group"><label class="fims-label">Book Error <span class="br-hint">(over recording of deposits / misposting)</span></label><input type="number" step="0.01" class="fims-input br-mono" id="field-less-book-error-over" value="0"></div>
                             <div class="br-recon-total">
-                                <span>Adjusted Book Balance</span>
+                                <span>Reconciled Balance</span>
                                 <span class="br-mono" id="calc-adjusted-book">0.00</span>
                             </div>
                         </div>
@@ -165,22 +170,26 @@ $brCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
                         <div class="br-recon-col">
                             <div class="br-recon-col-title">PER BANK</div>
                             <div class="fims-form-group">
-                                <label class="fims-label">Bank Balance <span class="br-hint">(per bank statement)</span></label>
+                                <label class="fims-label">Unreconciled Balance <span class="br-hint">(per bank statement)</span></label>
                                 <input type="number" step="0.01" class="fims-input br-mono" id="field-bank-balance" value="0">
                                 <p class="br-hint" id="brSoaBalanceHint" style="margin:4px 2px 0;">No SOA uploaded for this account yet.</p>
                             </div>
-                            <div class="br-recon-sub">Add: Deposits in Transit</div>
-                            <ul class="br-item-list" id="brDepositsInTransitList"><li class="br-item-empty">None</li></ul>
+                            <div class="br-recon-sub">Add:</div>
                             <div class="fims-form-group">
+                                <label class="fims-label">Deposit in Transit</label>
+                                <ul class="br-item-list" id="brDepositsInTransitList"><li class="br-item-empty">None</li></ul>
                                 <input type="text" class="fims-input br-mono" id="field-add-deposit-in-transit" value="0.00" readonly>
                             </div>
-                            <div class="br-recon-sub">Less: Outstanding Checks</div>
-                            <ul class="br-item-list" id="brOutstandingChecksList"><li class="br-item-empty">None</li></ul>
+                            <div class="fims-form-group"><label class="fims-label">Bank Error <span class="br-hint">(under validation of deposits)</span></label><input type="number" step="0.01" class="fims-input br-mono" id="field-add-bank-error-under" value="0"></div>
+                            <div class="br-recon-sub">Less:</div>
                             <div class="fims-form-group">
+                                <label class="fims-label">Outstanding Checks</label>
+                                <ul class="br-item-list" id="brOutstandingChecksList"><li class="br-item-empty">None</li></ul>
                                 <input type="text" class="fims-input br-mono" id="field-less-outstanding-check" value="0.00" readonly>
                             </div>
+                            <div class="fims-form-group"><label class="fims-label">Bank Error <span class="br-hint">(over validation of deposits)</span></label><input type="number" step="0.01" class="fims-input br-mono" id="field-less-bank-error-over" value="0"></div>
                             <div class="br-recon-total">
-                                <span>Adjusted Bank Balance</span>
+                                <span>Reconciled Balance</span>
                                 <span class="br-mono" id="calc-adjusted-bank">0.00</span>
                             </div>
                         </div>
@@ -368,7 +377,12 @@ html.afims-dark[data-bs-theme="dark"] #brModule .br-status-banner.unreconciled {
     document.getElementById('brSearch').addEventListener('keydown', function (e) { if (e.key === 'Enter') loadList(); });
 
     // ── Reconciliation modal ──
-    const ADD_FIELD_IDS = ['field-add-credit-memo', 'field-add-interest-income', 'field-less-debit-memo', 'field-bank-balance'];
+    const ADD_FIELD_IDS = [
+        'field-add-unrecorded-deposit', 'field-add-credit-memo', 'field-add-interest-income', 'field-add-book-error-under',
+        'field-less-debit-memo', 'field-less-withholding-tax', 'field-less-bank-charges', 'field-less-book-error-over',
+        'field-add-bank-error-under', 'field-less-bank-error-over',
+        'field-bank-balance',
+    ];
     let currentBankAccountId = null;
 
     function clearReconModal() {
@@ -393,15 +407,23 @@ html.afims-dark[data-bs-theme="dark"] #brModule .br-status-banner.unreconciled {
 
     function recompute() {
         const bookBalance = Number(document.getElementById('field-book-balance').value) || 0;
+        const addUnrecordedDeposit = Number(document.getElementById('field-add-unrecorded-deposit').value) || 0;
         const addCm = Number(document.getElementById('field-add-credit-memo').value) || 0;
         const addInt = Number(document.getElementById('field-add-interest-income').value) || 0;
+        const addBookErrorUnder = Number(document.getElementById('field-add-book-error-under').value) || 0;
         const lessDm = Number(document.getElementById('field-less-debit-memo').value) || 0;
-        const adjBook = bookBalance + addCm + addInt - lessDm;
+        const lessWht = Number(document.getElementById('field-less-withholding-tax').value) || 0;
+        const lessBankCharges = Number(document.getElementById('field-less-bank-charges').value) || 0;
+        const lessBookErrorOver = Number(document.getElementById('field-less-book-error-over').value) || 0;
+        const adjBook = bookBalance + addUnrecordedDeposit + addCm + addInt + addBookErrorUnder
+            - lessDm - lessWht - lessBankCharges - lessBookErrorOver;
 
         const bankBalance = Number(document.getElementById('field-bank-balance').value) || 0;
         const addDit = Number(document.getElementById('field-add-deposit-in-transit').value) || 0;
+        const addBankErrorUnder = Number(document.getElementById('field-add-bank-error-under').value) || 0;
         const lessOc = Number(document.getElementById('field-less-outstanding-check').value) || 0;
-        const adjBank = bankBalance + addDit - lessOc;
+        const lessBankErrorOver = Number(document.getElementById('field-less-bank-error-over').value) || 0;
+        const adjBank = bankBalance + addDit + addBankErrorUnder - lessOc - lessBankErrorOver;
 
         document.getElementById('calc-adjusted-book').textContent = peso(adjBook);
         document.getElementById('calc-adjusted-bank').textContent = peso(adjBank);
@@ -411,7 +433,7 @@ html.afims-dark[data-bs-theme="dark"] #brModule .br-status-banner.unreconciled {
         banner.style.display = 'block';
         banner.className = 'br-status-banner ' + (reconciled ? 'reconciled' : 'unreconciled');
         banner.innerHTML = reconciled
-            ? '<i class="fas fa-check-circle mr-1"></i>Reconciled — both adjusted balances match.'
+            ? '<i class="fas fa-check-circle mr-1"></i>Reconciled — both reconciled balances match.'
             : '<i class="fas fa-triangle-exclamation mr-1"></i>Unreconciled — difference of ' + peso(Math.abs(adjBook - adjBank)) + '.';
 
         return { adjBook, adjBank };
@@ -550,9 +572,16 @@ html.afims-dark[data-bs-theme="dark"] #brModule .br-status-banner.unreconciled {
         document.getElementById('field-bank-account-id').value = d.bank_account_id;
         document.getElementById('field-bank-account-id').disabled = true; // editing an existing reconciliation — the bank account is fixed, changing it would silently start a different record
         document.getElementById('field-period').value = String(d.period_year) + '-' + String(d.period_month).padStart(2, '0');
+        document.getElementById('field-add-unrecorded-deposit').value = d.add_unrecorded_deposit;
         document.getElementById('field-add-credit-memo').value = d.add_credit_memo;
         document.getElementById('field-add-interest-income').value = d.add_interest_income;
+        document.getElementById('field-add-book-error-under').value = d.add_book_error_under;
         document.getElementById('field-less-debit-memo').value = d.less_debit_memo;
+        document.getElementById('field-less-withholding-tax').value = d.less_withholding_tax;
+        document.getElementById('field-less-bank-charges').value = d.less_bank_charges;
+        document.getElementById('field-less-book-error-over').value = d.less_book_error_over;
+        document.getElementById('field-add-bank-error-under').value = d.add_bank_error_under;
+        document.getElementById('field-less-bank-error-over').value = d.less_bank_error_over;
         document.getElementById('field-bank-balance').value = d.bank_balance;
         document.getElementById('field-bank-balance').dataset.touched = '1'; // preserve the saved figure — don't let loadLedger() overwrite it with the live SOA balance
         document.getElementById('field-remarks').value = d.remarks || '';
@@ -599,10 +628,17 @@ html.afims-dark[data-bs-theme="dark"] #brModule .br-status-banner.unreconciled {
             period_year: year,
             period_month: month,
             book_balance: document.getElementById('field-book-balance').value,
+            add_unrecorded_deposit: document.getElementById('field-add-unrecorded-deposit').value,
             add_credit_memo: document.getElementById('field-add-credit-memo').value,
             add_interest_income: document.getElementById('field-add-interest-income').value,
+            add_book_error_under: document.getElementById('field-add-book-error-under').value,
             less_debit_memo: document.getElementById('field-less-debit-memo').value,
+            less_withholding_tax: document.getElementById('field-less-withholding-tax').value,
+            less_bank_charges: document.getElementById('field-less-bank-charges').value,
+            less_book_error_over: document.getElementById('field-less-book-error-over').value,
             bank_balance: document.getElementById('field-bank-balance').value,
+            add_bank_error_under: document.getElementById('field-add-bank-error-under').value,
+            less_bank_error_over: document.getElementById('field-less-bank-error-over').value,
             remarks: document.getElementById('field-remarks').value.trim(),
         };
 

@@ -7,14 +7,19 @@ use PHPMaker2024\FIMS as App;
 /**
  * Backs the Bank Reconciliation module (app/pages/bank-reconciliation-page.php),
  * Reports > Bank Reconciliation — see "01 - table/51 - fims_bank_reconciliations.sql"
- * for the table's docblock (book_balance snapshot caveat, one-per-account-per-month).
+ * for the table's docblock (book_balance snapshot caveat, one-per-account-per-month)
+ * and "03 - alter_table/59 - bank_reconciliation_match_coa_template.sql" for the
+ * official COA-style line-up this worksheet follows.
  *
- * Per Book:  Book Balance (ending balance of the GL ledger register, see getLedger())
- *            + credit memo + interest income - debit memo = Adjusted Book Balance
- * Per Bank:  Bank Balance (manual) + deposit in transit - outstanding check
- *            = Adjusted Bank Balance, where deposit in transit / outstanding check are
- *            itemized from the ledger's un-cleared lines (see getLedger()/setCleared()),
- *            not manual entry.
+ * Per Books: Book Balance (ending balance of the GL ledger register, see getLedger())
+ *            Add:  Unrecorded Deposits, Credit Memo, Interest Income, Book Error (under)
+ *            Less: Debit Memo, Withholding Tax, Bank Charges/Cost of Checkbooks, Book Error (over)
+ *            = Adjusted Book Balance
+ * Per Bank:  Bank Balance (manual, or the latest uploaded SOA balance)
+ *            Add:  Deposit in Transit (auto-derived from the ledger's un-cleared debit
+ *                  lines — see getLedger()/setCleared()), Bank Error (under)
+ *            Less: Outstanding Checks (auto-derived, un-cleared credit lines), Bank Error (over)
+ *            = Adjusted Bank Balance
  * Reconciled when both adjusted balances match (within a centavo, floating point).
  */
 class BankReconciliationService
@@ -415,6 +420,16 @@ class BankReconciliationService
     }
 
     // ── Create / update (upsert by bank_account_id + period) ──
+    //
+    // Line-up matches NHA's official COA-style Bank Reconciliation Statement
+    // (see "03 - alter_table/59 - bank_reconciliation_match_coa_template.sql"):
+    //   Per Books Add:  Unrecorded Deposits, Unrecorded Credit Memo, Unrecorded Interest Income,
+    //                   Book Error (under recording of deposits / misposting)
+    //   Per Books Less: Unrecorded Debit Memo, Unrecorded Withholding Tax,
+    //                   Unrecorded Bank Charges/Cost of Checkbooks,
+    //                   Book Error (over recording of deposits / misposting)
+    //   Per Bank  Add:  Deposit in Transit (auto-derived, see below), Bank Error (under validation)
+    //   Per Bank  Less: Outstanding Checks (auto-derived, see below), Bank Error (over validation)
     public function save(array $data)
     {
         $bankAccountId = (int) ($data['bank_account_id'] ?? 0);
@@ -438,28 +453,38 @@ class BankReconciliationService
         $periodStart = date('Y-m-d', mktime(0, 0, 0, $periodMonth, 1, $periodYear));
         $asOfDate = date('Y-m-t', mktime(0, 0, 0, $periodMonth, 1, $periodYear));
 
-        $bookBalance           = $this->num($data['book_balance'] ?? 0);
-        // add_unrecorded_deposit / add_unreleased_check: superseded by the ledger's own
-        // Deposits in Transit / Outstanding Checks (now itemized on the Per Bank side,
-        // see $addDepositInTransit/$lessOutstandingCheck below). Columns kept at 0 for
-        // reconciliations saved under the old lump-sum worksheet.
-        $addUnrecordedDeposit  = 0.0;
-        $addUnreleasedCheck    = 0.0;
-        $addCreditMemo         = $this->num($data['add_credit_memo'] ?? 0);
-        $addInterestIncome     = $this->num($data['add_interest_income'] ?? 0);
-        $lessDebitMemo         = $this->num($data['less_debit_memo'] ?? 0);
-        $adjustedBookBalance   = round($bookBalance + $addCreditMemo + $addInterestIncome - $lessDebitMemo, 2);
+        // ── Per Books ──
+        $bookBalance          = $this->num($data['book_balance'] ?? 0);
+        $addUnrecordedDeposit = $this->num($data['add_unrecorded_deposit'] ?? 0);
+        $addCreditMemo        = $this->num($data['add_credit_memo'] ?? 0);
+        $addInterestIncome    = $this->num($data['add_interest_income'] ?? 0);
+        $addBookErrorUnder    = $this->num($data['add_book_error_under'] ?? 0);
+        $lessDebitMemo        = $this->num($data['less_debit_memo'] ?? 0);
+        $lessWithholdingTax   = $this->num($data['less_withholding_tax'] ?? 0);
+        $lessBankCharges      = $this->num($data['less_bank_charges'] ?? 0);
+        $lessBookErrorOver    = $this->num($data['less_book_error_over'] ?? 0);
+        $adjustedBookBalance  = round(
+            $bookBalance + $addUnrecordedDeposit + $addCreditMemo + $addInterestIncome + $addBookErrorUnder
+            - $lessDebitMemo - $lessWithholdingTax - $lessBankCharges - $lessBookErrorOver,
+            2
+        );
 
         // Deposits in transit / outstanding checks come from the ledger's cleared
         // markers, not the client — same "never trust the client for computed
         // totals" rule as adjusted_book_balance/adjusted_bank_balance/status below.
         $ledger = json_decode($this->getLedger($bankAccountId, $periodStart, $asOfDate), true);
         $ledgerData = ($ledger['success'] ?? false) ? $ledger['data'] : ['outstanding_deposits' => [], 'outstanding_checks' => []];
-        $addDepositInTransit   = round(array_sum(array_column($ledgerData['outstanding_deposits'], 'debit')), 2);
-        $lessOutstandingCheck  = round(array_sum(array_column($ledgerData['outstanding_checks'], 'credit')), 2);
+        $addDepositInTransit  = round(array_sum(array_column($ledgerData['outstanding_deposits'], 'debit')), 2);
+        $lessOutstandingCheck = round(array_sum(array_column($ledgerData['outstanding_checks'], 'credit')), 2);
 
-        $bankBalance           = $this->num($data['bank_balance'] ?? 0);
-        $adjustedBankBalance   = round($bankBalance + $addDepositInTransit - $lessOutstandingCheck, 2);
+        // ── Per Bank ──
+        $bankBalance         = $this->num($data['bank_balance'] ?? 0);
+        $addBankErrorUnder   = $this->num($data['add_bank_error_under'] ?? 0);
+        $lessBankErrorOver   = $this->num($data['less_bank_error_over'] ?? 0);
+        $adjustedBankBalance = round(
+            $bankBalance + $addDepositInTransit + $addBankErrorUnder - $lessOutstandingCheck - $lessBankErrorOver,
+            2
+        );
 
         $status = abs($adjustedBookBalance - $adjustedBankBalance) < 0.01 ? 'RECONCILED' : 'UNRECONCILED';
         $remarks = trim((string) ($data['remarks'] ?? ''));
@@ -472,9 +497,10 @@ class BankReconciliationService
         );
 
         $values = "{$bankAccountId}, {$periodYear}, {$periodMonth}, " . $this->str($asOfDate) . ", "
-            . "{$bookBalance}, {$addUnrecordedDeposit}, {$addUnreleasedCheck}, {$addCreditMemo}, {$addInterestIncome}, {$lessDebitMemo}, {$adjustedBookBalance}, "
+            . "{$bookBalance}, {$addUnrecordedDeposit}, {$lessBankCharges}, {$addCreditMemo}, {$addInterestIncome}, {$lessDebitMemo}, {$adjustedBookBalance}, "
             . "{$bankBalance}, {$addDepositInTransit}, {$lessOutstandingCheck}, {$adjustedBankBalance}, "
-            . $this->str($status) . ', ' . ($remarks === '' ? 'NULL' : $this->str($remarks)) . ", {$userId}";
+            . $this->str($status) . ', ' . ($remarks === '' ? 'NULL' : $this->str($remarks)) . ", {$userId}, "
+            . "{$lessWithholdingTax}, {$addBookErrorUnder}, {$lessBookErrorOver}, {$addBankErrorUnder}, {$lessBankErrorOver}";
 
         if ($existing) {
             $id = (int) $existing['reconciliation_id'];
@@ -482,11 +508,15 @@ class BankReconciliationService
                 "UPDATE {$this->tableRecon} SET
                     as_of_date = " . $this->str($asOfDate) . ",
                     book_balance = {$bookBalance}, add_unrecorded_deposit = {$addUnrecordedDeposit},
-                    add_unreleased_check = {$addUnreleasedCheck}, add_credit_memo = {$addCreditMemo},
+                    less_bank_charges = {$lessBankCharges}, add_credit_memo = {$addCreditMemo},
                     add_interest_income = {$addInterestIncome}, less_debit_memo = {$lessDebitMemo},
+                    less_withholding_tax = {$lessWithholdingTax}, add_book_error_under = {$addBookErrorUnder},
+                    less_book_error_over = {$lessBookErrorOver},
                     adjusted_book_balance = {$adjustedBookBalance},
                     bank_balance = {$bankBalance}, add_deposit_in_transit = {$addDepositInTransit},
-                    less_outstanding_check = {$lessOutstandingCheck}, adjusted_bank_balance = {$adjustedBankBalance},
+                    less_outstanding_check = {$lessOutstandingCheck},
+                    add_bank_error_under = {$addBankErrorUnder}, less_bank_error_over = {$lessBankErrorOver},
+                    adjusted_bank_balance = {$adjustedBankBalance},
                     status = " . $this->str($status) . ",
                     remarks = " . ($remarks === '' ? 'NULL' : $this->str($remarks)) . ",
                     updated_at = CURRENT_TIMESTAMP
@@ -497,9 +527,10 @@ class BankReconciliationService
             $row = App\ExecuteRow(
                 "INSERT INTO {$this->tableRecon}
                     (bank_account_id, period_year, period_month, as_of_date,
-                     book_balance, add_unrecorded_deposit, add_unreleased_check, add_credit_memo, add_interest_income, less_debit_memo, adjusted_book_balance,
+                     book_balance, add_unrecorded_deposit, less_bank_charges, add_credit_memo, add_interest_income, less_debit_memo, adjusted_book_balance,
                      bank_balance, add_deposit_in_transit, less_outstanding_check, adjusted_bank_balance,
-                     status, remarks, prepared_by)
+                     status, remarks, prepared_by,
+                     less_withholding_tax, add_book_error_under, less_book_error_over, add_bank_error_under, less_bank_error_over)
                  VALUES ({$values})
                  RETURNING reconciliation_id",
                 'DB'
