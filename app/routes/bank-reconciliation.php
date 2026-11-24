@@ -46,6 +46,19 @@ $app->post("/bank-reconciliation/save", function ($request, $response) {
     return $response->withHeader('Content-Type', 'application/json')->write($service->save($data));
 });
 
+$app->get("/bank-reconciliation/{id}/jev-preview", function ($request, $response, $args) {
+    $service = new Service\BankReconciliationService();
+    return $response->withHeader('Content-Type', 'application/json')->write($service->getJevPreview($args['id']));
+});
+
+$app->post("/bank-reconciliation/{id}/post-jev", function ($request, $response, $args) {
+    $data = $request->getParsedBody();
+    $service = new Service\BankReconciliationService();
+    return $response->withHeader('Content-Type', 'application/json')->write(
+        $service->postAdjustingJev($args['id'], (int) ($data['book_id'] ?? 0), is_array($data['contra_accounts'] ?? null) ? $data['contra_accounts'] : [], (int) CurrentUserID())
+    );
+});
+
 $app->get("/bank-reconciliation/{id}", function ($request, $response, $args) {
     $service = new Service\BankReconciliationService();
     return $response->withHeader('Content-Type', 'application/json')->write($service->getOne($args['id']));
