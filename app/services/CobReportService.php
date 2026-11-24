@@ -17,7 +17,7 @@ use PHPMaker2024\FIMS\DataType;
  * of the sheet, from the same rows and palette. Amounts follow the page's Amount Unit; Excel cells keep the full peso value and only the number
  * format scales them (a trailing comma divides the shown number by 1,000).
  *
- * The layout is the COB Monitoring sheet's: Code | Name | Approved Amount | Revision / Realignment | Revised Amount | CBA Requested |
+ * The layout is the COB Monitoring sheet's: Code | Name | Approved Amount | Amendment / Realignment | Revised Amount | CBA Requested |
  * Available for Earmarking | RFA Approved | LAA Issued | Remaining Balance — see CobService for what each column is. A zero prints as "-", a negative in
  * brackets. There is no colour coding of rows or columns: the hierarchy shows as indentation, and every row above a project is bold.
  */
@@ -35,7 +35,7 @@ class CobReportService
     /** The amount columns, in sheet order (the keys are CobService::AMOUNT_KEYS). */
     public const COLUMNS = [
         'approved_amount' => 'Approved Amount',
-        'revision_amount' => 'Revision / Realignment',
+        'revision_amount' => 'Amendment / Realignment',
         'revised_amount' => 'Revised Amount',
         'cba_requested' => 'CBA Requested',
         'available_amount' => 'Available for Earmarking',
