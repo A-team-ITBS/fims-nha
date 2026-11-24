@@ -6,9 +6,11 @@ namespace PHPMaker2024\FIMS;
  * bur-page.php — Budget Utilization Report (BUR): UI-only first pass.
  *
  * Rows are the real Chart of Accounts tree (account_code / account_title / parent_account_id), fetched the same way
- * chart-of-accounts-page.php does (GET /chart-of-accounts/all). Every money column (Approved Budget, Realigned Budget,
- * Increase (Decrease), Utilization, Balance, Payment, Accounts Payable) is a hardcoded 0 — no computation yet. Those
- * get wired up once the budget-utilization figures are available.
+ * chart-of-accounts-page.php does (GET /chart-of-accounts/all), then filtered down to the Personnel Services (5-01)
+ * and Maintenance and Other Operating Expenses (5-02) subtrees only (see BUR_SCOPE_CODES below) — shown as flattened
+ * top-level rows. Every money column (Approved Budget, Realigned Budget, Increase (Decrease), Utilization, Balance,
+ * Payment, Accounts Payable) is a hardcoded 0 — no computation yet. Those get wired up once the budget-utilization
+ * figures are available.
  */
 @session_start();
 $_bur_api = Config('API.FIMS_URL');
@@ -19,6 +21,9 @@ $_bur_api = Config('API.FIMS_URL');
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="<?php echo GetUrl('_shared/css/nha-fims.css'); ?>?v=<?php echo @filemtime(dirname(__DIR__, 2).'/_shared/css/nha-fims.css'); ?>" />
 <style>
+#bur-root #bur-table { table-layout: fixed; }
+#bur-root #bur-table .bur-name span { overflow-wrap: break-word; }
+
 #bur-root .nha-summary { grid-template-columns: repeat(4, 1fr); }
 @media (max-width: 900px) { #bur-root .nha-summary { grid-template-columns: repeat(2, 1fr); } }
 
@@ -122,8 +127,8 @@ $_bur_api = Config('API.FIMS_URL');
             <table class="nha-tbl" id="bur-table">
                 <thead>
                     <tr>
-                        <th style="min-width:280px;">Expense Classification (NGAS)</th>
-                        <th>Acct. Code</th>
+                        <th style="width:280px;">Expense Classification (NGAS)</th>
+                        <th style="width:110px;">Acct. Code</th>
                         <th class="text-right">Approved Budget</th>
                         <th class="text-right">Realigned Budget</th>
                         <th class="text-right">Increase (Decrease)</th>
@@ -155,6 +160,9 @@ $_bur_api = Config('API.FIMS_URL');
 const BUR_API = '<?php echo $_bur_api; ?>' + '/chart-of-accounts';
 const $bur = id => document.getElementById(id);
 
+/* Scope: only Personnel Services (5-01) and Maintenance and Other Operating Expenses (5-02), flattened to root rows. */
+const BUR_SCOPE_CODES = ['5-01', '5-02'];
+
 let bur_rows = [];
 let bur_collapsed = new Set();
 let bur_search = '';
@@ -176,7 +184,17 @@ async function bur_load() {
         const json = await res.json();
         if (!json.success) throw new Error(json.message || 'Failed to load accounts.');
 
-        bur_rows = json.data ?? [];
+        const allRows = json.data ?? [];
+        const byId = new Map(allRows.map(r => [r.account_id, r]));
+        const isUnderScope = id => {
+            let cur = id && byId.get(id);
+            while (cur) {
+                if (BUR_SCOPE_CODES.includes(cur.account_code)) return true;
+                cur = cur.parent_account_id ? byId.get(cur.parent_account_id) : null;
+            }
+            return false;
+        };
+        bur_rows = allRows.filter(r => BUR_SCOPE_CODES.includes(r.account_code) || isUnderScope(r.parent_account_id));
         bur_render();
     } catch (e) {
         bur_rows = [];

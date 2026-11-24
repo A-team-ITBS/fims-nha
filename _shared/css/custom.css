@@ -1,5 +1,9 @@
 @import url('https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500&family=IBM+Plex+Sans:wght@400;700&display=swap');
 
+/* Reserve scrollbar width always, so content doesn't shift left/right when a page's
+   height crosses the viewport threshold (e.g. expanding/collapsing tree rows). */
+html { scrollbar-gutter: stable; }
+
 /* AFIMS-PALETTE:START */
 /* =====================================================================
     AFIMS GLOBAL COLOR PALETTE
