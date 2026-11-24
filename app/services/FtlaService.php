@@ -989,7 +989,7 @@ class FtlaService
         try {
             $ftId = (int) $id;
             $cur  = App\ExecuteRow(
-                "SELECT fund_transfer_id, status, ftla_number, to_bank_account_id, dv_numbers FROM {$this->table} WHERE fund_transfer_id = {$ftId}",
+                "SELECT fund_transfer_id, status, ftla_number, transfer_type, to_bank_account_id, dv_numbers FROM {$this->table} WHERE fund_transfer_id = {$ftId}",
                 'DB'
             );
             if (!$cur) {
@@ -1150,9 +1150,18 @@ class FtlaService
                 // CheckProcessingService::saveCheck()). Must succeed before status flips below: a
                 // failure here leaves the FTLA exactly where it was, nothing half-done.
                 if ($newStatus === 'SUBMITTED_TO_ACCOUNTING') {
-                    $jevResult = $this->submitPaymentJev($cur, $userId);
-                    if (!$jevResult['success']) {
-                        return $jevResult;
+                    // A Settlement FTLA (Fund Sweeping — see BankManagementService::processFundSweep())
+                    // moves money between two of THIS office's own bank accounts, not against any DV's
+                    // Accounts Payable — it has no dv_numbers at all by design, so submitPaymentJev()'s
+                    // "no DV linked" check would otherwise block it from ever reaching Accounting.
+                    // Skipped entirely rather than relaxed: there's nothing to settle or release here.
+                    if (($cur['transfer_type'] ?? '') === 'SETTLEMENT_TO_MAIN') {
+                        $jevResult = ['success' => true, 'jev_id' => null];
+                    } else {
+                        $jevResult = $this->submitPaymentJev($cur, $userId);
+                        if (!$jevResult['success']) {
+                            return $jevResult;
+                        }
                     }
                     if ($jevResult['jev_id'] !== null) {
                         $set[] = 'jev_id = ' . (int) $jevResult['jev_id'];
@@ -1202,6 +1211,8 @@ class FtlaService
                 if (!empty($jevResult['jev_id'])) {
                     $jevNo = App\ExecuteScalar("SELECT jev_no FROM {$this->tableJev} WHERE jev_id = " . (int) $jevResult['jev_id'], 'DB');
                     $message .= $jevNo ? " Payment JEV {$jevNo} posted." : ' Payment JEV posted.';
+                } elseif (($cur['transfer_type'] ?? '') === 'SETTLEMENT_TO_MAIN') {
+                    $message .= ' This is a Settlement to Main Depository — no Payment JEV applies.';
                 } else {
                     $message .= ' No Payment JEV was created — none of the linked DV(s) had an amount routed through Accounts Payable to settle.';
                 }

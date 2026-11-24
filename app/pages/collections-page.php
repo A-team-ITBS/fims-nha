@@ -41,9 +41,8 @@ $colCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
 
     <!-- "Collections" tab — every Collection line flattened across every
          report (CollectionsService::getCollectionsList()), by GL account.
-         Read-only list; Edit opens the line's parent report in the same
-         Register/Edit modal both tabs share (a line isn't independently
-         editable — see that method's own comment). -->
+         Read-only — a saved report can no longer be edited, only registered
+         fresh (see openReportModal()'s own comment). -->
     <div id="colTabCollections">
         <div class="fims-stat-grid" id="colCollectionsStats" style="grid-template-columns:repeat(2,1fr)">
             <div class="fims-stat-card fims-card-blue">
@@ -131,7 +130,7 @@ $colCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
     </div>
 
     <!-- ══════════════════════════════════════════════
-         MODAL: Register / Edit Collection Report
+         MODAL: Register Collection Report
     ══════════════════════════════════════════════ -->
     <div class="fims-modal-overlay" id="m-col-report" style="display:none;">
         <div class="fims-modal-dialog" style="max-width:1500px;width:96vw;">
@@ -813,10 +812,19 @@ $colCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
     // Better to show everything and let whoever's entering the Deposit use
     // their own judgment than to silently hide something wrong. ──
     let colCollectedForRegion = [];
+    // Periods already covered by an existing (saved) Deposit for this Region/Office — unlike the
+    // amount-matching heuristic reverted above, this is exact, not inferred: a Deposit row's own
+    // Period From/To is real data the preparer entered, so a Collection line whose report_date
+    // falls inside one of these ranges really was already deposited. Used by
+    // colSumCollectedForPeriod() to stop the SAME range (picked again, by accident or on purpose)
+    // from re-summing money that's already gone to the bank. Rows with neither period bound set are
+    // skipped — there's no date range to exclude against.
+    let colDepositedRangesForRegion = [];
     function colLoadCollectedForRegion(rcId) {
         const tbody = document.getElementById('col-collected-list-body');
         const summary = document.getElementById('col-collected-summary');
         colCollectedForRegion = [];
+        colDepositedRangesForRegion = [];
         if (!rcId) {
             tbody.innerHTML = '<tr class="fims-empty"><td colspan="3">—</td></tr>';
             summary.textContent = 'Select a Region/Office above to view its collected collections.';
@@ -827,12 +835,17 @@ $colCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
         Promise.all([
             fetch(API + '/collections-list?rc_id=' + encodeURIComponent(rcId), { headers: authHeaders() }).then(r => r.json()),
             fetch(API + '/undeposited-summary?rc_id=' + encodeURIComponent(rcId), { headers: authHeaders() }).then(r => r.json()),
+            fetch(API + '/deposits-list?rc_id=' + encodeURIComponent(rcId), { headers: authHeaders() }).then(r => r.json()),
         ])
             .then(function (results) {
                 const json = results[0];
                 const summaryJson = results[1];
+                const depositsJson = results[2];
                 const rows = (json && json.data) ? json.data : [];
                 colCollectedForRegion = rows;
+                colDepositedRangesForRegion = ((depositsJson && depositsJson.data) ? depositsJson.data : [])
+                    .filter(function (d) { return d.period_from || d.period_to; })
+                    .map(function (d) { return { from: d.period_from || null, to: d.period_to || null }; });
                 // "Already deposited" nets against every Deposit ever recorded for this Region/Office
                 // regardless of is_swept — see getUndepositedSummary()'s own comment for why the full
                 // collected-lines list below is still shown as-is (never hidden), only this summary
@@ -863,10 +876,22 @@ $colCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
             });
     }
 
+    // A date already falls inside an existing Deposit's own Period From/To — see
+    // colDepositedRangesForRegion's own comment.
+    function colDateAlreadyDeposited(d) {
+        return colDepositedRangesForRegion.some(function (r) {
+            if (r.from && d < r.from) return false;
+            if (r.to && d > r.to) return false;
+            return true;
+        });
+    }
+
     // Sums colCollectedForRegion's amounts whose report_date falls within
     // [periodFrom, periodTo] (inclusive) — an unset bound is treated as
     // open-ended on that side, so entering just one date still sums
-    // everything on-or-after/on-or-before it.
+    // everything on-or-after/on-or-before it. Excludes any line already
+    // covered by an earlier Deposit's own period (colDateAlreadyDeposited())
+    // so re-picking the same range doesn't re-count money already banked.
     function colSumCollectedForPeriod(periodFrom, periodTo) {
         return colCollectedForRegion
             .filter(function (r) {
@@ -874,6 +899,7 @@ $colCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
                 if (!d) return false;
                 if (periodFrom && d < periodFrom) return false;
                 if (periodTo && d > periodTo) return false;
+                if (colDateAlreadyDeposited(d)) return false;
                 return true;
             })
             .reduce(function (sum, r) { return sum + (parseFloat(r.amount) || 0); }, 0);
@@ -978,14 +1004,10 @@ $colCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
                         '<td>' + glLabel + '</td>' +
                         '<td class="text-right">' + amountLabel + '</td>' +
                         '<td class="text-center">' +
-                            '<button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-edit="' + g.collection_report_id + '" title="Edit"><i class="fas fa-pen"></i></button> ' +
                             '<button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-jev="' + g.collection_report_id + '" title="Create Collection JEV (Dr Cash-Collecting Officers / Cr Collection lines)"><i class="fas fa-file-invoice-dollar"></i></button>' +
                         '</td>' +
                         '</tr>';
                 }).join('');
-                tbody.querySelectorAll('[data-edit]').forEach(function (btn) {
-                    btn.addEventListener('click', function () { openReportModal(this.dataset.edit); });
-                });
                 tbody.querySelectorAll('[data-jev]').forEach(function (btn) {
                     btn.addEventListener('click', function () { openJevModal(this.dataset.jev, 'collection'); });
                 });
@@ -1039,14 +1061,10 @@ $colCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
                         '<td class="text-right">' + fmtPeso(r.amount) + '</td>' +
                         '<td class="text-center">' + depositSweptBadge(r.is_swept) + '</td>' +
                         '<td class="text-center">' +
-                            '<button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-edit="' + r.collection_report_id + '" title="Edit"><i class="fas fa-pen"></i></button> ' +
                             '<button type="button" class="fims-btn fims-btn-ghost fims-btn-sm" data-jev="' + r.collection_report_id + '" title="Create Deposit JEV (Dr bank GL accounts / Cr Cash-Collecting Officers)"><i class="fas fa-university"></i></button>' +
                         '</td>' +
                         '</tr>';
                 }).join('');
-                tbody.querySelectorAll('[data-edit]').forEach(function (btn) {
-                    btn.addEventListener('click', function () { openReportModal(this.dataset.edit); });
-                });
                 tbody.querySelectorAll('[data-jev]').forEach(function (btn) {
                     btn.addEventListener('click', function () { openJevModal(this.dataset.jev, 'deposit'); });
                 });
@@ -1080,65 +1098,29 @@ $colCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
     // Registering from the Collections tab only shows/requires the
     // Collection(s) section; from the Deposits tab, only Deposit. A section
     // that's hidden is also never given a default blank row, so it submits
-    // as an empty array — CollectionsService::store() now only requires
-    // AT LEAST ONE of the two sections to have a line, not both (see its
-    // own comment), so this is the only client-side change a dedicated
-    // single-purpose registration form needs. Editing an existing report
-    // always shows BOTH sections regardless of which tab's Edit button was
-    // clicked — the report may already have lines on both sides (e.g. from
-    // the old combined flow, or a later edit that added the other section),
-    // and hiding either one here could silently delete it on save.
+    // as an empty array — CollectionsService::store() only requires AT LEAST
+    // ONE of the two sections to have a line, not both (see its own comment).
     function colSetFormMode(mode) {
         document.getElementById('col-lines-section').style.display = mode === 'deposits' ? 'none' : '';
         document.getElementById('col-deposits-section').style.display = mode === 'collections' ? 'none' : '';
     }
 
-    window.openReportModal = function (id, mode) {
+    // Register-only — a saved Collection/Deposit report can no longer be reopened for editing (no
+    // UI entry point calls this with an id anymore), so there's nothing left to correct a mistake
+    // except registering a new report. mode is 'collections' or 'deposits' (see colSetFormMode()).
+    window.openReportModal = function (mode) {
         clearReportModal();
-        if (!id) {
-            mode = mode || 'full';
-            colSetFormMode(mode);
-            document.getElementById('colModalTitle').textContent =
-                mode === 'collections' ? 'Register Collection' : mode === 'deposits' ? 'Register Deposit' : 'Register Collection Report';
-            if (mode !== 'deposits') addColLineRow('', 0);
-            if (mode !== 'collections') addColDepositRow('', '', '', 0);
-            openModal('m-col-report');
-            return;
-        }
-        colSetFormMode('full');
-        document.getElementById('colModalTitle').textContent = 'Edit Collection Report';
-        fetch(API + '/' + id, { headers: authHeaders() })
-            .then(r => r.json())
-            .then(function (json) {
-                if (!json || !json.success) { toast((json && json.message) || 'Could not load report.', true); return; }
-                const d = json.data;
-                document.getElementById('col_report_id').value = d.collection_report_id;
-                document.getElementById('col_rc_id').value = d.rc_id || '';
-                // Rebuilds the officer dropdown for this report's own Region
-                // (same list colOnRegionChange() would show), but doesn't
-                // call colApplyOfficerToForm() — the saved lines already
-                // carry their own Account Code, nothing to auto-fill.
-                const officerMatches = colOfficersForRegion(d.rc_id);
-                const officerSel = document.getElementById('col_collecting_officer_id');
-                officerSel.innerHTML = '<option value="">' + (officerMatches.length ? '— Select Collecting Officer —' : '— None tagged to this Region —') + '</option>' +
-                    officerMatches.map(function (o) {
-                        return '<option value="' + o.collecting_officer_id + '">' + escapeHtml(o.officer_name) + '</option>';
-                    }).join('');
-                officerSel.value = d.collecting_officer_id || '';
-                document.getElementById('col_collecting_office').value = d.collecting_office || '';
-                document.getElementById('col_report_date').value = d.report_date || '';
-                colLoadCollectedForRegion(d.rc_id || '');
-                (d.lines || []).forEach(function (l) { addColLineRow(l.coa_account_id, l.amount); });
-                (d.deposits || []).forEach(function (dep) { addColDepositRow(dep.bank_account_id, dep.period_from, dep.period_to, dep.amount, !!dep.is_swept, dep.deposit_slip_url, dep.deposit_slip_view_url); });
-                recalcColLinesTotal();
-                recalcColDepositsTotal();
-                openModal('m-col-report');
-            })
-            .catch(() => toast('Could not reach the server.', true));
+        mode = mode || 'full';
+        colSetFormMode(mode);
+        document.getElementById('colModalTitle').textContent =
+            mode === 'collections' ? 'Register Collection' : mode === 'deposits' ? 'Register Deposit' : 'Register Collection Report';
+        if (mode !== 'deposits') addColLineRow('', 0);
+        if (mode !== 'collections') addColDepositRow('', '', '', 0);
+        openModal('m-col-report');
     };
 
-    document.getElementById('colRegisterCollectionBtn').addEventListener('click', function () { openReportModal(null, 'collections'); });
-    document.getElementById('colRegisterDepositBtn').addEventListener('click', function () { openReportModal(null, 'deposits'); });
+    document.getElementById('colRegisterCollectionBtn').addEventListener('click', function () { openReportModal('collections'); });
+    document.getElementById('colRegisterDepositBtn').addEventListener('click', function () { openReportModal('deposits'); });
 
     document.getElementById('colSaveBtn').addEventListener('click', function () {
         const id = document.getElementById('col_report_id').value;
@@ -1207,8 +1189,9 @@ $colCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
                 '<td class="text-right">' + (l.credit > 0 ? fmtPeso(l.credit) : '') + '</td>' +
                 '</tr>';
             if (l.sl_code) {
+                const slLabel = l.sl_name ? (l.sl_name + ' (' + l.sl_code + ')') : l.sl_code;
                 row += '<tr>' +
-                    '<td style="padding-left:24px;font-size:12px;color:var(--fims-text-muted,#6B7280);">↳ SL: ' + escapeHtml(l.sl_code) + '</td>' +
+                    '<td style="padding-left:24px;font-size:12px;color:var(--fims-text-muted,#6B7280);">↳ SL: ' + escapeHtml(slLabel) + '</td>' +
                     '<td class="text-right" style="font-size:12px;color:var(--fims-text-muted,#6B7280);">' + (l.debit > 0 ? fmtPeso(l.debit) : '') + '</td>' +
                     '<td class="text-right" style="font-size:12px;color:var(--fims-text-muted,#6B7280);">' + (l.credit > 0 ? fmtPeso(l.credit) : '') + '</td>' +
                     '</tr>';
