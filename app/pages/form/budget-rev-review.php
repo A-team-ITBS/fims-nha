@@ -2,7 +2,7 @@
 namespace PHPMaker2024\FIMS;
 ?>
 <style>
-/* ── Budget revision details / review modal ────────────────────────────────
+/* ── Budget amendment details / review modal ────────────────────────────────
    Scoped to .nha-root so it picks up the nha-fims.css variables. Filled by the
    brv_openView() / brv_review() functions in budget-revision-page.php. */
 .nha-root .brv-v-label {
@@ -94,7 +94,7 @@ namespace PHPMaker2024\FIMS;
 <div id="brv-view-overlay" class="nha-overlay">
     <div class="nha-modal nha-modal-md" role="dialog" aria-modal="true" aria-labelledby="brv-view-title">
         <div class="nha-modal-hdr">
-            <h3 class="nha-modal-title" id="brv-view-title">Budget Revision Request</h3>
+            <h3 class="nha-modal-title" id="brv-view-title">Budget Amendment Request</h3>
             <button type="button" class="nha-modal-close" id="brv-view-close" aria-label="Close">&times;</button>
         </div>
         <div class="nha-modal-body">
@@ -124,7 +124,7 @@ namespace PHPMaker2024\FIMS;
             <div class="brv-v-reason is-empty" id="brv-view-to-none" hidden>No To budget line — only the From budget line's amount changes.</div>
 
             <!-- the revision -->
-            <div class="brv-v-label">Revision</div>
+            <div class="brv-v-label">Amendment</div>
             <div class="brv-v-grid">
                 <div class="brv-v-cell"><div class="brv-v-cell-k">From Amount</div><div class="brv-v-cell-v" id="brv-view-from"></div></div>
                 <div class="brv-v-cell"><div class="brv-v-cell-k">To Amount</div><div class="brv-v-cell-v" id="brv-view-to"></div></div>
