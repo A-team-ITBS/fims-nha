@@ -93,6 +93,11 @@ if (!isset($_vf_api)) {
 /* Deduction / ATC rows are plain blocks inside the RFA Breakdown box — no card border or padding of their own. */
 #vf-root .vf-ded-row { margin-bottom: 14px; position: relative; }
 /* Deductions sit inside the RFA Breakdown box, under its table — a rule separates them from it once a breakdown is shown. */
+/* a payroll DV's deductions (imported): name + amount only — see vf_renderDedTypeButtons() */
+#vf-root .vf-ded-payroll .nha-fg:has(> .vf-ded-rate),
+#vf-root .vf-ded-payroll .vf-ded-remove,
+#vf-root .vf-ded-payroll .vf-ded-types { display: none; }
+#vf-root .vf-ded-payroll .vf-ded-row .vf-grid2 { grid-template-columns: 1fr; }
 #vf-root #vf-rfa-breakdown-body:not(:empty) + .vf-err + .vf-ded-section { border-top: 1px solid var(--afims-border, #E4ECF2); margin-top: 16px; padding-top: 14px; }
 #vf-root .vf-atc-row { margin-bottom: 14px; position: relative; }
 /* Tight spacing inside deduction / ATC rows: .nha-fg's own 14px bottom margin is dropped, rows are separated by a small gap instead. */
@@ -791,6 +796,10 @@ function vf_renderDedTypeButtons() {
     // The "+ ATC ROW" pill sits with the deduction-type pills (it adds a row to the ATC table above), so it's always shown.
     $vf('vf-ded-types').innerHTML = types.map(t => `<button type="button" class="vf-ded-type-btn" onclick="vf_addDeductionLine({deduction_type_id:'${vf_esc(t.deduction_type_id)}'})">+ ${vf_esc(t.name).toUpperCase()}</button>`).join('')
         + '<button type="button" class="vf-ded-type-btn" onclick="vf_addAtcLine()">+ ATC ROW</button>';
+    // A payroll DV's deductions are the imported month's (filled in, and re-read from Payroll Management on save): their
+    // rows show each name and amount only — no Rate (the import has none), no × remove, no "+ TYPE" pills (.vf-ded-payroll).
+    // Runs whenever the payroll month is picked, changed, cleared or restored on edit.
+    $vf('vf-ded-section').classList.toggle('vf-ded-payroll', !!vf_payrollPeriodId);
 }
 
 async function vf_loadDeductionTypes() {

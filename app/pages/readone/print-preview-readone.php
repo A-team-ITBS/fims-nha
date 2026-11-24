@@ -324,8 +324,39 @@ function prp_dvPayload(dv) {
             ...(dv.deductions || []).map(d => ({ description: (d.name || 'Deduction') + pct(d.rate), amount: d.deduction_amount })),
             ...(dv.atc_lines || []).map(a => ({ description: ('Withholding tax ' + (a.atc_code || '')).trim() + pct(a.rate), amount: a.withholding_tax })),
         ],
-        accounting_entries: (dv.jev?.lines || []).map(l => ({ account_code: l.account_code, debit: l.debit, credit: l.credit })),
+        accounting_entries: prp_dvEntriesWithObligation(dv),
     };
+}
+
+/**
+ * The DV's accounting entries (its SETUP JEV lines) with Section B's OBLIGATION column filled: the obligating document is
+ * the DV's linked RFA, so every DEBIT line (what the DV charges) carries an RFA number (allocation_number; its reference
+ * no. while it has none) — the RFA whose lines have that account (the same code, or an SL under it), or, when none does
+ * (e.g. PERA on a payroll DV whose RFA lists only Salaries — the DV is still funded by it), all of the DV's RFAs.
+ * Credit lines — the payables and cash — stay blank, as on a hand-filled DV. With no debit lines yet (the entry isn't
+ * made), the RFA number prints on a row of its own.
+ */
+function prp_dvEntriesWithObligation(dv) {
+    const rfas = (dv.rfas || []).map(r => {
+        let lines = r.line_transaction;
+        if (typeof lines === 'string') { try { lines = JSON.parse(lines); } catch (e) { lines = []; } }
+        const codes = (Array.isArray(lines) ? lines : []).map(l => String(l?.account_code || '').trim()).filter(Boolean);
+        return { no: String(r.allocation_number || r.request_referrence_no || '').trim(), codes };
+    }).filter(r => r.no);
+    const entries = (dv.jev?.lines || []).map(l => ({ obligation: '', account_code: l.account_code, debit: l.debit, credit: l.credit }));
+    if (!rfas.length) return entries;
+
+    const isDebit = e => Number(e.debit) > 0;
+    const covers  = (code, acct) => acct !== '' && (acct === code || acct.startsWith(code + '-'));
+    const all     = [...new Set(rfas.map(r => r.no))].join(', ');
+    entries.forEach(e => {
+        if (!isDebit(e)) return;
+        const acct = String(e.account_code || '').trim();
+        const nos  = rfas.filter(r => r.codes.some(c => covers(c, acct))).map(r => r.no);
+        e.obligation = nos.length ? [...new Set(nos)].join(', ') : all;
+    });
+    if (!entries.some(isDebit)) entries.unshift({ obligation: all, account_code: '', debit: 0, credit: 0 });
+    return entries;
 }
 
 /**

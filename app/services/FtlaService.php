@@ -872,13 +872,21 @@ class FtlaService
         $jevNo = $this->nextPaymentJevNumber();
         $uid   = $userId > 0 ? (string) $userId : 'NULL';
 
+        // dv_id is only meaningful for a single-DV FTLA — a JEV row has exactly one dv_id, so a
+        // combined multi-DV payment still has to leave it NULL (the register's "standalone" fallback
+        // is really "not tied to exactly one DV", not "has no DV at all" — see v_journal_entry_
+        // vouchers' own header comment). particulars always lists every DV it settles, so the
+        // register still reads right even when dv_id can't carry that information.
+        $singleDvId  = count($dvNumbers) === 1 ? (int) $byNo[$dvNumbers[0]]['dv_id'] : null;
+        $particulars = 'Payment via ' . $cur['ftla_number'] . ' — DV ' . implode(', ', $dvNumbers);
+
         App\Execute('BEGIN', 'DB');
         try {
             $jevRow = App\ExecuteRow(
                 "INSERT INTO {$this->tableJev}
-                    (jev_no, dv_id, fiscal_yr, book_id, jev_type, source_module, doc_ref_no, total_debit, total_credit, status_id, created_by)
-                 VALUES (" . $this->str($jevNo) . ', NULL, ' . $this->intOrNull($fiscalYr) . ', ' . $this->intOrNull($bookId)
-                    . ", 'PAYMENT', 'TREASURY', " . $this->str($cur['ftla_number']) . ', '
+                    (jev_no, dv_id, fiscal_yr, book_id, jev_type, source_module, doc_ref_no, particulars, total_debit, total_credit, status_id, created_by)
+                 VALUES (" . $this->str($jevNo) . ', ' . $this->intOrNull($singleDvId) . ', ' . $this->intOrNull($fiscalYr) . ', ' . $this->intOrNull($bookId)
+                    . ", 'PAYMENT', 'TREASURY', " . $this->str($cur['ftla_number']) . ', ' . $this->str($particulars) . ', '
                     . (float) $total . ', ' . (float) $total . ", {$startId}, {$uid})
                  RETURNING jev_id",
                 'DB'
