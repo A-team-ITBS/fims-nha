@@ -704,8 +704,14 @@ class CollectionsService
         // Tags the Cash-Collecting Officers line (both legs book it, under the same
         // control account) with the specific officer's SL code — same pairing as
         // Collecting Officer Master Data's own GL/SL tagging — so the JEV line is
-        // traceable to the officer, not just the control account.
+        // traceable to the officer, not just the control account. sl_name is the SL
+        // account's OWN title (chart_of_accounts.account_title for that code), not the
+        // officer's name — same "code alone isn't readable" reasoning account_title
+        // already gets for every other line here.
         $collectingOfficerSlCode = trim((string) ($report['collecting_officer_sl_code'] ?? '')) ?: null;
+        $collectingOfficerSlName = $collectingOfficerSlCode
+            ? App\ExecuteScalar("SELECT account_title FROM {$this->tableCoa} WHERE account_code = " . $this->str($collectingOfficerSlCode), 'DB')
+            : null;
 
         if ($leg === 'collection') {
             $lines = App\ExecuteRowsAssociative(
@@ -719,7 +725,7 @@ class CollectionsService
                 return ['success' => false, 'message' => 'This report has no Collection lines to journalize.'];
             }
             $total = array_sum(array_map(fn($l) => (float) $l['amount'], $lines));
-            $out = [['account_code' => self::CASH_COLLECTING_OFFICER_CODE, 'account_title' => 'Cash-Collecting Officers', 'debit' => $total, 'credit' => 0, 'sl_code' => $collectingOfficerSlCode]];
+            $out = [['account_code' => self::CASH_COLLECTING_OFFICER_CODE, 'account_title' => 'Cash-Collecting Officers', 'debit' => $total, 'credit' => 0, 'sl_code' => $collectingOfficerSlCode, 'sl_name' => $collectingOfficerSlName]];
             foreach ($lines as $l) {
                 $out[] = ['account_code' => $l['account_code'], 'account_title' => $l['account_title'], 'debit' => 0, 'credit' => (float) $l['amount']];
             }
@@ -748,7 +754,7 @@ class CollectionsService
             if (!$out) {
                 return ['success' => false, 'message' => 'None of this report\'s Deposit bank accounts have a GL account assigned.'];
             }
-            $out[] = ['account_code' => self::CASH_COLLECTING_OFFICER_CODE, 'account_title' => 'Cash-Collecting Officers', 'debit' => 0, 'credit' => $total, 'sl_code' => $collectingOfficerSlCode];
+            $out[] = ['account_code' => self::CASH_COLLECTING_OFFICER_CODE, 'account_title' => 'Cash-Collecting Officers', 'debit' => 0, 'credit' => $total, 'sl_code' => $collectingOfficerSlCode, 'sl_name' => $collectingOfficerSlName];
         }
 
         return ['success' => true, 'data' => [
@@ -788,11 +794,29 @@ class CollectionsService
             'jev_date'      => $data['jev_date'],
             'book_id'       => $bookId,
             'particulars'   => trim((string) ($body['particulars'] ?? '')) ?: $data['particulars'],
-            'lines'         => array_map(fn($l) => ['account_code' => $l['account_code'], 'rc_id' => $data['rc_id'] ?? '', 'debit' => $l['debit'], 'credit' => $l['credit'], 'sl_code' => $l['sl_code'] ?? null], $data['lines']),
+            'lines'         => array_map(fn($l) => [
+                'account_code' => $l['account_code'],
+                'rc_id'        => $data['rc_id'] ?? '',
+                'debit'        => $l['debit'],
+                'credit'       => $l['credit'],
+                'sl_code'      => $l['sl_code'] ?? null,
+                'description'  => $l['sl_name'] ?? null,
+            ], $data['lines']),
         ], $userId);
 
         if ($result['success'] ?? false) {
             $jevId = (int) $result['data']['jev_id'];
+            // createStandaloneJev() defaults source_module to 'ACCOUNTING' (fims.journal_entry_
+            // vouchers' own column default) since that's right for the period-end ACCRUAL/
+            // DEPRECIATION/etc. JEVs it's otherwise used for — but this one actually comes from the
+            // Collections module, not Accounting, so it's corrected here to say so, same register
+            // columns (source_module/doc_ref_no) FtlaService's own Payment JEVs already use.
+            $sourceModule = $leg === 'collection' ? 'COLLECTION' : 'DEPOSIT';
+            App\Execute(
+                "UPDATE {$this->tableJev} SET source_module = " . $this->str($sourceModule) . ', doc_ref_no = ' . $this->str('#' . $id) . "
+                 WHERE jev_id = {$jevId}",
+                'DB'
+            );
             App\Execute("UPDATE {$this->tableReports} SET {$column} = {$jevId} WHERE collection_report_id = {$id}", 'DB');
         }
 
