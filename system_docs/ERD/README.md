@@ -35,46 +35,41 @@
 | Dashboard & notifications | [Dashboard](#dashboard) | Built |
 | Dashboard & notifications | [Notification reads](#notification-reads) | PHPMaker-generated |
 | COB Preparation | [Budget Proposal](#budget-request) (page `BudgetReqPage`; offices and FMD) | Built |
-| COB Preparation | [Budget Revision](#budget-revision) | Built |
+| COB Preparation | [Budget Revision](#budget-revision) — menu label **Budget Amendment** | Built |
 | Budget Process | [Request for Allocation (CBA)](#request-for-allocation-cba) | Built |
 | Budget Process | [Request for Allocation (RFA/LAA)](#request-for-allocation-rfalaa) | Built |
 | DV Processing | [Disbursement Voucher](#disbursement-voucher) | Built |
-| DV Processing | [Remittance List (Deductions)](#remittance-list-deductions) | Empty placeholder (0-byte page) |
+| DV Processing | [Remittance List (Deductions)](#remittance-list-deductions) | Built — withheld deductions per voucher, with a monthly "Remit — create DV" for BIR |
 | DV Processing | [Liquidation Voucher](#liquidation-voucher) | Empty placeholder (0-byte page) |
 | DV Processing | [Journal Entry Voucher](#journal-entry-voucher) | Built |
 | DV Processing | [Disbursement Preparation](#disbursement-preparation) | Built, with stubs |
 | Inventory | [IAR Module](#iar-module) | Partial |
 | Inventory | [Property Record](#property-records) | Built |
 | Inventory | Work-In-Process | Built |
+| Inventory | Construction In Progress, Property and Equipment for Distribution, Merchandise Inventory, Fixed Assets | Empty placeholders (0-byte pages; controller / model / view generated) |
 | Monitoring | [COB Monitoring](#cob-monitoring) | Built |
 | Monitoring | [RFA / LAA Monitoring](#rfa--laa-monitoring) | Built |
 | Monitoring | [Cash Position](#cash-position-and-ftla) | Built |
 | Registry/NCA | [SARO Registry](#saro-registry) | Built |
 | Registry/NCA | [Check Registry](#check-registry) | Built |
 | Registry/NCA | [Accountable Forms Registry](#accountable-forms-registry) | Empty placeholder (0-byte page) |
-| Registry/NCA | Collections and Deposits (was "Collections and Fund Sweeping") | Built — reports can be journalized (see [Known gaps](#known-gaps--open-questions)) |
-| Registry/NCA | Fund Sweeping | Empty placeholder (0-byte page; controller / model / view generated) |
+| Registry/NCA | Collections and Deposits (was "Collections and Fund Sweeping") | Built — reports can be journalized (see [Known gaps](#known-gaps--open-questions)); each report names its **Collecting Officer** (`collection_reports.collecting_officer_id`), whose own GL / SL tag is used on the JEV line; deposit slips can be attached (`collection_report_deposits` slip url) |
+| Registry/NCA | Fund Sweeping | Built — unswept deposit balances per bank account and the sweep cut-off settings (`BankManagementService` fund-sweep methods, `fims.app_settings`) |
 | Payroll | [Payroll Management](#payroll-management) | Built (import only) |
 | Payroll | [Remittance](#remittance) | Built |
 | Reports | [FMR](#fmr) | Empty placeholder (0-byte page) |
-<<<<<<< Updated upstream
 | Reports | [Trial Balance](#trial-balance) | Built (read-only) |
 | Reports | Balance Sheet, Income Statement, Changes in Net Assets/Equity, Cash Flow | Built |
 | Reports | Bank Reconciliation | Built |
 | Ledgers | [General Ledger](#general-ledger) | Built — SL postings roll up; click a GL code for its SLs |
-=======
-| Reports | [Remittance List (Deductions)](#remittance-list-deductions) | Built — withheld deductions per voucher, with a monthly "Remit — create DV" for BIR |
-| Ledgers | [General Ledger](#general-ledger) | Built |
-| Ledgers | [Subsidiary Ledger](#subsidiary-ledger) | Built (read-only) |
->>>>>>> Stashed changes
 | Ledgers | [Journals](#journals) | Built (read-only) |
-| *(not in the sidebar)* | [Subsidiary Ledger](#subsidiary-ledger) | Built (read-only) — removed from the menu; the Subsidiary Ledger sheet print is only on this page |
+| *(not in the sidebar)* | [Subsidiary Ledger](#subsidiary-ledger) | Built (read-only) — removed from the menu; the General Ledger's SL popup (with Print SL) covers it |
 | Accounts Set-up | [Program / Sub Program](#program) | Built |
 | Accounts Set-up | [Chart of Accounts](#chart-of-accounts) | Built |
 | Accounts Set-up | [Responsibility Center](#responsibility-center) | Built |
 | Accounts Set-up | [Banks Accounts](#banks-accounts) | Built |
 | Accounts Set-up | [Vendors](#vendors) | Built |
-| Accounts Set-up | [Accountable Officer](#accountable-officer) | Built |
+| Accounts Set-up | [Accountable Officer](#accountable-officer) | Built — also a **Collecting Officers** tab (`fims.collecting_officers`, `app/routes/collecting_officer.php`: `/collecting-officers/all|list|read/{id}|add|update/{id}`) |
 | Accounts Set-up | [Payroll Setup](#payroll-setup) | Built |
 | Accounts Set-up | [Fidelity Bond](#fidelity-bond) | Built |
 | Accounts Set-up | Opening Balance, Closing Balance | Built |
@@ -528,7 +523,7 @@ erDiagram
 
 ### Disbursement Voucher
 
-- **Status:** Built — Full CRUD, the 9-status pipeline, the Accounting Entries (SETUP JEV) editor, ATC and deduction lines, RFA linking, and the payment JEV are all wired to real SQL. The payment JEV is now created **and posted** automatically when Treasury prepares the check (`CheckProcessingService` → `GeneralLedgerService::createPaymentJev()`, same transaction); the old `POST /voucher/{id}/prepare-payment-jev` route remains but the UI no longer needs it. Rules: the Section Chief must choose the Book before forwarding (the grid is saved on forward); each Accounting level must be a different user; a DV cannot exceed the linked RFA's remaining balance and deductions cannot exceed the amount (payroll and remittance DVs are exempt from the RFA check). The DV print rolls account codes up to 4-part GL codes; the JEV print leaves the journal box blank for GJ.
+- **Status:** Built — Full CRUD, the 9-status pipeline, the Accounting Entries (SETUP JEV) editor, ATC and deduction lines, RFA linking, and the payment JEV are all wired to real SQL. The payment JEV is now created **and posted** automatically when Treasury prepares the check (`CheckProcessingService` → `GeneralLedgerService::createPaymentJev()`, same transaction); the old `POST /voucher/{id}/prepare-payment-jev` route remains but the UI no longer needs it. Rules: the Section Chief must choose the Book before forwarding (the grid is saved on forward); each Accounting level must be a different user; only an **Approved** RFA can be picked or saved; a DV cannot exceed the linked RFA's remaining balance and deductions cannot exceed the amount. Remittance DVs carry no RFA. A **payroll DV** (`checkPayrollAgainstRfas()`) needs an RFA of the payroll month's fiscal year with a Personnel Services line (5-01-…) whose remaining balance covers the month's gross + employer share (`payroll_records.total_employer_share`); its Amount and deductions are re-read from the import on save (`withPayrollAmounts()`). An RFA's paid amount counts each DV's gross (+ employer share for a payroll DV) (`priorPaymentsForRfa()`). The DV print rolls account codes up to 4-part GL codes; the JEV print leaves the journal box blank for GJ.
 - **Code:** `views/Voucher.php` → `app/pages/voucher.php` (list) + `app/pages/voucher/form.php` (create/edit) + `app/pages/voucher/readone.php` (view, Accounting Entries, status actions). Route `app/routes/voucher.php`: `GET /voucher/list|all|fiscal-years|dv-number|atc-codes|deduction-types|sl-codes|sl-codes/{sl_code}/details|rfa/all|rfa/read/{id}|read/{id}`, `POST /voucher/add`, `PUT /voucher/update/{id}`, `POST /voucher/{id}/status`, `POST /voucher/{id}/journal-entry` (save the SETUP JEV, ATC lines, and deductions), `POST /voucher/{id}/prepare-payment-jev`, `POST /voucher/journal-entry/{id}/jev-status`, `DELETE /voucher/delete/{id}`. Service: `app/services/DisbursementVoucherService.php`, which calls `GeneralLedgerService::postJev()/reverseJev()/createPaymentJev()`. Print: `DvPrintService`/`JevPrintService` through `/print-preview-readone`.
 - **Tables written:** fims.disbursement_vouchers, fims.disbursement_voucher_deductions, fims.disbursement_voucher_atc_lines, fims.journal_entry_vouchers, fims.journal_entry_voucher_lines, fims.budget_allocation (only `dv_id`, in `linkRfas()`), fims.payroll_records (only `disbursement_voucher_id` — a payroll DV, see [Payroll Management](#payroll-management)), fims.payroll_remittances (only `disbursement_voucher_id` — a remittance DV, which needs no RFA, see [Remittance](#remittance)), fims.dv_deduction_remittances (a monthly BIR Remittance DV created from the [Remittance List](#remittance-list-deductions) — also no RFA), fims.general_ledger (indirectly, through postJev/reverseJev), fims.status_change_log (JEV status only, through `GlobalService::logStatusChange`). **Tables read:** fims.settings_status (`status_for='disbursement_voucher'` and `'journal_entry_voucher'`), fims.vendors (joins `vendors.sl_code` → `chart_of_accounts.account_id` for the vendor AP sub-ledger), fims.chart_of_accounts (also the source of the SL list: leaf accounts with `parent_account_id`), fims.responsibility_code, fims.fiscal_year, fims.books, fims.atc_codes, fims.deduction_types, fims.budget_allocation (`allocation_type='RFA'`), fims.budget_category, fims.budget_line_items (the account of the RFA's first line), fims.checks (the latest non-cancelled check by `dv_number`, for the payment JEV), fims.bank_accounts (`account_code`, the Cr Cash line), fims.file_attachments (by `multiple_node_id`), fims.v_journal_entry_vouchers, uac.users (`rc_id` for stage authorization).
 - **Status workflow:** `DRAFT → FOR_FMD_REVIEW (RC 013) → FOR_ACCOUNTING (RC 012, Section Chief saves a balanced JEV) → FOR_DIVISION_MANAGER (012) → FOR_DEPARTMENT_MANAGER (012) → FOR_TREASURY (014; this step POSTS the SETUP JEV to the GL) → RELEASED` (set by Check Disbursements `saveCheck`). Any non-terminal status can go to `REJECTED` (reason required) or `CANCELLED`. `FOR_TREASURY→CANCELLED` reverses the GL entries. `REJECTED→CANCELLED` only. Source: `DisbursementVoucherService::TRANSITIONS` (l.100) and `STAGE_HOLDER_RC`. Seeds: `02 - sample_data/01 - fims_settings_status.sql`.
@@ -1083,7 +1078,7 @@ erDiagram
 ### General Ledger
 
 - **Status:** Built — a read-only ledger card for one account, or all accounts, with a running balance. The GL table itself is written by DV/JEV posting.
-- **Code:** `views/GeneralLedgerPage.php` → `app/pages/general-ledger-page.php`. Route `app/routes/general_ledger.php`: `GET /general_ledger/ledger` (`fetchGeneralLedger`/`fetchAllGeneralLedgers`) — an SL (leaf child) account's postings now roll up into its GL account (`glRollupCte()`; each line carries `sl_account_code`), and `GET /general_ledger/ledger-sl?account_code=` (`fetchGlSubLedgers`) returns every SL under one GL account with its own postings and running balance, plus the GL account's direct postings (the page's click-a-GL-code popup, with expand / collapse). It also uses `/books/all`, `/chart_of_accounts/all`, `/fiscal_year/all`, and print via `GeneralLedgerPrintService`. Service: `app/services/GeneralLedgerService.php`. Posting is `postJev()` (l.106) and `reverseJev()` (l.179).
+- **Code:** `views/GeneralLedgerPage.php` → `app/pages/general-ledger-page.php`. Route `app/routes/general_ledger.php`: `GET /general_ledger/ledger` (`fetchGeneralLedger`/`fetchAllGeneralLedgers`) — an SL (leaf child) account's postings now roll up into its GL account (`glRollupCte()`; each line carries `sl_account_code`), and `GET /general_ledger/ledger-sl?account_code=` (`fetchGlSubLedgers`) returns every SL under one GL account with its own postings and running balance, plus the GL account's direct postings (the page's click-a-GL-code popup, with expand / collapse). It also uses `/books/all`, `/chart_of_accounts/all`, `/fiscal_year/all`, and print via `GeneralLedgerPrintService` (type GL — NHA Form No. 11, one account / book / year: Beginning Balance from `fims.opening_balances`, monthly lines per journal CKDJ / CRDJ / ADADJ / GJ resolved from each JEV, Closing Entry, Ending Balance) — the SL popup's Print SL uses `SubsidiaryLedgerPrintService` (type SL). Service: `app/services/GeneralLedgerService.php`. Posting is `postJev()` (l.106) and `reverseJev()` (l.179).
 - **Tables written:** none from this page. fims.general_ledger is written by `postJev`/`reverseJev`, called from DV `changeStatus` (→FOR_TREASURY / FOR_TREASURY→CANCELLED), `changeJevStatus` (→POSTED), and `postStandaloneJev`. **Tables read:** fims.v_journals (general_ledger + journal_entry_vouchers + disbursement_vouchers + chart_of_accounts + books), fims.chart_of_accounts (account_type for debit/credit-normal sign), fims.books, fims.fiscal_year.
 - **Status workflow:** none of its own. Rows are insert-only and are never updated. A reversal inserts swapped rows with `reversed_gl_id` set, and the JEV status moves POSTED → REVERSED.
 
@@ -2579,13 +2574,8 @@ Found while mapping the modules (2026-11-17). Grouped; each is verified in code 
 - `_assets/sql/README.md` is out of date (file counts / next number).
 
 **Pages**
-<<<<<<< Updated upstream
-- Empty (0-byte) placeholders in the sidebar: Ledger *(no longer in the menu)*, Liquidation Voucher, Remittance List (now under DV Processing), Accountable Forms Registry, Fund Sweeping, FMR, Pricing (Pricing has a full backend: route, service, form and tables). Fund Source and Program Sources pages are empty and not in the menu. `ledger-budget-allocation.php` is empty and not in the menu.
+- Empty (0-byte) placeholders in the sidebar: Ledger *(no longer in the menu)*, Liquidation Voucher, Accountable Forms Registry, FMR, Pricing (Pricing has a full backend: route, service, form and tables), and the 4 Inventory pages (Construction In Progress, Property and Equipment for Distribution, Merchandise Inventory, Fixed Assets). Fund Source and Program Sources pages are empty and not in the menu. `ledger-budget-allocation.php` is empty and not in the menu.
 - Built but **not in the sidebar**: Purchase Orders, FTLA, Subsidiary Ledger (removed from the menu in `329c525`; Cash Position and Property Record are now in the sidebar; see [Pages not in the sidebar](#pages-not-in-the-sidebar)).
-=======
-- Empty (0-byte) placeholders in the sidebar: Ledger, Liquidation Voucher, RFA / LAA Monitoring, Check Registry, Accountable Forms Registry, FMR, Fund Source, Program Sources, Accountable Officer, Pricing (Pricing has a full backend: route, service, form and tables). `ledger-budget-allocation.php` is empty and not in the menu.
-- Built but **not in the sidebar**: Purchase Orders, Property Records, Cash Position, FTLA (see [Pages not in the sidebar](#pages-not-in-the-sidebar)).
->>>>>>> Stashed changes
 - The Security Management quick link `UserLevelsList` has a controller route but no view/model *(may be broken)*.
 
 ## Related docs

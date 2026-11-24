@@ -99,10 +99,25 @@ $_gl_api = preg_match('~/api$~', $_gl_api) ? $_gl_api : $_gl_api . '/api';
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                 Refresh
             </button>
-            <button id="gl-print" type="button" class="nha-btn-hdr" title="Print this account's General Ledger sheet" style="display:none;">
+            <span id="gl-print-wrap" style="position:relative;display:none;">
+                <button id="gl-print" type="button" class="nha-btn-hdr" title="Print this account — General Ledger or Subsidiary Ledger" aria-haspopup="true" aria-expanded="false">
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
-                Print
+                Print &#9662;
             </button>
+            </span>
+            <div id="gl-print-menu" role="menu" class="no-print" style="display:none;position:fixed;z-index:1060;min-width:280px;background:var(--afims-surface,#fff);border:1px solid var(--afims-border,#E4ECF2);border-radius:8px;box-shadow:0 8px 24px rgba(15,23,42,.18);padding:6px;">
+                <div style="padding:6px 10px 4px;">
+                    <strong style="font-size:13px;color:var(--afims-text,#1e293b);">General Ledger</strong>
+                    <div style="font-size:11.5px;color:var(--afims-text-muted,#62657E);">NHA Form No. 11 — pick the book and year to print</div>
+                </div>
+                <div id="gl-print-sheets" style="max-height:220px;overflow-y:auto;"></div>
+                <div style="height:1px;background:var(--afims-border,#E4ECF2);margin:4px 2px;"></div>
+                <div style="padding:6px 10px 4px;">
+                    <strong style="font-size:13px;color:var(--afims-text,#1e293b);">Subsidiary Ledger</strong>
+                    <div style="font-size:11.5px;color:var(--afims-text-muted,#62657E);">A sheet per SL account under it — pick the book and year</div>
+                </div>
+                <div id="gl-print-sl-sheets" style="max-height:200px;overflow-y:auto;"></div>
+            </div>
         </div>
     </div>
 
@@ -199,6 +214,7 @@ $_gl_api = preg_match('~/api$~', $_gl_api) ? $_gl_api : $_gl_api . '/api';
     </div>
     <div id="gl-ending" class="gl-ending-balance no-print" style="display:none;"></div>
 
+    <style>#gl-print-menu .gl-print-opt:hover:not(:disabled),#gl-print-menu .gl-print-sheet:hover{background:var(--afims-surface-subtle,#F4F7FA);}#gl-print-menu .gl-print-sheet{display:flex;justify-content:space-between;gap:12px;width:100%;text-align:left;background:none;border:0;border-radius:6px;padding:7px 10px;cursor:pointer;color:var(--afims-text,#1e293b);font:inherit;font-size:13px;}#gl-print-menu .gl-print-sheet small{color:var(--afims-text-muted,#62657E);font-size:11px;white-space:nowrap;}#gl-print-menu .gl-print-note{padding:6px 10px;font-size:12px;color:var(--afims-text-muted,#62657E);}#gl-print-menu .gl-print-opt:disabled{opacity:.55;cursor:not-allowed !important;}</style>
     <!-- ── SL POPUP (click a GL account header row → its SL accounts, each with its JEVs) ── -->
     <div id="gl-sl-overlay" class="nha-overlay no-print">
         <div class="nha-modal nha-modal-xl" role="dialog" aria-modal="true" aria-labelledby="gl-sl-title">
@@ -207,7 +223,10 @@ $_gl_api = preg_match('~/api$~', $_gl_api) ? $_gl_api : $_gl_api . '/api';
                     <h3 class="nha-modal-title" id="gl-sl-title">Subsidiary Ledgers</h3>
                     <div class="gl-sl-modal-sub" id="gl-sl-subtitle"></div>
                 </div>
-                <button type="button" class="nha-modal-close" id="gl-sl-close" aria-label="Close">&times;</button>
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <button type="button" class="nha-btn nha-btn-outline" id="gl-sl-print" title="Print the Subsidiary Ledger sheet of each SL with postings" style="display:none;">Print SL</button>
+                    <button type="button" class="nha-modal-close" id="gl-sl-close" aria-label="Close">&times;</button>
+                </div>
             </div>
             <div class="nha-modal-body">
                 <div class="nha-table-wrap">
@@ -270,7 +289,31 @@ else gl_boot();
 
 function gl_bindEvents() {
     $gl('gl-refresh')?.addEventListener('click', () => gl_load());
-    $gl('gl-print')?.addEventListener('click', () => gl_print());
+    $gl('gl-print')?.addEventListener('click', e => {
+        e.stopPropagation();
+        const open = $gl('gl-print-menu').style.display !== 'none';
+        gl_togglePrintMenu(!open, e.currentTarget, gl_ledger?.account?.account_code);
+    });
+    window.addEventListener('scroll', () => gl_togglePrintMenu(false), true);
+    window.addEventListener('resize', () => gl_togglePrintMenu(false));
+    $gl('gl-print-sheets')?.addEventListener('click', e => {
+        e.stopPropagation();
+        const b = e.target.closest('.gl-print-sheet');
+        if (!b) return;
+        gl_togglePrintMenu(false);
+        gl_print(gl_printCode, { book_id: b.dataset.book, fund: b.dataset.fund, fiscal_year: b.dataset.year });
+    });
+    $gl('gl-print-menu')?.addEventListener('click', e => e.stopPropagation());
+    $gl('gl-print-sl-sheets')?.addEventListener('click', e => {
+        e.stopPropagation();
+        const b = e.target.closest('.gl-print-sheet');
+        if (!b) return;
+        gl_togglePrintMenu(false);
+        gl_printSl(gl_printCode, { book_id: b.dataset.book, fund: b.dataset.fund, fiscal_year: b.dataset.year });
+    });
+    document.addEventListener('click', () => gl_togglePrintMenu(false));
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') gl_togglePrintMenu(false); });
+    $gl('gl-sl-print')?.addEventListener('click', () => gl_printSlPopup());
     $gl('gl-filter-fy')?.addEventListener('change', () => gl_load());
     $gl('gl-filter-book')?.addEventListener('change', () => gl_load());
 
@@ -401,28 +444,146 @@ async function gl_load() {
     }
 }
 
-/* ── Print — the GENERAL LEDGER sheet (monthly summary) of the account shown ──────────────────────
-   Shared print preview (readone/print-preview-readone.php): prp_glPayload(ledger) → prp_open(…, GL).
-   The sheet is one fiscal year: the Fiscal Year filter, else the year of the postings shown (when they
-   span several years, pick one first). Only for a single account — hidden in the all-accounts view. */
+/* ── Print ────────────────────────────────────────────────────────────────────────────────────────────
+   Print (a menu: General Ledger | Subsidiary Ledger) — in the header, once one account is picked in the Account
+   search (the account shown). General Ledger: the GENERAL LEDGER sheet, NHA Form No. 11 (prp_glPayload → prp_open(…, GL)): the account shown, for
+   ONE fiscal year and ONE book (the sheet is kept per book — the Book prints as the Fund): the Beginning Balance (the
+   book's Opening Balance), then per month one line per journal (CKDJ / CRDJ / ADADJ / GJ), the Closing Entry and the
+   Ending Balance. Needs one Book (the Fiscal Year filter, else the postings' single year).
+   Subsidiary Ledger (header menu, or the SL popup's "Print SL") — the SUBSIDIARY LEDGER sheet of each SL with postings (prp_glSlPayload → prp_open(…, SL)). */
 function gl_setPrintable(json) {
     gl_ledger = json;
-    const btn = $gl('gl-print');
-    if (btn) btn.style.display = json ? '' : 'none';
+    const wrap = $gl('gl-print-wrap');
+    if (wrap) wrap.style.display = json ? 'inline-block' : 'none';   // shown once one account is picked
+    if (!json) gl_togglePrintMenu(false);
 }
-async function gl_print() {
-    if (!gl_ledger || typeof prp_open !== 'function') return;
-    gl_hideError();
-    let fy = $gl('gl-filter-fy').value;
-    if (!fy) {
-        const years = [...new Set((gl_ledger.data ?? []).map(r => String(r.posting_date || '').slice(0, 4)).filter(Boolean))];
-        if (years.length > 1) {
-            gl_showError('This account has postings in ' + years.join(', ') + ' — pick a Fiscal Year to print (the ledger sheet is one year).');
-            return;
-        }
-        fy = years[0] || String(new Date().getFullYear());
+// The Print menu (General Ledger | Subsidiary Ledger) — opened from the header Print (the account shown); `code` is the account it prints. Shown beside the button that opened it.
+let gl_printCode = '';
+function gl_togglePrintMenu(open, anchor, code) {
+    const menu = $gl('gl-print-menu');
+    if (!menu) return;
+    if (!open || !anchor || !code) {
+        menu.style.display = 'none';
+        $gl('gl-print')?.setAttribute('aria-expanded', 'false');
+        return;
     }
-    await prp_open(prp_glPayload(gl_ledger, { fiscal_year: fy }), { type: 'GL' });
+    gl_hideError();
+    gl_printCode = code;
+    gl_loadPrintSheets(code);
+    menu.style.display = '';
+    const r = anchor.getBoundingClientRect();
+    const w = menu.offsetWidth || 250;
+    const h = menu.offsetHeight || 120;
+    menu.style.left = Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8)) + 'px';
+    menu.style.top  = (r.bottom + 6 + h > window.innerHeight ? Math.max(8, r.top - h - 6) : r.bottom + 6) + 'px';
+    if (anchor.id === 'gl-print') anchor.setAttribute('aria-expanded', 'true');
+}
+// The General Ledger sheets the account can print — only (book, fiscal year) pairs with postings or an Opening
+// Balance (GET /print/gl-sheets), honouring the Fiscal Year filter — so the user picks from what exists.
+let gl_sheetsReq = 0;
+async function gl_loadPrintSheets(code) {
+    const box = $gl('gl-print-sheets');
+    const slBox = $gl('gl-print-sl-sheets');
+    if (!box) return;
+    const req = ++gl_sheetsReq;
+    box.innerHTML = '<div class="gl-print-note">Loading…</div>';
+    if (slBox) slBox.innerHTML = '';
+    try {
+        const params = new URLSearchParams({ account_code: code });
+        const fy = $gl('gl-filter-fy').value;
+        if (fy) params.set('fiscal_yr', fy);
+        const json = await gl_authFetch(`${GL_BASE.replace(/\/$/, '')}/print/gl-sheets?${params}`).then(r => r.json());
+        if (req !== gl_sheetsReq) return;
+        if (!json.success) throw new Error(json.message || 'Failed to load.');
+        const rows = json.data ?? [];
+        box.innerHTML = rows.length
+            ? rows.map(r => `<button type="button" role="menuitem" class="gl-print-sheet" data-book="${r.book_id}" data-fund="${gl_esc(r.book_name)}" data-year="${r.fiscal_yr}">
+                    <span>${gl_esc(r.book_name || ('Book ' + r.book_id))} — FY ${r.fiscal_yr}</span>
+                    <small>${r.postings ? r.postings + ' posting' + (r.postings === 1 ? '' : 's') : 'Beginning balance only'}</small>
+                </button>`).join('')
+            : `<div class="gl-print-note">Nothing to print${fy ? ' for FY ' + gl_esc(fy) : ''} — this account has no postings${fy ? ' that year' : ''}.</div>`;
+        // Subsidiary Ledger: only the book/year sheets where an SL account under it has postings or a beginning balance
+        const slRows = rows.filter(r => r.sl_postings || r.sl_opening);
+        if (slBox) slBox.innerHTML = slRows.length
+            ? slRows.map(r => `<button type="button" role="menuitem" class="gl-print-sheet" data-book="${r.book_id}" data-fund="${gl_esc(r.book_name)}" data-year="${r.fiscal_yr}">
+                    <span>${gl_esc(r.book_name || ('Book ' + r.book_id))} — FY ${r.fiscal_yr}</span>
+                    <small>${r.sl_postings ? r.sl_postings + ' SL posting' + (r.sl_postings === 1 ? '' : 's') : 'Beginning balances only'}</small>
+                </button>`).join('')
+            : '<div class="gl-print-note">No subsidiary ledger postings under this account.</div>';
+    } catch (e) {
+        if (req !== gl_sheetsReq) return;
+        box.innerHTML = `<div class="gl-print-note">Could not load the books: ${gl_esc(e.message)}</div>`;
+    }
+}
+function gl_printOpts() {
+    const book = $gl('gl-filter-book');
+    return {
+        fund: book && book.value ? (book.options[book.selectedIndex]?.text || '') : '',
+        book_id: book ? book.value : '',
+        fiscal_year: $gl('gl-filter-fy').value,
+    };
+}
+// General Ledger — the account's ledger (GET /general_ledger/ledger with the page's Fiscal Year / Book filters; the one
+// already loaded when it is the account shown) → NHA Form No. 11.
+async function gl_print(code, pick = null) {
+    if (!code || typeof prp_open !== 'function') return;
+    gl_hideError();
+    // a sheet picked from the menu (its own book and year), else the page's filters
+    const opts = pick ? { book_id: String(pick.book_id), fund: pick.fund || '', fiscal_year: String(pick.fiscal_year || '') } : gl_printOpts();
+    if (!opts.book_id) {
+        gl_showError('Pick a Book to print — the General Ledger sheet is kept per book (the Book prints as the Fund).');
+        return;
+    }
+    window.PagePreloader?.show();
+    try {
+        const f = gl_printOpts();
+        let ledger = gl_ledger && gl_ledger.account?.account_code === code && f.book_id === opts.book_id && f.fiscal_year === opts.fiscal_year ? gl_ledger : null;
+        if (!ledger) {
+            const params = new URLSearchParams({ account_code: code, book_id: opts.book_id });
+            if (opts.fiscal_year) params.set('fiscal_yr', opts.fiscal_year);
+            ledger = await gl_authFetch(`${GL_API}/ledger?${params}`).then(r => r.json());
+            if (!ledger.success) throw new Error(ledger.message || 'Failed to load the account ledger.');
+        }
+        if (!opts.fiscal_year) {
+            const years = [...new Set((ledger.data ?? []).map(r => String(r.posting_date || '').slice(0, 4)).filter(Boolean))];
+            if (years.length > 1) {
+                gl_showError(code + ' has postings in ' + years.join(', ') + ' — pick a Fiscal Year to print (the ledger sheet is one year).');
+                return;
+            }
+            opts.fiscal_year = years[0] || String(new Date().getFullYear());
+        }
+        await prp_open(prp_glPayload(ledger, opts), { type: 'GL' });
+    } catch (e) {
+        gl_showError('Could not print: ' + e.message);
+    } finally {
+        window.PagePreloader?.hide();
+    }
+}
+// Subsidiary Ledger — the SL sheets of the account (GET /general_ledger/ledger-sl with the page's Fiscal Year / Book
+// filters — the same data the SL popup loads) → one SUBSIDIARY LEDGER sheet per SL with data in that book and year.
+async function gl_printSl(code, pick = null) {
+    if (!code || typeof prp_open !== 'function') return;
+    gl_hideError();
+    const params = new URLSearchParams({ account_code: code });
+    // a sheet picked from the menu (its own book and year), else the page's filters
+    const opts = pick ? { book_id: String(pick.book_id), fund: pick.fund || '', fiscal_year: String(pick.fiscal_year || '') } : gl_printOpts();
+    if (opts.fiscal_year) params.set('fiscal_yr', opts.fiscal_year);
+    if (opts.book_id) params.set('book_id', opts.book_id);
+    window.PagePreloader?.show();
+    try {
+        const json = await gl_authFetch(`${GL_API}/ledger-sl?${params}`).then(r => r.json());
+        if (!json.success) throw new Error(json.message || 'Failed to load the sub-ledgers.');
+        await prp_open(prp_glSlPayload(json, opts), { type: 'SL' });
+    } catch (e) {
+        gl_showError('Could not print: ' + e.message);
+    } finally {
+        window.PagePreloader?.hide();
+    }
+}
+// SL popup's Print SL — the Subsidiary Ledger sheets of the data the popup loaded (same filters).
+async function gl_printSlPopup() {
+    if (!gl_slJson || typeof prp_open !== 'function') return;
+    await prp_open(prp_glSlPayload(gl_slJson, gl_printOpts()), { type: 'SL' });
 }
 
 /* ── Summary (account header — code/name/normal balance/class) ──────────────── */
@@ -483,8 +644,11 @@ function gl_renderGroupedTable(accounts) {
 /* ── SL popup — a GL account's SL accounts (GET /general_ledger/ledger-sl), each with its JEV lines ──
    Same per-SL header + JEV rows + running balance as the Subsidiary Ledger page, scoped to one GL account
    and the page's current Fiscal Year / Book filters. */
+let gl_slJson = null;   // the SL popup's loaded GET /general_ledger/ledger-sl response (what its Print prints)
 async function gl_openSlPopup(code, title) {
     const req = ++gl_slReq;
+    gl_slJson = null;
+    if ($gl('gl-sl-print')) $gl('gl-sl-print').style.display = 'none';
     const tbody = $gl('gl-sl-tbody');
     $gl('gl-sl-title').textContent = `${code} — ${title}`;
     $gl('gl-sl-subtitle').textContent = 'Subsidiary ledgers';
@@ -514,6 +678,9 @@ async function gl_openSlPopup(code, title) {
 // hidden via gl_rowHtml's groupId param, and only reveal when that row is clicked (gl_toggleSlRows).
 function gl_renderSlPopup(json) {
     const tbody = $gl('gl-sl-tbody');
+    gl_slJson = json;
+    // hidden while the Subsidiary Ledger print is paused (PRP_PAUSED.SL)
+    if ($gl('gl-sl-print')) $gl('gl-sl-print').style.display = (typeof prp_isPaused === 'function' && prp_isPaused('SL')) ? 'none' : '';
     const sls = json.sub_ledgers ?? [];
     const direct = json.direct && (json.direct.data ?? []).length ? json.direct : null;
     $gl('gl-sl-subtitle').textContent = `${sls.length} subsidiary ledger${sls.length === 1 ? '' : 's'} · ${json.normal_balance}-normal, ${json.account.account_type} · click a sub-ledger to see its transactions`;
@@ -633,6 +800,6 @@ function gl_showError(msg) { $gl('gl-error').style.display = 'flex'; $gl('gl-err
 function gl_hideError()    { $gl('gl-error').style.display = 'none'; }
 </script>
 <?php
-// Print → the shared print preview (prp_open + prp_glPayload).
+// Print → the shared print preview (prp_open + prp_glPayload — GL, NHA Form No. 11; prp_glSlPayload — SL).
 include_once __DIR__ . '/readone/print-preview-readone.php';
 ?>

@@ -159,7 +159,7 @@ const PRP_TYPES = {
     IAR: { title: 'Inspection and Acceptance Report',        print: 'print/iar', letterhead: false },
     LV:  { title: 'Liquidation Voucher',                     print: 'print/lv', letterhead: false },
     JEV: { title: 'Journal Entry Voucher',                   print: 'print/jev', letterhead: false, wide: true },   // A4 landscape
-    GL:  { title: 'General Ledger',                          print: 'print/gl', letterhead: false },
+    GL:  { title: 'General Ledger',                          print: 'print/gl', letterhead: false },   // NHA Form No. 11 (monthly summary per journal)
     SL:  { title: 'Subsidiary Ledger',                       print: 'print/sl', letterhead: false },
     FTLA: { title: 'Fund Transfer Letter of Advice',         print: 'print/ftla', hdrPt: 510 },
     FTLAREQ: { title: 'FTLA Request',                        print: 'print/ftlareq', hdrPt: 468 },   // the LAA release request's memo layout
@@ -375,11 +375,12 @@ function prp_jevFromDv(dv, jev) {
 }
 
 /**
- * One account's ledger card (the General Ledger page's GET /general_ledger/ledger?account_code=… response:
- * { account { account_code, account_title }, debit_normal, data [{ posting_date, debit, credit, doc_ref_no }] })
- * → the GENERAL LEDGER sheet, printed as its monthly summary (GeneralLedgerPrintService). `opts` (optional):
- * fiscal_year (the page's Fiscal Year filter), opening_balance (the "Jan 1 Balance" — the system has no
- * brought-forward balance, so none by default), entity_name, sheet_no (blank: filled in by hand).
+ * One GL account's ledger for one fiscal year and one book (the General Ledger page's GET /general_ledger/ledger?account_code=
+ * …&fiscal_yr=…&book_id=… response: { account { account_code, account_title }, debit_normal, data [{ posting_date, jev_no,
+ * doc_ref_no, debit, credit }] } — the GL account with its SL accounts' postings rolled in) → the GENERAL LEDGER sheet,
+ * NHA Form No. 11 (GeneralLedgerPrintService): the monthly summary per journal. The journal of each posting and the
+ * Beginning Balance (the book's Opening Balance) are worked out server-side. `opts`: fiscal_year, book_id, fund (the
+ * book's name), sheet_no (blank: filled in by hand).
  */
 function prp_glPayload(resp, opts = {}) {
     const a = (resp && resp.account) || {};
@@ -388,23 +389,49 @@ function prp_glPayload(resp, opts = {}) {
         account_title: a.account_title || '',
         debit_normal: resp && resp.debit_normal !== false,
         fiscal_year: opts.fiscal_year || '',
-        opening_balance: opts.opening_balance ?? '',
-        entity_name: opts.entity_name || '',
+        book_id: opts.book_id || '',
+        fund: opts.fund || '',
         sheet_no: opts.sheet_no || '',
         lines: ((resp && resp.data) || []).map(l => ({
-            posting_date: l.posting_date, debit: l.debit, credit: l.credit, doc_ref_no: l.doc_ref_no || '',
+            posting_date: l.posting_date, jev_no: l.jev_no || '', doc_ref_no: l.doc_ref_no || '', debit: l.debit, credit: l.credit,
         })),
+    };
+}
+
+/**
+ * One GL account with the SL accounts under it (the General Ledger page's GET /general_ledger/ledger-sl?account_code=…
+ * &fiscal_yr=…&book_id=… response: { account { account_code, account_title }, debit_normal, sub_ledgers [{ sl
+ * { account_code, account_title }, data }] }; each data row { posting_date, jev_no, doc_ref_no, description, debit,
+ * credit }) → the SUBSIDIARY LEDGER sheets (SubsidiaryLedgerPrintService, type SL), one per SL account. The server
+ * leaves out SLs with nothing in the book and year, fills each posting's month, particulars and FOLIO from its JEV, the
+ * beginning balance from the Opening Balances, and the bank / account no. for a bank account's SL. The GL account's own
+ * postings (not through an SL) are not an SL — they are on the General Ledger sheet. `opts`: fund (the book's name),
+ * book_id, fiscal_year.
+ */
+function prp_glSlPayload(resp, opts = {}) {
+    const a = (resp && resp.account) || {};
+    const lines = rows => (rows || []).map(l => ({
+        posting_date: l.posting_date, jev_no: l.jev_no || '', doc_ref_no: l.doc_ref_no || '',
+        particulars: l.description || '', debit: l.debit, credit: l.credit,
+    }));
+    return {
+        gl_account_code: a.account_code || '',
+        gl_account_title: a.account_title || '',
+        fund: opts.fund || '',
+        book_id: opts.book_id || '',
+        fiscal_year: opts.fiscal_year || '',
+        debit_normal: resp && resp.debit_normal !== false,
+        ledgers: ((resp && resp.sub_ledgers) || []).map(s => ({ sl_code: s.sl?.account_code || '', sl_name: s.sl?.account_title || '', lines: lines(s.data) })),
     };
 }
 
 /**
  * One SL account's ledger card (the Subsidiary Ledger page's GET /general_ledger/subsidiary-ledger?sl_code=… response:
  * { master { account_code, account_title, account_type }, debit_normal, data [{ posting_date, jev_no, doc_ref_no,
- * description, debit, credit }] }) → the SUBSIDIARY LEDGER sheet, one line per posting (SubsidiaryLedgerPrintService).
- * An SL is a child account in the Chart of Accounts: master = the SL account; its parent (the sheet's GL Account
- * Name / Account Code) is looked up server-side. Still reads the older { sl_code, sl_name, account_code } master.
- * `opts` (optional): fund (the Book filter's name), fiscal_year, entity_name, bank_account_no, opening_balance,
- * gl_account_code / gl_account_title (skip the lookup), sl_detail_name.
+ * description, debit, credit }] }) → one SUBSIDIARY LEDGER sheet (SubsidiaryLedgerPrintService). The GL account (the
+ * SL's parent), the month / particulars / FOLIO of each posting and the beginning balance are filled server-side.
+ * Still reads the older { sl_code, sl_name, account_code } master. `opts`: fund (the Book filter's name), book_id,
+ * fiscal_year, opening_balance (overrides the lookup), gl_account_code / gl_account_title (skip the lookup).
  */
 function prp_slPayload(resp, opts = {}) {
     const m = (resp && resp.master) || {};
@@ -414,19 +441,16 @@ function prp_slPayload(resp, opts = {}) {
     return {
         sl_code: m.sl_code || m.account_code || '',
         sl_name: m.sl_name || m.account_title || '',
-        sl_detail_name: opts.sl_detail_name || '',
         gl_account_code: opts.gl_account_code || (legacy ? m.account_code || '' : ''),
         gl_account_title: opts.gl_account_title || ctl.account_title || '',
-        bank_account_no: opts.bank_account_no || '',
-        entity_name: opts.entity_name || '',
         fund: opts.fund || '',
+        book_id: opts.book_id || '',
         fiscal_year: opts.fiscal_year || '',
         debit_normal: resp && resp.debit_normal !== false,
         opening_balance: opts.opening_balance ?? '',
         lines: data.map(l => ({
-            posting_date: l.posting_date, debit: l.debit, credit: l.credit,
-            particulars: l.description || l.doc_ref_no || '',
-            ref: l.jev_no || l.doc_ref_no || '',
+            posting_date: l.posting_date, jev_no: l.jev_no || '', doc_ref_no: l.doc_ref_no || '',
+            particulars: l.description || '', debit: l.debit, credit: l.credit,
         })),
     };
 }
