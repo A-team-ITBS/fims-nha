@@ -271,14 +271,13 @@ function prp_showError(message) {
  * opts.type — a PRP_TYPES key: 'CBA' (default), 'RFA', 'LAA', 'CAF', 'LAAREQ', 'PO', 'PR',
  * 'IAR', 'LV', 'JEV', 'FTLA', 'FTLAREQ', 'CFA', 'MEMO' or 'DV'.
  */
-/* Prints paused until their layout is settled — every caller (list menu, memo form) goes through prp_open(), so this
-   one guard keeps them from printing. RFA / LAA: an RFA / LAA can now draw from several parent CBAs (one project
-   block each) and the form still prints only the first block's project — on hold until the multi-CBA layout is
-   decided with the budget team. Remove a type from here to print it again. */
-const PRP_PAUSED = {
-    RFA: 'Printing the RFA is paused for now: an RFA can draw from several CBAs and its printed form is being updated for that.',
-    LAA: 'Printing the LAA is paused for now: an LAA can draw from several CBAs and its printed form is being updated for that.',
-};
+/* Types whose printing is paused until their layout is settled — every caller (list menu, memo form) goes through
+   prp_open(), so this one guard keeps them from printing. Nothing is paused right now. To pause a type again, add it here
+   as TYPE: 'message shown to the user'; the Print buttons (memo list, memo form) then disable themselves.
+   History: RFA and LAA were paused while an RFA / LAA that draws from several parent CBAs (one project block each) had no
+   print layout. Both are printing again — the amounts are summed across every block; an RFA prints the FIRST block's
+   project (see PrintPayloadService::allocationPayload()), an LAA prints no project at all. */
+const PRP_PAUSED = {};
 function prp_isPaused(type) { return !!PRP_PAUSED[String(type || '').toUpperCase()]; }
 
 async function prp_open(payload, opts = {}) {
