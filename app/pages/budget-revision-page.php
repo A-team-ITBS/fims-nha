@@ -3,7 +3,7 @@
 namespace PHPMaker2024\FIMS;
 
 /**
- * budget-revision-page.php — "Budget Revision Requests": the requests to change a BUDGET LINE's amount (a chart-of-accounts line
+ * budget-revision-page.php — "Budget Amendment Requests": the requests to change a BUDGET LINE's amount (a chart-of-accounts line
  * item of a budget request) and optionally move the difference to a second budget line. Originating offices file and edit
  * them; the Financial Management Department (FMD) reviews them — approves or declines. A request goes Saved -> Submitted -> Approved
  * (or Declined): filing it SAVES it, which leaves it editable; "Process" in its Actions menu submits it, after which it can no longer be
@@ -136,17 +136,17 @@ $_brv_canReview = $_brv_isFmd || $_brv_isAdmin;
             </svg>
         </div>
         <div>
-            <h1 class="app-page-title">Budget Revision Requests</h1>
+            <h1 class="app-page-title">Budget Amendment Requests</h1>
             <p class="app-page-subtitle" id="brv-hdr-sub"><?php echo $_brv_canReview
-                ? 'Review the revision and realignment requests the offices have submitted — approve or decline them.'
-                : 'File a revision or realignment request and save it, then Process it to submit it for review — and follow its status.'; ?></p>
+                ? 'Review the amendment and realignment requests the offices have submitted — approve or decline them.'
+                : 'File an amendment or realignment request and save it, then Process it to submit it for review — and follow its status.'; ?></p>
         </div>
         <div class="app-page-header-actions">
             <button id="brv-refresh" type="button" class="nha-btn-hdr" title="Refresh">
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                 Refresh
             </button>
-            <button id="brv-add" type="button" class="nha-btn-hdr" style="background:var(--afims-success, #11A752);" title="File a budget revision or realignment request">
+            <button id="brv-add" type="button" class="nha-btn-hdr" style="background:var(--afims-success, #11A752);" title="File a budget amendment or realignment request">
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
                 Add Request
             </button>
@@ -158,7 +158,7 @@ $_brv_canReview = $_brv_isFmd || $_brv_isAdmin;
         <div class="nha-sc nha-sc-navy">
             <div class="nha-sc-top">
                 <div>
-                    <div class="nha-sc-label">Total Revisions</div>
+                    <div class="nha-sc-label">Total Amendments</div>
                     <div class="nha-sc-val" id="brv-kpi-total">—</div>
                 </div>
             </div>
@@ -230,8 +230,8 @@ $_brv_canReview = $_brv_isFmd || $_brv_isAdmin;
 
 <script>
 /* ══════════════════════════════════════════════════════════════
-   BUDGET REVISION REQUESTS LIST   prefix: brv_
-   One row per revision request: Request No. (its id — the number the details modal is titled with, the fiscal year of
+   BUDGET AMENDMENT REQUESTS LIST   prefix: brv_
+   One row per amendment request: Request No. (its id — the number the details modal is titled with, the fiscal year of
    the budget line's request under it), the Budget Line being revised (its account, and where it sits; + the To line when
    funds move to another one), From / To / Change amounts, Reason, Status, and when it was requested and by whom.
    A request is filed as SAVED; Process (Saved -> Submitted) hands it to FMD and ends editing; FMD then approves or declines it.
@@ -273,7 +273,7 @@ const BRV_STATUS = {
 // sends it as request_type (a column of fims.budget_revision); the To line is the fallback for a database that has not had
 // "03 - alter_table/42" yet, whose rows have no request_type.
 const BRV_TYPE = {
-    REVISION   : { label: 'Revision',    cls: 'nha-bdg-blue' },
+    REVISION   : { label: 'Amendment',   cls: 'nha-bdg-blue' },
     REALIGNMENT: { label: 'Realignment', cls: 'nha-bdg-teal' },
 };
 function brv_typeOf(r) {
@@ -397,7 +397,7 @@ async function brv_load() {
 function brv_renderTable(rows) {
     const tbody = $brv('brv-tbody');
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="10"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No budget revision requests found.</span></div></td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No budget amendment requests found.</span></div></td></tr>';
         return;
     }
     tbody.innerHTML = rows.map(r => {
@@ -536,7 +536,7 @@ function brv_goTo(page) { brv_page = page; brv_load(); }
 function brv_openModal(mode, row = null) {
     $brv('brv-mode').value = mode;
     $brv('brv-id').value = row?.id || '';
-    $brv('brv-modal-title').textContent = mode === 'edit' ? 'Edit Budget Revision Request' : 'Add Budget Revision Request';
+    $brv('brv-modal-title').textContent = mode === 'edit' ? 'Edit Budget Amendment Request' : 'Add Budget Amendment Request';
     // the Revision / Realignment tabs: a new request starts as a Revision; an existing one opens on the kind it was filed as
     // (the form hides the To budget line for a Revision — see form/budget-rev-form.php)
     window.brvForm?.setType(row ? brv_typeOf(row) : 'REVISION');
@@ -568,7 +568,7 @@ async function brv_edit(id) {
     try {
         const res  = await fetch(`${BRV_API}/read/${id}`, { credentials: 'same-origin', headers: brv_apiHeaders() });
         const json = await res.json();
-        if (!json.success) throw new Error(json.message || 'Failed to load budget revision request.');
+        if (!json.success) throw new Error(json.message || 'Failed to load budget amendment request.');
         if (json.data.status !== 'SAVED') {   // processed (or decided) after this page was loaded
             brv_toast(`This request is already ${(BRV_STATUS[json.data.status]?.label || json.data.status_name || 'processed').toLowerCase()}, so it can't be edited — only a saved request can be.`, 'warning');
             brv_load();
@@ -622,11 +622,11 @@ async function brv_save(ev) {
             body: JSON.stringify(payload),
         });
         const json = await res.json();
-        if (!json.success) throw new Error(json.message || 'Failed to save budget revision request.');
+        if (!json.success) throw new Error(json.message || 'Failed to save budget amendment request.');
 
         brv_toast(mode === 'edit'
-            ? 'Budget revision request updated. Choose Process to submit it for review.'
-            : 'Budget revision request saved. Choose Process in its Actions menu to submit it for review.', 'success');
+            ? 'Budget amendment request updated. Choose Process to submit it for review.'
+            : 'Budget amendment request saved. Choose Process in its Actions menu to submit it for review.', 'success');
         brv_closeModal();
         brv_load();
     } catch (e) {
@@ -640,15 +640,15 @@ async function brv_save(ev) {
 // Saved -> Submitted. Nothing is applied to the budget lines yet — that happens when FMD approves it. A processed request can no longer
 // be edited, so ask first.
 async function brv_process(id) {
-    if (!id || !confirm(`Process budget revision request #${id}?\n\nIt will be submitted for review and can no longer be edited.`)) return;
+    if (!id || !confirm(`Process budget amendment request #${id}?\n\nIt will be submitted for review and can no longer be edited.`)) return;
 
     window.PagePreloader?.show();
     try {
         const res  = await fetch(`${BRV_API}/process/${id}`, { method: 'PUT', credentials: 'same-origin', headers: brv_apiHeaders() });
         const json = await res.json().catch(() => null);
-        if (!res.ok || !json || !json.success) throw new Error(json?.message || 'Failed to process budget revision request.');
+        if (!res.ok || !json || !json.success) throw new Error(json?.message || 'Failed to process budget amendment request.');
 
-        brv_toast(json.message || `Budget revision request #${id} processed.`, 'success');
+        brv_toast(json.message || `Budget amendment request #${id} processed.`, 'success');
         brv_load();
     } catch (e) {
         brv_toast(e.message, 'error');
@@ -665,7 +665,7 @@ async function brv_view(id) {
         // read fresh from the API so the status shown is the current one
         const res  = await fetch(`${BRV_API}/read/${id}`, { credentials: 'same-origin', headers: brv_apiHeaders() });
         const json = await res.json();
-        if (!json.success) throw new Error(json.message || 'Failed to load budget revision request.');
+        if (!json.success) throw new Error(json.message || 'Failed to load budget amendment request.');
         brv_openView(json.data);
     } catch (e) {
         brv_toast(e.message, 'error');
@@ -775,7 +775,7 @@ async function brv_review(status) {
     const verb = status === 'APPROVED' ? 'approve' : 'decline';
 
     // Approving changes money, so say exactly what will happen before asking.
-    let question = `Are you sure you want to ${verb} budget revision request #${id}?`;
+    let question = `Are you sure you want to ${verb} budget amendment request #${id}?`;
     if (status === 'APPROVED' && brv_viewRow) {
         const v       = brv_viewRow;
         const current = Number(v.line_amount || 0);
@@ -807,9 +807,9 @@ async function brv_review(status) {
             body: JSON.stringify({ status }),
         });
         const json = await res.json();
-        if (!json.success) throw new Error(json.message || `Failed to ${verb} budget revision request.`);
+        if (!json.success) throw new Error(json.message || `Failed to ${verb} budget amendment request.`);
 
-        brv_toast(json.message || `Budget revision request ${verb}d.`, 'success');
+        brv_toast(json.message || `Budget amendment request ${verb}d.`, 'success');
         brv_closeView();
         brv_load();
         if (status === 'APPROVED') brv_refreshBudgetReqs();
@@ -885,7 +885,7 @@ function brv_lineName(r, pre) {
 // "BP-001 · P-100 / PJ-1" — where the line sits, for the list
 function brv_linePlace(r, pre) {
     const id = r[(pre ? 'to' : 'from') + '_budget_line_item_id'];
-    if (!id) return 'Filed before budget lines could be revised';
+    if (!id) return 'Filed before budget lines could be amended';
     if (r[pre + 'fiscal_yr'] === null || r[pre + 'fiscal_yr'] === undefined) return 'This budget line no longer exists';
     return [r[pre + 'budget_reference_number'], [r[pre + 'program_code'], r[pre + 'project_code']].filter(Boolean).join(' / ')].filter(Boolean).join(' · ');
 }
@@ -893,7 +893,7 @@ function brv_linePlace(r, pre) {
 // particulars, and — when approved revisions have changed it — "Approved amount ₱ … · Latest adjustment ±₱ …".
 function brv_lineSub(r, pre) {
     const id = r[(pre ? 'to' : 'from') + '_budget_line_item_id'];
-    if (!id) return 'Filed before budget lines could be revised — pick its budget line when editing it';
+    if (!id) return 'Filed before budget lines could be amended — pick its budget line when editing it';
     const fy = r[pre + 'fiscal_yr'];
     if (fy === null || fy === undefined) return 'This budget line no longer exists';
     const withName = (code, name) => (code ? code + (name ? ' — ' + name : '') : '');

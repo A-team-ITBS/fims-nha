@@ -1,4 +1,4 @@
-<ew-language date="2026/11/23" id="en-US" author="e.World Technology Limited">
+<ew-language date="2026/11/24" id="en-US" author="e.World Technology Limited">
   <project>
     <phrase id="bodytitle" value="NHA - FIMS" />
     <phrase id="footertext" value="&amp;copy;2026 ITBS Corporation. All rights reserved." />
@@ -89,6 +89,15 @@
     <menu id="331">
       <phrase id="menutext" value="Cash Position" />
     </menu>
+    <menu id="971">
+      <phrase id="menutext" value="Transactions" />
+    </menu>
+    <menu id="866">
+      <phrase id="menutext" value="Fund Sweeping" />
+    </menu>
+    <menu id="757">
+      <phrase id="menutext" value="Collections and Deposits" />
+    </menu>
     <menu id="551">
       <phrase id="menutext" value="Registry" />
     </menu>
@@ -103,12 +112,6 @@
     </menu>
     <menu id="561">
       <phrase id="menutext" value="Accountable Forms Registry" />
-    </menu>
-    <menu id="757">
-      <phrase id="menutext" value="Collections and Deposits" />
-    </menu>
-    <menu id="866">
-      <phrase id="menutext" value="Fund Sweeping" />
     </menu>
     <menu id="865">
       <phrase id="menutext" value="Payroll" />
@@ -143,11 +146,14 @@
     <menu id="770">
       <phrase id="menutext" value="Bank Reconciliation" />
     </menu>
+    <menu id="871">
+      <phrase id="menutext" value="Budget Utilization Report" />
+    </menu>
     <menu id="394">
       <phrase id="menutext" value="Ledgers" />
     </menu>
     <menu id="393">
-      <phrase id="menutext" value="General Ledger" />
+      <phrase id="menutext" value="General Ledger / Subsidiary Ledger" />
     </menu>
     <menu id="395">
       <phrase id="menutext" value="Subsidiary Ledger" />
@@ -1864,6 +1870,9 @@
     </table>
     <table id="merchandise_inventory_page">
       <phrase id="tblcaption" value="Merchandise Inventory" />
+    </table>
+    <table id="bur_page">
+      <phrase id="tblcaption" value="Budget Utilization Report" />
     </table>
   </project>
 </ew-language>
