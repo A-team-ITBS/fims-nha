@@ -102,6 +102,7 @@ class CheckProcessingService
     private string $tableCancellations     = 'fims.check_cancellations';
     private string $tableDv                = 'fims.disbursement_vouchers';
     private string $tableSettingsStatus    = 'fims.settings_status';
+    private string $tableFundTracking      = 'fims.fund_tracking';
     // Unified Tab 3+4 ("Released to Claimants" / "Released to Regions") —
     // see "01 - table/38 - fims_check_releases_unified.sql" for why these
     // replaced four separate tables (fims.check_claimant_releases,
@@ -522,7 +523,7 @@ class CheckProcessingService
     public function getDvsForPrep($params)
     {
         $rows = App\ExecuteRowsAssociative(
-            "SELECT dv.dv_id, dv.dv_no, dv.dv_date, dv.claimant_name, dv.net_amount, prog.program_names, rfa.rfa_numbers
+            "SELECT dv.dv_id, dv.dv_no, dv.dv_date, dv.claimant_name, dv.net_amount, prog.program_names
              FROM {$this->tableDv} dv
              JOIN {$this->tableSettingsStatus} st ON st.id = dv.status_id
              LEFT JOIN LATERAL (
@@ -538,18 +539,6 @@ class CheckProcessingService
                  JOIN fims.program p ON p.program_code = bap.program_code
                  WHERE a.dv_id = dv.dv_id AND a.allocation_type = 'RFA'
              ) prog ON TRUE
-             LEFT JOIN LATERAL (
-                 -- Same a-DV-can-cite-more-than-one-RFA fan-out as prog above, but aggregated
-                 -- straight off fims.budget_allocation itself (no project-block join) so a DV with
-                 -- several project blocks under the same RFA doesn't repeat that RFA own number --
-                 -- backs the Prepare Check modal read-only RFA field (auto-filled alongside
-                 -- Program/Payee/Net Amount when a DV is picked; there is no equivalent for LAA --
-                 -- see FtlaService::getRfaForDv() own comment for why: RFA and LAA are sibling
-                 -- allocation types with no link between them).
-                 SELECT STRING_AGG(DISTINCT a2.allocation_number, ', ' ORDER BY a2.allocation_number) AS rfa_numbers
-                 FROM fims.budget_allocation a2
-                 WHERE a2.dv_id = dv.dv_id AND a2.allocation_type = 'RFA' AND a2.deleted_at IS NULL
-             ) rfa ON TRUE
              WHERE st.status_for = 'disbursement_voucher' AND st.name = 'FOR_TREASURY'
                AND NOT EXISTS (SELECT 1 FROM {$this->tableChecks} c WHERE c.dv_number = dv.dv_no AND c.status <> 'CANCELLED')
              ORDER BY dv.dv_date",
@@ -557,6 +546,36 @@ class CheckProcessingService
         );
 
         return $this->dataTable($params['draw'] ?? 1, $rows);
+    }
+
+    /**
+     * The SARO currently linked to a given DV number (fims.fund_tracking.dv_id — see
+     * DisbursementVoucherService::linkSaro(); one SARO points at one DV at a time, "03 -
+     * alter_table/61 - fund_tracking_add_dv_bank_account.sql"), plus that SARO's own bank account
+     * (bank_account_id -> fims.bank_accounts), resolved in the same query so the caller gets
+     * everything it needs for the auto-fill in one round trip. Used by the Prepare Check modal
+     * (GET /check-processing/dv-saro) to fill #prepBankAccount once a DV is picked — same
+     * "auto-fill, read-only lookup, no linking" shape as FtlaService::getRfaForDv(). Returns null
+     * when the DV has no SARO linked (nothing to fill).
+     */
+    public function getSaroForDv(string $dvNo): ?array
+    {
+        $dvNo = trim($dvNo);
+        if ($dvNo === '') {
+            return null;
+        }
+
+        return App\ExecuteRow(
+            "SELECT ft.id, ft.saro_id, ft.bank_account_id,
+                    ba.account_name, ba.account_number, ba.bank_name
+             FROM {$this->tableFundTracking} ft
+             JOIN {$this->tableDv} dv ON dv.dv_id = ft.dv_id
+             LEFT JOIN {$this->tableBankAccounts} ba ON ba.bank_account_id = ft.bank_account_id
+             WHERE dv.dv_no = " . $this->str($dvNo) . '
+               AND ft.deleted_at IS NULL
+             LIMIT 1',
+            'DB'
+        ) ?: null;
     }
 
     // Not-yet-used check numbers for a bank account, sourced from the

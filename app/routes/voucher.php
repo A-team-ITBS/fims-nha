@@ -117,6 +117,25 @@ $app->get('/voucher/rfa/read/{id}', function ($request, $response, $args) use ($
     }
 })->add($accessMiddleware)->add($jwtMiddleware);
 
+// SARO picker options — fims.fund_tracking WHERE tracking type is 'SARO'. One SARO backs only one
+// DV at a time, so a SARO already used by another active voucher is left out entirely.
+// Optional: fiscal_yr, search, exclude_dv_id (so an in-progress edit keeps showing the SARO it
+// already uses)
+$app->get('/voucher/saro/all', function ($request, $response, $args) use ($VoucherService, $rfaFilterKeys) {
+    try {
+        $params      = $request->getQueryParams();
+        $filters     = array_intersect_key($params, array_flip($rfaFilterKeys));
+        $excludeDvId = $params['exclude_dv_id'] ?? null;
+        $result      = $VoucherService->fetchSaroOptions($filters, $excludeDvId !== null ? (int) $excludeDvId : null);
+
+        return $response->withJson($result, $result['success'] ? 200 : 500);
+    } catch (\Exception $e) {
+        LogError('GET /voucher/saro/all ' . $e->getMessage());
+
+        return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
+    }
+})->add($accessMiddleware)->add($jwtMiddleware);
+
 // Read one — numeric dv_id
 $app->get('/voucher/read/{id}', function ($request, $response, $args) use ($VoucherService) {
     try {
