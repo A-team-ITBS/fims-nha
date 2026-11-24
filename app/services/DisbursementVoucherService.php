@@ -1101,6 +1101,9 @@ class DisbursementVoucherService
             $from = "{$this->table} dv LEFT JOIN {$this->tableSettingsStatus} st ON st.id = dv.status_id";
 
             $where = ['1=1'];
+            if (($visible = $this->visibilitySql()) !== null) {
+                $where[] = $visible; // Originating sees only its own office's vouchers — see visibilitySql()
+            }
             if (!empty($filters['status'])) {
                 $where[] = 'st.name = ' . $this->str(strtoupper($filters['status']));
             }
@@ -1227,6 +1230,11 @@ class DisbursementVoucherService
                 'DB'
             );
             if (!$row) {
+                return ['success' => false, 'message' => "Disbursement Voucher #{$dvId} not found.", 'httpCode' => 404];
+            }
+            // Same rule as the list: an Originating user can't open another office's voucher by id (reported as "not found", not "forbidden").
+            if (($visible = $this->visibilitySql()) !== null
+                && (int) App\ExecuteScalar("SELECT COUNT(*) FROM {$this->table} dv WHERE dv.dv_id = {$dvId} AND {$visible}", 'DB') === 0) {
                 return ['success' => false, 'message' => "Disbursement Voucher #{$dvId} not found.", 'httpCode' => 404];
             }
 
@@ -2595,6 +2603,28 @@ class DisbursementVoucherService
 
             return ['success' => false, 'message' => 'Failed to update disbursement voucher.'];
         }
+    }
+
+    /**
+     * Row-level visibility for LISTING / READING vouchers: null = the user sees every voucher, otherwise a SQL predicate on the
+     * voucher aliased `dv` that keeps only what they may see.
+     *
+     * Superadmin and the offices that work the pipeline (STAGE_RC_LABEL: FMD, Accounting, Treasury — each holds vouchers created by
+     * other offices, so hiding those would stop them doing their review) see everything. Any other office is Originating: it sees only
+     * the vouchers created by a user of its own RC or of an RC under it (GlobalService::getRcIdsInScope(), so a regional office also
+     * sees its district offices'). A user with no RC is unrestricted, same convention as GlobalService::getUserRcScope().
+     */
+    private function visibilitySql(): ?string
+    {
+        $scope = GlobalService::getUserRcScope();
+        $rcId  = $scope['rc_id'] ?? null;
+        if ($scope['is_admin'] || $rcId === null || trim((string) $rcId) === '' || array_key_exists((string) $rcId, self::STAGE_RC_LABEL)) {
+            return null;
+        }
+        $rcIds = GlobalService::getRcIdsInScope((string) $rcId) ?: [(string) $rcId];
+        $in    = implode(', ', array_map(fn ($id) => $this->str($id), $rcIds));
+
+        return "dv.created_by IN (SELECT u.user_id FROM {$this->tableUsers} u WHERE u.rc_id IN ({$in}))";
     }
 
     /** The Responsibility Center (uac.users.rc_id) the current user's account belongs to, if any. */
