@@ -143,20 +143,25 @@ $brCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
                     </div>
 
                     <div class="br-recon-grid">
-                        <!-- PER BOOK -->
+                        <!-- PER BOOKS -->
                         <div class="br-recon-col">
-                            <div class="br-recon-col-title">PER BOOK</div>
+                            <div class="br-recon-col-title">PER BOOKS</div>
                             <div class="fims-form-group">
-                                <label class="fims-label">Book Balance <span class="br-hint">(ending ledger balance)</span></label>
+                                <label class="fims-label">Unreconciled Balance <span class="br-hint">(ending ledger balance)</span></label>
                                 <input type="text" class="fims-input br-mono" id="field-book-balance" readonly>
                             </div>
-                            <div class="br-recon-sub">Add: <span class="br-hint">(bank recorded, not yet in book)</span></div>
-                            <div class="fims-form-group"><label class="fims-label">Credit Memo</label><input type="number" step="0.01" class="fims-input br-mono" id="field-add-credit-memo" value="0"></div>
-                            <div class="fims-form-group"><label class="fims-label">Interest Income</label><input type="number" step="0.01" class="fims-input br-mono" id="field-add-interest-income" value="0"></div>
-                            <div class="br-recon-sub">Less: <span class="br-hint">(bank charged, not yet in book)</span></div>
-                            <div class="fims-form-group"><label class="fims-label">Debit Memo</label><input type="number" step="0.01" class="fims-input br-mono" id="field-less-debit-memo" value="0"></div>
+                            <div class="br-recon-sub">Add:</div>
+                            <div class="fims-form-group"><label class="fims-label">Unrecorded Deposits</label><input type="number" step="0.01" class="fims-input br-mono" id="field-add-unrecorded-deposit" value="0"></div>
+                            <div class="fims-form-group"><label class="fims-label">Unrecorded Credit Memo</label><input type="number" step="0.01" class="fims-input br-mono" id="field-add-credit-memo" value="0"></div>
+                            <div class="fims-form-group"><label class="fims-label">Unrecorded Interest Income</label><input type="number" step="0.01" class="fims-input br-mono" id="field-add-interest-income" value="0"></div>
+                            <div class="fims-form-group"><label class="fims-label">Book Error <span class="br-hint">(under recording of deposits / misposting)</span></label><input type="number" step="0.01" class="fims-input br-mono" id="field-add-book-error-under" value="0"></div>
+                            <div class="br-recon-sub">Less:</div>
+                            <div class="fims-form-group"><label class="fims-label">Unrecorded Debit Memo</label><input type="number" step="0.01" class="fims-input br-mono" id="field-less-debit-memo" value="0"></div>
+                            <div class="fims-form-group"><label class="fims-label">Unrecorded Withholding Tax</label><input type="number" step="0.01" class="fims-input br-mono" id="field-less-withholding-tax" value="0"></div>
+                            <div class="fims-form-group"><label class="fims-label">Unrecorded Bank Charges/Cost of Checkbooks</label><input type="number" step="0.01" class="fims-input br-mono" id="field-less-bank-charges" value="0"></div>
+                            <div class="fims-form-group"><label class="fims-label">Book Error <span class="br-hint">(over recording of deposits / misposting)</span></label><input type="number" step="0.01" class="fims-input br-mono" id="field-less-book-error-over" value="0"></div>
                             <div class="br-recon-total">
-                                <span>Adjusted Book Balance</span>
+                                <span>Reconciled Balance</span>
                                 <span class="br-mono" id="calc-adjusted-book">0.00</span>
                             </div>
                         </div>
@@ -165,28 +170,64 @@ $brCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
                         <div class="br-recon-col">
                             <div class="br-recon-col-title">PER BANK</div>
                             <div class="fims-form-group">
-                                <label class="fims-label">Bank Balance <span class="br-hint">(per bank statement)</span></label>
+                                <label class="fims-label">Unreconciled Balance <span class="br-hint">(per bank statement)</span></label>
                                 <input type="number" step="0.01" class="fims-input br-mono" id="field-bank-balance" value="0">
                                 <p class="br-hint" id="brSoaBalanceHint" style="margin:4px 2px 0;">No SOA uploaded for this account yet.</p>
                             </div>
-                            <div class="br-recon-sub">Add: Deposits in Transit</div>
-                            <ul class="br-item-list" id="brDepositsInTransitList"><li class="br-item-empty">None</li></ul>
+                            <div class="br-recon-sub">Add:</div>
                             <div class="fims-form-group">
+                                <label class="fims-label">Deposit in Transit</label>
+                                <ul class="br-item-list" id="brDepositsInTransitList"><li class="br-item-empty">None</li></ul>
                                 <input type="text" class="fims-input br-mono" id="field-add-deposit-in-transit" value="0.00" readonly>
                             </div>
-                            <div class="br-recon-sub">Less: Outstanding Checks</div>
-                            <ul class="br-item-list" id="brOutstandingChecksList"><li class="br-item-empty">None</li></ul>
+                            <div class="fims-form-group"><label class="fims-label">Bank Error <span class="br-hint">(under validation of deposits)</span></label><input type="number" step="0.01" class="fims-input br-mono" id="field-add-bank-error-under" value="0"></div>
+                            <div class="br-recon-sub">Less:</div>
                             <div class="fims-form-group">
+                                <label class="fims-label">Outstanding Checks</label>
+                                <ul class="br-item-list" id="brOutstandingChecksList"><li class="br-item-empty">None</li></ul>
                                 <input type="text" class="fims-input br-mono" id="field-less-outstanding-check" value="0.00" readonly>
                             </div>
+                            <div class="fims-form-group"><label class="fims-label">Bank Error <span class="br-hint">(over validation of deposits)</span></label><input type="number" step="0.01" class="fims-input br-mono" id="field-less-bank-error-over" value="0"></div>
                             <div class="br-recon-total">
-                                <span>Adjusted Bank Balance</span>
+                                <span>Reconciled Balance</span>
                                 <span class="br-mono" id="calc-adjusted-bank">0.00</span>
                             </div>
                         </div>
                     </div>
 
                     <div id="brStatusBanner" class="br-status-banner" style="display:none;"></div>
+
+                    <!-- ══════════════════════════════════════════════
+                         Adjusting Journal Entry Voucher — drafts the GL entry for the
+                         Per Books Add/Less items above (Bank Error is excluded: it's the
+                         bank's own error, not something NHA's books post). Save the
+                         reconciliation first; this panel only appears once it has a
+                         reconciliation_id.
+                    ══════════════════════════════════════════════ -->
+                    <div id="brJevPanel" class="br-jev-panel" style="display:none;margin-top:14px;">
+                        <div class="br-recon-col-title" style="text-align:left;">Adjusting Journal Entry</div>
+
+                        <div id="brJevAlreadyPosted" style="display:none;" class="br-jev-posted"></div>
+
+                        <div id="brJevForm" style="display:none;">
+                            <p class="br-hint" style="margin:0 0 8px;">These Per Books amounts aren't in the General Ledger yet. Pick a contra account for each, choose a Book, and post the adjusting entry — once reconciled, it posts straight to the General Ledger (no separate Accounting review step).</p>
+                            <div class="fims-form-group" style="max-width:260px;">
+                                <label class="fims-label">Book</label>
+                                <select class="fims-select" id="field-jev-book"></select>
+                            </div>
+                            <table class="fims-table" style="margin-top:6px;">
+                                <thead><tr><th>Item</th><th class="text-right" style="width:140px">Amount</th><th style="width:280px">Contra Account</th></tr></thead>
+                                <tbody id="brJevItemsBody"></tbody>
+                            </table>
+                            <button type="button" class="fims-btn fims-btn-outline fims-btn-sm" id="brPostJevBtn" style="margin-top:10px;">
+                                <i class="fas fa-file-invoice mr-1"></i>Post Adjusting JEV to GL
+                            </button>
+                        </div>
+
+                        <p id="brJevNothingToPost" class="br-hint" style="display:none;">No Per Books Add/Less amounts to post yet.</p>
+                        <p id="brJevNeedsSave" class="br-hint" style="display:none;">Save this reconciliation first to post an adjusting JEV.</p>
+                        <p id="brJevNeedsReconciled" class="br-hint" style="display:none;">Unreconciled — adjust the Per Bank side until the Adjusted Book and Adjusted Bank balances match before an adjusting entry can post.</p>
+                    </div>
 
                     <div class="fims-form-group" style="margin-top:12px;">
                         <label class="fims-label">Remarks</label>
@@ -250,6 +291,14 @@ html.afims-dark[data-bs-theme="dark"] #brModule .app-page-header-actions .fims-b
 #brModule .br-status-banner.reconciled { background:#E6F6EC; color:#157347; border:1px solid #B7E4C7; }
 #brModule .br-status-banner.unreconciled { background:#FDECEC; color:#B42318; border:1px solid #F3C6C6; }
 
+#brModule .br-jev-panel { border:1px solid var(--fims-border,#E4ECF2); border-radius:8px; padding:12px; }
+#brModule .br-jev-posted { padding:8px 10px; border-radius:6px; background:#E6F0FD; color:#0B5FFF; font-size:13px; font-weight:600; }
+#brModule .br-jev-account-cell { position:relative; }
+#brModule .br-jev-account-search { width:100%; }
+#brModule .br-jev-account-dropdown { display:none; position:absolute; top:100%; left:0; right:0; margin-top:2px; background:#fff; border:1px solid #E4ECF2; border-radius:6px; max-height:160px; overflow-y:auto; z-index:1002; box-shadow:0 4px 12px rgba(0,0,0,.1); }
+#brModule .br-jev-account-item { padding:7px 10px; cursor:pointer; font-size:12px; border-bottom:1px solid #E4ECF2; }
+#brModule .br-jev-account-item:hover { background:#F4F7FA; }
+
 html.afims-dark[data-bs-theme="dark"] #brModule { color-scheme:dark; }
 html.afims-dark[data-bs-theme="dark"] #brModule .fims-btn-primary { background:#3861BC; border-color:#3861BC; color:#fff; }
 html.afims-dark[data-bs-theme="dark"] #brModule .fims-btn-primary:hover { background:#2E59B8; color:#fff; }
@@ -263,6 +312,11 @@ html.afims-dark[data-bs-theme="dark"] #brModule .br-soa-tag-soa { background:#15
 html.afims-dark[data-bs-theme="dark"] #brModule .br-soa-tag-manual { background:#3A2A10; color:#F0B35E; }
 html.afims-dark[data-bs-theme="dark"] #brModule .br-status-banner.reconciled { background:#123524; color:#8FE3B3; border-color:#1F5A3B; }
 html.afims-dark[data-bs-theme="dark"] #brModule .br-status-banner.unreconciled { background:#3A1414; color:#F5A3A3; border-color:#6B2222; }
+html.afims-dark[data-bs-theme="dark"] #brModule .br-jev-panel { border-color:var(--afims-border-strong, #4A5270); }
+html.afims-dark[data-bs-theme="dark"] #brModule .br-jev-posted { background:#15294D; color:#8FB8FF; }
+html.afims-dark[data-bs-theme="dark"] #brModule .br-jev-account-dropdown { background:var(--afims-surface, #1A1F38); border-color:var(--afims-border-strong, #4A5270); }
+html.afims-dark[data-bs-theme="dark"] #brModule .br-jev-account-item { border-color:var(--afims-border-strong, #4A5270); color:var(--afims-text, #E4ECF2); }
+html.afims-dark[data-bs-theme="dark"] #brModule .br-jev-account-item:hover { background:var(--afims-surface-subtle, #22294A); }
 </style>
 
 <script>
@@ -377,8 +431,14 @@ html.afims-dark[data-bs-theme="dark"] #brModule .br-status-banner.unreconciled {
     document.getElementById('brSearch').addEventListener('keydown', function (e) { if (e.key === 'Enter') loadList(); });
 
     // ── Reconciliation modal ──
-    const ADD_FIELD_IDS = ['field-add-credit-memo', 'field-add-interest-income', 'field-less-debit-memo', 'field-bank-balance'];
+    const ADD_FIELD_IDS = [
+        'field-add-unrecorded-deposit', 'field-add-credit-memo', 'field-add-interest-income', 'field-add-book-error-under',
+        'field-less-debit-memo', 'field-less-withholding-tax', 'field-less-bank-charges', 'field-less-book-error-over',
+        'field-add-bank-error-under', 'field-less-bank-error-over',
+        'field-bank-balance',
+    ];
     let currentBankAccountId = null;
+    let currentReconciliationId = null;
 
     function clearReconModal() {
         document.getElementById('field-bank-account-id').value = '';
@@ -397,20 +457,30 @@ html.afims-dark[data-bs-theme="dark"] #brModule .br-status-banner.unreconciled {
         document.getElementById('brDepositsInTransitList').innerHTML = '<li class="br-item-empty">None</li>';
         document.getElementById('brOutstandingChecksList').innerHTML = '<li class="br-item-empty">None</li>';
         currentBankAccountId = null;
+        currentReconciliationId = null;
+        document.getElementById('brJevPanel').style.display = 'none';
         recompute();
     }
 
     function recompute() {
         const bookBalance = Number(document.getElementById('field-book-balance').value) || 0;
+        const addUnrecordedDeposit = Number(document.getElementById('field-add-unrecorded-deposit').value) || 0;
         const addCm = Number(document.getElementById('field-add-credit-memo').value) || 0;
         const addInt = Number(document.getElementById('field-add-interest-income').value) || 0;
+        const addBookErrorUnder = Number(document.getElementById('field-add-book-error-under').value) || 0;
         const lessDm = Number(document.getElementById('field-less-debit-memo').value) || 0;
-        const adjBook = bookBalance + addCm + addInt - lessDm;
+        const lessWht = Number(document.getElementById('field-less-withholding-tax').value) || 0;
+        const lessBankCharges = Number(document.getElementById('field-less-bank-charges').value) || 0;
+        const lessBookErrorOver = Number(document.getElementById('field-less-book-error-over').value) || 0;
+        const adjBook = bookBalance + addUnrecordedDeposit + addCm + addInt + addBookErrorUnder
+            - lessDm - lessWht - lessBankCharges - lessBookErrorOver;
 
         const bankBalance = Number(document.getElementById('field-bank-balance').value) || 0;
         const addDit = Number(document.getElementById('field-add-deposit-in-transit').value) || 0;
+        const addBankErrorUnder = Number(document.getElementById('field-add-bank-error-under').value) || 0;
         const lessOc = Number(document.getElementById('field-less-outstanding-check').value) || 0;
-        const adjBank = bankBalance + addDit - lessOc;
+        const lessBankErrorOver = Number(document.getElementById('field-less-bank-error-over').value) || 0;
+        const adjBank = bankBalance + addDit + addBankErrorUnder - lessOc - lessBankErrorOver;
 
         document.getElementById('calc-adjusted-book').textContent = peso(adjBook);
         document.getElementById('calc-adjusted-bank').textContent = peso(adjBank);
@@ -420,7 +490,7 @@ html.afims-dark[data-bs-theme="dark"] #brModule .br-status-banner.unreconciled {
         banner.style.display = 'block';
         banner.className = 'br-status-banner ' + (reconciled ? 'reconciled' : 'unreconciled');
         banner.innerHTML = reconciled
-            ? '<i class="fas fa-check-circle mr-1"></i>Reconciled — both adjusted balances match.'
+            ? '<i class="fas fa-check-circle mr-1"></i>Reconciled — both reconciled balances match.'
             : '<i class="fas fa-triangle-exclamation mr-1"></i>Unreconciled — difference of ' + peso(Math.abs(adjBook - adjBank)) + '.';
 
         return { adjBook, adjBank };
@@ -559,13 +629,22 @@ html.afims-dark[data-bs-theme="dark"] #brModule .br-status-banner.unreconciled {
         document.getElementById('field-bank-account-id').value = d.bank_account_id;
         document.getElementById('field-bank-account-id').disabled = true; // editing an existing reconciliation — the bank account is fixed, changing it would silently start a different record
         document.getElementById('field-period').value = String(d.period_year) + '-' + String(d.period_month).padStart(2, '0');
+        document.getElementById('field-add-unrecorded-deposit').value = d.add_unrecorded_deposit;
         document.getElementById('field-add-credit-memo').value = d.add_credit_memo;
         document.getElementById('field-add-interest-income').value = d.add_interest_income;
+        document.getElementById('field-add-book-error-under').value = d.add_book_error_under;
         document.getElementById('field-less-debit-memo').value = d.less_debit_memo;
+        document.getElementById('field-less-withholding-tax').value = d.less_withholding_tax;
+        document.getElementById('field-less-bank-charges').value = d.less_bank_charges;
+        document.getElementById('field-less-book-error-over').value = d.less_book_error_over;
+        document.getElementById('field-add-bank-error-under').value = d.add_bank_error_under;
+        document.getElementById('field-less-bank-error-over').value = d.less_bank_error_over;
         document.getElementById('field-bank-balance').value = d.bank_balance;
         document.getElementById('field-bank-balance').dataset.touched = '1'; // preserve the saved figure — don't let loadLedger() overwrite it with the live SOA balance
         document.getElementById('field-remarks').value = d.remarks || '';
+        currentReconciliationId = d.reconciliation_id;
         loadLedger(d.bank_account_id, document.getElementById('field-period').value);
+        loadJevPanel(currentReconciliationId);
     }
 
     // bankAccountId: pre-select the Bank dropdown (new or edit alike).
@@ -596,6 +675,154 @@ html.afims-dark[data-bs-theme="dark"] #brModule .br-status-banner.unreconciled {
     }
     document.getElementById('brAddBtn').addEventListener('click', function () { openReconModal(null, null); });
 
+    // ── Adjusting Journal Entry Voucher panel ──────────────────────────
+    let jevBooksLoaded = false;
+    function loadJevBooks() {
+        if (jevBooksLoaded) return Promise.resolve();
+        jevBooksLoaded = true;
+        return fetch('/api/books/all', { headers: authHeaders() })
+            .then(r => r.json())
+            .then(function (json) {
+                const rows = (json && json.data) ? json.data : [];
+                document.getElementById('field-jev-book').innerHTML = rows.map(b => '<option value="' + b.book_id + '">' + escapeHtml(b.name) + '</option>').join('');
+            })
+            .catch(() => {});
+    }
+
+    function jevAccountCellHtml(itemKey, defaultAccount) {
+        const val = defaultAccount || '';
+        return '<div class="br-jev-account-cell">' +
+            '<input type="hidden" class="jev-account-code" data-item="' + itemKey + '" value="' + escapeHtml(val) + '">' +
+            '<input type="text" class="fims-input fims-input-sm br-jev-account-search" data-item="' + itemKey + '" placeholder="Search GL account…" value="' + escapeHtml(val) + '">' +
+            '<div class="br-jev-account-dropdown"></div>' +
+            '</div>';
+    }
+
+    function bindJevAccountSearch(input) {
+        let timer;
+        const wrap = input.closest('.br-jev-account-cell');
+        const dropdown = wrap.querySelector('.br-jev-account-dropdown');
+        const hidden = wrap.querySelector('.jev-account-code');
+        input.addEventListener('input', function () {
+            hidden.value = ''; // typing invalidates the previously picked/defaulted code until a suggestion is clicked
+            const q = input.value.trim();
+            clearTimeout(timer);
+            if (!q) { dropdown.style.display = 'none'; return; }
+            timer = setTimeout(function () {
+                fetch('/api/accounting/coa/search?q=' + encodeURIComponent(q) + '&limit=15', { headers: authHeaders() })
+                    .then(r => r.json())
+                    .then(function (json) {
+                        const rows = (json && json.data) ? json.data : [];
+                        if (!rows.length) {
+                            dropdown.innerHTML = '<div class="br-jev-account-item">No matches.</div>';
+                            dropdown.style.display = 'block';
+                            return;
+                        }
+                        dropdown.innerHTML = rows.map(a =>
+                            '<div class="br-jev-account-item" data-code="' + escapeHtml(a.account_code) + '" data-title="' + escapeHtml(a.account_title) + '"><strong>' + escapeHtml(a.account_code) + '</strong> — ' + escapeHtml(a.account_title) + '</div>'
+                        ).join('');
+                        dropdown.style.display = 'block';
+                        dropdown.querySelectorAll('.br-jev-account-item[data-code]').forEach(function (item) {
+                            item.addEventListener('click', function () {
+                                hidden.value = this.dataset.code;
+                                input.value = this.dataset.code + ' — ' + this.dataset.title;
+                                dropdown.style.display = 'none';
+                            });
+                        });
+                    })
+                    .catch(() => {});
+            }, 300);
+        });
+        document.addEventListener('click', function (e) { if (!wrap.contains(e.target)) dropdown.style.display = 'none'; });
+    }
+
+    function postAdjustingJevRequest(bookId, contraAccounts) {
+        return fetch(API + '/' + currentReconciliationId + '/post-jev', {
+            method: 'POST', headers: jsonHeaders(),
+            body: JSON.stringify({ book_id: bookId, contra_accounts: contraAccounts }),
+        })
+            .then(r => r.json())
+            .then(function (json) {
+                if (!json || !json.success) { toast((json && json.message) || 'Could not post the adjusting JEV.', true); return; }
+                toast(json.data.message || ('Adjusting JEV ' + json.data.jev_no + ' posted.'), !json.data.posted);
+                loadJevPanel(currentReconciliationId);
+            })
+            .catch(() => toast('Could not reach the server.', true));
+    }
+
+    function loadJevPanel(reconciliationId) {
+        const panel = document.getElementById('brJevPanel');
+        const alreadyEl = document.getElementById('brJevAlreadyPosted');
+        const formEl = document.getElementById('brJevForm');
+        const nothingEl = document.getElementById('brJevNothingToPost');
+        const needsSaveEl = document.getElementById('brJevNeedsSave');
+        const needsReconciledEl = document.getElementById('brJevNeedsReconciled');
+        panel.style.display = 'block';
+        [alreadyEl, formEl, nothingEl, needsSaveEl, needsReconciledEl].forEach(el => el.style.display = 'none');
+
+        if (!reconciliationId) {
+            needsSaveEl.style.display = 'block';
+            return;
+        }
+
+        fetch(API + '/' + reconciliationId + '/jev-preview', { headers: authHeaders() })
+            .then(r => r.json())
+            .then(function (json) {
+                if (!json || !json.success) { toast((json && json.message) || 'Could not load the adjusting JEV preview.', true); return; }
+                const d = json.data;
+                if (d.already_posted) {
+                    alreadyEl.style.display = 'block';
+                    const posted = d.jev_status === 'POSTED';
+                    alreadyEl.innerHTML = '<i class="fas fa-check-circle mr-1"></i>Adjusting JEV <strong>' + escapeHtml(d.jev_no) + '</strong> '
+                        + (posted ? 'posted to the General Ledger' : ('created (status: ' + escapeHtml(d.jev_status || 'unknown') + ')')) + ' for this reconciliation.';
+                    return;
+                }
+                if (!d.items.length) {
+                    nothingEl.style.display = 'block';
+                    return;
+                }
+                if (d.status !== 'RECONCILED') {
+                    needsReconciledEl.style.display = 'block';
+                    return;
+                }
+                if (d.auto_postable) {
+                    // Every item already resolves to a default contra account and the reconciliation
+                    // is Reconciled — post straight to the GL, no click needed.
+                    loadJevBooks().then(function () {
+                        const bookSel = document.getElementById('field-jev-book');
+                        const contraAccounts = {};
+                        d.items.forEach(it => { contraAccounts[it.key] = it.default_account; });
+                        postAdjustingJevRequest(bookSel.value, contraAccounts);
+                    });
+                    return;
+                }
+                formEl.style.display = 'block';
+                loadJevBooks();
+                const tbody = document.getElementById('brJevItemsBody');
+                tbody.innerHTML = d.items.map(it =>
+                    '<tr><td>' + escapeHtml(it.label) + ' <span class="fims-badge ' + (it.side === 'add' ? 'fims-badge-green' : 'fims-badge-red') + '">' + (it.side === 'add' ? 'Add' : 'Less') + '</span></td>' +
+                    '<td class="text-right br-mono">' + peso(it.amount) + '</td>' +
+                    '<td>' + jevAccountCellHtml(it.key, it.default_account) + '</td></tr>'
+                ).join('');
+                tbody.querySelectorAll('.br-jev-account-search').forEach(bindJevAccountSearch);
+            })
+            .catch(() => toast('Could not reach the server.', true));
+    }
+
+    document.getElementById('brPostJevBtn').addEventListener('click', function () {
+        if (!currentReconciliationId) { toast('Save the reconciliation first.', true); return; }
+        const bookId = document.getElementById('field-jev-book').value;
+        if (!bookId) { toast('Select a Book.', true); return; }
+        const contraAccounts = {};
+        document.querySelectorAll('#brJevItemsBody .jev-account-code').forEach(function (hidden) {
+            if (hidden.value) contraAccounts[hidden.dataset.item] = hidden.value;
+        });
+
+        this.disabled = true;
+        postAdjustingJevRequest(bookId, contraAccounts)
+            .finally(() => { document.getElementById('brPostJevBtn').disabled = false; });
+    });
+
     document.getElementById('brSaveBtn').addEventListener('click', function () {
         const bankAccountId = document.getElementById('field-bank-account-id').value;
         const period = document.getElementById('field-period').value;
@@ -608,10 +835,17 @@ html.afims-dark[data-bs-theme="dark"] #brModule .br-status-banner.unreconciled {
             period_year: year,
             period_month: month,
             book_balance: document.getElementById('field-book-balance').value,
+            add_unrecorded_deposit: document.getElementById('field-add-unrecorded-deposit').value,
             add_credit_memo: document.getElementById('field-add-credit-memo').value,
             add_interest_income: document.getElementById('field-add-interest-income').value,
+            add_book_error_under: document.getElementById('field-add-book-error-under').value,
             less_debit_memo: document.getElementById('field-less-debit-memo').value,
+            less_withholding_tax: document.getElementById('field-less-withholding-tax').value,
+            less_bank_charges: document.getElementById('field-less-bank-charges').value,
+            less_book_error_over: document.getElementById('field-less-book-error-over').value,
             bank_balance: document.getElementById('field-bank-balance').value,
+            add_bank_error_under: document.getElementById('field-add-bank-error-under').value,
+            less_bank_error_over: document.getElementById('field-less-bank-error-over').value,
             remarks: document.getElementById('field-remarks').value.trim(),
         };
 
@@ -621,8 +855,10 @@ html.afims-dark[data-bs-theme="dark"] #brModule .br-status-banner.unreconciled {
             .then(function (json) {
                 if (!json || !json.success) { toast((json && json.message) || 'Save failed.', true); return; }
                 toast('Bank reconciliation saved.');
-                closeModal('m-br-recon');
+                currentReconciliationId = json.data.reconciliation_id;
+                document.getElementById('field-bank-account-id').disabled = true; // now an existing record
                 loadList();
+                loadJevPanel(currentReconciliationId); // stay open so Add/Less amounts can be posted as a JEV right away
             })
             .catch(() => toast('Could not reach the server.', true))
             .finally(() => { document.getElementById('brSaveBtn').disabled = false; });
