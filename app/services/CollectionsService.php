@@ -708,10 +708,21 @@ class CollectionsService
         // account's OWN title (chart_of_accounts.account_title for that code), not the
         // officer's name — same "code alone isn't readable" reasoning account_title
         // already gets for every other line here.
-        $collectingOfficerSlCode = trim((string) ($report['collecting_officer_sl_code'] ?? '')) ?: null;
-        $collectingOfficerSlName = $collectingOfficerSlCode
-            ? App\ExecuteScalar("SELECT account_title FROM {$this->tableCoa} WHERE account_code = " . $this->str($collectingOfficerSlCode), 'DB')
-            : null;
+        // collecting_officers.sl_code actually holds the SL's chart_of_accounts.account_id
+        // (CollectingOfficerService joins it on s.account_id), so resolve it to the real
+        // account_code + title. Fall back to a code match for any legacy row storing a code.
+        $rawSl = trim((string) ($report['collecting_officer_sl_code'] ?? ''));
+        $collectingOfficerSlCode = null;
+        $collectingOfficerSlName = null;
+        if ($rawSl !== '') {
+            $slRow = null;
+            $slRow = App\ExecuteRow("SELECT account_code, account_title FROM {$this->tableCoa} WHERE account_id = " . $this->str($rawSl), 'DB');
+            if (!$slRow) {
+                $slRow = App\ExecuteRow("SELECT account_code, account_title FROM {$this->tableCoa} WHERE account_code = " . $this->str($rawSl), 'DB');
+            }
+            $collectingOfficerSlCode = $slRow['account_code'] ?? $rawSl;
+            $collectingOfficerSlName = $slRow['account_title'] ?? null;
+        }
 
         if ($leg === 'collection') {
             $lines = App\ExecuteRowsAssociative(
