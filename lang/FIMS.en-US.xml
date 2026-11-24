@@ -153,7 +153,7 @@
       <phrase id="menutext" value="Ledgers" />
     </menu>
     <menu id="393">
-      <phrase id="menutext" value="General Ledger / Subsidiary Ledger" />
+      <phrase id="menutext" value="General / Subsidiary Ledger" />
     </menu>
     <menu id="395">
       <phrase id="menutext" value="Subsidiary Ledger" />
