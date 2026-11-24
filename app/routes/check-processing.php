@@ -30,6 +30,16 @@ $app->get("/check-processing/preparation/dvs-for-prep", function ($request, $res
     return $response->withHeader('Content-Type', 'application/json')->write($service->getDvsForPrep($request->getQueryParams()));
 });
 
+// The SARO linked to a DV (fims.fund_tracking.dv_id), with its bank account resolved — auto-fills
+// #prepBankAccount in the Prepare Check modal once a DV is selected. ?dv_no=... -> {success, data|null}
+$app->get("/check-processing/dv-saro", function ($request, $response) {
+    $service = new Service\CheckProcessingService();
+    $dvNo    = (string) ($request->getQueryParams()['dv_no'] ?? '');
+    $result  = ['success' => true, 'data' => $service->getSaroForDv($dvNo)];
+
+    return $response->withHeader('Content-Type', 'application/json')->write(json_encode($result));
+});
+
 $app->get("/check-processing/preparation/unused-checks/{bankId}", function ($request, $response, $args) {
     $service = new Service\CheckProcessingService();
     return $response->withHeader('Content-Type', 'application/json')->write($service->getUnusedChecks($args['bankId']));

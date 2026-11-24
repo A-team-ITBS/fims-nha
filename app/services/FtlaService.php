@@ -1180,14 +1180,23 @@ class FtlaService
                 GlobalService::logStatusChange(self::STATUS_LOG_FOR, $ftId, $newStatus, $userId, $remarks ?: null);
             }
 
-            // Tell the user the Payment JEV actually got posted here, rather
-            // than the generic status message alone — this transition IS
-            // what triggers submitPaymentJev() above, with no separate
-            // "Create JEV" step anywhere else in this module anymore.
+            // Tell the user whether the Payment JEV actually got posted here,
+            // rather than the generic status message alone — this transition
+            // IS what triggers submitPaymentJev() above, with no separate
+            // "Create JEV" step anywhere else in this module anymore. Also
+            // cover its documented no-op case (jev_id null, success true —
+            // every linked DV's own SETUP JEV never routed through Accounts
+            // Payable, so there's genuinely nothing to post): silently
+            // saying nothing there reads as "JEV creation stopped working"
+            // when the FTLA still advances to SUBMITTED_TO_ACCOUNTING.
             $message = $newStatus ? "FTLA is now {$newStatus}." : "FTLA {$cur['ftla_number']} updated successfully.";
-            if ($newStatus === 'SUBMITTED_TO_ACCOUNTING' && !empty($jevResult['jev_id'])) {
-                $jevNo = App\ExecuteScalar("SELECT jev_no FROM {$this->tableJev} WHERE jev_id = " . (int) $jevResult['jev_id'], 'DB');
-                $message .= $jevNo ? " Payment JEV {$jevNo} posted." : ' Payment JEV posted.';
+            if ($newStatus === 'SUBMITTED_TO_ACCOUNTING') {
+                if (!empty($jevResult['jev_id'])) {
+                    $jevNo = App\ExecuteScalar("SELECT jev_no FROM {$this->tableJev} WHERE jev_id = " . (int) $jevResult['jev_id'], 'DB');
+                    $message .= $jevNo ? " Payment JEV {$jevNo} posted." : ' Payment JEV posted.';
+                } else {
+                    $message .= ' No Payment JEV was created — none of the linked DV(s) had an amount routed through Accounts Payable to settle.';
+                }
             }
 
             return [

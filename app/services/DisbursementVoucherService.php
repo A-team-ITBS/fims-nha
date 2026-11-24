@@ -83,6 +83,8 @@ class DisbursementVoucherService
     private string $tableSettingsStatus  = 'fims.settings_status';
     private string $tableBudgetCategory  = 'fims.budget_category';
     private string $tableRfaProjects     = 'fims.budget_allocation_project';
+    private string $tableFundTracking    = 'fims.fund_tracking';
+    private string $tableBankAccounts    = 'fims.bank_accounts';
 
     // Classification tag only (reporting/filtering) — never changes which fields the voucher form
     // shows. NOT a manual/pickable field: it is derived server-side from the voucher's own
@@ -304,6 +306,30 @@ class DisbursementVoucherService
         }
         $fields['requesting_department_id']  = null; // fims.budget_allocation now keys its requesting office by requesting_rc_id (a Responsibility Center), which doesn't fit this INTEGER column — see "14 - budget_allocation_requesting_department_id_to_requesting_rc_id.sql"
         $fields['_rfaRows'] = $rfas; // internal only — never persisted as a DV column, see linkRfas()
+
+        // SARO — soft reference into fims.fund_tracking (one SARO per DV, unlike the RFA list above):
+        // the link lives entirely on the SARO SIDE (fund_tracking.dv_id — see "03 - alter_table/61 -
+        // fund_tracking_add_dv_bank_account.sql") — this table carries no SARO column of its own. The
+        // actual linking (fund_tracking.dv_id set/cleared) happens in create()/update() after this
+        // voucher's own row is written — see linkSaro(). Optional: a DV need not cite a SARO.
+        $saroIdRaw = trim((string) ($body['saro_id'] ?? ''));
+        $saroRow = null;
+        if ($saroIdRaw !== '') {
+            if (!ctype_digit($saroIdRaw)) {
+                $errors[] = 'saro_id must be numeric.';
+            } else {
+                $saroRow = App\ExecuteRow(
+                    "SELECT ft.id, ft.saro_id, ft.dv_id, ft.bank_account_id
+                     FROM {$this->tableFundTracking} ft
+                     WHERE ft.id = " . (int) $saroIdRaw . ' AND ft.deleted_at IS NULL',
+                    'DB'
+                );
+                if (!$saroRow) {
+                    $errors[] = "SARO #{$saroIdRaw} does not exist.";
+                }
+            }
+        }
+        $fields['_saroRow'] = $saroRow; // internal only — never persisted as a DV column, see linkSaro()
 
         // Payroll DV (optional): the imported payroll month this voucher pays (Payroll Management —
         // PayrollManagementService). Validated / linked in create()/update() (payroll_records.disbursement_voucher_id).
@@ -727,6 +753,45 @@ class DisbursementVoucherService
     }
 
     /**
+     * Points $saroRow (prepare()'s `_saroRow`, or null — "no SARO selected") at $dvId —
+     * fims.fund_tracking.dv_id — and clears dv_id back to NULL on whatever OTHER fund_tracking row
+     * used to point at $dvId (a SARO that was unlinked/swapped out in this save). One DV cites at
+     * most one SARO at a time (unlike RFAs, which a DV can cite several of — see linkRfas()), so
+     * this is the single-value equivalent. Refuses (returns the error message) to steal a SARO
+     * that's currently linked to a DIFFERENT, still-active (non-CANCELLED/REJECTED) DV — same rule
+     * linkRfas() enforces for RFAs. Called from inside create()/update()'s own transaction, after
+     * this voucher's own row has been written (so $dvId is known) — a non-null return should
+     * trigger a ROLLBACK, same as a linkRfas() failure.
+     */
+    private function linkSaro(int $dvId, ?array $saroRow): ?string
+    {
+        $newId = $saroRow ? (int) $saroRow['id'] : null;
+
+        if ($saroRow) {
+            $otherDvId = isset($saroRow['dv_id']) ? (int) $saroRow['dv_id'] : null;
+            if ($otherDvId !== null && $otherDvId !== $dvId) {
+                $other = App\ExecuteRow(
+                    "SELECT dv.dv_no, st.name AS status FROM {$this->table} dv
+                     LEFT JOIN {$this->tableSettingsStatus} st ON st.id = dv.status_id
+                     WHERE dv.dv_id = {$otherDvId}",
+                    'DB'
+                );
+                if ($other && !in_array($other['status'], ['CANCELLED', 'REJECTED'], true)) {
+                    return "SARO '{$saroRow['saro_id']}' is already linked to Disbursement Voucher {$other['dv_no']} and cannot be selected here.";
+                }
+            }
+        }
+
+        $keep = $newId ?: 0;
+        App\Execute("UPDATE {$this->tableFundTracking} SET dv_id = NULL WHERE dv_id = {$dvId} AND id <> {$keep}", 'DB');
+        if ($newId) {
+            App\Execute("UPDATE {$this->tableFundTracking} SET dv_id = {$dvId} WHERE id = {$newId}", 'DB');
+        }
+
+        return null;
+    }
+
+    /**
      * Stamps budget_amount (ceiling, from po_amount or summed line_transaction) plus paid_amount /
      * remaining_balance onto an RFA row. paid_amount is usually 0 now that one RFA only ever points
      * at one DV at a time (budget_allocation.dv_id — see linkRfas()); it stays non-zero only for a
@@ -927,6 +992,57 @@ class DisbursementVoucherService
             App\LogError('DisbursementVoucherService::fetchRfaOptions ' . $e->getMessage());
 
             return ['success' => false, 'message' => 'Failed to load RFAs.'];
+        }
+    }
+
+    /**
+     * SARO picker options — fims.fund_tracking WHERE tracking_type_id resolves to 'SARO' (fims.
+     * fund_tracking_type.fund_tracking_code). One SARO backs only one DV at a time (fund_tracking.
+     * dv_id — see linkSaro()), so a SARO already linked to a DIFFERENT, still-active DV is left out
+     * entirely; $excludeDvId is the DV currently being edited, so its own already-linked SARO keeps
+     * showing (as "already yours", not "taken by someone else"). Also resolves the SARO's own
+     * bank account (bank_account_id -> fims.bank_accounts), so the picker can show it alongside the
+     * SARO reference number without a second round trip.
+     */
+    public function fetchSaroOptions(array $filters = [], ?int $excludeDvId = null): array
+    {
+        try {
+            $saroTypeId = (int) (App\ExecuteScalar(
+                "SELECT fund_tracking_type_id FROM fims.fund_tracking_type WHERE UPPER(fund_tracking_code) = 'SARO' AND deleted_at IS NULL LIMIT 1",
+                'DB'
+            ) ?: 0);
+            if (!$saroTypeId) {
+                return ['success' => true, 'data' => []]; // 'SARO' isn't configured as a tracking type — nothing to offer
+            }
+
+            $available = "(ft.dv_id IS NULL" . ($excludeDvId !== null ? " OR ft.dv_id = {$excludeDvId}" : '') . ' OR ft.dv_id IN ('
+                . "SELECT dv.dv_id FROM {$this->table} dv LEFT JOIN {$this->tableSettingsStatus} st ON st.id = dv.status_id WHERE st.name IN ('CANCELLED', 'REJECTED')))";
+
+            $where = ['ft.deleted_at IS NULL', "ft.tracking_type_id = {$saroTypeId}", $available];
+            if (!empty($filters['fiscal_yr'])) {
+                $where[] = 'ft.fiscal_year = ' . (int) $filters['fiscal_yr'];
+            }
+            if (!empty($filters['search'])) {
+                $kw = App\QuotedValue('%' . $filters['search'] . '%', App\DataType::STRING, 'DB');
+                $where[] = "ft.saro_id ILIKE {$kw}";
+            }
+            $whereSql = implode(' AND ', $where);
+
+            $rows = App\ExecuteRows(
+                "SELECT ft.id, ft.saro_id, ft.fiscal_year, ft.description, ft.amount, ft.unreleased, ft.dv_id,
+                        ft.bank_account_id, ba.account_name, ba.account_number, ba.bank_name
+                 FROM {$this->tableFundTracking} ft
+                 LEFT JOIN {$this->tableBankAccounts} ba ON ba.bank_account_id = ft.bank_account_id
+                 WHERE {$whereSql}
+                 ORDER BY ft.id DESC",
+                'DB'
+            ) ?: [];
+
+            return ['success' => true, 'data' => $rows];
+        } catch (\Exception $e) {
+            App\LogError('DisbursementVoucherService::fetchSaroOptions ' . $e->getMessage());
+
+            return ['success' => false, 'message' => 'Failed to load SAROs.'];
         }
     }
 
@@ -1261,6 +1377,20 @@ class DisbursementVoucherService
                     'DB'
                 ) ?: []
             )));
+
+            // The SARO currently linked to this DV, if any — the link lives on the SARO side
+            // (fund_tracking.dv_id, see linkSaro()), same reverse-lookup idea as `rfas` above. What
+            // the form's single-select repopulates from, and what Check Preparation's auto-fill
+            // (CheckProcessingService::getSaroForDv()) reads too.
+            $row['saro'] = App\ExecuteRow(
+                "SELECT ft.id, ft.saro_id, ft.fiscal_year, ft.description, ft.amount, ft.unreleased,
+                        ft.bank_account_id, ba.account_name, ba.account_number, ba.bank_name
+                 FROM {$this->tableFundTracking} ft
+                 LEFT JOIN {$this->tableBankAccounts} ba ON ba.bank_account_id = ft.bank_account_id
+                 WHERE ft.dv_id = {$dvId} AND ft.deleted_at IS NULL
+                 LIMIT 1",
+                'DB'
+            ) ?: null;
 
             // Supporting Documents attached to this voucher, if any (same attachment convention as
             // fims.budget_allocation — see FileUploadServices::attachmentsFor()).
@@ -2445,6 +2575,13 @@ class DisbursementVoucherService
                     return ['success' => false, 'message' => $rfaError];
                 }
 
+                $saroError = $this->linkSaro((int) $row['dv_id'], $f['_saroRow']);
+                if ($saroError !== null) {
+                    App\Execute('ROLLBACK', 'DB');
+
+                    return ['success' => false, 'message' => $saroError];
+                }
+
                 // Optional ATC Code / Accounting Entries pre-fill — see persistJournalEntry()'s
                 // doc comment. A validation failure here rolls back the DV creation too.
                 if ($f['atc_lines'] || $f['lines']) {
@@ -2565,6 +2702,13 @@ class DisbursementVoucherService
                     App\Execute('ROLLBACK', 'DB');
 
                     return ['success' => false, 'message' => $rfaError];
+                }
+
+                $saroError = $this->linkSaro($dvId, $f['_saroRow']);
+                if ($saroError !== null) {
+                    App\Execute('ROLLBACK', 'DB');
+
+                    return ['success' => false, 'message' => $saroError];
                 }
 
                 // Optional ATC Code / Accounting Entries pre-fill — see persistJournalEntry()'s

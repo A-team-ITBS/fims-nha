@@ -41,6 +41,7 @@ class FundTrackingServices
     private string $tableAgency = 'fims.agency';
     private string $tableSettingsStatus = 'fims.settings_status';
     private string $tableSupplementalDetails = 'fmd.supplemental_fund_details';
+    private string $tableBankAccounts = 'fims.bank_accounts';
     private string $viewRegions = 'shared.v_rc_regions';
 
     // Condition every read of fund_tracking (alias ft_rec) starts from.
@@ -66,7 +67,7 @@ class FundTrackingServices
     ];
 
     // Field type maps (used by quoteValue())
-    private array $intFields = ['fiscal_year', 'tracking_type_id', 'nature_of_fund_id', 'status_id', 'parent_id', 'user_id'];
+    private array $intFields = ['fiscal_year', 'tracking_type_id', 'nature_of_fund_id', 'status_id', 'parent_id', 'user_id', 'bank_account_id'];
     private array $decimalFields = ['amount'];
     private array $uuidFields = ['multiple_node_id'];
 
@@ -82,6 +83,7 @@ class FundTrackingServices
         'date',                // the date the form enters; a request that sends none is dated the day it is created (create())
         'amount',
         'bank_account_no',
+        'bank_account_id',       // fims.bank_accounts.bank_account_id this SARO's bank account resolves to, if picked from the list (soft reference, see "03 - alter_table/61")
         'agency_name',          // agency name as text (see header)
         'remarks',              // text — Supplemental records' Remarks (saro-processing-form.php)
         'purpose',
@@ -118,6 +120,8 @@ class FundTrackingServices
                     ft_rec.date,
                     ft_rec.amount,
                     ft_rec.bank_account_no,
+                    ft_rec.bank_account_id,
+                    ft_rec.dv_id,
                     ft_rec.agency_name,
                     ft_rec.remarks,
                     ft_rec.purpose,
@@ -579,6 +583,14 @@ class FundTrackingServices
             $exists = $statusId > 0 ? (int) App\ExecuteScalar("SELECT COUNT(*) FROM {$this->tableSettingsStatus} WHERE id = {$statusId}", 'DB') : 0;
             if ($exists === 0) {
                 return 'status_id does not match any status.';
+            }
+        }
+
+        if ($filled('bank_account_id')) {
+            $bankAccountId = is_numeric($fields['bank_account_id']) ? (int) $fields['bank_account_id'] : 0;
+            $exists = $bankAccountId > 0 ? (int) App\ExecuteScalar("SELECT COUNT(*) FROM {$this->tableBankAccounts} WHERE bank_account_id = {$bankAccountId}", 'DB') : 0;
+            if ($exists === 0) {
+                return 'bank_account_id does not match any bank account.';
             }
         }
 

@@ -298,6 +298,10 @@ $_sar_type_first = !empty($sarTypeFirst);
                         <label for="sar-bank">Bank Account No.</label>
                         <input type="text" id="sar-bank" placeholder="Search account number…" autocomplete="off">
                         <input type="hidden" id="sar-bank-no" value="">
+                        <!-- fims.bank_accounts.bank_account_id this picked account resolves to, kept alongside bank_account_no
+                             (see "03 - alter_table/61 - fund_tracking_add_dv_bank_account.sql") so Check Preparation can
+                             auto-fill the bank account once this SARO's linked DV is selected (CheckProcessingService::getSaroForDv()). -->
+                        <input type="hidden" id="sar-bank-id" value="">
                         <span class="sar-hint">Optional</span>
                     </div>
                     <div></div>
@@ -802,12 +806,31 @@ $_sar_type_first = !empty($sarTypeFirst);
         label: bankNo,
         render: (b, q) => `<span class="nha-ss-opt-code">${hl(bankNo(b), q)}</span>`,
         empty: () => 'No bank accounts found', noMatch: 'No matching bank accounts',
+        // Every pick (or clear) also syncs sar-bank-id, the real fims.bank_accounts.bank_account_id
+        // (see "03 - alter_table/61") — bank_account_no alone can't tell two accounts sharing the
+        // same number apart, and is the only thing Check Preparation's auto-fill can act on.
+        onChange: () => syncBankId(),
     });
+    // sar-bank-id follows whatever account number is currently in the box, by matching it against
+    // S.banks (the same list the combo searches) — unless the caller already knows the id (populate()
+    // restoring a saved record), in which case that wins outright.
+    function syncBankId(knownId) {
+        if (knownId !== undefined && knownId !== null && knownId !== '') {
+            $('sar-bank-id').value = String(knownId);
+            return;
+        }
+        const num = bankCombo.value();
+        const hit = num ? S.banks.find(b => bankNo(b) === num) : null;
+        $('sar-bank-id').value = hit ? String(hit.bank_account_id) : '';
+    }
     // Show the record's saved Bank Account No. A number that is not on the list (typed in free-hand when this was a text box, or imported
-    // from a spreadsheet) is shown and saved again exactly as it is, so editing the record never wipes it.
-    function setBank(value) {
+    // from a spreadsheet) is shown and saved again exactly as it is, so editing the record never wipes it. bankAccountId — the record's
+    // own saved bank_account_id, when it has one (older rows saved before "03 - alter_table/61" don't) — is preferred over re-matching by
+    // number, so a number shared by more than one account still restores the exact one that was picked.
+    function setBank(value, bankAccountId) {
         const v = String(value ?? '').trim();
         if (v) bankCombo.set(v, v); else bankCombo.reset();
+        syncBankId(bankAccountId);
     }
 
     /* ── Field logic ────────────────────────────────────────────── */
@@ -1289,6 +1312,7 @@ $_sar_type_first = !empty($sarTypeFirst);
             description: supp ? null : v('sar-name'),                       // a Supplemental record has no description — its Purpose is the text
             amount: parseMoney(v('sar-amount')) || null,
             bank_account_no: v('sar-bank-no'),
+            bank_account_id: intOrNull('sar-bank-id'),
         };
         // Purpose: the typed text for a Supplemental record, null (clears it) for any other. With SUPP_FIELDS off the field is
         // not on the form at all, so the key is left out and a record's stored purpose is left exactly as it is.
@@ -1314,6 +1338,7 @@ $_sar_type_first = !empty($sarTypeFirst);
         parentCombo.reset();
         subCombo.reset();
         bankCombo.reset();
+        $('sar-bank-id').value = '';
         $('sar-docs').innerHTML = '';
         $('sar-form').querySelectorAll('.sar-invalid').forEach(el => el.classList.remove('sar-invalid'));
         delete $('sar-supp-status').dataset.manual;
@@ -1370,7 +1395,7 @@ $_sar_type_first = !empty($sarTypeFirst);
         $('sar-name').value = r.description || '';
         $('sar-purpose').value = r.purpose || '';
         $('sar-amount').value = r.amount != null ? fmtMoney(r.amount) : '';
-        setBank(r.bank_account_no);
+        setBank(r.bank_account_no, r.bank_account_id);
         syncSaroBalance();   // an NCA being edited: its SARO's amount, with this NCA's amount deducted
 
         S.hadSupp = !!r.supplemental;

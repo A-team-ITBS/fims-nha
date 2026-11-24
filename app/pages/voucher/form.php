@@ -308,6 +308,16 @@ html.afims-dark[data-bs-theme="dark"] #vf-root :is(input, select, textarea):is(:
                                     <span class="vf-err" id="err-rfa">At least one RFA is required.</span>
                                 </div>
                                 <div id="vf-rfa-chips" class="vf-rfa-chips"></div>
+
+                                <!-- SARO (fims.fund_tracking WHERE tracking_type = 'SARO') — one per DV, unlike the RFA
+                                     multi-select above (fund_tracking.dv_id, see DisbursementVoucherService::linkSaro()).
+                                     Optional: a DV need not cite a SARO. Its linked bank account (bank_account_id) auto-fills
+                                     Check Preparation's Bank Account select once this DV reaches FOR_TREASURY — see
+                                     CheckProcessingService::getSaroForDv() / check-disbursement-voucher-page.php. -->
+                                <div class="nha-fg" style="margin-top:12px;">
+                                    <label>SARO <span class="vf-hint" style="display:inline;">(optional — the SARO this voucher's bank account comes from)</span></label>
+                                    <select id="vf-saro"><option value="">— None —</option></select>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -580,7 +590,7 @@ async function vf_open(id = 0) {
         // the form still opens with whatever did load, and the user sees the full picture.
         const results = await Promise.allSettled([
             vf_refReady, vf_booksReady, vf_dedTypesReady, vf_coaReady, vf_atcReady, vf_rcReady, vf_slReady,
-            vf_loadVendors(), vf_loadRfaOptions(), vf_loadPayrollMonths(),
+            vf_loadVendors(), vf_loadRfaOptions(), vf_loadSaroOptions(), vf_loadPayrollMonths(),
         ]);
         const loadErrors = results.filter(r => r.status === 'rejected').map(r => r.reason?.message || String(r.reason));
         vf_renderPayrollOptions(); // after vf_loadVendors() rebuilt the Vendor dropdown
@@ -632,6 +642,7 @@ function vf_reset() {
     $vf('vf-rfa-empty-hint').style.display = 'none';
     vf_selectedRfaIds = [];
     vf_renderRfaChips();
+    $vf('vf-saro').value = '';
 
     vf_payrollPeriodId = null;
     vf_remittanceId = null;
@@ -863,6 +874,27 @@ async function vf_loadRfaOptions() {
         vf_rfas = {};
         $vf('vf-rfa-empty-hint').style.display = 'none';
         throw new Error('Failed to load RFAs: ' + e.message);
+    }
+}
+
+/** SARO single-select (fims.fund_tracking WHERE tracking type is 'SARO', /voucher/saro/all) — one
+    per DV, unlike the RFA multi-select above. exclude_dv_id keeps THIS voucher's own already-linked
+    SARO showing (as "already yours") the same way it does for vf_loadRfaOptions(). The actual link
+    (fims.fund_tracking.dv_id) is only written server-side on save — see
+    DisbursementVoucherService::linkSaro(). */
+async function vf_loadSaroOptions() {
+    const sel = $vf('vf-saro');
+    const picked = sel.value;
+    try {
+        const qs   = vf_id ? `?exclude_dv_id=${vf_id}` : '';
+        const json = await vf_getJson(`voucher/saro/all${qs}`);
+        const rows = json.data ?? [];
+        sel.innerHTML = '<option value="">— None —</option>' + rows.map(r =>
+            `<option value="${vf_esc(r.id)}">${vf_esc(r.saro_id || '#' + r.id)}${r.account_number ? ' — ' + vf_esc(r.account_number) : ''}${r.bank_name ? ' (' + vf_esc(r.bank_name) + ')' : ''}</option>`).join('');
+        if (picked && rows.some(r => String(r.id) === picked)) sel.value = picked; // keep the in-progress pick across a reload
+    } catch (e) {
+        sel.innerHTML = '<option value="">Could not load SAROs</option>';
+        throw new Error('Failed to load SAROs: ' + e.message);
     }
 }
 
@@ -2207,6 +2239,11 @@ async function vf_loadExisting() {
     (dv.rfas ?? []).forEach(r => { vf_rfas[r.allocation_id] = r; });
     vf_renderRfaChips();
 
+    // dv.saro — the SARO currently linked to this voucher (fims.fund_tracking.dv_id), if any; added
+    // to the vf-saro select's options by vf_loadSaroOptions() (exclude_dv_id keeps it there even
+    // though it's "taken" — by this same voucher).
+    $vf('vf-saro').value = dv.saro ? String(dv.saro.id) : '';
+
     vf_attachments = (dv.file_attachments ?? []).map(a => ({
         document_name: a.file_meta?.document_name || 'Supporting Document',
         link: a.file_meta?.link || null,
@@ -2413,6 +2450,7 @@ async function vf_save(status) {
         fiscal_yr          : vf_derivedFiscalYear(),
         book_id            : $vf('vf-book').value || null,
         rfa_allocation_ids : vf_selectedRfaIds.map(Number),
+        saro_id            : $vf('vf-saro').value || null,
         dept_project       : $vf('vf-dept-project').value.trim(),
         fund_source        : $vf('vf-fund-source').value.trim(),
         account_code       : $vf('vf-account-code').value.trim(),
