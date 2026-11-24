@@ -89,6 +89,15 @@
     <menu id="331">
       <phrase id="menutext" value="Cash Position" />
     </menu>
+    <menu id="971">
+      <phrase id="menutext" value="Transactions" />
+    </menu>
+    <menu id="866">
+      <phrase id="menutext" value="Fund Sweeping" />
+    </menu>
+    <menu id="757">
+      <phrase id="menutext" value="Collections and Deposits" />
+    </menu>
     <menu id="551">
       <phrase id="menutext" value="Registry" />
     </menu>
@@ -103,12 +112,6 @@
     </menu>
     <menu id="561">
       <phrase id="menutext" value="Accountable Forms Registry" />
-    </menu>
-    <menu id="757">
-      <phrase id="menutext" value="Collections and Deposits" />
-    </menu>
-    <menu id="866">
-      <phrase id="menutext" value="Fund Sweeping" />
     </menu>
     <menu id="865">
       <phrase id="menutext" value="Payroll" />

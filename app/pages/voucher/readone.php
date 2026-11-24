@@ -76,6 +76,22 @@ $_vr_rcId          = $_vr_isSysAdmin ? null : ($_vr_userRow['rc_id'] ?? null);
 #vr-root .vr-ded-row { margin-bottom: 10px; }
 #vr-root .vr-ded-row:last-child { margin-bottom: 0; }
 #vr-root .vr-ded-label { font-size: 13px; font-weight: 600; color: var(--afims-heading-fill, #000E3E); margin-bottom: 4px; }
+/* VAT deduction — Inclusive/Exclusive, VAT Computation (informational) and Withholding VAT (deducted). Same layout as the entry
+   form's (form.php .vf-vat-*): editable here while Accounting holds the DV (vje_addVatLine()), plain read-only afterwards (vr_vatBlockHtml()). */
+#vr-root .vje-vat-types { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+#vr-root .vje-vat-opt { display: flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 6px; font-size: 12px; font-weight: 600; border: 1px solid var(--afims-border, #E4ECF2); background: var(--afims-surface-subtle, #F4F7FA); color: var(--afims-text-muted, #62657E); }
+#vr-root label.vje-vat-opt { cursor: pointer; }
+#vr-root .vje-vat-opt.active { border-color: var(--afims-primary, #0035A9); color: var(--afims-primary-text, #0035A9); }
+#vr-root .vje-vat-opt small { font-size: 10px; font-weight: 400; }
+#vr-root .vje-vat-block { margin-top: 8px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--afims-border, #E4ECF2); background: var(--afims-surface-subtle, #F4F7FA); }
+#vr-root .vje-vat-block-title { font-size: 10.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; margin-bottom: 2px; }
+#vr-root .vje-vat-block-title span { font-weight: 400; text-transform: none; letter-spacing: 0; }
+#vr-root .vje-vat-block.info .vje-vat-block-title { color: var(--afims-primary-text, #0035A9); }
+#vr-root .vje-vat-block.real .vje-vat-block-title { color: var(--afims-danger, #DC3545); }
+#vr-root .vje-vat-hint { display: block; margin-top: 6px; font-size: 11px; color: var(--afims-text-muted, #62657E); }
+/* One line under the ATC rows: how much of the base their Tax Bases add up to (red when they exceed it). */
+#vr-root .vje-atc-summary { margin: 4px 0 10px; font-size: 11.5px; line-height: 1.5; color: var(--afims-text-muted, #62657E); }
+#vr-root .vje-atc-summary.over { padding: 6px 10px; border-radius: 6px; color: var(--afims-danger-text, #8F222D); background: var(--afims-danger-soft, #FAE1E3); }
 #vr-root .vr-rfa-list { display: flex; flex-direction: column; gap: 10px; }
 #vr-root .vr-rfa-item { border: 1px solid var(--afims-border, #E4ECF2); border-radius: 10px; padding: 10px 12px; }
 #vr-root .vr-att-list { display: flex; flex-direction: column; gap: 6px; }
@@ -246,10 +262,17 @@ function vr_render(dv) {
             ${dPaymentHtml}
         </div>` : '';
 
+    // Section A shows only what this voucher actually has — a Remittance DV, for one, has no RFA, PO or claimant address.
+    const claimantItems = [['Claimant', vr_esc(dv.claimant_name) || '—']];
+    const addrTin = [dv.claimant_address, dv.employee_no_tin].filter(x => x && String(x).trim() !== '').map(vr_esc).join(' / ');
+    if (addrTin) claimantItems.push(['Address / Employee No. / TIN', addrTin]);
+    if (dv.po_number) claimantItems.push(['PO Number', vr_esc(dv.po_number)]);
+    if (Number(dv.po_amount) > 0) claimantItems.push(['PO Amount', vr_peso(dv.po_amount)]);
+
     $vr('vr-body').innerHTML = `
         ${rejection}
         <div class="vr-net">
-            <div><small>Net Amount</small><strong>${vr_peso(dv.net_amount)}</strong></div>
+            <div><small>Net Amount</small><strong id="vr-top-net">${vr_peso(dv.net_amount)}</strong></div>
             <div style="text-align:right;"><small>Status</small><span class="nha-bdg ${vr_statusClass(dv.status)}">${vr_esc(dv.status)}</span></div>
         </div>
 
@@ -257,30 +280,28 @@ function vr_render(dv) {
              section A: Claimant/RFA, DV No./Date, Particulars. ══ -->
         <div class="vr-doc-section">
             <p class="vr-doc-section-hdr">A. Voucher Information</p>
-            <div class="vr-card">
+            ${(dv.rfas ?? []).length ? `<div class="vr-card">
                 <p class="vr-card-title">Request for Allotment (RFA)</p>
                 ${vr_rfaSection(dv)}
-            </div>
+            </div>` : ''}
             <div class="vr-card">
                 <p class="vr-card-title">Claimant</p>
                 <dl class="vr-dl">
-                    <div><dt>Claimant</dt><dd>${vr_esc(dv.claimant_name) || '—'}</dd></div>
-                    <div><dt>Address / Employee No. / TIN</dt><dd>${vr_esc(dv.claimant_address) || '—'}${dv.employee_no_tin ? ' / ' + vr_esc(dv.employee_no_tin) : ''}</dd></div>
-                    <div><dt>PO Number</dt><dd>${vr_esc(dv.po_number) || '—'}</dd></div>
-                    <div><dt>PO Amount</dt><dd>${dv.po_amount ? vr_peso(dv.po_amount) : '—'}</dd></div>
+                    ${claimantItems.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}
                 </dl>
             </div>
+            ${vr_remitScheduleHtml(dv)}
             <table class="vr-doc-table">
                 <tr>
                     <td><p class="vr-doc-k">DV No.</p><p class="nha-mono" style="margin:0;">${vr_esc(dv.dv_no)}</p></td>
                     <td><p class="vr-doc-k">DV Date</p><p style="margin:0;">${vr_fmtDate(dv.dv_date)}</p></td>
                 </tr>
-                <tr>
+                ${dv.particulars ? `<tr>
                     <td class="vr-doc-full" colspan="2">
                         <p class="vr-doc-k">Particulars</p>
-                        <p class="vr-particulars" style="margin:0;">${vr_esc(dv.particulars) || '—'}</p>
+                        <p class="vr-particulars" style="margin:0;">${vr_esc(dv.particulars)}</p>
                     </td>
-                </tr>
+                </tr>` : ''}
             </table>
         </div>
 
@@ -294,9 +315,9 @@ function vr_render(dv) {
             </div>` : ''}
             <table class="vr-doc-summary-table">
                 <tr><td>Gross Amount</td><td>${vr_peso(dv.gross_amount)}</td></tr>
-                <tr><td>Less: Total Deductions</td><td>${vr_peso(totalDeductions)}</td></tr>
-                <tr><td>Less: Withholding Tax (ATC)</td><td>${vr_peso((dv.atc_lines ?? []).reduce((s, a) => s + (Number(a.withholding_tax) || 0), 0))}</td></tr>
-                <tr class="vr-doc-summary-final"><td>Net Amount Payable</td><td>${vr_peso(dv.net_amount)}</td></tr>
+                <tr><td>Less: Total Deductions</td><td id="vr-sum-ded">${vr_peso(totalDeductions)}</td></tr>
+                <tr><td>Less: Withholding Tax (ATC)</td><td id="vr-sum-wh">${vr_peso((dv.atc_lines ?? []).reduce((s, a) => s + (Number(a.withholding_tax) || 0), 0))}</td></tr>
+                <tr class="vr-doc-summary-final"><td>Net Amount Payable</td><td id="vr-sum-net">${vr_peso(dv.net_amount)}</td></tr>
             </table>
             ${dv.remarks ? `<p class="vr-particulars" style="margin:14px 0 0;"><strong>Remarks:</strong> ${vr_esc(dv.remarks)}</p>` : ''}
         </div>
@@ -399,6 +420,14 @@ function vr_renderActions(dv) {
     if (allowed.includes('RELEASED'))       html += btn('Release Payment', 'RELEASED', 'nha-btn-primary');
     if (allowed.includes('REJECTED'))       html += btn('Reject', 'REJECTED', 'nha-btn-outline');
     if (allowed.includes('CANCELLED'))      html += btn('Cancel', 'CANCELLED', 'nha-btn-ghost');
+    // Separation of duties hides the next Accounting step from whoever already took an earlier one — say so, otherwise the approve button just isn't there.
+    const me = VR_CURRENT_USER_ID;
+    let why = '';
+    if (!VR_IS_SYSADMIN && me > 0 && VR_RC_ID === VR_STAGE_HOLDER_RC[dv.status]) {
+        if (dv.status === 'FOR_DIVISION_MANAGER' && Number(dv.accounting_processed_by) === me) why = 'You forwarded this voucher to the Division Manager, so you can\'t also approve it. Another Accounting user must do the Division Manager step.';
+        else if (dv.status === 'FOR_DEPARTMENT_MANAGER' && [dv.accounting_processed_by, dv.division_reviewed_by].some(u => Number(u) === me)) why = 'You already acted on an earlier Accounting step of this voucher, so the Department Manager approval must be done by a different user.';
+    }
+    if (why) html = `<span style="font-size:12px;color:var(--afims-warning-text,#8A6400);max-width:420px;display:inline-block;text-align:left;vertical-align:middle;">${vr_esc(why)}</span>` + html;
     $vr('vr-actions').innerHTML = html;
 }
 
@@ -422,6 +451,26 @@ let vje_seq    = 0;
 let vje_atcSeq = 0;
 let vje_dedSeq = 0;
 let vje_dv     = null; // the open DV — vje_liveGrossLessDeductions() reads its gross_amount
+let vje_atcFull = null; // the "full base" the ATC rows' bases were last split against (see vje_syncAtcBases()); null = not measured yet
+
+/* ── VAT — same model as form.php's vf_addVatLine() and the Accounting DV Processing page's VAT tab ──
+     1. Statutory VAT, fixed 12% — INFORMATIONAL, never subtracted from the Net Amount:
+          Inclusive: Tax Base = Gross / 1.12, VAT = Gross - Tax Base
+          Exclusive: Tax Base = Gross,        VAT = Gross x 12%
+     2. Withholding VAT, a rate typed by Accounting — the real deduction: Tax Base x rate.
+   The saved deduction line carries the Withholding VAT; its gross_amount is the Tax Base, and inclusive vs. exclusive is
+   inferred from it (a base below the DV's gross means inclusive). */
+const VJE_VAT_RATE = 12;
+function vje_vatSplit(gross, vatType) {
+    const r2 = n => Math.round((n + Number.EPSILON) * 100) / 100;
+    const vat  = r2(vatType === 'exclusive' ? gross * VJE_VAT_RATE / 100 : gross - gross / (1 + VJE_VAT_RATE / 100));
+    const base = r2(vatType === 'exclusive' ? gross : gross - vat);
+    return { vat, base };
+}
+function vje_vatTypeOf(gross, base) { return Number(base) > 0 && Number(base) < gross - 0.005 ? 'inclusive' : 'exclusive'; }
+/* A legacy VAT line saved as a flat peso amount with no rate can't be shown as Withholding VAT %, so it keeps the plain Rate/Amount row. */
+function vje_isFlatVat(d) { return (d.rate === null || d.rate === undefined || d.rate === '') && Number(d.deduction_amount) > 0; }
+const vje_money2 = n => Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 // Visible only while the voucher is at FOR_ACCOUNTING and the viewer is Accounting Dept (RC 012)
 // or sysadmin — same rule the server enforces in DisbursementVoucherService::saveJournalEntry().
@@ -616,6 +665,7 @@ function vje_dedAtcEditor(dv) {
     return `
         <div class="vr-ded-section">
             <div id="vje-ded-list"></div>
+            <div class="vje-atc-summary" id="vje-atc-summary" style="display:none;"></div>
             <div class="vr-ded-types" id="vje-ded-types"></div>
         </div>`;
 }
@@ -675,6 +725,7 @@ async function vje_getJson(path) {
 
 async function vje_init(dv) {
     vje_dv = dv;
+    vje_atcFull = null; // a different DV: measure the base afresh (vje_syncAtcBases())
     try {
         const [coaJson, atcJson, dedJson, rcJson, slJson, booksJson, rfaJson] = await Promise.all([
             // postable_only (not the region-scoped /chart-of-accounts/all) — posting a voucher
@@ -759,7 +810,7 @@ async function vje_init(dv) {
                 const def  = VJE_ATC.find(c => c.atc_code === atr.querySelector('.vje-atc-code').value);
                 const rate = parseFloat(atr.querySelector('.vje-atc-rate').value) || 0;
                 const base = parseFloat(atr.querySelector('.vje-atc-base').value) || 0;
-                return def?.account_code === l.account_code && Math.abs((Math.round(base * rate) / 100) - credit) < 0.01;
+                return def?.account_code === l.account_code && Math.abs(vje_pctOf(base, rate) - credit) < 0.01;
             });
             if (atcMatch) {
                 const idx = atcMatch.id.replace('vje-atc-row-', '');
@@ -802,10 +853,29 @@ function vje_renderDedTypeButtons() {
         + '<button type="button" class="vr-ded-type-btn" onclick="vje_addAtcLine()">+ ATC ROW</button>';
 }
 
+/* Retention, Advance Recoupment and Penalty Tax are one figure per voucher (VAT too) — same rule as the entry form's
+   VF_SINGLE_DED and the server's SINGLE_DEDUCTION_TYPES. "Other" can repeat. A line already SAVED twice (older data) still loads. */
+const VJE_SINGLE_DED = ['RETENTION', 'RECOUPMENT', 'PENALTY_TAX'];
+
 function vje_addDeductionLine(d = null) {
     const idx = ++vje_dedSeq;
     const typeId = d?.deduction_type_id != null ? String(d.deduction_type_id) : '';
     const type = VJE_DED.find(t => String(t.deduction_type_id) === typeId);
+    if (type && VJE_SINGLE_DED.includes(type.code) && !(d?.gross_amount != null)) {
+        if ([...vje_dedRows()].some(r => r.querySelector('.vje-ded-type').value === typeId)) {
+            alert(`"${type.name}" is already added — edit that line instead (it can only be added once).`);
+            return;
+        }
+    }
+    // VAT gets its own row (Inclusive/Exclusive, VAT Computation, Withholding VAT) — a singleton, like the entry form's.
+    // A pill click passes only {deduction_type_id}; a saved line also carries gross_amount (its Tax Base).
+    if (type?.code === 'VAT') {
+        const saved = d?.gross_amount != null;
+        if (!(saved && vje_isFlatVat(d))) {
+            if (!vje_vatRow()) return vje_addVatLine(idx, d, saved);
+            if (!saved) { alert('A VAT line is already added — edit it instead.'); return; }
+        }
+    }
     // The posting-account picker shows only when the deduction type has no default posting account
     // (deduction_types.account_code IS NULL — e.g. "OTHER"); the type's own default always wins — see fetchDeductions()'s COALESCE.
     const needsAcct = !!type && !type.account_code;
@@ -821,6 +891,8 @@ function vje_addDeductionLine(d = null) {
             <div class="vje-fg"><label>Deduction Amount (₱)</label><input type="number" class="vje-ded-amount" min="0" step="0.01" placeholder="Auto-computed"></div>
         </div>
         ${needsAcct ? `<div class="vje-fg" style="margin-top:6px;"><label>Posting Account *</label><input type="text" class="vje-ded-acct" placeholder="Search GL account code (UACS)…"></div>` : ''}`;
+    // A saved VAT line is Withholding VAT: its rate applies to its own Tax Base (gross_amount), not the DV's gross.
+    if (type?.code === 'VAT' && d?.gross_amount != null) div.dataset.base = Number(d.gross_amount) || 0;
     div.querySelector('.vje-ded-rate').value = d?.rate ?? '';
     div.querySelector('.vje-ded-amount').value = d?.deduction_amount != null ? Number(d.deduction_amount || 0).toFixed(2) : '';
     div.querySelector('.vje-ded-rate').addEventListener('input', () => vje_recalcDeductionLine(idx));
@@ -840,6 +912,75 @@ function vje_removeDeductionLine(idx) {
     vje_recalcDeductions();
 }
 
+function vje_vatRow() { return $vr('vje-ded-list').querySelector('.vje-ded-row[data-vat="1"]'); }
+
+/* The VAT row: the toggle, a read-only VAT Computation block and the Withholding VAT block. It reuses .vje-ded-rate /
+   .vje-ded-amount for the Withholding VAT, so vje_collectDeductions() / vje_totalDeductions() need no special case — except
+   gross_amount, which is the Tax Base (row.dataset.base, kept by vje_syncVat()). */
+function vje_addVatLine(idx, d, saved) {
+    const typeId = String(d.deduction_type_id);
+    const gross  = Number(vje_dv?.gross_amount) || 0;
+    const vatType = saved ? vje_vatTypeOf(gross, Number(d.gross_amount)) : 'inclusive';
+    const div = document.createElement('div');
+    div.className = 'vje-row vje-ded-row';
+    div.id = `vje-ded-row-${idx}`;
+    div.dataset.vat = '1';
+    div.dataset.vatType = vatType;
+    div.innerHTML = `
+        <button type="button" class="vje-remove" title="Remove" onclick="vje_removeDeductionLine(${idx})">&times;</button>
+        <div class="vr-ded-label">VAT</div>
+        <input type="hidden" class="vje-ded-type" value="${vr_esc(typeId)}">
+        <div class="vje-vat-types">
+            <label class="vje-vat-opt"><input type="radio" name="vje-vat-type-${idx}" value="inclusive"> VAT Inclusive <small>Gross already includes VAT</small></label>
+            <label class="vje-vat-opt"><input type="radio" name="vje-vat-type-${idx}" value="exclusive"> VAT Exclusive <small>VAT is added on top of gross</small></label>
+        </div>
+        <div class="vje-vat-block info">
+            <div class="vje-vat-block-title">VAT Computation <span>— informational, not deducted</span></div>
+            <div class="vje-grid3">
+                <div class="vje-fg"><label>Statutory VAT Rate (%)</label><input type="text" readonly value="${VJE_VAT_RATE}"></div>
+                <div class="vje-fg"><label>VAT Amount (₱)</label><input type="text" class="vje-vat-amt" readonly></div>
+                <div class="vje-fg"><label>Tax Base (₱)</label><input type="text" class="vje-vat-base" readonly></div>
+            </div>
+        </div>
+        <div class="vje-vat-block real">
+            <div class="vje-vat-block-title">Withholding VAT <span>— deducted from Net Amount Payable</span></div>
+            <div class="vje-grid2">
+                <div class="vje-fg"><label>Withholding VAT Rate (%)</label><input type="number" class="vje-ded-rate" min="0" max="100" step="0.01" placeholder="e.g. 5"></div>
+                <div class="vje-fg"><label>Withholding VAT Amount (₱)</label><input type="number" class="vje-ded-amount" readonly placeholder="Auto-computed"></div>
+            </div>
+        </div>
+        <span class="vje-vat-hint"></span>`;
+    div.querySelector('.vje-ded-rate').value = saved ? (d.rate ?? '') : '';
+    $vr('vje-ded-list').appendChild(div);
+    div.querySelector('.vje-ded-rate').addEventListener('input', () => vje_recalcDeductions());
+    div.querySelectorAll('input[type="radio"]').forEach(r => r.addEventListener('change', () => {
+        div.dataset.vatType = r.value;
+        vje_recalcDeductions(); // vje_syncVat() + vje_syncAtcBases(): the ATC rows follow the new base, keeping their split
+    }));
+    vje_recalcDeductions();
+}
+
+/* Refreshes the VAT row's VAT Amount / Tax Base / Withholding VAT from the DV's (fixed) gross. */
+function vje_syncVat(row) {
+    const gross   = Number(vje_dv?.gross_amount) || 0;
+    const vatType = row.dataset.vatType === 'exclusive' ? 'exclusive' : 'inclusive';
+    const { vat, base } = vje_vatSplit(gross, vatType);
+    row.dataset.base = base;
+    row.querySelector('.vje-vat-amt').value  = vje_money2(vat);
+    row.querySelector('.vje-vat-base').value = vje_money2(base);
+    row.querySelectorAll('.vje-vat-opt').forEach(l => {
+        const input = l.querySelector('input');
+        input.checked = input.value === vatType;
+        l.classList.toggle('active', input.checked);
+    });
+    const rate = parseFloat(row.querySelector('.vje-ded-rate').value);
+    const wvat = rate > 0 ? vje_pctOf(base, rate) : 0;
+    row.querySelector('.vje-ded-amount').value = wvat > 0 ? wvat.toFixed(2) : '';
+    row.querySelector('.vje-vat-hint').textContent =
+        (vatType === 'inclusive' ? `Tax Base = Gross ÷ ${(1 + VJE_VAT_RATE / 100).toFixed(2)}` : 'Tax Base = Gross (VAT is added on top)')
+        + (rate > 0 ? ` · Withholding VAT = Tax Base × ${rate}%` : ' · enter a Withholding VAT rate to deduct it');
+}
+
 /* A deduction's gross_amount always mirrors this DV's own gross_amount (not separately editable —
    see the RFA Breakdown / summary); its deduction_amount is rate% of that unless the
    preparer types an amount directly (no rate given = flat peso deduction). Same convention as
@@ -847,10 +988,11 @@ function vje_removeDeductionLine(idx) {
 function vje_recalcDeductionLine(idx) {
     const tr = $vr(`vje-ded-row-${idx}`);
     if (!tr) return;
-    const gross = Number(vje_dv?.gross_amount) || 0;
+    if (tr.dataset.vat === '1') { vje_recalcDeductions(); return; } // VAT row: vje_recalcDeductions() -> vje_syncVat() owns its figures
+    const gross = tr.dataset.base !== undefined ? Number(tr.dataset.base) : (Number(vje_dv?.gross_amount) || 0); // a legacy VAT line keeps its own Tax Base
     const rate = parseFloat(tr.querySelector('.vje-ded-rate').value);
     if (!isNaN(rate) && rate > 0) {
-        tr.querySelector('.vje-ded-amount').value = (gross * rate / 100).toFixed(2);
+        tr.querySelector('.vje-ded-amount').value = vje_pctOf(gross, rate).toFixed(2);
     }
     vje_recalcDeductions();
 }
@@ -864,7 +1006,7 @@ function vje_collectDeductions() {
         out.push({
             deduction_type_id: typeId || null,
             rate             : tr.querySelector('.vje-ded-rate').value === '' ? null : parseFloat(tr.querySelector('.vje-ded-rate').value),
-            gross_amount     : Number(vje_dv?.gross_amount) || 0,
+            gross_amount     : tr.dataset.base !== undefined ? Number(tr.dataset.base) : (Number(vje_dv?.gross_amount) || 0),
             deduction_amount : amount,
             account_code     : tr.querySelector('.vje-ded-acct')?.value.trim() || null,
         });
@@ -877,8 +1019,12 @@ function vje_totalDeductions() {
 }
 
 function vje_recalcDeductions() {
+    const vatRow = vje_vatRow();
+    if (vatRow) vje_syncVat(vatRow); // VAT / Tax Base / Withholding VAT first — the totals below read the Withholding VAT amount
     const badge = $vr('vje-badge-net-ded');
     if (badge) badge.textContent = vr_peso(vje_liveGrossLessDeductions());
+    vje_syncAtcBases(); // the base the ATC rows split may just have moved (a deduction, the VAT type) — before the entries are built from them
+    vje_refreshSummary();
     vje_syncAutoLines();
 }
 
@@ -905,11 +1051,15 @@ function vje_addAtcLine(a = null) {
         </div>`;
     div.querySelector('.vje-atc-code').value = a?.atc_code ?? '';
     div.querySelector('.vje-atc-rate').value = a?.rate ?? '';
-    div.querySelector('.vje-atc-base').value = a ? (Number(a.tax_base) || 0).toFixed(2) : vje_liveGrossLessDeductions().toFixed(2);
+    // New row: the part of the base the other ATC rows haven't taken yet (a second row at the whole base made the
+    // rows' total exceed it). The base is the VAT-exclusive Tax Base when this DV has a VAT line, else gross less deductions.
+    div.querySelector('.vje-atc-base').value = a ? (Number(a.tax_base) || 0).toFixed(2) : Math.max(0, Math.round((vje_fullBase() - vje_atcBaseTotal()) * 100) / 100).toFixed(2);
     div.querySelector('.vje-atc-rc').value   = a?.chargeability ?? '';
     div.querySelector('.vje-atc-code').addEventListener('change', () => vje_onAtcCodeSelect(idx));
+    div.querySelector('.vje-atc-base').addEventListener('input', () => vje_setAtcShare(div)); // typed by hand: its share of the base changes
     div.querySelectorAll('.vje-atc-rate, .vje-atc-base').forEach(el => el.addEventListener('input', () => vje_recalcAtcLine(idx)));
     $vr('vje-ded-list').appendChild(div);
+    vje_setAtcShare(div);
     // Bound after the row is attached to the DOM — nhaSearchableSelect reads the input's live
     // parentElement to anchor the dropdown, which is unreliable on a still-detached node.
     nhaSearchableSelect(div.querySelector('.vje-atc-code'), VJE_ATC.map(c => ({ value: c.atc_code, label: c.description })));
@@ -948,14 +1098,83 @@ function vje_onAtcCodeSelect(idx) {
     vje_recalcAtcLine(idx);
 }
 
+/* rate% of an amount, rounded to the centavo exactly like the server's round($base * $rate / 100, 2) — same helper as
+   form.php's vf_pctOf(). Math.round(base * rate) / 100 is a centavo off on exact half-centavo products (~0.1% of the time),
+   and here that also shifts the auto-built Cr lines, whose total must equal the Dr side exactly for the entry to save. */
+function vje_pctOf(base, rate) {
+    const cents = Math.round((Number(base) || 0) * 100), hundredths = Math.round((Number(rate) || 0) * 100);
+    return Math.floor((cents * hundredths + 5000) / 10000) / 100;
+}
+
+/* Withholding Tax cell of one ATC row = Tax Base x Rate%, centavo-exact (vje_pctOf()). */
+function vje_refreshAtcWh(tr) {
+    const rate = parseFloat(tr.querySelector('.vje-atc-rate').value) || 0;
+    const base = parseFloat(tr.querySelector('.vje-atc-base').value) || 0;
+    tr.querySelector('.vje-atc-wh').value = vr_peso(vje_pctOf(base, rate));
+}
+
 function vje_recalcAtcLine(idx) {
     const tr = $vr(`vje-atc-row-${idx}`);
     if (!tr) return;
-    const rate = parseFloat(tr.querySelector('.vje-atc-rate').value) || 0;
-    const base = parseFloat(tr.querySelector('.vje-atc-base').value) || 0;
-    tr.querySelector('.vje-atc-wh').value = vr_peso(base * rate / 100);
+    vje_refreshAtcWh(tr);
     vje_recalcAtc();
     vje_syncAutoLines();
+}
+
+/* ── What the ATC rows split — same rules as form.php's vf_fullBase() / vf_syncAtcBases() ──
+   The withholding is computed on the VAT-exclusive Tax Base when the DV has a VAT line, otherwise on gross less the
+   deductions. The ATC rows' Tax Bases SPLIT that base between them: a new row defaults to the part not yet allocated, and
+   when the base moves (a deduction edited, the VAT type toggled) the rows follow it in proportion — but only while they add up
+   to the whole base, so a deliberately partial base is never overwritten. */
+function vje_fullBase() {
+    const vatRow = vje_vatRow();
+    return vatRow ? (Number(vatRow.dataset.base) || 0) : vje_liveGrossLessDeductions();
+}
+
+function vje_atcBaseTotal(exceptRow = null) {
+    let sum = 0;
+    vje_atcRows().forEach(tr => { if (tr !== exceptRow) sum += parseFloat(tr.querySelector('.vje-atc-base').value) || 0; });
+    return Math.round(sum * 100) / 100;
+}
+
+function vje_setAtcShare(tr) {
+    const full = vje_fullBase();
+    tr.dataset.share = full > 0 ? (parseFloat(tr.querySelector('.vje-atc-base').value) || 0) / full : 0;
+}
+
+function vje_syncAtcBases() {
+    const full = vje_fullBase();
+    const prev = vje_atcFull;
+    vje_atcFull = full;
+    const rows = [...vje_atcRows()];
+    if (prev !== null && prev > 0 && rows.length && Math.abs(full - prev) > 0.004) {
+        const bases = rows.map(tr => parseFloat(tr.querySelector('.vje-atc-base').value) || 0);
+        if (Math.abs(bases.reduce((s, b) => s + b, 0) - prev) <= 0.01 * rows.length) { // fully allocated: the split follows the base
+            const next = rows.map((tr, i) => {
+                const share = tr.dataset.share !== undefined ? Number(tr.dataset.share) : bases[i] / prev;
+                return Math.round(share * full * 100) / 100;
+            });
+            const big = next.indexOf(Math.max(...next)); // the centavos lost to rounding go to the largest row, never an empty one
+            next[big] = Math.round((next[big] + (full - next.reduce((s, b) => s + b, 0))) * 100) / 100;
+            rows.forEach((tr, i) => { tr.querySelector('.vje-atc-base').value = next[i].toFixed(2); vje_refreshAtcWh(tr); });
+        }
+    }
+    vje_renderAtcSummary(full);
+}
+
+function vje_renderAtcSummary(full) {
+    const el = $vr('vje-atc-summary');
+    if (!el) return;
+    const rows = vje_atcRows();
+    if (!rows.length) { el.style.display = 'none'; return; }
+    const total = vje_atcBaseTotal();
+    const over  = total - full > 0.005;
+    const what  = vje_vatRow() ? 'the VAT-exclusive Tax Base' : 'the amount net of deductions';
+    el.className = 'vje-atc-summary' + (over ? ' over' : '');
+    el.textContent = over
+        ? `ATC Tax Bases total ${vr_peso(total)}, which is more than ${what} (${vr_peso(full)}) — the withholding would be taken on the same amount twice. Split the base between the rows.`
+        : `ATC Tax Bases total ${vr_peso(total)} of ${what} (${vr_peso(full)})${full - total > 0.005 ? ` · ${vr_peso(full - total)} not allocated to an ATC row` : ''}.`;
+    el.style.display = '';
 }
 
 function vje_collectAtcLines() {
@@ -972,7 +1191,25 @@ function vje_collectAtcLines() {
 }
 
 function vje_recalcAtc() {
-    // Nothing to total here any more — the summary table under Section B shows Less: Withholding Tax (ATC).
+    vje_renderAtcSummary(vje_fullBase()); // the "ATC Tax Bases total … of …" line under the rows
+    vje_refreshSummary();
+}
+
+/* Section B's Gross / Less: Total Deductions / Less: Withholding Tax / Net Amount Payable table (and the Net Amount banner at
+   the top) are drawn once from the saved voucher by vr_render(). While Accounting is editing the Deduction / VAT / ATC rows
+   they follow those rows live instead, the way form.php's vf_recalc() does — the server stores the same figures on save:
+   net = gross - deductions - withholding. */
+function vje_refreshSummary() {
+    if (!$vr('vr-sum-net') || !vje_dv) return;
+    const gross = Number(vje_dv.gross_amount) || 0;
+    const ded   = Math.round(vje_totalDeductions() * 100) / 100;
+    const wh    = vje_collectAtcLines().reduce((s, l) => s + Math.round(vje_pctOf(l.tax_base, l.rate) * 100), 0) / 100;
+    const net   = Math.max(0, Math.round((gross - ded - wh) * 100) / 100);
+    $vr('vr-sum-ded').textContent = vr_peso(ded);
+    $vr('vr-sum-wh').textContent  = vr_peso(wh);
+    $vr('vr-sum-net').textContent = vr_peso(net);
+    const top = $vr('vr-top-net');
+    if (top) top.textContent = vr_peso(net);
 }
 
 /* ── Accounting Entries (DV) ──────────────────────────────────── */
@@ -1041,6 +1278,36 @@ function vje_renumber() {
     });
 }
 
+/**
+ * A Remittance DV from the Remittance List (dv.dv_remit): the month's rate rows (1% … 15% Withholding Tax, each with the Contractors/Suppliers — the vendors — it was
+ * withheld from and their amounts) and the voucher-by-voucher schedule of what it pays. '' for any other DV.
+ */
+function vr_remitScheduleHtml(dv) {
+    const d = dv.dv_remit;
+    if (!d) return '';
+    const money = v => Number(v || 0) > 0 ? vr_peso(v) : '-';
+    // one row per rate (its total), then the vendors that rate was withheld from, each with their own amount
+    const rows = (d.breakdown || []).map(b => `<tr style="font-weight:600;"><td>${vr_esc(b.label)}</td><td></td><td style="text-align:right;">${money(b.amount)}</td></tr>` +
+        (b.vendors || []).map(v => `<tr><td></td><td>${vr_esc(v.vendor)}</td><td style="text-align:right;">${vr_peso(v.amount)}</td></tr>`).join('')).join('');
+    // the vouchers this DV pays: each source DV as a row, its ATC lines as its children
+    const groups = [];
+    (d.schedule || []).forEach(s => {
+        let g = groups.find(x => x.dv_id === s.dv_id);
+        if (!g) { g = { dv_id: s.dv_id, dv_no: s.dv_no, dv_date: s.dv_date, vendor: s.claimant_name, total: 0, lines: [] }; groups.push(g); }
+        g.total += Number(s.amount || 0);
+        g.lines.push(s);
+    });
+    const sched = groups.map(g => `<tr style="font-weight:600;"><td class="nha-mono">${vr_esc(g.dv_no)}</td><td>${vr_fmtDate(g.dv_date)}</td><td>${vr_esc(g.vendor)}</td><td></td><td></td><td style="text-align:right;">${vr_peso(g.total)}</td></tr>` +
+        g.lines.map(s => `<tr style="color:var(--afims-text-muted,#62657E);"><td class="nha-mono" style="padding-left:18px;">↳ ${vr_esc(s.atc_code || d.type_name)}</td><td></td><td></td><td style="text-align:right;">${s.rate === null || s.rate === undefined ? '' : vr_esc(Number(s.rate) + '%')}</td><td style="text-align:right;">${vr_peso(s.base)}</td><td style="text-align:right;">${vr_peso(s.amount)}</td></tr>`).join('')).join('');
+    return `<div class="vr-card">
+        <p class="vr-card-title">Remittance of ${vr_esc(d.type_name)} — ${vr_esc(d.period_label)}</p>
+        <table class="vr-doc-table" style="margin-bottom:10px;"><thead><tr><th>Withholding tax</th><th>Contractors/Suppliers</th><th style="text-align:right;">Amount</th></tr></thead><tbody>${rows}
+            <tr style="font-weight:700;"><td>Total</td><td></td><td style="text-align:right;">${vr_peso(d.gross_amount)}</td></tr></tbody></table>
+        <p class="vr-doc-k" style="margin:0 0 4px;">Vouchers paid — ${Number(d.vouchers) || 0} DV(s), ${(d.schedule || []).length} ATC line(s)</p>
+        <div style="overflow-x:auto;"><table class="vr-doc-table"><thead><tr><th>DV No. / ATC</th><th>Date</th><th>Vendor</th><th style="text-align:right;">Rate</th><th style="text-align:right;">Tax Base</th><th style="text-align:right;">Withheld</th></tr></thead><tbody>${sched}</tbody></table></div>
+    </div>`;
+}
+
 /** Keeps the Accounting Entries grid in sync with the DV's own numbers: Dr the claimant/expense
     line for the full gross, Cr each Deduction/ATC row that carries a mapped UACS account code, Cr
     Accounts Payable for whatever's left. Tracked via each row's data-auto-source so repeat syncs
@@ -1052,7 +1319,8 @@ function vje_syncAutoLines() {
     // Dr the agency's payables + government share, Cr Accounts Payable — DeductionRemittanceService::dvData())
     // and arrive balanced. The vendor-DV auto lines below (Dr Account Code for the gross, Cr each deduction
     // type, Cr AP) would take over / double those lines, so they are left exactly as saved.
-    if (vje_dv?.payroll || vje_dv?.remittance) {
+    // A Remittance DV from the Remittance List (dv_remit: Dr Due to BIR / VAT Payable, Cr Accounts Payable) is the same.
+    if (vje_dv?.payroll || vje_dv?.remittance || vje_dv?.dv_remit) {
         $vr('vje-lines-tbody').querySelectorAll('tr.vje-line[data-auto-source]').forEach(tr => { delete tr.dataset.autoSource; });
         vje_renumber();
         vje_recalc();
@@ -1088,7 +1356,7 @@ function vje_syncAutoLines() {
         const base = parseFloat(tr.querySelector('.vje-atc-base').value) || 0;
         const atcDef = VJE_ATC.find(c => c.atc_code === code);
         if (!code || !atcDef?.account_code || base <= 0 || rate <= 0) return;
-        const credit = Math.round(base * rate) / 100;
+        const credit = vje_pctOf(base, rate);
         atcIds.add(idx);
         atcCreditTotal += credit;
         vje_upsertAutoLine(`atc:${idx}`, { account_code: atcDef.account_code, debit: 0, credit, description: `${rate}% ${atcDef.description}` });
@@ -1225,6 +1493,20 @@ async function vje_save() {
     if (missingAcct) {
         const type = VJE_DED.find(t => String(t.deduction_type_id) === String(missingAcct.deduction_type_id));
         alert(`"${type?.name || 'This deduction'}" has no default posting account — pick one before saving.`);
+        return false;
+    }
+
+    // ATC Tax Bases are a split of one base: none may be left empty, and together they may not exceed the VAT-exclusive Tax Base
+    // (with a VAT line) or the DV's Amount (the server enforces the Amount ceiling too).
+    const emptyAtc = atc_lines.findIndex(l => l.atc_code && l.tax_base <= 0);
+    if (emptyAtc >= 0) {
+        alert(`ATC row ${emptyAtc + 1} (${atc_lines[emptyAtc].atc_code}) has no Tax Base — give it its share of the base, or remove the row.`);
+        return false;
+    }
+    const atcTotal = vje_atcBaseTotal();
+    const atcCeiling = vje_vatRow() ? vje_fullBase() : (Number(vje_dv?.gross_amount) || 0);
+    if (atcTotal - atcCeiling > 0.005) {
+        alert(`ATC Tax Bases total ${vr_peso(atcTotal)}, more than the ${vje_vatRow() ? 'VAT-exclusive Tax Base' : 'Amount'} (${vr_peso(atcCeiling)}) — split the base between the ATC rows.`);
         return false;
     }
 
@@ -1380,7 +1662,27 @@ function vr_rfaBreakdownHtml(dv) {
    ring, no pointer), with no × remove mark and no "+ TYPE" pills. */
 function vr_dedAtcRowsHtml(dv) {
     const ro = (label, value, extra = '') => `<div class="vje-fg"${extra}><label>${label}</label><input type="text" readonly tabindex="-1" value="${vr_esc(value)}"></div>`;
-    const ded = (dv.deductions ?? []).map(d => `<div class="vje-row">
+    // A VAT line is shown as on the entry form and in Accounting's editor: Inclusive/Exclusive, the VAT Computation block
+    // (informational) and the Withholding VAT block (the deducted part).
+    const vatBlock = d => {
+        const gross = Number(dv.gross_amount) || 0;
+        const type  = vje_vatTypeOf(gross, d.gross_amount);
+        const { vat, base } = vje_vatSplit(gross, type);
+        const opt = (value, title, sub) => `<span class="vje-vat-opt${type === value ? ' active' : ''}">${type === value ? '● ' : '○ '}${title} <small>${sub}</small></span>`;
+        return `<div class="vje-row">
+            <div class="vr-ded-label">VAT</div>
+            <div class="vje-vat-types">${opt('inclusive', 'VAT Inclusive', 'Gross already includes VAT')}${opt('exclusive', 'VAT Exclusive', 'VAT is added on top of gross')}</div>
+            <div class="vje-vat-block info">
+                <div class="vje-vat-block-title">VAT Computation <span>— informational, not deducted</span></div>
+                <div class="vje-grid3">${ro('Statutory VAT Rate (%)', VJE_VAT_RATE)}${ro('VAT Amount (₱)', vr_peso(vat))}${ro('Tax Base (₱)', vr_peso(base))}</div>
+            </div>
+            <div class="vje-vat-block real">
+                <div class="vje-vat-block-title">Withholding VAT <span>— deducted from Net Amount Payable</span></div>
+                <div class="vje-grid2">${ro('Withholding VAT Rate (%)', d.rate != null ? d.rate : '')}${ro('Withholding VAT Amount (₱)', vr_peso(d.deduction_amount))}</div>
+            </div>
+        </div>`;
+    };
+    const ded = (dv.deductions ?? []).map(d => d.code === 'VAT' && !vje_isFlatVat(d) ? vatBlock(d) : `<div class="vje-row">
         <div class="vr-ded-label">${vr_esc(d.name) || '—'}</div>
         <div class="vje-grid2">
             ${ro('Rate (%)', d.rate != null ? d.rate : '')}
