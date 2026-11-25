@@ -68,6 +68,8 @@ class PrintService
         'MEMO' => ['service' => MemoRequestPrintService::class, 'script' => 'gen_laareq_docx.js', 'paper' => 'A4', 'font' => 'Helvetica'],   // the originating unit's memo request (non-FMD), the shared memo layout        // PDF-only forms ('pdf_only'): an official PDF form filled by the service's own
         // pdf() — no HTML / DOCX layout and no letterhead (the form has its own).
         'DV'  => ['service' => DvPrintService::class, 'pdf_only' => true],
+        'BIR2307' => ['service' => Bir2307PrintService::class, 'pdf_only' => true],   // a DV's Certificate of Creditable Tax Withheld at Source — payload { dv_id }
+        'BIR2316' => ['service' => Bir2316PrintService::class, 'pdf_only' => true],   // an employee's Certificate of Compensation Payment / Tax Withheld — payload { fiscal_yr, employee_id }
     ];
 
     public static function isDocument(string $doc): bool
@@ -201,6 +203,64 @@ class PrintService
     public static function repoRoot(): string
     {
         return dirname(__DIR__, 2);
+    }
+
+    /**
+     * An official PDF form (an AcroForm template in _shared/template/, e.g. the BIR 2307) filled with $fields by pdftk
+     * fill_form and flattened; $pages keeps only those pages ("1", "1-2"; null = all). Returns the PDF bytes, or null
+     * (logged). Every field is written, blanks too, so a template's default values are cleared. pdftk works on a temp copy
+     * of the template: read straight from a mounted folder (the Docker dev setup) each call took 20 s+.
+     * FDF strings are plain "(…)" in Windows-1252 ("₱" → "P"), as the old generators — UTF-16 hex strings leave
+     * pdftk-java's multiline fields blank.
+     */
+    public static function fillPdfForm(string $template, array $fields, ?string $pages = null): ?string
+    {
+        $src = self::repoRoot() . '/_shared/template/' . $template;
+        if (!is_file($src)) {
+            App\LogError("PrintService::fillPdfForm: template {$template} missing");
+
+            return null;
+        }
+        $tmp   = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'form_' . bin2hex(random_bytes(8));
+        $files = ['form' => $tmp . '_form.pdf', 'fdf' => $tmp . '.fdf', 'filled' => $tmp . '_filled.pdf', 'out' => $tmp . '_out.pdf'];
+        $esc   = static fn ($v) => str_replace(['\\', '(', ')', "\r"], ['\\\\', '\\(', '\\)', ''], $v);
+        $lines = [];
+        foreach ($fields as $name => $value) {
+            $value   = str_replace('₱', 'P', (string) ($value ?? ''));
+            $value   = @iconv('UTF-8', 'Windows-1252//TRANSLIT', $value) ?: $value;
+            $lines[] = '<< /T (' . $esc((string) $name) . ') /V (' . $esc($value) . ') >>';
+        }
+        $pdftk = static function (array $args) use ($template): bool {
+            $bin = getenv('PDFTK_PATH') ?: (strncasecmp(PHP_OS, 'WIN', 3) === 0 ? 'C:/Program Files (x86)/PDFtk Server/bin/pdftk.exe' : 'pdftk');
+            exec(escapeshellarg($bin) . ' ' . implode(' ', array_map('escapeshellarg', $args)) . ' 2>&1', $out, $code);
+            if ($code !== 0) {
+                App\LogError("PrintService::fillPdfForm ({$template}): pdftk " . ($args[1] ?? '') . ' failed: ' . implode(' ', $out));
+            }
+
+            return $code === 0;
+        };
+        try {
+            if (!copy($src, $files['form'])
+                || file_put_contents($files['fdf'], "%FDF-1.2\n1 0 obj\n<< /FDF << /Fields [\n" . implode("\n", $lines)
+                    . "\n] >> >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n") === false
+                || !$pdftk([$files['form'], 'fill_form', $files['fdf'], 'output', $files['filled'], 'flatten'])) {
+                return null;
+            }
+            $result = $files['filled'];
+            if ($pages !== null) {
+                if (!$pdftk([$files['filled'], 'cat', $pages, 'output', $files['out']])) {
+                    return null;
+                }
+                $result = $files['out'];
+            }
+            $bytes = file_get_contents($result);
+
+            return ($bytes === false || $bytes === '') ? null : $bytes;
+        } finally {
+            foreach ($files as $f) {
+                @unlink($f);
+            }
+        }
     }
 
     public static function text(mixed $v): string

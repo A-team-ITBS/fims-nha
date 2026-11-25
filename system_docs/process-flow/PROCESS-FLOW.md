@@ -2,7 +2,7 @@
 
 **Step-by-step walkthrough, from set-up to the posted ledgers — for SQA testing and CPA review**
 
-> **Status:** written 2026-11-17, updated 2026-11-24 (DV: optional SARO, PO→IAR warning, "Return" label, DV print in GL codes with RFA obligation / TOTAL / up to 18 rows, payroll deductions amount-only; RFA / LAA printing resumed; payroll DV checked against its RFA: gross + employer share, Approved RFA, same fiscal year, Personnel Services line; Budget Amendment, CBA / RFA / LAA printing for FMD only, GL and SL prints, one Budget Proposal page for offices and FMD, Payroll sidebar group, FTLA release, Collections journalizing, GL roll-up; earlier: per-agency remittance DVs, automatic payment JEV, Payroll
+> **Status:** written 2026-11-17, updated 2026-11-25 (BIR 2307 from a DV with withholding tax; payroll Tax Annualization + BIR 2316; FTLA fund-sweeping settlement JEV; financial statements Print / Excel; DV: optional SARO, PO→IAR warning, "Return" label, DV print in GL codes with RFA obligation / TOTAL / up to 18 rows, payroll deductions amount-only; RFA / LAA printing resumed; payroll DV checked against its RFA: gross + employer share, Approved RFA, same fiscal year, Personnel Services line; Budget Amendment, CBA / RFA / LAA printing for FMD only, GL and SL prints, one Budget Proposal page for offices and FMD, Payroll sidebar group, FTLA release, Collections journalizing, GL roll-up; earlier: per-agency remittance DVs, automatic payment JEV, Payroll
 > Management YTD / File Template, print notes) from the current code (`app/`) and the status chains in its services. Follows the
 > sidebar modules (`views/menu.php`). Tables behind each step: `system_docs/ERD/README.md`.
 > PDF version: `system_docs/process-flow/PROCESS-FLOW.pdf` — the flowcharts of this file, one process per page in
@@ -326,6 +326,7 @@ FOR_DEPARTMENT_MANAGER, FOR_TREASURY, RELEASED, REJECTED, CANCELLED. Only the of
 | 5a | (alternative) | view | The same user who acted in step 4 tries to forward again | Refused — each Accounting level must be a different user |
 | 6 | Accounting Department Manager (RC 012) — a different user from steps 4 and 5 | view | Approve | Status FOR_TREASURY; its journal entry is POSTED |
 | 7 | Any user | Disbursement Voucher → Print; DV Processing → Journal Entry Voucher | Print the DV; find its journal entry | The SETUP JEV shows POSTED. The DV print's Accounting Entries show **GL codes only** — SL lines summed into their 4-part GL (e.g. 2-02-01-020-10 → 2-02-01-020), one row per GL; OBLIGATION = the RFA number on the debit lines; the last row is the TOTAL of debits and credits; over 10 lines the grid is redrawn with smaller rows so up to 18 lines fit on the form (past 18, the last row reads SEE ATTACHED and the attachment page lists them all) |
+| 7a | Any user | Disbursement Voucher → view → **BIR 2307** (shown when the DV withholds an EWT / percentage tax — not VAT) | Edit Form: check the payee (TIN, name, address, ZIP), the quarter / period, each row's description and the signatory (CRISALYN T. HUGO pre-selected, or the DV's Accounting signatories, or typed); Form Preview; Download PDF | The payee's BIR 2307 for the DV's quarter: NHA as payor, EWT codes in the first table, WB codes in the business-tax table, the tax base in the DV month's column |
 
 ```mermaid
 flowchart TD
@@ -339,7 +340,7 @@ flowchart TD
     S5 --> D3{"OK?"}
     D3 -->|"Yes"| S6["STEP 6 — DEPARTMENT MANAGER<br/>Accounting Department Manager (RC 012)<br/>• A different user from steps 4 and 5<br/>• Status: FOR_DEPARTMENT_MANAGER"]
     S6 --> D4{"Approved?"}
-    D4 -->|"Yes"| S7["STEP 7 — FOR TREASURY<br/>• Status: FOR_TREASURY<br/>• Journal entry POSTED to the General Ledger<br/>• Print the DV (GL codes)"]
+    D4 -->|"Yes"| S7["STEP 7 — FOR TREASURY<br/>• Status: FOR_TREASURY<br/>• Journal entry POSTED to the General Ledger<br/>• Print the DV (GL codes)<br/>• BIR 2307 when tax is withheld"]
     S7 --> END(["Go to Section 9"])
     D1 -->|"No"| X["RETURNED (status REJECTED)<br/>• Reason required<br/>• Can only be cancelled —<br/>prepare a new DV"]
     D2 -->|"No"| X
@@ -366,6 +367,8 @@ Payroll Management, DV Processing → Disbursement Voucher. **Payroll month stat
 | 3a | Payroll officer (alternative) | Import Payroll | Import the same month again | Asked to replace it; Replace Import replaces the month |
 | 4 | Payroll officer | Payroll Management → Year-to-Date Report | Pick the Fiscal Year and Month (Whole Year or one month) — the report loads by itself (no Generate button) | One row per month: employees, gross, deductions, refunds, net pay, employer share, with totals; they agree with the file. The month name in Payroll Imports is plain text (no records window) |
 | 4a | Payroll officer | Year-to-Date Report → **Export CSV** | Export for the same filter | CSV with one row per employee: Emp No., Last / First / Middle name, Department, Months, Gross Pay, Deductions, Refunds, Net Pay, Employer Share, and a TOTAL row |
+| 4b | Payroll officer / Accounting | Payroll Management → **Annualization** | Pick the fiscal year, click **Annualize** (after the year's months are imported; again after any correction) | One row per employee: gross, non-taxable, taxable income, tax due, tax withheld, adjustment and UNDERPAID / OVERPAID / CORRECT; totals; Export CSV. Items without a Tax Treatment are flagged — set them in Payroll Setup |
+| 4c | Accounting | Annualization → **2316** on an employee | Check / fill the Edit Form (TIN, RDO, addresses, previous employer, signatories — CRISALYN T. HUGO prefilled), Form Preview, Download PDF | The employee's BIR 2316: amounts locked to the annualization; with a previous employer, items 23–28 include it |
 | 5 | Requesting office user | Payroll Management → Payroll Imports → **Create DV** on the month | Disbursement Voucher opens a New DV for the month (Vendor or Payroll = "Payroll — month"); pick the RFA; save | Claimant, particulars, amount, deductions and the balanced accounting entry were filled; DV DRAFT; the month shows **DV Created** and its button becomes **View DV**. On save the server re-reads the Amount and deductions from the imported month (edits to them are ignored). On the payroll DV (form, view and at Accounting) each deduction shows its name and amount only — no Rate box (the import has none), no remove / "+ TYPE" buttons |
 | 5d | Requesting office user (alternative) | New DV (payroll) | Pick an RFA that is not Approved, is for another fiscal year than the payroll month, has no Personnel Services line (5-01-…), or whose remaining balance is below the payroll's **gross + employer share** | Not saved — the reason is shown (e.g. "The January 2026 payroll needs 96,850.36 (gross 84,568.00 + employer share 12,282.36) but the selected RFA(s) have only 50,000.00 remaining.") |
 | 5a | Requesting office user (alternative) | New DV | Change Vendor or Payroll back to None | Every field the payroll filled is cleared |
@@ -389,6 +392,8 @@ flowchart TD
     R1 --> S2
     D1 -->|"Yes"| S3["STEP 3 — IMPORT<br/>Payroll officer — Payroll Imports<br/>• Month listed<br/>• Status: Imported"]
     S3 --> S4["STEP 4 — CHECK<br/>Payroll officer — Year-to-Date Report<br/>• Per month totals (loads by itself)<br/>• Export CSV: per employee"]
+    S4 -.->|"year end"| A1["STEP 4B — ANNUALIZATION<br/>Payroll / Accounting — Payroll Management, Annualization<br/>• Annualize the fiscal year<br/>• Per employee: taxable income, tax due,<br/>withheld, adjustment<br/>• UNDERPAID / OVERPAID / CORRECT"]
+    A1 --> A2["STEP 4C — BIR 2316<br/>Accounting — Annualization, 2316<br/>• Edit Form: employee details,<br/>previous employer, signatories<br/>• Amounts locked to the annualization"]
     S4 --> S5["STEP 5 — PAYROLL DV<br/>Requesting office — Payroll Imports, Create DV<br/>• New DV filled from the month<br/>• RFA, save — DV DRAFT<br/>• Month: DV Created, button View DV"]
     S5 --> S6["STEP 6 — DV APPROVALS<br/>Section 8, steps 2 to 7<br/>• Entry posted at FOR_TREASURY"]
     S6 --> D2{"DV cancelled?"}
@@ -458,6 +463,7 @@ OUTSTANDING → STALE, or CANCELLED / VOIDED. **Release:** PENDING → NOTIFIED 
 | 6a | Treasury Officer (alternative) | FTLA / Prepare Check | Use a DV already on an FTLA for a check, or the reverse | Not offered / refused — one release per DV |
 | 7 | Treasury | FTLA | Move it through For RM Approval → For Review → For Approval → Approved → Transmitted to Bank → Validated (bank confirmed) | Status Validated |
 | 8 | Treasury | FTLA | Submit to Accounting | **One combined payment JEV posted** for every DV on the FTLA (Dr Accounts Payable per DV / Cr Cash); every listed DV becomes RELEASED; the JEV print shows **ADADJ** |
+| 8a | Treasury | FTLA (Settlement to Main Depository — fund sweeping) | Submit to Accounting | **Settlement JEV posted** (Dr the Main Depository bank, Cr each swept bank — each bank's own Cash SL when tagged, else its GL); no DV is involved |
 
 ```mermaid
 flowchart TD
@@ -474,6 +480,8 @@ flowchart TD
     F1 --> F2["STEP 7 — FTLA APPROVALS<br/>Treasury<br/>• RM approval → review → approval<br/>• Transmitted → Validated by the bank"]
     F2 --> F3["STEP 8 — SUBMIT TO ACCOUNTING<br/>Treasury — FTLA<br/>• One payment JEV for all its DVs, POSTED<br/>• Every DV: RELEASED<br/>• JEV print: ADADJ"]
     F3 --> END
+    F2 -.->|"fund sweeping"| F4["STEP 8A — SETTLEMENT TO MAIN DEPOSITORY<br/>Treasury — FTLA, Submit to Accounting<br/>• Settlement JEV POSTED<br/>• Dr Main Depository / Cr swept banks"]
+    F4 --> END
 ```
 
 ## 10. Adjusting entries (Journal Entry Voucher)
@@ -516,6 +524,7 @@ every approved amount from the earlier sections shows up correctly.
 | 2 | Any user | Ledgers → General Ledger → click the GL code | Find the SL (bottom-level) account used | Its postings and running balance in the SL popup; the popup's **Print SL** prints the same SUBSIDIARY LEDGER sheets. The Subsidiary Ledger page is no longer in the sidebar (it still opens at `SubsidiaryLedgerPage`) |
 | 3 | Any user | Ledgers → Journals | Open the GJ and CKDJ tabs | GJ: posted journal entries; CKDJ: the checks from Section 9 |
 | 4 | Any user | Ledgers → Trial Balance | Pick the fiscal year and book | Total debits = total credits; the figures include the year's Opening Balances |
+| 4a | Any user | Reports → Trial Balance, Balance Sheet, Income Statement, Statement of Changes in Net Assets / Equity, Cash Flow | Pick the fiscal year / book; **Print** or **Export to Excel** (header buttons) | The statements agree with the Trial Balance; the print and the Excel file show the same figures |
 | 5 | Any user | Monitoring → COB Monitoring | Open the office and fiscal year from Section 3 | Approved, Revision, CBA, RFA, LAA, Available and Remaining agree with Sections 3–6; PDF and Excel reports download |
 
 ```mermaid
@@ -527,7 +536,8 @@ flowchart TD
     SL --> JR["STEP 3 — JOURNALS<br/>Any user — Ledgers, Journals<br/>• General Journal (GJ)<br/>• Check Disbursements Journal (CKDJ)"]
     JR --> TB["STEP 4 — TRIAL BALANCE<br/>Any user — Ledgers, Trial Balance<br/>• Total debits = total credits"]
     COB["Sections 3 to 6 — approved COB,<br/>CBA, RFA / LAA"] --> MON["STEP 5 — COB MONITORING<br/>Any user — Monitoring, COB Monitoring<br/>• Approved, revised, CBA, RFA, LAA,<br/>available and remaining per line<br/>• PDF / Excel report"]
-    TB --> END(["Verification complete"])
+    TB --> FS["STEP 4A — FINANCIAL STATEMENTS<br/>Any user — Reports<br/>• Balance Sheet, Income Statement,<br/>Changes in Equity, Cash Flow<br/>• Print / Export to Excel"]
+    FS --> END(["Verification complete"])
     MON --> END
 ```
 

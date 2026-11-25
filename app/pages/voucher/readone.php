@@ -163,6 +163,7 @@ $_vr_rcId          = $_vr_isSysAdmin ? null : ($_vr_userRow['rc_id'] ?? null);
             <div class="nha-modal-foot no-print">
                 <button type="button" class="nha-btn nha-btn-ghost" onclick="vr_close()">Close</button>
                 <button type="button" class="nha-btn nha-btn-outline" onclick="vr_print()">Print</button>
+                <button type="button" class="nha-btn nha-btn-outline" id="vr-bir2307-btn" onclick="vr_printBir2307()" style="display:none;" title="BIR Form 2307 — Certificate of Creditable Tax Withheld at Source">BIR 2307</button>
                 <span id="vr-actions"></span>
             </div>
 
@@ -238,8 +239,20 @@ function vr_print() {
     if (vr_dv) prp_open(prp_dvPayload(vr_dv), { type: 'DV' });
 }
 
+// BIR 2307 → the payee's Certificate of Creditable Tax Withheld at Source for this DV (Bir2307PrintService builds it from
+// the DV id: its ATC lines, the vendor, NHA's payor details). Offered only when the DV withholds an EWT / percentage tax
+// (an ATC line that isn't withholding VAT — WV… is not on a 2307) and isn't cancelled — see vr_render().
+function vr_hasBir2307(dv) {
+    return dv?.status !== 'CANCELLED' && (dv?.atc_lines ?? []).some(a =>
+        Number(a.withholding_tax) > 0 && !String(a.atc_code || '').toUpperCase().startsWith('WV'));
+}
+function vr_printBir2307() {
+    if (vr_dv) prp_open({ dv_id: vr_dv.dv_id }, { type: 'BIR2307' });
+}
+
 function vr_render(dv) {
     $vr('vr-modal-title').textContent = `Disbursement Voucher — ${dv.dv_no}`;
+    $vr('vr-bir2307-btn').style.display = vr_hasBir2307(dv) ? '' : 'none';
 
     const rejection = dv.status === 'REJECTED' && dv.rejection_reason
         ? `<div class="vr-rejection"><strong>Returned:</strong> ${vr_esc(dv.rejection_reason)}</div>` : '';

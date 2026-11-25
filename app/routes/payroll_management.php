@@ -13,6 +13,8 @@ use PHPMaker2024\FIMS\Service\PayrollManagementService;
  *   GET    /payroll-management/records/{periodId}   employees of an imported month (search, page, limit)
  *   GET    /payroll-management/record-items/{id}    one employee's amounts per payroll item
  *   GET    /payroll-management/ytd?year=&month=&department=&status=&search=   Year-to-Date report per employee
+ *   GET    /payroll-management/annualization?year=  the year's stored tax annualization per employee + totals
+ *   POST   /payroll-management/annualize            { year } — (re)build it from the year's imported payroll
  *   GET    /payroll-management/template-columns     the columns the import recognises (from Payroll Setup)
  *   GET    /payroll-management/template             the actual import form (_shared/template/MONTHLY-PAYROLL-TEMPLATE.xlsx) without employee rows
  */
@@ -91,6 +93,29 @@ $app->get('/payroll-management/ytd', function ($request, $response, $args) use (
         return $payrollMgmtJson($response, $PayrollManagementService->fetchYtd($request->getQueryParams()));
     } catch (\Exception $e) {
         LogError('GET /payroll-management/ytd ' . $e->getMessage());
+
+        return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
+    }
+})->add($accessMiddleware)->add($jwtMiddleware);
+
+// Tax annualization (year-end tax on compensation): the stored result of a year, and Annualize (rebuilds it from the payroll).
+$app->get('/payroll-management/annualization', function ($request, $response, $args) use ($PayrollManagementService, $payrollMgmtJson) {
+    try {
+        return $payrollMgmtJson($response, $PayrollManagementService->fetchAnnualization((int) ($request->getQueryParams()['year'] ?? 0)));
+    } catch (\Exception $e) {
+        LogError('GET /payroll-management/annualization ' . $e->getMessage());
+
+        return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
+    }
+})->add($accessMiddleware)->add($jwtMiddleware);
+
+$app->post('/payroll-management/annualize', function ($request, $response, $args) use ($PayrollManagementService, $payrollMgmtJson) {
+    try {
+        $body = $request->getParsedBody() ?: [];
+
+        return $payrollMgmtJson($response, $PayrollManagementService->annualize((int) ($body['year'] ?? 0), (int) $request->getAttribute('user_id')));
+    } catch (\Exception $e) {
+        LogError('POST /payroll-management/annualize ' . $e->getMessage());
 
         return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
     }

@@ -78,6 +78,51 @@ $_prp_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
 .nha-root .prp-lh-status.bad { color: #B42318; }
 .nha-root .prp-lh input[type=file] { display: none; }
 @media (max-width: 760px) { .nha-root .prp-lh-item { grid-template-columns: 36px 1fr; } }
+
+/* ── Form details (Edit Form / Form Preview tabs) — the old ACCOUNTING BIR 2307 window's look ── */
+.nha-root .prp-tabs { display: flex; border-bottom: 1px solid var(--bdr, #E4ECF2); margin: -4px 0 12px; }
+.nha-root .prp-tabs[hidden] { display: none; }
+.nha-root .prp-tab { padding: 9px 18px; font-size: 12px; font-weight: 600; border: 0; border-bottom: 2px solid transparent;
+    background: transparent; color: var(--subtle, #62657E); cursor: pointer; }
+.nha-root .prp-tab.is-on { border-bottom-color: var(--afims-heading-fill, #000E3E); color: var(--afims-heading, #000E3E); }
+.nha-root .prp-frame-wrap[hidden] { display: none; }
+.nha-root .prp-ff { height: 72vh; overflow-y: auto; font-size: 12px; }
+.nha-root .prp-ff[hidden] { display: none; }
+.nha-root .prp-ff-note { margin: 0 0 8px; padding: 8px 10px; border-radius: 6px; background: var(--surf, #F4F7FA); color: var(--subtle, #62657E); }
+.nha-root .prp-ff-legend { display: flex; flex-wrap: wrap; gap: 14px; margin: 0 0 10px; color: var(--subtle, #62657E); font-size: 11px; }
+.nha-root .prp-ff-legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -2px; margin-right: 4px; }
+.nha-root .prp-ff-legend .lg-edit { background: var(--afims-primary-soft, #E6EBF6); border: 1px solid var(--afims-primary, #0035A9); }
+.nha-root .prp-ff-legend .lg-lock { background: var(--surf, #F4F7FA); border: 1px dashed var(--afims-border-strong, #A9AAB8); }
+.nha-root .prp-ff-legend .lg-chg  { background: var(--afims-warning-soft, #FFF8DB); border: 1px solid var(--afims-warning, #FCD20F); }
+.nha-root .prp-ff-form { border: 1.5px solid var(--afims-heading-fill, #000E3E); }
+.nha-root .prp-ff-head { display: flex; align-items: center; gap: 14px; padding: 8px 12px; border-bottom: 1.5px solid var(--afims-heading-fill, #000E3E); }
+.nha-root .prp-ff-formno { text-align: center; line-height: 1.1; font-size: 10px; }
+.nha-root .prp-ff-formno b { display: block; font-size: 22px; }
+.nha-root .prp-ff-title { flex: 1; text-align: center; font-size: 15px; font-weight: 700; }
+.nha-root .prp-ff-part { padding: 4px 10px; text-align: center; font-weight: 700; background: var(--surf, #F4F7FA);
+    border-bottom: 1px solid var(--bdr, #E4ECF2); border-top: 1px solid var(--bdr, #E4ECF2); }
+.nha-root .prp-ff-line { display: flex; flex-wrap: wrap; border-bottom: 1px solid var(--bdr, #E4ECF2); }
+.nha-root .prp-ff-cell { flex: 1 1 160px; padding: 6px 10px; border-right: 1px solid var(--bdr, #E4ECF2); min-width: 0; }
+.nha-root .prp-ff-cell:last-child { border-right: 0; }
+.nha-root .prp-ff-lbl { font-size: 10.5px; font-weight: 600; color: var(--subtle, #62657E); margin-bottom: 3px; }
+.nha-root .prp-ff-no { display: inline-block; min-width: 18px; font-weight: 700; color: var(--afims-heading, #000E3E); }
+.nha-root .prp-ff-req { color: #B42318; }
+.nha-root .prp-ff input, .nha-root .prp-ff select, .nha-root .prp-ff textarea { width: 100%; padding: 5px 7px; font-size: 12px;
+    border: 1px solid var(--afims-primary, #0035A9); border-radius: 5px; background: var(--afims-primary-soft, #E6EBF6);
+    color: var(--afims-text, #1A1B21); font-family: inherit; }
+.nha-root .prp-ff textarea { resize: vertical; }
+.nha-root .prp-ff .edited { background: var(--afims-warning-soft, #FFF8DB) !important; border-color: var(--afims-warning, #FCD20F) !important; }
+.nha-root .prp-ff .is-locked input, .nha-root .prp-ff .is-locked textarea, .nha-root .prp-ff input.lock {
+    background: var(--surf, #F4F7FA); border: 1px dashed var(--afims-border-strong, #A9AAB8); color: var(--subtle, #62657E); cursor: not-allowed; }
+.nha-root .prp-ff .is-locked .prp-ff-lbl::after { content: " \1F512"; font-size: 9px; opacity: .6; }
+.nha-root .prp-ff table { width: 100%; border-collapse: collapse; }
+.nha-root .prp-ff th { padding: 5px 6px; font-size: 11px; background: var(--surf, #F4F7FA); border-bottom: 1px solid var(--bdr, #E4ECF2); text-align: left; }
+.nha-root .prp-ff td { padding: 4px 6px; border-bottom: 1px solid var(--bdr, #E4ECF2); }
+.nha-root .prp-ff .r { text-align: right; }
+.nha-root .prp-ff td.r input { text-align: right; font-family: "IBM Plex Mono", monospace; }
+.nha-root .prp-ff tfoot td { font-weight: 700; }
+.nha-root .prp-ff-warn { padding: 6px 10px; font-size: 11px; font-weight: 600; color: #B42318; background: #FDECEC; }
+.nha-root .prp-ff-back { font-size: 10.5px; color: var(--subtle, #62657E); display: inline-block; margin-top: 2px; }
 </style>
 
 <!-- ── PRINT PREVIEW MODAL ───────────────────────────── -->
@@ -119,7 +164,15 @@ $_prp_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
                     </div>
                     <div class="prp-lh-status" id="prp-lh-status" role="status"></div>
                 </div>
-                <div class="prp-frame-wrap">
+                <!-- Form details panel (prp_ffOpen()) — a pdfOnly form whose PRP_TYPES entry has `prefill`: its prefilled
+                     values to check / change before printing (blue = editable, grey = locked), e.g. the BIR 2307's payee
+                     and signatory. Each change re-renders the PDF below. -->
+                <div class="prp-tabs" id="prp-tabs" role="tablist" hidden>
+                    <button type="button" class="prp-tab is-on" data-tab="edit" role="tab">Edit Form</button>
+                    <button type="button" class="prp-tab" data-tab="preview" role="tab">Form Preview</button>
+                </div>
+                <div class="prp-ff" id="prp-ff" hidden></div>
+                <div class="prp-frame-wrap" id="prp-frame-wrap">
                     <div class="prp-msg" id="prp-msg">Loading preview&hellip;</div>
                     <!-- allow-same-origin (no allow-scripts): nothing runs inside, but the
                          designer can update the header in place for instant feedback -->
@@ -166,6 +219,13 @@ const PRP_TYPES = {
     CFA: { title: 'Certified Funds Available',               print: 'print/cfa', hdrPt: 451.28 },   // funding-request memo (A4, shared memo layout)
     MEMO: { title: 'Memo Request',                           print: 'print/memo', hdrPt: 451.28 },   // the originating unit's memo (non-FMD; A4, shared memo layout)    // pdfOnly: an official PDF form — the preview shows the PDF itself; no DOCX, no letterhead editor.
     DV:  { title: 'Disbursement Voucher',                    print: 'print/dv', pdfOnly: true },
+    // payload { dv_id }; `prefill` — the details panel (prp_ffOpen()): payee + signatory prefilled from the DV / settings, editable
+    BIR2307: { title: 'BIR Form 2307 — Certificate of Creditable Tax Withheld at Source', print: 'print/bir2307', pdfOnly: true,
+               prefill: p => 'print/prefill/bir2307/' + encodeURIComponent(p.dv_id), form: 'prp_ffForm2307' },
+    // payload { fiscal_yr, employee_id } — from Payroll Management → Annualization
+    BIR2316: { title: 'BIR Form 2316 — Certificate of Compensation Payment / Tax Withheld', print: 'print/bir2316', pdfOnly: true,
+               prefill: p => 'print/prefill/bir2316?year=' + encodeURIComponent(p.fiscal_yr) + '&employee_id=' + encodeURIComponent(p.employee_id),
+               form: 'prp_ffForm2316' },
 };
 let prp_type = 'CBA';
 // The print paths carry no leading "/" (the "/" is joined here, outside any quoted literal): on a sub-folder
@@ -213,6 +273,7 @@ document.addEventListener('DOMContentLoaded', () => {
     $prp('prp-pdf')?.addEventListener('click', () => prp_download('pdf'));
     $prp('prp-docx')?.addEventListener('click', () => prp_download('docx'));
     $prp('prp-lh-toggle')?.addEventListener('click', prp_lhToggle);
+    document.querySelectorAll('#prp-tabs .prp-tab').forEach(b => b.addEventListener('click', () => prp_ffTab(b.dataset.tab)));
 
     $prp('prp-lh-add-image')?.addEventListener('click', () => $prp('prp-lh-addfile').click());
     $prp('prp-lh-addfile')?.addEventListener('change', e => prp_lhReadPng(e.target, src =>
@@ -302,7 +363,258 @@ async function prp_open(payload, opts = {}) {
     dialog.classList.toggle('nha-modal-xl', !!PRP_TYPES[prp_type].wide);
     dialog.classList.toggle('nha-modal-lg', !PRP_TYPES[prp_type].wide);
     $prp('prp-overlay').classList.add('open');
+    if (pdfOnly && PRP_TYPES[prp_type].prefill) {   // its Edit Form tab first (prefilled values), the PDF on Form Preview
+        await prp_ffOpen();
+        return;
+    }
+    $prp('prp-tabs').hidden = true;
+    $prp('prp-ff').hidden = true;
+    $prp('prp-frame-wrap').hidden = false;
     await (pdfOnly ? prp_renderPdf() : Promise.all([letterhead ? prp_lhLoad() : null, prp_render()]));
+}
+
+/* ── Form details: Edit Form / Form Preview ──────────────────────────────────────
+ * A pdfOnly form whose PRP_TYPES entry has `prefill` (the BIR 2307) opens like the old ACCOUNTING "BIR Form 2307" window
+ * (dv-processing.php #bir2307Modal): an Edit Form tab laid out like the paper form, prefilled from the record
+ * (Bir2307PrintService::prefill()) — blue = you can fill in or change, grey dashed + lock = locked (NHA's payor details,
+ * the DV's ATC amounts), yellow = changed from the prefilled value — and a Form Preview tab with the real PDF (rendered
+ * when opened after a change). The edited values travel in the payload; nothing is saved. Download PDF works from either. */
+let prp_ffDirty = false;   // an edit since the PDF was last rendered
+let prp_ffData  = null;    // the prefill: { editable, locked, signatories }
+
+function prp_ffTab(tab) {
+    document.querySelectorAll('#prp-tabs .prp-tab').forEach(b => b.classList.toggle('is-on', b.dataset.tab === tab));
+    $prp('prp-ff').hidden = tab !== 'edit';
+    $prp('prp-frame-wrap').hidden = tab !== 'preview';
+    if (tab === 'preview' && (prp_ffDirty || !prp_pdfUrl)) {
+        prp_ffDirty = false;
+        prp_renderPdf();
+    }
+}
+
+/** "123456789000" → "123-456-789-000" (3-3-3 + up to 5); the old window's TIN typing aid. */
+function prp_ffTin(v) {
+    const d = String(v || '').replace(/\D/g, '').slice(0, 14);
+    return [d.slice(0, 3), d.slice(3, 6), d.slice(6, 9), d.slice(9)].filter(Boolean).join('-');
+}
+
+async function prp_ffOpen() {
+    const box = $prp('prp-ff');
+    $prp('prp-tabs').hidden = false;
+    prp_ffDirty = false;
+    if (prp_pdfUrl) { URL.revokeObjectURL(prp_pdfUrl); prp_pdfUrl = null; }
+    prp_ffTab('edit');
+    prp_showError('');
+    box.innerHTML = '<p class="prp-ff-note">Loading the form details…</p>';
+    try {
+        prp_ffData = (await prp_fetchJson(PRP_API + '/' + PRP_TYPES[prp_type].prefill(prp_payload), { headers: prp_headers(false) })).data;
+    } catch (e) {
+        prp_setReady(false);
+        box.innerHTML = '<p class="prp-ff-note">This form can\'t be printed.</p>';
+        prp_showError(e.message);
+        return false;
+    }
+    window[PRP_TYPES[prp_type].form](box, prp_ffData);   // the form's own Edit Form layout (prp_ffForm2307 / prp_ffForm2316)
+    prp_setReady(true);
+    return true;
+}
+
+/** The BIR 2307's Edit Form — the old ACCOUNTING dv-processing.php #bir2307Modal. */
+function prp_ffForm2307(box, data) {
+    const esc  = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const peso = n => Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const ed = data.editable || {}, lk = data.locked || {}, sigs = data.signatories || [];
+    prp_payload = Object.assign({ dv_id: prp_payload.dv_id }, ed, { descriptions: [...(ed.descriptions || [])] });
+    delete prp_payload.quarter;
+
+    const cell = (no, label, inner, opts = {}) => `<div class="prp-ff-cell ${opts.locked ? 'is-locked' : 'is-editable'}" style="${opts.style || ''}">
+        <div class="prp-ff-lbl">${no ? `<span class="prp-ff-no">${no}</span>` : ''}${label}${opts.req ? ' <span class="prp-ff-req">*</span>' : ''}</div>${inner}</div>`;
+    const inp  = (k, attrs = '') => `<input type="text" data-key="${k}" value="${esc(ed[k])}" autocomplete="off" ${attrs}>`;
+    const lock = v => `<input type="text" value="${esc(v)}" readonly tabindex="-1">`;
+    const totalBase = (lk.rows || []).reduce((s, r) => s + Number(r.tax_base || 0), 0);
+    const totalTax  = (lk.rows || []).reduce((s, r) => s + Number(r.withholding_tax || 0), 0);
+    const sigOpts = sigs.map((s, i) => `<option value="${i}">${esc(s.name)}${s.title ? ` (${esc(s.title)})` : ''}</option>`).join('');
+
+    box.innerHTML = `
+        <div class="prp-ff-note">Filled from DV ${esc(lk.dv_no)}, its tax lines and the payee record. The ATC amounts are locked to the DV so the
+            2307 always matches the DV, its journal entry and the remittance; NHA's payor details are fixed. Changes here apply to this
+            printout only.</div>
+        <div class="prp-ff-legend"><span><i class="lg-edit"></i>You can fill in or change</span><span><i class="lg-lock"></i>Locked — from the DV / NHA</span>
+            <span><i class="lg-chg"></i>Changed from the DV / payee value</span></div>
+        <div class="prp-ff-form">
+            <div class="prp-ff-head"><div class="prp-ff-formno">BIR Form No.<b>2307</b>January 2018 (ENCS)</div>
+                <div class="prp-ff-title">Certificate of Creditable Tax Withheld at Source</div></div>
+            <div class="prp-ff-line">
+                ${cell('1', 'Quarter', `<select id="prp-ff-quarter">${[1, 2, 3, 4].map(q => `<option value="${q}"${q === Number(ed.quarter) ? ' selected' : ''}>Q${q} (${['Jan–Mar', 'Apr–Jun', 'Jul–Sep', 'Oct–Dec'][q - 1]})</option>`).join('')}</select>`)}
+                ${cell('', 'For the Period — From', `<input type="date" data-key="period_from" value="${esc(ed.period_from)}">`)}
+                ${cell('', 'To', `<input type="date" data-key="period_to" value="${esc(ed.period_to)}">`)}
+            </div>
+            <div class="prp-ff-part">Part I - Payee Information</div>
+            <div class="prp-ff-line">${cell('2', 'Taxpayer Identification Number (TIN)', inp('payee_tin', 'inputmode="numeric" maxlength="17" placeholder="000-000-000-00000" data-tin="1"'), { req: true })}</div>
+            <div class="prp-ff-line">${cell('3', 'Payee\'s Name (Last Name, First Name, Middle Name for Individual OR Registered Name for Non-Individual)', inp('payee_name', 'placeholder="Registered business name"'), { req: true })}</div>
+            <div class="prp-ff-line">
+                ${cell('4', 'Registered Address', `<textarea data-key="payee_address" rows="2" placeholder="Unit/Bldg., Street, Barangay, City">${esc(ed.payee_address)}</textarea>`, { style: 'flex:4 1 300px;' })}
+                ${cell('4A', 'ZIP Code', inp('payee_zip', 'inputmode="numeric" maxlength="4" placeholder="e.g. 1101"'))}
+            </div>
+            <div class="prp-ff-part">Part II - Payor Information</div>
+            <div class="prp-ff-line">${cell('6', 'Taxpayer Identification Number (TIN)', lock(lk.payor_tin), { locked: true })}${cell('', 'Nature of Business', lock(lk.payor_nature), { locked: true })}</div>
+            <div class="prp-ff-line">${cell('7', 'Payor\'s Name (Registered Name for Non-Individual)', lock(lk.payor_name), { locked: true })}</div>
+            <div class="prp-ff-line">
+                ${cell('8', 'Registered Address', `<textarea rows="2" readonly tabindex="-1">${esc(lk.payor_address)}</textarea>`, { locked: true, style: 'flex:4 1 300px;' })}
+                ${cell('8A', 'ZIP Code', lock(lk.payor_zip), { locked: true })}
+            </div>
+            <div class="prp-ff-part">Part III - Details of Monthly Income Payments and Taxes Withheld</div>
+            <table><thead><tr><th>Income Payments Subject to Expanded Withholding Tax</th><th style="width:130px;">ATC</th>
+                <th class="r" style="width:150px;">Amount of Income Payments (Total for the Quarter, ₱)</th><th class="r" style="width:140px;">Tax Withheld for the Quarter (₱)</th></tr></thead>
+                <tbody>${(lk.rows || []).map((r, i) => `<tr>
+                    <td class="is-editable"><input type="text" data-desc="${i}" value="${esc((ed.descriptions || [])[i])}" placeholder="e.g. Purchase of office supplies" title="Description of the income payment — printed on the certificate"></td>
+                    <td class="is-locked"><input type="text" class="lock" value="${esc(r.atc_code)}${r.rate != null ? ` (${Number(r.rate)}%)` : ''}" readonly tabindex="-1" title="Locked — from the DV's tax lines"></td>
+                    <td class="r is-locked"><input type="text" class="lock" value="${peso(r.tax_base)}" readonly tabindex="-1"></td>
+                    <td class="r is-locked"><input type="text" class="lock" value="${peso(r.withholding_tax)}" readonly tabindex="-1"></td></tr>`).join('')}</tbody>
+                <tfoot><tr><td colspan="2" class="r">Total</td><td class="r">₱${peso(totalBase)}</td><td class="r">₱${peso(totalTax)}</td></tr></tfoot></table>
+            ${totalBase - Number(lk.gross || 0) > 0.005 ? `<div class="prp-ff-warn">Total tax base (₱${peso(totalBase)}) exceeds DV gross amount (₱${peso(lk.gross)})</div>` : ''}
+            <div class="prp-ff-part">Signature over Printed Name of Payor/Payor's Authorized Representative/Tax Agent</div>
+            <div class="prp-ff-line">
+                ${cell('', 'Printed Name <span style="font-weight:400;">(pre-filled — editable)</span>', `<select id="prp-ff-sig" title="Who signs for NHA — pick from the list or choose 'Enter manually'">
+                    ${sigOpts}<option value="__other__">— Enter manually —</option></select>
+                    <input type="text" id="prp-ff-sig-text" data-key="signatory_name" placeholder="Type full name" style="display:none;margin-top:4px;">
+                    <a href="#" class="prp-ff-back" id="prp-ff-sig-back" style="display:none;">← Back to list</a>`, { style: 'flex:2 1 260px;' })}
+                ${cell('', 'Title / Designation', inp('signatory_title', 'placeholder="e.g. Officer-In-Charge, Acctg. Dept."'), { style: 'flex:2 1 220px;' })}
+            </div>
+            <div class="prp-ff-line">
+                ${cell('', 'TIN of Signatory', inp('signatory_tin', 'inputmode="numeric" maxlength="17" placeholder="000-000-000" data-tin="1"'))}
+                ${cell('', 'Date Signed <span style="font-weight:400;">(not printed — the form has no box for it)</span>', `<input type="date" data-key="signatory_date" value="${esc(ed.signatory_date)}">`)}
+            </div>
+        </div>`;
+
+    // every change → the payload, the yellow "changed" mark, and a fresh PDF next time Form Preview opens
+    const changed = (el, original) => { el.classList.toggle('edited', el.value !== String(original ?? '')); prp_ffDirty = true; };
+    box.querySelectorAll('[data-key]').forEach(el => el.addEventListener('input', () => {
+        if (el.dataset.tin) el.value = prp_ffTin(el.value);
+        prp_payload[el.dataset.key] = el.value;
+        changed(el, ed[el.dataset.key]);
+    }));
+    box.querySelectorAll('[data-desc]').forEach(el => el.addEventListener('input', () => {
+        prp_payload.descriptions[Number(el.dataset.desc)] = el.value;
+        changed(el, (ed.descriptions || [])[Number(el.dataset.desc)]);
+    }));
+    // 1 Quarter → the period's first and last day (in the DV's fiscal year), as the old window
+    $prp('prp-ff-quarter').addEventListener('change', e => {
+        const q = Number(e.target.value), y = Number(lk.fiscal_year), m1 = (q - 1) * 3 + 1, pad = n => String(n).padStart(2, '0');
+        const set = (k, v) => { const el = box.querySelector(`[data-key="${k}"]`); el.value = v; el.dispatchEvent(new Event('input')); };
+        set('period_from', `${y}-${pad(m1)}-01`);
+        set('period_to', `${y}-${pad(m1 + 2)}-${pad(new Date(y, m1 + 2, 0).getDate())}`);
+        e.target.classList.toggle('edited', q !== Number(ed.quarter));
+    });
+    // signatory: pick from the list (its title / TIN fill in) or "Enter manually"
+    const sel = $prp('prp-ff-sig'), txt = $prp('prp-ff-sig-text'), back = $prp('prp-ff-sig-back');
+    const setField = (k, v) => { const el = box.querySelector(`[data-key="${k}"]`); el.value = v; prp_payload[k] = v; changed(el, ed[k]); };
+    sel.addEventListener('change', () => {
+        if (sel.value === '__other__') {
+            sel.style.display = 'none'; txt.style.display = ''; back.style.display = ''; txt.value = ''; prp_payload.signatory_name = '';
+            txt.focus(); prp_ffDirty = true;
+            return;
+        }
+        const s = sigs[Number(sel.value)] || {};
+        prp_payload.signatory_name = s.name || '';
+        sel.classList.toggle('edited', (s.name || '') !== String(ed.signatory_name ?? ''));
+        setField('signatory_title', s.title || '');
+        setField('signatory_tin', s.tin || '');
+    });
+    back.addEventListener('click', e => {
+        e.preventDefault();
+        sel.style.display = ''; txt.style.display = 'none'; back.style.display = 'none';
+        sel.value = '0'; sel.dispatchEvent(new Event('change'));
+    });
+}
+
+/**
+ * The BIR 2316's Edit Form — the old ACCOUNTING income-tax-withheld.php 2316 window: the employee's Part I details,
+ * minimum wage earner, the previous employer (Part III), the signatories and the CTC are editable; the year, the
+ * employee's name, NHA (Part II) and every amount (19–52, from the annualization) are locked. Items 23–28 follow the
+ * previous employer's figures as they're typed (the server recomputes them the same way when printing).
+ */
+function prp_ffForm2316(box, data) {
+    const esc  = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const peso = n => Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const ed = data.editable || {}, lk = data.locked || {}, am = lk.amounts || {};
+    prp_payload = Object.assign({ fiscal_yr: prp_payload.fiscal_yr, employee_id: prp_payload.employee_id }, ed);
+
+    const cell = (no, label, inner, opts = {}) => `<div class="prp-ff-cell ${opts.locked ? 'is-locked' : 'is-editable'}" style="${opts.style || ''}">
+        <div class="prp-ff-lbl">${no ? `<span class="prp-ff-no">${no}</span>` : ''}${label}</div>${inner}</div>`;
+    const inp  = (k, attrs = '') => `<input type="text" data-key="${k}" value="${esc(ed[k])}" autocomplete="off" ${attrs}>`;
+    const date = k => `<input type="date" data-key="${k}" value="${esc(ed[k])}">`;
+    const lock = v => `<input type="text" value="${esc(v)}" readonly tabindex="-1">`;
+    const amt  = (id, v) => `<input type="text" class="lock" id="prp-ff-${id}" value="${peso(v)}" readonly tabindex="-1" style="text-align:right;font-family:'IBM Plex Mono',monospace;">`;
+    const line = (...cells) => `<div class="prp-ff-line">${cells.join('')}</div>`;
+    const L = { locked: true };
+
+    box.innerHTML = `
+        <div class="prp-ff-note">Filled from ${esc(lk.employee_name)}'s ${esc(lk.year)} annualization (Payroll Management → Annualization). The amounts are
+            locked to it — correct the payroll and annualize again to change them; NHA's employer details are fixed. Changes here apply to this printout only.</div>
+        <div class="prp-ff-legend"><span><i class="lg-edit"></i>You can fill in or change</span><span><i class="lg-lock"></i>Locked — from the annualization / NHA</span>
+            <span><i class="lg-chg"></i>Changed from the prefilled value</span></div>
+        <div class="prp-ff-form">
+            <div class="prp-ff-head"><div class="prp-ff-formno">BIR Form No.<b>2316</b>September 2021 (ENCS)</div>
+                <div class="prp-ff-title">Certificate of Compensation Payment / Tax Withheld<br><small style="font-weight:400;">For Compensation Payment With or Without Tax Withheld</small></div></div>
+            ${line(cell('1', 'For the Year', lock(lk.year), L), cell('2', 'For the Period — From (MMDD)', inp('period_from', 'maxlength="4" inputmode="numeric"')), cell('', 'To (MMDD)', inp('period_to', 'maxlength="4" inputmode="numeric"')))}
+            <div class="prp-ff-part">Part I - Employee Information</div>
+            ${line(cell('3', 'Taxpayer Identification Number (TIN)', inp('employee_tin', 'inputmode="numeric" maxlength="16" placeholder="000-000-000-0000" data-tin="1"')), cell('4', 'RDO Code', inp('rdo_code', 'maxlength="5"')))}
+            ${line(cell('5', 'Employee\'s Name (Last Name, First Name, Middle Name)', lock(lk.employee_name), L))}
+            ${line(cell('6', 'Registered Address', inp('employee_address'), { style: 'flex:4 1 300px;' }), cell('6A', 'ZIP Code', inp('employee_zip', 'maxlength="4" inputmode="numeric"')))}
+            ${line(cell('6B', 'Local Home Address', inp('employee_home_address'), { style: 'flex:4 1 300px;' }), cell('6C', 'ZIP Code', inp('employee_home_zip', 'maxlength="4" inputmode="numeric"')))}
+            ${line(cell('6D', 'Foreign Address', inp('employee_foreign_address')))}
+            ${line(cell('7', 'Date of Birth', date('date_of_birth')), cell('8', 'Contact Number', inp('contact_number')))}
+            ${line(cell('9', 'Statutory Minimum Wage rate per day', inp('mwe_rate_day', 'inputmode="decimal"')), cell('10', 'Statutory Minimum Wage rate per month', inp('mwe_rate_month', 'inputmode="decimal"')),
+                   cell('11', 'Minimum Wage Earner (MWE)', `<label style="display:flex;gap:6px;align-items:center;font-weight:400;"><input type="checkbox" id="prp-ff-mwe" style="width:auto;"${ed.is_mwe ? ' checked' : ''}> whose compensation is exempt</label>`))}
+            <div class="prp-ff-part">Part II - Employer Information (Present)</div>
+            ${line(cell('12', 'Taxpayer Identification Number (TIN)', lock(lk.employer_tin), L), cell('15', 'Type of Employer', lock('Main Employer'), L))}
+            ${line(cell('13', 'Employer\'s Name', lock(lk.employer_name), L))}
+            ${line(cell('14', 'Registered Address', lock(lk.employer_address), { locked: true, style: 'flex:4 1 300px;' }), cell('14A', 'ZIP Code', lock(lk.employer_zip), L))}
+            <div class="prp-ff-part">Part III - Employer Information (Previous)</div>
+            ${line(cell('16', 'Taxpayer Identification Number (TIN)', inp('prev_employer_tin', 'inputmode="numeric" maxlength="16" placeholder="000-000-000-0000" data-tin="1"')), cell('17', 'Employer\'s Name', inp('prev_employer_name'), { style: 'flex:2 1 260px;' }))}
+            ${line(cell('18', 'Registered Address', inp('prev_employer_address'), { style: 'flex:4 1 300px;' }), cell('18A', 'ZIP Code', inp('prev_employer_zip', 'maxlength="4" inputmode="numeric"')))}
+            <div class="prp-ff-part">Part IV-A - Summary</div>
+            ${line(cell('19', 'Gross Compensation Income from Present Employer', amt('i19', am.i19), L), cell('20', 'Less: Total Non-Taxable / Exempt Compensation (38)', amt('i20', am.i20), L))}
+            ${line(cell('21', 'Taxable Compensation Income from Present Employer (52)', amt('i21', am.i21), L), cell('22', 'Add: Taxable Compensation Income from Previous Employer', inp('taxable_previous', 'inputmode="decimal" placeholder="0.00"')))}
+            ${line(cell('23', 'Gross Taxable Compensation Income', amt('i23', am.i23), L), cell('24', 'Tax Due', amt('i24', am.i24), L))}
+            ${line(cell('25A', 'Amount of Taxes Withheld — Present Employer', amt('i25a', am.i25a), L), cell('25B', 'Amount of Taxes Withheld — Previous Employer', inp('tax_withheld_previous', 'inputmode="decimal" placeholder="0.00"')))}
+            ${line(cell('26', 'Total Amount of Taxes Withheld as adjusted', amt('i26', am.i26), L), cell('27', '5% Tax Credit (PERA Act of 2008)', amt('i27', am.i27), L), cell('28', 'Total Taxes Withheld', amt('i28', am.i28), L))}
+            <div class="prp-ff-note" id="prp-ff-adj" style="margin:0;border-radius:0;">${Number(am.adjustment) > 0.5 ? `Still to withhold (December): ₱${peso(am.adjustment)}` : (Number(am.adjustment) < -0.5 ? `Over-withheld — to refund: ₱${peso(-am.adjustment)}` : 'Withheld tax equals the tax due.')}</div>
+            <div class="prp-ff-part">Part IV-B - Details of Compensation Income</div>
+            ${line(cell('34', '13th Month Pay and Other Benefits (≤ ₱90,000)', amt('i34', am.i34), L), cell('35', 'De Minimis Benefits', amt('i35', am.i35), L))}
+            ${line(cell('36', 'SSS, GSIS, PHIC, Pag-IBIG Contributions and Union Dues', amt('i36', am.i36), L), cell('37', 'Salaries and Other Forms of Compensation (non-taxable — PERA)', amt('i37', am.i37), L))}
+            ${line(cell('38', 'Total Non-Taxable / Exempt Compensation Income', amt('i38', am.i38), L))}
+            ${line(cell('39', 'Basic Salary (taxable, less contributions)', amt('i39', am.i39), L), cell('48', '13th Month Pay and Other Benefits (over ₱90,000)', amt('i48', am.i48), L), cell('52', 'Total Taxable Compensation Income', amt('i52', am.i52), L))}
+            <div class="prp-ff-part">Signatures</div>
+            ${line(cell('53', 'Present Employer / Authorized Agent — Printed Name <span style="font-weight:400;">(pre-filled — editable)</span>', inp('employer_signatory'), { style: 'flex:2 1 260px;' }), cell('', 'Date Signed', date('date_signed')))}
+            ${line(cell('54', 'Employee — Printed Name', inp('employee_signatory'), { style: 'flex:2 1 260px;' }), cell('', 'Date Signed', date('date_signed_2')))}
+            ${line(cell('', 'CTC / Valid ID No. of Employee', inp('ctc_no')), cell('', 'Place of Issue', inp('ctc_place')), cell('', 'Date Issued', date('ctc_date')), cell('', 'Amount Paid, if CTC', inp('ctc_amount', 'inputmode="decimal"')))}
+        </div>`;
+
+    // items 23–28 follow the previous employer's figures (as the server computes them): 23 = 21 + 22; 24/26/28 = tax on 23
+    const TAX = [[8000000, 2202500, 0.35], [2000000, 402500, 0.30], [800000, 102500, 0.25], [400000, 22500, 0.20], [250000, 0, 0.15]];
+    const tax = x => { for (const [o, b, r] of TAX) if (x > o) return Math.round((b + (x - o) * r) * 100) / 100; return 0; };
+    const num = v => Number(String(v || '').replace(/,/g, '')) || 0;
+    const recalc = () => {
+        const i23 = Math.round((Number(am.i21) + num(prp_payload.taxable_previous)) * 100) / 100, i24 = tax(i23);
+        const adj = Math.round((i24 - Number(am.i25a) - num(prp_payload.tax_withheld_previous)) * 100) / 100;
+        $prp('prp-ff-i23').value = peso(i23);
+        ['i24', 'i26', 'i28'].forEach(k => { $prp('prp-ff-' + k).value = peso(i24); });
+        $prp('prp-ff-adj').textContent = adj > 0.5 ? `Still to withhold (December): ₱${peso(adj)}` : (adj < -0.5 ? `Over-withheld — to refund: ₱${peso(-adj)}` : 'Withheld tax equals the tax due.');
+    };
+    const changed = (el, original) => { el.classList.toggle('edited', el.value !== String(original ?? '')); prp_ffDirty = true; };
+    box.querySelectorAll('[data-key]').forEach(el => el.addEventListener('input', () => {
+        if (el.dataset.tin) el.value = prp_ffTin(el.value);
+        prp_payload[el.dataset.key] = el.value;
+        changed(el, ed[el.dataset.key]);
+        if (el.dataset.key === 'taxable_previous' || el.dataset.key === 'tax_withheld_previous') recalc();
+    }));
+    $prp('prp-ff-mwe').addEventListener('change', e => {
+        prp_payload.is_mwe = e.target.checked;
+        e.target.closest('label').classList.toggle('edited', e.target.checked !== !!ed.is_mwe);
+        prp_ffDirty = true;
+    });
 }
 
 /* ── Module record → print payload ─────────────────────────────────────────────

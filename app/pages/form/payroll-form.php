@@ -188,6 +188,20 @@
                     </div>
                 </div>
                 <div class="pyr-group full">
+                    <label class="pyr-label" for="pyr-tax-treatment">Tax Treatment <span class="pyr-hint" style="display:inline;">(year-end tax annualization / BIR 2316)</span></label>
+                    <select class="pyr-input" id="pyr-tax-treatment">
+                        <option value="NONE">Not part of it — loans, payables, employer shares</option>
+                        <option value="TAXABLE">Taxable compensation — basic pay, RA / TA, differentials</option>
+                        <option value="NON_TAXABLE">Non-taxable compensation — PERA</option>
+                        <option value="DE_MINIMIS_RICE">De minimis — rice subsidy (exempt up to ₱24,000 / year)</option>
+                        <option value="DE_MINIMIS_UNIFORM">De minimis — uniform / clothing (exempt up to ₱6,000 / year)</option>
+                        <option value="BENEFIT_90K">13th month &amp; other benefits (exempt up to ₱90,000 / year)</option>
+                        <option value="CONTRIBUTION">Mandatory contribution / union dues — GSIS, PhilHealth, Pag-IBIG</option>
+                        <option value="WITHHOLDING_TAX">Tax withheld on compensation</option>
+                    </select>
+                    <p class="pyr-hint">On a Deduction it takes away from pay (e.g. leave without pay) unless it is a contribution or tax withheld; on a Refund it adds back to pay, or reduces the contribution / tax withheld.</p>
+                </div>
+                <div class="pyr-group full">
                     <label class="pyr-label" for="pyr-item-name">Item Name <span class="req">*</span></label>
                     <input type="text" class="pyr-input" id="pyr-item-name" maxlength="150" autocomplete="off" placeholder="e.g. BASIC SALARY">
                     <p class="pyr-hint">Fills in from the Item Code. You can still type your own.</p>

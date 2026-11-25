@@ -1,7 +1,8 @@
 # Entity-Relationship Diagrams — FIMS NHA (by sidebar module)
 
-> **Status:** rewritten 2026-11-17, last updated 2026-11-24 (DV ↔ SARO link and PO→IAR check, `fund_tracking.dv_id` /
-> `bank_account_id`, Bank Reconciliation adjusting JEV) against the code in `app/` and the effective database structure in
+> **Status:** rewritten 2026-11-17, last updated 2026-11-25 (payroll Tax Annualization + `payroll_items.tax_treatment`, BIR 2307 / 2316,
+> FTLA settlement JEV and its status lookup, financial statements Print / Excel; earlier: DV ↔ SARO link and PO→IAR check,
+> `fund_tracking.dv_id` / `bank_account_id`, Bank Reconciliation adjusting JEV) against the code in `app/` and the effective database structure in
 > `_assets/sql/` (base tables **plus every alter** in `03 - alter_table`, `03 - alter` and `02 - alter_table`).
 > Organized the way users see the system: **one section per sidebar group and menu item** (`views/menu.php`),
 > each listing the page, routes and services behind it, the tables it writes and reads, its status workflow,
@@ -54,13 +55,13 @@
 | Registry/NCA | [SARO Registry](#saro-registry) | Built |
 | Registry/NCA | [Check Registry](#check-registry) | Built |
 | Registry/NCA | [Accountable Forms Registry](#accountable-forms-registry) | Empty placeholder (0-byte page) |
-| Registry/NCA | Collections and Deposits (was "Collections and Fund Sweeping") | Built — reports can be journalized (see [Known gaps](#known-gaps--open-questions)); each report names its **Collecting Officer** (`collection_reports.collecting_officer_id`), whose own GL / SL tag is used on the JEV line; deposit slips can be attached (`collection_report_deposits` slip url) |
+| Registry/NCA | Collections and Deposits (was "Collections and Fund Sweeping") | Built — reports can be journalized (see [Known gaps](#known-gaps--open-questions)); `GET /collections/undeposited-summary?rc_id=` gives an office's collected / deposited / undeposited totals; each report names its **Collecting Officer** (`collection_reports.collecting_officer_id`), whose own GL / SL tag is used on the JEV line; deposit slips can be attached (`collection_report_deposits` slip url) |
 | Registry/NCA | Fund Sweeping | Built — unswept deposit balances per bank account and the sweep cut-off settings (`BankManagementService` fund-sweep methods, `fims.app_settings`) |
 | Payroll | [Payroll Management](#payroll-management) | Built (import only) |
 | Payroll | [Remittance](#remittance) | Built |
 | Reports | [FMR](#fmr) | Empty placeholder (0-byte page) |
 | Reports | [Trial Balance](#trial-balance) | Built (read-only) |
-| Reports | Balance Sheet, Income Statement, Changes in Net Assets/Equity, Cash Flow | Built |
+| Reports | Balance Sheet, Income Statement, Changes in Net Assets/Equity, Cash Flow | Built — each has **Print** and **Export to Excel** header buttons (also the Trial Balance) |
 | Reports | Bank Reconciliation | Built |
 | Ledgers | [General Ledger](#general-ledger) | Built — SL postings roll up; click a GL code for its SLs |
 | Ledgers | [Journals](#journals) | Built (read-only) |
@@ -1576,6 +1577,7 @@ erDiagram
         varchar60 item_code UK "= import column name"
         varchar150 item_name
         varchar20 category "EARNING | DEDUCTION | REFUND | EMPLOYER_SHARE"
+        varchar20 tax_treatment "annualization: TAXABLE | NON_TAXABLE | DE_MINIMIS_* | BENEFIT_90K | CONTRIBUTION | WITHHOLDING_TAX | NONE"
         varchar30 account_code FK "nullable until set"
         int sort_order
         varchar20 status "ACTIVE | INACTIVE"
@@ -1587,13 +1589,14 @@ erDiagram
     }
 ```
 - **Table notes:**
-  - fims.payroll_items (`01 - table/48`): FKs from `03 - alter_table/37` — `account_code` → chart_of_accounts.account_code, `created_by` / `updated_by` → uac.users. Nothing is seeded.
+  - fims.payroll_items (`01 - table/48`): FKs from `03 - alter_table/37` — `account_code` → chart_of_accounts.account_code, `created_by` / `updated_by` → uac.users. `tax_treatment` (default NONE) says how the item counts in the year-end tax annualization (Payroll Setup's **Tax Treatment** dropdown; seeded for the 108 import columns at the end of `04 - seed_data/19`).
 
 ### Payroll Management
 
 - **Status:** Built (import only) — imports the monthly employee payroll (the payroll office's form `_shared/template/MONTHLY-PAYROLL-TEMPLATE.xlsx`) and keeps one summary row per month. Tabs: **Payroll Imports** (preview → import / replace, list with Month, Year, Import Date, Status, Total Payroll Amount = gross and one action — **Create DV** / **View DV**; the month name is plain text — the records window and Delete Import were removed from the page, though the `records`, `record-items` and `delete` routes remain), **Year-to-Date Report** (Fiscal Year + Month / Whole Year, loads on filter change; one row per month — employees, gross, deductions, refunds, net, employer share; **Export CSV** calls `ytd?detail=employees` for one row per employee with a TOTAL row), **File Template** (steps card, readiness banner, employee-details and searchable amount-columns tables vs Payroll Setup, download the blank form). No DV is created here.
-- **Code:** `app/pages/payroll-page.php` (PayrollPage); `app/routes/payroll_management.php` (`GET /payroll-management/list|records/{periodId}|record-items/{id}|ytd|template-columns|template|available|dv-data/{periodId}`, `POST /payroll-management/preview|import`, `DELETE /payroll-management/delete/{periodId}`); `app/services/PayrollManagementService.php`.
+- **Code:** `app/pages/payroll-page.php` (PayrollPage); `app/routes/payroll_management.php` (`GET /payroll-management/list|records/{periodId}|record-items/{id}|ytd|annualization|template-columns|template|available|dv-data/{periodId}`, `POST /payroll-management/preview|import|annualize`, `DELETE /payroll-management/delete/{periodId}`); `app/services/PayrollManagementService.php`.
 - **Tables written:** fims.payroll_periods (one per month, created when missing; `prepared_at` / `prepared_by` = import date / user), fims.payroll_employees (employees not in the directory yet; existing ones unchanged), fims.payroll_records (one per employee per month, category totals), fims.payroll_record_items (one per employee per item with an amount). **Tables read:** fims.payroll_items, fims.chart_of_accounts, fims.disbursement_vouchers + fims.settings_status (DV link), uac.users.
+- **Annualization tab (year-end tax on compensation):** **Annualize** (`annualize()`) rebuilds `fims.payroll_annualization` (`01 - table/56`, one row per employee per fiscal year, UNIQUE (fiscal_yr, employee_id)) from every payroll line of the year by its item's `tax_treatment` (signed by category): gross, non-taxable (PERA, de minimis up to rice ₱24,000 / uniform ₱6,000, 13th month & other benefits up to ₱90,000, contributions), taxable income, tax due (TRAIN 2023 table, `annualTax()`), tax withheld, adjustment and status UNDERPAID / OVERPAID / CORRECT (the December adjustment is shown, not applied). Each row prints the employee's **BIR 2316** (`Bir2316PrintService`, see PRINT-FORMS.md).
 - **Import rules:** each amount column must match an ACTIVE Payroll Setup item code (quotes from the HRIS export ignored); a column with amounts and no item, a repeated employee no. or a non-numeric value stops the import. Inactive items are skipped. A month already imported is replaced only on request, and never while a live DV uses it or the period is LOCKED / CLOSED.
 - **Status workflow (summary):** Imported → DV Created (every record linked to a non-cancelled DV) / Partly in a DV. Derived from `payroll_records.disbursement_voucher_id`, not stored.
 - **DV link:** the list's **Create DV** opens Disbursement Voucher (`Voucher?payroll={payroll_period_id}`) with a new DV for the month; **View DV** opens its DV (`Voucher?dv={dv_id}`). On the DV form the month sits in the Vendor dropdown's "Payroll (imported months)" group (months no live DV uses); picking it fills claimant, particulars, account, gross, deductions and the accounting entry (Dr expense accounts, Cr deduction accounts, Cr Accounts Payable 2-01-01-010 for the net pay; employer share not included). Saving sets `payroll_records.disbursement_voucher_id`; cancelling or deleting the DV clears it. Choosing None or a vendor instead clears everything the month filled.
@@ -2264,7 +2267,7 @@ erDiagram
 ### Cash Position and FTLA
 Both are built but not in the sidebar (`views/CashPositionPage.php` → `cash-position-page.php`; `views/FtlaPage.php` → `ftla-page.php`). Their tables (`cash_position`, `cash_position_activity_log`, `soa_transactions`, `bank_transactions`; `fund_transfers`) are in [Shared reference tables](#shared-reference-tables).
 
-- **FTLA as a DV release:** an FTLA's debit rows can carry DV numbers — only DVs at FOR_TREASURY that are not on a non-cancelled check or another FTLA (`GET /ftla/used-dv-numbers`, re-checked server-side in `validateDvNumbers()`). FTLA statuses: DRAFT → FOR_RM_APPROVAL → FOR_REVIEW → FOR_APPROVAL → APPROVED → TRANSMITTED → VALIDATED → SUBMITTED_TO_ACCOUNTING → COMPLETED (or CANCELLED). On VALIDATED → SUBMITTED_TO_ACCOUNTING, `submitPaymentJev()` posts **one** PAYMENT JEV for all its DVs (Dr each DV's Accounts Payable / Cr the destination bank's Cash — its Cash SL when tagged; `doc_ref_no` = the FTLA number, `source_module` = TREASURY) and releases every DV (FOR_TREASURY → RELEASED). The JEV's `dv_id` is NULL when it covers more than one DV; `fund_transfers.jev_id` (`03 - alter_table/57`) records it. The JEV print shows ADADJ for an `FTLA-…` reference.
+- **FTLA as a DV release:** an FTLA's debit rows can carry DV numbers — only DVs at FOR_TREASURY that are not on a non-cancelled check or another FTLA (`GET /ftla/used-dv-numbers`, re-checked server-side in `validateDvNumbers()`). FTLA statuses: DRAFT → FOR_RM_APPROVAL → FOR_REVIEW → FOR_APPROVAL → APPROVED → TRANSMITTED → VALIDATED → SUBMITTED_TO_ACCOUNTING → COMPLETED (or CANCELLED). On VALIDATED → SUBMITTED_TO_ACCOUNTING, `submitPaymentJev()` posts **one** PAYMENT JEV for all its DVs (Dr each DV's Accounts Payable / Cr the destination bank's Cash — its Cash SL when tagged; `doc_ref_no` = the FTLA number, `source_module` = TREASURY) and releases every DV (FOR_TREASURY → RELEASED). The JEV's `dv_id` is NULL when it covers more than one DV; `fund_transfers.jev_id` (`03 - alter_table/57`) records it. The JEV print shows ADADJ for an `FTLA-…` reference. A **Settlement to Main Depository** FTLA (`transfer_type = 'SETTLEMENT_TO_MAIN'`, fund sweeping — no DV) instead posts a **settlement JEV** on the same step (`submitSettlementJev()`): Dr the Main Depository bank, Cr each swept source bank (each bank's own Cash SL when tagged, else its GL), PAYMENT / TREASURY, `doc_ref_no` = the FTLA number.
 - **Bank Reconciliation** (Reports → Bank Reconciliation; `app/routes/bank-reconciliation.php`, `BankReconciliationService`) marks book / bank items as cleared in `fims.bank_reconciliation_cleared_items` (`01 - table/53`). A reconciliation's Per Books Add / Less items can be posted as one standalone **adjusting JEV** (`GET /bank-reconciliation/{id}/jev-preview`, `POST /bank-reconciliation/{id}/post-jev` → `BankReconciliationService::postAdjustingJev()` → `DisbursementVoucherService::createStandaloneJev()`, created DRAFT); the link is `bank_reconciliations.jev_id` / `jev_no` (`03 - alter_table/60`). The page follows NHA's COA-style reconciliation layout (`03 - alter_table/59`).
 - **Opening Balance → Cash Position:** saving an opening balance refreshes the earliest `cash_position` row of that year for every bank account tagged to a saved account code (`CashPositionService::refreshEarliestOpeningBalanceForAccountCode()`, best-effort).
 
@@ -2281,7 +2284,7 @@ Both are built but not in the sidebar (`views/CashPositionPage.php` → `cash-po
   - fund_transfers, plus status_change_log through `GlobalService::logStatusChange('fund_transfers', ...)` (FTLA).
 - **Tables read:** books, budget_category, expense_class, type_of_fund, component_type, settings_status, bank_accounts, responsibility_code, check_register, checks, disbursement_vouchers (FTLA matches its `dv_numbers` text against DVs), uac.users.
 - **Status workflow:**
-  - fund_transfers.status is held by a CHECK constraint: DRAFT → FOR_RM_APPROVAL → FOR_REVIEW → FOR_APPROVAL → APPROVED → TRANSMITTED → VALIDATED → SUBMITTED_TO_ACCOUNTING → COMPLETED, plus CANCELLED.
+  - fund_transfers.status is held by a CHECK constraint: DRAFT → FOR_RM_APPROVAL → FOR_REVIEW → FOR_APPROVAL → APPROVED → TRANSMITTED → VALIDATED → SUBMITTED_TO_ACCOUNTING → COMPLETED, plus CANCELLED. The same names are now also rows of fims.settings_status (`status_for = 'fund_transfers'`, `02 - sample_data/12`; status codes / labels via `03 - alter/62`), so each status's label and badge color come from Settings (FtlaService reads them, `STATUSES` as fallback).
   - fiscal_year.status_id points to settings_status.
 - **Mermaid ER diagram**
 ```mermaid

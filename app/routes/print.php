@@ -49,7 +49,7 @@ $app->get('/print/payload/caf/{id:[0-9]+}', function ($request, $response, $args
 // {doc} = cba | rfa | laa | caf (PrintPayloadService::FMD_ONLY_DOCS) is for FMD users (uac.users.rc_id ->
 // fims.responsibility_code.rc_code is the FMD's) and superadmins to print: 403 for anyone else — the preview, the PDF and the
 // DOCX all come through here, so none of them can be reached with the button hidden. The other forms are not restricted.
-$app->post('/print/{doc:[A-Za-z]+}', function ($request, $response, $args) use ($PrintService) {
+$app->post('/print/{doc:[A-Za-z][A-Za-z0-9]*}', function ($request, $response, $args) use ($PrintService) {   // digits allowed after the first letter: BIR2307
     try {
         if (in_array(strtoupper((string) $args['doc']), PrintPayloadService::FMD_ONLY_DOCS, true)
             && !GlobalService::canPrintAllocationForm((int) $request->getAttribute('user_id'))) {
@@ -87,6 +87,37 @@ $app->get('/print/gl-sheets', function ($request, $response, $args) {
         return $response->withJson(['success' => true, 'data' => Service\GeneralLedgerPrintService::availableSheets($code, $fy)]);
     } catch (\Throwable $e) {
         LogError('GET /print/gl-sheets ' . $e->getMessage());
+
+        return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
+    }
+})->add($accessMiddleware)->add($jwtMiddleware);
+
+// The BIR 2307 of a DV, prefilled for the print preview's edit panel (Bir2307PrintService::prefill()):
+// { success, data: { editable: { payee_*, signatory_* }, locked: { dv_no, period, payor_*, rows } } } — 400 when the DV
+// has no EWT / percentage-tax line to certify.
+$app->get('/print/prefill/bir2307/{id:[0-9]+}', function ($request, $response, $args) {
+    try {
+        return $response->withJson(['success' => true, 'data' => (new Service\Bir2307PrintService())->prefill((int) $args['id'])]);
+    } catch (\InvalidArgumentException $e) {
+        return $response->withJson(['success' => false, 'message' => $e->getMessage()], 400);
+    } catch (\Throwable $e) {
+        LogError('GET /print/prefill/bir2307 ' . $e->getMessage());
+
+        return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
+    }
+})->add($accessMiddleware)->add($jwtMiddleware);
+
+// The BIR 2316 of an employee for a year, prefilled for the print preview's Edit Form (Bir2316PrintService::prefill()):
+// ?year=&employee_id= → { success, data: { editable, locked } } — 400 when the employee isn't annualized for that year.
+$app->get('/print/prefill/bir2316', function ($request, $response, $args) {
+    try {
+        $q = $request->getQueryParams();
+
+        return $response->withJson(['success' => true, 'data' => (new Service\Bir2316PrintService())->prefill((int) ($q['year'] ?? 0), (int) ($q['employee_id'] ?? 0))]);
+    } catch (\InvalidArgumentException $e) {
+        return $response->withJson(['success' => false, 'message' => $e->getMessage()], 400);
+    } catch (\Throwable $e) {
+        LogError('GET /print/prefill/bir2316 ' . $e->getMessage());
 
         return $response->withJson(['success' => false, 'message' => 'Internal server error'], 500);
     }

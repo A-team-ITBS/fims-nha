@@ -145,5 +145,36 @@ ON CONFLICT (item_code) DO UPDATE SET
     status     = EXCLUDED.status,
     updated_at = CURRENT_TIMESTAMP;
 
+-- ── Tax treatment for the year-end annualization (fims.payroll_items.tax_treatment — see 01 - table/48) ──
+-- Following the old ACCOUNTING annualization (PayrollService::taxComponents()): PERA exempt; rice / uniform de minimis;
+-- 13th month, mid-year / year-end bonus, cash gift, loyalty and the incentives under the ₱90,000 ceiling; GSIS,
+-- PhilHealth, Pag-IBIG (and their back premiums) and union dues as non-taxable contributions; everything else paid as
+-- taxable. Loans, payables, PFAI, credit-union items and employer shares are NONE (the column's default).
+-- Accounting can change any item on the Payroll Setup page.
+UPDATE fims.payroll_items pi
+SET tax_treatment = m.tax_treatment
+FROM (VALUES
+    -- EARNING
+    ('BASIC_SALARY', 'TAXABLE'), ('PERA', 'NON_TAXABLE'), ('REPRESENTATION_ALLOWANCE', 'TAXABLE'), ('TRANSPORTATION_ALLOWANCE', 'TAXABLE'),
+    ('MEAL_SUBSIDY', 'TAXABLE'), ('RICE_SUBSIDY', 'DE_MINIMIS_RICE'), ('CHILDREN''S_ALLOWANCE', 'TAXABLE'), ('INCENTIVE_DESIGNATION', 'TAXABLE'),
+    ('STEP_INCREMENT', 'TAXABLE'), ('CHILDREN''S_ALLOW_ADJ', 'TAXABLE'), ('MYFA_2017', 'BENEFIT_90K'), ('OTHERS_PERA', 'NON_TAXABLE'),
+    ('SALARY_DIFFERENTIAL', 'TAXABLE'), ('UNIFORM', 'DE_MINIMIS_UNIFORM'), ('MEDICAL', 'TAXABLE'), ('MIDYEAR', 'BENEFIT_90K'),
+    ('YEAR_END', 'BENEFIT_90K'), ('CASH_GIFT', 'BENEFIT_90K'), ('3K', 'BENEFIT_90K'), ('50K', 'BENEFIT_90K'),
+    ('SUPP_CLOTHING ALLOW', 'DE_MINIMIS_UNIFORM'), ('LOYALTY', 'BENEFIT_90K'),
+    -- REFUND (pay given back → adds; a refunded contribution / tax → takes away)
+    ('OTHERS_LWOP_REFUND', 'TAXABLE'), ('REFUND_PHILHEALTH', 'CONTRIBUTION'), ('REFUND_GSIS_SIC', 'CONTRIBUTION'),
+    ('REFUND_REPRESENTATION', 'TAXABLE'), ('REFUND_TRANSPORTATION', 'TAXABLE'), ('TAX_REFUND', 'WITHHOLDING_TAX'),
+    ('2016_CNA_IN_REF', 'BENEFIT_90K'),
+    -- DEDUCTION (contributions / tax withheld → add; pay taken back → takes away)
+    ('GSIS/SIC', 'CONTRIBUTION'), ('GSIS_SOCIAL_INS_CONS', 'CONTRIBUTION'), ('PHILHEALTH', 'CONTRIBUTION'), ('HDMF', 'CONTRIBUTION'),
+    ('BACKPREMIUM_GSIS', 'CONTRIBUTION'), ('BACKPREMIUM_PHILHEALTH', 'CONTRIBUTION'), ('BPR_PHILHEALTH', 'CONTRIBUTION'), ('BPR_HDMF', 'CONTRIBUTION'),
+    ('UNION_DUES/AGENCY_FEE', 'CONTRIBUTION'),
+    ('WITHHOLDING_TAX', 'WITHHOLDING_TAX'), ('BACKPAYMENT_W/HOLDING', 'WITHHOLDING_TAX'),
+    ('UNDERTIME_W/O_PAY', 'TAXABLE'), ('LEAVE_W/O_PAY', 'TAXABLE'), ('OVERPAYMENT_SAL', 'TAXABLE'), ('OVERPAYMENT_PERA', 'NON_TAXABLE'),
+    ('O/P_TRANS_ALLOWANCE', 'TAXABLE'), ('O/P_REP_ALLOW', 'TAXABLE'), ('O/P_CHILD_ALLOW', 'TAXABLE'), ('O/P_ADDL_COMPENSATION', 'TAXABLE'),
+    ('O/P_MYFA2018', 'BENEFIT_90K')
+) AS m(item_code, tax_treatment)
+WHERE pi.item_code = m.item_code;
+
 -- Sanity check: should return 108 rows affected across all categories.
 -- SELECT category, COUNT(*) FROM fims.payroll_items GROUP BY category ORDER BY category;
