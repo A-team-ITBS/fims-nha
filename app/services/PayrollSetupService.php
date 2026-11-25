@@ -24,6 +24,8 @@ class PayrollSetupService
     private string $tableCoa = 'fims.chart_of_accounts';
 
     public const CATEGORIES = ['EARNING', 'DEDUCTION', 'REFUND', 'EMPLOYER_SHARE'];
+    // how an item counts in the year-end tax annualization (fims.payroll_items.tax_treatment — 01 - table/48)
+    public const TAX_TREATMENTS = ['TAXABLE', 'NON_TAXABLE', 'DE_MINIMIS_RICE', 'DE_MINIMIS_UNIFORM', 'BENEFIT_90K', 'CONTRIBUTION', 'WITHHOLDING_TAX', 'NONE'];
     public const STATUSES   = ['ACTIVE', 'INACTIVE'];
 
     private function str(mixed $v): string
@@ -363,7 +365,11 @@ class PayrollSetupService
             $status   = strtoupper(trim((string) ($body['status'] ?? ''))) ?: 'ACTIVE';
             $account  = trim((string) ($body['account_code'] ?? ''));
             $remarks  = trim((string) ($body['remarks'] ?? ''));
+            $tax      = strtoupper(trim((string) ($body['tax_treatment'] ?? ''))) ?: 'NONE';
             $new      = is_array($body['new_accounts'] ?? null) ? $body['new_accounts'] : [];
+            if (!in_array($tax, self::TAX_TREATMENTS, true)) {
+                return ['success' => false, 'message' => 'tax_treatment must be one of: ' . implode(', ', self::TAX_TREATMENTS) . '.'];
+            }
 
             if ($code === '' || $name === '') {
                 return ['success' => false, 'message' => 'item_code and item_name are required.'];
@@ -399,8 +405,8 @@ class PayrollSetupService
             }
 
             $by      = $this->userIdOrNull($userId);
-            $columns = ['item_code', 'item_name', 'category', 'status'];
-            $values  = [$this->str($code), $this->str($name), $this->str($category), $this->str($status)];
+            $columns = ['item_code', 'item_name', 'category', 'tax_treatment', 'status'];
+            $values  = [$this->str($code), $this->str($name), $this->str($category), $this->str($tax), $this->str($status)];
             if ($account !== '') {
                 $columns[] = 'account_code';
                 $values[]  = $this->str($account);
@@ -478,6 +484,13 @@ class PayrollSetupService
                     }
                 }
                 $set[] = 'category = ' . $this->str($category);
+            }
+            if (array_key_exists('tax_treatment', $body)) {   // only the annualization reads it — free to change any time
+                $tax = strtoupper(trim((string) $body['tax_treatment'])) ?: 'NONE';
+                if (!in_array($tax, self::TAX_TREATMENTS, true)) {
+                    return ['success' => false, 'message' => 'tax_treatment must be one of: ' . implode(', ', self::TAX_TREATMENTS) . '.'];
+                }
+                $set[] = 'tax_treatment = ' . $this->str($tax);
             }
             if (array_key_exists('status', $body)) {
                 $status = strtoupper(trim((string) $body['status']));

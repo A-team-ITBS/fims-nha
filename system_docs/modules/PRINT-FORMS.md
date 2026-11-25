@@ -1109,6 +1109,57 @@ Not on the form's fields (filled by hand, as on the old print): Journalized /
 Indexed, the CHECK and OFFICIAL RECEIPT boxes, Received From / releasing
 officer, and For COA Use Only.
 
+## BIR2307 — Certificate of Creditable Tax Withheld at Source (BIR Form 2307)
+
+`Bir2307PrintService` (print type `BIR2307`, PDF only). The January 2018 ENCS form, `_shared/template/bir_2307.pdf` (the old
+ACCOUNTING template with its hand-named AcroForm fields), filled and flattened with pdftk through the shared
+`PrintService::fillPdfForm()`, page 1 kept. One certificate per **Disbursement Voucher**: the DV view's **BIR 2307**
+button (next to Print) shows when the DV withholds an EWT or percentage tax and isn't cancelled
+(`vr_hasBir2307()` in `voucher/readone.php`); `prp_open({ dv_id }, { type: 'BIR2307' })`.
+
+**Edit Form / Form Preview** — the same window as the old ACCOUNTING "BIR Form 2307" (dv-processing.php
+`#bir2307Modal`): the preview opens on an **Edit Form** tab laid out like the paper form (`prp_ffOpen()`, any pdfOnly
+type with `prefill` in `PRP_TYPES`), filled from `GET /print/prefill/bir2307/{dvId}` (`Bir2307PrintService::prefill()`);
+**Form Preview** shows the real PDF (re-rendered when opened after a change); Download PDF works from either.
+Blue = you can fill in or change, grey dashed + 🔒 = locked, yellow = changed from the prefilled value:
+- **1** Quarter (Q1–Q4 — sets the period to its first / last day) and For the Period From / To — editable;
+- **Part I** — 2 payee TIN (dashes added as you type), 3 name, 4 registered address, 4A ZIP — editable;
+- **Part II** — 6 TIN, Nature of Business ("Government Agency"), 7 name, 8 address, 8A ZIP — locked (NHA);
+- **Part III** — each row's description editable (default: its ATC's wording, else the DV's particulars); ATC (with
+  its rate), income payment and tax withheld locked to the DV; the totals, and a warning when the tax bases exceed the
+  DV's gross;
+- **Signatory** — Printed Name picked from a list: NHA's default signatory first and **preselected (CRISALYN T. HUGO,
+  Officer-In-Charge, Acctg. Dept., TIN 416-806-839)**, then the DV's own Accounting signatories (Section Chief,
+  Division Manager, Department Manager), or "— Enter manually —"; picking one fills the title and TIN (editable);
+  Date Signed (not printed — the form has no box for the payor's signing date).
+The edits travel in the payload (`Bir2307PrintService::EDITABLE` keys) and are not saved (the old window stored a
+certificate with notes and an audit trail — not built). NHA's payor details and default signatory come from
+`fims.app_settings` and fall back to the old module's values (`Bir2307PrintService::FALLBACK`) while a key is missing.
+
+**Data** — payload `{ dv_id }` (+ the edited values above); the service reads the rest:
+- **Period:** the quarter of the DV date (item 1, MMDDYYYY); each ATC line's whole tax base goes in the column of the
+  DV date's month (1st / 2nd / 3rd month of the quarter).
+- **Part I (payee):** the DV's vendor (name, TIN, address), else the DV's claimant / claimant address / TIN. The TIN
+  boxes are 3-3-3 + a 5-box branch code (the template has no `TIN_Payee_4`); no ZIP is kept, so 4A prints blank.
+- **Part II (payor) and the payor's signature:** NHA's, from `fims.app_settings` — `bir_payor_tin`, `bir_payor_name`,
+  `bir_payor_address`, `bir_payor_zip`, `bir_signatory_name`, `bir_signatory_title`, `bir_signatory_tin` (seeded in
+  `01 - table/55 - fims_app_settings.sql`). The conforme prints the payee's name and TIN.
+- **Part III:** the DV's ATC lines with tax withheld (`disbursement_voucher_atc_lines` + `atc_codes.description`, cut
+  to ~96 characters at a word) — income-tax codes (WI / WC…) in the EWT table (rows 1–10), percentage-tax codes
+  (WB…) in the business-tax table (rows 13–22); each table's totals. Withholding VAT (WV…) is not on a 2307. More
+  than 10 rows in a table: the rest are left off (the form has 10).
+- A DV with no EWT / percentage-tax line → HTTP 400 "DV … has no withholding tax … to certify on a BIR 2307."
+
+Not built (the old ACCOUNTING module had them): a stored certificate (number, DRAFT → ISSUED), editable rows, and the
+quarterly per-payee certificate that sums all of a vendor's DVs in a quarter by month.
+
+## BIR2316 — Certificate of Compensation Payment / Tax Withheld (BIR Form 2316)
+
+`Bir2316PrintService` (print type `BIR2316`, PDF only): `_shared/template/bir_2316.pdf` (September 2021 ENCS, the old ACCOUNTING template with its named fields) filled through `PrintService::fillPdfForm()`. One per **employee and fiscal year**, from the stored tax annualization (`fims.payroll_annualization` — Payroll Management → Annualization → **2316** on the row); payload `{ fiscal_yr, employee_id }`. Opens on an **Edit Form** (`prp_ffForm2316`, prefilled by `GET /print/prefill/bir2316?year=&employee_id=`) like the old income-tax-withheld 2316 window:
+- **editable** — 2 period (MMDD); Part I employee TIN (from the payroll directory), RDO, registered / home / foreign address + ZIP, birth date, contact no., minimum wage earner + rates; Part III previous employer (TIN, name, address, ZIP, its taxable compensation (22) and tax withheld (25B) — items 23–28 recompute as typed); 53 the employer's signatory (prefilled CRISALYN T. HUGO from the settings / fallback) and 54 the employee, dates signed; CTC / valid ID;
+- **locked** — 1 year, 5 name, Part II NHA (main employer), and every amount: 19 gross, 20 non-taxable, 21 taxable, 23 = 21 + 22, 24 tax due on 23 (TRAIN table), 25A withheld here, 26 = 28 = 24 (as adjusted, as the old form), 34 benefits ≤ ₱90,000, 35 de minimis, 36 contributions, 37 PERA, 38 total non-taxable, 39 taxable pay less contributions, 48 benefits over ₱90,000, 52 = 21. RA / TA aren't kept apart from basic pay by the import, so 40 / 41 stay blank (in 39); 29–33 (minimum wage earners) aren't computed.
+Not built (old module had them): saving the edits / employee details for later years, a 2316 certificate number, the 1604-C and alphalist.
+
 ## GL — General Ledger (NHA Form No. 11)
 
 `GeneralLedgerPrintService` + `scripts/gen_gl_docx.js` (print type `GL`). Letter portrait, Arial 9pt, no letterhead.

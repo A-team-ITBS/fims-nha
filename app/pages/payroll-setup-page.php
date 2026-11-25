@@ -169,6 +169,7 @@ const PYR_FIELDS = {               // payload key → input id
     item_code : 'pyr-item-code',
     item_name : 'pyr-item-name',
     category  : 'pyr-category',
+    tax_treatment : 'pyr-tax-treatment',
     status    : 'pyr-status',
     remarks   : 'pyr-remarks',
 };
@@ -755,6 +756,7 @@ async function pyr_openModal(mode, row = null) {
         $pyr('pyr-item-name').value = row.item_name ?? '';
         pyr_nameTouched = true;                             // never overwrite the saved name
         $pyr('pyr-category').value = row.category ?? '';
+        $pyr('pyr-tax-treatment').value = row.tax_treatment || 'NONE';
         $pyr('pyr-status').value   = row.status || 'ACTIVE';
         $pyr('pyr-remarks').value  = row.remarks ?? '';
         pyr_syncSide();
@@ -848,6 +850,7 @@ async function pyr_save(ev) {
     const payload = {
         item_name    : v.item_name,
         category     : v.category,
+        tax_treatment: v.tax_treatment || 'NONE',
         status       : v.status,
         remarks      : v.remarks,
         account_code : accountCode,

@@ -268,6 +268,188 @@ class PayrollManagementService
                 'ytd_refunds' => $sum('ytd_refunds'), 'ytd_net' => $sum('ytd_net'), 'ytd_employer_share' => $sum('ytd_employer_share')]];
     }
 
+    // ═══ Tax annualization (year-end tax on compensation, BIR 2316) ═══════════════════════════
+
+    // Ceilings, as the old ACCOUNTING annualization (PayrollService::taxComponents()): rice subsidy ₱2,000 / month,
+    // uniform / clothing ₱6,000 / year, 13th month and other benefits ₱90,000 / year.
+    private const RICE_CAP    = 24000.00;
+    private const UNIFORM_CAP = 6000.00;
+    private const BENEFIT_CAP = 90000.00;
+    // TRAIN graduated income tax table (2023 onward): [over, base tax, rate on the excess over `over`]
+    private const TAX_TABLE = [[8000000, 2202500, 0.35], [2000000, 402500, 0.30], [800000, 102500, 0.25],
+                               [400000, 22500, 0.20], [250000, 0, 0.15]];
+    private const PAY_TREATMENTS = ['TAXABLE', 'NON_TAXABLE', 'DE_MINIMIS_RICE', 'DE_MINIMIS_UNIFORM', 'BENEFIT_90K'];
+
+    /** Annual tax due on a taxable compensation income (TAX_TABLE). */
+    public static function annualTax(float $taxable): float
+    {
+        foreach (self::TAX_TABLE as [$over, $base, $rate]) {
+            if ($taxable > $over) {
+                return round($base + ($taxable - $over) * $rate, 2);
+            }
+        }
+
+        return 0.0;
+    }
+
+    /**
+     * Annualize a fiscal year: from every imported payroll line of the year (its Payroll Setup item's tax_treatment, signed
+     * by its category — see 01 - table/48), each employee's gross, non-taxable, taxable income, tax due and the
+     * adjustment against the tax withheld, stored in fims.payroll_annualization (the year's rows are replaced; see
+     * 01 - table/56). The December adjustment is shown, not applied — the payroll is imported, not computed here.
+     */
+    public function annualize(int $year, int $userId): array
+    {
+        if ($year < 2000 || $year > 2100) {
+            return ['success' => false, 'message' => 'Choose the fiscal year.'];
+        }
+        try {
+            $lines = App\ExecuteRows(
+                "SELECT r.employee_id, i.category, i.tax_treatment, SUM(li.amount) AS amount
+                   FROM {$this->tLine} li
+                   JOIN {$this->tRecord} r ON r.payroll_record_id = li.payroll_record_id
+                   JOIN {$this->tPeriod} p ON p.payroll_period_id = r.payroll_period_id
+                   JOIN {$this->tItem} i ON i.payroll_item_id = li.payroll_item_id
+                  WHERE p.fiscal_yr = {$year}
+                  GROUP BY r.employee_id, i.category, i.tax_treatment",
+                'DB'
+            ) ?: [];
+            if (!$lines) {
+                return ['success' => false, 'message' => "No payroll imported for {$year} — nothing to annualize."];
+            }
+            $months = [];
+            foreach (App\ExecuteRows(
+                "SELECT r.employee_id, COUNT(DISTINCT p.payroll_period_id) AS months FROM {$this->tRecord} r
+                   JOIN {$this->tPeriod} p ON p.payroll_period_id = r.payroll_period_id WHERE p.fiscal_yr = {$year} GROUP BY r.employee_id",
+                'DB'
+            ) ?: [] as $m) {
+                $months[(int) $m['employee_id']] = (int) $m['months'];
+            }
+
+            // per employee: the signed sum per tax treatment
+            $emp = [];
+            foreach ($lines as $l) {
+                $t   = (string) $l['tax_treatment'];
+                $amt = (float) $l['amount'];
+                $pay = in_array($t, self::PAY_TREATMENTS, true);
+                $sign = match ((string) $l['category']) {
+                    'EARNING'   => $pay ? 1 : 0,
+                    'DEDUCTION' => $pay ? -1 : (in_array($t, ['CONTRIBUTION', 'WITHHOLDING_TAX'], true) ? 1 : 0),
+                    'REFUND'    => $pay ? 1 : (in_array($t, ['CONTRIBUTION', 'WITHHOLDING_TAX'], true) ? -1 : 0),
+                    default     => 0,
+                };
+                if ($sign === 0 || $t === 'NONE') {
+                    continue;
+                }
+                $id = (int) $l['employee_id'];
+                $emp[$id][$t] = ($emp[$id][$t] ?? 0.0) + $sign * $amt;
+            }
+
+            $rows = [];
+            foreach ($emp as $id => $s) {
+                $get        = static fn (string $k) => round(max(0.0, $s[$k] ?? 0.0), 2);
+                $taxablePay = $get('TAXABLE');
+                $nonTaxPay  = $get('NON_TAXABLE');
+                $rice       = $get('DE_MINIMIS_RICE');
+                $uniform    = $get('DE_MINIMIS_UNIFORM');
+                $deMinExempt = round(min($rice, self::RICE_CAP) + min($uniform, self::UNIFORM_CAP), 2);
+                $benefits   = round($get('BENEFIT_90K') + ($rice + $uniform - $deMinExempt), 2);
+                $benExempt  = round(min($benefits, self::BENEFIT_CAP), 2);
+                $contrib    = $get('CONTRIBUTION');
+                $gross      = round($taxablePay + $nonTaxPay + $rice + $uniform + $get('BENEFIT_90K'), 2);
+                $nonTax     = round($nonTaxPay + $deMinExempt + $benExempt + $contrib, 2);
+                $taxable    = round(max(0.0, $gross - $nonTax), 2);
+                $taxDue     = self::annualTax($taxable);
+                $withheld   = round($s['WITHHOLDING_TAX'] ?? 0.0, 2);
+                $adj        = round($taxDue - $withheld, 2);
+                $rows[] = [
+                    'employee_id' => $id, 'months_paid' => $months[$id] ?? 0,
+                    'taxable_pay' => $taxablePay, 'non_taxable_pay' => $nonTaxPay, 'de_minimis' => round($rice + $uniform, 2),
+                    'de_minimis_exempt' => $deMinExempt, 'benefits' => $benefits, 'benefits_exempt' => $benExempt,
+                    'contributions' => $contrib, 'gross_compensation' => $gross, 'total_non_taxable' => $nonTax,
+                    'taxable_income' => $taxable, 'tax_due' => $taxDue, 'tax_withheld' => $withheld, 'tax_adjustment' => $adj,
+                    'status' => abs($adj) < 1 ? 'CORRECT' : ($adj > 0 ? 'UNDERPAID' : 'OVERPAID'),
+                ];
+            }
+
+            App\Execute('BEGIN', 'DB');
+            try {
+                App\Execute("DELETE FROM fims.payroll_annualization WHERE fiscal_yr = {$year}", 'DB');
+                foreach ($rows as $r) {
+                    $cols = array_keys($r);
+                    $vals = array_map(static fn ($v) => is_string($v) ? "'" . $v . "'" : (string) $v, array_values($r));
+                    App\Execute('INSERT INTO fims.payroll_annualization (fiscal_yr, ' . implode(', ', $cols) . ', computed_by, computed_at)
+                                 VALUES (' . $year . ', ' . implode(', ', $vals) . ', ' . ($userId ?: 'NULL') . ', CURRENT_TIMESTAMP)', 'DB');
+                }
+                App\Execute('COMMIT', 'DB');
+            } catch (\Throwable $e) {
+                App\Execute('ROLLBACK', 'DB');
+                throw $e;
+            }
+
+            $count = fn (string $st) => count(array_filter($rows, static fn ($r) => $r['status'] === $st));
+
+            return ['success' => true, 'message' => count($rows) . " employee(s) annualized for {$year}: "
+                . $count('UNDERPAID') . ' underpaid, ' . $count('OVERPAID') . ' overpaid, ' . $count('CORRECT') . ' correct.'];
+        } catch (\Throwable $e) {
+            App\LogError('PayrollManagementService::annualize ' . $e->getMessage());
+
+            return ['success' => false, 'message' => 'The annualization failed.'];
+        }
+    }
+
+    /**
+     * The stored annualization of a year (fims.payroll_annualization + the employee), with totals and when it was last
+     * run — and how many lines of the year belong to items with no tax treatment yet (a hint to check Payroll Setup).
+     */
+    public function fetchAnnualization(int $year): array
+    {
+        if ($year < 2000 || $year > 2100) {
+            return ['success' => false, 'message' => 'Choose the fiscal year.'];
+        }
+        try {
+            $rows = App\ExecuteRows(
+                "SELECT a.*, e.employee_no, e.last_name, e.first_name, e.middle_name, e.tin, e.position, e.department
+                   FROM fims.payroll_annualization a
+                   JOIN {$this->tEmp} e ON e.employee_id = a.employee_id
+                  WHERE a.fiscal_yr = {$year}
+                  ORDER BY e.last_name, e.first_name, e.employee_no",
+                'DB'
+            ) ?: [];
+            $money = ['taxable_pay', 'non_taxable_pay', 'de_minimis', 'de_minimis_exempt', 'benefits', 'benefits_exempt', 'contributions',
+                      'gross_compensation', 'total_non_taxable', 'taxable_income', 'tax_due', 'tax_withheld', 'tax_adjustment'];
+            foreach ($rows as &$r) {
+                foreach ($money as $k) {
+                    $r[$k] = round((float) $r[$k], 2);
+                }
+                $r['months_paid'] = (int) $r['months_paid'];
+            }
+            unset($r);
+            $sum = fn (string $k) => round(array_sum(array_column($rows, $k)), 2);
+            $untreated = (int) App\ExecuteScalar(
+                "SELECT COUNT(DISTINCT i.payroll_item_id) FROM {$this->tLine} li
+                   JOIN {$this->tRecord} r ON r.payroll_record_id = li.payroll_record_id
+                   JOIN {$this->tPeriod} p ON p.payroll_period_id = r.payroll_period_id
+                   JOIN {$this->tItem} i ON i.payroll_item_id = li.payroll_item_id
+                  WHERE p.fiscal_yr = {$year} AND i.category IN ('EARNING', 'REFUND') AND i.tax_treatment = 'NONE'",
+                'DB'
+            );
+
+            return ['success' => true, 'data' => $rows,
+                'computed_at' => $rows ? max(array_column($rows, 'computed_at')) : null,
+                'untreated_items' => $untreated,
+                'totals' => ['employees' => count($rows), 'gross_compensation' => $sum('gross_compensation'), 'total_non_taxable' => $sum('total_non_taxable'),
+                    'taxable_income' => $sum('taxable_income'), 'tax_due' => $sum('tax_due'), 'tax_withheld' => $sum('tax_withheld'),
+                    'tax_adjustment' => $sum('tax_adjustment'),
+                    'underpaid' => count(array_filter($rows, static fn ($r) => $r['status'] === 'UNDERPAID')),
+                    'overpaid' => count(array_filter($rows, static fn ($r) => $r['status'] === 'OVERPAID'))]];
+        } catch (\Throwable $e) {
+            App\LogError('PayrollManagementService::fetchAnnualization ' . $e->getMessage());
+
+            return ['success' => false, 'message' => 'Failed to load the annualization.'];
+        }
+    }
+
     // ═══ File template ═══════════════════════════════════════════════════════════════════
 
     /**
