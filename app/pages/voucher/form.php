@@ -25,6 +25,10 @@ if (!isset($_vf_api)) {
 #vf-root .vf-card { background: var(--afims-surface, #fff); border: 1px solid var(--afims-border, #E4ECF2); border-radius: 12px; padding: 16px 18px; margin-bottom: 14px; }
 #vf-root .vf-card-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--afims-text-muted, #62657E); margin: 0 0 12px; }
 #vf-root .vf-grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+#vf-root .vf-a-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 16px; align-items: start; }
+#vf-root .vf-a-grid > .vf-a-full { grid-column: 1 / -1; }
+#vf-root .vf-a-grid .vf-vendor-card { margin-top: 0; }
+@media (max-width: 768px) { #vf-root .vf-a-grid { grid-template-columns: 1fr; } }
 #vf-root .vf-grid2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
 #vf-root .vf-span2 { grid-column: span 2; }
 #vf-root .vf-span3 { grid-column: span 3; }
@@ -110,6 +114,16 @@ if (!isset($_vf_api)) {
 #vf-root .vf-ded-type-label { font-weight: 600; font-size: 13px; color: var(--afims-heading-fill, #000E3E); padding-right: 24px; }
 /* VAT deduction row — Inclusive/Exclusive toggle, an informational VAT Computation block and the Withholding VAT block
    (see vf_addVatLine()). Same two-block layout as the Accounting DV Processing page's VAT tab. */
+#vf-root .vf-ap-card { padding: 0; overflow: hidden; }
+#vf-root .vf-ap-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+#vf-root .vf-ap-table th { padding: 12px 16px; text-align: left; font-size: 12.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .02em; color: var(--afims-text-muted, #475069); background: #F7F9FC; border-bottom: 1px solid #E4ECF6; }
+#vf-root .vf-ap-table td { padding: 10px 16px; border-bottom: 1px solid #EEF2F8; }
+#vf-root .vf-ap-table td:nth-child(1) { font-family: "IBM Plex Mono", monospace; font-size: 13px; letter-spacing: .02em; }
+#vf-root .vf-ap-table td:nth-child(3), #vf-root .vf-ap-table td:nth-child(4) { text-align: right; }
+#vf-root .vf-ap-table td.vf-ap-cr { padding-left: 40px; }
+#vf-root .vf-ap-table tr.vf-ap-total td { font-weight: 700; border-bottom: 0; }
+#vf-root .vf-ap-table tr.vf-ap-empty td { text-align: center; color: var(--afims-text-muted, #62657E); padding: 18px; }
+#vf-root .vf-ap-table tr.vf-ap-bad td:nth-child(3), #vf-root .vf-ap-table tr.vf-ap-bad td:nth-child(4) { color: var(--afims-danger-text, #8F222D); }
 #vf-root .vf-vat-types { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 #vf-root .vf-vat-opt { display: flex; align-items: center; gap: 6px; cursor: pointer; padding: 7px 14px; border-radius: 6px; font-size: 12px; font-weight: 600; border: 1px solid var(--afims-border, #E4ECF2); background: var(--afims-surface-subtle, #F4F7FA); color: var(--afims-text-muted, #62657E); }
 #vf-root .vf-vat-opt.active { border-color: var(--afims-primary, #0035A9); color: var(--afims-primary-text, #0035A9); }
@@ -132,7 +146,78 @@ if (!isset($_vf_api)) {
 #vf-root .vf-atc-summary.over { padding: 6px 10px; border-radius: 6px; color: var(--afims-danger-text, #8F222D); background: var(--afims-danger-soft, #FAE1E3); }
 /* One pill button per deduction type (Retention, Advance Recoupment, etc.) — clicking a pill adds
    a row already bound to that type, instead of a single "+ Add Deduction" control. */
-#vf-root .vf-ded-types { display: flex; flex-wrap: wrap; gap: 8px; }
+/* ── Section B as one table-like box: RFA lines, Gross, Computation, "Less:" rows, add-deduction row ── */
+#vf-root #vf-rfa-breakdown { padding: 0; overflow: hidden; background: var(--afims-surface, #fff); border-color: #D5E0F0; }
+#vf-root .vf-bd-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 14px; }
+#vf-root .vf-bd-table th:nth-child(2), #vf-root .vf-bd-table td:nth-child(2) { width: 170px; }
+#vf-root .vf-bd-table th:nth-child(3), #vf-root .vf-bd-table td:nth-child(3) { width: 180px; }
+#vf-root .vf-bd-table th:nth-child(4), #vf-root .vf-bd-table td:nth-child(4) { width: 170px; }
+#vf-root .vf-bd-table th:nth-child(5), #vf-root .vf-bd-table td:nth-child(5) { width: 44px; }
+#vf-root .vf-bd-table th { padding: 12px 14px; background: #EEF3FB; color: #0B1B43; font-size: 12.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .02em; }
+#vf-root .vf-bd-table td { padding: 10px 14px; border-top: 1px solid #E4ECF6; vertical-align: middle; }
+#vf-root .vf-bd-table tbody td:nth-child(2) { color: var(--afims-text-muted, #62657E); }
+#vf-root .vf-bd-table td:nth-child(3), #vf-root .vf-bd-table td:nth-child(4) { text-align: right; }
+#vf-root .vf-bd-table .vf-rfa-line-amt, #vf-root .vf-bd-table .vf-comp-base, #vf-root .vf-bd-table .vf-comp-pct, #vf-root .vf-comp-line input {
+    width: 100%; padding: 8px 12px; text-align: right; border: 1px solid var(--afims-border, #D7DCE6); border-radius: 8px; font-size: 14px;
+    font-family: var(--font); background: var(--afims-surface, #fff); box-sizing: border-box;
+}
+#vf-root .vf-bd-gross td { background: #E3EBF8; border-top: 1px solid #D5E0F0; padding: 8px 14px; }
+#vf-root .vf-bd-gross .vf-bd-muted { color: var(--afims-text-muted, #62657E); font-size: 13px; }
+#vf-root .vf-bd-comp small { display: block; margin-top: 6px; font-size: 12px; color: var(--afims-text-muted, #62657E); }
+#vf-root .vf-comp-line { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--afims-text-muted, #62657E); }
+#vf-root .vf-comp-line span { white-space: nowrap; }
+#vf-root .vf-comp-line input { text-align: left; }
+/* deduction rows line up under the table's columns: label | rate (under RFA Balance / %) | amount | remove */
+#vf-root #vf-rfa-breakdown .vf-ded-section { border-top: 1px solid #E4ECF6 !important; margin: 0 !important; padding: 0 !important; }
+#vf-root #vf-rfa-breakdown #vf-rfa-breakdown-body:empty + .vf-err + .vf-ded-section { border-top: 0 !important; }
+#vf-root .vf-less { font-weight: 400; margin-right: 4px; }
+#vf-root .vf-ded-acct-hint { font-size: 12px; font-weight: 400; color: var(--afims-text-muted, #62657E); margin-left: 6px; }
+#vf-root .vf-ded-row, #vf-root .vf-atc-row { margin: 0; padding: 10px 14px; border-top: 1px solid #E4ECF6; }
+#vf-root .vf-ded-section #vf-ded-container > :first-child { border-top: 0; }
+#vf-root .vf-ded-row:not([data-vat="1"]) { display: grid; grid-template-columns: minmax(0, 1fr) 180px 170px 44px; align-items: center; }
+#vf-root .vf-ded-row:not([data-vat="1"]) .vf-ded-type-label { grid-column: 1; grid-row: 1; padding: 0; font-weight: 400; font-size: 14px; color: var(--afims-text, #1C1E29); }
+#vf-root .vf-ded-row:not([data-vat="1"]) > .vf-grid2 { display: contents; }
+#vf-root .vf-ded-row:not([data-vat="1"]) > .vf-grid2 > .nha-fg { margin: 0; }
+#vf-root .vf-ded-row:not([data-vat="1"]) > .vf-grid2 > .nha-fg:nth-child(1) { grid-column: 2; grid-row: 1; padding: 0 14px 0 0; }
+#vf-root .vf-ded-row:not([data-vat="1"]) > .vf-grid2 > .nha-fg:nth-child(2) { grid-column: 3; grid-row: 1; }
+#vf-root .vf-ded-row:not([data-vat="1"]) > .vf-grid2 > .nha-fg label { display: none; }
+#vf-root .vf-ded-row:not([data-vat="1"]) > .vf-grid2 input { width: 100%; padding: 8px 12px; text-align: right; border: 1px solid var(--afims-border, #D7DCE6); border-radius: 8px; font-size: 14px; box-sizing: border-box; background: var(--afims-surface, #fff); }
+#vf-root .vf-ded-row:not([data-vat="1"]) > .nha-fg { grid-column: 1 / -1; grid-row: 2; margin-top: 8px !important; }
+#vf-root .vf-ded-row:not([data-vat="1"]) > .vf-ded-remove { position: static; grid-column: 4; grid-row: 1; justify-self: center; }
+/* VAT row: same columns as the other deductions; the informational VAT computation sits on a muted line beneath */
+#vf-root .vf-ded-row[data-vat="1"] { display: grid; grid-template-columns: minmax(0, 1fr) 180px 170px 44px; align-items: center; }
+#vf-root .vf-ded-row[data-vat="1"] .vf-ded-type-label { grid-column: 1; grid-row: 1; padding: 0; font-weight: 400; font-size: 14px; color: var(--afims-text, #1C1E29); }
+#vf-root .vf-ded-row[data-vat="1"] .vf-vat-types { display: inline-flex; margin: 0 0 0 10px; gap: 6px; vertical-align: middle; }
+#vf-root .vf-ded-row[data-vat="1"] .vf-vat-opt { padding: 4px 10px; font-size: 12px; }
+#vf-root .vf-ded-row[data-vat="1"] .vf-vat-rate { grid-column: 2; grid-row: 1; margin: 0; padding-right: 14px; }
+#vf-root .vf-ded-row[data-vat="1"] .vf-vat-wamt { grid-column: 3; grid-row: 1; margin: 0; }
+#vf-root .vf-ded-row[data-vat="1"] .vf-vat-rate input, #vf-root .vf-ded-row[data-vat="1"] .vf-vat-wamt input {
+    width: 100%; padding: 8px 12px; text-align: right; border: 1px solid var(--afims-border, #D7DCE6); border-radius: 8px; font-size: 14px; box-sizing: border-box; background: var(--afims-surface, #fff);
+}
+#vf-root .vf-ded-row[data-vat="1"] > .vf-ded-remove { position: static; grid-column: 4; grid-row: 1; justify-self: center; }
+#vf-root .vf-vat-info { grid-column: 1 / -1; grid-row: 2; margin-top: 6px; font-size: 12px; color: var(--afims-text-muted, #62657E); }
+#vf-root .vf-vat-info input { width: 110px; padding: 2px 6px; border: 0; border-bottom: 1px dashed var(--afims-border, #B9C4D0); background: transparent; font-size: 12px; text-align: right; color: inherit; }
+#vf-root .vf-ded-row[data-vat="1"] .vf-vat-hint { grid-column: 1 / -1; grid-row: 3; margin-top: 2px; }
+/* ATC row: Less: [ATC code] | Rate % | Withholding tax | x — the editable Tax Base sits on a muted line beneath */
+#vf-root .vf-atc-row { display: grid; grid-template-columns: minmax(0, 1fr) 180px 170px 44px; align-items: center; }
+#vf-root .vf-atc-label { grid-column: 1; grid-row: 1; display: flex; align-items: center; gap: 6px; padding: 0 14px 0 0; font-weight: 400; font-size: 14px; color: var(--afims-text, #1C1E29); }
+#vf-root .vf-atc-codewrap { position: relative; flex: 1; min-width: 0; }
+#vf-root .vf-atc-rate-cell { grid-column: 2; grid-row: 1; padding-right: 14px; }
+#vf-root .vf-atc-wh-cell { grid-column: 3; grid-row: 1; }
+#vf-root .vf-atc-row > .vf-ded-remove { position: static; grid-column: 4; grid-row: 1; justify-self: center; }
+#vf-root .vf-atc-row .vf-atc-code, #vf-root .vf-atc-row .vf-atc-rate, #vf-root .vf-atc-row .vf-atc-wh {
+    width: 100%; padding: 8px 12px; border: 1px solid var(--afims-border, #D7DCE6); border-radius: 8px; font-size: 14px; box-sizing: border-box; background: var(--afims-surface, #fff);
+}
+#vf-root .vf-atc-row .vf-atc-rate, #vf-root .vf-atc-row .vf-atc-wh { text-align: right; }
+#vf-root .vf-atc-info { grid-column: 1 / -1; grid-row: 2; margin-top: 6px; font-size: 12px; color: var(--afims-text-muted, #62657E); }
+#vf-root .vf-atc-info input { width: 130px; padding: 2px 6px; border: 0; border-bottom: 1px dashed var(--afims-border, #B9C4D0); background: transparent; font-size: 12px; text-align: right; color: var(--afims-text, #1C1E29); }
+#vf-root .vf-ded-types { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-top: 1px solid #E4ECF6; }
+#vf-root .vf-ded-less { font-size: 13px; color: var(--afims-text, #1C1E29); }
+#vf-root .vf-ded-add-select {
+    width: auto; min-width: 190px; padding: 7px 12px; border: 1px dashed var(--afims-border, #B9C4D0); border-radius: 8px;
+    background: transparent; color: var(--afims-text-muted, #62657E); font-size: 13px; font-family: var(--font); cursor: pointer;
+}
+#vf-root .vf-ded-add-select:hover, #vf-root .vf-ded-add-select:focus { border-color: var(--afims-heading-fill, #000E3E); outline: none; }
 #vf-root .vf-ded-type-btn {
     display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 20px;
     border: 1px solid var(--afims-border, #E4ECF2); background: var(--afims-surface, #FFFFFF);
@@ -177,9 +262,9 @@ if (!isset($_vf_api)) {
 #vf-root .vf-rfa-chip-dl dt { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--afims-text-muted, #62657E); margin: 0; }
 #vf-root .vf-rfa-chip-dl dd { font-size: 12.5px; font-weight: 600; color: var(--afims-text, #1e293b); margin: 1px 0 0; }
 
-#vf-root .vf-dz { border: 2px dashed var(--afims-border, #E4ECF2); border-radius: 10px; padding: 18px; text-align: center; cursor: pointer; }
+#vf-root .vf-dz { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; border: 1px dashed var(--afims-border, #E4ECF2); border-radius: 10px; padding: 10px 14px; font-size: 14px; }
 #vf-root .vf-dz.drag-over { border-color: var(--afims-primary, #0035A9); background: var(--afims-primary-soft, #E6EBF6); }
-#vf-root .vf-dz-hint { font-size: 11px; color: var(--afims-text-muted, #62657E); margin-top: 4px; }
+#vf-root .vf-dz-hint { font-size: 11px; color: var(--afims-text-muted, #62657E); margin-left: auto; }
 #vf-root .vf-att-link-row { display: flex; gap: 8px; margin-top: 10px; align-items: center; }
 #vf-root .vf-att-link-row input { flex: 1; font-size: 13px; padding: 8px 10px; border: 1px solid var(--afims-border, #E4ECF2); border-radius: 6px; box-sizing: border-box; }
 #vf-root .vf-att-link-row input#vf-att-link-name { flex: 0 0 200px; }
@@ -214,8 +299,9 @@ html.afims-dark[data-bs-theme="dark"] #vf-root :is(input, select, textarea):is(:
    #vf-root markup/ids — no field, id, or JS binding moved or renamed. */
 #vf-root .vf-doc-section { margin-bottom: 22px; }
 #vf-root .vf-doc-section-hdr {
-    font-size: 15px; font-weight: 700; color: var(--afims-heading-fill, #000E3E);
-    margin: 0 0 12px; letter-spacing: .01em;
+    font-size: 14px; font-weight: 700; color: #fff; background: #0B1B43;
+    margin: 0 0 12px; padding: 10px 14px; border-radius: 8px;
+    text-transform: uppercase; letter-spacing: .02em;
 }
 #vf-root .vf-doc-table { width: 100%; border-collapse: collapse; border: 1px solid var(--afims-border, #D7DCE6); margin-bottom: 14px; }
 #vf-root .vf-doc-table td {
@@ -229,7 +315,7 @@ html.afims-dark[data-bs-theme="dark"] #vf-root :is(input, select, textarea):is(:
 #vf-root .vf-doc-summary-table td { border: 1px solid var(--afims-border, #D7DCE6); padding: 10px 14px; font-size: 13px; }
 #vf-root .vf-doc-summary-table td:first-child { font-weight: 600; color: var(--afims-text, #1C1E29); }
 #vf-root .vf-doc-summary-table td:last-child { text-align: right; font-family: "IBM Plex Mono", monospace; font-weight: 600; width: 220px; }
-#vf-root .vf-doc-summary-table tr.vf-doc-summary-final td { font-weight: 700; background: var(--afims-surface-subtle, #F4F7FA); text-transform: uppercase; font-size: 12.5px; }
+#vf-root .vf-doc-summary-table tr.vf-doc-summary-final td { font-weight: 700; background: #E8EEF9; color: #0B1B43; text-transform: uppercase; font-size: 12.5px; }
 #vf-root .vf-doc-summary-table tr.vf-doc-summary-final td:last-child { text-transform: none; font-size: 14px; }
 
 @media (max-width: 768px) {
@@ -246,7 +332,7 @@ html.afims-dark[data-bs-theme="dark"] #vf-root :is(input, select, textarea):is(:
 
 <div id="vf-root" class="nha-root">
     <div id="vf-overlay" class="nha-overlay no-print">
-        <div class="nha-modal nha-modal-full" role="dialog" aria-modal="true" aria-labelledby="vf-modal-title">
+        <div class="nha-modal nha-modal-xl" role="dialog" aria-modal="true" aria-labelledby="vf-modal-title">
 
             <div class="nha-modal-hdr">
                 <h3 class="nha-modal-title" id="vf-modal-title">New Disbursement Voucher</h3>
@@ -265,51 +351,57 @@ html.afims-dark[data-bs-theme="dark"] #vf-root :is(input, select, textarea):is(:
                     <ul id="vf-errors-ul"></ul>
                 </div>
 
-                <!-- ══ A. VOUCHER INFORMATION — Claimant/Vendor, RFA, DV Date, Particulars.
-                     Picking a vendor auto-fills the claimant fields; picking one or more RFAs
-                     auto-fills department and updates Budget Reference (section B). ══ -->
+                <!-- ══ A. VOUCHER INFORMATION — one flat grid: DV Date, Claimant, Address, TIN, Vendor, PO / Contract (typed),
+                     RFA (multi-select), SARO, Particulars. Picking a vendor auto-fills the claimant fields; picking one or more
+                     RFAs auto-fills department and updates Budget Reference (section B). ══ -->
                 <div class="vf-doc-section">
                     <p class="vf-doc-section-hdr">A. Voucher Information</p>
 
                     <div class="vf-card">
-                        <p class="vf-card-title" id="vf-claimant-title">Claimant &amp; RFA</p>
-                        <div id="vf-claimant-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:12px;">
+                        <p class="vf-card-title" id="vf-claimant-title" style="display:none;">Claimant &amp; RFA</p>
+                        <div id="vf-claimant-grid" class="vf-a-grid">
 
-                            <!-- LEFT: Vendor Details & Claimant -->
-                            <div>
-                                <div class="vf-grid2" style="margin-bottom:12px;">
-                                    <div class="nha-fg">
-                                        <label>Vendor (Supplier / Contractor) or Payroll <span class="vf-hint" style="display:inline;">(optional)</span></label>
-                                        <select id="vf-vendor"><option value="">— None / type claimant manually —</option></select>
-                                    </div>
-                                    <div class="nha-fg">
-                                        <label>PO Number <span class="vf-hint" style="display:inline;">(optional)</span></label>
-                                        <input type="text" id="vf-po-number" placeholder="e.g. GSD-2025-09-103">
-                                        <!-- shown when the PO has no IAR (Inspection and Acceptance Report) — checked via GET /voucher/po-iar -->
-                                        <span id="vf-po-warn" role="alert" style="display:none;margin-top:4px;font-size:12px;color:var(--afims-danger-text,#8F222D);"></span>
-                                    </div>
-                                </div>
-                                <div class="vf-vendor-card" id="vf-vendor-card" style="margin-bottom:12px;">
-                                    <div><label>Vendor Name</label><span id="vf-vc-name">—</span></div>
-                                    <div><label>Type</label><span id="vf-vc-type">—</span></div>
-                                    <div><label>Address</label><span id="vf-vc-address">—</span></div>
-                                    <div><label>TIN</label><span id="vf-vc-tin">—</span></div>
-                                </div>
-                                <div id="vf-remit-vendor-box" style="display:none;"></div>
-                                <div class="nha-fg">
-                                    <label>Claimant Name <span class="nha-req">*</span></label>
-                                    <input type="text" id="vf-claimant" placeholder="e.g. Jackson Auto Services, or Abelar, Reena E. et al.">
-                                    <span class="vf-err" id="err-claimant">Claimant Name is required.</span>
-                                </div>
-                                <div class="nha-fg" style="margin-top:12px;">
-                                    <label>Address / Employee No. / TIN</label>
-                                    <input type="text" id="vf-claimant-address" placeholder="Address">
-                                    <input type="text" id="vf-claimant-tin" placeholder="Employee No. / TIN" style="margin-top:6px;">
-                                </div>
+                            <!-- DV Date drives the DV Number preview; Fiscal Year is derived from it (vf_derivedFiscalYear()). -->
+                            <div class="nha-fg" id="vf-doc-date-td">
+                                <label>DV date <span class="nha-req">*</span></label>
+                                <input type="date" id="vf-dv-date">
+                                <span class="vf-err" id="err-dv-date">DV Date is required.</span>
+                            </div>
+                            <div class="nha-fg">
+                                <label>Payee Name <span class="nha-req">*</span></label>
+                                <input type="text" id="vf-claimant" placeholder="e.g. Jackson Auto Services, or Abelar, Reena E. et al.">
+                                <span class="vf-err" id="err-claimant">Payee Name is required.</span>
+                            </div>
+                            <div class="nha-fg">
+                                <label>Address</label>
+                                <input type="text" id="vf-claimant-address" placeholder="Auto-filled from the list of vendors/contractors">
                             </div>
 
-                            <!-- RIGHT: RFA Multi-Select -->
-                            <div>
+                            <div class="nha-fg">
+                                <label>TIN / Employee No.</label>
+                                <input type="text" id="vf-claimant-tin" placeholder="Auto-filled from the list of vendors/contractors">
+                            </div>
+                            <div class="nha-fg">
+                                <label>Vendor (Supplier / Contractor) or Payroll <span class="vf-hint" style="display:inline;">(optional)</span></label>
+                                <select id="vf-vendor"><option value="">— None / type claimant manually —</option></select>
+                            </div>
+                            <div class="nha-fg">
+                                <label>PO / Contract <span class="vf-hint" style="display:inline;">(optional · type the PO or contract number)</span></label>
+                                <input type="text" id="vf-po-number" placeholder="e.g. GSD-2025-09-103">
+                                <!-- shown when the PO has no IAR (Inspection and Acceptance Report) — checked via GET /voucher/po-iar -->
+                                <span id="vf-po-warn" role="alert" style="display:none;margin-top:4px;font-size:12px;color:var(--afims-danger-text,#8F222D);"></span>
+                            </div>
+
+                            <div class="vf-vendor-card vf-a-full" id="vf-vendor-card">
+                                <div><label>Vendor Name</label><span id="vf-vc-name">—</span></div>
+                                <div><label>Type</label><span id="vf-vc-type">—</span></div>
+                                <div><label>Address</label><span id="vf-vc-address">—</span></div>
+                                <div><label>TIN</label><span id="vf-vc-tin">—</span></div>
+                            </div>
+                            <div id="vf-remit-vendor-box" class="vf-a-full" style="display:none;"></div>
+
+                            <!-- RFA multi-select + SARO -->
+                            <div class="vf-a-full" id="vf-rfa-col">
                                 <div class="nha-fg">
                                     <label>RFA <span class="nha-req" id="vf-rfa-req">*</span> <span class="vf-hint" style="display:inline;" id="vf-rfa-note">(search and select one or more)</span></label>
                                     <input type="text" id="vf-rfa-search" placeholder="Search RFA number or reference no…" autocomplete="off">
@@ -319,47 +411,29 @@ html.afims-dark[data-bs-theme="dark"] #vf-root :is(input, select, textarea):is(:
                                 </div>
                                 <div id="vf-rfa-chips" class="vf-rfa-chips"></div>
 
-                                <!-- SARO (fims.fund_tracking WHERE tracking_type = 'SARO') — one per DV, unlike the RFA
+                                <!-- SARO (fims.fund_tracking WHERE tracking_type = SARO) — one per DV, unlike the RFA
                                      multi-select above (fund_tracking.dv_id, see DisbursementVoucherService::linkSaro()).
-                                     Optional: a DV need not cite a SARO. Its linked bank account (bank_account_id) auto-fills
-                                     Check Preparation's Bank Account select once this DV reaches FOR_TREASURY — see
-                                     CheckProcessingService::getSaroForDv() / check-disbursement-voucher-page.php. -->
+                                     Optional. Its linked bank account auto-fills Check Preparation's Bank Account select once
+                                     this DV reaches FOR_TREASURY — see CheckProcessingService::getSaroForDv(). -->
                                 <div class="nha-fg" style="margin-top:12px;">
                                     <label>SARO <span class="vf-hint" style="display:inline;">(optional — the SARO this voucher's bank account comes from)</span></label>
                                     <select id="vf-saro"><option value="">— None —</option></select>
                                 </div>
                             </div>
+
+                            <div class="nha-fg" id="vf-doc-status-td">
+                                <label>Status</label>
+                                <div><span class="nha-bdg nha-bdg-gray" id="vf-status-doc">DRAFT</span></div>
+                            </div>
+
+                            <!-- Particulars: General Form No. 1's own "what this DV is for" box. -->
+                            <div class="nha-fg vf-a-full">
+                                <label>Particulars <span class="nha-req">*</span></label>
+                                <textarea id="vf-particulars" rows="3" placeholder="To payment for…"></textarea>
+                                <span class="vf-err" id="err-particulars">Particulars is required.</span>
+                            </div>
                         </div>
                     </div>
-
-                    <!-- DV Date drives the DV Number preview; Fiscal Year is derived from it, not
-                         asked for directly — see vf_derivedFiscalYear(). Particulars is this
-                         section's own free-text "what this DV is for" line (General Form No. 1's
-                         own Particulars box). -->
-                    <table class="vf-doc-table">
-                        <tr>
-                            <td id="vf-doc-date-td">
-                                <p class="vf-doc-k">DV Date <span class="nha-req">*</span></p>
-                                <div class="nha-fg">
-                                    <input type="date" id="vf-dv-date">
-                                    <span class="vf-err" id="err-dv-date">DV Date is required.</span>
-                                </div>
-                            </td>
-                            <td id="vf-doc-status-td">
-                                <p class="vf-doc-k">Status</p>
-                                <span class="nha-bdg nha-bdg-gray" id="vf-status-doc">DRAFT</span>
-                            </td>
-                        </tr>
-                        <tr>
-                            <td class="vf-doc-full" colspan="2">
-                                <p class="vf-doc-k">Particulars <span class="nha-req">*</span></p>
-                                <div class="nha-fg">
-                                    <textarea id="vf-particulars" rows="3" placeholder="To payment for…"></textarea>
-                                    <span class="vf-err" id="err-particulars">Particulars is required.</span>
-                                </div>
-                            </td>
-                        </tr>
-                    </table>
                 </div>
 
                 <!-- ══ B. AMOUNT AND DEDUCTIONS — Gross Amount, non-tax Deductions, ATC
@@ -368,6 +442,7 @@ html.afims-dark[data-bs-theme="dark"] #vf-root :is(input, select, textarea):is(:
                      RFA(s) above), and the Gross/Less Deductions/Net Amount Payable summary. ══ -->
                 <div class="vf-doc-section">
                     <p class="vf-doc-section-hdr" id="vf-sec-b-hdr">B. Amount and Deductions</p>
+                    <p class="vf-hint" id="vf-sec-b-note" style="margin:0 0 10px;font-size:13px;">Account codes and amounts are filled in from the RFAs selected above, starting at each RFA balance. Change the amount to what this DV charges.</p>
 
                     <!-- A Remittance DV's amount: the total and the rate table, with the accounting entry and the vouchers it pays folded away
                          underneath (vf_renderRemitSchedule()). Hidden for every other DV. -->
@@ -425,19 +500,38 @@ html.afims-dark[data-bs-theme="dark"] #vf-root :is(input, select, textarea):is(:
                     </div>
                 </div>
 
-                <!-- ══ C. SUPPORTING DOCUMENTS — same fims.file_attachments / multiple_node_id
+                <!-- ══ C. ACCOUNTING ENTRY (AUTO-GENERATED) — read-only preview built live from section B (see vf_renderAcctPreview()):
+                     Dr each RFA account line, Cr each deduction's / ATC's payable account, Cr Accounts Payable for the net.
+                     Display only — nothing here is sent on save; Accounting still prepares the real entry at FOR_ACCOUNTING. ══ -->
+                <div class="vf-doc-section" id="vf-sec-acct-prev">
+                    <p class="vf-doc-section-hdr">C. Accounting Entry (Auto-generated)</p>
+                    <div class="vf-card vf-ap-card">
+                        <table class="vf-ap-table">
+                            <thead><tr>
+                                <th style="width:150px;">Account Code</th>
+                                <th>Account Description</th>
+                                <th style="text-align:right;width:190px;">Debit</th>
+                                <th style="text-align:right;width:190px;">Credit</th>
+                            </tr></thead>
+                            <tbody id="vf-acct-prev-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- ══ D. SUPPORTING DOCUMENTS — same fims.file_attachments / multiple_node_id
                      convention the CBA/RFA form uses (see FileUploadServices). Files upload to
                      storage as soon as they're dropped; the batch itself (multiple_node_id) is
                      only registered when the voucher is saved (vf_save -> vf_persistAttachments). ══ -->
                 <div class="vf-doc-section">
-                    <p class="vf-doc-section-hdr">C. Supporting Documents</p>
+                    <p class="vf-doc-section-hdr">D. Supporting Documents</p>
                     <div class="vf-card">
-                        <div class="vf-dz" id="vf-dz" onclick="document.getElementById('vf-att-input').click()"
+                        <div class="vf-dz" id="vf-dz"
                              ondragover="event.preventDefault(); this.classList.add('drag-over');"
                              ondragleave="this.classList.remove('drag-over');"
                              ondrop="vf_onAttDrop(event)">
-                            <strong>Click to upload</strong> or drag and drop supporting documents here
-                            <div class="vf-dz-hint">Max 25MB each &middot; PDF, DOC, XLS, JPG, PNG</div>
+                            <button type="button" class="nha-btn nha-btn-ghost" onclick="document.getElementById('vf-att-input').click()">+ Attach files</button>
+                            <span id="vf-att-status">No files attached</span>
+                            <span class="vf-dz-hint">Max 25MB each &middot; PDF, DOC, XLS, JPG, PNG</span>
                         </div>
                         <input type="file" id="vf-att-input" multiple hidden
                                accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png" onchange="vf_onAttChange(event)">
@@ -450,14 +544,14 @@ html.afims-dark[data-bs-theme="dark"] #vf-root :is(input, select, textarea):is(:
                     </div>
                 </div>
 
-                <!-- ══ D. PRO FORMA JOURNAL ENTRY — HIDDEN from Originating (regional users). Accounting
+                <!-- ══ E. PRO FORMA JOURNAL ENTRY — HIDDEN from Originating (regional users). Accounting
                      fills it in at the FOR_ACCOUNTING stage (readone.php's editable grid, see
                      vje_visible()). Kept in the DOM, not removed, because the payroll/remittance
                      flows still pre-fill this grid silently (vf_applyPayroll()/vf_applyRemittance())
                      and vf_save() sends whatever it holds; regular DVs no longer auto-fill it, see
                      vf_syncAutoJevLines(). ══ -->
                 <div class="vf-doc-section" id="vf-sec-d" style="display:none;margin-bottom:0;">
-                    <p class="vf-doc-section-hdr">D. Pro Forma Journal Entry</p>
+                    <p class="vf-doc-section-hdr">E. Pro Forma Journal Entry</p>
                     <div class="vf-card" style="margin-bottom:0;">
                         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
                             <span class="vje-amt-badge">Required if filled in: DR = CR (balanced)</span>
@@ -741,6 +835,10 @@ function vf_bindEvents() {
         vf_liveFormatMoney(e.target);
         vf_onLineAmountInput();
     });
+    bdBody.addEventListener('input', e => {
+        if (e.target.classList.contains('vf-comp-base')) vf_liveFormatMoney(e.target);
+        if (e.target.classList.contains('vf-comp-base') || e.target.classList.contains('vf-comp-pct')) vf_onComputationInput();
+    });
     bdBody.addEventListener('focusout', e => {
         if (!e.target.classList.contains('vf-rfa-line-amt')) return;
         e.target.value = e.target.value.trim() === '' ? '' : vf_fmtMoneyVal(vf_numVal(e.target.value));
@@ -794,8 +892,19 @@ function vf_renderDedTypeButtons() {
     // the payroll types (PAYROLL_GSIS, PAYROLL_WTAX, …) belong to payroll DVs only — the imported payroll fills them
     const types = vf_dedTypes.filter(t => vf_payrollPeriodId || !String(t.code || '').startsWith('PAYROLL_'));
     // The "+ ATC ROW" pill sits with the deduction-type pills (it adds a row to the ATC table above), so it's always shown.
-    $vf('vf-ded-types').innerHTML = types.map(t => `<button type="button" class="vf-ded-type-btn" onclick="vf_addDeductionLine({deduction_type_id:'${vf_esc(t.deduction_type_id)}'})">+ ${vf_esc(t.name).toUpperCase()}</button>`).join('')
-        + '<button type="button" class="vf-ded-type-btn" onclick="vf_addAtcLine()">+ ATC ROW</button>';
+    // One "Less: + Add deduction…" dropdown instead of a pill per type: picking an option adds that row, then the select resets.
+    $vf('vf-ded-types').innerHTML = `<span class="vf-ded-less">Less:</span>
+        <select class="vf-ded-add-select" id="vf-ded-add" aria-label="Add deduction">
+            <option value="">+ Add deduction…</option>
+            ${types.map(t => `<option value="t:${vf_esc(t.deduction_type_id)}">${vf_esc(t.name)}</option>`).join('')}
+            <option value="atc">ATC row (withholding tax)</option>
+        </select>`;
+    $vf('vf-ded-add').addEventListener('change', e => {
+        const v = e.target.value;
+        e.target.value = '';
+        if (v === 'atc') vf_addAtcLine();
+        else if (v.startsWith('t:')) vf_addDeductionLine({ deduction_type_id: v.slice(2) });
+    });
     // A payroll DV's deductions are the imported month's (filled in, and re-read from Payroll Management on save): their
     // rows show each name and amount only — no Rate (the import has none), no × remove, no "+ TYPE" pills (.vf-ded-payroll).
     // Runs whenever the payroll month is picked, changed, cleared or restored on edit.
@@ -1053,18 +1162,51 @@ function vf_renderRfaBreakdown() {
         <td>${label(r.code, r.text)}</td>
         ${r.first ? `<td rowspan="${r.span}" style="vertical-align:top;">${vf_esc(r.rfa.allocation_number)}</td>
         <td rowspan="${r.span}" style="text-align:right;vertical-align:top;">${vf_peso(r.rfa.remaining_balance)}</td>` : ''}
-        <td style="width:150px;text-align:right;"><input type="text" inputmode="decimal" class="vf-rfa-line-amt" data-key="${vf_esc(r.key)}" placeholder="0.00" value="${amounts[r.key] ? vf_fmtMoneyVal(amounts[r.key]) : ''}" aria-label="Amount for ${vf_esc(label(r.code, r.text))}"></td>
+        <td class="vf-bd-amt"><input type="text" inputmode="decimal" class="vf-rfa-line-amt" data-key="${vf_esc(r.key)}" placeholder="0.00" value="${amounts[r.key] ? vf_fmtMoneyVal(amounts[r.key]) : ''}" aria-label="Amount for ${vf_esc(label(r.code, r.text))}"></td>
+        <td></td>
     </tr>`).join('');
-    box.innerHTML = `<p class="vf-card-title">RFA Breakdown</p>
-        <div style="overflow-x:auto;"><table class="vf-ledger" style="width:100%;font-size:12.5px;">
+    const seen = new Set();
+    const rfaList = rows.filter(r => !seen.has(r.rfa.allocation_id) && seen.add(r.rfa.allocation_id)).map(r => r.rfa);
+    const rfaBal  = rfaList.reduce((a, r) => a + (Number(r.remaining_balance) || 0), 0);
+    box.innerHTML = `<table class="vf-bd-table">
             <thead><tr>
-                <th style="text-align:left;">Account Code - Description</th>
+                <th style="text-align:left;">Account Code &ndash; Description</th>
                 <th style="text-align:left;">RFA</th>
-                <th style="text-align:right;">RFA Balance</th>
+                <th style="text-align:right;">RFA Balance / %</th>
                 <th style="text-align:right;">Amount</th>
+                <th></th>
             </tr></thead>
             <tbody>${body}</tbody>
-        </table></div>`;
+            <tfoot>
+                <tr class="vf-bd-gross">
+                    <td colspan="2"><b>Gross amount</b> &middot; ${rfaList.map(r => vf_esc(r.allocation_number)).join(', ')}</td>
+                    <td class="vf-bd-muted">${vf_peso(rfaBal)}</td>
+                    <td id="vf-bd-gross-amt"><b>${vf_peso(gross)}</b></td>
+                    <td></td>
+                </tr>
+                <tr class="vf-bd-comp">
+                    <td colspan="2">
+                        <div class="vf-comp-line"><span>Computation (optional):</span><input type="text" id="vf-comp-label" placeholder="e.g. Total Contract Cost"></div>
+                        <small>Base amount &times; % = total amount due (fills the amount when there is one account)</small>
+                    </td>
+                    <td><input type="text" inputmode="decimal" class="vf-comp-base" placeholder="Base amount"></td>
+                    <td><input type="text" inputmode="decimal" class="vf-comp-pct" placeholder="&times; %"></td>
+                    <td></td>
+                </tr>
+            </tfoot>
+        </table>`;
+}
+
+/** Computation row: Base amount x % fills the Amount cell when the breakdown has exactly one account line. */
+function vf_onComputationInput() {
+    const box = $vf('vf-rfa-breakdown-body');
+    const amts = box.querySelectorAll('.vf-rfa-line-amt');
+    if (amts.length !== 1) return;
+    const base = vf_numVal(box.querySelector('.vf-comp-base').value);
+    const pct  = parseFloat(box.querySelector('.vf-comp-pct').value);
+    if (!(base > 0) || !(pct > 0)) return;
+    amts[0].value = vf_fmtMoneyVal(Math.round(base * pct) / 100);
+    vf_onLineAmountInput();
 }
 
 /** An Amount cell was edited: remember the split, set Gross Amount to their sum, and let the rest of the form follow. */
@@ -1081,6 +1223,8 @@ function vf_onLineAmountInput() {
     vf_lineAmountsSig = vf_selectedRfaIds.join(',');
     $vf('vf-gross').value = sum > 0 ? vf_fmtMoneyVal(sum) : '';
     vf_renderedGross = sum;
+    const bdGross = $vf('vf-bd-gross-amt');
+    if (bdGross) bdGross.innerHTML = `<b>${vf_peso(sum)}</b>`;
     vf_clearFieldError('gross');
     vf_recalc();
 }
@@ -1215,7 +1359,71 @@ async function vf_onVendorChange() {
 function vf_syncAutoJevLines() {
     vf_recalcJev();
     vf_refreshAllJevHints();
+    vf_renderAcctPreview();
 }
+
+/**
+ * Section C — the auto-generated Accounting Entry, a read-only preview of what Accounting will post, rebuilt from
+ * section B every time it recalculates (called from vf_syncAutoJevLines()). Mirrors readone.php's vje_syncAutoLines():
+ * Dr each RFA account line, Cr each deduction type's account, Cr each ATC code's account, Cr Accounts Payable for the rest.
+ * Not sent on save. Hidden for payroll / remittance DVs, which bring their own entries.
+ */
+function vf_renderAcctPreview() {
+    const sec = $vf('vf-sec-acct-prev'), body = $vf('vf-acct-prev-body');
+    if (!sec || !body) return;
+    const own = !!(vf_payrollPeriodId || vf_remittanceId || vf_dvRemit);
+    sec.style.display = own ? 'none' : '';
+    if (own) return;
+
+    const title = code => (vf_coaOptions.find(a => a.account_code === code) || {}).account_title || '';
+    const r2 = n => Math.round((Number(n) || 0) * 100) / 100;
+    const money = n => vf_fmtMoneyVal(n);
+    const drs = [], crs = [];
+
+    const byKey = {};
+    vf_rfaBreakdownRows().forEach(r => { byKey[r.key] = r; });
+    $vf('vf-rfa-breakdown-body').querySelectorAll('.vf-rfa-line-amt').forEach(inp => {
+        const amt = vf_numVal(inp.value), r = byKey[inp.dataset.key];
+        if (r && amt > 0) drs.push({ code: r.code || '', desc: r.text || title(r.code), amt });
+    });
+
+    let credited = 0;
+    $vf('vf-ded-container').querySelectorAll('.vf-ded-row').forEach(row => {
+        const amt = vf_numVal(row.querySelector('.vf-ded-amount').value);
+        const t = vf_dedTypes.find(t => String(t.deduction_type_id) === String(row.dataset.typeId));
+        const code = t?.account_code || row.querySelector('.vf-ded-acct')?.value.trim() || '';
+        if (!t || amt <= 0) return;
+        credited += amt;
+        crs.push({ code, desc: title(code) || t.name, amt });
+    });
+    vf_collectAtcLines().forEach(l => {
+        const def = VF_ATC.find(c => c.atc_code === l.atc_code);
+        const amt = r2(vf_pctOf(l.tax_base, l.rate));
+        if (!def || amt <= 0) return;
+        credited += amt;
+        crs.push({ code: def.account_code || '', desc: title(def.account_code) || def.description, amt });
+    });
+
+    const gross = drs.reduce((a, d) => a + d.amt, 0);
+    const ap = r2(gross - credited);
+    if (ap > 0.004) {
+        const v = vf_vendors[$vf('vf-vendor').value];
+        const apCode = v?.coa_account_code || '2-01-01-010';
+        crs.push({ code: apCode, desc: title(apCode) || 'Accounts Payable', amt: ap });
+    }
+
+    if (!drs.length) {
+        body.innerHTML = '<tr class="vf-ap-empty"><td colspan="4">Select an RFA above — the entry is generated from it.</td></tr>';
+        return;
+    }
+    const totalDr = drs.reduce((a, d) => a + d.amt, 0), totalCr = crs.reduce((a, d) => a + d.amt, 0);
+    const bad = Math.abs(totalDr - totalCr) > 0.005;
+    body.innerHTML =
+        drs.map(d => `<tr><td>${vf_esc(d.code)}</td><td>${vf_esc(d.desc)}</td><td>${money(d.amt)}</td><td></td></tr>`).join('')
+        + crs.map(c => `<tr><td>${vf_esc(c.code)}</td><td class="vf-ap-cr">${vf_esc(c.desc)}</td><td></td><td>${money(c.amt)}</td></tr>`).join('')
+        + `<tr class="vf-ap-total${bad ? ' vf-ap-bad' : ''}"><td></td><td>Total</td><td>${money(totalDr)}</td><td>${money(totalCr)}</td></tr>`;
+}
+
 
 async function vf_refreshDvNumber() {
     const d = $vf('vf-dv-date').value;
@@ -1295,6 +1503,9 @@ function vf_addLinkAttachment() {
 }
 
 function vf_renderAttachments() {
+    $vf('vf-att-status').textContent = vf_attachments.length
+        ? `${vf_attachments.length} file${vf_attachments.length > 1 ? 's' : ''} attached`
+        : 'No files attached';
     $vf('vf-att-list').innerHTML = vf_attachments.map((a, idx) => {
         const isLink = /^https?:\/\//i.test(a.link || '');
         const name   = isLink
@@ -1377,10 +1588,10 @@ function vf_addDeductionLine(d = null) {
     div.dataset.typeId = d?.deduction_type_id ?? '';
     div.innerHTML = `
         <button type="button" class="vf-ded-remove" title="Remove" onclick="vf_removeDeductionLine(${idx})">&times;</button>
-        <div class="vf-ded-type-label">${vf_esc(t?.name) || '—'}</div>
+        <div class="vf-ded-type-label"><span class="vf-less">Less:</span> <b>${vf_esc(t?.name) || '—'}</b>${t?.account_code ? ` <span class="vf-ded-acct-hint">${vf_esc(t.account_code)}</span>` : ''}</div>
         <div class="vf-grid2" style="margin-top:6px;">
-            <div class="nha-fg"><label>Rate (%)</label><input type="number" class="vf-ded-rate" min="0" step="0.01" placeholder="e.g. 10"></div>
-            <div class="nha-fg"><label>Deduction Amount (₱)</label><input type="text" inputmode="decimal" class="vf-ded-amount" placeholder="Auto-computed"></div>
+            <div class="nha-fg"><label>Rate (%)</label><input type="number" class="vf-ded-rate" min="0" step="0.01" placeholder="Rate %"></div>
+            <div class="nha-fg"><label>Deduction Amount (₱)</label><input type="text" inputmode="decimal" class="vf-ded-amount" placeholder="Amount"></div>
         </div>
         ${needsAcct ? `<div class="nha-fg" style="margin-top:8px;">
             <label>Posting Account <span class="nha-req">*</span></label>
@@ -1445,25 +1656,18 @@ function vf_addVatLine(idx, d, saved) {
     div.dataset.vatType = vatType;
     div.innerHTML = `
         <button type="button" class="vf-ded-remove" title="Remove" onclick="vf_removeDeductionLine(${idx})">&times;</button>
-        <div class="vf-ded-type-label">VAT</div>
-        <div class="vf-vat-types">
-            <label class="vf-vat-opt"><input type="radio" name="vf-vat-type-${idx}" value="inclusive"> VAT Inclusive <small>Gross already includes VAT</small></label>
-            <label class="vf-vat-opt"><input type="radio" name="vf-vat-type-${idx}" value="exclusive"> VAT Exclusive <small>VAT is added on top of gross</small></label>
+        <div class="vf-ded-type-label"><span class="vf-less">Less:</span> <b>VAT withheld</b>
+            <span class="vf-vat-types">
+                <label class="vf-vat-opt" title="Gross already includes VAT"><input type="radio" name="vf-vat-type-${idx}" value="inclusive"> Inclusive</label>
+                <label class="vf-vat-opt" title="VAT is added on top of gross"><input type="radio" name="vf-vat-type-${idx}" value="exclusive"> Exclusive</label>
+            </span>
         </div>
-        <div class="vf-vat-block info">
-            <div class="vf-vat-block-title">VAT Computation <span>— informational, not deducted</span></div>
-            <div class="vf-grid3">
-                <div class="nha-fg"><label>Statutory VAT Rate (%)</label><input type="text" readonly value="${VF_VAT_RATE}"></div>
-                <div class="nha-fg"><label>VAT Amount (₱)</label><input type="text" class="vf-vat-amt" readonly></div>
-                <div class="nha-fg"><label>Tax Base (₱)</label><input type="text" class="vf-vat-base" readonly></div>
-            </div>
-        </div>
-        <div class="vf-vat-block real">
-            <div class="vf-vat-block-title">Withholding VAT <span>— deducted from Net Amount Payable</span></div>
-            <div class="vf-grid2">
-                <div class="nha-fg"><label>Withholding VAT Rate (%)</label><input type="number" class="vf-ded-rate" min="0" max="100" step="0.01" placeholder="e.g. 5"></div>
-                <div class="nha-fg"><label>Withholding VAT Amount (₱)</label><input type="text" class="vf-ded-amount" readonly placeholder="Auto-computed"></div>
-            </div>
+        <div class="vf-vat-rate nha-fg"><input type="number" class="vf-ded-rate" min="0" max="100" step="0.01" placeholder="Rate %" aria-label="Withholding VAT rate (%)"></div>
+        <div class="vf-vat-wamt nha-fg"><input type="text" class="vf-ded-amount" readonly placeholder="Amount" aria-label="Withholding VAT amount"></div>
+        <div class="vf-vat-info">
+            VAT computation (informational, not deducted): statutory ${VF_VAT_RATE}% &middot;
+            VAT <input type="text" class="vf-vat-amt" readonly aria-label="VAT amount"> &middot;
+            Tax base <input type="text" class="vf-vat-base" readonly aria-label="Tax base">
         </div>
         <span class="vf-hint vf-vat-hint"></span>`;
     $vf('vf-ded-container').appendChild(div);
@@ -1625,13 +1829,12 @@ function vf_addAtcLine(a = null) {
     div.id = `vf-atc-row-${idx}`;
     div.innerHTML = `
         <button type="button" class="vf-ded-remove" title="Remove" onclick="vf_removeAtcLine(${idx})">&times;</button>
-        <div class="vf-ded-type-label">ATC (Withholding Tax)</div>
-        <div class="nha-fg" style="margin-top:8px;"><label>ATC Code — Description</label><input type="text" class="vf-atc-code" placeholder="Search ATC code…"></div>
-        <div class="vf-grid3" style="margin-top:8px;">
-            <div class="nha-fg"><label>Rate (%)</label><input type="number" class="vf-atc-rate" min="0" max="100" step="0.01" placeholder="0.00"></div>
-            <div class="nha-fg"><label>Tax Base (₱)</label><input type="text" inputmode="decimal" class="vf-atc-base" placeholder="0.00"></div>
-            <div class="nha-fg"><label>Withholding Tax (₱)</label><input type="text" class="vf-atc-wh" readonly value="₱ 0.00"></div>
+        <div class="vf-ded-type-label vf-atc-label"><span class="vf-less">Less:</span>
+            <span class="vf-atc-codewrap"><input type="text" class="vf-atc-code" placeholder="Search ATC code — description…" aria-label="ATC code"></span>
         </div>
+        <div class="vf-atc-rate-cell"><input type="number" class="vf-atc-rate" min="0" max="100" step="0.01" placeholder="Rate %" aria-label="Rate (%)"></div>
+        <div class="vf-atc-wh-cell"><input type="text" class="vf-atc-wh" readonly value="₱ 0.00" aria-label="Withholding tax"></div>
+        <div class="vf-atc-info">Tax base (&#8369;) <input type="text" inputmode="decimal" class="vf-atc-base" placeholder="0.00" aria-label="Tax base"> &times; rate = withholding tax</div>
         <div class="nha-fg" style="display:none;"><label>Chargeability</label>
             <select class="vf-atc-rc">
                 <option value="">— None —</option>
@@ -2196,9 +2399,11 @@ function vf_markRemittanceFields(d) {
     //   the Deductions + ATC card · the Budget Reference fields and figures (Dept./Project, Fund Source, Account Code —
     //   set from the remittance —, Budget / Obligation / Payments / Balance, which come from an RFA). Remarks stays.
     const show = el => { if (el) el.style.display = d ? 'none' : ''; };
-    show(sel.closest('.vf-grid2'));
+    show(sel.closest('.nha-fg'));
+    show($vf('vf-po-number').closest('.nha-fg'));
+    show($vf('vf-claimant-tin').closest('.nha-fg'));
     show($vf('vf-claimant-address').closest('.nha-fg'));
-    show($vf('vf-rfa-search').closest('.nha-fg').parentElement);
+    show($vf('vf-rfa-col'));
     show($vf('vf-ded-section')); // the Deductions + ATC rows and pills (the RFA Breakdown box above them stays: it is empty without an RFA)
     // layout: no RFA column, so section A spans the whole card; a month's remittance DV (dvRemit) also drops what only repeats the figures
     // (the vendor card, the second Status cell, the empty RFA breakdown box and the Gross / Less / Net table — the amount is shown once, in section B)
@@ -2206,10 +2411,11 @@ function vf_markRemittanceFields(d) {
     const dr = !!(d && d.dvRemit);
     $vf('vf-claimant-title').textContent = d ? 'Claimant' : 'Claimant & RFA';
     $vf('vf-doc-status-td').style.display = dr ? 'none' : '';
-    $vf('vf-doc-date-td').colSpan = dr ? 2 : 1;
+    
     $vf('vf-dv-date').style.maxWidth = dr ? '260px' : '';
     $vf('vf-sec-b-hdr').textContent = dr ? 'B. Amount to Remit' : 'B. Amount and Deductions';
     $vf('vf-rfa-breakdown').style.display = dr ? 'none' : '';
+    $vf('vf-sec-b-note').style.display = dr ? 'none' : '';
     $vf('vf-doc-summary').style.display = dr ? 'none' : '';
     if (dr) $vf('vf-vendor-card').classList.remove('visible');
     if (!d) $vf('vf-remit-sched').classList.remove('vf-remit-main');
@@ -2370,7 +2576,7 @@ function vf_validate() {
     // saves the Journal Entry at the FOR_ACCOUNTING stage, where it is required.
     // a remittance DV pays deductions the payroll DV's RFA already obligated — no RFA of its own
     check(vf_remittanceId || vf_dvRemit || vf_selectedRfaIds.length > 0, 'rfa', 'At least one RFA is required.');
-    check(!!$vf('vf-claimant').value.trim(), 'claimant', 'Claimant Name is required.');
+    check(!!$vf('vf-claimant').value.trim(), 'claimant', 'Payee Name is required.');
     check(!!$vf('vf-particulars').value.trim(), 'particulars', 'Particulars is required.');
     check((vf_numVal($vf('vf-gross').value)) > 0, 'gross', 'Amount must be greater than zero.');
     // Same ceiling the server enforces: a manual DV can't draw more than its RFA(s) have left (RFAs with no

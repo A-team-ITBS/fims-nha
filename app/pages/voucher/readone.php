@@ -288,9 +288,9 @@ function vr_render(dv) {
 
     // Section A shows only what this voucher actually has — a Remittance DV, for one, has no RFA, PO or claimant address.
     const claimantItems = [['Claimant', vr_esc(dv.claimant_name) || '—']];
-    const addrTin = [dv.claimant_address, dv.employee_no_tin].filter(x => x && String(x).trim() !== '').map(vr_esc).join(' / ');
-    if (addrTin) claimantItems.push(['Address / Employee No. / TIN', addrTin]);
-    if (dv.po_number) claimantItems.push(['PO Number', vr_esc(dv.po_number)]);
+    if (dv.claimant_address && String(dv.claimant_address).trim() !== '') claimantItems.push(['Address', vr_esc(dv.claimant_address)]);
+    if (dv.employee_no_tin && String(dv.employee_no_tin).trim() !== '') claimantItems.push(['TIN / Employee No.', vr_esc(dv.employee_no_tin)]);
+    if (dv.po_number) claimantItems.push(['PO / Contract', vr_esc(dv.po_number)]);
     if (Number(dv.po_amount) > 0) claimantItems.push(['PO Amount', vr_peso(dv.po_amount)]);
 
     $vr('vr-body').innerHTML = `
