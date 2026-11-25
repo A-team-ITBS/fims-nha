@@ -211,6 +211,13 @@ if (!isset($_vf_api)) {
 #vf-root .vf-atc-row .vf-atc-rate, #vf-root .vf-atc-row .vf-atc-wh { text-align: right; }
 #vf-root .vf-atc-info { grid-column: 1 / -1; grid-row: 2; margin-top: 6px; font-size: 12px; color: var(--afims-text-muted, #62657E); }
 #vf-root .vf-atc-info input { width: 130px; padding: 2px 6px; border: 0; border-bottom: 1px dashed var(--afims-border, #B9C4D0); background: transparent; font-size: 12px; text-align: right; color: var(--afims-text, #1C1E29); }
+#vf-root .vf-net-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 170px 12px 14px; background: #E3EBF8; border-top: 1px solid #D5E0F0; font-size: 14px; color: #0B1B43; }
+#vf-root .vf-net-row b { font-family: "IBM Plex Mono", monospace; font-size: 15px; }
+#vf-root .vf-atc-acct-hint, #vf-root .vf-ded-acct-hint { font-family: "IBM Plex Mono", monospace; font-size: 12px; font-weight: 400; color: var(--afims-text-muted, #62657E); white-space: nowrap; }
+#vf-root .vf-atc-label .vf-atc-codewrap { flex: 0 1 430px; }
+/* the Tax Base line only matters when the base is split over several ATC rows */
+#vf-root .vf-atc-info { display: none; }
+#vf-root #vf-ded-container.vf-atc-multi .vf-atc-info { display: block; }
 #vf-root .vf-ded-types { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-top: 1px solid #E4ECF6; }
 #vf-root .vf-ded-less { font-size: 13px; color: var(--afims-text, #1C1E29); }
 #vf-root .vf-ded-add-select {
@@ -468,11 +475,12 @@ html.afims-dark[data-bs-theme="dark"] #vf-root :is(input, select, textarea):is(:
                             <div class="vf-atc-summary" id="vf-atc-summary" style="display:none;"></div>
                             <div class="vf-ded-types" id="vf-ded-types"></div>
                         </div>
+                        <div class="vf-net-row"><span>Net amount</span><b id="vf-net-vis">&#8369; 0.00</b></div>
                     </div>
 
                     <!-- Gross Amount / Less: Total Deductions / NET AMOUNT PAYABLE — vf-doc-gross
                          and vf-doc-less-ded are set alongside vf-net in vf_recalc(). -->
-                    <table class="vf-doc-summary-table" id="vf-doc-summary">
+                    <table class="vf-doc-summary-table" id="vf-doc-summary" style="display:none;">
                         <tr><td>Gross Amount</td><td id="vf-doc-gross">₱ 0.00</td></tr>
                         <tr><td>Less: Total Deductions</td><td id="vf-doc-less-ded">₱ 0.00</td></tr>
                         <tr><td>Less: Withholding Tax (ATC)</td><td id="vf-doc-less-wh">₱ 0.00</td></tr>
@@ -1588,7 +1596,7 @@ function vf_addDeductionLine(d = null) {
     div.dataset.typeId = d?.deduction_type_id ?? '';
     div.innerHTML = `
         <button type="button" class="vf-ded-remove" title="Remove" onclick="vf_removeDeductionLine(${idx})">&times;</button>
-        <div class="vf-ded-type-label"><span class="vf-less">Less:</span> <b>${vf_esc(t?.name) || '—'}</b>${t?.account_code ? ` <span class="vf-ded-acct-hint">${vf_esc(t.account_code)}</span>` : ''}</div>
+        <div class="vf-ded-type-label"><span class="vf-less">Less:</span> <b>${vf_esc(t?.name) || '—'}</b>${t?.account_code ? ` <span class="vf-ded-acct-hint">${vf_esc([t.account_code, (vf_coaOptions.find(a => a.account_code === t.account_code) || {}).account_title].filter(Boolean).join(' '))}</span>` : ''}</div>
         <div class="vf-grid2" style="margin-top:6px;">
             <div class="nha-fg"><label>Rate (%)</label><input type="number" class="vf-ded-rate" min="0" step="0.01" placeholder="Rate %"></div>
             <div class="nha-fg"><label>Deduction Amount (₱)</label><input type="text" inputmode="decimal" class="vf-ded-amount" placeholder="Amount"></div>
@@ -1751,7 +1759,7 @@ function vf_collectDeductions() {
    reaches FOR_ACCOUNTING; here it's just a plain add/remove grid, saved as-is). ───────────────── */
 /* Each ATC row is its own card in the same list as the deductions (#vf-ded-container), added below the previous one. */
 function vf_clearDeductionRows() { $vf('vf-ded-container').querySelectorAll('.vf-ded-row').forEach(r => r.remove()); }
-function vf_clearAtcRows()       { $vf('vf-ded-container').querySelectorAll('.vf-atc-row').forEach(r => r.remove()); vf_atcFull = null; }
+function vf_clearAtcRows()       { $vf('vf-ded-container').querySelectorAll('.vf-atc-row').forEach(r => r.remove()); vf_atcFull = null; $vf('vf-ded-container').classList.remove('vf-atc-multi'); }
 function vf_atcRows()            { return $vf('vf-ded-container').querySelectorAll('.vf-atc-row'); }
 
 /* ── What the ATC rows split ────────────────────────────────────
@@ -1831,6 +1839,7 @@ function vf_addAtcLine(a = null) {
         <button type="button" class="vf-ded-remove" title="Remove" onclick="vf_removeAtcLine(${idx})">&times;</button>
         <div class="vf-ded-type-label vf-atc-label"><span class="vf-less">Less:</span>
             <span class="vf-atc-codewrap"><input type="text" class="vf-atc-code" placeholder="Search ATC code — description…" aria-label="ATC code"></span>
+            <span class="vf-atc-acct-hint"></span>
         </div>
         <div class="vf-atc-rate-cell"><input type="number" class="vf-atc-rate" min="0" max="100" step="0.01" placeholder="Rate %" aria-label="Rate (%)"></div>
         <div class="vf-atc-wh-cell"><input type="text" class="vf-atc-wh" readonly value="₱ 0.00" aria-label="Withholding tax"></div>
@@ -1852,6 +1861,8 @@ function vf_addAtcLine(a = null) {
         el.addEventListener('input', () => vf_recalcAtcLine(idx));
     });
     $vf('vf-ded-container').appendChild(div);
+    vf_markAtcMulti();
+    vf_atcAcctHint(div);
     vf_setAtcShare(div);
     // Bound after the row is attached to the DOM — nhaSearchableSelect reads the input's live
     // parentElement to anchor the dropdown, which is unreliable on a still-detached node.
@@ -1861,7 +1872,23 @@ function vf_addAtcLine(a = null) {
 
 function vf_removeAtcLine(idx) {
     $vf(`vf-atc-row-${idx}`)?.remove();
+    vf_markAtcMulti();
     vf_recalcAtc();
+}
+
+/** "2-02-01-010 Due to BIR" beside an ATC code: the account its withholding is credited to. */
+function vf_atcAcctHint(tr) {
+    const el = tr.querySelector('.vf-atc-acct-hint');
+    if (!el) return;
+    const def = VF_ATC.find(c => c.atc_code === tr.querySelector('.vf-atc-code').value);
+    const code = def?.account_code || '';
+    const title = (vf_coaOptions.find(a => a.account_code === code) || {}).account_title || '';
+    el.textContent = [code, title].filter(Boolean).join(' ');
+}
+
+/** The Tax Base line under an ATC row is shown only when there are two or more ATC rows (the base is being split). */
+function vf_markAtcMulti() {
+    $vf('vf-ded-container').classList.toggle('vf-atc-multi', vf_atcRows().length > 1);
 }
 
 /**
@@ -1882,6 +1909,7 @@ function vf_onAtcCodeSelect(idx) {
     const baseEl  = tr.querySelector('.vf-atc-base');
     const rcEl    = tr.querySelector('.vf-atc-rc');
 
+    vf_atcAcctHint(tr);
     if (atcDef && isFinite(Number(atcDef.tax_rate))) rateEl.value = Number(atcDef.tax_rate).toFixed(2);
 
     if (!baseEl.value) {
@@ -2108,6 +2136,7 @@ function vf_recalc() {
     $vf('vf-doc-less-ded').textContent = vf_peso(totalDeductions);
     $vf('vf-doc-less-wh').textContent  = vf_peso(totalWithholding);
     $vf('vf-net').textContent = vf_peso(netAmount);
+    const netVis = $vf('vf-net-vis'); if (netVis) netVis.textContent = vf_peso(netAmount);
     vf_syncAutoJevLines(); // gross/deductions just changed — refresh the hidden Accounting Entries grid's totals
 
     const obligation    = vf_numVal($vf('vf-obligation').value);
@@ -2416,7 +2445,6 @@ function vf_markRemittanceFields(d) {
     $vf('vf-sec-b-hdr').textContent = dr ? 'B. Amount to Remit' : 'B. Amount and Deductions';
     $vf('vf-rfa-breakdown').style.display = dr ? 'none' : '';
     $vf('vf-sec-b-note').style.display = dr ? 'none' : '';
-    $vf('vf-doc-summary').style.display = dr ? 'none' : '';
     if (dr) $vf('vf-vendor-card').classList.remove('visible');
     if (!d) $vf('vf-remit-sched').classList.remove('vf-remit-main');
     $vf('vf-rfa-req').style.display = d ? 'none' : '';
