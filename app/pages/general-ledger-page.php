@@ -7,9 +7,10 @@ namespace PHPMaker2024\FIMS;
 // system_docs/ERD/README.md §2.8. Separate module from Subsidiary Ledger (same idea, keyed by SL
 // code instead), Journals (chronological, every account) and Trial Balance (totals, no detail).
 //
-// Column layout matches the illustrated "DISPLAY IN FIMS" format: account header carries Normal
-// Balance/Account Class, each row has its own Doc Ref No. (the source document — e.g. "CHECK NO.
-// X") alongside Debit/Credit/running Balance, and the footer reads "Ending Balance as of [date]".
+// Column layout follows the illustrated "DISPLAY IN FIMS" format: account header carries Normal
+// Balance/Account Class, each row has its JEV No. and DV Number alongside Debit/Credit/running
+// Balance, and the footer reads "Ending Balance as of [date]". (The Doc Ref No. column was removed
+// from the list and the SL popup; the ledger API still returns it, and the printed sheets use it.)
 // (The Entry Side + single Amount convention in that same illustration is the raw JEV-listing/
 // back-end representation — that's Journals (GJ), not this page.)
 $_gl_api = rtrim((string) Config('API.FIMS_URL'), '/');
@@ -198,7 +199,6 @@ $_gl_api = preg_match('~/api$~', $_gl_api) ? $_gl_api : $_gl_api . '/api';
                     <tr>
                         <th>Posting Date</th>
                         <th>JEV No.</th>
-                        <th>Doc Ref No.</th>
                         <th>DV Number</th>
                         <th>Particulars</th>
                         <th class="text-end">Debit</th>
@@ -207,7 +207,7 @@ $_gl_api = preg_match('~/api$~', $_gl_api) ? $_gl_api : $_gl_api . '/api';
                     </tr>
                 </thead>
                 <tbody id="gl-tbody">
-                    <tr><td colspan="8"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
+                    <tr><td colspan="7"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
                 </tbody>
             </table>
         </div>
@@ -236,7 +236,6 @@ $_gl_api = preg_match('~/api$~', $_gl_api) ? $_gl_api : $_gl_api . '/api';
                                 <tr>
                                     <th>Posting Date</th>
                                     <th>JEV No.</th>
-                                    <th>Doc Ref No.</th>
                                     <th>DV Number</th>
                                     <th>Particulars</th>
                                     <th class="text-end">Debit</th>
@@ -608,7 +607,7 @@ function gl_renderEnding(endingBalance, debitNormal) {
 function gl_renderTable(rows, debitNormal) {
     const tbody = $gl('gl-tbody');
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="8"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No posted transactions for this account.</span></div></td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No posted transactions for this account.</span></div></td></tr>';
         return;
     }
     tbody.innerHTML = rows.map(r => gl_rowHtml(r, debitNormal)).join('');
@@ -622,21 +621,21 @@ function gl_renderTable(rows, debitNormal) {
 function gl_renderGroupedTable(accounts) {
     const tbody = $gl('gl-tbody');
     if (!accounts.length) {
-        tbody.innerHTML = '<tr><td colspan="8"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">Nothing posted yet.</span></div></td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">Nothing posted yet.</span></div></td></tr>';
         return;
     }
     tbody.innerHTML = accounts.map((a, idx) => {
         const gid = `gl-grp-${idx}`;
         return `
         <tr class="gl-group-row gl-clickable" data-code="${gl_esc(a.account.account_code)}" data-title="${gl_esc(a.account.account_title)}" data-group="${gid}" title="Click to see this account's transactions">
-            <td colspan="5"><span class="gl-sl-toggle">&#9656;</span>${gl_esc(a.account.account_code)} — ${gl_esc(a.account.account_title)} <span style="font-weight:400;color:var(--afims-text-muted,#62657E);">(${gl_esc(a.normal_balance)}-normal, ${gl_esc(a.account.account_type)})</span><span class="gl-drill">View SLs ›</span></td>
+            <td colspan="4"><span class="gl-sl-toggle">&#9656;</span>${gl_esc(a.account.account_code)} — ${gl_esc(a.account.account_title)} <span style="font-weight:400;color:var(--afims-text-muted,#62657E);">(${gl_esc(a.normal_balance)}-normal, ${gl_esc(a.account.account_type)})</span><span class="gl-drill">View SLs ›</span></td>
             <td class="text-end nha-mono">${gl_peso(a.total_debit)}</td>
             <td class="text-end nha-mono">${gl_peso(a.total_credit)}</td>
             <td class="text-end nha-mono">${gl_peso(Math.abs(a.ending_balance))}${gl_balSide(a.ending_balance, a.debit_normal)}</td>
         </tr>
         ${a.data.length
             ? a.data.map(r => gl_rowHtml(r, a.debit_normal, gid)).join('')
-            : `<tr class="gl-sl-rows" data-group="${gid}" style="display:none;"><td colspan="8" style="color:var(--afims-text-muted,#62657E);font-size:12px;">No postings.</td></tr>`}
+            : `<tr class="gl-sl-rows" data-group="${gid}" style="display:none;"><td colspan="7" style="color:var(--afims-text-muted,#62657E);font-size:12px;">No postings.</td></tr>`}
     `;
     }).join('');
 }
@@ -652,7 +651,7 @@ async function gl_openSlPopup(code, title) {
     const tbody = $gl('gl-sl-tbody');
     $gl('gl-sl-title').textContent = `${code} — ${title}`;
     $gl('gl-sl-subtitle').textContent = 'Subsidiary ledgers';
-    tbody.innerHTML = '<tr><td colspan="8"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>';
     $gl('gl-sl-overlay').classList.add('open');
     try {
         const params = new URLSearchParams({ account_code: code });
@@ -669,7 +668,7 @@ async function gl_openSlPopup(code, title) {
         gl_renderSlPopup(json);
     } catch (e) {
         if (req !== gl_slReq) return;
-        tbody.innerHTML = `<tr><td colspan="8"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">Could not load sub-ledgers: ${gl_esc(e.message)}</span></div></td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">Could not load sub-ledgers: ${gl_esc(e.message)}</span></div></td></tr>`;
     }
 }
 
@@ -685,7 +684,7 @@ function gl_renderSlPopup(json) {
     const direct = json.direct && (json.direct.data ?? []).length ? json.direct : null;
     $gl('gl-sl-subtitle').textContent = `${sls.length} subsidiary ledger${sls.length === 1 ? '' : 's'} · ${json.normal_balance}-normal, ${json.account.account_type} · click a sub-ledger to see its transactions`;
     if (!sls.length && !direct) {
-        tbody.innerHTML = '<tr><td colspan="8"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">This account has no subsidiary ledgers and no postings.</span></div></td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">This account has no subsidiary ledgers and no postings.</span></div></td></tr>';
         return;
     }
     let gl_slGroupSeq = 0;
@@ -693,26 +692,26 @@ function gl_renderSlPopup(json) {
         const gid = `gl-slg-${++gl_slGroupSeq}`;
         return `
         <tr class="gl-sl-sub-row gl-clickable" onclick="gl_toggleSlRows(this, '${gid}')">
-            <td colspan="5"><span class="gl-sl-toggle">&#9656;</span> Direct postings to ${gl_esc(json.account.account_code)} <span style="font-weight:400;color:var(--afims-text-muted,#62657E);">(not under a subsidiary ledger)</span></td>
+            <td colspan="4"><span class="gl-sl-toggle">&#9656;</span> Direct postings to ${gl_esc(json.account.account_code)} <span style="font-weight:400;color:var(--afims-text-muted,#62657E);">(not under a subsidiary ledger)</span></td>
             <td class="text-end nha-mono">${gl_peso(direct.total_debit)}</td>
             <td class="text-end nha-mono">${gl_peso(direct.total_credit)}</td>
             <td class="text-end nha-mono">${gl_peso(Math.abs(direct.ending_balance))}${gl_balSide(direct.ending_balance, json.debit_normal)}</td>
         </tr>
         ${direct.data.map(r => gl_rowHtml(r, json.debit_normal, gid)).join('')}`;
     })() : '';
-    const noSlNote = !sls.length ? '<tr><td colspan="8" style="color:var(--afims-text-muted,#62657E);font-size:12px;">This account has no subsidiary ledgers.</td></tr>' : '';
+    const noSlNote = !sls.length ? '<tr><td colspan="7" style="color:var(--afims-text-muted,#62657E);font-size:12px;">This account has no subsidiary ledgers.</td></tr>' : '';
     tbody.innerHTML = directHtml + noSlNote + sls.map(s => {
         const gid = `gl-slg-${++gl_slGroupSeq}`;
         return `
         <tr class="gl-sl-sub-row gl-clickable" onclick="gl_toggleSlRows(this, '${gid}')">
-            <td colspan="5"><span class="gl-sl-toggle">&#9656;</span> ${gl_esc(s.sl.account_code)} — ${gl_esc(s.sl.account_title)}</td>
+            <td colspan="4"><span class="gl-sl-toggle">&#9656;</span> ${gl_esc(s.sl.account_code)} — ${gl_esc(s.sl.account_title)}</td>
             <td class="text-end nha-mono">${gl_peso(s.total_debit)}</td>
             <td class="text-end nha-mono">${gl_peso(s.total_credit)}</td>
             <td class="text-end nha-mono">${gl_peso(Math.abs(s.ending_balance))}${gl_balSide(s.ending_balance, json.debit_normal)}</td>
         </tr>
         ${s.data.length
             ? s.data.map(r => gl_rowHtml(r, json.debit_normal, gid)).join('')
-            : `<tr class="gl-sl-rows" data-group="${gid}" style="display:none;"><td colspan="8" style="color:var(--afims-text-muted,#62657E);font-size:12px;">No postings.</td></tr>`}
+            : `<tr class="gl-sl-rows" data-group="${gid}" style="display:none;"><td colspan="7" style="color:var(--afims-text-muted,#62657E);font-size:12px;">No postings.</td></tr>`}
     `;
     }).join('');
 }
@@ -764,7 +763,6 @@ function gl_rowHtml(r, debitNormal, groupId) {
     return `<tr${attrs}>
         <td class="nha-td-date">${gl_fmtDate(r.posting_date)}</td>
         <td class="nha-mono">${gl_esc(r.jev_no) || '—'}${r.reference_no && r.reference_no.endsWith('-REV') ? ' <span class="nha-bdg nha-bdg-orange" style="margin-left:4px;">Reversal</span>' : ''}</td>
-        <td class="nha-mono">${gl_esc(r.doc_ref_no) || '—'}</td>
         <td class="nha-mono">${gl_esc(r.dv_no) || '—'}</td>
         <td>${r.sl_account_code ? `<span class="nha-mono" style="font-size:11px;color:var(--afims-text-muted,#62657E);margin-right:6px;" title="Posted to this subsidiary ledger">${gl_esc(r.sl_account_code)}</span>` : ''}${gl_esc(r.description) || gl_esc(r.sl_name) || '—'}</td>
         <td class="text-end nha-mono">${Number(r.debit) > 0 ? gl_peso(r.debit) : ''}</td>

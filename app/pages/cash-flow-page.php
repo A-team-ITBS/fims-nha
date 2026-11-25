@@ -72,6 +72,10 @@ $_cf_api = preg_match('~/api$~', $_cf_api) ? $_cf_api : $_cf_api . '/api';
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6v-8z"/></svg>
                 Print
             </button>
+            <button id="cf-excel" type="button" class="nha-btn-hdr" title="Export to Excel">
+                <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
+                Excel
+            </button>
         </div>
     </div>
 
@@ -154,6 +158,7 @@ $_cf_api = preg_match('~/api$~', $_cf_api) ? $_cf_api : $_cf_api . '/api';
 
 </div><!-- /#cf-root -->
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <script>
 /* ══════════════════════════════════════════════════════════════
    STATEMENT OF CASH FLOWS   prefix: cf_
@@ -186,6 +191,7 @@ else cf_boot();
 function cf_bindEvents() {
     $cf('cf-refresh')?.addEventListener('click', cf_load);
     $cf('cf-print')?.addEventListener('click', () => window.print());
+    $cf('cf-excel')?.addEventListener('click', cf_exportExcel);
     $cf('cf-filter-fy').addEventListener('change', cf_load);
     $cf('cf-filter-book').addEventListener('change', cf_load);
     /* Sample preview has no button: type `cash_flow = true` in the browser console to show
@@ -366,6 +372,109 @@ function cf_sampleData(fy) {
             ending_cur: beginCur + netCur, ending_prev: beginPrev + netPrev,
         },
     };
+}
+
+/* ── Excel export ──────────────────────────────────────────── */
+/* Built from the table currently on screen. Rows come in three shapes: a full-width header (1 cell), a subtotal /
+   grand-total / "Add:" row whose label spans the Note column too (3 cells), and a normal line (4 cells).
+   Amounts are parsed back from the displayed text ("1,234.00", "(1,234.00)", "-" for zero) into real numbers. */
+function cf_parseAmount(text) {
+    const t = String(text || '').trim();
+    if (t === '-' || t === '') return 0;
+    if (!/\d/.test(t)) return null;
+    const n = Number(t.replace(/[^0-9.]/g, ''));
+    return /^\(/.test(t) ? -n : n;
+}
+
+async function cf_exportExcel() {
+    if (!window.ExcelJS) { cf_showError('Excel library failed to load. Check your internet connection and reload.'); return; }
+    const trs = [...document.querySelectorAll('#cf-tbody tr')];
+    if (!trs.length || document.querySelector('#cf-tbody .nha-empty') || document.querySelector('#cf-tbody .nha-loader')) {
+        cf_showError('Nothing to export — no data for this fiscal year.');
+        return;
+    }
+    const nCols = 4;
+    const headCells = ['Particulars', 'Note', $cf('cf-th-cur').textContent.trim(), $cf('cf-th-prev').textContent.trim()];
+
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Cash Flows', {
+        pageSetup: { paperSize: 9, orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
+    });
+    ws.columns = [{ width: 70 }, { width: 8 }, { width: 22 }, { width: 22 }];
+    const NUM = '#,##0.00;(#,##0.00);"-"';
+    const thin = { style: 'thin' };
+    const fill = argb => ({ type: 'pattern', pattern: 'solid', fgColor: { argb } });
+
+    const title = (text, bold = true) => {
+        if (!text) return;
+        const r = ws.addRow([text]);
+        ws.mergeCells(r.number, 1, r.number, nCols);
+        r.getCell(1).alignment = { horizontal: 'center' };
+        r.getCell(1).font = { bold, size: 11 };
+    };
+    title('NATIONAL HOUSING AUTHORITY');
+    title('STATEMENTS OF CASH FLOW');
+    title($cf('cf-title-book').textContent);
+    title($cf('cf-report-date').textContent, false);
+    ws.addRow([]);
+
+    const head = ws.addRow(headCells);
+    head.eachCell((c, i) => {
+        c.font = { bold: true };
+        c.fill = fill('FFD9E1F2');
+        c.border = { top: thin, bottom: thin, left: thin, right: thin };
+        c.alignment = { horizontal: i > 2 ? 'right' : 'center', wrapText: true };
+    });
+
+    trs.forEach(tr => {
+        const cls = tr.className;
+        const cells = [...tr.cells];
+        const label = cells[0].textContent.trim();
+        if (cells.length === 1) { // full-width row: section header, or "Disbursements made for:"
+            const m = ws.addRow([label]);
+            ws.mergeCells(m.number, 1, m.number, nCols);
+            if (/major-row/.test(cls)) {
+                m.getCell(1).font = { bold: true };
+                m.getCell(1).fill = fill('FFEDEDED');
+            } else {
+                m.getCell(1).alignment = { indent: 1 };
+            }
+            return;
+        }
+        const four = cells.length >= 4;
+        const r = ws.addRow([label, four ? cells[1].textContent.trim() : '', cf_parseAmount(cells[cells.length - 2].textContent), cf_parseAmount(cells[cells.length - 1].textContent)]);
+        r.getCell(3).numFmt = NUM;
+        r.getCell(4).numFmt = NUM;
+        const indent = /indent-row/.test(cls) ? 3 : (/^fims-report-table-row/.test(cls) ? 1 : 0);
+        r.getCell(1).alignment = { indent, wrapText: true, vertical: 'top' };
+        if (/subtotal-row|grand-row/.test(cls)) {
+            r.eachCell(c => { c.font = { bold: true }; c.border = { top: thin, bottom: /grand-row/.test(cls) ? { style: 'double' } : undefined }; });
+        }
+    });
+
+    ws.addRow([]);
+    const cert = ws.addRow(['I HEREBY CERTIFY that the foregoing Statement of Cash Flows is a true and complete statement of the cash receipts and disbursements as shown in the books of accounts, prepared and presented in conformity with International Public Sector Accounting Standards (IPSAS).']);
+    ws.mergeCells(cert.number, 1, cert.number, nCols);
+    cert.getCell(1).alignment = { wrapText: true, vertical: 'top' };
+    cert.height = 48;
+    ws.addRow([]);
+    ws.addRow([]);
+    const sig = ws.addRow(['Signature Over Printed Name']);
+    sig.getCell(1).border = { top: thin };
+    sig.getCell(1).alignment = { horizontal: 'center' };
+    ws.addRow(['Head of Accounting Department']).getCell(1).alignment = { horizontal: 'center' };
+
+    ws.views = [{ state: 'frozen', ySplit: head.number }];
+
+    const buf  = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `Statement-of-Cash-Flows_${$cf('cf-filter-fy').value}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
 /* ── Formatters ────────────────────────────────────────────── */

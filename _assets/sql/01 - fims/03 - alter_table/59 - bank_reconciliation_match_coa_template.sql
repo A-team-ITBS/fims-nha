@@ -19,8 +19,22 @@
 --   Per Bank  Add:  add_deposit_in_transit (auto-derived from GL<->SOA matching), add_bank_error_under (manual)
 --   Per Bank  Less: less_outstanding_check (auto-derived from GL<->SOA matching), less_bank_error_over (manual)
 -- ============================================================================
-ALTER TABLE fims.bank_reconciliations
-    RENAME COLUMN add_unreleased_check TO less_bank_charges;
+-- Idempotent rename: only rename if the old column still exists, otherwise make
+-- sure the new one exists (covers re-runs and DBs where it was already renamed).
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_schema = 'fims' AND table_name = 'bank_reconciliations'
+                 AND column_name = 'add_unreleased_check') THEN
+        ALTER TABLE fims.bank_reconciliations
+            RENAME COLUMN add_unreleased_check TO less_bank_charges;
+    ELSIF NOT EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_schema = 'fims' AND table_name = 'bank_reconciliations'
+                 AND column_name = 'less_bank_charges') THEN
+        ALTER TABLE fims.bank_reconciliations
+            ADD COLUMN less_bank_charges NUMERIC(18,2) NOT NULL DEFAULT 0;
+    END IF;
+END $$;
 COMMENT ON COLUMN fims.bank_reconciliations.less_bank_charges IS 'Per Books, Less: Unrecorded Bank Charges/Cost of Checkbooks';
 COMMENT ON COLUMN fims.bank_reconciliations.add_unrecorded_deposit IS 'Per Books, Add: Unrecorded Deposits (bank already recorded it, book has not)';
 

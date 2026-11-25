@@ -85,6 +85,11 @@ if (!isset($_vf_api)) {
 #vf-root .vje-grp-edit-table .vje-grp-add-btn { font-size: 11.5px; padding: 4px 10px; }
 
 #vf-root .vje-sl-hint { margin-top: 4px; font-size: 11px; color: var(--afims-text-muted, #62657E); line-height: 1.6; min-height: 1px; }
+/* The picked account's title, inside the Account Code field right after the code ("1-04-01-010 - Due to BIR"). The input keeps only the
+   code; this is a click-through label whose left edge vf_renderAcctTitle() sets to the end of the typed text. */
+#vf-root .vje-acct-wrap { position: relative; }
+#vf-root .vje-acct-title { position: absolute; top: 0; bottom: 0; right: 8px; display: none; align-items: center; pointer-events: none; font-size: 12.5px; font-family: inherit; color: var(--afims-text-muted, #62657E); }
+#vf-root .vje-acct-title > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Deduction / ATC rows are plain blocks inside the RFA Breakdown box — no card border or padding of their own. */
 #vf-root .vf-ded-row { margin-bottom: 14px; position: relative; }
 /* Deductions sit inside the RFA Breakdown box, under its table — a rule separates them from it once a breakdown is shown. */
@@ -466,16 +471,15 @@ html.afims-dark[data-bs-theme="dark"] #vf-root :is(input, select, textarea):is(:
                         <div style="overflow-x:auto;">
                             <table class="vf-ledger vje-edit-table" style="min-width:900px;">
                                 <thead><tr>
-                                    <th style="width:40px;text-align:center;">#</th>
                                     <th style="text-align:left;min-width:220px;">Account Code</th>
-                                    <th style="text-align:left;min-width:200px;">Description</th>
+                                    <th style="text-align:left;min-width:200px;">Particular</th>
                                     <th style="text-align:right;width:110px;">Debit (₱)</th>
                                     <th style="text-align:right;width:110px;">Credit (₱)</th>
                                     <th style="width:30px;"></th>
                                 </tr></thead>
                                 <tbody id="vf-jev-tbody"></tbody>
                                 <tfoot><tr class="vf-l-total">
-                                    <td colspan="3" style="text-align:right;">Total</td>
+                                    <td colspan="2" style="text-align:right;">Total</td>
                                     <td class="vf-l-val" id="vf-jev-total-debit">₱ 0.00</td>
                                     <td class="vf-l-val" id="vf-jev-total-credit">₱ 0.00</td>
                                     <td></td>
@@ -1733,9 +1737,8 @@ function vf_addJevLine(d = null) {
     tr.id = `vf-jev-row-${lineId}`;
     tr.className = 'vje-line';
     tr.innerHTML = `
-        <td class="vf-l-val" style="text-align:center;"><span class="vje-line-no"></span></td>
-        <td><input type="text" class="vje-acct-code" placeholder="Search GL account code (UACS)…"><div class="vje-sl-hint"></div></td>
-        <td><input type="text" class="vje-line-desc" placeholder="Description"></td>
+        <td><div class="vje-acct-wrap"><input type="text" class="vje-acct-code" placeholder="Search GL account code (UACS)…"><span class="vje-acct-title"><span></span></span></div><div class="vje-sl-hint"></div></td>
+        <td><input type="text" class="vje-line-desc" placeholder="Particular"></td>
         <td><input type="text" inputmode="decimal" class="vje-debit" placeholder="0.00"></td>
         <td><input type="text" inputmode="decimal" class="vje-credit" placeholder="0.00"></td>
         <td><button type="button" class="vf-table-remove" title="Remove line" onclick="vf_removeJevLine(${lineId})">&times;</button></td>`;
@@ -1752,7 +1755,6 @@ function vf_addJevLine(d = null) {
     tr.querySelector('.vje-debit').addEventListener('input', vf_recalcJev);
     tr.querySelector('.vje-credit').addEventListener('input', vf_recalcJev);
     $vf('vf-jev-tbody').appendChild(tr);
-    vf_renumberJev();
     vf_recalcJev();
     return lineId;
 }
@@ -1766,6 +1768,7 @@ function vf_addJevLine(d = null) {
     see "03 - alter_table/37") — shows that account's own code labeled "SL Code:", same as the
     sub-line readone.php's vje_groupSubLines() shows under its PARENT control account header. */
 function vf_renderAcctHint(tr) {
+    vf_renderAcctTitle(tr); // the title in the field itself, whatever hint (if any) follows below it
     const code = tr.querySelector('.vje-acct-code').value.trim();
     const hint = tr.querySelector('.vje-sl-hint');
     if (!code) { hint.innerHTML = ''; return; }
@@ -1787,10 +1790,32 @@ function vf_renderAcctHint(tr) {
 
     const acct = vf_coaOptions.find(a => a.account_code === code);
     if (acct?.parent_account_id) {
-        hint.innerHTML = `<span style="margin-right:3px;">SL Code:</span>${vf_codeChip(acct.account_code)}<span style="margin-left:4px;">${vf_esc(acct.account_title || '—')}</span>`;
+        hint.innerHTML = `<span style="margin-right:3px;">SL Code:</span>${vf_codeChip(acct.account_code)}`; // the account's title is already in the field above
         return;
     }
     hint.innerHTML = '';
+}
+
+/** The picked account's title, inside the Account Code field right after the code — "1-04-01-010 - Due to BIR". The input still
+    holds only the code (the save and every calculation read it as the code); the title is a click-through overlay whose left edge
+    is the end of the typed text, measured with the input's own font. Called from vf_renderAcctHint(), which already runs whenever
+    a row's code changes (pick, typing, auto lines, saved DV load). */
+function vf_renderAcctTitle(tr) {
+    const input = tr.querySelector('.vje-acct-code');
+    const box   = tr.querySelector('.vje-acct-title');
+    if (!input || !box) return;
+    const code = input.value.trim();
+    const acct = code ? vf_coaOptions.find(a => a.account_code === code) : null;
+    if (!acct?.account_title) { box.style.display = 'none'; return; }
+    const cs = getComputedStyle(input);
+    if (!vf_renderAcctTitle.ctx) vf_renderAcctTitle.ctx = document.createElement('canvas').getContext('2d');
+    const ctx = vf_renderAcctTitle.ctx;
+    ctx.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+    const start = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.borderLeftWidth) || 0) + ctx.measureText(input.value).width;
+    box.style.left = (start + 5) + 'px';
+    box.firstElementChild.textContent = '- ' + acct.account_title;
+    box.title = code + ' - ' + acct.account_title;
+    box.style.display = 'flex';
 }
 
 /** Re-renders every Accounting Entries row's sub-hint (vf_renderAcctHint()) — called whenever
@@ -1818,17 +1843,8 @@ function vf_removeJevLine(lineId) {
     const tr = $vf(`vf-jev-row-${lineId}`);
     if (tr) {
         tr.remove();
-        vf_renumberJev();
         vf_recalcJev();
     }
-}
-
-function vf_renumberJev() {
-    let n = 0;
-    $vf('vf-jev-tbody').querySelectorAll('tr.vje-line').forEach(tr => {
-        n += 1;
-        tr.querySelector('.vje-line-no').textContent = String(n).padStart(2, '0');
-    });
 }
 
 function vf_collectJevLines() {
@@ -1845,6 +1861,7 @@ function vf_collectJevLines() {
 }
 
 function vf_recalcJev() {
+    vf_refreshAllJevHints(); // an account code can be filled in programmatically (auto lines, saved DV) — keep each row's title in step
     const lines = vf_collectJevLines();
     const totalDebit = lines.reduce((s, l) => s + l.debit, 0);
     const totalCredit = lines.reduce((s, l) => s + l.credit, 0);
@@ -1965,7 +1982,6 @@ async function vf_applyPayroll(id) {
         vf_jevSeq = 0;
         (d.deductions ?? []).forEach(x => vf_addDeductionLine(x));
         (d.lines ?? []).forEach(l => vf_addJevLine(l));
-        vf_renumberJev();
         vf_recalc();
         vf_refreshAllJevHints();
         vf_showPayrollCard(d);
@@ -2155,7 +2171,6 @@ function vf_fillRemittance(d) {
     $vf('vf-jev-tbody').innerHTML = '';
     vf_jevSeq = 0;
     (d.lines ?? []).forEach(l => vf_addJevLine(l));
-    vf_renumberJev();
     vf_recalc();
     vf_refreshAllJevHints();
     vf_showRemittanceCard(d);
@@ -2226,7 +2241,6 @@ function vf_clearPayrollFill() {
     $vf('vf-jev-tbody').innerHTML = '';
     vf_jevSeq = 0;
     $vf('vf-vendor-card').classList.remove('visible');
-    vf_renumberJev();
     vf_recalc();
 }
 
@@ -2323,7 +2337,6 @@ async function vf_loadExisting() {
     // Accounting Entries is a flat list of lines now (vf_addJevLine()) — the old grouped-by-account
     // helpers (vf_addJevGroup / vf_addJevGroupLine) no longer exist.
     (dv.jev?.lines ?? []).forEach(l => vf_addJevLine(l));
-    vf_renumberJev();
     vf_recalcJev();
 
     $vf('vf-dept-project').value = dv.dept_project || '';

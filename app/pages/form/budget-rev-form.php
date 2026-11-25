@@ -519,6 +519,11 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
    From line fills it with that line's current amount; clearing the line
    clears it.
 
+   Originating unit: a Realignment stays within the From line's originating unit, so the To picker's Originating Unit filter cannot be
+   changed — it follows the From side (the picked From line's office, else the unit picked in the From filter) and is locked to it
+   (syncToUnit()). Until the From side has a unit the To filter is free; a To line of another unit does not stay. UI only — the server
+   (BudgetRevisionService) still accepts a realignment into another office's line.
+
    Year: there is no Year filter. The From picker offers the budget lines of the CURRENT year only (CURRENT_YEAR, the server's date). A
    Realignment moves funds only within one fiscal year, so the To picker offers the From line's year — the current year until a From line
    is picked, which for a new request is the same thing (see toYear()). A request filed earlier against another year's line still opens
@@ -720,10 +725,11 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
     };
 
     /* ── searchable dropdown helper ────────────────────────────────────── */
-    function combo({ input, list, clear, items, query, empty, onPick, onType, onClear, onBlur }) {
+    // locked: () => true while the field is held to a value it may not change — it never opens, and has no × to clear it
+    function combo({ input, list, clear, items, query, empty, onPick, onType, onClear, onBlur, locked = () => false }) {
         let shown = [], active = -1;
         const isOpen = () => !list.hidden;
-        const syncClear = () => { if (clear) clear.hidden = !input.value; };
+        const syncClear = () => { if (clear) clear.hidden = !input.value || locked(); };
 
         function render() {
             shown = items(query());
@@ -761,7 +767,7 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
                 list.appendChild(li);
             }
         }
-        function open()  { render(); list.hidden = false; input.setAttribute('aria-expanded', 'true'); }
+        function open()  { if (locked()) return; render(); list.hidden = false; input.setAttribute('aria-expanded', 'true'); }
         function close() { list.hidden = true; input.setAttribute('aria-expanded', 'false'); active = -1; }
         function setActive(i) {
             const opts = list.querySelectorAll('.brv-opt');
@@ -838,16 +844,19 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
                  (the To picker: only on the Realignment tab — call sync() when that changes)
        onSelect  (line, { autofill }) after the selection changed
        onClear   the user pressed × on the field (runs just before the selection is cleared)
-       year      () => the fiscal year whose budget lines this picker offers (the current year unless told otherwise) */
-    function makePicker(ids, { exclude = () => null, required = false, requiredMsg = '', onSelect = () => {}, onClear = () => {}, year = () => CURRENT_YEAR } = {}) {
+       year      () => the fiscal year whose budget lines this picker offers (the current year unless told otherwise)
+       onUnitChange  the Originating Unit filter was picked or cleared by the user (the From picker tells the To picker, see syncToUnit())
+       It also answers unit() — the originating unit it is narrowed to — and lockUnit(unit | null), which holds its Originating Unit
+       filter to a given unit (the user can no longer open, type in or clear it) or lets it go again. */
+    function makePicker(ids, { exclude = () => null, required = false, requiredMsg = '', onSelect = () => {}, onClear = () => {}, year = () => CURRENT_YEAR, onUnitChange = () => {} } = {}) {
         const isRequired = typeof required === 'function' ? required : () => required;
         const pe = {};
         Object.keys(ids).forEach(k => { pe[k] = $(ids[k]); });
 
         // unit: null | { key, label, full } (key = the originating office's rc_id) · program: null | { code, label, full }
         // project: null | { code, label, full, program }
-        // selected: the picked budget line or null
-        const P = { unit: null, program: null, project: null, selected: null };
+        // selected: the picked budget line or null · unitLocked: the unit was imposed (lockUnit()) and cannot be changed here
+        const P = { unit: null, program: null, project: null, selected: null, unitLocked: false };
 
         // every line this picker may offer: the approved lines of ITS year, less the one it must not offer (and what is the same budget line item as it)
         const baseRows = () => {
@@ -943,8 +952,8 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
                 const all = baseRows().length;
                 pe.hint.textContent = all ? `Showing ${matchRows().length} of ${all} budget lines` : `No approved budget lines for ${year()}`;
             }
-            // "Clear filters" shows only while a filter is on
-            pe.reset.hidden = !(P.unit || P.program || P.project);
+            // "Clear filters" shows only while a filter is on — a locked unit does not count: clearing it is not allowed
+            pe.reset.hidden = !((P.unit && !P.unitLocked) || P.program || P.project);
         }
 
         // The native "pick one" message while the field is required and nothing is picked; none otherwise (a hidden, optional field must
@@ -957,7 +966,7 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
         // project — shown exactly as picking them in the filter bar would, and applied the same way (they narrow the list; "Clear filters"
         // drops them). A line with no program / project leaves that filter empty.
         function syncFiltersTo(l) {
-            P.unit    = l.rcId ? { key: l.rcId, label: l.office || l.rcId, full: withName(l.rcId, l.office) } : null;
+            if (!P.unitLocked) P.unit = l.rcId ? { key: l.rcId, label: l.office || l.rcId, full: withName(l.rcId, l.office) } : null;   // a locked unit stays
             P.program = l.programCode ? { code: l.programCode, label: withName(l.programCode, l.programName), full: withName(l.programCode, l.programName) } : null;
             P.project = l.projectCode ? { code: l.projectCode, label: l.projectCode, full: withName(l.projectCode, l.projectName), program: l.programCode } : null;
             showUnit(); showProgram(); showProject();
@@ -970,6 +979,7 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
         function select(line, opts = {}) {
             const ex = exclude();
             if (line && ex && sameItem(line, ex)) line = null;   // never the same budget line item as the other picker
+            if (line && P.unitLocked && P.unit && line.rcId !== P.unit.key) line = null;   // never a line of another originating unit than the locked one
             P.selected = line || null;
             pe.id.value = line ? keyOf(line) : '';   // the budget line's id
             pe.reqIn.value = line ? inputLabel(line) : '';
@@ -999,9 +1009,10 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
         // it neither fills in nor clears Program or Project.
         const unCombo = combo({
             input: pe.unIn, list: pe.unList, clear: pe.unClear, items: unitItems, query: unQuery,
-            onPick: it => { P.unit = { key: it.key, label: it.label, full: it.full }; showUnit(); refresh(); },
-            onClear: () => { P.unit = null; showUnit(); refresh(); },
+            onPick: it => { if (P.unitLocked) return; P.unit = { key: it.key, label: it.label, full: it.full }; showUnit(); refresh(); onUnitChange(); },
+            onClear: () => { if (P.unitLocked) return; P.unit = null; showUnit(); refresh(); onUnitChange(); },
             onBlur: () => showUnit(),
+            locked: () => P.unitLocked,
         });
 
         const prCombo = combo({
@@ -1043,23 +1054,51 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
             onBlur: () => { pe.reqIn.value = P.selected ? inputLabel(P.selected) : ''; },
         });
 
-        // Drop every filter. The picked budget line, if any, is left alone.
+        // Drop every filter. The picked budget line, if any, is left alone — and so is a locked unit, which is not the user's to drop.
         function clearFilters() {
-            P.unit = null; P.program = null; P.project = null;
+            if (!P.unitLocked) P.unit = null;
+            P.program = null; P.project = null;
             showUnit(); showProgram(); showProject();
             [unCombo, prCombo, pjCombo].forEach(c => { c.close(); c.syncClear(); });
             refresh();
+            onUnitChange();
         }
         pe.reset.addEventListener('click', clearFilters);
 
+        // The originating unit this picker is narrowed to: its picked line's own office — a line preselected for Edit has no filters
+        // set, so the line is what says — else its Originating Unit filter, else null.
+        function unit() {
+            const l = P.selected;
+            if (l && l.rcId) return { key: l.rcId, label: l.office || l.rcId, full: withName(l.rcId, l.office) };
+            return P.unit;
+        }
+
+        // Hold the Originating Unit filter to `u` ({ key, label, full }): it shows that unit and can no longer be opened, typed in or
+        // cleared, and "Clear filters" leaves it alone. null lets it go — the unit that was imposed goes with it. `why` is the tooltip.
+        function lockUnit(u, why = '') {
+            if (u) {
+                // moved to ANOTHER unit: the Program / Project filters were chosen against the old one, so they start over (left alone they
+                // would hide every line of the new unit — e.g. the program of the To line that just had to go)
+                if (P.unit && P.unit.key !== u.key) { P.program = null; P.project = null; showProgram(); showProject(); prCombo.syncClear(); pjCombo.syncClear(); }
+                P.unit = { key: u.key, label: u.label, full: u.full }; P.unitLocked = true;
+            }
+            else if (P.unitLocked) { P.unit = null; P.unitLocked = false; }
+            else return;   // nothing was locked: nothing to let go
+            pe.unIn.disabled = P.unitLocked;
+            pe.unIn.parentElement.title = P.unitLocked ? why : '';
+            unCombo.close(); showUnit(); unCombo.syncClear();
+            refresh();
+        }
+
         // filters + pick back to empty
         function reset() {
+            lockUnit(null);   // a form reset lets the unit go too
             clearFilters();
             reqCombo.close();
             select(null);
         }
 
-        return { select, selected: () => P.selected, refresh, reset, sync: syncRequired };
+        return { select, selected: () => P.selected, refresh, reset, sync: syncRequired, unit, lockUnit };
     }
 
     /* ── the two pickers ───────────────────────────────────────────────── */
@@ -1078,10 +1117,13 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
             if (line && autofill) el.from.value = amtText(amountOf(line));   // From Amount (disabled) = its current amount
             if (toPicker) toPicker.refresh();   // the To list no longer offers the From line, and follows its year
             dropToIfOtherYear();                // a Realignment's To line has to be in the From line's fiscal year
+            syncToUnit();                       // ... and in the From line's originating unit
             updateChange();
         },
         // From Amount follows the From line, so clearing the line clears it too
         onClear: () => { el.from.value = ''; },
+        // an Originating Unit picked (or cleared) in the From filter carries over to the To picker
+        onUnitChange: () => syncToUnit(),
     });
     toPicker = makePicker(TO_IDS, {
         exclude: () => fromPicker && fromPicker.selected(),
@@ -1104,6 +1146,23 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
     function dropToIfOtherYear() {
         const to = toPicker.selected();
         if (to && String(to.fy) !== toYear()) toPicker.select(null);   // a To line of another year cannot stay
+    }
+
+    /* ── which originating unit ─────────────────────────────────────────────────────────────────────────────────────────────────
+       A Realignment moves funds within the From line's originating unit, so the To picker's Originating Unit filter is not the user's
+       to choose: it follows the From side — the From line's own office once one is picked, else the unit picked in the From filter — and is
+       locked to it (greyed, no list, no ×). Until the From side has a unit the To filter is free; clearing the From unit frees it again. A To
+       line of another unit does not stay (returns true when it was dropped). The server does not enforce this: it only decides what the form offers. */
+    function dropToIfOtherUnit() {
+        const to = toPicker.selected(), u = fromPicker.unit();
+        if (to && u && to.rcId !== u.key) { toPicker.select(null); return true; }
+        return false;
+    }
+
+    function syncToUnit() {
+        if (!fromPicker || !toPicker) return;
+        toPicker.lockUnit(fromPicker.unit(), "Locked to the From budget line's originating unit — a realignment stays within one originating unit");
+        dropToIfOtherUnit();
     }
 
     // The From line may not be left with a negative balance. Its current amount is its remaining balance and approving sets it to To Amount, so it can go down as far as
@@ -1293,9 +1352,14 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
         // A saved line is looked up among ALL lines, so a request filed against another year's line still opens with it.
         setBudgetLine: (fromId, toId) => ready.then(() => {
             const find = v => (v === '' || v == null ? null : (S.allLines.find(l => keyOf(l) === String(v)) || null));
-            fromPicker.select(find(fromId));
-            toPicker.select(find(toId));
+            fromPicker.select(find(fromId));   // (locks the To picker's Originating Unit to the From line's)
+            const to = find(toId), u = fromPicker.unit();
+            const otherUnit = !!(to && u && to.rcId !== u.key);   // a saved Realignment into another originating unit: the To picker refuses it (select())
+            toPicker.select(to);
             dropToIfOtherYear();   // a saved Realignment across two years (filed before the same-year rule) loses its To line here — it must be picked again
+            if (otherUnit && typeof window.brv_toast === 'function') {
+                window.brv_toast("The saved To budget line belongs to another originating unit than the From line, so it was cleared — pick the To line again.", 'warning');
+            }
             updateChange();
         }),
         // Re-fetch the budget requests — a line's amount changes when a revision is approved.
