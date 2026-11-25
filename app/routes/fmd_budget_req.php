@@ -37,7 +37,9 @@ $app->get('/fmd/budget_req/list', function ($request, $response, $args) use ($Fm
             $text('fiscal_yr'),
             $text('program_code'),
             '',                                                   // every RC …
-            GlobalService::CENTRAL_REVIEW_RC_CODE_FROM            // … that is a Regional / District office
+            GlobalService::CENTRAL_REVIEW_RC_CODE_FROM,           // … that is a Regional / District office
+            $userId                                               // strips 'programs' if THIS caller turns out to be a
+                                                                   // plain originating-office user (see fetchAlls' own doc)
         );
         if ($result['success']) {
             // where each row stands in the review chain (For Review -> Budget Officer -> Endorsed -> Budget Head -> Approved)

@@ -57,9 +57,26 @@ $app->get('/budget_req/all', function ($request, $response, $args) use ($BudgetR
         $params = $request->getQueryParams();
         $scope  = GlobalService::getUserRcScope((int) $request->getAttribute('user_id'));
         $rcId   = GlobalService::resolveBudgetReqRcFilter($scope, $params);
-        $result = $BudgetReqService->fetchAlls(null, 10, $params['fiscal_yr'] ?? '', $params['program_code'] ?? '', $rcId, $params['rc_code_from'] ?? '');
+        $result = $BudgetReqService->fetchAlls(null, 10, $params['fiscal_yr'] ?? '', $params['program_code'] ?? '', $rcId, $params['rc_code_from'] ?? '', (int) $request->getAttribute('user_id'));
 
         return $response->withJson($result);
+    } catch (\Exception $e) {
+        return $response->withJson(['success' => false, 'message' => $e->getMessage()], 400);
+    }
+})->add($jwtMiddleware);
+
+// COE's own chart-of-accounts tree (5-01/5-02), across whatever headers this RC scope + fiscal year covers —
+// not restricted to Approved (see BudgetReqService::fetchCoeTree). Backs the "View Proposal" COB's
+// "CORPORATE OPERATING EXPENDITURE" table (bgrv_openCobModal, budget-req-readone.php), replacing its old flat
+// PS/MOOE two-row summary with real account-level detail. Same RC-scoping as /budget_req/all.
+$app->get('/budget_req/coe-tree', function ($request, $response, $args) use ($BudgetReqService) {
+    try {
+        $params = $request->getQueryParams();
+        $scope  = GlobalService::getUserRcScope((int) $request->getAttribute('user_id'));
+        $rcId   = GlobalService::resolveBudgetReqRcFilter($scope, $params);
+        $result = $BudgetReqService->fetchCoeTree((string) ($params['fiscal_yr'] ?? ''), $rcId, (string) ($params['rc_code_from'] ?? ''));
+
+        return $response->withJson($result, $result['success'] ? 200 : 400);
     } catch (\Exception $e) {
         return $response->withJson(['success' => false, 'message' => $e->getMessage()], 400);
     }
@@ -91,7 +108,7 @@ $app->get('/budget_req/list', function ($request, $response, $args) use ($Budget
         $scope  = GlobalService::getUserRcScope((int) $request->getAttribute('user_id'));
         $rcId   = GlobalService::resolveBudgetReqRcFilter($scope, $params);
 
-        $result = $BudgetReqService->fetchAlls($page, $limit, $params['fiscal_yr'] ?? '', $params['program_code'] ?? '', $rcId, $params['rc_code_from'] ?? '');
+        $result = $BudgetReqService->fetchAlls($page, $limit, $params['fiscal_yr'] ?? '', $params['program_code'] ?? '', $rcId, $params['rc_code_from'] ?? '', (int) $request->getAttribute('user_id'));
         if ($result['success']) {
             // where each row stands in FMD's review chain, and whether the caller may decide it now (the row actions)
             $result['data'] = $BudgetReqService->withReview($result['data'], (int) $request->getAttribute('user_id'));
@@ -131,6 +148,16 @@ $app->post('/budget_req/add', function ($request, $response, $args) use ($Budget
             return $response->withJson(['success' => false, 'message' => 'projects is required and must be a non-empty array.'], 400);
         }
 
+        // Program/Sub-Program/Project origination is reserved for FMD (or a superadmin) — a Regional / District
+        // office now files a COE request only (POST /budget_req/add-coe, no such restriction there). Mirrors the
+        // client-side hide in budget-req-page.php ($_bgr_canAddProgram), enforced here too so the rule holds even
+        // if this endpoint is called directly.
+        $userId = (int) $request->getAttribute('user_id');
+        if (!GlobalService::isFmdUser($userId) && !GlobalService::isSuperAdminUser($userId)) {
+            return $response->withJson(['success' => false, 'message' =>
+                'Program-based budget requests are reserved for FMD. Your office may only submit a COE budget request.'], 403);
+        }
+
         // rc_id is auto-detected from the caller's own account — no manual RC
         // picker. Every creating user, admin included, must have one set.
         // getUserRcId() resolves the session-backed current user itself and
@@ -164,6 +191,13 @@ $app->map(['PUT', 'POST'], '/budget_req/program/update/{budget_req_program_id}',
 
         if (!is_array($projects) || empty($projects)) {
             return $response->withJson(['success' => false, 'message' => 'projects is required and must be a non-empty array.'], 400);
+        }
+
+        // Same restriction as POST /budget_req/add — see its comment.
+        $userId = (int) $request->getAttribute('user_id');
+        if (!GlobalService::isFmdUser($userId) && !GlobalService::isSuperAdminUser($userId)) {
+            return $response->withJson(['success' => false, 'message' =>
+                'Program-based budget requests are reserved for FMD. Your office may only submit a COE budget request.'], 403);
         }
 
         $result = $BudgetReqService->updateProgram($args['budget_req_program_id'], $body, $projects);

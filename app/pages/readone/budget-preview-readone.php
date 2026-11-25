@@ -89,6 +89,13 @@ $_bpv_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
 .nha-root .bpv-empty, .nha-root .bpv-noproj { padding: 18px 12px; text-align: center; font-size: 12.5px; color: var(--subtle); }
 .nha-root .bpv-noproj { margin-top: 14px; border: 1px solid var(--bdr); border-radius: 12px; font-style: italic; }
 
+/* ── COE "Approved" tree (chart-of-accounts breakdown, same shape as bur-page.php) ── */
+.nha-root .bpv-tree-tbl { table-layout: fixed; }
+.nha-root .bpv-tree-name { display: flex; align-items: center; }
+.nha-root .bpv-tree-total > td { font-weight: 700; background: var(--surf); border-top: 2px solid var(--bdr); }
+.nha-root .bpv-tree-d0 > td { background: var(--surf); font-weight: 700; }
+.nha-root .bpv-tree-neg { color: #dc2626; }
+
 /* ── Grand Total (every Project of every Program): Amount / Suggested Amount ── */
 .nha-root .bpv-grand {
     display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: baseline; gap: 6px 30px; font-weight: 700;
@@ -232,6 +239,7 @@ html.afims-dark[data-bs-theme="dark"] .nha-root .bpv-doc-open { color: var(--afi
 
 const BPV_BUDGET_REQ_API = '<?php echo $_bpv_api; ?>' + '/budget_req';
 const BPV_ATTACHMENT_API = '<?php echo $_bpv_api; ?>' + '/budget_req_project_attachment';   // a Project's Supporting Documents
+const BPV_BUR_API        = '<?php echo $_bpv_api; ?>' + '/bur';   // the Approved-only chart-of-accounts tree for one COE request
 
 let bpv_ctx = null;       // requestContext of the modal that is currently open
 let bpv_renderSeq = 0;    // bumped by every render and every close: a Supporting Documents answer that arrives after that is dropped
@@ -498,14 +506,113 @@ function bpv_blockHtml(ctx, program, project) {
     </section>`;
 }
 
+/* ── COE "Approved" tree — once a COE request is Approved, its line items are shown the same way the
+   Budget Utilization Report shows them: a chart-of-accounts tree (5-01 Personal Services / 5-02 MOOE),
+   with Approved Budget / Realigned Budget / Increase (Decrease) / Utilization / Balance / Payment /
+   Accounts Payable, scoped to just this one request (GET /bur/rollup-for-request/{id}). Before Approved,
+   there are no approved figures yet, so the plain proposed/suggested table (bpv_tableHtml) is shown instead. */
+const BPV_TREE_COLS = ['approved_amount', 'revised_amount', 'revision_amount', 'utilization', 'balance', 'payment', 'account_payable'];
+
+function bpv_treeCell(v) {
+    const n = Number(v) || 0;
+    return Math.abs(n) < 0.005 ? bgr_fmtMoney(0) : `<span class="${n < 0 ? 'bpv-tree-neg' : ''}">${bgr_fmtMoney(n)}</span>`;
+}
+function bpv_treeAmountCells(o) {
+    return BPV_TREE_COLS.map(k => `<td class="nha-mono text-right">${bpv_treeCell(o?.[k])}</td>`).join('');
+}
+
+// Same tree-building rule as bur-page.php's bur_buildTree/bur_flattenTree, duplicated here (this modal
+// does not include that page) — always fully expanded, no collapse toggles: a single request's own PS /
+// MOOE lines are a small enough tree that collapsing them would only add friction, not readability.
+function bpv_treeBuild(rows) {
+    const byId = new Map(rows.map(r => [r.account_id, { ...r, children: [] }]));
+    const roots = [];
+    byId.forEach(node => {
+        const parent = node.parent_account_id && byId.get(node.parent_account_id);
+        if (parent) parent.children.push(node); else roots.push(node);
+    });
+    const cmp = (a, b) => (a.account_code || '').localeCompare(b.account_code || '', undefined, { numeric: true, sensitivity: 'base' });
+    const sortRec = list => { list.sort(cmp); list.forEach(n => sortRec(n.children)); };
+    sortRec(roots);
+    return roots;
+}
+function bpv_treeFlatten(nodes, depth, out) {
+    nodes.forEach(node => {
+        out.push({ ...node, _depth: depth });
+        if (node.children.length) bpv_treeFlatten(node.children, depth + 1, out);
+    });
+    return out;
+}
+function bpv_treeRowHtml(r) {
+    const indent = r._depth * 22;
+    return `<tr class="bpv-tree-d${Math.min(r._depth, 4)}">
+        <td><div class="bpv-tree-name" style="padding-left:${indent}px;">${bgr_esc(r.account_title || '—')}</div></td>
+        <td class="nha-mono nha-td-sub">${bgr_esc(r.account_code || '—')}</td>
+        ${bpv_treeAmountCells(r)}
+    </tr>`;
+}
+function bpv_treeTableHtml(rows, totals) {
+    if (!rows.length) {
+        return '<div class="bpv-empty">No approved budget found for this request.</div>';
+    }
+    const flat = bpv_treeFlatten(bpv_treeBuild(rows), 0, []);
+    const totalRow = `<tr class="bpv-tree-total"><td>TOTAL</td><td></td>${bpv_treeAmountCells(totals)}</tr>`;
+    return `<div class="bpv-tbl-wrap">
+        <div class="nha-tbl-scroll">
+            <table class="nha-tbl bpv-tbl bpv-tree-tbl">
+                <thead><tr>
+                    <th>Expense Classification (NGAS)</th>
+                    <th>Acct. Code</th>
+                    <th class="text-right">Approved Budget</th>
+                    <th class="text-right">Realigned Budget</th>
+                    <th class="text-right">Increase (Decrease)</th>
+                    <th class="text-right">Utilization</th>
+                    <th class="text-right">Balance</th>
+                    <th class="text-right">Payment</th>
+                    <th class="text-right">Accounts Payable</th>
+                </tr></thead>
+                <tbody>${totalRow}${flat.map(bpv_treeRowHtml).join('')}</tbody>
+            </table>
+        </div>
+    </div>`;
+}
+
+// Asks for ONE request's tree (GET /bur/rollup-for-request/{id}). `seq` is the render it was asked for,
+// same staleness rule as bpv_loadDocsFor — an answer that arrives after the modal moved on is dropped.
+async function bpv_loadCoeTreeFor(box, seq) {
+    if (!box) return;
+    const stale = () => seq !== bpv_renderSeq || !box.isConnected;
+    try {
+        const res  = await fetch(`${BPV_BUR_API}/rollup-for-request/${encodeURIComponent(box.dataset.brn)}`, { credentials: 'same-origin' });
+        const json = await res.json().catch(() => null);
+        if (!res.ok || !json || !json.success) throw new Error((json && json.message) || 'HTTP ' + res.status);
+        if (stale()) return;
+        box.innerHTML = bpv_treeTableHtml(json.data ?? [], json.totals ?? {});
+    } catch (e) {
+        if (stale()) return;
+        box.innerHTML = `<div class="bpv-err" style="margin-top:0;">Could not load the approved budget breakdown — ${bgr_esc(e.message)}</div>`;
+    }
+}
+
+// Every COE tree container of the freshly rendered modal, at once (there is at most one — a header is
+// either REGULAR or COE, never both — but this mirrors bpv_loadDocs's pattern for consistency).
+function bpv_loadCoeTrees(seq) {
+    document.querySelectorAll('#bpv-blocks .bpv-coe-tree').forEach(box => bpv_loadCoeTreeFor(box, seq));
+}
+
 // A COE request's own block — no Program/Sub-Program/Project to show in the info card, and no
 // per-Project Supporting Documents panel (COE's own Supporting Documents are request-level — see the
-// COE form's own modal). Reuses bpv_tableHtml unchanged by handing it a synthetic { line_items } object.
+// COE form's own modal). Once the request is Approved, its line items are shown as the chart-of-accounts
+// tree above (loaded async, like Supporting Documents); before that, the plain proposed/suggested table
+// (bpv_tableHtml, handed a synthetic { line_items } object, unchanged from before).
 function bpv_coeBlockHtml(ctx, lineItems) {
     const row = (label, valueHtml) => `<div class="bpv-info-row"><span class="bpv-info-k">${label}</span><span class="bpv-info-v">${valueHtml}</span></div>`;
+    const body = ctx.status_name === 'Approved'
+        ? `<div class="bpv-coe-tree" data-brn="${bgr_escHtmlAttr(ctx.budget_reference_number)}"><div class="bpv-empty">Loading approved budget breakdown…</div></div>`
+        : bpv_tableHtml({ line_items: lineItems });
     return `<section class="bpv-block">
         <div class="bpv-info">${row('Originating Unit / Region', bpv_unitHtml(ctx))}</div>
-        ${bpv_tableHtml({ line_items: lineItems })}
+        ${body}
     </section>`;
 }
 
@@ -542,6 +649,8 @@ function bpv_render(requestContext, programArg, coeLineItems = []) {
     $bpv('bpv-blocks').innerHTML = blocks.length ? blocks.join('') : '<div class="bpv-noproj">No programs yet.</div>';
     bpv_renderGrandTotal(programs, coeLineItems);
 
-    bpv_loadDocs(++bpv_renderSeq);   // the Projects' Supporting Documents fill in as their answers arrive (none for a COE block)
+    const seq = ++bpv_renderSeq;
+    bpv_loadDocs(seq);       // the Projects' Supporting Documents fill in as their answers arrive (none for a COE block)
+    bpv_loadCoeTrees(seq);   // an Approved COE block's chart-of-accounts tree fills in the same way
 }
 </script>

@@ -405,13 +405,33 @@ class BudgetReqService
     }
 
     /**
+     * Blanks out every header's 'programs' (never 'coe_line_items') when the caller is a plain Regional/District
+     * (originating office) user — Program-based origination now belongs to FMD (or a superadmin) only, so their
+     * own list / "View Proposal" COB should never surface a Program a header still carries from before that rule
+     * (fetchAlls() is the one place both GET /budget_req/all and /budget_req/list read headers from). $userId = 0
+     * (no caller resolved) leaves the data untouched — only a positively-identified originating office is narrowed.
+     */
+    private function stripProgramsForOriginatingOffice(array $headerRows, int $userId): array
+    {
+        if ($userId <= 0 || !$this->isOriginatingOfficeUser($userId)) {
+            return $headerRows;
+        }
+        foreach ($headerRows as &$header) {
+            $header['programs'] = [];
+        }
+        unset($header);
+
+        return $headerRows;
+    }
+
+    /**
      * @param string $rcCodeFrom only requests of RCs whose rc_code sorts at or after this value (e.g.
      *                           "35-074-0000001-000" = the Regional and District offices, which come after
      *                           the central departments). Each row also carries its RC (rc_code, rc_name,
      *                           rc_office_type) and that RC's parent (rc_parent_id / _code / _name), which
      *                           the tree view of the budget request list groups by.
      */
-    public function fetchAlls(?int $page = null, int $limit = 10, string $fiscalYr = '', string $programCode = '', string $rcId = '', string $rcCodeFrom = ''): array
+    public function fetchAlls(?int $page = null, int $limit = 10, string $fiscalYr = '', string $programCode = '', string $rcId = '', string $rcCodeFrom = '', int $userId = 0): array
     {
         try {
             $where = ['1=1'];
@@ -480,14 +500,14 @@ class BudgetReqService
             if ($page === null) {
                 $data = App\ExecuteRows($joinSql.' ORDER BY br.fiscal_yr DESC, br.budget_reference_number DESC', 'DB') ?: [];
 
-                return ['success' => true, 'data' => $this->attachProgramsToHeaders($data)];
+                return ['success' => true, 'data' => $this->stripProgramsForOriginatingOffice($this->attachProgramsToHeaders($data), $userId)];
             }
 
             $offset = ($page - 1) * $limit;
 
             $total = (int) App\ExecuteScalar("SELECT COUNT(*) FROM {$this->table} br WHERE {$whereSql}", 'DB');
             $data = App\ExecuteRows($joinSql." ORDER BY br.fiscal_yr DESC, br.budget_reference_number DESC LIMIT {$limit} OFFSET {$offset}", 'DB') ?: [];
-            $data = $this->attachProgramsToHeaders($data);
+            $data = $this->stripProgramsForOriginatingOffice($this->attachProgramsToHeaders($data), $userId);
 
             $totalAmount = (float) App\ExecuteScalar(
                 "SELECT COALESCE(SUM(li.proposed_amount), 0) FROM {$this->tableLineItems} li
@@ -510,6 +530,143 @@ class BudgetReqService
         } catch (\Exception $e) {
             return ['success' => false, 'message' => $e->getMessage()];
         }
+    }
+
+    /**
+     * COE's own chart-of-accounts tree (5-01 Personal Services / 5-02 Maintenance and Other Operating
+     * Expenses), rolled up across every budget request this scope covers — backs the "View Proposal" COB's
+     * "CORPORATE OPERATING EXPENDITURE" table (bgrv_openCobModal, budget-req-readone.php), which used to fold
+     * COE line items into just two rows (PS / MOOE) with no account breakdown. Gives a Regional/District
+     * office the same account-level detail BurService otherwise only shows once a request is Approved — this
+     * is NOT restricted to Approved, since the COB reflects whatever status a request currently holds, same as
+     * fetchAlls(). Same $rcId / $rcCodeFrom / $fiscalYr scope fetchAlls() uses.
+     *
+     * Same account_id / account_code / account_title / parent_account_id shape BurService / chart-of-accounts-
+     * page.php use, with four amount keys (not BurService's seven, which need an Approved request's actual
+     * RFA/LAA draw and disbursement — meaningless before Approved): proposed (budget_line_items.proposed_amount),
+     * approved (suggested_amount), adjustment (the native adjustment column — a Budget Revision's net effect),
+     * revised (approved + adjustment) — the same four figures bgrv_cobCollect already computes client-side per
+     * line item, just rolled up by account instead of folded into a flat PS/MOOE pair.
+     *
+     * @return array{success: bool, data?: array, totals?: array, message?: string}
+     */
+    public function fetchCoeTree(string $fiscalYr, string $rcId = '', string $rcCodeFrom = ''): array
+    {
+        try {
+            $where = ['li.budget_req_project_id IS NULL', "(coa.account_code LIKE '5-01%' OR coa.account_code LIKE '5-02%')"];
+            if ($fiscalYr !== '') {
+                $where[] = 'br.fiscal_yr = '.(int) $fiscalYr;
+            }
+            if ($rcId !== '') {
+                $rcIds = GlobalService::getRcIdsInScope($rcId) ?: [$rcId];
+                $quotedRcIds = implode(', ', array_map(
+                    fn ($id) => App\QuotedValue($id, DataType::STRING, 'DB'),
+                    $rcIds
+                ));
+                $where[] = "br.rc_id IN ({$quotedRcIds})";
+            }
+            if ($rcCodeFrom !== '') {
+                $where[] = 'br.rc_id IN (SELECT rc_id FROM fims.responsibility_code WHERE rc_code >= '
+                    .App\QuotedValue($rcCodeFrom, DataType::STRING, 'DB').')';
+            }
+
+            $leafRows = App\ExecuteRows(
+                "SELECT coa.account_id, coa.account_code, coa.account_title, coa.parent_account_id,
+                        COALESCE(SUM(li.proposed_amount), 0) AS proposed,
+                        COALESCE(SUM(li.suggested_amount), 0) AS approved,
+                        COALESCE(SUM(li.adjustment), 0) AS adjustment,
+                        COALESCE(SUM(li.suggested_amount + li.adjustment), 0) AS revised
+                 FROM {$this->tableLineItems} li
+                 JOIN {$this->table} br ON br.budget_reference_number = li.budget_reference_number
+                 JOIN {$this->tableChartOfAccounts} coa ON coa.account_id = li.account_id
+                 WHERE ".implode(' AND ', $where)."
+                 GROUP BY coa.account_id, coa.account_code, coa.account_title, coa.parent_account_id",
+                'DB'
+            ) ?: [];
+
+            $accounts = $this->coeTreeAncestorsOf(array_map(fn ($r) => (string) $r['account_id'], $leafRows));
+            $zeroAmounts = ['proposed' => 0.0, 'approved' => 0.0, 'adjustment' => 0.0, 'revised' => 0.0];
+            $sums = [];
+            foreach (array_keys($accounts) as $id) {
+                $sums[$id] = $zeroAmounts;
+            }
+
+            foreach ($leafRows as $leaf) {
+                $id = (string) $leaf['account_id'];
+                if (!isset($accounts[$id])) {
+                    continue; // a code outside 5-01% / 5-02% cannot happen (the WHERE already restricts it), kept defensive only
+                }
+                $cursor = $id;
+                while ($cursor !== null && isset($accounts[$cursor])) {
+                    foreach (array_keys($zeroAmounts) as $k) {
+                        $sums[$cursor][$k] = round($sums[$cursor][$k] + (float) $leaf[$k], 2);
+                    }
+                    $parent = $accounts[$cursor]['parent_account_id'];
+                    $cursor = $parent !== null ? (string) $parent : null;
+                }
+            }
+
+            $data = [];
+            foreach ($accounts as $id => $acc) {
+                $data[] = [
+                    'account_id' => $acc['account_id'],
+                    'account_code' => $acc['account_code'],
+                    'account_title' => $acc['account_title'],
+                    'parent_account_id' => isset($accounts[(string) $acc['parent_account_id']]) ? $acc['parent_account_id'] : null,
+                ] + $sums[$id];
+            }
+
+            $totals = $zeroAmounts;
+            foreach ($data as $row) {
+                if ($row['parent_account_id'] === null) { // the two roots, 5-01 and 5-02 — already the sum of everything under them
+                    foreach (array_keys($zeroAmounts) as $k) {
+                        $totals[$k] = round($totals[$k] + $row[$k], 2);
+                    }
+                }
+            }
+
+            return ['success' => true, 'data' => $data, 'totals' => $totals];
+        } catch (\Exception $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Every chart-of-accounts code that carries a COE line item (the query's leaves) PLUS every one of their
+     * ancestors up to (and including) '5-01' / '5-02' themselves — same recursive walk as BurService's own
+     * ancestorsOf(), kept as this class's own copy (different amount shape — see fetchCoeTree's doc).
+     *
+     * @param string[] $leafIds
+     * @return array<string, array{account_id:string, account_code:string, account_title:string, parent_account_id:?string}>
+     */
+    private function coeTreeAncestorsOf(array $leafIds): array
+    {
+        if (!$leafIds) {
+            return [];
+        }
+        $ids = implode(', ', array_map(fn ($id) => App\QuotedValue((string) $id, DataType::STRING, 'DB'), $leafIds));
+        $rows = App\ExecuteRows(
+            "WITH RECURSIVE anc AS (
+                 SELECT account_id, account_code, account_title, parent_account_id
+                 FROM {$this->tableChartOfAccounts}
+                 WHERE account_id IN ({$ids})
+                 UNION ALL
+                 SELECT p.account_id, p.account_code, p.account_title, p.parent_account_id
+                 FROM anc
+                 JOIN {$this->tableChartOfAccounts} p ON p.account_id = anc.parent_account_id
+             )
+             SELECT DISTINCT account_id, account_code, account_title, parent_account_id
+             FROM anc
+             WHERE account_code LIKE '5-01%' OR account_code LIKE '5-02%'",
+            'DB'
+        ) ?: [];
+
+        $out = [];
+        foreach ($rows as $r) {
+            $out[(string) $r['account_id']] = $r;
+        }
+
+        return $out;
     }
 
     /**
@@ -1513,6 +1670,20 @@ class BudgetReqService
 
             return false;   // (not cached: a failed lookup is retried)
         }
+    }
+
+    /**
+     * Is this user a plain Regional/District (originating office) user — not Budget Officer, not Budget Head,
+     * not FMD (isReviewer), not a superadmin? Program/Sub-Program/Project origination now belongs to FMD (or a
+     * superadmin) only (see POST /budget_req/add's own check); an originating office's own list/COB view never
+     * needs a header's Program data, even one left over from before that rule — fetchAlls() strips it for them.
+     */
+    private function isOriginatingOfficeUser(?int $userId): bool
+    {
+        return !$this->hasUserLevel($userId, 'Budget Officer')
+            && !$this->hasUserLevel($userId, 'Budget Head')
+            && !$this->isReviewer($userId)
+            && !$this->isSuperAdmin($userId);
     }
 
     /** Is this user of the central review RC (FMD)? A missing user, no RC, or a lookup failure is "no" — never "yes". */
