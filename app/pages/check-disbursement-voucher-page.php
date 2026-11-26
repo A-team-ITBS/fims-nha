@@ -160,11 +160,7 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
          MODAL: Prepare Check (primary action)
     ══════════════════════════════════════════════ -->
     <div class="fims-modal-overlay" id="m-prepare-check" style="display:none;">
-<<<<<<< HEAD
-        <div class="fims-modal-dialog" style="max-width:1160px;width:95vw;">
-=======
         <div class="fims-modal-dialog u-modal-md">
->>>>>>> 33ce84f4f241f54e59e521b27a33e5fa2136f59e
             <div class="fims-modal-content">
                 <div class="fims-modal-header">
                     <div><div class="fims-modal-title">Prepare Check</div></div>
