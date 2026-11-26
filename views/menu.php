@@ -54,6 +54,7 @@ $sideMenu->addMenuItem(767, "mi_statement_of_changes_page", $Language->menuPhras
 $sideMenu->addMenuItem(768, "mi_cash_flow_page", $Language->menuPhrase("768", "MenuText"), "CashFlowPage", 552, "", AllowListMenu('{FIMS}cash-flow-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(770, "mi_bank_reconciliation_page", $Language->menuPhrase("770", "MenuText"), "BankReconciliationPage", 552, "", AllowListMenu('{FIMS}bank-reconciliation-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(871, "mi_bur_page", $Language->menuPhrase("871", "MenuText"), "BurPage", 552, "", AllowListMenu('{FIMS}bur-page.php'), false, false, "", "", false, true);
+$sideMenu->addMenuItem(973, "mi_soa_generator_page", $Language->menuPhrase("973", "MenuText"), "SoaGeneratorPage", 552, "", AllowListMenu('{FIMS}soa-generator-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(394, "mci_Ledgers", $Language->menuPhrase("394", "MenuText"), "", -1, "", true, false, true, "fas fa-scale-balanced", "", false, true);
 $sideMenu->addMenuItem(393, "mi_general_ledger_page", $Language->menuPhrase("393", "MenuText"), "GeneralLedgerPage", 394, "", AllowListMenu('{FIMS}general-ledger-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(396, "mi_journals_page", $Language->menuPhrase("396", "MenuText"), "JournalsPage", 394, "", AllowListMenu('{FIMS}journals-page.php'), false, false, "", "", false, true);

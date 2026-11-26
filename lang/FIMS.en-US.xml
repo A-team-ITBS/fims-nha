@@ -152,6 +152,9 @@
     <menu id="871">
       <phrase id="menutext" value="Budget Utilization Report" />
     </menu>
+    <menu id="973">
+      <phrase id="menutext" value="SOA Generator (For Testing)" />
+    </menu>
     <menu id="394">
       <phrase id="menutext" value="Ledgers" />
     </menu>
@@ -1879,6 +1882,9 @@
     </table>
     <table id="status_of_fund_page">
       <phrase id="tblcaption" value="Status of Fund" />
+    </table>
+    <table id="soa_generator_page">
+      <phrase id="tblcaption" value="SOA Generator" />
     </table>
   </project>
 </ew-language>

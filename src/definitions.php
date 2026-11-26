@@ -177,6 +177,7 @@ return [
     "merchandise_inventory_page" => \DI\create(MerchandiseInventoryPage::class),
     "bur_page" => \DI\create(BurPage::class),
     "status_of_fund_page" => \DI\create(StatusOfFundPage::class),
+    "soa_generator_page" => \DI\create(SoaGeneratorPage::class),
 
     // User table
     "usertable" => \DI\get("users"),
