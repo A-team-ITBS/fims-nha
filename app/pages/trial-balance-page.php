@@ -38,6 +38,28 @@ $_tb_api = preg_match('~/api$~', $_tb_api) ? $_tb_api : $_tb_api . '/api';
     #tb-root .nha-hint                { font-size: 0.875rem; padding: 0 16px; margin: 0 0 14px; color: var(--afims-text-muted, #62657E); }   /* 14px  (was 13); 16px side padding lines it up with the filter card's content */
 
 
+    /* Print / Export — one header button → PDF | Excel menu → preview modal (Print / Download on a bar above the preview) */
+    #tb-root .tb-menu-item { display: block; width: 100%; text-align: left; padding: 8px 10px; border: 0; border-radius: 6px; background: transparent; cursor: pointer; font-family: inherit; }
+    #tb-root .tb-menu-item:hover, #tb-root .tb-menu-item:focus-visible { background: var(--afims-surface-subtle, #F4F7FA); outline: none; }
+    #tb-root .tb-menu-item strong { display: block; font-size: 13px; color: var(--afims-text, #1e293b); }
+    #tb-root .tb-menu-item small  { display: block; font-size: 11.5px; color: var(--afims-text-muted, #62657E); }
+    #tb-root .tbx-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+    #tb-root .tbx-info { font-size: 12.5px; color: var(--afims-text-muted, #62657E); }
+    #tb-root .tbx-actions { display: flex; gap: 8px; }
+    #tb-root .tbx-actions [hidden] { display: none !important; }
+    #tb-root .tbx-stage { position: relative; height: 68vh; overflow: auto; background: #E8ECF2; border: 1px solid var(--afims-border, #E4ECF2); border-radius: 10px; }
+    #tb-root .tbx-frame { display: block; width: 100%; height: 100%; border: 0; background: #E8ECF2; }
+    #tb-root .tbx-msg { padding: 60px 20px; text-align: center; font-size: 13px; color: var(--afims-text-muted, #62657E); }
+    #tb-root .tbx-err { margin-top: 10px; padding: 8px 12px; border-radius: 7px; background: #FDECEC; color: #B42318; font-size: 13px; }
+    #tb-root .tbx-msg[hidden], #tb-root .tbx-err[hidden], #tb-root .tbx-frame[hidden], #tb-root .tbx-sheet[hidden] { display: none; }
+    /* the Excel preview: the sheet the .xlsx will contain, with a spreadsheet's column letters / row numbers */
+    #tb-root .tbx-sheet { padding: 14px; }
+    #tb-root table.tbx-xl { margin: 0 auto; border-collapse: collapse; background: #fff; min-width: 760px; font: 12px Calibri, Arial, sans-serif; box-shadow: 0 1px 6px rgba(15, 32, 69, .18); }
+    #tb-root table.tbx-xl th { padding: 2px 8px; border: 1px solid #d0d3d6; background: #f1f3f4; color: #5f6368; font-weight: 500; text-align: center; }
+    #tb-root table.tbx-xl td { height: 20px; padding: 2px 6px; border: 1px solid #e1e3e6; }
+    #tb-root table.tbx-xl td.rn { width: 34px; background: #f1f3f4; color: #5f6368; text-align: center; padding: 2px 4px; }
+    #tb-root table.tbx-xl td.n { text-align: right; font-variant-numeric: tabular-nums; }
+
     @media print {
         #tb-root .tb-letterhead,
         #tb-root .tb-cert { display: block !important; }
@@ -64,14 +86,41 @@ $_tb_api = preg_match('~/api$~', $_tb_api) ? $_tb_api : $_tb_api . '/api';
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                 Refresh
             </button>
-            <button id="tb-print" type="button" class="nha-btn-hdr" title="Print">
+            <button id="tb-export" type="button" class="nha-btn-hdr" title="Print or export the Trial Balance — PDF or Excel" aria-haspopup="true" aria-expanded="false">
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6v-8z"/></svg>
-                Print
+                Print / Export &#9662;
             </button>
-            <button id="tb-excel" type="button" class="nha-btn-hdr" title="Export to Excel">
-                <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
-                Excel
-            </button>
+        </div>
+    </div>
+
+    <!-- Format menu of the Print / Export button (fixed, so the banner's rounded corners can't clip it) -->
+    <div id="tb-export-menu" role="menu" class="no-print" style="display:none;position:fixed;z-index:1060;min-width:230px;background:var(--afims-surface,#fff);border:1px solid var(--afims-border,#E4ECF2);border-radius:8px;box-shadow:0 8px 24px rgba(15,23,42,.18);padding:6px;">
+        <button type="button" role="menuitem" class="tb-menu-item" data-format="pdf"><strong>PDF</strong><small>Preview, then print or download</small></button>
+        <button type="button" role="menuitem" class="tb-menu-item" data-format="xlsx"><strong>Excel</strong><small>Preview, then download (.xlsx)</small></button>
+    </div>
+
+    <!-- ── PRINT / EXPORT PREVIEW ─────────────────────────── -->
+    <div id="tb-overlay" class="nha-overlay no-print">
+        <div class="nha-modal nha-modal-xl" role="dialog" aria-modal="true" aria-labelledby="tb-x-title">
+            <div class="nha-modal-hdr">
+                <h3 class="nha-modal-title" id="tb-x-title">Trial Balance</h3>
+                <button type="button" class="nha-modal-close" id="tb-x-close" aria-label="Close">&times;</button>
+            </div>
+            <div class="nha-modal-body">
+                <div class="tbx-bar">
+                    <span class="tbx-info" id="tb-x-info"></span>
+                    <span class="tbx-actions">
+                        <button type="button" class="nha-btn nha-btn-outline" id="tb-x-print" disabled>Print</button>
+                        <button type="button" class="nha-btn nha-btn-primary" id="tb-x-download" disabled>Download</button>
+                    </span>
+                </div>
+                <div class="tbx-stage">
+                    <div class="tbx-msg" id="tb-x-msg">Loading preview&hellip;</div>
+                    <iframe class="tbx-frame" id="tb-x-frame" title="Trial Balance PDF preview" hidden></iframe>
+                    <div class="tbx-sheet" id="tb-x-sheet" hidden></div>
+                </div>
+                <div class="tbx-err" id="tb-x-err" role="alert" hidden></div>
+            </div>
         </div>
     </div>
 
@@ -194,10 +243,28 @@ else tb_boot();
 
 function tb_bindEvents() {
     $tb('tb-refresh')?.addEventListener('click', tb_load);
-    $tb('tb-print')?.addEventListener('click', () => window.print());
-    $tb('tb-excel')?.addEventListener('click', tb_exportExcel);
     $tb('tb-filter-fy')?.addEventListener('change', tb_load);
     $tb('tb-filter-book')?.addEventListener('change', tb_load);
+
+    // Print / Export: the header button's menu (PDF | Excel) → the preview modal
+    $tb('tb-export')?.addEventListener('click', e => { e.stopPropagation(); tb_toggleMenu($tb('tb-export-menu').style.display === 'none'); });
+    $tb('tb-export-menu')?.addEventListener('click', e => {
+        e.stopPropagation();
+        const item = e.target.closest('.tb-menu-item');
+        if (!item) return;
+        tb_toggleMenu(false);
+        tb_openExport(item.dataset.format);
+    });
+    document.addEventListener('click', () => tb_toggleMenu(false));
+    window.addEventListener('scroll', () => tb_toggleMenu(false), true);
+    window.addEventListener('resize', () => tb_toggleMenu(false));
+    $tb('tb-x-close')?.addEventListener('click', tb_closeExport);
+    $tb('tb-overlay')?.addEventListener('click', e => { if (e.target === $tb('tb-overlay')) tb_closeExport(); });
+    $tb('tb-x-print')?.addEventListener('click', tb_printPdf);
+    $tb('tb-x-download')?.addEventListener('click', tb_downloadFile);
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Escape' && $tb('tb-overlay').classList.contains('open')) { e.preventDefault(); tb_closeExport(); }
+    });
 }
 
 /* Fiscal years come from fims.fiscal_year via GET /fiscal_year/all → {success, data:[{fiscal_yr}]}. */
@@ -327,12 +394,197 @@ function tb_render(json) {
     }
 }
 
-/* ── Excel export ──────────────────────────────────────────── */
-/* Mirrors the on-screen/print layout: title block, then Major group → account group → accounts, then Total + certification. */
-async function tb_exportExcel() {
-    if (!window.ExcelJS) { tb_showError('Excel library failed to load. Check your internet connection and reload.'); return; }
+/* ── Print / Export: menu → preview → Print / Download ─────────────────────────────────────────
+   PDF   — the server renders it (POST /print/tb → PrintService 'TB', Dompdf, like the other printed forms); the preview IS that
+           PDF, so Print and Download give exactly what is shown.
+   Excel — built here with ExcelJS from the rows on screen (tb_buildWorkbook); the preview imitates that sheet. */
+const TB_PRINT_API = TB_BASE + '/print/tb';
+const tb_x = { format: 'pdf', seq: 0, file: null, url: null };   // file = { blob, filename } shown in the preview
+
+function tb_toggleMenu(open) {
+    const menu = $tb('tb-export-menu'), btn = $tb('tb-export');
+    if (!menu || !btn) return;
+    if (!open) { menu.style.display = 'none'; btn.setAttribute('aria-expanded', 'false'); return; }
+    menu.style.display = '';
+    const r = btn.getBoundingClientRect(), w = menu.offsetWidth || 230, h = menu.offsetHeight || 90;
+    menu.style.left = Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8)) + 'px';
+    menu.style.top  = (r.bottom + 6 + h > window.innerHeight ? Math.max(8, r.top - h - 6) : r.bottom + 6) + 'px';
+    btn.setAttribute('aria-expanded', 'true');
+}
+
+/* The file name stem both formats share: Trial-Balance_<year | all-years> (the server builds the same one for the PDF). */
+function tb_fileStem() { return 'Trial-Balance_' + ($tb('tb-filter-fy').value || 'all-years'); }
+
+/* What the server prints: the rows the page loaded + the title block's labels. */
+function tb_printPayload() {
+    const book = tb_books.find(b => String(b.book_id) === String($tb('tb-filter-book').value));
+    return {
+        fiscal_yr: $tb('tb-filter-fy').value,
+        as_of: $tb('tb-report-date').textContent,
+        book_name: book ? book.name : '',
+        rows: (tb_last.data ?? []).map(r => ({
+            major_group: r.major_group, account_group: r.account_group, account_group_code: r.account_group_code,
+            account_title: r.account_title, account_code: r.account_code, total_debit: r.total_debit, total_credit: r.total_credit,
+        })),
+    };
+}
+
+function tb_xState(msg, err) {
+    $tb('tb-x-msg').hidden = !msg;
+    if (msg) $tb('tb-x-msg').textContent = msg;
+    $tb('tb-x-err').hidden = !err;
+    if (err) $tb('tb-x-err').textContent = err;
+}
+function tb_xReady(on) {
+    $tb('tb-x-print').disabled = $tb('tb-x-download').disabled = !on;
+}
+function tb_releaseFile() {
+    if (tb_x.url) URL.revokeObjectURL(tb_x.url);
+    tb_x.url = null; tb_x.file = null;
+}
+
+async function tb_openExport(format) {
+    if (!(tb_last.data ?? []).length) { tb_showError('Nothing to export — no postings yet.'); return; }
+    if (format === 'xlsx' && !window.ExcelJS) { tb_showError('Excel library failed to load. Check your internet connection and reload.'); return; }
+    tb_hideError();
+
+    const my = ++tb_x.seq;
+    tb_releaseFile();
+    tb_x.format = format === 'xlsx' ? 'xlsx' : 'pdf';
+    const pdf = tb_x.format === 'pdf';
+    $tb('tb-x-title').textContent = 'Trial Balance — ' + (pdf ? 'PDF' : 'Excel');
+    $tb('tb-x-info').textContent = $tb('tb-report-date').textContent + ($tb('tb-report-book').textContent || '');
+    $tb('tb-x-print').hidden = !pdf;                       // an Excel file is downloaded, not printed
+    $tb('tb-x-download').textContent = pdf ? 'Download PDF' : 'Download Excel';
+    tb_xReady(false);
+    $tb('tb-x-frame').hidden = true; $tb('tb-x-frame').removeAttribute('src');
+    $tb('tb-x-sheet').hidden = true;
+    tb_xState('Loading preview…', '');
+    $tb('tb-overlay').classList.add('open');
+
+    try {
+        if (pdf) await tb_loadPdf(my); else await tb_loadExcel(my);
+    } catch (e) {
+        if (my !== tb_x.seq) return;                       // closed or reopened while loading
+        tb_xState('The preview could not be loaded.', e.message);
+    }
+}
+
+function tb_closeExport() {
+    tb_x.seq++;
+    $tb('tb-overlay').classList.remove('open');
+    $tb('tb-x-frame').hidden = true; $tb('tb-x-frame').removeAttribute('src');
+    $tb('tb-x-sheet').innerHTML = '';
+    tb_releaseFile();
+}
+
+async function tb_loadPdf(my) {
+    const res  = await tb_authFetch(TB_PRINT_API, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(Object.assign(tb_printPayload(), { format: 'pdf' })),
+    });
+    let json = null; try { json = await res.json(); } catch (e) { /* not JSON */ }
+    if (!res.ok || !json || json.success === false) throw new Error((json && json.message) || ('HTTP ' + res.status));
+    if (my !== tb_x.seq) return;
+
+    const bin = atob(json.data), bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    tb_x.file = { blob: new Blob([bytes], { type: json.mime || 'application/pdf' }), filename: json.filename || (tb_fileStem() + '.pdf') };
+    tb_x.url  = URL.createObjectURL(tb_x.file.blob);
+
+    $tb('tb-x-frame').src = tb_x.url + '#toolbar=0&navpanes=0';   // the viewer's own toolbar is hidden: Print / Download are above
+    $tb('tb-x-frame').hidden = false;
+    tb_xState('', '');
+    tb_xReady(true);
+}
+
+async function tb_loadExcel(my) {
+    const buf = await tb_buildWorkbook().xlsx.writeBuffer();
+    if (my !== tb_x.seq) return;
+    tb_x.file = { blob: new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), filename: tb_fileStem() + '.xlsx' };
+    $tb('tb-x-sheet').innerHTML = tb_excelPreviewHtml();
+    $tb('tb-x-sheet').hidden = false;
+    tb_xState('', '');
+    tb_xReady(true);
+}
+
+/* Print the PDF shown in the preview; if the browser won't print from the frame, open it in a tab (its viewer prints). */
+function tb_printPdf() {
+    const frame = $tb('tb-x-frame');
+    try {
+        frame.contentWindow.focus();
+        frame.contentWindow.print();
+    } catch (e) {
+        if (tb_x.url) window.open(tb_x.url, '_blank');
+    }
+}
+
+function tb_downloadFile() {
+    if (!tb_x.file) return;
+    const a = document.createElement('a');
+    const url = URL.createObjectURL(tb_x.file.blob);
+    a.href = url;
+    a.download = tb_x.file.filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/* The Excel preview: the sheet tb_buildWorkbook() writes (same rows, same order), drawn as a spreadsheet — keep the two in step. */
+function tb_excelPreviewHtml() {
     const rows = tb_last.data ?? [];
-    if (!rows.length) { tb_showError('Nothing to export — no postings yet.'); return; }
+    const num = v => {
+        v = Number(v || 0);
+        if (Math.abs(v) < 0.005) return '-';
+        const s = Math.abs(v).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        return v < 0 ? `(${s})` : s;
+    };
+    const out = [];
+    let n = 0;
+    const row = (cells, trStyle = '') => { n++; out.push(`<tr style="${trStyle}"><td class="rn">${n}</td>${cells}</tr>`); };
+    const merged = (text, style = '') => row(`<td colspan="4" style="${style}">${tb_esc(text)}</td>`);
+
+    merged('NATIONAL HOUSING AUTHORITY', 'text-align:center;font-weight:700;');
+    merged($tb('tb-report-book').textContent ? 'TRIAL BALANCE' + $tb('tb-report-book').textContent : 'TRIAL BALANCE', 'text-align:center;font-weight:700;');
+    merged('MAIN OFFICE', 'text-align:center;font-weight:700;');
+    merged($tb('tb-report-date').textContent, 'text-align:center;');
+    row('<td></td><td></td><td></td><td></td>');
+    const hd = 'background:#D9E1F2;font-weight:700;border:1px solid #000;';
+    row(`<td style="${hd}text-align:center;">Accounts</td><td style="${hd}text-align:center;">Acct. Code</td><td style="${hd}text-align:right;">Debit Balances</td><td style="${hd}text-align:right;">Credit Balances</td>`);
+
+    let lastMajor = null, lastGroup = null;
+    rows.forEach(r => {
+        if (r.major_group !== lastMajor) {
+            merged(r.major_group, 'background:#EDEDED;font-weight:700;');
+            lastGroup = null;
+        }
+        if (r.account_group && r.account_group !== lastGroup) {
+            if (/^assets$/i.test(String(r.major_group).trim())) merged(r.account_group, 'font-weight:700;');
+            else row(`<td>${tb_esc(r.account_group)}</td><td>${tb_esc(r.account_group_code ?? '')}</td><td></td><td></td>`);
+        }
+        lastMajor = r.major_group;
+        lastGroup = r.account_group;
+        row(`<td style="padding-left:16px;">${tb_esc(r.account_title) || '—'}</td><td>${tb_esc(r.account_code ?? '')}</td><td class="n">${num(r.total_debit)}</td><td class="n">${num(r.total_credit)}</td>`);
+    });
+
+    const tot = 'font-weight:700;border-top:1px solid #000;border-bottom:3px double #000;';
+    row(`<td colspan="2" style="${tot}">Total</td><td class="n" style="${tot}">${num(tb_last.total_debit)}</td><td class="n" style="${tot}">${num(tb_last.total_credit)}</td>`);
+    row('<td></td><td></td><td></td><td></td>');
+    merged('I HEREBY CERTIFY that the trial balance is a true and complete statement of all accounts as shown in the ledger prepared and presented in conformity with International Public Sector Accounting Standards (IPSAS).', 'height:48px;vertical-align:top;white-space:normal;');
+    row('<td></td><td></td><td></td><td></td>');
+    row('<td></td><td></td><td></td><td></td>');
+    row('<td style="border-top:1px solid #000;text-align:center;">Signature Over Printed Name</td><td></td><td></td><td></td>');
+    row('<td style="text-align:center;">Head of Accounting Department</td><td></td><td></td><td></td>');
+
+    return `<table class="tbx-xl"><colgroup><col style="width:34px"><col style="width:380px"><col style="width:120px"><col style="width:140px"><col style="width:140px"></colgroup>`
+        + `<thead><tr><th></th><th>A</th><th>B</th><th>C</th><th>D</th></tr></thead><tbody>${out.join('')}</tbody></table>`;
+}
+
+/* ── Excel workbook ────────────────────────────────────────── */
+/* Mirrors the on-screen/print layout: title block, then Major group → account group → accounts, then Total + certification. */
+function tb_buildWorkbook() {
+    const rows = tb_last.data ?? [];
 
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet('Trial Balance', {
@@ -409,16 +661,7 @@ async function tb_exportExcel() {
 
     ws.views = [{ state: 'frozen', ySplit: head.number }];
 
-    const fy = $tb('tb-filter-fy').value || 'all-years';
-    const buf  = await wb.xlsx.writeBuffer();
-    const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `Trial-Balance_${fy}.xlsx`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    return wb;
 }
 
 /* ── Formatters ────────────────────────────────────────────── */
