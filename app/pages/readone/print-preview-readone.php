@@ -225,8 +225,8 @@ const PRP_TYPES = {
     // payload { dv_id }; `prefill` — the details panel (prp_ffOpen()): payee + signatory prefilled from the DV / settings, editable
     BIR2307: { title: 'BIR Form 2307 — Certificate of Creditable Tax Withheld at Source', print: 'print/bir2307', pdfOnly: true,
                prefill: p => 'print/prefill/bir2307/' + encodeURIComponent(p.dv_id), form: 'prp_ffForm2307' },
-    // payload { fiscal_yr, employee_id } — Payroll Management → Annualization → Worksheet; `excel`: the modal's Export to Excel
-    ANNUALWS: { title: 'Annualization of Income (Worksheet)', print: 'print/annualws', pdfOnly: true, excel: 'print/annualws/excel' },
+    // payload { fiscal_yr, employee_id } — Payroll Management → Annualization → Annualization of Income; `excel`: the modal's Export to Excel
+    ANNUALWS: { title: 'Annualization of Income', print: 'print/annualws', pdfOnly: true, excel: 'print/annualws/excel' },
     GCG:      { title: 'GCG Quarterly Report', print: 'print/gcg', pdfOnly: true, excel: 'print/gcg/excel', full: true },
     // payload { fiscal_yr, employee_id } — from Payroll Management → Annualization
     BIR2316: { title: 'BIR Form 2316 — Certificate of Compensation Payment / Tax Withheld', print: 'print/bir2316', pdfOnly: true,

@@ -34,6 +34,7 @@ html.afims-dark[data-bs-theme="dark"] .wip-menu-trigger { color:#FFFFFF;backgrou
 /* the table has many columns: it scrolls sideways inside its wrapper */
 #wip-root .nha-tbl th { white-space:nowrap;line-height:1.3; }
 #wip-root .nha-tbl td { vertical-align:top; }
+#wip-root .nha-table-wrap .nha-tbl th { text-align:center !important; }   /* the list's column headers are centered (the cells keep their own alignment) */
 #wip-root .wip-num { text-align:right;white-space:nowrap; }
 .wip-bar { display:inline-block;vertical-align:middle;width:84px;height:8px;margin-right:8px;border-radius:4px;overflow:hidden;background:var(--afims-border, #E4ECF2); }
 .wip-bar > i { display:block;height:100%;background:var(--afims-primary, #0035A9); }
@@ -71,6 +72,9 @@ html.afims-dark[data-bs-theme="dark"] .wip-card h4 { color:#FFFFFF; }
             </button>
         </div>
     </div>
+
+    <!-- ── TABS: one per WIP category (the sub-ledgers of 1-04-03-020); only the account title is shown ── -->
+    <div class="nha-tabs no-print" id="wip-tabs"></div>
 
     <!-- ── FILTERS ────────────────────────────────────────── -->
     <div class="nha-filters no-print">
@@ -141,6 +145,7 @@ html.afims-dark[data-bs-theme="dark"] .wip-card h4 { color:#FFFFFF; }
 const WIP_API = '<?php echo $_wip_api; ?>' + '/infra-iar';
 const WIP_PAGE_SIZE = 10;
 let wip_page = 1, wip_rows = [], wip_timer = null;
+let wip_tab = '', wip_tabTitle = '';      // the active tab: a WIP sub-ledger code (1-04-03-020-01 …) and its title
 
 const wip_$ = id => document.getElementById(id);
 function wip_authHeaders(extra = {}) {
@@ -158,10 +163,34 @@ function wip_bar(p) {
     return `<span class="wip-bar${(Number(p) || 0) >= 100 ? ' done' : ''}"><i style="width:${n}%"></i></span>${wip_pct(p)}`;
 }
 
+/* the tabs: one per WIP sub-ledger, labelled with the account title only (e.g. "Sites and Services"); the first one opens */
+async function wip_loadTabs() {
+    try {
+        const res  = await fetch(`${WIP_API}/wip-categories`, { credentials: 'same-origin', headers: wip_authHeaders() });
+        const json = await res.json();
+        const tabs = json.success ? (json.data || []) : [];
+        wip_$('wip-tabs').innerHTML = tabs.map(t => `<button type="button" class="nha-tab" data-code="${wip_esc(t.account_code)}" data-title="${wip_esc(t.account_title)}">${wip_esc(t.account_title)}</button>`).join('');
+        wip_$('wip-tabs').querySelectorAll('.nha-tab').forEach(b => b.addEventListener('click', () => wip_selectTab(b.dataset.code)));
+        if (tabs.length) wip_selectTab(tabs[0].account_code, true);
+    } catch (e) { /* no tabs: the page then lists nothing */ }
+}
+function wip_selectTab(code, force) {
+    if (!force && code === wip_tab) return;
+    wip_tab = code;
+    wip_$('wip-tabs').querySelectorAll('.nha-tab').forEach(b => {
+        const on = b.dataset.code === code;
+        b.classList.toggle('active', on);
+        if (on) wip_tabTitle = b.dataset.title;
+    });
+    wip_page = 1;
+    wip_load();
+}
+
 async function wip_load() {
+    if (!wip_tab) return;                                    // the tabs load first (wip_loadTabs)
     window.PagePreloader?.show();
     try {
-        const params = new URLSearchParams({ search: wip_$('wip-filter-search').value || '', page: wip_page, limit: WIP_PAGE_SIZE });
+        const params = new URLSearchParams({ search: wip_$('wip-filter-search').value || '', page: wip_page, limit: WIP_PAGE_SIZE, account: wip_tab });
         const res  = await fetch(`${WIP_API}/work-in-process?${params}`, { credentials: 'same-origin', headers: wip_authHeaders() });
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const json = await res.json();
@@ -180,7 +209,7 @@ function wip_render(rows, error) {
     const tbody = wip_$('wip-tbody');
     wip_rows = rows;
     if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="11"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">' + wip_esc(error || 'No work in process found. A project shows here once its pro-forma JEV (with account 1-04-03-020) was submitted.') + '</span></div></td></tr>';
+        tbody.innerHTML = '<tr><td colspan="11"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">' + wip_esc(error || 'No ' + wip_tabTitle + ' work in process found. A project shows here once its pro-forma JEV was submitted.') + '</span></div></td></tr>';
         return;
     }
     tbody.innerHTML = rows.map((r, i) => `<tr>
@@ -260,6 +289,7 @@ function wip_view(i) {
             ${kv('Project Code', wip_dash(r.project_code))}${kv('Name of Project', wip_dash(r.project_name))}
             ${kv('Program', wip_dash(r.program_name))}${kv('Location', wip_dash(r.location))}
             ${kv('Contractor', wip_dash(r.contractor))}${kv('Contract', wip_dash(r.contract))}
+            ${kv('Area in SQM / Units', r.total_land_area === null || r.total_land_area === undefined || r.total_land_area === '' ? '—' : wip_money(r.total_land_area))}${kv('TCT Number', wip_dash(r.tct_number))}
         </div></div>
         <div class="wip-card"><h4>Contract Cost</h4><div class="wip-grid">
             ${kv('Original Contract Cost', wip_money(r.original_contract_cost))}
@@ -292,7 +322,7 @@ function wip_closeView() { wip_$('wip-overlay').classList.remove('open'); }
         ['wip-view-close', 'wip-view-close2'].forEach(id => wip_$(id).addEventListener('click', wip_closeView));
         wip_$('wip-overlay').addEventListener('click', e => { if (e.target === wip_$('wip-overlay')) wip_closeView(); });
         document.addEventListener('keydown', e => { if (e.key === 'Escape') wip_closeView(); });
-        wip_load();
+        wip_loadTabs();                                      // opens the first tab, which loads the list
     };
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run); else run();
 })();

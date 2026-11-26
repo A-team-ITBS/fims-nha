@@ -388,7 +388,6 @@ $_pr_api = preg_match('~/api$~', $_pr_api) ? $_pr_api : $_pr_api . '/api';
             </div>
             <div class="nha-modal-foot">
                 <button type="button" class="nha-btn nha-btn-outline" id="pr-cancel">Cancel</button>
-                <button type="button" class="nha-btn nha-btn-outline" id="pr-preview-btn">Preview</button>
                 <button type="button" class="nha-btn nha-btn-primary" id="pr-save" disabled>Import</button>
             </div>
         </div>
@@ -431,14 +430,14 @@ async function pr_load() {
     try {
         const json = await pr_json(await pr_authFetch('payroll-management/list?' + params));
         if (!json.success) throw new Error(json.message || 'Failed to load.');
-        pr_fillYears(json.years || []);
-        // YTD defaults to the latest year that has an import (until the user picks one)
+        pr_fillYears();
+        // YTD follows the latest imported year only when it is one of its two years (current / upcoming), until the user picks one
         if (!pr_ytdYearTouched && json.years?.length) {
             const yy = String(json.years[0]), ySel = $pr('pr-y-year');
-            if (![...ySel.options].some(o => o.value === yy)) ySel.insertAdjacentHTML('beforeend', `<option value="${yy}">${yy}</option>`);
-            const changed = ySel.value !== yy;
-            ySel.value = yy;
-            if (changed && $pr('pr-pane-ytd').classList.contains('active')) pr_loadYtd();   // the report tab is open: follow the new default year
+            if ([...ySel.options].some(o => o.value === yy) && ySel.value !== yy) {
+                ySel.value = yy;
+                if ($pr('pr-pane-ytd').classList.contains('active')) pr_loadYtd();   // the report tab is open: follow the new default year
+            }
         }
         // the Annualization tab follows the latest imported year only when it is one of its two years (current / upcoming)
         if (!pr_annYearTouched && json.years?.length) {
@@ -485,12 +484,19 @@ async function pr_load() {
     }
 }
 
-function pr_fillYears(years) {
+/** The fiscal years every year picker in Payroll Management offers: the current year and the next one. */
+function pr_fiscalYears() {
+    const y = new Date().getFullYear();
+    return [y, y + 1];
+}
+function pr_yearOptions(sel, withAll) {
+    sel.innerHTML = (withAll ? '<option value="">All Years</option>' : '') + pr_fiscalYears().map(v => `<option value="${v}">${v}</option>`).join('');
+}
+
+function pr_fillYears() {
     const sel = $pr('pr-f-year'), cur = sel.value;
-    const now = new Date().getFullYear();
-    const all = [...new Set([...years.map(Number), now])].sort((a, b) => b - a);
-    sel.innerHTML = '<option value="">All Years</option>' + all.map(y => `<option value="${y}">${y}</option>`).join('');
-    sel.value = cur;
+    pr_yearOptions(sel, true);
+    sel.value = [...sel.options].some(o => o.value === cur) ? cur : '';
 }
 
 /** Disbursement Voucher page: ?payroll={month} opens a new DV for the month, ?dv={id} opens the DV's view. */
@@ -503,9 +509,8 @@ function pr_open() {
     const now = new Date();
     $pr('pr-month').innerHTML = PR_MONTHS.map((m, i) => `<option value="${i + 1}">${m}</option>`).join('');
     $pr('pr-month').value = String(now.getMonth() + 1);
-    const y = now.getFullYear();
-    $pr('pr-year').innerHTML = [y + 1, y, y - 1, y - 2].map(v => `<option value="${v}">${v}</option>`).join('');
-    $pr('pr-year').value = String(y);
+    pr_yearOptions($pr('pr-year'), false);   // current / next fiscal year
+    $pr('pr-year').value = String(now.getFullYear());
     $pr('pr-file').value = '';
     pr_resetPreview();
     $pr('pr-overlay').classList.add('open');
@@ -643,9 +648,8 @@ function pr_ytdNote(text) {
     n.style.display = text ? '' : 'none';
 }
 function pr_initYtdFilters() {
-    const y = new Date().getFullYear();
-    $pr('pr-y-year').innerHTML = [y + 1, y, y - 1, y - 2, y - 3, y - 4].map(v => `<option value="${v}">${v}</option>`).join('');
-    $pr('pr-y-year').value = String(y);
+    pr_yearOptions($pr('pr-y-year'), false);   // current / next fiscal year
+    $pr('pr-y-year').value = String(new Date().getFullYear());
     $pr('pr-y-month').innerHTML = '<option value="">Whole Year</option>' + PR_MONTHS.map((m, i) => `<option value="${i + 1}">${m}</option>`).join('');
 }
 async function pr_loadYtd() {
@@ -895,7 +899,7 @@ function pr_renderAnnual() {
         <td><div style="font-weight:600;">${pr_esc(pr_name(r))}</div><div class="pr-sub">${pr_esc(r.employee_no)}${r.tin ? ' · TIN ' + pr_esc(r.tin) : ''}</div></td>
         <td class="pr-num">${r.months_paid}</td>${pr_amt(r.gross_compensation)}${pr_amt(r.total_non_taxable)}${pr_amt(r.taxable_income)}
         ${pr_amt(r.tax_due)}${pr_amt(r.tax_withheld)}${pr_amt(r.tax_adjustment)}
-        <td class="text-end" style="white-space:nowrap;"><button type="button" class="nha-btn nha-btn-outline nha-btn-sm" onclick="pr_printWorksheet(${Number(r.employee_id)})" title="Annualization worksheet — PDF, with Export to Excel">Worksheet</button>
+        <td class="text-end" style="white-space:nowrap;"><button type="button" class="nha-btn nha-btn-outline nha-btn-sm" onclick="pr_printWorksheet(${Number(r.employee_id)})" title="Annualization of Income for the year — PDF, with Export to Excel">Annualization of Income</button>
             <button type="button" class="nha-btn nha-btn-outline nha-btn-sm" onclick="pr_print2316(${Number(r.employee_id)})" title="BIR Form 2316 — Certificate of Compensation Payment / Tax Withheld">2316</button></td></tr>`).join('');
     const sum = k => rows.reduce((s, r) => s + Number(r[k] || 0), 0);
     $pr('pr-a-tfoot').innerHTML = `<tr><td>Total (${rows.length})</td><td></td>${pr_amt(sum('gross_compensation'))}${pr_amt(sum('total_non_taxable'))}${pr_amt(sum('taxable_income'))}
@@ -953,9 +957,8 @@ function pr_exportAnnual() {
 function pr_boot() {
     pr_initYtdFilters();
     // Annualization: only the current and the upcoming fiscal year (default: the current one)
-    const pr_annThisYear = new Date().getFullYear();
-    $pr('pr-a-year').innerHTML = [pr_annThisYear, pr_annThisYear + 1].map(v => `<option value="${v}">${v}</option>`).join('');
-    $pr('pr-a-year').value = String(pr_annThisYear);
+    pr_yearOptions($pr('pr-a-year'), false);   // current / next fiscal year
+    $pr('pr-a-year').value = String(new Date().getFullYear());
     $pr('pr-a-year').addEventListener('change', () => { pr_annYearTouched = true; pr_loadAnnual(); });
     $pr('pr-a-search').addEventListener('input', pr_renderAnnual);
     $pr('pr-a-run').addEventListener('click', pr_runAnnual);
@@ -974,9 +977,8 @@ function pr_boot() {
     $pr('pr-import-btn').addEventListener('click', pr_open);
     $pr('pr-close').addEventListener('click', pr_close);
     $pr('pr-cancel').addEventListener('click', pr_close);
-    $pr('pr-preview-btn').addEventListener('click', pr_preview);
     $pr('pr-save').addEventListener('click', pr_import);
-    // choosing the file / month / year previews right away (when a file is chosen)
+    // choosing the file / month / year previews right away (when a file is chosen) — no Preview button needed
     ['pr-month', 'pr-year', 'pr-file'].forEach(id => $pr(id).addEventListener('change', () => {
         pr_resetPreview();
         if ($pr('pr-file').files.length) pr_preview();
