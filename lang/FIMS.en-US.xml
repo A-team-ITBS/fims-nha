@@ -209,6 +209,12 @@
     <menu id="769">
       <phrase id="menutext" value="Closing Balance" />
     </menu>
+    <menu id="974">
+      <phrase id="menutext" value="Administration Fees" />
+    </menu>
+    <menu id="975">
+      <phrase id="menutext" value="Administration Fee Rate" />
+    </menu>
     <menu id="330">
       <phrase id="menutext" value="Fund Sourcing" />
     </menu>
@@ -1885,6 +1891,12 @@
     </table>
     <table id="soa_generator_page">
       <phrase id="tblcaption" value="SOA Generator" />
+    </table>
+    <table id="admin_fee_page">
+      <phrase id="tblcaption" value="Administration Fees" />
+    </table>
+    <table id="admin_fee_rates_page">
+      <phrase id="tblcaption" value="Administration Fee Rate" />
     </table>
   </project>
 </ew-language>

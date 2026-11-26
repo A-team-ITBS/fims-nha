@@ -44,7 +44,7 @@ class PersonalData
     public $RenderingView = false;
 
     // CSS class/style
-    public $CurrentPageName = "SoaGeneratorPageController";
+    public $CurrentPageName = "AdminFeeRatesPageController";
 
     // Page headings
     public $Heading = "";
