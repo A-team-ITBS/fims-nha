@@ -82,7 +82,9 @@ $_vr_rcId          = $_vr_isSysAdmin ? null : ($_vr_userRow['rc_id'] ?? null);
 #vr-root .vje-fg input, #vr-root .vje-fg select { width: 100%; font-size: 13px; padding: 8px 12px; border: 1px solid var(--afims-border, #E4ECF2); border-radius: 8px; box-sizing: border-box; font-family: inherit; background: var(--afims-surface, #fff); color: var(--afims-text, #1e293b); }
 #vr-root .vje-fg input[readonly] { background: var(--afims-surface-subtle, #F4F7FA); cursor: default; pointer-events: none; user-select: none; }
 #vr-root .vje-fg input[readonly]:focus { outline: none; box-shadow: none; border-color: var(--afims-border, #E4ECF2); }
-#vr-root .vr-net-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 170px 12px 14px; background: #E3EBF8; border-top: 1px solid #D5E0F0; font-size: 14px; color: #0B1B43; }
+/* Amount column: the box text sits 12px inside its box, so the header, Gross and Net values are inset the same 12px to line up with it */
+#vr-root .vr-bd-table th:nth-child(4), #vr-root .vr-bd-gross td:nth-child(4) { padding-right: 26px; }
+#vr-root .vr-net-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 70px 12px 14px; background: #E3EBF8; border-top: 1px solid #D5E0F0; font-size: 14px; color: #0B1B43; }
 #vr-root .vr-net-row b { font-family: "IBM Plex Mono", monospace; font-size: 15px; }
 #vr-root .vr-acct-hint { font-family: "IBM Plex Mono", monospace; font-size: 12px; font-weight: 400; color: var(--afims-text-muted, #62657E); white-space: nowrap; }
 #vr-root .vr-ded-label .vr-acct-hint { margin-left: 6px; }
@@ -386,7 +388,6 @@ function vr_render(dv) {
                     <div class="vr-a-f"><dt>TIN / Employee No.</dt><dd>${vr_esc(dv.employee_no_tin) || '—'}</dd></div>
                     <div class="vr-a-f"><dt>Vendor (Supplier / Contractor) or Payroll</dt><dd>${vr_esc(dv.vendor_name || (dv.rfas ?? []).find(r => r.vendor_name)?.vendor_name) || '—'}</dd></div>
                     <div class="vr-a-f"><dt>PO / Contract</dt><dd>${vr_esc(dv.po_number) || '—'}${Number(dv.po_amount) > 0 ? ` <small>(${vr_peso(dv.po_amount)})</small>` : ''}</dd></div>
-                    ${(dv.rfas ?? []).length ? `<div class="vr-a-f vr-a-full"><dt>RFA</dt><dd style="font-weight:400;">${vr_rfaSection(dv)}</dd></div>` : ''}
                     <div class="vr-a-f vr-a-full"><dt>Status</dt><dd><span class="nha-bdg ${vr_statusClass(dv.status)}">${vr_esc(dv.status === 'REJECTED' ? 'RETURNED' : dv.status)}</span></dd></div>
                     <div class="vr-a-f vr-a-full"><dt>Particulars</dt><dd class="vr-particulars" style="font-weight:400;">${vr_esc(dv.particulars) || '—'}</dd></div>
                 </div>

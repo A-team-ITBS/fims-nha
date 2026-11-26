@@ -211,7 +211,9 @@ if (!isset($_vf_api)) {
 #vf-root .vf-atc-row .vf-atc-rate, #vf-root .vf-atc-row .vf-atc-wh { text-align: right; }
 #vf-root .vf-atc-info { grid-column: 1 / -1; grid-row: 2; margin-top: 6px; font-size: 12px; color: var(--afims-text-muted, #62657E); }
 #vf-root .vf-atc-info input { width: 130px; padding: 2px 6px; border: 0; border-bottom: 1px dashed var(--afims-border, #B9C4D0); background: transparent; font-size: 12px; text-align: right; color: var(--afims-text, #1C1E29); }
-#vf-root .vf-net-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 170px 12px 14px; background: #E3EBF8; border-top: 1px solid #D5E0F0; font-size: 14px; color: #0B1B43; }
+/* Amount column: the box text sits 12px inside its box, so the header, Gross and Net values are inset the same 12px to line up with it */
+#vf-root .vf-bd-table th:nth-child(4), #vf-root .vf-bd-gross td:nth-child(4) { padding-right: 26px; }
+#vf-root .vf-net-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 70px 12px 14px; background: #E3EBF8; border-top: 1px solid #D5E0F0; font-size: 14px; color: #0B1B43; }
 #vf-root .vf-net-row b { font-family: "IBM Plex Mono", monospace; font-size: 15px; }
 #vf-root .vf-atc-acct-hint, #vf-root .vf-ded-acct-hint { font-family: "IBM Plex Mono", monospace; font-size: 12px; font-weight: 400; color: var(--afims-text-muted, #62657E); white-space: nowrap; }
 #vf-root .vf-atc-label .vf-atc-codewrap { flex: 0 1 430px; }
@@ -399,7 +401,7 @@ html.afims-dark[data-bs-theme="dark"] #vf-root :is(input, select, textarea):is(:
                                 <span id="vf-po-warn" role="alert" style="display:none;margin-top:4px;font-size:12px;color:var(--afims-danger-text,#8F222D);"></span>
                             </div>
 
-                            <div class="vf-vendor-card vf-a-full" id="vf-vendor-card">
+                            <div class="vf-vendor-card vf-a-full" id="vf-vendor-card" style="display:none !important;"><!-- hidden: repeats Payee / Address / TIN above; kept because the vendor JS still fills it -->
                                 <div><label>Vendor Name</label><span id="vf-vc-name">—</span></div>
                                 <div><label>Type</label><span id="vf-vc-type">—</span></div>
                                 <div><label>Address</label><span id="vf-vc-address">—</span></div>
