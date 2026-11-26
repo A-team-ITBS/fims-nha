@@ -209,6 +209,26 @@ flowchart TD
     S3 --> END(["Revision applied — go to Section 5"])
 ```
 
+### 4a. Supplemental budget (a new project released by a SARO)
+
+**Needs:** a DBM **SARO** of the **current year** recorded in Fund Tracking (the form's SARO dropdown lists only this year's SAROs, by `fund_tracking.fiscal_year`), and the filing user's office to have an **Approved** budget request for the SARO's fiscal year (or none yet — one is then created, already Approved).
+**Sidebar:** COB Preparation → Budget Amendment → the **Supplemental** tab. **Statuses:** Saved → Submitted → Approved (or Declined), the same as above.
+
+A supplemental request is for a project that is **not in the approved COB**. There is no payee and no budget line to pick: you pick the Program (and Sub-Program), the SARO, name the project and enter its line items.
+The **Project Code is not on the form** — it is generated when the request is approved.
+
+| Step | Log in as | Where (sidebar → page) | Do this | Expected result |
+|---|---|---|---|---|
+| 1 | Budget office user | COB Preparation → Budget Amendment → Add Request → **Supplemental** tab | Pick the Program, Sub-Program (optional) and SARO (the Program / Sub-Program narrow the SAROs to the ones tagged to them); enter the project's name and location (optional); add its line items (account, particulars, amount) | Status Saved — editable (Actions → Edit). Nothing is added to the budget yet |
+| 1a | Budget office user | Budget Amendment | Actions → Process | Status Submitted — no more editing |
+| 2 | Reviewer | Budget Amendment | Review → Approve | Status Approved; the project is created with a generated code and added to the filing office's budget request of the SARO's fiscal year, with one budget line per item |
+| 2a | Reviewer (alternative) | Budget Amendment | Review → Decline | Status Declined; nothing is added |
+| 3 | Any user | Monitoring → COB Monitoring | Open the project under its Program / Sub-Program | The amount is in the **Revision / Realignment (Amendment)** column; the Approved Amount is 0 |
+
+The approval is refused, with the reason, when the office's budget request for that year exists but is not yet Approved, or when the filing user has no office.
+
+The project appears in **COB Monitoring** and **RFA / LAA Monitoring** only. It does **not** appear on **Budget Requirements** (its list, View Proposal, or the Excel / print export) — it was never part of a proposal; its budget lines carry a tag for this.
+
 ## 5. Request for Allocation — CBA
 
 **Needs:** an approved COB (Section 3). **Sidebar:** Budget Process → Request for Allocation (CBA). FMD reviews from
