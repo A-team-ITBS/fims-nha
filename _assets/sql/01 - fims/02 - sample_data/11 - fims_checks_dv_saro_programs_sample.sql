@@ -1,0 +1,318 @@
+-- -- ============================================================================
+-- -- Sample data tying together Programs, SARO (fims.fund_tracking), Disbursement
+-- -- Vouchers and Checks, so the Check Disbursement Voucher page
+-- -- (app/pages/check-disbursement-voucher-page.php) and Supplemental/SARO
+-- -- pages have real, related rows to browse end-to-end:
+-- --   Program/Sub-Program/Project -> SARO (sub_program) -> DV (dept_project) -> Check (dv_id)
+-- -- Depends on "10 - fims_bank_accounts_check_booklets_sample.sql" (bank
+-- -- accounts + check booklets) having already run.
+-- -- ============================================================================
+
+-- -- ---------------------------------------------------------------------------
+-- -- Programs / Sub-Programs / Projects — two additional programs beyond the
+-- -- "04 - seed_data/06 - fims_program_subprogram_project.sql" seed, so SARO and
+-- -- DV sample rows below have more programs to reference.
+-- -- ---------------------------------------------------------------------------
+-- INSERT INTO fims.program (program_code, program_name) VALUES
+--     ('103', 'SLUM UPGRADING AND RESETTLEMENT'),
+--     ('104', 'RENTAL HOUSING PROGRAM')
+-- ON CONFLICT (program_code) DO NOTHING;
+
+-- INSERT INTO fims.sub_program (sub_program_code, sub_program_name, program_code) VALUES
+--     ('103-001', 'FOR ISFs Along Danger Zones', '103'),
+--     ('104-001', 'FOR ISFs Under Rent-to-Own Scheme', '104')
+-- ON CONFLICT (sub_program_code) DO NOTHING;
+
+-- INSERT INTO fims.project (project_code, project_name, program_code, sub_program_code) VALUES
+--     ('2026-R04-103-001-0001', 'Riverside Relocation Site, Brgy. Halang, Calamba City, Laguna', '103', '103-001'),
+--     ('2026-R03-104-001-0001', 'Pathways Homes Rental Complex, Brgy. Pulong Buhangin, Santa Maria, Bulacan', '104', '104-001')
+-- ON CONFLICT (project_code) DO NOTHING;
+
+-- -- ---------------------------------------------------------------------------
+-- -- Bank Accounts + Check Booklets — a third disbursing account/booklet beyond
+-- -- "10 - fims_bank_accounts_check_booklets_sample.sql"'s two, so the Check
+-- -- Preparation autofill (CheckProcessingService::getSaroForDv()) has more than
+-- -- two possible accounts to resolve to.
+-- -- ---------------------------------------------------------------------------
+-- INSERT INTO fims.bank_accounts (account_name, account_number, bank_name, office_type, department_type, is_active)
+-- SELECT v.account_name, v.account_number, v.bank_name, v.office_type, v.department_type, true
+-- FROM (VALUES
+--     ('NHA Regional Disbursing - R4', '1461-5566-10', 'Land Bank of the Philippines', 'region', 'region')
+-- ) AS v(account_name, account_number, bank_name, office_type, department_type)
+-- WHERE NOT EXISTS (SELECT 1 FROM fims.bank_accounts ba WHERE ba.account_number = v.account_number);
+
+-- INSERT INTO fims.check_booklets (bank_account_id, series, fiscal_year, department_type, start_check_no, end_check_no, date_received)
+-- SELECT ba.bank_account_id, v.series, v.fiscal_year, v.department_type, v.start_check_no, v.end_check_no, v.date_received::date
+-- FROM (VALUES
+--     ('1461-5566-10', 'C', 2026, 'region', '0002001', '0002030', '2026-09-20')
+-- ) AS v(account_number, series, fiscal_year, department_type, start_check_no, end_check_no, date_received)
+-- JOIN fims.bank_accounts ba ON ba.account_number = v.account_number
+-- WHERE NOT EXISTS (
+--     SELECT 1 FROM fims.check_booklets cb
+--     WHERE cb.bank_account_id = ba.bank_account_id AND cb.series = v.series
+-- );
+
+-- -- ---------------------------------------------------------------------------
+-- -- SARO (fims.fund_tracking, tracking_type = SARO) — one per program/sub-program
+-- -- above, released against the current fiscal year.
+-- -- ---------------------------------------------------------------------------
+-- INSERT INTO fims.fund_tracking
+--     (fiscal_year, tracking_type_id, saro_id, nature_of_fund_id, description, sub_program, date, amount, unreleased, bank_account_no, agency_name)
+-- SELECT
+--     v.fiscal_year, tt.fund_tracking_type_id, v.saro_id, nf.nature_of_fund_id, v.description, v.sub_program, v.saro_date::date, v.amount, v.unreleased, v.bank_account_no, v.agency_name
+-- FROM (VALUES
+--     (2026, 'SARO-2026-0001', 'Unprogrammed', '101-001', 'Casa Teodora Resettlement Project, Biñan City, Laguna',     '2026-02-10', 50000000.00, 12500000.00, '1461-1234-56', 'NHA'),
+--     (2026, 'SARO-2026-0002', 'Equity',       '101-002', 'Ciudad Kaunlaran Phase 2C, Bacoor Cavite',                   '2026-03-05', 35000000.00, 0.00,         '1461-1234-56', 'NHA'),
+--     (2026, 'SARO-2026-0003', 'GAAAO',        '102-001', 'Taal Eruption Calamity Housing Assistance',                  '2026-04-18', 20000000.00, 5000000.00,  '1461-7788-90', 'NHA'),
+--     (2026, 'SARO-2026-0004', 'Insertions',   '103-001', 'Riverside Relocation Site, Brgy. Halang, Calamba City',      '2026-06-22', 15000000.00, 15000000.00, '1461-1234-56', 'NHA'),
+--     (2026, 'SARO-2026-0005', 'SUPPLEMENTAL', '101-001', 'Casa Teodora Phase 2, Brgy. Langkiwa Biñan City, Laguna',    '2026-05-02', 40000000.00, 10000000.00, '1461-1234-56', 'NHA'),
+--     (2026, 'SARO-2026-0006', 'Equity',       '101-001', 'Casa Crisostomo Resettlement Project Phase 2, Brgy. Banlic, Calamba City, Laguna', '2026-05-20', 28000000.00, 28000000.00, '1461-1234-56', 'NHA'),
+--     (2026, 'SARO-2026-0007', 'GAAAO',        '101-002', 'Glori-Mor Housing Project 2, Naic, Cavite',                  '2026-06-05', 18000000.00, 0.00,         '1461-7788-90', 'NHA'),
+--     (2026, 'SARO-2026-0008', 'Insertions',   '101-002', 'Naic View Residences Phase 2, Brgy. Calubcob, Naic, Cavite', '2026-06-15', 22000000.00, 22000000.00, '1461-7788-90', 'NHA'),
+--     (2026, 'SARO-2026-0009', 'SUPPLEMENTAL', '101-001', 'Casa Teodora Phase 1 - Supplemental Release',                '2026-08-01', 10000000.00, 0.00,         '1461-1234-56', 'NHA'),
+--     (2026, 'SARO-2026-0010', 'Unprogrammed', '101-002', 'Ciudad Kaunlaran Phase 2C - 2nd Tranche',                    '2026-08-20', 12000000.00, 12000000.00, '1461-1234-56', 'NHA'),
+--     (2026, 'SARO-2026-0011', 'Equity',       '103-001', 'Riverside Relocation Site, Brgy. Halang, Calamba City - Phase 2', '2026-09-03', 16000000.00, 16000000.00, '1461-1234-56', 'NHA'),
+--     (2026, 'SARO-2026-0012', 'Insertions',   '102-001', 'New Direction Neighbourhood, Brgy. Aya, Talisay, Batangas - 2nd Release', '2026-09-10', 14000000.00, 14000000.00, '1461-7788-90', 'NHA'),
+--     (2026, 'SARO-2026-0013', 'Unprogrammed', '104-001', 'Pathways Homes Rental Complex, Brgy. Pulong Buhangin, Santa Maria, Bulacan', '2026-09-25', 26000000.00, 26000000.00, '1461-5566-10', 'NHA'),
+--     (2026, 'SARO-2026-0014', 'GAAAO',        '102-001', 'Taal Eruption Calamity Housing Assistance - 2nd Release',    '2026-10-02', 15000000.00, 15000000.00, '1461-7788-90', 'NHA'),
+--     (2026, 'SARO-2026-0015', 'Equity',       '103-001', 'Riverside Relocation Site, Brgy. Halang, Calamba City - Phase 3', '2026-10-10', 19000000.00, 19000000.00, '1461-1234-56', 'NHA'),
+--     (2026, 'SARO-2026-0016', 'SUPPLEMENTAL', '104-001', 'Pathways Homes Rental Complex - Supplemental Release',       '2026-10-18', 8000000.00,  8000000.00,  '1461-5566-10', 'NHA')
+-- ) AS v(fiscal_year, saro_id, nature_of_fund, sub_program, description, saro_date, amount, unreleased, bank_account_no, agency_name)
+-- JOIN fims.fund_tracking_type tt ON UPPER(tt.fund_tracking_code) = 'SARO'
+-- JOIN fims.nature_of_fund nf ON nf.name = v.nature_of_fund
+-- WHERE NOT EXISTS (SELECT 1 FROM fims.fund_tracking ft WHERE ft.saro_id = v.saro_id);
+
+-- -- ---------------------------------------------------------------------------
+-- -- Disbursement Vouchers — mix of statuses across the DRAFT -> FOR_FMD_REVIEW
+-- -- -> FOR_ACCOUNTING -> FOR_TREASURY -> RELEASED pipeline. dept_project names
+-- -- the program/project each voucher is drawn against (free text, same
+-- -- convention as the original sample).
+-- -- ---------------------------------------------------------------------------
+-- INSERT INTO fims.disbursement_vouchers
+--     (dv_no, dv_date, fiscal_yr, expense_class, status_id,
+--      dept_project, fund_source,
+--      claimant_name, claimant_address, employee_no_tin,
+--      particulars, gross_amount, net_amount, account_code,
+--      budget_amount, obligation_amount, balance_amount,
+--      created_by, submitted_by, submitted_at,
+--      fmd_approved_by, fmd_approved_at,
+--      accounting_processed_by, accounting_processed_at,
+--      remarks)
+-- SELECT
+--     v.dv_no, v.dv_date::date, v.fiscal_yr, v.expense_class, st.id,
+--     v.dept_project, v.fund_source,
+--     v.claimant_name, v.claimant_address, v.employee_no_tin,
+--     v.particulars, v.amount, v.amount, v.account_code,
+--     v.amount, v.amount, 0,
+--     v.created_by, v.submitted_by, v.submitted_at::timestamp,
+--     v.fmd_approved_by, v.fmd_approved_at::timestamp,
+--     v.accounting_processed_by, v.accounting_processed_at::timestamp,
+--     v.remarks
+-- FROM (VALUES
+--     -- dv_no,          dv_date,      fiscal_yr, expense_class, status,            dept_project,                                              fund_source,    claimant_name,                     claimant_address,                   employee_no_tin,  particulars,                                                        amount,     account_code,  created_by, submitted_by, submitted_at,          fmd_approved_by, fmd_approved_at,       accounting_processed_by, accounting_processed_at, remarks
+--     ('DV-2026-00101', '2026-02-20', 2026, 'MOOE', 'RELEASED',       'Casa Teodora Resettlement Project, Biñan City, Laguna',  'SARO-2026-0001', 'Triple A Construction Corp.',     'Sta. Rosa City, Laguna',            NULL::text,       'Progress payment, site development works, Casa Teodora Phase 1', 1850000.00, '5-01-01-020', 2,          2,            '2026-02-21 09:00:00', 3,               '2026-02-22 10:00:00', 4,                       '2026-02-23 15:00:00',  'Released to Treasury for check preparation'),
+--     ('DV-2026-00102', '2026-03-10', 2026, 'MOOE', 'FOR_TREASURY',   'Ciudad Kaunlaran Phase 2C, Bacoor Cavite',               'SARO-2026-0002', 'Greenfield Builders Inc.',        'Bacoor, Cavite',                    NULL::text,       'Payment for land development, Ciudad Kaunlaran Phase 2C',        2350000.00, '5-01-01-020', 2,          2,            '2026-03-11 09:00:00', 3,               '2026-03-12 10:00:00', 4,                       '2026-03-13 15:00:00',  'Ready for check preparation'),
+--     ('DV-2026-00103', '2026-04-25', 2026, 'MOOE', 'FOR_TREASURY',   'Taal Eruption Calamity Housing Assistance',               'SARO-2026-0003', 'Maria Luisa Dela Cruz',           NULL::text,                           '123-456-789-000', 'Calamity housing assistance, Taal Eruption beneficiary',        150000.00,  '5-01-02-070', 2,          2,            '2026-04-26 08:30:00', 3,               '2026-04-27 11:00:00', 4,                       '2026-04-28 09:45:00',  'Ready for check preparation'),
+--     ('DV-2026-00104', '2026-06-30', 2026, 'MOOE', 'FOR_ACCOUNTING', 'Riverside Relocation Site, Brgy. Halang, Calamba City',   'SARO-2026-0004', 'Hammer and Nail Construction',    'Calamba City, Laguna',               NULL::text,       'Mobilization payment, Riverside Relocation Site development',    980000.00,  '5-01-01-020', 2,          2,            '2026-07-01 09:00:00', 3,               '2026-07-02 10:00:00', NULL::int,               NULL::text,              'Pending accounting processing'),
+--     ('DV-2026-00105', '2026-07-15', 2026, 'MOOE', 'FOR_FMD_REVIEW', 'Casa Teodora Resettlement Project, Biñan City, Laguna',  'SARO-2026-0001', 'Triple A Construction Corp.',     'Sta. Rosa City, Laguna',            NULL::text,       'Progress payment 2, site development works, Casa Teodora Phase 1', 1200000.00, '5-01-01-020', 2,          2,            '2026-07-16 09:00:00', NULL::int,       NULL::text,            NULL::int,               NULL::text,              'Pending FMD review'),
+--     ('DV-2026-00106', '2026-08-02', 2026, 'MOOE', 'DRAFT',          'Ciudad Kaunlaran Phase 2C, Bacoor Cavite',               'SARO-2026-0002', 'Greenfield Builders Inc.',        'Bacoor, Cavite',                    NULL::text,       'Payment for perimeter fencing, Ciudad Kaunlaran Phase 2C',        425000.00,  '5-01-01-020', 2,          NULL::int,    NULL::text,            NULL::int,       NULL::text,            NULL::int,               NULL::text,              'Originating office draft'),
+--     ('DV-2026-00107', '2026-05-10', 2026, 'MOOE', 'RELEASED',       'Casa Teodora Phase 2, Brgy. Langkiwa Biñan City, Laguna', 'SARO-2026-0005', 'JCL Builders Corp.',             'San Pedro, Laguna',                 NULL::text,       'Site development works, Casa Teodora Phase 2',                   2100000.00, '5-01-01-020', 2,          2,            '2026-05-11 09:00:00', 3,               '2026-05-12 10:00:00', 4,                       '2026-05-13 15:00:00',  'Released to Treasury for check preparation'),
+--     ('DV-2026-00108', '2026-05-28', 2026, 'MOOE', 'FOR_TREASURY',   'Casa Crisostomo Resettlement Project Phase 2, Brgy. Banlic, Calamba City, Laguna', 'SARO-2026-0006', 'Stonebridge Development Inc.', 'Calamba City, Laguna',          NULL::text,       'Vertical construction works, Casa Crisostomo Phase 2',            3200000.00, '5-01-01-020', 2,          2,            '2026-05-29 09:00:00', 3,               '2026-05-30 10:00:00', 4,                       '2026-05-31 15:00:00',  'Ready for check preparation'),
+--     ('DV-2026-00109', '2026-06-12', 2026, 'MOOE', 'FOR_TREASURY',   'Glori-Mor Housing Project 2, Naic, Cavite',              'SARO-2026-0007', 'Naic Builders Consortium',       'Naic, Cavite',                       NULL::text,       'Site development works, Glori-Mor Housing Project 2',             1750000.00, '5-01-01-020', 2,          2,            '2026-06-13 09:00:00', 3,               '2026-06-14 10:00:00', 4,                       '2026-06-15 15:00:00',  'Ready for check preparation'),
+--     ('DV-2026-00110', '2026-06-25', 2026, 'MOOE', 'RELEASED',       'Naic View Residences Phase 2, Brgy. Calubcob, Naic, Cavite', 'SARO-2026-0008', 'South Point Engineering Services', 'Naic, Cavite',                   NULL::text,       'Vertical construction works, Naic View Residences Phase 2',       2600000.00, '5-01-01-020', 2,          2,            '2026-06-26 09:00:00', 3,               '2026-06-27 10:00:00', 4,                       '2026-06-28 15:00:00',  'Released to Treasury for check preparation'),
+--     ('DV-2026-00111', '2026-08-05', 2026, 'MOOE', 'FOR_ACCOUNTING', 'Casa Teodora Phase 1, Brgy. Langkiwa Biñan City, Laguna', 'SARO-2026-0009', 'Triple A Construction Corp.',     'Sta. Rosa City, Laguna',            NULL::text,       'Supplemental progress payment, Casa Teodora Phase 1',             950000.00,  '5-01-01-020', 2,          2,            '2026-08-06 09:00:00', 3,               '2026-08-07 10:00:00', NULL::int,               NULL::text,              'Pending accounting processing'),
+--     ('DV-2026-00112', '2026-08-22', 2026, 'MOOE', 'FOR_FMD_REVIEW', 'Ciudad Kaunlaran Phase 2C, Bacoor Cavite',               'SARO-2026-0010', 'Greenfield Builders Inc.',        'Bacoor, Cavite',                    NULL::text,       'Perimeter fencing - 2nd tranche, Ciudad Kaunlaran Phase 2C',       1100000.00, '5-01-01-020', 2,          2,            '2026-08-23 09:00:00', NULL::int,       NULL::text,            NULL::int,               NULL::text,              'Pending FMD review'),
+--     -- FOR_TREASURY and not yet linked to any check — these are the ones that should actually appear in the Check Preparation "DV" dropdown (CheckProcessingService::getDvsForPrep())
+--     ('DV-2026-00113', '2026-09-08', 2026, 'MOOE', 'FOR_TREASURY',   'Riverside Relocation Site, Brgy. Halang, Calamba City - Phase 2', 'SARO-2026-0011', 'Hammer and Nail Construction', 'Calamba City, Laguna',      NULL::text,       'Site development works, Riverside Relocation Site Phase 2',       1300000.00, '5-01-01-020', 2,          2,            '2026-09-09 09:00:00', 3,               '2026-09-10 10:00:00', 4,                       '2026-09-11 15:00:00',  'Ready for check preparation'),
+--     ('DV-2026-00114', '2026-09-15', 2026, 'MOOE', 'FOR_TREASURY',   'New Direction Neighbourhood, Brgy. Aya, Talisay, Batangas - 2nd Release', 'SARO-2026-0012', 'Talisay Housing Builders Inc.', 'Talisay City, Batangas', NULL::text,       'Vertical construction works, 2nd funding release',                1650000.00, '5-01-01-020', 2,          2,            '2026-09-16 09:00:00', 3,               '2026-09-17 10:00:00', 4,                       '2026-09-18 15:00:00',  'Ready for check preparation'),
+--     ('DV-2026-00115', '2026-09-28', 2026, 'MOOE', 'FOR_TREASURY',   'Pathways Homes Rental Complex, Brgy. Pulong Buhangin, Santa Maria, Bulacan', 'SARO-2026-0013', 'Bulacan Homes Builders Inc.', 'Santa Maria, Bulacan',      NULL::text,       'Site development works, Pathways Homes Rental Complex',           1950000.00, '5-01-01-020', 2,          2,            '2026-09-29 09:00:00', 3,               '2026-09-30 10:00:00', 4,                       '2026-10-01 15:00:00',  'Ready for check preparation'),
+--     ('DV-2026-00116', '2026-10-05', 2026, 'MOOE', 'FOR_TREASURY',   'Taal Eruption Calamity Housing Assistance - 2nd Release', 'SARO-2026-0014', 'Maria Luisa Dela Cruz',          NULL::text,                           '123-456-789-000', 'Calamity housing assistance, Taal Eruption, 2nd release',        175000.00,  '5-01-02-070', 2,          2,            '2026-10-06 08:30:00', 3,               '2026-10-07 11:00:00', 4,                       '2026-10-08 09:45:00',  'Ready for check preparation'),
+--     ('DV-2026-00117', '2026-10-13', 2026, 'MOOE', 'FOR_TREASURY',   'Riverside Relocation Site, Brgy. Halang, Calamba City - Phase 3', 'SARO-2026-0015', 'Hammer and Nail Construction', 'Calamba City, Laguna',      NULL::text,       'Site development works, Riverside Relocation Site Phase 3',       1420000.00, '5-01-01-020', 2,          2,            '2026-10-14 09:00:00', 3,               '2026-10-15 10:00:00', 4,                       '2026-10-16 15:00:00',  'Ready for check preparation'),
+--     ('DV-2026-00118', '2026-10-20', 2026, 'MOOE', 'FOR_TREASURY',   'Pathways Homes Rental Complex, Brgy. Pulong Buhangin, Santa Maria, Bulacan', 'SARO-2026-0016', 'Bulacan Homes Builders Inc.', 'Santa Maria, Bulacan',      NULL::text,       'Supplemental payment, Pathways Homes Rental Complex',             650000.00,  '5-01-01-020', 2,          2,            '2026-10-21 09:00:00', 3,               '2026-10-22 10:00:00', 4,                       '2026-10-23 15:00:00',  'Ready for check preparation')
+-- ) AS v(dv_no, dv_date, fiscal_yr, expense_class, status, dept_project, fund_source, claimant_name, claimant_address, employee_no_tin, particulars, amount, account_code, created_by, submitted_by, submitted_at, fmd_approved_by, fmd_approved_at, accounting_processed_by, accounting_processed_at, remarks)
+-- JOIN fims.settings_status st ON st.status_for = 'disbursement_voucher' AND st.name = v.status
+-- WHERE NOT EXISTS (SELECT 1 FROM fims.disbursement_vouchers dv WHERE dv.dv_no = v.dv_no);
+
+-- -- Backfill for a prior run of this file that inserted these rows before
+-- -- net_amount was added to the column list above (net_amount is a plain,
+-- -- service-computed snapshot column, not GENERATED — see
+-- -- "03 - alter_table/17 - disbursement_vouchers_drop_tax_fields_add_sl.sql" —
+-- -- so a row inserted without it stays NULL forever otherwise).
+-- UPDATE fims.disbursement_vouchers
+-- SET net_amount = gross_amount
+-- WHERE dv_no LIKE 'DV-2026-001%' AND net_amount IS NULL;
+
+-- -- ---------------------------------------------------------------------------
+-- -- Link each SARO to the DV it funds (fims.fund_tracking.dv_id) and to its
+-- -- bank account (fims.fund_tracking.bank_account_id) — this is what
+-- -- CheckProcessingService::getSaroForDv() actually reads to auto-fill
+-- -- #prepBankAccount once a DV is picked in the Prepare Check modal (GET
+-- -- /check-processing/dv-saro). In the real app this link is written by
+-- -- DisbursementVoucherService::linkSaro() when a DV is saved with a SARO
+-- -- selected; here it's backfilled directly from the fund_source <-> saro_id
+-- -- pairing already used above. Requires
+-- -- "03 - alter_table/61 - fund_tracking_add_dv_bank_account.sql" to have run
+-- -- first (adds these two columns).
+-- -- ---------------------------------------------------------------------------
+-- -- DISTINCT ON + ORDER BY dv.dv_id picks the same, lowest-dv_id winner every
+-- -- run — needed because a couple of saro_id values above are (deliberately)
+-- -- reused as fund_source by more than one DV (progress-payment follow-ups
+-- -- against the same release), which would otherwise make the plain join match
+-- -- more than one dv per SARO and flip non-deterministically between runs.
+-- UPDATE fims.fund_tracking ft
+-- SET dv_id = winner.dv_id,
+--     bank_account_id = winner.bank_account_id
+-- FROM (
+--     SELECT DISTINCT ON (ft2.id) ft2.id AS ft_id, dv.dv_id, ba.bank_account_id
+--     FROM fims.fund_tracking ft2
+--     JOIN fims.disbursement_vouchers dv ON dv.fund_source = ft2.saro_id
+--     JOIN fims.bank_accounts ba ON ba.account_number = ft2.bank_account_no
+--     WHERE ft2.deleted_at IS NULL
+--     ORDER BY ft2.id, dv.dv_id ASC
+-- ) winner
+-- WHERE winner.ft_id = ft.id
+--   AND (ft.dv_id IS DISTINCT FROM winner.dv_id OR ft.bank_account_id IS DISTINCT FROM winner.bank_account_id);
+
+-- -- ---------------------------------------------------------------------------
+-- -- Checks — prepared/released against the FOR_TREASURY/RELEASED DVs above,
+-- -- drawn from the two booklets seeded in "10 - ...-sample.sql". Check numbers
+-- -- follow on from that file's own ranges (0000001-0000050 / 0001001-0001030).
+-- -- ---------------------------------------------------------------------------
+-- INSERT INTO fims.checks
+--     (booklet_id, bank_account_id, check_number, check_date, dv_id, dv_number, payee, amount, entry_type, status,
+--      signatory1_name, signatory1_designation, signatory2_name, signatory2_designation, prepared_by, prepared_at)
+-- SELECT
+--     cb.booklet_id, ba.bank_account_id, v.check_number, v.check_date::date, dv.dv_id, dv.dv_no, v.payee, v.amount, 'Issued', v.status,
+--     v.signatory1_name, v.signatory1_designation, v.signatory2_name, v.signatory2_designation, v.prepared_by, v.prepared_at::timestamp
+-- FROM (VALUES
+--     -- account_number,   series, check_number, check_date,   dv_no,            payee,                             amount,     status,       signatory1_name,     signatory1_designation,  signatory2_name,   signatory2_designation,  prepared_by, prepared_at
+--     ('1461-1234-56',     'A',    '0000002',    '2026-02-24', 'DV-2026-00101', 'Triple A Construction Corp.',     1850000.00, 'RELEASED',   'Juan P. Reyes',     'OIC, Treasury Division', 'Ana M. Lopez',   'VP, Finance Group',    4,           '2026-02-24 10:00:00'),
+--     ('1461-1234-56',     'A',    '0000003',    '2026-03-14', 'DV-2026-00102', 'Greenfield Builders Inc.',        2350000.00, 'PREPARED',   'Juan P. Reyes',     'OIC, Treasury Division', 'Ana M. Lopez',   'VP, Finance Group',    4,           '2026-03-14 11:30:00'),
+--     ('1461-7788-90',     'B',    '0001002',    '2026-04-29', 'DV-2026-00103', 'Maria Luisa Dela Cruz',           150000.00,  'PREPARED',   'Carlos D. Santos',  'Regional Disbursing Officer', 'Ana M. Lopez', 'VP, Finance Group', 4,       '2026-04-29 09:15:00'),
+--     ('1461-1234-56',     'A',    '0000004',    '2026-05-14', 'DV-2026-00107', 'JCL Builders Corp.',              2100000.00, 'RELEASED',   'Juan P. Reyes',     'OIC, Treasury Division', 'Ana M. Lopez',   'VP, Finance Group',    4,           '2026-05-14 10:00:00'),
+--     ('1461-1234-56',     'A',    '0000005',    '2026-06-01', 'DV-2026-00108', 'Stonebridge Development Inc.',    3200000.00, 'PREPARED',   'Juan P. Reyes',     'OIC, Treasury Division', 'Ana M. Lopez',   'VP, Finance Group',    4,           '2026-06-01 11:30:00'),
+--     ('1461-7788-90',     'B',    '0001003',    '2026-06-16', 'DV-2026-00109', 'Naic Builders Consortium',        1750000.00, 'PREPARED',   'Carlos D. Santos',  'Regional Disbursing Officer', 'Ana M. Lopez', 'VP, Finance Group', 4,       '2026-06-16 09:15:00'),
+--     ('1461-7788-90',     'B',    '0001004',    '2026-06-29', 'DV-2026-00110', 'South Point Engineering Services', 2600000.00, 'RELEASED',   'Carlos D. Santos',  'Regional Disbursing Officer', 'Ana M. Lopez', 'VP, Finance Group', 4,       '2026-06-29 10:45:00')
+-- ) AS v(account_number, series, check_number, check_date, dv_no, payee, amount, status, signatory1_name, signatory1_designation, signatory2_name, signatory2_designation, prepared_by, prepared_at)
+-- JOIN fims.bank_accounts ba ON ba.account_number = v.account_number
+-- JOIN fims.check_booklets cb ON cb.bank_account_id = ba.bank_account_id AND cb.series = v.series
+-- JOIN fims.disbursement_vouchers dv ON dv.dv_no = v.dv_no
+-- WHERE NOT EXISTS (
+--     SELECT 1 FROM fims.checks c WHERE c.bank_account_id = ba.bank_account_id AND c.check_number = v.check_number
+-- );
+
+-- -- ---------------------------------------------------------------------------
+-- -- Check Register — registers every blank check form in the three booklets
+-- -- above (CheckProcessingService::getUnusedChecks()'s source table — the
+-- -- "Register Check Batch" step that, in the real app, records received stock
+-- -- BEFORE any of it can be prepared into a fims.checks row). Without this, the
+-- -- Prepare Check modal's Check Number field shows "No unused checks — add a
+-- -- batch in Check Registry" even though the booklets above exist. One row per
+-- -- check_number in [start_check_no, end_check_no], entry_type='RECEIVED',
+-- -- current_status='UNUSED'.
+-- -- ---------------------------------------------------------------------------
+-- INSERT INTO fims.check_register
+--     (bank_account_id, check_number, check_series, entry_date, entry_type, current_status, booklet_no, department_type)
+-- SELECT cb.bank_account_id, to_char(gs.n, 'FM0000000'), cb.series, cb.date_received, 'RECEIVED', 'UNUSED', cb.series, cb.department_type
+-- FROM fims.check_booklets cb
+-- JOIN LATERAL generate_series(cb.start_check_no::int, cb.end_check_no::int) AS gs(n) ON TRUE
+-- WHERE NOT EXISTS (
+--     SELECT 1 FROM fims.check_register cr
+--     WHERE cr.bank_account_id = cb.bank_account_id
+--       AND cr.check_number = to_char(gs.n, 'FM0000000')
+--       AND COALESCE(cr.booklet_no, '') = cb.series
+-- );
+
+-- -- Flip the register entries for check numbers already drawn (the "Checks"
+-- -- block above) from UNUSED to ISSUED, same as
+-- -- CheckProcessingService::saveCheck() does when a check is actually
+-- -- prepared — so getUnusedChecks() doesn't still offer these numbers.
+-- UPDATE fims.check_register cr
+-- SET current_status = 'ISSUED',
+--     entry_type = 'ISSUED',
+--     check_id = c.check_id,
+--     payee_name = c.payee,
+--     amount = c.amount,
+--     voucher_reference = c.dv_number
+-- FROM fims.checks c
+-- WHERE cr.bank_account_id = c.bank_account_id
+--   AND cr.check_number = c.check_number
+--   AND cr.current_status <> 'ISSUED';
+
+-- -- ---------------------------------------------------------------------------
+-- -- Cash Position — one row per bank account so the Prepare Check modal's cash
+-- -- availability alert (verifyPrepCash() -> GET /check-processing/preparation/
+-- -- cash-availability -> CheckProcessingService::getCashAvailability()) has
+-- -- something to compare a DV's net amount against. available_balance is a
+-- -- GENERATED column (closing_balance - restricted_amount); bank_accounts.
+-- -- current_balance is kept in sync alongside it for pages that read that
+-- -- column instead (e.g. Bank Reconciliation's starting balance).
+-- -- ---------------------------------------------------------------------------
+-- INSERT INTO fims.cash_position
+--     (bank_account_id, position_date, opening_balance, total_receipts, total_disbursements, closing_balance, restricted_amount, reconciled)
+-- SELECT ba.bank_account_id, v.position_date::date, v.opening_balance, v.total_receipts, v.total_disbursements, v.closing_balance, v.restricted_amount, true
+-- FROM (VALUES
+--     -- account_number,   position_date, opening_balance, total_receipts, total_disbursements, closing_balance, restricted_amount
+--     ('1461-1234-56',     '2026-11-25',  48500000.00,     3000000.00,     1500000.00,          50000000.00,     5000000.00),
+--     ('1461-7788-90',     '2026-11-25',  19300000.00,     1500000.00,     800000.00,           20000000.00,     2000000.00),
+--     ('1461-5566-10',     '2026-11-25',  14300000.00,     1200000.00,     500000.00,           15000000.00,     1000000.00)
+-- ) AS v(account_number, position_date, opening_balance, total_receipts, total_disbursements, closing_balance, restricted_amount)
+-- JOIN fims.bank_accounts ba ON ba.account_number = v.account_number
+-- WHERE NOT EXISTS (
+--     SELECT 1 FROM fims.cash_position cp WHERE cp.bank_account_id = ba.bank_account_id AND cp.position_date = v.position_date::date
+-- );
+
+-- UPDATE fims.bank_accounts ba
+-- SET current_balance = cp.closing_balance
+-- FROM fims.cash_position cp
+-- WHERE cp.bank_account_id = ba.bank_account_id
+--   AND cp.position_date = '2026-11-25'
+--   AND ba.current_balance IS DISTINCT FROM cp.closing_balance;
+
+-- -- ---------------------------------------------------------------------------
+-- -- Programs linked to each DV via a minimal RFA (fims.budget_allocation,
+-- -- allocation_type = 'RFA', dv_id -> this voucher) + its Program/Sub-Program/
+-- -- Project block (fims.budget_allocation_project) — this is what the Prepare
+-- -- Check modal's "Program" field (#prepProgram) actually reads, via
+-- -- CheckProcessingService::getDvsForPrep()'s program_names lateral join. In
+-- -- the real app this RFA would already exist before the DV is even drafted
+-- -- (DisbursementVoucherService::linkRfas()); here it's added directly so
+-- -- every sample DV above resolves to the same program/project its SARO
+-- -- funds.
+-- -- ---------------------------------------------------------------------------
+-- WITH dv_programs(dv_no, program_code, sub_program_code, project_code) AS (
+--     VALUES
+--     ('DV-2026-00101', '101', '101-001', '2026-R03-101-001-0001'),
+--     ('DV-2026-00102', '101', '101-002', '2026-R03-101-002-0001'),
+--     ('DV-2026-00103', '102', '102-001', '2026-R03-102-001-0001'),
+--     ('DV-2026-00104', '103', '103-001', '2026-R04-103-001-0001'),
+--     ('DV-2026-00105', '101', '101-001', '2026-R03-101-001-0001'),
+--     ('DV-2026-00106', '101', '101-002', '2026-R03-101-002-0001'),
+--     ('DV-2026-00107', '101', '101-001', '2026-R03-101-001-0002'),
+--     ('DV-2026-00108', '101', '101-001', '2026-R03-101-001-0003'),
+--     ('DV-2026-00109', '101', '101-002', '2026-R03-101-002-0002'),
+--     ('DV-2026-00110', '101', '101-002', '2026-R03-101-002-0003'),
+--     ('DV-2026-00111', '101', '101-001', '2026-R03-101-001-0001'),
+--     ('DV-2026-00112', '101', '101-002', '2026-R03-101-002-0001'),
+--     ('DV-2026-00113', '103', '103-001', '2026-R04-103-001-0001'),
+--     ('DV-2026-00114', '102', '102-001', '2026-R03-102-001-0001'),
+--     ('DV-2026-00115', '104', '104-001', '2026-R03-104-001-0001'),
+--     ('DV-2026-00116', '102', '102-001', '2026-R03-102-001-0001'),
+--     ('DV-2026-00117', '103', '103-001', '2026-R04-103-001-0001'),
+--     ('DV-2026-00118', '104', '104-001', '2026-R03-104-001-0001')
+-- ),
+-- ins_alloc AS (
+--     INSERT INTO fims.budget_allocation (allocation_type, allocation_number, fiscal_year, document_type, dv_id)
+--     SELECT 'RFA', 'RFA-' || dv.dv_no, 2026, 'RFA', dv.dv_id
+--     FROM dv_programs dp
+--     JOIN fims.disbursement_vouchers dv ON dv.dv_no = dp.dv_no
+--     WHERE NOT EXISTS (
+--         SELECT 1 FROM fims.budget_allocation a WHERE a.dv_id = dv.dv_id AND a.allocation_type = 'RFA'
+--     )
+--     RETURNING allocation_id, dv_id
+-- )
+-- INSERT INTO fims.budget_allocation_project (allocation_id, program_code, sub_program_code, project_code, sort_order)
+-- SELECT ins.allocation_id, dp.program_code, dp.sub_program_code, dp.project_code, 0
+-- FROM ins_alloc ins
+-- JOIN fims.disbursement_vouchers dv ON dv.dv_id = ins.dv_id
+-- JOIN dv_programs dp ON dp.dv_no = dv.dv_no;
