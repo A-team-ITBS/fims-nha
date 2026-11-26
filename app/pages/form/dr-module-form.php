@@ -679,6 +679,13 @@ function amp_setPoValue(po) {        // programmatic set (add → clear, edit �
    One DR per save. The total of the amounts may not exceed the PO balance.
    From AMP_ITEM_MIN_AMOUNT up, the optional item fields (description, serial, amount, property no.) open. */
 const AMP_ITEM_MIN_AMOUNT = 50000;   // keep in sync with PoDrService::ITEM_MIN_AMOUNT
+/* Only these property / equipment accounts (and their sub-ledgers) need items — keep in sync with PoDrService::PRIORITY_ACCOUNTS */
+const AMP_ITEM_ACCOUNTS = ['1-06-05-020', '1-06-05-030', '1-06-05-070', '1-06-05-080', '1-06-05-110', '1-06-05-130', '1-06-05-990', '1-06-06-010', '1-06-07-010', '1-06-99-990'];
+/* an account row needs items: 50,000 or more on one of AMP_ITEM_ACCOUNTS (any other account has no item validation) */
+function amp_needsItems(entEl) {
+    const code = entEl.querySelector('.amp-f-acct').dataset.code || '';
+    return amp_amtOf(entEl) >= AMP_ITEM_MIN_AMOUNT && AMP_ITEM_ACCOUNTS.some(p => code === p || code.startsWith(p + '-'));
+}
 let amp_receipts = [];               // the PO's delivery receipts (edit mode), for the DR picker
 
 /* Account Code: searchable over the whole chart of accounts (GET /po-dr/accounts?search=) */
@@ -838,7 +845,7 @@ function amp_initDrForm(row) {
     document.getElementById('amp-po-number').readOnly = edit;
     amp_receipts = row?.receipts || [];
     const pick = document.getElementById('amp-dr-pick');
-    if (row && amp_receipts.length) {
+    if (edit && row && amp_receipts.length) {
         pick.innerHTML = amp_receipts.map((r, i) => '<option value="' + i + '">' + amp_textEsc(r.dr_number) + '</option>').join('');
         pick.style.display = '';
         amp_loadDr(amp_receipts[0]);
@@ -861,7 +868,7 @@ function amp_syncItems(saved) {
     const box = document.getElementById('amp-item-box'), wrap = document.getElementById('amp-items');
     if (!box || !wrap) return;
     const all  = [...document.querySelectorAll('#amp-entries .amp-ent')];
-    const ents = all.filter(r => amp_amtOf(r) >= AMP_ITEM_MIN_AMOUNT);
+    const ents = all.filter(amp_needsItems);
     // an account row that stopped qualifying (amount lowered / row removed) loses the item that was created for it
     [...wrap.querySelectorAll('.amp-itm')].forEach(r => { if (r._ent && !ents.includes(r._ent)) r.remove(); });
     all.forEach(e => { if (!ents.includes(e)) e._hasItem = false; });
@@ -893,7 +900,7 @@ function amp_qualAccounts() {
     const m = new Map();
     document.querySelectorAll('#amp-entries .amp-ent').forEach(r => {
         const code = r.querySelector('.amp-f-acct').dataset.code;
-        if (code && amp_amtOf(r) >= AMP_ITEM_MIN_AMOUNT && !m.has(code)) m.set(code, r.querySelector('.amp-f-acct').value);
+        if (code && amp_needsItems(r) && !m.has(code)) m.set(code, r.querySelector('.amp-f-acct').value);
     });
     return m;
 }
@@ -913,7 +920,7 @@ function amp_itemsState() {
     const need = new Map(), have = new Map();
     document.querySelectorAll('#amp-entries .amp-ent').forEach(r => {
         const code = r.querySelector('.amp-f-acct').dataset.code || '', c = Math.round(amp_amtOf(r) * 100);
-        if (amp_amtOf(r) >= AMP_ITEM_MIN_AMOUNT) need.set(code, (need.get(code) || 0) + c);
+        if (amp_needsItems(r)) need.set(code, (need.get(code) || 0) + c);
     });
     document.querySelectorAll('#amp-items .amp-itm').forEach(r => {
         const code = amp_itemAcct(r), c = Math.round((parseFloat(amp_unfmt(r.querySelector('.amp-i-amount').value)) || 0) * 100);

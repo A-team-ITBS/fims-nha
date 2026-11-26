@@ -12,7 +12,7 @@ use PHPMaker2024\FIMS\DataType;
  *                                       line_transaction (JSONB) = the PO's delivery receipts (DR):
  *   [ { dr_number, delivery_date, total_amount,
  *       lines: [ { account_code, account_title, amount } ],
- *       items?: [ { description, serial_no, amount, property_no } ] } ]   // items only when the total is >= 50,000
+ *       items?: [ { description, serial_no, amount, property_no } ] } ]   // items only for a property / equipment account row of >= 50,000
  *
  * The PO is picked from the Budget Allocation (the po_number of an RFA row — see poSource()). One save handles ONE DR. A DR is
  * identified inside its PO by its dr_number (unique within the PO); a serial number is unique across all DRs.
@@ -22,7 +22,7 @@ use PHPMaker2024\FIMS\DataType;
  *   { po_number, iar_number, si_number?, si_date?,
  *     dr: { dr_ref? (edit: the dr_number the DR had when it was loaded), dr_number, delivery_date,
  *           entries: [ { account_code, amount } ],                           // account codes from fims.chart_of_accounts
- *           items?: [ { description?, serial_no?, amount?, property_no? } ] } }   // many items, one line each; kept only when the total is >= 50,000
+ *           items?: [ { description?, serial_no?, amount?, property_no? } ] } }   // many items, one line each; required only for property / equipment account rows of >= 50,000 (needsItems())
  *
  * API shape of a delivery receipt (read / list):
  *   { dr_number, delivery_date, total_amount, entries: [ { account_code, account_title, amount } ],
@@ -33,13 +33,31 @@ class PoDrService
     private string $h = 'fims.inspection_acceptance_report';   // po_number, iar_number, si_number, si_date, line_transaction
 
     /** An account row of this amount or more needs items (description required, serial, amount, property no. — one line each). */
-    private const ITEM_MIN_AMOUNT = 50000;
+    private const ITEM_MIN_AMOUNT = 50000;   // ...but only on a property / equipment account (PRIORITY_ACCOUNTS) — see needsItems()
 
     /** Property, plant & equipment accounts (the property record categories): offered first in the Account Code picker. */
     private const PRIORITY_ACCOUNTS = [
         '1-06-05-020', '1-06-05-030', '1-06-05-070', '1-06-05-080', '1-06-05-110',
         '1-06-05-130', '1-06-05-990', '1-06-06-010', '1-06-07-010', '1-06-99-990',
     ];
+
+    /**
+     * Does this account row need items? Only a row of ITEM_MIN_AMOUNT or more whose account is a property / equipment category
+     * (PRIORITY_ACCOUNTS, or a sub-ledger of one, e.g. 1-06-05-020-01). Any other account — whatever the amount — has no item validation.
+     */
+    public static function needsItems(string $code, float $amount): bool
+    {
+        if ($amount < self::ITEM_MIN_AMOUNT) {
+            return false;
+        }
+        foreach (self::PRIORITY_ACCOUNTS as $p) {
+            if ($code === $p || str_starts_with($code, $p . '-')) {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     /** Pro-forma JEV: the DR total is credited to Accounts Payable. */
     private const PAYABLE_ACCOUNT = '2-01-01-010';
@@ -225,7 +243,7 @@ class PoDrService
         $qualCents = 0;
         $needBy    = [];   // account code => cents of its account rows that need items
         foreach ($entries as $en) {
-            if ((float) $en['amount'] >= self::ITEM_MIN_AMOUNT) {
+            if (self::needsItems($en['account_code'], (float) $en['amount'])) {
                 $c          = (int) round((float) $en['amount'] * 100);
                 $qualCents += $c;
                 $needBy[$en['account_code']] = ($needBy[$en['account_code']] ?? 0) + $c;
@@ -277,7 +295,7 @@ class PoDrService
                 $itemCents += (int) round((float) $row['amount'] * 100);
                 if (isset($row['account_code'])) {
                     if (!isset($needBy[$row['account_code']])) {
-                        return [null, null, "Item {$n}: category {$row['account_code']} is not an account row of " . number_format(self::ITEM_MIN_AMOUNT, 2) . ' or more.'];
+                        return [null, null, "Item {$n}: category {$row['account_code']} is not a property / equipment account row of " . number_format(self::ITEM_MIN_AMOUNT, 2) . ' or more.'];
                     }
                     $haveBy[$row['account_code']] = ($haveBy[$row['account_code']] ?? 0) + (int) round((float) $row['amount'] * 100);
                 }
@@ -301,7 +319,7 @@ class PoDrService
             }
             if ($itemCents !== $qualCents) {
                 return [null, null, 'The items total ' . number_format($itemCents / 100, 2) . ' but must equal ' . number_format($qualCents / 100, 2)
-                    . ' (the account rows of ' . number_format(self::ITEM_MIN_AMOUNT, 2) . ' or more).'];
+                    . ' (the property / equipment account rows of ' . number_format(self::ITEM_MIN_AMOUNT, 2) . ' or more).'];
             }
         }
 
@@ -462,6 +480,8 @@ class PoDrService
         }
         if ($onlyWithBalance) {   // the PO picker (adding an IAR): a PO whose DV was already processed is not offered
             $where .= ' AND NOT ' . $this->activeDvSql();
+            // a PO that already has an IAR is not offered either: further deliveries are added from that row's Actions → Add Deliveries
+            $where .= " AND NOT EXISTS (SELECT 1 FROM {$this->h} iar WHERE iar.po_number = a.po_number)";
         }
         $sql = "SELECT * FROM (
                     SELECT DISTINCT ON (a.po_number)
@@ -570,6 +590,7 @@ class PoDrService
             'vendor_id'         => $info['vendor_id'] ?? null,
             'vendor_name'       => $info['vendor_name'] ?? null,
             'rfa_number'        => $info['rfa_number'] ?? null,
+            'lines'             => $info['lines'] ?? [],   // the RFA's account lines, to pre-fill a new delivery receipt
             'po_amount'         => $poAmt,
             'dr_total'          => $drTotal,
             'balance'           => $poAmt === null ? null : round($poAmt - $drTotal, 2),

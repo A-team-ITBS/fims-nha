@@ -371,6 +371,10 @@ function amp_renderTable(rows) {
                         <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                         Pro-forma
                     </button>
+                    ${Number(r.balance) > 0 ? `<button type="button" class="iar-menu-item" onclick="amp_closeMenus();amp_addDelivery('${amp_escAttr(r.po_number)}')" title="Add another delivery receipt to this PO (balance ${money(r.balance)})">
+                        <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                        Add Deliveries
+                    </button>` : ''}
                     <div class="iar-menu-divider"></div>
                     <button type="button" class="iar-menu-item" onclick="amp_closeMenus();amp_edit('${amp_escAttr(r.po_number)}')" title="Edit">
                         <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
@@ -813,27 +817,51 @@ function amp_renderPagination(p) {
 function amp_goTo(page) { if (page < 1) return; amp_page = page; amp_load(); }
 
 /* ── Modal ─────────────────────────────────────────────────── */
-function amp_openModal(mode, row = null) {
+function amp_openModal(mode, row = null, addDelivery = false) {   // addDelivery: another delivery receipt on a PO that already has an IAR (PO + IAR number locked)
     amp_hideErr();
     $amp('amp-mode').value = mode;
     $amp('amp-orig-po').value = row?.po_number || '';        // the PO is addressed by its current PO number
-    $amp('amp-modal-title').textContent = mode === 'edit' ? 'Edit PO Record' : 'Add PO Record';
+    $amp('amp-modal-title').textContent = mode === 'edit' ? 'Edit PO Record' : (addDelivery ? 'Add Deliveries' : 'Add PO Record');
     amp_setPoValue(row);                                     // PO picker + office / supplier / PO date / PO amount (form/dr-module-form.php)
     // IAR number (typed by the user) and the Sales Invoice details live on the PO's IAR
     $amp('amp-iar-number').value = row?.iar_number || '';
     $amp('amp-si-number').value  = row?.si_number || '';
     $amp('amp-si-date').value    = row?.si_date || '';
     amp_initDrForm(row);                                      // one delivery receipt: DR no./date, balanced entries (form/dr-module-form.php)
-    // When editing, the IAR number, DR number and delivery date identify the record: shown but not editable
+    // When editing, the IAR number, DR number and delivery date identify the record: shown but not editable.
+    // Adding a delivery to an existing PO: the PO and its IAR number are fixed (the DR number and date are new).
     ['amp-iar-number', 'amp-dr-number', 'amp-dr-date'].forEach(id => {
-        const el = $amp(id);
-        el.readOnly = mode === 'edit';
-        el.style.background = mode === 'edit' ? 'var(--afims-surface-subtle, #F4F7FA)' : '';
-        el.style.pointerEvents = mode === 'edit' ? 'none' : '';   // also blocks the date picker
-        el.tabIndex = mode === 'edit' ? -1 : 0;
+        const el = $amp(id), lock = mode === 'edit' || (addDelivery && id === 'amp-iar-number');
+        el.readOnly = lock;
+        el.style.background = lock ? 'var(--afims-surface-subtle, #F4F7FA)' : '';
+        el.style.pointerEvents = lock ? 'none' : '';   // also blocks the date picker
+        el.tabIndex = lock ? -1 : 0;
     });
+    const poEl = $amp('amp-po-number');
+    poEl.style.background = addDelivery ? 'var(--afims-surface-subtle, #F4F7FA)' : '';
+    poEl.style.cursor = addDelivery ? 'not-allowed' : '';
+    if (addDelivery) {
+        poEl.readOnly = true;                                  // the PO cannot be changed
+        amp_prefillEntries(row);                               // the RFA's lines, limited to what is left on the PO
+    }
     $amp('amp-overlay').classList.add('open');
-    if (mode === 'add') $amp('amp-po-number').focus();
+    if (mode === 'add') (addDelivery ? $amp('amp-dr-number') : poEl).focus();
+}
+
+/* Actions → Add Deliveries: another delivery receipt on a PO that already has an IAR (offered while the PO balance is above 0) */
+async function amp_addDelivery(poNumber) {
+    window.PagePreloader?.show();
+    try {
+        const res  = await fetch(`${AMP_API}/read?po_number=${encodeURIComponent(poNumber)}`, { credentials: 'same-origin', headers: amp_authHeaders() });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message || 'Failed to load record.');
+        if (!(Number(json.data.balance) > 0)) throw new Error('This PO has no balance left.');
+        amp_openModal('add', json.data, true);
+    } catch (e) {
+        amp_toast(e.message, 'error');
+    } finally {
+        window.PagePreloader?.hide();
+    }
 }
 
 function amp_closeModal() {

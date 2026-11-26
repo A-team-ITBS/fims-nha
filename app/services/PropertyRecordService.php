@@ -74,8 +74,6 @@ class PropertyRecordService
     private const PAGE_SIZE = 100;
     private const MAX_PAGES = 30;       // safety cap per PO
 
-    /** An account row of at least this amount has items in the IAR module (same value as PoDrService::ITEM_MIN_AMOUNT). */
-    private const IAR_ITEM_MIN_AMOUNT = 50000;
 
     /**
      * The items entered in the IAR module (fims.inspection_acceptance_report → line_transaction[].items) whose account is one of the
@@ -111,7 +109,7 @@ class PropertyRecordService
                     }
                     $pool = [];   // the account rows that need items, not matched to an item yet
                     foreach ($entries as $en) {
-                        if ((float) ($en['amount'] ?? 0) >= self::IAR_ITEM_MIN_AMOUNT) {
+                        if (PoDrService::needsItems((string) ($en['account_code'] ?? ''), (float) ($en['amount'] ?? 0))) {
                             $pool[] = $en;
                         }
                     }

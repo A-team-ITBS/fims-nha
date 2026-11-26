@@ -427,7 +427,7 @@ The furthest-along business workflow in the repo — a Budget Request → Revisi
   `budget_allocation.line_transaction`):
   `[{dr_number, delivery_date, total_amount, lines:[{account_code, account_title, amount}], items?:[{description,
   serial_no, amount, property_no}]}]`. `items` (any number of items, **one line each**) is present only when
-  the total is 50,000 or more and at least one item was entered. There are no separate DR / entry tables and no FK: deleting the PO's row deletes its DRs.
+  a row of 50,000 or more on a property / equipment account was entered (see "Items are per account row" below). There are no separate DR / entry tables and no FK: deleting the PO's row deletes its DRs.
   A DR is identified inside its PO by its `dr_number` (unique within the PO); a serial number is unique across all
   items of all DRs. Both are checked in PHP (`PoDrService::drError()`) — JSONB array elements can't carry a DB unique key — and the
   row is locked (`FOR UPDATE`) while a DR is added / edited.
@@ -449,8 +449,9 @@ The furthest-along business workflow in the repo — a Budget Request → Revisi
   at least one account row; each row has an account code that exists in `fims.chart_of_accounts` and an
   **amount** > 0. There is **no debit/credit to balance** — the user only enters account codes and amounts;
   the validation is the PO balance (next bullet). The DR **Amount** (`total_amount`) is the sum of the
-  row amounts, computed server-side. **Items are per account row**: every account row of **50,000 or more** (`ITEM_MIN_AMOUNT` in the service,
-  `AMP_ITEM_MIN_AMOUNT` in the form) needs items; rows below it have none. The form creates one item per qualifying row (amount pre-filled, **description
+  row amounts, computed server-side. **Items are per account row**: every account row of **50,000 or more on a property / equipment account** (`ITEM_MIN_AMOUNT` + `PRIORITY_ACCOUNTS` in the service via `PoDrService::needsItems()`,
+  `AMP_ITEM_MIN_AMOUNT` + `AMP_ITEM_ACCOUNTS` in the form; the accounts are 1-06-05-020 / -030 / -070 / -080 / -110 / -130 / -990, 1-06-06-010, 1-06-07-010 and 1-06-99-990, or a sub-ledger of one) needs items;
+  rows below 50,000 **and rows on any other account (whatever the amount) have none and are not validated**. The form creates one item per qualifying row (amount pre-filled, **description
   required**); every item has a **category** (one of the qualifying accounts, stored as `account_code` on the item), and amounts / categories are
   editable, items can be added or removed — so one account amount can be split into several items. The items **of each account must add up to that
   account's amount** (checked in the form and in `PoDrService::clean()`; items sent without categories are only compared in total). A serial number is
@@ -468,7 +469,9 @@ The furthest-along business workflow in the repo — a Budget Request → Revisi
   postable SLs is not offered itself. Only the code is stored; the form shows "code - title". A new SL's `account_id` is generated as MAX(digits)+1.
 - **PO comes from the Budget Allocation.** The PO Number field is a search-and-pick combobox
   (`GET /po-dr/pos?search=`), not free text. It lists the `po_number` of `fims.budget_allocation` rows with
-  `allocation_type = 'RFA'` (one per PO number, PO number + PO date shown). Picking one fills the read-only
+  `allocation_type = 'RFA'` (one per PO number, PO number + PO date shown). **A PO that already has an IAR row is not offered** (nor one with an active DV or no balance left):
+  further delivery receipts are added from that row's **Actions → Add Deliveries** (shown while the balance is above 0; opens the form with the PO and IAR number locked and the
+  RFA lines pre-filled — `GET /po-dr/read` returns `lines` for this — then the same `POST /po-dr/add` appends the DR). Picking one fills the read-only
   Requesting Office/Dept (`responsibility_code.rc_name` of `requesting_rc_id`), Vendor (`vendors.vendor_name`),
   PO Date and PO Amount. **PO Amount = sum of `requested_amount` over `line_transaction`**.
   `PoDrService::create()` (and `update()` when the PO number changes) rejects a PO that isn't an RFA PO.
