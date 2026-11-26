@@ -855,6 +855,7 @@ One table, `fims.fund_tracking`, backs **4 distinct pages** filtered by `trackin
 | Supplemental Fund Tracking | `app/pages/supplemental-funds-page.php` | `nature_of_fund = SUPPLEMENTAL` | Flat list, no tree |
 | Trust Funds | `app/pages/trust-funds-page.php` + `form/trust-fund-form.php` | `tracking_type = TRUST` | Register of Trust Fund records + their Official Receipts |
 | Fund Sourcing Dashboard | `app/pages/fund-sourcing-dashboard-page.php` | (aggregated, no single filter) | Summary view over the whole table — `GET /fund_tracking/fund_sourcing_determination` / `/supplemental_status_summary` / `/dashboard` |
+| Status of Funds | `app/pages/status-of-fund-page.php`, `app/routes/status_of_fund.php`, `app/services/StatusOfFundService.php` | NG Subsidy (SARO + NCA, not SUPPLEMENTAL) · Trust Funds (TRUST + OR) · Supplemental Funds (SARO + NCA, SUPPLEMENTAL) | Registry → Status of Funds, read-only: funds available / disbursed / balance per fund source (disbursed = the RELEASED voucher linked to each SARO through `fund_tracking.dv_id`), a per-program split, the SARO → NCA tree and a printable Utilization Report. No new table. See `system_docs/modules/STATUS-OF-FUNDS.md` |
 
 `unreleased` (and `sub_program_code`) were dropped from `fims.fund_tracking` (`_assets/sql/01 - fims/03 - alter_table/41`, destructive: the values were lost);
 `unreleased` NUMERIC(18,2) is back (`03 - alter_table/47`, backfilled by `48`): on a SARO it is its **balance** — the SARO's amount less every live NCA released under it —

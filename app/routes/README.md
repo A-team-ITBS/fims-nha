@@ -304,6 +304,11 @@ SARO / NCA / Trust / OR / Supplemental fund records. Soft-deleted via `deleted_a
 ### agency.php, nature_of_fund.php, fund_tracking_type.php (lookups for the above)
 `AgencyServices` / `fims.agency` (`/agency/...`), `NatureOfFundServices` / `fims.nature_of_fund` (`/nature-of-fund/...`), `FundTrackingTypeServices` / `fims.fund_tracking_type` (`/fund-tracking-type/...`). Each has `GET all` (public), `GET list`, `GET read/{id}`, `POST add`, `PATCH update/{id}` and `DELETE delete/{id}`. Agency and nature of fund hard-delete (names are unique); fund tracking type soft-deletes (`deleted_at`) and also has `PATCH /fund-tracking-type/restore/{id}`.
 
+### status_of_fund.php (`StatusOfFundService`; page `app/pages/status-of-fund-page.php`, sidebar Registry → Status of Funds)
+Read-only. A fund source is a group of `fims.fund_tracking` records — `NG` (SARO + NCA, not SUPPLEMENTAL), `TRUST` (Trust Fund + OR), `SUPP` (SARO + NCA, SUPPLEMENTAL); there is no fund-source table. No SQL file to run. Full notes: `system_docs/modules/STATUS-OF-FUNDS.md`. Both routes sit behind `->add($accessMiddleware)->add($jwtMiddleware)`; `fiscal_year` omitted = every year combined.
+- `GET /status_of_fund/overview` - `data.fiscal_years`, `data.sources[]` (per fund source: `saro_released`, `nca_released`, `receipts`, `available` = NCA released or receipts, `disbursed` = what the RELEASED vouchers linked to its SAROs (`fund_tracking.dv_id`) paid — `null` for `TRUST` and without that column —, `balance`, `utilization` (%), `unreleased` and the record counts) and `data.totals` `{ sources, available, disbursed, balance, utilization }`. Optional: `fiscal_year`
+- `GET /status_of_fund/source/{key}` - one fund source (`NG` | `TRUST` | `SUPP`, any case; anything else 404): the same row plus `programs[]` for `NG` / `SUPP` (`program_code` / `program_name` — "No program" when the SARO has no sub-program —, `saro_released`, `nca_released`, `disbursed`, `undisbursed`, `utilization`) or `trust_funds[]` for `TRUST` (`id`, `reference`, `description`, `fiscal_year`, `amount`, `receipts`, `or_count`). Optional: `fiscal_year`
+
 ## Template Usage
 
 When duplicating this template:
