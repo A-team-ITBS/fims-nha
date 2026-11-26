@@ -935,7 +935,9 @@ function vf_lockedRfaVendorId() {
 
 function vf_renderRfaDropdown() {
     const box    = $vf('vf-rfa-dropdown');
-    const search = $vf('vf-rfa-search').value.trim().toLowerCase();
+    const searchEl = $vf('vf-rfa-search');
+    // the RFA number vf_openForPo() put in the box is not a search: ignore it until the user types something else
+    const search = (searchEl.dataset.auto !== undefined && searchEl.value === searchEl.dataset.auto) ? '' : searchEl.value.trim().toLowerCase();
     const lockedClass  = vf_lockedRfaClass();
     const lockedVendor = vf_lockedRfaVendorId();
     const options = Object.values(vf_rfas)
@@ -1994,6 +1996,23 @@ async function vf_applyPayroll(id) {
     } finally {
         window.PagePreloader?.hide();
     }
+}
+
+/**
+ * The GSD notification of a Delivery Acceptance (Voucher?po={po_number}): opens a new DV and picks the approved RFA that carries that PO —
+ * vf_onRfaSelectionChange() then fills the PO Number, the Vendor (Supplier / Contractor), the Dept/Project, the amount and the particulars,
+ * exactly as when the RFA is picked by hand.
+ */
+async function vf_openForPo(poNumber) {
+    await vf_open(0);
+    const po  = String(poNumber).trim().toLowerCase();
+    const rfa = Object.values(vf_rfas).find(r => String(r.po_number || '').trim().toLowerCase() === po);
+    if (!rfa) {
+        vf_showErrors([`No approved RFA with PO ${poNumber} is available for a new DV — it may already have a Disbursement Voucher.`]);
+        return;
+    }
+    vf_selectRfa(rfa.allocation_id);                                  // clears the search box and loads the RFA's details…
+    $vf('vf-rfa-search').value = $vf('vf-rfa-search').dataset.auto = rfa.allocation_number || '';   // …so show which RFA it picked in the box too (the chip below holds the selection; vf_renderRfaDropdown() ignores this text)
 }
 
 /** Payroll Management's "Create DV" (Voucher?payroll={id}): a new DV with that imported month already picked. */

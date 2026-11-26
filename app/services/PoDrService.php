@@ -879,9 +879,40 @@ class PoDrService
                 . 'subject_to = ' . $this->q($subjectTo) . ', inspection_notes = ' . $this->sqlOrNull($notes === '' ? null : $notes)
                 . " WHERE po_number = " . $this->q($po), 'DB');
 
+            $this->notifyGsd($po, $userId, $subjectTo, $notes);
+
             return ['success' => true, 'message' => "Delivery of PO '{$po}' accepted."];
         } catch (\Exception $e) {
             return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /** The Responsibility Center of the General Services Department (fims.responsibility_code): notified of every delivery acceptance. */
+    private const GSD_RC = '010';
+
+    /**
+     * Tell every active GSD user (uac.users.rc_id = GSD_RC) that a delivery was accepted. Never throws and never blocks the acceptance —
+     * the acceptance is already saved. The sender is left out of the recipients; event_key makes a repeat harmless.
+     */
+    private function notifyGsd(string $po, ?int $userId, string $subjectTo, string $notes): void
+    {
+        try {
+            $r    = App\ExecuteRows("SELECT iar_number FROM {$this->h} WHERE po_number = " . $this->q($po), 'DB');
+            $iar  = $r ? (string) $r[0]['iar_number'] : '';
+            $body = "Delivery Acceptance for PO {$po}" . ($iar !== '' ? " (IAR {$iar})" : '') . ". Subject to: {$subjectTo}." . ($notes !== '' ? " Notes: {$notes}" : '')
+                . ' Open it to prepare the Disbursement Voucher.';
+            try {   // the link goes to the DV (Voucher page), which opens the new-DV modal with this PO (and its vendor) filled in — not to the IAR module
+                $link = '/' . ltrim((string) App\GetUrl('Voucher'), '/');
+            } catch (\Throwable $e) {
+                $link = '/Voucher';
+            }
+            $link .= '?po=' . rawurlencode($po);
+            NotificationService::toRc(self::GSD_RC, "Delivery Acceptance: PO {$po}", $body, $link, [
+                'sender_id' => $userId && $userId > 0 ? $userId : null,
+                'event_key' => "delivery_accepted:{$po}",
+            ]);
+        } catch (\Throwable $e) {
+            App\LogError("PoDrService: could not notify GSD of the acceptance of PO {$po} — " . $e->getMessage());
         }
     }
 

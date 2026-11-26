@@ -477,7 +477,14 @@ The furthest-along business workflow in the repo — a Budget Request → Revisi
   **Subject to ICS/PAR** (required, typed → `subject_to`) and **Inspection Notes** (optional → `inspection_notes`); **Inspected By** is not on the form — the server stores the logged-in user
   (`delivery_accepted_by`) and the name is read live from `uac.users` as `inspected_by`. Saving sets **`delivery_accepted = TRUE`** (+ `delivery_accepted_at`) on the IAR row — one-way, independent of the PO balance;
   other modules can key off the flag. Clicking Delivery Acceptance on an accepted row shows Date, Inspected By, Subjected To and Inspection Notes read-only. An accepted PO shows an **Accepted** pill,
-  loses Add Deliveries and Edit, and `create()`, `update()` and `delete()` refuse it (View and Pro-forma still work). Columns: `25 - fims_inspection_acceptance_report.sql` (idempotent `ADD COLUMN IF NOT EXISTS`;
+  loses Add Deliveries and Edit, and `create()`, `update()` and `delete()` refuse it (View and Pro-forma still work).
+  **GSD is notified**: after the acceptance is saved, `PoDrService::notifyGsd()` calls `NotificationService::toRc('010', …)` (`GSD_RC`, General Services Department) — one notification per active user of RC 010,
+  "**Delivery Acceptance**: PO …" (the wording is "Delivery Acceptance", not "Delivery accepted") with the IAR no., Subject to and notes, **linking to `Voucher?po=<po_number>` — the DV page, not the IAR module**.
+  `voucher.php` reads `?po=` (`VL_PO`, then clears it from the URL) and calls `vf_openForPo()` (`voucher/form.php`): it opens the new-DV modal and picks the approved RFA carrying that PO, so the PO Number, the
+  **Vendor (Supplier / Contractor)**, Dept/Project, amount and particulars fill in exactly as when the RFA is picked by hand (a payroll month is still chosen in the same Vendor dropdown; the field is optional). When no
+  approved, DV-free RFA holds that PO the modal opens with an explanation instead. The notification's `event_key` is `delivery_accepted:<po>:<user_id>`, so it is never sent twice; the accepting user is skipped; a failure is only
+  logged and never undoes the acceptance. The GSD sample account is seeded by `00 - uac/04 - seed_data/07 - gsd_role.sql` (user level **17 GSD Officer**, pages: Voucher, IAR module, Property Records, dashboard,
+  notifications) and `01 - fims/04 - seed_data/26 - gsd_user.sql` (user **`gsd.officer`**, RC 010, password `password123` — change it on a real server). Add more GSD users with RC 010 and they are notified too. Columns: `25 - fims_inspection_acceptance_report.sql` (idempotent `ADD COLUMN IF NOT EXISTS`;
   re-run it on an existing DB). Picking a PO fills the read-only
   Requesting Office/Dept (`responsibility_code.rc_name` of `requesting_rc_id`), Vendor (`vendors.vendor_name`),
   PO Date and PO Amount. **PO Amount = sum of `requested_amount` over `line_transaction`**.
