@@ -169,7 +169,7 @@ $apiBase = Config('API.FIMS_URL');
      form is included; padding/background are neutralised so it takes no space. -->
 <div class="nha-root" style="padding:0;background:none;">
 <div id="tf-overlay" class="nha-overlay no-print">
-    <form id="tf-form" class="nha-modal nha-modal-lg tf-modal" novalidate autocomplete="off">
+    <form id="tf-form" class="nha-modal tf-modal u-modal-lg" novalidate autocomplete="off">
         <div class="nha-modal-hdr">
             <h3 class="nha-modal-title" id="tf-title">Trust Fund — New Entry</h3>
             <button type="button" class="nha-modal-close" id="tf-close" aria-label="Close">&times;</button>

@@ -31,7 +31,7 @@
     #pyr-overlay { display:none;position:fixed;inset:0;z-index:9100;
         background:rgba(15,32,69,.6);align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(3px); }
     #pyr-overlay.open { display:flex; }
-    #pyr-card { background:var(--afims-surface, #FFFFFF);border-radius:16px;width:100%;max-width:720px;
+    #pyr-card { background:var(--afims-surface, #FFFFFF);border-radius:16px;
         max-height:92vh;display:flex;flex-direction:column;overflow:hidden;
         box-shadow:0 32px 80px rgba(0,0,0,.28);font-family:'IBM Plex Sans',sans-serif;
         animation:pyrIn .2s ease; }
@@ -146,7 +146,7 @@
 </style>
 
 <div id="pyr-overlay">
-    <div id="pyr-card">
+    <div class="u-modal-md" id="pyr-card">
 
         <div id="pyr-header">
             <div id="pyr-header-info">

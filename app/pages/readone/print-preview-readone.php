@@ -128,7 +128,7 @@ $_prp_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
 <!-- ── PRINT PREVIEW MODAL ───────────────────────────── -->
 <div id="prp-root" class="nha-root">
     <div id="prp-overlay" class="nha-overlay no-print">
-        <div class="nha-modal nha-modal-lg" role="dialog" aria-modal="true" aria-labelledby="prp-title">
+        <div class="nha-modal u-modal-lg" role="dialog" aria-modal="true" aria-labelledby="prp-title">
             <div class="nha-modal-hdr">
                 <h3 class="nha-modal-title" id="prp-title">Print Preview — Certificate of Budget Allocation</h3>
                 <button type="button" class="nha-modal-close" id="prp-close" aria-label="Close">&times;</button>
@@ -359,9 +359,9 @@ async function prp_open(payload, opts = {}) {
     $prp('prp-docx').hidden = pdfOnly;
     $prp('prp-lh-toggle').hidden = !letterhead;
     if (!letterhead && !$prp('prp-lh').hidden) prp_lhToggle();   // close a designer left open by another form
-    const dialog = $prp('prp-overlay').querySelector('.nha-modal');   // landscape forms ('wide') get the xl modal
-    dialog.classList.toggle('nha-modal-xl', !!PRP_TYPES[prp_type].wide);
-    dialog.classList.toggle('nha-modal-lg', !PRP_TYPES[prp_type].wide);
+    const dialog = $prp('prp-overlay').querySelector('.nha-modal');   // landscape forms ('wide') get u-modal-xl, the rest u-modal-lg
+    dialog.classList.toggle('u-modal-xl', !!PRP_TYPES[prp_type].wide);
+    dialog.classList.toggle('u-modal-lg', !PRP_TYPES[prp_type].wide);
     $prp('prp-overlay').classList.add('open');
     if (pdfOnly && PRP_TYPES[prp_type].prefill) {   // its Edit Form tab first (prefilled values), the PDF on Form Preview
         await prp_ffOpen();

@@ -45,15 +45,15 @@
  * extractClFromText()).
  *
  * Markup/CSS classes (fims-page-header, fims-stat-grid, fims-table-panel,
- * fims-tabs-underline, fims-modal-overlay, etc.) match app/fims-css/fims.css,
+ * fims-tabs-underline, fims-modal-overlay, etc.) match _shared/css/nha-fims.css,
  * same convention as check-disbursement-voucher-page.php.
  */
 
 namespace PHPMaker2024\FIMS;
 
-$fbCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
+$fbCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css');
 ?>
-<link rel="stylesheet" href="/app/fims-css/fims.css?v=<?= $fbCssVer ?>" />
+<link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= $fbCssVer ?>" />
 <!-- CL scan autofill (Tab 3, fbClRunOcr()) — client-side OCR, no server
      binary required. pdf.js only needed to rasterize a PDF's first page to
      an image before handing it to Tesseract.js (which reads images only);
@@ -342,7 +342,7 @@ $fbCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
          fbOoNoFileProceedAction below
     ══════════════════════════════════════════════ -->
     <div class="fims-modal-overlay" id="m-oo-no-file" style="display:none;">
-        <div class="fims-modal-dialog" style="max-width:440px;width:95vw;">
+        <div class="fims-modal-dialog u-modal-sm">
             <div class="fims-modal-content">
                 <div class="fims-modal-header">
                     <div class="fims-modal-title">No Office Order attached</div>
@@ -363,7 +363,7 @@ $fbCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
          MODAL: confirm creating a CL draft with no scanned file attached
     ══════════════════════════════════════════════ -->
     <div class="fims-modal-overlay" id="m-cl-no-file" style="display:none;">
-        <div class="fims-modal-dialog" style="max-width:440px;width:95vw;">
+        <div class="fims-modal-dialog u-modal-sm">
             <div class="fims-modal-content">
                 <div class="fims-modal-header">
                     <div class="fims-modal-title">No scanned CL attached</div>
@@ -385,7 +385,7 @@ $fbCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
          CL Register / Bond History's "View" links)
     ══════════════════════════════════════════════ -->
     <div class="fims-modal-overlay" id="m-cl-summary" style="display:none;">
-        <div class="fims-modal-dialog" style="max-width:640px;width:95vw;">
+        <div class="fims-modal-dialog u-modal-md">
             <div class="fims-modal-content">
                 <div class="fims-modal-header">
                     <div><div class="fims-modal-title" id="fbClSummaryTitle">Confirmation Letter</div></div>

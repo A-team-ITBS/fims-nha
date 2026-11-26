@@ -15,20 +15,19 @@
  * jQuery/DataTables dependency.
  *
  * Markup/CSS classes (fims-page-header, fims-stat-grid, fims-table-panel,
- * fims-modal-overlay, etc.) match app/fims-css/fims.css.
+ * fims-modal-overlay, etc.) match _shared/css/nha-fims.css.
  */
 
 namespace PHPMaker2024\FIMS;
 
-$bamCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
+$bamCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css');
 ?>
-<link rel="stylesheet" href="/app/fims-css/fims.css?v=<?= $bamCssVer ?>" />
+<link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= $bamCssVer ?>" />
 <!-- nha-fims.css: shared design tokens (--afims-*) used throughout this page's styles. -->
-<link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
 
 <div class="fims-wrap" id="bamModule">
 
-    <!-- same banner as User Access: app-page-header (styled by app/fims-css/fims.css, already loaded above) -->
+    <!-- same banner as User Access: app-page-header (styled by the global _shared/css/nha-fims.css) -->
     <div class="app-page-header">
         <div class="app-page-header-icon"><i class="fas fa-landmark"></i></div>
         <div>
@@ -129,7 +128,7 @@ $bamCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
          MODAL: Register / Edit Account
     ══════════════════════════════════════════════ -->
     <div class="fims-modal-overlay" id="m-bam-account" style="display:none;">
-        <div class="fims-modal-dialog" style="max-width:960px;width:95vw;">
+        <div class="fims-modal-dialog u-modal-lg">
             <div class="fims-modal-content">
                 <div class="fims-modal-header">
                     <div><div class="fims-modal-title" id="bamModalTitle">Register Account</div></div>
@@ -291,7 +290,7 @@ $bamCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
          MODAL: Quick Tag GL Account Code
     ══════════════════════════════════════════════ -->
     <div class="fims-modal-overlay" id="m-bam-tag-code" style="display:none;">
-        <div class="fims-modal-dialog" style="max-width:480px;width:95vw;">
+        <div class="fims-modal-dialog u-modal-sm">
             <div class="fims-modal-content">
                 <div class="fims-modal-header">
                     <div>
@@ -358,7 +357,7 @@ $bamCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
 #bamModule .fims-btn-outline { color:#000E3E; border-color:#000E3E; }
 #bamModule .fims-btn-outline:hover { background:#000E3E; color:#fff; }
 
-/* .fims-modal-content (shared fims.css) is a plain block, not a flex
+/* .fims-modal-content (shared nha-fims.css) is a plain block, not a flex
    container, so .fims-modal-body's flex:1/min-height:0/overflow-y:auto
    (which assume a flex-column parent) never actually engage — content
    just grows past .fims-modal-dialog's max-height and gets clipped by its

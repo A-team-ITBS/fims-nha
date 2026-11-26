@@ -7,7 +7,7 @@ namespace PHPMaker2024\FIMS;
  * (SRS 1.2.1.1 Fund Sourcing Division + 1.2.1.3 Fund Sources Determination, Financial Management Department).
  *
  * Ported from the FMD app's FP-FS/fund-sourcing-dashboard.php to FIMS, in the same shape as saro-registry-page.php: the shared
- * nha-fims.css look (.nha-root), no jQuery / fmd.css.
+ * nha-fims.css look (.nha-root), no jQuery.
  *
  * LIVE DATA, except what the FIMS database cannot supply yet. Every read goes through fsd_get(key, params):
  *
@@ -37,9 +37,6 @@ namespace PHPMaker2024\FIMS;
 $_fsd_api = rtrim((string) Config('API.FIMS_URL'), '/');
 ?>
 
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
 
 <style>

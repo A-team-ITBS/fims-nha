@@ -341,7 +341,7 @@ html.afims-dark[data-bs-theme="dark"] #vf-root :is(input, select, textarea):is(:
 
 <div id="vf-root" class="nha-root">
     <div id="vf-overlay" class="nha-overlay no-print">
-        <div class="nha-modal nha-modal-xl" role="dialog" aria-modal="true" aria-labelledby="vf-modal-title">
+        <div class="nha-modal u-modal-xl" role="dialog" aria-modal="true" aria-labelledby="vf-modal-title">
 
             <div class="nha-modal-hdr">
                 <h3 class="nha-modal-title" id="vf-modal-title">New Disbursement Voucher</h3>

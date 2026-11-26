@@ -10,9 +10,6 @@ $_api = rtrim((string) Config('API.FIMS_URL'), '/');
 $_api = preg_match('~/api$~', $_api) ? $_api : $_api . '/api';
 ?>
 
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
 
 <div id="pe-root" class="nha-root">
@@ -108,7 +105,7 @@ $_api = preg_match('~/api$~', $_api) ? $_api : $_api . '/api';
 
 <!-- Import Modal -->
 <div id="pe-import-overlay" class="nha-overlay no-print" style="display:none;">
-    <div class="nha-modal nha-modal-med" role="dialog" aria-modal="true">
+    <div class="nha-modal u-modal-md" role="dialog" aria-modal="true">
         <div class="nha-modal-hdr">
             <h3 class="nha-modal-title">Import Employees from CSV</h3>
             <button type="button" class="nha-modal-close" onclick="pe_closeImport()" aria-label="Close">&times;</button>
