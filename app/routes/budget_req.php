@@ -57,7 +57,10 @@ $app->get('/budget_req/all', function ($request, $response, $args) use ($BudgetR
         $params = $request->getQueryParams();
         $scope  = GlobalService::getUserRcScope((int) $request->getAttribute('user_id'));
         $rcId   = GlobalService::resolveBudgetReqRcFilter($scope, $params);
-        $result = $BudgetReqService->fetchAlls(null, 10, $params['fiscal_yr'] ?? '', $params['program_code'] ?? '', $rcId, $params['rc_code_from'] ?? '');
+        // exclude_supplemental=1: leave out the projects added by approved SUPPLEMENTAL budget revisions (they were never part of a proposal) — the Budget Requirements
+        // "View Proposal" asks for it. Off by default: the Budget Amendment form's line picker reads this same list and must still see those lines.
+        $noSupp = in_array(strtolower(trim((string) ($params['exclude_supplemental'] ?? ''))), ['1', 'true', 'yes'], true);
+        $result = $BudgetReqService->fetchAlls(null, 10, $params['fiscal_yr'] ?? '', $params['program_code'] ?? '', $rcId, $params['rc_code_from'] ?? '', $noSupp);
 
         return $response->withJson($result);
     } catch (\Exception $e) {
@@ -91,7 +94,8 @@ $app->get('/budget_req/list', function ($request, $response, $args) use ($Budget
         $scope  = GlobalService::getUserRcScope((int) $request->getAttribute('user_id'));
         $rcId   = GlobalService::resolveBudgetReqRcFilter($scope, $params);
 
-        $result = $BudgetReqService->fetchAlls($page, $limit, $params['fiscal_yr'] ?? '', $params['program_code'] ?? '', $rcId, $params['rc_code_from'] ?? '');
+        // the Budget Requirements list is the PROPOSAL list: the projects added by approved SUPPLEMENTAL revisions are not in it (last argument — see BudgetReqService)
+        $result = $BudgetReqService->fetchAlls($page, $limit, $params['fiscal_yr'] ?? '', $params['program_code'] ?? '', $rcId, $params['rc_code_from'] ?? '', true);
         if ($result['success']) {
             // where each row stands in FMD's review chain, and whether the caller may decide it now (the row actions)
             $result['data'] = $BudgetReqService->withReview($result['data'], (int) $request->getAttribute('user_id'));

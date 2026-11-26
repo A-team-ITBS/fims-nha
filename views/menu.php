@@ -41,6 +41,7 @@ $sideMenu->addMenuItem(551, "mci_Registry", $Language->menuPhrase("551", "MenuTe
 $sideMenu->addMenuItem(263, "mi_saro_registry_page", $Language->menuPhrase("263", "MenuText"), "SaroRegistryPage", 551, "", AllowListMenu('{FIMS}saro-registry-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(560, "mi_check_registry_page", $Language->menuPhrase("560", "MenuText"), "CheckRegistryPage", 551, "", AllowListMenu('{FIMS}check-registry-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(561, "mi_accountable_forms_registry_page", $Language->menuPhrase("561", "MenuText"), "AccountableFormsRegistryPage", 551, "", AllowListMenu('{FIMS}accountable-forms-registry-page.php'), false, false, "", "", false, true);
+$sideMenu->addMenuItem(972, "mi_status_of_fund_page", $Language->menuPhrase("972", "MenuText"), "StatusOfFundPage", 551, "", AllowListMenu('{FIMS}status-of-fund-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(865, "mci_Payroll", $Language->menuPhrase("865", "MenuText"), "", -1, "", true, false, true, "fas fa-money-check-dollar", "", false, true);
 $sideMenu->addMenuItem(761, "mi_payroll_page", $Language->menuPhrase("761", "MenuText"), "PayrollPage", 865, "", AllowListMenu('{FIMS}payroll-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(762, "mi_remittance_page", $Language->menuPhrase("762", "MenuText"), "RemittancePage", 865, "", AllowListMenu('{FIMS}remittance-page.php'), false, false, "", "", false, true);
