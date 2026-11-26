@@ -20,7 +20,7 @@ use PHPMaker2024\FIMS\DataType;
  * fims.budget_line_item_earmark (see BudgetLineItemService).
  *
  * ONLY a request whose status is 'Approved' (fims.settings_status, status_for = 'budget_req') is part of the COB — every
- * method here goes through conditions(), which always starts from that, so a Draft / For Review / Endorsed / Returned
+ * method here goes through conditions(), which always starts from that, so a Draft / For Review / For Endorsement / Returned
  * request never shows up in a table, a total or a filter option.
  *
  * The eight columns of the COB Monitoring sheet, per budget line item (every row, group and total is a SUM of these). Every one is

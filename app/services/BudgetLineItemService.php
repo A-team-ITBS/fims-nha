@@ -20,6 +20,7 @@ class BudgetLineItemService
     private string $tableProject = 'fims.project';
     private string $tableTypeOfFund = 'fims.type_of_fund';
     private string $tableComponentType = 'fims.component_type';
+    private string $tableSubComponentType = 'fims.sub_component_type';
     private string $tableBudgetReqProgram = 'fims.budget_req_program';
     private string $tableStatus = 'fims.settings_status';
     private string $tableEarmark = 'fims.budget_line_item_earmark';
@@ -961,9 +962,49 @@ class BudgetLineItemService
             $accountId = trim((string) ($body['account_id'] ?? ''));
             $amount = $body['proposed_amount'] ?? $body['amount'] ?? '';
             $particulars = trim((string) ($body['particulars'] ?? ''));
+            // Optional — historically only ever set later, by Budget Processing (see createForApproval()).
+            // The Budget Request form's regular (non-COE) flow now collects it up front too, so a caller
+            // may pass it here as the office's own initial pick; still NULL for any caller that doesn't.
+            $typeOfFundId = trim((string) ($body['type_of_fund_id'] ?? ''));
+            // Optional, same as everywhere else this column is used (budget-processing-form.php/
+            // budget-preview-readone.php keep it hidden, not required) — no DB-level FK either (see
+            // migration "06 - budget_line_items_add_adjustment_obligation_disbursement_payable_component.sql"),
+            // so this is a courtesy existence check, not an integrity constraint the database already enforces.
+            $componentId = trim((string) ($body['component_id'] ?? ''));
+            // Optional, flat classification independent of component_id (fims.sub_component_type —
+            // see its own doc comment); the Budget Request form's regular flow collects it alongside
+            // Component. Has a real DB-level FK (migration "59 - budget_line_items_add_sub_component_id.sql").
+            $subComponentId = trim((string) ($body['sub_component_id'] ?? ''));
 
             if ($budgetReferenceNumber === '' || $accountId === '' || $amount === '' || !is_numeric($amount) || $particulars === '') {
                 return ['success' => false, 'message' => 'budget_reference_number, account_id, a numeric proposed_amount, and particulars are required.'];
+            }
+            if ($typeOfFundId !== '') {
+                $typeOfFundExists = (int) App\ExecuteScalar(
+                    "SELECT COUNT(*) FROM {$this->tableTypeOfFund} WHERE type_of_fund_id = ".App\QuotedValue($typeOfFundId, DataType::NUMBER, 'DB')." AND deleted_at IS NULL",
+                    'DB'
+                );
+                if ($typeOfFundExists === 0) {
+                    return ['success' => false, 'message' => "Type of fund '{$typeOfFundId}' does not exist."];
+                }
+            }
+            if ($componentId !== '') {
+                $componentExists = (int) App\ExecuteScalar(
+                    "SELECT COUNT(*) FROM {$this->tableComponentType} WHERE component_type_id = ".App\QuotedValue($componentId, DataType::NUMBER, 'DB')." AND deleted_at IS NULL",
+                    'DB'
+                );
+                if ($componentExists === 0) {
+                    return ['success' => false, 'message' => "Component '{$componentId}' does not exist."];
+                }
+            }
+            if ($subComponentId !== '') {
+                $subComponentExists = (int) App\ExecuteScalar(
+                    "SELECT COUNT(*) FROM {$this->tableSubComponentType} WHERE sub_component_type_id = ".App\QuotedValue($subComponentId, DataType::NUMBER, 'DB')." AND deleted_at IS NULL",
+                    'DB'
+                );
+                if ($subComponentExists === 0) {
+                    return ['success' => false, 'message' => "Sub-component '{$subComponentId}' does not exist."];
+                }
             }
 
             $header = App\ExecuteRow(
@@ -994,12 +1035,15 @@ class BudgetLineItemService
                 return ['success' => false, 'message' => "Chart of accounts entry '{$accountId}' does not exist or is not postable."];
             }
 
-            $sql = "INSERT INTO {$this->table} (budget_reference_number, budget_req_project_id, account_id, proposed_amount, particulars)
+            $sql = "INSERT INTO {$this->table} (budget_reference_number, budget_req_project_id, account_id, proposed_amount, particulars, type_of_fund_id, component_id, sub_component_id)
                     VALUES (".App\QuotedValue($budgetReferenceNumber, DataType::STRING, 'DB').', '
                         .($budgetReqProjectId !== '' ? (int) $budgetReqProjectId : 'NULL').', '
                         .App\QuotedValue($accountId, DataType::STRING, 'DB').', '
                         .App\QuotedValue($amount, DataType::NUMBER, 'DB').', '
-                        .App\QuotedValue($particulars, DataType::STRING, 'DB').')
+                        .App\QuotedValue($particulars, DataType::STRING, 'DB').', '
+                        .($typeOfFundId !== '' ? (int) $typeOfFundId : 'NULL').', '
+                        .($componentId !== '' ? (int) $componentId : 'NULL').', '
+                        .($subComponentId !== '' ? (int) $subComponentId : 'NULL').')
                     RETURNING budget_line_item_id';
 
             $row = App\ExecuteRow($sql, 'DB');

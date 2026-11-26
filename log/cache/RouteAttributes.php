@@ -135,6 +135,8 @@
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone ($p['PHPMaker2024\\FIMS\\Attributes\\Get'] ?? \Symfony\Component\VarExporter\Internal\Registry::p('PHPMaker2024\\FIMS\\Attributes\\Get')),
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Get'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
@@ -236,6 +238,16 @@
     [
         'PHPMaker2024\\FIMS\\Attributes\\Map' => [
             'methods' => [
+                [
+                    'GET',
+                    'POST',
+                    'OPTIONS',
+                ],
+                [
+                    'GET',
+                    'POST',
+                    'OPTIONS',
+                ],
                 [
                     'GET',
                     'POST',
@@ -1391,6 +1403,8 @@
             'pattern' => [
                 '/AccountableFormsRegistryPage[/{params:.*}]',
                 '/AccountableOfficerPage[/{params:.*}]',
+                '/AdminFeePage[/{params:.*}]',
+                '/AdminFeeRatesPage[/{params:.*}]',
                 '/AggregatedAuditLogsList',
                 '/AiAssistant[/{params:.*}]',
                 '/AirModule[/{params:.*}]',
@@ -1624,6 +1638,8 @@
             'handler' => [
                 'PHPMaker2024\\FIMS\\AccountableFormsRegistryPageController:custom',
                 'PHPMaker2024\\FIMS\\AccountableOfficerPageController:custom',
+                'PHPMaker2024\\FIMS\\AdminFeePageController:custom',
+                'PHPMaker2024\\FIMS\\AdminFeeRatesPageController:custom',
                 'PHPMaker2024\\FIMS\\AggregatedAuditLogsController:list',
                 'PHPMaker2024\\FIMS\\AiAssistantController:custom',
                 'PHPMaker2024\\FIMS\\AirModuleController:custom',
@@ -1855,6 +1871,12 @@
                 'PHPMaker2024\\FIMS\\WorkInProcessPageController:custom',
             ],
             'middleware' => [
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
                 [
                     'PHPMaker2024\\FIMS\\PermissionMiddleware',
                 ],
@@ -2550,6 +2572,8 @@
             'name' => [
                 'custom.accountable_forms_registry_page',
                 'custom.accountable_officer_page',
+                'custom.admin_fee_page',
+                'custom.admin_fee_rates_page',
                 'list.aggregated_audit_logs',
                 'custom.AiAssistant',
                 'custom.AIRModule',
@@ -2781,6 +2805,8 @@
                 'custom.work_in_process_page',
             ],
             'options' => [
+                [],
+                [],
                 [],
                 [],
                 [],
@@ -3247,6 +3273,8 @@
         $o[228],
         $o[229],
         $o[230],
+        $o[231],
+        $o[232],
     ],
     []
 );
