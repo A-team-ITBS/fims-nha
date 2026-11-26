@@ -11,7 +11,8 @@
 -- A payroll item counts as one of these through fims.payroll_items.tax_treatment = 'DE_MINIMIS' + de_minimis_id (added
 -- here, after this table exists — 48 runs before 57). The seed (04 - seed_data/19) links the monthly-import items RICE,
 -- UNIFORM, CASH_GIFT and LOYALTY; SRI and PEI are paid through separate (special) payrolls — not linked until that template.
--- Seed values: the client's annualization worksheet (ANNUALIZATION TEMPLATE.xlsx) — to be confirmed by the client.
+-- Seed names and values: the client's annualization worksheet (ANNUALIZATION TEMPLATE.xlsx — RICE SUBSIDY/MONTH, UCA/YEAR,
+-- CASH GIFT, SRI, PEI, LOYALTY, printed in capitals on the worksheet) — limits to be confirmed by the client.
 -- Re-running keeps edited limits (ON CONFLICT updates only the name / order).
 -- ============================================================================
 
@@ -34,12 +35,12 @@ COMMENT ON COLUMN fims.payroll_de_minimis_benefits.limit_per IS 'MONTH: limit_am
 
 INSERT INTO fims.payroll_de_minimis_benefits (code, name, limit_amount, limit_per, sort_order)
 VALUES
-    ('RICE',     'Rice Subsidy',                  2000.00, 'MONTH', 10),
-    ('UNIFORM',  'Uniform / Clothing Allowance',  7000.00, 'YEAR',  20),
+    ('RICE',     'Rice Subsidy/Month',            2000.00, 'MONTH', 10),
+    ('UNIFORM',  'UCA/Year',                      7000.00, 'YEAR',  20),
     ('CASH_GIFT','Cash Gift',                     5000.00, 'YEAR',  30),
-    ('SRI',      'Service Recognition Incentive', 5000.00, 'YEAR',  40),
-    ('PEI',      'Productivity Enhancement Incentive', 5000.00, 'YEAR', 50),
-    ('LOYALTY',  'Loyalty Award',                10000.00, 'YEAR',  60)
+    ('SRI',      'SRI',                           5000.00, 'YEAR',  40),
+    ('PEI',      'PEI',                           5000.00, 'YEAR',  50),
+    ('LOYALTY',  'Loyalty',                      10000.00, 'YEAR',  60)
 ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, sort_order = EXCLUDED.sort_order;
 
 -- the payroll item → its de minimis benefit (only for tax_treatment = 'DE_MINIMIS')

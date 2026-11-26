@@ -529,7 +529,7 @@ class PayrollManagementService
         $limits = $this->deMinimisLimits();
         $deMin  = [];
         foreach ($limits as $id => $b) {
-            $deMin[$id] = ['name' => $b['name'], 'actual' => 0.0, 'limit' => $b['annual_limit'],
+            $deMin[$id] = ['name' => $b['name'], 'actual' => 0.0, 'limit' => $b['annual_limit'], 'limit_entered' => $b['limit_amount'],
                 'limit_note' => $b['limit_per'] === 'MONTH' ? number_format($b['limit_amount'], 2) . ' / month' : null];
         }
         foreach ($lines as $l) {
@@ -557,12 +557,13 @@ class PayrollManagementService
                       : (str_starts_with($acct, '2-02-01-040') ? 'phic' : 'union_dues'));
                 $months[$m][$col] += $amt;
             } elseif ($t === 'BENEFIT_90K') {
-                $name = (string) $l['item_name'];
-                $benefits[$name] = ($benefits[$name] ?? 0.0) + $amt;
+                $code = (string) $l['item_code'];
+                $benefits[$code] ??= ['name' => (string) $l['item_name'], 'amount' => 0.0];
+                $benefits[$code]['amount'] += $amt;
             } elseif ($t === 'DE_MINIMIS') {
                 $dm = (int) $l['de_minimis_id'];
                 if (!isset($deMin[$dm])) {   // not linked to an (active) benefit: no limit
-                    $deMin[$dm] = ['name' => (string) $l['item_name'], 'actual' => 0.0, 'limit' => 0.0, 'limit_note' => 'no limit set'];
+                    $deMin[$dm] = ['name' => (string) $l['item_name'], 'actual' => 0.0, 'limit' => 0.0, 'limit_entered' => 0.0, 'limit_note' => 'no limit set'];
                 }
                 $deMin[$dm]['actual'] += $amt;
             }
@@ -586,11 +587,12 @@ class PayrollManagementService
             $actual = round(max(0.0, $d['actual']), 2);
             $x = round(max(0.0, $actual - $d['limit']), 2);
             $excess += $x;
-            $deMinRows[] = ['name' => $d['name'], 'actual' => $actual, 'limit' => $d['limit'], 'limit_note' => $d['limit_note'], 'excess' => $x];
+            $deMinRows[] = ['name' => $d['name'], 'actual' => $actual, 'limit' => $d['limit'], 'limit_entered' => $d['limit_entered'],
+                'limit_note' => $d['limit_note'], 'excess' => $x];
         }
         $benefitRows = [];
-        foreach ($benefits as $name => $amt) {
-            $benefitRows[] = ['name' => $name, 'amount' => round($amt, 2)];
+        foreach ($benefits as $code => $b) {
+            $benefitRows[] = ['code' => $code, 'name' => $b['name'], 'amount' => round($b['amount'], 2)];
         }
         $benefitTotal = round(array_sum(array_column($benefitRows, 'amount')) + $excess, 2);
         $contrib      = round($tot['gsis'] + $tot['hdmf'] + $tot['phic'] + $tot['union_dues'], 2);

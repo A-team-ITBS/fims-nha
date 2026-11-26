@@ -1172,6 +1172,13 @@ its own row with no limit, all excess); TAX EXEMPT; INCOME (basic less tax exemp
 out, as in the client's sheet. The "BIR FORM 2316" (previous employer) row prints blank; the client's "SCA – DV#…" /
 "SRI TAX" rows are parked. Not copied: the client sheet's UCA excess formula (6,000 vs a 7,000 limit) and its de minimis
 excess total that skipped Loyalty.
+Wording is the template's, word for word: BIR FORM 2316 / months / SRI TAX / TOTAL; OTHER ALLOWANCES/ BONUSES: with its
+fixed rows YEAR END BONUS, MID YEAR BONUS, CHILDREN ALLOWANCE, PROFESSIONAL DEV'T INCENTIVES, MEAL ALLOWANCE (other
+13th-month / benefit items follow under their own names), EXCESS OF DE MINIMIS BENEFITS, TOTAL, (90,000.00), TAXABLE;
+DE MINIMIS BENEFITS: rows = the benefit names (seeded RICE SUBSIDY/MONTH, UCA/YEAR, CASH GIFT, SRI, PEI, LOYALTY), LIMIT as
+entered, a TOTAL under ACTUAL / LIMIT / EXCESS; GROSS TAXABLE INCOME, INCOME IN EXCESS OF 90,000 TRESHHOLD (the template's
+spelling), TAXABLE INCOME, TOTAL TAX DUE, LESS : TAX WITHHELD, TAX DUE / (REFUND); IF TAXABLE INCOME IS : / TAX DUE IS:.
+Only NAME: and DEPT: in the heading (as the template).
 The de minimis limits are editable on **Payroll Setup → De Minimis Limits** (`GET /payroll-setup/de-minimis`,
 `POST …/de-minimis/add`, `PUT …/de-minimis/update/{id}`); a payroll item counts as one through Tax Treatment
 **De minimis** + its benefit (`payroll_items.de_minimis_id`). A changed limit applies on the next **Annualize**.

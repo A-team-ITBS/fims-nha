@@ -15,7 +15,7 @@ namespace PHPMaker2024\FIMS\Service;
  *   $x->merge(0, 0, 1, 0); $x->colWidth(0, 40); $x->rowHeight(0, 24);
  *   file_put_contents('r.xlsx', $x->render());
  *
- * Style definition keys (all optional): font {name, sz, bold, italic, color 'RRGGBB'}, fill 'RRGGBB', border 'RRGGBB' (thin, all sides),
+ * Style definition keys (all optional): font {name, sz, bold, italic, u (underline), color 'RRGGBB'}, fill 'RRGGBB', border 'RRGGBB' (thin, all sides),
  * align {h: left|center|right, v: top|center|bottom, wrap: bool, indent: int}, numFmt 'format code'. style() returns a style id for set() and
  * de-duplicates identical definitions.
  */
@@ -193,7 +193,7 @@ class XlsxWriter
 
         foreach (array_slice($this->styleDefs, 1, null, true) as $def) {
             $f = $def['font'] ?? [];
-            $font = '<font>'.(!empty($f['bold']) ? '<b/>' : '').(!empty($f['italic']) ? '<i/>' : '')
+            $font = '<font>'.(!empty($f['bold']) ? '<b/>' : '').(!empty($f['italic']) ? '<i/>' : '').(!empty($f['u']) ? '<u/>' : '')
                 .'<sz val="'.(float) ($f['sz'] ?? 10).'"/><color rgb="'.self::rgb($f['color'] ?? '000000').'"/>'
                 .'<name val="'.self::xml((string) ($f['name'] ?? 'Arial')).'"/></font>';
             $fontIds[$font] ??= array_push($fonts, $font) - 1;
