@@ -229,6 +229,7 @@
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
     ],
     null,
     [
@@ -1375,6 +1376,11 @@
                     'POST',
                     'OPTIONS',
                 ],
+                [
+                    'GET',
+                    'POST',
+                    'OPTIONS',
+                ],
             ],
             'pattern' => [
                 '/AccountableFormsRegistryPage[/{params:.*}]',
@@ -1562,6 +1568,7 @@
                 '/SaroRegistryPage[/{params:.*}]',
                 '/SignatoryManagement[/{params:.*}]',
                 '/StatementOfChangesPage[/{params:.*}]',
+                '/StatusOfFundPage[/{params:.*}]',
                 '/SubProgramPage[/{params:.*}]',
                 '/SubsidiaryLedgerPage[/{params:.*}]',
                 '/SupplementalFundsPage[/{params:.*}]',
@@ -1793,6 +1800,7 @@
                 'PHPMaker2024\\FIMS\\SaroRegistryPageController:custom',
                 'PHPMaker2024\\FIMS\\SignatoryManagementController:custom',
                 'PHPMaker2024\\FIMS\\StatementOfChangesPageController:custom',
+                'PHPMaker2024\\FIMS\\StatusOfFundPageController:custom',
                 'PHPMaker2024\\FIMS\\SubProgramPageController:custom',
                 'PHPMaker2024\\FIMS\\SubsidiaryLedgerPageController:custom',
                 'PHPMaker2024\\FIMS\\SupplementalFundsPageController:custom',
@@ -2524,6 +2532,9 @@
                 [
                     'PHPMaker2024\\FIMS\\PermissionMiddleware',
                 ],
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
             ],
             'name' => [
                 'custom.accountable_forms_registry_page',
@@ -2711,6 +2722,7 @@
                 'custom.saro_registry_page',
                 'custom.SignatoryManagement',
                 'custom.statement_of_changes_page',
+                'custom.status_of_fund_page',
                 'custom.sub_program_page',
                 'custom.subsidiary_ledger_page',
                 'custom.supplemental_funds_page',
@@ -2757,6 +2769,7 @@
                 'custom.work_in_process_page',
             ],
             'options' => [
+                [],
                 [],
                 [],
                 [],
@@ -3219,6 +3232,7 @@
         $o[226],
         $o[227],
         $o[228],
+        $o[229],
     ],
     []
 );
