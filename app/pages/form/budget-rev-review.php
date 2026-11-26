@@ -87,6 +87,15 @@ namespace PHPMaker2024\FIMS;
 .nha-root .brv-v-tbl td { padding: 7px 10px; vertical-align: top; border-bottom: 1px solid var(--bdr, #E4ECF2); overflow-wrap: anywhere; }
 .nha-root .brv-v-tbl tfoot td { font-weight: 700; border-bottom: 0; background: var(--surf, #F4F7FA); }
 .nha-root .brv-v-tbl .brv-v-num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+/* a Supplemental request's projects: a card and its line items each, a little apart; then the total of all of them */
+.nha-root .brv-v-proj + .brv-v-proj { margin-top: 14px; }
+.nha-root .brv-v-proj .brv-v-lit { margin-top: 8px; }
+.nha-root .brv-v-grand {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; padding: 9px 12px; font-size: 13px;
+    background: var(--surf, #F4F7FA); border: 1px solid var(--bdr, #E4ECF2); border-radius: var(--rs, 7px);
+}
+.nha-root .brv-v-grand[hidden] { display: none; }
+.nha-root .brv-v-grand strong { font-variant-numeric: tabular-nums; }
 
 @media (max-width: 520px) {
     .nha-root .brv-v-grid { grid-template-columns: 1fr; }
@@ -148,16 +157,11 @@ namespace PHPMaker2024\FIMS;
 
             </div><!-- /#brv-view-std -->
 
-            <!-- SUPPLEMENTAL: a NEW project released by a SARO. Nothing exists yet but this request — the project, its budget lines and the Amendment amount are created when it is approved. -->
+            <!-- SUPPLEMENTAL: one or more NEW projects released by a SARO. Nothing exists yet but this request — the projects, their budget lines and the Amendment amount are created when it is approved. -->
             <div id="brv-view-supp" hidden>
-                <div class="brv-v-label">Project</div>
-                <div class="brv-v-card is-to">
-                    <div class="brv-v-card-top">
-                        <span class="nha-bdg nha-bdg-amber">New project</span>
-                        <strong id="brv-view-sp-project"></strong>
-                    </div>
-                    <div class="brv-v-card-sub" id="brv-view-sp-sub"></div>
-                </div>
+                <div class="brv-v-label" id="brv-view-sp-projects-lbl">Project</div>
+                <!-- one block per project (brv_fillSuppView): its card (name, where it goes, location, code) and its line items -->
+                <div id="brv-view-sp-projects"></div>
 
                 <div class="brv-v-label">SARO</div>
                 <div class="brv-v-card">
@@ -168,14 +172,8 @@ namespace PHPMaker2024\FIMS;
                     <div class="brv-v-card-sub" id="brv-view-sp-saro-sub"></div>
                 </div>
 
-                <div class="brv-v-label">Line items</div>
-                <div class="brv-v-lit">
-                    <table class="brv-v-tbl">
-                        <thead><tr><th>Account</th><th>Particulars</th><th class="brv-v-num">Amount</th></tr></thead>
-                        <tbody id="brv-view-sp-items"></tbody>
-                        <tfoot><tr><td colspan="2">Total</td><td class="brv-v-num" id="brv-view-sp-total"></td></tr></tfoot>
-                    </table>
-                </div>
+                <!-- the total of every project's line items (shown when there is more than one project; with one, its own table's total is the total) -->
+                <div class="brv-v-grand" id="brv-view-sp-grand" hidden><span>Total of all projects</span><strong id="brv-view-sp-total"></strong></div>
                 <div class="brv-v-effect" id="brv-view-sp-effect"></div>
             </div>
 

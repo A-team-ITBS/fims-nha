@@ -680,26 +680,23 @@ class DisbursementVoucherService
         if (!$rfaId) {
             return 0.0;
         }
-        $linkedDvId = (int) (App\ExecuteScalar("SELECT dv_id FROM {$this->tableRfa} WHERE allocation_id = {$rfaId}", 'DB') ?? 0);
-        if (!$linkedDvId || $linkedDvId === $excludeDvId) {
-            return 0.0;
-        }
-        // What the DV draws from the RFA is its GROSS amount (the deductions are part of the expense, paid out later
-        // through the remittance DVs) — plus, for a payroll DV, the employer (government) share its month carries,
-        // which the payroll's RFA also funds (the remittance DVs that pay it carry no RFA of their own).
-        $row = App\ExecuteRow(
-            "SELECT dv.gross_amount, st.name AS status,
-                    (SELECT COALESCE(SUM(r.total_employer_share), 0) FROM fims.payroll_records r WHERE r.disbursement_voucher_id = dv.dv_id) AS employer_share
+        // Every ACTIVE DV (not CANCELLED/REJECTED) linked to this RFA draws from it — an RFA can back several DVs
+        // while it still has a balance (disbursement_vouchers.rfa_allocation_ids). What a DV draws is its GROSS amount (the deductions are
+        // part of the expense, paid out later through the remittance DVs) — plus, for a payroll DV, the employer
+        // (government) share its month carries, which the payroll's RFA also funds (the remittance DVs that pay it
+        // carry no RFA of their own).
+        $exclude = $excludeDvId !== null ? " AND dv.dv_id <> {$excludeDvId}" : '';
+        $total   = App\ExecuteScalar(
+            "SELECT COALESCE(SUM(dv.gross_amount
+                        + (SELECT COALESCE(SUM(r.total_employer_share), 0) FROM fims.payroll_records r WHERE r.disbursement_voucher_id = dv.dv_id)), 0)
              FROM {$this->table} dv
              LEFT JOIN {$this->tableSettingsStatus} st ON st.id = dv.status_id
-             WHERE dv.dv_id = {$linkedDvId}",
+             WHERE {$rfaId} = ANY(dv.rfa_allocation_ids){$exclude}
+               AND COALESCE(st.name, '') NOT IN ('CANCELLED', 'REJECTED')",
             'DB'
         );
-        if (!$row || in_array($row['status'], ['CANCELLED', 'REJECTED'], true)) {
-            return 0.0;
-        }
 
-        return (float) $row['gross_amount'] + (float) $row['employer_share'];
+        return (float) ($total ?? 0);
     }
 
     /** Same as priorPaymentsForRfa(), summed across every RFA a DV cites. */
@@ -726,27 +723,27 @@ class DisbursementVoucherService
     private function linkRfas(int $dvId, array $rfaRows): ?string
     {
         $newIds = array_map(fn ($r) => (int) $r['allocation_id'], $rfaRows);
+        $keep   = $newIds ? implode(',', $newIds) : '0';
 
-        foreach ($rfaRows as $rfa) {
-            $otherDvId = $rfa['dv_id'] !== null ? (int) $rfa['dv_id'] : null;
-            if ($otherDvId === null || $otherDvId === $dvId) {
-                continue;
-            }
-            $other = App\ExecuteRow(
-                "SELECT dv.dv_no, st.name AS status FROM {$this->table} dv
-                 LEFT JOIN {$this->tableSettingsStatus} st ON st.id = dv.status_id
-                 WHERE dv.dv_id = {$otherDvId}",
+        // The DV carries the RFAs it draws from (rfa_allocation_ids). An RFA may be cited by other DVs too — it
+        // stays usable while it has a balance; the amount ceiling is enforced by checkAmountAgainstRfas().
+        $before = App\ExecuteRows("SELECT unnest(rfa_allocation_ids) AS allocation_id FROM {$this->table} WHERE dv_id = {$dvId}", 'DB') ?: [];
+        App\Execute("UPDATE {$this->table} SET rfa_allocation_ids = " . ($newIds ? "ARRAY[{$keep}]" : 'ARRAY[]') . "::integer[] WHERE dv_id = {$dvId}", 'DB');
+
+        // budget_allocation.dv_id stays as "the latest DV linked to this RFA" for every other module that reads it
+        // (COB, BUR, FTLA, check processing ...). Re-derive it for every RFA this save touched.
+        $ids = array_unique(array_merge($newIds, array_map(fn ($r) => (int) $r['allocation_id'], $before)));
+        if ($ids) {
+            $idList = implode(',', $ids);
+            App\Execute(
+                "UPDATE {$this->tableRfa} a SET dv_id = (
+                    SELECT dv.dv_id FROM {$this->table} dv
+                    LEFT JOIN {$this->tableSettingsStatus} st ON st.id = dv.status_id
+                    WHERE a.allocation_id = ANY(dv.rfa_allocation_ids) AND COALESCE(st.name, '') NOT IN ('CANCELLED', 'REJECTED')
+                    ORDER BY dv.dv_id DESC LIMIT 1)
+                 WHERE a.allocation_id IN ({$idList})",
                 'DB'
             );
-            if ($other && !in_array($other['status'], ['CANCELLED', 'REJECTED'], true)) {
-                return "RFA '{$rfa['allocation_number']}' is already linked to Disbursement Voucher {$other['dv_no']} and cannot be selected here.";
-            }
-        }
-
-        $keep = $newIds ? implode(',', $newIds) : '0';
-        App\Execute("UPDATE {$this->tableRfa} SET dv_id = NULL WHERE dv_id = {$dvId} AND allocation_id NOT IN ({$keep})", 'DB');
-        if ($newIds) {
-            App\Execute("UPDATE {$this->tableRfa} SET dv_id = {$dvId} WHERE allocation_id IN ({$keep})", 'DB');
         }
 
         return null;
@@ -936,22 +933,10 @@ class DisbursementVoucherService
                   WHERE bap.allocation_id = a.allocation_id AND bap.deleted_at IS NULL) AS line_transaction";
     }
 
-    private function rfaAvailableSql(?int $excludeDvId): string
-    {
-        $exclude = $excludeDvId !== null ? " OR a.dv_id = {$excludeDvId}" : '';
-
-        return "(a.dv_id IS NULL{$exclude} OR a.dv_id IN (
-            SELECT dv.dv_id FROM {$this->table} dv
-            LEFT JOIN {$this->tableSettingsStatus} st ON st.id = dv.status_id
-            WHERE st.name IN ('CANCELLED', 'REJECTED')
-        ))";
-    }
-
     /**
-     * RFA picker options. One RFA backs only one DV at a time (budget_allocation.dv_id — see
-     * linkRfas()), so an RFA already linked to a DIFFERENT, still-active DV is left out entirely;
-     * $excludeDvId is the DV currently being edited, so its own already-linked RFAs keep showing
-     * (as "already yours", not "taken by someone else").
+     * RFA picker options. An Approved RFA is offered for as long as it has a remaining balance — several DVs may
+     * draw from one RFA (disbursement_vouchers.rfa_allocation_ids); $excludeDvId is the DV currently being edited, so its own prior draw is
+     * left out of paid_amount and its RFAs keep showing.
      */
     public function fetchRfaOptions(array $filters = [], ?int $excludeDvId = null): array
     {
@@ -959,8 +944,8 @@ class DisbursementVoucherService
             // Only Approved RFAs can fund a DV (a Draft / For Review / Returned one has no allotment yet) — except an
             // RFA the DV being edited already cites, so its chip still shows.
             $approved = "a.status_id = (SELECT id FROM {$this->tableSettingsStatus} WHERE status_for = 'budget_allocation' AND name = 'Approved' LIMIT 1)";
-            $where = ["a.allocation_type = 'RFA'", $this->rfaAvailableSql($excludeDvId),
-                $excludeDvId !== null ? "({$approved} OR a.dv_id = {$excludeDvId})" : $approved];
+            $where = ["a.allocation_type = 'RFA'",
+                $excludeDvId !== null ? "({$approved} OR a.allocation_id IN (SELECT unnest(rfa_allocation_ids) FROM {$this->table} WHERE dv_id = {$excludeDvId}))" : $approved];
             if (!empty($filters['fiscal_yr'])) {
                 $where[] = 'a.fiscal_year = ' . (int) $filters['fiscal_yr'];
             }
@@ -986,6 +971,13 @@ class DisbursementVoucherService
             ) ?: [];
 
             $rows = array_map(fn (array $r) => $this->withRfaBudget($r, $excludeDvId), $rows);
+
+            // An RFA is offered for as long as it has a balance (a budget ceiling of 0 = no cap) — plus the ones the DV
+            // being edited already draws from, so its own chips still show.
+            $own = $excludeDvId !== null
+                ? array_map('intval', array_column(App\ExecuteRows("SELECT unnest(rfa_allocation_ids) AS allocation_id FROM {$this->table} WHERE dv_id = {$excludeDvId}", 'DB') ?: [], 'allocation_id'))
+                : [];
+            $rows = array_values(array_filter($rows, fn (array $r) => $r['budget_amount'] <= 0 || $r['remaining_balance'] > 0.005 || in_array((int) $r['allocation_id'], $own, true)));
 
             return ['success' => true, 'data' => $rows];
         } catch (\Exception $e) {
@@ -1234,7 +1226,7 @@ class DisbursementVoucherService
                 // RFA no longer has a column on this table (see linkRfas()) — matched via the
                 // reverse link (budget_allocation.dv_id) instead.
                 $where[] = "(dv.dv_no ILIKE {$kw} OR dv.claimant_name ILIKE {$kw}
-                             OR EXISTS (SELECT 1 FROM {$this->tableRfa} a WHERE a.dv_id = dv.dv_id AND a.allocation_number ILIKE {$kw}))";
+                             OR EXISTS (SELECT 1 FROM {$this->tableRfa} a WHERE a.allocation_id = ANY(dv.rfa_allocation_ids) AND a.allocation_number ILIKE {$kw}))";
             }
             $whereSql = implode(' AND ', $where);
 
@@ -1380,7 +1372,7 @@ class DisbursementVoucherService
                      LEFT JOIN {$this->tableRc}             rc ON rc.rc_id = a.requesting_rc_id
                      LEFT JOIN {$this->tableVendor}         v  ON v.vendor_id = a.vendor_id
                      LEFT JOIN {$this->tableBudgetCategory} bc ON bc.budget_category_id = a.category_id
-                     WHERE a.allocation_type = 'RFA' AND a.dv_id = {$dvId}
+                     WHERE a.allocation_type = 'RFA' AND a.allocation_id IN (SELECT unnest(rfa_allocation_ids) FROM {$this->table} WHERE dv_id = {$dvId})
                      ORDER BY a.allocation_id",
                     'DB'
                 ) ?: []
@@ -3019,7 +3011,16 @@ class DisbursementVoucherService
             // Release any RFA still linked to this voucher (budget_allocation.dv_id) BEFORE deleting
             // it — otherwise dv_id would dangle, and rfaAvailableSql()'s "my cancelled/rejected DV
             // doesn't block the RFA" check can't match a dv_id whose row no longer exists at all.
-            App\Execute("UPDATE {$this->tableRfa} SET dv_id = NULL WHERE dv_id = {$dvId}", 'DB');
+            App\Execute("UPDATE {$this->table} SET rfa_allocation_ids = '{}' WHERE dv_id = {$dvId}", 'DB');
+            App\Execute(
+                "UPDATE {$this->tableRfa} a SET dv_id = (
+                    SELECT dv.dv_id FROM {$this->table} dv
+                    LEFT JOIN {$this->tableSettingsStatus} st ON st.id = dv.status_id
+                    WHERE a.allocation_id = ANY(dv.rfa_allocation_ids) AND COALESCE(st.name, '') NOT IN ('CANCELLED', 'REJECTED')
+                    ORDER BY dv.dv_id DESC LIMIT 1)
+                 WHERE a.dv_id = {$dvId}",
+                'DB'
+            );
             (new PayrollManagementService())->releaseDv($dvId); // same for a payroll month this DV paid
             (new DeductionRemittanceService())->releaseDv($dvId); // and a payroll remittance it paid
             (new RemittanceListService())->releaseDv($dvId); // and the voucher deductions it remitted

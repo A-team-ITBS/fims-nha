@@ -1,6 +1,10 @@
 -- ============================================================
 -- ALTER: fims.budget_revision + fims.budget_line_item_revision_transaction — the SUPPLEMENTAL request type
 --
+-- NOTE: a request was ONE project when this file was written. "03 - alter_table/64" lets it carry several: the project's name, location and code
+-- (supp_project_name / supp_location / supp_project_code below) moved to fims.budget_revision_supplemental_project ("01 - table/57") and those three
+-- columns are dropped. Read "one project" below as "the projects" — the SARO and the Program / Sub-Program stay on the request.
+--
 -- A SUPPLEMENTAL request (a third tab of the Budget Amendment form, next to Amendment and Realignment) adds a NEW project, released by a
 -- DBM SARO and not in the approved COB, under a Program / Sub-Program. It follows the same Saved -> Submitted -> Approved | Declined flow.
 -- Only the APPROVAL changes the budget (BudgetRevisionService::approveSupplemental(), one transaction):

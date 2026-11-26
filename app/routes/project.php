@@ -16,11 +16,15 @@ $app->get('/project/next-code', function ($request, $response, $args) {
         $programCode    = $params['program_code'] ?? '';
         $subProgramCode = $params['sub_program_code'] ?? '';
         $fiscalYr       = isset($params['fiscal_yr']) && $params['fiscal_yr'] !== '' ? (int) $params['fiscal_yr'] : null;
+        // The Region manually picked on the Budget Request form's Project field (optional) — when
+        // given, the previewed code's own RC segment matches it instead of the caller's own RC (see
+        // GlobalService::generateProjectCode()'s own doc comment for why those can now differ).
+        $rcId           = (string) ($params['rc_id'] ?? '');
         if ($programCode === '') {
             return $response->withJson(['success' => false, 'message' => 'program_code is required.'], 400);
         }
 
-        $code = GlobalService::generateProjectCode($programCode, $subProgramCode, (int) $request->getAttribute('user_id'), $fiscalYr);
+        $code = GlobalService::generateProjectCode($programCode, $subProgramCode, (int) $request->getAttribute('user_id'), $fiscalYr, $rcId);
 
         return $response->withJson(['success' => true, 'data' => ['project_code' => $code]]);
     } catch (\InvalidArgumentException $e) {

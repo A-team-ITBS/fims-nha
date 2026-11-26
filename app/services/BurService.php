@@ -112,7 +112,7 @@ class BurService
     }
 
     /** @return string[] */
-    private function conditions(?int $fiscalYr, string $scopeRcId): array
+    private function conditions(?int $fiscalYr, string $scopeRcId, ?string $budgetReferenceNumber = null): array
     {
         $where = ["st.status_for = 'budget_req'", "LOWER(st.name) = 'approved'", "(coa.account_code LIKE '5-01%' OR coa.account_code LIKE '5-02%')"];
         if (($scope = $this->rcInSql($scopeRcId)) !== null) {
@@ -120,6 +120,9 @@ class BurService
         }
         if ($fiscalYr !== null) {
             $where[] = 'br.fiscal_yr = '.$fiscalYr;
+        }
+        if ($budgetReferenceNumber !== null) {
+            $where[] = 'li.budget_reference_number = '.$this->str($budgetReferenceNumber);
         }
 
         return $where;
@@ -209,6 +212,57 @@ class BurService
     }
 
     /**
+     * Turns the leaf rows (one per chart-of-accounts code that directly carries approved budget) into the full
+     * tree result: every ancestor pulled in via ancestorsOf(), each leaf's figures added to itself and rolled up
+     * its whole ancestor chain, and the grand totals (the two roots' figures added together).
+     *
+     * @param array $leafRows
+     * @return array{data: array, totals: array}
+     */
+    private function buildTreeResult(array $leafRows): array
+    {
+        $accounts = $this->ancestorsOf(array_map(fn ($r) => (string) $r['account_id'], $leafRows));
+        $sums = array_fill_keys(array_keys($accounts), null);
+        foreach ($sums as $id => &$v) {
+            $v = $this->zeroAmounts();
+        }
+        unset($v);
+
+        foreach ($leafRows as $leaf) {
+            $id = (string) $leaf['account_id'];
+            if (!isset($accounts[$id])) {
+                continue; // a code outside 5-01% / 5-02% cannot happen (the WHERE already restricts it), kept defensive only
+            }
+            // add the leaf's own figures to itself and to every ancestor on its chain (ancestorsOf() already fetched the whole chain)
+            $cursor = $id;
+            while ($cursor !== null && isset($accounts[$cursor])) {
+                $sums[$cursor] = $this->addTo($sums[$cursor], $leaf);
+                $parent = $accounts[$cursor]['parent_account_id'];
+                $cursor = $parent !== null ? (string) $parent : null;
+            }
+        }
+
+        $data = [];
+        foreach ($accounts as $id => $acc) {
+            $data[] = [
+                'account_id' => $acc['account_id'],
+                'account_code' => $acc['account_code'],
+                'account_title' => $acc['account_title'],
+                'parent_account_id' => isset($accounts[(string) $acc['parent_account_id']]) ? $acc['parent_account_id'] : null,
+            ] + $sums[$id];
+        }
+
+        $totals = $this->zeroAmounts();
+        foreach ($data as $row) {
+            if ($row['parent_account_id'] === null) { // the two roots, 5-01 and 5-02 — their figures are already the sum of everything under them
+                $totals = $this->addTo($totals, $row);
+            }
+        }
+
+        return ['data' => $data, 'totals' => $totals];
+    }
+
+    /**
      * The report: one row per chart-of-accounts code that carries approved PS / MOOE budget (directly or through a
      * descendant), each with the seven amount columns (see the class doc) and the same account_id / account_code /
      * account_title / parent_account_id shape chart-of-accounts-page.php's tree already uses. Also the grand totals
@@ -226,49 +280,43 @@ class BurService
                 'DB'
             ) ?: [];
 
-            $accounts = $this->ancestorsOf(array_map(fn ($r) => (string) $r['account_id'], $leafRows));
-            $sums = array_fill_keys(array_keys($accounts), null);
-            foreach ($sums as $id => &$v) {
-                $v = $this->zeroAmounts();
-            }
-            unset($v);
+            $result = $this->buildTreeResult($leafRows);
 
-            foreach ($leafRows as $leaf) {
-                $id = (string) $leaf['account_id'];
-                if (!isset($accounts[$id])) {
-                    continue; // a code outside 5-01% / 5-02% cannot happen (the WHERE already restricts it), kept defensive only
-                }
-                // add the leaf's own figures to itself and to every ancestor on its chain (ancestorsOf() already fetched the whole chain)
-                $cursor = $id;
-                while ($cursor !== null && isset($accounts[$cursor])) {
-                    $sums[$cursor] = $this->addTo($sums[$cursor], $leaf);
-                    $parent = $accounts[$cursor]['parent_account_id'];
-                    $cursor = $parent !== null ? (string) $parent : null;
-                }
-            }
-
-            $data = [];
-            foreach ($accounts as $id => $acc) {
-                $data[] = [
-                    'account_id' => $acc['account_id'],
-                    'account_code' => $acc['account_code'],
-                    'account_title' => $acc['account_title'],
-                    'parent_account_id' => isset($accounts[(string) $acc['parent_account_id']]) ? $acc['parent_account_id'] : null,
-                ] + $sums[$id];
-            }
-
-            $totals = $this->zeroAmounts();
-            foreach ($data as $row) {
-                if ($row['parent_account_id'] === null) { // the two roots, 5-01 and 5-02 — their figures are already the sum of everything under them
-                    $totals = $this->addTo($totals, $row);
-                }
-            }
-
-            return ['success' => true, 'data' => $data, 'totals' => $totals];
+            return ['success' => true, 'data' => $result['data'], 'totals' => $result['totals']];
         } catch (\Throwable $e) {
             App\LogError('BurService::fetchRollup '.$e->getMessage());
 
             return ['success' => false, 'message' => 'Failed to load the Budget Utilization Report.'];
+        }
+    }
+
+    /**
+     * The same tree, scoped to ONE budget request (its own PS / MOOE line items only) instead of the caller's
+     * whole RC / fiscal year — backs the COE request's own "View" / "Budget Preview" once it is Approved
+     * (app/pages/readone/budget-preview-readone.php), so a Regional / District office sees its own approved
+     * COE allocation laid out the same way the BUR does, without pulling in every other office's figures.
+     * $scopeRcId is still enforced (a caller cannot see a request outside their own RC scope this way either);
+     * the 'approved' status filter in conditions() means a request that is not yet Approved comes back empty.
+     */
+    public function fetchRollupForRequest(string $budgetReferenceNumber, string $scopeRcId = ''): array
+    {
+        try {
+            $leafRows = App\ExecuteRows(
+                'SELECT coa.account_id, coa.account_code, coa.account_title, coa.parent_account_id,
+                        '.$this->sumsSql().'
+                 '.$this->fromSql().'
+                 WHERE '.implode(' AND ', $this->conditions(null, $scopeRcId, $budgetReferenceNumber)).'
+                 GROUP BY coa.account_id, coa.account_code, coa.account_title, coa.parent_account_id',
+                'DB'
+            ) ?: [];
+
+            $result = $this->buildTreeResult($leafRows);
+
+            return ['success' => true, 'data' => $result['data'], 'totals' => $result['totals']];
+        } catch (\Throwable $e) {
+            App\LogError('BurService::fetchRollupForRequest '.$e->getMessage());
+
+            return ['success' => false, 'message' => 'Failed to load the approved budget breakdown for this request.'];
         }
     }
 }

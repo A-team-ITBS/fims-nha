@@ -14,6 +14,9 @@ use PHPMaker2024\FIMS\Service\GlobalService;
  *   GET /bur/rollup?fiscal_yr=    the report: one row per chart-of-accounts code that carries approved budget
  *                                 (directly or through a descendant), plus the grand totals (the KPI cards).
  *                                 fiscal_yr omitted = every year combined.
+ *   GET /bur/rollup-for-request/{budget_reference_number}   the same tree, scoped to ONE budget request instead
+ *                                 of the caller's whole RC / fiscal year — backs a COE request's own "View" /
+ *                                 "Budget Preview" once it is Approved (budget-preview-readone.php).
  *
  * Like the COB, a user who belongs to an RC sees that RC and its descendants only; a superadmin / user without
  * an RC sees every RC (GlobalService::resolveBudgetReqRcFilter()).
@@ -39,6 +42,12 @@ $app->get('/bur/rollup', function ($request, $response, $args) use ($BurService,
     $fiscalYr = isset($params['fiscal_yr']) && $params['fiscal_yr'] !== '' ? (int) $params['fiscal_yr'] : null;
 
     $result = $BurService->fetchRollup($fiscalYr, $burScopeRcId($request));
+
+    return $response->withJson($result, $result['success'] ? 200 : 500);
+})->add($accessMiddleware)->add($jwtMiddleware);
+
+$app->get('/bur/rollup-for-request/{budget_reference_number}', function ($request, $response, $args) use ($BurService, $burScopeRcId) {
+    $result = $BurService->fetchRollupForRequest((string) $args['budget_reference_number'], $burScopeRcId($request));
 
     return $response->withJson($result, $result['success'] ? 200 : 500);
 })->add($accessMiddleware)->add($jwtMiddleware);

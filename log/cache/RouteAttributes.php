@@ -135,8 +135,11 @@
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone ($p['PHPMaker2024\\FIMS\\Attributes\\Get'] ?? \Symfony\Component\VarExporter\Internal\Registry::p('PHPMaker2024\\FIMS\\Attributes\\Get')),
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Get'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
@@ -912,9 +915,24 @@
                 ],
                 [
                     'GET',
+                    'POST',
+                    'OPTIONS',
                 ],
                 [
                     'GET',
+                    'POST',
+                    'OPTIONS',
+                ],
+                [
+                    'GET',
+                ],
+                [
+                    'GET',
+                ],
+                [
+                    'GET',
+                    'POST',
+                    'OPTIONS',
                 ],
                 [
                     'GET',
@@ -1385,6 +1403,8 @@
             'pattern' => [
                 '/AccountableFormsRegistryPage[/{params:.*}]',
                 '/AccountableOfficerPage[/{params:.*}]',
+                '/AdminFeePage[/{params:.*}]',
+                '/AdminFeeRatesPage[/{params:.*}]',
                 '/AggregatedAuditLogsList',
                 '/AiAssistant[/{params:.*}]',
                 '/AirModule[/{params:.*}]',
@@ -1567,6 +1587,7 @@
                 '/RfaLaaReviewPage[/{params:.*}]',
                 '/SaroRegistryPage[/{params:.*}]',
                 '/SignatoryManagement[/{params:.*}]',
+                '/SoaGeneratorPage[/{params:.*}]',
                 '/StatementOfChangesPage[/{params:.*}]',
                 '/StatusOfFundPage[/{params:.*}]',
                 '/SubProgramPage[/{params:.*}]',
@@ -1617,6 +1638,8 @@
             'handler' => [
                 'PHPMaker2024\\FIMS\\AccountableFormsRegistryPageController:custom',
                 'PHPMaker2024\\FIMS\\AccountableOfficerPageController:custom',
+                'PHPMaker2024\\FIMS\\AdminFeePageController:custom',
+                'PHPMaker2024\\FIMS\\AdminFeeRatesPageController:custom',
                 'PHPMaker2024\\FIMS\\AggregatedAuditLogsController:list',
                 'PHPMaker2024\\FIMS\\AiAssistantController:custom',
                 'PHPMaker2024\\FIMS\\AirModuleController:custom',
@@ -1799,6 +1822,7 @@
                 'PHPMaker2024\\FIMS\\RfaLaaReviewPageController:custom',
                 'PHPMaker2024\\FIMS\\SaroRegistryPageController:custom',
                 'PHPMaker2024\\FIMS\\SignatoryManagementController:custom',
+                'PHPMaker2024\\FIMS\\SoaGeneratorPageController:custom',
                 'PHPMaker2024\\FIMS\\StatementOfChangesPageController:custom',
                 'PHPMaker2024\\FIMS\\StatusOfFundPageController:custom',
                 'PHPMaker2024\\FIMS\\SubProgramPageController:custom',
@@ -1847,6 +1871,12 @@
                 'PHPMaker2024\\FIMS\\WorkInProcessPageController:custom',
             ],
             'middleware' => [
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
                 [
                     'PHPMaker2024\\FIMS\\PermissionMiddleware',
                 ],
@@ -2535,10 +2565,15 @@
                 [
                     'PHPMaker2024\\FIMS\\PermissionMiddleware',
                 ],
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
             ],
             'name' => [
                 'custom.accountable_forms_registry_page',
                 'custom.accountable_officer_page',
+                'custom.admin_fee_page',
+                'custom.admin_fee_rates_page',
                 'list.aggregated_audit_logs',
                 'custom.AiAssistant',
                 'custom.AIRModule',
@@ -2721,6 +2756,7 @@
                 'custom.rfa_laa_review_page',
                 'custom.saro_registry_page',
                 'custom.SignatoryManagement',
+                'custom.soa_generator_page',
                 'custom.statement_of_changes_page',
                 'custom.status_of_fund_page',
                 'custom.sub_program_page',
@@ -2769,6 +2805,9 @@
                 'custom.work_in_process_page',
             ],
             'options' => [
+                [],
+                [],
+                [],
                 [],
                 [],
                 [],
@@ -3233,6 +3272,9 @@
         $o[227],
         $o[228],
         $o[229],
+        $o[230],
+        $o[231],
+        $o[232],
     ],
     []
 );

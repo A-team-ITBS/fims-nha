@@ -9,7 +9,7 @@ $_bgr_api = Config('API.FIMS_URL');
 // level, and the per-row "Budget Processing" action is shown only to this level.
 // User level 8 = Budget Head: "Add Budget Request" is hidden, and only this
 // level sees the "Budget Preview" action (whose modal has Return / Approve
-// buttons on an Endorsed request).
+// buttons on a "For Endorsement" request).
 // User level -1 = System Administrator (superadmin): no restriction on the review chain — Budget Processing (the Budget Officer's
 // step) and Budget Review with Return / Approve (the Budget Head's step) at EVERY step, whatever their office. Same people the API
 // lets through (BudgetReqService::isSuperAdmin): the built-in administrator (user_id -1) or a level list that includes -1 ("-1,3").
@@ -45,6 +45,17 @@ $_bgr_isBudgetHead = ((int) $userLevel === 8);
 // who is offered the "Budget Review" action: the Budget Head, and the superadmin (who may decide at the Budget Head's step too)
 $_bgr_canPreview = $_bgr_isBudgetHead || $_bgr_isAdmin;
 $_bgr_canAdd = !$_bgr_isBudgetOfficer && !$_bgr_isBudgetHead && !$_bgr_isFmd;
+// "Add Budget Request" (Program/Sub-Program/Project) — the Regional/District office now files COE only (no
+// Program/Project of its own); Program-based origination belongs to FMD (or a superadmin). The API enforces
+// this too (POST /budget_req/add, PUT /budget_req/program/update — GlobalService::isFmdUser/isSuperAdminUser),
+// not just this hide.
+$_bgr_canAddProgram = $_bgr_isFmd || $_bgr_isAdmin;
+// The Regional/District (originating) office's own table shows COE rows only — Program/Sub-Program/Project
+// origination is now FMD's (or a superadmin's); even a Program row left over from before this rule would
+// just invite an Edit/Submit action that no longer belongs to this office. Budget Officer / Budget Head still
+// see every office's Program AND COE rows in their own (non-FMD) flat list — they review both kinds — and
+// FMD / a superadmin keep their own tables' full picture; only a plain originating-office user is narrowed.
+$_bgr_isOriginatingOffice = $_bgr_canAdd && !$_bgr_isAdmin;
 $_bgr_canModify = !$_bgr_isBudgetOfficer;
 ?>
 
@@ -76,6 +87,38 @@ $_bgr_canModify = !$_bgr_isBudgetOfficer;
 .nha-menu-item svg { width:13px;height:13px;flex-shrink:0;opacity:.7; }
 .nha-menu-divider { border-top:1px solid var(--afims-border, #E4ECF2);margin:3px 0; }
 
+/* ── Page header: copied from User Access (.app-page-header in app/fims-css/fims.css — that file is not loaded here,
+      so the rules are repeated, scoped to this page). Stays navy in dark mode too, like User Access. ── */
+#bgr-root .app-page-header { position:relative;display:flex;align-items:center;gap:1rem;flex-wrap:wrap;overflow:hidden;
+    background:linear-gradient(135deg, #000E3E 0%, #001A5E 100%);border-radius:.75rem;padding:1.5rem 1.75rem;margin-bottom:1.5rem; }
+#bgr-root .app-page-header::before,
+#bgr-root .app-page-header::after { content:"";position:absolute;border-radius:50%;background:rgba(255,255,255,.05);pointer-events:none; }
+#bgr-root .app-page-header::before { width:180px;height:180px;top:-90px;right:80px; }
+#bgr-root .app-page-header::after { width:120px;height:120px;bottom:-70px;right:-20px;background:rgba(255,255,255,.06); }
+#bgr-root .app-page-header-icon { position:relative;z-index:1;flex:0 0 auto;width:3rem;height:3rem;border-radius:.5rem;
+    display:flex;align-items:center;justify-content:center;font-size:1.25rem;
+    background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);color:#FFFFFF; }
+#bgr-root .app-page-title { position:relative;z-index:1;font-size:1.6rem;font-weight:800;letter-spacing:-.01em;color:#FFFFFF;margin:0 0 .25rem; }
+#bgr-root .app-page-subtitle { position:relative;z-index:1;font-size:.9rem;color:rgba(255,255,255,.75);margin:0;max-width:640px; }
+/* the Refresh / Add buttons stay on the right of the banner, above its decorative circles */
+#bgr-root .app-page-header-actions { position:relative;z-index:1;margin-left:auto;display:flex;flex-wrap:wrap;gap:8px; }
+
+/* ── Approved BUR tab: the chart-of-accounts tree (same shape as bur-page.php) ── */
+#bgr-root #bgrbur-table { table-layout: fixed; }
+#bgr-root #bgrbur-table .bgrbur-name span { overflow-wrap: break-word; }
+#bgr-root .bgrbur-row-total > td { font-weight: 700; background: var(--afims-surface-subtle, #F4F7FA); border-top: 2px solid var(--afims-border, #E4ECF2); }
+#bgr-root .bgrbur-name { display: flex; align-items: center; gap: 8px; }
+#bgr-root .bgrbur-toggle {
+    width: 20px; height: 20px; flex-shrink: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    border: none; background: none; cursor: pointer; padding: 0; border-radius: 4px;
+    color: var(--afims-text-muted, #62657E); transition: background .15s, color .15s;
+}
+#bgr-root .bgrbur-toggle:hover { background: var(--afims-border, #E4ECF2); color: var(--afims-heading, #000E3E); }
+#bgr-root .bgrbur-toggle svg { pointer-events: none; transition: transform .15s; }
+#bgr-root .bgrbur-toggle-spacer { display: inline-block; width: 20px; flex-shrink: 0; }
+#bgr-root .bgrbur-d0 > td { background: var(--afims-surface-subtle, #F4F7FA); font-weight: 700; }
+#bgr-root .bgrbur-neg { color: #dc2626; }
 </style>
 
 <div id="bgr-root" class="nha-root">
@@ -97,11 +140,13 @@ $_bgr_canModify = !$_bgr_isBudgetOfficer;
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                 Refresh
             </button>
-            <?php if ($_bgr_canAdd) { ?>
+            <?php if ($_bgr_canAddProgram) { ?>
             <button id="bgr-add" type="button" class="nha-btn-hdr" style="background:var(--afims-success, #11A752);" title="Add a budget request">
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
-                Add Budget Request
+                Add CO Budget Request
             </button>
+            <?php } ?>
+            <?php if ($_bgr_canAdd) { ?>
             <button id="bgr-add-coe" type="button" class="nha-btn-hdr" style="background:var(--afims-success, #11A752);" title="Add a COE budget request — no Program/Project, just PS/MOOE chart-of-accounts line items">
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
                 Add COE Budget Request
@@ -109,6 +154,28 @@ $_bgr_canModify = !$_bgr_isBudgetOfficer;
             <?php } ?>
         </div>
     </div>
+
+    <?php /* The Approved BUR tab is for the Regional / District (originating) office only — the same
+             group that gets "Add Budget Request" ($_bgr_canAdd: not Budget Officer, not Budget Head,
+             not FMD). FMD already has its own org-wide "View Proposal"; Budget Officer / Budget Head
+             act on requests, they don't file one, so a per-office Approved breakdown isn't theirs either. */ ?>
+    <?php if ($_bgr_canAdd) { ?>
+    <!-- ── TABS: the request list, vs. the Approved-only chart-of-accounts breakdown (BUR),
+         scoped to the viewer's own RC the same way bur-page.php is (GET /bur/filters, /bur/rollup —
+         GlobalService::getUserRcScope on the server). ── -->
+    <div class="nha-tabs no-print" id="bgr-tabs" role="tablist">
+        <button type="button" class="nha-tab active" data-tab="requests" role="tab">
+            <svg fill="none" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 7h6m-6 4h6m-6 4h3M5 3h14a1 1 0 011 1v16a1 1 0 01-1 1H5a1 1 0 01-1-1V4a1 1 0 011-1z"/></svg>
+            Budget Requests
+        </button>
+        <button type="button" class="nha-tab" data-tab="bur" role="tab">
+            <svg fill="none" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+            Approved COE
+        </button>
+    </div>
+    <?php } ?>
+
+    <div class="nha-panel active" id="bgr-panel-requests">
 
     <!-- ── KPI CARDS ─────────────────────────────────────── -->
     <div class="nha-summary bgr-summary-2col">
@@ -220,6 +287,57 @@ $_bgr_canModify = !$_bgr_isBudgetOfficer;
         </div>
     </div>
 
+    </div><!-- /#bgr-panel-requests -->
+
+    <?php if ($_bgr_canAdd) { /* Regional / District only — see the tab bar's own comment above */ ?>
+    <!-- ── APPROVED BUR PANEL ───────────────────────────────
+         Same tree the standalone Budget Utilization Report (bur-page.php) shows — Personal Services (5-01) /
+         Maintenance and Other Operating Expenses (5-02), rolled up from every APPROVED budget request's line
+         items, scoped to the viewer's own RC. Reuses its API (GET /bur/filters, /bur/rollup) unchanged; the
+         JS below (prefix bgrbur_) is its own copy of the tree-building logic (bur_buildTree / bur_flattenTree
+         in bur-page.php), not shared — this tab is a different page, not an iframe of that one. ── -->
+    <div class="nha-panel" id="bgr-panel-bur">
+        <div class="nha-filters no-print">
+            <div class="nha-filter-row">
+                <div class="nha-filter-group">
+                    <label class="nha-filter-label" for="bgrbur-f-fy">Fiscal Year</label>
+                    <select id="bgrbur-f-fy" class="nha-filter-select"><option value="">All Years</option></select>
+                </div>
+                <div class="nha-filter-group" style="margin-left:auto;">
+                    <label class="nha-filter-label">&nbsp;</label>
+                    <span style="display:flex;gap:6px;">
+                        <button id="bgrbur-expand-all" type="button" class="nha-btn nha-btn-outline nha-btn-sm">Expand All</button>
+                        <button id="bgrbur-collapse-all" type="button" class="nha-btn nha-btn-outline nha-btn-sm">Collapse All</button>
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <div class="nha-table-wrap">
+            <div class="nha-tbl-scroll">
+                <table class="nha-tbl" id="bgrbur-table">
+                    <thead>
+                        <tr>
+                            <th style="width:280px;">Expense Classification (NGAS)</th>
+                            <th style="width:110px;">Acct. Code</th>
+                            <th class="text-end">Approved Budget</th>
+                            <th class="text-end">Realigned Budget</th>
+                            <th class="text-end">Increase (Decrease)</th>
+                            <th class="text-end">Utilization</th>
+                            <th class="text-end">Balance</th>
+                            <th class="text-end">Payment</th>
+                            <th class="text-end">Accounts Payable</th>
+                        </tr>
+                    </thead>
+                    <tbody id="bgrbur-tbody">
+                        <tr><td colspan="9"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div><!-- /#bgr-panel-bur -->
+    <?php } ?>
+
 <?php include __DIR__.'/readone/budget-req-readone.php'; ?>
 <?php include __DIR__.'/form/budget-req-form.php'; ?>
 <?php include __DIR__.'/form/budget-processing-form.php'; ?>
@@ -250,6 +368,10 @@ const BGR_IS_BUDGET_HEAD = <?php echo $_bgr_isBudgetHead ? 'true' : 'false'; ?>;
 const BGR_IS_ADMIN = <?php echo $_bgr_isAdmin ? 'true' : 'false'; ?>;
 // who is offered the row "Budget Review" action: the Budget Head, or a superadmin
 const BGR_CAN_PREVIEW = <?php echo $_bgr_canPreview ? 'true' : 'false'; ?>;
+// true for a plain Regional/District (originating) office user — not Budget Officer/Head, not FMD, not a
+// superadmin. Its own table shows COE rows only (see bgr_flattenRows): Program-based requests are no longer
+// theirs to file (see $_bgr_isOriginatingOffice's own comment in the PHP at the top of this file).
+const BGR_IS_ORIGINATING_OFFICE = <?php echo $_bgr_isOriginatingOffice ? 'true' : 'false'; ?>;
 let bgr_flatRows = [];
 // true for the Financial Management Department (FMD): the list is one row per request over every
 // Regional / District office (see the PHP at the top of this file and the FMD list section below).
@@ -329,6 +451,11 @@ function bgr_bindListEvents() {
         $bgr(id)?.addEventListener('change', () => { bgr_page = 1; bgr_load(); });
     });
 
+    // Tabs: the request list vs. the Approved BUR breakdown (see the section near the end of this script)
+    $bgr('bgr-tabs')?.addEventListener('click', e => { const b = e.target.closest('.nha-tab'); if (b) bgr_switchTab(b.dataset.tab); });
+    $bgr('bgrbur-f-fy')?.addEventListener('change', e => { bgrbur_fiscalYr = e.target.value; bgrbur_load(); });
+    $bgr('bgrbur-expand-all')?.addEventListener('click', bgrbur_expandAll);
+    $bgr('bgrbur-collapse-all')?.addEventListener('click', bgrbur_collapseAll);
 }
 
 /* ── Load ──────────────────────────────────────────────────── */
@@ -429,11 +556,15 @@ function bgr_renderFmdTable(headers) {
 function bgr_flattenRows(headers) {
     const rows = [];
     headers.forEach(header => {
-        const programs = header.programs ?? [];
         const coeLineItems = header.coe_line_items ?? [];
+        // An originating office's own table is COE rows only — a Program row (even one left over from
+        // before Program-based filing moved to FMD) is skipped here rather than shown with no action that
+        // still applies to it. Everyone else sharing this flat list (Budget Officer / Budget Head) keeps
+        // seeing every Program too, same as before.
+        const programs = BGR_IS_ORIGINATING_OFFICE ? [] : (header.programs ?? []);
         if (programs.length) {
             programs.forEach(program => rows.push({ header, program }));
-        } else if (!coeLineItems.length) {
+        } else if (!coeLineItems.length && !BGR_IS_ORIGINATING_OFFICE) {
             rows.push({ header, program: null });
         }
         if (coeLineItems.length) {
@@ -489,7 +620,8 @@ function bgr_actionButtons(flatRow, idx) {
         : '';
     // Step 1 of the review chain (BudgetReqService::REVIEW_STEPS): only when the request is waiting for the Budget Officer
     // ("For Review", or "Returned to Budget Officer" after the Budget Head sent it back) AND this user is that Budget Officer (or a
-    // superadmin) — the row's review says so (review.can_decide, decided on the server). Once it is Endorsed it is the Budget Head's turn.
+    // superadmin) — the row's review says so (review.can_decide, decided on the server). Once it is "For Endorsement" it is the
+    // Budget Head's turn. (A CO row never shows this at all — submitForReview() sends it straight to "For Endorsement".)
     const budgetProcessingItem = (header.review?.can_decide && header.review.actor === 'Budget Officer')
         ? `<a class="nha-menu-item" href="javascript:void(0);" onclick="bgr_budgetProcessing(${idx});bgr_closeMenus();">
             <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
@@ -559,6 +691,24 @@ function bgr_fmdActionButtons(flatRow, idx) {
             View
         </a>`;
 
+    // Moves Draft/Returned -> For Endorsement (BudgetReqService::submitForReview()), which is what
+    // actually unlocks Budget Processing below for a COE row (review.can_decide only turns true once
+    // the status is one of REVIEW_STEPS — Draft isn't). CO ONLY: a COE row belongs to the originating
+    // region, which submits it themselves from their OWN (non-FMD) page via bgr_updateSubmitButton's
+    // toolbar button — FMD submitting on a region's behalf here would bypass that region entirely. A CO
+    // row has no such owner but the Budget Officer who created it, so this is the only place it can be
+    // submitted from; isCo below is the same Programs-vs-coe_line_items test submitForReview() itself
+    // uses server-side. Gated the same way "+ Add Budget Request" is ($_bgr_canAddProgram = isFmd ||
+    // isAdmin, same FMD-or-superadmin population already used at bgr_programTotals'/bgr_coeTotals' own
+    // call sites below) — NOT BGR_CAN_MODIFY, which is specifically false for the Budget Officer (see
+    // its own comment) and would hide this from exactly the user who created the Draft in the first place.
+    const isCo = !!(header.programs ?? []).length;
+    const submitForReviewItem = ((BGR_FMD || BGR_IS_ADMIN) && isCo && (isDraft || header.status_name === 'Returned'))
+        ? `<a class="nha-menu-item" href="javascript:void(0);" onclick="bgr_submitForReview('${header.budget_reference_number}');bgr_closeMenus();">
+            <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+            Submit for Review
+        </a>`
+        : '';
     // Step 1 of the review chain: only when the request is waiting for the Budget Officer AND this
     // user is that Budget Officer (review.can_decide, decided on the server).
     const budgetProcessingItem = (header.review?.can_decide && header.review.actor === 'Budget Officer')
@@ -582,7 +732,7 @@ function bgr_fmdActionButtons(flatRow, idx) {
         </a>`
         : '';
 
-    const items = [viewItem, budgetProcessingItem, budgetPreviewItem].filter(Boolean).join('');
+    const items = [viewItem, submitForReviewItem, budgetProcessingItem, budgetPreviewItem].filter(Boolean).join('');
     const deleteSection = deleteItem ? `<div class="nha-menu-divider"></div>${deleteItem}` : '';
 
     if (!items && !deleteSection) return '';
@@ -725,7 +875,7 @@ function bgr_budgetPreview(idx) {
         rc_code: header.rc_code,
         rc_name: header.rc_name,
         // Return / Approve (+ the remarks box): the last step of the review chain — only the Budget Head, and only while the
-        // request is Endorsed. The row's review says so (review.can_decide, decided on the server).
+        // request is "For Endorsement". The row's review says so (review.can_decide, decided on the server).
         can_decide: !!header.review?.can_decide && header.review.actor === 'Budget Head',
         review: header.review,
     }, programs, coeLineItems);
@@ -853,7 +1003,7 @@ function bgr_updateAddCoeButton(headers) {
 
 /* ── Toolbar "View Remarks" — a pure view action, unlike Submit for Review's
    workflow gate, so it's HIDDEN rather than disabled when there's nothing to
-   view: most requests (Draft / For Review / Endorsed / Approved) never carry
+   view: most requests (Draft / For Review / For Endorsement / Approved) never carry
    remarks, so a permanently greyed-out button would be clutter for the
    common case, and a disabled button's reason is invisible until hovered —
    no better than not being there. It's only shown DISABLED when there IS
@@ -1044,4 +1194,146 @@ async function bgr_doDeleteCoe(budgetReferenceNumber) {
         window.PagePreloader?.hide();
     }
 }
+
+<?php if ($_bgr_canAdd) { /* Regional / District only — no tab bar / BUR panel rendered otherwise, so none of this runs */ ?>
+/* ── Tabs: the request list vs. the Approved BUR breakdown ── */
+function bgr_switchTab(tab) {
+    document.querySelectorAll('#bgr-tabs .nha-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+    document.querySelectorAll('#bgr-root .nha-panel').forEach(p => p.classList.toggle('active', p.id === 'bgr-panel-' + tab));
+    if (tab === 'bur') bgrbur_ensureLoaded();   // lazy: only hit the API the first time this tab is opened
+}
+
+/* ══════════════════════════════════════════════════════════════
+   APPROVED BUR TAB   prefix: bgrbur_   (read-only)
+   The same tree the standalone Budget Utilization Report (bur-page.php) shows — Personal Services (5-01) /
+   Maintenance and Other Operating Expenses (5-02), rolled up from every APPROVED budget request's line
+   items, scoped to the viewer's own RC — reusing that page's own API unchanged (GET /bur/filters,
+   GET /bur/rollup?fiscal_yr=; see BurService for what each of the seven amount columns means). This is this
+   tab's own copy of the tree-building logic (bur_buildTree / bur_flattenTree in bur-page.php) — not shared,
+   since this is a different page, not an iframe of that one.
+═══════════════════════════════════════════════════════════════ */
+const BGRBUR_API = '<?php echo $_bgr_api; ?>' + '/bur';
+const BGRBUR_COLS = ['approved_amount', 'revised_amount', 'revision_amount', 'utilization', 'balance', 'payment', 'account_payable'];
+
+let bgrbur_loaded = false;   // true once the tab has been opened at least once (lazy load)
+let bgrbur_rows = [];
+let bgrbur_totals = null;
+let bgrbur_collapsed = new Set();
+let bgrbur_fiscalYr = '';
+
+function bgrbur_cell(v) {
+    const n = Number(v) || 0;
+    return Math.abs(n) < 0.005 ? bgr_fmtMoney(0) : `<span class="${n < 0 ? 'bgrbur-neg' : ''}">${bgr_fmtMoney(n)}</span>`;
+}
+// Only the middle level (depth 1 — e.g. "5-01-01 Salaries and Wages", "5-01-02 Other Compensation") shows no
+// amounts of its own: left blank rather than the rolled-up total the server already computed for it. The
+// root (depth 0) keeps its combined figure, same as a leaf account (no children) does; the TOTAL row (no
+// `_depth` of its own — see bgrbur_render) is unaffected either way.
+function bgrbur_amountCells(o) {
+    const blank = o?._depth === 1;
+    return BGRBUR_COLS.map(k => `<td class="nha-mono text-end">${blank ? '' : bgrbur_cell(o?.[k])}</td>`).join('');
+}
+
+async function bgrbur_loadFilterOptions() {
+    const res = await fetch(`${BGRBUR_API}/filters`, { credentials: 'same-origin' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const json = await res.json();
+    if (!json.success) throw new Error(json.message || 'Failed to load filters.');
+
+    const years = json.data?.fiscal_years ?? [];
+    const sel = $bgr('bgrbur-f-fy');
+    sel.innerHTML = '<option value="">All Years</option>' + years.map(y => `<option value="${y}">${y}</option>`).join('');
+    sel.value = years.length ? String(years[0]) : '';
+    bgrbur_fiscalYr = sel.value;
+}
+
+async function bgrbur_load() {
+    window.PagePreloader?.show();
+    $bgr('bgrbur-tbody').innerHTML = '<tr><td colspan="9"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr>';
+    try {
+        const qs = bgrbur_fiscalYr ? `?${new URLSearchParams({ fiscal_yr: bgrbur_fiscalYr })}` : '';
+        const res = await fetch(`${BGRBUR_API}/rollup${qs}`, { credentials: 'same-origin' });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message || 'Failed to load the report.');
+
+        bgrbur_rows = json.data ?? [];
+        bgrbur_totals = json.totals ?? null;
+        bgrbur_render();
+    } catch (e) {
+        bgrbur_rows = []; bgrbur_totals = null;
+        $bgr('bgrbur-tbody').innerHTML = `<tr><td colspan="9"><div class="nha-error">${bgr_esc(e.message)}</div></td></tr>`;
+    } finally {
+        window.PagePreloader?.hide();
+    }
+}
+
+function bgrbur_buildTree(rows) {
+    const byId = new Map(rows.map(r => [r.account_id, { ...r, children: [] }]));
+    const roots = [];
+    byId.forEach(node => {
+        const parent = node.parent_account_id && byId.get(node.parent_account_id);
+        if (parent) parent.children.push(node); else roots.push(node);
+    });
+    const cmp = (a, b) => (a.account_code || '').localeCompare(b.account_code || '', undefined, { numeric: true, sensitivity: 'base' });
+    const sortRec = list => { list.sort(cmp); list.forEach(n => sortRec(n.children)); };
+    sortRec(roots);
+    return roots;
+}
+function bgrbur_flattenTree(nodes, depth, out) {
+    nodes.forEach(node => {
+        out.push({ ...node, _depth: depth, _hasChildren: node.children.length > 0 });
+        if (node.children.length && !bgrbur_collapsed.has(node.account_id)) bgrbur_flattenTree(node.children, depth + 1, out);
+    });
+    return out;
+}
+function bgrbur_toggleNode(id) {
+    if (bgrbur_collapsed.has(id)) bgrbur_collapsed.delete(id); else bgrbur_collapsed.add(id);
+    bgrbur_render();
+}
+
+function bgrbur_render() {
+    const tbody = $bgr('bgrbur-tbody');
+    const totalRow = `<tr class="bgrbur-row-total"><td>TOTAL</td><td></td>${bgrbur_amountCells(bgrbur_totals)}</tr>`;
+
+    if (!bgrbur_rows.length) {
+        tbody.innerHTML = totalRow + '<tr><td colspan="9"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No approved budget found.</span></div></td></tr>';
+        return;
+    }
+
+    const flat = bgrbur_flattenTree(bgrbur_buildTree(bgrbur_rows), 0, []);
+    const bodyRows = flat.map(r => {
+        const indent = r._depth * 22;
+        const expanded = !bgrbur_collapsed.has(r.account_id);
+        const toggle = r._hasChildren
+            ? `<button type="button" class="bgrbur-toggle" onclick="bgrbur_toggleNode('${bgr_esc(r.account_id)}')" title="${expanded ? 'Collapse' : 'Expand'}">
+                   <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"
+                        style="transform:rotate(${expanded ? 90 : 0}deg);">
+                       <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
+                   </svg>
+               </button>`
+            : '<span class="bgrbur-toggle-spacer"></span>';
+
+        return `<tr class="bgrbur-d${Math.min(r._depth, 4)}">
+            <td><div class="bgrbur-name" style="padding-left:${indent}px;">${toggle}<span>${bgr_esc(r.account_title || '—')}</span></div></td>
+            <td class="nha-mono nha-td-sub">${bgr_esc(r.account_code || '—')}</td>
+            ${bgrbur_amountCells(r)}
+        </tr>`;
+    }).join('');
+
+    tbody.innerHTML = totalRow + bodyRows;
+}
+
+function bgrbur_expandAll() { bgrbur_collapsed.clear(); bgrbur_render(); }
+function bgrbur_collapseAll() { bgrbur_collapsed = new Set(bgrbur_rows.map(r => r.parent_account_id).filter(Boolean)); bgrbur_render(); }
+
+async function bgrbur_ensureLoaded() {
+    if (bgrbur_loaded) return;
+    bgrbur_loaded = true;
+    window.PagePreloader?.show();
+    try { await bgrbur_loadFilterOptions(); } catch (e) { /* the Fiscal Year filter just stays empty */ }
+    finally { window.PagePreloader?.hide(); }
+    bgrbur_load();
+}
+<?php } ?>
 </script>
