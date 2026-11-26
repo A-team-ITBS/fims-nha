@@ -548,7 +548,7 @@ class BudgetReqService
      *                           rc_office_type) and that RC's parent (rc_parent_id / _code / _name), which
      *                           the tree view of the budget request list groups by.
      */
-    public function fetchAlls(?int $page = null, int $limit = 10, string $fiscalYr = '', string $programCode = '', string $rcId = '', string $rcCodeFrom = '', int $userId = 0, string $alsoIncludeRcId = ''): array
+    public function fetchAlls(?int $page = null, int $limit = 10, string $fiscalYr = '', string $programCode = '', string $rcId = '', string $rcCodeFrom = '', int $userId = 0, string $alsoIncludeRcId = '', bool $excludeSupplemental = false): array
     {
         try {
             $excludeSupplemental = self::excludeSupplemental($excludeSupplemental);   // skipped on a database without the tag column (03 - alter_table/63)
@@ -645,17 +645,18 @@ class BudgetReqService
             if ($page === null) {
                 $data = App\ExecuteRows($joinSql.' ORDER BY br.fiscal_yr DESC, br.budget_reference_number DESC', 'DB') ?: [];
 
-                return ['success' => true, 'data' => $this->stripProgramsForOriginatingOffice($this->attachProgramsToHeaders($data), $userId)];
+                return ['success' => true, 'data' => $this->stripProgramsForOriginatingOffice($this->attachProgramsToHeaders($data, $excludeSupplemental), $userId)];
             }
 
             $offset = ($page - 1) * $limit;
 
             $total = (int) App\ExecuteScalar("SELECT COUNT(*) FROM {$this->table} br WHERE {$whereSql}", 'DB');
             $data = App\ExecuteRows($joinSql." ORDER BY br.fiscal_yr DESC, br.budget_reference_number DESC LIMIT {$limit} OFFSET {$offset}", 'DB') ?: [];
-<<<<<<< HEAD
-            $data = $this->stripProgramsForOriginatingOffice($this->attachProgramsToHeaders($data), $userId);
-=======
-            $data = $this->attachProgramsToHeaders($data, $excludeSupplemental);
+            $data = $this->stripProgramsForOriginatingOffice($this->attachProgramsToHeaders($data, $excludeSupplemental), $userId);
+
+            $totalAmount = (float) App\ExecuteScalar(
+                "SELECT COALESCE(SUM(li.proposed_amount), 0) FROM {$this->tableLineItems} li
+                 JOIN {$this->table} br ON br.budget_reference_number = li.budget_reference_number
                  WHERE {$whereSql}" . ($excludeSupplemental ? ' AND li.supplemental_revision_id IS NULL' : ''),
                 'DB'
             );
