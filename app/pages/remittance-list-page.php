@@ -41,6 +41,9 @@ $_rl_api = preg_match('~/api$~', $_rl_api) ? $_rl_api : $_rl_api . '/api';
 #rl-root .rl-stand { display: flex; flex-direction: column; gap: 3px; font-size: 12.5px; }
 #rl-root .rl-stand-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 #rl-root .rl-stand-row strong { font-family: "IBM Plex Mono", monospace; font-weight: 600; }
+#rl-root tr.rl-month-hdr td { background: var(--afims-surface-subtle, #F4F7FA); font-weight: 700; font-size: 13.5px; padding: 10px 12px; border-top: 1px solid var(--afims-border, #E4ECF2); }
+#rl-root .rl-month-sum { margin-left: 12px; font-weight: 400; font-size: 12px; color: var(--afims-text-muted, #62657E); }
+#rl-root .rl-month-sum strong { font-family: "IBM Plex Mono", monospace; font-weight: 600; color: var(--afims-text, #1e293b); }
 #rl-root .rl-sub { font-size: 11.5px; color: var(--afims-text-muted, #62657E); margin-top: 2px; }
 #rl-root .rl-acts { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
 #rl-root .rl-acts .nha-btn { padding: 6px 14px; font-size: 12.5px; white-space: nowrap; }
@@ -143,8 +146,8 @@ $_rl_api = preg_match('~/api$~', $_rl_api) ? $_rl_api : $_rl_api . '/api';
         <p class="rl-sec-help" style="margin:0 0 8px;">Withheld taxes are paid to BIR once a month for each tax, through a remittance DV. Retention, advance recoupment and other deductions are not paid from here.</p>
         <div class="rl-panel">
             <div class="nha-tbl-scroll"><table class="nha-tbl">
-                <thead><tr><th>Month</th><th>Tax</th><th class="text-end">Total withheld</th><th>Status</th><th>What to do</th></tr></thead>
-                <tbody id="rl-months-body"><tr><td colspan="5"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr></tbody>
+                <thead><tr><th>Tax</th><th class="text-end">Total withheld</th><th>Status</th><th>What to do</th></tr></thead>
+                <tbody id="rl-months-body"><tr><td colspan="4"><div class="nha-loader"><div class="nha-spinner-sm"></div> Loading…</div></td></tr></tbody>
             </table></div>
         </div>
     </div>
@@ -522,10 +525,24 @@ function rl_renderMonths(rows) {
     const todo = rows.filter(r => r.can_remit || (r.dvs || []).some(d => !['RELEASED', 'CANCELLED'].includes(d.status))).length;
     $rl('rl-tab-badge').textContent = todo > 0 ? String(todo) : '';
     if (!rows.length) {
-        body.innerHTML = '<tr><td colspan="5"><div class="rl-empty">Nothing to remit yet. A month appears here once a voucher with withholding tax is approved.</div></td></tr>';
+        body.innerHTML = '<tr><td colspan="4"><div class="rl-empty">Nothing to remit yet. A month appears here once a voucher with withholding tax is approved.</div></td></tr>';
         return;
     }
+    // one header row per month (its total and what can be paid now), then that month's taxes under it
+    const sums = {};
+    rows.forEach(r => {
+        const m = sums[r.period] ??= { label: r.period_label, total: 0, ready: 0, taxes: 0 };
+        m.total += Number(r.total || 0); m.ready += Number(r.ready || 0); m.taxes++;
+    });
+    let lastPeriod = null;
     body.innerHTML = rows.map(r => {
+        let hdr = '';
+        if (r.period !== lastPeriod) {
+            lastPeriod = r.period;
+            const m = sums[r.period];
+            hdr = `<tr class="rl-month-hdr"><td colspan="4">${rl_esc(m.label)}
+                <span class="rl-month-sum">Withheld <strong>${rl_peso(m.total)}</strong>${m.ready > 0 ? ` · Ready to pay BIR <strong>${rl_peso(m.ready)}</strong>` : ''} · ${m.taxes} tax${m.taxes === 1 ? '' : 'es'}</span></td></tr>`;
+        }
         const dvList = r.dvs || [];
         const open   = dvList.filter(d => !['RELEASED', 'CANCELLED'].includes(d.status));
 
@@ -550,24 +567,33 @@ function rl_renderMonths(rows) {
             acts.push(`<span class="rl-sub" style="margin:0;font-size:12.5px;">${Number(r.withheld) > 0 ? 'Nothing yet — waiting for the vouchers to be released' : (Number(r.remitted) > 0 ? 'Done — paid' : '—')}</span>`);
         }
 
-        return `<tr data-period="${rl_esc(r.period)}" data-type="${rl_esc(r.type_key)}">
-            <td style="font-weight:600;white-space:nowrap;">${rl_esc(r.period_label)}</td>
-            <td>${rl_esc(r.type_name)}</td>
-            <td class="text-end nha-mono" style="font-weight:600;">${rl_peso(r.total)}<div class="rl-sub" style="font-family:inherit;font-weight:400;"><button type="button" class="rl-expand-all" title="Click to see which vouchers" onclick="rl_toggleSrc(this)">${Number(r.vouchers || 0)} voucher${Number(r.vouchers) === 1 ? '' : 's'} ▾</button>${parts.length ? ' · ' + parts.join(' · ') : ''}</div>
-                <div class="rl-src" style="display:none;">${(r.source_dvs || []).map(s => `<div class="rl-sub" style="font-family:inherit;"><a class="nha-tbl-link nha-mono" href="${rl_esc(RL_VOUCHER)}?dv=${Number(s.dv_id)}" title="${rl_esc(s.payee)} — click to open" onclick="event.preventDefault();rl_reviewDv(${Number(s.dv_id)})">DV ${rl_esc(s.dv_no)}</a> · ${rl_peso(s.amount)}</div>`).join('')}</div></td>
+        return hdr + `<tr data-period="${rl_esc(r.period)}" data-type="${rl_esc(r.type_key)}">
+            <td style="padding-left:24px;">${rl_esc(r.type_name)}</td>
+            <td class="text-end nha-mono" style="font-weight:600;">${rl_peso(r.total)}<div class="rl-sub" style="font-family:inherit;font-weight:400;">${Number(r.vouchers || 0)} voucher${Number(r.vouchers) === 1 ? '' : 's'}${parts.length ? ' · ' + parts.join(' · ') : ''}</div>
+                ${rl_srcList(r.source_dvs || [])}</td>
             <td><div class="rl-stand">${stand.join('')}</div></td>
             <td class="no-print"><div class="rl-acts">${acts.join('')}</div></td>
         </tr>`;
     }).join('');
 }
 
-/* Show / hide the vouchers behind a month's total. */
-function rl_toggleSrc(btn) {
-    const box = btn.closest('td').querySelector('.rl-src');
-    if (!box) return;
+/* The vouchers behind a month's total, shown right in the row: the first two, then "+N more" to open the rest. Each DV opens in the view modal. */
+const RL_SRC_SHOWN = 2;
+function rl_srcLine(s) {
+    return `<div class="rl-sub" style="font-family:inherit;"><a class="nha-tbl-link nha-mono" href="${rl_esc(RL_VOUCHER)}?dv=${Number(s.dv_id)}" title="${rl_esc(s.payee)} — click to open" onclick="event.preventDefault();rl_reviewDv(${Number(s.dv_id)})">DV ${rl_esc(s.dv_no)}</a> · ${rl_peso(s.amount)}</div>`;
+}
+function rl_srcList(list) {
+    if (!list.length) return '';
+    const rest = list.slice(RL_SRC_SHOWN);
+    return list.slice(0, RL_SRC_SHOWN).map(rl_srcLine).join('') +
+        (rest.length ? `<div class="rl-src-more" style="display:none;">${rest.map(rl_srcLine).join('')}</div>
+            <button type="button" class="rl-expand-all" style="font-size:11.5px;" onclick="rl_toggleSrc(this, ${rest.length})">+${rest.length} more</button>` : '');
+}
+function rl_toggleSrc(btn, n) {
+    const box = btn.previousElementSibling;
     const show = box.style.display === 'none';
     box.style.display = show ? '' : 'none';
-    btn.textContent = btn.textContent.replace(/[▾▴]/, show ? '▴' : '▾');
+    btn.textContent = show ? 'Show less' : `+${n} more`;
 }
 
 /* Where a Remittance DV stands: with whom it is now, or that it was paid / is not going ahead. */
