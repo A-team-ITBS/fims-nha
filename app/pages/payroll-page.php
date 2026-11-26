@@ -895,7 +895,7 @@ function pr_renderAnnual() {
         <td><div style="font-weight:600;">${pr_esc(pr_name(r))}</div><div class="pr-sub">${pr_esc(r.employee_no)}${r.tin ? ' · TIN ' + pr_esc(r.tin) : ''}</div></td>
         <td class="pr-num">${r.months_paid}</td>${pr_amt(r.gross_compensation)}${pr_amt(r.total_non_taxable)}${pr_amt(r.taxable_income)}
         ${pr_amt(r.tax_due)}${pr_amt(r.tax_withheld)}${pr_amt(r.tax_adjustment)}
-        <td class="text-end" style="white-space:nowrap;"><button type="button" class="nha-btn nha-btn-outline nha-btn-sm" onclick="pr_printWorksheet(${Number(r.employee_id)})" title="Annualization worksheet — PDF, with Export to Excel">Worksheet</button>
+        <td class="text-end" style="white-space:nowrap;"><button type="button" class="nha-btn nha-btn-outline nha-btn-sm" onclick="pr_printWorksheet(${Number(r.employee_id)})" title="Annualization of Income for the year — PDF, with Export to Excel">Annualization of Income</button>
             <button type="button" class="nha-btn nha-btn-outline nha-btn-sm" onclick="pr_print2316(${Number(r.employee_id)})" title="BIR Form 2316 — Certificate of Compensation Payment / Tax Withheld">2316</button></td></tr>`).join('');
     const sum = k => rows.reduce((s, r) => s + Number(r[k] || 0), 0);
     $pr('pr-a-tfoot').innerHTML = `<tr><td>Total (${rows.length})</td><td></td>${pr_amt(sum('gross_compensation'))}${pr_amt(sum('total_non_taxable'))}${pr_amt(sum('taxable_income'))}

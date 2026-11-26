@@ -1157,7 +1157,7 @@ quarterly per-payee certificate that sums all of a vendor's DVs in a quarter by 
 
 `AnnualizationPrintService` (print type `ANNUALWS`, PDF only through Dompdf — `GlobalService::renderPdf()`, letter
 portrait) in the layout of the client's **ANNUALIZATION TEMPLATE.xlsx** (sheet EMP ANZN), for one employee and fiscal
-year: Payroll Management → Annualization → **Worksheet** on the row; payload `{ fiscal_yr, employee_id }`. The preview
+year: Payroll Management → Annualization → **Annualization of Income** on the row; payload `{ fiscal_yr, employee_id }`. The preview
 modal has **Export to Excel** (`PRP_TYPES.ANNUALWS.excel` → `POST /print/annualws/excel`, `xlsx()` through `XlsxWriter`,
 one sheet "EMP ANZN", same blocks, real numbers).
 Data: `PayrollManagementService::annualizationWorksheet()` — the year's payroll lines by tax treatment (same signs and
