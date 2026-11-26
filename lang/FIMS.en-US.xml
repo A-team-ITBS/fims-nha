@@ -65,14 +65,14 @@
     <menu id="766">
       <phrase id="menutext" value="Work-In-Process" />
     </menu>
-    <menu id="867">
-      <phrase id="menutext" value="Construction In Progress" />
+    <menu id="870">
+      <phrase id="menutext" value="Merchandise Inventory" />
     </menu>
     <menu id="868">
       <phrase id="menutext" value="Property and equipment for Distribution" />
     </menu>
-    <menu id="870">
-      <phrase id="menutext" value="Merchandise Inventory" />
+    <menu id="867">
+      <phrase id="menutext" value="Construction In Progress" />
     </menu>
     <menu id="869">
       <phrase id="menutext" value="Fixed Assets" />
@@ -108,7 +108,7 @@
       <phrase id="menutext" value="Check Registry" />
     </menu>
     <menu id="398">
-      <phrase id="menutext" value="Fund Transfer Letter of Advice" />
+      <phrase id="menutext" value="FTLA Memo Request" />
     </menu>
     <menu id="561">
       <phrase id="menutext" value="Accountable Forms Registry" />
@@ -151,6 +151,9 @@
     </menu>
     <menu id="871">
       <phrase id="menutext" value="Budget Utilization Report" />
+    </menu>
+    <menu id="973">
+      <phrase id="menutext" value="SOA Generator (For Testing)" />
     </menu>
     <menu id="394">
       <phrase id="menutext" value="Ledgers" />
@@ -1879,6 +1882,9 @@
     </table>
     <table id="status_of_fund_page">
       <phrase id="tblcaption" value="Status of Fund" />
+    </table>
+    <table id="soa_generator_page">
+      <phrase id="tblcaption" value="SOA Generator" />
     </table>
   </project>
 </ew-language>

@@ -230,6 +230,7 @@
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
         clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
+        clone $p['PHPMaker2024\\FIMS\\Attributes\\Map'],
     ],
     null,
     [
@@ -1381,6 +1382,11 @@
                     'POST',
                     'OPTIONS',
                 ],
+                [
+                    'GET',
+                    'POST',
+                    'OPTIONS',
+                ],
             ],
             'pattern' => [
                 '/AccountableFormsRegistryPage[/{params:.*}]',
@@ -1567,6 +1573,7 @@
                 '/RfaLaaReviewPage[/{params:.*}]',
                 '/SaroRegistryPage[/{params:.*}]',
                 '/SignatoryManagement[/{params:.*}]',
+                '/SoaGeneratorPage[/{params:.*}]',
                 '/StatementOfChangesPage[/{params:.*}]',
                 '/StatusOfFundPage[/{params:.*}]',
                 '/SubProgramPage[/{params:.*}]',
@@ -1799,6 +1806,7 @@
                 'PHPMaker2024\\FIMS\\RfaLaaReviewPageController:custom',
                 'PHPMaker2024\\FIMS\\SaroRegistryPageController:custom',
                 'PHPMaker2024\\FIMS\\SignatoryManagementController:custom',
+                'PHPMaker2024\\FIMS\\SoaGeneratorPageController:custom',
                 'PHPMaker2024\\FIMS\\StatementOfChangesPageController:custom',
                 'PHPMaker2024\\FIMS\\StatusOfFundPageController:custom',
                 'PHPMaker2024\\FIMS\\SubProgramPageController:custom',
@@ -2535,6 +2543,9 @@
                 [
                     'PHPMaker2024\\FIMS\\PermissionMiddleware',
                 ],
+                [
+                    'PHPMaker2024\\FIMS\\PermissionMiddleware',
+                ],
             ],
             'name' => [
                 'custom.accountable_forms_registry_page',
@@ -2721,6 +2732,7 @@
                 'custom.rfa_laa_review_page',
                 'custom.saro_registry_page',
                 'custom.SignatoryManagement',
+                'custom.soa_generator_page',
                 'custom.statement_of_changes_page',
                 'custom.status_of_fund_page',
                 'custom.sub_program_page',
@@ -2769,6 +2781,7 @@
                 'custom.work_in_process_page',
             ],
             'options' => [
+                [],
                 [],
                 [],
                 [],
@@ -3233,6 +3246,7 @@
         $o[227],
         $o[228],
         $o[229],
+        $o[230],
     ],
     []
 );

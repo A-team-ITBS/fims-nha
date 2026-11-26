@@ -235,8 +235,8 @@ $colCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css')
                                 <div id="col-collected-summary" style="font-size:12px;color:var(--fims-text-muted,#6B7280);margin-bottom:6px;">Select a Region/Office above to view its collected collections.</div>
                                 <div class="fims-table-wrap" style="max-height:320px;overflow-y:auto;">
                                     <table class="fims-table">
-                                        <thead><tr><th>Date</th><th>GL Account</th><th class="text-right">Amount</th></tr></thead>
-                                        <tbody id="col-collected-list-body"><tr class="fims-empty"><td colspan="3">—</td></tr></tbody>
+                                        <thead><tr><th>Date</th><th>GL Account</th><th class="text-right">Amount</th><th>Status</th></tr></thead>
+                                        <tbody id="col-collected-list-body"><tr class="fims-empty"><td colspan="4">—</td></tr></tbody>
                                     </table>
                                 </div>
                             </div>
@@ -825,11 +825,11 @@ $colCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css')
         colCollectedForRegion = [];
         colDepositedRangesForRegion = [];
         if (!rcId) {
-            tbody.innerHTML = '<tr class="fims-empty"><td colspan="3">—</td></tr>';
+            tbody.innerHTML = '<tr class="fims-empty"><td colspan="4">—</td></tr>';
             summary.textContent = 'Select a Region/Office above to view its collected collections.';
             return;
         }
-        tbody.innerHTML = '<tr class="fims-empty"><td colspan="3">Loading…</td></tr>';
+        tbody.innerHTML = '<tr class="fims-empty"><td colspan="4">Loading…</td></tr>';
         summary.textContent = 'Loading…';
         Promise.all([
             fetch(API + '/collections-list?rc_id=' + encodeURIComponent(rcId), { headers: authHeaders() }).then(r => r.json()),
@@ -854,18 +854,21 @@ $colCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css')
                     ? ' — Already deposited: ' + fmtPeso(balance.total_deposited) + ' — Undeposited balance: ' + fmtPeso(balance.undeposited_balance)
                     : '';
                 if (!rows.length) {
-                    tbody.innerHTML = '<tr class="fims-empty"><td colspan="3">No collections on record for this Region/Office.</td></tr>';
+                    tbody.innerHTML = '<tr class="fims-empty"><td colspan="4">No collections on record for this Region/Office.</td></tr>';
                     summary.textContent = 'No collections on record for this Region/Office.' + balanceLine;
                     return;
                 }
                 const total = rows.reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
-                summary.textContent = rows.length + ' collection' + (rows.length === 1 ? '' : 's') + ' found — Total: ' + fmtPeso(total) + balanceLine;
+                const depositedCount = rows.filter(r => colDateAlreadyDeposited(r.report_date)).length;
+                summary.textContent = rows.length + ' collection' + (rows.length === 1 ? '' : 's') + ' found — Total: ' + fmtPeso(total) +
+                    ' — ' + depositedCount + ' deposited, ' + (rows.length - depositedCount) + ' undeposited' + balanceLine;
                 tbody.innerHTML = rows.map(function (r) {
                     const glLabel = r.account_code ? escapeHtml(r.account_code + ' — ' + (r.account_title || '')) : '—';
                     return '<tr>' +
                         '<td>' + escapeHtml(r.report_date || '—') + '</td>' +
                         '<td>' + glLabel + '</td>' +
                         '<td class="text-right">' + fmtPeso(r.amount) + '</td>' +
+                        '<td>' + colDepositedBadge(colDateAlreadyDeposited(r.report_date)) + '</td>' +
                         '</tr>';
                 }).join('');
             })
@@ -883,6 +886,15 @@ $colCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css')
             if (r.to && d > r.to) return false;
             return true;
         });
+    }
+
+    // Per-row status badge for the panel above — same "exact, not inferred" signal
+    // colDateAlreadyDeposited() already uses to exclude lines from
+    // colSumCollectedForPeriod(), just surfaced visually here instead of silently.
+    function colDepositedBadge(isDeposited) {
+        return isDeposited
+            ? '<span class="fims-badge fims-badge-green">Deposited</span>'
+            : '<span class="fims-badge fims-badge-amber">Undeposited</span>';
     }
 
     // Sums colCollectedForRegion's amounts whose report_date falls within

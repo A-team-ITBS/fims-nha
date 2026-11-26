@@ -44,7 +44,7 @@ class PersonalData
     public $RenderingView = false;
 
     // CSS class/style
-    public $CurrentPageName = "StatusOfFundPageController";
+    public $CurrentPageName = "SoaGeneratorPageController";
 
     // Page headings
     public $Heading = "";
