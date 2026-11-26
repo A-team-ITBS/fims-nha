@@ -149,7 +149,7 @@ $_sl_api = preg_match('~/api$~', $_sl_api) ? $_sl_api : $_sl_api . '/api';
                         <th>Particulars</th>
                         <th class="text-end">Debit</th>
                         <th class="text-end">Credit</th>
-                        <th class="text-end">Balance</th>
+                        <th class="text-end sl-bal-col">Balance</th>
                     </tr>
                 </thead>
                 <tbody id="sl-tbody">
@@ -378,9 +378,9 @@ function sl_renderGroupedTable(masters) {
     tbody.innerHTML = masters.map(m => `
         <tr class="sl-group-row">
             <td colspan="6">${sl_esc(m.master.account_code)} — ${sl_esc(m.master.account_title)} <span style="font-weight:400;color:var(--afims-text-muted,#62657E);">(${sl_esc(m.normal_balance)}-normal${m.master.account_type ? ', ' + sl_esc(m.master.account_type) : ''})</span></td>
-            <td class="text-end nha-mono">${sl_peso(m.total_debit)}</td>
-            <td class="text-end nha-mono">${sl_peso(m.total_credit)}</td>
-            <td class="text-end nha-mono">${sl_peso(Math.abs(m.ending_balance))}${sl_balSide(m.ending_balance, m.debit_normal)}</td>
+            <td class="text-end nha-mono">${sl_pesoOrDash(m.total_debit)}</td>
+            <td class="text-end nha-mono">${sl_pesoOrDash(m.total_credit)}</td>
+            <td class="text-end nha-mono sl-bal-col">${Number(m.ending_balance) ? sl_peso(Math.abs(m.ending_balance)) + sl_balSide(m.ending_balance, m.debit_normal) : '-'}</td>
         </tr>
         ${m.data.map(r => sl_rowHtml(r, m.debit_normal)).join('')}
     `).join('');
@@ -396,7 +396,7 @@ function sl_rowHtml(r, debitNormal) {
         <td>${sl_esc(r.description) || sl_esc(r.sl_detail_name) || '—'}</td>
         <td class="text-end nha-mono">${Number(r.debit) > 0 ? sl_peso(r.debit) : ''}</td>
         <td class="text-end nha-mono">${Number(r.credit) > 0 ? sl_peso(r.credit) : ''}</td>
-        <td class="text-end nha-mono">${sl_peso(Math.abs(r.running_balance))}${sl_balSide(r.running_balance, debitNormal)}</td>
+        <td class="text-end nha-mono sl-bal-col">${sl_peso(Math.abs(r.running_balance))}${sl_balSide(r.running_balance, debitNormal)}</td>
     </tr>`;
 }
 
@@ -412,6 +412,10 @@ function sl_balSide(balance, debitNormal) {
 /* ── Formatters ────────────────────────────────────────────── */
 function sl_peso(v) {
     return '₱ ' + Number(v || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+/* An empty amount shows "-" instead of ₱ 0.00. */
+function sl_pesoOrDash(v) {
+    return Math.abs(Number(v || 0)) < 0.005 ? '-' : sl_peso(v);
 }
 function sl_fmtDate(s) {
     if (!s) return '—';

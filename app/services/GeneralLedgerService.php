@@ -592,6 +592,22 @@ class GeneralLedgerService
             }
             $whereSql = implode(' AND ', $where);
 
+            // Source of the per-account totals. One fiscal year → the view as is (that year's GL activity + that
+            // year's opening balance). "All Years" → the view would add EVERY year's opening balance on top of the
+            // whole GL, double-counting a carried-forward balance (FY2027's opening = FY2026's closing). So build
+            // the cumulative figure directly: all GL activity + only the EARLIEST opening balance per book/account.
+            $source = $fiscalYr !== null
+                ? $this->tableViewTrialBalance
+                : "(SELECT c.account_id, x.book_id, SUM(x.debit) AS total_debit, SUM(x.credit) AS total_credit
+                    FROM (SELECT account_code, book_id, debit, credit FROM fims.general_ledger
+                          UNION ALL
+                          SELECT ob.account_code, ob.book_id, ob.debit, ob.credit
+                          FROM fims.opening_balances ob
+                          WHERE ob.fiscal_yr = (SELECT MIN(o2.fiscal_yr) FROM fims.opening_balances o2
+                                                WHERE o2.book_id = ob.book_id AND o2.account_code = ob.account_code)) x
+                    JOIN {$this->tableCoa} c ON c.account_code = x.account_code
+                    GROUP BY c.account_id, x.book_id)";
+
             // Roll SL/child postings up into their GL account. An SL account (e.g. the Chart of
             // Accounts page's "Add Sub-Ledger" action) is only ever created under a parent that is
             // ITSELF already posting_allowed — chart-of-accounts-page.php's coa_addSL() only offers
@@ -617,7 +633,7 @@ class GeneralLedgerService
                      SELECT gl_of.gl_account_id,
                             SUM(v.total_debit)  AS total_debit,
                             SUM(v.total_credit) AS total_credit
-                     FROM {$this->tableViewTrialBalance} v
+                     FROM {$source} v
                      JOIN gl_of ON gl_of.leaf_id = v.account_id
                      WHERE {$whereSql}
                      GROUP BY gl_of.gl_account_id
@@ -635,12 +651,21 @@ class GeneralLedgerService
                  ORDER BY gl.account_code",
                 'DB'
             ) ?: [];
+            // Balance method: one net figure per account — on the debit side if debits exceed credits,
+            // otherwise on the credit side (the other side stays 0). Gross activity is not shown.
+            foreach ($data as &$row) {
+                $net                = round((float) $row['total_debit'] - (float) $row['total_credit'], 2);
+                $row['total_debit']  = $net > 0 ? $net : 0.0;
+                $row['total_credit'] = $net < 0 ? -$net : 0.0;
+            }
+            unset($row);
+            // Every account is listed, including those that net to zero (fully paid) or have no postings yet.
             $totalDebit  = round(array_sum(array_column($data, 'total_debit')), 2);
             $totalCredit = round(array_sum(array_column($data, 'total_credit')), 2);
 
             $this->attachAccountGroups($data);
 
-            return ['success' => true, 'data' => $data, 'total_debit' => $totalDebit, 'total_credit' => $totalCredit, 'balanced' => $totalDebit === $totalCredit];
+            return ['success' => true, 'data' => $data, 'total_debit' => $totalDebit, 'total_credit' => $totalCredit, 'balanced' => abs($totalDebit - $totalCredit) < 0.005];
         } catch (\Exception $e) {
             App\LogError('GeneralLedgerService::fetchTrialBalance ' . $e->getMessage());
 

@@ -226,7 +226,7 @@ $_gl_api = preg_match('~/api$~', $_gl_api) ? $_gl_api : $_gl_api . '/api';
                                     <th>Description / Particulars</th>
                                     <th class="text-end">Debit</th>
                                     <th class="text-end">Credit</th>
-                                    <th class="text-end">Balance</th>
+                                    <th class="text-end gl-bal-col">Balance</th>
                                 </tr>
                             </thead>
                             <tbody id="gl-sl-tbody"></tbody>
@@ -268,8 +268,8 @@ function gl_setHead(tree) {
     const h = $gl('gl-thead');
     h.className = tree ? 'gl-head-light' : '';
     h.innerHTML = tree
-        ? '<tr><th>Account code</th><th colspan="3">Account description</th><th class="text-end">Debit</th><th class="text-end">Credit</th><th class="text-end">Balance</th></tr>'
-        : '<tr><th>Posting Date</th><th>JEV No.</th><th>DV Number</th><th>Particulars</th><th class="text-end">Debit</th><th class="text-end">Credit</th><th class="text-end">Balance</th></tr>';
+        ? '<tr><th>Account code</th><th colspan="3">Account description</th><th class="text-end">Debit</th><th class="text-end">Credit</th><th class="text-end gl-bal-col">Balance</th></tr>'
+        : '<tr><th>Posting Date</th><th>JEV No.</th><th>DV Number</th><th>Particulars</th><th class="text-end">Debit</th><th class="text-end">Credit</th><th class="text-end gl-bal-col">Balance</th></tr>';
 }
 async function gl_boot() {
     gl_setHead(true);
@@ -628,9 +628,9 @@ function gl_nodeRow(n, popup) {
     return `<tr class="gl-node gl-k-${n.kind}${expandable && popup ? ' gl-clickable' : ''}" data-id="${gl_esc(n.account_id)}" data-parent="${gl_esc(n.parent_id ?? '')}" data-code="${gl_esc(n.account_code)}" style="--gl-depth:${depth};">
         ${popup ? '' : `<td class="gl-lbl"><span class="nha-mono gl-code">${gl_esc(n.account_code)}</span></td><td colspan="3">${expandable ? `<a href="#" class="gl-link" role="button" title="Click to see the subsidiary ledgers">${gl_esc(n.account_title)}<svg class="gl-link-icon" width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3"/></svg></a>` : gl_esc(n.account_title)}</td>`}
         ${!popup ? '' : `<td colspan="4" class="gl-lbl"><span class="gl-sl-toggle">${expandable ? '&#9656;' : ''}</span><span class="nha-mono gl-code">${n.direct ? '' : gl_esc(n.account_code)}</span> ${n.direct ? 'Direct postings to ' + gl_esc(n.account_code) : gl_esc(n.account_title)}</td>`}
-        <td class="text-end nha-mono">${blank ? '' : amt(Number(n.total_debit) ? gl_peso(n.total_debit) : '—', Number(n.total_debit))}</td>
-        <td class="text-end nha-mono">${blank ? '' : amt(Number(n.total_credit) ? gl_peso(n.total_credit) : '—', Number(n.total_credit))}</td>
-        <td class="text-end nha-mono${abnormal && !blank ? ' gl-abnormal' : ''}">${blank ? '' : amt((bal === 0 ? '0.00' : gl_peso(Math.abs(bal))) + side, bal !== 0)}</td>
+        <td class="text-end nha-mono">${blank ? '' : amt(Number(n.total_debit) ? gl_peso(n.total_debit) : '-', Number(n.total_debit))}</td>
+        <td class="text-end nha-mono">${blank ? '' : amt(Number(n.total_credit) ? gl_peso(n.total_credit) : '-', Number(n.total_credit))}</td>
+        <td class="text-end nha-mono gl-bal-col${abnormal && !blank ? ' gl-abnormal' : ''}">${blank ? '' : amt((bal === 0 ? '-' : gl_peso(Math.abs(bal))) + side, bal !== 0)}</td>
     </tr>`;
 }
 
@@ -694,7 +694,7 @@ const GL_MON = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', '
 const GL_HEAD = ['Date', 'Particulars', 'REF', 'JEV / DV #', 'Check No. / Check Date', 'DEBIT', 'CREDIT', 'BALANCE'];
 // the ledger lines of one account → year line, Beginning Balance, a row per posting, and the Ending Balance row
 function gl_ledgerSection(rows, debitNormal, balOf) {
-    const bal = v => gl_num(Math.abs(v)) + gl_balSide(v, debitNormal);
+    const bal = v => Math.abs(v) < 0.005 ? '-' : gl_num(Math.abs(v)) + gl_balSide(v, debitNormal);   // zero has no side → "-"
     const items = [];
     let year = null, td = 0, tc = 0, last = 0;
     rows.forEach(r => {
@@ -869,7 +869,7 @@ async function gl_openGlTxns(id) {
             ? rows.map(r => gl_rowHtml(r, json.debit_normal)).join('') + `<tr class="gl-k-group"><td colspan="4" style="font-weight:700;">Total</td>
                 <td class="text-end nha-mono" style="font-weight:700;">${gl_peso(json.total_debit)}</td>
                 <td class="text-end nha-mono" style="font-weight:700;">${gl_peso(json.total_credit)}</td>
-                <td class="text-end nha-mono" style="font-weight:700;">${gl_peso(Math.abs(json.ending_balance))}${gl_balSide(json.ending_balance, json.debit_normal)}</td></tr>`
+                <td class="text-end nha-mono gl-bal-col" style="font-weight:700;">${gl_peso(Math.abs(json.ending_balance))}${gl_balSide(json.ending_balance, json.debit_normal)}</td></tr>`
             : '<tr><td colspan="7"><div class="nha-empty nha-empty-sm"><span class="nha-empty-title">No posted transactions for this account.</span></div></td></tr>';
     } catch (e) {
         if (req !== gl_txnReq) return;
@@ -945,7 +945,7 @@ function gl_rowHtml(r, debitNormal, groupId) {
         <td>${r.sl_account_code ? `<span class="nha-mono" style="font-size:11px;color:var(--afims-text-muted,#62657E);margin-right:6px;" title="Posted to this subsidiary ledger">${gl_esc(r.sl_account_code)}</span>` : ''}${gl_esc(r.description) || gl_esc(r.sl_name) || '—'}</td>
         <td class="text-end nha-mono">${Number(r.debit) > 0 ? gl_peso(r.debit) : ''}</td>
         <td class="text-end nha-mono">${Number(r.credit) > 0 ? gl_peso(r.credit) : ''}</td>
-        <td class="text-end nha-mono">${gl_peso(Math.abs(r.running_balance))}${gl_balSide(r.running_balance, debitNormal)}</td>
+        <td class="text-end nha-mono gl-bal-col">${gl_peso(Math.abs(r.running_balance))}${gl_balSide(r.running_balance, debitNormal)}</td>
     </tr>`;
 }
 
