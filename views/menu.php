@@ -26,9 +26,9 @@ $sideMenu->addMenuItem(390, "mci_Inventory", $Language->menuPhrase("390", "MenuT
 $sideMenu->addMenuItem(91, "mi_IARModule", $Language->menuPhrase("91", "MenuText"), "IarModule", 390, "", AllowListMenu('{FIMS}IARModule.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(333, "mi_property_record_page", $Language->menuPhrase("333", "MenuText"), "PropertyRecordPage", 390, "", AllowListMenu('{FIMS}property-record-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(766, "mi_work_in_process_page", $Language->menuPhrase("766", "MenuText"), "WorkInProcessPage", 390, "", AllowListMenu('{FIMS}work-in-process-page.php'), false, false, "", "", false, true);
-$sideMenu->addMenuItem(867, "mi_construction_in_progress_page", $Language->menuPhrase("867", "MenuText"), "ConstructionInProgressPage", 390, "", AllowListMenu('{FIMS}construction-in-progress-page.php'), false, false, "", "", false, true);
-$sideMenu->addMenuItem(868, "mi_property_and_equipment_for_distribution_page", $Language->menuPhrase("868", "MenuText"), "PropertyAndEquipmentForDistributionPage", 390, "", AllowListMenu('{FIMS}property-and-equipment-for-distribution-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(870, "mi_merchandise_inventory_page", $Language->menuPhrase("870", "MenuText"), "MerchandiseInventoryPage", 390, "", AllowListMenu('{FIMS}merchandise-inventory-page.php'), false, false, "", "", false, true);
+$sideMenu->addMenuItem(868, "mi_property_and_equipment_for_distribution_page", $Language->menuPhrase("868", "MenuText"), "PropertyAndEquipmentForDistributionPage", 390, "", AllowListMenu('{FIMS}property-and-equipment-for-distribution-page.php'), false, false, "", "", false, true);
+$sideMenu->addMenuItem(867, "mi_construction_in_progress_page", $Language->menuPhrase("867", "MenuText"), "ConstructionInProgressPage", 390, "", AllowListMenu('{FIMS}construction-in-progress-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(869, "mi_fixed_assets_page", $Language->menuPhrase("869", "MenuText"), "FixedAssetsPage", 390, "", AllowListMenu('{FIMS}fixed-assets-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(755, "mci_Monitoring", $Language->menuPhrase("755", "MenuText"), "", -1, "", true, false, true, "fas fa-chart-bar", "", false, true);
 $sideMenu->addMenuItem(400, "mi_cob_page", $Language->menuPhrase("400", "MenuText"), "CobPage", 755, "", AllowListMenu('{FIMS}cob-page.php'), false, false, "", "", false, true);
@@ -40,6 +40,7 @@ $sideMenu->addMenuItem(757, "mi_collections_page", $Language->menuPhrase("757", 
 $sideMenu->addMenuItem(551, "mci_Registry", $Language->menuPhrase("551", "MenuText"), "", -1, "", true, false, true, "fas fa-book", "", false, true);
 $sideMenu->addMenuItem(263, "mi_saro_registry_page", $Language->menuPhrase("263", "MenuText"), "SaroRegistryPage", 551, "", AllowListMenu('{FIMS}saro-registry-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(560, "mi_check_registry_page", $Language->menuPhrase("560", "MenuText"), "CheckRegistryPage", 551, "", AllowListMenu('{FIMS}check-registry-page.php'), false, false, "", "", false, true);
+$sideMenu->addMenuItem(398, "mi_ftla_page", $Language->menuPhrase("398", "MenuText"), "FtlaPage", 551, "", AllowListMenu('{FIMS}ftla-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(561, "mi_accountable_forms_registry_page", $Language->menuPhrase("561", "MenuText"), "AccountableFormsRegistryPage", 551, "", AllowListMenu('{FIMS}accountable-forms-registry-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(972, "mi_status_of_fund_page", $Language->menuPhrase("972", "MenuText"), "StatusOfFundPage", 551, "", AllowListMenu('{FIMS}status-of-fund-page.php'), false, false, "", "", false, true);
 $sideMenu->addMenuItem(865, "mci_Payroll", $Language->menuPhrase("865", "MenuText"), "", -1, "", true, false, true, "fas fa-money-check-dollar", "", false, true);
