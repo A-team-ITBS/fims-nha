@@ -2,6 +2,9 @@
 -- fims.budget_revision_supplemental_item
 -- The chart-of-accounts LINE ITEMS of a SUPPLEMENTAL budget request (fims.budget_revision.request_type = 'SUPPLEMENTAL').
 --
+-- NOTE: a request may carry several projects ("01 - table/57", "03 - alter_table/64"). Each line item belongs to ONE of them
+-- (supplemental_project_id, added by file 64); budget_revision_id still says which request it is part of.
+--
 -- A Supplemental request adds a NEW project, released by a DBM SARO, to the budget — a project that is not in the approved COB. While
 -- the request is Saved / Submitted the project does not exist yet, so what the user typed (the line items: account, particulars,
 -- amount) is kept here, one row per line item, and replaced as a whole when the request is edited. The project itself, the program row,

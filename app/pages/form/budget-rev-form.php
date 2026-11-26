@@ -277,6 +277,23 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
     border-bottom: 1px solid var(--bdr, #E4ECF2);
 }
 @media (min-width: 768px) { .nha-root .brv-sp-blk-hd { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); } }
+.nha-root .brv-sp-blk + .brv-sp-blk { margin-top: 14px; }
+/* "Project 2 · Remove project" — only shown while the request has more than one project */
+.nha-root .brv-sp-blk-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+.nha-root .brv-sp-blk-bar[hidden] { display: none; }
+.nha-root .brv-sp-blk-no { font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--sec, #62657E); }
+.nha-root .brv-sp-rmproj {
+    padding: 4px 10px; border: 1px solid var(--red-txt, #8F222D); border-radius: 6px; background: var(--afims-surface, #FFFFFF);
+    color: var(--red-txt, #8F222D); font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.nha-root .brv-sp-rmproj:hover { background: var(--red-bg, #FAE1E3); }
+.nha-root .brv-sp-add-project { margin-top: 14px; }
+.nha-root .brv-sp-grand {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; padding: 10px 14px;
+    font-size: 13px; background: var(--blue-bg, #E6EBF6); border: 1px solid var(--navy-bdr, #E6EBF6); border-radius: 8px;
+}
+.nha-root .brv-sp-grand[hidden] { display: none; }
+.nha-root .brv-sp-grand strong { font-variant-numeric: tabular-nums; }
 .nha-root .brv-sp-lit { overflow-x: auto; background: var(--afims-surface, #FFFFFF); border: 1px solid var(--bdr, #E4ECF2); border-radius: 10px; }
 .nha-root .brv-sp-tbl { width: 100%; min-width: 620px; border-collapse: collapse; table-layout: fixed; }
 .nha-root .brv-sp-tbl th {
@@ -524,7 +541,7 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
                 <fieldset id="brv-supp" class="brv-fs" hidden disabled>
 
                     <section class="brv-step">
-                        <h4 class="brv-step-hd">Program &amp; SARO <span class="brv-step-sub">Pick the program and the SARO DBM released the project under. Only this year's SAROs (FY <?php echo date('Y'); ?>) are listed, and picking a Program or Sub-Program narrows them to the SAROs tagged to it.</span></h4>
+                        <h4 class="brv-step-hd">Program &amp; SARO <span class="brv-step-sub">Pick the program and the SARO DBM released the projects under. Only this year's SAROs (FY <?php echo date('Y'); ?>) are listed, and picking a Program or Sub-Program narrows them to the SAROs tagged to it.</span></h4>
 
                         <div class="brv-sp-row">
                             <div class="brv-fld">
@@ -546,44 +563,20 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
                     </section>
 
                     <section class="brv-step">
-                        <h4 class="brv-step-hd">Project <span class="brv-step-sub">The new project this SARO funds — it is not in the approved COB.</span></h4>
+                        <h4 class="brv-step-hd">Projects <span class="brv-step-sub">The new projects this SARO funds — none of them is in the approved COB. Add a project for each one the SARO covers; they all go under the program above.</span></h4>
 
-                        <div class="brv-sp-blk">
-                            <div class="brv-sp-blk-hd">
-                                <div class="brv-fld">
-                                    <label class="brv-lbl" for="brv-sp-project">Project <span class="brv-req">*</span></label>
-                                    <input type="text" class="brv-in" id="brv-sp-project" maxlength="255" autocomplete="off" placeholder="Enter the name of the new project" required>
-                                </div>
-                                <div class="brv-fld">
-                                    <label class="brv-lbl" for="brv-sp-location">Location <span class="brv-optional">(optional)</span></label>
-                                    <input type="text" class="brv-in" id="brv-sp-location" maxlength="255" autocomplete="off" placeholder="e.g. Brgy. San Jose, Quezon City">
-                                </div>
-                            </div>
+                        <!-- one block per project (built by the script at the bottom of this file): its name, location and its own line items -->
+                        <div id="brv-sp-projects"></div>
+                        <datalist id="brv-sp-accounts"></datalist>
+                        <button type="button" class="nha-btn nha-btn-ghost brv-sp-add brv-sp-add-project" id="brv-sp-add-project">+ Add Project</button>
 
-                            <div class="brv-sp-lit">
-                                <table class="brv-sp-tbl">
-                                    <thead><tr>
-                                        <th style="width:36%;">Account Code - Account Name</th>
-                                        <th style="width:38%;">Particulars</th>
-                                        <th style="width:20%;text-align:right;">Amount</th>
-                                        <th style="width:6%;"></th>
-                                    </tr></thead>
-                                    <tbody id="brv-sp-items"></tbody>
-                                    <tfoot><tr>
-                                        <td colspan="2">Total</td>
-                                        <td class="brv-sp-sum" id="brv-sp-total">0.00</td>
-                                        <td></td>
-                                    </tr></tfoot>
-                                </table>
-                            </div>
-                            <datalist id="brv-sp-accounts"></datalist>
-                            <button type="button" class="nha-btn nha-btn-ghost brv-sp-add" id="brv-sp-add-item">+ Add Line Item</button>
-                            <div class="brv-sp-note" id="brv-sp-note" hidden></div>
-                        </div>
+                        <!-- the total of every project's line items: what is checked against the SARO's amount (shown once there is more than one project) -->
+                        <div class="brv-sp-grand" id="brv-sp-grand" hidden><span>Total of all projects</span><strong id="brv-sp-total">0.00</strong></div>
+                        <div class="brv-sp-note" id="brv-sp-note" hidden></div>
 
                         <div class="brv-fld brv-reason-fld">
                             <label class="brv-lbl" for="brv-sp-reason">Reason <span class="brv-optional">(optional)</span></label>
-                            <textarea class="brv-in" id="brv-sp-reason" rows="2" placeholder="Anything FMD should know about this project"></textarea>
+                            <textarea class="brv-in" id="brv-sp-reason" rows="2" placeholder="Anything FMD should know about these projects"></textarea>
                         </div>
                     </section>
 
@@ -695,7 +688,7 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
     };
     // SUPPLEMENTAL has its own panel (#brv-supp, window.brvSupp): only the intro is used; the rest keeps the (hidden) Amendment wording so setType never meets an undefined text.
     TYPE_TEXT.SUPPLEMENTAL = Object.assign({}, TYPE_TEXT.REVISION, {
-        intro: "Record the additional project DBM released a SARO for — a project that is not in the approved COB. Saving files it as Saved, and you can still edit it; choose Process in its Actions menu to submit it for review (after that it cannot be edited). Once it is approved the project is added to the budget, and its amount goes to the Amendment column of the COB, not to the Approved Amount.",
+        intro: "Record the additional projects DBM released a SARO for — projects that are not in the approved COB. One request can carry several projects. Saving files it as Saved, and you can still edit it; choose Process in its Actions menu to submit it for review (after that it cannot be edited). Once it is approved the projects are added to the budget, and their amounts go to the Amendment column of the COB, not to the Approved Amount.",
     });
 
     // Only a line of an Approved budget request may be revised or receive funds (status compared ignoring case and spaces,
@@ -1509,11 +1502,12 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
 
 <script>
 /* ══════════════════════════════════════════════════════════════════════════
-   Supplemental tab (#brv-supp) — a NEW project released by a SARO and not in the approved COB.
+   Supplemental tab (#brv-supp) — NEW projects released by a SARO and not in the approved COB.
 
-   The user picks the Program (and, optionally, the Sub-Program) and the SARO, names the project (and, optionally, its location) and enters its line
-   items: a chart-of-accounts entry, particulars and an amount each. There is NO Project Code field — the code is generated when the request is approved
-   (BudgetRevisionService::approveSupplemental()), so nothing here asks for or shows one. One request is one project: to add another project, file another request.
+   The user picks the Program (and, optionally, the Sub-Program) and the SARO — shared by every project of the request — then adds the projects: each has a name,
+   an optional location and its own line items (a chart-of-accounts entry, particulars and an amount each). "+ Add Project" adds another block; a block can be
+   removed while there is more than one. The total of ALL the projects' line items is what is held to the SARO's amount. There is NO Project Code field — the code
+   of each project is generated when the request is approved (BudgetRevisionService::approveSupplemental()), so nothing here asks for or shows one.
 
    Lists (fetched once, the first time the tab is opened): GET /program/all, /sub_program/all, /fund_tracking/list?type=SARO&fiscal_year=<this year> (only
    this year's SAROs are offered; a saved request whose SARO is of another year still shows that SARO when it is opened for Edit) and
@@ -1523,8 +1517,8 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
    The host page (budget-revision-page.php) uses it through window.brvSupp:
      ready()     → promise, resolves once the lists are loaded
      reset()     → empties the panel (the form's reset event does it too)
-     fill(row)   → shows a saved request (the row read from /budget_revision/read/{id}, with its items) for Edit
-     payload()   → the body to save with: { request_type: 'SUPPLEMENTAL', fund_tracking_id, program_code, sub_program_code, project_name, location, items[], reason }
+     fill(row)   → shows a saved request (the row read from /budget_revision/read/{id}, with its projects[] and their items[]) for Edit
+     payload()   → the body to save with: { request_type: 'SUPPLEMENTAL', fund_tracking_id, program_code, sub_program_code, projects[{ project_name, location, items[] }], reason }
      validate()  → '' or the message of what is wrong (the server checks everything again)
 ══════════════════════════════════════════════════════════════════════════ */
 (function () {
@@ -1539,7 +1533,7 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
     const round2 = n => Math.round(n * 100) / 100;
 
     const program = $('brv-sp-program'), sub = $('brv-sp-subprogram'), saro = $('brv-sp-saro'), card = $('brv-sp-saro-card');
-    const items = $('brv-sp-items'), total = $('brv-sp-total'), note = $('brv-sp-note'), hint = $('brv-sp-hint'), accounts = $('brv-sp-accounts');
+    const projs = $('brv-sp-projects'), total = $('brv-sp-total'), grand = $('brv-sp-grand'), note = $('brv-sp-note'), hint = $('brv-sp-hint'), accounts = $('brv-sp-accounts');
 
     // the lists, and the accounts looked up both ways (the label the user sees ↔ the account id the request stores)
     // extra: the SARO of a request opened for Edit when it is not on this year's list (an earlier year's, or deleted since) — kept apart so it never joins the list for the next request
@@ -1659,22 +1653,26 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
         updateTotal();
     });
 
-    /* ── line items ── */
-    const rows = () => Array.from(items.querySelectorAll('tr'));
+    /* ── projects, and the line items of each ── */
+    const blocks = () => Array.from(projs.querySelectorAll('.brv-sp-blk'));
+    const rowsOf = blk => Array.from(blk.querySelectorAll('.brv-sp-items tr'));
+    let blockSeq = 0;   // makes the ids that tie each block's labels to its inputs unique
+
     function checkAccount(input) {
         const label = input.value.trim(), a = S.byLabel.get(label);
         input.dataset.id = a ? String(a.account_id) : '';
         input.setCustomValidity(label !== '' && !a ? 'Pick an account from the list.' : '');
     }
-    function itemsTotal() {
-        return round2(rows().reduce((sum, tr) => {
-            const n = Number(amtRaw(tr.querySelector('.brv-sp-amt').value));
-            return sum + (isNaN(n) ? 0 : n);
-        }, 0));
-    }
+    const rowAmount = tr => { const n = Number(amtRaw(tr.querySelector('.brv-sp-amt').value)); return isNaN(n) ? 0 : n; };
+    const blockTotal = blk => round2(rowsOf(blk).reduce((sum, tr) => sum + rowAmount(tr), 0));
+    // the total of every project's line items — what is held to the SARO's amount
+    const itemsTotal = () => round2(blocks().reduce((sum, blk) => sum + blockTotal(blk), 0));
+
     function updateTotal() {
+        blocks().forEach(blk => { blk.querySelector('.brv-sp-subtotal').textContent = amtText(blockTotal(blk)) || '0.00'; });
         const t = itemsTotal(), s = selSaro(), cap = s ? Number(s.amount) : 0;
         total.textContent = amtText(t) || '0.00';
+        grand.hidden = blocks().length < 2;   // with one project its own total is the total
         if (s && cap > 0 && t > cap + 0.004) {
             note.hidden = false;
             note.textContent = `The total (${peso(t)}) is more than the SARO's amount (${peso(cap)}).`;
@@ -1683,7 +1681,8 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
             note.textContent = '';
         }
     }
-    function addRow(prefill) {
+
+    function addRow(blk, prefill) {
         const p = prefill || {};
         const tr = document.createElement('tr');
         tr.innerHTML = '<td><input type="text" class="brv-in brv-sp-acct" list="brv-sp-accounts" autocomplete="off" placeholder="Type to search…" aria-label="Account" required></td>'
@@ -1699,15 +1698,62 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
         amt.addEventListener('input', () => { amt.value = amt.value.replace(/[^0-9.,]/g, ''); updateTotal(); });
         amt.addEventListener('blur', () => { const r = amtRaw(amt.value); if (r !== '' && !isNaN(Number(r))) amt.value = amtText(r); updateTotal(); });
         tr.querySelector('.brv-sp-rm').addEventListener('click', () => {
-            if (rows().length > 1) { tr.remove(); }
-            else { acct.value = ''; amt.value = ''; tr.querySelector('.brv-sp-part').value = ''; checkAccount(acct); }   // the last one is emptied, not removed
+            if (rowsOf(blk).length > 1) { tr.remove(); }
+            else { acct.value = ''; amt.value = ''; tr.querySelector('.brv-sp-part').value = ''; checkAccount(acct); }   // a project's last line item is emptied, not removed
             updateTotal();
         });
-        items.appendChild(tr);
+        blk.querySelector('.brv-sp-items').appendChild(tr);
         checkAccount(acct);
         return tr;
     }
-    $('brv-sp-add-item').addEventListener('click', () => { addRow().querySelector('.brv-sp-acct').focus(); });
+
+    // "Project 1", "Project 2" … and the Remove button, which only shows while there is more than one project
+    function renumber() {
+        const list = blocks();
+        list.forEach((blk, i) => {
+            blk.querySelector('.brv-sp-blk-no').textContent = 'Project ' + (i + 1);
+            blk.querySelector('.brv-sp-blk-bar').hidden = list.length < 2;
+        });
+    }
+
+    // One project block: its name, location and its own table of line items. $prefill = { name, location, items: [{ label, particulars, amount }] } (a saved project, for Edit).
+    function addProject(prefill) {
+        const p = prefill || {}, n = ++blockSeq;
+        const blk = document.createElement('div');
+        blk.className = 'brv-sp-blk';
+        blk.innerHTML = '<div class="brv-sp-blk-bar"><span class="brv-sp-blk-no"></span><button type="button" class="brv-sp-rmproj" aria-label="Remove this project">Remove project</button></div>'
+            + '<div class="brv-sp-blk-hd">'
+            +   '<div class="brv-fld"><label class="brv-lbl" for="brv-sp-name-' + n + '">Project <span class="brv-req">*</span></label>'
+            +     '<input type="text" class="brv-in brv-sp-name" id="brv-sp-name-' + n + '" maxlength="255" autocomplete="off" placeholder="Enter the name of the new project" required></div>'
+            +   '<div class="brv-fld"><label class="brv-lbl" for="brv-sp-loc-' + n + '">Location <span class="brv-optional">(optional)</span></label>'
+            +     '<input type="text" class="brv-in brv-sp-loc" id="brv-sp-loc-' + n + '" maxlength="255" autocomplete="off" placeholder="e.g. Brgy. San Jose, Quezon City"></div>'
+            + '</div>'
+            + '<div class="brv-sp-lit"><table class="brv-sp-tbl">'
+            +   '<thead><tr><th style="width:36%;">Account Code - Account Name</th><th style="width:38%;">Particulars</th><th style="width:20%;text-align:right;">Amount</th><th style="width:6%;"></th></tr></thead>'
+            +   '<tbody class="brv-sp-items"></tbody>'
+            +   '<tfoot><tr><td colspan="2">Total</td><td class="brv-sp-sum brv-sp-subtotal">0.00</td><td></td></tr></tfoot>'
+            + '</table></div>'
+            + '<button type="button" class="nha-btn nha-btn-ghost brv-sp-add brv-sp-additem">+ Add Line Item</button>';
+        blk.querySelector('.brv-sp-name').value = p.name || '';
+        blk.querySelector('.brv-sp-loc').value = p.location || '';
+        blk.querySelector('.brv-sp-additem').addEventListener('click', () => { addRow(blk).querySelector('.brv-sp-acct').focus(); });
+        blk.querySelector('.brv-sp-rmproj').addEventListener('click', () => {
+            if (blocks().length < 2) return;   // the request keeps at least one project
+            blk.remove();
+            renumber();
+            updateTotal();
+        });
+        projs.appendChild(blk);
+        (p.items && p.items.length ? p.items : [null]).forEach(it => addRow(blk, it));
+        renumber();
+        updateTotal();
+        return blk;
+    }
+    $('brv-sp-add-project').addEventListener('click', () => {
+        const blk = addProject();
+        if (blk.scrollIntoView) blk.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        blk.querySelector('.brv-sp-name').focus();
+    });
 
     /* ── the host page's hooks ── */
     function reset() {
@@ -1717,12 +1763,9 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
         if (S.ready) { fillSaros(''); hint.textContent = S.saros.length ? '' : NO_SARO_YET; }   // this year's whole list again (before the first load there is nothing to list)
         saro.value = '';
         renderSaro();
-        $('brv-sp-project').value = '';
-        $('brv-sp-location').value = '';
         $('brv-sp-reason').value = '';
-        items.innerHTML = '';
-        addRow();
-        updateTotal();
+        projs.innerHTML = '';
+        addProject();
     }
 
     async function fill(row) {
@@ -1739,16 +1782,19 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
         saro.value = savedSaro;
         renderSaro();
         if (S.ready && S.saros.length) hint.textContent = '';
-        $('brv-sp-project').value = row.supp_project_name || '';
-        $('brv-sp-location').value = row.supp_location || '';
         $('brv-sp-reason').value = row.reason || '';
-        items.innerHTML = '';
-        (row.items || []).forEach(it => {
-            // an account that is no longer offered (inactive since) still shows on the item that was saved with it
-            const a = S.byId.get(String(it.account_id)) || { account_id: it.account_id, account_code: it.account_code || it.account_id, account_title: it.account_title || '' };
-            addRow({ label: registerAccount(a), particulars: it.particulars, amount: it.amount });
+        projs.innerHTML = '';
+        (row.projects || []).forEach(pr => {
+            addProject({
+                name: pr.project_name, location: pr.location,
+                items: (pr.items || []).map(it => {
+                    // an account that is no longer offered (inactive since) still shows on the item that was saved with it
+                    const a = S.byId.get(String(it.account_id)) || { account_id: it.account_id, account_code: it.account_code || it.account_id, account_title: it.account_title || '' };
+                    return { label: registerAccount(a), particulars: it.particulars, amount: it.amount };
+                }),
+            });
         });
-        if (!items.children.length) addRow();
+        if (!blocks().length) addProject();
         updateTotal();
     }
 
@@ -1758,24 +1804,38 @@ html.afims-dark[data-bs-theme="dark"] .nha-root #brv-overlay #brv-save:hover:not
             fund_tracking_id: saro.value,
             program_code: program.value,
             sub_program_code: sub.value,
-            project_name: $('brv-sp-project').value.trim(),
-            location: $('brv-sp-location').value.trim(),
-            items: rows().map(tr => ({
-                account_id: tr.querySelector('.brv-sp-acct').dataset.id || '',
-                particulars: tr.querySelector('.brv-sp-part').value.trim(),
-                amount: amtRaw(tr.querySelector('.brv-sp-amt').value),
+            projects: blocks().map(blk => ({
+                project_name: blk.querySelector('.brv-sp-name').value.trim(),
+                location: blk.querySelector('.brv-sp-loc').value.trim(),
+                items: rowsOf(blk).map(tr => ({
+                    account_id: tr.querySelector('.brv-sp-acct').dataset.id || '',
+                    particulars: tr.querySelector('.brv-sp-part').value.trim(),
+                    amount: amtRaw(tr.querySelector('.brv-sp-amt').value),
+                })),
             })),
             reason: $('brv-sp-reason').value.trim(),
         };
     }
 
     function validate() {
-        const list = rows();
-        if (!list.length) return 'Add at least one line item.';
-        for (let i = 0; i < list.length; i++) {
-            const n = i + 1, tr = list[i];
-            if (!tr.querySelector('.brv-sp-acct').dataset.id) return `Line item ${n}: select a chart of accounts entry from the list.`;
-            if (!(Number(amtRaw(tr.querySelector('.brv-sp-amt').value)) > 0)) return `Line item ${n}: the amount must be more than zero.`;
+        const list = blocks();
+        if (!list.length) return 'Add at least one project.';
+        const names = new Map();   // lower-cased name → its number: two projects of one name would be merged into one when the request is approved
+        for (let p = 0; p < list.length; p++) {
+            const blk = list[p], pre = list.length > 1 ? `Project ${p + 1}: ` : '';
+            const name = blk.querySelector('.brv-sp-name').value.trim();
+            if (!name) return pre + 'enter the name of the project.';
+            const key = name.toLowerCase();
+            if (names.has(key)) return `Project ${p + 1}: "${name}" is already the name of project ${names.get(key)} of this request — give each project its own name.`;
+            names.set(key, p + 1);
+
+            const rows = rowsOf(blk);
+            if (!rows.length) return pre + 'Add at least one line item.';
+            for (let i = 0; i < rows.length; i++) {
+                const n = i + 1, tr = rows[i];
+                if (!tr.querySelector('.brv-sp-acct').dataset.id) return `${pre}Line item ${n}: select a chart of accounts entry from the list.`;
+                if (!(Number(amtRaw(tr.querySelector('.brv-sp-amt').value)) > 0)) return `${pre}Line item ${n}: the amount must be more than zero.`;
+            }
         }
         const s = selSaro(), t = itemsTotal();
         if (s && Number(s.amount) > 0 && t > Number(s.amount) + 0.004) return `The total (${peso(t)}) is more than the SARO's amount (${peso(s.amount)}).`;

@@ -38,13 +38,13 @@ use PHPMaker2024\FIMS as App;
  * then held to it (a realignment needs its To line, a revision cannot have one — see typeError()).
  * (03 - alter_table/42 also dropped the legacy from_budget_req_id / to_budget_req_id columns.)
  *
- * A third kind, SUPPLEMENTAL (03 - alter_table/62, 01 - table/56): a NEW project, released by a DBM SARO and not in the approved COB, added under a
- * Program / Sub-Program. It has no From / To budget line — what the user typed (the SARO, the program, the project's name and location, and its line items:
- * account, particulars, amount) is kept on the request (the supp_* columns + fims.budget_revision_supplemental_item) while it is Saved / Submitted, with
- * from_amount 0 and to_amount = the total of the items. Only APPROVING it changes the budget (approveSupplemental(), ONE transaction): the project is created
- * (its code GENERATED for the user who filed the request), that user's office's Approved budget request of the SARO's fiscal year gets the project and one budget line per
- * item (suggested_amount stays 0), and the ledger gets one SUPPLEMENTAL row per line — so the amount is the line's Revision Amount (the COB's Amendment /
- * Realignment column) and NOT part of its Approved Amount.
+ * A third kind, SUPPLEMENTAL (03 - alter_table/62, 64, 01 - table/56, 57): one or more NEW projects, released by one DBM SARO and not in the approved COB, added under
+ * a Program / Sub-Program. It has no From / To budget line — what the user typed is kept on the request while it is Saved / Submitted: the SARO and the program
+ * (the supp_* columns of the request, shared by all its projects), and per project its name and location (fims.budget_revision_supplemental_project) and its line
+ * items — account, particulars, amount (fims.budget_revision_supplemental_item). from_amount is 0 and to_amount = the total of all the projects' items. Only
+ * APPROVING it changes the budget (approveSupplemental(), ONE transaction): each project is created (its code GENERATED for the user who filed the request), that
+ * user's office's Approved budget request of the SARO's fiscal year gets the projects and one budget line per item (suggested_amount stays 0), and the ledger gets
+ * one SUPPLEMENTAL row per line — so the amount is the line's Revision Amount (the COB's Amendment / Realignment column) and NOT part of its Approved Amount.
  */
 class BudgetRevisionService
 {
@@ -77,6 +77,7 @@ class BudgetRevisionService
     private string $tableUser      = 'uac.users';
     // SUPPLEMENTAL requests
     private string $tableItems      = 'fims.budget_revision_supplemental_item';
+    private string $tableSuppProj   = 'fims.budget_revision_supplemental_project';
     private string $tableSubProgram = 'fims.sub_program';
     private string $tableFund       = 'fims.fund_tracking';
     private string $tableFundType   = 'fims.fund_tracking_type';
@@ -151,6 +152,9 @@ class BudgetRevisionService
                        " . $this->lineSelect('t', 'to_') . ",
                        spg.program_name AS supp_program_name, ssp.sub_program_name AS supp_sub_program_name,
                        sft.saro_id AS supp_saro_no, sft.date AS supp_saro_date, sft.amount AS supp_saro_amount,
+                       (SELECT sp.project_name FROM {$this->tableSuppProj} sp WHERE sp.budget_revision_id = rv.id
+                         ORDER BY sp.sort_order, sp.supplemental_project_id LIMIT 1) AS supp_project_name,
+                       (SELECT COUNT(*) FROM {$this->tableSuppProj} sp WHERE sp.budget_revision_id = rv.id) AS supp_project_count,
                        COALESCE(UPPER(rs.name), 'UNKNOWN') AS status, rs.name AS status_name, rs.color AS status_color,
                        us.username AS requested_by_username,
                        NULLIF(TRIM(CONCAT_WS(' ', us.first_name, us.last_name)), '') AS requested_by_name "
@@ -361,13 +365,15 @@ class BudgetRevisionService
                 . '"_assets/sql/01 - fims/01 - table/50 - fims_budget_line_item_revision_transaction.sql" and then '
                 . '"_assets/sql/01 - fims/03 - alter_table/52 - budget_line_item_revision_transaction_backfill.sql" (or node install_system.js --sql-only), then reload. '
                 . '(' . $message . ')';
-        } elseif (preg_match('/(supp_[a-z_]+|supplemental_revision_id|budget_revision_supplemental_item).{0,80}does not exist/is', $message)
+        } elseif (preg_match('/(supp_[a-z_]+|supplemental_revision_id|supplemental_project_id|budget_revision_supplemental_(item|project)).{0,80}does not exist/is', $message)
             || preg_match('/chk_budget_(revision_request_type|line_item_revision_transaction_type)/i', $message)) {
-            // the SUPPLEMENTAL request type's columns / table / check constraints (written by 01 - table/56, 03 - alter_table/62 and 63 — the tag on budget lines)
+            // the SUPPLEMENTAL request type's columns / tables / check constraints (written by 01 - table/56 and 57, 03 - alter_table/62, 63 — the tag on budget lines — and 64)
             $message = 'Supplemental requests need a database update that has not been applied yet. Run '
                 . '"_assets/sql/01 - fims/01 - table/56 - fims_budget_revision_supplemental_item.sql", '
-                . '"_assets/sql/01 - fims/03 - alter_table/62 - budget_revision_add_supplemental.sql" and '
-                . '"_assets/sql/01 - fims/03 - alter_table/63 - budget_line_items_add_supplemental_revision_id.sql" on the database '
+                . '"_assets/sql/01 - fims/01 - table/57 - fims_budget_revision_supplemental_project.sql", '
+                . '"_assets/sql/01 - fims/03 - alter_table/62 - budget_revision_add_supplemental.sql", '
+                . '"_assets/sql/01 - fims/03 - alter_table/63 - budget_line_items_add_supplemental_revision_id.sql" and '
+                . '"_assets/sql/01 - fims/03 - alter_table/64 - budget_revision_supplemental_multiple_projects.sql" on the database '
                 . '(or node install_system.js --sql-only), then try again. (' . $message . ')';
         } elseif (preg_match('/request_type.{0,80}does not exist/is', $message)) {
             $message = 'Budget revisions need a database update that has not been applied yet. Run '
@@ -446,9 +452,9 @@ class BudgetRevisionService
             if (!$data) {
                 return ['success' => false, 'message' => "Budget revision request #{$id} not found."];
             }
-            // a supplemental request carries its line items
+            // a supplemental request carries its projects, each with its line items
             if ($this->isSupplemental($data)) {
-                $data['items'] = $this->supplementalItems($id);
+                $data['projects'] = $this->supplementalProjects($id);
             }
 
             return ['success' => true, 'data' => $data];
@@ -684,7 +690,7 @@ class BudgetRevisionService
 
             if ($this->isSupplemental($row)) {
                 // no budget lines to check: the same checks as when it was filed, against the SARO / program / accounts as they are NOW
-                $ctx = $this->checkSupplemental($this->supplementalFromRow($row, $this->supplementalItems((int) $id)), (int) $id);
+                $ctx = $this->checkSupplemental($this->supplementalFromRow($row, $this->supplementalProjects((int) $id)), (int) $id);
                 if (isset($ctx['error'])) {
                     return ['success' => false, 'message' => $ctx['error']];
                 }
@@ -1059,23 +1065,42 @@ class BudgetRevisionService
         return number_format($value, 2, '.', '');
     }
 
-    // The line items of a supplemental request, in the order they were entered.
-    private function supplementalItems(int $id): array
+    // The projects of a supplemental request, in the order they were entered, each with its line items (in the order they were entered) and their total.
+    private function supplementalProjects(int $id): array
     {
-        return App\ExecuteRows(
-            "SELECT i.item_id, i.account_id, coa.account_code, coa.account_title, i.particulars, i.amount, i.budget_line_item_id
+        $projects = App\ExecuteRows(
+            "SELECT supplemental_project_id, project_name, location, project_code
+               FROM {$this->tableSuppProj}
+              WHERE budget_revision_id = " . (int) $id . '
+              ORDER BY sort_order, supplemental_project_id',
+            'DB'
+        ) ?: [];
+        $items = App\ExecuteRows(
+            "SELECT i.item_id, i.supplemental_project_id, i.account_id, coa.account_code, coa.account_title, i.particulars, i.amount, i.budget_line_item_id
                FROM {$this->tableItems} i
                LEFT JOIN {$this->tableAccounts} coa ON coa.account_id = i.account_id
               WHERE i.budget_revision_id = " . (int) $id . '
               ORDER BY i.item_id',
             'DB'
         ) ?: [];
+
+        $byProject = [];
+        foreach ($items as $it) {
+            $byProject[(int) $it['supplemental_project_id']][] = $it;
+        }
+        foreach ($projects as &$p) {
+            $p['items'] = $byProject[(int) $p['supplemental_project_id']] ?? [];
+            $p['total'] = round(array_sum(array_map(static fn (array $it): float => (float) $it['amount'], $p['items'])), 2);
+        }
+        unset($p);
+
+        return $projects;
     }
 
     /**
      * What a supplemental request is filed / edited with, read from the request body and cleaned up:
-     *   fund_tracking_id (the SARO), program_code, sub_program_code (optional), project_name, location (optional),
-     *   items[] = { account_id, particulars, amount }.
+     *   fund_tracking_id (the SARO), program_code, sub_program_code (optional) — shared by every project of the request — and
+     *   projects[] = { project_name, location (optional), items[] = { account_id, particulars, amount } }.
      * Shape only — nothing is looked up here (checkSupplemental() does that). The project code is never part of it: it is generated on approval.
      *
      * @return array{error?: string, data?: array}
@@ -1084,49 +1109,70 @@ class BudgetRevisionService
     {
         $fundId = $this->parseId($body['fund_tracking_id'] ?? null);
         if ($fundId === null || $fundId === false) {
-            return ['error' => 'fund_tracking_id is required — pick the SARO the project was released under.'];
+            return ['error' => 'fund_tracking_id is required — pick the SARO the projects were released under.'];
         }
-        $program  = trim((string) ($body['program_code'] ?? ''));
-        $sub      = trim((string) ($body['sub_program_code'] ?? ''));
-        $name     = trim((string) ($body['project_name'] ?? ''));
-        $location = trim((string) ($body['location'] ?? ''));
+        $program = trim((string) ($body['program_code'] ?? ''));
+        $sub     = trim((string) ($body['sub_program_code'] ?? ''));
         if ($program === '') {
             return ['error' => 'program_code is required.'];
         }
-        if ($name === '') {
-            return ['error' => 'project_name is required — enter the name of the new project.'];
-        }
-        if (mb_strlen($name) > 255 || mb_strlen($location) > 255) {
-            return ['error' => 'The project name and the location can each be at most 255 characters.'];
-        }
 
-        $rawItems = $body['items'] ?? null;
-        if (!is_array($rawItems) || !$rawItems) {
-            return ['error' => 'Add at least one line item.'];
+        $rawProjects = $body['projects'] ?? null;
+        if (!is_array($rawProjects) || !$rawProjects) {
+            return ['error' => 'Add at least one project.'];
         }
-        $items = [];
-        $total = 0.0;
-        foreach (array_values($rawItems) as $i => $it) {
-            $n      = $i + 1;
-            $it     = is_array($it) ? $it : [];
-            $acct   = trim((string) ($it['account_id'] ?? ''));
-            $part   = trim((string) ($it['particulars'] ?? ''));
-            $amount = $it['amount'] ?? '';
-            if ($acct === '') {
-                return ['error' => "Line item {$n}: select a chart of accounts entry."];
+        $many     = count($rawProjects) > 1;
+        $projects = [];
+        $names    = [];   // lower-cased name => its number, to refuse two projects of the same name (approval would merge them into one project)
+        $total    = 0.0;
+        foreach (array_values($rawProjects) as $pi => $rp) {
+            $pn       = $pi + 1;
+            $pre      = $many ? "Project {$pn}: " : '';
+            $rp       = is_array($rp) ? $rp : [];
+            $name     = trim((string) ($rp['project_name'] ?? ''));
+            $location = trim((string) ($rp['location'] ?? ''));
+            if ($name === '') {
+                return ['error' => $pre . 'project_name is required — enter the name of the new project.'];
             }
-            if ($part === '') {
-                return ['error' => "Line item {$n}: particulars is required."];
+            if (mb_strlen($name) > 255 || mb_strlen($location) > 255) {
+                return ['error' => $pre . 'The project name and the location can each be at most 255 characters.'];
             }
-            if (!is_numeric($amount) || round((float) $amount, 2) <= 0) {
-                return ['error' => "Line item {$n}: the amount must be more than zero."];
+            $key = mb_strtolower($name);
+            if (isset($names[$key])) {
+                return ['error' => "Project {$pn}: \"{$name}\" is already the name of project {$names[$key]} of this request — give each project its own name."];
             }
-            $amount = round((float) $amount, 2);
-            if ($amount >= self::MAX_LINE_AMOUNT) {
-                return ['error' => "Line item {$n}: the amount is too large for a budget line (maximum 9,999,999,999,999.99)."];
+            $names[$key] = $pn;
+
+            $rawItems = $rp['items'] ?? null;
+            if (!is_array($rawItems) || !$rawItems) {
+                return ['error' => $pre . 'Add at least one line item.'];
             }
-            $items[] = ['account_id' => $acct, 'particulars' => $part, 'amount' => $amount];
-            $total  += $amount;
+            $items        = [];
+            $projectTotal = 0.0;
+            foreach (array_values($rawItems) as $i => $it) {
+                $n      = $i + 1;
+                $it     = is_array($it) ? $it : [];
+                $acct   = trim((string) ($it['account_id'] ?? ''));
+                $part   = trim((string) ($it['particulars'] ?? ''));
+                $amount = $it['amount'] ?? '';
+                if ($acct === '') {
+                    return ['error' => "{$pre}Line item {$n}: select a chart of accounts entry."];
+                }
+                if ($part === '') {
+                    return ['error' => "{$pre}Line item {$n}: particulars is required."];
+                }
+                if (!is_numeric($amount) || round((float) $amount, 2) <= 0) {
+                    return ['error' => "{$pre}Line item {$n}: the amount must be more than zero."];
+                }
+                $amount = round((float) $amount, 2);
+                if ($amount >= self::MAX_LINE_AMOUNT) {
+                    return ['error' => "{$pre}Line item {$n}: the amount is too large for a budget line (maximum 9,999,999,999,999.99)."];
+                }
+                $items[]       = ['account_id' => $acct, 'particulars' => $part, 'amount' => $amount];
+                $projectTotal += $amount;
+            }
+            $projects[] = ['project_name' => $name, 'location' => $location, 'items' => $items, 'total' => round($projectTotal, 2)];
+            $total     += $projectTotal;
         }
         $total = round($total, 2);
         if ($total >= self::MAX_LINE_AMOUNT) {
@@ -1137,46 +1183,57 @@ class BudgetRevisionService
             'fund_tracking_id' => (int) $fundId,
             'program_code'     => $program,
             'sub_program_code' => $sub,
-            'project_name'     => $name,
-            'location'         => $location,
-            'items'            => $items,
+            'projects'         => $projects,
             'total'            => $total,
         ]];
     }
 
-    // The same shape as supplementalPayload()['data'], read back from a stored request and its items (to re-check it when it is processed / approved).
-    private function supplementalFromRow(array $row, array $items): array
+    // The same shape as supplementalPayload()['data'], read back from a stored request and its projects (supplementalProjects()) to re-check it when it is processed / approved.
+    private function supplementalFromRow(array $row, array $storedProjects): array
     {
-        $list = array_map(static fn (array $it): array => [
-            'account_id'  => (string) ($it['account_id'] ?? ''),
-            'particulars' => (string) ($it['particulars'] ?? ''),
-            'amount'      => round((float) ($it['amount'] ?? 0), 2),
-        ], $items);
+        $projects = [];
+        foreach ($storedProjects as $p) {
+            $items = array_map(static fn (array $it): array => [
+                'account_id'  => (string) ($it['account_id'] ?? ''),
+                'particulars' => (string) ($it['particulars'] ?? ''),
+                'amount'      => round((float) ($it['amount'] ?? 0), 2),
+            ], $p['items'] ?? []);
+            $projects[] = [
+                'project_name' => trim((string) ($p['project_name'] ?? '')),
+                'location'     => trim((string) ($p['location'] ?? '')),
+                'items'        => $items,
+                'total'        => round(array_sum(array_column($items, 'amount')), 2),
+            ];
+        }
 
         return [
             'fund_tracking_id' => (int) ($row['supp_fund_tracking_id'] ?? 0),
             'program_code'     => trim((string) ($row['supp_program_code'] ?? '')),
             'sub_program_code' => trim((string) ($row['supp_sub_program_code'] ?? '')),
-            'project_name'     => trim((string) ($row['supp_project_name'] ?? '')),
-            'location'         => trim((string) ($row['supp_location'] ?? '')),
-            'items'            => $list,
-            'total'            => round(array_sum(array_column($list, 'amount')), 2),
+            'projects'         => $projects,
+            'total'            => round(array_sum(array_column($projects, 'total')), 2),
         ];
     }
 
     /**
      * Checks a supplemental request against the database: the SARO exists, is a SARO and has a fiscal year that is set up; the program and the
-     * (optional) sub-program exist and belong together; every account is an Active postable chart-of-accounts entry; and the project does not take more of the
-     * SARO than it has left (what the SARO's other supplemental requests — not declined, not deleted — already use comes off its amount; a SARO with no
+     * (optional) sub-program exist and belong together; every account is an Active postable chart-of-accounts entry; and the projects together do not take more
+     * of the SARO than it has left (what the SARO's other supplemental requests — not declined, not deleted — already use comes off its amount; a SARO with no
      * amount is not capped). $exceptId is the request itself, left out of that sum when it is being edited / processed / approved.
      *
-     * @return array{error?: string, fiscal_yr?: int, saro?: array} fiscal_yr is the SARO's — the fiscal year of the budget the project is added to
+     * @return array{error?: string, fiscal_yr?: int, saro?: array} fiscal_yr is the SARO's — the fiscal year of the budget the projects are added to
      */
     private function checkSupplemental(array $d, ?int $exceptId): array
     {
         $fundId = (int) $d['fund_tracking_id'];
-        if ($fundId <= 0 || $d['program_code'] === '' || $d['project_name'] === '' || !$d['items']) {
-            return ['error' => 'This supplemental request is incomplete — fill in the SARO, the program, the project and its line items.'];
+        $incomplete = !$d['projects'];
+        foreach ($d['projects'] as $p) {
+            if ($p['project_name'] === '' || !$p['items']) {
+                $incomplete = true;
+            }
+        }
+        if ($fundId <= 0 || $d['program_code'] === '' || $incomplete) {
+            return ['error' => 'This supplemental request is incomplete — fill in the SARO, the program, the projects and their line items.'];
         }
 
         $saro = App\ExecuteRow(
@@ -1194,7 +1251,7 @@ class BudgetRevisionService
         }
         $fy = (int) ($saro['fiscal_year'] ?? 0);
         if ($fy <= 0) {
-            return ['error' => 'The SARO has no fiscal year, so the budget the project belongs to cannot be worked out. Set it on the SARO first.'];
+            return ['error' => 'The SARO has no fiscal year, so the budget the projects belong to cannot be worked out. Set it on the SARO first.'];
         }
         if ((int) App\ExecuteScalar("SELECT COUNT(*) FROM {$this->tableFiscalYear} WHERE fiscal_yr = {$fy}", 'DB') === 0) {
             return ['error' => "Fiscal year {$fy} (the SARO's) is not set up in the system."];
@@ -1217,7 +1274,8 @@ class BudgetRevisionService
             }
         }
 
-        $accountIds = array_values(array_unique(array_column($d['items'], 'account_id')));
+        $allItems   = array_merge(...array_column($d['projects'], 'items'));
+        $accountIds = array_values(array_unique(array_column($allItems, 'account_id')));
         $quoted     = implode(', ', array_map(static fn (string $a): string => App\QuotedValue($a, App\DataType::STRING, 'DB'), $accountIds));
         $found      = array_column(App\ExecuteRows(
             "SELECT account_id FROM {$this->tableAccounts} WHERE account_id IN ({$quoted}) AND status = 'Active' AND posting_allowed = TRUE",
@@ -1250,25 +1308,33 @@ class BudgetRevisionService
         return ['fiscal_yr' => $fy, 'saro' => $saro];
     }
 
-    // Writes a supplemental request's line items (the request's own row is already there). Inside the caller's transaction.
-    private function insertSupplementalItems(int $id, array $items): void
+    // Writes a supplemental request's projects and their line items (the request's own row is already there). Inside the caller's transaction.
+    private function insertSupplementalProjects(int $id, array $projects): void
     {
-        $values = [];
-        foreach ($items as $it) {
-            $values[] = "({$id}, " . App\QuotedValue($it['account_id'], App\DataType::STRING, 'DB') . ', ' . $this->q($it['particulars']) . ', ' . $this->money($it['amount']) . ')';
+        foreach (array_values($projects) as $order => $p) {
+            $row = App\ExecuteRow(
+                "INSERT INTO {$this->tableSuppProj} (budget_revision_id, sort_order, project_name, location)
+                 VALUES ({$id}, {$order}, " . $this->q($p['project_name']) . ', ' . ($p['location'] === '' ? 'NULL' : $this->q($p['location'])) . ')
+                 RETURNING supplemental_project_id',
+                'DB'
+            );
+            $projectId = (int) ($row['supplemental_project_id'] ?? 0);
+
+            $values = [];
+            foreach ($p['items'] as $it) {
+                $values[] = "({$id}, {$projectId}, " . App\QuotedValue($it['account_id'], App\DataType::STRING, 'DB') . ', ' . $this->q($it['particulars']) . ', ' . $this->money($it['amount']) . ')';
+            }
+            App\Execute("INSERT INTO {$this->tableItems} (budget_revision_id, supplemental_project_id, account_id, particulars, amount) VALUES " . implode(', ', $values), 'DB');
         }
-        App\Execute("INSERT INTO {$this->tableItems} (budget_revision_id, account_id, particulars, amount) VALUES " . implode(', ', $values), 'DB');
     }
 
-    // The columns a supplemental request is stored with, as an assignment list for an UPDATE (or, in create(), the same values in column order).
+    // The columns a supplemental request is stored with, as an assignment list for an UPDATE (its projects are written by insertSupplementalProjects()).
     private function supplementalSetSql(array $d, int $fiscalYr): string
     {
         return 'from_amount = 0, to_amount = ' . $this->money($d['total']) . ', '
             . "supp_fiscal_yr = {$fiscalYr}, supp_fund_tracking_id = {$d['fund_tracking_id']}, "
             . 'supp_program_code = ' . $this->q($d['program_code']) . ', '
-            . 'supp_sub_program_code = ' . ($d['sub_program_code'] === '' ? 'NULL' : $this->q($d['sub_program_code'])) . ', '
-            . 'supp_project_name = ' . $this->q($d['project_name']) . ', '
-            . 'supp_location = ' . ($d['location'] === '' ? 'NULL' : $this->q($d['location']));
+            . 'supp_sub_program_code = ' . ($d['sub_program_code'] === '' ? 'NULL' : $this->q($d['sub_program_code']));
     }
 
     private function createSupplemental(array $body, mixed $userId): array
@@ -1296,16 +1362,15 @@ class BudgetRevisionService
             $started = true;
             $row = App\ExecuteRow(
                 "INSERT INTO {$this->table} (request_type, from_amount, to_amount, reason, user_id, status_id,
-                                              supp_fiscal_yr, supp_fund_tracking_id, supp_program_code, supp_sub_program_code, supp_project_name, supp_location)
+                                              supp_fiscal_yr, supp_fund_tracking_id, supp_program_code, supp_sub_program_code)
                  VALUES ('SUPPLEMENTAL', 0, " . $this->money($d['total']) . ', ' . $this->reasonSql($body) . ', ' . (int) $userId . ", {$savedId}, "
                     . (int) $ctx['fiscal_yr'] . ", {$d['fund_tracking_id']}, " . $this->q($d['program_code']) . ', '
-                    . ($d['sub_program_code'] === '' ? 'NULL' : $this->q($d['sub_program_code'])) . ', ' . $this->q($d['project_name']) . ', '
-                    . ($d['location'] === '' ? 'NULL' : $this->q($d['location'])) . ')
+                    . ($d['sub_program_code'] === '' ? 'NULL' : $this->q($d['sub_program_code'])) . ')
                  RETURNING id',
                 'DB'
             );
             $newId = (int) ($row['id'] ?? 0);
-            $this->insertSupplementalItems($newId, $d['items']);
+            $this->insertSupplementalProjects($newId, $d['projects']);
             App\Execute('COMMIT', 'DB');
             $started = false;
 
@@ -1327,8 +1392,8 @@ class BudgetRevisionService
         }
     }
 
-    // Edit a SAVED supplemental request: the whole request is sent again (SARO, program, project, items); its line items are replaced. update() has
-    // already checked that it is Saved.
+    // Edit a SAVED supplemental request: the whole request is sent again (SARO, program, projects with their items); its projects and line items are replaced.
+    // update() has already checked that it is Saved.
     private function updateSupplemental(int $id, array $body): array
     {
         $payload = $this->supplementalPayload($body);
@@ -1365,7 +1430,8 @@ class BudgetRevisionService
                 return ['success' => false, 'message' => "Request #{$id} was processed or changed by someone else, so it can no longer be edited."];
             }
             App\Execute("DELETE FROM {$this->tableItems} WHERE budget_revision_id = {$id}", 'DB');
-            $this->insertSupplementalItems($id, $d['items']);
+            App\Execute("DELETE FROM {$this->tableSuppProj} WHERE budget_revision_id = {$id}", 'DB');
+            $this->insertSupplementalProjects($id, $d['projects']);
             App\Execute('COMMIT', 'DB');
             $started = false;
 
@@ -1382,16 +1448,17 @@ class BudgetRevisionService
         }
     }
 
-    // Approve a SUBMITTED supplemental request = record the decision AND add the project to the budget, in ONE transaction (everything happens or nothing does):
+    // Approve a SUBMITTED supplemental request = record the decision AND add its projects to the budget, in ONE transaction (everything happens or nothing does):
     //   1. the request becomes Approved (guarded: only a Submitted one — a second approval, or a decline made meanwhile, finds no row);
     //   2. the budget request (fims.budget_req) of the SARO's fiscal year for the office of the user who FILED the request — it must be Approved for the COB to show
-    //      the project; one that does not exist yet is created, already Approved (this approval is its approval);
-    //   3. its program row (reused when that program / sub-program is already in it), then the project: a project of that name under the program is reused, otherwise a NEW
-    //      one is created with a GENERATED code (GlobalService::generateProjectCode(), for the filing user's office) — the form never shows or asks for it — and its row in the request;
-    //   4. one budget line per item (fims.budget_line_items: proposed_amount = the amount, suggested_amount left at 0 — nothing is "approved") and one ledger row per line
-    //      (transaction_type SUPPLEMENTAL, previous 0, amount, new = amount). The ledger's triggers then set the line's adjustment, so the amount is its Revision Amount
-    //      (the COB's Amendment / Realignment column) while its Approved Amount stays 0;
-    //   5. the generated project code is written back on the request.
+    //      the projects; one that does not exist yet is created, already Approved (this approval is its approval);
+    //   3. its program row (reused when that program / sub-program is already in it) — the one program row serves every project of the request;
+    //   4. then, per project, in the order entered: the project (one of that name under the program is reused, otherwise a NEW one is created with a GENERATED code —
+    //      GlobalService::generateProjectCode(), for the filing user's office; the form never shows or asks for it), its row in the request, and one budget line per item
+    //      (fims.budget_line_items: proposed_amount = the amount, suggested_amount left at 0 — nothing is "approved") and one ledger row per line (transaction_type
+    //      SUPPLEMENTAL, previous 0, amount, new = amount). The ledger's triggers then set the line's adjustment, so the amount is its Revision Amount (the COB's
+    //      Amendment / Realignment column) while its Approved Amount stays 0;
+    //   5. each project's code is written back on its row of the request.
     private function approveSupplemental(int $id, array $rev): array
     {
         $submittedId = $this->statusId(self::STATUS_SUBMITTED);
@@ -1404,8 +1471,9 @@ class BudgetRevisionService
         }
 
         // the same checks as when it was filed, against the SARO / program / accounts as they are NOW
-        $d   = $this->supplementalFromRow($rev, $this->supplementalItems($id));
-        $ctx = $this->checkSupplemental($d, $id);
+        $stored = $this->supplementalProjects($id);
+        $d      = $this->supplementalFromRow($rev, $stored);
+        $ctx    = $this->checkSupplemental($d, $id);
         if (isset($ctx['error'])) {
             return ['success' => false, 'message' => "Request #{$id} cannot be approved. " . $ctx['error']];
         }
@@ -1474,7 +1542,7 @@ class BudgetRevisionService
             }
             $refSql = $str($ref);
 
-            // 3 · its program row, the project and the project's row in the request
+            // 3 · its program row (reused when that program / sub-program is already in it) — every project of the request goes under it
             $progSql = $str($d['program_code']);
             $subSql  = $d['sub_program_code'] === '' ? 'NULL' : $str($d['sub_program_code']);
             $prog    = App\ExecuteRow(
@@ -1491,64 +1559,75 @@ class BudgetRevisionService
             }
             $programRowId = (int) $prog['budget_req_program_id'];
 
-            $createdProject = false;
-            $existing       = App\ExecuteRow(
-                "SELECT project_code FROM {$this->tableProject} WHERE program_code = {$progSql} AND LOWER(project_name) = LOWER(" . $this->q($d['project_name']) . ')',
-                'DB'
-            );
-            if ($existing) {
-                $projectCode = (string) $existing['project_code'];
-            } else {
-                // the code is generated for the user who FILED the request (its office segment), not for whoever approves it
-                $projectCode = GlobalService::generateProjectCode($d['program_code'], $d['sub_program_code'], $filerId, $fiscalYr);
-                App\Execute(
-                    "INSERT INTO {$this->tableProject} (project_code, project_name, program_code, sub_program_code, rc_id)
-                     VALUES (" . $str($projectCode) . ', ' . $this->q($d['project_name']) . ", {$progSql}, {$subSql}, " . $str($rcId) . ')',
-                    'DB'
-                );
-                $createdProject = true;
-            }
-            $codeSql = $str($projectCode);
-
-            $pj = App\ExecuteRow(
-                "SELECT budget_req_project_id FROM {$this->tableReqProj}
-                  WHERE budget_reference_number = {$refSql} AND budget_req_program_id = {$programRowId} AND project_code = {$codeSql}
-                  ORDER BY budget_req_project_id LIMIT 1",
-                'DB'
-            );
-            if (!$pj) {
-                $pj = App\ExecuteRow(
-                    "INSERT INTO {$this->tableReqProj} (budget_reference_number, budget_req_program_id, project_code, location)
-                     VALUES ({$refSql}, {$programRowId}, {$codeSql}, " . ($d['location'] === '' ? 'NULL' : $this->q($d['location'])) . ')
-                     RETURNING budget_req_project_id',
-                    'DB'
-                );
-            }
-            $projectRowId = (int) $pj['budget_req_project_id'];
-
-            // 4 · a budget line and a ledger row per item
+            // 4 · each project, in the order entered: the project itself (one of that name under the program is reused, otherwise a NEW one is created with a GENERATED
+            //     code — the next one is worked out after the previous project is written, so two projects never share a code), its row in the request, and a budget
+            //     line + a ledger row per item
+            $done    = [];
             $lineIds = [];
-            foreach ($this->supplementalItems($id) as $it) {
-                $amount = $this->money((float) $it['amount']);
-                // supplemental_revision_id is the TAG (03 - alter_table/63): the Budget Requirements (proposal) screens leave tagged lines out, COB / RFA-LAA Monitoring show them
-                $line   = App\ExecuteRow(
-                    "INSERT INTO {$this->tableLines} (budget_reference_number, budget_req_project_id, account_id, proposed_amount, particulars, supplemental_revision_id)
-                     VALUES ({$refSql}, {$projectRowId}, " . $str((string) $it['account_id']) . ", {$amount}, " . $this->q((string) $it['particulars']) . ", {$id})
-                     RETURNING budget_line_item_id",
+            foreach ($stored as $sp) {
+                $name           = trim((string) $sp['project_name']);
+                $location       = trim((string) ($sp['location'] ?? ''));
+                $createdProject = false;
+                $existing       = App\ExecuteRow(
+                    "SELECT project_code FROM {$this->tableProject} WHERE program_code = {$progSql} AND LOWER(project_name) = LOWER(" . $this->q($name) . ')',
                     'DB'
                 );
-                $lineId = (int) $line['budget_line_item_id'];
-                App\Execute(
-                    "INSERT INTO {$ledger} (budget_revision_id, budget_line_item_id, transaction_type, previous_amount, amount, new_amount, created_by)
-                     VALUES ({$id}, {$lineId}, 'SUPPLEMENTAL', 0, {$amount}, {$amount}, {$byUser})",
-                    'DB'
-                );
-                App\Execute("UPDATE {$this->tableItems} SET budget_line_item_id = {$lineId} WHERE item_id = " . (int) $it['item_id'], 'DB');
-                $lineIds[] = $lineId;
-            }
+                if ($existing) {
+                    $projectCode = (string) $existing['project_code'];
+                } else {
+                    // the code is generated for the user who FILED the request (its office segment), not for whoever approves it
+                    $projectCode = GlobalService::generateProjectCode($d['program_code'], $d['sub_program_code'], $filerId, $fiscalYr);
+                    App\Execute(
+                        "INSERT INTO {$this->tableProject} (project_code, project_name, program_code, sub_program_code, rc_id)
+                         VALUES (" . $str($projectCode) . ', ' . $this->q($name) . ", {$progSql}, {$subSql}, " . $str($rcId) . ')',
+                        'DB'
+                    );
+                    $createdProject = true;
+                }
+                $codeSql = $str($projectCode);
 
-            // 5 · the generated project code, on the request
-            App\Execute("UPDATE {$this->table} SET supp_project_code = {$codeSql}, update_at = NOW() WHERE id = {$id}", 'DB');
+                $pj = App\ExecuteRow(
+                    "SELECT budget_req_project_id FROM {$this->tableReqProj}
+                      WHERE budget_reference_number = {$refSql} AND budget_req_program_id = {$programRowId} AND project_code = {$codeSql}
+                      ORDER BY budget_req_project_id LIMIT 1",
+                    'DB'
+                );
+                if (!$pj) {
+                    $pj = App\ExecuteRow(
+                        "INSERT INTO {$this->tableReqProj} (budget_reference_number, budget_req_program_id, project_code, location)
+                         VALUES ({$refSql}, {$programRowId}, {$codeSql}, " . ($location === '' ? 'NULL' : $this->q($location)) . ')
+                         RETURNING budget_req_project_id',
+                        'DB'
+                    );
+                }
+                $projectRowId = (int) $pj['budget_req_project_id'];
+
+                $projectLines = [];
+                foreach ($sp['items'] as $it) {
+                    $amount = $this->money((float) $it['amount']);
+                    // supplemental_revision_id is the TAG (03 - alter_table/63): the Budget Requirements (proposal) screens leave tagged lines out, COB / RFA-LAA Monitoring show them
+                    $line   = App\ExecuteRow(
+                        "INSERT INTO {$this->tableLines} (budget_reference_number, budget_req_project_id, account_id, proposed_amount, particulars, supplemental_revision_id)
+                         VALUES ({$refSql}, {$projectRowId}, " . $str((string) $it['account_id']) . ", {$amount}, " . $this->q((string) $it['particulars']) . ", {$id})
+                         RETURNING budget_line_item_id",
+                        'DB'
+                    );
+                    $lineId = (int) $line['budget_line_item_id'];
+                    App\Execute(
+                        "INSERT INTO {$ledger} (budget_revision_id, budget_line_item_id, transaction_type, previous_amount, amount, new_amount, created_by)
+                         VALUES ({$id}, {$lineId}, 'SUPPLEMENTAL', 0, {$amount}, {$amount}, {$byUser})",
+                        'DB'
+                    );
+                    App\Execute("UPDATE {$this->tableItems} SET budget_line_item_id = {$lineId} WHERE item_id = " . (int) $it['item_id'], 'DB');
+                    $projectLines[] = $lineId;
+                }
+                $lineIds = array_merge($lineIds, $projectLines);
+
+                // 5 · the project's code (generated, or the existing project's), on the request
+                App\Execute("UPDATE {$this->tableSuppProj} SET project_code = {$codeSql} WHERE supplemental_project_id = " . (int) $sp['supplemental_project_id'], 'DB');
+
+                $done[] = ['project_name' => $name, 'project_code' => $projectCode, 'created' => $createdProject, 'budget_line_item_ids' => $projectLines];
+            }
 
             App\Execute('COMMIT', 'DB');
             $started = false;
@@ -1564,32 +1643,41 @@ class BudgetRevisionService
             return $this->failure($e);
         }
 
+        $made    = count(array_filter($done, static fn (array $p): bool => $p['created']));
+        $listing = implode(', ', array_map(static fn (array $p): string => "{$p['project_code']} ({$p['project_name']})", $done));
+        $message = count($done) === 1
+            ? "Supplemental request #{$id} approved: project {$listing} was " . ($made ? 'created' : 'found')
+            : "Supplemental request #{$id} approved: " . count($done) . " projects — {$listing} — {$made} created, " . (count($done) - $made) . ' already in the program,';
+
         return [
             'success'                 => true,
-            'message'                 => "Supplemental request #{$id} approved: project {$projectCode} (" . $d['project_name'] . ') was '
-                . ($createdProject ? 'created' : 'found') . ' and ₱' . number_format($d['total'], 2) . ' was added to FY ' . $fiscalYr . ' as an Amendment.',
+            'message'                 => $message . ' and ₱' . number_format($d['total'], 2) . ' was added to FY ' . $fiscalYr . ' as an Amendment.',
             'status'                  => 'APPROVED',
-            'project_code'            => $projectCode,
-            'project_created'         => $createdProject,
+            'projects'                => $done,   // per project: project_name, project_code, created (false = one of that name was already in the program), budget_line_item_ids
             'budget_reference_number' => $ref,
             'budget_created'          => $createdHeader,
             'budget_line_item_ids'    => $lineIds,
             'amount'                  => $d['total'],
             // the approval is committed: tell the filing office (can never fail it)
-            'notified'                => $this->notifySupplementalApproved($id, $rcId, $fiscalYr, $projectCode, $d['project_name'], $d['total']),
+            'notified'                => $this->notifySupplementalApproved($id, $rcId, $fiscalYr, $done, $d['total']),
         ];
     }
 
     // The office that filed a supplemental request is told it was approved: its users (uac.users.rc_id), once each, never the reviewer. Never throws; returns how many were notified.
-    private function notifySupplementalApproved(int $id, string $rcId, int $fiscalYr, string $projectCode, string $projectName, float $total): int
+    // $projects = approveSupplemental()'s per-project result (project_name, project_code).
+    private function notifySupplementalApproved(int $id, string $rcId, int $fiscalYr, array $projects, float $total): int
     {
         try {
             $sender = (int) App\CurrentUserID();
+            $named  = array_map(static fn (array $p): string => "\"{$p['project_name']}\" ({$p['project_code']})", $projects);
+            $what   = count($named) === 1
+                ? 'the project ' . $named[0] . ' was'
+                : count($named) . ' projects (' . implode(', ', array_slice($named, 0, 3)) . (count($named) > 3 ? ' and ' . (count($named) - 3) . ' more' : '') . ') were';
 
             return NotificationService::toRc(
                 $rcId,
                 'Supplemental budget approved',
-                "Request #{$id}: the project \"{$projectName}\" ({$projectCode}) was added to your FY {$fiscalYr} budget — ₱" . number_format($total, 2) . ' as an Amendment.',
+                "Request #{$id}: {$what} added to your FY {$fiscalYr} budget — ₱" . number_format($total, 2) . ' as an Amendment.',
                 $this->budgetReqPageLink($fiscalYr),
                 ['sender_id' => $sender > 0 ? $sender : null, 'event_key' => "budget_revision_approved:{$id}:{$rcId}"]
             );
