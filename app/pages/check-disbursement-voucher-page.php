@@ -164,7 +164,7 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
          MODAL: Prepare Check (primary action)
     ══════════════════════════════════════════════ -->
     <div class="fims-modal-overlay" id="m-prepare-check" style="display:none;">
-        <div class="fims-modal-dialog" style="max-width:760px;width:95vw;">
+        <div class="fims-modal-dialog" style="max-width:1160px;width:95vw;">
             <div class="fims-modal-content">
                 <div class="fims-modal-header">
                     <div><div class="fims-modal-title">Prepare Check</div></div>
@@ -180,29 +180,40 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
                         <div class="fims-alert-icon"><i class="fas fa-exclamation-triangle"></i></div>
                         <div class="fims-alert-body"><strong>Low check stock!</strong> Only <span id="prepLowStockCount">0</span> unused check(s) left for this bank account — register a new batch in Check Registry soon.</div>
                     </div>
-                    <div class="row g-2">
-                        <div class="col-md-6"><label class="fims-label">DV Number <span class="text-danger">*</span></label>
-                            <select class="fims-select" id="prepDvSelect"><option value="">Select a DV...</option></select>
+                    <div style="display:flex;gap:20px;align-items:center;">
+                        <div style="flex:1 1 420px;min-width:380px;">
+                            <div class="row g-2">
+                                <div class="col-md-6"><label class="fims-label">DV Number <span class="text-danger">*</span></label>
+                                    <select class="fims-select" id="prepDvSelect"><option value="">Select a DV...</option></select>
+                                </div>
+                                <div class="col-md-6"><label class="fims-label">Program</label><input type="text" class="fims-input" id="prepProgram" disabled placeholder="—"></div>
+                                <div class="col-md-6"><label class="fims-label">Payee</label><input type="text" class="fims-input" id="prepPayee" disabled></div>
+                                <div class="col-md-6"><label class="fims-label">Bank Account <span class="text-danger">*</span></label>
+                                    <select class="fims-select" id="prepBankAccount"><option value="">Select bank account...</option></select>
+                                </div>
+                                <div class="col-md-6"><label class="fims-label">SARO Reference</label><input type="text" class="fims-input" id="prepSaro" disabled placeholder="— (no SARO linked to this DV)"></div>
+                                <div class="col-md-6"><label class="fims-label">Check Date <span class="text-danger">*</span></label><input type="date" class="fims-input" id="prepCheckDate"></div>
+                                <div class="col-md-6"><label class="fims-label">Check Number <span class="text-danger">*</span></label>
+                                    <input type="text" class="fims-input" id="prepCheckNumber" placeholder="Select bank account first..." disabled>
+                                </div>
+                                <div class="col-md-6"><label class="fims-label">Net Amount</label><input type="text" class="fims-input" id="prepNetAmount" disabled></div>
+                            </div>
+                            <div class="row g-2 mt-1">
+                                <div class="col-md-6"><label class="fims-label">Signatory 1 Name</label><input type="text" class="fims-input" id="prepSig1Name" placeholder="e.g. JUAN D. DELA CRUZ"></div>
+                                <div class="col-md-6"><label class="fims-label">Signatory 1 Designation</label><input type="text" class="fims-input" id="prepSig1Desig" placeholder="e.g. Manager"></div>
+                            </div>
+                            <div class="row g-2 mt-1">
+                                <div class="col-md-6"><label class="fims-label">Signatory 2 Name</label><input type="text" class="fims-input" id="prepSig2Name" placeholder="e.g. MARIA S. SANTOS"></div>
+                                <div class="col-md-6"><label class="fims-label">Signatory 2 Designation</label><input type="text" class="fims-input" id="prepSig2Desig" placeholder="e.g. Department Manager"></div>
+                            </div>
                         </div>
-                        <div class="col-md-6"><label class="fims-label">Program</label><input type="text" class="fims-input" id="prepProgram" disabled placeholder="—"></div>
-                        <div class="col-md-6"><label class="fims-label">Payee</label><input type="text" class="fims-input" id="prepPayee" disabled></div>
-                        <div class="col-md-6"><label class="fims-label">Bank Account <span class="text-danger">*</span></label>
-                            <select class="fims-select" id="prepBankAccount"><option value="">Select bank account...</option></select>
+                        <div style="flex:0 0 661px;max-width:100%;">
+                            <label class="fims-label">Live Preview</label>
+                            <div id="prepLivePreviewBox" style="width:661px;max-width:100%;height:245px;overflow:hidden;border:1px solid var(--fims-border,#dde3ea);border-radius:6px;background:#fff;">
+                                <div id="prepLivePreview" style="transform:scale(0.85);transform-origin:top left;width:777.6px;"></div>
+                            </div>
+                            <div style="font-size:11px;color:var(--fims-text-subtle,#8a8f9b);margin-top:4px;text-align:center;">Updates as you fill in the form.</div>
                         </div>
-                        <div class="col-md-6"><label class="fims-label">SARO Reference</label><input type="text" class="fims-input" id="prepSaro" disabled placeholder="— (no SARO linked to this DV)"></div>
-                        <div class="col-md-6"><label class="fims-label">Check Date <span class="text-danger">*</span></label><input type="date" class="fims-input" id="prepCheckDate"></div>
-                        <div class="col-md-6"><label class="fims-label">Check Number <span class="text-danger">*</span></label>
-                            <input type="text" class="fims-input" id="prepCheckNumber" placeholder="Select bank account first..." disabled>
-                        </div>
-                        <div class="col-md-6"><label class="fims-label">Net Amount</label><input type="text" class="fims-input" id="prepNetAmount" disabled></div>
-                    </div>
-                    <div class="row g-2 mt-1">
-                        <div class="col-md-6"><label class="fims-label">Signatory 1 Name</label><input type="text" class="fims-input" id="prepSig1Name" placeholder="e.g. JUAN D. DELA CRUZ"></div>
-                        <div class="col-md-6"><label class="fims-label">Signatory 1 Designation</label><input type="text" class="fims-input" id="prepSig1Desig" placeholder="e.g. Manager"></div>
-                    </div>
-                    <div class="row g-2 mt-1">
-                        <div class="col-md-6"><label class="fims-label">Signatory 2 Name</label><input type="text" class="fims-input" id="prepSig2Name" placeholder="e.g. MARIA S. SANTOS"></div>
-                        <div class="col-md-6"><label class="fims-label">Signatory 2 Designation</label><input type="text" class="fims-input" id="prepSig2Desig" placeholder="e.g. Department Manager"></div>
                     </div>
                 </div>
                 <div class="fims-modal-footer">
@@ -1375,6 +1386,39 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
             })
             .catch(function () { toast('Could not reach the server.', true); });
     }
+
+    // Builds a buildCheckFragment()-shaped object straight from whatever's
+    // currently in the Prepare Check form, no save required (dv may be null
+    // before a DV is picked; every field below tolerates that).
+    function getPrepFormCheckData() {
+        const dv = prepDvsById[document.getElementById('prepDvSelect').value];
+        const ba = prepBankAccountsById[document.getElementById('prepBankAccount').value] || {};
+        return {
+            bank_name: ba.bank_name || '',
+            account_number: ba.account_number || '',
+            account_name: ba.account_name || '',
+            check_number: document.getElementById('prepCheckNumber').value || '',
+            check_date: document.getElementById('prepCheckDate').value || '',
+            payee: document.getElementById('prepPayee').value || (dv ? dv.claimant_name : '') || '',
+            amount: dv ? (parseFloat(dv.net_amount) || 0) : 0,
+            dv_number: dv ? dv.dv_no : '',
+            signatory1_name: document.getElementById('prepSig1Name').value || '',
+            signatory1_designation: document.getElementById('prepSig1Desig').value || '',
+            signatory2_name: document.getElementById('prepSig2Name').value || '',
+            signatory2_designation: document.getElementById('prepSig2Desig').value || '',
+        };
+    }
+
+    // Inline preview — re-rendered on every field change so it always
+    // reflects the current form state. Scaled down slightly (0.85x — see
+    // #prepLivePreview's inline transform) from the same .nha-chk the print
+    // agent uses; #prepLivePreviewBox still scrolls horizontally as a
+    // fallback if the modal is ever narrower than that scaled width.
+    function renderPrepLivePreview() {
+        const inner = document.getElementById('prepLivePreview');
+        if (inner) inner.innerHTML = buildCheckFragment(getPrepFormCheckData(), {});
+    }
+
     document.getElementById('chk-pchc-preview')?.addEventListener('change', function (e) {
         const chk = document.querySelector('#check-preview-content .nha-chk');
         if (chk) chk.classList.toggle('nha-chk--plain', e.target.checked);
@@ -1391,6 +1435,7 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
     // ── Prepare Check modal: connects a check to a FOR_TREASURY disbursement
     // voucher (see CheckProcessingService::getDvsForPrep/saveCheck). ──
     let prepDvsById = {};
+    let prepBankAccountsById = {};
     function openPrepareCheckModal() {
         const err = document.getElementById('prepModalError');
         if (err) err.style.display = 'none';
@@ -1425,10 +1470,16 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
 
         fetch(API + '/preparation/bank-accounts', { headers: authHeaders() })
             .then(r => r.json())
-            .then(json => fillSelect('#prepBankAccount', json.data, 'Select bank account...'))
+            .then(function (json) {
+                const rows = (json && json.data) ? json.data : [];
+                prepBankAccountsById = {};
+                rows.forEach(function (ba) { prepBankAccountsById[ba.bank_account_id] = ba; });
+                fillSelect('#prepBankAccount', rows, 'Select bank account...');
+            })
             .catch(() => {});
 
         openModal('m-prepare-check');
+        renderPrepLivePreview();
     }
 
     document.getElementById('prepDvSelect')?.addEventListener('change', function () {
@@ -1438,6 +1489,11 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
         document.getElementById('prepNetAmount').value = dv ? peso(dv.net_amount) : '';
         verifyPrepCash();
         prepAutoFillBankFromSaro(dv ? dv.dv_no : null);
+        renderPrepLivePreview();
+    });
+
+    ['prepCheckDate', 'prepSig1Name', 'prepSig1Desig', 'prepSig2Name', 'prepSig2Desig'].forEach(function (id) {
+        document.getElementById(id)?.addEventListener('input', renderPrepLivePreview);
     });
 
     // Shows the DV's linked SARO (fims.fund_tracking.dv_id — see DisbursementVoucherService::
@@ -1486,6 +1542,7 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
         verifyPrepCash();
         checkNoSel.value = '';
         lowStockAlert.style.display = 'none';
+        renderPrepLivePreview();
         if (!bankAccountId) {
             checkNoSel.placeholder = 'Select bank account first...';
             checkNoSel.disabled = true;
@@ -1514,6 +1571,7 @@ $cpJsVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-js/fims-treasury.js
                     document.getElementById('prepLowStockCount').textContent = numbers.length;
                     lowStockAlert.style.display = '';
                 }
+                renderPrepLivePreview();
             })
             .catch(function () {
                 checkNoSel.placeholder = 'Could not load check numbers';
