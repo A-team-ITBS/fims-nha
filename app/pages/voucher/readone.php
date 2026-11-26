@@ -77,6 +77,18 @@ $_vr_rcId          = $_vr_isSysAdmin ? null : ($_vr_userRow['rc_id'] ?? null);
 #vr-root .vje-atc-row > .vje-grid3 > .vje-fg:nth-child(2), #vr-root .vr-ro-atc > .vje-grid3 > .vje-fg:nth-child(2) { grid-column: 2 / 4; grid-row: 2; margin-top: 8px; }
 #vr-root .vje-ded-row:not([data-vat="1"]) > .vje-fg, #vr-root .vr-ro-ded > .vje-fg { grid-column: 1 / -1; grid-row: 2; }
 #vr-root .vje-ded-row:not([data-vat="1"]) > .vje-remove, #vr-root .vje-atc-row > .vje-remove { position: static; grid-column: 4; grid-row: 1; justify-self: center; }
+/* editable VAT row (Accounting stage): same one-line layout as the entry form — Less: VAT withheld (Inclusive | Exclusive) | rate | amount | x */
+#vr-root .vje-ded-row[data-vat="1"] { display: grid; grid-template-columns: minmax(0, 1fr) 180px 170px 44px; align-items: center; margin: 0; padding: 10px 14px; border-top: 1px solid #E4ECF6; }
+#vr-root .vje-ded-row[data-vat="1"] > .vr-ded-label { grid-column: 1; grid-row: 1; margin: 0; font-weight: 400; font-size: 14px; color: var(--afims-text, #1C1E29); }
+#vr-root .vje-ded-row[data-vat="1"] .vje-vat-types { display: inline-flex; margin: 0 0 0 10px; gap: 6px; vertical-align: middle; }
+#vr-root .vje-ded-row[data-vat="1"] .vje-vat-opt { padding: 4px 10px; font-size: 12px; }
+#vr-root .vje-ded-row[data-vat="1"] > .vr-vat-rate { grid-column: 2; grid-row: 1; padding-right: 14px; margin: 0; }
+#vr-root .vje-ded-row[data-vat="1"] > .vr-vat-wamt { grid-column: 3; grid-row: 1; margin: 0; }
+#vr-root .vje-ded-row[data-vat="1"] .vr-vat-rate input, #vr-root .vje-ded-row[data-vat="1"] .vr-vat-wamt input { text-align: right; }
+#vr-root .vje-ded-row[data-vat="1"] > .vje-remove { position: static; grid-column: 4; grid-row: 1; justify-self: center; }
+#vr-root .vje-ded-row[data-vat="1"] > .vr-vat-info { grid-column: 1 / -1; grid-row: 2; margin-top: 6px; font-size: 12px; color: var(--afims-text-muted, #62657E); }
+#vr-root .vr-vat-info input { width: 110px; padding: 2px 6px; border: 0; border-bottom: 1px dashed var(--afims-border, #B9C4D0); background: transparent !important; font-size: 12px; text-align: right; color: inherit; }
+#vr-root .vje-ded-row[data-vat="1"] > .vje-vat-hint { grid-column: 1 / -1; grid-row: 3; margin-top: 2px; font-size: 11.5px; color: var(--afims-text-muted, #62657E); }
 #vr-root .vr-ded-section > :first-child, #vr-root #vje-ded-list > :first-child { border-top: 0; }
 #vr-root .vje-fg label { display: block; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--afims-text-muted, #62657E); margin-bottom: 3px; }
 #vr-root .vje-fg input, #vr-root .vje-fg select { width: 100%; font-size: 13px; padding: 8px 12px; border: 1px solid var(--afims-border, #E4ECF2); border-radius: 8px; box-sizing: border-box; font-family: inherit; background: var(--afims-surface, #fff); color: var(--afims-text, #1e293b); }
@@ -144,7 +156,6 @@ $_vr_rcId          = $_vr_isSysAdmin ? null : ($_vr_userRow['rc_id'] ?? null);
 #vr-root .vr-ap-table td { padding: 10px 16px; border-bottom: 1px solid #EEF2F8; }
 #vr-root .vr-ap-table td:nth-child(1) { font-family: "IBM Plex Mono", monospace; font-size: 13px; letter-spacing: .02em; }
 #vr-root .vr-ap-table td:nth-child(3), #vr-root .vr-ap-table td:nth-child(4) { text-align: right; }
-#vr-root .vr-ap-table td.vr-ap-cr { padding-left: 40px; }
 #vr-root .vr-ap-sub:not(:empty) { margin-top: 2px; font-size: 12px; color: var(--afims-text-muted, #62657E); }
 #vr-root .vr-ap-table tr.vr-ap-total td { font-weight: 700; border-bottom: 0; }
 #vr-root .vr-ap-table tr.vr-ap-bad td:nth-child(3), #vr-root .vr-ap-table tr.vr-ap-bad td:nth-child(4) { color: var(--afims-danger-text, #8F222D); }
@@ -192,6 +203,11 @@ $_vr_rcId          = $_vr_isSysAdmin ? null : ($_vr_userRow['rc_id'] ?? null);
 /* The picked account's title, inside the Account Code field right after the code ("1-04-01-010 - Due to BIR"). The input keeps only the
    code; this is a click-through label whose left edge vje_renderAcctTitle() sets to the end of the typed text. */
 #vr-root .vje-acct-wrap { position: relative; }
+/* the vendor's SL, read-only under the Accounts Payable GL (see vje_renderSlLine()) */
+#vr-root .vje-sl-line { margin: 6px 0 0 2px; font-size: 12.5px; color: var(--afims-text, #1C1E29); font-family: "IBM Plex Mono", monospace; }
+#vr-root .vje-sl-line > span { font-family: inherit; font-size: 10.5px; font-weight: 700; letter-spacing: .04em; color: var(--afims-text-muted, #62657E); margin-right: 6px; }
+#vr-root .vje-sl-line em { font-style: normal; font-family: var(--font, inherit); color: var(--afims-text-muted, #62657E); }
+
 #vr-root .vje-acct-title { position: absolute; top: 0; bottom: 0; right: 8px; display: none; align-items: center; pointer-events: none; font-size: 12.5px; font-family: inherit; color: var(--afims-text-muted, #62657E); }
 #vr-root .vje-acct-title > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #vr-root .vje-edit-table input { width: 100%; font-size: 12.5px; padding: 6px 8px; border: 1px solid var(--afims-border, #E4ECF2); border-radius: 6px; box-sizing: border-box; font-family: inherit; }
@@ -738,9 +754,6 @@ function vje_entriesCard(dv) {
             <div class="vje-section-hdr">
                 <p class="vr-card-title" style="margin:0;">Accounting Entries <span class="vr-hint" style="display:inline;font-weight:400;text-transform:none;">(optional)</span></p>
             </div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
-                <span class="vje-amt-badge">Required if filled in: DR = CR (balanced)</span>
-            </div>
             <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:10px;">
                 <div class="nha-fg" style="max-width:260px;">
                     <label>Book <span class="nha-req">*</span></label>
@@ -879,7 +892,7 @@ async function vje_init(dv) {
                 tr.dataset.autoSource = `atc:${idx}`;
                 return;
             }
-            if (!apUsed && credit > 0 && l.account_code === (dv.vendor_ap_account_code || '2-01-01-010')) {
+            if (!apUsed && credit > 0 && (l.account_code === (dv.vendor_ap_account_code || '2-01-01-010') || String(l.account_code || '').startsWith('2-01-01-010'))) {
                 tr.dataset.autoSource = 'ap';
                 apUsed = true;
             }
@@ -1012,27 +1025,18 @@ function vje_addVatLine(idx, d, saved) {
     div.dataset.vatType = vatType;
     div.innerHTML = `
         <button type="button" class="vje-remove" title="Remove" onclick="vje_removeDeductionLine(${idx})">&times;</button>
-        <div class="vr-ded-label">VAT</div>
+        <div class="vr-ded-label"><span class="vr-less">Less:</span> <b>VAT withheld</b>
+            <span class="vje-vat-types">
+                <label class="vje-vat-opt" title="Gross already includes VAT"><input type="radio" name="vje-vat-type-${idx}" value="inclusive"> Inclusive</label>
+                <label class="vje-vat-opt" title="VAT is added on top of gross"><input type="radio" name="vje-vat-type-${idx}" value="exclusive"> Exclusive</label>
+            </span>
+        </div>
         <input type="hidden" class="vje-ded-type" value="${vr_esc(typeId)}">
-        <div class="vje-vat-types">
-            <label class="vje-vat-opt"><input type="radio" name="vje-vat-type-${idx}" value="inclusive"> VAT Inclusive <small>Gross already includes VAT</small></label>
-            <label class="vje-vat-opt"><input type="radio" name="vje-vat-type-${idx}" value="exclusive"> VAT Exclusive <small>VAT is added on top of gross</small></label>
-        </div>
-        <div class="vje-vat-block info">
-            <div class="vje-vat-block-title">VAT Computation <span>— informational, not deducted</span></div>
-            <div class="vje-grid3">
-                <div class="vje-fg"><label>Statutory VAT Rate (%)</label><input type="text" readonly value="${VJE_VAT_RATE}"></div>
-                <div class="vje-fg"><label>VAT Amount (₱)</label><input type="text" class="vje-vat-amt" readonly></div>
-                <div class="vje-fg"><label>Tax Base (₱)</label><input type="text" class="vje-vat-base" readonly></div>
-            </div>
-        </div>
-        <div class="vje-vat-block real">
-            <div class="vje-vat-block-title">Withholding VAT <span>— deducted from Net Amount Payable</span></div>
-            <div class="vje-grid2">
-                <div class="vje-fg"><label>Withholding VAT Rate (%)</label><input type="number" class="vje-ded-rate" min="0" max="100" step="0.01" placeholder="e.g. 5"></div>
-                <div class="vje-fg"><label>Withholding VAT Amount (₱)</label><input type="text" class="vje-ded-amount" readonly placeholder="Auto-computed"></div>
-            </div>
-        </div>
+        <div class="vje-fg vr-vat-rate"><input type="number" class="vje-ded-rate" min="0" max="100" step="0.01" placeholder="Rate %" aria-label="Withholding VAT rate (%)"></div>
+        <div class="vje-fg vr-vat-wamt"><input type="text" class="vje-ded-amount" readonly placeholder="Amount" aria-label="Withholding VAT amount"></div>
+        <div class="vr-vat-info">VAT computation (informational, not deducted): statutory ${VJE_VAT_RATE}% &middot;
+            VAT <input type="text" class="vje-vat-amt" readonly aria-label="VAT amount"> &middot;
+            Tax base <input type="text" class="vje-vat-base" readonly aria-label="Tax base"></div>
         <span class="vje-vat-hint"></span>`;
     div.querySelector('.vje-ded-rate').value = saved ? (d.rate ?? '') : '';
     $vr('vje-ded-list').appendChild(div);
@@ -1336,7 +1340,7 @@ function vje_addLine(d = null) {
     const descInput = tr.querySelector('.vje-line-desc');
     const debitInput = tr.querySelector('.vje-debit');
     const creditInput = tr.querySelector('.vje-credit');
-    acctInput.value = d?.account_code ?? '';
+    vje_setLineAccount(tr, d?.account_code ?? '');
     descInput.value = d?.description ?? '';
     debitInput.value = Number(d?.debit) > 0 ? vje_money2(d.debit) : '';
     creditInput.value = Number(d?.credit) > 0 ? vje_money2(d.credit) : '';
@@ -1360,6 +1364,42 @@ function vje_removeLine(lineId) {
     }
 }
 
+/* ── Accounts Payable: the GL on the line, the vendor's SL under it ─────────────────────────────────────────────────────
+   The line's account box shows the GL (2-01-01-010 Accounts Payable); the sub-ledger assigned to the vendor / contractor
+   (vendors.sl_code, e.g. 2-01-01-010-01-01 SUB SL 1.1) is shown read-only underneath. What is SAVED is still the SL's own
+   account code (tr.dataset.slCode — vje_collectLines() sends it instead of the GL), so posting and the grouped view are unchanged.
+   Without an SL assigned to the vendor the line is just the GL. The SL is changed on the vendor, not here. */
+const VJE_AP_ROOT = '2-01-01-010';
+function vje_apDefaultCode() { return vje_dv?.vendor_ap_account_code || VJE_AP_ROOT; }
+function vje_isApSl(code) { return String(code || '').startsWith(VJE_AP_ROOT + '-'); }
+
+/** Sets a line's account: an Accounts Payable sub-ledger code goes into slCode (the box shows its GL), anything else goes in the box. */
+function vje_setLineAccount(tr, code) {
+    const input = tr.querySelector('.vje-acct-code');
+    code = String(code || '').trim();
+    if (vje_isApSl(code)) { tr.dataset.slCode = code; input.value = VJE_AP_ROOT; }
+    else { delete tr.dataset.slCode; input.value = code; }
+}
+/** The account code this line posts to: its SL when it has one, else what is in the box. */
+function vje_lineAccountCode(tr) {
+    return (tr.dataset.slCode || tr.querySelector('.vje-acct-code').value).trim();
+}
+
+function vje_renderSlLine(tr) {
+    const input = tr.querySelector('.vje-acct-code');
+    // the box was edited to a different account: the SL no longer applies
+    if (tr.dataset.slCode && input.value.trim() !== VJE_AP_ROOT) delete tr.dataset.slCode;
+    let el = tr.querySelector('.vje-sl-line');
+    const sl = tr.dataset.slCode;
+    if (!sl) { el?.remove(); return; }
+    const cell = tr.querySelector('.vje-acct-wrap')?.parentNode;
+    if (!cell) return;
+    if (!el) { el = document.createElement('div'); el.className = 'vje-sl-line'; cell.appendChild(el); }
+    const t = ((VJE_COA || []).find(a => a.account_code === sl) || {}).account_title || '';
+    el.innerHTML = `<span>SL</span> ${vr_esc(sl)}${t ? ` <em>— ${vr_esc(t)}</em>` : ''}`;
+    el.title = 'Sub-ledger assigned to the vendor / contractor';
+}
+
 /** The picked account's title, inside the Account Code field right after the code — "1-04-01-010 - Due to BIR". The input still holds
     only the code (the save and every calculation read it as the code); the title is a click-through overlay whose left edge is the
     end of the typed text, measured with the input's own font. */
@@ -1369,6 +1409,7 @@ function vje_renderAcctTitle(tr) {
     if (!input || !box) return;
     const code = input.value.trim();
     const acct = code ? (VJE_COA || []).find(a => a.account_code === code) : null;
+    vje_renderSlLine(tr);
     if (!acct?.account_title) { box.style.display = 'none'; return; }
     const cs = getComputedStyle(input);
     if (!vje_renderAcctTitle.ctx) vje_renderAcctTitle.ctx = document.createElement('canvas').getContext('2d');
@@ -1481,7 +1522,8 @@ function vje_syncAutoLines() {
     // e.g. "2-01-01-010-01") when the claimant is a registered vendor with one set up, so the
     // payable actually lands in that vendor's subsidiary ledger instead of just the bare AP
     // control account — see DisbursementVoucherService::fetchById()'s vendor_ap_account_code.
-    const apAccountCode = vje_dv?.vendor_ap_account_code || '2-01-01-010';
+    // The vendor's own SL (vendors.sl_code) when it has one — shown under the GL, see vje_setLineAccount() — else the GL itself.
+    const apAccountCode = vje_apDefaultCode();
     const apRemainder = Math.round((gross - dedCreditTotal - atcCreditTotal) * 100) / 100;
     if (apRemainder > 0.004) {
         vje_upsertAutoLine('ap', { account_code: apAccountCode, debit: 0, credit: apRemainder, description: 'Net Amount Payable' });
@@ -1500,7 +1542,7 @@ function vje_upsertAutoLine(sourceKey, d) {
         tr.dataset.autoSource = sourceKey;
         return;
     }
-    tr.querySelector('.vje-acct-code').value = d.account_code || '';
+    vje_setLineAccount(tr, d.account_code || '');
     tr.querySelector('.vje-line-desc').value = d.description || '';
     tr.querySelector('.vje-debit').value  = d.debit  > 0 ? vje_money2(d.debit)  : '';
     tr.querySelector('.vje-credit').value = d.credit > 0 ? vje_money2(d.credit) : '';
@@ -1517,7 +1559,7 @@ function vje_pruneAutoLines(prefix, keepFn) {
 function vje_collectLines() {
     const lines = [];
     $vr('vje-lines-tbody').querySelectorAll('tr.vje-line').forEach(tr => {
-        const account_code = tr.querySelector('.vje-acct-code').value.trim();
+        const account_code = vje_lineAccountCode(tr);
         const debit        = vje_num(tr.querySelector('.vje-debit').value);
         const credit       = vje_num(tr.querySelector('.vje-credit').value);
         const description  = tr.querySelector('.vje-line-desc').value.trim();
@@ -1576,7 +1618,7 @@ function vje_recalc() {
     $vr('vje-total-credit').textContent = vr_peso(totalCredit);
     const balanced = lines.length >= 2 && totalDebit > 0 && Math.abs(totalDebit - totalCredit) < 0.005;
     const msg = $vr('vje-balance-msg');
-    msg.textContent = balanced ? 'Balanced ✓' : 'Not balanced — debits must equal credits';
+    msg.textContent = balanced ? '' : 'Not balanced — debits must equal credits'; // nothing to say when it balances
     msg.style.color = balanced ? 'var(--afims-success, #16A34A)' : 'var(--afims-danger, #DC3545)';
     return balanced;
 }
