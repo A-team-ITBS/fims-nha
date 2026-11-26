@@ -425,7 +425,7 @@ The furthest-along business workflow in the repo — a Budget Request → Revisi
   the user-entered `iar_number` (required, unique, editable), the Sales Invoice # / date (once per PO) and
   `line_transaction` (JSONB **array**, one element per delivery receipt — the same idea as
   `budget_allocation.line_transaction`):
-  `[{dr_number, delivery_date, total_amount, lines:[{account_code, account_title, amount}], items?:[{description,
+  `[{dr_number, delivery_date, total_amount, lines:[{account_code, amount}], items?:[{description,
   serial_no, amount, property_no}]}]`. `items` (any number of items, **one line each**) is present only when
   a row of 50,000 or more on a property / equipment account was entered (see "Items are per account row" below). There are no separate DR / entry tables and no FK: deleting the PO's row deletes its DRs.
   A DR is identified inside its PO by its `dr_number` (unique within the PO); a serial number is unique across all
@@ -470,8 +470,15 @@ The furthest-along business workflow in the repo — a Budget Request → Revisi
 - **PO comes from the Budget Allocation.** The PO Number field is a search-and-pick combobox
   (`GET /po-dr/pos?search=`), not free text. It lists the `po_number` of `fims.budget_allocation` rows with
   `allocation_type = 'RFA'` (one per PO number, PO number + PO date shown). **A PO that already has an IAR row is not offered** (nor one with an active DV or no balance left):
-  further delivery receipts are added from that row's **Actions → Add Deliveries** (shown while the balance is above 0; opens the form with the PO and IAR number locked and the
-  RFA lines pre-filled — `GET /po-dr/read` returns `lines` for this — then the same `POST /po-dr/add` appends the DR). Picking one fills the read-only
+  further delivery receipts are added from that row's **Actions → Add Deliveries** (shown while the balance is above 0 and the delivery is not accepted; opens the form with the PO and IAR number locked and the
+  RFA lines pre-filled — `GET /po-dr/read` returns `lines` for this — then the same `POST /po-dr/add` appends the DR).
+  **Actions → Delivery Acceptance** (`POST /po-dr/accept-delivery {po_number, subject_to, inspection_notes?}`, `PoDrService::acceptDelivery()`): the button is offered **only when the pro-forma JEV of
+  every delivery receipt has been submitted** (each DR has a `jev_id`; the server enforces it and lists the DRs still missing). It opens a form with **Date** (backend, read-only),
+  **Subject to ICS/PAR** (required, typed → `subject_to`) and **Inspection Notes** (optional → `inspection_notes`); **Inspected By** is not on the form — the server stores the logged-in user
+  (`delivery_accepted_by`) and the name is read live from `uac.users` as `inspected_by`. Saving sets **`delivery_accepted = TRUE`** (+ `delivery_accepted_at`) on the IAR row — one-way, independent of the PO balance;
+  other modules can key off the flag. Clicking Delivery Acceptance on an accepted row shows Date, Inspected By, Subjected To and Inspection Notes read-only. An accepted PO shows an **Accepted** pill,
+  loses Add Deliveries and Edit, and `create()`, `update()` and `delete()` refuse it (View and Pro-forma still work). Columns: `25 - fims_inspection_acceptance_report.sql` (idempotent `ADD COLUMN IF NOT EXISTS`;
+  re-run it on an existing DB). Picking a PO fills the read-only
   Requesting Office/Dept (`responsibility_code.rc_name` of `requesting_rc_id`), Vendor (`vendors.vendor_name`),
   PO Date and PO Amount. **PO Amount = sum of `requested_amount` over `line_transaction`**.
   `PoDrService::create()` (and `update()` when the PO number changes) rejects a PO that isn't an RFA PO.
@@ -498,8 +505,11 @@ The furthest-along business workflow in the repo — a Budget Request → Revisi
   superadmin only). A DR with a JEV cannot be submitted again (409): its Pro-forma is **read-only** (saved rows, no Add row / Submit, "Submitted as … JEV"), and **Print JEV**
   prints with the JEV number and date. `PoDrService::shape()` must return `jev_id` / `jev_no` or the lock silently fails.
 - **Infrastructure tab** (second tab of the IAR page; `form/infra-iar-form.php` + `InfraIarService.php` + `app/routes/infra_iar.php`; table `fims.statement_work_accomplishments`,
-  `01 - table/50`; sample RFAs / locations `02 - sample_data/12`). One record per **approved Infrastructure RFA without a PO** (`allocation_type='RFA'`, status Approved, category
-  Infrastructure, no `po_number`, no active DV, no record yet). The header button reads **Add Infrastructure Record**; the list shows SWA Number, RFA Number, Project Name, Contractor,
+  `01 - table/50`; sample RFAs / locations `02 - sample_data/12`). One record per **approved Infrastructure RFA without a PO** (`allocation_type='RFA'`, status Approved,
+  no `po_number`, no active DV, no record yet, and **at least one line on an infrastructure account** — the RFAs have no category, so the rule is by account code:
+  `InfraIarService::INFRA_RFA_ACCOUNTS` = 1-04-03-020, 1-05-01-010, 1-05-01-020, 1-06-01-010, 1-06-02-990, 1-06-04-010, 1-06-04-990, 1-06-09-020 or a sub-ledger of one; edit that constant to change the list).
+  **Account titles are never stored** — `line_transaction` lines (here and in Deliveries) keep only `account_code` + `amount`; titles are read live from `fims.chart_of_accounts`
+  (`PoDrService::accountTitles()` / `withTitles()`), because a title can be renamed; the table scripts `25` / `50` migrate older rows. The header button reads **Add Infrastructure Record**; the list shows SWA Number, RFA Number, Project Name, Contractor,
   **Regional Office/District Office**, Revised Contract Cost and % Accomplishment.
   - **What is stored**: only `swa_number`, `allocation_id`, **Contract**, the dates / duration and `line_transaction`. Everything the RFA already knows — RFA number, project code / name, program,
     contractor, location, regional / district office **and the cost figures** (original contract cost, variation order, revised contract cost, `rfa_amount`) — is **read live** by
