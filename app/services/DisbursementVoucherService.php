@@ -1933,6 +1933,12 @@ class DisbursementVoucherService
             $existing = App\ExecuteRow("SELECT jev_id FROM {$this->tableJev} WHERE dv_id = {$dvId}", 'DB');
             if ($existing) {
                 $jevId = (int) $existing['jev_id'];
+                // The lines are replaced below (delete + re-insert). Lines already posted to the General Ledger are referenced by
+                // fims.general_ledger (jev_line_id FK), so that would fail with a bare database error — say so plainly instead.
+                $posted = (int) App\ExecuteScalar("SELECT COUNT(*) FROM fims.general_ledger WHERE jev_id = {$jevId}", 'DB');
+                if ($posted > 0) {
+                    return ['success' => false, 'message' => 'This voucher\'s Journal Entry Voucher is already posted to the General Ledger, so its entries can\'t be changed here. Reverse the posting first.'];
+                }
                 App\Execute(
                     "UPDATE {$this->tableJev} SET
                         book_id = " . $this->intOrNull($bookId) . ",

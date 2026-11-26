@@ -315,11 +315,24 @@ class RemittanceListService
                 $dvs[$d['period'] . '|' . $d['type_key']][] = ['dv_id' => (int) $d['remit_dv_id'], 'dv_no' => $d['remit_dv_no'], 'status' => $d['remit_dv_status']];
             }
 
+            // the vouchers that make up each month's total (so a row can say which DVs, not just how many)
+            $src = [];
+            foreach (App\ExecuteRows(
+                "SELECT to_char(i.dv_date, 'YYYY-MM') AS period, i.type_key, i.dv_id, MAX(i.dv_no) AS dv_no, MAX(i.claimant_name) AS claimant_name,
+                        COALESCE(SUM(i.amount), 0) AS amount
+                   FROM ({$items}) i WHERE i.type_key IN ({$keys}){$fy}
+                  GROUP BY 1, 2, 3 ORDER BY MAX(i.dv_no)",
+                'DB'
+            ) ?: [] as $s) {
+                $src[$s['period'] . '|' . $s['type_key']][] = ['dv_id' => (int) $s['dv_id'], 'dv_no' => $s['dv_no'], 'payee' => $s['claimant_name'], 'amount' => (float) $s['amount']];
+            }
+
             foreach ($rows as &$r) {
                 $r['period_label'] = $this->periodLabel($r['period']);
                 $r['type_name']    = self::REMIT_TYPES[$r['type_key']];
                 $r['can_remit']    = (float) $r['ready'] > 0;
                 $r['dvs']          = $dvs[$r['period'] . '|' . $r['type_key']] ?? [];
+                $r['source_dvs']   = $src[$r['period'] . '|' . $r['type_key']] ?? [];
             }
             unset($r);
 
