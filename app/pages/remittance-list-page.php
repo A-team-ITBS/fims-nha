@@ -553,11 +553,21 @@ function rl_renderMonths(rows) {
         return `<tr data-period="${rl_esc(r.period)}" data-type="${rl_esc(r.type_key)}">
             <td style="font-weight:600;white-space:nowrap;">${rl_esc(r.period_label)}</td>
             <td>${rl_esc(r.type_name)}</td>
-            <td class="text-end nha-mono" style="font-weight:600;">${rl_peso(r.total)}<div class="rl-sub" style="font-family:inherit;font-weight:400;">${Number(r.vouchers || 0)} voucher${Number(r.vouchers) === 1 ? '' : 's'}${parts.length ? ' · ' + parts.join(' · ') : ''}</div></td>
+            <td class="text-end nha-mono" style="font-weight:600;">${rl_peso(r.total)}<div class="rl-sub" style="font-family:inherit;font-weight:400;"><button type="button" class="rl-expand-all" title="Click to see which vouchers" onclick="rl_toggleSrc(this)">${Number(r.vouchers || 0)} voucher${Number(r.vouchers) === 1 ? '' : 's'} ▾</button>${parts.length ? ' · ' + parts.join(' · ') : ''}</div>
+                <div class="rl-src" style="display:none;">${(r.source_dvs || []).map(s => `<div class="rl-sub" style="font-family:inherit;"><a class="nha-tbl-link nha-mono" href="${rl_esc(RL_VOUCHER)}?dv=${Number(s.dv_id)}" title="${rl_esc(s.payee)} — click to open" onclick="event.preventDefault();rl_reviewDv(${Number(s.dv_id)})">DV ${rl_esc(s.dv_no)}</a> · ${rl_peso(s.amount)}</div>`).join('')}</div></td>
             <td><div class="rl-stand">${stand.join('')}</div></td>
             <td class="no-print"><div class="rl-acts">${acts.join('')}</div></td>
         </tr>`;
     }).join('');
+}
+
+/* Show / hide the vouchers behind a month's total. */
+function rl_toggleSrc(btn) {
+    const box = btn.closest('td').querySelector('.rl-src');
+    if (!box) return;
+    const show = box.style.display === 'none';
+    box.style.display = show ? '' : 'none';
+    btn.textContent = btn.textContent.replace(/[▾▴]/, show ? '▴' : '▾');
 }
 
 /* Where a Remittance DV stands: with whom it is now, or that it was paid / is not going ahead. */
