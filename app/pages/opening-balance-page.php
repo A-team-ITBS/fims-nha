@@ -11,19 +11,20 @@ $_ob_api = preg_match('~/api$~', $_ob_api) ? $_ob_api : $_ob_api . '/api';
 <link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
 
 <style>
+    #ob-root :is(.nha-mono, .nha-amt, .u-font-mono, .fims-mono, .amt-cell, .ob-amount, .ob-status-value, input.ob-amt-input) { font-family: var(--font-body); font-variant-numeric: tabular-nums; } /* plain zero, no dotted-zero glyph */
     /* All colours come from the shared theme tokens (_shared/css/custom.css), which switch by themselves in dark mode,
        so this page matches the other report pages in both themes. */
 
     #ob-root .ob-header { text-align: center; margin: 0 0 15px; }
-    #ob-root .ob-header .ob-title { font-weight: 700; font-size: 16px; color: var(--afims-heading, #000E3E); }
-    #ob-root .ob-header .ob-subtitle { font-size: 13px; color: var(--afims-text-muted, #62657E); margin-top: 4px; }
+    #ob-root .ob-header .ob-title { font-weight: 700; font-size: var(--fs-lg); color: var(--afims-heading, #000E3E); }
+    #ob-root .ob-header .ob-subtitle { font-size: var(--fs-base); color: var(--afims-text-muted, #62657E); margin-top: 4px; }
 
     #ob-root .ob-status-bar { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 20px; }
     @media (max-width: 760px) { #ob-root .ob-status-bar { grid-template-columns: 1fr; } }
     #ob-root .ob-status-item { background: var(--afims-surface, #FFFFFF); padding: 15px; border-radius: 10px; border: 1px solid var(--afims-border, #E4ECF2);
         border-left: 4px solid var(--afims-primary, #0035A9); }
-    #ob-root .ob-status-label { font-size: 11px; color: var(--afims-text-muted, #62657E); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 5px; }
-    #ob-root .ob-status-value { font-size: 16px; color: var(--afims-heading, #000E3E); font-weight: 700; font-family: 'IBM Plex Mono', monospace; }
+    #ob-root .ob-status-label { font-size: var(--fs-xs); color: var(--afims-text-muted, #62657E); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 5px; }
+    #ob-root .ob-status-value { font-size: var(--fs-lg); color: var(--afims-heading, #000E3E); font-weight: 700;  }
     #ob-root .ob-status-value.balanced { color: var(--afims-success-hover, #0C7539); }
     #ob-root .ob-status-value.unbalanced { color: var(--afims-danger-text, #8F2230); }
 
@@ -31,8 +32,8 @@ $_ob_api = preg_match('~/api$~', $_ob_api) ? $_ob_api : $_ob_api . '/api';
     #ob-root .ob-tbl-scroll { max-height: 70vh; overflow-y: auto; }
     #ob-root .ob-tbl { width: 100%; border-collapse: collapse; color: var(--afims-text, #1A1B21); }
     #ob-root .ob-tbl thead th { background: var(--afims-heading-fill, #000E3E); color: var(--afims-pure-white, #FFFFFF); padding: 11px 12px; text-align: left; font-weight: 700;
-        font-size: 11px; text-transform: uppercase; letter-spacing: .4px; position: sticky; top: 0; z-index: 2; }
-    #ob-root .ob-tbl td { padding: 10px 12px; border-bottom: 1px solid var(--afims-border, #E4ECF2); font-size: 13px; }
+        font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .4px; position: sticky; top: 0; z-index: 2; }
+    #ob-root .ob-tbl td { padding: 10px 12px; border-bottom: 1px solid var(--afims-border, #E4ECF2); font-size: var(--fs-base); }
     #ob-root .ob-tbl .ob-account-row td { background: var(--afims-surface-subtle, #F4F7FA); color: var(--afims-heading, #000E3E); font-weight: 600; }
     #ob-root .ob-tbl .ob-sl-row td { background: var(--afims-surface, #FFFFFF); }
     #ob-root .ob-tbl .ob-sl-row:hover td { background: var(--afims-primary-soft, #E6EBF6); }
@@ -42,19 +43,20 @@ $_ob_api = preg_match('~/api$~', $_ob_api) ? $_ob_api : $_ob_api . '/api';
 
     @media print { #ob-root .ob-tbl-scroll { max-height: none; overflow-y: visible; } }
 
-    #ob-root .ob-amount { text-align: right; font-family: 'IBM Plex Mono', monospace; }
-    #ob-root input[type="number"] { width: 140px; padding: 6px 8px; border: 1px solid var(--afims-border, #E4ECF2); border-radius: 6px; text-align: right; font-family: 'IBM Plex Mono', monospace;
+    #ob-root .ob-amount { text-align: right;  }
+    #ob-root #ob-reload { align-self: flex-start; }
+    #ob-root input.ob-amt-input { width: 140px; padding: 6px 8px; border: 1px solid var(--afims-border, #E4ECF2); border-radius: 6px; text-align: right; 
         background: var(--afims-surface, #FFFFFF); color: var(--afims-text, #1A1B21); }
-    #ob-root input[type="number"]:focus { outline: none; border-color: var(--afims-primary, #0035A9); box-shadow: 0 0 0 3px color-mix(in srgb, var(--afims-primary, #0035A9) 20%, transparent); }
-    #ob-root input[type="number"]:disabled { background: var(--afims-surface-subtle, #F4F7FA); color: var(--afims-text-disabled, #A9AAB8); cursor: not-allowed; }
-    html.afims-dark[data-bs-theme="dark"] #ob-root input[type="number"] { color-scheme: dark; }
+    #ob-root input.ob-amt-input:focus { outline: none; border-color: var(--afims-primary, #0035A9); box-shadow: 0 0 0 3px color-mix(in srgb, var(--afims-primary, #0035A9) 20%, transparent); }
+    #ob-root input.ob-amt-input:disabled { background: var(--afims-surface-subtle, #F4F7FA); color: var(--afims-text-disabled, #A9AAB8); cursor: not-allowed; }
+    html.afims-dark[data-bs-theme="dark"] #ob-root input.ob-amt-input { color-scheme: dark; }
 
-    #ob-root .ob-error { background: var(--afims-danger-soft, #FAE1E3); border-left: 4px solid var(--afims-danger, #DC3545); color: var(--afims-danger-text, #8F2230); padding: 12px; border-radius: 6px; margin-bottom: 15px; font-size: 13px; display: none; }
+    #ob-root .ob-error { background: var(--afims-danger-soft, #FAE1E3); border-left: 4px solid var(--afims-danger, #DC3545); color: var(--afims-danger-text, #8F2230); padding: 12px; border-radius: 6px; margin-bottom: 15px; font-size: var(--fs-base); display: none; }
     #ob-root .ob-error.show { display: block; }
-    #ob-root .ob-locked { background: var(--afims-danger-soft, #FAE1E3); border-left: 4px solid var(--afims-danger, #DC3545); color: var(--afims-danger-text, #8F2230); padding: 12px; border-radius: 6px; margin-bottom: 15px; font-size: 13px; }
+    #ob-root .ob-locked { background: var(--afims-danger-soft, #FAE1E3); border-left: 4px solid var(--afims-danger, #DC3545); color: var(--afims-danger-text, #8F2230); padding: 12px; border-radius: 6px; margin-bottom: 15px; font-size: var(--fs-base); }
 
     #ob-root .ob-buttons { display: flex; gap: 10px; margin-top: 20px; }
-    #ob-root .ob-buttons button { height: 38px; padding: 0 20px; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 13px; font-family: 'IBM Plex Sans', sans-serif; }
+    #ob-root .ob-buttons button { height: 38px; padding: 0 20px; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: var(--fs-base);  }
     #ob-root .ob-btn-primary { background: var(--afims-heading-fill, #000E3E); color: var(--afims-pure-white, #FFFFFF); border: 1px solid var(--afims-heading-fill, #000E3E); }
     #ob-root .ob-btn-primary:hover:not(:disabled) { filter: brightness(1.15); }
     #ob-root .ob-btn-primary:disabled { opacity: .5; cursor: not-allowed; }
@@ -65,7 +67,7 @@ $_ob_api = preg_match('~/api$~', $_ob_api) ? $_ob_api : $_ob_api . '/api';
     html.afims-dark[data-bs-theme="dark"] #ob-root .ob-btn-secondary { background: #22294A; border-color: #4A5270; }
     html.afims-dark[data-bs-theme="dark"] #ob-root .ob-btn-secondary:hover { background: #2E3656; }
 
-    #ob-root .ob-info-box { background: var(--afims-primary-soft, #E6EBF6); border-left: 4px solid var(--afims-primary, #0035A9); color: var(--afims-text, #1A1B21); padding: 12px; border-radius: 6px; margin-bottom: 15px; font-size: 13px; display: none; }
+    #ob-root .ob-info-box { background: var(--afims-primary-soft, #E6EBF6); border-left: 4px solid var(--afims-primary, #0035A9); color: var(--afims-text, #1A1B21); padding: 12px; border-radius: 6px; margin-bottom: 15px; font-size: var(--fs-base); display: none; }
     #ob-root .ob-info-box.show { display: block; }
     #ob-root .ob-info-box.ob-success { background: var(--afims-success-soft, #DBF2E5); border-left-color: var(--afims-success, #11A752); color: var(--afims-success-hover, #0C7539); }
 
@@ -73,7 +75,7 @@ $_ob_api = preg_match('~/api$~', $_ob_api) ? $_ob_api : $_ob_api . '/api';
     #ob-root .ob-spinner { border: 4px solid var(--afims-primary-soft, #E6EBF6); border-top-color: var(--afims-primary, #0035A9); border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; margin: 0 auto 20px; }
     @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
-    #ob-root .ob-status-badge { display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; background: var(--afims-warning-soft, #FEF8D9); color: var(--afims-warning-text, #7E6908); }
+    #ob-root .ob-status-badge { display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: var(--fs-xs); font-weight: 600; background: var(--afims-warning-soft, #FEF8D9); color: var(--afims-warning-text, #7E6908); }
     #ob-root .ob-status-badge.locked { background: var(--afims-danger-soft, #FAE1E3); color: var(--afims-danger-text, #8F2230); }
 
     @media print { #ob-root .no-print { display: none !important; } }
@@ -336,8 +338,8 @@ $_ob_api = preg_match('~/api$~', $_ob_api) ? $_ob_api : $_ob_api . '/api';
                 accRow.innerHTML = `
                     <td style="padding-left:30px;">└─ ${acc.account_code}</td>
                     <td>${acc.account_title}</td>
-                    <td class="ob-amount"><input type="number" step="0.01" value="${acc.debit || 0}" data-account-code="${acc.account_code}" data-group-code="${groupCode}" data-type="debit" ${isLocked ? 'disabled' : ''} /></td>
-                    <td class="ob-amount"><input type="number" step="0.01" value="${acc.credit || 0}" data-account-code="${acc.account_code}" data-group-code="${groupCode}" data-type="credit" ${isLocked ? 'disabled' : ''} /></td>
+                    <td class="ob-amount"><input type="text" inputmode="decimal" autocomplete="off" class="ob-amt-input" value="${fmt(acc.debit)}" data-account-code="${acc.account_code}" data-group-code="${groupCode}" data-type="debit" ${isLocked ? 'disabled' : ''} /></td>
+                    <td class="ob-amount"><input type="text" inputmode="decimal" autocomplete="off" class="ob-amt-input" value="${fmt(acc.credit)}" data-account-code="${acc.account_code}" data-group-code="${groupCode}" data-type="credit" ${isLocked ? 'disabled' : ''} /></td>
                 `;
                 $tbody.appendChild(accRow);
             });
@@ -364,28 +366,39 @@ $_ob_api = preg_match('~/api$~', $_ob_api) ? $_ob_api : $_ob_api . '/api';
         $tbody.appendChild(totalRow);
 
         // Attach input listeners
-        $tbody.querySelectorAll('input[type="number"]').forEach(input => {
+        $tbody.querySelectorAll('input.ob-amt-input').forEach(input => {
             input.addEventListener('change', updateTotals);
+            input.addEventListener('focus', () => { const v = num(input.value); input.value = v ? String(v) : ''; input.select(); });
+            input.addEventListener('blur', () => { input.value = fmt(num(input.value)); updateTotals(); });
             input.addEventListener('input', updateTotals);
         });
 
         updateTotals();
     }
 
+    // Amounts are shown with thousands separators (1,234,567.00). The box shows the plain number while it is being
+    // edited and the formatted one when it loses focus; num() reads either form.
+    function fmt(n) {
+        return (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    function num(v) {
+        return parseFloat(String(v ?? '').replace(/,/g, '')) || 0;
+    }
+
     // Update totals
     function updateTotals() {
-        const lines = $tbody.querySelectorAll('input[type="number"]');
+        const lines = $tbody.querySelectorAll('input.ob-amt-input');
         let totalDebit = 0, totalCredit = 0;
 
         // Collect all inputs into accounts structure
         lines.forEach(input => {
-            const val = parseFloat(input.value) || 0;
+            const val = num(input.value);
             if (input.dataset.type === 'debit') totalDebit += val;
             else totalCredit += val;
         });
 
-        $totalDebit.textContent = totalDebit.toFixed(2);
-        $totalCredit.textContent = totalCredit.toFixed(2);
+        $totalDebit.textContent = fmt(totalDebit);
+        $totalCredit.textContent = fmt(totalCredit);
 
         const diff = Math.abs(totalDebit - totalCredit);
         const $diff = document.getElementById('ob-difference');
@@ -394,7 +407,7 @@ $_ob_api = preg_match('~/api$~', $_ob_api) ? $_ob_api : $_ob_api . '/api';
             $diff.className = 'ob-status-value balanced';
             $postBtn.disabled = isLocked || totalDebit === 0;
         } else {
-            $diff.textContent = diff.toFixed(2) + ' ✗';
+            $diff.textContent = fmt(diff) + ' ✗';
             $diff.className = 'ob-status-value unbalanced';
             $postBtn.disabled = true;
         }
@@ -404,7 +417,7 @@ $_ob_api = preg_match('~/api$~', $_ob_api) ? $_ob_api : $_ob_api . '/api';
         lines.forEach(input => {
             const groupCode = input.dataset.groupCode;
             if (!groups[groupCode]) groups[groupCode] = { debit: 0, credit: 0 };
-            const val = parseFloat(input.value) || 0;
+            const val = num(input.value);
             if (input.dataset.type === 'debit') groups[groupCode].debit += val;
             else groups[groupCode].credit += val;
         });
@@ -412,22 +425,22 @@ $_ob_api = preg_match('~/api$~', $_ob_api) ? $_ob_api : $_ob_api . '/api';
         Object.entries(groups).forEach(([grp, totals]) => {
             const $subDebit = $tbody.querySelector(`[data-group-subtotal="${grp}"][data-type="debit"]`);
             const $subCredit = $tbody.querySelector(`[data-group-subtotal="${grp}"][data-type="credit"]`);
-            if ($subDebit) $subDebit.textContent = totals.debit.toFixed(2);
-            if ($subCredit) $subCredit.textContent = totals.credit.toFixed(2);
+            if ($subDebit) $subDebit.textContent = fmt(totals.debit);
+            if ($subCredit) $subCredit.textContent = fmt(totals.credit);
         });
 
         // Update table totals
         const $tblDebit = document.getElementById('ob-tbl-debit');
         const $tblCredit = document.getElementById('ob-tbl-credit');
-        if ($tblDebit) $tblDebit.textContent = totalDebit.toFixed(2);
-        if ($tblCredit) $tblCredit.textContent = totalCredit.toFixed(2);
+        if ($tblDebit) $tblDebit.textContent = fmt(totalDebit);
+        if ($tblCredit) $tblCredit.textContent = fmt(totalCredit);
     }
 
     // Post opening balance
     async function postOpeningBalance() {
         const lines = [];
-        $tbody.querySelectorAll('input[type="number"]').forEach(input => {
-            const val = parseFloat(input.value) || 0;
+        $tbody.querySelectorAll('input.ob-amt-input').forEach(input => {
+            const val = num(input.value);
             if (val !== 0) {
                 lines.push({
                     account_code: input.dataset.accountCode,
