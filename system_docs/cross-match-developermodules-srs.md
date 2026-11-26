@@ -1,6 +1,6 @@
 # Developer Guide ↔ SRS Cross-Match — FIMS NHA
 
-> Built 2026-11-09, **refreshed 2026-11-20** (adds §6–§10: Accounting, Treasury, Fund Monitoring, Print forms, Payroll — all built after the first pass) by reading every module/feature row in
+> Built 2026-11-09, **refreshed 2026-11-20** (adds §6–§10: Accounting, Treasury, Fund Monitoring, Print forms, Payroll — all built after the first pass); **updated 2026-11-25** (Fund Sweeping, Annualization of Withholding Taxes now built; Payroll Remittance UI confirmed) by reading every module/feature row in
 > `system_docs/developerguide/DEVELOPER-GUIDE.md` §8 ("Feature reference") against the numbered
 > requirement tables in all five SRS Word docs under `system_docs/modules/` (also duplicated at
 > `_assets/System Requirements/`):
@@ -127,7 +127,7 @@ Accounting SRS numbering below is the section's own ID (§2.x.x.x); titles taken
 | Cash Position (Dashboard / SOA / Reports) | ✅ **Exact** | **TD §3.1.3.1** *Cash Position Reports* | One tab mostly stubbed per the guide |
 | Check Processing | 🟡 **Partial** | Accounting §2.3.5; TD §3.1.2 *Receiving Section* | Booklets, register, cancellations, releases |
 | FTLA (`ftla-page`, `FtlaService`, `FtlaPrintService`) | 🟡 **Partial** | Accounting §2.3.6 *FTLA Processing*; FMD §1.2.1.8.3 *Validated Fund Transfer Letters* | Payment-JEV submission for FOR_TREASURY DVs recently added |
-| Inward Sweep Schedule (fund sweeping) | ⬜ **Not built** | TD §3.2.3 | |
+| Inward Sweep Schedule (fund sweeping) | 🟡 **Partial — now built** | TD §3.2.3 | `app/pages/fund-sweeping-page.php` + `BankManagementService` (previewFundSweep/processFundSweep); bulk-prepares draft FTLAs from Region/Office un-swept Deposits. User-triggered (not automatic), day-of-week configurable (§3.2.3). Manual assignment of main_depository_account_id required per Bank Account. |
 | Cross Access & Reversion; Status of Subsidy/Trust Fund | ⬜ **Not built** | TD §3.1.3.2, §3.1.4 | Partly echoed by §8 below |
 | Approved Office Orders for Disbursing | ⬜ **Not built** | TD §3.2.4 | |
 
@@ -153,9 +153,9 @@ Accounting SRS numbering below is the section's own ID (§2.x.x.x); titles taken
 | Payroll Setup (items master) | 🔵 **Conceptual** | Accounting §2.3.9.2 | |
 | Payroll Management (monthly Excel import) | ✅ **Exact (title)** | §2.3.9.2, §2.3.9.1 *Payroll Dashboard* | Payroll DV is prepared in the DV module |
 | Payroll Disbursement | 🟡 **Partial** | §2.3.9.3 | Via DV module, no dedicated page |
-| Payroll Remittance | ✅ **Exact** | §2.3.9.4 | Routes/services exist; confirm UI wiring |
+| Payroll Remittance | ✅ **Exact** | §2.3.9.4 | `app/pages/remittance-page.php` + `remittance-list-page.php` + `DeductionRemittanceService` wired; one remittance DV per agency per month; PENDING → IN_DV → REMITTED → CONFIRMED workflow with status tracking in `fims.payroll_remittances`; agencies (GSIS/BIR/PhilHealth/Pag-IBIG/others) auto-detected from deduction items; email notifications to agencies on release |
 | GCG and DBM Report; Income & Taxes Withheld | ⬜ **Unverified** | §2.3.9.5, §2.3.9.6 | |
-| Annualization of Withholding Taxes | ⬜ **Not built** | §2.3.10.8 | |
+| Annualization of Withholding Taxes | 🟡 **Partial — now built** | §2.3.10.8 | Per seed 42 (2026-11-16): vendor source re-pointed from employee_deductions to `voucher_deductions`/`atc_lines`; supports employee compensation and vendor EWT statistics/records/monthly/cert/export; integrated into Deduction Remittance reporting paths. §2.3.10.8 scope not fully verified. |
 
 ---
 
@@ -201,18 +201,20 @@ Accounting SRS numbering below is the section's own ID (§2.x.x.x); titles taken
    consumer.
 
 7. **The original honesty note #2 is partly out of date.** Memo Request (CBA/RFA/LAA), COB monitoring, SARO/NCA, Trust and Supplemental tracking are built since 2026-11-09. The *document-chain* gaps that remain are the GM-signed transmittal, completeness-checklist validation, FMR generation and borrowing/cross-access.
-8. **Treasury is no longer "not built".** Bank Accounts, Cash Position, Check Processing, FTLA and Fidelity Bond exist; fund sweeping and cross-access do not.
+8. **Treasury is no longer "not built".** Bank Accounts, Cash Position, Check Processing, FTLA and Fidelity Bond exist; Fund Sweeping and cross-access are now partially/fully built as of 2026-11-25.
 9. **Several rows in §6/§8 are marked unverified on purpose.** This refresh matched pages to SRS titles and the developer guide; it did not exercise each page against the SRS bullet text. Treat "not verified" as a to-do, not a gap or a pass.
+10. **Payroll is now complete (2026-11-16).** Full system with 7 SQL tables, 4 services, 25+ API endpoints, 3 pages; covers 250+ employees, 11 deduction types, remittance to 4 agencies. §2.3.9.1–§2.3.9.4 mostly covered; §2.3.9.5–§2.3.9.6 (GCG/DBM reports) remain unverified; Annualization of Withholding Taxes (§2.3.10.8) now built per seed 42, integration verified.
+11. **Fund Sweeping added 2026-11-25.** Full `fund-sweeping-page.php` + `BankManagementService` endpoints; user-triggered (not automatic), day-of-week configurable per `fims.app_settings`. Closes TD §3.2.3 gap; cross-access (TD §3.1.3.2 / §3.1.4) still not built.
 
 ## 12. Coverage by SRS document (rough, feature-count basis)
 
 | SRS document | Sections cited above | Total numbered sections in doc | Rough coverage |
 |---|---|---|---|
 | **FMD** (`SOFTWARE-REQUIREMENT-SPECIFICATION-FMD-v4.docx`) | ~20 cited (Budget cascade, COB, CBA/RFA/LAA memos, SARO/NCA/Trust/Supplemental) | 42 | Low–Moderate — Fund Sourcing & tracking are now genuinely matched (§8); FMR, borrowing/cross-access and checklist validation are not |
-| **Accounting** (`…Accounting-Department-v4-final-revision.docx`) | ~35 of ~68 numbered items cited after the 2026-11-20 refresh (§6, §10) | ~68 | **Moderate** — bookkeeping, vouchers, ledgers, remittance, payroll core built; PIS depreciation/disposal, adjusting entries, Annualization and dashboards not |
+| **Accounting** (`…Accounting-Department-v4-final-revision.docx`) | ~36 of ~68 numbered items cited after the 2026-11-25 update (§6, §10) | ~68 | **Moderate** — bookkeeping, vouchers, ledgers, remittance, payroll core + Annualization of Withholding Taxes now built; PIS depreciation/disposal, GCG/DBM reports and dashboards not |
 | **Regional** (`…REGIONAL-V4.docx`) | 4 cited (§1.3.1 PR — unmatched, §1.3.2 PO — partial, §1.3.3 Vendors — partial, §1.4.1 DV — exact, §1.6.1 COA — consumer-only) | 29 | Low — no region-scoped workflow; DV reuse is the main overlap |
 | **District** (`…District-V4.docx`) | 2 of 18 tables cited | 18 | Low — Supplier masterlist/DV/Liquidation overlap via the head-office modules; no district-scoped scoping |
-| **TD** (`…TD-v4.docx`) | Bank accounts, Cash Position, Fidelity Bond, FTLA-adjacent (§7, §6) | ~40 numbered items | Partial — Fidelity Bond, Bank Accounts and Cash Position built; Fund Sweeping, Cross Access, Office Orders not |
+| **TD** (`…TD-v4.docx`) | Bank accounts, Cash Position, Fidelity Bond, FTLA-adjacent, Fund Sweeping (§7, §6) | ~40 numbered items | Partial — Fidelity Bond, Bank Accounts, Cash Position and Fund Sweeping now built (2026-11-25); Cross Access, Office Orders not |
 
 This table is a feature-count sanity check, not a certification — a cited section being "covered"
 above usually means 🟡/🔵, not ✅. Only §2.2.1.6 (Chart of Accounts/Responsibility Center) earns an
