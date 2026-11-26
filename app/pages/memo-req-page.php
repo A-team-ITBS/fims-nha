@@ -62,9 +62,6 @@ try {
 $_mrq_canProcess = $_mrq_isFmd || $_mrq_isAdmin;
 ?>
 
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
 <?php /* GetUrl() without a leading slash adds the app's base path (the app may live in a sub-folder / virtual directory), and the
           cache-buster is read from the file next to this page, not from DOCUMENT_ROOT (which is not the app folder on every server) —
           so a changed stylesheet is never served from a browser's stale cache. */ ?>
@@ -123,27 +120,12 @@ html.afims-dark[data-bs-theme="dark"] .nha-menu-trigger:hover { background:#2E59
     #mrq-root .nha-summary { grid-template-columns: repeat(2, 1fr); }
 }
 
-/* ── Page header: copied from User Access (.app-page-header in app/fims-css/fims.css — that file is not loaded here,
-      so the rules are repeated, scoped to this page). Stays navy in dark mode too, like User Access. ── */
-#mrq-root .app-page-header { position:relative;display:flex;align-items:center;gap:1rem;flex-wrap:wrap;overflow:hidden;
-    background:linear-gradient(135deg, #000E3E 0%, #001A5E 100%);border-radius:.75rem;padding:1.5rem 1.75rem;margin-bottom:1.5rem; }
-#mrq-root .app-page-header::before,
-#mrq-root .app-page-header::after { content:"";position:absolute;border-radius:50%;background:rgba(255,255,255,.05);pointer-events:none; }
-#mrq-root .app-page-header::before { width:180px;height:180px;top:-90px;right:80px; }
-#mrq-root .app-page-header::after { width:120px;height:120px;bottom:-70px;right:-20px;background:rgba(255,255,255,.06); }
-#mrq-root .app-page-header-icon { position:relative;z-index:1;flex:0 0 auto;width:3rem;height:3rem;border-radius:.5rem;
-    display:flex;align-items:center;justify-content:center;font-size:1.25rem;
-    background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);color:#FFFFFF; }
-#mrq-root .app-page-title { position:relative;z-index:1;font-size:1.6rem;font-weight:800;letter-spacing:-.01em;color:#FFFFFF;margin:0 0 .25rem; }
-#mrq-root .app-page-subtitle { position:relative;z-index:1;font-size:.9rem;color:rgba(255,255,255,.75);margin:0;max-width:640px; }
-/* the Refresh / New Memo Request buttons stay on the right of the banner, above its decorative circles */
-#mrq-root .app-page-header-actions { position:relative;z-index:1;margin-left:auto;display:flex;flex-wrap:wrap;gap:8px; }
 </style>
 
 <div id="mrq-root" class="nha-root">
 
     <!-- ── HEADER ─────────────────────────────────────────── -->
-    <!-- same banner as User Access (app-page-header in app/fims-css/fims.css) -->
+    <!-- same banner as User Access (app-page-header in _shared/css/nha-fims.css) -->
     <div class="app-page-header no-print">
         <div class="app-page-header-icon">
             <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="#fff" stroke-width="1.8">

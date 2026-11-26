@@ -65,7 +65,7 @@ if (!isset($_pof_api)) {
 
 <div id="pof-root" class="nha-root">
     <div id="pof-overlay" class="nha-overlay no-print">
-        <div class="nha-modal nha-modal-xl" role="dialog" aria-modal="true" aria-labelledby="pof-modal-title">
+        <div class="nha-modal u-modal-xl" role="dialog" aria-modal="true" aria-labelledby="pof-modal-title">
 
             <div class="nha-modal-hdr">
                 <h3 class="nha-modal-title" id="pof-modal-title">New Purchase Order</h3>

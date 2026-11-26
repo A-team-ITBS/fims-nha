@@ -41,9 +41,6 @@ namespace PHPMaker2024\FIMS;
 $_sr_api = Config('API.FIMS_URL');
 ?>
 
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
 
 <style>
@@ -220,28 +217,12 @@ $_sr_api = Config('API.FIMS_URL');
     #sr-root .srv-nca .r { text-align: right; white-space: nowrap; font-family: var(--mono); }
     @media (max-width: 640px) { #sr-root .srv-row { grid-template-columns: 1fr; gap: 2px; } }
 
-    /* ── Page header: copied from User Access (.app-page-header in app/fims-css/fims.css — that file is not loaded here,
-          so the rules are repeated, scoped to this page). Stays navy in dark mode too, like User Access. ── */
-    #sr-root .app-page-header { position:relative;display:flex;align-items:center;gap:1rem;flex-wrap:wrap;overflow:hidden;
-        background:linear-gradient(135deg, #000E3E 0%, #001A5E 100%);border-radius:.75rem;padding:1.5rem 1.75rem;margin-bottom:1.5rem; }
-    #sr-root .app-page-header::before,
-    #sr-root .app-page-header::after { content:"";position:absolute;border-radius:50%;background:rgba(255,255,255,.05);pointer-events:none; }
-    #sr-root .app-page-header::before { width:180px;height:180px;top:-90px;right:80px; }
-    #sr-root .app-page-header::after { width:120px;height:120px;bottom:-70px;right:-20px;background:rgba(255,255,255,.06); }
-    #sr-root .app-page-header-icon { position:relative;z-index:1;flex:0 0 auto;width:3rem;height:3rem;border-radius:.5rem;
-        display:flex;align-items:center;justify-content:center;font-size:1.25rem;
-        background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);color:#FFFFFF; }
-    #sr-root .app-page-title { position:relative;z-index:1;font-size:1.6rem;font-weight:800;letter-spacing:-.01em;color:#FFFFFF;margin:0 0 .25rem; }
-    #sr-root .app-page-subtitle { position:relative;z-index:1;font-size:.9rem;color:rgba(255,255,255,.75);margin:0;max-width:640px; }
-    /* the Refresh / Export buttons and the "updated" time stay on the right of the banner, above its decorative circles */
-    #sr-root .app-page-header-actions { position:relative;z-index:1;margin-left:auto;display:flex;flex-wrap:wrap;align-items:center;gap:8px; }
-    #sr-root .app-page-header-actions .nha-hdr-upd { color:rgba(255,255,255,.7); }
 </style>
 
 <div id="sr-root" class="nha-root">
 
     <!-- ── HEADER ─────────────────────────────────────────── -->
-    <!-- same banner as User Access (app-page-header in app/fims-css/fims.css) -->
+    <!-- same banner as User Access (app-page-header in _shared/css/nha-fims.css) -->
     <div class="app-page-header no-print">
         <div class="app-page-header-icon">
             <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="#fff" stroke-width="1.8">
@@ -362,7 +343,7 @@ $_sr_api = Config('API.FIMS_URL');
 
     <!-- ══════════════ VIEW MODAL ══════════════ -->
     <div id="sr-view-ov" class="nha-overlay no-print">
-        <div class="nha-modal nha-modal-lg">
+        <div class="nha-modal u-modal-lg">
             <div class="nha-modal-hdr">
                 <h3 class="nha-modal-title" id="sr-view-title">SARO / NCA Record</h3>
                 <button type="button" class="nha-modal-close" id="sr-view-close" aria-label="Close">&times;</button>
@@ -393,7 +374,7 @@ $_sr_api = Config('API.FIMS_URL');
 
     <!-- ══════════════ EXPORT MODAL ══════════════ -->
     <div id="sr-xm-ov" class="nha-overlay no-print">
-        <div class="nha-modal nha-modal-sm">
+        <div class="nha-modal u-modal-sm">
             <div class="nha-modal-hdr">
                 <h3 class="nha-modal-title">Export SARO / NCA Tracking</h3>
                 <button type="button" class="nha-modal-close" id="sr-xm-close" aria-label="Close">&times;</button>

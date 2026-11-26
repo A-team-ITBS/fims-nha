@@ -13,9 +13,6 @@ $_jr_api = rtrim((string) Config('API.FIMS_URL'), '/');
 $_jr_api = preg_match('~/api$~', $_jr_api) ? $_jr_api : $_jr_api . '/api';
 ?>
 
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
 
 <style>
@@ -29,27 +26,12 @@ $_jr_api = preg_match('~/api$~', $_jr_api) ? $_jr_api : $_jr_api . '/api';
     #jr-root .jr-tab-panel { display: none; }
     #jr-root .jr-tab-panel.active { display: block; }
 
-    /* ── Page header: copied from User Access (.app-page-header in app/fims-css/fims.css — that file is not loaded here,
-          so the rules are repeated, scoped to this page). Stays navy in dark mode too, like User Access. ── */
-    #jr-root .app-page-header { position:relative;display:flex;align-items:center;gap:1rem;flex-wrap:wrap;overflow:hidden;
-        background:linear-gradient(135deg, #000E3E 0%, #001A5E 100%);border-radius:.75rem;padding:1.5rem 1.75rem;margin-bottom:1.5rem; }
-    #jr-root .app-page-header::before,
-    #jr-root .app-page-header::after { content:"";position:absolute;border-radius:50%;background:rgba(255,255,255,.05);pointer-events:none; }
-    #jr-root .app-page-header::before { width:180px;height:180px;top:-90px;right:80px; }
-    #jr-root .app-page-header::after { width:120px;height:120px;bottom:-70px;right:-20px;background:rgba(255,255,255,.06); }
-    #jr-root .app-page-header-icon { position:relative;z-index:1;flex:0 0 auto;width:3rem;height:3rem;border-radius:.5rem;
-        display:flex;align-items:center;justify-content:center;font-size:1.25rem;
-        background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);color:#FFFFFF; }
-    #jr-root .app-page-title { position:relative;z-index:1;font-size:1.6rem;font-weight:800;letter-spacing:-.01em;color:#FFFFFF;margin:0 0 .25rem; }
-    #jr-root .app-page-subtitle { position:relative;z-index:1;font-size:.9rem;color:rgba(255,255,255,.75);margin:0;max-width:640px; }
-    /* the Refresh button stays on the right of the banner, above its decorative circles */
-    #jr-root .app-page-header-actions { position:relative;z-index:1;margin-left:auto;display:flex;flex-wrap:wrap;gap:8px; }
 </style>
 
 <div id="jr-root" class="nha-root">
 
     <!-- ── HEADER ─────────────────────────────────────────── -->
-    <!-- same banner as User Access (app-page-header in app/fims-css/fims.css) -->
+    <!-- same banner as User Access (app-page-header in _shared/css/nha-fims.css) -->
     <div class="app-page-header no-print">
         <div class="app-page-header-icon">
             <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="#fff" stroke-width="1.8">

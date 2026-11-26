@@ -58,7 +58,7 @@
 </style>
 
 <div id="cobv-overlay" class="nha-overlay no-print">
-    <div class="nha-modal nha-modal-xl" role="dialog" aria-modal="true" aria-labelledby="cobv-title">
+    <div class="nha-modal u-modal-xl" role="dialog" aria-modal="true" aria-labelledby="cobv-title">
         <div class="nha-modal-hdr">
             <h3 id="cobv-title">Approved Budget Request</h3>
             <button type="button" class="nha-modal-close" id="cobv-close" aria-label="Close">&times;</button>

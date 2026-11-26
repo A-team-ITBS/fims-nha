@@ -10,7 +10,7 @@
  * this page and its backing table did not exist before.
  *
  * Markup/CSS classes (fims-page-header, fims-stat-grid, fims-table-panel,
- * fims-modal-overlay, etc.) match app/fims-css/fims.css — same convention
+ * fims-modal-overlay, etc.) match _shared/css/nha-fims.css — same convention
  * as app/pages/bank-management-page.php, including its itemized dynamic-row
  * table pattern (see field-rf-table there) reused here for both the
  * Collection(s) and Deposit sections.
@@ -18,14 +18,13 @@
 
 namespace PHPMaker2024\FIMS;
 
-$colCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
+$colCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css');
 ?>
-<link rel="stylesheet" href="/app/fims-css/fims.css?v=<?= $colCssVer ?>" />
-<link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
+<link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= $colCssVer ?>" />
 
 <div class="fims-wrap" id="colModule">
 
-    <!-- same banner as User Access: app-page-header (styled by app/fims-css/fims.css, already loaded above) -->
+    <!-- same banner as User Access: app-page-header (styled by the global _shared/css/nha-fims.css) -->
     <div class="app-page-header">
         <div class="app-page-header-icon"><i class="fas fa-hand-holding-usd"></i></div>
         <div>
@@ -133,7 +132,7 @@ $colCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
          MODAL: Register Collection Report
     ══════════════════════════════════════════════ -->
     <div class="fims-modal-overlay" id="m-col-report" style="display:none;">
-        <div class="fims-modal-dialog" style="max-width:1500px;width:96vw;">
+        <div class="fims-modal-dialog u-modal-2xl">
             <div class="fims-modal-content" style="max-height:92vh;">
                 <div class="fims-modal-header">
                     <div><div class="fims-modal-title" id="colModalTitle">Register Collection Report</div></div>
@@ -259,7 +258,7 @@ $colCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
          Nothing posts until Submit; lines/amounts are server-computed and read-only.
     ══════════════════════════════════════════════ -->
     <div class="fims-modal-overlay" id="m-col-jev" style="display:none;">
-        <div class="fims-modal-dialog" style="max-width:760px;width:95vw;">
+        <div class="fims-modal-dialog u-modal-md">
             <div class="fims-modal-content">
                 <div class="fims-modal-header">
                     <div><div class="fims-modal-title" id="colJevTitle">Journal Entry Voucher</div></div>
@@ -303,7 +302,7 @@ $colCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
 </div>
 
 <style>
-/* .fims-modal-content (shared fims.css) is a plain block, not a flex
+/* .fims-modal-content (shared nha-fims.css) is a plain block, not a flex
    container, so .fims-modal-body's flex:1/min-height:0/overflow-y:auto
    (which assume a flex-column parent) never actually engage — content
    just grows past .fims-modal-dialog's max-height and gets clipped by its
@@ -451,7 +450,7 @@ $colCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
         const search   = tr.querySelector('.col-line-coa-search');
         const dropdown = document.createElement('div');
         dropdown.className = 'col-line-coa-dropdown';
-        // z-index must clear .fims-modal-overlay's own 9000 (fims.css) — this
+        // z-index must clear .fims-modal-overlay's own 9000 (nha-fims.css) — this
         // panel lives on <body>, a sibling of the modal overlay, not a
         // descendant of it, so a lower z-index here would render underneath
         // the modal instead of on top of it.

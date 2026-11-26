@@ -139,7 +139,7 @@ function getActionColor($actionType) {
 
 // Literal hex equivalent of getActionColor()'s Bootstrap-style names — used
 // for inline background colors (var(--afims-success)/--afims-danger/etc.
-// are never actually declared in fims.css, only ever referenced with a
+// are never actually declared in nha-fims.css, only ever referenced with a
 // fallback, so a var() lookup here would silently render every color the
 // same instead of being color-coded by action type).
 function getActionColorHex($actionType) {
@@ -252,9 +252,9 @@ $manageUserLevelsUrl = GetUrl("UserLevelsList");
 $manageSystemsUrl = GetUrl("SystemsList");
 $viewAuditLogsUrl = GetUrl("AuditLogsList");
 
-$dashboardCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css');
+$dashboardCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css');
 ?>
-<link rel="stylesheet" href="/app/fims-css/fims.css?v=<?php echo $dashboardCssVer; ?>" />
+<link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?php echo $dashboardCssVer; ?>" />
 
 <!-- Main content -->
 <div class="container-fluid py-4">
@@ -262,7 +262,7 @@ $dashboardCssVer = @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.cs
     <!-- Clock + Weather + NHA Slideshow — ported verbatim (markup/behavior)
          from the TREASURY reference project's treasury-dashboard.php. The
          CSS (.td-wt-row, .td-clock-card, .td-weather-card, .td-slideshow,
-         the animated cityscape SVG classes) is already in fims.css (merged
+         the animated cityscape SVG classes) is already in nha-fims.css (merged
          in earlier from fims-treasury.css). Fully self-contained: the clock
          is plain JS Date, weather uses the public ipapi.co + open-meteo.com
          APIs (no key/auth needed), and the slideshow uses public Wikimedia

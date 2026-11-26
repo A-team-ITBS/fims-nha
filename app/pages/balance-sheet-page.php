@@ -12,15 +12,11 @@ $_bs_api = rtrim((string) Config('API.FIMS_URL'), '/');
 $_bs_api = preg_match('~/api$~', $_bs_api) ? $_bs_api : $_bs_api . '/api';
 ?>
 
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="/_shared/css/nha-fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/_shared/css/nha-fims.css') ?>" />
 
-<link rel="stylesheet" href="/app/fims-css/fims.css?v=<?= @filemtime($_SERVER['DOCUMENT_ROOT'] . '/app/fims-css/fims.css') ?>" />
 
 <style>
-    /* Table styling (.fims-report-table*) lives in app/fims-css/fims.css. Only page-specific, non-table rules remain here. */
+    /* Table styling (.fims-report-table*) lives in _shared/css/nha-fims.css. Only page-specific, non-table rules remain here. */
     #bs-root .bs-report-title { text-align: center; margin: 0 0 18px; }
     #bs-root .bs-report-title div { font-weight: 700; font-size: 14px; line-height: 1.6; }
     #bs-root .bs-report-title .bs-report-date { font-weight: 400; }
@@ -38,9 +34,6 @@ $_bs_api = preg_match('~/api$~', $_bs_api) ? $_bs_api : $_bs_api . '/api';
     #bs-root .nha-error               { font-size: 0.875rem; }   /* 14px */
     #bs-root .nha-hint                { font-size: 0.875rem; padding: 0 16px; margin: 0 0 14px; color: var(--afims-text-muted, #62657E); }   /* 14px; 16px side padding lines it up with the filter card */
 
-    /* the page header's Refresh button sits on the right of the banner, above its decorative circles (fims.css has no rule for it) */
-    #bs-root .app-page-header { flex-wrap: wrap; }
-    #bs-root .app-page-header-actions { position: relative; z-index: 1; margin-left: auto; display: flex; flex-wrap: wrap; gap: 8px; }
 
     html.afims-dark[data-bs-theme="dark"] #bs-root .bs-sample { background: #3A2F10; color: #F5D98A; border-color: #6B5A22; }
     html.afims-dark[data-bs-theme="dark"] #bs-root .bs-diff { background: #3B1A17; color: #FFB4AB; border-color: #7A332C; }
@@ -54,7 +47,7 @@ $_bs_api = preg_match('~/api$~', $_bs_api) ? $_bs_api : $_bs_api . '/api';
 <div id="bs-root" class="nha-root">
 
     <!-- ── HEADER ─────────────────────────────────────────── -->
-    <!-- same banner as User Access: app-page-header (styled by app/fims-css/fims.css, already loaded above) -->
+    <!-- same banner as User Access: app-page-header (styled by the global _shared/css/nha-fims.css) -->
     <div class="app-page-header no-print">
         <div class="app-page-header-icon">
             <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="#fff" stroke-width="1.8">

@@ -26,7 +26,7 @@ $_ampf_api = $_amp_api ?? \PHPMaker2024\FIMS\Config('API.FIMS_URL');
     #amp-overlay { display:none;position:fixed;inset:0;z-index:9100;box-sizing:border-box;padding:16px;
         background:rgba(15,32,69,.55);align-items:center;justify-content:center;overflow-y:auto; }
     #amp-overlay.open { display:flex; }
-    #amp-card { display:flex;flex-direction:column;width:100%;max-width:1360px;max-height:92vh;overflow:hidden;
+    #amp-card { display:flex;flex-direction:column;max-height:92vh;overflow:hidden;
         background:var(--afims-surface, #FFFFFF);border-radius:14px;box-shadow:0 24px 64px rgba(0,0,0,.22);
         font-family:'IBM Plex Sans',sans-serif;font-size:14px;color:var(--afims-text, #1A1B21);animation:ampIn .18s ease; }
     #amp-card *, #amp-card *::before, #amp-card *::after { box-sizing:border-box; }
@@ -117,7 +117,7 @@ $_ampf_api = $_amp_api ?? \PHPMaker2024\FIMS\Config('API.FIMS_URL');
     #amp-confirm-overlay { display:none;position:fixed;inset:0;z-index:9300;box-sizing:border-box;padding:16px;
         background:rgba(15,32,69,.55);align-items:center;justify-content:center; }
     #amp-confirm-overlay.open { display:flex; }
-    #amp-confirm-card { width:100%;max-width:480px;overflow:hidden;background:var(--afims-surface, #FFFFFF);border-radius:14px;
+    #amp-confirm-card {overflow:hidden;background:var(--afims-surface, #FFFFFF);border-radius:14px;
         box-shadow:0 24px 64px rgba(0,0,0,.22);font-family:'IBM Plex Sans',sans-serif;font-size:14px;color:var(--afims-text, #1A1B21);animation:ampIn .18s ease; }
     #amp-confirm-card .amp-cf-hdr { display:flex;align-items:center;gap:10px;padding:16px 20px;background:var(--afims-heading-fill, #000E3E); }
     #amp-confirm-card .amp-cf-title { margin:0;font-size:14px;font-weight:700;color:var(--afims-pure-white, #FFFFFF); }
@@ -155,7 +155,7 @@ $_ampf_api = $_amp_api ?? \PHPMaker2024\FIMS\Config('API.FIMS_URL');
 </style>
 
 <div id="amp-overlay">
-    <div id="amp-card">
+    <div class="u-modal-2xl" id="amp-card">
         <div id="amp-header">
             <h3 class="amp-hdr-title" id="amp-modal-title">Add PO Record</h3>
             <button type="button" id="amp-modal-close" aria-label="Close">&times;</button>
@@ -280,7 +280,7 @@ $_ampf_api = $_amp_api ?? \PHPMaker2024\FIMS\Config('API.FIMS_URL');
 
 <!-- Confirm modal (used when the PO is changed): resolved by amp_confirm() -->
 <div id="amp-confirm-overlay">
-    <div id="amp-confirm-card" role="alertdialog" aria-modal="true" aria-labelledby="amp-cf-title">
+    <div class="u-modal-sm" id="amp-confirm-card" role="alertdialog" aria-modal="true" aria-labelledby="amp-cf-title">
         <div class="amp-cf-hdr"><h3 class="amp-cf-title" id="amp-cf-title">Change PO?</h3></div>
         <div class="amp-cf-body" id="amp-cf-body"></div>
         <div class="amp-cf-foot">
@@ -296,9 +296,8 @@ $_ampf_api = $_amp_api ?? \PHPMaker2024\FIMS\Config('API.FIMS_URL');
     #amp-view-overlay { display:none;position:fixed;inset:0;z-index:9100;padding:16px;box-sizing:border-box;align-items:center;justify-content:center;
         background:rgba(15,32,69,.55);font-family:'IBM Plex Sans',sans-serif; }
     #amp-view-overlay.open { display:flex; }
-    #amp-view-card { display:flex;flex-direction:column;width:100%;max-width:1100px;max-height:100%;overflow:hidden;border-radius:14px;
-        background:var(--afims-surface-subtle, #F4F7FA);color:var(--afims-text, #1A1B21);box-shadow:0 24px 64px rgba(0,0,0,.35); }
-    #amp-view-card.amp-wide { max-width:1500px; }                   /* the Pro-forma JEV: room for the account, debit and credit columns */
+    #amp-view-card { display:flex;flex-direction:column;max-height:100%;overflow:hidden;border-radius:14px;
+        background:var(--afims-surface-subtle, #F4F7FA);color:var(--afims-text, #1A1B21);box-shadow:0 24px 64px rgba(0,0,0,.35); }   /* width: u-modal-xl, u-modal-2xl while the Pro-forma JEV is shown (iar-module.php swaps them) */
     .amp-vw-hdr { display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 20px;background:var(--afims-heading-fill, #000E3E);color:#fff; }
     .amp-vw-title { margin:0;font-size:15px;font-weight:600;color:inherit; }
     .amp-vw-ref { margin-left:8px;font-family:'IBM Plex Mono',monospace;font-weight:600;letter-spacing:.02em;color:#C7D4F5; }
@@ -408,7 +407,7 @@ $_ampf_api = $_amp_api ?? \PHPMaker2024\FIMS\Config('API.FIMS_URL');
 </style>
 
 <div id="amp-view-overlay">
-    <div id="amp-view-card" role="dialog" aria-modal="true" aria-labelledby="amp-view-title">
+    <div class="u-modal-xl" id="amp-view-card" role="dialog" aria-modal="true" aria-labelledby="amp-view-title">
         <div class="amp-vw-hdr">
             <h3 class="amp-vw-title"><span id="amp-view-title">Actual Delivery</span><span class="amp-vw-ref" id="amp-view-ref"></span></h3>
             <button type="button" class="amp-vw-close" id="amp-view-close" aria-label="Close">&times;</button>

@@ -7,7 +7,7 @@
  * Create CAF action (mrq_onCafCreated()).
  *
  * The same modal as the memo request form (form/budget-allocation-form.php in modal mode): the same shell (.nha-overlay /
- * .nha-modal-xl / .nha-modal-hdr / .nha-modal-body), the same number card, form sections, fields, tinted amount-line cards
+ * .nha-modal + u-modal-xl / .nha-modal-hdr / .nha-modal-body), the same number card, form sections, fields, tinted amount-line cards
  * and Cancel / Save footer — cut down to what a CAF needs, and RFA only:
  *   RFA            a DISABLED select holding just the RFA of the row that opened the modal, already SELECTED: the user finds
  *                  the RFA in the list and clicks Create CAF on it, so it is shown here, never picked. Only that one RFA is
@@ -41,7 +41,7 @@
 #caf-overlay { display:none;position:fixed;inset:0;z-index:9070;box-sizing:border-box;padding:16px;align-items:center;justify-content:center;
     background:rgba(15,32,69,.55); }
 #caf-overlay.open { display:flex; }
-#caf-overlay .nha-modal { display:flex;flex-direction:column;width:100%;max-width:1100px;max-height:90vh;overflow:hidden;
+#caf-overlay .nha-modal { display:flex;flex-direction:column;max-height:90vh;overflow:hidden;
     background:var(--afims-surface, #FFFFFF);border-radius:14px;box-shadow:0 24px 64px rgba(0,0,0,.22); }
 #caf-overlay .nha-modal-hdr { display:flex;flex-shrink:0;align-items:center;justify-content:space-between;padding:16px 20px;
     background:var(--afims-heading-fill, #000E3E); }
@@ -169,7 +169,7 @@ html.afims-dark[data-bs-theme="dark"] #caf-overlay button.btn.btn-primary:focus:
      neutralised so it takes no space — the same wrapper as the memo form's modal. -->
 <div class="nha-root" style="padding:0;background:none;">
 <div id="caf-overlay" class="nha-overlay">
-    <div class="nha-modal nha-modal-xl caf-modal" role="dialog" aria-modal="true" aria-labelledby="caf-modal-title">
+    <div class="nha-modal caf-modal u-modal-xl" role="dialog" aria-modal="true" aria-labelledby="caf-modal-title">
         <div class="nha-modal-hdr">
             <h3 class="nha-modal-title" id="caf-modal-title">Create CAF</h3>
             <button type="button" class="nha-modal-close" id="caf-close" aria-label="Close">&times;</button>
