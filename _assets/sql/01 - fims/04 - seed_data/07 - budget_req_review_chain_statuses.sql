@@ -1,17 +1,22 @@
 -- Seed data for fims.settings_status, status_for = 'budget_req' (fims.budget_req — the Budget Proposal / Budget Request pages):
 -- the status that makes the Budget Officer -> Budget Head review a step-by-step chain, like the Memo Request's.
 --
---   For Review                  acted on by the Budget Officer   endorse -> Endorsed
+--   For Review                  acted on by the Budget Officer   endorse -> For Endorsement
 --                                                                 return  -> Returned (back to the originating office)
---   Endorsed                    acted on by the Budget Head      approve -> Approved
+--   For Endorsement              acted on by the Budget Head      approve -> Approved
 --                                                                 return  -> Returned to Budget Officer
---   Returned to Budget Officer  acted on by the Budget Officer   endorse -> Endorsed (again)
+--   Returned to Budget Officer  acted on by the Budget Officer   endorse -> For Endorsement (again)
 --                                                                 return  -> Returned (back to the originating office)
 --
--- 'Draft', 'For Review', 'Endorsed', 'Approved' and 'Returned' are seeded in "02 - sample_data/01". BudgetReqService
--- (REVIEW_STEPS) looks all of them up BY NAME, and the actors by the NAME of their uac.user_levels row ('Budget Officer',
--- 'Budget Head' — "00 - uac/04 - seed_data/02"), so the names below must stay as they are (the API says so, and changes
--- nothing, when a status is missing).
+-- A CO (Program-based) request — which the Budget Officer now files themselves — skips "For Review" entirely
+-- and goes straight from Draft to "For Endorsement" via submitForReview(); only a COE request (region-filed)
+-- goes through "For Review" first. See BudgetReqService::REVIEW_STEPS' own doc comment.
+--
+-- 'Draft', 'For Review', 'For Endorsement', 'Approved' and 'Returned' are seeded in "02 - sample_data/01"
+-- ('Endorsed' was 'For Endorsement''s old name — see "03 - alter_table/60" for the rename on a database that
+-- still has it). BudgetReqService (REVIEW_STEPS) looks all of them up BY NAME, and the actors by the NAME of
+-- their uac.user_levels row ('Budget Officer', 'Budget Head' — "00 - uac/04 - seed_data/02"), so the names
+-- below must stay as they are (the API says so, and changes nothing, when a status is missing).
 --
 -- Lives in 04 - seed_data (after 03 - alter_table) because it also fills next_actors, the column "03 - alter_table/21"
 -- renames actors to. The code does not read next_actors — the chain is REVIEW_STEPS — it is filled so the table says who
@@ -31,7 +36,7 @@ BEGIN
         SET next_actors = jsonb_build_object('users', '[]'::jsonb, 'userLevel', v.user_level, 'department', 'Financial Management Department (FMD)')
         FROM (VALUES
             ('For Review',                 'Budget Officer'),
-            ('Endorsed',                   'Budget Head'),
+            ('For Endorsement',            'Budget Head'),
             ('Returned to Budget Officer', 'Budget Officer')
         ) AS v(name, user_level)
         WHERE s.status_for = 'budget_req' AND s.name = v.name;

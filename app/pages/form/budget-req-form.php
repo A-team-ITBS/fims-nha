@@ -4,7 +4,8 @@
  *
  * Add-a-Program / Edit-a-Program modal — AND the Add/Edit modal for a COE Budget
  * Request ('add-coe'/'edit-coe' modes, toggled via the #bgr-card.bgr-mode-coe CSS
- * class and the `coeMode` branches in bgr_addProjectBlock()/bgr_save()). Opened from:
+ * class — see #bgr-coe-root/bgr_addCoeSubComponentBlock() for the COE-only markup
+ * and bgr_saveCoe() for its own save path). Opened from:
  *   - app/pages/budget-req-page.php's "+ Add Budget Request" button ('add' mode) and
  *     "+ Add COE Budget Request" button ('add-coe' mode)
  *   - a Program row's "Edit" action, or the Edit button inside the Program
@@ -95,6 +96,8 @@ $_bgr_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
 
     #bgr-body { flex:1;min-height:0;overflow-y:auto;padding:22px; }
     .bgr-row { display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px; }
+    /* A Project's own Type of Fund/Component/Sub-Component/Proposed Amount row — four fields. */
+    .bgr-row-4 { display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:14px;margin-bottom:16px; }
     .bgr-group { display:flex;flex-direction:column;gap:5px; }
     .bgr-group.full { margin-bottom:16px; }
     .bgr-label { font-size:11px;font-weight:700;color:var(--afims-text, #1A1B21);
@@ -119,8 +122,23 @@ $_bgr_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
         text-transform:uppercase;letter-spacing:.05em;margin:4px 0 10px;padding-bottom:7px;
         border-bottom:2px solid var(--afims-border, #E4ECF2); }
 
+    /* ── Program blocks (regular 'add'/'edit-program' flow only — one per fims.budget_req_program,
+       repeatable via "+ Add Program"; COE mode has no Program at all, see #bgr-coe-root below) ──── */
+    #bgr-pblocks-wrap { display:flex;flex-direction:column;gap:18px;margin-bottom:12px; }
+    .bgr-pblock { border:1px solid color-mix(in srgb, var(--afims-heading-fill, #000E3E) 20%, var(--afims-border, #E4ECF2));
+        border-radius:12px;padding:16px;background:var(--afims-surface, #FFFFFF); }
+    .bgr-pblock-hd { display:flex;align-items:flex-start;gap:10px;margin-bottom:4px; }
+    .bgr-pblock-fields { flex:1;min-width:0; }
+    .bgr-pblock-remove { flex-shrink:0;border:1px solid var(--afims-danger-soft, #FAE1E3);
+        background:var(--afims-danger-soft, #FAE1E3);color:var(--afims-danger, #DC3545);
+        font-size:24px;line-height:1;cursor:pointer;width:42px;height:42px;border-radius:8px;margin-top:20px;
+        transition:background .15s,color .15s; }
+    .bgr-pblock-remove:hover { background:var(--afims-danger, #DC3545);color:var(--afims-pure-white, #FFFFFF); }
+
     /* ── Project blocks ───────────────────────────────────────────────── */
-    #bgr-blocks-wrap { display:flex;flex-direction:column;gap:16px;margin-bottom:12px; }
+    /* Shared by #bgr-coe-blocks-wrap (COE mode's repeatable Sub-Component blocks) and every Program
+       block's own .bgr-pblock-projects-wrap (regular mode) — not a single global element anymore. */
+    .bgr-blocks-wrap { display:flex;flex-direction:column;gap:16px;margin-bottom:12px; }
     .bgr-block { border:1px solid color-mix(in srgb, var(--afims-border, #E4ECF2) 55%, var(--afims-text-disabled, #A9AAB8));
         border-radius:10px;padding:14px;background:var(--afims-surface-subtle, #F4F7FA);
         box-shadow:0 1px 3px rgba(15,32,69,.08);transition:box-shadow .15s,border-color .15s; }
@@ -130,6 +148,7 @@ $_bgr_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
         border-bottom:1px solid color-mix(in srgb, var(--afims-border, #E4ECF2) 55%, var(--afims-text-disabled, #A9AAB8)); }
     .bgr-block.bgr-collapsed .bgr-block-hd { padding-bottom:0;margin-bottom:0;border-bottom:none; }
     .bgr-block-project-wrap { flex:1;min-width:0; }
+    .bgr-block-region-wrap { flex:0 0 220px;min-width:0; }
     .bgr-block-project-code-wrap { flex:0 0 260px;min-width:0; }
     .bgr-block-project-code-display { font-family:'IBM Plex Mono',monospace;background:var(--afims-surface, #FFFFFF);
         border-style:dashed;color:var(--afims-text-muted, #62657E);cursor:default; }
@@ -282,17 +301,18 @@ $_bgr_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
     .bgr-acct-option:hover, .bgr-acct-option.active { background:var(--afims-heading-fill, #000E3E);color:var(--afims-pure-white, #FFFFFF); }
     .bgr-acct-empty { padding:8px 12px;font-size:12px;color:var(--afims-text-disabled, #A9AAB8);font-style:italic; }
 
-    @media (max-width: 520px) { .bgr-row { grid-template-columns:1fr; } }
+    /* ── COE mode's own Sub-Component blocks (#bgr-coe-blocks-wrap) — each is a .bgr-block (same
+       chrome/line-items styling a regular Project block uses) with its own small header row (Sub-
+       Component select + remove button) instead of the Project-specific header .bgr-block-hd hides
+       in COE mode. ──────────────────────────────────────────────────────────────────────────────── */
+    /* align-items:flex-start (not flex-end) to match .bgr-block-remove's own baked-in margin-top:20px
+       — the same trick .bgr-block-hd/.bgr-pblock-hd use to align a label-less remove button with an
+       input sitting below a label. */
+    .bgr-coe-subcomp-hd { display:flex;align-items:flex-start;gap:10px;margin-bottom:14px; }
+    .bgr-coe-subcomp-hd .bgr-group { flex:1;min-width:0;margin-bottom:0; }
 
-    /* ── COE mode ('add-coe'/'edit-coe') — a COE request has no Program/Sub-Program/Project at
-       all, just one flat line-items table + one Supporting Documents section. Reuses the exact
-       same single "block" (#bgr-blocks-wrap's one .bgr-block) the regular flow already builds per
-       Project — only its Project-specific header (name/code/location/collapse/remove) is hidden,
-       along with Program/Sub-Program and "+ Add Project" (COE never has more than one block). */
-    #bgr-card.bgr-mode-coe #bgr-program-group,
-    #bgr-card.bgr-mode-coe #bgr-sub-program-group,
-    #bgr-card.bgr-mode-coe #bgr-add-project-block,
-    #bgr-card.bgr-mode-coe .bgr-block-hd { display:none; }
+    @media (max-width: 520px) { .bgr-row { grid-template-columns:1fr; } }
+    @media (max-width: 760px) { .bgr-row-4 { grid-template-columns:1fr; } }
 
     /* ── Dark mode ──────────────────────────────────────────────────────
        --afims-heading-fill stays NAVY in dark mode (it is a fill colour for white text), so every place above that
@@ -351,20 +371,6 @@ $_bgr_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
                             <option value="">— Select fiscal year —</option>
                         </select>
                     </div>
-                    <div class="bgr-group" id="bgr-program-group">
-                        <label class="bgr-label">Program <span class="req">*</span></label>
-                        <select class="bgr-select" id="bgr-program-code" required>
-                            <option value="">— Select program —</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="bgr-row">
-                    <div class="bgr-group" id="bgr-sub-program-group">
-                        <label class="bgr-label">Sub-Program</label>
-                        <select class="bgr-select" id="bgr-sub-program-code">
-                            <option value="">— None —</option>
-                        </select>
-                    </div>
                     <div class="bgr-group">
                         <label class="bgr-label">Grand Total</label>
                         <input type="text" class="bgr-input" id="bgr-grand-total-display" readonly value="0.00">
@@ -372,9 +378,59 @@ $_bgr_api = \PHPMaker2024\FIMS\Config('API.FIMS_URL');
                 </div>
                 <p class="bgr-hint" id="bgr-program-context" style="display:none;"></p>
 
-                <p class="bgr-sec-hd" id="bgr-blocks-sec-hd">Projects</p>
-                <div id="bgr-blocks-wrap"></div>
-                <button type="button" id="bgr-add-project-block" class="bgr-btn-ghost">+ Add Project</button>
+                <!-- 'add-coe'/'edit-coe' — a COE request has no Program/Sub-Program/Project at all,
+                     just repeatable Sub-Component blocks, each with its own line-items table (see
+                     bgr_openModal). Sibling of #bgr-pblocks-root below; the two are never shown at once. -->
+                <div id="bgr-coe-root" style="display:none;">
+                    <!-- Type of Fund/Component are shared across the WHOLE COE request (applied to every
+                         line item at save time, see bgr_saveCoe()) — both default to this request's usual
+                         values ("CORPORATE RECEIPT"/"COE") on a brand-new 'add-coe' request (see
+                         bgr_openModal), though either can still be changed. Sub-Component is NOT shared —
+                         each "+ Add Sub-Component" block below (#bgr-coe-blocks-wrap) picks its own
+                         Sub-Component AND owns its own nested Line Items table, same nesting pattern
+                         "+ Add Program"/"+ Add Project" use further down — a request needing both MOOE and
+                         Personnel Services line items just adds one block for each. Supporting Documents
+                         stays request-level, in its own section below every block (not per Sub-Component). -->
+                    <div class="bgr-row">
+                        <div class="bgr-group">
+                            <label class="bgr-label">Type of Fund <span class="req">*</span></label>
+                            <select class="bgr-select" id="bgr-coe-type-of-fund"><option value="">— Select type of fund —</option></select>
+                        </div>
+                        <div class="bgr-group">
+                            <label class="bgr-label">Component</label>
+                            <select class="bgr-select" id="bgr-coe-component"><option value="">— None —</option></select>
+                        </div>
+                    </div>
+                    <p class="bgr-sec-hd">Sub-Components</p>
+                    <div id="bgr-coe-blocks-wrap" class="bgr-blocks-wrap"></div>
+                    <button type="button" id="bgr-coe-add-sub-component" class="bgr-btn-ghost">+ Add Sub-Component</button>
+
+                    <div class="bgr-block-docs" id="bgr-coe-docs">
+                        <p class="bgr-block-docs-title">Supporting Documents</p>
+                        <p class="bgr-block-docs-hint">Upload a file (≤20 MB — PDF, Word, Excel, or image) or paste a link per document.</p>
+                        <table class="bgr-block-doc-tbl" style="display:none;">
+                            <thead><tr>
+                                <th style="width:35%;">Document Name</th>
+                                <th>Attachment</th>
+                                <th style="width:26px;"></th>
+                            </tr></thead>
+                            <tbody class="bgr-block-doc-tbody"></tbody>
+                        </table>
+                        <div class="bgr-block-doc-actions">
+                            <button type="button" class="bgr-block-doc-add-upload bgr-btn-ghost">+ Upload File</button>
+                            <button type="button" class="bgr-block-doc-add-link bgr-btn-ghost">+ Paste Link</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 'add'/'edit-program' — one repeatable "Program block" per fims.budget_req_program
+                     (Program + Sub-Program + its own Projects), "+ Add Program" appends another.
+                     'edit-program' only ever has the one, with no add/remove affordance (see
+                     bgr_openModal) — it edits a single existing Program, nothing more. -->
+                <div id="bgr-pblocks-root">
+                    <div id="bgr-pblocks-wrap"></div>
+                    <button type="button" id="bgr-add-program-block" class="bgr-btn-ghost">+ Add Program</button>
+                </div>
             </div>
             <div id="bgr-footer">
                 <button type="button" class="bgr-btn bgr-btn-ghost" id="bgr-cancel">Cancel</button>
@@ -398,6 +454,10 @@ const BGR_FISCAL_YEAR_API       = '<?php echo $_bgr_api; ?>' + '/fiscal_year';
 const BGR_SUB_PROGRAM_API       = '<?php echo $_bgr_api; ?>' + '/sub_program/all';
 const BGR_CHART_OF_ACCOUNTS_API = '<?php echo $_bgr_api; ?>' + '/chart_of_accounts/all';
 const BGR_ATTACHMENT_API        = '<?php echo $_bgr_api; ?>' + '/budget_req_project_attachment';
+const BGR_RC_API                = '<?php echo $_bgr_api; ?>' + '/responsibility-center';
+const BGR_TYPE_OF_FUND_API      = '<?php echo $_bgr_api; ?>' + '/type_of_fund';
+const BGR_COMPONENT_TYPE_API    = '<?php echo $_bgr_api; ?>' + '/component_type';
+const BGR_SUB_COMPONENT_TYPE_API = '<?php echo $_bgr_api; ?>' + '/sub_component_type';
 
 // Cached option lists — Program/Sub-Program are prefetched in full and
 // filtered client-side (same cascade style as pof_fillProjects() in
@@ -407,8 +467,22 @@ const BGR_ATTACHMENT_API        = '<?php echo $_bgr_api; ?>' + '/budget_req_proj
 let BGR_PROGRAMS = [];
 let BGR_SUB_PROGRAMS = [];
 let BGR_COA_OPTIONS = [];
+// Regional offices only (office_type 'Regional' — excludes District offices, same office_type
+// convention readone/budget-req-readone.php's bgrv_rcDeptType() uses) — a Project's own Region
+// (fims.project.rc_id), manually picked on the Project field now that Program-based origination
+// belongs to FMD, not the region itself. Prefetched once at bootstrap, same as Programs/Sub-Programs.
+let BGR_REGIONS = [];
+// A Project's single line item now picks its own Type of Fund up front too (historically only ever
+// set later, by Budget Processing — see BudgetLineItemService::create()'s own doc comment).
+let BGR_TYPES_OF_FUND = [];
+// Same idea as Type of Fund, but optional — Component stays hidden/not required everywhere else this
+// column is used (budget-processing-form.php, budget-preview-readone.php), so it is here too.
+let BGR_COMPONENTS = [];
+// A flat classification list, independent of Component (fims.sub_component_type) — also optional.
+let BGR_SUB_COMPONENTS = [];
 let bgr_liSeq = 0;
 let bgr_blockSeq = 0;
+let bgr_coeSubCompSeq = 0;
 
 const $bgr = id => document.getElementById(id);
 
@@ -422,8 +496,9 @@ let bgr_formReadyResolve;
 window.bgrFormReady = new Promise(resolve => { bgr_formReadyResolve = resolve; });
 async function bgr_formBootstrap() {
     try {
-        await Promise.all([bgr_loadPrograms(), bgr_loadSubPrograms(), bgr_loadFiscalYears()]);
+        await Promise.all([bgr_loadPrograms(), bgr_loadSubPrograms(), bgr_loadFiscalYears(), bgr_loadRegions(), bgr_loadTypesOfFund(), bgr_loadComponents(), bgr_loadSubComponents()]);
         bgr_bindFormEvents();
+        bgr_bindCoeDocSection();
     } finally {
         bgr_formReadyResolve();
     }
@@ -439,17 +514,36 @@ function bgr_bindFormEvents() {
     $bgr('bgr-cancel')?.addEventListener('click', bgr_closeModal);
     $bgr('bgr-form')?.addEventListener('submit', bgr_save);
 
-    $bgr('bgr-program-code')?.addEventListener('change', bgr_onProgramChange);
-    $bgr('bgr-sub-program-code')?.addEventListener('change', bgr_refreshAllProjectCodeFields);
-    $bgr('bgr-fiscal-yr')?.addEventListener('change', bgr_refreshAllProjectCodeFields);
-    $bgr('bgr-add-project-block')?.addEventListener('click', () => bgr_addProjectBlock());
+    // Fiscal Year affects every Program block's project-code preview (its prefix includes the
+    // fiscal year) — refresh all of them, not just one.
+    $bgr('bgr-fiscal-yr')?.addEventListener('change', () => {
+        document.querySelectorAll('#bgr-pblocks-wrap .bgr-pblock').forEach(bgr_refreshAllProjectCodeFields);
+    });
+    $bgr('bgr-add-program-block')?.addEventListener('click', () => bgr_addProgramBlock());
+    $bgr('bgr-coe-add-sub-component')?.addEventListener('click', () => bgr_addCoeSubComponentBlock());
+
+    // Program/Sub-Program blocks (and their own "+ Add Project") are added/removed dynamically — event
+    // delegation on the one static wrapper covers every block that will ever exist, present or future.
+    $bgr('bgr-pblocks-wrap')?.addEventListener('change', (ev) => {
+        if (ev.target.matches('.bgr-pblock-program')) bgr_onProgramChange(ev.target.closest('.bgr-pblock'));
+        else if (ev.target.matches('.bgr-pblock-sub-program')) bgr_refreshAllProjectCodeFields(ev.target.closest('.bgr-pblock'));
+        else if (ev.target.matches('.bgr-block-region')) bgr_onBlockRegionChange(ev.target);
+    });
+    $bgr('bgr-pblocks-wrap')?.addEventListener('click', (ev) => {
+        if (ev.target.closest('.bgr-pblock-add-project')) {
+            const pblock = ev.target.closest('.bgr-pblock');
+            bgr_addProjectBlock(pblock.querySelector('.bgr-pblock-projects-wrap'), null, false);
+        } else if (ev.target.closest('.bgr-pblock-remove')) {
+            bgr_removeProgramBlock(ev.target.closest('.bgr-pblock'));
+        }
+    });
 
     // A window resize can change whether a block's line-items table needs a
     // horizontal scrollbar at all, which changes how much gap its remove
     // column needs.
     window.addEventListener('resize', () => {
         if ($bgr('bgr-overlay')?.classList.contains('open')) {
-            document.querySelectorAll('#bgr-blocks-wrap .bgr-block').forEach(bgr_syncRemoveColGap);
+            document.querySelectorAll('.bgr-block').forEach(bgr_syncRemoveColGap);
         }
     });
 }
@@ -461,14 +555,25 @@ async function bgr_loadPrograms() {
         if (!json.success) throw new Error(json.message || 'Failed to load programs.');
         BGR_PROGRAMS = json.data ?? [];
 
+        // The host page's own Program filter (budget-req-page.php's #bgr-filter-program) — this
+        // modal's own Program select is now per-Program-block (bgr_fillPblockPrograms), built fresh
+        // whenever a block is added, not a static element here.
         const optsHtml = BGR_PROGRAMS.map(p =>
             `<option value="${bgr_escHtmlAttr(p.program_code)}">${bgr_esc(p.program_code)} — ${bgr_esc(p.program_name)}</option>`
         ).join('');
-        $bgr('bgr-program-code').insertAdjacentHTML('beforeend', optsHtml);
         $bgr('bgr-filter-program')?.insertAdjacentHTML('beforeend', optsHtml);
     } catch (e) {
         bgr_toast(e.message, 'error');
     }
+}
+
+// Fills one Program block's Program select — `keep` is the program_code to preselect
+// ('edit-program' mode; '' for a brand-new block).
+function bgr_fillPblockPrograms(selectEl, keep = '') {
+    selectEl.innerHTML = '<option value="">— Select program —</option>' + BGR_PROGRAMS.map(p =>
+        `<option value="${bgr_escHtmlAttr(p.program_code)}">${bgr_esc(p.program_code)} — ${bgr_esc(p.program_name)}</option>`
+    ).join('');
+    selectEl.value = BGR_PROGRAMS.some(p => p.program_code === keep) ? keep : '';
 }
 
 async function bgr_loadSubPrograms() {
@@ -482,22 +587,237 @@ async function bgr_loadSubPrograms() {
     }
 }
 
+async function bgr_loadRegions() {
+    try {
+        const res  = await fetch(`${BGR_RC_API}/all`, { credentials: 'same-origin' });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message || 'Failed to load regions.');
+        BGR_REGIONS = (json.data ?? []).filter(rc => rc.office_type === 'Regional');
+    } catch (e) {
+        bgr_toast(e.message, 'error');
+    }
+}
+
+// Fills one block's Region select — `keep` is the rc_id to preselect (an existing project's own
+// region when editing/prefilling; '' for a brand-new block).
+function bgr_fillBlockRegions(selectEl, keep = '') {
+    if (!selectEl) return;
+    selectEl.innerHTML = '<option value="">— Select region —</option>' + BGR_REGIONS.map(rc =>
+        `<option value="${bgr_escHtmlAttr(rc.rc_id)}">${bgr_esc(rc.rc_name)}</option>`
+    ).join('');
+    selectEl.value = BGR_REGIONS.some(rc => String(rc.rc_id) === String(keep)) ? String(keep) : '';
+}
+
+// Keeps a block's Region select in sync with its Project field as the typeahead resolves/unresolves
+// a match — locked (disabled) to the matched existing project's own region, or cleared and unlocked
+// once that match is lost (typing a new name again), mirroring bgr_setProjectCode's own "existing
+// vs. new" distinction. COE mode has no Region select at all, so this is a no-op there.
+function bgr_setBlockRegion($input, rcId, lock) {
+    const block = $input.closest('.bgr-block')[0];
+    const sel = block?.querySelector('.bgr-block-region');
+    if (!sel) return;
+    sel.value = BGR_REGIONS.some(rc => String(rc.rc_id) === String(rcId)) ? String(rcId) : '';
+    sel.disabled = lock;
+}
+
+async function bgr_loadTypesOfFund() {
+    try {
+        const res  = await fetch(`${BGR_TYPE_OF_FUND_API}/all`, { credentials: 'same-origin' });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message || 'Failed to load types of fund.');
+        BGR_TYPES_OF_FUND = json.data ?? [];
+    } catch (e) {
+        bgr_toast(e.message, 'error');
+    }
+}
+
+// Looks up an option's id by its exact (case-insensitive) name — used to default the COE form's
+// own Type of Fund/Component to this office's usual pick on a brand-new 'add-coe' request (see
+// bgr_openModal). Returns '' if the name isn't found (e.g. it was renamed/removed server-side),
+// which just leaves the field on its placeholder rather than failing outright.
+function bgr_lookupIdByName(list, idField, name) {
+    const match = list.find(x => (x.name ?? '').trim().toUpperCase() === name);
+    return match ? String(match[idField]) : '';
+}
+
+// Fills one block's Type of Fund select — `keep` is the type_of_fund_id to preselect (editing an
+// existing project's own line item; '' for a brand-new block).
+function bgr_fillBlockTypeOfFund(selectEl, keep = '') {
+    if (!selectEl) return;
+    selectEl.innerHTML = '<option value="">— Select type of fund —</option>' + BGR_TYPES_OF_FUND.map(tf =>
+        `<option value="${bgr_escHtmlAttr(tf.type_of_fund_id)}">${bgr_esc(tf.name)}</option>`
+    ).join('');
+    selectEl.value = BGR_TYPES_OF_FUND.some(tf => String(tf.type_of_fund_id) === String(keep)) ? String(keep) : '';
+}
+
+async function bgr_loadComponents() {
+    try {
+        const res  = await fetch(`${BGR_COMPONENT_TYPE_API}/all`, { credentials: 'same-origin' });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message || 'Failed to load components.');
+        BGR_COMPONENTS = json.data ?? [];
+    } catch (e) {
+        bgr_toast(e.message, 'error');
+    }
+}
+
+// Fills one block's Component select — optional, unlike Region/Type of Fund, so the placeholder
+// doubles as a valid "none" choice. `keep` is the component_type_id to preselect (editing an existing
+// project's own line item; '' for a brand-new block or one with none set).
+function bgr_fillBlockComponents(selectEl, keep = '') {
+    if (!selectEl) return;
+    selectEl.innerHTML = '<option value="">— None —</option>' + BGR_COMPONENTS.map(c =>
+        `<option value="${bgr_escHtmlAttr(c.component_type_id)}">${bgr_esc(c.name)}</option>`
+    ).join('');
+    selectEl.value = BGR_COMPONENTS.some(c => String(c.component_type_id) === String(keep)) ? String(keep) : '';
+}
+
+async function bgr_loadSubComponents() {
+    try {
+        const res  = await fetch(`${BGR_SUB_COMPONENT_TYPE_API}/all`, { credentials: 'same-origin' });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message || 'Failed to load sub-components.');
+        BGR_SUB_COMPONENTS = json.data ?? [];
+    } catch (e) {
+        bgr_toast(e.message, 'error');
+    }
+}
+
+// Fills one block's Sub-Component select — optional, flat (independent of which Component is picked
+// — see bgr_fillBlockComponents' sibling doc comment). `keep` is the sub_component_type_id to
+// preselect (editing an existing project's own line item; '' for a brand-new block or one with none set).
+function bgr_fillBlockSubComponents(selectEl, keep = '') {
+    if (!selectEl) return;
+    selectEl.innerHTML = '<option value="">— None —</option>' + BGR_SUB_COMPONENTS.map(c =>
+        `<option value="${bgr_escHtmlAttr(c.sub_component_type_id)}">${bgr_esc(c.name)}</option>`
+    ).join('');
+    selectEl.value = BGR_SUB_COMPONENTS.some(c => String(c.sub_component_type_id) === String(keep)) ? String(keep) : '';
+}
+
+/* ── COE mode's own Sub-Component blocks (#bgr-coe-blocks-wrap) ────────────────────────────────
+   "+ Add Sub-Component" appends another block — same nesting pattern "+ Add Program"/"+ Add
+   Project" use below — each with its OWN Sub-Component pick and its OWN nested Line Items table
+   (reusing bgr_addLineItemRow exactly as a regular Project block's COE-mode table does). A request
+   needing both MOOE and Personnel Services line items just adds one block for each; a line item's
+   sub_component_id is simply whatever its own block has picked — no per-row field, no deriving it
+   from the account afterward. ──────────────────────────────────────────────────────────────────── */
+function bgr_addCoeSubComponentBlock(prefill = null) {
+    bgr_coeSubCompSeq++;
+    const block = document.createElement('div');
+    block.className = 'bgr-block';
+    block.dataset.coeSubcompSeq = bgr_coeSubCompSeq;
+    block.innerHTML = `
+        <div class="bgr-coe-subcomp-hd">
+            <div class="bgr-group">
+                <label class="bgr-label">Sub-Component</label>
+                <select class="bgr-select bgr-coe-subcomp-select"></select>
+            </div>
+            <button type="button" class="bgr-block-remove" title="Remove sub-component">&times;</button>
+        </div>
+        <div class="bgr-block-li-outer">
+            <div class="bgr-block-li-wrap">
+                <table class="bgr-block-li-tbl">
+                    <thead><tr>
+                        <th style="width:36%;">Account Code - Account Name</th>
+                        <th style="width:44%;">Particulars</th>
+                        <th style="width:19%;">Proposed Amount</th>
+                    </tr></thead>
+                    <tbody class="bgr-block-li-tbody"></tbody>
+                    <tfoot><tr class="bgr-block-li-total-row">
+                        <td colspan="2">Total</td>
+                        <td class="bgr-block-li-total-amt">0.00</td>
+                    </tr></tfoot>
+                </table>
+            </div>
+            <div class="bgr-block-li-remove-col">
+                <div class="bgr-li-remove-head"></div>
+                <div class="bgr-li-remove-foot"></div>
+            </div>
+        </div>
+        <button type="button" class="bgr-block-add-li bgr-btn-ghost">+ Add Line Item</button>
+    `;
+    $bgr('bgr-coe-blocks-wrap').appendChild(block);
+
+    bgr_fillBlockSubComponents(block.querySelector('.bgr-coe-subcomp-select'), prefill?.sub_component_id ?? '');
+    block.querySelector('.bgr-block-remove').addEventListener('click', () => bgr_removeCoeSubComponentBlock(block));
+    block.querySelector('.bgr-block-add-li').addEventListener('click', () => bgr_addLineItemRow(block, {}, true));
+
+    const items = (prefill?.line_items?.length) ? prefill.line_items : [{}];
+    items.forEach(li => bgr_addLineItemRow(block, li, true));
+
+    bgr_updateCoeSubcompRemoveVisibility();
+    bgr_updateGrandTotal();
+    return block;
+}
+
+function bgr_removeCoeSubComponentBlock(block) {
+    if ($bgr('bgr-coe-blocks-wrap').children.length <= 1) { bgr_toast('At least one Sub-Component block is required.', 'error'); return; }
+    bgr_cleanupAccountMenus(block);
+    block.remove();
+    bgr_updateCoeSubcompRemoveVisibility();
+    bgr_updateGrandTotal();
+}
+
+// Hides a lone Sub-Component block's own Remove button (nothing to remove down to zero) — shown
+// once a second block exists, same precedent as bgr_updatePblockRemoveVisibility().
+function bgr_updateCoeSubcompRemoveVisibility() {
+    const blocks = $bgr('bgr-coe-blocks-wrap').children;
+    Array.from(blocks).forEach(b => {
+        const btn = b.querySelector('.bgr-block-remove');
+        if (btn) btn.style.display = blocks.length > 1 ? '' : 'none';
+    });
+}
+
+// 'edit-coe' groups the request's existing flat line items back into one block per DISTINCT
+// sub_component_id they already carry (insertion order) — a blank-Sub-Component group included,
+// if any items have none. [{}] (one blank block) when there are no existing items at all.
+function bgr_groupCoeLineItemsBySubComponent(lineItems) {
+    if (!lineItems.length) return [{}];
+    const groups = [];
+    const indexByKey = new Map();
+    lineItems.forEach((li) => {
+        const key = li.sub_component_id ?? '';
+        if (!indexByKey.has(key)) {
+            indexByKey.set(key, groups.length);
+            groups.push({ sub_component_id: key, line_items: [] });
+        }
+        groups[indexByKey.get(key)].line_items.push(li);
+    });
+    return groups;
+}
+
+// The account-code prefix to offer within ONE Sub-Component block's own line items — the block's
+// own pick, not a request-wide union (each block only ever carries one Sub-Component). 'PERSONNEL
+// SERVICES' -> 5-01, 'MOOE' -> 5-02 (same prefixes as bgr_isCoeEligibleAccount()); any other
+// Sub-Component (or none picked yet) returns null — no further narrowing, every PS/MOOE account
+// stays offered.
+function bgr_coeBlockAccountPrefix(block) {
+    const subComponentId = block?.querySelector('.bgr-coe-subcomp-select')?.value;
+    if (!subComponentId) return null;
+    const sub = BGR_SUB_COMPONENTS.find(c => String(c.sub_component_type_id) === String(subComponentId));
+    const name = (sub?.name ?? '').trim().toUpperCase();
+    if (name === 'MOOE') return '5-02';
+    if (name === 'PERSONNEL SERVICES') return '5-01';
+    return null;
+}
+
 // Program -> Sub-Program cascade, same pattern as pof_fillProjects()/
 // pof_onProgramChange() in app/pages/po/form.php: the full list is already
 // cached, so this just filters it client-side into the dependent select.
-function bgr_fillSubPrograms(programCode, keep = '') {
+// Scoped to ONE Program block's own pair of selects — each block has its own Program/Sub-Program now.
+function bgr_fillSubPrograms(subSelectEl, programCode, keep = '') {
     const list = programCode ? BGR_SUB_PROGRAMS.filter(sp => sp.program_code === programCode) : [];
-    $bgr('bgr-sub-program-code').innerHTML = '<option value="">— None —</option>' + list.map(sp =>
+    subSelectEl.innerHTML = '<option value="">— None —</option>' + list.map(sp =>
         `<option value="${bgr_escHtmlAttr(sp.sub_program_code)}">${bgr_esc(sp.sub_program_code)} — ${bgr_esc(sp.sub_program_name)}</option>`
     ).join('');
-    $bgr('bgr-sub-program-code').value = list.some(sp => sp.sub_program_code === keep) ? keep : '';
+    subSelectEl.value = list.some(sp => sp.sub_program_code === keep) ? keep : '';
 }
-function bgr_onProgramChange() {
-    bgr_fillSubPrograms($bgr('bgr-program-code').value);
-    // bgr_fillSubPrograms sets #bgr-sub-program-code's value programmatically
-    // (rebuilt <option> list), which doesn't fire that select's own 'change'
-    // listener — so this has to be called explicitly here too.
-    bgr_refreshAllProjectCodeFields();
+function bgr_onProgramChange(pblock) {
+    bgr_fillSubPrograms(pblock.querySelector('.bgr-pblock-sub-program'), pblock.querySelector('.bgr-pblock-program').value);
+    // bgr_fillSubPrograms sets the Sub-Program select's value programmatically (rebuilt <option>
+    // list), which doesn't fire that select's own 'change' listener — so this has to be called
+    // explicitly here too.
+    bgr_refreshAllProjectCodeFields(pblock);
 }
 
 async function bgr_loadFiscalYears() {
@@ -556,18 +876,96 @@ function bgr_isCoeEligibleAccount(accountCode) {
     return code.startsWith('5-01') || code.startsWith('5-02');
 }
 
-/* ── Project blocks — one per "Project line item" (fims.budget_req_project),
-   each holding its own repeatable Chart-of-Accounts line items table ──── */
-function bgr_addProjectBlock(prefillBlock = null, coeMode = false) {
+
+/* ── Program blocks — one per "Program block" (fims.budget_req_program), repeatable via
+   "+ Add Program" ('add' mode only — 'edit-program' always has exactly one, with no add/remove
+   affordance, since it edits a single existing Program and nothing more; see bgr_openModal). Each
+   holds its own Program/Sub-Program pair and its own repeatable Project blocks. COE mode never
+   creates one of these at all (it has no Program) — see #bgr-coe-root instead. ──────────────── */
+let bgr_pblockSeq = 0;
+
+function bgr_addProgramBlock(prefillProgram = null) {
+    bgr_pblockSeq++;
+    const pblock = document.createElement('div');
+    pblock.className = 'bgr-pblock';
+    pblock.dataset.pblockSeq = bgr_pblockSeq;
+    pblock.innerHTML = `
+        <div class="bgr-pblock-hd">
+            <div class="bgr-pblock-fields">
+                <div class="bgr-row">
+                    <div class="bgr-group">
+                        <label class="bgr-label">Program <span class="req">*</span></label>
+                        <select class="bgr-select bgr-pblock-program" required></select>
+                    </div>
+                    <div class="bgr-group">
+                        <label class="bgr-label">Sub-Program</label>
+                        <select class="bgr-select bgr-pblock-sub-program"><option value="">— None —</option></select>
+                    </div>
+                </div>
+            </div>
+            <button type="button" class="bgr-pblock-remove" title="Remove program">&times;</button>
+        </div>
+        <p class="bgr-sec-hd">Projects</p>
+        <div class="bgr-pblock-projects-wrap bgr-blocks-wrap"></div>
+        <button type="button" class="bgr-pblock-add-project bgr-btn-ghost">+ Add Project</button>
+    `;
+    $bgr('bgr-pblocks-wrap').appendChild(pblock);
+
+    const programSel = pblock.querySelector('.bgr-pblock-program');
+    bgr_fillPblockPrograms(programSel, prefillProgram?.program_code ?? '');
+    bgr_fillSubPrograms(pblock.querySelector('.bgr-pblock-sub-program'), programSel.value, prefillProgram?.sub_program_code ?? '');
+
+    bgr_updatePblockRemoveVisibility();
+
+    const projectsWrap = pblock.querySelector('.bgr-pblock-projects-wrap');
+    const projects = (prefillProgram && prefillProgram.projects && prefillProgram.projects.length) ? prefillProgram.projects : [{}];
+    projects.forEach(p => bgr_addProjectBlock(projectsWrap, p, false));
+
+    return pblock;
+}
+
+function bgr_removeProgramBlock(pblock) {
+    if ($bgr('bgr-pblocks-wrap').children.length <= 1) { bgr_toast('At least one program is required.', 'error'); return; }
+    bgr_cleanupAccountMenus(pblock);
+    pblock.remove();
+    bgr_updatePblockRemoveVisibility();
+    bgr_updateGrandTotal();
+}
+
+// Hides a lone Program block's own Remove button (nothing to remove down to zero) — shown once a
+// second block exists. 'edit-program' mode's single block stays hidden forever (it never gets a
+// sibling — see bgr_openModal), exactly like before this feature existed.
+function bgr_updatePblockRemoveVisibility() {
+    const pblocks = document.querySelectorAll('#bgr-pblocks-wrap .bgr-pblock');
+    pblocks.forEach(pb => {
+        const btn = pb.querySelector('.bgr-pblock-remove');
+        if (btn) btn.style.display = pblocks.length > 1 ? '' : 'none';
+    });
+}
+
+/* ── Project blocks — one per "Project line item" (fims.budget_req_project) ────────────────────
+   The regular Program/Project flow simplifies a Project down to ONE Region (fims.project.rc_id —
+   manually picked here now that Program-based origination belongs to FMD, not the region itself)
+   and ONE Proposed Amount, posted at save time as a single budget_line_items row against a fixed
+   account (chart-of-accounts id 214, "Work-in-Process Inventory" — see bgr_save()). `wrapEl` is the
+   container this block is appended to — a Program block's own .bgr-pblock-projects-wrap. COE mode
+   has no Project at all — see #bgr-coe-blocks-wrap/bgr_addCoeSubComponentBlock() instead, which
+   keeps the flexible chart-of-accounts line-items table this used to also build in coeMode. */
+function bgr_addProjectBlock(wrapEl, prefillBlock = null) {
     bgr_blockSeq++;
     const block = document.createElement('div');
     block.className = 'bgr-block';
     block.dataset.blockSeq = bgr_blockSeq;
+
     block.innerHTML = `
         <div class="bgr-block-hd">
             <button type="button" class="bgr-block-toggle" title="Collapse">
                 <svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
             </button>
+            <div class="bgr-block-region-wrap">
+                <label class="bgr-label">Region <span class="req">*</span></label>
+                <select class="bgr-select bgr-block-region"><option value="">— Select region —</option></select>
+            </div>
             <div class="bgr-block-project-wrap">
                 <label class="bgr-label">Project <span class="req">*</span></label>
                 <input type="text" class="bgr-input bgr-block-project-name" placeholder="Type to search or add a new project…" autocomplete="off">
@@ -584,27 +982,27 @@ function bgr_addProjectBlock(prefillBlock = null, coeMode = false) {
             <button type="button" class="bgr-block-remove" title="Remove project">&times;</button>
         </div>
         <div class="bgr-block-body">
-            <div class="bgr-block-li-outer">
-                <div class="bgr-block-li-wrap">
-                    <table class="bgr-block-li-tbl">
-                        <thead><tr>
-                            <th style="width:36%;">Account Code - Account Name</th>
-                            <th style="width:44%;">Particulars</th>
-                            <th style="width:19%;">Proposed Amount</th>
-                        </tr></thead>
-                        <tbody class="bgr-block-li-tbody"></tbody>
-                        <tfoot><tr class="bgr-block-li-total-row">
-                            <td colspan="2">Total</td>
-                            <td class="bgr-block-li-total-amt">0.00</td>
-                        </tr></tfoot>
-                    </table>
+            <div class="bgr-row-4">
+                <div class="bgr-group">
+                    <label class="bgr-label">Type of Fund <span class="req">*</span></label>
+                    <select class="bgr-select bgr-block-type-of-fund"><option value="">— Select type of fund —</option></select>
                 </div>
-                <div class="bgr-block-li-remove-col">
-                    <div class="bgr-li-remove-head"></div>
-                    <div class="bgr-li-remove-foot"></div>
+                <div class="bgr-group">
+                    <label class="bgr-label">Component</label>
+                    <select class="bgr-select bgr-block-component"><option value="">— None —</option></select>
+                </div>
+                <div class="bgr-group">
+                    <label class="bgr-label">Sub-Component</label>
+                    <select class="bgr-select bgr-block-sub-component"><option value="">— None —</option></select>
+                </div>
+                <div class="bgr-group">
+                    <label class="bgr-label">Proposed Amount <span class="req">*</span></label>
+                    <div class="bgr-amt-wrap">
+                        <span class="bgr-amt-prefix">₱</span>
+                        <input type="text" inputmode="decimal" class="bgr-input bgr-block-amount" placeholder="0.00" oninput="bgr_fmtAmount(this);bgr_updateGrandTotal();">
+                    </div>
                 </div>
             </div>
-            <button type="button" class="bgr-block-add-li bgr-btn-ghost">+ Add Line Item</button>
 
             <div class="bgr-block-docs">
                 <p class="bgr-block-docs-title">Supporting Documents</p>
@@ -624,45 +1022,54 @@ function bgr_addProjectBlock(prefillBlock = null, coeMode = false) {
             </div>
         </div>
     `;
-    $bgr('bgr-blocks-wrap').appendChild(block);
+    wrapEl.appendChild(block);
 
-    // COE mode skips everything Project-specific (its header row is hidden via CSS anyway —
-    // #bgr-card.bgr-mode-coe .bgr-block-hd) — no typeahead, no project-code preview, no
-    // "remove this block" (COE only ever has the one).
-    if (!coeMode) {
-        const $nameInput = $(block.querySelector('.bgr-block-project-name'));
-        bgr_initProjectTypeahead($nameInput);
-        if (prefillBlock && prefillBlock.project_code) {
-            const label = `${prefillBlock.project_code} — ${prefillBlock.project_name || ''}`;
-            $nameInput.val(label).data('bgr-matched-text', label);
-            bgr_setProjectCode($nameInput, prefillBlock.project_code);
-        } else {
-            // A brand-new block with nothing picked yet already WOULD create a
-            // new project if saved as-is — preview its code immediately, rather
-            // than waiting for the user to type something first (the code never
-            // depends on the typed name anyway, only on the header's Program/
-            // Sub-Program).
-            bgr_updateProjectCodeField($nameInput);
-        }
-        if (prefillBlock && prefillBlock.location) {
-            block.querySelector('.bgr-block-location').value = prefillBlock.location;
-        }
-        block.querySelector('.bgr-block-remove').addEventListener('click', () => bgr_removeProjectBlock(block));
+    const $nameInput = $(block.querySelector('.bgr-block-project-name'));
+    bgr_initProjectTypeahead($nameInput);
+
+    const regionSel = block.querySelector('.bgr-block-region');
+    bgr_fillBlockRegions(regionSel, prefillBlock?.rc_id ?? '');
+
+    // Editing an existing project under the old multi-account model: there is no longer a single
+    // "the" Type of Fund/Component once it had more than one line item — the first one's own is
+    // as good a starting point as any (saving replaces them all with the one simplified line item
+    // anyway).
+    const existingTypeOfFund = (prefillBlock?.line_items ?? []).find(li => li.type_of_fund_id)?.type_of_fund_id ?? '';
+    bgr_fillBlockTypeOfFund(block.querySelector('.bgr-block-type-of-fund'), existingTypeOfFund);
+    const existingComponent = (prefillBlock?.line_items ?? []).find(li => li.component_id)?.component_id ?? '';
+    bgr_fillBlockComponents(block.querySelector('.bgr-block-component'), existingComponent);
+    const existingSubComponent = (prefillBlock?.line_items ?? []).find(li => li.sub_component_id)?.sub_component_id ?? '';
+    bgr_fillBlockSubComponents(block.querySelector('.bgr-block-sub-component'), existingSubComponent);
+
+    if (prefillBlock && prefillBlock.project_code) {
+        const label = `${prefillBlock.project_code} — ${prefillBlock.project_name || ''}`;
+        $nameInput.val(label).data('bgr-matched-text', label);
+        bgr_setProjectCode($nameInput, prefillBlock.project_code);
+        regionSel.disabled = true; // an existing project's region isn't reassigned from here
+    } else {
+        // A brand-new block with nothing picked yet already WOULD create a
+        // new project if saved as-is — preview its code immediately, rather
+        // than waiting for the user to type something first (the code never
+        // depends on the typed name anyway, only on the header's Program/
+        // Sub-Program).
+        bgr_updateProjectCodeField($nameInput);
     }
-    block.querySelector('.bgr-block-add-li').addEventListener('click', () => bgr_addLineItemRow(block, {}, coeMode));
+    if (prefillBlock && prefillBlock.location) {
+        block.querySelector('.bgr-block-location').value = prefillBlock.location;
+    }
+    // A brand-new project block starts at zero — editing an existing one sums whatever line
+    // items it already has under the old multi-account model (collapsing them into the one
+    // figure this simplified field shows; saving replaces them with a single line item against
+    // account 214, see bgr_save()).
+    const amount = (prefillBlock?.line_items ?? []).reduce((sum, li) => sum + (Number(li.proposed_amount) || 0), 0);
+    if (amount) block.querySelector('.bgr-block-amount').value = bgr_fmtAmountInitial(amount);
+
+    block.querySelector('.bgr-block-remove').addEventListener('click', () => bgr_removeProjectBlock(block));
     block.querySelector('.bgr-block-toggle').addEventListener('click', () => bgr_toggleProjectBlock(block));
 
-    const items = (prefillBlock && prefillBlock.line_items && prefillBlock.line_items.length) ? prefillBlock.line_items : [{}];
-    items.forEach(li => bgr_addLineItemRow(block, li, coeMode));
+    bgr_wireDocSection(block, prefillBlock);
 
-    // COE's Supporting Documents are request-level (keyed by budget_reference_number, held in
-    // #bgr-id for 'edit-coe' — see bgr_openModal) rather than per (Program, Project).
-    if (coeMode) {
-        bgr_wireCoeDocSection(block);
-    } else {
-        bgr_wireDocSection(block, prefillBlock);
-    }
-
+    bgr_updateGrandTotal();
     return block;
 }
 
@@ -701,14 +1108,27 @@ function bgr_wireDocSection(block, prefillBlock) {
         .catch(() => {});
 }
 
-// COE's own bgr_wireDocSection — Supporting Documents for a COE request are request-level
-// (keyed by budget_reference_number alone, held in #bgr-id for 'edit-coe' — there is no
-// Program/Project to key off). A brand-new ('add-coe') request has none yet.
-function bgr_wireCoeDocSection(block) {
+// COE's own Supporting Documents (#bgr-coe-docs) are request-level (keyed by budget_reference_number
+// alone — there is no Program/Project/Sub-Component to key off) and, unlike a regular Project
+// block's own per-project docs section, are NOT rebuilt from scratch on every bgr_openModal (the
+// Sub-Component blocks around it are, but this section is static markup, shared by every one of
+// them). So its upload/link buttons are bound exactly ONCE, at bootstrap — binding them again on
+// every modal open would stack duplicate click listeners on the same persistent elements. Only the
+// document ROWS themselves need to reset per open, via bgr_resetCoeDocSection() below.
+function bgr_bindCoeDocSection() {
+    const block = $bgr('bgr-coe-docs');
+    if (!block) return;
     block.querySelector('.bgr-block-doc-add-upload').addEventListener('click', () => bgr_addDocRow(block, { mode: 'upload' }));
     block.querySelector('.bgr-block-doc-add-link').addEventListener('click', () => bgr_addDocRow(block, { mode: 'link' }));
+}
 
-    const budgetReferenceNumber = $bgr('bgr-id').value;
+// Clears whatever rows a previous modal session left behind and, given an existing request's own
+// budget_reference_number ('edit-coe'), reloads its already-saved attachments. 'add-coe' passes ''
+// — a brand-new request has none yet.
+function bgr_resetCoeDocSection(budgetReferenceNumber) {
+    const block = $bgr('bgr-coe-docs');
+    block.querySelector('.bgr-block-doc-tbody').innerHTML = '';
+    bgr_syncDocTableVisibility(block);
     if (!budgetReferenceNumber) return;
 
     const params = new URLSearchParams({ budget_reference_number: budgetReferenceNumber });
@@ -869,12 +1289,15 @@ function bgr_getProjectDocPayload(block, fileList) {
 }
 
 function bgr_removeProjectBlock(block) {
-    if ($bgr('bgr-blocks-wrap').children.length <= 1) { bgr_toast('At least one project is required.', 'error'); return; }
+    const wrapEl = block.parentElement;
+    if (wrapEl.children.length <= 1) { bgr_toast('At least one project is required.', 'error'); return; }
+    const pblock = block.closest('.bgr-pblock');
     bgr_cleanupAccountMenus(block);
     block.remove();
     // Frees up the series slot this block may have reserved (see
-    // bgr_setProjectCode) for whichever other "new project" blocks remain.
-    bgr_refreshAllProjectCodeFields();
+    // bgr_setProjectCode) for whichever other "new project" blocks remain
+    // under the SAME Program block.
+    bgr_refreshAllProjectCodeFields(pblock);
     bgr_updateGrandTotal();
 }
 
@@ -900,29 +1323,36 @@ function bgr_setProjectCode($input, code) {
     const hidden      = $input.closest('.bgr-block-project-wrap').find('.bgr-block-project-code');
     const wasResolved = !!hidden.val();
     hidden.val(code);
+    const pblock = $input.closest('.bgr-pblock')[0];
 
     // Only an "existing project" <-> "new project" transition changes which
-    // series slot this block reserves from the shared BGR_PROJECT_CODE_CACHE
+    // series slot this block reserves from its Program block's own code cache
     // (see bgr_updateProjectCodeField) -- that's when every other "new
-    // project" block's preview needs refreshing too, so none of them keep
-    // holding a now-stale series number. Plain typing within an
+    // project" block UNDER THE SAME PROGRAM needs its preview refreshed too, so
+    // none of them keep holding a now-stale series number. Plain typing within an
     // already-unresolved block (code staying '' keystroke to keystroke)
     // only needs this one field re-checked.
     if (wasResolved !== !!code) {
-        bgr_refreshAllProjectCodeFields();
+        bgr_refreshAllProjectCodeFields(pblock);
     } else {
         bgr_updateProjectCodeField($input);
     }
 }
 
-// Seeded from the first real /project/next-code lookup under the current
-// Program/Sub-Program, then handed out locally (prefix + nextSeries++) to
-// every subsequent "new project" block — the database would otherwise keep
-// reporting the exact same "next available" series to each of them, since
-// none of them are actually saved yet. Reset (see bgr_refreshAllProjectCodeFields
-// and bgr_openModal) whenever Program/Sub-Program changes, or the modal
-// reopens, since that invalidates the whole prefix.
-let BGR_PROJECT_CODE_CACHE = null; // { prefix: string, nextSeries: number } | null
+// Seeded from the first real /project/next-code lookup under one (Program, Sub-Program, Region,
+// Fiscal Year) combination, then handed out locally (prefix + nextSeries++) to every subsequent "new
+// project" block that shares that SAME combination — the database would otherwise keep reporting the
+// exact same "next available" series to each of them, since none of them are actually saved yet. The
+// code's own RC segment is now the Project's own manually-picked Region (not a Program block's,
+// since two Projects under the same Program can each pick a different one — see
+// GlobalService::generateProjectCode()'s own doc comment), so the cache is keyed by that whole
+// combination as a string, not by a single Program block. Stale entries (a changed Program/
+// Sub-Program/Region/Fiscal Year) are simply never looked up again — a fresh Map each time the modal
+// opens (see bgr_openModal, which rebuilds every block) means they never accumulate across sessions.
+const BGR_PROJECT_CODE_CACHE = new Map(); // "program|subprogram|rc_id|fiscal_yr" -> { prefix: string, nextSeries: number }
+function bgr_projectCodeCacheKey(programCode, subProgramCode, rcId, fiscalYr) {
+    return `${programCode}|${subProgramCode}|${rcId}|${fiscalYr}`;
+}
 
 // Fills the read-only "Project Code" field alongside Project: either the
 // matched existing project's real code, or a preview of what
@@ -930,12 +1360,13 @@ let BGR_PROJECT_CODE_CACHE = null; // { prefix: string, nextSeries: number } | n
 // creating a new one (no existing project resolved) — pure UI; the real
 // code (possibly different, if another project was created in the
 // meantime) is resolved by the backend only when the whole request is
-// actually saved. Shown as soon as the block has no resolved project,
-// whether or not anything's been typed yet — the preview depends only on
-// the header's Program/Sub-Program, never on the typed name. Fetched once
-// per "new project" state per Program/Sub-Program, not on every keystroke —
-// see bgr_refreshAllProjectCodeFields() for what clears that so a header
-// change re-fetches.
+// actually saved. Shown as soon as the block has no resolved project AND a
+// Region has been picked for it (the code's own RC segment needs one) —
+// the preview depends on the enclosing Program block's own Program/
+// Sub-Program plus THIS block's own Region, never on the typed name.
+// Fetched once per "new project" state per that combination, not on every
+// keystroke — see bgr_refreshAllProjectCodeFields()/bgr_onBlockRegionChange()
+// for what clears that so a change re-fetches.
 function bgr_updateProjectCodeField($input) {
     // .bgr-block-project-code-display is a sibling of .bgr-block-project-wrap
     // (its own column), not a descendant of it — scope the lookup to the
@@ -951,29 +1382,36 @@ function bgr_updateProjectCodeField($input) {
         return;
     }
 
-    const programCode = $bgr('bgr-program-code').value;
+    const pblock = $input.closest('.bgr-pblock')[0];
+    const programCode = pblock?.querySelector('.bgr-pblock-program')?.value || '';
     if (!programCode) {
         display.val('').attr('placeholder', 'Select a program first').removeData('bgr-fetched');
         return; // not marked "fetched" — tries again once a Program is picked
     }
+    const rcId = block.find('.bgr-block-region').val() || '';
+    if (!rcId) {
+        display.val('').attr('placeholder', 'Select a region first').removeData('bgr-fetched');
+        return; // not marked "fetched" — tries again once a Region is picked
+    }
     if (display.data('bgr-fetched')) return;
     display.data('bgr-fetched', true);
 
-    // Already seeded by an earlier "new project" block this session — hand
-    // out the next series locally instead of re-querying, which would just
-    // return the same number the DB still shows (nothing's saved yet).
-    if (BGR_PROJECT_CODE_CACHE) {
-        BGR_PROJECT_CODE_CACHE.nextSeries += 1;
-        display.val(BGR_PROJECT_CODE_CACHE.prefix + String(BGR_PROJECT_CODE_CACHE.nextSeries).padStart(4, '0'));
+    const subProgramCode = pblock.querySelector('.bgr-pblock-sub-program').value;
+    const fiscalYr = $bgr('bgr-fiscal-yr').value;
+    const cacheKey = bgr_projectCodeCacheKey(programCode, subProgramCode, rcId, fiscalYr);
+
+    // Already seeded by an earlier "new project" block sharing this same Program/Sub-Program/Region/
+    // Fiscal Year this session — hand out the next series locally instead of re-querying, which would
+    // just return the same number the DB still shows (nothing's saved yet).
+    const cached = BGR_PROJECT_CODE_CACHE.get(cacheKey);
+    if (cached) {
+        cached.nextSeries += 1;
+        display.val(cached.prefix + String(cached.nextSeries).padStart(4, '0'));
         return;
     }
 
     display.val('').attr('placeholder', 'Generating…');
-    const params = new URLSearchParams({
-        program_code: programCode,
-        sub_program_code: $bgr('bgr-sub-program-code').value,
-        fiscal_yr: $bgr('bgr-fiscal-yr').value,
-    });
+    const params = new URLSearchParams({ program_code: programCode, sub_program_code: subProgramCode, fiscal_yr: fiscalYr, rc_id: rcId });
     fetch(`${BGR_PROJECT_BASE_API}/next-code?${params}`, { credentials: 'same-origin' })
         .then(res => res.json())
         .then(json => {
@@ -981,39 +1419,49 @@ function bgr_updateProjectCodeField($input) {
             const fullCode = json.data.project_code;
             const m = fullCode.match(/^(.*-)(\d{4})$/);
             if (m) {
-                BGR_PROJECT_CODE_CACHE = { prefix: m[1], nextSeries: parseInt(m[2], 10) };
+                BGR_PROJECT_CODE_CACHE.set(cacheKey, { prefix: m[1], nextSeries: parseInt(m[2], 10) });
             }
             display.val(fullCode);
         })
         .catch(() => display.attr('placeholder', 'Code unavailable'));
 }
 
-// Re-previews every project block's code — needed because the preview
-// depends on the header's Program/Sub-Program, which can change AFTER a
-// block was created (including the very first block: 'add' mode resets
-// Program to blank before creating it) without that block's own Project
-// field ever being touched again. Clears the "already fetched" guard and
-// the shared series cache first — a new Program/Sub-Program means a new
-// prefix, so the old cached one (and its running count) no longer applies.
-function bgr_refreshAllProjectCodeFields() {
-    BGR_PROJECT_CODE_CACHE = null;
-    document.querySelectorAll('#bgr-blocks-wrap .bgr-block-project-code-display').forEach(el => {
+// Region changing on ONE project block only re-previews that block's own code (its own RC segment
+// depends on it) — unlike a Program/Sub-Program change (bgr_refreshAllProjectCodeFields), which is
+// shared by every Project under that same Program block.
+function bgr_onBlockRegionChange(selectEl) {
+    const block = selectEl.closest('.bgr-block');
+    const nameInput = block?.querySelector('.bgr-block-project-name');
+    if (!nameInput) return;
+    $(block.querySelector('.bgr-block-project-code-display')).removeData('bgr-fetched');
+    bgr_updateProjectCodeField($(nameInput));
+}
+
+// Re-previews every project block's code UNDER ONE Program block — needed because the preview
+// depends on that Program block's own Program/Sub-Program, which can change AFTER a project block
+// was created (including the very first one: 'add' mode resets Program to blank before creating it)
+// without that project block's own Project field ever being touched again. Clears the "already
+// fetched" guard on each — a new Program/Sub-Program means a new cache key (see
+// bgr_projectCodeCacheKey), so the old cached prefix/series simply stops being looked up, nothing to
+// explicitly invalidate.
+function bgr_refreshAllProjectCodeFields(pblock) {
+    if (!pblock) return;
+    pblock.querySelectorAll('.bgr-block-project-code-display').forEach(el => {
         $(el).removeData('bgr-fetched');
     });
-    document.querySelectorAll('#bgr-blocks-wrap .bgr-block-project-name').forEach(el => {
+    pblock.querySelectorAll('.bgr-block-project-name').forEach(el => {
         bgr_updateProjectCodeField($(el));
     });
 }
 
-// Every project_code already picked by another block in this same request —
-// a project can only appear once per budget request, so these are excluded
-// from $input's own suggestions and re-checked on select as a safety net
-// against a stale/in-flight async result that was built before the latest
-// pick.
+// Every project_code already picked by another block ANYWHERE in this request (any Program block,
+// not just this project's own) — a project can only appear once per budget request, so these are
+// excluded from $input's own suggestions and re-checked on select as a safety net against a
+// stale/in-flight async result that was built before the latest pick.
 function bgr_usedProjectCodes($input) {
     const ownBlock = $input.closest('.bgr-block')[0];
 
-    return Array.from(document.querySelectorAll('#bgr-blocks-wrap .bgr-block-project-code'))
+    return Array.from(document.querySelectorAll('#bgr-pblocks-wrap .bgr-block-project-code'))
         .filter(el => el.closest('.bgr-block') !== ownBlock && el.value)
         .map(el => el.value);
 }
@@ -1031,8 +1479,8 @@ function bgr_initProjectTypeahead($input) {
                     try {
                         const params = new URLSearchParams({
                             search: query,
-                            program_code: $bgr('bgr-program-code').value,
-                            sub_program_code: $bgr('bgr-sub-program-code').value,
+                            program_code: $input.closest('.bgr-pblock').find('.bgr-pblock-program').val(),
+                            sub_program_code: $input.closest('.bgr-pblock').find('.bgr-pblock-sub-program').val(),
                         });
                         const res  = await fetch(`${BGR_PROJECT_BASE_API}/all?${params}`, { credentials: 'same-origin' });
                         const json = await res.json();
@@ -1042,6 +1490,7 @@ function bgr_initProjectTypeahead($input) {
                             .map(p => ({
                                 project_code: p.project_code,
                                 label: `${p.project_code} — ${p.project_name}`,
+                                rc_id: p.rc_id ?? '',
                             })));
                     } catch (e) {
                         asyncResults([]);
@@ -1070,12 +1519,20 @@ function bgr_initProjectTypeahead($input) {
         $input.data('bgr-syncing', true);
         $input.data('bgr-matched-text', item.label);
         bgr_setProjectCode($input, item.project_code);
+        bgr_setBlockRegion($input, item.rc_id || '', true);
         setTimeout(() => $input.removeData('bgr-syncing'), 0);
     });
     $input.on('input', () => {
         if ($input.data('bgr-syncing')) return;
         if ($input.val() !== $input.data('bgr-matched-text')) {
             bgr_setProjectCode($input, '');
+            // Only clear/unlock the Region if it's actually locked to a previously-matched existing
+            // project (sel.disabled) — a Region the user picked manually for a brand-new project was
+            // never locked in the first place, and typing the rest of that new project's name should
+            // not wipe out a choice that has nothing to do with any match.
+            const block = $input.closest('.bgr-block')[0];
+            const regionSel = block?.querySelector('.bgr-block-region');
+            if (regionSel?.disabled) bgr_setBlockRegion($input, '', false);
         }
     });
 }
@@ -1094,14 +1551,14 @@ function bgr_initProjectTypeahead($input) {
 // The 'mousedown' listener below (which fires on literally any click)
 // handles that case.
 document.addEventListener('focusin', (ev) => {
-    document.querySelectorAll('#bgr-blocks-wrap .bgr-block-project-name').forEach((el) => {
+    document.querySelectorAll('#bgr-pblocks-wrap .bgr-block-project-name').forEach((el) => {
         if (!el.closest('.bgr-block-project-wrap').contains(ev.target)) {
             $(el).typeahead('close');
         }
     });
 });
 document.addEventListener('mousedown', (ev) => {
-    document.querySelectorAll('#bgr-blocks-wrap .bgr-block-project-name').forEach((el) => {
+    document.querySelectorAll('#bgr-pblocks-wrap .bgr-block-project-name').forEach((el) => {
         if (!el.closest('.bgr-block-project-wrap').contains(ev.target)) {
             $(el).typeahead('close');
         }
@@ -1215,13 +1672,15 @@ function bgr_initAccountPicker($input, coeMode = false) {
 
     function renderOptions(query) {
         const q = query.trim().toLowerCase();
-        const base = BGR_COA_OPTIONS.filter(a => bgr_isCoeEligibleAccount(a.account_code) === coeMode);
+        const prefix = coeMode ? bgr_coeBlockAccountPrefix(input.closest('.bgr-block')) : null;
+        const base = BGR_COA_OPTIONS.filter(a => bgr_isCoeEligibleAccount(a.account_code) === coeMode
+            && (!prefix || a.account_code.startsWith(prefix)));
         const matches = base
             .filter(a => !q || a.account_code.toLowerCase().includes(q) || a.account_title.toLowerCase().includes(q))
             .slice(0, 50);
         menu.innerHTML = matches.length
             ? matches.map(a => `<div class="bgr-acct-option" data-account-id="${bgr_escHtmlAttr(a.account_id)}">${bgr_esc(bgr_accountLabel(a))}</div>`).join('')
-            : `<div class="bgr-acct-empty">${coeMode ? 'No matching PS/MOOE account.' : 'No matching account.'}</div>`;
+            : `<div class="bgr-acct-empty">${prefix ? `No matching ${prefix} account.` : (coeMode ? 'No matching PS/MOOE account.' : 'No matching account.')}</div>`;
     }
 
     function openMenu() {
@@ -1302,7 +1761,7 @@ document.addEventListener('scroll', (ev) => {
 // Each account picker's dropdown lives on <body>, detached from its row —
 // removing the row alone would otherwise leak that element. Call this with
 // whatever's about to be removed/cleared (a single row, a whole project
-// block, or the entire #bgr-blocks-wrap) before it's actually removed.
+// block, or an entire container of them) before it's actually removed.
 function bgr_cleanupAccountMenus(containerEl) {
     containerEl.querySelectorAll('.bgr-li-account-code').forEach((el) => {
         const menu = $(el).data('bgr-acct-menu');
@@ -1316,19 +1775,15 @@ function bgr_cleanupAccountMenus(containerEl) {
 /* ── Modal ─────────────────────────────────────────────────── */
 async function bgr_openModal(mode, data = null) {
     bgr_hideErr();
-    BGR_PROJECT_CODE_CACHE = null; // fresh session — don't carry over a prior open's series cache
-    $bgr('bgr-grand-total-display').value = '0.00'; // recomputed as project blocks are (re)built below
+    $bgr('bgr-grand-total-display').value = '0.00'; // recomputed as blocks are (re)built below
 
-    // 'add-coe'/'edit-coe': a COE request has no Program/Sub-Program/Project at all — see the
-    // #bgr-card.bgr-mode-coe CSS above and the coeMode branches in bgr_addProjectBlock/bgr_save.
+    // 'add-coe'/'edit-coe': a COE request has no Program/Sub-Program/Project at all — #bgr-coe-root
+    // and #bgr-pblocks-root are mutually exclusive, never both shown (see bgr_addCoeSubComponentBlock()/
+    // bgr_saveCoe() for the COE-only path vs. bgr_addProgramBlock()/bgr_save() for the regular one).
     const isCoe = mode === 'add-coe' || mode === 'edit-coe';
     $bgr('bgr-card').classList.toggle('bgr-mode-coe', isCoe);
-    $bgr('bgr-blocks-sec-hd').textContent = isCoe ? 'Line Items' : 'Projects';
-    // #bgr-program-code is `required` — hidden (display:none) by the CSS above in COE mode, and a
-    // hidden required field makes the browser's native form validation silently block the submit
-    // event entirely ("An invalid form control with name='' is not focusable", no error shown,
-    // nothing happens on Save). Must be un-required whenever it's hidden.
-    $bgr('bgr-program-code').required = !isCoe;
+    $bgr('bgr-coe-root').style.display = isCoe ? '' : 'none';
+    $bgr('bgr-pblocks-root').style.display = isCoe ? 'none' : '';
 
     // Lazy-loaded here rather than at page load — the Account Code picker
     // (built inside bgr_addProjectBlock below) needs BGR_COA_OPTIONS already
@@ -1340,6 +1795,31 @@ async function bgr_openModal(mode, data = null) {
     $bgr('bgr-mode').value = mode;
     $bgr('bgr-fiscal-yr').disabled = false;
 
+    bgr_cleanupAccountMenus($bgr('bgr-coe-root'));
+    $bgr('bgr-coe-blocks-wrap').innerHTML = '';
+    bgr_cleanupAccountMenus($bgr('bgr-pblocks-wrap'));
+    $bgr('bgr-pblocks-wrap').innerHTML = '';
+
+    if (isCoe) {
+        // Type of Fund/Component: 'edit-coe' starts from whatever its existing line items were
+        // already saved with — every one of them carries the same shared pick (see bgr_saveCoe), so
+        // the first one's own is as good a starting point as any. A brand-new 'add-coe' request has
+        // no data to start from instead, so it defaults to this office's usual COE pick (Type of
+        // Fund "Corporate Receipt", Component "COE") rather than an empty placeholder — either can
+        // still be changed before saving. Sub-Component blocks themselves are built further below,
+        // once the mode is known (grouped from existing data for 'edit-coe', a single blank one for
+        // 'add-coe').
+        const coeLineItems = data?.coe_line_items ?? [];
+        const defaultTypeOfFundId = coeLineItems.length
+            ? (coeLineItems[0]?.type_of_fund_id ?? '')
+            : bgr_lookupIdByName(BGR_TYPES_OF_FUND, 'type_of_fund_id', 'CORPORATE RECEIPT');
+        const defaultComponentId = coeLineItems.length
+            ? (coeLineItems[0]?.component_id ?? '')
+            : bgr_lookupIdByName(BGR_COMPONENTS, 'component_type_id', 'COE');
+        bgr_fillBlockTypeOfFund($bgr('bgr-coe-type-of-fund'), defaultTypeOfFundId);
+        bgr_fillBlockComponents($bgr('bgr-coe-component'), defaultComponentId);
+    }
+
     if (mode === 'edit-program') {
         $bgr('bgr-id').value = data.budget_req_program_id;
         $bgr('bgr-modal-title').textContent = 'Edit Program';
@@ -1347,35 +1827,32 @@ async function bgr_openModal(mode, data = null) {
 
         $bgr('bgr-fiscal-yr').value = data.fiscal_yr || '';
         $bgr('bgr-fiscal-yr').disabled = true;
-        $bgr('bgr-program-code').value = data.program_code || '';
-        bgr_fillSubPrograms(data.program_code, data.sub_program_code);
 
         const ctx = $bgr('bgr-program-context');
         ctx.textContent = `Editing a program under Budget Request ${data.budget_reference_number} (FY ${data.fiscal_yr}).`;
         ctx.style.display = '';
 
-        bgr_cleanupAccountMenus($bgr('bgr-blocks-wrap'));
-        $bgr('bgr-blocks-wrap').innerHTML = '';
-        (data.projects && data.projects.length ? data.projects : [{}]).forEach(p => bgr_addProjectBlock(p));
+        // Exactly one Program block — no "+ Add Program" (this mode edits a single existing
+        // Program, nothing more) and bgr_updatePblockRemoveVisibility (called inside
+        // bgr_addProgramBlock) already hides its lone Remove button.
+        $bgr('bgr-add-program-block').style.display = 'none';
+        bgr_addProgramBlock(data);
     } else if (mode === 'edit-coe') {
         // #bgr-id holds the budget_reference_number directly here (not a budget_req_program_id —
-        // a COE request has no Program) — see bgr_wireCoeDocSection() and bgr_save().
+        // a COE request has no Program) — see bgr_resetCoeDocSection() and bgr_save().
         $bgr('bgr-id').value = data.budget_reference_number;
         $bgr('bgr-modal-title').textContent = 'Edit COE Budget Request';
         $bgr('bgr-save').textContent = 'Save Request';
 
         $bgr('bgr-fiscal-yr').value = data.fiscal_yr || '';
         $bgr('bgr-fiscal-yr').disabled = true;
-        $bgr('bgr-program-code').value = '';
-        bgr_fillSubPrograms('');
 
         const ctx = $bgr('bgr-program-context');
         ctx.textContent = `Editing COE Budget Request ${data.budget_reference_number} (FY ${data.fiscal_yr}).`;
         ctx.style.display = '';
 
-        bgr_cleanupAccountMenus($bgr('bgr-blocks-wrap'));
-        $bgr('bgr-blocks-wrap').innerHTML = '';
-        bgr_addProjectBlock({ line_items: (data.coe_line_items && data.coe_line_items.length) ? data.coe_line_items : [{}] }, true);
+        bgr_groupCoeLineItemsBySubComponent(data.coe_line_items ?? []).forEach(g => bgr_addCoeSubComponentBlock(g));
+        bgr_resetCoeDocSection(data.budget_reference_number);
     } else {
         // 'add' or 'add-coe'
         $bgr('bgr-id').value = '';
@@ -1386,14 +1863,16 @@ async function bgr_openModal(mode, data = null) {
         // placeholder — the most common case, and the user can still change it.
         const currentYearOption = $bgr('bgr-fiscal-yr').querySelector(`option[value="${new Date().getFullYear()}"]`);
         $bgr('bgr-fiscal-yr').value = currentYearOption ? currentYearOption.value : '';
-        $bgr('bgr-program-code').value = '';
-        bgr_fillSubPrograms('');
 
         $bgr('bgr-program-context').style.display = 'none';
 
-        bgr_cleanupAccountMenus($bgr('bgr-blocks-wrap'));
-        $bgr('bgr-blocks-wrap').innerHTML = '';
-        bgr_addProjectBlock(null, isCoe);
+        if (isCoe) {
+            bgr_addCoeSubComponentBlock();
+            bgr_resetCoeDocSection('');
+        } else {
+            $bgr('bgr-add-program-block').style.display = '';
+            bgr_addProgramBlock();
+        }
     }
 
     $bgr('bgr-overlay').classList.add('open');
@@ -1401,8 +1880,10 @@ async function bgr_openModal(mode, data = null) {
 
 function bgr_closeModal() {
     $bgr('bgr-overlay').classList.remove('open');
-    bgr_cleanupAccountMenus($bgr('bgr-blocks-wrap'));
-    $bgr('bgr-blocks-wrap').innerHTML = '';
+    bgr_cleanupAccountMenus($bgr('bgr-coe-root'));
+    $bgr('bgr-coe-blocks-wrap').innerHTML = '';
+    bgr_cleanupAccountMenus($bgr('bgr-pblocks-wrap'));
+    $bgr('bgr-pblocks-wrap').innerHTML = '';
     $bgr('bgr-form').reset();
     $bgr('bgr-fiscal-yr').disabled = false;
     bgr_hideErr();
@@ -1417,6 +1898,70 @@ function bgr_hideErr() {
     $bgr('bgr-err').style.display = 'none';
 }
 
+// Shared POST/PUT helper for the non-COE save paths below — plain JSON when there are no new files
+// to upload, multipart FormData (one flat doc_file_N index) otherwise, same convention bgr_saveCoe
+// uses on its own.
+async function bgr_postBody(url, method, body, docFiles) {
+    const fetchOpts = docFiles.length
+        ? (() => {
+            const fd = new FormData();
+            fd.append('data', JSON.stringify(body));
+            docFiles.forEach((f, i) => fd.append('doc_file_' + i, f));
+            return { method, credentials: 'same-origin', body: fd };
+        })()
+        : { method, credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
+    const res = await fetch(url, fetchOpts);
+    return res.json();
+}
+
+// Builds ONE Program block's save payload — { programCode, subProgramCode, projects, docFiles } — or
+// a plain string error message naming this block if something required is missing. `label` is how
+// this block is named in that message: "Program" in 'edit-program' mode (only ever one, no ordinal
+// needed) or "Program N" in 'add' mode (there may be several — see bgr_save).
+function bgr_buildProgramPayload(pblock, label) {
+    const programCode    = pblock.querySelector('.bgr-pblock-program').value;
+    const subProgramCode = pblock.querySelector('.bgr-pblock-sub-program').value;
+    if (!programCode) return `${label}: select a program.`;
+
+    const projects = [];
+    const docFiles = []; // one flat list across every project block under THIS Program — see bgr_getProjectDocPayload()
+    const blocks = pblock.querySelectorAll('.bgr-pblock-projects-wrap .bgr-block');
+    for (let pi = 0; pi < blocks.length; pi++) {
+        const block = blocks[pi];
+        // A matched suggestion resolves the hidden code; otherwise the typed
+        // text has no confirmed match — send it as project_name so the
+        // backend resolves/creates it atomically when the request is saved.
+        const projectCode = block.querySelector('.bgr-block-project-code').value;
+        const projectName = block.querySelector('.bgr-block-project-name').value.trim();
+        const location    = block.querySelector('.bgr-block-location').value.trim();
+        if (!projectCode && !projectName) return `${label}, project ${pi + 1}: select or enter a project.`;
+
+        const rcId = block.querySelector('.bgr-block-region').value;
+        if (!projectCode && !rcId) return `${label}, project ${pi + 1}: select a region for this new project.`;
+
+        const typeOfFundId = block.querySelector('.bgr-block-type-of-fund').value;
+        if (!typeOfFundId) return `${label}, project ${pi + 1}: select a type of fund.`;
+
+        const componentId = block.querySelector('.bgr-block-component').value; // optional — '' = none
+        const subComponentId = block.querySelector('.bgr-block-sub-component').value; // optional — '' = none
+
+        const amount = bgr_unformatAmount(block.querySelector('.bgr-block-amount').value);
+        if (!amount || Number(amount) <= 0) return `${label}, project ${pi + 1}: proposed amount is required.`;
+
+        // One line item, always against the same chart-of-accounts entry (id 214, "Work-in-Process
+        // Inventory") — see bgr_addProjectBlock's own doc comment for why the per-line Account Code
+        // picker was dropped from this flow.
+        const lineItems = [{ account_id: '214', type_of_fund_id: typeOfFundId, component_id: componentId, sub_component_id: subComponentId, particulars: projectName || projectCode, proposed_amount: amount }];
+
+        const supportingDocuments = bgr_getProjectDocPayload(block, docFiles);
+
+        projects.push({ project_code: projectCode, project_name: projectName, rc_id: rcId, location, line_items: lineItems, supporting_documents: supportingDocuments });
+    }
+    if (!projects.length) return `${label}: add at least one project.`;
+
+    return { programCode, subProgramCode, projects, docFiles };
+}
+
 async function bgr_save(ev) {
     ev.preventDefault();
     bgr_hideErr();
@@ -1428,71 +1973,67 @@ async function bgr_save(ev) {
 
     if (mode === 'add-coe' || mode === 'edit-coe') { await bgr_saveCoe(mode, id, fiscalYr); return; }
 
-    const programCode    = $bgr('bgr-program-code').value;
-    const subProgramCode = $bgr('bgr-sub-program-code').value;
-    if (!programCode) { bgr_showErr('Select a program.'); return; }
+    if (mode === 'edit-program') {
+        const pblock  = document.querySelector('#bgr-pblocks-wrap .bgr-pblock');
+        const payload = bgr_buildProgramPayload(pblock, 'Program');
+        if (typeof payload === 'string') { bgr_showErr(payload); return; }
 
-    const projects = [];
-    const docFiles = []; // one flat list across every project block — see bgr_getProjectDocPayload()
-    const blocks = document.querySelectorAll('#bgr-blocks-wrap .bgr-block');
-    for (let pi = 0; pi < blocks.length; pi++) {
-        const block = blocks[pi];
-        // A matched suggestion resolves the hidden code; otherwise the typed
-        // text has no confirmed match — send it as project_name so the
-        // backend resolves/creates it atomically when the request is saved.
-        const projectCode = block.querySelector('.bgr-block-project-code').value;
-        const projectName = block.querySelector('.bgr-block-project-name').value.trim();
-        const location    = block.querySelector('.bgr-block-location').value.trim();
-        if (!projectCode && !projectName) { bgr_showErr(`Project ${pi + 1}: select or enter a project.`); return; }
+        const body   = { fiscal_yr: fiscalYr, program_code: payload.programCode, sub_program_code: payload.subProgramCode, projects: payload.projects };
+        const url    = `${BGR_API}/program/update/${id}`;
+        const method = payload.docFiles.length ? 'POST' : 'PUT'; // PHP only populates $_FILES/multipart bodies on POST
 
-        const rows = Array.from(block.querySelectorAll('.bgr-block-li-tbody tr'));
-        if (!rows.length) { bgr_showErr(`Project ${pi + 1}: add at least one line item.`); return; }
-
-        const lineItems = [];
-        for (let li = 0; li < rows.length; li++) {
-            const tr          = rows[li];
-            const accountId   = tr.querySelector('.bgr-li-account-id').value;
-            const particulars = tr.querySelector('.bgr-li-particulars').value.trim();
-            const amount      = bgr_unformatAmount(tr.querySelector('.bgr-li-amt').value);
-            if (!accountId) { bgr_showErr(`Project ${pi + 1}, line item ${li + 1}: select a chart of accounts entry.`); return; }
-            if (!particulars) { bgr_showErr(`Project ${pi + 1}, line item ${li + 1}: particulars is required.`); return; }
-            if (!amount) { bgr_showErr(`Project ${pi + 1}, line item ${li + 1}: proposed amount is required.`); return; }
-            lineItems.push({ account_id: accountId, particulars, proposed_amount: amount });
+        window.PagePreloader?.show();
+        try {
+            const json = await bgr_postBody(url, method, body, payload.docFiles);
+            if (!json.success) throw new Error(json.message || 'Failed to save.');
+            bgr_toast('Program updated successfully.', 'success');
+            bgr_closeModal();
+            window.bgr_afterSave?.(mode, json);
+        } catch (e) {
+            bgr_showErr(e.message);
+        } finally {
+            window.PagePreloader?.hide();
         }
-
-        const supportingDocuments = bgr_getProjectDocPayload(block, docFiles);
-
-        projects.push({ project_code: projectCode, project_name: projectName, location, line_items: lineItems, supporting_documents: supportingDocuments });
+        return;
     }
-    if (!projects.length) { bgr_showErr('Add at least one project.'); return; }
 
-    const body = { fiscal_yr: fiscalYr, program_code: programCode, sub_program_code: subProgramCode, projects };
-    // PHP only populates $_FILES/multipart bodies on POST — editing a program
-    // normally PUTs, but switches to POST when there's a new file to carry.
-    const url    = mode === 'edit-program' ? `${BGR_API}/program/update/${id}` : `${BGR_API}/add`;
-    const method = (mode === 'edit-program' && !docFiles.length) ? 'PUT' : 'POST';
+    // 'add' — one or more Program blocks (see "+ Add Program"), each its own POST /budget_req/add
+    // call, run SEQUENTIALLY (not Promise.all): every call targets the same fiscal year, and the
+    // first one may need to CREATE that header (BudgetReqService::addProgram) before the next can
+    // append another Program to it. Validate every block BEFORE saving any of them, so a mistake in
+    // block 3 doesn't leave blocks 1-2 already saved while block 3 is rejected.
+    const pblocks  = document.querySelectorAll('#bgr-pblocks-wrap .bgr-pblock');
+    const payloads = [];
+    for (let i = 0; i < pblocks.length; i++) {
+        const label   = pblocks.length > 1 ? `Program ${i + 1}` : 'Program';
+        const payload = bgr_buildProgramPayload(pblocks[i], label);
+        if (typeof payload === 'string') { bgr_showErr(payload); return; }
+        payloads.push(payload);
+    }
 
     window.PagePreloader?.show();
+    let savedCount = 0;
     try {
-        let fetchOpts;
-        if (docFiles.length) {
-            const fd = new FormData();
-            fd.append('data', JSON.stringify(body));
-            docFiles.forEach((f, i) => fd.append('doc_file_' + i, f));
-            fetchOpts = { method, credentials: 'same-origin', body: fd };
-        } else {
-            fetchOpts = { method, credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
+        let lastJson = null;
+        for (const payload of payloads) {
+            const body = { fiscal_yr: fiscalYr, program_code: payload.programCode, sub_program_code: payload.subProgramCode, projects: payload.projects };
+            lastJson = await bgr_postBody(`${BGR_API}/add`, 'POST', body, payload.docFiles);
+            if (!lastJson.success) {
+                // Every Program before this one already committed server-side (each call is its own
+                // transaction) — say so, rather than implying nothing was saved.
+                throw new Error(
+                    (savedCount > 0 ? `${savedCount} program(s) were already saved. ` : '')
+                    + (lastJson.message || `Failed to save program ${savedCount + 1}.`)
+                );
+            }
+            savedCount++;
         }
-        const res  = await fetch(url, fetchOpts);
-        const json = await res.json();
-        if (!json.success) throw new Error(json.message || 'Failed to save.');
-
-        const message = mode === 'edit-program'
-            ? 'Program updated successfully.'
-            : (json.created_new_header ? 'Budget request created successfully.' : 'Program added to the existing budget request.');
+        const message = payloads.length > 1
+            ? `${savedCount} programs added to the budget request.`
+            : (lastJson.created_new_header ? 'Budget request created successfully.' : 'Program added to the existing budget request.');
         bgr_toast(message, 'success');
         bgr_closeModal();
-        window.bgr_afterSave?.(mode, json);
+        window.bgr_afterSave?.(mode, lastJson);
     } catch (e) {
         bgr_showErr(e.message);
     } finally {
@@ -1500,29 +2041,40 @@ async function bgr_save(ev) {
     }
 }
 
-// 'add-coe'/'edit-coe' save — a COE request is exactly ONE block (the single flat
-// line-items table + its Supporting Documents, see bgr_addProjectBlock's coeMode branch):
+// 'add-coe'/'edit-coe' save — one or more Sub-Component blocks (see bgr_addCoeSubComponentBlock()),
+// each with its own line-items table, plus the request-level Supporting Documents section:
 // no Program/Sub-Program, no project_code/project_name/location, and it posts to the
 // dedicated COE endpoints instead of /add or /program/update.
 async function bgr_saveCoe(mode, id, fiscalYr) {
-    const block = document.querySelector('#bgr-blocks-wrap .bgr-block');
-    const rows  = block ? Array.from(block.querySelectorAll('.bgr-block-li-tbody tr')) : [];
-    if (!rows.length) { bgr_showErr('Add at least one line item.'); return; }
+    const blocks = Array.from(document.querySelectorAll('#bgr-coe-blocks-wrap .bgr-block'));
+    if (!blocks.length) { bgr_showErr('Add at least one Sub-Component block.'); return; }
+
+    // Type of Fund/Component are shared across every line item in this COE request (see
+    // #bgr-coe-root's own row). Sub-Component is NOT — each block below carries its own pick,
+    // applied to every line item nested under THAT block only.
+    const typeOfFundId = $bgr('bgr-coe-type-of-fund').value;
+    const componentId  = $bgr('bgr-coe-component').value;
+    if (!typeOfFundId) { bgr_showErr('Select a type of fund.'); return; }
 
     const lineItems = [];
-    for (let li = 0; li < rows.length; li++) {
-        const tr          = rows[li];
-        const accountId   = tr.querySelector('.bgr-li-account-id').value;
-        const particulars = tr.querySelector('.bgr-li-particulars').value.trim();
-        const amount      = bgr_unformatAmount(tr.querySelector('.bgr-li-amt').value);
-        if (!accountId) { bgr_showErr(`Line item ${li + 1}: select a chart of accounts entry.`); return; }
-        if (!particulars) { bgr_showErr(`Line item ${li + 1}: particulars is required.`); return; }
-        if (!amount) { bgr_showErr(`Line item ${li + 1}: proposed amount is required.`); return; }
-        lineItems.push({ account_id: accountId, particulars, proposed_amount: amount });
+    let liIndex = 0;
+    for (const block of blocks) {
+        const subComponentId = block.querySelector('.bgr-coe-subcomp-select').value;
+        for (const tr of block.querySelectorAll('.bgr-block-li-tbody tr')) {
+            liIndex++;
+            const accountId   = tr.querySelector('.bgr-li-account-id').value;
+            const particulars = tr.querySelector('.bgr-li-particulars').value.trim();
+            const amount      = bgr_unformatAmount(tr.querySelector('.bgr-li-amt').value);
+            if (!accountId) { bgr_showErr(`Line item ${liIndex}: select a chart of accounts entry.`); return; }
+            if (!particulars) { bgr_showErr(`Line item ${liIndex}: particulars is required.`); return; }
+            if (!amount) { bgr_showErr(`Line item ${liIndex}: proposed amount is required.`); return; }
+            lineItems.push({ account_id: accountId, type_of_fund_id: typeOfFundId, component_id: componentId, sub_component_id: subComponentId, particulars, proposed_amount: amount });
+        }
     }
+    if (!lineItems.length) { bgr_showErr('Add at least one line item.'); return; }
 
     const docFiles = [];
-    const supportingDocuments = bgr_getProjectDocPayload(block, docFiles);
+    const supportingDocuments = bgr_getProjectDocPayload($bgr('bgr-coe-docs'), docFiles);
 
     const body   = { fiscal_yr: fiscalYr, line_items: lineItems, supporting_documents: supportingDocuments };
     const url    = mode === 'edit-coe' ? `${BGR_API}/coe/update/${id}` : `${BGR_API}/add-coe`;
@@ -1608,9 +2160,15 @@ function bgr_updateLineItemTotal(blockEl) {
 function bgr_updateGrandTotal() {
     const display = $bgr('bgr-grand-total-display');
     if (!display) return;
-    const total = Array.from(document.querySelectorAll('#bgr-blocks-wrap .bgr-block-li-total-amt'))
+    // COE mode's per-project line-item totals (.bgr-block-li-total-amt, #bgr-coe-blocks-wrap's one
+    // block) and the regular flow's single Proposed Amount fields (.bgr-block-amount, summed across
+    // EVERY Program block's own Projects) never coexist in the same modal session — summing both,
+    // unscoped, is just a convenient way to cover either mode with one function.
+    const liTotal = Array.from(document.querySelectorAll('.bgr-block-li-total-amt'))
         .reduce((sum, cell) => sum + (parseFloat(bgr_unformatAmount(cell.textContent)) || 0), 0);
-    display.value = bgr_fmtAmountInitial(total) || '0.00';
+    const amtTotal = Array.from(document.querySelectorAll('.bgr-block-amount'))
+        .reduce((sum, input) => sum + (parseFloat(bgr_unformatAmount(input.value)) || 0), 0);
+    display.value = bgr_fmtAmountInitial(liTotal + amtTotal) || '0.00';
 }
 function bgr_fmtAmountInitial(v) {
     return (v || v === 0) && v !== '' ? Number(v).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',') : '';
