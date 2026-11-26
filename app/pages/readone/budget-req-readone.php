@@ -738,6 +738,9 @@ async function bgrv_openCobModal(fiscalYr = '', extraParams = {}, options = {}) 
         const query = new URLSearchParams();
         if (fiscalYr) query.set('fiscal_yr', fiscalYr);
         Object.entries(extraParams || {}).forEach(([k, v]) => { if (v !== '' && v != null) query.set(k, v); });
+        // View Proposal is the PROPOSAL: the projects added by approved Supplemental revisions (they were never proposed) are not in it — COB / RFA-LAA Monitoring show them.
+        // /budget_req/all leaves them in by default because the Budget Amendment form's line picker reads the same list.
+        query.set('exclude_supplemental', '1');
         const params = query.toString() ? `?${query}` : '';
         const res  = await fetch(`${BGR_API}/all${params}`, { credentials: 'same-origin' });
         const json = await res.json();

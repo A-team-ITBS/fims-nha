@@ -37,6 +37,14 @@ use PHPMaker2024\FIMS as App;
  * the two can never disagree. A client may also send `request_type` when it files / edits a request to say which one it means; it is
  * then held to it (a realignment needs its To line, a revision cannot have one — see typeError()).
  * (03 - alter_table/42 also dropped the legacy from_budget_req_id / to_budget_req_id columns.)
+ *
+ * A third kind, SUPPLEMENTAL (03 - alter_table/62, 01 - table/56): a NEW project, released by a DBM SARO and not in the approved COB, added under a
+ * Program / Sub-Program. It has no From / To budget line — what the user typed (the SARO, the program, the project's name and location, and its line items:
+ * account, particulars, amount) is kept on the request (the supp_* columns + fims.budget_revision_supplemental_item) while it is Saved / Submitted, with
+ * from_amount 0 and to_amount = the total of the items. Only APPROVING it changes the budget (approveSupplemental(), ONE transaction): the project is created
+ * (its code GENERATED for the user who filed the request), that user's office's Approved budget request of the SARO's fiscal year gets the project and one budget line per
+ * item (suggested_amount stays 0), and the ledger gets one SUPPLEMENTAL row per line — so the amount is the line's Revision Amount (the COB's Amendment /
+ * Realignment column) and NOT part of its Approved Amount.
  */
 class BudgetRevisionService
 {
@@ -67,6 +75,14 @@ class BudgetRevisionService
     private string $tableRc        = 'fims.responsibility_code';
     private string $tableStatus    = 'fims.settings_status';
     private string $tableUser      = 'uac.users';
+    // SUPPLEMENTAL requests
+    private string $tableItems      = 'fims.budget_revision_supplemental_item';
+    private string $tableSubProgram = 'fims.sub_program';
+    private string $tableFund       = 'fims.fund_tracking';
+    private string $tableFundType   = 'fims.fund_tracking_type';
+    private string $tableFiscalYear = 'fims.fiscal_year';
+
+    private const TYPE_SUPPLEMENTAL = 'SUPPLEMENTAL';
 
     // The JOINs that turn a revision's line id (rv.$col) into the line and everything shown with it, under the alias prefix $p:
     // {p}l the line, {p}b its budget request (+ {p}rc its office, {p}st its status), {p}bp its project (+ {p}bg its program row,
@@ -115,6 +131,9 @@ class BudgetRevisionService
                 LEFT JOIN {$this->tableStatus} rs ON rs.id = rv.status_id AND rs.status_for = " . App\QuotedValue(self::STATUS_FOR, App\DataType::STRING, 'DB') . "
                 " . $this->lineJoins('f', 'from_budget_line_item_id') . "
                 " . $this->lineJoins('t', 'to_budget_line_item_id') . "
+                LEFT JOIN {$this->tableProgram} spg ON spg.program_code = rv.supp_program_code
+                LEFT JOIN {$this->tableSubProgram} ssp ON ssp.sub_program_code = rv.supp_sub_program_code
+                LEFT JOIN {$this->tableFund} sft ON sft.id = rv.supp_fund_tracking_id
                 LEFT JOIN {$this->tableUser} us ON us.user_id = rv.user_id";
     }
 
@@ -130,6 +149,8 @@ class BudgetRevisionService
         return "SELECT rv.*,
                        " . $this->lineSelect('f', '') . ",
                        " . $this->lineSelect('t', 'to_') . ",
+                       spg.program_name AS supp_program_name, ssp.sub_program_name AS supp_sub_program_name,
+                       sft.saro_id AS supp_saro_no, sft.date AS supp_saro_date, sft.amount AS supp_saro_amount,
                        COALESCE(UPPER(rs.name), 'UNKNOWN') AS status, rs.name AS status_name, rs.color AS status_color,
                        us.username AS requested_by_username,
                        NULLIF(TRIM(CONCAT_WS(' ', us.first_name, us.last_name)), '') AS requested_by_name "
@@ -218,8 +239,11 @@ class BudgetRevisionService
         if ($type === 'REVISION' && $toId !== null) {
             return 'A revision cannot have a To budget line — file a realignment to move funds to another budget line.';
         }
+        if ($type === self::TYPE_SUPPLEMENTAL) {
+            return 'A supplemental request cannot be filed against a budget line — use a REVISION or REALIGNMENT for that.';
+        }
         if ($type !== 'REVISION' && $type !== 'REALIGNMENT') {
-            return 'request_type must be REVISION or REALIGNMENT.';
+            return 'request_type must be REVISION, REALIGNMENT or SUPPLEMENTAL.';
         }
 
         return null;
@@ -337,6 +361,14 @@ class BudgetRevisionService
                 . '"_assets/sql/01 - fims/01 - table/50 - fims_budget_line_item_revision_transaction.sql" and then '
                 . '"_assets/sql/01 - fims/03 - alter_table/52 - budget_line_item_revision_transaction_backfill.sql" (or node install_system.js --sql-only), then reload. '
                 . '(' . $message . ')';
+        } elseif (preg_match('/(supp_[a-z_]+|supplemental_revision_id|budget_revision_supplemental_item).{0,80}does not exist/is', $message)
+            || preg_match('/chk_budget_(revision_request_type|line_item_revision_transaction_type)/i', $message)) {
+            // the SUPPLEMENTAL request type's columns / table / check constraints (written by 01 - table/56, 03 - alter_table/62 and 63 — the tag on budget lines)
+            $message = 'Supplemental requests need a database update that has not been applied yet. Run '
+                . '"_assets/sql/01 - fims/01 - table/56 - fims_budget_revision_supplemental_item.sql", '
+                . '"_assets/sql/01 - fims/03 - alter_table/62 - budget_revision_add_supplemental.sql" and '
+                . '"_assets/sql/01 - fims/03 - alter_table/63 - budget_line_items_add_supplemental_revision_id.sql" on the database '
+                . '(or node install_system.js --sql-only), then try again. (' . $message . ')';
         } elseif (preg_match('/request_type.{0,80}does not exist/is', $message)) {
             $message = 'Budget revisions need a database update that has not been applied yet. Run '
                 . '"_assets/sql/01 - fims/03 - alter_table/42 - budget_revision_add_request_type_drop_legacy_req_ids.sql" on the database, then reload. '
@@ -358,7 +390,8 @@ class BudgetRevisionService
             $where = ['rv.deleted_at IS NULL'];
 
             if ($fiscalYr !== '') {
-                $where[] = 'fb.fiscal_yr = ' . (int) $fiscalYr;
+                // a supplemental request has no budget line: its fiscal year is the SARO's (supp_fiscal_yr)
+                $where[] = 'COALESCE(fb.fiscal_yr, rv.supp_fiscal_yr) = ' . (int) $fiscalYr;
             }
             if (trim($budgetReference) !== '') {
                 // a revision touches both of its lines, so it belongs to either one's budget request
@@ -413,6 +446,10 @@ class BudgetRevisionService
             if (!$data) {
                 return ['success' => false, 'message' => "Budget revision request #{$id} not found."];
             }
+            // a supplemental request carries its line items
+            if ($this->isSupplemental($data)) {
+                $data['items'] = $this->supplementalItems($id);
+            }
 
             return ['success' => true, 'data' => $data];
         } catch (\Exception $e) {
@@ -425,6 +462,11 @@ class BudgetRevisionService
         try {
             // The filing user is whoever is logged in (from the session / JWT), never the request body.
             $userId = App\CurrentUserID();
+
+            // a SUPPLEMENTAL request is a NEW project, not a change to a budget line: it has its own fields and checks
+            if (strtoupper(trim((string) ($body['request_type'] ?? ''))) === self::TYPE_SUPPLEMENTAL) {
+                return $this->createSupplemental($body, $userId);
+            }
 
             $fromId     = $this->parseId($body['from_budget_line_item_id'] ?? null);
             $fromAmount = $body['from_amount'] ?? '';
@@ -511,6 +553,15 @@ class BudgetRevisionService
                 $current = strtolower((string) ($check['data']['status'] ?? ''));
 
                 return ['success' => false, 'message' => "Budget revision request #{$id} is {$current} and can no longer be edited — only a saved request can be."];
+            }
+
+            // a supplemental request is edited as a whole (SARO, program, project, line items) — see updateSupplemental()
+            if ($this->isSupplemental($check['data'])) {
+                return $this->updateSupplemental((int) $id, $body);
+            }
+            $requested = strtoupper(trim((string) ($body['request_type'] ?? '')));
+            if ($requested === self::TYPE_SUPPLEMENTAL) {
+                return ['success' => false, 'message' => "Request #{$id} is not a supplemental request, so it cannot be changed into one — file a new supplemental request."];
             }
 
             $setParts = [];
@@ -631,20 +682,28 @@ class BudgetRevisionService
                 return ['success' => false, 'message' => "Only saved requests can be processed — request #{$id} is already {$current}."];
             }
 
-            $fromId = $row['from_budget_line_item_id'] === null ? null : (int) $row['from_budget_line_item_id'];
-            $toId   = $row['to_budget_line_item_id'] === null ? null : (int) $row['to_budget_line_item_id'];
-            if ($fromId === null || !$this->lineExists($fromId)) {
-                return ['success' => false, 'message' => "The From budget line for request #{$id} is missing — edit the request and pick it, then process it."];
-            }
-            if ($toId !== null) {
-                $error = $this->transferError($fromId, $toId, $row['from_amount'], $row['to_amount']);
+            if ($this->isSupplemental($row)) {
+                // no budget lines to check: the same checks as when it was filed, against the SARO / program / accounts as they are NOW
+                $ctx = $this->checkSupplemental($this->supplementalFromRow($row, $this->supplementalItems((int) $id)), (int) $id);
+                if (isset($ctx['error'])) {
+                    return ['success' => false, 'message' => $ctx['error']];
+                }
+            } else {
+                $fromId = $row['from_budget_line_item_id'] === null ? null : (int) $row['from_budget_line_item_id'];
+                $toId   = $row['to_budget_line_item_id'] === null ? null : (int) $row['to_budget_line_item_id'];
+                if ($fromId === null || !$this->lineExists($fromId)) {
+                    return ['success' => false, 'message' => "The From budget line for request #{$id} is missing — edit the request and pick it, then process it."];
+                }
+                if ($toId !== null) {
+                    $error = $this->transferError($fromId, $toId, $row['from_amount'], $row['to_amount']);
+                    if ($error !== null) {
+                        return ['success' => false, 'message' => $error];
+                    }
+                }
+                $error = $this->fromBalanceError($fromId, $row['to_amount']);
                 if ($error !== null) {
                     return ['success' => false, 'message' => $error];
                 }
-            }
-            $error = $this->fromBalanceError($fromId, $row['to_amount']);
-            if ($error !== null) {
-                return ['success' => false, 'message' => $error];
             }
 
             $affected = App\Execute(
@@ -704,7 +763,9 @@ class BudgetRevisionService
             }
 
             if ($target === self::STATUS_APPROVED) {
-                return $this->approve((int) $id, $check['data']);
+                return $this->isSupplemental($check['data'])
+                    ? $this->approveSupplemental((int) $id, $check['data'])
+                    : $this->approve((int) $id, $check['data']);
             }
 
             // DECLINED — only the status changes; the budget lines are left alone.
@@ -971,6 +1032,569 @@ class BudgetRevisionService
             return $count;
         } catch (\Throwable $e) {
             App\LogError("BudgetRevisionService: could not notify for revision #{$id} — " . $e->getMessage());
+
+            return 0;
+        }
+    }
+
+    /* ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+       SUPPLEMENTAL requests — a NEW project released by a SARO (see the class comment).
+       Filing / editing / processing only keep and check what the user typed; approveSupplemental() is what changes the budget.
+       ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════ */
+
+    private function isSupplemental(array $row): bool
+    {
+        return strtoupper((string) ($row['request_type'] ?? '')) === self::TYPE_SUPPLEMENTAL;
+    }
+
+    // Free text (project name, location, particulars) is quoted through the connection itself: App\QuotedValue() turns line breaks and backslashes
+    // into literal "\n" / "\\" text (see reasonSql()).
+    private function q(string $text): string
+    {
+        return App\Conn('DB')->quote($text);
+    }
+
+    private function money(float $value): string
+    {
+        return number_format($value, 2, '.', '');
+    }
+
+    // The line items of a supplemental request, in the order they were entered.
+    private function supplementalItems(int $id): array
+    {
+        return App\ExecuteRows(
+            "SELECT i.item_id, i.account_id, coa.account_code, coa.account_title, i.particulars, i.amount, i.budget_line_item_id
+               FROM {$this->tableItems} i
+               LEFT JOIN {$this->tableAccounts} coa ON coa.account_id = i.account_id
+              WHERE i.budget_revision_id = " . (int) $id . '
+              ORDER BY i.item_id',
+            'DB'
+        ) ?: [];
+    }
+
+    /**
+     * What a supplemental request is filed / edited with, read from the request body and cleaned up:
+     *   fund_tracking_id (the SARO), program_code, sub_program_code (optional), project_name, location (optional),
+     *   items[] = { account_id, particulars, amount }.
+     * Shape only — nothing is looked up here (checkSupplemental() does that). The project code is never part of it: it is generated on approval.
+     *
+     * @return array{error?: string, data?: array}
+     */
+    private function supplementalPayload(array $body): array
+    {
+        $fundId = $this->parseId($body['fund_tracking_id'] ?? null);
+        if ($fundId === null || $fundId === false) {
+            return ['error' => 'fund_tracking_id is required — pick the SARO the project was released under.'];
+        }
+        $program  = trim((string) ($body['program_code'] ?? ''));
+        $sub      = trim((string) ($body['sub_program_code'] ?? ''));
+        $name     = trim((string) ($body['project_name'] ?? ''));
+        $location = trim((string) ($body['location'] ?? ''));
+        if ($program === '') {
+            return ['error' => 'program_code is required.'];
+        }
+        if ($name === '') {
+            return ['error' => 'project_name is required — enter the name of the new project.'];
+        }
+        if (mb_strlen($name) > 255 || mb_strlen($location) > 255) {
+            return ['error' => 'The project name and the location can each be at most 255 characters.'];
+        }
+
+        $rawItems = $body['items'] ?? null;
+        if (!is_array($rawItems) || !$rawItems) {
+            return ['error' => 'Add at least one line item.'];
+        }
+        $items = [];
+        $total = 0.0;
+        foreach (array_values($rawItems) as $i => $it) {
+            $n      = $i + 1;
+            $it     = is_array($it) ? $it : [];
+            $acct   = trim((string) ($it['account_id'] ?? ''));
+            $part   = trim((string) ($it['particulars'] ?? ''));
+            $amount = $it['amount'] ?? '';
+            if ($acct === '') {
+                return ['error' => "Line item {$n}: select a chart of accounts entry."];
+            }
+            if ($part === '') {
+                return ['error' => "Line item {$n}: particulars is required."];
+            }
+            if (!is_numeric($amount) || round((float) $amount, 2) <= 0) {
+                return ['error' => "Line item {$n}: the amount must be more than zero."];
+            }
+            $amount = round((float) $amount, 2);
+            if ($amount >= self::MAX_LINE_AMOUNT) {
+                return ['error' => "Line item {$n}: the amount is too large for a budget line (maximum 9,999,999,999,999.99)."];
+            }
+            $items[] = ['account_id' => $acct, 'particulars' => $part, 'amount' => $amount];
+            $total  += $amount;
+        }
+        $total = round($total, 2);
+        if ($total >= self::MAX_LINE_AMOUNT) {
+            return ['error' => 'The total of the line items is too large (maximum 9,999,999,999,999.99).'];
+        }
+
+        return ['data' => [
+            'fund_tracking_id' => (int) $fundId,
+            'program_code'     => $program,
+            'sub_program_code' => $sub,
+            'project_name'     => $name,
+            'location'         => $location,
+            'items'            => $items,
+            'total'            => $total,
+        ]];
+    }
+
+    // The same shape as supplementalPayload()['data'], read back from a stored request and its items (to re-check it when it is processed / approved).
+    private function supplementalFromRow(array $row, array $items): array
+    {
+        $list = array_map(static fn (array $it): array => [
+            'account_id'  => (string) ($it['account_id'] ?? ''),
+            'particulars' => (string) ($it['particulars'] ?? ''),
+            'amount'      => round((float) ($it['amount'] ?? 0), 2),
+        ], $items);
+
+        return [
+            'fund_tracking_id' => (int) ($row['supp_fund_tracking_id'] ?? 0),
+            'program_code'     => trim((string) ($row['supp_program_code'] ?? '')),
+            'sub_program_code' => trim((string) ($row['supp_sub_program_code'] ?? '')),
+            'project_name'     => trim((string) ($row['supp_project_name'] ?? '')),
+            'location'         => trim((string) ($row['supp_location'] ?? '')),
+            'items'            => $list,
+            'total'            => round(array_sum(array_column($list, 'amount')), 2),
+        ];
+    }
+
+    /**
+     * Checks a supplemental request against the database: the SARO exists, is a SARO and has a fiscal year that is set up; the program and the
+     * (optional) sub-program exist and belong together; every account is an Active postable chart-of-accounts entry; and the project does not take more of the
+     * SARO than it has left (what the SARO's other supplemental requests — not declined, not deleted — already use comes off its amount; a SARO with no
+     * amount is not capped). $exceptId is the request itself, left out of that sum when it is being edited / processed / approved.
+     *
+     * @return array{error?: string, fiscal_yr?: int, saro?: array} fiscal_yr is the SARO's — the fiscal year of the budget the project is added to
+     */
+    private function checkSupplemental(array $d, ?int $exceptId): array
+    {
+        $fundId = (int) $d['fund_tracking_id'];
+        if ($fundId <= 0 || $d['program_code'] === '' || $d['project_name'] === '' || !$d['items']) {
+            return ['error' => 'This supplemental request is incomplete — fill in the SARO, the program, the project and its line items.'];
+        }
+
+        $saro = App\ExecuteRow(
+            "SELECT ft.id, ft.saro_id, ft.fiscal_year, ft.amount, t.fund_tracking_code
+               FROM {$this->tableFund} ft
+               LEFT JOIN {$this->tableFundType} t ON t.fund_tracking_type_id = ft.tracking_type_id
+              WHERE ft.id = {$fundId} AND ft.deleted_at IS NULL",
+            'DB'
+        );
+        if (!$saro) {
+            return ['error' => "The SARO (fund tracking record #{$fundId}) does not exist."];
+        }
+        if (strtoupper(trim((string) ($saro['fund_tracking_code'] ?? ''))) !== 'SARO') {
+            return ['error' => 'The record picked is not a SARO.'];
+        }
+        $fy = (int) ($saro['fiscal_year'] ?? 0);
+        if ($fy <= 0) {
+            return ['error' => 'The SARO has no fiscal year, so the budget the project belongs to cannot be worked out. Set it on the SARO first.'];
+        }
+        if ((int) App\ExecuteScalar("SELECT COUNT(*) FROM {$this->tableFiscalYear} WHERE fiscal_yr = {$fy}", 'DB') === 0) {
+            return ['error' => "Fiscal year {$fy} (the SARO's) is not set up in the system."];
+        }
+
+        $program = App\QuotedValue($d['program_code'], App\DataType::STRING, 'DB');
+        if ((int) App\ExecuteScalar("SELECT COUNT(*) FROM {$this->tableProgram} WHERE program_code = {$program}", 'DB') === 0) {
+            return ['error' => "Program '{$d['program_code']}' does not exist."];
+        }
+        if ($d['sub_program_code'] !== '') {
+            $sp = App\ExecuteRow(
+                "SELECT program_code FROM {$this->tableSubProgram} WHERE sub_program_code = " . App\QuotedValue($d['sub_program_code'], App\DataType::STRING, 'DB'),
+                'DB'
+            );
+            if (!$sp) {
+                return ['error' => "Sub-program '{$d['sub_program_code']}' does not exist."];
+            }
+            if ((string) $sp['program_code'] !== $d['program_code']) {
+                return ['error' => "Sub-program '{$d['sub_program_code']}' does not belong to program '{$d['program_code']}'."];
+            }
+        }
+
+        $accountIds = array_values(array_unique(array_column($d['items'], 'account_id')));
+        $quoted     = implode(', ', array_map(static fn (string $a): string => App\QuotedValue($a, App\DataType::STRING, 'DB'), $accountIds));
+        $found      = array_column(App\ExecuteRows(
+            "SELECT account_id FROM {$this->tableAccounts} WHERE account_id IN ({$quoted}) AND status = 'Active' AND posting_allowed = TRUE",
+            'DB'
+        ) ?: [], 'account_id');
+        $missing = array_values(array_diff($accountIds, array_map('strval', $found)));
+        if ($missing) {
+            return ['error' => "Chart of accounts entry '{$missing[0]}' does not exist or is not postable."];
+        }
+
+        $saroAmount = round((float) ($saro['amount'] ?? 0), 2);
+        if ($saroAmount > 0) {
+            $declinedId = $this->statusId(self::STATUS_DECLINED);
+            $used = round((float) App\ExecuteScalar(
+                "SELECT COALESCE(SUM(to_amount), 0) FROM {$this->table}
+                  WHERE request_type = 'SUPPLEMENTAL' AND deleted_at IS NULL AND supp_fund_tracking_id = {$fundId}"
+                . ($exceptId !== null ? " AND id <> {$exceptId}" : '')
+                . ($declinedId !== null ? " AND status_id <> {$declinedId}" : ''),
+                'DB'
+            ), 2);
+            if ($used + $d['total'] > $saroAmount + 0.004) {
+                $left = max(0.0, round($saroAmount - $used, 2));
+
+                return ['error' => 'SARO ' . trim((string) ($saro['saro_id'] ?? '')) . ' is ₱' . number_format($saroAmount, 2) . ' and ₱' . number_format($used, 2)
+                    . ' of it is already used by other supplemental requests, so at most ₱' . number_format($left, 2)
+                    . ' is left for this one (its line items total ₱' . number_format($d['total'], 2) . ').'];
+            }
+        }
+
+        return ['fiscal_yr' => $fy, 'saro' => $saro];
+    }
+
+    // Writes a supplemental request's line items (the request's own row is already there). Inside the caller's transaction.
+    private function insertSupplementalItems(int $id, array $items): void
+    {
+        $values = [];
+        foreach ($items as $it) {
+            $values[] = "({$id}, " . App\QuotedValue($it['account_id'], App\DataType::STRING, 'DB') . ', ' . $this->q($it['particulars']) . ', ' . $this->money($it['amount']) . ')';
+        }
+        App\Execute("INSERT INTO {$this->tableItems} (budget_revision_id, account_id, particulars, amount) VALUES " . implode(', ', $values), 'DB');
+    }
+
+    // The columns a supplemental request is stored with, as an assignment list for an UPDATE (or, in create(), the same values in column order).
+    private function supplementalSetSql(array $d, int $fiscalYr): string
+    {
+        return 'from_amount = 0, to_amount = ' . $this->money($d['total']) . ', '
+            . "supp_fiscal_yr = {$fiscalYr}, supp_fund_tracking_id = {$d['fund_tracking_id']}, "
+            . 'supp_program_code = ' . $this->q($d['program_code']) . ', '
+            . 'supp_sub_program_code = ' . ($d['sub_program_code'] === '' ? 'NULL' : $this->q($d['sub_program_code'])) . ', '
+            . 'supp_project_name = ' . $this->q($d['project_name']) . ', '
+            . 'supp_location = ' . ($d['location'] === '' ? 'NULL' : $this->q($d['location']));
+    }
+
+    private function createSupplemental(array $body, mixed $userId): array
+    {
+        if (!is_numeric($userId) || (int) $userId === 0) {
+            return ['success' => false, 'message' => 'Unable to determine the current user.'];
+        }
+        $payload = $this->supplementalPayload($body);
+        if (isset($payload['error'])) {
+            return ['success' => false, 'message' => $payload['error']];
+        }
+        $d   = $payload['data'];
+        $ctx = $this->checkSupplemental($d, null);
+        if (isset($ctx['error'])) {
+            return ['success' => false, 'message' => $ctx['error']];
+        }
+        $savedId = $this->statusId(self::STATUS_SAVED);
+        if ($savedId === null) {
+            return $this->missingStatus(self::STATUS_SAVED);
+        }
+
+        $started = false;
+        try {
+            App\Execute('BEGIN', 'DB');
+            $started = true;
+            $row = App\ExecuteRow(
+                "INSERT INTO {$this->table} (request_type, from_amount, to_amount, reason, user_id, status_id,
+                                              supp_fiscal_yr, supp_fund_tracking_id, supp_program_code, supp_sub_program_code, supp_project_name, supp_location)
+                 VALUES ('SUPPLEMENTAL', 0, " . $this->money($d['total']) . ', ' . $this->reasonSql($body) . ', ' . (int) $userId . ", {$savedId}, "
+                    . (int) $ctx['fiscal_yr'] . ", {$d['fund_tracking_id']}, " . $this->q($d['program_code']) . ', '
+                    . ($d['sub_program_code'] === '' ? 'NULL' : $this->q($d['sub_program_code'])) . ', ' . $this->q($d['project_name']) . ', '
+                    . ($d['location'] === '' ? 'NULL' : $this->q($d['location'])) . ')
+                 RETURNING id',
+                'DB'
+            );
+            $newId = (int) ($row['id'] ?? 0);
+            $this->insertSupplementalItems($newId, $d['items']);
+            App\Execute('COMMIT', 'DB');
+            $started = false;
+
+            return [
+                'success' => true,
+                'message' => 'Supplemental request saved. Choose Process to submit it for review.',
+                'id'      => $newId,
+                'status'  => 'SAVED',
+            ];
+        } catch (\Throwable $e) {
+            if ($started) {
+                try {
+                    App\Execute('ROLLBACK', 'DB');
+                } catch (\Throwable $ignored) {
+                }
+            }
+
+            return $this->failure($e);
+        }
+    }
+
+    // Edit a SAVED supplemental request: the whole request is sent again (SARO, program, project, items); its line items are replaced. update() has
+    // already checked that it is Saved.
+    private function updateSupplemental(int $id, array $body): array
+    {
+        $payload = $this->supplementalPayload($body);
+        if (isset($payload['error'])) {
+            return ['success' => false, 'message' => $payload['error']];
+        }
+        $d   = $payload['data'];
+        $ctx = $this->checkSupplemental($d, $id);
+        if (isset($ctx['error'])) {
+            return ['success' => false, 'message' => $ctx['error']];
+        }
+        $savedId = $this->statusId(self::STATUS_SAVED);
+        if ($savedId === null) {
+            return $this->missingStatus(self::STATUS_SAVED);
+        }
+
+        $set = $this->supplementalSetSql($d, (int) $ctx['fiscal_yr']);
+        if (array_key_exists('reason', $body)) {
+            $set .= ', reason = ' . $this->reasonSql($body);   // the reason can be cleared, so it is applied whenever the key is sent
+        }
+
+        $started = false;
+        try {
+            App\Execute('BEGIN', 'DB');
+            $started  = true;
+            $affected = App\Execute(
+                "UPDATE {$this->table} SET {$set}, update_at = NOW() WHERE id = {$id} AND deleted_at IS NULL AND status_id = {$savedId}",
+                'DB'
+            );
+            if (!$affected) {
+                App\Execute('ROLLBACK', 'DB');
+                $started = false;
+
+                return ['success' => false, 'message' => "Request #{$id} was processed or changed by someone else, so it can no longer be edited."];
+            }
+            App\Execute("DELETE FROM {$this->tableItems} WHERE budget_revision_id = {$id}", 'DB');
+            $this->insertSupplementalItems($id, $d['items']);
+            App\Execute('COMMIT', 'DB');
+            $started = false;
+
+            return ['success' => true, 'message' => 'Supplemental request updated successfully.'];
+        } catch (\Throwable $e) {
+            if ($started) {
+                try {
+                    App\Execute('ROLLBACK', 'DB');
+                } catch (\Throwable $ignored) {
+                }
+            }
+
+            return $this->failure($e);
+        }
+    }
+
+    // Approve a SUBMITTED supplemental request = record the decision AND add the project to the budget, in ONE transaction (everything happens or nothing does):
+    //   1. the request becomes Approved (guarded: only a Submitted one — a second approval, or a decline made meanwhile, finds no row);
+    //   2. the budget request (fims.budget_req) of the SARO's fiscal year for the office of the user who FILED the request — it must be Approved for the COB to show
+    //      the project; one that does not exist yet is created, already Approved (this approval is its approval);
+    //   3. its program row (reused when that program / sub-program is already in it), then the project: a project of that name under the program is reused, otherwise a NEW
+    //      one is created with a GENERATED code (GlobalService::generateProjectCode(), for the filing user's office) — the form never shows or asks for it — and its row in the request;
+    //   4. one budget line per item (fims.budget_line_items: proposed_amount = the amount, suggested_amount left at 0 — nothing is "approved") and one ledger row per line
+    //      (transaction_type SUPPLEMENTAL, previous 0, amount, new = amount). The ledger's triggers then set the line's adjustment, so the amount is its Revision Amount
+    //      (the COB's Amendment / Realignment column) while its Approved Amount stays 0;
+    //   5. the generated project code is written back on the request.
+    private function approveSupplemental(int $id, array $rev): array
+    {
+        $submittedId = $this->statusId(self::STATUS_SUBMITTED);
+        $approvedId  = $this->statusId(self::STATUS_APPROVED);
+        if ($submittedId === null) {
+            return $this->missingStatus(self::STATUS_SUBMITTED);
+        }
+        if ($approvedId === null) {
+            return $this->missingStatus(self::STATUS_APPROVED);
+        }
+
+        // the same checks as when it was filed, against the SARO / program / accounts as they are NOW
+        $d   = $this->supplementalFromRow($rev, $this->supplementalItems($id));
+        $ctx = $this->checkSupplemental($d, $id);
+        if (isset($ctx['error'])) {
+            return ['success' => false, 'message' => "Request #{$id} cannot be approved. " . $ctx['error']];
+        }
+        $fiscalYr = (int) $ctx['fiscal_yr'];
+
+        // whose budget it goes into: the office of the user who filed the request
+        $filerId = (int) ($rev['user_id'] ?? 0);
+        $rcId    = trim((string) App\ExecuteScalar("SELECT rc_id FROM {$this->tableUser} WHERE user_id = {$filerId}", 'DB'));
+        if ($rcId === '') {
+            return ['success' => false, 'message' => "Request #{$id} cannot be approved: the user who filed it has no office (uac.users.rc_id), so there is no office budget request to add the project to."];
+        }
+        $budgetApprovedId = App\ExecuteScalar(
+            "SELECT id FROM {$this->tableStatus} WHERE status_for = 'budget_req' AND LOWER(name) = 'approved' ORDER BY id LIMIT 1",
+            'DB'
+        );
+        if (!$budgetApprovedId) {
+            return ['success' => false, 'message' => 'The "Approved" status of budget requests is not set up in the database, so the project cannot be added to a budget request.'];
+        }
+
+        $ledger  = BudgetLineBalanceSql::REVISION_LEDGER_TABLE;
+        $byUser  = (int) App\CurrentUserID();
+        $str     = static fn (string $v): string => App\QuotedValue($v, App\DataType::STRING, 'DB');
+        $started = false;
+        try {
+            App\Execute('BEGIN', 'DB');
+            $started = true;
+
+            // 1 · the decision
+            $decided = App\ExecuteRow(
+                "UPDATE {$this->table} SET status_id = {$approvedId}, update_at = NOW()
+                  WHERE id = {$id} AND deleted_at IS NULL AND status_id = {$submittedId} AND request_type = 'SUPPLEMENTAL'
+                  RETURNING id",
+                'DB'
+            );
+            if (!$decided) {
+                App\Execute('ROLLBACK', 'DB');
+                $started = false;
+
+                return ['success' => false, 'message' => "Request #{$id} was already reviewed by someone else."];
+            }
+
+            // 2 · the office's budget request of that fiscal year (one per fiscal year and office)
+            $createdHeader = false;
+            $header        = App\ExecuteRow(
+                "SELECT b.budget_reference_number, st.name AS status_name FROM {$this->tableReq} b
+                   LEFT JOIN {$this->tableStatus} st ON st.id = b.status_id
+                  WHERE b.fiscal_yr = {$fiscalYr} AND b.rc_id = " . $str($rcId),
+                'DB'
+            );
+            if ($header) {
+                $ref = (string) $header['budget_reference_number'];
+                if (strtolower(trim((string) ($header['status_name'] ?? ''))) !== 'approved') {
+                    throw new \RuntimeException("The office's budget request for fiscal year {$fiscalYr} ({$ref}) is '" . trim((string) ($header['status_name'] ?? 'not approved'))
+                        . "', not Approved, so the project cannot be added to it yet — the COB only shows approved budget requests. Approve that budget request first (or decline this request and file it again later).");
+                }
+            } else {
+                $ref = GlobalService::generateBudgetReferenceNumber();   // inside the open transaction, right before the INSERT that uses it
+                $row = App\ExecuteRow(
+                    "INSERT INTO {$this->tableReq} (budget_reference_number, fiscal_yr, status_id, rc_id, submitted_at)
+                     VALUES (" . $str($ref) . ", {$fiscalYr}, " . (int) $budgetApprovedId . ', ' . $str($rcId) . ', NOW())
+                     RETURNING budget_reference_number',
+                    'DB'
+                );
+                $ref           = (string) $row['budget_reference_number'];
+                $createdHeader = true;
+            }
+            $refSql = $str($ref);
+
+            // 3 · its program row, the project and the project's row in the request
+            $progSql = $str($d['program_code']);
+            $subSql  = $d['sub_program_code'] === '' ? 'NULL' : $str($d['sub_program_code']);
+            $prog    = App\ExecuteRow(
+                "SELECT budget_req_program_id FROM {$this->tableReqProg}
+                  WHERE budget_reference_number = {$refSql} AND program_code = {$progSql} AND sub_program_code IS NOT DISTINCT FROM {$subSql}
+                  ORDER BY budget_req_program_id LIMIT 1",
+                'DB'
+            );
+            if (!$prog) {
+                $prog = App\ExecuteRow(
+                    "INSERT INTO {$this->tableReqProg} (budget_reference_number, program_code, sub_program_code) VALUES ({$refSql}, {$progSql}, {$subSql}) RETURNING budget_req_program_id",
+                    'DB'
+                );
+            }
+            $programRowId = (int) $prog['budget_req_program_id'];
+
+            $createdProject = false;
+            $existing       = App\ExecuteRow(
+                "SELECT project_code FROM {$this->tableProject} WHERE program_code = {$progSql} AND LOWER(project_name) = LOWER(" . $this->q($d['project_name']) . ')',
+                'DB'
+            );
+            if ($existing) {
+                $projectCode = (string) $existing['project_code'];
+            } else {
+                // the code is generated for the user who FILED the request (its office segment), not for whoever approves it
+                $projectCode = GlobalService::generateProjectCode($d['program_code'], $d['sub_program_code'], $filerId, $fiscalYr);
+                App\Execute(
+                    "INSERT INTO {$this->tableProject} (project_code, project_name, program_code, sub_program_code, rc_id)
+                     VALUES (" . $str($projectCode) . ', ' . $this->q($d['project_name']) . ", {$progSql}, {$subSql}, " . $str($rcId) . ')',
+                    'DB'
+                );
+                $createdProject = true;
+            }
+            $codeSql = $str($projectCode);
+
+            $pj = App\ExecuteRow(
+                "SELECT budget_req_project_id FROM {$this->tableReqProj}
+                  WHERE budget_reference_number = {$refSql} AND budget_req_program_id = {$programRowId} AND project_code = {$codeSql}
+                  ORDER BY budget_req_project_id LIMIT 1",
+                'DB'
+            );
+            if (!$pj) {
+                $pj = App\ExecuteRow(
+                    "INSERT INTO {$this->tableReqProj} (budget_reference_number, budget_req_program_id, project_code, location)
+                     VALUES ({$refSql}, {$programRowId}, {$codeSql}, " . ($d['location'] === '' ? 'NULL' : $this->q($d['location'])) . ')
+                     RETURNING budget_req_project_id',
+                    'DB'
+                );
+            }
+            $projectRowId = (int) $pj['budget_req_project_id'];
+
+            // 4 · a budget line and a ledger row per item
+            $lineIds = [];
+            foreach ($this->supplementalItems($id) as $it) {
+                $amount = $this->money((float) $it['amount']);
+                // supplemental_revision_id is the TAG (03 - alter_table/63): the Budget Requirements (proposal) screens leave tagged lines out, COB / RFA-LAA Monitoring show them
+                $line   = App\ExecuteRow(
+                    "INSERT INTO {$this->tableLines} (budget_reference_number, budget_req_project_id, account_id, proposed_amount, particulars, supplemental_revision_id)
+                     VALUES ({$refSql}, {$projectRowId}, " . $str((string) $it['account_id']) . ", {$amount}, " . $this->q((string) $it['particulars']) . ", {$id})
+                     RETURNING budget_line_item_id",
+                    'DB'
+                );
+                $lineId = (int) $line['budget_line_item_id'];
+                App\Execute(
+                    "INSERT INTO {$ledger} (budget_revision_id, budget_line_item_id, transaction_type, previous_amount, amount, new_amount, created_by)
+                     VALUES ({$id}, {$lineId}, 'SUPPLEMENTAL', 0, {$amount}, {$amount}, {$byUser})",
+                    'DB'
+                );
+                App\Execute("UPDATE {$this->tableItems} SET budget_line_item_id = {$lineId} WHERE item_id = " . (int) $it['item_id'], 'DB');
+                $lineIds[] = $lineId;
+            }
+
+            // 5 · the generated project code, on the request
+            App\Execute("UPDATE {$this->table} SET supp_project_code = {$codeSql}, update_at = NOW() WHERE id = {$id}", 'DB');
+
+            App\Execute('COMMIT', 'DB');
+            $started = false;
+        } catch (\Throwable $e) {
+            if ($started) {
+                try {
+                    App\Execute('ROLLBACK', 'DB');
+                } catch (\Throwable $ignored) {
+                }
+            }
+            App\LogError("BudgetRevisionService: could not approve supplemental request #{$id} — " . $e->getMessage());
+
+            return $this->failure($e);
+        }
+
+        return [
+            'success'                 => true,
+            'message'                 => "Supplemental request #{$id} approved: project {$projectCode} (" . $d['project_name'] . ') was '
+                . ($createdProject ? 'created' : 'found') . ' and ₱' . number_format($d['total'], 2) . ' was added to FY ' . $fiscalYr . ' as an Amendment.',
+            'status'                  => 'APPROVED',
+            'project_code'            => $projectCode,
+            'project_created'         => $createdProject,
+            'budget_reference_number' => $ref,
+            'budget_created'          => $createdHeader,
+            'budget_line_item_ids'    => $lineIds,
+            'amount'                  => $d['total'],
+            // the approval is committed: tell the filing office (can never fail it)
+            'notified'                => $this->notifySupplementalApproved($id, $rcId, $fiscalYr, $projectCode, $d['project_name'], $d['total']),
+        ];
+    }
+
+    // The office that filed a supplemental request is told it was approved: its users (uac.users.rc_id), once each, never the reviewer. Never throws; returns how many were notified.
+    private function notifySupplementalApproved(int $id, string $rcId, int $fiscalYr, string $projectCode, string $projectName, float $total): int
+    {
+        try {
+            $sender = (int) App\CurrentUserID();
+
+            return NotificationService::toRc(
+                $rcId,
+                'Supplemental budget approved',
+                "Request #{$id}: the project \"{$projectName}\" ({$projectCode}) was added to your FY {$fiscalYr} budget — ₱" . number_format($total, 2) . ' as an Amendment.',
+                $this->budgetReqPageLink($fiscalYr),
+                ['sender_id' => $sender > 0 ? $sender : null, 'event_key' => "budget_revision_approved:{$id}:{$rcId}"]
+            );
+        } catch (\Throwable $e) {
+            App\LogError("BudgetRevisionService: could not notify for supplemental request #{$id} — " . $e->getMessage());
 
             return 0;
         }

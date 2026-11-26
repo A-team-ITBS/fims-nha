@@ -79,6 +79,15 @@ namespace PHPMaker2024\FIMS;
 }
 .nha-root .brv-v-actions .brv-v-decline:hover:not([disabled]) { background: var(--red-bg, #FAE1E3); opacity: 1; }
 
+/* a Supplemental request's line items */
+.nha-root #brv-view-supp[hidden], .nha-root #brv-view-std[hidden] { display: none; }
+.nha-root .brv-v-lit { overflow-x: auto; background: var(--afims-surface, #FFFFFF); border: 1px solid var(--bdr, #E4ECF2); border-radius: var(--rs, 7px); }
+.nha-root .brv-v-tbl { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.nha-root .brv-v-tbl th { padding: 7px 10px; text-align: left; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--sec, #62657E); background: var(--surf, #F4F7FA); border-bottom: 1px solid var(--bdr, #E4ECF2); }
+.nha-root .brv-v-tbl td { padding: 7px 10px; vertical-align: top; border-bottom: 1px solid var(--bdr, #E4ECF2); overflow-wrap: anywhere; }
+.nha-root .brv-v-tbl tfoot td { font-weight: 700; border-bottom: 0; background: var(--surf, #F4F7FA); }
+.nha-root .brv-v-tbl .brv-v-num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+
 @media (max-width: 520px) {
     .nha-root .brv-v-grid { grid-template-columns: 1fr; }
     .nha-root .brv-v-foot #brv-view-cancel { margin-right: 0; order: 2; flex: 1 1 100%; justify-content: center; }
@@ -99,6 +108,10 @@ namespace PHPMaker2024\FIMS;
         </div>
         <div class="nha-modal-body">
             <input type="hidden" id="brv-view-id" value="">
+
+            <!-- Amendment / Realignment: the From and To budget lines and the amounts. A Supplemental request has no budget line, so brv_openView() hides this block for it
+                 and shows #brv-view-supp below instead. -->
+            <div id="brv-view-std">
 
             <!-- the From budget line (from_budget_line_item_id): the line being revised -->
             <div class="brv-v-label">From Budget Line</div>
@@ -132,6 +145,39 @@ namespace PHPMaker2024\FIMS;
             </div>
             <!-- what approving does to the two budget lines (only while a To line is set) -->
             <div class="brv-v-effect" id="brv-view-effect" hidden></div>
+
+            </div><!-- /#brv-view-std -->
+
+            <!-- SUPPLEMENTAL: a NEW project released by a SARO. Nothing exists yet but this request — the project, its budget lines and the Amendment amount are created when it is approved. -->
+            <div id="brv-view-supp" hidden>
+                <div class="brv-v-label">Project</div>
+                <div class="brv-v-card is-to">
+                    <div class="brv-v-card-top">
+                        <span class="nha-bdg nha-bdg-amber">New project</span>
+                        <strong id="brv-view-sp-project"></strong>
+                    </div>
+                    <div class="brv-v-card-sub" id="brv-view-sp-sub"></div>
+                </div>
+
+                <div class="brv-v-label">SARO</div>
+                <div class="brv-v-card">
+                    <div class="brv-v-card-top">
+                        <span class="nha-bdg nha-bdg-blue">SARO</span>
+                        <strong id="brv-view-sp-saro"></strong>
+                    </div>
+                    <div class="brv-v-card-sub" id="brv-view-sp-saro-sub"></div>
+                </div>
+
+                <div class="brv-v-label">Line items</div>
+                <div class="brv-v-lit">
+                    <table class="brv-v-tbl">
+                        <thead><tr><th>Account</th><th>Particulars</th><th class="brv-v-num">Amount</th></tr></thead>
+                        <tbody id="brv-view-sp-items"></tbody>
+                        <tfoot><tr><td colspan="2">Total</td><td class="brv-v-num" id="brv-view-sp-total"></td></tr></tfoot>
+                    </table>
+                </div>
+                <div class="brv-v-effect" id="brv-view-sp-effect"></div>
+            </div>
 
             <div class="brv-v-label">Reason</div>
             <div class="brv-v-reason" id="brv-view-reason"></div>
