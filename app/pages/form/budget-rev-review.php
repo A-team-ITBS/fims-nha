@@ -89,7 +89,12 @@ namespace PHPMaker2024\FIMS;
 .nha-root .brv-v-tbl .brv-v-num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
 /* a Supplemental request's projects: a card and its line items each, a little apart; then the total of all of them */
 .nha-root .brv-v-proj + .brv-v-proj { margin-top: 14px; }
-.nha-root .brv-v-proj .brv-v-lit { margin-top: 8px; }
+/* a project's fund / component / amount, and its supporting documents */
+.nha-root .brv-v-kv { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
+.nha-root .brv-v-docs { margin-top: 8px; padding: 8px 12px; background: var(--afims-surface, #FFFFFF); border: 1px solid var(--bdr, #E4ECF2); border-radius: var(--rs, 7px); font-size: 12.5px; }
+.nha-root .brv-v-docs ul { margin: 4px 0 0; padding-left: 18px; }
+.nha-root .brv-v-docs a { color: var(--afims-heading-fill, #000E3E); font-weight: 600; text-decoration: none; overflow-wrap: anywhere; }
+.nha-root .brv-v-docs .brv-v-none { margin-top: 2px; color: var(--subtle, #62657E); }
 .nha-root .brv-v-grand {
     display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; padding: 9px 12px; font-size: 13px;
     background: var(--surf, #F4F7FA); border: 1px solid var(--bdr, #E4ECF2); border-radius: var(--rs, 7px);
@@ -160,7 +165,7 @@ namespace PHPMaker2024\FIMS;
             <!-- SUPPLEMENTAL: one or more NEW projects released by a SARO. Nothing exists yet but this request — the projects, their budget lines and the Amendment amount are created when it is approved. -->
             <div id="brv-view-supp" hidden>
                 <div class="brv-v-label" id="brv-view-sp-projects-lbl">Project</div>
-                <!-- one block per project (brv_fillSuppView): its card (name, where it goes, location, code) and its line items -->
+                <!-- one block per project (brv_fillSuppView): its card (name, its Program, region, location, code), its fund / component / amount and its documents -->
                 <div id="brv-view-sp-projects"></div>
 
                 <div class="brv-v-label">SARO</div>
