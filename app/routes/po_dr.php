@@ -85,6 +85,20 @@ $app->post('/po-dr/proforma-submit', function ($request, $response, $args) use (
     }
 })->add($jwtMiddleware);
 
+// Delivery Acceptance (Actions menu): body { po_number, subject_to, inspection_notes? } -> delivery_accepted = TRUE (one-way; no more deliveries afterwards)
+$app->post('/po-dr/accept-delivery', function ($request, $response, $args) use ($PoDrService) {
+    $body   = $request->getParsedBody() ?: [];
+    // the date and "Inspected By" come from the backend (now / the logged-in user); the user types only subject_to (ICS/PAR) and the optional notes
+    $result = $PoDrService->acceptDelivery(
+        (string) ($body['po_number'] ?? ''),
+        (int) $request->getAttribute('user_id'),
+        (string) ($body['subject_to'] ?? ''),
+        (string) ($body['inspection_notes'] ?? '')
+    );
+
+    return $response->withJson($result, $result['httpCode'] ?? ($result['success'] ? 200 : 400));
+})->add($jwtMiddleware);
+
 // Add (po_number + lines[])
 $app->post('/po-dr/add', function ($request, $response, $args) use ($PoDrService) {
     $result = $PoDrService->create($request->getParsedBody() ?: [], (int) $request->getAttribute('user_id'));

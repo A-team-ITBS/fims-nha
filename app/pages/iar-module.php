@@ -342,7 +342,7 @@ function amp_renderTable(rows) {
     tbody.innerHTML = rows.map((r, i) => {
         return `<tr>
             <td class="nha-td-seq" style="vertical-align:top;">${offset + i + 1}</td>
-            <td style="vertical-align:top;white-space:nowrap;">${r.iar_number ? '<code class="nha-code">' + amp_esc(r.iar_number) + '</code>' : '—'}</td>
+            <td style="vertical-align:top;white-space:nowrap;">${r.iar_number ? '<code class="nha-code">' + amp_esc(r.iar_number) + '</code>' : '—'}${r.delivery_accepted ? '<div style="margin-top:4px;"><span style="display:inline-block;padding:1px 8px;border-radius:10px;background:#DCFCE7;color:#166534;font-size:11px;font-weight:600;" title="Delivery accepted' + (r.delivery_accepted_at ? ' on ' + amp_escAttr(r.delivery_accepted_at) : '') + '">Accepted</span></div>' : ''}</td>
             <td style="vertical-align:top;"><code class="nha-code">${amp_esc(r.po_number)}</code></td>
             <td style="vertical-align:top;white-space:nowrap;">${amp_esc(r.po_date || '—')}</td>
             <td style="vertical-align:top;">${amp_esc(r.requesting_office || '—')}</td>
@@ -371,15 +371,19 @@ function amp_renderTable(rows) {
                         <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                         Pro-forma
                     </button>
-                    ${Number(r.balance) > 0 ? `<button type="button" class="iar-menu-item" onclick="amp_closeMenus();amp_addDelivery('${amp_escAttr(r.po_number)}')" title="Add another delivery receipt to this PO (balance ${money(r.balance)})">
+                    ${Number(r.balance) > 0 && !r.delivery_accepted ? `<button type="button" class="iar-menu-item" onclick="amp_closeMenus();amp_addDelivery('${amp_escAttr(r.po_number)}')" title="Add another delivery receipt to this PO (balance ${money(r.balance)})">
                         <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
                         Add Deliveries
                     </button>` : ''}
-                    <div class="iar-menu-divider"></div>
+                    ${r.delivery_accepted || (r.receipts || []).every(d => d.jev_id) ? `<button type="button" class="iar-menu-item" onclick="amp_closeMenus();amp_acceptDelivery(${rows.indexOf(r)})" title="${r.delivery_accepted ? 'Show the delivery acceptance details' : 'Mark the delivery of this PO as accepted (no more deliveries can be added)'}">
+                        <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                        Delivery Acceptance
+                    </button>` : ''}
+                    ${!r.delivery_accepted ? `<div class="iar-menu-divider"></div>
                     <button type="button" class="iar-menu-item" onclick="amp_closeMenus();amp_edit('${amp_escAttr(r.po_number)}')" title="Edit">
                         <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
                         Edit
-                    </button>
+                    </button>` : ''}
                 </div>
             </div>
         </td>`;
@@ -848,6 +852,64 @@ function amp_openModal(mode, row = null, addDelivery = false) {   // addDelivery
     if (mode === 'add') (addDelivery ? $amp('amp-dr-number') : poEl).focus();
 }
 
+/* Actions → Delivery Acceptance: sets delivery_accepted = TRUE on the PO's IAR (one-way; no more deliveries can be added afterwards) */
+async function amp_acceptDelivery(i) {
+    const r = amp_rows[i];
+    if (!r) return;
+    if (!window.Swal || typeof window.Swal.fire !== 'function') { amp_toast('The dialog could not be opened. Reload the page and try again.', 'error'); return; }
+    const row = (label, value) => '<div style="display:flex;gap:12px;padding:6px 0;border-bottom:1px solid #eef0f4;"><div style="width:130px;flex:none;color:#6b7280;font-size:13px;">'
+        + label + '</div><div style="flex:1;font-size:14px;white-space:pre-wrap;word-break:break-word;">' + value + '</div></div>';
+    if (r.delivery_accepted) {                               // already accepted: show the details (read-only)
+        await window.Swal.fire({
+            title: 'Delivery Acceptance', width: 520, confirmButtonText: 'Close', confirmButtonColor: '#6B7280',
+            customClass: { container: 'amp-swal' },
+            html: '<div style="text-align:left;">'
+                + row('Date', amp_esc(r.delivery_accepted_at || '—'))
+                + row('Inspected By', amp_esc(r.inspected_by || '—'))
+                + row('Subjected To', amp_esc(r.subject_to || '—'))
+                + row('Inspection Notes', amp_esc(r.inspection_notes || '—')) + '</div>',
+        });
+        return;
+    }
+    const today = new Date().toISOString().slice(0, 10), poNumber = r.po_number;
+    const field = 'width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;';
+    const ro = field + 'background:#f4f7fa;color:#5b5e73;';
+    const res0 = await window.Swal.fire({
+        title: 'Delivery Acceptance', width: 520, showCancelButton: true, focusConfirm: false,
+        confirmButtonText: 'Accept Delivery', cancelButtonText: 'Cancel', confirmButtonColor: '#16A34A', cancelButtonColor: '#6B7280',
+        reverseButtons: true, customClass: { container: 'amp-swal' },
+        html: '<div style="text-align:left;">'
+            + '<label style="font-size:13px;color:#6b7280;">Date</label><input style="' + ro + '" value="' + today + '" readonly tabindex="-1">'
+            + '<label style="font-size:13px;color:#6b7280;display:block;margin-top:10px;">Subject to ICS/PAR <span style="color:#DC3545;">*</span></label>'
+            + '<input id="amp-acc-subject" list="amp-acc-subject-list" maxlength="100" style="' + field + '" placeholder="ICS or PAR"><datalist id="amp-acc-subject-list"><option value="ICS"><option value="PAR"></datalist>'
+            + '<label style="font-size:13px;color:#6b7280;display:block;margin-top:10px;">Inspection Notes <span style="color:#9ca3af;">(optional)</span></label>'
+            + '<textarea id="amp-acc-notes" rows="3" maxlength="2000" style="' + field + 'resize:vertical;"></textarea>'
+            + '<div class="amp-cf-warn" style="margin-top:12px;"><span>&#9888;</span><span>After this, no more delivery receipts can be added to this PO and the record can no longer be edited.</span></div></div>',
+        preConfirm: () => {
+            const subject = document.getElementById('amp-acc-subject').value.trim();
+            if (!subject) { window.Swal.showValidationMessage('Subject to ICS/PAR is required.'); return false; }
+            return { subject_to: subject, inspection_notes: document.getElementById('amp-acc-notes').value.trim() };
+        },
+    });
+    if (!res0.isConfirmed) return;
+    window.PagePreloader?.show();
+    try {
+        const res  = await fetch(`${AMP_API}/accept-delivery`, {
+            method: 'POST', credentials: 'same-origin',
+            headers: amp_authHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({ po_number: poNumber, ...res0.value }),
+        });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message || 'Failed to accept the delivery.');
+        amp_toast(json.message || 'Delivery accepted.', 'success');
+        amp_load();
+    } catch (e) {
+        amp_toast(e.message, 'error');
+    } finally {
+        window.PagePreloader?.hide();
+    }
+}
+
 /* Actions → Add Deliveries: another delivery receipt on a PO that already has an IAR (offered while the PO balance is above 0) */
 async function amp_addDelivery(poNumber) {
     window.PagePreloader?.show();
@@ -856,6 +918,7 @@ async function amp_addDelivery(poNumber) {
         const json = await res.json();
         if (!json.success) throw new Error(json.message || 'Failed to load record.');
         if (!(Number(json.data.balance) > 0)) throw new Error('This PO has no balance left.');
+        if (json.data.delivery_accepted) throw new Error('The delivery of this PO was already accepted.');
         amp_openModal('add', json.data, true);
     } catch (e) {
         amp_toast(e.message, 'error');
